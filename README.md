@@ -3,7 +3,6 @@
 > Pet Project based on the great [Wosemi-sama](https://www.youtube.com/@Rosemi_Lovelock) Discord bot with random features.
 
 ## Intro
-Why are you even here? Come say hi to me on my [Twitter](https://twitter.com/holocineli).
 ![Smugsemi](https://i.imgur.com/UqydVo1.png)
 
 ## Features
@@ -16,13 +15,15 @@ Why are you even here? Come say hi to me on my [Twitter](https://twitter.com/hol
 
 ## Installation
 
+After cloning, 
 ```bash
 npm install -g npm@latest
 ```
+in order to install all dependencies
 
 ## Usage
 
-Fill in the .env and config.json variables with your own!
+Fill in the .env with your own tokens, and fill in the config.json variables with your own!
 ```json
 { // Sample config.json
     "testServer": " ",
@@ -41,4 +42,4 @@ Fill in the .env and config.json variables with your own!
 ```
 
 ## Disclaimer
-##### This is not in anyway associated with Rosemi nor Nijisanji, the bot is just for fun.
+##### This is not in anyway associated with Rosemi nor Nijisanji, the bot is just for fun. Come say hi to me on my [Twitter](https://twitter.com/holocineli).
