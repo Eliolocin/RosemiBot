@@ -1,0 +1,35 @@
+{
+  "name": "nana-api",
+  "version": "1.1.5",
+  "description": "nhentai unofficial api",
+  "main": "./index.js",
+  "typings": "./index.d.ts",
+  "author": "Rin!",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.21.4",
+    "cheerio": "^1.0.0-rc.10",
+    "qs": "^6.10.3"
+  },
+  "directories": {
+    "lib": "lib/",
+    "test": "test/"
+  },
+  "scripts": {
+    "test": "node test/test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nikkozu/nana-api.git"
+  },
+  "keywords": [
+    "nhentai",
+    "unofficial",
+    "api",
+    "nana"
+  ],
+  "bugs": {
+    "url": "https://github.com/nikkozu/nana-api/issues"
+  },
+  "homepage": "https://github.com/nikkozu/nana-api#readme"
+}
