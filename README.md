@@ -3,8 +3,8 @@
 > Pet Project based on the great [Wosemi-sama](https://www.youtube.com/@Rosemi_Lovelock) Discord bot with random features.
 
 ## Intro
-Why are you even here? Come say hi to me on Twitter.
-
+Why are you even here? Come say hi to me on my [Twitter](https://twitter.com/holocineli).
+![Smugsemi](https://i.imgur.com/UqydVo1.png)
 
 ## Features
 
