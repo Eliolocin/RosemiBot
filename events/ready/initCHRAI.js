@@ -6,6 +6,9 @@ const persona = process.env.CHRAI_ROSEID;
 module.exports = async (client) => {
 
     // Character AI Initialization
+    const active = false
+    if(!active) return;
+
     try{
         await characterAI.authenticateWithToken(api);
         var Rosemi = {
@@ -15,4 +18,5 @@ module.exports = async (client) => {
     } catch(err){
         console.log("(─‿‿─) Character AI Cloudflare blocked, please restart me manually!"+err);
     }
+
 }

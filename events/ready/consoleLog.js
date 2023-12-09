@@ -20,11 +20,11 @@ let status = [
         type: ActivityType.Listening ,
         },
     {
-    name: 'funny Podcasts',
+    name: 'funny podcasts',
     type: ActivityType.Listening ,
     },
     {
-    name: 'over Rosebuds',
+    name: 'over rosebuds',
     type: ActivityType.Watching ,
     },
     {
@@ -32,7 +32,7 @@ let status = [
         type: ActivityType.Watching ,
         },
     {
-    name: 'hamsters running around',
+    name: 'hamsters run around',
     type: ActivityType.Watching ,
     },
 ]

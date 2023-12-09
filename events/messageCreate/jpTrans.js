@@ -1,16 +1,16 @@
 const {translate} = require('bing-translate-api');
 
 module.exports = (client, message) => {
-    const genCH = client.channels.cache.get(process.env.GENERAL_ID);
+    //const genCH = client.channels.cache.get(process.env.GENERAL_ID);
 
-    if(message.author.bot || message.channel.id !== genCH.id || message.attachments.size > 0) return;
+    if(  !message.content.includes("><") && !message.author.bot && message.channel.id !== process.env.COMMANDS_ID && message.attachments.size === 0) {
 
         translate(message.content, null, 'en').then(res=>{
             if(res.language.from ==='ja' )
-            message.reply("> "+res.translation);
+            message.reply("```\n"+res.translation+"\n```");
         }).catch(err=>{
         });
-
+    }
     /*
     const genCH = client.channels.cache.get(process.env.GENERAL_ID);
     if(message.channel.id === genCH) {

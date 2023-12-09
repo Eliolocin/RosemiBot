@@ -2,7 +2,7 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const Booru = require('booru');
 const { Eiyuu } = require('eiyuu');
 const resolve = new Eiyuu();
-const postfiltering = "score:>=10 -rating:questionable -rating:explicit";
+const postfiltering = "score:>=3 -rating:questionable -rating:explicit";
 
 module.exports = {
     name: 'booru',

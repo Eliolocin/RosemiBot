@@ -9,7 +9,8 @@ module.exports = {
         new Discord.EmbedBuilder()
             .setTitle('RosemiBot 3.0\'s Command List')
             .setURL('https://www.youtube.com/watch?v=mXrIBio12vI')
-            .setThumbnail('https://i.imgur.com/1GJJRJl.png')
+            .setThumbnail(`${process.env.ROSEMIDP}`)
+            //.setThumbnail('https://i.imgur.com/1GJJRJl.png')
             .setDescription('**Your local video/song playing Rose!**\n'+client.commands.map(cmd => `\`${cmd.name}\``).join(', '))
             .addFields(
                 {
@@ -24,9 +25,14 @@ module.exports = {
                 },
                 {
                     name: 'Check out my available Slash commands!',
-                    value: '`Scrape Booru images, generate them with Stable Diffusion, and more!`',
+                    value: '`Scrape Booru images, generate them with Stable Diffusion, and more coming!`',
                     inline: true,
                 },
+                {
+                  name: 'If you want to chat me, simply call my name, "Rosemi", in your messages!',
+                  value: '`Be nice!`',
+                  inline: true,
+              },
             )
             .setFooter({
                 text: 'Lazily made by Aso19',
