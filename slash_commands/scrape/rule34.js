@@ -2,7 +2,7 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const Booru = require('booru');
 const { Eiyuu } = require('eiyuu');
 const resolve = new Eiyuu();
-const postfiltering = "score:>=10";
+const postfiltering = "score:>=3";
 
 module.exports = {
     name: 'rule34',

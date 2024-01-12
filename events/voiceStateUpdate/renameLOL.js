@@ -27,7 +27,7 @@ module.exports = (client, oldVoiceState, newVoiceState) => {
                     member.setNickname("Basted Turkey");
                     break;
                 case "631742515141279754":
-                    member.setNickname("I NEVER MISS");
+                    member.setNickname("I CAN SEE NOW");
                     break;
                 case "730411908636868729":
                     member.setNickname("HAWG RIDAAAAAAH");

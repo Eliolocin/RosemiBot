@@ -7,7 +7,7 @@ module.exports = (client, message) => {
 
         translate(message.content, null, 'en').then(res=>{
             if(res.language.from ==='ja' )
-            message.reply("```\n"+res.translation+"\n```");
+            message.reply("```bash\n"+res.translation+"\n```");
         }).catch(err=>{
         });
     }

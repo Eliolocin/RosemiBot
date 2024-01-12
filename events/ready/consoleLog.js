@@ -12,6 +12,36 @@ module.exports = (client) => {
 // Possible statuses for Rosemi
 let status = [
     {
+    name: 'Kawaii Future Bass music',
+    type: ActivityType.Listening ,
+    },
+    {
+        name: '=help',
+        type: ActivityType.Listening ,
+        },
+    {
+    name: 'birds chirping',
+    type: ActivityType.Listening ,
+    },
+    {
+    name: 'cute marmot videos',
+    type: ActivityType.Watching ,
+    },
+    {
+        name: 'out for =help',
+        type: ActivityType.Watching ,
+        },
+    {
+    name: 'over Jack-Oᶠᶠ',
+    type: ActivityType.Watching ,
+    },
+]
+
+    client.user.setActivity(status[1]);
+};
+
+/*
+    {
     name: 'birds chirping',
     type: ActivityType.Listening ,
     },
@@ -35,7 +65,6 @@ let status = [
     name: 'hamsters run around',
     type: ActivityType.Watching ,
     },
-]
 
-    client.user.setActivity(status[1]);
-};
+
+*/

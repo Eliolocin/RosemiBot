@@ -3,10 +3,23 @@ const CharacterAI = require('node_characterai');
 const characterAI = new CharacterAI();
 const api = process.env.CHRAI_API_KEY;
 const persona = process.env.CHRAI_ROSEID;
+const fs = require('fs');
 
 module.exports = async (client, message) => {
- let active = false
+ let active = false;
     if(!active) return;
+
+    let newCount = -1;
+    if(message.channel.id === process.env.GENERAL_ID && !message.author.bot && message.content.length >= 60) {
+        const data = JSON.parse(fs.readFileSync('memory.json'));
+        newCount = data.convoCount
+        if(newCount === 60) newCount = 0;
+        const newData = { convoCount: newCount+1 };
+        const newJsonData = JSON.stringify(newData);
+        fs.writeFileSync('memory.json', newJsonData);
+        
+    }
+
 try{
     if(message.content.startsWith("=refresh")){
 
@@ -25,14 +38,21 @@ try{
     
     }
     
-    else if((message.channel.id === process.env.GARDEN_ID || message.content.includes("ローゼミ")||/\brosemi\b/i.test(message.content)) && message.channel.id !== process.env.COMMANDS_ID && !message.author.bot && !message.content.startsWith('!') && !message.content.startsWith(':')) {
+    else if(((message.channel.id === process.env.GARDEN_ID || message.content.includes("ローゼミ")||/\brosemi\b/i.test(message.content)) && message.channel.id !== process.env.COMMANDS_ID && !message.author.bot && !message.content.startsWith('!') && !message.content.startsWith(':')) || (newCount === 0 && message.channel.id === process.env.GENERAL_ID) ) {
         if(Rosemi === undefined) {
             message.reply("*Rosemi seems to be busy with the Discord Server's paperwork at the moment, might as well let her be for now...*");
             return;
         }
         const userName = message.member.displayName;
+        const monthNames = ["January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+        ];
 
         var date = new Date()
+        var weekday = getDayOfWeek(date)
+        var day = date.getDate()
+        var year = date.getFullYear()
+        var month = monthNames[date.getMonth()]
         var mid = 'AM';
         var hour = date.getHours();
         var minutes = date.getMinutes()
@@ -46,7 +66,7 @@ try{
             mid = 'PM'
         }
 
-        var currentTime = `${hour}:${minutes} ${mid}`
+        var currentTime = `${month} ${day}, ${year} | ${hour}:${minutes} ${mid} | ${weekday}`
         
         const meFilter =  `(OOC: The following message was sent by the owner of the Jack-O'ff Discord Server (your Boss). Address him as Sir Aso. Time right now is ${currentTime}.)\n`;
         const momFilter = `(OOC: The following message was sent by Mama! Time right now is ${currentTime}.)\n`;
@@ -69,10 +89,18 @@ try{
         }
     
         var responses = await Rosemi.bot.sendAndAwaitResponse(input, false);
-        message.reply(responses[0].text);
+        const genCH = client.channels.cache.get(process.env.GENERAL_ID)
+        if (newCount === 0 && message.channel.id === process.env.GENERAL_ID) genCH.send(responses[0].text);
+        else message.reply(responses[0].text);
         }
 }catch(err){
     console.log("(─‿‿─) I ran into a Character AI error: "+err)
 }
 
 }
+
+function getDayOfWeek(date) {
+    const dayOfWeek = new Date(date).getDay();    
+    return isNaN(dayOfWeek) ? null : 
+      ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek];
+  }
