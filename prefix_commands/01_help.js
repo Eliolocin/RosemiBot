@@ -4,13 +4,17 @@ module.exports = {
   name: 'help',
   aliases: ['h', 'cmd', 'command'],
   run: async (client, message) => {
+    const jackOFF = client.guilds.cache.get(process.env.JACKO_ID)
+    const aso19 = jackOFF.members.cache.get(process.env.ME_ID)
+    const rosemi = jackOFF.members.cache.get(process.env.ROSEID)
+
     message.channel.send({
       embeds: [
         new Discord.EmbedBuilder()
-            .setTitle('RosemiBot 3.0\'s Command List')
+            .setTitle('RosemiBot 3.2\'s Command List')
             .setURL('https://www.youtube.com/watch?v=mXrIBio12vI')
-            .setThumbnail(`${process.env.ROSEMIDP}`)
-            //.setThumbnail('https://i.imgur.com/1GJJRJl.png')
+            //.setThumbnail(`${process.env.ROSEMIDP}`)
+            .setThumbnail(rosemi.displayAvatarURL())
             .setDescription('**Your local video/song playing Rose!**\n'+client.commands.map(cmd => `\`${cmd.name}\``).join(', '))
             .addFields(
                 {
@@ -36,7 +40,7 @@ module.exports = {
             )
             .setFooter({
                 text: 'Lazily made by Aso19',
-                //iconURL: 'https://i.imgur.com/4AZwvbD.png'
+                iconURL: aso19.displayAvatarURL()
             })
             //.setColor('#f4ff94')    
             .setColor('#DE3163')    

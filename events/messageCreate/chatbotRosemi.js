@@ -3,7 +3,7 @@ const nai = new NovelAI();
 
 const memoryLimit = 70; // Number of messages retained
 const fs = require('fs');
-const consoleLog = require('../ready/consoleLog');
+//const consoleLog = require('../ready/consoleLog');
 
 
 module.exports = async (client, message) => {
