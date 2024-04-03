@@ -15,7 +15,7 @@ module.exports = {
     [
         {
             name: 'tags',
-            description: 'Please enter multiple tags, each separated with a / slash (tags do not have to be exact!)',
+            description: 'Please enter multiple tags, each separated with a space (tags do not have to be exact!)',
             type: ApplicationCommandOptionType.String,
             required: true,
         }
@@ -25,13 +25,15 @@ module.exports = {
        try{
         await interaction.deferReply();
 
+        /*
        if(!interaction.channel.nsfw) {
         interaction.editReply("Sorry, you can only use this command in NSFW channels!");
         return;
         }
+        */
     
        const userquery = interaction.options.getString('tags');
-       const userinput = interaction.options.getString('tags').split("/");
+       const userinput = interaction.options.getString('tags').split(" ");
        let queries = [];
         
        let finalquery = "";
@@ -76,7 +78,7 @@ module.exports = {
         }
         else{
             interaction.editReply(
-                {content:"You typed: `"+userquery.trim()+"`\nI searched for: `"+tempquery.trim()+"`", 
+                {content:"*You typed: `"+userquery.trim()+"`*\n*I searched for: `"+tempquery.trim()+"`*", 
                 files: uploads});
                 interaction.editReply(`*Downloading posts then uploading them in random...*`);
         }

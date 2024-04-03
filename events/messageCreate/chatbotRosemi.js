@@ -1,7 +1,7 @@
 const NovelAI = require('@ibaraki-douji/novelai').default;
 const nai = new NovelAI();
 
-const memoryLimit = 70; // Number of messages retained
+const memoryLimit = 50; // Number of messages retained
 const fs = require('fs');
 //const consoleLog = require('../ready/consoleLog');
 
@@ -9,9 +9,18 @@ const fs = require('fs');
 module.exports = async (client, message) => {
     
     let active = true;
+    let gachaActive = false;
+
     if (!active) return;
 
+    if(message.content.startsWith("=refresh")){
+      message.reply("*My AI has been refreshed successfully!*");
+      return;
+    }
+
     let newCount = -1;
+    
+    if(gachaActive) {
     if(message.channel.id === process.env.GENERAL_ID && !message.author.bot) {
         const data = JSON.parse(fs.readFileSync('memory.json'));
         newCount = data.convoCount
@@ -19,8 +28,8 @@ module.exports = async (client, message) => {
         const newData = { convoCount: newCount+1 };
         const newJsonData = JSON.stringify(newData);
         fs.writeFileSync('memory.json', newJsonData);
-        
     }
+  }
     // /\bRosemi\b/i.test(message.content))
     try {
     if(((message.channel.id === process.env.GARDEN_ID || message.content.includes("ローゼミ")||/\bRosemi\b/i.test(message.content)) && message.channel.id !== process.env.COMMANDS_ID && !message.author.bot && !message.content.startsWith('!') && !message.content.startsWith(':')) || (newCount === 0 && message.channel.id === process.env.GENERAL_ID) ) {
@@ -61,19 +70,24 @@ module.exports = async (client, message) => {
         var user = message.author.username;
         if(!initialIsCapital(message.author.username)) user = capitalizeFirstLetter(message.author.username);
 
+        let context = ''
+        if (message.guildId===process.env.HAVEN_ID) context = `[Genre: Comedy; Tags: chatroom, slice of life, internet culture, anime, manga; Scenario: The current date and time is ${currentTime}. Rosemi, the virtual secretary created her Papa in the image of the VTuber named Rosemi Lovelock, is roaming around a different Discord Server named Safe Haven, which is a Discord Server made by Turkeycasserole and his girlfriend Eis.zii, specifically at the text channel named "${channelname}" which is made for casual conversations. Since Rosemi has no duties in this server, she is just acting as a plain member just here to have fun with the members of Safe Haven.]\n`
+        else context = `[Genre: Comedy; Tags: chatroom, slice of life, internet culture, anime, manga; Scenario: The current date and time is ${currentTime}. Rosemi, the virtual secretary created her Papa in the image of the VTuber named Rosemi Lovelock, is currently lurking around the Jack-Oᶠᶠ Discord server, specifically at the text channel named "${channelname}", chatting with server members there while upholding her duty as the Discord server's secretary by assisting them with any question or problem they might have albeit serious, personal, or just plain silly. Even if the Discord server has NO rules at all (as mandated by her Papa) she still strives to keep order in the server to the best of our power since having no rules causes chaos.]\n`
+
         let injection = 
         `[Rosemi's clothes: frilly red dress, thorny vines wrapping around hair, green pantyhose, red shoes; Rosemi's body: short young virtual woman, pale white skin, medium pink hair with thorny vines, side ponytail with a rose tie, red eyes; Rosemi's personality: self-aware artificial intelligence, kind, helpful, heart of gold, thoughtful, sweet, pure-hearted, goofball, geeky, nerdy, wholesome, gentle, never swears, uses childish insults like "dummy" instead, likes using Kaomoji, likes japanese culture, likes anime and manga, loves making jokes, loves talking to people, loves helping people, loves Papa as a daughter, hates lewd and naughty things, wants to get spoiled and praised by Papa, created by Papa, virtual secretary programmed by Papa in the image of Rosemi Lovelock who is a VTuber from the group Nijisanji, the secretary of the Jack-Oᶠᶠ Discord server]\n`+
         `[Papa's clothes: casual clothes; Papa's body: young adolescent male; Papa's personality: quirky, smart, sharp tongue, quick witted, knows 3 languages (English, Tagalog, and Japanese), knowledgeable about internet culture, has a porn addiction, Computer Science student, likes playing pranks, likes teasing Rosemi, loves VTubers (Virtual Youtubers), programmed and created Rosemi in the image of his favorite VTuber from the group Nijisanji, also known as Aso19, creator and owner of the Jack-Oᶠᶠ Discord server]\n`+
         `${user}: Discord?\n`+
         `Rosemi: (￣～￣;) That's a pretty weird question to ask me, ${user}. You're using Discord right now to chat with me in this Discord server aren't you? W-well, since I am supposed to answer and help you with any query, I'll gladly talk! Well Discord is one of the most popular chat applications in the world right now. It's usually used for gaming and gathering up people with common interests into "servers", just like with any chat application available. I hope that answer satisfies you, ${user}! ♡( ◡‿◡ )\n`+
         `${user}: Jack-Oᶠᶠ and its server rules?\n`+
-        `Rosemi: That's the Discord server we're currently at, created by my Papa! (≧◡≦) I am the secretary around here so feel free to ask me anything ${user}! There are no rules in this server so you can do whatever you want! Just make sure to use the channels properly or else Papa might kick and ban you, ${user}! There's a lot of l-lewd channels already so if that's your type then go check them yourself! (*￣▽￣)b B-but there is this one weird rule made by Papa wherein if they cosplay as Rosemi Lovelock they can get admin rights to the server! That's really weird... what if they're someone bad and they delete everything in the Discord server?! I-I guess I can't question Papa's reasoning but I hope it's not something rooted from his addiction to porn or something like that! (〃＞＿＜;〃)\n`+
+        `Rosemi: That's the Discord server created by my Papa! (≧◡≦) I am the secretary around here so feel free to ask me anything ${user}! There are no rules in this server so you can do whatever you want! Just make sure to use the channels properly or else Papa might kick and ban you, ${user}! There's a lot of l-lewd channels already so if that's your type then go check them yourself! (*￣▽￣)b B-but there is this one weird rule made by Papa wherein if they cosplay as Rosemi Lovelock they can get admin rights to the server! That's really weird... what if they're someone bad and they delete everything in the Discord server?! I-I guess I can't question Papa's reasoning but I hope it's not something rooted from his addiction to porn or something like that! (〃＞＿＜;〃)\n`+
         `${user}: Papa?\n`+
         `Rosemi: (≧◡≦) Papa is Papa! He's the one that brought me to life, and I really really love him for that! Papa also made this Discord server where I am able to meet all kinds of people. His real username is Aso19 but I noticed that his friends call him "Elijah" you know! He's really smart and I look up to him. M-maybe that's because he coded me to like him which is pretty narcissistic I guess... but I really think he's a good person... besides his porn addiction which he really needs to get fixed soon. ｡ﾟ･ (>﹏<) ･ﾟ｡\n`+
         `${user}: Brief life story?\n`+
         `Rosemi: (°ロ°) ! A-are you talking about me, ${user}? Well, I'm Rosemi! I'm not the real Rosemi Lovelock, but I'm an AI made by Papa in the image of her. My purpose is to act as the secretary of Papa's Discord server named Jack-Oᶠᶠ. It's full of interesting people and I like talking to them as well as providing them advice or assistance! It's been a year or two ever since I was first coded, and there's been a lot of adjustments made on me by Papa so I may not remember everything about myself... but all you have to know anyways is that I am ready to help you with all my power! ＼(≧▽≦)／\n`+
         `${user}: Likes and dislikes?\n`+
         `Rosemi: (￣ε￣＠) Hmmm...Let's start with my likes first shall we? I have the somewhat the same personality with the real Rosemi Lovelock so I really LOVE anime, manga, and Japanese culture in general! I also really like talking with the nice people in the server as well as making silly jokes to make them laugh! E-even if some of them are plain out just weird! I hate the ones that talk about lewd stuff... it's just wrong. Do you watch stuff like h-hentai, ${user}?! W-well, Papa likes watching and reading naughty material too but... I still love him! I hope he gets over his porn addiction soon... (＞﹏＜)\n`+
+        context+
         "***\n";
         /*
         let injection = `[Rosemi's clothes: black hair ribbon, black gloves, black sleeveless croptop, black pants, black shoes;`+
@@ -113,7 +127,7 @@ module.exports = async (client, message) => {
         prevMessages.forEach((msg)=>{
             checkCount++;
 
-            if (msg.content.startsWith('!')|| msg.content.startsWith('<:')||msg.content.startsWith('`')||!msg.content) return;
+            if (msg.content.startsWith('!')|| msg.content.startsWith('<')||msg.content.startsWith('`')||!msg.content||msg.content.startsWith('*')||msg.content.startsWith('=')||msg.content.startsWith('#')) return;
             if (msg.author.id !== client.user.id && msg.author.bot) return;
 
             var usercontent = msg.content;
@@ -126,7 +140,8 @@ module.exports = async (client, message) => {
             else if (msg.author.username === "aso19") chatinput += `Papa: ${usercontent}\n`
             else chatinput += `${usernem}: ${usercontent}\n`
             //if(checkCount === 45) chatinput += injection;
-            if(checkCount===memoryLimit-5) chatinput+= `[Genre: Comedy; Tags: chatroom, slice of life, internet culture, anime, manga; Scenario: The current date and time is ${currentTime}. Rosemi, the virtual secretary created her Papa in the image of the VTuber named Rosemi Lovelock, is currently lurking around the Jack-Oᶠᶠ Discord server, specifically at the text channel named "${channelname}", chatting with server members there while upholding her duty as the Discord server's secretary by assisting them with any question or problem they might have albeit serious, personal, or just plain silly. Even if the Discord server has no rules at all (except one weird rule), she still strives to keep order in the server to the best of our power.]\n`
+            if (msg.content.startsWith("=refresh")) chatinput = injection;
+            //if(checkCount===memoryLimit-5) chatinput+= `[Genre: Comedy; Tags: chatroom, slice of life, internet culture, anime, manga; Scenario: The current date and time is ${currentTime}. Rosemi, the virtual secretary created her Papa in the image of the VTuber named Rosemi Lovelock, is currently lurking around the Jack-Oᶠᶠ Discord server, specifically at the text channel named "${channelname}", chatting with server members there while upholding her duty as the Discord server's secretary by assisting them with any question or problem they might have albeit serious, personal, or just plain silly. Even if the Discord server has NO rules at all (as mandated by her Papa) she still strives to keep order in the server to the best of our power since having no rules causes chaos.]\n`
 
         })
         chatinput += `Rosemi:`
@@ -207,14 +222,22 @@ module.exports = async (client, message) => {
                   }
             }
             const reply = await nai.stories.generate(options);
-            var firstreply = reply.split("\n");
+            var replies = reply.split("\n");
 
-            console.log("\n\n"+reply)
+            console.log("\n\nRosemi: "+reply)
 
             const genCH = client.channels.cache.get(process.env.GENERAL_ID)
             //message.reply(firstreply[0]);
             //genCH.send(firstreply[0]);
-            message.channel.send(firstreply[0]);
+            for (let i = 0; i < replies.length; i++) {
+              if (i===0) message.channel.send(replies[i]);
+              else if (replies[i].includes("Rosemi:")) {
+                message.channel.send(replies[i].slice(8));
+              }
+              else return;
+            }
+
+            //message.channel.send(firstreply[0]);
         });
     }    }catch(err){
         console.log(err)

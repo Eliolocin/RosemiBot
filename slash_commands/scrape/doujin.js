@@ -103,7 +103,7 @@ module.exports = {
 
 
                     const reply = await interaction.editReply({
-                        content:"Here are some random Doujins...変態!",
+                        content:"*Here are some random Doujins...変態!*",
                         components:[buttonRow],
                         embeds:[embed, tagbed]
                     });

@@ -2,7 +2,7 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const Booru = require('booru');
 const { Eiyuu } = require('eiyuu');
 const resolve = new Eiyuu();
-const postfiltering = "score:>=3 -rating:questionable -rating:explicit";
+const postfiltering = " score:>=3 -nude -rating:explicit -nipples -pubic_hair";
 
 module.exports = {
     name: 'booru',
@@ -15,7 +15,7 @@ module.exports = {
     [
         {
             name: 'tags',
-            description: 'Please enter multiple tags, each separated with a / slash (tags do not have to be exact!)',
+            description: 'Please enter multiple tags, each separated with a space (tags do not have to be exact!)',
             type: ApplicationCommandOptionType.String,
             required: true,
         }
@@ -26,7 +26,8 @@ module.exports = {
             await interaction.deferReply();
 
             const userquery = interaction.options.getString('tags');
-            const userinput = interaction.options.getString('tags').split("/");
+            const userinput = interaction.options.getString('tags').split(" ");
+            //console.log(userinput)
             let queries = [];
              
             let finalquery = "";
@@ -35,12 +36,14 @@ module.exports = {
             for(i=0; i<userinput.length; i++){
      
              queries.push(await resolve.gelbooru(userinput[i].trim().replace(/\s/g, "_")));
-             finalquery+=" "+queries[i][0];
+             if(userinput[i] === 'armpits') finalquery+=" "+queries[i][1];
+             else finalquery+=" "+queries[i][0];
+             //console.log(queries)
      
             }
      
             var tempquery = finalquery;
-            finalquery+= " "+postfiltering;
+            finalquery+= postfiltering;
      
             const gel = Booru.forSite('gelbooru');
      
@@ -68,11 +71,11 @@ module.exports = {
         
      
              if(postCount === 0){
-                 interaction.editReply("Sowwy, I didn't find any post for: `"+userquery.trim()+"`\nTry a different prompt or try `/rule34` instead!");
+                 interaction.editReply("*Sowwy, I didn't find any post for: `"+userquery.trim()+"`\nTry a different prompt or try `/rule34` instead!*");
              }
              else{
                  interaction.editReply(
-                     {content:"You typed: `"+userquery.trim()+"`\nI searched for: `"+tempquery.trim()+"`", 
+                     {content:"*You typed: `"+userquery.trim()+"`*\n*I searched for: `"+tempquery.trim()+"`*", 
                      files: uploads});
                  interaction.editReply(`*Downloading posts then uploading them in random...*`);
              }

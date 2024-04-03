@@ -40,7 +40,7 @@ module.exports = {
             console.log(e);
         }
         interaction.editReply(
-            {content:"Here's what I generated for `"+userquery.trim()+"` (b ᵔ▽ᵔ)b", 
+            {content:"*Here's what I generated for `"+userquery.trim()+"` (b ᵔ▽ᵔ)b*", 
             files: uploads});
         })
     }catch(err){

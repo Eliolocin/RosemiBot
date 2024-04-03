@@ -13,7 +13,8 @@ module.exports = async (client, interaction) => {
         if (!commandObject) return;
 
         if(commandObject.devOnly){
-            if(!devs.includes(interaction.member.id)){
+            //if(!devs.includes(interaction.member.id)){
+            if(interaction.member.id != '684462114022490125'){
                 interaction.reply({
                     content: 'Sorry, only developers are allowed to run this command!',
                     ephemeral: true,
