@@ -2,7 +2,7 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const Booru = require('booru');
 const { Eiyuu } = require('eiyuu');
 const resolve = new Eiyuu();
-const postfiltering = "score:>=3";
+const postfiltering = " score:>=3";
 
 module.exports = {
     name: 'rule34',
@@ -42,7 +42,7 @@ module.exports = {
        for(i=0; i<userinput.length; i++){
 
         queries.push(await resolve.rule34(userinput[i].trim().replace(/\s/g, "_")));
-        finalquery+=" "+queries[i][0];
+        finalquery+=queries[i][0];
 
        }
 

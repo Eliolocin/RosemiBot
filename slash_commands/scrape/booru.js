@@ -2,7 +2,7 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const Booru = require('booru');
 const { Eiyuu } = require('eiyuu');
 const resolve = new Eiyuu();
-const postfiltering = " score:>=3 -nude -rating:explicit -nipples -pubic_hair";
+const postfiltering = " score:>=3 -nude -rating:explicit -nipples -pubic_hair"; // Filtering out posts with these tags
 
 module.exports = {
     name: 'booru',

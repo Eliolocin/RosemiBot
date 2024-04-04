@@ -21,7 +21,7 @@ module.exports = (client, oldVoiceState, newVoiceState) => {
 
             // PLAY SESSION LENGTH COUNTER!
             //genCH.send(`Papa, today\'s play session length was **${timeplayed}** long! (≧◡≦) ♡`)
-            genCH.send(`Papa, today\'s play session length was **${timeplayed}** long! (≧◡≦) ♡`)
+            genCH.send(`*Papa, today\'s play session length was **${timeplayed}** long! (≧◡≦) ♡*`)
 
             /*
             if((Math.round(hours) === 2 && Math.round(minutes) >= 30) || Math.round(hours) > 2) // Overtime
@@ -93,7 +93,7 @@ module.exports = (client, oldVoiceState, newVoiceState) => {
                         //genCH.send(`<@${process.env.ME_ID}>! Papa! You've passed the 2 hour and 30 minute mark already! Say goodnight, it's time to go to sleep! ୧(๑•̀ᗝ•́)૭ `)
                         //genCH.send(`<@${process.env.ME_ID}> has already expended his daily 2 hours and 30 minutes play time! If he's still in-game with you, he'll wrap it up without rejoining the VC so I'll say "Good night" on his behalf... おやすみ、皆さん！ ♡ ～('▽^人)`)
                         genCH.send(`<@${process.env.ME_ID}>、寝ようよ！もう寝るの時間だよ！ ♡ ～('▽^人)`)
-                        genCH.send(`https://media1.tenor.com/m/Ux3GbjIh9HwAAAAC/rosemi-lovelock-rosemi.gif`)
+                        //genCH.send(`https://media1.tenor.com/m/Ux3GbjIh9HwAAAAC/rosemi-lovelock-rosemi.gif`)
                     }
                 }, 9000000); // 2.5 hours
 
