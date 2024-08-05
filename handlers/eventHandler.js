@@ -12,7 +12,7 @@ module.exports = (client) => {
         
         const eventName = eventFolder.replace(/\\/g, '/').split('/').pop()
         
-        if(eventName === "voiceStateUpdate"){
+        if(eventName === "voiceStateUpdate" || eventName === "presenceUpdate"){
             client.on(eventName, async(arg1, arg2)  =>{
                 for(const eventFile of eventFiles){
                     const eventFunction = require(eventFile);

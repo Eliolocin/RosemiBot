@@ -8,8 +8,9 @@ module.exports = (client, oldVoiceState, newVoiceState) => {
     const JackOFF = client.guilds.cache.get(process.env.JACKO_ID);
     const Haven = client.guilds.cache.get(process.env.HAVEN_ID);
     const genCH = client.channels.cache.get(process.env.GENERAL_ID);
+    const active = false;
 
-    if( joinMemID === process.env.ME_ID ) {
+    if( joinMemID === process.env.ME_ID && active ) {
 
         if ( oldVoiceState.channelId === newVoiceState.channelId ) return;
         else if ( !newVoiceState.channelId ) { // Leave channel

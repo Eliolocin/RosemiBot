@@ -9,6 +9,7 @@ const client = new Client({
         IntentsBitField.Flags.Guilds,
         IntentsBitField.Flags.GuildMembers,           
         IntentsBitField.Flags.GuildMessages,
+        IntentsBitField.Flags.GuildPresences,
         IntentsBitField.Flags.MessageContent,
         IntentsBitField.Flags.GuildVoiceStates,
         IntentsBitField.Flags.DirectMessages,
@@ -22,7 +23,18 @@ const client = new Client({
 const eventHandler = require('./handlers/eventHandler');
 eventHandler(client);
 
+/*
+// Voice detection functonality
+const { addSpeechEvent, SpeechEvents, resolveSpeechWithWitai } = require("discord-speech-recognition");
+const { joinVoiceChannel } = require("@discordjs/voice");
 
+addSpeechEvent(client, {
+  speechRecognition: resolveSpeechWithWitai,
+  lang: 'en-US', // ja-JP or en-US
+  key: 'TCK4Z2R7KJKW2VITFABZPHMB3WXNQAWP',
+  profanityFilter: false,
+});
+*/
 
 // Music bot functionality
 const { DisTube } = require('distube')

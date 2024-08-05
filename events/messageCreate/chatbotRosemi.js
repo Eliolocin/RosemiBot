@@ -9,11 +9,11 @@ const fs = require('fs');
 module.exports = async (client, message) => {
     
     let active = true;
-    let gachaActive = false;
+    let gachaActive = true;
 
     if (!active) return;
 
-    if(message.content.startsWith("=refresh")){
+    if(message.content.startsWith("=refresh")||message.content.startsWith("=reset")){
       message.reply("*My AI has been refreshed successfully!*");
       return;
     }
@@ -30,9 +30,17 @@ module.exports = async (client, message) => {
         fs.writeFileSync('memory.json', newJsonData);
     }
   }
+  //let { channel, message_reference: reply } = message
+  //const repliedTo = await channel.messages.fetch(reply.id);
     // /\bRosemi\b/i.test(message.content))
+    let referenceMessage;
+    if (message.reference?.messageId) {
+      // The message is a reply to another message
+      referenceMessage = await message.channel.messages.cache.get(message.reference.messageId);
+    }
+
     try {
-    if(((message.channel.id === process.env.GARDEN_ID || message.content.includes("ローゼミ")||/\bRosemi\b/i.test(message.content)) && message.channel.id !== process.env.COMMANDS_ID && !message.author.bot && !message.content.startsWith('!') && !message.content.startsWith(':')) || (newCount === 0 && message.channel.id === process.env.GENERAL_ID) ) {
+    if(((referenceMessage?.author.bot || message.channel.id === process.env.GARDEN_ID || message.content.includes("ローゼミ")||message.content.includes("ロゼミ")||message.content.includes("ロセミ")||/\bRosemi\b/i.test(message.content)) && message.channel.id !== process.env.COMMANDS_ID && !message.author.bot && !message.content.startsWith('!') && !message.content.startsWith(':')) || (newCount === 0 && message.channel.id === process.env.GENERAL_ID) ) {
         
         
         await message.channel.sendTyping();
@@ -111,7 +119,7 @@ module.exports = async (client, message) => {
             else if (msg.author.username === "aso19") chatinput += `Papa: ${usercontent}\n`
             else chatinput += `${usernem}: ${usercontent}\n`
             //if(checkCount === 45) chatinput += injection;
-            if (msg.content.startsWith("=refresh")) chatinput = injection;
+            if (msg.content.startsWith("=refresh")||msg.content.startsWith("=reset")) chatinput = injection;
             //if(checkCount===memoryLimit-5) chatinput+= `[Genre: Comedy; Tags: chatroom, slice of life, internet culture, anime, manga; Scenario: The current date and time is ${currentTime}. Rosemi, the virtual secretary created her Papa in the image of the VTuber named Rosemi Lovelock, is currently lurking around the Jack-Oᶠᶠ Discord server, specifically at the text channel named "${channelname}", chatting with server members there while upholding her duty as the Discord server's secretary by assisting them with any question or problem they might have albeit serious, personal, or just plain silly. Even if the Discord server has NO rules at all (as mandated by her Papa) she still strives to keep order in the server to the best of our power since having no rules causes chaos.]\n`
 
         })
