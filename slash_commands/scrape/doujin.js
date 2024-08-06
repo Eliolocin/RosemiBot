@@ -110,7 +110,7 @@ module.exports = {
 
                     const collector = reply.createMessageComponentCollector({
                         componentType: ComponentType.Button,
-                        time: 90000,
+                        time: 15000,
                     });
                     
                     collector.on('collect', (onpress)=>{

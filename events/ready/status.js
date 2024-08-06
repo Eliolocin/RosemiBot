@@ -1,7 +1,7 @@
 const { ActivityType } = require('discord.js');
 
-module.exports = (client) => {
-
+module.exports = async (client) => {
+    
 // .on is a Listener (if ___ occurs, do ___)
     console.log(`${client.user.tag} up and growing!`)
     setInterval(()=>{
