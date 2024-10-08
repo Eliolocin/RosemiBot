@@ -1,10 +1,12 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { config } = require("dotenv");
 
 
-const memoryLimit = 300; // Number of messages retained
+const memoryLimit = 100; // Number of messages retained
 const gachaTrigger = 50; // Number of messages until Rosemi talks by herself
 const filterStrength = 'NEGLIBLE'; // Level of filter strength
 const googleModel = "gemini-1.5-pro"; // Google model to use
+const maxTokens = 450; // Maximum tokens to generate
 const fs = require('fs');
 //const consoleLog = require('../ready/consoleLog');
 
@@ -53,6 +55,7 @@ module.exports = async (client, message) => {
           { category: 'DANGEROUS_CONTENT', level: filterStrength },
           { category: 'CIVIC_INTEGRITY', level: filterStrength }
       ];
+
 
         
         await message.channel.sendTyping();
@@ -143,7 +146,7 @@ module.exports = async (client, message) => {
         prevMessages.forEach((msg)=>{
             checkCount++;
 
-            if (msg.content.startsWith('!')|| msg.content.startsWith('<')||msg.content.startsWith('`')||!msg.content||msg.content.startsWith('*')||msg.content.startsWith('#')) return;
+            if (msg.content.startsWith('!')|| msg.content.startsWith('<')) return;
             if (msg.author.id !== client.user.id && msg.author.bot) return;
 
             var usercontent = msg.content;
@@ -169,7 +172,43 @@ module.exports = async (client, message) => {
             const reply = await model.generateContent([chatinput], {safetySettings});
 
             console.log(`\n\n`+reply.response.text())
-            message.channel.send(trimROSE(trimMEND(reply.response.text())));
+
+            // Message Splitter overcome 1k character limit
+            var nSplitMessage = reply.response.text().split("\n");
+            var chunkedMessage = [];
+            var chunkIndex = 0;
+            var tempMessage = "";
+            let charaThreshold = 0;
+
+            nSplitMessage.forEach((msg)=>{
+              if(charaThreshold >= 1000)
+                { // If message is over the 1k character threshold
+                chunkedMessage[chunkIndex] = tempMessage;
+                tempMessage = "";
+                charaThreshold = 0;
+                chunkIndex++;
+              }
+              else
+              { // Add message to temporary message
+                tempMessage += msg + "\n";
+                charaThreshold += msg.length;
+              }
+            });
+
+            if (chunkedMessage.length === 0) chunkedMessage[0] = tempMessage;
+
+            chunkedMessage.forEach((msg)=>{
+              message.channel.send(trimROSE(trimMEND(msg)));
+            })
+            
+
+
+
+
+
+
+
+            //message.channel.send(trimROSE(trimMEND(reply.response.text())));
             //message.reply(firstreply[0]);
             //genCH.send(firstreply[0]);
 
@@ -184,9 +223,20 @@ module.exports = async (client, message) => {
 
     // Helper functions
     function initialIsCapital( word ){
+      var hasLetter = /[a-zA-Z]/.test(word);
+
+      if (!hasLetter) {
+          return word;
+      }else
         return word[0] !== word[0].toLowerCase();
       }
-      function capitalizeFirstLetter(string) {
+
+    function capitalizeFirstLetter(string) {
+        var hasLetter = /[a-zA-Z]/.test(string);
+
+        if (!hasLetter) {
+            return "The string does not contain any lowercase or uppercase letters.";
+        }else
         return string.charAt(0).toUpperCase() + string.slice(1);
     }
     function addPeriod(sentence) {

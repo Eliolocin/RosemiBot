@@ -1,6 +1,7 @@
 const node = require('jspteroapi');
 const axios = require('axios');
 const WebSocket = require('ws');
+const {EmbedBuilder, ApplicationCommandOptionType,ButtonBuilder, ButtonStyle, ActionRowBuilder, ComponentType} = require('discord.js');
 
 module.exports = {
     name: 'mcserver',
@@ -25,6 +26,14 @@ module.exports = {
     ],
 
     callback: async (client, interaction) =>{
+        var restartErrorEmbed = new EmbedBuilder()
+            .setColor('#FF0000')
+            .setDescription('**Minecraft Server restart was unsuccessful...** (─‿‿─)')
+
+        var restartSuccessEmbed = new EmbedBuilder()
+            .setColor('#00FF00')
+            .setDescription('**Minecraft Server restarted successfully!**\nPlease wait a few minutes before it gets back online! (o゜▽゜)o☆')
+
         try{
 
             
@@ -50,14 +59,20 @@ module.exports = {
                         }).then(function (response) {
                             //console.log("Server stopping...");
                             console.log(response.data);
-                            interaction.editReply("**Minecraft Server restarted successfully!**\nPlease wait a few minutes before it is back online! (o゜▽゜)o☆");
+    
+
+
+                            interaction.editReply({embeds:[restartSuccessEmbed]});
                         }).catch(function (error) {
                             console.log(error);
-                            interaction.editReply("**Minecraft Server restart was unsuccessful...** (─‿‿─)");
+                            interaction.editReply({embeds:[restartErrorEmbed]});
                         });
                     break;
                 case 'status':
-                    axios.get(`https://control.sparkedhost.us/api/client/servers/${srvID}/resources`, {
+                    var dataUsed = 0;
+                    var statusString = "";
+
+                    await axios.get(`https://control.sparkedhost.us/api/client/servers/${srvID}/resources`, {
                         headers: {
                             'Accept': 'application/json',
                             'Content-Type': 'application/json',
@@ -65,25 +80,33 @@ module.exports = {
                         }
                     }).then(function (response) {
                         const data=response.data.attributes.resources;
-                        interaction.editReply(`Total Server Memory Used: **${((data.memory_bytes /= Math.pow(10, 9)).toFixed(2))} GB** / 12.00 GB`);
+                        dataUsed = ((data.memory_bytes /= Math.pow(10, 9)).toFixed(2));
+                        
                       }).catch(function (error) {
                         console.log(error);
                       })
 
-
-                      axios.get(`https://api.mcstatus.io/v2/status/java/${process.env.MC_IP}`)
+                    await axios.get(`https://api.mcstatus.io/v2/status/java/${process.env.MC_IP}`)
                       .then(response => {
                           // Parse the JSON data
                           const playerList = response.data.players.list
                           const playerCount = playerList.length
-                          interaction.channel.send(`Players Online: **${playerCount}** / 20`)
+
+                          statusString=`Players Online: **${playerCount}** / 20`;
                         for(let i=0; i<playerCount; i++){
-                            interaction.channel.send(`${i+1}. ${playerList[i].name_clean}`);
+                            statusString+=`\n${i+1}. ${playerList[i].name_clean}`
                         }
+                        
                       })
                       .catch(error => {
                           console.error('Failed to fetch player information:', error);
                       });
+                    
+                      var serverStatusEmbed = new EmbedBuilder()
+                        .setColor('#40e0d0')
+                        .setDescription(`Total Server Memory Used: **${dataUsed} GB** / 12.00 GB\n`+statusString)
+                      interaction.editReply({embeds:[serverStatusEmbed]});
+                      
                     break;
             }
 
