@@ -11,7 +11,7 @@ module.exports = {
     message.channel.send({
       embeds: [
         new Discord.EmbedBuilder()
-            .setTitle('RosemiBot 3.2\'s Command List')
+            .setTitle('RosemiBot 4.0\'s Command List')
             .setURL('https://www.youtube.com/watch?v=mXrIBio12vI')
             //.setThumbnail(`${process.env.ROSEMIDP}`)
             .setThumbnail(rosemi.displayAvatarURL())

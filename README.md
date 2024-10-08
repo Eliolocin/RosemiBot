@@ -25,9 +25,9 @@ in order to install all dependencies
 
 ## Usage
 
-Fill in the .env with your own tokens, and fill in the config.json variables with your own!
+Fill in the .env with your own tokens, and fill in the resources/config.json variables with your own!
 ```json
-{ // Sample config.json
+{ // Sample resources/config.json
     "testServer": " ",
     "devs": [" "],
     "prefix": "=",

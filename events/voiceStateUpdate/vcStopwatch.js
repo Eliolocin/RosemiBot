@@ -14,7 +14,7 @@ module.exports = (client, oldVoiceState, newVoiceState) => {
 
         if ( oldVoiceState.channelId === newVoiceState.channelId ) return;
         else if ( !newVoiceState.channelId ) { // Leave channel
-            const joinDate = JSON.parse(fs.readFileSync('timer.json'));
+            const joinDate = JSON.parse(fs.readFileSync('resources/timer.json'));
             //const joinDate = new Date(oldData.joinTime);
             const leaveDate = moment().format("DD/MM/YYYY HH:mm:ss")
 
@@ -45,7 +45,7 @@ module.exports = (client, oldVoiceState, newVoiceState) => {
         else if ( !oldVoiceState.channelId ) {
             const newData = { joinTime: moment().format("DD/MM/YYYY HH:mm:ss") }
             const newDatajson = JSON.stringify(newData)
-            fs.writeFileSync('timer.json', newDatajson);
+            fs.writeFileSync('resources/timer.json', newDatajson);
 
                 setTimeout(function () {
                     let kickCount = 0;
@@ -64,7 +64,7 @@ module.exports = (client, oldVoiceState, newVoiceState) => {
                             hideCount++;
                         }
 
-                        if (mem.voice.channelId === newVoiceState.channelId && memID!=='830530156048285716' && memID!== process.env.ME_ID){
+                        if (mem.voice.channelId === newVoiceState.channelId && memID!==process.env.LOFI_ID && memID!== process.env.ME_ID){
                             mentionGroup += `<@${memID}> `;
                             //genCH.send(`<@${memID}>`) // Message everyone else in vc
                         }
@@ -82,7 +82,7 @@ module.exports = (client, oldVoiceState, newVoiceState) => {
                             hideCount++;
                         }
 
-                        if (hem.voice.channelId === newVoiceState.channelId && hemID!=='830530156048285716' && hemID!== process.env.ME_ID){
+                        if (hem.voice.channelId === newVoiceState.channelId && hemID!==process.env.LOFI_ID && hemID!== process.env.ME_ID){
                             mentionGroup += `<@${hemID}> `;
                             //genCH.send(`<@${memID}>`) // Message everyone else in vc
                         }

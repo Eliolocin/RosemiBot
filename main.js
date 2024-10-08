@@ -39,12 +39,12 @@ addSpeechEvent(client, {
 // Music bot functionality
 const { DisTube } = require('distube')
 const fs = require('fs')
-const config = require('./config.json')
+const config = require('./resources/config.json')
 const { SpotifyPlugin } = require('@distube/spotify')
 const { SoundCloudPlugin } = require('@distube/soundcloud')
 const { YtDlpPlugin } = require('@distube/yt-dlp')
 
-client.config = require('./config.json')
+client.config = require('./resources/config.json')
 client.distube = new DisTube(client, {
   leaveOnStop: false,
   emitNewSongOnly: true,

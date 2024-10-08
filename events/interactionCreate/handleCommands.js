@@ -1,4 +1,4 @@
-const {devs, testServer} = require('../../config.json');
+const {devs, testServer} = require('../../resources/config.json');
 const getLocalCommands = require('../../utils/getLocalCommands');
 
 module.exports = async (client, interaction) => {
@@ -14,7 +14,7 @@ module.exports = async (client, interaction) => {
 
         if(commandObject.devOnly){
             //if(!devs.includes(interaction.member.id)){
-            if(interaction.member.id != '684462114022490125'){
+            if(interaction.member.id != process.env.DEV_ID){
                 interaction.reply({
                     content: 'Sorry, only developers are allowed to run this command!',
                     ephemeral: true,
