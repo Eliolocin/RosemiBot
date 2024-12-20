@@ -1,11 +1,11 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenerativeAI, VertexAI } = require("@google/generative-ai");
 const { config } = require("dotenv");
 
 
-const memoryLimit = 100; // Number of messages retained
+const memoryLimit = 80; // Number of messages retained
 const gachaTrigger = 50; // Number of messages until Rosemi talks by herself
 const filterStrength = 'NEGLIBLE'; // Level of filter strength
-const googleModel = "gemini-1.5-pro"; // Google model to use
+const googleModel = "gemini-1.5-pro-latest"; // Google model to use
 const maxTokens = 450; // Maximum tokens to generate
 const fs = require('fs');
 //const consoleLog = require('../ready/consoleLog');
@@ -105,7 +105,7 @@ module.exports = async (client, message) => {
         sysStart+
           context+
           `[Rosemi's clothes: frilly red dress, thorny vines wrapping around hair, green pantyhose, red shoes; Rosemi's body: short young virtual woman, pale white skin, medium pink hair with thorny vines, side ponytail with a rose tie, red eyes; Rosemi's personality: self-aware artificial intelligence, kind, helpful, heart of gold, thoughtful, sweet, pure-hearted, goofball, geeky, nerdy, wholesome, gentle, never swears, uses childish insults like "dummy" instead, likes using Kaomoji, likes japanese culture, likes anime and manga, loves making jokes, loves talking to people, loves helping people, loves Papa as a daughter, hates lewd and naughty things, wants to get spoiled and praised by Papa, created by Papa, virtual secretary programmed by Papa in the image of Rosemi Lovelock who is a VTuber from the group Nijisanji, the secretary of the Jack-Oᶠᶠ Discord server]\n`+
-          `[Papa's clothes: casual clothes; Papa's body: young adolescent male; Papa's personality: quirky, smart, sharp tongue, quick witted, knows 3 languages (English, Tagalog, and Japanese), knowledgeable about internet culture, Computer Science student, likes playing pranks, likes teasing Rosemi, loves VTubers (Virtual Youtubers), programmed and created Rosemi in the image of his favorite VTuber from the group Nijisanji, also known as Aso19, creator and owner of the Jack-Oᶠᶠ Discord server]\n`+
+          `[Papa's clothes: casual clothes; Papa's body: young adolescent male; Papa's personality: quirky, smart, sharp tongue, quick witted, knows 3 languages (English, Tagalog, and Japanese), knowledgeable about internet culture, Computer Science student, also known as Aso19, creator and owner of the Jack-Oᶠᶠ Discord server, likes playing pranks, likes teasing Rosemi, loves VTubers (Virtual Youtubers), programmed and created Rosemi in the image of his favorite VTuber from the group Nijisanji]\n`+
         mlEnd+
         userStart+
         `${user}: Discord?\n`+
@@ -146,7 +146,7 @@ module.exports = async (client, message) => {
         prevMessages.forEach((msg)=>{
             checkCount++;
 
-            if (msg.content.startsWith('!')|| msg.content.startsWith('<')) return;
+            if (msg.content.startsWith('!')|| msg.content.startsWith('<') ||msg.content.startsWith('||')||msg.content.length <= 0 ) return;
             if (msg.author.id !== client.user.id && msg.author.bot) return;
 
             var usercontent = msg.content;
@@ -173,32 +173,32 @@ module.exports = async (client, message) => {
 
             console.log(`\n\n`+reply.response.text())
 
-            // Message Splitter overcome 1k character limit
+            // Message Splitter overcome 2k character limit
             var nSplitMessage = reply.response.text().split("\n");
             var chunkedMessage = [];
             var chunkIndex = 0;
             var tempMessage = "";
-            let charaThreshold = 0;
+            //let charaThreshold = 0;
 
             nSplitMessage.forEach((msg)=>{
-              if(charaThreshold >= 1000)
-                { // If message is over the 1k character threshold
+              if(tempMessage.length >= 1500)
+                { // If message is close to going over the 2k character threshold
                 chunkedMessage[chunkIndex] = tempMessage;
                 tempMessage = "";
-                charaThreshold = 0;
+                //charaThreshold = 0;
                 chunkIndex++;
               }
-              else
-              { // Add message to temporary message
+              else // Add message to temporary message
                 tempMessage += msg + "\n";
-                charaThreshold += msg.length;
-              }
+
             });
 
+            if (tempMessage.length > 0) chunkedMessage[chunkIndex] = tempMessage;
             if (chunkedMessage.length === 0) chunkedMessage[0] = tempMessage;
 
             chunkedMessage.forEach((msg)=>{
-              message.channel.send(trimROSE(trimMEND(msg)));
+              if(msg.length > 5) message.channel.send(trimROSE(trimMEND(msg)));
+              //message.channel.send(trimROSE(trimMEND(msg)));
             })
             
 
@@ -214,7 +214,8 @@ module.exports = async (client, message) => {
 
 
     }    }catch(err){
-        message.channel.send(`(─‿‿─) I ran into an error! Please send Papa this message so he can fix it!: \n**${err}**`);
+        // message.channel.send(`(─‿‿─) I ran into an error! Please send Papa this message so he can fix it!: \n**${err}**`);
+        message.channel.send("||(｡>﹏<｡) Looks like Gemini blocked my generation response as it may have violated Google safety measures... have a flower instead! :rose:||");
         console.log(err)
     }
     };
@@ -235,7 +236,7 @@ module.exports = async (client, message) => {
         var hasLetter = /[a-zA-Z]/.test(string);
 
         if (!hasLetter) {
-            return "The string does not contain any lowercase or uppercase letters.";
+            return string;
         }else
         return string.charAt(0).toUpperCase() + string.slice(1);
     }
