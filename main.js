@@ -1,11 +1,12 @@
 // Give access to .env file
 require('dotenv').config();
+const fs = require('fs')
 
-// Discord Bot Init
+// Discord Bot Initialization
 const Discord = require('discord.js');
 const { Client, IntentsBitField } = require('discord.js');
 const client = new Client({ 
-    intents: [ // Set of permissions Rosemi has/needs!
+    intents: [ // Set of permissions TomoBot needs to function
         IntentsBitField.Flags.Guilds,
         IntentsBitField.Flags.GuildMembers,           
         IntentsBitField.Flags.GuildMessages,
@@ -19,49 +20,16 @@ const client = new Client({
       Discord.Partials.Channel,
       Discord.Partials.Message
     ]
-}); 
+});
+
+// TomoBot handles commands in two ways:
+// 1, Event Handler Framework
 const eventHandler = require('./handlers/eventHandler');
 eventHandler(client);
 
-/*
-// Voice detection functonality
-const { addSpeechEvent, SpeechEvents, resolveSpeechWithWitai } = require("discord-speech-recognition");
-const { joinVoiceChannel } = require("@discordjs/voice");
-
-addSpeechEvent(client, {
-  speechRecognition: resolveSpeechWithWitai,
-  lang: 'en-US', // ja-JP or en-US
-  key: 'TCK4Z2R7KJKW2VITFABZPHMB3WXNQAWP',
-  profanityFilter: false,
-});
-*/
-
-// Music bot functionality
-const { DisTube } = require('distube')
-const fs = require('fs')
-const config = require('./resources/config.json')
-const { SpotifyPlugin } = require('@distube/spotify')
-const { SoundCloudPlugin } = require('@distube/soundcloud')
-const { YtDlpPlugin } = require('@distube/yt-dlp')
-
-client.config = require('./resources/config.json')
-client.distube = new DisTube(client, {
-  leaveOnStop: false,
-  emitNewSongOnly: true,
-  emitAddSongWhenCreatingQueue: false,
-  emitAddListWhenCreatingQueue: false,
-  plugins: [
-    new SpotifyPlugin({
-      emitEventsAfterFetching: true
-    }),
-    new SoundCloudPlugin(),
-    new YtDlpPlugin()
-  ]
-})
+// 2. Prefix Commands
 client.commands = new Discord.Collection()
 client.aliases = new Discord.Collection()
-client.emotes = config.emoji
-
 fs.readdir('./prefix_commands/', (err, files) => {
   if (err) return console.log('I could not find any commands!')
   const jsFiles = files.filter(f => f.split('.').pop() === 'js')
@@ -74,13 +42,6 @@ fs.readdir('./prefix_commands/', (err, files) => {
   })
     //console.log(`All prefix commands up and running!`)
 })
-
-/*
-client.on('ready', () => {
-  console.log(`${client.user.tag} is ready to play music.`)
-})
-*/
-
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return
   const prefix = config.prefix
@@ -99,42 +60,6 @@ client.on('messageCreate', async message => {
     message.channel.send(`${client.emotes.error} | Oops! An error popped up: \`${e}\``)
   }
 })
-
-const status = queue =>
-  `Volume: \`${queue.volume}%\` | Filter: \`${queue.filters.names.join(', ') || 'Off'}\` | Loop: \`${
-    queue.repeatMode ? (queue.repeatMode === 2 ? 'All Queue' : 'This Song') : 'Off'
-  }\` | Autoplay: \`${queue.autoplay ? 'On' : 'Off'}\``
-client.distube
-  .on('playSong', (queue, song) =>
-    queue.textChannel.send(
-      `${client.emotes.play} | Playing \`${song.name}\` - \`${song.formattedDuration}\`\nRequested by: ${
-        song.user
-      }\n${status(queue)}`
-    )
-  )
-  .on('addSong', (queue, song) =>
-    queue.textChannel.send(
-      `${client.emotes.success} | Added ${song.name} - \`${song.formattedDuration}\` to the queue by ${song.user}`
-    )
-  )
-  .on('addList', (queue, playlist) =>
-    queue.textChannel.send(
-      `${client.emotes.success} | Added \`${playlist.name}\` playlist (${
-        playlist.songs.length
-      } songs) to queue\n${status(queue)}`
-    )
-  )
-  .on('error', (channel, e) => {
-    if (channel) channel.send(`${client.emotes.error} | Oops! An error popped up: \`${e}\` ${e.toString().slice(0, 1974)}`)
-    else console.error(e)
-  })
-  .on('empty', channel => channel.send('Noone is listening anymore, leaving the channel...'))
-  .on('searchNoResult', (message, query) =>
-    message.channel.send(`${client.emotes.error} | Sorry but, no result found for \`${query}\`!`)
-  )
-  .on('finish', queue => queue.textChannel.send('All songs finished!'))
-
-
 
 // Login Rosemi using our password (the Token)
 client.login(process.env.DISCORD_TOKEN);
