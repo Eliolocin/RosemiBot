@@ -1,62 +1,38 @@
+const { EmbedBuilder, PermissionsBitField } = require("discord.js");
+const { getTranslation } = require("../../utils/textLocalizer");
+
 module.exports = {
   name: "ping",
   description: "Pong!",
-  // devOnly: Boolean,
-  // testOnly: Boolean,
-  // options: Object[],
-  // deleted: Boolean,
+  permissionsRequired: [PermissionsBitField.Flags.KickMembers],
 
   callback: async (client, interaction, profileData) => {
+    const locale = profileData.language || "en";
     await interaction.deferReply();
+
     const reply = await interaction.fetchReply();
+    const responseTime = reply.createdTimestamp - interaction.createdTimestamp;
+    const discordPing = client.ws.ping;
 
-    const ping = reply.createdTimestamp - interaction.createdTimestamp;
-    const actualspeed = ping;
+    const isLaggy = responseTime > 250;
+    const responseEmbed = new EmbedBuilder()
+      .setColor(isLaggy ? "#E74C3C" : "#2ECC71")
+      .setTitle(getTranslation(locale, "tool.ping.description"))
+      .setDescription(
+        isLaggy
+          ? getTranslation(locale, "tool.ping.response_slow", {
+              response_time: responseTime,
+              discord_response: discordPing,
+            })
+          : getTranslation(locale, "tool.ping.response_fast", {
+              response_time: responseTime,
+              discord_response: discordPing,
+            }),
+      )
+      .setFooter({
+        text: isLaggy ? "Hang in there! ~_~" : "Lightning fast! ⚡",
+      });
 
-    if (actualspeed > 250)
-      interaction.editReply(
-        `Pong! I responded to Discord within **${actualspeed}ms**! | Discord is responding to me **${client.ws.ping}ms** fast! Looks like I am a bit laggy today (￣▽￣*)ゞ`,
-      );
-    else
-      interaction.editReply(
-        `Pong! I responded to Discord within **${actualspeed}ms**! | Discord is responding to me **${client.ws.ping}ms** fast!`,
-      );
+    await interaction.editReply({ embeds: [responseEmbed] });
   },
 };
-
-/*
-{
-        name: 'add',
-        description: 'Adds two numbers',
-        options: [
-            {
-                name: 'first-number',
-                description: 'The first number',
-                type: ApplicationCommandOptionType.Number,
-                choices: [
-                    {
-                        name: 'one',
-                        value: 1
-                    },
-                    {
-                        name: 'three',
-                        value: 3
-                    },
-                    {
-                        name: 'sixty-nine',
-                        value: 69
-                    }
-                ],
-                required: true,
-            },
-                {
-                    name: 'second-number',
-                    description: 'The second number',
-                    type: ApplicationCommandOptionType.Number,
-                    required: true,
-                }
-            
-        ]
-    }
-];
-*/

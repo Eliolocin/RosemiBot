@@ -1,96 +1,101 @@
-const { ApplicationCommandOptionType } = require("discord.js");
+const { EmbedBuilder, ApplicationCommandOptionType } = require("discord.js");
 const Booru = require("booru");
 const { Eiyuu } = require("eiyuu");
+const { getTranslation } = require("../../utils/textLocalizer");
+
 const resolve = new Eiyuu();
 const postfiltering = " score:>=3";
 
 module.exports = {
   name: "rule34",
   description:
-    "Quickly get up to 4 random NSFW HQ post results of a query with multiple tags from rule34!",
-  // devOnly: Boolean,
-  // testOnly: Boolean,
-  // options: Object[],
-  // deleted: Boolean,
+    "Retrieve up to 4 random NSFW results for your query from Rule34!",
   options: [
     {
       name: "tags",
       description:
-        "Please enter multiple tags, each separated with a space (tags do not have to be exact!)",
+        "Enter tags separated by spaces (e.g. dragon furry dragonite)",
       type: ApplicationCommandOptionType.String,
       required: true,
     },
   ],
 
   callback: async (client, interaction, profileData) => {
+    const locale = profileData.language || "en";
+
     try {
       await interaction.deferReply();
 
-      /*
-       if(!interaction.channel.nsfw) {
-        interaction.editReply("Sorry, you can only use this command in NSFW channels!");
-        return;
-        }
-        */
+      if (!interaction.channel.nsfw) {
+        const embed = new EmbedBuilder()
+          .setColor("#FF0000")
+          .setTitle(getTranslation(locale, "scrape.rule34.error_not_nsfw"))
+          .setDescription(
+            getTranslation(locale, "scrape.rule34.error_not_nsfw_description"),
+          );
 
-      const userquery = interaction.options.getString("tags");
-      const userinput = interaction.options.getString("tags").split(" ");
-      let queries = [];
-
-      let finalquery = "";
-
-      for (i = 0; i < userinput.length; i++) {
-        queries.push(
-          await resolve.rule34(userinput[i].trim().replace(/\s/g, "_")),
-        );
-        finalquery += queries[i][0];
+        return interaction.editReply({ embeds: [embed] });
       }
 
-      var tempquery = finalquery;
-      finalquery += " " + postfiltering;
+      const userquery = interaction.options.getString("tags");
+      const tags = userquery.split(" ");
+      let finalquery = "";
 
-      const r34 = Booru.forSite("rule34");
-      var postcontainer = [];
+      // Resolve tags for accuracy
+      for (const tag of tags) {
+        const resolvedTags = await resolve.rule34(tag.replace(/\s/g, "_"));
+        finalquery += ` ${resolvedTags[0]}`;
+      }
 
-      r34.search(finalquery, { limit: 4, random: true }).then((posts) => {
-        for (i = 0; i < 4; i++) {
-          if (!posts[i]) break;
-          postcontainer.push(`${posts[i].fileUrl}`);
-        }
+      const filteredQuery = `${finalquery} ${postfiltering}`;
+      const rule34 = Booru.forSite("rule34");
+      const posts = await rule34.search(filteredQuery, {
+        limit: 4,
+        random: true,
+      });
 
-        var uploads = [];
-        var postCount = postcontainer.length;
-
-        for (i = 0; i < postCount; i++) {
-          uploads.push({
-            attachment: postcontainer[i],
-            name: `result.${postcontainer[i].split(/[#?]/)[0].split(".").pop().trim()}`,
-          });
-        }
-
-        if (postCount === 0) {
-          interaction.editReply(
-            "Sowwy, I didn't find any post for: `" +
-              userquery.trim() +
-              "`\nTry a different prompt or try `/booru` instead!",
+      if (!posts.length) {
+        const embed = new EmbedBuilder()
+          .setColor("#FF0000")
+          .setTitle(getTranslation(locale, "scrape.rule34.error_no_results"))
+          .setDescription(
+            getTranslation(locale, "scrape.rule34.error_no_results", {
+              query: userquery,
+            }),
           );
-        } else {
-          interaction.editReply({
-            content:
-              "*You typed: `" +
-              userquery.trim() +
-              "`*\n*I searched for: `" +
-              tempquery.trim() +
-              "`*",
-            files: uploads,
+
+        return await interaction.editReply({ embeds: [embed] });
+      }
+
+      const embeds = posts.map((post, index) => {
+        return new EmbedBuilder()
+          .setColor("#FF69B4")
+          .setTitle(
+            getTranslation(locale, "scrape.rule34.result_title", {
+              index: index + 1,
+            }),
+          )
+          .setURL(post.fileUrl)
+          .setImage(post.fileUrl)
+          .setFooter({
+            text: getTranslation(locale, "scrape.rule34.result_footer", {
+              tags: userquery,
+            }),
           });
-          interaction.editReply(
-            `*Downloading posts then uploading them in random...*`,
-          );
-        }
+      });
+
+      await interaction.editReply({
+        content: getTranslation(locale, "scrape.rule34.progress_message"),
+        embeds,
       });
     } catch (err) {
-      console.log("(─‿‿─) I ran into a slash command error: " + err);
+      console.error("Error in Rule34 command:", err);
+      const embed = new EmbedBuilder()
+        .setColor("#FF0000")
+        .setTitle(getTranslation(locale, "scrape.rule34.error_message"))
+        .setDescription(err.message);
+
+      await interaction.editReply({ embeds: [embed] });
     }
   },
 };

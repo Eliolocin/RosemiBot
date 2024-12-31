@@ -1,4 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
+const { getTranslation } = require("../../utils/textLocalizer");
 const profileModel = require("../../models/profileSchema.js");
 
 module.exports = {
@@ -8,35 +9,39 @@ module.exports = {
   callback: async (client, interaction, profileData) => {
     await interaction.deferReply();
 
+    const locale = profileData.language || "en";
+
     // Generate a random amount between 100 and 300
     const randomNumber = Math.floor(Math.random() * (300 - 100 + 1)) + 100;
 
     // Update user's coins in the database
     await profileModel.findOneAndUpdate(
-      { userID: interaction.member.id }, // Match by user's ID
-      { $inc: { coins: randomNumber } }, // Update their coins in the database
+      { userID: interaction.member.id },
+      { $inc: { coins: randomNumber } },
     );
 
-    // Build the embed
+    // Localized strings
+    const title = getTranslation(locale, "economy.daily.title");
+    const description = getTranslation(locale, "economy.daily.claim_success", {
+      claimed: randomNumber,
+      new_balance: profileData.coins + randomNumber,
+    });
+    const footer =
+      randomNumber >= 200
+        ? getTranslation(locale, "economy.daily.footer_lucky")
+        : getTranslation(locale, "economy.daily.footer");
+
+    // Create the embed
     const embed = new EmbedBuilder()
-      .setColor("#FFFFFF") // White color for the embed
+      .setColor("#FFFFFF")
       .setAuthor({
-        name: interaction.member.user.username, // Show the user's name
-        iconURL: interaction.member.user.displayAvatarURL({ dynamic: true }), // Show user's avatar
+        name: interaction.member.user.username,
+        iconURL: interaction.member.user.displayAvatarURL({ dynamic: true }),
       })
-      .setTitle("New Balance:")
-      .setDescription(
-        `🎉 You claimed **${randomNumber}** TomoCoins!\n💰 **New Balance:** ${profileData.coins + randomNumber}`,
-      );
+      .setTitle(title)
+      .setDescription(description)
+      .setFooter({ text: footer });
 
-    // Add a rare congratulatory footer for high rolls (200–300)
-    if (randomNumber >= 200) {
-      embed.setFooter({ text: "Congratulations! That was a lucky claim! 🎉" });
-    } else {
-      embed.setFooter({ text: "Keep earning those TomoCoins! (￣▽￣*)ゞ" });
-    }
-
-    // Send the embed as a reply
     await interaction.editReply({ embeds: [embed] });
   },
 };

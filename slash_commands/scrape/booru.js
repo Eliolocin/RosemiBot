@@ -1,93 +1,90 @@
-const { ApplicationCommandOptionType } = require("discord.js");
+const { EmbedBuilder, ApplicationCommandOptionType } = require("discord.js");
 const Booru = require("booru");
 const { Eiyuu } = require("eiyuu");
+const { getTranslation } = require("../../utils/textLocalizer");
+
 const resolve = new Eiyuu();
-const postfiltering = " score:>=3 -nude -rating:explicit -nipples -pubic_hair"; // Filtering out posts with these tags
+const postfiltering = " score:>=3 -nude -rating:explicit -nipples -pubic_hair";
 
 module.exports = {
   name: "booru",
   description:
-    'Quickly get up to 4 random "SFW" HQ post results of a query with multiple tags from gelbooru!',
-  // devOnly: Boolean,
-  // testOnly: Boolean,
-  // options: Object[],
-  // deleted: Boolean,
+    "Quickly get up to 4 random SFW high-quality results for your query from Gelbooru!",
   options: [
     {
       name: "tags",
       description:
-        "Please enter multiple tags, each separated with a space (tags do not have to be exact!)",
+        "Enter tags separated by spaces (for example: cat cute smile)",
       type: ApplicationCommandOptionType.String,
       required: true,
     },
   ],
 
   callback: async (client, interaction, profileData) => {
+    const locale = profileData.language || "en";
+
     try {
       await interaction.deferReply();
-
       const userquery = interaction.options.getString("tags");
-      const userinput = interaction.options.getString("tags").split(" ");
-      //console.log(userinput)
-      let queries = [];
-
+      const tags = userquery.split(" ");
+      const queries = [];
       let finalquery = "";
 
-      for (i = 0; i < userinput.length; i++) {
-        queries.push(
-          await resolve.gelbooru(userinput[i].trim().replace(/\s/g, "_")),
-        );
-        if (userinput[i] === "armpits") finalquery += " " + queries[i][1];
-        else finalquery += " " + queries[i][0];
-        //console.log(queries)
+      // Resolve tags with Eiyuu for more accurate results
+      for (const tag of tags) {
+        const resolvedTags = await resolve.gelbooru(tag.replace(/\s/g, "_"));
+        finalquery += ` ${resolvedTags[0]}`;
       }
 
-      var tempquery = finalquery;
-      finalquery += postfiltering;
+      const filteredQuery = `${finalquery} ${postfiltering}`;
+      const gelbooru = Booru.forSite("gelbooru");
+      const posts = await gelbooru.search(filteredQuery, {
+        limit: 4,
+        random: true,
+      });
 
-      const gel = Booru.forSite("gelbooru");
-
-      var postcontainer = [];
-
-      gel.search(finalquery, { limit: 4, random: true }).then((posts) => {
-        for (i = 0; i < 4; i++) {
-          if (!posts[i]) break;
-          postcontainer.push(`${posts[i].fileUrl}`);
-        }
-
-        var uploads = [];
-        var postCount = postcontainer.length;
-
-        for (i = 0; i < postCount; i++) {
-          uploads.push({
-            attachment: postcontainer[i],
-            name: `result.${postcontainer[i].split(/[#?]/)[0].split(".").pop().trim()}`,
-          });
-        }
-
-        if (postCount === 0) {
-          interaction.editReply(
-            "*Sowwy, I didn't find any post for: `" +
-              userquery.trim() +
-              "`\nTry a different prompt or try `/rule34` instead!*",
+      if (!posts.length) {
+        const embed = new EmbedBuilder()
+          .setColor("#FF0000")
+          .setTitle(getTranslation(locale, "scrape.booru.error_no_results"))
+          .setDescription(
+            getTranslation(locale, "scrape.booru.error_no_results", {
+              query: userquery,
+            }),
           );
-        } else {
-          interaction.editReply({
-            content:
-              "*You typed: `" +
-              userquery.trim() +
-              "`*\n*I searched for: `" +
-              tempquery.trim() +
-              "`*",
-            files: uploads,
+
+        return await interaction.editReply({ embeds: [embed] });
+      }
+
+      const embeds = posts.map((post, index) => {
+        return new EmbedBuilder()
+          .setColor("#00FF00")
+          .setTitle(
+            getTranslation(locale, "scrape.booru.result_title", {
+              index: index + 1,
+            }),
+          )
+          .setURL(post.fileUrl)
+          .setImage(post.fileUrl)
+          .setFooter({
+            text: getTranslation(locale, "scrape.booru.result_footer", {
+              tags: userquery,
+            }),
           });
-          interaction.editReply(
-            `*Downloading posts then uploading them in random...*`,
-          );
-        }
+      });
+
+      await interaction.editReply({
+        content: getTranslation(locale, "scrape.booru.progress_message"),
+        embeds,
       });
     } catch (err) {
-      console.log("(─‿‿─) I ran into a slash command error: " + err);
+      console.error("Error in Booru command:", err);
+      const embed = new EmbedBuilder()
+        .setColor("#FF0000")
+        .setTitle(getTranslation(locale, "scrape.booru.error_message"))
+        .setDescription(err.message);
+
+      await interaction.editReply({ embeds: [embed] });
     }
   },
 };

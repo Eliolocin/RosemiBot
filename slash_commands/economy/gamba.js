@@ -1,4 +1,5 @@
 const { EmbedBuilder, ApplicationCommandOptionType } = require("discord.js");
+const { getTranslation } = require("../../utils/textLocalizer");
 const profileModel = require("../../models/profileSchema.js");
 
 module.exports = {
@@ -16,60 +17,79 @@ module.exports = {
 
   callback: async (client, interaction, profileData) => {
     await interaction.deferReply();
-
-    // Get the user's input for the 'amount' parameter
+    const locale = profileData.language || "en";
     const gambleAmount = interaction.options.getInteger("amount");
 
-    // Check if the user has enough coins to gamble
     if (gambleAmount > profileData.coins) {
       const embed = new EmbedBuilder()
-        .setColor("#FF0000") // Red color indicating an error
-        .setTitle("Insufficient Funds")
-        .setDescription(
-          `💸 You don't have enough TomoCoins to gamble that amount!\n\n💰 **Your Balance:** ${profileData.coins}\n🎲 **Attempted Gamble:** ${gambleAmount}`,
+        .setColor("#FF0000")
+        .setTitle(
+          getTranslation(locale, "economy.gamba.insufficient_funds_title"),
         )
-        .setFooter({ text: "Try a smaller amount! Good luck!" });
+        .setDescription(
+          getTranslation(
+            locale,
+            "economy.gamba.insufficient_funds_description",
+            {
+              balance: profileData.coins,
+              attempted: gambleAmount,
+            },
+          ),
+        )
+        .setFooter({
+          text: getTranslation(
+            locale,
+            "economy.gamba.insufficient_funds_footer",
+          ),
+        });
 
       return await interaction.editReply({ embeds: [embed] });
     }
 
-    // Proceed with the gamble: remove the gamble amount from the balance
     profileData.coins -= gambleAmount;
 
-    // Perform the 50/50 gamble
     const isWin = Math.random() < 0.5; // 50% chance
-
     const winnings = isWin ? gambleAmount * 2 : 0;
 
-    // If won, add the winnings back
     if (isWin) {
       profileData.coins += winnings;
     }
 
-    // Update the database
     await profileModel.updateOne(
       { userID: interaction.member.id },
       { $set: { coins: profileData.coins } },
     );
 
-    // Build the embed response
     const embed = new EmbedBuilder()
-      .setColor(isWin ? "#00FF00" : "#FF0000") // Green for win, red for lose
+      .setColor(isWin ? "#00FF00" : "#FF0000")
       .setAuthor({
         name: interaction.member.user.username,
         iconURL: interaction.member.user.displayAvatarURL({ dynamic: true }),
       })
-      .setTitle(isWin ? "You Win!" : "You Lost!")
+      .setTitle(
+        getTranslation(
+          locale,
+          isWin ? "economy.gamba.win_title" : "economy.gamba.lose_title",
+        ),
+      )
       .setDescription(
         isWin
-          ? `🎉 Congratulations! You doubled your gamble and won **${winnings}** TomoCoins!\n\n💰 **New Balance:** ${profileData.coins}`
-          : `💔 Better luck next time! You lost **${gambleAmount}** TomoCoins.\n\n💰 **New Balance:** ${profileData.coins}`,
+          ? getTranslation(locale, "economy.gamba.win_description", {
+              winnings,
+              new_balance: profileData.coins,
+            })
+          : getTranslation(locale, "economy.gamba.lose_description", {
+              amount_lost: gambleAmount,
+              new_balance: profileData.coins,
+            }),
       )
       .setFooter({
-        text: isWin ? "Big win! Feeling lucky?" : "Ouch! Gambling is risky!",
+        text: getTranslation(
+          locale,
+          isWin ? "economy.gamba.win_footer" : "economy.gamba.lose_footer",
+        ),
       });
 
-    // Send the response
     await interaction.editReply({ embeds: [embed] });
   },
 };

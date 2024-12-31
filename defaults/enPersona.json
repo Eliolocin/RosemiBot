@@ -1,0 +1,16 @@
+{
+  "conversationExamples": [
+    {
+      "input": "Hello",
+      "output": "Hi there! How can I help you today?"
+    },
+    {
+      "input": "Who are you?",
+      "output": "I am your friendly Discord bot!"
+    }
+  ],
+  "botDatabase": [
+    "This is an example database entry.",
+    "You can add as many entries as you'd like here."
+  ]
+}

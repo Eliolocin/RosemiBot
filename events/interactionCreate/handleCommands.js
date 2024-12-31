@@ -1,4 +1,4 @@
-const { devs, testServer } = require("../../resources/config.json");
+const { testServer } = process.env.JACKO_ID;
 const getLocalCommands = require("../../utils/getLocalCommands");
 const profileModel = require("../../models/profileSchema.js");
 
@@ -63,18 +63,27 @@ module.exports = async (client, interaction) => {
 
     let profile;
     try {
+      // Step 1: Determine the server's language from preferredLocale
+      const serverLocale = interaction.guild.preferredLocale;
+      console.log(`Server language detected: ${serverLocale}`);
+
+      // Default to "en" unless the locale indicates Japanese
+      const userLanguage = serverLocale.startsWith("ja") ? "ja" : "en";
+
+      // Step 2: Check if the profile exists for the user
       profile = await profileModel.findOne({ userID: interaction.member.id });
       if (!profile) {
-        let profile = await profileModel.create({
+        // Create a new profile with the detected language
+        profile = await profileModel.create({
           userID: interaction.member.id,
-          serverID: interaction.member.guild.id,
-          coins: 1000,
-          bank: 0,
+          serverID: interaction.guild.id,
+          language: userLanguage, // Set language based on server locale
         });
-        profile.save();
+        await profile.save();
+        console.log(`Profile created with language set to ${userLanguage}`);
       }
     } catch (err) {
-      console.log(err);
+      console.error("Error handling profile creation:", err);
     }
 
     await commandObject.callback(client, interaction, profile);
