@@ -1,7 +1,7 @@
 const { EmbedBuilder, ApplicationCommandOptionType } = require("discord.js");
 const Booru = require("booru");
 const { Eiyuu } = require("eiyuu");
-const { getTranslation } = require("../../utils/textLocalizer");
+const { localizer } = require("../../utils/textLocalizer");
 
 const resolve = new Eiyuu();
 const postfiltering = " score:>=3";
@@ -9,7 +9,7 @@ const postfiltering = " score:>=3";
 module.exports = {
   name: "rule34",
   description:
-    "Retrieve up to 4 random NSFW results for your query from Rule34!",
+    "Retrieve 4 Search Results from Rule34 | Rule34から検索結果を4つ取得します",
   options: [
     {
       name: "tags",
@@ -20,8 +20,8 @@ module.exports = {
     },
   ],
 
-  callback: async (client, interaction, profileData) => {
-    const locale = profileData.language || "en";
+  callback: async (client, interaction, userData) => {
+    const locale = userData.language || "en";
 
     try {
       await interaction.deferReply();
@@ -29,9 +29,9 @@ module.exports = {
       if (!interaction.channel.nsfw) {
         const embed = new EmbedBuilder()
           .setColor("#FF0000")
-          .setTitle(getTranslation(locale, "scrape.rule34.error_not_nsfw"))
+          .setTitle(localizer(locale, "scrape.rule34.error_not_nsfw"))
           .setDescription(
-            getTranslation(locale, "scrape.rule34.error_not_nsfw_description"),
+            localizer(locale, "scrape.rule34.error_not_nsfw_description")
           );
 
         return interaction.editReply({ embeds: [embed] });
@@ -57,11 +57,11 @@ module.exports = {
       if (!posts.length) {
         const embed = new EmbedBuilder()
           .setColor("#FF0000")
-          .setTitle(getTranslation(locale, "scrape.rule34.error_no_results"))
+          .setTitle(localizer(locale, "scrape.rule34.error_no_results"))
           .setDescription(
-            getTranslation(locale, "scrape.rule34.error_no_results", {
+            localizer(locale, "scrape.rule34.error_no_results", {
               query: userquery,
-            }),
+            })
           );
 
         return await interaction.editReply({ embeds: [embed] });
@@ -71,28 +71,28 @@ module.exports = {
         return new EmbedBuilder()
           .setColor("#FF69B4")
           .setTitle(
-            getTranslation(locale, "scrape.rule34.result_title", {
+            localizer(locale, "scrape.rule34.result_title", {
               index: index + 1,
-            }),
+            })
           )
           .setURL(post.fileUrl)
           .setImage(post.fileUrl)
           .setFooter({
-            text: getTranslation(locale, "scrape.rule34.result_footer", {
+            text: localizer(locale, "scrape.rule34.result_footer", {
               tags: userquery,
             }),
           });
       });
 
       await interaction.editReply({
-        content: getTranslation(locale, "scrape.rule34.progress_message"),
+        content: localizer(locale, "scrape.rule34.progress_message"),
         embeds,
       });
     } catch (err) {
       console.error("Error in Rule34 command:", err);
       const embed = new EmbedBuilder()
         .setColor("#FF0000")
-        .setTitle(getTranslation(locale, "scrape.rule34.error_message"))
+        .setTitle(localizer(locale, "scrape.rule34.error_message"))
         .setDescription(err.message);
 
       await interaction.editReply({ embeds: [embed] });

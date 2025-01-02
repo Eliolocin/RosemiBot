@@ -6,7 +6,7 @@ const {
   ComponentType,
 } = require("discord.js");
 const NanaAPI = require("nana-api");
-const { getTranslation } = require("../../utils/textLocalizer");
+const { localizer } = require("../../utils/textLocalizer");
 
 const nana = new NanaAPI();
 
@@ -23,7 +23,8 @@ const rightButton = new ButtonBuilder()
 
 module.exports = {
   name: "doujin",
-  description: "Get 4 random doujin results from Nhentai!",
+  description:
+    "Get 4 Random Doujins from Nhentai | Nhentaiから4つのランダムな同人誌を取得します",
   options: [
     {
       name: "random",
@@ -32,8 +33,8 @@ module.exports = {
     },
   ],
 
-  callback: async (client, interaction, profileData) => {
-    const locale = profileData.language || "en";
+  callback: async (client, interaction, userData) => {
+    const locale = userData.language || "en";
 
     try {
       await interaction.deferReply();
@@ -54,17 +55,17 @@ module.exports = {
         return new EmbedBuilder()
           .setColor("#DE3163")
           .setTitle(
-            getTranslation(locale, "scrape.doujin.embed.title", {
+            localizer(locale, "scrape.doujin.embed.title", {
               index: index + 1,
               total,
-            }),
+            })
           )
           .setURL(`https://nhentai.net/g/${doujin.id}/`)
           .setImage(
-            `https://t.nhentai.net/galleries/${doujin.media_id}/thumb.jpg`,
+            `https://t.nhentai.net/galleries/${doujin.media_id}/thumb.jpg`
           )
           .setFooter({
-            text: getTranslation(locale, "scrape.doujin.footer_tags", {
+            text: localizer(locale, "scrape.doujin.footer_tags", {
               tags: doujin.tags.map((tag) => tag.name).join(", "),
             }),
           });
@@ -100,7 +101,7 @@ module.exports = {
       console.error("Error in Doujin command:", err);
       const embed = new EmbedBuilder()
         .setColor("#FF0000")
-        .setTitle(getTranslation(locale, "scrape.doujin.error_no_results"))
+        .setTitle(localizer(locale, "scrape.doujin.error_no_results"))
         .setDescription(err.message);
 
       await interaction.editReply({ embeds: [embed] });

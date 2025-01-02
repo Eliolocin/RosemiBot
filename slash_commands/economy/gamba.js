@@ -1,6 +1,6 @@
 const { EmbedBuilder, ApplicationCommandOptionType } = require("discord.js");
-const { getTranslation } = require("../../utils/textLocalizer");
-const profileModel = require("../../models/profileSchema.js");
+const { localizer } = require("../../utils/textLocalizer");
+const userModel = require("../../models/userSchema.js");
 
 module.exports = {
   name: "gamba",
@@ -15,49 +15,40 @@ module.exports = {
     },
   ],
 
-  callback: async (client, interaction, profileData) => {
+  callback: async (client, interaction, userData) => {
     await interaction.deferReply();
-    const locale = profileData.language || "en";
+    const locale = userData.language || "en";
     const gambleAmount = interaction.options.getInteger("amount");
 
-    if (gambleAmount > profileData.coins) {
+    if (gambleAmount > userData.coins) {
       const embed = new EmbedBuilder()
         .setColor("#FF0000")
-        .setTitle(
-          getTranslation(locale, "economy.gamba.insufficient_funds_title"),
-        )
+        .setTitle(localizer(locale, "economy.gamba.insufficient_funds_title"))
         .setDescription(
-          getTranslation(
-            locale,
-            "economy.gamba.insufficient_funds_description",
-            {
-              balance: profileData.coins,
-              attempted: gambleAmount,
-            },
-          ),
+          localizer(locale, "economy.gamba.insufficient_funds_description", {
+            balance: userData.coins,
+            attempted: gambleAmount,
+          })
         )
         .setFooter({
-          text: getTranslation(
-            locale,
-            "economy.gamba.insufficient_funds_footer",
-          ),
+          text: localizer(locale, "economy.gamba.insufficient_funds_footer"),
         });
 
       return await interaction.editReply({ embeds: [embed] });
     }
 
-    profileData.coins -= gambleAmount;
+    userData.coins -= gambleAmount;
 
     const isWin = Math.random() < 0.5; // 50% chance
     const winnings = isWin ? gambleAmount * 2 : 0;
 
     if (isWin) {
-      profileData.coins += winnings;
+      userData.coins += winnings;
     }
 
-    await profileModel.updateOne(
+    await userModel.updateOne(
       { userID: interaction.member.id },
-      { $set: { coins: profileData.coins } },
+      { $set: { coins: userData.coins } }
     );
 
     const embed = new EmbedBuilder()
@@ -67,26 +58,26 @@ module.exports = {
         iconURL: interaction.member.user.displayAvatarURL({ dynamic: true }),
       })
       .setTitle(
-        getTranslation(
+        localizer(
           locale,
-          isWin ? "economy.gamba.win_title" : "economy.gamba.lose_title",
-        ),
+          isWin ? "economy.gamba.win_title" : "economy.gamba.lose_title"
+        )
       )
       .setDescription(
         isWin
-          ? getTranslation(locale, "economy.gamba.win_description", {
+          ? localizer(locale, "economy.gamba.win_description", {
               winnings,
-              new_balance: profileData.coins,
+              new_balance: userData.coins,
             })
-          : getTranslation(locale, "economy.gamba.lose_description", {
+          : localizer(locale, "economy.gamba.lose_description", {
               amount_lost: gambleAmount,
-              new_balance: profileData.coins,
-            }),
+              new_balance: userData.coins,
+            })
       )
       .setFooter({
-        text: getTranslation(
+        text: localizer(
           locale,
-          isWin ? "economy.gamba.win_footer" : "economy.gamba.lose_footer",
+          isWin ? "economy.gamba.win_footer" : "economy.gamba.lose_footer"
         ),
       });
 

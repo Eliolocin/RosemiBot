@@ -102,6 +102,20 @@
       "progress": "Generating your image for: `{prompt}`...",
       "result": "Here's what I generated for `{prompt}` (b ᵔ▽ᵔ)b",
       "error": "Something went wrong while generating the image. Please try again later."
+    },
+    "language": {
+      "description": "Set your preferred language for the bot.",
+      "success_title": "Language Set",
+      "success_description": "✅ Your language preference has been updated to {language}!",
+      "error_title": "Error",
+      "error_description": "There was an error updating your language preference. Please try again!"
+    },
+    "nickname": {
+      "description": "Set your nickname in the database",
+      "success_title": "Nickname Updated!",
+      "success_description": "✅ Your nickname has been set to: **{nickname}**",
+      "error_title": "Error",
+      "error_description": "There was an error updating your nickname. Please try again!"
     }
   }
 }

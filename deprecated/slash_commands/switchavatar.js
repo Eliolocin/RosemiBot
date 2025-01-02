@@ -1,27 +1,26 @@
 module.exports = {
-    name: 'switchavatar',
-    description: 'Change profile picture of Rosemi.',
-    devOnly: true,
-    // testOnly: Boolean,
-    // options: Object[],
-    // deleted: Boolean,
-    options:
-    [
-        {
-            name: 'picture',
-            description: 'Please enter the profile picture you want Rosemi to use!',
-            type: 11, // Attachment type (For file attachments)
-            required: true,
-        }
-    ],
+  name: "switchavatar",
+  description: "Change user picture of Rosemi.",
+  devOnly: true,
+  // testOnly: Boolean,
+  // options: Object[],
+  deleted: true,
+  options: [
+    {
+      name: "picture",
+      description: "Please enter the user picture you want Rosemi to use!",
+      type: 11, // Attachment type (For file attachments)
+      required: true,
+    },
+  ],
 
-    callback: async (client, interaction) =>{
-        await interaction.deferReply();
-        const avatar = interaction.options.getAttachment('picture');
-        await client.user.setAvatar(avatar.url)
-        interaction.editReply(`Avatar changed successfully! (o゜▽゜)o☆`);
-    }
-}
+  callback: async (client, interaction) => {
+    await interaction.deferReply();
+    const avatar = interaction.options.getAttachment("picture");
+    await client.user.setAvatar(avatar.url);
+    interaction.editReply(`Avatar changed successfully! (o゜▽゜)o☆`);
+  },
+};
 
 /*
 {

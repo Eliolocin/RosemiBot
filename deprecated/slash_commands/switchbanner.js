@@ -4,7 +4,7 @@ module.exports = {
     devOnly: true,
     // testOnly: Boolean,
     // options: Object[],
-    // deleted: Boolean,
+    deleted: true,
     options:
     [
         {

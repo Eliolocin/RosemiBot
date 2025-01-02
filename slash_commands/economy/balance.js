@@ -1,23 +1,23 @@
 const { EmbedBuilder } = require("discord.js");
-const { getTranslation } = require("../../utils/textLocalizer");
+const { localizer } = require("../../utils/textLocalizer");
 
 module.exports = {
   name: "balance",
   description: "Check your current balance!",
 
-  callback: async (client, interaction, profileData) => {
+  callback: async (client, interaction, userData) => {
     await interaction.deferReply();
 
-    // Get user's preferred language from profile data or fallback to English
-    const locale = profileData.language || "en";
+    // Get user's preferred language from user data or fallback to English
+    const locale = userData.language || "en";
 
-    // Use the `getTranslation` utility to fetch localized strings
-    const title = getTranslation(locale, "economy.balance.title");
-    const description = getTranslation(locale, "economy.balance.description", {
-      coins: profileData.coins,
-      bank: profileData.bank,
+    // Use the `localizer` utility to fetch localized strings
+    const title = localizer(locale, "economy.balance.title");
+    const description = localizer(locale, "economy.balance.description", {
+      coins: userData.coins,
+      bank: userData.bank,
     });
-    const footer = getTranslation(locale, "economy.balance.footer");
+    const footer = localizer(locale, "economy.balance.footer");
 
     // Create an embed with localized content
     const embed = new EmbedBuilder()

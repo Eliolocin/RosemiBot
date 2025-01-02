@@ -1,7 +1,7 @@
 const { EmbedBuilder, ApplicationCommandOptionType } = require("discord.js");
 const Booru = require("booru");
 const { Eiyuu } = require("eiyuu");
-const { getTranslation } = require("../../utils/textLocalizer");
+const { localizer } = require("../../utils/textLocalizer");
 
 const resolve = new Eiyuu();
 const postfiltering = " score:>=3 -nude -rating:explicit -nipples -pubic_hair";
@@ -20,8 +20,8 @@ module.exports = {
     },
   ],
 
-  callback: async (client, interaction, profileData) => {
-    const locale = profileData.language || "en";
+  callback: async (client, interaction, userData) => {
+    const locale = userData.language || "en";
 
     try {
       await interaction.deferReply();
@@ -46,11 +46,11 @@ module.exports = {
       if (!posts.length) {
         const embed = new EmbedBuilder()
           .setColor("#FF0000")
-          .setTitle(getTranslation(locale, "scrape.booru.error_no_results"))
+          .setTitle(localizer(locale, "scrape.booru.error_no_results"))
           .setDescription(
-            getTranslation(locale, "scrape.booru.error_no_results", {
+            localizer(locale, "scrape.booru.error_no_results", {
               query: userquery,
-            }),
+            })
           );
 
         return await interaction.editReply({ embeds: [embed] });
@@ -60,28 +60,28 @@ module.exports = {
         return new EmbedBuilder()
           .setColor("#00FF00")
           .setTitle(
-            getTranslation(locale, "scrape.booru.result_title", {
+            localizer(locale, "scrape.booru.result_title", {
               index: index + 1,
-            }),
+            })
           )
           .setURL(post.fileUrl)
           .setImage(post.fileUrl)
           .setFooter({
-            text: getTranslation(locale, "scrape.booru.result_footer", {
+            text: localizer(locale, "scrape.booru.result_footer", {
               tags: userquery,
             }),
           });
       });
 
       await interaction.editReply({
-        content: getTranslation(locale, "scrape.booru.progress_message"),
+        content: localizer(locale, "scrape.booru.progress_message"),
         embeds,
       });
     } catch (err) {
       console.error("Error in Booru command:", err);
       const embed = new EmbedBuilder()
         .setColor("#FF0000")
-        .setTitle(getTranslation(locale, "scrape.booru.error_message"))
+        .setTitle(localizer(locale, "scrape.booru.error_message"))
         .setDescription(err.message);
 
       await interaction.editReply({ embeds: [embed] });

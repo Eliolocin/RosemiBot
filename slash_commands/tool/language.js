@@ -1,10 +1,11 @@
 const { ApplicationCommandOptionType } = require("discord.js");
-const { getTranslation } = require("../../utils/textLocalizer");
-const profileModel = require("../../models/profileSchema.js");
+const { localizer } = require("../../utils/textLocalizer");
+const userModel = require("../../models/userSchema.js");
+const { EmbedBuilder } = require("discord.js");
 
 module.exports = {
   name: "language",
-  description: "Set your preferred language for the bot.",
+  description: "Change your preferred language | 言語を変更します",
   options: [
     {
       name: "language",
@@ -18,30 +19,26 @@ module.exports = {
     },
   ],
 
-  callback: async (client, interaction) => {
+  callback: async (client, interaction, userData) => {
     const selectedLanguage = interaction.options.getString("language");
+    const currentLocale = userData?.language || "en";
 
     try {
-      // Update user's preferred language in the database
-      await profileModel.updateOne(
+      await userModel.updateOne(
         { userID: interaction.member.id },
         { $set: { language: selectedLanguage } },
-        { upsert: true }, // Create the profile if it doesn't exist
+        { upsert: true }
       );
+
+      const languageDisplay = selectedLanguage === "en" ? "English" : "日本語";
 
       const embed = new EmbedBuilder()
         .setColor("#2ECC71")
-        .setTitle(selectedLanguage === "en" ? "Language Set" : "言語変更完了！")
+        .setTitle(localizer(selectedLanguage, "tool.language.success_title"))
         .setDescription(
-          selectedLanguage === "en"
-            ? getTranslation(
-                selectedLanguage,
-                "tool.setlanguage.success_english",
-              )
-            : getTranslation(
-                selectedLanguage,
-                "tool.setlanguage.success_japanese",
-              ),
+          localizer(selectedLanguage, "tool.language.success_description", {
+            language: languageDisplay,
+          })
         );
 
       await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -50,9 +47,9 @@ module.exports = {
 
       const embed = new EmbedBuilder()
         .setColor("#E74C3C")
-        .setTitle("Error")
+        .setTitle(localizer(currentLocale, "tool.language.error_title"))
         .setDescription(
-          "There was an error updating your language preference. Please try again!",
+          localizer(currentLocale, "tool.language.error_description")
         );
 
       await interaction.reply({ embeds: [embed], ephemeral: true });

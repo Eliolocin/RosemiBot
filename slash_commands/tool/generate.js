@@ -4,12 +4,12 @@ const {
   ApplicationCommandOptionType,
   AttachmentBuilder,
 } = require("discord.js");
-const { getTranslation } = require("../../utils/textLocalizer");
+const { localizer } = require("../../utils/textLocalizer");
 
 module.exports = {
   name: "generate",
   description:
-    "Quickly generate an image from a prompt using Stable Diffusion!",
+    "Generate images with Stable Diffusion | Stable Diffusionで画像を生成します",
   options: [
     {
       name: "prompt",
@@ -19,19 +19,19 @@ module.exports = {
     },
   ],
 
-  callback: async (client, interaction, profileData) => {
-    const locale = profileData.language || "en";
+  callback: async (client, interaction, userData) => {
+    const locale = userData.language || "en";
     try {
       await interaction.deferReply();
 
       const userPrompt = interaction.options.getString("prompt");
       const progressEmbed = new EmbedBuilder()
         .setColor("#3498DB")
-        .setTitle(getTranslation(locale, "tool.generate.description"))
+        .setTitle(localizer(locale, "tool.generate.description"))
         .setDescription(
-          getTranslation(locale, "tool.generate.progress", {
+          localizer(locale, "tool.generate.progress", {
             prompt: userPrompt,
-          }),
+          })
         );
 
       await interaction.editReply({ embeds: [progressEmbed] });
@@ -50,11 +50,11 @@ module.exports = {
 
         const resultEmbed = new EmbedBuilder()
           .setColor("#2ECC71")
-          .setTitle(getTranslation(locale, "tool.generate.result"))
+          .setTitle(localizer(locale, "tool.generate.result"))
           .setDescription(
-            getTranslation(locale, "tool.generate.result", {
+            localizer(locale, "tool.generate.result", {
               prompt: userPrompt,
-            }),
+            })
           );
 
         await interaction.editReply({
@@ -67,7 +67,7 @@ module.exports = {
 
       const errorEmbed = new EmbedBuilder()
         .setColor("#E74C3C")
-        .setTitle(getTranslation(locale, "tool.generate.error"))
+        .setTitle(localizer(locale, "tool.generate.error"))
         .setDescription(err.message);
 
       await interaction.editReply({ embeds: [errorEmbed] });

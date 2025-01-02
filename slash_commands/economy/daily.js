@@ -1,35 +1,56 @@
 const { EmbedBuilder } = require("discord.js");
-const { getTranslation } = require("../../utils/textLocalizer");
-const profileModel = require("../../models/profileSchema.js");
+const { localizer } = require("../../utils/textLocalizer");
+const userModel = require("../../models/userSchema.js");
 
 module.exports = {
   name: "daily",
   description: "Claim your daily TomoCoins!",
 
-  callback: async (client, interaction, profileData) => {
+  callback: async (client, interaction, userData) => {
     await interaction.deferReply();
+    const locale = userData.language || "en";
 
-    const locale = profileData.language || "en";
+    // DAILY COOLDOWN LOGIC
+    const now = Date.now();
+    const cooldownKey = "daily";
+    const dailyCooldownDuration = 12 * 60 * 60 * 1000; // 12 hours in milliseconds
 
-    // Generate a random amount between 100 and 300
+    const userCooldowns = userData.cooldowns || {};
+
+    // Check if the user is within the cooldown period
+    if (userCooldowns[cooldownKey] && userCooldowns[cooldownKey] > now) {
+      const remaining = Math.ceil(
+        (userCooldowns[cooldownKey] - now) / (60 * 60 * 1000)
+      ); // Remaining time in hours
+      await interaction.editReply({
+        content: `⏳ You've already claimed your daily reward. Please come back in ${remaining} hours.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // If not on cooldown, claim the daily reward
     const randomNumber = Math.floor(Math.random() * (300 - 100 + 1)) + 100;
 
     // Update user's coins in the database
-    await profileModel.findOneAndUpdate(
+    await userModel.findOneAndUpdate(
       { userID: interaction.member.id },
-      { $inc: { coins: randomNumber } },
+      {
+        $inc: { coins: randomNumber },
+        $set: { [`cooldowns.${cooldownKey}`]: now + dailyCooldownDuration }, // Set the cooldown to current time + 12 hours
+      }
     );
 
     // Localized strings
-    const title = getTranslation(locale, "economy.daily.title");
-    const description = getTranslation(locale, "economy.daily.claim_success", {
+    const title = localizer(locale, "economy.daily.title");
+    const description = localizer(locale, "economy.daily.claim_success", {
       claimed: randomNumber,
-      new_balance: profileData.coins + randomNumber,
+      new_balance: userData.coins + randomNumber,
     });
     const footer =
       randomNumber >= 200
-        ? getTranslation(locale, "economy.daily.footer_lucky")
-        : getTranslation(locale, "economy.daily.footer");
+        ? localizer(locale, "economy.daily.footer_lucky")
+        : localizer(locale, "economy.daily.footer");
 
     // Create the embed
     const embed = new EmbedBuilder()

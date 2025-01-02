@@ -1,11 +1,17 @@
-const fs = require("fs");
-const path = require("path");
+const fs = require('fs');
+const path = require('path');
 
-// Load language files
-const locales = {
-  en: require("../locales/en.json"),
-  ja: require("../locales/ja.json"),
-};
+// Load language files dynamically
+const locales = {};
+const localesPath = path.join(__dirname, '../locales');
+
+// Read all JSON files from locales directory
+fs.readdirSync(localesPath)
+  .filter(file => file.endsWith('.json'))
+  .forEach(file => {
+    const locale = path.basename(file, '.json'); // Remove .json extension
+    locales[locale] = require(`../locales/${file}`);
+  });
 
 /**
  * Get a localized string for a specific key.
@@ -14,7 +20,7 @@ const locales = {
  * @param {Object} variables - Key-value pairs to replace placeholders in the localized string.
  * @returns {string} The localized string.
  */
-const getTranslation = (locale, key, variables = {}) => {
+const localizer = (locale, key, variables = {}) => {
   const keys = key.split(".");
   let translation = locales[locale];
 
@@ -33,4 +39,4 @@ const getTranslation = (locale, key, variables = {}) => {
   return translation;
 };
 
-module.exports = { getTranslation };
+module.exports = { localizer };

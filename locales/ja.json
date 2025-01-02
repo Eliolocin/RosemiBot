@@ -102,6 +102,20 @@
       "progress": "`{prompt}` のイメージを生成中です...",
       "result": "`{prompt}` に基づいて生成したイメージはこちらです (b ᵔ▽ᵔ)b",
       "error": "イメージを生成中にエラーが発生しました。後でもう一度試してください。"
+    },
+    "language": {
+      "description": "ボットの優先言語を設定します。",
+      "success_title": "言語設定完了",
+      "success_description": "✅ 言語設定を{language}に更新しました！",
+      "error_title": "エラー",
+      "error_description": "言語設定の更新中にエラーが発生しました。もう一度お試しください！"
+    },
+    "nickname": {
+      "description": "データベース内のニックネームを設定します",
+      "success_title": "ニックネーム更新完了！",
+      "success_description": "✅ ニックネームを「**{nickname}**」に設定しました",
+      "error_title": "エラー",
+      "error_description": "ニックネームの更新中にエラーが発生しました。もう一度お試しください！"
     }
   }
 }

@@ -1,6 +1,6 @@
 const { EmbedBuilder, ApplicationCommandOptionType } = require("discord.js");
-const { getTranslation } = require("../../utils/textLocalizer");
-const profileModel = require("../../models/profileSchema.js");
+const { localizer } = require("../../utils/textLocalizer");
+const userModel = require("../../models/userSchema.js");
 
 module.exports = {
   name: "deposit",
@@ -14,59 +14,48 @@ module.exports = {
     },
   ],
 
-  callback: async (client, interaction, profileData) => {
+  callback: async (client, interaction, userData) => {
     await interaction.deferReply();
-    const locale = profileData.language || "en";
+    const locale = userData.language || "en";
     const depositAmount = interaction.options.getInteger("amount");
 
     if (depositAmount <= 0) {
       const embed = new EmbedBuilder()
         .setColor("#FF0000")
-        .setTitle(
-          getTranslation(locale, "economy.deposit.invalid_amount_title"),
-        )
+        .setTitle(localizer(locale, "economy.deposit.invalid_amount_title"))
         .setDescription(
-          getTranslation(locale, "economy.deposit.invalid_amount_description"),
+          localizer(locale, "economy.deposit.invalid_amount_description")
         )
         .setFooter({
-          text: getTranslation(locale, "economy.deposit.invalid_amount_footer"),
+          text: localizer(locale, "economy.deposit.invalid_amount_footer"),
         });
 
       return await interaction.editReply({ embeds: [embed] });
     }
 
-    if (depositAmount > profileData.coins) {
+    if (depositAmount > userData.coins) {
       const embed = new EmbedBuilder()
         .setColor("#FF0000")
-        .setTitle(
-          getTranslation(locale, "economy.deposit.insufficient_funds_title"),
-        )
+        .setTitle(localizer(locale, "economy.deposit.insufficient_funds_title"))
         .setDescription(
-          getTranslation(
-            locale,
-            "economy.deposit.insufficient_funds_description",
-            {
-              wallet_balance: profileData.coins,
-              attempted: depositAmount,
-            },
-          ),
+          localizer(locale, "economy.deposit.insufficient_funds_description", {
+            wallet_balance: userData.coins,
+            attempted: depositAmount,
+          })
         )
         .setFooter({
-          text: getTranslation(
-            locale,
-            "economy.deposit.insufficient_funds_footer",
-          ),
+          text: localizer(locale, "economy.deposit.insufficient_funds_footer"),
         });
 
       return await interaction.editReply({ embeds: [embed] });
     }
 
-    profileData.coins -= depositAmount;
-    profileData.bank += depositAmount;
+    userData.coins -= depositAmount;
+    userData.bank += depositAmount;
 
-    await profileModel.updateOne(
+    await userModel.updateOne(
       { userID: interaction.member.id },
-      { $set: { coins: profileData.coins, bank: profileData.bank } },
+      { $set: { coins: userData.coins, bank: userData.bank } }
     );
 
     const embed = new EmbedBuilder()
@@ -75,16 +64,16 @@ module.exports = {
         name: interaction.member.user.username,
         iconURL: interaction.member.user.displayAvatarURL({ dynamic: true }),
       })
-      .setTitle(getTranslation(locale, "economy.deposit.success_title"))
+      .setTitle(localizer(locale, "economy.deposit.success_title"))
       .setDescription(
-        getTranslation(locale, "economy.deposit.success_description", {
+        localizer(locale, "economy.deposit.success_description", {
           amount: depositAmount,
-          wallet_balance: profileData.coins,
-          bank_balance: profileData.bank,
-        }),
+          wallet_balance: userData.coins,
+          bank_balance: userData.bank,
+        })
       )
       .setFooter({
-        text: getTranslation(locale, "economy.deposit.success_footer"),
+        text: localizer(locale, "economy.deposit.success_footer"),
       });
 
     await interaction.editReply({ embeds: [embed] });

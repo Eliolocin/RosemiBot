@@ -1,6 +1,6 @@
 const { EmbedBuilder, ApplicationCommandOptionType } = require("discord.js");
-const { getTranslation } = require("../../utils/textLocalizer");
-const profileModel = require("../../models/profileSchema.js");
+const { localizer } = require("../../utils/textLocalizer");
+const userModel = require("../../models/userSchema.js");
 
 module.exports = {
   name: "donate",
@@ -20,9 +20,9 @@ module.exports = {
     },
   ],
 
-  callback: async (client, interaction, profileData) => {
+  callback: async (client, interaction, userData) => {
     await interaction.deferReply();
-    const locale = profileData.language || "en";
+    const locale = userData.language || "en";
 
     const recipient = interaction.options.getUser("recipient");
     const donationAmount = interaction.options.getInteger("amount");
@@ -30,47 +30,38 @@ module.exports = {
     if (donationAmount <= 0) {
       const embed = new EmbedBuilder()
         .setColor("#FF0000")
-        .setTitle(getTranslation(locale, "economy.donate.invalid_amount_title"))
+        .setTitle(localizer(locale, "economy.donate.invalid_amount_title"))
         .setDescription(
-          getTranslation(locale, "economy.donate.invalid_amount_description"),
+          localizer(locale, "economy.donate.invalid_amount_description")
         )
         .setFooter({
-          text: getTranslation(locale, "economy.donate.invalid_amount_footer"),
+          text: localizer(locale, "economy.donate.invalid_amount_footer"),
         });
 
       return await interaction.editReply({ embeds: [embed] });
     }
 
-    if (donationAmount > profileData.coins) {
+    if (donationAmount > userData.coins) {
       const embed = new EmbedBuilder()
         .setColor("#FF0000")
-        .setTitle(
-          getTranslation(locale, "economy.donate.insufficient_funds_title"),
-        )
+        .setTitle(localizer(locale, "economy.donate.insufficient_funds_title"))
         .setDescription(
-          getTranslation(
-            locale,
-            "economy.donate.insufficient_funds_description",
-            {
-              wallet_balance: profileData.coins,
-              attempted: donationAmount,
-            },
-          ),
+          localizer(locale, "economy.donate.insufficient_funds_description", {
+            wallet_balance: userData.coins,
+            attempted: donationAmount,
+          })
         )
         .setFooter({
-          text: getTranslation(
-            locale,
-            "economy.donate.insufficient_funds_footer",
-          ),
+          text: localizer(locale, "economy.donate.insufficient_funds_footer"),
         });
 
       return await interaction.editReply({ embeds: [embed] });
     }
 
-    let recipientProfile = await profileModel.findOne({ userID: recipient.id });
+    let recipientUser = await userModel.findOne({ userID: recipient.id });
 
-    if (!recipientProfile) {
-      recipientProfile = await profileModel.create({
+    if (!recipientUser) {
+      recipientUser = await userModel.create({
         userID: recipient.id,
         serverID: interaction.guild.id,
         coins: 0,
@@ -79,17 +70,17 @@ module.exports = {
       });
     }
 
-    profileData.coins -= donationAmount;
-    recipientProfile.bank += donationAmount;
+    userData.coins -= donationAmount;
+    recipientUser.bank += donationAmount;
 
-    await profileModel.updateOne(
+    await userModel.updateOne(
       { userID: interaction.member.id },
-      { $set: { coins: profileData.coins } },
+      { $set: { coins: userData.coins } }
     );
 
-    await profileModel.updateOne(
+    await userModel.updateOne(
       { userID: recipient.id },
-      { $set: { bank: recipientProfile.bank } },
+      { $set: { bank: recipientUser.bank } }
     );
 
     const embed = new EmbedBuilder()
@@ -98,16 +89,16 @@ module.exports = {
         name: interaction.member.user.username,
         iconURL: interaction.member.user.displayAvatarURL({ dynamic: true }),
       })
-      .setTitle(getTranslation(locale, "economy.donate.success_title"))
+      .setTitle(localizer(locale, "economy.donate.success_title"))
       .setDescription(
-        getTranslation(locale, "economy.donate.success_description", {
+        localizer(locale, "economy.donate.success_description", {
           amount: donationAmount,
           recipient: recipient.username,
-          wallet_balance: profileData.coins,
-        }),
+          wallet_balance: userData.coins,
+        })
       )
       .setFooter({
-        text: getTranslation(locale, "economy.donate.success_footer"),
+        text: localizer(locale, "economy.donate.success_footer"),
       });
 
     await interaction.editReply({ embeds: [embed] });

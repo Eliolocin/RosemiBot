@@ -1,8 +1,9 @@
 const mongoose = require("mongoose");
 
-const profileSchema = new mongoose.Schema({
+const userSchema = new mongoose.Schema({
   userID: { type: String, require: true, unique: true },
   serverID: { type: String, require: true },
+  nickname: { type: String, require: true },
   level: { type: Number, default: 1 },
   xp: { type: Number, default: 0 },
   coins: { type: Number, default: 1000 },
@@ -34,5 +35,5 @@ const profileSchema = new mongoose.Schema({
   counters: { type: [Number], default: [] },
 });
 
-const model = mongoose.model("profiles", profileSchema);
+const model = mongoose.model("users", userSchema);
 module.exports = model;

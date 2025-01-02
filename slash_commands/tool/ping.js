@@ -1,13 +1,13 @@
 const { EmbedBuilder, PermissionsBitField } = require("discord.js");
-const { getTranslation } = require("../../utils/textLocalizer");
+const { localizer } = require("../../utils/textLocalizer");
 
 module.exports = {
   name: "ping",
-  description: "Pong!",
+  description: "Pong! | ポン！",
   permissionsRequired: [PermissionsBitField.Flags.KickMembers],
 
-  callback: async (client, interaction, profileData) => {
-    const locale = profileData.language || "en";
+  callback: async (client, interaction, userData) => {
+    const locale = userData.language || "en";
     await interaction.deferReply();
 
     const reply = await interaction.fetchReply();
@@ -17,21 +17,18 @@ module.exports = {
     const isLaggy = responseTime > 250;
     const responseEmbed = new EmbedBuilder()
       .setColor(isLaggy ? "#E74C3C" : "#2ECC71")
-      .setTitle(getTranslation(locale, "tool.ping.description"))
+      .setTitle(localizer(locale, "tool.ping.description"))
       .setDescription(
         isLaggy
-          ? getTranslation(locale, "tool.ping.response_slow", {
+          ? localizer(locale, "tool.ping.response_slow", {
               response_time: responseTime,
               discord_response: discordPing,
             })
-          : getTranslation(locale, "tool.ping.response_fast", {
+          : localizer(locale, "tool.ping.response_fast", {
               response_time: responseTime,
               discord_response: discordPing,
-            }),
-      )
-      .setFooter({
-        text: isLaggy ? "Hang in there! ~_~" : "Lightning fast! ⚡",
-      });
+            })
+      );
 
     await interaction.editReply({ embeds: [responseEmbed] });
   },

@@ -4,7 +4,8 @@
   "description": "Bot from Mkaynix Restaurant",
   "main": "main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "db-update": "node scripts/dbUpdate.js"
   },
   "author": "Bredrumb",
   "license": "ISC",
@@ -24,7 +25,6 @@
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.7",
     "eiyuu": "^1.1.1",
-    "ffmpeg-static": "^5.2.0",
     "fs": "0.0.1-security",
     "google-translate-api-x": "^10.7.2",
     "image-scraper": "^0.2.1",
@@ -45,7 +45,6 @@
     "openai": "^4.77.0",
     "opusscript": "^0.1.1",
     "replicate": "^1.0.1",
-    "sodium-native": "^4.3.1",
     "stable-diffusion-cjs": "^1.0.7",
     "translate": "^3.0.1",
     "ytdl-core": "^4.11.5"
