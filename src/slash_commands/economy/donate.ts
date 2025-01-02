@@ -1,0 +1,121 @@
+import {
+  EmbedBuilder,
+  ApplicationCommandOptionType,
+  Client,
+  ChatInputCommandInteraction,
+} from "discord.js";
+import { Command, IUser } from "../../types";
+import { localizer } from "../../utils/textLocalizer";
+import UserModel from "../../models/userSchema";
+
+const command: Command = {
+  name: "donate",
+  description: "Donate TomoCoins from your wallet to another user's bank.",
+  category: "economy",
+  options: [
+    {
+      name: "recipient",
+      description: "The user you want to donate to",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    },
+    {
+      name: "amount",
+      description: "The amount of TomoCoins you want to donate",
+      type: ApplicationCommandOptionType.Integer,
+      required: true,
+    },
+  ],
+
+  callback: async (
+    client: Client,
+    interaction: ChatInputCommandInteraction,
+    userData: IUser
+  ): Promise<void> => {
+    await interaction.deferReply();
+    const locale = userData.language || "en";
+
+    const recipient = interaction.options.getUser("recipient", true);
+    const donationAmount = interaction.options.getInteger("amount", true);
+
+    if (donationAmount <= 0) {
+      const embed = new EmbedBuilder()
+        .setColor("#FF0000")
+        .setTitle(localizer(locale, "economy.donate.invalid_amount_title"))
+        .setDescription(
+          localizer(locale, "economy.donate.invalid_amount_description")
+        )
+        .setFooter({
+          text: localizer(locale, "economy.donate.invalid_amount_footer"),
+        });
+
+      await interaction.editReply({ embeds: [embed] });
+      return;
+    }
+
+    if (donationAmount > userData.coins) {
+      const embed = new EmbedBuilder()
+        .setColor("#FF0000")
+        .setTitle(localizer(locale, "economy.donate.insufficient_funds_title"))
+        .setDescription(
+          localizer(locale, "economy.donate.insufficient_funds_description", {
+            wallet_balance: userData.coins,
+            attempted: donationAmount,
+          })
+        )
+        .setFooter({
+          text: localizer(locale, "economy.donate.insufficient_funds_footer"),
+        });
+
+      await interaction.editReply({ embeds: [embed] });
+      return;
+    }
+
+    let recipientUser = await UserModel.findOne({ userID: recipient.id });
+
+    if (!recipientUser) {
+      recipientUser = await UserModel.create({
+        userID: recipient.id,
+        serverID: interaction.guildId,
+        nickname: recipient.username,
+        coins: 0,
+        bank: 0,
+      });
+    }
+
+    await UserModel.bulkWrite([
+      {
+        updateOne: {
+          filter: { userID: interaction.user.id },
+          update: { $inc: { coins: -donationAmount } },
+        },
+      },
+      {
+        updateOne: {
+          filter: { userID: recipient.id },
+          update: { $inc: { bank: donationAmount } },
+        },
+      },
+    ]);
+
+    const embed = new EmbedBuilder()
+      .setColor("#00FF00")
+      .setAuthor({
+        name: interaction.user.username,
+        iconURL: interaction.user.displayAvatarURL({ forceStatic: false }),
+      })
+      .setTitle(localizer(locale, "economy.donate.success_title"))
+      .setDescription(
+        localizer(locale, "economy.donate.success_description", {
+          amount: donationAmount,
+          recipient: recipient.username,
+          wallet_balance: userData.coins - donationAmount,
+        })
+      )
+      .setFooter({ text: localizer(locale, "economy.donate.success_footer") });
+
+    await interaction.editReply({ embeds: [embed] });
+  },
+} as const;
+
+export default command;

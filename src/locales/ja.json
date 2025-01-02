@@ -1,0 +1,134 @@
+{
+  "economy": {
+    "balance": {
+      "title": "残高",
+      "description": "💰 **TomoCoins**: {coins}\n🏦 **銀行残高**: {bank}",
+      "footer": "もっとTomoCoinを貯めてね！(￣▽￣*)ゞ"
+    },
+    "daily": {
+      "title": "新しい残高:",
+      "claim_success": "🎉 **{claimed}** TomoCoinsを受け取りました！\n💰 **新しい残高:** {new_balance}",
+      "footer_lucky": "おめでとうございます！ラッキーな報酬でした！🎉",
+      "footer": "もっとTomoCoinを貯めてね！(￣▽￣*)ゞ"
+    },
+    "deposit": {
+      "invalid_amount_title": "金額が無効です",
+      "invalid_amount_description": "🚫 有効な金額を入力してください。正の値でなければなりません。",
+      "insufficient_funds_title": "残高不足",
+      "insufficient_funds_description": "💸 この金額を預けるための十分なTomoCoinがありません！\n\n💰 **現在の財布残高:** {wallet_balance}\n🏦 **預金しようとした額:** {attempted}",
+      "success_title": "預金完了！",
+      "success_description": "✅ **{amount}** TomoCoinsを銀行に預けました！\n\n💰 **新しい財布残高:** {wallet_balance}\n🏦 **新しい銀行残高:** {bank_balance}",
+      "invalid_amount_footer": "もう一度お試しください！",
+      "insufficient_funds_footer": "もっとTomoCoinを稼いで再度挑戦してください！",
+      "success_footer": "貯金完了です！ 🏦"
+    },
+    "donate": {
+      "invalid_amount_title": "金額が無効です",
+      "invalid_amount_description": "🚫 寄付する金額を正の値で入力してください。",
+      "insufficient_funds_title": "残高不足",
+      "insufficient_funds_description": "💸 この金額を寄付するための十分なTomoCoinがありません！\n\n💰 **現在の財布残高:** {wallet_balance}\n🎁 **寄付しようとした額:** {attempted}",
+      "success_title": "寄付成功!",
+      "success_description": "✅ **{recipient}**に**{amount}** TomoCoinsを寄付しました！\n\n💰 **新しい財布残高:** {wallet_balance}",
+      "success_footer": "あなたはとても親切です！ 🎁",
+      "recipient_notification_title": "寄付が届きました！",
+      "recipient_notification_description": "🎉 **{donor}**から**{amount}** TomoCoinsを受け取りました！\n\n🏦 **新しい銀行残高:** {new_bank_balance}"
+    },
+    "withdraw": {
+      "invalid_amount_title": "金額が無効です",
+      "invalid_amount_description": "🚫 有効な金額を入力してください。正の値でなければなりません。",
+      "insufficient_balance_title": "銀行残高不足",
+      "insufficient_balance_description": "🏦 この金額を引き出すための十分な銀行残高がありません！\n\n💰 **現在の銀行残高:** {bank_balance}\n🏧 **引き出そうとした額:** {attempted}",
+      "success_title": "引き出し完了！",
+      "success_description": "✅ **{amount}** TomoCoinsを銀行から財布に引き出しました！\n\n💰 **新しい財布残高:** {wallet_balance}\n🏦 **新しい銀行残高:** {bank_balance}",
+      "invalid_amount_footer": "もう一度お試しください！",
+      "insufficient_balance_footer": "もっとTomoCoinを貯めて再挑戦してください！",
+      "success_footer": "お金を賢く使ってね！ 💸"
+    }
+  },
+  "scrape": {
+    "booru": {
+      "title": "Booru検索",
+      "description": "以下の検索ワードに基づきランダムな「SFW」高画質投稿を最大4つ取得します: `{query}`\nフィルタ済み検索クエリ: `{filtered_query}`",
+      "error_no_results": "ごめんなさい、以下の検索ワードでは投稿が見つかりませんでした: `{query}`。\n別の検索ワードを試すか、`/rule34`を試してみてください！",
+      "progress_message": "投稿をランダムに取得してアップロード中です...",
+      "query_comparison_title": "検索クエリの変換",
+      "query_comparison_description": "入力されたタグ: `{original}`\n検索クエリ: `{filtered}`",
+      "result_title": "出典: {source}",
+      "result_original": "(ソース未提供)",
+      "result_footer": "スコア: {score} | タグ: {tags}"
+    },
+    "doujin": {
+      "title_random": "ランダムな同人誌をどうぞ...変態!",
+      "title_tags": "同人誌ID {doujin_id}のタグ",
+      "embed": {
+        "title": "{title} ({index}/{total})",
+        "url": "https://nhentai.net/g/{doujin_id}/",
+        "image_url": "https://t.nhentai.net/galleries/{media_id}/thumb.jpg"
+      },
+      "buttons": {
+        "prev": "前へ",
+        "next": "次へ"
+      },
+      "error_no_results": "申し訳ありませんが、同人誌を取得できませんでした。",
+      "footer_tags": "タグ: {tags}"
+    },
+    "rule34": {
+      "title": "Rule34検索",
+      "description": "以下の検索ワードに基づきランダムな「NSFW」高画質投稿を最大4つ取得します: `{query}`\nフィルタ済み検索クエリ: `{filtered_query}`",
+      "error_not_nsfw": "申し訳ありませんが、このコマンドはNSFWチャンネルのみで使用できます！",
+      "error_no_results": "ごめんなさい、以下の検索ワードでは投稿が見つかりませんでした: `{query}`。\n別の検索ワードを試すか、`/booru`を試してみてください！",
+      "progress_message": "投稿をランダムに取得してアップロード中です...",
+      "query_comparison_title": "検索クエリの変換",
+      "query_comparison_description": "入力されたタグ: `{original}`\n検索クエリ: `{filtered}`",
+      "result_title": "出典: {source}",
+      "result_original": "(ソース未提供)",
+      "result_footer": "スコア: {score} | タグ: {tags}"
+    }
+  },
+  "fun": {
+    "gamba": {
+      "insufficient_funds_title": "残高不足",
+      "insufficient_funds_description": "💸 この金額をギャンブルするために十分なTomoCoinがありません！\n\n💰 **残高:** {balance}\n🎲 **ギャンブルした額:** {attempted}",
+      "win_title": "勝利！",
+      "win_description": "🎉 おめでとうございます！ギャンブルで**{winnings}** TomoCoinsを獲得しました！\n\n💰 **新しい残高:** {new_balance}",
+      "lose_title": "敗北…",
+      "lose_description": "💔 残念！**{amount_lost}** TomoCoinsを失いました。\n\n💰 **新しい残高:** {new_balance}",
+      "insufficient_funds_footer": "小さい金額で試してみて！頑張って！",
+      "win_footer": "大勝利！運が良いですね？",
+      "lose_footer": "痛い！ギャンブルはリスクがあります！"
+    },
+    "generate": {
+      "description": "Stable Diffusionを使用して、プロンプトからイメージを素早く生成します！",
+      "progress": "`{prompt}` のイメージを生成中です...",
+      "result": "`{prompt}` に基づいて生成したイメージはこちらです (b ᵔ▽ᵔ)b",
+      "error": "イメージを生成中にエラーが発生しました。後でもう一度試してください。"
+    }
+  },
+  "tool": {
+    "setlanguage": {
+      "success_english": "✅ 言語が英語に設定されました！",
+      "success_japanese": "✅ 言語が日本語に設定されました！",
+      "description": "ボットの優先言語を設定します。"
+    },
+    "ping": {
+      "description": "ポン！",
+      "response_fast": "ポン！Discordに**{response_time}ms**で応答しました！| Discordの応答速度は**{discord_response}ms**です！",
+      "response_slow": "ポン！Discordに**{response_time}ms**で応答しました！| Discordの応答速度は**{discord_response}ms**です！今日はちょっと遅れてるみたいです (￣▽￣*)ゞ"
+    },
+
+    "language": {
+      "description": "ボットの優先言語を設定します。",
+      "success_title": "言語設定完了",
+      "success_description": "✅ 言語設定を{language}に更新しました！",
+      "error_title": "エラー",
+      "error_description": "言語設定の更新中にエラーが発生しました。もう一度お試しください！"
+    },
+    "nickname": {
+      "description": "データベース内のニックネームを設定します",
+      "success_title": "ニックネーム更新完了！",
+      "success_description": "✅ ニックネームを「**{nickname}**」に設定しました",
+      "error_title": "エラー",
+      "error_description": "ニックネームの更新中にエラーが発生しました。もう一度お試しください！"
+    }
+  }
+}
