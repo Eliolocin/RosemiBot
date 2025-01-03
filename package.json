@@ -54,7 +54,7 @@
     "openai": "^4.77.0",
     "opusscript": "^0.1.1",
     "replicate": "^1.0.1",
-    "stable-diffusion-cjs": "^1.0.7",
+    "stable-diffusion-cjs": "^2.0.1",
     "translate": "^3.0.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2",

@@ -2,7 +2,8 @@ import { Model, model, Schema } from "mongoose";
 import { IBot } from "../types";
 
 const botSchema = new Schema<IBot>({
-  serverID: { type: String, required: true },
+  serverID: { type: String, required: true, unique: true },
+  botName: { type: String, required: true, default: "TomoBot" },
   conversationExamples: [
     {
       input: { type: String, required: true },

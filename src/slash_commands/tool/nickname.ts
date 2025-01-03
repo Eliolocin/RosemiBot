@@ -11,12 +11,12 @@ import UserModel from "../../models/userSchema";
 const command: Command = {
   name: "nickname",
   description:
-    "Set your nickname in the database | データベース内のニックネームを設定します",
+    "Change what Tomo calls you | トモがあなたを呼ぶ名前を変更します",
   category: "tool",
   options: [
     {
       name: "nickname",
-      description: "Your new nickname",
+      description: "Your new nickname | 新しいニックネーム",
       type: ApplicationCommandOptionType.String,
       required: true,
     },

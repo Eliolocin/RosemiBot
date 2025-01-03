@@ -1,4 +1,4 @@
-import AI from "stable-diffusion-cjs";
+import { generate } from "stable-diffusion-cjs";
 import {
   EmbedBuilder,
   ApplicationCommandOptionType,
@@ -16,7 +16,7 @@ const command: Command = {
   options: [
     {
       name: "prompt",
-      description: "Please enter the prompt you want to be generated!",
+      description: "Generation Prompt | 生成プロンプト",
       type: ApplicationCommandOptionType.String,
       required: true,
     },
@@ -33,7 +33,14 @@ const command: Command = {
       await interaction.deferReply();
       const userPrompt = interaction.options.getString("prompt", true);
 
-      // ...existing embed creation code...
+      const progressEmbed = new EmbedBuilder()
+        .setColor("#FFD700")
+        .setTitle(
+          localizer(locale, "fun.generate.progress", { prompt: userPrompt })
+        )
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [progressEmbed] });
 
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => {
@@ -41,38 +48,31 @@ const command: Command = {
         }, 30000);
       });
 
-      const generatePromise = new Promise((resolve, reject) => {
-        AI.generate(userPrompt, (result) => {
-          if (result.error) {
-            reject(new Error(result.error));
-            return;
-          }
-          if (!result.results || result.results.length === 0) {
-            reject(new Error("No images were generated"));
-            return;
-          }
-          resolve(result);
-        });
-      });
-
-      const result = (await Promise.race([
-        generatePromise,
+      const imageBuffer = await Promise.race([
+        generate(userPrompt),
         timeoutPromise,
-      ])) as { results: string[] };
+      ]);
 
-      const images = result.results.map((base64Img, idx) => {
-        const data = base64Img.split(",")[1];
-        return new AttachmentBuilder(Buffer.from(data, "base64"), {
-          name: `generated_image_${idx + 1}.png`,
-        });
+      const attachment = new AttachmentBuilder(imageBuffer, {
+        name: "generated_image.png",
       });
 
-      // ...existing result embed creation and reply code...
+      const resultEmbed = new EmbedBuilder()
+        .setColor("#00FF00")
+        .setTitle(
+          localizer(locale, "fun.generate.result", { prompt: userPrompt })
+        )
+        .setTimestamp();
+
+      await interaction.editReply({
+        embeds: [resultEmbed],
+        files: [attachment],
+      });
     } catch (err) {
       console.error("Error in generate command:", err);
       const errorEmbed = new EmbedBuilder()
         .setColor("#E74C3C")
-        .setTitle(localizer(locale, "tool.generate.error"))
+        .setTitle(localizer(locale, "fun.generate.error"))
         .setDescription(err instanceof Error ? err.message : "Unknown error");
 
       await interaction.editReply({ embeds: [errorEmbed] });

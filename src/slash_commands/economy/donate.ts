@@ -10,18 +10,19 @@ import UserModel from "../../models/userSchema";
 
 const command: Command = {
   name: "donate",
-  description: "Donate TomoCoins from your wallet to another user's bank.",
+  description:
+    "Donate TomoCoins to another user's bank | 他のユーザーの銀行にTomoCoinsを寄付します",
   category: "economy",
   options: [
     {
       name: "recipient",
-      description: "The user you want to donate to",
+      description: "User you want to donate to | 寄付したいユーザー",
       type: ApplicationCommandOptionType.User,
       required: true,
     },
     {
       name: "amount",
-      description: "The amount of TomoCoins you want to donate",
+      description: "Amount to be donated | 寄付する金額",
       type: ApplicationCommandOptionType.Integer,
       required: true,
     },

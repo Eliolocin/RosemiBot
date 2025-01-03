@@ -9,7 +9,8 @@
       "title": "新しい残高:",
       "claim_success": "🎉 **{claimed}** TomoCoinsを受け取りました！\n💰 **新しい残高:** {new_balance}",
       "footer_lucky": "おめでとうございます！ラッキーな報酬でした！🎉",
-      "footer": "もっとTomoCoinを貯めてね！(￣▽￣*)ゞ"
+      "footer": "もっとTomoCoinを貯めてね！(￣▽￣*)ゞ",
+      "cooldown": "⏳ 今日のデイリー報酬は既に受け取り済みです。{hours}時間後にまた来てください。"
     },
     "deposit": {
       "invalid_amount_title": "金額が無効です",
@@ -49,6 +50,7 @@
     "booru": {
       "title": "Booru検索",
       "description": "以下の検索ワードに基づきランダムな「SFW」高画質投稿を最大4つ取得します: `{query}`\nフィルタ済み検索クエリ: `{filtered_query}`",
+      "error_not_nsfw": "申し訳ありませんが、このコマンドはNSFWチャンネルのみで使用できます！",
       "error_no_results": "ごめんなさい、以下の検索ワードでは投稿が見つかりませんでした: `{query}`。\n別の検索ワードを試すか、`/rule34`を試してみてください！",
       "progress_message": "投稿をランダムに取得してアップロード中です...",
       "query_comparison_title": "検索クエリの変換",
@@ -99,9 +101,9 @@
     },
     "generate": {
       "description": "Stable Diffusionを使用して、プロンプトからイメージを素早く生成します！",
-      "progress": "`{prompt}` のイメージを生成中です...",
-      "result": "`{prompt}` に基づいて生成したイメージはこちらです (b ᵔ▽ᵔ)b",
-      "error": "イメージを生成中にエラーが発生しました。後でもう一度試してください。"
+      "progress": "🎨 `{prompt}` のイメージを生成中です...",
+      "result": "✨ `{prompt}` に基づいて生成したイメージはこちらです (b ᵔ▽ᵔ)b",
+      "error": "🚫 イメージを生成中にエラーが発生しました。後でもう一度試してください。"
     }
   },
   "tool": {

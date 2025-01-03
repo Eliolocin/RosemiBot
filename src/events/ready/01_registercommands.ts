@@ -69,7 +69,7 @@ const handler = async (client: Client): Promise<void> => {
     }
   } catch (error) {
     console.log(
-      `(─‿‿─) There was a slash command registration error: ${error instanceof Error ? error.message : String(error)}`
+      `There was a slash command registration error: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 };

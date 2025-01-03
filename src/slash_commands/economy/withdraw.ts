@@ -30,7 +30,6 @@ const command: Command = {
     const locale = userData.language || "en";
     const withdrawAmount = interaction.options.getInteger("amount", true);
 
-    // ...existing validation and embed logic for invalid amount...
     if (withdrawAmount <= 0) {
       const embed = new EmbedBuilder()
         .setColor("#FF0000")
@@ -46,7 +45,6 @@ const command: Command = {
       return;
     }
 
-    // ...existing validation and embed logic for insufficient balance...
     if (withdrawAmount > userData.bank) {
       const embed = new EmbedBuilder()
         .setColor("#FF0000")

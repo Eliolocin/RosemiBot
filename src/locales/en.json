@@ -9,7 +9,8 @@
       "title": "New Balance:",
       "claim_success": "🎉 You claimed **{claimed}** TomoCoins!\n💰 **New Balance:** {new_balance}",
       "footer_lucky": "Congratulations! That was a lucky claim! 🎉",
-      "footer": "Keep earning those TomoCoins! (￣▽￣*)ゞ"
+      "footer": "Keep earning those TomoCoins! (￣▽￣*)ゞ",
+      "cooldown": "⏳ You've already claimed your daily reward. Please come back in {hours} hours."
     },
     "deposit": {
       "invalid_amount_title": "Invalid Amount",
@@ -49,6 +50,7 @@
     "booru": {
       "title": "Booru Search",
       "description": "Quickly get up to 4 random 'SFW' HQ posts for: `{query}`\nFiltered Query: `{filtered_query}`",
+      "error_not_nsfw": "Sorry, you can only use this command in NSFW channels!",
       "error_no_results": "Sowwy, I didn't find any posts for: `{query}`.\nTry a different prompt or try `/rule34` instead!",
       "progress_message": "Downloading posts and uploading them in random...",
       "query_comparison_title": "Search Query Translation",
@@ -99,9 +101,9 @@
     },
     "generate": {
       "description": "Quickly generate an image from a prompt using Stable Diffusion!",
-      "progress": "Generating your image for: `{prompt}`...",
-      "result": "Here's what I generated for `{prompt}` (b ᵔ▽ᵔ)b",
-      "error": "Something went wrong while generating the image. Please try again later."
+      "progress": "🎨 Generating your image for: `{prompt}`...",
+      "result": "✨ Here's what I generated for `{prompt}` (b ᵔ▽ᵔ)b",
+      "error": "🚫 Something went wrong while generating the image. Please try again later."
     }
   },
   "tool": {

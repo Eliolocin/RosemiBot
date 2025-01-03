@@ -15,7 +15,7 @@ const command: Command = {
   options: [
     {
       name: "language",
-      description: "Choose your language (en or ja).",
+      description: "Choose your language | 言語を選択してください",
       type: ApplicationCommandOptionType.String,
       required: true,
       choices: [

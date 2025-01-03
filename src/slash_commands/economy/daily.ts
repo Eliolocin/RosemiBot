@@ -10,7 +10,7 @@ import UserModel from "../../models/userSchema";
 
 const command: Command = {
   name: "daily",
-  description: "Claim your daily TomoCoins!",
+  description: "Claim your daily TomoCoins! | トモコインを毎日受け取ります！",
   category: "economy",
 
   callback: async (
@@ -35,7 +35,9 @@ const command: Command = {
         (userCooldowns.get(cooldownKey)! - now) / (60 * 60 * 1000)
       );
       const replyOptions: InteractionReplyOptions = {
-        content: `⏳ You've already claimed your daily reward. Please come back in ${remaining} hours.`,
+        content: localizer(locale, "economy.daily.cooldown", {
+          hours: remaining,
+        }),
         ephemeral: true,
       };
       await interaction.editReply(replyOptions);

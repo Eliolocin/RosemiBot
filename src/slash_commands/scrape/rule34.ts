@@ -22,7 +22,7 @@ const command: Command = {
     {
       name: "tags",
       description:
-        "Enter tags separated by commas (e.g. dragon, furry, dragonite)",
+        "Enter tags separated by commas | タグをカンマで区切って入力してください",
       type: ApplicationCommandOptionType.String,
       required: true,
     },
@@ -36,6 +36,21 @@ const command: Command = {
     const locale = userData.language || "en";
 
     try {
+      // NSFW Check
+      const channel = interaction.channel;
+      if (
+        !channel?.isTextBased() ||
+        !(channel instanceof TextChannel) ||
+        !channel.nsfw
+      ) {
+        const embed = new EmbedBuilder()
+          .setColor("#FF0000")
+          .setTitle(localizer(locale, "scrape.rule34.error_not_nsfw"));
+
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+        return;
+      }
+
       await interaction.deferReply();
       const userquery = interaction.options.getString("tags", true); // Mark as required
       const tags = userquery.split(",").map((tag) => tag.trim());

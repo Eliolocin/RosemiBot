@@ -12,6 +12,7 @@ config();
 
 const client = new Client({
   intents: [
+    // Intents required by the Discord Bot
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,

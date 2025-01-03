@@ -11,12 +11,12 @@ import UserModel from "../../models/userSchema";
 const command: Command = {
   name: "gamba",
   description:
-    "Gamble your TomoCoins with a 50/50 chance to double or lose it all!",
+    "50/50 Chance to Double or Lose it all! | 50/50の確率で2倍になるか、すべて失います！",
   category: "economy",
   options: [
     {
       name: "amount",
-      description: "The number of TomoCoins you wish to gamble",
+      description: "TomoCoins you wish to gamble | 賭けたいTomoCoins",
       type: ApplicationCommandOptionType.Integer,
       required: true,
     },
@@ -34,15 +34,15 @@ const command: Command = {
     if (gambleAmount > userData.coins) {
       const embed = new EmbedBuilder()
         .setColor("#FF0000")
-        .setTitle(localizer(locale, "economy.gamba.insufficient_funds_title"))
+        .setTitle(localizer(locale, "fun.gamba.insufficient_funds_title"))
         .setDescription(
-          localizer(locale, "economy.gamba.insufficient_funds_description", {
+          localizer(locale, "fun.gamba.insufficient_funds_description", {
             balance: userData.coins,
             attempted: gambleAmount,
           })
         )
         .setFooter({
-          text: localizer(locale, "economy.gamba.insufficient_funds_footer"),
+          text: localizer(locale, "fun.gamba.insufficient_funds_footer"),
         });
 
       await interaction.editReply({ embeds: [embed] });
@@ -67,15 +67,13 @@ const command: Command = {
       .setTitle(
         localizer(
           locale,
-          isWin ? "economy.gamba.win_title" : "economy.gamba.lose_title"
+          isWin ? "fun.gamba.win_title" : "fun.gamba.lose_title"
         )
       )
       .setDescription(
         localizer(
           locale,
-          isWin
-            ? "economy.gamba.win_description"
-            : "economy.gamba.lose_description",
+          isWin ? "fun.gamba.win_description" : "fun.gamba.lose_description",
           {
             winnings: isWin ? winnings : "",
             amount_lost: !isWin ? gambleAmount : "",
@@ -86,7 +84,7 @@ const command: Command = {
       .setFooter({
         text: localizer(
           locale,
-          isWin ? "economy.gamba.win_footer" : "economy.gamba.lose_footer"
+          isWin ? "fun.gamba.win_footer" : "fun.gamba.lose_footer"
         ),
       });
 

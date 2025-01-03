@@ -7,6 +7,7 @@ import {
   Guild,
   GuildMember,
   PermissionsBitField,
+  TextBasedChannel, // Add this
 } from "discord.js";
 import { Document } from "mongoose";
 import {
@@ -74,6 +75,7 @@ export interface IUser {
 
 export interface IBot extends Document {
   serverID: string;
+  botName: string;
   conversationExamples: Array<{
     input: string;
     output: string;

@@ -3,6 +3,7 @@ import {
   ApplicationCommandOptionType,
   Client,
   ChatInputCommandInteraction,
+  TextChannel,
 } from "discord.js";
 import createBooru, { Post } from "booru";
 import { Eiyuu } from "eiyuu";
@@ -11,17 +12,32 @@ import { Command, IUser, BooruPost } from "../../types";
 import { getFormattedSource } from "../../utils/formatSource";
 
 const resolve = new Eiyuu();
-const postfiltering = " score:>=3 -nude -rating:explicit -nipples -pubic_hair";
+const postfiltering = {
+  general: " score:>=3 rating:general",
+  sensitive: " score:>=3 -rating:general -rating:explicit",
+  explicit: " score:>=3 rating:explicit",
+};
 
 const command: Command = {
   name: "booru",
   description:
-    "Quickly get up to 4 random SFW high-quality results for your query from Gelbooru!",
+    "Retrieve 4 Search Results from Gelbooru | Gelbooruから検索結果を4つ取得します",
   options: [
+    {
+      name: "rating",
+      description: "Choose content rating | コンテンツの評価を選択してください",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+      choices: [
+        { name: "General", value: "general" },
+        { name: "Sensitive", value: "sensitive" },
+        { name: "Explicit (NSFW Only)", value: "explicit" },
+      ],
+    },
     {
       name: "tags",
       description:
-        "Enter tags separated by commas (for example: cat, cute, smile)",
+        "Enter tags separated by commas | タグをカンマで区切って入力してください",
       type: ApplicationCommandOptionType.String,
       required: true,
     },
@@ -33,8 +49,24 @@ const command: Command = {
     userData: IUser
   ): Promise<void> => {
     const locale = userData.language || "en";
-
+    const rating = interaction.options.getString("rating") || "general";
     try {
+      // NSFW Check
+      if (rating === "explicit") {
+        const channel = interaction.channel;
+        if (
+          !channel?.isTextBased() ||
+          !(channel instanceof TextChannel) ||
+          !channel.nsfw
+        ) {
+          const embed = new EmbedBuilder()
+            .setColor("#FF0000")
+            .setTitle(localizer(locale, "scrape.booru.error_not_nsfw"));
+
+          await interaction.reply({ embeds: [embed], ephemeral: true });
+          return;
+        }
+      }
       await interaction.deferReply();
       const userquery = interaction.options.getString("tags", true); // Mark as required
       const tags = userquery.split(",").map((tag) => tag.trim());
@@ -45,7 +77,8 @@ const command: Command = {
         finalQuery += ` ${resolvedTags[0]}`;
       }
 
-      const filteredQuery = `${finalQuery} ${postfiltering}`;
+      // Add rating-specific filtering
+      const filteredQuery = `${finalQuery}${postfiltering[rating as keyof typeof postfiltering]}`;
 
       const queryEmbed = new EmbedBuilder()
         .setColor("#00FF00")

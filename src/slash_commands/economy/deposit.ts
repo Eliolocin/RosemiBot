@@ -10,12 +10,14 @@ import UserModel from "../../models/userSchema";
 
 const command: Command = {
   name: "deposit",
-  description: "Deposit your TomoCoins into your bank.",
+  description:
+    "Deposit your TomoCoins into your bank | トモコインを銀行に預けます",
   category: "economy",
   options: [
     {
       name: "amount",
-      description: "The amount of TomoCoins you wish to deposit",
+      description:
+        "The amount of TomoCoins you wish to deposit | 預金したいTomoCoinsの金額",
       type: ApplicationCommandOptionType.Integer,
       required: true,
     },

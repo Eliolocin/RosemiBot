@@ -4,7 +4,7 @@ import { localizer } from "../../utils/textLocalizer";
 
 const command: Command = {
   name: "balance",
-  description: "Check your current balance!",
+  description: "Check your current balance | 現在の残高を確認します",
   category: "economy",
   callback: async (
     client: Client,
