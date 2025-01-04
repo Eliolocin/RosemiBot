@@ -130,6 +130,40 @@
       "success_description": "✅ Your nickname has been set to: **{nickname}**",
       "error_title": "Error",
       "error_description": "There was an error updating your nickname. Please try again!"
+    },
+    "teach": {
+      "error_title": "Error",
+      "error_description": "Something went wrong. Please try again!",
+      "info_prompt_title": "Add New Information",
+      "info_prompt_description": "Please enter the information you want to teach me! You can mention users and I'll remember their nicknames.",
+      "info_success_title": "Information Added!",
+      "info_success_description": "✅ I've learned: {info}",
+      "info_empty_title": "No Information",
+      "info_empty_description": "There's no information stored in my database yet!",
+      "info_list_title": "Stored Information",
+      "info_remove_success_title": "Information Removed",
+      "info_remove_success_description": "✅ Removed: {info}",
+      "convo_prompt_title": "Add New Conversation",
+      "convo_prompt_description": "Please enter the question you want me to learn!",
+      "convo_answer_prompt": "Now enter how I should answer that question!",
+      "convo_success_title": "Conversation Added!",
+      "convo_success_description": "✅ I've learned:\nQ: {question}\nA: {answer}",
+      "convo_empty_title": "No Conversations",
+      "convo_empty_description": "There are no conversation examples stored yet!",
+      "convo_list_title": "Stored Conversations",
+      "convo_remove_success_title": "Conversation Removed",
+      "convo_remove_success_description": "✅ Removed:\nQ: {question}\nA: {answer}",
+      "remove_prompt": "Enter the number of the entry you want to remove"
+    }
+  },
+  "general": {
+    "cooldown": "⏳ You need to wait {seconds} seconds before using this command again.",
+    "errors": {
+      "command_timeout": "This command has timed out! Please try again.",
+      "dev_only": "Sorry, only developers are allowed to run this command!",
+      "test_only": "Sorry, this is a test command!",
+      "insufficient_permissions": "Not enough permissions!",
+      "generic_error": "There was an error executing this command!"
     }
   }
 }

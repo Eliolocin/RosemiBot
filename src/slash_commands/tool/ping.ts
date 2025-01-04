@@ -9,9 +9,11 @@ import { localizer } from "../../utils/textLocalizer";
 
 const command: Command = {
   name: "ping",
-  description: "Pong! | ポン！",
+  description: "Check the bot's ping",
   category: "tool",
-  permissionsRequired: [PermissionsBitField.Flags.KickMembers],
+  permissionsRequired: [
+    new PermissionsBitField(PermissionsBitField.Flags.KickMembers),
+  ],
 
   callback: async (
     client: Client,

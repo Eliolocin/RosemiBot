@@ -22,6 +22,7 @@ const command: Command = {
   name: "booru",
   description:
     "Retrieve 4 Search Results from Gelbooru | Gelbooruから検索結果を4つ取得します",
+  category: "scrape",
   options: [
     {
       name: "rating",

@@ -1,4 +1,4 @@
-import { Model, model, Schema } from "mongoose";
+import mongoose, { model, Schema } from "mongoose";
 import { IShop } from "../types";
 
 const shopSchema = new Schema<IShop>({
@@ -31,5 +31,6 @@ const shopSchema = new Schema<IShop>({
   ],
 });
 
-const ShopModel = model<IShop>("shops", shopSchema) as Model<IShop>;
+// Ensure model doesn't get registered multiple times
+const ShopModel = mongoose.models.shops || model<IShop>("shops", shopSchema);
 export default ShopModel;

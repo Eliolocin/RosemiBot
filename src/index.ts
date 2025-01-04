@@ -25,7 +25,7 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message],
 });
 
-// Activate Command Handler
+// First register event han// Activate Command Handler
 eventHandler(client);
 
 // Connect to MongoDB

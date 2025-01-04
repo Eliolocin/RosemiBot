@@ -12,7 +12,7 @@ const command: Command = {
   name: "gamba",
   description:
     "50/50 Chance to Double or Lose it all! | 50/50の確率で2倍になるか、すべて失います！",
-  category: "economy",
+  category: "fun",
   options: [
     {
       name: "amount",

@@ -30,6 +30,7 @@ const command: Command = {
   name: "doujin",
   description:
     "Get 4 Random Doujins from Nhentai | Nhentaiから4つのランダムな同人誌を取得します",
+  category: "scrape",
   options: [
     {
       name: "random",

@@ -1,12 +1,9 @@
 import { Client, Guild } from "discord.js";
-import { Model } from "mongoose";
+import BotModel from "../../models/botSchema";
+import ShopModel from "../../models/shopSchema";
 import fs from "fs";
 import path from "path";
 import { IBot, IShop } from "../../types";
-
-// Match the working import pattern from registerProfile.ts
-const botModel: Model<IBot> = require("../../models/botSchema");
-const shopModel: Model<IShop> = require("../../models/shopSchema");
 
 const handler = async (client: Client, guild: Guild): Promise<void> => {
   try {
@@ -21,9 +18,9 @@ const handler = async (client: Client, guild: Guild): Promise<void> => {
     const defaultData = JSON.parse(fs.readFileSync(personaFilePath, "utf-8"));
 
     // Initialize bot entry using the same pattern as registerProfile.ts
-    let bot = await botModel.findOne({ serverID });
+    let bot = await BotModel.findOne({ serverID });
     if (!bot) {
-      bot = await botModel.create({
+      bot = await BotModel.create({
         serverID,
         conversationExamples: defaultData.conversationExamples,
         botDatabase: defaultData.botDatabase,
@@ -40,9 +37,9 @@ const handler = async (client: Client, guild: Guild): Promise<void> => {
     }
 
     // Initialize shop entry using the same pattern
-    let shop = await shopModel.findOne({ serverID });
+    let shop = await ShopModel.findOne({ serverID });
     if (!shop) {
-      shop = await shopModel.create({
+      shop = await ShopModel.create({
         serverID,
         shopName: "Server Shop",
         currency: "TomoCoins",

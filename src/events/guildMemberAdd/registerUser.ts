@@ -1,8 +1,5 @@
 import { Client, GuildMember } from "discord.js";
-import { Model } from "mongoose";
-import { IUser } from "../../types";
-
-const userModel: Model<IUser> = require("../../models/userSchema");
+import UserModel from "../../models/userSchema";
 
 const handler = async (client: Client, member: GuildMember): Promise<void> => {
   try {
@@ -14,9 +11,12 @@ const handler = async (client: Client, member: GuildMember): Promise<void> => {
     const userLanguage = serverLocale.startsWith("ja") ? "ja" : "en";
 
     // Check if the user exists
-    let user = await userModel.findOne({ userID: member.id });
+    let user = await UserModel.findOne({
+      userID: member.id,
+      serverID: member.guild.id,
+    });
     if (!user) {
-      user = await userModel.create({
+      user = await UserModel.create({
         userID: member.id,
         serverID: member.guild.id,
         nickname: member.displayName,

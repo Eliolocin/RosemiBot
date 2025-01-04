@@ -13,6 +13,7 @@ const command: Command = {
   name: "generate",
   description:
     "Generate images with Stable Diffusion | Stable Diffusionで画像を生成します",
+  category: "fun",
   options: [
     {
       name: "prompt",

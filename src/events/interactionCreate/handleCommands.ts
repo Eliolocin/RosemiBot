@@ -1,7 +1,8 @@
 import { Client, Interaction, ChatInputCommandInteraction } from "discord.js";
-import { Model } from "mongoose";
+import UserModel from "../../models/userSchema";
 import { IUser } from "../../types";
 import getLocalCommands from "../../utils/getLocalCommands";
+import { localizer } from "../../utils/textLocalizer";
 
 interface ExtendedCommand {
   name: string;
@@ -33,10 +34,9 @@ const handler = async (
 ): Promise<void> => {
   if (!interaction.isChatInputCommand()) return;
 
-  // Import and type the model properly
-  const userModel = (await import("../../models/userSchema"))
-    .default as Model<IUser>;
-  const { JACKO_ID, DEV_ID } = process.env;
+  const userModel = UserModel;
+  const { TESTSRV_ID, DEV_ID } = process.env;
+  let userData = await userModel.findOne({ userID: interaction.user.id });
 
   try {
     const localCommands = (await getLocalCommands()) as ExtendedCommand[];
@@ -48,37 +48,7 @@ const handler = async (
 
     // Command execution logic with timeout
     const mainLogicPromise = async () => {
-      if (commandObject.devOnly && interaction.user.id !== DEV_ID) {
-        await interaction.reply({
-          content: "Sorry, only developers are allowed to run this command!",
-          ephemeral: true,
-        });
-        return;
-      }
-
-      if (commandObject.testOnly && interaction.guildId !== JACKO_ID) {
-        await interaction.reply({
-          content: "Sorry, this is a test command!",
-          ephemeral: true,
-        });
-        return;
-      }
-
-      // Permission checks
-      if (commandObject.permissionsRequired?.length) {
-        for (const permission of commandObject.permissionsRequired) {
-          if (!interaction.memberPermissions?.has(permission)) {
-            await interaction.reply({
-              content: "Not enough permissions!",
-              ephemeral: true,
-            });
-            return;
-          }
-        }
-      }
-
-      // Get or create user data
-      let userData = await userModel.findOne({ userID: interaction.user.id });
+      // Initialize userData if it doesn't exist
       if (!userData && interaction.guild) {
         const serverLocale = interaction.guild.preferredLocale;
         const userLanguage = serverLocale.startsWith("ja") ? "ja" : "en";
@@ -90,6 +60,68 @@ const handler = async (
           language: userLanguage,
         });
         await userData.save();
+      }
+
+      if (commandObject.devOnly && interaction.user.id !== DEV_ID) {
+        try {
+          await interaction.reply({
+            content: localizer(
+              userData?.language || "en",
+              "general.errors.dev_only"
+            ),
+            ephemeral: true,
+          });
+        } catch (error: any) {
+          if (error.code === 10062) {
+            // Interaction expired or invalid after bot restart; ignore
+            return;
+          }
+          console.error("Reply error:", error);
+        }
+        return;
+      }
+
+      if (commandObject.testOnly && interaction.guildId !== TESTSRV_ID) {
+        try {
+          await interaction.reply({
+            content: localizer(
+              userData?.language || "en",
+              "general.errors.test_only"
+            ),
+            ephemeral: true,
+          });
+        } catch (error: any) {
+          if (error.code === 10062) {
+            // Interaction expired or invalid after bot restart; ignore
+            return;
+          }
+          console.error("Reply error:", error);
+        }
+        return;
+      }
+
+      // Permission checks
+      if (commandObject.permissionsRequired?.length) {
+        for (const permission of commandObject.permissionsRequired) {
+          if (!interaction.memberPermissions?.has(permission)) {
+            try {
+              await interaction.reply({
+                content: localizer(
+                  userData?.language || "en",
+                  "general.errors.insufficient_permissions"
+                ),
+                ephemeral: true,
+              });
+            } catch (error: any) {
+              if (error.code === 10062) {
+                // Interaction expired or invalid after bot restart; ignore
+                return;
+              }
+              console.error("Reply error:", error);
+            }
+            return;
+          }
+        }
       }
 
       // Cooldown check
@@ -106,10 +138,22 @@ const handler = async (
             const remaining = Math.ceil(
               (userCooldowns.get(commandObject.category)! - now) / 1000
             );
-            await interaction.reply({
-              content: `⏳ You need to wait ${remaining} seconds before using this command again.`,
-              ephemeral: true,
-            });
+            try {
+              await interaction.reply({
+                content: localizer(
+                  userData?.language || "en",
+                  "general.cooldown",
+                  { seconds: remaining }
+                ),
+                ephemeral: true,
+              });
+            } catch (error: any) {
+              if (error.code === 10062) {
+                // Interaction expired or invalid after bot restart; ignore
+                return;
+              }
+              console.error("Reply error:", error);
+            }
             return;
           }
 
@@ -125,16 +169,36 @@ const handler = async (
     await Promise.race([
       mainLogicPromise(),
       new Promise((_, reject) =>
-        setTimeout(() => reject("Command timed out"), TIMEOUT_DURATION)
+        setTimeout(
+          () =>
+            reject(
+              localizer(
+                userData?.language || "en",
+                "general.errors.command_timeout"
+              )
+            ),
+          TIMEOUT_DURATION
+        )
       ),
     ]);
   } catch (error) {
     console.error("Error in command execution:", error);
     if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content: "There was an error executing this command!",
-        ephemeral: true,
-      });
+      try {
+        await interaction.reply({
+          content: localizer(
+            userData?.language || "en",
+            "general.errors.generic_error"
+          ),
+          ephemeral: true,
+        });
+      } catch (error: any) {
+        if (error.code === 10062) {
+          // Interaction expired or invalid after bot restart; ignore
+          return;
+        }
+        console.error("Reply error:", error);
+      }
     }
   }
 };

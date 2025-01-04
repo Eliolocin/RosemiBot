@@ -18,6 +18,7 @@ const command: Command = {
   name: "rule34",
   description:
     "Retrieve 4 Search Results from Rule34 | Rule34から検索結果を4つ取得します",
+  category: "scrape",
   options: [
     {
       name: "tags",

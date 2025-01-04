@@ -1,4 +1,4 @@
-import { Model, model, Schema } from "mongoose";
+import mongoose, { model, Schema } from "mongoose";
 import { IBot } from "../types";
 
 const botSchema = new Schema<IBot>({
@@ -25,5 +25,6 @@ const botSchema = new Schema<IBot>({
   counters: { type: [Number], default: [] },
 });
 
-const BotModel = model<IBot>("bots", botSchema) as Model<IBot>;
+// Ensure model doesn't get registered multiple times
+const BotModel = mongoose.models.bots || model<IBot>("bots", botSchema);
 export default BotModel;

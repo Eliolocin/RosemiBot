@@ -1,8 +1,5 @@
 import { Client, Message } from "discord.js";
-import { Model } from "mongoose";
-import { IUser } from "../../types";
-
-const userModel: Model<IUser> = require("../../models/userSchema");
+import UserModel from "../../models/userSchema";
 
 const handler = async (client: Client, message: Message): Promise<void> => {
   if (message.author.bot) return;
@@ -13,9 +10,12 @@ const handler = async (client: Client, message: Message): Promise<void> => {
 
     const userLanguage = serverLocale?.startsWith("ja") ? "ja" : "en";
 
-    let user = await userModel.findOne({ userID: message.author.id });
+    let user = await UserModel.findOne({
+      userID: message.author.id,
+      serverID: message.guild?.id,
+    });
     if (!user && message.guild) {
-      user = await userModel.create({
+      user = await UserModel.create({
         userID: message.author.id,
         serverID: message.guild.id,
         nickname: message.author.displayName,

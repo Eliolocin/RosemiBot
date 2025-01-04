@@ -131,6 +131,40 @@
       "success_description": "✅ ニックネームを「**{nickname}**」に設定しました",
       "error_title": "エラー",
       "error_description": "ニックネームの更新中にエラーが発生しました。もう一度お試しください！"
+    },
+    "teach": {
+      "error_title": "エラー",
+      "error_description": "問題が発生しました。もう一度お試しください！",
+      "info_prompt_title": "新しい情報の追加",
+      "info_prompt_description": "教えたい情報を入力してください！ユーザーをメンションすると、そのニックネームを覚えます。",
+      "info_success_title": "情報を追加しました！",
+      "info_success_description": "✅ 覚えました：{info}",
+      "info_empty_title": "情報なし",
+      "info_empty_description": "データベースにはまだ情報が保存されていません！",
+      "info_list_title": "保存された情報",
+      "info_remove_success_title": "情報を削除しました",
+      "info_remove_success_description": "✅ 削除しました：{info}",
+      "convo_prompt_title": "新しい会話の追加",
+      "convo_prompt_description": "覚えさせたい質問を入力してください！",
+      "convo_answer_prompt": "その質問への回答を入力してください！",
+      "convo_success_title": "会話を追加しました！",
+      "convo_success_description": "✅ 覚えました：\n質問：{question}\n回答：{answer}",
+      "convo_empty_title": "会話例なし",
+      "convo_empty_description": "まだ会話例が保存されていません！",
+      "convo_list_title": "保存された会話",
+      "convo_remove_success_title": "会話を削除しました",
+      "convo_remove_success_description": "✅ 削除しました：\n質問：{question}\n回答：{answer}",
+      "remove_prompt": "削除したいエントリの番号を入力してください"
+    }
+  },
+  "general": {
+    "cooldown": "⏳ このコマンドを使用するには{seconds}秒待つ必要があります。",
+    "errors": {
+      "command_timeout": "コマンドがタイムアウトしました！もう一度お試しください。",
+      "dev_only": "申し訳ありませんが、この機能は開発者専用です！",
+      "test_only": "申し訳ありませんが、これはテスト用コマンドです！",
+      "insufficient_permissions": "権限が不足しています！",
+      "generic_error": "コマンドの実行中にエラーが発生しました！"
     }
   }
 }

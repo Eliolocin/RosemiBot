@@ -1,4 +1,4 @@
-import { Model, model, Schema } from "mongoose";
+import mongoose, { model, Schema } from "mongoose";
 import { IUser } from "../types";
 
 // Define the schema for the user
@@ -31,6 +31,6 @@ const userSchema = new Schema<IUser>({
   counters: { type: [Number], default: [] },
 });
 
-// Create and export the model
-const UserModel = model<IUser>("users", userSchema);
+// Ensure model doesn't get registered multiple times
+const UserModel = mongoose.models.users || model<IUser>("users", userSchema);
 export default UserModel;

@@ -72,7 +72,10 @@ const command: Command = {
       return;
     }
 
-    let recipientUser = await UserModel.findOne({ userID: recipient.id });
+    let recipientUser = await UserModel.findOne({
+      userID: recipient.id,
+      serverID: interaction.guildId,
+    });
 
     if (!recipientUser) {
       recipientUser = await UserModel.create({

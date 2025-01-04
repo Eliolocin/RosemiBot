@@ -114,21 +114,21 @@ export interface IShop extends Document {
   }>;
 }
 
+interface CommandOption {
+  name: string;
+  description: string;
+  type: ApplicationCommandOptionType;
+  required?: boolean;
+  choices?: { name: string; value: string | number }[];
+  options?: CommandOption[]; // Add this line to support subcommand options
+}
+
 export interface Command {
   name: string;
   description: string;
-  category?: string;
-  permissionsRequired?: bigint[]; // Using bigint for PermissionsBitField flags
-  options?: {
-    name: string;
-    description: string;
-    type: ApplicationCommandOptionType;
-    required?: boolean;
-    choices?: Array<{
-      name: string;
-      value: string | number;
-    }>;
-  }[];
+  category: string;
+  options?: CommandOption[]; // Update this to use the new CommandOption interface
+  permissionsRequired?: PermissionsBitField[]; // Add this line
   callback: (
     client: Client,
     interaction: ChatInputCommandInteraction,
