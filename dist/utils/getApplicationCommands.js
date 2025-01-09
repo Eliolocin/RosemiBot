@@ -15,3 +15,4 @@ const getApplicationCommands = async (client, guildId) => {
     return applicationCommands;
 };
 exports.default = getApplicationCommands;
+//# sourceMappingURL=getApplicationCommands.js.map

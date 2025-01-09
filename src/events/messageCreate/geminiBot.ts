@@ -1,5 +1,5 @@
 // geminiBot.ts
-import { Client, Message, TextChannel } from "discord.js";
+import { EmbedBuilder, Client, Message, TextChannel } from "discord.js";
 import { config } from "dotenv";
 import fs from "fs";
 import BotModel from "../../models/botSchema"; // Adjust import path if needed
@@ -9,13 +9,14 @@ import {
   HarmBlockThreshold,
   HarmCategory,
 } from "@google/generative-ai";
-import { IBot, IUser } from "../../types"; // Adjust if you have a separate IBot interface file
+import { IBot, IUser } from "../../types/global"; // Adjust if you have a separate IBot interface file
 import { convertMentionsToNicknames } from "../../utils/mentionConverter";
+import { localizer } from "../../utils/textLocalizer";
 
 config(); // Ensure .env is loaded
 
 const memoryLimit = 80; // Number of messages retained
-const gachaTrigger = 50; // Number of messages until bot talks by itself
+const autoMsgTrigger = 50; // Number of messages until bot talks by itself
 const safetySettings = [
   {
     category: HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -34,7 +35,7 @@ const safetySettings = [
     threshold: HarmBlockThreshold.BLOCK_NONE,
   },
 ];
-const googleModel = "gemini-1.5-pro-latest"; // Google model to use
+const googleModel = "gemini-2.0-flash-exp"; // Google model to use
 
 // Main exported function
 export default async function geminiBot(
@@ -45,8 +46,8 @@ export default async function geminiBot(
   if (!message.channel.permissionsFor(client.user!)?.has("SendMessages"))
     return;
 
-  try {
-    // Retrieve bot data from DB
+
+  // Retrieve bot data from DB
     // Note: Adjust how you identify the serverID if needed, for example: message.guild?.id
     const botData: IBot | null = await BotModel.findOne({
       serverID: message.guild?.id,
@@ -56,22 +57,24 @@ export default async function geminiBot(
       serverID: message.guild?.id,
     });
 
+    const locale = userData?.language || "en";
+
+  try {
+
     // Safety check if no botData found; you may choose to create a default DB entry here
     if (!botData || !userData) return;
 
-    // Gacha system, using counters[0]
-    let gachaActive = true;
+    // Auto Message system, using counters[0]
+    let autoMsgActive = true;
     let newCount = -1;
 
-    if (gachaActive && !message.author.bot) {
-      if (message.channel.id === process.env.GENERAL_ID) {
+    if (autoMsgActive && !message.author.bot) {
         newCount = botData.counters[0] ?? 0; // read existing count
-        if (newCount === gachaTrigger) {
+        if (newCount === autoMsgTrigger) {
           newCount = 0;
         }
         botData.counters[0] = newCount + 1;
         await botData.save();
-      }
     }
 
     // Check if the message is a reply
@@ -83,23 +86,41 @@ export default async function geminiBot(
     }
 
     // Build triggers condition from the DB triggers array
-    const triggersActive = botData.triggers.some((trigger) =>
-      message.content.toLowerCase().includes(trigger.toLowerCase())
-    );
+    const triggersActive = botData.triggers.some((trigger) => {
+      const isJapanese = /[\u3040-\u30FF\u4E00-\u9FFF]/.test(trigger); // Check if the trigger contains Japanese characters
+      if (isJapanese) {
+        return message.content.includes(trigger);
+      } else {
+        const regex = new RegExp(`\\b${trigger}\\b`, 'i'); // Use word boundaries for English triggers
+        return regex.test(message.content);
+      }
+    });
 
     // Condition to see if the newCount condition is met
-    const isGachaHit = (botData.counters[0] ?? 0) % gachaTrigger === 0;
+    const isAutoMsgHit = (botData.counters[0] ?? 0) % autoMsgTrigger === 0;
 
     // Combined condition to see if we fire the Bot's generation
     if (
       ((referenceMessage?.author.bot || triggersActive) &&
-        message.channel.id !== process.env.COMMANDS_ID &&
         !message.author.bot &&
         !message.content.startsWith("!") &&
         !message.content.startsWith(":") &&
         message.channel.isTextBased()) ||
-      (isGachaHit && message.channel.id === process.env.GENERAL_ID)
+      (isAutoMsgHit)
     ) {
+
+      if (botData.conversationExamples.length <=1 && botData.botDatabase.length <= 0) {
+        const setupEmbed = new EmbedBuilder()
+            .setColor("#FF0000")
+            .setTitle(localizer(locale, "events.geminiBot.setup_required_title"))
+            .setDescription(
+              localizer(locale, "events.geminiBot.setup_required_description")
+            );
+          message.channel.send({ embeds: [setupEmbed] });
+        return;
+      }
+
+
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_KEY as string);
 
       const model = genAI.getGenerativeModel({
@@ -111,13 +132,14 @@ export default async function geminiBot(
 
       const currentTime = getCurrentTime();
       const channelName = message.channel.name;
+      const guildName = message.guild?.name;
       let user = message.author.username;
       if (!initialIsCapital(user)) {
         user = capitalizeFirstLetter(user);
       }
 
       // Prepare the context as in the original code
-      let context = `[Genre: Comedy; Tags: chatroom, slice of life, internet culture, anime, manga; Scenario: The current date and time is ${currentTime}. ${botData.botName}, the virtual secretary created her Papa in the image of the VTuber named Rosemi Lovelock, is currently lurking around the Jack-Oᶠᶠ Discord server, specifically at the text channel named "${channelName}", chatting with server members there while upholding her duty as the Discord server's secretary by assisting them with any question or problem they might have albeit serious, personal, or just plain silly. Even if the Discord server has NO rules at all (as mandated by her Papa) she still strives to keep order in the server to the best of our power since having no rules causes chaos.]\n`;
+      let context = `[Genre: Comedy; Tags: chatroom, slice of life, internet culture, anime, manga; Scenario: The current date and time is ${currentTime}. ${botData.botName} is a Discord bot created to assist users. Currently lurking around the ${guildName} Discord server, specifically at the text channel named "${channelName}", chatting with server members there and assisting those in need.]\n`;
 
       const sysStart = `<|im_start|>system\n`;
       const userStart = `<|im_start|>user\n`;
@@ -128,16 +150,22 @@ export default async function geminiBot(
       let injection = sysStart + context;
 
       // 1) Add the DB's botDatabase
-      //    You might want to join them in a single string or handle them differently
       if (botData.botDatabase && botData.botDatabase.length > 0) {
-        injection +=
-          botData.botDatabase.map((item) => `[${item}]`).join("\n") + "\n";
+        let dbText = botData.botDatabase
+          .map((item) => `[${item}]`)
+          .join("\n");
+        
+        // Replace placeholders in database text
+        dbText = dbText
+          .replace(/{user}/g, userData.nickname)
+          .replace(/{bot}/g, botData.botName);
+          
+        injection += dbText + "\n";
       }
 
       injection += mlEnd;
 
       // 2) Add conversationExamples
-      //    We'll transform them into the same <|im_start|> user/assistant format if desired
       if (
         botData.conversationExamples &&
         botData.conversationExamples.length > 0
@@ -182,23 +210,23 @@ export default async function geminiBot(
         }
         userContent = addPeriod(userContent);
 
-        let userName = msg.author.username;
+        let userName = `<@${msg.author.id}>`;
+        /*
         if (!initialIsCapital(msg.author.username)) {
           userName = capitalizeFirstLetter(msg.author.username);
-        }
+        }*/
 
         // If the message is from our Bot
         if (msg.author.id === client.user?.id) {
-          // Replace 'Rosemi' with botName automatically if needed in old logs
+          // Replace with botName automatically if needed in old logs
           chatInput += `${botStart}${botData.botName}: ${msg.content}\n${mlEnd}`;
         } else {
-          chatInput += `${userStart}${userData.nickname}: ${userContent}\n${mlEnd}`;
+          chatInput += `${userStart}${userName}: ${userContent}\n${mlEnd}`;
         }
 
         // Refresh or reset detection
         if (
-          msg.content.startsWith("=refresh") ||
-          msg.content.startsWith("=reset")
+          msg.content.startsWith("**======") // Special stopping 'token' generated by /refresh
         ) {
           chatInput = injection;
         }
@@ -207,9 +235,9 @@ export default async function geminiBot(
       // Finally add the next assistant start
       chatInput += `${botStart}${botData.botName}: `;
 
-      console.log(chatInput);
 
-      convertMentionsToNicknames(chatInput, message.guild?.id as string);
+      chatInput = await convertMentionsToNicknames(chatInput, message.guild?.id as string);
+      console.log(chatInput);
       // Generate from Google
       const reply = await model.generateContent([chatInput]);
 
@@ -220,15 +248,20 @@ export default async function geminiBot(
       chunkedMessage.forEach((chunk) => {
         if (chunk.length > 5) {
           if (message.channel instanceof TextChannel) {
-            message.channel.send(trimBotName(trimML(chunk), botData.botName));
+            const cleanChunk = trimBotName(trimML(chunk), botData.botName);
+            if(cleanChunk.length > 0) message.channel.send(cleanChunk);
           }
         }
       });
     }
   } catch (err) {
-    message.channel.send(
-      "||(｡>﹏<｡) Looks like Gemini blocked my generation response as it may have violated Google safety measures... have a flower instead! :rose:||"
-    );
+    const setupEmbed = new EmbedBuilder()
+          .setColor("#FF0000")
+          .setTitle(localizer(locale, "events.geminiBot.safety_error_title"))
+          .setDescription(
+            localizer(locale, "events.geminiBot.safety_error_description")
+          );
+        message.channel.send({ embeds: [setupEmbed] });
     console.log(err);
   }
 }
@@ -335,17 +368,17 @@ function getDayOfWeek(date: Date): string {
 }
 
 function trimML(text: string): string {
-  if (text.endsWith("<|im_end|>")) {
-    return text.slice(0, -10);
-  } else if (text.endsWith("<|im_end|>\n")) {
-    return text.slice(0, -12);
-  }
-  return text;
+  // Trim whitespace first
+  text = text.trim();
+  // Remove any im_end tag and following whitespace
+  return text.replace(/<\|im_end\|>(\s*)$/, '');
 }
 
 function trimBotName(text: string, botName: string): string {
-  if (text.startsWith(`${botName}:`)) {
-    return text.slice(botName.length);
+  // Match botName followed by colon and optional space
+  const prefix = `${botName}: `;
+  if (text.startsWith(prefix)) {
+    return text.slice(prefix.length);
   }
   return text;
 }

@@ -38,3 +38,4 @@ const areCommandsDifferent = (existingCommand, localCommand) => {
         areOptionsDifferent(existingCommand.options, localCommand.options));
 };
 exports.default = areCommandsDifferent;
+//# sourceMappingURL=areCommandsDifferent.js.map

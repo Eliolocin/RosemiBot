@@ -8,7 +8,7 @@ const textLocalizer_1 = require("../../utils/textLocalizer");
 const userSchema_1 = __importDefault(require("../../models/userSchema"));
 const command = {
     name: "daily",
-    description: "Claim your daily TomoCoins!",
+    description: "Claim your daily TomoCoins! | トモコインを毎日受け取ります！",
     category: "economy",
     callback: async (client, interaction, userData) => {
         await interaction.deferReply();
@@ -21,7 +21,9 @@ const command = {
             userCooldowns.get(cooldownKey) > now) {
             const remaining = Math.ceil((userCooldowns.get(cooldownKey) - now) / (60 * 60 * 1000));
             const replyOptions = {
-                content: `⏳ You've already claimed your daily reward. Please come back in ${remaining} hours.`,
+                content: (0, textLocalizer_1.localizer)(locale, "economy.daily.cooldown", {
+                    hours: remaining,
+                }),
                 ephemeral: true,
             };
             await interaction.editReply(replyOptions);
@@ -52,3 +54,4 @@ const command = {
     },
 };
 exports.default = command;
+//# sourceMappingURL=daily.js.map

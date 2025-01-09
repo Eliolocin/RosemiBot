@@ -110,7 +110,4 @@ jobs:
         run: npm run db-update
         env:
           MONGODB_SRV: ${{ secrets.MONGODB_SRV }}
-
-
-
 */

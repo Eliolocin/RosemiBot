@@ -4,7 +4,7 @@ const discord_js_1 = require("discord.js");
 const textLocalizer_1 = require("../../utils/textLocalizer");
 const command = {
     name: "balance",
-    description: "Check your current balance!",
+    description: "Check your current balance | 現在の残高を確認します",
     category: "economy",
     callback: async (client, interaction, userData) => {
         await interaction.deferReply();
@@ -28,3 +28,4 @@ const command = {
     },
 };
 exports.default = command;
+//# sourceMappingURL=balance.js.map

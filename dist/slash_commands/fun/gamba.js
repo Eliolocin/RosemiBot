@@ -8,12 +8,12 @@ const textLocalizer_1 = require("../../utils/textLocalizer");
 const userSchema_1 = __importDefault(require("../../models/userSchema"));
 const command = {
     name: "gamba",
-    description: "Gamble your TomoCoins with a 50/50 chance to double or lose it all!",
-    category: "economy",
+    description: "50/50 Chance to Double or Lose it all! | 50/50の確率で2倍になるか、すべて失います！",
+    category: "fun",
     options: [
         {
             name: "amount",
-            description: "The number of TomoCoins you wish to gamble",
+            description: "TomoCoins you wish to gamble | 賭けたいTomoCoins",
             type: discord_js_1.ApplicationCommandOptionType.Integer,
             required: true,
         },
@@ -25,13 +25,13 @@ const command = {
         if (gambleAmount > userData.coins) {
             const embed = new discord_js_1.EmbedBuilder()
                 .setColor("#FF0000")
-                .setTitle((0, textLocalizer_1.localizer)(locale, "economy.gamba.insufficient_funds_title"))
-                .setDescription((0, textLocalizer_1.localizer)(locale, "economy.gamba.insufficient_funds_description", {
+                .setTitle((0, textLocalizer_1.localizer)(locale, "fun.gamba.insufficient_funds_title"))
+                .setDescription((0, textLocalizer_1.localizer)(locale, "fun.gamba.insufficient_funds_description", {
                 balance: userData.coins,
                 attempted: gambleAmount,
             }))
                 .setFooter({
-                text: (0, textLocalizer_1.localizer)(locale, "economy.gamba.insufficient_funds_footer"),
+                text: (0, textLocalizer_1.localizer)(locale, "fun.gamba.insufficient_funds_footer"),
             });
             await interaction.editReply({ embeds: [embed] });
             return;
@@ -46,18 +46,17 @@ const command = {
             name: interaction.user.username,
             iconURL: interaction.user.displayAvatarURL({ forceStatic: false }),
         })
-            .setTitle((0, textLocalizer_1.localizer)(locale, isWin ? "economy.gamba.win_title" : "economy.gamba.lose_title"))
-            .setDescription((0, textLocalizer_1.localizer)(locale, isWin
-            ? "economy.gamba.win_description"
-            : "economy.gamba.lose_description", {
+            .setTitle((0, textLocalizer_1.localizer)(locale, isWin ? "fun.gamba.win_title" : "fun.gamba.lose_title"))
+            .setDescription((0, textLocalizer_1.localizer)(locale, isWin ? "fun.gamba.win_description" : "fun.gamba.lose_description", {
             winnings: isWin ? winnings : "",
             amount_lost: !isWin ? gambleAmount : "",
             new_balance: userData.coins + finalAmount,
         }))
             .setFooter({
-            text: (0, textLocalizer_1.localizer)(locale, isWin ? "economy.gamba.win_footer" : "economy.gamba.lose_footer"),
+            text: (0, textLocalizer_1.localizer)(locale, isWin ? "fun.gamba.win_footer" : "fun.gamba.lose_footer"),
         });
         await interaction.editReply({ embeds: [embed] });
     },
 };
 exports.default = command;
+//# sourceMappingURL=gamba.js.map

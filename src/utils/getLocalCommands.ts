@@ -1,6 +1,6 @@
 import path from "path";
 import getAllFiles from "./getAllFiles";
-import { LocalCommand } from "../types";
+import { LocalCommand } from "../types/global";
 
 const getLocalCommands = async (
   exceptions: string[] = []

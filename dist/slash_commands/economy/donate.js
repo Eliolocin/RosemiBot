@@ -8,18 +8,18 @@ const textLocalizer_1 = require("../../utils/textLocalizer");
 const userSchema_1 = __importDefault(require("../../models/userSchema"));
 const command = {
     name: "donate",
-    description: "Donate TomoCoins from your wallet to another user's bank.",
+    description: "Donate TomoCoins to another user's bank | 他のユーザーの銀行にTomoCoinsを寄付します",
     category: "economy",
     options: [
         {
             name: "recipient",
-            description: "The user you want to donate to",
+            description: "User you want to donate to | 寄付したいユーザー",
             type: discord_js_1.ApplicationCommandOptionType.User,
             required: true,
         },
         {
             name: "amount",
-            description: "The amount of TomoCoins you want to donate",
+            description: "Amount to be donated | 寄付する金額",
             type: discord_js_1.ApplicationCommandOptionType.Integer,
             required: true,
         },
@@ -54,7 +54,10 @@ const command = {
             await interaction.editReply({ embeds: [embed] });
             return;
         }
-        let recipientUser = await userSchema_1.default.findOne({ userID: recipient.id });
+        let recipientUser = await userSchema_1.default.findOne({
+            userID: recipient.id,
+            serverID: interaction.guildId,
+        });
         if (!recipientUser) {
             recipientUser = await userSchema_1.default.create({
                 userID: recipient.id,
@@ -95,3 +98,4 @@ const command = {
     },
 };
 exports.default = command;
+//# sourceMappingURL=donate.js.map

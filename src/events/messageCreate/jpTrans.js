@@ -17,7 +17,7 @@ module.exports = async (client, message) => {
   if (
     !message.content.includes("><") &&
     !message.author.bot &&
-    message.channel.id == process.env.TESTCH_ID
+    message.guild.id == process.env.TESTSRV_ID
   ) {
     const kuroshiro = new Kuroshiro.default();
     await kuroshiro.init(new KuromojiAnalyzer());

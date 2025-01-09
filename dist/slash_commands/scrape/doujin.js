@@ -10,6 +10,7 @@ const nana = new nana_api_1.default();
 const command = {
     name: "doujin",
     description: "Get 4 Random Doujins from Nhentai | Nhentaiから4つのランダムな同人誌を取得します",
+    category: "scrape",
     options: [
         {
             name: "random",
@@ -55,6 +56,7 @@ const command = {
                 return new discord_js_1.EmbedBuilder()
                     .setColor("#DE3163")
                     .setTitle((0, textLocalizer_1.localizer)(locale, "scrape.doujin.embed.title", {
+                    title: locale === 'ja' ? doujin.title.japanese || doujin.title.english : doujin.title.english,
                     index: index + 1,
                     total,
                 }))
@@ -99,3 +101,4 @@ const command = {
     },
 };
 exports.default = command;
+//# sourceMappingURL=doujin.js.map

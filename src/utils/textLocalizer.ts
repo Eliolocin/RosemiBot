@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { Locales, LocalizerVariables } from "../types";
+import { Locales, LocalizerVariables } from "../types/global";
 
 // Load language files dynamically
 const locales: Locales = {};

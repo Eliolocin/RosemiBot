@@ -125,13 +125,6 @@
       "error_title": "エラー",
       "error_description": "言語設定の更新中にエラーが発生しました。もう一度お試しください！"
     },
-    "nickname": {
-      "description": "データベース内のニックネームを設定します",
-      "success_title": "ニックネーム更新完了！",
-      "success_description": "✅ ニックネームを「**{nickname}**」に設定しました",
-      "error_title": "エラー",
-      "error_description": "ニックネームの更新中にエラーが発生しました。もう一度お試しください！"
-    },
     "teach": {
       "error_title": "エラー",
       "error_description": "問題が発生しました。もう一度お試しください！",
@@ -154,7 +147,39 @@
       "convo_list_title": "保存された会話",
       "convo_remove_success_title": "会話を削除しました",
       "convo_remove_success_description": "✅ 削除しました：\n質問：{question}\n回答：{answer}",
-      "remove_prompt": "削除したいエントリの番号を入力してください"
+      "remove_prompt": "削除したいエントリの番号を入力してください",
+      "cancelled_title": "操作がキャンセルされました",
+      "cancelled_description": "教育操作がキャンセルされました。",
+      "trigger_error_title": "トリガーエラー",
+      "trigger_missing_word": "🚫 追加するトリガーワードを入力してください！",
+      "trigger_duplicate": "🚫 このトリガーワードは既に存在します！",
+      "trigger_success_title": "トリガー追加完了！",
+      "trigger_success_description": "✅ 新しいトリガーワードを追加しました：**{trigger}**",
+      "trigger_empty_title": "トリガーなし",
+      "trigger_empty_description": "トリガーワードがまだ保存されていません！",
+      "trigger_list_title": "保存されたトリガーワード",
+      "trigger_remove_success_title": "トリガー削除完了",
+      "trigger_remove_success_description": "✅ トリガーワードを削除しました：**{trigger}**",
+      "nickname_success_title": "ニックネーム更新完了！",
+      "nickname_success_description": "✅ ニックネームを「**{nickname}**」に設定しました",
+      "nickname_error_title": "エラー",
+      "nickname_error_description": "ニックネームの更新中にエラーが発生しました。もう一度お試しください！",
+      "botname_success_title": "ボット名を更新しました！",
+      "botname_success_description": "✅ ボットの名前を「**{name}**」に設定しました",
+      "botname_error_title": "エラー",
+      "botname_error_description": "ボット名の更新中にエラーが発生しました。もう一度お試しください！"
+    },
+    "settings": {
+      "error_title": "設定エラー",
+      "error_description": "問題が発生しました。もう一度お試しください。",
+      "no_permission": "🚫 この設定を変更するにはチャンネル管理権限が必要です！",
+      "automsg_minimum": "🚫 自動メッセージの間隔は0（無効）または30以上である必要があります。",
+      "automsg_success_title": "自動メッセージを更新しました！",
+      "automsg_success_description": "✅ ボットは{count}メッセージごとに応答します。（0 = 無効）",
+      "teachperms_success_title": "教育権限を更新しました！",
+      "teachperms_success_description": "✅ 教育権限を**{mode}**に設定しました",
+      "language_success_title": "言語を更新しました！",
+      "language_success_description": "✅ 言語を日本語に設定しました。"
     }
   },
   "general": {
@@ -165,6 +190,14 @@
       "test_only": "申し訳ありませんが、これはテスト用コマンドです！",
       "insufficient_permissions": "権限が不足しています！",
       "generic_error": "コマンドの実行中にエラーが発生しました！"
+    }
+  },
+  "events": {
+    "geminiBot": {
+      "setup_required_title": "ボットのセットアップが必要です",
+      "setup_required_description": "チャット機能を使用するには、以下の設定が必要です：\n• `/teach convo`で少なくとも2つの会話例を追加\n• `/teach info`で少なくとも1つの情報を追加\nボットの性格プリセットを簡単に選択するには、`/setup`コマンドを使用してください。",
+      "safety_error_title": "セーフティフィルターが作動しました",
+      "safety_error_description": "🚫 Geminiのセーフティフィルターが応答をブロックしました。これは通常、コンテンツがGoogleの安全基準に違反する可能性がある場合に発生します"
     }
   }
 }

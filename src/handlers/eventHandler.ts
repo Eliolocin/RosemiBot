@@ -1,7 +1,7 @@
 import { Client, VoiceState, Presence } from "discord.js";
 import path from "path";
 import getAllFiles from "../utils/getAllFiles";
-import { EventFunction } from "../types";
+import { EventFunction } from "../types/global";
 
 const handleEvent = (client: Client): void => {
   const eventFolders = getAllFiles(path.join(__dirname, "..", "events"), true);

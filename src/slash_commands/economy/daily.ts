@@ -4,7 +4,7 @@ import {
   ChatInputCommandInteraction,
   InteractionReplyOptions,
 } from "discord.js";
-import { Command, IUser } from "../../types";
+import { Command, IUser } from "../../types/global";
 import { localizer } from "../../utils/textLocalizer";
 import UserModel from "../../models/userSchema";
 

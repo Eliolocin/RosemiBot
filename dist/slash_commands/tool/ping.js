@@ -4,9 +4,11 @@ const discord_js_1 = require("discord.js");
 const textLocalizer_1 = require("../../utils/textLocalizer");
 const command = {
     name: "ping",
-    description: "Pong! | ポン！",
+    description: "Check the bot's ping",
     category: "tool",
-    permissionsRequired: [discord_js_1.PermissionsBitField.Flags.KickMembers],
+    permissionsRequired: [
+        new discord_js_1.PermissionsBitField(discord_js_1.PermissionsBitField.Flags.KickMembers),
+    ],
     callback: async (client, interaction, userData) => {
         const locale = userData.language || "en";
         await interaction.deferReply();
@@ -30,3 +32,4 @@ const command = {
     },
 };
 exports.default = command;
+//# sourceMappingURL=ping.js.map

@@ -11,7 +11,7 @@ import {
 } from "discord.js";
 import NanaAPI from "nana-api";
 import { localizer } from "../../utils/textLocalizer";
-import { Command, IUser } from "../../types";
+import { Command, IUser } from "../../types/global";
 
 const nana = new NanaAPI();
 
@@ -91,6 +91,7 @@ const command: Command = {
           .setColor("#DE3163")
           .setTitle(
             localizer(locale, "scrape.doujin.embed.title", {
+              title: locale === 'ja' ? doujin.title.japanese || doujin.title.english : doujin.title.english,
               index: index + 1,
               total,
             })

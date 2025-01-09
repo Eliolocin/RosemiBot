@@ -45,7 +45,8 @@ const handler = async (client) => {
         }
     }
     catch (error) {
-        console.log(`(─‿‿─) There was a slash command registration error: ${error instanceof Error ? error.message : String(error)}`);
+        console.log(`There was a slash command registration error: ${error instanceof Error ? error.message : String(error)}`);
     }
 };
 exports.default = handler;
+//# sourceMappingURL=01_registercommands.js.map

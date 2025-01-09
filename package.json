@@ -1,7 +1,7 @@
 {
-  "name": "rosemibot",
-  "version": "2.0.0",
-  "description": "Bot from Mkaynix Restaurant",
+  "name": "tomobot",
+  "version": "0.1.0",
+  "description": "Customizable AI Assistant Discord Bot",
   "main": "./src/index.ts",
   "scripts": {
     "clean": "rimraf dist",
@@ -10,7 +10,8 @@
     "dev": "nodemon",
     "watch": "tsc -w",
     "db-update": "node scripts/dbUpdate.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test-enter": "ts-node scripts/testEntry.ts"
   },
   "author": "Bredrumb",
   "license": "ISC",
@@ -62,8 +63,11 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@typescript-eslint/eslint-plugin": "^8.19.1",
+    "@typescript-eslint/parser": "^8.19.1",
     "eslint": "^9.17.0",
     "globals": "^15.14.0",
-    "prettier": "3.4.2"
+    "prettier": "3.4.2",
+    "rimraf": "^3.0.2"
   }
 }

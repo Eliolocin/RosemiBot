@@ -124,13 +124,6 @@
       "error_title": "Error",
       "error_description": "There was an error updating your language preference. Please try again!"
     },
-    "nickname": {
-      "description": "Set your nickname in the database",
-      "success_title": "Nickname Updated!",
-      "success_description": "✅ Your nickname has been set to: **{nickname}**",
-      "error_title": "Error",
-      "error_description": "There was an error updating your nickname. Please try again!"
-    },
     "teach": {
       "error_title": "Error",
       "error_description": "Something went wrong. Please try again!",
@@ -153,7 +146,39 @@
       "convo_list_title": "Stored Conversations",
       "convo_remove_success_title": "Conversation Removed",
       "convo_remove_success_description": "✅ Removed:\nQ: {question}\nA: {answer}",
-      "remove_prompt": "Enter the number of the entry you want to remove"
+      "remove_prompt": "Enter the number of the entry you want to remove",
+      "cancelled_title": "Operation Cancelled",
+      "cancelled_description": "The teaching operation has been cancelled.",
+      "trigger_error_title": "Trigger Error",
+      "trigger_missing_word": "🚫 You must provide a trigger word to add!",
+      "trigger_duplicate": "🚫 This trigger word already exists!",
+      "trigger_success_title": "Trigger Added!",
+      "trigger_success_description": "✅ Added new trigger word: **{trigger}**",
+      "trigger_empty_title": "No Triggers",
+      "trigger_empty_description": "There are no trigger words stored yet!",
+      "trigger_list_title": "Stored Trigger Words",
+      "trigger_remove_success_title": "Trigger Removed",
+      "trigger_remove_success_description": "✅ Removed trigger word: **{trigger}**",
+      "nickname_success_title": "Nickname Updated!",
+      "nickname_success_description": "✅ Your nickname has been set to: **{nickname}**",
+      "nickname_error_title": "Error",
+      "nickname_error_description": "There was an error updating your nickname. Please try again!",
+      "botname_success_title": "Bot Name Updated!",
+      "botname_success_description": "✅ The bot's name has been set to: **{name}**",
+      "botname_error_title": "Error",
+      "botname_error_description": "There was an error updating the bot's name. Please try again!"
+    },
+    "settings": {
+      "error_title": "Settings Error",
+      "error_description": "Something went wrong. Please try again.",
+      "no_permission": "🚫 You need Manage Channels permission to do this!",
+      "automsg_minimum": "🚫 Auto-message count must be 0 (disabled) or at least 30.",
+      "automsg_success_title": "Auto-Message Updated!",
+      "automsg_success_description": "✅ Bot will now respond every {count} messages. (0 = disabled)",
+      "teachperms_success_title": "Teaching Permissions Updated!",
+      "teachperms_success_description": "✅ Teaching permissions set to: **{mode}**",
+      "language_success_title": "Language Updated!",
+      "language_success_description": "✅ Your language has been set to English."
     }
   },
   "general": {
@@ -164,6 +189,14 @@
       "test_only": "Sorry, this is a test command!",
       "insufficient_permissions": "Not enough permissions!",
       "generic_error": "There was an error executing this command!"
+    }
+  },
+  "events": {
+    "geminiBot": {
+      "setup_required_title": "Bot Setup Required",
+      "setup_required_description": "To use the chat feature, please set up the following:\n• At least 2 conversation examples using `/teach convo`\n• At least 1 info entry using `/teach info`\nYou may also use `/setup` to easily choose a personality preset for the bot.",
+      "safety_error_title": "Safety Filter Triggered",
+      "safety_error_description": "🚫 Gemini's safety filters blocked the response. This usually happens when the content might violate Google's safety measures."
     }
   }
 }

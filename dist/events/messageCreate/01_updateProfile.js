@@ -1,6 +1,9 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-const userModel = require("../../models/userSchema");
+const userSchema_1 = __importDefault(require("../../models/userSchema"));
 const handler = async (client, message) => {
     if (message.author.bot)
         return;
@@ -8,9 +11,12 @@ const handler = async (client, message) => {
         const serverLocale = message.guild?.preferredLocale;
         console.log(`Server language detected: ${serverLocale}`);
         const userLanguage = serverLocale?.startsWith("ja") ? "ja" : "en";
-        let user = await userModel.findOne({ userID: message.author.id });
+        let user = await userSchema_1.default.findOne({
+            userID: message.author.id,
+            serverID: message.guild?.id,
+        });
         if (!user && message.guild) {
-            user = await userModel.create({
+            user = await userSchema_1.default.create({
                 userID: message.author.id,
                 serverID: message.guild.id,
                 nickname: message.author.displayName,
@@ -25,3 +31,4 @@ const handler = async (client, message) => {
     }
 };
 exports.default = handler;
+//# sourceMappingURL=01_updateProfile.js.map

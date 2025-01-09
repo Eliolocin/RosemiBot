@@ -7,7 +7,7 @@ import {
   Guild,
   GuildMember,
   PermissionsBitField,
-  TextBasedChannel, // Add this
+  TextBasedChannel,
 } from "discord.js";
 import { Document } from "mongoose";
 import {
@@ -120,15 +120,16 @@ interface CommandOption {
   type: ApplicationCommandOptionType;
   required?: boolean;
   choices?: { name: string; value: string | number }[];
-  options?: CommandOption[]; // Add this line to support subcommand options
+  options?: CommandOption[];
 }
 
 export interface Command {
   name: string;
   description: string;
   category: string;
-  options?: CommandOption[]; // Update this to use the new CommandOption interface
-  permissionsRequired?: PermissionsBitField[]; // Add this line
+  deleted?: boolean;
+  options?: CommandOption[];
+  permissionsRequired?: PermissionsBitField[];
   callback: (
     client: Client,
     interaction: ChatInputCommandInteraction,
@@ -136,43 +137,8 @@ export interface Command {
   ) => Promise<void>;
 }
 
-export interface BooruPost {
-  data: Record<string, any>;
-  booru: string;
-  fileUrl: string;
-  id: string;
-  tags: string[];
-  score: number;
-  source?: string;
-  rating: string;
-  createdAt: Date;
-  postView: string;
-  height?: number;
-  width?: number;
-  sampleUrl?: string;
-}
-
-export interface BooruSearchResults {
-  posts: BooruPost[];
-  booru: string;
-  tags: string[];
-  limit: number;
-  offset: number;
-}
-
-export interface BooruSearchOptions {
-  limit?: number;
-  random?: boolean;
-  tags?: string[];
-}
-
-export interface RawBooruPost {
-  fileUrl: string;
-  source?: string;
-  id: string;
-  tags: string[];
-  score: number;
-  rating: string;
-  createdAt: Date;
-  postView: string;
+export enum TeachPerms {
+  CHANNEL_MANAGER = 'chmanager',
+  PRICED = 'priced',
+  FREE = 'free'
 }

@@ -6,7 +6,7 @@ const handler = async (client: Client, message: Message): Promise<void> => {
 
   try {
     const serverLocale = message.guild?.preferredLocale;
-    console.log(`Server language detected: ${serverLocale}`);
+    //console.log(`Server language detected: ${serverLocale}`);
 
     const userLanguage = serverLocale?.startsWith("ja") ? "ja" : "en";
 

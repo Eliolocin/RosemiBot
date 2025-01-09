@@ -39,3 +39,4 @@ const localizer = (locale, key, variables = {}) => {
     return result;
 };
 exports.localizer = localizer;
+//# sourceMappingURL=textLocalizer.js.map

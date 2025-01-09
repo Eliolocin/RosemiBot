@@ -1,15 +1,20 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const discord_js_1 = require("discord.js");
+const package_json_1 = __importDefault(require("../../../package.json"));
 const handler = async (client) => {
-    console.log(`${client.user?.tag} up and growing!`);
+    console.log(`${client.user?.tag} is now online!`);
     const status = [
         {
-            name: "Kawaii Future Bass music",
-            type: discord_js_1.ActivityType.Listening,
+            // Add a “Playing” status with the version from package.json
+            name: `v${package_json_1.default.version}`,
+            type: discord_js_1.ActivityType.Playing,
         },
         {
-            name: "=help",
+            name: "/help",
             type: discord_js_1.ActivityType.Listening,
         },
         // ...existing status entries...
@@ -21,3 +26,4 @@ const handler = async (client) => {
     client.user?.setActivity(status[1]);
 };
 exports.default = handler;
+//# sourceMappingURL=status.js.map

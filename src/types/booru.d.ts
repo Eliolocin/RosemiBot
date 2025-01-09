@@ -8,6 +8,7 @@ declare module "booru" {
     limit?: number;
     random?: boolean;
     page?: number;
+    tags?: string[];
   }
 
   export interface Post {
@@ -19,9 +20,18 @@ declare module "booru" {
     source?: string;
     rating: string;
     createdAt: Date;
+    height?: number;
+    width?: number;
+    sampleUrl?: string;
   }
 
-  export interface SearchResults extends Array<Post> {}
+  export interface SearchResults extends Array<Post> {
+    posts?: Post[];
+    booru?: string;
+    tags?: string[];
+    limit?: number;
+    offset?: number;
+  }
 
   export interface Booru {
     search(tags: string[], options?: SearchOptions): Promise<SearchResults>;

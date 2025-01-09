@@ -8,7 +8,7 @@ import {
 import createBooru, { Post } from "booru";
 import { Eiyuu } from "eiyuu";
 import { localizer } from "../../utils/textLocalizer";
-import { Command, IUser, BooruPost } from "../../types";
+import { Command, IUser } from "../../types/global";
 import { getFormattedSource } from "../../utils/formatSource";
 
 const resolve = new Eiyuu();

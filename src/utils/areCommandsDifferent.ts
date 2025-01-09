@@ -1,5 +1,5 @@
 import { ApplicationCommand, ApplicationCommandOptionData } from "discord.js";
-import { LocalCommand } from "../types";
+import { LocalCommand } from "../types/global";
 
 interface CommandChoice {
   name: string;

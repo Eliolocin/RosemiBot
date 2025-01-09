@@ -55,3 +55,4 @@ const getLocalCommands = async (exceptions = []) => {
     return localCommands;
 };
 exports.default = getLocalCommands;
+//# sourceMappingURL=getLocalCommands.js.map

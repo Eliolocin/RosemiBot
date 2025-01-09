@@ -10,6 +10,7 @@ const eventHandler_1 = __importDefault(require("./handlers/eventHandler"));
 (0, dotenv_1.config)();
 const client = new discord_js_1.Client({
     intents: [
+        // Intents required by the Discord Bot
         discord_js_1.GatewayIntentBits.Guilds,
         discord_js_1.GatewayIntentBits.GuildMembers,
         discord_js_1.GatewayIntentBits.GuildMessages,
@@ -21,7 +22,7 @@ const client = new discord_js_1.Client({
     ],
     partials: [discord_js_1.Partials.Channel, discord_js_1.Partials.Message],
 });
-// Activate Command Handler
+// First register event han// Activate Command Handler
 (0, eventHandler_1.default)(client);
 // Connect to MongoDB
 const mongoUri = process.env.MONGODB_SRV;
@@ -38,3 +39,4 @@ mongoose_1.default
 });
 // Login Bot using Discord Token
 client.login(process.env.DISCORD_TOKEN);
+//# sourceMappingURL=index.js.map

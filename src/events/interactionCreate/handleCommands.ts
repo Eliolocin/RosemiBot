@@ -1,6 +1,6 @@
 import { Client, Interaction, ChatInputCommandInteraction } from "discord.js";
 import UserModel from "../../models/userSchema";
-import { IUser } from "../../types";
+import { IUser } from "../../types/global";
 import getLocalCommands from "../../utils/getLocalCommands";
 import { localizer } from "../../utils/textLocalizer";
 

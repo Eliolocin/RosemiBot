@@ -22,7 +22,6 @@ const command = {
         await interaction.deferReply();
         const locale = userData.language || "en";
         const withdrawAmount = interaction.options.getInteger("amount", true);
-        // ...existing validation and embed logic for invalid amount...
         if (withdrawAmount <= 0) {
             const embed = new discord_js_1.EmbedBuilder()
                 .setColor("#FF0000")
@@ -34,7 +33,6 @@ const command = {
             await interaction.editReply({ embeds: [embed] });
             return;
         }
-        // ...existing validation and embed logic for insufficient balance...
         if (withdrawAmount > userData.bank) {
             const embed = new discord_js_1.EmbedBuilder()
                 .setColor("#FF0000")
@@ -76,3 +74,4 @@ const command = {
     },
 };
 exports.default = command;
+//# sourceMappingURL=withdraw.js.map

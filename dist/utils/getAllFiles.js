@@ -24,3 +24,4 @@ const getAllFiles = (directory, foldersOnly = false) => {
     return fileNames;
 };
 exports.default = getAllFiles;
+//# sourceMappingURL=getAllFiles.js.map

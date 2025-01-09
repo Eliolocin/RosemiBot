@@ -1,15 +1,17 @@
 import { Client, ActivityType, ActivityOptions } from "discord.js";
+import pkg from "../../../package.json";
 
 const handler = async (client: Client): Promise<void> => {
-  console.log(`${client.user?.tag} up and growing!`);
+  console.log(`${client.user?.tag} is now online!`);
 
   const status: ActivityOptions[] = [
     {
-      name: "Kawaii Future Bass music",
-      type: ActivityType.Listening,
+      // Add a “Playing” status with the version from package.json
+      name: `v${pkg.version}`, 
+      type: ActivityType.Playing,
     },
     {
-      name: "=help",
+      name: "/help",
       type: ActivityType.Listening,
     },
     // ...existing status entries...

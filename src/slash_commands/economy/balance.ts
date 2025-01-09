@@ -1,5 +1,5 @@
 import { EmbedBuilder, ChatInputCommandInteraction, Client } from "discord.js";
-import { Command, IUser } from "../../types";
+import { Command, IUser } from "../../types/global";
 import { localizer } from "../../utils/textLocalizer";
 
 const command: Command = {

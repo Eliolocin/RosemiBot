@@ -15,3 +15,4 @@ const getFormattedSource = (url) => {
     }
 };
 exports.getFormattedSource = getFormattedSource;
+//# sourceMappingURL=formatSource.js.map

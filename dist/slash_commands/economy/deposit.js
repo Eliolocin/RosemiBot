@@ -8,12 +8,12 @@ const textLocalizer_1 = require("../../utils/textLocalizer");
 const userSchema_1 = __importDefault(require("../../models/userSchema"));
 const command = {
     name: "deposit",
-    description: "Deposit your TomoCoins into your bank.",
+    description: "Deposit your TomoCoins into your bank | トモコインを銀行に預けます",
     category: "economy",
     options: [
         {
             name: "amount",
-            description: "The amount of TomoCoins you wish to deposit",
+            description: "The amount of TomoCoins you wish to deposit | 預金したいTomoCoinsの金額",
             type: discord_js_1.ApplicationCommandOptionType.Integer,
             required: true,
         },
@@ -70,3 +70,4 @@ const command = {
     },
 };
 exports.default = command;
+//# sourceMappingURL=deposit.js.map

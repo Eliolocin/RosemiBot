@@ -3,7 +3,7 @@ import BotModel from "../../models/botSchema";
 import ShopModel from "../../models/shopSchema";
 import fs from "fs";
 import path from "path";
-import { IBot, IShop } from "../../types";
+import { IBot, IShop } from "../../types/global";
 
 const handler = async (client: Client, guild: Guild): Promise<void> => {
   try {
@@ -17,20 +17,19 @@ const handler = async (client: Client, guild: Guild): Promise<void> => {
 
     const defaultData = JSON.parse(fs.readFileSync(personaFilePath, "utf-8"));
 
+    // Ensure the required data exists and is an array
+    const generalInfo = Array.isArray(defaultData.generalInfo) ? defaultData.generalInfo : [];
+    const defaultBotDatabase = Array.isArray(defaultData.default?.botDatabase) 
+      ? defaultData.default.botDatabase 
+      : [];
+
     // Initialize bot entry using the same pattern as registerProfile.ts
     let bot = await BotModel.findOne({ serverID });
     if (!bot) {
       bot = await BotModel.create({
         serverID,
-        conversationExamples: defaultData.conversationExamples,
-        botDatabase: defaultData.botDatabase,
-        settings: [
-          {
-            key: "prefix",
-            value: "=",
-            description: "Command prefix for the bot",
-          },
-        ],
+        conversationExamples: defaultData.default?.conversationExamples || [],
+        botDatabase: [...generalInfo, ...defaultBotDatabase],
       });
       await bot.save();
       console.log(`Bot data initialized for server ${serverID}`);

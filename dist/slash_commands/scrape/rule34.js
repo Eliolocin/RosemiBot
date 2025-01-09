@@ -13,10 +13,11 @@ const postfiltering = " score:>=3";
 const command = {
     name: "rule34",
     description: "Retrieve 4 Search Results from Rule34 | Rule34から検索結果を4つ取得します",
+    category: "scrape",
     options: [
         {
             name: "tags",
-            description: "Enter tags separated by commas (e.g. dragon, furry, dragonite)",
+            description: "Enter tags separated by commas | タグをカンマで区切って入力してください",
             type: discord_js_1.ApplicationCommandOptionType.String,
             required: true,
         },
@@ -24,6 +25,17 @@ const command = {
     callback: async (client, interaction, userData) => {
         const locale = userData.language || "en";
         try {
+            // NSFW Check
+            const channel = interaction.channel;
+            if (!channel?.isTextBased() ||
+                !(channel instanceof discord_js_1.TextChannel) ||
+                !channel.nsfw) {
+                const embed = new discord_js_1.EmbedBuilder()
+                    .setColor("#FF0000")
+                    .setTitle((0, textLocalizer_1.localizer)(locale, "scrape.rule34.error_not_nsfw"));
+                await interaction.reply({ embeds: [embed], ephemeral: true });
+                return;
+            }
             await interaction.deferReply();
             const userquery = interaction.options.getString("tags", true); // Mark as required
             const tags = userquery.split(",").map((tag) => tag.trim());
@@ -94,3 +106,4 @@ const command = {
     },
 };
 exports.default = command;
+//# sourceMappingURL=rule34.js.map

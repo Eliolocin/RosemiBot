@@ -1,5 +1,5 @@
 import mongoose, { model, Schema } from "mongoose";
-import { IShop } from "../types";
+import { IShop } from "../types/global";
 
 const shopSchema = new Schema<IShop>({
   serverID: { type: String, required: true },

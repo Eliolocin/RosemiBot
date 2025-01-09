@@ -1,6 +1,5 @@
 import UserModel from "../models/userSchema";
 
-// Method 1: Use export statement at declaration
 async function convertMentionsToNicknames(
   text: string,
   serverID: string
@@ -20,26 +19,19 @@ async function convertMentionsToNicknames(
       const userData = await UserModel.findOne({ userID, serverID });
 
       if (userData && userData.nickname) {
-        // Replace mention with nickname
+        // Replace mention with nickname, preserving ML tags
         convertedText = convertedText.replace(
-          fullMention,
-          `@${userData.nickname}`
+          new RegExp(fullMention, 'g'), // Use global flag to replace all instances
+          userData.nickname
         );
-      } else {
-        // If no nickname found, just use original <@123456789> format
-        convertedText = convertedText.replace(fullMention, `<@${userID}>`);
       }
     }
 
     return convertedText;
   } catch (error) {
     console.error("Error in convertMentionsToNicknames:", error);
-    return text; // Return original text if there's an error
+    return text;
   }
 }
 
-// OR Method 2: Use export statement at the bottom
-// async function convertMentionsToNicknames(text: string): Promise<string> {
-//   // ...existing code...
-// }
 export { convertMentionsToNicknames };
