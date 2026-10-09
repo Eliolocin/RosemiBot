@@ -291,9 +291,10 @@ variable "searxng_container_name" {
 }
 
 variable "searxng_image" {
-  description = "Pinned SearXNG image (digest recommended)"
+  description = "SearXNG image pinned by digest; override deliberately with another verified digest"
   type        = string
-  default     = "searxng/searxng:latest"
+  # Same digest as servers/searxng/Dockerfile. A moving tag changes the sidecar on any task restart.
+  default     = "searxng/searxng@sha256:b8ca38ba06eea544d7555e88321e212ddc0d5c3c7de055419cfb2e5c6bf30812"
 }
 
 variable "searxng_secret_key" {

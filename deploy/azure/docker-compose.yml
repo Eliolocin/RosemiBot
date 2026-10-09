@@ -36,14 +36,8 @@ services:
       # Mirror production JSON logs (level >= 50) to an append-only JSONL file
       # tailed by Azure Monitor Agent on the host (see bind mount below).
       TOMORI_LOG_FILE: /app/logs/tomoribot.jsonl
-      # Arms the SIGUSR2 heap-snapshot handler, which is the only way to attribute
-      # external/arrayBuffers growth that the cache_sizes counters cannot decompose.
-      # Registering it is inert: nothing is written until a signal is sent deliberately.
-      # Enabled here rather than left to the deploy env so a snapshot never requires its
-      # own deploy first, since deploying recreates the container and discards the very
-      # heap worth capturing. Points at the log bind mount because the root filesystem is
-      # read-only. Sending the signal is not free: see .env.optional.example.
-      HEAP_SNAPSHOT_DIR: ${TOMORIBOT_HEAP_SNAPSHOT_DIR:-/app/logs}
+      # Heap dumps contain live secrets, so diagnostics require explicit enablement outside log shipping.
+      HEAP_SNAPSHOT_DIR: ${TOMORIBOT_HEAP_SNAPSHOT_DIR:-}
     ports:
       - "127.0.0.1:8081:8081"
     volumes:
@@ -52,6 +46,7 @@ services:
       # Host directory is created by the deploy workflow with UID/GID 1001 (container
       # user "tomori") before compose starts; masks the image's /app/logs at runtime.
       - /var/log/tomoribot:/app/logs
+      - /var/lib/tomoribot/diagnostics:/app/diagnostics
       - /var/lib/tomoribot/backups:/app/backups
       - /var/lib/tomoribot/data:/app/data
     tmpfs:

@@ -81,6 +81,7 @@ install -d -o 1001 -g 1001 -m 0750 \
   /var/log/tomoribot \
   /var/lib/tomoribot/backups \
   /var/lib/tomoribot/data
+install -d -o 1001 -g 1001 -m 0700 /var/lib/tomoribot/diagnostics
 install -m 0640 -o root -g 1001 \
   "$stage_dir/runtime-secrets.json" /etc/tomoribot/.secrets.json.new
 install -m 0640 -o root -g 1001 \
