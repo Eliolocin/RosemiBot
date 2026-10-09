@@ -4,9 +4,6 @@ import { Glob } from "bun";
 import { log } from "@/utils/misc/logger";
 import { isVerboseOutput } from "./lib/gateOutput";
 
-/**
- * Discord API Limits
- */
 const DISCORD_LIMITS = {
   /**
    * Upper bound for `.setMaxLength()` on modal text inputs.
@@ -40,9 +37,6 @@ interface Violation {
  */
 type ViolationType = "missing_max_length" | "exceeds_max_length" | "exceeds_choice_limit" | "exceeds_select_limit";
 
-/**
- * Interface for analysis results
- */
 interface AnalysisResult {
   violations: Violation[];
   filesScanned: number;

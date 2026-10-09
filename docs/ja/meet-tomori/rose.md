@@ -2,6 +2,7 @@
 title: "ボーイッシュなロゼ"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Source: src/db/seed/catalog/personas/default/en-US.ts.

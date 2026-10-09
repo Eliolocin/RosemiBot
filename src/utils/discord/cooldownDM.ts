@@ -4,6 +4,7 @@ import { localizer } from "@/utils/text/localizer";
 import { log } from "@/utils/misc/logger";
 import { replyInfoEmbed } from "@/utils/discord/ui/embeds";
 import { ColorCode } from "@/utils/misc/logger";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 /**
  * Sends a cooldown notification to the user via DM, with fallback to ephemeral channel reply
@@ -24,7 +25,7 @@ export async function sendCooldownDM(
 ): Promise<void> {
   try {
     const cooldownEmbed = new EmbedBuilder()
-      .setTitle(localizer(locale, titleKey))
+      .setTitle(localizedStatusTitle(locale, titleKey, ColorCode.WARN))
       .setDescription(localizer(locale, descriptionKey, descriptionVars))
       .setColor(ColorCode.WARN)
       .setTimestamp();

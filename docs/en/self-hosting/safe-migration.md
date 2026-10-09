@@ -10,12 +10,26 @@ When you `git pull` new code and restart TomoriBot, the bot automatically runs d
 
 TomoriBot's migration runner (in `src/db/migrationRunner.ts`) executes all unapplied migrations in version order. Migrations are forward-only: if something goes wrong, the runner does not auto-rollback. Most migrations are safe expansions (new columns, new tables), but per the project's internal design policy (OD-R-6), destructive operations such as `DROP COLUMN` or `DROP TABLE` are permitted. If a destructive migration runs without a backup, you lose data permanently. When in doubt, back up first.
 
+## Custom expression media backups
+<!-- anchor: custom-expression-media-backups -->
+
+Database backups retain custom expression metadata, persona memberships, and storage
+references. They do not include uploaded or imported media bytes. Stop the bot before
+backing up the database and media together. With local storage, copy `data/custom-expressions/`
+and restore it to the same location. With GCS or S3, back up the owned `custom-expressions/`
+objects and restore their keys in the configured expression bucket. Restore the matching
+`EXPRESSION_STORAGE_BACKEND` and `EXPRESSION_STORAGE_BUCKET` settings. Changing the backend
+or bucket alone leaves existing references unreadable. Link expressions are stored as URLs only
+and remain dependent on their external hosts. Discord JSON exports carry no expression registry
+or media archive.
+
 ## Pre-pull checklist
+
 
 Follow these steps BEFORE running `git pull`:
 
 1. **Stop the bot**: shut down the TomoriBot process so no active database connections interfere with the backup.
-2. **Back up the database**: use one of the two methods below.
+2. **Back up the database and retain its keys**: use one of the two methods below. Keep a separate protected copy of every encryption version needed by the dump and test recovery on a disposable database.
 3. **Note the current commit**: run `git rev-parse HEAD` and save the output in case rollback is needed.
 4. **Pull and restart**: once the backup is safely on disk, you're safe to pull and restart.
 
@@ -53,7 +67,7 @@ For a safe migration, use the full backup:
 bun run backup
 ```
 
-This creates a timestamped bundle in `backups/` (or your `TOMORI_BACKUP_DIR` if overridden in `.env`) containing the entire PostgreSQL database as a plain SQL dump. To restore later, run:
+This creates a timestamped bundle in `backups/` (or your `TOMORI_BACKUP_DIR` if overridden in `.env`) containing the entire PostgreSQL database as a plain SQL dump. The bundle contains no `.env` or master secrets. Before restoring, provision matching encryption versions separately in the target secret source and stop all bot instances. See [Database backups and recovery keys](/self-hosting/maintenance/#database-backups-and-recovery-keys) for the full procedure. Missing or wrong keys stop the restore before destructive SQL. Legacy bundles still contain raw `config.env` secrets; review them privately and provision their keys yourself. Restore never copies that file. To restore later, run:
 
 ```bash
 bun run restore-backup --latest
@@ -112,7 +126,7 @@ Note: `pg_restore` will prompt for your password unless you set it in a `.pgpass
 
 ## For contributors deploying via CI: the `(Checkpoint)` convention
 
-If you maintain a fork that deploys to AWS or GCP via the workflows in `.github/workflows/deploy-tomoribot-{aws,gcp}.yml`, those pipelines support an opt-in pre-deploy snapshot: when a commit message contains the literal token `(Checkpoint)`, the workflow runs `aws rds create-db-snapshot` (or the GCP Cloud SQL equivalent) before any code is deployed and before the migration runner touches the database on boot.
+If you maintain a fork that deploys to AWS or GCP via the workflows in `.github/workflows/deploy-{aws,gcp-legacy}.yml`, those pipelines support an opt-in pre-deploy snapshot: when a commit message contains the literal token `(Checkpoint)`, the workflow runs `aws rds create-db-snapshot` (or the GCP Cloud SQL equivalent) before any code is deployed and before the migration runner touches the database on boot.
 
 Use it when:
 
@@ -217,7 +231,7 @@ By project design policy (OD-R-6), the migration runner cannot roll back destruc
 
 Your backup is the only recovery for these operations. Always back up before pulling if you're on an older version and a new refactor has shipped.
 
-The migration runner's forward-only design is intentional: rollback files (`.down.sql`) exist for developer safety during testing, but production recovery relies on backups, not re-execution of undoable operations.
+The migration runner's forward-only design is intentional: rollback files (`.down.sql`) exist for developer safety during testing, but production recovery uses backups and their separately retained encryption keys. Re-executing a destructive migration cannot recover deleted data.
 
 ## Trying out a feature branch, then returning to `main`
 
@@ -225,7 +239,7 @@ A common case: someone asks you to test a branch on your existing install, and y
 
 ### Key facts
 
-- Git and PostgreSQL are separate worlds. `git checkout` only swaps files on disk; it never connects to or modifies your database. Your applied-migration state lives in the `schema_migrations` table, not in git.
+- Git and PostgreSQL are separate worlds. `git checkout` only swaps files on disk; it never connects to or modifies your database. PostgreSQL stores applied-migration state in the `schema_migrations` table. Switching git branches does not change that table.
 - Migrations run automatically on boot (via `initializeDatabase.ts`), so the moment you start the branch, its new migrations are applied to whatever database you pointed at.
 - The forward runner never auto-rolls-back. When you return to `main`, it scans the files on disk, finds nothing pending, and does nothing. Migrations the branch applied stay applied.
 
@@ -233,7 +247,7 @@ A common case: someone asks you to test a branch on your existing install, and y
 
 It depends entirely on what the branch's migrations did:
 
-- **Additive only** (new tables / new columns) → safe. The new objects simply sit unused; `main`'s code never references them, so they cannot cause wrong results or crashes. They are harmless dead weight.
+- **Additive only** (new tables / new columns) → safe. The new objects simply sit unused; `main`'s code never references them, so they cannot cause wrong results or crashes. Remove unused objects only through a reviewed migration.
 - **Destructive** (`DROP`/`RENAME`/`ALTER` on a table `main` still uses) → not safe. The branch's change strands `main`'s code against a column/table that is now gone or altered.
 
 - **Safest approach**: point the branch at a throwaway database (a separate `POSTGRES_DB`), so your real data is never touched. You already build the connection from `POSTGRES_*` vars, and `bun run nuke-db` can reset a scratch database.
@@ -260,5 +274,5 @@ The command runs the selected `.down.sql` files in descending version order (so 
 
 ## See also
 
-- [Database schema documentation](../architecture/subsystems/database-schema): learn the current schema structure
+- [Database schema documentation](/en/architecture/subsystems/database-schema/): learn the current schema structure
 - [Bun documentation](https://bun.sh): learn Bun runtime fundamentals

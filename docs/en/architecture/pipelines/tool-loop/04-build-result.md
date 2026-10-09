@@ -1,132 +1,74 @@
-﻿---
+---
 title: "04: Build Result"
 ---
 
-Assemble the final `GenerationTurnResult` from accumulated state.
+`buildResult` constructs the `GenerationTurnResult` at every termination point of `runToolLoop`. It
+merges NovelAI scene metadata into the response text, packages persona response entries, resolves
+thought-log ownership, and returns the result to `runGenerationTurn`.
 
-- **File**: `src/utils/chat/toolLoop.ts:411-455`
-(includes `resolveThoughtLogOwner` at 441-450 and `mergeDetails` at 452-455)
+## Result assembly and transformations
+<!-- anchor: result-assembly-and-transformations -->
 
-## Mission
+The stage packages accumulated iteration state into a standardized structure:
 
-Construct the `GenerationTurnResult` returned by `runToolLoop` to its caller
-(`runGenerationTurn`). Merges the NovelAI scene-metadata suffix into the
-response text, packages the persona response objects, and resolves which
-identity owns the thought log for display purposes.
+1. **Scene metadata suffix (`mergeDetails`):**
+   NovelAI models can return structured scene metadata in `streamResult.detailsContent`. When present,
+   `mergeDetails` appends this metadata below the model response text under a `[Scene Metadata]` header.
+   The merged text is a short-term-memory payload. The scene metadata is separated from the
+   visible streaming buffer during chunk normalization, so Discord users never see it in the channel.
 
-This function is called from every exit point in the outer loop: both
-terminal-status exits (completed, error, timeout, etc.) and the post-tool
-`endTurn`/`shouldEndAfterPreToolText` exits.
+2. **Persona response packaging (`personaResponses`):**
+   When the merged response text is non-empty, the stage creates a single `ChatPersonaResponse`
+   containing the current persona's nickname, text, persona ID, and lineage ID. When no text was produced
+   (such as an error before generation, or a turn that delivered an expression only), `personaResponses`
+   is an empty array.
 
-## Input
+3. **Thought-log identity resolution (`resolveThoughtLogOwner`):**
+   If an iteration emitted a thought log, `resolveThoughtLogOwner` identifies the authoring entity for
+   UI rendering:
+   - User impersonation (`isUserImpersonation: true`): maps to `{ type: "user_impersonation", username, avatarUrl }`.
+   - Alter persona (`currentPersona.is_alter: true`): maps to `{ type: "persona", persona: currentPersona }`.
+   - Default persona: maps to `{ type: "default" }`.
+   If no thought log was produced, `thoughtLogOwner` remains `undefined`.
 
-- `status: GenerationTurnResult["status"]`: the final loop status.
-- `context: ChatTurnContext`: provides persona identity and impersonation flags.
-- `streamResults: StreamResult[]`: all stream results accumulated across
-  iterations (included verbatim in the result).
-- `responseText: string`: the final accumulated response text (empty string
-  when no text was produced).
-- `detailsText: string`: accumulated NovelAI scene-metadata content from
-  `streamResult.detailsContent` fields across tool-call iterations.
-- `thoughtLog: GenerationTurnResult["thoughtLog"] | undefined`: the last
-  thought log payload emitted by any iteration, or `undefined`.
-- `selectedSticker?: Sticker`: the latest successful sticker selection. The
-  loop supplies it only on completed exits; timeout/error/stop paths and the
-  max-iterations exit omit it.
+4. **Direct delivery tracking (`toolResponseDelivered`):**
+   The stage records whether a tool delivered output directly to the channel. When an expression was
+   sent without additional assistant text, `personaResponses` is empty while `toolResponseDelivered`
+   is `true`. Downstream consumers use this flag to recognize the turn as completed rather than
+   treating the empty text as an unexpected failure.
 
-## Output
+## Handoff to the chat pipeline
+<!-- anchor: handoff-to-the-chat-pipeline -->
 
-`GenerationTurnResult`: defined in `src/utils/chat/types.ts`:
+The assembled `GenerationTurnResult` passes back up the chat pipeline:
 
-```ts
-{
-  status: StreamResult["status"] | "skipped";
-  streamResults: StreamResult[];
-  personaResponses: ChatPersonaResponse[];   // empty if no text
-  thoughtLog?: ThoughtLogPayload;
-  thoughtLogOwner?: ThoughtLogOwner;
-  selectedSticker?: Sticker;
-}
-```
+1. **Attempt evaluation (`runGenerationTurn`):**
+   `runGenerationTurn` inspects `result.status`. If the attempt ended in a retryable status (`error` or
+   `timeout`) and fallback options remain, it deletes any partial Discord messages sent by this attempt
+   via `purgeSupersededDeliveries` and retries with the next key or model.
+2. **Delivery finalization (`responseSink.finalize`):**
+   Once an attempt succeeds or fallbacks are exhausted, `runGenerationTurn` sends fallback model notices
+   if applicable and invokes `responseSink.finalize(result)` to conclude Discord message streaming.
+3. **Post-turn effects (`runPostTurnEffects`):**
+   The root chat handler (`tomoriChat`) receives the result and runs post-turn effects:
+   - Appends `result.personaResponses` to short-term memory dialogue history.
+   - Records expression usage statistics.
+   - Handles empty-response retries, quota accounting, thought logs, and boomerang follow-ups.
 
-### `mergeDetails`: scene-metadata suffix
+## Constraints and invariants
+<!-- anchor: constraints-and-invariants -->
 
-`detailsText` is produced by NovelAI when the model returns structured scene
-metadata alongside its response. `mergeDetails` appends it as:
+- **Pure assembly:** `buildResult` performs no network, database, or cache I/O. It transforms in-memory
+  iteration state into the final turn result.
+- **Complete history:** `streamResults` preserves every `StreamResult` object produced across all
+  iterations, giving diagnostic loggers the complete record of intermediate tool attempts.
+- **Distinguishable outcomes:** Consumers treat empty `personaResponses` with `toolResponseDelivered: true`
+  as a successful expression delivery, distinct from an unhandled empty response or a skipped turn.
 
-```
-<responseText>
+## Source pointers
+<!-- anchor: source-pointers -->
 
-[Scene Metadata]
-<detailsText>
-```
-
-If `detailsText` is empty or whitespace-only, `responseText` is used unchanged.
-
-The merged string is a short-term-memory payload, not a transcript: the scene
-metadata was drained out of the visible buffer and never sent to Discord.
-Consumers that need "what the channel actually saw" (notably expression stats)
-must read `StreamResult.accumulatedText` per stream segment instead, as
-[post-turn effects](../chat/06-per-turn/04-post-turn-effects) does.
-
-### `personaResponses` assembly
-
-When the merged text is non-empty, a single `ChatPersonaResponse` is emitted:
-
-```ts
-{
-  personaName: context.currentPersona.persona_nickname,
-  text: mergedText,
-  personaId: context.currentPersona.persona_id,
-  personaLineageId: context.currentPersona.persona_lineage_id,
-}
-```
-
-When the merged text is empty (e.g. status `"error"` with no pre-error text),
-`personaResponses` is an empty array. Post-turn effects and the caller
-distinguish empty `personaResponses` from the `"skipped"` status.
-
-### `resolveThoughtLogOwner`: identity resolution
-
-Maps the turn context to the thought-log owner shape:
-
-| Condition | `thoughtLogOwner` |
-|---|---|
-| `context.isUserImpersonation === true` | `{ type: "user_impersonation", username, avatarUrl }` |
-| `context.currentPersona.is_alter === true` | `{ type: "persona", persona: currentPersona }` |
-| Default | `{ type: "default" }` |
-
-`thoughtLogOwner` is `undefined` when `thoughtLog` is `undefined`.
-
-## Side effects
-
-None: this function is pure assembly; it reads state but does not write to
-Discord, the database, the cache, or any external system.
-
-## Invariants
-
-After this stage runs:
-
-- `streamResults` contains every `StreamResult` from every iteration,
-  regardless of status.
-- `personaResponses.length === 0` when there is nothing to display;
-  `responseSink.finalize` (caller of `runGenerationTurn`) handles this case.
-- If `thoughtLog` is present, `thoughtLogOwner` is also present.
-- `selectedSticker` is present only when post-turn effects may safely deliver
-  it after a completed text stream.
-
-## Extension points
-
-| Surface | Plugin-relevance |
-|---|---|
-| `ChatPersonaResponse` / `selectedSticker` result shape | Internal: the shape is consumed by `responseSink.finalize` and post-turn effects; changing it requires updating both consumers |
-| `resolveThoughtLogOwner` identity types | Internal: `"user_impersonation"`, `"persona"`, `"default"` map to distinct display behaviors in the stream orchestrator |
-| `mergeDetails` scene-metadata format | Internal: the `[Scene Metadata]` block format is NovelAI-specific; no plugin surface |
-
-## Related docs
-
-- Result consumer: → `responseSink.finalize` in
-  [`docs/en/architecture/pipelines/chat/06-per-turn/02-create-response-sink.md`](../chat/06-per-turn/02-create-response-sink)
-- Post-turn effects (reads `personaResponses`): →
-  [`docs/en/architecture/pipelines/chat/06-per-turn/04-post-turn-effects.md`](../chat/06-per-turn/04-post-turn-effects)
-- Tool-loop coordinator: → [`README.md`](README.md)
+- `src/utils/chat/toolLoop.ts`: `buildResult`, `mergeDetails`, `resolveThoughtLogOwner`.
+- `src/utils/chat/generationTurn.ts`: `runGenerationTurn`.
+- `src/utils/chat/types.ts`: `GenerationTurnResult`, `ChatPersonaResponse`.
+- `src/utils/chat/postTurnEffects.ts`: `runPostTurnEffects`.

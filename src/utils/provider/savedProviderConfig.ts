@@ -5,6 +5,7 @@ import type {
   PersonalProviderCapability,
   SavedProviderConfigRow,
   SavedProviderConfigUpsert,
+  TomoriState,
   AssembledServerConfig,
   UserSavedProviderConfigRow,
   UserSavedProviderConfigUpsert,
@@ -407,4 +408,34 @@ export async function loadUserSavedProvidersForCapability(
 ): Promise<UserSavedProviderConfigRow[]> {
   const savedConfigs = await llmProviderRepo.loadUserSavedProviderConfigs(userId);
   return await filterSavedProvidersByCapability(savedConfigs, capability, { userId });
+}
+
+/**
+ * Points a state at a saved provider's credential and samplers, for a model override that crosses
+ * providers. The key moves with the model because `config.api_key` is sent to whichever provider
+ * `llm` names, including by the background model-limits lookup; a stale key would reach the wrong
+ * vendor. No saved config clears the key rather than keeping the base provider's.
+ */
+export function withSavedProviderConfig(
+  tomoriState: TomoriState,
+  savedConfig: SavedProviderConfigRow | null,
+): TomoriState {
+  const { config } = tomoriState;
+  return {
+    ...tomoriState,
+    config: {
+      ...config,
+      api_key: savedConfig?.api_key ?? null,
+      key_version: savedConfig?.key_version ?? 1,
+      llm_temperature: savedConfig?.llm_temperature ?? config.llm_temperature,
+      llm_top_p: savedConfig?.llm_top_p ?? config.llm_top_p,
+      llm_top_k: savedConfig?.llm_top_k ?? config.llm_top_k,
+      llm_frequency_penalty: savedConfig?.llm_frequency_penalty ?? config.llm_frequency_penalty,
+      llm_presence_penalty: savedConfig?.llm_presence_penalty ?? config.llm_presence_penalty,
+      llm_min_p: savedConfig?.llm_min_p ?? config.llm_min_p,
+      thinking_level: savedConfig?.thinking_level ?? config.thinking_level,
+      llm_disabled_params: savedConfig?.llm_disabled_params ?? config.llm_disabled_params,
+      llm_logit_biases: savedConfig?.llm_logit_biases ?? config.llm_logit_biases,
+    },
+  };
 }

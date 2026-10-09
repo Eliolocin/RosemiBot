@@ -2,253 +2,28 @@
 title: "Command System"
 ---
 
-TomoriBot uses Discord slash commands loaded dynamically from `src/commands/`.
+TomoriBot loads Discord slash commands dynamically from `src/commands/` and dispatches interactions through a unified pipeline in `src/events/interactionCreate/handleCommands.ts`.
 
-## Loader and Execution Pipeline
+## Loader and execution pipeline
 
-- Registration/building: `src/utils/discord/commandLoader.ts`
-- Runtime dispatch: `src/events/interactionCreate/handleCommands.ts`
+Command discovery and registration are managed by `src/utils/discord/commandLoader.ts`.
 
-Flow:
+- **Directory structure:** The loader scans `src/commands/` for root command files (`subscribe.ts`) and nested folders (`export/personal/config.ts`). Root files represent top-level commands; nested folders map to `{category} {group} {subcommand}` or `{category} {subcommand}` hierarchies.
+- **ES module loading:** `commandLoader.ts` uses asynchronous directory traversal and dynamic ES module imports (`await import()`). Command files may use top-level `await`.
+- **Registration payload:** Command metadata is compiled into discord.js `SlashCommandBuilder` structures and registered with Discord at startup via `src/events/clientReady/01_registercommands.ts`.
+- **Runtime execution map:** The loader constructs an in-memory `CommandExecutionMap` mapping each command path to its target execution function.
 
-1. `loadCommandData()` scans command folders and top-level command files.
-2. Command metadata is built into `SlashCommandBuilder` trees.
-3. `handleCommands.ts` classifies chat-input commands and globally routed component or modal interactions.
-4. For a chat-input command, it resolves a root command, or category + group + subcommand.
-5. Category cooldown is checked/set in `cooldowns` table (`COMMAND_CATEGORY`).
-6. Target `execute()` is called with `(client, interaction, userData, locale)`.
+### Single-flight loading
 
-`commandLoader.ts` is an ESM-only loader. It uses async directory reads while building slash-command registration data and dynamically imports command modules so command files can use top-level await. Do not add `require`, `module.exports`, or synchronous directory traversal to command discovery.
+`loadCommandData()` is called from two code paths: startup command registration and the first incoming interaction in `handleCommands.ts`. The loader memoizes evaluation behind a shared promise (`cachedCommandDataPromise`).
 
-### Single-flight loading (race protection)
+This single-flight pattern prevents startup race conditions. If an interaction arrives while startup registration is importing command modules, concurrent evaluation would interleave ES module loading. A second loader could read an export binding while the module remains in its Temporal Dead Zone, throwing initialization errors and silently dropping commands. The promise clears on catastrophic failure or an empty execution map, allowing subsequent interactions to retry.
 
-`loadCommandData()` is called from two places: the startup registration path (`clientReady/01_registercommands.ts`) and the lazy first-interaction path (`interactionCreate/handleCommands.ts`). It is memoized behind a single shared promise (`cachedCommandDataPromise`) so both callers await one evaluation.
+### Import hygiene
 
-This guards against a startup race: if an interaction arrives while registration is still loading, a second concurrent `loadCommandData()` would independently `await import()` the same command modules. Because ES module evaluation interleaves across `await` points, the second loader could read an export binding (e.g. `configureSubcommand`) while the module was still in its Temporal Dead Zone, throwing `Cannot access 'configureSubcommand' before initialization` and silently skipping that command, so leaving the bot "dead" for those commands until restart.
+Command modules import database repositories, which can lead to large dependency graphs. Data-layer modules (repositories, caches) must not import high-level runtime subsystems (context building, tools, webhooks, providers). Shared leaf constants must be imported directly from their owning leaf files rather than from barrel modules that re-export heavy subsystems.
 
-The memoized promise is not cached when a load fails catastrophically (empty execution map) or rejects, so a later interaction can retry instead of locking in a broken state. `handleCommands.ts` likewise only commits its module-level maps when the load produced commands. New callers must use the exported `loadCommandData()`, never the private `loadCommandDataUncached()`.
-
-### Import hygiene (keep the loaded graph shallow)
-
-The race above is only *possible* because a command module's static import graph can be large and cyclic. Most command files import the repositories barrel (`@/utils/db/repositories`), so any heavy dependency reachable from that barrel is pulled into every command load.
-
-Rule: data-layer modules (repositories, caches) must not import high-level subsystems (context building, tools, webhooks, providers). Import shared leaf constants directly from their owning leaf module, not from a barrel that also re-exports heavy code. Example: `ServerRepository.ts` imports `DEFAULT_SYSTEM_PROMPT` from `@/utils/text/context/templates` (a leaf), not from `@/utils/text/contextBuilder` (a barrel that also re-exports `buildContext` and its tool/webhook/provider graph). That single edge previously routed the entire runtime subsystem into the repositories barrel.
-
-Run `bunx madge --circular --extensions ts --ts-config tsconfig.json src` to audit cycles. Remaining cycles are expected to be either type-only (`import type`, erased at runtime), localized repository↔cache↔barrel cycles, or self-contained subsystem-internal cycles (Matrix bridge, chat pipeline); none should route the repositories barrel into context/tool/webhook code.
-
-## Discord UI Helper Layout
-
-Command files import Discord UI helpers from responsibility-owned modules:
-
-- `src/utils/discord/ui/confirmation.ts` - confirmation prompts
-- `src/utils/discord/ui/modals.ts` - raw, legacy, and paginated modal prompts
-- `src/utils/discord/ui/embeds.ts` - info and summary embed replies
-- `src/utils/discord/ui/statusComponents.ts` - Components V2 status replies and status-page pagination
-- `src/utils/discord/ui/interactionCore.ts` - generic choice pagination
-- `src/utils/discord/ui/panel.ts` - shared Components V2 panel containers, receipts, state controls, and pagination
-- `src/utils/discord/ui/personalConfigParameterControls.ts` - shared provider-parameter summaries and semantic edit rows
-- `src/utils/discord/ui/personaWorkflow.ts` - command-facing persona picker lifecycle, acknowledgment phases, and anchor-message controller
-- `src/utils/discord/ui/helpDashboard.ts` - the persistent Components V2 `/help` dashboard and provider information modals
-
-The low-level persona renderer remains private to `interactionCore.ts` and
-`personaWorkflow.ts`; it has no command-facing barrel or compatibility export.
-
-`src/utils/discord/interactionHelper.ts` remains only as the subsystem compatibility barrel. New command code should import from the owned module that matches the helper it uses.
-
-List panels use `buildPaginationRow(...)` for selector pagination. A row with Previous, a disabled
-`Page <current> of <total>` indicator, and Next sits below the select, keeping the panel body and
-the selected item in place across page transitions.
-
-### Globally routed persistent interactions
-
-Collector-owned workflows and globally routed panels solve different lifecycle problems:
-
-- A collector-owned workflow is a bounded command session. Its command invocation owns the collector, timeout, and terminal repaint.
-- A globally routed panel handles every matching button, select, or modal submission as a fresh `interactionCreate` event. It does not depend on the original command process or an in-memory collector remaining alive.
-
-The reusable global path is intentionally small:
-
-- `src/utils/discord/interactions/routeRegistry.ts` parses versioned custom IDs and dispatches an exact namespace/version route.
-- `src/utils/discord/interactions/router.ts` owns the registered route list and defensive error response.
-- Feature routes, such as `src/utils/discord/interactions/helpRoutes.ts`, validate their own action and state segments.
-
-Only IDs registered in this path are consumed. Every Discord message component type and modal
-submission can enter the global route registry. This uses Discord's common message-component guard
-instead of enumerating button and select variants, so a new native selector cannot be filtered out
-before its route acknowledges it. Unmatched component interactions return to the existing
-collector-owned behavior unchanged. Custom IDs must include a namespace and version, such as
-`help:v2:page:en-US:memory`, so incompatible future state can use a new version without silently
-changing old messages. Persistent help IDs also carry the panel locale so later interactions
-preserve the language selected by the slash-command dispatcher without another database read before
-`showModal()`.
-
-Deferred panel branches call `beginPanelInteraction(...)`. The helper owns `deferUpdate()` and runs
-it before authorization or state loading, so its callers cannot accidentally move asynchronous
-work ahead of acknowledgement. A branch that opens a modal stays outside this helper because
-`showModal()` must be that interaction's acknowledgement.
-
-Multi-step modal continuations and collection-derived operations (such as personal spotlight configuration and removal in `/personal config`) bind state to a deterministic actor- and workspace-scoped collection fingerprint in the custom ID instead of process-local memory. If the underlying collection drifts (for example, personas or active spotlight rows are added, removed, or reordered between render and submit), fingerprint verification fails closed and surfaces a localized stale-panel notice: drift prevents the requested identity-sensitive mutation, its success telemetry, and its success receipt or cache effects, while repository-owned read cleanup may still prune expired or orphaned records.
-
-`/help` is the pilot. `src/commands/help.ts` sends one ephemeral Components V2 panel, while `src/utils/discord/helpCatalog.ts` owns its four categories, fifteen sections, and twenty-one subsections. Category buttons, the section select, the subsection select, and Previous/Next controls repaint that message through fresh interactions. The panel renders no section heading: the section select occupies that slot and its closed value is the active section's name, with the section description directly below it. Setup's Getting Started section opens a text-only provider modal. Discord emits no interaction when a modal is dismissed, so dismissal leaves the underlying help message unchanged and its globally routed controls available for a later click. The exact way a Discord client returns focus to that message is client behavior and is not guaranteed by the bot.
-
-Do not move existing collectors to the global path merely because the registry exists. Use global routing only when the message is intended to outlive a bounded command session and every interaction can reconstruct its state from the custom ID plus durable data. Continue to use the anchor workflow for multi-step writes, validation, permissions, and cache invalidation that belong to one command session.
-
-### Panel failure observability
-
-A panel reports an expected refusal by returning a status object (`{ status: "write-failed" }`) and
-repainting with a red receipt. It does not throw, so the router's exception handler never sees it and
-the actor's failure leaves no trace unless something else records it. Two rules keep that class of
-failure traceable.
-
-Every receipt repaint is observable. `deliverGuardedPanel` takes the receipt in its delivery
-options and emits one `panel_failure` metric for an `error` or `warning` tone, carrying the locale,
-the tone, the namespace parsed from the interaction's custom ID, and a `reason` key. The
-per-namespace `repaint` helpers pass their receipt through, so a panel that repaints as failed is
-countable in production without each of the roughly 149 receipt literals opting in.
-
-The failure goes to both sinks with the same fields: `log.metric` for the host JSONL that survives a
-container recreate, and `metricSampleRepository.recordSample("panel_failure", fields)` for the
-Postgres row Grafana can graph. The database write is fire-and-forget and never awaited, because it
-can ride a prune on the write path and this runs before the Discord request; awaiting it would put a
-round trip in front of every failure repaint. The sink resolves lazily through
-`setPanelFailureSampleSink`, so importing `interactionCore` never drags the database client into a
-caller that only wants to deliver a panel, and tests can deliver without a live pool.
-
-The receipt travels beside the payload rather than inside it. Embedding a marker in the rendered
-content would spend the payload's Discord text budget and could make the combined panel invalid.
-Passing it as an option keeps observability metadata out of user-facing content. The shared panel
-container then formats both the main payload and receipt `TextDisplay` content from component-tree
-context before final Components V2 validation.
-
-A receipt that knows its action carries the join key. Successes live in `stat_counters` as
-`panel_action`, keyed `<surface>.<scope>.<resource>.<verb>`. `reason` does not share that key space,
-so a receipt that knows which control it reports on sets `action` to the same identifier the success
-counter writes, and the metric emits it as an `action` field. The field is omitted rather than
-defaulted when the site does not know it: a placeholder would join to no counter while looking as
-though it had. Moderation and the provider panels set it today; other surfaces fall back to
-`namespace` plus `tone`, which compares surfaces but not individual controls.
-
-Both sides need aggregating before the join. `stat_counters` holds one row per server, user and
-bucket, so joining it directly to `metric_samples` fans the failure count out by the number of
-success rows:
-
-```sql
-WITH successes AS (
-  SELECT metric_key AS action, SUM(count) AS successes
-  FROM stat_counters WHERE metric = 'panel_action' GROUP BY 1
-), failures AS (
-  SELECT fields->>'action' AS action, COUNT(*) AS failures
-  FROM metric_samples WHERE metric_name = 'panel_failure' AND fields ? 'action' GROUP BY 1
-)
-SELECT COALESCE(s.action, f.action) AS action, COALESCE(s.successes, 0), COALESCE(f.failures, 0)
-FROM successes s FULL JOIN failures f USING (action);
-```
-
-Under `bun test` the default sink resolves to an inert one. Otherwise a suite that merely renders
-failure panels inserts a row per emission into whatever database the environment points at, which
-put hundreds of rows of test data into a live `metric_samples`. A test asserting on the sink installs
-its own through `setPanelFailureSampleSink`, which takes precedence.
-
-Successes have their own blind spot, closed the same way. `recordPanelActionStat` buffers its counter
-write and cannot observe a later flush failure, so a dead success counter would leave failures
-looking like the whole story. When the write path itself raises it reports `panel_action_failure`
-once per outage rather than once per action, and re-arms after the next write that reaches the
-recorder. That report is a metric, not `log.warn` (dropped by production's level pin) and not
-`log.error` (which would attempt an `error_logs` insert down the same pool that just failed).
-
-`deliverGuardedPanel` is the only emitter of `panel_failure`. A route that counts a failure
-itself and then repaints with a receipt would count the same failure twice, under two reason keys,
-so a site that needs to record detail a receipt cannot carry emits `panel_failure_detail` instead
-and names its cause on the receipt. Counting queries therefore stay on `panel_failure`, and a
-drill-down joins the two on `reason`. `tests/unit/discord/panelFailureSingleEmission.test.ts` scans
-the source to hold that invariant, because no test over the delivery helper can see a second
-emitter.
-
-Group on `reason`, never on `heading`. `PanelReceipt.reason` is an optional machine key naming
-the cause (`endpoint_add_unreachable`, `setup_commit_failed`). A receipt that does not set one falls
-back to `<namespace>_<tone>`, and a target with no route id falls back to `unknown`. The heading is
-localized, so grouping on it files one defect under a different label per locale.
-
-Two delivery paths bypass the chokepoint and stay out of the metric: a slash-command interaction
-carries no route id, and the notice payloads built by `buildTransferNoticePayload` carry no receipt
-object. A call site on either path that wants reporting passes a receipt explicitly, which is what
-the import-failure notices and the `/setup` terminal states do.
-
-Genuinely broken paths log at error level where the cause is still in scope. The `panel_failure`
-metric is deliberately not an `error_logs` row: most receipts are expected outcomes the actor can
-correct (bad input, a stale panel, an unavailable read), and the production log level filters `warn`
-out entirely, so neither `log.error` for all of them nor `log.warn` for any of them is right. Paths
-where a rollback succeeded, a cause would otherwise be discarded, or a caught error was never read
-call `log.error` at the point the cause still exists. That covers the thrown-away cause in the
-custom endpoint write rollback, the provider-construction failures reported to the actor as an
-unsupported provider, the eight moderation write catches that discarded their error, the moderation
-quota result's unused `error` field, the cross-server memory toggle, and the voice sample download,
-insert, and storage failures.
-
-An expected refusal that still needs to reach the production stream uses `log.metric`, not
-`log.warn`: an unreachable custom endpoint and an unparseable preset upload are both recorded that
-way, because the reason is diagnostic even though the failure is the actor's to correct. Their
-per-failure detail goes to `panel_failure_detail`, with the cause named on the receipt so the count
-still comes from the chokepoint.
-
-Most receipts still fall back to `<namespace>_<tone>`, which groups a whole panel rather than a
-cause. Explicit reasons exist where the cause is already known at the site: providers, moderation
-quota, moderation batch removals, transfer imports, and the `/setup` terminal states. Widening that
-coverage is additive and does not change the counting contract.
-
-Collector-owned pagination helpers (`replyPaginatedChoices`, `replyPaginatedPersonaChoicesV2`)
-follow the same split: an expiry stays at `warn`, while a callback failure or an abnormal collector
-end logs at error level with the interaction context.
-
-### The `/setup` wizard
-
-`/setup` is the largest consumer of the global route path. `src/utils/discord/interactions/setupRoutes.ts`
-registers the `setup:v1` namespace and `src/utils/discord/ui/setupPanel.ts` builds every panel and modal
-from the same draft, so each control and every modal submission arrives as its own `interactionCreate`
-rather than through a collector.
-
-Its required `language` option selects the wizard language and the initial workspace locale. It does
-not change the invoker's saved language preference. On completion, it determines the default persona
-name, initial trigger words, and locale-filtered persona preset catalog, while `registration_locale`
-records the setup locale for analytics. The selected locale travels in every routed control ID.
-
-- The custom ID carries only the action, the locale, and an opaque nonce. The nonce resolves a bounded
-  process-local draft (`setupDraftStore.ts`) bound to the actor, the workspace, and the guild-or-DM
-  context, so the panel outlives the command invocation but not the process. `SETUP_DRAFT_MAX_ENTRIES`
-  (200) bounds pending drafts, and opening, editing, cancelling, or restarting the process writes nothing.
-- Every routed action rechecks the owner, the workspace, the context, `Manage Server`, the step set the
-  environment renders before it acts. A stale or forged nonce answers with the terminal session-ended
-  payload instead of repainting.
-- The step set is captured in the draft, so a draft created under one environment cannot complete a step
-  the other environment renders.
-- `Finish Setup` acknowledges the interaction before it claims the draft, because the claim, the catalog
-  and authorization revalidation, the transaction, the cache invalidation, a guild expression sync, and
-  a Discord REST avatar call all follow it.
-- A claimed draft is frozen: reads report `in-flight` and writes are refused until the commit releases or
-  consumes the claim, so a repeated press cannot run setup twice and a concurrent Cancel cannot zero the
-  credential being committed.
-- The receipt repaints the wizard's own ephemeral message as Components V2 text displays, because a
-  classic embed cannot be edited onto a Components V2 message.
-
-The wizard writes only on the final commit: no step control creates a provider, credential, or
-preference row, and the workspace's orphan recovery moved into the same transaction that creates the
-replacement rows.
-
-## Webhook Helper Layout
-
-Command, event, tool, and stream code import webhook helpers from responsibility-owned modules:
-
-- `src/utils/discord/webhook/lifecycle.ts` - shared/persona webhook creation, lookup, deletion, and avatar updates
-- `src/utils/discord/webhook/personaDispatch.ts` - persona/webhook send paths
-- `src/utils/discord/webhook/identity.ts` - persona avatar and webhook identity resolution
-- `src/utils/discord/webhook/fallback.ts` - managed-webhook restore and transcript fallback behavior
-- `src/utils/discord/webhook/cache.ts` - webhook cache metrics and invalidation helpers
-
-`src/utils/discord/webhookManager.ts` remains only as the subsystem compatibility barrel. New code should import from the owned webhook module directly.
-
-Keep webhook cache invalidation in the same success path as the write or delete that changes webhook state.
-
-## Command File Contract
+## Command file contract
 
 Subcommand modules export:
 
@@ -260,856 +35,126 @@ Root command modules export:
 - `configureCommand(command)`
 - `execute(client, interaction, userData, locale)`
 
-Grouped commands are represented by folders:
-
-- `src/commands/export/personal/config.ts` -> `/export personal config`
-
-Model and provider flows that still call `promptForSavedProvider()` use one shared initial
-provider-selection embed. Model-selection callers pass the effective slot selection so
-the embed can show the active model codename and provider; channel and persona text
-commands resolve their scoped override before falling back to the server text model.
-
-The live `/model *` family no longer uses that primitive.
-It renders the provider picker, the `>25` range selector, the modal, and the terminal
-result on one anchor ephemeral message through the shared helpers in
-`src/utils/discord/ui/anchorModelFlow.ts` (see the anchor message controller section
-below). `promptForSavedProvider()` is forbidden in those files, and the allow-list audit in
-`tests/unit/commands/anchorMigrationLockdown.test.ts` enforces it.
-
-The `/config` Models provider selector answers with the model modal itself, so it must not defer first. It reads the provider list and that provider's model catalog in parallel to stay inside Discord's acknowledgement window. Only the branches that repaint the shared panel (range paging and expanding a provider with more models than one modal holds) call `deferUpdate()`.
-
-Root commands are represented by top-level command files:
-
-- `src/commands/subscribe.ts` -> `/subscribe`
-
-Root command files may also export optional command-level flags:
-
-- `guildOnly = true` - restricts the command to guilds
-- `managerOnly = true` - requires `ManageGuild`
-- `nsfw = true` - marks the command as age-restricted
-- `isCommandEnabled(context)` - returns `false` to skip command registration and
-  execution-map wiring for this module
-
-Use `isCommandEnabled` for commands that are present in source but should be
-absent unless a feature gate is active. The loader evaluates the gate after
-importing the module but before calling `configureCommand()` or
-`configureSubcommand()`. If every subcommand in a category is disabled, the
-top-level category command is omitted from registration.
-
-Example:
-
-```ts
-export const isCommandEnabled = () =>
-  process.env.RUN_ENV === "production" &&
-  process.env.TOMORI_SUPPORTER_BILLING_ENABLED === "true";
-```
-
-Command modules must not perform production-only side effects at import time.
-Keep feature-gated initialization in startup hooks or inside the gated runtime
-handler.
-
-## Current Top-Level Categories
-
-- `comment`
-- `compact`
-- `conditioning`
-- `config`
-- `contribute`
-- `donate`
-- `export`
-- `expressions`
-- `generate`
-- `help`
-- `impersonate`
-- `import`
-- `kill`
-- `learn`
-- `legal`
-- `matrix`
-- `memories`
-- `model`
-- `moderation`
-- `novelai`
-- `nsfw`
-- `nuke`
-- `persona`
-- `personal`
-- `ping`
-- `providers`
-- `punish`
-- `quota`
-- `refresh`
-- `reset`
-- `respond`
-- `reward`
-- `scheduled-task`
-- `setup`
-- `stats`
-- `status`
-- `support`
-- `tool`
-- `update`
+Root command files may export optional boundary flags:
 
-## Category Restrictions
+- `guildOnly = true`: restricts the command to Discord guild channels.
+- `managerOnly = true`: requires the Discord `ManageGuild` permission.
+- `nsfw = true`: marks the command as age-restricted.
+- `isCommandEnabled(context)`: evaluated before registration; returning `false` omits the command from the registration payload and execution map.
 
-Defined in `commandLoader.ts`:
+Command metadata descriptions and choices are auto-localized by `commandLoader.ts`. Builders configure English text with `localizer("en-US", key)`. The loader matches keys across authored locale trees using `{option_name}_description` and `{choice_value}_option`.
 
-- Guild-only categories: `conditioning`, `expressions`, `impersonate`, `matrix`, `moderation`, `nuke`, `punish`, `quota`, `reward`, `stats`
-- Manage Server required by default: `expressions`, `matrix`, `model`, `moderation`, `nsfw`, `nuke`, `providers`, `quota`, `setup`
+## Runtime interaction dispatch
 
-## Localization Strategy for Command Metadata
+All Discord interactions arrive at `src/events/interactionCreate/handleCommands.ts`:
 
-Do not hardcode descriptions/choice names.
-Use `localizer("en-US", key)` in command builders.
+1. **Autocomplete:** If `interaction.isAutocomplete()` is true, routes to `runAutocompleteCommand()`.
+2. **Chat-input slash commands:** If `interaction.isChatInputCommand()` is true, routes to `runChatInputCommand()`:
+   - Resolves category, group, and subcommand names into an execution key.
+   - Evaluates server blacklist status.
+   - Checks category cooldown in `cooldownRepository`, scaling duration with `COMMAND_COOLDOWN_SCALE`.
+   - Opens an ambient error context scope with `source: "command"`, enriching it with user and guild database IDs.
+   - Calls the registered `execute(client, interaction, userData, locale)` function.
+3. **Globally routed components and modals:** If `isGlobalRoutableInteraction()` is true, passes the interaction to `dispatchGlobalInteraction()`.
 
-`commandLoader.ts` then auto-applies locale localizations for other loaded locales.
+## Globally routed persistent interactions
+<!-- anchor: globally-routed-persistent-interactions -->
 
-Key pattern:
+TomoriBot separates bounded temporary interactions from persistent UI panels:
 
-- Root command description: `commands.{command}.description`
-- Root command option description: `commands.{command}.{option}_description`
-- Root command choice name: `commands.{command}.{option}_choice_{value}`
-- Subcommand description: `commands.{category}.{path}.description`
-- Option description: `commands.{category}.{path}.{option}_description`
-- Choice name: `commands.{category}.{path}.{option}_choice_{value}`
+- **Collector-owned workflows:** Bounded command sessions that rely on in-memory message component collectors. When the collector times out or the process restarts, the controls deactivate.
+- **Globally routed panels:** Persistent controls (such as `/help`, `/config`, `/moderation`, `/setup`, and `/expressions manage`) where every button click, select choice, or modal submit arrives as an independent `interactionCreate` event. State is reconstructed from the custom ID and database records rather than in-memory collectors.
 
-Example path:
+Global dispatch mechanics:
 
-- file: `src/commands/export/personal/config.ts`
-- command path: `export.personal.config`
+- `src/utils/discord/interactions/routeRegistry.ts` parses custom IDs using the format `<namespace>:<version>:<action>:<state...>`.
+- `src/utils/discord/interactions/router.ts` checks the registered route list.
+- Unmatched IDs return `false`, allowing invocation-scoped collectors to process the interaction instead.
+- Outdated route versions receive a localized stale-panel notice with instructions to re-invoke the command.
+- Deferred panel branches call `beginPanelInteraction()` in `src/utils/discord/interactions/panelController.ts`. This helper calls `deferUpdate()` before authorization or state loading, preventing asynchronous database reads from exceeding Discord's acknowledgement deadline. Branches that open modals remain outside `beginPanelInteraction()` because `showModal()` must serve as the primary acknowledgement.
 
-Root command example:
+## Panel failure observability
+<!-- anchor: panel-failure-observability -->
 
-- file: `src/commands/subscribe.ts`
-- command path: `subscribe`
+Panels communicate expected refusals by returning a status object (`{ status: "write-failed" }`) and repainting with an error or warning receipt. Because these paths do not throw unhandled exceptions, the router error handler does not observe them.
 
-## Interaction Timing Rules (Important)
+Panel failure metrics maintain visibility:
 
-Discord requires interaction acknowledgement within ~3 seconds.
+- `deliverGuardedPanel()` in `src/utils/discord/ui/interactionCore.ts` is the single choke point for guarded panel delivery.
+- When delivery includes a receipt with `error` or `warning` tone, it emits a `panel_failure` metric containing the namespace, locale, tone, and machine `reason` key (`PanelReceipt.reason`).
+- Failure metrics emit to two destinations: structured host logs via `log.metric`, and the database via `metricSampleRepository.recordSample("panel_failure", fields)`. The database write is non-blocking.
+- Metric aggregation groups on the machine `reason` key rather than localized heading text, so failures across different languages aggregate into uniform defect categories.
 
-### Measuring the window
+## Interaction timing rules
 
-`beginPanelInteraction` acknowledges through `acknowledgePanelInteraction`. Normal acknowledgements
-do not emit a log entry. An acknowledgement that consumes at least 1.5 seconds emits a rate-limited
-warning with its route, measured latency, and Discord's deadline. The latency is measured from
-Discord's `interaction.createdTimestamp`, so it includes time spent before the handler receives the
-interaction.
+Discord requires interaction acknowledgement within approximately three seconds of generation (`interaction.createdTimestamp`). An acknowledgement taking longer than 1.5 seconds emits a rate-limited latency warning (`INTERACTION_ACK_WARN_MS`). After acknowledgement, the bot has up to 15 minutes to complete work.
 
-### 3-Second Rule
+### Reply and deferral ownership
 
-On slash command invoke, acknowledge within 3 seconds using one of:
+A fast command can reply directly. Commands that need database, network, or other asynchronous work acknowledge first with `deferReply()`. Synchronous rejection checks can run before deferral.
 
-- `interaction.reply(...)`
-- `interaction.deferReply(...)`
-- `interaction.showModal(...)` (or modal helper that sends modal response)
+Opening a modal acknowledges the original interaction with `showModal()`, so pre-deferral prevents the modal from opening. Pre-modal reads must fit within the acknowledgement deadline. The modal submission is a new interaction: `promptWithRawModal()` can auto-defer that submission when passed `MessageFlags.Ephemeral`, or its caller can defer the returned submission before asynchronous work.
 
-After acknowledgement, you have up to ~15 minutes to complete.
+### Pattern 3A and 3B: Checkbox management modals
 
-### Pattern 1: Simple Command (No Deferral)
+Used for managing collections of configuration settings (such as `/moderation` whitelists and `/config` channel rules) using Discord modal checkbox groups:
 
-Use when work is synchronous/very fast and has no DB/API/file latency before response.
+- Up to 50 options per modal (chunked into five groups of 10 options).
+- Pre-check existing active settings; unchecking indicates removal or disabling.
+- Reopening preloads current database state; submission writes the complete selection or computed diff.
+- Database writes must invalidate associated caches in the same execution path upon transaction success.
 
-```ts
-export async function execute(...) {
-	if (!interaction.guild) {
-		await replyInfoEmbed(...);
-		return;
-	}
+### Pattern 4: Pagination helpers (no pre-defer)
 
-	await interaction.reply({ content: "..." });
-}
-```
+Pagination helpers (`replyPaginatedChoices()` and `promptWithPaginatedModal()`) send their controls and own the initial acknowledgement. Pre-deferral conflicts with that ownership.
 
-Rules:
+### Pattern 4A: Anchor message workflow
+<!-- anchor: pattern-4a-anchor-message-workflow-persona-picker -->
 
-- no DB query before first reply
-- no external API call before first reply
-- no filesystem work before first reply
+The anchor message workflow in `src/utils/discord/ui/personaWorkflow.ts` powers multi-step persona pickers and complex configuration transactions.
 
-### Pattern 2: Async Command (Defer First)
+- **Single message invariant:** One command invocation owns exactly one ephemeral Components V2 message (`selection.message.anchorMessageId`). That message is edited in place through every phase: selection, range pagination, modal launching, progress indicators, and terminal receipts.
+- **Rationale:** Discord emits no event when a user dismisses a modal. Leaving a picker message active while opening a modal would leave dead interactive buttons if dismissed. Rendering all phases onto one anchor message and collapsing controls when a modal opens prevents stranded components.
+- **First-acknowledgement contract:** Each phase operation owns its first acknowledgement. Calling raw interaction methods before a phase operation, or calling two first-acknowledgement operations on the same interaction, throws `PersonaWorkflowUpdateError` with code `already-acknowledged`.
+- **Anchor message controller:** The controller exposes typed operations: `replace()`, `edit()`, `fetchMessage()`, `disableControls()`, and `delete()`. Payloads require `MessageFlags.IsComponentsV2` and `components`; legacy `content` and `embeds` fields are forbidden.
 
-Use when any meaningful async work happens before first response.
+### Timing quick reference
 
-```ts
-export async function execute(...) {
-	if (!interaction.guild) {
-		await replyInfoEmbed(...);
-		return;
-	}
+| Command style | Defer before work? | Primary API |
+|---|---|---|
+| Simple and fast | No | `interaction.reply(...)` |
+| Async DB or API operations | Yes | `interaction.deferReply(...)`, then helper reply |
+| Modal prompt | No (before modal) | `promptWithRawModal(...)`, defer on submit if heavy |
+| Pagination helper | No (before helper) | `replyPaginatedChoices(...)` / `promptWithPaginatedModal(...)` |
+| Persona workflow | No | `runPersonaPickerWorkflow(...)`; phase operation owns acknowledgement |
 
-	await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+## Response Drafting panel
 
-	const state = await getCachedTomoriState(interaction.guild.id);
-	await sql`UPDATE ...`;
+`/config` > Plugins > Response Drafting stores workspace settings for guild managers and DM owners.
+Reviewer and Decision pickers use the existing provider windows and modals without changing the
+primary text model. Clearing the reviewer restores inheritance from the actual response model;
+clearing Decisions or the checker stores None. A removed checker binding stays saved and unavailable.
 
-	await replyInfoEmbed(interaction, locale, { ... });
-}
-```
-
-Rules:
-
-- run fast validation first
-- then defer before DB/API work
-- do not defer at function start if early-return validation can finish immediately
-- `/tool estimate cost` follows this pattern: it defers first, then fetches recent messages, prepares participants through the shared context API, builds context, and performs provider API token counting
-
-### Pattern 3: Modal Command (No Initial Deferral)
-
-Use when opening a modal for user input.
-
-```ts
-const modalResult = await promptWithRawModal(
-	interaction,
-	locale,
-	{ ... },
-	MessageFlags.Ephemeral, // auto-defer modal submission
-);
-
-if (modalResult.outcome !== "submit") return;
-await sql`UPDATE ...`;
-await replyInfoEmbed(modalResult.interaction, locale, { ... });
-```
-
-Rules:
-
-- do not call `deferReply()` before showing modal
-- pre-modal data loading must stay within the initial 3-second window
-- if modal submit processing is async and the command will reply on the modal submission itself, pass `MessageFlags.Ephemeral` as `promptWithRawModal` arg 4
-
-### Pattern 3A: Bulk Management Modal (Checkbox Groups)
-
-Use when the user is managing an existing set of configured entries and batch keep/remove is better UX than a one-at-a-time select.
-
-Examples:
-
-- `/moderation` User Blacklist and Whitelist removal actions
-- `/model override remove` (channels + personas together)
-- `/config` > Engine > Experimental (experimental server-scoped toggles)
-- `/memories` Short-Term category (active server-shared STM entries)
-- `/config` > Channels > Channel Rules (private, roleplay, and cross-channel blocklist sets)
-
-Rules:
-
-- use `promptWithRawModal(...)` with checkbox groups and `MessageFlags.Ephemeral` auto-defer on submit
-- pre-check every existing entry; unchecked means "remove" or "disable"
-- set `minValues: 0` and `required: false` so users can uncheck everything
-- chunk long lists into groups of 10 options; Discord allows at most 5 groups per modal (50 total options)
-- if you are managing multiple entity types in one modal, keep them in separate checkbox groups by type
-- if the total set exceeds 50 options, show a page-selection step and launch page-scoped checkbox modals
-- after submit, diff original entries against submitted checked values, then invalidate caches only after successful DB writes
-
-### Pattern 3B: Persistent Checklist Setting
-
-Use when one command owns the full enabled-set of a durable setting rather than an add/remove delta flow.
-
-Example:
-
-- `/config` > Channels > Channel Rules
-- `/moderation` Personas (each write preserves the persona's complete enabled channel set)
-
-Rules:
-
-- checked means "enabled in the stored set"; unchecked means "disabled from the stored set"
-- reopening the command must preload the current saved state
-- submit writes the full selected set back to storage, not just the latest delta intent
-- if the eligible option set exceeds one modal (`>50`), show a page-selection message first and launch page-scoped checkbox modals from there
-- durable server-scoped settings added through this pattern should also be surfaced in `/status`
-- keep [`status-command.md`](/architecture/subsystems/status-command/) in sync when `/status` coverage changes
-
-### Pattern 3C: Modal -> Review Prompt -> Modal
-
-Use when a command needs one modal to collect a bulk selection, then a follow-up confirmation or button choice before optionally opening a second modal.
-
-Example:
-
-- `/personal config` (spotlight workflow)
-
-Rules:
-
-- do not auto-defer the first modal submit if you still need to reply with buttons from that modal interaction
-- reply to the first modal submit with a review embed + buttons
-- if the user picks the branch that needs more input, open the second modal from the unacknowledged button interaction
-- after the second modal submit, silently acknowledge with `acknowledgeModalSubmitForRefresh(...)` when you intend to edit the original review reply instead of responding on the second modal itself
-- only persist the final DB write after the last user decision is known, then invalidate caches in that same success path
-
-### Pattern 4: Pagination Helpers (No Pre-Defer)
-
-Use when calling `replyPaginatedChoices(...)` or `promptWithPaginatedModal(...)`.
-
-```ts
-const result = await replyPaginatedChoices(interaction, locale, { ... });
-```
-
-```ts
-const modalResult = await promptWithPaginatedModal(interaction, locale, { ... });
-if (modalResult.outcome !== "submit") return;
-
-// If submission handling is heavy, defer the modal submission immediately.
-await modalResult.interaction.deferReply({ flags: MessageFlags.Ephemeral });
-await sql`UPDATE ...`;
-await replyInfoEmbed(modalResult.interaction, locale, { ... });
-```
-
-Rules:
-
-- do not defer before `replyPaginatedChoices(...)` or `promptWithPaginatedModal(...)` (they acknowledge directly)
-- keep pre-helper work under 3 seconds
-- `promptWithPaginatedModal(...)` does not expose an auto-defer parameter; defer on submission manually when needed
-- commands that begin with a persona picker use Pattern 4A; the workflow owns picker acknowledgment and retries
-
-#### `>25`-option selector style (pre-anchor)
-
-This applies to callers still on
-`promptWithPaginatedModal(...)`. Commands migrated to the anchor message workflow
-(Pattern 4A) never set `selectorStyle`: their `>25` handling is chosen for them by the
-engine's range-selector bridge, which always renders the Components V2 selector.
-
-`promptWithPaginatedModal(...)` accepts an optional
-`selectorStyle: "legacy" | "componentsV2"` (default `"legacy"`). At `<=25` options both
-styles open a modal directly, so this only affects the paginated path:
-
-- `"legacy"`: numbered page-button embed on the interaction's reply (`1` `2` `3`, capped
-  at 9 pages).
-- `"componentsV2"`: the shared Components V2 range selector (`1-25` / `26-50` ranges +
-  Previous/Cancel/Next), byte-identical to the persona workflow's `>25` shell
-  (`buildRangeSelectorPayload`). Its Cancel button returns `outcome: "cancelled"` (the
-  legacy selector has no Cancel and never returns it); callers gating on
-  `outcome !== "submit"` already handle it.
-
-The V2 selector renders `IsComponentsV2` onto the interaction's reply, which Discord then
-forbids editing with legacy embeds. The selector marks the interaction, and the shared
-sinks (`replyInfoEmbed`/`replySummaryEmbed`/`replyPaginatedStatusPages`) detect the mark
-and emit a V2 notice container instead of embeds, so a later error/info reply to the same
-interaction cannot collide. Before opting a caller into `"componentsV2"`, confirm the
-interaction reaching the helper is unacknowledged (fresh-reply path) rather than a
-deferred/replied legacy message, since Discord cannot convert a legacy reply to V2 via
-`editReply`.
-
-### Pattern 4A: Anchor Message Workflow (persona picker)
-
-The anchor message workflow is the engine behind Pattern 4A. Its rule: one
-command invocation owns exactly one ephemeral message, edited in place through every
-stage: picker, `>25` range selector, modal, progress, and terminal result. Opening a modal
-is an acknowledgment, not a second message.
-
-This exists because Discord emits no event when a user dismisses a modal. A flow that
-opens a modal and leaves its picker message behind therefore strands dead-but-clickable
-buttons ("This interaction failed") until the modal's timeout. Rendering everything on one
-message makes that orphan impossible by construction, and *collapse-at-open* swaps the live
-controls for an inert notice the instant the modal opens.
-
-Commands that begin with a persona picker use the single command-facing entry point in
-`src/utils/discord/ui/personaWorkflow.ts`:
-
-```ts
-const result = await runPersonaPickerWorkflow(interaction, locale, {
-  personas,
-  onSelected: async (selection) => {
-    // Perform one acknowledged workflow transaction.
-    return completePersonaWorkflow();
-  },
-});
-```
-
-The options are `personas`, optional picker `titleKey`, `descriptionKey`, and `color`,
-optional `requiredPersonaId`, optional asynchronous `onCancel`, and required asynchronous
-`onSelected`. The selection phase exposes `persona`, `absoluteIndex`, `phaseId`,
-`deliveryPolicy: "replace-picker"`, the message controller, and the typed phase methods
-shown below. A successful result has `outcome: "selected"` plus the selected persona,
-absolute index, and the value passed to `completePersonaWorkflow(value)`. Error and fatal
-results may also include the causal error.
-
-`runPersonaPickerWorkflow(...)` owns the low-level picker, its retry loop, and one
-`AvatarSessionCache` for the complete invocation. Callers return
-`completePersonaWorkflow(value)` or `retryPersonaWorkflow(updatedPersonas?)`; they do not
-write their own outer picker loop. Picker outcomes remain discriminated as `selected`,
-`cancelled`, `timeout`, `error`, and `fatal`. A fatal picker result exits before
-`onSelected` runs, so it cannot enter the retry path.
-
-Classify collector expiry with `isCollectorTimeoutError(error)` from `interactionCore`,
-never with a bare `error === "time"` check. discord.js uses two rejection shapes for the
-same event: raw collectors reject with the end-reason string (`"time"` / `"idle"`), while
-`Message#awaitMessageComponent` and `awaitModalSubmit` reject with an
-`InteractionCollectorError` whose message carries the reason
-(`"...ending with reason: time"`). Missing the second shape makes an ordinary user timeout
-present as `fatal` with the generic unknown-error copy instead of the timeout notice. Other
-end reasons (`limit`, `messageDelete`) and dead-token errors are genuine failures and must
-stay classified as `error`/`fatal`.
-
-Every same-visibility workflow owns one anchor ephemeral Components V2 message. Its
-message ID is exposed as `selection.message.anchorMessageId` and must remain unchanged
-through loading, selectors, validation, progress, results, errors, and timeouts. Opening a
-modal is an interaction acknowledgment, not another message. The only normal visibility
-change is the typed `separate-public` phase described below.
-
-#### First-acknowledgment contract
-
-Choose the phase operation before doing DB, filesystem, network, image, or embedding work.
-Each operation below owns the first acknowledgment; do not call a raw interaction method
-before it.
-
-| Phase operation | First acknowledgment | Use it when |
-| --- | --- | --- |
-| Workflow entry | The caller defers the ephemeral slash response before any asynchronous persona/state preload; the internal picker defensively defers if entry is still unacknowledged | Starting any persona workflow |
-| `selection.openModal(options)` with at most 25 select options | `showModal()` on the selected persona button | Modal options are already available synchronously |
-| `selection.openModal(options)` with more than 25 select options | `update()` replaces the picker with range buttons | Preloaded modal options exceed Discord's select limit; the chosen range button later calls `showModal()` |
-| `selection.openModal(async () => options)` | `deferUpdate()` on the selected button, then an in-place loading state | Modal options require DB or other asynchronous work; a new launcher/range button later opens the modal |
-| `selection.beginInPlaceWork()` | `deferUpdate()` on the selected persona button | Any non-modal asynchronous work |
-| `modal.phase.replace(payload)` | `update()` on the message-backed modal submission | A fast terminal replacement whose payload is already built |
-| `modal.phase.beginInPlaceWork()` | `deferUpdate()` on the modal submission | Processing submitted values with asynchronous work |
-| `selection.useButton(button).replace(payload)` | `update()` on that nested button | A fast private-view transition whose payload is ready |
-| `selection.useButton(button).beginInPlaceWork()` | `deferUpdate()` on that nested button | A nested view action needs asynchronous work |
-| `selection.useButton(button).openModal(...)` | The same direct/factory modal rules above | A private view button opens a modal |
-| `selection.useButton(button).delete()` | `deferUpdate()`, then anchor-message deletion | Closing a private view |
-| `selection.beginSeparatePublicReply(compactPayload)` | `update()` compacts the private picker; `publicPhase.reply()` then sends one public follow-up | The result is intentionally public |
-
-Calling two first-ack operations for the same interaction throws a
-`PersonaWorkflowUpdateError` with code `already-acknowledged`. Raw REST modal state is
-tracked separately from discord.js `replied`/`deferred`, so a raw modal acknowledgment is
-not repeated accidentally.
-
-Persona arrays are loaded before the workflow entry today, so acknowledge the slash command
-with `deferReply({ flags: MessageFlags.Ephemeral })` before that asynchronous load. If the
-command also has a root-modal scope, resolve the scope synchronously and defer only the persona
-branch; a deferred root interaction cannot open its own modal. The workflow reuses the deferred
-anchor response and still owns every component acknowledgment after the picker renders.
-
-The bare message controller edits the root reply; it does not acknowledge the currently
-pending button or modal submission. Do not call `selection.message.replace(...)` before
-choosing `beginInPlaceWork()`, `openModal(...)`, or `beginSeparatePublicReply(...)`, and do
-not mutate `modal.phase.message` before choosing `modal.phase.replace(...)` or
-`modal.phase.beginInPlaceWork()`. Nested buttons use
-the operations returned by `selection.useButton(button)` for the same reason.
-
-`openModal(...)` returns `submitted`, `cancelled`, `timeout`, `error`, or `fatal`. A
-submitted phase exposes single values in `values`, string-select/checkbox values in
-`multiValues`, uploaded files in `attachments`, the range's `optionOffset`, the message
-controller, direct `replace(payload)`, `beginInPlaceWork()`, and the narrowly scoped `unsafeInteraction()` escape
-hatch. Check the outcome before accessing the phase.
-
-#### Anchor message controller
-
-`selection.message`, in-place phases, and modal phases expose the same typed controller:
-
-- `replace(payload)` edits the anchor message and clears old attachments unless the
-  payload explicitly supplies `attachments`;
-- `edit(payload)` edits while retaining existing attachments when `attachments` is omitted;
-- `fetchMessage()` returns the anchor `Message` and verifies its ID;
-- `disableControls()` keeps the current view readable and disables every interactive
-  component;
-- `delete()` deletes the anchor reply and makes later operations fail with `deleted`.
-
-Both `replace` and `edit` accept only `PersonaWorkflowComponentsV2Payload`: `components`
-and `MessageFlags.IsComponentsV2` are required, while `content` and `embeds` are forbidden
-at both the TypeScript and runtime boundaries. Message mismatch, missing message backing,
-expired tokens, and Discord edit failures are typed errors. The controller never converts
-an in-place failure into another ephemeral `reply`, `followUp`, or `webhook.send`.
-
-#### Copyable examples
-
-The examples below show command-body code. Substitute the repository method and locale keys
-for the command being migrated; keep the workflow calls and acknowledgment ordering intact.
-
-##### Simple in-place work
-
-```ts
-import {
-  buildPersonaWorkflowNotice,
-  completePersonaWorkflow,
-  retryPersonaWorkflow,
-  runPersonaPickerWorkflow,
-} from "@/utils/discord/ui/personaWorkflow";
-
-await runPersonaPickerWorkflow(interaction, locale, {
-  personas,
-  onSelected: async (selection) => {
-    const work = await selection.beginInPlaceWork();
-    await work.message.replace(
-      buildPersonaWorkflowNotice({
-        locale,
-        color: ColorCode.INFO,
-        titleKey: "general.persona_workflow.loading_title",
-        descriptionKey: "general.persona_workflow.loading_description",
-      }),
-    );
-
-    const removed = await personaRepository.removePrompt(selection.persona.persona_id);
-    if (!removed) {
-      await work.message.replace(
-        buildPersonaWorkflowNotice({
-          locale,
-          color: ColorCode.ERROR,
-          titleKey: "general.errors.update_failed_title",
-          descriptionKey: "general.errors.update_failed_description",
-        }),
-      );
-      return completePersonaWorkflow();
-    }
-
-    invalidateTomoriStateCache(interaction.guildId ?? interaction.user.id);
-    await work.message.replace(
-      buildPersonaWorkflowNotice({
-        locale,
-        color: ColorCode.SUCCESS,
-        titleKey: "commands.forget.personaprompt.success_title",
-        descriptionKey: "commands.forget.personaprompt.success_description",
-        descriptionVars: { persona_name: selection.persona.persona_nickname },
-      }),
-    );
-    return completePersonaWorkflow();
-  },
-});
-```
-
-##### Modal transaction and retry
-
-```ts
-await runPersonaPickerWorkflow(interaction, locale, {
-  personas,
-  onSelected: async (selection) => {
-    const modal = await selection.openModal(async () => {
-      // The selected button is already update-deferred before this DB read.
-      const memories = await personalMemoryRepository.loadForUserLineage(
-        userData.user_id,
-        selection.persona.persona_lineage_id ?? 0,
-        false,
-      );
-      return {
-        modalCustomId: "memory_edit_select",
-        modalTitleKey: "commands.personal.memories.edit_modal_title",
-        components: [
-          {
-            customId: "memory_select",
-            labelKey: "commands.personal.memories.modal_content_label",
-            required: true,
-            options: memories.map((memory) => ({
-              label: memory.content,
-              value: String(memory.personal_memory_id),
-            })),
-          },
-        ],
-      };
-    });
-
-    if (modal.outcome === "fatal") throw modal.error;
-    if (modal.outcome !== "submitted") return retryPersonaWorkflow();
-
-    const work = await modal.phase.beginInPlaceWork();
-    await work.message.replace(
-      buildPersonaWorkflowNotice({
-        locale,
-        color: ColorCode.INFO,
-        titleKey: "general.persona_workflow.loading_title",
-        descriptionKey: "general.persona_workflow.loading_description",
-      }),
-    );
-
-    const memoryId = Number.parseInt(modal.phase.values.memory_select ?? "", 10);
-    const updated = await personalMemoryRepository.edit(memoryId, "replacement text", []);
-    await work.message.replace(
-      buildPersonaWorkflowNotice({
-        locale,
-        color: updated ? ColorCode.SUCCESS : ColorCode.ERROR,
-        titleKey: updated
-          ? "commands.personal.memories.edited_heading"
-          : "general.errors.update_failed_title",
-        descriptionKey: updated
-          ? "commands.personal.memories.edited_detail"
-          : "general.errors.update_failed_description",
-        descriptionVars: updated ? { memory: "replacement text" } : undefined,
-      }),
-    );
-    return retryPersonaWorkflow();
-  },
-});
-```
-
-When a modal select contains more than 25 options, `openModal` replaces the anchor
-message with localized range buttons and opens the modal from the chosen range button.
-`modal.phase.optionOffset` is the absolute offset of that slice for callers whose option
-values are page-local indexes.
-
-##### Interactive private view
-
-```ts
-import { PERSONA_WORKFLOW_COMPONENT_TIMEOUT_MS } from "@/utils/discord/ui/personaWorkflow";
-
-await runPersonaPickerWorkflow(interaction, locale, {
-  personas,
-  onSelected: async (selection) => {
-    let page = 0;
-    const work = await selection.beginInPlaceWork();
-    await work.message.replace(renderPrivatePage(locale, page));
-    const message = await work.message.fetchMessage();
-
-    try {
-      while (true) {
-        const button = await message.awaitMessageComponent({
-          componentType: ComponentType.Button,
-          filter: (candidate) => candidate.user.id === interaction.user.id,
-          time: PERSONA_WORKFLOW_COMPONENT_TIMEOUT_MS,
-        });
-        const action = selection.useButton(button);
-
-        if (button.customId === "view_close") {
-          await action.delete();
-          return completePersonaWorkflow();
-        }
-
-        page += button.customId === "view_next" ? 1 : -1;
-        await action.replace(renderPrivatePage(locale, page));
-      }
-    } catch {
-      await work.message.disableControls();
-      return completePersonaWorkflow();
-    }
-  },
-});
-```
-
-Declare `renderPrivatePage` to return `PersonaWorkflowComponentsV2Payload`; this makes a
-legacy `content` or `embeds` field a compile-time error. For navigation that must load data,
-call `action.beginInPlaceWork()` before the load and then replace through its controller.
-The example reuses the documented workflow timeout instead of hardcoding a separate
-collector lifetime.
-
-##### Explicit public result
-
-```ts
-await runPersonaPickerWorkflow(interaction, locale, {
-  personas,
-  onSelected: async (selection) => {
-    const publicPhase = await selection.beginSeparatePublicReply(
-      buildPersonaWorkflowNotice({
-        locale,
-        color: ColorCode.SUCCESS,
-        titleKey: "commands.stats.persona.chosen_title",
-        titleVars: { name: selection.persona.persona_nickname },
-      }),
-    );
-
-    await publicPhase.reply({
-      content: localizer(locale, "commands.stats.generate.picker_description"),
-      allowedMentions: { parse: [] },
-    });
-    return completePersonaWorkflow();
-  },
-});
-```
-
-`publicPhase.reply()` rejects ephemeral flags and a second call. The compact private picker
-and the one public response are the two messages only because visibility changed explicitly.
-
-#### Rare low-level exception process
-
-Command and feature code must not import or invoke `replyPaginatedPersonaChoicesV2`, set
-`preserveSelectedInteraction: true`, provide an empty picker `onSelect`, or introduce a
-competing persona-selection helper such as `selectConditioningPersona`. The
-`tests/unit/checks/personaWorkflowBoundary.test.ts` audit enforces this across `src/`.
-
-If Discord exposes an operation that the typed phases cannot represent, use
-`selection.unsafeInteractions()` only for that operation and keep all message mutations on
-`selection.message`. If direct low-level picker access is genuinely unavoidable, the change
-must include all of the following:
-
-1. A narrow, exact-path entry with rationale in
-   `scripts/checks/lib/personaWorkflowBoundary.ts`.
-2. A focused test proving acknowledgment timing, anchor-message identity, V2-only
-   payloads, and no private fallback reply.
-3. An update to this section documenting why the workflow API could not express the case.
-
-An exception must never weaken the repository-wide scanner or add a directory-wide bypass.
-
-### Pattern 5: Manual Deferral Timing
-
-Use when you must delay deferral until after quick checks.
-
-```ts
-if (!hasPermission) {
-	await replyInfoEmbed(...);
-	return;
-}
-
-await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-const data = await exportServerData(...);
-await interaction.editReply({ files: [data] });
-```
-
-Rules:
-
-- keep pre-defer path fast
-- once async heavy work starts, interaction must already be acknowledged
-
-### Common Mistakes
-
-- defer before `promptWithRawModal(...)` (causes already-acknowledged errors)
-- no defer before DB/API updates in async command paths
-- pre-defer before pagination helpers
-- forgetting to defer modal submissions that do heavy async processing
-
-### Helper Behavior Notes
-
-- `replyInfoEmbed(...)` / `replySummaryEmbed(...)`:
-  - handle `reply` vs `editReply` based on interaction state
-- `promptWithRawModal(...)`:
-  - shows modal (acknowledges original interaction)
-  - optional arg 4 (`autoDeferReply`) can defer modal submission automatically
-- `promptWithUnacknowledgedConfirmation(...)`:
-  - shows confirm/cancel buttons without pre-acknowledging the confirm button
-  - use this for button -> modal flows where `showModal()` must happen after confirmation
-- `replyPaginatedChoices(...)` / `promptWithPaginatedModal(...)`:
-  - send pagination UI immediately (acknowledges interaction)
-  - should be called without pre-deferring
-
-### Quick Reference
-
-| Command Type | Defer Before Work? | Primary API |
-| --- | --- | --- |
-| Simple/Fast | No | `interaction.reply(...)` |
-| DB/API before response | Yes | `interaction.deferReply(...)` then helper reply |
-| Modal | No (before modal) | `promptWithRawModal(...)` |
-| Pagination | No (before helper) | `replyPaginatedChoices(...)` / `promptWithPaginatedModal(...)` |
-| Persona workflow | No | `runPersonaPickerWorkflow(...)`; select a typed phase operation before work |
-| Manual timing | Depends | defer after quick checks, before heavy work |
-
-## Representative Command Groups
-
-The primary MCP management surface is `/config` > Plugins > MCP Servers. The page's navigation is
-reconstructable and performs no writes. Routed navigation and mutation
-submissions derive guild or DM-workspace scope again and recheck Manage Server in guilds. The Add
-opener rechecks permission before showing the form; its submit repeats the full scope and permission
-checks. Entity mutations resolve stable MCP row IDs inside that scope before a write. Known unsupported
-route versions receive a localized stale-panel response; unrelated component IDs remain available to
-collector workflows.
-Healthy empty and collection views repaint automatically after transactions and do not expose a routine
-refresh control. Stale or unavailable reads expose a read-only `Retry` action; Retry reloads saved
-configuration and never connects to an MCP endpoint. The collection renders every supported registration
-in deterministic order with its own Enable/Disable and Remove actions, then a `Add MCP` action.
-Receipts render in a separate top-level container below the authoritative collection repaint.
-`+ Add MCP` opens one raw modal containing Name, URL, optional Auth Token, and the required
-General Purpose/Web Search/URL Fetcher Radio Group, with General Purpose selected by default. Its modal
-and field IDs carry bounded random nonces, and submission returns through the global router rather
-than an invocation-scoped modal collector, so a supported open modal can survive a process restart.
-
-- `config`: setup, model(text/image/embedding/video/vision/speech/transcription), api-key(rotation), provider(add/remove), custom-endpoint(add/edit/remove), image-tags(default-positive/default-negative), system-prompt(set/remove/preset), context-note(set), params(*), timezone, message-fetch-limit, self-debug, model-randomizer, workarounds, bot-permissions -> tool-use(toggle/manage), notice-embeds(visibility)
-- `speech`: elevenlabs, voice-assign, transcripts, voice-design(set/remove)
-- `nsfw`: jailbreaks
-- `optional-key`: brave/set/remove
-- `server`: trigger(add/delete), whitelist(channel/persona/role/remove), stm(manage), cooldown(triggers), auto-trigger(channels/threshold), matrix(link/unlink), quota(image-generation/text-generation/video-generation/reset), rp-channels, crosschannel-blocklist, welcome-channel(set/remove), private-channels, user-blacklist(add/remove), member-permissions, always-reply, thought-logs-channel, channel-prompt
-- `novelai`: generate(image)
-- `server`: trigger(add/delete), whitelist(channel/persona/role/remove), stm(manage), cooldown(triggers), auto-trigger(*), matrix(link/unlink), quota(image-generation/text-generation/video-generation/reset), rp-channels, crosschannel-blocklist, welcome-channel(set/remove), private-channels, user-blacklist(add/remove)
-- `persona`: create, generate, import, export, default, swap, remove, image-tags, sprites(add/edit/remove/export/import), attribute(add/edit/remove), sample-dialogue(add/edit/remove), prompt(set/remove), history(import/remove)
-- `memory`: document(add/remove)
-- `export`: config, memories, personal(config/memories)
-- `import`: config, memories, personal(config/memories)
-- `personal`: `/personal config` contains privacy, language, naming, appearance, model routing, and spotlight controls. Other personal subcommands cover providers, memories, and reset flows.
-- `scheduled-task`: edit, remove
-- `conditioning`: manage, reward(headpat/hug/kiss/tickle), punish(spank/pinch/bite/squeeze)
-- `tool`: ping, status, refresh, compact, comment
-- `stats`: personal(scope toggle), persona(autocomplete), server; each takes an optional `timeframe` (default All-Time)
-
-`/stats` is a guild-only category that reads the `stat_counters` telemetry table (see [database-schema](database-schema)). Each subcommand (`personal`, `persona`, `server`) takes an optional `timeframe` choice (`Today` / `Last 7 Days` / `Last 30 Days` / `Last Year` / `All-Time`), defaulting to `All-Time` when omitted; `personal` adds a required `scope` choice (`This Server` / `All Servers`), declared before `timeframe` because Discord rejects a required option after an optional one. The result is a public, invoker-controlled tabbed dashboard (`src/utils/stats/statsDashboard.ts`) built on Components V2: each tab is a single container (H3 title, separator-divided stat sections, and the tab buttons living inside the card). A row of named tab buttons swaps which container is shown (a tabbed view, not item pagination). Only the invoker can operate the tabs; the buttons are stripped on collector timeout (5 minutes). The renderer uses a single persistent `createMessageComponentCollector` (not a one-shot `awaitMessageComponent` loop) so rapid tab switching can't land in a no-collector gap, and wraps each `button.update` in try/catch so a stale/expired interaction (DiscordAPIError 10062) can never tear down the dashboard. Dashboard and infographic entry points drain the in-memory stat buffer before querying, so their snapshots include all successfully buffered work from the current process.
-
-Timeframe gating: rewards/punishments and memories are all-time-only; daily telemetry, including generation totals, works for every timeframe. Span metrics (streaks, most-active hour/day) are hidden under the single-day `Today` view. `/stats persona` uses autocomplete to select from all guild personas, validating the ID and rendering the public dashboard directly via follow-up after an initial private deferral. Token and cost figures prefer provider-reported usage and fall back to character estimates when unavailable; they remain estimates because pricing can be incomplete or provider-dependent. Timeframe windows use the daily-bucket floor, so `Today` is the current UTC day, not a rolling 24h.
-
-`/config` > Channels > Auto-Trigger is channel-scoped and uses one shared cycle across its configured channels. Threshold `0` enables always-reply in those channels. Positive values use either a fixed trigger (`min = max`) or a shared inclusive random range (`min-max`), rerolling after each successful auto-trigger. The cycle only advances on qualifying real user-like messages; TomoriBot and alter webhook self-messages do not advance or consume the auto-trigger counter. Removing a channel disables auto-trigger behavior for that channel. The page can also target a single channel and assign one persona to that room's auto-trigger fallback instead of always using the main persona.
-
-`/config` > Channels > Channel Overrides scopes a system prompt to one channel. It selects the channel, then opens a prefilled 4-part modal (up to 16000 chars, part 1 optional) plus a Radio Group for Prompt Mode (`Append` / `Replace`). `Append` injects the channel prompt as a distinct `SYSTEM_CHANNEL_PROMPT` block after the server system prompt; `Replace` substitutes the channel prompt for the server system prompt's slot; persona prompt and persona attributes are never affected. Submitting with all prompt parts empty removes the channel's override. State lives in the standalone `channel_prompt_overrides` table (per-channel, never exported) and is resolved per request via `getCachedChannelPrompt`. The override surfaces in `/tool prompt snapshot` under the `Channel Prompt` header.
-
-`/config` > Persona > Sprites carries every sprite action for the selected persona. Add validates a
-sprite label, uploads an image, converts it to PNG, and upserts a `persona_sprites` row. Reusing a
-normalized label replaces the existing sprite. Edit opens a prefilled modal for name, optional
-replacement image, usage instructions, and identity status. A replacement image consumes the
-shared avatar quota, while a metadata-only edit does not. Remove uses a fingerprinted confirmation
-for the selected sprite. Export bundles the persona's sprites into a shareable `.zip`. Import takes
-a `.zip` file upload, validates and converts every image up front, reserves one import-quota slot
-for the whole batch, overwrites on name conflicts, and rejects the entire import if it would exceed
-`PERSONA_SPRITE_MAX_PER_PERSONA`. The archive format and its ZIP-bomb guards live in
-`src/utils/persona/spriteArchive.ts`. See [multi-persona](multi-persona) for the format details.
-
-The sprite selector reserves its first option for `+ Add Sprite`, leaving 24 stored sprites per
-page. Selecting a stored sprite shows its image as a thumbnail beside its details. Public image
-URLs render directly, while local storage references are attached to the ephemeral panel and use an
-`attachment://` thumbnail URL. Persona avatar resolution and sprite-list loading run concurrently
-after the component interaction has been acknowledged. The add option is absent for actors who
-cannot mutate sprites because Discord cannot disable one select option.
-
-`/config` > Persona > Triggers keeps trigger-word controls separate from Identity & Personality so
-collection selections and write receipts remain below Discord's 40-component message limit.
-Ordinary members may inspect trigger words, but both mutation buttons and their replayed routes
-require Manage Server.
-
-`/config` > Persona > Appearance owns per-persona image tags and the NovelAI character reference.
-The panel previews a trusted saved reference without exposing its storage URL or path, using a
-configured public URL directly and a local attachment fallback. Uploading a reference is required
-in the upload modal; clearing uses a separate confirmation.
-Appearance follows Memories in the page selector, followed by Voice and Overrides, with Advanced placed last. Advanced owns persona prompts, context notes, and
-ATTG metadata; Overrides owns response style and text-model overrides.
-Text model overrides use a provider picker followed by a modal model picker when the provider has
-at most 25 models; larger catalogs retain the paginated picker because Discord limits one select to
-25 options.
-
-Behavior pages place Advanced Memory before Notice Behavior and keep Experimental Behavior last.
-Trigger cooldown omits its stored duration while disabled. Notice Behavior marks each notice with
-a green or red status icon and explains that disabled notice embeds are redirected to Logs.
-
-`/config` > Models > Switch Models exposes eight capability slots. The six ordinary model-routing
-slots select a model from the registered provider catalogs and persist their corresponding model-column
-choices. TTS and STT are workspace-wide speech slots: each selects a registered, server-scoped endpoint
-and activates its selected scoped endpoint record (the active/default endpoint), without writing a model
-column. Each speech selector is bounded by Discord's 25-option limit and validates a freshly loaded scoped
-endpoint list before writing, so a stale choice cannot change state. TTS follows `voice_message_enabled`;
-STT has no equivalent flag. `/personal config` retains six personal model-routing slots and directs users
-to `/config` for workspace-wide TTS/STT.
-
-The Text model overrides block on that page names every channel and persona override with the model it
-resolves to, read through the loader `/model override remove` presents, so the summary and the removal
-modal cannot disagree about which targets carry an override or which model each one uses. A scope lists
-at most eight rows and then reports how many it hid, because one scope can hold a full modal page of
-overrides while the block shares the message-wide text budget with the eight capability selectors.
-
-The capability notice above the override block carries only states that need an action: a disabled Image,
-Video, or Speech capability, an enabled Image or Video capability with no usable model, or an enabled
-Speech capability with no active endpoint. A working capability renders no line, which keeps the enabled
-Speech capability from restating itself on every repaint.
-
-`/conditioning remove` shows the removal modal directly when stored conditioning entries are at or under
-the modal ceiling of 50. When more than 50 entries exist, it displays a minimal ephemeral page-select
-whose routed buttons each open the removal modal for a 50-entry batch. Modal submissions remain bound to a
-fingerprint of the exact entries presented. `/conditioning manage` is a temporary compatibility leaf running
-the same implementation.
-
-`/generate image` Auto mode is a modal-driven, fire-and-forget scene snapshot flow. It plans against the current channel context with the active text provider, preparing its simplified-history participants through the same API as live chat, then renders with either the current provider's native image path or NovelAI's tag-based image tool when a NovelAI backend is available. Personal provider overlays apply before the hidden turn is built so personal text/image routing is respected.
-
-`/generate scene` is a modal-driven scripted text-scene command. V1 requires two different personas, optionally accepts a third, blocks duplicate selections, and only opens when the available persona set fits Discord's 25-option select limit. The `Rounds` field repeats the selected speaking order and is bounded by `GENERATE_SCENE_MAX_CYCLES` (10; TomoriBot is BYOK so each generated turn bills the invoking user's own provider). Each generated turn receives a concise tail directive: additional instructions when provided, then "Begin your next reply as {persona}. Write only this character's next message." Scene turns keep tools enabled, suppress `/respond` continuation prompting, and use unique text-quota trigger keys so each generated turn is charged separately. Because every scene turn shares one trigger message, both reply-to-trigger mechanisms are suppressed for scene turns: the visual Discord reply (`replyToMessage` in `toolLoop.ts`) and the textual `buildQueuedReplyDirective` context directive (`contextPipeline.ts`); otherwise every queued persona would render and be told to reply to the same unrelated message. The command-execution status embed (`commands.generate.scene.success_title`) is sent non-ephemerally so it is classified as a `scene_directive` system embed and re-read into context as `[System: ...]`. For scene turns after the first, `triggererName` (what `{{user}}` resolves to in `turnPlanner.ts`) is overridden to the previous speaker in `sceneTurn.sequence`, so each persona treats the prior persona as the entity it is responding to rather than the command invoker; turn 0 has no prior speaker and keeps the invoker.
-
-`/generate video` is a modal-driven async generation command. It validates `videogen_enabled`, provider capability, API key, configured `video_model_id`, and server quota before polling the selected provider until the MP4 result is ready.
-
-`/generate voice-message` is a modal-driven manual driver for the server's active speech endpoint, so auditioning a clone sample or a voice design prompt does not require a chat turn and a model that decides to call the tool. It accepts an optional `persona` (autocompleted through the same whitelist and personal-spotlight filter as `/impersonate persona`, then re-checked on submit because autocomplete output is only a client-side suggestion), an optional `voice_sample` attachment, and an optional `voice_design` prompt. The two overrides are never persisted: the uploaded buffer stays in memory for the invocation, and `resolveVoiceSourceCandidates` decides which of the four possible sources the modal offers, in the order upload, typed design prompt, persona sample, persona design prompt. An endpoint that accepts neither request shape, such as ElevenLabs, ignores both user options and uses the persona's stored voice id.
-
-The command holds the same pre-modal line as the other `/generate` subcommands: it must acknowledge within three seconds without deferring, so `voice_sample` is validated on metadata only (MIME type and byte size) before the modal opens, and the download, duration check, and ffmpeg normalization happen after submission. It gates on `voice_message_enabled` and shares the trigger cooldown with message triggers, mirroring `/generate scene`. Because a voice message is sent under a persona's name and avatar, the command requires a guild text channel or thread, resolves a webhook rather than falling back to bot identity, and posts the transcript caption plus `setCachedVoiceTranscript` exactly as the tool path does. `audio_generated` is recorded once, on success only, with the same three backend keys as the tool.
-
-The randomizer on `/config` > Models > Fallbacks & Randomizer is a server-level toggle for the per-turn text model randomizer. When enabled, each generation turn randomly promotes one model from the pool (primary model + configured fallbacks) to lead the attempt chain, breaking the bot out of any single model's repetitive phrasing while keeping the rest as failover. It enforces a block-until-fallbacks precondition: enabling is refused with a localized warning embed unless the server has ≥1 fallback configured on that same page, guaranteeing the pool always has ≥2 members so the toggle is never a silent no-op. The flag lives in `server_chat_configs.model_randomizer_enabled` and is consumed by `buildGenerationAttempts` (see the [generation-turn pipeline](../pipelines/chat/06-per-turn/03-run-generation-turn)).
-
-The Compatibility section that once sat on `/config` > Engine > Experimental is retired. Its only entry, `Verbatim Tool-Calling`, described a single backend's parser rather than server-wide behavior, so it now lives per model in `/providers`: select a custom endpoint, then add or edit a text model, and use `Chat Completion Compatibilities` alongside the same `strict_role_alternation` and `supports_prefix_completion` toggles. The value is stored on `custom_endpoints.verbatim_tool_calling` and mirrored to the endpoint's synthetic `llms` row, which is what the runtime reads. See the [tool-loop pipeline](../pipelines/tool-loop/README.md) for how it drives prompt assembly.
-
-### Personal-provider (BYOK) routing in commands
-
-Any command that performs AI work the invoking user triggers must honor that user's personal (BYOK) provider. TomoriState-consuming command handlers apply the user's personal provider onto the loaded server state via `applyPersonalProviderSelectionsToTomoriState(tomoriState, userData.user_id)` before reading `config.api_key`, deriving the provider/model name, or validating capabilities. The overlay returns the server state unchanged when the user has no enabled personal provider, so it is always safe to call. Commands that currently apply it: `/persona generate`, `/novelai generate image`, `/generate image`, `/generate video`, `/learn history`, `/expressions initialize`, and `/tool estimate cost` (so its live estimate stays in parity with what would actually run for the user).
-
-In contrast, `/memories` resolves the invoking user's embedding credentials directly through the credential resolver via `resolveCapabilityCredentials(serverId, "embedding", { userId })` during document addition and memory vectorization operations.
-
-The one deliberate exception is `/config` > Models > Switch Models, which re-embeds server-wide documents under server credentials (`resolveCapabilityCredentials(serverId, "embedding")` with no `userId`). This is bulk maintenance of a pre-existing server resource rather than a fresh user action, so it intentionally stays on server credentials.
-
-Forward-looking command rewrite guidance (naming conventions, checklist-style settings pattern, migration map) is now part of `docs/en/contributing/extending/slash-command.md`. The runtime loader and current implementation still use the existing `src/commands/` structure.
-
-## Adding a New Command
-
-1. Add a `.ts` file under the correct command category/group path.
-2. Export `configureSubcommand` and `execute`. Root commands export
-   `configureCommand` and `execute`.
-3. Add locale keys in both locale trees (`src/locales/en-US/` and `src/locales/ja/`). Command keys live in `commands/{category}.ts` within each locale directory.
-4. Run:
-   - `bun run check-locales`
-   - `bun run check`
-   - `bun run lint`
+The page shows availability, added time/cost and a bounded prompt preview. `Set Prompt` opens the
+complete instructions in a prefilled 4,000-character modal; `Use Default` clears the override. Custom
+prompts retain the Decision selection but disable skipping. Selected Decisions are visibly inactive
+while calibration is absent. Persistence is described in
+[database settings](database-schema.md#response-drafting-workspace-settings); runtime ownership is in
+[generation review](../pipelines/chat/06-per-turn/03-run-generation-turn.md#response-text-review).
+
+## Contributor guides
+
+Procedures for adding commands and authoring UI panels belong to dedicated contributor guides:
+
+- Authoring slash commands: [Adding a Slash Command](/contributing/extending/slash-command/)
+- Command architecture selection: [Command Archetypes](/contributing/policies/command-archetypes/)
+- Building Components V2 panels: [Adding a Panel](/contributing/extending/panel/)
+
+## Source pointers
+
+- `src/utils/discord/commandLoader.ts`: dynamic command discovery and metadata localization.
+- `src/events/interactionCreate/handleCommands.ts`: interaction routing, cooldowns, and error context attribution.
+- `src/utils/discord/interactions/router.ts`: persistent interaction routing and custom ID dispatch.
+- `src/utils/discord/interactions/panelController.ts`: panel interaction acknowledgement timing and guarded delivery.
+- `src/utils/discord/ui/personaWorkflow.ts`: anchor message lifecycle and phase operations.
+- `src/utils/discord/ui/interactionCore.ts`: guarded panel delivery and panel failure metrics.

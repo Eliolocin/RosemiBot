@@ -145,15 +145,15 @@ run at most once every 6 hours.
 
 ### On-Demand Heap Profiling
 
-Setting `HEAP_SNAPSHOT_DIR` registers a `SIGUSR2` signal handler that triggers a Chrome DevTools
-`.heapsnapshot` dump. This allows diagnosing unmanaged array buffer or external memory growth that
-normal counters cannot attribute.
+Heap snapshots can contain master secrets, decrypted credentials, Discord and database tokens, and private conversation data. Leave `HEAP_SNAPSHOT_DIR` unset during routine operation. An unset value registers no `SIGUSR2` handler. Azure Compose also leaves `TOMORIBOT_HEAP_SNAPSHOT_DIR` empty by default.
 
-- **Operational trade-off**: serializing the snapshot string requires approximately half the live heap
-in additional temporary memory. On a memory-constrained host, initiating a snapshot is itself a
-heavy pressure event. Collect snapshots during moderate uptime, and restart the container
-afterward. Ensure the target directory points to a writable host bind mount, as production containers
-run with a read-only root filesystem.
+For an authorized diagnostic session, create a directory outside general log shipping, owned by the bot user and accessible only to that user (directory `0700`, snapshot files `0600` on POSIX; a private ACL on Windows). Azure uses `/var/lib/tomoribot/diagnostics` mounted at `/app/diagnostics`; explicitly set `TOMORIBOT_HEAP_SNAPSHOT_DIR=/app/diagnostics` and recreate the container. The handler refuses a symlink, a non-directory, or a POSIX directory with other-user access or the wrong owner. It creates files exclusively with mode `0600`. Check Windows ACLs yourself before enabling it.
+
+Send `SIGUSR2` only during the diagnostic session. Serialization needs roughly half the live heap as additional temporary memory, so capture during moderate memory use and restart afterward. Transfer a snapshot only through protected storage. Remove it from the host and any analysis copies when diagnosis finishes, unset the directory setting, and recreate or restart the process to remove the handler. There is no automatic snapshot retention policy.
+
+After rollout, verify the running container has an empty `HEAP_SNAPSHOT_DIR` and no startup message indicating an armed handler. Inspect the effective Compose configuration and container environment without dumping unrelated secrets. A checkout change does not establish that a running deployment is safe.
+
+Review existing snapshots under the old log mount, log-shipping destinations, and retained backup bundles for access and retention. Old bundles containing `config.env` remain secret-bearing. Restrict access while investigating. If evidence shows unauthorized access, rotate the exposed provider, webhook, Discord, database, and master secrets as applicable, retaining protected encryption versions for recoverable backups. This procedure does not authorize production deletion or rotation by itself.
 
 ### Streaming JSON Logs
 

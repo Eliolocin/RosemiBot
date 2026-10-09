@@ -4,79 +4,104 @@ sidebar:
   order: 3
 ---
 
-TomoriBot có thể được cấu hình dành riêng cho bạn bằng các lệnh `/personal`: các cài đặt này đi theo bạn qua mọi máy chủ bạn dùng chung với bot, độc lập với cấu hình của bất kỳ máy chủ nào.
+TomoriBot có thể ghi nhớ thông tin cá nhân, tên tùy chỉnh và thông tin đăng nhập của nhà cung cấp AI theo bạn trên mọi máy chủ mà bạn chia sẻ với cô ấy. Bạn có thể quản lý các cài đặt này bằng các lệnh `/personal` mà không thay đổi cấu hình chia sẻ của bất kỳ máy chủ nào.
 
 ## Bộ nhớ cá nhân
 
-Các dữ kiện bot nhớ về bạn sẽ đi theo bạn giữa các máy chủ. Việc quản lý chúng (thêm, xóa, xuất) được trình bày trên trang [Bộ nhớ](/vi/features/knowledge/memory/#personal-vs-server-memories).
+Những thông tin cô ấy biết hoặc nhớ về bạn sẽ theo bạn giữa các máy chủ. Việc quản lý chúng (thêm, xóa, xuất hoặc xóa ngữ cảnh) được đề cập trên trang [Bộ nhớ](/vi/features/knowledge/memory/#personal-vs-server-memories).
 
 ## Hồ sơ và tên theo persona
 
-Lệnh `/personal config` lưu trữ ba tùy chọn độc lập không bắt buộc: bản dạng giới, đại từ xưng hô và kiểu xưng hô. TomoriBot không bao giờ suy diễn tùy chọn này từ tùy chọn khác. Kiểu xưng hô chọn biến thể đặt tên nam tính, nữ tính hoặc trung tính của persona, và Trung tính là mặc định được chọn sẵn. Các trường để trống sẽ bị xóa và bỏ qua khỏi ngữ cảnh prompt. Các trường hồ sơ thô chỉ hiển thị ở mức quyền riêng tư `Không`.
+Định cấu hình cách TomoriBot đánh địa chỉ và đề cập đến bạn trên các máy chủ trong `/personal config` > `Hồ sơ`.
 
-Lệnh `/personal config` mở một cửa sổ nhập tên cho phạm vi toàn cục hoặc phạm vi persona. Tùy chọn theo phạm vi persona sẽ đi theo nguồn gốc ổn định của persona đó qua các máy chủ. Biệt danh kế thừa từ tùy chọn persona đến tùy chọn toàn cục và sau đó là tên hiển thị trực tiếp trên Discord. Biệt danh toàn cục để trống sẽ tiếp tục lấy theo Discord, bao gồm cả những thay đổi tên hiển thị sau đó. Việc lưu biệt danh toàn cục sẽ cố định giá trị tùy chỉnh đó cho đến khi bị xóa. Tiền tố hoặc hậu tố để trống cũng kế thừa theo cách tương tự, và văn bản đã nhập sẽ ghi đè giá trị này, vì vậy `Master Mirri-san` có thể kết hợp các giá trị từ các cấp độ khác nhau mà không làm thay đổi đối tượng mention cơ bản trên Discord. Để bỏ một danh xưng mà persona tự thêm vào, hãy yêu cầu trực tiếp persona đó ("đừng gọi tôi là Master nữa"); điều này sẽ loại bỏ danh xưng đó đối với riêng persona này trong khi vẫn giữ nguyên các persona khác của bạn.
+### Chi tiết hồ sơ
 
-Người quản lý máy chủ có thể cấu hình mặc định cho persona bằng `/config` > Persona > Identity & Personality. Một từ xưng hô độc lập như `fam` tách biệt với tên được định dạng và chỉ khả dụng đối với văn bản prompt do persona tạo ra. Tính năng Cập nhật thông tin người dùng được bật mặc định cho phép persona áp dụng các thay đổi có cấu trúc rõ ràng được yêu cầu trong cuộc trò chuyện. Việc tắt tính năng này sẽ dừng các cập nhật công cụ tự động nhưng không tắt `/personal config`.
+Trong `/personal config` > `Hồ sơ` > Tùy chọn chung, phần **Giới thiệu về bạn** lưu trữ ba tùy chọn độc lập, tùy chọn:
 
-Lệnh `/personal config` chỉ lưu trữ độ lệch UTC dạng số từ -12 đến +14. Lệnh không lưu trữ hoặc suy luận vị trí địa lý hoặc múi giờ IANA.
+- **Nhận dạng giới tính**: mô tả giới tính của bạn.
+- **Đại từ**: đại từ ưa thích của bạn.
+- **Cách xưng hô**: chọn cách đặt tên nam tính, nữ tính hoặc trung tính của cá nhân. Trung lập là mặc định.
 
-## Nhà cung cấp riêng của bạn
+TomoriBot không bao giờ suy ra trường này từ trường khác. Các trường trống sẽ bị xóa và bỏ qua khỏi ngữ cảnh được nhắc. Các trường hồ sơ thô chỉ được hiển thị với AI khi mức độ riêng tư của bạn được đặt thành `Không có`.
+
+Phần **Giao diện** cho phép bạn đặt độ lệch UTC bằng số (-12 đến +14) hoặc khớp với giá trị mặc định của máy chủ. TomoriBot chỉ lưu trữ phần bù số này, không bao giờ lưu trữ vị trí địa lý hoặc múi giờ IANA.
+
+### Đặt tên kế thừa
+
+Trong `/personal config` > `Hồ sơ` > Tùy chọn chung hoặc Tùy chọn dành riêng cho Persona, bạn có thể đặt biệt hiệu, tiền tố hoặc hậu tố:
+
+- **Phạm vi toàn cầu**: áp dụng cho tất cả các cá nhân trừ khi bị ghi đè.
+- **Phạm vi cá nhân**: chỉ áp dụng cho một dòng cá nhân cụ thể trên các máy chủ.
+
+Tên phân giải từ cụ thể nhất đến ít cụ thể nhất:
+
+1. **Tùy chọn cá nhân**: biệt hiệu tùy chỉnh được đặt cho cá tính đó.
+2. **Tùy chọn chung**: biệt hiệu tùy chỉnh được đặt cho tất cả các cá tính.
+3. **Tên hiển thị Discord**: tên hiển thị máy chủ trực tiếp của bạn.
+
+Để trống biệt hiệu chung của bạn cho phép TomoriBot tự động theo dõi tên hiển thị Discord của bạn, bao gồm cả những thay đổi trong tương lai. Việc lưu biệt hiệu chung tùy chỉnh sẽ đóng băng giá trị đó cho đến khi bạn xóa nó.
+
+Tiền tố và hậu tố kế thừa theo cùng một cách. Ví dụ: tiền tố từ một cấp độ và hậu tố từ cấp độ khác có thể kết hợp thành `Master Mirri-san`. Để ngăn một persona sử dụng chức danh do chính họ tạo ra, hãy hỏi trực tiếp persona đó trong cuộc trò chuyện ("đừng gọi tôi là Chủ nhân"); loại bỏ tiêu đề cho tính cách đó trong khi không chạm tới các tính cách khác.
+
+Người quản lý máy chủ định cấu hình mặc định tính cách trên toàn máy chủ trong `/config` > `Persona` > `Danh tính & Tính cách`. Khi bật khả năng `Cập nhật thông tin người dùng`, các cá nhân cũng có thể cập nhật chi tiết hồ sơ của bạn khi được yêu cầu trong cuộc trò chuyện.
+
+## Nhà cung cấp của riêng bạn
 <!-- anchor: your-own-providers -->
 
-Các nhà cung cấp cá nhân cho phép *các yêu cầu của chính bạn* sử dụng API key và model của *chính bạn* thay vì mặc định của máy chủ. Đây là hình thức tự mang theo API key (BYOK) ở cấp độ cá nhân.
+Các nhà cung cấp cá nhân cho phép các yêu cầu của riêng bạn sử dụng các khóa và kiểu API của riêng bạn thay vì mặc định của máy chủ. Đây là khóa mang theo của riêng bạn (BYOK) ở cấp độ người dùng cá nhân.
 
-Có hai phạm vi được áp dụng, và bạn nên nắm rõ sự khác biệt giữa chúng:
+Hai phạm vi có sẵn:
 
-- **Mặc định của máy chủ**: thông tin xác thực và danh mục dùng chung trong `/providers`, với định tuyến được chọn qua `/model` bởi các thành viên có quyền cần thiết trong máy chủ. Cài đặt này áp dụng cho tất cả mọi người tại đó.
-- **Tùy chỉnh cá nhân**: cấu hình chỉ được sử dụng cho các yêu cầu của riêng bạn. Khi được bật, cài đặt này sẽ thay thế mặc định của máy chủ cho tính năng đó **trên mọi máy chủ** mà bạn sử dụng TomoriBot, không chỉ máy chủ mà bạn đã thiết lập.
+- **Mặc định của máy chủ**: thông tin xác thực và model được chia sẻ được người quản lý máy chủ định cấu hình trong `/providers` và `/model`. Áp dụng cho tất cả mọi người trong máy chủ.
+- **Ghi đè cá nhân**: thông tin xác thực và kiểu máy được định cấu hình trong `/personal providers` và `/personal config`. Chỉ áp dụng cho các yêu cầu của bạn trên mọi máy chủ nơi bạn sử dụng TomoriBot.
 
-Thiết lập:
+### Cài đặt
 
-1. `/personal providers` lưu một nhà cung cấp (khóa của bạn được mã hóa). Thao tác này cũng bật ngay tùy chỉnh `Văn bản` cá nhân của bạn, sử dụng model văn bản mặc định của nhà cung cấp đó.
-2. `/personal config` cho phép chọn một model khác cho tùy chỉnh văn bản cá nhân của bạn. Việc chọn model tại đây vẫn duy trì trạng thái bật của Văn bản.
-3. Quay lại `/personal providers` bất cứ khi nào bạn cần cập nhật thông tin xác thực, quản lý các endpoint tùy chỉnh, hoặc thêm và chỉnh sửa các đăng ký model cá nhân.
+1. Chạy `/personal providers` để lưu nhà cung cấp (khóa API của bạn được mã hóa). Việc lưu nhà cung cấp sẽ cho phép ghi đè văn bản cá nhân của bạn ngay lập tức bằng model mặc định của nhà cung cấp đó.
+2. Chạy `/personal config` > `Model` > Chuyển model để chọn một model khác để ghi đè văn bản cá nhân của bạn.
+3. Quay lại `/personal providers` bất cứ khi nào bạn cần cập nhật thông tin xác thực, quản lý điểm cuối tùy chỉnh hoặc thêm đăng ký model tùy chỉnh.
 
-Việc chọn một model bằng `/personal config` sẽ kích hoạt tính năng đó cho các yêu cầu của bạn.
+Việc chuyển một khả năng từ mặc định của máy chủ sang tùy chỉnh cá nhân sẽ hiển thị lời nhắc xác nhận trước khi lưu. Cập nhật thông tin xác thực cho nhà cung cấp mà bạn đã sử dụng sẽ bỏ qua xác nhận.
 
-Vì các bước 1 và 2 chuyển bạn sang chế độ tùy chỉnh ưu tiên liên máy chủ, TomoriBot sẽ yêu cầu bạn xác nhận trước khi lưu bất cứ khi nào một tính năng chuyển từ mặc định của máy chủ sang tùy chỉnh cá nhân. Việc đổi key trên một nhà cung cấp đang phản hồi các yêu cầu của bạn sẽ bỏ qua bước xác nhận này, vì định tuyến không thay đổi.
+Thuộc tính nhật ký suy nghĩ lần lượt sử dụng khóa cá nhân của bạn cho bạn. Bạn có thể điều chỉnh các thông số model cá nhân của mình (nhiệt độ, top-p, giới hạn mã thông báo) trong `/personal config` > `Model` > Bộ lấy mẫu & Thông số. Để đăng ký điểm cuối tùy chỉnh riêng tư, hãy xem [Điểm cuối tùy chỉnh](/vi/features/setup-administration/providers-and-models/#custom-endpoints).
 
-Nhật ký suy nghĩ sẽ ghi nhận các lượt tương tác đó cho bạn, và bạn có thể tinh chỉnh chúng bằng `/personal config`. Điều này ảnh hưởng đến các yêu cầu của bạn ở mọi nơi và không bao giờ chạm vào cài đặt của máy chủ này. Bạn cũng có thể đăng ký các endpoint tùy chỉnh cá nhân bằng `/personal providers`; xem [Endpoint tùy chỉnh](/vi/features/setup-administration/providers-and-models/#custom-endpoints).
+### Xử lý lỗi và dự phòng
 
-Nếu một yêu cầu không thành công trong khi sử dụng nhà cung cấp cá nhân của bạn, mẹo "Những gì bạn có thể làm" trong thông báo lỗi sẽ nêu tên các lệnh cá nhân thực sự có thể khắc phục được (`/personal providers`, `/personal config`) thay vì các lệnh dành cho người quản lý máy chủ.
+Nếu yêu cầu không thành công khi sử dụng nhà cung cấp cá nhân của bạn, các mẹo xử lý lỗi sẽ hướng bạn đến các lệnh cá nhân của bạn (`/personal providers`, `/personal config`) thay vì cài đặt máy chủ.
 
-Khi mọi model trên tuyến văn bản cá nhân của bạn đều gặp lỗi, TomoriBot có thể trả lời bằng model văn bản của chính máy chủ thay vì để tin nhắn không có phản hồi. Câu trả lời đó dùng thông tin xác thực của máy chủ và tính vào hạn mức văn bản của máy chủ, đồng thời tôn trọng thời gian chờ giữa các tin nhắn của máy chủ, nên một nhà cung cấp lỗi ở mọi tin nhắn sẽ không trở thành một phản hồi cho mỗi tin nhắn. Câu trả lời đó được thông báo theo cùng cách như mọi lần dự phòng model khác: một nút Đã dùng dự phòng với phần chi tiết nêu tên model đã trả lời và những lỗi xảy ra trước đó. Tắt tùy chọn này trong `/personal config` > Model > Model dự phòng, ở mục Dự phòng bằng model máy chủ, để lỗi từ nhà cung cấp của bạn vẫn thuộc về bạn. Cài đặt này có hiệu lực toàn tài khoản và được bật mặc định, nên nó đi theo bạn tới mọi máy chủ cho phép bật tùy chọn này.
+Khi mọi model trên tuyến văn bản cá nhân của bạn bị lỗi, TomoriBot có thể quay trở lại model văn bản mặc định của máy chủ thay vì bị lỗi âm thầm. Dự phòng máy chủ chạy dựa trên thông tin xác thực của máy chủ, được tính vào hạn ngạch văn bản của máy chủ và hiển thị nút `Đã dùng dự phòng` kèm theo thông tin chi tiết.
 
-:::note[Máy chủ yêu cầu BYOK]
-Một máy chủ có thể yêu cầu nhà cung cấp do thành viên tự cung cấp bằng chế độ BYOK người dùng ([Kiểm duyệt máy chủ](/vi/features/setup-administration/server-moderation/#user-byok-bring-your-own-key)). Khi chế độ đó bật, các tin nhắn do bạn kích hoạt cần có nhà cung cấp cá nhân trước khi bot có thể phản hồi, và một tuyến cá nhân đã thất bại thì vẫn thất bại: máy chủ không cấp model của mình cho thành viên sẽ không cho mượn model nào làm phương án dự phòng. Các nhà cung cấp cá nhân áp dụng trên mọi máy chủ mà bạn sử dụng bot.
+Bạn có thể tắt tính năng dự phòng máy chủ trong `/personal config` > `Model` > Dự phòng trong `Dự phòng bằng model máy chủ`. Cài đặt này áp dụng cho toàn bộ tài khoản và được bật theo mặc định.
+
+:::note[BYOK-required servers]
+Máy chủ có thể yêu cầu các thành viên cung cấp khóa API của riêng họ thông qua chế độ BYOK của người dùng ([Kiểm duyệt máy chủ](/vi/features/setup-administration/server-moderation/#user-byok-bring-your-own-key)). Khi được bật, tin nhắn của bạn yêu cầu nhà cung cấp cá nhân được định cấu hình trước khi TomoriBot phản hồi và các tuyến cá nhân không thành công sẽ không quay trở lại thông tin xác thực của máy chủ.
 :::
 
 ## Các cài đặt cá nhân khác
 
-- `/personal config`: thay đổi cách bot gọi bạn.
-- `/personal config`: các thẻ ngoại hình của riêng bạn (kiểu booru), được sử dụng khi [tạo ảnh](/vi/features/capabilities/media-generation/image-generation/#tag-customization) có tham chiếu đến bạn. Gửi một ô trống để xóa chúng.
-- `/personal config`: kiểm soát khả năng hiển thị của bạn đối với bot, lên đến mức hoàn toàn vô hình (từ chối hoàn toàn các tính năng bộ nhớ).
-- `/personal config`: tùy chỉnh cá nhân cho [Chế độ kích hoạt có chủ đích](/vi/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode).
-- `/personal config`: cho phép model văn bản của máy chủ trả lời thay khi tuyến văn bản cá nhân gặp lỗi, hoặc tắt tùy chọn đó.
-- `/personal config`: chọn tham gia chia sẻ bộ nhớ ngắn hạn liên máy chủ; `/personal memories` sẽ xóa STM của bạn.
-- `/personal config`: đặt một prompt có thể tái sử dụng khi bot mạo danh bạn thông qua `/impersonate user`.
+Sử dụng `/personal config` để tùy chỉnh các tính năng bổ sung:
 
-## Spotlight cá nhân
+- **Giao diện** (`Hồ sơ` > `Diện mạo`): lưu các thẻ giao diện kiểu booru được sử dụng bất cứ khi nào [tạo hình ảnh](/vi/features/capabilities/media-generation/image-generation/#tag-customization) tham chiếu đến bạn. Gửi một hộp trống để xóa chúng.
+- **Kiểm soát quyền riêng tư** (`Quyền riêng tư` > `Kiểm soát quyền riêng tư`): chọn mức độ hiển thị của bạn (`Không có`, `Một phần` hoặc `Đầy đủ`) hoặc chuyển đổi chia sẻ bộ nhớ ngắn hạn trên nhiều máy chủ.
+- **Chế độ phản hồi** (`Nâng cao` > `Chế độ phản hồi`): chuyển đổi tùy chỉnh cá nhân của bạn cho [Chế độ kích hoạt có chủ ý](/vi/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode).
+- **Mạo danh** (`Nâng cao` > `Mạo danh`): đặt lời nhắc có thể sử dụng lại được sử dụng khi ai đó gọi `/impersonate user` cho bạn.
+
+## Tiêu điểm cá nhân
 <!-- anchor: personal-spotlight -->
 
-Spotlight cá nhân: lựa chọn persona theo từng kênh. Spotlight cho phép *bạn* thu hẹp danh sách persona mà bạn có thể kích hoạt trong một kênh, và tùy chọn chỉ định một persona tự động kích hoạt cho các tin nhắn của chính bạn tại đó. Tính năng này được giới hạn cho bạn + một kênh và không ảnh hưởng đến bất kỳ ai khác.
+Tiêu điểm cá nhân thu hẹp những cá tính nào bạn có thể kích hoạt trong một kênh cụ thể và tùy ý chỉ định một cá tính tự động kích hoạt dự phòng cho tin nhắn của bạn ở đó. Nó nằm trong phạm vi của bạn và một kênh: nó không ảnh hưởng đến bất kỳ ai khác trong máy chủ.
 
-Thiết lập spotlight bằng `/personal config`, chọn:
+Để định cấu hình đèn chiếu trong `/personal config` > `Nâng cao` > Đèn chiếu cá nhân:
 
-- thời lượng tính theo giờ (dùng 0 để giữ cho đến khi bạn xóa theo cách thủ công),
-- kênh mục tiêu,
-- các persona bạn muốn đưa vào spotlight.
+1. Chọn thời lượng tính bằng giờ (nhập `0` để duy trì thời lượng cho đến khi bị xóa theo cách thủ công).
+2. Chọn kênh mục tiêu.
+3. Chọn những cá tính mà bạn muốn cho phép mình được chú ý.
+4. Tùy ý chọn một trong những persona đó làm **persona tự động kích hoạt cá nhân** của bạn (người trả lời mặc định cho tin nhắn của bạn trong kênh đó). Những đề cập rõ ràng vẫn có thể nhắm mục tiêu đến bất kỳ cá nhân nào được phép. Nhấn `Lưu spotlight` để bỏ qua cài đặt tính cách tự động kích hoạt.
 
-Sau khi chọn persona, bạn có thể tùy chọn chọn một persona làm persona tự động kích hoạt cá nhân: persona phản hồi dự phòng cho các tin nhắn của bạn trong kênh đó. Kích hoạt trực tiếp vẫn sẽ nhắm vào bất kỳ persona nào bạn gọi tên rõ ràng. Nhấn `Lưu spotlight` để bỏ qua lựa chọn tự động kích hoạt.
+### Quy tắc tiêu điểm
 
-Các quy tắc quan trọng:
+- Tiêu điểm chỉ thu hẹp quyền truy cập: bạn không thể kích hoạt các cá nhân bị loại khỏi danh sách tiêu điểm của mình.
+- Nó tôn trọng các quyền cá nhân cấp máy chủ được định cấu hình trong `/moderation`.
+- Việc chuyển giao proxy Persona được giới hạn ở những Persona có trong danh sách tiêu điểm của bạn.
 
-- Spotlight chỉ thu hẹp quyền truy cập; không bao giờ mở rộng quyền truy cập. Các persona đã chọn là những persona *duy nhất* bạn có thể kích hoạt tại đó.
-- Tính năng này vẫn tuân thủ các giới hạn persona ở cấp máy chủ được cấu hình thông qua `/moderation`.
-- Chuỗi ủy nhiệm (proxy chains) bị chặn: nếu spotlight của bạn chỉ bao gồm Alice, phản hồi của Alice không thể chuyển tiếp sang Bob cho chuỗi tin nhắn của bạn.
-
-Xem lại hoặc xóa các mục bằng `/personal config` (bỏ chọn để xóa; spotlight có đặt thời gian sẽ tự hết hạn). Trong `/help`, chọn `Hành vi`, rồi chọn `Spotlight cá nhân`, để xem bản tóm tắt trên Discord.
+Quản lý hoặc xóa tiêu điểm trong `/personal config` > `Nâng cao` > Tiêu điểm cá nhân (bỏ chọn các mục để xóa chúng; tiêu điểm định giờ sẽ tự động hết hạn). Trong `/help`, chọn `Nâng cao` > `Spotlight cá nhân` để xem tóm tắt nhanh.

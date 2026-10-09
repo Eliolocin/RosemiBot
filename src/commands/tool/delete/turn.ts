@@ -1,3 +1,4 @@
+import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import type { AnyThreadChannel, ChatInputCommandInteraction, Client, Message } from "discord.js";
 import { BaseGuildTextChannel, EmbedBuilder, MessageFlags, type SlashCommandSubcommandBuilder } from "discord.js";
 import { tomoriChat, suppressNextSelfReply } from "@/events/messageCreate/tomoriChat";
@@ -15,6 +16,7 @@ import { findLastPersonaTurnBlock } from "@/utils/discord/personaTurnDetection";
 import { resolveManagedWebhookForChannel } from "@/utils/discord/webhook/fallback";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 /** Module-level lock set keyed by channelId, so prevents double-invocation. */
 const activeDeleteLocks = new Set<string>();
@@ -184,6 +186,7 @@ export async function execute(
       // so index 0 = oldest and the last index = newest
       const messages: Message[] = [...fetched.values()].reverse();
 
+      await Promise.all(messages.map(verifyMessageWebhook));
       const detectedTurn = findLastPersonaTurnBlock({
         messages,
         allPersonas,
@@ -505,7 +508,7 @@ export async function execute(
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, status.titleKey))
+            .setTitle(localizedStatusTitle(locale, status.titleKey, status.color))
             .setDescription(localizer(locale, status.descriptionKey, status.descriptionVars))
             .setColor(status.color),
         ],
@@ -526,7 +529,7 @@ export async function execute(
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "general.errors.unexpected_title"))
+            .setTitle(localizedStatusTitle(locale, "general.errors.unexpected_title", ColorCode.ERROR))
             .setDescription(localizer(locale, "general.errors.unexpected_description"))
             .setColor(ColorCode.ERROR),
         ],

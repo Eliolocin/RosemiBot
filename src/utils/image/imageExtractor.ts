@@ -122,8 +122,6 @@ function buildImageDownloadCandidates(info: ImageUrlInfo): string[] {
 }
 
 /**
- * Download one discovered image, falling back to its Discord proxy mirror.
- *
  * @param info - Discovered image, whose `proxyUrl` supplies the fallback source
  * @param options - Forwarded to {@link safeDownload} for every attempt
  * @returns The first successful download, else the last failure encountered

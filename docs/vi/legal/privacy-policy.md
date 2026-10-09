@@ -1,6 +1,7 @@
 ---
 title: Chính sách quyền riêng tư
 description: Cách instance TomoriBot chính thức được lưu trữ thu thập, lưu trữ và xóa dữ liệu của bạn.
+aiGenerated: false
 ---
 
 *Bản dịch này chỉ nhằm mục đích thuận tiện cho bạn tham khảo. Trong trường hợp có sự mâu thuẫn giữa bản dịch và bản tiếng Anh, bản tiếng Anh sẽ được ưu tiên áp dụng.*

@@ -1,5 +1,6 @@
 export default {
   status: {
+    prompt_hidden: `Nội dung prompt bị ẩn. Thành viên cần có quyền Quản lý Máy chủ hoặc bật tính năng xem prompt để xem nội dung này.`,
     description: `Xem trạng thái hiện tại của cá nhân, máy chủ hoặc persona.`,
     scope_choice_behavior: `Hành vi`,
     scope_choice_models: `Model`,

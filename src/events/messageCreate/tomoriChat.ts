@@ -8,6 +8,11 @@ import {
   suppressNextSelfReply,
 } from "@/utils/chat/channelQueue";
 import { buildChatTurnContext } from "@/utils/chat/contextPipelineIntent";
+import {
+  recordChatDiagnostic,
+  runWithChatDiagnostic,
+  runWithChatDiagnosticStage,
+} from "@/utils/chat/diagnosticTimeline";
 import { runGenerationTurn } from "@/utils/chat/generationTurn";
 import type { ChatAdmissionDisposition, ChatIncoming, TomoriChatInput } from "@/utils/chat/types";
 import { installUserImpersonationCompletion } from "@/utils/chat/userImpersonationCompletion";
@@ -43,7 +48,7 @@ export async function tomoriChat(input: TomoriChatInput): Promise<ChatAdmissionD
       serverDiscId: incoming.message.guildId,
       channelDiscId: incoming.message.channelId,
     },
-    () => runAdmittedChatTurn(incoming),
+    () => runWithChatDiagnostic(incoming, () => runAdmittedChatTurn(incoming)),
   );
 
   // User impersonation owns its user-facing error UI at the slash interaction. Waiting here keeps
@@ -58,6 +63,7 @@ export async function tomoriChat(input: TomoriChatInput): Promise<ChatAdmissionD
 
 async function runAdmittedChatTurn(incoming: ChatIncoming): Promise<ChatAdmissionDisposition> {
   const admission = await evaluateChatAdmission(incoming);
+  recordChatDiagnostic({ kind: "admission", disposition: admission.disposition });
 
   if (admission.disposition !== "run") {
     await handleChatDisposition(admission);
@@ -67,6 +73,7 @@ async function runAdmittedChatTurn(incoming: ChatIncoming): Promise<ChatAdmissio
     if (admission.disposition !== "queued") {
       await incoming.onQueueDiscard?.("admission_rejected");
     }
+    recordChatDiagnostic({ kind: "invocation_finished", disposition: admission.disposition });
     return admission.disposition;
   }
 
@@ -83,15 +90,24 @@ async function runAdmittedChatTurn(incoming: ChatIncoming): Promise<ChatAdmissio
     admission,
     async (lockedTurn, startTyping) => {
       const turnPlan = await planChatTurns(lockedTurn);
+      recordChatDiagnostic({ kind: "turns_planned", count: turnPlan.turns.length });
       let generationResultCount = 0;
 
       if (turnPlan.turns.length > 0) {
         await startTyping();
 
         for (const turn of turnPlan.turns) {
+          recordChatDiagnostic({ kind: "turn_started", ordinal: turn.personaIndex + 1, total: turn.totalPersonas });
           const context = await buildChatTurnContext(turn);
           const responseSink = createChatResponseSink(context);
-          const result = await runGenerationTurn(context, responseSink);
+          const result = await runWithChatDiagnosticStage({ turn: turn.personaIndex + 1 }, () =>
+            runGenerationTurn(context, responseSink),
+          );
+          recordChatDiagnostic({
+            kind: "turn_finished",
+            status: result.status,
+            responseCount: result.personaResponses.length,
+          });
           const willRetryEmptyResponse = shouldRetryEmptyResponse(context.turn.lockedTurn.admission.incoming, result);
 
           await runPostTurnEffects(context, result);
@@ -148,6 +164,7 @@ async function runAdmittedChatTurn(incoming: ChatIncoming): Promise<ChatAdmissio
     },
   );
 
+  recordChatDiagnostic({ kind: "invocation_finished", disposition: "run" });
   return "run";
 }
 

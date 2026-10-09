@@ -8,7 +8,7 @@ import {
 import { PrivacyLevel, type UserRow } from "@/types/db/schema";
 import { invalidateUserCache } from "@/utils/cache/userCache";
 import { resolveUserTarget } from "@/utils/discord/targetResolver";
-import { sendNoticeContainerMessage } from "@/utils/discord/expandableEmbedNotice";
+import { sendToolNoticeContainer } from "@/utils/discord/expandableEmbedNotice";
 import { userNamingRepository, userRepository } from "@/utils/db/repositories";
 import {
   type UserInfoWriteBatch,
@@ -45,7 +45,7 @@ const updateUserInfoInputSchema = z
 type UpdateUserInfoInput = z.infer<typeof updateUserInfoInputSchema>;
 
 /** What a single field is being changed to. Absent from the plan means it is not being touched. */
-type FieldPlan =
+export type FieldPlan =
   | { field: UserInfoField; cleared: true }
   | { field: UserInfoField; cleared: false; value: string | number };
 
@@ -303,26 +303,65 @@ function buildSuccessBody(
   };
 }
 
-async function sendSuccessNotice(context: ToolContext, targetLabel: string, body: string): Promise<void> {
+/** Past this many distinct subjects the specific title stops scanning, so the generic profile title reads better. */
+const MAX_TITLE_SUBJECTS = 2;
+
+/**
+ * A removed prefix or suffix leaves the nickname itself in place, so calling that "cleared
+ * nickname" would misreport it; only a batch that also clears the nickname qualifies.
+ */
+function isPureClear(plans: FieldPlan[]): boolean {
+  if (!plans.every((plan) => plan.cleared)) return false;
+  const touchesAffix = plans.some((plan) => plan.field === "prefix" || plan.field === "suffix");
+  return !touchesAffix || plans.some((plan) => plan.field === "nickname");
+}
+
+/**
+ * Names what changed in the notice title, which is all a Minimal notice shows. Prefix and
+ * suffix fold into "nickname" because they are parts of the one name the target is called.
+ * A pure removal takes the red the memory-deletion notices use, so the colour and the 🗑️
+ * title always arrive together.
+ */
+export function buildSuccessHeading(
+  locale: string,
+  plans: FieldPlan[],
+  targetLabel: string,
+): { titleKey: string; titleVars: Record<string, string>; color: ColorCode } {
+  const subjects = [
+    ...new Set(
+      plans.map((plan) => ((NAMING_FIELDS as readonly string[]).includes(plan.field) ? "nickname" : plan.field)),
+    ),
+  ];
+  if (subjects.length > MAX_TITLE_SUBJECTS) {
+    return {
+      titleKey: "tools.user_info_update.success_title",
+      titleVars: { target_user: targetLabel },
+      color: ColorCode.SUCCESS,
+    };
+  }
+  const fields = new Intl.ListFormat(locale, { type: "conjunction", style: "long" }).format(
+    subjects.map((subject) => localizer(locale, `tools.user_info_update.subject_${subject}`)),
+  );
+  const titleVars = { target_user: targetLabel, fields };
+  return isPureClear(plans)
+    ? { titleKey: "tools.user_info_update.success_title_cleared_fields", titleVars, color: ColorCode.ERROR }
+    : { titleKey: "tools.user_info_update.success_title_fields", titleVars, color: ColorCode.SUCCESS };
+}
+
+async function sendSuccessNotice(
+  context: ToolContext,
+  plans: FieldPlan[],
+  targetLabel: string,
+  body: string,
+): Promise<void> {
   if (context.suppressProgressNotices || !context.channel) return;
   try {
-    await sendNoticeContainerMessage(
-      context.channel,
-      context.locale,
-      {
-        titleKey: "tools.user_info_update.success_title",
-        titleVars: { target_user: targetLabel },
-        description: body,
-        footerKey: "tools.user_info_update.success_footer",
-        footerVars: { target_user: targetLabel },
-        color: ColorCode.SUCCESS,
-      },
-      {
-        webhook: context.webhook,
-        personaUsername: context.personaUsername,
-        personaAvatarUrl: context.personaAvatarUrl,
-      },
-    );
+    await sendToolNoticeContainer(context, "user_info_update", {
+      ...buildSuccessHeading(context.locale, plans, targetLabel),
+      description: body,
+      footerKey: "tools.user_info_update.success_footer",
+      footerVars: { target_user: targetLabel },
+    });
   } catch (error) {
     log.warn("Failed to send the user info update notice", error as Error);
   }
@@ -471,7 +510,7 @@ export class UpdateUserInfoTool extends BaseTool {
       lineageId != null,
     );
 
-    await sendSuccessNotice(context, targetLabel, body.notice);
+    await sendSuccessNotice(context, plans, targetLabel, body.notice);
     return {
       success: true,
       message: body.message,

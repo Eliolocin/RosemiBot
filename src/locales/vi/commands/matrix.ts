@@ -14,6 +14,10 @@ Mở {help_matrix}, sau đó vào Tích hợp > Matrix để xem các bước th
       join_failed_description: `<#{channel_id}> đã được liên kết với \`{room_id}\`, nhưng mình không thể tự động tham gia phòng Matrix. Vui lòng mời \`{bot_user_id}\` vào phòng theo cách thủ công. Nếu bạn cần các bước thiết lập và danh sách giới hạn, hãy mở {help_matrix} và vào Tích hợp > Matrix.`,
       encrypted_room_title: `Không thể liên kết phòng được mã hóa`,
       encrypted_room_description: `\`{room_id}\` đang bật mã hóa đầu cuối. Không thể tắt mã hóa Matrix sau khi đã thiết lập, vì vậy không thể dùng phòng này để bắc cầu. Vui lòng tạo một phòng Matrix mới **không** mã hóa và mời \`{bot_user_id}\` vào đó.`,
+      encryption_unknown_title: `Không thể xác minh mã hóa phòng`,
+      encryption_unknown_description: `Mình không thể xác nhận rằng \`{room_id}\` không mã hóa, vì vậy mình chưa liên kết phòng. Mình chỉ bắc cầu cho những phòng có thể xác minh, vì tin nhắn được chuyển tiếp dưới dạng văn bản thuần.
+
+Hãy mời \`{bot_user_id}\` vào phòng, đợi bot tham gia rồi chạy lại lệnh này. Nếu bot đã ở trong phòng, homeserver có thể đang không thể kết nối, hãy thử lại sau vài phút.`,
       matrix_not_configured_title: `Cầu nối Matrix không khả dụng`,
       matrix_not_configured_description: `Cầu nối Matrix chưa được cấu hình trên bot này. Hãy liên hệ với chủ bot để bật tính năng.`,
     },

@@ -190,7 +190,7 @@ export class AnalyzeImageTool extends BaseTool {
       log.error(`Vision analysis failed for message ${messageId}:`, error as Error);
       return {
         success: false,
-        error: `Image analysis failed: ${errorMessage}`,
+        error: timedOut ? errorMessage : "Image analysis failed because the vision provider returned an error.",
       };
     }
   }

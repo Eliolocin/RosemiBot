@@ -23,6 +23,7 @@ import {
 } from "@/utils/chat/selfReplyState";
 import type { ChatAdmission, ChatIncoming, NonRunnableChatAdmission, TomoriChatInput } from "@/utils/chat/types";
 import type { Message } from "discord.js";
+import { verifyMessageWebhook, isManagedWebhookMessage } from "@/utils/chat/webhookIdentity";
 
 /**
  * Whether a moderator has timed the bot out in this guild.
@@ -78,6 +79,7 @@ export function normalizeChatInvocation(input: TomoriChatInput): ChatIncoming {
     systemTriggerIdentity: input.systemTriggerIdentity,
     manualStreamingContextOverrides: input.manualStreamingContextOverrides,
     sceneTurn: input.sceneTurn,
+    carriedExpressionDelivery: input.carriedExpressionDelivery,
     onGenerationResult: input.onGenerationResult,
     onQueueDiscard: input.onQueueDiscard,
   };
@@ -96,12 +98,17 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
 
   const { client, message } = incoming;
   const channel = message.channel;
+  await verifyMessageWebhook(message);
+  const cachedReference = message.reference?.messageId
+    ? message.channel.messages.cache.get(message.reference.messageId)
+    : undefined;
+  if (cachedReference) await verifyMessageWebhook(cachedReference);
   const isBotAuthor = message.author.bot;
   const isWebhookMessage = Boolean(message.webhookId);
   const isInteractionResponse = Boolean(message.interaction);
   const isFromClientUser = Boolean(client.user && message.author.id === client.user.id);
   const isMatrixRelay = isMatrixRelayMessage(message);
-  const isLikelySelfMessage = !isMatrixRelay && (isFromClientUser || isWebhookMessage);
+  const isLikelySelfMessage = !isMatrixRelay && (isFromClientUser || isManagedWebhookMessage(message));
   const isRealUserMessage = isRealUserLikeMessage(message);
   const isActiveNaturalStopMessage =
     !incoming.isStopResponse &&
@@ -123,6 +130,10 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
     locale: "en-US",
     reason,
   });
+
+  if (isWebhookMessage && !isManagedWebhookMessage(message) && !incoming.isManuallyTriggered) {
+    return ignored("untrusted_webhook");
+  }
 
   const isSeedPlaceholderMessage =
     isFromClientUser &&
@@ -158,7 +169,11 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
       }
     }
 
-    if (referencedMessage && (referencedMessage.author.id === client.user?.id || referencedMessage.webhookId)) {
+    if (referencedMessage) await verifyMessageWebhook(referencedMessage);
+    if (
+      referencedMessage &&
+      (referencedMessage.author.id === client.user?.id || isManagedWebhookMessage(referencedMessage))
+    ) {
       updateSelfReplyChainState(channel.id, false);
       return ignored("self_reply_reference");
     }

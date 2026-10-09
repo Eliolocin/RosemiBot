@@ -1,6 +1,15 @@
 export default {
   nsfw: {
     description: `Age-restricted commands and settings.`,
+    persona: {
+      description: `Age-restricted persona commands.`,
+      default: {
+        description: `Apply an NSFW preset personality configuration`,
+      },
+      import: {
+        description: `Import a persona from a PNG, JSON, or CHARX file, including NSFW personas`,
+      },
+    },
     jailbreaks: {
       description: `Manage optional jailbreak behaviors for my prompts on this server.`,
       modal_title: `Manage Jailbreak Strategies`,

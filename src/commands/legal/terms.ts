@@ -12,9 +12,6 @@ import type { UserRow } from "@/types/db/schema";
  */
 export const isCommandEnabled = (): boolean => isHostedPolicyEnvironment();
 
-/**
- * Configure the 'terms-of-service' subcommand
- */
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand
     .setName("terms-of-service")

@@ -15,8 +15,8 @@ export type FakeCall = {
 };
 
 /**
- * Minimal fake interaction surface. Covers every acknowledgement method the
- * Discord command-system docs require plus the helpers commands call directly.
+ * Covers every acknowledgement method the Discord command-system docs require plus the helpers
+ * commands call directly.
  */
 export type FakeInteraction = {
   /** Tracks whether deferReply() has been called. */
@@ -42,6 +42,7 @@ export type FakeInteraction = {
   memberPermissions: { has: (_flag: unknown) => boolean } | null;
   options: {
     getString: (_name: string, _required?: boolean) => string | null;
+    getInteger?: (_name: string) => number | null;
     getBoolean: (_name: string) => boolean | null;
   };
   webhook: { send: (..._args: unknown[]) => Promise<void> };
@@ -92,6 +93,7 @@ export function makeFakeInteraction(overrides: Partial<FakeInteraction> = {}): {
     memberPermissions: null,
     options: {
       getString: () => null,
+      getInteger: () => null,
       getBoolean: () => null,
     },
     webhook: {

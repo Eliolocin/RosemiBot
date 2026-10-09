@@ -8,9 +8,6 @@ import {
   touchUserImageQuota,
 } from "@/utils/db/repositories/QuotaRepository";
 
-/**
- * Result of quota check operations
- */
 export interface QuotaCheckResult {
   allowed: boolean; // Whether user can generate image
   reason?: "user_quota_exceeded" | "serverwide_quota_exceeded" | "disabled"; // Reason if denied

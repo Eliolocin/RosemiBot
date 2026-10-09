@@ -1,5 +1,11 @@
 export default {
   matrix: {
+    encryption_unlinked: {
+      title: `Puente de Matrix detenido`,
+      description: `La sala de Matrix \`{room_id}\` activó el cifrado de extremo a extremo, por lo que la desvinculé de este canal y dejé de retransmitir mensajes. El cifrado de Matrix no se puede desactivar.
+
+Para seguir usando el puente, crea una nueva sala de Matrix sin cifrar, invita a la cuenta del bot y vincúlala con {link_command}.`,
+    },
     notices: {
       invited: `TomoriBot se unió a esta sala.
 

@@ -49,7 +49,7 @@ export default {
       servermemories_desc: `Thêm/xóa bộ nhớ trên toàn máy chủ`,
       attributelist_desc: `Thêm/xóa thuộc tính tính cách`,
       sampledialogues_desc: `Thêm/xóa các cặp hội thoại mẫu`,
-      promptsnapshot_desc: `Dùng /tool prompt snapshot`,
+      promptsnapshot_desc: `Xem toàn bộ prompt từ /context và /tool prompt snapshot`,
       select_placeholder: `Chọn những việc thành viên có thể làm với mình`,
       select_embed_title: `Quyền thành viên máy chủ`,
       select_embed_description: `Chọn các quyền cho thành viên không phải quản trị viên. Đã chọn = cho phép.`,

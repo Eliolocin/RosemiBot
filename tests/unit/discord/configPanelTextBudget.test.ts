@@ -507,6 +507,9 @@ describe("config page text budgeting at stored maxima", () => {
         const behaviorView: ConfigBehaviorView = {
           general: {
             systemPrompt: "S".repeat(16000),
+            responsePrefill: "P".repeat(2000),
+            prefillBlocker: null,
+            prefillModelName: "gemini-2.5-flash",
             contextNote: "G".repeat(2000),
             contextNoteDepth: 0,
             humanizerDegree: 1,
@@ -535,6 +538,9 @@ describe("config page text budgeting at stored maxima", () => {
         const behaviorView: ConfigBehaviorView = {
           general: {
             systemPrompt: null,
+            responsePrefill: null,
+            prefillBlocker: null,
+            prefillModelName: "gemini-2.5-flash",
             contextNote: null,
             contextNoteDepth: 0,
             humanizerDegree: HUMANIZER_DEFAULT,
@@ -545,6 +551,8 @@ describe("config page text budgeting at stored maxima", () => {
           memory: {
             memoryTaggingEnabled: true,
             channelMemoryEnabled: true,
+            stmEnabled: true,
+            toolUseEnabled: true,
             stmCategories: [{ server_id: 9, position: 0, label: "Summary", description: "Scene summary" }],
             stmConfig: {
               server_id: 9,
@@ -1212,8 +1220,8 @@ describe("Switch Models capability notice budgeting", () => {
                   expectedWarnings.push(
                     formatPanelProse(
                       withLinePrefix(
-                        "-# ",
-                        localizer(locale, getCapabilityWarningKey("image", flags.imageGenerationEnabled)),
+                        "> ",
+                        `- ${localizer(locale, getCapabilityWarningKey("image", flags.imageGenerationEnabled))}`,
                       ),
                     ),
                   );
@@ -1222,8 +1230,8 @@ describe("Switch Models capability notice budgeting", () => {
                   expectedWarnings.push(
                     formatPanelProse(
                       withLinePrefix(
-                        "-# ",
-                        localizer(locale, getCapabilityWarningKey("video", flags.videoGenerationEnabled)),
+                        "> ",
+                        `- ${localizer(locale, getCapabilityWarningKey("video", flags.videoGenerationEnabled))}`,
                       ),
                     ),
                   );
@@ -1239,9 +1247,17 @@ describe("Switch Models capability notice budgeting", () => {
                       "commands.config.panel.image_generation_missing_model",
                       "commands.config.panel.video_generation_disabled_direction",
                       "commands.config.panel.video_generation_missing_model",
-                    ].some((key) => text.includes(formatPanelProse(withLinePrefix("-# ", localizer(locale, key))))),
+                    ].some((key) =>
+                      text.includes(formatPanelProse(withLinePrefix("> ", `- ${localizer(locale, key)}`))),
+                    ),
                   );
                   expect(capabilityNotice).toBeUndefined();
+                } else {
+                  // The rows read as one titled list rather than as loose footnotes, so the heading
+                  // ships with the notice and disappears with it.
+                  expect(renderedText).toContain(
+                    `**${localizer(locale, "commands.config.panel.capability_notice_title")}**`,
+                  );
                 }
               },
             );
@@ -1395,13 +1411,11 @@ describe("Switch Models capability notice budgeting", () => {
         const renderedText = getTextDisplays(payload).join("\n");
         for (const key of speechState.present) {
           expect(renderedText).toContain(
-            formatPanelProse(withLinePrefix("-# ", localizer(locale, `commands.config.panel.${key}`))),
+            formatPanelProse(withLinePrefix("> ", `- ${localizer(locale, `commands.config.panel.${key}`)}`)),
           );
         }
         for (const key of speechState.absent) {
-          expect(renderedText).not.toContain(
-            formatPanelProse(withLinePrefix("-# ", localizer(locale, `commands.config.panel.${key}`))),
-          );
+          expect(renderedText).not.toContain(localizer(locale, `commands.config.panel.${key}`));
         }
       }
     }
@@ -1845,6 +1859,9 @@ describe("bounded preview unicode and truncation boundary assertions", () => {
         const behaviorView: ConfigBehaviorView = {
           general: {
             systemPrompt: content,
+            responsePrefill: null,
+            prefillBlocker: null,
+            prefillModelName: "gemini-2.5-flash",
             contextNote: null,
             contextNoteDepth: 0,
             humanizerDegree: 0,
@@ -1920,6 +1937,9 @@ describe("bounded preview unicode and truncation boundary assertions", () => {
       behaviorView: {
         general: {
           systemPrompt: breakoutContent,
+          responsePrefill: null,
+          prefillBlocker: null,
+          prefillModelName: "gemini-2.5-flash",
           contextNote: null,
           contextNoteDepth: 0,
           humanizerDegree: 0,
@@ -1987,6 +2007,9 @@ describe("bounded preview unicode and truncation boundary assertions", () => {
       behaviorView: {
         general: {
           systemPrompt: `before ${run} after`,
+          responsePrefill: null,
+          prefillBlocker: null,
+          prefillModelName: "gemini-2.5-flash",
           contextNote: null,
           contextNoteDepth: 0,
           humanizerDegree: 0,

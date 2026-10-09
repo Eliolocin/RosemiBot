@@ -4,7 +4,9 @@ sidebar:
   order: 2
 ---
 
-whisper.cpp can be used when its HTTP server exposes an OpenAI-compatible `POST /v1/audio/transcriptions` endpoint.
+Run high-performance, lightweight speech-to-text for TomoriBot using [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
+
+TomoriBot connects to whisper.cpp through its OpenAI-compatible audio transcription endpoint (`POST /v1/audio/transcriptions`).
 
 ## Setup
 
@@ -24,11 +26,10 @@ Run `/providers`, choose `Add New Custom Endpoint`, and use the transcription AP
 - API Compatibility: `openai-compatible-transcription`
 - `endpoint_url`: your whisper.cpp server root
 
-After saving the connection, select it and use its model dropdown to add the model name your
-server reports as a Transcription model.
+After saving the connection, select it and use its model dropdown to add the model name your server reports as a Transcription model.
 
 Use `/providers` for endpoint registration and model setup. Then open `/config` > Models > Switch Models to select and activate the registered endpoint.
 
-## Use Transcripts
+## Use transcripts
 
 After registration, TomoriBot transcribes audio attachments in the background and adds the text to chat context. Use `/config` > Engine > Notices only if you also want transcripts posted visibly in chat.

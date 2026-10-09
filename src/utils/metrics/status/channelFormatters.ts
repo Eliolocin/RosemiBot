@@ -25,10 +25,7 @@ async function resolveChannelMention(client: Client, id: string, locale: string)
   }
 }
 
-/**
- * Formats a list of channel IDs as mentions, collapsing to a count if over the max.
- * @returns Formatted channel list string, or localized "None" if empty
- */
+/** Collapses to a count when over the max. Returns the localized "None" when empty. */
 export async function formatChannelList(client: Client, ids: string[], locale: string): Promise<string> {
   if (ids.length === 0) {
     return localizer(locale, "commands.choices.none");

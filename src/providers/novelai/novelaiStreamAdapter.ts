@@ -20,6 +20,10 @@
 import type { FunctionCall, ThoughtLogEntry } from "@/types/provider/interfaces";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
 import { log, sanitizeLogPayload } from "@/utils/misc/logger";
+import {
+  formatProviderErrorCodeForDisplay,
+  isProviderTimeoutMessage,
+} from "@/utils/provider/providerErrorClassification";
 import { localizer } from "@/utils/text/localizer";
 import { escapeRegExp } from "@/utils/text/processors/regexUtils";
 import { findMarkdownCodeRanges } from "@/utils/text/processors/llmOutputProcessor";
@@ -358,7 +362,7 @@ export class NovelaiStreamAdapter extends BaseStreamAdapter {
     log.info(`Assembled NovelAI prompt (${isGlm ? "GLM" : "Kayra"}). Length: ${prompt.length} characters`);
 
     log.section("NovelAI Full Prompt");
-    log.info(prompt);
+    if (!context.holdResponseText) log.info(prompt);
 
     // Neutral values (topK=0, topP=1.0, minP=0.0) preserve the model preset defaults.
     // Non-schema NAI preset fields (order, TFS, phrase_rep_pen, etc.) are extracted
@@ -479,9 +483,7 @@ export class NovelaiStreamAdapter extends BaseStreamAdapter {
     }
   }
 
-  /**
-   * Single-pass streaming for Kayra; no continuation loop
-   */
+  /** For Kayra; there is no continuation loop. */
   private async *streamSinglePass(
     request: NovelAIGenerationRequest,
     config: StreamConfig,
@@ -2069,7 +2071,7 @@ export class NovelaiStreamAdapter extends BaseStreamAdapter {
     } else if (statusCode === 503) {
       errorType = "provider_overloaded";
       retryable = true;
-    } else if (statusCode === 504 || errorMessage.toLowerCase().includes("timeout")) {
+    } else if (statusCode === 504 || isProviderTimeoutMessage(errorMessage)) {
       errorType = "timeout";
       retryable = true;
     } else {
@@ -2125,23 +2127,8 @@ export class NovelaiStreamAdapter extends BaseStreamAdapter {
       }
     }
 
-    try {
-      const novelaiMessage = localizer(locale, `genai.novelai.${messageKey}`);
-
-      // If this is an unknown error, append the actual API response for debugging
-      if (messageKey === "unknown_default_message") {
-        // Truncate error message to avoid Discord embed limits (max description is 4096, leave room for other text)
-        const maxErrorLength = 1000;
-        const apiErrorSnippet =
-          error.message.length > maxErrorLength ? `${error.message.substring(0, maxErrorLength)}...` : error.message;
-        return `Error Code ${errorCode}: ${novelaiMessage}\n\n**API Response:**\n${apiErrorSnippet}`;
-      }
-
-      return `Error Code ${errorCode}: ${novelaiMessage}`;
-    } catch {
-      // Fallback if locale key doesn't exist
-      return `Error Code ${errorCode}: ${error.message}`;
-    }
+    // Upstream text stays in the operator log (see StreamErrorUi); the message only picked the key.
+    return `Error Code ${formatProviderErrorCodeForDisplay(errorCode)}: ${localizer(locale, `genai.novelai.${messageKey}`)}`;
   }
 
   /**

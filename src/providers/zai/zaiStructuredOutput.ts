@@ -1,3 +1,8 @@
+import {
+  parsePrivateStructuredOutput,
+  privateStructuredFailure,
+  readStructuredResponse,
+} from "@/providers/utils/structuredReview";
 import type { z } from "zod";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import { log } from "@/utils/misc/logger";
@@ -155,9 +160,14 @@ export async function callZaiStructuredJSON<T>(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: request.abortSignal,
     });
 
     if (!response.ok) {
+      if (request.privateOutput) {
+        await response.body?.cancel();
+        return privateStructuredFailure(request, "transport", response.status);
+      }
       const errorBody = await response.text();
       log.error("Z.ai structured JSON request failed", new Error(errorBody), {
         errorType: "ZaiStructuredJSONHttpError",
@@ -172,8 +182,9 @@ export async function callZaiStructuredJSON<T>(
       };
     }
 
-    const result = (await response.json()) as {
-      choices?: Array<{ message?: { content?: unknown } }>;
+    const result = (await readStructuredResponse(request, response)) as {
+      usage?: unknown;
+      choices?: Array<{ message?: { content?: unknown; refusal?: unknown } }>;
     };
     const messageContent = result.choices?.[0]?.message?.content;
     const responseText =
@@ -195,6 +206,14 @@ export async function callZaiStructuredJSON<T>(
               .trim()
           : "";
 
+    if (request.privateOutput)
+      return parsePrivateStructuredOutput(
+        request,
+        responseText,
+        zodSchema,
+        result.usage,
+        Boolean(result.choices?.[0]?.message?.refusal),
+      );
     if (!responseText) {
       log.warn("Z.ai structured JSON returned empty response", {
         model: apiModel,
@@ -237,6 +256,7 @@ export async function callZaiStructuredJSON<T>(
       data: validationResult.data,
     };
   } catch (error) {
+    if (request.privateOutput) return privateStructuredFailure(request);
     log.error("Error calling Z.ai structured JSON", error as Error, {
       errorType: "ZaiStructuredJSONError",
       metadata: {

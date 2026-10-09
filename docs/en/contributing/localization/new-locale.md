@@ -106,6 +106,9 @@ String conventions:
   extra one is a warning.
 - Discord caps, counted in code points: 45 for modal titles and input labels, 100 for command, option,
   and choice text and placeholders.
+- Do not open a status title with a colored circle. The renderer derives it from the surface's color
+  (see [Status circles](/architecture/subsystems/localization/#status-circles)), and a circle in the
+  string is stripped before the derived one is applied.
 - Panel prose follows [Panel Prose and Layout](/contributing/policies/panel-prose-and-layout/).
 
 Text processing (case folding, splitting, emphasis markers) keys on the character script rather than
@@ -130,6 +133,11 @@ history slicing uses. `sliceMessagesAtResetMarker` then finds no marker and retu
 | Keep placeholders and the literal text around them | Templates match with placeholders blanked, so they need a literal anchor |
 | Avoid short titles another key could also render | Two keys with one rendering in a locale fail startup |
 | Never end a reward or punish title with a period | A trailing period once dropped titles from classification |
+
+Classification normalizes the status circle on both sides: the lookup stores each authored value with
+its circle removed, and an incoming title loses its rendered circle before matching. A title gains
+exactly one circle no matter which value classified it, so a locale that authored a circle before
+this rule existed keeps classifying.
 
 `check-locales` checks presence, placeholder parity, anchors, and collisions; startup checks
 collisions again.

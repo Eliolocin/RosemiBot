@@ -1,0 +1,113 @@
+name: "CI: Setup Smoke (Cross-Platform)"
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "package.json"
+      - "bun.lock"
+      - "apps/*/package.json"
+      - "scripts/devtools/setup.ts"
+      - "src/db/**"
+      - "Dockerfile"
+      - "docker-compose.yaml"
+      - "docker/**"
+      - ".github/workflows/ci-setup-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out a clean copy
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Start PostgreSQL on Ubuntu
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE tomori LOGIN SUPERUSER PASSWORD 'tomori_smoke_password';"
+          sudo -u postgres createdb --owner=tomori tomodb
+
+      - name: Start PostgreSQL on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew install postgresql@16
+          echo "$(brew --prefix postgresql@16)/bin" >> "$GITHUB_PATH"
+          brew services start postgresql@16
+          for attempt in {1..30}; do
+            "$(brew --prefix postgresql@16)/bin/pg_isready" -h localhost && break
+            sleep 1
+          done
+          "$(brew --prefix postgresql@16)/bin/pg_isready" -h localhost
+          "$(brew --prefix postgresql@16)/bin/psql" postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE tomori LOGIN SUPERUSER PASSWORD 'tomori_smoke_password';"
+          "$(brew --prefix postgresql@16)/bin/createdb" --owner=tomori tomodb
+
+      - name: Start PostgreSQL on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_PATH -Value $env:PGBIN
+          $dataDir = Join-Path $env:RUNNER_TEMP 'setup-postgres'
+          $passwordFile = Join-Path $env:RUNNER_TEMP 'postgres-password.txt'
+          Set-Content -Path $passwordFile -Value 'root' -NoNewline
+          & "$env:PGBIN\initdb.exe" -D $dataDir -U postgres -A scram-sha-256 "--pwfile=$passwordFile"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:PGBIN\pg_ctl.exe" -D $dataDir -l (Join-Path $env:RUNNER_TEMP 'postgres.log') -o '-h 127.0.0.1 -p 5432' start
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:PGPASSWORD = 'root'
+          & "$env:PGBIN\psql.exe" -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE tomori LOGIN SUPERUSER PASSWORD 'tomori_smoke_password';"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:PGBIN\createdb.exe" -h localhost -U postgres --owner=tomori tomodb
+          exit $LASTEXITCODE
+
+      - name: Run Full Install from a dependency-free checkout
+        shell: pwsh
+        run: |
+          if (Test-Path node_modules) { throw 'Checkout already has node_modules.' }
+          @'
+          DISCORD_TOKEN=smoke_test_token_for_offline_setup_1234567890
+          POSTGRES_HOST=localhost
+          POSTGRES_PORT=5432
+          POSTGRES_USER=tomori
+          POSTGRES_PASSWORD=tomori_smoke_password
+          POSTGRES_DB=tomodb
+          '@ | Set-Content -Path .env
+          bun run setup --full --defaults 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/setup.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Path "$env:RUNNER_TEMP/setup.log" -Pattern 'Full Install Complete' -Quiet)) {
+            throw 'The Full Install wizard did not finish.'
+          }
+          foreach ($module in @('pgvector', 'pg_cron', 'Tokenizer assets')) {
+            if (-not (Select-String -Path "$env:RUNNER_TEMP/setup.log" -SimpleMatch "=== $module ===" -Quiet)) {
+              throw "Full Install did not attempt $module."
+            }
+          }
+          if (-not (Test-Path node_modules)) { throw 'Dependencies were not installed.' }
+          if (-not (Select-String -Path .env -Pattern '^CRYPTO_SECRET=[A-Za-z0-9_-]{32}$' -Quiet)) {
+            throw 'The wizard did not generate a valid CRYPTO_SECRET.'
+          }
+
+      - name: Check database connection and build
+        shell: pwsh
+        run: |
+          $env:PGPASSWORD = 'tomori_smoke_password'
+          psql -h localhost -U tomori -d tomodb -v ON_ERROR_STOP=1 -c 'SELECT 1;'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          bun run build
+          exit $LASTEXITCODE

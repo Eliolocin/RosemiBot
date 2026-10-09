@@ -1,4 +1,5 @@
 import type { UserRow } from "@/types/db/schema";
+import { revealGroupBreakName } from "@/utils/text/groupBreakName";
 import { dedupeTriggerWords, normalizeTriggerWord } from "@/utils/text/triggerWords";
 import {
   serializeParticipantKey,
@@ -33,7 +34,7 @@ export interface PersonaAliasCatalog {
 }
 
 export function normalizeParticipantAlias(value: string): string {
-  return value.trim().replace(/^@+/u, "").trim().toLowerCase().replace(/\s+/gu, " ");
+  return revealGroupBreakName(value).trim().replace(/^@+/u, "").trim().toLowerCase().replace(/\s+/gu, " ");
 }
 
 export function createParticipantAlias(params: {

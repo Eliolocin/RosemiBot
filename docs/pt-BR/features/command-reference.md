@@ -11,7 +11,7 @@ sidebar:
 
 Todos os comandos de barra (slash commands) atualmente registrados pela TomoriBot, gerados a partir dos mesmos construtores de comando e descrições em português usados para o registro no Discord (descrições ainda não traduzidas aparecem em inglês).
 
-Grupos de comandos de nível superior: **39**. Comandos de barra executáveis: **81**.
+Grupos de comandos de nível superior: **41**. Comandos de barra executáveis: **85**.
 
 ## `/comment`
 
@@ -46,6 +46,14 @@ Configure as configurações de persona, comportamento, canal, permissão e mode
 |---|---|
 | `/config` | Configure as configurações de persona, comportamento, canal, permissão e modelo. |
 
+## `/context`
+
+Veja quanto da janela de contexto do modelo o prompt de uma persona preenche neste canal.
+
+| Comando | Resumo |
+|---|---|
+| `/context` | Veja quanto da janela de contexto do modelo o prompt de uma persona preenche neste canal. |
+
 ## `/contribute`
 
 Encontrar o código-fonte e maneiras de ajudar a construir o TomoriBot.
@@ -79,8 +87,8 @@ Ensine o TomoriBot quando usar os emojis e figurinhas personalizados deste servi
 
 | Comando | Resumo |
 |---|---|
-| `/expressions edit` | Edita a emoção e instruções de uso de um único emoji ou figurinha |
 | `/expressions initialize` | Analisa e classifica todos os emojis e figurinhas personalizados usando visão de IA |
+| `/expressions manage` | Gerencie emojis, figurinhas, expressões personalizadas e acesso das personas. |
 
 ## `/generate`
 
@@ -197,6 +205,8 @@ Configurações e comandos com restrição de idade.
 | Comando | Resumo |
 |---|---|
 | `/nsfw jailbreaks` | Gerenciar comportamentos opcionais de jailbreak para meus prompts neste servidor. |
+| `/nsfw persona default` | Aplicar uma predefinição de personalidade NSFW |
+| `/nsfw persona import` | Importar uma persona a partir de um arquivo PNG, JSON ou CHARX, incluindo personas NSFW |
 
 ## `/nuke`
 
@@ -358,6 +368,14 @@ Ações utilitárias para contexto de conversa, prompts e diagnósticos.
 | `/tool delete turn` | Excluir o turno da última persona do canal. |
 | `/tool estimate cost` | Estimar custos de API para provedores de IA pagos |
 | `/tool prompt snapshot` | Despeje o prompt exato do LLM para uma persona em um arquivo para depuração. |
+
+## `/troubleshoot`
+
+Obtenha ajuda com algo que a TomoriBot fez.
+
+| Comando | Resumo |
+|---|---|
+| `/troubleshoot chat` | Cria um arquivo privado sobre um problema recente no chat. |
 
 ## `/update`
 

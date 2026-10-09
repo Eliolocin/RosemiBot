@@ -1,3 +1,10 @@
+import { handleDraftModalOpen, handleDraftRoutes } from "@/utils/discord/interactions/responseDraftingRoutes";
+import {
+  loadResponseDraftingView,
+  loadDraftingModelGroups,
+  loadDraftCheckerChoices,
+  responseDraftingOperations,
+} from "@/utils/discord/interactions/responseDraftingOperations";
 import {
   AttachmentBuilder,
   MessageFlags,
@@ -237,6 +244,7 @@ import { IMPORT_LIMITS, PERSONA_LIMITS } from "@/utils/security/rateLimiter";
 import { log } from "@/utils/misc/logger";
 import { recordPanelActionStat } from "@/utils/stats/panelActionMetrics";
 import { localizer } from "@/utils/text/localizer";
+import { resolvePrefillBlocker } from "@/utils/chat/assistantPrefill";
 import { buildSlugMap } from "@/utils/text/slugifyLabel";
 import { buildInitialMemoriesPanel } from "@/utils/discord/interactions/memoriesRoutes";
 import { buildInitialPersonalMemoriesPanel } from "@/utils/discord/interactions/personalMemoriesRoutes";
@@ -452,6 +460,10 @@ export async function loadConfigPersonaMemoryView(
 }
 
 const defaultDependencies: ConfigRouteDependencies = {
+  loadResponseDraftingView,
+  loadDraftModels: loadDraftingModelGroups,
+  loadDraftCheckers: loadDraftCheckerChoices,
+  draftingOperations: responseDraftingOperations,
   async resolveScope(interaction, forceRefresh = false) {
     const guildId = interaction.guildId ?? null;
     // Every absorbed command keys its workspace this way, so the panel must not invent a different
@@ -535,6 +547,9 @@ const defaultDependencies: ConfigRouteDependencies = {
     );
     const general: ConfigBehaviorGeneralView = {
       systemPrompt: rawChatConfig?.system_prompt ?? state.config.system_prompt ?? null,
+      responsePrefill: rawChatConfig?.response_prefill ?? state.config.response_prefill ?? null,
+      prefillBlocker: resolvePrefillBlocker(state),
+      prefillModelName: state.llm.llm_codename,
       contextNote: rawChatConfig?.context_note ?? state.config.context_note ?? null,
       contextNoteDepth: rawChatConfig?.context_note_depth ?? state.config.context_note_depth ?? 0,
       // The assembled state may overlay a persona-specific degree; the General page is the raw
@@ -562,12 +577,15 @@ const defaultDependencies: ConfigRouteDependencies = {
     };
     const notices: ConfigBehaviorNoticesView = {
       hiddenNoticeKeys: (state.config.tool_notice_hidden_keys ?? []).filter(isToolNoticeKey),
+      verbosity: state.config.tool_notice_verbosity,
       speechTranscriptsEnabled:
         speechConfig?.voice_transcript_chat_mode ?? state.config.voice_transcript_chat_mode ?? true,
     };
     const memory: ConfigBehaviorMemoryView = {
       memoryTaggingEnabled: state.config.memory_tagging_enabled ?? false,
       channelMemoryEnabled: state.config.channel_memory_enabled ?? false,
+      stmEnabled: state.config.short_term_memory_enabled ?? true,
+      toolUseEnabled: state.config.tool_use_enabled ?? true,
       stmConfig,
       stmCategories,
     };
@@ -2683,6 +2701,11 @@ async function runPersonaWrite(
           telemetry: "server-config.workspace.persona.promote",
         };
       }
+      if (result.status === "in-progress") {
+        return {
+          receipt: receipt(locale, "warning", key("promote_in_progress_heading"), key("promote_in_progress_detail")),
+        };
+      }
       return {
         receipt:
           result.status === "not-alter" || result.status === "no-main-persona"
@@ -2850,6 +2873,8 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
         (interaction as { isChannelSelectMenu: () => boolean }).isChannelSelectMenu();
 
       const expectsStringSelect =
+        route.action === "draft-provider" ||
+        route.action === "draft-checker-select" ||
         route.action === "page" ||
         route.action === "persona-page-select" ||
         route.action === "persona-select" ||
@@ -2870,6 +2895,8 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
       const expectsPersonaVoiceSelect = route.action === "voice-select";
       const expectsChannelSelect = route.action === "channels-overrides-select";
       const expectsModal =
+        route.action === "draft-prompt-submit" ||
+        route.action === "draft-model-submit" ||
         route.action === "avatar-submit" ||
         route.action === "rename-submit" ||
         route.action === "naming-submit" ||
@@ -2958,6 +2985,8 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
         await handleTextOverrideModelModalOpen(interaction, route, dependencies, actor);
         return;
       }
+
+      if (await handleDraftModalOpen(interaction, route, dependencies, actor)) return;
 
       if (CONFIG_MODEL_MODAL_OPEN_ACTIONS.has(route.action)) {
         // A clearable slot's None entry rides the same select as its provider entries, and clearing
@@ -3066,6 +3095,8 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
       ) {
         return;
       }
+
+      if (await handleDraftRoutes({ interaction, route, scope, dependencies, selectedValue: submittedValue })) return;
 
       if (
         await handleConfigModelRoutes({

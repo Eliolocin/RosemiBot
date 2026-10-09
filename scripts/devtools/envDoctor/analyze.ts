@@ -80,7 +80,7 @@ function isReleasePath(path: string): boolean {
 }
 
 /**
- * Normalizes a default for comparison only; reports always show the value as written. When every
+ * For comparison only; reports always show the value as written. When every
  * value for one variable is boolean-like, `1` and `0` compare as `true` and `false`, since the
  * Python servers spell a flag default as `"0"` where the example file writes `false`.
  */

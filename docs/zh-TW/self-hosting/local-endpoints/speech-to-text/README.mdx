@@ -8,32 +8,34 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-TomoriBot 把語音轉文字視為 `transcription` 自訂端點功能。當有作用中的轉錄端點時，音訊附件會在背景被轉錄，並加入對話脈絡。
+在本地轉錄語音訊息和音訊附件，以便TomoriBot可以理解聊天中的語音，而無需將錄音傳送到第三方雲端API。
 
-可見的逐字稿張貼是另一回事。`/config` > Engine > 通知 只控制語音訊息的逐字稿是否張貼在聊天中，它不會啟用或停用背景 STT。
+TomoriBot將語音轉文字視為`transcription`自訂端點功能。當活動轉錄端點存在時，音訊附件會在背景轉錄並添加到對話上下文中。
 
-## 可用引擎
+可見的成績單發布是單獨的。`/config` > 引擎 > 通知僅控制是否在聊天中發布語音訊息記錄；它不會啟用或停用後台STT。
+
+## 可用發動機
 
 <CardGrid>
   <LinkCard title="WhisperX" href="/zh-TW/self-hosting/local-endpoints/speech-to-text/whisperx/"
-    description="適合初學者的本機轉錄，使用 servers/stt 底下參考用的 WhisperX 伺服器。" />
-  <LinkCard title="whisper.cpp" href="/zh-TW/self-hosting/local-endpoints/speech-to-text/whispercpp/"
-    description="當輕量的 whisper.cpp HTTP 伺服器提供 OpenAI 相容的轉錄端點時使用它。" />
+    description="使用servers/stt下的參考WhisperX伺服器進行初學者友善的本地轉錄。" />
+  <LinkCard title="耳語.cpp" href="/zh-TW/self-hosting/local-endpoints/speech-to-text/whispercpp/"
+    description="當公開OpenAI相容的轉錄端點時，使用輕量級的tweet.cpp HTTP伺服器。" />
   <LinkCard title="KoboldCPP" href="/zh-TW/self-hosting/local-endpoints/speech-to-text/koboldcpp/"
-    description="當你的版本提供 OpenAI 相容的音訊轉錄時，使用 KoboldCPP 以 Whisper 為基礎的 STT。" />
+    description="當你的建置公開與OpenAI相容的音訊轉錄時，請使用基於Whisper的KoboldCPP STT。" />
 </CardGrid>
 
 ## 設定流程
 
-1. 從上面的引擎指南啟動一個 STT 伺服器。
-2. 在 `/providers` 中選擇 `新增自訂端點`，並使用 API 相容性 `openai-compatible-transcription`。
-3. 選取已儲存的端點，並用它的模型下拉選單加入伺服器回報的模型代號。
-4. 開啟 `/config` > 模型 > 切換模型，選取並啟用註冊好的端點。
+1. 從上面的引擎指南啟動一台STT伺服器。
+2. 在`/providers`中，選擇`+ 新增自訂端點`（或`Add New Custom Endpoint`）並選擇`openai-compatible-transcription`（OpenAI相容轉錄）。
+3. 選擇已儲存的端點並使用其模型下拉清單新增伺服器報告的模型代碼。
+4. 開啟`/config` > `模型` > 切換型號選擇並啟動已註冊的端點。
 
-## 逐字稿流程
+## 轉錄流程
 
-當有作用中的轉錄端點時，TomoriBot 會在背景讀取支援的音訊附件，並將逐字稿加入聊天脈絡。不需要指派人格。
+當轉錄端點處於活動狀態時，TomoriBot在後台讀取支援的音訊附件並將轉錄新增至聊天上下文。不需要人格分配。
 
-只有你也想讓那些逐字稿可見地張貼在聊天中時，才需要使用 `/config` > Engine > 通知。
+只有當你也希望這些記錄在聊天中可見時，才使用`/config` > 引擎 > 通知。
 
-使用 ElevenLabs 的人應該在 `/providers` 中選擇 `新增供應商` 與 ElevenLabs，它會同時註冊轉錄與語音。
+ElevenLabs使用者應在`/providers`中選擇`新增供應商`和`ElevenLabs`；它會與語音一起記錄轉錄。

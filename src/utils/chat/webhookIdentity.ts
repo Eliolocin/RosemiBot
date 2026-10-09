@@ -2,6 +2,42 @@ import type { Client, Guild, Message } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import { extractBridgeUserId, stripBridgePrefix } from "@/utils/bridges";
 import { normalizeRenderModifierName, resolveRenderModifierSourcePersona } from "@/utils/discord/renderModifierParser";
+import { serverRepository } from "@/utils/db/repositories/ServerRepository";
+import { getCachedManagedWebhookForChannel } from "@/utils/discord/webhook/webhookCore";
+
+let managedMessageTrust = new WeakMap<Message, boolean>();
+
+/** Threads inherit their parent's managed webhook; a name or avatar never proves provenance. */
+export async function verifyMessageWebhook(message: Message): Promise<boolean> {
+  if (!message.webhookId || !message.guildId) return false;
+  const cached = managedMessageTrust.get(message);
+  if (cached !== undefined) return cached;
+  const channelId = message.channel.isThread() ? message.channel.parentId : message.channelId;
+  if (!channelId) return false;
+  try {
+    const webhook = getCachedManagedWebhookForChannel(channelId, message.webhookId);
+    if (webhook && webhook.guildId === message.guildId && webhook.channelId === channelId) {
+      managedMessageTrust.set(message, true);
+      return true;
+    }
+    const row = await serverRepository.loadManagedWebhookByChannelAndWebhookId(channelId, message.webhookId);
+    const trusted = Boolean(
+      row &&
+        row.guild_disc_id === message.guildId &&
+        row.channel_disc_id === channelId &&
+        row.webhook_disc_id === message.webhookId,
+    );
+    managedMessageTrust.set(message, trusted);
+    return trusted;
+  } catch {
+    return false;
+  }
+}
+
+/** Synchronous trigger planning consumes only identity already verified during admission. */
+export function isManagedWebhookMessage(message: Message): boolean {
+  return Boolean(message.webhookId && managedMessageTrust.get(message));
+}
 
 const USER_IMPERSONATION_WEBHOOK_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -33,6 +69,7 @@ export function cacheUserImpersonationWebhook(webhookId: string, userId: string)
 
 export function clearWebhookIdentityCache(): void {
   webhookRelayCache.clear();
+  managedMessageTrust = new WeakMap();
 }
 
 export function getWebhookIdentityCacheSize(): number {
@@ -108,6 +145,7 @@ export function resolvePersonaForMessage(
       ? (allPersonas.find((persona) => !persona.is_alter) ?? null)
       : null;
   }
+  if (!isManagedWebhookMessage(message)) return null;
 
   const personaByNickname = new Map<string, TomoriState>();
   for (const persona of allPersonas) {
@@ -210,7 +248,7 @@ export function resolveReferencedWebhookTarget(
   personaByNickname: Map<string, TomoriState>,
   guild: Guild | null | undefined,
 ): { replyPersona: TomoriState | null; impersonatedUserId: string | null } {
-  if (!referenceMessage.webhookId) {
+  if (!isManagedWebhookMessage(referenceMessage)) {
     return { replyPersona: null, impersonatedUserId: null };
   }
 

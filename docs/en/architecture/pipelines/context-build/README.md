@@ -1,4 +1,4 @@
-﻿---
+---
 title: "Context-Build Pipeline"
 sidebar:
   label: "Overview"
@@ -6,30 +6,19 @@ sidebar:
   order: 200
 ---
 
-Assembles the LLM-visible prompt; every system message, every memory, every
-sample dialogue, every historical message; into a `StructuredContextItem[]`
-list ready for a provider.
+The context-build pipeline assembles system messages, memories, persona instructions, sample dialogues, and recent conversation turns into structured context items for an LLM provider.
 
-- **Entry point**: `src/utils/text/contextBuilder.ts` (5-line barrel) →
-`src/utils/text/context/builder.ts:buildContext()`
+The public entry point is `buildContext` in `src/utils/text/contextBuilder.ts`, which delegates to `src/utils/text/context/builder.ts`.
 
-- **Triggered by**: the chat per-turn stage
-[`buildChatTurnContext`](../chat/06-per-turn/01-build-context), and any
-other caller that needs an LLM prompt for a given persona + history snapshot
-(import/export, snapshot tooling, structured-output flows).
+## Flow and routing
 
-## Read order
-
-This folder is two-level. Read the top-level routing wrapper first, then walk
-the native-assembly sub-folder top to bottom.
-
-## Pipeline shape
+Context assembly follows a two-tier structure:
 
 ```
-buildContext(BuildContextParams)              ← routing wrapper
+buildContext(BuildContextParams)
   │
-  ├─ if SillyTavern preset active & not impersonation:
-  │     buildContextNative(...)              ← native build runs first
+  ├─ if SillyTavern preset active and not impersonation:
+  │     buildContextNative(...)
   │     reassembleWithPreset(nativeOutput, presetData, ...)
   │     resolveRandomChoiceMacrosInBuildOutput(...)
   │     → preset-reassembled result
@@ -38,89 +27,36 @@ buildContext(BuildContextParams)              ← routing wrapper
         buildContextNative(...)
         resolveRandomChoiceMacrosInBuildOutput(...)
         → native result
-
-buildContextNative(BuildContextParams)        ← fixed-order assembly
-  contextItems = []
-  contextItems.push(...prompt items)          (01)
-  contextItems.push(server info)              (02)
-  contextItems.push(server memories)          (03)
-  contextItems.push(server emojis)            (04)
-  contextItems.push(server stickers)          (05)
-  contextItems.push(participants)             (06)
-  contextItems.push(...short-term memory)     (07)
-  contextItems.push(server documents / RAG)   (08)
-  contextItems.push(conditioning)             (09)
-  contextItems.push(...sample dialogues)      (10)
-  appendDialogueHistoryContext(...)           (11)
-  → { contextItems, tailDirectives, lowerPriorityTailDirectives, uncensorDirective? }
 ```
 
-## Stage index
+Native assembly always runs first. If a SillyTavern preset is active for the server and the current turn is not a user impersonation, the pipeline passes the native items into `reassembleWithPreset` in `src/utils/text/presetContextBuilder.ts` to arrange them into preset sections. Otherwise, the native build is returned directly.
 
-| # | Stage | File | Mission |
-|---|-------|------|---------|
-| 01 | `buildContext` (routing) | [`01-preset-routing.md`](./01-preset-routing) | Decide native vs. preset-reassembly path. |
-| 02 | `buildContextNative` (assembly) | [`02-native-assembly/`](./02-native-assembly/) | Fixed-order contributor assembly. |
+Both paths finish by passing the assembled output through `resolveRandomChoiceMacrosInBuildOutput`, which resolves `{{random:a::b}}` and `{random::a::b}` choices across all emitted text.
 
-## Cross-references
+## Stages
 
-- **Producer:** the chat pipeline's per-turn
-  [`buildChatTurnContext`](../chat/06-per-turn/01-build-context) constructs
-  the `BuildContextParams` and consumes the returned `BuildContextResult`.
-- **Consumer:** the [provider pipeline](../provider/) consumes `contextItems` as the LLM prompt; the
-  chat pipeline appends `tailDirectives` from this pipeline alongside its own
-  before passing to the provider.
-- **SillyTavern presets:** preset reassembly lives in
-  `src/utils/text/presetContextBuilder.ts` (called from the routing wrapper).
-  See also [`docs/en/architecture/integrations/sillytavern/preset-system.md`](../../integrations/sillytavern/preset-system) for the user-facing system.
-- **Prompt macros and conditionals:** `toolPromptMacroResolver` evaluates
-  `{{if capability:...}}` / `{{if tool:...}}` blocks before expanding
-  `{short_term_memory_tool}`, `{sticker_tool}`, `{memory_tool}`, and related
-  tool-name macros. Used across contributors.
+| Stage | Path | Purpose |
+|---|---|---|
+| 01 | [Preset Routing](/architecture/pipelines/context-build/01-preset-routing/) | Selects native fixed-order assembly or SillyTavern preset reassembly. |
+| 02 | [Native Assembly](/architecture/pipelines/context-build/02-native-assembly/) | Assembles context items in a deterministic sequence. |
 
-## Output shape
+## Output contract
 
-```ts
-type BuildContextResult = {
-  contextItems: StructuredContextItem[];     // the prompt skeleton; dialogue items may still carry mediaDescriptors
-  tailDirectives: string[];                  // appended at chat-pipeline tail (impersonation, etc.)
-  lowerPriorityTailDirectives: string[];     // inserted before latest dialogue pair (STM hint)
-  uncensorDirective?: string;                // appended as separate tail item if active
-  messageIdMap: MessageIdMap;                // compact ID ↔ Discord message ID
-};
-```
+Directives and deferred short-term memory items pass through the return shape instead of appending directly to `contextItems`:
 
-Tail directives are *collected* by the contributors (e.g. participants emits
-the impersonation directive, short-term memory may emit the same-channel
-memory directive) and surfaced via the return shape, not appended to
-`contextItems` directly; the chat pipeline's per-turn stage 01 owns the
-final tail-directive ordering.
+- `tailDirectives` hold instructions such as impersonation prefixes, stop requests, or manual system prompts.
+- `lowerPriorityTailDirectives` hold guidance inserted before the latest dialogue pair.
+- `uncensorDirective` holds stripped uncensor prompt injection text.
+- `nudgeItem` and `memoryInjectionItems` provide short-term memory reminders and content blocks for dialogue-depth injection.
+- `messageIdMap` maps compact media and reference IDs to Discord message IDs.
 
-Dialogue media is resolved after this pipeline for live chat. The dialogue
-history contributor records `mediaDescriptors` and budget notices; per-attempt
-generation calls `resolveMediaForModel(...)` before provider truncation so each
-attempt sees media according to its own routed model capability.
-Blind models still receive a plain notice for media that exists outside the
-current media window; this is an intentional improvement over the old silent
-blind + out-of-window case.
+The chat pipeline's turn builder in [Build Context](/architecture/pipelines/chat/06-per-turn/01-build-context/) consumes this result, orders tail directives, and inserts positional items before passing the prompt to the [Provider Pipeline](/architecture/pipelines/provider/).
 
-## Plugin agnostic vs. plugin-relevant
+Media resolution runs per generation attempt after context build. The dialogue history contributor records capability-neutral `mediaDescriptors`, and `resolveMediaForModel` adapts attachments to the routed model's vision capabilities.
 
-This pipeline is the densest plugin-relevant surface in TomoriBot. Each
-contributor is an architectural seam for a category the eventual plugin plan
-will engage with:
+## Source pointers
 
-- **Knowledge contributors** (memories, RAG documents, conditioning); the
-  "memory types" plugin category.
-- **Asset contributors** (emojis, stickers); the "server asset" plugin
-  category.
-- **Participant contributors**: typed sources compose Discord, persona, Matrix, webhook,
-  and reference identities behind `prepareParticipantContext()`. Integrations register a
-  narrow `ParticipantSource` or `ParticipantProfileEnricher`; `buildContext()` receives one
-  required prepared result rather than transport-specific maps.
-- **Dialogue contributors** (sample dialogues, dialogue history); currently
-  fixed; future plugins for "few-shot template providers" would extend here.
-
-Each per-stage doc names its extension point. The pipeline-as-a-whole does
-not (yet) expose a "register a new contributor" mechanism; that's
-explicitly a plugin-plan candidate to define.
+- `src/utils/text/context/builder.ts`: routing wrapper and macro resolution.
+- `src/utils/text/context/nativeBuilder.ts`: native fixed-order assembly.
+- `src/utils/text/presetContextBuilder.ts`: SillyTavern preset rearrangement.
+- `src/utils/text/context/types.ts`: build parameters and result contracts.

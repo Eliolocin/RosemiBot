@@ -4,81 +4,59 @@ sidebar:
   order: 3
 ---
 
-A TomoriBot pode falar (texto-para-fala) e ouvir (fala-para-texto):
+TomoriBot pode falar e ouvir em Discord: enviar respostas de voz com conversão de texto em fala (TTS) e transcrever mensagens de áudio em contexto de conversa com conversão de fala em texto (STT).
 
-- TTS permite que ela responda com mensagens de voz nativas do Discord.
-- STT converte anexos de áudio dos usuários em texto que ela pode usar como contexto de conversa.
-
-Ambos funcionam pelo mesmo sistema de endpoints. O caminho mais rápido é o ElevenLabs (nuvem,
-documentado na íntegra abaixo). Se você preferir executar a voz em seu próprio hardware, use um motor local
-e siga os guias de hospedagem própria.
+Ambos usam o sistema de endpoint do provedor. ElevenLabs é a opção de nuvem mais rápida. Você também pode executar modelos de voz locais em seu próprio hardware usando mecanismos auto-hospedados.
 
 ## Texto-para-Fala
 <!-- anchor: text-to-speech -->
 
 ### ElevenLabs (nuvem, mais fácil)
 
-1. Obtenha uma chave de API em [ElevenLabs](https://elevenlabs.io/app/settings/api-keys).
-2. Execute `/providers`, escolha `Adicionar Novo Provedor`, selecione ElevenLabs e cole a chave. Esse fluxo:
-   - registra o endpoint de fala do ElevenLabs (e o endpoint de transcrição também),
-   - seleciona-os como ativos,
-   - pode atribuir uma voz a uma persona na hora.
-3. Atribua vozes a personas adicionais em Persona > Voice no `/config`. Explore vozes na
-   [Biblioteca de Vozes do ElevenLabs](https://elevenlabs.io/app/voice-library), onde você também pode
-   clonar a sua própria.
+1. Obtenha uma chave API de [ElevenLabs](https://elevenlabs.io/app/settings/api-keys).
+2. Execute `/providers`, escolha `Adicionar Novo Provedor`, selecione `ElevenLabs` e cole a chave. Este fluxo:
+   - registra o ponto final de fala ElevenLabs e o ponto final de transcrição,
+   - ativa ambos os pontos finais,
+   - opcionalmente, atribui uma voz a uma persona imediatamente.
+3. Atribua vozes a personas adicionais em `/config` > `Persona` > Voz. Procure vozes na [Biblioteca de Vozes ElevenLabs](https://elevenlabs.io/app/voice-library), onde você também pode clonar as suas próprias.
 
 Selecione ElevenLabs em `/providers` e escolha `Editar Endpoint` sempre que precisar atualizar a chave.
 
-Observações:
+Notas:
 
-- No plano gratuito, apenas vozes pré-fabricadas funcionam. Explore a
-  [lista de vozes pré-fabricadas](https://elevenlabs-sdk.mintlify.app/voices/premade-voices).
-- Caracteres são contados quando ela gera e lê mensagens de voz; o nível gratuito tem
-  limites mensais; verifique seu painel do ElevenLabs.
-- Respostas de voz são controladas por `voice_message_enabled` e exigem que a persona ativa tenha uma
-  voz atribuída.
-- Persona > Voice no `/config` requer Gerenciar Servidor em uma guilda e permanece disponível para o dono em um workspace baseado em DM.
+- No plano gratuito, apenas vozes pré-fabricadas funcionam. Navegue pela [lista de vozes predefinidas](https://elevenlabs-sdk.mintlify.app/voices/premade-voices).
+- Os caracteres são contados quando ela gera mensagens de voz. O nível gratuito tem limites mensais, portanto monitore seu painel ElevenLabs.
+- As respostas de voz requerem `voice_message_enabled` em `/config` > `Permissões`, e a persona ativa deve ter uma voz atribuída.
+- Alterar `/config` > `Persona` > Voz requer a permissão Gerenciar Servidor em um servidor e permanece disponível para o proprietário em DMs.
 
-No `/help`, escolha `Recursos` e depois Speech para o mesmo passo a passo no Discord.
+Em `/help`, escolha `Recursos` e depois `Voz` para o passo a passo interativo em Discord.
 
 ### Motores locais de clonagem de voz (hospedagem própria)
 
-Em uma instância de hospedagem própria, você pode executar um servidor local de clonagem de voz. O fluxo geral é:
-iniciar o servidor wrapper, registrar sua conexão e modelo com `/providers`, selecioná-lo com
-`/providers`, enviar uma amostra com `/config` em Models > Parâmetros TTS e Vozes, e então atribuí-lo em
-Persona > Voice no `/config`. Qualquer formato de áudio é aceito (convertido automaticamente para WAV mono); clipes de 10-20
-segundos sem música de fundo funcionam melhor.
+Em instâncias auto-hospedadas, você pode executar um servidor local de clone de voz. O fluxo de trabalho: inicie o servidor, registre sua conexão e modelo em `/providers`, selecione-o em `/providers`, carregue uma amostra de referência em `/config` > `Modelos` > TTS Parâmetros e vozes e, em seguida, atribua-a em `/config` > `Persona` > Voz. Qualquer formato de áudio é aceito (convertido automaticamente para WAV mono); Clipes de 10 a 20 segundos sem música de fundo funcionam melhor.
 
-Cada motor tem seu próprio guia de configuração:
+Cada mecanismo tem seu próprio guia de configuração:
 
-- [Chatterbox-Turbo/Nano](/pt-BR/self-hosting/local-endpoints/text-to-speech/chatterbox/): clonagem de voz rápida, apenas em inglês, com tags de evento suportadas como `[laugh]`.
-- [Qwen3-TTS](/pt-BR/self-hosting/local-endpoints/text-to-speech/qwen3tts/): multilíngue (10 idiomas), além de um
-  modo VoiceDesign em linguagem natural.
-- [MOSS-TTS](/pt-BR/self-hosting/local-endpoints/text-to-speech/moss/): endpoint automático experimental para clonagem multilíngue ou design de voz em inglês/chinês.
-- [IrodoriTTS](/pt-BR/self-hosting/local-endpoints/text-to-speech/irodoritts/): especializado em japonês, lê emojis
-  como pistas de emoção.
+- [Chatterbox-Turbo/Nano](/pt-BR/self-hosting/local-endpoints/text-to-speech/chatterbox/): clonagem rápida de voz em inglês com tags de emoção como `[laugh]`.
+- [Qwen3-TTS](/pt-BR/self-hosting/local-endpoints/text-to-speech/qwen3tts/): multilíngue (10 idiomas) mais um modo VoiceDesign em linguagem natural.
+- [MOSS-TTS](/pt-BR/self-hosting/local-endpoints/text-to-speech/moss/): clonagem multilíngue e design de voz em inglês ou chinês.
+- [IrodoriTTS](/pt-BR/self-hosting/local-endpoints/text-to-speech/irodoritts/): mecanismo especializado em japonês que lê emojis como sinais de emoção.
 
-Veja a [tabela comparativa de Texto-para-Fala](/pt-BR/self-hosting/local-endpoints/text-to-speech/) para a lista completa e orientações de hardware.
+Consulte a [tabela de comparação de conversão de texto em fala](/pt-BR/self-hosting/local-endpoints/text-to-speech/) para obter orientação sobre hardware e a lista completa de mecanismos.
 
 ## Fala-para-Texto
 <!-- anchor: speech-to-text -->
 
-Endpoints de transcrição convertem anexos de áudio dos usuários em texto para contexto de conversa
-em segundo plano. Se as transcrições são exibidas visivelmente no chat é controlado separadamente por
-`/config` > Engine > Notices.
+Os pontos finais de transcrição transformam os anexos de áudio do usuário em texto para contexto de conversa. Se as transcrições são postadas publicamente no bate-papo é controlado em `/config` > `Comportamento` > Aviso de Comportamento.
 
 ### ElevenLabs (nuvem)
 
-Já coberto acima: adicionar o ElevenLabs a partir de `/providers` registra o endpoint de transcrição junto com o de
-fala. Use `/providers` para escolher entre endpoints de transcrição.
+Adicionar ElevenLabs de `/providers` registra o ponto final da transcrição junto com a fala. Use `/providers` para alternar entre pontos de extremidade de transcrição ativos.
 
 ### Motores locais (hospedagem própria)
 
-- [WhisperX](/pt-BR/self-hosting/local-endpoints/speech-to-text/whisperx/): o caminho local recomendado; ~100
-  idiomas, acelerado por GPU, múltiplos tamanhos de modelo.
-- [KoboldCPP](/pt-BR/self-hosting/local-endpoints/speech-to-text/koboldcpp/): funciona se sua build expõe um
-  endpoint de transcrição compatível com OpenAI.
-- [whisper.cpp](/pt-BR/self-hosting/local-endpoints/speech-to-text/whispercpp/).
+- [WhisperX](/pt-BR/self-hosting/local-endpoints/speech-to-text/whisperx/): caminho local recomendado; cerca de 100 idiomas, acelerados por GPU, vários tamanhos de modelo.
+- [KoboldCPP](/pt-BR/self-hosting/local-endpoints/speech-to-text/koboldcpp/): funciona quando sua compilação expõe um endpoint de transcrição compatível com OpenAI.
+- [sussurro.cpp](/pt-BR/self-hosting/local-endpoints/speech-to-text/whispercpp/).
 
-Veja o hub de [Fala-para-Texto](/pt-BR/self-hosting/local-endpoints/speech-to-text/) para a lista completa. Para o
-resumo no Discord, execute `/help`, depois escolha `Recursos` e `Transcrição`.
+Consulte o hub [Speech-to-Text](/pt-BR/self-hosting/local-endpoints/speech-to-text/) para obter a lista completa de mecanismos. Para o resumo Discord, execute `/help` e escolha `Recursos` e `Transcrição`.

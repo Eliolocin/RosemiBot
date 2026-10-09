@@ -12,6 +12,7 @@ import {
 import type { PanelReceipt } from "@/types/discord/panel";
 import { buildInteractionRouteId } from "@/utils/discord/interactions/routeRegistry";
 import { formatPanelComponentTree } from "@/utils/discord/ui/panelProse";
+import { ColorCode } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
 
 const PANEL_ACCENT_BY_TONE = {
@@ -22,6 +23,35 @@ const PANEL_ACCENT_BY_TONE = {
 } as const;
 
 export type PanelAccentTone = keyof typeof PANEL_ACCENT_BY_TONE;
+
+/** An accent color in any of the shapes callers already hold: a decimal, a hex string, or RGB. */
+export type AccentColorInput = string | number | readonly [red: number, green: number, blue: number];
+
+/**
+ * Normalizes an accent color to the decimal form Discord's payloads carry.
+ *
+ * Unparseable input falls back to the info accent rather than throwing, so a caller passing a
+ * named color or a malformed hex still renders a card.
+ */
+export function resolveAccentColor(color?: AccentColorInput): number {
+  if (typeof color === "number") {
+    return color;
+  }
+
+  if (typeof color === "string") {
+    const normalized = color.trim().replace("#", "");
+    if (/^[0-9a-fA-F]{6}$/.test(normalized)) {
+      return Number.parseInt(normalized, 16);
+    }
+  }
+
+  if (Array.isArray(color) && color.length === 3) {
+    const [red, green, blue] = color;
+    return (red << 16) + (green << 8) + blue;
+  }
+
+  return Number.parseInt(ColorCode.INFO.replace("#", ""), 16);
+}
 
 export interface PaginationRouteSegments {
   page: (rangeIndex: number) => string[];
@@ -40,15 +70,26 @@ export function withLinePrefix(prefix: string, text: string): string {
     .join("\n");
 }
 
+export interface BuildPanelContainerOptions {
+  /**
+   * Whether to apply panel layout wrapping across TextDisplay components.
+   * Defaults to true. Notice cards disable this because they act as embed
+   * replacements rather than interactive grid panels.
+   */
+  formatProse?: boolean;
+}
+
 export function buildPanelContainer(
   components: ComponentInContainerData[],
   accent?: number | PanelAccentTone,
+  options?: BuildPanelContainerOptions,
 ): ContainerComponentData<ComponentInContainerData> {
   const accentColor = typeof accent === "string" ? PANEL_ACCENT_BY_TONE[accent] : (accent ?? PANEL_ACCENT_BY_TONE.info);
+  const shouldFormatProse = options?.formatProse ?? true;
   return {
     type: ComponentType.Container,
     accentColor,
-    components: formatPanelComponentTree(components),
+    components: shouldFormatProse ? formatPanelComponentTree(components) : components,
   };
 }
 

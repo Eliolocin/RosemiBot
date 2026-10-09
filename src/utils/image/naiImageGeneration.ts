@@ -1,6 +1,8 @@
 import JSZip from "jszip";
 import type { EffectiveNaiImageParams } from "@/utils/image/naiImageParams";
 import { log } from "@/utils/misc/logger";
+import { readBoundedResponse } from "@/utils/security/boundedResponse";
+import { getDeclaredUncompressedSize } from "@/utils/zip/zipEntryGuards";
 
 const NAI_IMAGE_BASE_URL = "https://image.novelai.net";
 
@@ -47,6 +49,11 @@ export function usesNaiStructuredPromptFormat(model: string): boolean {
   return /nai-diffusion-[45]/.test(model);
 }
 
+/** Precise Reference is available on NovelAI V4.5 models only. */
+export function supportsNaiPreciseReference(model: string): boolean {
+  return /^nai-diffusion-4-5-(?:full|curated)$/.test(model);
+}
+
 export function classifyNaiImageError(error: unknown): NaiImageErrorKind {
   const errorMessage = error instanceof Error ? error.message : String(error);
   const normalizedErrorMessage = errorMessage.toLowerCase();
@@ -83,17 +90,52 @@ export function classifyNaiImageError(error: unknown): NaiImageErrorKind {
   return "other";
 }
 
-async function extractPngFromZipResponse(response: Response): Promise<Buffer> {
-  const zipBuffer = Buffer.from(await response.arrayBuffer());
-  const zip = await JSZip.loadAsync(zipBuffer);
-  const pngFileName = Object.keys(zip.files).find((name) => name.toLowerCase().endsWith(".png"));
+// One generated PNG is a few megabytes and PNG data barely deflates, so a single cap bounds both
+// the archive and its expanded entry with room to spare for the largest supported resolution.
+const MAX_NAI_ZIP_BYTES = 32 * 1024 * 1024;
+const MAX_NAI_ZIP_ENTRIES = 8;
+const MAX_NAI_ERROR_BODY_BYTES = 4096;
+// Generation queues for seconds, not minutes. A body that trickles past this is abandoned rather
+// than holding the tool, its sockets and its buffers until the outer tool timeout gives up on it.
+const NAI_IMAGE_REQUEST_TIMEOUT_MS = 180_000;
 
-  if (!pngFileName) {
+/** The caller's cancellation joined with a deadline that also covers reading the response body. */
+export function naiImageRequestSignal(abortSignal?: AbortSignal): AbortSignal {
+  const deadline = AbortSignal.timeout(NAI_IMAGE_REQUEST_TIMEOUT_MS);
+  return abortSignal ? AbortSignal.any([abortSignal, deadline]) : deadline;
+}
+
+/** A bounded slice of an error body for the thrown message and its operator log. */
+export async function readNaiErrorSnippet(response: Response): Promise<string> {
+  const body = await readBoundedResponse(response, MAX_NAI_ERROR_BODY_BYTES).catch(() => null);
+  return body ? body.toString("utf8").slice(0, 500) : "";
+}
+
+/**
+ * Extracts the generated PNG from NovelAI's ZIP reply. The archive is read with a byte cap, and
+ * the entry's declared size is checked before it is inflated, because a small archive can declare
+ * and deliver gigabytes.
+ */
+export async function extractPngFromZipResponse(response: Response): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(await readBoundedResponse(response, MAX_NAI_ZIP_BYTES));
+  const entries = Object.values(zip.files).filter((entry) => !entry.dir);
+  if (entries.length > MAX_NAI_ZIP_ENTRIES) {
+    throw new Error(`NovelAI response ZIP has ${entries.length} entries`);
+  }
+  const png = entries.find((entry) => entry.name.toLowerCase().endsWith(".png"));
+  if (!png) {
     throw new Error("NovelAI response ZIP did not contain a PNG file");
   }
-
-  const pngData = await zip.files[pngFileName].async("nodebuffer");
-  return Buffer.from(pngData);
+  // Without a declared size the expansion cannot be bounded before paying for it, so refuse.
+  const declaredSize = getDeclaredUncompressedSize(png);
+  if (declaredSize === null || declaredSize > MAX_NAI_ZIP_BYTES) {
+    throw new Error("NovelAI response PNG declares no size or more than the expanded size limit");
+  }
+  const pngData = await png.async("nodebuffer");
+  if (pngData.length > MAX_NAI_ZIP_BYTES) {
+    throw new Error("NovelAI response PNG exceeds the expanded size limit");
+  }
+  return pngData;
 }
 
 export async function generateNovelAiImage(options: {
@@ -118,6 +160,10 @@ export async function generateNovelAiImage(options: {
   const referenceInfoExtracted = characterPayload?.referenceInfoExtracted ?? [];
   const useCoords = characterPayload?.useCoords ?? false;
 
+  if (referenceImages.length > 0 && !supportsNaiPreciseReference(model)) {
+    throw new Error(`NovelAI Precise Reference requires a V4.5 model (received ${model}).`);
+  }
+
   let requestPayload: Record<string, unknown>;
 
   if (usesNaiStructuredPromptFormat(model)) {
@@ -131,11 +177,8 @@ export async function generateNovelAiImage(options: {
       }));
     const buildDirectorReferenceSecondaryStrengths = (count: number) =>
       Array.from({ length: count }, () => NAI_CHAR_REF_SECONDARY_STRENGTH);
-    const buildV4RequestPayload = (includeReferences: boolean): Record<string, unknown> => {
-      const refsForRequest = includeReferences ? referenceImages : [];
-      const directorRefCount = refsForRequest.length;
-      const refStrengthsForRequest = includeReferences ? referenceStrengths : [];
-      const refInfoForRequest = includeReferences ? referenceInfoExtracted : [];
+    const buildV4RequestPayload = (): Record<string, unknown> => {
+      const directorRefCount = referenceImages.length;
 
       return {
         action: "generate",
@@ -161,11 +204,12 @@ export async function generateNovelAiImage(options: {
           normalize_reference_strength_multiple: directorRefCount > 0 ? true : undefined,
           director_reference_descriptions:
             directorRefCount > 0 ? buildDirectorReferenceDescriptions(directorRefCount) : undefined,
-          director_reference_information_extracted: refInfoForRequest.length > 0 ? refInfoForRequest : undefined,
-          director_reference_strength_values: refStrengthsForRequest.length > 0 ? refStrengthsForRequest : undefined,
+          director_reference_information_extracted:
+            referenceInfoExtracted.length > 0 ? referenceInfoExtracted : undefined,
+          director_reference_strength_values: referenceStrengths.length > 0 ? referenceStrengths : undefined,
           director_reference_secondary_strength_values:
             directorRefCount > 0 ? buildDirectorReferenceSecondaryStrengths(directorRefCount) : undefined,
-          director_reference_images: refsForRequest.length > 0 ? refsForRequest : undefined,
+          director_reference_images: referenceImages.length > 0 ? referenceImages : undefined,
           v4_prompt: {
             caption: {
               base_caption: prompt,
@@ -212,71 +256,27 @@ export async function generateNovelAiImage(options: {
       };
     };
 
-    const attempts: Array<{
-      label: string;
-      includeReferences: boolean;
-    }> = [];
-    const seenAttempts = new Set<string>();
-    const pushAttempt = (label: string, includeReferences: boolean) => {
-      const key = includeReferences.toString();
-      if (seenAttempts.has(key)) {
-        return;
-      }
+    requestPayload = buildV4RequestPayload();
+    log.info(
+      `[NAI] V4+ generate request (chars: ${charCaptions.length}, coords: ${useCoords}, refs: ${referenceImages.length})`,
+    );
 
-      seenAttempts.add(key);
-      attempts.push({
-        label,
-        includeReferences,
-      });
-    };
+    const response = await fetch(`${NAI_IMAGE_BASE_URL}/ai/generate-image`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestPayload),
+      signal: naiImageRequestSignal(abortSignal),
+    });
+    if (response.ok) return await extractPngFromZipResponse(response);
 
-    if (referenceImages.length > 0) {
-      pushAttempt("director_refs", true);
-    }
-    pushAttempt("without_refs", false);
-
-    let lastError: Error | null = null;
-
-    for (const [attemptIndex, attempt] of attempts.entries()) {
-      requestPayload = buildV4RequestPayload(attempt.includeReferences);
-
-      log.info(
-        `[NAI] V4 generate attempt "${attempt.label}" (chars: ${charCaptions.length}, coords: ${useCoords}, refs: ${attempt.includeReferences ? referenceImages.length : 0})`,
-      );
-
-      const response = await fetch(`${NAI_IMAGE_BASE_URL}/ai/generate-image`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestPayload),
-        signal: abortSignal,
-      });
-
-      if (response.ok) {
-        return await extractPngFromZipResponse(response);
-      }
-
-      const correlationId = response.headers.get("x-correlation-id");
-      const errorText = await response.text().catch(() => "");
-      const snippet = errorText.slice(0, 500);
-      lastError = new Error(
-        `NovelAI image generation failed (${response.status} ${response.statusText})${correlationId ? ` [correlation-id: ${correlationId}]` : ""}: ${snippet}`,
-      );
-
-      const hasFallbackAttempt = attemptIndex < attempts.length - 1;
-      if (hasFallbackAttempt && attempt.includeReferences) {
-        log.warn(
-          `[NAI] V4 generate attempt "${attempt.label}" failed with ${response.status}. Retrying with "${attempts[attemptIndex + 1].label}"`,
-        );
-        continue;
-      }
-
-      throw lastError;
-    }
-
-    throw lastError ?? new Error("NovelAI image generation failed");
+    const correlationId = response.headers.get("x-correlation-id");
+    const errorText = await readNaiErrorSnippet(response);
+    throw new Error(
+      `NovelAI image generation failed (${response.status} ${response.statusText})${correlationId ? ` [correlation-id: ${correlationId}]` : ""}: ${errorText.slice(0, 500)}`,
+    );
   }
 
   requestPayload = {
@@ -305,12 +305,12 @@ export async function generateNovelAiImage(options: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(requestPayload),
-    signal: abortSignal,
+    signal: naiImageRequestSignal(abortSignal),
   });
 
   if (!response.ok) {
     const correlationId = response.headers.get("x-correlation-id");
-    const errorText = await response.text().catch(() => "");
+    const errorText = await readNaiErrorSnippet(response);
     const snippet = errorText.slice(0, 500);
     throw new Error(
       `NovelAI image generation failed (${response.status} ${response.statusText})${correlationId ? ` [correlation-id: ${correlationId}]` : ""}: ${snippet}`,

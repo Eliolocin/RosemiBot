@@ -4,15 +4,9 @@ sidebar:
   order: 5
 ---
 
-Operación diaria de una instancia autoalojada: los scripts de mantenimiento, cómo actualizar y cómo
-hacer copias de seguridad y restaurar tu base de datos. Estas son operaciones del lado del host: las
-ejecutas desde una terminal, no desde Discord. Para los flujos de exportar/importar/eliminar por usuario
-dentro de Discord, consulta en su lugar
-[Manejo de datos](/es-419/features/knowledge/data-handling/).
+Administre su instancia TomoriBot autohospedada mediante scripts de mantenimiento CLI para actualizar el código, realizar copias de seguridad o restaurar datos, rotar claves de cifrado e inspeccionar variables de entorno. Ejecuta estos comandos desde su terminal host o entorno Docker. Para exportaciones y eliminaciones de datos en-Discord, consulte [Manejo de datos](/es-419/features/knowledge/data-handling/).
 
-Si estás por hacer `git pull` de una nueva versión, lee primero
-[Migración segura](/es-419/self-hosting/safe-migration/): cubre cómo hacer una copia de seguridad *antes*
-de que el ejecutor de migraciones de arranque toque tu esquema.
+Si está actualizando con `git pull`, revise primero [Migración segura](/es-419/self-hosting/safe-migration/) para crear una copia de seguridad antes de que el ejecutor de migración en el arranque aplique cambios de esquema.
 
 ## Scripts de mantenimiento
 
@@ -20,28 +14,59 @@ de que el ejecutor de migraciones de arranque toque tu esquema.
 |---|---|
 | `bun run setup` | Abre el asistente de instalación para la instalación base y los módulos opcionales. |
 | `bun run update` | Hace una copia de seguridad primero, luego descarga el código más reciente e instala las dependencias. |
-| `bun run backup` | Crea un paquete en `backups/` con el volcado de tu base de datos y tu `.env`: contiene todos tus datos. |
-| `bun run restore-backup` | Restaura `.env` y la base de datos a partir de un paquete (`--latest` o `--from backups/<dir>`). |
+| `bun run backup` | Crea un paquete en `backups/` con el volcado de tu base de datos y los metadatos de versiones de cifrado requeridos. Los secretos se mantienen separados. |
+| `bun run restore-backup` | Restaura la base de datos utilizando claves de cifrado aprovisionadas por separado (`--latest` o `--from backups/<dir>`). |
 | `bun run backup:personas` | Exporta SOLO personas (con memorias de servidor) en todos los servidores; se reimporta mediante `/persona import`. |
 | `bun run nuke-db` | Elimina todas las tablas (inicia el bot después para reinicializar). |
 | `bun run purge-commands` | Borra todos los comandos de barra de Discord registrados. |
-| `bun run rotate-keys` | Vuelve a cifrar todos los campos cifrados con la versión de clave actual. |
+| `bun run rotate-keys --bot-stopped` | Vuelve a cifrar todos los campos cifrados con la versión de clave actual. |
+| `bun run env-doctor` | Comprobación de solo lectura de tu configuración: enumera las entradas de `.env` que nada lee (solo nombres, nunca valores) y dónde se usa cada variable. |
 
-`bun run backup` y `bun run update` requieren las herramientas de cliente de PostgreSQL (`pg_dump`,
-`psql`) en tu PATH.
+`bun run backup` en el host necesita `pg_dump`, y `bun run restore-backup` en el host necesita `psql` en tu PATH. `bun run update` necesita `pg_dump` para su copia de seguridad. La ruta de actualización con `--docker` ejecuta la copia de seguridad dentro del contenedor, por lo que necesita Bun, Git y Docker en el host, pero no herramientas de PostgreSQL en el host.
+
+Los comandos de copia de seguridad y restauración pasan la contraseña de tu base de datos a `pg_dump` y `psql` a través de un archivo de contraseña efímero en la carpeta temporal del sistema, de modo que otros usuarios en la máquina no puedan leerla desde la lista de procesos. Esa carpeta debe tener permisos de escritura. El archivo se elimina cuando finaliza el comando.
+
+## Copias de seguridad de la base de datos y claves de recuperación
+<!-- anchor: database-backups-and-recovery-keys -->
+
+`bun run backup` y las copias de seguridad automáticas al inicio producen `database.sql` y `bundle_info.json`. El manifiesto identifica un paquete que solo contiene la base de datos y enumera las versiones de cifrado encontradas en ese volcado. El inventario de versiones describe qué claves necesita la recuperación; la restauración comprueba la capacidad real de descifrado. Crear un volcado no requiere que las claves antiguas estén presentes, por lo que una clave histórica faltante no impide preservar el resto de la base de datos. Nunca copia `.env`. Un volcado que solo contiene la base de datos aún contiene conversaciones y memorias privadas, por lo que debes restringir el acceso al directorio de copias de seguridad.
+
+Guarda las versiones de cifrado en un almacenamiento protegido independiente, como un gestor de contraseñas cifrado o un gestor de secretos. Si copias `.env` tú mismo, protégelo como credenciales y mantenlo separado del volcado. Perder una versión de cifrado requerida hace que esas credenciales almacenadas sean irrecuperables; los usuarios deberán ingresar sus claves de API nuevamente. Las claves del lado del proveedor siguen siendo válidas hasta que se revoquen.
+
+Para restaurar:
+
+1. Detén todas las instancias del bot. Aprovisiona la configuración de la base de datos de destino, el token de Discord y las versiones de cifrado correspondientes en la fuente habitual de secretos antes de ejecutar el comando. Conserva las claves originales con exactitud.
+2. Instala `psql` y las extensiones utilizadas por el volcado, incluyendo `pgvector` cuando esté presente. Ejecuta `bun run restore-backup --from backups/<bundle-directory>` o usa `--latest`. La restauración habilita `pgcrypto` antes de comprobar las claves, incluso en un destino nuevo. La cuenta de base de datos debe tener permisos para crear esa extensión, o un administrador de base de datos debe habilitarla primero. Los errores de configuración de extensiones se informan por separado de los fallos de recuperación de credenciales.
+3. La restauración comprueba cada credencial cifrada con las claves proporcionadas antes de cargar el volcado. Las claves faltantes o incorrectas detienen el proceso antes de cualquier SQL destructivo; es posible que `pgcrypto` ya se haya habilitado. Revisa el destino y confirma `RESTORE`; un destino no vacío también requiere `RESTORE ANYWAY`. Restaura solo volcados SQL de confianza.
+4. Mantén las claves en su lugar. Antes de reiniciar, ejecuta `bun run audit-keys` y `bun run rotate-keys --dry-run`. Si las credenciales necesitan migración a la versión activa, ejecuta `bun run rotate-keys --bot-stopped` y audita nuevamente antes de iniciar cualquier instancia. `ON_ERROR_STOP=1` se detiene en el primer error de SQL, pero las declaraciones anteriores ya pueden haber modificado datos. Corrige el error y vuelve a intentarlo mientras el bot permanece detenido.
+
+Los paquetes heredados incluyen secretos sin procesar en `config.env`. La restauración los identifica y advierte, pero nunca copia ni carga ese archivo. Revísalo minuciosamente en una ubicación privada y aprovisiona tú mismo sus versiones de cifrado en la fuente de secretos de destino. Mantén la configuración de la base de datos de destino en su lugar. Los paquetes existentes continúan conteniendo secretos incluso después de actualizar. Una vez que sus claves de cifrado estén archivadas en un almacenamiento protegido, puedes eliminar `config.env` de un paquete heredado; la restauración seguirá aceptando el paquete y comprobará las claves al descifrar el volcado.
+
+## Rotación de claves de cifrado
+<!-- anchor: rotating-encryption-keys -->
+
+1. Mantén una copia protegida de cada clave requerida por los datos activos y las copias de seguridad conservadas. Realiza una copia de seguridad de la base de datos y prueba la recuperación en una base de datos desechable antes de retirar cualquier versión.
+2. Genera la nueva clave con `openssl rand -base64 32` (o `docker run --rm alpine:3.22 sh -c "head -c 24 /dev/urandom | base64"`) y agrégala como `CRYPTO_SECRET_V<version>` a la misma fuente de secretos que utiliza el bot. La rotación rechaza una clave actual de menos de 32 caracteres. Establece `CRYPTO_SECRET_CURRENT` en esa versión si deseas una selección explícita. Conserva todas las claves más antiguas. El `CRYPTO_SECRET` heredado es V1.
+3. Detén todas las instancias del bot y pausa los procesos que escriben credenciales. En producción, ejecuta los scripts con `RUN_ENV=production` y el mismo `SECRET_FILE` montado, el `GCP_SECRET_FILE` heredado o la configuración de secretos y acceso de AWS que en el inicio. La auditoría y la rotación utilizan la configuración `POSTGRES_*` del bot de esa fuente.
+4. Ejecuta `bun run audit-keys`, luego `bun run rotate-keys --dry-run`. Ambos deben tener éxito. La auditoría informa sobre tablas, columnas, ID de fila y versiones fallidas mientras continúa con las comprobaciones de credenciales. Sus recuentos de versiones incluyen la recuperación fallida y no pueden establecer el éxito cuando el estado de salida es distinto de cero. La ejecución en seco descifra las credenciales sin modificar las filas.
+5. Ejecuta `bun run rotate-keys --bot-stopped`, luego `bun run audit-keys`. Cualquier consulta o fila fallida genera una salida distinta de cero, incluso en caso de éxito parcial. Conserva todas las versiones, corrige la falla y vuelve a ejecutar. El reemplazo concurrente de filas se rechaza en lugar de sobrescribirse.
+6. En una base de datos restaurada desechable, prueba una auditoría con solo la clave actual conservada configurada. Las copias de seguridad más antiguas conservadas necesitan su propia recuperación probada con claves archivadas. Solo después de esas comprobaciones puedes eliminar versiones antiguas de la fuente activa de secretos. Mantén el archivo de claves protegido por separado durante el tiempo que se conserven sus copias de seguridad, luego reinicia todas las instancias del bot.
+
+El indicador `--bot-stopped` registra tu confirmación; no puede detectar otras instancias en ejecución. Los scripts de rotación no borran las cachés de credenciales de otro proceso. Las versiones no necesitan ser consecutivas: una credencial V1 puede pasar directamente a V4 cuando ambas claves están disponibles.
+
+La rotación también reemplaza las etiquetas de versión nula heredadas con la versión actual explícita, incluso cuando la versión actual es V1.
 
 ## Actualización
 
-Detén primero el bot en ejecución y luego usa el actualizador con copia de seguridad primero:
+Primero detenga el bot en ejecución, luego use el actualizador de respaldo primero:
 
 ```sh
 bun run update
 ```
 
-Esto ejecuta `bun run backup`, luego `git pull --rebase --autostash`, luego
-`bun install --frozen-lockfile`. El paquete de la copia de seguridad se escribe en `backups/` e incluye
-tanto el volcado de la base de datos como `.env`. Agrega `--skip-backup` para omitir la copia de
-seguridad previa a la actualización. Alternativa manual:
+Esto ejecuta `bun run backup`, luego `git pull --rebase --autostash` y finalmente `bun install --frozen-lockfile`. El paquete de respaldo se guarda en `backups/` y contiene el volcado de su base de datos y el manifiesto. Copie y proteja `.env` por separado si necesita conservarlo. Agregue `--skip-backup` para omitir la copia de seguridad previa a la actualización.
+
+Respaldo manual:
 
 ```sh
 bun run backup
@@ -49,21 +74,20 @@ git pull --rebase --autostash
 bun install --frozen-lockfile
 ```
 
-¿Ejecutas desde `dist/`? Usa `bun run update --build`. ¿Ejecutas Docker Compose? Usa
-`bun run update --docker`.
+Si ejecuta código precompilado desde `dist/`, utilice `bun run update --build`. Para implementaciones de Docker Compose, utilice `bun run update --docker`; el actualizador ejecuta primero `docker compose run --rm tomoribot bun run backup`.
 
 ### Variables de entorno eliminadas
 
-Estas variables ajustaban comportamientos internos: heurísticas de texto y contexto, duración de los componentes de Discord, duración de las cachés, enfriamientos de comandos, límites de esquema y valores de muestreo predeterminados de los proveedores. Ahora están fijas en el código con sus valores anteriores, por lo que un valor antiguo en `.env` se ignora después de actualizar. `bun run env-doctor` enumera como no leídas las que sigan en tu `.env`, y puedes borrarlas. Los ajustes que dependen de tu host, red, credenciales o costos siguen siendo variables de entorno.
+Estas variables configuraron previamente heurísticas de texto internas, tiempos de espera de componentes Discord, duraciones de caché, tiempos de reutilización de comandos y valores predeterminados de muestreo. Ahora están fijos en el código con sus valores predeterminados anteriores, por lo que los valores antiguos en `.env` se ignoran después de la actualización. Ejecuta `bun run env-doctor` para enumerar las variables sobrantes en su `.env` que pueda eliminar de forma segura. Las configuraciones que dependen de su host, red, credenciales o costos siguen siendo variables de entorno.
 
-Los enfriamientos de comandos son la excepción a «fijo»: los nombres `COOLDOWN_*` por categoría y `DEFAULT_COMMAND_COOLDOWN` se reemplazan por un solo multiplicador, `COMMAND_COOLDOWN_SCALE` (valor predeterminado `1`; `0` desactiva los enfriamientos). Para conservar un enfriamiento ajustado, divide tu valor anterior entre su valor fijo de la tabla: `COOLDOWN_PERSONA=1000` pasa a ser `COMMAND_COOLDOWN_SCALE=0.1`.
+Los tiempos de reutilización de comandos ahora usan un único multiplicador, `COMMAND_COOLDOWN_SCALE` (`1` predeterminado; `0` desactiva los tiempos de reutilización), reemplazando las variables individuales `COOLDOWN_*` y `DEFAULT_COMMAND_COOLDOWN`. Para mantener un tiempo de reutilización personalizado, divida su valor anterior por su valor predeterminado anterior: por ejemplo, `COOLDOWN_PERSONA=1000` se convierte en `COMMAND_COOLDOWN_SCALE=0.1`.
 
 <details>
-<summary>Las 177 variables eliminadas y sus valores fijos</summary>
+<summary>Las 177 variables eliminadas y sus valores fijos.</summary>
 
 | Variable | Valor fijo |
 |---|---|
-| `ALLOW_PERSONAL_LOCAL_ENDPOINTS` | ninguno (nunca se leyó) |
+| `ALLOW_PERSONAL_LOCAL_ENDPOINTS` | ninguno (nunca fue leído) |
 | `BLOCK_USER_MAX_DURATION_HOURS` | `168` |
 | `BOT_GENERATE_IMAGE_AGENT_MAX_ITERATIONS` | `5` |
 | `BOT_GENERATE_IMAGE_HISTORY_LIMIT` | `24` |
@@ -73,7 +97,7 @@ Los enfriamientos de comandos son la excepción a «fijo»: los nombres `COOLDOW
 | `BOT_MAX_FUNCTION_CALL_ITERATIONS` | `100` |
 | `BOT_MAX_STOP_STRINGS_PER_SERVER` | `40` |
 | `BOT_MAX_STOP_STRING_LENGTH` | `200` |
-| `BRAVE_IMAGE_COMPRESSION_TARGET_MB` | uno menos que `BRAVE_IMAGE_DISCORD_LIMIT_MB` (`7` de forma predeterminada) |
+| `BRAVE_IMAGE_COMPRESSION_TARGET_MB` | uno debajo de `BRAVE_IMAGE_DISCORD_LIMIT_MB` (`7` por defecto) |
 | `CHANNEL_WHITELIST_CACHE_TTL_MINUTES` | `5` |
 | `CONDITIONING_CONTEXT_MAX_GROUPS_PER_TYPE` | `10` |
 | `CONDITIONING_REASON_MAX_LENGTH` | `250` |
@@ -87,7 +111,7 @@ Los enfriamientos de comandos son la excepción a «fijo»: los nombres `COOLDOW
 | `COOLDOWN_TEACH` | `3000`, escalado por `COMMAND_COOLDOWN_SCALE` |
 | `DEEPSEEK_EXPRESSION_BATCH_SIZE` | `20` |
 | `DEFAULT_COMMAND_COOLDOWN` | `1600`, escalado por `COMMAND_COOLDOWN_SCALE` |
-| `DELIBERATE_TOOL_CONTEXT_TURNS` | `4`; un servidor aún puede cambiarlo en `/config` (Contexto de herramientas, en Comportamiento experimental) |
+| `DELIBERATE_TOOL_CONTEXT_TURNS` | `4`; un servidor aún puede cambiarlo en `/config` (Contexto de herramienta en Comportamiento experimental) |
 | `DISCORD_TYPING_KEEPALIVE_INTERVAL_MS` | `8000` |
 | `DOCUMENT_CHUNK_OVERLAP` | `200` |
 | `DOCUMENT_CHUNK_SIZE` | `1000` |
@@ -139,25 +163,24 @@ Los enfriamientos de comandos son la excepción a «fijo»: los nombres `COOLDOW
 | `MAX_SAMPLE_DIALOGUES` | `15` |
 | `MAX_SAMPLE_DIALOGUE_LENGTH` | `2000` |
 | `MAX_TRIGGER_WORDS` | `10` |
-| `MCP_STDIO_DIAGNOSTIC_MAX_CHARS` | `8192` |
 | `MCP_TOOL_SNAPSHOT_MAX_NAMES` | `100` |
 | `MCP_TOOL_SNAPSHOT_NAME_MAX_CHARS` | `128` |
 | `MEDIA_MAX_DIMENSION` | `768` |
 | `MEDIA_SIZE_LIMIT_BYTES` | `1048576` |
 | `MEMORY_EXPAND_BUTTON_TIMEOUT_MS` | `86400000` |
 | `MEMORY_NOTICE_PREVIEW_LIMIT` | `600` |
-| `NAI_CFG_RESCALE` | `0.0`; un servidor aún puede cambiarlo en `/config` (Parámetros de NovelAI) |
+| `NAI_CFG_RESCALE` | `0.0`; un servidor aún puede cambiarlo en `/config` (configuración de imagen NovelAI) |
 | `NAI_CHAR_REF_DESCRIPTION` | `character&style` |
 | `NAI_CHAR_REF_INFO_EXTRACTED` | `1.0` |
 | `NAI_CHAR_REF_SECONDARY_STRENGTH` | `0.0` |
 | `NAI_CHAR_REF_STRENGTH` | `0.6` |
 | `NAI_GLM_CHARS_PER_TOKEN` | `2.5` |
 | `NAI_GLM_CONTEXT_LIMIT` | `12288` |
-| `NAI_IMAGE_NEGATIVE_PROMPT` | texto integrado |
-| `NAI_IMAGE_NOISE_SCHEDULE` | `karras`; un servidor aún puede cambiarlo en `/config` (Parámetros de NovelAI) |
-| `NAI_IMAGE_SAMPLER` | `k_euler_ancestral`; un servidor aún puede cambiarlo en `/config` (Parámetros de NovelAI) |
-| `NAI_IMAGE_SCALE` | `5`; un servidor aún puede cambiarlo en `/config` (Parámetros de NovelAI) |
-| `NAI_IMAGE_STEPS` | `23`; un servidor aún puede cambiarlo en `/config` (Parámetros de NovelAI) |
+| `NAI_IMAGE_NEGATIVE_PROMPT` | texto incorporado |
+| `NAI_IMAGE_NOISE_SCHEDULE` | `karras`; un servidor aún puede cambiarlo en `/config` (configuración de imagen NovelAI) |
+| `NAI_IMAGE_SAMPLER` | `k_euler_ancestral`; un servidor aún puede cambiarlo en `/config` (configuración de imagen NovelAI) |
+| `NAI_IMAGE_SCALE` | `5`; un servidor aún puede cambiarlo en `/config` (configuración de imagen NovelAI) |
+| `NAI_IMAGE_STEPS` | `23`; un servidor aún puede cambiarlo en `/config` (configuración de imagen NovelAI) |
 | `NAI_INPAINT_PADDING` | `0.15` |
 | `NAI_INPAINT_STRENGTH` | `1.0` |
 | `NAI_KAYRA_CHARS_PER_TOKEN` | `3.5` |
@@ -198,7 +221,7 @@ Los enfriamientos de comandos son la excepción a «fijo»: los nombres `COOLDOW
 | `SCHEDULED_WORK_RECONCILE_INTERVAL_MS` | `60000` |
 | `SEND_FAILURE_RETRY_MINUTES` | `15` |
 | `SETUP_DRAFT_MAX_ENTRIES` | `200` |
-| `SHORT_TERM_MEMORY_DEFAULT_CRUDE_MESSAGE_COUNT` | `6`; un servidor aún puede cambiarlo en `/config` (Parámetros de memoria a corto plazo) |
+| `SHORT_TERM_MEMORY_DEFAULT_CRUDE_MESSAGE_COUNT` | `6`; un servidor aún puede cambiarlo en `/config` (configuración de memoria a corto plazo) |
 | `SHORT_TERM_MEMORY_MAX_MESSAGES_PER_CHANNEL` | `10` |
 | `SHORT_TERM_MEMORY_MAX_OTHER_CHANNELS` | `3` |
 | `SHORT_TERM_MEMORY_MAX_SUMMARY_LENGTH` | `1500` |
@@ -210,7 +233,7 @@ Los enfriamientos de comandos son la excepción a «fijo»: los nombres `COOLDOW
 | `STATS_CARD_THEME_BG` | `#1d100e` |
 | `STATS_CARD_THEME_SURFACE` | `#2c1815` |
 | `STATS_CARD_W` | `1080` |
-| `STATS_DASHBOARD_TIMEOUT_MS` | ninguno (nunca se leyó) |
+| `STATS_DASHBOARD_TIMEOUT_MS` | ninguno (nunca fue leído) |
 | `STAT_FLUSH_INTERVAL_MS` | `5000` |
 | `STAT_FLUSH_MAX_BUFFER` | `1000` |
 | `STM_FRESH_INJECTION_DEPTH` | `2` |
@@ -220,8 +243,8 @@ Los enfriamientos de comandos son la excepción a «fijo»: los nombres `COOLDOW
 | `ST_PRESET_CACHE_TTL_MINUTES` | `10` |
 | `SYSPROMPT_SHOW_MAX_PREVIEW` | `3800` |
 | `TASK_EXPAND_BUTTON_TIMEOUT_MS` | `86400000` |
-| `TENOR_FETCH_TIMEOUT_MS` | ninguno (nunca se leyó) |
-| `TEST_POSTGRES_DB` | ninguno (nunca se leyó) |
+| `TENOR_FETCH_TIMEOUT_MS` | ninguno (nunca fue leído) |
+| `TEST_POSTGRES_DB` | ninguno (nunca fue leído) |
 | `THINKING_LEVEL_BUDGET_HIGH_TOKENS` | `8192` |
 | `THINKING_LEVEL_BUDGET_LOW_TOKENS` | `1024` |
 | `THINKING_LEVEL_BUDGET_MEDIUM_TOKENS` | `4096` |
@@ -245,78 +268,69 @@ Los enfriamientos de comandos son la excepción a «fijo»: los nombres `COOLDOW
 
 ### Variables eliminadas de los servidores locales de TTS
 
-Los servidores locales de TTS en `servers/tts/` perdieron sus valores de respaldo compartidos, los límites por motor y los ajustes de autenticación. Un valor antiguo en `.env` o en tu shell se ignora, así que revisa las filas de abajo que cambian el comportamiento en lugar de solo repetir un valor predeterminado.
+Los servidores locales TTS en `servers/tts/` ya no utilizan respaldos de puertos compartidos, límites por motor ni configuraciones de autenticación. Se ignoran las configuraciones antiguas en `.env` o en su shell:
 
-- Puertos: `TOMORI_TTS_PORT` desapareció porque un solo valor en `.env` ponía a todos los servidores iniciados en el mismo puerto. En su lugar, cada motor lee su propia variable: `CHATTERBOX_PORT` (8011), `QWEN3TTS_PORT` (8012, o 8014 en modo de diseño de voz), `IRODORI_TTS_PORT` (8013), `FISH_S2_PORT` (8015), `VOXCPM2_PORT` (8016), `COSYVOICE3_PORT` (8017) y `MOSS_TTS_PORT` (8018).
-- Autenticación: los servidores ya no verifican un token de portador ni rechazan un enlace que no sea de loopback. Si configuraste `FISH_S2_API_KEY`, `VOXCPM2_API_KEY`, `TOMORI_TTS_API_KEY` o `COSYVOICE3_BEARER_TOKEN`, el endpoint ahora acepta solicitudes sin ellas. Lee [Acceso de red](/es-419/self-hosting/local-endpoints/text-to-speech/#network-access) antes de enlazar fuera de loopback.
-- Versiones fijadas en los instaladores: el commit del runtime de Fish Speech y las revisiones del runtime y del modelo de CosyVoice están fijados en los instaladores. Para actualizarlos hay que editar la versión fijada en el script.
+- **Puertos:** `TOMORI_TTS_PORT` se eliminó porque una única variable compartida vinculaba cada servidor iniciado al mismo puerto. Cada motor ahora usa su variable dedicada: `CHATTERBOX_PORT` (8011), `QWEN3TTS_PORT` (8012 o 8014 en modo de diseño de voz), `IRODORI_TTS_PORT` (8013), `FISH_S2_PORT` (8015), `VOXCPM2_PORT` (8016), `COSYVOICE3_PORT` (8017) y `MOSS_TTS_PORT` (8018).
+- **Autenticación:** Los servidores locales ya no validan tokens de portador ni restringen el enlace de red remota. Si anteriormente configuró `FISH_S2_API_KEY`, `VOXCPM2_API_KEY`, `TOMORI_TTS_API_KEY` o `COSYVOICE3_BEARER_TOKEN`, los puntos finales ahora aceptan solicitudes sin credenciales. Revisa [Acceso a la red](/es-419/self-hosting/local-endpoints/text-to-speech/#network-access) antes de cerrar el bucle invertido.
+- **Pines del instalador:** Los hashes de confirmación y las revisiones de modelos para Fish Speech y CosyVoice están fijados en los scripts del instalador. Actualizarlos requiere editar los valores fijados en cada secuencia de comandos.
 
 <details>
-<summary>Todas las variables eliminadas de los servidores locales de TTS</summary>
+<summary>Todas las variables del servidor local TTS eliminadas</summary>
 
 | Variable | Ahora |
 |---|---|
-| `COSYVOICE3_ALLOW_REMOTE_BIND` | eliminada; se acepta cualquier `TOMORI_TTS_HOST` |
-| `COSYVOICE3_BEARER_TOKEN` | eliminada; sin autenticación |
+| `COSYVOICE3_ALLOW_REMOTE_BIND` | remoto; Se acepta cualquier `TOMORI_TTS_HOST` |
+| `COSYVOICE3_BEARER_TOKEN` | remoto; sin autenticación |
 | `COSYVOICE3_MAX_REF_AUDIO_BYTES` | `26214400` |
 | `COSYVOICE3_MAX_REF_AUDIO_SECONDS` | `30` |
 | `COSYVOICE3_MODEL_ID` | `FunAudioLLM/Fun-CosyVoice3-0.5B-2512` |
-| `COSYVOICE3_MODEL_REVISION` | fijado en el instalador |
-| `COSYVOICE3_RUNTIME_COMMIT` | fijado en el instalador |
+| `COSYVOICE3_MODEL_REVISION` | anclado en el instalador |
+| `COSYVOICE3_RUNTIME_COMMIT` | anclado en el instalador |
 | `COSYVOICE3_RUNTIME_DIR` | `servers/tts/cosyvoice3/CosyVoice` |
 | `COSYVOICE3_RUNTIME_REPO` | `https://github.com/QwenAudio/CosyVoice.git` |
-| `COSYVOICE3_UPDATE` | eliminada; al volver a ejecutar se usan las versiones fijadas del instalador |
-| `FISH_S2_ALLOW_INSECURE_REMOTE` | eliminada; se acepta cualquier `TOMORI_TTS_HOST` |
-| `FISH_S2_API_KEY` | eliminada; sin autenticación |
-| `FISH_S2_LAUNCH_TIMEOUT_MS` | se aplica `TOMORI_TTS_STARTUP_TIMEOUT_MS` (`300000`) |
+| `COSYVOICE3_UPDATE` | remoto; una nueva ejecución comprueba los pines del instalador |
+| `FISH_S2_ALLOW_INSECURE_REMOTE` | remoto; Se acepta cualquier `TOMORI_TTS_HOST` |
+| `FISH_S2_API_KEY` | remoto; sin autenticación |
+| `FISH_S2_LAUNCH_TIMEOUT_MS` | Se aplica `TOMORI_TTS_STARTUP_TIMEOUT_MS` (`300000`) |
 | `FISH_S2_MAX_REF_AUDIO_BYTES` | `10485760` |
-| `FISH_S2_RUNTIME_REF` | fijado en el instalador |
+| `FISH_S2_RUNTIME_REF` | anclado en el instalador |
 | `FISH_S2_RUNTIME_REPOSITORY` | `https://github.com/Imagilux/fish-speech.git` |
 | `FISH_S2_STARTUP_TIMEOUT_SECONDS` | `180` |
 | `FISH_S2_SYNTHESIS_TIMEOUT_SECONDS` | `1800` |
-| `FISH_S2_UPDATE` | eliminada; al volver a ejecutar se usa la versión fijada del instalador y se actualiza el modelo |
-| `FISH_S2_UPDATE_MODEL_REVISION` | usa `FISH_S2_MODEL_REVISION` |
-| `FISH_S2_UPDATE_REF` | fijado en el instalador |
+| `FISH_S2_UPDATE` | remoto; una nueva ejecución verifica el pin del instalador y actualiza el modelo |
+| `FISH_S2_UPDATE_MODEL_REVISION` | utilizar `FISH_S2_MODEL_REVISION` |
+| `FISH_S2_UPDATE_REF` | anclado en el instalador |
 | `FISH_S2_UPSTREAM_HOST` | `127.0.0.1` |
 | `FISH_SPEECH_DIR` | `servers/tts/fishs2/fish-speech` |
 | `MOSS_TTS_MAX_REF_AUDIO_BYTES` | `10485760` |
-| `TOMORI_TTS_ALLOW_REMOTE_BIND` | eliminada; se acepta cualquier `TOMORI_TTS_HOST` |
-| `TOMORI_TTS_API_KEY` | eliminada; sin autenticación |
-| `TOMORI_TTS_MAX_REF_AUDIO_BYTES` | `10485760` (Fish) |
+| `TOMORI_TTS_ALLOW_REMOTE_BIND` | remoto; Se acepta cualquier `TOMORI_TTS_HOST` |
+| `TOMORI_TTS_API_KEY` | remoto; sin autenticación |
+| `TOMORI_TTS_MAX_REF_AUDIO_BYTES` | `10485760` (pescado) |
 | `TOMORI_TTS_MAX_TEXT_CHARS` | `2000` (`1000` para Irodori-TTS) |
-| `TOMORI_TTS_PORT` | la variable de puerto propia de cada motor |
-| `TTS_CLONE_TIMEOUT_MS` | usa `TTS_SYNTHESIZE_TIMEOUT_MS` |
-| `VOXCPM2_API_KEY` | eliminada; sin autenticación |
+| `TOMORI_TTS_PORT` | la variable de puerto propia del motor |
+| `TTS_CLONE_TIMEOUT_MS` | utilizar `TTS_SYNTHESIZE_TIMEOUT_MS` |
+| `VOXCPM2_API_KEY` | remoto; sin autenticación |
 | `VOXCPM2_MAX_REF_AUDIO_BYTES` | `10485760` |
 
 </details>
 
 ## Copias de seguridad y restauración
 
-`bun run backup` crea un paquete con marca de tiempo en `backups/` (o en tu `TOMORI_BACKUP_DIR` si lo
-sobrescribiste en `.env`) que contiene toda tu base de datos de PostgreSQL más `.env`. Restaura el
-paquete más reciente con:
+`bun run backup` crea un paquete con marca de tiempo en `backups/` (o tu `TOMORI_BACKUP_DIR` si se anula en `.env`) que contiene tu base de datos PostgreSQL completa. No incluye `.env`, así que mantén tus claves de cifrado en un almacenamiento protegido independiente (consulta [Copias de seguridad de la base de datos y claves de recuperación](#database-backups-and-recovery-keys)). Restaura el último paquete con:
 
 ```sh
 bun run restore-backup --latest
 ```
 
-O restaura un paquete específico:
+O restaurar un paquete específico:
 
 ```sh
 bun run restore-backup --from backups/backup_2024-01-15_14-30-45
 ```
 
-`bun run backup:personas` es una exportación más acotada: solo preajustes de persona y memorias de
-servidor por persona, en todos los servidores. Debe reimportarse manualmente mediante
-`/persona import` y no puede usarse con `restore-backup` (eso causaría conflictos de clave
-primaria).
+`bun run backup:personas` es una exportación más limitada: ajustes preestablecidos de persona y memorias de servidor por persona únicamente, en todos los servidores. Se debe volver a importar manualmente a través de `/persona import` y no se puede usar con `restore-backup` (eso causaría conflictos de clave primaria).
 
-TomoriBot también hace copias de seguridad automáticas de inicio en entornos que no son de
-producción, y una restauración completa requiere que la extensión `pgvector` esté presente en la base de
-datos de destino. Ambas se cubren en detalle en
-[Migración segura](/es-419/self-hosting/safe-migration/), junto con un procedimiento manual de
-`pg_dump`/`pg_restore` si prefieres manejar las herramientas directamente.
+TomoriBot también realiza copias de seguridad de inicio automáticas en entornos que no son de producción, y una restauración completa requiere que la extensión `pgvector` esté presente en la base de datos de destino. Ambos se tratan en detalle en [Migración segura](/es-419/self-hosting/safe-migration/), junto con un procedimiento manual para `pg_dump` y `pg_restore` si prefiere controlar las herramientas directamente.
 
 ## Copias de seguridad con Docker Compose
 
@@ -344,6 +358,8 @@ Los scripts del lado del host, como `bun run backup`, `bun run update` y `bun ru
 ejecutan automáticamente a través de Docker. Para ejecutar scripts del host contra la base de datos de
 Compose en su lugar, ejecútalos en el host con Bun y las herramientas de cliente de PostgreSQL
 instaladas, y establece:
+
+La copia de seguridad y la restauración también necesitan las herramientas cliente de PostgreSQL; `nuke-db` solo necesita Bun.
 
 ```dotenv
 POSTGRES_HOST=localhost

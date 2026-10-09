@@ -1,3 +1,5 @@
+import { buildResponseDraftingBody, type DraftPicker } from "@/utils/discord/ui/responseDraftingPanel";
+import type { ResponseDraftingView } from "@/utils/discord/interactions/responseDraftingOperations";
 import {
   ButtonStyle,
   ChannelType,
@@ -70,6 +72,7 @@ import type {
   ConfigChannelsView,
   ConfigChannelsOverridesView,
   ConfigBehaviorTriggerView,
+  ConfigBehaviorGeneralView,
   ConfigBehaviorView,
   ConfigPermissionsView,
   ConfigPersonaMemoryView,
@@ -99,7 +102,7 @@ import {
   type ConfigVoicesView,
 } from "@/utils/discord/ui/configModelsPanel";
 import { resolveSelectedVoiceSample } from "@/utils/discord/ui/configVoicesPanel";
-import { TOOL_NOTICE_DEFINITIONS } from "@/constants/toolNotices";
+import { NOTICE_VERBOSITY_LEVELS, TOOL_NOTICE_DEFINITIONS, type NoticeVerbosity } from "@/constants/toolNotices";
 import { DEFAULT_STM_TOOL_DESCRIPTION } from "@/tools/functionCalls/updateShortTermMemoryTool";
 import { SEED_CATEGORY_UPDATE_HINT, SEED_SUMMARY_UPDATE_HINT } from "@/utils/text/context/memories";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
@@ -118,6 +121,7 @@ import { DEFAULT_SYSTEM_PROMPT } from "@/utils/text/contextBuilder";
 import { formatUTCOffset } from "@/utils/text/timezoneHelper";
 import { getCapabilitiesManagePermissionDefinitions } from "@/utils/discord/manageConfigMapping";
 import { buildDocsUrl, DOCS_PATHS } from "@/utils/discord/docsLinks";
+import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import { commandRegistry } from "@/utils/discord/commandRegistry";
 import {
   buildConfigVoiceBody,
@@ -198,6 +202,7 @@ export const PAGE_LOCALE_KEYS: Record<ConfigCategory, Record<string, string>> = 
     overrides: "commands.config.panel.page_channels_overrides",
   },
   plugins: {
+    "response-drafting": "commands.config.panel.page_plugins_response_drafting",
     "available-tools": "commands.config.panel.page_plugins_available_tools",
     "context-additions": "commands.config.panel.page_plugins_context_additions",
     "mcp-servers": "commands.mcps.title",
@@ -262,6 +267,8 @@ export interface ConfigPanelRenderInput {
   personaVoiceView?: ConfigPersonaVoiceRenderView;
   personaVoiceRemoteView?: ConfigPersonaVoiceRemoteView;
   personaVoicePageStart?: number;
+  responseDraftingView?: ResponseDraftingView;
+  draftPicker?: DraftPicker;
   switchModelsView?: ConfigSwitchModelsView;
   modelParametersView?: ConfigParametersView;
   modelFallbacksView?: ConfigFallbacksView;
@@ -1611,10 +1618,10 @@ ${localizer(locale, "commands.config.panel.response_style_description")}
 
   const textState = actionState("text-override");
   const textOverride = persona.persona_llm
-    ? `${persona.persona_llm.llm_provider} / ${persona.persona_llm.llm_codename}`
+    ? `${getProviderDisplayName(persona.persona_llm.llm_provider)} / ${persona.persona_llm.llm_codename}`
     : localizer(locale, "commands.config.panel.none_label");
   const serverModel = persona.llm
-    ? `${persona.llm.llm_provider} / ${persona.llm.llm_codename}`
+    ? `${getProviderDisplayName(persona.llm.llm_provider)} / ${persona.llm.llm_codename}`
     : localizer(locale, "commands.config.panel.none_label");
   const textOverrideTextDisplay: ComponentInContainerData | undefined =
     textState !== "omitted"
@@ -1680,7 +1687,7 @@ ${localizer(locale, "commands.config.panel.text_override_description")}
             customId: buildConfigRouteId({ action: "text-override-provider-select", locale, personaId }),
             placeholder: localizer(locale, "commands.config.panel.text_override_provider_placeholder"),
             options: input.view.providers.map((provider) => ({
-              label: safeSelectOptionText(provider, 100),
+              label: safeSelectOptionText(getProviderDisplayName(provider), 100),
               value: provider,
             })),
             disabled: writesDisabled || textState === "disabled",
@@ -2296,6 +2303,13 @@ function buildBehaviorGeneralBody(input: ConfigPanelRenderInput): ComponentInCon
 
   const prompt = view.systemPrompt?.trim() || DEFAULT_SYSTEM_PROMPT.trim();
   const contextNote = view.contextNote?.trim() ?? "";
+  const responsePrefill = view.responsePrefill?.trim() ?? "";
+  const prefillHeader = `**${localizer(locale, "commands.config.panel.response_prefill_title")}**\n${localizer(
+    locale,
+    "commands.config.panel.response_prefill_description",
+  )}\n`;
+  // Above the fence: Discord pads below a code block, which detached a status line rendered under it.
+  const prefillStatus = responsePrefill ? `> ${responsePrefillStatus(locale, view)}\n` : "";
   const promptHeader = `**${localizer(locale, "commands.config.panel.system_prompt_title")}**\n${localizer(
     locale,
     "commands.config.panel.system_prompt_description",
@@ -2332,17 +2346,24 @@ function buildBehaviorGeneralBody(input: ConfigPanelRenderInput): ComponentInCon
     measurePanelTextLength(promptHeader) +
     measurePanelTextLength(contextHeader) +
     (contextNote ? 0 : getDiscordTextLength(noneContent)) +
+    measurePanelTextLength(prefillHeader) +
+    measurePanelTextLength(prefillStatus) +
+    (responsePrefill ? 0 : getDiscordTextLength(noneContent)) +
     measureFormattedPanelTextLength(responseStyleTextDisplay);
   if (timezoneTextDisplay) {
     fixedTextLength += measureFormattedPanelTextLength(timezoneTextDisplay);
   }
   const generalDynamicAllowance = Math.max(0, baseAllowance - fixedTextLength);
-  const generalPerValueBudget = contextNote ? Math.floor(generalDynamicAllowance / 2) : generalDynamicAllowance;
+  const boundedValueCount = 1 + (contextNote ? 1 : 0) + (responsePrefill ? 1 : 0);
+  const generalPerValueBudget = Math.floor(generalDynamicAllowance / boundedValueCount);
 
   const renderedPrompt = renderBoundedFencedContent(locale, prompt, generalPerValueBudget).rendered;
   const renderedContextNote = contextNote
     ? renderBoundedFencedContent(locale, contextNote, generalPerValueBudget).rendered
     : renderFencedCollectionContent(localizer(locale, "commands.config.panel.none_label"));
+  const renderedPrefill = responsePrefill
+    ? renderBoundedFencedContent(locale, responsePrefill, generalPerValueBudget).rendered
+    : noneContent;
 
   components.push(
     {
@@ -2351,6 +2372,10 @@ function buildBehaviorGeneralBody(input: ConfigPanelRenderInput): ComponentInCon
         locale,
         "commands.config.panel.system_prompt_description",
       )}\n${renderedPrompt}`,
+    },
+    {
+      type: ComponentType.TextDisplay,
+      content: `${prefillHeader}${prefillStatus}${renderedPrefill}`,
     },
     {
       type: ComponentType.ActionRow,
@@ -2371,9 +2396,16 @@ function buildBehaviorGeneralBody(input: ConfigPanelRenderInput): ComponentInCon
         },
         {
           type: ComponentType.Button,
+          style: ButtonStyle.Secondary,
+          customId: buildConfigRouteId({ action: "behavior-prefill-open", locale }),
+          label: localizer(locale, "commands.config.panel.set_prefill_button"),
+          disabled: writesDisabled,
+        },
+        {
+          type: ComponentType.Button,
           style: ButtonStyle.Danger,
           customId: buildConfigRouteId({ action: "behavior-prompt-remove", locale }),
-          label: localizer(locale, "commands.config.panel.remove_prompt_button"),
+          label: localizer(locale, "commands.config.panel.use_default_prompt_button"),
           disabled: writesDisabled || !view.systemPrompt,
         },
       ],
@@ -2434,6 +2466,18 @@ function buildBehaviorGeneralBody(input: ConfigPanelRenderInput): ComponentInCon
     });
   }
   return components;
+}
+
+function responsePrefillStatus(locale: string, view: ConfigBehaviorGeneralView): string {
+  const key =
+    view.prefillBlocker === "model"
+      ? "commands.config.panel.response_prefill_inactive_model"
+      : view.prefillBlocker === "thinking"
+        ? "commands.config.panel.response_prefill_inactive_thinking"
+        : view.prefillBlocker === "tools"
+          ? "commands.config.panel.response_prefill_inactive_tools"
+          : "commands.config.panel.response_prefill_active";
+  return localizer(locale, key, { model: view.prefillModelName });
 }
 
 function cooldownLabel(locale: string, value: number): string {
@@ -2871,6 +2915,17 @@ function buildBehaviorExperimentalBody(input: ConfigPanelRenderInput): Component
   return components;
 }
 
+const NOTICE_VERBOSITY_COPY: Record<NoticeVerbosity, { buttonKey: string; stateKey: string }> = {
+  minimal: {
+    buttonKey: "commands.config.panel.notice_verbosity_minimal_button",
+    stateKey: "commands.config.panel.notice_verbosity_minimal",
+  },
+  verbose: {
+    buttonKey: "commands.config.panel.notice_verbosity_verbose_button",
+    stateKey: "commands.config.panel.notice_verbosity_verbose",
+  },
+};
+
 function buildBehaviorNoticesBody(input: ConfigPanelRenderInput): ComponentInContainerData[] {
   const { locale } = input;
   const view = input.behaviorView?.notices;
@@ -2910,6 +2965,23 @@ function buildBehaviorNoticesBody(input: ConfigPanelRenderInput): ComponentInCon
           disabled: writesDisabled,
         },
       ],
+    },
+    {
+      type: ComponentType.TextDisplay,
+      content: `**${localizer(locale, "commands.config.panel.notice_verbosity_title")}**\n${localizer(locale, "commands.config.panel.notice_verbosity_description")}`,
+    },
+    buildStateControlRow(
+      NOTICE_VERBOSITY_LEVELS.map((verbosity) => ({
+        value: verbosity,
+        label: localizer(locale, NOTICE_VERBOSITY_COPY[verbosity].buttonKey),
+        customId: buildConfigRouteId({ action: "behavior-notice-verbosity-set", locale, verbosity }),
+      })),
+      view.verbosity,
+      writesDisabled,
+    ),
+    {
+      type: ComponentType.TextDisplay,
+      content: `> ${localizer(locale, NOTICE_VERBOSITY_COPY[view.verbosity].stateKey)}`,
     },
     {
       type: ComponentType.TextDisplay,
@@ -2992,6 +3064,37 @@ function buildBehaviorMemoryBody(input: ConfigPanelRenderInput): ComponentInCont
           disabled: writesDisabled,
         },
       ],
+    },
+    {
+      type: ComponentType.TextDisplay,
+      content: `**[${localizer(locale, "commands.config.panel.stm_enabled_title")}](https://docs.tomoribot.app/en/features/knowledge/memory/#short-term-memory-stm)**\n${localizer(locale, "commands.config.panel.stm_enabled_description")}`,
+    },
+    buildStateControlRow(
+      [
+        {
+          value: false,
+          label: localizer(locale, "commands.config.panel.off_button"),
+          customId: buildConfigRouteId({ action: "behavior-stm-enabled-set", locale, enabled: false }),
+        },
+        {
+          value: true,
+          label: localizer(locale, "commands.config.panel.on_button"),
+          customId: buildConfigRouteId({ action: "behavior-stm-enabled-set", locale, enabled: true }),
+        },
+      ],
+      view.stmEnabled,
+      writesDisabled,
+    ),
+    {
+      type: ComponentType.TextDisplay,
+      content: `> ${localizer(
+        locale,
+        !view.stmEnabled
+          ? "commands.config.panel.stm_enabled_off"
+          : view.toolUseEnabled
+            ? "commands.config.panel.stm_enabled_on"
+            : "commands.config.panel.stm_enabled_tool_use_off",
+      )}`,
     },
     {
       type: ComponentType.TextDisplay,
@@ -3796,7 +3899,7 @@ ${localizer(locale, "commands.config.panel.channels_rules_description")}`,
 
 function channelOverrideModelLabel(locale: string, model: LlmRow | null): string {
   return model
-    ? `${model.llm_provider} / ${model.llm_codename}`
+    ? `${getProviderDisplayName(model.llm_provider)} / ${model.llm_codename}`
     : localizer(locale, "commands.config.panel.none_label");
 }
 
@@ -4010,7 +4113,7 @@ ${localizer(locale, "commands.config.panel.channels_overrides_text_model_descrip
             }),
             placeholder: localizer(locale, "commands.config.panel.text_override_provider_placeholder"),
             options: textView.providers.map((provider) => ({
-              label: safeSelectOptionText(provider, 100),
+              label: safeSelectOptionText(getProviderDisplayName(provider), 100),
               value: provider,
             })),
             disabled: actionDisabled,
@@ -4027,7 +4130,7 @@ ${localizer(locale, "commands.config.panel.channels_overrides_text_model_descrip
         return {
           label: safeSelectOptionText(
             localizer(locale, "commands.config.panel.provider_page_label", {
-              provider: textView.provider,
+              provider: getProviderDisplayName(textView.provider),
               page: pageIndex + 1,
             }),
             100,
@@ -4330,6 +4433,16 @@ export function buildConfigPanelPayload(input: ConfigPanelRenderInput): ConfigPa
 
   if (category === "behavior" && page === "memory") {
     components.push(...buildBehaviorMemoryBody(input));
+    return buildPayload(components, receipt);
+  }
+
+  if (category === "plugins" && page === "response-drafting") {
+    const state = input.personas[0];
+    if (state && resolveConfigPageState(category, page, actor) === "enabled") {
+      components.push(
+        ...buildResponseDraftingBody(state, locale, input.responseDraftingView, input.draftPicker, writesDisabled),
+      );
+    }
     return buildPayload(components, receipt);
   }
 

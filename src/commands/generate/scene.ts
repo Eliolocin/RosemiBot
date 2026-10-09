@@ -25,6 +25,7 @@ import { filterPersonasForTrigger, isPersonaAllowedForTrigger } from "@/utils/pe
 import { localizer } from "@/utils/text/localizer";
 import { buildSceneTextQuotaTriggerKey, buildSceneTurnDirective } from "@/utils/chat/sceneTurn";
 import type { SceneTurnMetadata, SceneTurnSpeaker } from "@/utils/chat/types";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 const MODAL_CUSTOM_ID = "generate_scene_modal";
 const CHARACTER_1_INPUT_ID = "generate_scene_character_1";
@@ -419,7 +420,7 @@ export async function execute(
   await modalInteraction.reply({
     embeds: [
       new EmbedBuilder()
-        .setTitle(localizer(locale, "commands.generate.scene.success_title"))
+        .setTitle(localizedStatusTitle(locale, "commands.generate.scene.success_title", ColorCode.SUCCESS))
         .setDescription(descriptionLines.join("\n"))
         .setColor(ColorCode.SUCCESS)
         .setFooter({

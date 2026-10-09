@@ -4,40 +4,34 @@ sidebar:
   order: 4
 ---
 
-A TomoriBot rastreia o uso para que você possa ver quem fala com quem, quais personas e modelos são utilizados,
-e quais ferramentas disparam; depois transforma tudo em um infográfico compartilhável.
+TomoriBot rastreia métricas de interação para que você possa inspecionar tendências de atividades, modelar uso de tokens, personas populares e chamadas de ferramentas ou renderizar cartões de resumo de infográficos compartilháveis.
 
 ## Painéis de Texto
 
-Três comandos abrem um painel interativo com abas (Visão Geral, Personas, Modelos & Custo,
-Ferramentas & Comandos, Expressão, Pessoas Favoritas, Ranking):
+Três comandos abrem um painel interativo com guias:
 
-As abas de texto são painéis públicos duráveis controlados por quem as invocou. Elas ficam disponíveis
-até a mensagem ser removida, e outro usuário não pode operar os controles.
+- `/stats personal`: visualize suas próprias estatísticas de uso.
+- `/stats persona`: visualize as estatísticas de uso de uma pessoa específica neste servidor.
+- `/stats server`: visualize estatísticas de todo o servidor de todos os membros e personas.
 
-- `/stats personal`: seu próprio uso.
-- `/stats persona`: uso de uma persona neste servidor.
-- `/stats server`: uso em todo o servidor.
+Cada painel inclui guias para Visão Geral, Personas, Modelos e Custo, Ferramentas e Comandos, Expressão, Pessoas Favoritas e Placares de Líderes.
 
-A maioria suporta uma janela de período de tempo, e estatísticas pessoais podem ser limitadas a este servidor ou
-a todos os servidores.
+A maioria dos subcomandos permite especificar uma janela de período (como 7 dias, 30 dias ou o tempo todo). As estatísticas pessoais podem ter como escopo o servidor atual ou todos os servidores onde você usa TomoriBot.
+
+Painéis de texto são mensagens públicas duráveis controladas pelo invocador. Eles permanecem interativos até serem dispensados ou excluídos, e outros membros não podem manipular os controles do painel.
 
 :::note
-Contagem de tokens é o uso relatado pelo próprio provedor quando disponível (uma estimativa
-baseada em caracteres é usada apenas para provedores que não relatam nenhuma). Custo precifica esses tokens
-pelas taxas de tabela do catálogo de modelos, então pode diferir da sua fatura real (cache de prompt, descontos,
-cotas de nível gratuito, etc.).
+As contagens de tokens refletem o uso relatado pelo provedor, quando disponível (uma estimativa baseada em caracteres é usada apenas para provedores que omitem métricas de token). Os valores de custo definem o preço desses tokens de acordo com as taxas de lista do catálogo de modelos, portanto, podem diferir de sua fatura real devido ao cache imediato, descontos de fornecedores ou cotas de nível gratuito.
 :::
 
 ## Cartões de Infográfico Compartilháveis
 
-`/stats generate` renderiza um cartão de imagem elegante que você pode enviar no chat:
+Execute `/stats generate` para renderizar um cartão de imagem de resumo sofisticado que você pode compartilhar diretamente no chat:
 
-- **Retrospectiva Pessoal**: sua atividade pessoal, no estilo Spotify Wrapped.
-- **Afinidade da Persona**: estatísticas de uma persona neste servidor.
-- **Tabela de Classificação do Servidor**: classificações gerais do servidor.
+- **Personal Wrapped**: resume sua atividade pessoal e personas favoritas.
+- **Afinidade de Persona**: destaca as estatísticas de uma persona específica e os principais parceiros de conversa neste servidor.
+- **Tabela de classificação do servidor**: exibe a atividade de todo o servidor e a classificação dos membros.
 
-Usuários totalmente privados (`/personal config`) não podem gerar cartões pessoais.
+Os usuários com nível de privacidade definido como `Completo` em `/personal config` não podem gerar cartões de estatísticas pessoais.
 
-Para saber como os cartões são compostos e renderizados, veja a referência de arquitetura sobre o
-[subsistema de infográficos de estatísticas](/en/architecture/subsystems/stats-infographic/).
+Para obter detalhes sobre como os cartões são compostos e renderizados, consulte o [subsistema de infográfico de estatísticas](/en/architecture/subsystems/stats-infographic/).

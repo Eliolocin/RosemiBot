@@ -4,7 +4,9 @@ sidebar:
   order: 3
 ---
 
-KoboldCPP has Whisper-based STT support, but endpoint shape can vary by build. TomoriBot's Phase 4 adapter expects OpenAI-compatible `POST /v1/audio/transcriptions`.
+Use your existing [KoboldCPP](https://github.com/LostRuins/koboldcpp) instance to transcribe audio attachments and voice messages in TomoriBot.
+
+KoboldCPP includes Whisper-based speech-to-text. TomoriBot connects to KoboldCPP using its OpenAI-compatible audio transcription endpoint (`POST /v1/audio/transcriptions`).
 
 ## Setup
 
@@ -22,11 +24,10 @@ Run `/providers`, choose `Add New Custom Endpoint`, and use the transcription AP
 - API Compatibility: `openai-compatible-transcription`
 - `endpoint_url`: your KoboldCPP server root
 
-After saving the connection, select it and use its model dropdown to add the model name your
-server reports as a Transcription model.
+After saving the connection, select it and use its model dropdown to add the model name your server reports as a Transcription model.
 
 Use `/providers` for endpoint registration and model setup. Then open `/config` > Models > Switch Models to select and activate the registered endpoint.
 
-## Use Transcripts
+## Use transcripts
 
 After registration, TomoriBot transcribes audio attachments in the background and adds the text to chat context. Use `/config` > Engine > Notices only if you also want transcripts posted visibly in chat.

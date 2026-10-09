@@ -2,136 +2,77 @@
 title: "Logit Bias"
 ---
 
-This document describes TomoriBot's `/config logit-bias` design and runtime behavior.
+Logit bias modifies token sampling probabilities by injecting numeric bias adjustments into LLM requests. TomoriBot provides a text-first interface that stores canonical terms and resolves tokenizer-specific token maps at runtime.
 
-## Command Surface
+## Configuration surface
 
-- `/config logit-bias add`
-- `/config logit-bias remove`
-- `/config logit-bias upload`
+Logit bias is configured via the interactive interface in `/config` > Models > Text Samplers & Parameters > Logit Bias:
 
-The command family accepts plain text such as `sorry, hello, hi` plus a shared bias value like `-100`, and also accepts explicit numeric token IDs.
+- Supports adding individual terms, removing terms, or uploading bulk JSON/YAML definitions.
+- Accepts plain text strings (such as `sorry, hello`) paired with numeric bias values (such as `-100`), as well as explicit numeric token IDs.
 
-## Design Goals
+## Source of truth and tokenization caching
 
-- Keep the user-facing UX text-first.
-- Preserve imported SillyTavern-style entries without forcing users to know token IDs.
-- Avoid re-tokenizing on every generation request.
-- Survive provider/model switches without throwing away the original text.
+Each saved logit-bias entry contains:
 
-## Source Of Truth
+- `text`: The user-provided term.
+- `value`: The numeric bias weight.
+- `kind`: Identifies whether the source was `text` or `token_id`.
+- `tokenizations`: Cached token ID lists keyed by tokenizer family.
 
-Each saved entry keeps:
+Raw text remains the canonical source of truth; cached tokenizations are derived data. Switching to a different model or provider preserves the original text, allowing the runtime to recompute tokenizer mappings without data loss.
 
-- `text`: the original user-provided term
-- `value`: the bias value
-- `kind`: `text` or `token_id`
-- `tokenizations`: cached token-ID lists keyed by tokenizer family
+Storage locations:
 
-Raw text is the canonical source of truth. Cached tokenizations are derived data.
+- Server active configuration: `server_chat_configs.llm_logit_biases`.
+- Saved provider snapshots: `saved_provider_configs.llm_logit_biases` and `user_saved_provider_configs.llm_logit_biases`.
 
-This means a switch to a different model does not destroy the original entry. Tomori can recompute a new tokenizer-specific cache later.
+### Refresh triggers
 
-## Runtime Model
+Tokenizer caches are refreshed when entries are modified or when the active model changes:
 
-At generation time, Tomori builds the OpenAI-style `logit_bias` map for the current model only.
+- Adding or uploading entries in `/config` > Models > Text Samplers & Parameters.
+- Switching models in `/config` > Models.
+- Activating a saved provider via `/config provider switch` or `/personal config`.
 
-- Explicit numeric token-ID entries are always passed through directly.
-- Text entries only become runtime-ready when Tomori has a cached tokenization for the current tokenizer family.
-- Unknown tokenizer families remain saved but inactive.
+## Text variant expansion and tokenizers
 
-## Refresh Triggers
+Plain-text entries are approximated as token-level biases by expanding each term into four variants before tokenization:
 
-Tomori refreshes tokenizer caches when the effective text model changes or when new entries are added:
+1. Exact text (e.g. `sorry`)
+2. Leading-space text (e.g. ` sorry`)
+3. Sentence-case text (e.g. `Sorry`)
+4. Leading-space sentence-case text (e.g. ` Sorry`)
 
-- `/config logit-bias add`
-- `/config logit-bias upload`
-- `/config` > Models > Switch Models
-- `/config provider switch` when it changes or restores `llm_id`
+This expansion ensures consistent bias application across word boundaries and sentence openings.
 
-Saved provider snapshots also preserve `llm_logit_biases`, so switching away and back keeps both the raw text and any previously-cached tokenizer data.
+### Supported tokenizer families
 
-## Current Local Tokenizer Support
+Tokenizers resolve through two backends:
 
-The current local resolver supports OpenAI BPE families via `gpt-tokenizer`:
+- **OpenAI BPE families**: Handled by `gpt-tokenizer` (`o200k_base`, `o200k_harmony`, `cl100k_base`, `p50k_base`, `p50k_edit`, `r50k_base`).
+- **Local tokenizer families**: Loaded from `./tokenizers` (configurable via `TOKENIZER_ASSET_DIR`) in `src/utils/provider/localTokenizerRegistry.ts` (`deepseek_v3_r1`, `qwen3_5`, `mistral_small3`, `glm_zai`, `stepfun_step35`, `kimi_k2`, `gemma3`, `nemotron3`).
+- **OpenRouter models**: Resolved using tokenizer metadata reported in startup capability caches or model codename heuristics.
 
-- `o200k_base`
-- `o200k_harmony`
-- `cl100k_base`
-- `p50k_base`
-- `p50k_edit`
-- `r50k_base`
+Each tokenizer implementation should cover an entire model family rather than duplicating assets per seeded model row.
 
-It also supports local tokenizer-family assets under `tokenizers/` for:
+## Provider gating and constraints
 
-- `deepseek_v3_r1`
-- `qwen3_5`
-- `mistral_small3`
-- `glm_zai`
-- `stepfun_step35`
-- `kimi_k2`
-- `gemma3`
-- `nemotron3`
+Tokenization support and request parameter support are separate checks:
 
-OpenRouter tokenizer metadata is read from the startup capability cache when available. Tomori also falls back to model-codename heuristics for both OpenAI BPE families and these local tokenizer families.
+- Tokenization determines whether raw text can be converted to token IDs for a given model.
+- Provider gating determines whether the API adapter accepts and transmits `logit_bias`.
 
-## Text Variant Expansion
+Active providers:
 
-Plain-text entries are approximated as token-level bias by expanding a small set of variants before tokenization:
+- **OpenRouter**: Sent only when the model's `supported_parameters` list includes `logit_bias`.
+- **DeepSeek, Z.ai, Z.ai Coding, NVIDIA NIM**: Sent whenever active entries match the current tokenizer.
+- **Custom, NovelAI, Anthropic, Google**: Omit `logit_bias` from request payloads.
 
-- exact text
-- leading-space text
-- sentence-case text
-- leading-space sentence-case text
+Logit bias operates on token IDs rather than whole words. Biasing the tokens that compose a word also shifts the sampling probability of other words that contain those same tokens.
 
-This improves common cases like banning `sorry` in both `"sorry"` and `" sorry"` positions.
+## Source pointers
 
-## Important Limitation
-
-`logit_bias` is token-level, not word-level.
-
-Biasing the tokens that make up a word can also affect other words that share those same tokens. The text-first UX is therefore an approximation layer on top of a token-ID API.
-
-## Provider Gating
-
-Tokenization support and request-parameter support are separate concerns.
-
-- Tokenization decides whether Tomori can turn raw text into token IDs for a model family.
-- Provider gating decides whether the runtime request actually sends `logit_bias`.
-
-Tomori sends `logit_bias` on the following providers when active entries exist:
-
-- **OpenRouter**: gated on the model's `supported_parameters` capability flag
-- **DeepSeek**: sent unconditionally when entries are present
-- **Z.ai**: sent unconditionally when entries are present
-- **Z.ai Coding**: sent unconditionally when entries are present
-- **NVIDIA NIM**: sent unconditionally when entries are present
-
-Custom, NovelAI, and Google providers do not currently send `logit_bias`.
-
-## Storage
-
-Server-wide active config:
-
-- `server_chat_configs.llm_logit_biases`
-
-Per-provider saved snapshots:
-
-- `saved_provider_configs.llm_logit_biases`
-
-Both store the same entry shape so switching providers can restore the exact same logical entries and cached tokenizer results.
-
-## Extension Path
-
-To broaden text-first support beyond OpenAI BPE families, add tokenizer-family resolvers instead of per-model one-offs.
-
-Use `src/db/seed/catalog/models.ts` to inventory the non-deprecated model families that need tokenizer assets. The practical target is one tokenizer implementation per family, not one tokenizer file per seeded row.
-
-## Local Tokenizer Assets
-
-Tomori expects local tokenizer assets at repo-root `tokenizers/` by default.
-
-- Default asset root: `./tokenizers`
-- Optional override: `TOKENIZER_ASSET_DIR`
-
-Deployment must include this directory explicitly. The Docker image now copies repo-root `tokenizers/` into `/app/tokenizers` and sets `TOKENIZER_ASSET_DIR=./tokenizers`.
+- `src/utils/provider/logitBiasResolver.ts`: Tokenizer family resolution and runtime bias map assembly (`buildRuntimeLogitBiasMapForLlm`).
+- `src/utils/provider/localTokenizerRegistry.ts`: Local tokenizer encoders and asset loaders.
+- `src/utils/discord/interactions/configModelOperations.ts`: Logit-bias entry creation, deletion, and upload handlers.

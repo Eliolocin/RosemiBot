@@ -23,7 +23,7 @@ import {
   type TextQuotaTriggerState,
 } from "@/utils/chat/textQuotaState";
 import { getServerActiveMessageCount, getUserActiveMessageCount } from "@/utils/chat/channelActivity";
-import { resolveReferencedWebhookTarget } from "@/utils/chat/webhookIdentity";
+import { resolveReferencedWebhookTarget, verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import { normalizeRenderModifierName } from "@/utils/discord/renderModifierParser";
 
 export interface ChatAccessState {
@@ -475,6 +475,7 @@ export async function validateDirectChatTrigger(params: {
         if (referenceMessage.author.id === params.client.user?.id) {
           isReplyToBot = true;
         } else if (referenceMessage.webhookId) {
+          await verifyMessageWebhook(referenceMessage);
           const webhookReplyTarget = resolveReferencedWebhookTarget(referenceMessage, personaByNickname, params.guild);
 
           if (webhookReplyTarget.replyPersona) {

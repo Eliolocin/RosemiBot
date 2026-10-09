@@ -1,4 +1,4 @@
-﻿export default {
+export default {
   general: {
     language_name: `English`,
     yes: `Yes`,
@@ -53,6 +53,7 @@
       select_page_title: `Select Page`,
       select_page_description: `Choose a page to view from {totalItems} items across {totalPages} pages:`,
       select_persona_title: `Select Persona`,
+      select_persona_page_description: `Choose a page to view from {totalItems} personas across {totalPages} pages:`,
       persona_no_attributes: `No attributes configured yet.`,
       persona_select_button: `Select`,
     },
@@ -133,13 +134,13 @@
     },
   },
   rate_limit: {
-    user_exceeded_title: `🟡️ Rate Limit Reached`,
+    user_exceeded_title: `Rate Limit Reached`,
     user_exceeded_description: `You currently have too much active messages being processed across all servers. To prevent abuse, your most recent trigger attempt has been dropped. Please wait for some of your messages to finish processing before sending more.`,
-    server_exceeded_title: `🟡️ Server Overloaded`,
+    server_exceeded_title: `Server Overloaded`,
     server_exceeded_description: `This server currently has too much active messages being processed. I'm at capacity right now! Please try again in a moment, or use me in another server or via Direct Messages instead.`,
-    error_memory_critical_title: `🔴 System Overloaded`,
+    error_memory_critical_title: `System Overloaded`,
     error_memory_critical_description: `I'm currently experiencing high memory usage, preventing file uploads. Please try again in a moment.`,
-    error_quota_exceeded_title: `🔴 Daily Limit Reached`,
+    error_quota_exceeded_title: `Daily Limit Reached`,
     error_quota_exceeded_description: `You've reached the daily limit for this command. Your quota resets at **{reset_time}**. Please try again after the reset time.`,
   },
   events: {
@@ -174,8 +175,8 @@ Repeat: {repeat_text}`,
     task_update_repeat_hours: `every {repetition_interval_hours} hour(s)`,
     expand_task_button: `Show Full Task`,
     expand_task_title: `Full Task Content`,
-    reminder_triggered_title: `🟡 Reminder Triggered (Delivery Failed)`,
-    task_triggered_title: `🟡 Task Triggered (Delivery Failed)`,
+    reminder_triggered_title: `Reminder Triggered (Delivery Failed)`,
+    task_triggered_title: `Task Triggered (Delivery Failed)`,
     triggered_description: `**Scheduled item ID:** \`{reminder_id}\`\n**Original content:**`,
     triggered_footer_one_time: `Generation kept failing, so the scheduled content is shown unchanged. This one-time schedule is complete and has been removed.`,
     triggered_footer_recurring_retained: `Generation kept failing, so the scheduled content is shown unchanged. The next occurrence remains on its original cadence. Use \`/scheduled-task edit\` or \`/scheduled-task remove\` to manage it.`,

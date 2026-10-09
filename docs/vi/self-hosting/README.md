@@ -8,6 +8,7 @@ sidebar:
   label: "Tổng quan"
   groupLabel: "Self-hosting"
   order: 3
+aiGenerated: false
 ---
 
 <!-- STUB (Phase 1 structural). Phase 2 writes: requirements + module directory.

@@ -8,32 +8,34 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-O TomoriBot trata speech-to-text como a capacidade de endpoint personalizado `transcription`. Os anexos de áudio são transcritos em segundo plano e adicionados ao contexto da conversa quando existe um endpoint de transcrição ativo.
+Transcreva mensagens de voz e anexos de áudio localmente para que TomoriBot possa entender o áudio falado no bate-papo sem enviar gravações para APIs de nuvem de terceiros.
 
-A postagem visível de transcrições é separada. `/config` > Engine > Notices controla apenas se as transcrições de mensagens de voz são postadas no chat; ele não ativa ou desativa o STT em segundo plano.
+TomoriBot trata a fala para texto como o recurso de endpoint personalizado `transcription`. Os anexos de áudio são transcritos em segundo plano e adicionados ao contexto da conversa quando existe um ponto final de transcrição ativo.
 
-## Motores Disponíveis
+A postagem da transcrição visível é separada. `/config` > Mecanismo > Avisos controla apenas se as transcrições das mensagens de voz são postadas no chat; ele não ativa ou desativa o plano de fundo STT.
+
+## Motores disponíveis
 
 <CardGrid>
   <LinkCard title="WhisperX" href="/pt-BR/self-hosting/local-endpoints/speech-to-text/whisperx/"
-    description="Transcrição local amigável para iniciantes usando o servidor de referência WhisperX sob servers/stt." />
-  <LinkCard title="whisper.cpp" href="/pt-BR/self-hosting/local-endpoints/speech-to-text/whispercpp/"
-    description="Use um servidor HTTP whisper.cpp leve quando ele expõe um endpoint de transcrição compatível com a OpenAI." />
+    description="Transcrição local amigável para iniciantes usando o servidor de referência WhisperX em servidores/stt." />
+  <LinkCard title="sussurro.cpp" href="/pt-BR/self-hosting/local-endpoints/speech-to-text/whispercpp/"
+    description="Use um servidor HTTP sussurro.cpp leve ao expor um endpoint de transcrição compatível com OpenAI." />
   <LinkCard title="KoboldCPP" href="/pt-BR/self-hosting/local-endpoints/speech-to-text/koboldcpp/"
-    description="Use o STT baseado no Whisper do KoboldCPP quando sua build expuser uma transcrição de áudio compatível com a OpenAI." />
+    description="Use KoboldCPP STT baseado em Whisper quando sua construção expõe a transcrição de áudio compatível com OpenAI." />
 </CardGrid>
 
-## Fluxo de Configuração
+## Fluxo de configuração
 
-1. Inicie um servidor STT a partir dos guias de motores acima.
-2. Em `/providers`, escolha `Adicionar Novo Endpoint Personalizado` e use a compatibilidade de API `openai-compatible-transcription`.
-3. Selecione o endpoint salvo e use seu menu suspenso de modelo para adicionar o código do modelo relatado pelo servidor.
-4. Abra `/config` > Models > Switch Models para selecionar e ativar o endpoint registrado.
+1. Inicie um servidor STT a partir dos guias do mecanismo acima.
+2. Em `/providers`, escolha `+ Adicionar Novo Endpoint Personalizado` (ou `Add New Custom Endpoint`) e selecione `openai-compatible-transcription` (transcrição compatível com OpenAI).
+3. Selecione o endpoint salvo e use o menu suspenso do modelo para adicionar o código do modelo relatado pelo servidor.
+4. Abra `/config` > `Modelos` > Switch Models para selecionar e ativar o endpoint registrado.
 
-## Fluxo de Transcrição
+## Fluxo de transcrição
 
-Quando um endpoint de transcrição está ativo, o TomoriBot lê os anexos de áudio suportados em segundo plano e adiciona a transcrição ao contexto do chat. Nenhuma atribuição de persona é necessária.
+Quando um endpoint de transcrição está ativo, TomoriBot lê os anexos de áudio compatíveis em segundo plano e adiciona a transcrição ao contexto do bate-papo. Nenhuma atribuição de personalidade é necessária.
 
-Use `/config` > Engine > Notices apenas se você também quiser que essas transcrições sejam postadas visivelmente no chat.
+Use `/config` > Mecanismo > Avisos somente se você também quiser que essas transcrições sejam postadas de forma visível no bate-papo.
 
-Usuários da ElevenLabs devem escolher `Adicionar Novo Provedor` e ElevenLabs em `/providers`; isso registra a transcrição juntamente com a fala.
+Os usuários de ElevenLabs devem escolher `Adicionar Novo Provedor` e `ElevenLabs` em `/providers`; ele registra a transcrição junto com a fala.

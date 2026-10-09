@@ -211,20 +211,13 @@ export async function validateFetchUrlTarget(url: string): Promise<FetchUrlSafet
   const hostname = normalizeHostname(parsedUrl.hostname);
   const allowPrivateNetwork = isPrivateNetworkFetchAllowed();
 
-  // Resolve the target. This runs even when the private-network guard is
-  //    relaxed, because the always-on cloud-metadata denylist below must see
-  //    the resolved addresses; and for the Crawl4AI engine (which dispatches
-  //    out-of-process, bypassing gate 2) this is the only SSRF check.
+  // Resolution failures refuse even when the private-network guard is relaxed: the always-on
+  // metadata denylist below cannot judge an address it never saw, and the Crawl4AI engine
+  // dispatches out of process with no second gate.
   let resolvedAddresses: ResolvedFetchAddress[];
   try {
     resolvedAddresses = await resolveFetchAddresses(hostname);
   } catch (error) {
-    // When the general guard is relaxed, a resolution failure is not itself a
-    // safety problem: the in-process engine re-resolves and re-applies the
-    // metadata denylist at gate 2. Only fail closed when the blocklist is on.
-    if (allowPrivateNetwork) {
-      return { allowed: true };
-    }
     return {
       allowed: false,
       failureCode: "DNS_RESOLUTION_FAILED",
@@ -233,9 +226,6 @@ export async function validateFetchUrlTarget(url: string): Promise<FetchUrlSafet
   }
 
   if (resolvedAddresses.length === 0) {
-    if (allowPrivateNetwork) {
-      return { allowed: true };
-    }
     return {
       allowed: false,
       failureCode: "DNS_RESOLUTION_FAILED",

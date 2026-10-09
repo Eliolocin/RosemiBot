@@ -13,6 +13,7 @@ import type { UserRow } from "../../types/db/schema";
 import type { SelectOption } from "../../types/discord/modal";
 import { personaRepository } from "@/utils/db/repositories";
 import { deletePersonaAvatarFromStorage } from "../../utils/storage/avatarStorage";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 const MODAL_CUSTOM_ID = "persona_remove_modal";
 const PERSONA_SELECT_ID = "persona_select";
@@ -21,9 +22,6 @@ function isDuplicateTaggedName(name: string): boolean {
   return /\[dup-\d+\]\s*$/i.test(name.trim());
 }
 
-/**
- * Configure the 'remove' subcommand
- */
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand.setName("remove").setDescription(localizer("en-US", "commands.persona.remove.description"));
 
@@ -87,6 +85,8 @@ export async function execute(
     const modalResult = await promptWithPaginatedModal(interaction, locale, {
       modalCustomId: MODAL_CUSTOM_ID,
       modalTitleKey: "commands.persona.remove.modal_title",
+      pageSelectTitleKey: "general.pagination.select_persona_title",
+      pageSelectDescriptionKey: "general.pagination.select_persona_page_description",
       components: [
         {
           customId: PERSONA_SELECT_ID,
@@ -188,7 +188,7 @@ export async function execute(
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "general.errors.unknown_error_title"))
+            .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
             .setDescription(localizer(locale, "general.errors.unknown_error_description"))
             .setColor(ColorCode.ERROR),
         ],

@@ -2,98 +2,49 @@
 title: "STM 02: Summary Upgrade"
 ---
 
-LLM-initiated replacement of the crude conversation at render time with a
-compact, durable LLM-authored summary.
+The summary upgrade stage allows the model to replace verbose dialogue history at prompt assembly time with a compact, durable summary or structured category values.
 
-- **Files**:
-- `UpdateShortTermMemoryTool`: `src/tools/functionCalls/updateShortTermMemoryTool.ts`
-- `updateShortTermMemorySummary`: `src/utils/cache/shortTermMemoryCache.ts:518-574`
+## Flow and ownership
 
-## Mission
+During the tool loop, the model calls `update_short_term_memory` managed by `UpdateShortTermMemoryTool` in `src/tools/functionCalls/updateShortTermMemoryTool.ts`. The tool operates silently without posting Discord embeds or chat notices.
 
-When the LLM calls the `update_short_term_memory` tool during the tool-loop,
-it provides a `summary` string that distills the current conversation into a
-compact, model-friendly representation. `UpdateShortTermMemoryTool.execute()`
-validates the input, extracts channel/server/persona metadata from the tool
-context, and calls `updateShortTermMemorySummary()`, which writes the summary
-string into both the user-scoped and server-scoped STM cache entries and their
-durable database rows for this channel.
+The tool provides two operating modes based on server configuration:
 
-On the next turn, the context-build STM stage renders the `summary` field
-instead of the raw `messages` array, reducing token cost and giving the LLM
-a self-authored context rather than a verbose turn-by-turn log. Upgraded
-entries also enjoy a longer TTL (`SUMMARY_TTL_HOURS`, 24 h)
-compared to the crude conversation TTL (`CRUDE_CONVERSATION_TTL_HOURS`, 12 h).
+1. **Default summary mode:** active when a server uses the default single-summary configuration. The model provides a `summary` string. The tool strips unauthorized brace placeholders using `sanitizeUnknownTemplatePlaceholders()` and truncates strings exceeding `MAX_SUMMARY_LENGTH` (1500 characters).
+2. **Category mode:** active when custom categories are configured in the `stm_categories` table. `assembleForContext()` builds a dynamic tool schema mapping each category slug to a parameter description. The model provides structured key-value pairs for each defined category.
 
-Silent operation: no embed or user-facing message is sent.
+`UpdateShortTermMemoryTool.execute()` dispatches writes through `src/utils/cache/shortTermMemoryCache.ts`:
 
-## Input
+1. Mutates the live in-process cache entry for both user and server keys (`updateShortTermMemorySummary` or `updateShortTermMemoryCategories`).
+2. Persists the values to the `short_term_memories` database table (`upsertStmSummary` or `upsertStmCategories`).
+3. Resets the cadence counter by calling `resetStmTurnCounter()`, resetting `turnsSinceRefresh = 0` and incrementing `lastRefreshedTurn`.
+4. The tool loop marks `streamingContext.disableShortTermMemoryUpdate = true`, enforcing a limit of one successful upgrade per turn.
 
-- `args.summary: string`: the LLM-authored summary (max `MAX_SUMMARY_LENGTH`
-  chars; default 1 500; truncated silently if over limit).
-- `context: ToolContext`: provides `userId`, `channel.id`, `guildId`,
-  `tomoriState.persona_id`, `tomoriState.persona_lineage_id`.
-- `context.streamContext.explicitLongTermMemoryIntent`: if `true`, this tool
-  is not offered (see intent gate in [memory README](../README)).
-- `context.streamContext.disableShortTermMemoryUpdate`: if `true`, execution
-  is blocked (per-turn deduplication guard).
+Prompt assembly inspects the cache entry during the next turn. Same-channel memory uses categories or a summary in preference to crude messages. Other-channel rendering can add recent raw messages in `crude_summary` mode; `supersede` omits them when distilled content exists. Cache expiry uses 24 hours when an entry has non-empty summary text, and 12 hours otherwise, including category-only entries. Durable rows have a separate janitor retention policy.
 
-## Output
+## Persistence and deletion lifecycle
 
-`Promise<ToolResult>`: `{ success: true, message: "..." }` on success; error
-result on validation failure or blocked execution.
+Successfully stored summaries and categories persist across process restarts. The cache helpers log and swallow persistence errors after updating live entries, so a successful tool response alone does not prove that the database write succeeded. When a cache miss occurs after startup, hydration functions pre-warm entries from `short_term_memories` with an empty message list.
 
-## Side effects
+Because the live cache entry updates in place before writing to the database, no secondary cache invalidation is required.
 
-- **STM cache `summary` field updated**: both user-scoped and server-scoped
-  entries for this `(userId, channelId, personaId)` gain or replace their
-  `summary` string.
-- **Durable summary rows updated**: both scopes are written through to
-  `short_term_memories`, allowing the summary to be hydrated after a restart.
-- **`lastUpdated` refreshed**: the TTL clock restarts on the updated entries.
-- **`streamingContext.disableShortTermMemoryUpdate = true`**: set by the
-  tool-loop after successful execution (prevents re-calling this tool in the
-  same turn).
-- **No cache invalidation**: the live STM entry is updated directly before the
-  database write, so no downstream cache needs invalidating.
+Working memory deletion is owned by explicit cleanup commands:
 
-## Invariants
+- Channel resets via `/refresh` call `clearShortTermMemoryForChannel()`.
+- User memory deletions call `clearShortTermMemoryForUser()`.
 
-After a successful execute:
+Both functions evict the relevant entries from process memory immediately and issue asynchronous queries deleting matching rows from `short_term_memories`. If deletion fails, a later process can hydrate the remaining durable state.
 
-- The STM cache entry for `(userId, channelId, personaId)` contains a
-  non-empty `summary` field of at most `MAX_SUMMARY_LENGTH` characters.
-- Existing `messages` in the entry are preserved, and the summary is written
-  alongside them, not instead of them at the data layer. The context-build
-  reader chooses summary over messages at render time.
-- At most one successful execution occurs per generation turn.
+## Constraints and guards
 
-## Guards (all block execution)
+- **Capability toggle:** `short_term_memory_enabled === false` in server configuration removes the tool from offered definitions and rejects unexpected calls.
+- **Explicit intent guard:** `streamingContext.explicitLongTermMemoryIntent === true` suppresses the tool definition and blocks execution, reserving the turn for long-term memory operations.
+- **Provider exclusion:** NovelAI is disabled in `isAvailableFor()` because model token limits leave insufficient space for memory management overhead.
+- **Turn deduplication:** `streamingContext.disableShortTermMemoryUpdate === true` blocks subsequent attempts to execute the tool during the same turn.
 
-| Guard | Code location |
-|---|---|
-| `explicitLongTermMemoryIntent` flag is `true` | `isAvailableForContext()` at `updateShortTermMemoryTool.ts:64`; also re-checked in `execute()` at `:81` |
-| `disableShortTermMemoryUpdate` flag is `true` | `isAvailableForContext()` at `:69`; also re-checked in `execute()` at `:89` |
-| Provider is `"novelai"` | `isAvailableFor()` at `:48`: excluded due to token-budget constraints |
+## Source pointers
 
-## Extension points
-
-| Surface | Plugin-relevance |
-|---|---|
-| `updateShortTermMemorySummary()` | Internal: summary write is a direct cache mutation; no plugin-relevant seam. The `summary` field replaces crude conversation globally for the channel key; there is no per-plugin namespace. |
-| `MAX_SUMMARY_LENGTH` | Fixed in code at 1 500. Not a plugin seam. |
-| Summary TTL | Fixed in code at 24 hours (`SUMMARY_TTL_HOURS`). Not a plugin seam. |
-
-## Configuration
-
-| Source | Key | Value | Purpose |
-|---|---|---|---|
-| Constant (`shortTermMemoryCache.ts`) | `MAX_SUMMARY_LENGTH` | `1500` | Max summary length before truncation |
-| Constant (`shortTermMemoryCache.ts`) | `SUMMARY_TTL_HOURS` | `24` | TTL for entries that have a summary |
-
-## Related docs
-
-- Intent gate that may suppress this tool: → [memory pipeline README: intent detection gate](../README)
-- STM passive capture that this stage supersedes for context rendering: → [`stm/01-passive-capture.md`](01-passive-capture.md)
-- Tool-loop that invokes this stage: → [tool-loop Stage 02 `executeToolCall`](../../../tool-loop/02-execute-tool-call)
-- Read side that prefers `summary` over `messages`: → [context-build STM stage](../../../context-build/02-native-assembly/04-stm-memories)
+- `src/tools/functionCalls/updateShortTermMemoryTool.ts`: `UpdateShortTermMemoryTool` definition, availability checks, and category routing.
+- `src/utils/cache/shortTermMemoryCache.ts`: in-memory updates and database persistence helpers.
+- `src/utils/db/repositories/ShortTermMemoryRepository.ts`: queries for category schemas and persisted short-term memory rows.
+- `src/utils/chat/toolLoop.ts`: enforces single-execution policy by setting `disableShortTermMemoryUpdate`.

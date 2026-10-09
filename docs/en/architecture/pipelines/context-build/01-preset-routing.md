@@ -1,81 +1,29 @@
-﻿---
+---
 title: "01: Preset Routing"
 ---
 
-Decide whether to use native fixed-order assembly or to reassemble its output
-through an active SillyTavern preset.
+The routing stage determines whether the LLM prompt follows TomoriBot's native fixed-order layout or is rearranged through an active SillyTavern preset.
 
-- **File**: `src/utils/text/context/builder.ts:13-83`
+## Flow and ownership
 
-## Mission
+The public `buildContext` wrapper in `src/utils/text/context/builder.ts` coordinates preset routing:
 
-The wrapper around `buildContextNative`. Always runs the native build first
-(so preset reassembly has the structured items to slot into preset macro
-blocks). If a SillyTavern preset is active for the server *and* the turn
-isn't an impersonation, calls `reassembleWithPreset` to map native items into
-preset blocks. Otherwise returns the native build directly. After either
-path, resolves any random-choice macros (`{{random:a::b}}` or
-`{random::a::b}`) across all output text ; these can appear in user-imported
-preset content and need to be rolled per-build.
+1. **Native execution**: `buildContextNative` runs first on every turn. Preset reassembly needs native structured context items to populate preset markers. When a preset is active but the server configures no custom `system_prompt`, `suppressDefaultSystemPrompt` is set so the preset's system blocks control the prompt.
+2. **Preset check**: The wrapper queries `getCachedActivePreset(serverId)` using the guild's server ID. If no preset is active, or if the turn is a user impersonation, the native output is returned directly.
+3. **Preset reassembly**: When a preset is active and the turn is not an impersonation, `reassembleWithPreset` in `src/utils/text/presetContextBuilder.ts` buckets native items by `metadataTag` and maps them into the preset's ordered nodes.
+4. **Random macro resolution**: After either path completes, `resolveRandomChoiceMacrosInBuildOutput` rolls `{{random:a::b}}` and `{random::a::b}` choices across all context items, tail directives, and deferred short-term memory blocks.
 
-## Input
+## Constraints and rationale
 
-`BuildContextParams` : see `src/utils/text/context/types.ts:40-86`. The
-shared parameter shape for both the wrapper and native builder.
+- **Native build runs first**: Presets do not fetch or format database state independently. They rearrange structured items already tagged by the native pipeline (`SYSTEM_HUMANIZER_RULES`, `KNOWLEDGE_SERVER_INFO`, `DIALOGUE_HISTORY`, etc.).
+- **Impersonation bypass**: User impersonation turns always bypass preset reassembly. This prevents third-party prompt templates from overriding the required imitation directive and framing.
+- **Preserved out-of-band items**: Tail directives, uncensor directives, the unified short-term memory nudge (`nudgeItem`), and deferred memory blocks (`memoryInjectionItems`) pass through preset reassembly unchanged. Downstream chat pipeline stages own their dialogue-depth insertion, preventing preset anchors from misplacing recency-sensitive context.
+- **Unmapped item preservation**: Preset reassembly flushes TomoriBot-specific knowledge items (server info, server memories, emojis, stickers, sprites) and dialogue-adjacent items (participants, short-term memory, conditioning, RAG documents) at configured anchor markers (`main`, `charDescription`, `charPersonality`, `dialogueExamples`, `chatHistory`). Any remaining unpulled items append at the end of the system block list so no native context is dropped.
 
-## Output
+## Source pointers
 
-`BuildContextResult` : see `src/utils/text/context/types.ts:89-96`.
-
-## Side effects
-
-- **Preset cache read**: `getCachedActivePreset(serverId)` returns the
-  active preset data if one is configured.
-- **Persona state load**: falls back to `personaRepository.loadState` if
-  `snapshot.tomoriState` wasn't carried by the caller.
-- **Native build**: always runs `buildContextNative` (the inner pipeline).
-- **Preset reassembly**: if a preset is active and not impersonation, runs
-  `reassembleWithPreset` from
-  `src/utils/text/presetContextBuilder.ts`.
-- **Random-choice macro resolution**: `resolveRandomChoiceMacrosInBuildOutput`
-  rolls each `{{random:a,b}}` macro independently across `contextItems`,
-  `tailDirectives`, `lowerPriorityTailDirectives`, and `uncensorDirective`.
-
-## Invariants
-
-After this stage runs:
-
-- `messageIdMap` is populated and returned : either the caller-supplied map
-  or a freshly-constructed one.
-- If a preset was active, the native build still ran first (preset
-  reassembly does not bypass native assembly).
-- All random-choice macros are resolved exactly once per build (no double
-  rolls between native and preset paths).
-- Impersonation turns *always* use the native path, regardless of preset
-  configuration.
-
-## Extension points
-
-- **This stage is the routing seam**: two architectural facts worth naming:
-
-| Surface | Plugin-relevance |
-|---|---|
-| Preset routing | `reassembleWithPreset` is the SillyTavern-preset integration point ; a different preset format (Risu, Agnaistic, etc.) would extend here with a parallel reassembly path |
-| Macro resolution | `resolveRandomChoiceMacros` syntax (`{{random:a,b}}` / `{random::a::b}`) is currently ST-compatible; new macro kinds would extend here |
-
-A future plugin extension for "alternate prompt format" would either:
-- (a) take the form of a registered reassembly handler keyed by preset kind,
-  selected here by inspecting `presetData`. → plugin plan candidate.
-- (b) be a wholesale alternate `buildContext` entry-point selected upstream
-  by the chat pipeline. Less likely : the native build is broadly useful.
-
-The native build (stage 02) is the much larger extension surface: most
-plugin work goes there, not here.
-
-## Related docs
-
-- Native assembly: [`02-native-assembly/`](/architecture/pipelines/context-build/02-native-assembly/)
-- SillyTavern preset system:
-  [`docs/en/architecture/integrations/sillytavern/preset-system.md`](../../../integrations/sillytavern/preset-system)
-- Random-choice macros: → folded into this doc; no dedicated page (small
-  feature)
+- `src/utils/text/context/builder.ts`: `buildContext` routing wrapper.
+- `src/utils/text/presetContextBuilder.ts`: `reassembleWithPreset` node mapping and item bucketing.
+- `src/utils/cache/stPresetCache.ts`: `getCachedActivePreset` cache lookup.
+- `src/utils/text/context/templates.ts`: `resolveRandomChoiceMacrosInBuildOutput` macro expansion.
+- [SillyTavern Preset System](/architecture/integrations/sillytavern/preset-system/): user-facing preset features and node types.

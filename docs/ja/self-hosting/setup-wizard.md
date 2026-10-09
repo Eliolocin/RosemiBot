@@ -3,6 +3,7 @@ title: "セットアップウィザード"
 sidebar:
   label: "セットアップウィザード"
   order: 1
+aiGenerated: false
 ---
 
 :::note
@@ -40,7 +41,6 @@ bun run setup
 ## 用意しておくもの
 
 - [Bun](https://bun.sh/)（ボットおよびウィザード自体の実行に必要です）。
-- Node.js v20+（MCPツールで使用されます）。
 - `GuildMembers`、`MessageContent`、および `GuildPresences` の特権インテントが有効になっている
   Discordボットのトークン。
 - データベース。 TomoriBotはすべてをPostgreSQLに保存します。

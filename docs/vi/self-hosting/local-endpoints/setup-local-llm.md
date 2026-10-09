@@ -2,6 +2,7 @@
 title: "Thiết lập: LLM cục bộ"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBot có thể sử dụng bất kỳ máy chủ LLM cục bộ nào tương thích với OpenAI để tạo văn bản và tạo vector nhúng.

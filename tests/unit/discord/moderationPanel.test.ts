@@ -32,7 +32,7 @@ import {
 } from "@/utils/discord/ui/moderationPanel";
 import type { ModerationScopeData } from "@/utils/moderation/moderationOperations";
 import { initializeLocalizer, localizer } from "@/utils/text/localizer";
-import { localizedProse } from "../../helpers/localeCases";
+import { localizedCopy, localizedProse } from "../../helpers/localeCases";
 
 beforeAll(async () => initializeLocalizer());
 
@@ -482,7 +482,7 @@ describe("moderationPanel UI rendering", () => {
     expect(serialized).toContain("> 🟢 Members can manage server memories and documents.");
     expect(serialized).toContain("> 🔴 Members cannot manage persona attributes.");
     expect(serialized).toContain("> 🟢 Members can manage persona sample dialogues.");
-    expect(serialized).toContain("> 🔴 Members cannot create prompt snapshots.");
+    expect(serialized).toMatch(localizedProse("en-US", "commands.moderation.member_access_promptsnapshot_disabled"));
     expect(serialized).toContain(localizer("en-US", "commands.moderation.edit_permissions"));
     expect(serialized).toContain('"customId":"moderation:v1:member-access-open:en-US"');
     expect(serialized).toContain('"disabled":false');
@@ -635,7 +635,7 @@ describe("moderationPanel UI rendering", () => {
     expect(serialized).toContain("> 🔴 Members cannot manage server memories and documents.");
     expect(serialized).toContain("> 🟢 Members can manage persona attributes.");
     expect(serialized).toContain("> 🔴 Members cannot manage persona sample dialogues.");
-    expect(serialized).toContain("> 🟢 Members can create prompt snapshots.");
+    expect(serialized).toMatch(localizedProse("en-US", "commands.moderation.member_access_promptsnapshot_enabled"));
   });
 
   it("renders user blacklist category empty state with inline-code counter, bold section labels, and no literal ####", () => {
@@ -1159,7 +1159,7 @@ describe("moderationPanel UI rendering", () => {
     expect(serialized).toContain("> 🟢 Members can manage server memories and documents.");
     expect(serialized).toContain("> 🟢 Members can manage persona attributes.");
     expect(serialized).toContain("> 🔴 Members cannot manage persona sample dialogues.");
-    expect(serialized).toContain("> 🟢 Members can create prompt snapshots.");
+    expect(serialized).toMatch(localizedProse("en-US", "commands.moderation.member_access_promptsnapshot_enabled"));
   });
 
   it("proves implemented actions follow read freshness", () => {
@@ -1404,8 +1404,8 @@ describe("moderationPanel UI rendering", () => {
       },
       {
         value: "promptsnapshot",
-        label: "Prompt Snapshots",
-        description: "Use /tool prompt snapshot",
+        label: localizedCopy("en-US", "commands.server.member-permissions.promptsnapshot_option"),
+        description: localizedCopy("en-US", "commands.server.member-permissions.promptsnapshot_desc"),
         default: false,
       },
     ]);

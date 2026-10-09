@@ -26,10 +26,36 @@ import { buildCustomProviderName, buildSyntheticCustomModelCodename } from "@/ut
 import { getStaticProviderInfo } from "@/utils/provider/providerInfoRegistry";
 import { CUSTOM_ENDPOINT_PLACEHOLDER_KEY } from "@/utils/provider/legacyCustomProvider";
 import { encryptApiKey } from "@/utils/security/crypto";
+import { lazyRotateEncryptedRow } from "@/utils/security/encryptedColumns";
 import { keyManager } from "@/utils/security/keyManager";
 import { getBaseTriggerWords } from "@/utils/text/localizer";
 import { dedupeTriggerWords } from "@/utils/text/triggerWords";
 import type { IRepository } from "./IRepository";
+import {
+  customExpressionMediaSchema,
+  customExpressionSchema,
+  type CustomExpressionMedia,
+  type CustomExpressionRow,
+} from "@/types/db/schema";
+import { isValidEmotionKey } from "@/types/misc/emotions";
+import { normalizeStickerNameForLoose } from "@/utils/text/stickerNames";
+import { invalidateEmojiStickerCache } from "@/utils/cache/emojiStickerCache";
+import { nativeExpressionRevision } from "@/utils/text/expressionRevision";
+import { MAX_CUSTOM_EXPRESSIONS_PER_SERVER } from "@/constants/expressionLimits";
+
+type CustomExpressionWrite = {
+  name: string;
+  description: string;
+  emotion_key: string;
+  media: CustomExpressionMedia;
+  nativeStickerNames: string[];
+};
+
+export class ExpressionWriteError extends Error {
+  constructor(public readonly code: "stale" | "collision" | "invalid" | "scope" | "limit") {
+    super(`Expression write rejected: ${code}`);
+  }
+}
 
 export const MANAGED_WEBHOOK_KIND_SHARED_CHANNEL = "shared_channel" as const;
 type ManagedWebhookKind = typeof MANAGED_WEBHOOK_KIND_SHARED_CHANNEL;
@@ -86,6 +112,7 @@ type ServerChatConfigsRow = {
   self_debug_enabled: boolean;
   model_randomizer_enabled: boolean;
   system_prompt: string | null;
+  response_prefill: string | null;
   context_note: string | null;
   context_note_depth: number;
   llm_stop_strings: string[];
@@ -103,6 +130,7 @@ type ServerChatConfigsRow = {
 /** Row shape for server_notice_embeds_configs (Phase 6). */
 type ServerNoticeEmbedsConfigsRow = {
   tool_notice_hidden_keys: string[];
+  tool_notice_verbosity: string;
 };
 
 /** Row shape for server_member_permissions_configs (Phase 6). */
@@ -146,6 +174,242 @@ type ServerExportShape = {
 };
 
 class ServerRepository implements IRepository<ServerExportShape> {
+  async loadExpressionPanelMetadata(
+    serverId: number,
+  ): Promise<{ emojis: ServerEmojiRow[]; stickers: ServerStickerRow[] }> {
+    const [emojis, stickers] = await Promise.all([
+      sql<
+        ServerEmojiRow[]
+      >`SELECT * FROM server_emojis WHERE server_id = ${serverId} ORDER BY created_at, emoji_disc_id`,
+      sql<
+        ServerStickerRow[]
+      >`SELECT * FROM server_stickers WHERE server_id = ${serverId} ORDER BY created_at, sticker_disc_id`,
+    ]);
+    return {
+      emojis: emojis.map((row) => serverEmojiSchema.parse(row)),
+      stickers: stickers.map((row) => serverStickerSchema.parse(row)),
+    };
+  }
+
+  async synchronizeExpressions(guild: Guild, serverId: number): Promise<void> {
+    const changed = await sql.transaction(async (tx) => {
+      let written = false;
+      const emojis = await tx<
+        Array<{ emoji_disc_id: string; emoji_name: string }>
+      >`SELECT emoji_disc_id, emoji_name FROM server_emojis WHERE server_id = ${serverId}`;
+      const stickers = await tx<
+        Array<{ sticker_disc_id: string; sticker_name: string }>
+      >`SELECT sticker_disc_id, sticker_name FROM server_stickers WHERE server_id = ${serverId}`;
+      if (
+        emojis.length !== guild.emojis.cache.size ||
+        emojis.some((row) => guild.emojis.cache.get(row.emoji_disc_id)?.name !== row.emoji_name)
+      ) {
+        await this.syncEmojis(tx, serverId, [...guild.emojis.cache.values()]);
+        written = true;
+      }
+      if (
+        stickers.length !== guild.stickers.cache.size ||
+        stickers.some((row) => guild.stickers.cache.get(row.sticker_disc_id)?.name !== row.sticker_name)
+      ) {
+        await this.syncStickers(tx, serverId, [...guild.stickers.cache.values()]);
+        written = true;
+      }
+      return written;
+    });
+    if (changed) invalidateEmojiStickerCache(serverId);
+  }
+
+  async writeNativeExpression(
+    serverId: number,
+    kind: "emojis" | "stickers",
+    id: string,
+    revision: string,
+    metadata: { emotion: string; description: string } | null,
+  ): Promise<void> {
+    if (
+      metadata &&
+      (!isValidEmotionKey(metadata.emotion) || !metadata.description.trim() || metadata.description.length > 500)
+    ) {
+      throw new ExpressionWriteError("invalid");
+    }
+    await sql.transaction(async (tx) => {
+      const [row] =
+        kind === "emojis"
+          ? await tx<
+              ServerEmojiRow[]
+            >`SELECT * FROM server_emojis WHERE server_id = ${serverId} AND emoji_disc_id = ${id} FOR UPDATE`
+          : await tx<
+              ServerStickerRow[]
+            >`SELECT * FROM server_stickers WHERE server_id = ${serverId} AND sticker_disc_id = ${id} FOR UPDATE`;
+      if (!row) throw new ExpressionWriteError("stale");
+      const normalized = kind === "emojis" ? serverEmojiSchema.parse(row) : serverStickerSchema.parse(row);
+      if (nativeExpressionRevision(normalized) !== revision) throw new ExpressionWriteError("stale");
+      const emotion = metadata?.emotion ?? "unset";
+      const description = metadata?.description.trim() ?? "";
+      if (kind === "emojis") {
+        await tx`
+          UPDATE server_emojis SET emotion_key = ${emotion}, emoji_desc = ${description}, updated_at = CURRENT_TIMESTAMP
+          WHERE server_id = ${serverId} AND emoji_disc_id = ${id}
+        `;
+      } else {
+        await tx`
+          UPDATE server_stickers SET emotion_key = ${emotion}, sticker_desc = ${description}, updated_at = CURRENT_TIMESTAMP
+          WHERE server_id = ${serverId} AND sticker_disc_id = ${id}
+        `;
+      }
+    });
+    invalidateEmojiStickerCache(serverId);
+  }
+
+  async loadCustomExpressions(serverId: number): Promise<CustomExpressionRow[]> {
+    const rows = await sql<CustomExpressionRow[]>`
+      SELECT c.*, to_json(ARRAY(
+        SELECT p.persona_id FROM custom_expression_personas p
+        WHERE p.custom_expression_id = c.custom_expression_id ORDER BY p.persona_id
+      )) AS persona_ids
+      FROM custom_expressions c WHERE c.server_id = ${serverId}
+      ORDER BY c.created_at, c.custom_expression_id
+    `;
+    return rows.map((row) => customExpressionSchema.parse(row));
+  }
+
+  async loadCustomExpression(serverId: number, id: string): Promise<CustomExpressionRow | null> {
+    const [row] = await sql`
+      SELECT c.*, to_json(ARRAY(
+        SELECT p.persona_id FROM custom_expression_personas p
+        WHERE p.custom_expression_id = c.custom_expression_id ORDER BY p.persona_id
+      )) AS persona_ids
+      FROM custom_expressions c
+      WHERE c.server_id = ${serverId} AND c.custom_expression_id = ${id}
+    `;
+    return row ? customExpressionSchema.parse(row) : null;
+  }
+
+  async saveCustomExpression(
+    serverId: number,
+    id: string,
+    expectedRevision: number | null,
+    input: CustomExpressionWrite,
+  ): Promise<void> {
+    const name = input.name.trim();
+    const description = input.description.trim();
+    const nameKey = normalizeStickerNameForLoose(name);
+    if (
+      !nameKey ||
+      name.length > 100 ||
+      !description ||
+      description.length > 500 ||
+      !isValidEmotionKey(input.emotion_key)
+    ) {
+      throw new ExpressionWriteError("invalid");
+    }
+    const media = customExpressionMediaSchema.parse(input.media);
+    await sql.transaction(async (tx) => {
+      // The server lock serializes name and count checks across concurrent creations.
+      const [server] = await tx`SELECT server_id FROM servers WHERE server_id = ${serverId} FOR UPDATE`;
+      if (!server) throw new ExpressionWriteError("scope");
+      const [current] = await tx`
+        SELECT revision FROM custom_expressions
+        WHERE server_id = ${serverId} AND custom_expression_id = ${id} FOR UPDATE
+      `;
+      if (expectedRevision === null ? current : !current || current.revision !== expectedRevision) {
+        throw new ExpressionWriteError("stale");
+      }
+      if (expectedRevision === null) {
+        const [row] = await tx<Array<{ count: number }>>`
+          SELECT COUNT(*)::int AS count FROM custom_expressions WHERE server_id = ${serverId}
+        `;
+        if (row.count >= MAX_CUSTOM_EXPRESSIONS_PER_SERVER) throw new ExpressionWriteError("limit");
+      }
+      const stickers = await tx<
+        Array<{ sticker_name: string }>
+      >`SELECT sticker_name FROM server_stickers WHERE server_id = ${serverId}`;
+      const [collision] = await tx`
+        SELECT custom_expression_id FROM custom_expressions
+        WHERE server_id = ${serverId} AND name_key = ${nameKey} AND custom_expression_id <> ${id}
+      `;
+      if (
+        collision ||
+        [...input.nativeStickerNames, ...stickers.map((row) => String(row.sticker_name))].some(
+          (stickerName) => normalizeStickerNameForLoose(stickerName) === nameKey,
+        )
+      ) {
+        throw new ExpressionWriteError("collision");
+      }
+      if (expectedRevision === null) {
+        await tx`
+          INSERT INTO custom_expressions (
+            custom_expression_id, server_id, name, name_key, description, emotion_key,
+            source_kind, delivery_kind, original_link, storage_reference, mime_type, extension, byte_size
+          ) VALUES (
+            ${id}, ${serverId}, ${name}, ${nameKey}, ${description}, ${input.emotion_key},
+            ${media.source_kind}, ${media.delivery_kind}, ${media.original_link}, ${media.storage_reference},
+            ${media.mime_type}, ${media.extension}, ${media.byte_size}
+          )
+        `;
+      } else {
+        await tx`
+          UPDATE custom_expressions SET name = ${name}, name_key = ${nameKey},
+            description = ${description}, emotion_key = ${input.emotion_key},
+            source_kind = ${media.source_kind}, delivery_kind = ${media.delivery_kind},
+            original_link = ${media.original_link}, storage_reference = ${media.storage_reference},
+            mime_type = ${media.mime_type}, extension = ${media.extension}, byte_size = ${media.byte_size},
+            revision = revision + 1
+          WHERE server_id = ${serverId} AND custom_expression_id = ${id}
+        `;
+      }
+    });
+    invalidateEmojiStickerCache(serverId);
+  }
+
+  async deleteCustomExpression(serverId: number, id: string, expectedRevision: number): Promise<boolean> {
+    const rows = await sql`
+      DELETE FROM custom_expressions
+      WHERE server_id = ${serverId} AND custom_expression_id = ${id} AND revision = ${expectedRevision}
+      RETURNING custom_expression_id
+    `;
+    if (!rows.length) return false;
+    invalidateEmojiStickerCache(serverId);
+    return true;
+  }
+
+  async setCustomExpressionPersona(
+    serverId: number,
+    id: string,
+    expectedRevision: number,
+    personaId: number,
+    add: boolean,
+  ): Promise<void> {
+    await sql.transaction(async (tx) => {
+      const [expression] = await tx`
+        SELECT revision FROM custom_expressions
+        WHERE server_id = ${serverId} AND custom_expression_id = ${id} FOR UPDATE
+      `;
+      if (!expression || expression.revision !== expectedRevision) throw new ExpressionWriteError("stale");
+      const [persona] =
+        await tx`SELECT persona_id FROM personas WHERE server_id = ${serverId} AND persona_id = ${personaId}`;
+      if (!persona) throw new ExpressionWriteError("scope");
+      if (add) {
+        await tx`
+          INSERT INTO custom_expression_personas (custom_expression_id, server_id, persona_id)
+          VALUES (${id}, ${serverId}, ${personaId}) ON CONFLICT DO NOTHING
+        `;
+      } else {
+        await tx`
+          DELETE FROM custom_expression_personas
+          WHERE server_id = ${serverId} AND custom_expression_id = ${id} AND persona_id = ${personaId}
+        `;
+      }
+      await tx`
+        UPDATE custom_expressions SET restricted = EXISTS (
+          SELECT 1 FROM custom_expression_personas WHERE custom_expression_id = ${id}
+        ), revision = revision + 1
+        WHERE server_id = ${serverId} AND custom_expression_id = ${id}
+      `;
+    });
+    invalidateEmojiStickerCache(serverId);
+  }
+
   /**
    * Atomically sets up a new server: creates server, tomori, config, and emoji rows.
    *
@@ -384,10 +648,9 @@ class ServerRepository implements IRepository<ServerExportShape> {
   }
 
   /**
-   * Decrypts the token for a managed Discord webhook row, rotating the key if outdated.
+   * Rotates the key when the row's key is outdated.
    *
-   * @param row - ManagedDiscordWebhookRow with encrypted webhook_token
-   * @returns Decrypted token string or null on failure
+   * @returns The decrypted token, or null on failure
    */
   async decryptManagedWebhookToken(row: ManagedDiscordWebhookRow): Promise<string | null> {
     return this.sqlDecryptManagedWebhookToken(row);
@@ -671,7 +934,8 @@ class ServerRepository implements IRepository<ServerExportShape> {
             persona_lineage_id,
             is_pointer,
             preset_lineage_id,
-            preset_language
+            preset_language,
+            is_nsfw
           )
           VALUES (
             ${server.server_id},
@@ -685,7 +949,11 @@ class ServerRepository implements IRepository<ServerExportShape> {
             ),
             (SELECT preset_lineage_id IS NOT NULL FROM persona_presets WHERE persona_preset_id = ${validConfig.presetId}),
             (SELECT preset_lineage_id FROM persona_presets WHERE persona_preset_id = ${validConfig.presetId}),
-            (SELECT preset_language FROM persona_presets WHERE persona_preset_id = ${validConfig.presetId})
+            (SELECT preset_language FROM persona_presets WHERE persona_preset_id = ${validConfig.presetId}),
+            COALESCE(
+              (SELECT is_nsfw FROM persona_presets WHERE persona_preset_id = ${validConfig.presetId}),
+              false
+            )
           )
           RETURNING *
         `;
@@ -757,16 +1025,20 @@ class ServerRepository implements IRepository<ServerExportShape> {
           const supportsStructOutput = caps.has("structured_output") || caps.has("json");
           const strictRoleAlternation = caps.has("strict_role_alternation");
           const supportsPrefixCompletion = caps.has("prefix_completion");
+          const supportsAssistantPrefill = caps.has("assistant_prefill");
+          const verbatimToolCalling = caps.has("verbatim_tool_calling");
 
           const [syntheticLlm] = await tx<Array<{ llm_id: number }>>`
             INSERT INTO llms (
               llm_provider, llm_codename, has_tools, sees_images, sees_videos,
               sees_youtube, supports_structoutput, strict_role_alternation, supports_prefix_completion,
+              supports_assistant_prefill, verbatim_tool_calling,
               is_smartest, is_default, is_reasoning, is_deprecated, is_free, is_uncensored,
               llm_description, descriptions
             ) VALUES (
               ${customProviderName}, ${codename}, ${hasTools}, ${seesImages}, ${seesVideos},
               false, ${supportsStructOutput}, ${strictRoleAlternation}, ${supportsPrefixCompletion},
+              ${supportsAssistantPrefill}, ${verbatimToolCalling},
               false, true, false, false, false, false,
               ${displayName}, ${{ "en-US": displayName }}
             )
@@ -777,6 +1049,8 @@ class ServerRepository implements IRepository<ServerExportShape> {
               supports_structoutput = EXCLUDED.supports_structoutput,
               strict_role_alternation = EXCLUDED.strict_role_alternation,
               supports_prefix_completion = EXCLUDED.supports_prefix_completion,
+              supports_assistant_prefill = EXCLUDED.supports_assistant_prefill,
+              verbatim_tool_calling = EXCLUDED.verbatim_tool_calling,
               llm_description = EXCLUDED.llm_description,
               descriptions = jsonb_set(COALESCE(llms.descriptions, '{}'::jsonb), '{en-US}', to_jsonb(${displayName}::text)),
               updated_at = CURRENT_TIMESTAMP
@@ -795,11 +1069,13 @@ class ServerRepository implements IRepository<ServerExportShape> {
             INSERT INTO custom_endpoints (
               connection_id, model_name, model_ref_id, num_ctx,
               extra_config, has_tools, sees_images, sees_videos,
-              supports_structoutput, strict_role_alternation, supports_prefix_completion, is_default
+              supports_structoutput, strict_role_alternation, supports_prefix_completion,
+              supports_assistant_prefill, verbatim_tool_calling, is_default
             ) VALUES (
               ${connectionId}, ${modelCode}, ${customLlmId}, ${resolvedAccess.textModel.numCtx ?? null},
               '{}'::jsonb, ${hasTools}, ${seesImages}, ${seesVideos},
-              ${supportsStructOutput}, ${strictRoleAlternation}, ${supportsPrefixCompletion}, true
+              ${supportsStructOutput}, ${strictRoleAlternation}, ${supportsPrefixCompletion},
+              ${supportsAssistantPrefill}, ${verbatimToolCalling}, true
             )
             ON CONFLICT (connection_id, COALESCE(model_name, ''))
             DO UPDATE SET
@@ -812,6 +1088,8 @@ class ServerRepository implements IRepository<ServerExportShape> {
               supports_structoutput = EXCLUDED.supports_structoutput,
               strict_role_alternation = EXCLUDED.strict_role_alternation,
               supports_prefix_completion = EXCLUDED.supports_prefix_completion,
+              supports_assistant_prefill = EXCLUDED.supports_assistant_prefill,
+              verbatim_tool_calling = EXCLUDED.verbatim_tool_calling,
               is_default = EXCLUDED.is_default,
               updated_at = CURRENT_TIMESTAMP
           `;
@@ -1063,14 +1341,25 @@ class ServerRepository implements IRepository<ServerExportShape> {
         return null;
       }
 
-      const parsedEmojis = serverEmojiSchema.array().safeParse(emojiRows);
-
-      if (!parsedEmojis.success) {
-        log.error(`Failed to validate emojis for server ID ${internalServerId}:`, parsedEmojis.error.flatten());
-        return null;
+      // Parsed per row so one malformed emoji cannot hide the server's whole catalogue from context.
+      const validEmojis: ServerEmojiRow[] = [];
+      const invalidEmojiIds: string[] = [];
+      for (const row of emojiRows) {
+        const parsed = serverEmojiSchema.safeParse(row);
+        if (parsed.success) {
+          validEmojis.push(parsed.data);
+        } else {
+          invalidEmojiIds.push(String(row.emoji_disc_id));
+        }
       }
 
-      return parsedEmojis.data;
+      if (invalidEmojiIds.length > 0) {
+        log.error(
+          `Skipped ${invalidEmojiIds.length} invalid emoji rows for server ID ${internalServerId}: ${invalidEmojiIds.join(", ")}`,
+        );
+      }
+
+      return validEmojis.length > 0 ? validEmojis : null;
     } catch (error) {
       log.error(`Error loading emojis for server ID ${internalServerId}:`, error);
       return null;
@@ -1295,17 +1584,11 @@ class ServerRepository implements IRepository<ServerExportShape> {
       }
 
       const decryptedToken = result.decrypted_token.toString();
-      const currentVersion = keyManager.getCurrentVersion();
-      if (keyVersion !== currentVersion) {
-        const currentKey = keyManager.getCurrentKey();
-        await sql`
-          UPDATE discord_managed_webhooks
-          SET webhook_token = pgp_sym_encrypt(${decryptedToken}, ${currentKey}, 'compress-algo=1, cipher-algo=aes256'),
-              key_version = ${currentVersion},
-              updated_at = CURRENT_TIMESTAMP
-          WHERE managed_webhook_id = ${row.managed_webhook_id}
-        `;
-      }
+      await lazyRotateEncryptedRow(sql, "discord_managed_webhooks", {
+        id: row.managed_webhook_id,
+        ciphertext: row.webhook_token,
+        key_version: row.key_version,
+      });
 
       return decryptedToken;
     } catch (error) {
@@ -1352,14 +1635,14 @@ class ServerRepository implements IRepository<ServerExportShape> {
       );
       log.info(`[Sync] BEFORE bulk insert: ${beforeCount.count} ${config.tableName} exist`);
 
+      // Reconcile Discord fields only; a manager may edit classification after the snapshot read.
       for (const item of dbItems) {
         if (config.tableName === "server_emojis") {
           await tx`
             INSERT INTO server_emojis (server_id, emoji_disc_id, emoji_name, emoji_desc, emotion_key, is_animated)
             VALUES (${item.server_id}, ${item.emoji_disc_id}, ${item.emoji_name}, ${item.emoji_desc}, ${item.emotion_key}, ${item.is_animated})
             ON CONFLICT (server_id, emoji_disc_id) DO UPDATE SET
-              emoji_name = EXCLUDED.emoji_name, emoji_desc = EXCLUDED.emoji_desc,
-              emotion_key = EXCLUDED.emotion_key, is_animated = EXCLUDED.is_animated,
+              emoji_name = EXCLUDED.emoji_name, is_animated = EXCLUDED.is_animated,
               updated_at = CURRENT_TIMESTAMP
           `;
         } else {
@@ -1367,8 +1650,7 @@ class ServerRepository implements IRepository<ServerExportShape> {
             INSERT INTO server_stickers (server_id, sticker_disc_id, sticker_name, sticker_desc, emotion_key, sticker_format)
             VALUES (${item.server_id}, ${item.sticker_disc_id}, ${item.sticker_name}, ${item.sticker_desc}, ${item.emotion_key}, ${item.sticker_format})
             ON CONFLICT (server_id, sticker_disc_id) DO UPDATE SET
-              sticker_name = EXCLUDED.sticker_name, sticker_desc = EXCLUDED.sticker_desc,
-              emotion_key = EXCLUDED.emotion_key, sticker_format = EXCLUDED.sticker_format,
+              sticker_name = EXCLUDED.sticker_name, sticker_format = EXCLUDED.sticker_format,
               updated_at = CURRENT_TIMESTAMP
           `;
         }
@@ -1583,6 +1865,26 @@ class ServerRepository implements IRepository<ServerExportShape> {
     }
   }
 
+  /**
+   * Removes the link for a room by its room ID, so a link replaced concurrently with another room
+   * is left alone.
+   *
+   * @returns The unlinked Discord channel ID, or null when no link remained or the delete failed.
+   */
+  async unlinkMatrixRoom(matrixRoomId: string): Promise<string | null> {
+    try {
+      const [row] = await sql<[{ channel_disc_id: string }]>`
+        DELETE FROM matrix_channel_links
+        WHERE matrix_room_id = ${matrixRoomId}
+        RETURNING channel_disc_id
+      `;
+      return row?.channel_disc_id ?? null;
+    } catch (e) {
+      log.error(`Error unlinking matrix room ${matrixRoomId}:`, e);
+      return null;
+    }
+  }
+
   private async resolveServerInternalId(serverDiscId: string): Promise<number | null> {
     const [row] = await sql`
       SELECT server_id FROM servers WHERE server_disc_id = ${serverDiscId} LIMIT 1
@@ -1595,7 +1897,7 @@ class ServerRepository implements IRepository<ServerExportShape> {
       const [row] = await sql`
         SELECT humanizer_degree, message_fetch_limit, send_message_limit, match_limit,
                cascade_limit, timezone_offset, self_debug_enabled, model_randomizer_enabled,
-               system_prompt,
+               system_prompt, response_prefill,
                context_note, context_note_depth, llm_stop_strings,
                llm_stop_speaker_pattern_enabled, llm_max_output_tokens,
                llm_top_p, llm_top_k, llm_frequency_penalty, llm_presence_penalty,
@@ -1613,7 +1915,9 @@ class ServerRepository implements IRepository<ServerExportShape> {
   private async sqlLoadNoticeEmbedsConfigs(serverId: number): Promise<ServerNoticeEmbedsConfigsRow | null> {
     try {
       const [row] = await sql`
-        SELECT tool_notice_hidden_keys FROM server_notice_embeds_configs WHERE server_id = ${serverId}
+        SELECT tool_notice_hidden_keys, tool_notice_verbosity
+        FROM server_notice_embeds_configs
+        WHERE server_id = ${serverId}
       `;
       return row ? (row as unknown as ServerNoticeEmbedsConfigsRow) : null;
     } catch (error) {
@@ -1675,7 +1979,7 @@ class ServerRepository implements IRepository<ServerExportShape> {
         server_id, humanizer_degree, message_fetch_limit, send_message_limit,
         match_limit, cascade_limit, timezone_offset, self_debug_enabled,
         model_randomizer_enabled,
-        system_prompt, context_note, context_note_depth, llm_stop_strings,
+        system_prompt, response_prefill, context_note, context_note_depth, llm_stop_strings,
         llm_stop_speaker_pattern_enabled, llm_max_output_tokens,
         llm_top_p, llm_top_k, llm_frequency_penalty, llm_presence_penalty,
         llm_min_p, llm_logit_biases, fallback_model_refs
@@ -1683,7 +1987,7 @@ class ServerRepository implements IRepository<ServerExportShape> {
         ${serverId}, ${row.humanizer_degree}, ${row.message_fetch_limit},
         ${row.send_message_limit}, ${row.match_limit}, ${row.cascade_limit},
         ${row.timezone_offset}, ${row.self_debug_enabled}, ${row.model_randomizer_enabled},
-        ${row.system_prompt},
+        ${row.system_prompt}, ${row.response_prefill},
         ${row.context_note}, ${row.context_note_depth},
         ${sql.array(row.llm_stop_strings, "TEXT")}, ${row.llm_stop_speaker_pattern_enabled},
         ${row.llm_max_output_tokens}, ${row.llm_top_p}, ${row.llm_top_k},
@@ -1700,6 +2004,7 @@ class ServerRepository implements IRepository<ServerExportShape> {
         self_debug_enabled               = EXCLUDED.self_debug_enabled,
         model_randomizer_enabled         = EXCLUDED.model_randomizer_enabled,
         system_prompt                    = EXCLUDED.system_prompt,
+        response_prefill                 = EXCLUDED.response_prefill,
         context_note                     = EXCLUDED.context_note,
         context_note_depth               = EXCLUDED.context_note_depth,
         llm_stop_strings                 = EXCLUDED.llm_stop_strings,
@@ -1718,10 +2023,11 @@ class ServerRepository implements IRepository<ServerExportShape> {
 
   private async sqlUpsertNoticeEmbedsConfigs(serverId: number, row: ServerNoticeEmbedsConfigsRow): Promise<void> {
     await sql`
-      INSERT INTO server_notice_embeds_configs (server_id, tool_notice_hidden_keys)
-      VALUES (${serverId}, ${sql.array(row.tool_notice_hidden_keys, "TEXT")})
+      INSERT INTO server_notice_embeds_configs (server_id, tool_notice_hidden_keys, tool_notice_verbosity)
+      VALUES (${serverId}, ${sql.array(row.tool_notice_hidden_keys, "TEXT")}, ${row.tool_notice_verbosity})
       ON CONFLICT (server_id) DO UPDATE SET
         tool_notice_hidden_keys = EXCLUDED.tool_notice_hidden_keys,
+        tool_notice_verbosity   = EXCLUDED.tool_notice_verbosity,
         updated_at              = NOW()
     `;
   }
@@ -1774,24 +2080,22 @@ class ServerRepository implements IRepository<ServerExportShape> {
   }
 
   /**
-   * Minimal classification shape used by initializeExpressions.
-   * Mirrors ExpressionClassification from structuredOutput.ts without importing from providers.
-   */
-
-  /**
-   * Load all server emojis that have not yet been classified (emotion_key is null/unset
-   * or description is empty).
+   * Load the server emojis an `/expressions initialize` run should classify.
    *
+   * @param includeClassified - When true (overwrite mode), return every emoji instead of only
+   *   rows whose emotion_key or description is still unset
    */
-  async loadUninitializedEmojis(
+  async loadEmojisForClassification(
     serverId: number,
+    includeClassified: boolean,
   ): Promise<Array<{ emoji_disc_id: string; emoji_name: string; is_animated: boolean }>> {
     return await sql<Array<{ emoji_disc_id: string; emoji_name: string; is_animated: boolean }>>`
       SELECT emoji_disc_id, emoji_name, is_animated
       FROM server_emojis
       WHERE server_id = ${serverId}
         AND (
-          emotion_key IS NULL
+          ${includeClassified}
+          OR emotion_key IS NULL
           OR emotion_key = 'unset'
           OR emoji_desc IS NULL
           OR emoji_desc = ''
@@ -1800,18 +2104,22 @@ class ServerRepository implements IRepository<ServerExportShape> {
   }
 
   /**
-   * Load all server stickers that have not yet been classified.
+   * Load the server stickers an `/expressions initialize` run should classify.
    *
+   * @param includeClassified - When true (overwrite mode), return every sticker instead of only
+   *   rows whose emotion_key or description is still unset
    */
-  async loadUninitializedStickers(
+  async loadStickersForClassification(
     serverId: number,
+    includeClassified: boolean,
   ): Promise<Array<{ sticker_disc_id: string; sticker_name: string; sticker_format: number }>> {
     return await sql<Array<{ sticker_disc_id: string; sticker_name: string; sticker_format: number }>>`
       SELECT sticker_disc_id, sticker_name, sticker_format
       FROM server_stickers
       WHERE server_id = ${serverId}
         AND (
-          emotion_key IS NULL
+          ${includeClassified}
+          OR emotion_key IS NULL
           OR emotion_key = 'unset'
           OR sticker_desc IS NULL
           OR sticker_desc = ''
@@ -1820,42 +2128,28 @@ class ServerRepository implements IRepository<ServerExportShape> {
   }
 
   /**
-   * Clear emotion_key and description from all server emojis.
-   * Called before a full overwrite re-initialization.
-   *
-   */
-  async clearEmojiExpressions(serverId: number): Promise<void> {
-    await sql`UPDATE server_emojis SET emotion_key = NULL, emoji_desc = NULL WHERE server_id = ${serverId}`;
-  }
-
-  /**
-   * Clear emotion_key and description from all server stickers.
-   * Called before a full overwrite re-initialization.
-   *
-   */
-  async clearStickerExpressions(serverId: number): Promise<void> {
-    await sql`UPDATE server_stickers SET emotion_key = NULL, sticker_desc = NULL WHERE server_id = ${serverId}`;
-  }
-
-  /**
    * Apply LLM expression classification results to server_emojis and server_stickers
    * within a single transaction.
-   * Each result is matched by name (case-insensitive) and only written when the row
-   * is still uninitialized (guards against clobbering manual edits mid-batch).
+   * Each result is matched by name (case-insensitive) against the rows in `scope`, and a row
+   * is written at most once per call. Without `scope.overwrite`, a row is also only written
+   * while still unclassified, which guards against clobbering manual edits mid-run.
    *
-   * @returns Object with counts of emojis and stickers that were updated
+   * @param scope - The batch the model was shown. Matching is confined to these Discord IDs
+   *   because overwrite mode makes every row eligible, so an emoji and a sticker sharing a name
+   *   would otherwise both resolve to the emoji and leave the sticker unclassified.
+   * @returns Discord IDs of the emojis and stickers that were written
    */
   async initializeExpressions(
     serverId: number,
     results: Array<{ name: string; emotion_key: string; description: string }>,
-  ): Promise<{ emojiCount: number; stickerCount: number }> {
-    let emojiCount = 0;
-    let stickerCount = 0;
+    scope: { overwrite: boolean; emojiDiscIds: string[]; stickerDiscIds: string[] },
+  ): Promise<{ emojiDiscIds: string[]; stickerDiscIds: string[] }> {
+    const emojiDiscIds: string[] = [];
+    const stickerDiscIds: string[] = [];
 
     await sql.transaction(async (tx) => {
       for (const result of results) {
-        // Try emoji first (only update if still uninitialized)
-        const emojiRows = await tx`
+        const emojiRows = await tx<Array<{ emoji_disc_id: string }>>`
           UPDATE server_emojis
           SET
             emotion_key = ${result.emotion_key},
@@ -1863,8 +2157,11 @@ class ServerRepository implements IRepository<ServerExportShape> {
             updated_at  = CURRENT_TIMESTAMP
           WHERE server_id = ${serverId}
             AND LOWER(emoji_name) = LOWER(${result.name})
+            AND emoji_disc_id = ANY(${sql.array(scope.emojiDiscIds, "TEXT")})
+            AND NOT (emoji_disc_id = ANY(${sql.array(emojiDiscIds, "TEXT")}))
             AND (
-              emotion_key IS NULL
+              ${scope.overwrite}
+              OR emotion_key IS NULL
               OR emotion_key = 'unset'
               OR emoji_desc IS NULL
               OR emoji_desc = ''
@@ -1873,12 +2170,11 @@ class ServerRepository implements IRepository<ServerExportShape> {
         `;
 
         if (emojiRows.length > 0) {
-          emojiCount++;
+          emojiDiscIds.push(...emojiRows.map((row) => row.emoji_disc_id));
           continue;
         }
 
-        // Fall through to sticker if no emoji matched
-        const stickerRows = await tx`
+        const stickerRows = await tx<Array<{ sticker_disc_id: string }>>`
           UPDATE server_stickers
           SET
             emotion_key  = ${result.emotion_key},
@@ -1886,8 +2182,11 @@ class ServerRepository implements IRepository<ServerExportShape> {
             updated_at   = CURRENT_TIMESTAMP
           WHERE server_id = ${serverId}
             AND LOWER(sticker_name) = LOWER(${result.name})
+            AND sticker_disc_id = ANY(${sql.array(scope.stickerDiscIds, "TEXT")})
+            AND NOT (sticker_disc_id = ANY(${sql.array(stickerDiscIds, "TEXT")}))
             AND (
-              emotion_key IS NULL
+              ${scope.overwrite}
+              OR emotion_key IS NULL
               OR emotion_key = 'unset'
               OR sticker_desc IS NULL
               OR sticker_desc = ''
@@ -1895,69 +2194,11 @@ class ServerRepository implements IRepository<ServerExportShape> {
           RETURNING sticker_disc_id
         `;
 
-        if (stickerRows.length > 0) {
-          stickerCount++;
-        }
+        stickerDiscIds.push(...stickerRows.map((row) => row.sticker_disc_id));
       }
     });
 
-    return { emojiCount, stickerCount };
-  }
-
-  /**
-   * Manually overwrite a single emoji's emotion classification and usage description.
-   * Used by `/expressions edit`. Unlike {@link initializeExpressions}, this
-   * writes unconditionally (no "still uninitialized" guard) because the invoking user
-   * is deliberately correcting an existing classification.
-   *
-   * @param emojiDiscId - Discord emoji snowflake identifying the row to update
-   * @param emotionKey - New emotion key (must be one of the 28 valid EmotionKey values)
-   * @param description - New usage/description text surfaced to the model
-   * @returns True if a matching emoji row was updated, false otherwise
-   */
-  async updateEmojiExpression(
-    serverId: number,
-    emojiDiscId: string,
-    emotionKey: string,
-    description: string,
-  ): Promise<boolean> {
-    const rows = await sql<Array<{ emoji_disc_id: string }>>`
-      UPDATE server_emojis
-      SET
-        emotion_key = ${emotionKey},
-        emoji_desc  = ${description},
-        updated_at  = CURRENT_TIMESTAMP
-      WHERE server_id = ${serverId} AND emoji_disc_id = ${emojiDiscId}
-      RETURNING emoji_disc_id
-    `;
-    return rows.length > 0;
-  }
-
-  /**
-   * Manually overwrite a single sticker's emotion classification and usage description.
-   * Sibling of {@link updateEmojiExpression} for the server_stickers table.
-   *
-   * @param stickerDiscId - Discord sticker snowflake identifying the row to update
-   * @param emotionKey - New emotion key (must be one of the 28 valid EmotionKey values)
-   * @param description - New usage/description text surfaced to the model
-   * @returns True if a matching sticker row was updated, false otherwise
-   */
-  async updateStickerExpression(
-    serverId: number,
-    stickerDiscId: string,
-    emotionKey: string,
-    description: string,
-  ): Promise<boolean> {
-    const rows = await sql<Array<{ sticker_disc_id: string }>>`
-      UPDATE server_stickers
-      SET
-        emotion_key  = ${emotionKey},
-        sticker_desc = ${description},
-        updated_at   = CURRENT_TIMESTAMP
-      WHERE server_id = ${serverId} AND sticker_disc_id = ${stickerDiscId}
-      RETURNING sticker_disc_id
-    `;
-    return rows.length > 0;
+    return { emojiDiscIds, stickerDiscIds };
   }
 
   /**
@@ -1976,6 +2217,7 @@ class ServerRepository implements IRepository<ServerExportShape> {
    *  - `error_logs`; uses ON DELETE SET NULL; nuke leaves history intact
    *  - `discord_managed_webhooks`: keyed by `guild_disc_id` (handled separately)
    *  - `documents`: has nullable `persona_id`; serverwide rows handled separately
+   *  - `custom_endpoints`: cascade from server-owned `custom_endpoint_connections`
    *  - Global seed catalogs (`nai_presets`, `system_prompt_presets`): shared
    *    across all servers, have NO `server_id` column; never wipe these.
    */
@@ -2024,12 +2266,12 @@ class ServerRepository implements IRepository<ServerExportShape> {
     "channel_llm_overrides",
     "guild_mcp_servers",
     "custom_endpoint_connections",
-    "custom_endpoints",
     // Model registrations
     "scoped_model_registrations",
     // Misc server-scoped
     "server_emojis",
     "server_stickers",
+    "custom_expressions",
     "voice_samples",
     "personal_spotlights",
   ];
@@ -2079,6 +2321,7 @@ class ServerRepository implements IRepository<ServerExportShape> {
    *
    * Discord-side webhook cleanup (calling `webhook.delete()` on Discord) is the
    * caller's responsibility: use `listManagedWebhooksDecrypted` beforehand.
+   * Both modes collect custom media references under lock and delete owned objects after commit.
    *
    * @param serverDiscId - Discord guild snowflake (needed for webhook table)
    * @param options.preservePersonas - When true, keep personas + their subtree
@@ -2086,15 +2329,20 @@ class ServerRepository implements IRepository<ServerExportShape> {
    */
   async nukeServer(serverId: number, serverDiscId: string, options: { preservePersonas: boolean }): Promise<boolean> {
     try {
-      if (!options.preservePersonas) {
-        // Full nuke: cascade-delete via the servers row
-        const result = await sql`DELETE FROM servers WHERE server_id = ${serverId}`;
-        return result.count > 0;
-      }
-
-      // Preserve mode: atomic selective wipe inside a transaction
-      let totalDeleted = 0;
-      await sql.transaction(async (tx) => {
+      const { deleteExpressionMedia } = await import("@/utils/storage/expressionStorage");
+      const result = await sql.transaction(async (tx) => {
+        // Registry creates and replacements take this lock too, so their references cannot race the wipe.
+        const [server] = await tx`SELECT server_id FROM servers WHERE server_id = ${serverId} FOR UPDATE`;
+        if (!server) return { deleted: false, media: [] };
+        const media = await tx<Array<{ custom_expression_id: string; storage_reference: string }>>`
+          SELECT custom_expression_id, storage_reference FROM custom_expressions
+          WHERE server_id = ${serverId} AND storage_reference IS NOT NULL FOR UPDATE
+        `;
+        if (!options.preservePersonas) {
+          const deleted = await tx`DELETE FROM servers WHERE server_id = ${serverId}`;
+          return { deleted: deleted.count > 0, media };
+        }
+        let totalDeleted = 0;
         // Wipe every server-scoped table in the maintained list
         for (const table of ServerRepository.PRESERVE_MODE_WIPE_TABLES) {
           // table name is a constant from a private allowlist, not user input, so safe to interpolate
@@ -2106,14 +2354,23 @@ class ServerRepository implements IRepository<ServerExportShape> {
           DELETE FROM discord_managed_webhooks WHERE guild_disc_id = ${serverDiscId}
         `;
         totalDeleted += whResult.count ?? 0;
-        // Documents: only wipe serverwide rows; persona-scoped docs stay
-        const docResult = await tx`
-          DELETE FROM documents WHERE server_id = ${serverId} AND persona_id IS NULL
-        `;
-        totalDeleted += docResult.count ?? 0;
+        // Hosts without pgvector skip the RAG schema, so documents may not exist.
+        const [ragSchema] = await tx`SELECT to_regclass('public.documents') IS NOT NULL AS has_documents`;
+        if (ragSchema.has_documents) {
+          const docResult = await tx`
+            DELETE FROM documents WHERE server_id = ${serverId} AND persona_id IS NULL
+          `;
+          totalDeleted += docResult.count ?? 0;
+        }
+        return { deleted: totalDeleted > 0, media };
       });
-
-      return totalDeleted > 0;
+      if (result.deleted) {
+        invalidateEmojiStickerCache(serverId);
+        for (const media of result.media) {
+          await deleteExpressionMedia(media.storage_reference, serverId, media.custom_expression_id);
+        }
+      }
+      return result.deleted;
     } catch (error) {
       log.error(`[Nuke] Failed to nuke server ${serverId} (preserve=${options.preservePersonas})`, error);
       throw error;

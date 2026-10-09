@@ -8,10 +8,7 @@ import {
   touchUserVideoQuota,
 } from "@/utils/db/repositories/QuotaRepository";
 
-/**
- * Result of video quota check operations.
- * Shares the same shape as image quota checks for consistency.
- */
+/** Shares the same shape as image quota checks for consistency. */
 export interface VideoQuotaCheckResult {
   allowed: boolean;
   reason?: "user_quota_exceeded" | "serverwide_quota_exceeded" | "disabled";

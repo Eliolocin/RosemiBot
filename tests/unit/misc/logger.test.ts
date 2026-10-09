@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { buildLogStreams, LOG_REDACTION_PATHS, log, sanitizeLogPayload } from "@/utils/misc/logger";
+import { buildLogStreams, buildMetricPayload, LOG_REDACTION_PATHS, log, sanitizeLogPayload } from "@/utils/misc/logger";
 import pino from "pino";
 
 const originalLogMaxStringLength = process.env.LOG_MAX_STRING_LENGTH;
@@ -217,6 +217,27 @@ describe("buildLogStreams", () => {
       expect(sanitized.endsWith("\x1b[0m")).toBe(true);
     } finally {
       delete process.env.LOG_MAX_STRING_LENGTH;
+    }
+  });
+
+  test("metric payloads redact free-text credentials while numeric fields keep their type", () => {
+    const syntheticKey = "sk-proj-SYNTHETICmetricCANARY0123456789";
+    const payload = buildMetricPayload("panel_failure_detail", {
+      reason: "custom_endpoint_unreachable",
+      detail: `HTTP 401 from https://admin:hunter2-canary@endpoint.example/v1 with Bearer ${syntheticKey}`,
+      apiKey: "plain-canary-value",
+      duration_ms: 42,
+      rss_mb: 12.5,
+    });
+    const serialized = JSON.stringify(payload);
+
+    expect(payload.metric).toBe("panel_failure_detail");
+    expect(payload.reason).toBe("custom_endpoint_unreachable");
+    expect(payload.duration_ms).toBe(42);
+    expect(payload.rss_mb).toBe(12.5);
+    expect(payload.apiKey).toBe("[REDACTED]");
+    for (const canary of [syntheticKey, "hunter2-canary", "plain-canary-value"]) {
+      expect(serialized).not.toContain(canary);
     }
   });
 

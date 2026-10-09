@@ -145,6 +145,17 @@ const COMMAND_LOCALIZATION_ALIASES: Record<string, string> = {
   "commands.memory.personal.remove.description": "commands.forget.memory.personal.description",
   "commands.memory.server.add.description": "commands.teach.memory.server.description",
   "commands.memory.server.remove.description": "commands.forget.memory.server.description",
+  "commands.nsfw.persona.default.type_description": "commands.persona.default.type_description",
+  "commands.nsfw.persona.default.type_choice_default": "commands.persona.default.type_choice_default",
+  "commands.nsfw.persona.default.type_choice_alter": "commands.persona.default.type_choice_alter",
+  "commands.nsfw.persona.import.file_description": "commands.persona.import.file_description",
+  "commands.nsfw.persona.import.type_description": "commands.persona.import.type_description",
+  "commands.nsfw.persona.import.triggers_description": "commands.persona.import.triggers_description",
+  "commands.nsfw.persona.import.memories_description": "commands.persona.import.memories_description",
+  "commands.nsfw.persona.import.type_choice_main": "commands.persona.import.type_choice_main",
+  "commands.nsfw.persona.import.type_choice_alter": "commands.persona.import.type_choice_alter",
+  "commands.nsfw.persona.import.memories_choice_preserve": "commands.persona.import.memories_choice_preserve",
+  "commands.nsfw.persona.import.memories_choice_fork": "commands.persona.import.memories_choice_fork",
 };
 
 function getCommandLocalizationAliases(key: string): string[] {

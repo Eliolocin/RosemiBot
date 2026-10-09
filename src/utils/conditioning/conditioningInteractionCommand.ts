@@ -18,6 +18,7 @@ import { filterPersonasForTrigger, isPersonaAllowedForTrigger } from "@/utils/pe
 import { handlePersonaAutocomplete } from "@/utils/discord/autocomplete/personaAutocomplete";
 import { resolveFallbackPersona } from "@/utils/discord/personaTurnDetectionResolver";
 import { normalizeMessageFetchLimit } from "@/utils/discord/messageFetchLimit";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 const EMBED_COLOR_BY_TYPE: Record<ConditioningType, ColorCode> = {
   reward: ColorCode.AFFECTION,
@@ -237,7 +238,7 @@ export function createConditioningInteractionCommand(
       });
 
       const interactionEmbed = new EmbedBuilder()
-        .setTitle(localizer(locale, `${commandKey}.embed_title`))
+        .setTitle(localizedStatusTitle(locale, `${commandKey}.embed_title`, EMBED_COLOR_BY_TYPE[type]))
         .setColor(EMBED_COLOR_BY_TYPE[type]);
 
       if (reasonText.length > 0) {

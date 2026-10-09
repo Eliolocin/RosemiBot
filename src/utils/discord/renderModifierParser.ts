@@ -6,6 +6,13 @@ const WEBHOOK_USERNAME_LIMIT = 80;
 const RENDER_MODIFIER_LIMIT = 64;
 const TRUNCATION_SUFFIX = "...";
 
+/**
+ * Modifier in the decorated "Persona (neutral)" webhook name an alter uses when it reverts from a
+ * sprite to its base appearance and would otherwise share the sprite's clean username, which makes
+ * Discord group the reverted message under the sprite's avatar.
+ */
+export const NEUTRAL_APPEARANCE_MODIFIER = "neutral";
+
 export type RenderModifierName = {
   sourceName: string;
   modifier: string;
@@ -124,6 +131,26 @@ export function parseLeadingRenderModifier(
   }
 
   return null;
+}
+
+/**
+ * Reports whether `text` opens with a plain, undecorated label naming one of `sourceNames`, in the
+ * same forms stripLeakedOwnNameLabels removes ("Locke:", "**Locke:**", "**Locke**:"). The stream
+ * treats it as the model returning to its base appearance after a sprite.
+ *
+ * Accepts only the ASCII colon: a label this reports must also be one the output cleaner strips,
+ * or the reset would ship with its label still visible.
+ */
+export function hasLeadingPlainOwnNameLabel(text: string, sourceNames: readonly string[]): boolean {
+  if (!text.trim() || text.trimStart().startsWith("```")) return false;
+
+  const labelForms = collectRenderModifierSourceNames("", sourceNames).flatMap((sourceName) => {
+    const escaped = escapeRegExp(sourceName);
+    return [`\\*\\*${escaped}:\\*\\*`, `\\*\\*${escaped}\\*\\*:`, `${escaped}:`];
+  });
+  if (labelForms.length === 0) return false;
+
+  return new RegExp(`^\\s*(?:${labelForms.join("|")})`, "iu").test(text);
 }
 
 /**
@@ -246,11 +273,16 @@ export function isAllowedRenderModifierSpeakerLabel(label: string, sourceNames: 
  * flipped interpretation wins, since all newly sent messages use it; legacy
  * persona-on-persona messages in the transition window are misattributed until
  * they age out of the history fetch window.
+ *
+ * A legacy-shaped "Persona (neutral)" name resolves to the plain persona name with
+ * `isNeutralAppearance` set: it is usually an alter's group-break revert to its base
+ * appearance, but a real sprite named "neutral" produces the same name, so callers
+ * check the sprite message mapping before settling on the plain name.
  */
 export function resolveRenderModifierSourcePersona(
   webhookName: string,
   personaByNickname: Map<string, TomoriState>,
-): { persona: TomoriState; displayName: string } | null {
+): { persona: TomoriState; displayName: string; isNeutralAppearance?: boolean } | null {
   const parsed = parseRenderModifierWebhookName(webhookName);
   if (!parsed) return null;
 
@@ -264,6 +296,10 @@ export function resolveRenderModifierSourcePersona(
 
   const legacyPersona = personaByNickname.get(normalizeRenderModifierName(parsed.sourceName));
   if (!legacyPersona) return null;
+
+  if (normalizeRenderModifierName(parsed.modifier) === normalizeRenderModifierName(NEUTRAL_APPEARANCE_MODIFIER)) {
+    return { persona: legacyPersona, displayName: legacyPersona.persona_nickname, isNeutralAppearance: true };
+  }
 
   return {
     persona: legacyPersona,

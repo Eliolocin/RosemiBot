@@ -50,11 +50,8 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
   }
 
   /**
-   * Loads server memories scoped to a persona lineage, with optional user filter.
-   * Used by /memories to populate the selection list.
-   *
-   * @param userId           - If provided, only returns memories owned by this user
-   * @returns Ordered array of ServerMemoryRow (newest first)
+   * @param userId - If provided, only returns memories owned by this user
+   * @returns Memories ordered newest first
    */
   async loadServerMemoriesScoped(
     serverId: number,
@@ -226,8 +223,6 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
   }
 
   /**
-   * Returns the count of documents in the given server + scope.
-   *
    * @param personaId - null = serverwide scope; non-null = per-persona scope
    */
   async countDocumentsScoped(serverId: number, personaId: number | null): Promise<number> {
@@ -656,10 +651,7 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
     }
   }
 
-  /**
-   * Deletes a single chunk by ID. Returns true on success.
-   * Leaves a gap in chunk_index; callers should rebuild text_content separately if needed.
-   */
+  /** Leaves a gap in chunk_index; callers should rebuild text_content separately if needed. */
   async deleteChunk(chunkId: number, serverId: number, personaId: number | null): Promise<boolean> {
     try {
       const [deleted] =

@@ -4,48 +4,38 @@ sidebar:
   order: 1
 ---
 
-TomoriBot puede generar imágenes a partir de un prompt de texto o editar una imagen de referencia. Usa
-`/generate image` o solo pídeselo ("dibújame un panda rojo tomando café").
+TomoriBot puede generar imágenes a partir de un mensaje de texto o editando una imagen de referencia. Usa `/generate image` o describe lo que quieres en el chat ("dibuja un panda rojo tomando café").
 
 ## Qué puede hacer
 
-- **Texto a imagen**: genera a partir de un prompt.
-- **Imagen a imagen**: edita o cambia el estilo de una imagen de referencia completa.
-- **Inpainting**: vuelve a dibujar una región específica y conserva el resto.
-- **Outpainting**: extiende el lienzo más allá del encuadre original.
-- Relaciones de aspecto configurables.
-- Las imágenes de referencia pueden provenir de archivos adjuntos, stickers, emojis o avatares de usuarios/personas. Señala un mensaje o menciona a un usuario/persona para usar su avatar como referencia.
+- **Texto a imagen**: genera una imagen a partir de una descripción.
+- **Imagen a imagen**: edita o cambia el estilo de una imagen existente.
+- **Inpainting**: vuelve a dibujar una región específica manteniendo el resto.
+- **Pintura exterior**: extiende el lienzo más allá del marco original.
+- **Relaciones de aspecto personalizables**.
+- **Imágenes de referencia**: extraídas de archivos adjuntos de mensajes, stickers, emojis o avatares de usuarios y personas. Mencione a un usuario o persona para utilizar su avatar como referencia.
 
-Los modos de edición disponibles dependen del backend. Texto a imagen e imagen a imagen funcionan en
-los proveedores en la nube integrados (Google, Vertex, OpenRouter), mientras que inpainting y outpainting
-los proporcionan endpoints personalizados locales [ComfyUI](/es-419/self-hosting/local-endpoints/setup-comfyui/)
-y dependen de las capacidades declaradas por ese endpoint. Lo que el backend no puede hacer simplemente
-se oculta, así que no ofrecerá un modo que tu configuración no admita.
+Los modos de edición disponibles dependen del backend activo. Trabajo de texto a imagen e imagen a imagen en proveedores de nube (Google, Vertex, OpenRouter). La pintura interna y externa son compatibles con los puntos finales personalizados locales [ComfyUI](/es-419/self-hosting/local-endpoints/setup-comfyui/) y dependen de las capacidades declaradas de ese punto final. Los modos que su configuración no admite se ocultan automáticamente del modelo.
 
-Al generar una imagen, usa el contexto de Apariencia física de tu persona, además de etiquetas positivas
-y negativas predeterminadas (cuando el backend admite prompts negativos). El resultado se entrega como una
-galería de medios de Discord con detalles de generación, incluidos los usuarios o personas de referencia.
+Cuando genera una imagen, combina las etiquetas de apariencia de su persona con etiquetas positivas y negativas en todo el servidor (cuando sea compatible). El resultado llega como una galería multimedia Discord con detalles de generación, incluidos los usuarios o personas a los que se hace referencia.
 
 ## Personalizar etiquetas
 <!-- anchor: tag-customization -->
 
-Cada fuente de etiquetas anterior se puede editar y tiene un alcance distinto. Todas abren un modal
-rellenado con las etiquetas actuales para que las edites directamente:
+Cada fuente de etiqueta se puede editar en su lugar con un modal precargado:
 
-- **`/config` > Persona > Apariencia**: etiquetas de `Apariencia Física` de la persona seleccionada (cómo *se ve*). Requiere el permiso Administrar servidor.
-- **`/personal config`**: tus propias etiquetas de apariencia, aplicadas cuando una generación te referencia. Te siguen en todos los servidores (consulta [Personalización](/es-419/features/knowledge/personalization/)).
-- Etiquetas positivas y negativas predeterminadas en `/config` > Modelos > Valores predeterminados de generación de imágenes: etiquetas predeterminadas del servidor que se añaden a cada generación (o la orientan en sentido contrario). Las negativas solo tienen efecto cuando el backend admite prompts negativos. Enviar el modal con el cuadro vacío restablece esa lista a los valores predeterminados integrados.
+- **`/config` > `Persona` > `Detalles de generación de imágenes`**: las etiquetas `Apariencia Física` de la persona seleccionada (cómo se ve). Requiere el permiso Administrar servidor.
+- **`/personal config`**: tus propias etiquetas de apariencia, que se aplican cada vez que una generación de imágenes hace referencia a ti. Te sigue en todos los servidores (consulte [Personalización](/es-419/features/knowledge/personalization/)).
+- **`/config` > `Modelos` > `Valores de imagen`**: use `Editar positivo` y `Editar negativo` para configurar etiquetas predeterminadas agregadas o alejadas de cada generación. Las etiquetas negativas solo se aplican cuando el backend admite mensajes negativos. Al enviar un cuadro vacío se restablecen los valores predeterminados integrados.
 
 ## Configuración
 
-1. Configura un modelo de imágenes con `/config` > Modelos > Cambiar modelos.
-2. Asegúrate de que la generación de imágenes esté permitida. Depende de la capacidad `imagegen_enabled` (`/config` > Permisos).
-3. Pídele que genere una imagen o ejecuta `/generate image`.
+1. Configura un modelo de imagen con `/config` > `Modelos` > `Cambiar modelos`.
+2. Habilita la generación de imágenes en `/config` > `Permisos` (`imagegen_enabled`).
+3. Pregúntale en el chat o ejecuta `/generate image`.
 
 ## Compatibilidad con proveedores
 
-La generación nativa de imágenes está disponible en Google, Vertex AI, Vertex AI Express, OpenRouter,
-Z.ai, NVIDIA NIM y NovelAI (con estilo anime; el inpainting nativo está creado y llegará pronto,
-pero está desactivado mientras se perfecciona la mezcla de bordes). Consulta [Proveedores y modelos](/es-419/features/setup-administration/providers-and-models/#proveedores-compatibles) para ver la matriz completa y cómo añadir un proveedor.
+La generación de imágenes nativas está disponible en Google, Vertex AI, Vertex AI Express, OpenRouter, Z.ai, NVIDIA NIM y NovelAI (estilo anime). Para obtener la matriz de proveedores completa, consulte [Proveedores y modelos](/es-419/features/setup-administration/providers-and-models/#supported-providers).
 
-Para la generación local con tu propio hardware mediante ComfyUI, consulta [Configuración: ComfyUI](/es-419/self-hosting/local-endpoints/setup-comfyui/).
+Para la generación local en su propio hardware a través de ComfyUI, consulte [Configuración: ComfyUI](/es-419/self-hosting/local-endpoints/setup-comfyui/).

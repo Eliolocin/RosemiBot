@@ -21,6 +21,14 @@ function estimateInputTokens(items: StructuredContextItem[]): number {
   return Math.floor(totalChars / 4);
 }
 
+/**
+ * The estimated input tokens history may fill before truncation starts. The 10% margin absorbs
+ * tokenizer estimation error, and `/context` draws its free space against this same figure.
+ */
+export function computeSafeInputBudget(contextLength: number, maxCompletionTokens: number): number {
+  return Math.floor((contextLength - maxCompletionTokens) * 0.9);
+}
+
 type TruncationResult = {
   truncated: StructuredContextItem[];
   historyPairsDropped: number;
@@ -47,9 +55,7 @@ export function truncateDialogueHistory(
   contextLength: number,
   maxCompletionTokens: number,
 ): TruncationResult {
-  // Calculate the safe input budget: reserve maxCompletionTokens for output,
-  //    then apply a 10% margin to absorb tokenizer estimation error
-  const safeInputBudget = Math.floor((contextLength - maxCompletionTokens) * 0.9);
+  const safeInputBudget = computeSafeInputBudget(contextLength, maxCompletionTokens);
 
   const items = [...contextItems];
   let historyPairsDropped = 0;

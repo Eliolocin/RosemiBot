@@ -1,1 +1,632 @@
-[]
+[
+  {
+    "provider": "google",
+    "table": "llmSections",
+    "codename": "gemini-3.1-pro-preview-customtools",
+    "releaseDate": "2026-02-19",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "google",
+    "table": "llmSections",
+    "codename": "gemini-3.8-flash",
+    "releaseDate": "2026-09-02",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "google",
+    "table": "imageSections",
+    "codename": "gemini-3.1-flash-lite-image",
+    "releaseDate": "2026-06-30",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "vertex",
+    "table": "llmSections",
+    "codename": "gemini-3.1-pro-preview-customtools",
+    "releaseDate": "2026-02-19",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "vertex",
+    "table": "llmSections",
+    "codename": "gemini-3.8-flash",
+    "releaseDate": "2026-09-02",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "zai",
+    "table": "llmSections",
+    "codename": "zai/glm-5.3-flash",
+    "releaseDate": "2026-08-26",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "zai",
+    "table": "llmSections",
+    "codename": "zai/glm-5.3-flashx",
+    "releaseDate": "2026-09-18",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "zai",
+    "table": "llmSections",
+    "codename": "zai/glm-5.2",
+    "releaseDate": "2026-06-13",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "zai",
+    "table": "llmSections",
+    "codename": "zai/glm-4.7-flashx",
+    "releaseDate": "2026-01-19",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "zai",
+    "table": "llmSections",
+    "codename": "zai/glm-5.3",
+    "releaseDate": "2026-08-14",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "zaicoding",
+    "table": "llmSections",
+    "codename": "glm-5.3-flash",
+    "releaseDate": "2026-08-26",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "zaicoding",
+    "table": "llmSections",
+    "codename": "glm-5.3-flashx",
+    "releaseDate": "2026-09-18",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "zaicoding",
+    "table": "llmSections",
+    "codename": "glm-5.2",
+    "releaseDate": "2026-06-13",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "zaicoding",
+    "table": "llmSections",
+    "codename": "glm-4.7-flashx",
+    "releaseDate": "2026-01-19",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "zaicoding",
+    "table": "llmSections",
+    "codename": "glm-5.3",
+    "releaseDate": "2026-08-14",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "anthropic",
+    "table": "llmSections",
+    "codename": "claude-opus-4-5",
+    "releaseDate": "2025-11-24",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "anthropic",
+    "table": "llmSections",
+    "codename": "claude-sonnet-4-5",
+    "releaseDate": "2025-09-29",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "anthropic",
+    "table": "llmSections",
+    "codename": "claude-opus-5-5",
+    "releaseDate": "2026-09-22",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "anthropic",
+    "table": "llmSections",
+    "codename": "claude-fable-5-1",
+    "releaseDate": "2026-09-01",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "anthropic",
+    "table": "llmSections",
+    "codename": "claude-opus-5",
+    "releaseDate": "2026-07-24",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "anthropic",
+    "table": "llmSections",
+    "codename": "claude-haiku-4-5-20251001",
+    "releaseDate": "2025-10-15",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "anthropic",
+    "table": "llmSections",
+    "codename": "claude-sonnet-5-5",
+    "releaseDate": "2026-09-28",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "anthropic/claude-opus-4.8",
+    "releaseDate": "2026-05-28",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "anthropic/claude-opus-5",
+    "releaseDate": "2026-07-24",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "anthropic/claude-sonnet-5.5",
+    "releaseDate": "2026-09-28",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "anthropic/claude-sonnet-5",
+    "releaseDate": "2026-06-30",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "anthropic/claude-opus-5.5",
+    "releaseDate": "2026-09-22",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "deepseek/deepseek-v4-flash-0731",
+    "releaseDate": "2026-07-31",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "deepseek/deepseek-v4.1-flash",
+    "releaseDate": "2026-09-10",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "deepseek/deepseek-v4-flash-vision-exp",
+    "releaseDate": "2026-08-21",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "z-ai/glm-5.3-prime",
+    "releaseDate": "2026-09-23",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "z-ai/glm-5v-turbo",
+    "releaseDate": "2026-04-01",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "z-ai/glm-5.3-flash",
+    "releaseDate": "2026-08-26",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "z-ai/glm-5.3-flashx",
+    "releaseDate": "2026-09-18",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "z-ai/glm-5.2",
+    "releaseDate": "2026-06-13",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "z-ai/glm-5.1",
+    "releaseDate": "2026-04-07",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "z-ai/glm-5-turbo",
+    "releaseDate": "2026-03-16",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "z-ai/glm-5.3",
+    "releaseDate": "2026-08-14",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "~z-ai/glm-flash-latest",
+    "releaseDate": "2026-08-27",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "~z-ai/glm-latest",
+    "releaseDate": "2026-08-19",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "~openai/gpt-terra-latest",
+    "releaseDate": "2026-09-11",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "~openai/gpt-luna-latest",
+    "releaseDate": "2026-09-11",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "~openai/gpt-sol-latest",
+    "releaseDate": "2026-09-11",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "~openai/gpt-astra-latest",
+    "releaseDate": "2026-09-11",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "~openai/gpt-mini-latest",
+    "releaseDate": "2026-04-27",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "x-ai/grok-4.7",
+    "releaseDate": "2026-09-21",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "x-ai/grok-4.6",
+    "releaseDate": "2026-08-12",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "~anthropic/claude-fable-latest",
+    "releaseDate": "2026-06-09",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "~deepseek/deepseek-flash-latest",
+    "releaseDate": "2026-09-14",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "~deepseek/deepseek-pro-latest",
+    "releaseDate": "2026-09-14",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "google/gemini-3.6-flash",
+    "releaseDate": "2026-07-21",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "google/gemini-3.5-flash-lite",
+    "releaseDate": "2026-07-21",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "google/gemini-3.5-flash",
+    "releaseDate": "2026-05-19",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "google/gemini-3.7-flash",
+    "releaseDate": "2026-08-13",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "google/gemini-3.8-flash",
+    "releaseDate": "2026-09-02",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "mistralai/mistral-small-3.2-24b-instruct",
+    "releaseDate": "2025-06-20",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "mistralai/mistral-small-2603",
+    "releaseDate": "2026-03-16",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "moonshotai/kimi-k2.7-code",
+    "releaseDate": "2026-06-12",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "nvidia/nemotron-3.5-lightning",
+    "releaseDate": "2026-08-11",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "nvidia/nemotron-3-ultra-550b-a55b",
+    "releaseDate": "2026-06-04",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "nvidia/nemotron-3.5-content-safety",
+    "releaseDate": "2026-06-04",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "xiaomi/mimo-v2.6-pro",
+    "releaseDate": "2026-09-22",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "xiaomi/mimo-v2.6-pro-ultraspeed",
+    "releaseDate": "2026-09-21",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "xiaomi/mimo-v2.6-flash",
+    "releaseDate": "2026-09-22",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.7-max",
+    "releaseDate": "2026-05-21",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.8-27b",
+    "releaseDate": "2026-08-14",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.8-2.4t-a95b",
+    "releaseDate": "2026-08-12",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.7-flash",
+    "releaseDate": "2026-07-15",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.8-omni-flash",
+    "releaseDate": "2026-09-17",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.6-35b-a3b",
+    "releaseDate": "2026-04-17",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.8-flash",
+    "releaseDate": "2026-08-26",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.6-max-preview",
+    "releaseDate": "2026-04-20",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.6-27b",
+    "releaseDate": "2026-04-22",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.6-plus",
+    "releaseDate": "2026-04-02",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.7-plus",
+    "releaseDate": "2026-06-02",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.8-max-0902",
+    "releaseDate": "2026-09-02",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "openai/gpt-6-astra-pro",
+    "releaseDate": "2026-09-04",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "openai/gpt-6-sol-pro",
+    "releaseDate": "2026-09-22",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "openai/gpt-6.1-sol-pro",
+    "releaseDate": "2026-09-29",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "openai/gpt-6-luna-pro",
+    "releaseDate": "2026-09-22",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "imageSections",
+    "codename": "google/gemini-3.1-flash-lite-image",
+    "releaseDate": "2026-06-30",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "imageSections",
+    "codename": "openai/gpt-5.4-image-2",
+    "releaseDate": "2026-04-21",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "imageSections",
+    "codename": "openai/gpt-5-image",
+    "releaseDate": "2025-10-14",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "nvidia",
+    "table": "llmSections",
+    "codename": "google/diffusiongemma-26b-a4b-it",
+    "releaseDate": "2026-06-09",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "nvidia",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.5-122b-a10b",
+    "releaseDate": "2026-02-23",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "nvidia/nemotron-3.5-content-safety:free",
+    "releaseDate": "2026-06-04",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "releaseDate": "2026-04-28",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "releaseDate": "2026-06-04",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "nvidia/nemotron-3.5-lightning:free",
+    "releaseDate": "2026-08-11",
+    "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "qwen/qwen3.8-27b:free",
+    "releaseDate": "2026-08-14",
+    "offeredAt": "2026-10-04"
+  }
+]

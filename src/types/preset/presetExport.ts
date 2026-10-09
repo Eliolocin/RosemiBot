@@ -78,6 +78,8 @@ export interface PresetExportData {
   nai_attg_genre?: string | null;
   /** ATTG: Quality stars (Erato only, 1-5) */
   nai_attg_stars?: number | null;
+  /** Absent in exports that predate the flag, which were all SFW. */
+  is_nsfw?: boolean;
 }
 
 /**
@@ -91,9 +93,6 @@ export interface PresetExport {
   data: PresetExportData;
 }
 
-/**
- * Result type for export operations
- */
 export type ExportResult =
   | {
       success: true;
@@ -104,9 +103,6 @@ export type ExportResult =
       error: string; // Locale key for error message
     };
 
-/**
- * Result type for import operations
- */
 export type ImportResult =
   | {
       success: true;
@@ -133,9 +129,6 @@ export interface ValidationResult {
   error?: string; // Locale key or pipe-separated error
 }
 
-/**
- * Zod schema for preset export data validation
- */
 export const presetExportDataSchema = z.object({
   tomori_nickname: z.string().min(1, "Nickname cannot be empty").max(100, "Nickname too long"),
   attribute_list: z.array(z.string().max(PRESET_MAX_STRING_LENGTH)).max(PRESET_MAX_ATTRIBUTES),
@@ -174,6 +167,7 @@ export const presetExportDataSchema = z.object({
   nai_attg_tags: z.string().max(PRESET_MAX_STRING_LENGTH).nullable().optional(),
   nai_attg_genre: z.string().max(PRESET_MAX_STRING_LENGTH).nullable().optional(),
   nai_attg_stars: z.number().int().min(1).max(5).nullable().optional(),
+  is_nsfw: z.boolean().optional(),
 });
 
 /**

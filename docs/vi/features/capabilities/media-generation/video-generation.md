@@ -4,39 +4,29 @@ sidebar:
   order: 2
 ---
 
-TomoriBot có thể tạo video ngắn từ prompt văn bản hoặc bằng cách tạo chuyển động cho ảnh tham chiếu.
-Hãy dùng lệnh `/generate video`, hoặc chỉ cần yêu cầu bot.
+TomoriBot có thể tạo các video ngắn từ lời nhắc văn bản hoặc bằng cách tạo hoạt ảnh cho hình ảnh hiện có. Sử dụng `/generate video` hoặc hỏi trực tiếp cô ấy trong cuộc trò chuyện.
 
 ## Những việc bot có thể làm
 
-- **Text-to-video**: tạo clip ngắn từ prompt.
-- **Image-to-video**: tạo chuyển động cho ảnh tham chiếu (ảnh đầu tiên từ tin nhắn được tham chiếu
-  sẽ trở thành khung hình bắt đầu).
-- **Image-to-video lặp vô tận (looping)**: khi được yêu cầu qua đoạn chat, các model được hỗ trợ có thể tái
-  sử dụng ảnh bắt đầu làm khung hình kết thúc.
-- Tùy chỉnh tỷ lệ khung hình.
+- **Chuyển văn bản thành video**: tạo một đoạn clip ngắn từ phần mô tả.
+- **Chuyển hình ảnh thành video**: tạo hiệu ứng động cho hình ảnh. Hình ảnh đầu tiên từ tin nhắn được tham chiếu sẽ trở thành khung bắt đầu.
+- **Lặp từ hình ảnh sang video**: khi được yêu cầu thông qua trò chuyện, các kiểu máy được hỗ trợ có thể sử dụng lại hình ảnh bắt đầu làm khung hình cuối cùng.
+- **Tỷ lệ khung hình có thể tùy chỉnh**.
 
-Image-to-video và tính năng lặp phụ thuộc vào khả năng xử lý khung hình đầu/cuối của model đã chọn.
-TomoriBot sẽ kiểm tra danh mục model video hiện tại của OpenRouter trước khi gửi tác vụ tính phí và
-yêu cầu bạn xóa ảnh, tắt chế độ lặp hoặc chọn model tương thích khi cần thiết.
+Chuyển đổi hình ảnh thành video và lặp lại tùy thuộc vào khả năng hỗ trợ khung hình đầu tiên và cuối cùng của model đã chọn. TomoriBot kiểm tra danh mục model của OpenRouter trước khi gửi thế hệ và nhắc bạn xem có cần xóa hình ảnh hoặc vòng lặp cho model đã chọn hay không.
 
-Tính năng tạo video sử dụng quy trình thăm dò không đồng bộ: yêu cầu được gửi đi, sau đó
-TomoriBot liên tục thăm dò nhà cung cấp cho đến khi clip hoàn tất và đăng lên khi sẵn sàng. Các clip
-lớn có thể mất một khoảng thời gian.
+Việc tạo video cần có thời gian: TomoriBot gửi công việc cho nhà cung cấp, kiểm tra mức độ hoàn thành ở chế độ nền và đăng video đã hoàn thành lên kênh khi sẵn sàng.
 
 ## Thiết lập
 
-1. Cấu hình model video bằng `/config` > Models > Switch Models.
-2. Đảm bảo tính năng tạo hình ảnh/phương tiện được cho phép qua `/config` > Permissions.
-3. Yêu cầu bot tạo video, hoặc chạy `/generate video`.
+1. Chọn kiểu video trong `/config` > `Model` > Chuyển đổi kiểu máy.
+2. Xác nhận việc tạo video được bật trong `/config` > `Quyền hạn` (`video_generation_enabled`).
+3. Hỏi cô ấy trong phần trò chuyện hoặc chạy `/generate video`.
 
 ## Hỗ trợ nhà cung cấp
 
-Tính năng tạo video nguyên bản khả dụng trên Google, OpenRouter, và Z.ai. Xem bảng tương thích
-đầy đủ trong [Nhà cung cấp & model](/vi/features/setup-administration/providers-and-models/#supported-providers).
+Tạo video gốc có sẵn trên Google, OpenRouter và Z.ai. Xem ma trận đầy đủ trong [Nhà cung cấp & Model](/vi/features/setup-administration/providers-and-models/#supported-providers).
 
-Để tạo video cục bộ qua ComfyUI (ví dụ: quy trình WAN image-to-video), hãy xem
-[Cài đặt: ComfyUI](/vi/self-hosting/local-endpoints/setup-comfyui/).
+Để tạo video cục bộ qua ComfyUI (chẳng hạn như quy trình chuyển hình ảnh sang video WAN), hãy xem [Thiết lập: ComfyUI](/vi/self-hosting/local-endpoints/setup-comfyui/).
 
-Để tìm hiểu kiến trúc tạo nội dung và thăm dò nội bộ, hãy xem tài liệu tham khảo về
-[tạo video](/en/architecture/subsystems/video-generation/).
+Để biết kiến trúc tạo nội bộ và thăm dò ý kiến, hãy xem tài liệu tham khảo về [tạo video](/en/architecture/subsystems/video-generation/).

@@ -1,4 +1,5 @@
 import { log } from "@/utils/misc/logger";
+import { lstatSync, mkdirSync, writeFileSync } from "node:fs";
 
 /**
  * Serializes the live heap in Chrome DevTools format.
@@ -32,6 +33,21 @@ export function registerHeapSnapshotHandler(
 ): void {
   if (!dir) return;
 
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const destination = lstatSync(dir);
+    if (
+      !destination.isDirectory() ||
+      destination.isSymbolicLink() ||
+      (process.platform !== "win32" && ((destination.mode & 0o077) !== 0 || destination.uid !== process.getuid?.()))
+    ) {
+      throw new Error("Diagnostic directory must be owned by the bot user and accessible only to that user.");
+    }
+  } catch {
+    log.warn("Heap snapshot handler disabled: configure a private diagnostic directory owned by the bot user.");
+    return;
+  }
+
   let inProgress = false;
 
   process.on("SIGUSR2", () => {
@@ -61,7 +77,10 @@ async function writeHeapSnapshot(dir: string, generate: SnapshotGenerator): Prom
   const path = `${dir}/heap-${new Date().toISOString().replace(/[:.]/g, "-")}.heapsnapshot`;
 
   try {
-    const bytes = await Bun.write(path, generate());
+    const snapshot = generate();
+    // Exclusive creation prevents reuse of a readable file or following a pre-existing symlink.
+    writeFileSync(path, snapshot, { mode: 0o600, flag: "wx" });
+    const bytes = Buffer.byteLength(snapshot);
 
     log.metric("heap_snapshot", {
       path,

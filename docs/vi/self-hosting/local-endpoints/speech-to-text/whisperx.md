@@ -4,11 +4,11 @@ sidebar:
   order: 1
 ---
 
-WhisperX là giải pháp phiên âm cục bộ được khuyến nghị và thân thiện với người mới bắt đầu.
+Thiết lập tính năng chuyển giọng nói thành văn bản cục bộ, chính xác cho TomoriBot bằng máy chủ [WhisperX](https://github.com/m-bain/whisperX) đi kèm. WhisperX cung cấp khả năng sao chép âm thanh nhanh chóng với khả năng căn chỉnh theo cấp độ từ.
 
 ## Cài đặt
 
-Chạy các lệnh này từ thư mục gốc của kho lưu trữ TomoriBot, thư mục nơi bạn đã sao chép TomoriBot. Lệnh đầu tiên chuyển vào thư mục máy chủ STT:
+Chạy các lệnh này từ kho lưu trữ gốc TomoriBot:
 
 ### Windows PowerShell
 
@@ -32,7 +32,7 @@ python -m pip install -r requirements.txt
 python whisperx_server.py
 ```
 
-Giữ cửa sổ terminal đó mở trong khi TomoriBot đang sử dụng WhisperX. URL endpoint mặc định là `http://127.0.0.1:8021`.
+Giữ thiết bị đầu cuối đó mở trong khi TomoriBot đang sử dụng WhisperX. URL điểm cuối mặc định là `http://127.0.0.1:8021`.
 
 ## Đăng ký trong TomoriBot
 
@@ -46,6 +46,6 @@ bất kỳ giá trị nào mà `WHISPERX_MODEL` được thiết lập, làm mod
 
 Sử dụng `/providers` để đăng ký endpoint và thiết lập model. Sau đó mở `/config` > Models > Switch Models để chọn và kích hoạt endpoint đã đăng ký.
 
-## Sử dụng bản phiên âm
+## Sử dụng bản ghi
 
-Sau khi đăng ký, TomoriBot sẽ phiên âm các tệp âm thanh đính kèm trong nền và thêm văn bản vào ngữ cảnh trò chuyện. Chỉ sử dụng `/config` > Engine > Notices nếu bạn cũng muốn các bản phiên âm được gửi hiển thị rõ ràng trong đoạn chat.
+Sau khi đăng ký, TomoriBot sẽ chép lại các tệp đính kèm âm thanh ở chế độ nền và thêm văn bản vào ngữ cảnh trò chuyện. Chỉ sử dụng `/config` > Engine > Thông báo nếu bạn cũng muốn bản ghi được đăng rõ ràng trong cuộc trò chuyện.

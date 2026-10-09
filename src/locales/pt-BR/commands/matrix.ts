@@ -14,6 +14,10 @@ Abra {help_matrix}, depois Integrações > Matrix, para passos de configuração
       join_failed_description: `<#{channel_id}> foi vinculado a \`{room_id}\`, mas eu não consegui entrar na sala do Matrix automaticamente. Por favor, convide \`{bot_user_id}\` para a sala manualmente. Se você precisar dos passos de configuração e lista de limitações, abra {help_matrix} e vá para Integrações > Matrix.`,
       encrypted_room_title: `Não é Possível Vincular Sala Criptografada`,
       encrypted_room_description: `\`{room_id}\` tem criptografia ponta a ponta ativada. A criptografia do Matrix não pode ser desativada uma vez definida, então esta sala não pode ser usada para ponte. Por favor, crie uma nova sala do Matrix **sem** criptografia e convide \`{bot_user_id}\` para ela.`,
+      encryption_unknown_title: `Não Foi Possível Verificar a Criptografia da Sala`,
+      encryption_unknown_description: `Não consegui confirmar se \`{room_id}\` não é criptografada, por isso não a vinculei. Só faço ponte com salas que posso verificar, pois as mensagens são transmitidas como texto sem formatação.
+
+Convide \`{bot_user_id}\` para a sala, espere que ele entre e execute este comando novamente. Se o bot já estiver na sala, o homeserver pode estar inacessível; tente novamente em alguns minutos.`,
       matrix_not_configured_title: `Ponte Matrix Não Disponível`,
       matrix_not_configured_description: `A ponte Matrix não está configurada nesta instância do bot. Contate o dono do bot para ativá-la.`,
     },

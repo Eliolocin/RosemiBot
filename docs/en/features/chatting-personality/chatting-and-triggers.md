@@ -4,9 +4,9 @@ sidebar:
   order: 1
 ---
 
-TomoriBot only responds when something tells her to. This page covers the ways she can be
-triggered, how to chat hands-free with auto-trigger, and how to stop accidental triggers
-with Deliberate Trigger Mode.
+TomoriBot responds when summoned. This page covers the ways she can be triggered,
+how to enable hands-free chatting with auto-trigger, and how to prevent accidental
+activations with Deliberate Trigger Mode.
 
 ## How to Trigger Her
 <!-- anchor: how-to-trigger-her -->
@@ -15,101 +15,92 @@ By default, she replies when you:
 
 - **Mention her**: `@TomoriBot`
 - **Reply** to one of her messages (including a persona's webhook message)
-- **Use a trigger word**: any plain word you've registered, said anywhere in a message
-- **Use `/respond`**: manually prompt a reply
+- **Use a trigger word**: any registered trigger word anywhere in a message
+- **Use `/respond`**: manually request a response
 
-Trigger words are the most convenient path: once a word is registered, simply naming it
-activates her. In a DM, just say hi (no trigger needed).
+In a DM, send a message directly without any trigger word or mention.
 
 ### Managing Trigger Words
 <!-- anchor: managing-trigger-words -->
 
-Server managers use `/config` > Persona > Triggers to add or remove a selected persona's trigger
-words. Ordinary members can inspect the page, but its mutation controls are disabled.
+Server managers use `/config` > Persona > Triggers to add or remove trigger words for
+the active persona. Members without Manage Server can view existing triggers in read-only mode.
 
 ## Expressions & Reactions
 <!-- anchor: expressions--reactions -->
 
-Once she replies, she can use your server's custom emojis and stickers, and react to
-messages:
+When replying, she can use server custom emojis, stickers, and emoji reactions:
 
-- Custom emojis are used naturally in conversation with case-insensitive `:name:` syntax.
-- Stickers can accompany replies; she can also add emoji reactions.
-- Run `/expressions initialize` to register your server's emojis and stickers so she
-  uses them accurately.
+- Custom emojis appear naturally in conversation with `:name:` syntax.
+- She can send one sticker per reply, as its own message before, between, or after her text.
+- Server managers can add [custom expressions](/features/chatting-personality/behavior-tweaking/#expressions)
+  with `/expressions manage`: reaction GIFs, image jokes, or links to any website.
+- Run `/expressions initialize` so she learns when each server emoji and sticker fits.
 
 ## Roleplay Channels
 <!-- anchor: roleplay-channels -->
 
-Roleplay channels suppress custom emoji and sticker use in her responses. People can also use
-`/tool delete turn` there to remove her latest turn without Manage Server permission.
+Roleplay channels suppress custom emoji and sticker messages in her responses. Members can
+also use `/tool delete turn` in roleplay channels to delete her latest turn without needing
+the Manage Server permission.
 
-Configure the channels from the Channel Rules page in `/config`.
+Configure roleplay channels in `/config` > Channels > Channel Rules.
 
 ## Situational Awareness
 
-Beyond the message text, she's handed a snapshot of the Discord context every time she
-replies, so she can talk about *where* and *when* the conversation is happening, not just
-what was said. This context includes:
+Whenever she replies, she receives context describing where and when the conversation is
+happening:
 
-- **Where she is**: the current server's name and description (or that it's a Direct
-  Message), and the current channel.
-- **The current time**: the server's local time and rough time of day, based on
-  `/config` > Engine > General, plus each person's own local time if they've set `/personal config`.
-- **Who's in the conversation**: participants' display names, how to mention them, any
-  physical-appearance tags, and their pending reminders.
-- **What someone's up to (presence)**: a user's Discord activity: what they are playing,
-  streaming, listening to (such as a Spotify track and artist), watching, or their
-  custom status.
+- **Location**: the server name, channel name, or whether the chat is a Direct Message.
+- **Time**: server local time and time of day from `/config` > Behavior > General Behavior,
+  plus local clocks for users who set a timezone in `/personal config`.
+- **Participants**: display names, mention handles, appearance tags, and pending reminders.
+- **Discord activity**: what participants are currently playing, streaming, listening to
+  (such as Spotify tracks), or their custom status.
 
-Presence is privacy-gated: it's only shared for users at the `None` privacy level (the
-default: see `/personal config`) and only when the bot has Discord's `Guild Presences`
-intent enabled. Users who raise their privacy, or self-hosts running without that intent,
-simply won't have their activity surfaced to her.
+Activity status requires Discord's `Guild Presences` intent and respects user privacy
+(`/personal config`). Users who raise their privacy setting are not included in presence context.
 
 ## Auto-Trigger (Hands-Free Chatting)
 
-Auto-trigger lets her join the conversation without being named at all.
+Auto-trigger lets TomoriBot join conversations without being directly mentioned:
 
-- `/server autotrigger channels`: set the channels where she responds without a mention.
-- `/server autotrigger threshold`: set how many messages accumulate before she chimes in.
-- `/config` > Behavior > Trigger: add a probabilistic timer-based auto-trigger to a channel.
-- `/config` > Behavior > Trigger: remove an existing random trigger.
-- ~~`/natres`: humanlike timing for autonomous responses~~ to be implemented
+- `/config` > Channels > Auto-Trigger (or `/server autotrigger channels`): choose channels where
+  she responds autonomously.
+- `/config` > Channels > Auto-Trigger (or `/server autotrigger threshold`): set how many messages
+  must accumulate before she chimes in.
+- `/config` > Behavior > Trigger Behavior: configure timer-based random triggers for a channel.
 
-Use this in a dedicated chat channel where you want her to feel like a participant rather
-than a summoned assistant.
+Use auto-trigger in dedicated casual channels where you want the bot to participate naturally.
 
 ## Deliberate Trigger Mode
 <!-- anchor: deliberate-trigger-mode -->
 
-If people say a persona's name a lot in ordinary conversation, plain trigger words can fire
-her by accident. `Deliberate Trigger Mode` (DTM) fixes this by making plain trigger words
-stop counting as an explicit trigger.
+If a persona's name is used often in regular conversation, plain trigger words can activate
+her by accident. Deliberate Trigger Mode (DTM) prevents accidental activation by ignoring
+unadorned trigger words.
 
-When DTM is on:
+When DTM is active:
 
-- `@{trigger}` (the trigger word prefixed like a mention) still works
-- Discord mentions still work
-- Replies still work
+- `@{trigger}` (the trigger word prefixed with `@`) triggers a reply
+- Discord mentions `@TomoriBot` still trigger a reply
+- Message replies still work
 - `/respond` still works
-- **Plain trigger words no longer trigger her**
-
-This forces deliberate invocation instead of accidental activation.
+- Plain trigger words without `@` no longer trigger her
 
 ### Server and Personal Control
 
-- `/server dtm`: server admins toggle the server-wide behavior.
-- `/personal config`: each user overrides it for themselves, with three modes:
-  - **off**: always allow plain trigger words
-  - **follow**: use the server setting
-  - **on**: always require deliberate invocation
+- `/server dtm`: server managers toggle the server default.
+- `/personal config`: individual members override the setting for their own messages:
+  - `off`: always allow plain trigger words
+  - `follow`: follow the server setting
+  - `on`: always require deliberate invocation
 
-In `/help`, choose `Behavior`, then `Deliberate Trigger Mode`, for the same summary in Discord.
+In `/help`, choose `Behavior`, then `Deliberate Trigger Mode`, for the Discord summary.
 
 :::note
-Don't confuse `Deliberate Trigger Mode` (this page, which controls *how she's triggered*) with
-`Deliberate Tool Mode`, which controls *which tools are exposed to the model* on a given
-turn. They share the "DTM" abbreviation but are unrelated. See
+Deliberate Trigger Mode (this page) controls when she replies. Deliberate Tool Mode
+controls which tools are presented to the model on a turn. Both are abbreviated "DTM"
+in Discord; see
 [Tools & Extensions](/features/capabilities/tools-and-extensions/#deliberate-tool-mode).
 :::

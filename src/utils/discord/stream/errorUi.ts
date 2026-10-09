@@ -1,6 +1,6 @@
 import { MessageFlags, type ColorResolvable } from "discord.js";
 import type { ProviderError, StreamProvider, StreamContext } from "@/types/stream/interfaces";
-import { sendStandardEmbed, truncateForEmbedDescription } from "@/utils/discord/embedHelper";
+import { sendStandardEmbed } from "@/utils/discord/embedHelper";
 import { ColorCode, log } from "@/utils/misc/logger";
 import {
   getProviderErrorDetail,
@@ -8,6 +8,7 @@ import {
   isContextLengthError,
   isCreditAffordabilityError,
   isNvidiaCredentialRejected,
+  isOperatorActionableProviderError,
   isProviderModelError,
 } from "@/utils/provider/providerErrorClassification";
 import { localizer } from "@/utils/text/localizer";
@@ -27,7 +28,31 @@ export class StreamErrorUi {
         reason: providerError.type || "unknown",
       });
 
-    log.warn(`Stream error: ${errorMessage}`, error);
+    const operatorDetail = boundOperatorDetail(getProviderErrorDetail(providerError));
+    if (isOperatorActionableProviderError(providerError)) {
+      const providerName = provider.getProviderInfo().name;
+      // Not awaited: an unacknowledged initialInteraction is replied to below. The raw provider
+      // error is the payload because errorMessage is localized for the guild, not the operator.
+      void log.error(
+        `Provider stream error (${providerName} ${providerError.type}/${providerError.code ?? "unknown"}): ${operatorDetail}`,
+        providerError.originalError ?? providerError,
+        {
+          serverId: context.tomoriState.server_id,
+          userId: context.triggererUserId ?? null,
+          errorType: "ProviderStreamError",
+          metadata: {
+            // A personal route ran on the user's own key and endpoint, not the server's provider.
+            textCredentialSource: context.textCredentialSource ?? "server",
+            provider: providerName,
+            providerErrorType: providerError.type,
+            providerErrorCode: providerError.code ?? "unknown",
+            channelId: context.channel.id,
+          },
+        },
+      );
+    } else {
+      log.warn(`Stream error (${providerError.type}/${providerError.code ?? "unknown"}): ${operatorDetail}`, error);
+    }
 
     if (context.initialInteraction) {
       if (!context.initialInteraction.replied && !context.initialInteraction.deferred) {
@@ -70,8 +95,9 @@ export class StreamErrorUi {
     }).catch((e) => log.warn("Stream: Failed to send error embed to channel", e));
   }
 
-  public async handleStreamError(error: Error, context: StreamContext): Promise<void> {
-    const errorMessage = `An error occurred while streaming: ${error.message}`;
+  public async handleStreamError(_error: Error, context: StreamContext): Promise<void> {
+    // The orchestrator already logged the exception; its text can carry an endpoint's response.
+    const errorMessage = localizer(context.locale, "genai.stream.streaming_failed_description");
 
     if (context.initialInteraction) {
       if (!context.initialInteraction.replied && !context.initialInteraction.deferred) {
@@ -88,8 +114,7 @@ export class StreamErrorUi {
 
     await sendStandardEmbed(context.channel, context.locale, {
       titleKey: "genai.generic_error_title",
-      descriptionKey: "genai.generic_error_description",
-      descriptionVars: { error_message: error.message },
+      descriptionKey: "genai.stream.streaming_failed_description",
       color: ColorCode.ERROR,
       tipKeys: ["genai.tips.refresh_context"],
     }).catch((e) => log.warn("Stream: Failed to send generic error embed to channel", e));
@@ -299,13 +324,11 @@ export class StreamErrorUi {
   }
 
   /**
-   * Builds the embed description for a provider error: a friendly, localized headline followed by
-   * the raw provider detail. The detail is appended for ALL error types (not just model errors)
-   * so providers that map known codes to hardcoded locale strings (e.g. OpenRouter) no longer hide
-   * the actual provider message from the user.
-   * @param provider - The active stream provider (supplies the localized headline).
+   * The provider's localized, classified headline. Upstream response text stays in the operator
+   * log: the embed is public, self-debug feeds it back into model context, and an endpoint can
+   * echo the bearer value it received in any encoding pattern redaction would miss.
    * @param isModelError - Whether the error classifies as a model-selection error (drives the headline fallback).
-   * @returns The composed description, or null when no headline can be produced.
+   * @returns The headline, or null when no headline can be produced.
    */
   private resolveProviderDescription(
     providerError: ProviderError,
@@ -313,28 +336,15 @@ export class StreamErrorUi {
     locale: string,
     isModelError: boolean,
   ): string | null {
-    // Headline: the provider's friendly, localized message. Model errors fall back to a generic
-    //    headline when the provider does not supply one.
     const providerHeadline = provider.createErrorDescription(providerError, locale);
-    const headline =
-      providerHeadline || (isModelError ? localizer(locale, "genai.stream.model_error_description") : null);
-    if (!headline) {
-      return null;
-    }
-
-    // Raw provider detail. Skip when absent or already embedded in the headline (a provider may
-    //    have appended it itself) so we never duplicate the "Details" section.
-    const detail = getProviderErrorDetail(providerError);
-    if (!detail || headline.includes(detail)) {
-      return headline;
-    }
-
-    // Append the detail, truncated so the combined description stays within Discord's embed limit.
-    const detailsLabel = "\n\n**Details:**\n";
-    const truncatedDetail = truncateForEmbedDescription(detail, headline.length + detailsLabel.length);
-    if (!truncatedDetail) {
-      return headline;
-    }
-    return `${headline}${detailsLabel}${truncatedDetail}`;
+    return providerHeadline || (isModelError ? localizer(locale, "genai.stream.model_error_description") : null);
   }
+}
+
+const OPERATOR_ERROR_DETAIL_CHARS = 2000;
+
+/** Response bodies are unbounded, and logger truncation is opt-in per deployment. */
+function boundOperatorDetail(detail: string | null): string {
+  if (!detail) return "no provider detail";
+  return detail.length > OPERATOR_ERROR_DETAIL_CHARS ? `${detail.slice(0, OPERATOR_ERROR_DETAIL_CHARS)}...` : detail;
 }

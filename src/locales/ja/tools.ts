@@ -1,5 +1,8 @@
 export default {
   tools: {
+    execution: {
+      unavailable: `ツール \`{tool}\` は、現在の設定、モデルの機能、またはBotの権限では利用できません。`,
+    },
     generate_image: {
       quota_exceeded_generic: `画像生成クォータを超過しました。`,
       user_quota_exceeded: `日次画像生成クォータに達しました。{reset_info}`,
@@ -49,8 +52,8 @@ export default {
       tool_invoke_no_params: `パラメーターなし。`,
     },
     tool_notice: {
-      hide_footer: `\`/config\` > 動作 > 通知動作 で非表示にできます`,
-      hide_footer_with_kill: `\`/config\` > 動作 > 通知動作 で非表示にできます · 止まっていると思ったら \`/kill\` を使用してください`,
+      configure_hint: `これらの通知は \`/config\` > 動作 > 通知 で設定できます`,
+      kill_hint: `止まっていると思ったら \`/kill\` を使用してください`,
     },
     user_block: {
       error_missing_permission: `ブロックを通知するには、このチャンネルで {permission} 権限が必要です。サーバー管理者に権限を付与してもらい、もう一度お試しください。`,
@@ -70,6 +73,13 @@ export default {
     },
     user_info_update: {
       success_title: `✅ {target_user} のプロフィールを更新しました`,
+      success_title_fields: `✅ {target_user} の{fields}を更新しました`,
+      success_title_cleared_fields: `🗑️ {target_user} の{fields}を消去しました`,
+      subject_nickname: `ニックネーム`,
+      subject_gender_identity: `性自認`,
+      subject_pronouns: `代名詞`,
+      subject_addressing_style: `呼称スタイル`,
+      subject_timezone_offset: `タイムゾーン`,
       success_intro: `以下を更新しました：`,
       change_line: `{index}. {field}：\`{previous}\` → \`{next}\``,
       success_summary: `{persona_name} は今後 {target_user} を「{formatted_name}」と呼びます。`,
@@ -396,20 +406,6 @@ export default {
           "私の情報",
           "僕の情報",
           "俺の情報",
-        ],
-        sticker: [
-          "スタンプ",
-          "スタンプを送",
-          "スタンプ作成",
-          "スタンプお願い",
-          "このスタンプ",
-          "さっきのスタンプ",
-          "スタンプ生成",
-          "スタンプにして",
-          "スタンプを使",
-          "ステッカー",
-          "スタンプ送",
-          "スタンプで",
         ],
         thread: [
           "スレッド",

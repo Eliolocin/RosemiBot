@@ -246,9 +246,12 @@ function buildCapabilityNoticeLine(locale: string, view: ConfigSwitchModelsView)
   }
 
   if (warnings.length === 0) return null;
+  // Several independent capabilities can each need attention at once, so the list is titled and
+  // marked with one bullet per item: a bare run of `-#` lines reads as unrelated footnotes.
+  const rows = warnings.map((warning) => withLinePrefix("> ", `- ${warning}`)).join("\n");
   return {
     type: ComponentType.TextDisplay,
-    content: warnings.map((warning) => withLinePrefix("-# ", warning)).join("\n"),
+    content: `**${localizer(locale, "commands.config.panel.capability_notice_title")}**\n${rows}`,
   };
 }
 

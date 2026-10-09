@@ -1,4 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { beforeEach, afterEach, describe, expect, it, spyOn } from "bun:test";
+import { getGuildMcpManager, type GuildMcpRouting } from "@/utils/mcp/guildMcpManager";
+import type { GuildMCPConnection } from "@/types/tool/mcpTypes";
+import type { GuildMcpServerRow } from "@/types/db/schema";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AssembledServerConfig } from "@/types/db/schema";
@@ -166,6 +169,14 @@ describe("prompt conditionals", () => {
 });
 
 describe("prompt macro resolver condition integration", () => {
+  let routing: ReturnType<typeof spyOn<ReturnType<typeof getGuildMcpManager>, "getGuildMCPRouting">>;
+  beforeEach(() => {
+    routing = spyOn(getGuildMcpManager(), "getGuildMCPRouting").mockResolvedValue({
+      routes: new Map(),
+      replaced: new Set(),
+    });
+  });
+  afterEach(() => routing.mockRestore());
   it("keeps the migration rollback fallback synchronized", () => {
     const migration = readFileSync(
       join(process.cwd(), "src/db/migrations/061_default_system_prompt_read_time.down.sql"),
@@ -261,6 +272,19 @@ describe("prompt macro resolver condition integration", () => {
     });
 
     const bundled = await bundledResolver.expand(DEFAULT_SYSTEM_PROMPT);
+    const selected: GuildMcpRouting = {
+      routes: new Map([
+        [
+          "read_webpage",
+          {
+            config: { server_type: "url_fetcher" } as GuildMcpServerRow,
+            connection: {} as GuildMCPConnection,
+          },
+        ],
+      ]),
+      replaced: new Set(["url_fetcher"]),
+    };
+    routing.mockResolvedValue(selected);
     const guild = await guildResolver.expand(DEFAULT_SYSTEM_PROMPT);
 
     expect(bundled).toContain("`review_capabilities`");

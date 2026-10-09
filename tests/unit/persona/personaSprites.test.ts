@@ -1,6 +1,10 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
+import type { Client } from "discord.js";
 import type { PersonaSpriteRow } from "@/types/db/schema";
-import { buildPersonaSpritePromptText } from "@/utils/text/context/personaSprites";
+import { invalidatePersonaSpriteCache, setPersonaSpriteCache } from "@/utils/cache/personaSpriteCacheStore";
+import { convertMentions } from "@/utils/text/context/mentionNormalizer";
+import { buildPersonaSpriteContextItem, buildPersonaSpritePromptText } from "@/utils/text/context/personaSprites";
+import { createPersona, createServerConfig } from "../../helpers/fixtures";
 import { normalizePersonaSpriteKey, validatePersonaSpriteName } from "@/utils/persona/sprites";
 
 function sprite(name: string, instructions = ""): PersonaSpriteRow {
@@ -42,8 +46,32 @@ describe("persona sprites", () => {
 
     expect(prompt).toContain("Available sprites for Tomori:");
     expect(prompt).toContain("`Tomori ({sprite label}):`");
+    expect(prompt).toContain("start a line with `Tomori:` to return to Tomori's default appearance");
     expect(prompt).toContain("Valid sprite labels:");
     expect(prompt).toContain("`Tomori (mad):` Use when annoyed.");
     expect(prompt).not.toContain("Tomori (sad)");
+  });
+
+  describe("context item", () => {
+    afterEach(() => invalidatePersonaSpriteCache(10));
+
+    it("resolves identity macros in usage instructions", async () => {
+      setPersonaSpriteCache(10, [sprite("drunk", "Use when {user} hands {bot} a drink.")]);
+
+      const item = await buildPersonaSpriteContextItem({
+        client: {} as Client,
+        guildId: "1",
+        tomoriState: createPersona({ persona_id: 10 }),
+        tomoriConfig: createServerConfig(),
+        botName: "Mirri",
+        isUserImpersonation: false,
+        convertMentions,
+      });
+
+      const part = item?.parts[0];
+      const text = part?.type === "text" ? part.text : "";
+      expect(text).toContain("`Mirri (drunk):` Use when User hands Mirri a drink.");
+      expect(text).not.toMatch(/\{(user|bot)\}/);
+    });
   });
 });

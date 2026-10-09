@@ -2,6 +2,7 @@
 title: "So sánh các engine TTS"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBot hỗ trợ nhiều máy chủ Chuyển văn bản thành giọng nói (Text-to-Speech) cục bộ, mỗi máy chủ phù hợp với các ngôn ngữ, cấu hình phần cứng và yêu cầu độ trễ khác nhau.

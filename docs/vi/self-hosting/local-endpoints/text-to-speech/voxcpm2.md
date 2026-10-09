@@ -1,10 +1,11 @@
 ---
 title: "VoxCPM2"
+aiGenerated: true
 ---
 
-VoxCPM2 là model text-to-speech đa ngôn ngữ 2B tham số của OpenBMB. Model hỗ trợ 30 ngôn ngữ, đầu ra 48 kHz, Voice Design bằng ngôn ngữ tự nhiên, sao chép giọng nói bằng âm thanh tham chiếu, sao chép có thể kiểm soát, và "Ultimate Cloning" có hỗ trợ của bản phiên âm. TomoriBot sử dụng gói Python `voxcpm` chính thức thông qua wrapper mỏng trong `servers/tts/voxcpm2/`.
+Tổng hợp giọng nói 48 kHz biểu cảm trên 30 ngôn ngữ bằng model chuyển văn bản thành giọng nói [VoxCPM2](https://github.com/OpenBMB/VoxCPM) của OpenBMB.
 
-Model mặc định là checkpoint BF16 chính thức `openbmb/VoxCPM2`. OpenBMB báo cáo mức chiếm dụng khoảng 8 GB VRAM cho runtime tiêu chuẩn, vì vậy model thông thường vừa vặn thoải mái trên GPU NVIDIA 16 GB và không cần checkpoint lượng tử hóa theo mặc định.
+VoxCPM2 là model giọng nói đa ngôn ngữ tham số 2B hỗ trợ nhân bản giọng nói, Nhân bản cuối cùng được hỗ trợ bản ghi và Thiết kế giọng nói bằng ngôn ngữ tự nhiên. TomoriBot kết nối với thư viện Python `voxcpm` chính thức thông qua máy chủ trong `servers/tts/voxcpm2/`, chạy điểm kiểm tra `openbmb/VoxCPM2` BF16 không được lượng tử hóa chính thức một cách thoải mái trong vòng 16 GB VRAM.
 
 ## Giấy phép
 
@@ -68,11 +69,11 @@ OpenBMB báo cáo RTF khoảng 0.30 trên RTX 4090 với runtime tiêu chuẩn. 
 
 ## Cài đặt
 
-Máy chủ ghim gói `voxcpm` 2.0.3 ổn định hiện tại và tải `openbmb/VoxCPM2` vào bộ nhớ đệm Hugging Face thông thường.
+Máy chủ ghim gói `voxcpm` 2.0.3 ổn định hiện tại và tải `openbmb/VoxCPM2` vào bộ đệm Hugging Face thông thường.
 
-### Linux / WSL Bash
+### Linux và WSL Bash
 
-Từ thư mục gốc của kho lưu trữ TomoriBot:
+Từ kho lưu trữ gốc TomoriBot:
 
 ```bash
 bash servers/tts/voxcpm2/install-voxcpm2.sh
@@ -81,16 +82,16 @@ servers/tts/voxcpm2/.venv/bin/python servers/tts/voxcpm2/server.py
 
 ### Windows PowerShell
 
-Từ thư mục gốc của kho lưu trữ TomoriBot:
+Từ kho lưu trữ gốc TomoriBot:
 
 ```powershell
 .\servers\tts\voxcpm2\install-voxcpm2.ps1
 .\servers\tts\voxcpm2\.venv\Scripts\python.exe servers\tts\voxcpm2\server.py
 ```
 
-Thiết lập lần đầu tiên sẽ tải xuống vài gigabyte trọng số model. Để cài đặt môi trường Python mà không tải trước model, hãy đặt `VOXCPM2_PREFETCH=0`; sau đó thư viện chính thức sẽ tải checkpoint ở lần khởi động máy chủ đầu tiên.
+Thiết lập đầu tiên tải xuống vài gigabyte trọng lượng model. Để cài đặt môi trường Python mà không cần tìm nạp trước model, hãy đặt `VOXCPM2_PREFETCH=0`; thư viện chính thức sau đó sẽ tải xuống điểm kiểm tra khi khởi động máy chủ đầu tiên.
 
-Linux / WSL:
+Linux và WSL:
 
 ```bash
 VOXCPM2_PREFETCH=0 bash servers/tts/voxcpm2/install-voxcpm2.sh
@@ -103,7 +104,7 @@ $env:VOXCPM2_PREFETCH = "0"
 .\servers\tts\voxcpm2\install-voxcpm2.ps1
 ```
 
-Sau khi thiết lập, `bun run launch --voxcpm2` sẽ khởi động máy chủ cùng với TomoriBot. Endpoint mặc định là `http://127.0.0.1:8016`.
+Sau khi thiết lập, `bun run launch --voxcpm2` khởi động máy chủ cùng với TomoriBot. Điểm cuối mặc định là `http://127.0.0.1:8016`.
 
 ## Đăng ký trong TomoriBot
 
@@ -125,7 +126,7 @@ Sau khi lưu kết nối, hãy chọn kết nối đó và sử dụng menu th�
 Đối với persona cần sao chép một người nói hiện có:
 
 1. Chuẩn bị một clip tham chiếu rõ ràng với một người nói và ít hoặc không có nhạc nền. Thượng nguồn coi 5 đến 30 giây là khoảng thực tế.
-2. Mở `/config` dưới phần Models > Tham số & Giọng đọc TTS và tải clip lên.
+2. Mở `/config` dưới phần Models > `Tham số & Giọng đọc TTS` và tải clip lên.
 3. Thêm bản phiên âm chính xác của clip tham chiếu khi có sẵn. VoxCPM2 sử dụng bản phiên âm này cho Ultimate Cloning và có thể tái tạo nhiều hơn nhịp điệu, cảm xúc và phong cách của bản tham chiếu.
 4. Mở `/config` dưới phần Persona > Voice, chọn persona, và gán mẫu đã lưu.
 
@@ -133,26 +134,26 @@ Nếu không có bản phiên âm nào được lưu, VoxCPM2 vẫn thực hiệ
 
 Con số 5 đến 30 giây là một khoảng chất lượng đã được tài liệu hóa, chứ không phải một giới hạn được áp đặt: VoxCPM2 không áp dụng giới hạn thời lượng tham chiếu nào của riêng nó, vì vậy giới hạn tải lên của TomoriBot mới là thứ chặn một clip dài hơn.
 
-## Thiết kế giọng nói persona
+## Thiết kế giọng nói Persona
 
-Đối với persona cần được tạo từ mô tả giọng nói bằng văn bản thay vì một mẫu âm thanh:
+Đối với persona cần được tạo từ mô tả giọng nói bằng văn bản thay vì mẫu:
 
-1. Mở `/config` dưới phần Persona > Voice và chọn VoiceDesign.
+1. Mở `/config` trong Persona > `Giọng nói` và chọn VoiceDesign.
 2. Chọn persona.
-3. Nhập mô tả bằng ngôn ngữ tự nhiên chẳng hạn như `Young adult woman, soft warm voice, relaxed pace, slightly playful delivery`.
+3. Nhập mô tả bằng ngôn ngữ tự nhiên, chẳng hạn như `Young adult woman, soft warm voice, relaxed pace, slightly playful delivery`.
 
-TomoriBot gửi mô tả đã lưu dưới dạng `instruct`. VoxCPM2 chuyển đổi nó thành tiền tố điều khiển Voice Design gốc.
+TomoriBot gửi mô tả đã lưu dưới dạng `instruct`. VoxCPM2 chuyển đổi nó thành tiền tố điều khiển Thiết kế giọng nói gốc.
 
-Khi một persona sao chép cũng nhận được các hướng dẫn giọng nói dùng một lần, VoxCPM2 sử dụng tính năng sao chép có thể kiểm soát: mẫu tham chiếu cung cấp danh tính người nói trong khi hướng dẫn điều hướng các phẩm chất như cảm xúc, nhịp độ, hoặc cách truyền đạt. Nếu một bản phiên âm cũng được lưu, hướng dẫn sẽ được ưu tiên vì đường dẫn Ultimate Cloning thượng nguồn không cung cấp chế độ hướng dẫn kiểm soát đáng tin cậy; bản phiên âm được chủ ý bỏ qua cho yêu cầu đó.
+Khi một persona nhân bản cũng nhận được hướng dẫn bằng giọng nói một lần, VoxCPM2 sử dụng nhân bản có thể kiểm soát: mẫu tham chiếu cung cấp danh tính người nói trong khi hướng dẫn điều khiển các phẩm chất như cảm xúc, tốc độ hoặc cách truyền tải. Nếu bản ghi cũng được lưu trữ, lệnh sẽ được ưu tiên vì đường dẫn Nhân bản cuối cùng ngược dòng không cung cấp chế độ hướng dẫn điều khiển đáng tin cậy; bản ghi được cố tình bỏ qua cho yêu cầu đó.
 
-## `/generate voice-message`
+## Thử nghiệm với `/generate voice-message`
 
-Khi VoxCPM2 là model Speech đang hoạt động, `/generate voice-message` sử dụng nguồn giọng nói đã định cấu hình của persona theo cùng cách như các lệnh gọi công cụ voice-message thông thường:
+Khi VoxCPM2 là model Lời nói đang hoạt động, `/generate voice-message` sẽ sử dụng nguồn giọng nói được định cấu hình của người đó giống như các cuộc gọi công cụ tin nhắn thoại thông thường:
 
-- persona sao chép gửi `ref_audio` đã lưu và `ref_text` tùy chọn;
-- persona VoiceDesign gửi prompt đã lưu của họ dưới dạng `instruct`;
-- các endpoint có khả năng sao chép được bật Supports Instruct sẽ hiển thị trường Delivery Direction và chuyển các hướng dẫn dùng một lần qua `instruct`;
-- khi có hướng dẫn đi kèm mẫu sao chép, TomoriBot chỉ sử dụng `reference_wav_path` và không gửi các trường prompt bản phiên âm.
+- nhân bản nhân bản gửi `ref_audio` được lưu trữ và `ref_text` tùy chọn;
+- Nhân vật VoiceDesign gửi lời nhắc đã lưu của họ dưới dạng `instruct`;
+- các điểm cuối có khả năng sao chép có bật Hướng dẫn hỗ trợ sẽ hiển thị trường Hướng dẫn phân phối và chuyển hướng dẫn một lần qua `instruct`;
+- khi có lệnh xuất hiện cùng với mẫu bản sao, TomoriBot chỉ sử dụng `reference_wav_path` và không gửi các trường nhắc bảng điểm.
 
 ## Biến môi trường
 
@@ -171,7 +172,7 @@ Khi VoxCPM2 là model Speech đang hoạt động, `/generate voice-message` s�
 | `VOXCPM2_RETRY_BADCASE_RATIO_THRESHOLD` | `6.0` | Ngưỡng độ dài trường hợp bất thường ở thượng nguồn |
 | `VOXCPM2_PREFETCH` | `1` | Chỉ dành cho trình cài đặt: tải xuống model trong quá trình thiết lập |
 | `VOXCPM2_PORT` | `8016` | Cổng máy chủ cục bộ VoxCPM2 |
-| `TOMORI_TTS_HOST` | `127.0.0.1` | Địa chỉ liên kết máy chủ cục bộ; xem [Truy cập mạng](/self-hosting/local-endpoints/text-to-speech/#network-access) |
+| `TOMORI_TTS_HOST` | `127.0.0.1` | Địa chỉ liên kết máy chủ cục bộ; xem [Truy cập mạng](/vi/self-hosting/local-endpoints/text-to-speech/#network-access) |
 
 Âm thanh tham chiếu phải là một container WAV không rỗng, tối đa 10 MB sau khi giải mã; wrapper kiểm tra điều này trước khi ghi tệp tạm thời.
 

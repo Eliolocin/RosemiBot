@@ -12,6 +12,7 @@ export const openrouterProviderInfo: ProviderInfo = {
   supportsVideos: true,
   apiFamily: "openrouter",
   featureSupport: {
+    decisions: true,
     imageGeneration: "chat-completion",
     videoGeneration: "chat-completion",
     embeddings: true,

@@ -4,14 +4,16 @@ sidebar:
   order: 2
 ---
 
-HTTPサーバーがOpenAI互換の`POST /v1/audio/transcriptions`エンドポイントを公開している場合、whisper.cppを使用できます。
+[whisper.cpp](https://github.com/ggerganov/whisper.cpp) を使用して、TomoriBot向けの高性能かつ軽量の音声認識を実行します。
+
+TomoriBotは、OpenAI互換のオーディオトランスクリプションエンドポイント (`POST /v1/audio/transcriptions`) を介してWhisper.cppに接続します。
 
 ## セットアップ
 
 whisper.cppのHTTPサーバーを起動し、OpenAI互換の文字起こしエンドポイントを公開していることを確認します。
 
 - `POST /v1/audio/transcriptions`
-- `GET /v1/models` または `GET /models`
+- `GET /v1/models`または`GET /models`
 
 TomoriBotが使用している間は、サーバーを実行したままにしてください。エンドポイントURLはサーバーのルート（例: `http://127.0.0.1:8022`）です。
 
@@ -28,6 +30,6 @@ whisper.cppのビルドが異なるエンドポイント形式を公開してい
 
 エンドポイントの登録とモデルのセットアップには`/providers`を使用してください。その後、`/config` > モデル > モデルの切り替えを開き、登録したエンドポイントを選択して有効化します。
 
-## 文字起こしの使用
+## トランスクリプトを使用する
 
-登録後、TomoriBotは音声添付ファイルをバックグラウンドで文字起こしし、チャットコンテキストにテキストを追加します。文字起こしをチャットに表示して投稿したい場合にのみ、`/config` > 動作 > 一般的な動作の`通知`を使用してください。
+登録後、TomoriBotはバックグラウンドで音声添付ファイルを文字起こしし、テキストをチャットコンテキストに追加します。トランスクリプトをチャットに視覚的に投稿したい場合にのみ、「`/config`」>「エンジン」>「通知」を使用します。

@@ -2,13 +2,15 @@
 title: "MOSS-TTS"
 ---
 
-`servers/tts/moss/server.py`は、MOSSの音声クローンとテキストによる音声設計を一つのローカルエンドポイントで試すためのラッパーです。Autoモードでは、`ref_audio`を受け取るとクローンモデル、`instruct`を受け取るとMOSS-VoiceGeneratorを使います。メモリには一度に一つのモデルだけを保持します。Discordのボイスチャット向けストリーミングにはまだ対応していません。
+[MOSS-TTS](https://github.com/OpenMOSS/MOSS-TTS) を使用して、統合音声エンドポイントを通じてローカルで音声クローンと自然言語音声設計を評価します。
 
-標準のクローンモデルは[MOSS-TTS-Local-Transformer-v1.5](https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Local-Transformer-v1.5)（4B）です。16 GB GPUで試す際の出発点として選んでいます。[MOSS-TTS-v1.5](https://huggingface.co/OpenMOSS-Team/MOSS-TTS-v1.5)は8Bの代替ですが、BF16では通常16 GBを超えるVRAMが必要です。音声設計には約1.7Bの[MOSS-VoiceGenerator](https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator)を使います。Autoモードはモデルを入れ替えるため、切り替え時に読み込み時間がかかります。
+`servers/tts/moss/server.py`を使用して、TomoriBotは合成リクエストを動的にルーティングします。ペルソナが`ref_audio`を提供するとクローンモデルをロードし、自然言語`instruct`ガイダンスが提供されるとMOSS-VoiceGeneratorに切り替えます。16 GB VRAMバジェット内で実行するために、一度に1つのモデルのみがGPUメモリに保持されます。
+
+デフォルトのクローンモデルは [MOSS-TTS-Local-Transformer-v1.5](https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Local-Transformer-v1.5) (4B) で、16 GB GPUの実用的なベースラインとして選択されています。[MOSS-TTS-v1.5](https://huggingface.co/OpenMOSS-Team/MOSS-TTS-v1.5) は、BF16でより多くのVRAMを必要とする8Bの主力代替品です。音声デザインは[MOSS-VoiceGenerator](https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator)(約1.7B)を使用しています。クローン作成と音声設計を切り替えると、モデルの読み込みに遅延が発生します。
 
 ## セットアップ
 
-TomoriBotのリポジトリルートから実行します。Python 3.12とCUDA 12.8のPyTorchに対応するドライバーを使ってください。上流のruntime extraはPyTorchとTorchaudioの2.9.1+cu128を固定するため、専用の仮想環境が必要です。別のCUDA構成やCPU構成は、個別の検証が必要です。
+Python 3.12とCUDA 12.8と互換性のあるドライバーを使用して、TomoriBotリポジトリルートからコマンドを実行します。
 
 ### Windows PowerShell
 
@@ -34,18 +36,18 @@ python servers/tts/moss/prefetch_models.py
 python servers/tts/moss/server.py
 ```
 
-事前ダウンロードでは、クローンモデル、VoiceGenerator、および両モデルが使う音声トークナイザーをHugging Faceのキャッシュに保存します。各リポジトリのダウンロード前にキャッシュ先の空き容量を確認し、既にキャッシュ済みのファイルは再利用します。容量不足なら空きを増やすか、事前ダウンロードとサーバー起動の前に同じシェルで`HF_HOME`を空き容量の多いドライブに設定してください。モデルIDを変更した場合は再実行してください。片方だけを試すなら`--mode clone`または`--mode voice-design`を指定できますが、もう片方の初回使用時にはダウンロードが発生する場合があります。
+プリフェッチコマンドは、サーバーを起動する前に、クローンモデル、VoiceGenerator、およびオーディオトークナイザーをHugging Faceキャッシュにダウンロードします。ディスク容量が限られている場合は、`HF_HOME`をより大きなパーティションに設定します。1つのモデルのみをダウンロードするには、`--mode clone`または`--mode voice-design`を渡します。
 
-標準URLは`http://127.0.0.1:8018`で、`bun run launch --moss`でTomoriBotと一緒にサーバーを起動できます。Autoモードでは、HTTPサーバーの起動完了前にキャッシュ済みのクローンモデルを読み込みます。事前ダウンロードしていない場合は、不意にダウンロードを始めず起動に失敗します。代わりにVoiceGeneratorを読み込むには`MOSS_TTS_WARM_MODE=voice-design`、起動時に読み込まない場合は`MOSS_TTS_WARM_MODE=none`を設定します。GPUには一度に一つのモデルだけを保持します。`GET /health`の`warm_mode`、`active_mode`、`model_id`で確認できます。このラッパーはHugging Faceの`trust_remote_code=True`を使うため、信頼できるソースからのみインストールし、更新時には上流の変更を確認してください。
+デフォルトのエンドポイントは`http://127.0.0.1:8018`です。`bun run launch --moss`を実行して、TomoriBotと一緒にサーバーを起動します。自動モードでは、ローカルキャッシュからクローンモデルをプリウォームします。代わりに`MOSS_TTS_WARM_MODE=voice-design`をVoiceGeneratorのプリウォームに設定するか、`MOSS_TTS_WARM_MODE=none`を遅延初期化に設定します。アクティブな`warm_mode`、`active_mode`、および`model_id`については、`GET /health`を確認してください。ラッパーはHugging Face `trust_remote_code=True`を使用するため、更新する前にアップストリームのコードを確認してください。
 
 ## TomoriBotへの登録
 
-`/providers`で `新しいカスタムエンドポイントを追加` を選び、API互換性を`tts-clone`、エンドポイントURLを`http://127.0.0.1:8018`にします。音声モデルの `音声ソースモード` は`自動`、`スクリプトのマークアップ形式` は`プレーン`を選択します。その後、`/config` > モデル > モデルの切り替えで有効化します。
+`/providers`で、`Add New Custom Endpoint`を選択し、API互換性を`tts-clone`に設定し、エンドポイントURL `http://127.0.0.1:8018`を使用します。`音声ソースモード`を`自動`に設定し、`Script Markup`を`プレーン`に設定して音声モデルを追加します。`/config` > `モデル` > `モデルの切り替え` でアクティブ化します。
 
-音声クローンには、`/config` > モデル > TTSパラメーターと音声で参照クリップをアップロードし、ペルソナ > 音声で割り当てます。MOSS-TTSについて上流は推奨する参照長を示しておらず、ランタイムにも長さの上限がないため、クリップの長さは自分で調整する項目です。短くクリーンなクリップのほうが引き続き安全な既定です。音声設計には、代わりにペルソナ > 音声で自然言語の声の説明を保存します。MOSS-TTSは参照音声を使いますが、任意の参照トランスクリプトは使いません。MOSS-VoiceGeneratorが明示的に対応する高品質な言語は英語と中国語で、日本語は含まれません。4Bのクローンモデルは日本語に対応しますが、言語タグを指定すると多言語合成が改善されます。
+音声のクローンを作成するには、`/config` > `モデル` > `TTSパラメーターと音声` でクリーンなリファレンスクリップをアップロードし、それを [ペルソナ] > `音声` で割り当てます。短くクリーンなオーディオクリップでは、最も一貫した結果が得られます。音声デザインの場合は、「ペルソナ」>「`音声`」の下に自然言語の説明を保存します。MOSS-VoiceGeneratorは英語と中国語向けに設計されていることに注意してください。4Bクローンモデルは日本語をサポートしていますが、明示的な言語タグにより合成の明瞭さが向上します。
 
-TomoriBotの現在のクローンアダプターは言語タグを送りません。単一言語の試用では、起動前に`MOSS_TTS_DEFAULT_LANGUAGE=Japanese`（または`English`、`Chinese`など）を設定してください。手動の`/synthesize`リクエストでは`language`を個別に指定できます。多言語を混ぜる場合は未設定にし、日本語の出力品質を評価してください。
+TomoriBotのクローンアダプターは、言語タグを自動的に送信しません。単一言語で使用する場合は、サーバーを起動する前に`MOSS_TTS_DEFAULT_LANGUAGE=Japanese` (または`日本語`、`Chinese`など) を設定します。手動の`/synthesize`呼び出しでは、`language`を直接渡すことができます。
 
-ローカルサーバーは自身のプロセス環境変数を読みます。ボットの`.env`に値を追加しても、別途起動したPythonプロセスには自動で渡されません。
+サーバーは独自のシェル環境を読み取ります。ボットの`.env`の設定は、独立して起動されたPythonターミナルには適用されません。
 
-十分なメモリがある環境で8Bモデルを試す場合は、事前ダウンロードより前に`MOSS_TTS_CLONE_MODEL_ID=OpenMOSS-Team/MOSS-TTS-v1.5`を設定します。その他の設定は`.env.optional.example`を参照してください。モデルの切り替えやCPU推論には、ボット側の`TTS_SYNTHESIZE_TIMEOUT_MS`を増やす必要がある場合があります。
+高メモリハードウェアで8Bモデルを実行するには、プリフェッチ前に`MOSS_TTS_CLONE_MODEL_ID=OpenMOSS-Team/MOSS-TTS-v1.5`を設定します。`MOSS_TTS_PORT`、`MOSS_TTS_DEVICE`、`MOSS_TTS_DTYPE`、および`MOSS_TTS_MAX_NEW_TOKENS`は、`.env.optional.example`で構成可能です。モデルのスワップやCPUの実行によりタイムアウトが発生する場合は、TomoriBotの`TTS_SYNTHESIZE_TIMEOUT_MS`を増やします。

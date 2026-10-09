@@ -147,7 +147,7 @@ export async function generatePresetFromPromptOpenrouter(
         },
       });
       return {
-        error: `OpenRouter request failed (${response.status}): ${response.statusText}`,
+        error: `OpenRouter request failed (HTTP ${response.status}).`,
         errorType: "CONNECTION",
       };
     }

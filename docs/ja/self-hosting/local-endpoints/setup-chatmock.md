@@ -4,40 +4,38 @@ sidebar:
   order: 5
 ---
 
-ローカルのOpenAI互換ブリッジを介してTomoriBotにChatGPTアカウントを使用させたい場合は、[ChatMock](https://github.com/RayBytes/ChatMock)を実行し、TomoriBotの`custom`プロバイダーをそこに向けることができます。
+[ChatMock](https://github.com/RayBytes/ChatMock) を使用して、ローカルのOpenAI互換ブリッジ経由でTomoriBotをChatGPTアカウントに接続します。
 
-## ChatMockの機能
-
-- ChatMockはローカルのOpenAI互換APIサーバーを実行します。
-- TomoriBotは`custom`プロバイダーを通じてそのローカルサーバーを使用できます。
+ChatMockは、標準のOpenAIリクエストを受け入れるローカルAPIサーバーを実行し、TomoriBotの`custom`プロバイダーがアカウントを通じてチャット完了をルーティングできるようにします。
 
 ## 1. ChatMockを起動する
 
-GitHubの指示に従ってChatMockをインストールし、起動します。
+[ChatMockリポジトリ](https://github.com/RayBytes/ChatMock) の手順に従って、ChatMockをインストールします。
 
-- [ChatMockリポジトリ](https://github.com/RayBytes/ChatMock)
+ローカルサーバーを認証して起動します。
 
-インストール後、以下を実行します。
 ```sh
 chatmock login
 chatmock serve
 ```
 
-デフォルトでは、ChatMockは`http://127.0.0.1:8000/v1`でリッスンします。
+デフォルトでは、ChatMockは`http://127.0.0.1:8000/v1`をリッスンします。
 
-## 2. ChatMockを使用するようにTomoriBotを構成する
+## 2.TomoriBotを設定する
 
-DiscordでTomoriBotの`custom`プロバイダーを構成し、以下を使用します。
+Discordで、TomoriBotの`custom`プロバイダーを次の設定で構成します。
 
-- **エンドポイントURL**：`http://127.0.0.1:8000/v1`
-- **モデル名（正確なAPI ID）**：`gpt-5.4`や`gpt-5.3-codex`など、ChatMockが受信すべき正確なモデル文字列。
+- **エンドポイントURL**: `http://127.0.0.1:8000/v1`
+- **モデル名**: ChatMockが予期するモデル識別子 (`gpt-5.4`や`gpt-5.3-codex`など)
 
-末尾のパスがない`http://127.0.0.1:8000`も使用できます。TomoriBotは`/chat/completions`を追加する前に`/v1`へ正規化します。
+裸の`http://127.0.0.1:8000`も機能します。TomoriBotは、`/chat/completions`を追加する前に、`/v1`に正規化します。
 
-ChatMockの以下の機能フラグを有効にします。
-- **ツール呼び出し**：はい
-- **画像入力**：はい
-- **動画入力**：いいえ
-- **構造化出力**：はい
+ChatMockの次の機能フラグを有効にします。
+- **関数呼び出し/ツール**: はい
+- **画像の理解**: はい
+- **ビデオの理解**: いいえ
+- **構造化された出力**: はい
 
-**注意**：Codex CLIでは`system`プロンプトを変更できないため、回避策としてTomoriBotの`system`プロンプトはコンテキスト内の`user`のターンに変換されます。この回避策が適切に機能するように、`.env`変数の`CHATMOCK_PORT`を実際のChatMockのポート（デフォルトは8000）と一致するように構成してください。
+:::note[System prompt handling and port configuration]
+Codex CLIではカスタム`system`プロンプトが許可されていないため、TomoriBotは`system`命令を最初の`user`ターンに変換します。`.env`の`CHATMOCK_PORT`をChatMockポート (デフォルトは`8000`) に一致するように設定します。これにより、TomoriBotはエンドポイントを認識し、このプロンプト調整を適用します。
+:::

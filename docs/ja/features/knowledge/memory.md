@@ -2,6 +2,7 @@
 title: "記憶"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBotは永続的な記憶システムを備えているため、会話をまたいで事実を記憶できます。このページでは*彼女が何を知っているか*（事実、コンテキスト、ドキュメント）について説明します。*どのように振る舞うか*（性格、トーン）については、[マルチペルソナ](/ja/features/chatting-personality/multiple-personas/)を参照してください。

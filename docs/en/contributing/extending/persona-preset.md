@@ -13,11 +13,18 @@ covered in [Adding a Locale](/contributing/localization/new-locale/).
    each exporting `persona: PersonaInput`, and register each in `personas/index.ts`. There is no
    directory scan. Required fields:
    - `preset_lineage_id`: identical in every language variant. It makes the variants one character
-     and becomes the persona's `persona_lineage_id`, which scopes its memories.
+     and becomes the persona's `persona_lineage_id`, which scopes its memories. A locale without a
+     variant lists the base-language or `en-US` variant instead.
    - `name`, `desc`, `attributes`, paired `sampleDialoguesIn` / `sampleDialoguesOut`, `language`,
      `avatarPath`, `triggerWords`.
    - Do not author `preset_attribute_public_flags`. `personaSeed.ts` derives it: the first attribute
      is public and the rest are private.
+   - Add the lineage to `OFFICIAL_LINEAGE_IDS` and the `preset_lineage_id IN (...)` list in
+     `personaSeed.ts`, to `PRESET_LINEAGE_BY_AVATAR` in `src/commands/persona/default.ts`, and to the
+     naming snapshot in `tests/unit/db/personaNamingCatalog.test.ts`.
+   - Optional `isNsfw: true` hides the preset from `/persona default` and `/setup`; the
+     age-restricted `/nsfw persona default` lists only NSFW presets. Personas created from it copy the flag, and only
+     `/nsfw persona import` accepts a file that carries it.
 2. Put the avatar image in the folder and set `avatarPath` to the folder; the first image
    alphabetically is used.
 3. Optionally add sprites under `sprites/` and list them per locale file:

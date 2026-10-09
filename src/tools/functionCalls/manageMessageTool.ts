@@ -13,6 +13,8 @@ import { getKnownPersonaSpeakerNames, stripLeadingKnownSpeakerPrefixes } from "@
 import { resolveManagedWebhookForChannel } from "@/utils/discord/webhook/fallback";
 import { log } from "@/utils/misc/logger";
 import { isMatrixBridgeWebhookUsername, stripBridgePrefix } from "@/utils/bridges";
+import { parseRenderModifierWebhookName } from "@/utils/discord/renderModifierParser";
+import { revealGroupBreakName } from "@/utils/text/groupBreakName";
 
 const PREVIEW_MAX_LENGTH = 120;
 
@@ -85,6 +87,19 @@ function resolveWebhookHostChannel(channel: ToolContext["channel"]): BaseGuildTe
 
 function resolveWebhookThreadId(channel: ToolContext["channel"]): string | undefined {
   return "isThread" in channel && typeof channel.isThread === "function" && channel.isThread() ? channel.id : undefined;
+}
+
+/**
+ * Sprite delivery renames persona webhooks: a lookalike-letter group-break name ("Tomorі"), a
+ * decorated fallback ("ともり (mad)"), or an identity sprite ("The Voice (Locke)"). Any of those
+ * still belongs to a persona, so each spelling is checked against the lowercased persona names.
+ */
+export function isPersonaWebhookName(username: string, personaNameSet: ReadonlySet<string>): boolean {
+  const webhookName = revealGroupBreakName(stripBridgePrefix(username));
+  const decorated = parseRenderModifierWebhookName(webhookName);
+  return [webhookName, decorated?.sourceName, decorated?.modifier].some(
+    (name) => name !== undefined && personaNameSet.has(name.toLowerCase()),
+  );
 }
 
 function getDisplayAuthorName(message: Message): string {
@@ -198,8 +213,7 @@ export class ManageMessageTool extends BaseTool {
     }
 
     const managedWebhook = await resolveManagedWebhookForChannel(webhookHostChannel, message.webhookId);
-    const webhookAuthorName = stripBridgePrefix(message.author.username).toLowerCase();
-    if (!managedWebhook || !personaNameSet.has(webhookAuthorName)) {
+    if (!managedWebhook || !isPersonaWebhookName(message.author.username, personaNameSet)) {
       return null;
     }
 

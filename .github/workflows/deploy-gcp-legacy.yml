@@ -1,0 +1,818 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# LEGACY ROLLBACK REFERENCE: production infrastructure moved to Azure and the
+# GCP stack was destroyed on 2026-07-20. The retained tomoribot-vertex project
+# is for outbound Vertex AI calls only. Keep ACTIVE_PROVIDER=azure. Restoring
+# this workflow requires intentionally recreating state and deployment secrets.
+# GitHub Actions Workflow: Deploy TomoriBot to GCP Cloud Run
+
+name: "Deploy: GCP (Legacy Rollback)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: false
+        type: choice
+        options:
+          - test
+          - production
+        default: test
+      create_db_backup:
+        description: "Create a pre-deploy Cloud SQL backup"
+        required: false
+        type: boolean
+        default: false
+
+# Least-privilege default token: OIDC for Workload Identity Federation + read-only
+# repo contents for checkout. Jobs that need more (e.g. create-release) elevate locally.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # ─── SECRETS VALIDATION ────────────────────────────────────────────────────
+
+  validate-secrets:
+    runs-on: ubuntu-24.04
+    # Legacy gate retained for rollback knowledge; normal production uses Azure. Every downstream
+    # job chains off this one, so the equality test is the whole pipeline's gate and has to fail
+    # closed: an unset or cleared ACTIVE_PROVIDER must not turn a push to release into an
+    # unattended `terraform apply` against the retired GCP project.
+    if: vars.ACTIVE_PROVIDER == 'gcp'
+    steps:
+      - name: Validate GCP deployment secrets
+        # Secrets are mapped to env vars (not interpolated into the script body) so a
+        # value containing shell metacharacters can never break or inject into the test.
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          ARTIFACT_REGISTRY_REPO: ${{ secrets.ARTIFACT_REGISTRY_REPO }}
+          CLOUD_SQL_INSTANCE_PASSWORD: ${{ secrets.CLOUD_SQL_INSTANCE_PASSWORD }}
+        run: |
+          echo "=========================================="
+          echo "Validating GitHub Secrets (GCP Infrastructure)"
+          echo "=========================================="
+
+          missing_secrets=()
+
+          if [ -z "$GCP_PROJECT_ID" ];                   then missing_secrets+=("GCP_PROJECT_ID"); fi
+          if [ -z "$GCP_REGION" ];                        then missing_secrets+=("GCP_REGION"); fi
+          if [ -z "$GCP_WORKLOAD_IDENTITY_PROVIDER" ];    then missing_secrets+=("GCP_WORKLOAD_IDENTITY_PROVIDER"); fi
+          if [ -z "$GCP_SERVICE_ACCOUNT" ];               then missing_secrets+=("GCP_SERVICE_ACCOUNT"); fi
+          if [ -z "$ARTIFACT_REGISTRY_REPO" ];            then missing_secrets+=("ARTIFACT_REGISTRY_REPO"); fi
+          if [ -z "$CLOUD_SQL_INSTANCE_PASSWORD" ];       then missing_secrets+=("CLOUD_SQL_INSTANCE_PASSWORD"); fi
+
+          if [ ${#missing_secrets[@]} -gt 0 ]; then
+            echo "Missing required GCP secrets: ${missing_secrets[*]}"
+            exit 1
+          fi
+
+          echo "================================================"
+          echo "GCP Secrets: VALIDATED"
+          echo "Application secrets: Mounted from GCP Secret Manager at runtime"
+          echo "================================================"
+
+  # ─── VALIDATION (lint, types, schema, locales, lifecycle) ─────────────────
+
+  code-quality:
+    needs: validate-secrets
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  # ─── BUILD DOCKER IMAGE ───────────────────────────────────────────────────
+
+  build-image:
+    runs-on: ubuntu-24.04
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download tokenizer assets for logit bias
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          bun run setup:tokenizers
+          du -sh tokenizers/*/
+
+      - name: Build Docker image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --tag tomoribot:latest \
+            --tag tomoribot:${{ github.sha }} \
+            --load \
+            .
+
+      - name: Save Docker image
+        run: docker save tomoribot:latest -o tomoribot-image.tar
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: docker-image
+          path: tomoribot-image.tar
+          retention-days: 1
+
+  # ─── SECURITY SCANNING (identical to AWS workflow) ────────────────────────
+
+  security-sast:
+    runs-on: ubuntu-24.04
+    needs: build-image
+    outputs:
+      failed: ${{ steps.check-result.outputs.failed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Run Semgrep SAST scan
+        uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d
+        with:
+          config: >-
+            p/security-audit
+            p/typescript
+            p/docker
+        continue-on-error: true
+        id: semgrep
+
+      - name: Check Semgrep results
+        id: check-result
+        run: |
+          if [ "${{ steps.semgrep.outcome }}" == "failure" ]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  security-dependencies:
+    runs-on: ubuntu-24.04
+    needs: build-image
+    outputs:
+      failed: ${{ steps.check-result.outputs.failed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run Bun audit
+        run: |
+          if ! bun run audit:clean > audit-output.txt 2>&1; then
+            cat audit-output.txt
+            exit 1
+          else
+            cat audit-output.txt
+          fi
+        continue-on-error: true
+        id: bun-audit
+
+      - name: Check audit results
+        id: check-result
+        run: |
+          if [ "${{ steps.bun-audit.outcome }}" == "failure" ]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  security-secrets:
+    runs-on: ubuntu-24.04
+    needs: build-image
+    outputs:
+      failed: ${{ steps.check-result.outputs.failed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Run TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@99dc7bd6c06427bcb32f32fe1641d7fb83583915
+        with:
+          path: ./
+          base: ${{ github.event.before }}
+          head: ${{ github.event.after }}
+          extra_args: --only-verified
+        continue-on-error: true
+        id: trufflehog
+
+      - name: Check TruffleHog results
+        id: check-result
+        run: |
+          if [ "${{ steps.trufflehog.outcome }}" == "failure" ]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  security-container:
+    runs-on: ubuntu-24.04
+    needs: build-image
+    outputs:
+      failed: ${{ steps.check-result.outputs.failed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: docker-image
+
+      - name: Load Docker image
+        run: docker load -i tomoribot-image.tar
+
+      - name: Run Trivy container scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: tomoribot:latest
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          trivyignores: .github/.trivyignore
+        continue-on-error: true
+        id: trivy
+
+      - name: Check Trivy results
+        id: check-result
+        run: |
+          if [ "${{ steps.trivy.outcome }}" == "failure" ]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  security-gate:
+    runs-on: ubuntu-24.04
+    needs: [security-sast, security-dependencies, security-secrets, security-container]
+    steps:
+      - name: Check security scan results
+        run: |
+          echo "=========================================="
+          echo "Security Gate - Evaluating Scan Results"
+          echo "=========================================="
+
+          failed=false
+
+          echo "SAST Scan (Semgrep):           ${{ needs.security-sast.outputs.failed }}"
+          echo "Dependency Scan (Bun Audit):   ${{ needs.security-dependencies.outputs.failed }}"
+          echo "Secret Scan (TruffleHog):      ${{ needs.security-secrets.outputs.failed }}"
+          echo "Container Scan (Trivy):        ${{ needs.security-container.outputs.failed }}"
+
+          if [ "${{ needs.security-sast.outputs.failed }}" == "true" ];         then failed=true; fi
+          if [ "${{ needs.security-dependencies.outputs.failed }}" == "true" ]; then failed=true; fi
+          if [ "${{ needs.security-secrets.outputs.failed }}" == "true" ];      then failed=true; fi
+          if [ "${{ needs.security-container.outputs.failed }}" == "true" ];    then failed=true; fi
+
+          echo "=========================================="
+          if [ "$failed" == "true" ]; then
+            echo "DEPLOYMENT BLOCKED — security scans found issues"
+            exit 1
+          else
+            echo "ALL SECURITY SCANS PASSED — proceeding to GCP deployment"
+          fi
+
+  # ─── GCP DEPLOYMENT ───────────────────────────────────────────────────────
+
+  push-to-artifact-registry:
+    runs-on: ubuntu-24.04
+    needs: security-gate
+    outputs:
+      image_uri: ${{ steps.ar_uri.outputs.uri }}
+      searxng_image_uri: ${{ steps.searxng_uri.outputs.uri }}
+      deploy: ${{ steps.ar_uri.outputs.deploy }}
+      version: ${{ steps.package_version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: docker-image
+
+      - name: Load Docker image
+        run: docker load -i tomoribot-image.tar
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        env:
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Get version from package.json
+        id: package_version
+        run: |
+          VERSION=$(jq -r '.version' package.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Package version: v$VERSION"
+
+      - name: Check if version exists in Artifact Registry
+        id: version_check
+        env:
+          AR_REPO: ${{ secrets.ARTIFACT_REGISTRY_REPO }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          VERSION: ${{ steps.package_version.outputs.version }}
+        run: |
+          if gcloud artifacts docker tags list "${AR_REPO}/tomoribot" \
+            --project="${GCP_PROJECT_ID}" \
+            --filter="tag=v${VERSION}" \
+            --format="value(tag)" 2>/dev/null | grep -q "v${VERSION}"; then
+            echo "version_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Version v$VERSION already exists in Artifact Registry — skipping deployment"
+          else
+            echo "version_exists=false" >> "$GITHUB_OUTPUT"
+            echo "Version v$VERSION is new — will deploy"
+          fi
+
+      - name: Check for infrastructure changes
+        id: infra_changes
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch — allowing Terraform apply"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "No previous ref available — allowing Terraform apply conservatively"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- terraform/gcp .github/workflows/deploy-gcp-legacy.yml servers/searxng/ || true)
+          if [ -n "$changed_files" ]; then
+            echo "Infrastructure changes detected:"
+            echo "$changed_files"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No GCP infrastructure changes detected"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tag and push image to Artifact Registry
+        id: ar_uri
+        env:
+          AR_REPO: ${{ secrets.ARTIFACT_REGISTRY_REPO }}
+          IMAGE_TAG: ${{ github.sha }}
+          VERSION: ${{ steps.package_version.outputs.version }}
+          VERSION_EXISTS: ${{ steps.version_check.outputs.version_exists }}
+          INFRA_CHANGED: ${{ steps.infra_changes.outputs.changed }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          IMAGE_BASE="${AR_REPO}/tomoribot"
+          DEPLOY_IMAGE_URI="${IMAGE_BASE}:v${VERSION}"
+          SHOULD_DEPLOY=false
+          DEPLOY_REASON=""
+
+          # Always push commit hash tag
+          docker tag tomoribot:latest "${IMAGE_BASE}:${IMAGE_TAG}"
+          docker push "${IMAGE_BASE}:${IMAGE_TAG}"
+          echo "Pushed commit hash tag: ${IMAGE_TAG}"
+
+          # Always update latest tag
+          docker tag tomoribot:latest "${IMAGE_BASE}:latest"
+          docker push "${IMAGE_BASE}:latest"
+          echo "Updated 'latest' tag"
+
+          if [ "$VERSION_EXISTS" = "false" ]; then
+            docker tag tomoribot:latest "${IMAGE_BASE}:v${VERSION}"
+            docker push "${IMAGE_BASE}:v${VERSION}"
+            echo "Pushed version tag: v${VERSION}"
+            SHOULD_DEPLOY=true
+            DEPLOY_REASON="new version tag"
+          else
+            echo "Skipping version tag (already exists)"
+          fi
+
+          if [ "$INFRA_CHANGED" = "true" ]; then
+            SHOULD_DEPLOY=true
+            if [ -n "$DEPLOY_REASON" ]; then
+              DEPLOY_REASON="${DEPLOY_REASON}, infrastructure changes"
+            else
+              DEPLOY_REASON="infrastructure changes"
+            fi
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SHOULD_DEPLOY=true
+            if [ -n "$DEPLOY_REASON" ]; then
+              DEPLOY_REASON="${DEPLOY_REASON}, manual dispatch"
+            else
+              DEPLOY_REASON="manual dispatch"
+            fi
+          fi
+
+          if [ "$SHOULD_DEPLOY" = "true" ]; then
+            echo "Terraform deploy enabled: ${DEPLOY_REASON}"
+          else
+            echo "Terraform deploy skipped: version tag exists and no infra changes were detected"
+          fi
+
+          echo "uri=${DEPLOY_IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "deploy=${SHOULD_DEPLOY}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push custom SearXNG image
+        id: searxng_uri
+        env:
+          AR_REPO: ${{ secrets.ARTIFACT_REGISTRY_REPO }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          SEARXNG_BASE="${AR_REPO}/tomoribot-searxng"
+
+          docker build \
+            --platform linux/amd64 \
+            --tag "${SEARXNG_BASE}:${IMAGE_TAG}" \
+            --tag "${SEARXNG_BASE}:latest" \
+            servers/searxng/
+
+          docker push "${SEARXNG_BASE}:${IMAGE_TAG}"
+          docker push "${SEARXNG_BASE}:latest"
+          echo "Pushed custom SearXNG image: ${SEARXNG_BASE}:${IMAGE_TAG}"
+          echo "uri=${SEARXNG_BASE}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+  deploy-with-terraform:
+    runs-on: ubuntu-24.04
+    needs: push-to-artifact-registry
+    if: needs['push-to-artifact-registry'].outputs.deploy == 'true'
+    env:
+      TF_VAR_gcp_project_id: ${{ secrets.GCP_PROJECT_ID }}
+      TF_VAR_db_password: ${{ secrets.CLOUD_SQL_INSTANCE_PASSWORD }}
+      # The image URIs are built from the ARTIFACT_REGISTRY_REPO secret upstream, so the
+      # push job's outputs are scrubbed to empty when they cross the job boundary (GitHub
+      # redacts secret-containing outputs). Rebuild them here from the secret directly
+      # (single-job secret use is allowed) plus the non-secret version/sha, which propagate
+      # cleanly. Terraform auto-reads TF_VAR_* env vars, so no inline -var interpolation.
+      TF_VAR_container_image: ${{ secrets.ARTIFACT_REGISTRY_REPO }}/tomoribot:v${{ needs.push-to-artifact-registry.outputs.version }}
+      TF_VAR_searxng_image: ${{ secrets.ARTIFACT_REGISTRY_REPO }}/tomoribot-searxng:${{ github.sha }}
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Full history so the destructive-migration gate can diff against
+          # github.event.before; a shallow (depth-1) clone lacks the prev ref.
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Destructive migration gate
+        # Blocks deploys that introduce destructive migrations (DROP TABLE / COLUMN /
+        # CONSTRAINT, ALTER COLUMN ... TYPE, TRUNCATE, unfiltered DELETE) unless the
+        # deployer opted into a pre-deploy backup via (Checkpoint) in the commit
+        # message or create_db_backup=true on manual dispatch. See OD-R-6 and
+        # docs/guides/safe-migration.md.
+        if: |
+          !(
+            (github.event_name == 'workflow_dispatch' && inputs.create_db_backup == true) ||
+            (github.event_name == 'push' && contains(github.event.head_commit.message, '(Checkpoint)'))
+          )
+        run: |
+          PREV_REF="${{ github.event.before }}"
+          if [ -z "$PREV_REF" ] || [ "$PREV_REF" = "0000000000000000000000000000000000000000" ]; then
+            echo "No previous-ref available; scanning all up-migrations as a conservative fallback."
+            bun run scripts/checks/checkPendingMigrations.ts --all
+          else
+            bun run scripts/checks/checkPendingMigrations.ts --changed-since "$PREV_REF"
+          fi
+
+      - name: Optional Cloud SQL backup (manual or (Checkpoint) commit)
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.create_db_backup == true) ||
+          (github.event_name == 'push' && contains(github.event.head_commit.message, '(Checkpoint)'))
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          echo "Creating pre-deploy Cloud SQL backup..."
+          gcloud sql backups create \
+            --instance=tomoribot-db \
+            --project="${GCP_PROJECT_ID}" \
+            --description="pre-deploy-${{ github.run_id }}"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+
+      - name: Terraform init
+        working-directory: terraform/gcp
+        run: terraform init
+
+      - name: Terraform plan
+        working-directory: terraform/gcp
+        # container_image / searxng_image are supplied via TF_VAR_* env (see job env).
+        run: terraform plan -input=false -var-file=terraform.ci.tfvars -out=tfplan
+
+      - name: Guard against Cloud SQL destroy/replace
+        working-directory: terraform/gcp
+        run: |
+          echo "Checking plan for destructive Cloud SQL changes..."
+          if terraform show -json tfplan | jq -e '.resource_changes[]
+            | select(.type=="google_sql_database_instance")
+            | select(.change.actions | index("delete"))' >/dev/null; then
+            echo "Cloud SQL instance would be destroyed or replaced. Aborting deploy."
+            exit 1
+          fi
+          echo "No destructive Cloud SQL changes detected."
+
+      - name: Terraform apply
+        working-directory: terraform/gcp
+        run: terraform apply -input=false -auto-approve tfplan
+
+  verify-cloud-run-deployment:
+    runs-on: ubuntu-24.04
+    needs: deploy-with-terraform
+    outputs:
+      deployment-status: ${{ steps.verify.outputs.status }}
+      commit-hash: ${{ steps.commit-info.outputs.hash }}
+      commit-message: ${{ steps.commit-info.outputs.message }}
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ secrets.GCP_REGION }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Get commit information
+        id: commit-info
+        run: |
+          echo "hash=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "message=$(git log -1 --pretty=format:'%s')" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Wait for Cloud Run service to be ready
+        id: verify
+        run: |
+          echo "Polling Cloud Run service for up to 10 minutes..."
+
+          for i in $(seq 1 20); do
+            READY=$(gcloud run services describe tomoribot \
+              --region="${GCP_REGION}" \
+              --project="${GCP_PROJECT_ID}" \
+              --format=json 2>/dev/null \
+              | jq -r '.status.conditions[] | select(.type=="Ready") | .status' 2>/dev/null \
+              || echo "Unknown")
+
+            if [ "$READY" = "True" ]; then
+              echo "Cloud Run service is ready!"
+              echo "status=success" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "Attempt $i/20: not ready yet (Ready=$READY), retrying in 30s..."
+            sleep 30
+          done
+
+          echo "Cloud Run service did not become ready within 10 minutes."
+          echo "status=failed" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      - name: Check recent Cloud Logging output
+        if: always()
+        run: |
+          echo "Fetching recent Cloud Run logs..."
+          gcloud logging read \
+            "resource.type=cloud_run_revision AND resource.labels.service_name=tomoribot" \
+            --project="${GCP_PROJECT_ID}" \
+            --limit=30 \
+            --format="table(timestamp,severity,textPayload)" \
+            || echo "No recent logs found (normal for new deployments)"
+
+  # ─── GITHUB RELEASES (identical to AWS workflow) ──────────────────────────
+
+  check-release-assets:
+    runs-on: ubuntu-24.04
+    needs: verify-cloud-run-deployment
+    if: needs.verify-cloud-run-deployment.outputs.deployment-status == 'success'
+    outputs:
+      has-assets: ${{ steps.check.outputs.has-assets }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          echo "version=$(jq -r '.version' package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Check if version-specific release folder exists
+        id: check
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          versionFolder=".github/release/v$VERSION"
+          if [ -d "$versionFolder" ]; then
+            echo "has-assets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-assets=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  create-release:
+    runs-on: ubuntu-24.04
+    needs: [verify-cloud-run-deployment, check-release-assets]
+    if: needs.verify-cloud-run-deployment.outputs.deployment-status == 'success' && needs.check-release-assets.outputs.has-assets == 'true'
+    # Release creation publishes a GitHub Release; the default token needs write here.
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Check if GitHub release already exists
+        id: release-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check-release-assets.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare release notes and Discord notification
+        id: release-notes
+        if: steps.release-check.outputs.exists != 'true'
+        env:
+          VERSION: ${{ needs.check-release-assets.outputs.version }}
+          COMMIT_HASH: ${{ needs.verify-cloud-run-deployment.outputs.commit-hash }}
+        run: |
+          versionFolder=".github/release/v$VERSION"
+          releaseNotesPath=$(find "$versionFolder" -maxdepth 1 -name "*.md" ! -name "README.md" | head -n 1)
+
+          if [ -z "$releaseNotesPath" ]; then
+            echo "No .md files found in $versionFolder"
+            exit 1
+          fi
+
+          imageName=$(find "$versionFolder" -maxdepth 1 -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.gif" -o -name "*.webp" \) | head -n 1 | xargs -r basename)
+
+          releaseNotes=$(cat "$releaseNotesPath")
+          releaseNotes="${releaseNotes//\{VERSION\}/$VERSION}"
+          releaseNotes="${releaseNotes//\{TIMESTAMP\}/$(date -u +"%Y-%m-%d %H:%M:%S UTC")}"
+          releaseNotes="${releaseNotes//\{COMMIT_HASH\}/$COMMIT_HASH}"
+          releaseNotes="${releaseNotes//\{REPO_OWNER\}/${{ github.repository_owner }}}"
+          releaseNotes="${releaseNotes//\{REPO_NAME\}/${{ github.event.repository.name }}}"
+          # Published images use the tag created below so historical release bodies do not depend
+          # on files remaining at the release branch tip.
+          releaseNotes=$(printf '%s' "$releaseNotes" | sed "s|/raw/release/\\.github/release/|/raw/v$VERSION/.github/release/|g")
+
+          echo "$releaseNotes" > processed-release-notes.md
+          echo "image-name=$imageName" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        if: steps.release-check.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check-release-assets.outputs.version }}
+        run: |
+          # Without --target the tag is cut from the default branch, which no longer carries
+          # .github/release/ and is not the tree that just deployed. Both the release-note image
+          # URLs and the source archive read from this tag, so it has to be the deployed commit.
+          gh release create "v$VERSION" \
+            --target "${{ github.sha }}" \
+            --title "TomoriBot v$VERSION" \
+            --notes-file "processed-release-notes.md" \
+            --latest
+
+      - name: Send Discord notification
+        if: steps.release-check.outputs.exists != 'true'
+        env:
+          STATUS: ${{ needs.verify-cloud-run-deployment.outputs.deployment-status }}
+          VERSION: ${{ needs.check-release-assets.outputs.version }}
+          IMAGE_NAME: ${{ steps.release-notes.outputs.image-name }}
+          MENTION_ROLE_ID: ${{ secrets.RELEASE_DISCORD_MENTION_ROLE_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          releaseNotes=$(sed 's/!\[[^]]*\]([^)]*)//g' processed-release-notes.md)
+          printf '%s' "$releaseNotes" > discord_release_notes.txt
+
+          python3 .github/scripts/discord_split.py
+          chunkCount=$(cat discord_chunk_count.txt)
+
+          hasImage=false
+          imageFile=""
+          if [ -n "$IMAGE_NAME" ]; then
+            # Read from the release tag, not a branch: the tag is immutable, so a past release's
+            # image survives any future pruning of .github/release/ from the branch tip. Release
+            # creation always runs before this point, so the tag resolves.
+            imageUrl="https://github.com/${{ github.repository }}/raw/v$VERSION/.github/release/v$VERSION/$IMAGE_NAME"
+            # Preserve the real extension (e.g. .webp) so Discord renders the attachment as the post's preview image
+            imageFile="release-post-image.${IMAGE_NAME##*.}"
+            if curl -sL --max-time 30 "$imageUrl" -o "$imageFile" && [ -s "$imageFile" ]; then
+              hasImage=true
+            fi
+          fi
+
+          discordWebhookUrl="${DISCORD_WEBHOOK_URL}"
+          if [ -z "$discordWebhookUrl" ]; then
+            echo "DISCORD_WEBHOOK_URL not configured — skipping Discord notification"
+            exit 0
+          fi
+
+          threadTitle=$(head -1 processed-release-notes.md | sed 's/^# *//')
+          firstChunk=$(cat discord_chunk_0.txt)
+
+          if [ "$hasImage" = true ]; then
+            firstPayload=$(jq -n --arg content "$firstChunk" --arg thread_name "$threadTitle" '{content: $content, thread_name: $thread_name}')
+            response=$(curl -s -w "\n%{http_code}" -X POST -F "payload_json=$firstPayload" -F "files[0]=@$imageFile" "${discordWebhookUrl}?wait=true")
+          else
+            firstPayload=$(jq -n --arg content "$firstChunk" --arg thread_name "$threadTitle" '{content: $content, thread_name: $thread_name}')
+            response=$(curl -s -w "\n%{http_code}" -X POST -H "Content-Type: application/json" -d "$firstPayload" "${discordWebhookUrl}?wait=true")
+          fi
+
+          httpCode=$(echo "$response" | tail -1)
+          responseBody=$(echo "$response" | sed '$d')
+
+          if [ "$httpCode" -lt 200 ] || [ "$httpCode" -ge 300 ]; then
+            echo "Failed to create Discord forum post (HTTP $httpCode)"
+            exit 1
+          fi
+
+          threadId=$(echo "$responseBody" | jq -r '.channel_id // empty')
+
+          if [ "$chunkCount" -gt 1 ] && [ -n "$threadId" ]; then
+            i=1
+            while [ "$i" -lt "$chunkCount" ]; do
+              chunk=$(cat "discord_chunk_${i}.txt")
+              chunkPayload=$(jq -n --arg content "$chunk" '{content: $content}')
+              curl -s -X POST -H "Content-Type: application/json" -d "$chunkPayload" "${discordWebhookUrl}?thread_id=${threadId}" >/dev/null
+              i=$((i + 1))
+              sleep 1
+            done
+          fi
+
+          if [ -n "$MENTION_ROLE_ID" ] && [ -n "$threadId" ]; then
+            mentionPayload=$(jq -n --arg content "<@&${MENTION_ROLE_ID}> Follow-up hotfixes or patches for this update will be posted in this Forum post!" '{content: $content}')
+            curl -s -X POST -H "Content-Type: application/json" -d "$mentionPayload" "${discordWebhookUrl}?thread_id=${threadId}" >/dev/null
+          fi
+
+          echo "Discord notification complete!"

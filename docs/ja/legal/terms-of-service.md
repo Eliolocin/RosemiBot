@@ -1,6 +1,7 @@
 ---
 title: 利用規約
 description: TomoriBot公式ホスト版インスタンスの利用に適用される規約。
+aiGenerated: false
 ---
 
 この翻訳は便宜のために提供されています。内容については英語版が優先されます。

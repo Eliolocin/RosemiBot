@@ -11,6 +11,8 @@ import { ColorCode } from "@/utils/misc/logger";
 import { processEmbedsFromMessage } from "@/utils/chat/contextEmbeds";
 import { checkTargetEmbedTitle } from "@/utils/discord/embedClassifier";
 import { initializeLocalizer, localizer } from "@/utils/text/localizer";
+import { buildSuccessHeading, type FieldPlan } from "@/tools/functionCalls/updateUserInfoTool";
+import { localizedCopy } from "../../helpers/localeCases";
 
 function makeEmbed(title: string, description: string): Embed {
   return { title, description, fields: [], color: null } as unknown as Embed;
@@ -44,6 +46,69 @@ describe("update_user_info notice visibility", () => {
 
     const memoryTitle = localizer("en-US", "genai.self_teach.personal_memory_learned_title");
     expect(checkTargetEmbedTitle(memoryTitle).isTarget).toBe(true);
+  });
+
+  it("classifies the field-specific title in every locale, including its Minimal emoji-free form", () => {
+    for (const locale of ["en-US", "ja", "pt-BR", "es-419", "zh-TW", "zh-CN", "vi"]) {
+      const title = localizer(locale, "tools.user_info_update.success_title_fields", {
+        target_user: "Bau",
+        fields: localizer(locale, "tools.user_info_update.subject_timezone_offset"),
+      });
+      expect(checkTargetEmbedTitle(title)).toEqual({ isTarget: true, type: "user_info_update" });
+      expect(checkTargetEmbedTitle(title.replace(/^✅\s*/u, ""))).toEqual({ isTarget: true, type: "user_info_update" });
+    }
+    expect(
+      localizer("en-US", "tools.user_info_update.success_title_fields", {
+        target_user: "Bau",
+        fields: "nickname and timezone",
+      }),
+    ).toBe("✅ Updated Bau's nickname and timezone");
+  });
+
+  it("classifies the cleared title in every locale, including its Minimal emoji-free form", () => {
+    for (const locale of ["en-US", "ja", "pt-BR", "es-419", "zh-TW", "zh-CN", "vi"]) {
+      const title = localizer(locale, "tools.user_info_update.success_title_cleared_fields", {
+        target_user: "Bau",
+        fields: localizer(locale, "tools.user_info_update.subject_pronouns"),
+      });
+      expect(checkTargetEmbedTitle(title)).toEqual({ isTarget: true, type: "user_info_update" });
+      expect(checkTargetEmbedTitle(title.replace(/^🗑️\s*/u, ""))).toEqual({ isTarget: true, type: "user_info_update" });
+    }
+  });
+
+  it("titles a pure removal as cleared in red, but a removed affix alone as a nickname update", () => {
+    const heading = (plans: FieldPlan[]) => {
+      const { titleKey, titleVars, color } = buildSuccessHeading("en-US", plans, "Bau");
+      return { title: localizer("en-US", titleKey, titleVars), color };
+    };
+
+    expect(heading([{ field: "timezone_offset", cleared: true }])).toEqual({
+      title: "🗑️ Cleared Bau's timezone",
+      color: ColorCode.ERROR,
+    });
+    expect(
+      heading([
+        { field: "nickname", cleared: true },
+        { field: "prefix", cleared: true },
+      ]),
+    ).toEqual({ title: "🗑️ Cleared Bau's nickname", color: ColorCode.ERROR });
+    expect(heading([{ field: "prefix", cleared: true }])).toEqual({
+      title: "✅ Updated Bau's nickname",
+      color: ColorCode.SUCCESS,
+    });
+    expect(
+      heading([
+        { field: "suffix", cleared: false, value: "-san" },
+        { field: "timezone_offset", cleared: false, value: 9 },
+      ]),
+    ).toEqual({ title: "✅ Updated Bau's nickname and timezone", color: ColorCode.SUCCESS });
+    expect(
+      heading([
+        { field: "pronouns", cleared: true },
+        { field: "gender_identity", cleared: true },
+        { field: "timezone_offset", cleared: true },
+      ]),
+    ).toEqual({ title: "✅ Updated Bau's Profile", color: ColorCode.SUCCESS });
   });
 
   it("renders the notice into the [System: ...] block for a later turn", () => {
@@ -128,6 +193,38 @@ describe("update_user_info notice visibility", () => {
           component.type === ComponentType.Separator && "divider" in component && Boolean(component.divider),
       ),
     ).toBe(true);
+  });
+
+  it("does not insert artificial newlines into notice descriptions", () => {
+    const memoryNotice = buildNoticeContainer({
+      locale: "en-US",
+      titleKey: "genai.self_teach.personal_memory_learned_title",
+      titleVars: { persona_nickname: "Mirri", user_nickname: "Locke" },
+      descriptionKey: "genai.self_teach.personal_memory_learned_description",
+      descriptionVars: { user_nickname: "Locke", memory_content: "ラーメンが好き" },
+    });
+
+    const [container] = memoryNotice;
+    if (!container || !isContainerComponent(container)) {
+      throw new Error("Expected the notice to be wrapped in a container component");
+    }
+
+    const description = container.components.find(
+      (component) =>
+        component.type === ComponentType.TextDisplay &&
+        "content" in component &&
+        component.content.includes("Personal Memory"),
+    );
+    expect(description).toBeDefined();
+    if (!description || !("content" in description)) return;
+
+    const expectedIntro = localizedCopy("en-US", "genai.self_teach.personal_memory_learned_description", {
+      user_nickname: "Locke",
+      memory_content: "ラーメンが好き",
+    }).split("\n```")[0];
+
+    expect(description.content).toContain(expectedIntro);
+    expect(description.content).not.toContain("Locke\n");
   });
 
   it("also recognizes user block and unblock notices", () => {

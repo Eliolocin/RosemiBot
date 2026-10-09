@@ -1,3 +1,8 @@
+import {
+  parsePrivateStructuredOutput,
+  privateStructuredFailure,
+  readStructuredResponse,
+} from "@/providers/utils/structuredReview";
 import type { z } from "zod";
 import type {
   ProviderImageInput,
@@ -233,6 +238,8 @@ async function executeStructuredJsonRequest<T>(params: {
   | {
       success: false;
       error: string;
+      failure?: "transport" | "malformed" | "refusal" | "cancelled";
+      httpStatus?: number;
       status?: number;
       statusText?: string;
       errorBody?: string;
@@ -264,9 +271,14 @@ async function executeStructuredJsonRequest<T>(params: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: params.request.abortSignal,
     });
 
     if (!response.ok) {
+      if (params.request.privateOutput) {
+        await response.body?.cancel();
+        return privateStructuredFailure(params.request, "transport", response.status);
+      }
       const errorBody = await response.text();
       log.error(`${params.logLabel} request failed`, new Error(errorBody), {
         errorType: "NvidiaStructuredJSONHttpError",
@@ -285,10 +297,19 @@ async function executeStructuredJsonRequest<T>(params: {
       };
     }
 
-    const result = (await response.json()) as {
-      choices?: Array<{ message?: { content?: unknown } }>;
+    const result = (await readStructuredResponse(params.request, response)) as {
+      usage?: unknown;
+      choices?: Array<{ message?: { content?: unknown; refusal?: unknown } }>;
     };
     const responseText = extractResponseText(result.choices?.[0]?.message?.content);
+    if (params.request.privateOutput)
+      return parsePrivateStructuredOutput(
+        params.request,
+        responseText,
+        params.zodSchema,
+        result.usage,
+        Boolean(result.choices?.[0]?.message?.refusal),
+      );
     if (!responseText) {
       return {
         success: false,
@@ -333,6 +354,7 @@ async function executeStructuredJsonRequest<T>(params: {
       data: validationResult.data,
     };
   } catch (error) {
+    if (params.request.privateOutput) return privateStructuredFailure(params.request);
     log.error(`${params.logLabel} request failed`, error as Error, {
       errorType: "NvidiaStructuredJSONRequestError",
       metadata: {
@@ -383,6 +405,7 @@ export async function callNvidiaStructuredJSON<T>(
     logLabel: "NVIDIA structured JSON",
   });
 
+  if (request.privateOutput) return jsonSchemaResult;
   if (jsonSchemaResult.success) {
     return {
       success: true,

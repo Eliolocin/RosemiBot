@@ -1,8 +1,8 @@
 ---
 title: "Locke, la desquiciada"
-aiGenerated: true
 sidebar:
   order: 6
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Locke is a PLANNED persona: she replaces the retired Temari

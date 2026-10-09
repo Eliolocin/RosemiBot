@@ -20,6 +20,7 @@ import {
 import { SETUP_DRAFT_SCHEMA_VERSION, type SetupDraftRecord } from "@/types/discord/setupWizard";
 import { formatPanelProse } from "@/utils/discord/ui/panelProse";
 import { getSupportedLocales, initializeLocalizer, localizer } from "@/utils/text/localizer";
+import { createPersona } from "../../helpers/fixtures";
 import { expectForEveryLocale } from "../../helpers/localeCases";
 
 await initializeLocalizer();
@@ -365,22 +366,8 @@ describe("panel prose runtime formatting", () => {
   it("formats every /config page placeholder and confirmation at runtime", () =>
     expectForEveryLocale((locale) => {
       const personas = [
-        {
-          persona_id: 55,
-          server_id: 9,
-          persona_nickname: "Aphel",
-          is_alter: false,
-          trigger_words: [],
-          naming_config: { prefixes: {}, suffixes: {}, addressTerms: {} },
-        } as unknown as TomoriState,
-        {
-          persona_id: 56,
-          server_id: 9,
-          persona_nickname: "Wren",
-          is_alter: true,
-          trigger_words: [],
-          naming_config: { prefixes: {}, suffixes: {}, addressTerms: {} },
-        } as unknown as TomoriState,
+        createPersona({ persona_id: 55, server_id: 9, persona_nickname: "Aphel", trigger_words: [] }),
+        createPersona({ persona_id: 56, server_id: 9, persona_nickname: "Wren", is_alter: true, trigger_words: [] }),
       ];
       const actor: ConfigActor = { workspaceKind: "guild", isManager: true };
       // Collected rather than asserted per page, so a translation pass sees every overflowing page at once.

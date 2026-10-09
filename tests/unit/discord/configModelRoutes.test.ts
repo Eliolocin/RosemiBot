@@ -285,8 +285,8 @@ function makeHarness(options: HarnessOptions = {}): Harness {
           expandedOptionCount:
             providerPage?.capability === capability && providerPage.provider ? (options.models?.length ?? 1) : 0,
         })),
-        channelOverrides: [{ target: "<#111>", model: "gemini-2.5-flash (google)" }],
-        personaOverrides: [{ target: "**Juno**", model: "claude-sonnet-4 (openrouter)" }],
+        channelOverrides: [{ target: "<#111>", model: "gemini-2.5-flash (Google Gemini)" }],
+        personaOverrides: [{ target: "**Juno**", model: "claude-sonnet-4 (OpenRouter)" }],
         imageGenerationEnabled: state.config.imagegen_enabled,
         videoGenerationEnabled: state.config.videogen_enabled,
         endpointSlots: options.endpointSlots?.map((slot) => ({
@@ -672,9 +672,9 @@ describe("config models switch page", () => {
       expect(rendered).toContain(buildConfigRouteId({ action: "model-provider-select", locale: "en-US", capability }));
     }
     expect(rendered).toContain("> **Channel overrides**: 1");
-    expect(rendered).toContain("> <#111> · gemini-2.5-flash (google)");
+    expect(rendered).toContain("> <#111> · gemini-2.5-flash (Google Gemini)");
     expect(rendered).toContain("> **Persona overrides**: 1");
-    expect(rendered).toContain("> **Juno** · claude-sonnet-4 (openrouter)");
+    expect(rendered).toContain("> **Juno** · claude-sonnet-4 (OpenRouter)");
   });
 
   it("renders an inert selector for a capability with no eligible provider", async () => {
@@ -2275,8 +2275,8 @@ describe("config models view loaders", () => {
     );
     expect(providers).toHaveBeenCalledTimes(6);
     // A persona without a resolved override is an ordinary default, not an override row.
-    expect(view.channelOverrides).toEqual([{ target: "<#111>", model: "kayra-v1 (novelai)" }]);
-    expect(view.personaOverrides).toEqual([{ target: "**Juno**", model: "claude-sonnet-4 (openrouter)" }]);
+    expect(view.channelOverrides).toEqual([{ target: "<#111>", model: "kayra-v1 (NovelAI)" }]);
+    expect(view.personaOverrides).toEqual([{ target: "**Juno**", model: "claude-sonnet-4 (OpenRouter)" }]);
     expect(view.imageGenerationEnabled).toBe(true);
     expect(view.videoGenerationEnabled).toBe(false);
     expect(view.speechCapabilityEnabled).toBe(true);
@@ -2296,9 +2296,9 @@ describe("config models view loaders", () => {
     expect(contents.some((content) => content.includes("Video generation is disabled."))).toBe(true);
     const overrideBlock = contents.find((content) => content.includes("Text model overrides"));
     expect(overrideBlock).toContain("> **Channel overrides**: 1");
-    expect(overrideBlock).toContain("> <#111> · kayra-v1 (novelai)");
+    expect(overrideBlock).toContain("> <#111> · kayra-v1 (NovelAI)");
     expect(overrideBlock).toContain("> **Persona overrides**: 1");
-    expect(overrideBlock).toContain("> **Juno** · claude-sonnet-4 (openrouter)");
+    expect(overrideBlock).toContain("> **Juno** · claude-sonnet-4 (OpenRouter)");
 
     providers.mockRestore();
     channelOverrides.mockRestore();
@@ -2330,8 +2330,8 @@ describe("config models view loaders", () => {
     });
     const overrideBlock = textDisplayContents(payload).find((content) => content.includes("Text model overrides"));
     expect(overrideBlock).toContain("> **Channel overrides**: 11");
-    expect(overrideBlock).toContain("> <#channel-7> · model-7 (google)");
-    expect(overrideBlock).not.toContain("> <#channel-8> · model-8 (google)");
+    expect(overrideBlock).toContain("> <#channel-7> · model-7 (Google Gemini)");
+    expect(overrideBlock).not.toContain("> <#channel-8> · model-8 (Google Gemini)");
     expect(overrideBlock).toContain("> and 3 more");
     expectValidComponentsV2Payload(payload);
 

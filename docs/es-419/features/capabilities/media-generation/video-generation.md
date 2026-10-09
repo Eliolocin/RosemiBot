@@ -4,34 +4,29 @@ sidebar:
   order: 2
 ---
 
-TomoriBot puede generar videos cortos a partir de un prompt de texto o animando una imagen de referencia.
-Usa `/generate video` o solo pídeselo.
+TomoriBot puede generar videos cortos a partir de un mensaje de texto o animando una imagen existente. Utilice `/generate video` o pregúntele directamente en el chat.
 
 ## Qué puede hacer
 
-- **Texto a video**: genera un clip corto a partir de un prompt.
-- **Imagen a video**: anima una imagen de referencia (la primera imagen de un mensaje señalado se convierte en el fotograma inicial).
-- **Imagen a video en bucle**: cuando se solicita mediante el chat, los modelos compatibles pueden reutilizar la imagen inicial como fotograma final.
-- Relaciones de aspecto configurables.
+- **Texto a vídeo**: genera un clip corto a partir de una descripción.
+- **Imagen a vídeo**: anima una imagen. La primera imagen de un mensaje al que se hace referencia se convierte en el fotograma inicial.
+- ** Bucle de imagen a video**: cuando se solicita a través del chat, los modelos compatibles pueden reutilizar la imagen inicial como fotograma final.
+- **Relaciones de aspecto personalizables**.
 
-La imagen a video y los bucles dependen de las capacidades del modelo seleccionado para el primer y el
-último fotograma. TomoriBot comprueba el catálogo actual de modelos de video de OpenRouter antes de enviar
-un trabajo de pago y te pide quitar la imagen, desactivar el bucle o seleccionar un modelo compatible cuando es necesario.
+La conversión de imagen a vídeo y el bucle dependen de la compatibilidad del primer y último fotograma del modelo seleccionado. TomoriBot verifica el catálogo de modelos de OpenRouter antes de enviar una generación y le pregunta si es necesario eliminar una imagen o un bucle para el modelo elegido.
 
-La generación de videos usa un flujo de sondeo asíncrono: se envía la solicitud, luego TomoriBot
-consulta al proveedor hasta que el clip terminado está listo y lo publica. Los clips grandes pueden tardar.
+Generar vídeo lleva tiempo: TomoriBot envía el trabajo al proveedor, comprueba que se haya completado en segundo plano y publica el vídeo terminado en el canal cuando esté listo.
 
 ## Configuración
 
-1. Configura un modelo de video con `/config` > Modelos > Cambiar modelos.
-2. Asegúrate de que la generación de imágenes/medios esté permitida mediante `/config` > Permisos.
-3. Pídele que genere un video o ejecuta `/generate video`.
+1. Selecciona un modelo de video en `/config` > `Modelos` > `Cambiar modelos`.
+2. Confirme que la generación de video esté habilitada en `/config` > `Permisos` (`video_generation_enabled`).
+3. Pregúntale en el chat o ejecuta `/generate video`.
 
 ## Compatibilidad con proveedores
 
-La generación nativa de videos está disponible en Google, OpenRouter y Z.ai. Consulta la matriz
-completa en [Proveedores y modelos](/es-419/features/setup-administration/providers-and-models/#proveedores-compatibles).
+La generación de video nativo está disponible en Google, OpenRouter y Z.ai. Consulta la matriz completa en [Proveedores y modelos](/es-419/features/setup-administration/providers-and-models/#supported-providers).
 
-Para la generación de videos local mediante ComfyUI (por ejemplo, flujos de imagen a video de WAN), consulta [Configuración: ComfyUI](/es-419/self-hosting/local-endpoints/setup-comfyui/).
+Para la generación de video local a través de ComfyUI (como flujos de trabajo de imagen a video WAN), consulte [Configuración: ComfyUI](/es-419/self-hosting/local-endpoints/setup-comfyui/).
 
-Para la arquitectura interna de generación y sondeo, consulta la referencia sobre [generación de videos](/en/architecture/subsystems/video-generation/).
+Para conocer la arquitectura de sondeo y generación interna, consulte la referencia en [generación de video](/en/architecture/subsystems/video-generation/).

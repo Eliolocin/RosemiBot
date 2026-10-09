@@ -1,96 +1,28 @@
-﻿---
+---
 title: "02.10: Sample Dialogues"
 ---
 
-Few-shot example dialogues to anchor the LLM's voice.
+The sample dialogues contributor emits few-shot example turns from persona configuration to demonstrate speaking voice and dialogue cadence.
 
-- **File**: `src/utils/text/context/templates.ts:199-278`
+## Flow and ownership
 
-## Mission
+The contributor `buildSampleDialogueContextItems` in `src/utils/text/context/templates.ts` maps paired example arrays to structured context items:
 
-Emit paired user/model context items from the persona's
-`sample_dialogues_in` and `sample_dialogues_out` arrays. These act as
-few-shot examples: the LLM sees `${user}: question` followed by
-`${botName}: answer`, primes its persona voice. Skipped on impersonation
-(samples are persona-flavored output examples) and when arrays are empty
-or mismatched in length.
+1. **Eligibility**:
+   - Returns an empty array during user impersonation, when persona state is missing, when either `sample_dialogues_in` or `sample_dialogues_out` is empty, or when array lengths do not match.
+2. **Turn transformation**:
+   - **User example**: When the user prompt matches `UNPAIRED_SAMPLE_DIALOGUE_SENTINEL`, the user turn is omitted and only the model turn emits. Otherwise, the turn text passes through humanization (if enabled), mention conversion, and uncensor transforms, and emits as a `user`-role item tagged `DIALOGUE_SAMPLE`.
+   - **Model example**: Ensures the bot name prefix (`${botName}: `) is present on the model output. The text passes through humanization, mention conversion, and uncensor transforms, and emits as a `model`-role item tagged `DIALOGUE_SAMPLE`.
+3. **Humanizer handling**:
+   - At `humanizer_degree >= HumanizerDegree.HEAVY`, both turns pass through `humanizeString` with `suppressPunctuationNoise: true`. This applies casing normalization and semicolon stripping while keeping commas and quotes intact as stable few-shot syntax examples.
 
-## Input
+## Constraints and rationale
 
-- `client`, `guildId`
-- `triggererName`, `botName`
-- `tomoriState` (provides `sample_dialogues_in`, `sample_dialogues_out`)
-- `tomoriConfig.humanizer_degree`,
-  `tomoriConfig.personal_memories_enabled`
-- `isUserImpersonation`
-- `uncensorInputOptions: { unicodeSpacesEnabled, sanitizeEnabled }`
-- `convertMentions`
+- **Impersonation suppression**: Sample dialogues demonstrate the bot persona's voice and are suppressed during user impersonation.
+- **Preset reassembly and terminal spacer**: Tagged as `DIALOGUE_SAMPLE`, which SillyTavern preset reassembly maps to the `dialogueExamples` marker. If a custom preset configuration places sample dialogues at the terminal position of the assembled prompt, `presetContextBuilder.ts` appends a terminal warning notice to prevent models from mistaking the example dialogue for the active conversation turn.
 
-## Output
+## Source pointers
 
-`Promise<StructuredContextItem[]>`: up to `2 × sample_dialogues_in.length`
-items (one user + one model per pair, or just model if the user side is
-`UNPAIRED_SAMPLE_DIALOGUE_SENTINEL`). Each tagged `DIALOGUE_SAMPLE`.
-
-## Side effects
-
-- **Humanizer transform**: when `humanizer_degree >= HumanizerDegree.HEAVY`,
-  both user and model sample text passes through `humanizeString` with
-  `suppressPunctuationNoise: true`: casing tweaks and semicolon stripping still
-  apply, but the randomized comma/emphasis noise (remove/flush/keep) that live
-  delivery and dialogue-history reconstruction get is skipped, so the sample's
-  own commas reach the LLM untouched as a real example of comma usage to
-  imitate. (Before this noise existed, HEAVY stripped every comma from samples
-  and history; they are now all kept.) Otherwise mirrors the dialogue-history transform (stage 11).
-- **Uncensor input transforms**: `applyUncensorInputTransforms` applies
-  unicode-space injection and/or sanitization based on
-  `uncensorInputOptions`.
-- **Mention conversion**: every sample passes through `convertMentions`.
-- **Model sample prefix**: `${botName}: ${output}` prefix is prepended
-  to the model side so the LLM learns to emit the bot-name prefix in its
-  responses.
-
-## Invariants
-
-After this stage runs:
-
-- Returns `[]` if: impersonation, no `tomoriState`, empty arrays, or
-  mismatched lengths between in/out.
-- `UNPAIRED_SAMPLE_DIALOGUE_SENTINEL` on the user side skips the user
-  item but still emits the model item (for "responses without a clear
-  prompt" examples).
-- Items are tagged `DIALOGUE_SAMPLE` so preset reassembly slots them
-  before the real dialogue history (after which the LLM should "pivot"
-  from sample voice to live conversation).
-
-## Configuration
-
-| Source | Field | Effect |
-|---|---|---|
-| `tomoriState` | `sample_dialogues_in`, `sample_dialogues_out` | The actual sample arrays |
-| `tomoriConfig` | `humanizer_degree` | When HEAVY, applies humanizer to samples |
-| `tomoriConfig` | `uncensor_unicode_space_enabled`, `uncensor_sanitize_enabled` | (Set upstream in `nativeBuilder`) Drives uncensor input transforms |
-
-## Extension points
-
-| Surface | Plugin-relevance |
-|---|---|
-| `UNPAIRED_SAMPLE_DIALOGUE_SENTINEL` | Defined in `src/types/preset/presetExport.ts`; coupled to SillyTavern preset import. |
-| Bot-name prefix on model samples | Hardcoded `${botName}: `: a plugin adding "no-prefix mode" would extend here. → plugin plan candidate. |
-| Humanizer + uncensor integration | Inherited from chat pipeline config; if a plugin adds new sample-transform passes (e.g. style transfer), it would extend the per-item transform sequence here. |
-
-- **This is the simplest contributor in the pipeline**: it is a pure
-formatter over two arrays. Most plugin-relevant work happens *upstream* in
-how `sample_dialogues_in/out` get populated (via persona editor, import,
-ST card conversion).
-
-## Related docs
-
-- Persona sample editing: → no dedicated doc; persona configuration
-  command surface only
-- Humanizer system: → folded into `dialogueHistory` (stage 11);
-  `humanizeString` helper in `src/utils/text/processors/formatters.ts`
-- Uncensor system: → no dedicated doc;
-  `src/utils/text/uncensor.ts` helper only
-- ST preset sample-dialogue handling:
-  [`docs/en/architecture/integrations/sillytavern/preset-system.md`](../../../integrations/sillytavern/preset-system)
+- `src/utils/text/context/templates.ts`: `buildSampleDialogueContextItems`.
+- `src/utils/text/processors/formatters.ts`: `humanizeString` formatting.
+- `src/utils/text/presetContextBuilder.ts`: `dialogueExamples` mapping and terminal spacer.

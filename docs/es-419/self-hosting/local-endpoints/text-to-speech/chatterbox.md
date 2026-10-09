@@ -1,12 +1,15 @@
 ---
 title: "Chatterbox TTS"
+aiGenerated: true
 ---
 
-Usa `servers/tts/chatterbox/server.py` para la clonación de voz en inglés con etiquetas de eventos compatibles. La ruta del modelo rápido usa de forma predeterminada Chatterbox-Turbo (350M parámetros). Chatterbox-Nano (110M parámetros) puede seleccionarse para implementaciones más pequeñas orientadas a CPU. Este envoltorio no carga Chatterbox Multilingual V3.
+Clona voces en inglés con etiquetas de emociones utilizando el servidor de texto a voz local [Chatterbox](https://github.com/resemble-ai/chatterbox).
+
+Chatterbox se ejecuta localmente a través de `servers/tts/chatterbox/server.py`. El valor predeterminado es el modelo rápido Chatterbox-Turbo (350M de parámetros) con etiquetas de eventos de emoción en línea como `[laugh]` y `[sigh]`. También puede configurar el modelo liviano Chatterbox-Nano (parámetros 110M) para configuraciones de CPU o el modelo estándar 0.5B para guía sin clasificador (`cfg_weight`) y ajuste emocional `exaggeration`. Este contenedor no carga Chatterbox Multilingual V3.
 
 ## Configuración
 
-Ejecuta estos comandos desde la raíz del repositorio de TomoriBot, la carpeta donde clonaste TomoriBot:
+Ejecuta estos comandos desde la raíz del repositorio TomoriBot, la carpeta donde clonó TomoriBot:
 
 ### Windows PowerShell
 
@@ -30,36 +33,36 @@ python -m pip install -r servers/tts/chatterbox/requirements.txt
 python servers/tts/chatterbox/server.py
 ```
 
-Mantén esa terminal abierta mientras TomoriBot esté usando Chatterbox. La URL del punto de conexión predeterminado es `http://127.0.0.1:8011`; configura `CHATTERBOX_PORT` para usar otro puerto.
+Mantén esa terminal abierta mientras TomoriBot esté usando Chatterbox. La URL del punto final predeterminado es `http://127.0.0.1:8011`; configure `CHATTERBOX_PORT` para usar otro puerto.
 
 ### Opcional: usa Chatterbox-Nano
 
-Nano requiere una compilación de Chatterbox con la opción del cargador `nano=True`. Después de la configuración normal anterior, instala la revisión anterior anclada en el mismo entorno virtual. El hash del commit fija la versión de origen compatible; no es una garantía de seguridad. Este comando requiere `git` y mantiene las dependencias en tiempo de ejecución ya instaladas:
+Nano requiere una compilación Chatterbox con la opción de cargador `nano=True`. Después de la configuración normal anterior, instale la revisión anterior fijada en el mismo entorno virtual. El hash de confirmación corrige la versión fuente compatible; No es una garantía de seguridad. Este comando requiere `git` y mantiene las dependencias de tiempo de ejecución ya instaladas:
 
 ```sh
 python -m pip install --no-deps --force-reinstall "git+https://github.com/resemble-ai/chatterbox.git@5de7a54aa4e5e2baadb0182dde554908b48b85c2"
 ```
 
-Luego establece `CHATTERBOX_FAST_MODEL=nano` antes de iniciar el envoltorio. Deja la variable sin establecer para Turbo. En Windows PowerShell, establécela con `$env:CHATTERBOX_FAST_MODEL = "nano"`; en Linux o macOS, usa `CHATTERBOX_FAST_MODEL=nano python servers/tts/chatterbox/server.py`. La respuesta de `/health` informa `fast_model` para que puedas verificar la opción cargada. Nano y Turbo usan la misma solicitud de clonación y etiquetas de eventos compatibles. Ambos son solo en inglés.
+Luego configure `CHATTERBOX_FAST_MODEL=nano` antes de iniciar el contenedor. Deja la variable sin configurar para Turbo. En Windows PowerShell, configúrelo con `$env:CHATTERBOX_FAST_MODEL = "nano"`; en Linux o macOS, use `CHATTERBOX_FAST_MODEL=nano python servers/tts/chatterbox/server.py`. La respuesta `/health` informa `fast_model` para que pueda verificar la opción cargada. Nano y Turbo utilizan la misma solicitud de clonación y etiquetas de eventos compatibles. Ambos son solo en inglés.
 
-El interruptor del modelo rápido de `/config` debe permanecer activado para usar Nano o Turbo. Desactivarlo selecciona el modelo Chatterbox 0.5B estándar para el ajuste del peso CFG y la exageración.
+El interruptor de modelo rápido `/config` debe permanecer habilitado para usar Nano o Turbo. Al desactivarlo, se selecciona el modelo estándar Chatterbox 0.5B para ajuste de exageración y peso CFG.
 
-### Chatterbox Estándar (0.5B con CFG y Exageración)
+### Estándar Chatterbox (0.5B con CFG y exageración)
 
-El modelo original Chatterbox base de 0.5B (`ChatterboxTTS`) está integrado directamente en el envoltorio del servidor. Intercambia las etiquetas de eventos entre corchetes en línea de Turbo por un control vocal detallado usando Orientación sin clasificador (`cfg_weight`) y `exaggeration` emocional.
+El modelo original Chatterbox base 0.5B (`ChatterboxTTS`) está integrado directamente en el contenedor del servidor. Cambia las etiquetas de eventos de paréntesis en línea de Turbo por un control vocal detallado utilizando la guía sin clasificador (`cfg_weight`) y el emocional `exaggeration`.
 
-Para usar el modelo Estándar:
-1. Inicia el envoltorio del servidor normalmente.
-2. En Discord, ejecuta `/config` > `Modelos` > `Parámetros y voces TTS`.
-3. Desactiva la opción `Modelo rápido de Chatterbox`.
-4. En la siguiente generación, el envoltorio descarga y carga lentamente el modelo de 0.5B estándar en la memoria.
+Para utilizar el modelo Estándar:
+1. Inicia el contenedor del servidor como de costumbre.
+2. En Discord, ejecute `/config` > `Modelos` > `Parámetros y voces TTS`.
+3. Desactiva la opción `Fast Model (Turbo)`.
+4. En la próxima generación, el contenedor descarga y carga lentamente el modelo estándar 0.5B en la memoria.
 
-Ambos valores son campos de texto en el modal `Editar parámetros`. Siempre son editables, y la página señala que se ignoran mientras el modelo rápido esté activado:
-- `cfg_weight` (predeterminado `0.5`): ajusta qué tan fielmente se adhiere el audio sintetizado al tempo de referencia y al estilo vocal.
-- `exaggeration` (predeterminado `0.5`): controla la intensidad emocional y la inflexión dramática de la entrega.
+Ambos valores son campos de texto en el modal `Editar parámetros`. Siempre son editables y la página indica que se ignoran mientras el modelo rápido está habilitado:
+- **`cfg_weight`** (predeterminado `0.5`): ajusta qué tan cerca se adhiere el audio sintetizado al tempo de referencia y al estilo vocal.
+- **`exaggeration`** (predeterminado `0.5`): controla la intensidad emocional y la inflexión dramática de la entrega.
 
-> [!NOTE]
-> El Chatterbox Estándar no admite etiquetas de eventos entre corchetes en línea (como `[laughs]` o `[sigh]`). TomoriBot elimina automáticamente las etiquetas entre corchetes del texto del prompt cuando el interruptor del Modelo rápido se desactiva.
+> [!NOTA]
+> El Chatterbox estándar no admite etiquetas de eventos de corchetes en línea (como `[laughs]` o `[sigh]`). TomoriBot elimina automáticamente las etiquetas de corchetes del texto del mensaje cuando la opción Modelo rápido está desactivada.
 
 ## Registro en TomoriBot
 
@@ -72,33 +75,33 @@ Ejecuta `/providers`, elige `Agregar nuevo punto de conexión personalizado` y u
 
 Después de guardar la conexión, selecciónala y usa su menú desplegable de modelos para agregar un modelo de Voz. Elige `Clon de voz` como el Modo de fuente de voz y `Etiquetas entre corchetes` como el Estilo de marcado del guion para que las etiquetas de entrega sobrevivan al envío.
 
-Usa `/providers` para el registro del endpoint y la configuración del modelo. Luego abre `/config` > Modelos > Cambiar modelos para seleccionar y activar el endpoint registrado.
+Usa `/providers` para el registro del endpoint y la configuración del modelo. Luego abre `/config` > Modelos > `Cambiar modelos` para seleccionar y activar el endpoint registrado.
 
-## Configuración de una voz de la persona
+## Configurar una voz personal
 
-1. Prepara un clip de voz limpio de 10 segundos con un solo orador y sin música de fondo.
-2. Abre `/config` bajo Modelos > Parámetros y voces TTS y sube el clip.
-3. Abre `/config` bajo Persona > Voz, luego elige la persona y la muestra de voz.
+1. Prepare un clip de voz limpio de 10 segundos con un altavoz y sin música de fondo.
+2. Abre `/config` en Modelos > `Parámetros y voces TTS` y cargue el clip.
+3. Abre `/config` en Persona > `Voz`, luego elija la persona y la muestra de voz.
 
-Un clip más largo no aporta nada a Chatterbox, y tampoco se rechaza. Su runtime trunca la referencia antes del condicionamiento, así que el audio más allá de la ventana se sube, se almacena y luego se ignora ([`tts_turbo.py`](https://github.com/resemble-ai/chatterbox/blob/master/src/chatterbox/tts_turbo.py), [`tts.py`](https://github.com/resemble-ai/chatterbox/blob/master/src/chatterbox/tts.py)):
+Un clip más largo no aporta nada a Chatterbox y tampoco es rechazado. Su tiempo de ejecución trunca la referencia antes del acondicionamiento, por lo que el audio que pasa por la ventana se carga, almacena y luego se ignora ([`tts_turbo.py`](https://github.com/resemble-ai/chatterbox/blob/master/src/chatterbox/tts_turbo.py), [`tts.py`](https://github.com/resemble-ai/chatterbox/blob/master/src/chatterbox/tts.py)):
 
-- El prompt acústico corresponde a los primeros 10 segundos en todas las variantes.
-- El contexto de tokens de voz corresponde a los primeros 15 segundos en Turbo y Nano, y a 6 segundos en Standard.
+- El aviso acústico es los primeros 10 segundos en cada variante.
+- El contexto del token de voz son los primeros 15 segundos en Turbo y Nano, y 6 segundos en Estándar.
 
-Esas ventanas son constantes del runtime upstream, y no una guía publicada: el README del repositorio no indica ninguna duración del clip de referencia, y su nombre de archivo de ejemplo es solo `your_10s_ref_clip.wav`. La única duración que el runtime realmente aplica es un mínimo, que exige que el prompt dure más de 5 segundos.
+Esas ventanas son constantes en el tiempo de ejecución ascendente en lugar de una guía publicada: el archivo README del repositorio no proporciona la longitud del clip de referencia y su nombre de archivo de ejemplo es solo `your_10s_ref_clip.wav`. La duración que realmente impone el tiempo de ejecución es mínima, afirmando que el mensaje dura más de 5 segundos.
 
-Diez segundos es, por lo tanto, el objetivo práctico. Esa duración llena el prompt acústico, que es donde se definen el timbre y la dicción, y un clip de entre 10 y 15 segundos añade contexto de tokens de voz solo en Turbo y Nano. El embedding del hablante se sigue calculando a partir del clip completo, así que alargarlo no cambia la identidad del hablante, solo cuánto del prompt se descarta sin leerse.
+Por lo tanto, diez segundos es el objetivo práctico. Completa el mensaje acústico, que es donde se configuran el timbre y la entrega, y un clip de entre 10 y 15 segundos agrega contexto de token de voz solo en Turbo y Nano. La incrustación del hablante todavía se calcula a partir de todo el clip, por lo que alargarlo no cambia la identidad del hablante, solo la parte del mensaje que se descarta sin leer.
 
-Turbo y Nano pueden usar etiquetas de eventos entre corchetes como `[laugh]` y `[sigh]` cuando el interruptor del modelo rápido está activado.
+Turbo y Nano pueden usar etiquetas de eventos de soporte como `[laugh]` y `[sigh]` cuando la alternancia de modelo rápido está habilitada.
 
-## Ajuste opcional
+## Sintonización opcional
 
-Usa `/config` bajo Modelos > Parámetros y voces TTS para ajustar la carga de la solicitud de Chatterbox:
+Utilice `/config` en Modelos > `Parámetros y voces TTS` para ajustar la carga útil de la solicitud Chatterbox:
 
-- El interruptor del modelo rápido está activado de forma predeterminada. TomoriBot mantiene las etiquetas de eventos compatibles de Turbo/Nano y elimina los descriptores entre corchetes no compatibles antes de que el envoltorio llame a `ChatterboxTurboTTS.generate(...)`.
-- `cfg_weight` de forma predeterminada es `0.5`. El mínimo es `0`; TomoriBot no establece un máximo rígido. Solo se aplica cuando `turbo` es `false`; los valores más bajos pueden ayudar a ralentizar las voces de referencia rápidas, mientras que los valores más altos siguen la referencia con más fuerza.
-- `exaggeration` de forma predeterminada es `0.5`. El mínimo es `0`; TomoriBot no establece un máximo rígido. Solo se aplica cuando `turbo` es `false`; los valores más altos hacen que la entrega sea más expresiva o dramática y pueden acelerar el habla.
+- El cambio de modelo rápido está habilitado de forma predeterminada. TomoriBot mantiene las etiquetas de eventos Turbo/Nano compatibles y elimina los descriptores de corchetes no compatibles antes de que el contenedor llame a `ChatterboxTurboTTS.generate(...)`.
+- `cfg_weight` tiene como valor predeterminado `0.5`. El mínimo es `0`; TomoriBot no establece un máximo estricto. Sólo aplica cuando `turbo` es `false`; Los valores más bajos pueden ayudar a ralentizar las voces de referencia rápidas, mientras que los valores más altos siguen la referencia con más fuerza.
+- `exaggeration` tiene como valor predeterminado `0.5`. El mínimo es `0`; TomoriBot no establece un máximo estricto. Sólo aplica cuando `turbo` es `false`; los valores más altos hacen que la expresión sea más expresiva o dramática y pueden acelerar el habla.
 
-Las etiquetas de eventos compatibles de Turbo/Nano son `[clear throat]`, `[sigh]`, `[shush]`, `[cough]`, `[groan]`, `[sniff]`, `[gasp]`, `[chuckle]`, y `[laugh]`. Los descriptores no compatibles como `[excited]`, `[whisper]`, o `[smiles]` se eliminan en lugar de enviarse al texto a voz.
+Las etiquetas de eventos Turbo/Nano admitidas son `[clear throat]`, `[sigh]`, `[shush]`, `[cough]`, `[groan]`, `[sniff]`, `[gasp]`, `[chuckle]` y `[laugh]`. Los descriptores no admitidos, como `[excited]`, `[whisper]` o `[smiles]`, se eliminan en lugar de enviarse a TTS.
 
-Cuando `turbo` está desactivado, TomoriBot elimina todos los descriptores entre corchetes antes de enviar el texto al texto a voz, luego el envoltorio carga lentamente el modelo `ChatterboxTTS` estándar y llama a `model.generate(..., cfg_weight, exaggeration)`.
+Cuando `turbo` está deshabilitado, TomoriBot elimina todos los descriptores de corchetes antes de enviar texto a TTS, luego el contenedor carga lentamente el modelo estándar `ChatterboxTTS` y llama a `model.generate(..., cfg_weight, exaggeration)`.

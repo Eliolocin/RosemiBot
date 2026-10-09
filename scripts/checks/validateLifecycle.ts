@@ -52,6 +52,7 @@ const requiredTables = [
   "image_diffusion_models",
   "video_generation_models",
   "embedding_models",
+  "decision_models",
   "persona_presets",
   "system_prompt_presets",
   "users",
@@ -71,10 +72,28 @@ const seedChecks: SeedCheck[] = [
   { table: "image_diffusion_models", minimumRows: 1 },
   { table: "video_generation_models", minimumRows: 1 },
   { table: "embedding_models", minimumRows: 1 },
+  { table: "decision_models", minimumRows: 1 },
   { table: "persona_presets", minimumRows: 1 },
   { table: "system_prompt_presets", minimumRows: 1 },
   { table: "nai_presets", minimumRows: 1 },
 ];
+
+const lifecycleCryptoSecret = process.env.CRYPTO_SECRET || "validation_crypto_secret";
+
+/** A distinctive plaintext so a restore that returned seed defaults or a re-encrypted blob cannot match. */
+const sentinelApiKey = "sk-lifecycle-sentinel-0123456789";
+const sentinelServerDiscId = "lifecycle-server-1";
+const sentinelUserDiscId = "lifecycle-user-1";
+
+interface UserDataSnapshot {
+  server: { server_disc_id: string };
+  persona: { persona_nickname: string; attribute_list: string[]; persona_lineage_id: string };
+  personaConfig: { trigger_words: string[]; persona_prompt: string | null };
+  serverMemory: { content: string; tags: string[]; persona_lineage_id: string };
+  personalMemory: { content: string; tags: string[]; persona_lineage_id: string };
+  apiKey: { provider: string; key_version: number; plaintext: string };
+  document: { document_name: string; text_content: string; chunk_content: string; embedding: string } | null;
+}
 
 function section(title: string): void {
   console.log(`\n=== ${title} ===`);
@@ -172,6 +191,157 @@ async function assertSeedDataExists(client: SQL): Promise<void> {
   }
 }
 
+async function hasRagSchema(client: SQL): Promise<boolean> {
+  const [row] = await client<ExistsRow[]>`SELECT to_regclass('public.documents') IS NOT NULL AS exists`;
+  return Boolean(row?.exists);
+}
+
+/**
+ * Inserts one representative row per user-owned domain so a restore has something to lose.
+ * The credential is encrypted with pgcrypto directly because `encryptApiKey` is bound to the
+ * app's global client, which points at the real database rather than the disposable one.
+ */
+async function seedUserData(client: SQL): Promise<void> {
+  const [server] = await client<{ server_id: number }[]>`
+    INSERT INTO servers (server_disc_id) VALUES (${sentinelServerDiscId}) RETURNING server_id
+  `;
+  const [user] = await client<{ user_id: number }[]>`
+    INSERT INTO users (user_disc_id) VALUES (${sentinelUserDiscId}) RETURNING user_id
+  `;
+  const [persona] = await client<{ persona_id: number; persona_lineage_id: string }[]>`
+    INSERT INTO personas (server_id, persona_nickname, attribute_list)
+    VALUES (${server.server_id}, 'Lifecycle Persona', ARRAY['likes backups', 'distrusts restores']::TEXT[])
+    RETURNING persona_id, persona_lineage_id::TEXT AS persona_lineage_id
+  `;
+  await client`
+    INSERT INTO persona_configs (persona_id, trigger_words, persona_prompt)
+    VALUES (${persona.persona_id}, ARRAY['lifecycle', 'restore']::TEXT[], 'Lifecycle prompt')
+    ON CONFLICT (persona_id) DO UPDATE
+    SET trigger_words = EXCLUDED.trigger_words, persona_prompt = EXCLUDED.persona_prompt
+  `;
+  await client`
+    INSERT INTO server_memories (server_id, persona_id, persona_lineage_id, user_id, content, tags)
+    VALUES (
+      ${server.server_id}, ${persona.persona_id}, ${persona.persona_lineage_id}::BIGINT, ${user.user_id},
+      'Server memory survives restore', ARRAY['server', 'lifecycle']::TEXT[]
+    )
+  `;
+  await client`
+    INSERT INTO personal_memories (user_id, persona_lineage_id, content, tags)
+    VALUES (
+      ${user.user_id}, ${persona.persona_lineage_id}::BIGINT,
+      'Personal memory survives restore', ARRAY['personal', 'lifecycle']::TEXT[]
+    )
+  `;
+  await client`
+    INSERT INTO saved_provider_configs (server_id, provider, api_key, key_version)
+    VALUES (
+      ${server.server_id}, 'lifecycle-provider',
+      pgp_sym_encrypt(${sentinelApiKey}::TEXT, ${lifecycleCryptoSecret}::TEXT, 'compress-algo=1, cipher-algo=aes256'),
+      1
+    )
+  `;
+
+  if (!(await hasRagSchema(client))) {
+    return;
+  }
+
+  const [embeddingModel] = await client<{ embedding_model_id: number; embedding_family: string }[]>`
+    SELECT embedding_model_id, model_family AS embedding_family
+    FROM embedding_models
+    ORDER BY embedding_model_id
+    LIMIT 1
+  `;
+  const [document] = await client<{ document_id: number }[]>`
+    INSERT INTO documents (server_id, persona_id, uploader_user_id, document_name, text_content)
+    VALUES (
+      ${server.server_id}, ${persona.persona_id}, ${user.user_id},
+      'lifecycle-doc', 'Document text survives restore'
+    )
+    RETURNING document_id
+  `;
+  await client`
+    INSERT INTO document_chunks (document_id, server_id, embedding_model_id, embedding_family, chunk_index, content, embedding)
+    VALUES (
+      ${document.document_id}, ${server.server_id}, ${embeddingModel.embedding_model_id},
+      ${embeddingModel.embedding_family}, 0, 'Chunk text survives restore', '[0.25,0.5,0.75]'::VECTOR
+    )
+  `;
+}
+
+/** Reads the seeded rows back as plain values, throwing if any of them is missing. */
+async function readUserData(client: SQL): Promise<UserDataSnapshot> {
+  const [server] = await client<UserDataSnapshot["server"][]>`
+    SELECT server_disc_id FROM servers WHERE server_disc_id = ${sentinelServerDiscId}
+  `;
+  const [persona] = await client<UserDataSnapshot["persona"][]>`
+    SELECT p.persona_nickname, p.attribute_list, p.persona_lineage_id::TEXT AS persona_lineage_id
+    FROM personas p JOIN servers s ON s.server_id = p.server_id
+    WHERE s.server_disc_id = ${sentinelServerDiscId}
+  `;
+  const [personaConfig] = await client<UserDataSnapshot["personaConfig"][]>`
+    SELECT pc.trigger_words, pc.persona_prompt
+    FROM persona_configs pc
+    JOIN personas p ON p.persona_id = pc.persona_id
+    JOIN servers s ON s.server_id = p.server_id
+    WHERE s.server_disc_id = ${sentinelServerDiscId}
+  `;
+  const [serverMemory] = await client<UserDataSnapshot["serverMemory"][]>`
+    SELECT sm.content, sm.tags, sm.persona_lineage_id::TEXT AS persona_lineage_id
+    FROM server_memories sm JOIN servers s ON s.server_id = sm.server_id
+    WHERE s.server_disc_id = ${sentinelServerDiscId}
+  `;
+  const [personalMemory] = await client<UserDataSnapshot["personalMemory"][]>`
+    SELECT pm.content, pm.tags, pm.persona_lineage_id::TEXT AS persona_lineage_id
+    FROM personal_memories pm JOIN users u ON u.user_id = pm.user_id
+    WHERE u.user_disc_id = ${sentinelUserDiscId}
+  `;
+  const [apiKey] = await client<UserDataSnapshot["apiKey"][]>`
+    SELECT spc.provider, spc.key_version,
+           pgp_sym_decrypt(spc.api_key, ${lifecycleCryptoSecret}::TEXT) AS plaintext
+    FROM saved_provider_configs spc JOIN servers s ON s.server_id = spc.server_id
+    WHERE s.server_disc_id = ${sentinelServerDiscId}
+  `;
+
+  let document: UserDataSnapshot["document"] = null;
+  if (await hasRagSchema(client)) {
+    [document] = await client<NonNullable<UserDataSnapshot["document"]>[]>`
+      SELECT d.document_name, d.text_content, dc.content AS chunk_content, dc.embedding::TEXT AS embedding
+      FROM documents d
+      JOIN document_chunks dc ON dc.document_id = d.document_id
+      JOIN servers s ON s.server_id = d.server_id
+      WHERE s.server_disc_id = ${sentinelServerDiscId}
+    `;
+  }
+
+  const rows = { server, persona, personaConfig, serverMemory, personalMemory, apiKey };
+  for (const [name, row] of Object.entries(rows)) {
+    if (!row) {
+      throw new Error(`Seeded user data is missing its ${name} row.`);
+    }
+  }
+
+  return { ...rows, document: document ?? null };
+}
+
+async function assertUserDataSurvivedRestore(client: SQL, before: UserDataSnapshot): Promise<void> {
+  const after = await readUserData(client);
+
+  if (before.document && !after.document) {
+    throw new Error("Restore dropped the RAG document or its chunk.");
+  }
+  if (after.apiKey.plaintext !== sentinelApiKey) {
+    throw new Error("Restored API credential did not decrypt to the original plaintext.");
+  }
+
+  const differing = (Object.keys(before) as (keyof UserDataSnapshot)[]).filter(
+    (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]),
+  );
+  if (differing.length > 0) {
+    throw new Error(`User data changed across backup and restore: ${differing.join(", ")}.`);
+  }
+}
+
 async function assertStartupFunctionsExist(client: SQL): Promise<void> {
   const [cleanupFunction] = await client<ExistsRow[]>`
     SELECT to_regprocedure('cleanup_expired_cooldowns()') IS NOT NULL AS exists
@@ -200,8 +370,6 @@ function writeValidationEnv(databaseUrl: string, baseUrl: URL): void {
   const postgresPassword = decodeURIComponent(baseUrl.password || "");
   const postgresHost = baseUrl.hostname || "localhost";
   const postgresPort = baseUrl.port || "5432";
-  const cryptoSecret = process.env.CRYPTO_SECRET || "validation_crypto_secret";
-
   writeFileSync(
     envFilePath,
     [
@@ -211,7 +379,7 @@ function writeValidationEnv(databaseUrl: string, baseUrl: URL): void {
       `POSTGRES_USER=${postgresUser}`,
       `POSTGRES_PASSWORD=${postgresPassword}`,
       `POSTGRES_DB=${tempDatabaseName}`,
-      `CRYPTO_SECRET=${cryptoSecret}`,
+      `CRYPTO_SECRET=${lifecycleCryptoSecret}`,
       "RUN_ENV=development",
       "",
     ].join("\n"),
@@ -228,7 +396,7 @@ function buildCommandEnv(databaseUrl: string, baseUrl: URL): Record<string, stri
     POSTGRES_PASSWORD: decodeURIComponent(baseUrl.password || ""),
     POSTGRES_DB: tempDatabaseName,
     POSTGRES_MAINTENANCE_DB: process.env.POSTGRES_MAINTENANCE_DB || "postgres",
-    CRYPTO_SECRET: process.env.CRYPTO_SECRET || "validation_crypto_secret",
+    CRYPTO_SECRET: lifecycleCryptoSecret,
     RUN_ENV: "development",
     TOMORI_BACKUP_DIR: backupRoot,
     TOMORI_ENV_FILE: envFilePath,
@@ -268,21 +436,23 @@ function assertBackupBundleCreated(): string {
   }
 
   const bundleDir = join(backupRoot, bundleNames[0]);
-  for (const filename of ["database.sql", "config.env", "bundle_info.json"]) {
+  for (const filename of ["database.sql", "bundle_info.json"]) {
     const filePath = join(bundleDir, filename);
     if (!existsSync(filePath)) {
       throw new Error(`Backup bundle is missing ${filename}.`);
     }
   }
+  // A bundle holding both the ciphertext dump and the master keys defeats credential encryption.
+  if (existsSync(join(bundleDir, "config.env"))) {
+    throw new Error("Backup bundle contains config.env; bundles must stay database-only.");
+  }
 
   const manifest = JSON.parse(readFileSync(join(bundleDir, "bundle_info.json"), "utf-8")) as {
+    contents?: string;
     files?: string[];
   };
-  const manifestFiles = new Set(manifest.files ?? []);
-  for (const filename of ["database.sql", "config.env"]) {
-    if (!manifestFiles.has(filename)) {
-      throw new Error(`Backup manifest does not list ${filename}.`);
-    }
+  if (manifest.contents !== "database-only" || !manifest.files?.includes("database.sql")) {
+    throw new Error("Backup manifest does not describe a database-only bundle listing database.sql.");
   }
 
   return bundleDir;
@@ -320,6 +490,17 @@ async function main(): Promise<void> {
 
     const commandEnv = buildCommandEnv(validationUrl, baseUrl);
 
+    section("Seeding User Data");
+    await seedUserData(appSql);
+    const userDataBeforeBackup = await readUserData(appSql);
+    if (!userDataBeforeBackup.document) {
+      // CI's service image ships pgvector, so a missing RAG schema there means the vector path went unchecked.
+      if (process.env.CI === "true") {
+        throw new Error("CI must provide pgvector so the RAG document round trip is verified.");
+      }
+      console.log("pgvector is not installed here, so the RAG document round trip is skipped.");
+    }
+
     section("Validating Maintenance Scripts");
     await runCommand("bun run backup", ["bun", "run", "backup"], commandEnv);
     const backupBundleDir = assertBackupBundleCreated();
@@ -345,6 +526,7 @@ async function main(): Promise<void> {
     appSql = createScriptSqlClient(validationUrl);
     await assertRequiredTablesExist(appSql);
     await assertSeedDataExists(appSql);
+    await assertUserDataSurvivedRestore(appSql, userDataBeforeBackup);
     await appSql.close({ timeout: 1 });
     appSql = null;
 

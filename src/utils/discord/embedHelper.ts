@@ -19,6 +19,8 @@ import { ColorCode, log } from "../misc/logger";
 import { localizer } from "../text/localizer";
 import { sendWebhookMessageWithIdentity } from "./webhookManager";
 import { attachTextDisplayModalCollector, buildTextDisplayModalButton } from "./textDisplayModal";
+import { localizedMinimalTitle, withStatusCircle } from "./ui/statusTitle";
+import { resolveFooterLines } from "./ui/noticeFooter";
 import type { StandardEmbedOptions, SummaryEmbedOptions, TranslationEmbedOptions } from "../../types/discord/embed";
 import { TRANSLATOR_COLORS, TranslationProvider } from "../../types/discord/embed";
 
@@ -100,8 +102,14 @@ export function createStandardEmbed(locale: string, options: StandardEmbedOption
     color = ColorCode.INFO,
     footerKey,
     footerVars = {},
+    configHint,
     thumbnailUrl,
+    minimal,
   } = options;
+
+  if (minimal) {
+    return new EmbedBuilder().setColor(color).setTitle(localizedMinimalTitle(locale, titleKey, titleVars));
+  }
 
   // Use raw description if provided, otherwise use descriptionKey with localization
   const descriptionText = description
@@ -112,12 +120,13 @@ export function createStandardEmbed(locale: string, options: StandardEmbedOption
 
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setTitle(localizer(locale, titleKey, titleVars))
+    .setTitle(withStatusCircle(localizer(locale, titleKey, titleVars), color))
     .setDescription(descriptionText);
 
-  if (footerKey) {
+  const footerLines = resolveFooterLines(locale, footerKey, footerVars, configHint);
+  if (footerLines.length > 0) {
     embed.setFooter({
-      text: localizer(locale, footerKey, footerVars),
+      text: footerLines.join("\n"),
     });
   }
 
@@ -176,7 +185,7 @@ export function createSummaryEmbed(locale: string, options: SummaryEmbedOptions)
 
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setTitle(localizer(locale, titleKey, titleVars))
+    .setTitle(withStatusCircle(localizer(locale, titleKey, titleVars), color))
     .setDescription(descriptionText)
     .addFields(
       // Map over the fields provided in options

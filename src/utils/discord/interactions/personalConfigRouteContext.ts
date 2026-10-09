@@ -32,7 +32,11 @@ import {
   type PersonalConfigPanelView,
   type PersonalConfigSpotlightDisplayInfo,
 } from "@/utils/discord/ui/personalConfigPanel";
-import { type PersonaPanelAvatarData, withPersonaPanelAvatar } from "@/utils/discord/personaPanelAvatar";
+import {
+  type PersonaPanelAvatarData,
+  resolveInvokerAvatarUrl,
+  withPersonaPanelAvatar,
+} from "@/utils/discord/personaPanelAvatar";
 import type { RecordPanelActionInput } from "@/utils/stats/panelActionMetrics";
 import { localizer } from "@/utils/text/localizer";
 import { personaRepresentativeForLineage } from "@/utils/persona/lineage";
@@ -275,6 +279,8 @@ export async function repaint(
     }
   }
 
+  const userAvatarUrl = category === "profile" && page === "general" ? resolveInvokerAvatarUrl(interaction) : undefined;
+
   const memoryCount = category === "privacy" ? await dependencies.getMemoryCount(scope.userId) : 0;
   const stmCount = category === "privacy" ? await dependencies.getStmCount(scope.userDiscId) : 0;
 
@@ -366,6 +372,7 @@ export async function repaint(
         guildId: scope.guildId,
         selectedLineageId,
         selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
+        userAvatarUrl,
         personaNamingPreference: personaPref,
         memoryCount,
         stmCount,

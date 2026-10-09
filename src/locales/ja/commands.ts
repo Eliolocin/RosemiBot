@@ -17,6 +17,7 @@ import conditioning from "./commands/conditioning";
 import reward from "./commands/reward";
 import punish from "./commands/punish";
 import support from "./commands/support";
+import troubleshoot from "./commands/troubleshoot";
 import contribute from "./commands/contribute";
 import donate from "./commands/donate";
 import nsfw from "./commands/nsfw";
@@ -46,6 +47,7 @@ import shared from "./commands/shared";
 import nuke from "./commands/nuke";
 import setup from "./commands/setup";
 import compact from "./commands/compact";
+import context from "./commands/context";
 import moderation from "./commands/moderation";
 import quota from "./commands/quota";
 import providers from "./commands/providers";
@@ -81,6 +83,7 @@ export default {
     ...reward,
     ...punish,
     ...support,
+    ...troubleshoot,
     ...contribute,
     ...donate,
     ...nsfw,
@@ -110,5 +113,6 @@ export default {
     ...nuke,
     ...setup,
     ...compact,
+    ...context,
   },
 };

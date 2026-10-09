@@ -2,6 +2,7 @@
 title: "Locke, kẻ bất ổn"
 sidebar:
   order: 6
+aiGenerated: false
 ---
 
 :::danger[Bài viết này là một bản nháp sơ lược]

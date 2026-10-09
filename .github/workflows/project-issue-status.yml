@@ -1,0 +1,56 @@
+name: "Project: Move Assigned Issue to In-Progress"
+
+on:
+  issues:
+    types: [assigned]
+
+jobs:
+  move-to-in-progress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          github-token: ${{ secrets.PROJECTS_TOKEN }}
+          script: |
+            const projectId = "PVT_kwHOA-NKoc4BW2Oz";
+            const statusFieldId = "PVTSSF_lAHOA-NKoc4BW2OzzhSHQbE";
+            const inProgressOptionId = "61e4505c";
+
+            const result = await github.graphql(`
+              query($issueId: ID!) {
+                node(id: $issueId) {
+                  ... on Issue {
+                    projectItems(first: 10) {
+                      nodes {
+                        id
+                        project { id }
+                      }
+                    }
+                  }
+                }
+              }
+            `, { issueId: context.payload.issue.node_id });
+
+            const projectItem = result.node.projectItems.nodes.find(
+              (item) => item.project.id === projectId,
+            );
+
+            if (!projectItem) return;
+
+            await github.graphql(`
+              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $projectId,
+                  itemId: $itemId,
+                  fieldId: $fieldId,
+                  value: { singleSelectOptionId: $optionId }
+                }) {
+                  projectV2Item { id }
+                }
+              }
+            `, {
+              projectId,
+              itemId: projectItem.id,
+              fieldId: statusFieldId,
+              optionId: inProgressOptionId,
+            });

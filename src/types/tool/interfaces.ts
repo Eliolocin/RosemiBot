@@ -3,7 +3,7 @@
  * This abstracts tools away from specific LLM provider formats
  */
 
-import type { LlmRow, TomoriState } from "../db/schema";
+import type { LlmRow, TomoriState, ResponseRuleCheckerRef } from "@/types/db/schema";
 import type { StructuredContextItem } from "../misc/context";
 import type {
   BaseGuildTextChannel,
@@ -16,7 +16,6 @@ import type {
   AnyThreadChannel,
   Webhook,
 } from "discord.js";
-import type { TypedMCPToolResult } from "./mcpTypes";
 import type { FunctionResponseImageMetadata } from "../provider/interfaces";
 import type { MessageIdMap } from "@/utils/text/messageIdMap";
 
@@ -114,8 +113,8 @@ export interface StreamingContext {
   disableAllTools?: boolean; // Flag to disable all tool calling (e.g., during user impersonation)
   deliberateToolAllowedNames?: string[]; // Optional per-turn allowlist when deliberate tool mode detects scoped intent
   disableReminderTool?: boolean; // Flag to prevent create_task from being called during a reminder-triggered turn
-  outputPrefill?: string; // Optional prefill to output before streaming (hybrid prefix)
-  outputPrefillState?: { sent: boolean }; // Tracks if prefill was already output (avoid duplicates on retry)
+  /** Set per attempt by `applyAssistantPrefill`; the stream strips an echo of it and never displays it. */
+  outputPrefill?: string;
   replyNoticeState?: { attempted: boolean; sent: boolean }; // Tracks the standalone alter reply notice across tool-call stream retries
   /**
    * True once the turn has logged its generation failure. One failed turn reaches the emitter
@@ -127,6 +126,8 @@ export interface StreamingContext {
     handle: string;
     userId: string;
   }>; // Additional mention handles to force-resolve (e.g., reminder recipients)
+  holdResponseText?: boolean;
+  pendingResponseLimit?: import("@/types/stream/pendingResponse").PendingResponseLimit;
   suppressTextOutput?: boolean; // Suppress text output to Discord (NAI tool retry mode : keeps model state coherent but hides repeated text)
   /** NAI GLM-4.6: incomplete trailing fragment from previous stream, to append as prompt continuation on retry */
   naiContinuationPrefill?: string;
@@ -202,14 +203,21 @@ export interface ToolContext {
 
   /** Turn-level AbortSignal. Tools should forward this to their fetch/HTTP calls for true cancellation on /kill. */
   abortSignal?: AbortSignal;
+  /** Review fixes normalization before dispatch; internal calls retain ordinary normalization. */
+  preparedToolRequest?: { name: string; args: Record<string, unknown> };
+  /** Rechecked after asynchronous routing and immediately before invoking a transport. */
+  isExecutionCancelled?: () => boolean;
 }
 
-/**
- * Result returned by tool execution
- */
 export interface ToolResult {
   success: boolean;
+  /** A resolved expression the tool loop sends before building history. Never shown to the model. */
+  stickerSelection?: StickerSelection;
   data?: unknown;
+  /**
+   * Returned to the model as context. Keep provider response text out of it and log that text
+   * instead: an endpoint can echo the request credential in its error body.
+   */
   error?: string;
   message?: string;
   imageMetadata?: FunctionResponseImageMetadata;
@@ -220,9 +228,6 @@ export interface ToolResult {
   endTurn?: boolean;
 }
 
-/**
- * Tool category classification
- */
 export type ToolCategory = "discord" | "search" | "memory" | "utility" | "mcp";
 
 /**
@@ -251,6 +256,7 @@ export interface ToolAssemblyState {
   nai_diffusion_model_id?: number | null;
   video_model_id?: number | null;
   config: {
+    response_rule_checker_ref?: ResponseRuleCheckerRef | null;
     sticker_usage_enabled: boolean;
     web_search_enabled: boolean;
     self_teaching_enabled: boolean;
@@ -432,8 +438,8 @@ interface ToolAdapter {
 }
 
 /**
- * Enhanced tool adapter interface that includes MCP capabilities
- * Provides provider-agnostic access to both built-in and MCP tools
+ * Tool adapter that also declares the server's guild MCP tools
+ * Provides provider-agnostic access to both built-in and guild MCP tools
  */
 export interface MCPCapableToolAdapter extends ToolAdapter {
   /**
@@ -446,27 +452,8 @@ export interface MCPCapableToolAdapter extends ToolAdapter {
     serverId?: number,
     allowedMCPFunctions?: string[],
   ): Promise<Array<Record<string, unknown>>>;
-
-  /**
-   * Check if a function name belongs to an MCP tool
-   * @returns Promise<boolean> - True if this is an MCP tool function
-   */
-  isMCPFunction(functionName: string): Promise<boolean>;
-
-  /**
-   * Execute an MCP tool function
-   * @param context - Tool execution context for Discord operations
-   */
-  executeMCPFunction(
-    functionName: string,
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<TypedMCPToolResult>;
 }
 
-/**
- * Tool execution event for monitoring and debugging
- */
 export interface ToolExecutionEvent {
   toolName: string;
   provider: string;
@@ -478,9 +465,6 @@ export interface ToolExecutionEvent {
   timestamp: Date;
 }
 
-/**
- * Tool registry interface for managing all available tools
- */
 export interface ToolRegistryInterface {
   registerTool(tool: Tool): void;
 
@@ -504,3 +488,4 @@ export interface ToolRegistryInterface {
    */
   executeTool(toolName: string, args: Record<string, unknown>, context: ToolContext): Promise<ToolResult>;
 }
+import type { StickerSelection } from "@/types/discord/stickerSelection";

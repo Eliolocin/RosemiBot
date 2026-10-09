@@ -130,7 +130,7 @@ export async function generatePresetFromPromptZai(
         },
       });
       return {
-        error: `Z.ai request failed (${response.status}): ${response.statusText}`,
+        error: `Z.ai request failed (HTTP ${response.status}).`,
         errorType: "CONNECTION",
       };
     }

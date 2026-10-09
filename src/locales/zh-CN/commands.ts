@@ -23,6 +23,7 @@ import generate from "./commands/generate";
 import stats from "./commands/stats";
 import setup from "./commands/setup";
 import compact from "./commands/compact";
+import context from "./commands/context";
 import choices from "./commands/choices";
 import stPreset from "./commands/st-preset";
 import stPresets from "./commands/st-presets";
@@ -33,6 +34,7 @@ import conditioning from "./commands/conditioning";
 import reward from "./commands/reward";
 import punish from "./commands/punish";
 import support from "./commands/support";
+import troubleshoot from "./commands/troubleshoot";
 import contribute from "./commands/contribute";
 import donate from "./commands/donate";
 import nsfw from "./commands/nsfw";
@@ -79,6 +81,7 @@ export default {
     ...stats,
     ...setup,
     ...compact,
+    ...context,
     ...choices,
     ...stPreset,
     ...stPresets,
@@ -89,6 +92,7 @@ export default {
     ...reward,
     ...punish,
     ...support,
+    ...troubleshoot,
     ...contribute,
     ...donate,
     ...nsfw,

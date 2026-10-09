@@ -41,6 +41,7 @@ export type AddMcpResult =
   | { status: "invalid-input" }
   | { status: "invalid-name" }
   | { status: "invalid-type" }
+  | { status: "family-in-use" }
   | { status: "invalid-url"; validation: RemoteUrlValidationResult }
   | { status: "unavailable" }
   | { status: "limit-reached"; max: number }
@@ -52,6 +53,7 @@ export type McpMutationResult =
   | { status: "unchanged"; row: GuildMcpServerRow }
   | { status: "not-found" }
   | { status: "unavailable" }
+  | { status: "family-in-use" }
   | { status: "write-failed"; row: GuildMcpServerRow };
 
 function requireStableId(row: GuildMcpServerRow): number | null {
@@ -122,6 +124,9 @@ export class McpConfigOperations {
 
     const current = await this.dependencies.read(input.serverId, { forceRefresh: true });
     if (current.status !== "fresh") return { status: "unavailable" };
+    if (serverType !== "general" && current.configs.some((row) => row.is_enabled && row.server_type === serverType)) {
+      return { status: "family-in-use" };
+    }
     if (current.configs.length >= MAX_MCP_SERVERS_PER_WORKSPACE) {
       return { status: "limit-reached", max: MAX_MCP_SERVERS_PER_WORKSPACE };
     }
@@ -158,6 +163,16 @@ export class McpConfigOperations {
     const row = await this.resolveCurrentRow(input.serverId, input.guildMcpId);
     if (row.status !== "success") return row;
     if (row.row.is_enabled === input.enabled) return { status: "unchanged", row: row.row };
+    if (input.enabled && (row.row.server_type === "url_fetcher" || row.row.server_type === "web_search")) {
+      if (
+        row.configs.some(
+          (other) =>
+            other.guild_mcp_id !== input.guildMcpId && other.is_enabled && other.server_type === row.row.server_type,
+        )
+      ) {
+        return { status: "family-in-use" };
+      }
+    }
 
     const updated = await this.dependencies.updateEnabled(
       input.serverId,
@@ -186,12 +201,16 @@ export class McpConfigOperations {
   private async resolveCurrentRow(
     serverId: number,
     guildMcpId: number,
-  ): Promise<{ status: "success"; row: GuildMcpServerRow } | { status: "not-found" } | { status: "unavailable" }> {
+  ): Promise<
+    | { status: "success"; row: GuildMcpServerRow; configs: GuildMcpServerRow[] }
+    | { status: "not-found" }
+    | { status: "unavailable" }
+  > {
     if (!Number.isSafeInteger(guildMcpId) || guildMcpId <= 0) return { status: "not-found" };
     const current = await this.dependencies.read(serverId, { forceRefresh: true });
     if (current.status !== "fresh") return { status: "unavailable" };
     const row = current.configs.find((candidate) => requireStableId(candidate) === guildMcpId);
-    return row ? { status: "success", row } : { status: "not-found" };
+    return row ? { status: "success", row, configs: current.configs } : { status: "not-found" };
   }
 }
 

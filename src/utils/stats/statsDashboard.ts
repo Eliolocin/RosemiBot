@@ -173,7 +173,7 @@ async function resolvePersonaNames(guildId: string): Promise<Map<number, string>
   return map;
 }
 
-/** Formats the peak hour-of-day, shifting by a personal UTC offset when provided. */
+/** Shifted by a personal UTC offset when provided. */
 function formatPeakHour(locale: string, hour: number | null, offsetHours?: number | null): string {
   if (hour === null) return localizer(locale, "commands.stats.empty");
   const shifted = offsetHours ? (((hour + offsetHours) % 24) + 24) % 24 : hour;

@@ -27,9 +27,6 @@ const API_ERROR_COOLDOWN_MS = 5 * 60_000;
 /** Maximum number of key attempts per request before giving up */
 export const MAX_KEY_ATTEMPTS = 3;
 
-/**
- * Result of selecting an API key for use
- */
 export interface SelectedKeyResult {
   /** The decrypted API key ready for use */
   apiKey: string;
@@ -371,10 +368,8 @@ export async function addRotationKey(serverId: number, provider: string, apiKey:
 }
 
 /**
- * Purges all rotation keys for a server.
- * This includes the main key pointer and all additional rotation keys.
+ * Covers the main key pointer and all additional rotation keys.
  * Runtime state rows cascade-delete automatically via FK ON DELETE CASCADE.
- *
  */
 export async function purgeRotationKeys(serverId: number): Promise<number> {
   try {

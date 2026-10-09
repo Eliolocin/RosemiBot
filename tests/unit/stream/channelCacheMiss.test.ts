@@ -94,7 +94,12 @@ describe("a reply whose source channel left the cache", () => {
     } as unknown as StreamContext;
 
     const state = createDefaultStreamState();
-    const sent = await updater.sendSinglePayload({ content: "hello" }, "hello", context, state);
+    const sent = await updater.sendSinglePayload(
+      { content: "hello", diagnosticReason: "length_split" },
+      "hello",
+      context,
+      state,
+    );
 
     // The captured channel object is still usable, so the reply lands there rather than through a
     // fetch, and the reference is what makes it a reply at all.
@@ -104,6 +109,7 @@ describe("a reply whose source channel left the cache", () => {
       content: "hello",
       reply: { messageReference: SOURCE_MESSAGE_ID, failIfNotExists: false },
     });
+    expect(replySends[0]).not.toHaveProperty("diagnosticReason");
     expect(state.hasRepliedToOriginalMessage).toBe(true);
     expect(stopCalls).toEqual([]);
     expect(fetchedChannels).toEqual([]);

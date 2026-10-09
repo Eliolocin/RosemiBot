@@ -159,6 +159,27 @@ describe("panel prose formatter", () => {
     expect(narrowJapanese.split("\n").every((line) => measurePanelProseWidth(line) <= 20)).toBe(true);
   });
 
+  it("picks the layout profile per line when one TextDisplay mixes scripts", () => {
+    const latin = "Manage this persona's identity and how they chat with people";
+    const kana = "> なまえ: ともりのペルソナのプロフィールです";
+    const lines = formatPanelProse(`${latin}\n${kana}`, true).split("\n");
+    const latinLines = lines.filter((line) => !line.startsWith("> "));
+    const kanaLines = lines.filter((line) => line.startsWith("> "));
+
+    expect(latinLines.join(" ")).toBe(latin);
+    expect(kanaLines.every((line) => measurePanelProseWidth(line) <= 20)).toBe(true);
+    // The kana row must not drag this English paragraph down to the Japanese width.
+    expect(latinLines.some((line) => measurePanelProseWidth(line) > 20)).toBe(true);
+  });
+
+  it("ignores Japanese characters inside code blocks when choosing layout policy", () => {
+    const prose = "A **[Personal Memory](https://docs.example.com/memory)** about Locke has been saved:";
+    const input = `${prose}\n\`\`\`\nラーメンが好き\n\`\`\``;
+    const output = formatPanelProse(input);
+
+    expect(output.split("\n")[0]).toBe(prose);
+  });
+
   it("leaves an oversized unbreakable token intact", () => {
     const token = `https://example.com/${"x".repeat(100)}`;
     expect(formatPanelProse(token, true)).toBe(token);

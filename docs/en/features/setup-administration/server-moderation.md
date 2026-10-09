@@ -4,70 +4,86 @@ sidebar:
   order: 2
 ---
 
-TomoriBot gives server admins controls over how she behaves in your server (who can use her,
-where, and how much she costs) through the `/config` panel and its related commands. Most require
-the `Manage Server` permission. This page covers the highlights; every command is in the
+TomoriBot provides server managers with fine-grained control over usage, costs, permissions,
+and channels through `/moderation` and `/config`. Most of these controls require the
+`Manage Server` permission. For a complete list of commands, see the
 [Command Reference](/features/command-reference/).
 
 ## Cost Control: Quotas
 <!-- anchor: cost-control-quotas -->
 
-Generation costs money (yours or your members'). Quotas cap usage per user and server-wide:
+Generation costs money, whether paid from your provider account or by your members. Quotas cap
+usage per user and server-wide:
 
-- `/moderation` → `Quotas`: configure daily per-user limits and resetting server-wide pools for text, image, and video generation.
-- `/quota reset`: manually reset a user or server pool.
+- **Configure limits**: in `/moderation` > Quotas, configure daily per-user limits and
+  server-wide reset pools for text, image, and video generation. Set a per-user limit to `0`
+  for unlimited.
+- **Manual resets**: run `/quota reset user` to clear a member's daily usage, or
+  `/quota reset global` to reset the entire server's pool.
 
-Set a per-user limit to `0` for unlimited. Server-wide pools reset on a configurable day
-interval.
+Server-wide pools reset automatically on a configurable interval in days.
 
 ## User BYOK (Bring Your Own Key)
 <!-- anchor: user-byok-bring-your-own-key -->
 
-`/moderation` `Member Access` carries this as a two-state choice. `Allow Server Models` is the
-default; `Require Personal Providers` makes each member bring their own personal provider for
-their triggers, so the server pays for nothing on user-initiated messages. Server-initiated
-triggers still use the server provider. This is the strongest cost control: it shifts API
-spend entirely to members. Members set theirs up under
-[Personalization → Your Own Providers](/features/knowledge/personalization/#your-own-providers).
+In `/moderation` > Member Access, you can control whether members may use server-funded AI:
 
-You can also bootstrap a server without a server-side text provider by choosing
-`User BYOK` during `/setup`. It is offered in servers rather than in DMs, and it asks for
-confirmation before completing the provider step, because the workspace then has no provider to fall
-back to.
+- **Server Models Allowed** (default): members use server-configured providers.
+- **Personal Providers Required**: members must configure their own API keys via
+  `/personal providers`. The server pays nothing for member-initiated messages.
+  Server-initiated actions (such as automated greetings or scheduled tasks) still use the server
+  provider.
+
+Members configure their personal providers under
+[Personalization](/features/knowledge/personalization/#your-own-providers).
+
+You can also bootstrap a server without a server-side text provider by choosing `User BYOK`
+during `/setup`.
 
 ## Access Control: Whitelists
 
-- `/moderation` → `Whitelist` → `Channels`: choose triggering channels and optional cooldown overrides.
-- `/moderation` → `Whitelist` → `Personas`: limit which channels a specific persona can trigger in.
-- `/moderation` → `Whitelist` → `Roles`: restrict triggering to specific roles.
-- `/config` > Engine > Trigger: set the global cooldown between responses.
+Use `/moderation` > Whitelist to restrict where and how TomoriBot responds:
 
-Whitelisted channels inherit the global cooldown unless you set a channel-specific override.
+- **Channels**: choose which channels allow bot responses and set channel-specific cooldown
+  overrides. Channels inherit the global cooldown unless an override is set.
+- **Personas**: restrict which channels a specific persona can trigger in.
+- **Roles**: restrict bot interactions to members with specific Discord roles.
+
+Configure the server-wide global response cooldown under `/config` > Behavior >
+Trigger Behavior.
 
 ## Learning & Privacy Controls
 
-- `/server memberpermissions`: control who can teach her things.
-- `/moderation` > User Blacklist: make her ignore specific members completely. They cannot trigger her or use
-  her interaction commands, and their messages never reach her context.
-- `/config` > Channels > Channel Rules: mark channels where short-term memory is isolated and thought
-  logs are suppressed.
+- **Member permissions**: in `/moderation` > Member Access, click `Edit Permissions` to control
+  whether members without `Manage Server` can manage server memories, persona attributes,
+  sample dialogues, or inspect prompt snapshots.
+- **User Blacklist**: in `/moderation` > User Blacklist, choose members for TomoriBot to ignore
+  completely. Blacklisted members cannot trigger her or run commands, and their messages never
+  reach prompt context. You can also set persona-specific member blocks.
+- **Channel Rules**: in `/config` > Channels > Channel Rules, mark private channels (where
+  short-term memory stays isolated and thought logs are suppressed) and cross-channel tool
+  blocklists.
 
 ## Transparency: Thought Logs
 
-`/server thought-logs` sets a channel where her internal reasoning and successful tool calls
-are posted, useful for auditing what she's doing (including which trigger exposed a tool in
-[Deliberate Tool Mode](/features/capabilities/tools-and-extensions/#deliberate-tool-mode)).
+In `/config` > Channels > Logs & Welcome, click `Set Log Channel` to designate a channel where
+TomoriBot posts her internal reasoning, fallback notices, and successful tool calls. This is
+useful for auditing what she is doing, including which trigger exposed a tool in
+[Deliberate Tool Mode](/features/capabilities/tools-and-extensions/#deliberate-tool-mode).
+
+The log only copies from channels every member of your server can already see. Activity in a
+channel or thread that some members cannot open stays out of the log, so the log never shows
+people something they could not read where it happened. The log channel must be in the same server.
 
 ## Welcome Greetings
 
-`/config` > Channels > Logs & Welcome configures an automated greeting for new members in a chosen
-channel. By default, Tomori waits one minute before greeting them so server onboarding can
-finish. Use the
-`Clear Welcome` button on that same page to stop greetings.
+In `/config` > Channels > Logs & Welcome, configure automated greetings for new members in a
+chosen channel. TomoriBot waits until the new member completes Discord's rules screening and
+onboarding before sending the greeting. If a member leaves before finishing screening, no greeting
+is sent. Click `Clear Welcome` on that same page to disable greetings.
 
 ## Expressions
 
-`/expressions initialize` registers your server's custom emojis and stickers so she
-uses them accurately (recommended right after setup). For what she does with them (natural
-`:emoji:` use, stickers, reactions), see
+Run `/expressions initialize` to index your server's custom emojis and stickers so personas can
+use them accurately in conversation. For how personas use emojis, stickers, and reactions, see
 [Expressions & Reactions](/features/chatting-personality/chatting-and-triggers/#expressions--reactions).

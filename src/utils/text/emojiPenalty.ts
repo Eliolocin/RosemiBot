@@ -16,9 +16,6 @@ const EMOJI_PENALTY_LOOKBACK_MESSAGES = 3;
 const EMOJI_PENALTY_MAX_EMOJIS = 1;
 const EMOJI_UNIQUE_LOOKBACK_MESSAGES = 5;
 
-/**
- * Configuration for emoji penalty thresholds
- */
 interface EmojiPenaltyConfig {
   /** Whether the emoji penalty system is enabled */
   readonly enabled: boolean;
@@ -114,9 +111,6 @@ export function getEmojiPenaltyDirective(
   return buildEmojiPenaltyText(speakerLabel);
 }
 
-/**
- * Configuration for unique emoji enforcement
- */
 interface UniqueEmojiConfig {
   /** Whether unique emoji enforcement is enabled */
   readonly enabled: boolean;
@@ -170,9 +164,7 @@ function getRecentlyUsedCustomEmojis(contextItems: StructuredContextItem[], conf
     }
   }
 
-  log.info(
-    `[Unique Emoji] Found ${usedEmojis.size} unique custom emoji(s) in last ${messagesToCheck} message(s): ${Array.from(usedEmojis).join(", ") || "(none)"}`,
-  );
+  log.info(`[Unique Emoji] Found ${usedEmojis.size} unique custom emoji(s) in last ${messagesToCheck} message(s)`);
 
   return usedEmojis;
 }
@@ -213,11 +205,7 @@ export function filterDuplicateCustomEmojis(generatedText: string, contextItems:
     return generatedText;
   }
 
-  log.info(
-    `[Unique Emoji] Filtered ${emojisToRemove.size} duplicate custom emoji(s): ${Array.from(emojisToRemove).join(", ")}`,
-  );
-  log.info(`[Unique Emoji] Original: "${generatedText}"`);
-  log.info(`[Unique Emoji] Filtered: "${filtered}"`);
+  log.info(`[Unique Emoji] Filtered ${emojisToRemove.size} duplicate custom emoji(s)`);
 
   return filtered;
 }

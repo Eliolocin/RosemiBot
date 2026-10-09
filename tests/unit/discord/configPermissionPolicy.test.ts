@@ -134,6 +134,7 @@ describe("config page filtering", () => {
     expect(visibleConfigPages("plugins", DM_OWNER)).toEqual([
       "available-tools",
       "context-additions",
+      "response-drafting",
       "mcp-servers",
       "sillytavern-presets",
       "nsfw-jailbreaks",
@@ -868,10 +869,30 @@ describe("isConfigRouteAuthorized", () => {
     }
   });
 
+  const draftRoutes: ConfigPanelRoute[] = [
+    { action: "draft-set", locale: "en-US", enabled: true },
+    { action: "draft-prompt-open", locale: "en-US" },
+    { action: "draft-prompt-submit", locale: "en-US", nonce: "nonce123" },
+    { action: "draft-default", locale: "en-US" },
+    { action: "draft-picker", locale: "en-US", slot: "reviewer", provider: "none", start: 0 },
+    { action: "draft-provider", locale: "en-US", slot: "reviewer" },
+    { action: "draft-model-submit", locale: "en-US", slot: "decision", provider: "openrouter", nonce: "nonce123" },
+    { action: "draft-checker", locale: "en-US", start: 0 },
+    { action: "draft-checker-select", locale: "en-US", start: 0, fp: "abcdefgh" },
+  ];
+  it("keeps all Response Drafting routes for managers and DM owners", () => {
+    for (const route of draftRoutes) {
+      expect(isConfigRouteAuthorized(route, GUILD_MANAGER)).toBe(true);
+      expect(isConfigRouteAuthorized(route, GUILD_MEMBER)).toBe(false);
+      expect(isConfigRouteAuthorized(route, DM_OWNER)).toBe(true);
+    }
+  });
+
   it("covers every declared action, so a new route cannot default to authorized", () => {
     // A route added without a policy branch falls through to `false`; this pins that the suite
     // above actually names each action rather than leaving new ones silently denied and untested.
     const covered = new Set<string>([
+      ...draftRoutes.map((route) => route.action),
       ...personaWriteRoutes.map((route) => route.action),
       ...triggerRoutes.map((route) => route.action),
       "attribute-select",

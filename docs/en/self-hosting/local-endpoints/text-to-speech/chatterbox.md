@@ -3,7 +3,9 @@ title: "Chatterbox TTS"
 aiGenerated: true
 ---
 
-Use `servers/tts/chatterbox/server.py` for English voice cloning with supported event tags. The fast-model path defaults to Chatterbox-Turbo (350M parameters). Chatterbox-Nano (110M parameters) can be selected for smaller CPU-oriented deployments. This wrapper does not load Chatterbox Multilingual V3.
+Clone English voices with emotion tags using the local [Chatterbox](https://github.com/resemble-ai/chatterbox) text-to-speech server.
+
+Chatterbox runs locally via `servers/tts/chatterbox/server.py`. It defaults to the fast Chatterbox-Turbo model (350M parameters) with inline emotion event tags like `[laugh]` and `[sigh]`. You can also configure the lightweight Chatterbox-Nano model (110M parameters) for CPU setups or the standard 0.5B model for classifier-free guidance (`cfg_weight`) and emotional `exaggeration` tuning. This wrapper does not load Chatterbox Multilingual V3.
 
 ## Setup
 
@@ -45,7 +47,7 @@ Then set `CHATTERBOX_FAST_MODEL=nano` before starting the wrapper. Leave the var
 
 The `/config` fast-model toggle must stay enabled to use Nano or Turbo. Disabling it selects the standard Chatterbox 0.5B model for CFG weight and exaggeration tuning.
 
-### Standard Chatterbox (0.5B with CFG & Exaggeration)
+### Standard Chatterbox (0.5B with CFG and exaggeration)
 
 The original 0.5B base Chatterbox model (`ChatterboxTTS`) is built directly into the server wrapper. It trades Turbo's inline bracket event tags for fine-grained vocal control using Classifier-Free Guidance (`cfg_weight`) and emotional `exaggeration`.
 
@@ -71,13 +73,11 @@ Run `/providers`, choose `Add New Custom Endpoint`, and use the speech API compa
 - API Compatibility: `tts-clone`
 - `endpoint_url`: `http://127.0.0.1:8011`
 
-After saving the connection, select it and choose `+ Add new Speech Model` from the model dropdown.
-Choose `Voice Clone` as the `Voice Source Mode` and `Bracket Tags` as the `Script Markup Style` so
-delivery tags survive the send.
+After saving the connection, select it and choose `+ Add new Speech Model` from the model dropdown. Choose `Voice Clone` as the `Voice Source Mode` and `Bracket Tags` as the `Script Markup Style` so delivery tags survive the send.
 
 Use `/providers` for endpoint registration and model setup. Then open `/config` > Models > Switch Models to select and activate the registered endpoint.
 
-## Set Up a Persona Voice
+## Set up a persona voice
 
 1. Prepare a clean 10-second voice clip with one speaker and no background music.
 2. Open `/config` under Models > TTS Parameters & Voices and upload the clip.
@@ -94,7 +94,7 @@ Ten seconds is therefore the practical target. It fills the acoustic prompt, whi
 
 Turbo and Nano can use bracket event tags such as `[laugh]` and `[sigh]` when the fast-model toggle is enabled.
 
-## Optional Tuning
+## Optional tuning
 
 Use `/config` under Models > TTS Parameters & Voices to tune the Chatterbox request payload:
 

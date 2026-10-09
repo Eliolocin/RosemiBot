@@ -10,14 +10,10 @@ import { log } from "@/utils/misc/logger";
 import type {
   Tool,
   MCPCapableToolAdapter,
-  ToolContext,
   ToolResult,
   ToolParameterPropertySchema,
   ToolParameterType,
 } from "@/types/tool/interfaces";
-import type { TypedMCPToolResult } from "@/types/tool/mcpTypes";
-import { getMCPManager } from "@/utils/mcp/mcpManager";
-import { getMCPExecutor } from "@/utils/mcp/mcpExecutor";
 
 /**
  * OpenAI-compatible function declaration format
@@ -159,14 +155,12 @@ export class NovelaiToolAdapter implements MCPCapableToolAdapter {
   }
 
   /**
-   * Get all available tools (built-in + MCP) in OpenAI tools format
-   * @param serverId - Optional Discord server ID for server-specific tool selection
-   * @param allowedMCPFunctions - Optional pre-filtered list of MCP function names to include
+   * Get the built-in tools in OpenAI tools format. NovelAI declares no guild MCP tools.
    */
   async getAllToolsInOpenAIFormat(
     builtInTools: Tool[],
     _serverId?: number,
-    allowedMCPFunctions?: string[],
+    _allowedMCPFunctions?: string[],
   ): Promise<Array<Record<string, unknown>>> {
     try {
       const allTools: Record<string, unknown>[] = [];
@@ -178,125 +172,11 @@ export class NovelaiToolAdapter implements MCPCapableToolAdapter {
         log.info(`NovelAI adapter: Converted ${builtInTools.length} built-in tools`);
       }
 
-      const mcpManager = getMCPManager();
-      if (mcpManager.isReady() && allowedMCPFunctions) {
-        let addedMCPToolsCount = 0;
-
-        // Raw AI-search modes are redundant with unified web_search and too
-        // token-expensive for GLM's strict prompt budget.
-        // Note: brave_* names are no longer LLM-visible (replaced by unified
-        // `web_search` tool) so they don't need to appear here.
-        const disabledMCPFunctions = ["iask-search", "monica-search"];
-
-        const mcpTools = mcpManager.getMCPTools();
-        const allowedFunctionSet = new Set(allowedMCPFunctions);
-
-        for (const mcpTool of mcpTools) {
-          try {
-            const geminiTool = await mcpTool.tool();
-            if (geminiTool.functionDeclarations) {
-              const declarations = (geminiTool.functionDeclarations as Record<string, unknown>[]).filter(
-                (declaration) => {
-                  const functionName = declaration.name as string;
-
-                  if (disabledMCPFunctions.includes(functionName)) {
-                    return false;
-                  }
-
-                  return allowedFunctionSet.has(functionName);
-                },
-              );
-
-              if (declarations.length > 0) {
-                for (const declaration of declarations) {
-                  const openAIDeclaration: Record<string, unknown> = {
-                    ...declaration,
-                  };
-                  if ("parametersJsonSchema" in declaration) {
-                    delete openAIDeclaration.parametersJsonSchema;
-                    openAIDeclaration.parameters = declaration.parametersJsonSchema;
-                  }
-
-                  allTools.push({
-                    type: "function",
-                    function: openAIDeclaration,
-                  });
-                }
-                addedMCPToolsCount++;
-              }
-            }
-          } catch (error) {
-            log.warn("NovelAI adapter: Failed to extract functions from MCP tool:", error as Error);
-          }
-        }
-
-        log.info(`NovelAI adapter: Added ${addedMCPToolsCount} MCP tools using centralized filtering`);
-      }
-
       log.info(`NovelAI adapter: Total tools: ${allTools.length}`);
       return allTools;
     } catch (error) {
       log.error("NovelAI adapter: Failed to get all tools in OpenAI format", error as Error);
       return [];
-    }
-  }
-
-  /**
-   * Check if a function name belongs to an MCP server
-   * @returns Promise<boolean> - True if the function is from an MCP server
-   */
-  async isMCPFunction(functionName: string): Promise<boolean> {
-    try {
-      const mcpManager = getMCPManager();
-      if (!mcpManager.isReady()) {
-        return false;
-      }
-
-      const mcpTools = mcpManager.getMCPTools();
-      for (const mcpTool of mcpTools) {
-        try {
-          const geminiTool = await mcpTool.tool();
-          const mcpFunctionNames = geminiTool.functionDeclarations?.map((f) => f.name) || [];
-          if (mcpFunctionNames.includes(functionName)) {
-            return true;
-          }
-        } catch (error) {
-          log.warn("NovelAI adapter: Error checking MCP tool functions:", error as Error);
-        }
-      }
-
-      return false;
-    } catch (error) {
-      log.error("NovelAI adapter: Error checking if function is MCP:", error as Error);
-      return false;
-    }
-  }
-
-  /**
-   * Execute an MCP function and return the result
-   * @param context - Optional tool context for additional information
-   */
-  async executeMCPFunction(
-    functionName: string,
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<TypedMCPToolResult> {
-    try {
-      log.info(`NovelAI adapter: Executing MCP function: ${functionName} with args: ${JSON.stringify(args)}`);
-
-      const executor = getMCPExecutor();
-      const result = await executor.executeMCPFunction(functionName, args, context);
-
-      log.info(`NovelAI adapter: MCP function ${functionName} completed successfully`);
-
-      return result;
-    } catch (error) {
-      log.error(`NovelAI adapter: Failed to execute MCP function ${functionName}`, error as Error);
-
-      return {
-        success: false,
-        message: `Failed to execute MCP function: ${error instanceof Error ? error.message : String(error)}`,
-      };
     }
   }
 

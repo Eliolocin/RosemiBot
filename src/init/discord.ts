@@ -2,6 +2,7 @@ import { ApplicationFlags, Client, GatewayIntentBits, Partials, REST, Routes } f
 import { log } from "@/utils/misc/logger";
 import { healthTracker } from "@/utils/misc/healthTracker";
 import type { AppEnvironment } from "@/types/config";
+import { shouldRejectWebhookRateLimit } from "@/utils/discord/webhook/avatarEditRateLimit";
 
 /**
  * Whether a Discord connection failure is one the bot can recover from on its own.
@@ -127,6 +128,7 @@ export function createDiscordClient(includePresences: boolean): Client {
   const client = new Client({
     intents,
     partials: [Partials.Channel, Partials.Message],
+    rest: { rejectOnRateLimit: shouldRejectWebhookRateLimit },
     sweepers: {
       messages: {
         interval: 3600, // Run sweep every 1 hour (in seconds)

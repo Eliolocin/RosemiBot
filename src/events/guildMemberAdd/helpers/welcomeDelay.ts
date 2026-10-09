@@ -1,8 +1,8 @@
 /**
- * Grace period before an automated welcome greeting. `guildMemberAdd` fires before the new
- * member has finished Discord's onboarding and membership screening, and a greeting sent in
- * that window can mention a user the channel does not resolve yet. The membership re-check
- * after the wait also drops members who left or were removed during onboarding.
+ * Fallback grace period for a greeting when the guild's Onboarding config cannot be read.
+ * `guildMemberAdd` fires before the new member has finished Discord's onboarding, so with no
+ * completion signal to wait on, a fixed delay is the only approximation left. Guilds whose config
+ * is readable wait on `welcomeGate.ts` instead.
  */
 export const WELCOME_DELAY_MS = 1 * 60 * 1000;
 

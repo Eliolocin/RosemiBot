@@ -3,6 +3,7 @@ title: "Trình hướng dẫn thiết lập"
 sidebar:
   label: "Trình hướng dẫn thiết lập"
   order: 1
+aiGenerated: false
 ---
 
 :::note
@@ -35,7 +36,6 @@ bun run setup
 ## Những thứ cần chuẩn bị sẵn
 
 - [Bun](https://bun.sh/) để chạy bot và chính trình hướng dẫn này.
-- Node.js v20+ (được sử dụng cho các công cụ MCP).
 - Token bot Discord với các privileged intent `GuildMembers`, `MessageContent` và `GuildPresences` đã được bật.
 - Cơ sở dữ liệu. TomoriBot lưu trữ mọi thứ trong PostgreSQL. Bạn không cần thiết lập thủ công vì trình hướng dẫn sẽ thực hiện giúp bạn: hệ thống sẽ dùng PostgreSQL nếu bạn đã cài sẵn, hoặc chạy cơ sở dữ liệu cho bạn trong [Docker](https://www.docker.com/) nếu chưa có. Bạn chỉ cần đảm bảo một trong hai đã được cài đặt trước khi bắt đầu.
 

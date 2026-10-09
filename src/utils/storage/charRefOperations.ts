@@ -106,7 +106,7 @@ export async function replaceStoredCharReference(options: {
   const persisted = await options.persistNextRef(nextRef);
   if (!persisted) {
     if (nextRef) {
-      await deleteCharRef(nextRef);
+      await deleteCharRef(nextRef, options.entityType, options.entityId);
     }
     return false;
   }
@@ -114,7 +114,7 @@ export async function replaceStoredCharReference(options: {
   options.onPersistSuccess();
 
   if (options.previousRef && options.previousRef !== nextRef) {
-    await deleteCharRef(options.previousRef);
+    await deleteCharRef(options.previousRef, options.entityType, options.entityId);
   }
 
   return true;

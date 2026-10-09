@@ -1,6 +1,6 @@
 # Justifications and retirement conditions: docs/en/contributing/policies/dependency-security.md
 
 # Known issue: fast-xml-parser
-# Required by AWS SDK v3. Upgrade to v5 breaks functionality.
-# Risk is low as input comes from trusted AWS endpoints.
+# Reached through AWS SDK v3; the global fast-xml-parser >=5.7.0 override raises the nested copy to 5.7.0.
+# Risk is low as input comes from trusted AWS endpoints. Recheck whether the advisory still matches.
 CVE-2026-25128

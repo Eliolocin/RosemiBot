@@ -42,6 +42,39 @@ describe("custom endpoint reachability", () => {
     }
   });
 
+  it("reports withheld credentials when a probe redirects to an origin that demands them", async () => {
+    process.env[RUN_ENV_NAME] = "development";
+    const finalHostAuthorization: Array<string | null> = [];
+    const finalHost = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) => {
+        finalHostAuthorization.push(request.headers.get("authorization"));
+        return new Response("unauthorized", { status: 401 });
+      },
+    });
+    const redirectingHost = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () =>
+        new Response(null, { status: 307, headers: { Location: `http://127.0.0.1:${finalHost.port}/v1/models` } }),
+    });
+
+    try {
+      const result = await validateCustomEndpointReachability({
+        apiStyle: "openai-compatible",
+        endpointUrl: `http://127.0.0.1:${redirectingHost.port}/v1`,
+        apiKey: "synthetic-probe-canary",
+      });
+
+      expect(result).toMatchObject({ ok: false, credentialsWithheld: true });
+      expect(finalHostAuthorization).toEqual([null]);
+    } finally {
+      redirectingHost.stop(true);
+      finalHost.stop(true);
+    }
+  });
+
   it("stores an Ollama root against its OpenAI-compatible API base", () => {
     expect(normalizeCustomEndpointUrlForStorage("ollama-native", "http://localhost:11434/")).toBe(
       "http://localhost:11434/v1",

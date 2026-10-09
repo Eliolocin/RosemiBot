@@ -4,40 +4,40 @@ sidebar:
   order: 7
 ---
 
-提供されているDocker Composeプロファイルを使用すると、GrafanaダッシュボードでローカルのTomoriBotインスタンスを監視できます。
+事前構築されたGrafanaダッシュボードを使用してローカルのTomoriBotインスタンスを監視し、メモリ使用量、キャッシュサイズ、トークン消費量、コマンドトラフィックを追跡します。
 
-お使いのマシンでTomoriBotとGrafanaを一緒に起動するには、以下のコマンドを実行します。
+TomoriBotとGrafanaを一緒に起動します。
 
 ```sh
 docker compose -f docker-compose.yaml -f docker/compose.monitor.yaml up -d
 ```
 
-これにより、以下の処理が行われます。
-- PostgreSQLを使用してTomoriBotを起動（DBはポート15432）
-- 自動設定されたPostgreSQLデータソースを使用してポート3000でGrafanaを起動
-- TomoriBot Overview ダッシュボードをプロビジョニング
-- 同じDockerネットワーク上で両方のサービスを接続
+このコマンド:
+- TomoriBotおよびPostgreSQLを起動します (データベースはポート15432で公開されます)
+- 事前構成されたPostgreSQLデータソースを使用してポート3000でGrafanaを起動します
+- TomoriBot概要ダッシュボードをプロビジョニングする
+- 内部Dockerネットワーク上のすべてのサービスを接続します
 
-[http://localhost:3000](http://localhost:3000) でGrafanaにアクセスします。
-- **Username**：`admin`
-- **Password**：`.env` の `GRAFANA_PASSWORD` で設定（未設定の場合はデフォルトで `admin`）
+[http://localhost:3000](http://localhost:3000) でGrafanaを開きます。
+- **ユーザー名**: `admin`
+- **パスワード**: `.env`の`GRAFANA_PASSWORD`経由で設定します (未設定の場合はデフォルトで`admin`)
 
 ## プロビジョニング済みダッシュボード
 
-TomoriBot Overview は自動的に表示され、設定は不要です。パネルの内容は、プロセスメモリ、キャッシュのエントリ数、時間あたりのエラー数、モデル別のトークン消費、時間帯別のアクティビティ、よく使われるコマンド、ユーザーのロケール、表情クラウド、使用中のプリセットとモデルです。
+TomoriBot概要ダッシュボードは、手動構成を必要とせずに自動的にロードされます。そのパネルには、プロセスメモリ、キャッシュエントリ数、時間ごとのエラー、モデルごとのトークン使用量、時間ごとのアクティビティ、上位のコマンド、ユーザー ロケール、感情クラウド、アクティブなプリセットとモデルが表示されます。
 
-すべてのパネルは、どの環境にも存在するテーブルのみを読み取ります。そのため、同じダッシュボードがセルフホスト環境でもクラウド環境でも動作します。
+すべてのパネルは、すべてのインストールに存在する標準テーブルをクエリするため、同じダッシュボードレイアウトをローカルとクラウド環境で機能させることができます。
 
-次のパネルは、データ元を有効にするまで空のままです。
+特定のパネルでは、特定のランタイム設定またはホストのサポートが必要です。
 
-| パネル | 必要な設定 |
+| パネル | ニーズ |
 |---|---|
-| Process Memory、Cache Entries | `metric_samples` の行。`CACHE_METRICS_INTERVAL_MS` ごとに書き込まれます。コレクタは `RUN_ENV=production` のときのみ動作するため、開発環境では何も表示されません。 |
-| Errors per Hour by Type | `ERROR_DB_LOGGING_ENABLED`（既定で有効）。障害が疑われる場面でグラフが平坦な場合、エラーが止まったのではなく、リポジトリのサーキットブレーカーが開いている可能性もあります。 |
-| Host Memory and Swap Tiers、Host Pressure (PSI) and Swap-In Rate | Linuxホストが必要です。これらは `/proc/meminfo`、`/proc/pressure/*`、`/proc/swaps`、`/sys/block/zram0` を読み取るため、macOSとWindowsでは空のままです。zramの系列にはzramスワップデバイスも必要ですが、デバイスがないホストでもメモリとPSIは記録されます。 |
+| プロセスメモリ、キャッシュエントリ | `CACHE_METRICS_INTERVAL_MS`ごとに`metric_samples`行が書き込まれます。コレクターは`RUN_ENV=production`の場合にのみ実行されるため、開発インスタンスはここにデータを表示しません。|
+| タイプ別の1時間あたりのエラー数 | `ERROR_DB_LOGGING_ENABLED` (デフォルトで有効)。インシデント中の平坦な線は、エラーが停止したのではなく、データベースのサーキットブレーカーが開いていることを示している可能性があります。|
+| ホストメモリとスワップ層、ホストプレッシャー (PSI) およびスワップインレート | Linuxホスト。これらは`/proc/meminfo`、`/proc/pressure/*`、`/proc/swaps`、および`/sys/block/zram0`と読み取られるため、macOSとWindowsでは空のままになります。zramシリーズには、構成されたzramスワップデバイスが必要です。zramを持たないホストでも、一般的なメモリと圧力メトリクスが報告されます。|
 
 ## 編集内容の保存
 
-ダッシュボードはUI上で編集できます。これは障害対応時に重要です。ただし編集内容はコンテナ内にのみ保存され、次回の再起動時にディスクの内容で置き換えられます。変更を残すには、ダッシュボードのJSONをエクスポートして `docker/grafana/dashboards/` にコミットしてください。
+ダッシュボードは、ライブデバッグのためにGrafanaインターフェイスで引き続き編集可能です。コンテナーが再起動するとダッシュボードの編集がディスクファイルにリセットされるため、変更を保存するには、変更したダッシュボードJSONをエクスポートして`docker/grafana/dashboards/`に保存します。
 
-独自のダッシュボードを追加する場合も、同じディレクトリにJSONファイルを置きます。データソースは固定のuid `tomoribot-postgres` で参照してください。データソースにuidが指定されていない場合、Grafanaはランダムなuidを割り当てます。ランダムなuidを指すダッシュボードは、エラーにならず空のパネルとして表示されます。
+新しいダッシュボードを追加するには、そのJSON定義を`docker/grafana/dashboards/`に配置します。固定uid `tomoribot-postgres`を持つPostgreSQLデータソースをターゲットにします。明示的なuidのないデータソースはランダムに生成された識別子を受け取ります。これにより、一致しないuidを使用するダッシュボードが空白のパネルをレンダリングします。

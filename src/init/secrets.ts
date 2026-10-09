@@ -4,9 +4,7 @@ import { keyManager } from "@/utils/security/keyManager";
 import type { AppEnvironment } from "@/types/config";
 
 /**
- * Loads secrets from GCP Secret Manager (production) or .env (development),
- * assigns them to process.env for backward-compatibility with all downstream consumers,
- * and initializes the encryption key manager.
+ * Loads the selected secret source before consumers initialize database connections or keys.
  *
  * Must be called before any module that reads credentials from process.env.
  *
@@ -22,11 +20,17 @@ export async function loadSecrets(environment: AppEnvironment): Promise<void> {
   process.env.POSTGRES_USER = secrets.POSTGRES_USER;
   process.env.POSTGRES_PASSWORD = secrets.POSTGRES_PASSWORD;
   process.env.POSTGRES_DB = secrets.POSTGRES_DB;
-  process.env.CRYPTO_SECRET = secrets.CRYPTO_SECRET;
-
-  if (secrets.CRYPTO_SECRET_V1) process.env.CRYPTO_SECRET_V1 = secrets.CRYPTO_SECRET_V1;
-  if (secrets.CRYPTO_SECRET_V2) process.env.CRYPTO_SECRET_V2 = secrets.CRYPTO_SECRET_V2;
-  if (secrets.CRYPTO_SECRET_V3) process.env.CRYPTO_SECRET_V3 = secrets.CRYPTO_SECRET_V3;
+  // A mounted or AWS secret is authoritative, so ambient versions cannot survive a source change.
+  for (const name of Object.keys(process.env)) {
+    if (name === "CRYPTO_SECRET" || name === "CRYPTO_SECRET_CURRENT" || name.startsWith("CRYPTO_SECRET_V")) {
+      delete process.env[name];
+    }
+  }
+  for (const [name, value] of Object.entries(secrets)) {
+    if (name === "CRYPTO_SECRET" || name === "CRYPTO_SECRET_CURRENT" || /^CRYPTO_SECRET_V[1-9]\d*$/.test(name)) {
+      if (value) process.env[name] = value;
+    }
+  }
 
   if (secrets.DISCORD_WEBHOOK_URL) process.env.DISCORD_WEBHOOK_URL = secrets.DISCORD_WEBHOOK_URL;
 

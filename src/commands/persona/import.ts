@@ -23,6 +23,7 @@ import { uploadPersonaAvatarToStorage } from "../../utils/storage/avatarStorage"
 import { setGuildBotAvatar, setGuildBotNickname } from "@/utils/discord/guildIdentity";
 import { importAlterPreset } from "@/utils/persona/importAlterPreset";
 import { readCharxCard, type CharxReadFailureReason } from "@/utils/persona/charxArchive";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 import {
   cleanupMainPersonaSpritesAfterImport,
   snapshotMainPersonaSprites,
@@ -163,7 +164,9 @@ async function replyCardConversionFailure(options: {
   await options.interaction.editReply({
     embeds: [
       new EmbedBuilder()
-        .setTitle(localizer(options.locale, "commands.persona.import.card_conversion_failed_title"))
+        .setTitle(
+          localizedStatusTitle(options.locale, "commands.persona.import.card_conversion_failed_title", ColorCode.WARN),
+        )
         .setDescription(
           localizer(options.locale, "commands.persona.import.card_conversion_failed_description", {
             source: options.sourceLabel,
@@ -207,7 +210,7 @@ async function replyInvalidCharx(
   await interaction.editReply({
     embeds: [
       new EmbedBuilder()
-        .setTitle(localizer(locale, "commands.persona.import.invalid_charx_title"))
+        .setTitle(localizedStatusTitle(locale, "commands.persona.import.invalid_charx_title", ColorCode.ERROR))
         .setDescription(localizeCharxFailure(locale, reason))
         .setColor(ColorCode.ERROR),
     ],
@@ -350,13 +353,16 @@ async function persistImportedMainAvatar(serverDiscId: string, avatarImageBuffer
   invalidateTomoriStateCache(serverDiscId);
 }
 
-/**
- * Configure the 'import' subcommand
- */
+// Stays above addPersonaImportOptions: check-locales reads the first `.setName()` in a command file as the
+// subcommand name, so the `file` option name must not come first.
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
+  addPersonaImportOptions(
+    subcommand.setName("import").setDescription(localizer("en-US", "commands.persona.import.description")),
+  );
+
+/** One builder for both import routes, because the `/nsfw` route's option locale aliases assume identical option names. */
+export const addPersonaImportOptions = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand
-    .setName("import")
-    .setDescription(localizer("en-US", "commands.persona.import.description"))
     .addAttachmentOption((option) =>
       option
         .setName("file")
@@ -403,14 +409,38 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
     );
 
 /**
+ * An import counts as NSFW when the file says so or when it matches an NSFW official preset, because a
+ * matching import becomes a pointer that takes its flag from the preset, not from the file.
+ */
+export async function isNsfwPersonaImport(presetData: PresetExportData): Promise<boolean> {
+  if (presetData.is_nsfw === true) return true;
+  const matchingPreset = await presetRepository.findMatchingOfficialPresetForImport(presetData);
+  return matchingPreset?.is_nsfw === true;
+}
+
+/**
  * Executes the 'import' command
  * Imports TomoriBot's personality from an uploaded PNG or JSON file
  */
 export async function execute(
   client: Client,
   interaction: ChatInputCommandInteraction,
+  userData: UserRow,
+  locale: string,
+): Promise<void> {
+  await importPersona(client, interaction, userData, locale, { allowNsfw: false });
+}
+
+/**
+ * Shared body of `/persona import` and `/nsfw persona import`; only the age-restricted route may import
+ * a persona flagged NSFW.
+ */
+export async function importPersona(
+  client: Client,
+  interaction: ChatInputCommandInteraction,
   _userData: UserRow,
   locale: string,
+  options: { allowNsfw: boolean },
 ): Promise<void> {
   try {
     const importType = interaction.options.getString("type", true);
@@ -507,7 +537,7 @@ export async function execute(
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "rate_limit.error_quota_exceeded_title"))
+            .setTitle(localizedStatusTitle(locale, "rate_limit.error_quota_exceeded_title", ColorCode.ERROR))
             .setDescription(
               localizer(locale, "rate_limit.error_quota_exceeded_description", {
                 reset_time: resetTime,
@@ -524,7 +554,7 @@ export async function execute(
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "rate_limit.error_memory_critical_title"))
+            .setTitle(localizedStatusTitle(locale, "rate_limit.error_memory_critical_title", ColorCode.ERROR))
             .setDescription(localizer(locale, "rate_limit.error_memory_critical_description"))
             .setColor(ColorCode.ERROR),
         ],
@@ -552,7 +582,7 @@ export async function execute(
         await interaction.editReply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(localizer(locale, "commands.persona.import.error_download_timeout"))
+              .setTitle(localizedStatusTitle(locale, "commands.persona.import.error_download_timeout", ColorCode.ERROR))
               .setColor(ColorCode.ERROR),
           ],
         });
@@ -563,7 +593,7 @@ export async function execute(
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.persona.import.download_failed_title"))
+            .setTitle(localizedStatusTitle(locale, "commands.persona.import.download_failed_title", ColorCode.ERROR))
             .setDescription(localizer(locale, "commands.persona.import.download_failed_description"))
             .setColor(ColorCode.ERROR),
         ],
@@ -619,7 +649,7 @@ export async function execute(
         await interaction.editReply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(localizer(locale, "commands.persona.import.invalid_png_title"))
+              .setTitle(localizedStatusTitle(locale, "commands.persona.import.invalid_png_title", ColorCode.ERROR))
               .setDescription(localizer(locale, "commands.persona.import.invalid_png_description"))
               .setColor(ColorCode.ERROR),
           ],
@@ -635,7 +665,7 @@ export async function execute(
           await interaction.editReply({
             embeds: [
               new EmbedBuilder()
-                .setTitle(localizer(locale, "commands.persona.import.invalid_file_title"))
+                .setTitle(localizedStatusTitle(locale, "commands.persona.import.invalid_file_title", ColorCode.ERROR))
                 .setDescription(
                   validation.error
                     ? localizeError(locale, validation.error)
@@ -658,7 +688,7 @@ export async function execute(
           await interaction.editReply({
             embeds: [
               new EmbedBuilder()
-                .setTitle(localizer(locale, "commands.persona.import.no_metadata_title"))
+                .setTitle(localizedStatusTitle(locale, "commands.persona.import.no_metadata_title", ColorCode.ERROR))
                 .setDescription(localizer(locale, "commands.persona.import.no_metadata_description"))
                 .setColor(ColorCode.ERROR),
             ],
@@ -704,7 +734,7 @@ export async function execute(
         await interaction.editReply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(localizer(locale, "commands.persona.import.invalid_file_title"))
+              .setTitle(localizedStatusTitle(locale, "commands.persona.import.invalid_file_title", ColorCode.ERROR))
               .setDescription(localizeError(locale, "commands.persona.import.error_not_json"))
               .setColor(ColorCode.ERROR),
           ],
@@ -746,7 +776,7 @@ export async function execute(
         await interaction.editReply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(localizer(locale, "commands.persona.import.invalid_file_title"))
+              .setTitle(localizedStatusTitle(locale, "commands.persona.import.invalid_file_title", ColorCode.ERROR))
               .setDescription(
                 validation.error
                   ? localizeError(locale, validation.error)
@@ -766,7 +796,7 @@ export async function execute(
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "general.errors.unknown_error_title"))
+            .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
             .setDescription(localizer(locale, "general.errors.unknown_error_description"))
             .setColor(ColorCode.ERROR),
         ],
@@ -795,7 +825,7 @@ export async function execute(
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.persona.import.invalid_file_title"))
+            .setTitle(localizedStatusTitle(locale, "commands.persona.import.invalid_file_title", ColorCode.ERROR))
             .setDescription(
               mergedPresetValidation.error
                 ? localizeError(locale, mergedPresetValidation.error)
@@ -807,6 +837,18 @@ export async function execute(
       return;
     }
     const presetData = mergedPresetValidation.data;
+
+    if (!options.allowNsfw && (await isNsfwPersonaImport(presetData))) {
+      await interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(localizedStatusTitle(locale, "commands.persona.import.failed_title", ColorCode.ERROR))
+            .setDescription(localizer(locale, "commands.persona.import.error_nsfw_persona"))
+            .setColor(ColorCode.ERROR),
+        ],
+      });
+      return;
+    }
 
     const serverDiscId = interaction.guild?.id ?? interaction.user.id;
     const isDM = !interaction.guild;
@@ -828,7 +870,7 @@ export async function execute(
           await interaction.editReply({
             embeds: [
               new EmbedBuilder()
-                .setTitle(localizer(locale, "commands.persona.import.failed_title"))
+                .setTitle(localizedStatusTitle(locale, "commands.persona.import.failed_title", ColorCode.ERROR))
                 .setDescription(localizer(locale, "commands.persona.import.sprite_snapshot_failed_description"))
                 .setColor(ColorCode.ERROR),
             ],
@@ -843,7 +885,7 @@ export async function execute(
         await interaction.editReply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(localizer(locale, "commands.persona.import.failed_title"))
+              .setTitle(localizedStatusTitle(locale, "commands.persona.import.failed_title", ColorCode.ERROR))
               .setDescription(
                 importResult.error
                   ? localizeError(locale, importResult.error)
@@ -875,7 +917,7 @@ export async function execute(
           await interaction.editReply({
             embeds: [
               new EmbedBuilder()
-                .setTitle(localizer(locale, "commands.persona.import.failed_title"))
+                .setTitle(localizedStatusTitle(locale, "commands.persona.import.failed_title", ColorCode.ERROR))
                 .setDescription(localizer(locale, "commands.persona.import.sprite_cleanup_failed_description"))
                 .setColor(ColorCode.ERROR),
             ],
@@ -945,7 +987,7 @@ export async function execute(
         await interaction.editReply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(localizer(locale, "general.errors.unknown_error_title"))
+              .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
               .setDescription(localizer(locale, "general.errors.unknown_error_description"))
               .setColor(ColorCode.ERROR),
           ],
@@ -990,20 +1032,20 @@ export async function execute(
         descriptionLines.push(localizer(locale, "commands.persona.import.avatar_update_failed"));
       }
 
+      const successColor =
+        isDM ||
+        avatarUpdateSkippedNoImage ||
+        avatarUpdateRateLimited ||
+        avatarUpdateFailed ||
+        nicknameUpdateRateLimited ||
+        nicknameUpdateFailed ||
+        failedSpriteStorageDeletes > 0
+          ? ColorCode.WARN
+          : ColorCode.SUCCESS;
       const successEmbed = new EmbedBuilder()
-        .setTitle(localizer(locale, "commands.persona.import.success_title"))
+        .setTitle(localizedStatusTitle(locale, "commands.persona.import.success_title", successColor))
         .setDescription(descriptionLines.join("\n\n"))
-        .setColor(
-          isDM ||
-            avatarUpdateSkippedNoImage ||
-            avatarUpdateRateLimited ||
-            avatarUpdateFailed ||
-            nicknameUpdateRateLimited ||
-            nicknameUpdateFailed ||
-            failedSpriteStorageDeletes > 0
-            ? ColorCode.WARN
-            : ColorCode.SUCCESS,
-        );
+        .setColor(successColor);
 
       const footerParts: string[] = [];
       if (isDM) {
@@ -1017,7 +1059,7 @@ export async function execute(
         await interaction.editReply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(localizer(locale, "general.errors.unknown_error_title"))
+              .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
               .setDescription(localizer(locale, "general.errors.unknown_error_description"))
               .setColor(ColorCode.ERROR),
           ],
@@ -1051,10 +1093,18 @@ export async function execute(
         await persistImportedMainAvatar(serverDiscId, avatarImageBuffer);
       }
 
+      const confirmationColor =
+        avatarUpdateSkippedNoImage ||
+        avatarUpdateRateLimited ||
+        avatarUpdateFailed ||
+        nicknameUpdateRateLimited ||
+        nicknameUpdateFailed
+          ? ColorCode.WARN
+          : ColorCode.SUCCESS;
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.persona.import.success_title"))
+            .setTitle(localizedStatusTitle(locale, "commands.persona.import.success_title", confirmationColor))
             .setDescription(
               missingPostPermission
                 ? localizer(locale, "commands.persona.import.post_missing_permission", {
@@ -1064,15 +1114,7 @@ export async function execute(
                     nickname: itemsImported.nickname,
                   }),
             )
-            .setColor(
-              avatarUpdateSkippedNoImage ||
-                avatarUpdateRateLimited ||
-                avatarUpdateFailed ||
-                nicknameUpdateRateLimited ||
-                nicknameUpdateFailed
-                ? ColorCode.WARN
-                : ColorCode.SUCCESS,
-            ),
+            .setColor(confirmationColor),
         ],
       });
 
@@ -1096,33 +1138,39 @@ export async function execute(
         const errorEmbed = new EmbedBuilder().setColor(ColorCode.ERROR);
         switch (alterResult.reason) {
           case "limit_reached":
-            errorEmbed.setTitle(localizer(locale, "commands.persona.import.alter_limit_title")).setDescription(
-              localizer(locale, "commands.persona.import.alter_limit_description", {
-                current: alterResult.current,
-                max: alterResult.max,
-              }),
-            );
+            errorEmbed
+              .setTitle(localizedStatusTitle(locale, "commands.persona.import.alter_limit_title", ColorCode.ERROR))
+              .setDescription(
+                localizer(locale, "commands.persona.import.alter_limit_description", {
+                  current: alterResult.current,
+                  max: alterResult.max,
+                }),
+              );
             break;
           case "name_conflict":
-            errorEmbed.setTitle(localizer(locale, "commands.persona.import.alter_name_conflict_title")).setDescription(
-              localizer(locale, "commands.persona.import.alter_name_conflict_description", {
-                name: alterResult.name,
-              }),
-            );
+            errorEmbed
+              .setTitle(
+                localizedStatusTitle(locale, "commands.persona.import.alter_name_conflict_title", ColorCode.ERROR),
+              )
+              .setDescription(
+                localizer(locale, "commands.persona.import.alter_name_conflict_description", {
+                  name: alterResult.name,
+                }),
+              );
             break;
           case "no_main_persona":
             errorEmbed
-              .setTitle(localizer(locale, "general.errors.tomori_not_setup_title"))
+              .setTitle(localizedStatusTitle(locale, "general.errors.tomori_not_setup_title", ColorCode.ERROR))
               .setDescription(localizer(locale, "general.errors.tomori_not_setup_description"));
             break;
           case "config_failed":
             errorEmbed
-              .setTitle(localizer(locale, "general.errors.update_failed_title"))
+              .setTitle(localizedStatusTitle(locale, "general.errors.update_failed_title", ColorCode.ERROR))
               .setDescription(localizer(locale, "general.errors.update_failed_description"));
             break;
           default:
             errorEmbed
-              .setTitle(localizer(locale, "general.errors.unknown_error_title"))
+              .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
               .setDescription(localizer(locale, "general.errors.unknown_error_description"));
             break;
         }
@@ -1156,7 +1204,7 @@ export async function execute(
       }
 
       const alterSuccessEmbed = new EmbedBuilder()
-        .setTitle(localizer(locale, "commands.persona.import.alter_success_title"))
+        .setTitle(localizedStatusTitle(locale, "commands.persona.import.alter_success_title", alterEmbedColor))
         .setDescription(alterDescriptionParts.join(""))
         .setColor(alterEmbedColor);
       if (alterResult.usedMainAvatarFallback && alterResult.fallbackAvatarDisplayUrl) {
@@ -1191,7 +1239,7 @@ export async function execute(
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.persona.import.alter_success_title"))
+            .setTitle(localizedStatusTitle(locale, "commands.persona.import.alter_success_title", alterEmbedColor))
             .setDescription(
               missingAlterPostPermission
                 ? localizer(locale, "commands.persona.import.post_missing_permission", {
@@ -1227,7 +1275,7 @@ export async function execute(
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "general.errors.unknown_error_title"))
+            .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
             .setDescription(localizer(locale, "general.errors.unknown_error_description"))
             .setColor(ColorCode.ERROR),
         ],

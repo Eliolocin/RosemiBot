@@ -1,5 +1,11 @@
 export default {
   matrix: {
+    encryption_unlinked: {
+      title: `Matrix Bridge Stopped`,
+      description: `The Matrix room \`{room_id}\` turned on end-to-end encryption, so I unlinked it from this channel and stopped relaying messages. Matrix encryption can't be turned off.
+
+To keep bridging, create a new unencrypted Matrix room, invite the bot account, and link it with {link_command}.`,
+    },
     notices: {
       invited: `TomoriBot joined this room.
 

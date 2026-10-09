@@ -17,7 +17,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { log } from "../../utils/misc/logger";
 
-/** Parsed Vertex configuration */
 export interface VertexConfig {
   /** GCP project ID */
   projectId: string;
@@ -25,7 +24,6 @@ export interface VertexConfig {
   location: string;
 }
 
-/** Composite-key separator */
 const COMPOSITE_KEY_SEPARATOR = "::";
 
 /**

@@ -2,7 +2,6 @@ import type { Message } from "discord.js";
 import { ChannelType, DMChannel, TextChannel } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import { pendingMatrixReplyChannels } from "@/utils/bridges/matrix";
-import { isMatrixBridgeWebhookUsername } from "@/utils/bridges";
 import { log } from "@/utils/misc/logger";
 import {
   getAutochatAssignedPersonaId,
@@ -13,9 +12,10 @@ import {
   isAutochatCounterHit,
   isAutochatQualifyingMessage,
   isSelfTriggerMessage,
+  isMatrixRelayMessage as isTrustedMatrixRelayMessage,
 } from "@/utils/chat/triggerProcessor";
 import { getSelfReplyChainState } from "@/utils/chat/selfReplyState";
-import { resolveReferencedWebhookTarget } from "@/utils/chat/webhookIdentity";
+import { isManagedWebhookMessage, resolveReferencedWebhookTarget } from "@/utils/chat/webhookIdentity";
 import { normalizeRenderModifierName, resolveRenderModifierSourcePersona } from "@/utils/discord/renderModifierParser";
 import { normalizeTriggerWord } from "@/utils/text/triggerWords";
 
@@ -34,7 +34,7 @@ export function shouldBotReply(
   options: ShouldBotReplyOptions = {},
 ): boolean {
   const isSelfMessage = isSelfTriggerMessage(message, allPersonas);
-  const isMatrixRelayMessage = Boolean(message.webhookId) && isMatrixBridgeWebhookUsername(message.author.username);
+  const isMatrixRelayMessage = isTrustedMatrixRelayMessage(message);
   const rawCascadeLimit = tomoriState.config.cascade_limit ?? DEFAULT_CASCADE_LIMIT;
   const cascadeLimit = Math.min(Math.max(rawCascadeLimit, 0), MAX_CASCADE_LIMIT);
 
@@ -113,7 +113,7 @@ export function shouldBotReply(
   const isBotMentioned = message.client.user ? message.mentions.users.has(message.client.user.id) : false;
 
   let senderPersona: TomoriState | undefined;
-  if (message.webhookId) {
+  if (isManagedWebhookMessage(message)) {
     const webhookName = message.author.username;
     senderPersona =
       resolveRenderModifierSourcePersona(webhookName, personaByNickname)?.persona ??

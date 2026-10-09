@@ -13,88 +13,63 @@ sidebar:
   order: 2
 ---
 
-A TomoriBot pode importar duas coisas do [SillyTavern](https://github.com/SillyTavern/SillyTavern)
-que você talvez já tenha: predefinições do Prompt Manager (como o prompt é organizado) e
-cards de personagem (o personagem em si). Este é um recurso de nicho para usuários do ST; se você nunca
-usou o SillyTavern, pode pular esta página.
+TomoriBot pode importar dois ativos de [SillyTavern](https://github.com/SillyTavern/SillyTavern): predefinições do Prompt Manager (que controlam a estrutura do prompt) e cartões de caracteres (a definição de caracteres). Se você nunca usou SillyTavern, pode pular esta página com segurança.
 
 ## Importação de Cards de Personagem
 
-Traga um personagem existente do SillyTavern direto para o Discord com `/persona import`. Ele
-aceita:
+Traga um personagem SillyTavern existente para Discord com `/persona import`. Aceita:
 
-- Cards PNG com metadados `chara` / `char` embutidos,
-- Cards JSON estilo v2 (com `name`, `description`, `first_mes`, … no nível raiz),
-- Cards JSON v3 (`spec: "chara_card_v3"` com um objeto `data` aninhado),
-- Arquivos `.charx` (Character Card V3, o formato que sites de cards distribuem por padrão).
+- **Cartões PNG** com metadados `chara` ou `char` integrados.
+- **Cartões JSON estilo v2** com propriedades de nível raiz (`name`, `description`, `first_mes`).
+- Cartões **v3 JSON** (`spec: "chara_card_v3"` com um objeto `data` aninhado).
+- **Arquivos `.charx`** (pacotes de cartões de personagem V3).
 
-Um arquivo `.charx` é um zip cujo `card.json` contém o personagem. A TomoriBot lê esse card e
-ignora todo o restante do arquivo: ícones agrupados, sprites de emoção, áudio e vídeo não são
-importados, e a resposta de importação informa isso. Defina um avatar com `/server avatar` e adicione sprites em
-`/config` > Persona > Sprites.
+Um arquivo `.charx` é um arquivo ZIP que contém uma definição `card.json`. TomoriBot importa o texto do caractere de `card.json` e ignora os arquivos de ativos agrupados (ícones, sprites, áudio, vídeo). Você pode definir um avatar em `/config` > `Persona` > `Identidade e Personalidade` e adicionar sprites em `/config` > `Persona` > Sprites.
 
-Se o arquivo não tem metadados da TomoriBot mas é um card ST v2/v3 válido, a importação automaticamente executa
-o fluxo de conversão do SillyTavern. Você também pode enviar um card para `/persona generate` para
-transformá-lo em uma persona nova.
+Se um arquivo carregado for um cartão SillyTavern válido sem metadados TomoriBot, a importação o converterá automaticamente. Você também pode passar um cartão para `/persona generate` para criar uma nova personalidade inspirada no personagem.
 
-As importações passam por um esquema de validação antes de qualquer coisa ser salva (limites padrão: 5.000
-caracteres por string, 200 atributos, 100 diálogos de exemplo por lado, 100 palavras-gatilho;
-quem faz hospedagem própria pode ajustar as variáveis de ambiente `PRESET_MAX_*`). Leituras de arquivos são limitadas separadamente pelas
-variáveis `MAX_CHARX_*`, porque o tamanho comprimido de um arquivo não diz nada sobre o que ele expande.
-Para a conversão exata e o mapeamento de campos, veja a
-[arquitetura de suporte a cards](/en/architecture/integrations/sillytavern/card-support/).
+As importações são validadas antes de serem salvas (limites padrão: 5.000 caracteres por campo de texto, 200 atributos, 100 exemplos de diálogos por lado, 100 palavras de gatilho). Para mapeamento de campo e mecânica de conversão, consulte [arquitetura de suporte de cartão](/en/architecture/integrations/sillytavern/card-support/).
 
 ## Predefinições de Prompt
 <!-- anchor: prompt-presets -->
 
-Uma predefinição do Prompt Manager do SillyTavern controla o layout do prompt. Use `/config` > Plugins
-> Predefinições do SillyTavern para importar predefinições, inspecionar nós habilitados, alternar entre predefinições ou retornar
-ao layout normal.
+Uma predefinição do Prompt Manager SillyTavern controla a ordem e o layout do prompt enviado ao modelo. Abra `/config` > `Plug-ins` > SillyTavern Predefinições para importar predefinições, alternar nós individuais, alternar predefinições ativas ou restaurar a formatação padrão.
 
 ### O Que uma Predefinição Controla
 
-- Ordem do prompt e posicionamento de marcadores
+- Pedido imediato e colocação de marcadores
 - Nós de prompt personalizados
-- Nós de pós-histórico / injeção por profundidade
-- Quais nós importados começam habilitados ou desabilitados
+- Nós de pós-histórico e injeção de profundidade
+- Estado inicial habilitado para nós importados
 
-### O Que Ela *Não* Substitui
+### O que uma predefinição não substitui
 
-Uma predefinição controla o *layout*, não toda fonte de texto. Estes continuam existindo ao lado dela:
+Um layout de prompt de estruturas predefinidas; não substitui as fontes de texto que o preenchem:
 
-- Seus blocos de sistema/persona: `/config` > Engine > General, `/config` > Persona > Avançado,
-  as ações de atributo e diálogo de exemplo em `/config` > Persona > Identity & Personality.
-- Histórico de chat ao vivo e contexto de documentos recuperados.
-- Contexto automático da TomoriBot: memória do servidor, contexto de emojis/figurinhas, usuários na conversa,
-  memória de curto prazo, condicionamento e blocos similares.
+- Instruções do sistema e campos de persona: `/config` > `Comportamento` > `Comportamento Geral`, `/config` > `Persona` > Avançado e `/config` > `Persona` > `Identidade e Personalidade`.
+- Histórico de chat ao vivo e contexto do documento recuperado.
+- Contexto automático: memórias do servidor, dados de emojis e figurinhas, listas de participantes e memórias de curto prazo.
 
 ### Como os Blocos Nativos São Mapeados
 
-- `main` → o prompt de sistema atual (`/config` > Engine > General, senão o fallback integrado)
-- `charDescription` → `/config` > Persona > Avançado
-- `charPersonality` → `/config` > Persona > Identity & Personality
-- `dialogueExamples` → `/config` > Persona > Identity & Personality
-- `chatHistory` → histórico ao vivo do canal
-- `worldInfoBefore` / `worldInfoAfter` → contexto de documentos recuperados (não lorebooks do ST)
+Os blocos nativos são mapeados diretamente para os componentes do prompt TomoriBot:
+
+- `main`: o prompt do sistema ativo (`/config` > `Comportamento` > `Comportamento Geral` ou o substituto padrão)
+- `charDescription`: `/config` > `Persona` > Avançado
+- `charPersonality`: `/config` > `Persona` > `Identidade e Personalidade`
+- `dialogueExamples`: `/config` > `Persona` > `Identidade e Personalidade`
+- `chatHistory`: histórico de mensagens do canal ao vivo
+- `worldInfoBefore` e `worldInfoAfter`: contexto do documento recuperado (não livros de história SillyTavern)
 
 ### Regra do Prompt de Sistema
 
-Enquanto uma predefinição está ativa, o prompt de sistema fallback integrado é removido; mas se *você* definiu
-o seu próprio com `/config` > Engine > General, ele ainda é enviado.
+Quando uma predefinição importada está ativa, o prompt do sistema substituto integrado é removido. No entanto, se você configurar um prompt de sistema personalizado em `/config` > `Comportamento` > `Comportamento Geral`, esse prompt será sempre incluído.
 
 ### Notas de Compatibilidade
 
-Surpresas comuns quando uma predefinição parece ser ignorada:
+- Os nós desabilitados em `prompt_order` permanecem inativos até serem habilitados em `/config` > `Plug-ins` > SillyTavern Predefinições. Nós vazios e somente comentários nunca são enviados.
+- A ordem de bloqueio é literal: colocar `chatHistory` à frente de `dialogueExamples` coloca o histórico de bate-papo primeiro no prompt.
+- As injeções pós-histórico se fundem no histórico de conversas existente, em vez de serem enviadas como mensagens independentes.
+- Pós-processamento Regex, parâmetros de amostragem predefinidos (temperatura, top-p) e predefinições em camadas não são suportados. Importação de predefinições legadas de conclusão de texto com blocos somente ST eliminados.
 
-- Importado ≠ enviado: nós desabilitados em `prompt_order` permanecem desligados até que você os habilite com
-  `/config` > Plugins > Predefinições do SillyTavern. Nós apenas com comentários e nós vazios nunca são enviados; marcadores desconhecidos são
-  ignorados.
-- A ordem é literal: colocar `chatHistory` antes de `dialogueExamples` envia o chat ao vivo primeiro.
-- Injeções de pós-histórico/profundidade são mescladas nas entradas existentes do histórico de chat em vez de se tornarem
-  mensagens independentes; múltiplos nós na mesma profundidade são agrupados.
-- Pós-processamento de regex, overrides de temperatura/top-p/modelo no lado da predefinição e predefinições em camadas
-  não são suportados. Predefinições legadas de text-completion são importadas por um caminho de melhor esforço que
-  descarta blocos exclusivos do ST (cenário, âncoras, stop strings, …).
-
-No `/help`, escolha Integrations e depois `Predefinições do SillyTavern` para a referência dentro do Discord. Para os detalhes internos do motor de importação, veja a
-[arquitetura do sistema de predefinições](/en/architecture/integrations/sillytavern/preset-system/).
+Em `/help`, escolha `Plug-ins` e depois `Predefinições do SillyTavern` para o guia Discord. Para processamento interno de predefinições, consulte [arquitetura do sistema predefinido](/en/architecture/integrations/sillytavern/preset-system/).

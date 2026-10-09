@@ -8,6 +8,7 @@ import type {
   SupportsNativeVideoGeneration,
   SupportsPresetGeneration,
   SupportsStructuredOutput,
+  SupportsDecisions,
 } from "@/types/provider/featureInterfaces";
 import type { LLMProvider } from "@/types/provider/interfaces";
 import { ProviderFactory } from "@/utils/provider/providerFactory";
@@ -54,6 +55,8 @@ function hasNativeVideoGenerationCapability(
 }
 
 const capabilityGuards = {
+  decisions: (provider: LLMProvider): provider is LLMProvider & SupportsDecisions =>
+    typeof (provider as Partial<SupportsDecisions>).callDecisions === "function",
   embeddings: hasEmbeddingsCapability,
   structuredOutput: hasStructuredOutputCapability,
   presetGeneration: hasPresetGenerationCapability,
@@ -79,6 +82,10 @@ async function resolveProviderCapability<TCapabilityName extends ProviderCapabil
 
 export async function resolveEmbeddingsCapability(providerName: string) {
   return resolveProviderCapability(providerName, "embeddings");
+}
+
+export async function resolveDecisionsCapability(providerName: string) {
+  return resolveProviderCapability(providerName, "decisions");
 }
 
 export async function resolveStructuredOutputCapability(providerName: string) {

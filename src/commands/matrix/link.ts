@@ -20,7 +20,7 @@ import { getCachedTomoriState } from "@/utils/cache/tomoriStateCache";
 import {
   isMatrixConfigured,
   joinMatrixRoom,
-  isRoomEncrypted,
+  getRoomEncryptionState,
   invalidateMatrixLinkCache,
   sendMatrixLinkedSetupNotice,
 } from "@/utils/bridges/matrix";
@@ -125,40 +125,46 @@ export async function execute(
       return;
     }
 
-    // Reject encrypted rooms: Matrix encryption is permanent and cannot be
-    //    disabled, so bridging would never work for this room.
-    if (await isRoomEncrypted(roomId)) {
-      await replyInfoEmbed(interaction, locale, {
-        color: ColorCode.ERROR,
-        titleKey: "commands.matrix.link.encrypted_room_title",
-        descriptionKey: "commands.matrix.link.encrypted_room_description",
-        descriptionVars: {
-          room_id: roomId,
-          bot_user_id: process.env.MATRIX_BOT_USER_ID ?? "the Matrix bot account",
-        },
-      });
-      return;
-    }
-
-    // Fetch previous room ID for this channel (to invalidate old cache entry)
-    const oldRoomId = await serverRepository.getExistingMatrixLink(channel.id);
-
-    await serverRepository.linkMatrix(tomoriState.server_id, channel.id, roomId);
-
-    // Invalidate cache entries for both old and new room IDs
-    invalidateMatrixLinkCache(channel.id, oldRoomId ?? undefined);
-    invalidateMatrixLinkCache(channel.id, roomId);
-
-    // Attempt to join the Matrix room as the bot account (non-critical)
+    // The homeserver answers state lookups only for members, so joining first lets an
+    // invited room prove it is unencrypted.
     let joinFailed = false;
     try {
       await joinMatrixRoom(roomId);
     } catch (joinError) {
-      log.warn(`Matrix link: could not auto-join room ${roomId} — user must invite the bot`, joinError);
+      log.warn(`Matrix link: could not auto-join room ${roomId}; the user must invite the bot`, joinError);
       joinFailed = true;
     }
 
     const botUserId = process.env.MATRIX_BOT_USER_ID ?? "the Matrix bot account";
+    // Matrix encryption is permanent, and only a confirmed unencrypted room may carry plaintext relay.
+    const encryptionState = await getRoomEncryptionState(roomId);
+    if (encryptionState !== "unencrypted") {
+      const isEncrypted = encryptionState === "encrypted";
+      await replyInfoEmbed(interaction, locale, {
+        color: ColorCode.ERROR,
+        titleKey: isEncrypted
+          ? "commands.matrix.link.encrypted_room_title"
+          : "commands.matrix.link.encryption_unknown_title",
+        descriptionKey: isEncrypted
+          ? "commands.matrix.link.encrypted_room_description"
+          : "commands.matrix.link.encryption_unknown_description",
+        descriptionVars: { room_id: roomId, bot_user_id: botUserId },
+      });
+      return;
+    }
+
+    const oldRoomId = await serverRepository.getExistingMatrixLink(channel.id);
+    if (!(await serverRepository.linkMatrix(tomoriState.server_id, channel.id, roomId))) {
+      await replyInfoEmbed(interaction, locale, {
+        color: ColorCode.ERROR,
+        titleKey: "general.errors.unknown_error_title",
+        descriptionKey: "general.errors.unknown_error_description",
+      });
+      return;
+    }
+
+    invalidateMatrixLinkCache(channel.id, oldRoomId ?? undefined);
+    invalidateMatrixLinkCache(channel.id, roomId);
     const helpMatrixMention = commandRegistry.getCommandMention("help");
 
     if (joinFailed) {

@@ -8,11 +8,13 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
+Transcribe voice messages and audio attachments locally so TomoriBot can understand spoken audio in chat without sending recordings to third-party cloud APIs.
+
 TomoriBot treats speech-to-text as the `transcription` custom endpoint capability. Audio attachments are transcribed in the background and added to conversation context when an active transcription endpoint exists.
 
 Visible transcript posting is separate. `/config` > Engine > Notices only controls whether voice-message transcripts are posted in chat; it does not enable or disable background STT.
 
-## Available Engines
+## Available engines
 
 <CardGrid>
   <LinkCard title="WhisperX" href="/self-hosting/local-endpoints/speech-to-text/whisperx/"
@@ -23,14 +25,14 @@ Visible transcript posting is separate. `/config` > Engine > Notices only contro
     description="Use KoboldCPP Whisper-based STT when your build exposes OpenAI-compatible audio transcription." />
 </CardGrid>
 
-## Setup Flow
+## Setup flow
 
 1. Start one STT server from the engine guides above.
-2. In `/providers`, choose `Add New Custom Endpoint` and use API Compatibility `openai-compatible-transcription`.
+2. In `/providers`, choose `+ Add New Custom Endpoint` (or `Add New Custom Endpoint`) and select `openai-compatible-transcription` (OpenAI Compatible Transcription).
 3. Select the saved endpoint and use its model dropdown to add the model code reported by the server.
 4. Open `/config` > Models > Switch Models to select and activate the registered endpoint.
 
-## Transcript Flow
+## Transcript flow
 
 When a transcription endpoint is active, TomoriBot reads supported audio attachments in the background and adds the transcript to chat context. No persona assignment is needed.
 

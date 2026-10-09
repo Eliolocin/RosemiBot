@@ -4,40 +4,45 @@ sidebar:
   order: 4
 ---
 
-TomoriBot tracks usage so you can see who talks to whom, which personas and models get used,
-and what tools fire (then turn it into a shareable infographic).
+TomoriBot tracks interaction metrics so you can inspect activity trends, model token usage,
+popular personas, and tool calls, or render shareable infographic summary cards.
 
 ## Text Dashboards
 
-Three commands open an interactive, tabbed dashboard (Overview, Personas, Models & Cost,
-Tools & Commands, Expression, Favorite People, Leaderboard):
+Three commands open an interactive, tabbed dashboard:
 
-Text tabs are durable public dashboards controlled by the invoker. They remain available
-until the message is removed, and another user cannot operate the controls.
+- `/stats personal`: view your own usage statistics.
+- `/stats persona`: view a specific persona's usage statistics on this server.
+- `/stats server`: view server-wide statistics across all members and personas.
 
-- `/stats personal`: your own usage.
-- `/stats persona`: a persona's usage on this server.
-- `/stats server`: server-wide usage.
+Each dashboard includes tabs for Overview, Personas, Models & Cost, Tools & Commands,
+Expression, Favorite People, and Leaderboards.
 
-Most support a timeframe window, and personal stats can be scoped to this server or
-across all servers.
+Most subcommands let you specify a timeframe window (such as 7 days, 30 days, or all time).
+Personal stats can be scoped either to the current server or across all servers where you use
+TomoriBot.
+
+Text dashboards are durable public messages controlled by the invoker. They remain interactive
+until dismissed or deleted, and other members cannot manipulate your dashboard controls.
 
 :::note
-Token counts reflect the provider's reported usage when available (a character-based
-estimate is used only for providers that report none). Cost prices those tokens at the
-model catalog's list rates, so it may differ from your actual bill (prompt caching, discounts,
-free-tier quotas, etc.).
+Token counts reflect provider-reported usage when available (a character-based estimate is used
+only for providers that omit token metrics). Cost figures price those tokens at list rates from
+the model catalog, so they may differ from your actual bill due to prompt caching, provider
+discounts, or free-tier quotas.
 :::
 
 ## Shareable Infographic Cards
 
-`/stats generate` renders a polished image card you can drop into chat:
+Run `/stats generate` to render a polished summary image card you can share directly in chat:
 
-- **Personal Wrapped**: your personal activity, Spotify-Wrapped style.
-- **Persona Affinity**: a persona's stats on this server.
-- **Server Leaderboard**: server-wide standings.
+- **Personal Wrapped**: summarizes your personal activity and favorite personas.
+- **Persona Affinity**: highlights a specific persona's stats and top conversational partners on
+  this server.
+- **Server Leaderboard**: displays server-wide activity and member standings.
 
-Fully-private users (`/personal config`) can't generate personal cards.
+Users with their privacy level set to `Full` in `/personal config` cannot generate personal stats
+cards.
 
-For how the cards are composed and rendered, see the architecture reference on the
+For details on how cards are composed and rendered, see the
 [stats infographic subsystem](/architecture/subsystems/stats-infographic/).

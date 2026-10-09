@@ -2,142 +2,73 @@
 title: "06.2: Response Sink"
 ---
 
-Resolve the Discord delivery target and produce the sink callbacks that
-generation will write through.
+The response sink connects provider streaming to Discord delivery. It resolves whether output routes
+through an alter-persona webhook, a temporary user-impersonation webhook, or standard bot messages,
+and manages delivery lifecycle callbacks.
 
-- **File**: `src/utils/chat/responseEmitter.ts:62-99`
+## Flow and ownership
 
-## Mission
+`createChatResponseSink()` in `src/utils/chat/responseEmitter.ts` constructs a `ChatResponseSink`
+for the current `ChatTurnContext`:
 
-The `ChatResponseSink` is the **seam between provider streaming and Discord
-delivery.** Generation calls into the provider, the stream orchestrator
-processes chunks, and the sink owns *where the rendered text lands*: an
-alter-persona webhook, a temporary user-impersonation webhook, or the
-plain-channel-send fallback. This stage builds that sink, including the
-`prepare/emitStreamResult/emitError/finalize` callbacks, and stores the
-resolved `responseTarget` on the carried context.
-
-## Input
-
-`ChatTurnContext` (from per-turn stage 01).
-
-## Output
-
-`ChatResponseSink`: see `src/utils/chat/types.ts:223-228`:
-
-```ts
-interface ChatResponseSink {
-  prepare?(context): Promise<ChatResponseTarget | undefined>;
-  emitStreamResult(result: StreamResult): Promise<void>;
-  emitError(error: unknown): Promise<void>;
-  finalize(result: GenerationTurnResult): Promise<void>;
-  cleanup?(): Promise<void>;
-}
+```
+ChatTurnContext
+  │
+  ▼
+createChatResponseSink() ─────────────────► returns ChatResponseSink
+  │
+  ├─► prepare()                           ──► resolves ChatResponseTarget, arms channel lock
+  ├─► emitStreamResult()                  ──► filters duplicate errors, sends generic error embeds
+  ├─► emitError()                         ──► surfaces exceptions (rethrows on impersonation)
+  ├─► finalize()                          ──► deletes temporary webhooks, logs turn metrics
+  └─► cleanup()                           ──► webhook deletion attempt in finally block
 ```
 
-The `ChatResponseTarget` returned by `prepare` (see
-`src/utils/chat/types.ts:214-221`) carries:
+### Delivery target resolution
 
-- `webhook` / `temporaryWebhook`: Discord webhook for delivery (if any)
-- `personaUsername`, `personaAvatarUrl`: display identity
-- `prefixStrippingName`: for impersonation, strip this prefix from emitted
-  text
-- `webhookTargetChannel`: parent channel for thread-scoped webhooks
+`prepare()` executes at the start of generation and resolves `ChatResponseTarget`:
 
-`undefined` target means "fall back to `channel.send` as the bot account."
+- **User impersonation**: when `isUserImpersonation` is true, it creates a temporary webhook using
+  the target user's display name and avatar.
+- **Alter personas**: when `currentPersona.is_alter` is true, it resolves the server-owned webhook
+  via `getOrCreateWebhook()` in `src/utils/discord/webhookManager.ts`.
+- **Main persona and DMs**: returns `undefined`. Direct messages and standard bot replies route
+  through `channel.send()` as the bot account.
 
-## Side effects
+After target resolution, `prepare()` updates the channel lock entry with the active persona ID,
+follow-up eligibility, and impersonation status.
 
-#### On `prepare()`
+### Error emission and suppression
 
-- Resolves the delivery target via `resolveResponseTarget`:
-  - **User impersonation** (`isUserImpersonation` + `impersonatedUserId`):
-    creates a *temporary* webhook with the impersonated user's display name
-    and avatar via `webhookTargetChannel.createWebhook`. Cached via
-    `cacheUserImpersonationWebhook`.
-  - **Alter persona** (`currentPersona.is_alter`): resolves the
-    server-owned persona webhook via `getOrCreateWebhook` and
-    `resolvePersonaWebhookIdentity`.
-  - **Main persona / DM / unsupported channel:** returns `undefined`.
-- Sends a webhook-error embed (cooldown-throttled per channel) if webhook
-  creation failed and the turn is deliberate enough to surface user errors.
-- Updates the channel lock's `activeTurnState` with this turn's persona ID
-  and impersonation flags; clears `isInToolCallChain`.
+- `emitStreamResult()`: handles completed streams ending in error status. If `result.data` is an
+  identified `ProviderError`, the sink skips sending an embed because `StreamErrorUi.handleProviderError()`
+  already rendered the provider-specific notice. Unhandled non-provider errors emit a generic generation
+  error embed when `context.shouldSurfaceUserErrors` is true.
+- `emitError()`: handles unexpected exceptions. Under user impersonation, it rethrows the exception
+  so the initiating slash command handles the failure directly, preventing error embeds from appearing
+  as messages from the impersonated user.
 
-#### On `emitStreamResult(result)`
+### Webhook cleanup lifecycle
 
-- No-ops if `result.status !== "error"`.
-- If `result.data` is a `ProviderError` (has `type` + `retryable`), returns
-  immediately; the state machine's `StreamErrorUi.handleProviderError` already
-  sent the specific embed (e.g. "🔴️ Provider Content Filter"). Sending again
-  here would double-send.
-- Otherwise (unexpected non-`ProviderError` data), logs and renders the generic
-  "Generation Error" embed via `sendStandardEmbed`, gated on
-  `context.shouldSurfaceUserErrors`.
+Temporary impersonation webhooks must be deleted when generation finishes:
 
-#### On `emitError(error)`
+- `finalize()` deletes the temporary webhook after successful or non-fatal generation turns.
+- `cleanup()` runs from a `finally` block in `runGenerationTurn()`, attempting deletion if an exception
+  bypasses `finalize()`.
+- Deletion is guarded by an internal boolean flag so `finalize()` and `cleanup()` never attempt duplicate
+  deletion calls. Failures during deletion are logged as warnings and do not throw.
 
-- Renders an error embed (or re-throws if `isUserImpersonation`, since
-  impersonation errors must not surface as the impersonated user's
-  "message"). Non-deliberate turns log the failure and stay quiet in chat.
+## Constraints and rationale
 
-#### On `finalize(result)`
+- **Cleanup ownership**: normal finalization and exception cleanup share one deletion attempt. Discord
+  failures are logged; a failed deletion can leave a temporary webhook in the guild.
+- **Error deduplication**: suppressing generic embeds for structured `ProviderError` payloads avoids
+  displaying duplicate error notices for content filters and quota exhaustion.
+- **Impersonation isolation**: rethrowing exceptions during impersonation prevents error embeds from
+  rendering with the impersonated user's identity.
 
-- Deletes the temporary impersonation webhook if one was created.
-- Logs the response count and final status.
+## Source pointers
 
-## Invariants
-
-After `prepare()` runs:
-
-- `context.responseTarget` is set (to the resolved target or `undefined`).
-- The channel lock's `activeTurnState` reflects this turn's persona +
-  impersonation identity.
-- A temporary impersonation webhook, if created, will be deleted before
-  `runGenerationTurn` returns, regardless of generation outcome.
-
-After `finalize()` *or* `cleanup()` runs:
-
-- Any temporary webhook created during `prepare` has been deleted (best-effort;
-  failures are logged, not thrown).
-
-`finalize` alone is not sufficient to guarantee this. `emitGenerationError`
-rethrows for user impersonation, so the generation stage's own error handler
-can throw and skip `finalize` entirely. `runGenerationTurn` therefore calls
-`cleanup()` from a `finally` that wraps `prepare` as well as the attempt loop.
-Deletion is guarded so the two entry points cannot both issue it.
-
-## Extension points
-
-- **The `ChatResponseSink` interface itself is the extension point**: the sink
-is constructed *per turn* and the same interface contract is consumed by
-both the stream orchestrator (writes chunks) and the generation stage (calls
-`prepare`/`finalize`). A plugin wanting to:
-
-- **Intercept emitted text** (filter, transform, redact): wrap the sink's
-  emit pathway. → plugin plan candidate; today there's no registration
-  mechanism.
-- **Add a new delivery target type** (e.g. Matrix relay, embedded reply):
-  extend `resolveResponseTarget` with a new target-kind branch.
-- **Customize webhook identity**: `resolvePersonaWebhookIdentity` and
-  `resolveImpersonatedIdentity` are the named seams.
-
-### Related but non-sink extensibility
-
-- Webhook creation/fetch policy lives in `getOrCreateWebhook` in
-  webhook manager (currently `webhookManager.ts` / `webhook/webhookCore.ts`; no dedicated subsystems doc yet).
-- Stream-orchestrator-side rendering and chunking lives in
-  [provider pipeline](../../provider/).
-
-## Configuration
-
-| Source | Key | Value | Purpose |
-|---|---|---|---|
-| Constant (`responseEmitter.ts`) | `WEBHOOK_ERROR_COOLDOWN_MS` | `600000` | Per-channel cooldown between webhook-error embeds |
-
-## Related docs
-
-- Stream consumption: → [provider pipeline](../../provider/)
-- Webhook lifecycle and fallback: → webhook subsystem (currently in webhook helper files; no dedicated
-  doc yet)
-- Multi-persona delivery identity: → `docs/en/architecture/subsystems/multi-persona.md` (webhook-persona pipeline TBD)
+- `src/utils/chat/responseEmitter.ts`: `createChatResponseSink()` and target resolution.
+- `src/utils/discord/webhookManager.ts`: alter persona webhook creation and reuse.
+- `src/utils/chat/types.ts`: `ChatResponseSink` and `ChatResponseTarget` interface definitions.

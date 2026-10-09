@@ -287,16 +287,28 @@ export function measurePanelProseWidth(markdown: string): number {
 }
 
 /**
+ * Width for one line. Kana renders at roughly twice the advance of a Latin glyph, so a line
+ * carrying it wraps against the Japanese profile. Choosing per line rather than per TextDisplay
+ * keeps a stored Japanese name from narrowing the English prose that shares its component.
+ */
+function layoutWidthForLine(line: string, besideThumbnail: boolean): number {
+  const profile = JAPANESE_SCRIPT_PATTERN.test(line)
+    ? PANEL_PROSE_LAYOUT_POLICY.japanese
+    : PANEL_PROSE_LAYOUT_POLICY.default;
+  return besideThumbnail ? profile.besideThumbnail : profile.body;
+}
+
+/**
  * Wraps panel prose while preserving fenced blocks and explicit line structure.
+ *
+ * Each line picks its own layout profile, so mixed-script content keeps the Latin width on its
+ * English lines. Fenced and indented code lines bypass wrapping, so Kana inside stored code never
+ * selects a width.
  *
  * A token wider than the selected layout remains intact on its own line because splitting it
  * could corrupt a URL, inline-code span, custom emoji, or grapheme cluster.
  */
 export function formatPanelProse(markdown: string, besideThumbnail = false): string {
-  const profile = JAPANESE_SCRIPT_PATTERN.test(markdown)
-    ? PANEL_PROSE_LAYOUT_POLICY.japanese
-    : PANEL_PROSE_LAYOUT_POLICY.default;
-  const width = besideThumbnail ? profile.besideThumbnail : profile.body;
   const parts = markdown.split(/(\r?\n)/u);
   const fallbackNewline = markdown.includes("\r\n") ? "\r\n" : "\n";
   const output: string[] = [];
@@ -325,7 +337,7 @@ export function formatPanelProse(markdown: string, besideThumbnail = false): str
       continue;
     }
 
-    output.push(wrapLine(line, width, separator || fallbackNewline), separator);
+    output.push(wrapLine(line, layoutWidthForLine(line, besideThumbnail), separator || fallbackNewline), separator);
   }
 
   return output.join("");

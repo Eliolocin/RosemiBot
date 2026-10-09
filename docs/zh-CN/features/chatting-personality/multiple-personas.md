@@ -6,97 +6,95 @@ title: "多个人格"
 # this page carries the "companion" keyword instead.
 head:
   - tag: title
-    content: "TomoriBot | 为你的 Discord 服务器准备的 AI 伙伴与人格"
+    content: "TomoriBot | 为你的Discord服务器准备的AI伙伴与人格"
 # Hand-written search snippet; overrides the auto-derived description from
 # routeData.ts middleware.
-description: "在一个 Discord 服务器里运行多个 AI 伙伴。每个人格都有自己的头像、触发设置和说话风格。"
+description: "在一个Discord服务器里运行多个AI伙伴。每个人格都有自己的头像、触发设置和说话风格。"
 sidebar:
   order: 2
 ---
 
-TomoriBot 的人格落在人格（persona）里：她的名字、头像、属性、说话方式和行为。你可以同时运行好几个人格，每个都是一个有自己触发设置和 Webhook 头像的独立角色。这一页讲的是*她如何表现*；至于*她知道什么*（事实与记忆），见[记忆](/zh-CN/features/knowledge/memory/)。
+TomoriBot的名称、头像、性格、说话风格与行为都保存在人格中。你可以同时使用多个人格，让每个角色通过自己的触发词与Webhook头像参与对话。这一页介绍人格的行为；知识与记忆请见[记忆](/zh-CN/features/knowledge/memory/)。
 
 ## 创建人格
 
-- `/persona create`：从零开始搭一个自定义人格。
-- `/persona generate`：让 AI 根据一段描述和一张图片生成人格。需要支持结构化输出的提供方。你也可以在这里上传现有的 TomoriBot 预设集或 SillyTavern 角色卡，把一个已有的角色转换过来（见 [SillyTavern 支持](/zh-CN/features/integrations/sillytavern-support/)）。
-- `/persona default`：切换到一个内置默认人格作为底子。
-- `/persona export` / `/persona import`：把人格导出成文件分享或备份。导入支持把人称作为副人格带进来，并配上它自己的触发设置和 Webhook 头像。
-- `/persona remove`：移除一个副人格。
-
-一个不错的起步流程：挑一个默认人格或者生成一个，然后用下面的属性和示例对话把它打磨出来。
+- `/persona create`：从头开始构建自定义人格。
+- `/persona generate`：让人工智能根据提示和图像生成人格（需要支持结构化输出的提供者）。你还可以提供现有的TomoriBot预设集集或SillyTavern角色卡（请参阅[SillyTavern支持](/zh-CN/features/integrations/sillytavern-support/)）。
+- `/persona default`：切换到内置默认角色之一。
+- `/persona export`和`/persona import`：备份或共享人格文件。导入支持添加人格作为具有自己的触发器和webhook头像的副人格。
+- `/persona remove`：删除副人格。
 
 ## 副人格
 
-副人格让多个角色共存于同一个服务器：
+副人格让多个角色在同一个服务器中共存：
 
-- 每个副人格都有自己的性格、触发词和 Webhook 头像，所以不同角色在同一个频道里会以不同的名字和头像出现。
-- 多条消息可以同时触发多个副人格，上限由 `/config` > 行为 > 触发行为决定。
-- 回复一条 Webhook 消息会以那个人格的身份继续对话。
-- 用 `/persona import`（alter 选项）添加副人格；用 `/persona` 和 `/persona remove` 管理它们。
+- 每个副人格都有自己的性格、触发词与Webhook头像，所以同一频道里的角色会以各自的名称与图像发言。
+- 多个副人格可以回复同一条消息，上限在`/config` > `行为` > `触发行为`中设置。
+- 直接回复Webhook消息，就能继续与该人格对话。
+- 使用`/persona import`并选择副人格选项来添加，再用`/persona`与`/persona remove`管理。
 
-群组角色扮演和多角色服务器就是靠这个实现的。关于触发如何路由到人格、Webhook 身份如何工作的运行细节，见[多个人格行为](/en/architecture/subsystems/multi-persona/)的架构参考。
+回复路由与Webhook身份的细节，请见[多个人格架构](/en/architecture/subsystems/multi-persona/)。
 
 ## 塑造性格
 
-教她怎么说话、怎么行动，主要靠两条指令：
+微调人格的外观、谈话和行为方式：
 
 ### 属性
 <!-- anchor: attributes -->
 
-`/config` > 人格 > 身份与性格 可以添加性格特质或外貌特征，例如 `friendly`、`red hair`，或者 `ends sentences with *Nya~*`。移除它们也在
-`/config` > 人格 > 身份与性格。
+打开`/config` > `人格` > 身份和个性来定义个性特征或身体细节（例如`friendly`、`red hair`或`ends sentences with *Nya~*`）。
 
 ### 示例对话
 <!-- anchor: sample-dialogues -->
 
-`/config` > 人格 > 身份与性格 用示例教她*她是怎么说话的*。请使用 `{user}` 和 `{bot}` 占位符，这样对话对所有人都成立（分享人格时也一样）：
+打开`/config` > `人格` > 身份和个性，通过使用`{user}`和`{bot}`占位符的示例来教她的说话风格：
 
-- `{user}`：替换成实际用户的名字或昵称
-- `{bot}`：替换成她当前的名字
+- `{user}`：替换为实际用户的显示名称或昵称。
+- `{bot}`：替换为她当前的人格名称。
 
 ```text
-{user}: 你最喜欢的爱好是什么？
-{bot}: 呼呋~ 我喜欢给小玩偶织小衣服~♥
+{user}: What's your favorite hobby?
+{bot}: Fufu~ I like knitting tiny clothes for tiny plushies~♥
 ```
 
-写好示例对话的几条建议：
+有效示例对话的提示：
 
-- 写自然、像日常聊天的往来。
-- 把你希望她表现出的属性和特质写进去。
-- 示范你想要的那种语气，并加入变化，好让她能举一反三。
-
-移除示例也在 `/config` > 人格 > 身份与性格。
+- 写出自然的交流，展示而不是讲述。
+- 展示你希望她使用的语气和词汇。
+- 在几个例子中增加多样性，以便她能够很好地概括。
 
 ### 名字与头像
 
-- `/config` > 人格 > 身份与性格：设置她怎么称呼自己。
-- `/config` > 人格 > 身份与性格：设置她在本服务器的头像。
+打开`/config` > `人格` > 身份和个性，设置她对自己的称呼并上传她的头像。
 
-你也可以用 `/config` > 行为 > 常规行为 设置自定义系统提示词，进一步塑造行为；见[行为调整](/zh-CN/features/chatting-personality/behavior-tweaking/)。
+你还可以在`/config` > `行为` > `常规行为`中设置自定义系统提示； 请参阅[行为调整](/zh-CN/features/chatting-personality/behavior-tweaking/)。
+
+### 命名习惯
+
+服务器管理员可以打开`/config` > `人格` > 命名习惯来设置人格如何称呼成员：
+
+- 配置单独的男性、女性和中性前缀、后缀和地址术语。
+- 不同的人格可以用不同的头衔来称呼同一用户（例如，一个称其为“队长”，另一个称其为“前辈”）。
+- 个人覆盖遵循跨服务器的每个用户； 参见[个性化](/zh-CN/features/knowledge/personalization/)。
 
 ## 立绘（表情头像）
 <!-- anchor: sprites-emotion-avatars -->
 
-立绘是一个人格可以在对话中途切换的备用头像，用来表达某种情绪或处境（可以理解成她的表情）。每个立绘都是一张带标签的图片（例如 `happy`、`mad`、`embarrassed`），在合适的时机她会用它代替平时的头像。
+精灵是人格在对话期间切换的替代化身，以反映情绪（例如`happy`、`mad`或`embarrassed`）。
 
-她怎么用立绘：每轮可用的立绘和它们的使用说明都会交给模型。要展示某个立绘，她会让回复的某一行以 `PersonaName (label):` 开头；那一行就会配上对应的立绘图片发出。如果没有合适的立绘，她就正常回复。
+回复时，她会选择符合她情绪的精灵。要使用其中一个，她以`PersonaName (label):`开始回复行，然后Discord传递带有匹配精灵头像的消息。如果没有合适的精灵，她会用默认头像回复。
 
-在 `/config` > 人格 > 立绘 管理人格的立绘（添加和移除需要管理服务器权限）：
+在`/config` > `人格` > Sprites中管理sprites（需要管理服务器）：
 
-- `/config` > 人格 > 立绘：添加或替换一个立绘：选择人格，给它一个标签，上传图片（PNG、JPG 或 GIF），还可以加上使用说明告诉她什么时候用。重复使用同一个标签会替换掉那个立绘。每个人格有立绘数量上限。
-- `/config` > 人格 > 立绘：修改已有立绘的名称、图片、说明或身份开关。
-- `/config` > 人格 > 立绘：删除某个人格的立绘。
-- `/config` > 人格 > 立绘 上的导出与导入：把一个人格的全部立绘打包成文件备份或分享。
+- **添加或替换**：选择人格，提供标签，上传图像（PNG、JPG或GIF），并可选择编写描述何时显示它的使用说明。
+- **编辑**：更新现有精灵的标签、图像或说明。
+- **删除**：删除不再需要的精灵。
+- **导出和导入**：将人格的完整精灵包共享或备份为文件。
 
-身份开关会把消息名在 Discord 里装扮成 `Label (Persona)`，对那些以不同角色身份说话的[副人格](#副人格)尤其有用。
+`保存为身份`切换将消息作者显示为Discord中的`Label (Persona)`，这对于具有多种形式的字符非常有用。
 
-改动默认人格的头像会移除它自带的立绘，因为那些立绘显示的是原角色的脸。你自己添加的立绘会保留。运行 `/persona default` 可以把默认立绘找回来。
+替换默认人格的头像会清除其内置精灵，因为它们描绘的是原始人格。你自己添加的精灵保持不变。运行`/persona default`会恢复内置精灵。
 
 ## 按频道指定人格
 
-想在某个频道里控制*你*由哪个人格回答，又不想动全服务器的设置？那就是个人聚光灯；见[个性化](/zh-CN/features/knowledge/personalization/#personal-spotlight)。
-
-## 人格各自的称呼方式
-
-服务器管理员可以用 `/config` > 人格 > 身份与性格 给每个人格独立设置阳性、阴性、中性前缀、后缀和单独的称呼词。用户自己按人格范围的覆盖以稳定的记忆谱系为键，所以在同一次多个人格回复里，两个人格可以用不同的名字称呼 Mirri，而两者仍然指向同一个 Discord 用户。编辑官方指针时会先创建一份独立副本；它永远不会改动共享目录或另一个服务器的人格。
+要选择在特定渠道中回复你的人格而不更改服务器范围的设置，请使用Personal Spotlight； 参见[个性化](/zh-CN/features/knowledge/personalization/#personal-spotlight)。

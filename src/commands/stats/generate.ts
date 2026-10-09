@@ -27,7 +27,6 @@ import {
 } from "@/utils/stats/statsInfographic";
 import { renderCardToPng } from "@/utils/stats/cardRenderer";
 
-/** Card type choices for the `type` option. */
 type CardType = "personal" | "persona" | "server";
 
 /**

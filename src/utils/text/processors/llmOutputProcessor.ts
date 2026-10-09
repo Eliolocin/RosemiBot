@@ -394,9 +394,7 @@ export function cleanLLMOutput(
     cleanedText = cleanedText.replace(/\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier}|️|‍/gu, "");
     cleanedText = cleanedText.replace(/:(?=[^:]*[a-zA-Z_])[\w-]+:/g, "");
   } else if (emojiStrings && emojiStrings.length > 0) {
-    log.info(
-      `[cleanLLMOutput] Processing text with ${emojiStrings.length} emojis. Text: "${text.substring(0, 100)}..."`,
-    );
+    log.info(`[cleanLLMOutput] Processing text with ${emojiStrings.length} emojis (${text.length} characters)`);
     const validEmojiSet = new Set(emojiStrings);
 
     cleanedText = cleanedText.replace(/<[^:>\s]*:([A-Za-z0-9_~]+):(\d+)>/g, "<:$1:$2>");

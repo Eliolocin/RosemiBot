@@ -1,3 +1,5 @@
+import { callCustomDecisions } from "@/providers/custom/customDecisions";
+import type { ProviderDecisionRequest, DecisionResult, SupportsDecisions } from "@/types/provider/featureInterfaces";
 /**
  * Custom provider implementation for self-hosted OpenAI-compatible endpoints
  *
@@ -14,6 +16,7 @@
  * - validateApiKey() performs health check rather than strict key validation
  */
 
+import { resolveChatMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
 import type {
   BaseGuildTextChannel,
   BaseGuildVoiceChannel,
@@ -30,8 +33,6 @@ import {
 } from "@/providers/custom/customCompactGenerator";
 import { generatePresetFromPromptCustom } from "@/providers/custom/customPresetGenerator";
 import { callCustomStructuredJSON } from "@/providers/custom/customStructuredOutput";
-import { isBraveSearchAvailable } from "@/tools/restAPIs/brave/braveSearchService";
-import { getMCPManager } from "@/utils/mcp/mcpManager";
 import { getEffectiveLlmModelName } from "@/utils/provider/modelDisplay";
 import { buildActiveSamplingParams, getActiveTemperature } from "@/utils/provider/samplingControl";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
@@ -78,7 +79,10 @@ import {
 } from "../../types/provider/interfaces";
 import { getCustomToolAdapter } from "./customToolAdapter";
 import { customProviderInfo } from "./providerInfo";
-import { resolveCustomEndpointForProvider } from "@/utils/provider/customEndpointService";
+import {
+  resolveCustomEndpointForProvider,
+  resolveCustomTextEndpointTarget,
+} from "@/utils/provider/customEndpointService";
 import { parseCustomProvider } from "@/utils/provider/customProviderUtils";
 import { buildCustomHeaders } from "@/providers/custom/customOpenAICompatibleUtils";
 import { applyDeliberateToolAllowlist } from "@/utils/tools/deliberateToolMode";
@@ -119,6 +123,7 @@ export class CustomProvider
   extends BaseLLMProvider
   implements
     LLMProvider,
+    SupportsDecisions,
     SupportsStructuredOutput,
     SupportsConversationCompaction,
     SupportsPresetGeneration,
@@ -126,9 +131,10 @@ export class CustomProvider
     SupportsNativeImageGeneration,
     SupportsNativeVideoGeneration
 {
-  /**
-   * Get provider information and capabilities
-   */
+  async callDecisions(request: ProviderDecisionRequest): Promise<DecisionResult> {
+    return await callCustomDecisions(request);
+  }
+
   getInfo(): ProviderInfo {
     return customProviderInfo;
   }
@@ -249,6 +255,7 @@ export class CustomProvider
           voice_message_enabled: tomoriState.config.voice_message_enabled,
           user_blocking_enabled: tomoriState.config.user_blocking_enabled,
           user_info_updates_enabled: tomoriState.config.user_info_updates_enabled,
+          response_rule_checker_ref: tomoriState.config.response_rule_checker_ref,
           thread_creation_enabled: tomoriState.config.thread_creation_enabled,
         },
       };
@@ -256,6 +263,7 @@ export class CustomProvider
       const {
         builtInTools: availableBuiltInTools,
         mcpFunctionNames: availableMcpFunctionNames,
+        mcpToolFamilies,
         totalCount,
       } = await getAvailableToolsWithMCP("custom", toolStateForContext);
 
@@ -272,6 +280,7 @@ export class CustomProvider
         providerLabel: "Custom provider",
         builtInTools: finalBuiltInTools,
         mcpFunctionNames: finalMcpFunctionNames,
+        mcpToolFamilies,
         allowedToolNames: streamingContext?.deliberateToolAllowedNames,
       }));
 
@@ -333,15 +342,6 @@ export class CustomProvider
     if (!request.toolContext) {
       log.warn("Custom preset generation skipped search tools: no tool context available.");
       return undefined;
-    }
-
-    const hasBraveApiKey = await isBraveSearchAvailable(request.tomoriState.server_id);
-
-    if (!hasBraveApiKey) {
-      const mcpManager = getMCPManager();
-      if (!mcpManager.isReady()) {
-        await mcpManager.initializeMCPServers();
-      }
     }
 
     const toolStateForContext: ToolStateForContext = {
@@ -416,24 +416,11 @@ export class CustomProvider
    * @param apiKey - The decrypted API key (may be endpoint URL or auth token)
    */
   async createConfig(tomoriState: TomoriState, apiKey: string): Promise<CustomProviderConfig> {
-    // Get endpoint URL: prefer the server model config mirror (populated when the active text model
-    // is a custom one). The mirror can be NULL when a persona override points at a custom LLM while
-    // the global text model is non-custom. In that case fall back to the custom_endpoints table.
-    let endpointUrl = tomoriState.config.custom_endpoint_url ?? null;
-    let endpointModelNameHint: string | null = null;
-    let endpointNumCtxHint: number | null = null;
-    if (!endpointUrl) {
-      // Pass the active model id so the correct endpoint is chosen when the label hosts several
-      // text models; falls back to the label default when unset (legacy rows / single model).
-      const textEndpoint = await resolveCustomEndpointForProvider(
-        tomoriState.llm.llm_provider.toLowerCase(),
-        "text",
-        tomoriState.llm.llm_id,
-      );
-      endpointUrl = textEndpoint?.endpoint_url ?? null;
-      endpointModelNameHint = textEndpoint?.model_name ?? null;
-      endpointNumCtxHint = textEndpoint?.num_ctx ?? null;
-    }
+    const {
+      endpointUrl,
+      modelNameHint: endpointModelNameHint,
+      numCtx,
+    } = await resolveCustomTextEndpointTarget(tomoriState);
 
     if (!endpointUrl) {
       throw new Error(
@@ -458,14 +445,19 @@ export class CustomProvider
       apiKey: apiKey, // May be used for Bearer auth if endpoint requires it
       temperature: tomoriState.config.llm_temperature,
       disabledParams: tomoriState.config.llm_disabled_params ?? [],
-      maxOutputTokens: tomoriState.config.llm_max_output_tokens ?? 4096,
+      maxOutputTokens: resolveChatMaxOutputTokens({
+        provider: "custom",
+        configured: tomoriState.config.llm_max_output_tokens,
+        modelMaxOutputTokens: null,
+        contextWindow: numCtx,
+      }),
       endpointUrl: endpointUrl,
       customConnectionId: parseCustomProvider(tomoriState.llm.llm_provider)?.connectionId ?? null,
       seesImages: tomoriState.llm.sees_images,
       seesVideos: tomoriState.llm.sees_videos,
       ...samplingParams,
       repetitionPenalty: 1.1,
-      numCtx: tomoriState.config.custom_num_ctx ?? endpointNumCtxHint ?? null,
+      numCtx,
     };
 
     if (resolveToolsEnabled(tomoriState, tomoriState.llm.has_tools)) {

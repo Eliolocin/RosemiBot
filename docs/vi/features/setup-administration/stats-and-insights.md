@@ -4,32 +4,34 @@ sidebar:
   order: 4
 ---
 
-TomoriBot theo dõi mức sử dụng để bạn có thể xem ai trò chuyện với ai, persona và model nào được sử dụng, và công cụ nào được kích hoạt (sau đó chuyển thành một thẻ đồ họa thông tin có thể chia sẻ).
+TomoriBot theo dõi số liệu tương tác để bạn có thể kiểm tra xu hướng hoạt động, mức sử dụng mã thông báo model, các tính cách phổ biến và lệnh gọi công cụ hoặc hiển thị thẻ tóm tắt đồ họa thông tin có thể chia sẻ.
 
 ## Bảng điều khiển dạng văn bản
 
-Ba lệnh mở một bảng điều khiển tương tác theo dạng thẻ (Tổng quan, Persona, Model và chi phí, Công cụ và lệnh, Biểu cảm, Người dùng yêu thích, Bảng xếp hạng):
+Ba lệnh mở bảng thông tin tương tác theo thẻ:
 
-Các thẻ văn bản là bảng điều khiển công khai bền vững do người gọi lệnh kiểm soát. Chúng vẫn khả dụng cho đến khi tin nhắn bị xóa, và người dùng khác không thể thao tác các nút điều khiển.
+- `/stats personal`: xem số liệu thống kê sử dụng của riêng bạn.
+- `/stats persona`: xem số liệu thống kê sử dụng của một người cụ thể trên máy chủ này.
+- `/stats server`: xem số liệu thống kê trên toàn máy chủ của tất cả các thành viên và cá tính.
 
-- `/stats personal`: mức sử dụng của chính bạn.
-- `/stats persona`: mức sử dụng của một persona trên máy chủ này.
-- `/stats server`: mức sử dụng trên toàn máy chủ.
+Mỗi trang tổng quan bao gồm các tab Tổng quan, Tính cách, Model & Chi phí, Công cụ & Lệnh, Biểu thức, Người yêu thích và Bảng xếp hạng.
 
-Hầu hết các lệnh đều hỗ trợ khung thời gian (timeframe), và số liệu thống kê cá nhân có thể được giới hạn trong máy chủ này hoặc trên tất cả các máy chủ.
+Hầu hết các lệnh phụ cho phép bạn chỉ định khoảng thời gian (chẳng hạn như 7 ngày, 30 ngày hoặc mọi lúc). Số liệu thống kê cá nhân có thể được xác định trong phạm vi máy chủ hiện tại hoặc trên tất cả các máy chủ nơi bạn sử dụng TomoriBot.
+
+Bảng điều khiển văn bản là các thông báo công khai lâu dài được kiểm soát bởi kẻ gọi. Chúng vẫn tương tác cho đến khi bị loại bỏ hoặc bị xóa và các thành viên khác không thể thao túng các điều khiển trang tổng quan của bạn.
 
 :::note
-Số lượng token là mức sử dụng do chính nhà cung cấp báo cáo khi có sẵn (ước tính dựa trên ký tự chỉ được sử dụng cho các nhà cung cấp không báo cáo). Chi phí định giá các token đó theo mức giá niêm yết trong danh mục model, vì vậy nó có thể khác với hóa đơn thực tế của bạn (bộ nhớ đệm prompt, giảm giá, hạn ngạch gói miễn phí, v.v.).
+Số lượng mã thông báo phản ánh mức sử dụng do nhà cung cấp báo cáo khi có sẵn (ước tính dựa trên ký tự chỉ được sử dụng cho các nhà cung cấp bỏ qua số liệu mã thông báo). Số liệu chi phí định giá các mã thông báo đó theo tỷ giá niêm yết từ danh mục model, vì vậy chúng có thể khác với hóa đơn thực tế của bạn do bộ nhớ đệm nhanh chóng, chiết khấu của nhà cung cấp hoặc hạn ngạch bậc miễn phí.
 :::
 
 ## Thẻ đồ họa thông tin có thể chia sẻ
 
-Lệnh `/stats generate` tạo ra một thẻ hình ảnh chỉn chu mà bạn có thể gửi vào cuộc trò chuyện:
+Chạy `/stats generate` để hiển thị thẻ hình ảnh tóm tắt tinh tế mà bạn có thể chia sẻ trực tiếp trong cuộc trò chuyện:
 
-- **Tổng kết cá nhân**: hoạt động cá nhân của bạn, theo phong cách Spotify Wrapped.
-- **Độ thân thiết persona**: số liệu thống kê của một persona trên máy chủ này.
-- **Bảng xếp hạng máy chủ**: thứ hạng trên toàn máy chủ.
+- **Personal Wrapped**: tóm tắt hoạt động cá nhân và các persona yêu thích của bạn.
+- **Mối quan hệ cá nhân**: làm nổi bật số liệu thống kê của một cá nhân cụ thể và các đối tác trò chuyện hàng đầu trên máy chủ này.
+- **Bảng xếp hạng máy chủ**: hiển thị hoạt động trên toàn máy chủ và xếp hạng thành viên.
 
-Người dùng ở chế độ hoàn toàn riêng tư (`/personal config`) không thể tạo thẻ cá nhân.
+Người dùng có mức độ riêng tư được đặt thành `Đầy đủ` trong `/personal config` không thể tạo thẻ thống kê cá nhân.
 
-Để biết cách các thẻ được cấu thành và hiển thị, hãy xem tài liệu tham khảo kiến trúc về [hệ thống con đồ họa thông tin thống kê](/en/architecture/subsystems/stats-infographic/).
+Để biết chi tiết về cách tạo và hiển thị thẻ, hãy xem [hệ thống con đồ họa thông tin thống kê](/en/architecture/subsystems/stats-infographic/).

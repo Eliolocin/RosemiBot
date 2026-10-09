@@ -4,6 +4,7 @@ import { EmbedBuilder } from "discord.js";
 import { ColorCode } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
 import type { UserRow } from "@/types/db/schema";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 export const configureCommand = (command: SlashCommandBuilder) =>
   command.setName("ping").setDescription(localizer("en-US", "commands.ping.description"));
@@ -21,10 +22,11 @@ export async function execute(
   const responseTime = reply.createdTimestamp - interaction.createdTimestamp;
 
   const isLaggy = responseTime > 250;
+  const embedColor = isLaggy ? ColorCode.WARN : ColorCode.SUCCESS;
 
   const embed = new EmbedBuilder()
-    .setColor(isLaggy ? ColorCode.WARN : ColorCode.SUCCESS)
-    .setTitle(localizer(locale, "commands.ping.title"))
+    .setColor(embedColor)
+    .setTitle(localizedStatusTitle(locale, "commands.ping.title", embedColor))
     .setDescription(
       localizer(locale, isLaggy ? "commands.ping.response_slow" : "commands.ping.response_fast", {
         response_time: responseTime,

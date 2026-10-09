@@ -1043,7 +1043,7 @@ describe("owner scoping invariant", () => {
     const interaction = {
       id: "interaction-1",
       customId,
-      user: { id: "123456789", username: "testuser" },
+      user: { id: "123456789", username: "testuser", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
       fields: {
         getTextInputValue: (fieldId: string) => {
           if (fieldId === buildPersonalMemoryModalFieldId("content", nonce)) return "New content";
@@ -1089,7 +1089,7 @@ describe("owner scoping invariant", () => {
     const interaction = {
       id: "interaction-2",
       customId,
-      user: { id: "123456789", username: "testuser" },
+      user: { id: "123456789", username: "testuser", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
@@ -1131,7 +1131,7 @@ describe("privacy level asymmetry", () => {
     const addSelectInteraction = {
       id: "int-add-select",
       customId: buildPersonalMemoriesRouteId({ action: "select", locale: "en-US", category: "global", lineageId: 0 }),
-      user: { id: "123456789", username: "testuser" },
+      user: { id: "123456789", username: "testuser", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
       values: ["action:add"],
       isButton: () => false,
       isStringSelectMenu: () => true,
@@ -1156,7 +1156,7 @@ describe("privacy level asymmetry", () => {
         lineageId: 0,
         memoryId: 1,
       }),
-      user: { id: "123456789", username: "testuser" },
+      user: { id: "123456789", username: "testuser", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
@@ -1180,7 +1180,7 @@ describe("privacy level asymmetry", () => {
         lineageId: 0,
         memoryId: 1,
       }),
-      user: { id: "123456789", username: "testuser" },
+      user: { id: "123456789", username: "testuser", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
@@ -1201,7 +1201,7 @@ describe("privacy level asymmetry", () => {
         category: "global",
         lineageId: 0,
       }),
-      user: { id: "123456789", username: "testuser" },
+      user: { id: "123456789", username: "testuser", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
@@ -1262,7 +1262,7 @@ describe("telemetry & acknowledgement invariants", () => {
         lineageId: 0,
         nonce,
       }),
-      user: { id: "123456789", username: "testuser" },
+      user: { id: "123456789", username: "testuser", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
       fields: {
         getTextInputValue: (fieldId: string) => {
           if (fieldId === buildPersonalMemoryModalFieldId("content", nonce)) return "New added memory";
@@ -1299,7 +1299,7 @@ describe("telemetry & acknowledgement invariants", () => {
         memoryId: 1,
         nonce,
       }),
-      user: { id: "123456789", username: "testuser" },
+      user: { id: "123456789", username: "testuser", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
       fields: {
         getTextInputValue: (fieldId: string) => {
           if (fieldId === buildPersonalMemoryModalFieldId("content", nonce)) return "Updated memory";
@@ -1335,7 +1335,7 @@ describe("telemetry & acknowledgement invariants", () => {
         lineageId: 0,
         memoryId: 1,
       }),
-      user: { id: "123456789", username: "testuser" },
+      user: { id: "123456789", username: "testuser", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
       deferred: false,
       replied: false,
       isButton: () => true,
@@ -1364,7 +1364,7 @@ describe("telemetry & acknowledgement invariants", () => {
         category: "global",
         lineageId: 0,
       }),
-      user: { id: "123456789", username: "testuser" },
+      user: { id: "123456789", username: "testuser", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
       deferred: false,
       replied: false,
       isButton: () => true,
@@ -1609,7 +1609,7 @@ describe("persona selector lineage identity", () => {
       const interaction = {
         id: `personal-page-${index}`,
         customId: scenario.customId,
-        user: { id: "123456789" },
+        user: { id: "123456789", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
         guildId: "987654321",
         memberPermissions: { has: () => true },
         isButton: () => true,
@@ -1666,7 +1666,7 @@ describe("persona selector lineage identity", () => {
     const interaction = {
       id: "remove-last-personal-memory",
       customId: "personal-memories:v1:remove-confirm:en-US:global:0:49",
-      user: { id: "123456789" },
+      user: { id: "123456789", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
       guildId: "987654321",
       memberPermissions: { has: () => true },
       isButton: () => true,
@@ -1835,7 +1835,7 @@ describe("Add Memory batch upload", () => {
         lineageId: 0,
         nonce,
       }),
-      user: { id: "123456789", username: "testuser" },
+      user: { id: "123456789", username: "testuser", displayAvatarURL: () => "https://cdn.example.invalid/avatar.png" },
       fields: {
         getTextInputValue: (fieldId: string) => {
           if (fieldId === buildPersonalMemoryModalFieldId("content", nonce)) return typedContent;

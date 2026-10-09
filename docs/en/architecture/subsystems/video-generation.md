@@ -2,161 +2,86 @@
 title: "Video Generation"
 ---
 
-This document summarizes the current video generation stack.
+The video generation subsystem coordinates asynchronous AI video generation across external providers and custom endpoints for the `/generate video` command and the `generate_video` built-in tool.
 
-## Command Surface
+## Command and tool entry points
 
-- User-facing generation entrypoint: `src/commands/generate/video.ts`
-- Admin model selection: `src/utils/discord/interactions/configModelRoutes.ts` (`/config` > Models > Switch Models)
-- Admin quota controls:
-  - `src/commands/moderation.ts`
-  - `src/commands/quota/reset/global.ts`
-  - `src/commands/quota/reset/user.ts`
-- Capability/help exposure:
-  - `src/commands/help/features.ts`
-  - `src/tools/functionCalls/reviewCapabilities.ts`
+Video generation exposes two user-facing surfaces:
 
-## Runtime Flow
+- **Slash command (`src/commands/generate/video.ts`):** Opens a modal collecting prompt text, aspect ratio, duration (seconds), optional frame rate (FPS), and an optional reference image attachment.
+- **Built-in tool (`src/tools/functionCalls/generateVideoTool.ts`):** Allows models to invoke `generate_video` with a prompt, target duration, resolution (`480p`, `720p`, `1080p`), optional starting image (`media_id`), and looping controls. Tool progress notices display the active model codename, prompt excerpt, reference image usage, and elapsed execution time.
 
-`/generate video` follows this sequence:
+Administrative controls manage model selection and quotas:
 
-1. Load `TomoriState`.
-2. Validate `videogen_enabled`.
-3. Validate provider support for `nativeVideoGeneration`.
-4. Validate configured API key and `video_model_id`.
-5. Check video quota with `utils/quota/videoQuotaManager.ts`.
-6. Show a modal for prompt, aspect ratio, required duration, optional FPS, and optional reference image.
-7. Poll the provider asynchronously until the generated MP4 is ready.
-8. Send the final file back to Discord.
-9. Increment quota only after a successful delivery path.
+- Model selection: `/config` > Models > Switch Models (`src/utils/discord/interactions/configModelRoutes.ts`) binds `server_model_configs.video_model_id`.
+- Quota administration: `/moderation` (Quotas page) and `/quota reset` (`src/commands/quota/reset/global.ts`, `src/commands/quota/reset/user.ts`) manage user and server-wide quotas.
 
-This mirrors the image-generation architecture, but all provider implementations are asynchronous and return binary MP4 output rather than base64 images.
+## Asynchronous job lifecycle and providers
 
-The user-facing `video_generation` tool notice now mirrors the image notice format: it includes the active video model codename, a trimmed copy of the raw tool-call prompt, optional reference-image usage, and a separate timing line. System-added prompt material is not shown.
+Provider implementations are resolved via `resolveProviderFeatureImplementation` in `src/utils/provider/providerInfoRegistry.ts`:
 
-The delivered video message also mirrors the image delivery format. `GenerateVideoTool.sendGeneratedVideo` wraps the MP4 in a Components V2 payload (`utils/discord/generatedVideoMessage.ts` → `buildGeneratedVideoComponentsV2Payload`): a `MediaGallery` item holds the `attachment://` video so Discord renders its inline player, and a `TextDisplay` footer shows a localized "Generated in Xs" line (`tools.video.generated_after_seconds_line`) below it. The timer is measured from `execute()` start to the send call. Each send path (persona webhook, then bot message) falls back to a plain attachment-only message if Components V2 is rejected; that fallback keeps the native inline player but drops the timing footer. Media Gallery is used rather than a plain `content` caption because message content always renders *above* attachments, whereas the footer should sit below the video to match generated images.
+- Google Veo: `src/providers/google/googleVideoGeneration.ts`
+- OpenRouter: `src/providers/openrouter/openrouterVideoGeneration.ts`
+- Z.ai: `src/providers/zai/zaiVideoGeneration.ts`
+- Custom ComfyUI endpoints: `src/providers/custom/customEndpointDispatcher.ts` via `generateCustomVideoViaEndpoint`
 
-## Providers
+Video adapters submit remote work and poll for completion before downloading MP4 data. Polling budgets
+belong to each adapter: Google and Z.ai use roughly five minutes of polling intervals; OpenRouter
+uses roughly ten. Network request time adds to those intervals.
 
-Provider routing is resolved through `utils/provider/providerInfoRegistry.ts`.
+### OpenRouter asynchronous API
 
-Current native video implementations live in:
+OpenRouter video generation submits jobs to `POST /api/v1/videos`. The adapter polls the returned `polling_url` until the job reaches a terminal status, then downloads the binary video from `unsigned_urls` (falling back to `/api/v1/videos/{jobId}/content?index=0`).
 
-- `src/providers/google/googleVideoGeneration.ts`
-- `src/providers/openrouter/openrouterVideoGeneration.ts`
-- `src/providers/zai/zaiVideoGeneration.ts`
+To protect credentials, relative polling URLs are resolved against `https://openrouter.ai`, and authenticated polling is restricted to that origin. A dedicated video model cache (`src/utils/cache/openrouterVideoModelCache.ts`) queries `GET /api/v1/videos/models` to validate supported durations, resolutions, aspect ratios, and frame capabilities before submitting jobs.
 
-### OpenRouter: stable asynchronous API
+Image-to-video requests pass reference images via `frame_images` with `frame_type: "first_frame"`. Setting loop mode supplies the same image as `last_frame` when the model supports it. If a model lacks first-frame or last-frame capabilities, the request fails before submitting a paid job.
 
-OpenRouter video generation uses the stable `POST /api/v1/videos` endpoint. TomoriBot follows the
-returned `polling_url` until the job reaches a terminal state, then downloads the first item in
-`unsigned_urls` (or falls back to `/api/v1/videos/{jobId}/content?index=0`). Relative polling URLs
-are resolved against `https://openrouter.ai`, and authenticated polling is restricted to that
-origin so a response cannot redirect the API key to another host.
+## Transport bypass for OpenRouter
 
-`utils/cache/openrouterVideoModelCache.ts` loads `GET /api/v1/videos/models` at startup and on
-cache misses. The adapter uses the advertised durations, resolutions, aspect ratios, and frame
-support to normalize requests. Scoped OpenRouter video registrations are accepted only when the
-model appears in this dedicated catalog.
+The OpenRouter video adapter uses an external HTTP process to work around HTML responses observed
+with Bun's transport at the provider's edge. This is an adapter-specific compatibility measure;
+it does not establish a permanent rule about the provider's TLS filtering.
 
-OpenRouter image-to-video requests use `frame_images` with `frame_type: "first_frame"`; they do
-not use `input_references`, which OpenRouter defines as loose subject/style guidance. The
-`generate_video` tool's explicit loop option adds the same image as `last_frame` when the model
-advertises that capability. Unsupported first/last-frame requests fail before a paid job is
-submitted and return a localized explanation.
+To preserve connectivity, `src/providers/openrouter/openrouterVideoGeneration.ts` delegates requests to `externalHttpRequest()`, which spawns an external process with standard TLS fingerprints:
 
-### OpenRouter: external HTTP backends (TLS/HTTP fingerprint bypass)
+- **Windows:** PowerShell 7 (`pwsh`) with `Invoke-WebRequest`, using .NET Schannel TLS with HTTP/2 negotiation. Request data passes via stdin as JSON, and binary output returns base64-encoded.
+- **Linux and Docker:** `curl` with HTTP/2 via `nghttp2` (`--proto =https`, `-H "Expect:"`). Headers, including the bearer token, and the request body travel through stdin as a curl config (`-K -`), so neither appears in the process table.
 
-OpenRouter's API sits behind Cloudflare, which uses TLS fingerprinting (JA3/JA4) and HTTP/2 fingerprinting (SETTINGS frames, ALPN negotiation) to identify HTTP clients. Bun's BoringSSL stack produces a non-standard fingerprint that Cloudflare serves a cached HTML page to (HTTP 200 with HTML body) instead of routing to the API origin. Both `fetch()` and Bun's `node:https` compatibility shim share this same fingerprint.
+Google and Z.ai adapters use the native transport.
 
-To work around this, `openrouterVideoGeneration.ts` uses `externalHttpRequest()`: a platform-aware dispatcher that spawns an external process for HTTP requests:
+## State and quota coordination
 
-- **Windows (development)**: PowerShell 7 (`pwsh`) with `Invoke-WebRequest`. Uses .NET's Schannel TLS with proper HTTP/2 negotiation. Request data is piped via stdin as JSON; response body is base64-encoded for binary safety. Windows system curl lacks HTTP/2 support, so it cannot be used.
-- **Linux / Docker (production)**: `curl` with HTTP/2 via `nghttp2` (standard on Alpine/Debian). Response headers and body are parsed from curl's `-i` output. Key flags: `--proto =https` (protocol restriction), `--data-raw` (no `@filename` expansion), `-H "Expect:"` (suppresses 100-Continue).
+Video generation persists configuration in server-scoped tables:
 
-- **Deployment requirements**:
-- Windows: `pwsh` (PowerShell 7+) on `PATH`
-- Linux/Docker: `curl` with HTTP/2 support on `PATH` (already in the Dockerfile via `apk add curl`)
+- `server_capabilities_configs.videogen_enabled`: Feature gate for the command and tool.
+- `server_model_configs.video_model_id`: Active video model foreign key.
+- `saved_provider_configs.video_model_id`: Preserved model slot when switching provider profiles.
 
-The Google and Z.ai providers use Bun's native `fetch()` directly since their APIs are not affected by TLS fingerprinting.
+### Quota tracking and delivery invariant
 
-The command supports:
+Video quotas use `video_quota_configs`, `video_quotas`, and `video_serverwide_quotas`. Both user and
+server limits default to unlimited (`0`); a configured server limit uses a 365-day default reset period.
 
-- Text-to-video
-- Image-to-video through an optional uploaded reference image
-- Aspect ratio selection
-- `duration` in seconds (required modal field, prefilled with the default)
-- `fps` (optional modal field)
+Server-funded generation checks quota before submission and increments usage after successful Discord
+delivery. Personal-provider selections bypass server quota accounting. The check and increment are
+separate operations, so concurrent requests can pass the same preflight; the increment transaction
+does not reserve capacity. Failed delivery consumes no local quota, but a submitted provider job may
+still run or incur charges. Tool cancellation checks the turn signal before delivery.
 
-The built-in `generate_video` tool also supports:
+## Discord delivery constraints
 
-- `duration` in seconds
-- `resolution` as `480p`, `720p`, or `1080p`
-- optional first-frame image-to-video through `media_id`
-- optional looping through first/last-frame control
+Generated videos must satisfy Discord attachment limits:
 
-Tool defaults are:
+- **File size limit:** Command and tool enforce a local 25 MiB ceiling (`DISCORD_FILE_SIZE_LIMIT`). This fixed ceiling does not represent every Discord account or guild's current upload allowance.
+- **Format:** Providers return binary MP4 video.
+- **Components V2 presentation:** `src/utils/discord/generatedVideoMessage.ts` wraps the attachment in a Components V2 message. A `MediaGallery` item references the `attachment://` file so Discord renders its inline player, and a `TextDisplay` component places a localized generation time notice ("Generated in Xs") below the player. If Components V2 rendering fails, delivery falls back to a standard attachment-only message.
 
-- `duration = 5`
-- `resolution = 720p`
+## Source pointers
 
-`fps` is an optional, provider-dependent hint. Hosted providers (Google Veo, OpenRouter, Z.ai) do
-not expose an FPS control and silently ignore it. Custom ComfyUI workflows can consume it via the
-`TOMORI_VIDEO_FPS` / `TOMORI_FPS` placeholders; when the user leaves FPS blank, the
-`COMFYUI_VIDEO_FPS` default (16) is substituted so workflow nodes stay valid.
-
-Modal input bounds are env-configurable: `VIDEO_GEN_DEFAULT_DURATION_SECONDS` (default 5),
-`VIDEO_GEN_MAX_DURATION_SECONDS` (default 20), and `VIDEO_GEN_MAX_FPS` (default 60). These are
-UI-level guardrails only.
-
-Provider adapters normalize unsupported values to the nearest supported provider/model combination instead of blindly passing invalid values through.
-
-## Configuration and State
-
-Video generation uses these server-scoped config fields:
-
-- `server_capabilities_configs.videogen_enabled`
-- `server_model_configs.video_model_id`
-
-Provider snapshots also preserve `saved_provider_configs.video_model_id` for bookkeeping and cleanup, but Phase 1 `/config provider switch` does not automatically restore video model slots.
-
-## Quotas
-
-Video quotas are separate from image and text quotas because video generation is more expensive.
-
-Tables:
-
-- `video_quota_configs`
-- `video_quotas`
-- `video_serverwide_quotas`
-
-Defaults:
-
-- `daily_user_quota = 3`
-- `serverwide_quota = 0` (`0` means unlimited)
-- `serverwide_quota_resets_in = 365`
-
-Management commands:
-
-- `/moderation` (Quotas page)
-- `/quota reset`
-
-Reset behavior supports both:
-
-- per-user daily usage reset
-- server-wide pool reset
-
-## Discord Delivery Constraints
-
-The command currently enforces Discord's standard upload ceiling and rejects oversized results before attempting to send them.
-
-- current limit: `25 MB`
-- file type: `mp4`
-
-## Related Files
-
-- `src/utils/quota/videoQuotaManager.ts`
-- `src/types/db/schema.ts`
-- `src/db/schema.sql`
-- `src/utils/db/repositories/LlmRepository.ts`
-- `src/utils/db/repositories/index.ts`
+- `src/commands/generate/video.ts`: Slash command modal flow and input normalization.
+- `src/tools/functionCalls/generateVideoTool.ts`: Built-in tool execution and progress notice dispatch.
+- `src/providers/openrouter/openrouterVideoGeneration.ts`: OpenRouter async polling and external HTTP process dispatcher.
+- `src/providers/google/googleVideoGeneration.ts`, `src/providers/zai/zaiVideoGeneration.ts`: Native provider video adapters.
+- `src/utils/quota/videoQuotaManager.ts`: Quota validation and post-delivery increment logic.
+- `src/utils/discord/generatedVideoMessage.ts`: Components V2 media gallery message formatting.

@@ -1,3 +1,4 @@
+import { isManagedWebhookMessage } from "@/utils/chat/webhookIdentity";
 import type { Message } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import { isMatrixBridgeWebhookUsername } from "@/utils/bridges";
@@ -63,7 +64,7 @@ export function findLastPersonaTurnBlock(options: {
       continue;
     }
 
-    if (isMatrixBridgeWebhookUsername(msg.author.username)) {
+    if (!isManagedWebhookMessage(msg) || isMatrixBridgeWebhookUsername(msg.author.username)) {
       if (blockMessages.length > 0) break;
       continue;
     }

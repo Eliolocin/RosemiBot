@@ -1,3 +1,4 @@
+import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import { GoogleGenAI, type CountTokensParameters } from "@google/genai";
 import type { ChatInputCommandInteraction, Client, SlashCommandSubcommandBuilder } from "discord.js";
 import { MessageFlags } from "discord.js";
@@ -17,13 +18,9 @@ import { prepareParticipantContext } from "@/utils/text/participants/preparation
 import { resolveMediaForModel } from "@/utils/text/context/mediaResolver";
 import { getCachedChannelPrompt } from "@/utils/cache/channelPromptCache";
 import { getEmojiPenaltyDirective } from "@/utils/text/emojiPenalty";
-import { truncateDialogueHistory } from "@/utils/text/contextTruncator";
-import {
-  getOpenRouterPricing,
-  getOpenRouterTokenLimits,
-  isOpenRouterCapabilityCacheReady,
-} from "@/utils/cache/openrouterCapabilityCache";
-import { getGeminiTokenLimits } from "@/utils/cache/geminiCapabilityCache";
+import { getOpenRouterPricing } from "@/utils/cache/openrouterCapabilityCache";
+import { resolveModelPricing } from "@/utils/provider/modelPricing";
+import { applyProviderContextTruncation } from "@/utils/provider/contextBudget";
 import { normalizeMessageFetchLimit } from "@/utils/discord/messageFetchLimit";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
 import { charsToTokensJson, charsToTokensText, estimateContextItemsTokens } from "@/utils/text/tokenEstimate";
@@ -88,7 +85,7 @@ const EST_OUTPUT_LONG = 500;
 
 // First-party pricing is read from the `llms` catalog columns, so a model with no
 // catalog price reports "pricing unavailable" instead of billing against a
-// provider-wide guess. See resolveModelPricing() below for the precedence order.
+// provider-wide guess (see resolveModelPricing in @/utils/provider/modelPricing).
 
 const YOUTUBE_URL_PATTERNS = [
   /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/i,
@@ -187,51 +184,6 @@ interface OpenRouterProbeUsage {
   total_tokens?: number;
 }
 
-type ContextTruncator = (contextSegments: StructuredContextItem[], tomoriState: TomoriState) => StructuredContextItem[];
-
-/**
- * Shared truncator for Gemini-family providers (Google AI Studio + Vertex AI).
- * Both resolve the same model codenames against the Gemini capability cache, so
- * Vertex reuses Google's limits to keep the parity context in lockstep.
- */
-const geminiFamilyContextTruncator: ContextTruncator = (contextSegments, tomoriState) => {
-  const tokenLimits = getGeminiTokenLimits(tomoriState.llm.llm_codename);
-  if (!tokenLimits || tokenLimits.contextLength <= 0 || !tokenLimits.maxCompletionTokens) {
-    return contextSegments;
-  }
-
-  const { truncated, totalDropped } = truncateDialogueHistory(
-    contextSegments,
-    tokenLimits.contextLength,
-    tokenLimits.maxCompletionTokens,
-  );
-  return totalDropped > 0 ? truncated : contextSegments;
-};
-
-const contextTruncators: Partial<Record<LiveProvider, ContextTruncator>> = {
-  openrouter: (contextSegments, tomoriState) => {
-    if (tomoriState.llm.llm_codename === "other-model" || !isOpenRouterCapabilityCacheReady()) {
-      return contextSegments;
-    }
-
-    const tokenLimits = getOpenRouterTokenLimits(tomoriState.llm.llm_codename);
-    const openrouterTruncationOutputCap = parseIntegerEnv(process.env.OPENROUTER_MAX_OUTPUT_TOKENS, 8192, 1);
-    if (!tokenLimits || tokenLimits.contextLength <= 0 || !tokenLimits.maxCompletionTokens) {
-      return contextSegments;
-    }
-
-    const truncationMaxCompletionTokens = Math.min(tokenLimits.maxCompletionTokens, openrouterTruncationOutputCap);
-    const { truncated, totalDropped } = truncateDialogueHistory(
-      contextSegments,
-      tokenLimits.contextLength,
-      truncationMaxCompletionTokens,
-    );
-    return totalDropped > 0 ? truncated : contextSegments;
-  },
-  google: geminiFamilyContextTruncator,
-  vertex: geminiFamilyContextTruncator,
-};
-
 interface OpenRouterProbeResponse {
   id?: string;
   usage?: OpenRouterProbeUsage;
@@ -248,13 +200,6 @@ interface DeepseekProbeUsage {
 
 interface DeepseekProbeResponse {
   usage?: DeepseekProbeUsage;
-}
-
-function parseIntegerEnv(value: string | undefined, fallback: number, minimum: number): number {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  if (Number.isNaN(parsed)) return fallback;
-  return Math.max(minimum, parsed);
 }
 
 /**
@@ -449,32 +394,6 @@ function calculateCost(
   const inputCost = (inputTokens / 1_000_000) * inputPricePerMillion;
   const outputCost = (outputTokens / 1_000_000) * outputPricePerMillion;
   return inputCost + outputCost;
-}
-
-/**
- * Resolve per-million input/output pricing for the active model.
- *
- * Precedence (see docs/subsystems/database-schema.md):
- *  1. The model row's own `input_price_per_million` / `output_price_per_million` columns: the official,
- *     DB-backed source of truth, seeded from the typed catalog (src/db/seed/catalog/models.ts).
- *  2. The optional caller-supplied `fallback` (e.g. OpenRouter's live API pricing cache), used only when
- *     the row carries no price. First-party providers pass no fallback: a model with no catalog price
- *     resolves to `null`, and the caller surfaces "pricing unavailable" instead of guessing a rate.
- *
- * @param tomoriState - Active server/persona state; its `llm` row carries the price columns
- * @param fallback - Optional prices used only when the row's columns are null/undefined
- * @returns Resolved input/output price per million tokens, or `null` when no price can be determined
- */
-function resolveModelPricing(
-  tomoriState: TomoriState,
-  fallback?: { input: number; output: number },
-): { input: number; output: number } | null {
-  const dbInput = tomoriState.llm.input_price_per_million;
-  const dbOutput = tomoriState.llm.output_price_per_million;
-  if (typeof dbInput === "number" && typeof dbOutput === "number") {
-    return { input: dbInput, output: dbOutput };
-  }
-  return fallback ?? null;
 }
 
 /**
@@ -727,9 +646,10 @@ async function buildRuntimeParityContext(
       personaName = authorName;
     } else if (message.webhookId) {
       const webhookName = message.author.username?.trim();
-      const resolvedPersona = webhookName
-        ? await resolveWebhookPersonaAuthor(message.id, webhookName, personaByNickname)
-        : null;
+      const resolvedPersona =
+        webhookName && (await verifyMessageWebhook(message))
+          ? await resolveWebhookPersonaAuthor(message.id, webhookName, personaByNickname)
+          : null;
 
       if (resolvedPersona) {
         authorName = resolvedPersona.displayName;
@@ -890,8 +810,9 @@ async function buildRuntimeParityContext(
   let contextSegments = contextBuild.contextItems;
 
   // Character-estimate fallback passes provider=null (no live counting) → skip truncation.
-  const contextTruncator = provider ? contextTruncators[provider] : undefined;
-  contextSegments = contextTruncator?.(contextSegments, tomoriState) ?? contextSegments;
+  if (provider) {
+    contextSegments = await applyProviderContextTruncation(contextSegments, tomoriState, serverDiscId);
+  }
 
   const lowerPriorityTailDirectives = [...contextBuild.lowerPriorityTailDirectives];
   const tailDirectives = [...contextBuild.tailDirectives];

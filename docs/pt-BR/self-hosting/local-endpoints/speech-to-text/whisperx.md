@@ -4,11 +4,11 @@ sidebar:
   order: 1
 ---
 
-O WhisperX é o caminho de transcrição local recomendado para iniciantes.
+Configure fala para texto local e precisa para TomoriBot usando o servidor [WhisperX](https://github.com/m-bain/whisperX) incluído. WhisperX fornece transcrição de áudio rápida com alinhamento em nível de palavra.
 
 ## Configuração
 
-Execute estes comandos a partir da raiz do repositório do TomoriBot, a pasta onde você clonou o TomoriBot. O primeiro comando entra na pasta do servidor STT:
+Execute estes comandos na raiz do repositório TomoriBot:
 
 ### Windows PowerShell
 
@@ -32,7 +32,7 @@ python -m pip install -r requirements.txt
 python whisperx_server.py
 ```
 
-Mantenha esse terminal aberto enquanto a TomoriBot estiver usando o WhisperX. O URL padrão do endpoint é `http://127.0.0.1:8021`.
+Mantenha esse terminal aberto enquanto TomoriBot estiver usando WhisperX. O URL do terminal padrão é `http://127.0.0.1:8021`.
 
 ## Registrar na TomoriBot
 
@@ -45,6 +45,6 @@ Depois de salvar a conexão, selecione-a e use o menu suspenso do modelo para ad
 
 Use `/providers` para o registro do endpoint e configuração do modelo. Em seguida, abra `/config` > Models > Switch Models para selecionar e ativar o endpoint registrado.
 
-## Usar Transcrições
+## Usar transcrições
 
-Após o registro, a TomoriBot transcreve anexos de áudio em segundo plano e adiciona o texto ao contexto do chat. Use `/config` > Engine > Notices apenas se você também quiser que as transcrições sejam postadas de forma visível no chat.
+Após o registro, TomoriBot transcreve anexos de áudio em segundo plano e adiciona o texto ao contexto do bate-papo. Use `/config` > Mecanismo > Avisos somente se você também quiser que as transcrições sejam postadas de forma visível no bate-papo.

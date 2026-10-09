@@ -3,13 +3,15 @@ title: "Qwen3-TTS"
 aiGenerated: true
 ---
 
-Use `servers/tts/qwen3tts/server.py` para ambos os modos do Qwen3-TTS 12Hz 1.7B, a opção de TTS maior porém a mais precisa entre as atuais do TomoriBot. Por padrão, ele inicia no modo automático, que escolhe o modelo Base de clone de voz ou o modelo VoiceDesign a partir do formato de cada requisição.
+Sintetize fala de caracteres multilíngues altamente precisa usando [Qwen3-TTS](https://github.com/QwenAudio/Qwen3-TTS) nos modos de clonagem de voz e VoiceDesign descrito em texto.
+
+Qwen3-TTS 12Hz 1.7B fornece síntese de fala local de alta precisão. A execução de `servers/tts/qwen3tts/server.py` em seu modo automático padrão seleciona dinamicamente o modelo de clonagem de voz Base ou o modelo VoiceDesign com base em cada solicitação recebida.
 
 ## Configuração
 
-Execute estes comandos a partir da raiz do repositório do TomoriBot, a pasta onde você clonou o TomoriBot:
+Execute estes comandos na raiz do repositório TomoriBot, a pasta onde você clonou TomoriBot:
 
-### Usando o Windows PowerShell
+### Windows PowerShell
 
 ```powershell
 python -m venv servers\tts\qwen3tts\.venv
@@ -19,7 +21,7 @@ pip install -r servers\tts\qwen3tts\requirements.txt
 python servers\tts\qwen3tts\server.py
 ```
 
-### Usando Bash no Linux/macOS
+### Linux e macOS Bash
 
 ```bash
 python3 -m venv servers/tts/qwen3tts/.venv
@@ -29,13 +31,13 @@ python -m pip install -r servers/tts/qwen3tts/requirements.txt
 python servers/tts/qwen3tts/server.py
 ```
 
-A URL padrão do endpoint no modo automático é `http://127.0.0.1:8012`; defina `QWEN3TTS_PORT` para usar outra porta. Você também pode especificar o modo automático explicitamente:
+O URL do terminal de modo automático padrão é `http://127.0.0.1:8012`; configure `QWEN3TTS_PORT` para usar outra porta. Você também pode especificar explicitamente o modo automático:
 
 ```powershell
 python servers\tts\qwen3tts\server.py --mode auto
 ```
 
-O modo automático inspeciona cada requisição `/synthesize`: requisições com `ref_audio` usam o modelo de clone, enquanto requisições com `instruct` usam o modelo VoiceDesign. Ele mantém apenas um modelo carregado por vez e troca os modelos quando o tipo de requisição muda, de modo que a primeira requisição após uma troca pode ser mais lenta.
+O modo automático inspeciona cada solicitação `/synthesize`: solicitações com `ref_audio` usam o modelo clone, enquanto solicitações com `instruct` usam o modelo VoiceDesign. Ele mantém apenas um modelo carregado por vez e troca modelos quando o tipo de solicitação muda, portanto, a primeira solicitação após uma troca pode ser mais lenta.
 
 ## Registrar no TomoriBot
 
@@ -50,33 +52,33 @@ Após salvar a conexão, selecione-a e use o menu suspenso de modelo para adicio
 
 Use `/providers` para registro do endpoint e configuração do modelo. Em seguida, abra `/config` > Models > Switch Models para selecionar e ativar o endpoint registrado.
 
-## Configurar Vozes das Personas
+## Configurar vozes pessoais
 
 ### Clonagem de voz
 
-Use isso para personas que devem imitar um clipe de referência:
+Use isto para personas que devem imitar um clipe de referência:
 
-1. Prepare um clipe de voz limpo de 10 a 20 segundos com um locutor e sem música de fundo.
-2. Abra `/config` em Models > Parâmetros TTS e Vozes e envie o clipe.
-3. Abra `/config` em Persona > Voice e, em seguida, escolha a persona e a amostra de voz.
+1. Prepare um clipe de voz limpo de 10 a 20 segundos com um alto-falante e sem música de fundo.
+2. Abra `/config` em Modelos > `Parâmetros TTS e Vozes` e carregue o clipe.
+3. Abra `/config` em Persona > `Voz` e escolha a persona e a amostra de voz.
 
-O Qwen3-TTS anuncia clonagem rápida a partir de apenas 3 segundos de áudio de referência, e seu tempo de execução não documenta nem aplica um limite de duração da referência. O comprimento do clipe é, portanto, uma decisão de qualidade que você controla, e não um limite que o servidor verifica.
+Qwen3-TTS anuncia clonagem rápida a partir de apenas 3 segundos de áudio de referência, e seu tempo de execução não documenta nem impõe um limite de duração de referência. A duração do clipe é, portanto, uma compensação de qualidade que você controla, e não um limite que o servidor verifica.
 
-### VoiceDesign
+### Design de Voz
 
-Use isso para personas que devem usar uma descrição de voz escrita em vez de uma amostra:
+Use isto para personas que devem usar uma descrição de voz escrita em vez de uma amostra:
 
-1. Abra `/config` em Persona > Voice e escolha VoiceDesign.
+1. Abra `/config` em Persona > `Voz` e escolha VoiceDesign.
 2. Escolha a persona.
-3. Insira um prompt de voz em linguagem natural, como a idade do locutor, tom, sotaque e estilo de entrega.
+3. Insira um prompt de voz em linguagem natural, como idade, tom, sotaque e entrega do locutor.
 
-Remova o prompt do VoiceDesign de uma persona em Persona > Voice em `/config`. Durante a geração, o TomoriBot envia o prompt salvo no corpo JSON de `/synthesize` como `instruct`; comandos pontuais de `voice_instructions` a partir da ferramenta são anexados.
+Remova o prompt do VoiceDesign de uma persona de Persona > `Voz` em `/config`. Durante a geração, TomoriBot envia o prompt salvo no corpo JSON `/synthesize` como `instruct`; `voice_instructions` único da ferramenta são anexados.
 
-O modo automático mantém ambas as configurações. Personas configuradas em Persona > Voice em `/config` usam a síntese de clone ou a síntese do VoiceDesign de acordo com sua seleção.
+O modo automático mantém ambas as configurações. Personas configuradas em Persona > `Voz` em `/config` usam síntese de clone ou síntese de VoiceDesign de acordo com sua seleção.
 
-## (Opcional) Servidor Apenas para VoiceDesign
+## Opcional: servidor somente VoiceDesign
 
-Inicie o mesmo servidor no modo VoiceDesign ao servir `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign`.
+Inicie o mesmo servidor no modo VoiceDesign ao atender `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign`.
 
 Windows PowerShell:
 
@@ -93,6 +95,6 @@ source servers/tts/qwen3tts/.venv/bin/activate
 TOMORI_TTS_MODE=voice-design python servers/tts/qwen3tts/server.py
 ```
 
-Você também pode passar `--mode voice-design` em vez de definir `TOMORI_TTS_MODE`. A URL padrão do endpoint apenas para VoiceDesign é `http://127.0.0.1:8014`.
+Você também pode passar `--mode voice-design` em vez de definir `TOMORI_TTS_MODE`. O URL de terminal padrão somente do VoiceDesign é `http://127.0.0.1:8014`.
 
-Registre-o da mesma forma que o modo automático, mas use a URL do endpoint `http://127.0.0.1:8014` e escolha `VoiceDesign` como o Modo de Fonte de Voz no modelo de fala (Speech).
+Registre-o da mesma forma que o modo automático, mas use o URL do terminal `http://127.0.0.1:8014` e escolha `VoiceDesign` como o modo de fonte de voz no modelo de fala.

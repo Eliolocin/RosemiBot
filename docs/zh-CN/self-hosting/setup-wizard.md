@@ -3,6 +3,7 @@ title: "安装向导"
 sidebar:
   label: "安装向导"
   order: 1
+aiGenerated: false
 ---
 
 :::note
@@ -38,7 +39,6 @@ bun run setup
 ## 需要提前准备什么
 
 - [Bun](https://bun.sh/)，用来运行 bot 和向导本身。
-- Node.js v20+（MCP 工具链需要）。
 - 一个 Discord bot 令牌，并已开启 `GuildMembers`、`MessageContent`、`GuildPresences`
   这三项特权 intent。
 - 一个数据库。 TomoriBot 把所有数据都存进 PostgreSQL。你不用手动配置，向导会替你做：

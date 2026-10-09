@@ -1,11 +1,19 @@
-import type {
-  AnyThreadChannel,
-  BaseGuildTextChannel,
-  TextChannel,
-  Webhook,
-  Message,
-  Guild,
-  MessageCreateOptions,
+import {
+  type AnyThreadChannel,
+  type APIMessage,
+  type BaseGuildTextChannel,
+  type TextChannel,
+  type Webhook,
+  type Message,
+  type Guild,
+  type MessageCreateOptions,
+  type WebhookMessageCreateOptions,
+  type WebhookType,
+  MessagePayload,
+  makeURLSearchParams,
+  RateLimitError,
+  REST,
+  Routes,
 } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import { MANAGED_WEBHOOK_KIND_SHARED_CHANNEL, serverRepository } from "@/utils/db/repositories/ServerRepository";
@@ -21,6 +29,7 @@ import {
   resolvePersonaAvatarPublicUrl,
   uploadPersonaAvatarToStorage,
 } from "@/utils/storage/avatarStorage";
+import { runDeferrableWebhookAvatarEdit } from "./avatarEditRateLimit";
 
 /**
  * In-memory webhook cache: channelId -> Webhook
@@ -80,6 +89,22 @@ const MAX_AVATAR_SIZE_BYTES = PERSONA_LIMITS.MAX_AVATAR_SIZE_MB * 1024 * 1024;
 const webhookMutationLocks = new Map<string, Promise<void>>();
 const webhookAvatarStateCache = new Map<string, string>();
 const persistedManagedWebhookIds = new Set<string>();
+
+/**
+ * Returns the data-URI avatar this process last applied to the webhook, or undefined when the
+ * webhook holds no avatar it set (or the state is unknown).
+ */
+export function getWebhookStoredAvatarDataUri(webhookId: string): string | undefined {
+  return webhookAvatarStateCache.get(webhookId);
+}
+
+export type WebhookIdentitySendOptions = {
+  /**
+   * Throw `WebhookAvatarEditDeferredError` instead of waiting out a long rate limit on the
+   * avatar edit. Only for callers that can choose another avatar and resend.
+   */
+  deferAvatarEditOnRateLimit?: boolean;
+};
 
 /**
  * Returns current sizes of every in-memory map owned by the webhook manager.
@@ -552,8 +577,8 @@ async function resolvePersonaWebhookAvatar(persona: TomoriState, guild?: Guild):
  * its parent: webhooks live on the parent channel and post into threads via `threadId`.
  *
  * Thin convenience wrapper over {@link getOrCreateWebhook} for callers that hold an arbitrary
- * channel and only want "the webhook, or null". Used by post-turn senders (stickers, the
- * "Fallback Used" notice) which (unlike alter turns) have no pre-resolved
+ * channel and only want "the webhook, or null". Used by expression delivery and the
+ * "Fallback Used" notice, which (unlike alter turns) have no pre-resolved
  * `responseTarget.webhook` when the main persona reaches the webhook path via a sprite.
  *
  * @returns The managed webhook, or null when the channel cannot host one or permissions are missing
@@ -629,7 +654,7 @@ export async function getOrCreateWebhook(channel: TextChannel | BaseGuildTextCha
 
     log.info(`[Webhook Manager] Cache MISS for channel ${channelId}, fetching webhooks`);
     const webhooks = await channel.fetchWebhooks();
-    let webhook = webhooks.find((wh) => wh.name === WEBHOOK_NAME);
+    let webhook = webhooks.find((wh) => wh.name === WEBHOOK_NAME && wh.owner?.id === channel.client.user?.id);
 
     if (webhook && !webhook.token) {
       log.warn(
@@ -744,24 +769,38 @@ function shouldResetWebhookAvatar(webhook: Webhook, identity?: ResolvedWebhookId
   return webhookAvatarStateCache.has(webhook.id) || Boolean(webhook.avatar);
 }
 
-async function ensureWebhookAvatarState(webhook: Webhook, identity?: ResolvedWebhookIdentity): Promise<void> {
+async function editWebhookAvatar(
+  webhook: Webhook,
+  edit: { avatar: string | null; reason: string },
+  deferOnRateLimit: boolean,
+): Promise<void> {
+  if (deferOnRateLimit) {
+    await runDeferrableWebhookAvatarEdit(webhook.id, () => webhook.edit(edit));
+    return;
+  }
+  await webhook.edit(edit);
+}
+
+async function ensureWebhookAvatarState(
+  webhook: Webhook,
+  identity: ResolvedWebhookIdentity | undefined,
+  deferOnRateLimit: boolean,
+): Promise<void> {
   if (identity?.avatarDataUri) {
     const cachedAvatar = webhookAvatarStateCache.get(webhook.id);
     if (cachedAvatar !== identity.avatarDataUri) {
-      await webhook.edit({
-        avatar: identity.avatarDataUri,
-        reason: "TomoriBot persona identity update",
-      });
+      await editWebhookAvatar(
+        webhook,
+        { avatar: identity.avatarDataUri, reason: "TomoriBot persona identity update" },
+        deferOnRateLimit,
+      );
       webhookAvatarStateCache.set(webhook.id, identity.avatarDataUri);
     }
     return;
   }
 
   if (shouldResetWebhookAvatar(webhook, identity)) {
-    await webhook.edit({
-      avatar: null,
-      reason: "TomoriBot persona identity reset",
-    });
+    await editWebhookAvatar(webhook, { avatar: null, reason: "TomoriBot persona identity reset" }, deferOnRateLimit);
     webhookAvatarStateCache.delete(webhook.id);
   }
 }
@@ -778,9 +817,10 @@ export async function runWithWebhookIdentity<T>(
   identity: ResolvedWebhookIdentity | undefined,
   operation: () => Promise<T>,
   lockKey?: string,
+  options?: WebhookIdentitySendOptions,
 ): Promise<T> {
   const run = async (): Promise<T> => {
-    await ensureWebhookAvatarState(webhook, identity);
+    await ensureWebhookAvatarState(webhook, identity, options?.deferAvatarEditOnRateLimit === true);
     return await operation();
   };
 
@@ -791,6 +831,14 @@ export async function runWithWebhookIdentity<T>(
   return await run();
 }
 
+function buildIdentityPayload(payload: WebhookSendPayload, identity?: ResolvedWebhookIdentity): WebhookSendPayload {
+  const finalPayload = buildWebhookSendPayload(payload, identity);
+  if (identity?.avatarDataUri && "avatarURL" in finalPayload) {
+    delete finalPayload.avatarURL;
+  }
+  return finalPayload;
+}
+
 async function sendWebhookMessagesInternal(
   webhook: Webhook,
   payloads: WebhookSendPayload[],
@@ -798,14 +846,95 @@ async function sendWebhookMessagesInternal(
 ): Promise<Message[]> {
   const messages: Message[] = [];
   for (const payload of payloads) {
-    const finalPayload = buildWebhookSendPayload(payload, identity);
-    if (identity?.avatarDataUri && "avatarURL" in finalPayload) {
-      delete finalPayload.avatarURL;
-    }
-    messages.push(await webhook.send(finalPayload));
+    messages.push(await webhook.send(buildIdentityPayload(payload, identity)));
   }
 
   return messages;
+}
+
+/**
+ * The shared client retries a timed-out, reset, or 5xx request, and webhook execution accepts no
+ * nonce, so a retry after a lost response can post a second copy. This client makes one attempt.
+ * It also rejects every rate limit instead of sleeping inside the request, so the caller waits and
+ * can observe a stop before posting again.
+ */
+let singleAttemptRest: REST | null = null;
+const EXPRESSION_RATE_LIMIT_BUDGET_MS = 30_000;
+const EXPRESSION_STOP_CHECK_INTERVAL_MS = 100;
+
+/** All POSTs were refused, so exhausting this budget is a definite non-delivery. */
+export class WebhookExpressionRateLimitTimeoutError extends Error {
+  constructor() {
+    super("Webhook expression rate-limit budget exhausted");
+    this.name = "WebhookExpressionRateLimitTimeoutError";
+  }
+}
+
+export function getSingleAttemptWebhookRest(): REST {
+  singleAttemptRest ??= new REST({ retries: 0, rejectOnRateLimit: () => true });
+  return singleAttemptRest;
+}
+
+/**
+ * Executes one webhook message without transport retries, for sends where a duplicate is worse
+ * than an unconfirmed outcome. Applies the same identity and avatar handling as
+ * {@link sendWebhookMessageWithIdentity}.
+ *
+ * A rate limit is waited out here and the POST retried, which cannot duplicate: Discord refused the
+ * limited request, or the client refused to send it.
+ *
+ * @param beforePost - Runs after the avatar is settled and immediately before every POST attempt;
+ *   throwing from it cancels the send with nothing posted
+ * @returns The created message's id and webhook id
+ */
+export async function sendWebhookMessageOnce(
+  webhook: Webhook,
+  payload: WebhookMessageCreateOptions,
+  identity: ResolvedWebhookIdentity | undefined,
+  beforePost: () => void,
+): Promise<{ id: string; webhookId: string | null }> {
+  const token = webhook.token;
+  if (!token) throw new Error(`Webhook ${webhook.id} has no token.`);
+  try {
+    return await runWithWebhookIdentity(webhook, identity, async () => {
+      const finalPayload = buildIdentityPayload(payload, identity) as WebhookMessageCreateOptions;
+      // Only an incoming webhook has the token checked above, which is what execution requires.
+      const target = webhook as Webhook<WebhookType.Incoming>;
+      const { body, files } = await MessagePayload.create(target, finalPayload).resolveBody().resolveFiles();
+      const deadline = Date.now() + EXPRESSION_RATE_LIMIT_BUDGET_MS;
+      for (;;) {
+        beforePost();
+        if (Date.now() >= deadline) throw new WebhookExpressionRateLimitTimeoutError();
+        try {
+          const created = (await getSingleAttemptWebhookRest().post(Routes.webhook(webhook.id, token), {
+            body,
+            files: files ?? undefined,
+            query: makeURLSearchParams({ wait: true, thread_id: finalPayload.threadId }),
+            auth: false,
+          })) as APIMessage;
+          return { id: created.id, webhookId: created.webhook_id ?? null };
+        } catch (error) {
+          if (!(error instanceof RateLimitError)) throw error;
+          // A 429 reports the bucket reset in `timeToReset` and Discord's Retry-After in `retryAfter`.
+          beforePost();
+          const retryAt = Date.now() + Math.max(error.timeToReset, error.retryAfter);
+          if (retryAt >= deadline) throw new WebhookExpressionRateLimitTimeoutError();
+          // The phase holds a watchdog exemption, so repeated refusals need their own deadline.
+          while (Date.now() < retryAt) {
+            beforePost();
+            await new Promise((resolve) =>
+              setTimeout(resolve, Math.min(EXPRESSION_STOP_CHECK_INTERVAL_MS, retryAt - Date.now())),
+            );
+          }
+        }
+      }
+    });
+  } catch (error) {
+    if (isInvalidWebhookError(error) && webhook.channelId) {
+      invalidateWebhookCache(webhook.channelId);
+    }
+    throw error;
+  }
 }
 
 export async function sendWebhookMessagesWithIdentity(
@@ -813,6 +942,7 @@ export async function sendWebhookMessagesWithIdentity(
   payloads: WebhookSendPayload[],
   identity?: ResolvedWebhookIdentity,
   lockKey?: string,
+  options?: WebhookIdentitySendOptions,
 ): Promise<Message[]> {
   try {
     return await runWithWebhookIdentity(
@@ -820,6 +950,7 @@ export async function sendWebhookMessagesWithIdentity(
       identity,
       () => sendWebhookMessagesInternal(webhook, payloads, identity),
       lockKey,
+      options,
     );
   } catch (error) {
     if (isInvalidWebhookError(error) && webhook.channelId) {
@@ -834,8 +965,9 @@ export async function sendWebhookMessageWithIdentity(
   payload: WebhookSendPayload,
   identity?: ResolvedWebhookIdentity,
   lockKey?: string,
+  options?: WebhookIdentitySendOptions,
 ): Promise<Message> {
-  const [message] = await sendWebhookMessagesWithIdentity(webhook, [payload], identity, lockKey);
+  const [message] = await sendWebhookMessagesWithIdentity(webhook, [payload], identity, lockKey, options);
   return message;
 }
 
@@ -1235,11 +1367,6 @@ export function resolvePersonaAvatarURL(persona: TomoriState, guild: Guild | nul
   return undefined;
 }
 
-/**
- * Invalidates the webhook cache for a specific channel.
- * Useful when webhooks are manually deleted or need to be refreshed.
- *
- */
 export function invalidateWebhookCache(channelId: string): void {
   const hadCache = webhookCache.has(channelId);
   const cachedWebhook = webhookCache.get(channelId);

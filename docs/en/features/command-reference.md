@@ -11,7 +11,7 @@ sidebar:
 
 Every slash command currently registered by TomoriBot, generated from the same command builders and English locale descriptions used for Discord registration.
 
-Top-level command groups: **39**. Runnable slash commands: **81**.
+Top-level command groups: **41**. Runnable slash commands: **85**.
 
 ## `/comment`
 
@@ -46,6 +46,14 @@ Configure persona, behavior, channel, permission, and model settings.
 |---|---|
 | `/config` | Configure persona, behavior, channel, permission, and model settings. |
 
+## `/context`
+
+See how much of the model's context window a persona's prompt fills in this channel.
+
+| Command | Summary |
+|---|---|
+| `/context` | See how much of the model's context window a persona's prompt fills in this channel. |
+
 ## `/contribute`
 
 Find the source code and ways to help build TomoriBot.
@@ -79,8 +87,8 @@ Teach TomoriBot when to use this server's custom emojis and stickers.
 
 | Command | Summary |
 |---|---|
-| `/expressions edit` | Edit the emotion and usage instructions of a single emoji or sticker |
 | `/expressions initialize` | Analyze and classify all custom emojis and stickers using AI vision |
+| `/expressions manage` | Manage emojis, stickers, custom expressions, and persona access. |
 
 ## `/generate`
 
@@ -197,6 +205,8 @@ Age-restricted commands and settings.
 | Command | Summary |
 |---|---|
 | `/nsfw jailbreaks` | Manage optional jailbreak behaviors for my prompts on this server. |
+| `/nsfw persona default` | Apply an NSFW preset personality configuration |
+| `/nsfw persona import` | Import a persona from a PNG, JSON, or CHARX file, including NSFW personas |
 
 ## `/nuke`
 
@@ -358,6 +368,14 @@ Utility actions for conversation context, prompts, and diagnostics.
 | `/tool delete turn` | Delete the last persona's turn from the channel. |
 | `/tool estimate cost` | Estimate API costs for paid AI providers |
 | `/tool prompt snapshot` | Dump the exact LLM prompt for a persona to a file for debugging. |
+
+## `/troubleshoot`
+
+Get help with something TomoriBot did.
+
+| Command | Summary |
+|---|---|
+| `/troubleshoot chat` | Make a private file about a recent chat problem. |
 
 ## `/update`
 

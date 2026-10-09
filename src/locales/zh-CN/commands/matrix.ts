@@ -14,6 +14,10 @@ export default {
       join_failed_description: `<#{channel_id}> 已连接到 \`{room_id}\`，但我没能自动加入这个 Matrix 房间。请手动邀请 \`{bot_user_id}\` 加入。如果需要设置步骤和限制列表，请打开 {help_matrix}，进入「集成 > Matrix」。`,
       encrypted_room_title: `无法连接加密房间`,
       encrypted_room_description: `\`{room_id}\` 开启了端到端加密。Matrix 加密一旦设置就无法关闭，所以这个房间不能用来桥接。请新建一个**不加密**的 Matrix 房间，然后邀请 \`{bot_user_id}\` 加入。`,
+      encryption_unknown_title: `无法验证房间加密状态`,
+      encryption_unknown_description: `我无法确认 \`{room_id}\` 未加密，因此未进行关联。因为消息以明文形式转发，我只桥接能够验证的房间。
+
+请邀请 \`{bot_user_id}\` 加入房间，等待其加入后再运行此指令。如果 bot 已在房间内，可能是主服务器无法连接，请过几分钟再试。`,
       matrix_not_configured_title: `Matrix 桥接不可用`,
       matrix_not_configured_description: `这个 bot 实例还没有配置 Matrix 桥接。请联系 bot 的所有者开启。`,
     },

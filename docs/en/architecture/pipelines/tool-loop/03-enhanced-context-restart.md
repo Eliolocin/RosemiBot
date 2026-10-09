@@ -2,124 +2,78 @@
 title: "03: Enhanced Context Restart"
 ---
 
-Consume a context-enrichment restart signal from a tool response and mutate
-the live context before the loop continues.
+`handleEnhancedContextRestart` intercepts `context_restart_*` payloads from successful tool results.
+Instead of recording a standard tool-history entry, it mutates the turn's live context items and
+streaming flags in place, signaling the loop to restart generation with an enriched context window.
 
-- **File**: `src/utils/chat/toolLoop.ts:333-364`
+## The restart protocol and payload transports
+<!-- anchor: restart-protocol-and-payload-transports -->
 
-## Mission
+When a tool completes successfully, `executeToolCall` passes `toolResult.data` to
+`handleEnhancedContextRestart`. If `data.type` begins with `"context_restart_"`, the stage applies
+the requested mutations and returns `true`.
 
-Some tools respond with a `context_restart_*` typed payload instead of
-normal result data. This signals that the tool has produced enriched context
-that must be injected before the next provider call; rather than appending a
-tool-response history entry and continuing, the loop restarts with a richer
-context window.
+Tools deliver enrichment payloads through one of two transports:
 
-`handleEnhancedContextRestart` inspects the tool result data, applies the
-enrichment to `params.context.contextItems` and `params.context.streamingContext`,
-and returns `true` to tell `executeToolCall` to return `{kind: "restart"}`.
+1. **Inline payload (`enhanced_context_item`):**
+   Lightweight items such as YouTube video links, web page summaries, or directive notes travel
+   directly inside the tool result object.
 
-This stage is called from within [stage 02: `executeToolCall`](02-execute-tool-call.md)
-immediately after the registry dispatch. It only runs when `toolResult.success
-=== true`.
+2. **Stashed payload (`pending_context_key`):**
+   Bulk media items such as profile picture image buffers (`peek_profile_picture`) or GIF keyframes
+   (`process_gif`) use the side-channel stash in `src/utils/chat/pendingEnhancedContext.ts`. The tool
+   stashes the item via `stashEnhancedContextItem` and returns only a UUID key. During restart,
+   `resolveEnhancedContextItem` drains the item using `takeEnhancedContextItem`.
+   The stash bounds memory: `ToolRegistry` retains the last 1000 tool execution results for diagnostic
+   inspection, so placing multi-megabyte media payloads directly in `ToolResult.data` would hold them
+   in memory indefinitely. The stash enforces a 5-minute TTL and a 16-entry ceiling.
 
-## Input
+## Context mutations and disable flags
+<!-- anchor: context-mutations-and-disable-flags -->
 
-- `params: ToolLoopParams`: full loop context; `contextItems` and
-  `streamingContext` are mutated in place.
-- `data: unknown`: the raw `toolResult.data` value from `ToolRegistry.executeTool`.
-  Expected shape when a restart is triggered:
-  ```ts
-  {
-    type: "context_restart_<suffix>";   // e.g. "context_restart_message_metadata"
-    enhanced_context_item?: StructuredContextItem;  // inline payload
-    pending_context_key?: string;                   // stashed payload (takes precedence)
-  }
-  ```
+Mutations depend on the restart type suffix:
 
-  A tool supplies its enrichment through exactly one of two transports:
+- **Message metadata reveal (`message_metadata`):**
+  The stage calls `annotateRecentMessageMetadataInContext` to enrich recent dialogue messages with
+  author identity, timestamps, and message reference IDs. It appends a tail directive message via
+  `buildTailDirectiveMessage` instructing the model not to call `reveal_message_metadata` again during
+  this turn. It then sets `streamingContext.disableMessageMetadataContext = true`.
+- **Media enrichment (`youtube`, `image`, `gif`):**
+  The resolved `enhanced_context_item` is appended to `params.context.contextItems`. The stage sets
+  the corresponding disable flag on `streamingContext`:
+  - `disableYouTubeProcessing = true`
+  - `disableProfilePictureProcessing = true`
+  - `disableGifProcessing = true`
+  Tool availability and execution checks consume these flags to refuse repeated enrichment in the
+  current turn. A new turn initializes fresh flags.
 
-  | Transport | Use when |
-  |---|---|
-  | `enhanced_context_item` | The item is small (a URL, a directive, plain text). YouTube passes a link this way. |
-  | `pending_context_key` | The item carries bulk media. The tool calls `stashEnhancedContextItem()` (`src/utils/chat/pendingEnhancedContext.ts`) and returns only the key. |
+## Flow control and loop restart
+<!-- anchor: flow-control-and-loop-restart -->
 
-  The stash exists because `ToolResult.data` is retained: `ToolRegistry` keeps the last
-  1000 execution events, each holding a strong reference to its result. A base64 avatar
-  or a set of GIF keyframes placed in `data` would stay resident for the process
-  lifetime. `peek_profile_picture` and `process_gif` therefore use the stash.
+When `handleEnhancedContextRestart` returns `true`:
 
-## Output
+1. `executeToolCall` returns `{ kind: "restart" }`.
+2. `runToolLoop` resets `consecutiveToolErrors` and `naiConsecutiveToolFailures` to 0.
+3. The tool call is omitted from `functionHistory`. The model never sees the tool invocation or response
+   as a conversational exchange; it sees only the enriched context injected into `contextItems`.
+4. The loop issues a `continue` statement, advancing the iteration counter and calling `streamOnce`
+   with the updated context.
 
-`boolean`: `true` if a restart was triggered and applied; `false` if `data`
-was not a restart signal (caller continues normally).
+## Constraints and invariants
+<!-- anchor: constraints-and-invariants -->
 
-## Side effects
+- **Single drain:** Calling `takeEnhancedContextItem` deletes the stashed item upon retrieval, so
+  stale media cannot be replayed on subsequent restarts.
+- **Resilient resolution:** If a `pending_context_key` cannot be resolved (for example, if expired by
+  TTL), a warning is logged and the turn proceeds without the media item rather than failing the turn.
+- **Prompt integrity:** Because system prompts are compiled at context-build time, tool prompt macros
+  cannot dynamically rewrite the compiled prompt after execution. The metadata tail directive
+  discourages repeat calls; live tool availability and execution guards enforce the disable flags.
 
-All mutations apply only when `data.type` starts with `"context_restart_"`.
+## Source pointers
+<!-- anchor: source-pointers -->
 
-- **Message-metadata restart** (`type.includes("message_metadata")`):
-- Calls `annotateRecentMessageMetadataInContext`: annotates recent messages
-  in `contextItems` with author/timestamp metadata and patches reply references.
-  Logs annotated and patched counts. When a turn merged several consecutive
-  same-author messages (`combinedMessageIds`), it emits one `ref_N` + timestamp
-  line per original constituent message so each remains individually targetable
-  by `manage_message` / `interact_with_recent_message`.
-- Appends a tail directive message block via `buildTailDirectiveMessage` +
-  `buildRevealedMessageMetadataTailDirective` to `contextItems` when the
-  directive is non-empty. The directive also instructs the model not to call
-  `reveal_message_metadata` again this turn: tool prompt macros expand once at
-  context-build time, so the system prompt still documents the tool after the
-  reveal, and the directive is the only layer the restarted iteration re-reads.
-- Sets `streamingContext.disableMessageMetadataContext = true` to prevent
-  the context-build pipeline from re-injecting the same metadata on a
-  subsequent turn, and to make the tool's own availability and execution
-  guards reject a second reveal in this turn.
-
-- **All restart types**:
-  - Resolves the enrichment payload via `resolveEnhancedContextItem` and appends it to
-  `contextItems` when present. `pending_context_key` is drained first (and removed from
-  the stash so a later restart cannot replay stale media); `enhanced_context_item` is
-  used otherwise. A key that resolves to nothing logs a warning: the turn continues
-  without the media rather than failing, so the warning is the only signal.
-- Sets the type-matched disable flag on `streamingContext`:
-
-  | `type` contains | Disable flag set |
-  |---|---|
-  | `"youtube"` | `disableYouTubeProcessing = true` |
-  | `"image"` | `disableProfilePictureProcessing = true` |
-  | `"gif"` | `disableGifProcessing = true` |
-  | `"message_metadata"` | `disableMessageMetadataContext = true` |
-
-  Disable flags prevent the context-build pipeline from re-fetching the same
-  resource on follow-up turns within the same channel lock window.
-
-## Invariants
-
-After this stage runs (when it returns `true`):
-
-- `contextItems` contains the enriched item at the end of the list: the
-  next `streamOnce` call will include it in the provider's context.
-- The `context_restart_*` tool call is not appended to `functionHistory`.
-  The provider will not see the tool's raw response; it sees only the
-  enriched context that was injected.
-- `consecutiveToolErrors` in the outer loop is reset to `0` (restarts are
-  treated as success).
-- The loop does `continue`; the iteration count advances but no history entry
-  is pushed for this tool call.
-
-## Extension points
-
-| Surface | Plugin-relevance |
-|---|---|
-| `context_restart_*` type namespace | The seam: a tool that needs to inject enriched context before the next generation returns a `context_restart_<suffix>` payload. Adding a new suffix requires a matching `type.includes(...)` check here and a new disable flag if re-fetch prevention is needed. → plugin plan candidate |
-| `enhanced_context_item` field | The enrichment contract: any `StructuredContextItem` can be injected; type determines how the provider interprets it |
-| `pending_context_key` + `stashEnhancedContextItem()` | The same contract for bulk media; keeps multi-MB payloads out of the retained tool-execution history. Bounded by `STASH_TTL_MS` (5 min) and `STASH_MAX_ENTRIES` (16) in `pendingEnhancedContext.ts` |
-| Disable flags on `StreamingContext` | Internal: flags are consumed by the context-build pipeline; adding a new flag requires both the restart handler and the context-build stage that checks it |
-
-## Related docs
-
-- Context items and tags: →
-  [`docs/en/architecture/pipelines/context-build/`](../context-build/)
-- Stage 02 (caller): → [`02-execute-tool-call.md`](02-execute-tool-call.md)
-- Tool-loop coordinator: → [`README.md`](README.md)
+- `src/utils/chat/toolLoop.ts`: `handleEnhancedContextRestart`, `resolveEnhancedContextItem`.
+- `src/utils/chat/pendingEnhancedContext.ts`: `stashEnhancedContextItem`, `takeEnhancedContextItem`.
+- `src/utils/chat/contextAnnotations.ts`: `annotateRecentMessageMetadataInContext`, `buildRevealedMessageMetadataTailDirective`, `buildTailDirectiveMessage`.
+- `src/types/misc/context.ts`: `StructuredContextItem`.

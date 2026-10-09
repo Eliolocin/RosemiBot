@@ -49,7 +49,9 @@ import {
   type ComponentsV2MessagePayload,
 } from "./componentsV2Limits";
 export { ComponentsV2LimitError, validateComponentsV2MessageLimits, type ComponentsV2MessagePayload };
-import { buildPanelContainer } from "./panel";
+import { buildPanelContainer, resolveAccentColor, type AccentColorInput } from "./panel";
+import { localizedMinimalTitle, withStatusCircle } from "./statusTitle";
+import { resolveFooterLines } from "./noticeFooter";
 
 // Clean storage for select values (Discord.js will strip them, so we preserve them)
 const modalSelectValues = new Map<string, Record<string, string>>();
@@ -507,6 +509,21 @@ export function takeRawModalFileUpload(interactionId: string, customId: string):
   return attachment;
 }
 
+export function takeRawModalFileUploads(interactionId: string, customId: string): APIAttachment[] {
+  const storedAttachments = modalResolvedAttachments.get(interactionId);
+  const storedValues = modalFileUploadValues.get(interactionId);
+  const ids = storedValues?.[customId] ?? [];
+  const files = ids.map((id) => storedAttachments?.[id]);
+  if (storedValues) {
+    delete storedValues[customId];
+    if (!Object.keys(storedValues).length) modalFileUploadValues.delete(interactionId);
+  }
+  for (const id of ids) if (storedAttachments) delete storedAttachments[id];
+  if (storedAttachments && !Object.keys(storedAttachments).length) modalResolvedAttachments.delete(interactionId);
+  if (files.some((file) => !file)) throw new Error("Modal upload attachment was not resolved");
+  return files.filter((file): file is APIAttachment => !!file);
+}
+
 /**
  * Safely localizes a string for modal usage, truncating if necessary to prevent Discord API errors
  * @param vars Variables for localization (optional)
@@ -658,7 +675,7 @@ export async function promptWithConfirmation(
 
     const cancelEmbed = new EmbedBuilder()
       .setColor(ColorCode.ERROR)
-      .setTitle(localizer(locale, "general.interaction.cancel_title"))
+      .setTitle(withStatusCircle(localizer(locale, "general.interaction.cancel_title"), ColorCode.ERROR))
       .setDescription(localizer(locale, "general.interaction.cancel_description"));
 
     await interaction.editReply({ embeds: [cancelEmbed], components: [] });
@@ -667,7 +684,7 @@ export async function promptWithConfirmation(
     log.warn(`Confirmation prompt timed out for user ${interaction.user.id}`);
     const timeoutEmbed = new EmbedBuilder()
       .setColor(ColorCode.ERROR)
-      .setTitle(localizer(locale, "general.interaction.timeout_title"))
+      .setTitle(withStatusCircle(localizer(locale, "general.interaction.timeout_title"), ColorCode.ERROR))
       .setDescription(localizer(locale, "general.interaction.timeout_description"));
     await interaction.editReply({ embeds: [timeoutEmbed], components: [] });
     return { outcome: "timeout" };
@@ -1006,6 +1023,7 @@ export async function replyInfoEmbed(
       const message = await interaction.webhook.send({
         embeds,
         components,
+        files: finalOptions.files,
         flags: flags || MessageFlags.Ephemeral,
       });
       attachTipCollector(message);
@@ -1017,10 +1035,10 @@ export async function replyInfoEmbed(
 
   try {
     if (interaction.deferred || interaction.replied) {
-      const message = await interaction.editReply({ embeds, components });
+      const message = await interaction.editReply({ embeds, components, files: finalOptions.files });
       attachTipCollector(message);
     } else {
-      await interaction.reply({ embeds, components, flags });
+      await interaction.reply({ embeds, components, files: finalOptions.files, flags });
       attachTipCollector(await interaction.fetchReply());
     }
   } catch (error) {
@@ -1037,6 +1055,7 @@ export async function replyInfoEmbed(
         const message = await interaction.webhook.send({
           embeds,
           components,
+          files: finalOptions.files,
           flags: flags || MessageFlags.Ephemeral,
         });
         attachTipCollector(message);
@@ -1046,6 +1065,7 @@ export async function replyInfoEmbed(
         await interaction.reply({
           embeds,
           components,
+          files: finalOptions.files,
           flags: MessageFlags.Ephemeral,
         });
         attachTipCollector(await interaction.fetchReply());
@@ -1055,6 +1075,7 @@ export async function replyInfoEmbed(
         const message = await interaction.webhook.send({
           embeds,
           components,
+          files: finalOptions.files,
           flags: flags || MessageFlags.Ephemeral,
         });
         attachTipCollector(message);
@@ -1218,28 +1239,6 @@ interface PersonaPaginatedChoiceOptions {
   avatarSessionCache?: AvatarSessionCache;
 }
 
-type AccentColorInput = string | number | readonly [red: number, green: number, blue: number];
-
-function resolveAccentColor(color?: AccentColorInput): number {
-  if (typeof color === "number") {
-    return color;
-  }
-
-  if (typeof color === "string") {
-    const normalized = color.trim().replace("#", "");
-    if (/^[0-9a-fA-F]{6}$/.test(normalized)) {
-      return Number.parseInt(normalized, 16);
-    }
-  }
-
-  if (Array.isArray(color) && color.length === 3) {
-    const [red, green, blue] = color;
-    return (red << 16) + (green << 8) + blue;
-  }
-
-  return Number.parseInt(ColorCode.INFO.replace("#", ""), 16);
-}
-
 /**
  * Formats the leading "title" line of a Components V2 container. All CV2
  * containers render their title as an H3 heading for consistent prominence
@@ -1260,11 +1259,12 @@ function buildV2StatusComponents(
   secondaryDescriptionKey?: string,
   secondaryDescriptionVars?: Record<string, string | number | boolean>,
 ): TopLevelComponentData[] {
+  const accentColor = resolveAccentColor(color);
   const container = buildPanelContainer(
     [
       {
         type: ComponentType.TextDisplay,
-        content: formatContainerTitle(localizer(locale, titleKey)),
+        content: formatContainerTitle(withStatusCircle(localizer(locale, titleKey), accentColor)),
       },
       {
         type: ComponentType.TextDisplay,
@@ -1279,7 +1279,7 @@ function buildV2StatusComponents(
           ]
         : []),
     ],
-    resolveAccentColor(color),
+    accentColor,
   );
 
   return [container];
@@ -1371,8 +1371,12 @@ export interface NoticeContainerOptions {
   footerKey?: string;
   /** Variables for the footer. */
   footerVars?: Record<string, string | number | boolean>;
+  /** Adds the shared `/config` > Behavior > Notices line below the footer. */
+  configHint?: boolean;
   /** Optional action button placed inside the container. */
   button?: NoticeContainerButtonOptions;
+  /** Renders only the emoji-free title; body, footer, config hint, and button are dropped. */
+  minimal?: boolean;
 }
 
 /**
@@ -1383,6 +1387,14 @@ export interface NoticeContainerOptions {
  */
 export function buildNoticeContainer(options: NoticeContainerOptions): TopLevelComponentData[] {
   const { locale } = options;
+  const accentColor = resolveAccentColor(options.color);
+  if (options.minimal) {
+    const title: ComponentInContainerData = {
+      type: ComponentType.TextDisplay,
+      content: formatContainerTitle(localizedMinimalTitle(locale, options.titleKey, options.titleVars)),
+    };
+    return [buildPanelContainer([title], accentColor, { formatProse: false })];
+  }
   const components: ComponentInContainerData[] = [];
   const descriptionText =
     options.description ??
@@ -1390,7 +1402,9 @@ export function buildNoticeContainer(options: NoticeContainerOptions): TopLevelC
 
   components.push({
     type: ComponentType.TextDisplay,
-    content: formatContainerTitle(localizer(locale, options.titleKey, options.titleVars)),
+    content: formatContainerTitle(
+      withStatusCircle(localizer(locale, options.titleKey, options.titleVars), accentColor),
+    ),
   });
 
   if (descriptionText) {
@@ -1400,11 +1414,12 @@ export function buildNoticeContainer(options: NoticeContainerOptions): TopLevelC
     });
   }
 
-  if (options.footerKey) {
+  const footerLines = resolveFooterLines(locale, options.footerKey, options.footerVars, options.configHint);
+  if (footerLines.length > 0) {
     components.push({ type: ComponentType.Separator, divider: true, spacing: 1 });
     components.push({
       type: ComponentType.TextDisplay,
-      content: `-# ${localizer(locale, options.footerKey, options.footerVars)}`,
+      content: footerLines.map((line) => `-# ${line}`).join("\n"),
     });
   }
 
@@ -1423,7 +1438,7 @@ export function buildNoticeContainer(options: NoticeContainerOptions): TopLevelC
     } satisfies ActionRowData<ButtonComponentData>);
   }
 
-  const container = buildPanelContainer(components, resolveAccentColor(options.color));
+  const container = buildPanelContainer(components, accentColor, { formatProse: false });
 
   return [container];
 }
@@ -1471,6 +1486,8 @@ export function buildRangeSelectorPayload(
   optionCount: number,
   rangePage: number,
   pageSize: number = MODAL_OPTIONS_PER_PAGE,
+  titleKey: string = "general.pagination.select_page_title",
+  descriptionKey: string = "general.pagination.select_page_description",
 ): ComponentsV2Payload {
   const totalRanges = Math.ceil(optionCount / pageSize);
   const totalRangePages = Math.ceil(totalRanges / RANGES_PER_SELECTOR_PAGE);
@@ -1479,11 +1496,11 @@ export function buildRangeSelectorPayload(
   const components: ComponentInContainerData[] = [
     {
       type: ComponentType.TextDisplay,
-      content: `### ${localizer(locale, "general.pagination.select_page_title")}`,
+      content: `### ${localizer(locale, titleKey)}`,
     },
     {
       type: ComponentType.TextDisplay,
-      content: localizer(locale, "general.pagination.select_page_description", {
+      content: localizer(locale, descriptionKey, {
         totalItems: optionCount,
         totalPages: totalRanges,
       }),
@@ -1633,6 +1650,7 @@ export interface PersonaResultContainerOptions {
  */
 export function buildPersonaResultContainer(options: PersonaResultContainerOptions): TopLevelComponentData[] {
   const { locale } = options;
+  const accentColor = resolveAccentColor(options.color);
   const components: ComponentInContainerData[] = [];
   const sections = options.sections ?? [];
 
@@ -1643,7 +1661,9 @@ export function buildPersonaResultContainer(options: PersonaResultContainerOptio
 
   components.push({
     type: ComponentType.TextDisplay,
-    content: formatContainerTitle(localizer(locale, options.titleKey, options.titleVars)),
+    content: formatContainerTitle(
+      withStatusCircle(localizer(locale, options.titleKey, options.titleVars), accentColor),
+    ),
   });
 
   // Hero image directly under the title (CV2 has no embed image slot, so the
@@ -1731,7 +1751,7 @@ export function buildPersonaResultContainer(options: PersonaResultContainerOptio
     });
   }
 
-  const container = buildPanelContainer(components, resolveAccentColor(options.color));
+  const container = buildPanelContainer(components, accentColor);
 
   return [container];
 }
@@ -2963,7 +2983,10 @@ export async function replyPaginatedPersonaChoicesV2(
         if (isTimeout) {
           log.warn(`Pagination interaction timed out for user ${interaction.user.id}`);
         } else {
-          log.warn(`Pagination interaction failed for user ${interaction.user.id}`, innerError);
+          await log.error("Pagination interaction ended abnormally in replyPaginatedPersonaChoicesV2", innerError, {
+            errorType: "PaginationCollectorEnded",
+            metadata: { userDiscordId: interaction.user.id, currentPage },
+          });
         }
 
         // Best-effort: show a status message. We swallow any editReply failure
@@ -3254,6 +3277,7 @@ export async function promptWithRawModal(
                   ? safeSelectOptionText(option.description, SELECT_OPTION_TEXT_MAX_LENGTH)
                   : undefined,
                 emoji: option.emoji,
+                default: option.default,
               })),
               required: component.required !== false,
             };
@@ -3601,8 +3625,8 @@ export async function promptWithPaginatedModal(
   const totalPages = Math.ceil(optionCount / ITEMS_PER_PAGE);
 
   const pageSelectEmbed = createStandardEmbed(locale, {
-    titleKey: "general.pagination.select_page_title",
-    descriptionKey: "general.pagination.select_page_description",
+    titleKey: options.pageSelectTitleKey ?? "general.pagination.select_page_title",
+    descriptionKey: options.pageSelectDescriptionKey ?? "general.pagination.select_page_description",
     descriptionVars: { totalItems: optionCount, totalPages },
     color: ColorCode.INFO,
   });
@@ -3693,12 +3717,22 @@ async function runComponentsV2RangeSelectorModal(
   const prefix = `paginated_modal_${interaction.id}_${Date.now().toString(36)}`;
   const totalRangePages = Math.ceil(Math.ceil(optionCount / MODAL_OPTIONS_PER_PAGE) / RANGES_PER_SELECTOR_PAGE);
   let rangePage = 0;
+  const renderSelector = () =>
+    buildRangeSelectorPayload(
+      locale,
+      prefix,
+      optionCount,
+      rangePage,
+      MODAL_OPTIONS_PER_PAGE,
+      options.pageSelectTitleKey,
+      options.pageSelectDescriptionKey,
+    );
 
   // Render the initial selector via the path-specific transport, always resolving
   //    to a Message so awaitMessageComponent works on ephemeral replies. The reply now
   //    carries IsComponentsV2, so mark the interaction so a later legacy embed sink renders
   //    a V2 notice instead of throwing (Phase 1 collision guard).
-  const payload = buildRangeSelectorPayload(locale, prefix, optionCount, rangePage);
+  const payload = renderSelector();
   let selectorMessage: Message;
   try {
     if (interaction.deferred || interaction.replied) {
@@ -3763,7 +3797,7 @@ async function runComponentsV2RangeSelectorModal(
           ? Math.max(0, rangePage - 1)
           : Math.min(totalRangePages - 1, rangePage + 1);
       try {
-        await button.update(buildRangeSelectorPayload(locale, prefix, optionCount, rangePage));
+        await button.update(renderSelector());
       } catch (error) {
         log.warn("Failed to paginate the range selector:", error);
         return { outcome: "error", error };

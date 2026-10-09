@@ -377,13 +377,7 @@ export function extractMetadataFromPNG(pngBuffer: Buffer): PresetExport | null {
   }
 }
 
-/**
- * Embeds TomoriBot preset metadata into a PNG file
- * Inserts a tEXt chunk before the IEND chunk
- * @param pngBuffer - Original PNG file as Buffer
- * @returns New PNG Buffer with embedded metadata
- */
-export function embedMetadataInPNG(pngBuffer: Buffer, metadata: PresetExport): Buffer {
+function appendTextChunkToPNG(pngBuffer: Buffer, key: string, value: string, type: "tEXt" | "iTXt"): Buffer {
   try {
     const data = new Uint8Array(pngBuffer);
 
@@ -416,15 +410,15 @@ export function embedMetadataInPNG(pngBuffer: Buffer, metadata: PresetExport): B
       throw new Error("Could not find IEND chunk in PNG");
     }
 
-    // Prepare the metadata chunk
-    // Format: key (null-terminated) + JSON value
-    const metadataJSON = JSON.stringify(metadata);
-    const keyBytes = stringToBytes(`${METADATA_KEY}\0`); // Null terminator
-    const valueBytes = stringToBytes(metadataJSON);
+    const keyBytes = stringToBytes(`${key}\0`);
+    const valueBytes = stringToBytes(value);
 
-    const chunkData = new Uint8Array(keyBytes.length + valueBytes.length);
+    // iTXt stores UTF-8 after the compression flag, method, language tag, and translated key.
+    const internationalHeader = type === INTERNATIONAL_TEXT_CHUNK_TYPE ? new Uint8Array(4) : new Uint8Array(0);
+    const chunkData = new Uint8Array(keyBytes.length + internationalHeader.length + valueBytes.length);
     chunkData.set(keyBytes, 0);
-    chunkData.set(valueBytes, keyBytes.length);
+    chunkData.set(internationalHeader, keyBytes.length);
+    chunkData.set(valueBytes, keyBytes.length + internationalHeader.length);
 
     const chunkLength = chunkData.length;
 
@@ -440,7 +434,7 @@ export function embedMetadataInPNG(pngBuffer: Buffer, metadata: PresetExport): B
     writeUint32(newPngData, writeOffset, chunkLength);
     writeOffset += 4;
 
-    const typeBytes = stringToBytes(TEXT_CHUNK_TYPE);
+    const typeBytes = stringToBytes(type);
     newPngData.set(typeBytes, writeOffset);
     writeOffset += 4;
 
@@ -458,11 +452,22 @@ export function embedMetadataInPNG(pngBuffer: Buffer, metadata: PresetExport): B
 
     newPngData.set(data.slice(iendOffset), writeOffset);
 
-    log.success(`Successfully embedded TomoriPreset metadata (${metadataJSON.length} bytes) into PNG`);
-
     return Buffer.from(newPngData);
   } catch (error) {
-    log.error("Error embedding metadata in PNG:", error as Error);
+    log.error("Error embedding text chunk in PNG:", error as Error);
     throw error;
   }
+}
+
+/** Keep the persona card format in a tEXt chunk for existing imports. */
+export function embedMetadataInPNG(pngBuffer: Buffer, metadata: PresetExport): Buffer {
+  return appendTextChunkToPNG(pngBuffer, METADATA_KEY, JSON.stringify(metadata), TEXT_CHUNK_TYPE);
+}
+
+/** Store the full generation prompt as UTF-8 without altering existing PNG chunks. */
+export function embedImagePromptInPNG(pngBuffer: Buffer, prompt: string, negativePrompt?: string): Buffer {
+  const withPrompt = appendTextChunkToPNG(pngBuffer, "TomoriPrompt", prompt, INTERNATIONAL_TEXT_CHUNK_TYPE);
+  return negativePrompt
+    ? appendTextChunkToPNG(withPrompt, "TomoriNegativePrompt", negativePrompt, INTERNATIONAL_TEXT_CHUNK_TYPE)
+    : withPrompt;
 }

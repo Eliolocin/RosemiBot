@@ -17,6 +17,8 @@
 import sharp from "sharp";
 import { GoogleGenAI, HarmBlockThreshold, HarmCategory, type SafetySetting } from "@google/genai";
 import { log } from "../misc/logger";
+import { omitGeminiSampling } from "@/utils/provider/samplingControl";
+import { buildGoogleThinkingConfig } from "@/utils/provider/thinkingControl";
 
 /** Whether to enable debug mode: when true, returns the raw mask buffer for inspection */
 const NAI_INPAINT_DEBUG = (process.env.NAI_INPAINT_DEBUG || "false").toLowerCase() === "true";
@@ -36,9 +38,7 @@ const NAI_SEGMENTATION_TIMEOUT_MS = Number.parseInt(process.env.NAI_SEGMENTATION
 const NAI_INPAINT_PADDING = 0.15;
 
 /**
- * Safety settings for Gemini segmentation requests.
- * Set to OFF to fully disable content filtering for segmentation requests.
- * Anime/artistic images frequently trigger false positives on default thresholds,
+ * OFF because anime/artistic images frequently trigger false positives on default thresholds,
  * causing Gemini to silently hang or return empty responses instead of masks.
  */
 const SEGMENTATION_SAFETY_SETTINGS: SafetySetting[] = [
@@ -146,11 +146,11 @@ async function callGeminiSegmentation(
         ],
       },
     ],
-    config: {
+    config: omitGeminiSampling(NAI_SEGMENTATION_MODEL, {
       temperature: 0.5,
       safetySettings: SEGMENTATION_SAFETY_SETTINGS,
-      thinkingConfig: { thinkingBudget: 0 },
-    },
+      thinkingConfig: buildGoogleThinkingConfig(NAI_SEGMENTATION_MODEL, "none"),
+    }),
   });
 
   log.info("[Segmentation] Request sent, awaiting Gemini response...");

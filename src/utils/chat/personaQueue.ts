@@ -3,6 +3,7 @@ import type { TomoriState } from "@/types/db/schema";
 import type { ForcedMention } from "@/types/discord/mentions";
 import type { StructuredContextItem } from "@/types/misc/context";
 import { log } from "@/utils/misc/logger";
+import { recordChatDiagnostic } from "@/utils/chat/diagnosticTimeline";
 import { queuePersonaJobsAtFront, type ChannelLockEntry } from "@/utils/chat/channelQueue";
 import type { TextQuotaSource } from "@/utils/chat/types";
 
@@ -44,6 +45,7 @@ export function queueAdditionalPersonaTurns(args: {
   }
 
   if (personasToQueue.length > 0) {
+    recordChatDiagnostic({ kind: "persona_jobs_queued", count: personasToQueue.length });
     queuePersonaJobsAtFront({
       lockEntry: args.lockEntry,
       message: args.message,

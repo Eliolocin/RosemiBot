@@ -9,9 +9,12 @@ import {
 import { checkTargetEmbed } from "@/utils/discord/embedClassifier";
 import { isRefreshMarkerEmbed, sliceMessagesAtResetMarker } from "@/utils/discord/embedDetection";
 import { createStandardEmbed } from "@/utils/discord/embedHelper";
+import { stripStatusCircle } from "@/utils/discord/ui/statusTitle";
 import { buildConversationEmbed } from "@/utils/compaction/compact/rendering";
 import { findReplyContextTargetInMessage } from "@/utils/chat/contextAnnotations";
+import { ColorCode } from "@/utils/misc/logger";
 import { getSupportedLocales, hasLocaleKey, initializeLocalizer, localizer } from "@/utils/text/localizer";
+import { localizedCopy } from "../../helpers/localeCases";
 
 beforeAll(async () => {
   await initializeLocalizer();
@@ -184,5 +187,36 @@ describe("embed protocol", () => {
         expect(checkTargetEmbed(embed.toJSON() as unknown as Embed).isTarget).toBe(false);
       }
     }
+  });
+
+  it("classifies a status title by its bare text, with or without the rendered circle", () => {
+    for (const locale of ["en-US", "ja"]) {
+      for (const titleKey of ["reminders.reminder_triggered_title", "reminders.task_triggered_title"]) {
+        const bareTitle = stripStatusCircle(localizedCopy(locale, titleKey));
+        // The WARN surface renders the circle the locale value no longer carries.
+        const embed = createStandardEmbed(locale, {
+          titleKey,
+          description: "Original content",
+          color: ColorCode.WARN,
+        });
+        expect(embed.toJSON().title).toBe(`🟡 ${bareTitle}`);
+        expect(classifyProtocolTitle(embed.toJSON().title)).toBe("diagnostic");
+        // An embed posted before the locale dropped its circle still classifies.
+        expect(classifyProtocolTitle(`🟡 ${bareTitle}`)).toBe("diagnostic");
+      }
+    }
+  });
+
+  it("rejects two keys that differ only by a status circle", () => {
+    expect(() =>
+      buildProtocolLookup(
+        [
+          { key: "first", kind: "reset" },
+          { key: "second", kind: "compact_refresh" },
+        ],
+        ["en-US"],
+        (_locale, key) => (key === "first" ? "🔴 Same title" : "Same title"),
+      ),
+    ).toThrow("Protocol title collision");
   });
 });

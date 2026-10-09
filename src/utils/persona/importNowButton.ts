@@ -32,6 +32,7 @@ import { ColorCode, log } from "@/utils/misc/logger";
 import { importAlterPreset } from "@/utils/persona/importAlterPreset";
 import { localizer } from "@/utils/text/localizer";
 import type { PresetExportData } from "@/types/preset/presetExport";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 /** Custom ID for the Import Now button (unique across the app). */
 const IMPORT_NOW_CUSTOM_ID = "persona_import_now";
@@ -43,7 +44,6 @@ const IMPORT_NOW_CUSTOM_ID = "persona_import_now";
  */
 const IMPORT_NOW_BUTTON_TIMEOUT_MS = 14 * 60 * 1000;
 
-/** Visual state of the Import Now button. */
 type ImportNowButtonState = "active" | "done" | "expired";
 
 /**
@@ -105,29 +105,33 @@ function buildImportErrorEmbed(
   const embed = new EmbedBuilder().setColor(ColorCode.ERROR);
   switch (result.reason) {
     case "limit_reached":
-      return embed.setTitle(localizer(locale, "commands.persona.import.alter_limit_title")).setDescription(
-        localizer(locale, "commands.persona.import.alter_limit_description", {
-          current: result.current,
-          max: result.max,
-        }),
-      );
+      return embed
+        .setTitle(localizedStatusTitle(locale, "commands.persona.import.alter_limit_title", ColorCode.ERROR))
+        .setDescription(
+          localizer(locale, "commands.persona.import.alter_limit_description", {
+            current: result.current,
+            max: result.max,
+          }),
+        );
     case "name_conflict":
-      return embed.setTitle(localizer(locale, "commands.persona.import.alter_name_conflict_title")).setDescription(
-        localizer(locale, "commands.persona.import.alter_name_conflict_description", {
-          name: result.name,
-        }),
-      );
+      return embed
+        .setTitle(localizedStatusTitle(locale, "commands.persona.import.alter_name_conflict_title", ColorCode.ERROR))
+        .setDescription(
+          localizer(locale, "commands.persona.import.alter_name_conflict_description", {
+            name: result.name,
+          }),
+        );
     case "no_main_persona":
       return embed
-        .setTitle(localizer(locale, "general.errors.tomori_not_setup_title"))
+        .setTitle(localizedStatusTitle(locale, "general.errors.tomori_not_setup_title", ColorCode.ERROR))
         .setDescription(localizer(locale, "general.errors.tomori_not_setup_description"));
     case "config_failed":
       return embed
-        .setTitle(localizer(locale, "general.errors.update_failed_title"))
+        .setTitle(localizedStatusTitle(locale, "general.errors.update_failed_title", ColorCode.ERROR))
         .setDescription(localizer(locale, "general.errors.update_failed_description"));
     default:
       return embed
-        .setTitle(localizer(locale, "general.errors.unknown_error_title"))
+        .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
         .setDescription(localizer(locale, "general.errors.unknown_error_description"));
   }
 }
@@ -173,7 +177,7 @@ export function attachImportNowCollector(params: ImportNowCollectorParams): void
           embeds: [
             new EmbedBuilder()
               .setColor(ColorCode.ERROR)
-              .setTitle(localizer(locale, "commands.persona.import.no_permission_title"))
+              .setTitle(localizedStatusTitle(locale, "commands.persona.import.no_permission_title", ColorCode.ERROR))
               .setDescription(localizer(locale, "commands.persona.import.no_permission_description")),
           ],
           flags: MessageFlags.Ephemeral,
@@ -188,7 +192,9 @@ export function attachImportNowCollector(params: ImportNowCollectorParams): void
           embeds: [
             new EmbedBuilder()
               .setColor(ColorCode.WARN)
-              .setTitle(localizer(locale, "commands.persona.import_now.already_imported_title"))
+              .setTitle(
+                localizedStatusTitle(locale, "commands.persona.import_now.already_imported_title", ColorCode.WARN),
+              )
               .setDescription(localizer(locale, "commands.persona.import_now.already_imported_description")),
           ],
           flags: MessageFlags.Ephemeral,
@@ -240,12 +246,13 @@ export function attachImportNowCollector(params: ImportNowCollectorParams): void
     }
 
     // Confirm privately to the manager who imported.
+    const followUpColor = result.hasNoTriggers || result.usedMainAvatarFallback ? ColorCode.WARN : ColorCode.SUCCESS;
     await interaction
       .followUp({
         embeds: [
           new EmbedBuilder()
-            .setColor(result.hasNoTriggers || result.usedMainAvatarFallback ? ColorCode.WARN : ColorCode.SUCCESS)
-            .setTitle(localizer(locale, "commands.persona.import.alter_success_title"))
+            .setColor(followUpColor)
+            .setTitle(localizedStatusTitle(locale, "commands.persona.import.alter_success_title", followUpColor))
             .setDescription(
               localizer(locale, "commands.persona.import.alter_success_confirmation", {
                 nickname: result.nickname,

@@ -14,6 +14,7 @@ beforeAll(async () => initializeLocalizer());
 const EXPECTED_PLUGIN_PAGES = [
   "available-tools",
   "context-additions",
+  "response-drafting",
   "mcp-servers",
   "sillytavern-presets",
   "nsfw-jailbreaks",
@@ -32,7 +33,6 @@ const EXPECTED_CAPABILITY_PAGE_BY_VALUE = {
   videogen: "available-tools",
   voicemessage: "available-tools",
   userblocking: "available-tools",
-  shorttermmemory: "context-additions",
   timeawareness: "context-additions",
 } as const;
 

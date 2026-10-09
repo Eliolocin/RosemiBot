@@ -2,457 +2,179 @@
 title: "SillyTavern Preset System"
 ---
 
-> Import and use SillyTavern (ST) presets to control how TomoriBot assembles LLM prompts.
+SillyTavern presets are JSON configurations that control prompt node ordering, custom prompt
+injections, depth-based chat insertions, and template macros. They alter how context blocks are
+assembled without modifying underlying persona or server data.
 
-## Overview
+## Flow and ownership
 
-SillyTavern presets are JSON files that define:
+Context assembly under a SillyTavern preset uses a build-then-rearrange strategy coordinated across
+three layers:
 
-1. **Prompt node ordering**: where character info, instructions, chat history, etc. appear in the final prompt
-2. **Custom prompt injection**: additional instructions, output format rules, task descriptions inserted at specific positions
-3. **Depth-based insertion**: placing prompts relative to the end of chat history
-4. **Template macros**: variables like `{{setvar::X::Y}}` / `{{getvar::X}}` for dynamic content
-5. **Per-node enable/disable**: users toggle individual prompt nodes on or off
+1. `src/utils/text/context/builder.ts`: checks for an active preset, builds native context, and
+   passes it to preset reassembly. `contextBuilder.ts` exposes this entry point.
+2. `src/utils/text/presetContextBuilder.ts`: decomposes native context blocks into tagged buckets and
+   rebuilds the prompt according to the preset's declared node sequence.
+3. `src/utils/text/stPresetEngine.ts`: expands variables and content macros. Reassembly then uses
+   `toolPromptMacroResolver` for capability and tool conditionals, followed by mention conversion.
 
-This is distinct from [SillyTavern Card Import](/architecture/integrations/sillytavern/card-support/), which imports character data (description, personality, sample dialogues). Presets control *how the prompt is structured*, not *what character data exists*.
-
-## How It Works (User Perspective)
-
-1. User imports an ST preset JSON via `/config` > Plugins > SillyTavern Presets
-2. The preset becomes active for that server
-3. On every LLM call, the context builder detects the active preset and rearranges blocks accordingly
-4. The `/sysprompt` and personality settings still apply; the preset controls *where* they appear, not *whether* they exist
-5. If no preset is active, the system uses the native fixed context assembly (see [Context Assembly](../ai/context-assembly))
-6. Removing or deactivating the preset reverts to native assembly instantly
-
-## Current Status
-
-- **Phase 1: Import & Visualization**: implemented
-- **Phase 2: Template Engine**: implemented
-- **Phase 3: Context Assembly Override**: implemented
-- **Phase 4: Management UI**, implemented as the `/config` > Plugins > SillyTavern Presets page.
-
-## Commands
-
-For a user-facing explanation of behavior, surprises, and limitations in SillyTavern terms, open `/help`, choose `Integrations`, then `SillyTavern Presets`.
-
-### `/config` > Plugins > SillyTavern Presets
-
-The `/config` > Plugins > SillyTavern Presets page opens an interactive collection panel for
-managing SillyTavern presets. The selector keeps `Add new Preset` first, followed by the
-disable choice and imported presets.
-
-### Capabilities
-- **Add preset**: Upload a SillyTavern preset `.json` file with an optional author-written description.
-- **Switch preset**: Select from imported presets to activate immediately.
-- **Disable presets**: Choose None / Disable Presets to revert to default context assembly.
-- **Toggle nodes**: Edit enabled states of prompt nodes for the active preset (paginated via range chooser when node list exceeds 50).
-- **Delete preset**: Remove a preset with confirmation and automatic promotion of surviving presets.
-
-- **Legacy compatibility**: TomoriBot accepts modern Prompt Manager presets directly. It also accepts older text-completions presets when they provide `context.story_string` + `sysprompt.content`; those are converted best-effort into synthetic Prompt Manager-style nodes at import time. In both shapes, extra legacy `post_history` fields such as root `post_history`, `sysprompt.post_history`, or `context.post_history` are converted into synthetic depth-injection nodes instead of being ignored.
-
-## Template Engine (Phase 2)
-
-The template engine resolves ST-specific macros in preset node content at context build time. Located in `src/utils/text/stPresetEngine.ts`.
-
-### Two-Pass Variable Resolution
-
-- **Pass 1: Collect vars**: walk all enabled non-marker nodes in `node_order`, applying variable declarations into a shared `Map<string, string>`.
-
-- `{{setvar::key::value}}` replaces the current value for the key
-- `{{addvar::key::value}}` appends to the current value for the key
-
-- **Pass 2: Resolve everything**: for each enabled non-marker node:
-1. Strip `{{// comment }}` blocks
-2. Remove `{{setvar::...}}` / `{{addvar::...}}` declarations (already collected)
-3. Replace `{{getvar::key}}` from the variable map
-4. Expand content macros (`{{personality}}`, `{{description}}`, `{{scenario}}`, `{{mesExamples}}`, `{{lastChatMessage}}`)
-5. Evaluate `{{random: A, B, C}}` / `{{random::A::B::C}}`: pick a random item
-6. Evaluate `{{roll: XdY}}`: sum X random [1..Y]
-7. Process `{{trim}}`: trim whitespace; if empty, mark node as disabled
-8. Detect HTML content: set `hasHtmlWarning` flag
-
-After preset rearrangement, `buildContext()` also performs a final random-choice pass over assembled text parts and tail directives. This catches ST preset variants that use single braces, such as `{random::apple::banana}`, and ensures `/tool prompt snapshot` shows the same rolled text the provider receives.
-
-### Identity Macros
-
-`{{user}}`, `{{char}}`, and `{{bot}}` are intentionally not resolved by the template engine. They are left intact for downstream resolution by `convertMentions()` in the context builder, which applies the stable "User" placeholder optimization for system-role content.
-
-### Content Macro Deduplication
-
-The engine tracks which content macros were expanded with real (non-empty) data in a `Set<string>` called `expandedContentMacros`. This is used by the preset context builder to avoid duplication:
-
-- If a custom node expanded `{{description}}`, the `charDescription` marker skips pulling the native persona prompt block
-- If a custom node expanded `{{personality}}`, the `charPersonality` marker skips pulling the native personality block
-
-### Macro Reference
-
-| Macro | Replacement | Source |
-|-------|-------------|--------|
-| `{{user}}` | Triggerer's display name | *Deferred to convertMentions()* |
-| `{{char}}` / `{{bot}}` | Bot's display name | *Deferred to convertMentions()* |
-| `{{personality}}` | `tomoriAttributes.join("\n")` | Server personality settings |
-| `{{description}}` | `personaPrompt` | Active persona's prompt |
-| `{{scenario}}` | `""` (empty) | No TomoriBot equivalent |
-| `{{mesExamples}}` | Formatted sample dialogues | `sample_dialogues_in/out` |
-| `{{lastChatMessage}}` | Most recent user message | Conversation history |
-| `{{setvar::key::value}}` | *(removed from output)* | Sets a variable |
-| `{{addvar::key::value}}` | *(removed from output)* | Appends to an existing variable |
-| `{{getvar::key}}` | Variable value or `""` | Reads a variable |
-| `{{random: A, B, C}}` | Random pick from list | Runtime |
-| `{{random::A::B::C}}` | Random pick from list | Runtime |
-| `{random: A, B, C}` | Random pick from list | Runtime |
-| `{random::A::B::C}` | Random pick from list | Runtime |
-| `{{roll: XdY}}` | Dice roll sum | Runtime |
-| `{{trim}}` | Trim whitespace | If empty after trim, node is disabled |
-| `{{// comment }}` | *(removed)* | Stripped entirely |
-
-### Compatibility Patches
-
-Some presets use additional placeholder conventions that fall outside the official ST macro spec: often because they rely on ST's regex post-processing pipeline (which TomoriBot does not implement) to substitute these tokens. We resolve them directly instead.
-
-All compatibility patches are in one location in `stPresetEngine.ts` for easy auditing.
-
-| Placeholder | Replacement | Observed in |
-|-------------|-------------|-------------|
-| `<USER>` | Triggerer's display name | Marinara's Spaghetti Recipe |
-| `<BOT>` | Bot/persona display name | Marinara's Spaghetti Recipe |
-
-These are case-sensitive (uppercase only) to avoid false positives with lowercase HTML tags.
-
-## Context Assembly Override (Phase 3)
-
-When an active preset exists, the context builder uses a Build-Then-Rearrange strategy instead of the fixed native order. Located in `src/utils/text/presetContextBuilder.ts`.
-
-### Transformation Example
-
-To understand what the preset system does, here's a concrete before/after comparison.
-
-### Native assembly (no preset)
-```text
- 1. System prompt (/sysprompt)                     [SYSTEM_HUMANIZER_RULES]
- 2. Persona prompt (/persona)                      [SYSTEM_HUMANIZER_RULES]
- 3. Personality attributes                          [SYSTEM_PERSONALITY]
- 4. Server info                                     [KNOWLEDGE_SERVER_INFO]
- 5. Server memories                                 [KNOWLEDGE_SERVER_MEMORIES]
- 6. Emojis                                          [KNOWLEDGE_SERVER_EMOJIS]
- 7. Stickers                                        [KNOWLEDGE_SERVER_STICKERS]
- 8. Users in conversation                           [KNOWLEDGE_USERS_IN_CONVERSATION]
- 9. STM                                             [KNOWLEDGE_SHORT_TERM_MEMORY]
-10. RAG documents                                   [KNOWLEDGE_SERVER_DOCUMENTS]
-11. Conditioning guidance                           [KNOWLEDGE_SERVER_CONDITIONING]
-12. Sample dialogues                                [DIALOGUE_SAMPLE]
-13. Conversation history                            [DIALOGUE_HISTORY]
+```
+buildContext (contextBuilder.ts)
+  │
+  ├─► User Impersonation Active? ──► Native Context Assembly (presets bypassed)
+  │
+  └─► Active Preset Found in Cache (stPresetCache.ts)
+        │
+        ▼
+buildContextNative (context/nativeBuilder.ts)
+  │  Produces tagged blocks for reassembleWithPreset (presetContextBuilder.ts)
+  │
+  ├─► stPresetEngine.ts ───────────► Two-pass macro evaluation on custom preset nodes
+  │                                  (Pass 1: variables; Pass 2: content expansion)
+  │
+  ├─► Node Ordering Walk ──────────► Pulls tagged blocks at marker nodes (main, charDescription...)
+  │                                  Inserts custom nodes at declared sequence positions
+  │
+  ├─► Automatic Flushing ──────────► Injects TomoriBot-only blocks (memories, emojis, STM)
+  │
+  └─► Depth Injection Merging ─────► Folds depth-injected nodes into existing history turns
+        │
+        ▼
+Final Assembled Context to Provider Adapter
 ```
 
-### Same blocks after a preset rearranges them (example preset node order):
-```text
- 1. [main marker]           → System prompt          ← pulled from SYSTEM_HUMANIZER_RULES
- 2. ★ Custom node: "You are a creative writing assistant. Always use vivid language."
- 3. [charDescription marker] → Persona prompt         ← pulled from SYSTEM_HUMANIZER_RULES
- 4. [charPersonality marker] → Personality attributes  ← pulled from SYSTEM_PERSONALITY
-    ↳ FLUSH: Server info, memories, emojis, stickers  ← TomoriBot-only blocks injected here
- 5. ★ Custom node: "{{setvar::style::narrative}}"     ← (removed from output, variable stored)
- 6. [worldInfoBefore marker] → RAG documents           ← pulled from KNOWLEDGE_SERVER_DOCUMENTS
- 7. ★ Custom node: "Write in {{getvar::style}} style." ← resolved to "Write in narrative style."
- 8. [dialogueExamples marker]                          ← pulled from DIALOGUE_SAMPLE
-    ↳ PRE-FLUSH: Users in conversation, STM, conditioning
-                                                       ← TomoriBot-only blocks injected here
- 9. [chatHistory marker]    → Conversation history     ← pulled from DIALOGUE_HISTORY
-    ↳ Depth injection at depth 0: "Remember to stay in character."  ← merged into last history item
-```
-
-Key observations:
-- The `/sysprompt` content still appears: it's just at the `main` marker position instead of always being first
-- Custom nodes (marked with ★) are new content from the preset, inserted between native blocks
-- TomoriBot-only blocks (server info, emojis, etc.) have no ST marker, so they're auto-flushed at anchor points
-- `{{setvar}}`/`{{getvar}}` are resolved at build time, not stored in the prompt
-- Depth injections merge into existing history items rather than creating new messages
-- Marker order is literal: if a preset places `chatHistory` before `dialogueExamples`, the sample dialogues will appear after live history
-- If `dialogueExamples` becomes the terminal block, TomoriBot appends a short user-side separator note so strict providers do not treat the final sample assistant turn as the active prompt
-
-### Why Build-Then-Rearrange?
-
-The native `buildContextNative()` remains the fixed-order orchestrator for TomoriBot context blocks, with responsibility-specific helpers extracted under `src/utils/text/context/` for memories, RAG, template/conditioning blocks, and history/media formatting. The preset system still treats native output as tagged buckets and does not duplicate those block builders.
-
-Instead, the preset builder:
-1. Calls native `buildContextNative()` to produce all blocks (tagged with `metadataTag`)
-2. Groups items by tag into consumable "buckets"
-3. Walks the preset's node order, pulling from the right bucket at each marker
-4. Inserts custom preset nodes at their declared positions
+### Build-then-rearrange strategy
 
-The trade-off: blocks that a preset might not use are still built (minor wasted work). The safety and simplicity gains are massive.
-
-### Routing
-
-At the top of `buildContext()` (the exported entry point):
-
-```text
-1. Is user impersonation? → Skip preset, use native (presets are character-centric)
-2. Does this server have an active preset? → Check in-memory cache
-3. If preset found → build native → rearrange via preset
-4. If no preset → use native directly
-```
+The routing wrapper invokes `buildContextNative()` to produce candidate context items labeled with
+`metadataTag`, then passes them to `reassembleWithPreset()`.
+Items are partitioned into consumable tag buckets. The preset builder walks the active preset's
+`node_order`, consuming items from matching buckets at marker nodes and inserting custom text
+nodes at their declared positions.
 
-The check uses the preset cache (`getCachedActivePreset()`), which avoids a DB query on every call.
+### Marker-to-tag mapping
 
-### Marker-to-Tag Mapping
+Preset marker nodes pull items from specific native context buckets:
 
-When the preset walker encounters a marker node, it pulls items from the corresponding native bucket:
-
-| ST Marker | ContextItemTag | Native Block | Typical TomoriBot Source |
-|-----------|---------------|--------------|--------------------------|
-| `main` | `SYSTEM_HUMANIZER_RULES` (first item only), then `SYSTEM_CHANNEL_PROMPT` | System prompt + per-channel append prompt | `/config` > Engine > General (or fallback), plus `/config` > Channels > Channel Overrides in append mode |
-| `charDescription` | `SYSTEM_PERSONA_PROMPT` | Persona prompt | `/config` > Persona > Advanced |
-| `charPersonality` | `SYSTEM_PERSONALITY` | Personality attributes | `/config` > Persona > Identity & Personality |
-| `dialogueExamples` | `DIALOGUE_SAMPLE` | Sample dialogues | `/config` > Persona > Identity & Personality |
-| `chatHistory` | `DIALOGUE_HISTORY` | Conversation history | Live channel message history |
-| `worldInfoBefore` | `KNOWLEDGE_SERVER_DOCUMENTS` | RAG documents | Retrieved document context / uploaded docs |
-| `worldInfoAfter` | `KNOWLEDGE_SERVER_DOCUMENTS` | RAG documents | Retrieved document context / uploaded docs |
+| Marker identifier | ContextItemTag | Native block |
+|---|---|---|
+| `main` | `SYSTEM_HUMANIZER_RULES`, `SYSTEM_CHANNEL_PROMPT` | System prompt and channel prompt overrides |
+| `charDescription` | `SYSTEM_PERSONA_PROMPT` | Persona prompt |
+| `charPersonality` | `SYSTEM_PERSONALITY` | Personality attributes |
+| `dialogueExamples` | `DIALOGUE_SAMPLE` | Sample dialogue turns |
+| `chatHistory` | `DIALOGUE_HISTORY` | Live conversation history |
+| `worldInfoBefore`, `worldInfoAfter` | `KNOWLEDGE_SERVER_DOCUMENTS` | RAG document chunks |
 
-- **Special case: `main`**: the `main` marker pulls the first `SYSTEM_HUMANIZER_RULES` item (the system prompt) and then the `SYSTEM_CHANNEL_PROMPT` item if present, keeping a per-channel append prompt directly after the system prompt. In `replace` mode there is no separate channel block; the channel prompt has already taken over the `SYSTEM_HUMANIZER_RULES` content upstream. The persona prompt is carried by `SYSTEM_PERSONA_PROMPT` and pulled by `charDescription`.
-
-These marker-controlled blocks are usually moved, not removed. The real suppressions are narrow:
-- The built-in fallback system prompt is removed only when a preset is active and the user has not set `/config` > Engine > General
-- The native `charDescription` block is skipped only if a custom preset node already expands `{{description}}`
-- The native `charPersonality` block is skipped only if a custom preset node already expands `{{personality}}`
-
-### TomoriBot-Only Block Flushing
-
-These blocks have no ST marker equivalent. They are flushed at anchor points during the node walk:
-
-| Blocks | Flushed at | Timing | Notes |
-|--------|-----------|--------|-------|
-| Server info, memories, emojis, stickers | `charPersonality`, `charDescription`, or `main` marker | After the marker's items | TomoriBot-only automatic context; no ST marker equivalent |
-| Users in conversation, STM, conditioning, remaining RAG | `dialogueExamples` or `chatHistory` marker | Before the marker's items | TomoriBot-only automatic context; still included even if the preset omits explicit ST markers |
-
-If the preset doesn't include these anchor markers, remaining blocks are appended at the end before dialogue history.
-
-### Depth Injection (Critical Design)
-
-Nodes with `injection_position: 1` are depth-injected: they target a specific position counting from the end of the conversation history.
-
-- **Key constraint**: depth-injected content is merged into existing dialogue history items, not inserted as new standalone messages. This prevents role-alternation violations that would break providers with strict role ordering (Gemini, Anthropic).
+Marker blocks move according to the preset layout. Specific native blocks are suppressed only when
+explicitly replaced:
 
-```text
-depth 0 = append to last history item (closest to model's response)
-depth 1 = append to second-to-last item
-depth N = append to Nth-from-last item (clamped to first if exceeds length)
-```
-
-Multiple injections at the same depth are ordered by `injection_order` (ascending).
+- The default fallback system prompt is omitted if a preset is active and no server-level system
+  prompt is configured.
+- The native `charDescription` block is skipped if a custom preset node expands the `{{description}}`
+  macro.
+- The native `charPersonality` block is skipped if a custom preset node expands the `{{personality}}`
+  macro.
 
-#### Batched Injection
+### TomoriBot-only block flushing
 
-All injections targeting the same depth are batched into a single `[System: ...]` text part rather than creating one `[System: ...]` per node. This reduces token waste and closely matches SillyTavern's contiguous injection behavior.
+Context items that lack SillyTavern marker equivalents (server information, server memories, custom
+emojis, stickers, active participants, short-term memories, and conditioning guidance) flush
+automatically at anchor markers:
 
-For example, a preset with 5 depth-0 nodes (XML wrappers + instructions) produces:
+- Server information, memories, emojis, and stickers flush after `charPersonality`,
+  `charDescription`, or `main`.
+- Active users, short-term memory, and conditioning flush before `dialogueExamples` or `chatHistory`.
+- After the node walk, reassembly flushes any unconsumed knowledge and participant groups, then
+  appends remaining buckets. Omitting markers does not guarantee that these groups precede history.
 
-```text
-# Before (unbatched — each node gets its own wrapper):
-\n[System: </chat_history>]
-\n[System: <task>]
-\n[System: Write the next response.]
-\n[System: </task>]
-\n[System: <output_format>]
-
-# After (batched — one wrapper per depth target):
-\n[System: </chat_history>
-<task>
-Write the next response.
-</task>
-<output_format>]
-```
-
-This batching is transparent: the LLM sees the same instructions, just without repeated `[System: ` prefixes.
+## Depth injection contracts
 
-### Role Mapping
+Nodes configured with `injection_position: 1` target positions counting backwards from the end of the
+conversation log:
 
-| ST Role | TomoriBot Role |
-|---------|---------------|
-| `system` | `system` |
-| `user` | `user` |
-| `assistant` | `model` |
+- Depth 0 targets the final message in history (closest to the model's turn).
+- Depth 1 targets the second-to-last message.
+- Depth N targets the (N + 1)th history message from the end, clamped to the earliest history
+  message when out of range. Injections are omitted when no history item exists.
 
-## Preset Caching
+### In-place message merging
 
-Active presets are cached in-memory to avoid a DB query on every `buildContext()` call. Located in `src/utils/cache/stPresetCache.ts`.
+To prevent role-alternation errors on strict providers such as Google Gemini and Anthropic, depth
+injections merge directly into existing conversation turns as `[System: ...]` text parts. They do not
+create standalone messages.
 
-| Feature | Detail |
-|---------|--------|
-| **Cache key** | `server_id` (numeric) |
-| **Cached data** | `{ preset: StPresetRow, nodes: StPresetNodeRow[] }` or `null` (no active preset) |
-| **TTL** | `CACHE_DURATION_MS` in `stPresetCache.ts` (10 minutes) |
-| **Invalidation** | On preset activate, deactivate, node toggle, or preset delete |
-| **Graceful fallback** | Returns stale cache on DB error |
-| **Negative caching** | `null` result is cached to avoid repeated "no preset" queries |
+### Same-depth batching
 
-Cache invalidation is called from `stPresetDb.ts` after every successful write operation. The `serverId` parameter is required (not optional) on all write functions to ensure invalidation cannot be accidentally skipped.
+All injections targeting the same depth index combine into a single `[System: ...]` container
+ordered by `injection_order`. This avoids redundant wrapper prefixes and conserves prompt tokens.
 
-## Database Schema
-
-### `st_presets` table
-
-| Column | Type | Description |
-|--------|------|-------------|
-| preset_id | SERIAL PK | Auto-incrementing primary key |
-| server_id | INT FK | References `servers(server_id)`, CASCADE on delete |
-| preset_name | TEXT | Display name (unique per server) |
-| raw_json | JSONB | Complete original ST preset JSON for re-parsing |
-| is_active | BOOLEAN | Whether this is the active preset (one per server) |
-| created_at | TIMESTAMP | Import timestamp |
-| updated_at | TIMESTAMP | Last modification timestamp |
-
-- **Unique constraint**: `(server_id, preset_name)`
-
-### `st_preset_nodes` table
-
-| Column | Type | Description |
-|--------|------|-------------|
-| node_id | SERIAL PK | Auto-incrementing primary key |
-| preset_id | INT FK | References `st_presets(preset_id)`, CASCADE on delete |
-| identifier | TEXT | ST node identifier (UUID or well-known name) |
-| name | TEXT | Display name from the preset |
-| role | TEXT | Message role: `system`, `user`, or `assistant` |
-| content | TEXT | Raw prompt text (with unresolved ST macros) |
-| is_marker | BOOLEAN | Structural anchor (charDescription, chatHistory, etc.) |
-| is_enabled | BOOLEAN | User-togglable enabled state |
-| node_order | INT | Position in the preset's prompt_order sequence |
-| injection_position | INT | 0 = relative to system prompt, 1 = relative to chat end |
-| injection_depth | INT | Messages from end for depth-based insertion |
-| injection_order | INT | Priority for tie-breaking at same position+depth |
-
-Import validates numeric node fields before inserting them. Ordering values outside the signed 32-bit range are clamped; fractional values and numeric strings are rejected. `injection_position` accepts only `0` or `1`.
-
-- **Unique constraint**: `(preset_id, identifier)`
-
-## ST Preset Anatomy
-
-### Node Types
-
-When parsing a preset's `prompts` array, nodes fall into three categories:
-
-| Category | Detection | Stored? | Toggleable? |
-|----------|-----------|---------|-------------|
-| Comment-only | Content is purely `{{// ... }}{{trim}}` | No | No |
-| Marker | `marker: true` (structural anchor) | Yes | No |
-| Content node | Has real content after macro stripping | Yes | Yes |
-
-### Comment-Only Detection
-
-A node is comment-only if its content matches: `^(\s*\{\{\/\/[^}]*\}\}\s*|\s*\{\{trim\}\}\s*)+$`
-
-Examples of comment-only content:
-- `{{// Empty for card override. }}{{trim}}`
-- `{{// Choose the narration style. }}{{trim}}`
-- `{{// Enable only one out of the list below. }}{{trim}}`
-
-### Well-Known Markers
-
-| Identifier | ST Purpose | TomoriBot Equivalent |
-|------------|-----------|---------------------|
-| `main` | Main system prompt | System humanizer rules |
-| `charDescription` | Character description | Persona description |
-| `charPersonality` | Character personality | Personality attributes |
-| `scenario` | Scenario text | *(no direct equivalent)* |
-| `personaDescription` | User persona | *(no direct equivalent)* |
-| `dialogueExamples` | Example dialogues | Sample dialogues |
-| `chatHistory` | Conversation log | Conversation history |
-| `worldInfoBefore` | World info (before char data) | RAG documents |
-| `worldInfoAfter` | World info (after char data) | RAG documents |
-
-Unrecognized markers are logged as warnings and skipped.
-
-### Prompt Order
-
-ST presets have a `prompt_order` array with entries for two scopes:
-
-- **`character_id: 100000`**: System prompt order (well-known markers only)
-- **`character_id: 100001`**: User prompt order (custom nodes + markers, preferred when present)
-
-Each entry has `{ identifier, enabled }`. The array order defines the rendering sequence.
-TomoriBot prefers the `100001` entry and falls back to `100000` only if `100001` is missing.
-
-## Parity with SillyTavern
-
-This section documents what our implementation supports versus what native SillyTavern does, organized by category.
-
-### Supported Macros
-
-| Macro | Status | Notes |
-|-------|--------|-------|
-| `{{user}}` | Supported | Deferred to `convertMentions()` |
-| `{{char}}` / `{{bot}}` | Supported | Deferred to `convertMentions()` |
-| `{{personality}}` | Supported | Maps to `/config` > Persona > Identity & Personality values |
-| `{{description}}` | Supported | Maps to persona prompt |
-| `{{mesExamples}}` | Supported | Maps to sample dialogues |
-| `{{lastChatMessage}}` | Supported | Most recent user message |
-| `{{scenario}}` | Supported (empty) | Always resolves to `""`: no TomoriBot equivalent |
-| `{{setvar::key::value}}` | Supported | Replaces the variable value |
-| `{{addvar::key::value}}` | Supported | Appends to the variable value in node order |
-| `{{getvar::key}}` | Supported | Unknown keys resolve to `""` |
-| `{{random: A, B, C}}` | Supported | Random pick from comma-separated list |
-| `{{random::A::B::C}}` | Supported | Legacy random choice syntax |
-| `{random: A, B, C}` | Supported | Single-brace random choice syntax resolved by `buildContext()` |
-| `{random::A::B::C}` | Supported | Single-brace legacy random choice syntax resolved by `buildContext()` |
-| `{{roll: XdY}}` | Supported | Capped at 100 dice, 1000 sides |
-| `{{trim}}` | Supported | Node disabled if result is empty |
-| `{{// comment}}` | Supported | Stripped from output |
-| `{{if capability:name}}...{{else}}...{{/if}}` | Supported | Tests an effective TomoriBot capability setting; `{{else}}` is optional |
-| `{{if tool:function_name}}...{{/if}}` | Supported | Tests runtime tool availability, including Deliberate Tool Mode filtering |
-| `{{if !capability:name}}...{{/if}}` | Supported | `!` inverts either supported predicate namespace; blocks may be nested |
-
-### Unsupported Macros
-
-| Macro | ST Purpose | Why Not Supported |
-|-------|-----------|-------------------|
-| `{{summary}}` | Short-term memory summary text | TomoriBot has STM but doesn't expose it as a macro. STM is injected as its own context block instead. |
-| `{{group}}` | Multi-character group RP names | TomoriBot is single-character-per-context. Fundamental design difference. |
-| `{{persona}}` | User persona description | No user persona system in TomoriBot. |
-| `{{input}}` | User-provided text for ST frontend helper prompts | Not available in TomoriBot's preset runtime. |
-| `{{mesExamplesRaw}}` | Raw example dialogue block | TomoriBot only exposes formatted `{{mesExamples}}`. |
-| `{{#if ...}}` / `{{/if}}` | Legacy conditional template blocks | Not implemented inside modern prompt nodes. Older text-completions presets are converted at import time instead of running these blocks directly. |
-| `{{time}}`, `{{date}}`, `{{weekday}}`, `{{isotime}}`, `{{isodate}}` | Date/time formatting | Time/channel info is embedded in the Users in Conversation block automatically, not exposed as macros. |
-| `{{idle_duration}}` | Time since last message | Not tracked. |
-| `{{maxPrompt}}` | Max token budget | TomoriBot doesn't expose token limits to preset macros. |
-| `{{exampleSeparator}}`, `{{chatStart}}` | Dialogue formatting tokens | Sample dialogues use their own formatting. |
-| `{{banned_tokens}}`, `{{bias}}` | Logit bias control | Logit bias is controlled separately via `/config`, not from presets. |
-| Nested/recursive macros | e.g., `{{getvar::{{getvar::key}}}}` | Only single-level resolution. |
-
-### Unsupported Features
-
-| Feature | ST Behavior | TomoriBot Behavior |
-|---------|-----------|-------------------|
-| **Regex post-processing** | Find/replace rules applied to generated output | Not implemented. Output is sent as-is. Presets that rely on regex formatting (e.g., stripping XML tags, reformatting narration) will look different. |
-| **Legacy text-completions presets** | Old ST preset shape using `context.story_string` + `sysprompt.content` | Best-effort imported by converting the story layout into Prompt Manager-style nodes. Main system prompt, story layout, and post-history map over; ST-only blocks such as `persona`, `scenario`, anchors, stop strings, and old backend settings are still ignored. |
-| **Preset settings import** | Temperature, top_p, frequency_penalty, model overrides embedded in preset JSON | Ignored. These remain server-level settings via `/config`. |
-| **World Info / Lorebook** | Static knowledge entries with activation keywords, inserted at `worldInfoBefore`/`worldInfoAfter` markers | TomoriBot uses dynamic RAG instead. The `worldInfo` markers pull RAG results, not static lorebook entries. Content may differ significantly. |
-| **Token budgeting** | Per-node token limits, total prompt budget management | Not implemented. All enabled nodes are included regardless of token count. Context may exceed provider limits if many large nodes are enabled. |
-| **Multiple active presets** | Some ST setups layer presets | One preset per server. By design. |
-| **HTML rendering** | ST frontend renders HTML in chat | Discord cannot render HTML. Nodes with HTML are flagged (`hasHtmlWarning`) but not auto-stripped. |
-| **Assistant prefill** | `model`-role nodes at end of context force the AI to start with specific text | Passed through, but provider-dependent. Works on some providers (Anthropic), ignored by others (Gemini). |
-
-### Architectural Differences
-
-| Area | SillyTavern | TomoriBot |
-|------|------------|-----------|
-| **Depth injection** | Inserts new standalone messages at target depth | Merges into existing messages as `[System: ...]` text parts. Same-depth injections are batched into a single `[System: ...]` block for token efficiency. This prevents role-alternation violations on Gemini/Anthropic but may not match exact ST positioning. |
-| **TomoriBot-only blocks** | N/A | Server info, server memories, emojis, stickers, user list, STM, and conditioning have no ST markers. They are always included and auto-flushed at anchor points. Users cannot reorder or disable them via the preset. |
-| **Variable scope** | May support scoped/local variables | All `{{setvar}}` / `{{addvar}}` variables are global across enabled nodes. No scoping. |
-| **`prompt_order` parsing** | Both `character_id: 100000` (system) and `100001` (user) | TomoriBot prefers `100001` and falls back to `100000` only when `100001` is missing. |
-| **Character-specific ordering** | Different prompt orders per character card | TomoriBot uses one preset per server regardless of active persona. |
-
-## File Map
-
-| File | Purpose |
-|------|---------|
-| `src/db/schema_stpreset.sql` | Database table definitions |
-| `src/types/db/schema.ts` | `StPresetRow` and `StPresetNodeRow` type definitions |
-| `src/utils/stPreset/stPresetOperations.ts` | Preset domain operations and repository scoping |
-| `src/utils/stPreset/stPresetImportParser.ts` | ST preset JSON parsing and validation |
-| `src/utils/cache/stPresetCache.ts` | In-memory preset cache with TTL |
-| `src/utils/text/stPresetEngine.ts` | Template macro engine (two-pass resolution) |
-| `src/utils/text/presetContextBuilder.ts` | Preset-driven context rearrangement |
-| `src/utils/text/contextBuilder.ts` | Routing wrapper and native context assembly |
-| `src/utils/discord/interactions/stPresetsRoutes.ts` | Panel route registry and interaction adapter |
-| `src/utils/discord/ui/stPresetsPanel.ts` | Components V2 panel rendering |
+## Template macro engine
+
+The template engine in `src/utils/text/stPresetEngine.ts` processes custom preset nodes in two
+sequential passes:
+
+### Pass 1: Variable collection
+
+The engine scans all enabled non-marker nodes in `node_order`, populating a session variable map:
+
+- `{{setvar::key::value}}`: stores or overwrites the variable key.
+- `{{addvar::key::value}}`: appends value content to an existing key.
+
+### Pass 2: Expansion and evaluation
+
+The second pass removes declarations and comments, resolves variable lookups and content macros,
+and evaluates random choices, dice rolls, and trimming. Missing variables and the scenario macro
+resolve to empty text. Expanding persona description or personality suppresses the corresponding
+native marker so the prompt does not repeat those instructions.
+
+Reassembly then evaluates `{{if capability:...}}` and `{{if tool:...}}` conditionals through the
+shared tool macro resolver using current capabilities and tool availability. This keeps native and
+preset instructions consistent with the same turn policy.
+
+Identity placeholders (`{{user}}`, `{{char}}`, `{{bot}}`) are preserved through template engine
+passes. They are resolved downstream by `convertMentions` in context assembly.
+
+## Caching and database persistence
+
+Active presets are cached in memory via `src/utils/cache/stPresetCache.ts` using the numeric
+`server_id` as the cache key:
+
+- **Cache TTL:** 10 minutes (`CACHE_DURATION_MS`).
+- **Invalidation:** Evicted immediately upon preset activation, deactivation, node toggling, or
+  preset deletion. Preset mutation methods in `PresetRepository.ts` invalidate the preset cache after
+  successful writes; domain operations also refresh assembled persona state.
+- **Negative caching:** Missing presets cache as `null` to prevent repeated database queries on
+  servers operating under native context assembly.
+
+Preset records persist across two relational tables:
+
+- `st_presets`: stores unique preset names per server, raw JSON payloads, and active status flags.
+- `st_preset_nodes`: stores individual prompt nodes, structural markers, user toggles, ordering
+  indices, and injection depth coordinates.
+
+## Parity and operational boundaries
+
+TomoriBot adapts SillyTavern presets to its architecture:
+
+- **Single-character focus:** Contexts model one active persona per turn. Multi-character group RP
+  macros (`{{group}}`) are unsupported.
+- **Dynamic knowledge retrieval:** Markers `worldInfoBefore` and `worldInfoAfter` pull dynamic RAG
+  document chunks. Static lorebook keyword activations are not evaluated.
+- **Regex post-processing:** SillyTavern output regex scripts are unsupported; provider responses
+  stream directly to Discord without regex transforms.
+- **HTML tags:** Discord does not render HTML markup. Preset nodes containing HTML tags raise a
+  `hasHtmlWarning` flag during diagnostics but are not stripped.
+- **Assistant prefill:** Custom assistant nodes become model-role context items and remain subject to
+  provider request normalization. Terminal sample dialogue blocks receive a user-side separator.
+  Explicit assistant prefill follows the separate [strict completion policy](/architecture/subsystems/strict-chat-completion/); arbitrary preset nodes are not automatically valid prefills.
+
+## Source pointers
+
+- `src/utils/text/presetContextBuilder.ts`: Build-then-rearrange orchestration, tag bucket
+  consumption, and depth injection merging.
+- `src/utils/text/stPresetEngine.ts`: `resolvePresetMacros` for variables and content expansion.
+- `src/utils/tools/toolPromptMacros.ts`: capability and tool conditionals.
+- `src/utils/db/repositories/PresetRepository.ts`: preset persistence and post-write invalidation.
+- `src/utils/stPreset/stPresetOperations.ts`: Domain operations and database mutations.
+- `src/utils/stPreset/stPresetImportParser.ts`: SillyTavern JSON validation and node extraction.
+- `src/utils/cache/stPresetCache.ts`: In-memory preset caching and cache invalidation.
+- `src/utils/text/contextBuilder.ts`: Context pipeline entry point and native bucket generation.

@@ -43,11 +43,13 @@ English file layout, so a key lives at the same path in every tree.
 - `features/command-reference.md` is generated in every locale from the command description keys.
   Never edit it by hand: after translating command descriptions, run
   `bun run generate-command-reference`.
-- Translate the whole changed passage in its context, not only the changed line, and keep the
+- Translate the whole changed passage in its context, and keep the
   translated page's existing structure and wording elsewhere.
-- Frontmatter: translate `title` and `description`. Keep every other field as the translated file
-  already has it, except `aiGenerated: false`, which marks a human-reviewed translation: delete it
-  from any page you edit, so the review notice returns until a human checks your change.
+- Frontmatter: translate `title` and `description`. Always mirror the English source's `aiGenerated`
+  field, including its absence: copy `false` or `true` exactly, or remove the field when English
+  omits it. This field records human review of the substantive content. AI translation alone does
+  not change that status or certify translation quality. Keep every other field as the translated
+  file already has it.
 - Links: a route to a page that exists in the locale's tree takes the locale prefix
   (`/ja/features/knowledge/memory/`); a route to an English-only or untranslated page takes `/en/`.
   An unprefixed route in a translated page ejects the reader into English.
@@ -72,7 +74,7 @@ URLs, environment variable names, product names, and Discord markers (`-# `, `> 
 Locale prose follows the repository dash rule. In `ja`, use `：`, `。`, and `（）` instead of dashes;
 the Chinese glossaries state their own punctuation.
 
-Persona-voiced strings keep the persona's character. Translate the voice, not only the words.
+Persona-voiced strings keep the persona's character. Preserve that voice in the translation.
 
 ## Verify
 

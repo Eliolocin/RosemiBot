@@ -8,14 +8,44 @@ import {
 } from "@/utils/text/localeIntentPacks";
 import {
   applyDeliberateToolAllowlist,
+  getAutonomousDeliberateToolNames,
   getDeliberateToolAllowedNames,
   matchesLocaleDeliberateToolPack,
   resolveDeliberateToolContextTurns,
 } from "@/utils/tools/deliberateToolMode";
 
+import { createPersona } from "../../helpers/fixtures";
+
 const ALL_PACK_KEYS = [...Object.values(DELIBERATE_TOOL_PACK_KEYS), EXPLICIT_MEMORY_PACK_KEY];
 
 describe("deliberate tool mode", () => {
+  it("admits spontaneous stickers while retaining task restrictions", () => {
+    const state = createPersona({ config: { sticker_usage_enabled: true } });
+    for (const prompt of ["hello", "search the web for cats"]) {
+      const allowed = [...getDeliberateToolAllowedNames(prompt), ...getAutonomousDeliberateToolNames(state)];
+      const result = applyDeliberateToolAllowlist({
+        providerLabel: "test",
+        builtInTools: [{ name: "select_sticker_for_response" }, { name: "web_search" }, { name: "generate_image" }],
+        mcpFunctionNames: [],
+        allowedToolNames: allowed,
+      });
+      expect(result.builtInTools.map((tool) => tool.name)).toEqual(
+        prompt === "hello" ? ["select_sticker_for_response"] : ["select_sticker_for_response", "web_search"],
+      );
+    }
+    for (const disabled of [
+      createPersona({ config: { sticker_usage_enabled: false } }),
+      createPersona({ config: { sticker_usage_enabled: true, tool_use_enabled: false } }),
+      createPersona({ llm: { ...state.llm, has_tools: false }, config: { sticker_usage_enabled: true } }),
+      createPersona({ llm: { ...state.llm, llm_provider: "novelai" }, config: { sticker_usage_enabled: true } }),
+    ])
+      expect(getAutonomousDeliberateToolNames(disabled)).toEqual([]);
+  });
+
+  it("ignores obsolete stored sticker triggers", () => {
+    expect(getDeliberateToolAllowedNames("hello", { sticker: ["^"] })).not.toContain("select_sticker_for_response");
+  });
+
   it("allows the unified web_search tool for web-search intent", () => {
     const allowedNames = getDeliberateToolAllowedNames("can you search the web for current TypeScript news?");
 

@@ -2,6 +2,7 @@
 title: "Nerine，忠诚的那个"
 sidebar:
   order: 5
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Source: src/db/seed/catalog/personas/loyal/en-US.ts.

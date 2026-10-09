@@ -11,7 +11,7 @@ Users who want to use Docker Compose should skip this wizard, see
 [Docker Compose](/self-hosting/docker-compose/) for the containerized install path.
 :::
 
-`bun run setup` is the recommended self-host path for local Bun-based installs. It creates your `.env`, generates a `CRYPTO_SECRET`, asks for your Discord bot token, configures PostgreSQL, and installs the exact dependencies from `bun.lock` interactively, so just follow the prompts. It's safe
+`bun run setup` is the recommended self-host path for local Bun-based installs. The command installs the dependencies from `bun.lock` before loading the wizard, including on a fresh clone. The wizard creates your `.env`, generates a `CRYPTO_SECRET`, asks for your Discord bot token, and configures PostgreSQL. It's safe
 to re-run; existing `.env` values are kept unless you choose to reconfigure them.
 
 Run the wizard in an interactive terminal. If stdin is piped or the terminal does not support
@@ -44,7 +44,6 @@ bun run setup
 ## What to have ready
 
 - **[Bun](https://bun.sh/)** to run the bot and the wizard itself.
-- **Node.js v20+** (used for MCP tooling).
 - **A Discord bot token** with the `GuildMembers`, `MessageContent`, and `GuildPresences`
   privileged intents enabled.
 - **A database.** TomoriBot stores everything in PostgreSQL. You don't set it up by hand as
@@ -87,6 +86,18 @@ bun run launch --searxng --crawl4ai  # bot + local servers (see bun run launch -
 When the bot is online, run `/setup` in Discord to connect an AI provider. A workspace that holds no
 provider of its own cannot reply, unless it runs in User BYOK mode where each member's personal
 provider answers instead, so this is the last step of every install path.
+
+## Check a fresh install on each operating system
+
+The [Setup smoke test](https://github.com/Bredrumb/TomoriBot/actions/workflows/ci-setup-smoke.yml)
+runs only when you select **Run workflow** in GitHub Actions. It checks a fresh checkout on Ubuntu,
+macOS, and Windows. Each runner starts a temporary PostgreSQL server, supplies a dummy Discord token,
+runs `bun run setup --full --defaults` before installing dependencies separately, checks the generated
+secret and database connection, and builds the bot. The Full Install extras run and report their
+results; some need additional system packages or a Hugging Face token and can give manual instructions.
+
+The dummy token cannot log in to Discord, so this check cannot verify `bun run dev` or the in-Discord
+`/setup` flow. Finish one install with a real bot token and database to check those steps.
 
 ## The `/setup` command
 <!-- anchor: the-setup-command -->

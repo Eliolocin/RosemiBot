@@ -12,6 +12,11 @@ import {
 import { getCachedTomoriState } from "@/utils/cache/tomoriStateCache";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
 import { decryptApiKey, getOptApiKey } from "@/utils/security/crypto";
+import {
+  CredentialUnavailableError,
+  getResolvedCapabilityModelId,
+  resolveCapabilityCredentials,
+} from "@/utils/provider/credentialResolver";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
 import { promptWithRawModal } from "@/utils/discord/ui/modals";
@@ -22,15 +27,18 @@ import { statRepository } from "@/utils/db/repositories";
 import { resolveNaiImageParams } from "@/utils/image/naiImageParams";
 import { resolveNaiDiffusionModel } from "@/utils/image/naiDiffusionModels";
 import { normalizeNaiReferenceImage } from "@/utils/image/imageProcessor";
+import { prepareGeneratedImage } from "@/utils/image/generatedImageMetadata";
+import { buildImageGenerationInputAttachment } from "@/utils/image/imageGenerationInput";
 import { MEDIA_LIMITS } from "@/utils/security/rateLimiter";
 import { safeDownload } from "@/utils/security/safeDownload";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 import {
   NAI_CHAR_REF_INFO_EXTRACTED,
   NAI_CHAR_REF_STRENGTH,
   NAI_DEFAULT_NEGATIVE_PROMPT,
   classifyNaiImageError,
   generateNovelAiImage,
-  usesNaiStructuredPromptFormat,
+  supportsNaiPreciseReference,
   type NaiGenerationCharacterPayload,
 } from "@/utils/image/naiImageGeneration";
 
@@ -47,19 +55,13 @@ function splitTags(rawTags: string): string[] {
     .filter((tag) => tag.length > 0);
 }
 
-async function resolveNovelAiApiKey(tomoriState: TomoriState): Promise<string | null> {
+async function resolveServerNovelAiApiKey(tomoriState: TomoriState): Promise<string | null> {
   const optKey = await getOptApiKey(tomoriState.server_id, "novelai");
-  if (optKey) {
-    return optKey;
-  }
+  if (optKey) return optKey;
 
   const encryptedApiKey = tomoriState.config.api_key;
-  const keyVersion = tomoriState.config.key_version || 1;
-  if (!encryptedApiKey) {
-    return null;
-  }
-
-  return await decryptApiKey(encryptedApiKey, keyVersion);
+  if (!encryptedApiKey) return null;
+  return await decryptApiKey(encryptedApiKey, tomoriState.config.key_version || 1);
 }
 
 async function prepareCharacterReferencePayload(attachment: APIAttachment): Promise<NaiGenerationCharacterPayload> {
@@ -111,6 +113,17 @@ export async function execute(
   let modalSubmitInteraction: ModalSubmitInteraction | undefined;
   let tomoriState: TomoriState | null = null;
   let resolvedModel: Awaited<ReturnType<typeof resolveNaiDiffusionModel>> | null = null;
+  let imageCreds: { apiKey: string; source: "server" | "personal"; modelId: number | null } | undefined;
+  let submittedInput:
+    | { prompt: string; negativeTags: string; orientation: string; referenceFilenames: string[] }
+    | undefined;
+  const recoveryOptions = () =>
+    submittedInput
+      ? {
+          footerKey: "commands.generate.image.recovery_file_footer",
+          files: [buildImageGenerationInputAttachment(locale, { kind: "novelai", ...submittedInput })],
+        }
+      : {};
 
   try {
     tomoriState = await getCachedTomoriState(serverId);
@@ -126,9 +139,9 @@ export async function execute(
 
     // Overlay the invoking user's personal (BYOK) provider selections so their
     // personal NovelAI model/key is used when configured, mirroring /generate image.
+    const serverTomoriState = tomoriState;
     const overlay = await applyPersonalProviderSelectionsToTomoriState(tomoriState, userData.user_id ?? null);
     tomoriState = overlay.tomoriState;
-    const { activeConfigs } = overlay;
 
     if (!tomoriState.config.imagegen_enabled) {
       await replyInfoEmbed(interaction, locale, {
@@ -140,7 +153,47 @@ export async function execute(
       return;
     }
 
-    resolvedModel = await resolveNaiDiffusionModel(tomoriState.config);
+    if (overlay.activeConfigs.image_nai) {
+      try {
+        const resolved = await resolveCapabilityCredentials(tomoriState.server_id, "image-nai", {
+          userId: userData.user_id ?? null,
+        });
+        imageCreds = {
+          apiKey: resolved.apiKey,
+          source: resolved.source,
+          modelId: getResolvedCapabilityModelId(resolved, "image-nai"),
+        };
+      } catch (error) {
+        if (error instanceof CredentialUnavailableError) {
+          await replyInfoEmbed(interaction, locale, {
+            titleKey: "general.errors.personal_provider_credentials_error_title",
+            descriptionKey: "general.errors.personal_provider_credentials_error_description",
+            color: ColorCode.ERROR,
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        throw error;
+      }
+    } else {
+      const apiKey = await resolveServerNovelAiApiKey(serverTomoriState);
+      if (apiKey) imageCreds = { apiKey, source: "server", modelId: null };
+    }
+
+    if (!imageCreds) {
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "commands.novelai.generate.image.no_api_key_title",
+        descriptionKey: "commands.novelai.generate.image.no_api_key_description",
+        color: ColorCode.ERROR,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    resolvedModel = await resolveNaiDiffusionModel({
+      ...tomoriState.config,
+      nai_diffusion_model_id: imageCreds.modelId ?? tomoriState.config.nai_diffusion_model_id,
+    });
     if (!resolvedModel) {
       log.warn(
         `[NovelAI Generate Image] No NovelAI diffusion model resolved for server ${tomoriState.server_id}`,
@@ -163,33 +216,11 @@ export async function execute(
       return;
     }
 
-    const apiKey = await resolveNovelAiApiKey(tomoriState);
-    if (!apiKey) {
-      log.warn(
-        `[NovelAI Generate Image] NovelAI API key missing or decryption failed for server ${tomoriState.server_id}`,
-        undefined,
-        {
-          userId: userData.user_id,
-          serverId: tomoriState.server_id,
-          personaId: tomoriState.persona_id,
-          metadata: {
-            command: "novelai generate image",
-          },
-        },
-      );
-      await replyInfoEmbed(interaction, locale, {
-        titleKey: "commands.novelai.generate.image.no_api_key_title",
-        descriptionKey: "commands.novelai.generate.image.no_api_key_description",
-        color: ColorCode.ERROR,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+    const apiKey = imageCreds.apiKey;
 
     const effectiveImageParams = resolveNaiImageParams(tomoriState.config);
 
-    // Personal-provider users (activeConfigs.image set) bypass quota enforcement
-    if (!activeConfigs.image) {
+    if (imageCreds.source === "server") {
       const quotaCheck = await checkImageQuota(tomoriState.server_id, interaction.user.id);
       if (!quotaCheck.allowed) {
         const errorTitleKey = "commands.generate.image.quota_exceeded_title";
@@ -302,8 +333,14 @@ export async function execute(
       log.error("NovelAI generate image modal missing required values");
       return;
     }
+    submittedInput = {
+      prompt,
+      negativeTags: negativeTagsInput,
+      orientation,
+      referenceFilenames: characterReference ? [characterReference.filename] : [],
+    };
 
-    if (characterReference && !usesNaiStructuredPromptFormat(resolvedModel.codename)) {
+    if (characterReference && !supportsNaiPreciseReference(resolvedModel.codename)) {
       await replyInfoEmbed(modalSubmitInteraction, locale, {
         titleKey: "commands.novelai.generate.image.character_reference_requires_v4_title",
         descriptionKey: "commands.novelai.generate.image.character_reference_requires_v4_description",
@@ -311,6 +348,7 @@ export async function execute(
           model: resolvedModel.codename,
         },
         color: ColorCode.ERROR,
+        ...recoveryOptions(),
       });
       return;
     }
@@ -334,6 +372,7 @@ export async function execute(
           titleKey: "commands.novelai.generate.image.invalid_reference_title",
           descriptionKey: "commands.novelai.generate.image.invalid_reference_description",
           color: ColorCode.ERROR,
+          ...recoveryOptions(),
         });
         log.warn("[NAI] Invalid character reference attachment for slash command", error as Error);
         return;
@@ -357,7 +396,14 @@ export async function execute(
     });
 
     const generationTimeSeconds = ((performance.now() - startTime) / 1000).toFixed(1);
-    if (!activeConfigs.image) {
+    const preparedImage = await prepareGeneratedImage(
+      imageBuffer,
+      effectivePrompt,
+      locale,
+      effectiveNegativePrompt,
+      modalSubmitInteraction.attachmentSizeLimit,
+    );
+    if (imageCreds.source === "server") {
       await incrementImageQuota(tomoriState.server_id, interaction.user.id);
     }
     // Record canonical generation telemetry; quota tables enforce limits only.
@@ -371,21 +417,24 @@ export async function execute(
       });
     }
 
-    const filename = `nai_generated_${Date.now()}.png`;
-    const attachment = new AttachmentBuilder(imageBuffer, {
+    const filename = `nai_generated_${Date.now()}.${preparedImage.extension}`;
+    const attachment = new AttachmentBuilder(preparedImage.buffer, {
       name: filename,
     });
 
     const successEmbed = new EmbedBuilder()
-      .setTitle(localizer(locale, "commands.novelai.generate.image.success_title"))
+      .setTitle(localizedStatusTitle(locale, "commands.novelai.generate.image.success_title", ColorCode.SUCCESS))
       .setColor(ColorCode.SUCCESS)
       .setImage(`attachment://${filename}`)
+      .setFooter({
+        text: localizer(
+          locale,
+          preparedImage.promptAttachment
+            ? "commands.generate.image.prompt_attached_footer"
+            : "commands.generate.image.prompt_embedded_footer",
+        ),
+      })
       .addFields([
-        {
-          name: localizer(locale, "commands.novelai.generate.image.field_prompt"),
-          value: prompt.substring(0, 1024),
-          inline: false,
-        },
         {
           name: localizer(locale, "commands.novelai.generate.image.field_model"),
           value: resolvedModel.codename,
@@ -403,23 +452,13 @@ export async function execute(
         },
       ]);
 
-    if (negativeTagsInput) {
-      successEmbed.addFields([
-        {
-          name: localizer(locale, "commands.novelai.generate.image.field_negative_tags"),
-          value: negativeTagsInput.substring(0, 1024),
-          inline: false,
-        },
-      ]);
-    }
-
     if (characterReference?.url) {
       successEmbed.setThumbnail(characterReference.url);
     }
 
     await modalSubmitInteraction.editReply({
       embeds: [successEmbed],
-      files: [attachment],
+      files: preparedImage.promptAttachment ? [attachment, preparedImage.promptAttachment] : [attachment],
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -435,21 +474,30 @@ export async function execute(
     });
 
     const replyTarget = modalSubmitInteraction ?? interaction;
+    const isPersonalNai = imageCreds?.source === "personal";
 
     if (errorKind === "quota") {
+      const tipKeys = isPersonalNai
+        ? ["genai.tips.top_up_provider_balance", "genai.tips.disable_personal_text_override"]
+        : ["genai.tips.wait_and_retry"];
       await replyInfoEmbed(replyTarget, locale, {
         titleKey: "commands.novelai.generate.image.quota_error_title",
         descriptionKey: "commands.novelai.generate.image.quota_error_description",
         color: ColorCode.ERROR,
+        tipKeys,
+        ...recoveryOptions(),
       });
       return;
     }
 
     if (errorKind === "auth") {
+      const tipKeys = isPersonalNai ? ["genai.tips.verify_api_key_personal"] : ["genai.tips.verify_api_key"];
       await replyInfoEmbed(replyTarget, locale, {
         titleKey: "commands.novelai.generate.image.auth_error_title",
         descriptionKey: "commands.novelai.generate.image.auth_error_description",
         color: ColorCode.ERROR,
+        tipKeys,
+        ...recoveryOptions(),
       });
       return;
     }
@@ -459,10 +507,13 @@ export async function execute(
         titleKey: "commands.novelai.generate.image.rate_limit_error_title",
         descriptionKey: "commands.novelai.generate.image.rate_limit_error_description",
         color: ColorCode.ERROR,
+        tipKeys: ["genai.tips.wait_and_retry"],
+        ...recoveryOptions(),
       });
       return;
     }
 
+    const tipKeys = isPersonalNai ? ["genai.tips.disable_personal_text_override"] : ["genai.tips.wait_and_retry"];
     await replyInfoEmbed(replyTarget, locale, {
       titleKey: "commands.novelai.generate.image.error_title",
       descriptionKey: "commands.novelai.generate.image.error_description",
@@ -470,6 +521,8 @@ export async function execute(
         error: errorMessage,
       },
       color: ColorCode.ERROR,
+      tipKeys,
+      ...recoveryOptions(),
     });
   }
 }

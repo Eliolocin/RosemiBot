@@ -717,7 +717,7 @@ export class GenerateVideoTool extends BaseTool {
 
       return {
         success: false,
-        error: `Video generation failed: ${errorMessage}`,
+        error: "Video generation failed because the provider returned an error.",
       };
     }
   }

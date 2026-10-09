@@ -4,56 +4,42 @@ sidebar:
   order: 6
 ---
 
-Esta traducción se proporciona para tu comodidad. La versión en inglés es la autoritativa.
+Conecte los servidores TomoriBot a Model Context Protocol ([MCP](https://modelcontextprotocol.io/)) que se ejecutan en su máquina local o red privada para proporcionar herramientas locales personalizadas.
 
-Los servidores [MCP](https://modelcontextprotocol.io/) amplían a TomoriBot con herramientas externas. Los servidores MCP en línea
-(HTTPS) funcionan en cualquier instancia (consulta
-[Herramientas y extensiones](/es-419/features/capabilities/tools-and-extensions/#mcp-servers)). Los servidores MCP locales son
-diferentes:
+Para servidores HTTPS remotos, consulte [Herramientas y extensiones](/es-419/features/capabilities/tools-and-extensions/#mcp-servers). Los puntos finales locales MCP requieren una instancia autohospedada:
 
-:::caution[Solo para autoalojamiento]
-Los servidores MCP locales solo son compatibles en instancias autoalojadas. El bot público alojado
-requiere HTTPS y bloquea direcciones locales o privadas por seguridad, por lo que no puede comunicarse con un servidor en
-`localhost` o en tu red de área local.
+:::caution[Self-hosting only]
+Los servidores locales MCP solo se admiten en instancias autohospedadas. El bot alojado públicamente requiere HTTPS y bloquea direcciones locales/privadas por seguridad, por lo que no puede llegar a un servidor en `localhost` o su LAN.
 :::
 
 ## 1. Ejecuta un servidor MCP local
 
-Inicia cualquier servidor MCP que exponga un transporte HTTP/SSE en un puerto local. Por ejemplo, muchos
-servidores MCP se ejecutan mediante Node:
+Inicia un servidor MCP que exponga un transporte HTTP/SSE en un puerto local. Por ejemplo, muchos servidores MCP se ejecutan a través de Node:
 
 ```sh
 npx -y <some-mcp-server> --port 3000
 ```
 
-El comando exacto depende del servidor que estés ejecutando. Toma nota de la URL y la ruta de transporte que
-imprime (comúnmente algo como `http://localhost:3000/sse`).
-
-Las herramientas propias de TomoriBot esperan que Node.js v20+ esté disponible para las herramientas MCP en el host.
+El comando exacto depende del servidor que esté ejecutando. Tenga en cuenta la URL y la ruta de transporte que imprime (comúnmente `http://localhost:3000/sse`).
 
 ## 2. Regístralo en Discord
 
-Abre `/config` > Complementos > Servidores MCP, elige `Agregar MCP`, apunta el campo URL
-a tu servidor local, y deja el campo obligatorio `Tipo de servidor` en su valor predeterminado `Uso general`:
+Abre `/config` > `Plugins` > Servidores MCP, elija `+ Agregar MCP`, configure el campo `URL del servidor` en su punto final local y mantenga `Tipo de servidor` en su configuración predeterminada de `Uso general`:
 
 ```text
 http://localhost:3000/sse
 ```
 
-Deja el campo `Token de autenticación` en blanco (no se necesita un token de autenticación para servidores locales).
+Deja `Token de autenticación (opcional)` en blanco: los servidores locales no requieren tokens de autenticación.
 
 ## 3. Adminístralo
 
-- Abre la página Configuración y elige `Eliminar` en la fila del servidor. Al confirmar, se anula su registro,
-  se desconecta inmediatamente y se libera un espacio.
+Abre la página de configuración y elija `Quitar` en la fila del servidor. Al confirmarlo se da de baja, se desconecta inmediatamente y se libera una ranura.
 
 ## Seguridad
 
-:::danger[Solo añade servidores MCP en los que confíes]
-Incluso un servidor local que ejecutes tú mismo puede funcionar mal si su código no es de confianza. Un servidor
-MCP malicioso puede inyectar instrucciones al modelo, exfiltrar datos pasados a sus herramientas o devolver resultados
-dañinos que TomoriBot retransmitirá. Revisa qué hace un servidor MCP antes de conectarlo.
+:::danger[Only add MCP servers you trust]
+Incluso un servidor local que usted mismo ejecute puede comportarse mal si su código no es de confianza. Un servidor MCP malicioso puede inyectar rápidamente el modelo, filtrar datos pasados a sus herramientas o devolver resultados dañinos que transmitirá TomoriBot. Revisa lo que hace un servidor MCP antes de cablearlo.
 :::
 
-Para conocer el flujo de MCP en línea y la justificación de seguridad completa, consulta
-[Herramientas y extensiones → Servidores MCP](/es-419/features/capabilities/tools-and-extensions/#mcp-servers).
+Para conocer el flujo en línea-MCP y todos los detalles de seguridad, consulte [Herramientas y extensiones](/es-419/features/capabilities/tools-and-extensions/#mcp-servers).

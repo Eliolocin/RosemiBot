@@ -147,6 +147,7 @@ export interface PersonalConfigPanelRenderInput {
   guildId: string | null;
   selectedLineageId?: number;
   selectedPersonaAvatarUrl?: string | null;
+  userAvatarUrl?: string | null;
   personaNamingPreference?: UserPersonaNamingPreference | null;
   memoryCount: number;
   stmCount: number;
@@ -847,12 +848,17 @@ export function buildPersonalConfigPanelPayload(input: PersonalConfigPanelRender
             : localizer(locale, "commands.personal.config.style_neutral");
 
       components.push(
+        buildOptionalThumbnailSection(
+          {
+            type: ComponentType.TextDisplay,
+            content: `### ${localizer(locale, "commands.personal.config.preferences_title")}
+${localizer(locale, "commands.personal.config.preferences_description")}`,
+          },
+          input.userAvatarUrl,
+        ),
         {
           type: ComponentType.TextDisplay,
-          content: `### ${localizer(locale, "commands.personal.config.preferences_title")}
-${localizer(locale, "commands.personal.config.preferences_description")}
-
-**${localizer(locale, "commands.personal.config.interface_section")}**
+          content: `**${localizer(locale, "commands.personal.config.interface_section")}**
 ${localizer(locale, "commands.personal.config.interface_description")}
 > ${localizer(locale, "commands.personal.config.language_label")}: ${languageLabel}
 > ${localizer(locale, "commands.personal.config.timezone_label")}: ${timezoneLabel}`,

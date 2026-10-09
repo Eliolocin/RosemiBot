@@ -9,7 +9,10 @@
  * To run only DB regression tests (assumes wrapper has provisioned the DB):
  *   bun run test
  *
- * To target a specific pre-existing database manually:
+ * To run one file with a disposable database, pass it to the wrapper:
+ *   bun run test tests/regression/db/<file>.regression.test.ts
+ *
+ * Bypassing the wrapper (bare `bun test`) skips these suites unless you set the variables yourself:
  *   TEST_DB_READY=1 POSTGRES_DB=<name> POSTGRES_PASSWORD=<pw> bun test tests/regression/db/
  */
 import { SQL } from "bun";

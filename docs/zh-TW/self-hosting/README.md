@@ -11,6 +11,7 @@ sidebar:
   label: "總覽"
   groupLabel: "自架"
   order: 3
+aiGenerated: false
 ---
 
 <!-- STUB（第一階段結構）。第二階段會寫入：需求 + 模組目錄。

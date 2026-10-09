@@ -13,7 +13,10 @@ import {
   offeredChatCompatFlags,
   parseModelSelectionValue,
   buildProvidersPanelPayload,
+  ENDPOINT_API_STYLES,
+  PROVIDERS_MODELS_PER_SELECTOR_PAGE,
 } from "@/utils/discord/ui/providersPanel";
+import { DISCORD_SELECT_OPTIONS_MAX, validateRawModalLimits } from "@/utils/discord/ui/componentsV2Limits";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { localizedCopy, localizedProse } from "../../helpers/localeCases";
 
@@ -54,6 +57,7 @@ function providerEntry(id: string, name = "Google"): ProviderPanelEntry {
               supportsStructOutput: false,
               strictRoleAlternation: false,
               supportsPrefixCompletion: true,
+              supportsAssistantPrefill: false,
               verbatimToolCalling: false,
             },
           },
@@ -133,7 +137,10 @@ describe("providers panel rendering", () => {
     expect(serialized).toContain("comfyui");
     expect(serialized).toContain("tts-clone");
     expect(serialized).toContain("openai-compatible-transcription");
-    expect((select?.options as unknown[])?.length).toBe(5);
+    expect((select?.options as Array<{ value: string }>).map((option) => option.value)).toEqual([
+      ...new Set(Object.values(ENDPOINT_API_STYLES).flat()),
+    ]);
+    expect(validateRawModalLimits(modal).violations).toEqual([]);
   });
 
   it("renders an empty selector with both add destinations and a routing hint", () => {
@@ -521,12 +528,20 @@ describe("providers panel rendering", () => {
     ]);
     expect(firstOptions.map((option) => option.value)).not.toContain("add:speech");
     expect(firstOptions.map((option) => option.value)).not.toContain("add:transcription");
-    expect(firstOptions).toHaveLength(23);
-    expect(firstOptions.length).toBeLessThanOrEqual(25);
+    // Decision is absent from this fixture, so only four add actions appear. Paging reserves room
+    // for all endpoint capabilities, including decision, even when this entry offers fewer.
+    expect(firstOptions.map((option) => option.value)).not.toContain("add:decision");
+    const addCount = entry.capabilities.filter((section) => section.availability !== "unavailable").length;
+    const editCapacity = DISCORD_SELECT_OPTIONS_MAX - Object.keys(ENDPOINT_API_STYLES).length;
+    expect(PROVIDERS_MODELS_PER_SELECTOR_PAGE).toBe(editCapacity);
+    expect(firstOptions).toHaveLength(addCount + editCapacity);
+    expect(firstOptions.length).toBeLessThanOrEqual(DISCORD_SELECT_OPTIONS_MAX);
     expect(firstOptions[4]?.value).toBe("edit:text:1");
     expect(firstOptions[4]?.description).toBe("Text · custom registration");
-    expect(secondOptions).toHaveLength(5);
-    expect(secondOptions[4]?.value).toBe("edit:text:20");
+    expect(secondOptions).toHaveLength(addCount + entry.capabilities[0].models.length - editCapacity);
+    expect(secondOptions.slice(addCount).map((option) => option.value)).toEqual(
+      entry.capabilities[0].models.slice(editCapacity).map((model) => `edit:text:${model.id}`),
+    );
 
     const panelSelect = collectComponents(first).find(
       (component) =>
@@ -622,7 +637,12 @@ describe("providers panel rendering", () => {
     )?.component;
 
     expect(capabilities?.options?.map((option) => option.value)).toEqual(["tools", "images", "structured"]);
-    expect(compat?.options?.map((option) => option.value)).toEqual(["strict-roles", "prefix", "verbatim-tools"]);
+    expect(compat?.options?.map((option) => option.value)).toEqual([
+      "strict-roles",
+      "prefix",
+      "prefill",
+      "verbatim-tools",
+    ]);
     expect(JSON.stringify(endpointModal)).toContain(localizedCopy("en-US", "commands.providers.model_compat_label"));
     // Every option says what it does and when to tick it.
     expect(compat?.options?.every((option) => (option.description?.length ?? 0) > 0)).toBe(true);
@@ -648,6 +668,7 @@ describe("providers panel rendering", () => {
         supportsStructOutput: false,
         strictRoleAlternation: false,
         supportsPrefixCompletion: false,
+        supportsAssistantPrefill: false,
         verbatimToolCalling: true,
       },
     });
@@ -660,20 +681,21 @@ describe("providers panel rendering", () => {
   it("offers each compatibility only where the request path can honour it", () => {
     // Endpoints resolve through the `custom` provider, whose adapter reads both compat columns and
     // runs the only verbatim parser in the codebase.
-    expect(offeredChatCompatFlags("endpoint", "73")).toEqual(["strict-roles", "prefix", "verbatim-tools"]);
-    expect(offeredChatCompatFlags("provider", "nvidia")).toEqual(["strict-roles", "prefix"]);
-    // DeepSeek and Z.ai force prefix completion on regardless of the column, so the toggle is inert.
+    expect(offeredChatCompatFlags("endpoint", "73")).toEqual(["strict-roles", "prefix", "prefill", "verbatim-tools"]);
+    expect(offeredChatCompatFlags("provider", "nvidia")).toEqual(["strict-roles", "prefix", "prefill"]);
+    // DeepSeek and Z.ai force prefix completion on regardless of the column, so both prefix toggles are inert.
     expect(offeredChatCompatFlags("provider", "deepseek")).toEqual(["strict-roles"]);
     expect(offeredChatCompatFlags("provider", "zai")).toEqual(["strict-roles"]);
-    // Anthropic forces alternation and never reads prefix; the rest never read either column.
+    // Anthropic forces alternation, never reads prefix, and its seed decides prefill.
     expect(offeredChatCompatFlags("provider", "anthropic")).toEqual([]);
-    expect(offeredChatCompatFlags("provider", "openrouter")).toEqual([]);
+    // A user-registered OpenRouter codename has no seed row to declare prefill support.
+    expect(offeredChatCompatFlags("provider", "openrouter")).toEqual(["prefill"]);
     expect(offeredChatCompatFlags("provider", "google")).toEqual([]);
     expect(offeredChatCompatFlags("provider", "novelai")).toEqual([]);
   });
 
-  it("renders no compatibility group for a provider that cannot honour either flag", () => {
-    const json = JSON.stringify(buildProviderModelModal("en-US", "provider", "openrouter", "text", null, "abcdefgh"));
+  it("renders no compatibility group for a provider that honours no compatibility flag", () => {
+    const json = JSON.stringify(buildProviderModelModal("en-US", "provider", "google", "text", null, "abcdefgh"));
     expect(json).toContain("flags_abcdefgh");
     expect(json).not.toContain("compat_abcdefgh");
     expect(json).not.toContain(localizedCopy("en-US", "commands.providers.model_compat_label"));
@@ -735,6 +757,7 @@ describe("providers panel rendering", () => {
         supportsStructOutput: false,
         strictRoleAlternation: false,
         supportsPrefixCompletion: true,
+        supportsAssistantPrefill: false,
         verbatimToolCalling: false,
       },
     });
@@ -880,6 +903,7 @@ describe("Provider entry body stays inside the TextDisplay budget", () => {
         supportsStructOutput: false,
         strictRoleAlternation: false,
         supportsPrefixCompletion: false,
+        supportsAssistantPrefill: false,
         verbatimToolCalling: false,
       },
     }));

@@ -8,17 +8,17 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-TomoriBotは、チャット内で直接メディアを作成できます。画像、短い動画、そして音声メッセージです。「…を描いて」「それを音声メッセージで送って」など、自然な言葉でお願いするか、`/generate`コマンドを使用してください。利用できる機能は、設定されているプロバイダーによって異なります。[プロバイダーとモデル](/ja/features/setup-administration/providers-and-models/)を参照してください。
+TomoriBotは、チャット内で画像、短いビデオ、音声メッセージなどのメディアを直接作成できます。わかりやすい言葉で彼女に尋ねるか (「... を描いて」、「音声メッセージとして送信して」)、または`/generate`コマンドを使用します。どの機能が利用できるかは、構成されたプロバイダーによって異なります。[プロバイダーとモデル](/ja/features/setup-administration/providers-and-models/) を参照してください。
 
 <CardGrid>
   <LinkCard title="画像生成" href="/ja/features/capabilities/media-generation/image-generation/"
-    description="テキストからの画像生成と画像からの画像生成。添付ファイル、アバター、スタンプ、絵文字からの参照画像に対応。" />
-  <LinkCard title="動画生成" href="/ja/features/capabilities/media-generation/video-generation/"
-    description="カスタマイズ可能なアスペクト比で、テキストからの短い動画や、画像からの動画クリップを生成。" />
-  <LinkCard title="音声: TTS & STT" href="/ja/features/capabilities/media-generation/tts-and-stt/"
-    description="ネイティブのDiscord音声メッセージ（テキスト読み上げ）と音声の文字起こし（音声認識）。" />
+    description="テキストから画像へ、および画像から画像へ。添付ファイル、アバター、スタンプ、絵文字からの参照画像を使用します。" />
+  <LinkCard title="ビデオ生成" href="/ja/features/capabilities/media-generation/video-generation/"
+    description="カスタマイズ可能なアスペクト比を備えた、短いテキストからビデオへのクリップと画像からビデオへのクリップ。" />
+  <LinkCard title="声: TTS & STT" href="/ja/features/capabilities/media-generation/tts-and-stt/"
+    description="ネイティブDiscord音声メッセージ (テキスト読み上げ) および音声転写 (音声テキスト変換)。" />
 </CardGrid>
 
 :::note
-すべてのプロバイダーがすべての機能をサポートしているわけではありません。ローカル生成（ComfyUI、ローカル音声サーバー）は、セルフホストのインスタンスで利用可能です。[セルフホスト](/ja/self-hosting/)を参照してください。
+すべてのプロバイダーがすべての機能をサポートしているわけではありません。ローカル生成 (ComfyUI、ローカル音声サーバー) はセルフホスト型インスタンスで利用できます。[セルフホスティング](/ja/self-hosting/)を参照してください。
 :::

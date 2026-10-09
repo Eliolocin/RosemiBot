@@ -8,32 +8,34 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-TomoriBot 把语音识别当作 `transcription` 这一自定义端点功能来处理。只要有一个处于激活状态的转写端点，音频附件就会在后台被转写，并被加入对话上下文。
+在本地转录语音消息和音频附件，以便TomoriBot可以理解聊天中的语音，而无需将录音发送到第三方云API。
 
-转写内容的公开显示是另一回事。`/config` > 行为 > 提示这一项只控制语音消息的转写是否会发到聊天里；它不会启用或停用后台的语音识别。
+TomoriBot将语音转文本视为`transcription`自定义端点功能。当活动转录端点存在时，音频附件在后台转录并添加到对话上下文中。
 
-## 可用引擎
+可见的成绩单发布是单独的。`/config` > 引擎 > 通知仅控制是否在聊天中发布语音消息记录； 它不会启用或禁用后台STT。
+
+## 可用发动机
 
 <CardGrid>
   <LinkCard title="WhisperX" href="/zh-CN/self-hosting/local-endpoints/speech-to-text/whisperx/"
-    description="适合初学者的本地转写方案，使用 servers/stt 下的参考 WhisperX 服务器。" />
-  <LinkCard title="whisper.cpp" href="/zh-CN/self-hosting/local-endpoints/speech-to-text/whispercpp/"
-    description="当轻量的 whisper.cpp HTTP 服务器暴露 OpenAI 兼容的转写端点时，就可以使用它。" />
+    description="使用servers/stt下的参考WhisperX服务器进行初学者友好的本地转录。" />
+  <LinkCard title="耳语.cpp" href="/zh-CN/self-hosting/local-endpoints/speech-to-text/whispercpp/"
+    description="当公开OpenAI兼容的转录端点时，使用轻量级的tweet.cpp HTTP服务器。" />
   <LinkCard title="KoboldCPP" href="/zh-CN/self-hosting/local-endpoints/speech-to-text/koboldcpp/"
-    description="当你的构建暴露 OpenAI 兼容的音频转写时，可以使用 KoboldCPP 基于 Whisper 的语音识别功能。" />
+    description="当你的构建公开与OpenAI兼容的音频转录时，请使用基于Whisper的KoboldCPP STT。" />
 </CardGrid>
 
 ## 设置流程
 
-1. 从上面的引擎指南里启动一个语音识别服务器。
-2. 在 `/providers` 里选择`添加新自定义端点`，并把 API 兼容性设为 `openai-compatible-transcription`。
-3. 选中已保存的端点，用它的模型下拉菜单添加服务器上报的模型代码。
-4. 打开 `/config` > 模型 > 切换模型，选中并激活已注册的端点。
+1. 从上面的引擎指南启动一台STT服务器。
+2. 在`/providers`中，选择`+ 添加新自定义端点`（或`Add New Custom Endpoint`）并选择`openai-compatible-transcription`（OpenAI兼容转录）。
+3. 选择保存的端点并使用其模型下拉列表添加服务器报告的模型代码。
+4. 打开`/config` > `模型` > 切换型号选择并激活已注册的端点。
 
-## 转写流程
+## 转录流程
 
-当转写端点处于激活状态时，TomoriBot 会在后台读取受支持的音频附件，并把转写内容加入聊天上下文。不需要指派任何人格。
+当转录端点处于活动状态时，TomoriBot在后台读取支持的音频附件并将转录添加到聊天上下文中。不需要人格分配。
 
-只有当你还想把这些转写内容公开发到聊天里时，才需要用到 `/config` > 行为 > 提示。
+仅当你还希望这些记录在聊天中可见时，才使用`/config` > 引擎 > 通知。
 
-使用 ElevenLabs 的话，在 `/providers` 里选择`添加新提供方`和 ElevenLabs；它会在注册语音的同时一并注册转写。
+ElevenLabs用户应在`/providers`中选择`添加新提供方`和`ElevenLabs`； 它会与语音一起记录转录。

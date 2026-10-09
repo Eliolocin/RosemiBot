@@ -15,9 +15,30 @@ export const TOOL_NOTICE_KEYS = [
   "respond_embed",
   "impersonation_notice",
   "fallback_model_usage",
+  "memory_update",
+  "task_update",
+  "user_info_update",
 ] as const;
 
+/** The one footer line every hideable notice shares, pointing at the toggle that hides it. */
+export const NOTICE_CONFIG_HINT_KEY = "tools.tool_notice.configure_hint";
+
 export type ToolNoticeKey = (typeof TOOL_NOTICE_KEYS)[number];
+
+export const NOTICE_VERBOSITY_LEVELS = ["minimal", "verbose"] as const;
+
+export type NoticeVerbosity = (typeof NOTICE_VERBOSITY_LEVELS)[number];
+
+/**
+ * Notices that keep their full card at every verbosity. The fallback notice reports a degraded
+ * reply and the impersonation notice discloses who wrote one, so a bare title would drop the detail
+ * these notices exist to show; the `/respond` card acknowledges a command rather than a tool call.
+ */
+export const VERBOSITY_EXEMPT_NOTICE_KEYS: ReadonlySet<ToolNoticeKey> = new Set<ToolNoticeKey>([
+  "respond_embed",
+  "impersonation_notice",
+  "fallback_model_usage",
+]);
 
 export function isToolNoticeKey(value: string): value is ToolNoticeKey {
   return TOOL_NOTICE_KEYS.includes(value as ToolNoticeKey);
@@ -109,5 +130,20 @@ export const TOOL_NOTICE_DEFINITIONS: ToolNoticeDefinition[] = [
     key: "fallback_model_usage",
     labelKey: "commands.config.notice-embeds.visibility.notice_fallback_model_usage_label",
     descriptionKey: "commands.config.notice-embeds.visibility.notice_fallback_model_usage_description",
+  },
+  {
+    key: "memory_update",
+    labelKey: "commands.config.notice-embeds.visibility.notice_memory_update_label",
+    descriptionKey: "commands.config.notice-embeds.visibility.notice_memory_update_description",
+  },
+  {
+    key: "task_update",
+    labelKey: "commands.config.notice-embeds.visibility.notice_task_update_label",
+    descriptionKey: "commands.config.notice-embeds.visibility.notice_task_update_description",
+  },
+  {
+    key: "user_info_update",
+    labelKey: "commands.config.notice-embeds.visibility.notice_user_info_update_label",
+    descriptionKey: "commands.config.notice-embeds.visibility.notice_user_info_update_description",
   },
 ];

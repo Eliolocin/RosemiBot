@@ -1,5 +1,11 @@
 export default {
   matrix: {
+    encryption_unlinked: {
+      title: `Cầu nối Matrix đã dừng`,
+      description: `Phòng Matrix \`{room_id}\` đã bật mã hóa đầu cuối, vì vậy mình đã hủy liên kết phòng khỏi kênh này và dừng chuyển tiếp tin nhắn. Mã hóa Matrix không thể tắt sau khi đã bật.
+
+Để tiếp tục cầu nối, hãy tạo một phòng Matrix mới không mã hóa, mời tài khoản bot và liên kết lại bằng {link_command}.`,
+    },
     notices: {
       invited: `TomoriBot đã tham gia phòng này.
 

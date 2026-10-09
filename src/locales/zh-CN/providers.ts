@@ -1,7 +1,6 @@
 export default {
   genai: {
     generic_error_title: `生成出错`,
-    generic_error_description: `{error_message}`,
     error_stream_timeout_title: `连接超时`,
     error_stream_timeout_description: `如果一直这样，可能是你选的 AI 提供方临时出了问题。请稍后再试，或者用 \`/refresh\` 刷新上下文历史。`,
     empty_response_title: `空回复`,
@@ -20,7 +19,6 @@ export default {
 {failure_list}`,
     fallback_used_failure_line: `{index}. {model} 报错：{error_detail}`,
     fallback_used_details_button: `已用备用模型`,
-    fallback_used_hide_footer: `用 \`/config\` > 行为 > 提示 隐藏它，并把细节转到思考日志`,
     fallback_used_personal_opt_out_footer: `用 \`/personal config\` > 模型 > 备用模型 关掉服务器模型替你个人提供方兜底`,
     markdown_table: {
       show_button: `显示 Markdown`,
@@ -29,6 +27,8 @@ export default {
     },
     no_response_title: `没有回复`,
     no_response_description: `我没有回复，可能是 AI 给了空回复或者超时了。`,
+    log_channel_chat_notice_title: `日志频道不开放聊天`,
+    log_channel_chat_notice_description: `这个频道被设为日志频道，所以我不会在这里回复消息。如果想在这里聊天，请到 \`/config\` > 频道 > 日志 清除或更改设置。`,
     thought_log: {
       title: `思考日志`,
       description: `来源：{source_line}`,
@@ -135,6 +135,10 @@ export default {
       content_blocked_default_message: `你的内容被安全过滤器拦截了`,
       unknown_default_message: `发生了意料之外的错误`,
     },
+    vertex: {
+      config_error_message: `Vertex AI 读取不了这个提供方的设置。请在 \`/providers\` 里按 \`project-id::location\` 的格式填写密钥。`,
+      auth_error_message: `Vertex AI 认证失败。部署 TomoriBot 的人需要配置 Google Cloud 的 Application Default Credentials（\`gcloud auth application-default login\` 或 \`GOOGLE_APPLICATION_CREDENTIALS\`）。`,
+    },
     vertexexpress: {
       "403_predict_permission_message": `这把密钥没法调用 Vertex AI Express 模型。请改用 Express 模式的密钥，或者改用独立的 \`vertex\` 提供方来跑完整的 Google Cloud 项目。`,
       unknown_default_message: `发生了意料之外的错误`,
@@ -178,6 +182,7 @@ export default {
     },
     custom: {
       "402_default_message": `你在这个端点上的账户余额不足`,
+      REDIRECT_CREDENTIALS_WITHHELD_default_message: `该端点重定向到了另一个地址，因此 TomoriBot 没有向其发送 API 密钥。在 \`/providers\` 中管理此端点的人可以通过将其 URL 改为服务器重定向到的最终地址来修复此问题。`,
       unknown_default_message: `发生了意料之外的错误`,
     },
     deepseek: {
@@ -194,11 +199,11 @@ export default {
       "401_default_message": `NVIDIA 没有识别出这个密钥。请检查它是否完整复制，包括 \`nvapi-\` 前缀。`,
       "403_default_message": `NVIDIA 拒绝了这个密钥。它可能输错了、已经过期，或者所属账号没有推理访问权限。`,
       "404_default_message": `找不到所请求的 NVIDIA NIM 模型。它可能已经被 NVIDIA 弃用。`,
-      "500_default_message": `为这个模型提供服务的 NVIDIA 后端失败了。这通常是暂时性的，请稍后再试。下面的细节是 NVIDIA 自己的报告，具有权威性：如果里面点名了某个请求参数，请调整那项设置，不要靠猜。`,
+      "500_default_message": `为这个模型提供服务的 NVIDIA 后端出错了。这通常是暂时的，请稍后再试。如果一直失败，部署 TomoriBot 的人可以在机器人日志里查看 NVIDIA 的完整报告。`,
       // Shown instead of 500_default_message only when NVIDIA's own text names a droppable request
       // parameter. Asserting this cause on every 500 previously sent users to change settings the
       // failing payload never carried.
-      "500_parameter_default_message": `NVIDIA 拒绝了这个模型的一个或多个请求参数。如果细节里点名了 \`min_p\` 之类不受支持的采样器参数，请到 \`/config\` > 模型 > 文本采样器与参数 把它们设成 \`0\` 来关闭。如果细节里点名了 \`logit_bias\`，请到 \`/config\` > 模型 > 文本采样器与参数 清空已保存的条目。`,
+      "500_parameter_default_message": `NVIDIA 拒绝了这个模型的一个或多个请求参数。请到 \`/config\` > 模型 > 文本采样器与参数，把 \`min_p\` 之类不受支持的采样器设成 \`0\`，并清空已保存的 \`logit_bias\` 条目。`,
       unknown_default_message: `发生了意料之外的错误`,
     },
     self_teach: {

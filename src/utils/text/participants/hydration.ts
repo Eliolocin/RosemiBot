@@ -558,8 +558,8 @@ function enrichIdentityField(base: HydratedDiscordUserBase): ParticipantProfileF
   if (base.policy.exposeIdentity) {
     const genderIdentity = base.userRow.gender_identity?.trim();
     const pronouns = base.userRow.pronouns?.trim();
-    if (genderIdentity) lines.push(`- Gender Identity: ${genderIdentity}`);
-    if (pronouns) lines.push(`- Pronouns: ${pronouns}`);
+    if (genderIdentity) lines.push(`- ${base.profile.displayName}'s Gender Identity: ${genderIdentity}`);
+    if (pronouns) lines.push(`- ${base.profile.displayName}'s Pronouns: ${pronouns}`);
   }
   return field(base.profile.key, "identity", 15, lines, base.policy.exposeIdentity ? "missing_data" : "privacy");
 }
@@ -666,7 +666,7 @@ async function hydratePersonalMemoryLines(
       return formatMemoryWithId(memory.personal_memory_id ?? index + 1, processed, memory.tags ?? []);
     }),
   );
-  return [`- Memories: ${processedMemories.join("; ")}`];
+  return [`- Memories about ${displayName}: ${processedMemories.join("; ")}`];
 }
 
 function memoryMatchesContext(memory: PersonalMemoryRow, params: ParticipantHydrationParams): boolean {

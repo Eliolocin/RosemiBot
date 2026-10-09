@@ -1,7 +1,6 @@
 export default {
   genai: {
     generic_error_title: `Generation Error`,
-    generic_error_description: `{error_message}`,
     error_stream_timeout_title: `Connection Timeout`,
     error_stream_timeout_description: `If this keeps happening, there might be a temporary issue with your chosen AI provider. Please try again later or use \`/refresh\` to refresh the context history.`,
     empty_response_title: `Empty Response`,
@@ -20,7 +19,6 @@ export default {
 {failure_list}`,
     fallback_used_failure_line: `{index}. {model} errored with {error_detail}`,
     fallback_used_details_button: `Fallback Used`,
-    fallback_used_hide_footer: `Hide this and reroute details to thought logs with \`/config\` > Behavior > Notices`,
     fallback_used_personal_opt_out_footer: `Stop the server's model from covering your personal provider's failures in \`/personal config\` > Models > Fallbacks`,
     markdown_table: {
       show_button: `Show Markdown`,
@@ -29,6 +27,8 @@ export default {
     },
     no_response_title: `No Response`,
     no_response_description: `I didn't respond - this may be due to an empty response or timeout from the AI.`,
+    log_channel_chat_notice_title: `Chat Is Off in the Log Channel`,
+    log_channel_chat_notice_description: `This channel is set as the log channel, so I don't reply to messages here. To chat here, clear or change it in \`/config\` > Channels > Logs.`,
     thought_log: {
       title: `Thought Log`,
       description: `Source: {source_line}`,
@@ -46,7 +46,7 @@ export default {
       reply_context_description: `{message_url}`,
       reply_context_footer: `Replying to {user} • {message_url}`,
     },
-    text_quota_exceeded_title: `🔴 Text Quota Exceeded`,
+    text_quota_exceeded_title: `Text Quota Exceeded`,
     text_quota_exceeded_description: `You have reached your text generation quota. {reset_info}`,
     text_user_quota_exceeded_description: `You have reached your daily text generation quota. {reset_info}`,
     text_serverwide_quota_exceeded_description: `This server has reached its text generation quota for this period. {reset_info}`,
@@ -58,22 +58,22 @@ export default {
       response_stopped_description: `The response was interrupted for the following reason: {reason}. Make sure that content sent is not too large for the AI provider to handle. Run \`/refresh\` to clear conversation content.`,
       streaming_failed_description: `An issue while trying to stream the response.`,
       provider_error_interaction: `Stream response blocked/stopped. Reason: {reason}.`,
-      api_error_title: `🔴 Provider API Error`,
-      privacy_error_title: `🔴 Provider Privacy Settings`,
-      model_error_title: `🔴 Model Configuration Error`,
+      api_error_title: `Provider API Error`,
+      privacy_error_title: `Provider Privacy Settings`,
+      model_error_title: `Model Configuration Error`,
       model_error_description: `The selected model was rejected by the provider. Check the configured model name and switch to one of the provider's supported model IDs.`,
-      rate_limit_title: `🟡 Provider Rate Limit Exceeded`,
-      rate_limit_title_all_rotation_keys: `🟡 Provider Rate Limit Exceeded (All Rotation Keys)`,
-      content_blocked_title: `🔴️ Provider Content Filter`,
-      timeout_title: `🟡️ Provider Request Timeout`,
-      provider_overloaded_title: `🔴 Provider Overloaded`,
+      rate_limit_title: `Provider Rate Limit Exceeded`,
+      rate_limit_title_all_rotation_keys: `Provider Rate Limit Exceeded (All Rotation Keys)`,
+      content_blocked_title: `Provider Content Filter`,
+      timeout_title: `Provider Request Timeout`,
+      provider_overloaded_title: `Provider Overloaded`,
       provider_overloaded_description: `The provider is currently overloaded or temporarily unavailable`,
-      context_length_title: `🔴 Message Too Long for This Model`,
-      credit_limit_title: `🔴 Not Enough Provider Credits`,
-      balance_exhausted_title: `🔴 Provider Account Out of Credit`,
-      flush_limit_title: `🟡️ Response Length Limit Reached`,
+      context_length_title: `Message Too Long for This Model`,
+      credit_limit_title: `Not Enough Provider Credits`,
+      balance_exhausted_title: `Provider Account Out of Credit`,
+      flush_limit_title: `Response Length Limit Reached`,
       flush_limit_description: `This response has reached the maximum message length limit and has been stopped. You can use \`/respond\` to manually continue the response if needed.`,
-      inactivity_timeout_title: `🟡️ Response Timed Out`,
+      inactivity_timeout_title: `Response Timed Out`,
       inactivity_timeout_description: `The AI provider stopped responding and the connection timed out. This can happen when the provider is overloaded or experiencing issues. Please try again.`,
       first_token_timeout_description: `The AI provider accepted the request but never started replying, so the connection timed out. Its queue is likely backed up. Please try again, or switch to a less busy model.`,
     },
@@ -135,6 +135,10 @@ export default {
       content_blocked_default_message: `Your content was blocked by safety filters`,
       unknown_default_message: `An unexpected error occurred`,
     },
+    vertex: {
+      config_error_message: `Vertex AI could not read this provider's settings. Enter the key as \`project-id::location\` in \`/providers\`.`,
+      auth_error_message: `Vertex AI could not authenticate. Whoever hosts TomoriBot needs to set up Google Cloud Application Default Credentials (\`gcloud auth application-default login\`, or \`GOOGLE_APPLICATION_CREDENTIALS\`).`,
+    },
     vertexexpress: {
       "403_predict_permission_message": `This key can't call Vertex AI Express models. Use an Express-mode key, or use the separate \`vertex\` provider for full Google Cloud projects.`,
       unknown_default_message: `An unexpected error occurred`,
@@ -178,6 +182,7 @@ The selected model requires allowing data for paid model training, but your Open
     },
     custom: {
       "402_default_message": `Your account with this endpoint has insufficient balance`,
+      REDIRECT_CREDENTIALS_WITHHELD_default_message: `This endpoint redirected to a different address, so TomoriBot did not send its API key there. Whoever manages this endpoint in \`/providers\` can fix it by changing its URL to the final address the server redirects to.`,
       unknown_default_message: `An unexpected error occurred`,
     },
     deepseek: {
@@ -194,11 +199,11 @@ The selected model requires allowing data for paid model training, but your Open
       "401_default_message": `NVIDIA did not recognize this key. Check that it was copied in full, including its \`nvapi-\` prefix.`,
       "403_default_message": `NVIDIA refused this key. It may be mistyped, expired, or missing inference access on its account.`,
       "404_default_message": `The requested NVIDIA NIM model could not be found. It may be deprecated by NVIDIA.`,
-      "500_default_message": `The NVIDIA backend serving this model failed. This is usually transient, so try again in a moment. The details below are NVIDIA's own report and are authoritative: if they name a request parameter, adjust that setting rather than guessing.`,
+      "500_default_message": `The NVIDIA backend serving this model failed. This is usually transient, so try again in a moment. If it keeps failing, whoever hosts TomoriBot can read NVIDIA's full report in the bot logs.`,
       // Shown instead of 500_default_message only when NVIDIA's own text names a droppable request
       // parameter. Asserting this cause on every 500 previously sent users to change settings the
       // failing payload never carried.
-      "500_parameter_default_message": `NVIDIA rejected one or more request parameters for this model. If the details name unsupported sampler parameters such as \`min_p\`, set them to \`0\` with \`/config\` > Models > Samplers & Parameters to turn them off. If the details name \`logit_bias\`, clear saved entries with \`/config\` > Models > Samplers & Parameters.`,
+      "500_parameter_default_message": `NVIDIA rejected one or more request parameters for this model. In \`/config\` > Models > Samplers & Parameters, set unsupported samplers such as \`min_p\` to \`0\` and clear saved \`logit_bias\` entries.`,
       unknown_default_message: `An unexpected error occurred`,
     },
     self_teach: {

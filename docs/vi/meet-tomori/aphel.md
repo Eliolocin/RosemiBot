@@ -2,6 +2,7 @@
 title: "Aphel, cô nàng ủ rũ"
 sidebar:
   order: 3
+aiGenerated: false
 ---
 
 :::danger[Bài viết này là một bản nháp sơ lược]

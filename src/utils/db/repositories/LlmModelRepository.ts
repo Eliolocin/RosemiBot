@@ -1,4 +1,6 @@
 import {
+  decisionModelSchema,
+  type DecisionModelRow,
   diffusionModelSchema,
   embeddingModelSchema,
   llmSchema,
@@ -15,6 +17,7 @@ import { buildIntegerParameterList } from "@/utils/db/parameterBinding";
 import { log } from "@/utils/misc/logger";
 import { isCustomProvider } from "@/utils/provider/customProviderUtils";
 import type { ImageEndpointSupports } from "@/utils/provider/customImageEndpointSupport";
+import type { DecisionModelOption } from "@/types/provider/featureInterfaces";
 
 /** Canonical scope for OpenRouter model visibility filtering. */
 export type OpenRouterModelScope = { kind: "server"; ownerId: number } | { kind: "personal"; ownerId: number };
@@ -44,10 +47,141 @@ function toPgNumericArrayLiteral(values: number[]): string {
 /**
  * LlmModelRepository: global model catalog for all LLM modalities.
  *
- * Owns tables: llms, embedding_models, image_diffusion_models, video_generation_models.
- * Read-only; model catalog is global seed data, not exportable per-server state.
+ * Owns text, embedding, image, video, and decision catalogs, including scoped registrations.
+ * Catalog rows are not exportable per-server state.
  */
 class LlmModelRepository {
+  async loadDecisionModelOptions(scope: OpenRouterModelScope): Promise<DecisionModelOption[]> {
+    const serverId = scope.kind === "server" ? scope.ownerId : null;
+    const userId = scope.kind === "personal" ? scope.ownerId : null;
+    const rows = await withTransientDbRetry(
+      () => sql<
+        Array<DecisionModelRow & { scoped_model_registration_id: number | null; custom_endpoint_id: number | null }>
+      >`
+      SELECT model.*, registration.scoped_model_registration_id, endpoint.custom_endpoint_id
+      FROM decision_models model
+      LEFT JOIN scoped_model_registrations registration
+        ON registration.decision_model_id = model.decision_model_id
+        AND registration.server_id IS NOT DISTINCT FROM ${serverId}::int
+        AND registration.user_id IS NOT DISTINCT FROM ${userId}::int
+      LEFT JOIN custom_endpoint_connections connection
+        ON model.provider = 'custom:' || connection.connection_id AND connection.capability = 'decision'
+        AND connection.server_id IS NOT DISTINCT FROM ${serverId}::int
+        AND connection.user_id IS NOT DISTINCT FROM ${userId}::int
+      LEFT JOIN custom_endpoints endpoint
+        ON endpoint.connection_id = connection.connection_id AND endpoint.model_ref_id = model.decision_model_id
+      WHERE model.is_deprecated = false
+        AND (
+          (model.provider = 'openrouter' AND (model.is_scoped_registration = false OR registration.scoped_model_registration_id IS NOT NULL))
+          OR endpoint.custom_endpoint_id IS NOT NULL
+        )
+        AND (
+          EXISTS (SELECT 1 FROM saved_provider_configs saved WHERE saved.server_id = ${serverId} AND saved.provider = model.provider)
+          OR EXISTS (SELECT 1 FROM user_saved_provider_configs saved WHERE saved.user_id = ${userId} AND saved.provider = model.provider)
+        )
+      ORDER BY model.provider, model.decision_model_id
+    `,
+      "load owned decision model options",
+    );
+    return rows.map((row) => ({
+      model: decisionModelSchema.parse(row),
+      reference: {
+        provider: row.provider,
+        modelId: row.decision_model_id,
+        registrationId:
+          row.is_scoped_registration && row.provider === "openrouter" ? row.scoped_model_registration_id : null,
+        customEndpointId: row.custom_endpoint_id ?? null,
+      },
+    }));
+  }
+  async loadAvailableDecisionModels(
+    provider: string,
+    includeDeprecated = false,
+    scope?: OpenRouterModelScope,
+  ): Promise<DecisionModelRow[]> {
+    const serverId = scope?.kind === "server" ? scope.ownerId : null;
+    const userId = scope?.kind === "personal" ? scope.ownerId : null;
+    const rows = await withTransientDbRetry(
+      () => sql`
+      SELECT model.* FROM decision_models model
+      WHERE model.provider = ${provider.toLowerCase()}
+        AND (${includeDeprecated} OR model.is_deprecated = false)
+        AND (
+          model.is_scoped_registration = false
+          OR EXISTS (
+            SELECT 1 FROM scoped_model_registrations registration
+            WHERE registration.decision_model_id = model.decision_model_id
+              AND registration.server_id IS NOT DISTINCT FROM ${serverId}::int
+              AND registration.user_id IS NOT DISTINCT FROM ${userId}::int
+          )
+          OR EXISTS (
+            SELECT 1 FROM custom_endpoints endpoint
+            JOIN custom_endpoint_connections connection USING (connection_id)
+            WHERE endpoint.model_ref_id = model.decision_model_id
+              AND connection.capability = 'decision'
+              AND model.provider = 'custom:' || connection.connection_id
+              AND connection.server_id IS NOT DISTINCT FROM ${serverId}::int
+              AND connection.user_id IS NOT DISTINCT FROM ${userId}::int
+          )
+        )
+      ORDER BY model.is_scoped_registration, model.decision_model_id
+    `,
+      "load available decision models",
+    );
+    return decisionModelSchema.array().parse(rows);
+  }
+
+  async loadDecisionModelByProviderAndCodename(provider: string, codename: string): Promise<DecisionModelRow | null> {
+    const rows = await sql`SELECT * FROM decision_models WHERE provider = ${provider} AND codename = ${codename}`;
+    return rows.length ? decisionModelSchema.parse(rows[0]) : null;
+  }
+
+  async upsertDecisionModel(params: {
+    provider: string;
+    codename: string;
+    inputTokenLimit: number;
+    seesImages?: boolean;
+    inputPricePerMillion?: number | null;
+    outputPricePerMillion?: number | null;
+  }): Promise<number> {
+    const validated = decisionModelSchema.omit({ decision_model_id: true }).parse({
+      provider: params.provider,
+      codename: params.codename,
+      input_token_limit: params.inputTokenLimit,
+      sees_images: params.seesImages ?? false,
+      supported_primitives: ["predicate"],
+      input_price_per_million: params.inputPricePerMillion,
+      output_price_per_million: params.outputPricePerMillion,
+    });
+    const [row] = await sql<Array<{ decision_model_id: number }>>`
+      INSERT INTO decision_models (
+        provider, codename, input_token_limit, sees_images, input_price_per_million,
+        output_price_per_million, is_scoped_registration
+      ) VALUES (
+        ${validated.provider}, ${validated.codename}, ${validated.input_token_limit}, ${validated.sees_images},
+        ${validated.input_price_per_million ?? null}, ${validated.output_price_per_million ?? null}, true
+      ) ON CONFLICT (provider, codename) DO UPDATE SET
+        input_token_limit = EXCLUDED.input_token_limit, sees_images = EXCLUDED.sees_images,
+        input_price_per_million = EXCLUDED.input_price_per_million,
+        output_price_per_million = EXCLUDED.output_price_per_million,
+        is_deprecated = false, updated_at = CURRENT_TIMESTAMP
+      RETURNING decision_model_id
+    `;
+    return row.decision_model_id;
+  }
+
+  async deleteOrphanedDecisionModel(modelId: number): Promise<void> {
+    await sql`
+      DELETE FROM decision_models model WHERE decision_model_id = ${modelId}
+        AND is_scoped_registration = true
+        AND NOT EXISTS (SELECT 1 FROM scoped_model_registrations WHERE decision_model_id = ${modelId})
+        AND NOT EXISTS (
+          SELECT 1 FROM custom_endpoints endpoint
+          JOIN custom_endpoint_connections connection USING (connection_id)
+          WHERE connection.capability = 'decision' AND endpoint.model_ref_id = ${modelId}
+        )
+    `;
+  }
   /**
    * Returns all non-deprecated LLMs, or all LLMs when includeDeprecated is true.
    *
@@ -516,7 +650,7 @@ class LlmModelRepository {
       `;
 
       if (!rows || rows.length === 0) {
-        log.error(`No available embedding models found for provider: ${normalized}`);
+        log.warn(`No available embedding models found for provider: ${normalized}`);
         return null;
       }
 
@@ -953,6 +1087,7 @@ class LlmModelRepository {
       supportsStructuredOutput: boolean;
       strictRoleAlternation?: boolean;
       supportsPrefixCompletion?: boolean;
+      supportsAssistantPrefill?: boolean;
     },
     provider = "openrouter",
     pricing?: { inputPerMillion: number; outputPerMillion: number } | null,
@@ -967,13 +1102,13 @@ class LlmModelRepository {
           is_default, is_reasoning, is_deprecated, is_free, has_tools,
           sees_images, sees_videos, sees_youtube, is_uncensored,
           supports_structoutput, strict_role_alternation, supports_prefix_completion,
-          llm_description, descriptions,
+          supports_assistant_prefill, llm_description, descriptions,
           input_price_per_million, output_price_per_million
         ) VALUES (
           ${provider}, ${modelCodename}, true, false, false, false, false, false,
           ${caps.hasTools}, ${caps.seesImages}, ${caps.seesVideos}, ${caps.seesYoutube},
           false, ${caps.supportsStructuredOutput}, ${caps.strictRoleAlternation ?? false},
-          ${caps.supportsPrefixCompletion ?? false}, ${modelCodename},
+          ${caps.supportsPrefixCompletion ?? false}, ${caps.supportsAssistantPrefill ?? false}, ${modelCodename},
           ${{ "en-US": modelCodename }},
           ${inputPrice}, ${outputPrice}
         )
@@ -987,6 +1122,7 @@ class LlmModelRepository {
           supports_structoutput   = EXCLUDED.supports_structoutput,
           strict_role_alternation = EXCLUDED.strict_role_alternation,
           supports_prefix_completion = EXCLUDED.supports_prefix_completion,
+          supports_assistant_prefill = EXCLUDED.supports_assistant_prefill,
           llm_description         = EXCLUDED.llm_description,
           descriptions            = COALESCE(llms.descriptions, EXCLUDED.descriptions),
           -- COALESCE, not EXCLUDED: a re-registration during an OpenRouter outage resolves no
@@ -1191,6 +1327,7 @@ class LlmModelRepository {
     supportsStructOutput: boolean;
     strictRoleAlternation: boolean;
     supportsPrefixCompletion: boolean;
+    supportsAssistantPrefill: boolean;
     verbatimToolCalling: boolean;
   }): Promise<number | null> {
     try {
@@ -1198,13 +1335,13 @@ class LlmModelRepository {
         INSERT INTO llms (
           llm_provider, llm_codename, has_tools, sees_images, sees_videos,
           sees_youtube, supports_structoutput, strict_role_alternation, supports_prefix_completion,
-          verbatim_tool_calling,
+          supports_assistant_prefill, verbatim_tool_calling,
           is_smartest, is_default, is_reasoning, is_deprecated, is_free, is_uncensored,
           llm_description, descriptions
         ) VALUES (
           ${params.provider}, ${params.codename}, ${params.hasTools}, ${params.seesImages}, ${params.seesVideos},
           false, ${params.supportsStructOutput}, ${params.strictRoleAlternation}, ${params.supportsPrefixCompletion},
-          ${params.verbatimToolCalling},
+          ${params.supportsAssistantPrefill}, ${params.verbatimToolCalling},
           false, true, false, false, false, false,
           ${params.displayName}, ${{ "en-US": params.displayName }}
         )
@@ -1215,6 +1352,7 @@ class LlmModelRepository {
           supports_structoutput = EXCLUDED.supports_structoutput,
           strict_role_alternation = EXCLUDED.strict_role_alternation,
           supports_prefix_completion = EXCLUDED.supports_prefix_completion,
+          supports_assistant_prefill = EXCLUDED.supports_assistant_prefill,
           verbatim_tool_calling = EXCLUDED.verbatim_tool_calling,
           llm_description = EXCLUDED.llm_description,
           descriptions = jsonb_set(COALESCE(llms.descriptions, '{}'::jsonb), '{en-US}', to_jsonb(${params.displayName}::text)),
@@ -1462,12 +1600,7 @@ class LlmModelRepository {
     return Boolean(row?.in_use);
   }
 
-  /**
-   * Count active scope registrations for a scoped LLM.
-   * Zero means the catalog row can be deleted if also unreferenced.
-   *
-   * @param llmId - Internal LLM ID
-   */
+  /** Zero means the catalog row can be deleted if also unreferenced. */
   async countLlmRegistrations(llmId: number): Promise<number> {
     const [row] = await sql<Array<{ count: string | number }>>`
       SELECT COUNT(*) AS count FROM scoped_model_registrations WHERE llm_id = ${llmId}
@@ -1475,11 +1608,6 @@ class LlmModelRepository {
     return Number(row?.count ?? 0);
   }
 
-  /**
-   * Count active scope registrations for a scoped embedding model.
-   *
-   * @param embeddingModelId - Internal embedding model ID
-   */
   async countEmbeddingModelRegistrations(embeddingModelId: number): Promise<number> {
     const [row] = await sql<Array<{ count: string | number }>>`
       SELECT COUNT(*) AS count FROM scoped_model_registrations
@@ -1488,11 +1616,6 @@ class LlmModelRepository {
     return Number(row?.count ?? 0);
   }
 
-  /**
-   * Count active scope registrations for a scoped diffusion model.
-   *
-   * @param diffusionModelId - Internal diffusion model ID
-   */
   async countDiffusionModelRegistrations(diffusionModelId: number): Promise<number> {
     const [row] = await sql<Array<{ count: string | number }>>`
       SELECT COUNT(*) AS count FROM scoped_model_registrations
@@ -1501,11 +1624,6 @@ class LlmModelRepository {
     return Number(row?.count ?? 0);
   }
 
-  /**
-   * Count active scope registrations for a scoped video model.
-   *
-   * @param videoModelId - Internal video model ID
-   */
   async countVideoModelRegistrations(videoModelId: number): Promise<number> {
     const [row] = await sql<Array<{ count: string | number }>>`
       SELECT COUNT(*) AS count FROM scoped_model_registrations
@@ -1657,9 +1775,18 @@ class LlmModelRepository {
     supportsStructOutput: boolean;
     strictRoleAlternation: boolean;
     supportsPrefixCompletion: boolean;
+    supportsAssistantPrefill: boolean;
     verbatimToolCalling: boolean;
+    inputTokenLimit?: number | null;
   }): Promise<void> {
     switch (params.capability) {
+      case "decision":
+        await sql`
+          UPDATE decision_models SET codename = ${params.codename},
+            input_token_limit = ${params.inputTokenLimit ?? null}, updated_at = CURRENT_TIMESTAMP
+          WHERE decision_model_id = ${params.modelRefId}
+        `;
+        return;
       case "text":
         await sql`
           UPDATE llms SET
@@ -1670,6 +1797,7 @@ class LlmModelRepository {
             supports_structoutput = ${params.supportsStructOutput},
             strict_role_alternation = ${params.strictRoleAlternation},
             supports_prefix_completion = ${params.supportsPrefixCompletion},
+            supports_assistant_prefill = ${params.supportsAssistantPrefill},
             verbatim_tool_calling = ${params.verbatimToolCalling},
             llm_description = ${params.displayName},
             descriptions = jsonb_set(COALESCE(descriptions, '{}'::jsonb), '{en-US}', to_jsonb(${params.displayName}::text)),
@@ -1726,6 +1854,7 @@ class LlmModelRepository {
     await sql`DELETE FROM embedding_models WHERE provider = ${provider}`;
     await sql`DELETE FROM image_diffusion_models WHERE provider = ${provider}`;
     await sql`DELETE FROM video_generation_models WHERE provider = ${provider}`;
+    await sql`DELETE FROM decision_models WHERE provider = ${provider}`;
   }
 }
 

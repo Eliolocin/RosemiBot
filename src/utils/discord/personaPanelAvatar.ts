@@ -1,4 +1,9 @@
-import { AttachmentBuilder, type ChatInputCommandInteraction, type InteractionEditReplyOptions } from "discord.js";
+import {
+  AttachmentBuilder,
+  type ChatInputCommandInteraction,
+  GuildMember,
+  type InteractionEditReplyOptions,
+} from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import type { GlobalRoutableInteraction } from "@/utils/discord/interactions/routeRegistry";
 import {
@@ -108,4 +113,14 @@ export function withPersonaPanelAvatar<T extends InteractionEditReplyOptions>(
     attachments: [],
     files: [...(payload.files ?? []), ...avatars.flatMap((item) => item.files)],
   };
+}
+
+/**
+ * Prefers the invoker's server avatar over their global one. A Discord CDN URL needs no attachment,
+ * unlike a persona avatar.
+ */
+export function resolveInvokerAvatarUrl(interaction: GlobalRoutableInteraction | ChatInputCommandInteraction): string {
+  // An uncached member arrives as a raw APIInteractionGuildMember, which has no displayAvatarURL.
+  const source = interaction.member instanceof GuildMember ? interaction.member : interaction.user;
+  return source.displayAvatarURL({ size: 256, extension: "png" });
 }

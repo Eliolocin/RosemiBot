@@ -2,95 +2,28 @@
 title: "02.4: Server Emojis"
 ---
 
-List of the server's custom emojis with metadata, framed for LLM use.
+Server emojis list the custom emojis available in the guild, augmented with optional emotion keys and descriptive metadata.
 
-- **File**: `src/utils/text/context/serverAssets.ts:31-126`
+## Flow and ownership
 
-## Mission
+The contributor `buildServerEmojiContextItem` in `src/utils/text/context/serverAssets.ts` emits a `system`-role context item tagged `KNOWLEDGE_SERVER_EMOJIS`:
 
-Emit one context item describing every server-custom emoji available, with
-optional emotion-key and description metadata. Format each emoji as
-`:name:` or `:name: (Expresses emotion; description)` so the LLM can use
-them naturally in replies via raw `:name:` syntax (Discord auto-resolves
-when the emoji exists in the active server).
+1. **Eligibility**: Returns `null` if the channel is a DM, `emoji_usage_enabled` is false, persona state is missing, or the guild's live emoji cache is empty.
+2. **Metadata merging**: Uses `preloadedEmojis` from turn asset loading, or queries `serverRepository.loadEmojis(serverId)`. When Discord emojis share the same name, it retains the entry with the richest metadata (emotion key or description), breaking ties by the most recent update timestamp.
+3. **Ordering and formatting**: Emojis are sorted by `createdTimestamp` ascending. Each entry formats as `:name:` or `:name: (Expresses <emotion>; <description>)`.
+4. **Usage instructions**: Appends guidance instructing the model to write `:name:` without numeric Discord IDs. In impersonation mode, the wording simplifies to generic instructions.
 
-## Input
+The assembled text passes through `convertMentions` before emission.
 
-- `client`, `guildId`, `serverName`, `botName`
-- `isDMChannel`, `isUserImpersonation`
-- `tomoriConfig.emoji_usage_enabled`,
-  `tomoriConfig.personal_memories_enabled`
-- `tomoriState` (provides `server_id`)
-- `preloadedEmojis`: emoji metadata pre-loaded by the chat pipeline's
-  `loadPersonaAssets`; falls back to `serverRepository.loadEmojis` if not
-  provided
-- `snapshot`, `convertMentions`
+## Constraints and rationale
 
-## Output
+- **Name deduplication**: Each emoji name appears at most once in the prompt so the LLM is not presented with duplicate choices.
+- **Raw name syntax**: The output cleaner resolves `:name:` to Discord emoji tags using the guild's emoji list. The model supplies names instead of guessing snowflake IDs.
+- **Preset reassembly**: Tagged as `KNOWLEDGE_SERVER_EMOJIS`, which SillyTavern preset reassembly flushes at the first knowledge anchor.
 
-`Promise<StructuredContextItem | null>`: `null` if any precondition fails,
-otherwise one `system`-role item tagged `KNOWLEDGE_SERVER_EMOJIS`.
+## Source pointers
 
-Content shape:
-
-```
-## {serverName}'s Emojis
-- :name1:
-- :name2: (Expresses happy; "celebration vibe")
-- :name3: (Expresses sad)
-
-To use {serverName}'s emojis, just write :name: (name only, no IDs). Names are
-case-insensitive, and {bot} will expand them to the correct custom emoji.
-```
-
-## Side effects
-
-- **Discord cache read**: `client.guilds.cache.get(guildId).emojis.cache`
-  for the live emoji list.
-- **DB read (conditional)**: falls back to
-  `serverRepository.loadEmojis(server_id)` when `preloadedEmojis` is empty.
-- **Metadata dedup**: when Discord has multiple emojis with the same
-  name, picks the one with richer metadata (emotion key or description),
-  then the one with the most recent timestamp.
-- **Sort stability**: emojis are sorted by `createdTimestamp` ascending,
-  so the LLM sees them in creation order.
-- **Mention conversion**: final assembled text passes through
-  `convertMentions`.
-
-## Invariants
-
-After this stage runs:
-
-- Returns `null` if: DM channel, `emoji_usage_enabled === false`,
-  `tomoriState === null`, or the guild emoji cache is empty.
-- Each emoji name appears at most once in the output even if Discord has
-  duplicates (deduped by `latestEmojiByName`).
-- The closing usage instruction adapts to impersonation mode (simplified
-  phrasing).
-
-## Configuration
-
-| Source | Field | Effect |
-|---|---|---|
-| `tomoriConfig` | `emoji_usage_enabled` | Master switch; `false` returns `null` |
-
-## Extension points
-
-| Surface | Plugin-relevance |
-|---|---|
-| `EmojiMetadata` shape | Defined in `serverAssets.ts:8-18`; tightly coupled to the `server_emojis` table schema. A plugin adding emoji-source kinds would extend the metadata-load path. |
-| Sister contributor: stickers (stage 05) | Stickers share the metadata + dedup logic pattern. Future "GIF library" or "voice clip library" contributors would mirror this shape. |
-| Emoji-metadata enrichment (emotion key, description) | The `/refresh` and `/emoji` commands populate this; the contributor only formats. New enrichment kinds would extend the DB schema + the formatter here. |
-
-- **A plugin adding a new server-asset kind** (e.g. custom GIF reactions)
-would add a new contributor with its own tag, parallel to this one; see
-the native-assembly README's extension-point discussion for the
-"new contributor" question.
-
-## Related docs
-
-- Sticker contributor: [`05-server-stickers.md`](/architecture/pipelines/context-build/02-native-assembly/05-server-stickers/)
-- Emoji metadata sources: → no dedicated doc; the `/refresh` command
-  and `refreshEmojis` event handler populate it
-- Persona asset pre-loading (chat pipeline):
-  [`buildChatTurnContext`](../../chat/06-per-turn/01-build-context)
+- `src/utils/text/context/serverAssets.ts`: `buildServerEmojiContextItem`.
+- `src/utils/db/repositories/ServerRepository.ts`: `loadEmojis`.
+- `src/utils/text/context/mentionNormalizer.ts`: `convertMentions`.
+- [05: Server Stickers](/architecture/pipelines/context-build/02-native-assembly/05-server-stickers/): companion asset contributor.

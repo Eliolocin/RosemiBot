@@ -6,9 +6,6 @@ import { replyInfoEmbed } from "@/utils/discord/ui/embeds";
 import { isGuildMessageCommandChannel } from "@/utils/discord/guildMessageChannel";
 import type { UserRow } from "@/types/db/schema";
 
-/**
- * Configures the /comment command
- */
 export const configureCommand = (command: SlashCommandBuilder) => {
   return command
     .setName("comment")

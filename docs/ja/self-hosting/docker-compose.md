@@ -4,15 +4,10 @@ sidebar:
   order: 3
 ---
 
-Docker Composeは、TomoriBotとPostgreSQLをコンテナとしてビルドおよび実行します。
-これは[セットアップウィザード](/ja/self-hosting/setup-wizard/)および[手動セットアップ](/ja/self-hosting/manual-setup/)と並ぶ3つ目のインストール方法です。
-ホストにBunやPostgreSQLをインストールするよりも、すべてをDockerで実行したい場合に選択してください。
-セットアップウィザードは使用しません。データベース接続は自動的に設定されます。
+Docker Composeは、TomoriBotとPostgreSQLをコンテナー内で一緒に実行します。これは、[セットアップウィザード](/ja/self-hosting/setup-wizard/) および [手動セットアップ](/ja/self-hosting/manual-setup/) と並ぶ3番目のインストールオプションです。ホストシステムにBunまたはPostgreSQLをインストールせずに、Dockerですべてを実行したい場合に選択します。対話型セットアップウィザードをバイパスし、データベース接続を自動的に構成します。
 
-:::caution[更新に必要なホストのツール]
-`bun run update --docker`は、コードを更新するためにホストのBunとGitが必要です。
-データベースのバックアップはアプリのイメージ内で実行します。手動バックアップと復元も
-Composeから実行できます。[メンテナンスとバックアップ](/ja/self-hosting/maintenance/)を参照してください。
+:::caution[Host tools for updates]
+`bun run update --docker`がコード変更をプルするには、ホストBunおよびGitが必要です。データベースのバックアップはアプリケーションコンテナ内で実行されます。Composeを通じて手動バックアップと復元を実行することもできます。[メンテナンスとバックアップ](/ja/self-hosting/maintenance/)を参照してください。
 :::
 
 ## 1. コードを取得する
@@ -22,39 +17,35 @@ git clone https://github.com/Bredrumb/TomoriBot.git
 cd TomoriBot
 ```
 
-## 2. 必要な `.env` の値
+## 2. 必要な`.env`の値
 
-サンプルファイルから開始します。
+サンプルファイルから始めます。
 
 ```sh
 cp .env.example .env
 ```
 
-次に、最低限以下の値を設定します。
+これらの必須変数を`.env`に設定します。
 
-| 変数 | 値 |
+| 変数 | 価値 |
 |---|---|
-| `DISCORD_TOKEN` | Discordボットのトークン（`GuildMembers`、`MessageContent`、および `GuildPresences` の特権インテントを有効にしてください）。 |
-| `CRYPTO_SECRET` | 保存されたAPIキーを暗号化するために使用される32文字の暗号化キー。 |
-| `POSTGRES_PASSWORD` | データベースのパスワード。他のすべての `POSTGRES_*` の値は自動設定されます。 |
+| `DISCORD_TOKEN` | Discordボットトークン (`GuildMembers`、`MessageContent`、および`GuildPresences`特権インテントを有効にします)。|
+| `CRYPTO_SECRET` | 保存されたAPIキーの暗号化に使用される32文字の暗号化キー。|
+| `POSTGRES_PASSWORD` | データベースのパスワード。他のすべての`POSTGRES_*`値は自動構成されます。|
 
-Dockerで`CRYPTO_SECRET`用のランダムな32文字の値を生成し、`.env`にコピーします。
+Dockerを使用して`CRYPTO_SECRET`のランダムな32文字の値を生成し、それを`.env`にコピーします。
 
 ```sh
 docker run --rm alpine:3.22 sh -c "head -c 24 /dev/urandom | base64"
 ```
 
-`POSTGRES_PASSWORD`には別の値を生成します。オプションの設定は`.env.optional.example`からコピーできます。
+`POSTGRES_PASSWORD`用に別のパスワードを生成します。`.env.optional.example`からオプションのチューニング設定をコピーできます。
 
-:::note[データベース接続は自動的に行われます]
-ComposeのPostgreSQLサービスは、内部のDockerネットワーク上で開発モード（SSLなし）で実行され、
-バンドルされているイメージには既に `pgvector` と `pg_cron` が設定されています。
-そのため、ドキュメント/RAGメモリーとスケジュールされたクリーンアップはすぐに機能します。
-Compose用に `POSTGRES_HOST`、`POSTGRES_PORT`、`POSTGRES_USER`、または `POSTGRES_DB` を設定しないでください。
-これらは自動的に管理されます。
+:::note[Database connection is automatic]
+Compose PostgreSQLサービスは、内部Dockerネットワーク上で開発モード (SSLなし) で実行されます。バンドルされたイメージには`pgvector`と`pg_cron`が含まれているため、ドキュメントメモリ、ベクトル検索、スケジュールされたクリーンアップがすぐに機能します。`.env`には`POSTGRES_HOST`、`POSTGRES_PORT`、`POSTGRES_USER`、または`POSTGRES_DB`を設定しないでください。Composeはそれらを自動的に構成します。
 :::
 
-Linuxでは、最初の起動前にホストのディレクトリを作成し、コンテナのユーザー（UID 1001）に所有権を付与します。Dockerが作成したディレクトリはroot所有となり、ボットがバックアップ、ログ、アップロードデータを書き込めません。
+Linuxでは、コンテナーを起動する前に、ホスト上にバインドマウントディレクトリを作成し、所有権をUID 1001に割り当てます。Dockerは、不足しているマウントポイントをrootとして作成します。これにより、ボットコンテナーはバックアップ、ログ、またはアップロードを保存できなくなります。
 
 ```sh
 mkdir -p backups logs data
@@ -64,34 +55,27 @@ sudo chown 1001:1001 backups logs data
 ## 3. ビルドと実行
 
 ```sh
-docker compose build   # 初回、またはコード/依存関係の変更後
-docker compose up      # ボットとデータベース
+docker compose build   # first time, or after code/dependency changes
+docker compose up      # bot + database
 ```
 
-以降の起動では、コードや依存関係を変更していない限り、`docker compose up` だけで十分です。
-ボットがオンラインになったら、Discordで `/setup` を実行してAIプロバイダーのキーを追加します。
-Discord側の操作については[クイックスタート](/ja/introduction/quickstart/)を参照してください。
+後で開始する場合は、コードや依存関係を変更しない限り、`docker compose up`だけで十分です。ボットがDiscordに接続したら、任意のサーバー チャネルで`/setup`を実行してAIプロバイダー キーを追加します。Discordのセットアップオプションについては、[クイックスタート](/ja/introduction/quickstart/) を参照してください。
 
-Composeは`RUN_ENV=development`を使用するため、`.env`の秘密情報とローカルHTTPエンドポイントを利用できます。アプリのヘルスチェックはプロセスの稼働を確認し、Discordとの接続は確認しません。`RUN_ENV=production`では秘密情報をマネージャーまたはマウントしたJSONファイルから読み込み、HTTPSを必須にしてプライベートネットワークのURLを制限します。コマンド登録も変わり、HTTPヘルスサーバーとメトリクス収集が有効になります。Composeは開発モードに固定されています。
+`.env`シークレットとローカルHTTPエンドポイントが機能するように、サービス定義で`RUN_ENV=development`ピンを構成します。コンテナーのヘルスチェックは、ボットプロセスが実行されているかどうかを報告します。Discordゲートウェイ接続はテストされません。運用モード (`RUN_ENV=production`) の違い (シークレットマネージャー、ネットワーク制限、メトリック) については、[セキュリティアーキテクチャ](/en/architecture/subsystems/security/) を参照してください。
 
 ## 4. オプションのローカルサーバー（Composeプロファイル）
 
-ローカルサーバーはComposeプロファイルを介してオプトインされるため、必要なものだけを実行できます。
+Composeプロファイルを使用してオプションのローカルヘルパー サーバーを実行して、必要なものだけを開始できるようにします。
 
 ```sh
-# SearXNG（プライベートWeb検索）+ Crawl4AI（ブラウザレンダリングによるフェッチ）
+# SearXNG (private web search) + Crawl4AI (browser-rendered fetch)
 docker compose --profile searxng --profile fetch-crawl4ai up
 ```
 
-SearXNGプロファイルを有効にする場合は、`.env`に`SEARXNG_BASE_URL=http://searxng:8080/`を設定します。無効の場合は設定しません。署名キー用の別のランダムな値を`SEARXNG_SECRET`に設定します。
+SearXNGを有効にする場合は、`.env`に`SEARXNG_BASE_URL=http://searxng:8080/`を設定してください。それ以外の場合は未設定のままにしてください。`SEARXNG_SECRET`をSearXNGリクエスト署名用の別のランダム値に設定します。
 
-各サーバーの詳細については、[SearXNG](/ja/self-hosting/local-endpoints/setup-searxng/)、
-[Crawl4AI](/ja/self-hosting/local-endpoints/setup-crawl4ai/)、
-および[ローカルモニタリング](/ja/self-hosting/local-monitoring/)を参照してください。
+サーバー固有の設定については、[SearXNG](/ja/self-hosting/local-endpoints/setup-searxng/)、[Crawl4AI](/ja/self-hosting/local-endpoints/setup-crawl4ai/)、および [ローカルモニタリング](/ja/self-hosting/local-monitoring/) を参照してください。
 
-## メンテナンス、更新とバックアップ
+## メンテナンス、アップデート、バックアップ
 
-Composeデプロイメントでのバックアップ優先の更新手順には `bun run update --docker` を使用します。
-Composeデータベースのバックアップと復元（ホストスクリプトの実行を含む）については、
-[メンテナンスとバックアップ](/ja/self-hosting/maintenance/)ページで説明されています。
-新しいバージョンをプルする前に、まずは[安全な移行](/ja/self-hosting/safe-migration/)から始めてください。
+Composeデプロイメントでのバックアップ優先更新には、`bun run update --docker`を使用します。Composeデータベースをバックアップまたは復元するには、[メンテナンスとバックアップ](/ja/self-hosting/maintenance/) を参照してください。新しいバージョンをプルする前に、[安全な移行](/ja/self-hosting/safe-migration/) を確認してください。

@@ -1,3 +1,11 @@
+import type { DraftPicker } from "@/utils/discord/ui/responseDraftingPanel";
+import type { DraftModelSlot } from "@/utils/discord/configPanelCatalog";
+import type {
+  ResponseDraftingView,
+  ResponseDraftingOperations,
+  DraftModelGroup,
+  DraftCheckerChoice,
+} from "@/utils/discord/interactions/responseDraftingOperations";
 import {
   ComponentType,
   MessageFlags,
@@ -18,7 +26,7 @@ import type {
   VoiceSampleRow,
   TomoriState,
 } from "@/types/db/schema";
-import type { ToolNoticeKey } from "@/constants/toolNotices";
+import type { NoticeVerbosity, ToolNoticeKey } from "@/constants/toolNotices";
 import type { DeliberateToolTriggerMap } from "@/utils/tools/deliberateToolMode";
 import type { PanelReadStatus, PanelReceipt } from "@/types/discord/panel";
 import type { LocalizerVariables } from "@/types/discord/global";
@@ -78,6 +86,7 @@ import type { RawModalPayload } from "@/utils/discord/ui/configModals";
 import { buildPanelContainer } from "@/utils/discord/ui/panel";
 import type { RecordPanelActionInput } from "@/utils/stats/panelActionMetrics";
 import { localizer } from "@/utils/text/localizer";
+import { resolvePrefillBlocker, type PrefillBlocker } from "@/utils/chat/assistantPrefill";
 import { stPresetOperations } from "@/utils/stPreset/stPresetOperations";
 import type { StPresetsPanelRenderInput } from "@/utils/discord/ui/stPresetsPanel";
 import { HUMANIZER_DEFAULT } from "@/utils/discord/humanizerOptions";
@@ -108,6 +117,10 @@ export interface ConfigPersonaMemoryView {
 
 export interface ConfigBehaviorGeneralView {
   systemPrompt: string | null;
+  responsePrefill: string | null;
+  /** Resolved against the server's current text model and thinking level, for the status line. */
+  prefillBlocker: PrefillBlocker | null;
+  prefillModelName: string;
   contextNote: string | null;
   contextNoteDepth: number;
   humanizerDegree: number;
@@ -135,12 +148,15 @@ export interface ConfigBehaviorExperimentalView {
 
 export interface ConfigBehaviorNoticesView {
   hiddenNoticeKeys: ToolNoticeKey[];
+  verbosity: NoticeVerbosity;
   speechTranscriptsEnabled: boolean;
 }
 
 export interface ConfigBehaviorMemoryView {
   memoryTaggingEnabled: boolean;
   channelMemoryEnabled: boolean;
+  stmEnabled: boolean;
+  toolUseEnabled: boolean;
   stmConfig: ServerStmConfigRow | null;
   stmCategories: StmCategoryRow[];
 }
@@ -319,6 +335,10 @@ export interface ConfigRouteDependencies {
   loadFallbackOptions(state: TomoriState, provider: string, locale: string): Promise<ConfigFallbackOption[]>;
   loadModelProviders(state: TomoriState, capability: ConfigModelCapability): Promise<string[]>;
   createGuildIdentity(guildId: string, interaction: GlobalRoutableInteraction): GuildIdentityPort;
+  loadResponseDraftingView(state: TomoriState, locale: string): Promise<ResponseDraftingView>;
+  loadDraftModels(serverId: number, slot: DraftModelSlot, locale: string): Promise<DraftModelGroup[]>;
+  loadDraftCheckers(serverId: number): Promise<DraftCheckerChoice[]>;
+  draftingOperations: ResponseDraftingOperations;
   recordAction(input: RecordPanelActionInput): void;
   createNonce(): string;
   showModal(interaction: GlobalRoutableInteraction, payload: RawModalPayload): Promise<void>;
@@ -433,6 +453,8 @@ export function resolveSelectedPersona(
 }
 
 export interface ConfigRepaintOptions {
+  draftPicker?: DraftPicker;
+  responseDraftingView?: ResponseDraftingView;
   locale: string;
   scope: ConfigScope;
   category: ConfigCategory;
@@ -583,6 +605,12 @@ export async function repaint(
     }
   }
 
+  let responseDraftingView = options.responseDraftingView;
+  if (category === "plugins" && page === "response-drafting" && !responseDraftingView) {
+    const state = scope.personas[0];
+    if (state) responseDraftingView = await dependencies.loadResponseDraftingView(state, locale);
+  }
+
   let permissionsView = options.permissionsView;
   if (
     ((category === "plugins" && (page === "available-tools" || page === "context-additions")) ||
@@ -634,6 +662,9 @@ export async function repaint(
         : {
             general: {
               systemPrompt: state.config.system_prompt ?? null,
+              responsePrefill: state.config.response_prefill ?? null,
+              prefillBlocker: resolvePrefillBlocker(state),
+              prefillModelName: state.llm.llm_codename,
               contextNote: state.config.context_note ?? null,
               contextNoteDepth: state.config.context_note_depth ?? 0,
               humanizerDegree: state.config.humanizer_degree ?? HUMANIZER_DEFAULT,
@@ -692,6 +723,8 @@ export async function repaint(
         readStatus: scope.readStatus,
         receipt: options.receipt,
         view: options.view,
+        responseDraftingView,
+        draftPicker: options.draftPicker,
         switchModelsView,
         modelParametersView,
         modelFallbacksView,

@@ -4,7 +4,9 @@ sidebar:
   order: 2
 ---
 
-whisper.cpp có thể được sử dụng khi máy chủ HTTP của nó cung cấp endpoint `POST /v1/audio/transcriptions` tương thích OpenAI.
+Chạy tính năng chuyển giọng nói thành văn bản nhẹ, hiệu suất cao cho TomoriBot bằng cách sử dụng [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
+
+TomoriBot kết nối với thì thầm.cpp thông qua điểm cuối phiên mã âm thanh tương thích với OpenAI (`POST /v1/audio/transcriptions`).
 
 ## Cài đặt
 
@@ -29,6 +31,6 @@ máy chủ của bạn báo cáo dưới dạng model Transcription.
 
 Sử dụng `/providers` để đăng ký endpoint và thiết lập model. Sau đó mở `/config` > Models > Switch Models để chọn và kích hoạt endpoint đã đăng ký.
 
-## Sử dụng bản phiên âm
+## Sử dụng bản ghi
 
-Sau khi đăng ký, TomoriBot sẽ phiên âm các tệp âm thanh đính kèm trong nền và thêm văn bản vào ngữ cảnh trò chuyện. Chỉ sử dụng `/config` > Engine > Notices nếu bạn cũng muốn các bản phiên âm được gửi hiển thị rõ ràng trong đoạn chat.
+Sau khi đăng ký, TomoriBot sẽ chép lại các tệp đính kèm âm thanh ở chế độ nền và thêm văn bản vào ngữ cảnh trò chuyện. Chỉ sử dụng `/config` > Engine > Thông báo nếu bạn cũng muốn bản ghi được đăng rõ ràng trong cuộc trò chuyện.

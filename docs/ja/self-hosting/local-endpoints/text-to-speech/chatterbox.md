@@ -1,12 +1,15 @@
 ---
 title: "Chatterbox TTS"
+aiGenerated: true
 ---
 
-`servers/tts/chatterbox/server.py`を使うと、対応済みイベントタグ付きの英語音声クローンが行えます。高速モデルの経路は既定でChatterbox-Turbo（350Mパラメーター）を使用します。より小型でCPU向けのデプロイにはChatterbox-Nano（110Mパラメーター）を選べます。このラッパーはChatterbox Multilingual V3を読み込みません。
+ローカルの [Chatterbox](https://github.com/resemble-ai/chatterbox) テキスト読み上げサーバーを使用して、感情タグを含む英語音声のクローンを作成します。
+
+Chatterboxは、`servers/tts/chatterbox/server.py`を介してローカルで実行されます。デフォルトでは、`[laugh]`や`[sigh]`などのインライン感情イベントタグを備えた高速Chatterbox-Turboモデル (3億5000万パラメーター) になります。また、CPUセットアップ用の軽量Chatterbox-Nanoモデル (1億1000万パラメーター) や、分類子なしのガイダンス (`cfg_weight`) と感情的な`exaggeration`チューニング用の標準0.5Bモデルを構成することもできます。このラッパーは、Chatterbox多言語V3をロードしません。
 
 ## セットアップ
 
-以下のコマンドは、TomoriBotをクローンしたフォルダーであるTomoriBotリポジトリのルートから実行します。
+TomoriBotリポジトリルート、つまりTomoriBotのクローンを作成したフォルダーから次のコマンドを実行します。
 
 ### Windows PowerShell
 
@@ -30,36 +33,36 @@ python -m pip install -r servers/tts/chatterbox/requirements.txt
 python servers/tts/chatterbox/server.py
 ```
 
-TomoriBotがChatterboxを使用している間は、そのターミナルを開いたままにしてください。既定のエンドポイントURLは`http://127.0.0.1:8011`です。別のポートを使う場合は`CHATTERBOX_PORT`を設定します。
+TomoriBotがChatterboxを使用している間は、そのターミナルを開いたままにしてください。デフォルトのエンドポイントURLは`http://127.0.0.1:8011`です。別のポートを使用するように`CHATTERBOX_PORT`を設定します。
 
 ### オプション: Chatterbox-Nanoを使う
 
-Nanoには、`nano=True`のローダーオプションに対応したChatterboxのビルドが必要です。上記の通常のセットアップの後、同じ仮想環境に固定された上流リビジョンをインストールします。このコミットハッシュは互換性のあるソースの版を固定するものであり、セキュリティを保証するものではありません。このコマンドには`git`が必要で、既にインストール済みのランタイム依存関係はそのまま維持されます。
+Nanoでは、`nano=True`ローダー オプションを使用したChatterboxビルドが必要です。上記の通常のセットアップの後、固定されたアップストリームリビジョンを同じ仮想環境にインストールします。コミットハッシュにより、互換性のあるソースバージョンが修正されます。セキュリティを保証するものではありません。このコマンドには`git`が必要で、すでにインストールされているランタイム依存関係が保持されます。
 
 ```sh
 python -m pip install --no-deps --force-reinstall "git+https://github.com/resemble-ai/chatterbox.git@5de7a54aa4e5e2baadb0182dde554908b48b85c2"
 ```
 
-続いて、ラッパーを起動する前に`CHATTERBOX_FAST_MODEL=nano`を設定します。Turboを使う場合はこの変数を未設定のままにします。Windows PowerShellでは`$env:CHATTERBOX_FAST_MODEL = "nano"`、Linuxまたは macOSでは`CHATTERBOX_FAST_MODEL=nano python servers/tts/chatterbox/server.py`を使用してください。`/health`のレスポンスは`fast_model`を報告するため、読み込まれた選択を確認できます。NanoとTurboは同じクローンリクエストと対応済みイベントタグを使用し、どちらも英語専用です。
+次に、ラッパーを開始する前に`CHATTERBOX_FAST_MODEL=nano`を設定します。Turboの変数は未設定のままにしておきます。Windows PowerShellでは、`$env:CHATTERBOX_FAST_MODEL = "nano"`で設定します。LinuxまたはmacOSでは、`CHATTERBOX_FAST_MODEL=nano python servers/tts/chatterbox/server.py`を使用します。`/health`応答は`fast_model`を報告するため、ロードされた選択肢を確認できます。NanoとTurboは、同じクローン作成リクエストとサポートされているイベントタグを使用します。どちらも英語のみです。
 
-NanoまたはTurboを使うには、`/config`の高速モデル切り替えを有効のままにしておく必要があります。これを無効にすると、CFG weightとexaggerationの調整用に標準のChatterbox 0.5Bモデルが選ばれます。
+NanoまたはTurboを使用するには、`/config`高速モデルトグルを有効にしておく必要があります。これを無効にすると、CFGウェイトと誇張チューニング用に標準のChatterbox 0.5Bモデルが選択されます。
 
-### 標準Chatterbox（CFGとExaggerationを備えた0.5B）
+### 標準Chatterbox (0.5B CFGおよび誇張あり)
 
-元となる0.5BのベースChatterboxモデル（`ChatterboxTTS`）は、サーバーラッパーに直接組み込まれています。Turboのインライン角括弧イベントタグの代わりに、Classifier-Free Guidance（`cfg_weight`）と感情の`exaggeration`による細かな声の制御を行います。
+オリジナルの0.5BベースChatterboxモデル (`ChatterboxTTS`) は、サーバー ラッパーに直接組み込まれています。Turboのインラインブラケットイベントタグを、Classifier-Free Guide (`cfg_weight`) と感情的な`exaggeration`を使用したきめ細かいボーカルコントロールに置き換えます。
 
-標準モデルを使用するには次の手順を実行します。
-1. いつも通りサーバーラッパーを起動します。
-2. Discordで`/config` > `モデル` > `TTSパラメーターと音声`を実行します。
-3. Chatterbox高速モデルオプションを`無効`に切り替えます。
-4. 次の生成時に、ラッパーが標準の0.5Bモデルを遅延ダウンロードしてメモリに読み込みます。
+標準モデルを使用するには:
+1. 通常どおりサーバー ラッパーを起動します。
+2. Discordで、`/config` > `モデル` > `TTSパラメーターと音声`を実行します。
+3. `Fast Model (Turbo)`オプションをオフに切り替えます。
+4. 次世代では、ラッパーは標準の0.5Bモデルを遅延ダウンロードしてメモリにロードします。
 
-どちらの値も`Chatterboxパラメーターの編集`モーダル内のテキストフィールドです。常に編集可能で、高速モデルが有効な間は無視される旨がページに注記されています。
-- `cfg_weight`（既定`0.5`）: 合成された音声が参照のテンポと声のスタイルにどれだけ忠実に従うかを調整します。
-- `exaggeration`（既定`0.5`）: 発話の感情の強さと大げさな抑揚を制御します。
+どちらの値も、`パラメータを編集`モーダルのテキストフィールドです。これらは常に編集可能であり、高速モデルが有効になっている間は無視されることがページに記載されています。
+- **`cfg_weight`** (デフォルトは`0.5`): 合成されたオーディオが基準テンポとボーカルスタイルにどの程度準拠しているかを調整します。
+- **`exaggeration`** (デフォルト`0.5`): 感情の強さと表現の劇的な抑揚を制御します。
 
-> [!NOTE]
-> 標準Chatterboxは、`[laughs]`や`[sigh]`のようなインラインの角括弧イベントタグに対応していません。Chatterbox高速モデルの切り替えが無効のとき、TomoriBotはプロンプトテキストから角括弧タグを自動的に取り除きます。
+> [！注記]
+> 標準のChatterboxは、インラインブラケットイベントタグ (`[laughs]`や`[sigh]`など) をサポートしません。高速モデルのトグルがオフになっている場合、TomoriBotはプロンプトテキストからブラケットタグを自動的に削除します。
 
 ## TomoriBotへの登録
 
@@ -74,31 +77,31 @@ NanoまたはTurboを使うには、`/config`の高速モデル切り替えを�
 
 エンドポイントの登録とモデルのセットアップには`/providers`を使用します。続いて`/config` > モデル > モデルの切り替えを開き、登録したエンドポイントを選択して有効化してください。
 
-## ペルソナ音声のセットアップ
+## ペルソナボイスを設定する
 
-1. 背景音楽のない、1人の話者による10秒のクリアな音声クリップを準備します。
-2. `/config`でモデル > TTSパラメーターと音声を開き、そのクリップをアップロードします。
-3. `/config`でペルソナ > 音声を開き、ペルソナと音声サンプルを選択します。
+1. 1つのスピーカーを使用し、バックグラウンドミュージックを使用しない、きれいな10秒のボイスクリップを準備します。
+2. [モデル] > `TTSパラメーターと音声` で`/config`を開き、クリップをアップロードします。
+3. [ペルソナ] > `音声` で`/config`を開き、ペルソナと音声サンプルを選択します。
 
-Chatterboxでは、クリップを長くしても意味はありませんが、拒否されることもありません。そのランタイムは条件付けの前に参照を切り詰めるため、ウィンドウを超えた音声はアップロードされ、保存された後に無視されます（[`tts_turbo.py`](https://github.com/resemble-ai/chatterbox/blob/master/src/chatterbox/tts_turbo.py)、[`tts.py`](https://github.com/resemble-ai/chatterbox/blob/master/src/chatterbox/tts.py)）：
+長いクリップはChatterboxに何も追加しませんが、拒否されることもありません。ランタイムはコンディショニングの前に参照を切り捨てるため、ウィンドウを越えたオーディオはアップロード、保存され、その後無視されます ([`tts_turbo.py`](https://github.com/resemble-ai/chatterbox/blob/master/src/chatterbox/tts_turbo.py)、[`tts.py`](https://github.com/resemble-ai/chatterbox/blob/master/src/chatterbox/tts.py))。
 
-- 音響プロンプトは、すべてのバリアントで最初の10秒です。
-- 音声トークンの文脈は、TurboとNanoでは最初の15秒、Standardでは6秒です。
+- 音響プロンプトは、どのバージョンでも最初の10秒間です。
+- 音声トークンのコンテキストは、TurboおよびNanoでは最初の15秒、Standardでは6秒です。
 
-これらのウィンドウは公開された指針ではなく、上流のランタイムにおける定数です：リポジトリのREADMEには参照クリップの長さが示されておらず、例として示しているファイル名も`your_10s_ref_clip.wav`だけです。ランタイムが実際に強制する長さは最小値だけで、プロンプトが5秒より長いことを要求します。
+これらのウィンドウは、公開されたガイダンスではなく、アップストリームランタイムの定数です。リポジトリのREADMEにはリファレンスクリップの長さが記載されておらず、そのサンプルファイル名は`your_10s_ref_clip.wav`のみです。ランタイムが実際に強制する1つの長さは最小値であり、プロンプトが5秒より長いことを示します。
 
-したがって、10秒が実用的な目標です。これは音響プロンプトを完全に満たし、音色と話し方が決まる部分です。10秒から15秒の間のクリップは、TurboとNanoに限り音声トークンの文脈を追加します。話者埋め込みは依然としてクリップ全体から計算されるため、長くしても話者の同一性は変わらず、未読のまま破棄されるプロンプトの量が変わるだけです。
+したがって、実際的な目標は10秒です。これは、音色と配信が設定される音響プロンプトを埋め、10 ～ 15秒間のクリップは、TurboとNanoのみで音声トークンのコンテキストを追加します。話者の埋め込みは依然としてクリップ全体から計算されるため、長くしても話者の識別情報は変化せず、プロンプトのどれだけが未読で破棄されるかのみが変化します。
 
-高速モデルの切り替えが有効な場合、TurboとNanoは`[laugh]`や`[sigh]`のような角括弧イベントタグを使用できます。
+TurboおよびNanoは、高速モデルの切り替えが有効な場合、`[laugh]`や`[sigh]`などのブラケットイベントタグを使用できます。
 
 ## オプションのチューニング
 
-`/config`のモデル > TTSパラメーターと音声を使って、Chatterboxのリクエストペイロードを調整します。
+[モデル] > `TTSパラメーターと音声` で`/config`を使用して、Chatterboxリクエストペイロードを調整します。
 
-- 高速モデルの切り替えは既定で有効です。TomoriBotは対応済みのTurbo/Nanoイベントタグを保持し、ラッパーが`ChatterboxTurboTTS.generate(...)`を呼び出す前に、未対応の角括弧記述子を取り除きます。
-- `cfg_weight`は既定`0.5`です。最小値は`0`で、TomoriBotはハードな最大値を設定していません。これは`turbo`が`false`のときにのみ適用され、値を下げると速すぎる参照音声を落ち着かせるのに役立ち、値を上げるとより強く参照に従います。
-- `exaggeration`は既定`0.5`です。最小値は`0`で、TomoriBotはハードな最大値を設定していません。これは`turbo`が`false`のときにのみ適用され、値を上げると発話がより表現豊かまたは大げさになり、話す速度が速くなることがあります。
+- 高速モデルの切り替えはデフォルトで有効になっています。TomoriBotは、ラッパーが`ChatterboxTurboTTS.generate(...)`を呼び出す前に、サポートされているTurbo/Nanoイベントタグを保持し、サポートされていないブラケット記述子を削除します。
+- `cfg_weight`のデフォルトは`0.5`です。最小値は`0`です。TomoriBotはハード最大値を設定しません。これは、`turbo`が`false`の場合にのみ適用されます。値を低くすると、リファレンスボイスの高速化が遅くなり、値を高くするとリファレンスに強く追従します。
+- `exaggeration`のデフォルトは`0.5`です。最小値は`0`です。TomoriBotはハード最大値を設定しません。これは、`turbo`が`false`の場合にのみ適用されます。値を大きくすると、より表現力豊かまたはドラマチックになり、音声の速度が速くなる可能性があります。
 
-対応済みのTurbo/Nanoイベントタグは`[clear throat]`、`[sigh]`、`[shush]`、`[cough]`、`[groan]`、`[sniff]`、`[gasp]`、`[chuckle]`、`[laugh]`です。`[excited]`、`[whisper]`、`[smiles]`のような未対応の記述子は、TTSへ送られる代わりに取り除かれます。
+サポートされているTurbo/Nanoイベントタグは、`[clear throat]`、`[sigh]`、`[shush]`、`[cough]`、`[groan]`、`[sniff]`、`[gasp]`、`[chuckle]`、および`[laugh]`です。`[excited]`、`[whisper]`、`[smiles]`などのサポートされていない記述子は、TTSに送信されずに削除されます。
 
-`turbo`が無効な場合、TomoriBotはテキストをTTSへ送る前にすべての角括弧記述子を取り除き、その後ラッパーが標準の`ChatterboxTTS`モデルを遅延読み込みして`model.generate(..., cfg_weight, exaggeration)`を呼び出します。
+`turbo`が無効になっている場合、TomoriBotはテキストをTTSに送信する前にすべてのブラケット記述子を削除し、その後ラッパーは標準の`ChatterboxTTS`モデルを遅延ロードして`model.generate(..., cfg_weight, exaggeration)`を呼び出します。

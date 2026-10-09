@@ -11,7 +11,7 @@ sidebar:
 
 Tất cả các lệnh slash hiện được TomoriBot đăng ký, được tạo từ cùng trình xây dựng lệnh và mô tả tiếng Việt dùng để đăng ký trên Discord (mô tả chưa được dịch sẽ hiển thị bằng tiếng Anh).
 
-Các nhóm lệnh cấp cao nhất: **39**. Các lệnh slash có thể thực thi: **81**.
+Các nhóm lệnh cấp cao nhất: **41**. Các lệnh slash có thể thực thi: **85**.
 
 ## `/comment`
 
@@ -46,6 +46,14 @@ Cấu hình persona, hành vi, kênh, quyền hạn và cài đặt model.
 |---|---|
 | `/config` | Cấu hình persona, hành vi, kênh, quyền hạn và cài đặt model. |
 
+## `/context`
+
+Xem prompt của một persona chiếm bao nhiêu dung lượng cửa sổ ngữ cảnh của model trong kênh này.
+
+| Lệnh | Tóm tắt |
+|---|---|
+| `/context` | Xem prompt của một persona chiếm bao nhiêu dung lượng cửa sổ ngữ cảnh của model trong kênh này. |
+
 ## `/contribute`
 
 Tìm mã nguồn và các cách giúp xây dựng TomoriBot.
@@ -79,8 +87,8 @@ Dạy TomoriBot khi nào nên dùng emoji và sticker tùy chỉnh của máy ch
 
 | Lệnh | Tóm tắt |
 |---|---|
-| `/expressions edit` | Chỉnh sửa cảm xúc và hướng dẫn sử dụng của một emoji hoặc sticker |
 | `/expressions initialize` | Phân tích và phân loại toàn bộ emoji và sticker tùy chỉnh bằng AI vision |
+| `/expressions manage` | Quản lý emoji, sticker, biểu cảm tùy chỉnh và quyền truy cập của persona. |
 
 ## `/generate`
 
@@ -197,6 +205,8 @@ Các lệnh và cài đặt giới hạn độ tuổi.
 | Lệnh | Tóm tắt |
 |---|---|
 | `/nsfw jailbreaks` | Quản lý các hành vi jailbreak tùy chọn cho prompt của mình trên máy chủ này. |
+| `/nsfw persona default` | Áp dụng cấu hình preset persona NSFW |
+| `/nsfw persona import` | Nhập persona từ tệp PNG, JSON hoặc CHARX, bao gồm cả persona NSFW |
 
 ## `/nuke`
 
@@ -358,6 +368,14 @@ Các thao tác tiện ích cho ngữ cảnh hội thoại, prompt và chẩn đo
 | `/tool delete turn` | Xóa lượt trò chuyện gần nhất của persona khỏi kênh. |
 | `/tool estimate cost` | Ước tính chi phí API cho các nhà cung cấp AI trả phí |
 | `/tool prompt snapshot` | Xuất chính xác prompt LLM của một persona ra tệp để gỡ lỗi. |
+
+## `/troubleshoot`
+
+Nhận trợ giúp về những gì TomoriBot đã thực hiện.
+
+| Lệnh | Tóm tắt |
+|---|---|
+| `/troubleshoot chat` | Tạo tệp riêng tư về sự cố trò chuyện gần đây. |
 
 ## `/update`
 

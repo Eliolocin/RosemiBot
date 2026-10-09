@@ -3,6 +3,7 @@ import type { LlmRow } from "@/types/db/schema";
 import type { ToolContext } from "@/types/tool/interfaces";
 import { truncateForEmbedDescription } from "@/utils/discord/embedHelper";
 import { attachTextDisplayModalCollector, buildTextDisplayModalButton } from "@/utils/discord/textDisplayModal";
+import { NOTICE_CONFIG_HINT_KEY } from "@/constants/toolNotices";
 import { isNoticeEmbedVisible, routeHiddenToolNotice } from "@/utils/discord/toolProgressNotice";
 import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
 import { resolveManagedChannelWebhook } from "@/utils/discord/webhook/webhookCore";
@@ -110,7 +111,7 @@ export async function sendFallbackModelUsageNotice({
     context.locale,
     detailsOptions.descriptionKey,
     detailsOptions.descriptionVars,
-  )}\n\n-# ${localizer(context.locale, "genai.fallback_used_hide_footer")}${optOutFooter}`;
+  )}\n\n-# ${localizer(context.locale, NOTICE_CONFIG_HINT_KEY)}${optOutFooter}`;
 
   try {
     const buttonLabel = localizer(context.locale, "genai.fallback_used_details_button");

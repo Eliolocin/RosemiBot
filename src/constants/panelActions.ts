@@ -12,6 +12,19 @@
  */
 
 export const PANEL_ACTIONS = [
+  "server-config.workspace.response-drafting.set",
+  "server-config.workspace.response-reviewer.set",
+  "server-config.workspace.response-decision.set",
+  "server-config.workspace.response-checker.set",
+  "server-config.workspace.response-prompt.set",
+  "server-config.workspace.response-prompt.reset",
+  "expressions.workspace.native.edit",
+  "expressions.workspace.native.clear",
+  "expressions.workspace.custom.add",
+  "expressions.workspace.custom.edit",
+  "expressions.workspace.custom.delete",
+  "expressions.workspace.whitelist.add",
+  "expressions.workspace.whitelist.remove",
   // mcps
   "mcps.workspace.server.add",
   "mcps.workspace.server.enable",
@@ -158,6 +171,7 @@ export const PANEL_ACTIONS = [
   "server-config.workspace.system-prompt.preset",
   "server-config.workspace.system-prompt.remove",
   "server-config.workspace.context-note.set",
+  "server-config.workspace.response-prefill.set",
   "server-config.workspace.humanizer.set",
   "server-config.workspace.message-fetch-limit.set",
   "server-config.workspace.timezone.set",
@@ -174,6 +188,7 @@ export const PANEL_ACTIONS = [
   "server-config.workspace.send-limit.set",
   "server-config.workspace.self-debug.set",
   "server-config.workspace.notice-visibility.set",
+  "server-config.workspace.notice-verbosity.set",
   "server-config.workspace.speech-transcripts.set",
   "server-config.workspace.memory-tagging.set",
   "server-config.workspace.stm-parameters.set",

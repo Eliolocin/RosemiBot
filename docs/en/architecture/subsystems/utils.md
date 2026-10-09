@@ -1,239 +1,75 @@
 ---
-title: "Utils and Helpers"
+title: "Runtime Utilities and Shared Services"
 ---
 
-This is a current map of shared utility modules under `src/utils/`.
+The `src/utils/` tree provides cross-cutting infrastructure supporting runtime dispatch, network safety, destination resolution, error attribution, and UI formatting across TomoriBot.
 
-## Folder Map
+## Ambient error context
 
-- `utils/async`
-- `utils/audio`
-- `utils/bridges`
-- `utils/cache`
-- `utils/chat`
-- `utils/compaction`
-- `utils/conditioning`
-- `utils/db`
-- `utils/discord`
-- `utils/documents`
-- `utils/embeddings`
-- `utils/image`
-- `utils/mcp`
-- `utils/media`
-- `utils/memory`
-- `utils/metrics`
-- `utils/misc`
-- `utils/novelai`
-- `utils/persona`
-- `utils/provider`
-- `utils/quota`
-- `utils/security`
-- `utils/storage`
-- `utils/teach`
-- `utils/text`
-- `utils/tools`
+`log.error()` and `log.warn()` accept an optional `ErrorContext`, but deeply nested helper functions rarely receive explicit server or user IDs. Threading identity parameters through every intermediate signature creates tight coupling. `src/utils/misc/errorContextStore.ts` provides ambient error attribution out of band using an `AsyncLocalStorage` scope.
 
-## High-Impact Modules
+### Scope lifecycle
 
-### `utils/db`
+The entry points that initiate a unit of work open a context scope:
 
-- `client.ts`: DB client wiring
-- `initializeDatabase.ts`: schema + seed startup runner
-- `sqlSecurity.ts`: query parameterisation helpers
-- `sqlSplitter.ts`: SQL file parsing utilities
-- `ragAvailability.ts`: pgvector / RAG feature detection
-- `repositories/`: 28 domain-owned repository modules + `index.ts` (shared instance + type re-exports only). SQL remains in its owning module; no `*ReadSql.ts` / `*WriteSql.ts` sibling files exist. `ErrorLogRepository` is a thin shim used by `logger.ts` to insert into `error_logs` without creating a circular import. See `docs/en/architecture/subsystems/database-schema.md` for the full repository table and SQL convention.
-
-### `utils/discord`
-
-- `commandLoader.ts`: command discovery + localization wiring
-- `commandRegistry.ts`: runtime command maps used by handlers
-- `interactionHelper.ts`: compatibility barrel for grouped UI helpers in `utils/discord/ui/`; new code imports the owned UI module directly
-- `streamOrchestrator.ts`: public stream orchestration entry point backed by responsibility modules in `utils/discord/stream/`
-- `webhookManager.ts`: compatibility barrel for grouped webhook helpers in `utils/discord/webhook/`; new code imports the owned webhook module directly
-- `embedHelper.ts`: shared embed builders and senders (`createStandardEmbed`, `createSummaryEmbed`, `createTipText`, `sendStandardEmbed`); see [Tip modals](#tip-modals) below
-- `textDisplayModal.ts`: reusable read-only text modal, trigger button, and collector wiring
-- `resolveSendableChannel.ts`: cache-first, REST-fallback channel resolution for send paths, plus `isChannelGoneError` for the deleted-channel and lost-access cases
-- `historyFetcher.ts`, `historyFormatter.ts`
-- `importFileIntake.ts`, `transferExportDelivery.ts`: the upload intake and DM delivery the portable transfer leaves share, so no leaf re-implements either sequence
-- `reminderSelectOptions.ts`: resolves one reminder row into the option caption both `/scheduled-task` selectors render, taking the repeat and creator locale keys from its caller
-
-#### Sending into a channel the cache no longer holds
-
-`resolveSendableChannel(client, channelId)` returns the channel or the reason it could not be
-reached, and reports a transient failure by throwing rather than flattening it into that reason.
-`Message#channel` and `Message#reply` resolve through the client cache only, so discord.js raises
-`ChannelNotCached` once an entry is gone. That happens both for a deleted channel and for one that
-was never populated, and only a REST fetch separates them, so a long streaming turn re-resolves its
-destination by id instead of trusting the `Message` it captured at admission.
-
-Only two answers are terminal, and they are kept apart because they are different operator
-problems: `10003` is a deleted channel, and `50001` (Missing Access) is one the bot can no longer
-see. A rate limit, a 5xx, a timeout, or an abort is none of those and keeps its own error, so it
-stays an ordinary send failure with its retry arms intact instead of stopping the stream.
-
-`isChannelGoneError(error)` recognises both terminal answers, since a stopped stream is the same
-verdict for each. The client-side `ChannelNotCached` is deliberately outside it: that says only
-that the channel was absent from the local cache, which an uncached thread or an evicted DM entry
-also produces, and the send path resolves that case with a fetch rather than reading it as a
-deletion. `classifySendFailure` excludes it for the same reason, while still caching the
-REST-confirmed `10003` as `channel_gone` for the admission gate.
-
-Each terminal answer carries its own stop reason, so the log and the persisted `StreamResult` name
-the condition that actually happened: a revoked grant reported as a deletion would send an operator
-looking for a channel that still exists. Both stop reasons are internal requester ids, so they are
-reaped at the end of the stream rather than aborting the next turn's pre-stream check.
-
-The resolved channel is written back onto the stream context. One stream sends many chunks, and
-only the first consults the reply target, so a context left pointing at a channel that cannot be
-sent into would break every later chunk.
-
-#### Tip modals
-
-`createTipText(locale, tipKeys, tipVars?)` in `embedHelper.ts` builds the reusable markdown opened by
-the `What You Can Do` button below an error (e.g. in `stream/errorUi.ts` and `ui/interactionCore.ts`).
-
-- Each entry in `tipKeys` is an atomic locale key resolved independently and rendered as its own
-  dashed bullet (`- item`). Keys live under `genai.tips.*` (see the Localization doc's
-  [Tip-item keys](./localization.md#tip-item-keys-genaitips) convention).
-- Tips render in a read-only Discord text-display modal, so markdown and hyperlinks remain usable
-  without adding another embed or ephemeral reply to the channel.
-- **Conditional tips are the caller's job**: include or omit a key inline (e.g. an OpenRouter-only
-  item) instead of maintaining whole-paragraph tip strings per branch. Items that resolve to empty
-  text are dropped, and the function returns `null` when nothing resolves, so the caller can skip
-  attaching a tip button entirely.
-- **The Official Support Server link is automatic**: `genai.tips.support_server` (exported as
-  `SUPPORT_SERVER_TIP_KEY`) is appended as the last bullet of every rendered tip modal. Callers must
-  not list it in `tipKeys`; it is filtered out if they do, so it can never be duplicated or
-  reordered. It is appended *after* the empty check, so a tip modal with no caller-supplied items
-  still returns `null` rather than degrading into a support-link-only embed.
-- The button is disabled after `TIP_BUTTON_TIMEOUT_MS` (24 hours). The generic
-  `textDisplayModal.ts` builder is also available to read-only legal and help surfaces.
-
-### `utils/text`
-
-- `localizer.ts`: locale auto-discovery + lookup
-- `contextBuilder.ts`: public structured context routing and native orchestration
-- `context/`: context-builder support modules for types, template/conditioning blocks, memories, RAG, and history/media helpers
-- `contextTruncator.ts`: token-budget truncation strategy
-- `processors/regexUtils.ts`: `escapeRegExp`
-- `processors/mentionProcessor.ts`: mention resolution, template variables, emoji normalization
-- `processors/llmOutputProcessor.ts`: LLM output cleaning, speaker-turn truncation
-- `processors/chunkProcessor.ts`: message chunking, sentence splitting
-- `processors/formatters.ts`: time formatting, text humanization, boolean display
-- `processors/timeUtils.ts`: reminder time parsing, lateness calculation
-- `emojiHelper.ts`, `emojiPenalty.ts`
-- `timezoneHelper.ts`, `uncensor.ts`, `youTubeUrlCleaner.ts`
-
-### `utils/cache`
-
-- `tomoriStateCache.ts`
-- `userCache.ts`
-- `emojiStickerCache.ts`
-- `channelLlmCache.ts`, `channelLlmCacheStore.ts`
-- `channelWhitelistCache.ts`
-- `shortTermMemoryCache.ts`
-- `llmCache.ts`
-- `openrouterCatalog.ts`: shared refresh machinery for the OpenRouter model catalogs
-- `openrouterCapabilityCache.ts`, `openrouterEmbeddingModelCache.ts`, `openrouterImageModelCache.ts`, `openrouterVideoModelCache.ts`
-- `geminiCapabilityCache.ts`
-- `novelaiCapabilityCache.ts`
-- `emergencyCacheClearer.ts`: critical-memory cleanup for recoverable caches
-- lazy sync helpers (`emojiLazySync.ts`, `stickerLazySync.ts`)
-
-### `utils/security`
-
-- `secretsManager.ts`: `.env` vs AWS Secrets Manager load path
-- `keyManager.ts`: encryption key version management
-- `crypto.ts`: encryption/decryption helpers
-- `keyRotation.ts`: rotation workflows
-- `rateLimiter.ts`: upload quota cleanup scheduler
-- `safeDownload.ts`: constrained external content download
-- `remoteUrlSecurity.ts`: the single SSRF gate for user-supplied URLs (protocol/host policy, DNS resolution, blocklists)
-- `userRemoteFetch.ts`: DNS-pinned fetch with per-hop redirect revalidation, built on `remoteUrlSecurity.ts`
-- `cloudMetadata.ts`: always-on cloud instance-metadata / link-local denylist
-
-### `utils/quota`
-
-- `imageQuotaManager.ts`: per-user and server-wide image generation quotas
-- `textQuotaManager.ts`: per-user and server-wide text trigger quotas
-- `videoQuotaManager.ts`: per-user and server-wide video generation quotas
-
-### `utils/provider`
-
-- `providerFactory.ts`: provider auto-discovery and instance resolution
-
-### `utils/mcp`
-
-- `mcpManager.ts`: MCP lifecycle
-- `mcpExecutor.ts`: MCP execution abstraction
-- `mcpConfig.ts`: MCP config loading
-
-Guild MCP URL validation lives in `utils/security/remoteUrlSecurity.ts`, which guards every user-supplied URL rather than MCP alone.
-
-### `utils/bridges`
-
-- `bridgeUserId.ts`: bridge ID and webhook username parsing utilities
-- `matrix/`: Matrix appservice bridge runtime
-- `matrix/events.ts`: appservice init and Matrix inbound event surface
-- `matrix/stateSync.ts`: Matrix link cache, typing state, reminder mention surface
-- `matrix/userMapping.ts`: Matrix display-name/ID maps and persona intent surface
-- `matrix/rooms.ts`: Matrix room join/config/encryption helpers
-- `matrix/index.ts`: public Matrix exports grouped from the responsibility modules
-
-New code should use `utils/bridges` for generic bridge helpers and `utils/bridges/matrix` for Matrix runtime operations.
-
-### `utils/image` and `utils/storage`
-
-- `avatarHelper.ts`, `imageProcessor.ts`, `pngMetadata.ts`
-- `avatarStorage.ts` for GCS or S3-compatible public avatar URL support
-- `voiceSampleStorage.ts` for GCS or S3-compatible voice sample storage
-- `charrefStorage.ts` for NovelAI character reference storage (S3-compatible in production, local filesystem in non-production)
-- `S3_ENDPOINT` enables Cloudflare R2 or another S3-compatible endpoint; when set,
-  storage clients use path-style requests while public URLs still come from the
-  relevant `*_PUBLIC_BASE_URL` value.
-
-### `utils/misc`
-
-- `logger.ts`: structured logging facade
-- `errorContextStore.ts`: ambient error identity (see below)
-- `ioHelper.ts`: filesystem traversal helpers
-- `healthTracker.ts`: runtime health signals used by `/health`
-
-#### Ambient error context
-
-`log.error()` and `log.warn()` accept an optional `ErrorContext`, but most call sites are far from
-the code that knows which server or user they belong to. Threading that identity through every
-signature is impractical, so `errorContextStore.ts` carries it out of band using an
-`AsyncLocalStorage` scope.
-
-The four entry points that begin a unit of work open a scope:
-
-| Entry point | Opened in | `source` |
+| Entry point | Location | `source` |
 |---|---|---|
-| Message chat turn | `events/messageCreate/tomoriChat.ts` | `chat` |
-| Slash command | `events/interactionCreate/handleCommands.ts` | `command` |
-| Scheduled reminder/task | `timers/reminderProcessor.ts` | `reminder` |
-| Random trigger | `timers/randomTriggerProcessor.ts` | `random_trigger` |
+| Chat message turn | `src/events/messageCreate/tomoriChat.ts` | `chat` |
+| Slash command or interaction | `src/events/interactionCreate/handleCommands.ts` | `command` or `interaction` |
+| Scheduled reminder or task | `src/timers/reminderProcessor.ts` | `reminder` |
+| Random server trigger | `src/timers/randomTriggerProcessor.ts` | `random_trigger` |
 
-Everything reached from inside a scope, at any await depth, logs with that identity attached. A
-provider adapter deep in a stream needs no plumbing to produce an attributable error record.
+Every asynchronous call within the scope inherits this attribution across arbitrary `await` depths without parameter threading. Background tasks started outside a scope remain unattributed, preventing stale context leakage.
 
-- `runWithErrorContext(identity, fn)` opens a scope. Nested scopes inherit and override.
-- `enrichErrorContext(patch)` upgrades the active scope once more IDs are known. Entry points seed
-  Discord snowflakes; database row IDs are added after admission or user lookup resolves them.
-- `resolveErrorContext(explicit)` is called by the logger. An explicit context wins per field, so a
-  call site that names its own IDs stays authoritative.
+### Context enrichment and precedence
 
-Typed `ErrorContext` fields (`serverId`, `userId`, `personaId`) are database row IDs. Discord
-snowflakes travel in `metadata` (`serverDiscId`, `userDiscId`, `channelDiscId`) alongside `source`
-and `sourceDetail`, which identify the unit of work.
+- **Opening scopes:** `runWithErrorContext(identity, fn)` starts a new scope. Nested scopes inherit enclosing values and apply overrides.
+- **In-flight enrichment:** `enrichErrorContext(patch)` mutates the active scope once additional IDs resolve. For example, a chat turn seeds Discord snowflakes at admission, then attaches database row IDs once user and server records are loaded.
+- **Explicit precedence:** `resolveErrorContext(explicit)` merges ambient fields under explicit call-site arguments. An explicit field passed directly to `log.error()` takes precedence over the ambient scope.
+- **Identifier convention:** Typed ID fields (`serverId`, `userId`, `personaId`) are numeric PostgreSQL primary keys. Discord snowflakes travel in `metadata` (`serverDiscId`, `userDiscId`, `channelDiscId`) alongside `source` and `sourceDetail`.
 
-Timers and event handlers started *outside* a scope are unaffected, so background work that belongs
-to no server stays unattributed rather than inheriting a stale identity.
+## Channel resolution and terminal failures
 
-## Usage Guidance
+Sending messages across long asynchronous operations (such as multi-second streaming generation or delayed tasks) cannot assume the admission-time channel reference remains valid. Discord client caches evict entries over time, which causes discord.js to throw `ChannelNotCached`.
 
-- Prefer these shared modules over duplicating logic in commands/events.
-- For user-facing responses, always pair utility usage with localization via `localizer()`.
-- For DB writes touching cached data, invalidate the affected caches in the same code path.
+`resolveSendableChannel(client, channelId)` in `src/utils/discord/resolveSendableChannel.ts` manages destination resolution:
+
+- **Cache-first with REST fallback:** The resolver inspects the local Discord client cache first. If absent, it queries Discord's REST API to re-fetch the destination before attempting delivery.
+- **Permanent channel deletion (`10003`):** If Discord returns error code `10003` ("Unknown Channel"), the channel no longer exists. The operation stops with reason `channel_deleted`.
+- **Revoked access permissions (`50001`):** If Discord returns code `50001` ("Missing Access"), the channel exists but the bot lacks permission to post. The operation throws or halts with `MissingChannelAccessError` (`missing_access`). Separating this from deletion allows operators to restore access without treating the channel as destroyed.
+- **Transient network failures:** HTTP 429 rate limits, 5xx server errors, socket timeouts, and abort signals are transient. They throw ordinary exceptions rather than classifying as permanent channel loss, preserving upstream retry arms.
+- **Stop classification:** `isChannelGoneError(error)` checks for both `10003` and `50001` to determine when streaming output must terminate cleanly.
+
+## Remote URL security and SSRF protection
+
+Custom endpoints, guild MCP transports, and `safeDownload()` use `remoteUrlSecurity.ts` for policy
+and `userRemoteFetch.ts` for DNS-pinned connections and redirect validation. URL policy validation
+alone does not pin the subsequent connection. The `fetch_url` tool also guards its external crawler
+inputs. [Security](/architecture/subsystems/security/#ssrf-and-remote-url-security-gate) owns
+environment rules, private-network exceptions, and the crawler's narrower guarantee.
+
+## Reusable UI and tip modals
+<!-- anchor: tip-modals -->
+
+Discord UI helpers provide standardized layouts for errors and helpful guidance:
+
+- **Tip text generation:** `createTipText(locale, tipKeys, tipVars)` in `src/utils/discord/embedHelper.ts` aggregates atomic localized bullet keys from `genai.tips.*` (see [Localization](/architecture/subsystems/localization/#tip-item-keys-genaitips)).
+- **Modal display:** Tips and long diagnostics render via `src/utils/discord/textDisplayModal.ts` in read-only Discord text modals, supporting markdown and hyperlinks without cluttering the chat channel with extra messages.
+- **Automatic support link:** `createTipText()` automatically appends the Official Support Server link (`genai.tips.support_server`) as the final bullet of non-empty tip modals.
+
+## Shared service contracts
+
+1. **Cache invalidation on write success:** Any database mutation affecting cached state must invalidate the corresponding cache in the same code path immediately following transaction commit (`AGENTS.md` rule 7). Invalidation must never precede a write.
+2. **Domain ownership:** Specialized utilities belong to their respective subsystem owners rather than accumulating in shared barrels:
+   - Database schema and repository methods: [Database Schema](/architecture/subsystems/database-schema/)
+   - In-memory and persisted caches: [Caching System](/architecture/subsystems/caching/)
+   - Persona avatars and sprite storage: [Multi-Persona System](/architecture/subsystems/multi-persona/)
+   - Secret handling and cryptographic keys: [Security System](/architecture/subsystems/security/)
+
+## Source pointers
+
+- `src/utils/misc/errorContextStore.ts`: ambient error context and scope management.
+- `src/utils/discord/resolveSendableChannel.ts`: channel reachability and terminal error classification.
+- `src/utils/security/remoteUrlSecurity.ts`: remote URL validation and SSRF gate.
+- `src/utils/security/userRemoteFetch.ts`: DNS-pinned redirect-safe HTTP fetcher.
+- `src/utils/discord/embedHelper.ts`: embed formatting and tip modal creation.

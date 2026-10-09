@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { TextChannel, type Client, type Message } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import { evaluateAdmissionQueueAndTriggerGate } from "@/utils/chat/admissionQueue";
@@ -16,6 +16,7 @@ import {
 import { shouldSurfaceChatUserErrors } from "@/utils/chat/errorVisibility";
 import { shouldBotReply } from "@/utils/chat/replyDecision";
 import type { ChatIncoming, ChatTurnContext } from "@/utils/chat/types";
+import { createExpressionDeliveryState } from "@/utils/chat/expressionDelivery";
 import { runToolLoop } from "@/utils/chat/toolLoop";
 import { determineMatchingPersonas, isSelfTriggerMessage } from "@/utils/chat/triggerProcessor";
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
@@ -23,6 +24,8 @@ import { parseTriggerWordListInput } from "@/utils/text/triggerWords";
 import { ToolRegistry } from "@/tools/toolRegistry";
 import type { LLMProvider, StreamResult } from "@/types/provider/interfaces";
 import { createPersona } from "../../helpers/fixtures";
+import { verifyMessageWebhook, clearWebhookIdentityCache } from "@/utils/chat/webhookIdentity";
+import { serverRepository } from "@/utils/db/repositories/ServerRepository";
 
 type ProviderFixtureName = "google" | "openrouter" | "novelai";
 
@@ -123,6 +126,7 @@ function makeMessage(fixture: ConversationFixture, client: Client): Message {
     id: `msg_${fixture.id}`,
     channel,
     channelId,
+    guildId,
     client,
     guild: {
       id: guildId,
@@ -173,15 +177,36 @@ function makeTomoriState(fixture: ConversationFixture, persona: PersonaFixture):
 }
 
 describe("chat regression harness", () => {
+  let managedLookup: ReturnType<typeof spyOn<typeof serverRepository, "loadManagedWebhookByChannelAndWebhookId">>;
+  beforeEach(() => {
+    clearWebhookIdentityCache();
+    managedLookup = spyOn(serverRepository, "loadManagedWebhookByChannelAndWebhookId").mockImplementation(
+      async (channel, webhook) =>
+        conversations.some((fixture) => fixture.message.webhookId === webhook)
+          ? {
+              managed_webhook_id: 1,
+              guild_disc_id: guildId,
+              channel_disc_id: channel,
+              webhook_disc_id: webhook,
+              kind: "shared_channel",
+              webhook_token: Buffer.from("fixture"),
+              key_version: 1,
+            }
+          : null,
+    );
+  });
   afterEach(() => {
+    managedLookup.mockRestore();
+    clearWebhookIdentityCache();
     StreamOrchestrator.clearStopRequest(channelId);
     channelLocks.clear();
   });
 
   for (const fixture of conversations) {
-    it(`${fixture.provider}: ${fixture.description}`, () => {
+    it(`${fixture.provider}: ${fixture.description}`, async () => {
       const client = makeClient();
       const message = makeMessage(fixture, client);
+      await verifyMessageWebhook(message);
       const personas = fixture.personas.map((persona) => makeTomoriState(fixture, persona));
       const mainPersona = personas.find((persona) => !persona.is_alter);
       const replyPersona =
@@ -221,7 +246,7 @@ describe("chat regression harness", () => {
     });
   }
 
-  it("identifies persona webhook messages as self-trigger messages", () => {
+  it("identifies persona webhook messages as self-trigger messages", async () => {
     const fixture = conversations.find((conversation) => conversation.id === "google-persona-webhook-self-trigger");
     if (!fixture) {
       throw new Error("Missing google-persona-webhook-self-trigger fixture");
@@ -229,6 +254,7 @@ describe("chat regression harness", () => {
 
     const client = makeClient();
     const message = makeMessage(fixture, client);
+    await verifyMessageWebhook(message);
     const personas = fixture.personas.map((persona) => makeTomoriState(fixture, persona));
 
     expect(isSelfTriggerMessage(message, personas)).toBe(true);
@@ -876,6 +902,8 @@ describe("chat regression harness", () => {
       },
       currentPersona: tomoriState,
       isUserImpersonation: false,
+      contextItems: [],
+      expressionDelivery: createExpressionDeliveryState(),
     } as unknown as ChatTurnContext;
 
     const resultPromise = runToolLoop({
@@ -939,6 +967,8 @@ describe("chat regression harness", () => {
       },
       currentPersona: tomoriState,
       isUserImpersonation: false,
+      contextItems: [],
+      expressionDelivery: createExpressionDeliveryState(),
     } as unknown as ChatTurnContext;
 
     const result = await runToolLoop({
@@ -993,6 +1023,8 @@ describe("chat regression harness", () => {
       streamingContext: { suppressUserErrors: true },
       currentPersona: tomoriState,
       isUserImpersonation: false,
+      contextItems: [],
+      expressionDelivery: createExpressionDeliveryState(),
     } as unknown as ChatTurnContext;
 
     try {

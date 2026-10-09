@@ -2,103 +2,35 @@
 title: "STM 01: Passive Capture"
 ---
 
-Captures the completed conversation turn into the in-process short-term
-memory cache immediately after generation finishes.
+Passive capture records completed dialogue turns into the in-process short-term memory cache immediately after generation finishes.
 
-- **Files**:
-- `writeShortTermMemory` (module-private): `src/utils/chat/postTurnEffects.ts:129-181`
-- `storeShortTermMemory`: `src/utils/cache/shortTermMemoryCache.ts:317-378`
+## Flow and ownership
 
-## Mission
+When model generation finishes, [Run Generation Turn: Post-Turn Effects](/architecture/pipelines/chat/06-per-turn/04-post-turn-effects/) calls `writeShortTermMemory()` in `src/utils/chat/postTurnEffects.ts`. This function extracts conversation entries from `simplifiedMessages`, normalizes custom emojis, and strips turn-ephemeral context annotations using `stripInjectedContextAnnotations()`. It then appends the newly delivered model responses from `result.personaResponses`.
 
-After every successful generation turn, `runPostTurnEffects` calls
-`writeShortTermMemory`, which assembles a slice of the conversation history
-and stores it so the context-build pipeline can surface it on the next turn
-as cross-channel or cross-persona awareness.
+For each unique persona ID among the responses, `writeShortTermMemory()` calls `storeShortTermMemory()` in `src/utils/cache/shortTermMemoryCache.ts`. The cache maintains up to `MAX_MESSAGES_PER_CHANNEL` (10) recent turns per entry:
 
-The function takes the user/persona entries from `simplifiedMessages`, appends
-the new persona responses from this turn, and writes the combined conversation
-into the STM cache. `storeShortTermMemory` retains the most recent entries up to
-`MAX_MESSAGES_PER_CHANNEL` (10).
-A separate write is issued for each unique responding `personaId` so that
-personas with distinct IDs each maintain their own conversational continuity.
+- **User-scoped key:** `shortterm:user:userId:channelId[:personaId]` enables cross-channel user awareness.
+- **Server-scoped key:** `shortterm:server:serverId:channelId[:personaId]` enables shared channel history visible to all users in a guild. Direct message sessions skip this key.
 
-`storeShortTermMemory` writes two entries per call:
+After storing dialogue entries, `writeShortTermMemory()` invokes `incrementStmTurnCounter()` asynchronously. This advances `turnsSinceRefresh` on the live scope row once per bot participation cycle, tracking cadence for future summary nudges.
 
-1. **User-scoped key** (`shortterm:user:userId:channelId[:personaId]`):
-   enables the STM reader to scope retrieval to a specific user's history
-   across all channels.
-2. **Server-scoped key** (`shortterm:server:serverId:channelId[:personaId]`):
-   enables the STM reader to retrieve server-shared history visible to all
-   users in the same channel. Skipped for DM sessions (`serverId === "DM"`).
+Passive capture preserves any existing `summary`, `categories`, and cadence metrics already attached to the cache entry.
 
-Any existing `summary` field from a prior `update_short_term_memory` call is
-preserved: `storeShortTermMemory` carries forward `existing?.summary` when
-constructing the new entry.
+## Persistence and data boundaries
 
-## Input
+Crude conversation messages exist exclusively in process memory. Cache reads treat entries as expired after 12 hours unless summary text extends the entry lifetime to 24 hours.
 
-- `context: ChatTurnContext`: provides `simplifiedMessages`, `userDiscId`,
-  `channel.id`, `serverDiscId`, `serverName`, `channelName`, `isDMChannel`,
-  and `turn.requestSnapshot.triggererPrivacyLevel`.
-- `result: GenerationTurnResult`: provides `personaResponses[]` (each entry
-  has `text`, `personaId`, `personaLineageId`, `personaName`).
+To support subsequent summary and category writes, `storeShortTermMemory()` triggers an asynchronous call to `ensureStmRow()`. This inserts a placeholder row into the `short_term_memories` database table using `ON CONFLICT DO NOTHING`, creating the scope row without overwriting existing summaries when the write succeeds. Failures are logged and do not undo the live cache update.
 
-## Output
+## Constraints and rationale
 
-`Promise<void>`: no return value. The cache is updated as a side effect.
+- **Skip conditions:** capture aborts immediately when the turn is a stop response, when no simplified messages exist, when no persona generated text, or when the triggering user has `PrivacyLevel.FULL`.
+- **Fault isolation:** caching errors are caught and logged as warnings. Failure to record short-term memory never rejects or delays a delivered conversation response.
+- **Persona separation:** separate cache entries are stored for each distinct persona ID, preserving conversational boundaries when multiple characters participate in a shared channel.
 
-## Side effects
+## Source pointers
 
-- **STM cache entries written**: two `Map` entries (user + server) per unique
-  persona ID in `result.personaResponses`. In DM sessions, one entry only
-  (user-scoped).
-- **Durable scope rows ensured**: user and server identity rows are created if
-  absent so later summary/category writes have durable targets. Crude messages
-  themselves remain cache-only.
-- **`stats.stores`**: incremented once per `storeMemoryEntry` call (internal
-  to the cache module).
-
-## Invariants
-
-After this stage runs for a non-empty, non-stop generation result:
-
-- The STM cache contains an entry for `(userDiscId, channelId, personaId)`,
-  capped by `MAX_MESSAGES_PER_CHANNEL`.
-- If a summary existed in a prior entry for this key, it is preserved in the
-  new entry.
-- The `lastUpdated` timestamp on the entry is set to `Date.now()` at write
-  time.
-
-## Skip conditions
-
-`writeShortTermMemory` returns early (no write) when any of the following hold:
-
-| Condition | Field checked |
-|---|---|
-| Turn was a stop-response | `context.isStopResponse` |
-| No conversation history built this turn | `context.simplifiedMessages.length === 0` |
-| Triggerer has `PrivacyLevel.FULL` | `context.turn.requestSnapshot.triggererPrivacyLevel` |
-| No persona responded (empty result) | `result.personaResponses.length === 0` |
-
-## Extension points
-
-| Surface | Plugin-relevance |
-|---|---|
-| `storeShortTermMemory()` | A plugin extending channel-memory tagging or cross-server STM scoping would extend here. The function signature accepts `personaId` and `personaLineageId` for scoping; new scope dimensions (e.g., thread lineage) would be added as additional parameters. → plugin plan candidate |
-| TTL and size constants (`CRUDE_CONVERSATION_TTL_HOURS`, `MAX_MESSAGES_PER_CHANNEL`) | Fixed in code. Not a plugin seam: operational tuning only. |
-| Message storage cap (`messages.slice(-MAX_MESSAGES_PER_CHANNEL)`) | Internal; `MAX_MESSAGES_PER_CHANNEL` is the control surface. |
-
-## Configuration
-
-| Source | Key | Value | Purpose |
-|---|---|---|---|
-| Constant (`shortTermMemoryCache.ts`) | `CRUDE_CONVERSATION_TTL_HOURS` | `12` | Crude conversation TTL (hours) |
-| Constant (`shortTermMemoryCache.ts`) | `MAX_MESSAGES_PER_CHANNEL` | `10` | Max messages stored per channel entry |
-
-## Related docs
-
-- This stage's output is consumed by: → [context-build STM stage](../../../context-build/02-native-assembly/04-stm-memories)
-- STM summary upgrade that replaces the crude messages written here: → [`stm/02-summary-upgrade.md`](02-summary-upgrade.md)
-- Post-turn effects that call this stage: → [chat per-turn Stage 04](../../../chat/06-per-turn/04-post-turn-effects)
-- `ShortTermMemoryEntry` type: `src/utils/cache/shortTermMemoryCache.ts:37`
+- `src/utils/chat/postTurnEffects.ts`: `runPostTurnEffects` orchestrates side effects and invokes `writeShortTermMemory`.
+- `src/utils/cache/shortTermMemoryCache.ts`: `storeShortTermMemory` updates the cache and queues `ensureStmRow`.
+- `src/utils/text/context/memories.ts`: `buildShortTermMemoryContext` reads cached turns during prompt assembly.

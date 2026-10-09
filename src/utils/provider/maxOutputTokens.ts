@@ -27,8 +27,8 @@
  * can actually emit.
  */
 
-/** Historical flat fallback used by the OpenRouter path when no override/env is set. */
-export const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
+/** Chat reply budget for OpenRouter, the Gemini family, and Anthropic when no override or env cap is set. */
+const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
 
 /**
  * Fallback for preset generation (`/persona generate`), deliberately independent of
@@ -51,11 +51,8 @@ export const DEFAULT_PRESET_GENERATION_MAX_OUTPUT_TOKENS = 16384;
 const DEFAULT_VISION_CAPTION_MAX_OUTPUT_TOKENS = 2048;
 
 /**
- * Parses a positive integer from a raw env string.
- *
- * @param raw - Raw env value (may be undefined/empty/non-numeric).
- * @returns The parsed positive integer, or `undefined` so callers fall through
- *          to the next resolution tier.
+ * Returns `undefined` for an unset or invalid value rather than a default, so the caller falls through
+ * to the next resolution tier.
  */
 function parsePositiveIntEnv(raw: string | undefined): number | undefined {
   if (typeof raw !== "string") {
@@ -90,6 +87,58 @@ export function resolveMaxOutputTokens(params: {
     return Math.max(1, Math.min(providerReportedMax, desired));
   }
   return Math.max(1, desired);
+}
+
+/**
+ * Each chat request builder's env cap and last-resort budget, keyed by canonical provider name.
+ * The OpenAI-compatible first parties and custom endpoints historically sent a flat 4096 with no env
+ * cap; changing that alters the live request, not just the reserve.
+ */
+const CHAT_OUTPUT_BUDGETS: Readonly<Record<string, { envVar?: string; fallback: number }>> = {
+  openrouter: { envVar: "OPENROUTER_MAX_OUTPUT_TOKENS", fallback: DEFAULT_MAX_OUTPUT_TOKENS },
+  google: { envVar: "GOOGLE_MAX_OUTPUT_TOKENS", fallback: DEFAULT_MAX_OUTPUT_TOKENS },
+  vertex: { envVar: "GOOGLE_MAX_OUTPUT_TOKENS", fallback: DEFAULT_MAX_OUTPUT_TOKENS },
+  vertexexpress: { envVar: "GOOGLE_MAX_OUTPUT_TOKENS", fallback: DEFAULT_MAX_OUTPUT_TOKENS },
+  anthropic: { envVar: "ANTHROPIC_MAX_OUTPUT_TOKENS", fallback: DEFAULT_MAX_OUTPUT_TOKENS },
+  novelai: { fallback: 2048 },
+};
+const OPENAI_COMPATIBLE_CHAT_OUTPUT_FALLBACK = 4096;
+
+/**
+ * The largest share of a known window the default reply budget may take. The truncator reserves the
+ * reply before keeping history, so a 4096 default on a 4096 `num_ctx` (the value the setup wizard
+ * suggests) would keep no history at all. Every catalog window is at least 128K, where a quarter
+ * exceeds every default, so in practice this only lowers custom endpoints and small OpenRouter models.
+ */
+const MAX_DEFAULT_OUTPUT_WINDOW_SHARE = 0.25;
+
+/**
+ * Resolves the chat reply budget a provider requests and the truncator reserves, so the two can only
+ * agree. NovelAI's truncation reserve is the exception: it follows the subscription tier instead.
+ * An explicit server override or env cap is honored as set; only the provider default shrinks to fit
+ * a small window.
+ *
+ * @param provider - Canonical provider name (`normalizeProviderName`).
+ * @param modelMaxOutputTokens - The model's output ceiling from `resolveModelLimits()`, when known.
+ * @param contextWindow - The model's window from `resolveModelLimits()`, when known.
+ */
+export function resolveChatMaxOutputTokens(params: {
+  provider: string;
+  configured: number | null | undefined;
+  modelMaxOutputTokens: number | null;
+  contextWindow: number | null;
+}): number {
+  const budget = CHAT_OUTPUT_BUDGETS[params.provider];
+  const providerFallback = budget?.fallback ?? OPENAI_COMPATIBLE_CHAT_OUTPUT_FALLBACK;
+  const fallback = params.contextWindow
+    ? Math.min(providerFallback, Math.floor(params.contextWindow * MAX_DEFAULT_OUTPUT_WINDOW_SHARE))
+    : providerFallback;
+  return resolveMaxOutputTokens({
+    configured: params.configured,
+    envRaw: budget?.envVar ? process.env[budget.envVar] : undefined,
+    fallback,
+    providerReportedMax: params.modelMaxOutputTokens ?? undefined,
+  });
 }
 
 /**

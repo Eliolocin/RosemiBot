@@ -4,47 +4,40 @@ sidebar:
   order: 7
 ---
 
-Bạn có thể giám sát phiên bản TomoriBot cục bộ của mình bằng các bảng điều khiển Grafana thông qua một profile Docker Compose được cung cấp sẵn.
+Giám sát phiên bản TomoriBot cục bộ của bạn bằng bảng thông tin Grafana dựng sẵn để theo dõi mức sử dụng bộ nhớ, kích thước bộ đệm, mức tiêu thụ mã thông báo và lưu lượng lệnh.
 
-Để khởi động cả TomoriBot và Grafana cùng nhau trên máy của bạn:
+Bắt đầu TomoriBot và Grafana cùng nhau:
 
 ```sh
 docker compose -f docker-compose.yaml -f docker/compose.monitor.yaml up -d
 ```
 
-Lệnh này sẽ:
-- Khởi chạy TomoriBot cùng PostgreSQL (trên cổng 15432 cho DB)
-- Khởi chạy Grafana trên cổng 3000 với nguồn dữ liệu PostgreSQL được cấu hình tự động
-- Cung cấp sẵn bảng điều khiển TomoriBot Overview
-- Kết nối cả hai dịch vụ trên cùng một mạng Docker
+Lệnh này:
+- Khởi chạy TomoriBot và PostgreSQL (với cơ sở dữ liệu được hiển thị trên cổng 15432)
+- Khởi chạy Grafana trên cổng 3000 với nguồn dữ liệu PostgreSQL được cấu hình sẵn
+- Cung cấp bảng điều khiển Tổng quan về TomoriBot
+- Kết nối tất cả các dịch vụ trên mạng Docker nội bộ
 
-Truy cập Grafana tại [http://localhost:3000](http://localhost:3000):
-- **Username**: `admin`
-- **Password**: Thiết lập qua `GRAFANA_PASSWORD` trong `.env` (mặc định là `admin` nếu chưa đặt)
+Mở Grafana tại [http://localhost:3000](http://localhost:3000):
+- **Tên người dùng**: `admin`
+- **Mật khẩu**: Đặt qua `GRAFANA_PASSWORD` trong `.env` (mặc định là `admin` khi không được đặt)
 
 ## Bảng điều khiển được cung cấp sẵn
 
-Bảng điều khiển TomoriBot Overview xuất hiện tự động và không cần thiết lập thêm. Các panel của bảng điều khiển theo dõi bộ nhớ tiến trình,
-số lượng mục bộ nhớ đệm, lỗi mỗi giờ, mức sử dụng token theo model, hoạt động theo giờ, các lệnh hàng đầu, ngôn ngữ
-người dùng, đám mây cảm xúc, cùng các preset và model đang được sử dụng.
+Bảng điều khiển Tổng quan TomoriBot tải tự động mà không cần cấu hình thủ công. Bảng điều khiển của nó hiển thị bộ nhớ quy trình, số lần nhập bộ đệm, lỗi mỗi giờ, mức sử dụng mã thông báo theo model, hoạt động hàng giờ, lệnh hàng đầu, ngôn ngữ người dùng, đám mây cảm xúc cũng như các model và cài đặt trước đang hoạt động.
 
-Mỗi panel chỉ đọc các bảng tồn tại trong mọi bản cài đặt, do đó cùng một bảng điều khiển có thể hoạt động tốt cho cả self-host
-lẫn bản triển khai trên đám mây.
+Mọi bảng điều khiển đều truy vấn các bảng tiêu chuẩn có trong tất cả các cài đặt, cho phép bố cục bảng điều khiển giống nhau hoạt động cục bộ và trong môi trường đám mây.
 
-Một số panel sẽ ở trạng thái trống cho đến khi nguồn dữ liệu tương ứng được bật:
+Một số bảng nhất định yêu cầu cài đặt thời gian chạy cụ thể hoặc hỗ trợ máy chủ:
 
-| Panel | Yêu cầu |
+| bảng điều khiển | Nhu cầu |
 |---|---|
-| Process Memory, Cache Entries | Các hàng `metric_samples`, được ghi sau mỗi `CACHE_METRICS_INTERVAL_MS`. Bộ thu thập chỉ chạy khi `RUN_ENV=production`, do đó phiên bản phát triển sẽ không hiển thị gì ở đây. |
-| Errors per Hour by Type | `ERROR_DB_LOGGING_ENABLED` (bật theo mặc định). Một đường nằm ngang trong thời gian nghi ngờ có sự cố cũng có thể là do cơ chế ngắt mạch của kho lưu trữ đang mở, chứ không phải do lỗi đã dừng lại. |
-| Host Memory and Swap Tiers, Host Pressure (PSI) and Swap-In Rate | Máy chủ Linux. Các panel này đọc `/proc/meminfo`, `/proc/pressure/*`, `/proc/swaps` và `/sys/block/zram0`, do đó chúng sẽ để trống trên macOS và Windows. Chuỗi zram cũng yêu cầu thiết bị zram swap; máy chủ không có thiết bị này vẫn báo cáo bộ nhớ và PSI. |
+| Xử lý bộ nhớ, mục nhập bộ đệm | Các hàng `metric_samples` được viết mỗi `CACHE_METRICS_INTERVAL_MS`. Bộ sưu tập chỉ chạy khi `RUN_ENV=production`, do đó phiên bản phát triển không hiển thị dữ liệu ở đây. |
+| Lỗi mỗi giờ theo loại | `ERROR_DB_LOGGING_ENABLED` (được bật theo mặc định). Một đường thẳng trong khi xảy ra sự cố có thể cho biết rằng bộ ngắt mạch cơ sở dữ liệu đang mở chứ không phải lỗi đã chấm dứt. |
+| Bộ nhớ máy chủ và mức chuyển đổi, áp suất máy chủ (PSI) và tốc độ chuyển đổi | Một máy chủ Linux. Chúng đọc `/proc/meminfo`, `/proc/pressure/*`, `/proc/swaps` và `/sys/block/zram0`, vì vậy chúng vẫn trống trên macOS và Windows. Dòng zram yêu cầu thiết bị trao đổi zram được định cấu hình; máy chủ không có zram vẫn báo cáo số liệu áp suất và bộ nhớ chung. |
 
 ## Chỉnh sửa và lưu giữ các thay đổi
 
-Các bảng điều khiển vẫn có thể chỉnh sửa được trên giao diện người dùng, điều này rất quan trọng trong quá trình xử lý sự cố. Các
-chỉnh sửa chỉ tồn tại trong container và sẽ bị thay thế từ ổ đĩa trong lần khởi động lại tiếp theo, vì vậy hãy xuất JSON của bảng điều khiển và
-commit vào `docker/grafana/dashboards/` để giữ lại thay đổi.
+Trang tổng quan vẫn có thể chỉnh sửa được trong giao diện Grafana để gỡ lỗi trực tiếp. Vì vùng chứa khởi động lại, thiết lập lại trang tổng quan sẽ chỉnh sửa trở lại các tệp trên đĩa, nên hãy xuất JSON trang tổng quan đã sửa đổi của bạn và lưu nó vào `docker/grafana/dashboards/` để lưu giữ các thay đổi của bạn.
 
-Để thêm bảng điều khiển của riêng bạn, chỉ cần đặt một tệp JSON vào cùng thư mục đó. Tham chiếu nguồn dữ liệu bằng uid
-cố định `tomoribot-postgres`: Grafana sẽ gán một uid ngẫu nhiên khi nguồn dữ liệu không khai báo uid nào, và bảng điều khiển
-trỏ đến uid ngẫu nhiên sẽ hiển thị các panel trống thay vì báo lỗi.
+Để thêm trang tổng quan mới, hãy đặt định nghĩa JSON của trang tổng quan đó vào `docker/grafana/dashboards/`. Nhắm mục tiêu nguồn dữ liệu PostgreSQL với uid cố định `tomoribot-postgres`: các nguồn dữ liệu không có uid rõ ràng sẽ nhận được số nhận dạng được tạo ngẫu nhiên, điều này khiến các trang tổng quan sử dụng uid không khớp sẽ hiển thị các bảng trống.

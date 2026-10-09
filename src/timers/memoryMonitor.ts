@@ -133,13 +133,9 @@ export class MemoryMonitor {
   }
 }
 
-/**
- * Global memory monitor instance
- */
 let memoryMonitorInstance: MemoryMonitor | null = null;
 
 /**
- * Initializes the memory monitoring system
  * @param clientOrPollIntervalMs - Optional Discord client or polling interval in milliseconds (default 30000)
  * @param pollIntervalMs - Optional polling interval when a client is provided
  */

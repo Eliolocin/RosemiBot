@@ -11,6 +11,7 @@ sidebar:
   label: "总览"
   groupLabel: "自部署"
   order: 3
+aiGenerated: false
 ---
 
 <!-- STUB（第一阶段结构）。第二阶段会写入：环境要求 + 模块目录。

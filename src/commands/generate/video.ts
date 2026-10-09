@@ -35,6 +35,7 @@ import { formatCustomModelDisplay } from "@/utils/provider/customProviderUtils";
 import { MEDIA_LIMITS } from "@/utils/security/rateLimiter";
 import { safeDownload } from "@/utils/security/safeDownload";
 import { isOpenRouterVideoCapabilityError } from "@/providers/openrouter/openrouterVideoRequest";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 const MODAL_CUSTOM_ID = "generate_video_modal";
 const PROMPT_INPUT_ID = "prompt_input";
@@ -47,9 +48,8 @@ const FPS_INPUT_ID = "fps_input";
 const DISCORD_FILE_SIZE_LIMIT = 25 * 1024 * 1024;
 
 /**
- * Parse a positive integer from an environment variable, falling back to a default.
- * @param fallback - Value to use when unset or invalid
- * @returns A finite positive integer
+ * Falls back instead of throwing, because it runs at module load and a malformed operator value must
+ * not stop `/generate video` from registering.
  */
 function parsePositiveIntEnv(name: string, fallback: number): number {
   const parsed = Number.parseInt(process.env[name] ?? "", 10);
@@ -89,9 +89,6 @@ function parseModalInteger(raw: string | undefined, min: number, max: number): {
   return { value: parsed };
 }
 
-/**
- * Configure the subcommand
- */
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand.setName("video").setDescription(localizer("en-US", "commands.generate.video.description"));
 
@@ -409,7 +406,7 @@ export async function execute(
       await modalSubmitInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.generate.video.invalid_duration_title"))
+            .setTitle(localizedStatusTitle(locale, "commands.generate.video.invalid_duration_title", ColorCode.ERROR))
             .setDescription(
               localizer(locale, "commands.generate.video.invalid_duration_description", {
                 max: MAX_VIDEO_DURATION_SECONDS.toString(),
@@ -427,7 +424,7 @@ export async function execute(
       await modalSubmitInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.generate.video.invalid_fps_title"))
+            .setTitle(localizedStatusTitle(locale, "commands.generate.video.invalid_fps_title", ColorCode.ERROR))
             .setDescription(
               localizer(locale, "commands.generate.video.invalid_fps_description", {
                 max: MAX_VIDEO_FPS.toString(),
@@ -452,7 +449,7 @@ export async function execute(
         await modalSubmitInteraction.editReply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(localizer(locale, "commands.generate.video.invalid_image_title"))
+              .setTitle(localizedStatusTitle(locale, "commands.generate.video.invalid_image_title", ColorCode.ERROR))
               .setDescription(localizer(locale, "commands.generate.video.invalid_image_description"))
               .setColor(ColorCode.ERROR),
           ],
@@ -540,7 +537,7 @@ export async function execute(
       await modalSubmitInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.generate.video.error_title"))
+            .setTitle(localizedStatusTitle(locale, "commands.generate.video.error_title", ColorCode.ERROR))
             .setDescription(
               localizer(locale, "commands.generate.video.unsupported_provider_description", {
                 provider: executionProvider,
@@ -556,7 +553,7 @@ export async function execute(
       await modalSubmitInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.generate.video.error_title"))
+            .setTitle(localizedStatusTitle(locale, "commands.generate.video.error_title", ColorCode.ERROR))
             .setDescription(localizer(locale, "commands.generate.video.no_data_description"))
             .setColor(ColorCode.ERROR),
         ],
@@ -569,7 +566,7 @@ export async function execute(
       await modalSubmitInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.generate.video.file_too_large_title"))
+            .setTitle(localizedStatusTitle(locale, "commands.generate.video.file_too_large_title", ColorCode.ERROR))
             .setDescription(
               localizer(locale, "commands.generate.video.file_too_large_description", { size_mb: sizeMB }),
             )
@@ -596,7 +593,7 @@ export async function execute(
     await modalSubmitInteraction.editReply({
       embeds: [
         new EmbedBuilder()
-          .setTitle(localizer(locale, "commands.generate.video.success_title"))
+          .setTitle(localizedStatusTitle(locale, "commands.generate.video.success_title", ColorCode.SUCCESS))
           .setDescription(
             localizer(locale, "commands.generate.video.success_description", {
               model: displayModelName,
@@ -630,7 +627,7 @@ export async function execute(
 
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorEmbed = new EmbedBuilder()
-      .setTitle(localizer(locale, "commands.generate.video.error_title"))
+      .setTitle(localizedStatusTitle(locale, "commands.generate.video.error_title", ColorCode.ERROR))
       .setDescription(
         isOpenRouterVideoCapabilityError(error)
           ? localizer(

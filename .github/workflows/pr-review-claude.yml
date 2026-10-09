@@ -1,0 +1,289 @@
+name: "PR: Claude Automated Code Review"
+
+on:
+  # Automatic trigger disabled: the review job can report success while
+  # posting nothing (a permission-denied tool call ends the run silently
+  # rather than failing it, so a green check does not mean a review happened).
+  # To re-enable, uncomment pull_request_target below; workflow_dispatch can
+  # stay alongside it for manual runs.
+  # pull_request_target:
+  #   types: [opened, synchronize, ready_for_review, reopened]
+  #   # Optional: Only run on specific file changes
+  #   # paths:
+  #   #   - "src/**/*.ts"
+  #   #   - "src/**/*.tsx"
+  #   #   - "src/**/*.js"
+  #   #   - "src/**/*.jsx"
+  workflow_dispatch:
+
+# Only one review per PR at a time — a new push cancels any in-flight review
+# so we never stack two runs for the same PR.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    # pull_request_target runs in base repo context, so the base repo's
+    # GITHUB_TOKEN and secrets are available even for fork PRs. Safe here because
+    # we never checkout and execute the fork's code — Claude reads the diff via
+    # the GitHub API only.
+    #
+    # Draft guard: skip opened/synchronize/reopened while the PR is still a
+    # draft, and allow ready_for_review (which only fires on draft → ready
+    # transitions) so the first review happens exactly once regardless of
+    # whether the PR was created as a draft or not. Dependabot PRs are already
+    # constrained dependency bumps covered by CI, so do not spend Claude review
+    # credits on them.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+
+    runs-on: ubuntu-latest
+    # Scoped to the minimum the reviewer needs: read the diff, write the review.
+    # No `id-token: write` — we pass an explicit github_token below instead of
+    # relying on the OIDC -> Claude GitHub App token exchange, which does not work
+    # for the pull_request_target / fork-PR context.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+
+    steps:
+      - name: Check PR size
+        id: check-size
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EVENT_ACTION=$(jq -r '.action' "$GITHUB_EVENT_PATH")
+          
+          if [ "$EVENT_ACTION" = "synchronize" ]; then
+            BEFORE=$(jq -r '.before' "$GITHUB_EVENT_PATH")
+            AFTER=$(jq -r '.after' "$GITHUB_EVENT_PATH")
+            echo "Checking diff size between $BEFORE and $AFTER"
+            
+            # Use GitHub API to get the compare data
+            COMPARE_URL="https://api.github.com/repos/${{ github.repository }}/compare/$BEFORE...$AFTER"
+            TOTAL=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" "$COMPARE_URL" | jq '[.files[]?.additions, .files[]?.deletions] | add // 0')
+            echo "This push contains $TOTAL changed lines."
+          else
+            ADDITIONS=$(jq -r '.pull_request.additions // 0' "$GITHUB_EVENT_PATH")
+            DELETIONS=$(jq -r '.pull_request.deletions // 0' "$GITHUB_EVENT_PATH")
+            TOTAL=$((ADDITIONS + DELETIONS))
+            echo "PR has $TOTAL changed lines ($ADDITIONS additions, $DELETIONS deletions)."
+          fi
+
+          if [ "$TOTAL" -lt 30 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Changes ($TOTAL lines) are less than the 30 line threshold. Skipping Claude Code Review." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout base repository
+        if: steps.check-size.outputs.skip != 'true'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Checkout the base branch only — never the fork's head ref.
+          # The review action reads the PR diff via GitHub API, not from disk.
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        if: steps.check-size.outputs.skip != 'true'
+        id: claude-review
+        uses: anthropics/claude-code-action@af0559ee4f514d1ef21826982bed13f7edc3c35e # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Use the ephemeral, repo-scoped workflow token instead of the OIDC App
+          # exchange. On pull_request_target this is always the BASE repo's token
+          # with the permissions declared above, so it works uniformly for every
+          # PR — including those from contributor forks. Comments post as
+          # github-actions[bot].
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Allow fork PRs from contributors WITHOUT repo write access to trigger
+          # reviews. Accepted posture for a small project:
+          #   - Claude CANNOT edit files or push: token is scoped contents:read +
+          #     pull-requests:write, and claude_args grants no Edit/Write tools and
+          #     no open-ended Bash/network — only read-only gh/git + posting comments.
+          #   - Secret exfiltration is mitigated by the action's DEFAULT subprocess
+          #     env scrubbing, which redacts GITHUB_TOKEN / Anthropic secrets, so an
+          #     injected `gh pr comment --body "$TOKEN"` posts a redacted value.
+          #     Do NOT set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=0 — that disables this.
+          #   - Residual ACCEPTED risk: compute/credit abuse, since anyone can now
+          #     trigger paid runs. Narrow to a comma-separated username list if that
+          #     stops being acceptable.
+          allowed_non_write_users: '*'
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: |-
+            /code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} --comment
+
+            PROJECT CONTEXT — this is TomoriBot, a Discord AI chatbot (TypeScript + Bun,
+            multi-provider LLM, PostgreSQL, localized en-US/ja). Beyond general correctness,
+            treat the following project-specific rules as first-class review criteria; they are
+            frequently violated and a generic reviewer misses them. Read ./CLAUDE.md and the cited
+            ./docs/ pages before deciding severity, and only flag a real violation in the diff —
+            do not lecture on rules the PR already follows.
+
+            POSSIBLE ISSUES — blockers; each of these violates a project guideline. Give your attention in
+            this order: security (S) first, then correctness (1–4), then the rest (5–9b).
+            S. Security (highest priority) — actively hunt for vulnerabilities in the diff, both general
+               and TomoriBot-specific; consult docs/en/architecture/subsystems/security.md for the project's model. General
+               classes to check: injection (SQL/command/prompt), SSRF, secret/credential leakage,
+               authorization/permission bypass, path traversal, unsafe deserialization, ReDoS, and
+               unvalidated user input reaching a sink. TomoriBot-specific must-checks:
+               - User-supplied remote URLs (guild MCP servers, custom endpoints) and ALL media/attachment
+                 downloads must go through the validated, DNS-pinned fetch path (validateRemoteUrl,
+                 src/utils/security/userRemoteFetch.ts, safeDownload) with hop-by-hop redirect revalidation
+                 and bounded size/timeout. Never fetch a user-controlled URL directly — that is an SSRF
+                 hole. Flag any new fetch/axios/undici call on a user URL that bypasses these helpers.
+               - Secrets/credentials: API keys are encrypted at rest (pgcrypto BYTEA + key_version) and
+                 CRYPTO_SECRET drives it. Never log, echo, embed in errors/replies, or return decrypted
+                 keys or CRYPTO_SECRET*; never persist plaintext credentials. Flag anything that could
+                 exfiltrate a secret.
+               - Dynamic SQL: field/column names in dynamic UPDATEs must be checked against the explicit
+                 allowlists (validateUserFields / validateTomoriFields / validateTomoriConfigFields); values
+                 stay parameterized via Bun SQL. (reinforces rule 1)
+               - Privacy: respect users.privacy_level (FULL=2 filtering), personalization_blacklist, and
+                 persona_user_blocks; privacy/blacklist changes must keep their user/blacklist cache
+                 invalidation paths intact.
+               - Anti-abuse: do not remove or weaken cooldowns, quotas, the stream flood guard, the memory
+                 pressure guard, or safeDownload size/timeout limits without justification.
+               - Supply chain: no floating `@latest` tags in Dockerfile / workflow actions / MCP configs
+                 (pin by digest or commit SHA); keep `--frozen-lockfile`; verify external asset checksums.
+               - Command gating: do not silently drop guildOnly / managerOnly (ManageGuild) / nsfw flags or
+                 other permission checks on sensitive commands.
+               (docs/en/architecture/subsystems/security.md)
+            1. Raw-SQL boundary — raw `sql`…`` / `tx`…`` tagged template literals may ONLY live in
+               src/utils/db/repositories/ (plus the allow-listed plumbing in sqlAudit.ts). Any `sql`…``
+               in a command, event, tool, util, cache, or context builder is a violation; it must be a
+               repository method call instead. (docs/en/contributing/policies/raw-sql.md)
+            2. Cache-after-write ordering — invalidate caches AFTER a successful DB write, in the SAME
+               code path, never before the write and never on a failed write. Do not manually mutate
+               cached objects. Prefer repository-owned invalidation. Flag caller-side invalidation that
+               was removed without the repository method taking it over.
+               (docs/en/architecture/subsystems/caching.md, docs/en/contributing/development-tasks.md)
+            3. Discord interaction timing — the interaction must be acknowledged within ~3s via reply(),
+               deferReply(), or showModal(). Do NOT deferReply() before a modal or before the
+               pagination/modal helpers (promptWithRawModal, replyPaginatedChoices, etc.); pre-modal data
+               loading must fit inside the 3s window. (docs/en/architecture/subsystems/command-system.md — Interaction
+               Timing Rules)
+            3b. Command-pattern selection — docs/en/architecture/subsystems/command-system.md is the canonical catalog of
+               interaction patterns (Pattern 1 simple, 2 defer-first, 3 modal, 3A bulk checkbox groups,
+               3B persistent checklist, 3C modal→review→modal, 4/4A pagination + persona-picker loop,
+               5 manual timing), each mapped to a proven use case in this codebase. When a command's flow
+               matches a documented situation, it should use that established pattern and its named helper
+               — e.g. batch keep/remove of existing entries should use Pattern 3A checkbox groups
+               (promptWithRawModal + pre-checked options, minValues 0), not a one-at-a-time select or a
+               hand-rolled loop; a persona-button transaction flow should use Pattern 4A with
+               replyPaginatedPersonaChoicesV2 + preserveSelectedInteraction and a pre-loop
+               avatarSessionCache. Flag new/edited commands that reinvent a flow, or use an older/less-fit
+               pattern, when a newer documented pattern is the better match — and flag command code that
+               ignores the pattern's stated rules (e.g. cache invalidation only after successful writes,
+               surfacing durable server settings in /tool status). Consult the doc before assuming a
+               bespoke approach is warranted. (docs/en/architecture/subsystems/command-system.md — Interaction Timing
+               Rules & Pattern catalog)
+            4. Localization length caps (Discord silently truncates) — any locale value that DOES exist
+               must fit its Discord slot: command description ≤100, modal title/label ≤45, modal
+               placeholder/description ≤100, select/checkbox option label/description ≤100. This is a HARD
+               blocker — fatal in `bun run vl` via check-locale-lengths — because Discord silently truncates
+               overruns. Applies to every locale that has a value (en-US and ja). Shorten the string rather
+               than relying on truncation. (docs/en/architecture/subsystems/localization.md, scripts/checks/vl.ts)
+            5. No hardcoded operational limits/timeouts/thresholds in feature logic — read them from env
+               vars with a fallback default and document optional ones in .env.optional.example.
+               (docs/en/contributing/development-tasks.md, pull_request_template.md)
+            6. Slash commands only — no legacy prefix-command pathways.
+            7. Schema migrations must be idempotent (IF NOT EXISTS, guarded blocks, helper functions);
+               queries use Bun SQL template literals. (development-tasks.md, database-schema.md)
+            8. Docs-maintenance rule — a behavior/flow/schema/config change must update the matching
+               ./docs/ page (and docs/README.md if pages are added/renamed) in the same PR. Flag stale
+               docs left behind by the change. (CLAUDE.md)
+            9. Logging & errors — use `log` from src/utils/misc/logger.ts with context metadata
+               (errorType, IDs, action), and distinguish startup-critical from recoverable failures.
+               (development-tasks.md)
+            9b. Localization usage & keys — user-facing strings should go through localizer() with the
+               English (en-US) key present (en-US is the source of truth and missing translations fall back
+               to English at runtime). Command option descriptions must use the `{option_name}_description`
+               key suffix, NOT `{option_name}_option`, which silently fails auto-localization. Flag
+               hardcoded user-facing text that bypasses localizer. Do NOT flag a missing `ja` (or other
+               non-English) translation — parity is intentionally non-fatal in `bun run vl` so a contributor
+               who doesn't speak Japanese is never blocked; at most mention an untranslated key as a
+               low-severity nicety. (docs/en/architecture/subsystems/localization.md, scripts/checks/vl.ts)
+
+            NICE-TO-HAVES — non-blocking ideas that would make the PR better; never a merge blocker. Do
+            NOT nag about pure formatting/style (indentation, quotes, import order, camelCase, `any`) —
+            Biome/`bun run lint` already enforces that and runs fatally in `bun run vl`, so restating it is
+            noise. Instead, act as a thoughtful second engineer: brainstorm a few concrete, high-value
+            improvements the author may not have considered. Quality over quantity — 1–3 strong ideas beat
+            ten nitpicks, and it's fine to have none. Frame each as a friendly option ("could consider…")
+            with the reasoning and tradeoff, not a demand. Look across these angles:
+            10. UX (this is a Discord bot): a clearer interaction flow, better or more helpful error/success
+                messaging, the right ephemeral-vs-public choice, fewer steps or smarter defaults, and edge
+                cases a real user could hit (empty states, missing permissions, very long input, no results).
+                When a smoother interaction pattern from docs/en/architecture/subsystems/command-system.md fits (e.g. a
+                checkbox-group modal instead of repeated one-at-a-time selects, or a persona-picker loop),
+                suggest it.
+            11. Performance & efficiency: avoidable or duplicated DB queries (N+1, refetching what a cache
+                already holds), independent awaits that could run in parallel, redundant context/work, and
+                unnecessary allocations on hot paths (chat, streaming, per-message handlers).
+            12. Maintainability & alternatives: reuse an existing helper/pattern instead of duplicated
+                logic, simpler or flatter control flow, clearer naming for genuinely confusing spots, and —
+                when warranted — briefly float an alternative design approach with its tradeoff, so the
+                author has options to weigh rather than a single mandated path.
+
+            OUTPUT FORMAT — relaxed and concise. Sort every finding into exactly one of two buckets:
+            - Possible Issues — blockers: it violates a guideline above (S, 1–9b).
+            - Nice-to-haves — non-blocking suggestions that would make the PR better (10–12).
+
+            Post each actual finding as its own inline comment anchored to the specific line(s), prefixed
+            with its bucket in bold — `**Possible issue:**` or `**Nice-to-have:**`. No emojis, no severity
+            badges. NEVER cite the internal rule numbers/labels from this prompt (S, 1, 3b, 9b, …) or write
+            "violates guideline X" — those codes are internal scaffolding and mean nothing to the
+            contributor. State the problem in plain, self-contained terms they'll understand on the spot
+            (name the actual concern, e.g. "this fetch can hit internal hosts (SSRF)"). Keep each comment
+            tight: one finding, 1–2 sentences on what and why, no restating unchanged code, no praise
+            padding. Reference concrete symbols/lines (e.g. `foo.ts:42`). Add a
+            ```suggestion block ONLY when exact replacement lines fit the flagged code (GitHub renders it as
+            one-click apply); if the fix is structural or spans files, describe it in one sentence instead.
+
+            Then post ONE short summary comment with both headers. When a bucket has nothing, say so plainly
+            rather than padding it:
+            ```
+            ## Possible Issues
+            No issues found
+            ## Nice-to-haves
+            LGTM
+            ```
+
+            Example inline finding:
+              **Possible issue:** SSRF — this `fetch(url)` sends a user-supplied custom-endpoint URL
+              directly, bypassing `safeDownload`/`userRemoteFetch`, so it can reach internal hosts. Route it
+              through the validated, DNS-pinned fetch path.
+              ```suggestion
+              const res = await safeDownload(url, { maxBytes: MAX_ENDPOINT_BYTES });
+              ```
+
+            When unsure whether something is in scope, prioritize security (S) first, then the other
+            correctness blockers (1–4). The full local quality gate is `bun run vl` (wraps check / lint /
+            check-locales / audit-sql / check-locale-lengths); reviewers should reason as if those gates
+            must pass. Note that `bun run vl` runs check-locales as NON-fatal — do not treat missing
+            translations as a gate failure.
+          # Lock the session to ONLY what the code-review plugin needs (derived
+          # from its command frontmatter + steps): launch review sub-agents, read
+          # code, inspect git history, and comment via gh. Deliberately excludes
+          # open-ended Bash, Edit/Write, and WebFetch/WebSearch — so a prompt
+          # injection in an untrusted fork PR has no shell or network to exfiltrate
+          # the ephemeral GITHUB_TOKEN through.
+          #
+          # NOTE: `mcp__github_inline_comment__create_inline_comment` is REQUIRED —
+          # the code-review plugin posts each finding as an inline review comment via
+          # this MCP tool (the action spins up the `github_inline_comment` server).
+          # Without it, the review runs but every post is silently denied and the
+          # action logs "No buffered inline comments" with a clean exit. `gh pr
+          # comment` only covers the "no issues found" summary, not the findings.
+          claude_args: >-
+            --allowedTools
+            "Task,Read,Grep,Glob,TodoWrite,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh pr comment:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git diff:*)"
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options

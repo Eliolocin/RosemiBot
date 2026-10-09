@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { parseFetchUrlEngineOrder } from "@/tools/fetchUrl/dispatcher";
-import { convertFetchedContent, SafeHttpFetchEngine } from "@/tools/fetchUrl/mcpFetchEngine";
+import { convertFetchedContent, SafeHttpFetchEngine } from "@/tools/fetchUrl/safeHttpFetchEngine";
 import type { ToolContext } from "@/types/tool/interfaces";
 import {
+  checkCrossOriginRedirect,
   createPinnedFetchRequest,
   fetchUserRemoteUrl,
+  RemoteUrlPolicyError,
   resolveValidatedUserRedirect,
 } from "@/utils/security/userRemoteFetch";
 
@@ -204,5 +206,206 @@ describe("safe HTTP fetch engine", () => {
         true,
       ),
     ).rejects.toThrow(/link-local|publicly routable/i);
+  });
+});
+
+interface RecordedRequest {
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  body: string;
+}
+
+const SYNTHETIC_BEARER = "Bearer synthetic-redirect-canary";
+const CREDENTIAL_HEADERS = {
+  Authorization: SYNTHETIC_BEARER,
+  "x-api-key": "synthetic-x-api-key-canary",
+  "x-goog-api-key": "synthetic-goog-canary",
+  Cookie: "session=synthetic-cookie-canary",
+};
+
+type FixtureRoute = (request: Request) => Response;
+
+function redirectTo(location: string, status: number): Response {
+  return new Response(null, { status, headers: { Location: location } });
+}
+
+function receivedCanary(requests: RecordedRequest[]): boolean {
+  const canaries = Object.values(CREDENTIAL_HEADERS);
+  return requests.some((request) => Object.values(request.headers).some((value) => canaries.includes(value)));
+}
+
+describe("user remote fetch redirect credentials", () => {
+  const servers: Array<{ stop: (force?: boolean) => void }> = [];
+
+  afterEach(() => {
+    for (const server of servers.splice(0)) server.stop(true);
+    if (originalRunEnv === undefined) {
+      delete process.env[RUN_ENV_NAME];
+    } else {
+      process.env[RUN_ENV_NAME] = originalRunEnv;
+    }
+  });
+
+  /**
+   * A loopback server whose routes answer or redirect. Two servers on different ports are two
+   * origins, which is all a cross-origin credential test needs. Routes stay mutable so a fixture
+   * can redirect to a server started after it.
+   */
+  function fixture(routes: Record<string, FixtureRoute> = {}) {
+    process.env[RUN_ENV_NAME] = "development";
+    const received: RecordedRequest[] = [];
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: async (request) => {
+        const path = new URL(request.url).pathname;
+        received.push({
+          method: request.method,
+          path,
+          headers: Object.fromEntries(request.headers.entries()),
+          body: await request.text(),
+        });
+        return routes[path]?.(request) ?? new Response("missing", { status: 404 });
+      },
+    });
+    servers.push(server);
+    return { routes, received, origin: `http://127.0.0.1:${server.port}` };
+  }
+
+  it("sends credentials on a direct request", async () => {
+    const target = fixture({ "/v1/models": () => Response.json({ data: [] }) });
+
+    const response = await fetchUserRemoteUrl(`${target.origin}/v1/models`, { headers: CREDENTIAL_HEADERS });
+
+    expect(response.status).toBe(200);
+    expect(target.received[0]?.headers.authorization).toBe(SYNTHETIC_BEARER);
+  });
+
+  it.each([301, 302, 303, 307, 308])("keeps credentials across a same-origin %i GET redirect", async (status) => {
+    const target = fixture({
+      "/v1/models/": () => redirectTo("/v1/models", status),
+      "/v1/models": () => Response.json({ data: [] }),
+    });
+
+    const response = await fetchUserRemoteUrl(`${target.origin}/v1/models/`, { headers: CREDENTIAL_HEADERS });
+
+    expect(response.status).toBe(200);
+    expect(target.received.map((request) => request.headers.authorization)).toEqual([
+      SYNTHETIC_BEARER,
+      SYNTHETIC_BEARER,
+    ]);
+  });
+
+  it.each([
+    [301, "GET", ""],
+    [302, "GET", ""],
+    [303, "GET", ""],
+    [307, "POST", '{"text":"hello"}'],
+    [308, "POST", '{"text":"hello"}'],
+  ])("applies %i method semantics to a same-origin credentialed POST", async (status, method, body) => {
+    const target = fixture({
+      "/synthesize/": () => redirectTo("/synthesize", status),
+      "/synthesize": () => Response.json({ detail: "validation" }, { status: 422 }),
+    });
+
+    const response = await fetchUserRemoteUrl(`${target.origin}/synthesize/`, {
+      method: "POST",
+      headers: { ...CREDENTIAL_HEADERS, "Content-Type": "application/json" },
+      body: '{"text":"hello"}',
+    });
+
+    const followed = target.received[1];
+    expect(response.status).toBe(422);
+    expect(followed?.method).toBe(method);
+    expect(followed?.body).toBe(body);
+    expect(followed?.headers.authorization).toBe(SYNTHETIC_BEARER);
+  });
+
+  it("follows a cross-origin asset redirect anonymously while keeping safe headers", async () => {
+    const assetHost = fixture({ "/signed/video.mp4": () => new Response("video-bytes") });
+    const apiHost = fixture({ "/files/video": () => redirectTo(`${assetHost.origin}/signed/video.mp4`, 302) });
+
+    const response = await fetchUserRemoteUrl(`${apiHost.origin}/files/video`, {
+      headers: { ...CREDENTIAL_HEADERS, "User-Agent": "TomoriBot-test", Accept: "video/mp4" },
+    });
+
+    expect(await response.text()).toBe("video-bytes");
+    expect(receivedCanary(assetHost.received)).toBe(false);
+    expect(assetHost.received[0]?.headers["user-agent"]).toBe("TomoriBot-test");
+    expect(assetHost.received[0]?.headers.accept).toBe("video/mp4");
+  });
+
+  it("explains a cross-origin 307 POST that the new origin rejects without credentials", async () => {
+    const otherHost = fixture({ "/v1/chat/completions": () => new Response("unauthorized", { status: 401 }) });
+    const apiHost = fixture({
+      "/v1/chat/completions": () => redirectTo(`${otherHost.origin}/v1/chat/completions`, 307),
+    });
+
+    const error = await fetchUserRemoteUrl(`${apiHost.origin}/v1/chat/completions`, {
+      method: "POST",
+      headers: { ...CREDENTIAL_HEADERS, "Content-Type": "application/json" },
+      body: '{"messages":[]}',
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(RemoteUrlPolicyError);
+    expect((error as RemoteUrlPolicyError).failureCode).toBe("REDIRECT_CREDENTIALS_WITHHELD");
+    expect(otherHost.received[0]?.method).toBe("POST");
+    expect(otherHost.received[0]?.body).toBe('{"messages":[]}');
+    expect(receivedCanary(otherHost.received)).toBe(false);
+  });
+
+  it("treats a hostname change on the same port as a different origin", async () => {
+    const target = fixture({
+      "/start": (request) => redirectTo(`http://localhost:${new URL(request.url).port}/landed`, 302),
+      "/landed": () => new Response("landed"),
+    });
+
+    const response = await fetchUserRemoteUrl(`${target.origin}/start`, { headers: CREDENTIAL_HEADERS });
+
+    expect(await response.text()).toBe("landed");
+    expect(target.received[1]?.headers.authorization).toBeUndefined();
+  });
+
+  it("does not reattach credentials when a later hop returns to the original origin", async () => {
+    const apiHost = fixture({ "/final": () => new Response("final") });
+    const bounceHost = fixture({ "/bounce": () => redirectTo(`${apiHost.origin}/final`, 302) });
+    apiHost.routes["/start"] = () => redirectTo(`${bounceHost.origin}/bounce`, 302);
+
+    const response = await fetchUserRemoteUrl(`${apiHost.origin}/start`, { headers: CREDENTIAL_HEADERS });
+
+    expect(await response.text()).toBe("final");
+    expect(apiHost.received[0]?.headers.authorization).toBe(SYNTHETIC_BEARER);
+    expect(receivedCanary([...bounceHost.received, ...apiHost.received.slice(1)])).toBe(false);
+  });
+
+  it("refuses a credentialed HTTPS to HTTP downgrade before sending anything", () => {
+    expect(() =>
+      checkCrossOriginRedirect(new URL("https://api.example.com/v1"), new URL("http://api.example.com/v1"), {
+        headers: { Authorization: SYNTHETIC_BEARER },
+      }),
+    ).toThrow(RemoteUrlPolicyError);
+  });
+
+  it("treats an HTTP to HTTPS upgrade as an origin change that drops credentials", () => {
+    expect(
+      checkCrossOriginRedirect(new URL("http://api.example.com/v1"), new URL("https://api.example.com/v1"), {
+        headers: { Authorization: SYNTHETIC_BEARER },
+      }),
+    ).toBe(true);
+  });
+
+  it("allows an anonymous downgrade under the existing URL policy", () => {
+    expect(
+      checkCrossOriginRedirect(new URL("https://images.example.com/a.png"), new URL("http://cdn.example.net/a.png"), {
+        headers: { "User-Agent": "TomoriBot-test" },
+      }),
+    ).toBe(false);
+  });
+
+  it("refuses a cross-origin target that embeds URL credentials", () => {
+    expect(() =>
+      checkCrossOriginRedirect(new URL("https://api.example.com/v1"), new URL("https://user:pw@other.example/v1"), {}),
+    ).toThrow(RemoteUrlPolicyError);
   });
 });

@@ -8,32 +8,34 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-TomoriBot xem chuyển lời nói thành văn bản là tính năng endpoint tùy chỉnh `transcription`. Các tệp âm thanh đính kèm được phiên âm trong nền và thêm vào ngữ cảnh cuộc trò chuyện khi có một endpoint phiên âm đang hoạt động.
+Phiên âm cục bộ tin nhắn thoại và tệp đính kèm âm thanh để TomoriBot có thể hiểu âm thanh giọng nói trong cuộc trò chuyện mà không cần gửi bản ghi tới API đám mây của bên thứ ba.
 
-Việc gửi hiển thị bản phiên âm là riêng biệt. `/config` > Engine > Notices chỉ kiểm soát việc bản phiên âm tin nhắn thoại có được gửi trong đoạn chat hay không; mục này không bật hoặc tắt STT trong nền.
+TomoriBot coi tính năng chuyển giọng nói thành văn bản là khả năng điểm cuối tùy chỉnh của `transcription`. Tệp đính kèm âm thanh được phiên âm ở chế độ nền và được thêm vào ngữ cảnh cuộc trò chuyện khi tồn tại điểm cuối phiên âm đang hoạt động.
 
-## Các engine hiện có
+Đăng bảng điểm có thể nhìn thấy là riêng biệt. `/config` > Công cụ > Thông báo chỉ kiểm soát xem bản ghi tin nhắn thoại có được đăng trong cuộc trò chuyện hay không; nó không bật hoặc tắt STT nền.
+
+## Động cơ có sẵn
 
 <CardGrid>
   <LinkCard title="WhisperX" href="/vi/self-hosting/local-endpoints/speech-to-text/whisperx/"
-    description="Phiên âm cục bộ thân thiện với người mới bắt đầu bằng cách sử dụng máy chủ WhisperX mẫu trong servers/stt." />
-  <LinkCard title="whisper.cpp" href="/vi/self-hosting/local-endpoints/speech-to-text/whispercpp/"
-    description="Sử dụng máy chủ HTTP whisper.cpp gọn nhẹ khi máy chủ cung cấp endpoint phiên âm tương thích OpenAI." />
+    description="Phiên âm cục bộ thân thiện với người mới bắt đầu bằng cách sử dụng máy chủ WhisperX tham chiếu trong máy chủ/stt." />
+  <LinkCard title="thì thầm.cpp" href="/vi/self-hosting/local-endpoints/speech-to-text/whispercpp/"
+    description="Sử dụng máy chủ HTTP thì thầm nhẹ khi nó hiển thị điểm cuối phiên âm tương thích với OpenAI." />
   <LinkCard title="KoboldCPP" href="/vi/self-hosting/local-endpoints/speech-to-text/koboldcpp/"
-    description="Sử dụng STT dựa trên Whisper của KoboldCPP khi bản dựng của bạn cung cấp endpoint phiên âm âm thanh tương thích OpenAI." />
+    description="Sử dụng STT dựa trên KoboldCPP STT dựa trên Whisper khi bản dựng của bạn hiển thị bản ghi âm tương thích với OpenAI." />
 </CardGrid>
 
-## Quy trình cài đặt
+## Luồng thiết lập
 
-1. Khởi động một máy chủ STT từ các hướng dẫn engine ở trên.
-2. Trong `/providers`, chọn `Thêm endpoint tùy chỉnh mới` và sử dụng API Compatibility `openai-compatible-transcription`.
-3. Chọn endpoint đã lưu và sử dụng menu thả xuống model để thêm mã model do máy chủ báo cáo.
-4. Mở `/config` > Models > Switch Models để chọn và kích hoạt endpoint đã đăng ký.
+1. Khởi động một máy chủ STT từ hướng dẫn công cụ ở trên.
+2. Trong `/providers`, chọn `+ Thêm endpoint tùy chỉnh mới` (hoặc `Add New Custom Endpoint`) và chọn `openai-compatible-transcription` (Phiên âm tương thích OpenAI).
+3. Chọn điểm cuối đã lưu và sử dụng model thả xuống của nó để thêm mã model được máy chủ báo cáo.
+4. Mở `/config` > `Model` > Chuyển model để chọn và kích hoạt điểm cuối đã đăng ký.
 
-## Quy trình phiên âm
+## Luồng bảng điểm
 
-Khi một endpoint phiên âm đang hoạt động, TomoriBot sẽ đọc các tệp âm thanh đính kèm được hỗ trợ trong nền và thêm bản phiên âm vào ngữ cảnh trò chuyện. Không cần gán persona.
+Khi điểm cuối phiên âm đang hoạt động, TomoriBot sẽ đọc các tệp đính kèm âm thanh được hỗ trợ ở chế độ nền và thêm bản ghi vào ngữ cảnh trò chuyện. Không cần phân công cá nhân.
 
-Chỉ sử dụng `/config` > Engine > Notices nếu bạn cũng muốn các bản phiên âm đó được gửi hiển thị rõ ràng trong đoạn chat.
+Chỉ sử dụng `/config` > Engine > Thông báo nếu bạn cũng muốn những bản ghi đó được đăng rõ ràng trong cuộc trò chuyện.
 
-Người dùng ElevenLabs nên chọn `Thêm nhà cung cấp mới` và ElevenLabs trong `/providers`; tùy chọn này đăng ký tính năng phiên âm cùng với giọng nói.
+Người dùng ElevenLabs nên chọn `Thêm nhà cung cấp mới` và `ElevenLabs` trong `/providers`; nó đăng ký phiên âm cùng với lời nói.

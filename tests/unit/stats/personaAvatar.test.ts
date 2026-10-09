@@ -21,6 +21,7 @@ function preset(overrides: Partial<TomoriPresetRow> = {}): TomoriPresetRow {
     preset_avatar_hash: "hash",
     preset_trigger_words: [],
     preset_naming_config: structuredClone(EMPTY_PERSONA_NAMING_CONFIG),
+    is_nsfw: false,
     ...overrides,
   };
 }

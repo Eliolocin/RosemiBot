@@ -1,5 +1,8 @@
 export default {
   tools: {
+    execution: {
+      unavailable: `The tool \`{tool}\` is unavailable under the current settings, model capabilities, or bot permissions.`,
+    },
     generate_image: {
       quota_exceeded_generic: `Image generation quota has been exceeded.`,
       user_quota_exceeded: `You have reached your daily image generation quota. {reset_info}`,
@@ -49,8 +52,8 @@ export default {
       tool_invoke_no_params: `No parameters.`,
     },
     tool_notice: {
-      hide_footer: `Hide this using \`/config\` > Behavior > Notices`,
-      hide_footer_with_kill: `Hide this using \`/config\` > Behavior > Notices · Use \`/kill\` if you think I'm stuck`,
+      configure_hint: `Configure these notices in \`/config\` > Behavior > Notices`,
+      kill_hint: `Use \`/kill\` if you think I'm stuck`,
     },
     user_block: {
       error_missing_permission: `I need the {permission} permission in this channel to announce a block. Ask a server administrator to grant it, then try again.`,
@@ -70,6 +73,13 @@ export default {
     },
     user_info_update: {
       success_title: `✅ Updated {target_user}'s Profile`,
+      success_title_fields: `✅ Updated {target_user}'s {fields}`,
+      success_title_cleared_fields: `🗑️ Cleared {target_user}'s {fields}`,
+      subject_nickname: `nickname`,
+      subject_gender_identity: `gender identity`,
+      subject_pronouns: `pronouns`,
+      subject_addressing_style: `addressing style`,
+      subject_timezone_offset: `timezone`,
       success_intro: `Updated the following:`,
       change_line: `{index}. {field}: \`{previous}\` → \`{next}\``,
       success_summary: `{persona_name} now calls {target_user} "{formatted_name}".`,
@@ -173,7 +183,6 @@ export default {
         "message-action": [],
         "user-blocking": [],
         "user-info": [],
-        sticker: [],
         thread: [],
         capabilities: [],
       },

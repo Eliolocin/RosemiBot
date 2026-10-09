@@ -27,7 +27,6 @@ import {
 } from "@/providers/utils/presetCommon";
 import { resolvePresetGenerationMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
 
-/** Options for NVIDIA NIM preset generation. */
 interface NvidiaPresetGenerationOptions {
   model: string;
   temperature?: number;
@@ -192,7 +191,7 @@ export async function generatePresetFromPromptNvidia(
         },
       });
       return {
-        error: `NVIDIA request failed (${response.status}): ${response.statusText}`,
+        error: `NVIDIA request failed (HTTP ${response.status}).`,
         errorType: "CONNECTION",
       };
     }

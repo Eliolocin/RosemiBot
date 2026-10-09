@@ -49,7 +49,7 @@ export default {
       servermemories_desc: `Adicionar/remover memórias de todo o servidor`,
       attributelist_desc: `Adicionar/remover atributos de personalidade`,
       sampledialogues_desc: `Adicionar/remover pares de diálogo de exemplo`,
-      promptsnapshot_desc: `Usar /tool prompt snapshot`,
+      promptsnapshot_desc: `Ver prompts completos em /context e /tool prompt snapshot`,
       select_placeholder: `Selecione o que os membros podem fazer comigo`,
       select_embed_title: `Permissões de Membros do Servidor`,
       select_embed_description: `Selecione o que membros não administradores podem fazer. Marcado = permitido.`,

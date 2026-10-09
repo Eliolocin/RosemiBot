@@ -1,6 +1,8 @@
 import { log } from "../misc/logger";
 import { sql } from "@/utils/db/client";
+import { lazyRotateEncryptedRow } from "./encryptedColumns";
 import { keyManager } from "./keyManager";
+import type { ErrorContext } from "@/types/db/schema";
 /**
  * Encrypts an API key before storing it in the database using pgcrypto's PGP symmetric encryption.
  *
@@ -50,7 +52,11 @@ export const encryptApiKey = async (apiKey: string): Promise<{ encrypted: Buffer
  *
  * @param keyVersion - The version of the key used to encrypt (defaults to 1 for backward compatibility)
  */
-export const decryptApiKey = async (encryptedKey: Buffer, keyVersion: number = 1): Promise<string> => {
+export const decryptApiKey = async (
+  encryptedKey: Buffer,
+  keyVersion: number = 1,
+  failureContext?: ErrorContext,
+): Promise<string> => {
   if (!encryptedKey || encryptedKey.length === 0) {
     log.warn("Empty encrypted key provided for decryption");
     return "";
@@ -71,12 +77,15 @@ export const decryptApiKey = async (encryptedKey: Buffer, keyVersion: number = 1
 
     return result.decrypted_key.toString();
   } catch (error) {
-    log.error(
-      `Failed to decrypt API key with version ${keyVersion}. ` +
-        `Available versions: ${keyManager.getAvailableVersions().join(", ")}. ` +
-        `Run 'bun run audit-keys' to diagnose.`,
-      error,
-    );
+    if (failureContext) {
+      await log.error("Credential decryption failed", new Error("Credential decryption failed"), failureContext);
+    } else
+      log.error(
+        `Failed to decrypt API key with version ${keyVersion}. ` +
+          `Available versions: ${keyManager.getAvailableVersions().join(", ")}. ` +
+          `Run 'bun run audit-keys' to diagnose.`,
+        error,
+      );
     throw new Error("API key decryption failed");
   }
 };
@@ -131,7 +140,7 @@ export const getOptApiKey = async (serverId: number, serviceName: string): Promi
     log.info(`Retrieving optional API key for server ${serverId}, service: ${serviceName}`);
 
     const [result] = await sql`
-			SELECT api_key, key_version
+			SELECT opt_api_key_id, api_key, key_version
 			FROM opt_api_keys
 			WHERE server_id = ${serverId} AND service_name = ${serviceName}
 		`;
@@ -142,28 +151,12 @@ export const getOptApiKey = async (serverId: number, serviceName: string): Promi
     }
 
     // Default to V1 for backward compatibility (NULL values from before versioning)
-    const keyVersion = result.key_version || 1;
-    const currentVersion = keyManager.getCurrentVersion();
-
-    // Decrypt with the version it was encrypted with
-    const decryptedKey = await decryptApiKey(result.api_key, keyVersion);
-
-    // LAZY ROTATION: If using old key version, re-encrypt with current
-    if (keyVersion !== currentVersion) {
-      log.info(`Rotating key from version ${keyVersion} to ${currentVersion} for ${serviceName}`);
-
-      const { encrypted, version } = await encryptApiKey(decryptedKey);
-
-      await sql`
-				UPDATE opt_api_keys
-				SET api_key = ${encrypted},
-				    key_version = ${version},
-				    updated_at = CURRENT_TIMESTAMP
-				WHERE server_id = ${serverId} AND service_name = ${serviceName}
-			`;
-
-      log.success(`Key rotation completed for ${serviceName}`);
-    }
+    const decryptedKey = await decryptApiKey(result.api_key, result.key_version || 1);
+    await lazyRotateEncryptedRow(sql, "opt_api_keys", {
+      id: result.opt_api_key_id,
+      ciphertext: result.api_key,
+      key_version: result.key_version,
+    });
 
     return decryptedKey;
   } catch (error) {

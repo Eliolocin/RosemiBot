@@ -2,172 +2,110 @@
 title: "NovelAI Inpainting Pipeline"
 ---
 
-## Overview
+The inpainting pipeline edits existing images in response to natural language requests. It pairs
+Google Gemini's spatial segmentation with NovelAI's latent diffusion infill API to redraw designated
+regions while preserving surrounding artwork.
 
-TomoriBot can edit existing images using NovelAI's infill API, with Gemini providing automatic region detection. When a user asks the bot to change part of an image (e.g., "make her hair red"), the pipeline:
+## Flow and ownership
 
-1. Extracts the source image from a Discord message
-2. Sends it to Gemini's segmentation API with a natural language target description
-3. Builds an inpainting mask from the detected bounding boxes
-4. Calls NovelAI's infill endpoint with the original image + mask + prompt
+Inpainting executes through three cooperating components:
 
-The implementation spans three files:
-
-| File | Responsibility |
-|------|----------------|
-| `src/utils/image/segmentationService.ts` | Gemini segmentation API call + mask construction |
-| `src/tools/functionCalls/generateImageNaiTool.ts` | NAI infill payload, inpaint mode orchestration |
-| `src/utils/image/imageExtractor.ts` | Discord message image extraction utility |
-
-## Pipeline Flow
+1. `src/utils/image/imageExtractor.ts`: extracts image data and dimensions from Discord message
+   attachments and Components V2 structures.
+2. `src/utils/image/segmentationService.ts`: calls Gemini to locate the target region, constructs an
+   elliptical mask, and quantizes it to the latent grid.
+3. `src/tools/functionCalls/generateImageNaiTool.ts`: constructs the NovelAI infill payload,
+   dispatches the HTTP generation request, and formats the output message.
 
 ```
-1. Tool receives message_id + edit_target + prompt tags
-   └─ generateImageNaiTool.ts → enters inpaint mode
-
-2. Source image extracted from referenced Discord message
-   └─ imageExtractor.ts → base64 + mime type + dimensions
-
-3. Gemini segments the target region
-   └─ segmentationService.ts → callGeminiSegmentation()
-   └─ Returns: bounding boxes (normalized 0–1000) + labels
-
-4. Mask built from bounding boxes
-   └─ segmentationService.ts → buildBoundingBoxMask()
-   └─ Elliptical shape → latent grid quantization → RGBA encoding
-
-5. Infill request sent to NovelAI
-   └─ generateImageNaiTool.ts → generateInpaintImage()
-   └─ action: "infill", inpainting model suffix derived at runtime
-
-6. Result image posted to Discord channel
+Discord Message
+  │  (collectImageUrlsFromMessage)
+  ▼
+imageExtractor.ts ───────────────► Source Image (base64, dimensions)
+                                        │
+                                        ▼
+segmentationService.ts ──────────► Gemini Segmentation API (box_2d)
+  │
+  ├─► Elliptical mask with padding (NAI_INPAINT_PADDING = 0.15)
+  ├─► Latent grid quantization (1/8 resolution snap)
+  └─► RGBA PNG encoding (Alpha channel mask signal)
+        │
+        ▼
+generateImageNaiTool.ts ─────────► NovelAI /ai/generate-image
+                                   (action: "infill", strength: 1.0, add_original_image: true)
+                                        │
+                                        ▼
+                              Inpainted Output to Discord
 ```
 
-## Design Decisions
+### 1. Source image extraction
 
-### Bounding Box Approach (Not Per-Pixel Masks)
+When a user requests an image edit, `generateImageNaiTool.ts` identifies the referenced Discord
+message. It invokes `collectImageUrlsFromMessage`, which inspects message attachments and parses
+Components V2 structures (`MediaGallery`, `Thumbnail`, and `File`). The extracted image provides the
+base dimensions, MIME type, and base64 payload.
 
-Gemini's segmentation API returns both bounding boxes (`box_2d`) and per-pixel masks (`mask`). We only use the bounding boxes because per-pixel masks produce severe artifacts on complex regions:
+### 2. Gemini region segmentation
 
-- **Hair, fur, fabric**: Per-pixel masks have holes, rough edges, and incomplete coverage that translate directly into grey splotches in the inpainted output
-- **Blur destroys thin masks**: Applying Gaussian blur to soften per-pixel mask edges turns thin white strands into grey, making the artifacts worse
-- **Bounding boxes are reliable**: Gemini's bounding box detection is consistent even when per-pixel segmentation fails
+`segmentationService.ts` submits the image along with the natural language target description to
+Gemini:
 
-The trade-off is precision: a bounding box covers more area than the exact target region. We mitigate this with elliptical shapes (see below).
+- **Prompt ordering:** Text instructions lead before image data to optimize instruction following.
+- **Output format:** Gemini returns bounding boxes (`box_2d`) with normalized coordinates
+  (`[0, 1000]`).
+- **Safety thresholds:** The configured safety categories use `HarmBlockThreshold.OFF` because
+  artistic and stylized anime illustrations trigger false positives on default thresholds, causing
+  requests to hang or return empty results.
+- **Thinking:** The shared Google policy receives the `none` level to minimize latency on
+  structured coordinate extraction.
 
-### Elliptical Mask Shape
+### 3. Mask construction and latent quantization
 
-Instead of filling the bounding box as a rectangle, we inscribe an ellipse within the padded bounding box:
+Rather than using Gemini's per-pixel segmentation masks, which introduce rough edges and voids on
+complex textures such as hair or fabric, the pipeline generates masks from bounding boxes:
 
-- **Diffusion models expect organic shapes**: NAI's inpainting model was trained on masks from brush strokes, lasso selections, and other organic tools: not perfect rectangles. A rectangular mask creates an unnatural latent-space discontinuity that the model reproduces as a visible edge.
-- **Curved boundaries blend naturally**: An ellipse's varying distance from the content center gives the model a more gradual transition to work with during denoising.
-- **Fixed padding** (`NAI_INPAINT_PADDING`, 0.15): Each side of the bounding box is expanded by this fraction to capture content that extends beyond Gemini's detected region (e.g., wispy hair strands). The padding also compensates for the ellipse's curved boundary cutting into the corners.
+- **Elliptical shape:** An ellipse is inscribed inside the bounding box. Rectangular masks create
+  abrupt boundary discontinuities that diffusion models reproduce as visible seams; curved borders
+  denoise more smoothly.
+- **Padding:** Each bounding box dimension is expanded by 15% (`NAI_INPAINT_PADDING = 0.15`) before
+  inscribing the ellipse, so wispy edges and hair strands are enclosed.
+- **Latent grid quantization:** The mask processor uses nearest-neighbor resizing to keep redraw
+  decisions binary at the backend's latent resolution. Smooth intermediate grey values can create
+  partial-redraw halos. V4 requests return the quantized mask to the source dimensions;
+  `segmentationService.ts` owns the model-specific sizing.
+- **RGBA encoding:** The mask exports as an RGBA PNG where white pixels (`[255, 255, 255, 255]`)
+  signal redraw regions and fully transparent black pixels (`[0, 0, 0, 0]`) signal preserved
+  regions. The alpha channel provides the mask signal expected by NovelAI infill endpoints.
 
-### Latent Grid Quantization (Critical)
+### 4. NovelAI infill dispatch
 
-The mask is quantized to 1/8th resolution before being sent to NAI. This is the single most important step for avoiding halo artifacts:
+`generateImageNaiTool.ts` packages the source image and mask into the infill request:
 
-```
-Full-res mask → downsample to ceil(w/64)*8 × ceil(h/64)*8 (nearest-neighbor)
-             → upsample back to full resolution (nearest-neighbor, V4 only)
-```
+- `action: "infill"` identifies the operation.
+- `add_original_image: true` instructs NovelAI to overlay unmasked original pixels onto the output,
+  preventing global image drift across redrawn boundaries.
+- `strength: 1.0` (`NAI_INPAINT_STRENGTH`) applies full denoising to the masked area, preventing
+  underlying colors from bleeding through the redrawn content.
+- Source image dimensions are explicitly transmitted in the parameters to prevent scaling distortion.
 
-- **Why this matters**: NAI's diffusion model operates in latent space at 1/8th pixel resolution. When you send a full-resolution mask, the model downsamples it internally, and any mask edges that don't align to the 8×8 latent grid produce intermediate grey values. These grey values tell the model to *partially* redraw, creating a visible halo ring at the mask boundary.
+## Cancellation and external effects
 
-Pre-quantizing with nearest-neighbor interpolation ensures every mask pixel snaps to the latent grid. The resulting mask looks "blocky" at full resolution, but this is correct: it matches exactly what the model sees internally.
-
-This approach was derived from the open-source [ComfyUI_NAIDGenerator](https://github.com/bedovyy/ComfyUI_NAIDGenerator) `resize_to_naimask()` function and confirmed by [Aedial/novelai-api](https://github.com/Aedial/novelai-api) issue discussions.
-
-### RGBA Mask Format
-
-The mask is encoded as an RGBA PNG rather than a simple RGB black/white PNG:
-
-| Pixel type | R | G | B | A |
-|-----------|---|---|---|---|
-| Redraw (white) | 255 | 255 | 255 | 255 |
-| Preserve (black) | 0 | 0 | 0 | 0 |
-
-The alpha channel acts as the actual mask signal. This matches the `naimask_to_base64()` encoding used by every major open-source NAI client (ComfyUI_NAIDGenerator, novelai-python, novelai-api).
-
-### `add_original_image: true`
-
-This parameter tells NAI to overlay the original image pixels onto the non-masked area of the output. Without it (`false`), the entire image can drift slightly during generation, causing the redrawn region to look inconsistent with its surroundings. All open-source NAI implementations default to `true`.
-
-### `strength: 1.0`
-
-Full denoising strength ensures the masked region is completely redrawn from the prompt tags. Lower values (e.g., 0.7) preserve some of the original structure but cause the original colors to bleed through: white hair at 0.7 strength + "red hair" prompt = grey output.
-
-The strength is the `NAI_INPAINT_STRENGTH` constant in `src/tools/functionCalls/generateImageNaiTool.ts`, fixed at full denoise.
-
-## Gemini Segmentation Configuration
-
-The Gemini API call uses specific settings derived from Google's [spatial understanding reference](https://ai.google.dev/gemini-api/docs/vision#bbox-segment):
-
-| Setting | Value | Why |
-|---------|-------|-----|
-| Text before image | Parts order: text first | Gemini processes instructions better when text leads |
-| Temperature | 0.5 | Prevents the model from looping on repeated tokens |
-| Safety settings | OFF (all categories) | Anime/artistic images trigger false positives, causing silent hangs |
-| Thinking | Disabled (`thinkingBudget: 0`) | Adds latency without quality benefit for structured extraction |
-| Model | `gemini-2.5-flash` (configurable) | Fast enough for real-time use; configurable via `NAI_SEGMENTATION_MODEL` |
-
-## Configuration Reference
-
-| Env Var | Default | Description |
-|---------|---------|-------------|
-| `NAI_INPAINT_DEBUG` | `false` | DMs the invoking user the mask + bounding box overlay for debugging |
-| `NAI_SEGMENTATION_MODEL` | `gemini-2.5-flash` | Gemini model used for segmentation |
-| `NAI_SEGMENTATION_TIMEOUT_MS` | `90000` | Timeout for the Gemini segmentation API call |
-
-Mask strength (`NAI_INPAINT_STRENGTH`, 1.0) and padding (`NAI_INPAINT_PADDING`, 0.15) are code constants, not environment variables.
+Inpainting needs separately resolved Google segmentation and NovelAI generation credentials.
+The inpainting path does not forward the turn abort signal to either hosted operation. `/kill` stops
+awaiting the tool; later abort checks suppress result delivery and application quota charging, while
+provider work can continue and incur provider charges. Debug DMs are attempted before the final abort
+check and are not retracted.
 
 ## Debugging
 
-When `NAI_INPAINT_DEBUG=true`, the bot DMs the invoking user two images:
+Setting `NAI_INPAINT_DEBUG=true` causes the service to retain the raw generated mask and an overlay
+image depicting the original canvas with bounding boxes and inscribed ellipses. These assets are
+delivered directly to the calling user for diagnostic inspection.
 
-1. **Bounding box overlay**: Original image with dashed rectangles (raw Gemini bbox) and semi-transparent ellipses (actual padded mask shape) drawn on top
-2. **Binary mask**: The actual mask being sent to NAI: white regions are redrawn, black regions are preserved
+## Source pointers
 
-Common issues:
-
-| Symptom | Likely Cause | Fix |
-|---------|-------------|-----|
-| Halo/ring at mask boundary | Mask not quantized to latent grid, or grey pixels in mask | Ensure `buildBoundingBoxMask` quantization is working; check mask has only pure white/black |
-| Grey splotches in output | Using per-pixel masks instead of bounding boxes | Verify `box_2d` coordinates are used, not `mask` data |
-| Original colors bleeding through | Strength too low | Increase `NAI_INPAINT_STRENGTH` to 1.0 |
-| Target region not fully covered | Bounding box too tight | Increase `NAI_INPAINT_PADDING` (e.g., 0.25) |
-| Seam at mask edge with shifted surroundings | `add_original_image: false` | Set to `true` |
-| Gemini returns empty/hangs | Safety filter triggered | Verify safety settings are OFF |
-| 512x512 squished output | Missing width/height in infill payload | Ensure source image dimensions are passed |
-
-## Lessons Learned
-
-These are mistakes made during development that should not be repeated:
-
-1. **Per-pixel masks from Gemini are unreliable** for complex regions (hair, fur, fabric): holes, rough edges, incomplete coverage cause artifacts
-2. **Blur on masks causes halos**, not fixes them: grey pixels from blur create partial-redraw zones
-3. **Mask resolution must match the latent grid**: full-resolution masks with arbitrary edges get quantized internally by the model, creating intermediate values at boundaries
-4. **RGBA format matters**: RGB-only masks may not be interpreted correctly by the API
-5. **`add_original_image: false` causes global image drift**: the surrounding area shifts, making the redrawn region look inconsistent
-6. **Strength < 1.0 causes color bleed-through**: original content leaks into the redrawn area
-
-## Future Work
-
-### Better Segmentation Approaches
-
-The current bounding-box-to-ellipse approach trades precision for stability. An ellipse inscribed in a bounding box includes surrounding pixels that aren't part of the target (e.g., background behind hair), which the model must regenerate. Potential improvements:
-
-- **Alternative segmentation APIs**: Services like SAM 2 (Segment Anything Model) or cloud-based instance segmentation APIs may produce cleaner per-pixel masks than Gemini's built-in segmentation, especially for complex regions like hair
-- **Refined Gemini prompting**: Experimenting with more specific segmentation prompts or multi-pass segmentation (coarse bbox pass → refined mask pass) could improve Gemini's per-pixel output quality
-- **Hybrid approach**: Use Gemini's bounding box for region detection, then run a specialized segmentation model (e.g., SAM 2) on the cropped region for pixel-precise masking, combining Gemini's natural language understanding with a dedicated segmentation model's precision
-- **Mask post-processing**: If per-pixel masks improve, applying morphological operations (dilation, erosion, closing) could fill holes and smooth edges before latent grid quantization
-- **User-guided refinement**: Allow users to adjust the mask region via Discord interactions (e.g., "expand the mask", "include more of the left side") for cases where automatic detection falls short
-
-## File References
-
-| File | Purpose |
-|------|---------|
-| `src/utils/image/segmentationService.ts` | Gemini API call, bounding box mask construction, debug overlay |
-| `src/tools/functionCalls/generateImageNaiTool.ts` | NAI infill payload, inpaint mode orchestration, model detection |
-| `src/utils/image/imageExtractor.ts` | Discord message image extraction |
-| `.env.optional.example` | Optional inpainting and related runtime env vars documented |
+- `src/utils/image/segmentationService.ts`: Gemini API integration, bounding box parsing, elliptical
+  mask construction, and latent grid quantization.
+- `src/tools/functionCalls/generateImageNaiTool.ts`: NovelAI infill payload construction and execution.
+- `src/utils/image/imageExtractor.ts`: Discord attachment and Components V2 image extraction.
+- `src/utils/image/naiImageParams.ts`: Diffusion parameter defaults and constants.

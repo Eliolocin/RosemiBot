@@ -4,7 +4,9 @@ sidebar:
   order: 2
 ---
 
-whisper.cpp se puede usar cuando su servidor HTTP expone un endpoint `POST /v1/audio/transcriptions` compatible con OpenAI.
+Ejecuta conversión de voz a texto liviana y de alto rendimiento para TomoriBot usando [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
+
+TomoriBot se conecta a Whisper.cpp a través de su punto final de transcripción de audio compatible con OpenAI (`POST /v1/audio/transcriptions`).
 
 ## Configuración
 
@@ -27,8 +29,8 @@ Ejecuta `/providers`, elige `Agregar nuevo punto de conexión personalizado` y u
 Después de guardar la conexión, selecciónala y usa su lista desplegable de modelos para agregar el nombre del
 modelo que tu servidor reporta como modelo de transcripción.
 
-Usa `/providers` para registrar el endpoint y configurar el modelo. Luego abre `/config` > Modelos > Cambiar modelos para seleccionar y activar el endpoint registrado.
+Usa `/providers` para registrar el endpoint y configurar el modelo. Luego abre `/config` > Modelos > `Cambiar modelos` para seleccionar y activar el endpoint registrado.
 
-## Usar las transcripciones
+## Usar transcripciones
 
-Después del registro, TomoriBot transcribe los archivos de audio adjuntos en segundo plano y agrega el texto al contexto del chat. Usa `/config` > Motor > Avisos solo si también quieres que las transcripciones se publiquen visiblemente en el chat.
+Después del registro, TomoriBot transcribe los archivos adjuntos de audio en segundo plano y agrega el texto al contexto del chat. Utilice `/config` > Motor > Avisos solo si también desea que las transcripciones se publiquen de manera visible en el chat.

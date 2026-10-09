@@ -1,3 +1,4 @@
+import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 /**
  * /memory history import - Extract atomic facts from channel message history using an LLM
  * and store them as document chunks for RAG retrieval.
@@ -68,6 +69,7 @@ import {
   resolveCapabilityCredentials,
 } from "@/utils/provider/credentialResolver";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 /** Maximum document name length */
 const MAX_DOCUMENT_NAME_LENGTH = 64;
@@ -124,7 +126,7 @@ async function replaceHistoryImportStatus(
   }
 
   const embed = new EmbedBuilder().setColor(options.color);
-  if (options.titleKey) embed.setTitle(localizer(locale, options.titleKey));
+  if (options.titleKey) embed.setTitle(localizedStatusTitle(locale, options.titleKey, options.color));
   const description =
     options.description ??
     (options.descriptionKey ? localizer(locale, options.descriptionKey, options.descriptionVars) : undefined);
@@ -532,6 +534,7 @@ async function fetchAndFormatMessages(params: {
     reachedEnd = false;
   }
 
+  await Promise.all(messages.map(verifyMessageWebhook));
   const formattedResult = formatMessagesForExtraction(messages, allPersonas, channel.client.user?.id);
 
   return {
@@ -1044,7 +1047,7 @@ export async function execute(
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "rate_limit.error_memory_critical_title"))
+            .setTitle(localizedStatusTitle(locale, "rate_limit.error_memory_critical_title", ColorCode.ERROR))
             .setDescription(localizer(locale, "rate_limit.error_memory_critical_description"))
             .setColor(ColorCode.ERROR),
         ],
@@ -1447,7 +1450,9 @@ export async function execute(
         await modalSubmitInteraction.editReply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(localizer(locale, "commands.learn.history.no_extractable_content_title"))
+              .setTitle(
+                localizedStatusTitle(locale, "commands.learn.history.no_extractable_content_title", ColorCode.WARN),
+              )
               .setDescription(
                 `${localizer(locale, "commands.learn.history.no_extractable_content_description")}\n\n${footer}`,
               )
@@ -1496,7 +1501,7 @@ export async function execute(
       await modalSubmitInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.learn.history.success_title"))
+            .setTitle(localizedStatusTitle(locale, "commands.learn.history.success_title", ColorCode.SUCCESS))
             .setDescription(
               `${localizer(locale, "commands.learn.history.success_description", {
                 fact_count: extractResult.totalFactCount.toString(),
@@ -1568,7 +1573,9 @@ export async function execute(
       await modalSubmitInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.learn.history.no_extractable_content_title"))
+            .setTitle(
+              localizedStatusTitle(locale, "commands.learn.history.no_extractable_content_title", ColorCode.WARN),
+            )
             .setDescription(
               `${localizer(locale, "commands.learn.history.no_extractable_content_description")}\n\n${footer}`,
             )
@@ -1620,7 +1627,7 @@ export async function execute(
       await modalSubmitInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.learn.history.success_title"))
+            .setTitle(localizedStatusTitle(locale, "commands.learn.history.success_title", ColorCode.SUCCESS))
             .setDescription(
               `${localizer(locale, "commands.learn.history.success_automatic_global_fallback", {
                 name: nameInput,
@@ -1681,7 +1688,7 @@ export async function execute(
       await modalSubmitInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.learn.history.duplicate_title"))
+            .setTitle(localizedStatusTitle(locale, "commands.learn.history.duplicate_title", ColorCode.ERROR))
             .setDescription(localizer(locale, "commands.learn.history.duplicate_description", { name: nameInput }))
             .setColor(ColorCode.ERROR),
         ],
@@ -1728,7 +1735,7 @@ export async function execute(
     await modalSubmitInteraction.editReply({
       embeds: [
         new EmbedBuilder()
-          .setTitle(localizer(locale, "commands.learn.history.success_title"))
+          .setTitle(localizedStatusTitle(locale, "commands.learn.history.success_title", ColorCode.SUCCESS))
           .setDescription(
             `${localizer(locale, "commands.learn.history.success_automatic_description", {
               fact_count: extractResult.totalFactCount.toString(),

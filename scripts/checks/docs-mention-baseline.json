@@ -2,27 +2,7 @@
   "_notes": "Stale command mentions in documentation that are owed a fix. If a baselined path no longer occurs anywhere, the gate fails and demands its removal.",
   "exceptions": [
     {
-      "path": "config logit-bias",
-      "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
-    },
-    {
-      "path": "config logit-bias add",
-      "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
-    },
-    {
-      "path": "config logit-bias remove",
-      "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
-    },
-    {
-      "path": "config logit-bias upload",
-      "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
-    },
-    {
       "path": "config params",
-      "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
-    },
-    {
-      "path": "config provider add",
       "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
     },
     {
@@ -31,18 +11,6 @@
     },
     {
       "path": "context-note",
-      "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
-    },
-    {
-      "path": "emoji",
-      "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
-    },
-    {
-      "path": "natres",
-      "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
-    },
-    {
-      "path": "novelai image params",
       "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
     },
     {
@@ -66,27 +34,11 @@
       "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
     },
     {
-      "path": "server memberpermissions",
-      "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
-    },
-    {
       "path": "server thought-logs",
       "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
     },
     {
       "path": "server trigger add",
-      "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
-    },
-    {
-      "path": "server trigger remove",
-      "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
-    },
-    {
-      "path": "sysprompt",
-      "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
-    },
-    {
-      "path": "teach document",
       "reason": "Stale documentation path with no decided replacement; owed a fix in the docs-accuracy burn-down."
     }
   ]

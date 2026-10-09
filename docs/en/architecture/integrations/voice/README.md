@@ -5,110 +5,157 @@ sidebar:
   groupLabel: "Voice"
 ---
 
-TomoriBot has a bidirectional voice pipeline:
+TomoriBot provides a bidirectional voice pipeline: inbound speech-to-text (STT) transcribes user
+audio attachments into conversation context, and outbound text-to-speech (TTS) synthesizes native
+Discord voice messages for persona replies.
 
-- inbound STT: user audio attachments become text for conversation context
-- outbound TTS: personas can send native Discord voice messages
+## Architecture and endpoints
 
-Phase 4 routes both through custom endpoint capabilities:
+Voice features route through custom endpoint capabilities registered per server:
 
-- `speech` for TTS
-- `transcription` for STT
+- `transcription`: powers inbound audio transcription.
+- `speech`: powers outbound voice message synthesis.
 
-## Commands
+Endpoints support local engines (such as `tts-clone` and `openai-compatible-transcription`) and
+hosted providers (ElevenLabs).
 
-- `/providers` connects ElevenLabs speech and transcription in one flow.
-- `/providers` registers local `tts-clone` and `openai-compatible-transcription` endpoints.
-- `/providers` switches the active TTS endpoint.
-- `/providers` switches the active STT endpoint.
-- `/config` > Models > TTS Parameters & Voices uploads the one server-local reference sample supported in Phase 4. You can upload any audio format; it is automatically converted to mono WAV and stored in S3/CloudFront in production or under `data/voice-samples/` in non-production. A 10-20 second clip with no background music is recommended, and the upload ceiling is 130 seconds (`SPEECH_SAMPLE_MAX_DURATION_SECS`). That ceiling is not a target: each clone engine applies its own reference-audio limit when the clip is sent, so a clip that one engine rejects can still be the right length for another. The size gate (`SPEECH_SAMPLE_MAX_MB`, 10 MB by default) is checked before duration, and uncompressed stereo WAV spends about 10 MB per minute, so a long clip exported from a DAW can be refused as too large before its duration is ever considered. Compressed uploads avoid that: FLAC, MP3, and OGG are all accepted and are converted to mono WAV at 22.05 kHz anyway, so nothing is lost by compressing first.
-- `/config` > Persona > Voice assigns either the local sample or an ElevenLabs voice to a persona.
-- `/config` > Engine > Notices controls visible transcript posting in chat. It does not enable or disable background STT.
-- `/generate voice-message` drives the active endpoint directly, without a model call, so a clone sample or a design prompt can be auditioned in isolation.
+```
+INBOUND (STT)
+Discord User Audio Attachment
+  │
+  ▼
+admission.ts (transcribeMessageAudioAttachment)
+  │  Checks active transcription endpoint
+  ▼
+Transcription Adapter (OpenAI-compatible / ElevenLabs)
+  │  Caches transcript or posts transcript webhook
+  ▼
+Context Assembly ("\n[System: This was sent as a voice message.]\n<transcript>")
 
-`/config` > Persona > Voice requires Manage Server in a guild and remains available to the owner in a DM-backed workspace.
+─────────────────────────────────────────────────────────────────────────────
 
-## Runtime Behavior
+OUTBOUND (TTS)
+/generate voice-message OR generate_voice_message Tool
+  │
+  ▼
+voiceSourceCapabilities.ts (resolveVoiceSourceCapabilities)
+  │  Determines accepted body shapes (clone vs design vs ElevenLabs)
+  ▼
+voiceSourceResolution.ts (resolveCandidateVoiceSources)
+  │  Selects active voice source with deterministic priority
+  ▼
+voiceMessageSynthesis.ts (synthesizeVoiceMessage)
+  │  Dispatches to backend adapter, records audio_generated metric
+  ▼
+voiceMessageDelivery.ts (deliverVoiceMessage)
+  │  Multipart payload, waveform, duration, bare MIME type, flags: 8192
+  ▼
+Discord Channel (Bot REST for main persona, Webhook for alter persona)
+```
 
-The `generate_voice_message` tool appears only when the active persona has a voice assignment compatible with the active speech endpoint.
+## Inbound transcription (STT)
 
-Audio attachments are transcribed only when a `transcription` endpoint is configured. There is no legacy optional-key fallback after Phase 4.4.
+When a Discord message includes an audio attachment, turn admission in `src/utils/chat/admission.ts`
+initiates transcription via `transcribeMessageAudioAttachment`:
 
-## Shared Synthesis And Delivery
+Audio transcription requires an active `transcription` endpoint. Successful transcripts replace the
+effective input with the original text plus a voice-message annotation. In transcript chat mode, supported
+guild channels receive a user-identity webhook transcript; otherwise admission caches it as `user_stt`.
+This mode is controlled by `voice_transcript_chat_mode`, rather than the server notice toggle.
 
-The tool and `/generate voice-message` converge on the same three modules, so a Discord quirk fixed once is fixed for both:
+If transcription fails, an audio-only turn is ignored, including when no endpoint is configured.
+A message that also contains text can proceed using that text. Failure notices require an eligible
+invocation and exclude missing-endpoint or missing-key failures. `evaluateAudioTranscriptionAdmission()`
+owns this decision, while `src/utils/audio/audioAttachmentTranscription.ts` owns downloading and backend dispatch.
+
+## Outbound synthesis (TTS)
+
+Outbound synthesis is driven by two pathways:
+
+- The `generate_voice_message` LLM tool, available when the active persona has a compatible voice
+  assignment.
+- The `/generate voice-message` slash command, which drives the speech endpoint directly without an
+  LLM call.
+
+Both callers converge on shared synthesis and delivery modules:
 
 | Module | Responsibility |
 |---|---|
-| `src/utils/speech/voiceSourceCapabilities.ts` | Which request shapes the active endpoint accepts. |
-| `src/utils/speech/voiceMessageSynthesis.ts` | Picks the backend for a resolved source and returns the `audio_generated` metric key with the audio. |
-| `src/utils/speech/voiceSourceResolution.ts` | Pure source table: which voices an invocation may use, and in what pre-selection order. |
-| `src/utils/discord/webhook/voiceMessageDelivery.ts` | Sends the native voice message and the transcript caption. |
+| `src/utils/speech/voiceSourceCapabilities.ts` | Resolves which request bodies the active endpoint accepts. |
+| `src/utils/speech/voiceSourceResolution.ts` | Discovers available voice sources and defines pre-selection priority. |
+| `src/utils/speech/voiceMessageSynthesis.ts` | Dispatches synthesis to the target adapter and records metrics. |
+| `src/utils/discord/webhook/voiceMessageDelivery.ts` | Transmits native Discord voice message payloads. |
 
-`voiceMessageDelivery.ts` is deliberately not a generic attachment sender. Discord silently degrades rather than erroring on each of its quirks: `flags: 8192` with `waveform` and `duration_secs` has to be sent as raw multipart because `MessagePayload` drops unknown attachment fields, the bot REST path needs `passThroughBody` so the REST manager does not JSON-serialize the `FormData`, the webhook URL needs `wait=true` to return a message ID instead of a 204, and the content type has to be stripped to its bare MIME form because Discord rejects waveform metadata when it carries parameters.
+### Source resolution and endpoint capabilities
 
-### Delivery Identity
+`resolveVoiceSourceCapabilities` inspects the active `speech` endpoint to determine supported
+request formats:
 
-Who a voice message appears to be from follows the same main-versus-alter split `resolveResponseTarget`
-makes on the chat path:
+- `acceptsCloneShape`: endpoint accepts reference audio clips (`ref_audio` and `ref_text`).
+- `acceptsDesignShape`: endpoint accepts text prompt instructions (`instruct`).
+- `cloneInstructionsAvailable`: clone endpoints that accept delivery directives via `instruct`.
 
-| Persona | Transport | Identity |
-|---|---|---|
-| Main | Bot REST | The bot's own name and avatar |
-| Alter | Persona webhook | `resolvePersonaWebhookIdentity`, with `avatarDataUri` preferred over `avatarUrl` |
+Endpoints using the `tts-clone` API style declare a `voice_mode` of `clone`, `voice-design`, or
+`auto`. An `auto` endpoint accepts both clone and design request shapes on a single endpoint URL.
+ElevenLabs endpoints accept neither shape, relying strictly on stored voice identifiers.
 
-The main persona is the bot, so it needs no webhook and the command never asks for Manage Webhooks
-on its behalf. For an alter, a webhook failure is surfaced as an error rather than posting under
-the bot's identity, because the persona identity is the point of the request.
+Candidate sources resolve with deterministic precedence:
+1. Ad-hoc user upload (voice clip).
+2. Ad-hoc typed design prompt.
+3. Persona's assigned reference sample.
+4. Persona's assigned design prompt.
 
-Reading `avatarUrl` alone is a live trap: a locally stored avatar (the `presets/` sprite pipeline,
-and any alter outside production) resolves to `avatarDataUri` with no URL form, so an
-`avatarUrl`-only read leaves the webhook posting with the bot's default picture and no error
-anywhere.
+User-supplied inputs on the active turn outrank stored persona defaults, and audio clips outrank
+design prompts due to higher cloning determinism.
 
-The delivery target's `channel` is the channel the message belongs in, including a thread, never a
-thread's webhook-hosting parent: the bot REST paths address the channel by id, so a parent here
-posts the audio in the wrong place.
+For `auto` endpoints, the `generate_voice_message` tool checks if the persona voice name equals the
+sentinel string `"VoiceDesign"`. That sentinel acts as the branch selector between sample-based
+cloning and prompt-based voice design. The `/generate voice-message` command presents all valid
+sources directly in its modal interface.
 
-## Voice Source Resolution
+## Native Discord delivery constraints
 
-Any invocation can see up to four candidate sources, gated by what the active endpoint accepts:
+Discord voice messages must comply with strict gateway and REST requirements handled by
+`src/utils/discord/webhook/voiceMessageDelivery.ts`:
 
-| Source | Requires |
-|---|---|
-| Uploaded clip (`voice_sample`) | Endpoint accepts the clone shape (`ref_audio` + `ref_text`) |
-| Typed prompt (`voice_design`) | Endpoint accepts the design shape (`instruct`) |
-| Persona's assigned sample | Endpoint accepts the clone shape |
-| Persona's design prompt | Endpoint accepts the design shape |
+- **Voice message flag:** Payloads must set message flag 8192 (`MessageFlags.IsVoiceMessage`).
+- **Multipart transmission:** Attachment metadata (`waveform` and `duration_secs`) must transmit
+  via raw multipart `FormData`. Discord's standard `MessagePayload` serializes attachments through a
+  wrapper that drops unrecognized fields.
+- **REST body passthrough:** Bot REST paths must specify `passThroughBody` so the Discord REST
+  manager does not convert the `FormData` body into JSON.
+- **Bare MIME types:** Discord rejects voice waveform metadata when content types contain
+  parameters. Content types are normalized to bare MIME strings (such as `audio/ogg` or `audio/wav`).
+- **Webhook acknowledgement:** Webhook executions require `wait=true` to retrieve the created
+  message ID.
 
-"Accepts the clone shape" means `api_style === "tts-clone"` with `voice_mode` of `clone` or `auto`; "accepts the design shape" means `tts-clone` with `voice_mode` of `voice-design` or `auto`. ElevenLabs is the degenerate case and accepts neither, so its only source is the persona's stored voice id.
+### Identity resolution
 
-`resolveVoiceSourceCapabilities()` is the single implementation of that table, and both the modal and the synthesis dispatcher read it. The dispatcher refuses any source whose shape the endpoint does not accept, and it does so before reaching a backend, so a mismatch surfaces as a configuration error rather than as a request a TTS server has to reject.
+Voice messages preserve persona identity through the same transport split used by text chat:
 
-Delivery Direction is available in `/generate voice-message` when either a design-shaped source is
-available or the active clone endpoint advertises `supports_instruct`. The latter is tracked as
-`cloneInstructionsAvailable`, so a clone persona can use global delivery instructions without being
-misclassified as a VoiceDesign source. The LLM tool assembly uses the same capability check and
-forwards `voice_instructions` through the clone adapter only for endpoints that opt in.
+- **Main persona:** Sent via Bot REST using the bot's native username and avatar.
+- **Alter persona:** Sent via persona webhook using `resolvePersonaWebhookIdentity`. Locally stored
+  avatars resolve to `avatarDataUri` rather than public HTTP URLs; reading `avatarUrl` alone would
+  cause webhooks to post with the bot's default avatar.
+- **Delivery fallback:** If native webhook delivery fails, the helper tries bot REST, then an ordinary
+  attachment. A fallback can change the displayed identity or lose native voice metadata. Tool cancellation
+  forwards an abort signal to synthesis and checks it before delivery; it cannot undo provider work
+  already accepted.
+- **Channel routing:** Deliveries address the destination channel directly by snowflake ID. When
+  posting into a thread, delivery targets the thread ID itself rather than the thread's parent
+  channel.
 
-Two predicates in `ttsVoiceDesignAdapter.ts` are easy to confuse, and confusing them once already disabled voice design on every `auto` deployment:
+## Related documentation
 
-- `isVoiceDesignEndpoint()` is true only for a dedicated voice-design endpoint.
-- `acceptsDesignShape()` is true for a dedicated voice-design endpoint and for `auto`.
+- [Text-to-Speech self-hosting](/self-hosting/local-endpoints/text-to-speech/)
+- [Speech-to-Text self-hosting](/self-hosting/local-endpoints/speech-to-text/)
 
-Anywhere the question is "can this endpoint receive a design body", the answer is `acceptsDesignShape()` or the capability table, never `isVoiceDesignEndpoint()`.
+## Source pointers
 
-Pre-selection order is upload, typed design prompt, persona sample, persona design prompt: intent expressed on this invocation outranks stored persona configuration, and between the two user-supplied sources the uploaded clip wins because clone output is the more deterministic of the two.
-
-### `auto` Endpoint Disambiguation
-
-An `auto` endpoint accepts both request shapes on one URL, distinguished by which fields are present.
-
-For the chat tool, the persona sentinel `speech_voice_name === "VoiceDesign"` picks the shape: a persona on an `auto` endpoint that holds both a sample and a design prompt keeps using its sample unless its voice name is the sentinel. That sentinel is part of the tool's branch condition, not a hint, so it has to stay in whatever selects the source.
-
-`/generate voice-message` needs no sentinel, because the user is present and can be asked: it offers every source the endpoint accepts as a modal radio option, and the choice itself selects the request shape. A manager registering an `auto` endpoint therefore does not have to set the sentinel to reach voice design manually, though the sentinel is still what lets the model pick that path mid-conversation. Both paths converge on the dispatcher, which decides purely from the resolved source shape and the capability table.
-
-Local setup guides:
-
-- [Text-to-Speech (local engines)](../../../self-hosting/local-endpoints/text-to-speech/)
-- [Speech-to-Text (local engines)](../../../self-hosting/local-endpoints/speech-to-text/)
+- `src/utils/chat/admission.ts`: Audio attachment detection and transcription dispatch during
+  turn admission.
+- `src/utils/speech/voiceSourceCapabilities.ts`: Speech endpoint capability resolution.
+- `src/utils/speech/voiceSourceResolution.ts`: Candidate voice source discovery and prioritization.
+- `src/utils/speech/voiceMessageSynthesis.ts`: Multi-backend synthesis dispatcher and metrics.
+- `src/utils/discord/webhook/voiceMessageDelivery.ts`: Native Discord voice message payload delivery.
+- `src/tools/functionCalls/generateVoiceMessageTool.ts`: Built-in LLM voice message tool.

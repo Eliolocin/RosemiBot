@@ -28,8 +28,8 @@ holds:
    to travel together: docs, migrations, cache invalidation, and English locale keys.
 
 Reuse without speculating:
-- Extract a shared helper when a second real caller exists now, not for an imagined one.
-- Fix a bug in the shared function after checking every caller, not only the reported path.
+- Extract a shared helper only when a second real caller exists.
+- Check every caller before fixing a bug in a shared function.
 - No compatibility shims, fallback paths, or options for states the code cannot reach. Validate at
   trust boundaries (user input, provider responses, URLs, stored JSON); trust typed internal values.
 - A deliberate shortcut with a known ceiling gets a comment naming the ceiling and the upgrade trigger.
@@ -50,7 +50,7 @@ proposed follow-up's premise in source before suggesting it.
    - Use path alias imports (`@/*`) for `src/*`.
    - Avoid `any`; use typed interfaces/schemas.
    - Full conventions: `docs/en/contributing/development-tasks.md` (Coding Conventions section).
-2. Comment for rationale, not narration.
+2. Comment to explain rationale.
    - Explain why a constraint, quirk, or invariant exists; never restate the line below it.
    - No step numbering or `Rule N:` scaffolding in comments and JSDoc.
    - No prose em/en dashes or spaced double hyphens in comments, JSDoc, `docs/`, or locale strings.
@@ -64,9 +64,13 @@ proposed follow-up's premise in source before suggesting it.
    - Docs, code comments, tests, and locale strings ship publicly: use invented placeholder names
      (`Mirri`, `Juno`, `Bau (@bau_h)`), never a real contributor, advisor, or user's name, handle,
      or account.
-   - Attribute guidance to its reason, not its author: "by domain constraint", not "per <person>".
+   - Attribute guidance to its reason, such as "by domain constraint". Omit author attribution
+     such as "per <person>".
    - Omit dates describing when work happened, broke, or was decided. Keep dates that belong to the
      subject: API versions, deprecation deadlines, legal effective dates.
+   - One deliberate exception: `docs/en/wiki/threat-models.md` opens with a visible `Updated on:`
+     line, because a reader deciding how far to trust a security page needs to see how current the
+     review is. Update it in the same change that revises the page.
    - Git-ignored files (`plans/`, local notes) may name people and dates freely.
 4. Localize all user-facing text.
    - Use `localizer()` for replies, embeds, command metadata, and choices.
@@ -77,6 +81,8 @@ proposed follow-up's premise in source before suggesting it.
      - Option descriptions: `{option_name}_description` (e.g. `channel_description`)
      - Choice labels: `{choice_value}_option` (e.g. `injection_option`, `enable_option`)
      - Do NOT use `{option_name}_option` for option descriptions; it silently fails auto-localization.
+   - Never open a title key with a status circle (`🔴`, `🟡`, `🟢`). `src/utils/discord/ui/statusTitle.ts`
+     renders it from the surface color, and a hardcoded one is stripped as contradictory.
    - Panel text: write natural prose and let `buildPanelContainer()` wrap it at runtime. See
      `docs/en/contributing/policies/panel-prose-and-layout.md`.
 5. Respect Discord interaction timing.
@@ -105,21 +111,30 @@ proposed follow-up's premise in source before suggesting it.
       stored data shape, a Discord limit). A bug fix gets the regression test that would have caught
       it. No tests that only prove wiring or a helper exists, and no dedicated test suites or CI jobs
       for optional local servers (`servers/`), installers, or devtools.
-    - Loop locales inside one test that reports every failure, not one test per locale.
+    - Use one test to loop over locales and report every failure.
     - Assert localized copy by key (`localizedCopy` or `localizedProse` from
-      `tests/helpers/localeCases.ts`), never by quoting its English text.
+      `tests/helpers/localeCases.ts`), never by quoting its English text. Unlocalized prose (error
+      messages, generated reports) is not asserted verbatim either; assert count, structure, or behavior.
     - Assert an exact count or a complete member list only when that exact count or list is what must
       not change.
     - Code kept alive only by a test import is dead code.
     - Build fixtures with the factories in `tests/helpers/` (see its README), and only from values
       production can produce. Patterns to avoid: `docs/en/contributing/testing/maintainable-tests.md`.
+    - Run tests with `bun run test [files]`, never bare `bun test`, for anything under
+      `tests/regression/db/`. Only the wrapper provisions the disposable database; a bare run skips
+      those suites, and a skipped suite is not a pass.
     - Gates: `bun run check`, `bun run lint`, and `bun run check-locales` when localization or command
       metadata changes. A passing gate says nothing about files it does not scan.
 
 ## Review Findings
 
-Every finding gets one disposition before anyone implements it: accept now, defer with a concrete
-trigger, not worth its maintenance cost, or reject because its premise is false or already handled.
+Every finding gets one disposition before anyone implements it:
+
+- Accept now.
+- Defer with a concrete trigger.
+- Not worth its maintenance cost.
+- Reject because its premise is false or already handled.
+
 Severity describes impact if the finding is real; it does not make a fix mandatory. Implement only
 accepted findings. Full rubric: `docs/en/contributing/development-tasks.md` (Proportionality section).
 
@@ -184,21 +199,30 @@ Fixes belong on `main` and flow forward.
 
 ## Documentation Maintenance
 
-When a change alters behavior, update docs in the same change:
+Update docs in the same change when an existing explanation becomes inaccurate or a change
+introduces a cross-component contract, constraint, or workflow readers need. Prefer revising existing
+text over appending; do not narrate implementation branches.
 
 1. Update the page that already owns the topic (behavior, flow, config, schema, constraints). Add a
    page only when no owner exists, and update `docs/README.md` when adding, removing, or renaming one.
 2. Docs describe current behavior. Roadmaps and refactor proposals belong in `plans/`; changelogs,
    progress reports, and summaries restating a page belong nowhere.
-3. Contributor guides are recipes: files to touch, types and limits to satisfy, commands to run. System flows
-   and invariants belong in `docs/en/architecture/`.
+3. Architecture pages explain system flows, ownership, and constraints that require reading across
+   components. Keep local algorithms, exhaustive branches, and copied field definitions in source; use
+   source pointers instead of duplicating them. Follow the scope and review budgets in
+   `docs/en/contributing/localization/docs-authoring.md` ("Architecture scope"). Every other folder
+   is written for its reader's task, plainly and concisely, keeping only
+   the details a reader needs to act. User-facing pages (`features/`, `introduction/`,
+   `meet-tomori/`) use everyday words. Self-hosting guides use plain words but keep every step,
+   command, and setting. Contributor guides are recipes: files to touch, types and limits to satisfy,
+   commands to run.
 4. A page centered on a cloud provider service goes under `docs/en/wiki/cloud/<provider>/` on
    `release`. `docs/en/self-hosting/` is for provider-agnostic hosting on the user's own machines.
 5. This repo is public and every page outside `docs/en/wiki/` is indexed. Guides use placeholders
    (`<gcp-project-id>`, `<resource-group>`); a literal value a reader would copy is a bug. Runbooks act
    on our production, so they go in `docs/en/wiki/` (hidden + `noindex`) and keep real names. Never
    write credentials, tenant IDs, or the production public IP into any page. Full rules:
-   `docs/en/contributing/localization/docs-authoring.md` ("Audience: Guide or Runbook").
+   `docs/en/contributing/localization/docs-authoring.md` ("Audience").
 
 ## Maintaining This File
 

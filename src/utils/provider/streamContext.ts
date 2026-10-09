@@ -82,9 +82,10 @@ export function buildStreamContext(params: BuildStreamContextParams): StreamCont
     suppressUserErrors: streamingContext?.suppressUserErrors,
     textCredentialSource: streamingContext?.textCredentialSource,
     suppressTextOutput: streamingContext?.suppressTextOutput,
+    holdResponseText: streamingContext?.holdResponseText,
+    pendingResponseLimit: streamingContext?.pendingResponseLimit,
     rotationKeyRetriesUsed: streamingContext?.rotationKeyRetriesUsed,
     outputPrefill: streamingContext?.outputPrefill,
-    outputPrefillState: streamingContext?.outputPrefillState,
     replyNoticeState: streamingContext?.replyNoticeState,
 
     webhook: params.webhook,

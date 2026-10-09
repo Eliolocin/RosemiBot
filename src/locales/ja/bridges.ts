@@ -1,5 +1,11 @@
 export default {
   matrix: {
+    encryption_unlinked: {
+      title: `Matrixブリッジを停止しました`,
+      description: `Matrixルーム \`{room_id}\` でエンドツーエンド暗号化が有効化されたため、このチャンネルとのリンクを解除し、メッセージの転送を停止しました。Matrixの暗号化は無効化できません。
+
+ブリッジを継続するには、暗号化されていない新しいMatrixルームを作成し、Botアカウントを招待して {link_command} でリンクしてください。`,
+    },
     notices: {
       invited: `TomoriBotがこのルームに参加しました。
 

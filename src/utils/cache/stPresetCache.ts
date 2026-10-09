@@ -102,9 +102,6 @@ export function invalidateStPresetCache(serverId: number): void {
   cache.delete(serverId);
 }
 
-/**
- * Clear the entire preset cache. Used during shutdown or testing.
- */
 export function clearStPresetCache(): void {
   cache.clear();
 }

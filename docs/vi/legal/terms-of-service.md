@@ -1,6 +1,7 @@
 ---
 title: Điều khoản dịch vụ
 description: Các điều khoản chi phối việc sử dụng instance TomoriBot chính thức được lưu trữ.
+aiGenerated: false
 ---
 
 *Bản dịch này chỉ nhằm mục đích thuận tiện cho bạn tham khảo. Trong trường hợp có sự mâu thuẫn giữa bản dịch và bản tiếng Anh, bản tiếng Anh sẽ được ưu tiên áp dụng.*

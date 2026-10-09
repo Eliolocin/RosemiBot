@@ -12,9 +12,6 @@ import type { UserRow } from "@/types/db/schema";
  */
 export const isCommandEnabled = (): boolean => isHostedPolicyEnvironment();
 
-/**
- * Configure the 'privacy-policy' subcommand
- */
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand.setName("privacy-policy").setDescription(localizer("en-US", "commands.legal.privacy-policy.description"));
 

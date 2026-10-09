@@ -1,0 +1,138 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
+name: "CI: Quality Gates"
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: tomodb_test
+          POSTGRES_USER: tomori
+          POSTGRES_PASSWORD: tomori_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tomori -d tomodb_test" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: tomori
+      POSTGRES_PASSWORD: tomori_ci_password
+      POSTGRES_DB: tomodb_test
+      CRYPTO_SECRET: ci_validation_crypto_secret
+      RUN_ENV: development
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Install PostgreSQL client tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify runtime dependency imports
+        run: bun run check-runtime-imports
+
+      - name: Check Bun module mock surfaces
+        run: bun run check-mock-module-surfaces
+
+      - name: Run linting and type checks
+        # lint:ci is `biome check` without --fix. The local `lint` script applies fixes and still
+        # exits 0, so running it here would rewrite files in the runner and report success while
+        # the committed source stays unformatted.
+        run: bun run lint:ci && bun run check
+
+      - name: Audit dependencies
+        # bun audit has no working workspace filter — it always audits the whole
+        # lockfile, including apps/docs devDeps. Advisories reaching this gate via
+        # workspace:tomoribot-docs are build-time-only, but still block the job.
+        # Ignored advisories are justified in docs/en/contributing/policies/dependency-security.md;
+        # keep this list identical to auditClean.ts and vl.ts.
+        #
+        # Non-blocking here on purpose: a PR's merge-commit lockfile can carry advisories
+        # already fixed on a target branch it hasn't synced yet, which isn't something
+        # the PR author can fix. The deploy workflows' security-dependencies job runs
+        # the same audit as a hard, release-blocking gate.
+        continue-on-error: true
+        run: bun audit --audit-level=high --ignore GHSA-vfj7-8cjw-p6xm
+
+      - name: Audit inline SQL outside repositories
+        run: bun run scripts/checks/audit_sql.ts
+        # Fails the check if any non-exempt SQL appears outside src/utils/db/repositories/.
+        # See plans/refactor/phases/regression-checks/phase-6-regressions.md for the
+        # tx`` regex fix that made this audit complete.
+
+      - name: Check schema drift
+        run: bun run check-schema
+
+      # Guards that existed but were never wired into a workflow, so violations
+      # could land unnoticed. Each exits non-zero on violation and passes at the
+      # time of wiring.
+      #
+      # The persona-workflow-boundary and text-preview scanners have no step here
+      # by design: tests/unit/checks/ asserts both against the real source tree,
+      # and the "Run unit/integration tests" step below already executes them.
+      - name: Check Discord API limits
+        run: bun run check-limits
+
+      - name: Check command reference is current
+        run: bun run check-command-reference
+
+      - name: Check command mentions are current
+        run: bun run check-command-mentions
+
+      - name: Check tracked media size
+        run: bun run check-media-size
+
+      - name: Check seed catalogs
+        run: bun run check-seed-catalogs --defer-drift-review
+
+      - name: Check Discord API limits for localization
+        run: bun run check-locale-lengths
+
+      - name: Check localization keys
+        if: github.event_name != 'pull_request'
+        run: |
+          # Actions runs this under `bash -e`, and the advisory exit 2 would abort a bare assignment
+          # before the branches below could classify it, so the status is captured without tripping it.
+          exitCode=0
+          output=$(bun run check-locales 2>&1) || exitCode=$?
+          echo "$output"
+          if [ $exitCode -eq 1 ]; then
+            echo "Critical error: Missing localization keys found!"
+            exit 1
+          elif [ $exitCode -ne 0 ]; then
+            echo "Localization warnings found, but no critical missing keys. Continuing..."
+          fi
+
+      - name: Run lifecycle validation
+        run: bun run db:lifecycle
+
+      - name: Run unit/integration tests
+        run: bun run test
+        # runTests.ts detects POSTGRES_PASSWORD, provisions a disposable
+        # tomoribot_test_<id> database, injects TEST_DB_READY=1, and drops
+        # the database after the suite completes (or on failure).
+
+      - name: Check model drift review
+        run: bun run check-seed-catalogs

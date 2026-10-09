@@ -1,7 +1,6 @@
 export default {
   genai: {
     generic_error_title: `Error de generación`,
-    generic_error_description: `{error_message}`,
     error_stream_timeout_title: `Tiempo de espera de conexión agotado`,
     error_stream_timeout_description: `Si esto sigue ocurriendo, podría haber un problema temporal con tu proveedor de IA elegido. Por favor, inténtalo de nuevo más tarde o usa \`/refresh\` para actualizar el historial de contexto.`,
     empty_response_title: `Respuesta vacía`,
@@ -20,7 +19,6 @@ export default {
 {failure_list}`,
     fallback_used_failure_line: `{index}. {model} falló con {error_detail}`,
     fallback_used_details_button: `Respaldo utilizado`,
-    fallback_used_hide_footer: `Oculta esto y redirige los detalles a los registros de pensamiento con \`/config\` > Modelos > Avisos`,
     fallback_used_personal_opt_out_footer: `Evita que el modelo del servidor cubra las fallas de tu proveedor personal en \`/personal config\` > Modelos > Alternativas`,
     markdown_table: {
       show_button: `Mostrar Markdown`,
@@ -29,6 +27,8 @@ export default {
     },
     no_response_title: `Sin respuesta`,
     no_response_description: `No respondí; esto puede deberse a una respuesta vacía o a que se agotó el tiempo de espera de la IA.`,
+    log_channel_chat_notice_title: `El chat está desactivado en el canal de registros`,
+    log_channel_chat_notice_description: `Este canal está configurado como canal de registros, así que no respondo mensajes aquí. Para chatear aquí, quítalo o cámbialo en \`/config\` > Canales > Registros.`,
     thought_log: {
       title: `Registro de pensamiento`,
       description: `Fuente: {source_line}`,
@@ -131,6 +131,10 @@ export default {
       content_blocked_default_message: `Tu contenido fue bloqueado por filtros de seguridad`,
       unknown_default_message: `Ocurrió un error inesperado`,
     },
+    vertex: {
+      config_error_message: `Vertex AI no pudo leer la configuración de este proveedor. Ingresa la clave como \`project-id::location\` en \`/providers\`.`,
+      auth_error_message: `Vertex AI no pudo autenticarse. Quien aloja TomoriBot debe configurar las Application Default Credentials de Google Cloud (\`gcloud auth application-default login\` o \`GOOGLE_APPLICATION_CREDENTIALS\`).`,
+    },
     vertexexpress: {
       "403_predict_permission_message": `Esta clave no puede llamar a los modelos Vertex AI Express. Usa una clave de modo Express, o usa el proveedor \`vertex\` por separado para proyectos completos de Google Cloud.`,
       unknown_default_message: `Ocurrió un error inesperado`,
@@ -174,6 +178,7 @@ El modelo seleccionado requiere permitir datos para el entrenamiento del modelo 
     },
     custom: {
       "402_default_message": `Tu cuenta con este punto final no tiene saldo suficiente`,
+      REDIRECT_CREDENTIALS_WITHHELD_default_message: `Este endpoint redirigió a una dirección diferente, por lo que TomoriBot no envió su clave de API allí. Quien administre este endpoint en \`/providers\` puede solucionarlo cambiando su URL a la dirección final a la que redirige el servidor.`,
       unknown_default_message: `Ocurrió un error inesperado`,
     },
     deepseek: {
@@ -189,8 +194,8 @@ El modelo seleccionado requiere permitir datos para el entrenamiento del modelo 
       "401_default_message": `NVIDIA no reconoció esta clave. Verifica que se haya copiado completa, incluido el prefijo \`nvapi-\`.`,
       "403_default_message": `NVIDIA rechazó esta clave. Puede estar mal escrita, caducada o sin acceso de inferencia en su cuenta.`,
       "404_default_message": `El modelo NVIDIA NIM solicitado no se pudo encontrar. Puede estar desaprobado por NVIDIA.`,
-      "500_default_message": `El backend de NVIDIA que sirve a este modelo falló. Esto suele ser transitorio, así que inténtalo de nuevo en un momento. Los detalles a continuación son el propio informe de NVIDIA y son autoritativos: si nombran un parámetro de solicitud, ajusta esa configuración en lugar de adivinar.`,
-      "500_parameter_default_message": `NVIDIA rechazó uno o más parámetros de solicitud para este modelo. Si los detalles nombran parámetros de muestreador no compatibles como \`min_p\`, establécelos en \`0\` con \`/config\` > Modelos > Muestreadores y Parámetros para desactivarlos. Si los detalles nombran \`logit_bias\`, borra las entradas guardadas con \`/config\` > Modelos > Muestreadores y Parámetros.`,
+      "500_default_message": `El backend de NVIDIA que sirve a este modelo falló. Esto suele ser transitorio, así que inténtalo de nuevo en un momento. Si sigue fallando, quien aloja TomoriBot puede leer el informe completo de NVIDIA en los registros del bot.`,
+      "500_parameter_default_message": `NVIDIA rechazó uno o más parámetros de solicitud para este modelo. En \`/config\` > Modelos > Muestreadores y Parámetros, establece en \`0\` los muestreadores no compatibles como \`min_p\` y borra las entradas guardadas de \`logit_bias\`.`,
       unknown_default_message: `Ocurrió un error inesperado`,
     },
     self_teach: {

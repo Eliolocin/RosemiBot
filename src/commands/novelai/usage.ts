@@ -13,6 +13,7 @@ import { ColorCode, log } from "@/utils/misc/logger";
 import { fetchNovelAISubscription } from "@/providers/novelai/novelaiService";
 import { getOptApiKey, decryptApiKey } from "@/utils/security/crypto";
 import { localizer } from "@/utils/text/localizer";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand.setName("usage").setDescription(localizer("en-US", "commands.novelai.usage.description"));
@@ -97,9 +98,10 @@ export async function execute(
     const status = usage.isNegative
       ? localizer(locale, "commands.novelai.usage.status_unavailable")
       : localizer(locale, "commands.novelai.usage.status_available");
+    const embedColor = usage.isNegative ? ColorCode.WARN : ColorCode.SUCCESS;
     const embed = new EmbedBuilder()
-      .setTitle(localizer(locale, "commands.novelai.usage.title"))
-      .setColor(usage.isNegative ? ColorCode.WARN : ColorCode.SUCCESS)
+      .setTitle(localizedStatusTitle(locale, "commands.novelai.usage.title", embedColor))
+      .setColor(embedColor)
       .setDescription(`\`${meter}\` **${Math.round(usage.percent)}%**`)
       .addFields(
         {

@@ -1,6 +1,7 @@
 ---
 title: 隱私權政策
 description: 官方託管的 TomoriBot 執行個體如何收集、儲存與刪除你的資料。
+aiGenerated: false
 ---
 
 > 關於這份翻譯： 本頁為英文版[隱私權政策](/en/legal/privacy-policy/)的翻譯，僅為方便閱讀而提供，內容以英文版為準。若本頁與英文版有任何不一致，一律以英文版為準。

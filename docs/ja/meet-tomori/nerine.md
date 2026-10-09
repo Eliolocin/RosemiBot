@@ -2,6 +2,7 @@
 title: "忠実なネリネ"
 sidebar:
   order: 5
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Source: src/db/seed/catalog/personas/loyal/en-US.ts.

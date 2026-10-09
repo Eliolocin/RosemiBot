@@ -4,11 +4,11 @@ sidebar:
   order: 1
 ---
 
-WhisperX es la ruta de transcripción local recomendada y apta para principiantes.
+Configura conversión de voz a texto local y precisa para TomoriBot utilizando el servidor [WhisperX](https://github.com/m-bain/whisperX) incluido. WhisperX proporciona una transcripción de audio rápida con alineación a nivel de palabra.
 
 ## Configuración
 
-Ejecuta estos comandos desde la raíz del repositorio de TomoriBot, la carpeta donde clonaste TomoriBot. El primer comando entra a la carpeta del servidor de voz a texto:
+Ejecuta estos comandos desde la raíz del repositorio TomoriBot:
 
 ### Windows PowerShell
 
@@ -32,7 +32,7 @@ python -m pip install -r requirements.txt
 python whisperx_server.py
 ```
 
-Mantén esa terminal abierta mientras TomoriBot esté usando WhisperX. La URL del punto de conexión predeterminado es `http://127.0.0.1:8021`.
+Mantén esa terminal abierta mientras TomoriBot esté usando WhisperX. La URL del punto final predeterminado es `http://127.0.0.1:8021`.
 
 ## Registro en TomoriBot
 
@@ -43,8 +43,8 @@ Ejecuta `/providers`, elige `Agregar nuevo punto de conexión personalizado` y u
 
 Después de guardar la conexión, selecciónala y usa su menú desplegable de modelos para agregar `large-v3`, o a lo que sea que esté configurado `WHISPERX_MODEL`, como un modelo de Transcripción.
 
-Usa `/providers` para el registro del endpoint y la configuración del modelo. Luego abre `/config` > Modelos > Cambiar modelos para seleccionar y activar el endpoint registrado.
+Usa `/providers` para el registro del endpoint y la configuración del modelo. Luego abre `/config` > Modelos > `Cambiar modelos` para seleccionar y activar el endpoint registrado.
 
-## Uso de transcripciones
+## Usar transcripciones
 
-Después del registro, TomoriBot transcribe los archivos adjuntos de audio en segundo plano y agrega el texto al contexto del chat. Usa `/config` > Motor > Avisos solo si también quieres que las transcripciones se publiquen visiblemente en el chat.
+Después del registro, TomoriBot transcribe los archivos adjuntos de audio en segundo plano y agrega el texto al contexto del chat. Utilice `/config` > Motor > Avisos solo si también desea que las transcripciones se publiquen de manera visible en el chat.

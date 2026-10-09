@@ -4,6 +4,7 @@ import {
   autoCloseIncompleteMarkers,
   drainThinkBlocksFromBuffer,
   hasIncompleteSemanticMarkers,
+  processBufferContent,
 } from "@/utils/discord/stream/bufferManager";
 
 describe("stream buffer think-block fallback", () => {
@@ -148,5 +149,62 @@ describe("stream buffer emphasis markers", () => {
     const plain = ["f***ing hell", "2*3", "a*b"];
     const failures = plain.filter((buffer) => hasIncompleteSemanticMarkers(buffer));
     expect(failures).toEqual([]);
+  });
+});
+
+/**
+ * A spoiler line used to read as a markdown table header still waiting for its separator row, so the
+ * buffer never split at its newline and the next `Persona:` label shipped inside the spoiler's segment,
+ * where the cleaner then dropped the spoiler as a leaked preamble.
+ */
+describe("stream buffer Discord spoilers", () => {
+  it("does not hold a line whose only pipes are spoilers", () => {
+    expect(hasIncompleteSemanticMarkers("Mirri (The Voice): ||We like Miso.||\n")).toBe(false);
+    expect(hasIncompleteSemanticMarkers("a ||b|| c ||d||")).toBe(false);
+  });
+
+  it("holds when a spoiler tag is opened but not yet closed", () => {
+    expect(hasIncompleteSemanticMarkers("||We want to be picked up like that.")).toBe(true);
+  });
+
+  it("does not hold once the spoiler closes on the same line", () => {
+    expect(hasIncompleteSemanticMarkers("||We want to be picked up like that.||")).toBe(false);
+  });
+
+  it("holds a multi-line spoiler that has not closed yet", () => {
+    expect(hasIncompleteSemanticMarkers("||No. That is slop.\n[Panel 1] They push us down.")).toBe(true);
+  });
+
+  it("does not hold for logical OR inside inline code", () => {
+    expect(hasIncompleteSemanticMarkers("Use `a || b` here\nMore text follows.")).toBe(false);
+  });
+
+  it("does not hold for adjacent pipes in a well-formed table", () => {
+    expect(hasIncompleteSemanticMarkers("| name | mid | age |\n|---|---|---|\n| Bob || 50 |\n\nParagraph after.")).toBe(
+      false,
+    );
+  });
+
+  it("auto-closes an unclosed spoiler on final flush", () => {
+    expect(autoCloseIncompleteMarkers("||Secret text")).toBe("||Secret text||");
+  });
+
+  it("does not auto-close inline code pipes on final flush before a table", () => {
+    const input = "Use `a || b` for the fallback.\n\n| Feature | Supported |\n|---|---|\n| A | Yes |\n";
+    expect(autoCloseIncompleteMarkers(input)).toBe(input);
+  });
+
+  it("still holds a real table header that contains a spoiler cell", () => {
+    expect(hasIncompleteSemanticMarkers("| ||secret|| | score |\n")).toBe(true);
+  });
+
+  it("splits a spoiler line from the speaker label on the next line", () => {
+    const state = createDefaultStreamState();
+    state.buffer = "Mirri (The Voice): ||We like Miso.||\nMirri: ...Ignore that.";
+
+    const result = processBufferContent(state, { humanizerDegree: 1 } as Parameters<typeof processBufferContent>[1]);
+
+    expect(result.segmentToFlush).toBe("Mirri (The Voice): ||We like Miso.||\n");
+    expect(result.updatedBuffer).toBe("Mirri: ...Ignore that.");
   });
 });

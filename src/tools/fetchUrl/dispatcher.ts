@@ -2,7 +2,7 @@ import type { ToolContext, ToolResult } from "@/types/tool/interfaces";
 import { localizer } from "@/utils/text/localizer";
 import { log } from "@/utils/misc/logger";
 import { Crawl4aiEngine } from "./crawl4aiEngine";
-import { SafeHttpFetchEngine } from "./mcpFetchEngine";
+import { SafeHttpFetchEngine } from "./safeHttpFetchEngine";
 import type { FetchEngine, FetchEngineName, FetchOpts } from "./types";
 import { isPrivateNetworkFetchAllowed } from "./urlSafety";
 
@@ -31,13 +31,12 @@ export function parseFetchUrlEngineOrder(raw = process.env.FETCH_URL_ENGINE_ORDE
       continue;
     }
 
-    const normalizedName = name === "mcp_fetch" ? REQUIRED_FALLBACK_ENGINE : name;
-    if (normalizedName !== "crawl4ai" && normalizedName !== REQUIRED_FALLBACK_ENGINE) {
+    if (name !== "crawl4ai" && name !== REQUIRED_FALLBACK_ENGINE) {
       log.warn(`Ignoring unknown fetch_url engine name "${name}" from FETCH_URL_ENGINE_ORDER`);
       continue;
     }
 
-    if (normalizedName === REQUIRED_FALLBACK_ENGINE) {
+    if (name === REQUIRED_FALLBACK_ENGINE) {
       continue;
     }
 
@@ -45,17 +44,17 @@ export function parseFetchUrlEngineOrder(raw = process.env.FETCH_URL_ENGINE_ORDE
     // where private-network fetches are permitted: any non-production runtime,
     // or production with an explicit FETCH_URL_ALLOW_PRIVATE_NETWORK opt-in.
     // Elsewhere the secure default uses the per-hop validated in-process engine.
-    if (normalizedName === "crawl4ai" && !isPrivateNetworkFetchAllowed()) {
+    if (name === "crawl4ai" && !isPrivateNetworkFetchAllowed()) {
       log.warn(
         "Ignoring crawl4ai fetch_url engine: private-network fetching is disabled (production without FETCH_URL_ALLOW_PRIVATE_NETWORK)",
       );
       continue;
     }
 
-    if (seen.has(normalizedName)) continue;
+    if (seen.has(name)) continue;
 
-    seen.add(normalizedName);
-    order.push(normalizedName);
+    seen.add(name);
+    order.push(name);
   }
 
   order.push(REQUIRED_FALLBACK_ENGINE);

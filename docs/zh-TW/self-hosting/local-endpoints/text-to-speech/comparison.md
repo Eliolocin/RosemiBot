@@ -2,6 +2,7 @@
 title: "TTS 引擎比較"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBot 支援多種本機文字轉語音伺服器，各自適合不同的語言、硬體配置與延遲需求。

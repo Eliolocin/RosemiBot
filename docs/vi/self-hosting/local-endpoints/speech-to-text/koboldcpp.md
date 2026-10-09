@@ -4,7 +4,9 @@ sidebar:
   order: 3
 ---
 
-KoboldCPP có hỗ trợ STT dựa trên Whisper, nhưng cấu trúc endpoint có thể khác nhau tùy theo bản dựng. Bộ chuyển đổi Phase 4 của TomoriBot yêu cầu `POST /v1/audio/transcriptions` tương thích OpenAI.
+Sử dụng phiên bản [KoboldCPP](https://github.com/LostRuins/koboldcpp) hiện có của bạn để chép lại tệp đính kèm âm thanh và tin nhắn thoại trong TomoriBot.
+
+KoboldCPP bao gồm tính năng chuyển lời nói thành văn bản dựa trên Whisper. TomoriBot kết nối với KoboldCPP bằng điểm cuối phiên mã âm thanh tương thích với OpenAI (`POST /v1/audio/transcriptions`).
 
 ## Cài đặt
 
@@ -27,6 +29,6 @@ máy chủ của bạn báo cáo dưới dạng model Transcription.
 
 Sử dụng `/providers` để đăng ký endpoint và thiết lập model. Sau đó mở `/config` > Models > Switch Models để chọn và kích hoạt endpoint đã đăng ký.
 
-## Sử dụng bản phiên âm
+## Sử dụng bản ghi
 
-Sau khi đăng ký, TomoriBot sẽ phiên âm các tệp âm thanh đính kèm trong nền và thêm văn bản vào ngữ cảnh trò chuyện. Chỉ sử dụng `/config` > Engine > Notices nếu bạn cũng muốn các bản phiên âm được gửi hiển thị rõ ràng trong đoạn chat.
+Sau khi đăng ký, TomoriBot sẽ chép lại các tệp đính kèm âm thanh ở chế độ nền và thêm văn bản vào ngữ cảnh trò chuyện. Chỉ sử dụng `/config` > Engine > Thông báo nếu bạn cũng muốn bản ghi được đăng rõ ràng trong cuộc trò chuyện.

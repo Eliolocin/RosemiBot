@@ -3,9 +3,9 @@ title: "Fish Audio S2 Pro"
 aiGenerated: true
 ---
 
-Fish Audio S2 Pro is a multilingual 4B TTS model focused on high-fidelity voice cloning and expressive delivery. TomoriBot uses it through the local wrapper in `servers/tts/fishs2/`.
+Synthesize highly expressive, multilingual character speech with fine-grained emotion tags using [Fish Audio S2 Pro](https://github.com/fishaudio/fish-speech).
 
-The default TomoriBot setup uses the official BF16 weights (`fishaudio/s2-pro`) to provide the highest synthesis fidelity and avoid quantization incompatibilities. For users with memory-constrained consumer GPUs, an optional INT8 weight-only quantization (`Imagilux/fishaudio-s2-pro`) is supported via environment overrides.
+Fish Audio S2 Pro is a multilingual 4B parameter text-to-speech model built for high-fidelity voice cloning. TomoriBot connects to the model through the local wrapper in `servers/tts/fishs2/`. It defaults to official BF16 weights (`fishaudio/s2-pro`), with an optional INT8 quantized checkpoint (`Imagilux/fishaudio-s2-pro`) for GPUs with 8 to 12 GB of VRAM.
 
 Fish S2 Pro supports bracket expression tags such as `[whisper]`, `[excited]`, and `[angry]`. Configure the endpoint with `Bracket Tags` markup so TomoriBot preserves these controls in generated voice scripts.
 
@@ -15,10 +15,10 @@ Fish Speech code and S2 Pro model weights are distributed under the Fish Audio R
 
 TomoriBot does not redistribute the model weights. Each self-hosting user downloads Fish S2 Pro directly from Hugging Face and is responsible for complying with the Fish Audio Research License. The required attribution is: Built with Fish Audio.
 
-## Hardware & Operating System
+## Hardware and operating systems
 
 > [!IMPORTANT]
-> Note: Fish Audio officially targets Linux and WSL2. Fish S2 Pro uses a Dual-Autoregressive (Dual-AR) architecture (36 slow transformer layers + 10 fast codebook passes = 76 layer evaluations per token). On Linux, OpenAI Triton can compile this nested loop into fused GPU kernels (`torch.compile(backend="inductor")`), which upstream benchmarks demonstrate enables real-time synthesis on Linux server GPUs. The wrapper leaves compilation off by default, so set `FISH_S2_COMPILE=1` to use it.
+> Fish Audio officially targets Linux and WSL2. Fish S2 Pro uses a Dual-Autoregressive (Dual-AR) architecture (36 slow transformer layers + 10 fast codebook passes = 76 layer evaluations per token). On Linux, OpenAI Triton compiles this loop into fused GPU kernels (`torch.compile(backend="inductor")`), enabling real-time synthesis. The wrapper leaves compilation off by default; set `FISH_S2_COMPILE=1` to enable it.
 >
 > On native Windows, Triton is unsupported, forcing PyTorch into uncompiled eager mode with over 120,000 sequential CUDA kernel dispatches through the Windows WDDM driver. This causes a severe dispatch stall, slowing generation down to ~8-10 minutes (~65s compute per second of audio) for the exact same clip. For usable inference, run Fish S2 Pro inside Linux or WSL2.
 
@@ -27,11 +27,11 @@ Recommended hardware:
 - **Linux or WSL2 (Strongly Recommended)**
 - NVIDIA GPU with 16 GB to 24 GB VRAM (BF16 fits comfortably in ~16-18 GB VRAM with KV caching and offload)
 - Python 3.12 recommended
-- `git`, `ffmpeg`, and the standard audio libraries required by Fish Speech
+- `git`, `ffmpeg`, and standard audio libraries required by Fish Speech
 
 ## Setup
 
-### Linux / WSL2 (Recommended)
+### Linux and WSL2 (recommended)
 
 From the TomoriBot repository root:
 
@@ -47,10 +47,7 @@ The installer:
 3. installs Fish Speech plus the TomoriBot wrapper dependencies; and
 4. downloads the official BF16 `fishaudio/s2-pro` checkpoint into `fish-speech/checkpoints/fish-speech-s2-pro/`.
 
-A normal reinstall stays on the pinned runtime commit `2225e924e7d35cc0a1d24dbc67cd1819e6cf429f` rather
-than following a moving branch; moving to a newer runtime means changing that pin in the installer. The model revision defaults to `main`; pin `FISH_S2_MODEL_REVISION` to
-an immutable Hugging Face revision when a deployment must be reproducible. The installer settings are
-listed under [Installer variables](#installer-variables).
+A normal reinstall stays on the pinned runtime commit `2225e924e7d35cc0a1d24dbc67cd1819e6cf429f` rather than following a moving branch; moving to a newer runtime means changing that pin in the installer. The model revision defaults to `main`; pin `FISH_S2_MODEL_REVISION` to an immutable Hugging Face revision when a deployment must be reproducible. The installer settings are listed under [Installer variables](#installer-variables).
 
 The Hugging Face model is gated. Accept its license on Hugging Face first. If the download asks for authentication, run:
 
@@ -60,7 +57,7 @@ servers/tts/fishs2/.venv/bin/hf auth login
 
 Then rerun the installer.
 
-### Windows PowerShell (Best-Effort Only)
+### Windows PowerShell (best-effort only)
 
 Native Windows is provided for evaluation only. Due to driver dispatch latency on uncompiled eager mode, generation will be extremely slow (~8-10 minutes per clip):
 
@@ -81,14 +78,12 @@ If PyTorch on Windows ever needs to be manually installed or updated with CUDA s
 .\servers\tts\fishs2\.venv\Scripts\pip.exe install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 ```
 
-TomoriBot stops waiting for a voice message after `TTS_SYNTHESIZE_TIMEOUT_MS` (default 240000 ms), which
-is shorter than a native Windows clip takes. Raise it in TomoriBot's `.env` (for example
-`TTS_SYNTHESIZE_TIMEOUT_MS=900000`) while evaluating on Windows.
+TomoriBot stops waiting for a voice message after `TTS_SYNTHESIZE_TIMEOUT_MS` (default 240000 ms), which is shorter than a native Windows clip takes. Raise it in TomoriBot's `.env` (for example `TTS_SYNTHESIZE_TIMEOUT_MS=900000`) while evaluating on Windows.
 
-## Mandatory Reference Transcript
+## Mandatory reference transcript
 
 > [!WARNING]
-> Note: Reference text (`ref_text`) is required for voice cloning; Fish S2 Pro's cross-attention mechanism requires the transcript of the reference audio to align phonetic tokens with acoustic codes.
+> Reference text (`ref_text`) is required for voice cloning; Fish S2 Pro's cross-attention mechanism requires the transcript of the reference audio to align phonetic tokens with acoustic codes.
 >
 > If you upload a voice sample without providing its matching reference transcript, Fish Speech silently drops the reference audio tokens and falls back to random zero-reference speech. The TomoriBot Fish wrapper validates and rejects synthesis requests that lack reference text with a `400 Bad Request` to prevent accidental unconditioned generation.
 
@@ -154,11 +149,9 @@ Read by `install-fishs2.sh` and `install-fishs2.ps1`. Record any value you overr
 | `FISH_S2_MODEL_ID` | `fishaudio/s2-pro` | Hugging Face repository to download |
 | `FISH_S2_MODEL_REVISION` | `main` | Hugging Face revision to download |
 
-Reference audio must be a non-empty, uncompressed PCM RIFF/WAVE file of at most 10 MB decoded. The
-limit is checked before inference so an oversized base64 request cannot consume unbounded memory, and
-it holds about 237 seconds of the 22.05 kHz mono WAV that TomoriBot sends.
+Reference audio must be a non-empty, uncompressed PCM RIFF/WAVE file of at most 10 MB decoded. The limit is checked before inference so an oversized base64 request cannot consume unbounded memory, and it holds about 237 seconds of the 22.05 kHz mono WAV that TomoriBot sends.
 
-## Low-VRAM Option (INT8 Quantization)
+## Low-VRAM option (INT8 quantization)
 
 Users running on GPUs with constrained VRAM (for example 8-12 GB) who cannot fit the official BF16 checkpoint can opt into the INT8 quantized model (`Imagilux/fishaudio-s2-pro`).
 

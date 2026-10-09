@@ -62,6 +62,7 @@ export async function loadActiveEndpoint(
         ce.supports_structoutput,
         ce.strict_role_alternation,
         ce.supports_prefix_completion,
+        ce.supports_assistant_prefill,
         ce.is_default,
         ce.created_at,
         ce.updated_at
@@ -116,11 +117,7 @@ export async function loadEndpointCredentials(
   }
 }
 
-/**
- * Load all voice samples registered for a server, ordered by name.
- *
- * @returns Array of VoiceSampleRow (may be empty)
- */
+/** Ordered by name. */
 export async function loadVoiceSamples(serverId: number): Promise<VoiceSampleRow[]> {
   try {
     const rows = await sql`

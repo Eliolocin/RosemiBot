@@ -1,6 +1,8 @@
+import { responseRuleCheckerRefSchema, responseReviewerPromptSchema } from "@/types/db/schema";
 import { z } from "zod";
 import { SUPPORTED_PARAM_VALUES } from "@/constants/supportedParams";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_VALUES } from "@/constants/thinkingLevels";
+import { NOTICE_VERBOSITY_LEVELS } from "@/constants/toolNotices";
 import { getMemoryLimits } from "@/utils/misc/memoryLimits";
 import { logitBiasEntrySchema } from "@/types/provider/logitBias";
 import { PrivacyLevel, deliberateToolTriggerEntrySchema } from "@/types/db/schema";
@@ -168,6 +170,10 @@ const serverModelConfigExportSchema = z.object({
  * Excludes provider/model fallback refs because they are server-specific model pointers.
  */
 const serverChatConfigExportSchema = z.object({
+  response_reviewer_llm_id: z.number().int().positive().nullable().optional(),
+  response_decision_model_id: z.number().int().positive().nullable().optional(),
+  response_reviewer_prompt: responseReviewerPromptSchema.nullable().optional(),
+  response_rule_checker_ref: z.preprocess(normalizeJsonColumn, responseRuleCheckerRefSchema.nullable()).optional(),
   llm_top_p: z.number().min(0.0).max(1.0).default(0.95),
   llm_top_k: z.number().int().min(0).max(40).default(0),
   llm_frequency_penalty: z.number().min(-2.0).max(2.0).default(0.0),
@@ -186,6 +192,7 @@ const serverChatConfigExportSchema = z.object({
   send_message_limit: z.number().int().min(0).max(40).optional(),
   context_note: z.string().nullable().optional(),
   context_note_depth: z.number().int().min(0).max(100).optional(),
+  response_prefill: z.string().nullable().optional(),
   self_debug_enabled: z.boolean().default(false),
   model_randomizer_enabled: z.boolean().default(false),
 });
@@ -202,6 +209,7 @@ const serverMemberPermissionsConfigExportSchema = z.object({
 
 /** Portable server_capabilities_configs export fields. */
 const serverCapabilitiesConfigExportSchema = z.object({
+  response_drafting_enabled: z.boolean().optional(),
   web_search_enabled: z.boolean().default(true),
   emoji_usage_enabled: z.boolean().default(true),
   sticker_usage_enabled: z.boolean().default(true),
@@ -220,6 +228,9 @@ const serverCapabilitiesConfigExportSchema = z.object({
 /** Portable server_notice_embeds_configs export fields. */
 const serverNoticeEmbedsConfigExportSchema = z.object({
   tool_notice_hidden_keys: z.array(z.string()).default([]),
+  // Optional, so an export from a server that never chose stays unset on import and keeps following
+  // the column default instead of pinning today's default into the importing server's row.
+  tool_notice_verbosity: z.enum(NOTICE_VERBOSITY_LEVELS).optional(),
 });
 
 /** Portable server_nsfw_configs export fields. */
@@ -1101,27 +1112,18 @@ type DataExport =
   | WorkspaceMemoriesExport
   | PersonalMemoriesV2Export;
 
-/**
- * Result of export operation
- */
 export interface ExportResult {
   success: boolean;
   data?: DataExport;
   error?: string;
 }
 
-/**
- * Result of personality text export operation
- */
 export interface PersonalityExportResult {
   success: boolean;
   text?: string;
   error?: string;
 }
 
-/**
- * Result of import operation
- */
 export interface ImportResult {
   success: boolean;
   itemsImported?: {

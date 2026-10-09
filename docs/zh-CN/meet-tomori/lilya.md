@@ -2,6 +2,7 @@
 title: "Lilya，害羞的那个"
 sidebar:
   order: 4
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Source: src/db/seed/catalog/personas/shy/en-US.ts.

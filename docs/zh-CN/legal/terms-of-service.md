@@ -1,6 +1,7 @@
 ---
 title: 服务条款
 description: 管理官方托管 TomoriBot 实例使用的条款。
+aiGenerated: false
 ---
 
 > 关于这份翻译： 本页是英文版[服务条款](/en/legal/terms-of-service/)的翻译，仅为方便阅读而提供，内容以英文版为准。若本页与英文版有任何不一致，一律以英文版为准。

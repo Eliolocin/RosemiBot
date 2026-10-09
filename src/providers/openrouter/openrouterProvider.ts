@@ -1,3 +1,5 @@
+import { callOpenRouterDecisions } from "@/providers/openrouter/openrouterDecisions";
+import type { ProviderDecisionRequest, DecisionResult, SupportsDecisions } from "@/types/provider/featureInterfaces";
 /**
  * OpenRouter provider implementation
  * Implements the LLMProvider interface for OpenRouter's multi-provider API
@@ -19,7 +21,7 @@ import type {
 import type { ZodType } from "zod";
 import { StreamOrchestrator } from "../../utils/discord/streamOrchestrator";
 import { buildStreamContext } from "@/utils/provider/streamContext";
-import { DEFAULT_MAX_OUTPUT_TOKENS, resolveMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
+import { resolveRequestMaxOutputTokens } from "@/utils/provider/modelLimits";
 import { OpenrouterStreamAdapter, type OpenrouterStreamConfig } from "./openrouterStreamAdapter";
 import { generateConversationSummaryOpenrouter, generateRoleplaySummaryOpenrouter } from "./compactGenerator";
 import { generatePresetFromPromptOpenrouter } from "./presetGenerator";
@@ -61,12 +63,9 @@ import { getCachedDefaultLLM, isLLMCacheReady } from "../../utils/cache/llmCache
 import {
   getOpenRouterCapabilities,
   getOrFetchOpenRouterCapabilities,
-  getOpenRouterTokenLimits,
   isOpenRouterCapabilityCacheReady,
 } from "../../utils/cache/openrouterCapabilityCache";
 import { configRepository, llmModelRepo } from "@/utils/db/repositories";
-import { getMCPManager } from "../../utils/mcp/mcpManager";
-import { isBraveSearchAvailable } from "../../tools/restAPIs/brave/braveSearchService";
 import { openrouterProviderInfo } from "./providerInfo";
 import { buildRuntimeLogitBiasMapForLlm } from "@/utils/provider/logitBiasResolver";
 import { resolveEffectiveOpenRouterSeesYouTube } from "@/utils/provider/openrouterModelCapabilities";
@@ -142,21 +141,20 @@ export interface OpenrouterProviderConfig extends ProviderConfig {
   minP?: number; // Minimum probability threshold (0.0=disabled)
 }
 
-/**
- * OpenRouter provider implementation
- */
 export class OpenrouterProvider
   extends BaseLLMProvider
   implements
     LLMProvider,
+    SupportsDecisions,
     SupportsEmbeddings,
     SupportsStructuredOutput,
     SupportsPresetGeneration,
     SupportsConversationCompaction
 {
-  /**
-   * Get provider information and capabilities
-   */
+  async callDecisions(request: ProviderDecisionRequest): Promise<DecisionResult> {
+    return await callOpenRouterDecisions(request);
+  }
+
   getInfo(): ProviderInfo {
     return openrouterProviderInfo;
   }
@@ -361,15 +359,6 @@ export class OpenrouterProvider
       return undefined;
     }
 
-    const hasBraveApiKey = await isBraveSearchAvailable(request.tomoriState.server_id);
-
-    if (!hasBraveApiKey) {
-      const mcpManager = getMCPManager();
-      if (!mcpManager.isReady()) {
-        await mcpManager.initializeMCPServers();
-      }
-    }
-
     const toolStateForContext: ToolStateForContext = {
       server_id: request.tomoriState.server_id.toString(),
       activePersonaHasElevenlabsVoice: Boolean(
@@ -478,6 +467,7 @@ export class OpenrouterProvider
           voice_message_enabled: tomoriState.config.voice_message_enabled,
           user_blocking_enabled: tomoriState.config.user_blocking_enabled,
           user_info_updates_enabled: tomoriState.config.user_info_updates_enabled,
+          response_rule_checker_ref: tomoriState.config.response_rule_checker_ref,
           thread_creation_enabled: tomoriState.config.thread_creation_enabled,
         },
       };
@@ -485,6 +475,7 @@ export class OpenrouterProvider
       const {
         builtInTools: availableBuiltInTools,
         mcpFunctionNames: availableMcpFunctionNames,
+        mcpToolFamilies,
         totalCount,
       } = await getAvailableToolsWithMCP("openrouter", toolStateForContext);
 
@@ -501,6 +492,7 @@ export class OpenrouterProvider
         providerLabel: "OpenRouter provider",
         builtInTools: finalBuiltInTools,
         mcpFunctionNames: finalMcpFunctionNames,
+        mcpToolFamilies,
         allowedToolNames: streamingContext?.deliberateToolAllowedNames,
       }));
 
@@ -640,35 +632,9 @@ export class OpenrouterProvider
       log.info("[DB FALLBACK] OpenRouter capability cache not ready - using database flags");
     }
 
-    // Resolve max output tokens from the OpenRouter capability cache.
-    // If the model reports a max_completion_tokens value, use it, but cap it
-    // at OPENROUTER_MAX_OUTPUT_TOKENS (default: 8192) to avoid 402 errors on
+    // OPENROUTER_MAX_OUTPUT_TOKENS (default 8192) caps the default budget to avoid 402 errors on
     // accounts with low daily credit limits.
-    // Shared with the context truncator (see resolveMaxOutputTokens) so the reserved output
-    // budget and the requested max_tokens never drift: `/model parameters` override →
-    // OPENROUTER_MAX_OUTPUT_TOKENS → flat 8192, clamped to the model's reported ceiling.
-    let resolvedMaxOutputTokens: number | undefined;
-    if (tomoriState.llm.llm_codename !== "other-model" && isOpenRouterCapabilityCacheReady()) {
-      const tokenLimits = getOpenRouterTokenLimits(tomoriState.llm.llm_codename);
-      if (tokenLimits?.maxCompletionTokens !== undefined) {
-        resolvedMaxOutputTokens = resolveMaxOutputTokens({
-          configured: tomoriState.config.llm_max_output_tokens,
-          envRaw: process.env.OPENROUTER_MAX_OUTPUT_TOKENS,
-          fallback: DEFAULT_MAX_OUTPUT_TOKENS,
-          providerReportedMax: tokenLimits.maxCompletionTokens,
-        });
-      }
-    }
-    // For custom/unknown models (`other-model`, or a cache miss) we have no reported ceiling to
-    // clamp against, so we normally omit max_tokens and let the model self-manage. But an EXPLICIT
-    // `/model parameters` output-token override is a deliberate user choice, so honor it so the
-    // "lower output tokens" tip shown on 402/400 errors actually reduces the request for these users.
-    if (resolvedMaxOutputTokens === undefined) {
-      const explicitOverride = tomoriState.config.llm_max_output_tokens;
-      if (typeof explicitOverride === "number" && explicitOverride > 0) {
-        resolvedMaxOutputTokens = explicitOverride;
-      }
-    }
+    const resolvedMaxOutputTokens = await resolveRequestMaxOutputTokens(tomoriState);
     const config: OpenrouterProviderConfig = {
       // For other-model, use the user-configured model codename (e.g., "openrouter/free")
       // rather than the placeholder codename "other-model" which OpenRouter rejects

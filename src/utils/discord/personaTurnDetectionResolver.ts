@@ -1,3 +1,4 @@
+import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import type { Message } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import { findLastActivePersona } from "@/utils/discord/personaTurnDetection";
@@ -81,6 +82,7 @@ export async function resolveFallbackPersona(options: FallbackPersonaResolutionO
   );
 
   const messages = await fetchRecentMessages();
+  await Promise.all(messages.map(verifyMessageWebhook));
   const availablePersonaIds = new Set(availablePersonas.map((persona) => persona.persona_id));
   const lastActivePersona = findLastActivePersona({ messages, allPersonas, clientUserId });
   const allowedLastActivePersona =

@@ -34,9 +34,6 @@ interface Thumbnail {
   height?: number;
 }
 
-/**
- * Meta URL information
- */
 interface MetaUrl {
   /** The protocol scheme extracted from the URL */
   scheme?: string;
@@ -58,9 +55,6 @@ interface Extra {
   [key: string]: unknown;
 }
 
-/**
- * Web search result
- */
 export interface WebResult {
   /** The type of search result */
   type: "search_result";
@@ -128,9 +122,6 @@ export interface WebSearchApiResponse {
   extra?: Extra;
 }
 
-/**
- * Image properties
- */
 interface ImageProperties {
   /** The image URL */
   url?: string;
@@ -142,9 +133,6 @@ interface ImageProperties {
   height?: number;
 }
 
-/**
- * Image search result
- */
 export interface ImageResult {
   /** The type of image search result */
   type: "image_result";
@@ -166,9 +154,6 @@ export interface ImageResult {
   confidence?: "low" | "medium" | "high";
 }
 
-/**
- * Image search API response
- */
 export interface ImageSearchApiResponse {
   /** The type of search API result */
   type: "images";
@@ -214,9 +199,6 @@ interface VideoData {
   author?: Profile;
 }
 
-/**
- * Video search result
- */
 export interface VideoResult {
   /** The type of video search result */
   type: "video_result";
@@ -240,9 +222,6 @@ export interface VideoResult {
   meta_url?: MetaUrl;
 }
 
-/**
- * Video search API response
- */
 export interface VideoSearchApiResponse {
   /** The type of search API result */
   type: "videos";
@@ -254,9 +233,6 @@ export interface VideoSearchApiResponse {
   extra: Extra;
 }
 
-/**
- * News search result
- */
 export interface NewsResult {
   /** The type of news search result */
   type: "news_result";
@@ -282,9 +258,6 @@ export interface NewsResult {
   extra_snippets?: string[];
 }
 
-/**
- * News search API response
- */
 export interface NewsSearchApiResponse {
   /** The type of search API result */
   type: "news";
@@ -382,9 +355,6 @@ export interface NewsSearchParams extends BaseSearchParams {
   goggles?: string[];
 }
 
-/**
- * All possible Brave Search API responses
- */
 export type BraveSearchResponse =
   | WebSearchApiResponse
   | ImageSearchApiResponse

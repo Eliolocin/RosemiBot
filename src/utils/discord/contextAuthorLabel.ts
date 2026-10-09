@@ -6,6 +6,7 @@ import { normalizeRenderModifierName } from "@/utils/discord/renderModifierParse
 import { resolveWebhookPersonaAuthor } from "@/utils/discord/webhookPersonaAuthor";
 import { stripBridgePrefix } from "@/utils/bridges";
 import { log } from "@/utils/misc/logger";
+import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 
 type ResolveContextAuthorLabelOptions = {
   guildId?: string | null;
@@ -29,10 +30,11 @@ export async function resolveContextAuthorLabel(
   options: ResolveContextAuthorLabelOptions = {},
 ): Promise<string> {
   const guildId = options.guildId ?? message.guildId;
-  const webhookName = message.webhookId ? stripBridgePrefix(message.author.username) : null;
+  const trustedWebhook = await verifyMessageWebhook(message);
+  const webhookName = trustedWebhook ? stripBridgePrefix(message.author.username) : message.author.username;
 
   if (message.webhookId) {
-    if (guildId && guildId !== "DM") {
+    if (trustedWebhook && guildId && guildId !== "DM") {
       try {
         const personas = await getCachedAllPersonas(guildId);
         const personaByNickname = new Map(

@@ -1,13 +1,10 @@
+import { createResponseReviewState } from "@/utils/chat/responseReview";
 import type { FallbackEntry, LlmRow, TomoriState } from "@/types/db/schema";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
 import type { LLMProvider, ProviderConfig, StreamResult } from "@/types/provider/interfaces";
 import type { ProviderError } from "@/types/stream/interfaces";
 import type { DeliveredStreamMessage, ToolContext } from "@/types/tool/interfaces";
 import { getCachedChannelLlm } from "@/utils/cache/channelLlmCache";
-import { getGeminiTokenLimits } from "@/utils/cache/geminiCapabilityCache";
-import { getNovelAITokenLimits } from "@/utils/cache/novelaiCapabilityCache";
-import { getCachedContextTokens, refreshNovelAISubscription } from "@/utils/cache/novelaiSubscriptionCache";
-import { getOpenRouterTokenLimits, isOpenRouterCapabilityCacheReady } from "@/utils/cache/openrouterCapabilityCache";
 import { llmProviderRepo } from "@/utils/db/repositories";
 import { type FallbackNoticeAttempt, sendFallbackModelUsageNotice } from "@/utils/discord/fallbackModelNotice";
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
@@ -17,9 +14,10 @@ import { deleteSupersededStreamMessages } from "@/utils/discord/stream/supersede
 import { log } from "@/utils/misc/logger";
 import { buildCustomProviderName } from "@/utils/provider/customProviderUtils";
 import { getProviderForTomori, ProviderFactory } from "@/utils/provider/providerFactory";
-import { getProviderErrorDetail } from "@/utils/provider/providerErrorClassification";
-import { DEFAULT_MAX_OUTPUT_TOKENS, resolveMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
+import { formatProviderErrorCodeForDisplay } from "@/utils/provider/providerErrorClassification";
+import { applyProviderContextTruncation } from "@/utils/provider/contextBudget";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
+import { withSavedProviderConfig } from "@/utils/provider/savedProviderConfig";
 import { decryptApiKey } from "@/utils/security/crypto";
 import { resolveMediaForModel } from "@/utils/text/context/mediaResolver";
 import {
@@ -29,7 +27,6 @@ import {
   recordKeySuccess,
   selectApiKey,
 } from "@/utils/security/keyRotation";
-import { truncateDialogueHistory } from "@/utils/text/contextTruncator";
 import { buildVerbatimToolDefinitionsContextItem } from "@/utils/text/context/toolDefinitions";
 import {
   checkTextQuotaForAdmission,
@@ -37,6 +34,13 @@ import {
   shouldApplyServerTextQuota,
 } from "@/utils/chat/admissionGuards";
 import { hasTextQuotaBeenRefused, markTextQuotaRefused } from "@/utils/chat/textQuotaState";
+import {
+  recordChatAttemptStarted,
+  recordChatDiagnostic,
+  recordChatProviderContext,
+  runWithChatDiagnosticStage,
+} from "@/utils/chat/diagnosticTimeline";
+import { applyAssistantPrefill } from "@/utils/chat/assistantPrefill";
 import type { ChatResponseSink, ChatTurnContext, GenerationTurnResult } from "@/utils/chat/types";
 import { providerIsApiFamily, runToolLoop, sendStreamTimeoutNotice } from "@/utils/chat/toolLoop";
 import {
@@ -104,6 +108,8 @@ async function runGenerationAttempts(
   responseSink: ChatResponseSink,
 ): Promise<GenerationTurnResult> {
   try {
+    context.responseReview = createResponseReviewState(context);
+    context.streamingContext.holdResponseText = Boolean(context.responseReview);
     const plan = await buildGenerationPlan(context);
     const attempts = plan.attempts;
     const failures: FallbackNoticeAttempt[] = [];
@@ -120,6 +126,11 @@ async function runGenerationAttempts(
     for (let index = 0; index < attempts.length; index++) {
       const attempt = attempts[index];
       if (!attempt) continue;
+      recordChatAttemptStarted(
+        index + 1,
+        context.textCredentialSource,
+        `${attempt.successModel.llm_provider}:${attempt.successModel.llm_codename}`,
+      );
       // A server route that has not been built yet still counts as a pending model, so the last
       // planned attempt keeps its errors suppressed while a later model may yet answer.
       const hasPendingModelFallback = index < attempts.length - 1 || plan.extendWithServerRoute !== null;
@@ -131,6 +142,20 @@ async function runGenerationAttempts(
         emptyResponseFinishReason: context.turn.lockedTurn.admission.incoming.emptyResponseFinishReason,
         retryCount: context.turn.lockedTurn.admission.incoming.retryCount,
       });
+      const prefilled = await applyAssistantPrefill({
+        contextItems: context.contextItems,
+        prefill: context.assistantPrefill,
+        tomoriState: attempt.tomoriState,
+        forceReason: context.streamingContext.forceReason,
+      });
+      context.contextItems = prefilled.contextItems;
+      context.streamingContext.outputPrefill = prefilled.outputPrefill;
+      recordChatProviderContext(
+        index + 1,
+        context.contextItems.flatMap((item) =>
+          item.metadataTag === ContextItemTag.DIALOGUE_HISTORY && item.messageId ? [item.messageId] : [],
+        ),
+      );
 
       // Key rotation inner loop: try multiple keys for this attempt before giving up.
       let rotationKeyId = attempt.rotationKeyId;
@@ -154,13 +179,16 @@ async function runGenerationAttempts(
         setStreamUserErrorSuppression(context, hasFallbackKey || hasPendingModelFallback);
         context.streamingContext.forceModelFallback = hasPendingModelFallback;
 
+        if (context.responseReview) context.responseReview.pending = [];
         invocationStart = deliveredMessageRefs.length;
-        result = await runToolLoop({
-          context,
-          provider: attempt.provider,
-          providerConfig: attempt.providerConfig,
-          tomoriState: attempt.tomoriState,
-        });
+        result = await runWithChatDiagnosticStage({ attempt: index + 1, keyAttempt: keyAttemptCount }, () =>
+          runToolLoop({
+            context,
+            provider: attempt.provider,
+            providerConfig: attempt.providerConfig,
+            tomoriState: attempt.tomoriState,
+          }),
+        );
 
         if (result.status !== "error") {
           // Don't credit a timed-out key as successful : a timeout is not a clean completion.
@@ -190,6 +218,13 @@ async function runGenerationAttempts(
           `Key rotation: retrying ${attempt.label} with key ${rotationKeyId ?? "main"} (attempt ${keyAttemptCount + 1}).`,
         );
       }
+
+      recordChatDiagnostic({
+        kind: "attempt_finished",
+        ordinal: index + 1,
+        status: result?.status ?? "skipped",
+        keyAttempts: keyAttemptCount,
+      });
 
       // A destination the bot cannot post into fails for every key and every model alike, whether
       // the channel was deleted or access to it was revoked. Retrying would burn a full generation
@@ -249,6 +284,7 @@ async function runGenerationAttempts(
         if (result.status === "error") {
           await emitStreamErrors(responseSink, result.streamResults);
         }
+        if (context.responseReview) result.usageEntries = context.responseReview.usage;
         await responseSink.finalize(result);
         return result;
       }
@@ -270,6 +306,7 @@ async function runGenerationAttempts(
     };
     setStreamUserErrorSuppression(context, false);
     context.streamingContext.forceModelFallback = false;
+    if (context.responseReview) skipped.usageEntries = context.responseReview.usage;
     await responseSink.finalize(skipped);
     return skipped;
   } catch (error) {
@@ -281,6 +318,7 @@ async function runGenerationAttempts(
       streamResults: [{ status: "error", data: error }],
       personaResponses: [],
     };
+    if (context.responseReview) result.usageEntries = context.responseReview.usage;
     await responseSink.finalize(result);
     return result;
   }
@@ -312,6 +350,7 @@ async function purgeSupersededDeliveries(
     return;
   }
   const superseded = deliveredMessageRefs.splice(fromIndex);
+  recordChatDiagnostic({ kind: "messages_purge_requested", count: superseded.length });
   log.info(`Deleting ${superseded.length} superseded partial message(s) from a failed generation attempt.`);
   await deleteSupersededStreamMessages(superseded, {
     channel: context.channel,
@@ -676,7 +715,11 @@ async function resolveTomoriStateForRoute(context: ChatTurnContext, route: TextR
   const channelLlmOverride =
     context.isUserImpersonation || usePersonalRoute
       ? null
-      : await getCachedChannelLlm(context.currentPersona.server_id, context.channel.id);
+      : await getCachedChannelLlm(
+          context.currentPersona.server_id,
+          context.channel.id,
+          context.channel.isThread() ? context.channel.parentId : null,
+        );
   const effectiveLlm =
     usePersonalRoute || context.isUserImpersonation ? base.llm : (base.persona_llm ?? channelLlmOverride ?? base.llm);
   const overriddenLlm = incoming.llmOverrideCodename
@@ -720,6 +763,7 @@ async function createFallbackAttempt(
         key_version: savedConfig.key_version ?? 1,
         custom_endpoint_url: entry.endpoint.endpoint_url,
         custom_model_name: entry.endpoint.model_name ?? null,
+        custom_num_ctx: entry.endpoint.num_ctx ?? null,
       },
       llm: {
         ...primaryState.llm,
@@ -732,6 +776,7 @@ async function createFallbackAttempt(
         supports_structoutput: entry.endpoint.supports_structoutput,
         strict_role_alternation: entry.endpoint.strict_role_alternation,
         supports_prefix_completion: entry.endpoint.supports_prefix_completion,
+        supports_assistant_prefill: entry.endpoint.supports_assistant_prefill,
         verbatim_tool_calling: entry.endpoint.verbatim_tool_calling,
       },
     };
@@ -792,24 +837,7 @@ async function applySavedProviderConfig(tomoriState: TomoriState, providerName: 
   if (!savedConfig?.api_key) {
     throw new Error(`No saved credentials found for provider ${providerName}.`);
   }
-
-  return {
-    ...tomoriState,
-    config: {
-      ...tomoriState.config,
-      api_key: savedConfig.api_key,
-      key_version: savedConfig.key_version ?? 1,
-      llm_temperature: savedConfig.llm_temperature ?? tomoriState.config.llm_temperature,
-      llm_top_p: savedConfig.llm_top_p ?? tomoriState.config.llm_top_p,
-      llm_top_k: savedConfig.llm_top_k ?? tomoriState.config.llm_top_k,
-      llm_frequency_penalty: savedConfig.llm_frequency_penalty ?? tomoriState.config.llm_frequency_penalty,
-      llm_presence_penalty: savedConfig.llm_presence_penalty ?? tomoriState.config.llm_presence_penalty,
-      llm_min_p: savedConfig.llm_min_p ?? tomoriState.config.llm_min_p,
-      thinking_level: savedConfig.thinking_level ?? tomoriState.config.thinking_level,
-      llm_disabled_params: savedConfig.llm_disabled_params ?? tomoriState.config.llm_disabled_params,
-      llm_logit_biases: savedConfig.llm_logit_biases ?? tomoriState.config.llm_logit_biases,
-    },
-  };
+  return withSavedProviderConfig(tomoriState, savedConfig);
 }
 
 function extractErrorCode(streamResult: StreamResult | undefined): string {
@@ -824,43 +852,19 @@ function extractErrorCode(streamResult: StreamResult | undefined): string {
   return String(record.code ?? record.type ?? record.message ?? streamResult?.status ?? "unknown");
 }
 
-// Per-line readability cap for a single failure detail in the fallback notice summary. This keeps
-// one verbose provider message from crowding out the others; the authoritative Discord embed
-// description limit is enforced on the joined list in `buildFailureList` (fallbackModelNotice.ts).
-const MAX_FALLBACK_DETAIL_LENGTH = 600;
-
 /**
- * Resolves a human-readable failure detail for the "Fallback Model Used" notice. Unlike
- * {@link extractErrorCode} (which prefers terse codes for key-rotation bookkeeping), this prefers
- * the provider's verbose message: e.g. "Unsupported model X. Supported IDs: ...", so users see
- * the actionable reason instead of an opaque error code.
+ * Classified failure reason for the public "Fallback Model Used" notice. Context assembly reads
+ * the notice back for the model, and an endpoint can echo request headers in its message, so the
+ * upstream text stays in the operator log the error path already wrote.
  * @param streamResult - The last stream result recorded for the failed attempt.
  */
 function extractErrorDetail(streamResult: StreamResult | undefined): string {
   const data = streamResult?.data;
-  if (!data || typeof data !== "object") {
-    return streamResult?.status ?? "unknown";
+  if (data && typeof data === "object" && !(data instanceof Error) && "type" in data) {
+    const error = data as ProviderError;
+    return `${formatProviderErrorCodeForDisplay(error.type)} (${formatProviderErrorCodeForDisplay(error.code)})`;
   }
-  if (data instanceof Error) {
-    return truncateFallbackDetail(data.message || "error");
-  }
-
-  const providerDetail = getProviderErrorDetail(data as ProviderError);
-  if (providerDetail) {
-    return truncateFallbackDetail(providerDetail);
-  }
-
-  const record = data as Record<string, unknown>;
-  return truncateFallbackDetail(
-    String(record.message ?? record.code ?? record.type ?? streamResult?.status ?? "unknown"),
-  );
-}
-
-function truncateFallbackDetail(detail: string): string {
-  const normalized = detail.replace(/\s+/g, " ").trim();
-  return normalized.length > MAX_FALLBACK_DETAIL_LENGTH
-    ? `${normalized.substring(0, MAX_FALLBACK_DETAIL_LENGTH)}...`
-    : normalized;
+  return streamResult?.status ?? "unknown";
 }
 
 async function prepareProviderContextItems(args: {
@@ -1018,111 +1022,6 @@ function dropOldestHistoryExchangePairs(
   }
 
   return { truncated: items, historyPairsDropped };
-}
-
-async function applyProviderContextTruncation(
-  contextItems: StructuredContextItem[],
-  tomoriState: TomoriState,
-  serverDiscId: string,
-): Promise<StructuredContextItem[]> {
-  if (
-    providerIsApiFamily(tomoriState.llm.llm_provider, "openrouter") &&
-    tomoriState.llm.llm_codename !== "other-model" &&
-    isOpenRouterCapabilityCacheReady()
-  ) {
-    const tokenLimits = getOpenRouterTokenLimits(tomoriState.llm.llm_codename);
-    if (tokenLimits && tokenLimits.contextLength > 0 && tokenLimits.maxCompletionTokens) {
-      // Reserve the SAME output budget the request builder sends: the server's
-      // `/model parameters` override first, then OPENROUTER_MAX_OUTPUT_TOKENS, then a
-      // flat 8192 , so clamped to the model's reported completion ceiling. Previously this
-      // ignored the server override, over-reserving output and dropping fitting history.
-      const truncationMaxCompletionTokens = resolveMaxOutputTokens({
-        configured: tomoriState.config.llm_max_output_tokens,
-        envRaw: process.env.OPENROUTER_MAX_OUTPUT_TOKENS,
-        fallback: DEFAULT_MAX_OUTPUT_TOKENS,
-        providerReportedMax: tokenLimits.maxCompletionTokens,
-      });
-      const { truncated, historyPairsDropped, sampleItemsDropped, totalDropped } = truncateDialogueHistory(
-        contextItems,
-        tokenLimits.contextLength,
-        truncationMaxCompletionTokens,
-      );
-      if (totalDropped > 0) {
-        log.warn(
-          `History truncation: dropped ${historyPairsDropped} history exchange pair(s) and ${sampleItemsDropped} sample dialogue item(s) for ${tomoriState.llm.llm_codename} to preserve output budget`,
-        );
-        return truncated;
-      }
-    }
-    return contextItems;
-  }
-
-  if (providerIsApiFamily(tomoriState.llm.llm_provider, "google-genai")) {
-    const tokenLimits = getGeminiTokenLimits(tomoriState.llm.llm_codename);
-    if (tokenLimits && tokenLimits.contextLength > 0 && tokenLimits.maxCompletionTokens) {
-      // Use the SAME fallback chain as the Google request builder (config override →
-      // GOOGLE_MAX_OUTPUT_TOKENS → flat 8192), so big-ceiling Gemini models (e.g. 65536
-      // reported) no longer over-reserve output and drop history that would otherwise fit.
-      // The extra clamp to the model-reported ceiling (which the request builder omits) only
-      // bites when the resolved value is ABOVE what the model can emit; reserving the real
-      // ceiling there is correct , so the model cannot output more than that regardless of the
-      // requested max, so this never under-reserves relative to actual output.
-      const truncationMaxCompletionTokens = resolveMaxOutputTokens({
-        configured: tomoriState.config.llm_max_output_tokens,
-        envRaw: process.env.GOOGLE_MAX_OUTPUT_TOKENS,
-        fallback: DEFAULT_MAX_OUTPUT_TOKENS,
-        providerReportedMax: tokenLimits.maxCompletionTokens,
-      });
-      const { truncated, historyPairsDropped, sampleItemsDropped, totalDropped } = truncateDialogueHistory(
-        contextItems,
-        tokenLimits.contextLength,
-        truncationMaxCompletionTokens,
-      );
-      if (totalDropped > 0) {
-        log.warn(
-          `History truncation: dropped ${historyPairsDropped} history exchange pair(s) and ${sampleItemsDropped} sample dialogue item(s) for ${tomoriState.llm.llm_codename} to preserve output budget`,
-        );
-        return truncated;
-      }
-    }
-    return contextItems;
-  }
-
-  if (providerIsApiFamily(tomoriState.llm.llm_provider, "novelai")) {
-    let naiSubscriptionTokens = getCachedContextTokens(serverDiscId);
-    if (naiSubscriptionTokens === undefined && tomoriState.config.api_key) {
-      try {
-        const tempKey = await decryptApiKey(tomoriState.config.api_key, tomoriState.config.key_version || 1);
-        naiSubscriptionTokens = await refreshNovelAISubscription(serverDiscId, tempKey);
-      } catch (error) {
-        log.warn("Failed to refresh NovelAI subscription for context truncation; using default token limits.", error);
-      }
-    }
-    const tokenLimits = getNovelAITokenLimits(tomoriState.llm.llm_codename, naiSubscriptionTokens);
-    if (tokenLimits && tokenLimits.contextLength > 0 && tokenLimits.maxCompletionTokens) {
-      // NovelAI has no dedicated output-token env cap, so the reserve falls back to the
-      // subscription-tier ceiling unless the server set a `/model parameters` override.
-      const truncationMaxCompletionTokens = resolveMaxOutputTokens({
-        configured: tomoriState.config.llm_max_output_tokens,
-        envRaw: undefined,
-        fallback: tokenLimits.maxCompletionTokens,
-        providerReportedMax: tokenLimits.maxCompletionTokens,
-      });
-      const { truncated, historyPairsDropped, sampleItemsDropped, totalDropped } = truncateDialogueHistory(
-        contextItems,
-        tokenLimits.contextLength,
-        truncationMaxCompletionTokens,
-      );
-      if (totalDropped > 0) {
-        log.warn(
-          `History truncation: dropped ${historyPairsDropped} history exchange pair(s) and ${sampleItemsDropped} sample dialogue item(s) for ${tomoriState.llm.llm_codename} to preserve output budget`,
-        );
-        return truncated;
-      }
-    }
-  }
-
-  return contextItems;
 }
 
 function shouldApplyLengthEmptyRetryTrim(

@@ -1,0 +1,1236 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# GitHub Actions Workflow: Deploy TomoriBot to Azure VM
+
+name: "Deploy: Azure (Production)"
+
+on:
+  push:
+    branches:
+      - release
+  workflow_dispatch:
+    inputs:
+      create_db_backup:
+        description: "Request a recovery point: on-demand backup where supported, checked restore target on Burstable"
+        required: false
+        type: boolean
+        default: false
+      allow_migration_downtime:
+        description: "Stop the running bot before schema migration and start the new bot afterward"
+        required: false
+        type: boolean
+        default: false
+      run_database_bootstrap:
+        description: "Run the idempotent migration/runtime-role bootstrap before deployment"
+        required: false
+        type: boolean
+        default: false
+      run_host_lockdown:
+        description: "After deployment verification, disable guest SSH and enforce host firewall controls"
+        required: false
+        type: boolean
+        default: false
+      allow_vm_replacement:
+        description: "Allow Terraform to replace the production VM after reviewing the saved plan"
+        required: false
+        type: boolean
+        default: false
+      allow_infrastructure_destruction:
+        description: "Allow Terraform to destroy protected or unusually many resources after reviewing the saved plan"
+        required: false
+        type: boolean
+        default: false
+
+# Least-privilege default token: OIDC for Workload Identity Federation + read-only
+# repo contents for checkout. Jobs that need more (e.g. create-release) elevate locally.
+permissions:
+  contents: read
+
+concurrency:
+  group: production-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  # ─── VALIDATION (lint, types, schema, locales, lifecycle) ─────────────────
+
+  code-quality:
+    if: vars.ACTIVE_PROVIDER == 'azure' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  # ─── BUILD DOCKER IMAGE ───────────────────────────────────────────────────
+
+  build-image:
+    runs-on: ubuntu-24.04
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download tokenizer assets for logit bias
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          bun run setup:tokenizers
+          du -sh tokenizers/*/
+
+      - name: Build Docker image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --tag tomoribot:latest \
+            --tag tomoribot:${{ github.sha }} \
+            --load \
+            .
+
+      - name: Save Docker image
+        run: docker save tomoribot:latest -o tomoribot-image.tar
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: docker-image
+          path: tomoribot-image.tar
+          retention-days: 1
+
+  # ─── SECURITY SCANNING (identical to AWS workflow) ────────────────────────
+
+  security-sast:
+    runs-on: ubuntu-24.04
+    needs: build-image
+    outputs:
+      failed: ${{ steps.check-result.outputs.failed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Run Semgrep SAST scan
+        uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d
+        with:
+          config: >-
+            p/security-audit
+            p/typescript
+            p/docker
+        continue-on-error: true
+        id: semgrep
+
+      - name: Check Semgrep results
+        id: check-result
+        run: |
+          if [ "${{ steps.semgrep.outcome }}" == "failure" ]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  security-dependencies:
+    runs-on: ubuntu-24.04
+    needs: build-image
+    outputs:
+      failed: ${{ steps.check-result.outputs.failed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run Bun audit
+        run: |
+          if ! bun run audit:clean > audit-output.txt 2>&1; then
+            cat audit-output.txt
+            exit 1
+          else
+            cat audit-output.txt
+          fi
+        continue-on-error: true
+        id: bun-audit
+
+      - name: Check audit results
+        id: check-result
+        run: |
+          if [ "${{ steps.bun-audit.outcome }}" == "failure" ]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  security-secrets:
+    runs-on: ubuntu-24.04
+    needs: build-image
+    outputs:
+      failed: ${{ steps.check-result.outputs.failed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Run TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@99dc7bd6c06427bcb32f32fe1641d7fb83583915
+        with:
+          path: ./
+          base: ${{ github.event.before }}
+          head: ${{ github.event.after }}
+          extra_args: --only-verified
+        continue-on-error: true
+        id: trufflehog
+
+      - name: Check TruffleHog results
+        id: check-result
+        run: |
+          if [ "${{ steps.trufflehog.outcome }}" == "failure" ]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  security-container:
+    runs-on: ubuntu-24.04
+    needs: build-image
+    outputs:
+      failed: ${{ steps.check-result.outputs.failed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: docker-image
+
+      - name: Load Docker image
+        run: docker load -i tomoribot-image.tar
+
+      - name: Run Trivy container scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: tomoribot:latest
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          trivyignores: .github/.trivyignore
+        continue-on-error: true
+        id: trivy
+
+      - name: Check Trivy results
+        id: check-result
+        run: |
+          if [ "${{ steps.trivy.outcome }}" == "failure" ]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  security-gate:
+    runs-on: ubuntu-24.04
+    needs: [security-sast, security-dependencies, security-secrets, security-container]
+    steps:
+      - name: Check security scan results
+        run: |
+          echo "=========================================="
+          echo "Security Gate - Evaluating Scan Results"
+          echo "=========================================="
+
+          failed=false
+
+          echo "SAST Scan (Semgrep):           ${{ needs.security-sast.outputs.failed }}"
+          echo "Dependency Scan (Bun Audit):   ${{ needs.security-dependencies.outputs.failed }}"
+          echo "Secret Scan (TruffleHog):      ${{ needs.security-secrets.outputs.failed }}"
+          echo "Container Scan (Trivy):        ${{ needs.security-container.outputs.failed }}"
+
+          if [ "${{ needs.security-sast.outputs.failed }}" == "true" ];         then failed=true; fi
+          if [ "${{ needs.security-dependencies.outputs.failed }}" == "true" ]; then failed=true; fi
+          if [ "${{ needs.security-secrets.outputs.failed }}" == "true" ];      then failed=true; fi
+          if [ "${{ needs.security-container.outputs.failed }}" == "true" ];    then failed=true; fi
+
+          echo "=========================================="
+          if [ "$failed" == "true" ]; then
+            echo "DEPLOYMENT BLOCKED — security scans found issues"
+            exit 1
+          else
+            echo "ALL SECURITY SCANS PASSED — proceeding to Azure deployment"
+          fi
+
+  # ─── AZURE DEPLOYMENT ─────────────────────────────────────────────────────
+
+  push-to-docker-hub:
+    runs-on: ubuntu-24.04
+    environment: production
+    needs: security-gate
+    outputs:
+      deploy: ${{ steps.dockerhub_tags.outputs.deploy }}
+      version: ${{ steps.package_version.outputs.version }}
+      image_digest: ${{ steps.dockerhub_tags.outputs.image_digest }}
+      searxng_image_digest: ${{ steps.searxng_image.outputs.image_digest }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: docker-image
+
+      - name: Load Docker image
+        run: docker load -i tomoribot-image.tar
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Get version from package.json
+        id: package_version
+        run: |
+          VERSION=$(jq -r '.version' package.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Package version: v$VERSION"
+
+      - name: Check if version exists in Docker Hub
+        id: version_check
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          VERSION: ${{ steps.package_version.outputs.version }}
+        run: |
+          IMAGE_BASE="docker.io/${DOCKERHUB_USERNAME}/tomoribot"
+
+          if docker manifest inspect "${IMAGE_BASE}:v${VERSION}" >/dev/null 2>&1; then
+            echo "version_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Version v$VERSION already exists in Docker Hub — skipping deployment"
+          else
+            echo "version_exists=false" >> "$GITHUB_OUTPUT"
+            echo "Version v$VERSION is new — will deploy"
+          fi
+
+      - name: Check for infrastructure changes
+        id: infra_changes
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch — allowing Terraform apply"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "No previous ref available — allowing Terraform apply conservatively"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- terraform/azure deploy/azure/ .github/workflows/deploy-azure.yml servers/searxng/ || true)
+          if [ -n "$changed_files" ]; then
+            echo "Infrastructure changes detected:"
+            printf '%s\n' "$changed_files"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No Azure infrastructure changes detected"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tag and push image to Docker Hub
+        id: dockerhub_tags
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_TAG: ${{ github.sha }}
+          VERSION: ${{ steps.package_version.outputs.version }}
+          VERSION_EXISTS: ${{ steps.version_check.outputs.version_exists }}
+          INFRA_CHANGED: ${{ steps.infra_changes.outputs.changed }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          IMAGE_BASE="docker.io/${DOCKERHUB_USERNAME}/tomoribot"
+          SHOULD_DEPLOY=false
+          DEPLOY_REASON=""
+
+          # Always push commit hash tag
+          docker tag tomoribot:latest "${IMAGE_BASE}:${IMAGE_TAG}"
+          docker push "${IMAGE_BASE}:${IMAGE_TAG}"
+          echo "Pushed commit hash tag: ${IMAGE_TAG}"
+
+          # Always update latest tag
+          docker tag tomoribot:latest "${IMAGE_BASE}:latest"
+          docker push "${IMAGE_BASE}:latest"
+          echo "Updated 'latest' tag"
+
+          if [ "$VERSION_EXISTS" = "false" ]; then
+            docker tag tomoribot:latest "${IMAGE_BASE}:v${VERSION}"
+            docker push "${IMAGE_BASE}:v${VERSION}"
+            echo "Pushed version tag: v${VERSION}"
+            SHOULD_DEPLOY=true
+            DEPLOY_REASON="new version tag"
+          else
+            echo "Skipping version tag (already exists)"
+          fi
+
+          if [ "$INFRA_CHANGED" = "true" ]; then
+            SHOULD_DEPLOY=true
+            if [ -n "$DEPLOY_REASON" ]; then
+              DEPLOY_REASON="${DEPLOY_REASON}, infrastructure changes"
+            else
+              DEPLOY_REASON="infrastructure changes"
+            fi
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SHOULD_DEPLOY=true
+            if [ -n "$DEPLOY_REASON" ]; then
+              DEPLOY_REASON="${DEPLOY_REASON}, manual dispatch"
+            else
+              DEPLOY_REASON="manual dispatch"
+            fi
+          fi
+
+          if [ "$SHOULD_DEPLOY" = "true" ]; then
+            echo "Terraform deploy enabled: ${DEPLOY_REASON}"
+          else
+            echo "Terraform deploy skipped: version tag exists and no infra changes were detected"
+          fi
+
+          echo "deploy=${SHOULD_DEPLOY}" >> "$GITHUB_OUTPUT"
+
+          IMAGE_DIGEST=$(docker buildx imagetools inspect "${IMAGE_BASE}:${IMAGE_TAG}" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "TomoriBot image digest is invalid." >&2
+            exit 1
+          fi
+          echo "image_digest=${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push custom SearXNG image
+        id: searxng_image
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          SEARXNG_BASE="docker.io/${DOCKERHUB_USERNAME}/tomoribot-searxng"
+
+          docker build \
+            --platform linux/amd64 \
+            --tag "${SEARXNG_BASE}:${IMAGE_TAG}" \
+            --tag "${SEARXNG_BASE}:latest" \
+            servers/searxng/
+
+          docker push "${SEARXNG_BASE}:${IMAGE_TAG}"
+          docker push "${SEARXNG_BASE}:latest"
+          echo "Pushed custom SearXNG image: ${SEARXNG_BASE}:${IMAGE_TAG}"
+
+          SEARXNG_DIGEST=$(docker buildx imagetools inspect "${SEARXNG_BASE}:${IMAGE_TAG}" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          if [[ ! "$SEARXNG_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "SearXNG image digest is invalid." >&2
+            exit 1
+          fi
+          echo "image_digest=${SEARXNG_DIGEST}" >> "$GITHUB_OUTPUT"
+
+  deploy-with-terraform:
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+      # Reads this workflow's own run history so the destructive-migration gate can diff against
+      # the last SUCCESSFUL deploy rather than the previous push. See that step for why.
+      actions: read
+    needs: push-to-docker-hub
+    if: needs['push-to-docker-hub'].outputs.deploy == 'true'
+    outputs:
+      deployment-status: ${{ steps.verify.outputs.status }}
+      commit-hash: ${{ steps.commit-info.outputs.hash }}
+      commit-message: ${{ steps.commit-info.outputs.message }}
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: "true"
+      # The Terraform backend uses Microsoft Entra ID for Blob data-plane access.
+      # This requires Storage Blob Data Contributor on the tfstate container.
+      ARM_USE_AZUREAD: "true"
+      # Variable names must match terraform/azure/variables.tf (required inputs
+      # with no default — see terraform.ci.tfvars header).
+      TF_VAR_azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_postgres_admin_password: ${{ secrets.AZURE_POSTGRES_ADMIN_PASSWORD }}
+      TF_VAR_vm_admin_ssh_public_key: ${{ secrets.AZURE_VM_SSH_PUBLIC_KEY }}
+      # A secret rather than a variable: this is an operator's ISP egress address, and
+      # repository variables are not masked, so a job-level env block publishes it in the
+      # logs of a public repository. Masking it after the fact is not possible here, since
+      # registering the mask requires the value to appear first. Nothing is lost by making
+      # it write-only: the authoritative pair to compare when the ISP rotates is the
+      # operator's current address against the live allow-grafana-operator firewall rule,
+      # and both are readable without this value.
+      TF_VAR_grafana_egress_ip: ${{ secrets.GRAFANA_EGRESS_IP }}
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Full history so the destructive-migration gate can diff against the last successful
+          # deploy, which may be many pushes back; a shallow clone lacks that commit.
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Authenticate to Azure (OIDC)
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Preflight runtime database credential
+        env:
+          TOMORI_SECRETS_JSON: ${{ secrets.TOMORI_SECRETS_JSON }}
+        run: |
+          set -euo pipefail
+
+          jq -e '
+            type == "object" and
+            (.POSTGRES_USER | type == "string" and length > 0) and
+            (.POSTGRES_PASSWORD | type == "string" and length > 0) and
+            (.POSTGRES_HOST | type == "string" and length > 0) and
+            (.POSTGRES_PORT | (type == "string" or type == "number")) and
+            (.POSTGRES_DB | type == "string" and length > 0)
+          ' <<<"$TOMORI_SECRETS_JSON" >/dev/null
+
+          runtime_user=$(jq -er '.POSTGRES_USER' <<<"$TOMORI_SECRETS_JSON")
+          case "$runtime_user" in
+            tomoriadmin|azure_pg_admin|postgres)
+              echo "TOMORI_SECRETS_JSON must use the non-administrator runtime database role." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Detect initial PostgreSQL bootstrap
+        id: postgres_bootstrap
+        # A manual first deployment has no previous Git ref, so the normal
+        # migration guard would scan the complete historical migration set.
+        # Skip it only while the protected server does not exist. Every later
+        # deployment retains the normal checkpoint/backup requirement. B1ms
+        # does not support customer on-demand backups, so a failed first app
+        # startup can be retried only through the explicit blank-DB input.
+        run: |
+          set -euo pipefail
+          error_file=$(mktemp)
+          set +e
+          server_id=$(az postgres flexible-server show \
+            --resource-group tomoribot-rg \
+            --name tomoribot-postgres \
+            --query id \
+            --output tsv \
+            --only-show-errors 2>"$error_file")
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            echo "is_initial_bootstrap=false" >> "$GITHUB_OUTPUT"
+            echo "Azure PostgreSQL server already exists: $server_id"
+          elif grep -Eq "ResourceNotFound|ResourceGroupNotFound|could not be found" "$error_file"; then
+            echo "is_initial_bootstrap=true" >> "$GITHUB_OUTPUT"
+            echo "Azure PostgreSQL server does not exist; treating this as initial bootstrap."
+          else
+            cat "$error_file" >&2
+            exit "$status"
+          fi
+
+          rm -f "$error_file"
+
+      - name: Destructive migration gate
+        # A recovery point request never authorizes the old bot to run against a changed schema.
+        # See docs/en/self-hosting/safe-migration.md.
+        if: |
+          steps.postgres_bootstrap.outputs.is_initial_bootstrap != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RECOVERY_POINT_OPT_IN: ${{ (github.event_name == 'workflow_dispatch' && inputs.create_db_backup == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '(Checkpoint)')) }}
+          ALLOW_MIGRATION_DOWNTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_migration_downtime == true }}
+        run: |
+          set -euo pipefail
+          # The base must be the last SUCCESSFULLY DEPLOYED commit, not the previous push.
+          # This gate is git-delta-scoped while the migration runner is database-state-scoped, so
+          # the two desync on any failed run: if a deploy stops here, the destructive migrations
+          # stay pending in the database, but the next push diffs against the failed push's tip,
+          # finds no new migration files, passes, and the DROPs then run at startup with no backup.
+          # Diffing against the last green deploy keeps the window open until one actually succeeds.
+          # Query params rather than repeated flags so this needs no line continuations.
+          LAST_GREEN=$(gh api "repos/${{ github.repository }}/actions/workflows/deploy-azure.yml/runs?branch=${{ github.ref_name }}&status=success&per_page=1" --jq '.workflow_runs[0].head_sha' 2>/dev/null || true)
+          if [ -z "$LAST_GREEN" ] || [ "$LAST_GREEN" = "null" ]; then
+            LAST_GREEN=$(gh api "repos/${{ github.repository }}/actions/workflows/deploy-tomoribot-azure.yml/runs?branch=${{ github.ref_name }}&status=success&per_page=1" --jq '.workflow_runs[0].head_sha' 2>/dev/null || true)
+          fi
+          PREV_REF=""
+          if [ -n "$LAST_GREEN" ] && [ "$LAST_GREEN" != "null" ] && git cat-file -e "${LAST_GREEN}^{commit}" 2>/dev/null && git merge-base --is-ancestor "$LAST_GREEN" HEAD; then
+            PREV_REF="$LAST_GREEN"
+            echo "Diffing migrations against the last successful deploy: $PREV_REF"
+          fi
+
+          if [ -z "$PREV_REF" ]; then
+            # A push delta can omit a migration that failed this gate on an earlier run.
+            # Without a deployed ref, treat every migration as potentially pending.
+            echo "::warning::No reachable successful deploy. Scanning all migrations; destructive SQL requires downtime."
+            scan_args=(--all)
+          else
+            scan_args=(--changed-since "$PREV_REF" --deployed-ref "$PREV_REF")
+          fi
+
+          if [ "$RECOVERY_POINT_OPT_IN" = "true" ]; then scan_args+=(--recovery-point-opt-in); fi
+          if [ "$ALLOW_MIGRATION_DOWNTIME" = "true" ]; then scan_args+=(--allow-downtime); fi
+          bun run scripts/checks/checkPendingMigrations.ts "${scan_args[@]}"
+
+      - name: Validate recovery point or create PostgreSQL backup
+        # Burstable tiers reject customer on-demand backups. Verify that the server's
+        # restore window contains the target before allowing a migration to run.
+        if: |
+          steps.postgres_bootstrap.outputs.is_initial_bootstrap != 'true' &&
+          (
+            (github.event_name == 'workflow_dispatch' && inputs.create_db_backup == true) ||
+            (github.event_name == 'push' && contains(github.event.head_commit.message, '(Checkpoint)'))
+          )
+        run: |
+          set -euo pipefail
+          server_info=$(az postgres flexible-server show \
+            --resource-group tomoribot-rg \
+            --name tomoribot-postgres \
+            --output json)
+          tier=$(jq -er '.sku.tier' <<<"$server_info")
+          if [ "$tier" = "Burstable" ]; then
+            if ! jq -e '
+              .state == "Ready" and
+              (.backup.backupRetentionDays | type == "number" and . > 0) and
+              (.backup.earliestRestoreDate | type == "string" and length > 0)
+            ' <<<"$server_info" >/dev/null; then
+              echo "Point-in-time restore target unavailable: server state, backup retention, or earliest restore date is invalid." >&2
+              exit 1
+            fi
+            restore_target=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            earliest_restore=$(jq -r '.backup.earliestRestoreDate' <<<"$server_info")
+            restore_server="tomoribot-pitr-${{ github.run_id }}-${{ github.run_attempt }}"
+            if ! earliest_epoch=$(date -u -d "$earliest_restore" +%s) ||
+               [ "$earliest_epoch" -gt "$(date -u -d "$restore_target" +%s)" ]; then
+              echo "Point-in-time restore target unavailable: earliest restore point is later than the target." >&2
+              exit 1
+            fi
+            echo "::notice title=Point-in-time restore target::${restore_target} (restore window checked)"
+            {
+              echo "### PostgreSQL point-in-time restore target"
+              echo "Target (UTC): \`$restore_target\`"
+              echo "Earliest available (UTC): \`$earliest_restore\`"
+              echo "Retention: \`$(jq -r '.backup.backupRetentionDays' <<<"$server_info") days\`"
+              echo 'Restore creates a new server:'
+              echo '```bash'
+              echo "az postgres flexible-server restore --resource-group tomoribot-rg --name $restore_server --source-server tomoribot-postgres --restore-time '$restore_target'"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          BACKUP_NAME="pre-deploy-${{ github.run_id }}-${{ github.run_attempt }}"
+          echo "Creating pre-deploy Azure PostgreSQL backup: ${BACKUP_NAME}"
+          az postgres flexible-server backup create \
+            --resource-group tomoribot-rg \
+            --server-name tomoribot-postgres \
+            --name "${BACKUP_NAME}"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.14.3
+
+      - name: Terraform init
+        working-directory: terraform/azure
+        run: terraform init
+
+      - name: Terraform plan
+        working-directory: terraform/azure
+        run: terraform plan -input=false -var-file=terraform.ci.tfvars -out=tfplan
+
+      - name: Guard against Azure PostgreSQL destroy/replace
+        working-directory: terraform/azure
+        run: |
+          echo "Checking plan for destructive Azure PostgreSQL changes..."
+          if terraform show -json tfplan | jq -e '.resource_changes[]
+            | select(.type=="azurerm_postgresql_flexible_server")
+            | select(.change.actions | index("delete"))' >/dev/null; then
+            echo "Azure PostgreSQL Flexible Server would be destroyed or replaced. Aborting deploy."
+            exit 1
+          fi
+          echo "No destructive Azure PostgreSQL changes detected."
+
+      - name: Guard against unapproved VM replacement
+        working-directory: terraform/azure
+        env:
+          ALLOW_VM_REPLACEMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_vm_replacement == true }}
+        run: |
+          if terraform show -json tfplan | jq -e '.resource_changes[]
+            | select(.type=="azurerm_linux_virtual_machine")
+            | select(.change.actions | index("delete"))' >/dev/null; then
+            if [ "$ALLOW_VM_REPLACEMENT" != "true" ]; then
+              echo "The production VM would be destroyed or replaced. Review the saved plan, then rerun manually with allow_vm_replacement=true." >&2
+              exit 1
+            fi
+            echo "Approved manual deployment permits the planned production VM replacement."
+          else
+            echo "No production VM replacement detected."
+          fi
+
+      # The two guards above select on a single resource type each, so every other destroy reaches
+      # `apply -auto-approve` unreviewed. Retiring the monitoring agent ran three destroys through
+      # that path with nothing inspecting them. This gate is type-agnostic: it always prints the
+      # inventory, and it fails on anything protected or on an unexpectedly wide blast radius.
+      - name: Guard against unreviewed infrastructure destruction
+        working-directory: terraform/azure
+        env:
+          ALLOW_DESTRUCTION: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_infrastructure_destruction == true }}
+          # Removing one small component legitimately destroys a handful of resources at once (an
+          # extension plus its associations). Above that, a plan is more likely wrong than intended.
+          MAX_UNAPPROVED_DESTROYS: "3"
+        run: |
+          plan_json=$(terraform show -json tfplan)
+
+          destroys=$(echo "$plan_json" | jq -r '.resource_changes[]
+            | select(.change.actions | index("delete"))
+            | [.type, .address, (.change.actions | join(","))]
+            | @tsv')
+
+          if [ -z "$destroys" ]; then
+            echo "No resource destruction planned."
+            exit 0
+          fi
+
+          destroy_count=$(echo "$destroys" | wc -l | tr -d ' ')
+          echo "Planned destroys ($destroy_count):"
+          echo "$destroys" | sed 's/^/  /'
+
+          # Every type here exists in terraform/azure, so this list is auditable against the repo
+          # rather than aspirational. Losing any of them breaks production in a way the deploy still
+          # reports green: the resource group takes everything with it, the database is the data
+          # itself, the firewall rule is what admits the VM to PostgreSQL, and the public IP is the
+          # address that firewall rule names.
+          protected=$(echo "$destroys" | grep -E '^(azurerm_resource_group|azurerm_postgresql_flexible_server_database|azurerm_postgresql_flexible_server_firewall_rule|azurerm_network_security_group|azurerm_network_interface|azurerm_virtual_network|azurerm_subnet|azurerm_public_ip|azurerm_monitor_metric_alert)[[:space:]]' || true)
+
+          if [ -n "$protected" ]; then
+            echo "::error::Protected infrastructure would be destroyed:"
+            echo "$protected" | sed 's/^/  /' >&2
+            if [ "$ALLOW_DESTRUCTION" != "true" ]; then
+              echo "Review the saved plan, then rerun manually with allow_infrastructure_destruction=true." >&2
+              exit 1
+            fi
+            echo "Approved manual deployment permits the planned destruction of protected resources."
+          fi
+
+          if [ "$destroy_count" -gt "$MAX_UNAPPROVED_DESTROYS" ] && [ "$ALLOW_DESTRUCTION" != "true" ]; then
+            echo "::error::$destroy_count resources would be destroyed, above the unapproved limit of $MAX_UNAPPROVED_DESTROYS." >&2
+            echo "Review the saved plan, then rerun manually with allow_infrastructure_destruction=true." >&2
+            exit 1
+          fi
+
+          echo "Destroy count within limits."
+
+      - name: Terraform apply
+        working-directory: terraform/azure
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Capture Terraform outputs
+        id: tf_outputs
+        working-directory: terraform/azure
+        run: |
+          {
+            echo "vm_name=$(terraform output -raw vm_name)"
+            echo "resource_group_name=$(terraform output -raw resource_group_name)"
+            echo "postgres_admin_login=$(terraform output -raw postgres_admin_login)"
+            echo "vm_admin_username=$(terraform output -raw vm_admin_username)"
+            echo "vm_nsg_name=$(terraform output -raw vm_network_security_group_name)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate and encode deployment payloads
+        id: payloads
+        env:
+          TOMORI_SECRETS_JSON: ${{ secrets.TOMORI_SECRETS_JSON }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          runtime_json=$TOMORI_SECRETS_JSON
+
+          runtime_user=$(jq -er '.POSTGRES_USER' <<<"$runtime_json")
+          case "$runtime_user" in
+            tomoriadmin|azure_pg_admin|postgres)
+              echo "TOMORI_SECRETS_JSON must use the non-administrator runtime database role." >&2
+              exit 1
+              ;;
+          esac
+
+          runtime_b64=$(printf '%s' "$runtime_json" | base64 -w 0)
+          docker_token_b64=$(printf '%s' "$DOCKERHUB_TOKEN" | base64 -w 0)
+          vertex_b64=$(base64 -w 0 deploy/azure/google-vertex-wif.json)
+          compose_b64=$(base64 -w 0 deploy/azure/docker-compose.yml)
+          deploy_script_b64=$(base64 -w 0 deploy/azure/run-command-deploy.sh)
+          bootstrap_script_b64=$(base64 -w 0 deploy/azure/bootstrap-database.sh)
+          migrate_script_b64=$(base64 -w 0 deploy/azure/migrate-database.sh)
+          lockdown_script_b64=$(base64 -w 0 deploy/azure/host-lockdown.sh)
+
+          for value in "$runtime_b64" "$docker_token_b64"; do
+            echo "::add-mask::$value"
+          done
+
+          {
+            echo "runtime_b64=$runtime_b64"
+            echo "docker_token_b64=$docker_token_b64"
+            echo "vertex_b64=$vertex_b64"
+            echo "compose_b64=$compose_b64"
+            echo "deploy_script_b64=$deploy_script_b64"
+            echo "bootstrap_script_b64=$bootstrap_script_b64"
+            echo "migrate_script_b64=$migrate_script_b64"
+            echo "lockdown_script_b64=$lockdown_script_b64"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Bootstrap database role and schema
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.run_database_bootstrap == true) ||
+          vars.RUN_DATABASE_BOOTSTRAP == 'true'
+        env:
+          VM_NAME: ${{ steps.tf_outputs.outputs.vm_name }}
+          RESOURCE_GROUP: ${{ steps.tf_outputs.outputs.resource_group_name }}
+          RUNTIME_SECRETS_B64: ${{ steps.payloads.outputs.runtime_b64 }}
+          BOOTSTRAP_SCRIPT_B64: ${{ steps.payloads.outputs.bootstrap_script_b64 }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN_B64: ${{ steps.payloads.outputs.docker_token_b64 }}
+          TOMORIBOT_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tomoribot@${{ needs.push-to-docker-hub.outputs.image_digest }}
+          TOMORI_SECRETS_JSON: ${{ secrets.TOMORI_SECRETS_JSON }}
+          POSTGRES_ADMIN_LOGIN: ${{ steps.tf_outputs.outputs.postgres_admin_login }}
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.AZURE_POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2016
+          migration_json=$(jq -cn \
+            --arg user "$POSTGRES_ADMIN_LOGIN" \
+            --arg password "$POSTGRES_ADMIN_PASSWORD" \
+            --arg host "$(jq -er '.POSTGRES_HOST' <<<"$TOMORI_SECRETS_JSON")" \
+            --arg port "$(jq -er '.POSTGRES_PORT | tostring' <<<"$TOMORI_SECRETS_JSON")" \
+            --arg database "$(jq -er '.POSTGRES_DB' <<<"$TOMORI_SECRETS_JSON")" \
+            '{
+              POSTGRES_USER: $user,
+              POSTGRES_PASSWORD: $password,
+              POSTGRES_HOST: $host,
+              POSTGRES_PORT: $port,
+              POSTGRES_DB: $database
+            }')
+          migration_b64=$(printf '%s' "$migration_json" | base64 -w 0)
+          echo "::add-mask::$migration_b64"
+
+          # shellcheck disable=SC2016
+          response_message=$(az vm run-command invoke \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$VM_NAME" \
+            --command-id RunShellScript \
+            --scripts \
+              'set -eu' \
+              'bootstrap_script=$(mktemp /var/lib/waagent/tomoribot-db-bootstrap.XXXXXX)' \
+              'trap '\''rm -f "$bootstrap_script"'\'' EXIT' \
+              'printf '\''%s'\'' "$bootstrapScriptB64" | base64 --decode >"$bootstrap_script"' \
+              'chmod 0700 "$bootstrap_script"' \
+              'bash "$bootstrap_script"' \
+            --parameters \
+              "bootstrapScriptB64=$BOOTSTRAP_SCRIPT_B64" \
+              "runtimeSecretsB64=$RUNTIME_SECRETS_B64" \
+              "migrationSecretsB64=$migration_b64" \
+              "dockerHubUsername=$DOCKERHUB_USERNAME" \
+              "dockerHubTokenB64=$DOCKERHUB_TOKEN_B64" \
+              "tomoribotImage=$TOMORIBOT_IMAGE" \
+              "initializeSchema=${{ steps.postgres_bootstrap.outputs.is_initial_bootstrap }}" \
+            --query 'value[0].message' \
+            --output tsv \
+            --only-show-errors)
+
+          if [[ "$response_message" != *TOMORIBOT_DATABASE_BOOTSTRAP_SUCCEEDED* ]]; then
+            echo "Database bootstrap failed; inspect the access-controlled Azure Run Command record." >&2
+            exit 1
+          fi
+
+      - name: Apply database schema and migrations
+        # Runs on EVERY deploy (unlike the gated role bootstrap above). The runtime
+        # bot role has no DDL privilege, so this privileged container is the only path
+        # that applies idempotent schema.sql + pending NNN_*.sql migrations to the
+        # existing production database. The gate requires downtime when deployed
+        # code still references a removed object. New tables inherit runtime and
+        # Grafana grants via bootstrap's default privileges.
+        env:
+          VM_NAME: ${{ steps.tf_outputs.outputs.vm_name }}
+          RESOURCE_GROUP: ${{ steps.tf_outputs.outputs.resource_group_name }}
+          MIGRATE_SCRIPT_B64: ${{ steps.payloads.outputs.migrate_script_b64 }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN_B64: ${{ steps.payloads.outputs.docker_token_b64 }}
+          TOMORIBOT_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tomoribot@${{ needs.push-to-docker-hub.outputs.image_digest }}
+          TOMORI_SECRETS_JSON: ${{ secrets.TOMORI_SECRETS_JSON }}
+          POSTGRES_ADMIN_LOGIN: ${{ steps.tf_outputs.outputs.postgres_admin_login }}
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.AZURE_POSTGRES_ADMIN_PASSWORD }}
+          ALLOW_MIGRATION_DOWNTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_migration_downtime == true }}
+        run: |
+          set -euo pipefail
+          if [ "$ALLOW_MIGRATION_DOWNTIME" = "true" ]; then
+            echo "Migration downtime authorized. The bot will stop before schema changes; a failed migration may leave it stopped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          # 1. Assemble the migration (admin) DB credential bundle, same shape as the
+          #    role-bootstrap step (host/port/db from the runtime secret, admin login).
+          # shellcheck disable=SC2016
+          migration_json=$(jq -cn \
+            --arg user "$POSTGRES_ADMIN_LOGIN" \
+            --arg password "$POSTGRES_ADMIN_PASSWORD" \
+            --arg host "$(jq -er '.POSTGRES_HOST' <<<"$TOMORI_SECRETS_JSON")" \
+            --arg port "$(jq -er '.POSTGRES_PORT | tostring' <<<"$TOMORI_SECRETS_JSON")" \
+            --arg database "$(jq -er '.POSTGRES_DB' <<<"$TOMORI_SECRETS_JSON")" \
+            '{
+              POSTGRES_USER: $user,
+              POSTGRES_PASSWORD: $password,
+              POSTGRES_HOST: $host,
+              POSTGRES_PORT: $port,
+              POSTGRES_DB: $database
+            }')
+          migration_b64=$(printf '%s' "$migration_json" | base64 -w 0)
+          echo "::add-mask::$migration_b64"
+
+          # 2. Run migrate-database.sh on the VM via Azure Run Command.
+          # shellcheck disable=SC2016
+          response_message=$(az vm run-command invoke \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$VM_NAME" \
+            --command-id RunShellScript \
+            --scripts \
+              'set -eu' \
+              'migrate_script=$(mktemp /var/lib/waagent/tomoribot-db-migrate.XXXXXX)' \
+              'trap '\''rm -f "$migrate_script"'\'' EXIT' \
+              'printf '\''%s'\'' "$migrateScriptB64" | base64 --decode >"$migrate_script"' \
+              'chmod 0700 "$migrate_script"' \
+              'bash "$migrate_script"' \
+            --parameters \
+              "migrateScriptB64=$MIGRATE_SCRIPT_B64" \
+              "migrationSecretsB64=$migration_b64" \
+              "dockerHubUsername=$DOCKERHUB_USERNAME" \
+              "dockerHubTokenB64=$DOCKERHUB_TOKEN_B64" \
+              "tomoribotImage=$TOMORIBOT_IMAGE" \
+              "allowMigrationDowntime=$ALLOW_MIGRATION_DOWNTIME" \
+            --query 'value[0].message' \
+            --output tsv \
+            --only-show-errors)
+
+          if [[ "$response_message" != *TOMORIBOT_DATABASE_MIGRATION_SUCCEEDED* ]]; then
+            echo "Database migration failed; inspect the access-controlled Azure Run Command record." >&2
+            exit 1
+          fi
+          if [ "$ALLOW_MIGRATION_DOWNTIME" = "true" ]; then
+            echo "Migration completed during downtime. The deploy step will start the new bot." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Deploy and verify through Azure VM Run Command
+        id: verify
+        env:
+          VM_NAME: ${{ steps.tf_outputs.outputs.vm_name }}
+          RESOURCE_GROUP: ${{ steps.tf_outputs.outputs.resource_group_name }}
+          RUNTIME_SECRETS_B64: ${{ steps.payloads.outputs.runtime_b64 }}
+          VERTEX_CONFIG_B64: ${{ steps.payloads.outputs.vertex_b64 }}
+          COMPOSE_CONFIG_B64: ${{ steps.payloads.outputs.compose_b64 }}
+          DEPLOY_SCRIPT_B64: ${{ steps.payloads.outputs.deploy_script_b64 }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN_B64: ${{ steps.payloads.outputs.docker_token_b64 }}
+          TOMORIBOT_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tomoribot@${{ needs.push-to-docker-hub.outputs.image_digest }}
+          SEARXNG_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/tomoribot-searxng@${{ needs.push-to-docker-hub.outputs.searxng_image_digest }}
+          SEARXNG_SECRET: ${{ secrets.SEARXNG_SECRET }}
+        run: |
+          set -euo pipefail
+          # Empty until the secret is set, which is what keeps SearXNG off.
+          searxng_secret_b64=""
+          if [[ -n "$SEARXNG_SECRET" ]]; then
+            searxng_secret_b64=$(printf '%s' "$SEARXNG_SECRET" | base64 -w 0)
+            echo "::add-mask::$searxng_secret_b64"
+          fi
+          # shellcheck disable=SC2016
+          response_message=$(az vm run-command invoke \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$VM_NAME" \
+            --command-id RunShellScript \
+            --scripts \
+              'set -eu' \
+              'deploy_script=$(mktemp /var/lib/waagent/tomoribot-deploy.XXXXXX)' \
+              'trap '\''rm -f "$deploy_script"'\'' EXIT' \
+              'printf '\''%s'\'' "$deployScriptB64" | base64 --decode >"$deploy_script"' \
+              'chmod 0700 "$deploy_script"' \
+              'bash "$deploy_script"' \
+            --parameters \
+              "deployScriptB64=$DEPLOY_SCRIPT_B64" \
+              "runtimeSecretsB64=$RUNTIME_SECRETS_B64" \
+              "vertexConfigB64=$VERTEX_CONFIG_B64" \
+              "composeConfigB64=$COMPOSE_CONFIG_B64" \
+              "dockerHubUsername=$DOCKERHUB_USERNAME" \
+              "dockerHubTokenB64=$DOCKERHUB_TOKEN_B64" \
+              "tomoribotImage=$TOMORIBOT_IMAGE" \
+              "searxngImage=$SEARXNG_IMAGE" \
+              "searxngSecretB64=$searxng_secret_b64" \
+            --query 'value[0].message' \
+            --output tsv \
+            --only-show-errors)
+
+          if [[ "$response_message" != *TOMORIBOT_DEPLOYMENT_SUCCEEDED* ]]; then
+            echo "Azure Run Command deployment failed; inspect access-controlled Azure execution and Log Analytics records." >&2
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "status=success" >> "$GITHUB_OUTPUT"
+
+      - name: Lock down VM host after verified deployment
+        if: github.event_name == 'workflow_dispatch' && inputs.run_host_lockdown == true
+        env:
+          VM_NAME: ${{ steps.tf_outputs.outputs.vm_name }}
+          RESOURCE_GROUP: ${{ steps.tf_outputs.outputs.resource_group_name }}
+          VM_ADMIN_USERNAME: ${{ steps.tf_outputs.outputs.vm_admin_username }}
+          VM_NSG_NAME: ${{ steps.tf_outputs.outputs.vm_nsg_name }}
+          LOCKDOWN_SCRIPT_B64: ${{ steps.payloads.outputs.lockdown_script_b64 }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2016
+          response_message=$(az vm run-command invoke \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$VM_NAME" \
+            --command-id RunShellScript \
+            --scripts \
+              'set -eu' \
+              'lockdown_script=$(mktemp /var/lib/waagent/tomoribot-host-lockdown.XXXXXX)' \
+              'trap '\''rm -f "$lockdown_script"'\'' EXIT' \
+              'printf '\''%s'\'' "$lockdownScriptB64" | base64 --decode >"$lockdown_script"' \
+              'chmod 0700 "$lockdown_script"' \
+              'bash "$lockdown_script"' \
+            --parameters \
+              "lockdownScriptB64=$LOCKDOWN_SCRIPT_B64" \
+              "deployUsername=$VM_ADMIN_USERNAME" \
+            --query 'value[0].message' \
+            --output tsv \
+            --only-show-errors)
+
+          if [[ "$response_message" != *TOMORIBOT_HOST_LOCKDOWN_SUCCEEDED* ]]; then
+            echo "Host lockdown failed; inspect the access-controlled Azure Run Command record." >&2
+            exit 1
+          fi
+
+          inbound_allow_count=$(az network nsg rule list \
+            --resource-group "$RESOURCE_GROUP" \
+            --nsg-name "$VM_NSG_NAME" \
+            --query "[?direction=='Inbound' && access=='Allow'] | length(@)" \
+            --output tsv \
+            --only-show-errors)
+          if [ "$inbound_allow_count" != "0" ]; then
+            echo "The VM network security group still permits public inbound traffic." >&2
+            exit 1
+          fi
+
+      - name: Get commit information
+        id: commit-info
+        run: |
+          echo "hash=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "message=$(git log -1 --pretty=format:'%s')" >> "$GITHUB_OUTPUT"
+
+  # ─── GITHUB RELEASES (identical to AWS workflow) ──────────────────────────
+
+  check-release-assets:
+    runs-on: ubuntu-24.04
+    needs: deploy-with-terraform
+    if: needs.deploy-with-terraform.outputs.deployment-status == 'success'
+    outputs:
+      has-assets: ${{ steps.check.outputs.has-assets }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          echo "version=$(jq -r '.version' package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Check if version-specific release folder exists
+        id: check
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          versionFolder=".github/release/v$VERSION"
+          if [ -d "$versionFolder" ]; then
+            echo "has-assets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-assets=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  create-release:
+    runs-on: ubuntu-24.04
+    environment: production
+    needs: [deploy-with-terraform, check-release-assets]
+    if: needs.deploy-with-terraform.outputs.deployment-status == 'success' && needs.check-release-assets.outputs.has-assets == 'true'
+    # Release creation publishes a GitHub Release; the default token needs write here.
+    permissions:
+      contents: write
+    outputs:
+      created: ${{ steps.release-check.outputs.exists != 'true' }}
+      image_name: ${{ steps.release-notes.outputs.image-name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Check if GitHub release already exists
+        id: release-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check-release-assets.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare release notes and Discord notification
+        id: release-notes
+        if: steps.release-check.outputs.exists != 'true'
+        env:
+          VERSION: ${{ needs.check-release-assets.outputs.version }}
+          COMMIT_HASH: ${{ needs.deploy-with-terraform.outputs.commit-hash }}
+        run: |
+          versionFolder=".github/release/v$VERSION"
+          releaseNotesPath=$(find "$versionFolder" -maxdepth 1 -name "*.md" ! -name "README.md" | head -n 1)
+
+          if [ -z "$releaseNotesPath" ]; then
+            echo "No .md files found in $versionFolder"
+            exit 1
+          fi
+
+          imageName=$(find "$versionFolder" -maxdepth 1 -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.gif" -o -name "*.webp" \) | head -n 1 | xargs -r basename)
+
+          releaseNotes=$(cat "$releaseNotesPath")
+          releaseNotes="${releaseNotes//\{VERSION\}/$VERSION}"
+          releaseNotes="${releaseNotes//\{TIMESTAMP\}/$(date -u +"%Y-%m-%d %H:%M:%S UTC")}"
+          releaseNotes="${releaseNotes//\{COMMIT_HASH\}/$COMMIT_HASH}"
+          releaseNotes="${releaseNotes//\{REPO_OWNER\}/${{ github.repository_owner }}}"
+          releaseNotes="${releaseNotes//\{REPO_NAME\}/${{ github.event.repository.name }}}"
+          # Published images use the tag created below so historical release bodies do not depend
+          # on files remaining at the release branch tip.
+          releaseNotes=$(printf '%s' "$releaseNotes" | sed "s|/raw/release/\\.github/release/|/raw/v$VERSION/.github/release/|g")
+
+          echo "$releaseNotes" > processed-release-notes.md
+          echo "image-name=$imageName" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        if: steps.release-check.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check-release-assets.outputs.version }}
+        run: |
+          # Without --target the tag is cut from the default branch, which no longer carries
+          # .github/release/ and is not the tree that just deployed. Both the release-note image
+          # URLs and the source archive read from this tag, so it has to be the deployed commit.
+          gh release create "v$VERSION" \
+            --target "${{ github.sha }}" \
+            --title "TomoriBot v$VERSION" \
+            --notes-file "processed-release-notes.md" \
+            --latest
+
+
+  notify-release:
+    runs-on: ubuntu-24.04
+    environment: production
+    needs: [deploy-with-terraform, check-release-assets, create-release]
+    if: needs.create-release.outputs.created == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Prepare Discord notification
+        env:
+          VERSION: ${{ needs.check-release-assets.outputs.version }}
+          COMMIT_HASH: ${{ needs.deploy-with-terraform.outputs.commit-hash }}
+        run: |
+          versionFolder=".github/release/v$VERSION"
+          releaseNotesPath=$(find "$versionFolder" -maxdepth 1 -name "*.md" ! -name "README.md" | head -n 1)
+          releaseNotes=$(cat "$releaseNotesPath")
+          releaseNotes="${releaseNotes//\{VERSION\}/$VERSION}"
+          releaseNotes="${releaseNotes//\{TIMESTAMP\}/$(date -u +"%Y-%m-%d %H:%M:%S UTC")}"
+          releaseNotes="${releaseNotes//\{COMMIT_HASH\}/$COMMIT_HASH}"
+          releaseNotes="${releaseNotes//\{REPO_OWNER\}/${{ github.repository_owner }}}"
+          releaseNotes="${releaseNotes//\{REPO_NAME\}/${{ github.event.repository.name }}}"
+          printf '%s' "$releaseNotes" > processed-release-notes.md
+
+      - name: Send Discord notification
+        env:
+          VERSION: ${{ needs.check-release-assets.outputs.version }}
+          IMAGE_NAME: ${{ needs.create-release.outputs.image_name }}
+          MENTION_ROLE_ID: ${{ secrets.RELEASE_DISCORD_MENTION_ROLE_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          releaseNotes=$(sed 's/!\[[^]]*\]([^)]*)//g' processed-release-notes.md)
+          printf '%s' "$releaseNotes" > discord_release_notes.txt
+          python3 .github/scripts/discord_split.py
+          chunkCount=$(cat discord_chunk_count.txt)
+
+          hasImage=false
+          imageFile=""
+          if [ -n "$IMAGE_NAME" ]; then
+            # Read from the release tag, not a branch: the tag is immutable, so a past release's
+            # image survives any future pruning of .github/release/ from the branch tip. Release
+            # creation always runs before this point, so the tag resolves.
+            imageUrl="https://github.com/${{ github.repository }}/raw/v$VERSION/.github/release/v$VERSION/$IMAGE_NAME"
+            imageFile="release-post-image.${IMAGE_NAME##*.}"
+            if curl -sL --max-time 30 "$imageUrl" -o "$imageFile" && [ -s "$imageFile" ]; then
+              hasImage=true
+            fi
+          fi
+
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_WEBHOOK_URL not configured — skipping Discord notification"
+            exit 0
+          fi
+
+          threadTitle=$(head -1 processed-release-notes.md | sed 's/^# *//')
+          firstChunk=$(cat discord_chunk_0.txt)
+          firstPayload=$(jq -n --arg content "$firstChunk" --arg thread_name "$threadTitle" '{content: $content, thread_name: $thread_name}')
+
+          if [ "$hasImage" = true ]; then
+            response=$(curl -s -w "\n%{http_code}" -X POST -F "payload_json=$firstPayload" -F "files[0]=@$imageFile" "${DISCORD_WEBHOOK_URL}?wait=true")
+          else
+            response=$(curl -s -w "\n%{http_code}" -X POST -H "Content-Type: application/json" -d "$firstPayload" "${DISCORD_WEBHOOK_URL}?wait=true")
+          fi
+
+          httpCode=$(echo "$response" | tail -1)
+          responseBody=$(echo "$response" | sed '$d')
+          if [ "$httpCode" -lt 200 ] || [ "$httpCode" -ge 300 ]; then
+            echo "Failed to create Discord forum post (HTTP $httpCode)"
+            exit 1
+          fi
+
+          threadId=$(echo "$responseBody" | jq -r '.channel_id // empty')
+          if [ "$chunkCount" -gt 1 ] && [ -n "$threadId" ]; then
+            for i in $(seq 1 $((chunkCount - 1))); do
+              chunk=$(cat "discord_chunk_${i}.txt")
+              chunkPayload=$(jq -n --arg content "$chunk" '{content: $content}')
+              curl -s -X POST -H "Content-Type: application/json" -d "$chunkPayload" "${DISCORD_WEBHOOK_URL}?thread_id=${threadId}" >/dev/null
+              sleep 1
+            done
+          fi
+
+          if [ -n "$MENTION_ROLE_ID" ] && [ -n "$threadId" ]; then
+            mentionPayload=$(jq -n --arg content "<@&${MENTION_ROLE_ID}> Follow-up hotfixes or patches for this update will be posted in this Forum post!" '{content: $content}')
+            curl -s -X POST -H "Content-Type: application/json" -d "$mentionPayload" "${DISCORD_WEBHOOK_URL}?thread_id=${threadId}" >/dev/null
+          fi

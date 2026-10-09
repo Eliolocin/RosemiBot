@@ -7,9 +7,12 @@ import type {
   SavedProviderConfigUpsert,
   SavedProviderConfigRow,
   AssembledServerConfig,
+  TomoriState,
   UserSavedProviderConfigUpsert,
   UserSavedProviderConfigRow,
+  ErrorContext,
 } from "@/types/db/schema";
+import { log } from "@/utils/misc/logger";
 import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
 import { forgetCachedLlm } from "@/utils/cache/llmCacheStore";
 import { configRepository, llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
@@ -28,7 +31,7 @@ import { buildFallbackModelPersistence, prunePrimaryFallbackRefs } from "@/utils
 import { assignPersonalCapabilityToProvider, withPersonalTextPrimary } from "@/utils/provider/personalProviderHelpers";
 import { resolveLogitBiasEntriesForLlm } from "@/utils/provider/logitBiasResolver";
 import { decryptApiKey, encryptApiKey } from "@/utils/security/crypto";
-import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
+import { fetchUserRemoteUrl, RemoteUrlPolicyError } from "@/utils/security/userRemoteFetch";
 
 type RegistrationScope =
   | {
@@ -60,6 +63,7 @@ export interface CustomEndpointRegistrationInput {
   // row so the runtime resolves them uniformly with built-in providers.
   strictRoleAlternation?: boolean;
   supportsPrefixCompletion?: boolean;
+  supportsAssistantPrefill?: boolean;
   // Per-model verbatim tool-calling opt-in: the runtime reads it from the synthetic llms row while
   // the panel reads the endpoint row, so both must carry the same value.
   verbatimToolCalling?: boolean;
@@ -118,6 +122,7 @@ async function upsertSyntheticTextModel(
     supportsStructOutput: endpoint.supportsStructOutput ?? false,
     strictRoleAlternation: endpoint.strictRoleAlternation ?? false,
     supportsPrefixCompletion: endpoint.supportsPrefixCompletion ?? false,
+    supportsAssistantPrefill: endpoint.supportsAssistantPrefill ?? false,
     verbatimToolCalling: endpoint.verbatimToolCalling ?? false,
   });
 
@@ -175,6 +180,12 @@ async function upsertSyntheticCapabilityModel(
   endpoint: CustomEndpointRegistrationInput,
 ): Promise<number | null> {
   switch (endpoint.capability) {
+    case "decision":
+      return await llmModelRepo.upsertDecisionModel({
+        provider,
+        codename: buildSyntheticCustomModelCodename(endpoint.label, endpoint.modelName),
+        inputTokenLimit: endpoint.numCtx ?? 0,
+      });
     case "text":
       return await upsertSyntheticTextModel(provider, endpoint);
     case "embedding":
@@ -212,6 +223,7 @@ async function writeSyntheticCapabilityModel(
   const description = getSyntheticModelDescription(endpoint);
   await llmModelRepo.updateSyntheticCustomCapabilityModelById({
     modelRefId: existingModelRefId,
+    inputTokenLimit: endpoint.numCtx,
     capability: endpoint.capability,
     codename,
     displayName: description,
@@ -221,6 +233,7 @@ async function writeSyntheticCapabilityModel(
     supportsStructOutput: endpoint.supportsStructOutput ?? false,
     strictRoleAlternation: endpoint.strictRoleAlternation ?? false,
     supportsPrefixCompletion: endpoint.supportsPrefixCompletion ?? false,
+    supportsAssistantPrefill: endpoint.supportsAssistantPrefill ?? false,
     verbatimToolCalling: endpoint.verbatimToolCalling ?? false,
   });
   // `model_ref_id` points at a different table per capability, so only a text id names an llms row.
@@ -245,6 +258,7 @@ function getCapabilityModelId(
       return config.video_model_id ?? null;
     case "speech":
     case "transcription":
+    case "decision":
       return null;
   }
 }
@@ -258,6 +272,7 @@ function toPersonalModelCapability(capability: CustomEndpointCapability): Person
       return capability;
     case "speech":
     case "transcription":
+    case "decision":
       return null;
   }
 }
@@ -326,7 +341,7 @@ async function activateServerCustomEndpointForCapability(params: {
   modelId: number | null;
   savedConfig: SavedProviderConfigRow | SavedProviderConfigUpsert;
 }): Promise<boolean> {
-  if (params.capability === "speech" || params.capability === "transcription") {
+  if (params.capability === "speech" || params.capability === "transcription" || params.capability === "decision") {
     return true;
   }
 
@@ -386,6 +401,7 @@ async function activatePersonalCustomEndpointForCapability(params: {
         return { ...row, video_model_id: params.modelId };
       case "speech":
       case "transcription":
+      case "decision":
         return row;
     }
   });
@@ -455,8 +471,10 @@ function capabilitiesClaimedByEndpoint(endpoint: {
       return ["embedding"];
     case "image":
       return ["image"];
-    default:
+    case "video":
       return ["video"];
+    default:
+      return [];
   }
 }
 
@@ -464,12 +482,30 @@ export async function registerCustomEndpoint(
   input: CustomEndpointRegistrationInput,
 ): Promise<CustomEndpointRegistrationResult | null> {
   const isEdit = input.editingEndpointId != null;
+  if (
+    input.capability === "decision" &&
+    (!input.modelName?.trim() ||
+      input.modelName.trim().length > 200 ||
+      !["system-one", "openai-decisions"].includes(input.apiStyle) ||
+      !Number.isSafeInteger(input.numCtx) ||
+      (input.numCtx ?? 0) < 512 ||
+      (input.numCtx ?? 0) > 10_000_000)
+  ) {
+    return null;
+  }
 
   const editingRow = isEdit
     ? ((await llmProviderRepo.loadCustomEndpointsByIds([input.editingEndpointId as number]))[0] ?? null)
     : null;
 
-  if (isEdit && !editingRow) {
+  if (
+    isEdit &&
+    (!editingRow ||
+      editingRow.capability !== input.capability ||
+      (input.scope.kind === "server"
+        ? editingRow.server_id !== input.scope.ownerId || editingRow.user_id != null
+        : editingRow.user_id !== input.scope.ownerId || editingRow.server_id != null))
+  ) {
     return null;
   }
 
@@ -496,7 +532,7 @@ export async function registerCustomEndpoint(
   // Keep activation semantics separate so edits preserve the selected row while additions claim the provider.
   const allEndpoints = await llmProviderRepo.loadCustomEndpointsByConnectionId(connectionId);
   const otherSiblings = allEndpoints.filter((endpoint) => endpoint.custom_endpoint_id !== input.editingEndpointId);
-  const shouldActivateNewRegistration = !isEdit;
+  const shouldActivateNewRegistration = !isEdit && input.capability !== "decision";
   const shouldBeDefault = isEdit ? (editingRow?.is_default ?? false) : false;
 
   const modelId = await writeSyntheticCapabilityModel(provider, input, editingRow?.model_ref_id ?? null);
@@ -526,6 +562,7 @@ export async function registerCustomEndpoint(
       supportsStructOutput: input.supportsStructOutput ?? false,
       strictRoleAlternation: input.strictRoleAlternation ?? false,
       supportsPrefixCompletion: input.supportsPrefixCompletion ?? false,
+      supportsAssistantPrefill: input.supportsAssistantPrefill ?? false,
       verbatimToolCalling: input.verbatimToolCalling ?? false,
       isDefault: shouldBeDefault,
       customEndpointId: isEdit ? input.editingEndpointId : null,
@@ -580,6 +617,18 @@ export async function registerCustomEndpoint(
     return null;
   }
 
+  if (input.capability === "decision") {
+    log.info(
+      `Decision registration ${JSON.stringify({
+        provider: "custom",
+        apiStyle: input.apiStyle,
+        modelId,
+        customEndpointId: customEndpoint.custom_endpoint_id,
+        connectionId,
+        outcome: isEdit ? "edited" : "saved",
+      })}`,
+    );
+  }
   if (shouldActivateNewRegistration) {
     if (!activationEndpointId) {
       return null;
@@ -661,12 +710,41 @@ export async function resolveCustomEndpointForProvider(
   return await llmProviderRepo.loadCustomEndpointByConnection(parsed.connectionId, capability, activeModelId);
 }
 
+/**
+ * The endpoint a custom text request targets and the `num_ctx` it sends.
+ *
+ * Shared by the request builder and the context budget because the truncation window must equal
+ * the `num_ctx` actually sent. The model config mirror wins when set (a fallback hop pins it), and
+ * only then is the endpoint row skipped.
+ */
+export async function resolveCustomTextEndpointTarget(tomoriState: TomoriState): Promise<{
+  endpointUrl: string | null;
+  modelNameHint: string | null;
+  numCtx: number | null;
+}> {
+  const mirroredUrl = tomoriState.config.custom_endpoint_url ?? null;
+  if (mirroredUrl) {
+    return { endpointUrl: mirroredUrl, modelNameHint: null, numCtx: tomoriState.config.custom_num_ctx ?? null };
+  }
+
+  const textEndpoint = await resolveCustomEndpointForProvider(
+    tomoriState.llm.llm_provider.toLowerCase(),
+    "text",
+    tomoriState.llm.llm_id,
+  );
+  return {
+    endpointUrl: textEndpoint?.endpoint_url ?? null,
+    modelNameHint: textEndpoint?.model_name ?? null,
+    numCtx: tomoriState.config.custom_num_ctx ?? textEndpoint?.num_ctx ?? null,
+  };
+}
+
 export async function validateCustomEndpointReachability(params: {
   apiStyle: CustomEndpointApiStyle;
   endpointUrl: string;
   apiKey?: string | null;
   strict?: boolean;
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
+}): Promise<{ ok: true } | { ok: false; reason: string; credentialsWithheld?: true }> {
   const headers: Record<string, string> = {};
   if (params.apiKey?.trim()) {
     headers.Authorization = `Bearer ${params.apiKey.trim()}`;
@@ -707,36 +785,67 @@ export async function validateCustomEndpointReachability(params: {
       return response.ok ? { ok: true } : { ok: false, reason: `HTTP ${response.status} ${response.statusText}` };
     }
 
+    if (params.apiStyle === "system-one" || params.apiStyle === "openai-decisions") {
+      const modelsUrl = new URL(normalizeCustomEndpointUrlForStorage(params.apiStyle, params.endpointUrl));
+      modelsUrl.pathname = `${modelsUrl.pathname.replace(/\/+$/, "")}/models`;
+      const response = await fetchUserRemoteUrl(
+        modelsUrl,
+        { headers, signal: AbortSignal.timeout(10_000) },
+        fetchOptions,
+      );
+      // Discovery is optional on compatible gateways. A route miss proves reachability only;
+      // protocol and model support remain the operator's declaration until execution.
+      const ok = response.ok || response.status === 404 || response.status === 405;
+      await response.body?.cancel();
+      log.info(
+        `Decision discovery ${JSON.stringify({
+          provider: "custom",
+          apiStyle: params.apiStyle,
+          outcome: response.ok ? "reachable" : ok ? "manual" : "rejected",
+          httpStatus: response.status,
+        })}`,
+      );
+      return ok ? { ok: true } : { ok: false, reason: `HTTP ${response.status}` };
+    }
     const response = await fetchUserRemoteUrl(`${baseUrl}/models`, { headers }, fetchOptions);
     return response.ok ? { ok: true } : { ok: false, reason: `HTTP ${response.status} ${response.statusText}` };
   } catch (error) {
+    if (error instanceof RemoteUrlPolicyError && error.failureCode === "REDIRECT_CREDENTIALS_WITHHELD") {
+      return { ok: false, reason: error.message, credentialsWithheld: true };
+    }
     return {
       ok: false,
-      reason: error instanceof Error ? error.message : String(error),
+      reason:
+        params.apiStyle === "system-one" || params.apiStyle === "openai-decisions"
+          ? "Decision endpoint validation failed"
+          : error instanceof Error
+            ? error.message
+            : String(error),
     };
   }
 }
 
-// Styles whose request paths hang off a versioned OpenAI base (/v1/chat/completions,
-// /v1/embeddings, /v1/audio/transcriptions). Non-OpenAI styles route at the origin itself
-// (ComfyUI, TTS clone) or carry their own preset URL (ElevenLabs) and are stored verbatim.
-const OPENAI_VERSIONED_API_STYLES = new Set<CustomEndpointApiStyle>([
+// These protocols append their operation to a versioned base. Other styles use an origin
+// route or a preset URL, so adding /v1 would change their target.
+const VERSIONED_API_STYLES = new Set<CustomEndpointApiStyle>([
   "openai-compatible",
   "openai-compatible-transcription",
   "ollama-native",
+  "system-one",
+  "openai-decisions",
 ]);
 
 /**
  * Normalizes a user-supplied endpoint URL before it is stored.
  *
- * A bare origin is extended with /v1 for OpenAI-versioned styles, so a user who pastes
- * http://localhost:1234 gets http://localhost:1234/v1/chat/completions at request time.
+ * A bare origin is extended with /v1 for versioned styles. Each owning adapter appends
+ * its operation route, including the separate Decision protocols.
  * URLs that already end in /v1, or that carry a custom path such as a gateway prefix,
  * are kept verbatim: appending blindly would corrupt /api/v1 into /api/v1/v1.
  */
 export function normalizeCustomEndpointUrlForStorage(apiStyle: CustomEndpointApiStyle, endpointUrl: string): string {
   const trimmed = endpointUrl.trim().replace(/\/+$/, "");
-  if (!OPENAI_VERSIONED_API_STYLES.has(apiStyle)) {
+  if (!VERSIONED_API_STYLES.has(apiStyle)) {
     return trimmed;
   }
 
@@ -746,6 +855,10 @@ export function normalizeCustomEndpointUrlForStorage(apiStyle: CustomEndpointApi
 
   try {
     const parsed = new URL(trimmed);
+    if (apiStyle === "system-one" || apiStyle === "openai-decisions") {
+      parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/v1";
+      return parsed.toString();
+    }
     // Pathname "/" or "" means a bare origin; a non-root path is an explicit server route
     // that downstream adapters append to, so it is preserved as-is.
     if (parsed.pathname === "" || parsed.pathname === "/") {
@@ -768,7 +881,10 @@ export function normalizeCustomEndpointUrlForStorage(apiStyle: CustomEndpointApi
  *
  * @returns `null` when the connection has no stored credential or it cannot be decrypted.
  */
-export async function loadCustomConnectionCredential(connection: CustomEndpointConnectionRow): Promise<string | null> {
+export async function loadCustomConnectionCredential(
+  connection: CustomEndpointConnectionRow,
+  failureContext?: ErrorContext,
+): Promise<string | null> {
   if (!connection.requires_auth) return null;
   const provider = buildCustomProviderName(connection.connection_id);
   const config =
@@ -779,8 +895,9 @@ export async function loadCustomConnectionCredential(connection: CustomEndpointC
         : null;
   if (!config?.api_key) return null;
   try {
-    return await decryptApiKey(config.api_key, config.key_version ?? 1);
-  } catch {
+    return await decryptApiKey(config.api_key, config.key_version ?? 1, failureContext);
+  } catch (error) {
+    if (failureContext) throw error;
     return null;
   }
 }

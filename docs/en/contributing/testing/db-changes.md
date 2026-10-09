@@ -19,7 +19,7 @@ server:
 | `POSTGRES_USER` | `postgres` |
 | `POSTGRES_MAINTENANCE_DB` | `postgres` |
 
-CI sets the same variables; see `.github/workflows/validation.yml`.
+CI sets the same variables; see `.github/workflows/ci.yml`.
 
 ## Running
 

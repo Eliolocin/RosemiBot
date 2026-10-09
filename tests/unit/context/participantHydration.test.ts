@@ -491,7 +491,10 @@ describe("participant hydration", () => {
     const identity = result.profiles[0]?.fields.find((candidate) => candidate.kind === "identity");
 
     expect(identity).toMatchObject({ visibility: { visible: true, reason: "visible" } });
-    expect(identity?.lines).toEqual(["- Gender Identity: nonbinary", "- Pronouns: they/them"]);
+    expect(identity?.lines).toEqual([
+      "- Alice Saved's Gender Identity: nonbinary",
+      "- Alice Saved's Pronouns: they/them",
+    ]);
     expect(identity?.lines.join("\n")).not.toMatch(/unknown|unspecified|orientation/iu);
   });
 

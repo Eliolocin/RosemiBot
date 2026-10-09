@@ -8,21 +8,17 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-TomoriBot có thể tạo phương tiện truyền thông ngay trong đoạn chat: **hình ảnh, video ngắn và tin nhắn thoại
-bằng giọng nói**. Hãy yêu cầu bot bằng ngôn ngữ tự nhiên ("vẽ cho mình một...", "gửi nội dung đó dưới dạng tin nhắn thoại") hoặc
-sử dụng các lệnh `/generate`. Những tính năng nào khả dụng phụ thuộc vào nhà cung cấp bạn đã cấu hình;
-xem [Nhà cung cấp & model](/vi/features/setup-administration/providers-and-models/).
+TomoriBot có thể tạo phương tiện trực tiếp trong trò chuyện: hình ảnh, video ngắn và tin nhắn thoại. Hỏi cô ấy bằng ngôn ngữ đơn giản ("vẽ cho tôi một...", "gửi nó dưới dạng tin nhắn thoại") hoặc sử dụng các lệnh `/generate`. Khả năng nào khả dụng tùy thuộc vào nhà cung cấp được định cấu hình của bạn; xem [Nhà cung cấp & Kiểu máy](/vi/features/setup-administration/providers-and-models/).
 
 <CardGrid>
   <LinkCard title="Tạo hình ảnh" href="/vi/features/capabilities/media-generation/image-generation/"
-    description="Text-to-image và image-to-image, sử dụng ảnh tham chiếu từ tệp đính kèm, avatar, sticker và emoji." />
+    description="Chuyển văn bản thành hình ảnh và hình ảnh thành hình ảnh, với hình ảnh tham chiếu từ tệp đính kèm, hình đại diện, sticker và biểu tượng cảm xúc." />
   <LinkCard title="Tạo video" href="/vi/features/capabilities/media-generation/video-generation/"
-    description="Các đoạn clip ngắn text-to-video và image-to-video với tỷ lệ khung hình có thể tùy chỉnh." />
+    description="Chuyển văn bản thành video và hình ảnh thành video ngắn với tỷ lệ khung hình có thể tùy chỉnh." />
   <LinkCard title="Giọng nói: TTS & STT" href="/vi/features/capabilities/media-generation/tts-and-stt/"
-    description="Tin nhắn thoại Discord nguyên bản (text-to-speech) và chuyển âm thanh thành văn bản (speech-to-text)." />
+    description="Tin nhắn thoại Discord gốc (chuyển văn bản thành giọng nói) và phiên âm âm thanh (chuyển lời nói thành văn bản)." />
 </CardGrid>
 
 :::note
-Không phải mọi nhà cung cấp đều hỗ trợ tất cả tính năng. Khả năng tạo cục bộ (ComfyUI, máy chủ giọng nói
-cục bộ) khả dụng trên các phiên bản self-hosted; xem [Self-Hosting](/vi/self-hosting/).
+Không phải mọi nhà cung cấp đều hỗ trợ mọi khả năng. Tạo cục bộ (ComfyUI, máy chủ thoại cục bộ) có sẵn trên các phiên bản self-hosting; xem [Tự lưu trữ](/vi/self-hosting/).
 :::

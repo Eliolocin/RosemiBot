@@ -34,7 +34,7 @@ import {
  */
 const SCAN_EXEMPT_DIRECTORY = "tests/unit/checks/";
 
-/** Every discovered test file, normalized to forward slashes for stable matching. */
+/** Normalized to forward slashes for stable matching. */
 async function discoverTestFiles(): Promise<string[]> {
   const glob = new Bun.Glob("**/*.test.ts");
   const files: string[] = [];

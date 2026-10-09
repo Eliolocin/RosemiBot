@@ -110,6 +110,14 @@ export async function buildParticipantContextItem(params: {
       },
     ],
     metadataTag: ContextItemTag.KNOWLEDGE_USERS_IN_CONVERSATION,
+    participantReviewEvidence: {
+      participants: hydrated.profiles.map((profile) => ({
+        name: profile.displayName,
+        fields: profile.fields.filter((field) => field.visibility.visible).flatMap((field) => [...field.lines]),
+      })),
+      channel: params.isDMChannel ? "DM" : params.channelName,
+      currentTime: getCurrentTimeWithOffset(timezoneOffset),
+    },
     conversationUsers: rendered.conversationUsers,
     participantTargetIndex: rendered.targetIndex,
   };

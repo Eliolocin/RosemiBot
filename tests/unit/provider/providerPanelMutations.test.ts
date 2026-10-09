@@ -1,3 +1,4 @@
+import * as dbClient from "@/utils/db/client";
 import { describe, expect, it, spyOn } from "bun:test";
 import type { LlmRow, SavedProviderConfigUpsert, TomoriState } from "@/types/db/schema";
 import {
@@ -284,7 +285,7 @@ describe("provider panel mutations", () => {
       },
     );
 
-    expect(result).toEqual({ status: "unreachable", reason: "HTTP 404 Not Found" });
+    expect(result).toEqual({ status: "unreachable", reason: "HTTP 404 Not Found", credentialsWithheld: false });
   });
 
   it("rejects an unsupported API format before probing", async () => {
@@ -557,6 +558,40 @@ describe("provider panel mutations", () => {
         verbatim_tool_calling: verbatimToolCalling,
       } as LlmRow;
     }
+
+    it("refuses foreign-owner and wrong-capability endpoint edits before any writes", async () => {
+      const original = editingEndpointRow();
+      const lookup = spyOn(llmProviderRepo, "loadCustomEndpointsByIds");
+      const write = spyOn(dbClient, "sql").mockImplementation((async () => []) as unknown as typeof dbClient.sql);
+      const encrypted = spyOn(crypto, "encryptApiKey");
+      try {
+        for (const [kind, ownerId, row] of [
+          ["server", 8, original],
+          ["server", 7, { ...original, user_id: 9 }],
+          ["personal", 8, { ...original, server_id: null, user_id: 9 }],
+          ["personal", 9, original],
+          ["server", 7, { ...original, capability: "image" }],
+        ] as const) {
+          lookup.mockResolvedValue([row] as never);
+          const result = await registerCustomEndpoint({
+            scope: { kind, ownerId, baseConfig: { fallback_model_refs: [] } as never },
+            label: "juno",
+            capability: "text",
+            apiStyle: "openai-compatible",
+            endpointUrl: "https://models.example.com/v1",
+            modelName: "mirri-local",
+            editingEndpointId: 501,
+          });
+          expect(result).toBeNull();
+        }
+        expect(write).not.toHaveBeenCalled();
+        expect(encrypted).not.toHaveBeenCalled();
+      } finally {
+        lookup.mockRestore();
+        write.mockRestore();
+        encrypted.mockRestore();
+      }
+    });
 
     /**
      * Rebuilding TomoriState reads the model through `llmModelRepo.loadById`, which is cache-first,

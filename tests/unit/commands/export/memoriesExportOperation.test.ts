@@ -19,6 +19,8 @@ import type { TomoriState, UserRow } from "@/types/db/schema";
 import type { StandardEmbedOptions } from "@/types/discord/embed";
 import { initializeLocalizer, localizer } from "@/utils/text/localizer";
 import { callMethods, type FakeInteraction, makeFakeInteraction } from "../../../helpers/fakeInteraction";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import { ColorCode } from "@/utils/misc/logger";
 
 const GUILD_ID = "guild-111111111111111111";
 const GUILD_NAME = "juno_lounge";
@@ -396,7 +398,9 @@ describe("memory export operation", () => {
 
     expect(callMethods(calls)).toEqual(["deferReply", "editReply"]);
     const editPayload = calls[1]?.args[0] as { embeds: Array<{ data: { title?: string } }> } | undefined;
-    expect(editPayload?.embeds[0]?.data.title).toBe(localizer(LOCALE, "commands.data.export.success_title"));
+    expect(editPayload?.embeds[0]?.data.title).toBe(
+      localizedStatusTitle(LOCALE, "commands.data.export.success_title", ColorCode.SUCCESS),
+    );
   });
 
   it("routes each leaf to its own scope and destination", async () => {

@@ -238,6 +238,38 @@ describe("comment policy", () => {
     ).toEqual(["obvious-narration"]);
   });
 
+  it("sees through abbreviations, inflections, and condition words when a summary echoes a name", () => {
+    const source = [
+      "/**",
+      " * Parses a positive-integer environment variable, falling back to the given",
+      " * default when unset, non-numeric, or non-positive.",
+      " */",
+      "function parsePositiveIntEnv(name: string, fallback: number): number {",
+      "  return fallback;",
+      "}",
+      "",
+    ].join("\n");
+
+    expect(
+      inspectCommentPolicySource(source, "fixture.ts", { auditNarration: true }).map((finding) => finding.rule),
+    ).toEqual(["obvious-narration"]);
+  });
+
+  it("checks type and constant docblocks, and keeps one that states a unit", () => {
+    const source = [
+      "/** News search result */",
+      "export interface NewsResult {}",
+      "",
+      "/** Timeout in milliseconds for the GitHub API fetch */",
+      "const GITHUB_API_TIMEOUT_MS = 10000;",
+      "",
+    ].join("\n");
+
+    expect(
+      inspectCommentPolicySource(source, "fixture.ts", { auditNarration: true }).map((finding) => finding.text),
+    ).toEqual(["/** News search result */"]);
+  });
+
   it("keeps a JSDoc summary that documents a side effect beyond the identifier", () => {
     const source = [
       "/**",

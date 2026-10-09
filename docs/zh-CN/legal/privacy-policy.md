@@ -1,6 +1,7 @@
 ---
 title: 隐私政策
 description: 官方托管的 TomoriBot 实例如何收集、存储与删除你的数据。
+aiGenerated: false
 ---
 
 > 关于这份翻译： 本页是英文版[隐私政策](/en/legal/privacy-policy/)的翻译，仅为方便阅读而提供，内容以英文版为准。若本页与英文版有任何不一致，一律以英文版为准。

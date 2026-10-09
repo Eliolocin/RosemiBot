@@ -4,39 +4,29 @@ sidebar:
   order: 2
 ---
 
-TomoriBot 可以根据文本提示词生成短视频，也可以让参考图动起来。
-用 `/generate video`，或者直接问她。
+TomoriBot可以根据文本提示或通过对现有图像进行动画处理来生成短视频。使用`/generate video`，或者直接在聊天中询问她。
 
 ## 她能做什么
 
-- **文生视频**：根据提示词生成一段短片。
-- **图生视频**：让参考图动起来（被引用消息里的第一张图
-  会成为起始帧）。
-- **循环图生视频**：在聊天里提出要求时，支持的模型可以把
-  起始图复用为最后一帧。
-- 可自定义的画面比例。
+- **文本转视频**：根据描述生成短片。
+- **图像到视频**：将图像动画化。引用消息中的第一个图像成为起始帧。
+- **循环图像到视频**：当通过聊天请求时，支持的模型可以重复使用起始图像作为最终帧。
+- **可定制的宽高比**。
 
-图生视频和循环取决于所选模型的首帧与末帧能力。TomoriBot
-会在提交付费任务前检查 OpenRouter 当前的视频模型目录，并在必要时请你去掉
-图片、关闭循环，或者换一个兼容的模型。
+图像到视频和循环取决于所选模型的第一帧和最后一帧支持。TomoriBot在提交生成之前检查OpenRouter的模型目录，并提示你是否需要为所选模型删除图像或循环。
 
-视频生成使用异步轮询流程：请求先提交，然后
-TomoriBot 轮询提供方直到成片就绪，完成后发布出来。大片子
-可能要等一会儿。
+生成视频需要时间：TomoriBot将作业提交给提供商，在后台检查是否完成，并在准备好后将完成的视频发布到频道。
 
 ## 设置
 
-1. 用 `/config` > 模型 > 切换模型 配置一个视频模型。
-2. 通过 `/config` > 权限 确认图像与媒体生成已获允许。
-3. 让她生成，或者运行 `/generate video`。
+1. 在“`/config` > `模型` > 切换型号”中选择视频型号。
+2. 确认`/config` > `权限` (`video_generation_enabled`) 中启用了视频生成。
+3. 在聊天中询问她，或者运行`/generate video`。
 
 ## 提供方支持
 
-原生视频生成可在 Google、OpenRouter 和 Z.ai 上使用。完整对照表见
-[提供方与模型](/zh-CN/features/setup-administration/providers-and-models/#支持的提供方)。
+本机视频生成功能可在Google、OpenRouter和Z.ai上使用。请参阅[提供商和模型](/zh-CN/features/setup-administration/providers-and-models/#supported-providers) 中的完整矩阵。
 
-想通过 ComfyUI 做本地视频生成（例如 WAN 图生视频工作流），见
-[设置：ComfyUI](/zh-CN/self-hosting/local-endpoints/setup-comfyui/)。
+对于通过ComfyUI生成本地视频（例如WAN图像到视频工作流程），请参阅[设置：ComfyUI](/zh-CN/self-hosting/local-endpoints/setup-comfyui/)。
 
-关于内部的生成与轮询架构，见
-[视频生成](/en/architecture/subsystems/video-generation/)参考。
+对于内部生成和轮询架构，请参阅[视频生成](/en/architecture/subsystems/video-generation/)上的参考。

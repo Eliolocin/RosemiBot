@@ -806,7 +806,12 @@ class StatRepository implements IRepository<null> {
           SELECT llm_codename,
             MAX(input_price_per_million) AS input_price_per_million,
             MAX(output_price_per_million) AS output_price_per_million
-          FROM llms
+          FROM (
+            SELECT llm_codename, input_price_per_million, output_price_per_million FROM llms
+            UNION ALL
+            SELECT 'decision:' || decision_model_id::text AS llm_codename,
+              input_price_per_million, output_price_per_million FROM decision_models
+          ) prices
           GROUP BY llm_codename
         ) l ON l.llm_codename = sc.metric_key
         WHERE sc.metric IN ('tokens_in', 'tokens_out')
@@ -1048,6 +1053,27 @@ class StatRepository implements IRepository<null> {
     }
   }
 
+  async getServerExpressionCount(
+    serverId: number,
+    metric: "emoji_used" | "sticker_used" | "custom_expression_used",
+    metricKey: string,
+  ): Promise<number | null> {
+    try {
+      const [row] = await sql`
+        SELECT COALESCE(SUM(count), 0) AS total FROM stat_counters
+        WHERE server_id = ${serverId} AND metric = ${metric} AND metric_key = ${metricKey}
+          AND bucket >= ${ALL_TIME_FLOOR}::date
+      `;
+      return Number(row?.total ?? 0);
+    } catch (error) {
+      log.error("StatRepository.getServerExpressionCount: failed", error, {
+        serverId,
+        metadata: { metric, metricKey },
+      });
+      return null;
+    }
+  }
+
   /**
    * Earliest bucket containing a metric in a scope. This lets visual summaries
    * normalize all-time weekday activity into a representative week.
@@ -1130,7 +1156,12 @@ class StatRepository implements IRepository<null> {
           SELECT llm_codename,
             MAX(input_price_per_million) AS input_price_per_million,
             MAX(output_price_per_million) AS output_price_per_million
-          FROM llms
+          FROM (
+            SELECT llm_codename, input_price_per_million, output_price_per_million FROM llms
+            UNION ALL
+            SELECT 'decision:' || decision_model_id::text AS llm_codename,
+              input_price_per_million, output_price_per_million FROM decision_models
+          ) prices
           GROUP BY llm_codename
         ) l ON l.llm_codename = sc.metric_key
         WHERE sc.metric IN ('tokens_in', 'tokens_out')
@@ -1473,7 +1504,7 @@ class StatRepository implements IRepository<null> {
       const rows = await sql<
         { model: string; in_tokens: number | string; out_tokens: number | string; cost: number | string }[]
       >`
-        SELECT sc.metric_key AS model,
+        SELECT COALESCE(MAX(l.display_name), sc.metric_key) AS model,
           COALESCE(SUM(CASE WHEN sc.metric = 'tokens_in'  THEN sc.count ELSE 0 END), 0) AS in_tokens,
           COALESCE(SUM(CASE WHEN sc.metric = 'tokens_out' THEN sc.count ELSE 0 END), 0) AS out_tokens,
           COALESCE(SUM(
@@ -1489,8 +1520,14 @@ class StatRepository implements IRepository<null> {
         LEFT JOIN (
           SELECT llm_codename,
             MAX(input_price_per_million) AS input_price_per_million,
-            MAX(output_price_per_million) AS output_price_per_million
-          FROM llms
+            MAX(output_price_per_million) AS output_price_per_million,
+            MAX(display_name) AS display_name
+          FROM (
+            SELECT llm_codename, llm_codename AS display_name, input_price_per_million, output_price_per_million FROM llms
+            UNION ALL
+            SELECT 'decision:' || decision_model_id::text AS llm_codename, codename AS display_name,
+              input_price_per_million, output_price_per_million FROM decision_models
+          ) prices
           GROUP BY llm_codename
         ) l ON l.llm_codename = sc.metric_key
         WHERE sc.metric IN ('tokens_in', 'tokens_out')
@@ -1518,9 +1555,10 @@ class StatRepository implements IRepository<null> {
   }
 
   /**
-   * Top emotion categories expressed, highest first. Sums three streams by emotion:
+   * Top emotion categories expressed, highest first. Sums delivery metrics by emotion:
    *   - emoji_used  : joined to the per-server emotion_key on server_emojis
    *   - sticker_used: joined to the per-server emotion_key on server_stickers
+   *   - custom_expression_used: joined by server and stable custom UUID
    *   - sprite_emotion: the sprite's user-given tag IS the emotion key (no join;
    *      identity sprites were already excluded upstream when this metric was recorded)
    * Emojis/stickers not yet classified (NULL emotion_key) are excluded; sprite tags are
@@ -1563,6 +1601,15 @@ class StatRepository implements IRepository<null> {
           SELECT LOWER(sc.metric_key) AS emotion_key, sc.count AS cnt
           FROM stat_counters sc
           WHERE sc.metric = 'sprite_emotion'
+            AND (${userId}::int IS NULL OR sc.user_id = ${userId})
+            AND (${serverId}::int IS NULL OR sc.server_id = ${serverId})
+            AND (${lineageId}::bigint IS NULL OR sc.persona_lineage_id = ${lineageId})
+            AND sc.bucket >= ${from}::date
+          UNION ALL
+          SELECT ce.emotion_key AS emotion_key, sc.count AS cnt
+          FROM stat_counters sc
+          JOIN custom_expressions ce ON ce.server_id = sc.server_id AND ce.custom_expression_id::text = sc.metric_key
+          WHERE sc.metric = 'custom_expression_used'
             AND (${userId}::int IS NULL OR sc.user_id = ${userId})
             AND (${serverId}::int IS NULL OR sc.server_id = ${serverId})
             AND (${lineageId}::bigint IS NULL OR sc.persona_lineage_id = ${lineageId})

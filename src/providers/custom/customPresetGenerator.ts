@@ -109,11 +109,13 @@ export async function generatePresetFromPromptCustom(
           errorBody: response.error.errorBody,
         },
       });
+      // The reply is public. The reason phrase is endpoint-controlled, and a status-0 message can
+      // quote the body through a JSON parse error, so the cause stays in the log above.
       return {
         error:
           response.error.status === 0
-            ? response.error.errorBody
-            : `Custom endpoint request failed (${response.error.status}): ${response.error.statusText}`,
+            ? "The custom endpoint could not be reached, or its response could not be read. The bot log has the cause."
+            : `Custom endpoint request failed (HTTP ${response.error.status}).`,
         errorType: "CONNECTION",
       };
     }

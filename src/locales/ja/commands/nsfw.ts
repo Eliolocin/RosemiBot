@@ -1,6 +1,15 @@
 export default {
   nsfw: {
     description: `年齢制限付きのコマンドと設定です。`,
+    persona: {
+      description: `年齢制限付きのペルソナコマンドです。`,
+      default: {
+        description: `NSFWの人格設定プリセットを適用します`,
+      },
+      import: {
+        description: `NSFWペルソナを含め、PNG、JSON、またはCHARXファイルからペルソナをインポートする`,
+      },
+    },
     jailbreaks: {
       description: `このサーバーでの任意のjailbreak機能を管理します。`,
       modal_title: `Jailbreak設定を管理`,

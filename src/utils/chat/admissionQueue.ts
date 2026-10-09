@@ -2,7 +2,8 @@ import type { Guild, Message } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import { CooldownType } from "@/types/db/schema";
 import { getCachedUserRow } from "@/utils/cache/userCache";
-import { log } from "@/utils/misc/logger";
+import { sendStandardEmbed } from "@/utils/discord/embedHelper";
+import { ColorCode, log } from "@/utils/misc/logger";
 import {
   hasExplicitCrossPersonaTrigger,
   isAutochatCounterChannelActive,
@@ -29,6 +30,11 @@ import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
 import type { ChatIncoming, NonRunnableChatAdmission } from "@/utils/chat/types";
 
 type RateLimitedChannel = Parameters<typeof enforceGlobalRateLimit>[0]["channel"];
+type SendableChannel = Parameters<typeof sendStandardEmbed>[0];
+
+const LOG_CHANNEL_NOTICE_COOLDOWN_MS = 10 * 60_000;
+/** One entry per channel ever configured as a log channel, so it stays small without a sweeper. */
+const logChannelNoticeSentAt = new Map<string, number>();
 
 export async function evaluateAdmissionQueueAndTriggerGate(args: {
   incoming: ChatIncoming;
@@ -306,6 +312,7 @@ async function evaluatePreLockReplyGate(args: {
 
   if (!channelScope.isDMChannel && earlyTomoriState.config.thought_log_channel_disc_id === message.channel.id) {
     log.info(`Skipping normal chat trigger in configured thought-log channel ${message.channel.id}.`);
+    await noticeMentionInLogChannel(incoming, channelScope.guild, userDiscId);
     return {
       incoming,
       disposition: "ignore",
@@ -359,6 +366,42 @@ async function evaluatePreLockReplyGate(args: {
     locale: "en-US",
     reason: "non_trigger_pre_lock",
   };
+}
+
+/**
+ * Explains a direct mention that the log-channel gate is about to drop.
+ *
+ * Without this the skip is invisible: chat goes silent in that one channel while slash commands
+ * still work there, which admins misread as a Discord permission problem.
+ */
+async function noticeMentionInLogChannel(
+  incoming: ChatIncoming,
+  guild: Guild | null,
+  userDiscId: string,
+): Promise<void> {
+  const { client, message } = incoming;
+  if (message.author.bot || !client.user || !message.mentions.users.has(client.user.id)) {
+    return;
+  }
+
+  const lastNoticeAt = logChannelNoticeSentAt.get(message.channelId);
+  if (lastNoticeAt !== undefined && Date.now() - lastNoticeAt < LOG_CHANNEL_NOTICE_COOLDOWN_MS) {
+    return;
+  }
+  // Claimed before the send so a burst of mentions cannot each pass the check while the first is in flight.
+  logChannelNoticeSentAt.set(message.channelId, Date.now());
+
+  const userRow = await getCachedUserRow(userDiscId);
+  const locale = userRow?.language_pref ?? guild?.preferredLocale ?? "en-US";
+  try {
+    await sendStandardEmbed(message.channel as SendableChannel, locale, {
+      color: ColorCode.WARN,
+      titleKey: "genai.log_channel_chat_notice_title",
+      descriptionKey: "genai.log_channel_chat_notice_description",
+    });
+  } catch (error) {
+    log.warn(`Failed to send log channel notice to channel ${message.channelId}`, error);
+  }
 }
 
 async function evaluateEarlyAccessState(args: {

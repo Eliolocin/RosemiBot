@@ -211,7 +211,7 @@ export async function synthesizeSpeechViaTtsVoiceDesign(request: TtsVoiceDesignR
       if (structuredDetail) errorDetails += `: ${structuredDetail}`;
     } catch {}
     log.warn(`[TtsVoiceDesign] ${endpointUrl}/synthesize returned error: ${errorDetails}`);
-    return { success: false, errorKind: "request_failed", details: errorDetails };
+    return { success: false, errorKind: "request_failed", details: `HTTP ${response.status}` };
   }
   log.info(
     `[TtsVoiceDesign] /synthesize responded status=${response.status} contentType="${response.headers.get("content-type") ?? "unknown"}" elapsedMs=${Date.now() - requestStartedAt}`,
@@ -225,7 +225,7 @@ export async function synthesizeSpeechViaTtsVoiceDesign(request: TtsVoiceDesignR
     return {
       success: false,
       errorKind: "invalid_response",
-      details: `Expected audio/* content-type, got: ${rawContentType}`,
+      details: "The TTS server did not return audio.",
     };
   }
 

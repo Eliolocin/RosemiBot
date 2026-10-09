@@ -5,7 +5,14 @@ import type { Client } from "discord.js";
 import { localizer } from "@/utils/text/localizer";
 import { log } from "@/utils/misc/logger";
 import { handleMatrixEvent } from "./events";
-import { getMatrixBridge, setMatrixBridge } from "./state";
+import {
+  getMatrixBridge,
+  MatrixConfigError,
+  type MatrixSettings,
+  parseMatrixSettings,
+  setMatrixBridge,
+  setMatrixSettings,
+} from "./state";
 
 const _require = createRequire(import.meta.url);
 const { Bridge, AppServiceRegistration } = _require("matrix-appservice-bridge") as typeof MatrixAppserviceBridge;
@@ -22,7 +29,15 @@ export async function initializeMatrixClient(discordClient: Client): Promise<voi
     return;
   }
 
-  const port = Number.parseInt(process.env.MATRIX_APPSERVICE_PORT || "9993", 10);
+  let settings: MatrixSettings;
+  try {
+    settings = parseMatrixSettings();
+  } catch (error) {
+    if (!(error instanceof MatrixConfigError)) throw error;
+    log.error(`Matrix bridge disabled: ${error.message}`);
+    return;
+  }
+  const { port, bindHost } = settings;
   const registrationUrl = resolveRegistrationUrl(port);
 
   try {
@@ -60,17 +75,20 @@ export async function initializeMatrixClient(discordClient: Client): Promise<voi
       },
     });
 
+    setMatrixSettings(settings);
     setMatrixBridge(bridge);
-    await bridge.run(port);
+    // The callback URL is what the homeserver dials; the bind host only chooses local interfaces.
+    await bridge.run(port, undefined, bindHost);
     log.success(
       `Matrix appservice initialized - ${botUserId} @ ${homeserverUrl} ` +
-        `(listening on port ${port}, callback ${registrationUrl})`,
+        `(listening on ${bindHost}:${port}, callback ${registrationUrl})`,
     );
   } catch (error) {
     const safeMsg = error instanceof Error ? error.message : String(error);
     const safeStack = error instanceof Error ? error.stack : undefined;
     log.error(`Matrix bridge: failed to initialize appservice: ${safeMsg}\n${safeStack ?? ""}`);
     setMatrixBridge(null);
+    setMatrixSettings(null);
   }
 }
 

@@ -1,3 +1,4 @@
+import { readStructuredResponse } from "@/providers/utils/structuredReview";
 import { CUSTOM_PROVIDER_PLACEHOLDER_API_KEY, normalizeCustomApiUrl } from "@/providers/custom/customStreamAdapter";
 import { logSanitizedOpenAICompatibleRequest } from "@/providers/openaiCompatible/openaiCompatibleMessageBuilder";
 import type { ProviderImageInput } from "@/types/provider/featureInterfaces";
@@ -13,9 +14,11 @@ export type CustomMessage =
   | { role: "user"; content: string | CustomContentPart[] };
 
 export interface CustomChatCompletionResponse {
+  usage?: unknown;
   choices?: Array<{
     message?: {
       content?: unknown;
+      refusal?: unknown;
     };
   }>;
 }
@@ -99,6 +102,8 @@ export async function callCustomChatCompletions(params: {
   body: Record<string, unknown>;
   logLabel: string;
   messagesForLog?: Array<Record<string, unknown>>;
+  abortSignal?: AbortSignal;
+  privateOutput?: boolean;
 }): Promise<
   { success: true; data: CustomChatCompletionResponse } | { success: false; error: CustomChatCompletionError }
 > {
@@ -122,22 +127,27 @@ export async function callCustomChatCompletions(params: {
       method: "POST",
       headers: buildCustomHeaders(params.apiKey),
       body: JSON.stringify(params.body),
+      signal: params.abortSignal,
     });
 
     if (!response.ok) {
+      if (params.privateOutput) await response.body?.cancel();
       return {
         success: false,
         error: {
           status: response.status,
           statusText: response.statusText,
-          errorBody: await response.text(),
+          errorBody: params.privateOutput ? "HTTP failure" : await response.text(),
         },
       };
     }
 
     return {
       success: true,
-      data: (await response.json()) as CustomChatCompletionResponse,
+      data: (await readStructuredResponse(
+        { apiKey: params.apiKey, model: "", systemPrompt: "", userPrompt: "", privateOutput: params.privateOutput },
+        response,
+      )) as CustomChatCompletionResponse,
     };
   } catch (error) {
     return {
@@ -145,7 +155,7 @@ export async function callCustomChatCompletions(params: {
       error: {
         status: 0,
         statusText: "Request failed",
-        errorBody: error instanceof Error ? error.message : String(error),
+        errorBody: params.privateOutput ? "Request failed" : error instanceof Error ? error.message : String(error),
       },
     };
   }

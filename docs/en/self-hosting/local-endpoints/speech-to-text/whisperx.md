@@ -4,11 +4,11 @@ sidebar:
   order: 1
 ---
 
-WhisperX is the recommended beginner-friendly local transcription path.
+Set up local, accurate speech-to-text for TomoriBot using the bundled [WhisperX](https://github.com/m-bain/whisperX) server. WhisperX provides fast audio transcription with word-level alignment.
 
 ## Setup
 
-Run these commands from the TomoriBot repo root, the folder where you cloned TomoriBot. The first command moves into the STT server folder:
+Run these commands from the TomoriBot repository root:
 
 ### Windows PowerShell
 
@@ -41,11 +41,10 @@ Run `/providers`, choose `Add New Custom Endpoint`, and use the transcription AP
 - API Compatibility: `openai-compatible-transcription`
 - `endpoint_url`: `http://127.0.0.1:8021`
 
-After saving the connection, select it and use its model dropdown to add `large-v3`, or
-whatever `WHISPERX_MODEL` is set to, as a Transcription model.
+After saving the connection, select it and use its model dropdown to add `large-v3`, or whatever `WHISPERX_MODEL` is set to, as a Transcription model.
 
 Use `/providers` for endpoint registration and model setup. Then open `/config` > Models > Switch Models to select and activate the registered endpoint.
 
-## Use Transcripts
+## Use transcripts
 
 After registration, TomoriBot transcribes audio attachments in the background and adds the text to chat context. Use `/config` > Engine > Notices only if you also want transcripts posted visibly in chat.

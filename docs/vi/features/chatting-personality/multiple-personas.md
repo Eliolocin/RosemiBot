@@ -8,125 +8,87 @@ sidebar:
   order: 2
 ---
 
-Cá tính của TomoriBot nằm trong một persona: tên, avatar, đặc điểm tính cách, phong cách nói
-chuyện và hành vi của bot. Bạn có thể chạy nhiều persona cùng lúc, mỗi persona là một nhân vật riêng
-biệt có từ kích hoạt và avatar webhook riêng. Trang này nói về *cách bot hành xử*; còn về *những gì
-bot biết* (sự thật và ký ức), hãy xem [Bộ nhớ](/vi/features/knowledge/memory/).
+Tên, avatar, đặc điểm, phong cách nói chuyện và hành vi của TomoriBot được lưu trong persona. Bạn có thể dùng nhiều persona cùng lúc, mỗi persona là một nhân vật riêng với từ kích hoạt và avatar webhook riêng. Trang này giải thích hành vi của persona. Xem [Bộ nhớ](/vi/features/knowledge/memory/) để quản lý kiến thức và bộ nhớ.
 
 ## Tạo persona
 
-- `/persona create`: tự tạo một cá tính tùy chỉnh từ đầu.
-- `/persona generate`: để AI tự động tạo một cá tính từ mô tả và hình ảnh. Yêu cầu một nhà cung cấp
-  hỗ trợ đầu ra có cấu trúc (structured output). Bạn cũng có thể tải lên một preset TomoriBot hiện có
-  hoặc thẻ SillyTavern tại đây để chuyển đổi một nhân vật có sẵn (xem
-  [Hỗ trợ SillyTavern](/vi/features/integrations/sillytavern-support/)).
-- `/persona default`: chuyển sang một trong các cá tính mặc định tích hợp sẵn để làm nền tảng.
-- `/persona export` / `/persona import`: chia sẻ hoặc sao lưu một persona dưới dạng tệp. Tính năng nhập
-  hỗ trợ đưa một persona vào dưới dạng một alter với từ kích hoạt và avatar webhook riêng.
-- `/persona remove`: xóa một persona alter.
-
-Quy trình bắt đầu hiệu quả: chọn một persona mặc định hoặc tạo tự động, sau đó tinh chỉnh bằng các
-thuộc tính và mẫu hội thoại bên dưới.
+- `/persona create`: tạo persona tùy chỉnh từ đầu.
+- `/persona generate`: yêu cầu AI tạo persona từ lời nhắc và hình ảnh (yêu cầu nhà cung cấp hỗ trợ đầu ra có cấu trúc). Bạn cũng có thể cung cấp thẻ TomoriBot hoặc thẻ SillyTavern hiện có (xem [Hỗ trợ SillyTavern](/vi/features/integrations/sillytavern-support/)).
+- `/persona default`: chuyển sang một trong các nhân vật mặc định có sẵn.
+- `/persona export` và `/persona import`: sao lưu hoặc chia sẻ các tệp persona. Nhập hỗ trợ thêm persona làm persona alter bằng trình kích hoạt và hình đại diện webhook của riêng persona đó.
+- `/persona remove`: xóa persona alter.
 
 ## Persona alter
 
-Các persona alter cho phép nhiều nhân vật cùng tồn tại trong một máy chủ:
+Persona alter cho phép nhiều nhân vật cùng hoạt động trong một máy chủ:
 
-- Mỗi alter có cá tính, từ kích hoạt và avatar webhook riêng, nhờ đó các nhân vật khác nhau xuất
-  hiện với tên và hình ảnh khác nhau trong cùng một kênh.
-- Nhiều alter có thể cùng phản hồi một tin nhắn, tối đa theo giới hạn trong `/config` > Engine > Trigger.
-- Trả lời tin nhắn webhook sẽ tiếp tục cuộc trò chuyện với tư cách là persona đó.
-- Thêm các alter qua lệnh `/persona import` (tùy chọn alter); quản lý chúng bằng `/persona` và
-  `/persona remove`.
+- Mỗi alter có tính cách, từ kích hoạt và avatar webhook riêng, nên từng nhân vật gửi tin nhắn với tên và ảnh riêng trong cùng kênh.
+- Nhiều alter có thể trả lời cùng một tin nhắn, trong giới hạn đặt tại `/config` > `Hành vi` > `Hành vi kích hoạt`.
+- Trả lời trực tiếp tin nhắn webhook sẽ tiếp tục cuộc trò chuyện với persona đó.
+- Thêm alter bằng `/persona import`, chọn tùy chọn alter, rồi quản lý bằng `/persona` và `/persona remove`.
 
-Điều này giúp việc nhập vai theo nhóm và các máy chủ đa nhân vật trở nên khả thi. Để biết chi tiết
-về runtime của cách từ kích hoạt định tuyến đến persona và cách định danh webhook hoạt động, hãy xem tài
-liệu tham khảo kiến trúc về [hành vi đa persona](/en/architecture/subsystems/multi-persona/).
+Xem [kiến trúc nhiều persona](/en/architecture/subsystems/multi-persona/) để biết cách định tuyến câu trả lời và xác định danh tính webhook.
 
 ## Định hình tính cách
 
-Hai lệnh thực hiện hầu hết công việc dạy bot cách nói chuyện và hành xử:
+Tinh chỉnh cách một persona trông, nói chuyện và cư xử:
 
 ### Thuộc tính
 <!-- anchor: attributes -->
 
-`/config` > Persona > Identity & Personality thêm các nét tính cách hoặc đặc điểm ngoại hình, ví dụ
-`thân thiện`, `tóc đỏ`, hoặc `kết thúc câu bằng *Nya~*`. Xóa chúng bằng
-`/config` > Persona > Identity & Personality.
+Mở `/config` > `Persona` > `Danh tính & Tính cách` để xác định các đặc điểm tính cách hoặc chi tiết hình thể (chẳng hạn như `friendly`, `red hair` hoặc `ends sentences with *Nya~*`).
 
 ### Mẫu hội thoại
 <!-- anchor: sample-dialogues -->
 
-`/config` > Persona > Identity & Personality dạy bot *cách nói chuyện* thông qua ví dụ. Sử dụng các
-trình giữ chỗ `{user}` và `{bot}` để các đoạn hội thoại hoạt động cho tất cả mọi người (và khi bạn
-chia sẻ persona):
+Mở `/config` > `Persona` > `Danh tính & Tính cách` để dạy phong cách nói của cô ấy bằng cách sử dụng phần giữ chỗ `{user}` và `{bot}`:
 
-- `{user}`: được thay thế bằng tên/biệt danh thực tế của người dùng
-- `{bot}`: được thay thế bằng tên hiện tại của bot
+- `{user}`: được thay thế bằng tên hiển thị hoặc biệt hiệu của người dùng thực tế.
+- `{bot}`: được thay thế bằng tên persona hiện tại của cô ấy.
 
 ```text
 {user}: What's your favorite hobby?
 {bot}: Fufu~ I like knitting tiny clothes for tiny plushies~♥
 ```
 
-Mẹo để tạo mẫu hội thoại hiệu quả:
+Lời khuyên cho các cuộc đối thoại mẫu hiệu quả:
 
-- Viết các lượt trao đổi tự nhiên như trò chuyện ngoài đời.
-- Lồng ghép các thuộc tính và nét tính cách mà bạn muốn bot thể hiện.
-- Thể hiện rõ giọng điệu bạn hướng tới, và thêm sự đa dạng để bot học cách khái quát hóa.
-
-Xóa các ví dụ bằng `/config` > Persona > Identity & Personality.
+- Viết những trao đổi tự nhiên thể hiện hơn là kể.
+- Thể hiện giọng điệu và từ vựng mà bạn muốn cô ấy sử dụng.
+- Thêm sự đa dạng vào một số ví dụ để cô ấy có thể khái quát hóa tốt.
 
 ### Tên và avatar
 
-- `/config` > Persona > Identity & Personality: đặt tên bot tự gọi chính mình.
-- `/config` > Persona > Identity & Personality: đặt ảnh đại diện của bot cho máy chủ này.
+Mở `/config` > `Persona` > `Danh tính & Tính cách` để đặt tên cô ấy tự gọi và tải ảnh hồ sơ của mình lên.
 
-Bạn cũng có thể đặt một prompt hệ thống tùy chỉnh với `/config` > Engine > General để định hình thêm
-hành vi; xem [Tinh chỉnh hành vi](/vi/features/chatting-personality/behavior-tweaking/).
+Bạn cũng có thể đặt lời nhắc hệ thống tùy chỉnh trong `/config` > `Hành vi` > `Hành vi chung`; xem [Tinh chỉnh hành vi](/vi/features/chatting-personality/behavior-tweaking/).
+
+### Thói quen đặt tên
+
+Người quản lý máy chủ có thể mở `/config` > `Persona` > Thói quen đặt tên để đặt cách một cá nhân xưng hô với các thành viên:
+
+- Định cấu hình các tiền tố, hậu tố và địa chỉ nam tính, nữ tính và trung tính riêng biệt.
+- Các cá tính khác nhau có thể gọi cùng một người dùng bằng các chức danh khác nhau (chẳng hạn như một người gọi họ là "Thuyền trưởng" và một người khác gọi họ là "Senpai").
+- Ghi đè cá nhân theo dõi từng người dùng trên các máy chủ; xem [Cá nhân hóa](/vi/features/knowledge/personalization/).
 
 ## Sprite (Avatar cảm xúc)
 <!-- anchor: sprites-emotion-avatars -->
 
-Sprite là các hình ảnh avatar thay thế mà một persona có thể chuyển đổi giữa cuộc trò chuyện để thể
-hiện một cảm xúc hoặc hoàn cảnh (hãy coi chúng như biểu cảm khuôn mặt của bot). Mỗi sprite là một hình
-ảnh có gắn nhãn (ví dụ `happy`, `mad`, `embarrassed`) mà bot hiển thị thay cho avatar thông thường khi
-phù hợp với thời điểm.
+Sprite là các hình đại diện thay thế mà một persona chuyển sang trong khi trò chuyện để phản ánh cảm xúc (chẳng hạn như `happy`, `mad` hoặc `embarrassed`).
 
-Cách bot sử dụng chúng: danh sách sprite khả dụng và ghi chú sử dụng được cung cấp cho model trong mỗi
-lượt. Để hiển thị một sprite, bot bắt đầu một dòng trả lời với `PersonaName (label):`; dòng đó sau đó
-được gửi kèm hình ảnh sprite tương ứng. Nếu không có sprite nào phù hợp, bot sẽ trả lời bình thường.
+Khi trả lời, cô ấy chọn hình ảnh phù hợp với cảm xúc của mình. Để sử dụng một cái, cô ấy bắt đầu dòng trả lời bằng `PersonaName (label):` và Discord gửi tin nhắn đó với hình đại diện sprite phù hợp. Nếu không có sprite nào phù hợp, cô ấy sẽ trả lời bằng hình đại diện mặc định của mình.
 
-Quản lý sprite của một persona trên `/config` > Persona > Sprites (việc thêm và xóa yêu cầu quyền
-Quản lý máy chủ):
+Quản lý sprites trong `/config` > `Persona` > Sprites (yêu cầu Quản lý máy chủ):
 
-- `/config` > Persona > Sprites: thêm hoặc thay thế một sprite: chọn persona, đặt cho nó một nhãn
-  (label), tải lên hình ảnh (PNG, JPG, hoặc GIF), và tùy chọn thêm hướng dẫn sử dụng để bảo bot
-  khi nào nên dùng. Dùng lại một nhãn sẽ thay thế sprite đó. Mỗi persona có một số lượng sprite tối đa.
-- `/config` > Persona > Sprites: thay đổi tên, hình ảnh, hướng dẫn hoặc nút bật/tắt danh tính của một
-  sprite hiện có.
-- `/config` > Persona > Sprites: xóa sprite khỏi một persona.
-- Xuất và nhập trên `/config` > Persona > Sprites: sao lưu hoặc chia sẻ toàn bộ bộ sprite của một
-  persona dưới dạng tệp.
+- **Thêm hoặc thay thế**: chọn persona, cung cấp nhãn, tải hình ảnh lên (PNG, JPG hoặc GIF) và tùy ý viết hướng dẫn sử dụng mô tả thời điểm hiển thị hình ảnh đó.
+- **Chỉnh sửa**: cập nhật nhãn, hình ảnh hoặc hướng dẫn của sprite hiện có.
+- **Xóa**: xóa các họa tiết bạn không còn muốn nữa.
+- **Xuất và nhập**: chia sẻ hoặc sao lưu gói sprite hoàn chỉnh của persona dưới dạng tệp.
 
-Nút bật/tắt danh tính (identity) trang trí tên tin nhắn thành `Label (Persona)` trong Discord, rất
-hữu ích cho các [persona alter](#persona-alter) nói chuyện với tư cách là những nhân vật riêng biệt.
+Nút chuyển đổi `Lưu làm danh tính` hiển thị tác giả thông báo là `Label (Persona)` trong Discord, hữu ích cho các ký tự có nhiều dạng.
 
-Thay đổi avatar của một persona mặc định sẽ xóa các sprite đi kèm với nó, vì chúng hiển thị khuôn mặt của
-nhân vật gốc. Các sprite bạn tự thêm sẽ được giữ lại. Hãy chạy lệnh `/persona default` để khôi phục lại các
-sprite mặc định.
+Việc thay thế hình đại diện của persona mặc định sẽ xóa các hình ảnh được tích hợp sẵn của persona đó vì chúng mô tả persona gốc. Các Sprite bạn tự thêm vào vẫn còn nguyên. Chạy `/persona default` sẽ khôi phục các sprite tích hợp.
 
 ## Chọn persona theo kênh
 
-Bạn muốn kiểm soát persona nào trả lời *bạn* trong một kênh cụ thể mà không làm thay đổi thiết lập của
-toàn máy chủ? Đó là Tiêu điểm cá nhân; xem
-[Cá nhân hóa](/vi/features/knowledge/personalization/#personal-spotlight).
-
-## Cách xưng hô riêng theo từng persona
-
-Quản lý máy chủ có thể sử dụng `/config` > Persona > Identity & Personality để cung cấp cho mỗi persona
-các tiền tố, hậu tố và danh xưng độc lập cho nam giới, nữ giới và trung tính. Tùy chỉnh ghi đè theo phạm vi
-persona của chính người dùng được liên kết theo nguồn gốc persona ổn định, do đó hai persona có thể gọi Mirri
-bằng các tên khác nhau trong cùng một phản hồi đa persona trong khi cả hai vẫn nhắm tới cùng một người dùng
-Discord. Việc chỉnh sửa một con trỏ chính thức trước tiên sẽ tạo ra một bản sao độc lập; thao tác này không
-bao giờ làm thay đổi danh mục chia sẻ hoặc persona của máy chủ khác.
+Để chọn persona nào trả lời bạn trong một kênh cụ thể mà không thay đổi cài đặt trên toàn máy chủ, hãy sử dụng Tiêu điểm cá nhân; xem [Cá nhân hóa](/vi/features/knowledge/personalization/#personal-spotlight).

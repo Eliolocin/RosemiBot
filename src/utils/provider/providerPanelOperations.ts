@@ -95,6 +95,7 @@ const CAPABILITIES: readonly ProviderPanelCapability[] = [
   "video",
   "speech",
   "transcription",
+  "decision",
 ];
 
 export interface LoadedProviderPanelScope {
@@ -148,7 +149,7 @@ export interface AddServerProviderDependencies {
 
 export type AddCustomEndpointConnectionResult =
   | { status: "success"; entryId: string; label: string }
-  | { status: "unreachable"; reason: string }
+  | { status: "unreachable"; reason: string; credentialsWithheld: boolean }
   | {
       status: "invalid-label" | "invalid-style" | "already-exists" | "label-url-conflict" | "write-failed";
     };
@@ -182,7 +183,7 @@ export interface AddCustomEndpointConnectionDependencies {
 }
 
 export type SaveProviderModelResult =
-  | { status: "success"; entryId: string; codeName: string }
+  | { status: "success"; entryId: string; codeName: string; removed?: boolean }
   | { status: "invalid-model" | "unsupported-capability" | "not-found" | "already-available" | "write-failed" };
 
 export interface SaveProviderModelInput {
@@ -194,12 +195,14 @@ export interface SaveProviderModelInput {
   capability: CustomEndpointCapability;
   codeName: string;
   editingModelId?: number;
+  removeDecisionModel?: boolean;
   numCtx?: number | null;
   hasTools?: boolean;
   seesImages?: boolean;
   supportsStructOutput?: boolean;
   strictRoleAlternation?: boolean;
   supportsPrefixCompletion?: boolean;
+  supportsAssistantPrefill?: boolean;
   verbatimToolCalling?: boolean;
   // Raw checkbox values, because only the resolved connection knows the api style that decides
   // whether inpainting was offerable in the modal at all.
@@ -231,7 +234,7 @@ interface EditProviderInput {
 export type EditEndpointResult =
   | { status: "success"; entryId: string; label: string }
   | { status: "unchanged"; entryId: string }
-  | { status: "unreachable"; reason: string }
+  | { status: "unreachable"; reason: string; credentialsWithheld: boolean }
   | { status: "invalid-label" | "not-found" | "write-failed" | "handoff-unsupported" };
 
 interface EditEndpointInput {
@@ -314,6 +317,8 @@ const CUSTOM_ENDPOINT_CAPABILITIES_BY_API_STYLE = {
   comfyui: ["image", "video"],
   "tts-clone": ["speech"],
   "openai-compatible-transcription": ["transcription"],
+  "system-one": ["decision"],
+  "openai-decisions": ["decision"],
 } as const satisfies Partial<Record<CustomEndpointApiStyle, readonly CustomEndpointCapability[]>>;
 
 function hasFallback(refs: readonly FallbackModelRef[], type: FallbackModelRef["type"], id: number): boolean {
@@ -392,16 +397,26 @@ async function buildCuratedCapabilities(
   savedConfig: PanelSavedConfig,
   context: PanelModelContext,
 ): Promise<ProviderPanelCapabilitySection[]> {
-  const [textRows, imageRows, embeddingRows, videoRows] = await Promise.all([
+  const [textRows, imageRows, embeddingRows, videoRows, decisionRows] = await Promise.all([
     llmModelRepo.loadAvailableModelsForProvider(provider, false, context.scope),
     llmModelRepo.loadAvailableDiffusionModels(provider, false, context.scope),
     llmModelRepo.loadAvailableEmbeddingModels(provider, false, context.scope),
     llmModelRepo.loadAvailableVideoGenerationModels(provider, false, context.scope),
+    llmModelRepo.loadAvailableDecisionModels(provider, false, context.scope),
   ]);
   const workspaceFallbacks = context.scopeFallbacks;
   const providerFallbacks = savedConfig.fallback_model_refs ?? [];
 
-  const modelsByCapability: Record<"text" | "image" | "embedding" | "video", ProviderPanelModel[]> = {
+  const modelsByCapability: Record<"text" | "image" | "embedding" | "video" | "decision", ProviderPanelModel[]> = {
+    decision: decisionRows.map((row) => ({
+      id: row.decision_model_id,
+      codeName: row.codename,
+      isWorkspaceActive: false,
+      isWorkspaceFallback: false,
+      isProviderFallback: false,
+      isCustomRegistration: row.is_scoped_registration,
+      decisionSettings: { inputTokenLimit: row.input_token_limit },
+    })),
     text: (textRows ?? []).flatMap((row) => {
       const model = createModel(
         row.llm_id,
@@ -419,6 +434,7 @@ async function buildCuratedCapabilities(
           supportsStructOutput: row.supports_structoutput,
           strictRoleAlternation: row.strict_role_alternation,
           supportsPrefixCompletion: row.supports_prefix_completion,
+          supportsAssistantPrefill: row.supports_assistant_prefill,
           verbatimToolCalling: row.verbatim_tool_calling,
         },
       );
@@ -466,7 +482,11 @@ async function buildCuratedCapabilities(
   };
 
   return CAPABILITIES.map((capability) => {
-    if (capability === "speech" || capability === "transcription") {
+    if (
+      capability === "speech" ||
+      capability === "transcription" ||
+      (capability === "decision" && !getStaticProviderInfo(provider)?.featureSupport.decisions)
+    ) {
       return { capability, availability: "unavailable", models: [] };
     }
     return { capability, availability: "available", models: modelsByCapability[capability] };
@@ -530,6 +550,7 @@ function buildEndpointCapabilities(
                 supportsStructOutput: endpoint.supports_structoutput,
                 strictRoleAlternation: endpoint.strict_role_alternation,
                 supportsPrefixCompletion: endpoint.supports_prefix_completion,
+                supportsAssistantPrefill: endpoint.supports_assistant_prefill,
                 verbatimToolCalling: endpoint.verbatim_tool_calling,
               }
             : undefined,
@@ -538,6 +559,10 @@ function buildEndpointCapabilities(
         if (!model) return [];
         if (capability === "speech" || capability === "transcription") {
           model.isWorkspaceActive = endpoint.is_default;
+        }
+        if (capability === "decision") {
+          model.isWorkspaceActive = false;
+          model.decisionSettings = { inputTokenLimit: endpoint.num_ctx ?? 0 };
         }
         if (capability === "speech") {
           model.speechSettings = readSpeechEndpointSettings(endpoint);
@@ -1010,7 +1035,11 @@ export async function addCustomEndpointConnection(
       apiStyle: input.apiStyle,
       detail: reachable.reason.slice(0, 200),
     });
-    return { status: "unreachable", reason: reachable.reason };
+    return {
+      status: "unreachable",
+      reason: reachable.reason,
+      credentialsWithheld: reachable.credentialsWithheld === true,
+    };
   }
 
   const createdConnectionIds: number[] = [];
@@ -1080,6 +1109,7 @@ async function activateSavedProviderModel(
   provider: string,
   modelId: number,
 ): Promise<boolean> {
+  if (input.capability === "decision") return true;
   const userId = personalOwnerId(input);
   const existing = userId
     ? await llmProviderRepo.loadUserSavedProviderConfig(userId, provider)
@@ -1149,8 +1179,23 @@ async function registerSharedProviderModel(
   if (input.capability === "speech" || input.capability === "transcription") {
     return { status: "unsupported-capability" };
   }
+  if (input.capability === "decision" && provider !== "openrouter") return { status: "unsupported-capability" };
   if (provider === "openrouter") {
     const userId = personalOwnerId(input);
+    const saved = userId
+      ? await llmProviderRepo.loadUserSavedProviderConfig(userId, provider)
+      : await llmProviderRepo.loadSavedProviderConfig(input.state.server_id, provider);
+    if (!saved) return { status: "not-found" };
+    if (input.capability === "decision" && input.editingModelId) {
+      const owned = await llmModelRepo.loadAvailableDecisionModels(
+        provider,
+        true,
+        userId ? { kind: "personal", ownerId: userId } : { kind: "server", ownerId: input.state.server_id },
+      );
+      if (!owned.some((model) => model.decision_model_id === input.editingModelId && model.is_scoped_registration)) {
+        return { status: "not-found" };
+      }
+    }
     const result = await registerOpenRouterModelForScope(
       userId ? { kind: "personal", ownerId: userId } : { kind: "server", ownerId: input.state.server_id },
       input.capability,
@@ -1171,6 +1216,7 @@ async function registerSharedProviderModel(
         input.editingModelId,
       );
     }
+    if (activated && input.capability === "decision" && !userId) invalidateTomoriStateCache(input.serverDiscId);
     return activated
       ? {
           status: "success",
@@ -1204,6 +1250,7 @@ async function registerSharedProviderModel(
             supportsStructuredOutput: input.supportsStructOutput ?? false,
             strictRoleAlternation: input.strictRoleAlternation ?? false,
             supportsPrefixCompletion: input.supportsPrefixCompletion ?? false,
+            supportsAssistantPrefill: input.supportsAssistantPrefill ?? false,
           },
           provider,
         )
@@ -1247,6 +1294,12 @@ async function removeScopedRegistration(
   capability: Exclude<CustomEndpointCapability, "speech" | "transcription">,
   modelId: number,
 ): Promise<void> {
+  if (capability === "decision") {
+    if (await llmProviderRepo.deleteDecisionModelRegistration({ ...owner, decisionModelId: modelId })) {
+      await llmModelRepo.deleteOrphanedDecisionModel(modelId);
+    }
+    return;
+  }
   if (capability === "text") {
     if (!(await llmProviderRepo.deleteOpenRouterModelRegistration({ ...owner, llmId: modelId }))) return;
     if (
@@ -1375,6 +1428,7 @@ async function registerEndpointModel(input: SaveProviderModelInput): Promise<Sav
     supportsStructOutput: input.supportsStructOutput,
     strictRoleAlternation: input.strictRoleAlternation,
     supportsPrefixCompletion: input.supportsPrefixCompletion,
+    supportsAssistantPrefill: input.supportsAssistantPrefill,
     verbatimToolCalling: input.verbatimToolCalling,
     extraConfig,
     editingEndpointId: editingEndpoint?.custom_endpoint_id,
@@ -1389,14 +1443,49 @@ async function registerEndpointModel(input: SaveProviderModelInput): Promise<Sav
 }
 
 export async function saveProviderModel(input: SaveProviderModelInput): Promise<SaveProviderModelResult> {
+  if (input.capability === "decision" && input.removeDecisionModel) {
+    if (!input.editingModelId) return { status: "not-found" };
+    const userId = personalOwnerId(input);
+    const scope = userId
+      ? { kind: "personal" as const, ownerId: userId }
+      : { kind: "server" as const, ownerId: input.state.server_id };
+    let provider = input.entryId === "provider:openrouter" ? "openrouter" : null;
+    if (input.entryId.startsWith("endpoint:")) {
+      const representative = await llmProviderRepo.loadCustomEndpointConnectionById(Number(input.entryId.slice(9)));
+      if (!representative || (userId ? representative.user_id !== userId : representative.server_id !== scope.ownerId))
+        return { status: "not-found" };
+      const read = userId
+        ? await llmProviderRepo.loadCustomEndpointConnectionsForUserResult(userId)
+        : await llmProviderRepo.loadCustomEndpointConnectionsForServerResult(scope.ownerId);
+      const connection = read.connections.find(
+        (row) => row.label === representative.label && row.capability === "decision",
+      );
+      if (connection) provider = buildCustomProviderName(connection.connection_id);
+    }
+    if (!provider) return { status: "not-found" };
+    const deleted = await llmProviderRepo.deleteOwnedDecisionRegistration(scope, provider, input.editingModelId);
+    if (!deleted) return { status: "not-found" };
+    if (!userId) invalidateTomoriStateCache(input.serverDiscId);
+    log.info(
+      `Decision registration ${JSON.stringify({
+        provider: provider === "openrouter" ? "openrouter" : "custom",
+        modelId: input.editingModelId,
+        outcome: "removed",
+      })}`,
+    );
+    return { status: "success", entryId: input.entryId, codeName: input.codeName, removed: true };
+  }
   const codeName = input.codeName.trim();
   if (!codeName || codeName.length > 200) return { status: "invalid-model" };
   if (
-    input.capability === "text" &&
+    (input.capability === "text" || input.capability === "decision") &&
     input.numCtx !== null &&
     input.numCtx !== undefined &&
     (!Number.isSafeInteger(input.numCtx) || input.numCtx < 512 || input.numCtx > 10_000_000)
   ) {
+    return { status: "invalid-model" };
+  }
+  if (input.capability === "decision" && input.entryId.startsWith("endpoint:") && input.numCtx == null) {
     return { status: "invalid-model" };
   }
   if (input.entryId.startsWith("provider:")) {
@@ -1551,7 +1640,11 @@ async function editServerEndpoint(input: EditEndpointInput): Promise<EditEndpoin
           apiStyle: connection.api_style,
           detail: reachable.reason.slice(0, 200),
         });
-        return { status: "unreachable", reason: reachable.reason };
+        return {
+          status: "unreachable",
+          reason: reachable.reason,
+          credentialsWithheld: reachable.credentialsWithheld === true,
+        };
       }
     }
   }

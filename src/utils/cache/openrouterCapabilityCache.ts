@@ -56,10 +56,7 @@ export interface ModelTokenLimits {
   maxCompletionTokens: number | undefined; // Max output tokens, undefined if not reported
 }
 
-/**
- * Cached model pricing.
- * Values are normalized to USD per million tokens for prompt/completion cost math.
- */
+/** Values are normalized to USD per million tokens for prompt/completion cost math. */
 export interface ModelPricing {
   promptPricePerMillion: number;
   completionPricePerMillion: number;

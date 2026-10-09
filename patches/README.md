@@ -30,12 +30,6 @@ Use this checklist whenever an upstream dependency update may have made a manual
 
 ## Active entries
 
-### `patches/@aws-sdk%2Fxml-builder@3.972.11.patch`
-
-- Reason: forces `fast-xml-parser` to a non-vulnerable version in the AWS SDK transitive tree.
-- Remove when: the resolved `@aws-sdk/xml-builder` release already depends on a fixed `fast-xml-parser` version and the quality gates above pass without this patch.
-- How to revert: remove the `@aws-sdk/xml-builder@3.972.11` entry from `patchedDependencies`, delete this patch file, run `bun install`, then rerun the quality gates above.
-
 ### `patches/@matrix-org%2Fmatrix-sdk-crypto-nodejs@0.4.0.patch`
 
 - Reason: the native Windows binding is not published for the Matrix crypto package, but TomoriBot's Matrix bridge only needs plaintext relay behavior. The patch replaces module-load crashes with lazy-throw stubs so accidental crypto usage still fails explicitly.

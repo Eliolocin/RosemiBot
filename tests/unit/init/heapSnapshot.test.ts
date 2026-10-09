@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, readdirSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerHeapSnapshotHandler } from "@/init/heapSnapshot";
@@ -62,6 +62,19 @@ describe("registerHeapSnapshotHandler", () => {
     expect(files).toHaveLength(1);
     expect(files[0]).toEndWith(".heapsnapshot");
     expect(await Bun.file(join(dir, files[0])).text()).toBe(FAKE_SNAPSHOT);
+    if (process.platform !== "win32") expect(statSync(join(dir, files[0])).mode & 0o777).toBe(0o600);
+  });
+
+  test.skipIf(process.platform === "win32")("refuses public directories and directory symlinks", () => {
+    const dir = makeDir();
+    chmodSync(dir, 0o755);
+    registerHeapSnapshotHandler(dir, () => FAKE_SNAPSHOT);
+    expect(process.listenerCount("SIGUSR2")).toBe(0);
+    chmodSync(dir, 0o700);
+    const link = join(makeDir(), "linked");
+    symlinkSync(dir, link);
+    registerHeapSnapshotHandler(link, () => FAKE_SNAPSHOT);
+    expect(process.listenerCount("SIGUSR2")).toBe(0);
   });
 
   test("ignores a second signal while one snapshot is still serializing", async () => {

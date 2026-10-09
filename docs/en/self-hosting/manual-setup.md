@@ -18,7 +18,6 @@ for you.
 ## Prerequisites
 
 - [Bun](https://bun.sh/)
-- Node.js v20+ (used for MCP tooling)
 - PostgreSQL installed natively, or run in a Docker container (see step 2)
 
 PostgreSQL schema, `pgcrypto`, seeds, and migrations initialize automatically on bot startup.
@@ -47,6 +46,10 @@ Required:
 - PostgreSQL connection: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`,
   `POSTGRES_PASSWORD`, `POSTGRES_DB`.
 
+Keep a protected copy of your encryption secret separately from database backups. New backups contain no `.env`. For rotation, use `CRYPTO_SECRET_V1`, `CRYPTO_SECRET_V2`, or any later positive integer version, with optional `CRYPTO_SECRET_CURRENT` selection. `CRYPTO_SECRET` remains V1. Startup and maintenance commands load the same source: local environment values in development, or mounted JSON / AWS Secrets Manager in production. See [Rotating encryption keys](/self-hosting/maintenance/#rotating-encryption-keys) before replacing a secret.
+
+In JSON secret sources, master keys must be strings. `CRYPTO_SECRET_CURRENT` accepts a string such as `"2"` or a numeric positive safe integer such as `2` that names an available version.
+
 :::note[No native PostgreSQL?]
 Run just the database in a container, then point the `POSTGRES_*` values at it:
 
@@ -65,6 +68,20 @@ still runs on host Bun. For a fully containerized bot and database, use
 
 Optional tuning lives in `.env.optional.example`. Copy over any values you want to
 customize (limits, timeouts, feature toggles, local server URLs, etc.).
+
+Custom expression uploads default to local files under `data/custom-expressions/`.
+Keep that directory on persistent storage. `EXPRESSION_STORAGE_BACKEND` accepts `local`,
+`gcs`, or `s3`. Cloud backends require `EXPRESSION_STORAGE_BUCKET` and the corresponding
+SDK credentials. S3 also uses `AWS_REGION` (default `us-east-1`) and optional `S3_ENDPOINT`.
+GCS uses application default credentials. Expressions use their own bucket setting;
+avatar storage settings do not select an expression bucket. Objects remain readable through
+the SDK and are attached as bytes, so a publicly served media URL is unnecessary.
+Preserve backend, bucket, and object keys when restoring existing references.
+
+`MAX_CUSTOM_EXPRESSIONS_PER_SERVER` caps custom expressions per server (default `20`, minimum `1`).
+Links and uploaded files share the limit across all personas; native emojis and stickers are excluded.
+Restart the bot after changing it. Lowering the limit preserves existing expressions and allows edits
+and deletions, but blocks additions until the count falls below the limit.
 
 ## 3. Run
 
@@ -183,8 +200,8 @@ HF_TOKEN=hf_xxx bun run setup:tokenizers
 
 Without this step logit bias is silently disabled and everything else works normally.
 
-The secure `fetch_url` fallback runs in process and needs no Python package. DuckDuckGo/IAsk
-`web_search` ships with `bun install --frozen-lockfile`, so it also needs no extra installation.
+The secure `fetch_url` fallback and the DuckDuckGo `web_search` fallback both run in process, so
+neither needs an extra installation.
 
 ## Maintenance, updating & backups
 

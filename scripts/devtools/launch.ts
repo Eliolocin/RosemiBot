@@ -65,6 +65,11 @@ interface DockerLocalServer {
   image: string;
   /** args passed after "docker run" when creating a fresh container */
   runArgs: string[];
+  /**
+   * Environment for the `docker run` process. Secrets go here and runArgs names them with a bare
+   * `-e NAME`, because argv is readable by every local user through the process list.
+   */
+  runEnv?: Record<string, string>;
   /** milliseconds to wait for healthcheck before aborting (default 120s) */
   healthTimeoutMs?: number;
   /**
@@ -91,6 +96,9 @@ interface PythonLocalServer {
 }
 
 type LocalServerDef = DockerLocalServer | PythonLocalServer;
+
+// Pinned so its egress policy and token requirement match the self-hosting guide.
+const CRAWL4AI_IMAGE = "unclecode/crawl4ai:0.9.4";
 
 /** Registry of all supported --flag → local server definitions. */
 const LOCAL_SERVERS: Record<string, LocalServerDef> = {
@@ -126,7 +134,8 @@ const LOCAL_SERVERS: Record<string, LocalServerDef> = {
   crawl4ai: {
     kind: "docker",
     containerName: "crawl4ai",
-    image: "unclecode/crawl4ai:latest",
+    image: CRAWL4AI_IMAGE,
+    runEnv: process.env.CRAWL4AI_TOKEN ? { CRAWL4AI_API_TOKEN: process.env.CRAWL4AI_TOKEN } : undefined,
     // Crawl4AI has a longer first-run startup (model download), give it 3 min.
     healthTimeoutMs: 180_000,
     httpHealthUrl: "http://localhost:11235/health",
@@ -135,9 +144,9 @@ const LOCAL_SERVERS: Record<string, LocalServerDef> = {
       "--name",
       "crawl4ai",
       "-p",
-      "11235:11235",
+      "127.0.0.1:11235:11235",
       "--shm-size=3g",
-      ...(process.env.CRAWL4AI_TOKEN ? ["-e", `CRAWL4AI_API_TOKEN=${process.env.CRAWL4AI_TOKEN}`] : []),
+      ...(process.env.CRAWL4AI_TOKEN ? ["-e", "CRAWL4AI_API_TOKEN"] : []),
       "--health-cmd",
       "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:11235/health', timeout=3).read()\"",
       "--health-interval",
@@ -148,7 +157,7 @@ const LOCAL_SERVERS: Record<string, LocalServerDef> = {
       "12",
       "--health-start-period",
       "45s",
-      "unclecode/crawl4ai:latest",
+      CRAWL4AI_IMAGE,
     ],
   },
 
@@ -317,11 +326,7 @@ async function waitForPythonReady(
   throw new Error(`Server did not report a ready JSON status within ${timeoutMs / 1000}s.`);
 }
 
-/**
- * Ensures a Docker-backed local server is running. Creates the container via "docker run"
- * if it doesn't exist, or resumes it with "docker start" if it does.
- * Waits for the container's healthcheck to pass before returning.
- */
+/** Waits for the container's healthcheck to pass before returning. */
 async function ensureDockerLocalServer(def: DockerLocalServer): Promise<void> {
   const { containerName, healthTimeoutMs = 120_000 } = def;
   const label = pc.cyan(`[${containerName}]`);
@@ -343,6 +348,7 @@ async function ensureDockerLocalServer(def: DockerLocalServer): Promise<void> {
   if (state === null) {
     console.log(`${label} Container not found. Running docker run...`);
     const run = Bun.spawn(["docker", "run", ...def.runArgs], {
+      env: { ...process.env, ...def.runEnv },
       stdout: "inherit",
       stderr: "inherit",
     });
@@ -454,6 +460,10 @@ async function main(): Promise<void> {
             { cwd: ROOT, stdout: "inherit", stderr: "inherit" },
           );
           if ((await build.exited) !== 0) throw new Error("SearXNG image build failed.");
+        }
+        // Without a token the pinned image binds only the container's loopback, so the bot could never connect.
+        if (flag === "crawl4ai" && !process.env.CRAWL4AI_TOKEN) {
+          throw new Error("Set CRAWL4AI_TOKEN in .env; Crawl4AI refuses outside connections without an API token.");
         }
         await ensureDockerLocalServer(def);
       } else {

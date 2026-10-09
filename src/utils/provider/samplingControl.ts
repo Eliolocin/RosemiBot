@@ -29,6 +29,41 @@ export interface AnthropicSamplingSelection {
 const ANTHROPIC_TEMPERATURE_DEFAULT = 1.0;
 const ANTHROPIC_TOP_P_DEFAULT = 0.95;
 
+/**
+ * Gemini 3.6 Flash and every later Gemini pin sampling server-side, and Google has announced that
+ * upcoming models answer `temperature`, `topP`, or `topK` with 400 INVALID_ARGUMENT. Earlier
+ * Gemini releases and Gemma still honor them, so the gate is a version floor, not a family prefix.
+ */
+const GEMINI_FIXED_SAMPLING_FLOOR = { major: 3, minor: 6 } as const;
+
+interface GeminiSamplingParams {
+  temperature?: number;
+  topP?: number;
+  topK?: number;
+}
+
+const GEMINI_VERSION_PATTERN = /^gemini-(\d+)(?:\.(\d+))?(?:-|$)/;
+
+/** True when the Gemini codename ignores client sampling parameters and will eventually reject them. */
+export function geminiIgnoresSampling(model: string): boolean {
+  const match = GEMINI_VERSION_PATTERN.exec(model.trim().toLowerCase());
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2] ?? 0);
+  if (major !== GEMINI_FIXED_SAMPLING_FLOOR.major) return major > GEMINI_FIXED_SAMPLING_FLOOR.major;
+  return minor >= GEMINI_FIXED_SAMPLING_FLOOR.minor;
+}
+
+/** Remove `temperature`, `topP`, and `topK` from a Gemini generation config when the model ignores them. */
+export function omitGeminiSampling<T extends GeminiSamplingParams>(
+  model: string,
+  config: T,
+): Omit<T, keyof GeminiSamplingParams> & GeminiSamplingParams {
+  if (!geminiIgnoresSampling(model)) return config;
+  const { temperature: _temperature, topP: _topP, topK: _topK, ...rest } = config;
+  return rest;
+}
+
 export function isParamDisabled(disabledParams: readonly string[] | null | undefined, param: SupportedParam): boolean {
   return disabledParams?.includes(param) ?? false;
 }

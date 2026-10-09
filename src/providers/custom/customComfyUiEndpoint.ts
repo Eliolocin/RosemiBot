@@ -1539,18 +1539,6 @@ function normalizeComfyUiUploadField(value: string | undefined): string | undefi
   return trimmed ? trimmed : undefined;
 }
 
-function buildDiscordDownloadInit(url: string): RequestInit | undefined {
-  if (!process.env.DISCORD_TOKEN || !/discord(?:app)?\.(?:com|net)|discordcdn\.com/i.test(url)) {
-    return undefined;
-  }
-
-  return {
-    headers: {
-      Authorization: `Bot ${process.env.DISCORD_TOKEN}`,
-    },
-  };
-}
-
 async function resolveComfyUiReferenceImageBuffer(referenceImage: ComfyUiReferenceImage): Promise<{
   buffer: Buffer;
   mimeType: string;
@@ -1572,7 +1560,6 @@ async function resolveComfyUiReferenceImageBuffer(referenceImage: ComfyUiReferen
     const downloadResult = await safeDownload(url, {
       maxSizeMB: COMFYUI_REFERENCE_IMAGE_DOWNLOAD_MAX_MB,
       timeoutMs: 15_000,
-      requestInit: buildDiscordDownloadInit(url),
     });
     if (downloadResult.success && downloadResult.buffer) {
       return {

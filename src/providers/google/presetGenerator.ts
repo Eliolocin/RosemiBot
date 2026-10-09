@@ -9,8 +9,10 @@ import { GoogleGenAI, type Content, type GenerateContentConfig } from "@google/g
 import type { GeneratePresetParams, PresetGenerationResult } from "@/types/provider/featureInterfaces";
 import { PRESET_MAX_STRING_LENGTH, type PresetExportData } from "../../types/preset/presetExport";
 import { log } from "../../utils/misc/logger";
-import { localizer } from "../../utils/text/localizer";
+import { hasLocaleKey, localizer } from "../../utils/text/localizer";
+import { formatProviderErrorCodeForDisplay } from "@/utils/provider/providerErrorClassification";
 import { resolvePresetGenerationMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
+import { omitGeminiSampling } from "@/utils/provider/samplingControl";
 import {
   buildPresetPrompt,
   extractPresetGenerationFields,
@@ -22,18 +24,12 @@ export type {
   PresetGenerationResult,
 } from "@/types/provider/featureInterfaces";
 
-/**
- * Additional context for character search
- */
 interface CharacterSearchContext {
   description?: string; // Character description from user
   speechExamples?: string; // How the character should speak
   additionalInstructions?: string; // Extra instructions
 }
 
-/**
- * Result of character information search
- */
 interface CharacterSearchResult {
   characterInfo?: string; // Found character information
   error?: string; // Error message if search failed
@@ -71,11 +67,11 @@ function isGoogleModelUnavailableError(errorMessage: string): boolean {
 }
 
 /**
- * Create localized error message based on error type and Google error code
- * Similar to GoogleStreamAdapter.createErrorDescription
+ * Localized `/persona generate` failure text for a Google error. The raw message only selects the
+ * billing variant: the reply is public, and an endpoint can echo the request key in its error body,
+ * so callers log the upstream text instead.
  * @param errorCode - The Google API error code (e.g., "400", "429")
- * @param rawMessage - Raw error message from Google API
- * @param locale - User's locale for localization
+ * @param rawMessage - Raw error message from Google API, used for classification only
  */
 function createGoogleErrorMessage(
   errorType: string,
@@ -83,83 +79,49 @@ function createGoogleErrorMessage(
   rawMessage: string,
   locale: string,
 ): string {
-  let googleMessage: string | undefined;
+  const displayCode = formatProviderErrorCodeForDisplay(errorCode);
+  let messageKey: string;
 
-  try {
-    if (rawMessage.includes('{"error":')) {
-      const jsonMatch = rawMessage.match(/\{.*\}/s);
-      if (jsonMatch) {
-        const parsedError = JSON.parse(jsonMatch[0]);
-        const errorObj = parsedError.error || parsedError;
-
-        if (errorObj?.message && typeof errorObj.message === "string") {
-          try {
-            const nestedError = JSON.parse(errorObj.message);
-            if (nestedError.error?.message) {
-              googleMessage = nestedError.error.message;
-            }
-          } catch {
-            // Not nested JSON, use direct message
-            googleMessage = errorObj.message;
-          }
-        }
-      }
-    }
-  } catch {}
-
-  // If we couldn't extract a Google message, use locale-based defaults
-  if (!googleMessage) {
-    let messageKey: string;
-
-    switch (errorType) {
-      case "CONTENT_BLOCKED":
-        messageKey = "content_blocked_default_message";
-        break;
-      case "RATE_LIMIT":
-        messageKey = "429_default_message";
-        break;
-      case "TIMEOUT":
-        messageKey = "504_default_message";
-        break;
-      case "API_KEY":
-        messageKey = "403_default_message";
-        break;
-      case "MODEL_ERROR":
-        messageKey = "404_default_message";
-        break;
-      case "CONNECTION":
-        messageKey = "503_default_message";
-        break;
-      case "EMPTY_RESPONSE":
-      case "INVALID_JSON":
-      case "VALIDATION_ERROR":
-        messageKey = "unknown_default_message";
-        break;
-      default:
-        if (errorCode === 400 || errorCode === "400") {
-          if (rawMessage.includes("billing")) {
-            messageKey = "400_billing_default_message";
-          } else {
-            messageKey = "400_default_message";
-          }
-        } else if (errorCode) {
-          messageKey = `${errorCode}_default_message`;
+  switch (errorType) {
+    case "CONTENT_BLOCKED":
+      messageKey = "content_blocked_default_message";
+      break;
+    case "RATE_LIMIT":
+      messageKey = "429_default_message";
+      break;
+    case "TIMEOUT":
+      messageKey = "504_default_message";
+      break;
+    case "API_KEY":
+      messageKey = "403_default_message";
+      break;
+    case "MODEL_ERROR":
+      messageKey = "404_default_message";
+      break;
+    case "CONNECTION":
+      messageKey = "503_default_message";
+      break;
+    case "EMPTY_RESPONSE":
+    case "INVALID_JSON":
+    case "VALIDATION_ERROR":
+      messageKey = "unknown_default_message";
+      break;
+    default:
+      if (errorCode === 400 || errorCode === "400") {
+        if (rawMessage.includes("billing")) {
+          messageKey = "400_billing_default_message";
         } else {
-          messageKey = "unknown_default_message";
+          messageKey = "400_default_message";
         }
-        break;
-    }
-
-    try {
-      googleMessage = localizer(locale, `genai.google.${messageKey}`);
-    } catch {
-      // If locale key doesn't exist, use generic fallback
-      googleMessage = localizer(locale, "genai.google.unknown_default_message");
-    }
+      } else if (hasLocaleKey("en-US", `genai.google.${displayCode}_default_message`)) {
+        messageKey = `${displayCode}_default_message`;
+      } else {
+        messageKey = "unknown_default_message";
+      }
+      break;
   }
 
-  const displayCode = errorCode || "unknown";
-  return `Error Code ${displayCode}: ${googleMessage}`;
+  return `Error Code ${displayCode}: ${localizer(locale, `genai.google.${messageKey}`)}`;
 }
 
 /**
@@ -245,7 +207,7 @@ IMPORTANT: In any dialogue examples, use "{user}" ONLY where you would write the
         genAI.models.generateContent({
           model: MODEL_NAME,
           contents: [userPromptContent],
-          config: generationConfig,
+          config: omitGeminiSampling(MODEL_NAME, generationConfig),
         }),
         timeoutPromise,
       ]);
@@ -281,6 +243,7 @@ IMPORTANT: In any dialogue examples, use "{user}" ONLY where you would write the
       log.success(`✨ Character search successful with model: ${MODEL_NAME}`);
       return { characterInfo: responseText.trim() };
     } catch (apiError: unknown) {
+      log.warn("Google character search request failed", apiError as Error);
       const errorMessage = getErrorMessage(apiError);
 
       let errorCode: number | undefined;
@@ -521,7 +484,7 @@ Use the web search information to accurately represent the character's personali
           genAI.models.generateContent({
             model: MODEL_NAME,
             contents: [userPromptContent],
-            config: generationConfig,
+            config: omitGeminiSampling(MODEL_NAME, generationConfig),
           }),
           timeoutPromise,
         ]);
@@ -583,6 +546,7 @@ Use the web search information to accurately represent the character's personali
         log.success(`Preset generation successful with model: ${MODEL_NAME}`);
         return { preset };
       } catch (apiError: unknown) {
+        log.warn("Google preset generation request failed", apiError as Error);
         const errorMessage = getErrorMessage(apiError);
 
         let errorCode: number | undefined;

@@ -4,61 +4,38 @@ sidebar:
   order: 1
 ---
 
-TomoriBot có thể tạo hình ảnh từ lời nhắc văn bản hoặc bằng cách chỉnh sửa ảnh tham chiếu. Hãy sử
-dụng lệnh `/generate image`, hoặc chỉ cần yêu cầu bot ("vẽ cho mình một chú gấu trúc đỏ đang uống cà phê").
+TomoriBot có thể tạo hình ảnh từ lời nhắc văn bản hoặc bằng cách chỉnh sửa hình ảnh tham chiếu. Sử dụng `/generate image` hoặc mô tả những gì bạn muốn trong cuộc trò chuyện ("vẽ gấu trúc đỏ uống cà phê").
 
 ## Những việc bot có thể làm
 
-- **Text-to-image**: tạo ảnh từ prompt.
-- **Image-to-image**: chỉnh sửa hoặc đổi phong cách cho toàn bộ ảnh tham chiếu.
-- **Inpainting**: vẽ lại một vùng cụ thể trong khi vẫn giữ nguyên phần còn lại.
-- **Outpainting**: mở rộng khung vẽ ra ngoài khung hình gốc.
-- Tùy chỉnh tỷ lệ khung hình.
-- Ảnh tham chiếu có thể lấy từ tệp đính kèm tin nhắn, sticker, emoji, hoặc avatar của người dùng/persona.
-  Hãy chỉ định cho bot một tin nhắn, hoặc gọi tên người dùng/persona để lấy avatar của họ làm ảnh
-  tham chiếu.
+- **Chuyển văn bản thành hình ảnh**: tạo hình ảnh từ mô tả.
+- **Hình ảnh thành hình ảnh**: chỉnh sửa hoặc tạo kiểu lại cho hình ảnh hiện có.
+- **Inpainting**: vẽ lại một vùng cụ thể trong khi giữ nguyên phần còn lại.
+- **Outpainting**: mở rộng khung vẽ ra ngoài khung ban đầu.
+- **Tỷ lệ khung hình có thể tùy chỉnh**.
+- **Hình ảnh tham khảo**: lấy từ tệp đính kèm tin nhắn, sticker, biểu tượng cảm xúc hoặc hình đại diện của người dùng và cá nhân. Đề cập đến người dùng hoặc cá nhân để lấy hình đại diện của họ làm tài liệu tham khảo.
 
-Các chế độ chỉnh sửa khả dụng phụ thuộc vào backend. Text-to-image và image-to-image hoạt động
-trên các nhà cung cấp đám mây tích hợp sẵn (Google, Vertex, OpenRouter), trong khi **inpainting và
-outpainting được cung cấp bởi các endpoint tùy chỉnh [ComfyUI](/vi/self-hosting/local-endpoints/setup-comfyui/)
-cục bộ** và phụ thuộc vào các tính năng được khai báo của endpoint đó. Bất kỳ tính năng nào backend
-không thể thực hiện sẽ bị ẩn đi, vì vậy bot sẽ không cung cấp chế độ mà cấu hình của bạn không
-hỗ trợ.
+Chế độ chỉnh sửa nào khả dụng tùy thuộc vào chương trình phụ trợ đang hoạt động. Tính năng chuyển văn bản thành hình ảnh và hình ảnh thành hình ảnh hoạt động trên các nhà cung cấp đám mây (Google, Vertex, OpenRouter). Inpainting và outpainting được hỗ trợ bởi các điểm cuối tùy chỉnh [ComfyUI](/vi/self-hosting/local-endpoints/setup-comfyui/) cục bộ và phụ thuộc vào khả năng được khai báo của điểm cuối đó. Các chế độ mà thiết lập của bạn không hỗ trợ sẽ tự động bị ẩn khỏi model.
 
-Khi tạo hình ảnh, bot sử dụng ngữ cảnh Ngoại hình (Ngoại hình) của persona cùng các thẻ tag tích cực
-và tiêu cực mặc định (nơi backend hỗ trợ prompt tiêu cực). Kết quả được gửi dưới dạng thư viện phương tiện Discord kèm chi
-tiết tại thời điểm tạo, bao gồm mọi người dùng hoặc persona được tham chiếu.
+Khi cô ấy tạo một hình ảnh, cô ấy kết hợp các thẻ xuất hiện của cá nhân bạn với các thẻ tích cực và tiêu cực trên toàn máy chủ (nếu được hỗ trợ). Kết quả xuất hiện dưới dạng thư viện phương tiện Discord với các chi tiết về thế hệ, bao gồm mọi người dùng hoặc cá tính được tham chiếu.
 
 ## Tùy chỉnh thẻ tag
 <!-- anchor: tag-customization -->
 
-Mọi nguồn thẻ tag ở trên đều có thể chỉnh sửa, mỗi nguồn ở một phạm vi khác nhau. Tất cả các tùy chọn này đều mở một
-cửa sổ modal được điền sẵn các thẻ hiện tại, giúp bạn chỉnh sửa trực tiếp:
+Mọi nguồn thẻ đều có thể được chỉnh sửa tại chỗ bằng một phương thức điền sẵn:
 
-- **`/config` > Persona > Appearance**: các thẻ `Ngoại hình` (Ngoại hình) của persona đã chọn (cách *bot*
-  xuất hiện). Yêu cầu quyền Quản lý máy chủ.
-- **`/personal config`**: các thẻ ngoại hình của *chính bạn*, được áp dụng khi một lượt tạo ảnh
-  tham chiếu đến bạn. Thiết lập này theo bạn trên mọi máy chủ (xem
-  [Cá nhân hóa](/vi/features/knowledge/personalization/)).
-- Thẻ tag tích cực và tiêu cực mặc định tại `/config` > Models > Image Generation Defaults:
-  các thẻ mặc định trên toàn máy chủ được thêm vào (hoặc tránh xa) trong mỗi lượt tạo ảnh. Thẻ
-  tiêu cực chỉ có hiệu lực khi backend hỗ trợ prompt tiêu cực. Gửi modal với một ô trống sẽ đặt
-  lại danh sách đó về giá trị mặc định tích hợp sẵn.
+- **`/config` > `Persona` > `Chi tiết tạo hình ảnh`**: thẻ `Ngoại hình` của người được chọn (trông cô ấy như thế nào). Yêu cầu quyền Quản lý máy chủ.
+- **`/personal config`**: thẻ xuất hiện của riêng bạn, được áp dụng bất cứ khi nào thế hệ hình ảnh tham chiếu đến bạn. Theo dõi bạn trên mọi máy chủ (xem [Cá nhân hóa](/vi/features/knowledge/personalization/)).
+- **`/config` > `Model` > `Mặc định tạo hình ảnh`**: sử dụng `Sửa tích cực` và `Sửa tiêu cực` để đặt các thẻ mặc định được thêm vào hoặc loại bỏ khỏi mọi thế hệ. Thẻ phủ định chỉ áp dụng khi phần phụ trợ hỗ trợ lời nhắc phủ định. Việc gửi một ô trống sẽ đặt lại các giá trị mặc định tích hợp sẵn.
 
 ## Thiết lập
 
-1. Cấu hình model hình ảnh bằng `/config` > Models > Switch Models.
-2. Đảm bảo tính năng tạo hình ảnh được cho phép: được kiểm soát bởi tính năng `imagegen_enabled`
-   (`/config` > Permissions).
-3. Yêu cầu bot tạo ảnh, hoặc chạy `/generate image`.
+1. Định cấu hình model hình ảnh với `/config` > `Model` > Chuyển model.
+2. Bật tạo hình ảnh trong `/config` > `Quyền hạn` (`imagegen_enabled`).
+3. Hỏi cô ấy trong phần trò chuyện hoặc chạy `/generate image`.
 
 ## Hỗ trợ nhà cung cấp
 
-Tính năng tạo hình ảnh nguyên bản khả dụng trên Google, Vertex AI, Vertex AI Express, OpenRouter,
-Z.ai, NVIDIA NIM, và NovelAI (phong cách anime; inpainting nguyên bản đã được xây dựng và sắp
-ra mắt, hiện đang tạm tắt trong khi hoàn thiện tính năng hòa trộn viền). Để xem bảng tương thích đầy
-đủ và cách thêm nhà cung cấp, hãy xem
-[Nhà cung cấp & model](/vi/features/setup-administration/providers-and-models/#supported-providers).
+Tạo hình ảnh gốc có sẵn trên Google, Vertex AI, Vertex AI Express, OpenRouter, Z.ai, NVIDIA NIM và NovelAI (theo kiểu anime). Để biết ma trận nhà cung cấp đầy đủ, hãy xem [Nhà cung cấp & Model](/vi/features/setup-administration/providers-and-models/#supported-providers).
 
-Để tạo hình ảnh cục bộ bằng phần cứng của riêng bạn qua ComfyUI, hãy xem
-[Cài đặt: ComfyUI](/vi/self-hosting/local-endpoints/setup-comfyui/).
+Để tạo cục bộ trên phần cứng của riêng bạn thông qua ComfyUI, hãy xem [Thiết lập: ComfyUI](/vi/self-hosting/local-endpoints/setup-comfyui/).

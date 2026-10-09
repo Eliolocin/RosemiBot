@@ -59,6 +59,7 @@ async function buildVerbatimToolDefinitionsJson(tomoriState: TomoriState): Promi
       voice_message_enabled: tomoriState.config.voice_message_enabled,
       user_blocking_enabled: tomoriState.config.user_blocking_enabled,
       user_info_updates_enabled: tomoriState.config.user_info_updates_enabled,
+      response_rule_checker_ref: tomoriState.config.response_rule_checker_ref,
       thread_creation_enabled: tomoriState.config.thread_creation_enabled,
     },
   };

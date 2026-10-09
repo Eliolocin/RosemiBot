@@ -4,10 +4,10 @@ import { str, textArray } from "./sql";
 import type { PersonaInput } from "./types";
 import { personaNamingConfigSchema, validatePersonaNamingAuthoring } from "@/types/personaNaming";
 
-const OFFICIAL_LINEAGE_IDS = new Set<number>([4, 716, 1770, 3585, 50]); // 1337 (Zaya) pending
+const OFFICIAL_LINEAGE_IDS = new Set<number>([4, 716, 1770, 3585, 50, 666]); // 1337 (Zaya) pending
 
 const PERSONA_COLUMNS =
-  "persona_preset_name, persona_preset_desc, preset_attribute_list, preset_sample_dialogues_in, preset_sample_dialogues_out, preset_language, preset_avatar_path, preset_trigger_words, preset_lineage_id, preset_naming_config";
+  "persona_preset_name, persona_preset_desc, preset_attribute_list, preset_sample_dialogues_in, preset_sample_dialogues_out, preset_language, preset_avatar_path, preset_trigger_words, preset_lineage_id, preset_naming_config, is_nsfw";
 
 // Upsert identity is the stable (lineage, language) pair, NOT persona_preset_name.
 // The name is a mutable, human-facing catalog label, so keying on it would turn a
@@ -26,6 +26,7 @@ const PERSONA_ON_CONFLICT = `ON CONFLICT (preset_lineage_id, preset_language) WH
   preset_avatar_path = EXCLUDED.preset_avatar_path,
   preset_trigger_words = EXCLUDED.preset_trigger_words,
   preset_naming_config = EXCLUDED.preset_naming_config,
+  is_nsfw = EXCLUDED.is_nsfw,
   updated_at = CURRENT_TIMESTAMP`;
 
 const OFFICIAL_ATTRIBUTE_FLAGS_UPDATE = `WITH official_attribute_flags AS (
@@ -38,7 +39,7 @@ const OFFICIAL_ATTRIBUTE_FLAGS_UPDATE = `WITH official_attribute_flags AS (
       ORDER BY attr.ord
     )::BOOLEAN[] AS public_flags
   FROM persona_presets pp
-  WHERE pp.preset_lineage_id IN (4, 716, 1770, 3585, 50)
+  WHERE pp.preset_lineage_id IN (4, 716, 1770, 3585, 50, 666)
 )
 UPDATE persona_presets pp
 SET
@@ -64,6 +65,7 @@ function renderPersonaTuple(preset: PersonaInput): string {
     textArray(preset.triggerWords),
     String(preset.lineageId),
     str(JSON.stringify(preset.namingConfig)),
+    String(preset.isNsfw === true),
   ].join(", ");
 }
 

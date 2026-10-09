@@ -8,63 +8,63 @@ sidebar:
   order: 2
 ---
 
-TomoriBot có thể nhập hai thành phần từ [SillyTavern](https://github.com/SillyTavern/SillyTavern) mà bạn có thể đã có: preset Prompt Manager (cách sắp xếp prompt) và thẻ nhân vật (chính nhân vật đó). Đây là tính năng chuyên biệt dành cho người dùng SillyTavern, vì vậy nếu bạn chưa từng dùng SillyTavern, bạn có thể bỏ qua trang này.
+TomoriBot có thể nhập hai nội dung từ [SillyTavern](https://github.com/SillyTavern/SillyTavern): cài đặt trước của Trình quản lý lời nhắc (điều khiển cấu trúc lời nhắc) và thẻ ký tự (định nghĩa ký tự). Nếu bạn chưa bao giờ sử dụng SillyTavern, bạn có thể yên tâm bỏ qua trang này.
 
 ## Nhập thẻ nhân vật
 
-Đưa một nhân vật SillyTavern có sẵn trực tiếp vào Discord bằng lệnh `/persona import`. Lệnh này chấp nhận:
+Đưa ký tự SillyTavern hiện có vào Discord bằng `/persona import`. Nó chấp nhận:
 
-- Thẻ PNG có nhúng siêu dữ liệu `chara` / `char`,
-- Thẻ JSON kiểu v2 (`name`, `description`, `first_mes` ở cấp gốc, …),
-- Thẻ JSON v3 (`spec: "chara_card_v3"` với đối tượng `data` lồng nhau),
-- Tệp lưu trữ `.charx` (Character Card V3, định dạng mặc định mà các trang thẻ nhân vật cung cấp).
+- **Thẻ PNG** có siêu dữ liệu `chara` hoặc `char` được nhúng.
+- **thẻ JSON kiểu v2** có thuộc tính cấp cơ sở (`name`, `description`, `first_mes`).
+- **v3 thẻ JSON** (`spec: "chara_card_v3"` với đối tượng `data` lồng nhau).
+- **Kho lưu trữ `.charx`** (Gói Thẻ nhân vật V3).
 
-Tệp `.charx` là một tệp zip có chứa `card.json` nắm giữ thông tin nhân vật. TomoriBot đọc thẻ đó và bỏ qua mọi thứ khác trong tệp lưu trữ: các biểu tượng đi kèm, sprite cảm xúc, âm thanh và video đều không được nhập, và phản hồi nhập sẽ nêu rõ điều này. Hãy đặt ảnh đại diện bằng `/server avatar` và thêm sprite tại `/config` > Persona > Sprites.
+Tệp `.charx` là tệp lưu trữ ZIP chứa định nghĩa `card.json`. TomoriBot nhập văn bản ký tự từ `card.json` và bỏ qua các tệp nội dung đi kèm (biểu tượng, họa tiết, âm thanh, video). Bạn có thể đặt hình đại diện trong `/config` > `Persona` > Identity & Personal và thêm các họa tiết trong `/config` > `Persona` > Sprites.
 
-Nếu tệp không có siêu dữ liệu TomoriBot nhưng là một thẻ ST v2/v3 hợp lệ, quá trình nhập sẽ tự động xử lý qua quy trình chuyển đổi SillyTavern. Bạn cũng có thể đưa thẻ vào `/persona generate` để biến đổi thẻ thành một persona hoàn toàn mới.
+Nếu tệp đã tải lên là thẻ SillyTavern hợp lệ không có siêu dữ liệu TomoriBot thì quá trình nhập sẽ tự động chuyển đổi tệp đó. Bạn cũng có thể chuyển thẻ cho `/persona generate` để tạo ra một persona mới mẻ lấy cảm hứng từ persona.
 
-Dữ liệu nhập sẽ đi qua một bộ quy chuẩn xác thực trước khi được lưu lại (giới hạn mặc định: 5.000 ký tự mỗi chuỗi, 200 thuộc tính, 100 đoạn hội thoại mẫu mỗi bên, 100 từ kích hoạt; người self-hosting có thể tinh chỉnh các biến môi trường `PRESET_MAX_*`). Quá trình đọc tệp lưu trữ được giới hạn riêng bởi các biến môi trường `MAX_CHARX_*`, vì kích thước nén của tệp lưu trữ không thể hiện kích thước sau khi giải nén. Để biết chi tiết về ánh xạ trường và chuyển đổi chính xác, hãy xem [kiến trúc hỗ trợ thẻ nhân vật](/en/architecture/integrations/sillytavern/card-support/).
+Quá trình nhập được xác thực trước khi lưu (giới hạn mặc định: 5.000 ký tự cho mỗi trường văn bản, 200 thuộc tính, 100 đoạn hội thoại mẫu mỗi bên, 100 từ kích hoạt). Để biết cơ chế chuyển đổi và ánh xạ trường, hãy xem [kiến trúc hỗ trợ thẻ](/en/architecture/integrations/sillytavern/card-support/).
 
 ## Preset prompt
 <!-- anchor: prompt-presets -->
 
-Một preset Prompt Manager của SillyTavern kiểm soát bố cục của prompt. Dùng `/config` > Plugins > Preset SillyTavern để nhập preset, kiểm tra các node đang bật, chuyển đổi giữa các preset hoặc quay lại bố cục thông thường.
+Cài đặt trước Trình quản lý lời nhắc SillyTavern kiểm soát thứ tự và bố cục của lời nhắc được gửi đến model. Mở `/config` > `Plugin` > SillyTavern Presets để nhập cài đặt trước, chuyển đổi các nút riêng lẻ, chuyển đổi cài đặt trước đang hoạt động hoặc khôi phục định dạng mặc định.
 
 ### Những gì preset kiểm soát
 
-- Thứ tự prompt và vị trí đặt marker
-- Các node prompt tùy chỉnh
-- Các node chèn sau lịch sử hoặc chèn theo độ sâu
-- Các node đã nhập nào bắt đầu ở trạng thái bật hoặc tắt
+- Đặt hàng nhanh chóng và vị trí đánh dấu
+- Nút nhắc tùy chỉnh
+- Các nút sau lịch sử và tiêm sâu
+- Trạng thái kích hoạt ban đầu cho các nút đã nhập
 
-### Những gì preset *không* thay thế
+### Cái gì là một cài đặt trước không thay thế
 
-Một preset nắm quyền kiểm soát *bố cục*, chứ không phải mọi nguồn văn bản. Những thành phần sau vẫn tồn tại song song:
+Bố cục nhắc nhở cấu trúc đặt trước; nó không thay thế các nguồn văn bản điền vào nó:
 
-- Các khối hệ thống/persona của bạn: `/config` > Engine > General, `/config` > Persona > Nâng cao, các hành động thuộc tính và hội thoại mẫu trên `/config` > Persona > Identity & Personality.
-- Lịch sử trò chuyện trực tiếp và ngữ cảnh tài liệu được truy xuất.
-- Ngữ cảnh tự động của TomoriBot: bộ nhớ máy chủ, ngữ cảnh emoji/sticker, người dùng trong cuộc trò chuyện, bộ nhớ ngắn hạn, điều hòa hành vi và các khối tương tự.
+- Hướng dẫn hệ thống và các trường cá nhân: `/config` > `Hành vi` > `Hành vi chung`, `/config` > `Persona` > Nâng cao và `/config` > `Persona` > `Danh tính & Tính cách`.
+- Lịch sử trò chuyện trực tiếp và bối cảnh tài liệu được truy xuất.
+- Bối cảnh tự động: ký ức máy chủ, dữ liệu biểu tượng cảm xúc và sticker, danh sách người tham gia và ký ức ngắn hạn.
 
 ### Cách các khối mặc định ánh xạ
 
-- `main` → prompt hệ thống hiện tại (`/config` > Engine > General, nếu không sẽ dùng phương án dự phòng tích hợp sẵn)
-- `charDescription` → `/config` > Persona > Nâng cao
-- `charPersonality` → `/config` > Persona > Identity & Personality
-- `dialogueExamples` → `/config` > Persona > Identity & Personality
-- `chatHistory` → lịch sử kênh trò chuyện trực tiếp
-- `worldInfoBefore` / `worldInfoAfter` → ngữ cảnh tài liệu được truy xuất (không phải lorebook của ST)
+Các khối gốc ánh xạ trực tiếp tới các thành phần nhắc nhở TomoriBot:
+
+- `main`: lời nhắc hệ thống đang hoạt động (`/config` > `Hành vi` > `Hành vi chung` hoặc dự phòng mặc định)
+- `charDescription`: `/config` > `Persona` > Nâng cao
+- `charPersonality`: `/config` > `Persona` > `Danh tính & Tính cách`
+- `dialogueExamples`: `/config` > `Persona` > `Danh tính & Tính cách`
+- `chatHistory`: lịch sử tin nhắn kênh trực tiếp
+- `worldInfoBefore` và `worldInfoAfter`: bối cảnh tài liệu được truy xuất (không phải sách truyền thuyết SillyTavern)
 
 ### Quy tắc prompt hệ thống
 
-Khi một preset đang hoạt động, prompt hệ thống dự phòng tích hợp sẵn sẽ bị gỡ bỏ, nhưng nếu *bạn* tự đặt prompt riêng bằng `/config` > Engine > General, prompt đó vẫn được gửi đi.
+Khi giá trị đặt trước đã nhập được kích hoạt, lời nhắc hệ thống dự phòng tích hợp sẽ bị xóa. Tuy nhiên, nếu bạn định cấu hình lời nhắc hệ thống tùy chỉnh trong `/config` > `Hành vi` > `Hành vi chung`, lời nhắc đó luôn được bao gồm.
 
 ### Lưu ý về độ tương thích
 
-Những bất ngờ thường gặp khi preset có vẻ bị bỏ qua:
+- Các nút bị vô hiệu hóa trong `prompt_order` vẫn không hoạt động cho đến khi được bật trong Cài đặt sẵn `/config` > `Plugin` > SillyTavern. Các nút trống và chỉ nhận xét không bao giờ được gửi.
+- Thứ tự chặn theo nghĩa đen: đặt `chatHistory` trước `dialogueExamples` đặt lịch sử trò chuyện lên đầu tiên trong lời nhắc.
+- Nội dung chèn sau lịch sử sẽ hợp nhất vào lịch sử hội thoại hiện có thay vì gửi dưới dạng tin nhắn độc lập.
+- Không hỗ trợ xử lý hậu kỳ Regex, các tham số lấy mẫu được xác định trước (nhiệt độ, top-p) và cài đặt trước theo lớp. Nhập các cài đặt trước hoàn thành văn bản kế thừa với các khối chỉ ST bị loại bỏ.
 
-- Nhập vào ≠ được gửi đi: các node bị tắt trong `prompt_order` sẽ tiếp tục tắt cho đến khi bạn bật lên trong `/config` > Plugins > Preset SillyTavern. Các node chỉ chứa ghi chú hoặc trống sẽ không bao giờ được gửi; các marker không xác định sẽ bị bỏ qua.
-- Thứ tự là chính xác tuyệt đối: đặt `chatHistory` trước `dialogueExamples` sẽ gửi trò chuyện trực tiếp lên trước.
-- Các mục chèn sau lịch sử hoặc chèn theo độ sâu sẽ được hợp nhất vào các mục lịch sử trò chuyện hiện có thay vì trở thành tin nhắn độc lập; nhiều node ở cùng một độ sâu sẽ được gom nhóm lại.
-- Xử lý hậu kỳ Regex, tùy chỉnh ưu tiên nhiệt độ/top-p/model từ phía preset và các preset phân lớp đều không được hỗ trợ. Các preset hoàn thành văn bản kế thừa được nhập qua quy trình hỗ trợ tối đa, tự động loại bỏ các khối chỉ có ở ST (kịch bản, anchor, stop string, …).
-
-Trong `/help`, chọn Integrations, rồi chọn `Preset SillyTavern`, để xem tài liệu tham khảo trong Discord. Về cơ chế nội bộ của bộ máy nhập, hãy xem [kiến trúc hệ thống preset](/en/architecture/integrations/sillytavern/preset-system/).
+Trong `/help`, chọn `Plugin`, sau đó là `Preset SillyTavern` để có hướng dẫn Discord. Để biết cách xử lý đặt trước bên trong, hãy xem [kiến trúc hệ thống đặt trước](/en/architecture/integrations/sillytavern/preset-system/).

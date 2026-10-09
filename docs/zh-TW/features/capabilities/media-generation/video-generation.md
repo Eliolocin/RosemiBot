@@ -4,29 +4,29 @@ sidebar:
   order: 2
 ---
 
-TomoriBot 可以依文字提示詞生成短片，也可以把參考圖片做成動畫。使用 `/generate video`，或直接請她。
+TomoriBot可以根據文字提示或透過對現有圖像進行動畫處理來產生短影片。使用`/generate video`，或直接在聊天中詢問她。
 
 ## 她可以做什麼
 
-- **文字生影片**：依提示詞生成一段短片。
-- **圖片生影片**：把參考圖片做成動畫（被參考訊息中的第一張圖片會成為起始畫面）。
-- **循環圖片生影片**：透過聊天要求時，支援的模型可以把起始圖片重複用作結尾畫面。
-- 可自訂的長寬比。
+- **文字轉影片**：根據描述產生短片。
+- **圖像到影片**：將圖像動畫化。引用訊息中的第一個影像成為起始幀。
+- **循環圖像到視訊**：當透過聊天請求時，支援的模型可以重複使用起始圖像作為最終幀。
+- **可自訂的寬高比**。
 
-圖片生影片與循環功能取決於所選模型的首格與末格能力。TomoriBot 會在送出付費工作之前檢查 OpenRouter 目前的影片模型目錄，必要時請你移除圖片、關閉循環，或選擇相容的模型。
+影像到視訊和循環取決於所選模型的第一幀和最後一幀支援。TomoriBot在提交產生之前檢查OpenRouter的模型目錄，並提示你是否需要為所選模型刪除影像或循環。
 
-影片生成採用非同步輪詢流程：請求送出後，TomoriBot 會持續輪詢供應商，直到完成的短片就緒，然後在完成時發布。較大的短片可能需要一段時間。
+產生影片需要時間：TomoriBot將作業提交給供應商，在後台檢查是否完成，並在準備好後將完成的影片發佈到頻道。
 
 ## 設定
 
-1. 用 `/config` > 模型 > 切換模型 設定影片模型。
-2. 確認媒體生成已透過 `/config` > 權限 獲得允許。
-3. 請她生成，或執行 `/generate video`。
+1. 在「`/config` > `模型` > 切換型號」中選擇影片型號。
+2. 確認`/config` > `權限` (`video_generation_enabled`) 中啟用了影片產生。
+3. 在聊天中詢問她，或運行`/generate video`。
 
 ## 供應商支援
 
-原生影片生成可在 Google、OpenRouter 與 Z.ai 上使用。完整對照表請看[供應商與模型](/zh-TW/features/setup-administration/providers-and-models/#支援的供應商)。
+本機影片產生功能可在Google、OpenRouter和Z.ai上使用。請參閱[供應商和模型](/zh-TW/features/setup-administration/providers-and-models/#supported-providers) 中的完整矩陣。
 
-要透過 ComfyUI 做本機影片生成（例如 WAN 圖片生影片工作流），請看[設定：ComfyUI](/zh-TW/self-hosting/local-endpoints/setup-comfyui/)。
+透過ComfyUI產生本機視訊（例如WAN影像到視訊工作流程），請參閱[設定：ComfyUI](/zh-TW/self-hosting/local-endpoints/setup-comfyui/)。
 
-關於內部的生成與輪詢架構，請看[影片生成](/en/architecture/subsystems/video-generation/)的參考。
+內部生成和輪詢架構，請參閱[視訊產生](/en/architecture/subsystems/video-generation/)上的參考。

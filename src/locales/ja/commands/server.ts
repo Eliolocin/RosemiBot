@@ -10,9 +10,9 @@ export default {
       },
       "prompt-edit": {
         tool_description_label: `ツール説明`,
-        tool_description_description: `STM更新ツールがモデルに提示する説明文。{short_term_memory_tool} マクロを使用可。`,
+        tool_description_description: `STMツールがモデルに提示する説明文。`,
         update_nudge_label: `メモリの促し`,
-        update_nudge_description: `STMの作成・更新を促すために挿入されます。{short_term_memory_tool} マクロを使用可。`,
+        update_nudge_description: `モデルにSTMツールの使用を促すためにコンテキストへ挿入されるプロンプト。`,
       },
       "categories-edit": {
         slot_1_label: `カテゴリ 1`,
@@ -49,7 +49,7 @@ export default {
       servermemories_desc: `サーバー記憶の追加・削除`,
       attributelist_desc: `性格属性の追加・削除`,
       sampledialogues_desc: `サンプル対話の追加・削除`,
-      promptsnapshot_desc: `/tool prompt snapshot を使用`,
+      promptsnapshot_desc: `/context および /tool prompt snapshot からプロンプト全文を閲覧`,
       select_placeholder: `メンバーに許可することを選択...`,
       select_embed_title: `メンバー教育権限`,
       select_embed_description: `管理者以外のメンバーが**教えられる**ことを選択してください。チェックあり = 許可。`,

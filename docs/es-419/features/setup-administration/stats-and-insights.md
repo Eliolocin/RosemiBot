@@ -4,41 +4,34 @@ sidebar:
   order: 4
 ---
 
-TomoriBot registra el uso para que puedas ver quién habla con quién, qué personas y modelos se
-usan, y qué herramientas se activan; luego lo convierte en una infografía para compartir.
+TomoriBot rastrea las métricas de interacción para que pueda inspeccionar las tendencias de actividad, modelar el uso de tokens, personas populares y llamadas de herramientas, o generar tarjetas de resumen infográficas que se puedan compartir.
 
 ## Paneles de texto
 
-Tres comandos abren un panel interactivo con pestañas (Resumen, Personas, Modelos y costo,
-Herramientas y comandos, Expresión, Personas favoritas, Tabla de clasificación):
+Tres comandos abren un panel interactivo con pestañas:
 
-Las pestañas de texto son paneles públicos duraderos controlados por quien los invocó.
-Permanecen disponibles hasta que se elimina el mensaje, y otro usuario no puede operar los
-controles.
+- `/stats personal`: vea sus propias estadísticas de uso.
+- `/stats persona`: ver las estadísticas de uso de una persona específica en este servidor.
+- `/stats server`: vea estadísticas de todo el servidor de todos los miembros y personas.
 
-- `/stats personal`: tu propio uso.
-- `/stats persona`: el uso de una persona en este servidor.
-- `/stats server`: el uso de todo el servidor.
+Cada panel incluye pestañas para Descripción general, Personas, Modelos y costos, Herramientas y comandos, Expresión, Personas favoritas y Tablas de clasificación.
 
-La mayoría admite una ventana de período, y las estadísticas personales pueden limitarse a
-este servidor o abarcar todos los servidores.
+La mayoría de los subcomandos le permiten especificar una ventana de tiempo (como 7 días, 30 días o todo el tiempo). Las estadísticas personales se pueden limitar al servidor actual o a todos los servidores donde usa TomoriBot.
+
+Los paneles de texto son mensajes públicos duraderos controlados por el invocador. Permanecen interactivos hasta que se descartan o eliminan, y otros miembros no pueden manipular los controles de su panel.
 
 :::note
-Los conteos de tokens son el uso reportado por el propio proveedor cuando está disponible
-(se usa una estimación basada en caracteres solo para proveedores que no reportan ninguno). El
-costo valora esos tokens a las tarifas de lista del catálogo de modelos, así que puede
-diferir de tu factura real (caché de prompts, descuentos, cuotas de nivel gratuito, etc.).
+Los recuentos de tokens reflejan el uso informado por el proveedor cuando están disponibles (una estimación basada en caracteres se utiliza solo para proveedores que omiten métricas de tokens). Las cifras de costos valoran esos tokens según las tarifas de lista del catálogo de modelos, por lo que pueden diferir de su factura real debido al almacenamiento en caché rápido, descuentos de proveedores o cuotas de nivel gratuito.
 :::
 
 ## Tarjetas de infografía para compartir
 
-`/stats generate` genera una tarjeta de imagen pulida que puedes soltar en el chat:
+Ejecuta `/stats generate` para generar una tarjeta de imagen resumida pulida que puede compartir directamente en el chat:
 
-- **Resumen Personal**: tu actividad personal, al estilo Spotify Wrapped.
-- **Afinidad de Persona**: las estadísticas de una persona en este servidor.
-- **Clasificación del Servidor**: posiciones a nivel de todo el servidor.
+- **Envoltura personal**: resume tu actividad personal y tus personajes favoritos.
+- **Afinidad de persona**: destaca las estadísticas de una persona específica y los principales socios de conversación en este servidor.
+- **Tabla de clasificación del servidor**: muestra la actividad en todo el servidor y la clasificación de los miembros.
 
-Los usuarios con privacidad total (`/personal config`) no pueden generar tarjetas personales.
+Los usuarios con su nivel de privacidad establecido en `Completo` en `/personal config` no pueden generar tarjetas de estadísticas personales.
 
-Para saber cómo se componen y renderizan las tarjetas, consulta la referencia de arquitectura
-del [subsistema de infografía de estadísticas](/en/architecture/subsystems/stats-infographic/).
+Para obtener detalles sobre cómo se componen y representan las tarjetas, consulte el [subsistema de infografía de estadísticas](/en/architecture/subsystems/stats-infographic/).

@@ -4,65 +4,44 @@ sidebar:
   order: 2
 ---
 
-TomoriBot có thể đặt lời nhắc và lên lịch tác vụ cho sau này (một lần hoặc định kỳ). Cách dễ nhất
-là chỉ cần yêu cầu bot; bot sẽ tạo tác vụ thông qua công cụ `create_task`. Các tác vụ theo
-lịch được liên kết riêng với từng persona.
+Đặt lời nhắc cho chính bạn hoặc lên lịch thông báo định kỳ mà không cần rời khỏi cuộc trò chuyện. Hãy hỏi trực tiếp bot và cô ấy sẽ tạo lịch trình cho bạn. Nhiệm vụ theo lịch trình thuộc về persona tích cực.
 
-Mỗi persona luôn giữ các tác vụ tự thực hiện đang chờ xử lý trong ngữ cảnh mỗi khi phản hồi, bất kể
-thành viên nào xuất hiện trong cuộc trò chuyện gần đây. Lời nhắc nhắm đến người dùng sẽ có chọn lọc
-hơn: đối tượng mục tiêu phải có mặt hoặc được tham chiếu trong ngữ cảnh trò chuyện đang hoạt động,
-và lời nhắc phải thuộc về persona đang hoạt động.
+Lời nhắc sẽ thông báo cho người dùng mục tiêu khi họ kích hoạt, trong khi tự thực hiện nhiệm vụ là những hành động mà cá nhân đó tự thực hiện vào thời gian đã lên lịch.
 
 ## Tạo một tác vụ
 
-Chỉ cần nói với bot trong đoạn chat:
+Nói với cô ấy những gì cần lên lịch trong cuộc trò chuyện:
 
 ```text
 remind me to submit the report at 14:30
 every Friday at 8pm, post a reminder that game night is starting
 ```
 
-Bot sẽ phân tích thời gian cùng tần suất lặp lại và lên lịch tác vụ. Lời nhắc sẽ ping người dùng mục tiêu
-khi đến giờ kích hoạt; tác vụ là các hành động tự thực hiện âm thầm mà persona tiến hành vào thời gian đã định.
+Cô phân tích thời gian được yêu cầu và sự lặp lại. Lời nhắc ping người dùng mục tiêu khi họ kích hoạt. Nhiệm vụ là những hành động thầm lặng mà cá nhân thực hiện khi thời điểm đến.
 
 ## Múi giờ
 
-Thời gian tuyệt đối ("lúc 14:30", "vào thứ Sáu lúc 20:00") mặc định được hiểu theo múi giờ của máy chủ
-(`/config` > Engine > General). Nếu bạn đã đặt múi giờ cá nhân bằng `/personal config`, AI sẽ nhìn thấy
-đồng hồ địa phương của bạn trong ngữ cảnh và gắn nhãn thời gian của bạn kèm độ lệch UTC khi tạo tác vụ; bot
-sau đó sẽ thực hiện chuyển đổi một cách chính xác, vì vậy "nhắc tôi lúc 9 giờ sáng" nghĩa là 9 giờ sáng của
-*bạn* ngay cả khi máy chủ ở một châu lục khác. Thời gian tương đối ("trong 2 giờ nữa") không phụ thuộc
-múi giờ và luôn an toàn.
+Thời gian tuyệt đối (chẳng hạn như "lúc 14:30" hoặc "vào thứ Sáu lúc 8 giờ tối") sử dụng múi giờ của máy chủ (`/config` > `Hành vi` > `Hành vi chung`) theo mặc định. Nếu bạn đặt múi giờ của riêng mình bằng `/personal config`, bot sẽ tự động chuyển đổi giờ địa phương của bạn. "nhắc tôi lúc 9 giờ sáng" nghĩa là 9 giờ sáng của bạn, ngay cả khi máy chủ ở múi giờ khác. Thời gian tương đối (chẳng hạn như "trong 2 giờ") không phụ thuộc vào múi giờ và luôn an toàn.
 
-Khi một lời nhắc nhắm đến người dùng có múi giờ cá nhân khác với máy chủ, embed xác nhận sẽ hiển thị
-cả hai đồng hồ (giờ máy chủ và giờ địa phương của mục tiêu), giúp bạn nhận ra ngay thời gian bị gắn sai
-nhãn và sửa bằng tin nhắn tiếp theo hoặc qua `/scheduled-task edit`.
+Khi lời nhắc nhắm mục tiêu đến người dùng có múi giờ cá nhân khác với múi giờ của máy chủ, xác nhận sẽ hiển thị cả hai đồng hồ: giờ máy chủ và giờ địa phương của mục tiêu. Nếu thời gian bị gắn nhãn sai, hãy sửa nó bằng tin nhắn tiếp theo hoặc `/scheduled-task edit`.
 
 ## Quản lý tác vụ
 
-Hai lệnh slash cho phép bạn xem lại và điều chỉnh các lịch trình hiện có:
+Hai lệnh gạch chéo cho phép bạn xem lại và điều chỉnh lịch trình hiện có:
 
-- `/scheduled-task edit`: thay đổi nội dung tác vụ, thời gian kích hoạt tiếp theo, khoảng thời gian lặp lại,
-  hoặc điều chỉnh xem đó có phải là lời nhắc hay không. Đặt khoảng thời gian thành `0` để tắt tính năng lặp lại.
-- `/scheduled-task remove`: xóa một lời nhắc hoặc tác vụ.
+- `/scheduled-task edit`: thay đổi nội dung của nhiệm vụ, thời gian kích hoạt tiếp theo, khoảng thời gian lặp lại hoặc mục tiêu nhắc nhở. Đặt khoảng thời gian thành `0` để thực hiện tác vụ định kỳ một lần.
+- `/scheduled-task remove`: xóa lời nhắc hoặc nhiệm vụ.
 
-Cả hai lệnh đều mở một bảng chọn liệt kê các lịch trình hiện có của bạn (persona, thời gian, kênh và tần suất
-lặp), vì vậy bạn không cần phải ghi nhớ ID.
+Cả hai lệnh đều mở một bộ chọn liệt kê các lịch trình hiện có của bạn theo cá nhân, thời gian, kênh và tần suất lặp lại.
+
+Một máy chủ có thể lưu tối đa 100 lời nhắc và tác vụ đang chờ xử lý cùng một lúc. Khi đạt giới hạn, TomoriBot sẽ thông báo cho bạn thay vì thêm mới; hãy xóa các mục cũ bằng `/scheduled-task remove` để có thêm chỗ trống.
 
 ## Cách thức gửi hoạt động
 
-Lời nhắc được gửi bởi bộ lập lịch trong ứng dụng và chỉ được đánh dấu là hoàn tất sau khi gửi thành công:
-nếu một lần gửi bị hủy hoặc hàng đợi kênh bị xóa, tác vụ sẽ tự động được thử lại. Độ trễ thử lại không làm thay
-đổi chu kỳ lặp lại ban đầu.
+Lời nhắc chỉ được đánh dấu là hoàn thành sau khi gửi thành công. Nếu quá trình phân phối bị gián đoạn, TomoriBot sẽ tự động thử lại mà không làm thay đổi lịch định kỳ.
 
-Các lần thử tự động không gửi thông báo lỗi mỗi lần. Nếu việc gửi vẫn thất bại sau giới hạn số lần thử lại,
-TomoriBot sẽ đăng một cảnh báo chứa nội dung đã lên lịch không thay đổi kèm ID của tác vụ. Lời nhắc người dùng
-bị thất bại sẽ ping đối tượng mục tiêu để không bị bỏ lỡ lời nhắc; tác vụ tự thực hiện bị thất bại sẽ không
-ping bất kỳ ai. Các lịch trình một lần sau đó sẽ bị xóa, trong khi lịch trình định kỳ vẫn hoạt động cho lần diễn
-ra ban đầu tiếp theo và có thể được quản lý bằng `/scheduled-task edit` hoặc `/scheduled-task remove`. Để biết
-chi tiết về runtime, hãy xem [tổng quan kiến trúc](/en/architecture/#runtime-extensions).
+Nếu quá trình phân phối không thành công liên tục và đạt đến giới hạn thử lại, TomoriBot sẽ đăng một cảnh báo kèm theo nội dung và ID tác vụ đã lên lịch. Lời nhắc của người dùng không thành công sẽ ping mục tiêu để lời nhắc không bị bỏ lỡ, trong khi các tác vụ tự thực hiện không thành công sẽ không gửi ping. Sau đó, lịch trình một lần sẽ bị xóa, trong khi lịch trình định kỳ vẫn hoạt động cho lần xuất hiện tiếp theo và có thể được quản lý bằng `/scheduled-task edit` hoặc `/scheduled-task remove`.
 
 ---
 
-Lên lịch là một trong nhiều tính năng agentic; xem
-[Công cụ & tiện ích mở rộng](/vi/features/capabilities/tools-and-extensions/) để có cái nhìn toàn diện.
+Để biết thêm các tính năng, hãy xem [Công cụ & tiện ích mở rộng](/vi/features/capabilities/tools-and-extensions/).

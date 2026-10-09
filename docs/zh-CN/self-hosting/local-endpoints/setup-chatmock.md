@@ -1,43 +1,41 @@
 ---
-title: "配置：通过 ChatMock 使用 Codex CLI"
+title: "配置：通过ChatMock使用Codex CLI"
 sidebar:
   order: 5
 ---
 
-如果你想让 TomoriBot 通过一个本地 OpenAI 兼容桥接层使用你的 ChatGPT 账户，可以运行 [ChatMock](https://github.com/RayBytes/ChatMock)，并让 TomoriBot 的 `custom` 提供方指向它。
+使用 [ChatMock](https://github.com/RayBytes/ChatMock) 通过本地OpenAI兼容桥将TomoriBot连接到你的ChatGPT帐户。
 
-## ChatMock 做什么
+ChatMock运行接受标准OpenAI请求的本地API服务器，允许TomoriBot的`custom`提供商通过你的帐户路由聊天完成。
 
-- ChatMock 运行一个本地 OpenAI 兼容 API 服务器
-- TomoriBot 可以通过 `custom` 提供方使用这个本地服务器
+## 1. 启动ChatMock
 
-## 1. 启动 ChatMock
+按照 [ChatMock存储库](https://github.com/RayBytes/ChatMock) 中的说明安装ChatMock。
 
-按 ChatMock 在 GitHub 上的说明安装并启动它：
+验证并启动本地服务器：
 
-- [ChatMock 仓库](https://github.com/RayBytes/ChatMock)
-
-安装之后运行：
 ```sh
 chatmock login
 chatmock serve
 ```
 
-默认情况下，ChatMock 监听 `http://127.0.0.1:8000/v1`
+默认情况下，ChatMock监听`http://127.0.0.1:8000/v1`。
 
-## 2. 配置 TomoriBot 使用 ChatMock
+## 2、配置TomoriBot
 
-在 Discord 里配置 TomoriBot 的 `custom` 提供方，并使用：
+在Discord中，使用以下设置配置TomoriBot的`custom`提供程序：
 
-- **端点 URL**：`http://127.0.0.1:8000/v1`
-- **模型名称**：ChatMock 应当收到的确切模型字符串，例如 `gpt-5.4` 或 `gpt-5.3-codex`
+- **端点URL**：`http://127.0.0.1:8000/v1`
+- **型号名称**：期望的型号标识符ChatMock，例如`gpt-5.4`或`gpt-5.3-codex`
 
-只写 `http://127.0.0.1:8000` 也可以：TomoriBot 会先把它规范化为 `/v1`，再追加 `/chat/completions`。
+裸`http://127.0.0.1:8000`也可以工作：在附加`/chat/completions`之前，TomoriBot将其标准化为`/v1`。
 
-为 ChatMock 启用这些能力标记：
-- **函数调用与工具**：是
+为ChatMock启用这些功能标志：
+- **函数调用/工具**：是
 - **图像理解**：是
 - **视频理解**：否
 - **结构化输出**：是
 
-**注意**：Codex CLI 不允许你更改它的 `system` 提示词，所以作为兼容处理，TomoriBot 的 `system` 提示词会在上下文中变成一个 `user` 回合。请把 `CHATMOCK_PORT` 这个 .env 变量配置成你实际的 ChatMock 端口，好让这个兼容处理正常工作（默认 8000）。
+:::note[System prompt handling and port configuration]
+Codex CLI不允许自定义`system`提示，因此TomoriBot将`system`指令转换为初始`user`指令。在`.env`中设置`CHATMOCK_PORT`以匹配你的ChatMock端口（默认为`8000`），以便TomoriBot识别端点并应用此提示调整。
+:::

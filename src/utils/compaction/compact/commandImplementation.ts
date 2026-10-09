@@ -38,6 +38,7 @@ import {
 import { generateCompactSummary } from "./summaryGeneration";
 import { buildSupplementaryContext } from "./supplementaryContext";
 import type { SendableChannel } from "./types";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{17,20}$/;
 
@@ -429,7 +430,7 @@ async function editError(
   await interaction.editReply({
     embeds: [
       new EmbedBuilder()
-        .setTitle(localizer(locale, titleKey))
+        .setTitle(localizedStatusTitle(locale, titleKey, ColorCode.ERROR))
         .setDescription(localizer(locale, descriptionKey, descriptionVars))
         .setColor(ColorCode.ERROR),
     ],
@@ -827,7 +828,7 @@ async function editSuccess(
   await interaction.editReply({
     embeds: [
       new EmbedBuilder()
-        .setTitle(localizer(locale, "commands.compact.success_title"))
+        .setTitle(localizedStatusTitle(locale, "commands.compact.success_title", ColorCode.SUCCESS))
         .setDescription(successDescription)
         .setColor(ColorCode.SUCCESS),
     ],

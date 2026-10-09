@@ -5,49 +5,41 @@ sidebar:
   groupLabel: "06: Per-Turn"
 ---
 
-This folder documents the body of the loop in
-[`tomoriChat.ts`](../README): the four stages that execute once per
-responding persona inside `runWithChannelLock`.
+The per-turn loop executes inside `runWithChannelLock()`. It iterates through each planned persona turn,
+building the LLM context, configuring the Discord response sink, executing provider generation, and
+dispatching post-turn effects.
 
-## Loop semantics
+## Loop sequence
 
 ```ts
 for (const turn of turnPlan.turns) {
-  const context = await buildChatTurnContext(turn);          // 01
-  const responseSink = createChatResponseSink(context);      // 02
+  const context = await buildChatTurnContext(turn);              // 01
+  const responseSink = createChatResponseSink(context);          // 02
   const result = await runGenerationTurn(context, responseSink); // 03
-  await runPostTurnEffects(context, result);                 // 04
+  await runPostTurnEffects(context, result);                     // 04
 }
 ```
 
-- **Iteration scope:** one iteration = one persona's reply attempt. A
-  3-persona reply runs the body 3 times under a single channel lock.
-- **Carried state:** stages 01-03 share the same `ChatTurnContext` closure.
-  Stage 01 builds it; stages 02-03 may mutate it (`responseTarget`,
-  `tomoriState`, `contextItems`). Stage 04 reads it after generation finishes.
-- **No persona-to-persona dependency:** each iteration is structurally
-  independent. The next iteration sees the *Discord-visible* effects of the
-  previous one (the previous persona's reply now appears in the channel
-  history), but not its in-memory state.
-- **Multi-persona reality:** when `turnPlan.turns.length > 1`, only the
-  *first* persona runs in this loop. Stage 05 (`planChatTurns`) queues the
-  rest at the *front* of the channel queue so they replay immediately after
-  lock release. So in practice each loop instance runs body once or twice,
-  not for all matched personas at once.
+- **Iteration scope**: each iteration handles one persona's reply attempt. Because `planChatTurns()` places
+  additional matching personas at the front of the channel queue, a single invocation typically processes
+  one persona turn; subsequent personas execute as distinct replayed turns.
+- **Shared closure**: stages 01 through 04 operate on the `ChatTurnContext` closure. Stage 01 constructs it,
+  stage 02 attaches the response sink, stage 03 records attempt metadata, and stage 04 consumes the result.
+- **Turn independence**: each iteration executes independently. Subsequent turns observe the Discord-visible
+  messages sent by earlier turns through channel history rather than shared memory.
 
 ## Stage index
 
-| # | Stage | File | Mission |
-|---|-------|------|---------|
-| 01 | `buildChatTurnContext` | [`01-build-context.md`](./01-build-context) | Assemble the LLM-visible prompt for this turn. |
-| 02 | `createChatResponseSink` | [`02-create-response-sink.md`](./02-create-response-sink) | Resolve Discord delivery target + emit/finalize callbacks. |
-| 03 | `runGenerationTurn` | [`03-run-generation-turn.md`](./03-run-generation-turn) | Drive provider call with fallback chain + key rotation. |
-| 04 | `runPostTurnEffects` | [`04-post-turn-effects.md`](./04-post-turn-effects) | Run the post-generation side-effect sequence. |
+| # | Stage | Guide | Ownership |
+|---|---|---|---|
+| 01 | `buildChatTurnContext` | [06.1: Build Context](/architecture/pipelines/chat/06-per-turn/01-build-context/) | Fetches message history, applies annotations, and builds prompt items. |
+| 02 | `createChatResponseSink` | [06.2: Response Sink](/architecture/pipelines/chat/06-per-turn/02-create-response-sink/) | Resolves webhook or channel delivery targets and lifecycle callbacks. |
+| 03 | `runGenerationTurn` | [06.3: Generation Turn](/architecture/pipelines/chat/06-per-turn/03-run-generation-turn/) | Drives model fallback attempts, key rotation, and superseded message deletion. |
+| 04 | `runPostTurnEffects` | [06.4: Post-Turn Effects](/architecture/pipelines/chat/06-per-turn/04-post-turn-effects/) | Dispatches empty retries, quota deduction, STM caching, thought logs, and boomerangs. |
 
 ## Cross-references
 
-- Stage 01 delegates to the [context-build pipeline](../../context-build/).
-- Stage 03 delegates to the [tool-loop pipeline](../../tool-loop/)
-  and the [provider pipeline](../../provider/).
-- Stage 04 writes to [memory](../../memory/) and
-  schedules boomerang follow-ups via `crossChannelMessageTool`.
+- [Context-Build Pipeline](/architecture/pipelines/context-build/): prompt composition, RAG, and memory hydration.
+- [Tool-Loop Pipeline](/architecture/pipelines/tool-loop/): function calling, iteration limits, and tool execution.
+- [Provider Pipeline](/architecture/pipelines/provider/): streaming HTTP connections, token limits, and Discord delivery.
+- [Memory Pipeline](/architecture/pipelines/memory/): short-term memory caching and storage.

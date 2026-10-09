@@ -1,8 +1,8 @@
 ---
 title: "Aphel, la melancólica"
-aiGenerated: true
 sidebar:
   order: 3
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Source: src/db/seed/catalog/personas/gloomy/en-US.ts.

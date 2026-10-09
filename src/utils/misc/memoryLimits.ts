@@ -30,9 +30,6 @@ export interface MemoryLimits {
   maxDocumentChunksPerServer: number;
 }
 
-/**
- * Result of memory limit validation
- */
 export interface MemoryValidationResult {
   isValid: boolean;
   error?: MemoryValidationError;
@@ -40,9 +37,6 @@ export interface MemoryValidationResult {
   maxAllowed?: number;
 }
 
-/**
- * Types of memory validation errors
- */
 type MemoryValidationError =
   | "CONTENT_TOO_LONG"
   | "PERSONAL_MEMORY_LIMIT_EXCEEDED"

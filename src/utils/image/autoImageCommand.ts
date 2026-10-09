@@ -305,7 +305,12 @@ export async function executeAutoImageCommand(
     });
     return;
   }
-  const { tomoriState } = await applyPersonalProviderSelectionsToTomoriState(baseTomoriState, userData.user_id ?? null);
+  let activeConfigs:
+    | Awaited<ReturnType<typeof applyPersonalProviderSelectionsToTomoriState>>["activeConfigs"]
+    | undefined;
+  const overlay = await applyPersonalProviderSelectionsToTomoriState(baseTomoriState, userData.user_id ?? null);
+  const { tomoriState } = overlay;
+  activeConfigs = overlay.activeConfigs;
 
   const personaSummaries = await loadServerPersonaSummaries(tomoriState.server_id);
   const invokingMember = interaction.member as import("discord.js").GuildMember | null;
@@ -617,6 +622,13 @@ export async function executeAutoImageCommand(
     });
 
     if (!agentResult.success) {
+      const isPersonalText = Boolean(activeConfigs?.text);
+      const tipKeys = [
+        "genai.tips.refresh_context",
+        ...(isPersonalText
+          ? ["genai.tips.disable_personal_text_override", "genai.tips.switch_model_provider_personal"]
+          : ["genai.tips.switch_model_provider"]),
+      ];
       await replyInfoEmbed(modalSubmitInteraction, locale, {
         titleKey: "commands.tool.visualize.planner_failed_title",
         descriptionKey: "commands.tool.visualize.planner_failed_description",
@@ -624,6 +636,7 @@ export async function executeAutoImageCommand(
           error: agentResult.error ?? "Unknown image generation error",
         },
         color: ColorCode.ERROR,
+        tipKeys,
       });
       return;
     }
@@ -659,11 +672,19 @@ export async function executeAutoImageCommand(
     });
 
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const isPersonalText = Boolean(activeConfigs?.text);
+    const tipKeys = [
+      "genai.tips.refresh_context",
+      ...(isPersonalText
+        ? ["genai.tips.disable_personal_text_override", "genai.tips.switch_model_provider_personal"]
+        : ["genai.tips.switch_model_provider"]),
+    ];
     await replyInfoEmbed(modalSubmitInteraction, locale, {
       titleKey: "commands.generate.image.error_generation_failed_title",
       descriptionKey: "commands.generate.image.error_generation_failed_description",
       descriptionVars: { error: errorMessage },
       color: ColorCode.ERROR,
+      tipKeys,
     });
   }
 }

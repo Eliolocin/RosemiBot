@@ -2,201 +2,86 @@
 title: "04: Channel Lock"
 ---
 
-Per-channel mutex wrapper around the per-turn body.
+The channel lock enforces single-turn concurrency per Discord channel. It manages the Discord typing
+keepalive indicator, coordinates user interruptions and cancellations, and replays queued messages
+when the lock releases.
 
-- **File**: `src/utils/chat/channelQueue.ts:75-134`
+## Flow and ownership
 
-> Concurrency wrapper, not a data-transform stage. Input and output are
-> structurally the same (`RunnableChatAdmission` flows in; the callback receives
-> a `LockedChatTurn` derived from it). What this stage *does* is enforce that
-> exactly one turn-sequence runs per channel at a time, manage the Discord
-> typing indicator, and replay queued messages on release.
+`runWithChannelLock()` in `src/utils/chat/channelQueue.ts` wraps turn planning and execution inside a
+per-channel mutex backed by the in-memory `channelLocks` map.
 
-## Mission
-
-Acquire a channel-scoped mutex, run the per-turn callback under that lock with a
-Discord typing keepalive active, and on release: replay the next queued message
-and/or trigger any pending stop-response generation. Make recursive re-entries
-into `tomoriChat()` safe by recognizing the `skipLock=true` flag and reusing the
-outer lock instead of deadlocking on it.
-
-## Input
-
-- `RunnableChatAdmission` (from stage 02).
-- `callback: (LockedChatTurn, startTyping) => Promise<T>`: receives the locked
-  turn and a function that starts the typing keepalive.
-- `options: { handleStopResponse, processQueuedMessage }`: the coordinator's
-  re-entry callbacks for stop-response and queued messages.
-
-## Output
-
-`Promise<T>`: the callback's return value, pass-through.
-
-The callback receives `LockedChatTurn`:
-
-```ts
-{
-  admission: RunnableChatAdmission;
-  channelId: string;
-  lockedAt: number;
-  queueDepth: number;
-  skipLock: boolean;
+```
+runWithChannelLock(admission, callback)
+  │
+  ├─► skipLock === true? ─────────────────► invoke callback(reuseOuterLock)
+  │
+  ├─► releaseStaleChannelLockIfExpired()
+  ├─► acquireChannelLockForTurn()         ──► sets isLocked, initializes AbortController
+  │
+  ▼
+try {
+  callback(lockedTurn, startTyping)       ──► startDiscordTypingKeepalive() (8s cadence)
+} finally {
+  releaseChannelLockAndReplayQueue()      ──► stops typing, aborts turn controller
+    │
+    ├─► stopContext present?              ──► setImmediate(handleStopResponse)
+    └─► messageQueue has items?           ──► setImmediate(processQueuedMessage)
 }
 ```
 
-## Side effects
+### Mutex acquisition and re-entrancy
 
-### Lock acquisition (if `skipLock === false`)
+When an admitted turn arrives:
 
-- Looks up or creates a `ChannelLockEntry` keyed by `channelId` in the in-memory
-  `channelLocks` map.
-- Forcibly releases the lock if its last heartbeat is older than
-  `CHANNEL_LOCK_TIMEOUT_MS` (default 180s, configurable via env). Logs a warning,
-  aborts the turn abort controller, fires the stream kill callback, and clears
-  the existing queue. Staleness is measured from `lastProgressAt`, which
-  `touchChannelLock` refreshes on every stream heartbeat; `lockedAt` stays the
-  turn's start. A lock is never stale while a `runUnderWatchdog` phase is in
-  flight (the stream race and the tool-execution race), because each carries its
-  own timeout. Work outside those phases keeps the stale-lock recovery.
-- Sets `isLocked = true`, records `lockedAt`, `currentMessageId`, `userDiscId`,
-  persona-job/persona-id/command-triggered flags.
-- Creates a fresh `AbortController` (`activeTurnAbortController`) for this
-  turn. Its signal is passed to tools via `ToolContext.abortSignal` so HTTP-level
-  cancellation propagates on `/kill`.
+- **Re-entrant turns**: calls passing `skipLock=true` (such as empty-response retries) reuse the existing
+  lock entry and its active typing keepalive without acquiring a new lock or resetting timers.
+- **Lock acquisition**: `acquireChannelLockForTurn()` sets `isLocked = true`, records `lockedAt` and
+  `lastProgressAt`, and creates a fresh `AbortController` (`activeTurnAbortController`). The signal is
+  available to executing tools via `ToolContext.abortSignal`.
+- **Stale lock recovery**: `releaseStaleChannelLockIfExpired()` checks whether `lastProgressAt` is older
+  than `CHANNEL_LOCK_TIMEOUT_MS` (180s). If expired, it aborts the active turn controller, fires the
+  stream kill handle, clears queued messages, and resets the lock. Active operations using `runUnderWatchdog`
+  (such as streaming chunks and tool calls) suppress stale-lock recovery because they enforce their own timeouts.
 
-### During the callback
+### Interruption and cancellation ownership
 
-- `startTyping()` (called by the coordinator after `planChatTurns` produces
-  ≥ 1 turn) starts the Discord typing keepalive interval (default 8s,
-  configurable via env). Interval auto-stops when the lock is released or a
-  stop request is registered.
+Channel locks coordinate three forms of turn interruption:
 
-### Lock release (always runs via `finally`)
+1. **Follow-up interrupts**: `queueFollowUpForLockedTurn()` allows an inbound message from the same user to
+   interrupt an active stream via `StreamOrchestrator.requestFollowUp()`, up to `MAX_FOLLOW_UP_INTERRUPTS` (3).
+   If the active turn is executing a tool (`isInToolCallChain`), the message is enqueued as the latest follow-up
+   without interrupting the stream, protecting tool completion.
+2. **Natural stops**: `requestNaturalStopForLockedTurn()` captures the message and registers
+   `StreamOrchestrator.requestStop()`. Active streaming halts gracefully and saves the stop context.
+3. **Hard cancellation via `/kill`**: `forceKillChannelStream()` in `src/commands/kill.ts` immediately aborts
+   `activeTurnAbortController` and invokes `activeStreamKill()`, rejecting the streaming race with an error.
+   The `/kill` command also clears pending turns using `clearChannelProcessingQueue()`. Tools that generate
+   media check `abortSignal.aborted` before sending to avoid posting discarded media.
 
-- Clears `isLocked`, `lockedAt`, all active-turn state.
-- Aborts `activeTurnAbortController` and clears `activeStreamKill`; ensures no
-  stale kill handles survive across turns.
-- Stops the typing keepalive.
-- Checks `StreamOrchestrator.getAndClearStopContext(channelId)`. If present,
-  schedules `handleStopResponse(originalStopMessage, client)` via
-  `setImmediate`: stop-response generation runs *after* lock release so the
-  stop response itself can acquire the lock.
-- Pops the next message from `messageQueue` (FIFO). If present, schedules
-  `processQueuedMessage(next)` via `setImmediate`. The `QueuedMessage` shape
-  mirrors the cross-cutting fields of `TomoriChatInput` that affect *what* the
-  bot will say on replay, including reminder context
-  (`reminderRecipientID`, `reminderData`) and the streaming-context overrides
-  (`disableCrossChannelMessage`, `disableRecentMessageReplyTool`,
-  `disableReminderTool`). Any new input field that influences generation must
-  also be added to `QueuedMessage` and threaded through `processQueuedMessage`,
-  otherwise the queued replay will be a silently-degraded copy of the original
-  call.
+### Release and queue replay
 
-Manual slash-command work bypasses the latest-follow-up replacement path and is
-stored in this FIFO queue. This preserves command-owned callbacks and payload
-fields such as the user-impersonation target while an ordinary turn is active.
+When the turn completes or throws, `releaseChannelLockAndReplayQueue()` executes in a `finally` block:
 
-### `skipLock=true` path
+1. Resets lock metadata, clears `activeStreamKill`, and aborts `activeTurnAbortController`.
+2. Stops the Discord typing keepalive timer.
+3. Checks `StreamOrchestrator.getAndClearStopContext()`. If a natural stop occurred, it schedules
+   `handleStopResponse()` via `setImmediate`.
+4. Pops the next message from the FIFO `messageQueue` and schedules `processQueuedMessage()` via `setImmediate`.
+   The stop callback is scheduled first, but the callbacks are not awaited in sequence. Scheduling
+   order alone does not guarantee that the stop confirmation finishes before queue replay.
 
-- Re-entries from retry/post-turn effects pass `skipLock=true`. The stage
-  short-circuits: reuses the outer lock's `lockedAt` and queue depth, invokes
-  the callback immediately, returns the result. No new typing keepalive is
-  started (the outer keepalive is still active).
+## Constraints and rationale
 
-## Invariants
+- **Single active turn per channel**: serializing turns prevents race conditions across message sends,
+  webhook delivery, and conversational context ordering.
+- **Asynchronous queue unrolling**: invoking queued replays and stop responses through `setImmediate` prevents
+  call stack growth under heavy traffic.
+- **Tool progress protection**: suppressing stream interrupts while `isInToolCallChain` is true ensures external
+  tool effects finish cleanly before the user's follow-up message processes.
 
-After this stage's `finally` block runs:
+## Source pointers
 
-- `lockEntry.isLocked === false` for the duration between turn-sequences.
-- The Discord typing keepalive timer is cleared (`typingKeepaliveTimer ===
-  null`).
-- The queued-message replay is scheduled via `setImmediate`, not awaited:
-  the current invocation returns before the next message is processed, so the
-  call stack stays shallow even under heavy queue pressure.
-- A pending stop-response (if any) was scheduled *before* the queue replay, so
-  the stop response runs first.
-
-## `/kill` mechanics
-
-`forceKillChannelStream(channelId)` is the single entry point for hard-killing
-an active turn. It does both:
-
-1. **Abort the turn controller** (`activeTurnAbortController.abort()`): if a
-   tool is executing, the `killPromise` in `executeToolCall`'s race fires
-   immediately, returning `{kind: "abort", status: "stopped_by_user"}`. The
-   channel lock releases as normal via the `finally` block of `runWithChannelLock`.
-2. **Fire the stream kill callback** (`activeStreamKill(...)`): if the LLM is
-   mid-stream, this simultaneously calls `abortController.abort()` (cancels the
-   HTTP request) and rejects the `Promise.race` in `streamOnce`. Explicit stop
-   requests return `{status: "stopped_by_user"}`; SDK/stale-lock timeouts still
-   return `{status: "timeout"}`.
-
-`/kill` in `src/commands/kill.ts` additionally calls
-`StreamOrchestrator.requestStop` before `forceKillChannelStream`, and
-`clearChannelProcessingQueue` to drain the message queue, so neither the
-current turn nor any queued messages continue processing.
-
-While that stop request is pending, locked-channel admission ignores new
-same-user follow-up candidates with `locked_stop_requested` instead of queuing
-them. This prevents a message that arrives during the short kill-unwind window
-from re-populating the queue after `/kill` already cleared it.
-
-When the kill path aborts the provider SDK race, `toolLoop.ts/streamOnce`
-classifies the result as `stopped_by_user` rather than a generic SDK timeout,
-then clears the non-context stop request. Stale-lock SDK timeouts remain
-timeouts because they do not have an active stop request.
-
-`activeStreamKill` is registered by `toolLoop.ts/streamOnce` at the start of
-each provider call and cleared in `finally`. `activeTurnAbortController` is
-created in `acquireChannelLockForTurn` and cleared on release.
-
-The `killPromise` only stops the turn from awaiting the tool. The tool itself
-keeps running in the background, and tools that post their own output
-(image, video, voice) re-check `abortSignal.aborted` before posting so a killed
-generation is never delivered or charged against quota. Backends that honor the
-signal stop early (ComfyUI cancels the prompt; video polling stops at the next
-interval); most hosted providers cannot cancel an accepted job, so it still
-finishes remotely and may still bill.
-
-`activeToolName` records the tool currently inside `executeToolCall`'s race and
-is cleared when that race settles, as well as on acquire, release, and stale
-release. `/kill` reads it *before* calling `forceKillChannelStream`, because the
-kill settles the race and clears it. When it names a media generation tool
-(`MEDIA_GENERATION_TOOL_NAMES` in `deliberateToolMode.ts`), the `/kill` reply
-carries a footer warning that the provider may still bill for the job.
-
-## Extension points
-
-- **Internal: concurrency primitive**: the lock, queue, and typing-keepalive
-mechanics are tightly coupled to Discord rate limits, the stream orchestrator's
-stop/follow-up signaling, and the recursive `tomoriChat()` re-entry pattern.
-Replacing this stage from a plugin would risk breaking those guarantees.
-
-- **Plugin-relevant adjacent surfaces** (lower in the same module):
-
-| Helper | What a plugin might do | Plugin-relevance |
-|---|---|---|
-| `enqueueBusyChannelMessage`, `queuePersonaJobsAtFront`, `queueStopResponseAtFront` | Add a new "queue at front" entry type | → plugin plan candidate; today these are call-site-specific |
-| `queueFollowUpForLockedTurn` | Change follow-up interrupt eligibility rules | Internal: coupled to `MAX_FOLLOW_UP_INTERRUPTS`, the tool-call-chain flag, and the cross-persona trigger guard (see `hasExplicitCrossPersonaTrigger` in `triggerProcessor.ts`) |
-| `requestNaturalStopForLockedTurn` | Add a new "soft stop" signal type | Internal: coupled to `StreamOrchestrator.requestStop` semantics |
-| `clearQueuedSelfReplyWork` | Customize what gets cleared on natural stop | Internal: coupled to `isSelfTriggerMessage` and persona-job semantics |
-
-The lock's *policy* (timeout, typing interval, max follow-ups) lives in named
-constants; behaviour customization should go through those rather than
-monkey-patching the stage.
-
-## Configuration
-
-| Source | Key | Value | Purpose |
-|---|---|---|---|
-| Env var | `CHANNEL_LOCK_TIMEOUT_MS` | `180000` | Stale-lock detection threshold |
-| Constant (`channelQueue.ts`) | `DISCORD_TYPING_KEEPALIVE_INTERVAL_MS` | `8000` | Typing-refresh cadence |
-| Env var | `MAX_FOLLOW_UP_INTERRUPTS` | `3` | Per-lock follow-up interrupt cap |
-
-## Related docs
-
-- Queue policy decision tree: lives in `evaluateAdmissionQueueAndTriggerGate`
-  (stage 02 helper); → admission-queue helper doc TBD if it grows.
-- Stop request mechanics: → [provider pipeline](../provider/) (stream orchestrator stage).
-- Follow-up interrupt semantics: → folded into stage 05 docs (follow-up
-  eligibility gating).
+- `src/utils/chat/channelQueue.ts`: `runWithChannelLock()`, queue storage, typing keepalive, and release logic.
+- `src/commands/kill.ts`: `/kill` command driving stream termination and queue flushing.
+- `src/utils/discord/streamOrchestrator.ts`: stop and follow-up request state management.

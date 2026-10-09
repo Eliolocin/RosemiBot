@@ -65,6 +65,12 @@ export type StructuredContextItem = {
   metadataTag?: ContextItemTag; // Optional tag for internal processing
   messageId?: string; // Optional Discord message ID for tools that need to reference the original message
   sender?: ContextItemSender; // Hidden sender metadata for provider-side history normalization
+  /** Visible participant fields before mention-rendering instructions are added. */
+  participantReviewEvidence?: {
+    participants: Array<{ name: string; fields: string[] }>;
+    channel: string;
+    currentTime: string;
+  };
   conversationUsers?: ConversationUserReference[]; // Hidden metadata for user resolution and mention handling
   participantTargetIndex?: import("@/utils/text/participants/targetIndex").ParticipantTargetIndex;
   personaMentionMap?: Map<string, string>; // Hidden metadata for preserving known persona @trigger text

@@ -12,12 +12,17 @@ Cuando ejecutas `git pull` para obtener código nuevo y reinicias TomoriBot, el 
 
 El ejecutor de migraciones de TomoriBot (en `src/db/migrationRunner.ts`) ejecuta todas las migraciones no aplicadas en orden de versión. Las migraciones son solo hacia adelante: si algo sale mal, el ejecutor no hace una reversión automática. La mayoría de las migraciones son expansiones seguras (nuevas columnas, nuevas tablas), pero según la política de diseño interna (OD-R-6) del proyecto, se permiten operaciones destructivas como `DROP COLUMN` o `DROP TABLE`. Si una migración destructiva se ejecuta sin una copia de seguridad, pierdes datos de forma permanente. En caso de duda, haz una copia de seguridad primero.
 
+## Copias de seguridad de medios de expresión personalizados
+<!-- anchor: custom-expression-media-backups -->
+
+Las copias de seguridad de bases de datos conservan metadatos de expresiones personalizadas, membresías de personas y referencias de almacenamiento. No incluyen bytes de medios cargados o importados. Detén el bot antes de realizar una copia de seguridad de la base de datos y los medios juntos. Con almacenamiento local, copie `data/custom-expressions/` y restáurelo en la misma ubicación. Con GCS o S3, haga una copia de seguridad de los objetos `custom-expressions/` de su propiedad y restaure sus claves en el depósito de expresión configurado. Restaure las configuraciones `EXPRESSION_STORAGE_BACKEND` y `EXPRESSION_STORAGE_BUCKET` coincidentes. Cambiar el backend o el depósito por sí solo deja las referencias existentes ilegibles. Las expresiones de enlace se almacenan únicamente como URL y siguen dependiendo de sus hosts externos. Las exportaciones Discord JSON no incluyen registro de expresiones ni archivo multimedia.
+
 ## Lista de verificación antes de hacer pull
 
 Sigue estos pasos ANTES de ejecutar `git pull`:
 
 1. **Detén el bot**: apaga el proceso de TomoriBot para que ninguna conexión activa a la base de datos interfiera con la copia de seguridad.
-2. **Haz una copia de seguridad de la base de datos**: usa uno de los dos métodos a continuación.
+2. **Haz una copia de seguridad de la base de datos y conserva sus claves**: utiliza uno de los dos métodos siguientes. Conserva una copia protegida separada de cada versión de cifrado necesaria para el volcado y prueba la recuperación en una base de datos desechable.
 3. **Anota el commit actual**: ejecuta `git rev-parse HEAD` y guarda la salida en caso de que sea necesaria una reversión.
 4. **Haz pull y reinicia**: una vez que la copia de seguridad esté de forma segura en el disco, es seguro hacer pull y reiniciar.
 
@@ -55,7 +60,7 @@ Para una migración segura, usa la copia de seguridad completa:
 bun run backup
 ```
 
-Esto crea un paquete con marca de tiempo en `backups/` (o tu `TOMORI_BACKUP_DIR` si se sobrescribió en `.env`) que contiene toda la base de datos de PostgreSQL como un volcado de SQL simple. Para restaurar más tarde, ejecuta:
+Esto crea un paquete con marca de tiempo en `backups/` (o tu `TOMORI_BACKUP_DIR` si se anula en `.env`) que contiene toda la base de datos PostgreSQL como un volcado SQL sin formato. El paquete no contiene `.env` ni secretos maestros. Antes de restaurar, aprovisiona las versiones de cifrado correspondientes por separado en la fuente de secretos de destino y detén todas las instancias del bot. Consulta [Copias de seguridad de la base de datos y claves de recuperación](/es-419/self-hosting/maintenance/#database-backups-and-recovery-keys) para conocer el procedimiento completo. Las claves faltantes o incorrectas detienen la restauración antes del SQL destructivo. Los paquetes heredados todavía contienen secretos sin procesar en `config.env`; revísalos en privado y aprovisiona sus claves tú mismo. La restauración nunca copia ese archivo. Para restaurar más tarde, ejecuta:
 
 ```bash
 bun run restore-backup --latest
@@ -114,7 +119,7 @@ Nota: `pg_restore` te pedirá tu contraseña a menos que la configures en un arc
 
 ## Para los colaboradores que implementan a través de CI: la convención `(Checkpoint)`
 
-Si mantienes un fork que se implementa en AWS o GCP a través de los flujos de trabajo en `.github/workflows/deploy-tomoribot-{aws,gcp}.yml`, esos canales admiten una instantánea previa a la implementación opcional: cuando un mensaje de commit contiene el token literal `(Checkpoint)`, el flujo de trabajo ejecuta `aws rds create-db-snapshot` (o el equivalente de GCP Cloud SQL) antes de que se implemente cualquier código y antes de que el ejecutor de migraciones toque la base de datos en el arranque.
+Si mantienes un fork que se implementa en AWS o GCP a través de los flujos de trabajo en `.github/workflows/deploy-{aws,gcp-legacy}.yml`, esos canales admiten una instantánea previa a la implementación opcional: cuando un mensaje de commit contiene el token literal `(Checkpoint)`, el flujo de trabajo ejecuta `aws rds create-db-snapshot` (o el equivalente de GCP Cloud SQL) antes de que se implemente cualquier código y antes de que el ejecutor de migraciones toque la base de datos en el arranque.
 
 Úsala cuando:
 
@@ -150,10 +155,10 @@ Si el bot se bloquea o se congela durante la migración:
 3. **Decide si restaurar**: si el error es irrecuperable (por ejemplo, la migración intentó eliminar una columna que no existe), restaura desde tu copia de seguridad:
 
    ```bash
-   # Restauración de Opción A
+   # Option A restore
    bun run restore-backup --latest
 
-   # O restauración de Opción B
+   # Or Option B restore
    pg_restore \
      -h "$POSTGRES_HOST" \
      -p "$POSTGRES_PORT" \
@@ -190,7 +195,7 @@ Según el diseño del proyecto (OD-R-6), las migraciones destructivas no pueden 
 
 Para estas operaciones, la única recuperación es tu copia de seguridad. Siempre haz una copia de seguridad antes de hacer pull si estás en una versión anterior y se ha enviado una refactorización nueva.
 
-El diseño de solo hacia adelante del ejecutor de migraciones es intencional: los archivos de reversión (`.down.sql`) existen para la seguridad del desarrollador durante las pruebas, pero la recuperación en producción depende de las copias de seguridad, no de la reejecución de operaciones que no se pueden deshacer.
+El diseño exclusivo hacia adelante del ejecutor de migraciones es intencional: los archivos de reversión (`.down.sql`) existen para la seguridad del desarrollador durante las pruebas, pero la recuperación de producción utiliza copias de seguridad y sus claves de cifrado retenidas por separado. La reejecución de una migración destructiva no puede recuperar los datos eliminados.
 
 ## Probar una rama de función, luego regresar a `main`
 
@@ -198,13 +203,13 @@ Un caso común: alguien te pide que pruebes una rama en tu instalación existent
 
 Los hechos clave:
 
-- Git y PostgreSQL son mundos separados. `git checkout` solo intercambia archivos en el disco; nunca se conecta a ni modifica tu base de datos. Tu estado de migración aplicada vive en la tabla `schema_migrations`, no en git.
+- Git y PostgreSQL son mundos separados. `git checkout` solo intercambia archivos en el disco; nunca se conecta a tu base de datos ni la modifica. PostgreSQL almacena el estado de migración aplicada en la tabla `schema_migrations`. Cambiar de rama de git no cambia esa tabla.
 - Las migraciones se ejecutan automáticamente en el arranque (a través de `initializeDatabase.ts`), por lo que en el momento en que inicias la rama, sus nuevas migraciones se aplican a la base de datos a la que hayas apuntado.
 - El ejecutor hacia adelante nunca hace reversiones automáticas. Cuando regresas a `main`, escanea los archivos en el disco, no encuentra nada pendiente y no hace nada. Las migraciones que aplicó la rama permanecen aplicadas.
 
 Entonces, ¿es seguro? Depende completamente de lo que hicieron las migraciones de la rama:
 
-- Solo aditivo (nuevas tablas o nuevas columnas) → seguro. Los nuevos objetos simplemente permanecen sin usarse; el código de `main` nunca hace referencia a ellos, por lo que no pueden causar resultados incorrectos o bloqueos. Son peso muerto inofensivo.
+- **Solo aditivo** (nuevas tablas/nuevas columnas) → seguro. Los nuevos objetos simplemente quedan sin uso; el código de `main` nunca hace referencia a ellos, por lo que no pueden provocar resultados incorrectos ni fallos. Elimina los objetos no utilizados únicamente a través de una migración revisada.
 - Destructivo (`DROP`, `RENAME` o `ALTER` en una tabla que `main` aún usa) → no seguro. El cambio de la rama deja varado el código de `main` contra una columna o tabla que ahora no existe o está alterada.
 
 El enfoque más seguro: apunta la rama a una base de datos desechable (una `POSTGRES_DB` separada), para que tus datos reales nunca se toquen. Ya construyes la conexión a partir de las variables `POSTGRES_*`, y `bun run nuke-db` puede restablecer una base de datos de prueba.
@@ -214,12 +219,12 @@ El enfoque más seguro: apunta la rama a una base de datos desechable (una `POST
 Si probaste una rama contra tu base de datos real y quieres deshacer sus migraciones después, usa el ejecutor de reversión. A diferencia del ejecutor hacia adelante, nunca se ejecuta automáticamente: la reversión siempre es un acto manual deliberado porque los archivos `.down.sql` suelen tener pérdidas.
 
 ```bash
-# Solo vista previa (ejecución en seco): muestra lo que se revertiría
-bun run migrate:down 034          # esta migración + cada migración más nueva aplicada
-bun run migrate:down --last       # solo la migración aplicada más recientemente
-bun run migrate:down --last=2     # las dos migraciones aplicadas más recientemente
+# Preview only (dry run): show what would be rolled back
+bun run migrate:down 034          # this migration + every newer applied one
+bun run migrate:down --last       # only the most recently applied migration
+bun run migrate:down --last=2     # the two most recently applied migrations
 
-# Ejecuta la reversión (ejecuta los archivos .down.sql, elimina las filas de schema_migrations)
+# Execute the rollback (runs the .down.sql files, removes schema_migrations rows)
 bun run migrate:down 034 --yes
 ```
 

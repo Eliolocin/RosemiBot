@@ -2,6 +2,7 @@
 title: "TTSエンジンの比較"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBotは複数のローカルText-to-Speechサーバーに対応しており、それぞれ異なる言語、ハードウェア条件、遅延要件に適しています。

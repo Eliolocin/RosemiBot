@@ -67,7 +67,7 @@ function makeReplyGuardInteraction(deferred: boolean): ReplyGuardInteraction {
   return interaction as ReplyGuardInteraction;
 }
 
-/** Acknowledgement calls the sinks made, in order, as payloads these tests can inspect. */
+/** In call order, as payloads these tests can inspect. */
 function acknowledgementCalls(interaction: RouteInteraction): RecordedCall[] {
   return interaction.calls
     .filter((call) => call.method === "reply" || call.method === "editReply" || call.method === "webhook.send")

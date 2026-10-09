@@ -2,226 +2,118 @@
 title: "SillyTavern Card Import Support"
 ---
 
-This document describes how `/persona import` handles SillyTavern character cards from any of:
+TomoriBot's `/persona import` command ingests and converts SillyTavern character cards into native
+persona records. It supports PNG images with embedded metadata, legacy V2 root JSON files,
+`chara_card_v3` JSON files, and Character Card V3 `.charx` archives.
 
-- PNG files with embedded `chara` / `char` metadata
-- legacy v2-style root-level JSON cards
-- `chara_card_v3`-style JSON exports
-- Character Card V3 `.charx` archives
+## Container dispatch and archive safety
 
-## Overview
+Dispatch selects the extraction path by attachment file extension before parsing:
 
-TomoriBot supports four relevant import paths:
-
-1. **Native Tomori preset path** (`TomoriPreset` metadata)  
-2. **SillyTavern PNG fallback path** (`chara`/`char` metadata)
-3. **SillyTavern JSON fallback path**:
-   - legacy v2-style cards with root-level fields such as `name`, `description`, and `first_mes`
-   - v3 cards with `spec: "chara_card_v3"` and a nested `data` object
-4. **Character Card V3 archive path**: a `.charx` zip whose `card.json` is unwrapped and then
-   handed to the same converter as path 3
-
-If Tomori metadata is missing, or the uploaded file is a compatible SillyTavern v2/v3 JSON card, import proceeds through the same SillyTavern conversion flow.
-
-## Extension Dispatch
-
-Dispatch is by attachment extension, before any byte is read:
-
-| Extension | Container handling |
+| Extension | Extraction mechanism |
 |---|---|
-| `.png` | Tomori metadata first, then `chara`/`char` metadata |
-| `.json` | Parsed and validated directly; a bare V3 `card.json` lands here and converts as-is |
-| `.charx` | Unwrapped by `src/utils/persona/charxArchive.ts`, then converted as a card |
+| `.png` | Extracts text chunks (`tEXt`, `zTXt`, `iTXt`) searching for `chara` or `char` keys. Decodes direct or base64-encoded JSON. |
+| `.json` | Parses JSON directly, accepting root-level V2 objects or nested `data` V3 objects. |
+| `.charx` | Unpacks zip archives using `src/utils/persona/charxArchive.ts` to retrieve `card.json`. |
 
-Anything else is rejected with `commands.persona.import.invalid_file_type_*`. `.charx` carries its
-own size bound (`MAX_CHARX_IMPORT_SIZE_MB`) because an archive's compressed size does not describe
-what it expands to.
+Unsupported extensions are rejected before reading file content.
 
-## `.charx` Archive Handling
+### Archive handling (`.charx`)
 
-A `.charx` file is a zip containing a Character Card V3 object as `card.json`, plus an `assets/`
-tree referenced by `embeded://` URIs. The reader:
+A `.charx` archive contains a Character Card V3 object as `card.json` alongside an optional `assets/`
+directory. The reader in `charxArchive.ts` applies strict safety boundaries:
 
-- loads the archive with `JSZip.loadAsync`, returning a typed failure rather than throwing;
-- resolves `card.json` by exact path first, falling back to a case-insensitive basename search so a
-  wrapping folder still works. The exact-path preference matters: without it a decoy
-  `assets/card.json` would shadow the root card the specification mandates;
-- checks the entry's declared uncompressed size before decompressing it, then measures the
-  decompressed bytes. The declared-size check is the load-bearing one: an archive honestly
-  declaring a huge card is refused before any decompression, while an entry that delivers more
-  than it declared is refused by jszip's own consistency check;
-- accepts a card with no `spec`, or any `spec` beginning with `chara_card`, and never rejects on
-  `spec_version`. The converter owns card recognition and a root-level V2 card has no `spec` at
-  all, so the container only refuses a card that names a different format;
-- bounds the declared asset list by its raw length before examining any entry, then counts the
-  assets the archive actually carries and sums their declared sizes from the zip central
-  directory, refusing a hostile tree without opening a single asset entry.
+- **Safe parsing:** Archives are opened with `JSZip.loadAsync`, returning structured failure
+  diagnostics without uncaught exceptions.
+- **Card resolution:** `card.json` resolves by exact root path first, falling back to a
+  case-insensitive basename search. This exact-match priority prevents a decoy `assets/card.json`
+  entry from overriding the canonical root specification.
+- **Decompression limits:** The uncompressed size declared in the zip central directory is validated
+  against the card-byte limit before decompression, then the decoded bytes are measured again.
+  The attachment download has a separate archive-byte limit.
+- **Format recognition:** The container accepts cards lacking a `spec` property or declaring any
+  `chara_card` specification, deferring schema validation to the conversion layer.
+- **Asset bounds:** After parsing the card, the reader bounds its declared asset list and sums the
+  central-directory sizes of referenced embedded assets. Asset contents are never decompressed.
 
-Failure reasons are `invalid_zip`, `missing_card`, `invalid_card`, `not_character_card`,
-`card_too_large`, and `assets_too_large`, each mapped to its own localized reply. The last two are
-separate because they need different answers: an oversized card payload is a card the user cannot
-import, while an oversized asset tree is a card they can import once it is exported without its
-media.
+### Asset exclusions
 
-### Assets Are Not Imported
+Only `card.json` is decompressed and converted. The `assets/` directory is excluded from import:
 
-Only `card.json` is decompressed. The asset tree is deliberately ignored in this pass, for two
-reasons: it can carry audio, video, Live2D, 3D, model, font, and code payloads, so a partial read
-would decompress the whole tree only to discard most of it; and TomoriBot's sprite pipeline is keyed
-on `sprite_key` plus `usage_instructions`, while V3 `emotion` assets are bare images with no usage
-guidance and no mapping onto that key.
+1. **Payload diversity:** `.charx` assets can bundle arbitrary audio, video, 3D models, fonts, and
+   scripts.
+2. **Sprite mapping incompatibility:** TomoriBot sprites require an explicit `sprite_key` and
+   structured usage instructions. SillyTavern V3 emotion assets provide raw images without
+   contextual trigger metadata.
 
-An archive whose card declares one or more assets therefore imports successfully and states the
-omission in the success embed (`commands.persona.import.charx_assets_ignored_description`), pointing
-at `/server avatar` and `/config` > Persona > Sprites. The notice counts only assets the archive
-actually carries: a remote URL or the specification's `ccdefault:` default is a reference rather
-than bundled media, so a card that shipped nothing but its own text is not told its media was
-dropped. This is a stated limitation rather than a silent one.
+When an imported archive carries bundled assets, the import succeeds for text data and surfaces a
+notice pointing the user to `/server avatar` and `/config` > Persona > Sprites to configure visuals
+manually.
 
-## Metadata Detection
+## Field mapping and schema validation
 
-PNG extraction supports text chunk variants:
+Conversion is performed by `convertSillyTavernJsonToPresetData` in
+`src/utils/db/repositories/PresetRepository.ts`.
 
-- `tEXt`
-- `zTXt`
-- `iTXt`
+### Field transformations
 
-Detected PNG metadata keys:
+Card attributes map into TomoriBot's persona schema:
 
-- `chara`
-- `char`
+| SillyTavern field | TomoriBot destination |
+|---|---|
+| `name` | `persona_nickname` (capitalizes initial letter) |
+| `description` | `attribute_list` (injected without prefix) |
+| `personality`, `scenario`, `system_prompt` | `attribute_list` (prefixed with section headers) |
+| `post_history_instructions`, depth prompts | `attribute_list` (prefixed with section headers) |
+| `character_book.entries[].content` | `attribute_list` (enabled entries only) |
+| `mes_example`, `first_mes`, `alternate_greetings` | `sample_dialogues_in` and `sample_dialogues_out` |
+| Character name derivations | `trigger_words` |
 
-Decoded PNG payloads can be:
+Fields without operational equivalents in TomoriBot (`creator_notes`, `tags`, `spec_version`,
+`group_only_greetings`) are omitted during import.
 
-- direct JSON text, or
-- base64-encoded JSON text
+### Import safety schema
 
-## Conversion Flow
+Converted data validates against TomoriBot's preset Zod schema before database insertion:
 
-Converter: `presetRepository.convertSillyTavernJsonToPresetData`
-(`src/utils/db/repositories/PresetRepository.ts`). PNG metadata goes through the thin
-`convertSillyTavernMetadataToPresetData` wrapper, which forwards the already-parsed JSON.
+- Text fields are capped at 5,000 characters.
+- Persona prompts permit up to 16,003 characters, aligning with the four-part modal configuration
+  limit.
+- Lists are bounded to 200 attributes, 200 NovelAI diffusion tags, 100 sample dialogue pairs, and
+  100 trigger words.
+- The SillyTavern converter also uses current runtime limits to split attribute text and cap
+  sample dialogue lengths, pair counts, and trigger counts before Zod validation.
 
-Input:
+## Conversation and template adaptations
 
-- decoded SillyTavern PNG metadata JSON
-- parsed SillyTavern JSON file
-- the `card.json` object extracted from a `.charx` archive
+### Unpaired sample dialogues
 
-Output:
+SillyTavern cards frequently contain assistant-only dialogue examples without corresponding user
+turns. The importer marks unpaired examples with `UNPAIRED_SAMPLE_DIALOGUE_SENTINEL` from
+`src/types/preset/presetExport.ts`. `buildSampleDialogueContextItems()` in
+`src/utils/text/context/templates.ts` omits the user side of those pairs. Preset reassembly adds a separator when sample dialogues end the assembled prompt, keeping examples distinct from the active scene.
 
-- `PresetExportData` compatible with Tomori import pipeline
+### Template placeholders
 
-Validation:
-
-- Tomori and converted SillyTavern imports both pass through the preset Zod schema before insert.
-- The schema is the import safety boundary. Most imported strings are limited to 5000 characters.
-  Persona prompts allow 16003 characters, matching the four-part `/config` editor's maximum after
-  its section separators. The schema also allows 200 attributes, 200 NovelAI tags, 100 sample
-  dialogue entries per side, and 100 trigger words.
-- The limits are fixed so a preset exported from one install always imports on another.
-- Runtime memory limits such as the attribute length and sample dialogue length apply to live
-  slash-command edits, not preset imports.
-
-Name handling:
-
-- character name first letter is capitalized (e.g. `isaac` -> `Isaac`)
-
-## Field Mapping
-
-Imported into `personas` and `persona_configs`:
-
-- `name` -> `persona_nickname`
-- `description` -> `attribute_list` (no `"Description"` prefix)
-- `personality` -> `attribute_list` (section-labeled)
-- `scenario` -> `attribute_list` (section-labeled)
-- `system_prompt` -> `attribute_list` (section-labeled)
-- `post_history_instructions` -> `attribute_list` (section-labeled)
-- `extensions.depth_prompt.prompt` -> `attribute_list` (section-labeled)
-- `character_book.entries[].content` (enabled only) -> `attribute_list` (section-labeled)
-- `mes_example`, `first_mes`, `alternate_greetings` -> sample dialogues
-- generated default trigger words (from character name) -> `trigger_words`
-
-Not imported:
-
-- `creator_notes`
-- `creatorcomment`
-- `tags`
-- `creator`
-- `spec` / `spec_version`
-- V3 `assets` (see the "Assets Are Not Imported" section above)
-- V3 `nickname`, `creator_notes_multilingual`, `source`, `group_only_greetings`, `creation_date`,
-  `modification_date`
-
-The two V3 additions with no destination are handled per field rather than by inventing one:
-`nickname` would rename a card whose `name` is already the display name, and `source` is a
-provenance list with nowhere to live. `group_only_greetings` describes greetings for a group-chat
-mode TomoriBot does not have, so folding it into sample dialogues would assert something false
-about the card.
-
-## Unpaired Sample Dialogue Handling
-
-Many SillyTavern cards contain bot-only examples without a user turn.
-
-Tomori stores paired arrays, so unpaired entries use an internal sentinel value:
-
-- `__TOMORI_UNPAIRED_SAMPLE__`
-
-Behavior at runtime (`src/utils/text/contextBuilder.ts`):
-
-1. If input side is sentinel, Tomori does not inject a user sample turn.
-2. It still injects the model sample response.
-3. If any unpaired sample exists, Tomori inserts a spacer message before live conversation history:
-
-`[System: Above are only examples of how {{char}} acts and talks. Use them as reference for a completely new scene that starts now.]`
-
-## Placeholder Support
-
-Tomori now supports both styles during template replacement:
+The template engine supports single-brace and double-brace macros during string substitution:
 
 - Single-brace: `{user}`, `{bot}`, `{char}`
-- Double-brace: `{{user}}`, `{{char}}`, `{{bot}}`
+- Double-brace: `{{user}}`, `{{bot}}`, `{{char}}`
 
-So SillyTavern placeholders can be kept as-is.
+### Avatar handling
 
-## Failure / Debug Fallback
+Imported JSON files and `.charx` archives lack native avatar image streams. When importing an alter
+persona without an avatar image, the system assigns the active main persona's avatar as the alter's
+`webhook_avatar_url` fallback. When updating a main persona without an avatar, the existing avatar is
+preserved.
 
-If SillyTavern card data is detected but conversion fails:
+## Source pointers
 
-- `/persona import` returns an ephemeral warning embed naming where the payload came from
-- attaches the decoded / parsed payload as `.txt` for inspection
-
-All three card formats (PNG metadata, JSON, and `.charx` `card.json`) share one reply, one
-attachment convention (`<format>-decode-<timestamp>.txt`), and one localized message. A `.charx`
-that never reaches conversion, because the container itself is unreadable, replies through the
-container's own failure reasons instead.
-
-## Avatar Fallback for JSON and Archive Cards
-
-SillyTavern JSON cards typically do not include an avatar image attachment, and `.charx` assets are
-not imported, so both paths import without an avatar.
-
-For `type: alter` imports without an avatar image:
-
-- Tomori stores the current main persona avatar as the new alter's `webhook_avatar_url` fallback
-- the public success embed explicitly says the fallback happened and why
-- the embed also points users to `/server avatar` if they want to change it
-
-For `type: main` imports without an avatar image:
-
-- personality data is still imported normally
-- nickname updates still run
-- avatar changes are skipped and the current main persona avatar remains in place
-
-This preserves the debug workflow for unsupported edge-card formats.
-
-## Relevant Files
-
-- `src/commands/persona/import.ts`
-- `src/utils/persona/charxArchive.ts`
-- `src/utils/zip/zipEntryGuards.ts`
-- `src/utils/image/pngMetadata.ts`
-- `src/utils/db/repositories/PresetRepository.ts` (`convertSillyTavernJsonToPresetData`)
-- `src/utils/text/contextBuilder.ts`
-- `src/utils/text/processors/mentionProcessor.ts`
-- `src/types/preset/presetExport.ts`
+- `src/commands/persona/import.ts`: Command handler for file upload and import dispatch.
+- `src/utils/persona/charxArchive.ts`: `.charx` zip inspection, safety bounds, and `card.json`
+  extraction.
+- `src/utils/image/pngMetadata.ts`: PNG chunk parsing (`tEXt`, `zTXt`, `iTXt`).
+- `src/utils/db/repositories/PresetRepository.ts`: `convertSillyTavernJsonToPresetData` mapping and
+  transformation logic.
+- `src/utils/text/context/templates.ts`: `buildSampleDialogueContextItems` and unpaired dialogue handling.
+- `src/types/preset/presetExport.ts`: Preset schema interfaces and Zod validation.

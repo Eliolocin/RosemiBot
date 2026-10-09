@@ -12,6 +12,7 @@ import {
 } from "@/utils/provider/speechEndpointResolver";
 import { formatLlmDisplayLabel } from "@/utils/provider/modelDisplay";
 import { resolveCustomEndpointForProvider } from "@/utils/provider/customEndpointService";
+import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import { ColorCode } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
 import { formatBooleanLocalized } from "@/utils/text/processors/formatters";
@@ -89,13 +90,13 @@ export async function buildServerModelPages(
       ? localizer(locale, "commands.status.item_count", { count: config.llm_logit_biases.length })
       : localizer(locale, "commands.choices.none");
   const diffusionModelValue = diffusionModel
-    ? `${diffusionModel.codename} (${diffusionModel.provider})`
+    ? `${diffusionModel.codename} (${getProviderDisplayName(diffusionModel.provider)})`
     : localizer(locale, "commands.choices.none");
   const videoModelValue = videoModel
-    ? `${videoModel.codename} (${videoModel.provider})`
+    ? `${videoModel.codename} (${getProviderDisplayName(videoModel.provider)})`
     : localizer(locale, "commands.choices.none");
   const embeddingModelValue = embeddingModel
-    ? `${embeddingModel.codename} (${embeddingModel.provider})`
+    ? `${embeddingModel.codename} (${getProviderDisplayName(embeddingModel.provider)})`
     : localizer(locale, "commands.choices.none");
   const speechModelValue = speechModel
     ? `${speechModel.endpoint.model_name || speechModel.endpoint.label} (${speechModel.endpoint.api_style})`
@@ -105,7 +106,7 @@ export async function buildServerModelPages(
     : localizer(locale, "commands.choices.none");
   const customEndpointConfiguredValue = formatBooleanLocalized(!!config.custom_endpoint_url, locale);
   const naiDiffusionModelValue = naiDiffusionModel
-    ? `${naiDiffusionModel.codename} (${naiDiffusionModel.provider})`
+    ? `${naiDiffusionModel.codename} (${getProviderDisplayName(naiDiffusionModel.provider)})`
     : localizer(locale, "commands.choices.none");
   const channelLlmOverridesValue = await formatChannelLlmOverrides(
     client,

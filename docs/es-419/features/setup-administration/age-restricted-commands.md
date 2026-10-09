@@ -10,14 +10,11 @@ cómo acceder a ella y dónde funciona.
 
 ## Activar comandos con restricción de edad
 
-1. En Discord, abre Configuración de usuario → Privacidad y seguridad.
-2. Activa Permitir el acceso a comandos con restricción de edad en las apps. Debes tener
-   18 años o más.
-3. Los comandos con restricción de edad solo funcionan en canales marcados como NSFW
-   (clic derecho en un canal → Editar canal → activar NSFW; solo los administradores del
-   servidor pueden marcar canales como NSFW).
+1. En Discord, abra `User Settings` > `Privacy & Safety`.
+2. Activa `Allow access to age-restricted commands in apps`. Debes tener 18 años o más.
+3. Ejecuta comandos con restricción de edad en canales marcados como `Age-Restricted Channel`. Para marcar un canal, haga clic derecho en él, seleccione `Edit Channel` y active `Age-Restricted Channel` (requiere permiso para administrar canales).
 
-Si un comando está restringido y el canal no está marcado como NSFW, simplemente no aparecerá.
+Si un comando está restringido y el canal no está marcado como restringido por edad, Discord no mostrará ni permitirá ejecutar el comando.
 
 ## Qué está controlado
 

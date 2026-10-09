@@ -4,82 +4,59 @@ sidebar:
   order: 3
 ---
 
-TomoriBot có thể nói (text-to-speech) và lắng nghe (speech-to-text):
+TomoriBot có thể nói và nghe trong Discord: gửi câu trả lời bằng giọng nói bằng tính năng chuyển văn bản thành giọng nói (TTS) và chuyển âm tin nhắn sang ngữ cảnh hội thoại bằng tính năng chuyển lời nói thành văn bản (STT).
 
-- TTS cho phép bot trả lời bằng tin nhắn thoại Discord nguyên bản.
-- STT chuyển tệp âm thanh đính kèm của người dùng thành văn bản để bot sử dụng làm ngữ cảnh cuộc trò chuyện.
-
-Cả hai đều hoạt động qua cùng một hệ thống endpoint. Con đường nhanh nhất là ElevenLabs (đám mây, được
-hướng dẫn đầy đủ bên dưới). Nếu bạn muốn chạy giọng nói trên phần cứng của riêng mình, hãy sử dụng một engine
-cục bộ và làm theo các hướng dẫn self-hosting.
+Cả hai đều sử dụng hệ thống điểm cuối của nhà cung cấp. ElevenLabs là tùy chọn đám mây nhanh nhất. Bạn cũng có thể chạy các mẫu giọng nói cục bộ trên phần cứng của riêng mình bằng cách sử dụng các công cụ self-hosting.
 
 ## Text-to-Speech
 <!-- anchor: text-to-speech -->
 
 ### ElevenLabs (đám mây, dễ nhất)
 
-1. Lấy khóa API từ [ElevenLabs](https://elevenlabs.io/app/settings/api-keys).
-2. Chạy lệnh `/providers`, chọn `Thêm nhà cung cấp mới`, chọn ElevenLabs, rồi dán khóa API. Quy trình này sẽ:
-   - đăng ký endpoint speech của ElevenLabs (và cả endpoint transcription),
-   - chọn chúng làm endpoint hoạt động,
-   - có thể chỉ định ngay một giọng nói cho một persona.
-3. Chỉ định giọng nói cho các persona khác trong mục Persona > Voice tại `/config`. Duyệt tìm giọng nói trong
-   [ElevenLabs Voice Library](https://elevenlabs.io/app/voice-library), nơi bạn cũng có thể tự clone giọng
-   nói của riêng mình.
+1. Nhận khóa API từ [ElevenLabs](https://elevenlabs.io/app/settings/api-keys).
+2. Chạy `/providers`, chọn `Thêm nhà cung cấp mới`, chọn `ElevenLabs` và dán khóa. Dòng chảy này:
+   - đăng ký điểm cuối giọng nói và điểm cuối phiên âm ElevenLabs,
+   - kích hoạt cả hai điểm cuối,
+   - tùy ý gán giọng nói cho một persona ngay lập tức.
+3. Gán giọng nói cho các persona bổ sung trong `/config` > `Persona` > Voice. Duyệt qua các giọng nói trong [Thư viện giọng nói ElevenLabs](https://elevenlabs.io/app/voice-library), nơi bạn cũng có thể sao chép giọng nói của chính mình.
 
 Chọn ElevenLabs trong `/providers`, sau đó chọn `Sửa endpoint` bất cứ khi nào bạn cần cập nhật khóa.
 
-Lưu ý:
+Ghi chú:
 
-- Trên gói miễn phí, chỉ các giọng nói tạo sẵn mới hoạt động. Duyệt danh sách tại
-  [danh sách giọng nói tạo sẵn](https://elevenlabs-sdk.mintlify.app/voices/premade-voices).
-- Ký tự được tính khi bot tạo và đọc tin nhắn thoại; gói miễn phí có giới hạn hàng tháng, vì vậy hãy kiểm
-  tra bảng điều khiển ElevenLabs của bạn.
-- Phản hồi bằng giọng nói được kiểm soát bởi `voice_message_enabled` và yêu cầu persona đang hoạt động phải có
-  một giọng nói được chỉ định.
-- Mục Persona > Voice trong `/config` yêu cầu quyền Quản lý máy chủ trong máy chủ và vẫn khả dụng cho chủ sở hữu
-  trong không gian làm việc DM.
+- Trên gói miễn phí, chỉ có giọng nói được tạo sẵn mới hoạt động. Duyệt qua [danh sách giọng nói được tạo sẵn](https://elevenlabs-sdk.mintlify.app/voices/premade-voices).
+- Các ký tự được tính khi cô tạo tin nhắn thoại. Bậc miễn phí có giới hạn hàng tháng, vì vậy hãy theo dõi bảng điều khiển ElevenLabs của bạn.
+- Trả lời bằng giọng nói yêu cầu `voice_message_enabled` trong `/config` > `Quyền hạn` và persona hoạt động phải được chỉ định giọng nói.
+- Việc thay đổi `/config` > `Persona` > Giọng nói yêu cầu quyền Quản lý máy chủ trong máy chủ và vẫn khả dụng đối với chủ sở hữu trong DM.
 
-Trong `/help`, chọn `Tính năng`, sau đó chọn `Giọng nói` để xem hướng dẫn tương tự trong Discord.
+Trong `/help`, chọn `Tính năng`, sau đó là `Giọng nói` để xem hướng dẫn tương tác trong Discord.
 
 ### Các engine clone giọng nói cục bộ (self-hosted)
 
-Trên một phiên bản self-hosted, bạn có thể chạy máy chủ clone giọng nói cục bộ. Quy trình chung gồm:
-khởi động máy chủ wrapper, đăng ký kết nối cùng model bằng `/providers`, chọn nó trong `/providers`, tải lên
-một mẫu âm thanh bằng `/config` trong mục Models > Tham số & Giọng đọc TTS, sau đó chỉ định trong
-Persona > Voice tại `/config`. Mọi định dạng âm thanh đều được chấp nhận (tự động chuyển sang định dạng WAV mono);
-các đoạn âm thanh dài 10-20 giây không có nhạc nền sẽ hoạt động tốt nhất.
+Trên các phiên bản self-hosting, bạn có thể chạy máy chủ sao chép giọng nói cục bộ. Quy trình làm việc: khởi động máy chủ, đăng ký kết nối và model của nó trong `/providers`, chọn nó trong `/providers`, tải lên mẫu tham chiếu trong `/config` > `Model` > TTS Parameters & Voices, sau đó gán nó trong `/config` > `Persona` > Voice. Mọi định dạng âm thanh đều được chấp nhận (tự động chuyển đổi sang WAV đơn âm); Các clip dài 10 đến 20 giây không có nhạc nền là hiệu quả nhất.
 
-Mỗi engine đều có hướng dẫn cài đặt riêng:
+Mỗi động cơ có hướng dẫn thiết lập riêng:
 
-- [Chatterbox-Turbo/Nano](/vi/self-hosting/local-endpoints/text-to-speech/chatterbox/): clone giọng nói nhanh, chỉ hỗ trợ tiếng Anh kèm các thẻ sự kiện như `[laugh]`.
-- [Qwen3-TTS](/vi/self-hosting/local-endpoints/text-to-speech/qwen3tts/): đa ngôn ngữ (10 ngôn ngữ), kèm chế độ
-  VoiceDesign bằng ngôn ngữ tự nhiên.
-- [MOSS-TTS](/vi/self-hosting/local-endpoints/text-to-speech/moss/): endpoint tự động thử nghiệm để clone đa ngôn ngữ hoặc thiết kế giọng nói tiếng Anh/tiếng Trung.
-- [IrodoriTTS](/vi/self-hosting/local-endpoints/text-to-speech/irodoritts/): chuyên biệt cho tiếng Nhật, đọc emoji
-  làm gợi ý cảm xúc.
+- [Chatterbox-Turbo/Nano](/vi/self-hosting/local-endpoints/text-to-speech/chatterbox/): nhân bản giọng nói tiếng Anh nhanh chóng với các thẻ cảm xúc như `[laugh]`.
+- [Qwen3-TTS](/vi/self-hosting/local-endpoints/text-to-speech/qwen3tts/): đa ngôn ngữ (10 ngôn ngữ) cộng với chế độ VoiceDesign ngôn ngữ tự nhiên.
+- [MOSS-TTS](/vi/self-hosting/local-endpoints/text-to-speech/moss/): nhân bản đa ngôn ngữ và thiết kế giọng nói tiếng Anh hoặc tiếng Trung.
+- [IrodoriTTS](/vi/self-hosting/local-endpoints/text-to-speech/irodoritts/): Công cụ chuyên dụng của Nhật Bản đọc biểu tượng cảm xúc dưới dạng tín hiệu cảm xúc.
 
-Xem [bảng so sánh Text-to-Speech](/vi/self-hosting/local-endpoints/text-to-speech/) để biết danh sách đầy đủ và hướng dẫn phần cứng.
+Xem [Bảng so sánh chuyển văn bản sang giọng nói](/vi/self-hosting/local-endpoints/text-to-speech/) để biết hướng dẫn về phần cứng và danh sách công cụ đầy đủ.
 
 ## Speech-to-Text
 <!-- anchor: speech-to-text -->
 
-Các endpoint transcription chuyển tệp âm thanh đính kèm của người dùng thành văn bản cho ngữ cảnh cuộc trò chuyện
-nền. Việc bản chép lời có được đăng công khai trong đoạn chat hay không được điều khiển riêng bởi
-`/config` > Engine > Notices.
+Điểm cuối phiên âm biến tệp đính kèm âm thanh của người dùng thành văn bản cho ngữ cảnh cuộc trò chuyện. Việc bản ghi có được đăng công khai trong cuộc trò chuyện hay không được kiểm soát trong `/config` > `Hành vi` > Hành vi thông báo.
 
 ### ElevenLabs (đám mây)
 
-Đã được đề cập ở trên: việc thêm ElevenLabs từ `/providers` sẽ đăng ký endpoint transcription cùng với
-giọng nói. Sử dụng `/providers` để chọn giữa các endpoint transcription.
+Việc thêm ElevenLabs từ `/providers` sẽ đăng ký điểm cuối phiên âm cùng với lời nói. Sử dụng `/providers` để chuyển đổi giữa các điểm cuối phiên mã hiện hoạt.
 
 ### Các engine cục bộ (self-hosted)
 
-- [WhisperX](/vi/self-hosting/local-endpoints/speech-to-text/whisperx/): phương án cục bộ được khuyến nghị; ~100
-  ngôn ngữ, tăng tốc bằng GPU, nhiều kích cỡ model.
-- [KoboldCPP](/vi/self-hosting/local-endpoints/speech-to-text/koboldcpp/): hoạt động nếu bản build của bạn cung cấp
-  endpoint transcription tương thích với OpenAI.
-- [whisper.cpp](/vi/self-hosting/local-endpoints/speech-to-text/whispercpp/).
+- [WhisperX](/vi/self-hosting/local-endpoints/speech-to-text/whisperx/): đường dẫn cục bộ được đề xuất; khoảng 100 ngôn ngữ, được tăng tốc GPU, nhiều kích cỡ model.
+- [KoboldCPP](/vi/self-hosting/local-endpoints/speech-to-text/koboldcpp/): hoạt động khi bản dựng của bạn hiển thị điểm cuối phiên âm tương thích với OpenAI.
+- [thì thầm.cpp](/vi/self-hosting/local-endpoints/speech-to-text/whispercpp/).
 
-Xem trang tổng hợp [Speech-to-Text](/vi/self-hosting/local-endpoints/speech-to-text/) để biết danh sách đầy đủ. Để xem bản tóm
-tắt trên Discord, hãy chạy lệnh `/help`, sau đó chọn `Tính năng` và `Chép lời`.
+Xem trung tâm [Chuyển giọng nói thành văn bản](/vi/self-hosting/local-endpoints/speech-to-text/) để biết danh sách công cụ đầy đủ. Để có bản tóm tắt Discord, hãy chạy `/help`, sau đó chọn `Tính năng` và `Chép lời`.

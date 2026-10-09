@@ -123,7 +123,7 @@ async function patchGuildMemberSelf(
   }
 }
 
-/** Sets or clears the bot's per-guild avatar. A null data URI removes it. */
+/** A null data URI removes the avatar. */
 export function setGuildBotAvatar(
   guildId: string,
   avatarDataUri: string | null,

@@ -13,9 +13,11 @@ import { log } from "@/utils/misc/logger";
  *    username, or the second renders under the first one's avatar. Held per channel because
  *    grouping spans turns, and reset whenever a foreign message lands between our own
  *    deliveries, since Discord only ever groups a message with the one directly above it.
- * - **Last delivered webhook identity**: post-turn artifacts (stickers, the "Fallback Used"
- *    notice) should be posted as the identity that actually delivered the final message, so
+ * - **Last delivered webhook identity**: artifacts that follow text (expressions, the
+ *    "Fallback Used" notice) should be posted as the identity that delivered that text, so
  *    they group with it instead of splitting off under a different name.
+ * - **Last speaker**: the rate-limited avatar fallback may reuse the avatar last displayed only
+ *    when the same persona, in an ordinary appearance, delivered it.
  *
  * Entries expire once messages are far enough apart that Discord would not group them anyway.
  * Runtime-authoritative state with no database behind it: mirrors `utils/chat/selfReplyState.ts`.
@@ -29,14 +31,32 @@ const CONTINUITY_TTL_MS = 10 * 60 * 1000;
 // once the map grows past this size rather than wiring up a timer.
 const SWEEP_SIZE_THRESHOLD = 2000;
 
+/**
+ * How a delivered message presented its speaker. `appearance` is an ordinary sprite or the base
+ * appearance: the persona as itself, so a stale expression still names the right speaker. An
+ * identity sprite or a copied identity is a different speaker on screen even when the same
+ * persona produced it.
+ */
+type DeliveredSpeakerKind = "appearance" | "identity_sprite" | "copied";
+
+export interface DeliveredSpeaker {
+  /** Null when the speaker cannot be tied to one persona, which never matches another speaker. */
+  personaId: number | null;
+  kind: DeliveredSpeakerKind;
+}
+
+export type ChannelLastDelivery =
+  | { via: "webhook"; identity: ResolvedWebhookIdentity; speaker: DeliveredSpeaker | null }
+  | { via: "bot"; speaker: DeliveredSpeaker | null };
+
 interface ChannelDeliveryState {
   /** Sprite key of the most recent non-identity sprite delivered in this channel. */
   lastSpriteKey: string | null;
-  /** Current half of the clean/decorated username alternation. */
+  /** Current half of the clean/group-break username alternation. */
   groupParity: boolean;
   /**
    * Identity of the most recent WEBHOOK delivery, or null when the last delivery was an
-   * ordinary bot message. Null is meaningful: it means post-turn artifacts must also go out
+   * ordinary bot message. Null is meaningful: it means following artifacts must also go out
    * as the bot, since that is what they would group with.
    */
   lastWebhookIdentity: ResolvedWebhookIdentity | null;
@@ -46,6 +66,9 @@ interface ChannelDeliveryState {
    * Discord author, so no webhook group can continue through it.
    */
   lastDeliveredMessageId: string | null;
+  /** Null on a fresh entry, which is what separates "nothing recorded" from a bot-user delivery. */
+  lastDeliveryVia: "webhook" | "bot" | null;
+  lastSpeaker: DeliveredSpeaker | null;
   updatedAt: number;
 }
 
@@ -79,6 +102,8 @@ function getLiveEntry(channelId: string, now: number): ChannelDeliveryState {
     groupParity: false,
     lastWebhookIdentity: null,
     lastDeliveredMessageId: null,
+    lastDeliveryVia: null,
+    lastSpeaker: null,
     updatedAt: now,
   };
   channelDeliveryStates.set(channelId, fresh);
@@ -153,22 +178,27 @@ export function advanceChannelSpriteGroupParity(
  * Records the identity a webhook message was just delivered under, so later sends in the same
  * channel can reuse it verbatim and group with it.
  *
- * The stored username is the one actually sent: which may be the decorated `Persona (sprite)`
- * form chosen by the group-break alternation. Re-resolving the sprite from scratch would produce
- * the clean name instead and split the group, which is exactly what this avoids.
+ * The stored username is the one actually sent, which may be the lookalike-letter group-break
+ * name (or its `Persona (sprite)` fallback) chosen by the alternation. Re-resolving the sprite from
+ * scratch would produce the clean name instead and split the group, which is exactly what this
+ * avoids.
  *
  * @param identity - Identity used for the send
  * @param messageId - Id of the sent message, which anchors the sprite alternation's adjacency test
+ * @param speaker - Who the message presented, or null when unknown
  */
 export function recordChannelDeliveredWebhookIdentity(
   channelId: string,
   identity: ResolvedWebhookIdentity,
   messageId: string | null = null,
+  speaker: DeliveredSpeaker | null = null,
 ): void {
   const now = Date.now();
   const entry = getLiveEntry(channelId, now);
   entry.lastWebhookIdentity = { ...identity };
   entry.lastDeliveredMessageId = messageId;
+  entry.lastDeliveryVia = "webhook";
+  entry.lastSpeaker = speaker ? { ...speaker } : null;
   entry.updatedAt = now;
 }
 
@@ -177,12 +207,15 @@ export function recordChannelDeliveredWebhookIdentity(
  * remembered webhook identity. Without this a stale identity would be reused after the persona
  * had already reverted to the bot, putting artifacts under a name nothing else is using.
  *
+ * @param speaker - Who the message presented, or null when unknown
  */
-export function recordChannelDeliveredBotMessage(channelId: string): void {
+export function recordChannelDeliveredBotMessage(channelId: string, speaker: DeliveredSpeaker | null = null): void {
   const now = Date.now();
   const entry = getLiveEntry(channelId, now);
   entry.lastWebhookIdentity = null;
   entry.lastDeliveredMessageId = null;
+  entry.lastDeliveryVia = "bot";
+  entry.lastSpeaker = speaker ? { ...speaker } : null;
   entry.updatedAt = now;
 }
 
@@ -198,6 +231,24 @@ export function getChannelDeliveredWebhookIdentity(channelId: string): ResolvedW
     return null;
   }
   return entry.lastWebhookIdentity;
+}
+
+/**
+ * Returns how the channel's most recent message was delivered and who it presented, or null when
+ * nothing is recorded in the current window.
+ */
+export function getChannelLastDelivery(channelId: string): ChannelLastDelivery | null {
+  const entry = channelDeliveryStates.get(channelId);
+  if (!entry || Date.now() - entry.updatedAt >= CONTINUITY_TTL_MS) {
+    return null;
+  }
+  if (entry.lastDeliveryVia === "bot") {
+    return { via: "bot", speaker: entry.lastSpeaker };
+  }
+  if (entry.lastDeliveryVia === "webhook" && entry.lastWebhookIdentity) {
+    return { via: "webhook", identity: entry.lastWebhookIdentity, speaker: entry.lastSpeaker };
+  }
+  return null;
 }
 
 /** Test seam: drops all continuity state. */

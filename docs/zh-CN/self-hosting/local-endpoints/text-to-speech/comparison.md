@@ -2,6 +2,7 @@
 title: "TTS 引擎对比"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBot 支持多种本地语音合成服务器，各自适合不同的语言、硬件配置与延迟要求。

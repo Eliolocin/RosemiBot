@@ -1,5 +1,5 @@
 import type { ButtonStyle } from "discord.js";
-import type { ButtonInteraction, ColorResolvable, EmbedBuilder, MessageFlags } from "discord.js";
+import type { AttachmentBuilder, ButtonInteraction, ColorResolvable, EmbedBuilder, MessageFlags } from "discord.js";
 
 /**
  * Options for creating a standard info/status embed.
@@ -13,6 +13,13 @@ export interface StandardEmbedOptions {
   color?: ColorResolvable;
   footerKey?: string;
   footerVars?: Record<string, string | number | boolean>;
+  /** Adds the shared `/config` > Behavior > Notices line below the footer, for notices a server can hide. */
+  configHint?: boolean;
+  /**
+   * Renders a Minimal notice: the title without its emoji, in the notice color, and nothing else.
+   * Description, footer, config hint, thumbnail, and any expand button are all dropped.
+   */
+  minimal?: boolean;
   thumbnailUrl?: string;
   flags?: MessageFlags;
   timestamp?: boolean;
@@ -23,6 +30,7 @@ export interface StandardEmbedOptions {
   tipKeys?: string[];
   /** Shared interpolation vars applied to every tip item in {@link tipKeys}. */
   tipVars?: Record<string, string | number | boolean>;
+  files?: AttachmentBuilder[];
 }
 
 /**
@@ -35,9 +43,6 @@ export interface TranslationEmbedOptions {
   timeout?: number;
 }
 
-/**
- * Options for confirmation embeds with buttons
- */
 export interface ConfirmationOptions {
   embedTitleKey: string;
   embedDescriptionKey: string;
@@ -53,17 +58,11 @@ export interface ConfirmationOptions {
   cancelStyle?: ButtonStyle.Secondary | ButtonStyle.Danger;
 }
 
-/**
- * Result type for confirmation interactions
- */
 export type ConfirmationResult = {
   outcome: "continue" | "cancel" | "timeout";
   interaction?: ButtonInteraction; // The button interaction if outcome is 'continue'
 };
 
-/**
- * Available translation providers
- */
 export enum TranslationProvider {
   GOOGLE = "google",
   BING = "bing",
@@ -96,9 +95,6 @@ export interface SummaryEmbedOptions extends StandardEmbedOptions {
   appendEmbeds?: EmbedBuilder[];
 }
 
-/**
- * Interface for paginated choice options
- */
 export interface PaginatedChoiceOptions {
   titleKey: string; // Localization key for the embed title
   titleVars?: Record<string, string | number | boolean>; // Variables for the title localization
@@ -115,9 +111,6 @@ export interface PaginatedChoiceOptions {
   flags?: MessageFlags;
 }
 
-/**
- * Result of a paginated choice selection
- */
 export interface PaginatedChoiceResult {
   success: boolean; // Whether a selection was made successfully
   selectedIndex?: number; // The index of the selected item (if success is true)

@@ -153,11 +153,14 @@ describe("buildOpenAICompatibleMessages — assistant media relocation (golden)"
     ]);
   });
 
-  it("serializes a text-only tool result once without a duplicate user turn", async () => {
+  it.each([
+    "completed",
+    "review_rejected",
+  ])("pairs a %s tool result once without a duplicate user turn", async (status) => {
     const functionResponse = {
       functionResponse: {
         name: "fetch_url",
-        response: { result: { summary: "Fetched page content" } },
+        response: { result: { status } },
       },
     };
     const messages = await buildOpenAICompatibleMessages({
@@ -175,6 +178,9 @@ describe("buildOpenAICompatibleMessages — assistant media relocation (golden)"
 
     expect(messages.map((message) => message.role)).toEqual(["assistant", "tool"]);
     expect(messages[1]?.content).toBe(JSON.stringify(functionResponse));
+    const calls = messages[0]?.tool_calls;
+    if (!Array.isArray(calls)) throw new Error("Expected paired tool calls");
+    expect(messages[1]?.tool_call_id).toBe((calls[0] as Record<string, unknown>)?.id);
   });
 
   it("inlines tool-returned images and corrects a misleading MIME label", async () => {
@@ -288,5 +294,51 @@ describe("buildOpenAICompatibleMessages — reasoning_content replay", () => {
     const messages = await buildToolReplay(undefined, false);
 
     expect(messages[0]).not.toHaveProperty("reasoning_content");
+  });
+
+  describe("trailing plain assistant turn", () => {
+    const textItem = (role: "user" | "model", text: string): StructuredContextItem => ({
+      role,
+      parts: [{ type: "text", text }],
+    });
+
+    async function buildTrailingTurn(requiresReasoningContentReplay: boolean) {
+      return await buildOpenAICompatibleMessages({
+        adapterName: "TestAdapter",
+        contextItems: [
+          textItem("model", "earlier reply"),
+          textItem("user", "Juno: hello"),
+          textItem("model", "Tomori: I am here"),
+        ],
+        currentTurnModelParts: [],
+        seesImages: false,
+        requiresReasoningContentReplay,
+      });
+    }
+
+    it("stamps an empty reasoning_content on assistant turns after the last user turn only", async () => {
+      const messages = await buildTrailingTurn(true);
+
+      expect(messages[0]).not.toHaveProperty("reasoning_content");
+      expect(messages.at(-1)).toMatchObject({ role: "assistant", reasoning_content: "" });
+    });
+
+    it("stamps a buffered currentTurnModelParts continuation", async () => {
+      const messages = await buildOpenAICompatibleMessages({
+        adapterName: "TestAdapter",
+        contextItems: [textItem("user", "Juno: hello")],
+        currentTurnModelParts: [{ text: "partial reply" }],
+        seesImages: false,
+        requiresReasoningContentReplay: true,
+      });
+
+      expect(messages.at(-1)).toMatchObject({ role: "assistant", content: "partial reply", reasoning_content: "" });
+    });
+
+    it("leaves the trailing turn untouched for endpoints that do not require the replay", async () => {
+      const messages = await buildTrailingTurn(false);
+
+      expect(messages.at(-1)).not.toHaveProperty("reasoning_content");
+    });
   });
 });

@@ -1,3 +1,4 @@
+import { createPersona, createUserRow } from "../../helpers/fixtures";
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { Client } from "discord.js";
 import type { TomoriState, UserRow } from "@/types/db/schema";
@@ -113,6 +114,67 @@ function makeRegistry(
 }
 
 describe("persistent status interaction route", () => {
+  it("rechecks current prompt access on every route and after a member loses permission", async () => {
+    const current = createPersona({ config: { prompt_snapshot_enabled: false } });
+    let manageGuild = true;
+    const gates: boolean[] = [];
+    const route = createStatusInteractionRoute({
+      loadUserByDiscordId: async () => createUserRow(),
+      getCachedTomoriState: async () => current,
+      loadPersonasForServer: async () => [current],
+      buildServerConfigPages: async (_client, _state, _locale, canView) => {
+        gates.push(Boolean(canView));
+        return Array.from({ length: 5 }, () => ({ titleKey: "commands.status.server_page1_title", fields: [] }));
+      },
+      buildServerModelPages: async () =>
+        Array.from({ length: 4 }, () => ({ titleKey: "commands.status.server_page1_title", fields: [] })),
+      buildServerChannelPages: async () => [{ titleKey: "commands.status.server_page1_title", fields: [] }],
+      buildPersonalStatusPages: async () => [{ titleKey: "commands.status.server_page1_title", fields: [] }],
+      buildPersonaStatusPages: async (_state, _user, _locale, canView) => {
+        gates.push(Boolean(canView));
+        return [page("commands.status.persona_page1_title")];
+      },
+    });
+    const registry = new InteractionRouteRegistry([route]);
+    for (const [permission, enabled] of [
+      [true, false],
+      [false, false],
+      [false, true],
+      [true, true],
+    ] as const) {
+      manageGuild = permission;
+      current.config.prompt_snapshot_enabled = enabled;
+      for (const options of [
+        { customId: buildStatusCategoryButtonId("en-US", "persona"), kind: "button" },
+        { customId: buildStatusPageSelectorId("en-US", "persona"), kind: "string-select", values: ["0"] },
+        {
+          customId: buildStatusPersonaSelectorId("en-US", current.persona_id ?? 1),
+          kind: "string-select",
+          values: [String(current.persona_id)],
+        },
+        {
+          customId: buildStatusDashboardRouteId({
+            action: "persona-page",
+            locale: "en-US",
+            personaId: current.persona_id ?? 1,
+            start: 0,
+          }),
+          kind: "button",
+        },
+      ] as const) {
+        const interaction = makeStatusInteraction({
+          ...options,
+          values: "values" in options ? [...(options.values ?? [])] : undefined,
+        });
+        Object.assign(interaction, { memberPermissions: { has: () => manageGuild } });
+        const before = gates.length;
+        await registry.dispatch({} as Client, interaction as unknown as GlobalRoutableInteraction);
+        expect(gates.slice(before)).toEqual([permission || enabled, permission || enabled]);
+        expect(interaction.calls[0]?.method).toBe("deferUpdate");
+      }
+    }
+  });
+
   it("routes a category button through the registry after acknowledgement and repaints fresh data", async () => {
     const interaction = makeStatusInteraction({
       customId: buildStatusCategoryButtonId("en-US", "models"),

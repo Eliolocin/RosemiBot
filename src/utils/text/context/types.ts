@@ -1,7 +1,13 @@
 import type { Client } from "discord.js";
 import type { MessageIdMap } from "@/utils/text/messageIdMap";
 import type { RequestSnapshot } from "@/types/misc/context";
-import type { AssembledServerConfig, PersonaUserBlockRow, ServerEmojiRow, ServerStickerRow } from "@/types/db/schema";
+import type {
+  CustomExpressionRow,
+  AssembledServerConfig,
+  PersonaUserBlockRow,
+  ServerEmojiRow,
+  ServerStickerRow,
+} from "@/types/db/schema";
 import type { StructuredContextItem } from "@/types/misc/context";
 import type { PreparedParticipantContext } from "@/utils/text/participants/preparation";
 
@@ -99,6 +105,7 @@ export interface BuildContextParams {
   snapshot?: RequestSnapshot;
   preloadedEmojis?: ServerEmojiRow[] | null;
   preloadedStickers?: ServerStickerRow[] | null;
+  preloadedCustomExpressions?: CustomExpressionRow[] | null;
   isUserImpersonation?: boolean;
   impersonatedUserId?: string;
   impersonatedUserNickname?: string;

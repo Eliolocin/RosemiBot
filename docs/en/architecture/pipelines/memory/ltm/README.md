@@ -6,39 +6,27 @@ sidebar:
   order: 520
 ---
 
-Handles persistent, database-backed memory writes initiated by the LLM via
-tool calls during the tool-loop. Two tools cover the full CRUD surface:
+The long-term memory (LTM) sub-pipeline manages durable facts and preferences learned by the model. It handles database persistence and cache invalidation initiated by tool calls during generation.
 
-| Stage | File | Tool name | What it does |
+The sub-pipeline provides two operational stages:
+
+| Stage | Tool name | Operation | Storage target |
 |---|---|---|---|
-| `01-ltm-create.md` | `MemoryTool` | `create_long_term_memory` | Inserts a new server or personal memory record |
-| `02-ltm-update-delete.md` | `UpdateLongTermMemoryTool` | `update_long_term_memory` | Replaces or deletes an existing memory by its `ID:N` |
+| [01: Memory Creation](/architecture/pipelines/memory/ltm/01-ltm-create/) | `create_long_term_memory` | Inserts a new server or personal memory record | `server_memories` or `personal_memories` |
+| [02: Memory Update & Delete](/architecture/pipelines/memory/ltm/02-ltm-update-delete/) | `update_long_term_memory` | Updates or deletes an existing memory by its integer ID | `server_memories` or `personal_memories` |
 
 ## Key design facts
 
-- **Feature-flagged**: both tools require `self_teaching_enabled = true` in
-  `TomoriState.config`. When disabled, the tool returns a user-reportable
-  error without writing to the DB.
-- **Persona-lineage scoping**: all DB writes use `persona_lineage_id`, not
-  `persona_id`, so memories are shared across all personas of the same
-  character lineage (different server instances of the same persona still
-  see each other's memories).
-- **Cache invalidation on success**: every successful write immediately
-  invalidates the relevant TomoriState or user cache so the next
-  context-build reads fresh DB state.
-- **Dual scope**: memories are either `server_wide` (stored in
-  `server_memories`, keyed by `server_id + persona_lineage_id`) or
-  `target_user` (stored in `personal_memories`, keyed by
-  `user_id + persona_lineage_id`).
-- **Template placeholders**: content must use `{user}` and `{bot}` tokens
-  instead of hardcoded names. Both tools strip unknown brace-wrapped tokens
-  (e.g. `{obonya}`) via `sanitizeUnknownTemplatePlaceholders()` before the
-  DB write.
+- **Feature flag requirement:** both tools require `self_teaching_enabled = true` in `TomoriState.config`. When disabled, the tool returns a failure result and halts without altering database records.
+- **Persona lineage scoping:** Server memories use server ID plus lineage; personal memories use user ID plus lineage and follow the user across servers. Persona lineage ID 0 is reserved for global memories and rejected for self-taught records.
+- **Dual scope partitioning:** memories are classified as either `server_wide` (stored in `server_memories`, keyed by `server_id` and `persona_lineage_id`) or `target_user` (stored in `personal_memories`, keyed by internal `user_id` and `persona_lineage_id`).
+- **Cache invalidation ownership:** Memory tools invalidate Tomori state or user caches after writes. The [creation stage](/architecture/pipelines/memory/ltm/01-ltm-create/) explains the server-notification ordering limitation.
+- **Template placeholders:** content uses `{user}` and `{bot}` tokens instead of hardcoded names. `sanitizeUnknownTemplatePlaceholders()` strips unrecognized brace tokens before saving to storage.
 
 ## Cross-references
 
-- Intent gate that routes toward LTM tools: → [memory pipeline README](../README)
-- Tool-loop that executes these tools: → [tool-loop Stage 02 `executeToolCall`](../../tool-loop/02-execute-tool-call)
-- Read side (server memories): → [context-build server-memory stage](../../context-build/02-native-assembly/03-server-memories)
-- Read side (personal memories): → [context-build personal-memory stage](../../context-build/02-native-assembly/07-personal-memories)
-- Memory ID formatting used in context: → `src/utils/memory/memoryId.ts` (`formatMemoryWithId`)
+- **Intent detection gate:** [Memory Pipeline](/architecture/pipelines/memory/) describes how explicit memory intent prioritizes LTM tools.
+- **Tool-loop caller:** [Execute Tool Call](/architecture/pipelines/tool-loop/02-execute-tool-call/) runs tool dispatches for memory modifications.
+- **Server memory reader:** [Server Memories Context](/architecture/pipelines/context-build/02-native-assembly/03-server-memories/) formats server-wide memories for prompt injection.
+- **Personal memory reader:** [Participants Context](/architecture/pipelines/context-build/02-native-assembly/06-participants/) hydrates personal memories for each participant.
+- **Memory formatting:** `src/utils/memory/memoryId.ts` formats memories with their visible `ID:N` prefixes in prompt context.

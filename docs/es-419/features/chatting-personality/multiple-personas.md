@@ -14,104 +14,87 @@ sidebar:
   order: 2
 ---
 
-La personalidad de TomoriBot vive en una persona: su nombre, avatar, rasgos, estilo al hablar y
-comportamiento. Puedes ejecutar varias personas a la vez, cada una con su propio personaje, activadores
-y avatar de webhook. Esta página explica *cómo se comporta*. Para saber *qué conoce* (datos y memorias),
-consulta [Memoria](/es-419/features/knowledge/memory/).
+La personalidad de TomoriBot se guarda en una persona: su nombre, avatar, rasgos, forma de hablar y comportamiento. Puedes usar varias personas a la vez, cada una como un personaje distinto con sus propias palabras de activación y avatar de webhook. Esta página explica cómo se comportan las personas. Para hechos y recuerdos, consulta [Memoria](/es-419/features/knowledge/memory/).
 
 ## Crear una persona
 
-- `/persona create`: crea una personalidad personalizada desde cero.
-- `/persona generate`: haz que la IA genere una personalidad a partir de una descripción y una imagen. Requiere un proveedor compatible con salida estructurada. También puedes cargar aquí un preajuste existente de TomoriBot o una tarjeta de SillyTavern para transformar un personaje ([Compatibilidad con SillyTavern](/es-419/features/integrations/sillytavern-support/)).
-- `/persona default`: cambia a una de las personalidades predeterminadas integradas como base.
-- `/persona export` / `/persona import`: comparte o respalda una persona como archivo. Importar permite traer una persona como alter con sus propios activadores y avatar de webhook.
-- `/persona remove`: elimina una persona alter.
-
-Un buen flujo inicial es elegir una predeterminada o generar una, y después perfeccionarla con los atributos y diálogos de ejemplo de abajo.
+- `/persona create`: crea una persona personalizada desde cero.
+- `/persona generate`: haga que la IA genere una persona a partir de un mensaje y una imagen (requiere un proveedor que admita resultados estructurados). También puede proporcionar una tarjeta TomoriBot preestablecida o SillyTavern existente (consulte [Soporte SillyTavern](/es-419/features/integrations/sillytavern-support/)).
+- `/persona default`: cambia a uno de los caracteres predeterminados integrados.
+- `/persona export` y `/persona import`: realice copias de seguridad o comparta archivos personales. La importación admite la adición de un personaje como personaje alternativo con sus propios activadores y avatar de webhook.
+- `/persona remove`: eliminar una alter persona.
 
 ## Personas alter
 
-Las personas alter permiten que varios personajes coexistan en un servidor:
+Las personas alter permiten que varios personajes convivan en un servidor:
 
-- Cada alter tiene su propia personalidad, palabras de activación y avatar de webhook, así que distintos personajes aparecen con nombres e imágenes diferentes en el mismo canal.
-- Varias personas alter pueden responder a un solo mensaje, hasta el límite de `/config` > Motor > Activador.
-- Responder a un mensaje de webhook continúa la conversación como esa persona.
-- Añade alters mediante `/persona import` (opción alter) y adminístralas con `/persona` y `/persona remove`.
+- Cada alter tiene su propia personalidad, palabras de activación y avatar de webhook, por lo que cada personaje publica con su nombre e imagen en el mismo canal.
+- Varios alters pueden responder a un mismo mensaje, hasta el límite configurado en `/config` > `Comportamiento` > `Comportamiento de activación`.
+- Responder directamente a un mensaje de webhook continúa la conversación con esa persona.
+- Agrega alters con `/persona import`, seleccionando la opción de alter, y adminístralos con `/persona` y `/persona remove`.
 
-Esto hace posibles el roleplay grupal y los servidores con varios personajes. Para conocer los detalles de ejecución sobre cómo los activadores dirigen a las personas y cómo funcionan las identidades de webhook, consulta la referencia de arquitectura sobre [comportamiento de múltiples personas](/en/architecture/subsystems/multi-persona/).
+Para conocer cómo se dirigen las respuestas y se identifica cada webhook, consulta la [arquitectura de múltiples personas](/en/architecture/subsystems/multi-persona/).
 
 ## Dar forma a la personalidad
 
-Dos comandos hacen la mayor parte del trabajo de enseñarle cómo hablar y actuar:
+Afina cómo se ve, habla y se comporta una persona:
 
 ### Atributos
 <!-- anchor: attributes -->
 
-`/config` > Persona > Identidad y personalidad añade rasgos de personalidad o características físicas, por
-ejemplo `amigable`, `cabello rojo` o `termina las oraciones con *Nya~*`. Elimínalos desde el mismo lugar.
+Abre `/config` > `Persona` > `Identidad y personalidad` para definir rasgos de personalidad o detalles físicos (como `friendly`, `red hair` o `ends sentences with *Nya~*`).
 
 ### Diálogos de ejemplo
 <!-- anchor: sample-dialogues -->
 
-`/config` > Persona > Identidad y personalidad le enseña *cómo habla* mediante ejemplos. Usa los marcadores
-`{user}` y `{bot}` para que los diálogos funcionen para todos y al compartir la persona:
+Abre `/config` > `Persona` > `Identidad y personalidad` para enseñarle su estilo de hablar con el ejemplo utilizando los marcadores de posición `{user}` y `{bot}`:
 
-- `{user}`: se reemplaza por el nombre o apodo real del usuario
-- `{bot}`: se reemplaza por su nombre actual
+- `{user}`: reemplazado con el nombre para mostrar o apodo del usuario real.
+- `{bot}`: reemplazada por su nombre personal actual.
 
 ```text
-{user}: ¿Cuál es tu pasatiempo favorito?
-{bot}: ¡Fufu~ Me gusta tejer ropa diminuta para peluches diminutos~♥
+{user}: What's your favorite hobby?
+{bot}: Fufu~ I like knitting tiny clothes for tiny plushies~♥
 ```
 
-Consejos para diálogos de ejemplo eficaces:
+Consejos para ejemplos de diálogos eficaces:
 
-- Escribe intercambios naturales y conversacionales.
-- Incluye los atributos y rasgos que quieres que muestre.
-- Demuestra el tono que buscas y añade variedad para que generalice.
-
-Elimina ejemplos desde `/config` > Persona > Identidad y personalidad.
+- Escriba intercambios naturales que muestren en lugar de contar.
+- Demuestre el tono y el vocabulario que desea que utilice.
+- Agrega variedad en varios ejemplos para que pueda generalizar bien.
 
 ### Nombre y avatar
 
-- `/config` > Persona > Identidad y personalidad: establece cómo se llama a sí misma.
-- `/config` > Persona > Identidad y personalidad: establece su imagen de perfil para este servidor.
+Abre `/config` > `Persona` > `Identidad y personalidad` para configurar cómo se llama y cargar su foto de perfil.
 
-También puedes establecer un prompt del sistema personalizado con `/config` > Motor > General para dar más forma al comportamiento. Consulta [Ajuste del comportamiento](/es-419/features/chatting-personality/behavior-tweaking/).
+También puede configurar un mensaje de sistema personalizado en `/config` > `Comportamiento` > `Comportamiento general`; consulte [Ajustes de comportamiento](/es-419/features/chatting-personality/behavior-tweaking/).
+
+### Hábitos de nomenclatura
+
+Los administradores de servidores pueden abrir `/config` > `Persona` > Naming Habits para establecer cómo una persona se dirige a los miembros:
+
+- Configura prefijos, sufijos y términos de dirección masculinos, femeninos y neutros separados.
+- Diferentes personas pueden dirigirse al mismo usuario con diferentes títulos (como uno que lo llama "Capitán" y otro que lo llama "Senpai").
+- Las anulaciones personales siguen a cada usuario a través de los servidores; consulte [Personalización](/es-419/features/knowledge/personalization/).
 
 ## Sprites (avatares de emoción)
 <!-- anchor: sprites-emotion-avatars -->
 
-Los sprites son imágenes de avatar alternativas a las que una persona puede cambiar a mitad de la conversación
-para expresar una emoción o situación, como sus expresiones faciales. Cada sprite es una imagen con etiqueta
-(por ejemplo `feliz`, `enojada`, `avergonzada`) que muestra en lugar de su avatar normal cuando corresponde.
+Los sprites son avatares alternativos a los que cambia una persona durante una conversación para reflejar emociones (como `happy`, `mad` o `embarrassed`).
 
-Cómo los usa: el modelo recibe los sprites disponibles y sus indicaciones de uso en cada turno. Para mostrar
-uno, inicia una línea de respuesta con `PersonaName (label):`. Esa línea se entrega con la imagen del sprite
-correspondiente. Si ningún sprite encaja, responde normalmente.
+Al responder, elige el objeto que coincide con su emoción. Para usar uno, comienza la línea de respuesta con `PersonaName (label):` y Discord entrega ese mensaje con el avatar del sprite correspondiente. Si ningún objeto encaja, ella responde con su avatar predeterminado.
 
-Administra los sprites de una persona en `/config` > Persona > Sprites (añadir y eliminar requiere el permiso
-Administrar servidor):
+Administrar sprites en `/config` > `Persona` > Sprites (requiere Administrar servidor):
 
-- `/config` > Persona > Sprites: añade o reemplaza un sprite. Elige la persona, dale una etiqueta, carga la imagen (PNG, JPG o GIF) y, opcionalmente, añade instrucciones de uso que indiquen cuándo utilizarlo. Reutilizar una etiqueta reemplaza ese sprite. Cada persona tiene un máximo de sprites.
-- `/config` > Persona > Sprites: cambia el nombre, imagen, instrucciones o interruptor de identidad de un sprite existente.
-- `/config` > Persona > Sprites: elimina sprites de una persona.
-- Exportar e importar en `/config` > Persona > Sprites: respalda o comparte todo el conjunto de sprites de una persona como archivo.
+- **Agregar o reemplazar**: seleccione la persona, proporcione una etiqueta, cargue una imagen (PNG, JPG o GIF) y, opcionalmente, escriba instrucciones de uso que describan cuándo mostrarla.
+- **Editar**: actualiza la etiqueta, imagen o instrucciones de un objeto existente.
+- **Eliminar**: elimina los sprites que ya no deseas.
+- **Exportar e importar**: comparte o haz una copia de seguridad del paquete completo de sprites de la persona como un archivo.
 
-El interruptor de identidad decora el nombre del mensaje como `Label (Persona)` en Discord, lo que resulta especialmente útil para [personas alter](#personas-alter) que hablan como personajes distintos.
+La palanca `Guardar como identidad` muestra el autor del mensaje como `Label (Persona)` en Discord, útil para caracteres con múltiples formas.
 
-Cambiar el avatar de una persona predeterminada elimina los sprites que traía porque muestran el rostro del
-personaje original. Los sprites que añadiste permanecen. Ejecuta `/persona default` para recuperar los sprites predeterminados.
+Reemplazar el avatar de una persona predeterminada borra sus sprites incorporados, porque representan el personaje original. Los sprites que agregaste tú mismo permanecen intactos. La ejecución de `/persona default` restaura los sprites integrados.
 
 ## Elección de persona por canal
 
-¿Quieres controlar qué persona te responde en un canal específico sin cambiar la configuración de todo el servidor?
-Eso es el foco personal. Consulta [Personalización](/es-419/features/knowledge/personalization/#personal-spotlight).
-
-## Formas de dirigirse a las personas específicas de cada persona
-
-Los administradores del servidor pueden usar `/config` > Persona > Identidad y personalidad para dar a cada persona
-prefijos, sufijos y formas de dirigirse independientes en masculino, femenino y neutro. El ajuste específico de una
-persona de un usuario se basa en el linaje estable de la persona. Por eso dos personas pueden llamar a Mirri con
-nombres distintos en la misma respuesta de varias personas y seguir dirigiéndose al mismo usuario de Discord.
-Editar primero un puntero oficial crea una copia independiente. Nunca cambia el catálogo compartido ni la persona de otro servidor.
+Para elegir qué persona le responde en un canal específico sin cambiar la configuración de todo el servidor, utilice Personal Spotlight; consulte [Personalización](/es-419/features/knowledge/personalization/#personal-spotlight).

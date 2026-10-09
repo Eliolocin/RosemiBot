@@ -4,76 +4,89 @@ sidebar:
   order: 4
 ---
 
-TomoriBot 的构建目标之一就是对你的数据保持透明。她存下的所有东西你都可以导出、导入或删除，这一页会逐项说明那到底是什么。法律文本见 `/legal privacy-policy` 和 `/legal terms-of-service`。
+使用Discord斜线命令导出、备份、导入或删除你的设置、记忆和人格。有关服务条款和隐私详细信息，请参阅`/legal terms-of-service`和`/legal privacy-policy`。
 
 :::note
-这一页讲的是 Discord 内的按用户控制项。自己部署一套实例？ 整个数据库的备份与还原属于主机侧操作；见
-[维护与备份](/zh-CN/self-hosting/maintenance/)。
+本页涵盖Discord内的用户控件。在自部署实例上，完整数据库备份和恢复是主机端操作； 参见[维护与备份](/zh-CN/self-hosting/maintenance/)。
 :::
 
-## 她存了什么
+## 她储存什么
 
-会存：
+### 存储数据
 
-- 服务器记忆与个人记忆
-- 她的设置与人格数据
-- 服务器配置
-- 加密后的 API 密钥
+- 服务器和个人记忆
+- 人格简介、特征和对话示例
+- 服务器配置设置
+- 加密提供商API密钥
+- 表情元数据、人格访问规则和上传的表情媒体
 
-不会存：
+### 未存储
 
-- 你的 Discord 消息
-- 聊天历史
+- Discord消息历史记录（消息未存档在持久消息日志中）
 
-会发给你的 AI 提供方： 每当她被触发，她会取频道里的最新消息以及任何相关记忆作为模型的上下文。除了这些触发之外，她不会监控或读取消息。
+### 发送给你的AI提供商
+
+每当触发时，TomoriBot都会获取通道中的最新消息以及相关内存作为模型的上下文。她不会阅读或处理这些触发器之外的消息。
 
 :::note
-你选择的 AI 提供方（Google、OpenRouter、NovelAI 等）按*它们自己的*隐私政策处理消息。永远不要向任何 AI 分享敏感的个人信息。
+你选择的AI提供商（Google、OpenRouter、NovelAI等）根据自己的隐私政策处理消息。避免共享敏感的个人凭据或机密数据。
 :::
+
+### 回复审核设置
+<!-- anchor: response-drafting-selections -->
+
+`/config` > `插件` > `回复审核` 存储工作区的审查者、判定模型、可选的规则检查器以及提示词选择。开启后，回复和实际的工具请求在发送或执行之前都会经过审核。可选的检查器会接收待处理的回复文本，并仅向审查者发送建议性结果。在获得带标签的验证之前，判定跳过功能处于非活动状态，且在缺少校准时，保存的判定选择不会发起付费调用。关闭后将恢复常规回复和工具，不进行审核请求。
+
+选定的审查者会接收待处理的回复以及已向其作者公开的上下文：人格指令、代表性对话、触发和回复目标、相关对话、可见的参与者关系、记忆、文档以及实际的工具结果。对于工具请求，审查者还会收到其确切的目标和参数（包括任何消息文本）以及可用的工具定义。审核不会添加私有资料查找。凭据和身份验证参数会被遮蔽。所需证据必须能够容纳；不完整的媒体覆盖、隐藏的工具参数或缺失的模型限制将使审核不可用。审核不可用时将保持常规应用程序检查；先前被拒绝的操作仍保持阻止。
+
+继承使用实际响应的模型和凭据，包括个人路由、密钥轮换、覆盖和后备。固定的审查者使用其自身的工作区注册和保存的提供商密钥。其提供商拥有自己的隐私政策。选择它不会改变主回复提供商。待处理的回复和更正数据包仅在当前轮次保留。只有被 Discord 接受的对话才会进入对话记忆；当提供商报告使用情况时，token 统计会包括实际未成功的尝试。诊断信息包含元数据和计数，不包含草稿、证据、更正、提供商响应正文或密钥。
+
+配置导出包含这些设置，但不包含 API 密钥或 MCP 身份验证令牌。仅当接收工作区可以使用时，导入才会保留模型和检查器引用。导入前请注册本地对应项或清除不可用的选择。重置服务器配置会恢复为关闭、审查者继承、无判定模型、默认提示词且无检查器。
 
 ## 导出你的数据
 
-所有可导出的内容都会以 JSON 文件的形式发到你的私信：
+可导出的数据以JSON文件形式传送到你的DM：
 
-- `/export config`：服务器配置值（不含 API 密钥、凭据或提供方设置）。
-- `/export personal config`：你的个人设置（资料、隐私、外观、回复模式）。
-- `/export memories`：服务器记忆，范围可为主人格、选定的某个人格，或每个人格分别导出。
-- `/export personal memories`：你的个人记忆，范围为全局、某个人格，或每个人格分别导出。
+- `/export config`：服务器配置值（不包括API密钥和凭据）。
+- `/export personal config`：个人资料设置（隐私、外观标签、命名）。
+- `/export memories`：服务器内存，范围为主要人格、一个人格或所有人格。
+- `/export personal memories`：个人记忆，范围全局或每个人格。
 - `/persona export`：完整的人格定义。
+
+上传的表达媒体存储在服务器主机上，并且位于这些JSON导出之外。自部署者必须同时备份数据库存储和媒体资产； 请参阅[自定义媒体备份](/zh-CN/self-hosting/safe-migration/#custom-expression-media-backups)。
 
 ## 导入你的数据
 
-附上之前导出的文件即可恢复：
+附加导出的文件以将其恢复：
 
-- `/import config`：服务器配置；需要管理服务器权限。可以选择要应用哪些检测到的区块。
-- `/import personal config`：你的个人设置。可以选择要应用哪些检测到的区块。
-- `/import memories`：服务器记忆；需要管理服务器权限。可合并或替换，如果文件里有多个来源人格，还能逐一映射。
-- `/import personal memories`：你的个人记忆。可合并或替换，如果文件里有多个来源人格，还能逐一映射。
-- `/persona import`：恢复一个人格。它也接受 PNG 和 JSON 格式的 SillyTavern 角色卡，以及
-  `.charx` 的 Character Card V3 压缩包，这两种只导入角色文本（见
-  [SillyTavern 支持](/zh-CN/features/integrations/sillytavern-support/)）。
+- `/import config`：服务器配置（需要管理服务器）。选择要应用的部分。
+- `/import personal config`：个人设置。选择要应用的检测到的部分。
+- `/import memories`：服务器内存（需要管理服务器）。合并或替换并映射人格。
+- `/import personal memories`：个人回忆。合并或替换并映射人格。
+- `/persona import`：恢复人格。还导入SillyTavern PNG卡、JSON卡和`.charx`档案（请参阅 [SillyTavern支持](/zh-CN/features/integrations/sillytavern-support/)）。
 
 ## 删除你的数据
 
-下面这些会永久移除或重置数据，无法撤销：
+这些操作永久删除或重置存储的数据：
 
-- `/personal memories`、`/memories`
-- `/reset config`：把 29 张配置表里的服务器配置重置为数据库默认值。
-  - 恢复为 DDL 默认值的单例表（18 张）： chat configs、model configs、member permissions、capabilities、notice embeds、nsfw configs、speech configs、auto-trigger configs、channel scope configs、trigger behavior configs、NovelAI image generation configs、BYOK configs、memory configs、short-term memory configs、welcome configs、image quota configs、text quota configs 和 video quota configs。
-  - 保留的配置（两组）： `server_model_configs` 里当前生效的模型 ID、凭据和自定义端点参数（`llm_id`、`embedding_model_id`、`diffusion_model_id`、`video_model_id`、`vision_llm_id`、`api_key`、`key_version`、`custom_endpoint_url`、`custom_model_name`、`custom_num_ctx`、`other_model_codename`、`other_model_capabilities`、`other_model_capabilities_fetched_at`），以及当前生效的 NovelAI 扩散模型身份（`server_novelai_imagegen_configs` 里的 `nai_diffusion_model_id`）。
-  - 清空的集合（11 张表）： `server_auto_trigger_persona_overrides`、`stm_categories`、`random_triggers`、`channel_llm_overrides`、`channel_prompt_overrides`、`channel_context_notes`、`personalization_blacklist`、`persona_user_blocks`、`channel_whitelist`、`role_whitelist` 和 `channel_persona_whitelist`。
-  - 保留的领域： 人格与人格设置、服务器记忆、短期记忆、表情（表情与贴纸）、已记录的配额消耗、保存的提供方配置，以及外部集成（Matrix 与 MCP）。
-  - 上下文与权限： 在服务器里需要管理服务器权限。在私信（DM）里可用，使用发起操作的用户工作区 snowflake。
-- `/reset personal config`：把所有服务器上的用户配置和个人频道聚光灯重置为数据库默认值。
-  - 重置的字段： 恢复 `users.language_pref`（'en-US'）和 `users.privacy_level`（0），把 `user_personalization_configs` 的全部 13 列（昵称、跨服务器选择加入、外貌标签、角色参考 URL、扮演提示词、个人 DTM、明确工具模式、时区偏移、前缀与后缀覆盖、性别认同、人称代词、称呼风格）恢复为架构默认值，并删除所有 `user_persona_naming_preferences`。
-  - 清空的集合： 删除该用户在所有工作区里的 `personal_spotlights`，级联到 `personal_spotlight_personas`。
-  - 保留的个人领域： 用户账号身份、注册语言、个人记忆、保存的提供方配置（`user_saved_provider_configs`）、自定义端点，以及定时任务与提醒。
-  - 上下文： 所有用户在服务器和私信里都可以使用。
+- `/personal memories`：管理或删除个人记忆。
+- `/memories`：管理或删除服务器内存（需要管理服务器）。
+- `/personal nuke`：永久删除跨服务器的所有个人数据。
+- `/nuke`：擦除服务器数据，包括自定义表达式和人格访问规则。设置`preserve_personas: true`以保留人格，同时删除自定义表达式和媒体。
+- `/reset config`：将服务器配置恢复为数据库默认值。
+  - **保留**：活动模型分配、API密钥、自定义端点、人格、服务器内存和集成。
+  - **清除**：通道覆盖、自动触发规则、用户黑名单和通道白名单。
+  - 需要服务器中的管理服务器权限； 也可在DM中使用。
+- `/reset personal config`：将个人资料设置和频道聚焦恢复为默认值。
+  - **保留**：用户身份、个人记忆、保存的提供者API密钥、自定义端点和计划任务。
+  - **清除**：昵称覆盖、外观标签、代词、称呼风格和频道焦点。
+  - 可供服务器和DM中的所有用户使用。
+
+有关确切的数据库表和保留的列列表，请参阅[数据库架构架构](/en/architecture/subsystems/database-schema/#reset-domain-classifications)。
 
 ## 选择退出
 
-- `/personal config`：控制她对你的可见程度，最高可以完全不可见（彻底退出
-  记忆功能）。
-- `/config` > 权限：服务器管理员可以关掉自我学习和其他功能。
+- `/personal config`：控制你的可见性，直至完全不可见（选择退出内存上下文）。
+- `/config` > `权限`：服务器管理员可以关闭自学习和内存功能。
 
-关于记忆日常如何运作，见[记忆](/zh-CN/features/knowledge/memory/)。
+日常内存管理请参见[内存](/zh-CN/features/knowledge/memory/)。

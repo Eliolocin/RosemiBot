@@ -1,0 +1,50 @@
+name: "Scheduled: Model Catalog Drift Check"
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  draft:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+      - name: Check for an open draft
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$(gh pr list --head automation/model-drift --state open --json number --jq 'length')" != "0" ]; then
+            echo "open=true" >> "$GITHUB_OUTPUT"
+          fi
+      - run: bun install --frozen-lockfile
+        if: steps.draft.outputs.open != 'true'
+      - name: Draft catalog rows
+        id: drift
+        if: steps.draft.outputs.open != 'true'
+        run: bun scripts/checks/modelDrift.ts --write --report "$RUNNER_TEMP/model-drift-pr.md"
+      - name: Format catalog
+        if: steps.draft.outputs.open != 'true'
+        run: bunx biome check --write src/db/seed/catalog/models.ts
+      - name: Open review PR
+        if: steps.draft.outputs.open != 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ secrets.MODEL_DRIFT_PAT }}
+          branch: automation/model-drift
+          delete-branch: true
+          draft: true
+          commit-message: "Draft model catalog updates"
+          title: ${{ steps.drift.outputs.title }}
+          body-path: ${{ runner.temp }}/model-drift-pr.md
+          add-paths: |
+            src/db/seed/catalog/models.ts
+            scripts/data/modelDriftSeen.json

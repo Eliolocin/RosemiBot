@@ -1,0 +1,828 @@
+{
+  "llmSections": [
+    {
+      "provider": "google",
+      "codename": "gemini-2.0-flash"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-2.5-flash-lite"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-2.5-flash-preview-05-20"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-2.5-flash-preview-09-2025"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-2.5-flash"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-2.5-pro"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3-flash"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3-flash-preview"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3.1-flash-lite-preview"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3.1-flash-lite"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3.5-flash"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3.5-flash-lite"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3.6-flash"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3.7-flash"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3.5-pro"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3-pro-preview"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3.1-pro"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3.1-pro-preview"
+    },
+    {
+      "provider": "google",
+      "codename": "gemma-4-31b-it"
+    },
+    {
+      "provider": "google",
+      "codename": "gemma-4-26b-a4b-it"
+    },
+    {
+      "provider": "google",
+      "codename": "gemma-3-27b-it"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-2.5-flash-lite"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-2.5-flash"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-2.5-pro"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3-flash"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3-flash-preview"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3.1-flash-lite-preview"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3.1-flash-lite"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3.5-flash"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3.5-flash-lite"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3.6-flash"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3.7-flash"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3.5-pro"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3.1-pro"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3.1-pro-preview"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemma-4-31b-it"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemma-3-27b-it"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-2.0-flash-001"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-2.0-flash-lite-001"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-2.5-flash-lite-09-2025"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-2.5-flash-lite-preview-09-2025"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-2.5-flash-lite"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-2.5-flash"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-2.5-pro"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3-flash"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3-flash-preview"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3-pro"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3-pro-preview"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3.1-pro"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3.1-pro-preview"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3.5-flash-lite"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3.5-flash"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3.6-flash"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3.7-flash"
+    },
+    {
+      "provider": "novelai",
+      "codename": "glm-4-6"
+    },
+    {
+      "provider": "novelai",
+      "codename": "kayra-v1"
+    },
+    {
+      "provider": "novelai",
+      "codename": "llama-3-erato-v1"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "stepfun-ai/step3"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "stepfun/step-3.5-flash"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "z-ai/glm-4.6"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "z-ai/glm-4.7"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "z-ai/glm-4.7-flash"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "z-ai/glm-5"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "z-ai/glm-4.6v"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "openrouter/pony-alpha"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "thedrummer/cydonia-24b-v4.1"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "deepseek/deepseek-v3.2-exp"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "deepseek/deepseek-v3.2"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "deepseek/deepseek-v4-flash"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "~deepseek/deepseek-v4-flash-latest"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "tngtech/deepseek-r1t2-chimera"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "x-ai/grok-4-fast"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "x-ai/grok-4.1-fast"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "~x-ai/grok-latest"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/gemini-3-flash-preview"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/gemini-3.1-flash-lite-preview"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/gemini-3.1-flash-lite"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/gemini-3-pro-preview"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/gemini-3.1-pro-preview"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "~google/gemini-flash-latest"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "~google/gemini-pro-latest"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/gemma-4-31b-it"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/gemma-4-31b-it:free"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "anthropic/claude-sonnet-4.5"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "anthropic/claude-sonnet-4.6"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "~anthropic/claude-sonnet-latest"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "~anthropic/claude-opus-latest"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "anthropic/claude-haiku-4.5"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "~anthropic/claude-haiku-latest"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "openai/gpt-5.1"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "openai/gpt-5.1-chat"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "openai/gpt-chat-latest"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "mistralai/mistral-large-2512"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "mistralai/mistral-small-creative"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "mistralai/mistral-small-3.1-24b-instruct"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "deepseek/deepseek-chat-v3-0324:free"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "mistralai/mistral-small-3.2-24b-instruct:free"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "tngtech/deepseek-r1t2-chimera:free"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "mistralai/mistral-small-3.1-24b-instruct:free"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "z-ai/glm-4.5-air:free"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "tngtech/tng-r1t-chimera:free"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "qwen/qwen3.5-35b-a3b"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "qwen/qwen3.5-27b"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "qwen/qwen3.5-flash-02-23"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "nvidia/nemotron-3-super-120b-a12b"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "nvidia/nemotron-3-super-120b-a12b:free"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "moonshotai/kimi-k2.5"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "moonshotai/kimi-k2.6"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "~moonshotai/kimi-latest"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "xiaomi/mimo-v2.5"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "aion-labs/aion-2.0"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "account-setting"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "other-model"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "rekaai/reka-edge"
+    },
+    {
+      "provider": "deepseek",
+      "codename": "deepseek-flash"
+    },
+    {
+      "provider": "deepseek",
+      "codename": "deepseek-v4-flash"
+    },
+    {
+      "provider": "deepseek",
+      "codename": "deepseek-v4-flash-vision"
+    },
+    {
+      "provider": "deepseek",
+      "codename": "deepseek-v4-flash-vision-exp"
+    },
+    {
+      "provider": "deepseek",
+      "codename": "deepseek-v4-pro"
+    },
+    {
+      "provider": "deepseek",
+      "codename": "deepseek-chat"
+    },
+    {
+      "provider": "deepseek",
+      "codename": "deepseek-reasoner"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "deepseek-ai/deepseek-v3.2"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "qwen/qwen3.5-397b-a17b"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "moonshotai/kimi-k2-instruct"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "z.ai/glm-4.7"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "z-ai/glm-5.2"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "stepfun-ai/step-3.5-flash"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "google/gemma-3-27b-it"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "google/gemma-4-31b-it"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "deepseek-ai/deepseek-v4-flash"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "deepseek-ai/deepseek-v4-flash-0731"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "minimaxai/minimax-m3"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "moonshotai/kimi-k2.6"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "nvidia/nemotron-3-ultra-550b-a55b"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "nvidia/nemotron-3.5-lightning-30b-a3b"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "deepseek-ai/deepseek-v4.1-flash"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "z-ai/glm-5.3"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "nvidia/nemotron-3-super-120b-a12b"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "openai/gpt-oss-20b"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "meta/llama-3.2-11b-vision-instruct"
+    },
+    {
+      "provider": "zaicoding",
+      "codename": "glm-4.6"
+    },
+    {
+      "provider": "zaicoding",
+      "codename": "glm-4.6v"
+    },
+    {
+      "provider": "zaicoding",
+      "codename": "glm-4.6v-flash"
+    },
+    {
+      "provider": "zaicoding",
+      "codename": "glm-4.7"
+    },
+    {
+      "provider": "zaicoding",
+      "codename": "glm-4.7-flash"
+    },
+    {
+      "provider": "zaicoding",
+      "codename": "glm-5"
+    },
+    {
+      "provider": "zaicoding",
+      "codename": "glm-5.1"
+    },
+    {
+      "provider": "zaicoding",
+      "codename": "glm-5-turbo"
+    },
+    {
+      "provider": "zaicoding",
+      "codename": "glm-5v-turbo"
+    },
+    {
+      "provider": "zai",
+      "codename": "zai/glm-4.6"
+    },
+    {
+      "provider": "zai",
+      "codename": "zai/glm-4.6v"
+    },
+    {
+      "provider": "zai",
+      "codename": "zai/glm-4.6v-flash"
+    },
+    {
+      "provider": "zai",
+      "codename": "zai/glm-4.7"
+    },
+    {
+      "provider": "zai",
+      "codename": "zai/glm-4.7-flash"
+    },
+    {
+      "provider": "zai",
+      "codename": "zai/glm-5"
+    },
+    {
+      "provider": "zai",
+      "codename": "zai/glm-5.1"
+    },
+    {
+      "provider": "zai",
+      "codename": "zai/glm-5-turbo"
+    },
+    {
+      "provider": "zai",
+      "codename": "zai/glm-5v-turbo"
+    },
+    {
+      "provider": "anthropic",
+      "codename": "claude-haiku-4-5"
+    },
+    {
+      "provider": "anthropic",
+      "codename": "claude-sonnet-4-6"
+    },
+    {
+      "provider": "anthropic",
+      "codename": "claude-opus-4-6"
+    },
+    {
+      "provider": "anthropic",
+      "codename": "claude-opus-4-7"
+    },
+    {
+      "provider": "anthropic",
+      "codename": "claude-fable-5"
+    },
+    {
+      "provider": "anthropic",
+      "codename": "claude-opus-4-8"
+    },
+    {
+      "provider": "anthropic",
+      "codename": "claude-sonnet-5"
+    },
+    {
+      "provider": "custom",
+      "codename": "custom/bootstrap"
+    }
+  ],
+  "imageSections": [
+    {
+      "provider": "google",
+      "codename": "gemini-2.5-flash-image"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3.1-flash-image"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3.1-flash-image-preview"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3-pro-image"
+    },
+    {
+      "provider": "google",
+      "codename": "gemini-3-pro-image-preview"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/gemini-2.5-flash-image"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/gemini-3.1-flash-image-preview"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/gemini-3.1-flash-image"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/gemini-3-pro-image-preview"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/gemini-3-pro-image"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-2.5-flash-image"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3.1-flash-image"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3.1-flash-image-preview"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3-pro-image"
+    },
+    {
+      "provider": "vertex",
+      "codename": "gemini-3-pro-image-preview"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-2.5-flash-image"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3.1-flash-image"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3.1-flash-image-preview"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3-pro-image"
+    },
+    {
+      "provider": "vertexexpress",
+      "codename": "gemini-3-pro-image-preview"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "openai/gpt-5-image-mini"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "bytedance-seed/seedream-4.5"
+    },
+    {
+      "provider": "zai",
+      "codename": "zai/glm-image"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "black-forest-labs/flux.1-dev"
+    },
+    {
+      "provider": "nvidia",
+      "codename": "stabilityai/stable-diffusion-3-medium"
+    },
+    {
+      "provider": "novelai",
+      "codename": "nai-diffusion-3-furry"
+    },
+    {
+      "provider": "novelai",
+      "codename": "nai-diffusion-4-5-full"
+    },
+    {
+      "provider": "novelai",
+      "codename": "nai-diffusion-4-5-curated"
+    },
+    {
+      "provider": "novelai",
+      "codename": "nai-diffusion-5-full"
+    },
+    {
+      "provider": "novelai",
+      "codename": "nai-diffusion-5-curated"
+    }
+  ],
+  "videoSections": [
+    {
+      "provider": "google",
+      "codename": "veo-3.1-generate-preview"
+    },
+    {
+      "provider": "google",
+      "codename": "veo-3.1-fast-generate-preview"
+    },
+    {
+      "provider": "google",
+      "codename": "veo-3.1-lite-generate-preview"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "bytedance/seedance-1-5-pro"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "google/veo-3.1"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "alibaba/wan-2.6"
+    },
+    {
+      "provider": "openrouter",
+      "codename": "openai/sora-2-pro"
+    },
+    {
+      "provider": "zai",
+      "codename": "cogvideox-3"
+    }
+  ]
+}

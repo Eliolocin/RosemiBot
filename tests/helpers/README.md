@@ -5,7 +5,7 @@ Shared fixtures and assertion helpers. Reach for these before writing a local `m
 
 | Helper | Use it for |
 |---|---|
-| `fixtures.ts` | `createPersona` (a complete `TomoriState`), `createUserRow`, `createLlmRow`, `createServerConfig` |
+| `fixtures.ts` | `createPersona` (a complete `TomoriState`), `createUserRow`, `createLlmRow`, `createServerConfig`, `createCustomExpression` (a validated registry row) |
 | `routeInteraction.ts` | `createRouteInteraction`: a button, select, or modal interaction for one route dispatch, recording acknowledgements, edits, and replies |
 | `fakeInteraction.ts` | `makeFakeInteraction`: a slash-command interaction for acknowledgement-timing tests |
 | `localeCases.ts` | `localizedCopy` and `localizedProse` for copy assertions; `RUNTIME_LOCALES` and `expectForEveryLocale` for locale sweeps |

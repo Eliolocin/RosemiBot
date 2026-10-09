@@ -2,97 +2,39 @@
 title: "02.8: RAG Documents"
 ---
 
-pgvector-backed long-term retrieval over server-uploaded documents.
+The RAG document contributor injects relevant text chunks from server-uploaded documents into the prompt using vector similarity retrieval.
 
-- **File**: `src/utils/text/context/rag.ts:36-96`
+## Flow and ownership
 
-## Mission
+The contributor `buildServerDocumentContextItem` in `src/utils/text/context/rag.ts` retrieves document chunks for the user's latest query:
 
-When the server has documents uploaded (via `/document` commands or chat
-history capture), find the most relevant chunks for the current user query
-using vector similarity search, and inject them into the prompt as a
-retrieval-augmented-generation context item.
+1. **Preconditions**:
+   - `isRagAvailable()` must return true (pgvector support enabled).
+   - Server must have an active `server_id`.
+   - Returns `null` if system memory pressure is `critical` (`memoryGuard.getStatus() === "critical"`).
+2. **Query extraction**:
+   - Scans recent history for the latest non-system user message.
+   - Truncates query text to `DOCUMENT_QUERY_MAX_LENGTH` (1,000 characters). Queries shorter than `DOCUMENT_QUERY_MIN_LENGTH` (3 characters) return `null`.
+3. **Scope and credentials**:
+   - Checks `serverMemoryRepository.hasDocumentInScope(serverId, personaId)`. If no documents exist for the persona or server, returns `null`.
+   - Resolves embedding credentials via `resolveCapabilityCredentials`, supporting server-wide keys or personal BYOK credentials.
+   - Loads the configured embedding model via `llmModelRepo.loadEmbeddingModelById`.
+4. **Vector retrieval**:
+   - Calls `ragRepository.retrieveRelevantChunks` with a similarity threshold of `DOCUMENT_MIN_SIMILARITY` (0.5) and a result limit of `DOCUMENT_MAX_RESULTS` (6 chunks).
+   - When `channel_memory_enabled` is true, retrieval filters by the active channel name.
+5. **Formatting and emission**:
+   - `ragRepository.formatChunksForPrompt` formats matching chunks into document sections.
+   - Emits a `user`-role item tagged `KNOWLEDGE_SERVER_DOCUMENTS`.
 
-## Input
+## Constraints and rationale
 
-- `tomoriState` (provides `server_id`, `persona_id`, `config.embedding_model_id`)
-- `simplifiedMessageHistory`: used to extract the latest user query
-- `triggererUserId: number | undefined`: for personal-BYOK embedding
-  credentials
+- **Memory guard short-circuit**: Under critical host memory pressure, RAG retrieval aborts immediately. This avoids high-memory vector and embedding operations during traffic spikes.
+- **Fail-safe fallback**: Database or embedding API failures log a warning and return `null`, allowing context assembly to finish without document chunks.
+- **Preset reassembly**: Tagged as `KNOWLEDGE_SERVER_DOCUMENTS`. SillyTavern preset reassembly maps this to `worldInfoBefore`/`worldInfoAfter` markers or flushes it before the first dialogue anchor.
 
-## Output
+## Source pointers
 
-`Promise<StructuredContextItem | null>`: `null` if any precondition fails,
-otherwise one `user`-role item tagged `KNOWLEDGE_SERVER_DOCUMENTS`.
-
-Content shape: assembled by `ragRepository.formatChunksForPrompt(chunks)`
-: typically a series of `[Document: name]\n${chunk content}` blocks.
-
-## Side effects
-
-- **Query extraction**: finds the latest non-system user message, trims
-  `[System:` blocks, slices to `DOCUMENT_QUERY_MAX_LENGTH` (1000 chars).
-- **Document scope check**
-  `serverMemoryRepository.hasDocumentInScope(server_id, persona_id)` early-exits
-  if no documents exist for this persona.
-- **Credential resolution**: `resolveCapabilityCredentials("embedding", ...)`
-  picks server or personal BYOK credentials for the embedding call.
-- **Embedding model load**: `llmModelRepo.loadEmbeddingModelById(...)`
-  resolves the model row (provider, capabilities).
-- **Vector similarity search**
-  `ragRepository.retrieveRelevantChunks({ serverId, personaId, query,
-  embeddingModel, apiKey, maxResults, minSimilarity })`. This is the
-  actual pgvector query.
-- **Chunk formatting**: `ragRepository.formatChunksForPrompt(chunks)`
-  builds the LLM-shaped text.
-- **Memory-pressure gate**: `memoryGuard.getStatus() === "critical"`
-  short-circuits to `null` so RAG doesn't worsen pressure.
-
-## Invariants
-
-After this stage runs:
-
-- Returns `null` if: RAG is unavailable (`isRagAvailable() === false`),
-  memory pressure is critical, no `server_id`, no recent user query,
-  query is shorter than `DOCUMENT_QUERY_MIN_LENGTH` (3 chars), no
-  documents in scope, no embedding model resolved, or no chunks above
-  similarity threshold.
-- Each search is *fresh* (no caching layer here); the query embedding
-  is computed every turn. Documents themselves are pre-embedded at
-  upload time.
-- Errors are logged and return `null`; RAG failure never blocks the
-  rest of the build.
-
-## Configuration
-
-| Source | Key | Value | Purpose |
-|---|---|---|---|
-| Constant (`rag.ts`) | `DOCUMENT_MAX_RESULTS` | `6` | Max chunks to retrieve per turn |
-| Constant (`rag.ts`) | `DOCUMENT_MIN_SIMILARITY` | `0.5` | Cosine similarity floor (0..1) |
-| Constant | `DOCUMENT_QUERY_MIN_LENGTH = 3` | Skip RAG for very short queries |
-| Constant | `DOCUMENT_QUERY_MAX_LENGTH = 1000` | Truncate query to avoid embedding cost |
-
-| Source | Field | Effect |
-|---|---|---|
-| `tomoriConfig` | `embedding_model_id` | Fallback embedding model |
-| Personal config (BYOK) | overrides embedding model | Per-user routing |
-
-## Extension points
-
-| Surface | Plugin-relevance |
-|---|---|
-| Embedding model selection (`resolveCapabilityCredentials`) | A plugin adding a new embedding provider registers via the capability system; this contributor consumes it polymorphically. |
-| `ragRepository` (retrieval + formatting) | The repository is the seam; a plugin replacing pgvector with another vector store would extend the repository, not this file. |
-| Query extraction (`getLatestUserQuery`) | Coupled to history shape; if a plugin wants to derive queries differently (e.g. include reply context, full conversation summary), it would extend this helper. → plugin plan candidate. |
-| Document scope (per-persona) | `hasDocumentInScope(server_id, persona_id)`; a plugin adding cross-persona document sharing would extend the scope check. → plugin plan candidate. |
-| Memory-pressure gate (`memoryGuard.getStatus()`) | Internal: coupled to OOM avoidance during heavy load. |
-
-## Related docs
-
-- RAG availability + repository: → no dedicated doc;
-  `ragAvailability.ts` and `ragRepository.ts` helpers only
-- Capability credentials (server vs personal): → folded into stage 05 of
-  the chat pipeline ([`05-plan-turns.md`](../../chat/05-plan-turns))
-- Embedding models: → [`docs/en/architecture/subsystems/database-schema.md`](../../../subsystems/database-schema) (embedding_models table)
-- Document upload + chunking: → no dedicated doc;
-  `insertDocumentWithChunks` in `serverMemoryRepository` only
+- `src/utils/text/context/rag.ts`: `buildServerDocumentContextItem` and query extraction.
+- `src/utils/db/repositories/RagRepository.ts`: `retrieveRelevantChunks` and chunk formatting.
+- `src/utils/db/ragAvailability.ts`: `isRagAvailable` capability check.
+- `src/utils/security/rateLimiter.ts`: `memoryGuard` memory pressure status.

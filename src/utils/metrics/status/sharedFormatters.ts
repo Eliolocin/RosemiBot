@@ -101,11 +101,10 @@ export function formatOmittedSamplingParams(
 }
 
 /**
- * Formats an array of strings as a numbered list, truncating each item.
- * If the total formatted length exceeds maxTotalLength, clips the list and appends a clipped notice.
+ * Clips the list and appends a clipped notice when the total formatted length exceeds maxTotalLength.
  * @param truncateLength - Max chars per item before truncation
  * @param maxTotalLength - Max total chars for the entire list before clipping
- * @returns Formatted numbered list, or localized "None" if empty
+ * @returns Localized "None" if empty
  */
 export function formatNumberedList(
   items: string[],
@@ -132,11 +131,10 @@ export function formatNumberedList(
 }
 
 /**
- * Formats an array of strings as a bullet list, truncating each item.
- * If the total formatted length exceeds maxTotalLength, clips the list and appends a clipped notice.
+ * Clips the list and appends a clipped notice when the total formatted length exceeds maxTotalLength.
  * @param truncateLength - Max chars per item before truncation
  * @param maxTotalLength - Max total chars for the entire list before clipping
- * @returns Formatted bullet list, or localized "None" if empty
+ * @returns Localized "None" if empty
  */
 export function formatBulletList(
   items: string[],

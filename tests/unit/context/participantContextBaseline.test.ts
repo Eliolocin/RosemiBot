@@ -32,7 +32,7 @@ If Tomori wants to ping any of these users, prepend an "@" symbol to a unique me
 Alice Saved (Mention: @{Alice Guild}; Aliases: @{Alice Saved}, @{Alice Display Global}, @{alice_username})
 - Alice Saved's Physical Appearance: auburn hair, green eyes
 - Server Roles: Archivist
-- Memories: ID:91 [tags: #general, maps] Alice likes archival maps.
+- Memories about Alice Saved: ID:91 [tags: #general, maps] Alice likes archival maps.
 - Reminders:
   - ID:92 "Bring the atlas" (scheduled for Sun, Aug 2, 2026, 09:00 AM (UTC+8))
 

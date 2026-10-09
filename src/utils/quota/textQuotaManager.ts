@@ -8,9 +8,6 @@ import {
   touchUserTextQuota,
 } from "@/utils/db/repositories/QuotaRepository";
 
-/**
- * Result of text quota check operations
- */
 export interface TextQuotaCheckResult {
   allowed: boolean; // Whether user can trigger text generation
   reason?: "user_quota_exceeded" | "serverwide_quota_exceeded" | "disabled"; // Reason if denied

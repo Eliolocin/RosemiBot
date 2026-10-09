@@ -1,5 +1,6 @@
 export default {
   status: {
+    prompt_hidden: `El texto del prompt está oculto. Los miembros necesitan el permiso de Administrar servidor o tener habilitada la inspección de prompts para verlo.`,
     description: `Muestra el estado personal, del servidor o de una persona.`,
     scope_choice_behavior: `Comportamiento`,
     scope_choice_models: `Modelos`,

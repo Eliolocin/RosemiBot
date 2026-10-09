@@ -4,40 +4,40 @@ sidebar:
   order: 7
 ---
 
-Você pode monitorar sua instância local do TomoriBot com dashboards do Grafana usando um perfil fornecido do Docker Compose.
+Monitore sua instância TomoriBot local com painéis Grafana pré-construídos para rastrear o uso de memória, tamanhos de cache, consumo de token e tráfego de comando.
 
-Para iniciar o TomoriBot e o Grafana juntos em sua máquina:
+Inicie TomoriBot e Grafana juntos:
 
 ```sh
 docker compose -f docker-compose.yaml -f docker/compose.monitor.yaml up -d
 ```
 
-Isso irá:
-- Iniciar o TomoriBot com PostgreSQL (na porta 15432 para o BD)
-- Iniciar o Grafana na porta 3000 com uma fonte de dados PostgreSQL autoconfigurada
-- Provisionar o dashboard TomoriBot Overview
-- Conectar ambos os serviços na mesma rede Docker
+Este comando:
+- Inicia TomoriBot e PostgreSQL (com o banco de dados exposto na porta 15432)
+- Inicia o Grafana na porta 3000 com uma fonte de dados PostgreSQL pré-configurada
+- Provisiona o painel Visão geral do TomoriBot
+- Conecta todos os serviços em uma rede interna Docker
 
-Acesse o Grafana em [http://localhost:3000](http://localhost:3000):
-- **Usuário**: `admin`
-- **Senha**: Definida via `GRAFANA_PASSWORD` em `.env` (o padrão é `admin` se não for definida)
+Abra o Grafana em [http://localhost:3000](http://localhost:3000):
+- **Nome de usuário**: `admin`
+- **Senha**: definida via `GRAFANA_PASSWORD` em `.env` (o padrão é `admin` quando não definido)
 
 ## O dashboard provisionado
 
-O TomoriBot Overview aparece automaticamente e não precisa de configuração. Seus painéis cobrem a memória do processo, contagens de entradas em cache, erros por hora, uso de tokens por modelo, atividade por hora, principais comandos, localidades dos usuários, uma nuvem de emoções, e quais predefinições e modelos estão em uso.
+O painel Visão geral do TomoriBot é carregado automaticamente sem configuração manual. Seus painéis exibem memória de processo, contagens de entrada de cache, erros por hora, uso de token por modelo, atividade horária, comandos principais, localidades de usuário, uma nuvem de emoções e predefinições e modelos ativos.
 
-Cada painel lê apenas tabelas que existem em qualquer instalação, de modo que o mesmo dashboard funciona tanto em hospedagem própria quanto em uma implantação na nuvem.
+Cada painel consulta tabelas padrão presentes em todas as instalações, permitindo que o mesmo layout de painel funcione localmente e em ambientes de nuvem.
 
-Alguns painéis permanecem vazios até que sua fonte seja ativada:
+Certos painéis requerem configurações de tempo de execução específicas ou suporte de host:
 
-| Painel | Necessita |
+| Painel | Precisa |
 |---|---|
-| Process Memory, Cache Entries | Linhas `metric_samples`, gravadas a cada `CACHE_METRICS_INTERVAL_MS`. O coletor só roda quando `RUN_ENV=production`, então uma instância de desenvolvimento não mostra nada aqui. |
-| Errors per Hour by Type | `ERROR_DB_LOGGING_ENABLED` (ativado por padrão). Uma linha plana durante um incidente suspeito também pode significar que o *circuit breaker* do repositório está aberto, e não que os erros pararam. |
-| Host Memory and Swap Tiers, Host Pressure (PSI) and Swap-In Rate | Um host Linux. Estes leem `/proc/meminfo`, `/proc/pressure/*`, `/proc/swaps` e `/sys/block/zram0`, então permanecem vazios no macOS e Windows. A série zram também precisa de um dispositivo de swap zram; um host sem um ainda reporta a memória e o PSI. |
+| Memória de processo, entradas de cache | Linhas `metric_samples` gravadas em cada `CACHE_METRICS_INTERVAL_MS`. O coletor é executado somente quando `RUN_ENV=production`, portanto, uma instância de desenvolvimento não exibe dados aqui. |
+| Erros por hora por tipo | `ERROR_DB_LOGGING_ENABLED` (habilitado por padrão). Uma linha plana durante um incidente pode indicar que o disjuntor do banco de dados está aberto, em vez de os erros terem cessado. |
+| Memória do host e níveis de troca, pressão do host (PSI) e taxa de troca | Um host Linux. Eles são `/proc/meminfo`, `/proc/pressure/*`, `/proc/swaps` e `/sys/block/zram0`, portanto permanecem vazios no macOS e no Windows. A série zram requer um dispositivo de troca zram configurado; hosts sem zram ainda relatam métricas gerais de memória e pressão. |
 
 ## Editando e salvando alterações
 
-Os dashboards permanecem editáveis na interface do usuário (UI), o que é importante durante um incidente. As edições existem apenas no contêiner e são substituídas pelo arquivo em disco no próximo reinício, então exporte o JSON de um dashboard e faça o *commit* dele em `docker/grafana/dashboards/` para manter uma alteração.
+Os painéis permanecem editáveis na interface Grafana para depuração ao vivo. Como as reinicializações do contêiner redefinem as edições do painel de volta aos arquivos do disco, exporte o JSON do painel modificado e salve-o em `docker/grafana/dashboards/` para manter suas alterações.
 
-Adicionar seu próprio dashboard significa colocar um arquivo JSON nesse mesmo diretório. Faça referência à fonte de dados pelo seu `uid` fixo `tomoribot-postgres`: o Grafana atribui um `uid` aleatório quando uma fonte de dados não declara nenhum, e um dashboard apontando para um `uid` aleatório renderiza painéis vazios em vez de um erro.
+Para adicionar um novo painel, coloque sua definição JSON em `docker/grafana/dashboards/`. Direcione a fonte de dados PostgreSQL com o uid fixo `tomoribot-postgres`: as fontes de dados sem um uid explícito recebem identificadores gerados aleatoriamente, o que faz com que os painéis que usam uids incompatíveis renderizem painéis em branco.

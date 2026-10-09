@@ -536,14 +536,6 @@ async function maybeStartDockerDatabase(scan: PrereqScan): Promise<void> {
   await runInherited("docker", ["compose", "up", "-d", "postgres"]);
 }
 
-async function runBunInstall(): Promise<void> {
-  if (!(await confirm("Run bun install --frozen-lockfile now?", true))) {
-    log.info("Skipped dependency install. Run `bun install --frozen-lockfile` before starting TomoriBot.");
-    return;
-  }
-  await runInherited("bun", ["install", "--frozen-lockfile"]);
-}
-
 function printSetupComplete(title: string): void {
   log.section(title);
   log.info("Next steps:");
@@ -578,8 +570,6 @@ async function runBaseInstall(scan: PrereqScan, options: BaseInstallOptions = {}
   if (database.startDockerDatabase) {
     await maybeStartDockerDatabase(scan);
   }
-
-  await runBunInstall();
 
   if (options.showCompletion ?? true) {
     printSetupComplete("Base Install Complete");

@@ -50,6 +50,7 @@ function buildToolAssemblyState(context: ToolContext): ToolStateForContext {
       voice_message_enabled: config.voice_message_enabled ?? true,
       user_blocking_enabled: config.user_blocking_enabled ?? true,
       user_info_updates_enabled: config.user_info_updates_enabled ?? true,
+      response_rule_checker_ref: config.response_rule_checker_ref,
       thread_creation_enabled: config.thread_creation_enabled,
     },
   };

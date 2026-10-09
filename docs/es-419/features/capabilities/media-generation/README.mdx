@@ -8,20 +8,17 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-TomoriBot puede crear medios directamente en el chat: **imágenes, videos cortos y mensajes de voz
-hablados**. Pídeselo en lenguaje natural ("dibújame un...", "envía eso como mensaje de voz") o
-usa los comandos `/generate`. Las capacidades disponibles dependen de tu proveedor configurado. Consulta [Proveedores y modelos](/es-419/features/setup-administration/providers-and-models/).
+TomoriBot puede crear medios directamente en el chat: imágenes, vídeos cortos y mensajes de voz hablados. Pregúntale en lenguaje sencillo ("dibújame un...", "envíalo como mensaje de voz") o utiliza los comandos `/generate`. Las capacidades disponibles dependen de su proveedor configurado; consulte [Proveedores y modelos](/es-419/features/setup-administration/providers-and-models/).
 
 <CardGrid>
   <LinkCard title="Generación de imágenes" href="/es-419/features/capabilities/media-generation/image-generation/"
-    description="De texto a imagen y de imagen a imagen, con imágenes de referencia de archivos adjuntos, avatares, stickers y emojis." />
-  <LinkCard title="Generación de videos" href="/es-419/features/capabilities/media-generation/video-generation/"
-    description="Clips cortos de texto a video y de imagen a video con relaciones de aspecto configurables." />
+    description="Texto a imagen e imagen a imagen, con imágenes de referencia de archivos adjuntos, avatares, stickers y emojis." />
+  <LinkCard title="Generación de vídeo" href="/es-419/features/capabilities/media-generation/video-generation/"
+    description="Clips cortos de texto a vídeo e imagen a vídeo con relaciones de aspecto personalizables." />
   <LinkCard title="Voz: TTS y STT" href="/es-419/features/capabilities/media-generation/tts-and-stt/"
-    description="Mensajes de voz nativos de Discord (texto a voz) y transcripción de audio (voz a texto)." />
+    description="Mensajes de voz nativos Discord (texto a voz) y transcripción de audio (voz a texto)." />
 </CardGrid>
 
 :::note
-No todos los proveedores admiten todas las capacidades. La generación local (ComfyUI, servidores
-de voz locales) está disponible en instancias con autoalojamiento. Consulta [Autoalojamiento](/es-419/self-hosting/).
+No todos los proveedores admiten todas las capacidades. La generación local (ComfyUI, servidores de voz locales) está disponible en instancias autohospedadas; consulte [Autohospedaje](/es-419/self-hosting/).
 :::

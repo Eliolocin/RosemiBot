@@ -53,6 +53,7 @@ export default {
       select_page_title: `Selecionar Página`,
       select_page_description: `Escolha uma página para visualizar de {totalItems} itens em {totalPages} páginas:`,
       select_persona_title: `Selecionar Persona`,
+      select_persona_page_description: `Escolha uma página para visualizar de {totalItems} personas em {totalPages} páginas:`,
       persona_no_attributes: `Nenhum atributo configurado ainda.`,
       persona_select_button: `Selecionar`,
     },

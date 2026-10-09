@@ -7,14 +7,12 @@ export interface SelectOption {
   label: string;
   value: string;
   description?: string;
+  default?: boolean;
   emoji?: {
     name: string;
   };
 }
 
-/**
- * Options for text input fields in a modal
- */
 export interface ModalInputField {
   customId: string;
   labelKey: string;
@@ -27,9 +25,6 @@ export interface ModalInputField {
   value?: string;
 }
 
-/**
- * Options for string select fields in a modal
- */
 export interface ModalSelectField {
   customId: string;
   labelKey: string;
@@ -181,9 +176,6 @@ export interface ModalChannelSelectField {
   channelTypes?: ChannelType[];
 }
 
-/**
- * Union type for all modal component types
- */
 export type ModalComponent =
   | ModalInputField
   | ModalSelectField
@@ -288,11 +280,15 @@ export interface ModalOptions {
    * unchanged by construction until they explicitly opt in.
    */
   selectorStyle?: "legacy" | "componentsV2";
+  /** Title of the page selector shown past 25 options; defaults to `general.pagination.select_page_title`. */
+  pageSelectTitleKey?: string;
+  /**
+   * Description of that selector, receiving `{totalItems}` and `{totalPages}`; defaults to
+   * `general.pagination.select_page_description`.
+   */
+  pageSelectDescriptionKey?: string;
 }
 
-/**
- * Result type for modal interactions
- */
 export type ModalResult = {
   /**
    * `submit`: the user completed the modal. `timeout`: the selector or modal

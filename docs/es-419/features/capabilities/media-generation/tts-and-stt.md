@@ -4,71 +4,59 @@ sidebar:
   order: 3
 ---
 
-TomoriBot puede hablar (texto a voz) y escuchar (voz a texto):
+TomoriBot puede hablar y escuchar en Discord: enviar respuestas de voz con texto a voz (TTS) y transcribir mensajes de audio en contexto de conversación con voz a texto (STT).
 
-- TTS le permite responder con mensajes de voz nativos de Discord.
-- STT convierte archivos de audio adjuntos por usuarios en texto que puede usar como contexto de conversación.
-
-Ambos funcionan mediante el mismo sistema de endpoints. La ruta más rápida es ElevenLabs (en la nube,
-documentada por completo abajo). Si prefieres ejecutar la voz en tu propio hardware, usa un motor local y sigue las guías de autoalojamiento.
+Ambos utilizan el sistema de punto final del proveedor. ElevenLabs es la opción de nube más rápida. También puede ejecutar modelos de voz locales en su propio hardware utilizando motores autohospedados.
 
 ## Texto a voz
 <!-- anchor: text-to-speech -->
 
 ### ElevenLabs (en la nube, opción más sencilla)
 
-1. Obtén una clave de API en [ElevenLabs](https://elevenlabs.io/app/settings/api-keys).
-2. Ejecuta `/providers`, elige `Agregar nuevo proveedor`, selecciona ElevenLabs y pega la clave. Este flujo:
-   - registra el endpoint de voz de ElevenLabs (y también el de transcripción),
-   - los selecciona como activos,
-   - puede asignar una voz a una persona de inmediato.
-3. Asigna voces a otras personas en `/config` > Persona > Voz. Explora voces en la [Biblioteca de voces de ElevenLabs](https://elevenlabs.io/app/voice-library), donde también puedes clonar la tuya.
+1. Obtenga una clave API de [ElevenLabs](https://elevenlabs.io/app/settings/api-keys).
+2. Ejecuta `/providers`, elija `Agregar nuevo proveedor`, seleccione `ElevenLabs` y pegue la clave. Este flujo:
+   - registra el punto final de voz y el punto final de transcripción ElevenLabs,
+   - activa ambos puntos finales,
+   - Opcionalmente, asigna una voz a una persona de inmediato.
+3. Asigne voces a personas adicionales en `/config` > `Persona` > Voz. Busque voces en la [Biblioteca de voces ElevenLabs](https://elevenlabs.io/app/voice-library), donde también puede clonar las suyas.
 
-Selecciona ElevenLabs en `/providers` y elige `Editar punto de conexión` cuando necesites actualizar la clave.
+Selecciona ElevenLabs en `/providers`, luego elija `Editar punto de conexión` siempre que necesite actualizar la clave.
 
 Notas:
 
-- En el plan gratuito solo funcionan las voces prediseñadas. Consulta la [lista de voces prediseñadas](https://elevenlabs-sdk.mintlify.app/voices/premade-voices).
-- Los caracteres se cuentan cuando genera y lee mensajes de voz. El nivel gratuito tiene límites mensuales. Consulta tu panel de ElevenLabs.
-- Las respuestas de voz dependen de `voice_message_enabled` y requieren que la persona activa tenga una voz asignada.
-- Persona > Voz en `/config` requiere Administrar servidor en un servidor y sigue disponible para el propietario en un espacio de trabajo basado en mensajes directos.
+- En el plan gratuito, solo funcionan las voces prefabricadas. Explore la [lista de voces prefabricada](https://elevenlabs-sdk.mintlify.app/voices/premade-voices).
+- Los caracteres se cuentan cuando genera mensajes de voz. El nivel gratuito tiene límites mensuales, así que controle su panel ElevenLabs.
+- Las respuestas de voz requieren `voice_message_enabled` en `/config` > `Permisos`, y la persona activa debe tener una voz asignada.
+- Cambiar `/config` > `Persona` > Voz requiere el permiso Administrar servidor en un servidor y permanece disponible para el propietario en los mensajes directos.
 
-En `/help`, elige `Funciones` y luego `Voz` para ver el mismo recorrido en Discord.
+En `/help`, elija `Funciones` y luego `Voz` para ver el tutorial interactivo en Discord.
 
 ### Motores locales de clonación de voz (con autoalojamiento)
 
-En una instancia con autoalojamiento puedes ejecutar un servidor local de clonación de voz. El flujo general es:
-inicia el servidor envoltorio, registra su conexión y modelo con `/providers`, selecciónalo con `/providers`,
-sube una muestra con `/config` en Modelos > Parámetros y voces TTS y asígnala en Persona > Voz en `/config`.
-Se acepta cualquier formato de audio (se convierte automáticamente a WAV mono). Los clips de 10-20 segundos
-sin música de fondo funcionan mejor.
+En instancias autohospedadas, puede ejecutar un servidor de clonación de voz local. El flujo de trabajo: inicie el servidor, registre su conexión y modelo en `/providers`, selecciónelo en `/providers`, cargue una muestra de referencia en `/config` > `Modelos` > TTS Parameters & Voices, luego asígnela en `/config` > `Persona` > Voice. Se acepta cualquier formato de audio (convertido automáticamente a mono WAV); Los clips de 10 a 20 segundos sin música de fondo funcionan mejor.
 
-Cada motor tiene su propia guía:
+Cada motor tiene su propia guía de configuración:
 
-- [Chatterbox-Turbo/Nano](/es-419/self-hosting/local-endpoints/text-to-speech/chatterbox/): clonación rápida de voz solo en inglés, con etiquetas de evento compatibles como `[laugh]`.
-- [Qwen3-TTS](/es-419/self-hosting/local-endpoints/text-to-speech/qwen3tts/): multilingüe (10 idiomas), además de un modo Diseño de voz en lenguaje natural.
-- [MOSS-TTS](/es-419/self-hosting/local-endpoints/text-to-speech/moss/): endpoint automático de prueba para clonación multilingüe o diseño de voz en inglés y chino.
-- [IrodoriTTS](/es-419/self-hosting/local-endpoints/text-to-speech/irodoritts/): especializado en japonés, lee los emojis como señales de emoción.
+- [Chatterbox-Turbo/Nano](/es-419/self-hosting/local-endpoints/text-to-speech/chatterbox/): clonación rápida de voz en inglés con etiquetas de emociones como `[laugh]`.
+- [Qwen3-TTS](/es-419/self-hosting/local-endpoints/text-to-speech/qwen3tts/): multilingüe (10 idiomas) más un modo VoiceDesign en lenguaje natural.
+- [MOSS-TTS](/es-419/self-hosting/local-endpoints/text-to-speech/moss/): clonación multilingüe y diseño de voz en inglés o chino.
+- [IrodoriTTS](/es-419/self-hosting/local-endpoints/text-to-speech/irodoritts/): motor especializado en japonés que lee emojis como señales emocionales.
 
-Consulta la [tabla comparativa de texto a voz](/es-419/self-hosting/local-endpoints/text-to-speech/) para ver la lista completa y las recomendaciones de hardware.
+Consulta la [tabla de comparación de texto a voz](/es-419/self-hosting/local-endpoints/text-to-speech/) para obtener orientación sobre el hardware y la lista completa de motores.
 
 ## Voz a texto
 <!-- anchor: speech-to-text -->
 
-Los endpoints de transcripción convierten archivos de audio adjuntos por usuarios en texto para el contexto
-de conversaciones en segundo plano. Que las transcripciones se publiquen visiblemente en el chat se
-controla por separado desde `/config` > Motor > Avisos.
+Los puntos finales de transcripción convierten los archivos adjuntos de audio del usuario en texto para el contexto de la conversación. Si las transcripciones se publican públicamente en el chat se controla en `/config` > `Comportamiento` > Comportamiento de aviso.
 
 ### ElevenLabs (en la nube)
 
-Ya se explicó arriba. Añadir ElevenLabs desde `/providers` registra el endpoint de transcripción junto al de voz.
-Usa `/providers` para elegir entre endpoints de transcripción.
+Agregar ElevenLabs desde `/providers` registra el punto final de transcripción junto con la voz. Utilice `/providers` para cambiar entre puntos finales de transcripción activa.
 
 ### Motores locales (con autoalojamiento)
 
-- [WhisperX](/es-419/self-hosting/local-endpoints/speech-to-text/whisperx/): la ruta local recomendada, con unos 100 idiomas, aceleración por GPU y varios tamaños de modelo.
-- [KoboldCPP](/es-419/self-hosting/local-endpoints/speech-to-text/koboldcpp/): funciona si tu compilación expone un endpoint de transcripción compatible con OpenAI.
-- [whisper.cpp](/es-419/self-hosting/local-endpoints/speech-to-text/whispercpp/).
+- [WhisperX](/es-419/self-hosting/local-endpoints/speech-to-text/whisperx/): ruta local recomendada; alrededor de 100 idiomas, acelerado por GPU, múltiples tamaños de modelos.
+- [KoboldCPP](/es-419/self-hosting/local-endpoints/speech-to-text/koboldcpp/): funciona cuando su compilación expone un punto final de transcripción compatible con OpenAI.
+- [susurro.cpp](/es-419/self-hosting/local-endpoints/speech-to-text/whispercpp/).
 
-Consulta el centro de [Voz a texto](/es-419/self-hosting/local-endpoints/speech-to-text/) para ver la lista completa.
-Para el resumen de Discord, ejecuta `/help` y elige `Funciones` y luego `Transcripción`.
+Consulta el centro [Voz a texto](/es-419/self-hosting/local-endpoints/speech-to-text/) para obtener la lista completa de motores. Para el resumen de Discord, ejecute `/help`, luego elija `Funciones` y `Transcripción`.

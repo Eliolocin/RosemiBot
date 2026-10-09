@@ -1,3 +1,4 @@
+import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import type { Embed, Message, MessageReaction } from "discord.js";
 import { MessageType } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
@@ -524,11 +525,14 @@ async function resolveMessageAuthorDisplayName(params: {
   serverDiscId: string;
   serverPersonalizationDisabled: boolean;
 }): Promise<string> {
-  const webhookName = stripBridgePrefix(params.message.author.username);
-  const renderModifierSource = params.message.webhookId
+  const trustedWebhook = await verifyMessageWebhook(params.message);
+  const webhookName = trustedWebhook
+    ? stripBridgePrefix(params.message.author.username)
+    : params.message.author.username;
+  const renderModifierSource = trustedWebhook
     ? resolveRenderModifierSourcePersona(webhookName, params.personaByNickname)
     : null;
-  const matchedPersona = params.message.webhookId
+  const matchedPersona = trustedWebhook
     ? (renderModifierSource?.persona ?? params.personaByNickname.get(normalizeRenderModifierName(webhookName)))
     : undefined;
   const userRow =
@@ -548,7 +552,7 @@ async function resolveMessageAuthorDisplayName(params: {
   }
 
   const spriteDisplayName =
-    !renderModifierSource && matchedPersona
+    (!renderModifierSource || renderModifierSource.isNeutralAppearance) && matchedPersona
       ? await resolveSpriteMessageDisplayName(
           params.message.id,
           matchedPersona.persona_id,
@@ -557,8 +561,8 @@ async function resolveMessageAuthorDisplayName(params: {
       : null;
 
   return (
-    renderModifierSource?.displayName ??
     spriteDisplayName ??
+    renderModifierSource?.displayName ??
     matchedPersona?.persona_nickname ??
     (userBlacklisted || params.serverPersonalizationDisabled || !userRow?.user_nickname
       ? fallbackName

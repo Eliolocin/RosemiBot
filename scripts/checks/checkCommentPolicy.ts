@@ -47,27 +47,54 @@ const ACTION_HEADS = [
   "Exercise",
 ];
 const ACTION_HEAD_PATTERN = new RegExp(String.raw`^//\s*(?:${ACTION_HEADS.join("|")})\b`);
-const RATIONALE_SIGNALS = [
-  "after",
-  "before",
+const REASON_SIGNALS = [
   "because",
   "cannot",
   "compatibility",
   "fallback",
   "invariant",
   "must",
-  "only",
   "otherwise",
-  "prevent",
-  "requires?",
+  "prevents?",
   "so",
   "unless",
   "until",
-  "when",
   "without",
   "workaround",
 ];
-const RATIONALE_PATTERN = new RegExp(String.raw`\b(?:${RATIONALE_SIGNALS.join("|")})\b|[:(]`, "i");
+// A summary that says when, after, or before something happens is describing behavior the
+// body already shows, so these only exempt a line comment, never a docblock's echoed summary.
+const CONDITION_SIGNALS = ["after", "before", "only", "requires?", "when"];
+const RATIONALE_PATTERN = new RegExp(
+  String.raw`\b(?:${[...REASON_SIGNALS, ...CONDITION_SIGNALS].join("|")})\b|[:(]`,
+  "i",
+);
+// Units are contract information a caller cannot infer from a name or type.
+const UNIT_SIGNALS = ["bytes", "characters", "days", "hours", "milliseconds", "minutes", "seconds"];
+const REASON_PATTERN = new RegExp(String.raw`\b(?:${[...REASON_SIGNALS, ...UNIT_SIGNALS].join("|")})\b|[:(]`, "i");
+// Identifiers abbreviate what prose spells out, so both sides collapse to the long form before
+// they are compared.
+const IDENTIFIER_ALIASES: Readonly<Record<string, string>> = {
+  arg: "argument",
+  attr: "attribute",
+  cfg: "configuration",
+  config: "configuration",
+  ctx: "context",
+  db: "database",
+  env: "environment",
+  fn: "function",
+  impl: "implementation",
+  int: "integer",
+  msg: "message",
+  num: "number",
+  param: "parameter",
+  perm: "permission",
+  repo: "repository",
+  req: "request",
+  res: "response",
+  str: "string",
+  util: "utility",
+};
 const SUMMARY_STOPWORDS = new Set([
   "all",
   "and",
@@ -789,12 +816,11 @@ function collectJsDocFindings(
   };
 
   const visit = (node: ts.Node): void => {
-    const documented = node as ts.Node & { jsDoc?: ts.JSDoc[]; name?: ts.Node };
-    const block = documented.jsDoc?.[0];
-    if (ts.isFunctionLike(node) && block && documented.name) {
-      const identifier = documented.name.getText(sourceFile);
-      const summary = (ts.getTextOfJSDocComment(block.comment) ?? "").split(/\r?\n/)[0]?.trim() ?? "";
-      if (summary && !RATIONALE_PATTERN.test(summary) && echoesIdentifier(identifier, summary)) {
+    const block = (node as ts.Node & { jsDoc?: ts.JSDoc[] }).jsDoc?.[0];
+    const identifier = block ? documentedIdentifier(node, sourceFile) : undefined;
+    if (block && identifier) {
+      const body = (ts.getTextOfJSDocComment(block.comment) ?? "").replace(/\s+/g, " ").trim();
+      if (body && !REASON_PATTERN.test(body) && echoesIdentifier(identifier, firstClause(body))) {
         recordSummaryEcho(block, identifier);
       }
     }
@@ -832,6 +858,27 @@ function collectJsDocFindings(
   return findings;
 }
 
+function documentedIdentifier(node: ts.Node, sourceFile: ts.SourceFile): string | undefined {
+  if (ts.isVariableStatement(node)) {
+    return node.declarationList.declarations[0]?.name.getText(sourceFile);
+  }
+  if (
+    ts.isFunctionLike(node) ||
+    ts.isClassDeclaration(node) ||
+    ts.isInterfaceDeclaration(node) ||
+    ts.isTypeAliasDeclaration(node) ||
+    ts.isEnumDeclaration(node)
+  ) {
+    return (node as ts.Node & { name?: ts.Node }).name?.getText(sourceFile);
+  }
+  return undefined;
+}
+
+/** The text before the first comma, colon, semicolon, parenthesis, or sentence end. */
+function firstClause(body: string): string {
+  return body.split(/[,;:(]|\.(?:\s|$)/)[0] ?? body;
+}
+
 /**
  * True when the summary repeats every meaningful word of the identifier and adds none of
  * its own signal, which is the JSDoc form of translating a name into English.
@@ -849,7 +896,7 @@ function echoesIdentifier(identifier: string, summary: string): boolean {
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter((word) => word.length > 2 && !SUMMARY_STOPWORDS.has(word))
-    .map(stemWord);
+    .map(canonicalWord);
   if (!tokens.every((token) => words.includes(token))) {
     return false;
   }
@@ -863,14 +910,23 @@ function echoesIdentifier(identifier: string, summary: string): boolean {
 function splitIdentifierWords(identifier: string): string[] {
   return identifier
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/_+/g, " ")
     .toLowerCase()
     .split(/\s+/)
     .filter((word) => word.length > 2)
-    .map(stemWord);
+    .map(canonicalWord);
 }
 
+/**
+ * Dropping the trailing `e` last makes `parse` and `parses` meet: without it the stems are
+ * `parse` and `pars`.
+ */
 function stemWord(word: string): string {
-  return word.replace(/(?:es|s|ing|ed)$/, "");
+  return word.replace(/(?:es|s|ing|ed)$/, "").replace(/e$/, "");
+}
+
+function canonicalWord(word: string): string {
+  return stemWord(IDENTIFIER_ALIASES[word] ?? word);
 }
 
 /** Removes JSDoc framing so a line yields its prose, or an empty string when it has none. */

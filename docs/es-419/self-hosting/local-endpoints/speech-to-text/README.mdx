@@ -8,32 +8,34 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-TomoriBot trata la conversión de voz a texto como la capacidad del endpoint personalizado `transcription`. Los archivos adjuntos de audio se transcriben en segundo plano y se añaden al contexto de la conversación cuando existe un endpoint de transcripción activo.
+Transcriba mensajes de voz y archivos adjuntos de audio localmente para que TomoriBot pueda entender el audio hablado en el chat sin enviar grabaciones a API en la nube de terceros.
 
-La publicación visible de transcripciones es independiente. `/config` > Motor > Avisos solo controla si las transcripciones de mensajes de voz se publican en el chat; no activa ni desactiva la conversión de voz a texto en segundo plano.
+TomoriBot trata la conversión de voz a texto como la capacidad de punto final personalizado `transcription`. Los archivos adjuntos de audio se transcriben en segundo plano y se agregan al contexto de la conversación cuando existe un punto final de transcripción activo.
+
+La publicación de transcripciones visibles está separada. `/config` > Motor > Avisos solo controla si las transcripciones de mensajes de voz se publican en el chat; no habilita ni deshabilita el fondo STT.
 
 ## Motores disponibles
 
 <CardGrid>
   <LinkCard title="WhisperX" href="/es-419/self-hosting/local-endpoints/speech-to-text/whisperx/"
-    description="Transcripción local apta para principiantes utilizando el servidor de referencia WhisperX bajo servers/stt." />
-  <LinkCard title="whisper.cpp" href="/es-419/self-hosting/local-endpoints/speech-to-text/whispercpp/"
-    description="Utiliza un servidor HTTP whisper.cpp ligero cuando expone un endpoint de transcripción compatible con OpenAI." />
+    description="Transcripción local para principiantes utilizando el servidor de referencia WhisperX en servers/stt." />
+  <LinkCard title="susurro.cpp" href="/es-419/self-hosting/local-endpoints/speech-to-text/whispercpp/"
+    description="Utilice un servidor HTTP Whisper.cpp ligero cuando exponga un punto final de transcripción compatible con OpenAI." />
   <LinkCard title="KoboldCPP" href="/es-419/self-hosting/local-endpoints/speech-to-text/koboldcpp/"
-    description="Utiliza la conversión de voz a texto basada en Whisper de KoboldCPP cuando tu compilación expone una transcripción de audio compatible con OpenAI." />
+    description="Utilice KoboldCPP STT basado en Whisper cuando su compilación exponga la transcripción de audio compatible con OpenAI." />
 </CardGrid>
 
 ## Flujo de configuración
 
-1. Inicia un servidor de voz a texto desde las guías de motores anteriores.
-2. En `/providers`, elige `Agregar nuevo punto de conexión personalizado` y usa la compatibilidad de API `openai-compatible-transcription`.
-3. Selecciona el endpoint guardado y usa su menú desplegable de modelos para agregar el código del modelo reportado por el servidor.
-4. Abre `/config` > Modelos > Cambiar modelos para seleccionar y activar el endpoint registrado.
+1. Inicia un servidor STT desde las guías del motor anteriores.
+2. En `/providers`, elija `+ Agregar nuevo punto de conexión personalizado` (o `Add New Custom Endpoint`) y seleccione `openai-compatible-transcription` (transcripción compatible con OpenAI).
+3. Selecciona el punto final guardado y use su menú desplegable de modelo para agregar el código de modelo informado por el servidor.
+4. Abre `/config` > `Modelos` > `Cambiar modelos` para seleccionar y activar el punto final registrado.
 
-## Flujo de transcripciones
+## Flujo de transcripción
 
-Cuando un endpoint de transcripción está activo, TomoriBot lee los archivos adjuntos de audio compatibles en segundo plano y agrega la transcripción al contexto del chat. No se necesita asignar ninguna persona.
+Cuando un punto final de transcripción está activo, TomoriBot lee los archivos adjuntos de audio compatibles en segundo plano y agrega la transcripción al contexto del chat. No se necesita asignación de persona.
 
-Usa `/config` > Motor > Avisos solo si también quieres que esas transcripciones se publiquen visiblemente en el chat.
+Utilice `/config` > Motor > Avisos solo si también desea que esas transcripciones se publiquen de manera visible en el chat.
 
-Los usuarios de ElevenLabs deben elegir `Agregar nuevo proveedor` y ElevenLabs en `/providers`; esto registra la transcripción junto con la voz.
+Los usuarios de ElevenLabs deben elegir `Agregar nuevo proveedor` y `ElevenLabs` en `/providers`; registra la transcripción junto con el habla.

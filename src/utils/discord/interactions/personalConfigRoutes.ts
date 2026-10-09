@@ -43,7 +43,11 @@ import {
 import { buildPersonalConfigPanelPayload } from "@/utils/discord/ui/personalConfigPanel";
 import { showRoutedRawModal } from "@/utils/discord/ui/modals";
 import { recordPanelActionStat } from "@/utils/stats/panelActionMetrics";
-import { resolvePersonaPanelAvatar, withPersonaPanelAvatar } from "@/utils/discord/personaPanelAvatar";
+import {
+  resolveInvokerAvatarUrl,
+  resolvePersonaPanelAvatar,
+  withPersonaPanelAvatar,
+} from "@/utils/discord/personaPanelAvatar";
 import {
   terminalPayload,
   type PersonalConfigPostDeferContext,
@@ -240,6 +244,7 @@ export async function buildInitialPersonalConfigPanel(
       resolvedNickname: scope.resolvedNickname,
       personas: scope.personas,
       guildId: scope.guildId,
+      userAvatarUrl: resolveInvokerAvatarUrl(interaction),
       // Only the privacy page renders these, and the panel always opens on profile, so the counts are
       // never read here. Changing the opening category means fetching them, as `repaint` does.
       memoryCount: 0,

@@ -8,11 +8,11 @@ head:
 # Hand-written search snippet; overrides the auto-derived description from
 # routeData.ts middleware.
 description: "Autoaloja fácilmente un bot de Discord con IA totalmente local y privado con KoboldCPP, ComfyUI y más."
-aiGenerated: true
 sidebar:
   label: "Resumen"
   groupLabel: "Autoalojamiento"
   order: 3
+aiGenerated: false
 ---
 
 <!-- STUB (Phase 1 structural). Phase 2 writes: requirements + module directory.

@@ -9,6 +9,7 @@
  * - Specializes in creative storytelling and roleplay
  */
 
+import { resolveRequestMaxOutputTokens } from "@/utils/provider/modelLimits";
 import type {
   BaseGuildTextChannel,
   BaseGuildVoiceChannel,
@@ -101,9 +102,6 @@ export interface NovelaiProviderConfig extends ProviderConfig {
   // No provider-specific config needed here
 }
 
-/**
- * NovelAI provider implementation
- */
 export class NovelaiProvider extends BaseLLMProvider implements LLMProvider {
   /**
    * Get provider information and capabilities
@@ -216,6 +214,7 @@ export class NovelaiProvider extends BaseLLMProvider implements LLMProvider {
           voice_message_enabled: tomoriState.config.voice_message_enabled,
           user_blocking_enabled: tomoriState.config.user_blocking_enabled,
           user_info_updates_enabled: tomoriState.config.user_info_updates_enabled,
+          response_rule_checker_ref: tomoriState.config.response_rule_checker_ref,
           thread_creation_enabled: tomoriState.config.thread_creation_enabled,
         },
       };
@@ -223,6 +222,7 @@ export class NovelaiProvider extends BaseLLMProvider implements LLMProvider {
       const {
         builtInTools: availableBuiltInTools,
         mcpFunctionNames: availableMcpFunctionNames,
+        mcpToolFamilies,
         totalCount,
       } = await getAvailableToolsWithMCP("novelai", toolStateForContext);
 
@@ -239,6 +239,7 @@ export class NovelaiProvider extends BaseLLMProvider implements LLMProvider {
         providerLabel: "NovelAI provider",
         builtInTools: finalBuiltInTools,
         mcpFunctionNames: finalMcpFunctionNames,
+        mcpToolFamilies,
         allowedToolNames: streamingContext?.deliberateToolAllowedNames,
       }));
 
@@ -279,7 +280,7 @@ export class NovelaiProvider extends BaseLLMProvider implements LLMProvider {
       apiKey: apiKey,
       temperature: getActiveTemperature(tomoriState.config) ?? tomoriState.config.llm_temperature,
       disabledParams: tomoriState.config.llm_disabled_params ?? [],
-      maxOutputTokens: tomoriState.config.llm_max_output_tokens ?? 2048,
+      maxOutputTokens: await resolveRequestMaxOutputTokens(tomoriState),
       tools: tools,
     };
   }
@@ -362,6 +363,19 @@ export class NovelaiProvider extends BaseLLMProvider implements LLMProvider {
       // tomoriChat can use it as a prompt continuation on the retry, instead of
       // starting a fresh generation that produces the same truncated output.
       const pendingPrefill = novelaiAdapter.getPendingContinuationPrefill();
+      const emptySuppressedRetry =
+        result.status === "completed" &&
+        streamingContext?.suppressTextOutput === true &&
+        !streamingContext.endTurnAfterTools?.length &&
+        !result.accumulatedText?.trim();
+      if (emptySuppressedRetry) {
+        // A normal GLM tool retry still needs the empty-response path; hidden image turns end independently.
+        return {
+          ...result,
+          status: "empty_response",
+          naiContinuationPrefill: pendingPrefill ?? undefined,
+        };
+      }
       if (result.status === "empty_response" && pendingPrefill) {
         log.info(`NovelAIProvider: Attaching continuation prefill to StreamResult (${pendingPrefill.length} chars)`);
         return { ...result, naiContinuationPrefill: pendingPrefill };

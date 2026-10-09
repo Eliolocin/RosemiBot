@@ -10,6 +10,7 @@
 import type { GuildMcpServerRow } from "@/types/db/schema";
 import { sql } from "@/utils/db/client";
 import { log } from "@/utils/misc/logger";
+import { lazyRotateEncryptedRow } from "@/utils/security/encryptedColumns";
 import { keyManager } from "@/utils/security/keyManager";
 import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCacheStore";
 import { invalidateGuildMcpConfigCache } from "@/utils/cache/guildMcpConfigCache";
@@ -78,10 +79,11 @@ class ToolRepository implements IRepository<ToolExportShape> {
    * Decrypts the auth token for a guild MCP server row.
    *
    * @param row - GuildMcpServerRow with an encrypted auth token
-   * @returns Decrypted token string or null if absent / decryption failed
+   * Internal private callers report a normalized failure at their orchestration owner.
+   * @returns Decrypted token or null when absent; private failures throw without SDK details.
    */
-  async decryptMcpAuthToken(row: GuildMcpServerRow): Promise<string | null> {
-    return this.sqlDecryptGuildMcpAuthToken(row);
+  async decryptMcpAuthToken(row: GuildMcpServerRow, privateFailure = false): Promise<string | null> {
+    return this.sqlDecryptGuildMcpAuthToken(row, privateFailure);
   }
 
   /**
@@ -118,7 +120,6 @@ class ToolRepository implements IRepository<ToolExportShape> {
   }
 
   /**
-   * Deletes an MCP server from a guild by name.
    * Invalidates caches after write.
    *
    * @param serverDiscId - Discord server snowflake (required for tomori state cache invalidation)
@@ -384,7 +385,7 @@ class ToolRepository implements IRepository<ToolExportShape> {
     }
   }
 
-  private async sqlDecryptGuildMcpAuthToken(row: GuildMcpServerRow): Promise<string | null> {
+  private async sqlDecryptGuildMcpAuthToken(row: GuildMcpServerRow, privateFailure = false): Promise<string | null> {
     if (!row.auth_token) return null;
 
     try {
@@ -396,27 +397,23 @@ class ToolRepository implements IRepository<ToolExportShape> {
       `;
 
       if (!result?.decrypted_token) {
+        if (privateFailure) throw new Error("MCP credential resolution failed");
         log.warn(`[GuildMcpDb] Decryption returned empty for MCP server "${row.name}"`);
         return null;
       }
 
       const decryptedToken = result.decrypted_token.toString();
-
-      const currentVersion = keyManager.getCurrentVersion();
-      if (keyVersion !== currentVersion) {
-        log.info(`[GuildMcpDb] Rotating auth token for "${row.name}" from key v${keyVersion} to v${currentVersion}`);
-        const currentKey = keyManager.getCurrentKey();
-        await sql`
-          UPDATE guild_mcp_servers
-          SET auth_token = pgp_sym_encrypt(${decryptedToken}, ${currentKey}, 'compress-algo=1, cipher-algo=aes256'),
-              key_version = ${currentVersion}
-          WHERE guild_mcp_id = ${row.guild_mcp_id}
-        `;
-        log.success(`[GuildMcpDb] Key rotation completed for MCP server "${row.name}"`);
+      if (row.guild_mcp_id !== undefined) {
+        await lazyRotateEncryptedRow(sql, "guild_mcp_servers", {
+          id: row.guild_mcp_id,
+          ciphertext: row.auth_token,
+          key_version: row.key_version,
+        });
       }
 
       return decryptedToken;
     } catch (error) {
+      if (privateFailure) throw new Error("MCP credential resolution failed");
       log.error(`[GuildMcpDb] Failed to decrypt auth token for MCP server "${row.name}"`, error);
       return null;
     }

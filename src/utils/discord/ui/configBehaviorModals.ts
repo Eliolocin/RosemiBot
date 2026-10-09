@@ -26,6 +26,7 @@ import {
 } from "@/utils/discord/ui/configModals";
 import type { RawModalPayload } from "@/utils/discord/ui/configModals";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
+import { ASSISTANT_PREFILL_MAX_LENGTH } from "@/utils/chat/assistantPrefill";
 import { selectablePersonas, SELECT_OPTION_LIMIT } from "@/utils/discord/ui/configChannelModals";
 import { localizer, resolveDescription } from "@/utils/text/localizer";
 import { splitPromptIntoModalParts } from "@/utils/text/modalPromptParts";
@@ -33,12 +34,21 @@ import { promptPartDescription, promptPartLabel } from "@/utils/discord/ui/modal
 
 export const BEHAVIOR_HUMANIZER_FIELD = "behavior_humanizer";
 export const BEHAVIOR_FETCH_LIMIT_FIELD = "behavior_fetch_limit";
+export const BEHAVIOR_PREFILL_FIELD = "behavior_prefill";
 export const BEHAVIOR_TIMEZONE_FIELD = "behavior_timezone";
 export const BEHAVIOR_CASCADE_LIMIT_FIELD = "behavior_cascade_limit";
 export const BEHAVIOR_MATCH_LIMIT_FIELD = "behavior_match_limit";
 export const BEHAVIOR_COOLDOWN_TYPE_FIELD = "behavior_cooldown_type";
 export const BEHAVIOR_COOLDOWN_LENGTH_FIELD = "behavior_cooldown_length";
 export const BEHAVIOR_PRESET_FIELD = "behavior_preset";
+
+/**
+ * Submitted value of the synthetic "built-in default" option in the preset modal.
+ *
+ * The default prompt is not a catalog row, and it must be stored as NULL so `DEFAULT_SYSTEM_PROMPT`
+ * keeps evolving at read time. Offering it as a sentinel avoids writing a frozen copy of its text.
+ */
+export const BEHAVIOR_PRESET_BUILT_IN = "built-in-default";
 export const BEHAVIOR_RANDOM_CHANNEL_FIELD = "behavior_random_channel";
 export const BEHAVIOR_RANDOM_PERSONA_FIELD = "behavior_random_persona";
 export const BEHAVIOR_RANDOM_SETTINGS_FIELD = "behavior_random_settings";
@@ -649,11 +659,43 @@ export function buildBehaviorPresetModal(
         "commands.config.prompt.preset.selection_label",
         "commands.config.prompt.preset.selection_placeholder",
         "commands.config.prompt.preset.selection_placeholder",
-        presets.map((preset) => ({
-          label: preset.system_prompt_preset_name,
-          value: preset.system_prompt_preset_name,
-          description: resolveDescription(preset.descriptions, locale) ?? "",
-        })),
+        [
+          {
+            label: localizer(locale, "commands.setup.wizard.settings_built_in_prompt"),
+            value: BEHAVIOR_PRESET_BUILT_IN,
+            description: localizer(locale, "commands.setup.wizard.settings_built_in_prompt_description"),
+          },
+          ...presets.map((preset) => ({
+            label: preset.system_prompt_preset_name,
+            value: preset.system_prompt_preset_name,
+            description: resolveDescription(preset.descriptions, locale) ?? "",
+          })),
+        ],
+      ),
+    ],
+  };
+}
+
+/** An empty submit clears the prefill, matching the Context Note modal. */
+export function buildBehaviorPrefillModal(
+  locale: string,
+  nonce: string,
+  prefill: string | null | undefined,
+): RawModalPayload {
+  return {
+    custom_id: buildConfigRouteId({ action: "behavior-prefill-submit", locale, nonce }),
+    title: title(locale, "commands.config.response-prefill.modal_title"),
+    components: [
+      textField(
+        locale,
+        nonce,
+        BEHAVIOR_PREFILL_FIELD,
+        "commands.config.response-prefill.text_label",
+        "commands.config.response-prefill.text_description",
+        TextInputStyle.Paragraph,
+        false,
+        ASSISTANT_PREFILL_MAX_LENGTH,
+        prefill ?? undefined,
       ),
     ],
   };

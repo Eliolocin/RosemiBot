@@ -34,6 +34,7 @@ export async function buildServerConfigPages(
   client: Client,
   tomoriState: TomoriState,
   locale: string,
+  canViewText = false,
 ): Promise<SummaryEmbedOptions[]> {
   const config = tomoriState.config;
   const [optApiKeyRows, savedProviderConfigs, guildMcpServers, matrixLinks, stPresets, serverCustomEndpoints] =
@@ -87,12 +88,16 @@ export async function buildServerConfigPages(
     { toggle_command: serverUserByokToggleMention },
   );
 
-  const rawSystemPrompt = config.system_prompt ?? DEFAULT_SYSTEM_PROMPT.trim();
-  const systemPromptValue = formatPromptPreview(rawSystemPrompt, locale);
-  const rawContextNote = config.context_note ?? null;
-  const contextNoteValue = rawContextNote
-    ? formatPromptPreview(rawContextNote, locale)
-    : localizer(locale, "commands.status.field_context_note_not_set");
+  const hiddenPrompt = localizer(locale, "commands.status.prompt_hidden");
+  const systemPromptValue = canViewText
+    ? formatPromptPreview(config.system_prompt ?? DEFAULT_SYSTEM_PROMPT.trim(), locale)
+    : hiddenPrompt;
+  const rawContextNote = canViewText ? config.context_note : null;
+  const contextNoteValue = !canViewText
+    ? hiddenPrompt
+    : rawContextNote
+      ? formatPromptPreview(rawContextNote, locale)
+      : localizer(locale, "commands.status.field_context_note_not_set");
 
   const optApiKeyServiceNames = optApiKeyRows.map((row) => row.service_name);
   const braveApiKeySet = optApiKeyServiceNames.includes("brave-search");

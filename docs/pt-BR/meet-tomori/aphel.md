@@ -2,6 +2,7 @@
 title: "Aphel, a Sombria"
 sidebar:
   order: 3
+aiGenerated: false
 ---
 
 <!-- STUB (tarefa secundária). Fonte: src/db/seed/catalog/personas/gloomy/en-US.ts.

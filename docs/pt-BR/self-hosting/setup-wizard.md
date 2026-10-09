@@ -1,9 +1,9 @@
 ---
 title: "Assistente de Configuração"
-aiGenerated: true
 sidebar:
   label: "Assistente de Configuração"
   order: 1
+aiGenerated: false
 ---
 
 :::note
@@ -41,7 +41,6 @@ bun run setup
 ## O que ter pronto
 
 - [Bun](https://bun.sh/) para rodar o bot e o próprio assistente.
-- Node.js v20+ (usado para ferramentas MCP).
 - Um token de bot do Discord com as intents privilegiadas `GuildMembers`, `MessageContent` e `GuildPresences`
   habilitadas.
 - Um banco de dados. O TomoriBot armazena tudo no PostgreSQL. Você não precisa configurá-lo manualmente pois

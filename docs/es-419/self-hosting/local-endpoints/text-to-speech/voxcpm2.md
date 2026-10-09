@@ -1,10 +1,11 @@
 ---
 title: "VoxCPM2"
+aiGenerated: true
 ---
 
-VoxCPM2 es el modelo multilingüe de texto a voz de 2B de parámetros de OpenBMB. Admite 30 idiomas, salida de 48 kHz, Diseño de voz en lenguaje natural, clonación de voz de audio de referencia, clonación controlable y "Clonación Definitiva" asistida por transcripción. TomoriBot usa el paquete oficial de Python `voxcpm` a través del ligero envoltorio en `servers/tts/voxcpm2/`.
+Sintetice voz expresiva de 48 kHz en 30 idiomas utilizando el modelo de texto a voz [VoxCPM2](https://github.com/OpenBMB/VoxCPM) de OpenBMB.
 
-El modelo predeterminado es el punto de control BF16 oficial `openbmb/VoxCPM2`. OpenBMB informa de aproximadamente 8 GB de VRAM para el tiempo de ejecución estándar, por lo que el modelo normal se ajusta cómodamente a una GPU NVIDIA de 16 GB y no se necesita un punto de control cuantificado de forma predeterminada.
+VoxCPM2 es un modelo de voz multilingüe de parámetros 2B que admite clonación de voz, Ultimate Cloning asistida por transcripción y diseño de voz en lenguaje natural. TomoriBot se conecta a la biblioteca oficial de Python `voxcpm` a través del servidor en `servers/tts/voxcpm2/`, ejecutando cómodamente el punto de control oficial no cuantificado `openbmb/VoxCPM2` BF16 dentro de 16 GB de VRAM.
 
 ## Licencia
 
@@ -70,9 +71,9 @@ OpenBMB reporta aproximadamente 0.30 RTF en una RTX 4090 con el tiempo de ejecuc
 
 El servidor fija el paquete estable actual `voxcpm` 2.0.3 y descarga `openbmb/VoxCPM2` en la caché normal de Hugging Face.
 
-### Linux / WSL Bash
+### Linux y WSL Bash
 
-Desde la raíz del repositorio de TomoriBot:
+Desde la raíz del repositorio TomoriBot:
 
 ```bash
 bash servers/tts/voxcpm2/install-voxcpm2.sh
@@ -81,16 +82,16 @@ servers/tts/voxcpm2/.venv/bin/python servers/tts/voxcpm2/server.py
 
 ### Windows PowerShell
 
-Desde la raíz del repositorio de TomoriBot:
+Desde la raíz del repositorio TomoriBot:
 
 ```powershell
 .\servers\tts\voxcpm2\install-voxcpm2.ps1
 .\servers\tts\voxcpm2\.venv\Scripts\python.exe servers\tts\voxcpm2\server.py
 ```
 
-La primera configuración descarga varios gigabytes de pesos del modelo. Para instalar el entorno de Python sin obtener previamente el modelo, configura `VOXCPM2_PREFETCH=0`; la biblioteca oficial luego descargará el punto de control en el primer inicio del servidor.
+La primera configuración descarga varios gigabytes de pesos de modelos. Para instalar el entorno Python sin precargar el modelo, configure `VOXCPM2_PREFETCH=0`; La biblioteca oficial descargará el punto de control en el primer inicio del servidor.
 
-Linux / WSL:
+Linux y WSL:
 
 ```bash
 VOXCPM2_PREFETCH=0 bash servers/tts/voxcpm2/install-voxcpm2.sh
@@ -103,7 +104,7 @@ $env:VOXCPM2_PREFETCH = "0"
 .\servers\tts\voxcpm2\install-voxcpm2.ps1
 ```
 
-Después de la configuración, `bun run launch --voxcpm2` inicia el servidor junto con TomoriBot. El endpoint predeterminado es `http://127.0.0.1:8016`.
+Después de la configuración, `bun run launch --voxcpm2` inicia el servidor junto con TomoriBot. El punto final predeterminado es `http://127.0.0.1:8016`.
 
 ## Registro en TomoriBot
 
@@ -116,7 +117,7 @@ Ejecuta `/providers`, elige `Agregar nuevo punto de conexión personalizado`, y 
 - Estilo de marcado del guion: `Plain`
 - Compatibilidad con instrucciones: `Yes`
 
-Después de guardar la conexión, selecciónala y usa su menú desplegable de modelos para agregar un modelo de Voz. Luego abre `/config` > Modelos > Cambiar modelos y selecciona el modelo de voz de VoxCPM2.
+Después de guardar la conexión, selecciónala y usa su menú desplegable de modelos para agregar un modelo de Voz. Luego abre `/config` > Modelos > `Cambiar modelos` y selecciona el modelo de voz de VoxCPM2.
 
 Se recomienda `Auto` porque el mismo servidor admite clonación de audio de referencia y Diseño de voz. No necesitas procesos separados de VoxCPM2 para los dos modos.
 
@@ -125,7 +126,7 @@ Se recomienda `Auto` porque el mismo servidor admite clonación de audio de refe
 Para una persona que debe clonar a un orador existente:
 
 1. Prepara un clip de referencia limpio con un solo orador y poca o ninguna música de fondo. La fuente upstream considera 5 a 30 segundos como el rango práctico.
-2. Abre `/config` bajo Modelos > Parámetros y voces TTS y sube el clip.
+2. Abre `/config` bajo Modelos > `Parámetros y voces TTS` y sube el clip.
 3. Agrega la transcripción exacta del clip de referencia cuando esté disponible. VoxCPM2 la usa para Clonación Definitiva y puede reproducir más del ritmo, la emoción y el estilo de referencia.
 4. Abre `/config` bajo Persona > Voz, elige la persona y asigna la muestra guardada.
 
@@ -133,26 +134,26 @@ Si no se guarda ninguna transcripción, VoxCPM2 aún realiza la clonación norma
 
 La cifra de 5 a 30 segundos es un rango de calidad documentado, y no un límite aplicado: VoxCPM2 no aplica ningún límite propio de duración de la referencia, así que el techo de carga de TomoriBot es lo que detiene un clip más largo.
 
-## Diseño de Voz de Persona
+## Diseño de voz personal.
 
 Para una persona que debe crearse a partir de una descripción de voz escrita en lugar de una muestra:
 
-1. Abre `/config` bajo Persona > Voz y elige Diseño de voz.
+1. Abre `/config` en Persona > `Voz` y elija VoiceDesign.
 2. Elige la persona.
-3. Ingresa una descripción en lenguaje natural, como `Young adult woman, soft warm voice, relaxed pace, slightly playful delivery`.
+3. Ingresa una descripción en lenguaje natural como `Young adult woman, soft warm voice, relaxed pace, slightly playful delivery`.
 
-TomoriBot envía la descripción guardada como `instruct`. VoxCPM2 la convierte en su prefijo nativo de control de Diseño de voz.
+TomoriBot envía la descripción guardada como `instruct`. VoxCPM2 lo convierte en su prefijo de control nativo de Voice Design.
 
-Cuando una persona clonada también recibe instrucciones de voz únicas, VoxCPM2 usa la clonación controlable: la muestra de referencia proporciona la identidad del orador mientras que la instrucción dirige cualidades como la emoción, el ritmo o la entrega. Si también se almacena una transcripción, la instrucción tiene prioridad porque la ruta upstream de Clonación Definitiva no proporciona un modo de instrucción de control confiable; la transcripción se omite intencionalmente para esa solicitud.
+Cuando una persona clonada también recibe instrucciones de voz únicas, VoxCPM2 utiliza una clonación controlable: la muestra de referencia proporciona la identidad del hablante mientras que la instrucción dirige cualidades como la emoción, el ritmo o la entrega. Si también se almacena una transcripción, la instrucción tiene prioridad porque la ruta ascendente de Ultimate Cloning no proporciona un modo de control-instrucción confiable; la transcripción se omite intencionalmente para esa solicitud.
 
-## `/generate voice-message`
+## Prueba con `/generate voice-message`
 
-Una vez que VoxCPM2 es el modelo de Voz activo, `/generate voice-message` usa la fuente de voz configurada de la persona de la misma manera que las llamadas a la herramienta de mensajes de voz normales:
+Una vez que VoxCPM2 es el modelo de voz activo, `/generate voice-message` usa la fuente de voz configurada de la persona de la misma manera que las llamadas normales a la herramienta de mensajes de voz:
 
-- las personas clones envían el `ref_audio` guardado y el `ref_text` opcional;
-- las personas de Diseño de voz envían su prompt guardado como `instruct`;
-- los endpoints con capacidad de clonación con Compatibilidad con instrucciones habilitada exponen el campo de Dirección de entrega y pasan instrucciones únicas a través de `instruct`;
-- cuando una instrucción está presente con una muestra clon, TomoriBot usa `reference_wav_path` únicamente y no envía los campos de prompt de transcripción.
+- las personas clonadas envían el `ref_audio` almacenado y el `ref_text` opcional;
+- Las personas de VoiceDesign envían su mensaje guardado como `instruct`;
+- los puntos finales con capacidad de clonación con Supports Instruct habilitado exponen el campo Dirección de entrega y pasan instrucciones únicas a través de `instruct`;
+- cuando hay una instrucción presente con una muestra de clonación, TomoriBot usa solo `reference_wav_path` y no envía los campos de solicitud de transcripción.
 
 ## Variables de entorno
 
@@ -171,7 +172,7 @@ Una vez que VoxCPM2 es el modelo de Voz activo, `/generate voice-message` usa la
 | `VOXCPM2_RETRY_BADCASE_RATIO_THRESHOLD` | `6.0` | Umbral de longitud de caso malo upstream |
 | `VOXCPM2_PREFETCH` | `1` | Solo instalador: descargar el modelo durante la configuración |
 | `VOXCPM2_PORT` | `8016` | Puerto del servidor local de VoxCPM2 |
-| `TOMORI_TTS_HOST` | `127.0.0.1` | Dirección de enlace del servidor local; consulta [Acceso de red](/self-hosting/local-endpoints/text-to-speech/#network-access) |
+| `TOMORI_TTS_HOST` | `127.0.0.1` | Dirección de enlace del servidor local; consulta [Acceso de red](/es-419/self-hosting/local-endpoints/text-to-speech/#network-access) |
 
 El audio de referencia debe ser un contenedor WAV no vacío de 10 MB decodificados como máximo, lo que el envoltorio verifica antes de escribir un archivo temporal.
 

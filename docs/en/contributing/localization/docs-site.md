@@ -62,13 +62,22 @@ partial tree is safe to publish. Translating the page reverses all four.
 
 | Page | Notice |
 |---|---|
-| `aiGenerated: false` in that locale's file | None |
-| Translation of an English page marked `aiGenerated: false` | Translation notice linking to English, shown only when `DOCS_SHOW_TRANSLATION_NOTICE=true` |
-| Anything else | The locale's draft disclaimer |
+| English source and translation both have `aiGenerated: false` | None |
+| English source and translation both have `aiGenerated: true` or omit the field | The locale's draft disclaimer |
 
-A machine translation must not carry `aiGenerated: false`: delete the line when translating a page
-that has it. Only a human reviewer sets it, page by page, which also removes the page from the review
-queue. No script can detect a false claim of review.
+`aiGenerated` records human review of substantive content: the page's claims, instructions, and
+meaning. Always mirror the English source's field in every translation. Copy an explicit `false` or
+`true`; remove the field from the translation when English omits it. Apply source review-status
+changes to its translations in the same change.
+
+AI translation alone does not change this status. A translation of reviewed English content keeps
+`aiGenerated: false`, even when no person has reviewed the translated wording. Translation accuracy
+and natural phrasing still need review; this field does not certify either. If a translation adds or
+changes a claim, correct it to match English rather than assigning it a separate content-review status.
+
+For files whose flags differ from this standard, the renderer retains a translation notice linking
+to reviewed English content, shown only when `DOCS_SHOW_TRANSLATION_NOTICE=true`. Synchronize their
+frontmatter with English when editing them.
 
 ## Links
 

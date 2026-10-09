@@ -6,8 +6,7 @@
  * are identical: only the provider name differs.
  */
 
-import type { Tool, MCPCapableToolAdapter, ToolContext, ToolResult } from "../../types/tool/interfaces";
-import type { TypedMCPToolResult } from "../../types/tool/mcpTypes";
+import type { Tool, MCPCapableToolAdapter, ToolResult } from "../../types/tool/interfaces";
 import { GoogleToolAdapter } from "../google/googleToolAdapter";
 
 /**
@@ -59,25 +58,6 @@ export class VertexToolAdapter implements MCPCapableToolAdapter {
     allowedMCPFunctions?: string[],
   ): Promise<Array<Record<string, unknown>>> {
     return this.googleAdapter.getAllToolsInGoogleFormat(builtInTools, serverId, allowedMCPFunctions);
-  }
-
-  /**
-   * Check if a function name belongs to an MCP tool
-   * @returns True if this is an MCP tool function
-   */
-  async isMCPFunction(functionName: string): Promise<boolean> {
-    return this.googleAdapter.isMCPFunction(functionName);
-  }
-
-  /**
-   * Execute an MCP tool function
-   */
-  async executeMCPFunction(
-    functionName: string,
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<TypedMCPToolResult> {
-    return this.googleAdapter.executeMCPFunction(functionName, args, context);
   }
 }
 

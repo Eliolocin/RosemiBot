@@ -10,12 +10,17 @@ Khi bạn `git pull` mã nguồn mới và khởi động lại TomoriBot, bot s
 
 Trình chạy migration của TomoriBot (trong `src/db/migrationRunner.ts`) thực thi tất cả các migration chưa được áp dụng theo thứ tự phiên bản. Các migration chỉ tiến về phía trước: nếu xảy ra sự cố, trình chạy sẽ không tự động rollback. Hầu hết các migration là những mở rộng an toàn (thêm cột mới, bảng mới), nhưng theo chính sách thiết kế nội bộ của dự án (OD-R-6), các thao tác có tính phá hủy như `DROP COLUMN` hoặc `DROP TABLE` đều được cho phép. Nếu một migration phá hủy chạy mà không có bản sao lưu, bạn sẽ mất dữ liệu vĩnh viễn. Khi còn nghi ngờ, hãy sao lưu trước.
 
+## Sao lưu phương tiện biểu thức tùy chỉnh
+<!-- anchor: custom-expression-media-backups -->
+
+Bản sao lưu cơ sở dữ liệu giữ lại siêu dữ liệu biểu thức tùy chỉnh, tư cách thành viên cá nhân và tham chiếu lưu trữ. Chúng không bao gồm các byte phương tiện được tải lên hoặc nhập khẩu. Dừng bot trước khi sao lưu cơ sở dữ liệu và phương tiện cùng nhau. Với bộ nhớ cục bộ, sao chép `data/custom-expressions/` và khôi phục nó vào cùng một vị trí. Với GCS hoặc S3, hãy sao lưu các đối tượng `custom-expressions/` được sở hữu và khôi phục các khóa của chúng trong nhóm biểu thức đã định cấu hình. Khôi phục cài đặt `EXPRESSION_STORAGE_BACKEND` và `EXPRESSION_STORAGE_BUCKET` phù hợp. Chỉ thay đổi phần phụ trợ hoặc nhóm sẽ khiến các tài liệu tham khảo hiện có không thể đọc được. Biểu thức liên kết chỉ được lưu trữ dưới dạng URL và vẫn phụ thuộc vào máy chủ bên ngoài của chúng. Xuất JSON Discord không mang theo sổ đăng ký biểu thức hoặc kho lưu trữ phương tiện.
+
 ## Danh sách kiểm tra trước khi kéo mã nguồn
 
 Thực hiện theo các bước sau TRƯỚC KHI chạy `git pull`:
 
 1. **Dừng bot**: tắt tiến trình TomoriBot để không có kết nối cơ sở dữ liệu nào đang hoạt động can thiệp vào quá trình sao lưu.
-2. **Sao lưu cơ sở dữ liệu**: sử dụng một trong hai phương pháp bên dưới.
+2. **Sao lưu cơ sở dữ liệu và lưu giữ khóa**: sử dụng một trong hai phương pháp bên dưới. Giữ một bản sao được bảo vệ riêng biệt của mỗi phiên bản mã hóa mà bản dump cần và kiểm tra quá trình khôi phục trên một cơ sở dữ liệu dùng một lần.
 3. **Ghi lại commit hiện tại**: chạy `git rev-parse HEAD` và lưu lại kết quả phòng trường hợp cần rollback.
 4. **Kéo mã nguồn và khởi động lại**: khi bản sao lưu đã nằm an toàn trên ổ đĩa, bạn có thể yên tâm kéo mã nguồn mới và khởi động lại.
 
@@ -53,7 +58,7 @@ TomoriBot đi kèm hai script sao lưu, mỗi script nhắm vào các dữ liệ
 bun run backup
 ```
 
-Lệnh này tạo một gói có gắn nhãn thời gian trong `backups/` (hoặc `TOMORI_BACKUP_DIR` nếu được ghi đè trong `.env`) chứa toàn bộ cơ sở dữ liệu PostgreSQL dưới dạng bản dump SQL thuần. Để khôi phục sau này, hãy chạy:
+Lệnh này tạo một gói có gắn nhãn thời gian trong `backups/` (hoặc `TOMORI_BACKUP_DIR` nếu được ghi đè trong `.env`) chứa toàn bộ cơ sở dữ liệu PostgreSQL dưới dạng bản dump SQL thuần. Gói không chứa `.env` hoặc secret chính nào. Trước khi khôi phục, hãy cung cấp các phiên bản mã hóa phù hợp một cách riêng biệt trong nguồn secret đích và dừng tất cả các phiên bản bot. Xem [Sao lưu cơ sở dữ liệu và khóa khôi phục](/vi/self-hosting/maintenance/#database-backups-and-recovery-keys) để biết quy trình đầy đủ. Các khóa bị thiếu hoặc sai sẽ dừng việc khôi phục trước khi thực thi SQL mang tính phá hủy. Các gói cũ vẫn chứa các secret `config.env` thô; hãy xem lại chúng một cách riêng tư và tự cung cấp các khóa của chúng. Khôi phục không bao giờ sao chép tệp đó. Để khôi phục sau này, hãy chạy:
 
 ```bash
 bun run restore-backup --latest
@@ -112,7 +117,7 @@ Lưu ý: `pg_restore` sẽ yêu cầu mật khẩu trừ khi bạn đã thiết 
 
 ## Dành cho cộng tác viên triển khai qua CI: quy ước `(Checkpoint)`
 
-Nếu bạn duy trì một bản fork triển khai lên AWS hoặc GCP thông qua các workflow trong `.github/workflows/deploy-tomoribot-{aws,gcp}.yml`, các quy trình này hỗ trợ tùy chọn chụp nhanh trước khi triển khai: khi một thông điệp commit chứa token ký tự `(Checkpoint)`, workflow sẽ chạy `aws rds create-db-snapshot` (hoặc lệnh tương đương của GCP Cloud SQL) trước khi bất kỳ mã nào được triển khai và trước khi trình chạy migration can thiệp vào cơ sở dữ liệu khi khởi động.
+Nếu bạn duy trì một bản fork triển khai lên AWS hoặc GCP thông qua các workflow trong `.github/workflows/deploy-{aws,gcp-legacy}.yml`, các quy trình này hỗ trợ tùy chọn chụp nhanh trước khi triển khai: khi một thông điệp commit chứa token ký tự `(Checkpoint)`, workflow sẽ chạy `aws rds create-db-snapshot` (hoặc lệnh tương đương của GCP Cloud SQL) trước khi bất kỳ mã nào được triển khai và trước khi trình chạy migration can thiệp vào cơ sở dữ liệu khi khởi động.
 
 Sử dụng tùy chọn này khi:
 
@@ -148,10 +153,10 @@ Nếu bot bị crash hoặc treo trong quá trình migration:
 3. **Quyết định xem có khôi phục hay không**: nếu lỗi không thể khắc phục được (ví dụ: migration cố gắng xóa một cột không tồn tại), hãy khôi phục từ bản sao lưu của bạn:
 
    ```bash
-   # Khôi phục theo Tùy chọn A
+   # Option A restore
    bun run restore-backup --latest
 
-   # Hoặc khôi phục theo Tùy chọn B
+   # Or Option B restore
    pg_restore \
      -h "$POSTGRES_HOST" \
      -p "$POSTGRES_PORT" \
@@ -188,7 +193,7 @@ Theo thiết kế của dự án (OD-R-6), các migration phá hủy không th�
 
 Đối với các thao tác này, cách khôi phục duy nhất là sử dụng bản sao lưu của bạn. Luôn sao lưu trước khi kéo mã nguồn nếu bạn đang ở phiên bản cũ và một đợt tái cấu trúc mới được phát hành.
 
-Thiết kế chỉ tiến về phía trước của trình chạy migration là có chủ đích: các tệp rollback (`.down.sql`) tồn tại vì sự an toàn của nhà phát triển trong quá trình thử nghiệm, nhưng việc khôi phục trên môi trường production phụ thuộc vào các bản sao lưu chứ không phải việc thực thi lại các thao tác không thể hoàn tác.
+Thiết kế chỉ tiến về phía trước của trình chạy migration là có chủ đích: các tệp rollback (`.down.sql`) tồn tại vì sự an toàn của nhà phát triển trong quá trình thử nghiệm, nhưng việc khôi phục trên production sử dụng các bản sao lưu và các khóa mã hóa được giữ riêng biệt của chúng. Việc thực thi lại một migration có tính phá hủy không thể khôi phục dữ liệu đã bị xóa.
 
 ## Thử nghiệm một nhánh tính năng, sau đó quay lại `main`
 
@@ -196,13 +201,13 @@ Một trường hợp phổ biến: ai đó yêu cầu bạn thử nghiệm mộ
 
 Các sự thật then chốt:
 
-- Git và PostgreSQL là hai thế giới tách biệt. Lệnh `git checkout` chỉ hoán đổi các tệp trên ổ đĩa; nó không bao giờ kết nối hay sửa đổi cơ sở dữ liệu của bạn. Trạng thái migration đã áp dụng nằm trong bảng `schema_migrations`, không phải trong git.
+- Git và PostgreSQL là hai thế giới tách biệt. Lệnh `git checkout` chỉ hoán đổi các tệp trên ổ đĩa; nó không bao giờ kết nối hay sửa đổi cơ sở dữ liệu của bạn. PostgreSQL lưu trữ trạng thái migration đã áp dụng trong bảng `schema_migrations`. Việc chuyển đổi nhánh git không làm thay đổi bảng đó.
 - Các migration chạy tự động khi khởi động (thông qua `initializeDatabase.ts`), vì vậy ngay khi bạn khởi động nhánh đó, các migration mới của nó sẽ được áp dụng cho bất kỳ cơ sở dữ liệu nào mà bạn trỏ tới.
 - Trình chạy tiến không bao giờ tự động rollback. Khi bạn quay lại `main`, nó quét các tệp trên ổ đĩa, không tìm thấy mục nào đang chờ xử lý và không làm gì cả. Các migration mà nhánh đó đã áp dụng vẫn sẽ giữ nguyên.
 
 Vậy điều đó có an toàn không? Điều này hoàn toàn phụ thuộc vào những gì các migration của nhánh đó đã thực hiện:
 
-- Chỉ bổ sung (bảng mới / cột mới) → an toàn. Các đối tượng mới chỉ nằm đó và không được sử dụng; mã nguồn của `main` không bao giờ tham chiếu đến chúng, vì vậy chúng không thể gây ra kết quả sai hoặc crash. Chúng chỉ là phần dư thừa vô hại.
+- **Chỉ bổ sung** (bảng mới / cột mới) → an toàn. Các đối tượng mới chỉ nằm đó và không được sử dụng; mã nguồn của `main` không bao giờ tham chiếu đến chúng, vì vậy chúng không thể gây ra kết quả sai hoặc crash. Chỉ xóa các đối tượng không sử dụng thông qua một migration đã được duyệt.
 - Có tính phá hủy (`DROP`/`RENAME`/`ALTER` trên bảng mà `main` vẫn sử dụng) → không an toàn. Thay đổi của nhánh khiến mã nguồn của `main` bị lỗi khi truy cập một cột/bảng hiện đã bị xóa hoặc thay đổi.
 
 Cách tiếp cận an toàn nhất: trỏ nhánh tới một cơ sở dữ liệu dùng một lần (một `POSTGRES_DB` riêng biệt), để dữ liệu thực của bạn không bao giờ bị ảnh hưởng. Bạn đã thiết lập kết nối từ các biến `POSTGRES_*`, và `bun run nuke-db` có thể đặt lại cơ sở dữ liệu thử nghiệm.
@@ -212,12 +217,12 @@ Cách tiếp cận an toàn nhất: trỏ nhánh tới một cơ sở dữ liệ
 Nếu bạn đã thử nghiệm một nhánh với cơ sở dữ liệu thực của mình và muốn hoàn tác các migration của nó sau đó, hãy sử dụng trình chạy rollback. Không giống như trình chạy tiến, công cụ này không bao giờ chạy tự động: rollback luôn là một hành động thủ công có chủ đích vì các tệp `.down.sql` thường làm mất dữ liệu.
 
 ```bash
-# Chỉ xem trước (dry run): hiển thị những gì sẽ được rollback
-bun run migrate:down 034          # migration này + mọi migration mới hơn đã áp dụng
-bun run migrate:down --last       # chỉ migration được áp dụng gần đây nhất
-bun run migrate:down --last=2     # hai migration được áp dụng gần đây nhất
+# Preview only (dry run): show what would be rolled back
+bun run migrate:down 034          # this migration + every newer applied one
+bun run migrate:down --last       # only the most recently applied migration
+bun run migrate:down --last=2     # the two most recently applied migrations
 
-# Thực thi rollback (chạy các tệp .down.sql, xóa các hàng schema_migrations)
+# Execute the rollback (runs the .down.sql files, removes schema_migrations rows)
 bun run migrate:down 034 --yes
 ```
 

@@ -1,6 +1,15 @@
 export default {
   nsfw: {
     description: `年龄限制的指令与设置。`,
+    persona: {
+      description: `年龄限制的人格指令。`,
+      default: {
+        description: `应用一套 NSFW 人格预设集`,
+      },
+      import: {
+        description: `从 PNG、JSON 或 CHARX 文件导入人格，包括 NSFW 人格`,
+      },
+    },
     jailbreaks: {
       description: `管理这个服务器上我的提示词使用的可选越狱行为。`,
       modal_title: `管理越狱策略`,

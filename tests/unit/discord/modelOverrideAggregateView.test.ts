@@ -41,6 +41,8 @@ import {
 import * as channelLlmCacheStore from "@/utils/cache/channelLlmCacheStore";
 import * as tomoriStateCacheStore from "@/utils/cache/tomoriStateCacheStore";
 import { createPersona } from "../../helpers/fixtures";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import { ColorCode } from "@/utils/misc/logger";
 
 beforeAll(async () => initializeLocalizer());
 
@@ -695,7 +697,9 @@ describe("/model override remove - (6) routed submit stale fp and absent checkbo
 
     const editedPayload = interaction.getEditedReply() as { embeds?: Array<{ data: { title?: string } }> };
     expect(editedPayload).toBeDefined();
-    expect(editedPayload?.embeds?.[0]?.data?.title).toBe(localizer("en-US", "general.errors.update_failed_title"));
+    expect(editedPayload?.embeds?.[0]?.data?.title).toBe(
+      localizedStatusTitle("en-US", "general.errors.update_failed_title", ColorCode.ERROR),
+    );
   });
 });
 
@@ -952,10 +956,10 @@ describe("buildModelOverrideRemoveModal option descriptions and mixed chunk cont
       .options;
 
     expect(options[0].label).toBe("#general");
-    expect(options[0].description).toBe("gemini-2.5-flash (google)");
+    expect(options[0].description).toBe("gemini-2.5-flash (Google Gemini)");
 
     expect(options[1].label).toBe("Mirri");
-    expect(options[1].description).toBe("gemini-2.5-flash (google)");
+    expect(options[1].description).toBe("gemini-2.5-flash (Google Gemini)");
   });
 
   it("keeps scope and editor destination in the group context instead of every option", () => {
@@ -1074,7 +1078,7 @@ describe("buildModelOverrideRemoveModal option descriptions and mixed chunk cont
     const options = (modal.components[0].component as { options: Array<{ label: string; description: string }> })
       .options;
     // A summary inside the checkbox option description allowance is never ellipsized.
-    expect(options[0].description).toBe("deepseek/deepseek-v4-flash-2026-02-14-exp (openrouter)");
+    expect(options[0].description).toBe("deepseek/deepseek-v4-flash-2026-02-14-exp (OpenRouter)");
     expect(options[0].description).not.toContain("...");
 
     const overCapLlm: LlmRow = {

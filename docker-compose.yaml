@@ -59,17 +59,19 @@ services:
 
   # Crawl4AI URL-fetch server - optional browser-rendered markdown fetcher.
   # Enable with: docker compose --profile fetch-crawl4ai up
-  # Set CRAWL4AI_BASE_URL=http://crawl4ai:11235/ in .env to let TomoriBot use it.
+  # Set CRAWL4AI_BASE_URL=http://crawl4ai:11235/ and CRAWL4AI_TOKEN in .env to let TomoriBot use it.
   crawl4ai:
-    image: unclecode/crawl4ai:latest
+    # Pinned: 0.9.4 requires an API token for any non-loopback bind and blocks non-global browser destinations.
+    image: unclecode/crawl4ai:0.9.4
     container_name: tomoribot-crawl4ai
     profiles:
       - fetch-crawl4ai
     environment:
       CRAWL4AI_API_TOKEN: ${CRAWL4AI_TOKEN:-}
     shm_size: "3gb"
+    # TomoriBot reaches the crawler over tomori-network; this host port is for local debugging only.
     ports:
-      - "11235:11235"
+      - "127.0.0.1:11235:11235"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:11235/health', timeout=3).read()"]

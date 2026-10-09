@@ -4,6 +4,17 @@ export function escapeRegExp(s: string): string {
 }
 
 /**
+ * Matches a leading speaker label that names the bot: its name or the `{bot}`/`{{char}}` macro, an
+ * optional sprite parenthetical (capture group 1), and an ASCII or full-width colon.
+ */
+export function buildBotSpeakerLabelPattern(botName: string): RegExp {
+  return new RegExp(
+    `^\\s*(?:${escapeRegExp(botName)}|\\{\\{?char\\}\\}?|\\{\\{?bot\\}\\}?)((?:\\s*\\([^)]+\\))?)\\s*[:：]\\s*`,
+    "iu",
+  );
+}
+
+/**
  * Unicode-aware equivalent of wrapping `pattern` in `\b...\b`. `\b` is defined against ASCII
  * `\w`, so it treats any accented letter (é, ö, ñ, ...) as a non-word character and fakes a
  * boundary right beside it, letting the wrapped pattern match mid-word (e.g. "ren" inside

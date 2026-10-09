@@ -1,3 +1,4 @@
+import { resolveRequestMaxOutputTokens } from "@/utils/provider/modelLimits";
 import type {
   AnyThreadChannel,
   BaseGuildTextChannel,
@@ -21,8 +22,6 @@ import { generateZaiNativeImage } from "@/providers/zai/zaiImageGeneration";
 import { generateConversationSummaryZai, generateRoleplaySummaryZai } from "@/providers/zai/compactGenerator";
 import { generatePresetFromPromptZai } from "@/providers/zai/presetGenerator";
 import { ZAI_CODING_CHAT_COMPLETIONS_URL, ZAI_CODING_IMAGES_GENERATIONS_URL } from "@/providers/zai/zaiShared";
-import { isBraveSearchAvailable } from "@/tools/restAPIs/brave/braveSearchService";
-import { getMCPManager } from "@/utils/mcp/mcpManager";
 import { buildActiveSamplingParams, getActiveTemperature } from "@/utils/provider/samplingControl";
 import type { TomoriState } from "@/types/db/schema";
 import type { StructuredContextItem } from "@/types/misc/context";
@@ -191,6 +190,7 @@ export class ZaicodingProvider
           voice_message_enabled: tomoriState.config.voice_message_enabled,
           user_blocking_enabled: tomoriState.config.user_blocking_enabled,
           user_info_updates_enabled: tomoriState.config.user_info_updates_enabled,
+          response_rule_checker_ref: tomoriState.config.response_rule_checker_ref,
           thread_creation_enabled: tomoriState.config.thread_creation_enabled,
         },
       };
@@ -198,6 +198,7 @@ export class ZaicodingProvider
       const {
         builtInTools: availableBuiltInTools,
         mcpFunctionNames: availableMcpFunctionNames,
+        mcpToolFamilies,
         totalCount,
       } = await getAvailableToolsWithMCP("zaicoding", toolStateForContext);
 
@@ -214,6 +215,7 @@ export class ZaicodingProvider
         providerLabel: "Z.ai Coding provider",
         builtInTools: finalBuiltInTools,
         mcpFunctionNames: finalMcpFunctionNames,
+        mcpToolFamilies,
         allowedToolNames: streamingContext?.deliberateToolAllowedNames,
       }));
 
@@ -246,7 +248,7 @@ export class ZaicodingProvider
       apiKey,
       temperature: tomoriState.config.llm_temperature,
       disabledParams: tomoriState.config.llm_disabled_params ?? [],
-      maxOutputTokens: tomoriState.config.llm_max_output_tokens ?? 4096,
+      maxOutputTokens: await resolveRequestMaxOutputTokens(tomoriState),
       endpointUrl: ZAI_CODING_CHAT_COMPLETIONS_URL,
       seesImages: tomoriState.llm.sees_images,
       seesVideos: tomoriState.llm.sees_videos,
@@ -362,15 +364,6 @@ export class ZaicodingProvider
     if (!request.toolContext) {
       log.warn("Z.ai Coding preset generation skipped search tools: no tool context available.");
       return undefined;
-    }
-
-    const hasBraveApiKey = await isBraveSearchAvailable(request.tomoriState.server_id);
-
-    if (!hasBraveApiKey) {
-      const mcpManager = getMCPManager();
-      if (!mcpManager.isReady()) {
-        await mcpManager.initializeMCPServers();
-      }
     }
 
     const toolStateForContext: ToolStateForContext = {

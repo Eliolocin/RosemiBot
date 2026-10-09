@@ -1,14 +1,17 @@
 ---
 title: "Qwen3-TTS"
+aiGenerated: true
 ---
 
-現在のTomoriBotのオプションの中で最大かつ最も正確なTTSである、両方のQwen3-TTS 12Hz 1.7Bモードには、`servers/tts/qwen3tts/server.py`を使用します。デフォルトではオートモードで起動し、各リクエストの形状からBaseのボイスクローンモデルまたはボイスデザインモデルを選択します。
+音声クローン作成モードとテキスト記述のVoiceDesignモードの両方で [Qwen3-TTS](https://github.com/QwenAudio/Qwen3-TTS) を使用して、高精度の多言語文字音声を合成します。
+
+Qwen3-TTS 12Hz 1.7Bは、高精度のローカル音声合成を提供します。`servers/tts/qwen3tts/server.py`をデフォルトの自動モードで実行すると、各受信リクエストに基づいて、Base voice-cloningモデルまたはVoiceDesignモデルが動的に選択されます。
 
 ## セットアップ
 
-TomoriBotのリポジトリのルート（TomoriBotをクローンしたフォルダー）から以下のコマンドを実行します。
+TomoriBotリポジトリルート、つまりTomoriBotのクローンを作成したフォルダーから次のコマンドを実行します。
 
-### Windows PowerShellを使用する場合
+### Windows PowerShell
 
 ```powershell
 python -m venv servers\tts\qwen3tts\.venv
@@ -18,7 +21,7 @@ pip install -r servers\tts\qwen3tts\requirements.txt
 python servers\tts\qwen3tts\server.py
 ```
 
-### Linux/macOS Bashを使用する場合
+### LinuxおよびmacOS Bash
 
 ```bash
 python3 -m venv servers/tts/qwen3tts/.venv
@@ -28,19 +31,19 @@ python -m pip install -r servers/tts/qwen3tts/requirements.txt
 python servers/tts/qwen3tts/server.py
 ```
 
-オートモードのデフォルトのエンドポイントURLは`http://127.0.0.1:8012`です。別のポートを使う場合は`QWEN3TTS_PORT`を設定します。オートモードを明示的に指定することもできます。
+デフォルトの自動モードのエンドポイントURLは`http://127.0.0.1:8012`です。別のポートを使用するように`QWEN3TTS_PORT`を設定します。自動モードを明示的に指定することもできます。
 
 ```powershell
 python servers\tts\qwen3tts\server.py --mode auto
 ```
 
-オートモードは、各`/synthesize`リクエストを検査します。`ref_audio`を含むリクエストはクローンモデルを使用し、`instruct`を含むリクエストはボイスデザインモデルを使用します。一度に1つのモデルのみを読み込み、リクエストタイプが変更されるとモデルを入れ替えるため、入れ替え後の最初のリクエストは遅くなる場合があります。
+自動モードは、各`/synthesize`リクエストを検査します。`ref_audio`のリクエストはクローンモデルを使用し、`instruct`のリクエストはVoiceDesignモデルを使用します。一度にロードされるモデルは1つだけであり、リクエストタイプが変更されるとモデルがスワップされるため、スワップ後の最初のリクエストは遅くなる可能性があります。
 
 ## TomoriBotへの登録
 
 ほとんどのユーザーは、1つのエンドポイントでボイスクローンとボイスデザインの両方のペルソナをサポートできるように、オートモードサーバーを登録します。
 
-`/providers`で `新しいカスタムエンドポイントを追加` を選びます。
+`/providers`で`新しいカスタムエンドポイントを追加`を選びます。
 
 - API互換性: `tts-clone`
 - `endpoint_url`: `http://127.0.0.1:8012`
@@ -52,33 +55,33 @@ python servers\tts\qwen3tts\server.py --mode auto
 
 登録すると、エンドポイントはすぐに有効になります。今後、音声エンドポイントを切り替える場合にのみ`/providers`を使用します。
 
-## ペルソナ音声のセットアップ
+## ペルソナボイスを設定する
 
-### ボイスクローニング
+### 音声クローン
 
-参照クリップを模倣する必要があるペルソナには、これを使用します。
+リファレンスクリップを模倣するペルソナにこれを使用します。
 
-1. 背景音楽のない、1人の話者による10〜20秒のクリアな音声クリップを準備します。
-2. `/config`を実行してクリップをアップロードします。
-3. `/config`を実行し、ペルソナと音声サンプルを選択します。
+1. 1つのスピーカーを使用し、バックグラウンドミュージックを使用しない、きれいな10 ～ 20秒のボイスクリップを準備します。
+2. [モデル] > `TTSパラメーターと音声` で`/config`を開き、クリップをアップロードします。
+3. [ペルソナ] > `音声` で`/config`を開き、ペルソナと音声サンプルを選択します。
 
-Qwen3-TTSはわずか3秒の参照音声から迅速にクローンできると謳っており、そのランタイムは参照音声の長さの上限を文書化も適用もしていません。そのためクリップの長さは、サーバーが検査する制限ではなく、あなたが調整できる品質上のトレードオフです。
+Qwen3-TTSは、わずか3秒のリファレンスオーディオからの迅速なクローン作成を宣伝しており、そのランタイムにはリファレンス期間の上限が文書化されておらず、強制されていません。したがって、クリップの長さは、サーバーがチェックする制限ではなく、ユーザーが制御できる品質のトレードオフです。
 
 ### ボイスデザイン
 
-サンプルの代わりに書かれた音声の説明を使用する必要があるペルソナには、これを使用します。
+サンプルの代わりに音声による説明を使用する必要があるペルソナにこれを使用します。
 
-1. `/config`を実行します。
+1. [ペルソナ] > `音声` で`/config`を開き、[VoiceDesign] を選択します。
 2. ペルソナを選択します。
-3. 話者の年齢、トーン、アクセント、話し方など、自然言語の音声プロンプトを入力します。
+3. 話者の年齢、口調、アクセント、話し方などの自然言語音声プロンプトを入力します。
 
-ペルソナのボイスデザインプロンプトを削除するには、`/config`を使用します。生成中、TomoriBotは保存されたプロンプトを`/synthesize`のJSON本文に`instruct`として送信します。ツールからの1回限りの`voice_instructions`は末尾に追加されます。
+`/config`の [ペルソナ] > `音声` からペルソナのVoiceDesignプロンプトを削除します。生成中、TomoriBotは、保存されたプロンプトを`/synthesize` JSON本文に`instruct`として送信します。ツールからのワンオフ`voice_instructions`が追加されます。
 
-オートモードは両方のセットアップを保持します。`/config`で設定されたペルソナは選択に応じてクローン合成またはボイスデザイン合成を使用します。
+自動モードでは両方の設定が維持されます。`/config`の [ペルソナ] > `音声` で設定されたペルソナは、選択に応じてクローン合成またはVoiceDesign合成を使用します。
 
-## (オプション) ボイスデザイン専用サーバー
+## オプション: VoiceDesign専用サーバー
 
-`Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign`を提供する場合、ボイスデザインモードで同じサーバーを起動します。
+`Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign`を提供するときは、同じサーバーをVoiceDesignモードで起動します。
 
 Windows PowerShell:
 
@@ -88,13 +91,13 @@ $env:TOMORI_TTS_MODE = "voice-design"
 python servers\tts\qwen3tts\server.py
 ```
 
-Bash:
+バッシュ:
 
 ```bash
 source servers/tts/qwen3tts/.venv/bin/activate
 TOMORI_TTS_MODE=voice-design python servers/tts/qwen3tts/server.py
 ```
 
-`TOMORI_TTS_MODE`を設定する代わりに、`--mode voice-design`を渡すこともできます。デフォルトのボイスデザイン専用エンドポイントURLは`http://127.0.0.1:8014`です。
+`TOMORI_TTS_MODE`を設定する代わりに、`--mode voice-design`を渡すこともできます。デフォルトのVoiceDesign専用エンドポイントURLは`http://127.0.0.1:8014`です。
 
-オートモードと同じ方法で登録しますが、エンドポイントURLに`http://127.0.0.1:8014`を使用し、音声ソースモードとして`ボイスデザイン`を選択します。
+自動モードと同じ方法で登録しますが、エンドポイントURL `http://127.0.0.1:8014`を使用し、音声モデルの音声ソースモードとして`ボイスデザイン`を選択します。

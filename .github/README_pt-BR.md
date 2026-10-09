@@ -122,7 +122,7 @@ Após adicioná-la ao seu servidor por qualquer um dos métodos acima, execute o
 
 Escolha um caminho de instalação:
 
-- **A. Configuração Local com Bun (Recomendado):** requer Bun, Node.js v20+ para ferramentas MCP, e PostgreSQL ou Docker para o banco de dados.
+- **A. Configuração Local com Bun (Recomendado):** requer Bun e PostgreSQL ou Docker para o banco de dados.
 - **B. Configuração com Docker Compose:** requer apenas o Docker para rodar o bot/banco de dados, mas scripts de manutenção do lado do host ainda precisam de ferramentas no host.
 
 O caminho recomendado para a maioria dos auto-hospedeiros é o assistente de configuração local com Bun. O caminho padrão de **Full Install** cria `.env`, gera um `CRYPTO_SECRET` seguro, pede o token do seu bot do Discord, configura o PostgreSQL, roda `bun install --frozen-lockfile` e, em seguida, tenta instalar o banco de dados leve e extras de auxiliares de IA.

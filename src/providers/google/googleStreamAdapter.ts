@@ -26,6 +26,10 @@ import {
 import type { FunctionCall, ThoughtLogEntry } from "../../types/provider/interfaces";
 import type { StructuredContextItem } from "../../types/misc/context";
 import { log } from "../../utils/misc/logger";
+import {
+  formatProviderErrorCodeForDisplay,
+  isProviderTimeoutMessage,
+} from "@/utils/provider/providerErrorClassification";
 import { localizer } from "../../utils/text/localizer";
 import { truncateBeforeGenericSpeakerLine } from "@/utils/text/processors/llmOutputProcessor";
 import {
@@ -65,6 +69,42 @@ const VIDEO_CONTEXT_MAX_INLINE_MB = Math.max(
 const GOOGLE_RATE_LIMIT_MESSAGE_PATTERN = /\brate[-\s]?limit|\bquota/i;
 
 /**
+ * Localized headline for a Gemini or Vertex API error. Upstream text stays in the operator log
+ * (see StreamErrorUi), so `userMessage` and `message` only steer which key is chosen.
+ */
+export function createGoogleApiErrorDescription(error: ProviderError, locale: string): string {
+  const errorCode = formatProviderErrorCodeForDisplay(error.code);
+  let messageKey: string;
+  switch (error.type) {
+    case "content_blocked":
+      messageKey = "content_blocked_default_message";
+      break;
+    case "rate_limit":
+      messageKey = "429_default_message";
+      break;
+    case "timeout":
+      messageKey = "504_default_message";
+      break;
+    case "provider_overloaded":
+      messageKey = "503_default_message";
+      break;
+    case "api_error":
+      messageKey =
+        errorCode === "400" && error.message.includes("billing")
+          ? "400_billing_default_message"
+          : `${errorCode}_default_message`;
+      break;
+    default:
+      messageKey = "unknown_default_message";
+      break;
+  }
+  const localeKey = `genai.google.${messageKey}`;
+  const localized = localizer(locale, localeKey);
+  const message = localized === localeKey ? localizer(locale, "genai.google.unknown_default_message") : localized;
+  return `Error Code ${errorCode}: ${message}`;
+}
+
+/**
  * Google-specific stream configuration extending the base StreamConfig
  */
 export interface GoogleStreamConfig extends StreamConfig {
@@ -79,9 +119,6 @@ export interface GoogleTokenCountPayload {
   contents: Content[];
 }
 
-/**
- * Raw chunk from Google's streaming API
- */
 interface GoogleStreamChunk {
   text?: string;
   functionCalls?: GoogleFunctionCall[];
@@ -285,7 +322,7 @@ export class GoogleStreamAdapter extends BaseStreamAdapter {
 
     log.info(`Generating content with model ${config.model}`);
 
-    this.logSanitizedRequest(requestConfig, finalContents);
+    if (!context.holdResponseText) this.logSanitizedRequest(requestConfig, finalContents);
 
     try {
       const stream = await genAI.models.generateContentStream({
@@ -889,7 +926,7 @@ export class GoogleStreamAdapter extends BaseStreamAdapter {
         ) {
           errorType = "rate_limit";
           retryable = true;
-        } else if (errorMessage.includes("timeout") || errorMessage.includes("DEADLINE_EXCEEDED")) {
+        } else if (isProviderTimeoutMessage(errorMessage) || errorMessage.includes("DEADLINE_EXCEEDED")) {
           errorType = "timeout";
           retryable = true;
         } else if (errorMessage.includes("overloaded") || errorMessage.includes("UNAVAILABLE")) {
@@ -927,58 +964,7 @@ export class GoogleStreamAdapter extends BaseStreamAdapter {
    * Formats errors as "Error Code {code}: {Google message}"
    */
   createErrorDescription(error: ProviderError, locale: string): string | null {
-    let googleMessage = error.userMessage;
-
-    if (!googleMessage) {
-      const errorCode = error.code;
-      let messageKey: string;
-
-      switch (error.type) {
-        case "content_blocked":
-          messageKey = "content_blocked_default_message";
-          break;
-        case "rate_limit":
-          messageKey = "429_default_message";
-          break;
-        case "timeout":
-          messageKey = "504_default_message";
-          break;
-        case "provider_overloaded":
-          messageKey = "503_default_message";
-          break;
-        case "api_error":
-          if (errorCode === "400" && error.message.includes("billing")) {
-            messageKey = "400_billing_default_message";
-          } else {
-            messageKey = `${errorCode}_default_message`;
-          }
-          break;
-        default:
-          messageKey = "unknown_default_message";
-          break;
-      }
-
-      try {
-        googleMessage = localizer(locale, `genai.google.${messageKey}`);
-
-        if (messageKey === "unknown_default_message") {
-          // Truncate error message to avoid Discord embed limits
-          const maxErrorLength = 1000;
-          const apiErrorSnippet =
-            error.message.length > maxErrorLength ? `${error.message.substring(0, maxErrorLength)}...` : error.message;
-          googleMessage += `\n\n**API Response:**\n${apiErrorSnippet}`;
-        }
-      } catch {
-        googleMessage = localizer(locale, "genai.google.unknown_default_message");
-        const maxErrorLength = 1000;
-        const apiErrorSnippet =
-          error.message.length > maxErrorLength ? `${error.message.substring(0, maxErrorLength)}...` : error.message;
-        googleMessage += `\n\n**API Response:**\n${apiErrorSnippet}`;
-      }
-    }
-
-    const errorCode = error.code || "unknown";
-    return `Error Code ${errorCode}: ${googleMessage}`;
+    return createGoogleApiErrorDescription(error, locale);
   }
 
   /**

@@ -14,6 +14,10 @@ Open {help_matrix}, then Integrations > Matrix, for setup steps, Matrix-only com
       join_failed_description: `<#{channel_id}> has been linked to \`{room_id}\`, but I couldn't join the Matrix room automatically. Please invite \`{bot_user_id}\` to the room manually. If you need the setup steps and limitation list, open {help_matrix} and go to Integrations > Matrix.`,
       encrypted_room_title: `Cannot Link Encrypted Room`,
       encrypted_room_description: `\`{room_id}\` has end-to-end encryption enabled. Matrix encryption cannot be disabled once set, so this room cannot be used for bridging. Please create a new Matrix room **without** encryption and invite \`{bot_user_id}\` to it instead.`,
+      encryption_unknown_title: `Couldn't Verify Room Encryption`,
+      encryption_unknown_description: `I couldn't confirm that \`{room_id}\` is unencrypted, so I didn't link it. I only bridge rooms I can verify, because messages relay as plain text.
+
+Invite \`{bot_user_id}\` to the room, wait for it to join, then run this command again. If the bot is already in the room, the homeserver may be unreachable, so try again in a few minutes.`,
       matrix_not_configured_title: `Matrix Bridge Not Available`,
       matrix_not_configured_description: `The Matrix bridge is not configured on this bot instance. Contact the bot owner to enable it.`,
     },

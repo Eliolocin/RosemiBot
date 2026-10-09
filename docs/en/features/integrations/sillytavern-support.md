@@ -13,88 +13,81 @@ sidebar:
   order: 2
 ---
 
-TomoriBot can import two things from [SillyTavern](https://github.com/SillyTavern/SillyTavern)
-that you may already have: Prompt Manager presets (how the prompt is laid out) and
-character cards (the character itself). This is a niche feature for ST users, so if you've
-never used SillyTavern, you can skip this page.
+TomoriBot can import two assets from [SillyTavern](https://github.com/SillyTavern/SillyTavern):
+Prompt Manager presets (which control prompt structure) and character cards (the character definition).
+If you have never used SillyTavern, you can safely skip this page.
 
 ## Character Card Import
 
-Bring an existing SillyTavern character straight into Discord with `/persona import`. It
-accepts:
+Bring an existing SillyTavern character into Discord with `/persona import`. It accepts:
 
-- **PNG cards** with embedded `chara` / `char` metadata,
-- **v2-style JSON** cards (root-level `name`, `description`, `first_mes`, …),
-- **v3 JSON** cards (`spec: "chara_card_v3"` with a nested `data` object),
-- **`.charx` archives** (Character Card V3, the format card sites hand out by default).
+- **PNG cards** with embedded `chara` or `char` metadata.
+- **v2-style JSON** cards with root-level properties (`name`, `description`, `first_mes`).
+- **v3 JSON** cards (`spec: "chara_card_v3"` with a nested `data` object).
+- **`.charx` archives** (Character Card V3 packages).
 
-A `.charx` file is a zip whose `card.json` holds the character. TomoriBot reads that card and
-ignores everything else in the archive: bundled icons, emotion sprites, audio, and video are not
-imported, and the import reply says so. Set an avatar with `/server avatar` and add sprites under
+A `.charx` file is a ZIP archive containing a `card.json` definition. TomoriBot imports the
+character text from `card.json` and skips bundled asset files (icons, sprites, audio, video).
+You can set an avatar in `/config` > Persona > Identity & Personality and add sprites in
 `/config` > Persona > Sprites.
 
-If the file has no TomoriBot metadata but is a valid ST v2/v3 card, import automatically runs
-it through the SillyTavern conversion flow. You can also feed a card to `/persona generate` to
-transform it into a fresh persona.
+If an uploaded file is a valid SillyTavern card without TomoriBot metadata, the import
+converts it automatically. You can also pass a card to `/persona generate` to create a fresh
+persona inspired by the character.
 
-Imports pass through a validation schema before anything is saved (default caps: 5,000
-characters per string, 200 attributes, 100 sample dialogues per side, 100 trigger words;
-self-hosters can tune the `PRESET_MAX_*` env vars). Archive reads are separately bounded by the
-`MAX_CHARX_*` env vars, because an archive's compressed size says nothing about what it expands
-to. For the exact conversion and field mapping, see the
+Imports are validated before saving (default limits: 5,000 characters per text field, 200
+attributes, 100 sample dialogues per side, 100 trigger words). For field mapping and
+conversion mechanics, see the
 [card-support architecture](/architecture/integrations/sillytavern/card-support/).
 
 ## Prompt Presets
 <!-- anchor: prompt-presets -->
 
-A SillyTavern Prompt Manager preset controls the layout of the prompt. Use `/config` > Plugins
-> SillyTavern Presets to import presets, inspect enabled nodes, switch between presets, or return
-to the normal layout.
+A SillyTavern Prompt Manager preset controls the order and layout of the prompt sent to the
+model. Open `/config` > Plugins > SillyTavern Presets to import presets, toggle individual
+nodes, switch active presets, or restore default formatting.
 
 ### What a Preset Controls
 
-- Prompt order and marker placement
+- Prompt ordering and marker placement
 - Custom prompt nodes
-- Post-history / depth-injection nodes
-- Which imported nodes start enabled or disabled
+- Post-history and depth-injection nodes
+- Initial enabled state for imported nodes
 
-### What It Does *Not* Replace
+### What a Preset Does Not Replace
 
-A preset owns the *layout*, not every source of text. These still exist alongside it:
+A preset structures prompt layout; it does not replace the text sources that fill it:
 
-- Your system/persona blocks: `/config` > Engine > General, `/config` > Persona > Advanced,
-  the attribute and sample-dialogue actions on `/config` > Persona > Identity & Personality.
+- System instructions and persona fields: `/config` > Behavior > General Behavior,
+  `/config` > Persona > Advanced, and `/config` > Persona > Identity & Personality.
 - Live chat history and retrieved document context.
-- TomoriBot's automatic context: server memory, emoji/sticker context, users-in-conversation,
-  short-term memory, conditioning, and similar blocks.
+- Automatic context: server memories, emoji and sticker data, participant lists, and
+  short-term memories.
 
 ### How Native Blocks Map
 
-- `main` → the current system prompt (`/config` > Engine > General, else the built-in fallback)
-- `charDescription` → `/config` > Persona > Advanced
-- `charPersonality` → `/config` > Persona > Identity & Personality
-- `dialogueExamples` → `/config` > Persona > Identity & Personality
-- `chatHistory` → live channel history
-- `worldInfoBefore` / `worldInfoAfter` → retrieved document context (not ST lorebooks)
+Native blocks map directly to TomoriBot prompt components:
+
+- `main`: the active system prompt (`/config` > Behavior > General Behavior, or the default fallback)
+- `charDescription`: `/config` > Persona > Advanced
+- `charPersonality`: `/config` > Persona > Identity & Personality
+- `dialogueExamples`: `/config` > Persona > Identity & Personality
+- `chatHistory`: live channel message history
+- `worldInfoBefore` and `worldInfoAfter`: retrieved document context (not SillyTavern lorebooks)
 
 ### System Prompt Rule
 
-While a preset is active, the built-in fallback system prompt is removed, but if *you* set
-your own with `/config` > Engine > General, it's still sent.
+When an imported preset is active, the built-in fallback system prompt is removed. However,
+if you configure a custom system prompt in `/config` > Behavior > General Behavior, that prompt
+is always included.
 
 ### Compatibility Notes
 
-Common surprises when a preset seems ignored:
+- Nodes disabled in `prompt_order` remain inactive until enabled in `/config` > Plugins > SillyTavern Presets. Empty and comment-only nodes are never sent.
+- Block order is literal: placing `chatHistory` ahead of `dialogueExamples` places chat history first in the prompt.
+- Post-history injections merge into existing conversation history rather than sending as standalone messages.
+- Regex post-processing, preset-defined sampling parameters (temperature, top-p), and layered presets are not supported. Legacy text-completion presets import with ST-only blocks dropped.
 
-- Imported ≠ sent: nodes disabled in `prompt_order` stay off until you enable them with
-  `/config` > Plugins > SillyTavern Presets. Comment-only and empty nodes are never sent; unknown markers are
-  skipped.
-- Order is literal: placing `chatHistory` before `dialogueExamples` sends live chat first.
-- Post-history/depth injections merge into existing chat-history entries rather than becoming
-  standalone messages; multiple nodes at the same depth are batched.
-- Regex post-processing, preset-side temperature/top-p/model overrides, and layered presets
-  are not supported. Legacy text-completion presets import through a best-effort path that
-  drops ST-only blocks (scenario, anchors, stop strings, …).
-
-In `/help`, choose `Integrations`, then `SillyTavern Presets`, for the in-Discord reference. For the import engine internals, see
-the [preset-system architecture](/architecture/integrations/sillytavern/preset-system/).
+In `/help`, choose `Plugins`, then `SillyTavern Presets`, for the Discord guide. For internal
+preset processing, see the
+[preset-system architecture](/architecture/integrations/sillytavern/preset-system/).

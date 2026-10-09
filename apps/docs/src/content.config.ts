@@ -24,7 +24,8 @@ export const collections = {
     }),
     // Extend Starlight's frontmatter schema with an AI-disclaimer opt-out.
     // Defaults to true, so every page renders the disclaimer note unless a
-    // human-authored doc explicitly sets `aiGenerated: false`. The note itself
+    // substantively reviewed doc explicitly sets `aiGenerated: false`. Translations mirror their
+    // English source. The note itself
     // is injected at render time by the MarkdownContent component override, so
     // pages need no per-file markdown edits and the wording lives in exactly
     // one place.

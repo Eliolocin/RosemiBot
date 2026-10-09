@@ -1,5 +1,8 @@
 export default {
   tools: {
+    execution: {
+      unavailable: `A ferramenta \`{tool}\` não está disponível nas configurações atuais, nas capacidades do modelo ou nas permissões do bot.`,
+    },
     generate_image: {
       quota_exceeded_generic: `A cota de geração de imagens foi excedida.`,
       user_quota_exceeded: `Você atingiu sua cota diária de geração de imagens. {reset_info}`,
@@ -49,8 +52,8 @@ export default {
       tool_invoke_no_params: `Sem parâmetros.`,
     },
     tool_notice: {
-      hide_footer: `Oculte isso usando \`/config\` > Comportamento > Avisos`,
-      hide_footer_with_kill: `Oculte usando \`/config\` > Comportamento > Avisos  Use \`/kill\` se achar que travei`,
+      configure_hint: `Configure estes avisos em \`/config\` > Comportamento > Avisos`,
+      kill_hint: `Use \`/kill\` se achar que travei`,
     },
     user_block: {
       error_missing_permission: `Preciso da permissão {permission} neste canal para anunciar um bloqueio. Peça a um administrador do servidor que a conceda e tente novamente.`,
@@ -69,7 +72,14 @@ export default {
       unblock_success_description: `Removeu o {block_type} ativo para {user_name} de {persona_name}.`,
     },
     user_info_update: {
-      success_title: `? Perfil de {target_user} Atualizado`,
+      success_title: `✅ Perfil de {target_user} Atualizado`,
+      success_title_fields: `✅ Perfil de {target_user} atualizado: {fields}`,
+      success_title_cleared_fields: `🗑️ Dados removidos do perfil de {target_user}: {fields}`,
+      subject_nickname: `apelido`,
+      subject_gender_identity: `identidade de gênero`,
+      subject_pronouns: `pronomes`,
+      subject_addressing_style: `estilo de tratamento`,
+      subject_timezone_offset: `fuso horário`,
       success_intro: `Atualizou o seguinte:`,
       change_line: `{index}. {field}: \`{previous}\`   \`{next}\``,
       success_summary: `{persona_name} agora chama {target_user} de "{formatted_name}".`,
@@ -260,7 +270,6 @@ export default {
           "minhas informações*",
           "minhas infos*",
         ],
-        sticker: ["figurinha*", "enviar figurinha*", "mandar sticker*", "sticker*"],
         thread: [
           "criar thread",
           "crie uma thread*",

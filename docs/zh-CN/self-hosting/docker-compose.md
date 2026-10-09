@@ -4,14 +4,10 @@ sidebar:
   order: 3
 ---
 
-Docker Compose 把 TomoriBot 加上 PostgreSQL 一起构建并作为容器运行。它是继[安装向导](/zh-CN/self-hosting/setup-wizard/)和
-[手动安装](/zh-CN/self-hosting/manual-setup/)之后的第三条安装路径：当你宁愿把所有东西都跑在 Docker 里，而不是在主机上安装 Bun 和 PostgreSQL 时，就选它。它不使用安装向导；数据库连接已经替你自动配置好了。
+Docker Compose在容器中一起运行TomoriBot和PostgreSQL。它是与[安装向导](/zh-CN/self-hosting/setup-wizard/)和[手动安装](/zh-CN/self-hosting/manual-setup/)并列的第三个安装选项：当你想要运行Docker中的所有内容而不在主机系统上安装Bun或PostgreSQL时，请选择它。它绕过交互式安装向导并自动配置数据库连接。
 
-:::caution[主机端脚本仍然需要主机上的工具]
-把 bot 和数据库跑在 Docker 里，并不会把维护脚本也容器化。
-`bun run backup`、`bun run restore-backup`、`bun run update`、`bun run rotate-keys` 之类的命令
-仍然走主机端的 Bun 和主机的 PostgreSQL 客户端工具。Compose 专属流程见
-[维护与备份](/zh-CN/self-hosting/maintenance/)。
+:::caution[Host tools for updates]
+`bun run update --docker`需要主机Bun和Git来拉取代码更改。其数据库备份在应用程序容器内运行。你还可以通过Compose运行手动备份和恢复； 参见[维护与备份](/zh-CN/self-hosting/maintenance/)。
 :::
 
 ## 1. 获取代码
@@ -21,7 +17,7 @@ git clone https://github.com/Bredrumb/TomoriBot.git
 cd TomoriBot
 ```
 
-## 2. 必须的 `.env` 值
+## 2. 必须的`.env`值
 
 从示例文件开始：
 
@@ -29,47 +25,57 @@ cd TomoriBot
 cp .env.example .env
 ```
 
-然后至少设置：
+在`.env`中设置这些必需的变量：
 
-| 变量 | 值 |
+| 多变的 | 价值 |
 |---|---|
-| `DISCORD_TOKEN` | 你的 Discord bot 令牌（请开启 `GuildMembers`、`MessageContent`、`GuildPresences` 这三项特权 intent）。 |
-| `CRYPTO_SECRET` | 一个 32 字符的加密密钥，用于加密存储的 API 密钥。 |
-| `POSTGRES_PASSWORD` | 数据库密码。其他所有 `POSTGRES_*` 值都会自动配置。 |
+| `DISCORD_TOKEN` | 你的Discord机器人令牌（启用`GuildMembers`、`MessageContent`和`GuildPresences`特权意图）。|
+| `CRYPTO_SECRET` | 用于加密存储的API密钥的32字符加密密钥。|
+| `POSTGRES_PASSWORD` | 数据库密码。每个其他`POSTGRES_*`值都是自动配置的。|
 
-与安装向导不同，Compose 不会替你生成 `CRYPTO_SECRET`，所以请自己设置
-（任意 32 字符的字符串）。可选的调优值可以从
-`.env.optional.example` 复制。
+使用Docker为`CRYPTO_SECRET`生成一个随机的32个字符值，然后将其复制到`.env`中：
 
-:::note[数据库连接是自动的]
-Compose 的 PostgreSQL 服务以开发模式运行（不使用 SSL），位于 Docker 内部网络，
-并且自带的镜像已经配置好 `pgvector` 和 `pg_cron`，所以文档与 RAG 记忆以及定时清理
-开箱即用。使用 Compose 时不要设置 `POSTGRES_HOST`、
-`POSTGRES_PORT`、`POSTGRES_USER` 或 `POSTGRES_DB`，它们会替你管理。
+```sh
+docker run --rm alpine:3.22 sh -c "head -c 24 /dev/urandom | base64"
+```
+
+为`POSTGRES_PASSWORD`生成单独的密码。你可以从`.env.optional.example`复制可选的调谐设置。
+
+:::note[Database connection is automatic]
+Compose PostgreSQL服务在内部Docker网络上以开发模式（无SSL）运行。捆绑的映像包括`pgvector`和`pg_cron`，因此文档内存、矢量搜索和计划清理可以立即进行。不要在`.env`中设置`POSTGRES_HOST`、`POSTGRES_PORT`、`POSTGRES_USER`或`POSTGRES_DB`； Compose会自动配置它们。
 :::
+
+在Linux上，在启动容器之前在主机上创建绑定安装目录并将所有权分配给UID 1001。Docker以root身份创建丢失的挂载点，这会阻止bot容器保存备份、日志或上传：
+
+```sh
+mkdir -p backups logs data
+sudo chown 1001:1001 backups logs data
+```
 
 ## 3. 构建并运行
 
 ```sh
-docker compose build   # 首次，或代码与依赖变更之后
-docker compose up      # bot 加数据库
+docker compose build   # first time, or after code/dependency changes
+docker compose up      # bot + database
 ```
 
-之后的启动，只要没改代码或依赖，单独一条 `docker compose up` 就够了。bot 上线后，在 Discord 里运行 `/setup` 添加你的 AI
-提供方密钥：Discord 里那一侧的操作见[快速上手](/zh-CN/introduction/quickstart/)。
+对于以后的启动，单独`docker compose up`就足够了，除非你更改代码或依赖项。一旦机器人连接到Discord，请在任何服务器通道中运行`/setup`以添加你的AI提供商密钥。有关Discord中的设置选项，请参阅[快速入门](/zh-CN/introduction/quickstart/)。
+
+在其服务定义中组合引脚`RUN_ENV=development`，以便`.env`机密和本地HTTP端点正常工作。容器健康检查报告bot进程是否正在运行； 它不测试Discord网关连接。有关生产模式（`RUN_ENV=production`）差异（秘密管理器、网络限制和指标），请参阅[安全架构](/en/architecture/subsystems/security/)。
 
 ## 4. 可选本地服务器（Compose profile）
 
-本地服务器通过 Compose profile 选择启用，所以你只会跑需要的那几个：
+使用Compose配置文件运行可选的本地帮助服务器，以便你只启动你需要的内容：
 
 ```sh
-# SearXNG（私密网页搜索）加 Crawl4AI（浏览器渲染抓取）
+# SearXNG (private web search) + Crawl4AI (browser-rendered fetch)
 docker compose --profile searxng --profile fetch-crawl4ai up
 ```
 
-逐个本地服务器的细节见 [SearXNG](/zh-CN/self-hosting/local-endpoints/setup-searxng/)、[Crawl4AI](/zh-CN/self-hosting/local-endpoints/setup-crawl4ai/)，
-以及[本地监控](/zh-CN/self-hosting/local-monitoring/)。
+当启用SearXNG时，请在`.env`中设置`SEARXNG_BASE_URL=http://searxng:8080/`。否则请保持未设置状态。将`SEARXNG_SECRET`设置为SearXNG请求签名的单独随机值。
 
-## 维护、更新与备份
+有关特定于服务器的设置，请参阅 [SearXNG](/zh-CN/self-hosting/local-endpoints/setup-searxng/)、[Crawl4AI](/zh-CN/self-hosting/local-endpoints/setup-crawl4ai/) 和 [本地监控](/zh-CN/self-hosting/local-monitoring/)。
 
-Compose 部署上先备份再更新的流程，请用 `bun run update --docker`。备份与还原 Compose 数据库（包括对它运行主机端脚本）写在[维护与备份](/zh-CN/self-hosting/maintenance/)页面。拉取新版本之前，请先看[安全迁移](/zh-CN/self-hosting/safe-migration/)。
+## 维护、更新和备份
+
+使用`bun run update --docker`在Compose部署上进行备份优先更新。要备份或恢复Compose数据库，请参阅[维护和备份](/zh-CN/self-hosting/maintenance/)。在拉取新版本之前，请先查看[安全迁移](/zh-CN/self-hosting/safe-migration/)。

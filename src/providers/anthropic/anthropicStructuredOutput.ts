@@ -1,3 +1,8 @@
+import {
+  parsePrivateStructuredOutput,
+  privateStructuredFailure,
+  readStructuredResponse,
+} from "@/providers/utils/structuredReview";
 /**
  * Anthropic structured output via forced tool use.
  *
@@ -80,6 +85,7 @@ async function callAnthropicApi(
   toolDefinition: Record<string, unknown>,
   toolChoice: Record<string, unknown>,
   maxTokens: number = 8192,
+  request?: ProviderStructuredJsonRequest,
 ): Promise<Record<string, unknown>> {
   const body = {
     model,
@@ -99,14 +105,19 @@ async function callAnthropicApi(
       "anthropic-version": ANTHROPIC_API_VERSION,
     },
     body: JSON.stringify(body),
+    signal: request?.abortSignal,
   });
 
   if (!response.ok) {
+    if (request?.privateOutput) {
+      await response.body?.cancel();
+      throw new Error("Structured HTTP failure");
+    }
     const errorText = await response.text();
     throw new Error(`Anthropic API error (${response.status}): ${errorText}`);
   }
 
-  return (await response.json()) as Record<string, unknown>;
+  return (request ? await readStructuredResponse(request, response) : await response.json()) as Record<string, unknown>;
 }
 
 /**
@@ -162,9 +173,18 @@ export async function callAnthropicStructuredJSON<T>(
       toolDefinition,
       toolChoice,
       request.maxOutputTokens,
+      request,
     );
 
     const toolInput = extractToolUseFromResponse(response, schemaName);
+    if (request.privateOutput)
+      return parsePrivateStructuredOutput(
+        request,
+        toolInput,
+        zodSchema,
+        response.usage,
+        response.stop_reason === "refusal",
+      );
     if (!toolInput) {
       log.warn("Anthropic structured JSON: No tool_use block found in response", {
         model: request.model,
@@ -190,6 +210,7 @@ export async function callAnthropicStructuredJSON<T>(
       data: validationResult.data,
     };
   } catch (error) {
+    if (request.privateOutput) return privateStructuredFailure(request);
     log.error("Error calling Anthropic structured JSON", error as Error, {
       errorType: "AnthropicStructuredJSONError",
       metadata: { model: request.model },

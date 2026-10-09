@@ -4,102 +4,86 @@ sidebar:
   order: 1
 ---
 
-TomoriBot solo responde cuando algo la activa. Esta página explica las formas de activarla, cómo chatear
-sin manos con la activación automática y cómo evitar activaciones accidentales con el modo de activación deliberada.
+TomoriBot responde cuando se le invoca. Esta página cubre las formas en que se puede activar, cómo habilitar el chat con manos libres con activación automática y cómo evitar activaciones accidentales con el modo de activación deliberada.
 
 ## Cómo activarla
 <!-- anchor: how-to-trigger-her -->
 
-Por defecto, responde cuando tú:
+De forma predeterminada, ella responde cuando tú:
 
-- **La mencionas**: `@TomoriBot`
-- Respondes a uno de sus mensajes (incluido el mensaje de webhook de una persona)
-- **Usas una palabra de activación**: cualquier palabra sencilla que hayas registrado, dicha en cualquier parte del mensaje
-- **Usas `/respond`**: solicita una respuesta manualmente
+- **Mencionarla**: `@TomoriBot`
+- **Responder** a uno de sus mensajes (incluido el mensaje de webhook de una persona)
+- **Utilice una palabra de activación**: cualquier palabra de activación registrada en cualquier parte de un mensaje.
+- **Utilice `/respond`**: solicite una respuesta manualmente
 
-Las palabras de activación son la forma más cómoda. Una vez registrada una palabra, basta con mencionarla
-para activarla. En un mensaje directo, solo salúdala. No necesitas un activador.
+En un DM, envíe un mensaje directamente sin ninguna palabra de activación ni mención.
 
 ### Administrar palabras de activación
 <!-- anchor: managing-trigger-words -->
 
-Los administradores del servidor usan `/config` > Persona > Activadores para añadir o eliminar palabras de
-activación de la persona seleccionada. Los miembros comunes pueden consultar la página, pero los controles
-de modificación están desactivados.
+Los administradores de servidores usan `/config` > `Persona` > Activadores para agregar o eliminar palabras de activación para la persona activa. Los miembros sin Administrar servidor pueden ver los activadores existentes en modo de solo lectura.
 
 ## Expresiones y reacciones
 <!-- anchor: expressions--reactions -->
 
-Cuando responde, puede usar los emojis y stickers personalizados de tu servidor y reaccionar a mensajes:
+Al responder, puede usar emojis, stickers y reacciones emoji personalizados del servidor:
 
-- Los emojis personalizados se usan naturalmente en la conversación con la sintaxis `:name:` sin distinguir mayúsculas de minúsculas.
-- Los stickers pueden acompañar las respuestas. También puede añadir reacciones con emojis.
-- Ejecuta `/expressions initialize` para registrar los emojis y stickers de tu servidor y que los use con precisión.
+- Los emojis personalizados aparecen de forma natural en las conversaciones con la sintaxis `:name:`.
+- Puede enviar una calcomanía por respuesta, como su propio mensaje antes, entre o después de su mensaje de texto.
+- Los administradores de servidores pueden agregar [expresiones personalizadas](/es-419/features/chatting-personality/behavior-tweaking/#expressions) con `/expressions manage`: GIF de reacción, chistes con imágenes o enlaces a cualquier sitio web.
+- Ejecuta `/expressions initialize` para que sepa cuándo encaja cada emoji y sticker del servidor.
 
 ## Canales de roleplay
 <!-- anchor: roleplay-channels -->
 
-Los canales de roleplay suprimen el uso de emojis personalizados y stickers en sus respuestas. Allí las
-personas también pueden usar `/tool delete turn` para eliminar su último turno sin el permiso Administrar servidor.
+Los canales de juegos de rol suprimen los mensajes de stickers y emojis personalizados en sus respuestas. Los miembros también pueden usar `/tool delete turn` en canales de juegos de rol para eliminar su último turno sin necesidad del permiso Administrar servidor.
 
-Configura los canales desde la página Reglas de canal en `/config`.
+Configura canales de juego de rol en `/config` > `Canales` > Reglas del canal.
 
 ## Consciencia situacional
 
-Además del texto del mensaje, recibe una instantánea del contexto de Discord cada vez que responde. Así
-puede hablar de *dónde* y *cuándo* ocurre la conversación, no solo de lo que se dijo. Este contexto incluye:
+Cada vez que responde, recibe un contexto que describe dónde y cuándo ocurre la conversación:
 
-- **Dónde está**: el nombre y la descripción del servidor actual (o que es un mensaje directo) y el canal actual.
-- **La hora actual**: la hora local del servidor y una aproximación del momento del día, según `/config` > Motor > General, además de la hora local de cada persona si configuró `/personal config`.
-- **Quién participa en la conversación**: nombres visibles, cómo mencionarlos, etiquetas de apariencia física y recordatorios pendientes.
-- **Qué está haciendo alguien (presencia)**: la actividad de Discord de un usuario: lo que está **jugando**, **transmitiendo**, **escuchando** (por ejemplo, una canción y artista de Spotify), **viendo** o su estado personalizado.
+- **Ubicación**: el nombre del servidor, el nombre del canal o si el chat es un Mensaje Directo.
+- **Hora**: hora local del servidor y hora del día desde `/config` > `Comportamiento` > `Comportamiento general`, además de relojes locales para usuarios que configuran una zona horaria en `/personal config`.
+- **Participantes**: nombres para mostrar, identificadores de menciones, etiquetas de apariencia y recordatorios pendientes.
+- **Actividad Discord**: qué están reproduciendo, transmitiendo, escuchando los participantes actualmente (como pistas de Spotify) o su estado personalizado.
 
-La presencia depende de la privacidad: solo se comparte para usuarios con el nivel de privacidad `Ninguno`
-(el valor predeterminado; consulta `/personal config`) y cuando el bot tiene activada la intención de Discord
-`Guild Presences`. Los usuarios que aumentan su privacidad o las instancias con autoalojamiento que no
-tienen esa intención simplemente no mostrarán su actividad.
+El estado de actividad requiere la intención `Guild Presences` de Discord y respeta la privacidad del usuario (`/personal config`). Los usuarios que aumentan su configuración de privacidad no se incluyen en el contexto de presencia.
 
 ## Activación automática (chat sin manos)
 
-La activación automática le permite unirse a la conversación sin que la mencionen.
+La activación automática permite a TomoriBot unirse a conversaciones sin ser mencionado directamente:
 
-- `/server autotrigger channels`: establece los canales donde responde sin una mención.
-- `/server autotrigger threshold`: establece cuántos mensajes se acumulan antes de que intervenga.
-- `/config` > Comportamiento > Activador: añade una activación automática probabilística basada en un temporizador a un canal.
-- `/config` > Comportamiento > Activador: elimina una activación aleatoria existente.
-- ~~`/natres`: tiempos humanos para respuestas autónomas~~ por implementar
+- `/config` > `Canales` > Auto-Trigger (o `/server autotrigger channels`): elige canales donde responda de forma autónoma.
+- `/config` > `Canales` > Activación automática (o `/server autotrigger threshold`): establece cuántos mensajes deben acumularse antes de que ella intervenga.
+- `/config` > `Comportamiento` > Comportamiento del disparador: configura disparadores aleatorios basados en temporizador para un canal.
 
-Úsalo en un canal de chat dedicado donde quieras que se sienta como una participante y no como una asistente invocada.
+Utilice la activación automática en canales casuales dedicados donde desee que el bot participe de forma natural.
 
 ## Modo de activación deliberada
 <!-- anchor: deliberate-trigger-mode -->
 
-Si las personas dicen mucho el nombre de una persona en conversaciones normales, las palabras de activación
-simples pueden activarla por accidente. El modo de activación deliberada (DTM) lo evita al hacer que las
-palabras de activación simples dejen de contar como un activador explícito.
+Si el nombre de una persona se usa con frecuencia en una conversación normal, las palabras de activación simples pueden activarla por accidente. El modo de activación deliberada (DTM) evita la activación accidental al ignorar las palabras de activación sin adornos.
 
-Cuando DTM está activado:
+Cuando DTM está activa:
 
-- `@{trigger}` (la palabra de activación con el prefijo de una mención) sigue funcionando
-- Las menciones de Discord siguen funcionando
-- Las respuestas siguen funcionando
-- `/respond` sigue funcionando
-- Las palabras de activación simples ya no la activan
-
-Esto obliga a invocarla deliberadamente en lugar de activarla por accidente.
+- `@{trigger}` (la palabra de activación con el prefijo `@`) genera una respuesta
+- Discord menciona que `@TomoriBot` aún genera una respuesta
+- Las respuestas a los mensajes siguen funcionando
+- `/respond` todavía funciona
+- Las palabras de activación simples sin `@` ya no la desencadenan.
 
 ### Control del servidor y personal
 
-- `/server dtm`: los administradores del servidor cambian el comportamiento general.
-- `/personal config`: cada usuario lo cambia para sí mismo, con tres modos:
-  - **off**: siempre permite palabras de activación simples
-  - **follow**: usa la configuración del servidor
-  - **on**: siempre exige una invocación deliberada
+- `/server dtm`: los administradores del servidor alternan el valor predeterminado del servidor.
+- `/personal config`: los miembros individuales anulan la configuración de sus propios mensajes:
+  - `off`: permitir siempre palabras de activación simples
+  - `follow`: sigue la configuración del servidor
+  - `on`: siempre requiere invocación deliberada
 
-En `/help`, elige `Comportamiento` y luego `Modo de activación deliberada` para ver el mismo resumen en Discord.
+En `/help`, elija `Comportamiento` y luego `Modo de Activación Deliberada` para obtener el resumen de Discord.
 
 :::note
-No confundas el modo de activación deliberada (esta página, controla *cómo se activa*) con el **modo de
-herramientas deliberado**, que controla *qué herramientas se exponen al modelo* en un turno. Comparten la
-abreviatura "DTM", pero no tienen relación. Consulta [Herramientas y extensiones](/es-419/features/capabilities/tools-and-extensions/#deliberate-tool-mode).
+El modo de activación deliberada (esta página) controla cuándo responde. El modo de herramienta deliberada controla qué herramientas se presentan al modelo en un turno. Ambos se abrevian "DTM" en Discord; consulte [Herramientas y extensiones](/es-419/features/capabilities/tools-and-extensions/#deliberate-tool-mode).
 :::

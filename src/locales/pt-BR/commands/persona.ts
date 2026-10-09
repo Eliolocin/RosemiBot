@@ -176,6 +176,7 @@ Por favor, edite o arquivo de importação para usar um nome diferente, ou remov
       error_invalid_config: `Campos de configuração inválidos nos dados da persona`,
       error_no_server_data: `Servidor não encontrado no banco de dados. Por favor, execute \`/setup\` primeiro.`,
       error_name_conflict: `Uma persona com o nome **{name}** já existe neste servidor. Por favor, use um nome diferente.`,
+      error_nsfw_persona: `Esta persona está marcada como NSFW, então \`/persona import\` não pode carregá-la. Use \`/nsfw persona import\`.`,
       error_import_failed: `Falha ao importar os dados da persona`,
       error_not_json: `O arquivo importado deve conter dados JSON válidos`,
       error_incompatible_version: `Versão da predefinição incompatível. Esperado {expected}, obtido {actual}`,

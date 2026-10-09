@@ -31,11 +31,11 @@ Try these in order and stop at the first that works.
 | Deploy workflows, `security-dependencies` job | `bun run audit:clean` | Yes, the release | `AUDIT_IGNORED_ADVISORIES` |
 | Deploy workflows, `security-container` job | Trivy image scan | Yes, the release | `.github/.trivyignore` |
 | `bun run audit:clean` locally | `bun audit --audit-level=high` | Yes | `AUDIT_IGNORED_ADVISORIES` |
-| `.github/workflows/validation.yml` | `bun audit --audit-level=high` | No: a PR's merge lockfile can carry advisories its author cannot fix | Inline `--ignore` flags |
+| `.github/workflows/ci.yml` | `bun audit --audit-level=high` | No: a PR's merge lockfile can carry advisories its author cannot fix | Inline `--ignore` flags |
 | `bun run vl` | `bun audit` | No, warning | `AUDIT_IGNORED_ADVISORIES` |
 
 `AUDIT_IGNORED_ADVISORIES` in `scripts/checks/lib/auditIgnores.ts` feeds `audit:clean` and `vl`.
-`validation.yml` cannot import TypeScript, so it repeats the IDs; keep it in sync. `bun audit` never
+`ci.yml` cannot import TypeScript, so it repeats the IDs; keep it in sync. `bun audit` never
 reads `.trivyignore` and Trivy never reads `--ignore`, so an advisory caught by both needs both
 entries. The image installs with `--production`, so Trivy never sees devDependency advisories.
 
@@ -45,15 +45,22 @@ GHSA ID is the one to use: `bun audit --json` shows the `url`, and a missing CVE
 
 ## Active exceptions
 
-- **`CVE-2026-25128`, fast-xml-parser (Trivy only)**: required by AWS SDK v3; upgrading to v5 breaks it.
-Its input comes only from AWS endpoints. The `@aws-sdk/xml-builder` patch pins a fixed version in the
-transitive tree.
+- **`CVE-2026-25128`, fast-xml-parser (Trivy only)**: reached through the AWS SDK v3, whose input comes
+only from AWS endpoints. The global `"fast-xml-parser": ">=5.7.0"` override in `package.json` raises
+every copy, including the one nested under `@aws-sdk/xml-builder` (5.7.0 in `bun.lock`). Recheck with
+Trivy whether the advisory still matches before keeping this entry.
+- **`GHSA-vfj7-8cjw-p6xm`, braces (`bun audit` only)**: no patched release exists (3.0.3 is both the
+latest and affected), and the newest `starlight-llms-txt` still depends on `micromatch` and so on
+`braces`. It is reached only while building the docs site, where `micromatch` expands glob patterns
+written in `apps/docs/astro.config.mts`, never user input. The image prunes the docs workspace with
+`--production`, so Trivy never sees it. Remove the entry when `braces` publishes a fix (then add an
+override floor) or `starlight-llms-txt` drops `micromatch`.
 
 ## Adding an exception
 
 1. Show that no override or parent bump works, and record what you tried.
 2. Name the code path that reaches the package and whether TomoriBot runs it.
-3. Add the ID to `AUDIT_IGNORED_ADVISORIES` and the `validation.yml` flags, and to
+3. Add the ID to `AUDIT_IGNORED_ADVISORIES` and the `ci.yml` flags, and to
    `.github/.trivyignore` if the package ships in the image.
 4. Add an entry under Active exceptions with the path, reason, risk, and the condition for removing it.
 

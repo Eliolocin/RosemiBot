@@ -121,9 +121,14 @@ function splitMarkdownTableRow(line: string): string[] {
   return cells.map((cell) => cell.replace(/\\\|/g, "|").trim());
 }
 
+// Discord spoilers are pipe-delimited too. A line that is only a spoiler would otherwise read as a
+// table header whose separator row has not streamed yet, and that "incomplete table" holds the stream
+// buffer's newline split, so the next speaker label lands in the same segment.
+const DISCORD_SPOILER_PATTERN = /\|\|[^|\n]+?\|\|/g;
+
 function isPotentialHeaderLine(line: string): boolean {
   const trimmed = line.trim();
-  if (!trimmed?.includes("|")) return false;
+  if (!trimmed.replace(DISCORD_SPOILER_PATTERN, "").includes("|")) return false;
 
   const cells = splitMarkdownTableRow(trimmed);
   if (cells.length < 2) return false;

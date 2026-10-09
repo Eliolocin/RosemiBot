@@ -1,3 +1,8 @@
+import {
+  parsePrivateStructuredOutput,
+  privateStructuredFailure,
+  readStructuredResponse,
+} from "@/providers/utils/structuredReview";
 import type { z } from "zod";
 import { toDeepseekApiModelName } from "@/providers/deepseek/deepseekShared";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
@@ -205,9 +210,14 @@ export async function callDeepseekStructuredJSON<T>(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: request.abortSignal,
     });
 
     if (!response.ok) {
+      if (request.privateOutput) {
+        await response.body?.cancel();
+        return privateStructuredFailure(request, "transport", response.status);
+      }
       const errorBody = await response.text();
       log.error("DeepSeek structured JSON request failed", new Error(errorBody), {
         errorType: "DeepseekStructuredJSONHttpError",
@@ -222,8 +232,9 @@ export async function callDeepseekStructuredJSON<T>(
       };
     }
 
-    const result = (await response.json()) as {
-      choices?: Array<{ message?: { content?: unknown } }>;
+    const result = (await readStructuredResponse(request, response)) as {
+      usage?: unknown;
+      choices?: Array<{ message?: { content?: unknown; refusal?: unknown } }>;
     };
     const messageContent = result.choices?.[0]?.message?.content;
     const responseText =
@@ -245,6 +256,14 @@ export async function callDeepseekStructuredJSON<T>(
               .trim()
           : "";
 
+    if (request.privateOutput)
+      return parsePrivateStructuredOutput(
+        request,
+        responseText,
+        zodSchema,
+        result.usage,
+        Boolean(result.choices?.[0]?.message?.refusal),
+      );
     if (!responseText) {
       log.warn("DeepSeek structured JSON returned empty response", {
         model: request.model,
@@ -287,6 +306,7 @@ export async function callDeepseekStructuredJSON<T>(
       data: validationResult.data,
     };
   } catch (error) {
+    if (request.privateOutput) return privateStructuredFailure(request);
     log.error("Error calling DeepSeek structured JSON", error as Error, {
       errorType: "DeepseekStructuredJSONError",
       metadata: {

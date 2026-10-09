@@ -895,6 +895,8 @@ export const SETUP_ENDPOINT_TEXT_CAPABILITIES = [
   "json",
   "strict_role_alternation",
   "prefix_completion",
+  "assistant_prefill",
+  "verbatim_tool_calling",
 ] as const satisfies readonly SetupCustomEndpointCapability[];
 
 export type SetupEndpointModelModalField = "model-code" | "num-ctx" | "capabilities";

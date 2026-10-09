@@ -40,15 +40,15 @@ import { buildGeminiImagePromptParts } from "@/providers/utils/geminiImageParts"
 import { MEDIA_LIMITS } from "@/utils/security/rateLimiter";
 import { safeDownload } from "@/utils/security/safeDownload";
 import { executeAutoImageCommand } from "@/utils/image/autoImageCommand";
+import { prepareGeneratedImage } from "@/utils/image/generatedImageMetadata";
+import { buildImageGenerationInputAttachment } from "@/utils/image/imageGenerationInput";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 const MODAL_CUSTOM_ID = "generate_image_modal";
 const PROMPT_INPUT_ID = "prompt_input";
 const ASPECT_RATIO_SELECT_ID = "aspect_ratio_select";
 const REFERENCE_IMAGE_INPUT_IDS = ["image_upload_1", "image_upload_2", "image_upload_3"] as const;
 
-/**
- * Configure the subcommand
- */
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand
     .setName("image")
@@ -362,6 +362,14 @@ export async function execute(
 
   // Track modal submit interaction for error handling in catch block
   let modalSubmitInteraction: import("discord.js").ModalSubmitInteraction | undefined;
+  let submittedInput: { prompt: string; aspectRatio: string; referenceFilenames: string[] } | undefined;
+  const recoveryOptions = () =>
+    submittedInput
+      ? {
+          footerKey: "commands.generate.image.recovery_file_footer",
+          files: [buildImageGenerationInputAttachment(locale, { kind: "standard", ...submittedInput })],
+        }
+      : {};
 
   try {
     const modalComponents = [
@@ -446,6 +454,11 @@ export async function execute(
       log.error("Modal result unexpectedly missing required values");
       return;
     }
+    submittedInput = {
+      prompt,
+      aspectRatio,
+      referenceFilenames: imageAttachments.map((attachment) => attachment.filename),
+    };
 
     const referenceImages: Array<{ mimeType: string; data: string }> = [];
     let referenceImageUrl: string | undefined;
@@ -461,13 +474,11 @@ export async function execute(
       } catch (error) {
         log.warn(`Failed to process attachment ${imageAttachment.id}:`, error as Error);
 
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizer(locale, "commands.generate.image.invalid_image_title"))
-              .setDescription(localizer(locale, "commands.generate.image.invalid_image_description"))
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: "commands.generate.image.invalid_image_title",
+          descriptionKey: "commands.generate.image.invalid_image_description",
+          color: ColorCode.ERROR,
+          ...recoveryOptions(),
         });
         return;
       }
@@ -489,7 +500,6 @@ export async function execute(
     const startTime = performance.now();
 
     let generatedImageData: string | null = null;
-    let generatedImageMimeType: string | null = null;
     if (imageRoute.kind === "custom") {
       const result = await generateCustomImageViaEndpoint({
         endpoint: imageRoute.endpoint,
@@ -499,7 +509,6 @@ export async function execute(
         referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
       });
       generatedImageData = result.imageData;
-      generatedImageMimeType = result.mimeType;
     } else if (imageRoute.kind === "native") {
       const result = await imageRoute.provider.generateNativeImage({
         apiKey,
@@ -509,7 +518,6 @@ export async function execute(
         ...(referenceImages.length > 0 ? { referenceImages } : {}),
       });
       generatedImageData = result.imageData;
-      generatedImageMimeType = result.mimeType;
     } else if (imageRoute.kind === "openrouter") {
       const result = await generateOpenRouterImage({
         apiKey,
@@ -519,7 +527,6 @@ export async function execute(
         ...(referenceImages.length > 0 ? { referenceImages } : {}),
       });
       generatedImageData = result.imageData;
-      generatedImageMimeType = result.mimeType;
     } else if (imageRoute.kind === "google") {
       const ai = new GoogleGenAI({ apiKey });
       const chat = ai.chats.create({
@@ -542,7 +549,6 @@ export async function execute(
         for (const part of response.candidates[0].content.parts) {
           if (part.inlineData) {
             generatedImageData = part.inlineData.data ?? null;
-            generatedImageMimeType = part.inlineData.mimeType ?? null;
             break;
           }
         }
@@ -563,7 +569,6 @@ export async function execute(
           executionProvider === "zaicoding" ? ZAI_CODING_IMAGES_GENERATIONS_URL : ZAI_GENERAL_IMAGES_GENERATIONS_URL,
       });
       generatedImageData = result.imageData;
-      generatedImageMimeType = result.mimeType;
     } else {
       if (referenceImages.length > 0) {
         await interaction.followUp({
@@ -579,35 +584,31 @@ export async function execute(
         referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
       });
       generatedImageData = result.imageData;
-      generatedImageMimeType = result.mimeType;
     }
 
     const endTime = performance.now();
     const generationTimeSeconds = ((endTime - startTime) / 1000).toFixed(1);
 
     if (!generatedImageData) {
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.generate.image.error_generation_failed_title"))
-            .setDescription(
-              localizer(locale, "commands.generate.image.error_generation_failed_description", {
-                error: "No image data received from API",
-              }),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.generate.image.error_generation_failed_title",
+        descriptionKey: "commands.generate.image.error_generation_failed_description",
+        descriptionVars: { error: "No image data received from API" },
+        color: ColorCode.ERROR,
+        ...recoveryOptions(),
       });
       return;
     }
 
-    const imageBuffer = Buffer.from(generatedImageData, "base64");
-
-    const extension =
-      generatedImageMimeType === "image/jpeg" ? "jpg" : generatedImageMimeType === "image/webp" ? "webp" : "png"; // Default to PNG
-
-    const filename = `generated_${Date.now()}.${extension}`;
-    const attachment = new AttachmentBuilder(imageBuffer, { name: filename });
+    const preparedImage = await prepareGeneratedImage(
+      Buffer.from(generatedImageData, "base64"),
+      prompt,
+      locale,
+      undefined,
+      modalSubmitInteraction.attachmentSizeLimit,
+    );
+    const filename = `generated_${Date.now()}.${preparedImage.extension}`;
+    const attachment = new AttachmentBuilder(preparedImage.buffer, { name: filename });
 
     // Increment quota after successful generation (server providers only)
     if (imageCreds.source === "server") {
@@ -628,15 +629,18 @@ export async function execute(
     }
 
     const successEmbed = new EmbedBuilder()
-      .setTitle(localizer(locale, "commands.generate.image.success_title"))
+      .setTitle(localizedStatusTitle(locale, "commands.generate.image.success_title", ColorCode.SUCCESS))
       .setColor(ColorCode.SUCCESS)
       .setImage(`attachment://${filename}`)
+      .setFooter({
+        text: localizer(
+          locale,
+          preparedImage.promptAttachment
+            ? "commands.generate.image.prompt_attached_footer"
+            : "commands.generate.image.prompt_embedded_footer",
+        ),
+      })
       .addFields([
-        {
-          name: localizer(locale, "commands.generate.image.field_prompt"),
-          value: prompt.substring(0, 1024), // Discord limit
-          inline: false,
-        },
         {
           name: localizer(locale, "commands.generate.image.field_model"),
           value: displayModelName,
@@ -660,7 +664,7 @@ export async function execute(
 
     await modalSubmitInteraction.editReply({
       embeds: [successEmbed],
-      files: [attachment],
+      files: preparedImage.promptAttachment ? [attachment, preparedImage.promptAttachment] : [attachment],
     });
 
     log.success(`Successfully generated and sent image (${generationTimeSeconds}s)`);
@@ -672,17 +676,24 @@ export async function execute(
     // Use modalSubmitInteraction if available (error after modal), otherwise interaction (error during modal)
     const replyTarget = modalSubmitInteraction ?? interaction;
 
+    const isPersonalImage = imageCreds?.source === "personal";
+
     if (
       errorMessage.includes("billing") ||
       errorMessage.includes("payment") ||
       errorMessage.includes("quota") ||
       errorMessage.includes("PERMISSION_DENIED")
     ) {
+      const tipKeys = isPersonalImage
+        ? ["genai.tips.top_up_provider_balance", "genai.tips.disable_personal_text_override"]
+        : ["genai.tips.wait_and_retry"];
       await replyInfoEmbed(replyTarget, locale, {
         titleKey: "commands.generate.image.error_billing_title",
         descriptionKey: "commands.generate.image.error_billing_description",
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
+        tipKeys,
+        ...recoveryOptions(),
       });
       return;
     }
@@ -693,16 +704,23 @@ export async function execute(
         descriptionKey: "commands.generate.image.error_safety_description",
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
+        tipKeys: ["genai.tips.shorten_message"],
+        ...recoveryOptions(),
       });
       return;
     }
 
+    const tipKeys = isPersonalImage
+      ? ["genai.tips.disable_personal_text_override", "genai.tips.switch_model_provider_personal"]
+      : ["genai.tips.wait_and_retry"];
     await replyInfoEmbed(replyTarget, locale, {
       titleKey: "commands.generate.image.error_generation_failed_title",
       descriptionKey: "commands.generate.image.error_generation_failed_description",
       descriptionVars: { error: errorMessage },
       color: ColorCode.ERROR,
       flags: MessageFlags.Ephemeral,
+      tipKeys,
+      ...recoveryOptions(),
     });
   }
 }

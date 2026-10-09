@@ -177,7 +177,10 @@ const runChatInputCommand = async (client: Client, interaction: ChatInputCommand
   try {
     const maps = await ensureCommandsLoaded();
     if (!maps) {
-      log.warn("Command load produced no commands; will retry on next interaction.");
+      void log.error("Command load produced no commands; will retry on next interaction.", undefined, {
+        errorType: "CommandRouteMissing",
+        metadata: { commandName: interaction.commandName, userDiscordId: interaction.user.id },
+      });
       await replyInfoEmbed(
         interaction,
         initialLocale,
@@ -200,7 +203,13 @@ const runChatInputCommand = async (client: Client, interaction: ChatInputCommand
 
     const subcommandMap = maps.executionMap.get(commandName);
     if (!subcommandMap) {
-      log.warn(`Command category not found: ${commandName}`);
+      // Discord still offers this command, so every invocation fails until the deployment is fixed.
+      // Not awaited (here or in the sibling branches): the error_logs insert would sit in front of
+      // the interaction acknowledgement.
+      void log.error(`Command category not found: ${commandName}`, undefined, {
+        errorType: "CommandRouteMissing",
+        metadata: { commandName, userDiscordId: interaction.user.id },
+      });
       await replyInfoEmbed(
         interaction,
         initialLocale,
@@ -227,7 +236,10 @@ const runChatInputCommand = async (client: Client, interaction: ChatInputCommand
         : subcommandName
           ? `${commandName} ${subcommandName}`
           : commandName;
-      log.warn(`Subcommand not found: ${fullCommandPath}`);
+      void log.error(`Subcommand not found: ${fullCommandPath}`, undefined, {
+        errorType: "CommandRouteMissing",
+        metadata: { commandName: fullCommandPath, userDiscordId: interaction.user.id },
+      });
       await replyInfoEmbed(
         interaction,
         initialLocale,

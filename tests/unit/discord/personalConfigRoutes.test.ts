@@ -164,6 +164,7 @@ const SUITE_ACTOR: RouteInteraction["user"] = {
   username: "tester",
   displayName: "Tester",
   globalName: "Tester",
+  displayAvatarURL: () => "https://cdn.example.invalid/tester.png",
 };
 
 /** The shared route fake, typed as the interaction the personal routes and global router accept. */

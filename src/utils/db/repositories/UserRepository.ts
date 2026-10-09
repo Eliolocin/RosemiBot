@@ -508,12 +508,7 @@ class UserRepository implements IRepository<UserExportShape> {
     return user;
   }
 
-  /**
-   * Removes a user's blacklist entry in a specific server.
-   * Invalidates only the per-server blacklist cache slot.
-   *
-   * @returns true on success
-   */
+  /** Invalidates only the per-server blacklist cache slot. */
   async removeBlacklistEntry(serverId: number, userDiscId: string, serverDiscId: string): Promise<boolean> {
     try {
       await sql`

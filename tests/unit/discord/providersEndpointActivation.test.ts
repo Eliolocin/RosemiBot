@@ -25,6 +25,7 @@ function endpointRow(overrides: Partial<CustomEndpointRow>): CustomEndpointRow {
     supports_structoutput: false,
     strict_role_alternation: false,
     supports_prefix_completion: false,
+    supports_assistant_prefill: false,
     is_default: false,
     ...overrides,
   } as CustomEndpointRow;

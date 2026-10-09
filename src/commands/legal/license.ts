@@ -4,9 +4,6 @@ import { localizer } from "@/utils/text/localizer";
 import { ColorCode } from "@/utils/misc/logger";
 import type { UserRow } from "@/types/db/schema";
 
-/**
- * Configure the 'license' subcommand
- */
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand.setName("license").setDescription(localizer("en-US", "commands.legal.license.description"));
 

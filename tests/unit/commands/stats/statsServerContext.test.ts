@@ -1,7 +1,9 @@
 import { describe, expect, it, mock } from "bun:test";
 import { resolveStatsServerId } from "@/utils/stats/statsServerContext";
-import { initializeLocalizer, localizer } from "@/utils/text/localizer";
+import { initializeLocalizer } from "@/utils/text/localizer";
 import { createRouteInteraction, type RouteInteraction } from "../../../helpers/routeInteraction";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import { ColorCode } from "@/utils/misc/logger";
 
 const GUILD_ID = "guild-111111111111111111";
 const LOCALE = "en-US";
@@ -38,8 +40,8 @@ describe("stats server id resolution", () => {
     // variant when the database failed recently or the process is still in its startup grace
     // period, and that state is not this test's to control.
     expect<Array<string | undefined>>([
-      localizer(LOCALE, "general.errors.tomori_not_setup_title"),
-      localizer(LOCALE, "general.errors.tomori_updating_title"),
+      localizedStatusTitle(LOCALE, "general.errors.tomori_not_setup_title", ColorCode.ERROR),
+      localizedStatusTitle(LOCALE, "general.errors.tomori_updating_title", ColorCode.WARN),
     ]).toContain(payload?.embeds[0]?.data.title);
   });
 

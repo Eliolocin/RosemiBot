@@ -186,9 +186,6 @@ class HealthTracker {
   }
 }
 
-/**
- * Health status result structure
- */
 interface HealthStatus {
   /**
    * Whether the bot is considered healthy

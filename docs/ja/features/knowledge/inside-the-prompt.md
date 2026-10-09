@@ -2,67 +2,67 @@
 title: "プロンプトの中身"
 sidebar:
   order: 2
+aiGenerated: false
 ---
 
-TomoriBotをトリガーするたびに、以下の内容が組み立てられ、設定されたテキストモデルにメインプロンプト/コンテキストとしてこの順序で送信されます。
+TomoriBotをトリガーするたびに、以下が組み立てられ、メインプロンプト/コンテキストとして構成されたテキストモデルにこの順序で送信されます。
 
-| ブロック | 任意？ | コマンド | 内容 |
+| ブロック | オプションですか？ | コマンド | それは何ですか |
 |---|---|---|---|
-| [`システムプロンプト`](/ja/features/chatting-personality/behavior-tweaking/#system-prompt) | | `/config` > 動作 > 一般的な動作 | コンテキストの最上部にある基本的な指示。 |
+| [システムプロンプト](/ja/features/chatting-personality/behavior-tweaking/#system-prompt) |  | `/config` > エンジン > 一般 | コンテキストの最上部にある基本的な指示。|
 
-> デフォルトのシステムプロンプトのテキスト（サーバーのシステムプロンプトが未設定の場合のみ使用されます）：
->
-> *"You are {bot}. {bot} makes sure to respond short and concisely by default. {bot} only makes lengthy responses if the situation warrants it.
->
-> {{if tool:create_long_term_memory}}{bot} proactively uses the available {memory_tool} whenever someone shares a detail or {bot} notices one in the conversation that is actually worth remembering, such as a preference, an interest, or an important fact, preferring to remember things even if it is minor as long as it's not a duplicate of what {bot} already knows. {{/if}}{{if tool:update_long_term_memory}}{bot} uses {memory_update_tool} instead when new information changes or adds onto something {bot} already remembers, rather than saving a duplicate.{{/if}}
->
-> {{if tool:review_capabilities}}When someone asks what {bot} can do or why something is unavailable, {bot} checks {capabilities_tool} before answering. {{/if}}{{if tool_family:url_fetch}}When more detail is needed, {bot} uses {url_fetch_tool} on `https://docs.tomoribot.app/llms.txt` for information.{{/if}}"*
+> **デフォルトのシステムプロンプトテキスト**: サーバー システムプロンプトが設定されていない場合にのみ使用されます。>
+> *「あなたは {bot} です。{bot} はデフォルトで短く簡潔に応答します。{bot} は状況に応じてのみ長い応答をします。>
+> {{if tool:create_long_term_memory}}{bot} は、誰かが詳細を共有したり、会話の中で実際に覚えておく価値のあるもの (好み、興味、重要な事実など) に気づいたときは常に、利用可能な {memory_tool} を積極的に使用します。また、{bot} がすでに知っていることと重複しない限り、たとえ些細なことであっても覚えておくことを好みます。{{/if}}{{if tool:update_long_term_memory}}{bot} は、新しい情報が変更されるか、{bot} が既に記憶している情報に追加される場合、複製を保存するのではなく、代わりに {memory_update_tool} を使用します。{{/if}} >
+> {{if tool:review_capabilities}}誰かが {bot} で何ができるのか、または何かが利用できない理由を尋ねると、{bot} は答える前に {capabilities_tool} を確認します。{{/if}}{{if tool_family:url_fetch}}さらに詳細が必要な場合、{bot} は`https://docs.tomoribot.app/llms.txt`の {url_fetch_tool} を使用して情報を取得します。{{/if}}"*
 
-| ブロック | 任意？ | コマンド | 内容 |
+| ブロック | オプションですか？ | 指示 | それは何ですか |
 |---|---|---|---|
-| チャンネルプロンプト（追加） | *(任意)* | `/config` > チャンネル > チャンネルの個別設定 | チャンネルごとに異なり、システムプロンプトの直後に挿入されます。同じページの*replace*モードは、新しいブロックを追加するのではなく、上のシステムプロンプトの枠を完全に置き換えます。 |
-| ペルソナプロンプト | *(任意)* | `/config` > ペルソナ > 高度な設定 | システムプロンプトとは別に、アクティブなペルソナ専用に書かれたプロンプト。 |
-| [ペルソナの属性](/ja/features/chatting-personality/multiple-personas/#attributes) | | `/config` > ペルソナ > アイデンティティと性格 | アクティブなペルソナの性格特性と話し方のパターン。 |
-| サーバー情報 | | *(なし、Discordから取得)* | サーバー名、説明、彼女がいるチャンネル。Discord自体から取得されます。 |
-| [ペルソナ・ユーザーブロック](/ja/features/capabilities/tools-and-extensions/#組み込みツール) | *(任意)* | 確認/クリアは `/moderation`。`/config` > 権限 (User Blocking) でゲートされています | このペルソナが特定のユーザーに対して保持している有効なミュート/ブロック制限。 |
-| [`サーバーの記憶`](/ja/features/knowledge/memory/#personal-vs-server-memories) | | `/memories` | このサーバー用に保存された長期的な事実。 |
-| [サーバーの絵文字](/ja/features/chatting-personality/behavior-tweaking/#機能の有効化許可する操作) | *(任意)* | `/config` > 権限 (Emoji Usage) (切り替えのみ)、初期化は `/expressions initialize` | サーバーに存在するカスタム絵文字。 |
-| [サーバーのスタンプ](/ja/features/chatting-personality/behavior-tweaking/#機能の有効化許可する操作) | *(任意)* | `/config` > 権限 (Sticker Usage) (切り替えのみ)、初期化は `/expressions initialize` | サーバーに存在するカスタムスタンプ。 |
-| [ペルソナスプライト](/ja/features/chatting-personality/multiple-personas/#sprites-emotion-avatars) | *(任意)* | `/config` > ペルソナ > スプライト | ペルソナに設定された、名前付きの表情スプライト（設定されている場合）。 |
-| [会話の参加者](/ja/features/knowledge/memory/#personal-vs-server-memories) | *(任意)* | `/personal memories` (`/config` > 権限 (Personalization) でゲートされています) | 会話に参加している人、そのニックネームとメンションハンドル、そして各人について保存された個人の記憶。その人がコンテキスト内にメッセージを持っている場合、またはその名前/エイリアスが言及された場合に読み込まれます。また、`/config` > 動作 > 一般的な動作 の設定を使用して、現在のチャンネルとローカル時刻をフッターとして追加します。 |
-| [`短期記憶`](/ja/features/knowledge/memory/#short-term-memory-stm) | | `/config` > ペルソナ > 記憶; エントリをクリアするには `/memories`; `/config` > 権限 (Short-Term Memory) でゲートされています | 異なるチャンネルの要約と直近のメッセージが含まれます。 |
-| [`ドキュメント`](/ja/features/knowledge/memory/#document-knowledge-base-rag) | *(任意)* | `/memories` | RAGを使用してナレッジベースから抽出された関連チャンク。 |
-| [条件付け](/ja/features/knowledge/memory/#conditioning) | *(任意)* | `/reward <feed\|headpat\|hug\|kiss\|tickle>`, `/punish <bite\|bonk\|pinch\|spank\|squeeze>`, `/conditioning remove` を介して管理 | このサーバーのこのペルソナに対する蓄積された行動的後押し。 |
-| [`サンプル対話`](/ja/features/chatting-personality/multiple-personas/#sample-dialogues) | *(任意)* | `/config` > ペルソナ > アイデンティティと性格 | 設定されている場合、このペルソナの話し方の例。 |
-| [直近のメッセージ](/ja/features/chatting-personality/behavior-tweaking/#生成の調整) | | `/config` > 動作 > 一般的な動作 | 実際の会話。最大でこの件数まで（デフォルト80件）。コンテキストノートや再会ノートは、別々のブロックとしてではなく、設定可能な深さでこのブロック内にインラインで挿入されます。 |
+| チャンネルプロンプト (追加) | *(オプション)* | `/config` > `チャンネル` > チャネルオーバーライド | チャンネルごとに異なり、システムプロンプトの直後に階層化されます。同じページの *置換* モードは、新しいスロットを追加する代わりに、上記のシステムプロンプトスロットを引き継ぎます。|
+| ペルソナプロンプト | *(オプション)* | `/config` > `ペルソナ` > アドバンスト | システムプロンプトとは別に、アクティブペルソナ専用に作成されたプロンプト。|
+| [ペルソナ属性](/ja/features/chatting-personality/multiple-personas/#attributes) |  | `/config` > `ペルソナ` > `アイデンティティと性格` | アクティブなペルソナの性格特性と発話パターン。|
+| サーバー情報 |  | *(なし、Discordより)* | サーバー名、説明、および彼女が所属しているチャンネルは、Discord自体から取得されました。|
+| [ペルソナユーザーブロック](/ja/features/capabilities/tools-and-extensions/#built-in-tools) | *(オプション)* | `/moderation`確認/クリアします。`/config` > `権限`によってゲート (ユーザー ブロック) | このペルソナが特定のユーザーに対してアクティブなミュート/ブロック制限を設けています。|
+| [サーバーの思い出](/ja/features/knowledge/memory/#personal-vs-server-memories) |  | `/memories` | このサーバー用に保存された長期的な事実。|
+| [サーバー絵文字](/ja/features/chatting-personality/behavior-tweaking/#capabilities-what-shes-allowed-to-do) | *(オプション)* | `/config` > `プラグイン` > `コンテキストの追加` (`返答での絵文字`) (切り替えのみ)、`/expressions initialize`で初期化 | サーバーに存在するカスタム絵文字。|
+| [サーバースタンプ](/ja/features/chatting-personality/behavior-tweaking/#expressions) | *(オプション)* | `/config` > `プラグイン` > `利用可能なツール` (`スタンプ使用`法)、`/expressions initialize`でネイティブアセットを分類、`/expressions manage`で管理 | 送信可能なネイティブスタンプと、名前、説明、感情を含む、応答するペルソナに適したすべてのカスタム表現。メディアソースと個人のアクセスルールはプロンプトの範囲外にあります。|
+| [ペルソナスプライト](/ja/features/chatting-personality/multiple-personas/#sprites-emotion-avatars) | *(オプション)* | `/config` > `ペルソナ` > スプライト | ペルソナ用に構成された名前付き式スプライト (存在する場合)。|
+| [会話の参加者](/ja/features/knowledge/memory/#personal-vs-server-memories) | *(オプション)* | `/personal memories` (`/config` > `権限` (パーソナライゼーション) によってゲートされます) | 会話に参加している人々、ニックネームとメンションハンドル、および各メンバーについて保存された個人的な思い出。その人がコンテキスト内でメッセージを所有している場合、またはその人の名前/エイリアスが言及された場合にロードされます。また、`/config` > エンジン > 一般を使用すると、現在のチャンネルと現地時刻がフッターとして表示されます。|
+| [短期記憶](/ja/features/knowledge/memory/#short-term-memory-stm) |  | `/config` > `ペルソナ` > 思い出; `/memories`エントリをクリアします。`/config` > `権限` (短期記憶) によってゲートされる | さまざまなチャネルの概要と最近のメッセージが含まれています |
+| [`ドキュメント`](/ja/features/knowledge/memory/#document-knowledge-base-rag) | *(オプション)* | `/memories` | RAGを使用してナレッジベースから取得された関連チャンク。|
+| [コンディショニング](/ja/features/knowledge/memory/#conditioning) | *(任意)* | `/reward <feed\|headpat\|hug\|kiss\|tickle>`, `/punish <bite\|bonk\|pinch\|spank\|squeeze>`; `/conditioning remove`で管理 | このサーバーでペルソナに蓄積された行動の傾向。 |
+| [サンプルダイアログ](/ja/features/chatting-personality/multiple-personas/#sample-dialogues) | *(オプション)* | `/config` > `ペルソナ` > `アイデンティティと性格` | このペルソナがどのように話すかの例 (設定されている場合)。|
+| [最近のメッセージ](/ja/features/chatting-personality/behavior-tweaking/#generation-tuning) |  | `/config` > エンジン > 一般 | 実際の会話、最大この数のメッセージ (デフォルトは80)。コンテキストノートと再会ノートは、独自の別個のブロックとしてではなく、構成可能な深さでこのブロック内にインラインで挿入されます。|
 
-*(任意)* とマークされた行は、一致するドキュメントがない場合やサーバーにカスタム絵文字がない場合など、言うべきことが何もないときは（トークンを消費せず）何も寄与しません。
+*(オプション)* とマークされた行は、何も言うことがない場合には何も貢献しません (トークンもかかりません)。一致するドキュメントがないか、サーバーにカスタム絵文字がありません。
 
-直近のメッセージは最も大きく、最も脆い部分であり、人々が話すにつれて前方にスライドするウィンドウです。それより上のすべてのものは保存された設定から再構築されるため、安定しています。
+最近のメッセージは最大かつ最も壊れやすい部分であり、人々が話しているときに前方にスライドするウィンドウです。上記のものはすべて保存された設定から再構築され、安定しています。
 
-`/tool prompt snapshot` は、あるペルソナの正確なバンドルをファイルにダンプします。これは、どの記憶が現在アクティブか、ドキュメントが一致したか、そして会話が実際にどれだけ収まったかを確認するための信頼できる情報源です。
+`/tool prompt snapshot`は、ペルソナの正確なバンドルをファイルにダンプします。これは、どの記憶が現在アクティブであるか、文書が一致するかどうか、および会話のどの程度が実際に一致するかについてのグラウンドトゥルースです。
 
-`/tool estimate cost` は、同じバンドルをサイズごとに分類します。これは、制限を引き上げる前に何がコンテキストを消費しているかを把握するのに役立ちます。
+`/context`は、モデルのコンテキストウィンドウの色付きグリッドと同じバンドルを、上のブロックのグループごとに1色で描画するため、何が塗りつぶされているか、どれだけのスペースが残っているかが一目でわかります。円は、1つの正方形より小さいグループを示します。また、応答ごとの推定入力コストと、最後の実際の応答に対してプロバイダーが報告した入力トークンの数も表示されます。
+
+`/tool estimate cost`は同じバンドルをサイズ別に分類します。これは、制限を上げる前にコンテキストを消費しているものを解明するのに役立ちます。
 
 ### ツールはどこで定義されていますか？
 
-TomoriBotがネイティブにサポートしているすべてのプロバイダーについて、ツールスキーマはプロバイダー自身の `tools` フィールドを介して送信されるため、プロバイダー/設定された推論エンジンに依存します。
+TomoriBotがネイティブでサポートするすべてのプロバイダーについて、ツールスキーマはプロバイダー独自の`tools`フィールドを通じて送信されるため、プロバイダー/構成された推論エンジンに依存します。
 
 ### なぜTomoriBotは忘れるのですか？
 
-この順序は、「なぜ彼女は覚えていないのですか？」という質問のほとんどを説明します。
+この順序で、ほぼすべての「なぜ彼女は覚えていないのか?」が説明されます。質問：
 
-| 起きたこと | 理由 |
+| どうしたの | なぜ |
 |---|---|
-| 今日の少し前のことを忘れた | メッセージの制限を過ぎてスクロールしました。それは直近のメッセージの中にしかなかったため、Tomoriがそれを長期記憶として保存しない限り、メッセージウィンドウの外に出た時点で忘れられます。 |
-| 別のチャンネルのことを忘れた | 直近のメッセージはチャンネルごとのものです。`サーバーの記憶`、会話の参加者、`短期記憶`のみがチャンネルをまたぎます。短期記憶は異なるチャンネルからの直近のメッセージを読み込むことでこれを補いますが、すべてをダンプするわけではありません。 |
-| `/refresh` したら彼女が忘れた | リフレッシュは直近のメッセージを切り捨て、このチャンネルの`短期記憶`をクリアしますが、長期記憶は削除しないはずです。切り捨てを削除するには、リフレッシュの埋め込みを削除してください。 |
-| 再起動後に何かを忘れた | 直近のメッセージは再起動後には残りません。 |
+| 彼女は今日の初めに何かを忘れました | メッセージ制限を超えてスクロールしてしまいました。これは最近のメッセージにのみ含まれており、Tomoriが長期記憶として保存しない場合、メッセージウィンドウの外に到達すると忘れられてしまいます。|
+| 彼女は別のチャンネルで何かを忘れました | 最近のメッセージはチャネルごとです。サーバーの記憶、会話の参加者、および短期記憶のみがチャネルを横断します。短期記憶は、さまざまなチャネルから最近のメッセージをロードすることでこの問題を解決しますが、すべてをダンプするわけではありません。|
+| `/refresh`は彼女を忘れさせました | 更新すると、最近のメッセージが遮断され、このチャネルの短期メモリがクリアされますが、長期メモリは削除されません。更新の埋め込みを削除して、カットオフを削除します。|
+| 再起動後、彼女は何かを忘れました | 最近のメッセージは再起動後に存続しません |
 
-上記すべてを乗り越えて残したいものがある場合は、それを`長期記憶`にする必要があります。[記憶](/ja/features/knowledge/memory/#long-term-memory)を参照してください。
+上記のすべてを乗り越えるために何かをしたいなら、それは長期記憶にならなければなりません。[メモリ](/ja/features/knowledge/memory/#long-term-memory)を参照してください。
 
 ## ヒントとコツ
 
-- `/config` > 動作 > 一般的な動作 は、会話のウィンドウを広げます（20〜100件）。コンテキストが増えるぶん、返信ごとのトークンも増えます。
-- `/config` > 動作 > 一般的な動作 は、選択した深さで短いリマインダーを挿入します。これはバンドルの下部、直近のメッセージに近い位置にあるため、システムプロンプト内のものよりも行動に移される可能性が高くなります。これは、より頻繁に記憶を保存するように彼女を促すのに最適な場所です。
-- `/personal memories` と `/memories` は、`サーバーの記憶`と会話の参加者に直接書き込みます。これは、TomoriBotのコンテキストで知識を永続的なものにする確実な方法の1つです。
+- `/config` > 動作 > 一般的な動作は、会話のウィンドウを広げます（20〜100件）。コンテキストが増えるぶん、返信ごとのトークンも増えます。
+- `/config` > 動作 > 一般的な動作は、選択した深さで短いリマインダーを挿入します。これはバンドルの下部、直近のメッセージに近い位置にあるため、システムプロンプト内のものよりも行動に移される可能性が高くなります。これは、より頻繁に記憶を保存するように彼女を促すのに最適な場所です。
+- `/personal memories`と`/memories`は、`サーバーの記憶`と会話の参加者に直接書き込みます。これは、TomoriBotのコンテキストで知識を永続的なものにする確実な方法の1つです。

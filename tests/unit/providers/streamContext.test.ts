@@ -28,7 +28,6 @@ function makeParams(overrides: Partial<BuildStreamContextParams> = {}): BuildStr
 describe("buildStreamContext", () => {
   it("copies common copy-through fields from the streaming context", () => {
     const messageIdMap = { resolve: () => undefined } as unknown as MessageIdMap;
-    const outputPrefillState = { sent: false };
     const replyNoticeState = { attempted: false, sent: false };
     const forcedMentions = [{ handle: "@alice", userId: "42" }];
     const abortSignal = new AbortController().signal;
@@ -39,7 +38,6 @@ describe("buildStreamContext", () => {
       suppressTextOutput: true,
       rotationKeyRetriesUsed: true,
       outputPrefill: "prefix ",
-      outputPrefillState,
       replyNoticeState,
       forcedMentions,
       naiContinuationPrefill: "…mid-sentence",
@@ -54,7 +52,6 @@ describe("buildStreamContext", () => {
     expect(ctx.suppressTextOutput).toBe(true);
     expect(ctx.rotationKeyRetriesUsed).toBe(true);
     expect(ctx.outputPrefill).toBe("prefix ");
-    expect(ctx.outputPrefillState).toBe(outputPrefillState);
     expect(ctx.replyNoticeState).toBe(replyNoticeState);
     expect(ctx.forcedMentions).toBe(forcedMentions);
     expect(ctx.naiContinuationPrefill).toBe("…mid-sentence");
@@ -92,7 +89,6 @@ describe("buildStreamContext", () => {
     expect(ctx.suppressTextOutput).toBeUndefined();
     expect(ctx.rotationKeyRetriesUsed).toBeUndefined();
     expect(ctx.outputPrefill).toBeUndefined();
-    expect(ctx.outputPrefillState).toBeUndefined();
     expect(ctx.replyNoticeState).toBeUndefined();
     expect(ctx.forcedMentions).toBeUndefined();
     expect(ctx.naiContinuationPrefill).toBeUndefined();

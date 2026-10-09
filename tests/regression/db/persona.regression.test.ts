@@ -518,7 +518,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Persona — regression", () => {
 
     try {
       const swapped = await personaRepository.swapPersona(refs.personaId, alterPersonaId);
-      expect(swapped).toBe(true);
+      expect(swapped).toBe("swapped");
+      // Replaying the same swap is the double-click shape: expected, so it must not read as a failure.
+      expect(await personaRepository.swapPersona(refs.personaId, alterPersonaId)).toBe("roles-changed");
 
       const personas = await personaRepository.loadAllForServer(FIXTURE_IDS.serverDiscId);
       const promotedAlter = personas.find((persona) => persona.persona_id === alterPersonaId);

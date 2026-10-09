@@ -2,6 +2,7 @@
 title: "Bộ nhớ"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBot có hệ thống bộ nhớ bền vững giúp bot nhớ các dữ kiện qua các cuộc trò chuyện. Trang này đề cập đến *những gì bot biết* (dữ kiện, ngữ cảnh, tài liệu). Về *cách bot ứng xử* (tính cách, giọng điệu), hãy xem [Nhiều persona](/vi/features/chatting-personality/multiple-personas/).

@@ -23,7 +23,6 @@ import { runWithWebhookIdentity, sendWebhookMessageWithIdentity } from "@/utils/
 /** Discord IS_VOICE_MESSAGE flag value (1 << 13). */
 const IS_VOICE_MESSAGE_FLAG = 8192;
 
-/** Discord REST API base URL. */
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 
 /**
@@ -55,8 +54,7 @@ interface NativeVoiceSendOptions {
 }
 
 /**
- * Sends a native Discord voice message via raw REST, bypassing discord.js's
- * MessagePayload serialization which drops unknown attachment fields like
+ * Bypasses discord.js's MessagePayload serialization, which drops unknown attachment fields like
  * `waveform` and `duration_secs`.
  *
  * @returns The sent message ID, or undefined if the request failed

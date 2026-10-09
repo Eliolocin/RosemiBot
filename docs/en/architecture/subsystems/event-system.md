@@ -2,75 +2,53 @@
 title: "Event System"
 ---
 
-TomoriBot routes Discord events through one dispatcher: `src/handlers/eventHandler.ts`.
+TomoriBot routes Discord gateway events and REST rate-limit notifications through one dispatcher in `src/handlers/eventHandler.ts`.
 
-## Dispatcher Model
+## Dispatcher model
 
-- `eventFolderMap` maps Discord event names -> folder names under `src/events/`.
-- Direct `.ts` files in the mapped folder are eagerly imported at startup, cached by Discord event name, and executed in lexical order.
-- Multiple Discord events can map to one folder (emoji/sticker fan-in).
+The dispatcher maps Discord event names to folder names under `src/events/` using `eventFolderMap`.
 
-## Current Event Folders
+- **Shallow module discovery:** At startup, `getHandlerFiles()` scans for `*.ts` files directly inside each mapped folder. Subdirectories are ignored by the loader, reserving nested folders under `src/events/<eventName>/` for event-local helper modules.
+- **Lexical execution order:** Handlers within a folder are imported dynamically and sorted alphabetically by filename before caching. When an event fires, its handlers execute sequentially in that order.
+- **Isolated execution:** Each handler runs in its own `try...catch` block. A thrown error in one handler logs structured metadata (`EventHandlerError`) without preventing subsequent handlers from executing for that event.
+- **Activity tracking:** Dispatched gateway events call `healthTracker.recordActivity()`. The health endpoint reports activity age as a diagnostic; readiness and WebSocket ping determine its verdict.
+- **Fan-in mapping:** Multiple Discord events can map to a single handler folder. For example, `emojiCreate`, `emojiDelete`, and `emojiUpdate` all route to `guildEmojisUpdate`, while `stickerCreate`, `stickerDelete`, and `stickerUpdate` route to `guildStickersUpdate`.
 
-- `clientReady`
-- `guildCreate`
-- `guildEmojisUpdate`
-- `guildMemberAdd`
-- `guildStickersUpdate`
-- `interactionCreate`
-- `messageCreate`
-- `rateLimit`
+## REST rate limits
 
-## Current Important Mappings
+REST rate limits arrive on `client.rest.on("rateLimited", ...)`. In discord.js v14, the REST rate limiter is owned by the REST client. `setupEventListeners()` checks for the `rateLimit` folder separately and registers the listener on `client.rest` rather than the gateway client.
 
-- `messageCreate` -> `messageCreate`
-- `interactionCreate` -> `interactionCreate`
-- `clientReady` -> `clientReady`
-- `guildCreate` -> `guildCreate`
-- `guildMemberAdd` -> `guildMemberAdd`
-- `emojiCreate`/`emojiDelete`/`emojiUpdate` -> `guildEmojisUpdate`
-- `stickerCreate`/`stickerDelete`/`stickerUpdate` -> `guildStickersUpdate`
-- `rateLimit` -> `rateLimit`
+## Primary event flows
 
-`voiceStateUpdate` and `presenceUpdate` are also mapped by the dispatcher, but no active handler folders are currently present, so those mappings no-op.
+### Slash commands and interactions
 
-## Typical Flows
+The gateway event `interactionCreate` routes to `src/events/interactionCreate/handleCommands.ts`. The handler separates chat-input commands, autocomplete requests, and globally routed component or modal interactions, dispatching each to its respective runner. See [Command System](/architecture/subsystems/command-system/) for interaction lifecycle and timing constraints.
 
-### Message event
+### Chat messages
 
-`messageCreate` -> `events/messageCreate/tomoriChat.ts` -> `utils/chat/admission.ts` (normalize + admit) -> `utils/chat/channelQueue.ts` -> turn planning/context/response/generation/post-turn stages under `utils/chat/`.
+The `messageCreate` event routes to `src/events/messageCreate/tomoriChat.ts`. The handler normalizes incoming messages, evaluates server admission and ignore rules, manages per-channel execution queues, and runs turn planning and generation. See [Normalize Invocation](/architecture/pipelines/chat/01-normalize-invocation/) for chat normalization and admission details.
 
-The dispatcher shallow-scans direct `.ts` files under `src/events/messageCreate/`, so helper modules for chat orchestration must not live beside `tomoriChat.ts`. Subfolders under `src/events/<eventName>/` are not scanned. Chat-specific helpers belong under `src/utils/chat/`; invocation normalization and reply/no-reply admission live in `src/utils/chat/admission.ts`, channel locks/queues live in `src/utils/chat/channelQueue.ts`, trigger/reply/persona-routing decisions live in `src/utils/chat/triggerProcessor.ts`, webhook/embed emission helpers live in `src/utils/chat/responseEmitter.ts`, and chat-only utility helpers live under `src/utils/chat/helpers/`.
+### Startup initialization
 
-Current message preprocessing enriches fetched history before `buildContext()`:
-- reply-reference system annotations (opaque `ref_N` handle + full quoted content)
-- forwarded-message snapshot annotations (forwarder + original author + source channel + quoted content)
-- media extraction and opaque `media_N` source-message handles for message-targeted tools
-- forwarded/referenced media extraction so image/video attachments from quoted snapshots reach multimodal models
-- consecutive same-author messages only collapse when both sides are pure text; any turn with media stays separate so media references remain message-local
-- reaction context annotations (emoji/counts plus budgeted reactor identity fetches with counts-only fallback)
+The `clientReady` event runs startup initialization tasks, including registering application slash commands with Discord (`src/events/clientReady/01_registercommands.ts`) and initializing Model Context Protocol (MCP) servers.
 
-### Slash command event
+### Member joins and the welcome gate
 
-`interactionCreate` -> `events/interactionCreate/handleCommands.ts` -> command lookup and execution.
+The `guildMemberAdd` event routes to `src/events/guildMemberAdd/newUser.ts`:
 
-### Ready event
+- Registers the user row in the database via `userRepository.register`.
+- Evaluates guild welcome configuration. If the server has Membership Screening or Onboarding enabled, `helpers/welcomeGate.ts` retains an in-memory waiter per member until screening clears and onboarding completes (`CompletedOnboarding` flag on `guildMemberUpdate`).
+- If the member leaves before clearing screening, `guildMemberRemove` cancels the waiter. Waiters that never resolve are dropped after one hour (`WELCOME_GATE_MAX_WAIT_MS`).
+- Once screening clears, the handler verifies the member is still in the guild and invokes the welcome greeting through the standard chat coordinator pipeline.
 
-`clientReady` handlers run startup tasks such as command registration and MCP registration.
+## Extending event handling
 
-### Member join event
+Adding a new event handler or mapping a new Discord event is documented in the contributor guide [Adding an Event Handler](/contributing/extending/event-handler/).
 
-`guildMemberAdd` -> `events/guildMemberAdd/newUser.ts`
+## Source pointers
 
-- registers the joining Discord user in the database
-- optionally triggers a configured welcome message in the server's welcome channel
-- configured greetings wait for `WELCOME_DELAY_MS` (60,000 ms, the constant in `helpers/welcomeDelay.ts`) after registration so onboarding can finish
-- after the delay, the handler skips memberships that ended (including leave/rejoin races) and reloads the Welcome configuration before generating
-- welcome greetings reuse the normal chat coordinator manual-trigger pipeline, including persona selection, queueing, and mention fallback checks
-
-## Adding a New Event Handler
-
-1. Create `src/events/{folderName}/`.
-2. Add a default-export handler file.
-3. Add/update mapping in `eventFolderMap`.
-4. Restart and verify logs.
+- `src/handlers/eventHandler.ts`: single event dispatcher and listener setup.
+- `src/events/interactionCreate/handleCommands.ts`: slash command, autocomplete, and interaction dispatch.
+- `src/events/messageCreate/tomoriChat.ts`: chat pipeline entry point.
+- `src/events/guildMemberAdd/newUser.ts`: member registration and welcome gate runner.
+- `src/utils/misc/healthTracker.ts`: liveness tracking.

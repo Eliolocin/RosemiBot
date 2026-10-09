@@ -3,13 +3,15 @@ title: "IrodoriTTS"
 aiGenerated: true
 ---
 
-Irodori-TTS v4.1 is a Japanese-focused TTS model with voice cloning and caption-based VoiceDesign in one checkpoint. TomoriBot runs it through the local FastAPI wrapper in `servers/tts/irodoritts/`.
+Generate natural Japanese speech with voice cloning, caption-based VoiceDesign, and expressive emoji markup using [Irodori-TTS v4.1](https://github.com/Aratako/Irodori-TTS).
 
-The default model is `Aratako/Irodori-TTS-v4.1-Small`. Compatible Hugging Face checkpoints can be selected with `IRODORI_TTS_MODEL_ID`, including community fine-tunes such as `phasefield-audio/Irodori-TTS-v4.1-Anime`.
+Irodori-TTS v4.1 is a Japanese-focused text-to-speech model supporting both voice cloning and text-described VoiceDesign within a single checkpoint. TomoriBot connects to Irodori through the local FastAPI wrapper in `servers/tts/irodoritts/`, defaulting to `Aratako/Irodori-TTS-v4.1-Small`.
+
+Compatible Hugging Face checkpoints can be selected with `IRODORI_TTS_MODEL_ID`, including community fine-tunes such as `phasefield-audio/Irodori-TTS-v4.1-Anime`.
 
 ## Setup
 
-Irodori now uses `uv` for dependency and PyTorch backend management. Install `uv` first, then run the setup script from the TomoriBot repo root.
+Irodori uses `uv` for dependency and PyTorch backend management. The server maintains its own `pyproject.toml` with pinned Irodori and `dacvae` dependencies for reproducible installations. Install `uv` first, then run the setup script from the TomoriBot repository root:
 
 ### Windows PowerShell (NVIDIA)
 
@@ -27,22 +29,22 @@ servers/tts/irodoritts/.venv/bin/python servers/tts/irodoritts/server.py
 
 The setup scripts create `servers/tts/irodoritts/.venv`, so `bun run launch --irodoritts` continues to work after installation.
 
-Available backends are:
+Available backends:
 
-- `cu128`: NVIDIA CUDA 12.8 on Windows/Linux
+- `cu128`: NVIDIA CUDA 12.8 on Windows and Linux
 - `cpu`: CPU-only, or macOS CPU/MPS through PyPI
 - `rocm`: AMD ROCm on Linux/WSL
-- `xpu`: Intel XPU on Windows/Linux
+- `xpu`: Intel XPU on Windows and Linux
 
 The default endpoint URL is `http://127.0.0.1:8013`.
 
-## Using a Different Checkpoint
+## Using a different checkpoint
 
 The default model is `Aratako/Irodori-TTS-v4.1-Small`. Compatible Hugging Face repositories, community fine-tunes (such as `phasefield-audio/Irodori-TTS-v4.1-Anime`), or local checkpoint files can be configured via environment variables.
 
 When you start the server (directly with Python or via `bun run launch --irodoritts`), it automatically reads the repository root `.env` (or a local `.env` in `servers/tts/irodoritts/`) and logs the active model ID on startup.
 
-### Via `.env` (Persistent)
+### Via `.env` (persistent)
 
 Add to your `.env` in the TomoriBot root:
 
@@ -50,7 +52,7 @@ Add to your `.env` in the TomoriBot root:
 IRODORI_TTS_MODEL_ID="phasefield-audio/Irodori-TTS-v4.1-Anime"
 ```
 
-### Via Environment Variable per Session
+### Via environment variable per session
 
 In Windows PowerShell:
 
@@ -66,7 +68,7 @@ IRODORI_TTS_MODEL_ID=phasefield-audio/Irodori-TTS-v4.1-Anime \
   servers/tts/irodoritts/.venv/bin/python servers/tts/irodoritts/server.py
 ```
 
-### Using a Local Checkpoint File
+### Using a local checkpoint file
 
 If you have downloaded a checkpoint file (`.pt` or `.safetensors`) locally, set `IRODORI_TTS_CHECKPOINT` to its path:
 
@@ -83,8 +85,7 @@ Run `/providers`, choose `Add New Custom Endpoint`, and use the speech API compa
 - API Compatibility: `tts-clone`
 - `endpoint_url`: `http://127.0.0.1:8013`
 
-After saving the connection, select it and use its model dropdown to add a Speech model. For v4.1, the
-recommended settings are:
+After saving the connection, select it and use its model dropdown to add a Speech model. For v4.1, the recommended settings are:
 
 - `Voice Source Mode`: `Auto`
 - `Script Markup Style`: `Emoji`
@@ -92,13 +93,11 @@ recommended settings are:
 `Auto` lets the same Irodori endpoint support both TomoriBot voice modes, so emotion cues survive the send:
 
 - Personas with a voice sample assigned under Persona > Voice send a stored reference clip for voice cloning.
-- Personas with a VoiceDesign prompt set under Persona > Voice send the saved natural-language prompt as
-  Irodori caption conditioning.
+- Personas with a VoiceDesign prompt set under Persona > Voice send the saved natural-language prompt as Irodori caption conditioning.
 
 You can still choose `Voice Clone` as the Voice Source Mode if you only want reference-audio voice cloning.
 
-Use `/providers` for endpoint registration and model setup. Then open `/config` > Models > Switch Models to
-select and activate the registered endpoint.
+Use `/providers` for endpoint registration and model setup. Then open `/config` > Models > Switch Models to select and activate the registered endpoint.
 
 ## Set up persona voices
 
@@ -108,11 +107,11 @@ select and activate the registered endpoint.
 2. Open `/config` under Models > TTS Parameters & Voices and upload the clip.
 3. Open `/config` under Persona > Voice, then choose the persona and the voice sample.
 
-Irodori v4.1 supports longer reference conditioning than the old v2 model, but clean source audio remains more important than raw duration.
+Irodori v4.1 supports longer reference conditioning than earlier models, but clean source audio remains more important than raw duration.
 
 The v4.1 runtime caps the reference clip at the checkpoint default, which the v4.1 checkpoint sets to 120 seconds. Anything longer is trimmed to that cap rather than refused, and `IRODORI_MAX_REF_SECONDS` overrides it. A clip at TomoriBot's 130-second upload ceiling therefore still works: Irodori conditions on the first 120 seconds of it.
 
-Longer is not better here. Upstream reports that approximately 30 seconds of clean reference speech already captures most of the measurable speaker-similarity gain, and that multiple shorter clips from the same speaker beat one long recording. The extra reference latent steps that come with a longer clip also lengthen every synthesis request. Reach past 30 seconds only when a speaker's timbre drifts across the recording.
+Longer clips do not improve voice quality. Upstream reports that approximately 30 seconds of clean reference speech already captures most of the measurable speaker-similarity gain, and that multiple shorter clips from the same speaker beat one long recording. The extra reference latent steps that come with a longer clip also lengthen every synthesis request. Reach past 30 seconds only when a speaker's timbre drifts across the recording.
 
 ### VoiceDesign
 
@@ -190,7 +189,7 @@ For caption-only VoiceDesign, the first chunk's generated Irodori seed is reused
 
 Long inputs require multiple sequential inference passes and can take substantially longer on slower hardware. TomoriBot's default TTS client timeout is 240 seconds. You can disable chunking with `IRODORI_CHUNKING_ENABLED=false` or tune the approximate split threshold with `IRODORI_CHUNK_MIN_CHARS`.
 
-## Faster inference with Sway Sampling
+## Faster inference with sway sampling
 
 The default remains Irodori's higher-quality 40-step linear sampling. For lower latency, try Sway Sampling with fewer steps:
 
@@ -200,13 +199,7 @@ $env:IRODORI_T_SCHEDULE_MODE = "sway"
 $env:IRODORI_SWAY_COEFF = "-1.0"
 ```
 
-This is an inference quality/speed tradeoff, so test it with your chosen checkpoint and voices before making it permanent.
-
-## Why the install scripts are simpler now
-
-The previous TomoriBot installer cloned and patched Irodori's `pyproject.toml`, manually installed `dacvae`, and pinned an old v2-era Irodori commit. Those workarounds were necessary for the older upstream package layout but are no longer appropriate for current Irodori.
-
-The server now has its own `pyproject.toml` and follows upstream's `uv` backend setup. Irodori and `dacvae` remain pinned to known commits there for reproducible installs, but TomoriBot no longer modifies upstream source code during installation.
+This is an inference quality and speed tradeoff, so test it with your chosen checkpoint and voices before making it permanent.
 
 ## Environment variables
 

@@ -8,11 +8,11 @@ TomoriBot giữ danh mục lệnh `/nsfw` chỉ dành cho người lớn phía s
 
 ## Bật các lệnh giới hạn độ tuổi
 
-1. Trong Discord, mở User Settings → Privacy & Safety.
-2. Bật tùy chọn Allow access to age-restricted commands in apps. Bạn phải từ 18 tuổi trở lên.
-3. Các lệnh giới hạn độ tuổi chỉ chạy trong các kênh được đánh dấu là NSFW (nhấp chuột phải vào kênh → Edit Channel → bật NSFW; chỉ quản trị viên máy chủ mới có thể đánh dấu kênh là NSFW).
+1. Trong Discord, mở `User Settings` > `Privacy & Safety`.
+2. Bật `Allow access to age-restricted commands in apps`. Bạn phải từ 18 tuổi trở lên.
+3. Chạy các lệnh giới hạn độ tuổi trong các kênh được đánh dấu `Age-Restricted Channel`. Để đánh dấu một kênh, nhấp chuột phải vào kênh đó, chọn `Edit Channel` và bật `Age-Restricted Channel` (cần có quyền Quản lý kênh).
 
-Nếu một lệnh bị giới hạn độ tuổi và kênh không được đánh dấu NSFW, lệnh đó đơn giản là sẽ không xuất hiện.
+Nếu lệnh bị hạn chế và kênh không được đánh dấu giới hạn độ tuổi, Discord sẽ không hiển thị hoặc cho phép chạy lệnh.
 
 ## Những gì được kiểm soát
 

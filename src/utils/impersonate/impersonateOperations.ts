@@ -27,12 +27,14 @@ import { tomoriChat } from "@/events/messageCreate/tomoriChat";
 import { CooldownType } from "@/types/db/schema";
 import { cooldownRepository } from "@/utils/db/repositories/CooldownRepository";
 import { sendCooldownDM } from "@/utils/discord/cooldownDM";
+import { NOTICE_CONFIG_HINT_KEY } from "@/constants/toolNotices";
 import { isNoticeEmbedVisible } from "@/utils/discord/toolProgressNotice";
 import { getCachedWhitelistStatus } from "@/utils/cache/channelWhitelistCache";
 import { getCachedUserRow } from "@/utils/cache/userCache";
 import { getCachedPersonalSpotlightStatus } from "@/utils/cache/personalSpotlightCache";
 import { filterPersonasForTrigger, isPersonaAllowedForTrigger } from "@/utils/persona/personaAccess";
 import { UserImpersonationGenerationSkippedError } from "@/utils/chat/userImpersonationCompletion";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 type ImpersonationInteraction = ChatInputCommandInteraction;
 
@@ -180,7 +182,7 @@ export async function executePersonaImpersonation(
           });
 
       const noticeEmbed = new EmbedBuilder()
-        .setDescription(localizer(locale, "commands.impersonate.persona_impersonation_notice_description"))
+        .setDescription(localizer(locale, NOTICE_CONFIG_HINT_KEY))
         .setFooter({
           text: localizer(locale, "commands.impersonate.persona_impersonation_notice_footer", {
             user: interaction.user.username,
@@ -433,7 +435,9 @@ export async function executeUserImpersonation(
             });
 
         const noticeEmbed = new EmbedBuilder()
-          .setDescription(localizer(locale, "commands.impersonate.user_impersonation_notice_description"))
+          .setDescription(
+            `${localizer(locale, NOTICE_CONFIG_HINT_KEY)}\n${localizer(locale, "commands.impersonate.user_impersonation_teach_hint")}`,
+          )
           .setFooter({
             text: localizer(locale, "commands.impersonate.user_impersonation_notice_footer", {
               user: interaction.user.username,
@@ -489,7 +493,7 @@ export async function executeUserImpersonation(
     await interaction.editReply({
       embeds: [
         new EmbedBuilder()
-          .setTitle(localizer(locale, "commands.impersonate.me_success_title"))
+          .setTitle(localizedStatusTitle(locale, "commands.impersonate.me_success_title", ColorCode.SUCCESS))
           .setDescription(
             localizer(locale, "commands.impersonate.me_success_description", { user: impersonatedDisplayName }),
           )
@@ -511,11 +515,16 @@ export async function executeUserImpersonation(
         ? localizer(locale, "genai.error_stream_timeout_description")
         : isSkippedError
           ? localizer(locale, "commands.impersonate.user_generation_skipped_description")
-          : localizer(locale, "genai.generic_error_description", {
-              error_message: error instanceof Error ? error.message : "Unknown error",
-            });
+          : // The error text can carry a provider response; the full error is logged above.
+            localizer(locale, "general.errors.generic_error_description");
       const errorEmbed = new EmbedBuilder()
-        .setTitle(localizer(locale, isTimeoutError ? "genai.error_stream_timeout_title" : "genai.generic_error_title"))
+        .setTitle(
+          localizedStatusTitle(
+            locale,
+            isTimeoutError ? "genai.error_stream_timeout_title" : "genai.generic_error_title",
+            ColorCode.ERROR,
+          ),
+        )
         .setDescription(description)
         .setColor(ColorCode.ERROR);
       await interaction.editReply({

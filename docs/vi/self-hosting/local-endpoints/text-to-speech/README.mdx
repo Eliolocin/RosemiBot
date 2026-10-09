@@ -4,39 +4,42 @@ sidebar:
   label: "Tổng quan"
   groupLabel: "Chuyển văn bản thành giọng nói"
   order: 7
+aiGenerated: true
 ---
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-TomoriBot xem giọng nói là một tính năng endpoint tùy chỉnh. Các engine cục bộ chạy bên ngoài bot dưới dạng máy chủ HTTP và triển khai `POST /synthesize`; các engine sao chép nhận văn bản cùng với mẫu âm thanh tham chiếu đã định cấu hình, trong khi các engine có khả năng VoiceDesign cũng có thể nhận các hướng dẫn bằng ngôn ngữ tự nhiên.
+Tạo tin nhắn thoại tự nhiên và lời nói của nhân vật trực tiếp trên máy của bạn mà không phải trả phí cho mỗi ký tự hoặc truyền âm thanh tới API giọng nói của bên thứ ba.
 
-## Các engine hiện có
+TomoriBot coi lời nói như một khả năng điểm cuối tùy chỉnh. Các công cụ cục bộ chạy bên ngoài bot dưới dạng máy chủ HTTP và triển khai `POST /synthesize`; công cụ nhân bản nhận văn bản cùng với mẫu âm thanh tham chiếu đã định cấu hình, trong khi công cụ hỗ trợ VoiceDesign cũng có thể nhận hướng dẫn bằng ngôn ngữ tự nhiên.
+
+## Động cơ có sẵn
 
 <CardGrid>
   <LinkCard title="Chatterbox TTS" href="/vi/self-hosting/local-endpoints/text-to-speech/chatterbox/"
-    description="Sao chép giọng nói tiếng Anh với các thẻ sự kiện. Turbo là mặc định; Nano và Tiêu chuẩn là các biến thể tùy chọn." />
+    description="Nhân bản giọng nói tiếng Anh với thẻ sự kiện. Turbo là mặc định; Nano và Standard là các biến thể tùy chọn." />
   <LinkCard title="Qwen3-TTS" href="/vi/self-hosting/local-endpoints/text-to-speech/qwen3tts/"
-    description="TTS cục bộ đa ngôn ngữ với các chế độ sao chép và VoiceDesign." />
+    description="TTS cục bộ đa ngôn ngữ với chế độ sao chép và VoiceDesign." />
   <LinkCard title="MOSS-TTS" href="/vi/self-hosting/local-endpoints/text-to-speech/moss/"
-    description="Endpoint tự động thử nghiệm: sao chép giọng nói đa ngôn ngữ 4B hoặc thiết kế giọng nói tiếng Anh/tiếng Trung qua mô tả văn bản." />
+    description="Điểm cuối tự động dùng thử: nhân bản giọng nói đa ngôn ngữ 4B hoặc thiết kế giọng nói tiếng Anh/tiếng Trung được mô tả bằng văn bản." />
   <LinkCard title="IrodoriTTS" href="/vi/self-hosting/local-endpoints/text-to-speech/irodoritts/"
-    description="Sao chép giọng nói và VoiceDesign tập trung vào tiếng Nhật với markup Unicode emoji để kiểm soát cảm xúc." />
-  <LinkCard title="Fish Audio S2 Pro" href="/vi/self-hosting/local-endpoints/text-to-speech/fishs2/"
-    description="Sao chép giọng nói đa ngôn ngữ chất lượng cao với các tùy chọn kiểm soát biểu cảm chi tiết trong ngoặc vuông. Mặc định dùng trọng số BF16 chính thức, có tùy chọn checkpoint INT8 cho GPU nhỏ hơn." />
+    description="Nhân bản giọng nói tập trung vào tiếng Nhật và VoiceDesign với đánh dấu biểu tượng cảm xúc Unicode để kiểm soát cảm xúc." />
+  <LinkCard title="Cá Âm Thanh S2 Pro" href="/vi/self-hosting/local-endpoints/text-to-speech/fishs2/"
+    description="Nhân bản giọng nói đa ngôn ngữ chất lượng cao với các điều khiển biểu thức khung chi tiết. Mặc định là trọng số BF16 chính thức, với điểm kiểm tra INT8 tùy chọn dành cho các GPU nhỏ hơn." />
   <LinkCard title="VoxCPM2" href="/vi/self-hosting/local-endpoints/text-to-speech/voxcpm2/"
-    description="TTS 30 ngôn ngữ với Voice Design, sao chép bằng âm thanh tham chiếu, Ultimate Cloning hỗ trợ bởi bản phiên âm, và điều khiển cách truyền đạt bằng ngôn ngữ tự nhiên." />
+    description="TTS 30 ngôn ngữ với Thiết kế giọng nói, nhân bản âm thanh tham chiếu, Nhân bản cuối cùng được hỗ trợ bản ghi và kiểm soát phân phối ngôn ngữ tự nhiên." />
   <LinkCard title="CosyVoice 3" href="/vi/self-hosting/local-endpoints/text-to-speech/cosyvoice3/"
-    description="Sao chép zero-shot và chéo ngôn ngữ đa ngôn ngữ 0.5B với hướng dẫn truyền đạt bằng ngôn ngữ tự nhiên." />
-  <LinkCard title="So sánh các engine TTS" href="/vi/self-hosting/local-endpoints/text-to-speech/comparison/"
-    description="Thời gian tổng hợp thực nghiệm, trình phát mẫu âm thanh và so sánh tốc độ trên tất cả 7 engine." />
+    description="Nhân bản đa ngôn ngữ 0,5B và sao chép đa ngôn ngữ với hướng dẫn phân phối bằng ngôn ngữ tự nhiên." />
+  <LinkCard title="So sánh động cơ TTS" href="/vi/self-hosting/local-endpoints/text-to-speech/comparison/"
+    description="Thời gian tổng hợp theo kinh nghiệm, trình phát mẫu âm thanh và so sánh tốc độ trên tất cả 7 công cụ." />
 </CardGrid>
 
-## Quy trình cài đặt
+## Luồng thiết lập
 
-1. Chọn một engine từ các thẻ ở trên và thiết lập wrapper của nó từ `servers/tts/`.
-2. Trong `/providers`, chọn `Thêm endpoint tùy chỉnh mới` và sử dụng API Compatibility `tts-clone`.
-3. Chọn endpoint đã lưu và sử dụng menu thả xuống model để thêm model Speech, Chế độ nguồn giọng đọc, và Script Markup của nó.
-4. Mở `/config` > Models > Switch Models và chọn model Speech đã đăng ký.
+1. Chọn một công cụ từ các thẻ trên và thiết lập trình bao bọc của nó từ `servers/tts/`.
+2. Trong `/providers`, chọn `Add New Custom Endpoint` và sử dụng API Khả năng tương thích `tts-clone`.
+3. Chọn điểm cuối đã lưu và sử dụng model thả xuống của nó để thêm model Lời nói, Chế độ Nguồn Giọng nói và Đánh dấu Tập lệnh.
+4. Mở `/config` > `Model` > Chuyển model và chọn model Lời nói đã đăng ký.
 
 ## Truy cập mạng
 {/* anchor: network-access */}
@@ -47,29 +50,29 @@ Các máy chủ không có xác thực: bất kỳ ai truy cập được cổng
 
 Mỗi máy chủ đọc biến cổng riêng (`CHATTERBOX_PORT`, `QWEN3TTS_PORT`, `IRODORI_TTS_PORT`, `FISH_S2_PORT`, `VOXCPM2_PORT`, `COSYVOICE3_PORT`, `MOSS_TTS_PORT`), nên nhiều máy chủ có thể chạy cùng lúc từ một tệp `.env`. `bun run launch` truyền `.env` cho các máy chủ mà nó khởi động; máy chủ khởi động thủ công chỉ đọc môi trường của shell.
 
-## Quy trình giọng nói persona
+## Luồng giọng nói của Persona
 
-Đối với các engine sao chép, hãy thêm và gán một mẫu giọng nói cho mỗi persona:
+Đối với công cụ nhân bản, hãy thêm và chỉ định một mẫu giọng nói cho mỗi người:
 
-1. Chuẩn bị một đoạn clip sạch với một người nói và không có nhạc nền. Mỗi engine tự ghi rõ độ dài tốt nhất của mình, từ 3 đến 30 giây tùy theo model; các hướng dẫn theo từng engine bên dưới có nêu con số cụ thể.
-2. Mở `/config` dưới phần Models > Tham số & Giọng đọc TTS và tải mẫu lên. Mọi định dạng âm thanh đều được chấp nhận; TomoriBot sẽ chuyển đổi sang WAV đơn kênh, tối đa 130 giây.
-3. Cung cấp bản phiên âm khớp khi engine hưởng lợi từ điều đó. Fish S2 Pro chuyển tiếp bản phiên âm tham chiếu đã lưu vào yêu cầu sao chép, và VoxCPM2 sử dụng bản phiên âm đó cho Ultimate Cloning có độ trung thực cao hơn.
-4. Mở `/config` dưới phần Persona > Voice, sau đó chọn persona và mẫu giọng nói.
+1. Chuẩn bị một clip rõ ràng với một loa và không có nhạc nền. Mỗi động cơ ghi lại thời lượng tốt nhất của riêng nó, từ 3 đến 30 giây tùy thuộc vào kiểu máy; hướng dẫn cho mỗi động cơ bên dưới mang các con số.
+2. Mở `/config` trong Models > `Tham số & Giọng đọc TTS` và tải mẫu lên. Mọi định dạng âm thanh đều được chấp nhận; TomoriBot chuyển đổi nó thành WAV đơn âm, tối đa 130 giây.
+3. Cung cấp bản ghi phù hợp khi động cơ được hưởng lợi từ nó. Fish S2 Pro chuyển tiếp bản ghi tham chiếu được lưu trữ vào yêu cầu nhân bản và VoxCPM2 sử dụng nó để nhân bản cuối cùng có độ chính xác cao hơn.
+4. Mở `/config` trong Persona > `Giọng nói`, sau đó chọn mẫu persona và giọng nói.
 
-Giới hạn tải lên 130 giây là của TomoriBot, không phải của engine nào. Mỗi engine áp dụng giới hạn âm thanh tham chiếu riêng khi clip được gửi đi, và các giới hạn đó khác nhau đủ nhiều để một clip phù hợp với engine này có thể bị engine khác từ chối hoặc chỉ dùng một phần. Hãy xem hướng dẫn của engine trước khi tải lên một clip dài.
+Giới hạn tải lên 130 giây được thực thi bởi TomoriBot. Mỗi công cụ áp dụng giới hạn âm thanh tham chiếu riêng khi clip được gửi và những giới hạn đó khác nhau đến mức một clip phù hợp với một công cụ có thể bị từ chối hoặc bị bỏ qua một phần bởi công cụ khác. Kiểm tra hướng dẫn của công cụ trước khi tải lên một đoạn clip dài.
 
-Giới hạn kích thước tải lên và giới hạn thời lượng là độc lập với nhau, và việc kiểm tra kích thước chạy trước. WAV không nén ở dạng stereo 44.1 kHz tốn khoảng 10 MB mỗi phút, nên một clip 130 giây xuất từ DAW có thể vào khoảng 22 MB và bị từ chối vì quá lớn, trong khi bản xuất nén của cùng clip đó lại vừa vặn dễ dàng. `SPEECH_SAMPLE_MAX_MB` nâng giới hạn kích thước đó (mặc định là 10 MB). Với một clip tham chiếu dài, hãy xuất dưới dạng FLAC, MP3 hoặc OGG thay vì WAV: TomoriBot chuyển đổi mọi định dạng được chấp nhận sang WAV đơn kênh ở 22.05 kHz trước khi lưu, nên bản tải lên nén không tốn gì về chất lượng.
+Giới hạn kích thước tải lên và trần thời lượng là độc lập và việc kiểm tra kích thước sẽ được thực hiện trước tiên. WAV không nén có giá khoảng 10 MB mỗi phút dưới dạng âm thanh nổi 44,1 kHz, do đó, bản xuất DAW 130 giây có thể có dung lượng khoảng 22 MB và bị từ chối vì quá lớn trong khi bản xuất nén của cùng một clip lại dễ dàng phù hợp. `SPEECH_SAMPLE_MAX_MB` tăng giới hạn kích thước đó (10 MB theo mặc định). Để có clip tham chiếu dài, hãy xuất clip đó dưới dạng FLAC, MP3 hoặc OGG thay vì WAV: TomoriBot chuyển đổi mọi định dạng được chấp nhận thành WAV đơn âm ở tần số 22,05 kHz trước khi lưu trữ, do đó, việc tải lên nén sẽ không mất chất lượng.
 
-Đối với Qwen3-TTS, MOSS-VoiceGenerator, IrodoriTTS, hoặc VoxCPM2 VoiceDesign, hãy bỏ qua mẫu âm thanh và sử dụng Persona > Voice trong `/config` để lưu mô tả giọng nói bằng ngôn ngữ tự nhiên cho persona. CosyVoice 3 sử dụng chế độ Clone với một mẫu tham chiếu và chấp nhận hướng dẫn truyền đạt dùng một lần thông qua `voice_instructions`.
+Đối với Qwen3-TTS, MOSS-VoiceGenerator, IrodoriTTS hoặc VoxCPM2 VoiceDesign, hãy bỏ qua mẫu âm thanh và sử dụng Persona > `Giọng nói` trong `/config` để lưu mô tả giọng nói bằng ngôn ngữ tự nhiên cho persona đó. CosyVoice 3 sử dụng chế độ Sao chép với mẫu tham chiếu và chấp nhận hướng phân phối một lần thông qua `voice_instructions`.
 
-Người dùng ElevenLabs nên chọn `Thêm nhà cung cấp mới` và ElevenLabs trong `/providers`; tùy chọn này đăng ký đồng thời cả endpoint giọng nói và phiên âm.
+Người dùng ElevenLabs nên chọn `Thêm nhà cung cấp mới` và `ElevenLabs` trong `/providers`; nó đăng ký các điểm cuối giọng nói và phiên âm cùng nhau.
 
-TomoriBot loại bỏ cú pháp emoji tùy chỉnh của Discord chẳng hạn như `:pepega:` hoặc `<:pepega:123456789012345678>` khỏi các kịch bản giọng nói được tạo trước khi tổng hợp. Unicode emoji cũng bị loại bỏ trừ khi endpoint giọng nói sử dụng emoji markup, vốn dành cho IrodoriTTS. Các thẻ trong ngoặc vuông được giữ lại cho các endpoint như Chatterbox Turbo và Fish S2 Pro khi Script Markup của chúng được đặt thành `Thẻ trong ngoặc vuông`.
+TomoriBot loại bỏ cú pháp biểu tượng cảm xúc tùy chỉnh của Discord như `:pepega:` hoặc `<:pepega:123456789012345678>` khỏi tập lệnh giọng nói được tạo trước khi tổng hợp. Biểu tượng cảm xúc Unicode cũng bị loại bỏ trừ khi điểm cuối giọng nói sử dụng đánh dấu biểu tượng cảm xúc dành cho IrodoriTTS. Thẻ khung được giữ nguyên cho các điểm cuối như Chatterbox Turbo và Fish S2 Pro khi Đánh dấu tập lệnh của chúng được đặt thành `Thẻ trong ngoặc vuông`.
 
-VoxCPM2 sử dụng Script Markup Plain. Các tùy chọn Voice Design và phong cách nói của nó truyền qua trường `instruct` của TomoriBot, và wrapper VoxCPM2 sẽ chuyển đổi chúng sang cú pháp điều khiển bằng ngôn ngữ tự nhiên trong dấu ngoặc đơn gốc của model.
+VoxCPM2 sử dụng Đánh dấu tập lệnh `Thuần văn bản`. Thiết kế giọng nói và các điều khiển kiểu nói của nó di chuyển qua trường `instruct` của TomoriBot và trình bao bọc VoxCPM2 chuyển đổi chúng thành cú pháp điều khiển ngôn ngữ tự nhiên được ngoặc đơn gốc của model.
 
-CosyVoice 3 cũng sử dụng Script Markup Plain. Model này ánh xạ các tham chiếu có bản phiên âm thành sao chép zero-shot, các tham chiếu không có bản phiên âm thành sao chép chéo ngôn ngữ, và `voice_instructions` thành đường dẫn điều kiện hóa theo hướng dẫn. Các thẻ trong ngoặc vuông nội dòng bị xóa vì các hướng dẫn của CosyVoice áp dụng cho toàn bộ câu nói.
+CosyVoice 3 cũng sử dụng Đánh dấu tập lệnh `Thuần văn bản`. Nó ánh xạ các tham chiếu được hỗ trợ bản ghi sang nhân bản không có bản ghi, các tham chiếu không có bản ghi thành nhân bản đa ngôn ngữ và `voice_instructions` tới đường dẫn có điều kiện hướng dẫn của nó. Thẻ ngoặc nội tuyến bị xóa vì hướng dẫn CosyVoice áp dụng cho toàn bộ cách phát âm.
 
-## So sánh engine
+## So sánh động cơ
 
-Để xem các benchmark độ trễ thực nghiệm đối chiếu cạnh nhau, nghe phát mẫu âm thanh và ma trận tính năng chi tiết so sánh tất cả các engine được hỗ trợ, hãy xem [So sánh các engine TTS](/vi/self-hosting/local-endpoints/text-to-speech/comparison/).
+Để biết các điểm chuẩn về độ trễ theo kinh nghiệm song song, khả năng phát lại mẫu âm thanh và ma trận tính năng chi tiết so sánh tất cả các công cụ được hỗ trợ, hãy xem [So sánh công cụ TTS](/vi/self-hosting/local-endpoints/text-to-speech/comparison/).

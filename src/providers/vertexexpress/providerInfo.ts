@@ -12,6 +12,7 @@ export const vertexexpressProviderInfo: ProviderInfo = {
   supportsVideos: false,
   apiFamily: "google-genai",
   featureSupport: {
+    decisions: false,
     imageGeneration: "chat-completion",
     videoGeneration: "none",
     embeddings: false,

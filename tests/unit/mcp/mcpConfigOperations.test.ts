@@ -37,6 +37,53 @@ function dependencies(overrides: Partial<McpConfigOperationDependencies> = {}): 
 }
 
 describe("canonical MCP config operations", () => {
+  it("requires disabling the selected family before adding or enabling its replacement", async () => {
+    const selected = existingRow();
+    const alternative = { ...existingRow(2), name: "alternative", is_enabled: false };
+    let writes = 0;
+    let connections = 0;
+    const operations = new McpConfigOperations(
+      dependencies({
+        read: async () => ({ status: "fresh", configs: [selected, alternative] }),
+        insert: async () => {
+          writes++;
+          return alternative;
+        },
+        updateEnabled: async (_serverId, id, enabled) => {
+          writes++;
+          if (id === selected.guild_mcp_id) selected.is_enabled = enabled;
+          return true;
+        },
+        testConnection: async () => {
+          connections++;
+          return { success: true, toolCount: 1, functionNames: ["lookup_topics"] };
+        },
+      }),
+    );
+    expect(
+      (
+        await operations.add({
+          serverId: 10,
+          serverDiscId: "100",
+          name: "new-search",
+          url: "https://mcp.example.org/mcp",
+          serverType: "web_search",
+        })
+      ).status,
+    ).toBe("family-in-use");
+    expect(
+      (await operations.setEnabled({ serverId: 10, serverDiscId: "100", guildMcpId: 2, enabled: true })).status,
+    ).toBe("family-in-use");
+    expect(writes).toBe(0);
+    expect(connections).toBe(0);
+    expect(
+      (await operations.setEnabled({ serverId: 10, serverDiscId: "100", guildMcpId: 1, enabled: false })).status,
+    ).toBe("success");
+    expect(
+      (await operations.setEnabled({ serverId: 10, serverDiscId: "100", guildMcpId: 2, enabled: true })).status,
+    ).toBe("success");
+    expect(writes).toBe(2);
+  });
   it("ships the workspace capacity default at ten when no operator override is present", () => {
     if (process.env.MAX_MCP_SERVERS_PER_GUILD === undefined) expect(MAX_MCP_SERVERS_PER_WORKSPACE).toBe(10);
   });

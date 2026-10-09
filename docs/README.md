@@ -118,7 +118,7 @@ Code-level reference for deep-divers and plugin authors.
 
 Per-stage reference. Each folder has a `README.md` (overview + ASCII flow) and numbered stage files.
 
-- [`architecture/pipelines/chat/`](./en/architecture/pipelines/chat/README.md): message ingress → per-turn execution
+- [`architecture/pipelines/chat/`](./en/architecture/pipelines/chat/README.mdx): message ingress → per-turn execution
 - [`architecture/pipelines/context-build/`](./en/architecture/pipelines/context-build/README.md): preset routing + native context assembly
 - [`architecture/pipelines/tool-loop/`](./en/architecture/pipelines/tool-loop/README.md): tool-call dispatch loop
 - [`architecture/pipelines/provider/`](./en/architecture/pipelines/provider/README.md): stream adapter → chunk normalization → Discord delivery

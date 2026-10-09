@@ -12,6 +12,7 @@ export const anthropicProviderInfo: ProviderInfo = {
   supportsVideos: false,
   apiFamily: "anthropic",
   featureSupport: {
+    decisions: false,
     imageGeneration: "none",
     videoGeneration: "none",
     embeddings: false,

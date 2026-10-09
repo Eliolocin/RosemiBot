@@ -7,7 +7,7 @@ interface RecordedMetric {
   fields: Record<string, number | string>;
 }
 
-/** Captures the truncation metric, which is the only durable evidence production keeps of it. */
+/** The truncation metric is the only durable evidence production keeps of it. */
 function captureMetrics(): { metrics: RecordedMetric[]; restore(): void } {
   const metrics: RecordedMetric[] = [];
   const original = log.metric;

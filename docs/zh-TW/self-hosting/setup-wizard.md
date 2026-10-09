@@ -3,6 +3,7 @@ title: "設定精靈"
 sidebar:
   label: "設定精靈"
   order: 1
+aiGenerated: false
 ---
 
 :::note
@@ -38,7 +39,6 @@ bun run setup
 ## 事前要準備好的東西
 
 - [Bun](https://bun.sh/)，用來執行 bot 與精靈本身。
-- Node.js v20+（MCP 工具會用到）。
 - 一個 Discord bot 權杖，並已啟用 `GuildMembers`、`MessageContent` 與 `GuildPresences`
   特權意圖。
 - 一個資料庫。 TomoriBot 把所有東西都存在 PostgreSQL。你不需要手動設定，精靈會幫你處理：

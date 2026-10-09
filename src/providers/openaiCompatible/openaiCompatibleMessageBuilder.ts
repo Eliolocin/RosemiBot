@@ -263,8 +263,30 @@ export async function buildOpenAICompatibleMessages(
     }
   }
 
+  if (options.requiresReasoningContentReplay) {
+    stampCurrentTurnReasoningContent(messages);
+  }
+
   log.info(`${options.adapterName}: Assembled ${messages.length} messages`);
   return messages;
+}
+
+/**
+ * DeepSeek's thinking-mode backend treats every assistant message after the last user message as
+ * part of the current turn and 400s when one omits `reasoning_content`, whether or not it carries
+ * `tool_calls` or `prefix: true`. A trailing plain-text assistant turn (a continuation buffered in
+ * `currentTurnModelParts`, or a history that ends on Tomori's own message) has no captured
+ * reasoning, so the empty string is the only value available. Earlier turns are left alone
+ * because the backend ignores their reasoning.
+ */
+function stampCurrentTurnReasoningContent(messages: Array<Record<string, unknown>>): void {
+  const lastUserIndex = messages.findLastIndex((message) => message.role === "user");
+  for (let i = lastUserIndex + 1; i < messages.length; i++) {
+    const message = messages[i];
+    if (message.role === "assistant" && message.reasoning_content === undefined) {
+      message.reasoning_content = "";
+    }
+  }
 }
 
 export function logSanitizedOpenAICompatibleRequest(

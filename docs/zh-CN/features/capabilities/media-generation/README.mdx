@@ -8,21 +8,17 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-TomoriBot 可以直接在聊天里创作媒体：**图像、短视频和语音
-消息**。用大白话让她做就行（「给我画一个……」，「把那个用语音消息发出来」），或者
-用 `/generate` 系列指令。哪些功能可用取决于你配置的
-提供方；见[提供方与模型](/zh-CN/features/setup-administration/providers-and-models/)。
+TomoriBot可以直接在聊天中创建媒体：图像、短视频和语音消息。用简单的语言询问她（“给我画一个...”，“将其作为语音消息发送”）或使用`/generate`命令。哪些功能可用取决于你配置的提供商； 请参阅[提供商和型号](/zh-CN/features/setup-administration/providers-and-models/)。
 
 <CardGrid>
   <LinkCard title="图像生成" href="/zh-CN/features/capabilities/media-generation/image-generation/"
-    description="文生图与图生图，参考图可以来自附件、头像、贴纸和表情。" />
+    description="文本到图像和图像到图像，以及来自附件、头像、贴纸和表情符号的参考图像。" />
   <LinkCard title="视频生成" href="/zh-CN/features/capabilities/media-generation/video-generation/"
-    description="可自定义画面比例的短篇文生视频与图生视频。" />
-  <LinkCard title="语音：TTS 与 STT" href="/zh-CN/features/capabilities/media-generation/tts-and-stt/"
-    description="Discord 原生语音消息（文本转语音）与音频转写（语音转文字）。" />
+    description="具有可自定义宽高比的文本到视频和图像到视频的短剪辑。" />
+  <LinkCard title="语音：TTS & STT" href="/zh-CN/features/capabilities/media-generation/tts-and-stt/"
+    description="原生Discord语音消息（文本到语音）和音频转录（语音到文本）。" />
 </CardGrid>
 
 :::note
-并不是每个提供方都支持每项功能。本地生成（ComfyUI、本地语音
-服务器）在自部署实例上可用；见[自部署](/zh-CN/self-hosting/)。
+并非每个提供商都支持所有功能。本地生成（ComfyUI，本地语音服务器）可在自部署实例上使用； 请参阅[自部署](/zh-CN/self-hosting/)。
 :::

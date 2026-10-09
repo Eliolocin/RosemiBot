@@ -49,10 +49,11 @@ import type { ToolContext } from "../../types/tool/interfaces";
 import { generatePresetForProvider } from "@/providers/utils/providerFeatureExecutors";
 import { analyzeImageWithVisionModel } from "@/utils/provider/visionCaption";
 import { resolvePresetGenerationMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
-import { getOpenRouterTokenLimits, isOpenRouterCapabilityCacheReady } from "@/utils/cache/openrouterCapabilityCache";
-import { providerSupportsFeature, normalizeProviderName } from "@/utils/provider/providerInfoRegistry";
+import { resolveModelLimits } from "@/utils/provider/modelLimits";
+import { getProviderDisplayName, providerSupportsFeature } from "@/utils/provider/providerInfoRegistry";
 import { getEffectiveLlmModelName } from "@/utils/provider/modelDisplay";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 const MODAL_CUSTOM_ID = "preset_generate_modal";
 const CHARACTER_NAME_ID = "character_name";
@@ -66,19 +67,12 @@ function parsePersonaNameInput(input: string): string[] {
   return dedupeTriggerWords(input.split(/[,\u3001]/), { lowercase: false });
 }
 
-/**
- * Configure the 'generate' subcommand
- */
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand.setName("generate").setDescription(localizer("en-US", "commands.persona.generate.description"));
 
 /**
- * Format sample dialogues for preview display
- * @param dialoguesIn - Array of user input dialogues
- * @param dialoguesOut - Array of bot response dialogues
  * @param maxExamples - Maximum number of examples to show (default: 3)
  * @param maxLength - Maximum length per dialogue snippet (default: 100)
- * @returns Formatted dialogue preview string
  */
 function formatDialoguePreview(
   dialoguesIn: string[],
@@ -270,20 +264,6 @@ Report only what is visible. State when something is unclear, hidden, or out of 
 }
 
 /**
- * The model's own output ceiling, when the provider publishes one.
- *
- * OpenRouter is currently the only provider whose capability cache reports
- * `max_completion_tokens`; elsewhere the registry has no ceiling to offer, so the caller falls
- * back to the configured and env-derived budget alone.
- */
-function resolvePresetModelCeiling(providerName: string, modelCodename: string): number | undefined {
-  if (normalizeProviderName(providerName) !== "openrouter" || !isOpenRouterCapabilityCacheReady()) {
-    return undefined;
-  }
-  return getOpenRouterTokenLimits(modelCodename)?.maxCompletionTokens;
-}
-
-/**
  * What an uploaded image requires before generation can run.
  *
  * - `primary_with_image`: the primary model reads the image itself.
@@ -378,7 +358,7 @@ export async function execute(
         titleKey: "commands.persona.generate.wrong_provider_title",
         descriptionKey: "commands.persona.generate.wrong_provider_description",
         descriptionVars: {
-          current_provider: tomoriState.llm.llm_provider,
+          current_provider: getProviderDisplayName(tomoriState.llm.llm_provider),
         },
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
@@ -572,7 +552,7 @@ export async function execute(
       await modalSubmitInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "rate_limit.error_quota_exceeded_title"))
+            .setTitle(localizedStatusTitle(locale, "rate_limit.error_quota_exceeded_title", ColorCode.ERROR))
             .setDescription(
               localizer(locale, "rate_limit.error_quota_exceeded_description", {
                 reset_time: resetTime,
@@ -605,7 +585,7 @@ export async function execute(
       if (memCheck.status === "critical") {
         // Preserve modal inputs for user convenience
         const embed = new EmbedBuilder()
-          .setTitle(localizer(locale, "rate_limit.error_memory_critical_title"))
+          .setTitle(localizedStatusTitle(locale, "rate_limit.error_memory_critical_title", ColorCode.ERROR))
           .setDescription(localizer(locale, "rate_limit.error_memory_critical_description"))
           .setColor(ColorCode.ERROR);
 
@@ -643,7 +623,7 @@ export async function execute(
         await modalSubmitInteraction.editReply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(localizer(locale, "commands.persona.generate.invalid_image_title"))
+              .setTitle(localizedStatusTitle(locale, "commands.persona.generate.invalid_image_title", ColorCode.ERROR))
               .setDescription(localizer(locale, "commands.persona.generate.invalid_image_description"))
               .setColor(ColorCode.ERROR),
           ],
@@ -673,7 +653,7 @@ export async function execute(
           embeds: [
             new EmbedBuilder()
               .setTitle(
-                localizer(locale, errorKey, {
+                localizedStatusTitle(locale, errorKey, ColorCode.ERROR, {
                   max_size: PERSONA_LIMITS.MAX_AVATAR_SIZE_MB.toString(),
                 }),
               )
@@ -690,7 +670,9 @@ export async function execute(
         await modalSubmitInteraction.editReply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(localizer(locale, "commands.persona.generate.error_download_failed"))
+              .setTitle(
+                localizedStatusTitle(locale, "commands.persona.generate.error_download_failed", ColorCode.ERROR),
+              )
               .setColor(ColorCode.ERROR),
           ],
           files: [getInputAttachment()],
@@ -750,7 +732,9 @@ export async function execute(
         await modalSubmitInteraction.editReply({
           embeds: [
             new EmbedBuilder()
-              .setTitle(localizer(locale, "commands.persona.generate.image_vision_required_title"))
+              .setTitle(
+                localizedStatusTitle(locale, "commands.persona.generate.image_vision_required_title", ColorCode.ERROR),
+              )
               .setDescription(
                 localizer(locale, "commands.persona.generate.image_vision_required_description", {
                   model_name: effectiveModelName,
@@ -797,7 +781,13 @@ export async function execute(
       await modalSubmitInteraction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle(localizer(locale, "commands.persona.generate.web_search_tools_required_title"))
+            .setTitle(
+              localizedStatusTitle(
+                locale,
+                "commands.persona.generate.web_search_tools_required_title",
+                ColorCode.ERROR,
+              ),
+            )
             .setDescription(
               localizer(locale, "commands.persona.generate.web_search_tools_required_description", {
                 model_name: effectiveModelName,
@@ -891,7 +881,7 @@ export async function execute(
     // and passed down so every provider asks for the same budget.
     const presetMaxOutputTokens = resolvePresetGenerationMaxOutputTokens({
       configured: tomoriState.config.llm_max_output_tokens,
-      modelCeiling: resolvePresetModelCeiling(generationProviderName, tomoriState.llm.llm_codename),
+      modelCeiling: (await resolveModelLimits(generationTomoriState)).maxOutputTokens ?? undefined,
     });
 
     const genParams: GeneratePresetParams = {
@@ -1143,7 +1133,7 @@ export async function execute(
 
     try {
       const errorEmbed = new EmbedBuilder()
-        .setTitle(localizer(locale, "general.errors.unexpected_title"))
+        .setTitle(localizedStatusTitle(locale, "general.errors.unexpected_title", ColorCode.ERROR))
         .setDescription(
           localizer(locale, "general.errors.unexpected_description", {
             error: errorMessage,

@@ -55,6 +55,11 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
       "system_prompt",
       "context_note",
       "context_note_depth",
+      "response_prefill",
+      "response_reviewer_llm_id",
+      "response_decision_model_id",
+      "response_reviewer_prompt",
+      "response_rule_checker_ref",
       "llm_stop_strings",
       "llm_stop_speaker_pattern_enabled",
       "llm_max_output_tokens",
@@ -118,6 +123,7 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
       "user_blocking_enabled",
       "time_awareness_enabled",
       "tool_use_enabled",
+      "response_drafting_enabled",
       "short_term_memory_enabled",
       "user_info_updates_enabled",
     ],
@@ -125,7 +131,7 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
   },
   {
     table: "server_notice_embeds_configs",
-    reset: ["tool_notice_hidden_keys"],
+    reset: ["tool_notice_hidden_keys", "tool_notice_verbosity"],
     preserved: [],
   },
   {
@@ -320,9 +326,14 @@ class ResetRepository {
           timezone_offset = DEFAULT,
           self_debug_enabled = DEFAULT,
           model_randomizer_enabled = DEFAULT,
+          response_reviewer_llm_id = DEFAULT,
+          response_decision_model_id = DEFAULT,
+          response_reviewer_prompt = DEFAULT,
+          response_rule_checker_ref = DEFAULT,
           system_prompt = DEFAULT,
           context_note = DEFAULT,
           context_note_depth = DEFAULT,
+          response_prefill = DEFAULT,
           llm_stop_strings = DEFAULT,
           llm_stop_speaker_pattern_enabled = DEFAULT,
           llm_max_output_tokens = DEFAULT,
@@ -376,6 +387,7 @@ class ResetRepository {
           user_blocking_enabled = DEFAULT,
           time_awareness_enabled = DEFAULT,
           tool_use_enabled = DEFAULT,
+          response_drafting_enabled = DEFAULT,
           short_term_memory_enabled = DEFAULT,
           user_info_updates_enabled = DEFAULT,
           updated_at = NOW()
@@ -385,6 +397,7 @@ class ResetRepository {
         INSERT INTO server_notice_embeds_configs (server_id) VALUES (${serverId})
         ON CONFLICT (server_id) DO UPDATE SET
           tool_notice_hidden_keys = DEFAULT,
+          tool_notice_verbosity = DEFAULT,
           updated_at = NOW()
       `;
 

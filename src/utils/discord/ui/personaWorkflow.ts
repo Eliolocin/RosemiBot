@@ -916,10 +916,20 @@ async function openModalWithBridge(
 
   const prefix = `persona_workflow_${initialButton.id}_${Date.now().toString(36)}`;
   let rangePage = 0;
+  const renderSelector = () =>
+    buildRangeSelectorPayload(
+      locale,
+      prefix,
+      optionCount,
+      rangePage,
+      MODAL_OPTIONS_PER_PAGE,
+      "general.pagination.select_persona_title",
+      "general.pagination.select_persona_page_description",
+    );
   if (modalButton === initialButton && !controller.hasAcknowledged(initialButton)) {
-    await controller.replaceFrom(initialButton, buildRangeSelectorPayload(locale, prefix, optionCount, rangePage));
+    await controller.replaceFrom(initialButton, renderSelector());
   } else {
-    await controller.replace(buildRangeSelectorPayload(locale, prefix, optionCount, rangePage));
+    await controller.replace(renderSelector());
   }
 
   while (true) {
@@ -955,13 +965,13 @@ async function openModalWithBridge(
     }
     if (rangeButton.customId === `${prefix}_previous`) {
       rangePage = Math.max(0, rangePage - 1);
-      await controller.replaceFrom(rangeButton, buildRangeSelectorPayload(locale, prefix, optionCount, rangePage));
+      await controller.replaceFrom(rangeButton, renderSelector());
       continue;
     }
     if (rangeButton.customId === `${prefix}_next`) {
       const totalRangePages = Math.ceil(Math.ceil(optionCount / MODAL_OPTIONS_PER_PAGE) / RANGES_PER_SELECTOR_PAGE);
       rangePage = Math.min(totalRangePages - 1, rangePage + 1);
-      await controller.replaceFrom(rangeButton, buildRangeSelectorPayload(locale, prefix, optionCount, rangePage));
+      await controller.replaceFrom(rangeButton, renderSelector());
       continue;
     }
 

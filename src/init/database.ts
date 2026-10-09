@@ -110,6 +110,7 @@ type PresetArtPhase = "total" | "sprites" | "avatars" | "fanout";
 type PresetArtPhaseStatus = "started" | "completed" | "failed";
 
 function recordPresetArtPhase(phase: PresetArtPhase, status: PresetArtPhaseStatus, durationMs?: number): void {
+  if (process.env.RUN_ENV !== "production") return;
   const memory = collectProcessMemorySnapshot();
   log.metric("preset_art_phase", {
     phase,

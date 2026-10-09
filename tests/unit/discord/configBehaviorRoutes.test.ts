@@ -34,6 +34,8 @@ import {
   BEHAVIOR_COOLDOWN_TYPE_FIELD,
   BEHAVIOR_FETCH_LIMIT_FIELD,
   BEHAVIOR_HUMANIZER_FIELD,
+  BEHAVIOR_PRESET_BUILT_IN,
+  BEHAVIOR_PRESET_FIELD,
   BEHAVIOR_RANDOM_CHANNEL_FIELD,
   BEHAVIOR_RANDOM_PERSONA_FIELD,
   BEHAVIOR_RANDOM_PROMPT_FIELD,
@@ -168,6 +170,9 @@ function makeHarness(inGuild = true): Harness {
       },
       loadBehaviorView: async (current) => ({
         general: {
+          responsePrefill: null,
+          prefillBlocker: null,
+          prefillModelName: "gemini-2.5-flash",
           systemPrompt: current.config.system_prompt ?? null,
           contextNote: current.config.context_note ?? null,
           contextNoteDepth: current.config.context_note_depth ?? 0,
@@ -307,6 +312,11 @@ const D9_WIRE_CONTRACT: ReadonlyArray<readonly [string, Parameters<typeof buildC
     { action: "behavior-preset-submit", locale: "en-US", nonce: "nonce1234567" },
   ],
   ["config:v2:beh-prompt-remove:en-US", { action: "behavior-prompt-remove", locale: "en-US" }],
+  ["config:v2:beh-prefill-open:en-US", { action: "behavior-prefill-open", locale: "en-US" }],
+  [
+    "config:v2:beh-prefill-sub:en-US:nonce1234567",
+    { action: "behavior-prefill-submit", locale: "en-US", nonce: "nonce1234567" },
+  ],
   ["config:v2:beh-context-open:en-US", { action: "behavior-context-open", locale: "en-US" }],
   [
     "config:v2:beh-context-sub:en-US:nonce1234567",
@@ -407,6 +417,34 @@ describe("config Behavior routes", () => {
     }
   });
 
+  it("writes Automatic STM Summarization to the capabilities table and repaints Memory", async () => {
+    const events: string[] = [];
+    const update = spyOn(configRepository, "updateCapabilitiesConfig").mockImplementation(async (_serverId, patch) => {
+      events.push("write");
+      expect(patch).toEqual({ short_term_memory_enabled: false });
+      return true;
+    });
+    const invalidate = spyOn(tomoriStateCache, "invalidateTomoriStateCache").mockImplementation(() => {
+      events.push("invalidate");
+    });
+    try {
+      const harness = makeHarness();
+      const interaction = makeInteraction(
+        harness,
+        buildConfigRouteId({ action: "behavior-stm-enabled-set", locale: "en-US", enabled: false }),
+      );
+
+      await dispatch(harness, interaction);
+
+      expect(events).toEqual(["write", "invalidate"]);
+      expect(harness.telemetry).toEqual(["server-config.workspace.capabilities.set"]);
+      expect(JSON.stringify(harness.edits.at(-1))).toContain("behavior:memory");
+    } finally {
+      update.mockRestore();
+      invalidate.mockRestore();
+    }
+  });
+
   it("round-trips the literal D9 custom-ID wire contract", () => {
     for (const [customId, expected] of D9_WIRE_CONTRACT) {
       const parsed = parseInteractionRoute(customId);
@@ -424,6 +462,8 @@ describe("config Behavior routes", () => {
       "behavior-preset-open": { wireToken: "beh-preset-open", fields: [] },
       "behavior-preset-submit": { wireToken: "beh-preset-sub", fields: ["nonce"] },
       "behavior-prompt-remove": { wireToken: "beh-prompt-remove", fields: [] },
+      "behavior-prefill-open": { wireToken: "beh-prefill-open", fields: [] },
+      "behavior-prefill-submit": { wireToken: "beh-prefill-sub", fields: ["nonce"] },
       "behavior-context-open": { wireToken: "beh-context-open", fields: [] },
       "behavior-context-submit": { wireToken: "beh-context-sub", fields: ["nonce"] },
       "behavior-humanizer-open": { wireToken: "beh-humanizer-open", fields: [] },
@@ -458,9 +498,11 @@ describe("config Behavior routes", () => {
       "behavior-self-debug-set": { wireToken: "beh-self-debug-set", fields: ["enabled"] },
       "behavior-notice-visibility-open": { wireToken: "beh-notices-open", fields: [] },
       "behavior-notice-visibility-submit": { wireToken: "beh-notices-sub", fields: ["nonce"] },
+      "behavior-notice-verbosity-set": { wireToken: "beh-notice-verbosity-set", fields: ["verbosity"] },
       "behavior-speech-transcripts-set": { wireToken: "beh-transcripts-set", fields: ["enabled"] },
       "behavior-memory-tagging-open": { wireToken: "beh-memory-tag-open", fields: [] },
       "behavior-memory-tagging-submit": { wireToken: "beh-memory-tag-sub", fields: ["nonce"] },
+      "behavior-stm-enabled-set": { wireToken: "beh-stm-enabled-set", fields: ["enabled"] },
       "behavior-stm-parameters-open": { wireToken: "beh-stm-params-open", fields: [] },
       "behavior-stm-parameters-submit": { wireToken: "beh-stm-params-sub", fields: ["nonce"] },
       "behavior-stm-categories-open": { wireToken: "beh-stm-categories-open", fields: [] },
@@ -682,6 +724,80 @@ describe("config Behavior routes", () => {
     update.mockRestore();
   });
 
+  it("opens the preset modal with the built-in default first even when the catalog is empty", async () => {
+    const harness = makeHarness();
+    const presets = spyOn(configRepository, "loadSystemPromptPresets").mockResolvedValue([]);
+    try {
+      await dispatch(
+        harness,
+        makeInteraction(harness, buildConfigRouteId({ action: "behavior-preset-open", locale: "en-US" })),
+      );
+
+      expect(harness.modals).toHaveLength(1);
+      const select = (harness.modals[0] as { components: Array<{ component: { options: Array<{ value: string }> } }> })
+        .components[0]?.component;
+      expect(select?.options.map((option) => option.value)).toEqual([BEHAVIOR_PRESET_BUILT_IN]);
+    } finally {
+      presets.mockRestore();
+    }
+  });
+
+  it("clears the custom prompt to NULL when the built-in default is chosen", async () => {
+    const harness = makeHarness();
+    const events: string[] = [];
+    const update = spyOn(configRepository, "updateChatConfig").mockImplementation(async (_serverId, patch) => {
+      events.push("write");
+      expect(patch).toEqual({ system_prompt: null });
+      return true;
+    });
+    const invalidate = spyOn(tomoriStateCache, "invalidateTomoriStateCache").mockImplementation(() => {
+      events.push("invalidate");
+    });
+    const presets = spyOn(configRepository, "loadSystemPromptPresets").mockResolvedValue([]);
+    const field = buildConfigModalFieldId(BEHAVIOR_PRESET_FIELD, "nonce1234567");
+    try {
+      await dispatch(
+        harness,
+        makeInteraction(
+          harness,
+          buildConfigRouteId({ action: "behavior-preset-submit", locale: "en-US", nonce: "nonce1234567" }),
+          { kind: "modal", selectValues: { [field]: BEHAVIOR_PRESET_BUILT_IN } },
+        ),
+      );
+
+      expect(events).toEqual(["write", "invalidate"]);
+      expect(harness.telemetry).toEqual(["server-config.workspace.system-prompt.remove"]);
+    } finally {
+      update.mockRestore();
+      invalidate.mockRestore();
+      presets.mockRestore();
+    }
+  });
+
+  it("does not write when the built-in default is chosen and no custom prompt is set", async () => {
+    const harness = makeHarness();
+    (harness.scope.personas[0] as TomoriState).config.system_prompt = null;
+    const update = spyOn(configRepository, "updateChatConfig").mockResolvedValue(true);
+    const presets = spyOn(configRepository, "loadSystemPromptPresets").mockResolvedValue([]);
+    const field = buildConfigModalFieldId(BEHAVIOR_PRESET_FIELD, "nonce1234567");
+    try {
+      await dispatch(
+        harness,
+        makeInteraction(
+          harness,
+          buildConfigRouteId({ action: "behavior-preset-submit", locale: "en-US", nonce: "nonce1234567" }),
+          { kind: "modal", selectValues: { [field]: BEHAVIOR_PRESET_BUILT_IN } },
+        ),
+      );
+
+      expect(update).not.toHaveBeenCalled();
+      expect(harness.telemetry).toEqual([]);
+    } finally {
+      update.mockRestore();
+      presets.mockRestore();
+    }
+  });
+
   it("rejects a humanizer submission whose value is missing from the store", async () => {
     const harness = makeHarness(false);
     const update = spyOn(configRepository, "updateChatConfig").mockResolvedValue(true);
@@ -867,6 +983,32 @@ describe("config Behavior routes", () => {
     update.mockRestore();
   });
 
+  it("writes a Notice Verbosity change and skips the write when it is already selected", async () => {
+    const harness = makeHarness(true);
+    const state = harness.scope.personas[0];
+    if (!state) throw new Error("Test harness has no persona");
+    state.config.tool_notice_verbosity = "minimal";
+    const update = spyOn(configRepository, "updateNoticeEmbedsConfig").mockResolvedValue(true);
+    await dispatch(
+      harness,
+      makeInteraction(
+        harness,
+        buildConfigRouteId({ action: "behavior-notice-verbosity-set", locale: "en-US", verbosity: "verbose" }),
+      ),
+    );
+    await dispatch(
+      harness,
+      makeInteraction(
+        harness,
+        buildConfigRouteId({ action: "behavior-notice-verbosity-set", locale: "en-US", verbosity: "minimal" }),
+      ),
+    );
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0]?.[1]).toEqual({ tool_notice_verbosity: "verbose" });
+    expect(harness.telemetry).toEqual(["server-config.workspace.notice-verbosity.set"]);
+    update.mockRestore();
+  });
+
   it("discloses active STM scopes before the category write and clears only those cache records", async () => {
     const harness = makeHarness(true);
     const nonce = "nonce1234567";
@@ -1000,6 +1142,9 @@ describe("config Behavior routes", () => {
     const deleteTrigger = spyOn(serverScheduleRepository, "deleteTrigger").mockResolvedValue(true);
     harness.dependencies.loadBehaviorView = async (current) => ({
       general: {
+        responsePrefill: null,
+        prefillBlocker: null,
+        prefillModelName: "gemini-2.5-flash",
         systemPrompt: current.config.system_prompt ?? null,
         contextNote: current.config.context_note ?? null,
         contextNoteDepth: current.config.context_note_depth ?? 0,
@@ -1099,6 +1244,9 @@ describe("config Behavior routes", () => {
     const triggers = Array.from({ length: 51 }, (_entry, index) => ({ ...first, trigger_id: index + 1 }));
     harness.dependencies.loadBehaviorView = async (current) => ({
       general: {
+        responsePrefill: null,
+        prefillBlocker: null,
+        prefillModelName: "gemini-2.5-flash",
         systemPrompt: current.config.system_prompt ?? null,
         contextNote: current.config.context_note ?? null,
         contextNoteDepth: current.config.context_note_depth ?? 0,
@@ -1135,6 +1283,9 @@ describe("config Behavior routes", () => {
       const triggers = Array.from({ length: scheduleCount }, (_entry, index) => ({ ...first, trigger_id: index + 1 }));
       harness.dependencies.loadBehaviorView = async (current) => ({
         general: {
+          responsePrefill: null,
+          prefillBlocker: null,
+          prefillModelName: "gemini-2.5-flash",
           systemPrompt: current.config.system_prompt ?? null,
           contextNote: current.config.context_note ?? null,
           contextNoteDepth: current.config.context_note_depth ?? 0,
@@ -1181,6 +1332,9 @@ describe("config Behavior routes", () => {
     const triggers = Array.from({ length: 51 }, (_entry, index) => ({ ...first, trigger_id: index + 1 }));
     harness.dependencies.loadBehaviorView = async (current) => ({
       general: {
+        responsePrefill: null,
+        prefillBlocker: null,
+        prefillModelName: "gemini-2.5-flash",
         systemPrompt: current.config.system_prompt ?? null,
         contextNote: current.config.context_note ?? null,
         contextNoteDepth: current.config.context_note_depth ?? 0,
@@ -1217,6 +1371,9 @@ describe("config Behavior routes", () => {
     const triggers = Array.from({ length: 51 }, (_entry, index) => ({ ...first, trigger_id: index + 1 }));
     harness.dependencies.loadBehaviorView = async (current) => ({
       general: {
+        responsePrefill: null,
+        prefillBlocker: null,
+        prefillModelName: "gemini-2.5-flash",
         systemPrompt: current.config.system_prompt ?? null,
         contextNote: current.config.context_note ?? null,
         contextNoteDepth: current.config.context_note_depth ?? 0,
@@ -1251,6 +1408,9 @@ describe("config Behavior routes", () => {
     const triggers = Array.from({ length: 1300 }, (_entry, index) => ({ ...first, trigger_id: index + 1 }));
     harness.dependencies.loadBehaviorView = async (current) => ({
       general: {
+        responsePrefill: null,
+        prefillBlocker: null,
+        prefillModelName: "gemini-2.5-flash",
         systemPrompt: current.config.system_prompt ?? null,
         contextNote: current.config.context_note ?? null,
         contextNoteDepth: current.config.context_note_depth ?? 0,
@@ -1296,6 +1456,9 @@ describe("config Behavior routes", () => {
     const triggers = Array.from({ length: 1300 }, (_entry, index) => ({ ...first, trigger_id: index + 1 }));
     harness.dependencies.loadBehaviorView = async (current) => ({
       general: {
+        responsePrefill: null,
+        prefillBlocker: null,
+        prefillModelName: "gemini-2.5-flash",
         systemPrompt: current.config.system_prompt ?? null,
         contextNote: current.config.context_note ?? null,
         contextNoteDepth: current.config.context_note_depth ?? 0,

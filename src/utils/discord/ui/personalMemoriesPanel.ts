@@ -116,6 +116,7 @@ export interface PersonalMemoriesPanelRenderInput {
   personas: TomoriState[];
   memoryCountsByLineage?: ReadonlyMap<number, number>;
   selectedPersonaAvatarUrl?: string | null;
+  userAvatarUrl?: string | null;
   memories: PersonalMemoryRow[];
   stmCount: number;
   privacyLevel: PrivacyLevel;
@@ -417,12 +418,17 @@ ${localizer(locale, "commands.personal.memories.remove_confirm_description", {
   }
 
   if (category === "global") {
-    components.push({
-      type: ComponentType.TextDisplay,
-      content: `### ${localizer(locale, "commands.personal.memories.global_title")}
+    components.push(
+      buildOptionalThumbnailSection(
+        {
+          type: ComponentType.TextDisplay,
+          content: `### ${localizer(locale, "commands.personal.memories.global_title")}
 ${localizer(locale, "commands.personal.memories.global_description")}
 ${localizer(locale, "commands.personal.memories.selector_guidance")}`,
-    });
+        },
+        input.userAvatarUrl,
+      ),
+    );
 
     if (isPrivacyFull) {
       components.push({

@@ -34,6 +34,7 @@ export type PersonalStatusIdentity = Pick<
 
 export interface StatusViewerInteraction {
   user: { id: string };
+  memberPermissions?: { has(permission: "ManageGuild"): boolean } | null;
 }
 
 export async function buildPersonalStatusPages(

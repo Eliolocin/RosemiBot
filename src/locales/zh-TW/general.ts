@@ -53,6 +53,7 @@ export default {
       select_page_title: `選擇頁面`,
       select_page_description: `從 {totalPages} 頁、共 {totalItems} 個項目中選擇要查看的頁面：`,
       select_persona_title: `選擇人格`,
+      select_persona_page_description: `從 {totalPages} 頁、共 {totalItems} 個人格中選擇要查看的頁面：`,
       persona_no_attributes: `還沒有設定任何屬性。`,
       persona_select_button: `選取`,
     },

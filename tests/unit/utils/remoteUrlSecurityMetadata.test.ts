@@ -49,6 +49,25 @@ describe("validateRemoteUrl cloud-metadata denylist", () => {
     expect(metadataResult.valid).toBe(false);
   });
 
+  it("blocks every documented metadata address under the private-network opt-in", async () => {
+    process.env[RUN_ENV_NAME] = "production";
+    const metadataUrls = [
+      "https://169.254.169.254/",
+      "https://[fd00:ec2::254]/",
+      "https://[fd20:ce::254]/computeMetadata/v1/",
+      "https://100.100.100.200/latest/meta-data/",
+    ];
+
+    const admitted: string[] = [];
+    for (const url of metadataUrls) {
+      if ((await validateRemoteUrl(url, { allowPrivateNetwork: true })).valid) admitted.push(url);
+    }
+
+    expect(admitted).toEqual([]);
+    // Only the exact Alibaba address is metadata; the surrounding carrier-grade NAT range stays usable.
+    expect((await validateRemoteUrl("https://100.100.100.100/", { allowPrivateNetwork: true })).valid).toBe(true);
+  });
+
   it("still enforces the full blocklist in production without an opt-in", async () => {
     process.env[RUN_ENV_NAME] = "production";
 

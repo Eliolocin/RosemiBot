@@ -1,7 +1,7 @@
 ---
 title: Términos de servicio
 description: Los términos que rigen el uso de la instancia oficial alojada de TomoriBot.
-aiGenerated: true
+aiGenerated: false
 ---
 
 Aviso de traducción: Esta traducción se proporciona para tu comodidad. La versión en inglés controla en caso de conflicto.

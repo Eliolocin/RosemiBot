@@ -4,12 +4,10 @@ sidebar:
   order: 3
 ---
 
-O Docker Compose compila e executa o TomoriBot e também o PostgreSQL como contêineres. Este é o terceiro caminho de instalação ao lado do [assistente de configuração](/pt-BR/self-hosting/setup-wizard/) e da [configuração manual](/pt-BR/self-hosting/manual-setup/): escolha-o se você preferir rodar tudo no Docker em vez de instalar o Bun e o PostgreSQL no host. Ele não usa o assistente de configuração; a conexão com o banco de dados é configurada automaticamente para você.
+Docker Compose executa TomoriBot e PostgreSQL juntos em contêineres. É a terceira opção de instalação junto com o [assistente de configuração](/pt-BR/self-hosting/setup-wizard/) e [configuração manual](/pt-BR/self-hosting/manual-setup/): escolha-a quando quiser executar tudo no Docker sem instalar Bun ou PostgreSQL em seu sistema host. Ele ignora o assistente de configuração interativo e configura a conexão com o banco de dados automaticamente.
 
-:::caution[Ferramentas do host para atualizações]
-`bun run update --docker` precisa de Bun e Git no host para atualizar o código. O backup do banco
-de dados é executado na imagem do aplicativo. Backup e restauração manuais também podem ser
-executados pelo Compose. Consulte [Manutenção e backups](/pt-BR/self-hosting/maintenance/).
+:::caution[Host tools for updates]
+`bun run update --docker` precisa do host Bun e Git para obter alterações de código. Seu backup de banco de dados é executado dentro do contêiner do aplicativo. Você também pode executar backups e restaurações manuais por meio do Compose; consulte [Manutenção e backups](/pt-BR/self-hosting/maintenance/).
 :::
 
 ## 1. Obtenha o código
@@ -21,36 +19,33 @@ cd TomoriBot
 
 ## 2. Valores `.env` obrigatórios
 
-Comece a partir do arquivo de exemplo:
+Comece pelo arquivo de exemplo:
 
 ```sh
 cp .env.example .env
 ```
 
-Em seguida, defina no mínimo:
+Defina estas variáveis obrigatórias em `.env`:
 
 | Variável | Valor |
 |---|---|
-| `DISCORD_TOKEN` | O token do seu bot do Discord (habilite as intents privilegiadas `GuildMembers`, `MessageContent` e `GuildPresences`). |
-| `CRYPTO_SECRET` | Uma chave de criptografia de 32 caracteres usada para criptografar as chaves de API armazenadas. |
+| `DISCORD_TOKEN` | Seu token de bot Discord (habilite as intenções privilegiadas `GuildMembers`, `MessageContent` e `GuildPresences`). |
+| `CRYPTO_SECRET` | Uma chave de criptografia de 32 caracteres usada para criptografar chaves API armazenadas. |
 | `POSTGRES_PASSWORD` | A senha do banco de dados. Todos os outros valores `POSTGRES_*` são configurados automaticamente. |
 
-Gere um valor aleatório de 32 caracteres para `CRYPTO_SECRET` com o Docker e copie-o para `.env`:
+Gere um valor aleatório de 32 caracteres para `CRYPTO_SECRET` usando Docker e copie-o para `.env`:
 
 ```sh
 docker run --rm alpine:3.22 sh -c "head -c 24 /dev/urandom | base64"
 ```
 
-Gere outro valor para `POSTGRES_PASSWORD`. Você pode copiar configurações opcionais de
-`.env.optional.example`.
+Gere uma senha separada para `POSTGRES_PASSWORD`. Você pode copiar configurações de ajuste opcionais do `.env.optional.example`.
 
-:::note[A conexão com o banco de dados é automática]
-O serviço PostgreSQL do Compose é executado em modo de desenvolvimento (sem SSL) na rede interna do Docker, e a imagem empacotada já possui o `pgvector` e o `pg_cron` configurados, de modo que a memória baseada em documentos/RAG e a limpeza agendada funcionam de fábrica. Não defina `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER` ou `POSTGRES_DB` no Compose; eles são gerenciados para você.
+:::note[Database connection is automatic]
+O serviço Compose PostgreSQL é executado em modo de desenvolvimento (sem SSL) em uma rede interna Docker. A imagem incluída inclui `pgvector` e `pg_cron`, para que a memória de documentos, a pesquisa de vetores e a limpeza programada funcionem imediatamente. Não defina `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER` ou `POSTGRES_DB` em `.env`; O Compose os configura automaticamente.
 :::
 
-No Linux, crie os diretórios do host e atribua a propriedade ao usuário do contêiner (UID 1001)
-antes da primeira inicialização. O Docker cria diretórios ausentes como root; nesse caso, o bot não
-consegue gravar backups, logs ou arquivos enviados.
+No Linux, crie os diretórios bind-mount no host e atribua propriedade ao UID 1001 antes de iniciar os contêineres. Docker cria pontos de montagem ausentes como raiz, o que impede que o contêiner do bot salve backups, logs ou uploads:
 
 ```sh
 mkdir -p backups logs data
@@ -60,33 +55,27 @@ sudo chown 1001:1001 backups logs data
 ## 3. Compilar e executar
 
 ```sh
-docker compose build   # primeira vez, ou após alterações de código/dependências
-docker compose up      # bot + banco de dados
+docker compose build   # first time, or after code/dependency changes
+docker compose up      # bot + database
 ```
 
-Para inicializações posteriores, apenas `docker compose up` é suficiente, a menos que você tenha alterado código ou dependências. Quando o bot estiver online, execute `/setup` no Discord para adicionar a chave da API do seu provedor de IA: veja o [Início Rápido](/pt-BR/introduction/quickstart/) para a parte do Discord.
+Para inícios posteriores, apenas `docker compose up` é suficiente, a menos que você altere o código ou as dependências. Assim que o bot se conectar ao Discord, execute `/setup` em qualquer canal do servidor para adicionar sua chave de provedor de IA. Consulte o [Início rápido](/pt-BR/introduction/quickstart/) para opções de configuração em Discord.
 
-O Compose usa `RUN_ENV=development` para aceitar segredos de `.env` e endpoints HTTP locais. A
-verificação de saúde do aplicativo informa se o processo está em execução; ela não testa a conexão
-com o Discord. `RUN_ENV=production` carrega segredos de um gerenciador ou arquivo JSON montado,
-exige HTTPS e restringe URLs de redes privadas. Também altera o registro de comandos e ativa o
-servidor HTTP de saúde e o coletor de métricas. O Compose fixa o modo de desenvolvimento.
+Componha os pinos `RUN_ENV=development` em sua definição de serviço para que os segredos `.env` e os terminais HTTP locais funcionem. A verificação de integridade do contêiner informa se o processo do bot está em execução; ele não testa a conectividade do gateway Discord. Para diferenças no modo de produção (`RUN_ENV=production`) (gerenciadores secretos, restrições de rede e métricas), consulte [Arquitetura de segurança](/en/architecture/subsystems/security/).
 
 ## 4. Servidores locais opcionais (Perfis do Compose)
 
-Os servidores locais são opcionais (opt-in) por meio dos perfis do Compose, para que você execute apenas o que precisar:
+Execute servidores auxiliares locais opcionais com perfis do Compose para iniciar apenas o que precisa:
 
 ```sh
-# SearXNG (busca web privada) + Crawl4AI (busca renderizada por navegador)
+# SearXNG (private web search) + Crawl4AI (browser-rendered fetch)
 docker compose --profile searxng --profile fetch-crawl4ai up
 ```
 
-Defina `SEARXNG_BASE_URL=http://searxng:8080/` em `.env` ao ativar o perfil SearXNG. Deixe a
-variável vazia nos outros casos. Defina `SEARXNG_SECRET` com outro valor aleatório para a chave de
-assinatura do SearXNG.
+Ao ativar SearXNG, defina `SEARXNG_BASE_URL=http://searxng:8080/` em `.env`. Caso contrário, deixe-o sem definição. Defina `SEARXNG_SECRET` com um valor aleatório separado para assinatura de solicitação SearXNG.
 
-Consulte [SearXNG](/pt-BR/self-hosting/local-endpoints/setup-searxng/), [Crawl4AI](/pt-BR/self-hosting/local-endpoints/setup-crawl4ai/) e [Monitoramento Local](/pt-BR/self-hosting/local-monitoring/) para obter detalhes de cada servidor.
+Consulte [SearXNG](/pt-BR/self-hosting/local-endpoints/setup-searxng/), [Crawl4AI](/pt-BR/self-hosting/local-endpoints/setup-crawl4ai/) e [Monitoramento local](/pt-BR/self-hosting/local-monitoring/) para configuração específica do servidor.
 
 ## Manutenção, atualização e backups
 
-Use `bun run update --docker` para o procedimento de atualização (com backup prévio) em uma implantação usando Compose. O backup e a restauração do banco de dados do Compose (incluindo a execução de scripts do host contra ele) são abordados na página de [Manutenção e Backups](/pt-BR/self-hosting/maintenance/). Antes de baixar uma nova versão, comece com a [Migração Segura](/pt-BR/self-hosting/safe-migration/).
+Use `bun run update --docker` para atualizações de backup inicial em implantações do Compose. Para fazer backup ou restaurar seu banco de dados Compose, consulte [Manutenção e backups](/pt-BR/self-hosting/maintenance/). Antes de obter uma nova versão, revise [Migração segura](/pt-BR/self-hosting/safe-migration/).

@@ -4,153 +4,104 @@ sidebar:
   order: 3
 ---
 
-TomoriBot se puede configurar específicamente para ti con los comandos `/personal`: ajustes
-que te siguen en todos los servidores que compartes con ella, independientes de la
-configuración de cualquier servidor.
+TomoriBot puede recordar datos personales, nombres personalizados y credenciales de proveedores de IA que lo siguen en cada servidor que comparte con ella. Puede administrar estas configuraciones con los comandos `/personal` sin alterar la configuración compartida de ningún servidor.
 
 ## Memorias personales
 
-Los datos que recuerda sobre ti te siguen entre servidores. Gestionarlos (añadir, eliminar,
-exportar) se explica en la página de [Memoria](/es-419/features/knowledge/memory/#personal-vs-server-memories).
+Los datos que ella aprende o recuerda sobre ti te siguen entre servidores. Administrarlos (agregar, eliminar, exportar o borrar contexto) se trata en la página [Memoria](/es-419/features/knowledge/memory/#personal-vs-server-memories).
 
 ## Perfil y nombres conscientes de la persona
 
-`/personal config` almacena tres preferencias independientes y opcionales: identidad de género,
-pronombres y estilo de trato. TomoriBot nunca infiere una a partir de otra. El estilo de trato
-selecciona la variante de nombre masculina, femenina o neutra de una persona, y Neutro es el
-valor predeterminado preseleccionado. Los campos en blanco se limpian y se omiten del contexto
-del prompt. Los campos de perfil sin procesar solo se exponen con privacidad `Ninguno`.
+Configura cómo TomoriBot se dirige y se refiere a usted en todos los servidores en `/personal config` > `Perfil`.
 
-`/personal config` abre un modal de nombres para el alcance global o el de persona. Una
-preferencia con alcance de persona sigue el linaje estable de esa persona entre servidores. Los
-apodos heredan de la preferencia de persona a la preferencia global y luego al nombre de
-visualización en vivo de Discord. Un apodo global en blanco sigue mostrando el de Discord,
-incluidos cambios posteriores del nombre de visualización. Guardar un apodo global fija ese
-valor personalizado hasta que se elimine. Un prefijo o sufijo en blanco hereda de la misma
-manera, y el texto escrito lo reemplaza, así que `Master Mirri-san` puede combinar valores de
-distintos niveles sin cambiar el objetivo de mención subyacente de Discord. Para quitar un
-título que una persona añade por su cuenta, pídeselo directamente a la persona ("deja de
-llamarme Master"); eso lo suprime para esa persona sin afectar a tus otras personas.
+### Detalles del perfil
 
-Los administradores del servidor pueden configurar valores predeterminados de persona con
-`/config` > Persona > Identidad y personalidad. Un término de trato independiente como `fam` es
-distinto del nombre formateado y solo está disponible para el texto de prompt escrito por la
-persona. La capacidad de Actualizaciones de información del usuario, activada por defecto,
-permite que una persona aplique cambios estructurados explícitos solicitados en la conversación.
-Desactivarla detiene las actualizaciones automáticas por herramienta pero no desactiva
-`/personal config`.
+En `/personal config` > `Perfil` > Preferencias generales, la sección **Acerca de usted** almacena tres preferencias opcionales e independientes:
 
-`/personal config` solo almacena un desfase UTC numérico de -12 a +14. No almacena ni infiere
-una ubicación geográfica o una zona horaria IANA.
+- **Identidad de género**: tu descripción de género.
+- **Pronombres**: tus pronombres preferidos.
+- **Estilo de dirección**: elige la variante de nombre masculino, femenino o neutral de una persona. Neutral es el valor predeterminado.
+
+TomoriBot nunca infiere un campo de otro. Los campos en blanco se borran y se omiten en el contexto del mensaje. Los campos de perfil sin procesar están expuestos a la IA solo cuando su nivel de privacidad está establecido en `Ninguno`.
+
+La sección **Interfaz** le permite configurar su desplazamiento numérico UTC (-12 a +14) o hacer coincidir el valor predeterminado del servidor. TomoriBot almacena solo este desplazamiento numérico, nunca una ubicación geográfica o zona horaria de IANA.
+
+### Herencia de nombres
+
+En `/personal config` > `Perfil` > Preferencias generales o Preferencias específicas de persona, puede establecer un apodo, prefijo o sufijo:
+
+- **Alcance global**: se aplica a todas las personas a menos que se anule.
+- **Ámbito de persona**: se aplica solo a un linaje de persona específico en todos los servidores.
+
+Los nombres se resuelven del más específico al menos específico:
+
+1. **Preferencia de persona**: apodo personalizado establecido para esa persona.
+2. **Preferencia global**: apodo personalizado establecido para todas las personas.
+3. **Discord nombre para mostrar**: el nombre para mostrar de su servidor en vivo.
+
+Dejar su apodo global en blanco le permite a TomoriBot seguir su nombre para mostrar Discord automáticamente, incluidos cambios futuros. Al guardar un apodo global personalizado, se congela ese valor hasta que lo borre.
+
+Los prefijos y sufijos se heredan de la misma manera. Por ejemplo, un prefijo de un nivel y un sufijo de otro se pueden combinar en `Master Mirri-san`. Para evitar que una persona use un título que genera por sí sola, pregúntale directamente en el chat ("deja de llamarme Maestro"); que suprime el título de esa persona y deja intactas a otras personas.
+
+Los administradores de servidores configuran los valores predeterminados de personas en todo el servidor en `/config` > `Persona` > `Identidad y personalidad`. Cuando la capacidad de `Actualizaciones de Información del Usuario` está habilitada, las personas también pueden actualizar los detalles de su perfil cuando se les solicite durante la conversación.
 
 ## Tus propios proveedores
 <!-- anchor: your-own-providers -->
 
-Los proveedores personales permiten que *tus propias solicitudes* usen *tus propias* claves de
-API y modelos en lugar de los valores predeterminados del servidor. Esto es traer tu propia
-clave (BYOK) a nivel individual.
+Los proveedores personales permiten que sus propias solicitudes utilicen sus propias claves y modelos API en lugar de los valores predeterminados del servidor. Esto es "traiga su propia clave" (BYOK) a nivel de usuario individual.
 
-Hay dos alcances en juego, y vale la pena tenerlos claros:
+Hay dos alcances disponibles:
 
-- **Valor predeterminado del servidor**: credenciales y catálogos compartidos en `/providers`,
-  con el enrutamiento seleccionado mediante `/model` por miembros con el permiso de servidor
-  requerido. Se aplica a todos ahí.
-- **Ajuste personal**: configuración usada solo para tus propias solicitudes. Cuando está
-  activado, reemplaza el valor predeterminado del servidor para esa capacidad **en todos los
-  servidores** donde uses TomoriBot, no solo en el que lo configuraste.
+- **Predeterminado del servidor**: credenciales compartidas y modelos configurados en `/providers` y `/model` por los administradores del servidor. Se aplica a todos en el servidor.
+- **Anulación personal**: credenciales y modelos configurados en `/personal providers` y `/personal config`. Se aplica solo a sus solicitudes en todos los servidores donde utiliza TomoriBot.
 
-Configuración:
+### Configuración
 
-1. `/personal providers` guarda un proveedor (tu clave se cifra). Esto también activa de
-   inmediato tu ajuste personal de `Texto`, usando el modelo de texto predeterminado de ese
-   proveedor.
-2. `/personal config` permite seleccionar un modelo distinto para tu ajuste personal de texto.
-   Elegir un modelo aquí mantiene Texto activado.
-3. Vuelve a `/personal providers` cuando necesites actualizar credenciales, gestionar endpoints
-   personalizados, o añadir y editar registros de modelo personales.
+1. Ejecuta `/personal providers` para guardar un proveedor (su clave API está cifrada). Guardar un proveedor permite que su texto personal se anule inmediatamente con el modelo predeterminado de ese proveedor.
+2. Ejecuta `/personal config` > `Modelos` > `Cambiar modelos` para seleccionar un modelo diferente para su anulación de texto personal.
+3. Regrese a `/personal providers` siempre que necesite actualizar credenciales, administrar puntos finales personalizados o agregar registros de modelos personalizados.
 
-Seleccionar un modelo con `/personal config` activa esa capacidad para tus solicitudes.
+Al cambiar una capacidad del valor predeterminado del servidor a una anulación personal se muestra un mensaje de confirmación antes de guardar. Al actualizar las credenciales de un proveedor que ya utiliza, se omite la confirmación.
 
-Como los pasos 1 y 2 te cambian a un ajuste que cruza servidores, TomoriBot te pide confirmar
-antes de guardar cada vez que una capacidad pasa del valor predeterminado del servidor a uno
-personal. Rotar la clave de un proveedor que ya responde a tus solicitudes se salta esa
-confirmación, ya que el enrutamiento no cambia.
+Los registros de pensamiento le atribuyen turnos utilizando su clave personal. Puede ajustar los parámetros personales de su modelo (temperatura, topp, límites de token) en `/personal config` > `Modelos` > Samplers & Parameters. Para registrar puntos finales personalizados privados, consulte [Puntos finales personalizados](/es-419/features/setup-administration/providers-and-models/#custom-endpoints).
 
-Los registros de pensamiento atribuyen esos turnos a ti, y puedes ajustarlos con
-`/personal config`. Esto afecta a tus solicitudes en todas partes y nunca toca los ajustes de
-este servidor. También puedes registrar endpoints personalizados personales con
-`/personal providers`; consulta
-[Endpoints personalizados](/es-419/features/setup-administration/providers-and-models/#custom-endpoints).
+### Manejo de errores y respaldo
 
-Si una solicitud falla mientras usas tu proveedor personal, los consejos de "Qué puedes hacer"
-del error nombran los comandos personales que realmente pueden arreglarlo (`/personal providers`,
-`/personal config`) en lugar de los de administrador del servidor.
+Si una solicitud falla mientras usa su proveedor personal, los consejos de error lo dirigen a sus comandos personales (`/personal providers`, `/personal config`) en lugar de a la configuración del servidor.
 
-Cuando fallan todos los modelos de tu ruta de texto personal, TomoriBot puede responder con el
-modelo de texto del propio servidor en lugar de dejar el mensaje sin respuesta. Esa respuesta usa
-las credenciales del servidor y se descuenta de su cuota de texto, y respeta el tiempo de espera
-entre mensajes del servidor, así que un proveedor que falla en cada mensaje no se convierte en una
-respuesta por mensaje. Se reporta igual que cualquier
-otro respaldo de modelo: un botón Respaldo utilizado cuyos detalles nombran el modelo que
-respondió y las fallas anteriores. Puedes desactivarlo en `/personal config` > Modelos > Alternativas,
-en la sección Respaldo al modelo del servidor, para que las fallas de tu proveedor sigan siendo
-tuyas. La opción se aplica a toda la cuenta y está activada por defecto, así que te sigue a cada
-servidor que la permita.
+Cuando todos los modelos de su ruta de texto personal fallan, TomoriBot puede recurrir al modelo de texto predeterminado del servidor en lugar de fallar silenciosamente. Las reservas del servidor se ejecutan en las credenciales del servidor, cuentan con la cuota de texto del servidor y muestran un botón `Respaldo utilizado` con detalles.
 
-:::note[Servidores con BYOK obligatorio]
-Un servidor puede exigir proveedores provistos por los miembros con el modo BYOK de usuario
-([Moderación del servidor](/es-419/features/setup-administration/server-moderation/#user-byok-bring-your-own-key)).
-Cuando está activo, tus mensajes activados por usuario necesitan un proveedor personal antes de
-que pueda responder, y una ruta personal fallida sigue fallida: un servidor que no presta sus
-modelos a los miembros tampoco presta uno como respaldo. Los proveedores personales se aplican en
-todos los servidores donde la uses.
+Puede deshabilitar el respaldo del servidor en `/personal config` > `Modelos` > Respaldos en `Respaldo al modelo del servidor`. La configuración es para toda la cuenta y está habilitada de forma predeterminada.
+
+:::note[BYOK-required servers]
+Un servidor puede requerir que los miembros proporcionen sus propias claves API a través del modo Usuario BYOK ([Moderación del servidor](/es-419/features/setup-administration/server-moderation/#user-byok-bring-your-own-key)). Cuando está habilitado, sus mensajes requieren un proveedor personal configurado antes de que TomoriBot responda, y las rutas personales fallidas no recurren a las credenciales del servidor.
 :::
 
 ## Otros ajustes personales
 
-- `/personal config`: cambia cómo te llama.
-- `/personal config`: tus propias etiquetas de apariencia (estilo booru), usadas cuando una
-  [generación de imágenes](/es-419/features/capabilities/media-generation/image-generation/#personalizar-etiquetas)
-  te hace referencia. Envía un campo vacío para eliminarlas.
-- `/personal config`: controla tu visibilidad ante ella, hasta llegar a la **invisibilidad
-  total** (optar por no participar de las funciones de memoria por completo).
-- `/personal config`: tu ajuste personal para el
-  [Modo de activación deliberada](/es-419/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode).
-- `/personal config`: permite que el modelo de texto del servidor cubra una ruta de texto
-  personal fallida, o desactiva esa opción.
-- `/personal config`: activa el intercambio de memoria a corto plazo entre servidores;
-  `/personal memories` borra tu STM.
-- `/personal config`: establece un prompt reutilizable para cuando te suplanta mediante
-  `/impersonate user`.
+Utilice `/personal config` para personalizar funciones adicionales:
 
-## Foco personal
+- **Apariencia** (`Perfil` > `Apariencia`): guarde las etiquetas de apariencia de estilo booru que se utilizan cada vez que una [generación de imagen](/es-419/features/capabilities/media-generation/image-generation/#tag-customization) hace referencia a usted. Envíe un cuadro vacío para borrarlos.
+- **Controles de privacidad** (`Privacidad` > `Controles de privacidad`): elija su nivel de visibilidad (`Ninguno`, `Parcial` o `Completo`) o alterne el uso compartido de memoria a corto plazo entre servidores.
+- **Modos de respuesta** (`Avanzado` > `Modos de Respuesta`): alterna tu anulación personal para [Modo de activación deliberada](/es-419/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode).
+- **Suplantación** (`Avanzado` > `Imitación`): establece un mensaje reutilizable que se utilizará cuando alguien invoque `/impersonate user` por usted.
+
+## Destacado personal
 <!-- anchor: personal-spotlight -->
 
-Foco personal: selección de persona por canal. El foco personal te permite *a ti* limitar
-qué personas puedes activar en un canal, y opcionalmente asignar una para que se active
-automáticamente con tus propios mensajes ahí. Tiene alcance a ti + un canal y no afecta a
-nadie más.
+Personal Spotlight limita qué personas puede activar en un canal específico y, opcionalmente, asigna una persona alternativa de activación automática para sus mensajes allí. Está dirigido a usted y a un canal: no afecta a nadie más en el servidor.
 
-Configura uno con `/personal config`, eligiendo:
+Para configurar un foco en `/personal config` > `Avanzado` > Foco Personal:
 
-- una duración en horas (usa 0 para conservarlo hasta que lo elimines manualmente),
-- el canal objetivo,
-- las personas que quieres en tu foco personal.
+1. Selecciona una duración en horas (ingrese `0` para mantenerla activa hasta que se elimine manualmente).
+2. Elige el canal de destino.
+3. Selecciona las personas que desea permitir en su centro de atención.
+4. Opcionalmente, elija una de esas personas como su **persona personal de activación automática** (el respondedor predeterminado para sus mensajes en ese canal). Las menciones explícitas aún pueden apuntar a cualquier persona permitida. Presione `Guardar enfoque` para omitir la configuración de una persona de activación automática.
 
-Después de elegir las personas, opcionalmente puedes seleccionar una como tu **persona de
-activación automática personal**: la respondedora de respaldo para tus mensajes en ese canal.
-Las activaciones directas siguen apuntando a la persona que llames explícitamente. Presiona
-`Guardar enfoque` para omitir la elección de activación automática.
+### Reglas destacadas
 
-Reglas importantes:
+- Spotlight solo limita el acceso: no puedes activar personas excluidas de tu lista de Spotlight.
+- Respeta los permisos personales a nivel de servidor configurados en `/moderation`.
+- Las transferencias de proxy de persona están restringidas a personas incluidas en su lista destacada.
 
-- El foco personal solo limita el acceso; nunca lo amplía. Las personas seleccionadas son
-  las *únicas* que puedes activar ahí.
-- Sigue respetando los límites de persona a nivel de servidor configurados mediante
-  `/moderation`.
-- Las cadenas de proxy están bloqueadas: si tu foco personal solo incluye a Alice, una respuesta
-  de Alice no puede pasar el turno a Bob en tu cadena de mensajes.
-
-Revisa o elimina entradas con `/personal config` (desmarca para eliminar; los focos con tiempo
-límite expiran por sí solos). En `/help`, elige `Comportamiento` y luego `Enfoque personal`,
-para ver el resumen de Discord.
+Administre o elimine focos en `/personal config` > `Avanzado` > Personal Spotlight (desmarque las entradas para eliminarlas; los focos cronometrados caducan automáticamente). En `/help`, elija `Avanzado` > `Enfoque personal` para obtener un resumen rápido.

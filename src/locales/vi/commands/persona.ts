@@ -176,6 +176,7 @@ Vui lòng chỉnh sửa tệp nhập để dùng tên khác, hoặc xóa persona
       error_invalid_config: `Các trường cấu hình trong dữ liệu persona không hợp lệ`,
       error_no_server_data: `Không tìm thấy máy chủ trong cơ sở dữ liệu. Vui lòng chạy \`/setup\` trước.`,
       error_name_conflict: `Một persona có tên **{name}** đã tồn tại trên máy chủ này. Vui lòng dùng tên khác.`,
+      error_nsfw_persona: `Persona này được đánh dấu NSFW, nên \`/persona import\` không thể tải nó. Hãy dùng \`/nsfw persona import\`.`,
       error_import_failed: `Không thể nhập dữ liệu persona`,
       error_not_json: `Tệp được nhập phải chứa dữ liệu JSON hợp lệ`,
       error_incompatible_version: `Phiên bản preset không tương thích. Cần {expected}, nhưng nhận được {actual}`,

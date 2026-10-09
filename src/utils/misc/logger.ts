@@ -169,7 +169,7 @@ const pinoLogger = pino(
 interface CustomLevelLogger extends pino.Logger {
   success(message: string): void;
   section(message: string): void;
-  metric(payload: Record<string, number | string>, message: string): void;
+  metric(payload: Record<string, unknown>, message: string): void;
   rateLimit(payload: Record<string, unknown>, message: string): void;
 }
 
@@ -247,19 +247,28 @@ function redactLogString(value: string): string {
  * Recursively removes structured credentials and common credential-bearing URL
  * forms before a value reaches either stdout or the JSONL sink.
  */
-export function sanitizeLogPayload(value: unknown, depth = 0): unknown {
+export function sanitizeLogPayload(value: unknown, depth = 0, truncateStrings = true): unknown {
   if (depth > 8) return "[TRUNCATED]";
-  if (typeof value === "string") return sanitizeLogString(value);
+  if (typeof value === "string") return truncateStrings ? sanitizeLogString(value) : redactLogString(value);
   if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) return value.map((entry) => sanitizeLogPayload(entry, depth + 1));
+  if (Array.isArray(value)) return value.map((entry) => sanitizeLogPayload(entry, depth + 1, truncateStrings));
 
   const output: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
     output[key] = SENSITIVE_NORMALIZED_KEYS.has(normalizeSensitiveKey(key))
       ? REDACTED
-      : sanitizeLogPayload(entry, depth + 1);
+      : sanitizeLogPayload(entry, depth + 1, truncateStrings);
   }
   return output;
+}
+
+/**
+ * Metric fields reach the production sinks at a level above `error`, so free-text values such as
+ * an endpoint failure reason get the same redaction as every other record. Numbers pass through
+ * unchanged, which keeps metric queries typed.
+ */
+export function buildMetricPayload(name: string, fields: Record<string, number | string>): Record<string, unknown> {
+  return sanitizeLogPayload({ metric: name, ...fields }) as Record<string, unknown>;
 }
 
 const toLoggableError = (err: unknown): Record<string, unknown> => {
@@ -339,8 +348,7 @@ export const log = {
    * @param name - Short metric name (used as the `metric` field for filtering).
    */
   metric: (name: string, fields: Record<string, number | string>) => {
-    const payload = { metric: name, ...fields };
-    customLevels.metric(payload, `metric:${name}`);
+    customLevels.metric(buildMetricPayload(name, fields), `metric:${name}`);
   },
 
   /**

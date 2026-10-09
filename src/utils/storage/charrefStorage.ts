@@ -106,10 +106,18 @@ function resolveLocalCharRefPath(storedPath: string): string | null {
   return null;
 }
 
-function resolvePersonaLocalCharRefPath(storedPath: string, personaId: number): string | null {
+/**
+ * A local reference resolved only inside its owner's directory. Imports can store any path on a
+ * user or persona, so the shared base-directory check alone would let one owner read another's file.
+ */
+function resolveOwnedLocalCharRefPath(
+  storedPath: string,
+  entityType: CharRefEntityType,
+  entityId: string | number,
+): string | null {
   const normalizedPath = storedPath.replace(/\\/g, "/").replace(/^\/+/, "");
-  const personaPrefix = `data/charreferences/personas/${String(personaId)}/`;
-  if (!normalizedPath.startsWith(personaPrefix)) {
+  const ownerPrefix = `data/charreferences/${entityType}/${String(entityId)}/`;
+  if (!normalizedPath.startsWith(ownerPrefix)) {
     return null;
   }
 
@@ -118,10 +126,10 @@ function resolvePersonaLocalCharRefPath(storedPath: string, personaId: number): 
     return null;
   }
 
-  const personaBaseDir = path.resolve(process.cwd(), "data", "charreferences", "personas", String(personaId));
-  const relativePath = path.relative(personaBaseDir, resolvedPath);
+  const ownerBaseDir = path.resolve(process.cwd(), "data", "charreferences", entityType, String(entityId));
+  const relativePath = path.relative(ownerBaseDir, resolvedPath);
   if (relativePath === "" || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-    log.warn(`[CharRef Storage] Rejected character reference path for persona ${personaId}: ${storedPath}`);
+    log.warn(`[CharRef Storage] Rejected character reference path for ${entityType} ${entityId}: ${storedPath}`);
     return null;
   }
 
@@ -203,7 +211,7 @@ export async function resolveCharRefDisplayAsset(
     return { type: "url", url: target };
   }
 
-  const absolutePath = resolvePersonaLocalCharRefPath(target, personaId);
+  const absolutePath = resolveOwnedLocalCharRefPath(target, "personas", personaId);
   if (!absolutePath) {
     return null;
   }
@@ -269,7 +277,16 @@ export async function uploadCharRef(options: CharRefUploadOptions): Promise<stri
   }
 }
 
-export async function deleteCharRef(urlOrPath: string): Promise<boolean> {
+/**
+ * Deletes a stored reference only when it lives under the owner's own key prefix or directory.
+ * Imports can set any reference string, so replacing an imported value must not delete a file or
+ * object that belongs to another user or persona.
+ */
+export async function deleteCharRef(
+  urlOrPath: string,
+  entityType: CharRefEntityType,
+  entityId: string | number,
+): Promise<boolean> {
   const target = urlOrPath.trim();
   if (!target) {
     return false;
@@ -282,7 +299,7 @@ export async function deleteCharRef(urlOrPath: string): Promise<boolean> {
     }
 
     const key = extractKeyFromRemoteUrl(config, target);
-    if (!key) {
+    if (!key?.startsWith(`${config.prefix}/${entityType}/${String(entityId)}/`)) {
       return false;
     }
 
@@ -304,7 +321,7 @@ export async function deleteCharRef(urlOrPath: string): Promise<boolean> {
     }
   }
 
-  const absolutePath = resolveLocalCharRefPath(target);
+  const absolutePath = resolveOwnedLocalCharRefPath(target, entityType, entityId);
   if (!absolutePath) {
     return false;
   }
@@ -323,7 +340,15 @@ export async function deleteCharRef(urlOrPath: string): Promise<boolean> {
   }
 }
 
-export async function loadCharRefAsBase64(urlOrPath: string): Promise<string | null> {
+/**
+ * Loads a reference image for generation. Remote URLs go through the SSRF-gated downloader; a
+ * local path must sit in the owner's own directory.
+ */
+export async function loadCharRefAsBase64(
+  urlOrPath: string,
+  entityType: CharRefEntityType,
+  entityId: string | number,
+): Promise<string | null> {
   const target = urlOrPath.trim();
   if (!target) {
     return null;
@@ -347,7 +372,7 @@ export async function loadCharRefAsBase64(urlOrPath: string): Promise<string | n
     }
   }
 
-  const absolutePath = resolveLocalCharRefPath(target);
+  const absolutePath = resolveOwnedLocalCharRefPath(target, entityType, entityId);
   if (!absolutePath) {
     return null;
   }

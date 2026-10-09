@@ -1,5 +1,8 @@
 export default {
   tools: {
+    execution: {
+      unavailable: `La herramienta \`{tool}\` no está disponible con la configuración actual, las capacidades del modelo o los permisos del bot.`,
+    },
     generate_image: {
       quota_exceeded_generic: `Se agotó la cuota de generación de imágenes.`,
       user_quota_exceeded: `Alcanzaste tu cuota diaria de generación de imágenes. {reset_info}`,
@@ -49,8 +52,8 @@ export default {
       tool_invoke_no_params: `Sin parámetros.`,
     },
     tool_notice: {
-      hide_footer: `Oculta esto desde \`/config\` > Comportamiento > Avisos`,
-      hide_footer_with_kill: `Oculta esto desde \`/config\` > Comportamiento > Avisos · Usa \`/kill\` si crees que me quedé atascada`,
+      configure_hint: `Configura estos avisos en \`/config\` > Comportamiento > Avisos`,
+      kill_hint: `Usa \`/kill\` si crees que me quedé atascada`,
     },
     user_block: {
       error_missing_permission: `Necesito el permiso {permission} en este canal para anunciar un bloqueo. Pide a un administrador del servidor que lo conceda e inténtalo de nuevo.`,
@@ -70,6 +73,13 @@ export default {
     },
     user_info_update: {
       success_title: `✅ Se actualizó el perfil de {target_user}`,
+      success_title_fields: `✅ Se actualizó el perfil de {target_user}: {fields}`,
+      success_title_cleared_fields: `🗑️ Datos borrados del perfil de {target_user}: {fields}`,
+      subject_nickname: `apodo`,
+      subject_gender_identity: `identidad de género`,
+      subject_pronouns: `pronombres`,
+      subject_addressing_style: `forma de dirigirse`,
+      subject_timezone_offset: `zona horaria`,
       success_intro: `Se actualizó lo siguiente:`,
       change_line: `{index}. {field}: \`{previous}\` → \`{next}\``,
       success_summary: `{persona_name} ahora llama «{formatted_name}» a {target_user}.`,
@@ -332,7 +342,6 @@ export default {
           "información guardada*",
           "informacion guardada*",
         ],
-        sticker: ["sticker*", "stiker*", "estiker*", "calcomanía*", "calcomania*"],
         thread: ["hilo*", "thread*", "tema aparte*"],
         capabilities: [
           "qué puedes*",

@@ -51,7 +51,6 @@ export interface RawSTPreset {
   [key: string]: unknown;
 }
 
-/** Result of parsing a preset, including nodes and filtering stats */
 export interface ParseResult {
   nodes: Omit<StPresetNodeRow, "node_id" | "preset_id">[];
   /** Number of comment-only nodes included (stored but never injected into the prompt) */

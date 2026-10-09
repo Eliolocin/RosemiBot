@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { ComponentType, MessageFlags, type TextDisplayComponentData } from "discord.js";
 import { buildGeneratedImageComponentsV2Payload } from "@/utils/discord/generatedImageMessage";
 import { initializeLocalizer } from "@/utils/text/localizer";
+import { localizedCopy } from "../../helpers/localeCases";
 
 describe("buildGeneratedImageComponentsV2Payload", () => {
   beforeAll(async () => {
@@ -25,7 +26,7 @@ describe("buildGeneratedImageComponentsV2Payload", () => {
       },
       {
         type: ComponentType.TextDisplay,
-        content: "-# Generated after 4.2 seconds",
+        content: `-# ${localizedCopy("en-US", "tools.image.generated_after_seconds_line", { seconds: "4.2" })}`,
       },
     ]);
   });
@@ -41,7 +42,20 @@ describe("buildGeneratedImageComponentsV2Payload", () => {
     const lines = textComponent.content.split("\n");
 
     // Timing stays on the first line; referenced users render on their own line.
-    expect(lines[0]).toContain("Generated after 4.2 seconds");
-    expect(lines[1]).toBe("-# Referenced: Aphel, Miku");
+    expect(lines[0]).toContain(localizedCopy("en-US", "tools.image.generated_after_seconds_line", { seconds: "4.2" }));
+    expect(lines[1]).toBe(
+      `-# ${localizedCopy("en-US", "tools.image.referenced_identities_line", { names: "Aphel, Miku" })}`,
+    );
+  });
+
+  test("points to the prompt attachment when metadata exceeds the upload limit", () => {
+    const payload = buildGeneratedImageComponentsV2Payload("generated.jpg", 4242, "en-US", [], true);
+    const textComponent = payload.components[2] as TextDisplayComponentData;
+
+    expect(payload.components[1]).toEqual({
+      type: ComponentType.File,
+      file: { url: "attachment://image_prompt.txt" },
+    });
+    expect(textComponent.content).toContain(localizedCopy("en-US", "commands.generate.image.prompt_attached_footer"));
   });
 });

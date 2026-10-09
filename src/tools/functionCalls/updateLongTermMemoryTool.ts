@@ -228,8 +228,7 @@ export class UpdateLongTermMemoryTool extends BaseTool {
             const memoryPreview = buildTextPreview(processedMemoryContent, MEMORY_NOTICE_PREVIEW_LIMIT);
 
             await sendMemoryEmbedWithExpand(
-              context.channel,
-              context.locale,
+              context,
               {
                 color: ColorCode.ERROR,
                 titleKey: "genai.self_teach.server_memory_deleted_title",
@@ -244,11 +243,6 @@ export class UpdateLongTermMemoryTool extends BaseTool {
                 footerKey: "genai.self_teach.server_memory_footer",
               },
               processedMemoryContent,
-              {
-                webhook: context.webhook,
-                personaUsername: context.personaUsername,
-                personaAvatarUrl: context.personaAvatarUrl,
-              },
             );
 
             invalidateTomoriStateCache(serverDiscId);
@@ -298,8 +292,7 @@ export class UpdateLongTermMemoryTool extends BaseTool {
           const memoryPreview = buildTextPreview(processedMemoryContent, MEMORY_NOTICE_PREVIEW_LIMIT);
 
           await sendMemoryEmbedWithExpand(
-            context.channel,
-            context.locale,
+            context,
             {
               color: ColorCode.MEMORY_UPDATE,
               titleKey: "genai.self_teach.server_memory_updated_title",
@@ -314,11 +307,7 @@ export class UpdateLongTermMemoryTool extends BaseTool {
               footerKey: "genai.self_teach.server_memory_footer",
             },
             processedMemoryContent,
-            {
-              webhook: context.webhook,
-              personaUsername: context.personaUsername,
-              personaAvatarUrl: context.personaAvatarUrl,
-            },
+            { kind: "server_memory", id: memoryId },
           );
 
           invalidateTomoriStateCache(serverDiscId);
@@ -477,8 +466,7 @@ export class UpdateLongTermMemoryTool extends BaseTool {
         const memoryPreview = buildTextPreview(processedMemoryContent, MEMORY_NOTICE_PREVIEW_LIMIT);
 
         await sendMemoryEmbedWithExpand(
-          context.channel,
-          context.locale,
+          context,
           {
             color: ColorCode.ERROR,
             titleKey: "genai.self_teach.personal_memory_deleted_title",
@@ -495,11 +483,6 @@ export class UpdateLongTermMemoryTool extends BaseTool {
             footerKey,
           },
           processedMemoryContent,
-          {
-            webhook: context.webhook,
-            personaUsername: context.personaUsername,
-            personaAvatarUrl: context.personaAvatarUrl,
-          },
         );
 
         return {
@@ -547,8 +530,7 @@ export class UpdateLongTermMemoryTool extends BaseTool {
       const memoryPreview = buildTextPreview(processedMemoryContent, MEMORY_NOTICE_PREVIEW_LIMIT);
 
       await sendMemoryEmbedWithExpand(
-        context.channel,
-        context.locale,
+        context,
         {
           color: ColorCode.MEMORY_UPDATE,
           titleKey: "genai.self_teach.personal_memory_updated_title",
@@ -565,11 +547,7 @@ export class UpdateLongTermMemoryTool extends BaseTool {
           footerKey,
         },
         processedMemoryContent,
-        {
-          webhook: context.webhook,
-          personaUsername: context.personaUsername,
-          personaAvatarUrl: context.personaAvatarUrl,
-        },
+        { kind: "personal_memory", id: memoryId },
       );
 
       return {

@@ -1,74 +1,74 @@
 ---
-title: "SillyTavern 支援"
+title: "SillyTavern支援"
 # 針對「SillyTavern character cards in Discord」查詢的關鍵字豐富
-# <title>，只取代這一頁 Starlight 的預設值。H1 與側邊欄
+# <title>，只取代這一頁Starlight的預設值。H1與側邊欄
 # 仍使用單純的標題。
 head:
   - tag: title
-    content: "TomoriBot | 在 Discord 中使用 SillyTavern 角色卡"
-# 手寫的搜尋摘要，會覆寫 routeData.ts 中介層自動產生的 description。
-description: "用 TomoriBot 把 SillyTavern 角色卡與提示詞預設集匯入 Discord。把你既有的角色帶進你的伺服器。"
+    content: "TomoriBot | 在Discord中使用SillyTavern角色卡"
+# 手寫的搜尋摘要，會覆寫routeData.ts中介層自動產生的description。
+description: "用TomoriBot把SillyTavern角色卡與提示詞預設集匯入Discord。把你既有的角色帶進你的伺服器。"
 sidebar:
   order: 2
 ---
 
-TomoriBot 可以從 [SillyTavern](https://github.com/SillyTavern/SillyTavern) 匯入兩種你可能已經有的東西：Prompt Manager 預設集（提示詞的編排方式）與角色卡（角色本身）。這是給 ST 使用者的利基功能；如果你從沒用過 SillyTavern，可以跳過這一頁。
+TomoriBot可以從 [SillyTavern](https://github.com/SillyTavern/SillyTavern) 匯入兩種資源：提示管理員預設（控制提示結構）和角色卡（角色定義）。如果你從未使用過SillyTavern，你可以安全地跳過此頁面。
 
 ## 角色卡匯入
 
-用 `/persona import` 把既有的 SillyTavern 角色直接帶進 Discord。它接受：
+使用`/persona import`將現有的SillyTavern角色帶入Discord。它接受：
 
-- 內嵌 `chara` / `char` 中繼資料的 PNG 卡，
-- v2 風格 JSON 卡（根層級的 `name`、`description`、`first_mes`……），
-- v3 JSON 卡（`spec: "chara_card_v3"`，內含嵌套的 `data` 物件），
-- `.charx` 壓縮檔（Character Card V3，角色卡網站預設發放的格式）。
+- **PNG卡** 具有嵌入式`chara`或`char`元資料。
+- 具有根級屬性的 **v2樣式JSON** 卡（`name`、`description`、`first_mes`）。
+- **v3 JSON** 卡（帶有巢狀`data`物件的`spec: "chara_card_v3"`）。
+- **`.charx`檔案**（角色卡V3套件）。
 
-`.charx` 檔是一個 zip，其中的 `card.json` 存放角色。TomoriBot 會讀取那張卡，並忽略壓縮檔中的其他所有東西：內附的圖示、表情立繪、音訊與影片都不會匯入，匯入回覆也會說明這點。用 `/server avatar` 設定頭像，並在 `/config` > 人格 > 立繪 底下新增立繪。
+`.charx`檔案是包含`card.json`定義的ZIP檔案。TomoriBot從`card.json`匯入字元文字並跳過捆綁的資源檔案（圖示、精靈、音訊、視訊）。你可以在`/config` > `人格` > `身分與個性`中設定頭像，在`/config` > `人格` > 精靈中新增精靈。
 
-如果檔案沒有 TomoriBot 中繼資料，但是一張有效的 ST v2 或 v3 卡，匯入會自動讓它走 SillyTavern 轉換流程。你也可以把一張卡交給 `/persona generate`，把它轉換成全新的人格。
+如果上傳的檔案是不含TomoriBot元資料的有效SillyTavern卡，則匯入會自動轉換。你還可以將一張卡片傳遞給`/persona generate`，以創建受該人格啟發的新鮮人格。
 
-匯入在儲存任何東西之前會先通過驗證結構描述（預設上限：每個字串 5,000 個字元、200 個屬性、每一側 100 組範例對話、100 個觸發詞；自架者可以調整 `PRESET_MAX_*` 環境變數）。壓縮檔讀取另外由 `MAX_CHARX_*` 環境變數限制，因為壓縮檔的壓縮後大小完全不代表它解開後有多大。確切的轉換與欄位對應請看[角色卡支援架構](/en/architecture/integrations/sillytavern/card-support/)。
+導入在儲存之前進行驗證（預設限制：每個文字欄位5,000個字元、200個屬性、每側100個範例對話、100個觸發詞）。有關欄位對映和轉換機制，請參閱[卡片支援架構](/en/architecture/integrations/sillytavern/card-support/)。
 
 ## 提示詞預設集
 <!-- anchor: prompt-presets -->
 
-SillyTavern 的 Prompt Manager 預設集控制提示詞的編排。用 `/config` > 外掛 > SillyTavern 預設集 匯入預設集、檢視已啟用的節點、在預設集之間切換，或回到一般編排。
+SillyTavern提示管理員預設控制傳送到模型的提示的順序和佈局。開啟`/config` > `外掛` > SillyTavern預設以匯入預設、切換單一節點、切換活動預設或還原預設格式。
 
 ### 預設集控制什麼
 
-- 提示詞順序與標記位置
-- 自訂提示詞節點
-- 歷史後注入與深度注入節點
-- 哪些匯入的節點起始時為啟用或停用
+- 及時訂購和標記放置
+- 自訂提示節點
+- 後歷史節點和深度注入節點
+- 導入節點的初始啟用狀態
 
-### 它*不*取代什麼
+### 預設無法取代的內容
 
-預設集擁有的是*編排*，而不是每一個文字來源。以下這些仍然與它並存：
+預設結構提示佈局；它不會取代填滿它的文字來源：
 
-- 你的系統與人格區塊：`/config` > 行為 > 一般行為、`/config` > 人格 > 進階，以及 `/config` > 人格 > 身分與個性 上的屬性與範例對話動作。
-- 即時對話紀錄與取回的文件脈絡。
-- TomoriBot 的自動脈絡：伺服器記憶、表情符號與貼圖脈絡、對話中的使用者、短期記憶、制約，以及類似的區塊。
+- 系統指令和人格欄位：`/config` > `行為` > `一般行為`、`/config` > `人格` > 進階和`/config` > `人格` > 身分和個性。
+- 即時聊天歷史記錄和檢索的文件上下文。
+- 自動情境：伺服器記憶、表情符號和貼圖資料、參與者清單和短期記憶。
 
 ### 原生區塊如何對應
 
-- `main` → 目前的系統提示詞（`/config` > 行為 > 一般行為，否則使用內建備援）
-- `charDescription` → `/config` > 人格 > 進階
-- `charPersonality` → `/config` > 人格 > 身分與個性
-- `dialogueExamples` → `/config` > 人格 > 身分與個性
-- `chatHistory` → 即時頻道紀錄
-- `worldInfoBefore` / `worldInfoAfter` → 取回的文件脈絡（不是 ST 的 lorebook）
+本機塊直接對應到TomoriBot提示元件：
+
+- `main`：活動系統提示字元（`/config` > `行為` > `一般行為`，或預設後備）
+- `charDescription`：`/config` > `人格` > 高級
+- `charPersonality`: `/config` > `人格` > `身分與個性`
+- `dialogueExamples`: `/config` > `人格` > `身分與個性`
+- `chatHistory`：直播頻道訊息歷史記錄
+- `worldInfoBefore`和`worldInfoAfter`：檢索到的文件上下文（不是SillyTavern知識手冊）
 
 ### 系統提示詞規則
 
-預設集生效時，內建的備援系統提示詞會被移除，但如果*你*用 `/config` > 行為 > 一般行為 設定自己的提示詞，它仍然會送出。
+當匯入的預設處於活動狀態時，內建後備系統提示將會被刪除。但是，如果你在`/config` > `行為` > `一般行為`中設定自訂系統提示，則始終包含該提示。
 
 ### 相容性注意事項
 
-預設集看起來被忽略時，常見的意外：
+- 在`prompt_order`中停用的節點將保持非活動狀態，直到在`/config` > `外掛` > SillyTavern預設中啟用為止。空節點和僅註釋節點永遠不會被發送。
+- 阻止順序是字面意思：將`chatHistory`放在`dialogueExamples`之前會將聊天歷史記錄放在提示中的第一個位置。
+- 歷史記錄後注入合併到現有對話歷史記錄中，而不是作為獨立訊息發送。
+- 不支援正規表示式後處理、預設定義的採樣參數（溫度、top-p）和分層預設。舊版文字完成預設導入時僅刪除ST區塊。
 
-- 匯入不等於送出：在 `prompt_order` 中被停用的節點會保持關閉，直到你用 `/config` > 外掛 > SillyTavern 預設集 啟用它們。只有註解的節點與空節點永遠不會送出；未知的標記會被略過。
-- 順序是照字面套用的：把 `chatHistory` 放在 `dialogueExamples` 之前，就會先送出即時聊天。
-- 歷史後與深度注入會合併進既有的對話紀錄項目，而不是變成獨立訊息；同一深度的多個節點會批次處理。
-- 不支援規則表達式後處理、預設集端的 temperature、top-p 或模型覆寫，以及分層預設集。舊式的文字補全預設集會走一條盡力而為的路徑匯入，並捨棄 ST 專屬的區塊（scenario、anchors、stop strings……）。
-
-在 `/help` 中選擇 整合，然後選 `SillyTavern 預設集`，就能看到 Discord 內的參考。匯入引擎的內部細節請看[預設集系統架構](/en/architecture/integrations/sillytavern/preset-system/)。
+在`/help`中，選擇`外掛`，然後選擇`SillyTavern預設集`，作為Discord指南。內部預置處理請參考[預置系統架構](/en/architecture/integrations/sillytavern/preset-system/)。

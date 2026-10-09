@@ -324,6 +324,7 @@ describe("config panel shell", () => {
     expect(dmPageSelect?.options?.map((option) => option.value)).toEqual([
       "available-tools",
       "context-additions",
+      "response-drafting",
       "mcp-servers",
       "sillytavern-presets",
       "nsfw-jailbreaks",
@@ -335,6 +336,7 @@ describe("config panel shell", () => {
     expect(managerPageSelect?.options?.map((option) => option.value)).toEqual([
       "available-tools",
       "context-additions",
+      "response-drafting",
       "mcp-servers",
       "sillytavern-presets",
       "nsfw-jailbreaks",
@@ -1678,6 +1680,9 @@ describe("config Behavior pages", () => {
   const behaviorView = {
     general: {
       systemPrompt: "Keep replies concise.",
+      responsePrefill: null,
+      prefillBlocker: null,
+      prefillModelName: "gemini-2.5-flash",
       contextNote: "Stay on topic.",
       contextNoteDepth: 2,
       humanizerDegree: 2,
@@ -1801,11 +1806,14 @@ describe("config Behavior pages", () => {
       },
       notices: {
         hiddenNoticeKeys: ["web_search" as const],
+        verbosity: "minimal" as const,
         speechTranscriptsEnabled: true,
       },
       memory: {
         memoryTaggingEnabled: true,
         channelMemoryEnabled: false,
+        stmEnabled: true,
+        toolUseEnabled: true,
         stmConfig: null,
         stmCategories: MEMORY_CATEGORIES,
       },
@@ -1829,6 +1837,17 @@ describe("config Behavior pages", () => {
       ),
     ).toBe(true);
     expect(
+      buttonFor(notices, { action: "behavior-notice-verbosity-set", locale: "en-US", verbosity: "minimal" })?.disabled,
+    ).toBe(true);
+    expect(
+      buttonFor(notices, { action: "behavior-notice-verbosity-set", locale: "en-US", verbosity: "verbose" })?.disabled,
+    ).toBe(false);
+    expect(
+      walk(notices).some((component) =>
+        component.content?.includes(localizedCopy("en-US", "commands.config.panel.notice_verbosity_minimal")),
+      ),
+    ).toBe(true);
+    expect(
       buttonFor(notices, { action: "behavior-speech-transcripts-set", locale: "en-US", enabled: true })?.disabled,
     ).toBe(true);
     expect(
@@ -1839,6 +1858,20 @@ describe("config Behavior pages", () => {
     ).toBeDefined();
     expect(buttonFor(memory, { action: "behavior-stm-categories-open", locale: "en-US" })?.disabled).toBe(false);
     expect(walk(memory).some((component) => component.content?.includes("memory/#stm-configuration"))).toBe(true);
+    expect(buttonFor(memory, { action: "behavior-stm-enabled-set", locale: "en-US", enabled: false })?.disabled).toBe(
+      false,
+    );
+
+    const memoryToolUseOff = build(GUILD_MANAGER, {
+      category: "behavior",
+      page: "memory",
+      behaviorView: { ...d10View, memory: { ...d10View.memory, toolUseEnabled: false } },
+    });
+    const toolUseOffSerialized = walk(memoryToolUseOff)
+      .map((component) => component.content ?? "")
+      .join("\n");
+    expect(toolUseOffSerialized).toMatch(localizedProse("en-US", "commands.config.panel.stm_enabled_tool_use_off"));
+    expect(toolUseOffSerialized).not.toMatch(localizedProse("en-US", "commands.config.panel.stm_enabled_on"));
   });
 
   it("keeps the overflow removal selector off the ordinary Trigger page", () => {

@@ -1,12 +1,13 @@
 /**
  * Shared refresh machinery for OpenRouter's catalog endpoints.
  *
- * OpenRouter publishes four sibling catalogs (text, embedding, image, video) that each
+ * OpenRouter publishes sibling catalogs (text, embedding, image, video, decisions) that each
  * list only their own modality, so a model absent from one says nothing about the others.
  * Every catalog needs the same refresh discipline, which this module centralizes.
  */
 
 import { log } from "@/utils/misc/logger";
+import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 
 const DEFAULT_MIN_REFRESH_INTERVAL_MS = 60 * 1000;
@@ -92,21 +93,31 @@ export function createOpenRouterCatalog<TEntry>(source: OpenRouterCatalogSource<
   let lastAttemptAt: number | null = null;
   let lastSuccessAt: number | null = null;
   let inFlight: Promise<boolean> | null = null;
+  let httpStatus: number | undefined;
+  let stage: "transport" | "response" = "transport";
 
   async function fetchCatalog(): Promise<Map<string, TEntry>> {
     const response = await fetch(source.url, {
+      ...(source.label === "decision" ? { signal: AbortSignal.timeout(30_000) } : {}),
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
         ...buildOpenRouterAttributionHeaders(),
       },
     });
+    httpStatus = response.status;
 
     if (!response.ok) {
+      if (source.label === "decision") await response.body?.cancel();
       throw new Error(`OpenRouter ${source.label} catalog returned ${response.status}: ${response.statusText}`);
     }
 
-    const parsed = source.parse(await response.json());
+    stage = "response";
+    const parsed = source.parse(
+      source.label === "decision"
+        ? JSON.parse((await readBoundedResponse(response, 5 * 1024 * 1024)).toString("utf8"))
+        : await response.json(),
+    );
     const next = new Map<string, TEntry>();
     for (const entry of parsed) {
       const key = normalizeOpenRouterCodename(source.keyOf(entry));
@@ -124,6 +135,9 @@ export function createOpenRouterCatalog<TEntry>(source: OpenRouterCatalogSource<
 
   async function runRefresh(): Promise<boolean> {
     lastAttemptAt = Date.now();
+    httpStatus = undefined;
+    stage = "transport";
+    const correlation = source.label === "decision" ? crypto.randomUUID() : undefined;
     try {
       const next = await fetchCatalog();
 
@@ -133,13 +147,40 @@ export function createOpenRouterCatalog<TEntry>(source: OpenRouterCatalogSource<
       entries = next;
       ready = true;
       lastSuccessAt = Date.now();
-      log.success(`OpenRouter ${source.label} catalog refreshed: ${entries.size} models`);
+      if (source.label === "decision") {
+        log.info(
+          `Decision discovery ${JSON.stringify({ operation: "decision-discovery", provider: "openrouter", correlation, modelCount: entries.size, elapsedMs: Date.now() - lastAttemptAt, outcome: "validated" })}`,
+        );
+      } else {
+        log.success(`OpenRouter ${source.label} catalog refreshed: ${entries.size} models`);
+      }
       return true;
     } catch (error) {
-      log.warn(
-        `Failed to refresh OpenRouter ${source.label} catalog (non-critical); keeping ${entries.size} cached models`,
-        error as Error,
-      );
+      if (source.label === "decision") {
+        await log.error("Decision operation failed", new Error("Decision discovery failed"), {
+          errorType: "DecisionOperationFailed",
+          metadata: {
+            operation: "decision-discovery",
+            provider: "openrouter",
+            correlation,
+            stage,
+            category:
+              error instanceof Error && error.name === "TimeoutError"
+                ? "timeout"
+                : httpStatus && httpStatus >= 400
+                  ? "http"
+                  : httpStatus
+                    ? "malformed"
+                    : "network",
+            httpStatus,
+            elapsedMs: Date.now() - lastAttemptAt,
+          },
+        });
+      } else
+        log.warn(
+          `Failed to refresh OpenRouter ${source.label} catalog (non-critical); keeping ${entries.size} cached models`,
+          error as Error,
+        );
       return ready;
     } finally {
       inFlight = null;

@@ -141,9 +141,9 @@ export function withoutHreflangAlternates<T extends { tag: string; attrs?: Recor
 /**
  * Which review notice a page carries.
  *
- * - `none`: the page has been human-reviewed, or a human wrote it.
- * - `translated`: a generated translation of a human-written source page.
- * - `drafts`: an unreviewed generated page, in the locale's own wording.
+ * - `none`: the page's substantive content has been human-reviewed.
+ * - `translated`: the translated file's flag differs from its reviewed English source.
+ * - `drafts`: substantively unreviewed content, in the locale's own wording.
  */
 export type TranslationNoticeMode = "none" | "translated" | "drafts";
 

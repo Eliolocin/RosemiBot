@@ -21,6 +21,7 @@ const UNCONFIGURED_LLM: LlmRow = {
   supports_structoutput: false,
   strict_role_alternation: false,
   supports_prefix_completion: false,
+  supports_assistant_prefill: false,
   verbatim_tool_calling: false,
   llm_description: null,
   descriptions: null,

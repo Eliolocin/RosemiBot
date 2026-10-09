@@ -2,118 +2,79 @@
 title: "01: Stream Once"
 ---
 
-One provider generation pass, wrapped with a rolling AbortController SDK timeout.
+`streamOnce` executes a single provider generation pass, wrapping `provider.streamToDiscord` with a
+rolling inactivity timeout and channel-lock watchdog protection. It returns a `StreamResult` indicating
+whether generation completed, requested a tool call, timed out, or was interrupted.
 
-- **File**: `src/utils/chat/toolLoop.ts:142-195`
+## Flow and ownership
+<!-- anchor: flow-and-ownership -->
 
-## Mission
+The stage prepares the request payload, manages timeout timers, and races the provider stream against
+cancellation:
 
-Call `provider.streamToDiscord(...)` with the current accumulated context and
-tool history, and race the result against a configurable SDK timeout. The
-timeout is *rolling*: it resets on every `onStreamProgress` heartbeat, so a
-long but active stream is not killed; only a truly stalled one is. The wait for
-the first heartbeat gets a longer budget than the gaps after it, because hosted
-queues (NVIDIA NIM's free tier measured 266 s) can hold a healthy request for
-minutes before the first token. Returns a `StreamResult` describing how the
-generation ended.
+1. **Context and prefill preparation:**
+   `foldPrefillIntoToolHistory` merges any assistant output prefill into `functionHistory` so the model
+   receives required formatting or continuation tokens. For queued messages, `replyToMessage` is set to
+   the trigger message, except for scene turns (`incoming.sceneTurn`). In multi-persona scene turns,
+   every persona turn shares the same trigger message; suppressing `replyToMessage` allows scene dialogue
+   to render as free-standing back-and-forth messages.
 
-## Input
+2. **Rolling timeout initialization:**
+   The stage creates an `AbortController` and exposes its signal on `streamingContext.abortSignal`.
+   It arms an initial timeout using `STREAM_FIRST_TOKEN_TIMEOUT_MS` (default 300 s). This first-token
+   budget allows hosted provider queues to hold requests during high load before emitting initial tokens.
+   The provider adapter invokes `streamingContext.onStreamProgress` on each chunk delivery. This callback
+   re-arms the timeout using the idle budget (`STREAM_SDK_CALL_TIMEOUT_MS`, default 120 s) and touches
+   the channel lock via `touchChannelLock`.
 
-- `params: ToolLoopParams`: full loop context (provider, config, `ChatTurnContext`).
-- `accumulatedModelParts: Array<Record<string, unknown>>`: provider-native model
-  turn parts accumulated across prior iterations of the tool loop. Empty on the
-  first iteration; grows as each tool call appends its model response. Passed by
-  reference and read (not written) inside `streamOnce`.
-- `functionHistory: ToolHistoryEntry[]`: paired call/response records from prior
-  tool dispatches. Passed to the provider so it can continue the multi-turn tool
-  conversation. Empty on the first call.
+3. **Watchdog and kill integration:**
+   The stream runs under `runUnderWatchdog`, exempting the channel lock from stale expiration while
+   actively receiving tokens. A unified `killStream` callback is registered on the channel lock entry
+   via `setChannelStreamKill`. The callback aborts `abortController` and rejects the race promise, allowing
+   `/kill` to terminate in-flight HTTP connections and unblock execution.
 
-## Output
+4. **Stream execution and result handling:**
+   The stage races the provider's `streamToDiscord` call against the kill promise. If the provider
+   completes normally, requests a tool call (`function_call`), or returns a provider-level error, the
+   `StreamResult` is returned directly to `runToolLoop`.
 
-`Promise<StreamResult>`: defined in `src/types/provider/interfaces.ts`. The
-`status` field drives the outer loop's switch:
+## Timeout recovery and abandoned stream settling
+<!-- anchor: timeout-recovery-and-abandoned-stream-settling -->
 
-| `status` | Meaning |
-|---|---|
-| `"completed"` | Provider finished; `accumulatedText` carries the final response |
-| `"error"` | Provider threw a non-timeout error |
-| `"timeout"` | No first heartbeat within the first-token budget, or no later heartbeat within `STREAM_SDK_CALL_TIMEOUT_MS` |
-| `"empty_response"` | Provider returned with no text and no tool call |
-| `"stopped_by_user"` | User triggered `/kill` while streaming |
-| `"follow_up_interrupt"` | A follow-up message arrived; caller should yield |
-| `"function_call"` | Provider requested a tool call; `data` carries the call payload |
+When the rolling inactivity timeout triggers:
 
-## Side effects
+1. **Stop request check:**
+   If a user cancellation request (`/kill`) is active, the stage returns `{ status: "stopped_by_user" }`
+   immediately.
 
-- **Sets `params.context.streamingContext.abortSignal`** to a fresh
-  `AbortController.signal` before each call. Provider adapters consume this
-  signal to abort in-flight HTTP requests when the timeout fires.
-- **Sets `params.context.streamingContext.onStreamProgress`** to a callback that
-  re-arms the timeout at the idle budget, and resets it to `undefined` in the
-  `finally` block. Provider adapters call this on each token delivery to prevent
-  the timeout from firing on active streams.
-- **Runs the race under `runUnderWatchdog`**, which exempts the channel lock
-  from stale release until the race settles, and heartbeats the lock via
-  `touchChannelLock` on every re-arm. Before this, a turn older than
-  `CHANNEL_LOCK_TIMEOUT_MS` was killed by the next message anyone sent in the
-  channel, even while it was actively streaming. Tool execution runs under the
-  same wrapper for the same reason.
-- **Records a `stream_sdk_timeout` metric** when the watchdog fires, with the
-  provider, the phase (`first_token` or `idle`), and the kill reason. The timeout
-  embed uses first-token copy when no heartbeat ever arrived, and adds a
-  free-model tip on NVIDIA.
-- **Registers `killStream` on the channel lock entry** via
-  `setChannelStreamKill(channelId, killStream)`. `killStream` is a unified
-  callback that both calls `abortController.abort()` *and* rejects the
-  `Promise.race`: ensuring the HTTP request is cancelled and the race unblocks
-  simultaneously. This is what `/kill` triggers via `forceKillChannelStream`.
-- **Clears the timeout and the kill registration** (`clearTimeout`,
-  `setChannelStreamKill(channelId, null)`) in the `finally` block regardless of
-  success or error.
-- **Derives the `replyToMessage` argument** passed to the provider. Queued turns
-  (`isFromQueue`) normally reply to their trigger message so the response renders
-  as a Discord reply. Scene turns are the exception: every queued scene persona
-  job shares the *same* trigger message, so replying would make all of them render
-  "replying to" one message. When `incoming.sceneTurn` is set, `replyToMessage` is
-  forced to `undefined` so the generated scene reads as a free-standing dialogue.
+2. **Settling in-flight sends:**
+   If the timeout is genuine, `settleAbandonedStream` waits up to 5 seconds (`STREAM_ABANDONED_SETTLE_TIMEOUT_MS`)
+   for the aborted provider generator to settle. `Promise.race` drops the aborted promise, but an in-flight
+   Discord message send might still be on the wire. This gives in-flight sends time to register their
+   IDs in `deliveredMessageRefs` before superseded-message cleanup. A send that outlives the bounded
+   wait can still arrive after cleanup; the wait reduces this race without blocking fallback indefinitely.
 
-## Invariants
+3. **Notice dispatch and status return:**
+   The stage logs the `stream_sdk_timeout` metric. If user errors are enabled, it sends the inactivity
+   embed via `sendStreamTimeoutNotice`. When errors are temporarily suppressed because a fallback model is
+   pending, it stashes `deferredTimeoutNotice` on `streamingContext` so `runGenerationTurn` can post the
+   notice if all subsequent fallback attempts fail. The stage then returns `{ status: "timeout", data: error }`.
 
-After this stage runs:
+## Constraints and cleanup
+<!-- anchor: constraints-and-cleanup -->
 
-- `params.context.streamingContext.onStreamProgress` is `undefined`: the
-  heartbeat reference is always cleaned up.
-- The channel lock's `activeStreamKill` is `null`: the kill callback is
-  always deregistered in `finally`.
-- If the result status is `"timeout"`, it originated from the SDK-call
-  timeout race (error message prefix `"SDK_CALL_TIMEOUT:"`), not from a
-  provider-specific timeout mechanism.
-- Errors that are not SDK timeouts are re-thrown to the caller
-  (`runToolLoop`), which does not catch them; they propagate to
-  `runGenerationTurn`'s outer `catch`.
+- **State cleanup:** The `finally` block always clears the active timeout timer, sets
+  `streamingContext.onStreamProgress` to `undefined`, and clears `activeStreamKill` on the channel lock.
+- **Error classification:** Only timeout errors originating from the SDK inactivity race yield
+  `status: "timeout"`. Unexpected runtime exceptions re-throw directly to `runToolLoop` and propagate to
+  the outer error handler in `runGenerationTurn`.
+- **Lock health:** Touching the channel lock on every token progress heartbeat prevents long-running
+  generations from being superseded or cleaned up as abandoned turns.
 
-## Extension points
+## Source pointers
+<!-- anchor: source-pointers -->
 
-| Surface | Plugin-relevance |
-|---|---|
-| `provider.streamToDiscord(...)` call | The provider contract is the seam: see [provider pipeline](../provider/) |
-| `STREAM_SDK_CALL_TIMEOUT_MS` / rolling `onStreamProgress` | Internal: timeout behavior is an operational concern, not plugin-relevant |
-| `params.context.streamingContext.abortSignal` | Internal: consumed by provider adapters only |
-
-## Configuration
-
-| Env var | Default | Minimum | Purpose |
-|---|---|---|---|
-| `STREAM_SDK_CALL_TIMEOUT_MS` | `120000` (2 min) | `10000` (10 s) | Idle timeout for one provider call; resets on each heartbeat |
-
-The first-token budget is `DISCORD_STREAMING_CONSTANTS.FIRST_TOKEN_TIMEOUT_MS`
-(300 s), or `STREAM_SDK_CALL_TIMEOUT_MS` when that is set higher. Adapters that
-run their own stall detection must honor it before the first token too, or the
-shortest detector caps the wait for all of them: the OpenRouter adapter applies
-it until its first content chunk, since its queue sends only
-`: OPENROUTER PROCESSING` keepalives, which never count as content.
-
-## Related docs
-
-- Provider streaming contract: → [provider pipeline](../provider/)
-- Tool-loop coordinator: → [`README.md`](README.md)
+- `src/utils/chat/toolLoop.ts`: `streamOnce`, `settleAbandonedStream`, `sendStreamTimeoutNotice`.
+- `src/utils/chat/channelQueue.ts`: `runUnderWatchdog`, `touchChannelLock`, `setChannelStreamKill`.
+- `src/utils/chat/assistantPrefill.ts`: `foldPrefillIntoToolHistory`.
+- `src/types/provider/interfaces.ts`: `StreamResult` and `LLMProvider`.

@@ -4,17 +4,10 @@ sidebar:
   order: 3
 ---
 
-Docker Compose xây dựng và chạy TomoriBot cùng PostgreSQL dưới dạng các container. Đây là
-phương thức cài đặt thứ ba bên cạnh [trình hướng dẫn thiết lập](/vi/self-hosting/setup-wizard/) và
-[cài đặt thủ công](/vi/self-hosting/manual-setup/): hãy chọn phương thức này khi bạn muốn chạy mọi thứ trong Docker thay vì
-cài đặt Bun và PostgreSQL trên máy chủ lưu trữ. Phương thức này không sử dụng trình hướng dẫn thiết lập; cơ sở dữ liệu
-sẽ được tự động cấu hình kết nối cho bạn.
+Docker Compose chạy TomoriBot và PostgreSQL cùng nhau trong các thùng chứa. Đây là tùy chọn cài đặt thứ ba cùng với [trình hướng dẫn thiết lập](/vi/self-hosting/setup-wizard/) và [thiết lập thủ công](/vi/self-hosting/manual-setup/): chọn tùy chọn này khi bạn muốn chạy mọi thứ trong Docker mà không cần cài đặt Bun hoặc PostgreSQL trên hệ thống máy chủ của mình. Nó bỏ qua trình hướng dẫn thiết lập tương tác và tự động cấu hình kết nối cơ sở dữ liệu.
 
-:::caution[Các script phía máy chủ lưu trữ vẫn cần công cụ trên máy chủ]
-Việc chạy bot và cơ sở dữ liệu trong Docker không đóng gói các script bảo trì.
-`bun run backup`, `bun run restore-backup`, `bun run update`, `bun run rotate-keys` cùng
-các script liên quan vẫn chạy thông qua Bun của máy chủ lưu trữ và các công cụ client PostgreSQL của máy chủ lưu trữ. Xem
-[Bảo trì và sao lưu](/vi/self-hosting/maintenance/) để biết các quy trình dành riêng cho Compose.
+:::caution[Host tools for updates]
+`bun run update --docker` cần máy chủ Bun và Git để thực hiện các thay đổi mã. Bản sao lưu cơ sở dữ liệu của nó chạy bên trong vùng chứa ứng dụng. Bạn cũng có thể chạy sao lưu và khôi phục thủ công thông qua Compose; xem [Bảo trì & Sao lưu](/vi/self-hosting/maintenance/).
 :::
 
 ## 1. Lấy mã nguồn
@@ -26,57 +19,63 @@ cd TomoriBot
 
 ## 2. Các giá trị `.env` bắt buộc
 
-Bắt đầu từ tệp mẫu:
+Bắt đầu từ tệp ví dụ:
 
 ```sh
 cp .env.example .env
 ```
 
-Sau đó thiết lập tối thiểu các mục sau:
+Đặt các biến bắt buộc này trong `.env`:
 
 | Biến | Giá trị |
 |---|---|
-| `DISCORD_TOKEN` | Token bot Discord của bạn (bật các privileged intent `GuildMembers`, `MessageContent` và `GuildPresences`). |
-| `CRYPTO_SECRET` | Khóa mã hóa 32 ký tự dùng để mã hóa các khóa API đã lưu. |
-| `POSTGRES_PASSWORD` | Mật khẩu cơ sở dữ liệu. Mọi giá trị `POSTGRES_*` khác đều được tự động cấu hình. |
+| `DISCORD_TOKEN` | Mã thông báo bot Discord của bạn (bật các ý định đặc quyền `GuildMembers`, `MessageContent` và `GuildPresences`). |
+| `CRYPTO_SECRET` | Khóa mã hóa 32 ký tự được sử dụng để mã hóa các khóa API được lưu trữ. |
+| `POSTGRES_PASSWORD` | Mật khẩu cơ sở dữ liệu. Mọi giá trị `POSTGRES_*` khác đều được cấu hình tự động. |
 
-Không giống như trình hướng dẫn thiết lập, Compose sẽ không tự tạo `CRYPTO_SECRET` cho bạn, vì vậy hãy tự thiết lập giá trị này
-(bất kỳ chuỗi 32 ký tự nào). Các giá trị tùy chỉnh bổ sung có thể được sao chép từ
-`.env.optional.example`.
+Tạo giá trị 32 ký tự ngẫu nhiên cho `CRYPTO_SECRET` bằng Docker, sau đó sao chép nó vào `.env`:
 
-:::note[Kết nối cơ sở dữ liệu được cấu hình tự động]
-Dịch vụ PostgreSQL của Compose chạy ở chế độ phát triển (không có SSL) trên mạng nội bộ của Docker,
-và image đi kèm đã được cấu hình sẵn `pgvector` cùng `pg_cron`, do đó
-bộ nhớ tài liệu/RAG và tính năng dọn dẹp theo lịch trình hoạt động ngay mà không cần cấu hình thêm. Không đặt `POSTGRES_HOST`,
-`POSTGRES_PORT`, `POSTGRES_USER` hoặc `POSTGRES_DB` cho Compose; các biến này được quản lý tự động cho bạn.
+```sh
+docker run --rm alpine:3.22 sh -c "head -c 24 /dev/urandom | base64"
+```
+
+Tạo mật khẩu riêng cho `POSTGRES_PASSWORD`. Bạn có thể sao chép cài đặt điều chỉnh tùy chọn từ `.env.optional.example`.
+
+:::note[Database connection is automatic]
+Dịch vụ Compose PostgreSQL chạy ở chế độ phát triển (không có SSL) trên mạng Docker nội bộ. Hình ảnh đi kèm bao gồm `pgvector` và `pg_cron`, do đó bộ nhớ tài liệu, tìm kiếm vectơ và dọn dẹp theo lịch trình sẽ hoạt động ngay lập tức. Không đặt `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER` hoặc `POSTGRES_DB` trong `.env`; Compose tự động cấu hình chúng.
 :::
+
+Trên Linux, tạo các thư mục gắn kết liên kết trên máy chủ và gán quyền sở hữu cho UID 1001 trước khi khởi động vùng chứa. Docker tạo các điểm gắn kết bị thiếu dưới dạng root, điều này ngăn vùng chứa bot lưu các bản sao lưu, nhật ký hoặc tải lên:
+
+```sh
+mkdir -p backups logs data
+sudo chown 1001:1001 backups logs data
+```
 
 ## 3. Xây dựng và chạy
 
 ```sh
-docker compose build   # lần đầu tiên, hoặc sau khi thay đổi mã nguồn/phần phụ thuộc
-docker compose up      # bot + cơ sở dữ liệu
+docker compose build   # first time, or after code/dependency changes
+docker compose up      # bot + database
 ```
 
-Đối với các lần khởi động sau, chỉ cần chạy `docker compose up` là đủ trừ khi bạn đã thay đổi mã nguồn hoặc
-các phần phụ thuộc. Khi bot trực tuyến, hãy chạy `/setup` trong Discord để thêm khóa nhà
-cung cấp AI của bạn: xem [Bắt đầu nhanh](/vi/introduction/quickstart/) cho các thao tác trong Discord.
+Để bắt đầu sau này, chỉ `docker compose up` là đủ trừ khi bạn thay đổi mã hoặc phần phụ thuộc. Sau khi bot kết nối với Discord, hãy chạy `/setup` trong bất kỳ kênh máy chủ nào để thêm khóa nhà cung cấp AI của bạn. Xem [Khởi động nhanh](/vi/introduction/quickstart/) để biết các tùy chọn thiết lập trong Discord.
+
+Soạn các chân `RUN_ENV=development` trong định nghĩa dịch vụ của nó để các bí mật `.env` và điểm cuối HTTP cục bộ hoạt động. Kiểm tra tình trạng vùng chứa báo cáo xem quy trình bot có đang chạy hay không; nó không kiểm tra kết nối cổng Discord. Để biết sự khác biệt của chế độ sản xuất (`RUN_ENV=production`) (trình quản lý bí mật, hạn chế mạng và số liệu), hãy xem [Kiến trúc bảo mật](/en/architecture/subsystems/security/).
 
 ## 4. Các máy chủ cục bộ tùy chọn (Compose profile)
 
-Các máy chủ cục bộ có thể kích hoạt tùy chọn qua các profile của Compose, giúp bạn chỉ chạy những gì mình cần:
+Chạy các máy chủ trợ giúp cục bộ tùy chọn với cấu hình Compose để bạn chỉ bắt đầu những gì mình cần:
 
 ```sh
-# SearXNG (tìm kiếm web riêng tư) + Crawl4AI (thu thập nội dung được render bởi trình duyệt)
+# SearXNG (private web search) + Crawl4AI (browser-rendered fetch)
 docker compose --profile searxng --profile fetch-crawl4ai up
 ```
 
-Xem [SearXNG](/vi/self-hosting/local-endpoints/setup-searxng/), [Crawl4AI](/vi/self-hosting/local-endpoints/setup-crawl4ai/),
-và [Giám sát cục bộ](/vi/self-hosting/local-monitoring/) để biết chi tiết về từng máy chủ.
+Khi bật SearXNG, hãy đặt `SEARXNG_BASE_URL=http://searxng:8080/` trong `.env`. Nếu không thì không đặt nó. Đặt `SEARXNG_SECRET` thành một giá trị ngẫu nhiên riêng cho việc ký yêu cầu SearXNG.
+
+Xem [SearXNG](/vi/self-hosting/local-endpoints/setup-searxng/), [Crawl4AI](/vi/self-hosting/local-endpoints/setup-crawl4ai/) và [Giám sát cục bộ](/vi/self-hosting/local-monitoring/) để biết thiết lập dành riêng cho máy chủ.
 
 ## Bảo trì, cập nhật và sao lưu
 
-Sử dụng `bun run update --docker` cho quy trình cập nhật ưu tiên sao lưu trên bản
-triển khai Compose. Việc sao lưu và khôi phục cơ sở dữ liệu của Compose (bao gồm việc chạy các script phía máy chủ lưu trữ
-với cơ sở dữ liệu này) được trình bày trên trang [Bảo trì và sao lưu](/vi/self-hosting/maintenance/). Trước khi kéo
-phiên bản mới về, hãy bắt đầu với [Di chuyển an toàn](/vi/self-hosting/safe-migration/).
+Sử dụng `bun run update --docker` để cập nhật bản sao lưu đầu tiên khi triển khai Compose. Để sao lưu hoặc khôi phục cơ sở dữ liệu Compose của bạn, hãy xem [Bảo trì và sao lưu](/vi/self-hosting/maintenance/). Trước khi tải phiên bản mới, hãy xem lại [Di chuyển an toàn](/vi/self-hosting/safe-migration/).

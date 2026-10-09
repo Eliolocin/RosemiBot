@@ -130,9 +130,6 @@ interface OpenAIStreamChunk {
   }>;
 }
 
-/**
- * API request configuration
- */
 export interface ApiRequestConfig {
   apiKey: string;
   timeout?: number;

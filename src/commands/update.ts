@@ -11,7 +11,6 @@ const GITHUB_REPO = process.env.GITHUB_REPO || "Bredrumb/TomoriBot";
 /** Timeout in milliseconds for the GitHub API fetch */
 const GITHUB_API_TIMEOUT_MS = Number.parseInt(process.env.GITHUB_API_TIMEOUT_MS || "10000", 10);
 
-/** Discord embed description character limit */
 const EMBED_DESCRIPTION_LIMIT = 4096;
 
 /**
@@ -25,10 +24,6 @@ interface GitHubRelease {
   html_url: string;
 }
 
-/**
- * Configure the /update root command.
- * Shows the latest TomoriBot release notes as an ephemeral embed.
- */
 export const configureCommand = (command: SlashCommandBuilder) =>
   command.setName("update").setDescription(localizer("en-US", "commands.update.description"));
 

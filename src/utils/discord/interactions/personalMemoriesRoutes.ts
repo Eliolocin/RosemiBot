@@ -42,6 +42,7 @@ import {
 import { personaRepresentativeForLineage } from "@/utils/persona/lineage";
 import {
   type PersonaPanelAvatarData,
+  resolveInvokerAvatarUrl,
   resolvePersonaPanelAvatar,
   withPersonaPanelAvatar,
 } from "@/utils/discord/personaPanelAvatar";
@@ -422,6 +423,7 @@ async function repaint(
         memories,
         memoryCountsByLineage,
         selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
+        userAvatarUrl: category === "global" ? resolveInvokerAvatarUrl(interaction) : undefined,
         stmCount,
         privacyLevel: scope.privacyLevel,
         readStatus: scope.readStatus,
@@ -1131,6 +1133,7 @@ export async function buildInitialPersonalMemoriesPanel(
       stmCount,
       memoryCountsByLineage,
       selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
+      userAvatarUrl: selectedLineageId === 0 ? resolveInvokerAvatarUrl(interaction) : undefined,
       privacyLevel: scope.privacyLevel,
       readStatus: scope.readStatus,
       page: { kind: "main" },

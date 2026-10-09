@@ -2,67 +2,64 @@
 title: "Por Dentro do Prompt"
 sidebar:
   order: 2
-aiGenerated: true
+aiGenerated: false
 ---
 
-Toda vez que você aciona a TomoriBot, o seguinte é montado e enviado ao seu modelo de texto configurado
-como o prompt/contexto principal, nesta ordem:
+Cada vez que você aciona TomoriBot, o seguinte é montado e enviado ao seu modelo de texto configurado como prompt/contexto principal, nesta ordem:
 
-| Bloco | Opcional? | Comandos | O que é |
+| Bloquear | Opcional? | Comandos | O que é isso |
 |---|---|---|---|
-| [Prompt de sistema](/pt-BR/features/chatting-personality/behavior-tweaking/#system-prompt) | | `/config` > Engine > General | Instruções básicas no topo do contexto. |
+| [Prompt do sistema](/pt-BR/features/chatting-personality/behavior-tweaking/#system-prompt) |  | `/config` > Motor > Geral | Instruções básicas no topo do contexto. |
 
-> Texto padrão do prompt de sistema (usado apenas enquanto nenhum prompt de sistema do servidor estiver definido):
->
-> *"You are {bot}. {bot} makes sure to respond short and concisely by default. {bot} only makes lengthy responses if the situation warrants it.
->
-> {{if tool:create_long_term_memory}}{bot} proactively uses the available {memory_tool} whenever someone shares a detail or {bot} notices one in the conversation that is actually worth remembering, such as a preference, an interest, or an important fact, preferring to remember things even if it is minor as long as it's not a duplicate of what {bot} already knows. {{/if}}{{if tool:update_long_term_memory}}{bot} uses {memory_update_tool} instead when new information changes or adds onto something {bot} already remembers, rather than saving a duplicate.{{/if}}
->
-> {{if tool:review_capabilities}}When someone asks what {bot} can do or why something is unavailable, {bot} checks {capabilities_tool} before answering. {{/if}}{{if tool_family:url_fetch}}When more detail is needed, {bot} uses {url_fetch_tool} on `https://docs.tomoribot.app/llms.txt` for information.{{/if}}"*
+> **Texto padrão do prompt do sistema**: usado somente enquanto nenhum prompt do sistema do servidor estiver definido. >
+> *"Você é {bot}. {bot} responde de forma curta e concisa por padrão. {bot} só dá respostas longas se a situação justificar. >
+> {{if tool:create_long_term_memory}}{bot} usa proativamente o {memory_tool} disponível sempre que alguém compartilha um detalhe ou {bot} percebe algum na conversa que realmente vale a pena lembrar, como uma preferência, um interesse ou um fato importante, preferindo lembrar de coisas mesmo que sejam menores, desde que não sejam uma duplicata do que {bot} já sabe. {{/if}}{{if tool:update_long_term_memory}}{bot} usa {memory_update_tool} quando novas informações são alteradas ou adicionadas a algo que {bot} já lembra, em vez de salvar uma duplicata.{{/if}} >
+> {{if tool:review_capabilities}}Quando alguém pergunta o que {bot} pode fazer ou por que algo não está disponível, {bot} verifica {capabilities_tool} antes de responder. {{/if}}{{if tool_family:url_fetch}}Quando mais detalhes são necessários, {bot} usa {url_fetch_tool} em `https://docs.tomoribot.app/llms.txt` para obter informações.{{/if}}"*
 
-| Bloco | Opcional? | Comando | O que é |
+| Bloquear | Opcional? | Comando | O que é isso |
 |---|---|---|---|
-| Prompt de canal (append) | *(Opcional)* | `/config` > Channels > Channel Overrides | Varia por canal, inserido logo após o prompt de sistema. O modo *replace* da mesma página assume o slot do prompt de sistema acima em vez de adicionar um novo. |
-| Prompt da persona | *(Opcional)* | `/config` > Persona > Avançado | Um prompt escrito especificamente para a persona ativa, separado do prompt de sistema. |
-| [Atributos da persona](/pt-BR/features/chatting-personality/multiple-personas/#attributes) | | `/config` > Persona > Identity & Personality | Os traços de personalidade e padrões de fala da persona ativa. |
-| Informações do servidor | | *(nenhum, do Discord)* | O nome do servidor, descrição e o canal em que ela está, extraídos diretamente do Discord. |
-| [Bloqueios persona-usuário](/pt-BR/features/capabilities/tools-and-extensions/#ferramentas-integradas) | *(Opcional)* | `/moderation` para revisar/limpar; controlado por `/config` > Permissions (User Blocking) | Restrições ativas de silenciamento/bloqueio que esta persona mantém contra usuários específicos. |
-| [Memórias do servidor](/pt-BR/features/knowledge/memory/#personal-vs-server-memories) | | `/memories` | Os fatos de longo prazo salvos para este servidor. |
-| [Emojis do servidor](/pt-BR/features/chatting-personality/behavior-tweaking/#capabilities-what-shes-allowed-to-do) | *(Opcional)* | `/config` > Permissions (Emoji Usage) (apenas alternância), inicialize com `/expressions initialize` | Os emojis personalizados presentes no servidor. |
-| [Figurinhas do servidor](/pt-BR/features/chatting-personality/behavior-tweaking/#capabilities-what-shes-allowed-to-do) | *(Opcional)* | `/config` > Permissions (Sticker Usage) (apenas alternância), inicialize com `/expressions initialize` | As figurinhas personalizadas presentes no servidor. |
-| [Sprites da persona](/pt-BR/features/chatting-personality/multiple-personas/#sprites-emotion-avatars) | *(Opcional)* | `/config` > Persona > Sprites | Sprites de expressão nomeados configurados para a persona, se houver. |
-| [Participantes da Conversa](/pt-BR/features/knowledge/memory/#personal-vs-server-memories) | *(Opcional)* | `/personal memories` (controlado por `/config` > Permissions (Personalization)) | As pessoas na conversa, seus apelidos e handles de menção, e as memórias pessoais salvas sobre cada uma delas. Carregado quando a pessoa possui uma mensagem no contexto, ou se seu nome/alias é mencionado. Também traz o canal atual e a hora local como rodapé, usando `/config` > Engine > General. |
-| [Memória de curto prazo](/pt-BR/features/knowledge/memory/#short-term-memory-stm) | | `/config` > Persona > Memories; `/memories` para limpar entradas; controlado por `/config` > Permissions (Short-Term Memory) | Contém resumos e mensagens recentes de diferentes canais |
-| [`Documentos`](/pt-BR/features/knowledge/memory/#document-knowledge-base-rag) | *(Opcional)* | `/memories` | Fragmentos relevantes extraídos da base de conhecimento usando RAG. |
-| [Condicionamento](/pt-BR/features/knowledge/memory/#conditioning) | *(Opcional)* | `/reward <feed\|headpat\|hug\|kiss\|tickle>`, `/punish <bite\|bonk\|pinch\|spank\|squeeze>`, gerenciado via `/conditioning remove` | Empurrões comportamentais acumulados para esta persona neste servidor. |
-| [Diálogos de exemplo](/pt-BR/features/chatting-personality/multiple-personas/#sample-dialogues) | *(Opcional)* | `/config` > Persona > Identity & Personality | Exemplos de como esta persona fala, se houver configurados. |
-| [Mensagens recentes](/pt-BR/features/chatting-personality/behavior-tweaking/#generation-tuning) | | `/config` > Engine > General | A conversa real, até essa quantidade de mensagens (padrão 80). Sua nota de contexto e qualquer nota de reencontro são injetadas inline dentro deste bloco, em uma profundidade configurável, em vez de um bloco separado. |
+| Prompt de canal (anexar) | *(Opcional)* | `/config` > `Canais` > Substituições de canal | Varia por canal, em camadas logo após o prompt do sistema. O modo *substituir* da mesma página assume o slot de prompt do sistema acima em vez de adicionar um novo. |
+| Solicitação de personalidade | *(Opcional)* | `/config` > `Persona` > Avançado | Um prompt escrito especificamente para a persona ativa, separado do prompt do sistema. |
+| [Atributos da pessoa](/pt-BR/features/chatting-personality/multiple-personas/#attributes) |  | `/config` > `Persona` > `Identidade e Personalidade` | Os traços de personalidade e padrões de fala da persona ativa. |
+| Informações do servidor |  | *(nenhum, de Discord)* | O nome do servidor, a descrição e o canal em que ela está, extraídos do próprio Discord. |
+| [Bloqueios de usuário pessoal](/pt-BR/features/capabilities/tools-and-extensions/#built-in-tools) | *(Opcional)* | `/moderation` para revisar/limpar; bloqueado por `/config` > `Permissões` (bloqueio de usuário) | Restrições ativas de silenciamento/bloqueio que esta pessoa mantém contra usuários específicos. |
+| [Memórias do servidor](/pt-BR/features/knowledge/memory/#personal-vs-server-memories) |  | `/memories` | Os fatos de longo prazo salvos para este servidor. |
+| [Emojis de servidor](/pt-BR/features/chatting-personality/behavior-tweaking/#capabilities-what-shes-allowed-to-do) | *(Opcional)* | `/config` > `Plug-ins` > `Adições de Contexto` (`Emojis nas Respostas`) (somente alternância), inicializar com `/expressions initialize` | Os emojis personalizados presentes no servidor. |
+| [Figurinhas do servidor](/pt-BR/features/chatting-personality/behavior-tweaking/#expressions) | *(Opcional)* | `/config` > `Plug-ins` > `Ferramentas Disponíveis` (uso de figurinhas), classificar ativos nativos com `/expressions initialize`, gerenciar com `/expressions manage` | Figurinhas nativos enviáveis e todas as expressões personalizadas elegíveis para a pessoa que responde, com nomes, descrições e emoções. As fontes de mídia e as regras de acesso pessoal ficam fora do prompt. |
+| [Sprites de personalidade](/pt-BR/features/chatting-personality/multiple-personas/#sprites-emotion-avatars) | *(Opcional)* | `/config` > `Persona` > Sprites | Sprites de expressão nomeada configurados para a persona, se houver. |
+| [Participantes da Conversa](/pt-BR/features/knowledge/memory/#personal-vs-server-memories) | *(Opcional)* | `/personal memories` (bloqueado por `/config` > `Permissões` (Personalização)) | As pessoas na conversa, seus apelidos e menções, e as memórias pessoais salvas sobre cada uma delas. Carregado quando a pessoa possui uma mensagem no contexto ou se seu nome/alias for mencionado. Também carrega o canal atual e a hora local como rodapé, usando `/config` > Engine > General. |
+| [Memória de curto prazo](/pt-BR/features/knowledge/memory/#short-term-memory-stm) |  | `/config` > `Persona` > Memórias; `/memories` para limpar entradas; bloqueado por `/config` > `Permissões` (memória de curto prazo) | Contém resumos e mensagens recentes de diferentes canais |
+| [`Documentos`](/pt-BR/features/knowledge/memory/#document-knowledge-base-rag) | *(Opcional)* | `/memories` | Pedaços relevantes extraídos da base de conhecimento usando RAG. |
+| [Condicionamento](/pt-BR/features/knowledge/memory/#conditioning) | *(Opcional)* | `/reward <feed\|headpat\|hug\|kiss\|tickle>`, `/punish <bite\|bonk\|pinch\|spank\|squeeze>`; gerenciado com `/conditioning remove` | Preferências de comportamento acumuladas para esta persona neste servidor. |
+| [Exemplos de diálogos](/pt-BR/features/chatting-personality/multiple-personas/#sample-dialogues) | *(Opcional)* | `/config` > `Persona` > `Identidade e Personalidade` | Exemplos de como essa persona fala, se houver algum configurado. |
+| [Mensagens recentes](/pt-BR/features/chatting-personality/behavior-tweaking/#generation-tuning) |  | `/config` > Motor > Geral | A conversa real, até esse número de mensagens (padrão 80). Sua nota de contexto e qualquer nota de reunião são injetadas em linha dentro deste bloco, em uma profundidade configurável, em vez de como um bloco separado próprio. |
 
-Linhas marcadas com *(Opcional)* não contribuem com nada (e não custam tokens) quando não há nada a informar, ex.: nenhum documento correspondeu, ou o servidor não possui emojis personalizados.
+As linhas marcadas com *(Opcional)* não contribuem com nada (e não custam tokens) quando não há nada a dizer, por exemplo. nenhum documento corresponde ou o servidor não possui emojis personalizados.
 
-As mensagens recentes são a parte maior e mais frágil; é uma janela que avança conforme as pessoas conversam. Tudo acima delas é reconstruído a partir de configurações salvas e é estável.
+As mensagens recentes são a parte maior e mais frágil, são uma janela que desliza à medida que as pessoas falam. Tudo acima deles é reconstruído a partir das configurações salvas e é estável.
 
-`/tool prompt snapshot` exporta o pacote exato de uma persona para um arquivo. É a fonte da verdade para quais memórias estão ativas no momento, se algum documento correspondeu e quanto da conversa realmente coube.
+`/tool prompt snapshot` despeja o pacote exato de uma persona em um arquivo. É a verdade básica para quais memórias estão atualmente ativas, se um documento corresponde e quanto da conversa realmente cabe.
 
-`/tool estimate cost` detalha o mesmo pacote por tamanho, o que é útil para descobrir o que está consumindo seu contexto antes de aumentar qualquer limite.
+`/context` desenha o mesmo pacote que uma grade colorida da janela de contexto do modelo, uma cor por grupo de blocos acima, para que você possa ver rapidamente o que o preenche e quanto espaço resta. Um círculo marca um grupo menor que um quadrado. Também mostra o custo estimado de entrada por resposta e quantos tokens de entrada o provedor relatou para a última resposta real.
+
+`/tool estimate cost` divide o mesmo pacote por tamanho, o que é útil para descobrir o que está consumindo seu contexto antes de aumentar qualquer limite.
 
 ### Onde as Ferramentas são definidas?
 
-Para todo
-provedor que a TomoriBot suporta nativamente, os esquemas de ferramentas são enviados através do campo `tools` do próprio provedor, então depende do provedor/engine de inferência configurado.
+Para cada provedor que TomoriBot suporta nativamente, os esquemas de ferramentas são enviados por meio do próprio campo `tools` do provedor, portanto, depende do mecanismo de inferência configurado/provedor.
 
 ### Por que a TomoriBot esquece?
 
-Essa ordenação explica quase toda pergunta de "por que ela não lembra?":
+Essa ordem explica quase todos os "por que ela não se lembra?" pergunta:
 
-| O que aconteceu | Por quê |
+| O que aconteceu | Por que |
 |---|---|
-| Ela esqueceu algo de hoje mais cedo | Passou do limite de mensagens. Estava apenas nas Mensagens recentes: se a Tomori não salvar como memória de longo prazo, será esquecido assim que sair da janela de mensagens. |
-| Ela esqueceu algo em outro canal | Mensagens recentes é por canal. Apenas Memórias do servidor, Participantes da Conversa e Memória de curto prazo cruzam canais. A memória de curto prazo resolve isso carregando mensagens recentes de diferentes canais, mas não despeja tudo. |
-| `/refresh` fez ela esquecer | Refresh corta as Mensagens recentes e limpa a Memória de curto prazo deste canal, mas não deve remover memórias de longo prazo. Exclua o embed de refresh para remover o corte. |
-| Ela esqueceu algo após um reinício | Mensagens recentes nunca sobrevive a reinícios |
+| Ela esqueceu algo de hoje cedo | Ele ultrapassou o limite de mensagens. Estava apenas nas mensagens recentes, se Tomori não salvá-lo como uma memória de longo prazo, ele será esquecido quando chegar fora da janela de mensagens. |
+| Ela esqueceu algo em outro canal | As mensagens recentes são por canal. Somente memórias de servidor, participantes de conversa e canais cruzados de memória de curto prazo. A memória de curto prazo resolve isso carregando mensagens recentes de canais diferentes, mas não descarta tudo. |
+| `/refresh` a fez esquecer | A atualização corta as mensagens recentes e limpa a memória de curto prazo deste canal, mas não deve remover a memória de longo prazo. Exclua a incorporação de atualização para remover o corte. |
+| Ela esqueceu algo depois de reiniciar | Mensagens recentes nunca sobrevivem a reinicializações |
 
-Se você quer que algo sobreviva a tudo isso, precisa se tornar uma memória de longo prazo. Veja [Memória](/pt-BR/features/knowledge/memory/#long-term-memory).
+Se você deseja que algo sobreviva a todos os itens acima, isso deve se tornar uma memória de longo prazo. Consulte [Memória](/pt-BR/features/knowledge/memory/#long-term-memory).
 
 ## Dicas e Truques
 

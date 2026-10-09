@@ -55,7 +55,7 @@ must own its table access, and always give the reason:
 ## Checks
 
 - `bun run audit-sql` prints `WRITES`, `READS`, and `EXEMPTIONS`, and exits non-zero on any
-  violation. It runs in `bun run vl` and in `validation.yml`.
+  violation. It runs in `bun run vl` and in `ci.yml`.
 - `tests/unit/db/rawSqlBoundary.test.ts` asserts zero violations on the real tree and tests the
   scanner against comments, strings, and real literals. It uses the same scanner as `audit-sql`.
 

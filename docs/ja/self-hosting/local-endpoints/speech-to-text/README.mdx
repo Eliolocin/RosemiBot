@@ -8,32 +8,34 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-TomoriBotは、Speech-to-Textを`transcription`カスタムエンドポイント機能として扱います。有効なtranscriptionエンドポイントが存在する場合、音声添付ファイルはバックグラウンドで文字起こしされ、会話コンテキストに追加されます。
+音声メッセージと音声添付ファイルをローカルで文字起こしすることで、TomoriBotは録音をサードパーティのクラウドAPIに送信せずにチャット内の音声を理解できるようになります。
 
-表示される文字起こしの投稿は別です。`/config` > 動作 > 一般的な動作の`通知`は、ボイスメッセージの文字起こしをチャットに投稿するかどうかのみを制御し、バックグラウンドのSTTを有効または無効にすることはありません。
+TomoriBotは、speech-to-textを`transcription`カスタムエンドポイント機能として扱います。音声添付ファイルはバックグラウンドで文字起こしされ、アクティブな文字起こしエンドポイントが存在する場合に会話コンテキストに追加されます。
+
+目に見えるトランスクリプトの投稿は別です。`/config` > エンジン > 通知は、音声メッセージのトランスクリプトをチャットに投稿するかどうかのみを制御します。バックグラウンドのSTTを有効または無効にすることはありません。
 
 ## 利用可能なエンジン
 
 <CardGrid>
   <LinkCard title="WhisperX" href="/ja/self-hosting/local-endpoints/speech-to-text/whisperx/"
-    description="servers/sttにあるリファレンスWhisperXサーバーを使用した、初心者向けのローカル文字起こしです。" />
-  <LinkCard title="whisper.cpp" href="/ja/self-hosting/local-endpoints/speech-to-text/whispercpp/"
-    description="OpenAI互換の文字起こしエンドポイントを公開している場合は、軽量なwhisper.cpp HTTPサーバーを使用します。" />
+    description="初心者向けのローカル文字起こし。servers/sttにある参照WhisperXサーバーを使用します。" />
+  <LinkCard title="ささやき.cpp" href="/ja/self-hosting/local-endpoints/speech-to-text/whispercpp/"
+    description="OpenAI互換のトランスクリプションエンドポイントを公開する場合は、軽量のWhisper.cpp HTTPサーバーを使用します。" />
   <LinkCard title="KoboldCPP" href="/ja/self-hosting/local-endpoints/speech-to-text/koboldcpp/"
-    description="ビルドがOpenAI互換の音声文字起こしを公開している場合は、KoboldCPPのWhisperベースのSTTを使用します。" />
+    description="ビルドがOpenAI互換のオーディオトランスクリプションを公開する場合は、KoboldCPP WhisperベースのSTTを使用します。" />
 </CardGrid>
 
-## セットアップ手順
+## セットアップの流れ
 
-1. 上記のエンジンガイドからSTTサーバーを1つ起動します。
-2. `/providers`で`新しいカスタムエンドポイントを追加`を選び、API互換性に`openai-compatible-transcription`を使用します。
-3. 保存したエンドポイントを選択し、モデルのドロップダウンからサーバーが報告するモデルコードを追加します。
-4. `/config` > モデル > モデルの切り替えを開き、登録したエンドポイントを選択して有効化します。
+1. 上記のエンジンガイドから1つのSTTサーバーを起動します。
+2. `/providers`で、`+ 新しいカスタムエンドポイントを追加` (または`Add New Custom Endpoint`) を選択し、`openai-compatible-transcription` (OpenAI互換文字起こし) を選択します。
+3. 保存されたエンドポイントを選択し、そのモデルドロップダウンを使用して、サーバーによって報告されたモデルコードを追加します。
+4. `/config` > `モデル` > `モデルの切り替え` を開き、登録されたエンドポイントを選択してアクティブ化します。
 
-## 文字起こしの流れ
+## トランスクリプトフロー
 
-transcriptionエンドポイントが有効な場合、TomoriBotはサポートされている音声添付ファイルをバックグラウンドで読み取り、チャットコンテキストに文字起こしを追加します。ペルソナの割り当ては必要ありません。
+文字起こしエンドポイントがアクティブな場合、TomoriBotはサポートされている音声添付ファイルをバックグラウンドで読み取り、文字起こしをチャットコンテキストに追加します。ペルソナの割り当ては必要ありません。
 
-文字起こしをチャットに表示して投稿したい場合にのみ、`/config` > 動作 > 一般的な動作の`通知`を使用してください。
+これらのトランスクリプトをチャットに視覚的に投稿したい場合にのみ、「`/config`」>「エンジン」>「通知」を使用します。
 
-ElevenLabsのユーザーは、`/providers`で`新しいプロバイダーを追加`とElevenLabsを選んでください。これにより、speechと一緒にtranscriptionが登録されます。
+ElevenLabsユーザーは、`/providers`で`新しいプロバイダーを追加`および`ElevenLabs`を選択する必要があります。音声と一緒に文字起こしも登録します。

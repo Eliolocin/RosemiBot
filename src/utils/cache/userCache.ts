@@ -37,13 +37,7 @@ let cacheMisses = 0;
 let blacklistCacheHits = 0;
 let blacklistCacheMisses = 0;
 
-/**
- * Gets or creates a cache entry for a user, loading from DB if needed.
- * Internal helper function used by the public cache accessors.
- *
- * @param userDiscId - Discord user ID
- * @returns UserCacheEntry (never null, creates entry with defaults if user not found)
- */
+/** Never null: creates an entry with defaults when the user is not found. */
 async function getOrCreateCacheEntry(userDiscId: string): Promise<UserCacheEntry> {
   const now = Date.now();
   const cachedEntry = cache.get(userDiscId);
@@ -113,12 +107,7 @@ export async function getCachedUserRow(userDiscId: string): Promise<UserRow | nu
   return entry.userRow;
 }
 
-/**
- * Gets privacy level with 30-minute in-memory cache.
- *
- * @param userDiscId - Discord user ID
- * @returns PrivacyLevel (defaults to MINIMAL if not found)
- */
+/** Cached in memory for 30 minutes. Defaults to MINIMAL when the user is not found. */
 export async function getCachedPrivacyLevel(userDiscId: string): Promise<PrivacyLevel> {
   const entry = await getOrCreateCacheEntry(userDiscId);
   return entry.privacyLevel;

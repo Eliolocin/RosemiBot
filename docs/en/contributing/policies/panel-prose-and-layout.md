@@ -16,9 +16,10 @@ stored content. Never add line breaks to shape the panel.
 Every panel passes its components through `buildPanelContainer()` in `src/utils/discord/ui/panel.ts`,
 which wraps every `TextDisplay` before Discord's limits are checked. It keeps links, code, emphasis,
 emoji, and grapheme clusters whole, never truncates, and leaves fenced blocks byte for byte. It picks
-the width from the component tree: text beside a `Thumbnail` gets the narrow profile, and text with
-kana gets the Japanese profile. The widths live in `panelProse.ts`, because Discord exposes no viewport
-width.
+the width per line from the component tree: a line beside a `Thumbnail` gets the narrow profile, and a
+line with kana gets the Japanese profile. Lines are judged one at a time, so a stored Japanese name
+never narrows the English prose sharing its `TextDisplay`. The widths live in `panelProse.ts`, because
+Discord exposes no viewport width.
 
 Wrapping is visual; length limits are separate and use two different tools:
 

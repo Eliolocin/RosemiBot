@@ -1,84 +1,62 @@
 ---
-title: "语音：TTS 与 STT"
+title: "语音：TTS与STT"
 sidebar:
   order: 3
 ---
 
-TomoriBot 能说（文本转语音）也能听（语音转文字）：
+TomoriBot可以在Discord中说和听：通过文本转语音 (TTS) 发送语音回复，并通过语音转文本 (STT) 将音频消息转录到对话上下文中。
 
-- TTS 让她能用 Discord 原生语音消息回复。
-- STT 把用户的音频附件转成文字，供她当作对话上下文使用。
-
-两者都走同一套端点系统。最快的路是 ElevenLabs（云端，
-下面有完整说明）。如果你更想在自己的硬件上跑语音，就用本地引擎，
-按自部署指南操作。
+两者都使用提供商端点系统。ElevenLabs是最快的云选项。你还可以使用自部署引擎在自己的硬件上运行本地语音模型。
 
 ## 文本转语音
 <!-- anchor: text-to-speech -->
 
 ### ElevenLabs（云端，最省事）
 
-1. 从 [ElevenLabs](https://elevenlabs.io/app/settings/api-keys) 获取 API 密钥。
-2. 运行 `/providers`，选择 `添加新提供方`，选 ElevenLabs，粘贴密钥。这个流程会：
-   - 登记 ElevenLabs 的`语音`端点（同时还有`转写`端点），
-   - 把它们选为当前生效，
-   - 还可以当场给一个人格指定语音。
-3. 在 `/config` 的 人格 > 语音 里给更多人格指定语音。在
-   [ElevenLabs 语音库](https://elevenlabs.io/app/voice-library) 浏览语音，那里也可以
-   克隆你自己的声音。
+1. 从 [ElevenLabs](https://elevenlabs.io/app/settings/api-keys) 获取API密钥。
+2. 运行`/providers`，选择`添加新提供方`，选择`ElevenLabs`，然后粘贴密钥。这个流程：
+   - 注册ElevenLabs语音端点和转录端点，
+   - 激活两个端点，
+   - （可选）立即将声音分配给一个人格。
+3. 在`/config` > `人格` > 语音中将语音分配给其他人格。在[ElevenLabs语音库](https://elevenlabs.io/app/voice-library)中浏览语音，你也可以在其中克隆自己的语音。
 
-在 `/providers` 里选中 ElevenLabs，然后随时选 `编辑端点` 更新密钥。
+在`/providers`中选择ElevenLabs，然后每当需要更新密钥时选择`编辑端点`。
 
-注意事项：
+笔记：
 
-- 在免费档位下只有预置语音能用。浏览
-  [预置语音列表](https://elevenlabs-sdk.mintlify.app/voices/premade-voices)。
-- 她生成和朗读语音消息时按字符计费；免费档位有
-  每月上限，请查看你的 ElevenLabs 后台。
-- 语音回复由 `voice_message_enabled` 控制，并要求当前生效的人格已经
-  指定了语音。
-- 在服务器里，`/config` 的 人格 > 语音 需要管理服务器权限；在以私信为依托的工作区里，所有者仍可使用。
+- 在免费计划中，只有预制声音有效。浏览[预制语音列表](https://elevenlabs-sdk.mintlify.app/voices/premade-voices)。
+- 当她生成语音消息时，字符数就会被计算在内。免费套餐有每月限制，因此请监控你的ElevenLabs仪表板。
+- 语音回复需要`/config` > `权限`中的`voice_message_enabled`，并且活动人格必须分配有语音。
+- 更改`/config` > `人格` > 语音需要服务器中的“管理服务器”权限，并且在DM中仍可供所有者使用。
 
-在 `/help` 里选择 `功能`，再选 `语音生成`，可以看到 Discord 里的同一份讲解。
+在`/help`中，选择`功能`，然后选择`语音`，以进行Discord中的交互式演练。
 
 ### 本地语音克隆引擎（自部署）
 
-在自部署实例上，你可以改为跑一个本地语音克隆服务器。大致流程是：
-启动包装服务器，用 `/providers` 登记它的连接和模型，用
-`/providers` 选中它，在 `/config` 的 模型 > TTS 参数与语音 里上传样本，然后在
-`/config` 的 人格 > 语音 里指定它。任何音频格式都接受（会自动转成单声道 WAV）；10 到 20
-秒、没有背景音乐的片段效果最好。
+在自部署实例上，你可以运行本地语音克隆服务器。工作流程：启动服务器，在`/providers`中注册其连接和型号，在`/providers`中选择它，在`/config` > `模型` > TTS参数和语音中上传参考样本，然后在`/config` > `人格` >语音中分配它。接受任何音频格式（自动转换为单声道WAV）； 没有背景音乐的10到20秒剪辑效果最佳。
 
 每个引擎都有自己的设置指南：
 
-- [Chatterbox-Turbo/Nano](/zh-CN/self-hosting/local-endpoints/text-to-speech/chatterbox/)：快速、仅英语的语音克隆，支持 `[laugh]` 之类的情绪事件标签。
-- [Qwen3-TTS](/zh-CN/self-hosting/local-endpoints/text-to-speech/qwen3tts/)：多语言（10 种语言），另有
-  自然语言的 VoiceDesign 模式。
-- [MOSS-TTS](/zh-CN/self-hosting/local-endpoints/text-to-speech/moss/)：试用性质的自动端点，用于多语言克隆或英语与中文的语音设计。
-- [IrodoriTTS](/zh-CN/self-hosting/local-endpoints/text-to-speech/irodoritts/)：专精日语，会把 emoji
-  读成情绪提示。
+- [Chatterbox-Turbo/Nano](/zh-CN/self-hosting/local-endpoints/text-to-speech/chatterbox/)：快速英语语音克隆，带有`[laugh]`等情感标签。
+- [Qwen3-TTS](/zh-CN/self-hosting/local-endpoints/text-to-speech/qwen3tts/)：多语言（10种语言）加上自然语言VoiceDesign模式。
+- [MOSS-TTS](/zh-CN/self-hosting/local-endpoints/text-to-speech/moss/)：多语言克隆和英文或中文语音设计。
+- [IrodoriTTS](/zh-CN/self-hosting/local-endpoints/text-to-speech/irodoritts/)：日本专用引擎，将表情符号读取为情感线索。
 
-完整清单与硬件建议见[文本转语音对照表](/zh-CN/self-hosting/local-endpoints/text-to-speech/)。
+有关硬件指南和完整引擎列表，请参阅[文本到语音比较表](/zh-CN/self-hosting/local-endpoints/text-to-speech/)。
 
 ## 语音转文字
 <!-- anchor: speech-to-text -->
 
-转写端点把用户的音频附件转成文字，作为后台的对话
-上下文。转写内容是否公开发到聊天里由
-`/config` > 行为 > 通知 单独控制。
+转录端点将用户音频附件转换为对话上下文的文本。是否在聊天中公开发布文字记录在`/config` > `行为` > 通知行为中控制。
 
 ### ElevenLabs（云端）
 
-上面已经讲过：从 `/providers` 添加 ElevenLabs 会连语音端点一起登记好转写端点。
-用 `/providers` 在多个转写端点之间挑选。
+从`/providers`添加ElevenLabs会将转录端点与语音一起注册。使用`/providers`在活动转录端点之间切换。
 
 ### 本地引擎（自部署）
 
-- [WhisperX](/zh-CN/self-hosting/local-endpoints/speech-to-text/whisperx/)：推荐的本地方案；约 100
-  种语言、GPU 加速、多种模型尺寸。
-- [KoboldCPP](/zh-CN/self-hosting/local-endpoints/speech-to-text/koboldcpp/)：如果你的构建暴露了
-  OpenAI 兼容的转写端点就能用。
-- [whisper.cpp](/zh-CN/self-hosting/local-endpoints/speech-to-text/whispercpp/)。
+- [WhisperX](/zh-CN/self-hosting/local-endpoints/speech-to-text/whisperx/)：推荐本地路径； 大约100种语言、GPU加速、多种模型大小。
+- [KoboldCPP](/zh-CN/self-hosting/local-endpoints/speech-to-text/koboldcpp/)：当你的构建公开OpenAI兼容的转录端点时起作用。
+- [耳语.cpp](/zh-CN/self-hosting/local-endpoints/speech-to-text/whispercpp/)。
 
-完整清单见[语音转文字](/zh-CN/self-hosting/local-endpoints/speech-to-text/)汇总页。想看
-Discord 里的说明，运行 `/help`，然后选择 `功能` 和 `语音识别`。
+请参阅 [语音转文本](/zh-CN/self-hosting/local-endpoints/speech-to-text/) 中心以获取完整的引擎列表。对于Discord摘要，运行`/help`，然后选择`功能`和`语音识别`。

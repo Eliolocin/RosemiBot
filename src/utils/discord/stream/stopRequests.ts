@@ -16,6 +16,20 @@ export type StreamStopRequest = {
   stopContext?: StreamStopContext;
 };
 
+const stopObservers = new Map<string, Set<() => void>>();
+
+/** Auxiliary requests need the same interruption events as provider streams. */
+export function observeStopRequest(channelId: string, observer: () => void): () => void {
+  const observers = stopObservers.get(channelId) ?? new Set();
+  observers.add(observer);
+  stopObservers.set(channelId, observers);
+  if (activeStopRequests.has(channelId)) observer();
+  return () => {
+    observers.delete(observer);
+    if (!observers.size) stopObservers.delete(channelId);
+  };
+}
+
 const activeStopRequests = new Map<string, StreamStopRequest>();
 
 /**
@@ -31,10 +45,16 @@ export const INTERNAL_STOP_REQUESTER_IDS: ReadonlySet<string> = new Set([
   "flush_limit",
   "channel_deleted",
   "missing_access",
+  "pending_response_limit",
 ]);
 
 export function isSilentSpeakerGuardStop(requesterId: string | undefined, state: StreamState): boolean {
-  return requesterId === "speaker_guard" && state.messageSentCount === 0 && !state.accumulatedText.trim();
+  return (
+    requesterId === "speaker_guard" &&
+    state.messageSentCount === 0 &&
+    !state.accumulatedText.trim() &&
+    !state.pendingResponseText?.trim()
+  );
 }
 
 function getStopReasonFromRequesterId(requesterId?: string): StreamStopReason {
@@ -52,6 +72,8 @@ function getStopReasonFromRequesterId(requesterId?: string): StreamStopReason {
       return "channel_deleted";
     case "missing_access":
       return "missing_access";
+    case "pending_response_limit":
+      return "pending_response_limit";
     default:
       return "user_request";
   }
@@ -79,6 +101,7 @@ export function requestStop(channelId: string, requesterId?: string, stopContext
     stopContext,
   });
 
+  for (const observer of stopObservers.get(channelId) ?? []) observer();
   return true;
 }
 
@@ -134,6 +157,7 @@ export function requestFollowUp(channelId: string, requesterId: string): boolean
   });
 
   log.info(`Follow-up interrupt request registered for channel ${channelId} by user ${requesterId}.`);
+  for (const observer of stopObservers.get(channelId) ?? []) observer();
   return true;
 }
 

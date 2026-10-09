@@ -13,9 +13,6 @@ import { ColorCode, log } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
 import { MEDIA_GENERATION_TOOL_NAMES } from "@/utils/tools/deliberateToolMode";
 
-/**
- * Configure the /kill command
- */
 export const configureCommand = (command: SlashCommandBuilder) =>
   command.setName("kill").setDescription(localizer("en-US", "commands.kill.description"));
 

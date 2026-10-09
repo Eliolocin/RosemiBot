@@ -20,6 +20,7 @@ export async function buildPersonaStatusPages(
   selectedPersona: TomoriState,
   userData: UserRow,
   locale: string,
+  canViewText = false,
 ): Promise<SummaryEmbedOptions[]> {
   const limits = getMemoryLimits();
   const personaName = selectedPersona.persona_nickname ?? "Tomori";
@@ -104,15 +105,20 @@ export async function buildPersonaStatusPages(
     ? localizer(locale, "commands.status.nai_attg_not_set")
     : `Author: ${attgAuthor}\nTitle: ${attgTitle}\nTags: ${attgTags}\nGenre: ${attgGenre}\nStars: ${attgStars}`;
 
-  const rawPersonaPrompt = selectedPersona.persona_prompt ?? null;
-  const personaPromptValue = rawPersonaPrompt
-    ? formatPromptPreview(rawPersonaPrompt, locale)
-    : localizer(locale, "commands.status.field_persona_prompt_not_set");
+  const hiddenPrompt = localizer(locale, "commands.status.prompt_hidden");
+  const rawPersonaPrompt = canViewText ? selectedPersona.persona_prompt : null;
+  const personaPromptValue = !canViewText
+    ? hiddenPrompt
+    : rawPersonaPrompt
+      ? formatPromptPreview(rawPersonaPrompt, locale)
+      : localizer(locale, "commands.status.field_persona_prompt_not_set");
 
-  const rawPersonaContextNote = selectedPersona.context_note ?? null;
-  const personaContextNoteValue = rawPersonaContextNote
-    ? formatPromptPreview(rawPersonaContextNote, locale)
-    : localizer(locale, "commands.status.field_persona_context_note_not_set");
+  const rawPersonaContextNote = canViewText ? selectedPersona.context_note : null;
+  const personaContextNoteValue = !canViewText
+    ? hiddenPrompt
+    : rawPersonaContextNote
+      ? formatPromptPreview(rawPersonaContextNote, locale)
+      : localizer(locale, "commands.status.field_persona_context_note_not_set");
 
   const personaPage1: SummaryEmbedOptions = {
     titleKey: "commands.status.persona_page1_title",

@@ -256,7 +256,7 @@ export class CustomStreamAdapter extends OpenAICompatibleStreamAdapter {
   }
 }
 
-/** Merges two thought arrays, omitting undefined/empty sources. */
+/** Omits undefined and empty sources. */
 function mergeThoughts(a: ThoughtLogEntry[] | undefined, b: ThoughtLogEntry[]): ThoughtLogEntry[] | undefined {
   if ((!a || a.length === 0) && b.length === 0) return undefined;
   return [...(a ?? []), ...b];

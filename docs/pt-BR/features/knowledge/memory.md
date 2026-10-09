@@ -2,7 +2,7 @@
 title: "Memória"
 sidebar:
   order: 1
-aiGenerated: true
+aiGenerated: false
 ---
 
 A TomoriBot possui um sistema de memória persistente para que ela se lembre de fatos entre conversas. Esta

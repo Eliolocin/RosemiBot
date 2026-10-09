@@ -2,6 +2,7 @@
 title: "Configuración: LLM local"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 Esta traducción se proporciona para tu comodidad. La versión en inglés es la autoritativa.

@@ -1,10 +1,16 @@
 import type { Client } from "discord.js";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
-import type { ServerEmojiRow, ServerStickerRow, AssembledServerConfig, TomoriState } from "@/types/db/schema";
+import type {
+  CustomExpressionRow,
+  ServerEmojiRow,
+  ServerStickerRow,
+  AssembledServerConfig,
+  TomoriState,
+} from "@/types/db/schema";
 import type { ToolPromptMacroResolver } from "@/utils/tools/toolPromptMacros";
 import type { MentionConverter } from "./templates";
 import { serverRepository } from "@/utils/db/repositories/ServerRepository";
-import { isStickerSendable } from "@/utils/discord/stickerAvailability";
+import { projectStickerCandidates } from "@/utils/discord/stickerCandidates";
 
 type EmojiMetadata =
   | ServerEmojiRow
@@ -14,17 +20,6 @@ type EmojiMetadata =
       emoji_desc: string | null;
       emotion_key: string | null;
       is_animated: boolean;
-      created_at: Date | null;
-      updated_at: Date | null;
-    };
-
-type StickerMetadata =
-  | ServerStickerRow
-  | {
-      sticker_disc_id: string;
-      sticker_name: string;
-      sticker_desc: string | null;
-      emotion_key: string | null;
       created_at: Date | null;
       updated_at: Date | null;
     };
@@ -136,6 +131,7 @@ export async function buildServerStickerContextItem(params: {
   tomoriConfig: AssembledServerConfig;
   tomoriState: TomoriState | null;
   preloadedStickers?: ServerStickerRow[] | null;
+  preloadedCustomExpressions?: CustomExpressionRow[] | null;
   toolPromptMacroResolver: ToolPromptMacroResolver;
   convertMentions: MentionConverter;
 }): Promise<StructuredContextItem | null> {
@@ -148,59 +144,27 @@ export async function buildServerStickerContextItem(params: {
     return null;
   }
 
-  const guildStickersCache = params.client.guilds.cache.get(params.guildId)?.stickers.cache;
-  if (!guildStickersCache || guildStickersCache.size === 0) {
-    return null;
-  }
-
-  const stickerMetadata =
-    params.preloadedStickers && params.preloadedStickers.length > 0
-      ? params.preloadedStickers
-      : await serverRepository.loadStickersByInternalId(params.tomoriState.server_id);
-
-  const stickerMetadataByName = new Map<string, StickerMetadata>();
-  const hasStickerMetadata = (metadata: StickerMetadata) =>
-    (metadata.emotion_key && metadata.emotion_key !== "unset") ||
-    (metadata.sticker_desc && metadata.sticker_desc.trim().length > 0);
-  const getStickerMetadataTimestamp = (metadata: StickerMetadata) =>
-    Math.max(metadata.updated_at?.getTime() ?? 0, metadata.created_at?.getTime() ?? 0);
-
-  for (const metadata of stickerMetadata) {
-    if (!metadata.sticker_name) continue;
-    const nameKey = metadata.sticker_name.toLowerCase();
-    const existing = stickerMetadataByName.get(nameKey);
-    if (
-      !existing ||
-      (hasStickerMetadata(metadata) && !hasStickerMetadata(existing)) ||
-      (hasStickerMetadata(metadata) === hasStickerMetadata(existing) &&
-        getStickerMetadataTimestamp(metadata) >= getStickerMetadataTimestamp(existing))
-    ) {
-      stickerMetadataByName.set(nameKey, metadata);
-    }
-  }
-
-  const sortedStickers = Array.from(guildStickersCache.values())
-    .filter((sticker) => isStickerSendable(sticker))
-    .sort((a, b) => (a.createdTimestamp || 0) - (b.createdTimestamp || 0));
-  const latestStickerByName = new Map<string, (typeof sortedStickers)[number]>();
-  for (const sticker of sortedStickers) {
-    if (sticker.name) latestStickerByName.set(sticker.name.toLowerCase(), sticker);
-  }
-
+  const guild = params.client.guilds.cache.get(params.guildId);
+  if (!guild) return null;
+  const [metadata, customs] = await Promise.all([
+    params.preloadedStickers ?? serverRepository.loadStickersByInternalId(params.tomoriState.server_id),
+    params.preloadedCustomExpressions ?? serverRepository.loadCustomExpressions(params.tomoriState.server_id),
+  ]);
+  const candidates = projectStickerCandidates(guild, params.tomoriState.persona_id ?? 0, metadata, customs);
+  if (!candidates.length) return null;
   let stickerContent = `## ${params.serverName}'s Stickers\nThis server has the following stickers available for ${params.botName} to use with the '{sticker_tool}' function:\n`;
-  for (const sticker of sortedStickers.filter(
-    (sticker) => sticker.name && latestStickerByName.get(sticker.name.toLowerCase())?.id === sticker.id,
-  )) {
-    const stickerName = sticker.name ?? "";
-    const metadata = stickerMetadataByName.get(stickerName.toLowerCase());
-    const emotionKey = metadata?.emotion_key === "unset" ? null : (metadata?.emotion_key ?? null);
+  for (const sticker of candidates) {
     const labelParts: string[] = [];
-    if (emotionKey) labelParts.push(`Expresses ${emotionKey}`);
-    if (metadata?.sticker_desc) labelParts.push(metadata.sticker_desc);
-    if (labelParts.length === 0 && sticker.description) labelParts.push(sticker.description);
-    stickerContent += `- "${stickerName}"${labelParts.length > 0 ? ` (${labelParts.join("; ")})` : ""}\n`;
+    if (sticker.emotionKey) labelParts.push(`Expresses ${sticker.emotionKey}`);
+    if (sticker.description) labelParts.push(sticker.description);
+    stickerContent += `- "${sticker.name}"${labelParts.length ? ` (${labelParts.join("; ")})` : ""}\n`;
   }
   stickerContent += "To use a sticker, call '{sticker_tool}' with the sticker's name (case-insensitive).\n";
+
+  const expandedContent = await params.toolPromptMacroResolver.expand(
+    `{{if tool:select_sticker_for_response}}${stickerContent}{{/if}}`,
+  );
+  if (!expandedContent.trim()) return null;
 
   return {
     role: "system",
@@ -208,7 +172,7 @@ export async function buildServerStickerContextItem(params: {
       {
         type: "text",
         text: await params.convertMentions(
-          await params.toolPromptMacroResolver.expand(stickerContent),
+          expandedContent,
           params.client,
           params.guildId,
           "User",

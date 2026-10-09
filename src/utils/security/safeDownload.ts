@@ -6,10 +6,8 @@
 
 import { log } from "@/utils/misc/logger";
 import { fetchUserRemoteUrl, RemoteUrlPolicyError } from "@/utils/security/userRemoteFetch";
+import { readBoundedResponse, ResponseSizeError } from "@/utils/security/boundedResponse";
 
-/**
- * Options for safe download operation
- */
 export interface SafeDownloadOptions {
   /**
    * Maximum file size in MB
@@ -40,9 +38,6 @@ export interface SafeDownloadOptions {
   externalSignal?: AbortSignal;
 }
 
-/**
- * Result of safe download operation
- */
 export interface SafeDownloadResult {
   /**
    * Whether the download succeeded
@@ -96,13 +91,20 @@ export interface SafeDownloadResult {
  * ```
  */
 export async function safeDownload(url: string, options: SafeDownloadOptions): Promise<SafeDownloadResult> {
+  // Signed attachment queries authorize access, so logs retain only the download origin.
+  let urlOrigin: string;
+  try {
+    urlOrigin = new URL(url).origin;
+  } catch {
+    urlOrigin = "invalid";
+  }
   const { maxSizeMB, timeoutMs = 10000, knownSize, requestInit, externalSignal } = options;
   const maxSizeBytes = maxSizeMB * 1024 * 1024;
 
   if (knownSize !== undefined && knownSize > maxSizeBytes) {
     log.warn(`File size ${(knownSize / (1024 * 1024)).toFixed(2)} MB exceeds limit of ${maxSizeMB} MB`, {
       metadata: {
-        url,
+        urlOrigin,
         knownSizeMB: knownSize / (1024 * 1024),
         maxSizeMB,
       },
@@ -187,7 +189,7 @@ export async function safeDownload(url: string, options: SafeDownloadOptions): P
     if (!response.ok) {
       log.warn(`Download failed with HTTP ${response.status}`, {
         metadata: {
-          url,
+          urlOrigin,
           status: response.status,
           statusText: response.statusText,
         },
@@ -206,7 +208,7 @@ export async function safeDownload(url: string, options: SafeDownloadOptions): P
       if (sizeBytes > maxSizeBytes) {
         log.warn(`Content-Length ${(sizeBytes / (1024 * 1024)).toFixed(2)} MB exceeds limit of ${maxSizeMB} MB`, {
           metadata: {
-            url,
+            urlOrigin,
             contentLengthMB: sizeBytes / (1024 * 1024),
             maxSizeMB,
           },
@@ -220,13 +222,12 @@ export async function safeDownload(url: string, options: SafeDownloadOptions): P
       }
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const buffer = await readBoundedResponse(response, maxSizeBytes);
 
     if (buffer.length > maxSizeBytes) {
       log.warn(`Downloaded file ${(buffer.length / (1024 * 1024)).toFixed(2)} MB exceeds limit of ${maxSizeMB} MB`, {
         metadata: {
-          url,
+          urlOrigin,
           actualSizeMB: buffer.length / (1024 * 1024),
           maxSizeMB,
         },
@@ -247,9 +248,12 @@ export async function safeDownload(url: string, options: SafeDownloadOptions): P
       contentType: response.headers.get("content-type") ?? undefined,
     };
   } catch (error) {
+    if (error instanceof ResponseSizeError) {
+      return { success: false, error: "size_exceeded", details: error.message };
+    }
     if (error instanceof Error && error.name === "AbortError") {
       log.warn(`Download timed out after ${timeoutMs}ms`, {
-        metadata: { url, timeoutMs },
+        metadata: { urlOrigin, timeoutMs },
       });
 
       return {
@@ -266,7 +270,7 @@ export async function safeDownload(url: string, options: SafeDownloadOptions): P
       log.warn("Download blocked by URL policy", {
         errorType: "download_blocked_by_policy",
         metadata: {
-          url,
+          urlOrigin,
           hostname: error.hostname,
           failureCode: error.failureCode ?? "UNKNOWN",
           error: error.message,
@@ -283,7 +287,7 @@ export async function safeDownload(url: string, options: SafeDownloadOptions): P
     log.error("Download failed with network error", {
       errorType: "download_network_error",
       metadata: {
-        url,
+        urlOrigin,
         error: error instanceof Error ? error.message : String(error),
       },
     });

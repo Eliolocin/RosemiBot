@@ -6,9 +6,6 @@ import { localizer } from "@/utils/text/localizer";
 import type { UserRow } from "@/types/db/schema";
 import { clearShortTermMemoryForChannel } from "@/utils/cache/shortTermMemoryCache";
 
-/**
- * Configures the 'refresh' command.
- */
 export const configureCommand = (command: SlashCommandBuilder) =>
   command.setName("refresh").setDescription(localizer("en-US", "commands.refresh.description"));
 

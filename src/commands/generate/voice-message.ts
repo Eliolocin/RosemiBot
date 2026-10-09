@@ -86,6 +86,7 @@ import { ColorCode, log } from "@/utils/misc/logger";
 import { CooldownType, type TomoriState, type UserRow } from "@/types/db/schema";
 import type { WhitelistCheckResult } from "@/types/misc/channelWhitelist";
 import type { PersonalSpotlightStatus } from "@/utils/db/repositories/UserRepository";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand
@@ -744,7 +745,7 @@ export async function execute(
     uploadFilename: uploadAttachment?.name ?? null,
   });
   const successEmbed = new EmbedBuilder()
-    .setTitle(localizer(locale, "commands.generate.voice-message.success_title"))
+    .setTitle(localizedStatusTitle(locale, "commands.generate.voice-message.success_title", ColorCode.SUCCESS))
     .setDescription(
       localizer(locale, "commands.generate.voice-message.success_description", {
         persona: persona.persona_nickname,

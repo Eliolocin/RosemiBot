@@ -12,6 +12,7 @@ sidebar:
   label: "概要"
   groupLabel: "セルフホスト"
   order: 3
+aiGenerated: false
 ---
 
 <!-- STUB (Phase 1 structural). Phase 2 writes: requirements + module directory.

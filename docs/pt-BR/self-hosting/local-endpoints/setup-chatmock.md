@@ -4,40 +4,38 @@ sidebar:
   order: 5
 ---
 
-Se você quiser que o TomoriBot use sua conta do ChatGPT por meio de uma ponte local compatível com a OpenAI, você pode executar o [ChatMock](https://github.com/RayBytes/ChatMock) e apontar o provedor `custom` do TomoriBot para ele.
+Conecte TomoriBot à sua conta ChatGPT por meio de uma ponte local compatível com OpenAI usando [ChatMock](https://github.com/RayBytes/ChatMock).
 
-## O que o ChatMock faz
-
-- O ChatMock executa um servidor de API local compatível com a OpenAI
-- O TomoriBot pode usar esse servidor local através do provedor `custom`
+ChatMock executa um servidor API local que aceita solicitações OpenAI padrão, permitindo que o provedor `custom` de TomoriBot roteie as conclusões do bate-papo por meio de sua conta.
 
 ## 1. Iniciar o ChatMock
 
-Instale e inicie o ChatMock seguindo as instruções no GitHub:
+Instale ChatMock seguindo as instruções no [repositório ChatMock](https://github.com/RayBytes/ChatMock).
 
-- [Repositório do ChatMock](https://github.com/RayBytes/ChatMock)
+Autentique e inicie o servidor local:
 
-Após instalar, execute:
 ```sh
 chatmock login
 chatmock serve
 ```
 
-Por padrão, o ChatMock escuta em `http://127.0.0.1:8000/v1`
+Por padrão, ChatMock escuta em `http://127.0.0.1:8000/v1`.
 
-## 2. Configurar o TomoriBot para usar o ChatMock
+## 2. Configurar TomoriBot
 
-No Discord, configure o provedor `custom` do TomoriBot e use:
+Em Discord, configure o provedor `custom` de TomoriBot com estas configurações:
 
-- **URL do Endpoint**: `http://127.0.0.1:8000/v1`
-- **Nome do modelo**: a string exata do modelo que o ChatMock deve receber, como `gpt-5.4` ou `gpt-5.3-codex`
+- **URL do terminal**: `http://127.0.0.1:8000/v1`
+- **Nome do modelo**: o identificador do modelo que ChatMock espera, como `gpt-5.4` ou `gpt-5.3-codex`
 
-Um simples `http://127.0.0.1:8000` também funciona: o TomoriBot o normaliza para `/v1` antes de acrescentar `/chat/completions`.
+Um `http://127.0.0.1:8000` simples também funciona: TomoriBot normaliza-o para `/v1` antes de anexar `/chat/completions`.
 
-Habilite estas flags de capacidade para o ChatMock:
-- **Function Calling / Tools**: Sim
-- **Image Understanding**: Sim
-- **Video Understanding**: Não
+Ative estes sinalizadores de capacidade para ChatMock:
+- **Chamada de Função/Ferramentas**: Sim
+- **Compreensão da imagem**: Sim
+- **Compreensão do vídeo**: Não
 - **Saída Estruturada**: Sim
 
-**Nota**: A Codex CLI não permite que você altere seu prompt `system`, então o prompt `system` do TomoriBot é transformado em um turno `user` no contexto como uma solução de contorno. Por favor, configure a variável de ambiente `.env` `CHATMOCK_PORT` para corresponder à sua porta atual do ChatMock para que esta solução de contorno funcione corretamente (o padrão é 8000).
+:::note[System prompt handling and port configuration]
+Codex CLI não permite prompts `system` personalizados, então TomoriBot converte instruções `system` em um turno `user` inicial. Defina `CHATMOCK_PORT` em `.env` para corresponder à sua porta ChatMock (o padrão é `8000`) para que TomoriBot reconheça o terminal e aplique este ajuste de prompt.
+:::

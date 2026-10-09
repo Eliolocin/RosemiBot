@@ -33,9 +33,6 @@ interface ShortTermMessage {
   speakerName?: string;
 }
 
-/**
- * A short-term memory entry for a specific channel
- */
 export interface ShortTermMemoryEntry {
   /** Array of conversation messages, capped by the configured per-channel limit */
   messages: ShortTermMessage[];

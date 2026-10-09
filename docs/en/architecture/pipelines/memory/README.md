@@ -6,135 +6,77 @@ sidebar:
   order: 500
 ---
 
-Handles all memory writes that occur within or around a chat turn: detecting
-whether the user explicitly wants something remembered long-term, capturing
-the conversation in the short-term cache after each turn, and executing
-LLM-initiated memory tool calls that persist or update facts in the database.
+The memory pipeline manages state writes around a chat turn. It records recent conversation turns in working memory, handles model-authored summary upgrades, and persists long-term facts to the database through tool calls.
 
-The pipeline has two distinct sub-paths that a single turn may or may not
-activate, governed by an intent-detection gate that runs before the tool-loop:
+The pipeline splits into two distinct paths:
 
-- **STM path**: always runs (passive capture), and optionally runs a
-  LLM-authored summary upgrade via the `update_short_term_memory` tool.
-- **LTM path**: only runs when the LLM calls `create_long_term_memory` or
-  `update_long_term_memory` during the tool-loop.
+- **Short-term memory (STM):** captures conversation turns into an in-process cache after each generation turn, with optional model-authored summary or category upgrades via the `update_short_term_memory` tool.
+- **Long-term memory (LTM):** executes database writes when the model invokes `create_long_term_memory` or `update_long_term_memory` during the tool loop.
 
-The two paths are not mutually exclusive per turn, but the intent gate
-(`hasExplicitLongTermMemoryIntent`) suppresses the STM upgrade tool when the
-user's message explicitly asks for persistent memory, steering the LLM toward
-the LTM tools instead.
-
-## Read order
-
-1. `README.md`: this file (pipeline overview, intent gate, sub-path split)
-2. `stm/README.md` → `stm/01-passive-capture.md` → `stm/02-summary-upgrade.md`
-3. `ltm/README.md` → `ltm/01-ltm-create.md` → `ltm/02-ltm-update-delete.md`
+An intent detection gate checks whether the user asked to remember information permanently, steering the model toward LTM tools instead of STM upgrades.
 
 ## Intent detection gate
 
-- **Symbol**: `hasExplicitLongTermMemoryIntent`:
-`src/utils/memory/explicitLongTermMemoryIntent.ts:31`
+The gate function `hasExplicitLongTermMemoryIntent()` in `src/utils/memory/explicitLongTermMemoryIntent.ts` runs during turn context initialization in `src/utils/chat/contextPipelineIntent.ts`. It normalizes the user message using NFKC formatting and checks it against localized phrases defined in `EXPLICIT_MEMORY_PACK_KEY` (`src/utils/text/localeIntentPacks.ts`).
 
-- **Where it runs**: Inside `buildChatTurnContext` (`src/utils/chat/contextPipeline.ts:70`),
-before the tool-loop begins.
+When explicit intent matches:
 
-- **What it does**: Scans the incoming user message for explicit persistence
-phrases. English phrases: `"remember"`, `"don't forget"`, `"note"`,
-`"commit to memory"`, `"for future conversations"`, `"for future reference"`.
-Japanese phrases: `"覚えておいて"`, `"忘れないで"`, and several conjugation
-variants. Matching is case-insensitive and NFKC-normalized.
+1. `streamingContext.explicitLongTermMemoryIntent` is set to `true`.
+2. `UpdateShortTermMemoryTool.isAvailableForContext()` returns `false`, removing the STM upgrade tool from the offered tool definitions.
+3. The prompt nudge built in `buildShortTermMemoryContext()` (`src/utils/text/context/memories.ts`) is omitted.
+4. If invoked directly, `UpdateShortTermMemoryTool.execute()` rejects execution.
 
-When a match is found, `streamingContext.explicitLongTermMemoryIntent = true`
-is set on the `StreamingContext` that flows into the provider and tool-loop
-pipelines. Two downstream effects:
-
-1. `UpdateShortTermMemoryTool.isAvailableForContext()` returns `false`: the
-   STM upgrade tool is not offered to the LLM that turn.
-2. The STM system-prompt nudge built in `buildShortTermMemoryContext`
-   (`src/utils/text/context/memories.ts:245`) is omitted: the LLM receives
-   no STM-update invitation when the user is asking for persistent memory.
-
-## Pipeline flow
-
-```
-incoming user message
-         │
-         ▼
- [Intent detection gate]
- hasExplicitLongTermMemoryIntent()
-         │
-         ├─ true ─────────────────────────────────────────────────┐
-         │         explicitLongTermMemoryIntent flag set           │
-         │         STM tool suppressed this turn                   │
-         │                                                         │
-         │  tool-loop ─────────────────────────────────────────►  │
-         │      │                                                  │
-         │      └─ LLM calls create / update LTM ─────────────►  [LTM path]
-         │                                                         │
-         ├─ false (or no match) ──────────────────────────────┐    │
-         │                                                    │    │
-         │  tool-loop ───────────────────────────────────►   │    │
-         │      │                                            │    │
-         │      └─ LLM calls update_short_term_memory ──►  [STM upgrade]
-         │                                                    │    │
-         └───────────────────────────────────────────────────┘    │
-                                                                   │
- post-turn ─────────────────────────────────────────────────►     │
-     │                                                            │
-     ▼                                                            │
- [Passive STM capture]                                           │
- storeShortTermMemory() ─────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    UserMessage["Incoming User Message"] --> IntentGate["Intent Detection Gate<br/>hasExplicitLongTermMemoryIntent()"]
+    IntentGate -- Explicit intent --> SetIntentFlag["Set explicitLongTermMemoryIntent<br/>Suppress STM upgrade tool & prompt nudge"]
+    IntentGate -- Normal message --> ToolLoop["Tool Loop Execution"]
+    SetIntentFlag --> ToolLoop
+    ToolLoop -- create_long_term_memory / update_long_term_memory --> LTMPath["LTM Database Writes<br/>server_memories / personal_memories"]
+    ToolLoop -- update_short_term_memory --> STMUpgrade["STM Summary Upgrade<br/>short_term_memories upsert"]
+    ToolLoop --> PostTurn["Post-Turn Effects<br/>runPostTurnEffects()"]
+    PostTurn --> PassiveSTM["Passive STM Capture<br/>storeShortTermMemory()"]
 ```
 
-## Sub-pipeline index
+## Sub-pipelines
 
-| Sub-folder | Stages | What it covers |
+| Sub-pipeline | Stages | Scope |
 |---|---|---|
-| `stm/` | 2 stages | In-process cache writes: passive turn capture + LLM-authored summary upgrade |
-| `ltm/` | 2 stages | Database writes: LTM creation and LTM update/delete via LLM tool calls |
+| [STM](/architecture/pipelines/memory/stm/) | [01: Passive Capture](/architecture/pipelines/memory/stm/01-passive-capture/)<br/>[02: Summary Upgrade](/architecture/pipelines/memory/stm/02-summary-upgrade/) | Working memory: in-process cache turns and durable `short_term_memories` rows |
+| [LTM](/architecture/pipelines/memory/ltm/) | [01: Memory Creation](/architecture/pipelines/memory/ltm/01-ltm-create/)<br/>[02: Memory Update & Delete](/architecture/pipelines/memory/ltm/02-ltm-update-delete/) | Permanent storage: database writes for server and personal memory tables |
 
 ## Cross-references
 
-- **Caller (write trigger):** [chat per-turn Stage 04 `runPostTurnEffects`](../chat/06-per-turn/04-post-turn-effects): issues the passive STM write after every successful generation turn
-- **Caller (tool trigger):** [tool-loop pipeline: Stage 02 `executeToolCall`](../tool-loop/02-execute-tool-call): executes the memory tool calls that drive both the STM upgrade and all LTM writes
-- **Read side (STM):** [context-build Stage 02-04 `buildShortTermMemoryContext`](../context-build/02-native-assembly/04-stm-memories): reads STM cache entries built by this pipeline
-- **Read side (LTM, server):** [context-build `buildServerMemoryContext`](../context-build/02-native-assembly/03-server-memories): reads server memories written by `ltm/01-ltm-create.md`
-- **Read side (LTM, personal):** [context-build `buildPersonalMemoryContext`](../context-build/02-native-assembly/07-personal-memories): reads personal memories written by `ltm/01-ltm-create.md`
+- **Post-turn write caller:** [Run Generation Turn: Post-Turn Effects](/architecture/pipelines/chat/06-per-turn/04-post-turn-effects/) triggers passive STM capture after generation completes.
+- **Tool execution caller:** [Execute Tool Call](/architecture/pipelines/tool-loop/02-execute-tool-call/) runs tool-initiated memory updates.
+- **STM reader:** [Short-Term Memory Context](/architecture/pipelines/context-build/02-native-assembly/07-short-term-memory/) formats working memory entries for prompt assembly.
+- **Server memory reader:** [Server Memories Context](/architecture/pipelines/context-build/02-native-assembly/03-server-memories/) formats server-wide memories for prompt assembly.
+- **Personal memory reader:** [Participants Context](/architecture/pipelines/context-build/02-native-assembly/06-participants/) hydrates personal memories for each participant.
 
-## Pipeline-wide concerns
+## Memory taxonomy
 
-### Memory scope taxonomy
-
-| Type | Storage | TTL | Written by | Read by |
+| Type | Storage | TTL | Write path | Context consumer |
 |---|---|---|---|---|
-| STM crude conversation | In-process `Map<key, ShortTermMemoryEntry>` | 12 h (default) | Passive capture (post-turn) | Context-build STM stage |
-| STM summary | Same cache, `summary` field | 24 h (default) | `update_short_term_memory` tool | Context-build STM stage (summary takes priority over crude) |
-| LTM server memory | `server_memories` DB table | Permanent | `create_long_term_memory` tool | Context-build server-memory stage |
-| LTM personal memory | `personal_memories` DB table | Permanent | `create_long_term_memory` tool | Context-build personal-memory stage |
+| STM crude turns | In-process cache (`Map`) | Entry: 12 hours, or 24 when summary text exists | Passive turn capture (`storeShortTermMemory`) | STM context assembly |
+| STM summary / categories | In-process cache and `short_term_memories` table | Cache: 24 hours with summary text, otherwise 12 hours; database: separate retention | Tool call (`update_short_term_memory`) | STM context assembly (takes priority over crude turns) |
+| LTM server memory | `server_memories` table | Permanent | Tool call (`create_long_term_memory`) | Server memories context assembly |
+| LTM personal memory | `personal_memories` table | Permanent | Tool call (`create_long_term_memory`) | Participants context assembly |
 
-### Feature flag
+## Shared constraints and lifecycle
 
-Both LTM tools (`create_long_term_memory`, `update_long_term_memory`) require
-`self_teaching_enabled = true` in `TomoriState.config`. The STM tools have no
-feature flag: they are always available (except the NovelAI provider
-exclusion for `update_short_term_memory`).
+### Feature flags
+
+- **LTM tools:** both `create_long_term_memory` and `update_long_term_memory` require `self_teaching_enabled = true` in `TomoriState.config`. When disabled, tool execution aborts without writing to the database.
+- **STM automation:** `short_term_memory_enabled` disables the update tool and cadence nudge. Existing memory content still renders, allowing manually curated summaries to remain useful. NovelAI does not receive the update tool.
 
 ### Privacy guards
 
-- **`PrivacyLevel.FULL` triggerer**: passive STM capture is skipped entirely.
-- **`PrivacyLevel.PARTIAL` or `FULL` target user**: personal LTM create and
-  update are blocked; the tool returns an error the LLM can relay to the user.
-- **`persona_lineage_id = 0`**: LTM create is blocked (reserved for global
-  memories; signals an un-run schema migration).
+- **Triggerer privacy:** if the triggering user has `PrivacyLevel.FULL`, passive STM capture aborts immediately.
+- **Target user privacy:** if a target user has `PrivacyLevel.PARTIAL` or `PrivacyLevel.FULL`, personal memory creation and updates return a privacy restriction error.
+- **Persona lineage:** LTM records are partitioned by `persona_lineage_id`. Creation is blocked if `persona_lineage_id === 0` because zero is reserved for global memories.
 
-### Cache invalidation after LTM writes
+### Cache invalidation ownership
 
-After every successful LTM DB write:
-
-- **Server memory:** `invalidateTomoriStateCache(serverId)`: the next
-  context-build for that server will re-load from DB.
-- **Personal memory:** `invalidateUserCache(userId)`: the next context-build
-  for that user will re-load from DB.
-
-Invalidation happens in the same code path as the DB write (immediately after
-the `dbResult` check), never before.
+- **STM writes:** live cache entries update in place before database persistence, so no secondary cache invalidation is required.
+- **Server LTM writes:** Both tools invalidate Tomori state after database success. Server creation currently awaits its Discord notification first, so a notification failure can leave cached state stale. Update and deletion invalidate before notification.
+- **Personal LTM writes:** both tools call `invalidateUserCache(userId)` after successful database writes, so subsequent prompt assemblies fetch fresh records.

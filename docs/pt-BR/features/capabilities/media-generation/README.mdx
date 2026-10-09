@@ -8,21 +8,17 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-A TomoriBot pode criar mídia diretamente no chat: **imagens, vídeos curtos e mensagens de voz
-falada**. Peça a ela em linguagem natural ("desenhe para mim um...", "envie isso como mensagem de voz") ou
-use os comandos `/generate`. Quais capacidades estão disponíveis depende do seu provedor
-configurado; veja [Provedores & Modelos](/pt-BR/features/setup-administration/providers-and-models/).
+TomoriBot pode criar mídia diretamente no chat: imagens, vídeos curtos e mensagens de voz faladas. Pergunte a ela em linguagem simples ("desenhe-me um...", "envie isso como uma mensagem de voz") ou use os comandos `/generate`. Quais recursos estão disponíveis dependem do seu provedor configurado; consulte [Provedores e Modelos](/pt-BR/features/setup-administration/providers-and-models/).
 
 <CardGrid>
-  <LinkCard title="Geração de Imagens" href="/pt-BR/features/capabilities/media-generation/image-generation/"
-    description="Texto-para-imagem e imagem-para-imagem, com imagens de referência a partir de anexos, avatares, figurinhas e emojis." />
-  <LinkCard title="Geração de Vídeos" href="/pt-BR/features/capabilities/media-generation/video-generation/"
-    description="Clipes curtos de texto-para-vídeo e imagem-para-vídeo com proporções de aspecto personalizáveis." />
-  <LinkCard title="Voz: TTS & STT" href="/pt-BR/features/capabilities/media-generation/tts-and-stt/"
-    description="Mensagens de voz nativas do Discord (texto-para-fala) e transcrição de áudio (fala-para-texto)." />
+  <LinkCard title="Geração de imagem" href="/pt-BR/features/capabilities/media-generation/image-generation/"
+    description="Texto para imagem e imagem para imagem, com imagens de referência de anexos, avatares, figurinhas e emojis." />
+  <LinkCard title="Geração de Vídeo" href="/pt-BR/features/capabilities/media-generation/video-generation/"
+    description="Clipes curtos de texto para vídeo e imagem para vídeo com proporções personalizáveis." />
+  <LinkCard title="Voz: TTS e STT" href="/pt-BR/features/capabilities/media-generation/tts-and-stt/"
+    description="Mensagens de voz Discord nativas (texto para fala) e transcrição de áudio (fala para texto)." />
 </CardGrid>
 
 :::note
-Nem todo provedor suporta todas as capacidades. Geração local (ComfyUI, servidores de voz
-locais) está disponível em instâncias de hospedagem própria; veja [Hospedagem Própria](/pt-BR/self-hosting/).
+Nem todo provedor oferece suporte a todos os recursos. A geração local (ComfyUI, servidores de voz locais) está disponível em instâncias auto-hospedadas; consulte [Auto-hospedagem](/pt-BR/self-hosting/).
 :::

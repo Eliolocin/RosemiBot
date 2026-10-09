@@ -247,7 +247,7 @@ async function dispatchVisionRequest(
 }
 
 /**
- * Resolves a provider's chat-completions URL, or `null` when it has no compatible transport.
+ * Null when the provider has no compatible transport.
  *
  * @param provider - The stored provider name. A custom endpoint is `custom:<connectionId>`, so
  *                   it must not be canonicalized before it reaches this function.

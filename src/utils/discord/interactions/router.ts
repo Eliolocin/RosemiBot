@@ -1,6 +1,8 @@
 import { MessageFlags, type Client, type Interaction } from "discord.js";
 import { conditioningInteractionRoute } from "@/utils/discord/interactions/conditioningRoutes";
+import { expressionsInteractionRoute } from "@/utils/discord/interactions/expressionsRoutes";
 import { configInteractionRoute } from "@/utils/discord/interactions/configRoutes";
+import { contextInteractionRoute } from "@/utils/discord/interactions/contextRoutes";
 import { helpInteractionRoute } from "@/utils/discord/interactions/helpRoutes";
 import { memoriesInteractionRoute } from "@/utils/discord/interactions/memoriesRoutes";
 import { moderationInteractionRoute } from "@/utils/discord/interactions/moderationRoutes";
@@ -20,8 +22,10 @@ import { log } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
 
 const registry = new InteractionRouteRegistry([
+  expressionsInteractionRoute,
   conditioningInteractionRoute,
   configInteractionRoute,
+  contextInteractionRoute,
   helpInteractionRoute,
   memoriesInteractionRoute,
   modelOverrideInteractionRoute,
@@ -66,19 +70,21 @@ export async function dispatchGlobalInteraction(
                     ? "commands.personal.config.outdated_panel"
                     : "general.errors.outdated_panel";
       const command =
-        namespace === "personal-providers"
-          ? "/personal providers"
-          : namespace === "personal-memories"
-            ? "/personal memories"
-            : namespace === "personal-config"
-              ? "/personal config"
-              : namespace === "conditioning"
-                ? "/conditioning remove"
-                : namespace === "model-overrides"
-                  ? "/model override remove"
-                  : namespace === "transfer"
-                    ? "/import"
-                    : `/${namespace}`;
+        namespace === "expr"
+          ? "/expressions manage"
+          : namespace === "personal-providers"
+            ? "/personal providers"
+            : namespace === "personal-memories"
+              ? "/personal memories"
+              : namespace === "personal-config"
+                ? "/personal config"
+                : namespace === "conditioning"
+                  ? "/conditioning remove"
+                  : namespace === "model-overrides"
+                    ? "/model override remove"
+                    : namespace === "transfer"
+                      ? "/import"
+                      : `/${namespace}`;
       await interaction.reply({
         content: localizer(interaction.locale ?? interaction.guildLocale ?? "en-US", key, { command }),
         flags: MessageFlags.Ephemeral,

@@ -20,6 +20,8 @@
  *   - model_used    → model id / codename
  *   - tokens_in     → model id / codename (count accumulates input token deltas, not 1)
  *   - tokens_out    → model id / codename (count accumulates output token deltas, not 1)
+ *   - reviewer_tokens_in/out: reviewer subset of tokens_in/out, keyed by model codename.
+ *   - decision_tokens_in/out: decision subset of tokens_in/out, keyed by model codename.
  *   - tool_used     → tool name
  *   - sprite_shown      → sprite name (every delivered sprite, identity or not)
  *   - sprite_emotion    → sprite name, recorded ONLY for non-identity sprites so the
@@ -28,6 +30,7 @@
  *                         sprites. sprite_shown stays the all-inclusive leaderboard count.
  *   - emoji_used        → emoji name
  *   - sticker_used      → sticker name/id
+ *   - custom_expression_used → stable custom UUID (one per accepted delivery)
  *   - active_hour       → hour-of-day "0".."23"
  *   - text_generated    → "" (one per completed chat turn)
  *   - user_impersonation_triggered → impersonated Discord user id (one per
@@ -56,6 +59,10 @@ const STAT_METRICS = [
   "model_used",
   "tokens_in",
   "tokens_out",
+  "reviewer_tokens_in",
+  "reviewer_tokens_out",
+  "decision_tokens_in",
+  "decision_tokens_out",
   "tool_used",
   "web_search",
   "memory_taught",
@@ -64,6 +71,7 @@ const STAT_METRICS = [
   "sprite_emotion",
   "emoji_used",
   "sticker_used",
+  "custom_expression_used",
   "active_hour",
   "text_generated",
   "user_impersonation_triggered",

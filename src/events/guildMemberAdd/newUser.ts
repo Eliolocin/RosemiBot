@@ -19,7 +19,7 @@ import { decryptApiKey } from "@/utils/security/crypto";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
 import { resolveVisionApiModelName } from "@/utils/provider/visionCaption";
 import { ZAI_CODING_CHAT_COMPLETIONS_URL, ZAI_GENERAL_CHAT_COMPLETIONS_URL } from "@/providers/zai/zaiShared";
-import { WELCOME_DELAY_MS, waitForWelcomeDelay } from "@/events/guildMemberAdd/helpers/welcomeDelay";
+import { waitForWelcomeGate } from "@/events/guildMemberAdd/helpers/welcomeGate";
 import { type WelcomeMembershipCheck, checkWelcomeMembership } from "@/events/guildMemberAdd/helpers/welcomeMembership";
 
 /**
@@ -236,12 +236,18 @@ async function triggerWelcomeMessage(client: Client, member: GuildMember): Promi
   const additionalPrompt = initialTomoriState.config.welcome_prompt?.trim();
   if (!welcomeChannelId || !additionalPrompt) return;
 
-  log.info(`Waiting ${WELCOME_DELAY_MS}ms before welcoming ${member.user.tag}`);
-  await waitForWelcomeDelay(WELCOME_DELAY_MS);
+  const gate = await waitForWelcomeGate(member);
+  if (gate.outcome !== "open") {
+    log.info(
+      `Skipping welcome for ${member.user.tag}: ${gate.outcome === "ended" ? "left before finishing onboarding" : "onboarding not finished in time"}`,
+    );
+    return;
+  }
+  const greetedMember = gate.member;
 
   const graceMembership = await checkWelcomeMembership(member);
   if (graceMembership.status !== "active") {
-    logSkippedWelcome(member, graceMembership, "during the onboarding grace period");
+    logSkippedWelcome(member, graceMembership, "after onboarding finished");
     return;
   }
 
@@ -300,7 +306,7 @@ async function triggerWelcomeMessage(client: Client, member: GuildMember): Promi
 
   if (!includeAvatarContext && chosenPersona.vision_llm) {
     try {
-      avatarDescription = (await getAvatarVisionDescription(member, chosenPersona)) ?? undefined;
+      avatarDescription = (await getAvatarVisionDescription(greetedMember, chosenPersona)) ?? undefined;
       log.success(`Obtained vision description for welcome avatar of member ${member.id}`);
     } catch (error) {
       log.warn(`Failed to get vision description for welcome (${member.id}):`, error);
@@ -308,7 +314,7 @@ async function triggerWelcomeMessage(client: Client, member: GuildMember): Promi
   }
 
   const welcomeContextItem = await buildWelcomeContextItem({
-    member,
+    member: greetedMember,
     additionalPrompt: currentAdditionalPrompt,
     includeAvatarContext,
     avatarDescription,

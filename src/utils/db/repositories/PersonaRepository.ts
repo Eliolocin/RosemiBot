@@ -151,6 +151,10 @@ const TOMORI_POINTER_CONTENT_FIELDS = new Set<string>([
 
 /** Fields where SQL NULL carries semantic meaning ("not configured") and must not be coerced to undefined. */
 const MEANINGFULLY_NULLABLE_CONFIG_FIELDS = new Set([
+  "response_reviewer_llm_id",
+  "response_decision_model_id",
+  "response_reviewer_prompt",
+  "response_rule_checker_ref",
   "llm_id",
   "embedding_model_id",
   "diffusion_model_id",
@@ -159,6 +163,7 @@ const MEANINGFULLY_NULLABLE_CONFIG_FIELDS = new Set([
   "api_key",
   "system_prompt",
   "context_note",
+  "response_prefill",
   "llm_max_output_tokens",
   "custom_endpoint_url",
   "custom_model_name",
@@ -178,6 +183,8 @@ const MEANINGFULLY_NULLABLE_CONFIG_FIELDS = new Set([
   "welcome_persona_id",
   "thought_log_channel_disc_id",
 ]);
+
+type PersonaSwapResult = "swapped" | "roles-changed" | "failed";
 
 /**
  * A main persona whose Discord guild avatar is out of date with its preset:
@@ -915,11 +922,22 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
 
   async removePersona(personaId: number): Promise<boolean> {
     try {
-      const result = await sql`
-        DELETE FROM personas
-        WHERE persona_id = ${personaId}
-        RETURNING persona_id
-      `;
+      const result = await sql.transaction(async (tx) => {
+        const affected = await tx`
+          SELECT c.custom_expression_id FROM custom_expressions c
+          JOIN custom_expression_personas p USING (custom_expression_id)
+          WHERE p.persona_id = ${personaId} ORDER BY c.custom_expression_id FOR UPDATE OF c
+        `;
+        const deleted = await tx`
+          DELETE FROM personas WHERE persona_id = ${personaId} RETURNING persona_id, server_id
+        `;
+        for (const row of affected) {
+          // Cascading membership removal preserves restricted, including a now-empty whitelist.
+          await tx`UPDATE custom_expressions SET revision = revision + 1 WHERE custom_expression_id = ${row.custom_expression_id}`;
+        }
+        return deleted;
+      });
+      for (const row of result) invalidateEmojiStickerCache(Number(row.server_id));
       return result.length > 0;
     } catch (e) {
       log.error(`Error removing persona ${personaId}:`, e);
@@ -979,9 +997,15 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
     }
   }
 
-  async swapPersona(mainPersonaId: number, alterPersonaId: number): Promise<boolean> {
+  /**
+   * Demotes the main persona to an alter and promotes the alter to main in one transaction.
+   *
+   * @returns `roles-changed` when the rows no longer hold the main/alter roles the caller expected.
+   *   That is a lost race against a concurrent promotion, not a defect, so it is not logged as an error.
+   */
+  async swapPersona(mainPersonaId: number, alterPersonaId: number): Promise<PersonaSwapResult> {
     try {
-      await sql.transaction(async (tx) => {
+      return await sql.transaction(async (tx): Promise<PersonaSwapResult> => {
         const rows = await tx<Array<{ persona_id: number; server_id: number; is_alter: boolean }>>`
           SELECT persona_id, server_id, is_alter
           FROM personas
@@ -997,7 +1021,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         }
 
         if (mainPersona.is_alter || !alterPersona.is_alter) {
-          throw new Error("Persona swap requires the first persona to be main and the second persona to be an alter.");
+          return "roles-changed";
         }
 
         await tx`
@@ -1010,11 +1034,11 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
           SET is_alter = false
           WHERE persona_id = ${alterPersonaId}
         `;
+        return "swapped";
       });
-      return true;
     } catch (e) {
       log.error(`Error swapping personas ${mainPersonaId} and ${alterPersonaId}:`, e);
-      return false;
+      return "failed";
     }
   }
 
@@ -1055,6 +1079,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
     naiAttgTags?: string | null;
     naiAttgGenre?: string | null;
     naiAttgStars?: number | null;
+    isNsfw?: boolean;
   }): Promise<TomoriRow | null> {
     const row = await sql.transaction(async (tx) => {
       const [insertedRow] = await tx`
@@ -1065,7 +1090,8 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
           sample_dialogues_in,
           sample_dialogues_out,
           is_alter,
-          persona_lineage_id
+          persona_lineage_id,
+          is_nsfw
         )
         VALUES (
           ${params.serverId},
@@ -1074,7 +1100,8 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
           ${sql.array(params.sampleDialoguesIn, "TEXT")},
           ${sql.array(params.sampleDialoguesOut, "TEXT")},
           true,
-          COALESCE(${params.personaLineageId ?? null}::bigint, nextval('persona_lineage_id_seq'))
+          COALESCE(${params.personaLineageId ?? null}::bigint, nextval('persona_lineage_id_seq')),
+          ${params.isNsfw === true}
         )
         RETURNING *
       `;
@@ -1153,6 +1180,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
             is_pointer = true,
             preset_lineage_id = ${pointerLineageId},
             preset_language = ${params.preset.preset_language},
+            is_nsfw = ${params.preset.is_nsfw},
             -- Re-pointing is a fresh pointer: drop any stored avatar so the persona
             -- resolves the official preset avatar again (alters live-resolve the
             -- shared image; mains re-receive it via the guild-avatar reconciler).
@@ -1325,7 +1353,8 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
           persona_lineage_id,
           is_pointer,
           preset_lineage_id,
-          preset_language
+          preset_language,
+          is_nsfw
         )
         VALUES (
           ${params.serverId},
@@ -1337,7 +1366,8 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
           ${memoryLineageId},
           true,
           ${pointerLineageId},
-          ${params.preset.preset_language}
+          ${params.preset.preset_language},
+          ${params.preset.is_nsfw}
         )
         RETURNING *
       `;
@@ -1922,7 +1952,12 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         scc.humanizer_degree, scc.message_fetch_limit, scc.send_message_limit,
         scc.match_limit, scc.cascade_limit, scc.timezone_offset, scc.self_debug_enabled,
         scc.model_randomizer_enabled,
-        scc.system_prompt, scc.context_note, scc.context_note_depth,
+        scc.response_reviewer_llm_id,
+        scc.response_decision_model_id,
+        scc.response_reviewer_prompt,
+        scc.response_rule_checker_ref,
+        scaps.response_drafting_enabled,
+        scc.system_prompt, scc.context_note, scc.context_note_depth, scc.response_prefill,
         scc.llm_stop_strings, scc.llm_stop_speaker_pattern_enabled,
         scc.llm_max_output_tokens, scc.llm_top_p, scc.llm_top_k,
         scc.llm_frequency_penalty, scc.llm_presence_penalty, scc.llm_min_p,
@@ -1940,7 +1975,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         scaps.tool_use_enabled,
         scaps.short_term_memory_enabled, scaps.user_info_updates_enabled,
         -- 5. server_notice_embeds_configs
-        snec.tool_notice_hidden_keys,
+        snec.tool_notice_hidden_keys, snec.tool_notice_verbosity,
         -- 6. server_nsfw_configs
         snsfw.uncensor_injection_enabled, snsfw.uncensor_unicode_space_enabled,
         snsfw.uncensor_sanitize_enabled,
@@ -2027,7 +2062,12 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         scc.humanizer_degree, scc.message_fetch_limit, scc.send_message_limit,
         scc.match_limit, scc.cascade_limit, scc.timezone_offset, scc.self_debug_enabled,
         scc.model_randomizer_enabled,
-        scc.system_prompt, scc.context_note, scc.context_note_depth,
+        scc.response_reviewer_llm_id,
+        scc.response_decision_model_id,
+        scc.response_reviewer_prompt,
+        scc.response_rule_checker_ref,
+        scaps.response_drafting_enabled,
+        scc.system_prompt, scc.context_note, scc.context_note_depth, scc.response_prefill,
         scc.llm_stop_strings, scc.llm_stop_speaker_pattern_enabled,
         scc.llm_max_output_tokens, scc.llm_top_p, scc.llm_top_k,
         scc.llm_frequency_penalty, scc.llm_presence_penalty, scc.llm_min_p,
@@ -2045,7 +2085,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         scaps.tool_use_enabled,
         scaps.short_term_memory_enabled, scaps.user_info_updates_enabled,
         -- 5. server_notice_embeds_configs
-        snec.tool_notice_hidden_keys,
+        snec.tool_notice_hidden_keys, snec.tool_notice_verbosity,
         -- 6. server_nsfw_configs
         snsfw.uncensor_injection_enabled, snsfw.uncensor_unicode_space_enabled,
         snsfw.uncensor_sanitize_enabled,
@@ -3324,3 +3364,4 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
 
 /** Singleton instance: import this in callers. */
 export const personaRepository = new PersonaRepository();
+import { invalidateEmojiStickerCache } from "@/utils/cache/emojiStickerCache";

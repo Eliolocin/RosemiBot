@@ -2,6 +2,7 @@
 title: "Nerine, a Leal"
 sidebar:
   order: 5
+aiGenerated: false
 ---
 
 <!-- STUB (tarefa secundária). Fonte: src/db/seed/catalog/personas/loyal/en-US.ts.

@@ -5,7 +5,7 @@ import { log } from "@/utils/misc/logger";
 import { parseIntegerEnvFlag } from "@/utils/misc/envFlags";
 import { recordPoolEvent, recordPoolRetryExhausted, recordPoolRetryRecovered } from "@/utils/db/poolEvents";
 
-export interface PostgresPoolOptions {
+interface PostgresPoolOptions {
   idleTimeout: number;
   maxLifetime: number;
   connectionTimeout: number;
@@ -58,7 +58,8 @@ function resolveProductionPoolOptions(): PostgresPoolOptions {
  *
  * SSL behaviour:
  * - Development (`RUN_ENV !== 'production'`): SSL disabled for localhost
- * - Production (`RUN_ENV === 'production'`): full TLS with CA certificate verification
+ * - Production (`RUN_ENV === 'production'`): full TLS with CA certificate verification, except a
+ *   `TEST_PRODUCTION` rehearsal against a loopback host (see `skipsTlsForTestProduction`)
  *
  * Azure and other public-CA providers use the operating-system trust store.
  * AWS RDS retains its maintained provider bundle for compatibility.
@@ -66,9 +67,9 @@ function resolveProductionPoolOptions(): PostgresPoolOptions {
  */
 function createDatabaseClient(): SQL {
   const runEnv = process.env.RUN_ENV || "development";
-  const isProduction = runEnv === "production" && process.env.TEST_PRODUCTION !== "true";
-
   const host = process.env.POSTGRES_HOST || "localhost";
+  const isProduction = runEnv === "production" && !skipsTlsForTestProduction(host);
+
   const port = Number.parseInt(process.env.POSTGRES_PORT || "5432", 10);
   const user = process.env.POSTGRES_USER || "postgres";
   const password = process.env.POSTGRES_PASSWORD;
@@ -130,6 +131,17 @@ function createDatabaseClient(): SQL {
   });
 }
 
+const LOOPBACK_DATABASE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+/**
+ * `TEST_PRODUCTION` rehearses production behavior against a database on this machine. A copied
+ * environment file that still points at a remote host keeps verified TLS, so the flag can never
+ * send production credentials and data over an unauthenticated connection.
+ */
+export function skipsTlsForTestProduction(host: string, testProduction = process.env.TEST_PRODUCTION): boolean {
+  return testProduction === "true" && LOOPBACK_DATABASE_HOSTS.has(host.trim().toLowerCase());
+}
+
 export interface ProductionPostgresTlsOptions {
   ca?: string;
   rejectUnauthorized: true;
@@ -189,10 +201,7 @@ export function resolveProductionPostgresTls(
 // initialization when modules import sql before dotenv/Secrets Manager runs).
 let cachedClient: SQL | null = null;
 
-/**
- * Gets the singleton database client, creating it on first access.
- *
- */
+/** The client is created on first access. */
 function getClient(): SQL {
   if (!cachedClient) {
     cachedClient = createDatabaseClient();

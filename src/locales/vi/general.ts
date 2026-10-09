@@ -53,6 +53,7 @@ export default {
       select_page_title: `Chọn trang`,
       select_page_description: `Chọn một trang để xem từ {totalItems} mục trên {totalPages} trang:`,
       select_persona_title: `Chọn persona`,
+      select_persona_page_description: `Chọn một trang để xem từ {totalItems} persona trên {totalPages} trang:`,
       persona_no_attributes: `Chưa có thuộc tính nào được định cấu hình.`,
       persona_select_button: `Chọn`,
     },
