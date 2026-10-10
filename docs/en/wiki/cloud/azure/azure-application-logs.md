@@ -34,7 +34,7 @@ database write from landing.
 ## Pipeline overview
 
 ```text
-Pino structured logs (level >= 50 in production)
+Pino structured logs (errors and metric samples at the production default LOG_LEVEL)
   -> /app/logs/tomoribot.jsonl in the container   (TOMORI_LOG_FILE)
   -> /var/log/tomoribot/tomoribot.jsonl on the VM (bind mount)
   -> Azure Monitor Agent "Custom Text Logs" data source
@@ -63,8 +63,11 @@ Behavior:
 - Every emitted record is written to **both** stdout (so `docker logs` diagnostics keep
   working) and the file, as identical newline-delimited JSON, via an append-only synchronous
   stream.
-- Production logs at level `error` (50) and above, which includes the custom levels
-  `metric` (52) and `rateLimit` (55). An empty file on a healthy instance is normal.
+- Production logs at level `error` (50) and above by default, which includes the custom level
+  `rateLimit` (55). Metric samples (custom level 25) are written at every level, so a healthy
+  instance still writes its heartbeat samples. `LOG_LEVEL=warn` adds warn records (40) to the file
+  while diagnosing a report; the error dataflow's `level >= 50` filter keeps them out of
+  `TomoriBotLogs_CL`, so read them from the host file.
 
 ### Container wiring
 
@@ -191,9 +194,9 @@ metrics, and that the transform's projected columns match the table schema exact
 
 ## Step 5: Cache-size metrics (second dataflow)
 
-The logger emits a periodic `cache_sizes` sample (custom level 52, one line every
+The logger emits a periodic `cache_sizes` sample (custom level 25, one line every
 `CACHE_METRICS_INTERVAL_MS`, default 5 min) carrying every in-memory cache count plus process
-RSS. The error dataflow above deliberately drops these (`msg != "metric:cache_sizes"`) so the
+RSS. The error dataflow above deliberately drops these (`isempty(tostring(p.metric))`) so the
 error table stays clean. To chart them, the same DCR carries a **second dataflow** that reads
 the same file stream but keeps only cache samples and projects their numeric fields into a
 dedicated table, `TomoriBotCacheMetrics_CL` (typed `int`/`real` columns for each cache plus

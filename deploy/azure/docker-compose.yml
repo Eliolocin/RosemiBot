@@ -33,7 +33,7 @@ services:
       DATABASE_SCHEMA_MANAGEMENT_ENABLED: "false"
       FETCH_URL_ALLOW_PRIVATE_NETWORK: "false"
       SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-}
-      # Mirror production JSON logs (level >= 50) to an append-only JSONL file
+      # Mirror production JSON logs (errors and metric samples at the default LOG_LEVEL) to an append-only JSONL file
       # tailed by Azure Monitor Agent on the host (see bind mount below).
       TOMORI_LOG_FILE: /app/logs/tomoribot.jsonl
       # Heap dumps contain live secrets, so diagnostics require explicit enablement outside log shipping.

@@ -213,7 +213,9 @@ zgrep -h '"metric":"pool_event"' /var/log/tomoribot/tomoribot.jsonl* | tail -40
 compression boundary the episode fell on. The same applies to `/var/log/oom-observer.log*`, which the
 detector replay reads.
 
-A `metric:metric_sink_failure` line means the sample writer itself could not reach the database.
+An error line with `errorType` `metric_sink_failure` means the sample writer itself could not reach
+the database. It lands in the host file and `TomoriBotLogs_CL` but never in `error_logs`, because
+that insert would queue on the same failing pool.
 Treat a gap in `metric_samples` with no such line as unexplained rather than assumed.
 
 ### Memory pressure events and zram saturation
@@ -626,7 +628,7 @@ journalctl -b -1 -k --no-pager | grep -iE "out of memory|killed process|oom-kill
 `swapoff` victim dated to the moment of a reboot is an artifact of that reboot tearing down zram, not
 evidence about the incident. If the host was rebooted, `-b -1` is the boot that matters.
 
-**2. Find the gap in a heartbeat metric.** `cache_sizes` emits every 5 minutes at level 52, so a
+**2. Find the gap in a heartbeat metric.** `cache_sizes` emits every 5 minutes at every log level, so a
 missing run of samples bounds the freeze far more precisely than any error log. The host file
 outlives containers, and `hostname` is the container ID, which separates process generations across a
 restart:
