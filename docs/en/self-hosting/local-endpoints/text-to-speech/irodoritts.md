@@ -40,7 +40,23 @@ The default endpoint URL is `http://127.0.0.1:8013`.
 
 ## Using a different checkpoint
 
-The default model is `Aratako/Irodori-TTS-v4.1-Small`. Compatible Hugging Face repositories, community fine-tunes (such as `phasefield-audio/Irodori-TTS-v4.1-Anime`), or local checkpoint files can be configured via environment variables.
+The default model is `Aratako/Irodori-TTS-v4.1-Small`. You can select other official checkpoints (including the 3.29B parameter Large model and its quantized variants), community fine-tunes, or local checkpoint files through environment variables.
+
+### Checkpoints and variants
+
+| Model / `IRODORI_TTS_MODEL_ID` | Parameters | Checkpoint size | Recommended VRAM | Notes |
+|---|---|---|---|---|
+| `Aratako/Irodori-TTS-v4.1-Small` | 766M | 1.5 GB | 4-6 GB | Default model: fast inference and low memory use. |
+| `Aratako/Irodori-TTS-v4-Large` | 3.29B | 12.25 GB | 10-14 GB | Full unquantized Large model with T5Gemma 2 text backbone. |
+| `Aratako/Irodori-TTS-v4-Large-Quantized/float8-weight-only` | 3.29B | 3.58 GB | 6-8 GB | FP8 weights with BF16 activations: recommended for NVIDIA Ada (RTX 40-series) and newer. |
+| `Aratako/Irodori-TTS-v4-Large-Quantized/int8-weight-only` | 3.29B | 3.58 GB | 6-8 GB | General-purpose INT8 weights with BF16 compute on NVIDIA CUDA. |
+| `Aratako/Irodori-TTS-v4-Large-Quantized/int4-weight-only` | 3.29B | 2.75 GB | 5-6 GB | Smallest Large variant: requires NVIDIA Ampere (RTX 30-series) or newer. |
+| `phasefield-audio/Irodori-TTS-v4.1-Anime` | 766M | 1.5 GB | 4-6 GB | Community fine-tune for anime-style speech delivery. |
+
+### Choosing between Small and Large
+
+- **Reference voice cloning (recommended: `v4.1-Small`):** For clean reference clips (15-30 seconds), `v4.1-Small` renders faster (~0.23x RTF on modern GPUs) and produces sharper, higher-contrast vocal harmonics with punchy Japanese prosody. Pure reference voice cloning does not benefit from the heavier model.
+- **VoiceDesign and long reference audio (recommended: `v4-Large`):** The 3.29B Large model integrates a 1B T5Gemma 2 text backbone, giving it superior adherence to natural-language VoiceDesign caption prompts (describing delivery, timbre, and mood) and supporting up to 120 seconds of combined reference audio. On pure reference clips without descriptive captions, Large produces a softer, breathier texture at roughly 0.75x RTF.
 
 When you start the server (directly with Python or via `bun run launch --irodoritts`), it automatically reads the repository root `.env` (or a local `.env` in `servers/tts/irodoritts/`) and logs the active model ID on startup.
 

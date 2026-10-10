@@ -31,6 +31,14 @@ import type { MentionConverter } from "./templates";
 import type { SimplifiedMessageForContext } from "./types";
 import { buildDateSpacer, TIME_AWARENESS_NOTE_DEPTH } from "./timeAwareness";
 
+/**
+ * Expanded by the caller's tool macro resolver before use, so the `read_file` instruction appears only
+ * when the turn actually exposes `read_file`. `{filename}` and `{media_id}` are filled afterwards
+ * because a filename is user-controlled and must never be parsed as a conditional or macro.
+ */
+export const DOCUMENT_HINT_TEMPLATE =
+  "[System: A file named `{filename}` is attached (message ID: {media_id}).{{if tool:read_file}} Use {document_tool} with this message ID to read its contents, only if needed.{{else}} Its contents are not available to you right now, so do not guess them.{{/if}}]";
+
 export async function appendDialogueHistoryContext(params: {
   contextItems: StructuredContextItem[];
   client: Client;
@@ -42,6 +50,8 @@ export async function appendDialogueHistoryContext(params: {
   channelContextNote?: { note: string; depth: number } | null;
   reunionNote?: string | null;
   dateSpacerTemplate?: string | null;
+  /** `DOCUMENT_HINT_TEMPLATE` after tool macro expansion. */
+  documentHintTemplate: string;
   includeTimestamps: boolean;
   isUserImpersonation: boolean;
   impersonatedUserId?: string;
@@ -191,6 +201,7 @@ export async function appendDialogueHistoryContext(params: {
       hasMediaDescriptors: mediaDescriptors.length > 0,
       mediaAttributionHint,
     });
+    appendDocumentHintParts({ ...params, msg, parts });
 
     if (role === "user" && (parts.length > 0 || detachedSystemParts.length > 0 || mediaDescriptors.length > 0)) {
       pushDialogueHistoryContextItem(
@@ -218,6 +229,24 @@ export async function appendDialogueHistoryContext(params: {
         ContextItemTag.CONTEXT_NOTE_INJECTION,
       );
     }
+  }
+}
+
+function appendDocumentHintParts(params: {
+  msg: SimplifiedMessageForContext;
+  parts: ContextPart[];
+  documentHintTemplate: string;
+  messageIdMap?: MessageIdMap;
+}): void {
+  for (const document of params.msg.documentAttachments ?? []) {
+    const sourceMessageId = document.sourceMessageId ?? params.msg.id;
+    const mediaId = params.messageIdMap?.register(sourceMessageId, "media") ?? sourceMessageId;
+    params.parts.push({
+      type: "text",
+      text: params.documentHintTemplate
+        .replace("{media_id}", () => mediaId)
+        .replace("{filename}", () => document.filename),
+    });
   }
 }
 

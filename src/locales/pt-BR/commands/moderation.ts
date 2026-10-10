@@ -192,7 +192,6 @@ export default {
     remove_blacklist_group_description: `Desmarque e envie para remover a entrada`,
     remove_whitelist_group_description: `Desmarque e envie para remover da lista branca`,
     remove_group_continuation: `Continuação ({index})`,
-    remove_modal_limit: `Esta lista tem mais de 50 entradas e não cabe em um modal.`,
     remove_nothing_changed: `Nada foi removido`,
     remove_nothing_changed_detail: `Todas as entradas continuaram selecionadas. Sem mudanças.`,
 

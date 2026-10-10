@@ -1,20 +1,14 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import {
   normalizeCustomEndpointUrlForStorage,
   validateCustomEndpointReachability,
 } from "@/utils/provider/customEndpointService";
+import { useEnvSandbox } from "../../helpers/env";
 
 const RUN_ENV_NAME = "RUN_ENV";
-const originalRunEnv = process.env[RUN_ENV_NAME];
 
 describe("custom endpoint reachability", () => {
-  afterEach(() => {
-    if (originalRunEnv === undefined) {
-      delete process.env[RUN_ENV_NAME];
-    } else {
-      process.env[RUN_ENV_NAME] = originalRunEnv;
-    }
-  });
+  useEnvSandbox([RUN_ENV_NAME]);
 
   it("uses Ollama's native model discovery route", async () => {
     process.env[RUN_ENV_NAME] = "development";

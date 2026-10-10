@@ -4,7 +4,7 @@ import { hasExplicitLongTermMemoryIntent } from "@/utils/memory/explicitLongTerm
 import { buildUncensorInjectionText } from "@/utils/text/uncensor";
 import { createToolPromptMacroResolver, resolvePromptCapabilityValues } from "@/utils/tools/toolPromptMacros";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
-import { appendDialogueHistoryContext } from "./dialogueHistory";
+import { appendDialogueHistoryContext, DOCUMENT_HINT_TEMPLATE } from "./dialogueHistory";
 import { convertMentions as convertMentionsBase } from "./mentionNormalizer";
 import { buildServerMemoryContextItem, buildShortTermMemoryContext } from "./memories";
 import { buildParticipantContextItem } from "./participants";
@@ -162,6 +162,7 @@ export async function buildContextNative(params: BuildContextParams): Promise<Na
   });
   const dateSpacerTemplate =
     tomoriConfig.time_awareness_enabled !== false ? await toolPromptMacroResolver.expand(SPACER_TEMPLATE) : null;
+  const documentHintTemplate = await toolPromptMacroResolver.expand(DOCUMENT_HINT_TEMPLATE);
   const explicitLongTermMemoryIntent =
     explicitLongTermMemoryIntentOverride ??
     hasExplicitLongTermMemoryIntent(
@@ -209,6 +210,7 @@ export async function buildContextNative(params: BuildContextParams): Promise<Na
       botName,
       tomoriConfig,
       personaUserBlocks,
+      toolPromptMacroResolver,
     }),
   );
 
@@ -398,6 +400,7 @@ export async function buildContextNative(params: BuildContextParams): Promise<Na
     channelContextNote,
     reunionNote,
     dateSpacerTemplate,
+    documentHintTemplate,
     includeTimestamps,
     isUserImpersonation,
     impersonatedUserId,

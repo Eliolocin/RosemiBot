@@ -13,6 +13,7 @@ Shared fixtures and assertion helpers. Reach for these before writing a local `m
 | `configMcpPage.ts` | the real `/config` > Plugins > MCP Servers payload, the only surface that renders MCP components |
 | `transferPanelFixture.ts` | `findTransferAction`: locate one routed transfer action in a panel payload |
 | `mockSurface.ts` | `createScopedModuleMocker`, `overrideMembers`, `stubLogMembers` for the few suites that must mock a module |
+| `env.ts` | `useEnvSandbox`: restores named `process.env` variables after each test and after the enclosing scope; `useFullEnvSandbox` restores the whole environment |
 
 ## Rules the helpers depend on
 
@@ -31,6 +32,11 @@ Shared fixtures and assertion helpers. Reach for these before writing a local `m
 - **Prefer `spyOn(singleton, ...)` or constructor injection over `mock.module`.** Bun cannot unregister a module
   mock. When one is unavoidable, go through `createScopedModuleMocker` with an `@/` specifier: Bun resolves a
   relative specifier from `mockSurface.ts`, not from the test file, so it mocks nothing.
+- **Change env only inside a `useEnvSandbox` scope.** A hand-written `process.env.X = original` stores the string
+  `"undefined"` when `X` was unset. List every name the file writes: the isolation check accepts a dot-form write
+  only when its name is a string literal in the call, and trusts the list for a computed `process.env[name]` or an
+  `Object.assign(process.env, ...)`. Reach for `useFullEnvSandbox` only when the code under test writes names you
+  cannot list, as `loadSecrets()` does.
 
 Add a factory here once a third suite needs the same row shape (memory, document, and chunk rows are the next
 candidates), and give it a contract test under `tests/unit/helpers/`.

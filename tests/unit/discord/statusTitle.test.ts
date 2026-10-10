@@ -107,3 +107,30 @@ describe("status circle at the title sinks", () => {
     expect(collectTextDisplays(components)[0]).toBe(`### 🔴 ${localizedCopy("en-US", FAILED_TITLE_KEY)}`);
   });
 });
+
+describe("Minimal notice titles", () => {
+  it("render exactly as their Verbose title, emoji or status circle included", () => {
+    const cases: Array<{ titleKey: string; titleVars: Record<string, string> }> = [
+      { titleKey: "tools.user_info_update.success_title", titleVars: { target_user: "Bau" } },
+      { titleKey: FAILED_TITLE_KEY, titleVars: {} },
+    ];
+    const failures: string[] = [];
+    for (const { titleKey, titleVars } of cases) {
+      for (const color of [ColorCode.SUCCESS, ColorCode.ERROR]) {
+        const expected = localizedStatusTitle("en-US", titleKey, color, titleVars);
+        const embedTitle = (minimal: boolean) =>
+          createStandardEmbed("en-US", { titleKey, titleVars, color, minimal }).data.title;
+        const containerTitle = (minimal: boolean) =>
+          collectTextDisplays(buildNoticeContainer({ locale: "en-US", titleKey, titleVars, color, minimal }))[0];
+
+        if (embedTitle(true) !== expected || embedTitle(true) !== embedTitle(false)) {
+          failures.push(`embed ${titleKey} ${color}: ${embedTitle(true)}`);
+        }
+        if (containerTitle(true) !== `### ${expected}`) {
+          failures.push(`container ${titleKey} ${color}: ${containerTitle(true)}`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+});

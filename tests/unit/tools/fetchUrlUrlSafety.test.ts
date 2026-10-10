@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it } from "bun:test";
 import { validateFetchUrlTarget } from "@/tools/fetchUrl/urlSafety";
 import { FetchUrlTool } from "@/tools/fetchUrl/fetchUrlTool";
 import type { ToolContext } from "@/types/tool/interfaces";
 import { FETCH_LIMITS } from "@/utils/security/rateLimiter";
 import { initializeLocalizer } from "@/utils/text/localizer";
+import { useEnvSandbox } from "../../helpers/env";
 import { createPersona } from "../../helpers/fixtures";
 import { stubGlobalFetch } from "../../helpers/fetchStub";
 
@@ -11,27 +12,9 @@ await initializeLocalizer();
 
 const ENV_NAME = "FETCH_URL_ALLOW_PRIVATE_NETWORK";
 const RUN_ENV_NAME = "RUN_ENV";
-const originalAllowPrivateNetwork = process.env[ENV_NAME];
-const originalRunEnv = process.env[RUN_ENV_NAME];
-const ENGINE_ORDER_ENV_NAME = "FETCH_URL_ENGINE_ORDER";
 const CRAWL4AI_BASE_URL_ENV_NAME = "CRAWL4AI_BASE_URL";
-const originalEngineOrder = process.env[ENGINE_ORDER_ENV_NAME];
-const originalCrawl4aiBaseUrl = process.env[CRAWL4AI_BASE_URL_ENV_NAME];
 
-function restoreEnv(name: string, original: string | undefined): void {
-  if (original === undefined) {
-    delete process.env[name];
-    return;
-  }
-  process.env[name] = original;
-}
-
-afterEach(() => {
-  restoreEnv(ENV_NAME, originalAllowPrivateNetwork);
-  restoreEnv(RUN_ENV_NAME, originalRunEnv);
-  restoreEnv(ENGINE_ORDER_ENV_NAME, originalEngineOrder);
-  restoreEnv(CRAWL4AI_BASE_URL_ENV_NAME, originalCrawl4aiBaseUrl);
-});
+useEnvSandbox([ENV_NAME, RUN_ENV_NAME, CRAWL4AI_BASE_URL_ENV_NAME]);
 
 // The blocklist only engages in production; pin RUN_ENV so these cases
 // exercise the guarded path rather than the dev auto-relax.
@@ -153,7 +136,6 @@ describe("validateFetchUrlTarget outside production", () => {
   });
 
   it("refuses an unresolvable host before dispatching to the external Crawl4AI browser", async () => {
-    process.env[ENGINE_ORDER_ENV_NAME] = "crawl4ai,safe_http";
     process.env[CRAWL4AI_BASE_URL_ENV_NAME] = "http://127.0.0.1:11235";
     const context: ToolContext = {
       channel: { id: "fixture-channel" } as ToolContext["channel"],

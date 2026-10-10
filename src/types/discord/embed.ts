@@ -16,7 +16,8 @@ export interface StandardEmbedOptions {
   /** Adds the shared `/config` > Behavior > Notices line below the footer, for notices a server can hide. */
   configHint?: boolean;
   /**
-   * Renders a Minimal notice: the title without its emoji, in the notice color, and nothing else.
+   * Renders a Minimal notice: the title exactly as Verbose renders it (emoji and status circle
+   * included), in the notice color, and nothing else.
    * Description, footer, config hint, thumbnail, and any expand button are all dropped.
    */
   minimal?: boolean;

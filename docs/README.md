@@ -63,6 +63,7 @@ source open to follow these.
   - [`local-endpoints/setup-crawl4ai.md`](./en/self-hosting/local-endpoints/setup-crawl4ai.md)
   - [`local-endpoints/setup-chatmock.md`](./en/self-hosting/local-endpoints/setup-chatmock.md)
   - [`local-endpoints/setup-local-mcp.md`](./en/self-hosting/local-endpoints/setup-local-mcp.md)
+  - [`local-endpoints/setup-local-system-one.md`](./en/self-hosting/local-endpoints/setup-local-system-one.md)
   - [`local-endpoints/text-to-speech/`](./en/self-hosting/local-endpoints/text-to-speech/README.mdx): local TTS engines
     - [`comparison.md`](./en/self-hosting/local-endpoints/text-to-speech/comparison.md): empirical benchmarks, audio sample playback, and speed comparisons
     - [`MOSS-TTS`](./en/self-hosting/local-endpoints/text-to-speech/moss.md): experimental clone and voice-design auto endpoint

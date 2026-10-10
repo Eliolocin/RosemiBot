@@ -874,10 +874,8 @@ describe("isConfigRouteAuthorized", () => {
     { action: "draft-prompt-open", locale: "en-US" },
     { action: "draft-prompt-submit", locale: "en-US", nonce: "nonce123" },
     { action: "draft-default", locale: "en-US" },
-    { action: "draft-picker", locale: "en-US", slot: "reviewer", provider: "none", start: 0 },
     { action: "draft-provider", locale: "en-US", slot: "reviewer" },
     { action: "draft-model-submit", locale: "en-US", slot: "decision", provider: "openrouter", nonce: "nonce123" },
-    { action: "draft-checker", locale: "en-US", start: 0 },
     { action: "draft-checker-select", locale: "en-US", start: 0, fp: "abcdefgh" },
   ];
   it("keeps all Response Drafting routes for managers and DM owners", () => {

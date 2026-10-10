@@ -628,5 +628,33 @@
     "codename": "qwen/qwen3.8-27b:free",
     "releaseDate": "2026-08-14",
     "offeredAt": "2026-10-04"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "anthropic/claude-fable-5.1",
+    "releaseDate": "2026-09-01",
+    "offeredAt": "2026-10-05"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "openai/gpt-6.1-sol",
+    "releaseDate": "2026-09-29",
+    "offeredAt": "2026-10-05"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "openai/gpt-6-luna",
+    "releaseDate": "2026-09-22",
+    "offeredAt": "2026-10-05"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "openai/gpt-6-sol",
+    "releaseDate": "2026-09-22",
+    "offeredAt": "2026-10-05"
   }
 ]

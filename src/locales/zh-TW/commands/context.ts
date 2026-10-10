@@ -23,7 +23,7 @@ export default {
     estimate_note: `以約每 4 個字元 1 個 token 估算。`,
     not_counted_note: `圖片、影片與供應商訊息格式未計入。`,
     truncated_note: `對話紀錄超出上限，因此最早的 {count} 輪對話已被略過。`,
-    text_locked_note: `檢視完整提示詞需要「管理伺服器」權限，或由管理員在 \`/moderation\` 中允許成員檢視。`,
+    text_locked_note: `在此伺服器中檢視完整提示詞需要權限。`,
     view_text_button: `以文字檢視`,
     view_json_button: `以 JSON 檢視`,
     persona_not_found_title: `找不到人格`,

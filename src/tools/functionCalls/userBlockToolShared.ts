@@ -204,7 +204,7 @@ export function formatBlockedUserNoticeContent(displayName: string, expiresAt: D
   const hoursRemaining = Math.max(1, Math.ceil((expiresAt.getTime() - now.getTime()) / 3_600_000));
   // Pluralize the unit so the notice reads naturally for the persona.
   const hourLabel = hoursRemaining === 1 ? "hour" : "hours";
-  return `[System: ${displayName} sent a message but is currently blocked by you for ${hoursRemaining} more ${hourLabel}. Use \`unblock_user\` to unblock if needed]`;
+  return `[System: ${displayName} sent a message but is currently blocked by you for ${hoursRemaining} more ${hourLabel}.]`;
 }
 
 function formatExpiry(expiresAt: Date, timezoneOffset: number, locale: string): string {

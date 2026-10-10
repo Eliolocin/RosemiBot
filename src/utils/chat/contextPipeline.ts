@@ -23,6 +23,7 @@ import { hasExplicitLongTermMemoryIntent } from "@/utils/memory/explicitLongTerm
 import {
   type DeliberateToolIntentMatch,
   expandDeliberateToolAllowedNames,
+  getAttachmentDeliberateToolIntentResult,
   getAutonomousDeliberateToolNames,
   getDeliberateToolIntentResult,
   getFollowUpToolIntentResult,
@@ -43,7 +44,11 @@ import { checkTargetEmbed } from "@/utils/discord/embedClassifier";
 import { getCachedVoiceTranscript, setCachedVoiceTranscript } from "@/utils/audio/voiceTranscriptCache";
 import { isAudioAttachment, transcribeMessageAudioAttachment } from "@/utils/audio/audioAttachmentTranscription";
 import { resolveImpersonatedIdentity } from "@/utils/chat/webhookIdentity";
-import { buildQueuedReplyDirective, normalizeTailDirective } from "@/utils/chat/contextDirectives";
+import {
+  answersQueuedTriggerMessage,
+  buildQueuedReplyDirective,
+  normalizeTailDirective,
+} from "@/utils/chat/contextDirectives";
 import { excludeMessagesAwaitingOwnTurn } from "@/utils/chat/channelQueue";
 import { recordChatContextHistory } from "@/utils/chat/diagnosticTimeline";
 import {
@@ -61,6 +66,7 @@ import {
 } from "@/utils/chat/contextAnnotations";
 import {
   appendDirectMediaFromMessage,
+  appendDocumentAttachmentsFromMessage,
   appendComponentMediaFromMessage,
   appendStickersFromMessage,
   appendSupportedMediaFromMessage,
@@ -203,11 +209,11 @@ async function buildHistoryNamingProjection(params: {
 }
 
 /**
- * Scene turns share a single trigger message and carry their own per-turn directive via
- * `manualSystemPrompt` (buildSceneTurnDirective), so they are not replies to their queued message.
+ * The stop response answers its trigger natively but carries its own stop tail directive, so the
+ * generic reply directive would compete with it.
  */
 function isQueuedReplyTurn(incoming: LockedChatTurn["admission"]["incoming"]): boolean {
-  return incoming.isFromQueue && !incoming.isStopResponse && !incoming.sceneTurn;
+  return answersQueuedTriggerMessage(incoming) && !incoming.isStopResponse;
 }
 
 /**
@@ -295,8 +301,17 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
     deliberateToolIntentText,
     turn.persona.config.deliberate_tool_triggers,
   );
-  const deliberateToolAllowedNames = [...deliberateToolIntentResult.allowedToolNames];
-  const deliberateToolTriggerMatches: DeliberateToolIntentMatch[] = [...deliberateToolIntentResult.matches];
+  const attachmentToolIntentResult = getAttachmentDeliberateToolIntentResult(
+    history.simplifiedMessages.find((entry) => entry.id === message.id),
+  );
+  const deliberateToolAllowedNames = [
+    ...deliberateToolIntentResult.allowedToolNames,
+    ...attachmentToolIntentResult.allowedToolNames,
+  ];
+  const deliberateToolTriggerMatches: DeliberateToolIntentMatch[] = [
+    ...deliberateToolIntentResult.matches,
+    ...attachmentToolIntentResult.matches,
+  ];
   if (deliberateToolAllowedNames.includes("fetch_url") || deliberateToolAllowedNames.includes("web_search")) {
     const serverId = Number(turn.persona.server_id);
     if (Number.isFinite(serverId)) {
@@ -824,11 +839,13 @@ async function buildSimplifiedHistory(
     const currentHasMedia =
       simplified.imageAttachments.length > 0 ||
       simplified.videoAttachments.length > 0 ||
+      (simplified.documentAttachments?.length ?? 0) > 0 ||
       (simplified.mediaSourceMessageIds?.length ?? 0) > 0;
     const previousHasMedia =
       !!previousEntry &&
       (previousEntry.imageAttachments.length > 0 ||
         previousEntry.videoAttachments.length > 0 ||
+        (previousEntry.documentAttachments?.length ?? 0) > 0 ||
         (previousEntry.mediaSourceMessageIds?.length ?? 0) > 0);
     const previousHasContent =
       !!previousEntry &&
@@ -968,6 +985,7 @@ async function simplifyMessage(
 
   const imageAttachments: SimplifiedMessageForContext["imageAttachments"] = [];
   const videoAttachments: SimplifiedMessageForContext["videoAttachments"] = [];
+  const documentAttachments: NonNullable<SimplifiedMessageForContext["documentAttachments"]> = [];
   const mediaSourceMessageIds: string[] = [];
   let remoteMediaSourceKind: SimplifiedMessageForContext["remoteMediaSourceKind"];
   let hasLocalMedia = false;
@@ -978,6 +996,11 @@ async function simplifyMessage(
     appendSupportedMediaFromMessage(replyContext.referencedMessage, imageAttachments, videoAttachments);
     appendComponentMediaFromMessage(replyContext.referencedMessage, imageAttachments, videoAttachments);
     imageAttachments.push(...extractEmojiImageAttachments(replyContext.referencedMessage.content));
+    appendDocumentAttachmentsFromMessage(
+      replyContext.referencedMessage,
+      documentAttachments,
+      replyContext.referencedMessage.id,
+    );
     if (imageAttachments.length > preRefImageCount || videoAttachments.length > preRefVideoCount) {
       tagNewMediaWithSource(
         imageAttachments,
@@ -1090,7 +1113,7 @@ async function simplifyMessage(
     message: msg,
     imageAttachments,
     videoAttachments,
-    messageIdMap,
+    documentAttachments,
     voiceTranscriptChatMode: turn.persona.config.voice_transcript_chat_mode ?? true,
     appendTextHint: (hint) => {
       content = content ? `${content} ${hint}` : hint;
@@ -1121,7 +1144,7 @@ async function simplifyMessage(
     authorPersonaLineageId = null;
   }
 
-  if (!content && imageAttachments.length === 0 && videoAttachments.length === 0) {
+  if (!content && imageAttachments.length === 0 && videoAttachments.length === 0 && documentAttachments.length === 0) {
     return null;
   }
 
@@ -1148,6 +1171,7 @@ async function simplifyMessage(
       remoteMediaSourceKind: !hasLocalMedia && mediaSourceMessageIds.length > 0 ? remoteMediaSourceKind : undefined,
       imageAttachments,
       videoAttachments,
+      ...(documentAttachments.length > 0 && { documentAttachments }),
     },
     isDebug,
   };
@@ -1373,9 +1397,6 @@ function appendTailDirectives(args: {
     }
   }
 
-  // A generic "reply to <trigger>'s message" directive on a scene turn would point every
-  // turn at the same unrelated message and compete with the scene script (mirrors the
-  // visual reply suppression in toolLoop.ts).
   const queuedDirective = isQueuedReplyTurn(incoming)
     ? buildQueuedReplyDirective(
         args.turn.lockedTurn.admission.message,

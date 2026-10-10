@@ -44,11 +44,24 @@ buildContext() (context-build pipeline)        ──► assembles StructuredCon
   identifiers (`ref_1`, `ref_2`). This reduces prompt token usage and provides stable references for
   tools that target messages.
 - **Same-author merging**: consecutive pure-text messages from the same author collapse into a single
-  entry while preserving individual timestamps and IDs for metadata tools. Media-bearing messages
-  remain distinct to keep media attachments unambiguous.
+  entry while preserving individual timestamps and IDs for metadata tools. Media-bearing messages,
+  including messages with file attachments, remain distinct to keep media attachments unambiguous.
+- **File attachments**: text-readable files are recorded as `documentAttachments` on the entry, not as
+  hint text in `content`. A reply carries its target's files the same way it carries the target's
+  images. The `read_file` hint is rendered later, once the turn's tool list is known (see
+  [Dialogue history](/architecture/pipelines/context-build/02-native-assembly/11-dialogue-history/)).
 - **Privacy and blocks**: messages from full-privacy users and blocked authors are excluded.
 - **System notice hydration**: extracts system notices from Discord embeds and Components V2 containers,
   restoring the full text of minimal-verbosity cards via `resolveMinimalNoticeBodies()`.
+
+### Deliberate Tool Mode admission
+
+Besides keyword triggers, follow-ups, and the autonomous sticker and STM tools, media on the triggering
+message's history entry admits the tool that reads it: a file admits `read_file`, a non-emoji image
+admits `analyze_image`, a GIF also admits `process_gif`, and a YouTube link admits
+`process_youtube_video` (`getAttachmentDeliberateToolIntentResult()`). Only the triggering entry counts,
+so older media never keeps a tool exposed. Each tool's own availability gate still applies.
+`/tool` prompt inspection applies the same rule in `buildSnapshotToolFilter()`.
 
 ### Participant resolution and prompt delegation
 

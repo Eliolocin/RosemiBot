@@ -416,9 +416,13 @@ function pickFirstAvailable(availableToolNames: Set<string>, preferredToolNames:
  * A resolver scoped to one generation attempt's provider and config. Macros are provider-specific,
  * so a fallback attempt must not reuse the primary model's resolver.
  */
-export function createToolPromptMacroResolverForState(tomoriState: TomoriState): ToolPromptMacroResolver {
+export function createToolPromptMacroResolverForState(
+  tomoriState: TomoriState,
+  deliberateToolAllowedNames?: readonly string[],
+): ToolPromptMacroResolver {
   return createToolPromptMacroResolver({
     provider: tomoriState.llm.llm_provider,
+    deliberateToolAllowedNames,
     capabilities: resolvePromptCapabilityValues(tomoriState.config),
     stateForContext:
       tomoriState.server_id && tomoriState.llm

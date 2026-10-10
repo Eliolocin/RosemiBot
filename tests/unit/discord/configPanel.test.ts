@@ -1288,7 +1288,7 @@ describe("config Persona Memories body", () => {
     );
 
     expect(stmDisplay?.content?.length).toBeLessThanOrEqual(3800);
-    expect(stmDisplay?.content).toMatch(/Content truncated \(\d+\/\d+ shown\)\./);
+    expect(stmDisplay?.content).toMatch(/\n<!-- [^\n]+ -->\n```/);
   });
 });
 

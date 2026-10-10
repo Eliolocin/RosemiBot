@@ -217,7 +217,7 @@ describe("NovelaiStreamAdapter.startStream error propagation", () => {
   });
 
   it("handles mid-stream error event on native endpoint without echoing error JSON as persona text", async () => {
-    const metricSpy = spyOn(log, "metric");
+    const warnSpy = spyOn(log, "warn");
 
     globalThis.fetch = (async () => {
       const sseBody = 'data: {"token":"Hello"}\n\ndata: {"error":"out of anlas"}\n\n';
@@ -251,18 +251,12 @@ describe("NovelaiStreamAdapter.startStream error propagation", () => {
     const textContents = chunks.map((c) => (c.data as { token?: string })?.token).filter(Boolean);
     expect(textContents).not.toContain('{"error":"out of anlas"}');
 
-    // Emits provider_error_detail metric so production logs capture the error detail
-    expect(metricSpy).toHaveBeenCalledWith(
-      "provider_error_detail",
-      expect.objectContaining({
-        provider: "novelai",
-        message: expect.stringContaining("out of anlas"),
-      }),
-    );
+    // The response body is trace for whoever runs the bot; the provider_error counter carries the count
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("out of anlas"), undefined, expect.anything());
   });
 
   it("handles mid-stream error event on OpenAI endpoint without echoing error payload", async () => {
-    const metricSpy = spyOn(log, "metric");
+    const warnSpy = spyOn(log, "warn");
 
     globalThis.fetch = (async () => {
       const sseBody =
@@ -292,12 +286,6 @@ describe("NovelaiStreamAdapter.startStream error propagation", () => {
     expect(errorProcessed.type).toBe("error");
     expect(errorProcessed.error?.message).toContain("too much context");
 
-    expect(metricSpy).toHaveBeenCalledWith(
-      "provider_error_detail",
-      expect.objectContaining({
-        provider: "novelai",
-        message: expect.stringContaining("too much context"),
-      }),
-    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("too much context"), undefined, expect.anything());
   });
 });

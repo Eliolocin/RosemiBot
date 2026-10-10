@@ -39,6 +39,7 @@ import {
   buildRevealedMessageMetadataTailDirective,
   buildTailDirectiveMessage,
 } from "@/utils/chat/contextAnnotations";
+import { answersQueuedTriggerMessage } from "@/utils/chat/contextDirectives";
 import { takeEnhancedContextItem } from "@/utils/chat/pendingEnhancedContext";
 import { foldPrefillIntoToolHistory } from "@/utils/chat/assistantPrefill";
 import { buildExpressionToolResult, deliverExpression } from "@/utils/chat/expressionDelivery";
@@ -556,12 +557,9 @@ async function streamOnce(
   };
   armTimeout(STREAM_FIRST_TOKEN_TIMEOUT_MS);
 
-  // Scene turns are queued (isFromQueue=true) but all share the same trigger
-  // message. Replying to it would make every queued persona render "replying to"
-  // the very same message, so suppress the reply reference for scene turns and let
-  // them read as a free-standing back-and-forth dialogue instead.
-  const isSceneTurn = Boolean(params.context.turn.lockedTurn.admission.incoming.sceneTurn);
-  const replyToMessage = params.context.isFromQueue && !isSceneTurn ? params.context.message : undefined;
+  const replyToMessage = answersQueuedTriggerMessage(params.context.turn.lockedTurn.admission.incoming)
+    ? params.context.message
+    : undefined;
 
   // Keep a handle to the provider call so the timeout branch can await it settling. Under
   // Promise.race the loser is otherwise abandoned (never awaited); its rejection is still observed
@@ -637,11 +635,11 @@ async function streamOnce(
       }
 
       const providerName = params.tomoriState.llm.llm_provider;
-      log.metric("stream_sdk_timeout", {
-        provider: providerName,
-        phase: sawStreamProgress ? "idle" : "first_token",
-        reason: error.message.slice("SDK_CALL_TIMEOUT:".length).trim(),
-      });
+      const phase = sawStreamProgress ? "idle" : "first_token";
+      log.metric("stream_sdk_timeout", { provider: providerName, phase });
+      log.warn(
+        `Stream SDK call timed out (${providerName}, ${phase}): ${error.message.slice("SDK_CALL_TIMEOUT:".length).trim()}`,
+      );
 
       // Genuine timeout → the fallback path may run. The stream was aborted, not cancelled: wait
       // (bounded) for it to actually settle so any Discord send it had already dispatched is recorded

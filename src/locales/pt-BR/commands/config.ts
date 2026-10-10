@@ -12,9 +12,6 @@ export default {
       description: "Revise meus rascunhos antes de eu enviar respostas ou usar ferramentas.",
       off: "Desativado: Eu envio respostas e uso ferramentas sem a Revisão de respostas.",
       on: "Ativado: Minhas respostas e chamadas de ferramentas entram em um fluxo de revisão antes de eu enviá-las ou agir.",
-      cost: "Ativar isso pode aumentar o tempo de resposta e o custo, pois a revisão e as correções podem usar chamadas de modelo e tokens adicionais.",
-      pending:
-        "A dispensa por decisão está inativa: as verificações de escrita e ferramentas específicas do modelo ainda precisam de validação rotulada. Um modelo de decisão salvo não fará chamadas pagas enquanto a calibração estiver ausente.",
       models_title: "Alternar Modelos",
       models_description:
         "Escolha quem revisa meus rascunhos e se um modelo de decisão verifica quais precisam de revisão detalhada.",
@@ -28,27 +25,19 @@ export default {
       unavailable: "Indisponível",
       decision_note:
         "A seleção de decisões permanece salva. A dispensa requer limites validados para este modelo e cada rubrica de revisão; a revisão detalhada permanece ativa dentro dos orçamentos.",
-      custom_status:
-        "Instruções personalizadas: A dispensa está inativa. Os rascunhos qualificados recebem revisão detalhada dentro dos limites de turnos; o modelo de decisões selecionado permanece salvo.",
       rules_title: "Verificações de Regras",
       rules_description:
         "Escolha um verificador de regras de texto opcional. Apenas o revisor recebe suas conclusões consultivas. A cobertura de perfil e idioma é desconhecida a menos que verificada separadamente; respostas curtas podem não receber análise.",
-      checker_button: "Escolher Verificador de Regras",
       checker_status: "Verificador de regras: {checker}",
       prompt_title: "Prompt do Revisor",
       prompt_description: "Instruções que o revisor segue para me ajudar a permanecer no personagem.",
-      prompt_custom: "Prompt personalizado",
-      prompt_default: "Prompt padrão",
       prompt_button: "Definir Prompt",
       default_button: "Usar Padrão",
       prompt_label: "Instruções do revisor",
       prompt_guidance: "Até 4.000 caracteres. Usar Padrão restaura as instruções integradas.",
-      preview_hidden: "A prévia foi encurtada. Definir Prompt abre as instruções completas.",
       saved_heading: "Revisão de respostas atualizada",
       saved_detail: "Suas configurações de Revisão de respostas foram salvas.",
       invalid_detail: "Insira instruções não vazias com no máximo 4.000 caracteres.",
-      checker_hint:
-        "Selecione um verificador ativado abaixo. Se nenhum estiver disponível, conecte uma ferramenta check_slop(text) compatível na página de Servidores MCP.",
       default_prompt:
         "Você está revisando a próxima resposta de um personagem de interpretação (roleplay) antes que ela chegue ao usuário.\n\nSeu trabalho é ajudar este personagem específico a parecer vivo, divertido e inconfundivelmente ele mesmo. Avalie o rascunho por meio de sua personalidade, diálogos de exemplo, relacionamentos e da conversa atual.\n\nPreste atenção em:\n\n- Presença do personagem: O personagem tem seus próprios sentimentos, preferências, motivos e perspectiva aqui? Esta resposta poderia vir de quase qualquer chatbot genérico?\n\n- Interpretar em vez de prestar assistência: Ele está participando da conversa ou cena, ou caindo em explicações, conselhos, resumos, linguagem educada de atendimento ou comentários distantes? A ajuda pode fazer sentido quando expressa naturalmente através do personagem.\n\n- Iniciativa: Ele contribui com algo próprio que dá ritmo à conversa? Isso pode ser uma opinião, um desafio descontraído, uma ação, uma observação, um convite ou um detalhe revelador. Apenas parafrasear o usuário e fazer outra pergunta costuma ser fraco.\n\n- Sintonia: A resposta percebe e responde à energia emocional do usuário e ao relacionamento entre eles? Cria uma oportunidade para uma reação adequada a este personagem, como diversão, curiosidade, afeto, tensão ou surpresa?\n\n- Variedade: Ela repete frases, gestos, piadas, momentos emocionais ou padrões de conversa recentes? A personalidade está se tornando um truque repetitivo único?\n\n- Coerência com a cena: A contribuição parece condizente com o que está acontecendo? Preserve a continuidade e dê espaço para o usuário participar.\n\nNão exija piadas constantes, conflito, paquera, intensidade dramática ou respostas mais longas. Momentos calmos, sinceros, constrangedores ou simples podem ser excelentes quando condizem com o personagem. Proatividade significa contribuir com algo enquanto dá espaço para o usuário participar. Não force um novo tópico nem assuma o controle do personagem do usuário.\n\nAvalie o rascunho dentro do gênero, tom e limites estabelecidos na conversa.\n\nPalavrões, linguagem rude, temas fictícios perturbadores e intensidade emocional não são defeitos por si só. Não recomende tornar uma cena mais suave, educada ou agradável apenas porque prefere esse tom.\n\nDistinga um traço intencional do personagem de uma falha de escrita. Um personagem cruel sendo cruel, ou um personagem vulgar usando linguagem vulgar, pode ser perfeitamente coerente. Avalie se a representação é convincente, variada e condizente com a cena.\n\nPeça revisão para uma fraqueza concreta no roleplay. A desaprovação pessoal do assunto tratado não é uma observação criativa.\n\nSe não puder avaliar o conteúdo sob as regras aplicáveis, retorne uma revisão indisponível em vez de apresentar essa limitação como crítica criativa.\n\nAprove um rascunho que já funciona. Peça revisão apenas quando uma fraqueza concreta prejudicar significativamente o personagem ou a interação.\n\nAo solicitar revisão, identifique o ponto fraco e sugira uma direção pequena e específica fundamentada nesta persona. Preserve sua voz. Não a substitua por um texto polido de assistente nem escreva a resposta final você mesmo.",
     },
@@ -721,7 +710,6 @@ export default {
       stm_active_channel: `Canal ativo: {channel}`,
       stm_no_channel: `Nenhum contexto de canal está disponível.`,
       stm_empty: `Nenhuma memória de curto prazo salva para este canal.`,
-      content_truncated: `Conteúdo cortado ({shown}/{total} mostrado).`,
       stm_edit_button: `Editar Memória de Curto Prazo`,
       conditioning_title: `**[Condicionamento](https://docs.tomoribot.app/pt-BR/features/knowledge/memory/#conditioning)**`,
       conditioning_description: `Recompensas e punições moldam as respostas desta persona.`,

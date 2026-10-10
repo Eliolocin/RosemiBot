@@ -77,7 +77,9 @@ text-suppressed work retain their existing paths. Failed attempts discard pendin
 preserving successful tools, rejections, correction budgets and reported usage.
 
 `responseReview.ts` builds a bounded private packet from admitted persona/task evidence, privacy-filtered
-context and actual tool history. Pending prose is labeled separately from history. Incomplete required
+context and actual tool history, and renders it as a tagged transcript. Evidence fixed for the turn
+precedes the candidate, findings and tool outcomes, so a second review reuses the provider's prompt
+prefix cache. Pending prose is labeled separately from history. Incomplete required
 evidence, uninspected media or unsafe redaction makes review unavailable. Inherited reviewers use the
 actual author attempt's model and key; pinned reviewers revalidate their owned registration and credentials.
 

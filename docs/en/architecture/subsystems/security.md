@@ -17,7 +17,7 @@ Application secrets are managed by `src/utils/security/secretsManager.ts` during
 - **Database transport**: `RUN_ENV=production` connects with verified TLS. `TEST_PRODUCTION=true` rehearses production locally and skips TLS only when `POSTGRES_HOST` is a loopback address (`localhost`, `127.0.0.1`, `::1`); any other host keeps verified TLS, including the restore preflight.
 - **Environment mapping**: verified secrets populate `process.env`. `CryptoKeyManager.initialize()` executes immediately after secret loading so encryption keys are ready before database connection initialization. The selected secret source replaces the entire encryption-version set, including `CRYPTO_SECRET_CURRENT`; undeclared ambient versions are cleared. Runtime and maintenance scripts use this same loader.
 - **Subprocess arguments**: other local users can read a process's command line, so secrets never go there. `withPostgresPassfile()` in `src/utils/backup/dataBackup.ts` gives `pg_dump` and `psql` the database password through a private temporary `PGPASSFILE` and removes the bot's own database credential variables from their environment. The OpenRouter video `curl` fallback reads its headers and body from stdin (`-K -`).
-- **Log redaction**: every `log` method, including `log.metric`, passes its fields through `sanitizeLogPayload()` before either sink, so free-text values such as endpoint failure reasons get the same credential redaction as structured fields. Numeric fields keep their type.
+- **Log redaction**: every `log` method, including `log.metric`, passes its fields through `sanitizeLogPayload()` before either sink, so string values get the same credential redaction as structured fields. Numeric fields keep their type.
 
 ## Encryption at rest and key rotation
 

@@ -12,9 +12,6 @@ export default {
       description: "Duyệt các bản nháp của mình trước khi mình gửi phản hồi hoặc dùng công cụ.",
       off: "Khi Tắt: Mình gửi phản hồi và dùng công cụ mà không qua Duyệt bản nháp phản hồi.",
       on: "Khi Bật: Phản hồi và lượt gọi công cụ của mình sẽ đi qua quy trình duyệt trước khi mình gửi hoặc hành động.",
-      cost: "Bật tính năng này có thể làm tăng thời gian phản hồi và chi phí vì việc duyệt và chỉnh sửa có thể cần thêm lượt gọi model và token.",
-      pending:
-        "Bỏ qua duyệt theo quyết định đang không hoạt động: các kiểm tra viết và công cụ dành riêng cho model vẫn cần xác thực có gắn nhãn. Model quyết định đã lưu sẽ không thực hiện các lượt gọi trả phí khi chưa có hiệu chuẩn.",
       models_title: "Chuyển đổi model",
       models_description:
         "Chọn ai sẽ duyệt các bản nháp của mình và liệu model quyết định có kiểm tra bản nháp nào cần duyệt chi tiết hay không.",
@@ -28,27 +25,19 @@ export default {
       unavailable: "Không khả dụng",
       decision_note:
         "Lựa chọn quyết định vẫn được lưu. Việc bỏ qua cần có các ngưỡng đã xác thực cho model này và từng tiêu chí duyệt; duyệt chi tiết vẫn hoạt động trong phạm vi ngân sách.",
-      custom_status:
-        "Hướng dẫn tùy chỉnh: Tính năng bỏ qua đang không hoạt động. Các bản nháp đủ điều kiện sẽ được duyệt chi tiết trong giới hạn lượt; model quyết định đã chọn vẫn được lưu.",
       rules_title: "Kiểm tra quy tắc",
       rules_description:
         "Chọn một công cụ kiểm tra quy tắc văn bản tùy chọn. Chỉ người duyệt mới nhận được các phát hiện khuyến nghị của công cụ này. Phạm vi hồ sơ và ngôn ngữ chưa rõ trừ khi được xác minh riêng; phản hồi ngắn có thể không nhận được phân tích.",
-      checker_button: "Chọn công cụ kiểm tra quy tắc",
       checker_status: "Công cụ kiểm tra quy tắc: {checker}",
       prompt_title: "Prompt người duyệt",
       prompt_description: "Hướng dẫn mà người duyệt làm theo để giúp mình giữ đúng tính cách nhân vật.",
-      prompt_custom: "Prompt tùy chỉnh",
-      prompt_default: "Prompt mặc định",
       prompt_button: "Đặt prompt",
       default_button: "Dùng mặc định",
       prompt_label: "Hướng dẫn người duyệt",
       prompt_guidance: "Tối đa 4.000 ký tự. Dùng mặc định sẽ khôi phục các hướng dẫn tích hợp sẵn.",
-      preview_hidden: "Bản xem trước đã được rút gọn. Đặt prompt để mở toàn bộ hướng dẫn.",
       saved_heading: "Đã cập nhật duyệt bản nháp phản hồi",
       saved_detail: "Cài đặt Duyệt bản nháp phản hồi của bạn đã được lưu.",
       invalid_detail: "Nhập hướng dẫn không được để trống và tối đa 4.000 ký tự.",
-      checker_hint:
-        "Chọn một công cụ kiểm tra đã bật bên dưới. Nếu không có sẵn, hãy kết nối một công cụ check_slop(text) tương thích trên trang Máy chủ MCP.",
       default_prompt:
         "Bạn đang duyệt phản hồi tiếp theo của một nhân vật nhập vai trước khi phản hồi đó đến tay người dùng.\n\nNhiệm vụ của bạn là giúp nhân vật cụ thể này cảm thấy sống động, thú vị và thể hiện đúng bản thân một cách rõ nét nhất. Hãy đánh giá bản nháp thông qua tính cách của nhân vật, đối thoại mẫu, các mối quan hệ và cuộc trò chuyện hiện tại.\n\nHãy chú ý đến:\n\n- Sự hiện diện của nhân vật: Nhân vật có cảm xúc, sở thích, động cơ và góc nhìn riêng tại đây không? Phản hồi này có thể đến từ hầu như bất kỳ chatbot chung chung nào không?\n\n- Nhập vai thay vì hỗ trợ: Nhân vật có đang tham gia vào cuộc trò chuyện hay phân cảnh, hay đang rơi vào việc giải thích, đưa ra lời khuyên, tóm tắt, dùng ngôn từ phục vụ lịch sự hoặc bình luận tách biệt? Sự hỗ trợ có thể phù hợp khi được thể hiện một cách tự nhiên qua nhân vật.\n\n- Sự chủ động: Họ có đóng góp điều gì mang tính riêng biệt giúp thúc đẩy cuộc đối thoại không? Đó có thể là một ý kiến, thử thách vui tươi, hành động, quan sát, lời mời hoặc chi tiết gợi mở. Việc chỉ diễn đạt lại lời của người dùng rồi đặt một câu hỏi khác thường rất yếu ớt.\n\n- Sự ăn ý: Phản hồi có nhận biết và đáp lại năng lượng cảm xúc của người dùng cũng như mối quan hệ giữa họ không? Nó có tạo cơ hội cho một phản ứng phù hợp với nhân vật này không, chẳng hạn như sự thích thú, tò mò, tình cảm, căng thẳng hoặc ngạc nhiên?\n\n- Sự đa dạng: Nó có lặp lại cách diễn đạt, cử chỉ, câu đùa, nhịp cảm xúc hoặc mô thức trò chuyện gần đây không? Tính cách có đang biến thành một mánh lới đơn điệu duy nhất không?\n\n- Sự phù hợp với phân cảnh: Đóng góp có cảm giác xứng đáng và tự nhiên với những gì đang diễn ra không? Hãy duy trì tính liên tục và để lại không gian cho người dùng tham gia.\n\nĐừng đòi hỏi những câu đùa liên tục, xung đột, tán tỉnh, kịch tính hóa dồn dập hoặc câu trả lời dài hơn. Những khoảnh khắc tĩnh lặng, chân thành, ngượng ngùng hoặc đơn giản có thể rất tuyệt vời khi chúng phù hợp với nhân vật. Tính chủ động có nghĩa là đóng góp điều gì đó trong khi vẫn cho người dùng không gian tham gia. Đừng áp đặt một chủ đề mới hoặc chiếm quyền kiểm soát nhân vật của người dùng.\n\nHãy đánh giá bản nháp trong phạm vi thể loại, tông giọng và ranh giới đã được thiết lập của cuộc trò chuyện.\n\nLời thô tục, ngôn từ thô thiển, các chủ đề hư cấu nhạy cảm và cường độ cảm xúc bản thân chúng không phải là lỗi. Đừng đề xuất làm cho một phân cảnh trở nên nhẹ nhàng, lịch sự hoặc chuẩn mực hơn chỉ vì bạn thích tông giọng đó.\n\nHãy phân biệt đặc điểm nhân vật có chủ đích với lỗi hành văn. Một nhân vật tàn nhẫn hành xử tàn nhẫn, hoặc một nhân vật thô lỗ dùng lời lẽ thô lỗ, có thể hoàn toàn phù hợp. Hãy đánh giá xem màn thể hiện có thuyết phục, đa dạng và nhất quán với phân cảnh hay không.\n\nChỉ yêu cầu sửa đổi khi có điểm yếu cụ thể trong màn nhập vai. Sự không tán thành cá nhân đối với chủ đề của phân cảnh không phải là một nhận xét mang tính sáng tạo.\n\nNếu bạn không thể đánh giá nội dung theo các quy tắc hiện hành của mình, hãy trả về kết quả đánh giá không khả dụng thay vì coi giới hạn đó là lời phê bình mang tính sáng tạo.\n\nHãy thông qua một bản nháp đã hoạt động tốt. Chỉ yêu cầu sửa đổi khi một điểm yếu cụ thể gây tổn hại đáng kể đến nhân vật hoặc cuộc đối thoại.\n\nKhi yêu cầu sửa đổi, hãy chỉ ra điểm yếu và gợi ý một hướng đi nhỏ, cụ thể dựa trên persona này. Hãy giữ gìn giọng văn của họ. Đừng thay thế nó bằng văn phong trợ lý trau chuốt hoặc tự mình viết phản hồi cuối cùng.",
     },
@@ -717,7 +706,6 @@ export default {
       stm_active_channel: `Kênh hoạt động: {channel}`,
       stm_no_channel: `Không có ngữ cảnh kênh nào khả dụng.`,
       stm_empty: `Không có bộ nhớ ngắn hạn nào được lưu cho kênh này.`,
-      content_truncated: `Nội dung bị cắt bớt (hiển thị {shown}/{total}).`,
       stm_edit_button: `Sửa bộ nhớ ngắn hạn`,
       conditioning_title: `**[Điều hòa hành vi](https://docs.tomoribot.app/vi/features/knowledge/memory/#conditioning)**`,
       conditioning_description: `Khen thưởng và trừng phạt định hình phản hồi của persona.`,

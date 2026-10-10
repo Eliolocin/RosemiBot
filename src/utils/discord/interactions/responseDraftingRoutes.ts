@@ -138,11 +138,7 @@ export async function handleDraftRoutes(context: ConfigModelRouteContext): Promi
       dependencies.recordAction({ action, serverId: context.scope.internalServerId, userDiscId: interaction.user.id });
     await paint(undefined, result.result);
   };
-  if (route.action === "draft-picker") {
-    await paint({ slot: route.slot, provider: route.provider === "none" ? null : route.provider, start: route.start });
-  } else if (route.action === "draft-checker") {
-    await paint({ slot: "checker", start: route.start });
-  } else if (route.action === "draft-provider") {
+  if (route.action === "draft-provider") {
     const range = context.selectedValue ? decodeConfigProviderRangeValue(context.selectedValue) : null;
     if (range) await paint({ slot: route.slot, provider: range.expandedProvider, start: range.start });
     else if (context.selectedValue === DRAFT_CLEAR_VALUE)

@@ -32,7 +32,7 @@ export default {
       invalid_character_identity: `Danh tính nhân vật không hợp lệ: {id}. Hãy dùng persona:<id>, ID persona dạng số ngắn, hoặc snowflake người dùng Discord.`,
     },
     search: {
-      category_search_title: `🔍 Đang tìm __{category}__ cho \`{query}\`...`,
+      category_search_title: `🔍 Đang tìm {category} cho \`{query}\`...`,
       category_labels: {
         text: `trang web`,
         image: `hình ảnh`,
@@ -163,7 +163,7 @@ export default {
       fetch_url_title: `🌐  Đang đọc trang web...`,
       fetch_failed_description: `Mình không thể lấy trang đó: {error}`,
       private_network_blocked_description: `Mình không thể lấy trang đó vì nó trỏ đến một địa chỉ mạng riêng tư hoặc nội bộ. TomoriBot chặn những địa chỉ này trong môi trường production trừ khi máy chủ thiết lập \`FETCH_URL_ALLOW_PRIVATE_NETWORK=true\`. {error}`,
-      reading_title_page: `🌐  Đang đọc trang web (Trang {page})...`,
+      reading_title_page: `🌐  Đang đọc trang web (trang {page})...`,
       reading_description: `Đang tìm nạp và đọc: {url}`,
       reading_offset_line: `Bắt đầu từ ký tự {start_index}`,
       reading_footer: `Quá trình này có thể mất chút thời gian tùy thuộc vào kích thước trang`,

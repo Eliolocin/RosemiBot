@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { transcribeViaOpenAIAdapter } from "@/providers/custom/styles/transcriptionOpenAIAdapter";
 import type { CustomEndpointRow } from "@/types/db/schema";
+import { useEnvSandbox } from "../../helpers/env";
 
 const RUN_ENV_NAME = "RUN_ENV";
-const originalRunEnv = process.env[RUN_ENV_NAME];
 
 function buildTranscriptionEndpoint(endpointUrl: string): CustomEndpointRow {
   return {
@@ -27,13 +27,7 @@ function buildTranscriptionEndpoint(endpointUrl: string): CustomEndpointRow {
 }
 
 describe("transcribeViaOpenAIAdapter", () => {
-  afterEach(() => {
-    if (originalRunEnv === undefined) {
-      delete process.env[RUN_ENV_NAME];
-    } else {
-      process.env[RUN_ENV_NAME] = originalRunEnv;
-    }
-  });
+  useEnvSandbox([RUN_ENV_NAME]);
 
   it("appends /audio/transcriptions without doubling /v1 when the stored URL ends in /v1", async () => {
     process.env[RUN_ENV_NAME] = "development";

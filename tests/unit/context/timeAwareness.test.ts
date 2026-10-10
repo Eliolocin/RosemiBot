@@ -2,13 +2,15 @@ import { describe, expect, it } from "bun:test";
 import type { Client } from "discord.js";
 import { HumanizerDegree, type AssembledServerConfig } from "@/types/db/schema";
 import type { StructuredContextItem } from "@/types/misc/context";
-import { appendDialogueHistoryContext } from "@/utils/text/context/dialogueHistory";
+import { appendDialogueHistoryContext, DOCUMENT_HINT_TEMPLATE } from "@/utils/text/context/dialogueHistory";
 import { buildDateSpacer, buildReunionNote, SPACER_TEMPLATE } from "@/utils/text/context/timeAwareness";
 import type { SimplifiedMessageForContext } from "@/utils/text/context/types";
 import { getCalendarDayWithOffset } from "@/utils/text/timezoneHelper";
 
 const NOW = Date.parse("2026-07-15T12:00:00Z");
-const EXPANDED_TEMPLATE = SPACER_TEMPLATE.replace("{message_metadata_tool}", "`reveal_message_metadata`");
+const EXPANDED_TEMPLATE = SPACER_TEMPLATE.replace("{{if tool:reveal_message_metadata}}", "")
+  .replace("{{/if}}", "")
+  .replace("{message_metadata_tool}", "`reveal_message_metadata`");
 
 function makeMessage(id: string, createdAt?: number): SimplifiedMessageForContext {
   return {
@@ -170,6 +172,7 @@ describe("appendDialogueHistoryContext — time-awareness injections", () => {
       tomoriConfig: makeConfig(),
       tomoriState: null,
       reunionNote: "Alice is talking to you directly for the very first time!",
+      documentHintTemplate: DOCUMENT_HINT_TEMPLATE,
       includeTimestamps: false,
       isUserImpersonation: false,
       triggererFormattedName: "Alice",
@@ -204,6 +207,7 @@ describe("appendDialogueHistoryContext — time-awareness injections", () => {
       tomoriConfig: makeConfig(),
       tomoriState: null,
       dateSpacerTemplate: EXPANDED_TEMPLATE,
+      documentHintTemplate: DOCUMENT_HINT_TEMPLATE,
       includeTimestamps: false,
       isUserImpersonation: false,
       triggererFormattedName: "Alice",

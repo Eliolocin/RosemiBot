@@ -40,7 +40,14 @@ bun run vl > /tmp/vl.log 2>&1; echo "VL_EXIT=$?" >> /tmp/vl.log
 - Comments follow the [comment policy](/contributing/policies/comments/). JSDoc on exported functions
   only where behavior is not obvious from the name and types.
 - Log with `log` from `src/utils/misc/logger.ts`, with context such as `errorType` and IDs. Handle
-  startup-critical failures differently from recoverable ones.
+  startup-critical failures differently from recoverable ones. Pick the level by reader:
+  - `log.error`: a failure the hoster must act on. It reaches production and `error_logs`, so keep
+    it deliberate. Pass `{ persist: false }` when the failure is the database path itself.
+  - `log.warn`: developer trace (causes, free text, stack details). Hidden in production unless the
+    hoster sets `LOG_LEVEL=warn`.
+  - `log.metric`: a sample to count or graph. Numbers and string fields from a fixed set (codes,
+    reason keys) only; free text cannot be grouped, so it goes to `log.warn`. An expected refusal is
+    a metric plus a warn, never an error.
 - Slash commands only. Every user-facing string goes through `localizer()`. Follow the interaction
   timing rules in [Command System](/architecture/subsystems/command-system/).
 - Query with Bun SQL template literals, and write idempotent migrations (`IF NOT EXISTS`, guarded

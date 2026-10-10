@@ -194,7 +194,6 @@ export default {
     remove_blacklist_group_description: `Desmarca la casilla y envía para quitar la entrada de la lista negra`,
     remove_whitelist_group_description: `Desmarca la casilla y envía para quitar de la lista blanca`,
     remove_group_continuation: `Continuación ({index})`,
-    remove_modal_limit: `Esta lista tiene más de 50 entradas y no cabe en un solo formulario.`,
     remove_nothing_changed: `No se quitó nada`,
     remove_nothing_changed_detail: `Todas las entradas siguieron seleccionadas. No fue necesario escribir nada.`,
 

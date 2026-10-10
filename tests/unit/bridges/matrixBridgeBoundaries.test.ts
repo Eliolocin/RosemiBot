@@ -18,6 +18,7 @@ import {
 import * as tomoriStateCache from "@/utils/cache/tomoriStateCache";
 import { serverRepository } from "@/utils/db/repositories/ServerRepository";
 import { initializeLocalizer } from "@/utils/text/localizer";
+import { useEnvSandbox } from "../../helpers/env";
 import { makeFakeInteraction } from "../../helpers/fakeInteraction";
 import { createPersona, createUserRow } from "../../helpers/fixtures";
 import { localizedCopy } from "../../helpers/localeCases";
@@ -36,7 +37,6 @@ const MATRIX_ENV_NAMES = [
   "MATRIX_MAX_ATTACHMENT_MB",
   "MATRIX_MEDIA_TIMEOUT_MS",
 ] as const;
-const originalEnv = Object.fromEntries(MATRIX_ENV_NAMES.map((name) => [name, process.env[name]]));
 const AS_TOKEN = "synthetic-appservice-token";
 const MIB = 1024 * 1024;
 
@@ -57,17 +57,9 @@ const homeserver = Bun.serve({
 });
 const homeserverUrl = `http://127.0.0.1:${homeserver.port}`;
 
-function restoreMatrixEnv(): void {
-  for (const name of MATRIX_ENV_NAMES) {
-    const original = originalEnv[name];
-    if (original === undefined) delete process.env[name];
-    else process.env[name] = original;
-  }
-}
-
 type MatrixEnv = Partial<Record<(typeof MATRIX_ENV_NAMES)[number], string>>;
 
-/** Every name written here is restored by `restoreMatrixEnv` in `afterEach`. */
+/** Every name written here is in `MATRIX_ENV_NAMES`, so the env sandbox restores it. */
 function setMatrixEnv(values: MatrixEnv): void {
   for (const [name, value] of Object.entries(values)) process.env[name] = value;
 }
@@ -77,8 +69,9 @@ function useSettings(overrides: MatrixEnv = {}): void {
   setMatrixSettings(parseMatrixSettings());
 }
 
+useEnvSandbox(MATRIX_ENV_NAMES);
+
 beforeEach(() => {
-  restoreMatrixEnv();
   for (const name of MATRIX_ENV_NAMES) delete process.env[name];
   setMatrixEnv({ MATRIX_HOMESERVER_URL: homeserverUrl, MATRIX_ACCESS_TOKEN: AS_TOKEN });
   homeserverRequests.length = 0;
@@ -87,7 +80,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  restoreMatrixEnv();
   setMatrixSettings(null);
   setMatrixBridge(null);
 });

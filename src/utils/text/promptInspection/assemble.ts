@@ -23,6 +23,7 @@ import { getCachedBlacklistStatus, getCachedPrivacyLevel, getCachedUserRow } fro
 import { formatTargetEmbedForContext } from "@/utils/chat/contextEmbeds";
 import {
   appendComponentMediaFromMessage,
+  appendDocumentAttachmentsFromMessage,
   appendSupportedMediaFromMessage,
   getEffectiveAttachmentContentType,
   isSupportedImageAttachmentContentType,
@@ -48,11 +49,13 @@ import { withSavedProviderConfig } from "@/utils/provider/savedProviderConfig";
 import { buildContext } from "@/utils/text/contextBuilder";
 import { truncateDialogueHistory } from "@/utils/text/contextTruncator";
 import { resolveMediaForModel } from "@/utils/text/context/mediaResolver";
+import type { SimplifiedMessageForContext } from "@/utils/text/context/types";
 import { getEmojiPenaltyDirective } from "@/utils/text/emojiPenalty";
 import { prepareParticipantContext } from "@/utils/text/participants/preparation";
 import { resolveEffectiveUserNaming } from "@/utils/text/userNaming";
 import {
   filterDeliberateToolNames,
+  getAttachmentDeliberateToolIntentResult,
   getAutonomousDeliberateToolNames,
   getDeliberateToolIntentResult,
   getFollowUpToolIntentResult,
@@ -215,11 +218,14 @@ function getSnapshotRecentToolAffordanceNames(
 
 async function buildSnapshotToolFilter(params: {
   messagesArray: Message[];
+  simplifiedMessages: Array<
+    Pick<SimplifiedMessageForContext, "id" | "imageAttachments" | "videoAttachments" | "documentAttachments">
+  >;
   clientUserId?: string | null;
   persona: TomoriState;
   invokingUserData: UserRow;
 }): Promise<SnapshotToolFilter | null> {
-  const { messagesArray, clientUserId, persona, invokingUserData } = params;
+  const { messagesArray, simplifiedMessages, clientUserId, persona, invokingUserData } = params;
   const latestUserMessage = [...messagesArray]
     .reverse()
     .find((message) => !message.webhookId && message.author.id !== clientUserId);
@@ -241,9 +247,13 @@ async function buildSnapshotToolFilter(params: {
     intentText,
     latestUserMessage ? getSnapshotRecentToolAffordanceNames(messagesArray, latestUserMessage.id, clientUserId) : [],
   );
+  const attachmentIntent = getAttachmentDeliberateToolIntentResult(
+    simplifiedMessages.find((entry) => entry.id === latestUserMessage?.id),
+  );
   const allowedToolNames = Array.from(
     new Set([
       ...directIntent.allowedToolNames,
+      ...attachmentIntent.allowedToolNames,
       ...followUpIntent.allowedToolNames,
       ...getAutonomousDeliberateToolNames(persona),
     ]),
@@ -463,12 +473,6 @@ export async function assemblePromptInspection(request: PromptInspectionRequest)
 
   // Respect /refresh and /compact_refresh boundaries with the same slicing tomoriChat.ts uses.
   const { sliced: messagesArray } = sliceMessagesAtResetMarker(allMessagesArray);
-  const snapshotToolFilter = await buildSnapshotToolFilter({
-    messagesArray,
-    clientUserId: client.user?.id,
-    persona: answeringState,
-    invokingUserData: userData,
-  });
 
   const personaByNickname = new Map<string, TomoriState>();
   for (const p of personas) {
@@ -500,6 +504,7 @@ export async function assemblePromptInspection(request: PromptInspectionRequest)
       filename: string;
       isYouTubeLink: boolean;
     }>;
+    documentAttachments?: Array<{ filename: string }>;
   };
 
   const simplifiedMessages: SimpleMsg[] = [];
@@ -543,6 +548,8 @@ export async function assemblePromptInspection(request: PromptInspectionRequest)
 
     const imageAttachments: SimpleMsg["imageAttachments"] = [];
     const videoAttachments: SimpleMsg["videoAttachments"] = [];
+    const documentAttachments: NonNullable<SimpleMsg["documentAttachments"]> = [];
+    appendDocumentAttachmentsFromMessage(message, documentAttachments);
     let hasLocalMedia = false;
 
     const directMediaCounts = appendSupportedMediaFromMessage(message, imageAttachments, videoAttachments);
@@ -658,11 +665,15 @@ export async function assemblePromptInspection(request: PromptInspectionRequest)
     // unambiguous.
     const prevMsg = simplifiedMessages[simplifiedMessages.length - 1];
     const currentHasMedia =
-      imageAttachments.length > 0 || videoAttachments.length > 0 || (mediaSourceMessageIds?.length ?? 0) > 0;
+      imageAttachments.length > 0 ||
+      videoAttachments.length > 0 ||
+      documentAttachments.length > 0 ||
+      (mediaSourceMessageIds?.length ?? 0) > 0;
     const prevHasMedia =
       !!prevMsg &&
       (prevMsg.imageAttachments.length > 0 ||
         prevMsg.videoAttachments.length > 0 ||
+        (prevMsg.documentAttachments?.length ?? 0) > 0 ||
         (prevMsg.mediaSourceMessageIds?.length ?? 0) > 0);
     const shouldKeepSeparateMediaTurn = currentHasMedia || prevHasMedia;
     if (
@@ -673,7 +684,12 @@ export async function assemblePromptInspection(request: PromptInspectionRequest)
       !shouldKeepSeparateMediaTurn
     ) {
       prevMsg.content += `\n${messageContent}`;
-    } else if (messageContent || imageAttachments.length > 0 || videoAttachments.length > 0) {
+    } else if (
+      messageContent ||
+      imageAttachments.length > 0 ||
+      videoAttachments.length > 0 ||
+      documentAttachments.length > 0
+    ) {
       simplifiedMessages.push({
         id: message.id,
         authorId: effectiveAuthorId,
@@ -684,11 +700,20 @@ export async function assemblePromptInspection(request: PromptInspectionRequest)
         mediaSourceMessageIds,
         imageAttachments,
         videoAttachments,
+        ...(documentAttachments.length > 0 && { documentAttachments }),
       });
     }
 
     userListSet.add(effectiveAuthorId);
   }
+
+  const snapshotToolFilter = await buildSnapshotToolFilter({
+    messagesArray,
+    simplifiedMessages,
+    clientUserId: client.user?.id,
+    persona: answeringState,
+    invokingUserData: userData,
+  });
 
   if (client.user?.id) userListSet.add(client.user.id);
 
@@ -811,7 +836,11 @@ export async function assemblePromptInspection(request: PromptInspectionRequest)
     if (uncensorTailMessage) contextItems.push(uncensorTailMessage);
   }
 
-  const resolvedContextItems = await resolveMediaForModel(contextItems, answeringState);
+  const resolvedContextItems = await resolveMediaForModel(
+    contextItems,
+    answeringState,
+    snapshotToolFilter?.allowedToolNames,
+  );
 
   // generationTurn truncates after media resolution, so the inspection must too or it reports
   // history the model never receives once a channel outgrows the window.

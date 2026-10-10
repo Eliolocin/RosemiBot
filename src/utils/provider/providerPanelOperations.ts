@@ -1025,16 +1025,9 @@ export async function addCustomEndpointConnection(
     apiKey: authToken || null,
   });
   if (!reachable.ok) {
-    // An expected refusal, so this is a metric and not an incident. It cannot be `log.warn`: the
-    // production level filter drops warn entirely, which is the blind spot this change exists to
-    // close. The reason is carried here because the receipt shows only the safe subset.
-    log.metric("panel_failure_detail", {
-      namespace: "providers",
-      tone: "error",
-      reason: "custom_endpoint_unreachable",
-      apiStyle: input.apiStyle,
-      detail: reachable.reason.slice(0, 200),
-    });
+    // An expected refusal: the receipt's `panel_failure` metric counts it, and the raw reason is
+    // trace for whoever runs the endpoint, since the receipt shows only the safe subset.
+    log.warn(`Custom endpoint add failed reachability (${input.apiStyle}): ${reachable.reason.slice(0, 200)}`);
     return {
       status: "unreachable",
       reason: reachable.reason,
@@ -1632,14 +1625,9 @@ async function editServerEndpoint(input: EditEndpointInput): Promise<EditEndpoin
         apiKey: credential,
       });
       if (!reachable.ok) {
-        // Same treatment as the add path: a metric, because warn never reaches production.
-        log.metric("panel_failure_detail", {
-          namespace: "providers",
-          tone: "error",
-          reason: "custom_endpoint_unreachable",
-          apiStyle: connection.api_style,
-          detail: reachable.reason.slice(0, 200),
-        });
+        log.warn(
+          `Custom endpoint update failed reachability (${connection.api_style}): ${reachable.reason.slice(0, 200)}`,
+        );
         return {
           status: "unreachable",
           reason: reachable.reason,

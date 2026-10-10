@@ -193,7 +193,6 @@ export default {
     remove_blacklist_group_description: `Uncheck box then submit to remove blacklist entry`,
     remove_whitelist_group_description: `Uncheck box then submit to remove whitelist`,
     remove_group_continuation: `Continuation ({index})`,
-    remove_modal_limit: `This list has more than 50 entries and cannot fit in one modal.`,
     remove_nothing_changed: `Nothing was removed`,
     remove_nothing_changed_detail: `All entries remained selected. No write was needed.`,
 

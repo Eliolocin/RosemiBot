@@ -4,7 +4,7 @@ import type { PanelReceipt } from "@/types/discord/panel";
 import { deliverGuardedPanel, setPanelFailureSampleSink } from "@/utils/discord/ui/interactionCore";
 import { setupNoticeReceipt } from "@/utils/discord/ui/setupPanel";
 import { log } from "@/utils/misc/logger";
-import { initializeLocalizer, localizer } from "@/utils/text/localizer";
+import { initializeLocalizer } from "@/utils/text/localizer";
 
 await initializeLocalizer();
 
@@ -78,7 +78,8 @@ describe("panel failure reporting chokepoint", () => {
       expect(metrics[0]?.fields.tone).toBe("error");
       expect(metrics[0]?.fields.namespace).toBe("config");
       expect(metrics[0]?.fields.reason).toBe("custom_endpoint_unreachable");
-      expect(metrics[0]?.fields.heading).toBe(localizer("en-US", "commands.conditioning.panel.write_failed_heading"));
+      // Localized free text cannot be grouped, so it never rides on the metric.
+      expect(metrics[0]?.fields).not.toHaveProperty("heading");
       expect(metrics[0]?.fields.locale).toBe("en-US");
     } finally {
       restore();
@@ -88,7 +89,7 @@ describe("panel failure reporting chokepoint", () => {
   it("falls back to a namespace and tone key when the receipt names no cause", async () => {
     const { metrics, restore } = captureMetrics();
     try {
-      await deliverGuardedPanel(fakeInteraction("moderation:v1:page:en-US"), validPayload(), {
+      await deliverGuardedPanel(fakeInteraction("moderation:v2:page:en-US"), validPayload(), {
         locale: "en-US",
         receipt: { tone: "error", heading: "Update Failed", detail: "Try again." },
       });
@@ -117,7 +118,7 @@ describe("panel failure reporting chokepoint", () => {
   it("reports a warning receipt as well, because a stale panel still failed the actor's intent", async () => {
     const { metrics, restore } = captureMetrics();
     try {
-      await deliverGuardedPanel(fakeInteraction("moderation:v1:page:en-US"), validPayload(), {
+      await deliverGuardedPanel(fakeInteraction("moderation:v2:page:en-US"), validPayload(), {
         locale: "en-US",
         receipt: WARNING_RECEIPT,
       });
@@ -196,7 +197,7 @@ describe("panel failure Postgres sink", () => {
       },
     });
     try {
-      await deliverGuardedPanel(fakeInteraction("moderation:v1:page:en-US"), validPayload(), {
+      await deliverGuardedPanel(fakeInteraction("moderation:v2:page:en-US"), validPayload(), {
         locale: "en-US",
         receipt: { tone: "error", heading: "Update Failed", detail: "Try again.", reason: "quota_edit_failed" },
       });
@@ -359,7 +360,7 @@ describe("panel action correlation key", () => {
   it("emits the action in the stat_counters key space when the receipt names one", async () => {
     const { metrics, restore } = captureMetrics();
     try {
-      await deliverGuardedPanel(fakeInteraction("moderation:v1:page:en-US"), validPayload(), {
+      await deliverGuardedPanel(fakeInteraction("moderation:v2:page:en-US"), validPayload(), {
         locale: "en-US",
         receipt: {
           tone: "error",

@@ -6,10 +6,11 @@ import {
   recordPoolRetryRecovered,
   resetPoolEventCountersForTesting,
 } from "@/utils/db/poolEvents";
+import { useEnvSandbox } from "../../helpers/env";
 
 const MAX_LIFETIME_S = 600;
 
-const previousQuietMs = process.env.POOL_EVENT_EPISODE_QUIET_MS;
+useEnvSandbox(["POOL_EVENT_EPISODE_QUIET_MS"]);
 
 beforeEach(() => {
   resetPoolEventCountersForTesting();
@@ -18,8 +19,6 @@ beforeEach(() => {
 
 afterAll(() => {
   resetPoolEventCountersForTesting();
-  if (previousQuietMs === undefined) delete process.env.POOL_EVENT_EPISODE_QUIET_MS;
-  else process.env.POOL_EVENT_EPISODE_QUIET_MS = previousQuietMs;
 });
 
 describe("pool event counters", () => {

@@ -191,7 +191,6 @@ export default {
     remove_blacklist_group_description: `取消勾选后提交，即可移除黑名单条目`,
     remove_whitelist_group_description: `取消勾选后提交，即可移除白名单`,
     remove_group_continuation: `继续（{index}）`,
-    remove_modal_limit: `这个列表超过 50 个条目，一个弹窗装不下。`,
     remove_nothing_changed: `没有移除任何内容`,
     remove_nothing_changed_detail: `所有条目都还是选中的。不需要写入。`,
 

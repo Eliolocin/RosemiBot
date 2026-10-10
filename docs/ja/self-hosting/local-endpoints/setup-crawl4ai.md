@@ -22,7 +22,7 @@ Crawl4AI 0.9.4では、自身のコンテナ外からの接続を受け入れる
 
 ### オプションA: Docker Compose (TomoriBotがDockerで実行される場合)
 
-リポジトリのDocker ComposeスタックでTomoriBotを実行する場合は、このパスを使用します。まず、`.env`に`CRAWL4AI_BASE_URL=http://crawl4ai:11235/`、`CRAWL4AI_TOKEN`、および`FETCH_URL_ENGINE_ORDER=crawl4ai,safe_http`を設定します。外部運用ではプライベートネットワークのオプトインは必要ありません。このスタックを`RUN_ENV=production`で実行する場合のみ、`FETCH_URL_ALLOW_PRIVATE_NETWORK=true`を追加してください。
+リポジトリのDocker ComposeスタックでTomoriBotを実行する場合は、このパスを使用します。まず、`.env`に`CRAWL4AI_BASE_URL=http://crawl4ai:11235/`および`CRAWL4AI_TOKEN`を設定します。本番環境以外ではプライベートネットワークのオプトインは必要ありません。このスタックを`RUN_ENV=production`で実行する場合のみ、`FETCH_URL_ALLOW_PRIVATE_NETWORK=true`を追加してください。
 
 次に、以下から始めます。
 
@@ -44,7 +44,7 @@ docker compose --profile searxng --profile fetch-crawl4ai up -d
 
 ### オプションB: スタンドアロンDocker (`bun run dev`実行時)
 
-まず、`.env`に`CRAWL4AI_BASE_URL=http://localhost:11235/`、`CRAWL4AI_TOKEN`、および`FETCH_URL_ENGINE_ORDER=crawl4ai,safe_http`を設定して、ボットが`127.0.0.1`に公開されたコンテナポートに接続するようにします。外部運用ではプライベートネットワークのオプトインは必要ありません。`RUN_ENV=production`で実行する場合のみ、`FETCH_URL_ALLOW_PRIVATE_NETWORK=true`を追加してください。
+まず、`.env`に`CRAWL4AI_BASE_URL=http://localhost:11235/`および`CRAWL4AI_TOKEN`を設定して、ボットが`127.0.0.1`に公開されたコンテナポートに接続するようにします。本番環境以外ではプライベートネットワークのオプトインは必要ありません。`RUN_ENV=production`で実行する場合のみ、`FETCH_URL_ALLOW_PRIVATE_NETWORK=true`を追加してください。
 
 次に、TomoriBotを`bun run dev`で直接実行する代わりに、`bun run launch --crawl4ai`を使用します。これにより、コンテナのライフサイクルが自動的に処理され、サーバーが正常になるまで待機してからボットが開始されます。`CRAWL4AI_TOKEN`が存在しない場合はエラーで停止します：
 
@@ -168,13 +168,12 @@ Cookieの値は機密性が高いため、パスワードと同様に扱って�
 
 ---
 
-## エンジンの順序と環境変数
+## 環境変数
 
 | 変数 | デフォルト | 説明 |
 |---|---|---|
-| `CRAWL4AI_BASE_URL` | 設定を解除する | 設定すると、Crawl4AIが有効になります。Docker Composeから`http://crawl4ai:11235/`を使用するか、TomoriBotがマシン上で直接実行されている場合は`http://localhost:11235/`を使用します。|
+| `CRAWL4AI_BASE_URL` | 設定を解除する | 設定するとCrawl4AIが有効になります：TomoriBotはまずCrawl4AIを試行し、停止中またはフェッチ失敗時には`safe_http`にフォールバックします。`FETCH_URL_ALLOW_PRIVATE_NETWORK=true`が設定されていない限り、本番環境では無視されます。Docker Composeから`http://crawl4ai:11235/`を使用するか、TomoriBotがマシン上で直接実行されている場合は`http://localhost:11235/`を使用します。|
 | `CRAWL4AI_TOKEN` | 設定を解除する | 必須のベアラートークン。Crawl4AIコンテナ上の`CRAWL4AI_API_TOKEN`と一致する必要があります（トークンがない場合、コンテナは外部からの接続を拒否します）。|
-| `FETCH_URL_ENGINE_ORDER` | `safe_http` | カンマ区切りのエンジンリスト。`safe_http`は常に最終フォールバックとして追加されます。プライベートネットワークのフェッチが許可されていない場合 (オプトインなしの運用)、Crawl4AIエントリは無視されます。|
 | `FETCH_URL_TIMEOUT_MS` | `15000` | Crawl4AIおよびその他のURLフェッチエンジンのエンジンごとのリクエストタイムアウト。|
 | `FETCH_URL_MAX_CONTENT_LENGTH` | `50000` | 継続が必要になる前に1回のフェッチ呼び出しで返される最大文字数。|
 | `FETCH_URL_ALLOW_PRIVATE_NETWORK` | `false` | 本番環境のみのオプトイン。運用環境外 (`RUN_ENV` != `production`) では、SSRFガードが自動的に緩和されるため、localhost/private/internalフェッチとCrawl4AIディスパッチはセットアップなしで機能します。`true`は、信頼できる運用環境でプライベートネットワークのフェッチを許可するようにのみ設定します。|

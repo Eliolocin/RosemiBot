@@ -50,7 +50,7 @@ conflicts = [
 ]
 
 [tool.uv.sources]
-irodori-tts = { git = "https://github.com/Aratako/Irodori-TTS.git", rev = "8224dafb46d0aba89209a8f905f1cb7e3299d9c1" }
+irodori-tts = { git = "https://github.com/Aratako/Irodori-TTS.git", rev = "89f9d8fbd4d51ea019867ee1197725ede1df13c5" }
 dacvae = { git = "https://github.com/facebookresearch/dacvae.git", rev = "414c20785fc3a28373073ea8ef7a1316eeeaca6e" }
 torch = [
     { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },

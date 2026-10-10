@@ -62,6 +62,7 @@ Status title circles are owned by the surface accent color rather than authored 
 - Surface colors map to tones: `ColorCode.ERROR` maps to `🔴`, `WARN` to `🟡`, and `SUCCESS` to `🟢`.
 - `withStatusCircle()` strips any existing leading circle with `stripStatusCircle()` before applying the tone circle, preventing double markers on legacy strings.
 - Titles opening with author-chosen emojis (such as `⏳` or `✅`) retain their custom emoji without prepending a circle.
+- Minimal notices render the same title as their Verbose form, circle included, and drop only the body. The embed protocol still matches emoji-free titles for Minimal kinds, because older Minimal notices that dropped the emoji remain in channel history.
 - Non-status colors (info, neutral) and question surfaces remain bare. Components V2 panels convey tone through accent bars and do not render status circles in headings.
 
 ## Embed protocol persistence

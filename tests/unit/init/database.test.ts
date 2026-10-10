@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { measurePresetArtPhase } from "@/init/database";
 import { log } from "@/utils/misc/logger";
+import { useEnvSandbox } from "../../helpers/env";
 
-const savedRunEnv = process.env.RUN_ENV;
+useEnvSandbox(["RUN_ENV"]);
 
 let metricSpy: ReturnType<typeof spyOn>;
 
@@ -13,8 +14,6 @@ beforeEach(() => {
 
 afterEach(() => {
   metricSpy.mockRestore();
-  if (savedRunEnv === undefined) delete process.env.RUN_ENV;
-  else process.env.RUN_ENV = savedRunEnv;
 });
 
 describe("measurePresetArtPhase", () => {

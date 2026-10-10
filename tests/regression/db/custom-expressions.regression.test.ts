@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { serverRepository, personaRepository, statRepository } from "@/utils/db/repositories";
 import { nativeExpressionRevision } from "@/utils/text/expressionRevision";
 import { sql } from "@/utils/db/client";
@@ -11,12 +11,13 @@ import { createCustomExpression } from "../../helpers/fixtures";
 import { cleanupFixtures, insertFixtures, type FixtureRefs } from "./setup/fixtures";
 import { DB_TESTS_AVAILABLE, executeTestSqlFile, setupTestDb, testSql } from "./setup/testDb";
 import { MAX_CUSTOM_EXPRESSIONS_PER_SERVER } from "@/constants/expressionLimits";
+import { useEnvSandbox } from "../../helpers/env";
 
 describe.skipIf(!DB_TESTS_AVAILABLE)("custom expression persistence", () => {
   let refs: FixtureRefs;
   let otherServer: number;
   let otherPersona: number;
-  const previousBackend = process.env.EXPRESSION_STORAGE_BACKEND;
+  useEnvSandbox(["EXPRESSION_STORAGE_BACKEND"]);
   beforeAll(async () => {
     await setupTestDb();
     refs = await insertFixtures(testSql);
@@ -33,10 +34,6 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("custom expression persistence", () => {
     await testSql`DELETE FROM server_stickers WHERE server_id = ${refs.serverId}`;
     await testSql`DELETE FROM server_emojis WHERE server_id = ${refs.serverId}`;
     await testSql`DELETE FROM stat_counters WHERE server_id IN (${refs.serverId}, ${otherServer})`;
-  });
-  afterEach(() => {
-    if (previousBackend === undefined) delete process.env.EXPRESSION_STORAGE_BACKEND;
-    else process.env.EXPRESSION_STORAGE_BACKEND = previousBackend;
   });
   afterAll(async () => {
     await statRepository.shutdown();

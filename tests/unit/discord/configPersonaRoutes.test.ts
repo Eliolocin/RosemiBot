@@ -320,16 +320,11 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     "config:v2:draft-prompt-submit:en-US:nonce1234567",
     { action: "draft-prompt-submit", locale: "en-US", nonce: "nonce1234567" },
   ],
-  [
-    "config:v2:draft-picker:en-US:decision:openrouter:25",
-    { action: "draft-picker", locale: "en-US", slot: "decision", provider: "openrouter", start: 25 },
-  ],
   ["config:v2:draft-provider:en-US:reviewer", { action: "draft-provider", locale: "en-US", slot: "reviewer" }],
   [
     "config:v2:draft-model-submit:en-US:reviewer:openrouter:nonce1234567",
     { action: "draft-model-submit", locale: "en-US", slot: "reviewer", provider: "openrouter", nonce: "nonce1234567" },
   ],
-  ["config:v2:draft-checker:en-US:25", { action: "draft-checker", locale: "en-US", start: 25 }],
   [
     "config:v2:draft-checker-select:en-US:25:abcd1234",
     { action: "draft-checker-select", locale: "en-US", start: 25, fp: "abcd1234" },

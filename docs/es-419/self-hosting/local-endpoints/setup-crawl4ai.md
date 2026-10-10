@@ -22,7 +22,7 @@ Elige una ruta de instalación:
 
 ### Opción A: Docker Compose (cuando TomoriBot se ejecuta en Docker)
 
-Utilice esta ruta si ejecuta TomoriBot con la pila Docker Compose del repositorio. Primero, configure `CRAWL4AI_BASE_URL=http://crawl4ai:11235/`, `CRAWL4AI_TOKEN` y `FETCH_URL_ENGINE_ORDER=crawl4ai,safe_http` en `.env`. Fuera de la producción no es necesario optar por una red privada; solo agregue `FETCH_URL_ALLOW_PRIVATE_NETWORK=true` si ejecuta esta pila con `RUN_ENV=production`.
+Usa esta ruta si ejecutas TomoriBot con la pila Docker Compose del repositorio. Primero, configura `CRAWL4AI_BASE_URL=http://crawl4ai:11235/` y `CRAWL4AI_TOKEN` en `.env`. Fuera de producción no es necesario optar por una red privada; solo agrega `FETCH_URL_ALLOW_PRIVATE_NETWORK=true` si ejecutas esta pila con `RUN_ENV=production`.
 
 Luego, comienza con:
 
@@ -44,7 +44,7 @@ docker compose --profile searxng --profile fetch-crawl4ai up -d
 
 ### Opción B: Docker independiente (cuando se ejecuta `bun run dev`)
 
-Primero, configure `CRAWL4AI_BASE_URL=http://localhost:11235/`, `CRAWL4AI_TOKEN` y `FETCH_URL_ENGINE_ORDER=crawl4ai,safe_http` en `.env` para que el bot se conecte al puerto del contenedor publicado en `127.0.0.1`. Fuera de la producción no es necesario optar por una red privada; solo agregue `FETCH_URL_ALLOW_PRIVATE_NETWORK=true` si ejecuta `RUN_ENV=production`.
+Primero, configura `CRAWL4AI_BASE_URL=http://localhost:11235/` y `CRAWL4AI_TOKEN` en `.env` para que el bot se conecte al puerto del contenedor publicado en `127.0.0.1`. Fuera de producción no es necesario optar por una red privada; solo agrega `FETCH_URL_ALLOW_PRIVATE_NETWORK=true` si ejecutas con `RUN_ENV=production`.
 
 Luego, en lugar de ejecutar TomoriBot directamente con `bun run dev`, use `bun run launch --crawl4ai`. Esto maneja el ciclo de vida del contenedor automáticamente y espera a que el servidor esté en buen estado antes de iniciar el bot. Se detiene con un error si falta `CRAWL4AI_TOKEN`:
 
@@ -168,13 +168,12 @@ Los valores de las cookies son confidenciales, así que trátelos como contrase�
 
 ---
 
-## Orden del motor y variables de entorno.
+## Variables de entorno
 
 | Variable | Por defecto | Descripción |
 |---|---|---|
-| `CRAWL4AI_BASE_URL` | desarmada | Habilita Crawl4AI cuando está configurado. Utilice `http://crawl4ai:11235/` de Docker Compose o `http://localhost:11235/` cuando TomoriBot se ejecute directamente en su máquina. |
-| `CRAWL4AI_TOKEN` | desarmada | Token bearer obligatorio. Debe coincidir con `CRAWL4AI_API_TOKEN` en el contenedor Crawl4AI, que rechaza conexiones externas sin él. |
-| `FETCH_URL_ENGINE_ORDER` | `safe_http` | Lista de motores separados por comas. `safe_http` siempre se añade como respaldo final. Las entradas de Crawl4AI se ignoran cuando no se permite la recuperación en redes privadas (producción sin suscripción voluntaria). |
+| `CRAWL4AI_BASE_URL` | no configurada | Habilita Crawl4AI cuando está configurado: TomoriBot lo intenta primero y recurre a `safe_http` cuando no está disponible o falla una recuperación. Se ignora en producción a menos que `FETCH_URL_ALLOW_PRIVATE_NETWORK=true`. Usa `http://crawl4ai:11235/` desde Docker Compose, o `http://localhost:11235/` cuando TomoriBot se ejecuta directamente en tu máquina. |
+| `CRAWL4AI_TOKEN` | no configurada | Token bearer obligatorio. Debe coincidir con `CRAWL4AI_API_TOKEN` en el contenedor Crawl4AI, que rechaza conexiones externas sin él. |
 | `FETCH_URL_TIMEOUT_MS` | `15000` | Tiempo de espera de solicitud por motor para Crawl4AI y otros motores de búsqueda de URL. |
 | `FETCH_URL_MAX_CONTENT_LENGTH` | `50000` | Máximo de caracteres devueltos por una llamada de recuperación antes de que se requiera la continuación. |
 | `FETCH_URL_ALLOW_PRIVATE_NETWORK` | `false` | Opción de inscripción solo para producción. Fuera de producción (`RUN_ENV`! = `production`), la protección SSRF se relaja automáticamente, por lo que las recuperaciones locales/privadas/internas y el envío de Crawl4AI funcionan sin configuración. Configura `true` solo para permitir recuperaciones de redes privadas en una implementación de producción confiable. |

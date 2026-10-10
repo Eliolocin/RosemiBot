@@ -194,7 +194,6 @@ export default {
     remove_blacklist_group_description: `Bỏ chọn ô rồi gửi để xóa mục khỏi blacklist`,
     remove_whitelist_group_description: `Bỏ chọn ô rồi gửi để xóa khỏi whitelist`,
     remove_group_continuation: `Tiếp theo ({index})`,
-    remove_modal_limit: `Danh sách này có hơn 50 mục và không thể hiển thị trong một biểu mẫu.`,
     remove_nothing_changed: `Không có mục nào bị xóa`,
     remove_nothing_changed_detail: `Tất cả các mục vẫn được chọn. Không cần ghi dữ liệu.`,
 

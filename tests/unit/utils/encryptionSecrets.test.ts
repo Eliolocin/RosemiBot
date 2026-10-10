@@ -10,8 +10,9 @@ import { join } from "node:path";
 import { loadSecrets } from "@/init/secrets";
 import { log } from "@/utils/misc/logger";
 import { isGeneratedLengthKey, keyManager, MIN_GENERATED_KEY_LENGTH } from "@/utils/security/keyManager";
+import { useFullEnvSandbox } from "../../helpers/env";
 
-const initialEnv = { ...process.env };
+const startedWithEncryptionKey = Object.keys(process.env).some((name) => /^CRYPTO_SECRET(?:_V[1-9]\d*)?$/.test(name));
 const directories: string[] = [];
 const secrets = {
   DISCORD_TOKEN: "synthetic_discord_token",
@@ -25,10 +26,10 @@ const secrets = {
   CRYPTO_SECRET_CURRENT: "2",
 };
 
+useFullEnvSandbox();
+
 afterEach(() => {
-  for (const name of Object.keys(process.env)) if (!(name in initialEnv)) delete process.env[name];
-  Object.assign(process.env, initialEnv);
-  if (Object.keys(initialEnv).some((name) => /^CRYPTO_SECRET(?:_V[1-9]\d*)?$/.test(name))) keyManager.initialize();
+  if (startedWithEncryptionKey) keyManager.initialize();
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 

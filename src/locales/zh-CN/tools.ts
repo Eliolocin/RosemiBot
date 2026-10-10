@@ -32,7 +32,7 @@ export default {
       invalid_character_identity: `角色标识无效：{id}。请用 persona:<id>、简短的数字人格 ID，或者 Discord 用户 snowflake。`,
     },
     search: {
-      category_search_title: `🔍 正在 __{category}__ 里搜索 \`{query}\`……`,
+      category_search_title: `🔍 正在 {category} 里搜索 \`{query}\`……`,
       category_labels: {
         text: `网页`,
         image: `图像`,

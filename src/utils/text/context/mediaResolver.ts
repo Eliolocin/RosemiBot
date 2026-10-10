@@ -9,11 +9,20 @@ interface MediaCapabilities {
   seesVideos: boolean;
 }
 
+/**
+ * Expanded per attempt so the `analyze_image` instruction appears only when this attempt's model and
+ * the turn's Deliberate Tool Mode allowlist expose the tool. `{media_label}` and `{image_description}`
+ * are filled afterwards because they carry user-controlled filenames.
+ */
+const BLIND_IMAGE_WITH_VISION_TOOL_TEMPLATE =
+  "[System: This message ({media_label}) contains {image_description}. Do not guess the image contents.{{if tool:analyze_image}} Use the {image_analysis_tool} tool with this media ID only if the user explicitly asks about the image or if unseen visual details are necessary to answer correctly.{{/if}} The media ID can also be used with tools that accept media references.]";
+
 export async function resolveMediaForModel(
   contextItems: StructuredContextItem[],
   tomoriState: TomoriState,
+  deliberateToolAllowedNames?: readonly string[],
 ): Promise<StructuredContextItem[]> {
-  const toolPromptMacroResolver = createToolPromptMacroResolverForState(tomoriState);
+  const toolPromptMacroResolver = createToolPromptMacroResolverForState(tomoriState, deliberateToolAllowedNames);
   const capabilities = resolveEffectiveMediaCapabilities(tomoriState);
   const hasVisionTool = !!tomoriState.vision_llm && !capabilities.seesImages;
   const resolvedItems: StructuredContextItem[] = [];
@@ -93,9 +102,9 @@ async function resolveItemMedia(params: {
       systemParts.push({
         type: "text",
         text: params.hasVisionTool
-          ? await params.expandToolMacros(
-              `[System: This message (${buildMediaIdLabel(imageDescriptors)}) contains ${buildImageDescription(imageDescriptors)}. Do not guess the image contents. Use the {image_analysis_tool} tool with this media ID only if the user explicitly asks about the image or if unseen visual details are necessary to answer correctly. The media ID can also be used with tools that accept media references.]`,
-            )
+          ? (await params.expandToolMacros(BLIND_IMAGE_WITH_VISION_TOOL_TEMPLATE))
+              .replace("{media_label}", () => buildMediaIdLabel(imageDescriptors))
+              .replace("{image_description}", () => buildImageDescription(imageDescriptors))
           : `[System: This message (${buildMediaIdLabel(imageDescriptors)}) contains ${buildImageDescription(imageDescriptors)}. Current model cannot see images, please do not describe or claim to see the image contents. If you need to see images, tell the user to setup \`/model vision\` or to use a different model with the "vision" capability. The media ID can still be used with tools that accept media references.]`,
       });
       log.info(

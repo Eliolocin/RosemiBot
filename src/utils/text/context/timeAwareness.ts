@@ -11,7 +11,7 @@ const TIME_AWARENESS_REUNION_DAYS = 7;
 export const TIME_AWARENESS_NOTE_DEPTH = 3;
 
 export const SPACER_TEMPLATE =
-  "[System: The messages above were sent on {date} ({relative}, server time). Use the {message_metadata_tool} tool to learn the exact times of each message, if needed.]";
+  "[System: The messages above were sent on {date} ({relative}, server time).{{if tool:reveal_message_metadata}} Use the {message_metadata_tool} tool to learn the exact times of each message, if needed.{{/if}}]";
 
 export interface BuildReunionNoteArgs {
   lastPreviousDayAt: Date | null;

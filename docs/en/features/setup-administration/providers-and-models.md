@@ -98,6 +98,7 @@ slots and does not include personal TTS/STT endpoint selectors.
 You can also manage backup keys for automatic failover and load balancing in `/providers`.
 
 ## Decision Models
+<!-- anchor: decision-models -->
 
 Decision Models are a separate category in `/providers` and `/personal providers`. They answer typed
 predicates with probabilities. Registration does not change the active chat model, establish

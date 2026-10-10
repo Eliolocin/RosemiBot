@@ -134,6 +134,38 @@ describe("testIsolation detectors", () => {
     expect(findUnrestoredMutations(source)).toEqual(["globalThis.fetch"]);
   });
 
+  it("flags a bracket-form env write with no restore", () => {
+    expect(findUnrestoredMutations(`it("leaks", () => { process.env[RUN_ENV_NAME] = "production"; });`)).toEqual([
+      "process.env[RUN_ENV_NAME]",
+    ]);
+    expect(findProcessWideMutations(`process.env["RUN_ENV"] = "production";`)).toEqual(["process.env.RUN_ENV"]);
+  });
+
+  it("flags env deletes and Object.assign onto process.env with no restore", () => {
+    expect(findUnrestoredMutations(`it("leaks", () => { delete process.env.RUN_ENV; });`)).toEqual([
+      "process.env.RUN_ENV",
+    ]);
+    expect(findUnrestoredMutations(`it("leaks", () => { delete process.env[name]; });`)).toEqual(["process.env[name]"]);
+    expect(findUnrestoredMutations(`it("leaks", () => { Object.assign(process.env, secrets); });`)).toEqual([
+      "Object.assign(process.env",
+    ]);
+  });
+
+  it("treats a full env sandbox as a restore for every env mutation but nothing else", () => {
+    const source = `useFullEnvSandbox();\nObject.assign(process.env, secrets);\ndelete process.env.RUN_ENV;\nglobalThis.fetch = stub;`;
+    expect(findUnrestoredMutations(source)).toEqual(["globalThis.fetch"]);
+  });
+
+  it("treats an env sandbox as a restore only for the names it lists", () => {
+    const sandbox = `useEnvSandbox(["RUN_ENV"]);\n`;
+    expect(findUnrestoredMutations(`${sandbox}process.env.RUN_ENV = "production";`)).toEqual([]);
+    expect(findUnrestoredMutations(`${sandbox}process.env[RUN_ENV_NAME] = "production";`)).toEqual([]);
+    expect(findUnrestoredMutations(`${sandbox}process.env.LOG_LEVEL = "debug";`)).toEqual(["process.env.LOG_LEVEL"]);
+    expect(findUnrestoredMutations(`// useEnvSandbox(["LOG_LEVEL"])\nprocess.env.LOG_LEVEL = "debug";`)).toEqual([
+      "process.env.LOG_LEVEL",
+    ]);
+  });
+
   it("exempts files that already run in their own process", () => {
     // Mock users get a private process, so nothing they mutate can reach another
     // file: this is why tests/unit/chat/toolLoop.test.ts may set process.env at

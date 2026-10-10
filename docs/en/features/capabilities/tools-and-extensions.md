@@ -195,6 +195,9 @@ without a user request.
   model, tools, settings, or why a capability is unavailable expose capability review and
   official documentation access together. Follow-up wording works too, like "do that again
   but angrier" after a voice-message request.
+- Sending a file, image, GIF, or YouTube link in the message that calls her also opens the
+  tool that reads it, so `pdf見て` with a PDF attached works without any keyword. A reply counts
+  too: replying to someone's GIF opens the GIF tool. Media further up the chat does not count.
 - Server managers can add literal custom trigger phrases with `/server trigger add`, for
   example mapping `pic`, `img`, or `pfp` to image generation.
 - The built-in triggers read English phrasing. Other languages reach the same tools through

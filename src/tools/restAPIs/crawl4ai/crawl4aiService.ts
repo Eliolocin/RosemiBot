@@ -55,6 +55,11 @@ function getCrawl4aiToken(): string | null {
   return raw || null;
 }
 
+/** Reads configuration only, so callers can decide on Crawl4AI without paying for a health request. */
+export function isCrawl4aiConfigured(): boolean {
+  return getCrawl4aiBaseUrl() !== null;
+}
+
 /**
  * Parse CRAWL4AI_COOKIES_JSON into a cookie array. Returns an empty array if
  * the env var is unset or malformed (logs a warning on parse failure).

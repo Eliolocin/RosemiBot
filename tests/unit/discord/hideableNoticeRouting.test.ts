@@ -4,7 +4,6 @@ import { NOTICE_CONFIG_HINT_KEY, type NoticeVerbosity, type ToolNoticeKey } from
 import type { ToolContext } from "@/types/tool/interfaces";
 import { sendMemoryEmbedWithExpand, sendToolNoticeContainer } from "@/utils/discord/expandableEmbedNotice";
 import { sendToolNotice } from "@/utils/discord/toolProgressNotice";
-import { localizedMinimalTitle } from "@/utils/discord/ui/statusTitle";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { localizedCopy } from "../../helpers/localeCases";
 
@@ -90,17 +89,15 @@ describe("hideable tool notices", () => {
     expect(conversation.sent[0]).toContain(`-# ${footer}\\n-# ${configHint()}`);
   });
 
-  it("posts a Minimal memory notice as its emoji-free title alone, with no expand button for long content", async () => {
+  it("posts a Minimal memory notice as its title alone, with no expand button for long content", async () => {
     const conversation = fakeChannel("200");
     const longContent = "likes tea ".repeat(100);
     await sendMemoryEmbedWithExpand(buildContext({ hidden: [], conversation }), memoryNotice, longContent);
 
     expect(conversation.sent).toHaveLength(1);
     const [payload] = conversation.sent;
-    const verboseTitle = localizedCopy("en-US", memoryNotice.titleKey, memoryNotice.titleVars);
-    expect(verboseTitle.startsWith("🧠")).toBe(true);
-    expect(payload).toContain(`### ${encoded(verboseTitle.replace(/^🧠\s*/u, ""))}`);
-    expect(payload).not.toContain("🧠");
+    const title = localizedCopy("en-US", memoryNotice.titleKey, memoryNotice.titleVars);
+    expect(payload).toContain(`### ${encoded(title)}`);
     expect(payload).not.toContain("likes tea");
     expect(payload).not.toContain(configHint());
     expect(payload).not.toContain("memory_notice_expand");
@@ -135,10 +132,7 @@ describe("hideable tool notices", () => {
     expect(conversation.sent).toHaveLength(1);
     const [payload] = conversation.sent;
     const searchTitle = { category: "Web", query: "tea" };
-    expect(payload).toContain(
-      encoded(localizedMinimalTitle("en-US", "tools.search.category_search_title", searchTitle)),
-    );
-    expect(payload).not.toContain("🔍");
+    expect(payload).toContain(encoded(localizedCopy("en-US", "tools.search.category_search_title", searchTitle)));
     expect(payload).not.toContain("Looking around");
     expect(payload).not.toContain(encoded(localizedCopy("en-US", "tools.tool_notice.kill_hint")));
   });
@@ -182,10 +176,7 @@ describe("hideable tool notices", () => {
     const [thoughtPayload] = thoughtLog.sent;
 
     const searchTitle = { category: "Web", query: "tea" };
-    expect(convPayload).toContain(
-      encoded(localizedMinimalTitle("en-US", "tools.search.category_search_title", searchTitle)),
-    );
-    expect(convPayload).not.toContain("🔍");
+    expect(convPayload).toContain(encoded(localizedCopy("en-US", "tools.search.category_search_title", searchTitle)));
     expect(convPayload).not.toContain("Looking around");
     expect(convPayload).not.toContain(encoded(localizedCopy("en-US", "tools.tool_notice.kill_hint")));
 

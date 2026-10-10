@@ -51,6 +51,16 @@ export type SimplifiedMessageForContext = {
     /** Discord message that media-reference tools should fetch for this attachment. */
     sourceMessageId?: string;
   }>;
+  /**
+   * Text-readable file attachments. Kept structured rather than as hint text in `content`
+   * because the `read_file` hint must follow the turn's tool list, which is decided after
+   * history is simplified.
+   */
+  documentAttachments?: Array<{
+    filename: string;
+    /** Discord message that `read_file` should fetch for this attachment. */
+    sourceMessageId?: string;
+  }>;
 };
 
 export type PublicPersonaProfile = {

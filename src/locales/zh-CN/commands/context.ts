@@ -23,7 +23,7 @@ export default {
     estimate_note: `按约每 4 个字符合 1 词元估算。`,
     not_counted_note: `图像、视频及提供方消息格式不计入。`,
     truncated_note: `聊天记录超出了预算，最早的 {count} 轮对话已被忽略。`,
-    text_locked_note: `查看完整提示词需要「管理服务器」权限，管理员也可以在 \`/moderation\` 中允许成员查看。`,
+    text_locked_note: `在此服务器中查看完整提示词需要权限。`,
     view_text_button: `以文本查看`,
     view_json_button: `以 JSON 查看`,
     persona_not_found_title: `未找到人格`,

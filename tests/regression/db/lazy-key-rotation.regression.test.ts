@@ -4,6 +4,7 @@ import { toolRepository } from "@/utils/db/repositories/ToolRepository";
 import { getOptApiKey } from "@/utils/security/crypto";
 import { keyManager } from "@/utils/security/keyManager";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
+import { useFullEnvSandbox } from "../../helpers/env";
 
 const KEYS = {
   CRYPTO_SECRET_V1: "synthetic_lazy_rotation_v1_secret_value",
@@ -28,9 +29,7 @@ async function waitForBlockedUpdate(table: string): Promise<void> {
 
 describe.skipIf(!DB_TESTS_AVAILABLE)("runtime lazy key rotation", () => {
   let serverId: number;
-  const originalCrypto = Object.fromEntries(
-    Object.entries(process.env).filter(([name]) => name.startsWith("CRYPTO_SECRET")),
-  );
+  useFullEnvSandbox();
 
   async function decryptStored(table: string, column: string, id: string, idValue: number) {
     const [row] = await testSql<{ plaintext: string; key_version: number | null }[]>`
@@ -53,8 +52,6 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("runtime lazy key rotation", () => {
   afterAll(async () => {
     await testSql`DELETE FROM discord_managed_webhooks WHERE guild_disc_id = '_lazy_rotation_guild'`;
     await testSql`DELETE FROM servers WHERE server_id = ${serverId}`;
-    for (const name of Object.keys(process.env)) if (name.startsWith("CRYPTO_SECRET")) delete process.env[name];
-    Object.assign(process.env, originalCrypto);
     keyManager.initialize();
   });
 

@@ -32,7 +32,7 @@ export default {
       invalid_character_identity: `Identidad de personaje no válida: {id}. Usa persona:<id>, un ID numérico corto de persona o un snowflake de usuario de Discord.`,
     },
     search: {
-      category_search_title: `🔍 Buscando __{category}__ para \`{query}\`...`,
+      category_search_title: `🔍 Buscando {category} para \`{query}\`...`,
       category_labels: {
         text: `la web`,
         image: `imágenes`,

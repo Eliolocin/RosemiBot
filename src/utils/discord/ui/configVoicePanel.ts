@@ -16,12 +16,7 @@ import { buildConfigRouteId } from "@/utils/discord/configPanelCatalog";
 import { buildOptionalThumbnailSection } from "@/utils/discord/ui/panel";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { localizer } from "@/utils/text/localizer";
-import {
-  buildTextPreview,
-  CV2_TEXT_PREVIEW_BUDGET,
-  textPreviewFooterKey,
-  textPreviewFooterVars,
-} from "@/utils/text/textPreview";
+import { renderFencedPreview } from "@/utils/text/textPreview";
 
 const CONFIG_PERSONA_VOICE_PAGE_SIZE = 25;
 const CONFIG_PERSONA_VOICE_PAGE_SIZE_WITH_MORE = CONFIG_PERSONA_VOICE_PAGE_SIZE - 1;
@@ -127,13 +122,6 @@ function hasStoredVoice(persona: TomoriState | null): boolean {
         persona.speech_voice_design_prompt?.trim(),
     )
   );
-}
-
-function renderPromptPreview(locale: string, prompt: string): string {
-  const preview = buildTextPreview(prompt, Math.min(CV2_TEXT_PREVIEW_BUDGET, 2200));
-  const footerKey = textPreviewFooterKey(preview);
-  const footer = footerKey ? `\n-# ${localizer(locale, footerKey, textPreviewFooterVars(preview, locale))}` : "";
-  return ["```markdown", `${preview.text}${footer}`, "```"].join("\n");
 }
 
 function resolveSamplePage(samplesLength: number, requestedStart: number | undefined): number {
@@ -401,7 +389,7 @@ export function buildConfigVoiceBody(input: ConfigVoicePanelInput): ComponentInC
     if (prompt) {
       components.push({
         type: ComponentType.TextDisplay,
-        content: `**${localizer(input.locale, "commands.config.panel.voice_page_design_preview_title")}**\n${renderPromptPreview(input.locale, prompt)}`,
+        content: `**${localizer(input.locale, "commands.config.panel.voice_page_design_preview_title")}**\n${renderFencedPreview(input.locale, prompt, { actionLabel: localizer(input.locale, "commands.config.panel.voice_page_edit_design_button") })}`,
       });
     }
     if (personaId !== null) components.push(buildVoiceActionRow(input, personaId, { includeDesign: true }));

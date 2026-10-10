@@ -395,7 +395,7 @@ function makeReviewContext(): ChatTurnContext & { responseReview: ResponseReview
       metadataTag: ContextItemTag.DIALOGUE_HISTORY,
       messageId: context.message.id,
       sender: { name: "Juno", type: "user" },
-      parts: [{ type: "text", text: "Stay here with me." }],
+      parts: [{ type: "text", text: "Juno: Stay here with me." }],
     },
     {
       role: "user",
@@ -1242,10 +1242,10 @@ describe("runToolLoop — contract tests", () => {
     expect(result.personaResponses[0]?.text).toBe("*nods*");
     expect(result.usageEntries?.map((entry) => entry.kind)).toEqual(["author", "reviewer"]);
     expect(calls[0]?.apiKey).toBe(makeProviderConfig().apiKey);
-    const packet = JSON.parse(calls[0]?.userPrompt ?? "{}");
-    expect(packet.candidate.status).toBe("pending");
-    expect(packet.trigger.sender.name).toBe("Juno");
-    expect(packet.representativeDialogues.length).toBeGreaterThan(0);
+    const prompt = calls[0]?.userPrompt ?? "";
+    expect(prompt).toContain('<pending_candidate status="pending">\n*nods*\n</pending_candidate>');
+    expect(prompt).toContain("<trigger>\nJuno: Stay here with me.\n</trigger>");
+    expect(prompt).toContain("<representative_dialogues>\nA sample invitation.\n\nA sample quiet reply.");
   });
 
   it("revises the whole held response once while preserving successful tools and their outcomes", async () => {
@@ -1286,10 +1286,13 @@ describe("runToolLoop — contract tests", () => {
     const result = await runToolLoop(makeParams(context, provider));
     expect(toolExecuteCalls).toHaveLength(1);
     expect(requests).toHaveLength(3);
-    expect(JSON.parse(requests[1]?.userPrompt ?? "{}").candidate.text).toContain("I will check.");
-    expect(JSON.parse(requests[2]?.userPrompt ?? "{}").tools[0].outcome).toEqual(
-      context.responseReview?.functionHistory[0]?.functionResponse,
+    const [firstReview, secondReview] = [requests[1]?.userPrompt ?? "", requests[2]?.userPrompt ?? ""];
+    expect(firstReview).toContain('<pending_candidate status="pending">\nI will check.');
+    expect(secondReview).toContain(
+      `Outcome: ${JSON.stringify(context.responseReview?.functionHistory[0]?.functionResponse)}`,
     );
+    // A revision changes only the sections after <coverage>, so the provider can reuse the cached prefix.
+    expect(secondReview.split("<coverage>")[0]).toBe(firstReview.split("<coverage>")[0]);
     expect(capturedHistories[2]).toHaveLength(1);
     expect(delivered).toEqual(["*rests against the closed door* I stay."]);
     expect(result.personaResponses[0]?.text).not.toContain("Generic");
@@ -1343,7 +1346,7 @@ describe("runToolLoop — contract tests", () => {
     });
     const result = await runToolLoop(makeParams(context, provider));
     const review = requests.find((request) => request.schemaName === "response_review");
-    expect(JSON.parse(review?.userPrompt ?? "{}").candidate.status).toBe("pending_cut_at_length_limit");
+    expect(review?.userPrompt).toContain('<pending_candidate status="pending_cut_at_length_limit">');
     expect(review?.systemPrompt).toContain("pending_cut_at_length_limit");
     expect(context.streamingContext.abortSignal?.aborted).toBe(true);
     expect(delivered).toEqual(["Mirri keeps talking"]);
@@ -1447,7 +1450,7 @@ describe("runToolLoop — contract tests", () => {
     });
     const result = await runToolLoop(makeParams(context, fallback));
     expect(calls[0]?.model).toBe("fallback-author");
-    expect(JSON.parse(calls[0]?.userPrompt ?? "{}").revision.count).toBe(1);
+    expect(calls[0]?.userPrompt).toContain('<revision_state revisions="1"');
     expect(result.usageEntries?.filter((entry) => entry.kind === "author")).toHaveLength(3);
     expect(context.responseReview?.responseReviews).toBe(2);
     expect(delivered).toEqual(["fallback"]);
@@ -1746,10 +1749,10 @@ describe("runToolLoop — contract tests", () => {
           held("first pending reply", delivered),
           held("chosen reply", delivered),
         ]);
-        const packets: Array<Record<string, unknown>> = [];
+        const packets: string[] = [];
         Object.assign(provider, {
           callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
-            packets.push(JSON.parse(request.userPrompt));
+            packets.push(request.userPrompt);
             return {
               success: true,
               data:
@@ -1770,7 +1773,7 @@ describe("runToolLoop — contract tests", () => {
         });
         const result = await runToolLoop(makeParams(context, provider));
         expect(packets).toHaveLength(2);
-        expect(Boolean(packets[0].ruleEvidence)).toBe(status === "hits");
+        expect(packets[0]?.includes("<rule_evidence>")).toBe(status === "hits");
         expect(result.status).toBe("completed");
         expect(delivered).toEqual(["chosen reply"]);
         expect(JSON.stringify(capturedHistories)).not.toContain("PRIVATE_RULE_");
@@ -1851,10 +1854,10 @@ describe("runToolLoop — contract tests", () => {
       const first = held("I will leave a note.", delivered, "function_call");
       first.data = { name, args };
       const { provider } = makeProvider([first, held("Done.", delivered)]);
-      const packets: Record<string, unknown>[] = [];
+      const packets: string[] = [];
       Object.assign(provider, {
         callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
-          packets.push(JSON.parse(request.userPrompt));
+          packets.push(request.userPrompt);
           expect(delivered).toEqual([]);
           if (request.schemaName === "tool_review") {
             expect(toolExecuteCalls).toEqual([]);
@@ -1868,12 +1871,12 @@ describe("runToolLoop — contract tests", () => {
       expect(toolExecuteCalls).toEqual([
         { name, args: { target: "fixture", text: "Quiet fictional note", nested: { count: 2 } } },
       ]);
-      expect(packets[0]?.proposedCall).toMatchObject({
-        status: "not_executed",
-        name,
-        arguments: toolExecuteCalls[0]?.args,
-      });
-      expect(packets[1]?.candidate).toEqual({ status: "pending", text: "I will leave a note.\nDone." });
+      expect(packets[0]).toContain(
+        `<proposed_tool_call status="not_executed">\n${name} ${JSON.stringify(toolExecuteCalls[0]?.args)}\n</proposed_tool_call>`,
+      );
+      expect(packets[1]).toContain(
+        '<pending_candidate status="pending">\nI will leave a note.\nDone.\n</pending_candidate>',
+      );
       expect(delivered).toEqual(["I will leave a note.", "Done."]);
       expect(result.usageEntries?.filter((entry) => entry.kind === "reviewer")).toHaveLength(2);
       expect(context.responseReview.toolReviews).toBe(1);
@@ -2092,17 +2095,17 @@ describe("runToolLoop — contract tests", () => {
       makeFunctionCallResult("mirror_action", { target: "invented" }),
       { status: "completed" },
     ]);
-    const packets: Array<ReturnType<typeof buildReviewerPacket>> = [];
+    const packets: string[] = [];
     Object.assign(provider, {
       callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
-        packets.push(JSON.parse(request.userPrompt));
+        packets.push(request.userPrompt);
         return { success: true, data: packets.length === 1 ? { status: "pass" } : rejection };
       },
     });
     await runToolLoop(makeParams(context, provider));
     expect(toolExecuteCalls.map((call) => call.name)).toEqual(["lookup"]);
-    expect(packets[1]?.tools[0]?.name).toBe("lookup");
-    expect(packets[1]?.proposedCall?.name).toBe("mirror_action");
+    expect(packets[1]).toContain("<completed_tools>\nlookup ");
+    expect(packets[1]).toContain('<proposed_tool_call status="not_executed">\nmirror_action ');
     expect(context.responseReview.toolReviews).toBe(2);
   });
 

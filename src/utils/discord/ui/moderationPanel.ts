@@ -24,9 +24,11 @@ import {
   buildUserBlacklistAddModalFieldId,
   buildWhitelistChannelAddModalFieldId,
   buildWhitelistRoleAddModalFieldId,
+  MODERATION_REMOVAL_MODAL_CAPACITY,
   MODERATION_ROUTE_NAMESPACE,
   MODERATION_ROUTE_VERSION,
   type ModerationCategory,
+  type ModerationRemovalList,
   type QuotaType,
   type UserBlacklistRemovalTarget,
   type WhitelistPage,
@@ -153,6 +155,102 @@ export const MODERATION_CATEGORY_LOCALE_KEYS: Record<ModerationCategory, string>
   whitelist: "commands.moderation.category_whitelist",
   quotas: "commands.moderation.category_quotas",
 };
+
+/** Every current entry of a removal list, encoded as the checkbox values its modal presents. */
+export function listModerationRemovalValues(data: ModerationScopeData, list: ModerationRemovalList): string[] {
+  switch (list) {
+    case "user-blacklist":
+      return [
+        ...data.userBlacklist.personalizationUserIds.map((id) => `u:${id}`),
+        ...data.userBlacklist.personaBlocks.map((block) => `b:${block.persona_id}:${block.user_disc_id}`),
+      ];
+    case "whitelist-channel":
+      return data.whitelist.channels.map((row) => `c:${row.channel_disc_id}`);
+    case "whitelist-role":
+      return data.whitelist.roles.map((row) => `r:${row.role_disc_id}`);
+    case "persona-channel":
+      return data.whitelist.personaChannels.map((row) => `p:${row.persona_id}:${row.channel_disc_id}`);
+  }
+}
+
+interface PersonaChannelGroup {
+  personaId: number;
+  channelIds: string[];
+}
+
+/**
+ * Pages the persona-channel whitelist by persona, closing a page at ten personas or at one removal
+ * modal of channel rows, so Remove can always present the page it sits on. A persona with more
+ * channels than one modal holds is the only one split, across consecutive pages.
+ */
+export function pagePersonaChannels(
+  rows: ModerationScopeData["whitelist"]["personaChannels"],
+): PersonaChannelGroup[][] {
+  const grouped = new Map<number, string[]>();
+  for (const row of rows) {
+    const channelIds = grouped.get(row.persona_id) ?? [];
+    channelIds.push(row.channel_disc_id);
+    grouped.set(row.persona_id, channelIds);
+  }
+
+  const pages: PersonaChannelGroup[][] = [];
+  let page: PersonaChannelGroup[] = [];
+  let pageRows = 0;
+  for (const [personaId, channelIds] of grouped) {
+    for (let offset = 0; offset < channelIds.length; offset += MODERATION_REMOVAL_MODAL_CAPACITY) {
+      const chunk = channelIds.slice(offset, offset + MODERATION_REMOVAL_MODAL_CAPACITY);
+      if (page.length === MODERATION_PANEL_RANGE_SIZE || pageRows + chunk.length > MODERATION_REMOVAL_MODAL_CAPACITY) {
+        pages.push(page);
+        page = [];
+        pageRows = 0;
+      }
+      page.push({ personaId, channelIds: chunk });
+      pageRows += chunk.length;
+    }
+  }
+  if (page.length > 0) pages.push(page);
+  return pages;
+}
+
+/**
+ * The removal values on one panel page, clamped the way the panel clamps its page. Remove presents
+ * exactly these, so the modal always matches what the page shows.
+ */
+export function listModerationRemovalPage(
+  data: ModerationScopeData,
+  list: ModerationRemovalList,
+  rangeIndex: number,
+): string[] {
+  if (list === "persona-channel") {
+    const pages = pagePersonaChannels(data.whitelist.personaChannels);
+    const page = pages[Math.min(Math.max(rangeIndex, 0), pages.length - 1)] ?? [];
+    return page.flatMap((group) => group.channelIds.map((channelId) => `p:${group.personaId}:${channelId}`));
+  }
+  return resolveRangeSelection(listModerationRemovalValues(data, list), rangeIndex).visibleItems;
+}
+
+const REMOVAL_OPEN_ACTIONS = {
+  "user-blacklist": "user-blacklist-remove-open",
+  "whitelist-channel": "whitelist-channel-remove-open",
+  "whitelist-role": "whitelist-role-remove-open",
+  "persona-channel": "persona-channel-remove-open",
+} as const satisfies Record<ModerationRemovalList, string>;
+
+function buildRemoveButton(
+  locale: string,
+  list: ModerationRemovalList,
+  rangeIndex: number,
+  data: ModerationScopeData,
+  labelKey: string,
+): ButtonComponentData {
+  return {
+    type: ComponentType.Button,
+    style: ButtonStyle.Danger,
+    customId: buildModerationRouteId({ action: REMOVAL_OPEN_ACTIONS[list], locale, rangeIndex }),
+    label: localizer(locale, labelKey),
+    disabled: data.readStatus !== "fresh" || listModerationRemovalValues(data, list).length === 0,
+  };
+}
 
 export function buildModerationPanelPayload(input: ModerationPanelRenderInput): ModerationPanelPayload {
   const { locale, category, whitelistPage, rangeIndex, data, receipt } = input;
@@ -501,13 +599,7 @@ export function buildModerationPanelPayload(input: ModerationPanelRenderInput): 
           label: localizer(locale, "commands.moderation.add_blacklist"),
           disabled: data.readStatus !== "fresh",
         },
-        {
-          type: ComponentType.Button,
-          style: ButtonStyle.Danger,
-          customId: buildModerationRouteId({ action: "user-blacklist-remove-open", locale }),
-          label: localizer(locale, "commands.moderation.remove_blacklist"),
-          disabled: data.readStatus !== "fresh" || totalCount === 0,
-        },
+        buildRemoveButton(locale, "user-blacklist", clampedRangeIndex, data, "commands.moderation.remove_blacklist"),
       ],
     });
   } else if (category === "whitelist") {
@@ -645,39 +737,22 @@ export function buildModerationPanelPayload(input: ModerationPanelRenderInput): 
               label: localizer(locale, "commands.moderation.add_or_edit_channel"),
               disabled: data.readStatus !== "fresh",
             },
-            {
-              type: ComponentType.Button,
-              style: ButtonStyle.Danger,
-              customId: buildModerationRouteId({ action: "whitelist-channel-remove-open", locale }),
-              label: localizer(locale, "commands.moderation.remove_channel"),
-              disabled: data.readStatus !== "fresh" || channels.length === 0,
-            },
+            buildRemoveButton(locale, "whitelist-channel", rangeIndex, data, "commands.moderation.remove_channel"),
           ],
         });
       }
     } else if (whitelistPage === "persona-channels") {
-      const personaChannels = data.whitelist.personaChannels;
-      const grouped = new Map<number, string[]>();
-      for (const entry of personaChannels) {
-        const list = grouped.get(entry.persona_id) ?? [];
-        list.push(entry.channel_disc_id);
-        grouped.set(entry.persona_id, list);
-      }
-
-      const groupedList = Array.from(grouped.entries()).map(([personaId, channelIds]) => ({
-        personaId,
-        personaName: data.whitelist.personaNames.get(personaId) ?? `Persona ${personaId}`,
-        channelIds,
-      }));
+      const pages = pagePersonaChannels(data.whitelist.personaChannels);
+      const pageIndex = Math.min(Math.max(rangeIndex, 0), Math.max(0, pages.length - 1));
 
       components.push({
         type: ComponentType.TextDisplay,
         content: `### ${localizer(locale, "commands.moderation.whitelist_persona_channels_count", {
-          count: groupedList.length,
+          count: new Set(data.whitelist.personaChannels.map((row) => row.persona_id)).size,
         })}`,
       });
 
-      if (groupedList.length === 0) {
+      if (pages.length === 0) {
         components.push({
           type: ComponentType.TextDisplay,
           content: localizer(locale, "commands.moderation.whitelist_persona_channels_empty"),
@@ -688,11 +763,11 @@ export function buildModerationPanelPayload(input: ModerationPanelRenderInput): 
           content: localizer(locale, "commands.moderation.whitelist_persona_channels_description"),
         });
 
-        const selection = resolveRangeSelection(groupedList, rangeIndex, MODERATION_PANEL_RANGE_SIZE);
-        const lines = selection.visibleItems.map((item) => {
-          const channelMentions = item.channelIds.map((id) => `<#${id}>`).join(", ");
+        const lines = (pages[pageIndex] ?? []).map((group) => {
+          const channelMentions = group.channelIds.map((id) => `<#${id}>`).join(", ");
+          const personaName = data.whitelist.personaNames.get(group.personaId) ?? `Persona ${group.personaId}`;
           return `> ${localizer(locale, "commands.moderation.persona_channels_restriction", {
-            persona: renderModerationName(locale, item.personaName),
+            persona: renderModerationName(locale, personaName),
             channels: channelMentions,
           })}`;
         });
@@ -704,8 +779,8 @@ export function buildModerationPanelPayload(input: ModerationPanelRenderInput): 
 
         const paginationRow = buildPaginationRow({
           locale,
-          rangeIndex: selection.rangeIndex,
-          rangeCount: selection.rangeCount,
+          rangeIndex: pageIndex,
+          rangeCount: pages.length,
           namespace: MODERATION_ROUTE_NAMESPACE,
           version: MODERATION_ROUTE_VERSION,
           buildSegments: {
@@ -732,13 +807,7 @@ export function buildModerationPanelPayload(input: ModerationPanelRenderInput): 
             label: localizer(locale, "commands.moderation.add_persona"),
             disabled: data.readStatus !== "fresh",
           },
-          {
-            type: ComponentType.Button,
-            style: ButtonStyle.Danger,
-            customId: buildModerationRouteId({ action: "persona-channel-remove-open", locale }),
-            label: localizer(locale, "commands.moderation.remove_persona"),
-            disabled: data.readStatus !== "fresh" || personaChannels.length === 0,
-          },
+          buildRemoveButton(locale, "persona-channel", pageIndex, data, "commands.moderation.remove_persona"),
         ],
       });
     } else if (whitelistPage === "roles") {
@@ -834,13 +903,7 @@ export function buildModerationPanelPayload(input: ModerationPanelRenderInput): 
               label: localizer(locale, "commands.moderation.add_role"),
               disabled: data.readStatus !== "fresh",
             },
-            {
-              type: ComponentType.Button,
-              style: ButtonStyle.Danger,
-              customId: buildModerationRouteId({ action: "whitelist-role-remove-open", locale }),
-              label: localizer(locale, "commands.moderation.remove_role"),
-              disabled: data.readStatus !== "fresh" || roles.length === 0,
-            },
+            buildRemoveButton(locale, "whitelist-role", rangeIndex, data, "commands.moderation.remove_role"),
           ],
         });
       }
@@ -1107,7 +1170,7 @@ export interface ModerationRemovalOption {
 export function buildModerationRemovalModal(
   locale: string,
   nonce: string,
-  action: "user-blacklist" | "whitelist-channel" | "whitelist-role" | "persona-channel",
+  action: ModerationRemovalList,
   options: readonly ModerationRemovalOption[],
 ): { custom_id: string; title: string; components: RawDiscordComponent[] } {
   const removalSubmitActionMap = {

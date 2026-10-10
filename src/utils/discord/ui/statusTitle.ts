@@ -75,27 +75,8 @@ export function withStatusCircle(title: string, color?: ColorResolvable | null):
  */
 const LEADING_EMOJI_RUN = /^(?:\p{Extended_Pictographic}(?:️|‍|\p{Emoji_Modifier})*)+[\s ]*/u;
 
-/**
- * Removes a leading emoji marker of any kind. The embed protocol normalizes with this because a
- * Minimal notice renders its title without the emoji a Verbose one carries, and both must classify.
- */
 export function stripLeadingEmoji(title: string): string {
   return title.replace(LEADING_EMOJI_RUN, "");
-}
-
-/**
- * Localizes a Minimal notice title: no leading emoji and no status circle, so the accent color is
- * the only marker. The emoji is measured on the uninterpolated template, so a persona nickname that
- * happens to open the title with its own emoji keeps it.
- */
-export function localizedMinimalTitle(
-  locale: string,
-  titleKey: string,
-  titleVars?: Record<string, string | number | boolean>,
-): string {
-  const marker = localizer(locale, titleKey).match(LEADING_EMOJI_RUN)?.[0] ?? "";
-  const title = localizer(locale, titleKey, titleVars);
-  return (title.startsWith(marker) ? title.slice(marker.length) : title).trim();
 }
 
 /** Localizes a status title and renders it with the circle its surface color implies. */

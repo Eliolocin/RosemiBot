@@ -19,7 +19,7 @@
 
 import type { FunctionCall, ThoughtLogEntry } from "@/types/provider/interfaces";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
-import { log, sanitizeLogPayload } from "@/utils/misc/logger";
+import { log } from "@/utils/misc/logger";
 import {
   formatProviderErrorCodeForDisplay,
   isProviderTimeoutMessage,
@@ -2002,23 +2002,16 @@ export class NovelaiStreamAdapter extends BaseStreamAdapter {
   }
 
   /**
-   * Records the failure detail as a metric in addition to the base `provider_error` counter.
-   *
-   * NovelAI's transport failures log at `warn`, which production drops, so without this the
-   * response body (e.g. the context-overflow numbers) is unrecoverable after the fact. `log.metric`
-   * does not sanitize its fields, so the message is redacted here before it is truncated.
+   * Adds the response body (e.g. the context-overflow numbers) as trace beside the base
+   * `provider_error` counter, which carries only the code and type.
    */
   protected override onProviderError(error: unknown, providerError: ProviderError, context?: StreamContext): void {
     super.onProviderError(error, providerError, context);
-    const serverId = context?.tomoriState?.server_id;
-    log.metric("provider_error_detail", {
-      provider: "novelai",
-      code: providerError.code ?? "unknown",
-      type: providerError.type,
-      retryable: String(providerError.retryable),
-      message: String(sanitizeLogPayload(providerError.message)).slice(0, 500),
-      ...(serverId ? { server_id: serverId } : {}),
-    });
+    log.warn(
+      `NovelAI provider error (${providerError.code ?? "unknown"}, ${providerError.type}, retryable: ${providerError.retryable}): ${providerError.message.slice(0, 500)}`,
+      undefined,
+      { serverId: context?.tomoriState?.server_id ?? null },
+    );
   }
 
   /**

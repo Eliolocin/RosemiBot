@@ -23,6 +23,7 @@ import {
 import { verifyBackupRecovery } from "@/utils/backup/backupRecovery";
 import { createUserRow } from "../../helpers/fixtures";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
+import { useFullEnvSandbox } from "../../helpers/env";
 
 const KEYS = {
   CRYPTO_SECRET_V1: "synthetic_encryption_recovery_v1",
@@ -37,9 +38,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Encrypted credential recovery", () => {
   let serverId: number;
   let userId: number;
   let legacy: string;
-  const originalCrypto = Object.fromEntries(
-    Object.entries(process.env).filter(([name]) => name.startsWith("CRYPTO_SECRET")),
-  );
+  useFullEnvSandbox();
 
   async function run(script: string, args: string[] = [], override: Record<string, string | undefined> = {}) {
     const child = Bun.spawn([process.execPath, "--no-env-file", "run", `scripts/devtools/${script}.ts`, ...args], {
@@ -127,8 +126,6 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Encrypted credential recovery", () => {
     await testSql`DELETE FROM discord_managed_webhooks WHERE webhook_disc_id = '_recovery_webhook'`;
     await testSql`DELETE FROM servers WHERE server_id = ${serverId}`;
     await testSql`DELETE FROM users WHERE user_id = ${userId}`;
-    for (const name of Object.keys(process.env)) if (name.startsWith("CRYPTO_SECRET")) delete process.env[name];
-    Object.assign(process.env, originalCrypto);
     keyManager.initialize();
     if (directory) rmSync(directory, { recursive: true, force: true });
   });

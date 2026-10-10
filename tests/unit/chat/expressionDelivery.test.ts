@@ -17,6 +17,7 @@ import {
 import { getSingleAttemptWebhookRest } from "@/utils/discord/webhook/webhookCore";
 import { deleteExpressionMedia, storeExpressionMedia } from "@/utils/storage/expressionStorage";
 import { createCustomExpression, createPersona } from "../../helpers/fixtures";
+import { useEnvSandbox } from "../../helpers/env";
 
 const recorded: RecordStatInput[] = [];
 const recordStatSpy = spyOn(statRepository, "recordStat").mockImplementation((input: RecordStatInput) => {
@@ -25,7 +26,6 @@ const recordStatSpy = spyOn(statRepository, "recordStat").mockImplementation((in
 
 const SERVER_ID = 7;
 const GUILD_ID = "123456789012345678";
-const originalStorageBackend = process.env.EXPRESSION_STORAGE_BACKEND;
 const notCancelled = () => false;
 
 type SendBehavior = "ok" | "rejected" | "unconfirmed";
@@ -139,14 +139,14 @@ function metricKeys(metric: string): string[] {
 }
 
 describe("expression delivery at tool invocation", () => {
+  useEnvSandbox(["EXPRESSION_STORAGE_BACKEND"]);
+
   beforeAll(() => {
     process.env.EXPRESSION_STORAGE_BACKEND = "local";
   });
 
   afterAll(() => {
     recordStatSpy.mockRestore();
-    if (originalStorageBackend === undefined) delete process.env.EXPRESSION_STORAGE_BACKEND;
-    else process.env.EXPRESSION_STORAGE_BACKEND = originalStorageBackend;
   });
 
   beforeEach(() => {

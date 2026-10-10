@@ -25,7 +25,7 @@ import {
   neutralizeFenceRuns,
   truncateDiscordText,
 } from "@/utils/text/discordTextLimits";
-import { formatLocaleInteger } from "@/utils/text/localizer";
+import { formatLocaleInteger, localizer } from "@/utils/text/localizer";
 
 /**
  * Character budget for a preview rendered inside a Components V2 workflow card.
@@ -118,4 +118,56 @@ export function textPreviewFooterVars(preview: TextPreview, locale: string): Rec
     shown: formatLocaleInteger(preview.shownChars, locale),
     total: formatLocaleInteger(preview.totalChars, locale),
   };
+}
+
+/**
+ * Ceiling for a fenced panel preview, fence and marker included. Every previewed value has an edit
+ * modal that shows the complete text, so the panel only needs enough to recognize it.
+ */
+export const FENCED_PREVIEW_MAX_CHARS = 500;
+
+export interface FencedPreviewOptions {
+  /** Space the caller has left in its message. */
+  budget?: number;
+  /** Label of the button whose modal shows the complete text, when one does. */
+  actionLabel?: string;
+}
+
+const fenceMarkdown = (body: string): string => ["```markdown", body, "```"].join("\n");
+
+/**
+ * Renders user-authored text as a markdown code block within the smaller of `budget` and
+ * {@link FENCED_PREVIEW_MAX_CHARS} codepoints, fence included.
+ *
+ * Cut text ends in an HTML comment naming how much is hidden. Discord's markdown highlighting
+ * colors it like a code comment, so it reads as a marker rather than part of the stored text.
+ *
+ * @returns The fenced block, or an empty string when the budget cannot hold even the marker,
+ *   because cutting a fenced string would drop its closing delimiter and leak the fence into the
+ *   rest of the message.
+ */
+export function renderFencedPreview(
+  locale: string,
+  text: string,
+  { budget = FENCED_PREVIEW_MAX_CHARS, actionLabel }: FencedPreviewOptions = {},
+): string {
+  const limit = Math.min(budget, FENCED_PREVIEW_MAX_CHARS);
+  const guarded = neutralizeFenceRuns(text);
+  const full = fenceMarkdown(guarded);
+  if (getDiscordTextLength(full) <= limit) return full;
+
+  const totalChars = getDiscordTextLength(text);
+  const marker = (hidden: number): string =>
+    `<!-- ${localizer(
+      locale,
+      actionLabel ? "general.text_preview.hidden_marker_action" : "general.text_preview.hidden_marker",
+      { count: formatLocaleInteger(hidden, locale), action: actionLabel ?? "" },
+    )} -->`;
+  // Sizing with the total count reserves the longest marker this text can need, so the marker
+  // built from the real hidden count always fits.
+  const available = limit - getDiscordTextLength(fenceMarkdown(`\n${marker(totalChars)}`));
+  if (available < 0) return "";
+  const shown = truncateDiscordText(guarded, available, "").trimEnd();
+  const hidden = totalChars - getDiscordTextLength(shown.split(FENCE_GUARD).join(""));
+  return fenceMarkdown(shown ? `${shown}\n${marker(hidden)}` : marker(hidden));
 }

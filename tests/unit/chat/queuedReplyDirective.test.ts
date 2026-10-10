@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Collection, type Message } from "discord.js";
 import type { PersonaSpriteRow } from "@/types/db/schema";
-import { buildQueuedReplyDirective } from "@/utils/chat/contextDirectives";
+import { answersQueuedTriggerMessage, buildQueuedReplyDirective } from "@/utils/chat/contextDirectives";
 import { buildPersonaSpritePromptText } from "@/utils/text/context/personaSprites";
 
 /**
@@ -80,5 +80,29 @@ describe("buildQueuedReplyDirective", () => {
     const sharedLabelGrammar = `${botName} ({sprite label}):`;
     expect(spritePrompt).toContain(sharedLabelGrammar);
     expect(directive).toContain(sharedLabelGrammar);
+  });
+});
+
+describe("answersQueuedTriggerMessage", () => {
+  test("a queued user message is answered", () => {
+    expect(answersQueuedTriggerMessage({ isFromQueue: true, textQuotaSource: "user" })).toBe(true);
+  });
+
+  /**
+   * Regression: a welcome queued behind a busy channel replayed with the channel's latest message
+   * as its reply target, so the greeting pinged the newcomer while answering someone else.
+   */
+  test("a queued system trigger does not answer its anchor message", () => {
+    expect(answersQueuedTriggerMessage({ isFromQueue: true, textQuotaSource: "system" })).toBe(false);
+  });
+
+  test("a queued stop response still answers the stop message", () => {
+    expect(answersQueuedTriggerMessage({ isFromQueue: true, isStopResponse: true, textQuotaSource: "system" })).toBe(
+      true,
+    );
+  });
+
+  test("an unqueued turn is never a queued reply", () => {
+    expect(answersQueuedTriggerMessage({ isFromQueue: false, textQuotaSource: "user" })).toBe(false);
   });
 });

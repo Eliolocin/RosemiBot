@@ -102,8 +102,6 @@ it("renders the fullest panel, unavailable states and real modals within Discord
           expectSafePanelPayload(payload, `${locale}/${slot}/${enabled}`);
           if (locale === "en-US") {
             const text = collectTextDisplays(payload).join("\n");
-            expect(text).toMatch(localizedProse("en-US", "commands.config.drafting.cost"));
-            expect(text).toMatch(localizedProse("en-US", "commands.config.drafting.custom_status"));
             expect(text).toMatch(
               localizedProse("en-US", enabled ? "commands.config.drafting.on" : "commands.config.drafting.off"),
             );
@@ -128,12 +126,8 @@ it("renders the fullest panel, unavailable states and real modals within Discord
         responseDraftingView: view,
       });
       expectSafePanelPayload(payload, `${locale}/unavailable`);
-      if (locale === "en-US") {
-        // Panel prose wraps mid-sentence, and CJK text has no spaces for localizedProse to match on.
-        expect(collectTextDisplays(payload).join("\n")).toMatch(
-          localizedProse("en-US", "commands.config.drafting.unavailable"),
-        );
-      }
+      // A removed selection surfaces in the dropdown placeholders, which never wrap.
+      expect(JSON.stringify(payload)).toContain(localizedCopy(locale, "commands.config.drafting.unavailable"));
       const modal = buildDraftPromptModal(createPersona(), locale, "nonce123");
       expect(validateRawModalLimits(modal).valid).toBe(true);
       // An untranslated locale renders the English prompt, as the runtime falls back.
@@ -155,6 +149,28 @@ it("renders the fullest panel, unavailable states and real modals within Discord
       ).toBe(true);
     });
   failures.expectNoFailures();
+});
+
+it("disables Use Default only while the reviewer prompt is already the default", () => {
+  const defaultButtonId = buildConfigRouteId({ action: "draft-default", locale: "en-US" });
+  for (const prompt of [null, "Fixture prompt"]) {
+    const payload = buildConfigPanelPayload({
+      locale: "en-US",
+      actor: { workspaceKind: "guild", isManager: true },
+      category: "plugins",
+      page: "response-drafting",
+      personas: [createPersona({ config: { response_reviewer_prompt: prompt } })],
+      selectedPersonaId: null,
+      readStatus: "fresh",
+      responseDraftingView: view,
+    });
+    let defaultButton: { disabled?: boolean } | undefined;
+    JSON.stringify(payload, (_key, value) => {
+      if (value?.customId === defaultButtonId) defaultButton = value;
+      return value;
+    });
+    expect(defaultButton?.disabled).toBe(prompt === null);
+  }
 });
 
 it("validates checker input contracts and Unicode prompt limits", () => {

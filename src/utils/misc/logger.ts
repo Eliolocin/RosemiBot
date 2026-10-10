@@ -58,6 +58,22 @@ const hasPinoPretty = (() => {
  */
 const usePrettyTransport = !shouldHideLogs && hasPinoPretty;
 
+const LOG_LEVEL_NAMES = ["trace", "debug", "info", "warn", "error", "fatal"] as const;
+
+/**
+ * Resolves `LOG_LEVEL`, defaulting to `error` in production and `info` elsewhere.
+ *
+ * Production defaults to `error` because `warn` is developer trace, too noisy for a hoster's
+ * dashboards. A hoster diagnosing a user's report raises it to `warn` for the session instead of
+ * call sites promoting trace detail to `metric` or `error` to survive the filter. An unknown value
+ * falls back to the default so a typo cannot silence errors.
+ */
+export function resolveLogLevel(raw: string | undefined, hideLogs: boolean): string {
+  const requested = raw?.trim().toLowerCase();
+  if (requested && (LOG_LEVEL_NAMES as readonly string[]).includes(requested)) return requested;
+  return hideLogs ? "error" : "info";
+}
+
 /**
  * Optional JSONL log file for host-side ingestion (e.g. Azure Monitor Agent
  * tailing a bind-mounted file). Only used in JSON output mode: the
@@ -134,11 +150,13 @@ const jsonStreams = usePrettyTransport ? undefined : buildLogStreams(logFilePath
  */
 const pinoLogger = pino(
   {
-    level: shouldHideLogs ? "error" : "info",
+    level: resolveLogLevel(process.env.LOG_LEVEL, shouldHideLogs),
     customLevels: {
       success: 35, // Between info (30) and warn (40)
       section: 31, // Just above info (30)
-      metric: 52, // Above error (50) so periodic metrics reach CloudWatch in production
+      // Below info so a severity range query (`level >= 40`) never counts a sample as a problem.
+      // `metricLogger` pins its own level, which is what keeps metrics emitted at any LOG_LEVEL.
+      metric: 25,
       rateLimit: 55, // Between error (50) and fatal (60)
     },
     redact: {
@@ -153,7 +171,7 @@ const pinoLogger = pino(
             translateTime: "HH:MM:ss",
             ignore: "pid,hostname",
             customLevels:
-              "trace:10,debug:20,info:30,section:31,success:35,warn:40,error:50,metric:52,rateLimit:55,fatal:60",
+              "trace:10,debug:20,metric:25,info:30,section:31,success:35,warn:40,error:50,rateLimit:55,fatal:60",
           },
         }
       : undefined,
@@ -175,6 +193,8 @@ interface CustomLevelLogger extends pino.Logger {
 
 // biome-ignore lint/suspicious/noExplicitAny: Pino adds the custom level methods at runtime
 const customLevels = pinoLogger as any as CustomLevelLogger;
+
+const metricLogger = customLevels.child({}, { level: "metric" }) as CustomLevelLogger;
 
 /**
  * ANSI color codes for terminal output
@@ -263,9 +283,8 @@ export function sanitizeLogPayload(value: unknown, depth = 0, truncateStrings = 
 }
 
 /**
- * Metric fields reach the production sinks at a level above `error`, so free-text values such as
- * an endpoint failure reason get the same redaction as every other record. Numbers pass through
- * unchanged, which keeps metric queries typed.
+ * Metric fields reach the production sinks at every log level, so string fields get the same
+ * redaction as every other record. Numbers pass through unchanged, which keeps metric queries typed.
  */
 export function buildMetricPayload(name: string, fields: Record<string, number | string>): Record<string, unknown> {
   return sanitizeLogPayload({ metric: name, ...fields }) as Record<string, unknown>;
@@ -292,7 +311,7 @@ const toLoggableError = (err: unknown): Record<string, unknown> => {
  */
 export const log = {
   /**
-   * Logs informational messages (hidden in production).
+   * Logs informational messages (hidden at the production default level).
    */
   info: (msg: string) => {
     const sanitizedMsg = sanitizeLogString(msg);
@@ -300,7 +319,7 @@ export const log = {
   },
 
   /**
-   * Logs success messages (hidden in production).
+   * Logs success messages (hidden at the production default level).
    */
   success: (msg: string) => {
     const sanitizedMsg = sanitizeLogString(msg);
@@ -308,7 +327,9 @@ export const log = {
   },
 
   /**
-   * Logs warning messages with optional error details (hidden in production).
+   * Logs developer trace: causes, free text, and stack details that explain an outcome to someone
+   * running their own instance. Hidden at the production default level; a hoster opts in with
+   * `LOG_LEVEL=warn`.
    * @param err - Optional error object to include.
    */
   warn: (msg: string, err?: unknown, context?: ErrorContext) => {
@@ -340,24 +361,29 @@ export const log = {
   },
 
   /**
-   * Logs a periodic metric sample as structured JSON.
-   * Always emitted regardless of environment (uses custom level 52, above `error`).
-   * Intended for CloudWatch Logs Insights queries: pass flat numeric fields
-   * so each metric becomes queryable at the top level of the log record.
+   * Logs a sample that statistics are extracted from, emitted at every log level.
+   *
+   * Fields are numbers and string dimensions drawn from a fixed set (codes, reason keys, provider
+   * names), so a query can group and count on them. Free text such as an error message or a
+   * localized heading belongs in `log.warn`: it gives every record its own value and cannot be
+   * aggregated. A sample sits below `info` in severity, so it never reads as a problem.
    *
    * @param name - Short metric name (used as the `metric` field for filtering).
    */
   metric: (name: string, fields: Record<string, number | string>) => {
-    customLevels.metric(buildMetricPayload(name, fields), `metric:${name}`);
+    metricLogger.metric(buildMetricPayload(name, fields), `metric:${name}`);
   },
 
   /**
-   * Logs an error message to the console and attempts to insert it into the database.
-   * Always shown in production.
+   * Logs a failure the hoster must act on, and persists it to `error_logs`. Expected refusals
+   * (bad input, an unreachable user endpoint) are not errors: count them with `log.metric` and
+   * explain them with `log.warn`.
    * @param err - The actual Error object or unknown error data (optional).
    * @param context - Optional context containing IDs and metadata for DB logging.
+   * @param options.persist - `false` when the failure is the database path itself, where an
+   *   `error_logs` insert would queue on the pool that just failed.
    */
-  error: async (msg: string, err?: unknown, context?: ErrorContext): Promise<void> => {
+  error: async (msg: string, err?: unknown, context?: ErrorContext, options?: { persist?: boolean }): Promise<void> => {
     const sanitizedPlainMsg = sanitizeLogString(msg);
     const coloredMsg = shouldHideLogs ? sanitizedPlainMsg : `${colors.red}${sanitizedPlainMsg}${colors.reset}`;
     const resolvedContext = resolveErrorContext(context);
@@ -370,7 +396,7 @@ export const log = {
       pinoLogger.error({ context: sanitizedContext }, coloredMsg);
     }
 
-    if (!isErrorDbLoggingEnabled()) {
+    if (options?.persist === false || !isErrorDbLoggingEnabled()) {
       return;
     }
 

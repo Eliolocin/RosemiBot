@@ -23,7 +23,7 @@ export default {
     estimate_note: `Ước tính khoảng 4 ký tự mỗi token.`,
     not_counted_note: `Hình ảnh, video và định dạng tin nhắn của nhà cung cấp không được tính.`,
     truncated_note: `Lịch sử trò chuyện vượt quá giới hạn, nên {count} lượt trao đổi cũ nhất đã được lược bỏ.`,
-    text_locked_note: `Để xem toàn bộ prompt, bạn cần quyền Quản lý máy chủ, hoặc người quản lý có thể cho phép thành viên xem trong \`/moderation\`.`,
+    text_locked_note: `Xem toàn bộ prompt trong máy chủ này cần có quyền hạn.`,
     view_text_button: `Xem dạng văn bản`,
     view_json_button: `Xem dạng JSON`,
     persona_not_found_title: `Không tìm thấy persona`,

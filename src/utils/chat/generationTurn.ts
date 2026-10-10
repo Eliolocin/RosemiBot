@@ -138,6 +138,7 @@ async function runGenerationAttempts(
       context.contextItems = await prepareProviderContextItems({
         contextItems: baseContextItems,
         tomoriState: attempt.tomoriState,
+        deliberateToolAllowedNames: context.streamingContext.deliberateToolAllowedNames,
         serverDiscId: context.serverDiscId,
         emptyResponseFinishReason: context.turn.lockedTurn.admission.incoming.emptyResponseFinishReason,
         retryCount: context.turn.lockedTurn.admission.incoming.retryCount,
@@ -870,11 +871,12 @@ function extractErrorDetail(streamResult: StreamResult | undefined): string {
 async function prepareProviderContextItems(args: {
   contextItems: StructuredContextItem[];
   tomoriState: TomoriState;
+  deliberateToolAllowedNames: string[] | undefined;
   serverDiscId: string;
   emptyResponseFinishReason: string | null | undefined;
   retryCount: number;
 }): Promise<StructuredContextItem[]> {
-  let contextItems = await resolveMediaForModel(args.contextItems, args.tomoriState);
+  let contextItems = await resolveMediaForModel(args.contextItems, args.tomoriState, args.deliberateToolAllowedNames);
 
   // Verbatim prompt scaffolding is decided once, against the primary model, but every attempt
   // carries its own provider and parser. Adapt the shared base per attempt so a fallback in either

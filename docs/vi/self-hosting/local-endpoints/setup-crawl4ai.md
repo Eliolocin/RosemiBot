@@ -22,7 +22,7 @@ Chọn đường dẫn thiết lập:
 
 ### Tùy chọn A: Docker Compose (khi TomoriBot chạy trong Docker)
 
-Sử dụng đường dẫn này nếu bạn chạy TomoriBot với ngăn xếp Docker Compose của repo. Đầu tiên, đặt `CRAWL4AI_BASE_URL=http://crawl4ai:11235/`, `CRAWL4AI_TOKEN` và `FETCH_URL_ENGINE_ORDER=crawl4ai,safe_http` trong `.env`. Ngoài môi trường production, không cần chọn tham gia mạng riêng tư; chỉ thêm `FETCH_URL_ALLOW_PRIVATE_NETWORK=true` nếu bạn chạy stack này với `RUN_ENV=production`.
+Sử dụng đường dẫn này nếu bạn chạy TomoriBot với ngăn xếp Docker Compose của repo. Đầu tiên, đặt `CRAWL4AI_BASE_URL=http://crawl4ai:11235/` và `CRAWL4AI_TOKEN` trong `.env`. Ngoài môi trường production, không cần chọn tham gia mạng riêng tư; chỉ thêm `FETCH_URL_ALLOW_PRIVATE_NETWORK=true` nếu bạn chạy stack này với `RUN_ENV=production`.
 
 Sau đó, bắt đầu với:
 
@@ -44,7 +44,7 @@ docker compose --profile searxng --profile fetch-crawl4ai up -d
 
 ### Tùy chọn B: Docker độc lập (khi chạy `bun run dev`)
 
-Trước tiên, hãy đặt `CRAWL4AI_BASE_URL=http://localhost:11235/`, `CRAWL4AI_TOKEN` và `FETCH_URL_ENGINE_ORDER=crawl4ai,safe_http` trong `.env` để bot kết nối với cổng vùng chứa được công khai trên `127.0.0.1`. Ngoài môi trường production, không cần chọn tham gia mạng riêng tư; chỉ thêm `FETCH_URL_ALLOW_PRIVATE_NETWORK=true` nếu bạn chạy với `RUN_ENV=production`.
+Trước tiên, hãy đặt `CRAWL4AI_BASE_URL=http://localhost:11235/` và `CRAWL4AI_TOKEN` trong `.env` để bot kết nối với cổng vùng chứa được công khai trên `127.0.0.1`. Ngoài môi trường production, không cần chọn tham gia mạng riêng tư; chỉ thêm `FETCH_URL_ALLOW_PRIVATE_NETWORK=true` nếu bạn chạy với `RUN_ENV=production`.
 
 Sau đó, thay vì chạy trực tiếp TomoriBot với `bun run dev`, hãy dùng `bun run launch --crawl4ai`. Thao tác này sẽ tự động xử lý vòng đời của vùng chứa và đợi máy chủ khỏe mạnh trước khi khởi động bot. Nó sẽ dừng với một lỗi nếu thiếu `CRAWL4AI_TOKEN`:
 
@@ -168,13 +168,12 @@ Giá trị cookie rất nhạy cảm, vì vậy hãy coi chúng như mật khẩ
 
 ---
 
-## Thứ tự động cơ và các biến môi trường
+## Biến môi trường
 
 | Biến | Mặc định | Sự miêu tả |
 |---|---|---|
-| `CRAWL4AI_BASE_URL` | bỏ đặt | Bật Crawl4AI khi được đặt. Sử dụng `http://crawl4ai:11235/` từ Docker Compose hoặc `http://localhost:11235/` khi TomoriBot chạy trực tiếp trên máy của bạn. |
-| `CRAWL4AI_TOKEN` | bỏ đặt | Token bearer bắt buộc. Phải khớp với `CRAWL4AI_API_TOKEN` trên vùng chứa Crawl4AI, nơi từ chối các kết nối bên ngoài nếu không có nó. |
-| `FETCH_URL_ENGINE_ORDER` | `safe_http` | Danh sách các động cơ được phân tách bằng dấu phẩy. `safe_http` luôn được thêm vào làm phương án dự phòng cuối cùng. Các mục Crawl4AI sẽ bị bỏ qua khi việc lấy dữ liệu qua mạng riêng tư không được phép (production không bật tùy chọn). |
+| `CRAWL4AI_BASE_URL` | chưa đặt | Bật Crawl4AI khi được thiết lập: TomoriBot sẽ thử dùng nó trước và quay về `safe_http` khi nó không hoạt động hoặc quá trình tìm nạp thất bại. Bị bỏ qua trong môi trường production trừ khi `FETCH_URL_ALLOW_PRIVATE_NETWORK=true`. Sử dụng `http://crawl4ai:11235/` từ Docker Compose, hoặc `http://localhost:11235/` khi TomoriBot chạy trực tiếp trên máy của bạn. |
+| `CRAWL4AI_TOKEN` | chưa đặt | Token bearer bắt buộc. Phải khớp với `CRAWL4AI_API_TOKEN` trên vùng chứa Crawl4AI, nơi từ chối các kết nối bên ngoài nếu không có nó. |
 | `FETCH_URL_TIMEOUT_MS` | `15000` | Hết thời gian chờ yêu cầu trên mỗi công cụ cho Crawl4AI và các công cụ tìm nạp URL khác. |
 | `FETCH_URL_MAX_CONTENT_LENGTH` | `50000` | Số ký tự tối đa được trả về bởi một lệnh gọi tìm nạp trước khi cần tiếp tục. |
 | `FETCH_URL_ALLOW_PRIVATE_NETWORK` | `false` | Chọn tham gia chỉ dành cho sản xuất. Quá trình sản xuất bên ngoài (`RUN_ENV` != `production`), bộ bảo vệ SSRF tự động thư giãn, do đó, quá trình tìm nạp localhost/private/nội bộ và gửi Crawl4AI hoạt động mà không cần thiết lập. Chỉ đặt `true` để cho phép tìm nạp mạng riêng trong quá trình triển khai sản xuất đáng tin cậy. |

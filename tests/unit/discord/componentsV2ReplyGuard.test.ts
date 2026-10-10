@@ -13,7 +13,7 @@
  * testIsolationHygiene.test.ts for why this keeps the real module intact.
  */
 
-import { afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test";
+import { beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { AttachmentBuilder, type ButtonInteraction, ComponentType, MessageFlags } from "discord.js";
 import type { ChatInputCommandInteraction, Message } from "discord.js";
 import * as componentsV2Limits from "@/utils/discord/ui/componentsV2Limits";
@@ -41,9 +41,11 @@ import {
 import { log } from "@/utils/misc/logger";
 import { parseInteractionRoute, type GlobalInteractionRoute } from "@/utils/discord/interactions/routeRegistry";
 import { initializeLocalizer } from "@/utils/text/localizer";
+import { useEnvSandbox } from "../../helpers/env";
 import { createRouteInteraction, type RouteInteraction } from "../../helpers/routeInteraction";
 
 beforeAll(async () => initializeLocalizer());
+useEnvSandbox(["RUN_ENV", "ERROR_DB_LOGGING_ENABLED"]);
 
 /** One recorded acknowledgement call against the fake interaction. */
 interface RecordedCall {
@@ -366,66 +368,44 @@ describe("deliverGuardedPanel transports", () => {
 });
 
 describe("deliverGuardedPanel budget enforcement and redaction", () => {
-  // Bun batches this file's lane with others in one process, so an env var left set here changes
-  // behaviour in a different file and fails there instead. The per-test finally blocks cannot cover
-  // a throw before their try, and tests/unit/checks/testIsolationHygiene.test.ts requires the undo
-  // to live in a hook it can find by name.
-  const originalGuardEnv = {
-    RUN_ENV: process.env.RUN_ENV,
-    ERROR_DB_LOGGING_ENABLED: process.env.ERROR_DB_LOGGING_ENABLED,
-  };
-  afterEach(() => {
-    if (originalGuardEnv.RUN_ENV === undefined) delete process.env.RUN_ENV;
-    else process.env.RUN_ENV = originalGuardEnv.RUN_ENV;
-    if (originalGuardEnv.ERROR_DB_LOGGING_ENABLED === undefined) delete process.env.ERROR_DB_LOGGING_ENABLED;
-    else process.env.ERROR_DB_LOGGING_ENABLED = originalGuardEnv.ERROR_DB_LOGGING_ENABLED;
-  });
-
   it("fails loud in development/test mode with ComponentsV2LimitError", async () => {
-    const originalRunEnv = process.env.RUN_ENV;
     delete process.env.RUN_ENV;
+    expect(isProductionEnvironment()).toBe(false);
+    const { interaction, calls } = makeGuardedInteraction({ canEditReply: true });
+
+    const overBudgetPayload = {
+      flags: MessageFlags.IsComponentsV2,
+      components: [
+        {
+          type: ComponentType.Container,
+          components: [
+            {
+              type: ComponentType.TextDisplay,
+              content: "A".repeat(4005),
+            },
+          ],
+        },
+      ],
+    };
+
+    let caughtError: unknown;
     try {
-      expect(isProductionEnvironment()).toBe(false);
-      const { interaction, calls } = makeGuardedInteraction({ canEditReply: true });
-
-      const overBudgetPayload = {
-        flags: MessageFlags.IsComponentsV2,
-        components: [
-          {
-            type: ComponentType.Container,
-            components: [
-              {
-                type: ComponentType.TextDisplay,
-                content: "A".repeat(4005),
-              },
-            ],
-          },
-        ],
-      };
-
-      let caughtError: unknown;
-      try {
-        await deliverGuardedPanel(interaction, overBudgetPayload, {
-          method: "editReply",
-          locale: "en-US",
-        });
-      } catch (err) {
-        caughtError = err;
-      }
-
-      expect(caughtError).toBeInstanceOf(ComponentsV2LimitError);
-      expect((caughtError as ComponentsV2LimitError).message).toContain("TEXT_DISPLAY_TOTAL_EXCEEDED");
-      expect((caughtError as ComponentsV2LimitError).violations.length).toBeGreaterThan(0);
-      expect(calls).toHaveLength(0);
-      expect(hasComponentsV2Reply(interaction)).toBe(false);
-    } finally {
-      process.env.RUN_ENV = originalRunEnv;
+      await deliverGuardedPanel(interaction, overBudgetPayload, {
+        method: "editReply",
+        locale: "en-US",
+      });
+    } catch (err) {
+      caughtError = err;
     }
+
+    expect(caughtError).toBeInstanceOf(ComponentsV2LimitError);
+    expect((caughtError as ComponentsV2LimitError).message).toContain("TEXT_DISPLAY_TOTAL_EXCEEDED");
+    expect((caughtError as ComponentsV2LimitError).violations.length).toBeGreaterThan(0);
+    expect(calls).toHaveLength(0);
+    expect(hasComponentsV2Reply(interaction)).toBe(false);
   });
 
   it("delivers fallback panel and redacts sensitive content in production mode", async () => {
-    const originalRunEnv = process.env.RUN_ENV;
-    const originalDbLog = process.env.ERROR_DB_LOGGING_ENABLED;
     const originalLogError = log.error;
     process.env.RUN_ENV = "production";
     process.env.ERROR_DB_LOGGING_ENABLED = "false";
@@ -487,8 +467,6 @@ describe("deliverGuardedPanel budget enforcement and redaction", () => {
       expect(violations?.[0].limit).toBe(4000);
       expect(violations?.[0].observed).toBeGreaterThan(4000);
     } finally {
-      process.env.RUN_ENV = originalRunEnv;
-      process.env.ERROR_DB_LOGGING_ENABLED = originalDbLog;
       log.error = originalLogError;
     }
   });
@@ -496,8 +474,6 @@ describe("deliverGuardedPanel budget enforcement and redaction", () => {
 
 describe("after-write invariant preservation", () => {
   it("preserves interaction continuity after a state mutation in production", async () => {
-    const originalRunEnv = process.env.RUN_ENV;
-    const originalDbLog = process.env.ERROR_DB_LOGGING_ENABLED;
     const originalLogError = log.error;
     process.env.RUN_ENV = "production";
     process.env.ERROR_DB_LOGGING_ENABLED = "false";
@@ -539,50 +515,43 @@ describe("after-write invariant preservation", () => {
       expect(calls).toHaveLength(1);
       expect(calls[0].method).toBe("update");
     } finally {
-      process.env.RUN_ENV = originalRunEnv;
-      process.env.ERROR_DB_LOGGING_ENABLED = originalDbLog;
       log.error = originalLogError;
     }
   });
 
   it("fails loud on after-write repaint in development mode to alert tests", async () => {
-    const originalRunEnv = process.env.RUN_ENV;
     delete process.env.RUN_ENV;
 
-    try {
-      let writeCommitted = false;
-      const { interaction, calls } = makeGuardedInteraction({ canUpdate: true });
+    let writeCommitted = false;
+    const { interaction, calls } = makeGuardedInteraction({ canUpdate: true });
 
-      const performAction = async () => {
-        writeCommitted = true;
+    const performAction = async () => {
+      writeCommitted = true;
 
-        const overBudgetRepaintPayload = {
-          flags: MessageFlags.IsComponentsV2,
-          components: [
-            {
-              type: ComponentType.Container,
-              components: [
-                {
-                  type: ComponentType.TextDisplay,
-                  content: "X".repeat(4005),
-                },
-              ],
-            },
-          ],
-        };
-
-        await deliverGuardedPanel(interaction, overBudgetRepaintPayload, {
-          method: "update",
-          locale: "en-US",
-        });
+      const overBudgetRepaintPayload = {
+        flags: MessageFlags.IsComponentsV2,
+        components: [
+          {
+            type: ComponentType.Container,
+            components: [
+              {
+                type: ComponentType.TextDisplay,
+                content: "X".repeat(4005),
+              },
+            ],
+          },
+        ],
       };
 
-      await expect(performAction()).rejects.toBeInstanceOf(ComponentsV2LimitError);
-      expect(writeCommitted).toBe(true);
-      expect(calls).toHaveLength(0);
-    } finally {
-      process.env.RUN_ENV = originalRunEnv;
-    }
+      await deliverGuardedPanel(interaction, overBudgetRepaintPayload, {
+        method: "update",
+        locale: "en-US",
+      });
+    };
+
+    await expect(performAction()).rejects.toBeInstanceOf(ComponentsV2LimitError);
+    expect(writeCommitted).toBe(true);
+    expect(calls).toHaveLength(0);
   });
 });
 
@@ -607,7 +576,7 @@ describe("delivery-tier construction validation", () => {
       {
         name: "moderation",
         route: createModerationInteractionRoute(),
-        customId: "moderation:v1:member-access-submit:en-US:abcdefgh",
+        customId: "moderation:v2:member-access-submit:en-US:abcdefgh",
         interactionKind: "modal" as const,
         guildId: "guild-1",
       },

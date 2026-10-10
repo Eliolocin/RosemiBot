@@ -101,9 +101,10 @@ const targetKinds = new Set<ProtocolKind>([
 const knownKinds = new Set<ProtocolKind>([...targetKinds, "diagnostic", "reply_context"]);
 
 /**
- * Kinds whose notices can render at Minimal verbosity, where the title loses its leading emoji. Only
- * these are stored and matched emoji-free: reward and punish titles share text across commands
- * ("Snack Time!") and are told apart by that emoji alone.
+ * Kinds whose notices can render at Minimal verbosity. Minimal titles once dropped their leading
+ * emoji, and those messages remain in channel history, so only these kinds are stored and matched
+ * emoji-free: reward and punish titles share text across commands ("Snack Time!") and are told apart
+ * by that emoji alone.
  */
 const MINIMAL_TITLE_KINDS = new Set<ProtocolKind>(["memory_learning", "reminder_set", "user_info_update"]);
 

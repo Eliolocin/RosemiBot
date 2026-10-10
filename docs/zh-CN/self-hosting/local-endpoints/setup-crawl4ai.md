@@ -22,7 +22,7 @@ Crawl4AI 0.9.4 在接受来自其自身容器外部的连接之前需要 API 令
 
 ### 选项A：Docker Compose（当TomoriBot在Docker中运行时）
 
-如果你使用存储库的Docker Compose堆栈运行TomoriBot，请使用此路径。首先，在`.env`中设置`CRAWL4AI_BASE_URL=http://crawl4ai:11235/`、`CRAWL4AI_TOKEN`以及`FETCH_URL_ENGINE_ORDER=crawl4ai,safe_http`。外部制作无需选择加入专用网络；仅当你使用`RUN_ENV=production`运行此堆栈时才添加`FETCH_URL_ALLOW_PRIVATE_NETWORK=true`。
+如果你使用仓库的 Docker Compose 栈运行 TomoriBot，请使用此路径。首先在 `.env` 中设置 `CRAWL4AI_BASE_URL=http://crawl4ai:11235/` 与 `CRAWL4AI_TOKEN`。生产环境之外无需开启私有网络访问；只有在以 `RUN_ENV=production` 运行此栈时才添加 `FETCH_URL_ALLOW_PRIVATE_NETWORK=true`。
 
 然后，从以下开始：
 
@@ -44,7 +44,7 @@ docker compose --profile searxng --profile fetch-crawl4ai up -d
 
 ### 选项B：独立Docker（运行`bun run dev`时）
 
-首先，在`.env`中设置`CRAWL4AI_BASE_URL=http://localhost:11235/`、`CRAWL4AI_TOKEN`以及`FETCH_URL_ENGINE_ORDER=crawl4ai,safe_http`，以便机器人连接到发布在 `127.0.0.1` 上的容器端口。外部制作无需选择加入专用网络；如果你使用`RUN_ENV=production`运行，则仅添加`FETCH_URL_ALLOW_PRIVATE_NETWORK=true`。
+首先在 `.env` 中设置 `CRAWL4AI_BASE_URL=http://localhost:11235/` 与 `CRAWL4AI_TOKEN`，以便 bot 连接到发布在 `127.0.0.1` 上的容器端口。生产环境之外无需开启私有网络访问；只有在以 `RUN_ENV=production` 运行时才添加 `FETCH_URL_ALLOW_PRIVATE_NETWORK=true`。
 
 然后，不要直接使用`bun run dev`运行TomoriBot，而是使用`bun run launch --crawl4ai`。这会自动处理容器生命周期，并在启动机器人之前等待服务器就绪。如果缺少 `CRAWL4AI_TOKEN`，它将报错停止：
 
@@ -168,13 +168,12 @@ Cookie值很敏感，因此请将它们视为密码。他们授予你帐户的�
 
 ---
 
-## 引擎顺序和环境变量
+## 环境变量
 
-| 多变的 | 默认 | 描述 |
+| 变量 | 默认值 | 说明 |
 |---|---|---|
-| `CRAWL4AI_BASE_URL` | 未设置 | 设置后启用Crawl4AI。使用Docker Compose中的`http://crawl4ai:11235/`，或者当TomoriBot直接在计算机上运行时使用`http://localhost:11235/`。|
-| `CRAWL4AI_TOKEN` | 未设置 | 必需的 Bearer 令牌。必须与 Crawl4AI 容器上的 `CRAWL4AI_API_TOKEN` 匹配，否则容器会拒绝外部连接。|
-| `FETCH_URL_ENGINE_ORDER` | `safe_http` | 逗号分隔的引擎列表。`safe_http` 始终作为最终后备追加。在不允许专用网络获取的情况下（无需选择加入的生产），Crawl4AI 条目将被忽略。|
+| `CRAWL4AI_BASE_URL` | 未设置 | 设置后启用 Crawl4AI：TomoriBot 会优先尝试它，并在服务不可用或抓取失败时回退到 `safe_http`。在生产环境中会被忽略，除非设置了 `FETCH_URL_ALLOW_PRIVATE_NETWORK=true`。在 Docker Compose 中使用 `http://crawl4ai:11235/`，在 TomoriBot 直接在宿主机上运行时使用 `http://localhost:11235/`。 |
+| `CRAWL4AI_TOKEN` | 未设置 | 必需的 Bearer 令牌。必须与 Crawl4AI 容器上的 `CRAWL4AI_API_TOKEN` 匹配，否则容器会拒绝外部连接。 |
 | `FETCH_URL_TIMEOUT_MS` | `15000` | Crawl4AI和其他URL获取引擎的每个引擎请求超时。|
 | `FETCH_URL_MAX_CONTENT_LENGTH` | `50000` | 在需要继续之前，一次fetch调用返回的最大字符数。|
 | `FETCH_URL_ALLOW_PRIVATE_NETWORK` | `false` | 仅限生产选择加入。外部生产（`RUN_ENV`！= `production`）SSRF防护自动放松，因此localhost/private/internal获取和Crawl4AI调度工作无需设置。仅设置`true`以允许在受信任的生产部署中进行专用网络提取。|

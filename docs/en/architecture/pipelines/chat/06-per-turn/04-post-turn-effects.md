@@ -50,7 +50,8 @@ ChatTurnContext & GenerationTurnResult
    copies only when `canMirrorToThoughtLog()` confirms the log is in the same guild and everyone there can
    already read the source channel (or a public thread's parent) with no `ViewChannel` deny overwrite.
    The bot cannot list who reads the log, so a private thread, a private-listed channel, or an
-   undeterminable audience is never mirrored.
+   undeterminable audience is never mirrored. Each refusal logs its reason, at warn level only for an
+   undeterminable audience.
 7. **Boomerang follow-up**: if the turn invoked the cross-channel message tool, `scheduleBoomerangFollowUp()`
    consumes the pending boomerang. It schedules a re-entry in the source channel via `setImmediate`,
    calling `suppressNextSelfReply()` so the follow-up does not trigger self-reply suppression.

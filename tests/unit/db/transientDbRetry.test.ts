@@ -1,15 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import { withTransientDbRetry } from "@/utils/db/client";
+import { useEnvSandbox } from "../../helpers/env";
 
-const previousDelay = process.env.POSTGRES_TRANSIENT_RETRY_DELAY_MS;
+useEnvSandbox(["POSTGRES_TRANSIENT_RETRY_DELAY_MS"]);
 
 beforeAll(() => {
   process.env.POSTGRES_TRANSIENT_RETRY_DELAY_MS = "0";
-});
-
-afterAll(() => {
-  if (previousDelay === undefined) delete process.env.POSTGRES_TRANSIENT_RETRY_DELAY_MS;
-  else process.env.POSTGRES_TRANSIENT_RETRY_DELAY_MS = previousDelay;
 });
 
 function postgresError(code: string): Error & { code: string } {

@@ -110,13 +110,10 @@ import { escapeDiscordMarkdown } from "@/utils/text/discordMarkdown";
 import { localizer, resolveDescription } from "@/utils/text/localizer";
 import { normalizeTriggerWord } from "@/utils/text/triggerWords";
 import { buildSlugMap } from "@/utils/text/slugifyLabel";
-import {
-  DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX,
-  getDiscordTextLength,
-  truncateDiscordText,
-} from "@/utils/discord/ui/componentsV2Limits";
+import { DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX, getDiscordTextLength } from "@/utils/discord/ui/componentsV2Limits";
 import { measureFormattedPanelTextLength } from "@/utils/discord/ui/panelProse";
-import { FENCE_GUARD, neutralizeFenceRuns } from "@/utils/text/discordTextLimits";
+import { neutralizeFenceRuns } from "@/utils/text/discordTextLimits";
+import { renderFencedPreview } from "@/utils/text/textPreview";
 import { DEFAULT_SYSTEM_PROMPT } from "@/utils/text/contextBuilder";
 import { formatUTCOffset } from "@/utils/text/timezoneHelper";
 import { getCapabilitiesManagePermissionDefinitions } from "@/utils/discord/manageConfigMapping";
@@ -489,116 +486,6 @@ function renderFencedCollectionContent(content: string): string {
   return ["```markdown", neutralizeFenceRuns(content), "```"].join("\n");
 }
 
-interface BoundedFencedResult {
-  rendered: string;
-  isTruncated: boolean;
-  shownCount: number;
-  totalCount: number;
-  notice?: string;
-}
-
-interface BoundedFencedOptions {
-  noticePosition?: "inside" | "outside";
-}
-
-function formatTruncationNotice(locale: string, shown: number, total: number): string {
-  return localizer(locale, "commands.config.panel.content_truncated", {
-    shown: String(shown),
-    total: String(total),
-  });
-}
-
-function renderBoundedFencedContent(
-  locale: string,
-  content: string,
-  budget: number,
-  options?: BoundedFencedOptions,
-): BoundedFencedResult {
-  const totalCount = getDiscordTextLength(content);
-  if (budget <= 0) {
-    return {
-      rendered: "",
-      isTruncated: totalCount > 0,
-      shownCount: 0,
-      totalCount,
-    };
-  }
-
-  // Guarded before truncation so the guard's expansion counts against the budget rather than
-  // being appended past it.
-  const safeContent = neutralizeFenceRuns(content);
-  const fullRendered = renderFencedCollectionContent(safeContent);
-  if (getDiscordTextLength(fullRendered) <= budget) {
-    return {
-      rendered: fullRendered,
-      isTruncated: false,
-      shownCount: totalCount,
-      totalCount,
-    };
-  }
-
-  const noticePosition = options?.noticePosition ?? "inside";
-  const fenceOverhead = getDiscordTextLength(renderFencedCollectionContent(""));
-
-  if (noticePosition === "outside") {
-    const estimatedNotice = formatTruncationNotice(locale, budget, totalCount);
-    let available = Math.max(0, budget - fenceOverhead - getDiscordTextLength(estimatedNotice));
-    let truncatedSafe = truncateDiscordText(safeContent, available, "");
-    let shownCount = getDiscordTextLength(truncatedSafe.split(FENCE_GUARD).join(""));
-    let notice = formatTruncationNotice(locale, shownCount, totalCount);
-
-    while (
-      shownCount > 0 &&
-      getDiscordTextLength(renderFencedCollectionContent(truncatedSafe)) + getDiscordTextLength(notice) > budget
-    ) {
-      available = Math.max(0, available - 1);
-      truncatedSafe = truncateDiscordText(safeContent, available, "");
-      shownCount = getDiscordTextLength(truncatedSafe.split(FENCE_GUARD).join(""));
-      notice = formatTruncationNotice(locale, shownCount, totalCount);
-    }
-
-    return {
-      rendered: renderFencedCollectionContent(truncatedSafe),
-      isTruncated: true,
-      shownCount,
-      totalCount,
-      notice,
-    };
-  }
-
-  // Inside the fence: the notice is appended on a new line inside the markdown code block.
-  const estimatedNotice = formatTruncationNotice(locale, budget, totalCount);
-  let available = Math.max(0, budget - fenceOverhead - 1 - getDiscordTextLength(estimatedNotice));
-  let truncatedSafe = truncateDiscordText(safeContent, available, "");
-  let shownCount = getDiscordTextLength(truncatedSafe.split(FENCE_GUARD).join(""));
-  let notice = formatTruncationNotice(locale, shownCount, totalCount);
-
-  while (
-    shownCount > 0 &&
-    getDiscordTextLength(renderFencedCollectionContent(`${truncatedSafe}\n${notice}`)) > budget
-  ) {
-    available = Math.max(0, available - 1);
-    truncatedSafe = truncateDiscordText(safeContent, available, "");
-    shownCount = getDiscordTextLength(truncatedSafe.split(FENCE_GUARD).join(""));
-    notice = formatTruncationNotice(locale, shownCount, totalCount);
-  }
-
-  const rendered =
-    shownCount > 0
-      ? renderFencedCollectionContent(`${truncatedSafe}\n${notice}`)
-      : renderFencedCollectionContent(notice);
-
-  return {
-    // Truncating an already fenced string would cut its closing delimiter and leak the fence into
-    // the rest of the panel, so a budget too small for even the notice yields no block at all.
-    rendered: getDiscordTextLength(rendered) <= budget ? rendered : "",
-    isTruncated: true,
-    shownCount,
-    totalCount,
-    notice,
-  };
-}
-
 function renderBoundedChannelRows(
   locale: string,
   rows: readonly string[],
@@ -780,7 +667,7 @@ function buildAttributeCollectionBody(input: ConfigPanelRenderInput, persona: To
   const budget = getPersonaGeneralCollectionBudget(input, persona);
   const renderedSelectedContent =
     selectedAttributeContent !== undefined
-      ? `\n${renderBoundedFencedContent(locale, selectedAttributeContent, budget).rendered}`
+      ? `\n${renderFencedPreview(locale, selectedAttributeContent, { budget })}`
       : "";
 
   const components: ComponentInContainerData[] = [
@@ -918,7 +805,7 @@ function buildDialogueCollectionBody(input: ConfigPanelRenderInput, persona: Tom
   if (selectedInput !== undefined && selectedOutput !== undefined) {
     const dialoguePair = `${localizer(locale, "commands.config.panel.dialogue_user_prefix")}: ${selectedInput}
 ${localizer(locale, "commands.config.panel.dialogue_bot_prefix")}: ${selectedOutput}`;
-    renderedSelectedContent = `\n${renderBoundedFencedContent(locale, dialoguePair, budget).rendered}`;
+    renderedSelectedContent = `\n${renderFencedPreview(locale, dialoguePair, { budget })}`;
   }
 
   const components: ComponentInContainerData[] = [
@@ -1315,7 +1202,10 @@ ${localizer(locale, "commands.config.panel.image_tags_description")}
     const tagsBudget = Math.max(0, baseAllowance - fixedTextLength);
     const renderedTags =
       tags.length > 0
-        ? renderBoundedFencedContent(locale, tags.join(", "), tagsBudget).rendered
+        ? renderFencedPreview(locale, tags.join(", "), {
+            budget: tagsBudget,
+            actionLabel: localizer(locale, "commands.config.panel.edit_image_tags_button"),
+          })
         : renderFencedCollectionContent(localizer(locale, "commands.config.panel.none_label"));
     components.push(
       {
@@ -1473,7 +1363,10 @@ ${localizer(locale, "commands.config.panel.advanced_description")}`,
   if (promptState !== "omitted") {
     const promptText = persona.persona_prompt?.trim() ?? "";
     const renderedPrompt = promptText
-      ? renderBoundedFencedContent(locale, promptText, advancedPerValueBudget).rendered
+      ? renderFencedPreview(locale, promptText, {
+          budget: advancedPerValueBudget,
+          actionLabel: localizer(locale, "commands.config.panel.set_prompt_button"),
+        })
       : renderFencedCollectionContent(localizer(locale, "commands.config.panel.none_label"));
     components.push(
       {
@@ -1507,7 +1400,10 @@ ${renderedPrompt}`,
   if (contextState !== "omitted") {
     const note = persona.context_note?.trim() ?? "";
     const renderedNote = note
-      ? renderBoundedFencedContent(locale, note, advancedPerValueBudget).rendered
+      ? renderFencedPreview(locale, note, {
+          budget: advancedPerValueBudget,
+          actionLabel: localizer(locale, "commands.config.panel.edit_context_note_button"),
+        })
       : renderFencedCollectionContent(localizer(locale, "commands.config.panel.none_label"));
     components.push(
       {
@@ -1538,7 +1434,14 @@ ${renderedNote}`,
     const attgParts = [attgHeader];
     for (const { label, value } of attgValues) {
       attgParts.push(`**${label}**`);
-      attgParts.push(value ? renderBoundedFencedContent(locale, value, advancedPerValueBudget).rendered : noneContent);
+      attgParts.push(
+        value
+          ? renderFencedPreview(locale, value, {
+              budget: advancedPerValueBudget,
+              actionLabel: localizer(locale, "commands.config.panel.edit_nai_button"),
+            })
+          : noneContent,
+      );
     }
     attgParts.push(attgStars);
     components.push(
@@ -2175,7 +2078,7 @@ ${conditioningLines.join("\n")}`,
 
   const stmContent =
     stmSections.length > 0
-      ? renderBoundedFencedContent(locale, stmSections.join("\n\n"), personaMemoryStmBudget).rendered
+      ? renderFencedPreview(locale, stmSections.join("\n\n"), { budget: personaMemoryStmBudget })
       : `> ${localizer(locale, "commands.config.panel.stm_empty")}`;
   components.push(
     {
@@ -2357,12 +2260,21 @@ function buildBehaviorGeneralBody(input: ConfigPanelRenderInput): ComponentInCon
   const boundedValueCount = 1 + (contextNote ? 1 : 0) + (responsePrefill ? 1 : 0);
   const generalPerValueBudget = Math.floor(generalDynamicAllowance / boundedValueCount);
 
-  const renderedPrompt = renderBoundedFencedContent(locale, prompt, generalPerValueBudget).rendered;
+  const renderedPrompt = renderFencedPreview(locale, prompt, {
+    budget: generalPerValueBudget,
+    actionLabel: localizer(locale, "commands.config.panel.set_prompt_button"),
+  });
   const renderedContextNote = contextNote
-    ? renderBoundedFencedContent(locale, contextNote, generalPerValueBudget).rendered
+    ? renderFencedPreview(locale, contextNote, {
+        budget: generalPerValueBudget,
+        actionLabel: localizer(locale, "commands.config.panel.edit_context_note_button"),
+      })
     : renderFencedCollectionContent(localizer(locale, "commands.config.panel.none_label"));
   const renderedPrefill = responsePrefill
-    ? renderBoundedFencedContent(locale, responsePrefill, generalPerValueBudget).rendered
+    ? renderFencedPreview(locale, responsePrefill, {
+        budget: generalPerValueBudget,
+        actionLabel: localizer(locale, "commands.config.panel.set_prefill_button"),
+      })
     : noneContent;
 
   components.push(
@@ -3141,8 +3053,14 @@ function buildBehaviorMemoryBody(input: ConfigPanelRenderInput): ComponentInCont
   const memoryDynamicAllowance = Math.max(0, baseAllowance - fixedTextLength);
   const memoryPerValueBudget = Math.floor(memoryDynamicAllowance / 2);
 
-  const renderedToolDescription = renderBoundedFencedContent(locale, toolDescription, memoryPerValueBudget).rendered;
-  const renderedUpdateNudge = renderBoundedFencedContent(locale, updateNudge, memoryPerValueBudget).rendered;
+  const renderedToolDescription = renderFencedPreview(locale, toolDescription, {
+    budget: memoryPerValueBudget,
+    actionLabel: localizer(locale, "commands.config.panel.edit_stm_prompt_button"),
+  });
+  const renderedUpdateNudge = renderFencedPreview(locale, updateNudge, {
+    budget: memoryPerValueBudget,
+    actionLabel: localizer(locale, "commands.config.panel.edit_stm_prompt_button"),
+  });
 
   components.push(
     {
@@ -3515,7 +3433,10 @@ ${localizer(locale, "commands.config.panel.channels_welcome_prompt_value_label")
       type: ComponentType.TextDisplay,
       content: `${welcomeHeader}${
         view.welcomePrompt
-          ? renderBoundedFencedContent(locale, view.welcomePrompt, destinationsBudget).rendered
+          ? renderFencedPreview(locale, view.welcomePrompt, {
+              budget: destinationsBudget,
+              actionLabel: localizer(locale, "commands.config.panel.channels_configure_welcome_button"),
+            })
           : renderFencedCollectionContent(none)
       }`,
     },
@@ -4016,7 +3937,10 @@ ${localizer(locale, "commands.config.panel.channels_overrides_text_model_descrip
         content: `> ${localizer(locale, "commands.config.panel.channels_overrides_prompt_mode_label")}: ${promptMode}
 ${
   prompt?.prompt
-    ? renderBoundedFencedContent(locale, prompt.prompt, overridesPerValueBudget).rendered
+    ? renderFencedPreview(locale, prompt.prompt, {
+        budget: overridesPerValueBudget,
+        actionLabel: localizer(locale, "commands.config.panel.channels_overrides_set_prompt_button"),
+      })
     : renderFencedCollectionContent(none)
 }`,
       },
@@ -4063,7 +3987,10 @@ ${localizer(locale, "commands.config.panel.channels_overrides_context_note_descr
         content: `> ${localizer(locale, "commands.config.panel.channels_overrides_context_note_depth_label")}: ${contextNote?.depth ?? none}
 ${
   contextNote?.note
-    ? renderBoundedFencedContent(locale, contextNote.note, overridesPerValueBudget).rendered
+    ? renderFencedPreview(locale, contextNote.note, {
+        budget: overridesPerValueBudget,
+        actionLabel: localizer(locale, "commands.config.panel.channels_overrides_edit_context_note_button"),
+      })
     : renderFencedCollectionContent(none)
 }`,
       },

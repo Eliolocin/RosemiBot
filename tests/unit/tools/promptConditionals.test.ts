@@ -6,7 +6,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AssembledServerConfig } from "@/types/db/schema";
 import type { ToolStateForContext } from "@/tools/toolRegistry";
+import { DOCUMENT_HINT_TEMPLATE } from "@/utils/text/context/dialogueHistory";
 import { DEFAULT_SYSTEM_PROMPT } from "@/utils/text/context/templates";
+import { SPACER_TEMPLATE } from "@/utils/text/context/timeAwareness";
 import { findUnsupportedPresetMacros } from "@/utils/text/stPresetEngine";
 import {
   createToolPromptMacroResolver,
@@ -224,6 +226,30 @@ describe("prompt macro resolver condition integration", () => {
     );
 
     expect(expanded).toBe("no-memory/search");
+  });
+
+  it("names a tool in a context hint only when the turn exposes it", async () => {
+    const hints = [
+      { template: DOCUMENT_HINT_TEMPLATE, toolName: "read_file" },
+      { template: SPACER_TEMPLATE, toolName: "reveal_message_metadata" },
+    ];
+    const failures: string[] = [];
+    for (const { template, toolName } of hints) {
+      for (const allowed of [true, false]) {
+        const resolver = createToolPromptMacroResolver({
+          provider: "google",
+          stateForContext: TOOL_STATE,
+          capabilities: ENABLED_CAPABILITIES,
+          availableToolNames: new Set([toolName, "web_search"]),
+          deliberateToolAllowedNames: allowed ? [toolName] : ["web_search"],
+        });
+        const expanded = await resolver.expand(template);
+        if (expanded.includes(toolName) !== allowed || expanded.includes("{{")) {
+          failures.push(`${toolName} allowed=${allowed}: ${expanded}`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
   });
 
   it("hides tool branches when the active model cannot call tools", async () => {

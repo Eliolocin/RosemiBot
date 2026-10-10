@@ -8,6 +8,7 @@ import {
   isSupportedVideoAttachmentContentType,
 } from "@/utils/chat/contextMedia";
 import { log } from "@/utils/misc/logger";
+import type { SimplifiedMessageForContext } from "@/utils/text/context/types";
 import { DELIBERATE_TOOL_PACK_KEYS, getIntentPackUnion } from "@/utils/text/localeIntentPacks";
 import { isUnspacedScriptText } from "@/utils/text/processors/regexUtils";
 
@@ -795,6 +796,38 @@ export function getRecentTriggeredToolIntentResult(
       new Map(matches.map((match) => [`${match.toolName}\0${match.trigger}\0${match.source}`, match])).values(),
     ),
   };
+}
+
+/**
+ * Media on the triggering message is itself the request to look at it, so each kind admits only the
+ * tool that reads that kind. Media elsewhere in history admits nothing; otherwise one old GIF would
+ * keep its tool exposed for every later turn. Each tool's own availability gate still decides whether
+ * the model receives it (`analyze_image` only reaches a model that cannot see images).
+ */
+export function getAttachmentDeliberateToolIntentResult(
+  message:
+    | Pick<SimplifiedMessageForContext, "imageAttachments" | "videoAttachments" | "documentAttachments">
+    | undefined,
+): DeliberateToolIntentResult {
+  const allowedToolNames: string[] = [];
+  const matches: DeliberateToolIntentMatch[] = [];
+  if (!message) return { allowedToolNames, matches };
+
+  const images = message.imageAttachments.filter((attachment) => !attachment.isEmoji);
+  if ((message.documentAttachments?.length ?? 0) > 0) {
+    addToolMatches(allowedToolNames, matches, ["read_file"], "attached file", "built-in");
+  }
+  if (images.length > 0) {
+    addToolMatches(allowedToolNames, matches, ["analyze_image"], "attached image", "built-in");
+  }
+  if (images.some((attachment) => attachment.mimeType === "image/gif")) {
+    addToolMatches(allowedToolNames, matches, ["process_gif"], "attached GIF", "built-in");
+  }
+  if (message.videoAttachments.some((attachment) => attachment.isYouTubeLink)) {
+    addToolMatches(allowedToolNames, matches, ["process_youtube_video"], "YouTube link", "built-in");
+  }
+
+  return { allowedToolNames, matches };
 }
 
 /** Expression tools remain available without a task request; their feature toggles still apply. */

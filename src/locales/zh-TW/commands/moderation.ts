@@ -191,7 +191,6 @@ export default {
     remove_blacklist_group_description: `取消勾選後送出，即可移除黑名單項目`,
     remove_whitelist_group_description: `取消勾選後送出，即可移除白名單`,
     remove_group_continuation: `續（{index}）`,
-    remove_modal_limit: `這份清單超過 50 個項目，無法放進同一個視窗。`,
     remove_nothing_changed: `沒有移除任何項目`,
     remove_nothing_changed_detail: `所有項目都保持選取。不需要寫入。`,
 

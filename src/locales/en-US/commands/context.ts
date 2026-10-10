@@ -23,7 +23,7 @@ export default {
     estimate_note: `Estimated at about 4 characters per token.`,
     not_counted_note: `Images, videos, and provider message formatting are not counted.`,
     truncated_note: `Chat history is over the budget, so the oldest {count} exchange(s) are already left out.`,
-    text_locked_note: `Viewing the full prompt needs Manage Server, or a manager can allow it for members in \`/moderation\`.`,
+    text_locked_note: `Viewing the full prompt in this server needs permissions.`,
     view_text_button: `View as Text`,
     view_json_button: `View as JSON`,
     persona_not_found_title: `Persona Not Found`,

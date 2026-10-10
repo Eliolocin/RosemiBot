@@ -23,7 +23,7 @@ export default {
     estimate_note: `Estimado en unos 4 caracteres por token.`,
     not_counted_note: `Imágenes, videos y formato de mensajes del proveedor no están incluidos.`,
     truncated_note: `El historial de chat supera el presupuesto, así que los {count} intercambios más antiguos ya se han omitido.`,
-    text_locked_note: `Para ver el prompt completo necesitas Gestionar servidor, o un administrador puede permitirlo a los miembros en \`/moderation\`.`,
+    text_locked_note: `Ver el prompt completo en este servidor requiere permisos.`,
     view_text_button: `Ver como texto`,
     view_json_button: `Ver como JSON`,
     persona_not_found_title: `Persona no encontrada`,

@@ -1,16 +1,10 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { validateRemoteUrl } from "@/utils/security/remoteUrlSecurity";
+import { useEnvSandbox } from "../../helpers/env";
 
 const RUN_ENV_NAME = "RUN_ENV";
-const originalRunEnv = process.env[RUN_ENV_NAME];
 
-afterEach(() => {
-  if (originalRunEnv === undefined) {
-    delete process.env[RUN_ENV_NAME];
-  } else {
-    process.env[RUN_ENV_NAME] = originalRunEnv;
-  }
-});
+useEnvSandbox([RUN_ENV_NAME]);
 
 // Gate 2 (validateRemoteUrl) backs the safe_http fetch engine, every redirect
 // hop, and all custom-endpoint/MCP HTTP calls. The cloud-metadata denylist must

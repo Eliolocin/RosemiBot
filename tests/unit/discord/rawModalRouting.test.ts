@@ -115,7 +115,7 @@ describe("routed raw modal gateway support", () => {
           id: "modal-submit-2",
           type: 5,
           data: {
-            custom_id: "moderation:v1:member-access-submit:en-US:abcd1234",
+            custom_id: "moderation:v2:member-access-submit:en-US:abcd1234",
             components: [
               {
                 type: 18,
@@ -178,7 +178,7 @@ describe("routed raw modal gateway support", () => {
           id: "modal-submit-empty",
           type: 5,
           data: {
-            custom_id: "moderation:v1:member-access-submit:en-US:empty123",
+            custom_id: "moderation:v2:member-access-submit:en-US:empty123",
             components: [
               {
                 type: 18,
@@ -229,7 +229,7 @@ describe("routed raw modal gateway support", () => {
           id: "modal-submit-user-select",
           type: 5,
           data: {
-            custom_id: "moderation:v1:user-blacklist-add-submit:en-US:user1234",
+            custom_id: "moderation:v2:user-blacklist-add-submit:en-US:user1234",
             components: [
               {
                 type: 18,
@@ -291,7 +291,7 @@ describe("routed raw modal gateway support", () => {
           id: "modal-submit-channel-select",
           type: 5,
           data: {
-            custom_id: "moderation:v1:whitelist-channel-add-submit:en-US:chan1234",
+            custom_id: "moderation:v2:whitelist-channel-add-submit:en-US:chan1234",
             components: [
               {
                 type: 18,
@@ -379,7 +379,7 @@ describe("routed raw modal gateway support", () => {
           id: "modal-submit-role-select",
           type: 5,
           data: {
-            custom_id: "moderation:v1:whitelist-role-add-submit:en-US:role1234",
+            custom_id: "moderation:v2:whitelist-role-add-submit:en-US:role1234",
             components: [
               {
                 type: 18,

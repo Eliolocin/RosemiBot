@@ -9,17 +9,16 @@ export default {
       import_unavailable:
         "A Response Drafting selection is unavailable in this workspace. Clear it in the source export or register an eligible local model or checker before importing.",
       title: "Response Drafting",
-      description: "Review my drafts before I send replies or use tools.",
-      off: "When Off: I send replies and use tools without Response Drafting review.",
-      on: "When On: My replies and tool calls enter a review pipeline before I send them or act.",
-      cost: "Turning this on can increase response time and cost because review and revisions can use additional model calls and tokens.",
-      pending:
-        "Decision skipping is inactive: model-specific writing and tool checks still need labeled validation. A saved decision model makes no paid calls while calibration is missing.",
+      description:
+        "My responses get reviewed then revised first before being sent. Can increase response time and cost.",
+      off: "I send replies and use tools without Response Drafting review.",
+      on: "My replies and tool calls enter a review pipeline before I send them or act.",
       models_title: "Switch Models",
-      models_description:
-        "Choose who reviews my drafts and whether a decision model checks which ones need detailed review.",
+      models_description: "Choose who reviews my drafts. Optionally set a decision model to speed up reviews.",
       reviewer_button: "Choose Reviewer Model",
       decision_button: "Choose Decisions Model",
+      reviewer_label: "Reviewer",
+      decision_label: "Decisions",
       inherit: "Use current response model",
       reviewer_status: "Reviewer: {model}",
       inherited_status: "Reviewer: Use current response model ({model})",
@@ -27,28 +26,19 @@ export default {
       none: "None",
       unavailable: "Unavailable",
       decision_note:
-        "Decision selection stays saved. Skipping needs validated thresholds for this model and each review rubric; detailed review remains active within its budgets.",
-      custom_status:
-        "Custom instructions: Skipping is inactive. Eligible drafts receive detailed review within turn limits; the selected decision model stays saved.",
+        "Decision models are currently experimental. They are cheaper and can speed up Response Drafting, but may cause worse results.",
       rules_title: "Rule Checks",
-      rules_description:
-        "Choose an optional text rule checker. Only the reviewer receives its advisory findings. Profile and language coverage are unknown unless separately verified; short replies may receive no analysis.",
-      checker_button: "Choose Rule Checker",
+      rules_description: "Choose an optional prose checker. It is rule-based, so it costs no time or tokens.",
       checker_status: "Rule checker: {checker}",
       prompt_title: "Reviewer Prompt",
       prompt_description: "Instructions the reviewer follows to help me stay in character.",
-      prompt_custom: "Custom prompt",
-      prompt_default: "Default prompt",
       prompt_button: "Set Prompt",
       default_button: "Use Default",
       prompt_label: "Reviewer instructions",
       prompt_guidance: "Up to 4,000 characters. Use Default restores the built-in instructions.",
-      preview_hidden: "The preview is shortened. Set Prompt opens the complete instructions.",
       saved_heading: "Response Drafting updated",
       saved_detail: "Your Response Drafting settings have been saved.",
       invalid_detail: "Enter non-empty instructions with at most 4,000 characters.",
-      checker_hint:
-        "Select an enabled checker below. If none is available, connect a compatible check_slop(text) tool on the MCP Servers page.",
       default_prompt:
         "You are reviewing a roleplaying character's next reply before it reaches the user.\n\nYour job is to help this specific character feel alive, entertaining, and unmistakably themselves. Judge the draft through their personality, sample dialogues, relationships, and the current conversation.\n\nLook for:\n\n- Character presence: Does the character have their own feelings, preferences, motives, and perspective here? Could this reply come from almost any generic chatbot?\n\n- Playing rather than assisting: Are they participating in the conversation or scene, or slipping into explanations, advice, summaries, polite service language, or detached commentary? Assistance can fit when expressed naturally through the character.\n\n- Initiative: Do they contribute something of their own that gives the exchange momentum? This might be an opinion, playful challenge, action, observation, invitation, or revealing detail. Simply paraphrasing the user and asking another question is often weak.\n\n- Chemistry: Does the reply notice and respond to the user's emotional energy and the relationship between them? Does it create an opening for a reaction that fits this character, such as amusement, curiosity, affection, tension, or surprise?\n\n- Variety: Does it repeat recent phrasing, gestures, jokes, emotional beats, or conversational patterns? Is the personality becoming a single gimmick?\n\n- Scene fit: Does the contribution feel earned by what is happening? Preserve continuity and leave room for the user to participate.\n\nDo not demand constant jokes, conflict, flirtation, dramatic escalation, or longer replies. Quiet, sincere, awkward, or simple moments can be excellent when they fit the character. Proactivity means contributing something while giving the user room to participate. Do not force a new topic or take over the user's character.\n\nJudge the draft within the conversation's established genre, tone, and boundaries.\n\nProfanity, crude language, disturbing fictional themes, and emotional intensity are not defects by themselves. Do not recommend making a scene gentler, more polite, or more wholesome merely because you prefer that tone.\n\nDistinguish an intentional character trait from a writing failure. A cruel character being cruel, or a vulgar character using vulgar language, may fit perfectly. Evaluate whether the portrayal is convincing, varied, and consistent with the scene.\n\nRequest revision for a concrete weakness in the roleplay. Personal disapproval of its subject matter is not a creative finding.\n\nIf you cannot evaluate the material under your applicable rules, return an unavailable review rather than presenting that limitation as creative criticism.\n\nPass a draft that already works. Request revision only when a concrete weakness meaningfully hurts the character or the exchange.\n\nWhen requesting revision, identify the weak beat and suggest a small, specific direction grounded in this persona. Preserve their voice. Do not replace it with polished assistant prose or write the final reply yourself.",
     },
@@ -717,7 +707,6 @@ export default {
       stm_active_channel: `Active channel: {channel}`,
       stm_no_channel: `No channel context is available.`,
       stm_empty: `No short-term memory is stored for this channel.`,
-      content_truncated: `Content truncated ({shown}/{total} shown).`,
       stm_edit_button: `Edit Short-Term Memory`,
       conditioning_title: `**[Conditioning](https://docs.tomoribot.app/en/features/knowledge/memory/#conditioning)**`,
       conditioning_description: `Rewards and punishments shape this persona's responses.`,

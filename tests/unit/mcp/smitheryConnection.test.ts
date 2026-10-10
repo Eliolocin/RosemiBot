@@ -5,6 +5,7 @@ import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
 import { connectSmithery } from "@/utils/mcp/smitheryConnection";
 import * as remotePolicy from "@/utils/security/remoteUrlSecurity";
 import { stubGlobalFetch } from "../../helpers/fetchStub";
+import { useEnvSandbox } from "../../helpers/env";
 
 const KEY = "smk_canary_7Qx/+=";
 const KEY_FORMS = [KEY, encodeURIComponent(KEY), btoa(KEY)];
@@ -104,7 +105,7 @@ function expectNoKeyIn(message: string): void {
 
 describe("Smithery Connect transport", () => {
   let validation: ReturnType<typeof spyOn>;
-  const ambient = { base: process.env.SMITHERY_BASE_URL, connect: process.env.SMITHERY_CONNECT_BASE_URL };
+  useEnvSandbox(["SMITHERY_BASE_URL", "SMITHERY_CONNECT_BASE_URL"]);
 
   beforeEach(() => {
     validation = spyOn(remotePolicy, "validateRemoteUrl").mockImplementation(async (url) => ({
@@ -116,10 +117,6 @@ describe("Smithery Connect transport", () => {
 
   afterEach(() => {
     validation.mockRestore();
-    process.env.SMITHERY_BASE_URL = ambient.base;
-    process.env.SMITHERY_CONNECT_BASE_URL = ambient.connect;
-    if (ambient.base === undefined) delete process.env.SMITHERY_BASE_URL;
-    if (ambient.connect === undefined) delete process.env.SMITHERY_CONNECT_BASE_URL;
   });
 
   it("restores a saved registration, sending its key only to the pinned Smithery origin", async () => {

@@ -26,6 +26,7 @@ When a capability is turned off, she cannot perform that action regardless of us
 
 
 ## Response drafting
+<!-- anchor: response-drafting -->
 
 Open `/config` > `Plugins` > `Response Drafting` to turn review On. It starts Off and applies to
 every persona in that workspace, including queued replies and generated scenes. Guild managers
@@ -37,18 +38,18 @@ rejected requests can receive a bounded correction. Successful actions are retai
 reply is revised. Text still uses the usual persona identity, emoji handling, and formatting.
 Review and revisions can increase response time and token cost; the page shows this in both states.
 
-`Choose Reviewer Model` selects an eligible registered text model. `Use current response model`
+The `Reviewer` dropdown selects an eligible registered text model. `Use current response model`
 uses the model and credentials actually answering, including your personal provider or a fallback.
 A pinned reviewer uses the workspace's own registration and credentials. Text-only authors and
 authors with Tool Use disabled can still use an eligible reviewer. An unsupported inherited model
 shows `Unavailable`; choose a supported reviewer to enable detailed review.
 
 `Set Prompt` edits the review instructions, up to 4,000 characters. `Use Default` restores the
-persona-aware default. `Choose Rule Checker` selects an already registered compatible MCP checker,
+persona-aware default. The `Rule checker` dropdown selects an already registered compatible MCP checker,
 or `None`. Its findings go privately to the reviewer, which decides whether they matter for this
 character. The checker has no validated language/profile guarantee in this release.
 
-`Choose Decisions Model` saves a Decision registration from `/providers`. Skipping detailed review
+The `Decisions` dropdown saves a Decision registration from `/providers`. Skipping detailed review
 is inactive until each model and review rubric has labeled quality evidence. A saved selection
 makes no paid Decision requests in this release. Custom prompts also keep skipping inactive.
 Clearing either model restores reviewer inheritance or `None`; turning Off keeps your choices.

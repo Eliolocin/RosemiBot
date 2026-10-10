@@ -157,8 +157,12 @@ Review existing snapshots under the old log mount, log-shipping destinations, an
 
 ### Streaming JSON Logs
 
-- `TOMORI_LOG_FILE`: Mirrors log records with level >= 50 (error, metric, rateLimit, fatal) to an
-  append-only JSONL file for consumption by host agents (e.g. Azure Monitor Agent).
+- `LOG_LEVEL` (default: `error` in production, `info` otherwise): The lowest level written to
+  stdout and the JSONL file. Raise it to `warn` while diagnosing a user's report, then unset it.
+  Metrics are written at every level.
+- `TOMORI_LOG_FILE`: Mirrors every emitted record (error, rateLimit, fatal, and metric samples at
+  the default level) to an append-only JSONL file for consumption by host agents (e.g. Azure
+  Monitor Agent).
 - `LOG_MAX_STRING_LENGTH` (default: unset): Optional cap for oversized string fields. Unset by
   default so prompts, memories, and stack traces remain complete. Base64 data URIs are collapsed
   directly in log redaction regardless of this setting.

@@ -104,14 +104,12 @@ export async function refreshLiveModelLimits(
     const retryMs = status === HTTP_NOT_FOUND ? SUCCESS_REFRESH_MS : FAILURE_RETRY_MS;
     const previous = entries.get(key)?.limits ?? null;
     entries.set(key, { limits: previous, refreshAt: Date.now() + retryMs });
+    // The status stays on the metric because a 401 is how a rotated key shows up on a dashboard.
+    log.metric("live_model_limits_lookup_failed", { provider, codename, status });
     // Message only: a provider SDK error object can carry request details, including credentials.
-    // A metric because production drops warn-level logs, which would hide a rotated key for good.
-    log.metric("live_model_limits_lookup_failed", {
-      provider,
-      codename,
-      status,
-      reason: error instanceof Error ? error.message : String(error),
-    });
+    log.warn(
+      `Live model limits lookup failed (${provider}, ${codename}): ${error instanceof Error ? error.message : String(error)}`,
+    );
   } finally {
     inFlight.delete(key);
   }

@@ -1,16 +1,17 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { buildLogStreams, buildMetricPayload, LOG_REDACTION_PATHS, log, sanitizeLogPayload } from "@/utils/misc/logger";
+import { describe, expect, spyOn, test } from "bun:test";
+import { errorLogRepository } from "@/utils/db/repositories/ErrorLogRepository";
+import {
+  buildLogStreams,
+  buildMetricPayload,
+  LOG_REDACTION_PATHS,
+  log,
+  resolveLogLevel,
+  sanitizeLogPayload,
+} from "@/utils/misc/logger";
 import pino from "pino";
+import { useEnvSandbox } from "../../helpers/env";
 
-const originalLogMaxStringLength = process.env.LOG_MAX_STRING_LENGTH;
-
-afterEach(() => {
-  if (originalLogMaxStringLength === undefined) {
-    delete process.env.LOG_MAX_STRING_LENGTH;
-  } else {
-    process.env.LOG_MAX_STRING_LENGTH = originalLogMaxStringLength;
-  }
-});
+useEnvSandbox(["LOG_MAX_STRING_LENGTH"]);
 
 /**
  * Minimal in-memory sink implementing pino's DestinationStream contract.
@@ -27,17 +28,20 @@ class MemorySink implements pino.DestinationStream {
 
 /**
  * Mirrors the production logger construction from logger.ts:
- * JSON mode (no transport), level "error", same custom levels, multistream output.
+ * JSON mode (no transport), level "error", same custom levels, multistream output, and the
+ * metric child logger that pins its own level.
  */
-const createProductionLikeLogger = (streams: pino.StreamEntry[]) =>
-  pino(
+const createProductionLikeLogger = (streams: pino.StreamEntry[]) => {
+  const logger = pino(
     {
       level: "error",
-      customLevels: { success: 35, section: 31, metric: 52, rateLimit: 55 },
+      customLevels: { success: 35, section: 31, metric: 25, rateLimit: 55 },
       redact: { paths: LOG_REDACTION_PATHS, censor: "[REDACTED]" },
     },
     pino.multistream(streams),
   );
+  return { logger, metricLogger: logger.child({}, { level: "metric" }) };
+};
 
 describe("buildLogStreams", () => {
   test("returns undefined when no log file is configured", () => {
@@ -65,15 +69,16 @@ describe("buildLogStreams", () => {
     const streams = buildLogStreams("/app/logs/tomoribot.jsonl", stdoutSink, () => fileSink);
     if (!streams) throw new Error("Expected stream entries when a file path is configured");
 
-    const logger = createProductionLikeLogger(streams);
+    const { logger, metricLogger } = createProductionLikeLogger(streams);
 
     // Error record with nested err/context shapes, as produced by log.error()
     logger.error({ err: { name: "TypeError", message: "boom" }, context: { commandName: "chat" } }, "Chat turn failed");
-    // Custom metric level (52) sits above error and must pass through
+    // The metric level sits below info, so only the child's pinned level lets it through
     // biome-ignore lint/suspicious/noExplicitAny: Custom Pino level added at runtime
-    (logger as any).metric({ metric: "cache_sizes" }, "metric:cache_sizes");
+    (metricLogger as any).metric({ metric: "cache_sizes" }, "metric:cache_sizes");
     // Below the production "error" level, so must be filtered from BOTH sinks
     logger.info("hidden in production");
+    logger.warn("hidden in production");
 
     // Both sinks received byte-identical newline-delimited records
     expect(stdoutSink.lines).toEqual(fileSink.lines);
@@ -85,7 +90,8 @@ describe("buildLogStreams", () => {
     expect(errorRecord?.msg).toBe("Chat turn failed");
     expect((errorRecord?.err as Record<string, unknown> | undefined)?.message).toBe("boom");
     expect((errorRecord?.context as Record<string, unknown> | undefined)?.commandName).toBe("chat");
-    expect(metricRecord?.level).toBe(52);
+    // A severity range query must never count a sample as a problem
+    expect(metricRecord?.level).toBeLessThan(30);
     expect(metricRecord?.msg).toBe("metric:cache_sizes");
   });
 
@@ -95,7 +101,7 @@ describe("buildLogStreams", () => {
     const streams = buildLogStreams("/app/logs/tomoribot.jsonl", stdoutSink, () => fileSink);
     if (!streams) throw new Error("Expected stream entries when a file path is configured");
 
-    const logger = createProductionLikeLogger(streams);
+    const { logger } = createProductionLikeLogger(streams);
     const secrets = ["super-secret-password", "provider-api-token", "discord-webhook-token", "signed-query-value"];
 
     logger.error(
@@ -137,21 +143,17 @@ describe("buildLogStreams", () => {
 
   test("long strings are capped when LOG_MAX_STRING_LENGTH is explicitly configured", () => {
     process.env.LOG_MAX_STRING_LENGTH = "4096";
-    try {
-      const secret = "straddling-password";
-      // The password starts just before the 4096-character cap and ends past it.
-      const prefix = "x".repeat(4096 - 30);
-      const sanitized = sanitizeLogPayload(
-        `${prefix} postgresql://tomori:${secret}@db.example.com/tomori ${"y".repeat(100_000)}`,
-      ) as string;
+    const secret = "straddling-password";
+    // The password starts just before the 4096-character cap and ends past it.
+    const prefix = "x".repeat(4096 - 30);
+    const sanitized = sanitizeLogPayload(
+      `${prefix} postgresql://tomori:${secret}@db.example.com/tomori ${"y".repeat(100_000)}`,
+    ) as string;
 
-      expect(sanitized).not.toContain(secret);
-      expect(sanitized).not.toContain("straddling");
-      expect(sanitized).toContain("[TRUNCATED");
-      expect(sanitized.length).toBeLessThan(4200);
-    } finally {
-      delete process.env.LOG_MAX_STRING_LENGTH;
-    }
+    expect(sanitized).not.toContain(secret);
+    expect(sanitized).not.toContain("straddling");
+    expect(sanitized).toContain("[TRUNCATED");
+    expect(sanitized.length).toBeLessThan(4200);
   });
 
   test("strings under the cap are only redacted, never truncated", () => {
@@ -210,14 +212,10 @@ describe("buildLogStreams", () => {
 
   test("truncated colored strings preserve ANSI reset sequence", () => {
     process.env.LOG_MAX_STRING_LENGTH = "4096";
-    try {
-      const longColoredText = `\x1b[33m${"x".repeat(5000)}\x1b[0m`;
-      const sanitized = sanitizeLogPayload(longColoredText) as string;
-      expect(sanitized).toContain("[TRUNCATED");
-      expect(sanitized.endsWith("\x1b[0m")).toBe(true);
-    } finally {
-      delete process.env.LOG_MAX_STRING_LENGTH;
-    }
+    const longColoredText = `\x1b[33m${"x".repeat(5000)}\x1b[0m`;
+    const sanitized = sanitizeLogPayload(longColoredText) as string;
+    expect(sanitized).toContain("[TRUNCATED");
+    expect(sanitized.endsWith("\x1b[0m")).toBe(true);
   });
 
   test("metric payloads redact free-text credentials while numeric fields keep their type", () => {
@@ -250,5 +248,33 @@ describe("buildLogStreams", () => {
     expect(() => log.metric("metric_probe", { value: 7 })).not.toThrow();
     expect(() => log.rateLimit("rate limit probe", { bucket: "messages" })).not.toThrow();
     expect(() => log.rateLimit("rate limit probe without metadata")).not.toThrow();
+  });
+});
+
+describe("resolveLogLevel", () => {
+  test("defaults to error in production and info elsewhere", () => {
+    expect(resolveLogLevel(undefined, true)).toBe("error");
+    expect(resolveLogLevel(undefined, false)).toBe("info");
+  });
+
+  test("lets a hoster raise production verbosity to warn", () => {
+    expect(resolveLogLevel(" WARN ", true)).toBe("warn");
+  });
+
+  test("falls back to the default for an unknown value so a typo cannot silence errors", () => {
+    expect(resolveLogLevel("verbose", true)).toBe("error");
+    expect(resolveLogLevel("", false)).toBe("info");
+  });
+});
+
+describe("log.error persistence", () => {
+  test("persist: false skips the error_logs insert", async () => {
+    const insertSpy = spyOn(errorLogRepository, "insertErrorLog");
+    try {
+      await log.error("pool probe", new Error("pool retired"), undefined, { persist: false });
+      expect(insertSpy).not.toHaveBeenCalled();
+    } finally {
+      insertSpy.mockRestore();
+    }
   });
 });

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import sharp from "sharp";
 import ffmpeg from "ffmpeg-static";
 import type { APIAttachment } from "discord.js";
@@ -13,23 +13,17 @@ import {
 } from "@/utils/storage/expressionMedia";
 import { deleteExpressionMedia, loadExpressionMedia, storeExpressionMedia } from "@/utils/storage/expressionStorage";
 import { safeDownload } from "@/utils/security/safeDownload";
+import { useEnvSandbox } from "../../helpers/env";
 
 describe("expression media validation and owned storage", () => {
   let png: Buffer;
-  const previousBackend = process.env.EXPRESSION_STORAGE_BACKEND;
-  const previousNodeEnv = process.env.RUN_ENV;
+  useEnvSandbox(["EXPRESSION_STORAGE_BACKEND", "RUN_ENV"]);
   beforeAll(async () => {
     process.env.EXPRESSION_STORAGE_BACKEND = "local";
     process.env.RUN_ENV = "development";
     png = await sharp({ create: { width: 4, height: 4, channels: 4, background: "red" } })
       .png()
       .toBuffer();
-  });
-  afterAll(() => {
-    if (previousBackend === undefined) delete process.env.EXPRESSION_STORAGE_BACKEND;
-    else process.env.EXPRESSION_STORAGE_BACKEND = previousBackend;
-    if (previousNodeEnv === undefined) delete process.env.RUN_ENV;
-    else process.env.RUN_ENV = previousNodeEnv;
   });
   it("decodes all supported image formats and both JPEG extensions", async () => {
     for (const format of ["png", "jpeg", "webp", "gif"] as const) {

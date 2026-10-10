@@ -393,10 +393,8 @@ export type ConfigPanelRoute =
   | { action: "draft-prompt-open"; locale: string }
   | { action: "draft-default"; locale: string }
   | { action: "draft-prompt-submit"; locale: string; nonce: string }
-  | { action: "draft-picker"; locale: string; slot: DraftModelSlot; provider: string; start: number }
   | { action: "draft-provider"; locale: string; slot: DraftModelSlot }
   | { action: "draft-model-submit"; locale: string; slot: DraftModelSlot; provider: string; nonce: string }
-  | { action: "draft-checker"; locale: string; start: number }
   | { action: "draft-checker-select"; locale: string; start: number; fp: string }
   | { action: "category"; locale: string; category: ConfigCategory; page: ConfigPage }
   | { action: "page"; locale: string; category: ConfigCategory; page: ConfigPage }
@@ -898,10 +896,8 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "draft-prompt-open": { wireToken: "draft-prompt-open", fields: [] },
   "draft-default": { wireToken: "draft-default", fields: [] },
   "draft-prompt-submit": { wireToken: "draft-prompt-submit", fields: [nonceField] },
-  "draft-picker": { wireToken: "draft-picker", fields: [draftSlotField, providerField, startField] },
   "draft-provider": { wireToken: "draft-provider", fields: [draftSlotField] },
   "draft-model-submit": { wireToken: "draft-model-submit", fields: [draftSlotField, providerField, nonceField] },
-  "draft-checker": { wireToken: "draft-checker", fields: [startField] },
   "draft-checker-select": { wireToken: "draft-checker-select", fields: [startField, fpField] },
   category: { wireToken: "category", fields: [categoryField, pageField] },
   page: { wireToken: "page", fields: [categoryField, pageField] },

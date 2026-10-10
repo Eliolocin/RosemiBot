@@ -32,7 +32,7 @@ export default {
       invalid_character_identity: `無効なキャラクターIDです: {id}。persona:<id>、短い数値のペルソナID、またはDiscordのユーザースノーフレークを使用してください。`,
     },
     search: {
-      category_search_title: `🔍 __{category}__で \`{query}\` を検索中...`,
+      category_search_title: `🔍 {category}で \`{query}\` を検索中...`,
       category_labels: {
         text: `ウェブ`,
         image: `画像`,

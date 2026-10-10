@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { formatTargetEmbedForContext, processEmbedsFromMessage } from "@/utils/chat/contextEmbeds";
 import { PROTOCOL_KEYS, classifyProtocolTitle, isMinimalTitleKind } from "@/utils/discord/embedProtocol";
 import { buildNoticeContainer } from "@/utils/discord/ui/statusComponents";
-import { localizedMinimalTitle } from "@/utils/discord/ui/statusTitle";
+import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 import { ColorCode } from "@/utils/misc/logger";
 import { getSupportedLocales, hasLocaleKey, initializeLocalizer, localizer } from "@/utils/text/localizer";
 
@@ -18,7 +18,7 @@ describe("Minimal notice titles", () => {
     for (const locale of getSupportedLocales()) {
       for (const entry of minimalEntries) {
         if (!hasLocaleKey(locale, entry.key)) continue;
-        const minimal = localizedMinimalTitle(locale, entry.key, TITLE_VARS);
+        const minimal = localizedStatusTitle(locale, entry.key, ColorCode.SUCCESS, TITLE_VARS);
         expect({ locale, key: entry.key, kind: classifyProtocolTitle(minimal) }).toEqual({
           locale,
           key: entry.key,
@@ -29,13 +29,12 @@ describe("Minimal notice titles", () => {
     }
   });
 
-  it("keeps a persona nickname's own leading emoji", () => {
-    const title = localizedMinimalTitle("en-US", "genai.self_teach.server_memory_learned_title", {
+  it("classifies a title whose persona nickname opens with its own emoji", () => {
+    const title = localizedStatusTitle("en-US", "genai.self_teach.server_memory_learned_title", ColorCode.SUCCESS, {
       persona_nickname: "🌸Mirri",
     });
 
-    expect(title.startsWith("🌸Mirri")).toBe(true);
-    expect(title).not.toContain("🧠");
+    expect(classifyProtocolTitle(title)).toBe("memory_learning");
   });
 
   it("does not let an emoji-free reward title match, since reward titles differ only by emoji", () => {
@@ -47,7 +46,9 @@ describe("Minimal notice titles", () => {
   });
 
   it("formats a title-only profile update as a [System: title] block, the shape /tool prompt snapshot reuses", () => {
-    const title = localizedMinimalTitle("en-US", "tools.user_info_update.success_title", { target_user: "Bau" });
+    const title = localizedStatusTitle("en-US", "tools.user_info_update.success_title", ColorCode.SUCCESS, {
+      target_user: "Bau",
+    });
 
     expect(formatTargetEmbedForContext({ title, description: "" }, "user_info_update", "Mirri")).toBe(
       `[System: ${title}]`,
@@ -77,7 +78,9 @@ describe("Minimal notice titles", () => {
       tomoriNickname: "Mirri",
     });
 
-    const title = localizedMinimalTitle("en-US", "reminders.task_deleted_title", { persona_nickname: "Mirri" });
+    const title = localizedStatusTitle("en-US", "reminders.task_deleted_title", ColorCode.SUCCESS, {
+      persona_nickname: "Mirri",
+    });
     expect(result.processedSystemEmbed).toBe(true);
     expect(result.content).toContain(title);
     expect(result.content.includes("water the plants")).toBe(!minimal);
@@ -103,9 +106,12 @@ describe("Minimal notice titles", () => {
       tomoriNickname: "Mirri",
     });
 
-    const minimalTitle = localizedMinimalTitle("en-US", "genai.self_teach.server_memory_learned_title", {
-      persona_nickname: "Mirri",
-    });
+    const minimalTitle = localizedStatusTitle(
+      "en-US",
+      "genai.self_teach.server_memory_learned_title",
+      ColorCode.SUCCESS,
+      { persona_nickname: "Mirri" },
+    );
     expect(result.processedSystemEmbed).toBe(true);
     expect(result.content).toBe(`[System: ${minimalTitle}]`);
   });

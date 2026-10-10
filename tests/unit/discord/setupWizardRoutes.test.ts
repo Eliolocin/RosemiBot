@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import {
   ComponentType,
   PermissionsBitField,
@@ -79,6 +79,7 @@ import * as stickerLazySync from "@/utils/cache/stickerLazySync";
 import * as panelActionMetrics from "@/utils/stats/panelActionMetrics";
 import { createRouteInteraction } from "../../helpers/routeInteraction";
 import { localizedCopy } from "../../helpers/localeCases";
+import { useEnvSandbox } from "../../helpers/env";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 import { ColorCode } from "@/utils/misc/logger";
 
@@ -197,13 +198,6 @@ function makeMockInteraction({
     editReplyCalls: unknown[];
   };
 }
-
-/**
- * The policy step exists only in the hosted environment, so the tests that drive it pin `RUN_ENV`.
- * A hook owns the restore rather than a per-test block, because the process-wide mutation would
- * otherwise leak into every other file batched alongside this one.
- */
-let previousRunEnv: string | undefined;
 
 const PERSONA_PRESET_ROWS = [
   {
@@ -332,18 +326,15 @@ interface SetupSubmitModalCase {
 }
 
 describe("setupWizardRoutes", () => {
+  // The policy step exists only in the hosted environment, so the tests that drive it pin RUN_ENV.
+  useEnvSandbox(["RUN_ENV"]);
+
   beforeAll(async () => {
     await initializeLocalizer();
   });
 
   beforeEach(() => {
     resetSetupDrafts();
-    previousRunEnv = process.env.RUN_ENV;
-  });
-
-  afterEach(() => {
-    if (previousRunEnv === undefined) delete process.env.RUN_ENV;
-    else process.env.RUN_ENV = previousRunEnv;
   });
 
   it("dispatches through real InteractionRouteRegistry to registered setup route", async () => {
@@ -2675,7 +2666,7 @@ describe("setupWizardRoutes", () => {
       nonce: "nonce-policies-open",
       prepare: (nonce) => {
         // The hosted policy step is the only one whose draft has to agree with the running
-        // environment, so this row moves RUN_ENV and lets the describe's afterEach restore it.
+        // environment, so this row moves RUN_ENV and lets the describe's env sandbox restore it.
         process.env.RUN_ENV = "production";
         storeSetupDraft(nonce, makeDraft({ requiresPolicies: true }));
         return { restore: () => {} };
@@ -2736,12 +2727,6 @@ describe("setupWizardFinish", () => {
 
   beforeEach(() => {
     resetSetupDrafts();
-    previousRunEnv = process.env.RUN_ENV;
-  });
-
-  afterEach(() => {
-    if (previousRunEnv === undefined) delete process.env.RUN_ENV;
-    else process.env.RUN_ENV = previousRunEnv;
   });
 
   const COMMIT_NONCE = "nonce-finish-commit-1";

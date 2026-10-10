@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { Client } from "discord.js";
 import { HumanizerDegree, type AssembledServerConfig, type TomoriState } from "@/types/db/schema";
 import type { StructuredContextItem } from "@/types/misc/context";
-import { appendDialogueHistoryContext } from "@/utils/text/context/dialogueHistory";
+import { appendDialogueHistoryContext, DOCUMENT_HINT_TEMPLATE } from "@/utils/text/context/dialogueHistory";
 import type { SimplifiedMessageForContext } from "@/utils/text/context/types";
 import { shouldInjectVerbatimToolCallingNudge } from "@/utils/tools/verbatimToolCalling";
 import { createLlmRow, createPersona } from "../../helpers/fixtures";
@@ -64,6 +64,7 @@ async function buildItems(options: {
     botName: "Tomori",
     tomoriConfig: makeConfig(),
     tomoriState: makeTomoriState(options),
+    documentHintTemplate: DOCUMENT_HINT_TEMPLATE,
     includeTimestamps: false,
     isUserImpersonation: false,
     triggererFormattedName: `User ${(options.messageCount ?? 5) - 1}`,

@@ -152,7 +152,7 @@ describe("moderation pagination wiring", () => {
             personaBlocks: [],
           },
         }),
-        route: "moderation:v1:range:en-US:user-blacklist:none:1",
+        route: "moderation:v2:range:en-US:user-blacklist:none:1",
       },
       {
         category: "whitelist" as const,
@@ -160,7 +160,7 @@ describe("moderation pagination wiring", () => {
         data: createScopeData({
           whitelist: { channels: channelEntries, personaChannels: [], roles: [], personaNames: new Map() },
         }),
-        route: "moderation:v1:range:en-US:whitelist:channels:1",
+        route: "moderation:v2:range:en-US:whitelist:channels:1",
       },
       {
         category: "whitelist" as const,
@@ -173,7 +173,7 @@ describe("moderation pagination wiring", () => {
             personaNames: new Map(personaEntries.map((entry) => [entry.persona_id, `Persona ${entry.persona_id}`])),
           },
         }),
-        route: "moderation:v1:range:en-US:whitelist:persona-channels:1",
+        route: "moderation:v2:range:en-US:whitelist:persona-channels:1",
       },
       {
         category: "whitelist" as const,
@@ -181,7 +181,7 @@ describe("moderation pagination wiring", () => {
         data: createScopeData({
           whitelist: { channels: [], personaChannels: [], roles: roleEntries, personaNames: new Map() },
         }),
-        route: "moderation:v1:range:en-US:whitelist:roles:1",
+        route: "moderation:v2:range:en-US:whitelist:roles:1",
       },
     ];
 
@@ -230,6 +230,6 @@ describe("moderation pagination wiring", () => {
     expect(firstPage).not.toContain("> <@user-11>");
     expect(lastPage).not.toContain("> <@user-1>");
     expect(lastPage).toContain("> <@user-11>");
-    expect(lastPage).toContain("moderation:v1:range:en-US:user-blacklist:none:0");
+    expect(lastPage).toContain("moderation:v2:range:en-US:user-blacklist:none:0");
   });
 });

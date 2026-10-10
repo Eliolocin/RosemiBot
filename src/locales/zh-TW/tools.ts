@@ -32,7 +32,7 @@ export default {
       invalid_character_identity: `角色身分無效：{id}。請使用 persona:<id>、簡短的數字人格 ID，或 Discord 使用者 snowflake。`,
     },
     search: {
-      category_search_title: `🔍 正在 __{category}__ 搜尋 \`{query}\`...`,
+      category_search_title: `🔍 正在 {category} 搜尋 \`{query}\`...`,
       category_labels: {
         text: `網路`,
         image: `圖片`,

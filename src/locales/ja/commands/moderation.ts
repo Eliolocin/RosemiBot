@@ -195,7 +195,6 @@ export default {
     remove_blacklist_group_description: `削除するブラックリスト項目のチェックを外してから送信してください`,
     remove_whitelist_group_description: `削除するホワイトリスト項目のチェックを外してから送信してください`,
     remove_group_continuation: `続き（{index}）`,
-    remove_modal_limit: `このリストは50件を超えており、1つのモーダルには収まりません。`,
     remove_nothing_changed: `何も削除されませんでした`,
     remove_nothing_changed_detail: `すべての項目が選択されたままでした。書き込みは行われませんでした。`,
 

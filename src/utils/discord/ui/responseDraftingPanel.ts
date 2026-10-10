@@ -20,8 +20,7 @@ import type { RawModalPayload } from "@/utils/discord/ui/configModals";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import { localizer } from "@/utils/text/localizer";
-import { neutralizeFenceRuns } from "@/utils/text/discordTextLimits";
-import { buildTextPreview } from "@/utils/text/textPreview";
+import { renderFencedPreview } from "@/utils/text/textPreview";
 
 export type DraftPicker =
   | { slot: DraftModelSlot; provider: string | null; start: number }
@@ -29,7 +28,6 @@ export type DraftPicker =
 export const DRAFT_CLEAR_VALUE = "__none__";
 /** None and the advance entry reserve two of Discord's 25 options. */
 export const DRAFT_CHECKER_PAGE_SIZE = 23;
-const DRAFT_PROMPT_PREVIEW_BUDGET = 850;
 
 export function buildDraftPromptModal(state: TomoriState, locale: string, nonce: string): RawModalPayload {
   return {
@@ -135,99 +133,83 @@ export function buildResponseDraftingBody(
       disabled,
     ),
     text(
-      `> ${t(state.config.response_drafting_enabled ? "commands.config.drafting.on" : "commands.config.drafting.off")}\n> ${t("commands.config.drafting.cost")}\n-# ${t("commands.config.drafting.pending")}`,
+      `> ${t(state.config.response_drafting_enabled ? "commands.config.drafting.on" : "commands.config.drafting.off")}`,
     ),
     text(`### ${t("commands.config.drafting.models_title")}\n${t("commands.config.drafting.models_description")}`),
   ];
   for (const slot of ["reviewer", "decision"] as const) {
-    components.push({
-      type: ComponentType.ActionRow,
-      components: [
-        button(
-          t(
-            slot === "reviewer"
-              ? "commands.config.drafting.reviewer_button"
-              : "commands.config.drafting.decision_button",
-          ),
-          { action: "draft-picker", locale, slot, provider: "none", start: 0 },
-        ),
-      ],
+    if (!view) break;
+    const slotPicker = picker?.slot === slot ? picker : { provider: null, start: 0 };
+    const groups = slot === "reviewer" ? view.reviewers : view.decisions;
+    const expanded = groups.find((group) => group.provider === slotPicker.provider);
+    const capabilityLabel = t(
+      slot === "reviewer" ? "commands.config.drafting.reviewer_label" : "commands.config.drafting.decision_label",
+    );
+    const pages = buildProviderPageEntries({
+      providers: groups.map((group) => group.provider),
+      expandedProvider: slotPicker.provider,
+      expandedOptionCount: expanded?.models.length ?? 0,
+      pageSize: CONFIG_MODEL_PAGE_SIZE,
+      locale,
+      pageLabelKey: "commands.config.panel.provider_page_label",
+      encodeProviderValue: (provider) => provider,
+      encodePageValue: encodeConfigProviderPageValue,
+    });
+    const window = buildProviderSelectWindow({
+      entries: pages.entries,
+      entryStart: slotPicker.provider
+        ? resolveProviderEntryStart(slotPicker.start, pages.expandedStartIndex)
+        : slotPicker.start,
+      directLimit: 24,
+      expandedProvider: slotPicker.provider,
+      expandedPageCount: pages.expandedPageCount,
+      locale,
+      capabilityLabel,
+      pagePlaceholderKey: "commands.config.panel.model_provider_page_placeholder",
+      encodeAdvanceValue: encodeConfigProviderRangeValue,
     });
     components.push(
-      text(
-        `> ${t(slot === "reviewer" ? (state.config.response_reviewer_llm_id === null ? "commands.config.drafting.inherited_status" : "commands.config.drafting.reviewer_status") : "commands.config.drafting.decision_status", { model: modelLabel(slot) })}`,
-      ),
-    );
-    if (picker?.slot === slot && view) {
-      const groups = slot === "reviewer" ? view.reviewers : view.decisions;
-      const expanded = groups.find((group) => group.provider === picker.provider);
-      const pages = buildProviderPageEntries({
-        providers: groups.map((group) => group.provider),
-        expandedProvider: picker.provider,
-        expandedOptionCount: expanded?.models.length ?? 0,
-        pageSize: CONFIG_MODEL_PAGE_SIZE,
-        locale,
-        pageLabelKey: "commands.config.panel.provider_page_label",
-        encodeProviderValue: (provider) => provider,
-        encodePageValue: encodeConfigProviderPageValue,
-      });
-      const window = buildProviderSelectWindow({
-        entries: pages.entries,
-        entryStart: resolveProviderEntryStart(picker.start, pages.expandedStartIndex),
-        directLimit: 24,
-        expandedProvider: picker.provider,
-        expandedPageCount: pages.expandedPageCount,
-        locale,
-        capabilityLabel: t(
-          slot === "reviewer" ? "commands.config.drafting.reviewer_button" : "commands.config.drafting.decision_button",
+      buildModelRoutingControl({
+        capabilityLabel,
+        activeModelName: null,
+        activeProvider: null,
+        providerEntries: [...window.visibleEntries, ...(window.advanceEntry ? [window.advanceEntry] : [])],
+        customId: buildConfigRouteId({ action: "draft-provider", locale, slot }),
+        serverDefaultValue: DRAFT_CLEAR_VALUE,
+        serverDefaultLabel: t(
+          slot === "reviewer" ? "commands.config.drafting.inherit" : "commands.config.drafting.none",
         ),
-        pagePlaceholderKey: "commands.config.panel.model_provider_page_placeholder",
-        encodeAdvanceValue: encodeConfigProviderRangeValue,
-      });
-      components.push(
-        buildModelRoutingControl({
-          capabilityLabel: t("commands.config.drafting.models_title"),
-          activeModelName: null,
-          activeProvider: null,
-          providerEntries: [...window.visibleEntries, ...(window.advanceEntry ? [window.advanceEntry] : [])],
-          customId: buildConfigRouteId({ action: "draft-provider", locale, slot }),
-          serverDefaultValue: DRAFT_CLEAR_VALUE,
-          serverDefaultLabel: t(
-            slot === "reviewer" ? "commands.config.drafting.inherit" : "commands.config.drafting.none",
+        serverDefaultDisplay: modelLabel(slot),
+        placeholderOverride:
+          window.placeholderOverride ??
+          t(
+            slot === "decision"
+              ? "commands.config.drafting.decision_status"
+              : state.config.response_reviewer_llm_id === null
+                ? "commands.config.drafting.inherited_status"
+                : "commands.config.drafting.reviewer_status",
+            { model: modelLabel(slot) },
           ),
-          serverDefaultDisplay: modelLabel(slot),
-          placeholderOverride: window.placeholderOverride,
-          disabled,
-        }),
-      );
-    }
+        disabled,
+      }),
+    );
   }
-  components.push(
-    text(
-      `> ${t("commands.config.drafting.decision_note")}${state.config.response_reviewer_prompt !== null ? `\n> ${t("commands.config.drafting.custom_status")}` : ""}`,
-    ),
-  );
+  components.push(text(`> ${t("commands.config.drafting.decision_note")}`));
   const binding = state.config.response_rule_checker_ref;
   const checker = binding
     ? view?.checkers.find((choice) => JSON.stringify(choice.reference) === JSON.stringify(binding))
     : null;
   components.push(
     text(`### ${t("commands.config.drafting.rules_title")}\n${t("commands.config.drafting.rules_description")}`),
-    {
-      type: ComponentType.ActionRow,
-      components: [button(t("commands.config.drafting.checker_button"), { action: "draft-checker", locale, start: 0 })],
-    },
-    text(
-      `> ${t("commands.config.drafting.checker_status", { checker: binding ? (checker ? safeSelectOptionText(checker.label, 180) : t("commands.config.drafting.unavailable")) : t("commands.config.drafting.none") })}`,
-    ),
   );
-  if (picker?.slot === "checker" && view) {
+  if (view) {
     const choices = view.checkers;
+    const requestedStart = picker?.slot === "checker" ? picker.start : 0;
     const start = Math.min(
-      Math.floor(picker.start / DRAFT_CHECKER_PAGE_SIZE) * DRAFT_CHECKER_PAGE_SIZE,
+      Math.floor(requestedStart / DRAFT_CHECKER_PAGE_SIZE) * DRAFT_CHECKER_PAGE_SIZE,
       Math.max(0, Math.floor((choices.length - 1) / DRAFT_CHECKER_PAGE_SIZE) * DRAFT_CHECKER_PAGE_SIZE),
     );
-    components.push(text(t("commands.config.drafting.checker_hint")), {
+    components.push({
       type: ComponentType.ActionRow,
       components: [
         {
@@ -238,6 +220,16 @@ export function buildResponseDraftingBody(
             start,
             fp: checkerFingerprint(choices),
           }),
+          placeholder: safeSelectOptionText(
+            t("commands.config.drafting.checker_status", {
+              checker: binding
+                ? checker
+                  ? checker.label
+                  : t("commands.config.drafting.unavailable")
+                : t("commands.config.drafting.none"),
+            }),
+            150,
+          ),
           options: [
             { label: t("commands.config.drafting.none"), value: DRAFT_CLEAR_VALUE },
             ...choices.slice(start, start + DRAFT_CHECKER_PAGE_SIZE).map((choice, index) => ({
@@ -258,20 +250,21 @@ export function buildResponseDraftingBody(
       ],
     });
   }
-  // The model statuses, navigation and receipts share the 4,000-character message budget.
-  const preview = buildTextPreview(
-    neutralizeFenceRuns(effectiveReviewerPrompt(state, locale)),
-    DRAFT_PROMPT_PREVIEW_BUDGET,
-  );
+  const preview = renderFencedPreview(locale, effectiveReviewerPrompt(state, locale), {
+    actionLabel: t("commands.config.drafting.prompt_button"),
+  });
   components.push(
     text(
-      `### ${t("commands.config.drafting.prompt_title")}\n${t("commands.config.drafting.prompt_description")}\n> ${t(state.config.response_reviewer_prompt === null ? "commands.config.drafting.prompt_default" : "commands.config.drafting.prompt_custom")}\n\`\`\`markdown\n${preview.text}\n\`\`\`${preview.truncated ? `\n-# ${t("commands.config.drafting.preview_hidden")}` : ""}`,
+      `### ${t("commands.config.drafting.prompt_title")}\n${t("commands.config.drafting.prompt_description")}\n${preview}`,
     ),
     {
       type: ComponentType.ActionRow,
       components: [
         button(t("commands.config.drafting.prompt_button"), { action: "draft-prompt-open", locale }),
-        button(t("commands.config.drafting.default_button"), { action: "draft-default", locale }, true),
+        {
+          ...button(t("commands.config.drafting.default_button"), { action: "draft-default", locale }, true),
+          disabled: disabled || state.config.response_reviewer_prompt === null,
+        },
       ],
     },
   );

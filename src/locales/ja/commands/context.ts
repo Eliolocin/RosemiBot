@@ -23,7 +23,7 @@ export default {
     estimate_note: `1トークンあたり約4文字として概算。`,
     not_counted_note: `画像、動画、プロバイダー固有のメッセージ形式は含まれません。`,
     truncated_note: `会話履歴が上限を超えたため、古い会話 {count} 件分が省略されています。`,
-    text_locked_note: `プロンプト全文の閲覧には「サーバー管理」権限が必要ですが、管理者が \`/moderation\` で一般メンバーに許可することもできます。`,
+    text_locked_note: `このサーバーでプロンプト全文を閲覧するには権限が必要です。`,
     view_text_button: `テキストとして表示`,
     view_json_button: `JSONとして表示`,
     persona_not_found_title: `ペルソナが見つかりません`,
