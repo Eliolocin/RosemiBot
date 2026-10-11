@@ -577,6 +577,7 @@ CREATE TABLE IF NOT EXISTS persona_configs (
   persona_id INT PRIMARY KEY,
   trigger_words TEXT[] DEFAULT '{}',
   persona_prompt TEXT NULL,
+  preserve_preset_identity BOOLEAN NOT NULL DEFAULT false,
   reward_conditioning_enabled BOOLEAN DEFAULT true,
   punish_conditioning_enabled BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -600,6 +601,7 @@ ON CONFLICT (persona_id) DO NOTHING;
 -- Add persona conditioning toggles (April 2026)
 SELECT add_column_if_not_exists('persona_configs', 'reward_conditioning_enabled', 'BOOLEAN', 'true');
 SELECT add_column_if_not_exists('persona_configs', 'punish_conditioning_enabled', 'BOOLEAN', 'true');
+SELECT add_column_if_not_exists('persona_configs', 'preserve_preset_identity', 'BOOLEAN', 'false', 'NOT NULL');
 
 -- Add per-persona humanizer degree override (July 2026).
 -- NULL inherits the server-wide server_chat_configs.humanizer_degree.

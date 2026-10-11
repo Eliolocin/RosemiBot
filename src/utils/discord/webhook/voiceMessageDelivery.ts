@@ -18,7 +18,14 @@ import {
 } from "discord.js";
 import type { VoiceMessageMetadata } from "@/utils/audio/voiceMessageMetadata";
 import { log } from "@/utils/misc/logger";
-import { runWithWebhookIdentity, sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
+import type { ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
+import { runWithWebhookIdentity } from "@/utils/discord/webhook/personaDispatch";
+import {
+  type PersonaPostSpeaker,
+  recordPersonaPostDelivery,
+  resolvePersonaPostIdentity,
+  sendPersonaPostViaWebhook,
+} from "@/utils/discord/webhook/personaPost";
 
 /** Discord IS_VOICE_MESSAGE flag value (1 << 13). */
 const IS_VOICE_MESSAGE_FLAG = 8192;
@@ -44,6 +51,13 @@ export interface VoiceDeliveryTarget {
   threadId?: string;
   personaUsername?: string;
   personaAvatarUrl?: string | null;
+  personaId?: number;
+}
+
+function toPersonaPostSpeaker(target: VoiceDeliveryTarget): PersonaPostSpeaker | null {
+  return target.personaUsername
+    ? { username: target.personaUsername, avatarUrl: target.personaAvatarUrl, personaId: target.personaId }
+    : null;
 }
 
 interface NativeVoiceSendOptions {
@@ -61,23 +75,22 @@ interface NativeVoiceSendOptions {
  */
 async function sendNativeVoiceMessageViaRest(
   target: VoiceDeliveryTarget,
+  identity: ResolvedWebhookIdentity,
   options: NativeVoiceSendOptions,
 ): Promise<string | undefined> {
   try {
     const { webhook } = target;
     const { audioBuffer, mimeType, filename, voiceMeta } = options;
-    const username = target.personaUsername;
-    const avatarUrl = target.personaAvatarUrl;
+    const { username, avatarUrl, avatarDataUri } = identity;
 
     if (!webhook?.token) return undefined;
 
-    const isLocalAvatar = avatarUrl?.startsWith("data:image/") === true;
     return await runWithWebhookIdentity(
       webhook,
       {
         username,
-        avatarUrl: isLocalAvatar ? undefined : (avatarUrl ?? undefined),
-        avatarDataUri: isLocalAvatar ? (avatarUrl ?? undefined) : undefined,
+        avatarUrl: avatarDataUri ? undefined : avatarUrl,
+        avatarDataUri,
       },
       async () => {
         const form = new FormData();
@@ -95,7 +108,7 @@ async function sendNativeVoiceMessageViaRest(
         };
 
         if (username) payloadJson.username = username;
-        if (!isLocalAvatar && avatarUrl) payloadJson.avatar_url = avatarUrl;
+        if (!avatarDataUri && avatarUrl) payloadJson.avatar_url = avatarUrl;
 
         form.append("payload_json", JSON.stringify(payloadJson));
         form.append("files[0]", new Blob([new Uint8Array(audioBuffer)], { type: mimeType }), filename);
@@ -188,11 +201,23 @@ export async function deliverVoiceMessage(input: {
 }): Promise<string | undefined> {
   const { target, audioBuffer, mimeType, filename, voiceMeta } = input;
   const { webhook, threadId } = target;
+  const speaker = toPersonaPostSpeaker(target);
   let sentMessageId: string | undefined;
 
   if (voiceMeta) {
     if (webhook?.token) {
-      sentMessageId = await sendNativeVoiceMessageViaRest(target, { audioBuffer, mimeType, filename, voiceMeta });
+      const identity: ResolvedWebhookIdentity = speaker
+        ? resolvePersonaPostIdentity(target.channel, speaker)
+        : { avatarUrl: target.personaAvatarUrl ?? undefined };
+      sentMessageId = await sendNativeVoiceMessageViaRest(target, identity, {
+        audioBuffer,
+        mimeType,
+        filename,
+        voiceMeta,
+      });
+      if (sentMessageId && speaker) {
+        recordPersonaPostDelivery(target.channel, identity, sentMessageId, speaker);
+      }
       if (!sentMessageId) {
         log.warn("[VoiceWaveform] Webhook REST send failed — trying bot REST path");
       }
@@ -210,19 +235,16 @@ export async function deliverVoiceMessage(input: {
 
   if (!sentMessageId) {
     const attachment = new AttachmentBuilder(audioBuffer, { name: filename });
-    if (webhook && target.personaUsername) {
-      const sent = await sendWebhookMessageWithIdentity(
+    if (webhook && speaker) {
+      const sent = await sendPersonaPostViaWebhook(
         webhook,
         {
           files: [attachment],
           allowedMentions: { parse: [], repliedUser: false },
           ...(threadId ? { threadId } : {}),
         },
-        {
-          username: target.personaUsername,
-          avatarUrl: target.personaAvatarUrl ?? undefined,
-          avatarDataUri: target.personaAvatarUrl?.startsWith("data:image/") ? target.personaAvatarUrl : undefined,
-        },
+        speaker,
+        target.channel,
       );
       sentMessageId = sent.id;
     } else {
@@ -240,21 +262,19 @@ export async function deliverVoiceMessage(input: {
  */
 export async function postVoiceTranscriptCaption(target: VoiceDeliveryTarget, captionText: string): Promise<void> {
   const { webhook, threadId } = target;
+  const speaker = toPersonaPostSpeaker(target);
   const quotedCaption = `> ${captionText.replace(/\n/g, "\n> ")}`;
   try {
-    if (webhook && target.personaUsername) {
-      await sendWebhookMessageWithIdentity(
+    if (webhook && speaker) {
+      await sendPersonaPostViaWebhook(
         webhook,
         {
           content: quotedCaption,
           allowedMentions: { parse: [] },
           ...(threadId ? { threadId } : {}),
         },
-        {
-          username: target.personaUsername,
-          avatarUrl: target.personaAvatarUrl ?? undefined,
-          avatarDataUri: target.personaAvatarUrl?.startsWith("data:image/") ? target.personaAvatarUrl : undefined,
-        },
+        speaker,
+        target.channel,
       );
     } else {
       await target.channel.send({ content: quotedCaption, allowedMentions: { parse: [] } });

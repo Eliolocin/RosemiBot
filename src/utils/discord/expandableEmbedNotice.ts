@@ -37,6 +37,7 @@ import type { StandardEmbedOptions } from "@/types/discord/embed";
 import type { ToolContext } from "@/types/tool/interfaces";
 import { createStandardEmbed, type WebhookEmbedContext } from "@/utils/discord/embedHelper";
 import { recordMinimalNoticeRef } from "@/utils/discord/minimalNoticeBodies";
+import { recordChannelDeliveredBotMessage } from "@/utils/discord/stream/channelDeliveryContinuity";
 import {
   isMinimalNotice,
   isNoticeEmbedVisible,
@@ -45,9 +46,9 @@ import {
 } from "@/utils/discord/toolProgressNotice";
 import { buildNoticeContainer } from "@/utils/discord/ui/statusComponents";
 import { validateAndFallbackPanelPayload } from "@/utils/discord/ui/interactionCore";
-import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/webhookCore";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { buildTextPreview } from "@/utils/text/textPreview";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
 
 type SupportedChannel =
   | TextChannel
@@ -172,11 +173,11 @@ async function deliverNoticeComponents(
   // Try webhook-persona delivery first so the notice appears under the same
   // identity as the AI response, then fall back to a plain bot message.
   const webhook = webhookContext?.webhook;
-  const useWebhook = Boolean(webhook && webhookContext?.personaUsername && canUseWebhookForChannel(channel, webhook));
+  const personaUsername = webhookContext?.personaUsername;
 
-  if (useWebhook && webhook && webhookContext) {
+  if (webhook && personaUsername && canUseWebhookForChannel(channel, webhook)) {
     try {
-      const message = await sendWebhookMessageWithIdentity(
+      const message = await sendPersonaPostViaWebhook(
         webhook,
         {
           ...payload,
@@ -184,12 +185,11 @@ async function deliverNoticeComponents(
           ...(threadId ? { threadId } : {}),
         },
         {
-          username: webhookContext.personaUsername,
-          avatarUrl: webhookContext.personaAvatarUrl,
-          avatarDataUri: webhookContext.personaAvatarUrl?.startsWith("data:image/")
-            ? webhookContext.personaAvatarUrl
-            : undefined,
+          username: personaUsername,
+          avatarUrl: webhookContext?.personaAvatarUrl,
+          personaId: webhookContext?.personaId,
         },
+        channel,
       );
       return { message, sentViaWebhook: true, threadId };
     } catch (error) {
@@ -199,6 +199,7 @@ async function deliverNoticeComponents(
 
   try {
     const message = await channel.send(payload);
+    recordChannelDeliveredBotMessage(channel.id);
     return { message, sentViaWebhook: false, threadId };
   } catch (error) {
     log.warn("CV2 notice: channel send failed", error as Error);
@@ -366,6 +367,7 @@ async function routeHideableNotice(
       webhook: context.webhook,
       personaUsername: context.personaUsername,
       personaAvatarUrl: context.personaAvatarUrl,
+      personaId: context.tomoriState.persona_id,
     });
     if (!isMinimal) {
       return;

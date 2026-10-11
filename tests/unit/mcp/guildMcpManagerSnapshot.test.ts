@@ -8,6 +8,7 @@ import { log } from "@/utils/misc/logger";
 import { createGuildMcpFetch } from "@/utils/mcp/guildMcpFetch";
 import * as remotePolicy from "@/utils/security/remoteUrlSecurity";
 import { ResponseSizeError } from "@/utils/security/boundedResponse";
+import { stubGlobalFetch } from "../../helpers/fetchStub";
 
 interface TestableGuildMcpManager {
   connectServer(config: GuildMcpServerRow): Promise<GuildMCPConnection | null>;
@@ -207,6 +208,129 @@ function config(id: number, name: string): GuildMcpServerRow {
     last_discovered_tool_names: ["prior_tool"],
   };
 }
+
+function sessionFixture(withSession = true) {
+  const manager = getGuildMcpManager();
+  const row = { ...config(930, "session-recovery"), url: "https://mcp.example.org/mcp" };
+  const validation = spyOn(remotePolicy, "validateRemoteUrl").mockResolvedValue({
+    valid: true,
+    hostname: "mcp.example.org",
+    resolvedAddresses: ["203.0.113.10"],
+  });
+  const read = spyOn(configCache, "getGuildMcpConfigReadResult").mockResolvedValue({ status: "fresh", configs: [row] });
+  const decrypt = spyOn(toolRepository, "decryptMcpAuthToken").mockResolvedValue(null);
+  const snapshot = spyOn(toolRepository, "updateMcpToolNameSnapshot").mockResolvedValue("updated");
+  const errors = spyOn(log, "error").mockImplementation(async () => {});
+  const requests: Array<{ method: string; session: string | null }> = [];
+  const expiredSessions = new Set<string>();
+  let initializes = 0;
+  let failure: { method: string; status: number } | undefined;
+  const fetchSpy = stubGlobalFetch((_input, init) => {
+    if ((init?.method ?? "GET") !== "POST") return new Response(null, { status: 405 });
+    const rpc = JSON.parse(String(init?.body)) as { id?: number; method: string };
+    const session = new Headers(init?.headers).get("mcp-session-id");
+    requests.push({ method: rpc.method, session });
+    if (rpc.id === undefined) return new Response(null, { status: 202 });
+    if (session && expiredSessions.has(session)) return Response.json({ error: "fixture rejection" }, { status: 404 });
+    if (failure?.method === rpc.method) {
+      const { status } = failure;
+      failure = undefined;
+      if (status === 404 && session) expiredSessions.add(session);
+      return Response.json({ error: "fixture rejection" }, { status });
+    }
+    if (rpc.method === "initialize") {
+      initializes++;
+      return Response.json(
+        {
+          jsonrpc: "2.0",
+          id: rpc.id,
+          result: {
+            protocolVersion: "2025-11-25",
+            capabilities: { tools: {} },
+            serverInfo: { name: "fixture", version: "1" },
+          },
+        },
+        { headers: withSession ? { "mcp-session-id": `session-${initializes}` } : {} },
+      );
+    }
+    return Response.json({
+      jsonrpc: "2.0",
+      id: rpc.id,
+      result:
+        rpc.method === "tools/list"
+          ? { tools: [{ name: "check_slop", inputSchema: { type: "object" } }] }
+          : { content: [{ type: "text", text: "accepted" }] },
+    });
+  });
+  return {
+    manager,
+    row,
+    requests,
+    failNext(method: string, status: number) {
+      failure = { method, status };
+    },
+    async restore() {
+      await manager.disconnectGuildServer(row.server_id, row.name);
+      for (const spy of [fetchSpy, errors, snapshot, decrypt, read, validation]) spy.mockRestore();
+    },
+  };
+}
+
+describe("guild MCP session recovery", () => {
+  it.each([
+    { status: 404, withSession: true, reconnects: true },
+    { status: 404, withSession: false, reconnects: false },
+    { status: 401, withSession: true, reconnects: false },
+    { status: 500, withSession: true, reconnects: false },
+  ])("handles HTTP $status with session=$withSession without replaying the tool", async ({
+    status,
+    withSession,
+    reconnects,
+  }) => {
+    const fixture = sessionFixture(withSession);
+    const { manager, row, requests } = fixture;
+    try {
+      expect(await manager.getRegisteredTool(row)).not.toBeNull();
+      fixture.failNext("tools/call", status);
+      expect((await manager.executeGuildMCPFunction(row.server_id, "check_slop", {})).success).toBe(false);
+      expect(requests.filter((request) => request.method === "tools/call")).toHaveLength(1);
+      expect((await manager.executeGuildMCPFunction(row.server_id, "check_slop", {})).success).toBe(true);
+      const handshakes = requests.filter((request) => request.method === "initialize");
+      expect(handshakes).toHaveLength(reconnects ? 2 : 1);
+      expect(handshakes.every((request) => request.session === null)).toBe(true);
+      expect(requests.filter((request) => request.method === "tools/call").map((request) => request.session)).toEqual(
+        withSession ? ["session-1", reconnects ? "session-2" : "session-1"] : [null, null],
+      );
+    } finally {
+      await fixture.restore();
+    }
+  });
+
+  it.each(["tools/call", "tools/list"])("discards an expired session during internal %s requests", async (method) => {
+    const fixture = sessionFixture();
+    const { manager, row, requests } = fixture;
+    try {
+      const tool = await manager.getRegisteredTool(row);
+      if (!tool) throw new Error("Expected a live MCP registration");
+      fixture.failNext(method, 404);
+      await expect(
+        method === "tools/list"
+          ? tool.tool()
+          : manager.callInternalRuleChecker(row, "check_slop", "fixture", AbortSignal.timeout(2000)),
+      ).rejects.toThrow();
+      expect(await manager.getRegisteredTool(row)).not.toBeNull();
+      expect(await manager.callInternalRuleChecker(row, "check_slop", "fixture", AbortSignal.timeout(2000))).toEqual({
+        content: [{ type: "text", text: "accepted" }],
+      });
+      expect(requests.filter((request) => request.method === "initialize").map((request) => request.session)).toEqual([
+        null,
+        null,
+      ]);
+    } finally {
+      await fixture.restore();
+    }
+  });
+});
 
 describe("guild MCP lazy discovery snapshots", () => {
   it("returns the live connection before detached snapshot persistence settles", async () => {

@@ -287,6 +287,7 @@ export class DuckDuckGoEngine implements WebSearchEngine {
           webhook: context.webhook,
           personaUsername: context.personaUsername,
           personaAvatarUrl: context.personaAvatarUrl,
+          personaId: context.tomoriState.persona_id,
         },
       ).catch((error) => log.warn("Failed to send DuckDuckGo rate-limit notice (non-fatal)", error as Error));
     }

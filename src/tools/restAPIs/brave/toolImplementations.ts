@@ -7,7 +7,7 @@
 import { log } from "../../../utils/misc/logger";
 import type { ToolContext, ToolResult } from "../../../types/tool/interfaces";
 import { sendStandardEmbed } from "../../../utils/discord/embedHelper";
-import { sendWebhookMessageWithIdentity } from "../../../utils/discord/webhookManager";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
 import { ColorCode } from "../../../utils/misc/logger";
 import sharp from "sharp";
 import {
@@ -72,6 +72,7 @@ async function sendApiKeyErrorEmbed(context?: ToolContext, searchType = "search"
         webhook: context.webhook,
         personaUsername: context.personaUsername,
         personaAvatarUrl: context.personaAvatarUrl,
+        personaId: context.tomoriState.persona_id,
       },
     );
   } catch (embedError) {
@@ -544,7 +545,7 @@ export async function brave_image_search(args: Record<string, unknown>, context?
               : undefined;
           const sentMessage =
             context.webhook && context.personaUsername
-              ? await sendWebhookMessageWithIdentity(
+              ? await sendPersonaPostViaWebhook(
                   context.webhook,
                   {
                     files: attachments,
@@ -553,10 +554,9 @@ export async function brave_image_search(args: Record<string, unknown>, context?
                   {
                     username: context.personaUsername,
                     avatarUrl: context.personaAvatarUrl,
-                    avatarDataUri: context.personaAvatarUrl?.startsWith("data:image/")
-                      ? context.personaAvatarUrl
-                      : undefined,
+                    personaId: context.tomoriState.persona_id,
                   },
+                  context.channel,
                 )
               : await context.channel.send({
                   files: attachments,

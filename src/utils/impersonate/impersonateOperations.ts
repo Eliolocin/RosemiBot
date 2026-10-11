@@ -9,6 +9,11 @@ import { resolvePersonaWebhookIdentity } from "@/utils/discord/webhook/identity"
 import type { ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
 import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
 import {
+  recordChannelDeliveredWebhookIdentity,
+  resolveChannelBaseAppearanceIdentity,
+  resolveChannelGroupBreakIdentity,
+} from "@/utils/discord/stream/channelDeliveryContinuity";
+import {
   formatRenderModifierWebhookName,
   parseLeadingImpersonationSpriteModifier,
 } from "@/utils/discord/renderModifierParser";
@@ -222,9 +227,25 @@ export async function executePersonaImpersonation(
         return;
       }
 
-      const identity =
-        spriteRenderTarget?.identity ??
-        (await resolvePersonaWebhookIdentity(selectedPersona, interaction.guild as import("discord.js").Guild));
+      // Same alternation as the response stream, so an impersonated line next to the persona's
+      // own sprite lines cannot merge under their avatar. Identity sprites already carry a
+      // distinct decorated name.
+      const identity = !spriteRenderTarget
+        ? resolveChannelBaseAppearanceIdentity(
+            channel.id,
+            await resolvePersonaWebhookIdentity(selectedPersona, interaction.guild as import("discord.js").Guild),
+            selectedPersona.persona_nickname,
+            channel.lastMessageId,
+          )
+        : spriteRenderTarget.record.isIdentity
+          ? spriteRenderTarget.identity
+          : resolveChannelGroupBreakIdentity(
+              channel.id,
+              spriteRenderTarget.identity,
+              formatRenderModifierWebhookName(selectedPersona.persona_nickname, spriteRenderTarget.record.spriteName),
+              spriteRenderTarget.record.spriteName,
+              channel.lastMessageId,
+            );
       sentMessage = await sendWebhookMessageWithIdentity(
         webhook,
         {
@@ -234,6 +255,10 @@ export async function executePersonaImpersonation(
         },
         identity,
       );
+      recordChannelDeliveredWebhookIdentity(channel.id, identity, sentMessage.id, {
+        personaId: selectedPersona.persona_id,
+        kind: spriteRenderTarget?.record.isIdentity ? "identity_sprite" : "appearance",
+      });
 
       if (spriteRenderTarget && sentMessage?.webhookId) {
         void recordPersonaSpriteMessage({

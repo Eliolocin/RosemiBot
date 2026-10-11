@@ -29,7 +29,14 @@ export type ConfigSurfaceState = "enabled" | "disabled" | "omitted";
 /** A page whose controls are inert but whose explanatory prose still renders. */
 export type ConfigPageState = "enabled" | "read-only" | "omitted";
 
-export type ConfigPersonaGeneralAction = "avatar" | "rename" | "naming" | "trigger-add" | "trigger-remove" | "promote";
+export type ConfigPersonaGeneralAction =
+  | "avatar"
+  | "rename"
+  | "naming"
+  | "trigger-add"
+  | "trigger-remove"
+  | "promote"
+  | "resync";
 export type ConfigPersonaCollectionAction =
   | "attribute-add"
   | "attribute-edit"
@@ -298,6 +305,9 @@ const PERSONA_GENERAL_ACTION_BY_ROUTE: Partial<Record<ConfigPanelRoute["action"]
   "promote-view": "promote",
   "promote-confirm": "promote",
   "promote-cancel": "promote",
+  "resync-view": "resync",
+  "resync-confirm": "resync",
+  "resync-cancel": "resync",
 };
 
 const PERSONA_COLLECTION_ACTION_BY_ROUTE: Partial<Record<ConfigPanelRoute["action"], ConfigPersonaCollectionAction>> = {

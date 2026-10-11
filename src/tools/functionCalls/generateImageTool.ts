@@ -13,7 +13,7 @@ import { localizer } from "../../utils/text/localizer";
 import { resolveAvatarByIdentity, type ResolvedAvatarData } from "@/utils/discord/avatarResolver";
 import { buildGeneratedImageComponentsV2Payload } from "@/utils/discord/generatedImageMessage";
 import { prepareGeneratedImage } from "@/utils/image/generatedImageMetadata";
-import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
 import {
   buildImageToolNoticeDescription,
   buildReferencedMessageUrl,
@@ -759,7 +759,7 @@ export class GenerateImageTool extends BaseTool {
 
     if (context.webhook && context.personaUsername) {
       try {
-        return await sendWebhookMessageWithIdentity(
+        return await sendPersonaPostViaWebhook(
           context.webhook,
           {
             files,
@@ -770,13 +770,14 @@ export class GenerateImageTool extends BaseTool {
           {
             username: context.personaUsername,
             avatarUrl: context.personaAvatarUrl,
-            avatarDataUri: context.personaAvatarUrl?.startsWith("data:image/") ? context.personaAvatarUrl : undefined,
+            personaId: context.tomoriState.persona_id,
           },
+          context.channel,
         );
       } catch (error) {
         log.warn("Failed to send generated image via webhook with Components V2, retrying without components", error);
         try {
-          return await sendWebhookMessageWithIdentity(
+          return await sendPersonaPostViaWebhook(
             context.webhook,
             {
               files,
@@ -785,8 +786,9 @@ export class GenerateImageTool extends BaseTool {
             {
               username: context.personaUsername,
               avatarUrl: context.personaAvatarUrl,
-              avatarDataUri: context.personaAvatarUrl?.startsWith("data:image/") ? context.personaAvatarUrl : undefined,
+              personaId: context.tomoriState.persona_id,
             },
+            context.channel,
           );
         } catch (fallbackError) {
           log.warn("Failed to send generated image via webhook, falling back to bot message", fallbackError as Error);

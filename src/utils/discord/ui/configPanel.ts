@@ -139,6 +139,7 @@ export interface ConfigPanelPayload {
 export type ConfigPanelView =
   | { kind: "main" }
   | { kind: "promote-confirm"; personaId: number; nonce: string }
+  | { kind: "resync-confirm"; personaId: number; nonce: string; presetName: string; diff: PersonaResyncDiff }
   | { kind: "character-reference-clear-confirm"; personaId: number; nonce: string }
   | { kind: "sprite-remove-confirm"; personaId: number; index: number; fp: string; nonce: string }
   | { kind: "voice-sample-remove-confirm"; index: number; fp: string; nonce: string }
@@ -900,6 +901,14 @@ ${localizer(locale, "commands.config.panel.dialogues_description")}${renderedSel
   return components;
 }
 
+export interface PersonaResyncDiff {
+  attributes: { changed: number; added: number; removed: number };
+  dialogues: { changed: number; added: number; removed: number };
+  promptChanged: boolean;
+  customAvatar: boolean;
+  addedSprites: number;
+}
+
 function buildPersonaGeneralBody(input: ConfigPanelRenderInput): ComponentInContainerData[] {
   const { locale, actor, personas, selectedPersonaId, readStatus } = input;
   const writesDisabled = readStatus !== "fresh";
@@ -933,6 +942,7 @@ ${localizer(locale, "commands.config.panel.general_description")}`,
   const avatarState = resolvePersonaGeneralActionState("avatar", actor);
   const renameState = resolvePersonaGeneralActionState("rename", actor);
   const promoteState = resolvePersonaGeneralActionState("promote", actor);
+  const resyncState = resolvePersonaGeneralActionState("resync", actor);
   const identityButtons: ButtonComponentData[] = [];
   if (avatarState !== "omitted") {
     identityButtons.push({
@@ -959,6 +969,19 @@ ${localizer(locale, "commands.config.panel.general_description")}`,
       customId: buildConfigRouteId({ action: "promote-view", locale, personaId: persona.persona_id as number }),
       label: localizer(locale, "commands.config.panel.promote_button"),
       disabled: writesDisabled || promoteState === "disabled",
+    });
+  }
+
+  if (persona.preset_lineage_id && resyncState !== "omitted") {
+    identityButtons.push({
+      type: ComponentType.Button,
+      style: ButtonStyle.Secondary,
+      customId: buildConfigRouteId({ action: "resync-view", locale, personaId: persona.persona_id as number }),
+      label: localizer(
+        locale,
+        persona.is_pointer ? "commands.config.panel.resync_synced_button" : "commands.config.panel.resync_button",
+      ),
+      disabled: writesDisabled || resyncState === "disabled" || persona.is_pointer === true,
     });
   }
 
@@ -2133,6 +2156,64 @@ const CONDITIONING_SUMMARY_LOCALE_KEYS: Record<
     many: "commands.config.panel.conditioning_punish_summary",
   },
 };
+
+function buildResyncConfirmBody(
+  input: ConfigPanelRenderInput,
+  view: Extract<ConfigPanelView, { kind: "resync-confirm" }>,
+): ComponentInContainerData[] {
+  const { locale } = input;
+  const persona = input.personas.find((candidate) => candidate.persona_id === view.personaId);
+  const { diff } = view;
+  const lines = [localizer(locale, "commands.config.panel.resync_confirm_description")];
+  if (diff.promptChanged) lines.push(localizer(locale, "commands.config.panel.resync_prompt_diff"));
+  if (diff.attributes.changed || diff.attributes.added || diff.attributes.removed) {
+    lines.push(localizer(locale, "commands.config.panel.resync_attributes_diff", diff.attributes));
+  }
+  if (diff.dialogues.changed || diff.dialogues.added || diff.dialogues.removed) {
+    lines.push(localizer(locale, "commands.config.panel.resync_dialogues_diff", diff.dialogues));
+  }
+  if (persona && !persona.is_alter) {
+    lines.push(localizer(locale, "commands.config.panel.resync_main_avatar_detail"));
+  } else if (diff.customAvatar) {
+    lines.push(localizer(locale, "commands.config.panel.resync_avatar_diff"));
+  }
+  if (diff.addedSprites)
+    lines.push(localizer(locale, "commands.config.panel.resync_sprites_diff", { count: diff.addedSprites }));
+  lines.push(localizer(locale, "commands.config.panel.resync_kept_detail"));
+  lines.push(localizer(locale, "commands.config.panel.resync_irreversible_detail"));
+  return [
+    {
+      type: ComponentType.TextDisplay,
+      content: `### ${localizer(locale, "commands.config.panel.resync_confirm_title", {
+        persona: escapeDiscordMarkdown(persona?.persona_nickname ?? ""),
+        preset: escapeDiscordMarkdown(view.presetName),
+      })}\n${lines.join("\n\n")}`,
+    },
+    {
+      type: ComponentType.ActionRow,
+      components: [
+        {
+          type: ComponentType.Button,
+          style: ButtonStyle.Danger,
+          customId: buildConfigRouteId({
+            action: "resync-confirm",
+            locale,
+            personaId: view.personaId,
+            nonce: view.nonce,
+          }),
+          label: localizer(locale, "commands.config.panel.resync_button"),
+          disabled: input.readStatus !== "fresh",
+        },
+        {
+          type: ComponentType.Button,
+          style: ButtonStyle.Secondary,
+          customId: buildConfigRouteId({ action: "resync-cancel", locale, personaId: view.personaId }),
+          label: localizer(locale, "commands.config.panel.cancel_button"),
+        },
+      ],
+    },
+  ];
+}
 
 function buildPromoteConfirmBody(
   input: ConfigPanelRenderInput,
@@ -4232,6 +4313,11 @@ export function buildConfigPanelPayload(input: ConfigPanelRenderInput): ConfigPa
 
   if (input.view && input.view.kind === "promote-confirm") {
     components.push(...buildPromoteConfirmBody(input, input.view));
+    return buildPayload(components, receipt);
+  }
+
+  if (input.view && input.view.kind === "resync-confirm") {
+    components.push(...buildResyncConfirmBody(input, input.view));
     return buildPayload(components, receipt);
   }
 

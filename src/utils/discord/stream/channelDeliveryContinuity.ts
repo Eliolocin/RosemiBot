@@ -1,5 +1,7 @@
+import { formatRenderModifierWebhookName, NEUTRAL_APPEARANCE_MODIFIER } from "@/utils/discord/renderModifierParser";
 import type { ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
 import { log } from "@/utils/misc/logger";
+import { toGroupBreakName } from "@/utils/text/groupBreakName";
 
 /**
  * Cross-turn Discord delivery continuity, keyed by channel.
@@ -19,6 +21,11 @@ import { log } from "@/utils/misc/logger";
  * - **Last speaker**: the rate-limited avatar fallback may reuse the avatar last displayed only
  *    when the same persona, in an ordinary appearance, delivered it.
  *
+ * Every webhook send that can sit next to a sprite must take part, including tool notices and media
+ * sent outside the stream (`utils/discord/webhook/personaPost.ts`): an unrecorded send looks like a
+ * foreign message to the adjacency test, so the sprite after it restarts on the clean name and
+ * merges under that post's avatar.
+ *
  * Entries expire once messages are far enough apart that Discord would not group them anyway.
  * Runtime-authoritative state with no database behind it: mirrors `utils/chat/selfReplyState.ts`.
  */
@@ -26,6 +33,10 @@ import { log } from "@/utils/misc/logger";
 // Discord stops grouping consecutive same-author messages after a few minutes, so continuity
 // beyond that window is pointless, so an expired entry is equivalent to a fresh channel.
 const CONTINUITY_TTL_MS = 10 * 60 * 1000;
+
+// Sprite keys can never contain parentheses (validatePersonaSpriteName rejects them), so this key
+// cannot collide with a real sprite named "neutral" in the channel's group alternation.
+const NEUTRAL_APPEARANCE_GROUP_KEY = "(neutral)";
 
 // Housekeeping (not an operational limit): channels are unbounded, so sweep expired entries
 // once the map grows past this size rather than wiring up a timer.
@@ -172,6 +183,85 @@ export function advanceChannelSpriteGroupParity(
   }
   entry.lastSpriteKey = spriteKey;
   return entry.groupParity;
+}
+
+/**
+ * Returns `identity` with its webhook username chosen to avoid Discord's consecutive-message
+ * grouping collapsing different appearances under one avatar.
+ *
+ * Discord strips zero-width/blank characters from usernames, so two adjacent appearances need names
+ * that differ in a character Discord keeps. The "true" half of the parity uses the lookalike-letter
+ * variant from {@link toGroupBreakName}, which reads as the clean name; only a name with no
+ * swappable letter (kana, hanzi, very short words) falls back to `fallbackDecoratedUsername`.
+ *
+ * @param groupKey - Sprite key of the appearance, or the neutral key for the base appearance
+ * @param channelLastMessageId - The channel's current `lastMessageId`, used for the adjacency test
+ */
+export function resolveChannelGroupBreakIdentity(
+  channelId: string,
+  identity: ResolvedWebhookIdentity,
+  fallbackDecoratedUsername: string,
+  groupKey: string,
+  channelLastMessageId: string | null,
+): ResolvedWebhookIdentity {
+  if (!advanceChannelSpriteGroupParity(channelId, groupKey, channelLastMessageId)) {
+    return identity;
+  }
+  const groupBreakName = identity.username ? toGroupBreakName(identity.username) : null;
+  return { ...identity, username: groupBreakName ?? fallbackDecoratedUsername };
+}
+
+/**
+ * Base appearance counterpart of the sprite alternation, for lines that show the persona's own
+ * avatar under the same clean username its sprites use.
+ *
+ * @param channelLastMessageId - The channel's current `lastMessageId`, used for the adjacency test
+ */
+export function resolveChannelBaseAppearanceIdentity(
+  channelId: string,
+  baseIdentity: ResolvedWebhookIdentity,
+  sourceDisplayName: string,
+  channelLastMessageId: string | null,
+): ResolvedWebhookIdentity {
+  return resolveChannelGroupBreakIdentity(
+    channelId,
+    baseIdentity,
+    formatRenderModifierWebhookName(sourceDisplayName, NEUTRAL_APPEARANCE_MODIFIER),
+    NEUTRAL_APPEARANCE_GROUP_KEY,
+    channelLastMessageId,
+  );
+}
+
+/**
+ * Picks the identity a persona post outside the response stream (tool notice, generated media) is
+ * sent under.
+ *
+ * Directly after the same persona's own line, the post reuses that line's identity verbatim so it
+ * stays inside the speaker's block instead of splitting it. Anywhere else it shows the base
+ * appearance, which joins the sprite alternation so a following sprite cannot merge under the
+ * post's avatar.
+ *
+ * @param personaId - Persona the post speaks for; null never matches a previous speaker
+ * @param channelLastMessageId - The channel's current `lastMessageId`, used for the adjacency test
+ */
+export function resolveChannelPersonaPostIdentity(
+  channelId: string,
+  baseIdentity: ResolvedWebhookIdentity & { username: string },
+  personaId: number | null,
+  channelLastMessageId: string | null,
+): ResolvedWebhookIdentity {
+  const entry = getLiveEntry(channelId, Date.now());
+  const previousIdentity = entry.lastDeliveryVia === "webhook" ? entry.lastWebhookIdentity : null;
+  const continuesOwnLine =
+    previousIdentity !== null &&
+    personaId !== null &&
+    entry.lastSpeaker?.kind === "appearance" &&
+    entry.lastSpeaker.personaId === personaId &&
+    !hasForeignMessageSinceDelivery(entry.lastDeliveredMessageId, channelLastMessageId);
+  if (previousIdentity && continuesOwnLine) {
+    return { ...previousIdentity };
+  }
+  return resolveChannelBaseAppearanceIdentity(channelId, baseIdentity, baseIdentity.username, channelLastMessageId);
 }
 
 /**

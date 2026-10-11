@@ -1083,6 +1083,7 @@ export type NaiPresetRow = z.infer<typeof naiPresetSchema>;
 
 export const personaConfigSchema = z.object({
   persona_id: z.number(),
+  preserve_preset_identity: z.boolean().default(false),
   trigger_words: z.array(z.string()).default([]),
   persona_prompt: z.string().nullable().optional(),
   reward_conditioning_enabled: z.boolean().default(true),

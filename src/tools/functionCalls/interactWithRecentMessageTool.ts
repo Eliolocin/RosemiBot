@@ -14,6 +14,10 @@ import { getOrCreateWebhook } from "@/utils/discord/webhook/lifecycle";
 import { log } from "@/utils/misc/logger";
 import { cleanToolReplyText } from "@/utils/discord/toolReplyText";
 import { getReplyContextAuthorName, sendWebhookReplyWithContext } from "@/utils/discord/webhookReply";
+import {
+  recordChannelDeliveredWebhookIdentity,
+  resolveChannelBaseAppearanceIdentity,
+} from "@/utils/discord/stream/channelDeliveryContinuity";
 import { getCachedAllPersonas } from "@/utils/cache/tomoriStateCache";
 import { resolvePersonaForMessage } from "@/utils/chat/webhookIdentity";
 import { resolvePersonaWebhookIdentity, type ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
@@ -565,16 +569,26 @@ export class InteractWithRecentMessageTool extends BaseTool {
       let sentMessage: Message;
 
       if (replyDeliveryContext.kind === "webhook") {
+        const identity = resolveChannelBaseAppearanceIdentity(
+          context.channel.id,
+          replyDeliveryContext.identity,
+          replyDeliveryContext.identity.username ?? "",
+          context.channel.lastMessageId,
+        );
         sentMessage = await sendWebhookReplyWithContext(
           replyDeliveryContext.webhook,
           targetMessage,
           context.locale,
           sanitizedReplyContent,
-          replyDeliveryContext.identity,
+          identity,
           {
             threadId: replyDeliveryContext.threadId,
           },
         );
+        recordChannelDeliveredWebhookIdentity(context.channel.id, identity, sentMessage.id, {
+          personaId: context.activePersonaId ?? null,
+          kind: "appearance",
+        });
 
         if (context.streamContext?.replyNoticeState) {
           context.streamContext.replyNoticeState.attempted = true;

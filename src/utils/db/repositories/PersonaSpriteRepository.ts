@@ -61,7 +61,7 @@ class PersonaSpriteRepository {
       // Live preset pointers resolve the shared official sprite set.
       const pointer = await this.resolvePointerPreset(personaId);
       if (pointer) {
-        return await this.listPresetSpritesForPointer(personaId, pointer.lineageId, pointer.language);
+        return await this.listForPreset(personaId, pointer.lineageId, pointer.language);
       }
 
       // Otherwise read the persona's own sprite rows.
@@ -114,11 +114,7 @@ class PersonaSpriteRepository {
    * `sprite_id` carries the preset row id (read-only context: mutation paths
    * materialize first, then operate on real persona_sprites rows).
    */
-  private async listPresetSpritesForPointer(
-    personaId: number,
-    lineageId: number,
-    language: string,
-  ): Promise<PersonaSpriteRow[]> {
+  async listForPreset(personaId: number, lineageId: number, language: string): Promise<PersonaSpriteRow[]> {
     const rows = await sql<PersonaSpriteRow[]>`
       SELECT
         preset_sprite_id AS sprite_id,

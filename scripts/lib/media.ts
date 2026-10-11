@@ -55,15 +55,8 @@ export const PERSONA_PREFIX = "src/db/seed/catalog/personas/";
  */
 export const RELEASE_PREFIX = ".github/release/";
 
-/** WebP quality used when normalizing release cards. */
+/** WebP quality used when normalizing static release cards. */
 export const DEFAULT_RELEASE_WEBP_QUALITY = 90;
-
-/**
- * WebP quality used when normalizing animated release cards (such as GIFs).
- * Lower than static cards because inter-frame dithering noise bloats high-quality
- * WebP encodes past the original GIF size.
- */
-export const DEFAULT_RELEASE_ANIMATED_WEBP_QUALITY = 80;
 
 /** Human-readable byte size, e.g. 1572864 -> "1.50 MB". */
 export function formatBytes(bytes: number): string {
@@ -133,8 +126,8 @@ export function listInScopeMedia(): MediaFile[] {
     .map((path) => ({ path, size: statSync(path).size, isPersona: path.startsWith(PERSONA_PREFIX) }));
 }
 
-/** Compression policy for a file: shrink-in-place vs convert-to-WebP. */
-export type CompressStrategy = "lossless-fit" | "webp";
+/** Compression policy for a file: shrink-in-place vs the release card policy. */
+export type CompressStrategy = "lossless-fit" | "release-card";
 
 /** A media file `compress-media` will act on, tagged with the strategy to apply. */
 export type CompressTarget = MediaFile & { strategy: CompressStrategy };
@@ -142,7 +135,7 @@ export type CompressTarget = MediaFile & { strategy: CompressStrategy };
 /**
  * Return every tracked or untracked (non-ignored) media file `compress-media`
  * operates on. This is a SUPERSET of the gate scope: gate-scoped files (personas
- * + assets) get "lossless-fit", while release cards get "webp". The gate itself
+ * + assets) get "lossless-fit", while release cards get "release-card". The gate itself
  * never sees release cards. Untracked files in scope prefixes are included so
  * newly added art can be compressed before it is ever committed.
  */
@@ -164,6 +157,6 @@ export function listCompressTargets(): CompressTarget[] {
       path,
       size: statSync(path).size,
       isPersona: path.startsWith(PERSONA_PREFIX),
-      strategy: (path.startsWith(RELEASE_PREFIX) ? "webp" : "lossless-fit") as CompressStrategy,
+      strategy: (path.startsWith(RELEASE_PREFIX) ? "release-card" : "lossless-fit") as CompressStrategy,
     }));
 }

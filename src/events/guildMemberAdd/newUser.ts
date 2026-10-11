@@ -11,7 +11,7 @@ import { userRepository } from "@/utils/db/repositories";
 import { buildForcedMentionsForUser, ensureDiscordUserMention } from "@/utils/discord/mentionHelper";
 import { getOrCreateWebhook } from "@/utils/discord/webhook/lifecycle";
 import { resolvePersonaWebhookIdentity } from "@/utils/discord/webhook/identity";
-import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
 import { resolvePreferredDiscordDisplayName } from "@/utils/discord/displayName";
 import { downloadImage } from "@/utils/image/avatarHelper";
 import { log } from "@/utils/misc/logger";
@@ -373,13 +373,18 @@ async function triggerWelcomeMessage(client: Client, member: GuildMember): Promi
         if (!webhook) return false;
 
         const identity = await resolvePersonaWebhookIdentity(chosenPersona, member.guild);
-        await sendWebhookMessageWithIdentity(
+        await sendPersonaPostViaWebhook(
           webhook,
           {
             content,
             allowedMentions: { users: [member.id], roles: [], parse: [] },
           },
-          identity,
+          {
+            username: identity.username ?? chosenPersona.persona_nickname,
+            avatarUrl: identity.avatarDataUri ?? identity.avatarUrl,
+            personaId: chosenPersona.persona_id,
+          },
+          welcomeChannel,
         );
         return true;
       } catch (error) {

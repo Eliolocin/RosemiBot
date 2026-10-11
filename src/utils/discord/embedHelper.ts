@@ -17,7 +17,8 @@ import {
 } from "discord.js";
 import { ColorCode, log } from "../misc/logger";
 import { localizer } from "../text/localizer";
-import { sendWebhookMessageWithIdentity } from "./webhookManager";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
+import { recordChannelDeliveredBotMessage } from "@/utils/discord/stream/channelDeliveryContinuity";
 import { attachTextDisplayModalCollector, buildTextDisplayModalRow } from "./textDisplayModal";
 import { withStatusCircle } from "./ui/statusTitle";
 import { resolveFooterLines } from "./ui/noticeFooter";
@@ -62,6 +63,8 @@ export type WebhookEmbedContext = {
   webhook?: Webhook;
   personaUsername?: string;
   personaAvatarUrl?: string;
+  /** Persona the notice speaks for, so it can continue that persona's adjacent line. */
+  personaId?: number;
 };
 
 function canUseWebhookForChannel(
@@ -258,28 +261,20 @@ export async function sendStandardEmbed(
   let sentViaWebhook = false;
   let threadId: string | undefined;
 
-  if (
-    webhookContext?.webhook &&
-    webhookContext.personaUsername &&
-    canUseWebhookForChannel(channel, webhookContext.webhook)
-  ) {
+  const personaUsername = webhookContext?.personaUsername;
+  if (webhookContext?.webhook && personaUsername && canUseWebhookForChannel(channel, webhookContext.webhook)) {
     threadId =
       "isThread" in channel && typeof channel.isThread === "function" && channel.isThread() ? channel.id : undefined;
     try {
-      sentMessage = await sendWebhookMessageWithIdentity(
+      sentMessage = await sendPersonaPostViaWebhook(
         webhookContext.webhook,
         {
           embeds: [embed],
           components,
           ...(threadId ? { threadId } : {}),
         },
-        {
-          username: webhookContext.personaUsername,
-          avatarUrl: webhookContext.personaAvatarUrl,
-          avatarDataUri: webhookContext.personaAvatarUrl?.startsWith("data:image/")
-            ? webhookContext.personaAvatarUrl
-            : undefined,
-        },
+        { username: personaUsername, avatarUrl: webhookContext.personaAvatarUrl, personaId: webhookContext.personaId },
+        channel,
       );
       sentViaWebhook = true;
     } catch (error) {
@@ -289,6 +284,8 @@ export async function sendStandardEmbed(
   } else {
     sentMessage = await channel.send({ embeds: [embed], components });
   }
+
+  if (!sentViaWebhook) recordChannelDeliveredBotMessage(channel.id);
 
   if (!disabledModalRow) return;
 

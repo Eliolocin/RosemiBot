@@ -118,6 +118,7 @@ export const PANEL_ACTIONS = [
   "server-config.workspace.persona-trigger.add",
   "server-config.workspace.persona-trigger.remove",
   "server-config.workspace.persona.promote",
+  "server-config.workspace.persona.resync",
   "server-config.workspace.persona-attribute.add",
   "server-config.workspace.persona-attribute.edit",
   "server-config.workspace.persona-attribute.remove",

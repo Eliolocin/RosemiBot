@@ -290,6 +290,16 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
     }
   }
 
+  /** Loads the exact localized preset referenced by a persona, without locale substitution. */
+  async loadPresetByReference(lineageId: number, language: string): Promise<TomoriPresetRow | null> {
+    const [preset] = await sql<TomoriPresetRow[]>`
+      SELECT * FROM persona_presets
+      WHERE preset_lineage_id = ${lineageId} AND preset_language = ${language}
+      LIMIT 1
+    `;
+    return preset ?? null;
+  }
+
   /** Loads all preset rows regardless of locale. */
   async loadAllPresets(): Promise<TomoriPresetRow[] | null> {
     try {

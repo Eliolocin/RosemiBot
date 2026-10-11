@@ -82,6 +82,12 @@ Tips for effective sample dialogues:
 Open `/config` > Persona > Identity & Personality to set what she calls herself and upload
 her profile picture.
 
+For a customized built-in persona, server managers can choose `Resync with Preset` on this page.
+The confirmation shows which prompt, attributes, sample dialogues, avatar, and sprites will change.
+Resync follows future preset updates and discards those local edits. It keeps the persona's name,
+trigger words, naming habits, memories, history, and other settings. A persona already following its
+preset shows `Synced with Preset`; custom personas have no resync button.
+
 You can also set a custom system prompt in `/config` > Behavior > General Behavior;
 see [Behavior Tweaking](/features/chatting-personality/behavior-tweaking/).
 

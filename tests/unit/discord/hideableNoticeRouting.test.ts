@@ -1,10 +1,17 @@
-import { beforeAll, describe, expect, it } from "bun:test";
-import { ChannelType, PermissionFlagsBits, PermissionsBitField } from "discord.js";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { ChannelType, PermissionFlagsBits, PermissionsBitField, type TextChannel, type Webhook } from "discord.js";
 import { NOTICE_CONFIG_HINT_KEY, type NoticeVerbosity, type ToolNoticeKey } from "@/constants/toolNotices";
 import type { ToolContext } from "@/types/tool/interfaces";
 import { sendMemoryEmbedWithExpand, sendToolNoticeContainer } from "@/utils/discord/expandableEmbedNotice";
+import { sendStandardEmbed } from "@/utils/discord/embedHelper";
+import {
+  clearAllChannelDeliveryContinuity,
+  getChannelLastDelivery,
+  recordChannelDeliveredWebhookIdentity,
+} from "@/utils/discord/stream/channelDeliveryContinuity";
 import { sendToolNotice } from "@/utils/discord/toolProgressNotice";
 import { initializeLocalizer } from "@/utils/text/localizer";
+import { createPersona } from "../../helpers/fixtures";
 import { localizedCopy } from "../../helpers/localeCases";
 
 beforeAll(async () => initializeLocalizer());
@@ -20,6 +27,7 @@ function fakeChannel(id: string, options: { dm?: boolean; parentId?: string; res
   });
   return {
     id,
+    lastMessageId: null,
     sent,
     guildId: "guild_1",
     guild: { roles: { everyone: { id: "guild_1" } } },
@@ -287,3 +295,107 @@ describe("hideable tool notices", () => {
     expect(setup.thoughtLog?.sent ?? []).toHaveLength(0);
   });
 });
+
+for (const format of ["components", "embed"] as const) {
+  describe(`${format} notice delivery continuity`, () => {
+    beforeEach(clearAllChannelDeliveryContinuity);
+    afterEach(clearAllChannelDeliveryContinuity);
+
+    const previousIdentity = { username: "Mirri (shy)", avatarUrl: "https://example.com/shy.png" };
+    const previousSpeaker = { personaId: 55, kind: "appearance" as const };
+
+    async function deliver(channel: ReturnType<typeof fakeChannel>, webhook?: Webhook): Promise<void> {
+      if (format === "embed") {
+        await sendStandardEmbed(channel as unknown as TextChannel, "en-US", memoryNotice, {
+          webhook,
+          personaUsername: "Mirri",
+          personaId: 55,
+        });
+      } else {
+        const context = buildContext({ hidden: [], conversation: channel });
+        context.tomoriState = createPersona({ persona_id: 55, config: { tool_notice_verbosity: "verbose" } });
+        context.webhook = webhook;
+        context.personaUsername = "Mirri";
+        await sendToolNoticeContainer(context, "memory_update", memoryNotice);
+      }
+    }
+
+    function seed(channel: ReturnType<typeof fakeChannel>): void {
+      recordChannelDeliveredWebhookIdentity(channel.id, previousIdentity, "300", previousSpeaker);
+    }
+
+    function failedWebhook(channel: ReturnType<typeof fakeChannel>) {
+      return {
+        id: "400",
+        channelId: channel.id,
+        send: mock(async () => {
+          throw Object.assign(new Error("Webhook send refused"), { code: 50013 });
+        }),
+      };
+    }
+
+    it("clears the previous webhook identity after a successful bot fallback", async () => {
+      const channel = fakeChannel("200");
+      const webhook = failedWebhook(channel);
+      seed(channel);
+
+      await deliver(channel, webhook as unknown as Webhook);
+
+      expect(webhook.send).toHaveBeenCalled();
+      expect(channel.sent).toHaveLength(1);
+      expect(getChannelLastDelivery(channel.id)).toEqual({ via: "bot", speaker: null });
+    });
+
+    it("clears the previous webhook identity after a direct bot send", async () => {
+      const channel = fakeChannel("200");
+      seed(channel);
+
+      await deliver(channel);
+
+      expect(channel.sent).toHaveLength(1);
+      expect(getChannelLastDelivery(channel.id)).toEqual({ via: "bot", speaker: null });
+    });
+
+    it("retains the last successful identity when both sends fail", async () => {
+      const channel = fakeChannel("200");
+      const webhook = failedWebhook(channel);
+      const botSend = spyOn(channel, "send").mockRejectedValue(new Error("Bot send refused"));
+      seed(channel);
+
+      try {
+        const delivery = deliver(channel, webhook as unknown as Webhook);
+        if (format === "embed") await expect(delivery).rejects.toThrow();
+        else await delivery;
+
+        expect(webhook.send).toHaveBeenCalled();
+        expect(botSend).toHaveBeenCalled();
+        expect(getChannelLastDelivery(channel.id)).toEqual({
+          via: "webhook",
+          identity: previousIdentity,
+          speaker: previousSpeaker,
+        });
+      } finally {
+        botSend.mockRestore();
+      }
+    });
+
+    it("records the successful webhook without replacing it with a bot delivery", async () => {
+      const channel = fakeChannel("200");
+      const webhook = { id: "400", channelId: channel.id, send: mock(async () => ({ id: "301" })) };
+      recordChannelDeliveredWebhookIdentity(channel.id, { username: "Juno" }, "300", {
+        personaId: 77,
+        kind: "appearance",
+      });
+
+      await deliver(channel, webhook as unknown as Webhook);
+
+      expect(webhook.send).toHaveBeenCalled();
+      expect(channel.sent).toHaveLength(0);
+      expect(getChannelLastDelivery(channel.id)).toEqual({
+        via: "webhook",
+        identity: { username: "Mirri" },
+        speaker: previousSpeaker,
+      });
+    });
+  });
+}

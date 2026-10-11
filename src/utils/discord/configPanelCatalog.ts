@@ -437,6 +437,9 @@ export type ConfigPanelRoute =
   | { action: "promote-view"; locale: string; personaId: number }
   | { action: "promote-confirm"; locale: string; personaId: number; nonce: string }
   | { action: "promote-cancel"; locale: string; personaId: number }
+  | { action: "resync-view"; locale: string; personaId: number }
+  | { action: "resync-confirm"; locale: string; personaId: number; nonce: string }
+  | { action: "resync-cancel"; locale: string; personaId: number }
   | { action: "server-memory-open"; locale: string; personaId: number }
   | { action: "personal-memory-open"; locale: string; personaId: number }
   | { action: "stm-edit-open"; locale: string; personaId: number }
@@ -951,6 +954,9 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "promote-view": { wireToken: "promote-view", fields: [personaIdField] },
   "promote-confirm": { wireToken: "promote-confirm", fields: [personaIdField, nonceField] },
   "promote-cancel": { wireToken: "promote-cancel", fields: [personaIdField] },
+  "resync-view": { wireToken: "resync-view", fields: [personaIdField] },
+  "resync-confirm": { wireToken: "resync-confirm", fields: [personaIdField, nonceField] },
+  "resync-cancel": { wireToken: "resync-cancel", fields: [personaIdField] },
   "server-memory-open": { wireToken: "server-memory", fields: [personaIdField] },
   "personal-memory-open": { wireToken: "personal-memory", fields: [personaIdField] },
   "stm-edit-open": { wireToken: "stm-edit-open", fields: [personaIdField] },

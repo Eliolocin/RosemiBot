@@ -70,11 +70,12 @@ export function withThoughtLogSource(context: ToolContext, options: StandardEmbe
   };
 }
 
-function getWebhookContext(context: ToolContext) {
+function getWebhookContext(context: ToolContext): WebhookEmbedContext {
   return {
     webhook: context.webhook,
     personaUsername: context.personaUsername,
     personaAvatarUrl: context.personaAvatarUrl,
+    personaId: context.tomoriState.persona_id,
   };
 }
 
@@ -274,6 +275,7 @@ async function resolveThoughtLogTarget(context: ToolContext, logLabel: string): 
         webhook: webhookResult.webhook,
         personaUsername: context.personaUsername,
         personaAvatarUrl: context.personaAvatarUrl,
+        personaId: context.tomoriState.persona_id,
       };
     } else if (context.webhook) {
       log.warn(

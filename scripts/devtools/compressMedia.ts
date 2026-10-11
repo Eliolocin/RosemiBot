@@ -10,12 +10,14 @@
  *      lossless alone cannot reach DEFAULT_LIMIT_BYTES. Color stays Δ0; only
  *      resolution drops, and only when necessary. Same format in/out.
  *
- *  • .github/release/**  → "webp"
- *      Release cards are web-viewed showcase art where WebP crushes PNG. Any
- *      non-WebP card is converted to WebP (DEFAULT_RELEASE_WEBP_QUALITY, default 90) at full
+ *  • .github/release/**  → "release-card"
+ *      Release cards are web-viewed showcase art where WebP crushes PNG. A static
+ *      PNG/JPEG card is converted to WebP (DEFAULT_RELEASE_WEBP_QUALITY, default 90) at full
  *      resolution, the old file is removed, and sibling release-notes.md references
- *      are rewritten. Files that are ALREADY WebP are left untouched because re-encoding a
- *      lossy format every run would accumulate generational artifacts.
+ *      are rewritten. A GIF stays a GIF because its author chose the format for the release
+ *      post; it is replaced only by a smaller re-encode. Files that are ALREADY WebP are left
+ *      untouched because re-encoding a lossy format every run would accumulate generational
+ *      artifacts.
  *      NOTE: published GitHub release bodies hotlink raw/release and must be updated
  *      separately (the command prints the exact `gh release edit` reminder per tag).
  *
@@ -37,7 +39,6 @@ import {
   type CompressTarget,
   DEFAULT_LIMIT_BYTES,
   DEFAULT_MAX_DIMENSION,
-  DEFAULT_RELEASE_ANIMATED_WEBP_QUALITY,
   DEFAULT_RELEASE_WEBP_QUALITY,
   formatBytes,
   listCompressTargets,
@@ -157,17 +158,27 @@ function rewriteSiblingReferences(filePath: string, oldName: string, newName: st
 }
 
 /**
- * "webp": convert a non-WebP release card to WebP at full resolution, remove the
- * source, and rewrite sibling markdown references. Already-WebP files are skipped
- * to avoid lossy generational re-encoding.
+ * "release-card": keep a GIF in place unless a native re-encode is smaller; convert any other
+ * non-WebP card to WebP at full resolution, remove the source, and rewrite sibling markdown
+ * references. Already-WebP files are skipped to avoid lossy generational re-encoding.
  */
-async function runWebp(
-  file: CompressTarget,
-  staticQuality: number,
-  animatedQuality: number,
-  dryRun: boolean,
-): Promise<Outcome> {
+async function runReleaseCard(file: CompressTarget, quality: number, dryRun: boolean): Promise<Outcome> {
   const ext = extOf(file.path);
+  const input = Buffer.from(await Bun.file(file.path).arrayBuffer());
+
+  if (ext === "gif") {
+    const encoded = await encodeLossless(sharp(input, { animated: true }), ext);
+    const smaller = encoded && encoded.length < file.size ? encoded : null;
+    if (smaller && !dryRun) writeFileSync(file.path, smaller);
+    return {
+      path: file.path,
+      newPath: file.path,
+      oldSize: file.size,
+      newSize: smaller?.length ?? file.size,
+      written: smaller !== null && !dryRun,
+      note: smaller ? "gif re-encoded @native" : "already optimal",
+    };
+  }
 
   // Already WebP, so leave it alone (re-encoding lossy WebP each run degrades it).
   if (ext === "webp") {
@@ -182,13 +193,7 @@ async function runWebp(
   }
 
   // Convert to WebP at native resolution (showcase art is viewed full-size).
-  const input = Buffer.from(await Bun.file(file.path).arrayBuffer());
-  const image = sharp(input, { animated: ext === "gif" });
-  const meta = await image.metadata();
-  const pageCount = meta.pages ?? 1;
-  const isAnimated = pageCount > 1;
-  const quality = isAnimated ? animatedQuality : staticQuality;
-  const webp = await image.webp({ quality, effort: 6 }).toBuffer();
+  const webp = await sharp(input).webp({ quality, effort: 6 }).toBuffer();
   const newPath = file.path.replace(/\.[^.]+$/, ".webp");
   const oldName = file.path.slice(file.path.lastIndexOf("/") + 1);
   const newName = newPath.slice(newPath.lastIndexOf("/") + 1);
@@ -205,7 +210,7 @@ async function runWebp(
   // Derive the release tag so we can remind the user to fix the published body.
   const tag = file.path.slice(RELEASE_PREFIX.length).split("/")[0];
 
-  const note = isAnimated ? `→ animated webp (${pageCount} frames) q${quality} @native` : `→ webp q${quality} @native`;
+  const note = `→ webp q${quality} @native`;
 
   return {
     path: file.path,
@@ -223,7 +228,6 @@ async function main(): Promise<void> {
   const limit = DEFAULT_LIMIT_BYTES;
   const maxDim = DEFAULT_MAX_DIMENSION;
   const webpQuality = DEFAULT_RELEASE_WEBP_QUALITY;
-  const webpAnimatedQuality = DEFAULT_RELEASE_ANIMATED_WEBP_QUALITY;
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
   const filters = args.filter((a) => !a.startsWith("--"));
@@ -238,14 +242,14 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `[compress-media] ${dryRun ? "DRY RUN — " : ""}processing ${candidates.length} file(s) · budget ${formatBytes(limit)} · downscale cap ${maxDim}px · release WebP q${webpQuality} (animated q${webpAnimatedQuality})\n`,
+    `[compress-media] ${dryRun ? "DRY RUN — " : ""}processing ${candidates.length} file(s) · budget ${formatBytes(limit)} · downscale cap ${maxDim}px · release WebP q${webpQuality}\n`,
   );
 
   const outcomes: Outcome[] = [];
   for (const file of candidates) {
     outcomes.push(
-      file.strategy === "webp"
-        ? await runWebp(file, webpQuality, webpAnimatedQuality, dryRun)
+      file.strategy === "release-card"
+        ? await runReleaseCard(file, webpQuality, dryRun)
         : await runLosslessFit(file, limit, maxDim, dryRun),
     );
   }

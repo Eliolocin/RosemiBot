@@ -21,7 +21,7 @@ The canonical preset catalog stores character definitions keyed by `(preset_line
 When a server adopts an official preset via `/setup` or `/persona default`, the database creates a pointer persona with `personas.is_pointer = true`:
 
 - **Live content resolution**: Runtime state loading resolves prompt text, attributes, public attribute flags, and sample dialogues directly from `persona_presets`.
-- **Trigger deduplication**: Trigger words resolve live from `persona_presets` and pass through `applyTriggerWordOwnership()` to prevent collisions on shared keywords (see [Multi-Persona System](/architecture/subsystems/multi-persona/)).
+- **Trigger deduplication**: Trigger words normally resolve live from `persona_presets` and pass through `applyTriggerWordOwnership()` to prevent collisions on shared keywords (see [Multi-Persona System](/architecture/subsystems/multi-persona/)). Resynced pointers keep their local trigger words and naming habits through `persona_configs.preserve_preset_identity`.
 - **Lineage separation**: `preset_lineage_id` identifies the official preset row, while `persona_lineage_id` scopes server memories, personal memories, and conditioning history. Applying a preset stamps `persona_lineage_id` with the preset lineage, but memory updates never fork the pointer.
 
 ## Shared assets and reconciliation
@@ -68,7 +68,7 @@ The first local edit to prompt text, attributes, sprites, or naming forks the po
 - `persona_lineage_id` is preserved so existing memories and conditioning history remain intact.
 - **Reference preservation**: Sprites and alter avatars copy shared `presets/` URLs by reference, avoiding byte duplication while retaining protection under storage deletion guards.
 - **Avatar customization exception**: Editing an avatar forks the persona and removes preset sprites referencing shared assets (`removePresetSpritesAfterAvatarChange`), preventing expressions from the previous character from persisting alongside the new face.
-- **Pointer restoration**: Applying an official preset via `/persona default` discards local content edits and restores the live pointer.
+- **Pointer restoration**: A server manager can use `Resync with Preset` in `/config` > Persona > Identity & Personality for a forked main or alter persona. It restores the live preset's prompt, attributes, sample dialogues, avatar, and sprites while preserving `persona_lineage_id`, name, trigger words, naming habits, and other persona settings. Memories, conditioning, and stats keep their existing lineage. Custom avatars and own sprite rows are removed; shared preset images remain protected. Main personas apply the guild avatar immediately; a failed PATCH leaves the avatar hash unset so the boot reconciler retries. `/persona default type: default` also restores a pointer, but only for the main persona and with the selected preset's lineage; `type: alter` creates another persona.
 
 ## Cards, imports, and vision generation
 
