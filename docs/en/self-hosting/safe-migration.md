@@ -148,6 +148,40 @@ Snapshot is required because the migration is destructive.
 
 The `(Checkpoint)` token can appear anywhere in the subject or body: it's matched case-sensitively against the head commit's message. Manual workflow dispatch with the workflow's backup input enabled is the same lever for ad-hoc cases.
 
+### Azure release migrations
+
+The Azure `release` workflow applies schema changes in a separate migration container before it
+replaces the running bot. A backup request alone does not protect the old bot from a removed column.
+The workflow checks changed migration files against the last successfully deployed commit before
+database work begins. A `DROP COLUMN` or `DROP TABLE` can run while the old bot serves only when its
+source no longer names that object. Ship the new reader and any backfill first; leave the old object
+in place for at least one deployed release, then remove it in a later release.
+
+A migration that can lose row data (dropping a table, column, type, schema, or sequence, changing a
+column type, truncation, or an unfiltered delete) requires `(Checkpoint)` on a push or
+`create_db_backup=true` on manual dispatch. Dropping a constraint, index, trigger, function, view,
+or policy loses no rows, so it needs no recovery point. A drop followed by a `CREATE` or
+`ADD CONSTRAINT` of the same name in the same file is the idempotent rerun pattern and is not
+flagged at all.
+
+When the gate cannot show that the old bot works with the new schema, the deploy takes the downtime
+path on its own: it stops the Compose `tomoribot` service and pauses active host restart timers
+before migration starts. The deploy step starts the new bot after migration and restores those
+timers after the health check, so the bot is offline for one to three minutes instead of the usual
+seconds. That happens when old code still names a dropped object, for any other destructive
+statement (renames, type changes, schema-only drops), and for every destructive migration when no
+successful deploy commit is reachable. The run summary records the downtime path. A failed
+migration can leave the bot stopped, so inspect the Azure Run Command record before retrying.
+Additive migrations keep the old bot running through migration.
+
+On the Azure Burstable database tier, the recovery point step records a point-in-time
+restore target because customer on-demand backups are unavailable. Before migration, it requires
+the server to be ready, backup retention to be enabled, and the earliest available restore time to
+precede the target. The job summary records the UTC target and an `az postgres flexible-server
+restore` command that creates a new server. Azure's automated backup and transaction log schedule
+can lag the clock, so this metadata check does not prove that every transaction at the target has
+already reached backup storage. Take a logical dump if the migration needs a stronger recovery point.
+
 ## What to do if a migration fails partway
 
 If the bot crashes or hangs during migration:
