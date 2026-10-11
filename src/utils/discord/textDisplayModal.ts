@@ -3,12 +3,15 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ComponentType,
+  MessageFlags,
   ModalBuilder,
   TextDisplayBuilder,
   type ButtonInteraction,
   type Message,
 } from "discord.js";
+import type { TextDisplayModalAccess } from "@/types/discord/embed";
 import { log } from "@/utils/misc/logger";
+import { localizer } from "@/utils/text/localizer";
 
 const MODAL_TITLE_LIMIT = 45;
 const TEXT_DISPLAY_LIMIT = 4_000;
@@ -25,6 +28,12 @@ interface TextDisplayModalCollectorOptions extends TextDisplayModalOptions {
   timeoutMs: number;
   onExpire?: () => Promise<void>;
   logLabel: string;
+  access?: TextDisplayModalAccess;
+}
+
+interface TextDisplayModalButtonSpec {
+  customId: string;
+  label: string;
 }
 
 /** Builds a read-only modal from markdown-capable text display components. */
@@ -52,8 +61,18 @@ export function buildTextDisplayModalButton(
   label: string,
   disabled = false,
 ): ActionRowBuilder<ButtonBuilder> {
+  return buildTextDisplayModalRow([{ customId, label }], disabled);
+}
+
+/** Builds one row of buttons that each open a read-only text modal. */
+export function buildTextDisplayModalRow(
+  buttons: TextDisplayModalButtonSpec[],
+  disabled = false,
+): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(customId).setLabel(label).setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+    buttons.map(({ customId, label }) =>
+      new ButtonBuilder().setCustomId(customId).setLabel(label).setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+    ),
   );
 }
 
@@ -66,6 +85,7 @@ export function attachTextDisplayModalCollector({
   timeoutMs,
   onExpire,
   logLabel,
+  access,
 }: TextDisplayModalCollectorOptions): void {
   const collector = message.createMessageComponentCollector({
     componentType: ComponentType.Button,
@@ -75,6 +95,13 @@ export function attachTextDisplayModalCollector({
 
   collector.on("collect", async (interaction: ButtonInteraction) => {
     try {
+      if (access && !access.canOpen(interaction)) {
+        await interaction.reply({
+          content: localizer(interaction.locale, access.deniedKey),
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
       await interaction.showModal(buildTextDisplayModal({ customId: `${customId}_modal`, title, content }));
     } catch (error) {
       log.warn(`${logLabel} modal failed`, error as Error);

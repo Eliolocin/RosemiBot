@@ -77,6 +77,12 @@ export default {
       inactivity_timeout_description: `The AI provider stopped responding and the connection timed out. This can happen when the provider is overloaded or experiencing issues. Please try again.`,
       first_token_timeout_description: `The AI provider accepted the request but never started replying, so the connection timed out. Its queue is likely backed up. Please try again, or switch to a less busy model.`,
     },
+    error_detail: {
+      button: `Show Full Error`,
+      title: `Full Provider Error`,
+      manage_server_only: `Only members with \`Manage Server\` can view the full error.`,
+      personal_only: `This error came from a personal provider, so only its owner can view the full error.`,
+    },
     // Atomic tip-item strings rendered by createTipText() as a dashed bullet list in a read-only
     // modal. Each key is one bullet; callers compose conditional items instead of maintaining
     // whole-paragraph tip strings. Text displays render markdown and hyperlinks.

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { DEFAULT_DOCS_LOCALE_ID, DOCS_LOCALES } from "../../../src/constants/docsLocales";
 import { findEntryFile } from "./docsRouting";
 
-/** Astro's remark plugin shape; see `remarkHeadingIds.ts` for why it is declared locally. */
+/** Declared locally because `apps/docs` does not depend on `@astrojs/markdown-remark`; see `remarkHeadingIds.ts`. */
 type RemarkPlugin = () => (tree: unknown, file: { path?: string }) => void;
 
 interface MdastNode {

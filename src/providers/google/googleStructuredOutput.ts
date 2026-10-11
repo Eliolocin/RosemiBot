@@ -1,5 +1,5 @@
 import { parsePrivateStructuredOutput, privateStructuredFailure } from "@/providers/utils/structuredReview";
-import { GoogleGenAI, type GoogleGenAI as GoogleGenAIType } from "@google/genai";
+import { ApiError, GoogleGenAI, type GoogleGenAI as GoogleGenAIType } from "@google/genai";
 import type { Content, GenerateContentConfig, Part } from "@google/genai";
 import type { z } from "zod";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
@@ -48,7 +48,9 @@ export async function callGoogleStructuredJSON<T>(
       temperature: request.temperature ?? 1.0,
       maxOutputTokens: request.maxOutputTokens ?? 8192,
       responseMimeType: "application/json",
-      responseSchema,
+      // `responseSchema` is Google's OpenAPI subset and rejects standard keywords such as
+      // `additionalProperties` with a 400; callers hand us standard JSON Schema.
+      responseJsonSchema: responseSchema,
       systemInstruction: request.systemPrompt,
     });
 
@@ -119,7 +121,8 @@ export async function callGoogleStructuredJSON<T>(
 
     return { success: true, data: validationResult.data };
   } catch (error) {
-    if (request.privateOutput) return privateStructuredFailure(request);
+    if (request.privateOutput)
+      return privateStructuredFailure(request, "transport", error instanceof ApiError ? error.status : undefined);
     log.error("Error calling Google structured JSON", error as Error, {
       errorType: "GoogleStructuredJSONError",
       metadata: { model: request.model },

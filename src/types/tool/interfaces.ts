@@ -158,6 +158,9 @@ export interface StreamingContext {
    */
   triggererUserId?: number;
 
+  /** Discord ID of the same triggerer; only they may open the raw error of their own personal key. */
+  triggererDiscId?: string;
+
   /**
    * Shared, mutable sink of messages the streaming layer has committed to Discord this turn.
    * The orchestrator pushes one entry per successful send (see uiUpdater's `recordSuccessfulSend`);

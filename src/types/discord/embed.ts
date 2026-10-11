@@ -31,7 +31,20 @@ export interface StandardEmbedOptions {
   tipKeys?: string[];
   /** Shared interpolation vars applied to every tip item in {@link tipKeys}. */
   tipVars?: Record<string, string | number | boolean>;
+  /** Raw diagnostic text behind a second button. Only `sendStandardEmbed` renders it. */
+  restrictedDetail?: RestrictedDetailModal;
   files?: AttachmentBuilder[];
+}
+
+/** Restricts who may open a read-only text modal; anyone else gets `deniedKey` as an ephemeral reply. */
+export interface TextDisplayModalAccess {
+  canOpen: (interaction: ButtonInteraction) => boolean;
+  deniedKey: string;
+}
+
+export interface RestrictedDetailModal {
+  content: string;
+  access: TextDisplayModalAccess;
 }
 
 /**

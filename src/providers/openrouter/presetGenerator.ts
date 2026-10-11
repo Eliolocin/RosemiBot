@@ -112,7 +112,7 @@ export async function generatePresetFromPromptOpenrouter(
 
     if (toolsEnabled) {
       body.tools = tools;
-      const providerRouting = buildOpenrouterProviderRouting({ hasTools: true });
+      const providerRouting = buildOpenrouterProviderRouting({ requiresParameterSupport: true });
       if (providerRouting) {
         body.provider = providerRouting;
       }

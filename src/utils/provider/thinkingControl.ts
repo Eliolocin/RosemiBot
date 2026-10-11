@@ -15,7 +15,7 @@ const GOOGLE_GEMINI_25_FLASH_LITE_MIN_BUDGET = 512;
 
 export interface AnthropicThinkingRequest {
   thinking?: {
-    type: "adaptive" | "disabled";
+    type: "adaptive" | "disabled" | "between_tools";
   };
   output_config?: {
     effort: "low" | "medium" | "high";
@@ -84,10 +84,6 @@ function isGemini3FamilyModel(model: string): boolean {
   return normalized.startsWith("gemini-3") || normalized.startsWith("gemini-3.1");
 }
 
-function isGeminiFlashModel(model: string): boolean {
-  return normalizeModel(model).includes("flash");
-}
-
 function isGeminiFlashLiteModel(model: string): boolean {
   return normalizeModel(model).includes("flash-lite");
 }
@@ -96,14 +92,49 @@ function isGeminiProModel(model: string): boolean {
   return normalizeModel(model).includes("pro");
 }
 
-function supportsAnthropicAdaptiveThinking(model: string): boolean {
+// Pro models and Gemini 3.7 Flash onward reject MINIMAL with a 400 instead of clamping it, while
+// every Gemini 3 model accepts LOW. An allow-list therefore costs an unlisted release a little extra
+// thinking rather than every request; add a Flash release here once it is confirmed to accept MINIMAL.
+const GEMINI_MINIMAL_THINKING_PREFIXES = [
+  "gemini-3-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-3.6-flash",
+];
+
+function supportsGeminiMinimalThinking(model: string): boolean {
   const normalized = normalizeModel(model);
-  return (
-    normalized.includes("claude-sonnet-4-6") ||
-    normalized.includes("claude-opus-4-6") ||
-    normalized.includes("claude-opus-4-7") ||
-    normalized.includes("claude-mythos-preview")
-  );
+  return GEMINI_MINIMAL_THINKING_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
+interface AnthropicThinkingProfile {
+  /** How `none` turns thinking off; `null` where the model always thinks and `none` falls to low effort. */
+  off: "disabled" | "between_tools" | null;
+  /** The API rejects `top_p` and any `temperature` other than 1 with a 400 even when thinking is off. */
+  samplingLocked: boolean;
+}
+
+// Each family answers another family's off switch or sampling fields with a 400, so every profile
+// was confirmed against the live API. An unlisted release keeps the pre-adaptive request (no thinking
+// fields, sampling sent); add it here once its accepted fields are confirmed. A longer codename
+// precedes its prefix so `claude-sonnet-5-5` is not read as `claude-sonnet-5`.
+const ANTHROPIC_THINKING_PROFILES: ReadonlyArray<readonly [prefix: string, profile: AnthropicThinkingProfile]> = [
+  ["claude-fable-", { off: null, samplingLocked: true }],
+  ["claude-opus-5-5", { off: null, samplingLocked: true }],
+  ["claude-sonnet-5-5", { off: "between_tools", samplingLocked: true }],
+  ["claude-haiku-5-5", { off: "disabled", samplingLocked: true }],
+  ["claude-opus-5", { off: "disabled", samplingLocked: true }],
+  ["claude-sonnet-5", { off: "disabled", samplingLocked: true }],
+  ["claude-opus-4-8", { off: "disabled", samplingLocked: true }],
+  ["claude-opus-4-7", { off: "disabled", samplingLocked: true }],
+  ["claude-opus-4-6", { off: "disabled", samplingLocked: false }],
+  ["claude-sonnet-4-6", { off: "disabled", samplingLocked: false }],
+  ["claude-mythos-preview", { off: "disabled", samplingLocked: false }],
+];
+
+function resolveAnthropicThinkingProfile(model: string): AnthropicThinkingProfile | undefined {
+  const normalized = normalizeModel(model);
+  return ANTHROPIC_THINKING_PROFILES.find(([prefix]) => normalized.startsWith(prefix))?.[1];
 }
 
 // API names (after `toDeepseekApiModelName`) that accept the `thinking` switch.
@@ -185,17 +216,9 @@ export function buildGoogleThinkingConfig(
     return undefined;
   }
 
-  if (effectiveLevel === "none") {
-    const isMinimalSupported = isGeminiFlashModel(model) && !model.includes("3.7");
+  if (effectiveLevel === "none" || effectiveLevel === "minimal") {
     return {
-      thinkingLevel: isMinimalSupported ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW,
-    };
-  }
-
-  if (effectiveLevel === "minimal") {
-    const isMinimalSupported = !model.includes("3.7");
-    return {
-      thinkingLevel: isMinimalSupported ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW,
+      thinkingLevel: supportsGeminiMinimalThinking(model) ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW,
     };
   }
 
@@ -231,14 +254,22 @@ export function buildAnthropicThinkingRequest(
   forceReason?: boolean,
 ): AnthropicThinkingRequest {
   const effectiveLevel = resolveEffectiveThinkingLevel(configuredLevel, forceReason);
-  if (!supportsAnthropicAdaptiveThinking(model)) {
+  const profile = resolveAnthropicThinkingProfile(model);
+  if (!profile) {
     return { omitSampling: false };
   }
 
   if (effectiveLevel === "none") {
+    if (profile.off === null) {
+      return {
+        thinking: { type: "adaptive" },
+        output_config: { effort: "low" },
+        omitSampling: true,
+      };
+    }
     return {
-      thinking: { type: "disabled" },
-      omitSampling: false,
+      thinking: { type: profile.off },
+      omitSampling: profile.samplingLocked,
     };
   }
 

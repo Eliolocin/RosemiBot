@@ -268,7 +268,7 @@ export function containsCredential(value: string): boolean {
   return CREDENTIAL_REDACTIONS.some(([pattern]) => value.search(pattern) !== -1);
 }
 
-function redactLogString(value: string): string {
+export function redactLogString(value: string): string {
   const credentialsRedacted = CREDENTIAL_REDACTIONS.reduce(
     (text, [pattern, replacement]) => text.replace(pattern, replacement),
     value.replace(/(data:[a-z0-9/._\\+-]+;base64,)[A-Za-z0-9+/=]{80,}/gi, `$1...[BASE64 TRUNCATED]`),

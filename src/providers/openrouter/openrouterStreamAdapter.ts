@@ -561,7 +561,7 @@ export class OpenrouterStreamAdapter extends BaseStreamAdapter {
           config.model !== "other-model" ? (getOpenRouterCapabilities(config.model)?.hasTools ?? false) : false;
         if (this.isOpenRouterParamSupported(supportedParameters, "tools") || capabilityAllowsTools) {
           requestBody.tools = config.tools;
-          const providerRouting = buildOpenrouterProviderRouting({ hasTools: true });
+          const providerRouting = buildOpenrouterProviderRouting({ requiresParameterSupport: true });
           if (providerRouting) {
             requestBody.provider = providerRouting;
           }

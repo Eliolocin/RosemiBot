@@ -38,17 +38,17 @@ For providers accepting numeric token budgets rather than named effort strings, 
 Gemini behavior branches by model family:
 
 - **Gemini 2.5**: Maps to numeric `thinkingBudget`. `auto` sends `-1`. `none` sends `0` for Flash models and clamps to `128` for Pro models (which cannot disable thinking). Flash-Lite clamps upward to `512`.
-- **Gemini 3 / 3.1**: Maps to enum `thinkingLevel` (`MINIMAL`, `LOW`, `MEDIUM`, `HIGH`). `auto` omits the configuration. `none` maps to `MINIMAL` for Flash models and `LOW` for Pro models.
+- **Gemini 3 / 3.1**: Maps to enum `thinkingLevel` (`MINIMAL`, `LOW`, `MEDIUM`, `HIGH`). `auto` omits the configuration. `none` and `minimal` map to `MINIMAL` only for Flash releases known to accept it (an allow-list in `thinkingControl.ts`) and to `LOW` everywhere else, because Pro models and Gemini 3.7 Flash onward reject `MINIMAL` while every Gemini 3 model accepts `LOW`.
 - **Assistant prefill interaction**: Gemini suppresses internal thought tags when continuing assistant prefills, emitting reasoning tokens directly into visible response text. The prefill resolver (`resolvePrefillBlocker` in `src/utils/chat/assistantPrefill.ts`) permits server prefills on Gemini only when thinking resolves to `thinkingBudget: 0` or `thinkingLevel: MINIMAL`.
 
 ### Anthropic
 
-Claude 4.6+ models map to adaptive thinking:
+Claude models listed in the profile table in `thinkingControl.ts` map to adaptive thinking. Each family rejects another family's off switch with HTTP 400, so an unlisted model receives no thinking fields until its profile is added:
 
 - `auto`: `thinking: { type: "adaptive" }`
-- `none`: `thinking: { type: "disabled" }`
 - `low` / `medium` / `high`: `thinking: { type: "adaptive" }` paired with `output_config: { effort }`
-- Incompatible sampling parameters (such as `temperature` and `top_p`) are omitted when adaptive thinking is active.
+- `none`: `thinking: { type: "disabled" }` on most models. Sonnet 5.5 uses `{ type: "between_tools" }` instead, and Opus 5.5 and Fable cannot stop thinking, so they get adaptive thinking at `effort: "low"`.
+- `temperature` and `top_p` are omitted whenever thinking is on. Opus 4.7 and later, Sonnet 5 and later, and Haiku 5.5 reject them in every mode, so those models never receive them.
 
 ### OpenRouter
 

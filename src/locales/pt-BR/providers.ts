@@ -77,6 +77,12 @@ export default {
       inactivity_timeout_description: `O provedor de IA parou de responder e o tempo limite da conexão se esgotou. Isso pode acontecer quando o provedor está sobrecarregado ou com problemas. Por favor, tente novamente.`,
       first_token_timeout_description: `O provedor de IA aceitou a solicitação, mas nunca começou a responder, então o tempo limite da conexão se esgotou. A fila dele provavelmente está congestionada. Por favor, tente novamente ou troque para um modelo menos ocupado.`,
     },
+    error_detail: {
+      button: `Mostrar erro completo`,
+      title: `Erro completo do provedor`,
+      manage_server_only: `Apenas membros com \`Gerenciar Servidor\` podem ver o erro completo.`,
+      personal_only: `Este erro veio de um provedor pessoal, então apenas o proprietário pode ver o erro completo.`,
+    },
     // Atomic tip-item strings rendered by createTipText() as a dashed bullet list in a read-only
     // modal. Each key is one bullet; callers compose conditional items instead of maintaining
     // whole-paragraph tip strings. Text displays render markdown and hyperlinks.

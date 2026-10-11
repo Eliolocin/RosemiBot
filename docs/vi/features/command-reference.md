@@ -2,7 +2,6 @@
 title: "Danh mục lệnh"
 sidebar:
   order: 6
-aiGenerated: true
 ---
 
 <!--

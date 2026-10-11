@@ -77,6 +77,12 @@ export default {
       inactivity_timeout_description: `El proveedor de IA dejó de responder y se agotó el tiempo de espera de la conexión. Esto puede suceder cuando el proveedor está sobrecargado o experimenta problemas. Por favor, inténtalo de nuevo.`,
       first_token_timeout_description: `El proveedor de IA aceptó la solicitud, pero nunca empezó a responder, así que se agotó el tiempo de espera de la conexión. Es probable que su cola esté saturada. Por favor, inténtalo de nuevo o cambia a un modelo menos ocupado.`,
     },
+    error_detail: {
+      button: `Ver error completo`,
+      title: `Error completo del proveedor`,
+      manage_server_only: `Solo los miembros con \`Gestionar servidor\` pueden ver el error completo.`,
+      personal_only: `Este error vino de un proveedor personal, así que solo su propietario puede ver el error completo.`,
+    },
     tips: {
       title: `💡 Lo que puedes hacer`,
       button: `Lo que puedes hacer`,

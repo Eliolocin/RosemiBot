@@ -1,5 +1,12 @@
-import { describe, expect, it } from "bun:test";
-import { buildTextDisplayModal, buildTextDisplayModalButton } from "@/utils/discord/textDisplayModal";
+import { describe, expect, it, mock } from "bun:test";
+import { MessageFlags, type ButtonInteraction, type Message } from "discord.js";
+import {
+  attachTextDisplayModalCollector,
+  buildTextDisplayModal,
+  buildTextDisplayModalButton,
+} from "@/utils/discord/textDisplayModal";
+import { initializeLocalizer } from "@/utils/text/localizer";
+import { localizedCopy } from "../../helpers/localeCases";
 
 describe("text display modal", () => {
   it("preserves text exactly in one large display component", () => {
@@ -30,6 +37,37 @@ describe("text display modal", () => {
       label: "What You Can Do",
       style: 2,
       type: 2,
+    });
+  });
+
+  it("answers a viewer the access gate rejects with an ephemeral notice instead of the modal", async () => {
+    await initializeLocalizer();
+    let collect: ((interaction: ButtonInteraction) => Promise<void>) | undefined;
+    const message = {
+      createMessageComponentCollector: () => ({
+        on(event: string, listener: (interaction: ButtonInteraction) => Promise<void>) {
+          if (event === "collect") collect = listener;
+        },
+      }),
+    } as unknown as Message;
+    attachTextDisplayModalCollector({
+      message,
+      customId: "detail",
+      title: "Detail",
+      content: "raw",
+      timeoutMs: 1_000,
+      logLabel: "Detail",
+      access: { canOpen: () => false, deniedKey: "genai.error_detail.manage_server_only" },
+    });
+    const reply = mock(async (_payload: unknown) => undefined);
+    const showModal = mock(async () => undefined);
+
+    await collect?.({ locale: "en-US", reply, showModal } as unknown as ButtonInteraction);
+
+    expect(showModal).not.toHaveBeenCalled();
+    expect(reply.mock.calls[0]?.[0]).toEqual({
+      content: localizedCopy("en-US", "genai.error_detail.manage_server_only"),
+      flags: MessageFlags.Ephemeral,
     });
   });
 });

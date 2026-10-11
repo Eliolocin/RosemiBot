@@ -67,7 +67,11 @@ differentiate failure causes:
 Public sinks show only the provider's localized, classified headline from `createErrorDescription()`.
 The upstream response text never reaches error embeds, interaction replies, the fallback notice, or
 tool results returned to the model, because an endpoint can echo the bearer value it received in an
-encoding that pattern redaction misses, and self-debug reads those notices back into context. Error
+encoding that pattern redaction misses, and self-debug reads those notices back into context. The
+chat error embed instead offers a **Show Full Error** button that opens the redacted snippet in a
+modal, which reaches only the viewer and never enters channel history. Only someone who could replace
+the failing key may open it: a `Manage Server` member (or the DM's user) for server credentials, and
+only the triggering user for a personal key. Error
 codes appear only when `formatProviderErrorCodeForDisplay()` recognizes an HTTP status or single-case
 enum word; anything else shows as `unknown`. The chat logger caps the diagnostic snippet from
 `getProviderErrorDetail()` at 2,000 characters, then passes it and the attached error through
