@@ -417,6 +417,11 @@ function makeReviewContext(): ChatTurnContext & { responseReview: ResponseReview
   return Object.assign(context, { responseReview });
 }
 
+function packetOf(result: ReturnType<typeof buildReviewerPacket>) {
+  if (typeof result === "string") throw new Error(`Expected a reviewer packet, got gap ${result}`);
+  return result;
+}
+
 function held(
   text: string,
   delivered: string[],
@@ -1507,14 +1512,45 @@ describe("runToolLoop — contract tests", () => {
         }),
       ),
     );
-    const packet = buildReviewerPacket(context, "pending", 750);
-    expect(packet?.candidate.text).toBe("pending");
-    expect(packet?.coverage.historyIncluded).toBeLessThan(50);
-    expect(packet?.coverage.historyIncluded).toBeGreaterThan(0);
-    expect(buildReviewerPacket(context, "x".repeat(5000), 750)).toBeNull();
+    const packet = packetOf(buildReviewerPacket(context, "pending", 750));
+    expect(packet.candidate.text).toBe("pending");
+    expect(packet.coverage.historyIncluded).toBeLessThan(50);
+    expect(packet.coverage.historyIncluded).toBeGreaterThan(0);
+    expect(buildReviewerPacket(context, "x".repeat(5000), 750)).toBe("evidence_over_budget");
+    context.message.reference = { messageId: "outside_context" } as typeof context.message.reference;
+    expect(buildReviewerPacket(context, "pending", 750)).toBe("reply_target_missing");
+    context.contextItems = context.contextItems.filter(
+      (item) => item.metadataTag !== ContextItemTag.SYSTEM_PERSONALITY,
+    );
+    expect(buildReviewerPacket(context, "pending", 750)).toBe("persona_missing");
     context.contextItems = [];
-    expect(buildReviewerPacket(context, "pending", 750)).toBeNull();
+    expect(buildReviewerPacket(context, "pending", 750)).toBe("trigger_missing");
     expect(draftReviewResultSchema.safeParse({ status: "revise", findings: [] }).success).toBe(false);
+  });
+
+  it("resolves a reply to a later chunk of a merged persona reply to its prose", () => {
+    const context = makeReviewContext();
+    const chunkIds = ["persona_chunk_1", "persona_chunk_2", "persona_chunk_3"];
+    context.contextItems.splice(
+      1,
+      0,
+      {
+        role: "user",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: chunkIds[0],
+        combinedMessageIds: chunkIds,
+        parts: [{ type: "text", text: "[System: Sent earlier]" }],
+      },
+      {
+        role: "model",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: chunkIds[0],
+        combinedMessageIds: chunkIds,
+        parts: [{ type: "text", text: "Mirri kneels.\nNow. About that favor." }],
+      },
+    );
+    context.message.reference = { messageId: chunkIds[2] } as typeof context.message.reference;
+    expect(packetOf(buildReviewerPacket(context, "pending", 64000)).replyTarget?.text).toContain("About that favor");
   });
 
   it("keeps a packet whose available tools nest array-of-object parameters past the sanitizer depth", () => {
@@ -1532,10 +1568,14 @@ describe("runToolLoop — contract tests", () => {
       { type: "function", function: { name: "fixture_image", description: "Draw.", parameters: deepParameters } },
       { functionDeclarations: [{ name: "fixture_lookup", parameters: { type: "object", properties: {} } }] },
     ];
-    const packet = buildReviewerPacket(context, "pending", 64000, tools, { name: "fixture_lookup", args: {} });
-    expect(packet?.availableTools.map((tool) => tool.name)).toEqual(["fixture_image", "fixture_lookup"]);
-    expect(packet?.availableTools[0]?.parameters).toEqual(["characters"]);
-    expect(buildReviewerPacket(context, "pending", 64000, tools, { name: "fixture_missing", args: {} })).toBeNull();
+    const packet = packetOf(
+      buildReviewerPacket(context, "pending", 64000, tools, { name: "fixture_lookup", args: {} }),
+    );
+    expect(packet.availableTools.map((tool) => tool.name)).toEqual(["fixture_image", "fixture_lookup"]);
+    expect(packet.availableTools[0]?.parameters).toEqual(["characters"]);
+    expect(buildReviewerPacket(context, "pending", 64000, tools, { name: "fixture_missing", args: {} })).toBe(
+      "unknown_tool",
+    );
   });
 
   it("reviews admitted media and tool images as placeholders and blocks decision skipping", () => {
@@ -1555,11 +1595,11 @@ describe("runToolLoop — contract tests", () => {
         totalValidated: 1,
       },
     });
-    const packet = buildReviewerPacket(context, "pending", 64000);
-    expect(packet?.coverage.media).toBe("placeholders");
-    expect(packet?.tools[0]?.imageOmitted).toBe(true);
+    const packet = packetOf(buildReviewerPacket(context, "pending", 64000));
+    expect(packet.coverage.media).toBe("placeholders");
+    expect(packet.tools[0]?.imageOmitted).toBe(true);
     expect(JSON.stringify(packet)).not.toContain("example.com/fixture.png");
-    expect(packet?.historicalDialogue.some((item) => item.messageId === "history_media" && item.text)).toBe(true);
+    expect(packet.historicalDialogue.some((item) => item.messageId === "history_media" && item.text)).toBe(true);
   });
 
   it("pins only an owned reviewer and uses its saved credentials independently of the author", async () => {
@@ -1776,10 +1816,27 @@ describe("runToolLoop — contract tests", () => {
     });
     await reviewResponseCandidate(context, provider, makeProviderConfig());
     expect(calls).toBe(2);
-    const packet = buildReviewerPacket(context, "pending", 64000);
-    expect(JSON.stringify(packet?.tools)).not.toContain("PRIVATE_KEY");
-    expect(packet?.candidate.text).toBe("pending");
-    expect(buildReviewerPacket(context, `sk-proj-${"a".repeat(30)}`, 64000)).toBeNull();
+    const packet = packetOf(buildReviewerPacket(context, "pending", 64000));
+    expect(JSON.stringify(packet.tools)).not.toContain("PRIVATE_KEY");
+    expect(packet.candidate.text).toBe("pending");
+    expect(buildReviewerPacket(context, `sk-proj-${"a".repeat(30)}`, 64000)).toBe("candidate_credential");
+  });
+
+  it("reviews roleplay prose that only resembles log key-value pairs", () => {
+    const context = makeReviewContext();
+    for (const candidate of [
+      "Here's my secret: I never sleep.",
+      "The password: swordfish, she whispered.",
+      "*hands you a token: a silver coin*",
+      "Authorization: denied, traveler. Basic training starts at dawn.",
+    ])
+      expect(packetOf(buildReviewerPacket(context, candidate, 64000)).candidate.text).toBe(candidate);
+    for (const candidate of [
+      `Bearer ${"b".repeat(32)}`,
+      "postgres://mirri:hunter2@db.example.com/app",
+      `https://discord.com/api/webhooks/123/${"w".repeat(40)}`,
+    ])
+      expect(buildReviewerPacket(context, candidate, 64000)).toBe("candidate_credential");
   });
 
   it("routes checker hits/failures directly to review and keeps diagnostics out of author continuation and accepted dialogue", async () => {

@@ -13,10 +13,9 @@ import {
   TOOL_DECISION_RUBRIC,
   MAX_DECISION_REQUESTS,
 } from "@/utils/chat/responseDecisionRouting";
-import type { ResponseReviewState, buildReviewerPacket } from "@/utils/chat/responseReview";
+import type { ResponseReviewState, ReviewerPacket as Packet } from "@/utils/chat/responseReview";
 import { log } from "@/utils/misc/logger";
 
-type Packet = NonNullable<ReturnType<typeof buildReviewerPacket>>;
 const item = {
   tag: "admitted_context",
   role: "user" as const,

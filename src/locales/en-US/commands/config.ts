@@ -25,6 +25,8 @@ export default {
       decision_status: "Decisions: {model}",
       none: "None",
       unavailable: "Unavailable",
+      inherited_unavailable:
+        "My current response model doesn't support structured output, so it can't review drafts. Choose a different reviewer below.",
       decision_note:
         "Decision models are currently experimental. They are cheaper and can speed up Response Drafting, but may cause worse results.",
       rules_title: "Rule Checks",

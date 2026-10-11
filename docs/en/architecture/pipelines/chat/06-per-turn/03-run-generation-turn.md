@@ -82,7 +82,9 @@ precedes the candidate, findings and tool outcomes, so a second review reuses th
 prefix cache. Pending prose is labeled separately from history. The reviewer reads as a blind model:
 admitted media and tool images become placeholders, and that coverage keeps Decision routing from
 skipping review. Available tools are a compact catalog of names, descriptions and parameter names.
-Incomplete required evidence or unsafe redaction makes review unavailable. Inherited reviewers use the
+Incomplete required evidence, a candidate containing a credential-shaped string (`containsCredential`,
+not the log redactor's `key: value` heuristic, which matches ordinary prose), or tool arguments that
+redaction would alter make review unavailable, and the trace category names the gap. Inherited reviewers use the
 actual author attempt's model and key; pinned reviewers revalidate their owned registration and credentials.
 Either way the request follows the reviewer provider's saved `thinking_level` and asks for the chat
 reply budget, because a reasoning model spends its thinking from the output allowance before the JSON

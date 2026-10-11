@@ -135,7 +135,13 @@ export function buildResponseDraftingBody(
     text(
       `> ${t(state.config.response_drafting_enabled ? "commands.config.drafting.on" : "commands.config.drafting.off")}`,
     ),
-    text(`### ${t("commands.config.drafting.models_title")}\n${t("commands.config.drafting.models_description")}`),
+    text(
+      `### ${t("commands.config.drafting.models_title")}\n${t("commands.config.drafting.models_description")}${
+        view && state.config.response_reviewer_llm_id === null && !view.inheritedReviewerAvailable
+          ? `\n> ${t("commands.config.drafting.inherited_unavailable")}`
+          : ""
+      }`,
+    ),
   ];
   for (const slot of ["reviewer", "decision"] as const) {
     if (!view) break;

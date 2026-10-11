@@ -1,4 +1,3 @@
-import { log } from "@/utils/misc/logger";
 import { applyUncensorOutputTransforms } from "@/utils/text/uncensor";
 import { REASONING_TAG_GLOBAL_RE } from "@/providers/utils/reasoningTags";
 import { escapeRegExp } from "./regexUtils";
@@ -394,7 +393,6 @@ export function cleanLLMOutput(
     cleanedText = cleanedText.replace(/\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier}|️|‍/gu, "");
     cleanedText = cleanedText.replace(/:(?=[^:]*[a-zA-Z_])[\w-]+:/g, "");
   } else if (emojiStrings && emojiStrings.length > 0) {
-    log.info(`[cleanLLMOutput] Processing text with ${emojiStrings.length} emojis (${text.length} characters)`);
     const validEmojiSet = new Set(emojiStrings);
 
     cleanedText = cleanedText.replace(/<[^:>\s]*:([A-Za-z0-9_~]+):(\d+)>/g, "<:$1:$2>");
@@ -446,9 +444,6 @@ export function cleanLLMOutput(
     if (!preserveUnresolvedEmojiShortcodes) {
       cleanedText = cleanedText.replace(/:(?=[^:]*[a-zA-Z_])[\w-]+:/g, "");
     }
-    log.info(
-      `[cleanLLMOutput] Emoji conversion skipped. emojiUsageEnabled: ${emojiUsageEnabled}, emojiStrings length: ${emojiStrings?.length || 0}`,
-    );
   }
 
   if (botName) {

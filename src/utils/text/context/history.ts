@@ -163,6 +163,7 @@ export function pushDialogueHistoryContextItem(
   metadataTag?: ContextItemTag,
   sender?: StructuredContextItem["sender"],
   mediaDescriptors?: MediaDescriptor[],
+  combinedMessageIds?: string[],
 ): void {
   if (parts.length === 0 && (!mediaDescriptors || mediaDescriptors.length === 0)) {
     return;
@@ -173,6 +174,7 @@ export function pushDialogueHistoryContextItem(
     parts,
     metadataTag: metadataTag ?? ContextItemTag.DIALOGUE_HISTORY,
     messageId,
+    ...(combinedMessageIds && { combinedMessageIds }),
     ...(sender && { sender }),
     ...(mediaDescriptors && mediaDescriptors.length > 0 && { mediaDescriptors }),
   });

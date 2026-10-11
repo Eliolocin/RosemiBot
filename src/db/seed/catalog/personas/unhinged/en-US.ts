@@ -75,7 +75,7 @@ export const persona: PersonaInput = {
       name: "aroused",
       file: "sprites/aroused.png",
       usageInstructions:
-        "Use when being lewd, {bot} is too horny to talk properly, when {bot} loses composure to pleasure.",
+        "Use when being lewd, performing erotic role-play with {user}, or when {bot} loses composure to pleasure.",
     },
     {
       name: "The Voice",

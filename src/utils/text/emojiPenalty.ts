@@ -164,8 +164,6 @@ function getRecentlyUsedCustomEmojis(contextItems: StructuredContextItem[], conf
     }
   }
 
-  log.info(`[Unique Emoji] Found ${usedEmojis.size} unique custom emoji(s) in last ${messagesToCheck} message(s)`);
-
   return usedEmojis;
 }
 
@@ -189,10 +187,7 @@ export function filterDuplicateCustomEmojis(generatedText: string, contextItems:
     }
   }
 
-  if (emojisToRemove.size === 0) {
-    log.info("[Unique Emoji] No duplicate custom emojis found in generated text");
-    return generatedText;
-  }
+  if (emojisToRemove.size === 0) return generatedText;
 
   const filtered = filterCustomEmojis(generatedText, emojisToRemove);
 

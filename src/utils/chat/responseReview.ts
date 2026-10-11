@@ -11,7 +11,7 @@ import { getChannelTurnAbortSignal, runUnderWatchdog, touchChannelLock } from "@
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { MAX_PENDING_RESPONSE_BYTES, MAX_PENDING_RESPONSE_SEGMENTS } from "@/utils/discord/stream/constants";
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
-import { log, sanitizeLogPayload } from "@/utils/misc/logger";
+import { containsCredential, log, sanitizeLogPayload } from "@/utils/misc/logger";
 import { resolveCustomTextEndpointTarget } from "@/utils/provider/customEndpointService";
 import { resolveChatMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
 import { resolveModelLimits } from "@/utils/provider/modelLimits";
@@ -209,6 +209,18 @@ function compactToolCatalog(tools: ProviderConfig["tools"] = []): ReviewerToolEn
   });
 }
 
+/** Why a reviewer packet could not be built; traced as the unavailable category. */
+export type ReviewerPacketGap =
+  | "review_inactive"
+  | "candidate_credential"
+  | "tool_arguments_redacted"
+  | "unknown_tool"
+  | "trigger_missing"
+  | "persona_missing"
+  | "reply_target_missing"
+  | "evidence_over_budget"
+  | "evidence_truncated";
+
 /** Uses admitted evidence only. Required prose is complete; optional dialogue carries coverage. */
 export function buildReviewerPacket(
   context: ChatTurnContext,
@@ -218,28 +230,35 @@ export function buildReviewerPacket(
   proposedCall?: ProposedToolRequest,
 ) {
   const state = context.responseReview;
-  if (!state) return null;
-  if (sanitizeLogPayload(candidate, 0, false) !== candidate) return null;
+  if (!state) return "review_inactive" satisfies ReviewerPacketGap;
+  if (containsCredential(candidate)) return "candidate_credential" satisfies ReviewerPacketGap;
   if (
     proposedCall &&
     JSON.stringify(
       sanitizeLogPayload(redactToolParametersForStorage(proposedCall.name, proposedCall.args), 0, false),
     ) !== JSON.stringify(proposedCall.args)
   )
-    return null;
+    return "tool_arguments_redacted" satisfies ReviewerPacketGap;
   const catalog = compactToolCatalog(tools);
-  if (proposedCall && !catalog.some((tool) => tool.name === proposedCall.name)) return null;
+  if (proposedCall && !catalog.some((tool) => tool.name === proposedCall.name))
+    return "unknown_tool" satisfies ReviewerPacketGap;
   const items = context.contextItems.filter((item) => !item.metadataTag || !OMITTED_TAGS.has(item.metadataTag));
-  const trigger = items.find((item) => item.messageId === context.message.id);
+  // A persona's own message pushes its leading `[System: ...]` blocks as a separate item before its
+  // prose under the same ID, so the last match is the prose the reviewer needs.
+  const findMessage = (id: string) =>
+    items.findLast((item) => item.messageId === id || item.combinedMessageIds?.includes(id));
+  const trigger = findMessage(context.message.id);
   const replyId = context.message.reference?.messageId;
-  const replyTarget = replyId ? items.find((item) => item.messageId === replyId) : undefined;
+  const replyTarget = replyId ? findMessage(replyId) : undefined;
   const persona = items.filter(
     (item) =>
       item.metadataTag === ContextItemTag.SYSTEM_PERSONALITY ||
       item.metadataTag === ContextItemTag.SYSTEM_PERSONA_PROMPT ||
       item.metadataTag === ContextItemTag.SYSTEM_INSTRUCTION_BLOCK,
   );
-  if (!trigger || !persona.length || (replyId && !replyTarget)) return null;
+  if (!trigger) return "trigger_missing" satisfies ReviewerPacketGap;
+  if (!persona.length) return "persona_missing" satisfies ReviewerPacketGap;
+  if (replyId && !replyTarget) return "reply_target_missing" satisfies ReviewerPacketGap;
   const history = items.filter(
     (item) => item.metadataTag === ContextItemTag.DIALOGUE_HISTORY && item !== trigger && item !== replyTarget,
   );
@@ -298,7 +317,8 @@ export function buildReviewerPacket(
     },
   };
   const fits = () => charsToTokensText(renderReviewerPrompt(packet).length) <= inputTokens;
-  if (!fits() || JSON.stringify(packet).includes("[TRUNCATED")) return null;
+  if (!fits()) return "evidence_over_budget" satisfies ReviewerPacketGap;
+  if (JSON.stringify(packet).includes("[TRUNCATED")) return "evidence_truncated" satisfies ReviewerPacketGap;
   // Keep recent dialogue and complete user/model sample pairs; an oversized optional item is omitted.
   for (let index = 0; index < samples.length; index += 2) {
     const pair = samples
@@ -324,7 +344,7 @@ export function buildReviewerPacket(
   return packet;
 }
 
-type ReviewerPacket = NonNullable<ReturnType<typeof buildReviewerPacket>>;
+export type ReviewerPacket = Exclude<ReturnType<typeof buildReviewerPacket>, ReviewerPacketGap>;
 
 const section = (name: string, body: string, attributes = "") => `<${name}${attributes}>\n${body}\n</${name}>`;
 
@@ -465,6 +485,7 @@ async function reviewCandidate(
   let modelId: number | undefined;
   let model: string | undefined;
   let provider: string | undefined;
+  let thinkingLevel: string | undefined;
   const trace = (outcome: string, extra: Record<string, unknown> = {}) =>
     log.info(
       `Response review ${JSON.stringify({
@@ -483,6 +504,7 @@ async function reviewCandidate(
         modelId,
         model,
         provider,
+        thinkingLevel,
         reviews: state.responseReviews,
         revisions: state.revisions,
         elapsedMs: Date.now() - started,
@@ -556,6 +578,7 @@ async function reviewCandidate(
     modelId = resolved.state.llm.llm_id;
     model = resolved.state.llm.llm_codename;
     provider = resolved.state.llm.llm_provider;
+    thinkingLevel = resolved.state.config.thinking_level;
     const target = provider.startsWith("custom:")
       ? await runUnderWatchdog(context.channel.id, () => wait(resolveCustomTextEndpointTarget(resolved.state)))
       : null;
@@ -603,7 +626,7 @@ async function reviewCandidate(
     if (cancelled()) return { status: "cancelled" };
     if (timeout.aborted) return unavailable("timeout", true);
     const packet = buildReviewerPacket(context, candidate, inputTokens, tools ?? [], proposedCall);
-    if (!packet) return unavailable("evidence_coverage");
+    if (typeof packet === "string") return unavailable(packet);
     if (proposedCall && state.toolReviews >= MAX_TOOL_REVIEWS) return unavailable("tool_review_budget");
     if (!proposedCall && state.responseReviews >= MAX_RESPONSE_REVIEWS) {
       trace("exhausted");
@@ -680,7 +703,7 @@ async function reviewCandidate(
         userPrompt,
         temperature: 0.3,
         maxOutputTokens: outputTokens,
-        thinkingLevel: resolved.state.config.thinking_level,
+        thinkingLevel,
         schemaName: proposedCall ? "tool_review" : "response_review",
         privateOutput: true,
         abortSignal: signal,
