@@ -14,17 +14,11 @@
  *      Release cards are web-viewed showcase art where WebP crushes PNG. A static
  *      PNG/JPEG card is converted to WebP (DEFAULT_RELEASE_WEBP_QUALITY, default 90) at full
  *      resolution, the old file is removed, and sibling release-notes.md references
-<<<<<<< Updated upstream
- *      are rewritten. Files that are ALREADY WebP are left untouched because re-encoding a
- *      lossy format every run would accumulate generational artifacts.
- *      NOTE: published GitHub release bodies hotlink raw/main and must be updated
-=======
  *      are rewritten. A GIF stays a GIF because its author chose the format for the release
  *      post; it is replaced only by a smaller re-encode. Files that are ALREADY WebP are left
  *      untouched because re-encoding a lossy format every run would accumulate generational
  *      artifacts.
  *      NOTE: published GitHub release bodies hotlink raw/release and must be updated
->>>>>>> Stashed changes
  *      separately (the command prints the exact `gh release edit` reminder per tag).
  *
  * The budget and the encoder settings are constants in scripts/lib/media.ts, not environment
