@@ -203,7 +203,7 @@ dedicated table, `TomoriBotCacheMetrics_CL` (typed `int`/`real` columns for each
 `rss_mb`/`rss_pct`). Two dataflows over one input stream is the supported pattern; their
 `where` filters are disjoint, so no record is double-counted.
 
-Second dataflow transform (abridged — one `toint(p.<field>)` per cache column):
+Second dataflow transform (abridged: one `toint(p.<field>)` per cache column):
 
 ```kusto
 source
@@ -295,16 +295,16 @@ only a coarse proxy. Diagnosing swap thrash requires Run Command against the VM;
 ## Grafana
 
 Point panels at an Azure Monitor data source whose identity has `Reader` on the resource group
-and `Log Analytics Reader` on the workspace. That identity needs **read access only** —
+and `Log Analytics Reader` on the workspace. That identity needs **read access only**, because
 ingestion permissions belong to the DCR/agent path, never to Grafana. Current panels:
 
-- **Error count** (`Time series`) — `TomoriBotLogs_CL` counted per minute. `make-series`
+- **Error count** (`Time series`): `TomoriBotLogs_CL` counted per minute. `make-series`
   returns packed arrays, so append
   `| mv-expand TimeGenerated to typeof(datetime), Errors to typeof(long)` or the series will
   not render.
-- **Error log** (`Logs`) — `TomoriBotLogs_CL` showing `TimeGenerated`, a title from
+- **Error log** (`Logs`): `TomoriBotLogs_CL` showing `TimeGenerated`, a title from
   `code`/`errorType` + `message`, `commandName`, and `RawData`.
-- **Cache sizes** (`Time series`, stacked) — `TomoriBotCacheMetrics_CL`, one series per cache
+- **Cache sizes** (`Time series`, stacked): `TomoriBotCacheMetrics_CL`, one series per cache
   column, for spotting growth/leaks. Include `rss_mb`, `rss_pct`, and the `discord_*` columns.
   A panel projecting only the app-cache columns hides both the process memory the growth is being
   correlated against and the discord.js caches that usually hold most of it:
@@ -318,7 +318,7 @@ ingestion permissions belong to the DCR/agent path, never to Grafana. Current pa
   | order by TimeGenerated asc
   ```
 
-- **Memory guard events** (`Logs`) — `TomoriBotLogs_CL` filtered to the memory guard. An empty
+- **Memory guard events** (`Logs`): `TomoriBotLogs_CL` filtered to the memory guard. An empty
   result does not prove health: it also matches a guard whose threshold sits above physical RAM and
   therefore can never fire. Correlate with `rss_limit_mb` before concluding anything.
 
@@ -328,7 +328,7 @@ ingestion permissions belong to the DCR/agent path, never to Grafana. Current pa
   | where RawData has_any ("Memory warning", "CRITICAL MEMORY", "memory_emergency_entered")
   | order by TimeGenerated desc
   ```
-- **SearXNG sidecar availability** (`Logs`) — `TomoriBotLogs_CL` filtered to the availability
+- **SearXNG sidecar availability** (`Logs`): `TomoriBotLogs_CL` filtered to the availability
   transitions emitted by `searxngService.ts`.
 
   ```kusto
@@ -351,7 +351,7 @@ ingestion permissions belong to the DCR/agent path, never to Grafana. Current pa
   `RestartCount` through Run Command instead, as in
   [Azure Production Data Inspection](/wiki/azure-production-inspection/).
 
-- **Token consumption** (`Time series`, stacked bars) — Postgres `stat_counters`,
+- **Token consumption** (`Time series`, stacked bars): Postgres `stat_counters`,
   `SUM(count)` of `tokens_in`+`tokens_out` grouped by `bucket` (day) and `metric_key` (model).
   Daily grain only; the table stores no finer bucket.
 
