@@ -1,5 +1,6 @@
 ---
 title: "STM 02: Summary Upgrade"
+aiGenerated: true
 ---
 
 The summary upgrade stage allows the model to replace verbose dialogue history at prompt assembly time with a compact, durable summary or structured category values.

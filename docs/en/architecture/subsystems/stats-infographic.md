@@ -1,5 +1,6 @@
 ---
 title: "Stats Infographic"
+aiGenerated: true
 ---
 
 The `/stats generate` command renders one of three shareable PNG image cards using a satori and resvg rasterization pipeline. Metric data reuses the same `StatRepository` queries that power the text dashboard.

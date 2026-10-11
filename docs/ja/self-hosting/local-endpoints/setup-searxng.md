@@ -2,6 +2,7 @@
 title: "セットアップ: SearXNG"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 [SearXNG](https://docs.searxng.org/) を使用して、プライベートの自己ホスト型Web検索をTomoriBotに追加します。

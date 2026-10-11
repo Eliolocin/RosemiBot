@@ -41,6 +41,8 @@ export type StructuredOutputResult<T> =
       error: string;
       failure?: "transport" | "malformed" | "refusal" | "cancelled";
       httpStatus?: number;
+      /** Why a private reply was malformed, so the caller can ask once more with the exact format problem. */
+      malformed?: { reason: "empty" | "unparsable" | "schema"; issues?: string[] };
     };
 
 export interface ProviderStructuredJsonRequest {
@@ -56,6 +58,11 @@ export interface ProviderStructuredJsonRequest {
   images?: ProviderImageInput[];
   temperature?: number;
   maxOutputTokens?: number;
+  /**
+   * The saved provider's `thinking_level`, applied through the same builder as a chat request.
+   * Omitted leaves the model's own default, which the one-shot utility calls rely on.
+   */
+  thinkingLevel?: string;
   schemaName?: string;
 }
 

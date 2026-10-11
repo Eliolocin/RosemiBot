@@ -1,3 +1,4 @@
+import { RESPONSE_REVIEW_ITEMS } from "@/constants/responseReview";
 import { CONFIG_MODEL_SELECT_FIELD } from "@/utils/discord/ui/configModelModals";
 import {
   encodeConfigProviderPageValue,
@@ -23,7 +24,12 @@ import {
   type ResponseDraftingView,
 } from "@/utils/discord/interactions/responseDraftingOperations";
 import { buildConfigPanelPayload } from "@/utils/discord/ui/configPanel";
-import { buildDraftPromptModal, buildDraftModelModal } from "@/utils/discord/ui/responseDraftingPanel";
+import {
+  buildDraftPromptModal,
+  buildDraftModelModal,
+  buildDraftReviewItemsModal,
+  DRAFT_REVIEW_ITEMS_FIELD,
+} from "@/utils/discord/ui/responseDraftingPanel";
 import { validateRawModalLimits } from "@/utils/discord/ui/componentsV2Limits";
 import { buildConfigModalFieldId } from "@/utils/discord/ui/configModals";
 import { hasLocaleKey, initializeLocalizer } from "@/utils/text/localizer";
@@ -55,18 +61,19 @@ it("defaults to Off with inherited review and no auxiliary selections", () => {
     "response_reviewer_prompt",
     "response_rule_checker_ref",
     "response_drafting_enabled",
+    "response_review_items",
   ])
     delete input[key];
   const config = assembledServerConfigSchema.parse(input);
   expect(config.response_drafting_enabled).toBe(false);
+  expect(config.response_review_items).toEqual(["persona", "examples", "history"]);
   expect(config.response_reviewer_llm_id).toBeNull();
   expect(config.response_decision_model_id).toBeNull();
   expect(config.response_reviewer_prompt).toBeNull();
   expect(config.response_rule_checker_ref).toBeNull();
-  expect(
-    responseRuleCheckerRefSchema.safeParse({ scope: "workspace", registrationId: 5, toolName: "check_slop_file" })
-      .success,
-  ).toBe(false);
+  expect(responseRuleCheckerRefSchema.safeParse({ scope: "workspace", registrationId: 5, toolName: "" }).success).toBe(
+    false,
+  );
 });
 
 it("renders the fullest panel, unavailable states and real modals within Discord limits in every locale", () => {
@@ -100,6 +107,15 @@ it("renders the fullest panel, unavailable states and real modals within Discord
             },
           });
           expectSafePanelPayload(payload, `${locale}/${slot}/${enabled}`);
+          const rendered = collectTextDisplays(payload).join("\n");
+          for (const item of RESPONSE_REVIEW_ITEMS) {
+            const circle = state.config.response_review_items.includes(item.value) ? "🟢" : "🔴";
+            expect(rendered).toMatch(
+              new RegExp(
+                `${circle} ${localizedProse(hasLocaleKey(locale, item.labelKey) ? locale : "en-US", item.labelKey).source}`,
+              ),
+            );
+          }
           if (locale === "en-US") {
             const text = collectTextDisplays(payload).join("\n");
             expect(text).toMatch(
@@ -107,6 +123,7 @@ it("renders the fullest panel, unavailable states and real modals within Discord
             );
           }
           expect(validateRawModalLimits(buildDraftPromptModal(state, locale, "nonce123")).valid).toBe(true);
+          expect(validateRawModalLimits(buildDraftReviewItemsModal(state, locale, "nonce123")).valid).toBe(true);
         }
       const state = createPersona({
         config: {
@@ -176,7 +193,7 @@ it("disables Use Default only while the reviewer prompt is already the default",
 it("validates checker input contracts and Unicode prompt limits", () => {
   expect(
     isCompatibleRuleChecker({
-      name: "check_slop",
+      name: "lint_reply",
       parametersJsonSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
     }),
   ).toBe(true);
@@ -204,6 +221,7 @@ it("invalidates only after successful writes and leaves model choices intact on 
   cache.set("draft-fixture", entry);
   expect(await responseDraftingOperations.setPrompt(state, "draft-fixture", "instructions")).toBe("write-failed");
   expect(await responseDraftingOperations.setEnabled(state, "draft-fixture", false)).toBe("write-failed");
+  expect(await responseDraftingOperations.setReviewItems(state, "draft-fixture", [])).toBe("write-failed");
   expect(cache.has("draft-fixture")).toBe(true);
   chat.mockResolvedValue(true);
   caps.mockResolvedValue(true);
@@ -216,6 +234,8 @@ it("invalidates only after successful writes and leaves model choices intact on 
   expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_decision_model_id: null });
   expect(await responseDraftingOperations.setChecker(state, "draft-fixture", null)).toBe("success");
   expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_rule_checker_ref: null });
+  expect(await responseDraftingOperations.setReviewItems(state, "draft-fixture", ["tools"])).toBe("success");
+  expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_review_items: ["tools"] });
   expect(await responseDraftingOperations.setEnabled(state, "draft-fixture", false)).toBe("success");
   expect(caps).toHaveBeenLastCalledWith(state.server_id, { response_drafting_enabled: false });
 });
@@ -232,6 +252,7 @@ function harness(isManager = true, dm = false, currentView: ResponseDraftingView
     readStatus: "fresh",
   };
   const writes: unknown[][] = [];
+  let checkedValues: string[] | undefined;
   const deps: Partial<ConfigRouteDependencies> = {
     resolveScope: async (interaction) => {
       expect(
@@ -250,8 +271,16 @@ function harness(isManager = true, dm = false, currentView: ResponseDraftingView
     createNonce: () => "nonce123",
     recordAction: () => {},
     takeSelectValue: () => "2",
+    takeCheckboxValues: (_id, field) => {
+      expect(field).toBe(buildConfigModalFieldId(DRAFT_REVIEW_ITEMS_FIELD, "nonce123"));
+      return checkedValues;
+    },
     draftingOperations: {
       setEnabled: async (...args) => {
+        writes.push(args);
+        return "success";
+      },
+      setReviewItems: async (...args) => {
         writes.push(args);
         return "success";
       },
@@ -287,7 +316,14 @@ function harness(isManager = true, dm = false, currentView: ResponseDraftingView
     await registry.dispatch({} as Client, interaction as unknown as GlobalRoutableInteraction);
     return interaction;
   };
-  return { dispatch, writes, deps };
+  return {
+    dispatch,
+    writes,
+    deps,
+    setCheckedValues: (values: string[] | undefined) => {
+      checkedValues = values;
+    },
+  };
 }
 
 it("opens a prefilled prompt without deferral and rechecks manager permissions on replay", async () => {
@@ -304,6 +340,36 @@ it("opens a prefilled prompt without deferral and rechecks manager permissions o
   const dm = harness(true, true);
   await dm.dispatch({ action: "draft-set", locale: "en-US", enabled: true });
   expect(dm.writes).toHaveLength(1);
+});
+
+it("prefills review items and saves a complete checkbox selection after acknowledgement", async () => {
+  const h = harness();
+  const opened = await h.dispatch({ action: "draft-items-open", locale: "en-US" });
+  expect(opened.calls.map((call) => call.method)).toEqual(["showModal"]);
+  const modal = buildDraftReviewItemsModal(createPersona(), "en-US", "nonce123");
+  const component = modal.components[0]?.component;
+  expect(component?.options?.filter((option) => option.default).map((option) => option.value)).toEqual([
+    "persona",
+    "examples",
+    "history",
+  ]);
+  const route = { action: "draft-items-submit", locale: "en-US", nonce: "nonce123" } as const;
+  for (const items of [["persona", "tools"], []]) {
+    h.setCheckedValues(items);
+    const saved = await h.dispatch(route, "modal");
+    expect(saved.calls[0]?.method).toBe("deferUpdate");
+    expect(h.writes.at(-1)?.at(-1)).toEqual(items);
+  }
+  const before = h.writes.length;
+  for (const invalid of [undefined, ["unknown"], ["tools", "tools"]]) {
+    h.setCheckedValues(invalid);
+    await h.dispatch(route, "modal");
+  }
+  expect(h.writes.length).toBe(before);
+  const denied = harness(false);
+  await denied.dispatch({ action: "draft-items-open", locale: "en-US" });
+  await denied.dispatch(route, "modal");
+  expect(denied.writes).toHaveLength(0);
 });
 
 it("routes clearing, default, prompt, model selection and checker binding after acknowledgement", async () => {

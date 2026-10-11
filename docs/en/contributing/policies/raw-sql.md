@@ -2,6 +2,7 @@
 title: "Raw SQL Boundary"
 sidebar:
   order: 40
+aiGenerated: true
 ---
 
 Raw SQL lives only in the repository layer, `src/utils/db/repositories/`. Commands, events, tools,

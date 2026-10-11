@@ -1,5 +1,6 @@
 ---
 title: "02.6: Participants"
+aiGenerated: true
 ---
 
 The participant contributor compiles all active conversation participants into a single structured context item detailing display names, mention handles, presence, roles, personal memories, reminders, persona self-tasks, and current conversation time.

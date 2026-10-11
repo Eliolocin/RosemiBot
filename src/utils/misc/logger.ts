@@ -244,23 +244,41 @@ function sanitizeLogString(value: string): string {
   return value.includes("\x1b[") ? `${truncatedText}${colors.reset}` : truncatedText;
 }
 
+/** Patterns whose match is a credential by its shape alone, so they are safe to apply to free prose. */
+const CREDENTIAL_REDACTIONS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/((?:https?|postgres(?:ql)?):\/\/[^:\s/@]+:)[^@\s/]+@/gi, `$1${REDACTED}@`],
+  [/\b(Bearer\s+)[A-Za-z0-9._~+/-]{20,}=*/g, `$1${REDACTED}`],
+  [
+    /([?&](?:access_token|refresh_token|token|api[_-]?key|key|signature|sig|x-amz-signature)=)[^&#\s]+/gi,
+    `$1${REDACTED}`,
+  ],
+  [/\b(sk-(?:proj-|ant-|or-)?(?:live-)?[a-zA-Z0-9_-]{20,})\b/gi, REDACTED],
+  [/\b(AIza[0-9A-Za-z\-_]{30,40})\b/g, REDACTED],
+  [/\b(nvapi-[a-zA-Z0-9_-]{20,})\b/gi, REDACTED],
+  [/(https:\/\/(?:canary\.)?discord(?:app)?\.com\/api\/webhooks\/[^/\s]+\/)[^/?\s]+/gi, `$1${REDACTED}`],
+];
+
+/**
+ * Detects credentials in prose without the log redactor's `key: value` and `Basic <word>`
+ * heuristics, which exist for structured log fields and match ordinary sentences such as
+ * "my secret: I never sleep" or "basic training".
+ */
+export function containsCredential(value: string): boolean {
+  // `search` ignores and preserves `lastIndex`, so the shared global patterns stay stateless here.
+  return CREDENTIAL_REDACTIONS.some(([pattern]) => value.search(pattern) !== -1);
+}
+
 function redactLogString(value: string): string {
-  return value
-    .replace(/(data:[a-z0-9/._\\+-]+;base64,)[A-Za-z0-9+/=]{80,}/gi, `$1...[BASE64 TRUNCATED]`)
-    .replace(/((?:https?|postgres(?:ql)?):\/\/[^:\s/@]+:)[^@\s/]+@/gi, `$1${REDACTED}@`)
+  const credentialsRedacted = CREDENTIAL_REDACTIONS.reduce(
+    (text, [pattern, replacement]) => text.replace(pattern, replacement),
+    value.replace(/(data:[a-z0-9/._\\+-]+;base64,)[A-Za-z0-9+/=]{80,}/gi, `$1...[BASE64 TRUNCATED]`),
+  );
+  return credentialsRedacted
     .replace(/\b(Bearer|Basic)\s+[^\s,;]+/gi, `$1 ${REDACTED}`)
-    .replace(
-      /([?&](?:access_token|refresh_token|token|api[_-]?key|key|signature|sig|x-amz-signature)=)[^&#\s]+/gi,
-      `$1${REDACTED}`,
-    )
     .replace(
       /((?:\\?["'])?(?:api[_-]?key|apikey|token|secret|authorization|password|passwd|client[_-]?secret)(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?)[^\s,"'\\]+/gi,
       `$1${REDACTED}`,
-    )
-    .replace(/\b(sk-(?:proj-|ant-|or-)?(?:live-)?[a-zA-Z0-9_-]{20,})\b/gi, REDACTED)
-    .replace(/\b(AIza[0-9A-Za-z\-_]{30,40})\b/g, REDACTED)
-    .replace(/\b(nvapi-[a-zA-Z0-9_-]{20,})\b/gi, REDACTED)
-    .replace(/(https:\/\/(?:canary\.)?discord(?:app)?\.com\/api\/webhooks\/[^/\s]+\/)[^/?\s]+/gi, `$1${REDACTED}`);
+    );
 }
 
 /**

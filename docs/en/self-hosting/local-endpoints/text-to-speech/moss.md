@@ -1,5 +1,6 @@
 ---
 title: "MOSS-TTS"
+aiGenerated: true
 ---
 
 Evaluate voice cloning and natural-language voice design locally through a unified speech endpoint using [MOSS-TTS](https://github.com/OpenMOSS/MOSS-TTS).

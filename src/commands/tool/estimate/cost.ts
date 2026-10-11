@@ -1145,14 +1145,11 @@ async function measureDeepseekInputTokens(
     messages,
     max_tokens: 1,
     stream: false,
+    temperature: providerConfig.temperature,
   };
 
   if (providerConfig.tools && providerConfig.tools.length > 0) {
     requestBody.tools = providerConfig.tools;
-  }
-
-  if (providerConfig.model !== "deepseek-reasoner") {
-    requestBody.temperature = providerConfig.temperature;
   }
 
   const response = await fetch(providerConfig.endpointUrl, {

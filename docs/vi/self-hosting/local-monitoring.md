@@ -2,6 +2,7 @@
 title: "Giám sát Grafana cục bộ"
 sidebar:
   order: 7
+aiGenerated: true
 ---
 
 Giám sát phiên bản TomoriBot cục bộ của bạn bằng bảng thông tin Grafana dựng sẵn để theo dõi mức sử dụng bộ nhớ, kích thước bộ đệm, mức tiêu thụ mã thông báo và lưu lượng lệnh.

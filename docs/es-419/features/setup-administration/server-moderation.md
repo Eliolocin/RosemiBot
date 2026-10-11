@@ -2,6 +2,7 @@
 title: "Moderación del servidor"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot proporciona a los administradores de servidores un control detallado sobre el uso, los costos, los permisos y los canales a través de `/moderation` y `/config`. La mayoría de estos controles requieren el permiso `Administrar servidor`. Para obtener una lista completa de comandos, consulte la [Referencia de comandos](/es-419/features/command-reference/).

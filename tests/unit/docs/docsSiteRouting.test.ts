@@ -11,7 +11,7 @@ import {
   localeFromEntryId,
   localesWithEntry,
   resolveTranslationNoticeMode,
-  sourceIsHumanWritten,
+  sourceIsAiGenerated,
   stripLocaleFromEntryId,
   withoutHreflangAlternates,
 } from "../../../apps/docs/src/docsRouting";
@@ -25,9 +25,9 @@ const SITE = "https://docs.example.test";
 const FIXTURE_FILES: Record<string, string> = {
   "en/features/README.md": '---\ntitle: "Features"\n---\n\nFeature index.\n',
   "en/features/pair.md": '---\ntitle: "Paired Page"\n---\n\nEnglish pair.\n',
-  "en/features/only-english.md": '---\ntitle: "English Only"\n---\n\nOnly English.\n',
-  "en/features/human.md": '---\ntitle: "Human Page"\naiGenerated: false\n---\n\nWritten by a person.\n',
-  "en/features/generated.md": '---\ntitle: "Generated Page"\n---\n\nGenerated draft.\n',
+  "en/features/only-english.md": '---\ntitle: "English Only"\naiGenerated: true\n---\n\nOnly English.\n',
+  "en/features/human.md": '---\ntitle: "Human Page"\n---\n\nWritten by a person.\n',
+  "en/features/generated.md": '---\ntitle: "Generated Page"\naiGenerated: true\n---\n\nGenerated draft.\n',
   "ja/features/README.md": '---\ntitle: "機能"\n---\n\n機能一覧。\n',
   "ja/features/pair.md": '---\ntitle: "対訳ページ"\n---\n\n日本語の対訳。\n',
   "ja/features/human.md": '---\ntitle: "人力ページ"\n---\n\n人が書いたページの翻訳。\n',
@@ -127,7 +127,7 @@ describe("docs site routing", () => {
   });
 
   describe("translation notice mode", () => {
-    it("shows nothing on a human-reviewed page", () => {
+    it("shows nothing on a page that is not marked AI-generated", () => {
       expect(
         resolveTranslationNoticeMode({
           docsRoot,
@@ -138,7 +138,7 @@ describe("docs site routing", () => {
       ).toBe("none");
     });
 
-    it("shows the translated notice when the source page is human-written", () => {
+    it("shows the translated notice when the source page is not marked AI-generated", () => {
       expect(
         resolveTranslationNoticeMode({
           docsRoot,
@@ -173,9 +173,9 @@ describe("docs site routing", () => {
       ).toBe("drafts");
     });
 
-    it("never claims a fallback route is a translation of a human-written page", () => {
+    it("never claims a fallback route is a translation of an unmarked page", () => {
       // The fallback serves the default locale's own page, so a translation notice would promise a
-      // translation and link to identical content. `isFallback` outranks the human-written source.
+      // translation and link to identical content. `isFallback` outranks the unmarked source.
       expect(
         resolveTranslationNoticeMode({
           docsRoot,
@@ -187,10 +187,10 @@ describe("docs site routing", () => {
       ).toBe("drafts");
     });
 
-    it("detects the human-authored flag only when it is exactly false", () => {
-      expect(sourceIsHumanWritten("---\naiGenerated: false\n---\n")).toBe(true);
-      expect(sourceIsHumanWritten("---\naiGenerated: true\n---\n")).toBe(false);
-      expect(sourceIsHumanWritten("no frontmatter")).toBe(false);
+    it("detects the AI-generated flag only when it is exactly true", () => {
+      expect(sourceIsAiGenerated("---\naiGenerated: true\n---\n")).toBe(true);
+      expect(sourceIsAiGenerated("---\naiGenerated: false\n---\n")).toBe(false);
+      expect(sourceIsAiGenerated("no frontmatter")).toBe(false);
     });
   });
 

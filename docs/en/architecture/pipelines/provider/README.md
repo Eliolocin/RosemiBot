@@ -4,6 +4,7 @@ sidebar:
   label: "Overview"
   groupLabel: "Provider"
   order: 400
+aiGenerated: true
 ---
 
 The provider pipeline streams an LLM response from a provider API to Discord messages. It coordinates

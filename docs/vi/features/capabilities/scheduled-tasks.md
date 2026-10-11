@@ -2,6 +2,7 @@
 title: "Tác vụ theo lịch"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 Đặt lời nhắc cho chính bạn hoặc lên lịch thông báo định kỳ mà không cần rời khỏi cuộc trò chuyện. Hãy hỏi trực tiếp bot và cô ấy sẽ tạo lịch trình cho bạn. Nhiệm vụ theo lịch trình thuộc về persona tích cực.

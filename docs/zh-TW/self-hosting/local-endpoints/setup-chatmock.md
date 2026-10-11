@@ -2,6 +2,7 @@
 title: "設定：透過ChatMock使用Codex CLI"
 sidebar:
   order: 5
+aiGenerated: true
 ---
 
 使用 [ChatMock](https://github.com/RayBytes/ChatMock) 透過本地OpenAI相容橋將TomoriBot連接到你的ChatGPT帳戶。

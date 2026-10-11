@@ -2,6 +2,7 @@
 title: "图像生成"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot可以根据文本提示或编辑参考图像来生成图像。使用`/generate image`，或在聊天中描述你想要的内容（“画一只喝咖啡的小熊猫”）。

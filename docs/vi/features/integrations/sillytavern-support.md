@@ -6,6 +6,7 @@ head:
 description: "Nhập thẻ nhân vật và preset prompt SillyTavern vào Discord với TomoriBot. Mang các nhân vật có sẵn vào máy chủ của bạn."
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot có thể nhập hai nội dung từ [SillyTavern](https://github.com/SillyTavern/SillyTavern): cài đặt trước của Trình quản lý lời nhắc (điều khiển cấu trúc lời nhắc) và thẻ ký tự (định nghĩa ký tự). Nếu bạn chưa bao giờ sử dụng SillyTavern, bạn có thể yên tâm bỏ qua trang này.

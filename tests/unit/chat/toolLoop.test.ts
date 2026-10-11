@@ -1,3 +1,5 @@
+import { RESPONSE_REVIEW_ITEM_VALUES } from "@/constants/responseReview";
+import type { z } from "zod";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import * as capabilityResolver from "@/utils/provider/providerCapabilityResolver";
 import * as crypto from "@/utils/security/crypto";
@@ -8,6 +10,7 @@ import { log } from "@/utils/misc/logger";
 import { requestFollowUp, deleteStopRequest } from "@/utils/discord/stream/stopRequests";
 import {
   buildReviewerPacket,
+  renderReviewerPrompt,
   createResponseReviewState,
   draftReviewResultSchema,
   reviewResponseCandidate,
@@ -381,9 +384,13 @@ function makeParams(context: ChatTurnContext, provider: LLMProvider): ToolLoopPa
 function makeReviewContext(): ChatTurnContext & { responseReview: ResponseReviewState } {
   const context = makeContext();
   context.currentPersona.config.response_drafting_enabled = true;
+  context.currentPersona.config.response_review_items = ["persona", "examples", "history", "context", "tools"];
   context.currentPersona.config.response_reviewer_prompt = "Evaluate the character in the admitted scene.";
   context.tomoriState.llm.supports_structoutput = true;
   context.tomoriState.llm.context_window = 64000;
+  // The author-model reviewer takes its key from the provider config. A stored key would start a
+  // background live-limits lookup that fails to decrypt the fixture value and logs an error.
+  context.tomoriState.config.api_key = null;
   context.contextItems = [
     {
       role: "system",
@@ -412,6 +419,11 @@ function makeReviewContext(): ChatTurnContext & { responseReview: ResponseReview
   if (!responseReview) throw new Error("Review fixture must be enabled");
   context.streamingContext.holdResponseText = true;
   return Object.assign(context, { responseReview });
+}
+
+function packetOf(result: ReturnType<typeof buildReviewerPacket>) {
+  if (typeof result === "string") throw new Error(`Expected a reviewer packet, got gap ${result}`);
+  return result;
 }
 
 function held(
@@ -1242,10 +1254,32 @@ describe("runToolLoop — contract tests", () => {
     expect(result.personaResponses[0]?.text).toBe("*nods*");
     expect(result.usageEntries?.map((entry) => entry.kind)).toEqual(["author", "reviewer"]);
     expect(calls[0]?.apiKey).toBe(makeProviderConfig().apiKey);
+    expect(calls[0]?.systemPrompt).toBe(context.currentPersona.config.response_reviewer_prompt ?? "");
     const prompt = calls[0]?.userPrompt ?? "";
     expect(prompt).toContain('<pending_candidate status="pending">\n*nods*\n</pending_candidate>');
     expect(prompt).toContain("<trigger>\nJuno: Stay here with me.\n</trigger>");
     expect(prompt).toContain("<representative_dialogues>\nA sample invitation.\n\nA sample quiet reply.");
+    expect(prompt).toContain("Representative dialogues: 1 of 1 pairs.");
+  });
+
+  it("sends the reviewer the saved thinking level, temperature and chat output budget", async () => {
+    const context = makeReviewContext();
+    context.tomoriState.config.thinking_level = "high";
+    context.tomoriState.config.llm_max_output_tokens = 3000;
+    context.tomoriState.config.llm_temperature = 1.4;
+    context.responseReview.pending = [held("*nods*", []).pendingResponse];
+    const { provider } = makeProvider([]);
+    const calls: ProviderStructuredJsonRequest[] = [];
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+        calls.push(request);
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    await reviewResponseCandidate(context, provider, makeProviderConfig());
+    expect(calls[0]?.thinkingLevel).toBe("high");
+    expect(calls[0]?.maxOutputTokens).toBe(3000);
+    expect(calls[0]?.temperature).toBe(1.4);
   });
 
   it("revises the whole held response once while preserving successful tools and their outcomes", async () => {
@@ -1486,14 +1520,180 @@ describe("runToolLoop — contract tests", () => {
         }),
       ),
     );
-    const packet = buildReviewerPacket(context, "pending", 3000);
-    expect(packet?.candidate.text).toBe("pending");
-    expect(packet?.coverage.historyIncluded).toBeLessThan(50);
-    expect(packet?.coverage.historyIncluded).toBeGreaterThan(0);
-    expect(buildReviewerPacket(context, "x".repeat(5000), 3000)).toBeNull();
+    const packet = packetOf(buildReviewerPacket(context, "pending", 750));
+    expect(packet.candidate.text).toBe("pending");
+    expect(packet.coverage.historyIncluded).toBeLessThan(50);
+    expect(packet.coverage.historyIncluded).toBeGreaterThan(0);
+    expect(buildReviewerPacket(context, "x".repeat(5000), 750)).toBe("evidence_over_budget");
+    context.message.reference = { messageId: "outside_context" } as typeof context.message.reference;
+    expect(buildReviewerPacket(context, "pending", 750)).toBe("reply_target_missing");
+    context.contextItems = context.contextItems.filter(
+      (item) => item.metadataTag !== ContextItemTag.SYSTEM_PERSONALITY,
+    );
+    expect(buildReviewerPacket(context, "pending", 750)).toBe("persona_missing");
     context.contextItems = [];
-    expect(buildReviewerPacket(context, "pending", 3000)).toBeNull();
+    expect(buildReviewerPacket(context, "pending", 750)).toBe("trigger_missing");
     expect(draftReviewResultSchema.safeParse({ status: "revise", findings: [] }).success).toBe(false);
+  });
+
+  it("loads only selected review groups while always retaining the draft, trigger and reply target", () => {
+    const context = makeReviewContext();
+    const evidence: StructuredContextItem[] = [
+      {
+        role: "system",
+        metadataTag: ContextItemTag.SYSTEM_PERSONALITY,
+        parts: [{ type: "text", text: "PERSONA_EVIDENCE" }],
+      },
+      {
+        role: "system",
+        metadataTag: ContextItemTag.SYSTEM_HUMANIZER_RULES,
+        parts: [{ type: "text", text: "SYSTEM_EVIDENCE" }],
+      },
+      { role: "user", metadataTag: ContextItemTag.DIALOGUE_SAMPLE, parts: [{ type: "text", text: "EXAMPLE_USER" }] },
+      { role: "model", metadataTag: ContextItemTag.DIALOGUE_SAMPLE, parts: [{ type: "text", text: "EXAMPLE_MODEL" }] },
+      {
+        role: "model",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: "earlier",
+        parts: [{ type: "text", text: "HISTORY_EVIDENCE" }],
+      },
+      {
+        role: "system",
+        metadataTag: ContextItemTag.KNOWLEDGE_SERVER_MEMORIES,
+        parts: [{ type: "text", text: "MEMORY_EVIDENCE" }],
+      },
+      {
+        role: "system",
+        metadataTag: ContextItemTag.KNOWLEDGE_SHORT_TERM_MEMORY,
+        parts: [{ type: "text", text: "STM_EVIDENCE" }],
+      },
+      {
+        role: "system",
+        metadataTag: ContextItemTag.KNOWLEDGE_SERVER_DOCUMENTS,
+        parts: [{ type: "text", text: "DOCUMENT_EVIDENCE" }],
+      },
+      { role: "system", parts: [{ type: "text", text: "OTHER_EVIDENCE" }] },
+      {
+        role: "user",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: context.message.id,
+        parts: [{ type: "text", text: "TRIGGER_EVIDENCE" }],
+      },
+      {
+        role: "model",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: "target",
+        parts: [{ type: "text", text: "TARGET_EVIDENCE" }],
+      },
+    ];
+    context.contextItems = evidence;
+    context.message.reference = { messageId: "target" } as typeof context.message.reference;
+    context.responseReview.functionHistory.push({
+      functionCall: { name: "lookup", args: {} },
+      functionResponse: { text: "TOOL_EVIDENCE" },
+    });
+    const tools = [
+      {
+        functionDeclarations: [
+          { name: "lookup", description: "CATALOG_EVIDENCE", parameters: { type: "object", properties: {} } },
+        ],
+      },
+    ];
+    for (let mask = 0; mask < 2 ** RESPONSE_REVIEW_ITEM_VALUES.length; mask++) {
+      const selected = RESPONSE_REVIEW_ITEM_VALUES.filter((_item, index) => mask & (1 << index));
+      context.responseReview.reviewItems = selected;
+      const packet = packetOf(buildReviewerPacket(context, "DRAFT_EVIDENCE", 64000, tools));
+      const prompt = renderReviewerPrompt(packet);
+      for (const marker of ["DRAFT_EVIDENCE", "TRIGGER_EVIDENCE", "TARGET_EVIDENCE"]) expect(prompt).toContain(marker);
+      const markers = {
+        persona: ["PERSONA_EVIDENCE", "SYSTEM_EVIDENCE"],
+        examples: ["EXAMPLE_USER", "EXAMPLE_MODEL"],
+        history: ["HISTORY_EVIDENCE"],
+        context: ["MEMORY_EVIDENCE", "STM_EVIDENCE", "DOCUMENT_EVIDENCE", "OTHER_EVIDENCE"],
+        tools: ["TOOL_EVIDENCE", "CATALOG_EVIDENCE"],
+      };
+      for (const group of RESPONSE_REVIEW_ITEM_VALUES)
+        for (const marker of markers[group]) {
+          expect(prompt.includes(marker)).toBe(selected.includes(group));
+        }
+    }
+    context.responseReview.reviewItems = [];
+    context.contextItems = evidence.filter((item) => item.metadataTag !== ContextItemTag.SYSTEM_PERSONALITY);
+    expect(typeof buildReviewerPacket(context, "draft", 64000)).toBe("object");
+  });
+
+  it("resolves a reply to a later chunk of a merged persona reply to its prose", () => {
+    const context = makeReviewContext();
+    const chunkIds = ["persona_chunk_1", "persona_chunk_2", "persona_chunk_3"];
+    context.contextItems.splice(
+      1,
+      0,
+      {
+        role: "user",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: chunkIds[0],
+        combinedMessageIds: chunkIds,
+        parts: [{ type: "text", text: "[System: Sent earlier]" }],
+      },
+      {
+        role: "model",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: chunkIds[0],
+        combinedMessageIds: chunkIds,
+        parts: [{ type: "text", text: "Mirri kneels.\nNow. About that favor." }],
+      },
+    );
+    context.message.reference = { messageId: chunkIds[2] } as typeof context.message.reference;
+    expect(packetOf(buildReviewerPacket(context, "pending", 64000)).replyTarget?.text).toContain("About that favor");
+  });
+
+  it("keeps a packet whose available tools nest array-of-object parameters past the sanitizer depth", () => {
+    const context = makeReviewContext();
+    const deepParameters = {
+      type: "object",
+      properties: {
+        characters: {
+          type: "array",
+          items: { type: "object", properties: { prompt: { type: "string" } } },
+        },
+      },
+    };
+    const tools = [
+      { type: "function", function: { name: "fixture_image", description: "Draw.", parameters: deepParameters } },
+      { functionDeclarations: [{ name: "fixture_lookup", parameters: { type: "object", properties: {} } }] },
+    ];
+    const packet = packetOf(
+      buildReviewerPacket(context, "pending", 64000, tools, { name: "fixture_lookup", args: {} }),
+    );
+    expect(packet.availableTools.map((tool) => tool.name)).toEqual(["fixture_image", "fixture_lookup"]);
+    expect(packet.availableTools[0]?.parameters).toEqual(["characters"]);
+    expect(buildReviewerPacket(context, "pending", 64000, tools, { name: "fixture_missing", args: {} })).toBe(
+      "unknown_tool",
+    );
+  });
+
+  it("reviews admitted media and tool images as placeholders and blocks decision skipping", () => {
+    const context = makeReviewContext();
+    context.contextItems.push({
+      role: "user",
+      metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+      messageId: "history_media",
+      parts: [{ type: "image", mimeType: "image/png", uri: "https://example.com/fixture.png" }],
+    });
+    context.responseReview.functionHistory.push({
+      functionCall: { name: "lookup", args: {} },
+      functionResponse: { fact: "outcome" },
+      imageMetadata: {
+        imageUrls: [{ url: "https://example.com/tool-image.png", mimeType: "image/png" }],
+        totalSent: 1,
+        totalValidated: 1,
+      },
+    });
+    const packet = packetOf(buildReviewerPacket(context, "pending", 64000));
+    expect(packet.coverage.media).toBe("placeholders");
+    expect(packet.tools[0]?.imageOmitted).toBe(true);
+    expect(JSON.stringify(packet)).not.toContain("example.com/fixture.png");
+    expect(packet.historicalDialogue.some((item) => item.messageId === "history_media" && item.text)).toBe(true);
   });
 
   it("pins only an owned reviewer and uses its saved credentials independently of the author", async () => {
@@ -1519,6 +1719,7 @@ describe("runToolLoop — contract tests", () => {
       llm_disabled_params: [],
       llm_logit_biases: [],
       fallback_model_refs: [],
+      thinking_level: "low",
     });
     const modelSpy = spyOn(llmModelRepo, "loadById").mockResolvedValue(reviewer);
     const availableSpy = spyOn(llmModelRepo, "loadAvailableModelsForProvider").mockResolvedValue([reviewer]);
@@ -1541,6 +1742,7 @@ describe("runToolLoop — contract tests", () => {
       );
       expect(calls[0]?.apiKey).toBe("owned-review-key");
       expect(calls[0]?.model).toBe("review-model");
+      expect(calls[0]?.thinkingLevel).toBe("low");
       expect(availableSpy.mock.calls[0]?.[2]).toEqual({ kind: "server", ownerId: context.currentPersona.server_id });
       availableSpy.mockResolvedValue([]);
       const inaccessible = makeReviewContext();
@@ -1575,7 +1777,9 @@ describe("runToolLoop — contract tests", () => {
       await reviewResponseCandidate(context, provider, makeProviderConfig());
       expect(errorSpy).toHaveBeenCalledTimes(1);
       expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("PRIVATE_");
-      expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("PRIVATE_");
+      // The prompt dump carries the draft at info; the provider's raw error text never reaches it.
+      expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("PRIVATE_EVIDENCE");
+      expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("token=secret");
       errorSpy.mockClear();
       const refusal = makeReviewContext();
       refusal.responseReview.pending = [held("PRIVATE_DRAFT", []).pendingResponse];
@@ -1587,6 +1791,46 @@ describe("runToolLoop — contract tests", () => {
     } finally {
       errorSpy.mockImplementation(async () => {});
       infoSpy.mockImplementation(() => {});
+    }
+  });
+
+  it("retries a malformed verdict once with reasoning off and accepts a pass that carries stray keys", async () => {
+    const errorSpy = spyOn(log, "error").mockImplementation(async () => {});
+    try {
+      const context = makeReviewContext();
+      context.tomoriState.config.thinking_level = "high";
+      context.responseReview.pending = [held("*nods*", []).pendingResponse];
+      const { provider } = makeProvider([]);
+      const calls: ProviderStructuredJsonRequest[] = [];
+      Object.assign(provider, {
+        callStructuredJSON: async (request: ProviderStructuredJsonRequest, _json: unknown, schema: z.ZodType) => {
+          calls.push(request);
+          if (calls.length === 1)
+            return { success: false, error: "x", failure: "malformed", malformed: { reason: "empty" } };
+          const accepted = schema.safeParse({ status: "pass", findings: [] });
+          return accepted.success ? { success: true, data: accepted.data } : { success: false, error: "x" };
+        },
+      });
+      expect(await reviewResponseCandidate(context, provider, makeProviderConfig())).toEqual({ status: "pass" });
+      expect(calls.map((call) => call.thinkingLevel)).toEqual(["high", "none"]);
+      expect(calls[1]?.userPrompt).toContain("<format_retry>");
+      expect(context.responseReview.responseReviews).toBe(1);
+      expect(errorSpy).not.toHaveBeenCalled();
+
+      const failing = makeReviewContext();
+      failing.responseReview.pending = [held("*nods*", []).pendingResponse];
+      let attempts = 0;
+      Object.assign(provider, {
+        callStructuredJSON: async () => {
+          attempts++;
+          return { success: false, error: "x", failure: "malformed", malformed: { reason: "unparsable" } };
+        },
+      });
+      expect((await reviewResponseCandidate(failing, provider, makeProviderConfig())).status).toBe("unavailable");
+      expect(attempts).toBe(2);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      errorSpy.mockImplementation(async () => {});
     }
   });
 
@@ -1706,43 +1950,37 @@ describe("runToolLoop — contract tests", () => {
     });
     await reviewResponseCandidate(context, provider, makeProviderConfig());
     expect(calls).toBe(2);
-    const packet = buildReviewerPacket(context, "pending", 64000);
-    expect(JSON.stringify(packet?.tools)).not.toContain("PRIVATE_KEY");
-    expect(packet?.candidate.text).toBe("pending");
-    expect(buildReviewerPacket(context, `sk-proj-${"a".repeat(30)}`, 64000)).toBeNull();
+    const packet = packetOf(buildReviewerPacket(context, "pending", 64000));
+    expect(JSON.stringify(packet.tools)).not.toContain("PRIVATE_KEY");
+    expect(packet.candidate.text).toBe("pending");
+    expect(buildReviewerPacket(context, `sk-proj-${"a".repeat(30)}`, 64000)).toBe("candidate_credential");
   });
 
-  it("routes checker hits/failures directly to review and keeps diagnostics out of author continuation and accepted dialogue", async () => {
+  it("reviews roleplay prose that only resembles log key-value pairs", () => {
+    const context = makeReviewContext();
+    for (const candidate of [
+      "Here's my secret: I never sleep.",
+      "The password: swordfish, she whispered.",
+      "*hands you a token: a silver coin*",
+      "Authorization: denied, traveler. Basic training starts at dawn.",
+    ])
+      expect(packetOf(buildReviewerPacket(context, candidate, 64000)).candidate.text).toBe(candidate);
+    for (const candidate of [
+      `Bearer ${"b".repeat(32)}`,
+      "postgres://mirri:hunter2@db.example.com/app",
+      `https://discord.com/api/webhooks/123/${"w".repeat(40)}`,
+    ])
+      expect(buildReviewerPacket(context, candidate, 64000)).toBe("candidate_credential");
+  });
+
+  it("routes linter reports/failures directly to review and keeps diagnostics out of author continuation and accepted dialogue", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
-    const evidence = ruleChecks.validateRuleAnalysis(
-      {
-        score: 50,
-        band: "moderate",
-        word_count: 12,
-        violations: [
-          {
-            type: "Violation",
-            rule: "tone",
-            match: "PRIVATE_RULE_SNIPPET",
-            context: "PRIVATE_RULE_CONTEXT",
-            penalty: 4,
-            start: 0,
-            end: 4,
-          },
-        ],
-        counts: { tone: 1 },
-        total_penalty: 4,
-        weighted_sum: 4,
-        density: 1,
-        advice: ["PRIVATE_RULE_ADVICE"],
-      },
-      "A sufficiently long fictional reply with a quiet gesture by the door.",
-    );
+    const evidence = { score: 50, advice: ["PRIVATE_RULE_ADVICE"] };
     const rules = spyOn(ruleChecks, "checkResponseRules");
     const decisions = spyOn(decisionRouting, "routeResponseDecision").mockResolvedValue("review");
     try {
-      for (const status of ["hits", "failed"] as const) {
-        rules.mockResolvedValue(status === "hits" ? { status, evidence } : { status });
+      for (const status of ["report", "failed"] as const) {
+        rules.mockResolvedValue(status === "report" ? { status, evidence } : { status });
         const context = makeReviewContext();
         const delivered: string[] = [];
         const { provider, capturedHistories, capturedContexts } = makeProvider([
@@ -1773,7 +2011,7 @@ describe("runToolLoop — contract tests", () => {
         });
         const result = await runToolLoop(makeParams(context, provider));
         expect(packets).toHaveLength(2);
-        expect(packets[0]?.includes("<rule_evidence>")).toBe(status === "hits");
+        expect(packets[0]?.includes('<prose_linter_report advisory="true">')).toBe(status === "report");
         expect(result.status).toBe("completed");
         expect(delivered).toEqual(["chosen reply"]);
         expect(JSON.stringify(capturedHistories)).not.toContain("PRIVATE_RULE_");
@@ -1788,29 +2026,14 @@ describe("runToolLoop — contract tests", () => {
     }
   });
 
-  it("clean/short/disabled rules cannot approve prose and tool review never checks arbitrary argument JSON", async () => {
+  it("clean/disabled rules cannot approve prose and tool review never checks arbitrary argument JSON", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
     const rules = spyOn(ruleChecks, "checkResponseRules");
     const decisions = spyOn(decisionRouting, "routeResponseDecision").mockResolvedValue("review");
     try {
-      for (const status of ["clean", "short_text", "disabled"] as const) {
-        const text =
-          status === "clean" ? "A quiet character waits by the door while the rain falls outside." : "Stay here.";
-        const evidence = ruleChecks.validateRuleAnalysis(
-          {
-            score: 100,
-            band: "clean",
-            word_count: status === "clean" ? 13 : 2,
-            violations: [],
-            counts: {},
-            total_penalty: 0,
-            weighted_sum: 0,
-            density: 0,
-            advice: [],
-          },
-          text,
-        );
-        rules.mockResolvedValue(status === "disabled" ? { status } : { status, evidence });
+      for (const status of ["clean", "disabled"] as const) {
+        const text = "A quiet character waits by the door while the rain falls outside.";
+        rules.mockResolvedValue({ status });
         const context = makeReviewContext();
         context.responseReview.pending = [held(text, []).pendingResponse];
         const { provider } = makeProvider([]);
@@ -2109,6 +2332,39 @@ describe("runToolLoop — contract tests", () => {
     expect(context.responseReview.toolReviews).toBe(2);
   });
 
+  it("with Tool Calls unchecked, executes calls unreviewed and omits tool evidence from reply review", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    context.currentPersona.config.response_review_items = ["persona", "examples", "history", "context"];
+    context.responseReview.reviewItems = [...context.currentPersona.config.response_review_items];
+    const delivered: string[] = [];
+    const { provider } = makeProvider([
+      makeFunctionCallResult("lookup", { target: "fixture" }),
+      held("Found it.", delivered),
+    ]);
+    const providerConfig = {
+      ...makeProviderConfig(),
+      tools: [{ functionDeclarations: [{ name: "lookup", parameters: { type: "object", properties: {} } }] }],
+    };
+    const calls: Array<{ prompt: string; schema: unknown }> = [];
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest, schema: unknown) => {
+        calls.push({ prompt: request.userPrompt, schema });
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    await runToolLoop({ ...makeParams(context, provider), providerConfig });
+    expect(toolExecuteCalls.map((call) => call.name)).toEqual(["lookup"]);
+    expect(context.responseReview.toolReviews).toBe(0);
+    expect(calls).toHaveLength(1);
+    expect(delivered).toEqual(["Found it."]);
+    const [review] = calls;
+    expect(review?.prompt).not.toContain("<completed_tools>");
+    expect(review?.prompt).not.toContain("<available_tools>");
+    expect(review?.prompt).not.toContain("tool_corrections=");
+    expect(JSON.stringify(review?.schema)).not.toContain("tool_use");
+  });
+
   it("bounds review calls for independent requests without borrowing the response budget", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
     const context = makeReviewContext();
@@ -2198,16 +2454,11 @@ describe("runToolLoop — contract tests", () => {
     }
   });
 
-  it("tool evidence with redacted effects, missing definition or unsupported admitted media becomes unavailable", async () => {
+  it("tool evidence with redacted effects or a missing definition becomes unavailable", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
-    for (const mode of ["secret", "definition", "media"] as const) {
+    for (const mode of ["secret", "definition"] as const) {
       toolExecuteCalls = [];
       const context = makeReviewContext();
-      if (mode === "media")
-        context.contextItems.push({
-          role: "user",
-          parts: [{ type: "image", mimeType: "image/png", uri: "https://example.com/fixture.png" }],
-        });
       const args = mode === "secret" ? { api_key: "PRIVATE_KEY" } : { target: "fixture" };
       const { provider } = makeProvider([makeFunctionCallResult("mirror_action", args), { status: "completed" }]);
       if (mode === "definition") Object.assign(provider, { getTools: async () => [] });

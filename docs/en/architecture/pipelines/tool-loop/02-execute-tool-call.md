@@ -1,5 +1,6 @@
 ---
 title: "02: Execute Tool Call"
+aiGenerated: true
 ---
 
 `executeToolCall` validates, gates, and dispatches a single tool call from the provider. It returns a
@@ -44,7 +45,9 @@ sequence of validation and safety gates before invoking the registry:
 Response Drafting On calls `ToolRegistry.prepareToolRequest` after admission checks. It resolves
 aliases, message identities and MCP defaults before the private reviewer sees the detached request
 that execution will receive. Built-in availability and permission checks precede paid review;
-dispatch retains its own checks.
+dispatch retains its own checks. Review itself runs only with `Tool Calls` checked in `Content to Check`
+(`ResponseReviewState.reviewItems` contains `tools`). Requests are prepared even when review is
+disabled, so successful identities are reused below.
 
 Pass dispatches that request once. Rejection returns `review_rejected` history with
 `actionExecuted: false`, correction eligibility and concise findings. It adds no failed-tool notice

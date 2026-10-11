@@ -1,5 +1,6 @@
 ---
 title: "02: Admission Check"
+aiGenerated: true
 ---
 
 The admission stage decides whether an incoming message proceeds into a generation turn, gets queued

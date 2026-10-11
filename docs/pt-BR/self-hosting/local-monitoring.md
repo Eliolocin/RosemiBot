@@ -2,6 +2,7 @@
 title: Monitoramento Local com Grafana
 sidebar:
   order: 7
+aiGenerated: true
 ---
 
 Monitore sua instância TomoriBot local com painéis Grafana pré-construídos para rastrear o uso de memória, tamanhos de cache, consumo de token e tráfego de comando.

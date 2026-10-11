@@ -2,6 +2,7 @@
 title: "セットアップ: ローカルMCPサーバー"
 sidebar:
   order: 6
+aiGenerated: true
 ---
 
 ローカルマシンまたはプライベートネットワーク上で実行されているTomoriBotサーバーをModel Context Protocol ([MCP](https://modelcontextprotocol.io/)) に接続して、カスタムローカルツールを提供します。

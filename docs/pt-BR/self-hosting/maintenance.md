@@ -2,6 +2,7 @@
 title: "Manutenção & Backups"
 sidebar:
   order: 5
+aiGenerated: true
 ---
 
 Gerencie sua instância TomoriBot auto-hospedada usando scripts de manutenção CLI para atualizar código, fazer backup ou restaurar dados, alternar chaves de criptografia e inspecionar variáveis de ambiente. Execute esses comandos em seu terminal host ou ambiente Docker. Para exportações e exclusões de dados em Discord, consulte [Manipulação de dados](/pt-BR/features/knowledge/data-handling/).

@@ -2,6 +2,7 @@
 title: "WhisperX语音转写"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 使用捆绑的 [WhisperX](https://github.com/m-bain/whisperX) 服务器为TomoriBot设置本地、准确的语音到文本。WhisperX提供具有字级对齐的快速音频转录。

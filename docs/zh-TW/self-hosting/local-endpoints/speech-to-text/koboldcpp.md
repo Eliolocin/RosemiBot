@@ -2,6 +2,7 @@
 title: "KoboldCPP轉錄"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 使用現有的 [KoboldCPP](https://github.com/LostRuins/koboldcpp) 實例轉錄TomoriBot中的音訊附件和語音訊息。

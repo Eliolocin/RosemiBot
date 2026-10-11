@@ -2,6 +2,7 @@
 title: "Adding an Event Handler"
 sidebar:
   order: 10
+aiGenerated: true
 ---
 
 How to handle a new Discord event.

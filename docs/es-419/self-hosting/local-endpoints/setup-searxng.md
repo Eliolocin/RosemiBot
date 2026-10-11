@@ -2,6 +2,7 @@
 title: "Configuración: SearXNG"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 Agrega búsqueda web privada y autohospedada a TomoriBot usando [SearXNG](https://docs.searxng.org/).

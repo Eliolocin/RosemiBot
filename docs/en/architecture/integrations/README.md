@@ -4,6 +4,7 @@ sidebar:
   label: "Overview"
   groupLabel: "Integrations"
   order: 40
+aiGenerated: true
 ---
 
 Integration documentation covers platform adapters, external network bridges, and third-party data

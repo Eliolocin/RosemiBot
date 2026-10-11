@@ -2,6 +2,7 @@
 title: "Proveedores y modelos"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot se conecta a proveedores de IA externos en lugar de alojar un modelo integrado. Puede conectar servicios alojados como Google Gemini, OpenRouter y NovelAI, o dirigirla a puntos finales autohospedados locales. Necesitas al menos un proveedor para empezar a chatear.

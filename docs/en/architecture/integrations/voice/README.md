@@ -3,6 +3,7 @@ title: "Voice System"
 sidebar:
   label: "Overview"
   groupLabel: "Voice"
+aiGenerated: true
 ---
 
 TomoriBot provides a bidirectional voice pipeline: inbound speech-to-text (STT) transcribes user

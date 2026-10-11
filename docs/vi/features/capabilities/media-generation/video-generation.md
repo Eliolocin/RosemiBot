@@ -2,6 +2,7 @@
 title: "Tạo video"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot có thể tạo các video ngắn từ lời nhắc văn bản hoặc bằng cách tạo hoạt ảnh cho hình ảnh hiện có. Sử dụng `/generate video` hoặc hỏi trực tiếp cô ấy trong cuộc trò chuyện.

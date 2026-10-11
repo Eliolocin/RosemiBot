@@ -2,6 +2,7 @@
 title: "Ajuste del comportamiento"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 Puedes ajustar lo que TomoriBot puede hacer y cómo genera respuestas en `/config`, incluida la página de permisos. Para la personalidad, consulta [Múltiples personas](/es-419/features/chatting-personality/multiple-personas/); para el conocimiento, consulta [Memoria](/es-419/features/knowledge/memory/). Esta página cubre los ajustes más comunes.
@@ -17,10 +18,13 @@ Puedes ajustar lo que TomoriBot puede hacer y cómo genera respuestas en `/confi
 El resumen automático de memoria a corto plazo se activa en `/config` > `Comportamiento` > `Memoria avanzada`. Cuando una capacidad está desactivada, no puede realizar esa acción independientemente de las solicitudes del usuario.
 
 ## Revisión de respuestas
+<!-- anchor: response-drafting -->
 
 Abre `/config` > `Plugins` > `Revisión de respuestas` para activar la revisión. Comienza desactivada y se aplica a cada persona en ese espacio de trabajo, incluidas las respuestas en cola y las escenas generadas. Los administradores del servidor modifican los ajustes del servidor; tu espacio de trabajo de DM tiene sus propios ajustes.
 
-Cuando está activada, Tomori retiene su respuesta mientras un revisor comprueba la voz de su personaje y el encaje con la escena. El revisor puede solicitar una revisión completa. Las solicitudes de herramientas también entran en revisión antes de su ejecución; las solicitudes rechazadas pueden recibir una corrección acotada. Las acciones exitosas se conservan mientras se revisa la respuesta. El texto sigue utilizando la identidad habitual de la persona, el manejo de emojis y el formato. La revisión y las correcciones pueden aumentar el tiempo de respuesta y el costo de tokens; la página muestra esto en ambos estados.
+Cuando está activada, Tomori retiene su respuesta mientras un revisor comprueba la voz de su personaje y el encaje con la escena. El revisor puede solicitar una revisión completa. `Elementos a verificar` muestra los elementos de revisión con círculos verdes para los elementos habilitados y círculos rojos para los deshabilitados. `Editar elementos de revisión` abre una lista de casillas: marca un elemento para habilitarlo o desmárcalo para deshabilitarlo.
+
+Las instrucciones de la persona, los diálogos de ejemplo y la conversación reciente comienzan habilitados. Las memorias y otro contexto, así como `Llamadas a herramientas`, comienzan deshabilitados. El borrador, el mensaje que lo activó y el destino de la respuesta siempre se incluyen. Habilitar memorias y otro contexto agrega memorias admitidas, documentos, detalles de los participantes y otro contexto a la revisión. Habilitar `Llamadas a herramientas` agrega las definiciones de herramientas y los resultados completados, y comprueba las solicitudes antes de que se ejecuten; las solicitudes rechazadas pueden recibir una corrección acotada. Las acciones exitosas se conservan mientras se revisa la respuesta. La revisión y las correcciones pueden aumentar el tiempo de respuesta y el costo de tokens, especialmente con más elementos habilitados.
 
 `Elegir modelo revisor` selecciona un modelo de texto registrado elegible. `Usar el modelo de respuesta actual` utiliza el modelo y las credenciales que realmente responden, incluido tu proveedor personal o un modelo de respaldo. Un revisor fijado utiliza el registro y las credenciales propios del espacio de trabajo. Los creadores de solo texto y los creadores con el uso de herramientas desactivado aún pueden utilizar un revisor elegible. Un modelo heredado no admitido muestra `No disponible`; elige un revisor admitido para habilitar la revisión detallada.
 

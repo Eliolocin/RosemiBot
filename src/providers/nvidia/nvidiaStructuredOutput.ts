@@ -1,3 +1,4 @@
+import { buildExampleJsonFromSchema } from "@/providers/utils/structuredOutput";
 import {
   parsePrivateStructuredOutput,
   privateStructuredFailure,
@@ -11,6 +12,7 @@ import type {
 } from "@/types/provider/featureInterfaces";
 import { fetchAndOptimizeImage } from "@/utils/image/imageProcessor";
 import { log } from "@/utils/misc/logger";
+import { buildNvidiaThinkingRequest } from "@/utils/provider/thinkingControl";
 import {
   NVIDIA_CHAT_COMPLETIONS_URL,
   NVIDIA_STRUCTURED_OUTPUT_MODELS,
@@ -22,56 +24,6 @@ type NvidiaStructuredOutputRequest = ProviderStructuredJsonRequest;
 type NvidiaMessage = { role: "system"; content: string } | { role: "user"; content: string | NvidiaUserContentPart[] };
 
 type NvidiaUserContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
-
-function buildExampleJsonFromSchema(schema: unknown): unknown {
-  if (!schema || typeof schema !== "object") {
-    return {};
-  }
-
-  const record = schema as Record<string, unknown>;
-
-  if ("const" in record) {
-    return record.const;
-  }
-
-  if (Array.isArray(record.enum) && record.enum.length > 0) {
-    return record.enum[0];
-  }
-
-  if (Array.isArray(record.anyOf) && record.anyOf.length > 0) {
-    return buildExampleJsonFromSchema(record.anyOf[0]);
-  }
-
-  const schemaType = record.type;
-  if (schemaType === "object") {
-    const properties =
-      record.properties && typeof record.properties === "object" ? (record.properties as Record<string, unknown>) : {};
-    const example: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(properties)) {
-      example[key] = buildExampleJsonFromSchema(value);
-    }
-    return example;
-  }
-
-  if (schemaType === "array") {
-    return [buildExampleJsonFromSchema(record.items)];
-  }
-
-  if (schemaType === "integer" || schemaType === "number") {
-    const minimum = typeof record.minimum === "number" && Number.isFinite(record.minimum) ? record.minimum : 0;
-    return minimum;
-  }
-
-  if (schemaType === "boolean") {
-    return false;
-  }
-
-  if (schemaType === "string") {
-    return "<string>";
-  }
-
-  return {};
-}
 
 function buildNvidiaStructuredSystemPrompt(
   systemPrompt: string,
@@ -258,6 +210,9 @@ async function executeStructuredJsonRequest<T>(params: {
     stream: false,
     temperature: params.request.temperature ?? 1.0,
   };
+  if (params.request.thinkingLevel !== undefined) {
+    Object.assign(body, buildNvidiaThinkingRequest(params.request.thinkingLevel));
+  }
 
   if (params.responseFormat) {
     body.response_format = params.responseFormat;

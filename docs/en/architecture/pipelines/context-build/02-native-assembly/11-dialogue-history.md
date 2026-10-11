@@ -1,5 +1,6 @@
 ---
 title: "02.11: Dialogue History"
+aiGenerated: true
 ---
 
 The dialogue history contributor formats recent conversation turns, records capability-neutral media descriptors, and injects context notes and date spacers at designated dialogue depths.

@@ -1,5 +1,6 @@
 ---
 title: "Discord Message Components V2"
+aiGenerated: true
 ---
 
 TomoriBot uses Discord Components V2 to render structured interactive messages, control panels, and tool media cards with layout encapsulation. Payloads set `MessageFlags.IsComponentsV2` (`32768`), group elements inside containers and sections, and reference attachments directly within component media fields. For complete wire schema definitions and component types, refer to the [Discord Message Components documentation](https://discord.com/developers/docs/interactions/message-components).

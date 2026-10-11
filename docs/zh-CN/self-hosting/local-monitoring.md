@@ -2,6 +2,7 @@
 title: "本地Grafana监控"
 sidebar:
   order: 7
+aiGenerated: true
 ---
 
 使用预构建的Grafana仪表板监控本地TomoriBot实例，以跟踪内存使用情况、缓存大小、令牌消耗和命令流量。

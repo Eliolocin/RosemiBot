@@ -76,6 +76,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
   it("loads defaults and every saved field through both assembled SELECTs and the capabilities repository", async () => {
     const initial = await personaRepository.loadState(FIXTURE_IDS.serverDiscId);
     expect(initial?.config.response_drafting_enabled).toBe(false);
+    expect(initial?.config.response_review_items).toEqual(["persona", "examples", "history"]);
     for (const key of [
       "response_reviewer_llm_id",
       "response_decision_model_id",
@@ -106,6 +107,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     const prompt = "🙂".repeat(4000);
     expect(await responseDraftingOperations.setPrompt(state(), FIXTURE_IDS.serverDiscId, prompt)).toBe("success");
     expect(await responseDraftingOperations.setEnabled(state(), FIXTURE_IDS.serverDiscId, true)).toBe("success");
+    expect(
+      await responseDraftingOperations.setReviewItems(state(), FIXTURE_IDS.serverDiscId, ["tools", "context"]),
+    ).toBe("success");
     const binding = { scope: "workspace" as const, registrationId: 99, toolName: "check_slop" as const };
     await configRepository.updateChatConfig(refs.serverId, { response_rule_checker_ref: binding });
     await executeTestSqlFile("src/db/schema.sql");
@@ -115,6 +119,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
       response_decision_model_id: decisionId,
       response_reviewer_prompt: prompt,
       response_rule_checker_ref: binding,
+      response_review_items: ["tools", "context"],
     };
     for (const loaded of [
       await personaRepository.loadState(FIXTURE_IDS.serverDiscId),
@@ -202,6 +207,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     expect(exported.data.chat).toMatchObject({
       response_reviewer_llm_id: reviewerId,
       response_decision_model_id: decisionId,
+      response_review_items: ["tools", "context"],
     });
     expect(JSON.stringify(exported)).not.toContain("api_key");
     expect(JSON.stringify(exported)).not.toContain("auth_token");
@@ -211,11 +217,18 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     const [other] =
       await testSql`SELECT response_reviewer_prompt FROM server_chat_configs WHERE server_id = ${otherServerId}`;
     expect(other.response_reviewer_prompt).toBeNull();
+    expect(await responseDraftingOperations.setReviewItems(state(), FIXTURE_IDS.serverDiscId, [])).toBe("success");
+    expect((await personaRepository.loadState(FIXTURE_IDS.serverDiscId))?.config.response_review_items).toEqual([]);
     expect((await importRepository.importWorkspaceConfig(FIXTURE_IDS.serverDiscId, exported)).success).toBe(true);
+    expect((await personaRepository.loadState(FIXTURE_IDS.serverDiscId))?.config.response_review_items).toEqual([
+      "tools",
+      "context",
+    ]);
     await resetRepository.resetServerConfiguration(refs.serverId);
     const reset = await personaRepository.loadState(FIXTURE_IDS.serverDiscId);
     expect(reset?.config).toMatchObject({
       response_drafting_enabled: false,
+      response_review_items: ["persona", "examples", "history"],
       response_reviewer_llm_id: null,
       response_decision_model_id: null,
       response_reviewer_prompt: null,
@@ -223,9 +236,11 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     });
   });
 
-  it("binds compatible owned enabled MCP registrations and retains unavailable references", async () => {
+  it("binds compatible owned enabled Prose Linter registrations and retains unavailable references", async () => {
     const [checker] =
-      await testSql`INSERT INTO guild_mcp_servers (server_id, name, url, is_enabled, last_discovered_tool_names) VALUES (${refs.serverId}, '_rt_checker', 'https://example.invalid/mcp', true, ARRAY['check_slop']) RETURNING guild_mcp_id`;
+      await testSql`INSERT INTO guild_mcp_servers (server_id, name, url, is_enabled, server_type, last_discovered_tool_names) VALUES (${refs.serverId}, '_rt_checker', 'https://example.invalid/mcp', true, 'prose_linter', ARRAY['check_slop']) RETURNING guild_mcp_id`;
+    const [general] =
+      await testSql`INSERT INTO guild_mcp_servers (server_id, name, url, is_enabled, last_discovered_tool_names) VALUES (${refs.serverId}, '_rt_general', 'https://example.invalid/general', true, ARRAY['check_slop']) RETURNING guild_mcp_id`;
     const fake: CallableTool = {
       tool: async () => ({
         functionDeclarations: [
@@ -246,6 +261,12 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
         (choice) => choice.reference.scope === "workspace" && choice.reference.registrationId === checker.guild_mcp_id,
       )?.reference;
       expect(reference).toBeDefined();
+      expect(
+        choices.some(
+          (choice) =>
+            choice.reference.scope === "workspace" && choice.reference.registrationId === general.guild_mcp_id,
+        ),
+      ).toBe(false);
       if (!reference) throw new Error("Missing checker");
       expect(await responseDraftingOperations.setChecker(state(), FIXTURE_IDS.serverDiscId, reference)).toBe("success");
       expect(
@@ -264,7 +285,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
           ? JSON.parse(saved.response_rule_checker_ref)
           : saved.response_rule_checker_ref,
       ).toEqual(reference);
-      await testSql`DELETE FROM guild_mcp_servers WHERE guild_mcp_id = ${checker.guild_mcp_id}`;
+      await testSql`DELETE FROM guild_mcp_servers WHERE guild_mcp_id IN (${checker.guild_mcp_id}, ${general.guild_mcp_id})`;
       expect(await responseDraftingOperations.setChecker(state(), FIXTURE_IDS.serverDiscId, reference)).toBe("stale");
       expect(await responseDraftingOperations.setChecker(state(), FIXTURE_IDS.serverDiscId, null)).toBe("success");
     } finally {

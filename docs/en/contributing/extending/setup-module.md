@@ -3,6 +3,7 @@ title: "Adding a Setup Module"
 sidebar:
   order: 10
   label: "Adding a Setup Module"
+aiGenerated: true
 ---
 
 How to add a step to `bun run setup --full`. Modules live in `scripts/setup/registry.ts`.

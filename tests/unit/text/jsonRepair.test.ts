@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { tryRepairIncompleteJson } from "@/utils/text/jsonRepair";
+import { parseEmbeddedJson, tryRepairIncompleteJson } from "@/utils/text/jsonRepair";
 
 describe("tryRepairIncompleteJson", () => {
   it("drops a value truncated mid-string and keeps the keys that arrived complete", () => {
@@ -192,3 +192,21 @@ function isPrefixOf(value: unknown, original: unknown): boolean {
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+describe("parseEmbeddedJson", () => {
+  it("recovers a complete object from fences, reasoning tags and surrounding prose", () => {
+    const verdict = { status: "pass" };
+    for (const raw of [
+      '{"status":"pass"}',
+      '```json\n{"status":"pass"}\n```',
+      '<think>weighing the scene</think>{"status":"pass"}',
+      'Here is my verdict: {"status":"pass"} Hope that helps.',
+    ])
+      expect(parseEmbeddedJson(raw)).toEqual(verdict);
+  });
+
+  it("never completes a cut-off object", () => {
+    expect(parseEmbeddedJson('{"status":"revise","findings":[{"category":"voice","problem":"The line')).toBeUndefined();
+    expect(parseEmbeddedJson("")).toBeUndefined();
+  });
+});

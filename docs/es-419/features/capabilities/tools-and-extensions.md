@@ -2,6 +2,7 @@
 title: "Herramientas y extensiones"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Más allá del chat, TomoriBot puede llamar a herramientas para buscar en la web, leer documentos, generar medios, configurar recordatorios e interactuar con mensajes de Discord. Ella decide cuándo usarlos según la conversación. Esta página cubre las herramientas integradas, cómo ampliarla con servidores MCP y cómo mantener las indicaciones optimizadas con el modo de herramienta deliberada.
@@ -97,7 +98,7 @@ Usa un endpoint HTTPS directo de un proveedor que admita MCP Streamable HTTP o S
 
 1. Obtén el endpoint MCP y sus requisitos de autenticación del proveedor.
 2. Abre `/config` > Plugins > Servidores MCP y elige `+ Agregar MCP`.
-3. Pega el endpoint en `URL`, ingresa su token Bearer en `Token de autenticación` si es necesario y elige el `Tipo de servidor` requerido. **Uso general** está seleccionado por defecto.
+3. Pega el endpoint en `URL`, ingresa su token Bearer en `Token de autenticación` si es necesario y elige el `Tipo de servidor` requerido. **Uso general** está seleccionado por defecto. Elige `Corrector de prosa` para un corrector que quieras como comprobador de reglas en la Revisión de respuestas: Tomori nunca llama a sus herramientas ella misma y aparece bajo `Comprobaciones de reglas` en la página de Revisión de respuestas.
 
 ### Añadir un servidor Smithery
 

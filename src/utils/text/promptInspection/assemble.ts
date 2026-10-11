@@ -360,7 +360,6 @@ async function fetchProviderTools(
       voice_message_enabled: persona.config.voice_message_enabled,
       user_blocking_enabled: persona.config.user_blocking_enabled,
       user_info_updates_enabled: persona.config.user_info_updates_enabled,
-      response_rule_checker_ref: persona.config.response_rule_checker_ref,
       thread_creation_enabled: persona.config.thread_creation_enabled,
     },
   };

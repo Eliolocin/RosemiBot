@@ -2,6 +2,7 @@
 title: "Transcripción con whisper.cpp"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 Ejecuta conversión de voz a texto liviana y de alto rendimiento para TomoriBot usando [whisper.cpp](https://github.com/ggerganov/whisper.cpp).

@@ -82,12 +82,8 @@ export async function generateConversationSummaryDeepseek(
       messages,
       max_tokens: 4096,
       stream: false,
+      temperature: request.temperature ?? 0.7,
     };
-
-    // Omit temperature for deepseek-reasoner (not supported by that model)
-    if (request.model !== "deepseek-reasoner") {
-      body.temperature = request.temperature ?? 0.7;
-    }
 
     const endpointUrl = request.endpointUrl || DEEPSEEK_CHAT_COMPLETIONS_URL;
 

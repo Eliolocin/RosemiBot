@@ -2,6 +2,7 @@
 title: "Estatísticas & Insights"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 TomoriBot rastreia métricas de interação para que você possa inspecionar tendências de atividades, modelar uso de tokens, personas populares e chamadas de ferramentas ou renderizar cartões de resumo de infográficos compartilháveis.

@@ -1,3 +1,4 @@
+import { buildExampleJsonFromSchema } from "@/providers/utils/structuredOutput";
 import {
   parsePrivateStructuredOutput,
   privateStructuredFailure,
@@ -7,6 +8,7 @@ import type { z } from "zod";
 import { toDeepseekApiModelName } from "@/providers/deepseek/deepseekShared";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import { log } from "@/utils/misc/logger";
+import { buildDeepSeekThinkingRequest } from "@/utils/provider/thinkingControl";
 import { fetchAndOptimizeImage } from "@/utils/image/imageProcessor";
 
 type DeepseekStructuredOutputRequest = ProviderStructuredJsonRequest;
@@ -16,56 +18,6 @@ type DeepseekContentPart = { type: "text"; text: string } | { type: "image_url";
 type DeepseekStructuredMessage =
   | { role: "system"; content: string }
   | { role: "user"; content: string | DeepseekContentPart[] };
-
-function buildExampleJsonFromSchema(schema: unknown): unknown {
-  if (!schema || typeof schema !== "object") {
-    return {};
-  }
-
-  const record = schema as Record<string, unknown>;
-
-  if ("const" in record) {
-    return record.const;
-  }
-
-  if (Array.isArray(record.enum) && record.enum.length > 0) {
-    return record.enum[0];
-  }
-
-  if (Array.isArray(record.anyOf) && record.anyOf.length > 0) {
-    return buildExampleJsonFromSchema(record.anyOf[0]);
-  }
-
-  const schemaType = record.type;
-  if (schemaType === "object") {
-    const properties =
-      record.properties && typeof record.properties === "object" ? (record.properties as Record<string, unknown>) : {};
-    const example: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(properties)) {
-      example[key] = buildExampleJsonFromSchema(value);
-    }
-    return example;
-  }
-
-  if (schemaType === "array") {
-    return [buildExampleJsonFromSchema(record.items)];
-  }
-
-  if (schemaType === "integer" || schemaType === "number") {
-    const minimum = typeof record.minimum === "number" && Number.isFinite(record.minimum) ? record.minimum : 0;
-    return minimum;
-  }
-
-  if (schemaType === "boolean") {
-    return false;
-  }
-
-  if (schemaType === "string") {
-    return "<string>";
-  }
-
-  return {};
-}
 
 function buildDeepseekStructuredSystemPrompt(
   systemPrompt: string,
@@ -188,8 +140,9 @@ export async function callDeepseekStructuredJSON<T>(
       },
     ];
 
+    const apiModel = toDeepseekApiModelName(request.model);
     const body: Record<string, unknown> = {
-      model: toDeepseekApiModelName(request.model),
+      model: apiModel,
       messages,
       response_format: {
         type: "json_object",
@@ -198,7 +151,11 @@ export async function callDeepseekStructuredJSON<T>(
       stream: false,
     };
 
-    if (request.model !== "deepseek-reasoner") {
+    const thinking =
+      request.thinkingLevel === undefined ? undefined : buildDeepSeekThinkingRequest(apiModel, request.thinkingLevel);
+    if (thinking?.thinking) body.thinking = thinking.thinking;
+    if (thinking?.reasoning_effort) body.reasoning_effort = thinking.reasoning_effort;
+    if (!thinking?.omitSampling) {
       body.temperature = request.temperature ?? 1.0;
     }
 

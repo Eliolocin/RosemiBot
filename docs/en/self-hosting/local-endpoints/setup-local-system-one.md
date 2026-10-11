@@ -2,6 +2,7 @@
 title: "Setup: Local Decision Model"
 sidebar:
   order: 7
+aiGenerated: true
 ---
 
 Run a small Decision model on your own machine and register it in TomoriBot. A Decision model answers yes/no questions about a text with a probability. [Kev](https://github.com/jaredpalmer/kev) is an open one that speaks the System One protocol, the same one TypeSafe's hosted Jev uses.

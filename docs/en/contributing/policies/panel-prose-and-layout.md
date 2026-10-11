@@ -2,6 +2,7 @@
 title: "Panel Prose and Layout"
 sidebar:
   order: 40
+aiGenerated: true
 ---
 
 Rules for text and components inside a Components V2 panel (`src/utils/discord/ui/*Panel.ts`).

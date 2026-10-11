@@ -61,6 +61,7 @@ source open to follow these.
   - [`local-endpoints/setup-comfyui.md`](./en/self-hosting/local-endpoints/setup-comfyui.md)
   - [`local-endpoints/setup-searxng.md`](./en/self-hosting/local-endpoints/setup-searxng.md)
   - [`local-endpoints/setup-crawl4ai.md`](./en/self-hosting/local-endpoints/setup-crawl4ai.md)
+  - [`local-endpoints/setup-slop-guard.md`](./en/self-hosting/local-endpoints/setup-slop-guard.md)
   - [`local-endpoints/setup-chatmock.md`](./en/self-hosting/local-endpoints/setup-chatmock.md)
   - [`local-endpoints/setup-local-mcp.md`](./en/self-hosting/local-endpoints/setup-local-mcp.md)
   - [`local-endpoints/setup-local-system-one.md`](./en/self-hosting/local-endpoints/setup-local-system-one.md)

@@ -1,5 +1,6 @@
 ---
 title: "MOSS-TTS"
+aiGenerated: true
 ---
 
 [MOSS-TTS](https://github.com/OpenMOSS/MOSS-TTS) を使用して、統合音声エンドポイントを通じてローカルで音声クローンと自然言語音声設計を評価します。

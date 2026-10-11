@@ -14,7 +14,10 @@ const docsDir = pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), "
 export const collections = {
   docs: defineCollection({
     loader: glob({
-      pattern: "**/*.{md,mdx}",
+      // `docs/README.md` indexes the tree for repo readers. The id rewrite below would turn it into
+      // the empty slug, which is the site root that `redirects["/"]` already owns, so Astro would
+      // skip it with a route-conflict warning on every build.
+      pattern: ["**/*.{md,mdx}", "!README.md"],
       base: docsDir,
       generateId: ({ entry }) =>
         entry
@@ -22,16 +25,14 @@ export const collections = {
           .replace(/README\.mdx?$/i, "index.md") // README.md/.mdx → index so it becomes the section root
           .replace(/\.mdx?$/, ""), // strip extension for clean slugs
     }),
-    // Extend Starlight's frontmatter schema with an AI-disclaimer opt-out.
-    // Defaults to true, so every page renders the disclaimer note unless a
-    // substantively reviewed doc explicitly sets `aiGenerated: false`. Translations mirror their
-    // English source. The note itself
-    // is injected at render time by the MarkdownContent component override, so
-    // pages need no per-file markdown edits and the wording lives in exactly
-    // one place.
+    // Extend Starlight's frontmatter schema with an AI-disclaimer opt-in.
+    // Defaults to false, so a page renders the disclaimer note only when it
+    // sets `aiGenerated: true`. Translations mirror their English source. The
+    // note itself is injected at render time by the MarkdownContent component
+    // override, so the wording lives in exactly one place.
     schema: docsSchema({
       extend: z.object({
-        aiGenerated: z.boolean().default(true),
+        aiGenerated: z.boolean().default(false),
       }),
     }),
   }),

@@ -2,6 +2,7 @@
 title: "Provedores & Modelos"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot se conecta a provedores externos de IA em vez de hospedar um modelo integrado. Você pode conectar serviços hospedados como Google Gemini, OpenRouter e NovelAI ou apontá-los para endpoints auto-hospedados locais. Você precisa de pelo menos um provedor para começar a conversar.

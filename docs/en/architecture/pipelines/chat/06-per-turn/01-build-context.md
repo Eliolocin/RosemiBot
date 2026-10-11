@@ -1,5 +1,6 @@
 ---
 title: "06.1: Build Context"
+aiGenerated: true
 ---
 
 The build-context stage constructs the `ChatTurnContext` closure for a persona turn. It fetches and

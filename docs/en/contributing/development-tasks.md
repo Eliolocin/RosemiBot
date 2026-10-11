@@ -2,6 +2,7 @@
 title: "Development Tasks"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 Conventions and checks that apply to every change. The guide for each task is listed in the

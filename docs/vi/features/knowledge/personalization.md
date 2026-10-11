@@ -2,6 +2,7 @@
 title: "Cá nhân hóa"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot có thể ghi nhớ thông tin cá nhân, tên tùy chỉnh và thông tin đăng nhập của nhà cung cấp AI theo bạn trên mọi máy chủ mà bạn chia sẻ với cô ấy. Bạn có thể quản lý các cài đặt này bằng các lệnh `/personal` mà không thay đổi cấu hình chia sẻ của bất kỳ máy chủ nào.

@@ -40,6 +40,8 @@ export default {
     },
     text_preview: {
       truncated_footer: `Hiển thị {shown} trên tổng số {total} ký tự đầu tiên.`,
+      hidden_marker: `Ẩn thêm {count} ký tự.`,
+      hidden_marker_action: `Ẩn thêm {count} ký tự. Nhấn {action} để xem phần còn lại.`,
     },
     pagination: {
       page_info: `Trang {current}/{total}`,

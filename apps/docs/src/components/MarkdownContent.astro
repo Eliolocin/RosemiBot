@@ -5,11 +5,11 @@
 // Why render-time instead of injecting into each .md file:
 //   1. The docs markdown stays clean: no 100+ file diff, no marker to migrate.
 //   2. The wording lives in the shared locale table, so a new locale adds one entry.
-//   3. Opt-out is a single frontmatter flag, defaulted to true in the schema.
+//   3. Opt-in is a single frontmatter flag, defaulted to false in the schema.
 //
-// Translations mirror the English source's aiGenerated flag, which records substantive content
-// review. Reviewed content hides the notice in every locale, including machine translations.
-// Files with mismatched flags retain the lighter translation notice when English is reviewed.
+// Translations mirror the English source's aiGenerated flag, which marks substantively unreviewed
+// content. Unmarked content shows no notice in any locale. A translation marked `true` whose
+// English source is not marked retains the lighter translation notice.
 //
 // The default MarkdownContent is just <div class="sl-markdown-content"><slot/></div>, so we render
 // it and place the <Aside> as the first child: this keeps the note inside the markdown content flow,
@@ -48,13 +48,13 @@ const locale = routeLocale ?? localeFromEntryId(entry.id) ?? DEFAULT_DOCS_LOCALE
 const baseId = stripLocaleFromEntryId(entry.id);
 const notices = getDocsLocaleConfig(locale)?.notices ?? getDocsLocaleConfig(DEFAULT_DOCS_LOCALE_ID)?.notices;
 
-// Opt-out flag from frontmatter. Schema defaults it to true, so a page is
-// treated as generated unless it explicitly sets `aiGenerated: false`.
+// Opt-in flag from frontmatter. Schema defaults it to false, so a page carries the notice only
+// when it explicitly sets `aiGenerated: true`.
 const mode = resolveTranslationNoticeMode({
   docsRoot,
   entryId: entry.id,
   locale,
-  aiGenerated: entry.data.aiGenerated !== false,
+  aiGenerated: entry.data.aiGenerated,
   isFallback: Astro.locals.starlightRoute.isFallback,
 });
 

@@ -2,6 +2,7 @@
 title: "伺服器管理"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot透過`/moderation`和`/config`為伺服器管理者提供對使用、成本、權限和通道的細微控制。大多數這些控制項都需要`管理伺服器`權限。完整的命令清單請參考[指令參考](/zh-TW/features/command-reference/)。

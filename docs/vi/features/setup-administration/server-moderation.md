@@ -2,6 +2,7 @@
 title: "Kiểm duyệt máy chủ"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot cung cấp cho người quản lý máy chủ khả năng kiểm soát chi tiết về mức sử dụng, chi phí, quyền và kênh thông qua `/moderation` và `/config`. Hầu hết các điều khiển này đều yêu cầu sự cho phép của `Quản lý máy chủ`. Để biết danh sách lệnh đầy đủ, hãy xem [Tham khảo lệnh](/vi/features/command-reference/).

@@ -2,6 +2,7 @@
 title: "Personalization"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot can remember personal details, custom names, and AI provider credentials that

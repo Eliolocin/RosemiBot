@@ -1,4 +1,5 @@
 import { ThinkingLevel, type ThinkingConfig } from "@google/genai";
+import { toDeepseekApiModelName } from "@/providers/deepseek/deepseekShared";
 import {
   DEFAULT_THINKING_LEVEL,
   THINKING_LEVEL_LOCALIZER_KEYS,
@@ -33,6 +34,10 @@ export interface ThinkingModeRequest {
     type: "enabled" | "disabled";
   };
   omitSampling: boolean;
+}
+
+export interface DeepSeekThinkingRequest extends ThinkingModeRequest {
+  reasoning_effort?: "low" | "medium" | "high";
 }
 
 export interface CustomThinkingRequest {
@@ -101,17 +106,8 @@ function supportsAnthropicAdaptiveThinking(model: string): boolean {
   );
 }
 
-function isDeepSeekReasonerModel(model: string): boolean {
-  return normalizeModel(model) === "deepseek-reasoner";
-}
-
-// deepseek-flash absorbed deepseek-chat's opt-in thinking toggle; the deprecated codenames stay
-// listed so servers still configured with them keep working unchanged.
-const DEEPSEEK_CHAT_THINKING_TOGGLE_MODELS = new Set(["deepseek-flash", "deepseek-v4-flash", "deepseek-chat"]);
-
-function isDeepSeekChatModel(model: string): boolean {
-  return DEEPSEEK_CHAT_THINKING_TOGGLE_MODELS.has(normalizeModel(model));
-}
+// API names (after `toDeepseekApiModelName`) that accept the `thinking` switch.
+const DEEPSEEK_THINKING_TOGGLE_MODELS = new Set(["deepseek-flash", "deepseek-v4-pro"]);
 
 function looksLikeOllamaEndpoint(endpointUrl: string): boolean {
   try {
@@ -280,20 +276,27 @@ export function buildDeepSeekThinkingRequest(
   model: string,
   configuredLevel: string | null | undefined,
   forceReason?: boolean,
-): ThinkingModeRequest {
+): DeepSeekThinkingRequest {
   const effectiveLevel = resolveEffectiveThinkingLevel(configuredLevel, forceReason);
-  if (isDeepSeekReasonerModel(model)) {
-    return { omitSampling: true };
+  const apiModel = normalizeModel(toDeepseekApiModelName(model));
+  if (!DEEPSEEK_THINKING_TOGGLE_MODELS.has(apiModel) || effectiveLevel === "auto") {
+    return { omitSampling: false };
   }
 
-  if (isDeepSeekChatModel(model) && effectiveLevel !== "auto" && effectiveLevel !== "none") {
+  // V4 models think at high effort when the switch is omitted, so `none` has to send it.
+  if (effectiveLevel === "none") {
     return {
-      thinking: { type: "enabled" },
-      omitSampling: true,
+      thinking: { type: "disabled" },
+      omitSampling: false,
     };
   }
 
-  return { omitSampling: false };
+  // DeepSeek folds medium into high and minimal into low on its side.
+  return {
+    thinking: { type: "enabled" },
+    reasoning_effort: toProviderEffortLevel(effectiveLevel),
+    omitSampling: true,
+  };
 }
 
 export function buildZaiThinkingRequest(

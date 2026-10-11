@@ -46,13 +46,13 @@ English file layout, so a key lives at the same path in every tree.
 - Translate the whole changed passage in its context, and keep the
   translated page's existing structure and wording elsewhere.
 - Frontmatter: translate `title` and `description`. Always mirror the English source's `aiGenerated`
-  field, including its absence: copy `false` or `true` exactly, or remove the field when English
-  omits it. This field records human review of the substantive content. AI translation alone does
-  not change that status or certify translation quality. Keep every other field as the translated
+  field, including its absence: copy `true` exactly, or omit the field when English omits it. This
+  field marks substantive content nobody has reviewed. AI translation alone does not change that
+  status or certify translation quality. Keep every other field as the translated
   file already has it.
-- Links: a route to a page that exists in the locale's tree takes the locale prefix
-  (`/ja/features/knowledge/memory/`); a route to an English-only or untranslated page takes `/en/`.
-  An unprefixed route in a translated page ejects the reader into English.
+- Links: keep the English source's unprefixed route (`/features/knowledge/memory/`). The build adds
+  the locale prefix, or `/en/` for an untranslated page; a hand-written prefix stays fixed after the
+  target gets translated.
 - Keep every `<!-- anchor: english-slug -->` (in MDX, `{/* anchor: english-slug */}`) comment under
   its heading exactly as it is: it is the English anchor that links in every locale target.
 - UI labels are the exception to "code spans stay verbatim". A code span that names something the

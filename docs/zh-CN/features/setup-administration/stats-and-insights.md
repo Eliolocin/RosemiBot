@@ -2,6 +2,7 @@
 title: "统计与洞察"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 TomoriBot跟踪交互指标，以便你可以检查活动趋势、模型代币使用、流行人格和工具调用，或呈现可共享的信息图摘要卡。

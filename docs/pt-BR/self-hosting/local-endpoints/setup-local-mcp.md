@@ -2,6 +2,7 @@
 title: "Configuração: Servidor MCP Local"
 sidebar:
   order: 6
+aiGenerated: true
 ---
 
 Conecte TomoriBot a servidores Model Context Protocol ([MCP](https://modelcontextprotocol.io/)) em execução em sua máquina local ou rede privada para fornecer ferramentas locais personalizadas.

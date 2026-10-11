@@ -2,6 +2,7 @@
 title: "Voz: TTS y STT"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot puede hablar y escuchar en Discord: enviar respuestas de voz con texto a voz (TTS) y transcribir mensajes de audio en contexto de conversación con voz a texto (STT).

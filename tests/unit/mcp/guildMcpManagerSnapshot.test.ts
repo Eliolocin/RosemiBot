@@ -2,6 +2,7 @@ import { describe, expect, it, spyOn } from "bun:test";
 import type { GuildMcpServerRow } from "@/types/db/schema";
 import type { GuildMCPConnection } from "@/types/tool/mcpTypes";
 import { toolRepository } from "@/utils/db/repositories/ToolRepository";
+import * as configCache from "@/utils/cache/guildMcpConfigCache";
 import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
 import { log } from "@/utils/misc/logger";
 import { createGuildMcpFetch } from "@/utils/mcp/guildMcpFetch";
@@ -88,21 +89,26 @@ describe("guild MCP transport receipt", () => {
       try {
         expect(await manager.getRegisteredTool(row)).not.toBeNull();
         const signal = new AbortController().signal;
-        const result = await manager.callInternalRuleChecker(row, "fixture", signal);
+        const result = await manager.callInternalRuleChecker(row, "check_slop", "fixture", signal);
         expect(result).toEqual({ content: [{ type: "text", text: "accepted" }] });
         mode = "large";
-        const largeResult = (await manager.callInternalRuleChecker(row, "fixture", AbortSignal.timeout(2000))) as {
+        const largeResult = (await manager.callInternalRuleChecker(
+          row,
+          "check_slop",
+          "fixture",
+          AbortSignal.timeout(2000),
+        )) as {
           content: Array<{ type: string; text: string }>;
         };
         expect(largeResult.content[0]?.text.length).toBe(6 * 1024 * 1024);
         mode = "invalid";
-        await expect(manager.callInternalRuleChecker(row, "fixture", signal)).rejects.toThrow();
+        await expect(manager.callInternalRuleChecker(row, "check_slop", "fixture", signal)).rejects.toThrow();
         mode = "oversized";
         // SSE stream errors do not reject pending SDK requests until cancellation or timeout.
         const abort = new AbortController();
         const timer = setTimeout(() => abort.abort(), 200);
         try {
-          await expect(manager.callInternalRuleChecker(row, "fixture", abort.signal)).rejects.toThrow();
+          await expect(manager.callInternalRuleChecker(row, "check_slop", "fixture", abort.signal)).rejects.toThrow();
         } finally {
           clearTimeout(timer);
         }
@@ -299,6 +305,34 @@ describe("guild MCP lazy discovery snapshots", () => {
       decryptSpy.mockRestore();
       updateSpy.mockRestore();
       connectSpy.mockRestore();
+    }
+  });
+});
+
+describe("guild MCP author routing", () => {
+  it("never routes a Prose Linter registration's tools to the author", async () => {
+    const linter: GuildMcpServerRow = {
+      server_id: 42,
+      guild_mcp_id: 7,
+      name: "fixture-linter",
+      url: "https://mcp.example.org/mcp",
+      key_version: 1,
+      is_enabled: true,
+      server_type: "prose_linter",
+      last_discovered_tool_names: ["check_slop", "check_slop_file"],
+    };
+    const read = spyOn(configCache, "getGuildMcpConfigReadResult").mockResolvedValue({
+      status: "fresh",
+      configs: [linter],
+    });
+    const manager = getGuildMcpManager();
+    const discovery = spyOn(manager, "getRegisteredTool");
+    try {
+      expect((await manager.getGuildMCPRouting(42)).routes.size).toBe(0);
+      expect(discovery).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+      discovery.mockRestore();
     }
   });
 });

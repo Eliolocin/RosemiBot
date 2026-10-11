@@ -2,6 +2,7 @@
 title: "Phiên âm WhisperX"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Thiết lập tính năng chuyển giọng nói thành văn bản cục bộ, chính xác cho TomoriBot bằng máy chủ [WhisperX](https://github.com/m-bain/whisperX) đi kèm. WhisperX cung cấp khả năng sao chép âm thanh nhanh chóng với khả năng căn chỉnh theo cấp độ từ.

@@ -2,6 +2,7 @@
 title: "Docs Site Localization"
 sidebar:
   order: 20
+aiGenerated: true
 ---
 
 How to publish a locale's documentation pages and translated README, and the link rules both follow.
@@ -62,37 +63,41 @@ partial tree is safe to publish. Translating the page reverses all four.
 
 | Page | Notice |
 |---|---|
-| English source and translation both have `aiGenerated: false` | None |
-| English source and translation both have `aiGenerated: true` or omit the field | The locale's draft disclaimer |
+| English source and translation both omit `aiGenerated` (or set it to `false`) | None |
+| English source and translation both have `aiGenerated: true` | The locale's draft disclaimer |
 
-`aiGenerated` records human review of substantive content: the page's claims, instructions, and
-meaning. Always mirror the English source's field in every translation. Copy an explicit `false` or
-`true`; remove the field from the translation when English omits it. Apply source review-status
-changes to its translations in the same change.
+`aiGenerated: true` marks substantive content that nobody has reviewed: the page's claims,
+instructions, and meaning. Always mirror the English source's field in every translation. Copy an
+explicit `true`; omit the field from the translation when English omits it. Apply source
+review-status changes to its translations in the same change.
 
-AI translation alone does not change this status. A translation of reviewed English content keeps
-`aiGenerated: false`, even when no person has reviewed the translated wording. Translation accuracy
-and natural phrasing still need review; this field does not certify either. If a translation adds or
-changes a claim, correct it to match English rather than assigning it a separate content-review status.
+AI translation alone does not change this status. A translation of reviewed English content stays
+unmarked, even when no person has reviewed the translated wording. Translation accuracy and natural
+phrasing still need review; this field does not certify either. If a translation adds or changes a
+claim, correct it to match English rather than assigning it a separate content-review status.
 
-For files whose flags differ from this standard, the renderer retains a translation notice linking
-to reviewed English content, shown only when `DOCS_SHOW_TRANSLATION_NOTICE=true`. Synchronize their
-frontmatter with English when editing them.
+For a translation marked `true` whose English source is not, the renderer retains a translation
+notice linking to reviewed English content, shown only when `DOCS_SHOW_TRANSLATION_NOTICE=true`.
+Synchronize its frontmatter with English when editing it.
 
 ## Links
 
-Starlight does not add the current locale to a root-relative `href`, so an unprefixed route in a
-translated page sends the reader to English. GitHub renders READMEs and knows nothing of the docs
-router, so a root-relative link there points at `github.com`.
+Docs pages link with the unprefixed route in every locale, and `remarkLocaleLinks` adds the prefix at
+build time: the page's own locale when the target is translated, otherwise `/en/`. Writing the prefix
+by hand freezes it, so an `/en/` link stays English after the target gets translated. GitHub renders
+READMEs and knows nothing of the docs router, so a root-relative link there points at `github.com`.
 
 | Where | Link to a page that exists in that locale | Link to a page that does not |
 |---|---|---|
-| `docs/en/**` | `/features/knowledge/memory/` | n/a |
-| `docs/{locale}/**` | `/ja/features/knowledge/memory/` | `/en/self-hosting/...` |
+| `docs/{locale}/**` | `/features/knowledge/memory/` | `/self-hosting/...` |
 | `.github/README_{code}.md` | Full `docs.tomoribot.app` URL with the locale prefix | Full URL with `/en/` |
 | `src/locales/{code}/**` strings | Absolute URL with the locale prefix | Absolute English URL |
 
-Component `href` values such as `LinkCard` follow the same rule, so each locale file writes its own.
+Component `href` values such as `LinkCard` follow the same rule.
+
+Astro caches each page's rendered HTML by that page's own content, so adding or removing a
+translation does not re-render the pages that link to it. After either, delete
+`apps/docs/.astro/data-store.json` before checking links locally.
 
 - **UI labels**: code spans holding the text that locale's bot shows: copy the value of the same key
 from `src/locales/<code>/`. A translated page that writes `` `Finish Setup` ``, or its own translation

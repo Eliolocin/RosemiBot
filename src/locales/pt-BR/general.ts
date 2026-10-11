@@ -40,6 +40,8 @@ export default {
     },
     text_preview: {
       truncated_footer: `Mostrando os primeiros {shown} de {total} caracteres.`,
+      hidden_marker: `Mais {count} caracteres ocultos.`,
+      hidden_marker_action: `Mais {count} caracteres ocultos. Pressione {action} para ver o restante.`,
     },
     pagination: {
       page_info: `Página {current} de {total}`,

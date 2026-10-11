@@ -2,6 +2,7 @@
 title: "Matrix橋接"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 將Matrix房間橋接到Discord頻道，以便人們可以跨兩個平台聊天。從Matrix發送的訊息在Discord中顯示為Webhook訊息，TomoriBot直接回覆到Matrix房間。

@@ -3,7 +3,7 @@
  * This abstracts tools away from specific LLM provider formats
  */
 
-import type { LlmRow, TomoriState, ResponseRuleCheckerRef } from "@/types/db/schema";
+import type { LlmRow, TomoriState } from "@/types/db/schema";
 import type { StructuredContextItem } from "../misc/context";
 import type {
   BaseGuildTextChannel,
@@ -256,7 +256,6 @@ export interface ToolAssemblyState {
   nai_diffusion_model_id?: number | null;
   video_model_id?: number | null;
   config: {
-    response_rule_checker_ref?: ResponseRuleCheckerRef | null;
     sticker_usage_enabled: boolean;
     web_search_enabled: boolean;
     self_teaching_enabled: boolean;

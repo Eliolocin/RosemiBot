@@ -11,6 +11,7 @@ head:
 description: "TomoriBotを使用して、SillyTavernのキャラクターカードとプロンプトプリセットをDiscordにインポートします。既存のキャラクターをサーバーに持ち込みましょう。"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBotは、[SillyTavern](https://github.com/SillyTavern/SillyTavern) から2つのアセット、プロンプトマネージャー プリセット (プロンプト構造を制御する) とキャラクター カード (キャラクター定義) をインポートできます。SillyTavernを使用したことがない場合は、このページをスキップしても問題ありません。

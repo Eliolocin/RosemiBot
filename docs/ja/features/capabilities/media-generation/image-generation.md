@@ -2,6 +2,7 @@
 title: "画像生成"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBotは、テキストプロンプトから、または参照画像を編集することによって画像を生成できます。`/generate image`を使用するか、チャットで希望する内容を説明します (「コーヒーを飲むレッサー パンダを描く」)。

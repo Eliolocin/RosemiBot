@@ -2,6 +2,7 @@
 title: "Adding a Feature Flag-Controlled Tool"
 sidebar:
   order: 10
+aiGenerated: true
 ---
 
 How to let server admins turn a built-in tool on and off. Build the tool first with

@@ -209,6 +209,7 @@ export default {
     mcp_server_type_custom: `自定义`,
     mcp_server_type_web_search: `网页搜索`,
     mcp_server_type_url_fetcher: `URL 抓取`,
+    mcp_server_type_prose_linter: `文本校对器`,
     mcp_server_auth_present: `需要认证`,
     mcp_server_auth_absent: `无需认证`,
     field_avatar: `头像`,

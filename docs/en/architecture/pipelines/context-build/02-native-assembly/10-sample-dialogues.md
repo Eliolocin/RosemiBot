@@ -1,5 +1,6 @@
 ---
 title: "02.10: Sample Dialogues"
+aiGenerated: true
 ---
 
 The sample dialogues contributor emits few-shot example turns from persona configuration to demonstrate speaking voice and dialogue cadence.

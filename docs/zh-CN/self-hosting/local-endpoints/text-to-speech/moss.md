@@ -1,5 +1,6 @@
 ---
 title: "MOSS-TTS"
+aiGenerated: true
 ---
 
 使用 [MOSS-TTS](https://github.com/OpenMOSS/MOSS-TTS) 通过统一语音端点在本地评估语音克隆和自然语言语音设计。

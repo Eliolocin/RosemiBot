@@ -1,5 +1,6 @@
 ---
 title: "Modal Input Components"
+aiGenerated: true
 ---
 
 TomoriBot uses Discord modal dialogs to collect structured inputs: text inputs, single-choice radio groups, multi-choice checkbox groups, binary toggles, entity selects, and file uploads. Because discord.js lacks complete native support for newer modal components, TomoriBot coordinates modal dispatch via raw Discord REST API payloads and intercepts gateway packets before client parsing. For complete wire schema definitions and modal lifecycles, refer to the [Discord Modal documentation](https://discord.com/developers/docs/interactions/receiving-and-responding#interaction-response-object-modal).

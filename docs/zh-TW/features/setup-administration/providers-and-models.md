@@ -2,6 +2,7 @@
 title: "供應商與模型"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot連接到外部AI供應商，而不是託管內建模型。你可以連接Google Gemini、OpenRouter和NovelAI等託管服務，或將其指向本機自架端點。你至少需要一位供應商才能開始聊天。

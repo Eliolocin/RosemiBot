@@ -1,5 +1,6 @@
 ---
 title: "04: Build Result"
+aiGenerated: true
 ---
 
 `buildResult` constructs the `GenerationTurnResult` at every termination point of `runToolLoop`. It

@@ -2,6 +2,7 @@
 title: "Tinh chỉnh hành vi"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 Bạn có thể điều chỉnh các hành động TomoriBot được phép thực hiện và cách bot tạo câu trả lời trong `/config`, bao gồm trang quyền hạn. Xem [Nhiều persona](/vi/features/chatting-personality/multiple-personas/) để chỉnh tính cách và [Bộ nhớ](/vi/features/knowledge/memory/) để chỉnh kiến thức. Trang này giới thiệu các cài đặt thường dùng.
@@ -17,10 +18,13 @@ Bạn có thể điều chỉnh các hành động TomoriBot được phép th�
 Tính năng tóm tắt bộ nhớ ngắn hạn tự động được bật trong `/config` > `Hành vi` > `Bộ nhớ nâng cao`. Khi một khả năng bị tắt, cô ấy không thể thực hiện hành động đó bất kể người dùng có yêu cầu hay không.
 
 ## Duyệt bản nháp phản hồi
+<!-- anchor: response-drafting -->
 
 Mở `/config` > `Plugin` > `Duyệt phản hồi` để bật tính năng duyệt. Tính năng này bắt đầu ở trạng thái Tắt và áp dụng cho mọi persona trong không gian làm việc đó, bao gồm cả câu trả lời trong hàng đợi và phân cảnh được tạo. Người quản lý máy chủ có thể thay đổi cài đặt máy chủ; không gian làm việc DM của bạn có cài đặt riêng.
 
-Khi Bật, Tomori giữ lại câu trả lời trong khi người duyệt kiểm tra giọng điệu nhân vật và sự phù hợp với phân cảnh. Người duyệt có thể yêu cầu một lần sửa đổi hoàn chỉnh. Các yêu cầu công cụ cũng được đưa vào duyệt trước khi thực thi; các yêu cầu bị từ chối có thể nhận được sửa đổi trong giới hạn. Các hành động thành công được giữ lại trong khi câu trả lời được sửa đổi. Văn bản vẫn sử dụng danh tính persona thông thường, cách xử lý emoji và định dạng. Việc duyệt và sửa đổi có thể làm tăng thời gian phản hồi và chi phí token; trang này hiển thị điều đó ở cả hai trạng thái.
+Khi Bật, Tomori giữ lại câu trả lời trong khi người duyệt kiểm tra giọng điệu nhân vật và sự phù hợp với phân cảnh. Người duyệt có thể yêu cầu một lần sửa đổi hoàn chỉnh. `Mục cần kiểm tra` liệt kê các mục duyệt với vòng tròn màu xanh lá cho các mục được bật và vòng tròn màu đỏ cho các mục bị tắt. `Sửa mục duyệt` mở danh sách hộp kiểm: đánh dấu một mục để bật hoặc bỏ đánh dấu để tắt.
+
+Chỉ dẫn nhân cách, hội thoại mẫu và hội thoại gần đây bắt đầu ở trạng thái bật. Ký ức và ngữ cảnh khác, cùng `Lệnh gọi công cụ`, bắt đầu ở trạng thái tắt. Bản nháp, tin nhắn kích hoạt và đích phản hồi luôn được bao gồm. Việc bật ký ức và ngữ cảnh khác sẽ thêm các ký ức được chấp nhận, tài liệu, chi tiết về người tham gia và ngữ cảnh khác vào quá trình duyệt. Việc bật `Lệnh gọi công cụ` sẽ thêm định nghĩa công cụ và kết quả đã hoàn thành, đồng thời kiểm tra các yêu cầu trước khi thực thi; các yêu cầu bị từ chối có thể nhận được sửa đổi trong giới hạn. Các hành động thành công được giữ lại trong khi câu trả lời được sửa đổi. Việc duyệt và sửa đổi có thể làm tăng thời gian phản hồi và chi phí token, đặc biệt khi bật nhiều mục hơn.
 
 `Chọn model duyệt` chọn một model văn bản đã đăng ký đủ điều kiện. `Dùng model phản hồi hiện tại` sử dụng model và thông tin xác thực thực sự trả lời, bao gồm cả nhà cung cấp cá nhân của bạn hoặc model dự phòng. Người duyệt được ghim sử dụng thông tin đăng ký và xác thực riêng của không gian làm việc. Tác giả chỉ dùng văn bản và tác giả đã tắt Sử dụng công cụ vẫn có thể sử dụng người duyệt đủ điều kiện. Model kế thừa không được hỗ trợ sẽ hiển thị `Không khả dụng`; hãy chọn người duyệt được hỗ trợ để bật duyệt chi tiết.
 

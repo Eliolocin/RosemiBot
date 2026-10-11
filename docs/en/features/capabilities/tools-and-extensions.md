@@ -2,6 +2,7 @@
 title: "Tools & Extensions"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Beyond chatting, TomoriBot can call tools to search the web, read documents, generate media,
@@ -128,7 +129,9 @@ Use a provider's direct HTTPS endpoint supporting MCP Streamable HTTP or SSE:
 1. Get the MCP endpoint and its authentication requirements from the provider.
 2. Open `/config` > Plugins > MCP Servers and choose `Add MCP`.
 3. Paste the endpoint into `URL`, enter its bearer token in `Auth Token` if required, and
-   choose the required `Server Type`. **General Purpose** is selected by default.
+   choose the required `Server Type`. **General Purpose** is selected by default. Choose
+   `Prose Linter` for a linter you want as a Response Drafting rule checker: Tomori never calls its
+   tools herself, and it appears under `Rule Checks` in the Response Drafting page.
 
 ### Adding a Smithery Server
 

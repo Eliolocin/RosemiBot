@@ -2,6 +2,7 @@
 title: "Tareas programadas"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 Configura recordatorios para usted o programe anuncios recurrentes sin salir del chat. Pregúntale directamente al robot y ella creará el cronograma por ti. Las tareas programadas pertenecen a la persona activa.

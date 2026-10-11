@@ -2,6 +2,7 @@
 title: "Chat y activadores"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot responde cuando se le invoca. Esta página cubre las formas en que se puede activar, cómo habilitar el chat con manos libres con activación automática y cómo evitar activaciones accidentales con el modo de activación deliberada.

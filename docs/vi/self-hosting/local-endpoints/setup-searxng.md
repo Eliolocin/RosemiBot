@@ -2,6 +2,7 @@
 title: "Thiết lập: SearXNG"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 Thêm tìm kiếm web riêng tư, self-hosting vào TomoriBot bằng [SearXNG](https://docs.searxng.org/).

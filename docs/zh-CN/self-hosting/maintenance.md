@@ -2,6 +2,7 @@
 title: "维护与备份"
 sidebar:
   order: 5
+aiGenerated: true
 ---
 
 使用CLI维护脚本来管理你的自部署TomoriBot实例，以更新代码、备份或恢复数据、轮换加密密钥以及检查环境变量。从主机终端或Docker环境运行这些命令。对于Discord内的数据导出和删除，请参见[数据处理](/zh-CN/features/knowledge/data-handling/)。

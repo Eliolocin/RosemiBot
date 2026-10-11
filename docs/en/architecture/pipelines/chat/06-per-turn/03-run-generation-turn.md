@@ -1,5 +1,6 @@
 ---
 title: "06.3: Generation Turn"
+aiGenerated: true
 ---
 
 The generation stage executes the model request for a persona turn. It manages primary and fallback
@@ -79,9 +80,23 @@ preserving successful tools, rejections, correction budgets and reported usage.
 `responseReview.ts` builds a bounded private packet from admitted persona/task evidence, privacy-filtered
 context and actual tool history, and renders it as a tagged transcript. Evidence fixed for the turn
 precedes the candidate, findings and tool outcomes, so a second review reuses the provider's prompt
-prefix cache. Pending prose is labeled separately from history. Incomplete required
-evidence, uninspected media or unsafe redaction makes review unavailable. Inherited reviewers use the
+prefix cache. Pending prose is labeled separately from history. The reviewer reads as a blind model:
+admitted media and tool images become placeholders, and that coverage keeps Decision routing from
+skipping review. Available tools are a compact catalog of names, descriptions and parameter names.
+The workspace's `Content to Check` selection filters persona instructions, example dialogues, recent
+conversation, memories and other context, and tools before packet budgeting. The draft, triggering
+message and reply target remain required. Disabled persona instructions do not cause a missing-persona
+failure. With `Tool Calls` unchecked, response review omits tool definitions, completed tool outcomes,
+the correction count and the `tool_use` finding category, and skips proposed-call reviews. Coverage
+records the selection; intentionally omitted context cannot qualify for calibrated Decision skipping.
+Incomplete required evidence, a candidate containing a credential-shaped string (`containsCredential`,
+not the log redactor's `key: value` heuristic, which matches ordinary prose), or tool arguments that
+redaction would alter make review unavailable, and the trace category names the gap. Inherited reviewers use the
 actual author attempt's model and key; pinned reviewers revalidate their owned registration and credentials.
+Either way the request follows the reviewer provider's saved `thinking_level` and asks for the chat
+reply budget, because a reasoning model spends its thinking from the output allowance before the JSON
+verdict. Anthropic ignores the level: its structured call forces a tool, which the API refuses
+alongside extended thinking.
 
 Review can pass, request one author revision, or become unavailable. Two response reviews
 bound the turn; another revision verdict delivers the latest candidate. Unavailability ends review
@@ -89,9 +104,12 @@ for the turn and permits current prose, while prior tool rejections remain block
 successful tool outcomes. `/kill`, follow-up interruption and abort discard held prose. Actual tools
 use the separate [pre-execution checkpoint](../../tool-loop/02-execute-tool-call.md#actual-request-review).
 
-An optional owned MCP `check_slop(text)` binding supplies advisory evidence only to the reviewer.
-Raw findings cannot reach author feedback, memory or logs. The checker is hidden from author tool
-schemas and blocked at dispatch. Checker failure proceeds to review; a clean result cannot approve prose.
+An optional rule checker is a tool on an owned `prose_linter` MCP registration whose only required
+input is a `text` string. Its output (structured content, JSON text or plain text, at most 32 KB) goes
+to the reviewer as `<prose_linter_report advisory="true">` and forces a detailed review. Raw output
+cannot reach author feedback, memory or logs. `getGuildMCPRouting` excludes `prose_linter`
+registrations, so the author never sees or dispatches their tools. Checker failure proceeds to review;
+an empty report cannot approve prose.
 
 Decision routing can skip detailed review only with validated calibration for the exact model and
 response or tool rubric. The registry is empty, so selections remain visibly inactive and make no

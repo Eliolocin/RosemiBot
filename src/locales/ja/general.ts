@@ -40,6 +40,8 @@ export default {
     },
     text_preview: {
       truncated_footer: `全 {total} 文字のうち、最初の {shown} 文字を表示しています。`,
+      hidden_marker: `{count}文字が非表示になっています。`,
+      hidden_marker_action: `{count}文字が非表示になっています。{action}を押して続きを読む。`,
     },
     pagination: {
       page_info: `ページ {current}/{total}`,

@@ -2,6 +2,7 @@
 title: "02: Native Assembly"
 sidebar:
   label: "Overview"
+aiGenerated: true
 ---
 
 Native assembly constructs the LLM prompt through a fixed-order sequence of contributors. Each contributor appends items to a shared context list or emits out-of-band directives for downstream positioning.

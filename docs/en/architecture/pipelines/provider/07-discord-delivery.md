@@ -1,5 +1,6 @@
 ---
 title: "07: Discord Delivery"
+aiGenerated: true
 ---
 
 Discord delivery formats, paces, and transmits normalized segments to Discord. It manages delivery

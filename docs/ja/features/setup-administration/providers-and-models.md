@@ -2,6 +2,7 @@
 title: "プロバイダーとモデル"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBotは、組み込みモデルをホストするのではなく、外部AIプロバイダーに接続します。Google Gemini、OpenRouter、NovelAIなどのホスト型サービスに接続したり、ローカルのセルフホスト型エンドポイントをポイントしたりできます。チャットを開始するには、少なくとも1つのプロバイダーが必要です。

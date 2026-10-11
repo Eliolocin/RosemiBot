@@ -2,6 +2,7 @@
 title: "Bate-papo & Gatilhos"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot responde quando convocado. Esta página aborda as maneiras como ela pode ser acionada, como ativar o bate-papo com viva-voz com acionamento automático e como evitar ativações acidentais com o modo de acionamento deliberado.

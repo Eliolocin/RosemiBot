@@ -2,6 +2,7 @@
 title: "Phiên âm whisper.cpp"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 Chạy tính năng chuyển giọng nói thành văn bản nhẹ, hiệu suất cao cho TomoriBot bằng cách sử dụng [whisper.cpp](https://github.com/ggerganov/whisper.cpp).

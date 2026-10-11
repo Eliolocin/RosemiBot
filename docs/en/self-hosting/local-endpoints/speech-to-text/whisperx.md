@@ -2,6 +2,7 @@
 title: "WhisperX Transcription"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Set up local, accurate speech-to-text for TomoriBot using the bundled [WhisperX](https://github.com/m-bain/whisperX) server. WhisperX provides fast audio transcription with word-level alignment.

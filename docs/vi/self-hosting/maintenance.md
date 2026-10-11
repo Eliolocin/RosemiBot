@@ -2,6 +2,7 @@
 title: "Bảo trì và sao lưu"
 sidebar:
   order: 5
+aiGenerated: true
 ---
 
 Quản lý phiên bản TomoriBot self-hosting của bạn bằng cách sử dụng tập lệnh bảo trì CLI để cập nhật mã, sao lưu hoặc khôi phục dữ liệu, xoay khóa mã hóa và kiểm tra các biến môi trường. Chạy các lệnh này từ thiết bị đầu cuối máy chủ hoặc môi trường Docker của bạn. Để xuất và xóa dữ liệu trong Discord, hãy xem [Xử lý dữ liệu](/vi/features/knowledge/data-handling/).

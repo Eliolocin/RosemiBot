@@ -1,5 +1,6 @@
 ---
 title: "02: Raw Chunk Generation"
+aiGenerated: true
 ---
 
 The provider adapter opens the HTTP stream and yields provider-native chunks to the orchestrator.

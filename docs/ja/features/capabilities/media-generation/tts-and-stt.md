@@ -2,6 +2,7 @@
 title: "音声: TTS & STT"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBotは、Discordで話したり聞いたりすることができます。テキスト読み上げ (TTS) で音声応答を送信し、音声テキスト変換 (STT) で音声メッセージを会話コンテキストに書き起こします。

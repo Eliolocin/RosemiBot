@@ -2,6 +2,7 @@
 title: "個人化"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot可以記住你在與她共享的每台伺服器上追蹤你的個人詳細資訊、自訂名稱和AI供應商憑證。你可以使用`/personal`命令管理這些設置，而無需更改任何伺服器的共用配置。

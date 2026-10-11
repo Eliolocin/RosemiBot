@@ -1,5 +1,6 @@
 ---
 title: "01: Stream Once"
+aiGenerated: true
 ---
 
 `streamOnce` executes a single provider generation pass, wrapping `provider.streamToDiscord` with a

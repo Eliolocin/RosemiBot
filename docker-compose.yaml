@@ -82,6 +82,25 @@ services:
     networks:
       - tomori-network
 
+  # slop-guard prose linter - optional Response Drafting rule checker.
+  # Enable with: docker compose --profile slop-guard up
+  # Then add http://slop-guard:8765/mcp in /config > Plugins > + Add MCP with Server Type "Prose Linter".
+  slop-guard:
+    build:
+      context: ./servers/slop-guard
+    container_name: tomoribot-slop-guard
+    profiles:
+      - slop-guard
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8765), 3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - tomori-network
+
   # TomoriBot application - the main apartment
   tomoribot:
     build:

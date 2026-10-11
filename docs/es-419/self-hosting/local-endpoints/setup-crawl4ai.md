@@ -2,6 +2,7 @@
 title: "Configuración: Crawl4AI"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 Represente páginas web con mucho JavaScript en Markdown limpio para TomoriBot utilizando un servidor local [Crawl4AI](https://github.com/unclecode/crawl4ai).

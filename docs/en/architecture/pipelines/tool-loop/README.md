@@ -4,6 +4,7 @@ sidebar:
   label: "Overview"
   groupLabel: "Tool Loop"
   order: 300
+aiGenerated: true
 ---
 
 `runToolLoop` drives the streaming and tool dispatch loop for one LLM generation attempt.

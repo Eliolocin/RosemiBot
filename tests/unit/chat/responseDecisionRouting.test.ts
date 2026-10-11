@@ -13,10 +13,9 @@ import {
   TOOL_DECISION_RUBRIC,
   MAX_DECISION_REQUESTS,
 } from "@/utils/chat/responseDecisionRouting";
-import type { ResponseReviewState, buildReviewerPacket } from "@/utils/chat/responseReview";
+import type { ResponseReviewState, ReviewerPacket as Packet } from "@/utils/chat/responseReview";
 import { log } from "@/utils/misc/logger";
 
-type Packet = NonNullable<ReturnType<typeof buildReviewerPacket>>;
 const item = {
   tag: "admitted_context",
   role: "user" as const,
@@ -43,6 +42,7 @@ function packet(kind: Packet["kind"] = "response_text"): Packet {
     tools: [],
     revision: { count: 0, toolCorrections: 0, findings: [] },
     coverage: {
+      reviewItems: ["persona", "examples", "history", "context", "tools"],
       historyIncluded: 1,
       historyTotal: 1,
       samplesIncluded: 0,
@@ -59,6 +59,7 @@ function state(): ResponseReviewState {
     prompt: "PRIVATE_PROMPT",
     customPrompt: false,
     decisionModelId: 7,
+    reviewItems: ["persona", "examples", "history", "context", "tools"],
     decisionRequests: 0,
     rules: { calls: 0 },
     responseReviews: 0,
@@ -190,6 +191,9 @@ describe("response and tool decision routing", () => {
     const missingSamples = packet();
     missingSamples.coverage.samplesTotal++;
     expect(await routeResponseDecision(42, state(), missingSamples, signal, calibration())).toBe("review");
+    const disabledContext = packet();
+    disabledContext.coverage.reviewItems = ["persona", "examples", "history"];
+    expect(await routeResponseDecision(42, state(), disabledContext, signal, calibration())).toBe("review");
     load.mockResolvedValue([]);
     expect(await routeResponseDecision(42, state(), packet(), signal, calibration())).toBe("review");
     expect(call).not.toHaveBeenCalled();

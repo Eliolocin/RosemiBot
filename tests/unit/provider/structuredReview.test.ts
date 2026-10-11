@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, it, spyOn } from "bun:test";
+import { z } from "zod";
 import { callOpenrouterStructuredJSON } from "@/providers/openrouter/openrouterStructuredOutput";
 import { callDeepseekStructuredJSON } from "@/providers/deepseek/deepseekStructuredOutput";
 import { callZaiStructuredJSON } from "@/providers/zai/zaiStructuredOutput";
@@ -34,7 +35,7 @@ describe("private structured review transports", () => {
     info.mockRestore();
   });
 
-  it("validates output and reports usage even for refusals and malformed reviews without logging bodies", async () => {
+  it("validates output and reports usage for refusals and malformed reviews, showing only a malformed body at info", async () => {
     let respond: Parameters<typeof stubGlobalFetch>[0] = () => Response.json({});
     const fetchSpy = stubGlobalFetch((url, init) => respond(url, init));
     try {
@@ -62,9 +63,73 @@ describe("private structured review transports", () => {
         expect(usage).toEqual([{ inputTokens: 12, outputTokens: 3 }]);
         if (refusal) expect(result).toMatchObject({ failure: "refusal" });
         expect(errors).not.toHaveBeenCalled();
-        expect(info).not.toHaveBeenCalled();
+        expect(JSON.stringify(info.mock.calls).includes("PRIVATE_RESPONSE")).toBe(content === "PRIVATE_RESPONSE");
+        expect(JSON.stringify(info.mock.calls)).not.toContain("PRIVATE_REFUSAL");
+        info.mockClear();
         expect(JSON.stringify(result)).not.toContain("PRIVATE_");
       }
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("classifies malformed private replies so the caller can retry with the exact problem", async () => {
+    let content = "";
+    const fetchSpy = stubGlobalFetch(async () =>
+      Response.json({ choices: [{ message: { content } }], usage: { prompt_tokens: 1, completion_tokens: 1024 } }),
+    );
+    try {
+      const call = () => callOpenrouterStructuredJSON(request, {}, draftReviewResultSchema, "response_review");
+      content = "";
+      expect(await call()).toMatchObject({ success: false, failure: "malformed", malformed: { reason: "empty" } });
+      content = "PRIVATE_PROSE without any object";
+      expect(await call()).toMatchObject({ malformed: { reason: "unparsable" } });
+      content = '```json\n{"status":"pass"}\n```';
+      expect(await call()).toEqual({ success: true, data: { status: "pass" } });
+      content = JSON.stringify({ status: "revise", findings: [{ category: "style", problem: "p", direction: "d" }] });
+      const schemaFailure = await call();
+      expect(schemaFailure).toMatchObject({ malformed: { reason: "schema" } });
+      expect(JSON.stringify(schemaFailure)).toContain("findings.0.category");
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("gives prompt-schema providers a concrete example for the review union", async () => {
+    let systemPrompt = "";
+    const fetchSpy = stubGlobalFetch(async (_url, init) => {
+      systemPrompt = JSON.parse(String(init?.body)).messages[0].content;
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ status: "pass" }) } }] });
+    });
+    try {
+      await callDeepseekStructuredJSON(
+        request,
+        z.toJSONSchema(draftReviewResultSchema, { target: "openapi-3.0" }),
+        draftReviewResultSchema,
+      );
+      const example = systemPrompt.split("Example json object:")[1]?.split("Do not wrap")[0] ?? "";
+      expect(JSON.parse(example)).toEqual({ status: "pass" });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("applies a requested thinking level only when the caller passes one", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchSpy = stubGlobalFetch(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ status: "pass" }) } }] });
+    });
+    try {
+      // A catalog codename that the API aliases to the Flash thinking toggle.
+      const flash = { ...request, model: "deepseek-v4-flash-vision" };
+      const schema = z.toJSONSchema(draftReviewResultSchema, { target: "openapi-3.0" });
+      await callDeepseekStructuredJSON({ ...flash, thinkingLevel: "high" }, schema, draftReviewResultSchema);
+      await callDeepseekStructuredJSON(flash, schema, draftReviewResultSchema);
+      expect(bodies[0]?.thinking).toEqual({ type: "enabled" });
+      expect(bodies[0]).not.toHaveProperty("temperature");
+      expect(bodies[1]).not.toHaveProperty("thinking");
+      expect(bodies[1]).toHaveProperty("temperature");
     } finally {
       fetchSpy.mockRestore();
     }
@@ -248,8 +313,11 @@ describe("private structured review transports", () => {
       expect(stdout.match(/Response rule check failed/g)).toHaveLength(1);
       expect(stdout.includes("Response review {")).toBe(testProduction === "true");
       expect(stdout.includes("Response rule check {")).toBe(testProduction === "true");
-      expect(stdout + stderr).not.toContain("PRIVATE_");
+      // TEST_PRODUCTION shows info, where the reviewer prompt dump carries persona and draft text.
+      for (const secret of ["PRIVATE_BODY", "PRIVATE_KEY", "PRIVATE_RULE_BODY"])
+        expect(stdout + stderr).not.toContain(secret);
       if (testProduction === "false") {
+        expect(stdout + stderr).not.toContain("PRIVATE_");
         const records = stdout
           .trim()
           .split("\n")

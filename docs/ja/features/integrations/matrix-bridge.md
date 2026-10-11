@@ -2,6 +2,7 @@
 title: "Matrixブリッジ"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 マトリックスルームをDiscordチャネルにブリッジして、両方のプラットフォーム間でチャットできるようにします。Matrixから送信されたメッセージは、WebhookメッセージとしてDiscordに表示され、TomoriBotはMatrixルームに直接応答します。

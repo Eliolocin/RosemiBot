@@ -2,6 +2,7 @@
 title: "KoboldCPPの文字起こし"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 既存の [KoboldCPP](https://github.com/LostRuins/koboldcpp) インスタンスを使用して、TomoriBotで音声添付ファイルと音声メッセージを文字起こしします。

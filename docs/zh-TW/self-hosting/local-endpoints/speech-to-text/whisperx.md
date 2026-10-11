@@ -2,6 +2,7 @@
 title: "WhisperX轉錄"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 使用捆綁的 [WhisperX](https://github.com/m-bain/whisperX) 伺服器為TomoriBot設定本地、準確的語音到文字。WhisperX提供具有字級對齊的快速音訊轉錄。

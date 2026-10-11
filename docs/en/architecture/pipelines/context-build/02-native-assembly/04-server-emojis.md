@@ -1,5 +1,6 @@
 ---
 title: "02.4: Server Emojis"
+aiGenerated: true
 ---
 
 Server emojis list the custom emojis available in the guild, augmented with optional emotion keys and descriptive metadata.

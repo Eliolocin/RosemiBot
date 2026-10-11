@@ -2,6 +2,7 @@
 title: "Entry Point and Initialization Flow"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 `src/index.ts` coordinates application startup by executing focused initialization modules in

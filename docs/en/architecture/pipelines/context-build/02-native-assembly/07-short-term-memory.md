@@ -1,5 +1,6 @@
 ---
 title: "02.7: Short-Term Memory"
+aiGenerated: true
 ---
 
 The short-term memory contributor retrieves recent conversation summaries and category blocks across server channels and emits cadence-gated tool nudges.

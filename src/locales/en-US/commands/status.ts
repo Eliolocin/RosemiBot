@@ -209,6 +209,7 @@ export default {
     mcp_server_type_custom: `Custom`,
     mcp_server_type_web_search: `Web Search`,
     mcp_server_type_url_fetcher: `URL Fetcher`,
+    mcp_server_type_prose_linter: `Prose Linter`,
     mcp_server_auth_present: `Auth`,
     mcp_server_auth_absent: `No auth`,
     field_avatar: `Avatar`,

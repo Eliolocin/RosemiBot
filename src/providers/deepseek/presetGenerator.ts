@@ -89,11 +89,8 @@ export async function generatePresetFromPromptDeepseek(
       max_tokens: maxOutputTokens,
       response_format: { type: "json_object" },
       stream: false,
+      temperature: options.temperature ?? 1.0,
     };
-
-    if (options.model !== "deepseek-reasoner") {
-      body.temperature = options.temperature ?? 1.0;
-    }
 
     if (toolsEnabled) {
       body.tools = tools;

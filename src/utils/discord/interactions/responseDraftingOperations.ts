@@ -1,9 +1,11 @@
+import type { ResponseReviewItem } from "@/constants/responseReview";
 import { z } from "zod";
 import { log } from "@/utils/misc/logger";
 import type { CallableTool } from "@google/genai";
 import { createHash } from "node:crypto";
 import type { FunctionDeclaration } from "@google/genai";
 import {
+  responseReviewItemsSchema,
   responseRuleCheckerRefSchema,
   responseReviewerPromptSchema,
   type ResponseRuleCheckerRef,
@@ -44,8 +46,9 @@ const checkerInputSchema = z.object({
   required: z.array(z.string()),
 });
 
+/** The checker is called with the draft alone, so `text` must be its only required input. */
 export function isCompatibleRuleChecker(declaration: FunctionDeclaration): boolean {
-  if (declaration.name !== "check_slop") return false;
+  if (!declaration.name) return false;
   const parsed = checkerInputSchema.safeParse(declaration.parametersJsonSchema ?? declaration.parameters);
   return (
     parsed.success &&
@@ -56,16 +59,18 @@ export function isCompatibleRuleChecker(declaration: FunctionDeclaration): boole
   );
 }
 
-async function hasCompatibleChecker(tool: CallableTool | null, serverId: number): Promise<boolean> {
-  if (!tool) return false;
+async function compatibleCheckerNames(tool: CallableTool | null, serverId: number): Promise<string[]> {
+  if (!tool) return [];
   try {
-    return (await tool.tool()).functionDeclarations?.some(isCompatibleRuleChecker) ?? false;
+    return ((await tool.tool()).functionDeclarations ?? [])
+      .filter(isCompatibleRuleChecker)
+      .map((declaration) => declaration.name as string);
   } catch {
     await log.error("Failed to read rule checker schema", new Error("MCP schema read failed"), {
       errorType: "MCPError",
       metadata: { serverId },
     });
-    return false;
+    return [];
   }
 }
 
@@ -119,15 +124,14 @@ export async function loadDraftCheckerChoices(serverId: number): Promise<DraftCh
   if (read.status !== "fresh") return choices;
   const guildManager = getGuildMcpManager();
   for (const config of read.configs) {
-    if (!config.is_enabled || !config.guild_mcp_id || !config.last_discovered_tool_names?.includes("check_slop"))
-      continue;
+    if (!config.is_enabled || !config.guild_mcp_id || config.server_type !== "prose_linter") continue;
+    const registrationId = config.guild_mcp_id;
     const tool = await guildManager.getRegisteredTool(config);
-    if (await hasCompatibleChecker(tool, serverId)) {
+    for (const toolName of await compatibleCheckerNames(tool, serverId))
       choices.push({
-        reference: { scope: "workspace", registrationId: config.guild_mcp_id, toolName: "check_slop" },
-        label: config.name,
+        reference: { scope: "workspace", registrationId, toolName },
+        label: `${config.name} / ${toolName}`,
       });
-    }
   }
   return choices;
 }
@@ -153,6 +157,7 @@ export function effectiveReviewerPrompt(state: TomoriState, locale: string): str
 export type DraftWriteResult = "success" | "stale" | "invalid" | "write-failed";
 export interface ResponseDraftingOperations {
   setEnabled(state: TomoriState, workspaceId: string, enabled: boolean): Promise<DraftWriteResult>;
+  setReviewItems(state: TomoriState, workspaceId: string, items: ResponseReviewItem[]): Promise<DraftWriteResult>;
   setModel(
     state: TomoriState,
     workspaceId: string,
@@ -184,6 +189,11 @@ export const responseDraftingOperations: ResponseDraftingOperations = {
       return "write-failed";
     invalidateTomoriStateCache(workspaceId);
     return "success";
+  },
+  setReviewItems(state, workspaceId, items) {
+    const parsed = responseReviewItemsSchema.safeParse(items);
+    if (!parsed.success) return Promise.resolve("invalid");
+    return writeChat(state, workspaceId, { response_review_items: parsed.data });
   },
   async setModel(state, workspaceId, slot, provider, modelId) {
     if (modelId !== null) {

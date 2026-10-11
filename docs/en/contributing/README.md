@@ -4,6 +4,7 @@ sidebar:
   label: "Overview"
   groupLabel: "Contributing"
   order: 4
+aiGenerated: true
 ---
 
 Guides for changing TomoriBot's code. Set up with [`getting-started.md`](./getting-started), read

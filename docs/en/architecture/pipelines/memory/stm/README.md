@@ -4,6 +4,7 @@ sidebar:
   label: "Overview"
   groupLabel: "STM"
   order: 510
+aiGenerated: true
 ---
 
 The short-term memory (STM) sub-pipeline maintains working memory across recent conversation turns. It stores recent dialogue in an in-process cache and records model-generated summaries and structured categories in the database.

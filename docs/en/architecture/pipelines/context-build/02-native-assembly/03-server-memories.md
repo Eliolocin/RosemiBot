@@ -1,5 +1,6 @@
 ---
 title: "02.3: Server Memories"
+aiGenerated: true
 ---
 
 Server memories provide persona-scoped long-term memories stored for the active server or direct message channel.

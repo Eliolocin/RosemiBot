@@ -2,6 +2,7 @@
 title: 本機Grafana監控
 sidebar:
   order: 7
+aiGenerated: true
 ---
 
 使用預先建置的Grafana儀表板監控本機TomoriBot實例，以追蹤記憶體使用量、快取大小、令牌消耗和命令流量。

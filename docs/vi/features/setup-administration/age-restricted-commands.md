@@ -2,6 +2,7 @@
 title: "Lệnh giới hạn độ tuổi"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot giữ danh mục lệnh `/nsfw` chỉ dành cho người lớn phía sau cổng giới hạn độ tuổi tích hợp sẵn của Discord, ẩn cho đến khi bạn chọn tham gia. Trang này giải thích cách truy cập và nơi danh mục này hoạt động.

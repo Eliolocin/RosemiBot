@@ -51,6 +51,8 @@ Hãy chọn một tính năng để thiết lập:
 ## Công cụ tùy chỉnh
 
 <CardGrid>
+  <LinkCard title="slop-guard" href="/vi/self-hosting/local-endpoints/setup-slop-guard/"
+    description="Một trình kiểm tra văn phong dựa trên quy tắc mà Duyệt phản hồi có thể dùng làm công cụ kiểm tra quy tắc." />
   <LinkCard title="Máy chủ MCP cục bộ" href="/vi/self-hosting/local-endpoints/setup-local-mcp/"
     description="Chạy máy chủ MCP cục bộ để mở rộng TomoriBot bằng các công cụ của riêng bạn (chỉ dành cho phiên bản self-host)." />
 </CardGrid>
@@ -66,6 +68,9 @@ bun run launch
 # Đi kèm các container Docker SearXNG và Crawl4AI
 bun run launch --searxng --crawl4ai
 
+# Đi kèm trình kiểm tra văn phong slop-guard cho Duyệt phản hồi
+bun run launch --slopguard
+
 # Đi kèm máy chủ TTS cục bộ (trước tiên phải thiết lập venv, xem hướng dẫn Chuyển văn bản thành giọng nói bên dưới)
 bun run launch --qwen3tts
 bun run launch --fishs2
@@ -76,8 +81,8 @@ bun run launch --cosyvoice3
 bun run launch --help
 ```
 
-Các cờ khả dụng: `--searxng`, `--crawl4ai`, `--qwen3tts`, `--chatterbox`, `--irodoritts`, `--voxcpm2`, `--fishs2`, `--cosyvoice3`, `--moss`, `--whisperx`
+Các cờ khả dụng: `--searxng`, `--crawl4ai`, `--slopguard` (bí danh `--slop-guard`), `--qwen3tts`, `--chatterbox`, `--irodoritts`, `--voxcpm2`, `--fishs2`, `--cosyvoice3`, `--moss`, `--whisperx`
 
-Các máy chủ dựa trên Docker (`--searxng`, `--crawl4ai`) được tạo trong lần chạy đầu tiên và được tái sử dụng trong các lần chạy tiếp theo. Các máy chủ TTS/STT Python yêu cầu môi trường ảo venv phải được thiết lập một lần từ trước; xem các hướng dẫn thiết lập riêng lẻ trong [Chuyển văn bản thành giọng nói](/vi/self-hosting/local-endpoints/text-to-speech/) và [Chuyển giọng nói thành văn bản](/vi/self-hosting/local-endpoints/speech-to-text/).
+Các máy chủ dựa trên Docker (`--searxng`, `--crawl4ai`, `--slopguard`) được tạo trong lần chạy đầu tiên và được tái sử dụng trong các lần chạy tiếp theo. Các máy chủ TTS/STT Python yêu cầu môi trường ảo venv phải được thiết lập một lần từ trước; xem các hướng dẫn thiết lập riêng lẻ trong [Chuyển văn bản thành giọng nói](/vi/self-hosting/local-endpoints/text-to-speech/) và [Chuyển giọng nói thành văn bản](/vi/self-hosting/local-endpoints/speech-to-text/).
 
-Ctrl+C sẽ dừng bot và mọi tiến trình máy chủ Python. Các Docker container được giữ chạy có chủ đích. Hãy dừng chúng thủ công bằng `docker stop searxng` / `docker stop crawl4ai` khi hoàn tất.
+Ctrl+C sẽ dừng bot và mọi tiến trình máy chủ Python. Các Docker container được giữ chạy có chủ đích. Hãy dừng chúng thủ công bằng `docker stop searxng`, `docker stop crawl4ai` hoặc `docker stop slop-guard` khi hoàn tất.

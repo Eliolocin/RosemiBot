@@ -320,8 +320,12 @@ export class StreamSegmentProcessor {
       !state.activeRenderModifier?.isNeutralAppearance &&
       (boundary === "newline" || segmentToSend.includes("\n"));
     if (context.holdResponseText) {
-      state.pendingResponseText =
-        (state.pendingResponseText ?? "") + (deliveryOptions?.accumulatedTextPrefix ?? "") + segmentToSend;
+      const held = state.pendingResponseText ?? "";
+      const next = (deliveryOptions?.accumulatedTextPrefix ?? "") + segmentToSend;
+      // The buffer consumes the newline or space it flushed at, and replay posts each segment as its
+      // own message, but the reviewer and the rewrite request read this as one continuous draft.
+      const separator = held && !/\s$/u.test(held) && !/^\s/u.test(next) ? (opensLine ? "\n" : " ") : "";
+      state.pendingResponseText = held + separator + next;
       if (shouldClearActiveRenderModifier) state.activeRenderModifier = undefined;
       if (shouldStopForSpeakerGuard) this.deps.requestStop(context.channel.id, "speaker_guard");
       const deliverable = resolveDeliverableHeldLength(context);

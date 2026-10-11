@@ -1,5 +1,6 @@
 ---
 title: "NovelAI Provider Limitations"
+aiGenerated: true
 ---
 
 NovelAI models operate under text-only constraints and tight token budgets. This document describes

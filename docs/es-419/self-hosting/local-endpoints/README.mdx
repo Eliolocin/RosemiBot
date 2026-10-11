@@ -51,6 +51,8 @@ Elige una capacidad para configurar:
 ## Herramientas personalizadas
 
 <CardGrid>
+  <LinkCard title="slop-guard" href="/es-419/self-hosting/local-endpoints/setup-slop-guard/"
+    description="Un corrector de prosa basado en reglas que Revisión de respuestas puede usar como verificador de reglas." />
   <LinkCard title="Servidor MCP local" href="/es-419/self-hosting/local-endpoints/setup-local-mcp/"
     description="Ejecuta un servidor MCP local para extender TomoriBot con tus propias herramientas (solo instancias de autoalojamiento)." />
 </CardGrid>
@@ -66,6 +68,9 @@ bun run launch
 # Con los contenedores Docker de SearXNG y Crawl4AI
 bun run launch --searxng --crawl4ai
 
+# Con el corrector de prosa slop-guard para Revisión de respuestas
+bun run launch --slopguard
+
 # Con un servidor TTS local (venv debe configurarse primero; consulta la guía de Texto a voz a continuación)
 bun run launch --qwen3tts
 bun run launch --fishs2
@@ -76,8 +81,8 @@ bun run launch --cosyvoice3
 bun run launch --help
 ```
 
-Banderas disponibles: `--searxng`, `--crawl4ai`, `--qwen3tts`, `--chatterbox`, `--irodoritts`, `--voxcpm2`, `--fishs2`, `--cosyvoice3`, `--moss`, `--whisperx`
+Banderas disponibles: `--searxng`, `--crawl4ai`, `--slopguard` (alias `--slop-guard`), `--qwen3tts`, `--chatterbox`, `--irodoritts`, `--voxcpm2`, `--fishs2`, `--cosyvoice3`, `--moss`, `--whisperx`
 
-Los contenedores Docker (`--searxng`, `--crawl4ai`) se crean en la primera ejecución y se reutilizan en ejecuciones posteriores. Los servidores de texto a voz y voz a texto de Python requieren que su venv se configure una vez de antemano; consulta las guías de configuración individuales en [Texto a voz](/es-419/self-hosting/local-endpoints/text-to-speech/) y [Voz a texto](/es-419/self-hosting/local-endpoints/speech-to-text/).
+Los contenedores Docker (`--searxng`, `--crawl4ai`, `--slopguard`) se crean en la primera ejecución y se reutilizan en ejecuciones posteriores. Los servidores de texto a voz y voz a texto de Python requieren que su venv se configure una vez de antemano; consulta las guías de configuración individuales en [Texto a voz](/es-419/self-hosting/local-endpoints/text-to-speech/) y [Voz a texto](/es-419/self-hosting/local-endpoints/speech-to-text/).
 
-Ctrl+C detiene el bot y cualquier proceso de servidor de Python. Los contenedores de Docker se dejan ejecutando intencionalmente. Detenlos manualmente con `docker stop searxng` / `docker stop crawl4ai` cuando termines.
+Ctrl+C detiene el bot y cualquier proceso de servidor de Python. Los contenedores de Docker se dejan ejecutando intencionalmente. Detenlos manualmente con `docker stop searxng`, `docker stop crawl4ai` o `docker stop slop-guard` cuando termines.

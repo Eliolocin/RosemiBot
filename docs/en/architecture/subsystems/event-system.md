@@ -1,5 +1,6 @@
 ---
 title: "Event System"
+aiGenerated: true
 ---
 
 TomoriBot routes Discord gateway events and REST rate-limit notifications through one dispatcher in `src/handlers/eventHandler.ts`.

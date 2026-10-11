@@ -4,6 +4,7 @@ sidebar:
   label: "Overview"
   groupLabel: "Memory"
   order: 500
+aiGenerated: true
 ---
 
 The memory pipeline manages state writes around a chat turn. It records recent conversation turns in working memory, handles model-authored summary upgrades, and persists long-term facts to the database through tool calls.

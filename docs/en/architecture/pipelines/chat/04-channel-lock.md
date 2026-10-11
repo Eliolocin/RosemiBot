@@ -1,5 +1,6 @@
 ---
 title: "04: Channel Lock"
+aiGenerated: true
 ---
 
 The channel lock enforces single-turn concurrency per Discord channel. It manages the Discord typing

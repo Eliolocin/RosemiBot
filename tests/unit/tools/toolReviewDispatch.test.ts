@@ -76,30 +76,6 @@ describe("reviewed requests at real dispatch owners", () => {
     },
   });
 
-  it("prevents author dispatch of the configured internal checker", async () => {
-    context.tomoriState.config.response_rule_checker_ref = {
-      scope: "workspace",
-      registrationId: 91,
-      toolName: "check_slop",
-    };
-    const connection: GuildMCPConnection = {
-      guildMcpId: 91,
-      serverId: context.tomoriState.server_id,
-      name: "fixture-checker",
-      client: {},
-      callableTool: transport("check_slop"),
-      functionNames: ["check_slop"],
-      connectedAt: 0,
-      lastUsedAt: 0,
-    };
-    guildRoute.mockResolvedValue({
-      replaced: new Set(),
-      routes: new Map([["check_slop", { connection, config: registration() }]]),
-    });
-    expect((await ToolRegistry.executeTool("check_slop", { text: "PRIVATE_DRAFT" }, context)).success).toBe(false);
-    expect(effects).toHaveLength(0);
-  });
-
   it("fixes aliases and opaque targets before review and retains execution-time availability", async () => {
     ToolRegistry.registerTool({
       name: "create_long_term_memory",

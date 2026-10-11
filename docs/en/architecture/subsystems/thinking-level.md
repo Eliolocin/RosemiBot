@@ -1,5 +1,6 @@
 ---
 title: "Thinking Level"
+aiGenerated: true
 ---
 
 The `thinking_level` setting is a provider-scoped preference (`auto`, `none`, `low`, `medium`, `high`) configured in `/config` > Models > Text Samplers & Parameters or `/personal config`. It translates abstract reasoning effort into provider-specific request parameters at runtime, leaving providers without request-side controls unaffected.
@@ -59,7 +60,7 @@ Maps directly to OpenRouter's reasoning effort parameter:
 
 ### DeepSeek
 
-- **Thinking toggle**: Chat models (`deepseek-flash`, `deepseek-v4-flash`, `deepseek-chat`) send `thinking: { type: "enabled" }` for `low`, `medium`, and `high`.
+- **Thinking toggle**: V4 models (`deepseek-flash` and its aliased codenames, `deepseek-v4-pro`) think at high effort when the switch is omitted, so `auto` keeps that default and `none` sends `thinking: { type: "disabled" }`. `low`, `medium`, and `high` send `thinking: { type: "enabled" }` with a matching `reasoning_effort` (DeepSeek folds `medium` into `high`). The retired `deepseek-chat` and `deepseek-reasoner` codenames are sent as `deepseek-flash` and follow the same mapping.
 - **Tool replay constraint**: When thinking is enabled, DeepSeek returns HTTP 400 if a replayed assistant tool-call turn omits `reasoning_content`. TomoriBot enforces the presence of this key (`requiresReasoningContentReplay`), supplying an empty string fallback (`""`) when no reasoning was captured.
 - **Degradation ladder protection**: Parameter degradation lists `thinking` in `mandatoryBodyKeys` for DeepSeek, preventing the adapter from dropping thinking while retaining tools (which would produce tool responses that cannot be replayed).
 

@@ -49,6 +49,8 @@ import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 ## カスタムツール
 
 <CardGrid>
+  <LinkCard title="slop-guard" href="/ja/self-hosting/local-endpoints/setup-slop-guard/"
+    description="下書きレビューのルールチェッカーとして使用できる、ルールベースの文章校正ツール。" />
   <LinkCard title="ローカルMCPサーバー" href="/ja/self-hosting/local-endpoints/setup-local-mcp/"
     description="ローカルのMCPサーバーを実行し、独自のツールでTomoriBotを拡張します（セルフホストインスタンスのみ）。" />
 </CardGrid>
@@ -64,6 +66,9 @@ bun run launch
 # With the SearXNG and Crawl4AI Docker containers
 bun run launch --searxng --crawl4ai
 
+# With the slop-guard prose linter for Response Drafting
+bun run launch --slopguard
+
 # With a local TTS server (venv must be set up first — see the Text-to-Speech guide below)
 bun run launch --qwen3tts
 bun run launch --fishs2
@@ -74,8 +79,8 @@ bun run launch --cosyvoice3
 bun run launch --help
 ```
 
-利用可能なフラグ: `--searxng`、`--crawl4ai`、`--qwen3tts`、`--chatterbox`、`--irodoritts`、`--voxcpm2`、`--fishs2`、`--cosyvoice3`、`--moss`、`--whisperx`
+利用可能なフラグ: `--searxng`、`--crawl4ai`、`--slopguard`（エイリアス `--slop-guard`）、`--qwen3tts`、`--chatterbox`、`--irodoritts`、`--voxcpm2`、`--fishs2`、`--cosyvoice3`、`--moss`、`--whisperx`
 
-Dockerベースのサーバー（`--searxng`、`--crawl4ai`）は初回実行時に作成され、その後の実行でも再利用されます。PythonのTTS/STTサーバーは、事前に一度venvをセットアップしておく必要があります。個別のセットアップガイドについては、[音声合成 (TTS)](/ja/self-hosting/local-endpoints/text-to-speech/)および[音声認識 (STT)](/ja/self-hosting/local-endpoints/speech-to-text/)を参照してください。
+Dockerベースのサーバー（`--searxng`、`--crawl4ai`、`--slopguard`）は初回実行時に作成され、その後の実行でも再利用されます。PythonのTTS/STTサーバーは、事前に一度venvをセットアップしておく必要があります。個別のセットアップガイドについては、[音声合成 (TTS)](/ja/self-hosting/local-endpoints/text-to-speech/)および[音声認識 (STT)](/ja/self-hosting/local-endpoints/speech-to-text/)を参照してください。
 
-Ctrl+Cを押すと、ボットとすべてのPythonサーバープロセスが停止します。Dockerコンテナは意図的に実行されたままになります。完了したら、`docker stop searxng` / `docker stop crawl4ai`を使用して手動で停止してください。
+Ctrl+Cを押すと、ボットとすべてのPythonサーバープロセスが停止します。Dockerコンテナは意図的に実行されたままになります。完了したら、`docker stop searxng`、`docker stop crawl4ai`、または `docker stop slop-guard` を使用して手動で停止してください。

@@ -1,5 +1,6 @@
 ---
 title: "05: Turn Planning"
+aiGenerated: true
 ---
 
 Turn planning evaluates whether an admitted message should trigger a bot response, determines which

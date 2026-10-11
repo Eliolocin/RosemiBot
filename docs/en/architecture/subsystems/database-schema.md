@@ -1,5 +1,6 @@
 ---
 title: "Database Schema and Data Model"
+aiGenerated: true
 ---
 
 The database schema defines persisted relational state, encryption boundaries, and entity lifecycles
@@ -146,8 +147,11 @@ dependency failures preserve the schema. Normal startup restores the selection c
 
 The capability toggle defaults Off. Nullable fields in `server_chat_configs` store the reviewer,
 Decision selection, prompt override and checker binding. A null reviewer inherits the actual response
-model; other nulls mean no Decision routing, default locale instructions and no checker. Both assembled
-persona reads carry these fields from the idempotent schema into runtime snapshots.
+model; other nulls mean no Decision routing, default locale instructions and no checker.
+`response_review_items` stores the enabled context groups and tool-call review as a text array.
+It defaults to persona instructions, example dialogues and recent conversation; memories and other
+context, and tools, are opt-in. An empty array reviews the draft against only its trigger and reply
+target. Both assembled persona reads carry these fields from the idempotent schema into runtime snapshots.
 
 Reviewer and Decision foreign keys use `ON DELETE SET NULL`. Owned registration/provider deletion
 clears the workspace's dependent selections in its transaction, then invalidates snapshots. Checker

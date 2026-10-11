@@ -40,6 +40,7 @@ import { log } from "@/utils/misc/logger";
 import type { IRepository } from "./IRepository";
 
 const TEXT_ARRAY_CONFIG_COLUMNS = new Set([
+  "response_review_items",
   "autoch_disc_ids",
   "crosschannel_blocklist_ids",
   "llm_disabled_params",

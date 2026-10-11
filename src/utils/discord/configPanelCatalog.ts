@@ -390,6 +390,8 @@ export function computeLogitBiasFingerprint(serverId: number, entryIds: readonly
 
 export type ConfigPanelRoute =
   | { action: "draft-set"; locale: string; enabled: boolean }
+  | { action: "draft-items-open"; locale: string }
+  | { action: "draft-items-submit"; locale: string; nonce: string }
   | { action: "draft-prompt-open"; locale: string }
   | { action: "draft-default"; locale: string }
   | { action: "draft-prompt-submit"; locale: string; nonce: string }
@@ -893,6 +895,8 @@ const draftSlotField: RouteFieldCodec<"slot", DraftModelSlot> = {
 
 export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "draft-set": { wireToken: "draft-set", fields: [enabledField] },
+  "draft-items-open": { wireToken: "draft-items-open", fields: [] },
+  "draft-items-submit": { wireToken: "draft-items-submit", fields: [nonceField] },
   "draft-prompt-open": { wireToken: "draft-prompt-open", fields: [] },
   "draft-default": { wireToken: "draft-default", fields: [] },
   "draft-prompt-submit": { wireToken: "draft-prompt-submit", fields: [nonceField] },

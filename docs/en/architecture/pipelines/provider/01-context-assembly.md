@@ -1,5 +1,6 @@
 ---
 title: "01: Context Assembly"
+aiGenerated: true
 ---
 
 Context assembly translates agnostic conversation items into a provider-native request and configures

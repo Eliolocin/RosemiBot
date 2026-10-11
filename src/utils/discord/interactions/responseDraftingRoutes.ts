@@ -1,3 +1,4 @@
+import { responseReviewItemsSchema } from "@/types/db/schema";
 import { MessageFlags, type ModalSubmitInteraction } from "discord.js";
 import type { PanelAction } from "@/constants/panelActions";
 import { CONFIG_MODEL_PAGE_SIZE, type ConfigPanelRoute } from "@/utils/discord/configPanelCatalog";
@@ -12,6 +13,8 @@ import type { GlobalRoutableInteraction } from "@/utils/discord/interactions/rou
 import { performPanelAction } from "@/utils/discord/interactions/panelController";
 import {
   buildDraftPromptModal,
+  buildDraftReviewItemsModal,
+  DRAFT_REVIEW_ITEMS_FIELD,
   buildDraftModelModal,
   DRAFT_CLEAR_VALUE,
   DRAFT_CHECKER_PAGE_SIZE,
@@ -28,7 +31,8 @@ export async function handleDraftModalOpen(
   dependencies: ConfigRouteDependencies,
   actor: ConfigActor,
 ): Promise<boolean> {
-  if (route.action !== "draft-prompt-open" && route.action !== "draft-provider") return false;
+  if (route.action !== "draft-prompt-open" && route.action !== "draft-items-open" && route.action !== "draft-provider")
+    return false;
   const selected = interaction.isStringSelectMenu() ? interaction.values[0] : undefined;
   if (
     route.action === "draft-provider" &&
@@ -46,6 +50,10 @@ export async function handleDraftModalOpen(
   const state = scope?.personas[0];
   if (!scope || !state || scope.readStatus !== "fresh") {
     await deny("commands.config.panel.stale_detail");
+    return true;
+  }
+  if (route.action === "draft-items-open") {
+    await dependencies.showModal(interaction, buildDraftReviewItemsModal(state, locale, dependencies.createNonce()));
     return true;
   }
   if (route.action === "draft-prompt-open") {
@@ -154,6 +162,18 @@ export async function handleDraftRoutes(context: ConfigModelRouteContext): Promi
       () => dependencies.draftingOperations.setEnabled(state, context.scope.serverDiscId, route.enabled),
       "server-config.workspace.response-drafting.set",
     );
+  } else if (route.action === "draft-items-submit") {
+    const values = dependencies.takeCheckboxValues(
+      interaction.id,
+      buildConfigModalFieldId(DRAFT_REVIEW_ITEMS_FIELD, route.nonce),
+    );
+    const parsed = responseReviewItemsSchema.safeParse(values);
+    if (!parsed.success) await paint(undefined, "stale");
+    else
+      await write(
+        () => dependencies.draftingOperations.setReviewItems(state, context.scope.serverDiscId, parsed.data),
+        "server-config.workspace.response-review-items.set",
+      );
   } else if (route.action === "draft-default") {
     await write(
       () => dependencies.draftingOperations.setPrompt(state, context.scope.serverDiscId, null),

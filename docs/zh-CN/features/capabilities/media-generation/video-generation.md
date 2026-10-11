@@ -2,6 +2,7 @@
 title: "视频生成"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot可以根据文本提示或通过对现有图像进行动画处理来生成短视频。使用`/generate video`，或者直接在聊天中询问她。

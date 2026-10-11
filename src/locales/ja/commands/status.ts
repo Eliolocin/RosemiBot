@@ -209,6 +209,7 @@ export default {
     mcp_server_type_custom: `カスタム`,
     mcp_server_type_web_search: `ウェブ検索`,
     mcp_server_type_url_fetcher: `URL取得`,
+    mcp_server_type_prose_linter: `文章校正`,
     mcp_server_auth_present: `認証あり`,
     mcp_server_auth_absent: `認証なし`,
     field_avatar: `アバター`,

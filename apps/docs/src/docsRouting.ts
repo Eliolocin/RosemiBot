@@ -141,8 +141,8 @@ export function withoutHreflangAlternates<T extends { tag: string; attrs?: Recor
 /**
  * Which review notice a page carries.
  *
- * - `none`: the page's substantive content has been human-reviewed.
- * - `translated`: the translated file's flag differs from its reviewed English source.
+ * - `none`: the page is not marked `aiGenerated: true`, so it carries no notice.
+ * - `translated`: the translated file is marked AI-generated but its English source is not.
  * - `drafts`: substantively unreviewed content, in the locale's own wording.
  */
 export type TranslationNoticeMode = "none" | "translated" | "drafts";
@@ -152,9 +152,9 @@ export type TranslationNoticeMode = "none" | "translated" | "drafts";
  * the source locale's flag is a different collection entry and loading it mid-render would add a
  * second content lookup to every translated page.
  */
-export function sourceIsHumanWritten(source: string): boolean {
+export function sourceIsAiGenerated(source: string): boolean {
   const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? "";
-  return /^aiGenerated:\s*false\s*$/m.test(frontmatter);
+  return /^aiGenerated:\s*true\s*$/m.test(frontmatter);
 }
 
 export function resolveTranslationNoticeMode(options: {
@@ -173,7 +173,7 @@ export function resolveTranslationNoticeMode(options: {
   const sourceFile = findEntryFile(options.docsRoot, DEFAULT_DOCS_LOCALE_ID, baseId);
   if (!sourceFile) return "drafts";
 
-  return sourceIsHumanWritten(readFileSync(sourceFile, "utf8")) ? "translated" : "drafts";
+  return sourceIsAiGenerated(readFileSync(sourceFile, "utf8")) ? "drafts" : "translated";
 }
 
 /**

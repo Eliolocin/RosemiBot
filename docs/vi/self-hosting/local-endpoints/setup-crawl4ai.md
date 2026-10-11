@@ -2,6 +2,7 @@
 title: "Thiết lập: Crawl4AI"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 Kết xuất các trang web nặng JavaScript thành Markdown sạch cho TomoriBot bằng máy chủ [Crawl4AI](https://github.com/unclecode/crawl4ai) cục bộ.

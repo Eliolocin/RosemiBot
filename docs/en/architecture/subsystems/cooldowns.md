@@ -1,5 +1,6 @@
 ---
 title: "Cooldown System"
+aiGenerated: true
 ---
 
 The cooldown subsystem bounds command and message-trigger invocation traffic before pipeline admission. It persists ephemeral limits in PostgreSQL unlogged storage, scales command rates by category, and coordinates channel-level whitelist overrides with manager exemptions.

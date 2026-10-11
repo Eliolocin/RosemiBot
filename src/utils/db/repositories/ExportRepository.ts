@@ -48,6 +48,7 @@ interface WorkspaceConfigProjectionRow {
   response_decision_model_id: number | null;
   response_reviewer_prompt: string | null;
   response_rule_checker_ref: import("@/types/db/schema").ResponseRuleCheckerRef | null;
+  response_review_items: import("@/constants/responseReview").ResponseReviewItem[];
   response_drafting_enabled: boolean;
   response_prefill: string | null;
   server_memteaching_enabled: boolean;
@@ -344,6 +345,7 @@ export class ExportRepository {
           scc.response_decision_model_id AS response_decision_model_id,
           scc.response_reviewer_prompt AS response_reviewer_prompt,
           scc.response_rule_checker_ref AS response_rule_checker_ref,
+          scc.response_review_items AS response_review_items,
           scac.response_drafting_enabled AS response_drafting_enabled,
           COALESCE(scc.model_randomizer_enabled, false)             AS model_randomizer_enabled,
           snaic.image_default_positive_tags                                       AS image_default_positive_tags,
@@ -530,6 +532,7 @@ export class ExportRepository {
             response_decision_model_id: configData.response_decision_model_id,
             response_reviewer_prompt: configData.response_reviewer_prompt,
             response_rule_checker_ref: configData.response_rule_checker_ref,
+            response_review_items: configData.response_review_items,
             response_drafting_enabled: configData.response_drafting_enabled,
             image_default_positive_tags: configData.image_default_positive_tags ?? undefined,
             image_default_negative_tags: configData.image_default_negative_tags ?? undefined,
@@ -723,6 +726,7 @@ export class ExportRepository {
           scc.response_decision_model_id AS response_decision_model_id,
           scc.response_reviewer_prompt AS response_reviewer_prompt,
           scc.response_rule_checker_ref AS response_rule_checker_ref,
+          scc.response_review_items AS response_review_items,
           scac.response_drafting_enabled AS response_drafting_enabled,
           COALESCE(smpc.server_memteaching_enabled, false) AS server_memteaching_enabled,
           COALESCE(smpc.attribute_memteaching_enabled, false) AS attribute_memteaching_enabled,
@@ -842,6 +846,7 @@ export class ExportRepository {
           response_decision_model_id: configData.response_decision_model_id,
           response_reviewer_prompt: configData.response_reviewer_prompt,
           response_rule_checker_ref: configData.response_rule_checker_ref,
+          response_review_items: configData.response_review_items,
           welcome_prompt: configData.welcome_prompt,
         },
         triggers: {

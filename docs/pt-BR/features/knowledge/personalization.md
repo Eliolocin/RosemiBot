@@ -2,6 +2,7 @@
 title: "Personalização"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot pode lembrar detalhes pessoais, nomes personalizados e credenciais de provedor de IA que acompanham você em todos os servidores que você compartilha com ela. Você pode gerenciar essas configurações com os comandos `/personal` sem alterar nenhuma configuração compartilhada do servidor.

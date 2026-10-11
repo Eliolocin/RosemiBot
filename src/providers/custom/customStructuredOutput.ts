@@ -10,6 +10,7 @@ import {
 } from "@/providers/custom/customOpenAICompatibleUtils";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import { log } from "@/utils/misc/logger";
+import { buildCustomThinkingRequest } from "@/utils/provider/thinkingControl";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -204,6 +205,9 @@ async function executeStructuredJsonRequest<T>(params: {
     max_tokens: params.request.maxOutputTokens ?? 8192,
     stream: false,
   };
+  if (params.request.thinkingLevel !== undefined) {
+    Object.assign(body, buildCustomThinkingRequest(params.request.endpointUrl, params.request.thinkingLevel));
+  }
 
   if (params.responseFormat) {
     body.response_format = params.responseFormat;

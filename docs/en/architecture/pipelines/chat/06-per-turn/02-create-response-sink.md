@@ -1,5 +1,6 @@
 ---
 title: "06.2: Response Sink"
+aiGenerated: true
 ---
 
 The response sink connects provider streaming to Discord delivery. It resolves whether output routes

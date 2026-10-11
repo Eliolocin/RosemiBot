@@ -2,6 +2,7 @@
 title: "Comandos com Restrição de Idade"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 A TomoriBot mantém sua categoria de comandos `/nsfw` somente para adultos atrás da restrição de idade integrada do Discord,

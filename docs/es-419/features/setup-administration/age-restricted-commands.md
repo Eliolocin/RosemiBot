@@ -2,6 +2,7 @@
 title: "Comandos con restricción de edad"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot mantiene su categoría de comandos exclusivos para adultos `/nsfw` detrás de la

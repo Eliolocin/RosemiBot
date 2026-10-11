@@ -2,6 +2,7 @@
 title: "Production Tuning and Operations"
 sidebar:
   hidden: true
+aiGenerated: true
 ---
 
 Detailed operational rationale, container sizing, and incident tuning for Tier 7 configuration

@@ -2,6 +2,7 @@
 title: "Configuración: Codex CLI a través de ChatMock"
 sidebar:
   order: 5
+aiGenerated: true
 ---
 
 Conecte TomoriBot a su cuenta ChatGPT a través de un puente local compatible con OpenAI usando [ChatMock](https://github.com/RayBytes/ChatMock).

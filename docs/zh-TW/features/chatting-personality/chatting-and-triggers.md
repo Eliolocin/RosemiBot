@@ -2,6 +2,7 @@
 title: "聊天與觸發"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot被召喚時會回應。本頁介紹了她的觸發方式、如何透過自動觸發啟用免持聊天，以及如何透過故意觸發模式防止意外啟動。

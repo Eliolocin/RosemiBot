@@ -7,6 +7,8 @@ function getMcpServerTypeLabel(serverType: string | null | undefined, locale: st
       return localizer(locale, "commands.status.mcp_server_type_web_search");
     case "url_fetcher":
       return localizer(locale, "commands.status.mcp_server_type_url_fetcher");
+    case "prose_linter":
+      return localizer(locale, "commands.status.mcp_server_type_prose_linter");
     default:
       return localizer(locale, "commands.status.mcp_server_type_custom");
   }

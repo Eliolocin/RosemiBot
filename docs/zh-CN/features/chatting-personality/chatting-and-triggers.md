@@ -2,6 +2,7 @@
 title: "聊天与触发"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot被召唤时响应。本页介绍了她的触发方式、如何通过自动触发启用免提聊天，以及如何通过故意触发模式防止意外激活。

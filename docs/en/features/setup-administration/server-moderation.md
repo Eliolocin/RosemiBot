@@ -2,6 +2,7 @@
 title: "Server Moderation"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot provides server managers with fine-grained control over usage, costs, permissions,

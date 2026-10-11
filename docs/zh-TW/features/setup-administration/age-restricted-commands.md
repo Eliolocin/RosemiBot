@@ -2,6 +2,7 @@
 title: "年齡限制指令"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot把僅限成人的`/nsfw`指令分類放在Discord內建的年齡門檻後方，在你選擇加入之前都是隱藏的。這一頁說明如何存取它，以及它在哪裡可用。

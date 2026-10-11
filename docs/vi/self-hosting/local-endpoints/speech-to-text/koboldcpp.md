@@ -2,6 +2,7 @@
 title: "Phiên âm KoboldCPP"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 Sử dụng phiên bản [KoboldCPP](https://github.com/LostRuins/koboldcpp) hiện có của bạn để chép lại tệp đính kèm âm thanh và tin nhắn thoại trong TomoriBot.

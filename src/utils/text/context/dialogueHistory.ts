@@ -212,10 +212,29 @@ export async function appendDialogueHistoryContext(params: {
         undefined,
         sender,
         mediaDescriptors,
+        msg.combinedMessageIds,
       );
     } else {
-      pushDialogueHistoryContextItem(params.contextItems, "user", detachedSystemParts, msg.id, undefined, sender);
-      pushDialogueHistoryContextItem(params.contextItems, role, parts, msg.id, undefined, sender, mediaDescriptors);
+      pushDialogueHistoryContextItem(
+        params.contextItems,
+        "user",
+        detachedSystemParts,
+        msg.id,
+        undefined,
+        sender,
+        undefined,
+        msg.combinedMessageIds,
+      );
+      pushDialogueHistoryContextItem(
+        params.contextItems,
+        role,
+        parts,
+        msg.id,
+        undefined,
+        sender,
+        mediaDescriptors,
+        msg.combinedMessageIds,
+      );
     }
   }
 

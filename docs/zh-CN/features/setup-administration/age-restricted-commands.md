@@ -2,6 +2,7 @@
 title: "年龄限制指令"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot把仅限成人的`/nsfw`指令分类放在Discord内置的年龄门槛后面，

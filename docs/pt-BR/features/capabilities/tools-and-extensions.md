@@ -2,6 +2,7 @@
 title: "Ferramentas & Extensões"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Além do bate-papo, o TomoriBot pode chamar ferramentas para pesquisar na web, ler documentos, gerar mídia, definir lembretes e interagir com mensagens do Discord. Ela decide quando usá-los com base na conversa. Esta página aborda ferramentas integradas, como estendê-la com servidores MCP e como manter os prompts simples com o modo de ferramenta deliberada.
@@ -96,7 +97,7 @@ Use o endpoint HTTPS direto de um provedor compatível com MCP Streamable HTTP o
 
 1. Obtenha o endpoint MCP e os requisitos de autenticação com o provedor.
 2. Abra `/config` > Plugins > Servidores MCP e escolha `+ Adicionar MCP`.
-3. Cole o endpoint em `URL`, insira o token Bearer em `Token de Autenticação` se necessário e escolha o `Tipo de Servidor` desejado. **Propósito Geral** fica selecionado por padrão.
+3. Cole o endpoint em `URL`, insira o token Bearer em `Token de Autenticação` se necessário e escolha o `Tipo de Servidor` desejado. **Propósito Geral** fica selecionado por padrão. Escolha `Corretor de prosa` para um linter que você queira usar como verificador de regras da Revisão de respostas: a Tomori nunca chama suas ferramentas por conta própria e ele aparece em `Verificações de Regras` na página de Revisão de respostas.
 
 ### Adicionando um servidor Smithery
 

@@ -2,6 +2,7 @@
 title: "Behavior Tweaking"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot's behavior (what she is allowed to do and how she generates) is controlled
@@ -33,10 +34,17 @@ every persona in that workspace, including queued replies and generated scenes. 
 change guild settings; your DM workspace has its own settings.
 
 When On, Tomori holds her reply while a reviewer checks its character voice and scene fit. The
-reviewer can ask for one complete revision. Tool requests also enter review before execution;
-rejected requests can receive a bounded correction. Successful actions are retained while the
-reply is revised. Text still uses the usual persona identity, emoji handling, and formatting.
-Review and revisions can increase response time and token cost; the page shows this in both states.
+reviewer can ask for one complete revision. `Content to Check` lists the review items with green
+circles for enabled items and red circles for disabled items. `Edit Review Items` opens a checkbox
+list: check an item to enable it or uncheck it to disable it.
+
+Persona instructions, example dialogues, and recent conversation start enabled. Memories and other
+context, and `Tool Calls`, start disabled. The draft, triggering message, and reply target are always
+included. Enabling memories and other context adds admitted memories, documents, participant details,
+and other context to the review. Enabling `Tool Calls` adds tool definitions and completed results,
+and checks requests before they run; rejected requests can receive a bounded correction. Successful
+actions are retained while the reply is revised. Review and revisions can increase response time
+and token cost, especially with more items enabled.
 
 The `Reviewer` dropdown selects an eligible registered text model. `Use current response model`
 uses the model and credentials actually answering, including your personal provider or a fallback.

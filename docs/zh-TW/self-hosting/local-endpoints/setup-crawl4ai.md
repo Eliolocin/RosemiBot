@@ -2,6 +2,7 @@
 title: "設定：Crawl4AI"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 使用本地 [Crawl4AI](https://github.com/unclecode/crawl4ai) 伺服器將JavaScript密集型網頁渲染為TomoriBot的乾淨Markdown。

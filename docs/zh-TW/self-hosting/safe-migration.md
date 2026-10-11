@@ -2,6 +2,7 @@
 title: "安全移轉指南"
 sidebar:
   order: 6
+aiGenerated: true
 ---
 
 當你`git pull`新程式碼並重新啟動TomoriBot時，bot會在開機時自動執行資料庫結構描述移轉。這很強大，代表你不必手動管理SQL更新，但同時也代表破壞性操作可能悄悄影響你的資料。本指南說明如何在拉取之前保護自己。

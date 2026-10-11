@@ -1,5 +1,6 @@
 ---
 title: "02.2: Server Info"
+aiGenerated: true
 ---
 
 Server info provides the LLM with its environment framing: server name, server description, or direct message context.
