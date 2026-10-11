@@ -128,7 +128,7 @@ const handler = async (client: Client): Promise<void> => {
 
       const normalStatus: ActivityOptions[] = [
         {
-          name: `Commands Update! /update`,
+          name: `Locketober Update! /update`,
           type: ActivityType.Playing,
         },
         {
