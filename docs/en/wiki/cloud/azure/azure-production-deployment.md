@@ -132,11 +132,13 @@ code change. The destruction gate below still catches them.
 **The destruction gate** in the deploy workflow, described below, which additionally protects the
 firewall rules, networking, and alerts.
 
-**The destructive-migration gate** scans changed migrations before database work. A destructive
-migration requires a recovery point request: `(Checkpoint)` in the push commit or `create_db_backup=true` on
-manual dispatch. For a dropped table or column, it searches the last deployed commit's `src/` tree.
-If that source still names the object, manual dispatch also requires
-`allow_migration_downtime=true`. Other destructive statements require the same downtime opt-in.
+**The destructive-migration gate** scans changed migrations before database work. A migration that
+can lose row data requires a recovery point request: `(Checkpoint)` in the push commit or
+`create_db_backup=true` on manual dispatch. Schema-only drops (constraints, indexes, triggers,
+functions, views, policies) need none, and a drop the same file recreates under the same name is not
+flagged. For a dropped table or column, the gate searches the last deployed commit's `src/` tree.
+If that source still names the object, or the statement is any other destructive kind, the gate
+reports `downtime_required` and the deploy stops the old bot before migration on its own.
 An unreferenced table or column can be removed after an earlier release has stopped using it.
 
 That gate compares migration files against **the last successful deploy**, not the previous push.
@@ -253,16 +255,17 @@ is (re)started. It:
    `ALTER DEFAULT PRIVILEGES` rules `bootstrap-database.sh` installs for the administrator role; and
 3. fails the deploy (before the bot restarts) if migration does not report success.
 
-The gate runs before schema application. An additive migration applies while the old bot runs. With
-`allow_migration_downtime=true`, the migration script stops the old Compose bot before invoking
+The gate runs before schema application. An additive migration applies while the old bot runs. When
+the gate reports `downtime_required`, the migration script stops the old Compose bot before invoking
 `initializeCli` and pauses active host restart timers. The deploy step starts the new bot after
 migration succeeds and restores the timers after the health check. If migration or deploy fails
 after the stop, inspect the VM before retrying: the bot may still be stopped or may be running the
-new image. The run summary records this downtime path.
+new image. The run summary records this downtime path. The bot is offline for one to three minutes
+on that path, against seconds for an ordinary container swap.
 
-:::caution[`(Checkpoint)` does not authorize downtime]
+:::caution[`(Checkpoint)` only requests a recovery point]
 A `(Checkpoint)` commit message, or `create_db_backup=true` on manual dispatch, requests a recovery
-point for destructive migrations. It does not bypass the source check or stop the bot. **Azure
+point for migrations that can lose data. It does not bypass the source check or decide downtime. **Azure
 rejects customer on-demand backups on the Burstable tier**, which is what this server runs
 (`Standard_B1ms`). On Burstable, the workflow validates that the server is ready, backup retention
 is enabled, and the earliest available restore point precedes the current UTC target. It records the

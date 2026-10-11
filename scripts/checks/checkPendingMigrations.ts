@@ -12,6 +12,10 @@
  *   1: a destructive migration lacks its required recovery point or downtime opt-in
  *   2: script error (DB connection failed, migrations dir missing, etc.)
  *
+ * When `GITHUB_OUTPUT` is set, a migration that needs downtime also writes
+ * `downtime_required=true` there, so a deploy that passes --allow-downtime can stop
+ * the old bot only on the releases that need it.
+ *
  * Usage:
  *   bun run scripts/checks/checkPendingMigrations.ts                       (DB-aware: pending only)
  *   bun run scripts/checks/checkPendingMigrations.ts --all                 (no DB: scan every up-migration)
@@ -21,11 +25,12 @@
  * hold production DB credentials at the pre-Terraform stage. Local pre-push
  * hooks can use --all for a no-DB sanity check.
  *
- * A recovery point opt-in protects data recovery. A separate downtime opt-in is required
- * when the deployed source still references an object removed by a migration.
+ * A recovery point opt-in is required only for statements that can lose row data. A
+ * separate downtime opt-in is required when the deployed source may still depend on
+ * an object a migration removes or reshapes.
  */
 
-import { readFile, readdir } from "node:fs/promises";
+import { appendFile, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
 const MIGRATIONS_DIR = path.join(import.meta.dir, "..", "..", "src", "db", "migrations");
@@ -42,28 +47,64 @@ const MIGRATION_FILENAME = /^(\d{3})_[a-z0-9_]+\.sql$/;
  *   silently truncate or fail to cast. A rename removes the old object name.
  * - `DROP CONSTRAINT IF EXISTS` is flagged because even idempotent drops change
  *   schema shape and may invalidate dependent code.
+ * - `losesData` marks statements whose effect a later migration cannot rebuild from
+ *   DDL alone. `DROP TYPE` and `DROP SEQUENCE` count because CASCADE removes dependent
+ *   columns and a sequence holds its position. Unknown drops count conservatively.
+ * - `DROP NOT NULL` and `DROP DEFAULT` only loosen a column, so they are not flagged.
  */
-const DESTRUCTIVE_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
-  { label: "DROP TABLE", pattern: /\bDROP\s+TABLE\b/i },
-  { label: "DROP COLUMN", pattern: /\bDROP\s+COLUMN\b/i },
-  { label: "DROP CONSTRAINT", pattern: /\bDROP\s+CONSTRAINT\b/i },
-  { label: "DROP INDEX", pattern: /\bDROP\s+INDEX\b/i },
-  { label: "DROP TYPE", pattern: /\bDROP\s+TYPE\b/i },
-  { label: "DROP FUNCTION", pattern: /\bDROP\s+FUNCTION\b/i },
-  { label: "TRUNCATE", pattern: /\bTRUNCATE\b/i },
-  { label: "ALTER COLUMN ... TYPE", pattern: /\bALTER\s+COLUMN\s+\w+\s+(?:SET\s+DATA\s+)?TYPE\b/i },
-  { label: "RENAME", pattern: /\bRENAME\b/i },
-  { label: "DROP VIEW", pattern: /\bDROP\s+(?:MATERIALIZED\s+)?VIEW\b/i },
-  { label: "DROP SCHEMA", pattern: /\bDROP\s+SCHEMA\b/i },
-  { label: "DROP SEQUENCE", pattern: /\bDROP\s+SEQUENCE\b/i },
-  { label: "DROP TRIGGER", pattern: /\bDROP\s+TRIGGER\b/i },
-  { label: "DROP POLICY", pattern: /\bDROP\s+POLICY\b/i },
+const DESTRUCTIVE_PATTERNS: Array<{ label: string; pattern: RegExp; losesData: boolean }> = [
+  { label: "DROP TABLE", pattern: /\bDROP\s+TABLE\b/i, losesData: true },
+  { label: "DROP COLUMN", pattern: /\bDROP\s+COLUMN\b/i, losesData: true },
+  { label: "DROP CONSTRAINT", pattern: /\bDROP\s+CONSTRAINT\b/i, losesData: false },
+  { label: "DROP INDEX", pattern: /\bDROP\s+INDEX\b/i, losesData: false },
+  { label: "DROP TYPE", pattern: /\bDROP\s+TYPE\b/i, losesData: true },
+  { label: "DROP FUNCTION", pattern: /\bDROP\s+FUNCTION\b/i, losesData: false },
+  { label: "TRUNCATE", pattern: /\bTRUNCATE\b/i, losesData: true },
+  {
+    label: "ALTER COLUMN ... TYPE",
+    pattern: /\bALTER\s+COLUMN\s+\w+\s+(?:SET\s+DATA\s+)?TYPE\b/i,
+    losesData: true,
+  },
+  { label: "RENAME", pattern: /\bRENAME\b/i, losesData: false },
+  { label: "DROP VIEW", pattern: /\bDROP\s+(?:MATERIALIZED\s+)?VIEW\b/i, losesData: false },
+  { label: "DROP SCHEMA", pattern: /\bDROP\s+SCHEMA\b/i, losesData: true },
+  { label: "DROP SEQUENCE", pattern: /\bDROP\s+SEQUENCE\b/i, losesData: true },
+  { label: "DROP TRIGGER", pattern: /\bDROP\s+TRIGGER\b/i, losesData: false },
+  { label: "DROP POLICY", pattern: /\bDROP\s+POLICY\b/i, losesData: false },
   {
     label: "OTHER DROP",
     pattern:
-      /\bDROP\s+(?!(?:TABLE|COLUMN|CONSTRAINT|INDEX|TYPE|FUNCTION|VIEW|MATERIALIZED|SCHEMA|SEQUENCE|TRIGGER|POLICY)\b)\w+/i,
+      /\bDROP\s+(?!(?:TABLE|COLUMN|CONSTRAINT|INDEX|TYPE|FUNCTION|VIEW|MATERIALIZED|SCHEMA|SEQUENCE|TRIGGER|POLICY|NOT|DEFAULT)\b)\w+/i,
+    losesData: true,
   },
 ];
+
+const RECREATABLE_DROP =
+  /\bDROP\s+(TRIGGER|INDEX|FUNCTION|POLICY|VIEW|MATERIALIZED\s+VIEW|CONSTRAINT)\s+(?:IF\s+EXISTS\s+)?("[^"]+"|[a-z_][\w$.]*)/gi;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Removes drops of objects the same file recreates under the same name, the idempotent
+ * rerun idiom (`DROP TRIGGER IF EXISTS x ...; CREATE TRIGGER x ...`). The runner applies
+ * statements without a wrapping transaction, so the object is briefly absent between
+ * the two statements; a recreated unique index or constraint fails the migration rather
+ * than losing data if a conflicting row lands in that window.
+ */
+function withoutRecreatedDrops(sql: string): string {
+  return sql.replace(RECREATABLE_DROP, (drop: string, kind: string, rawName: string, offset: number) => {
+    const name = `"?${escapeRegExp(rawName.replaceAll('"', ""))}"?(?![\\w$])`;
+    const recreate = /^CONSTRAINT$/i.test(kind)
+      ? new RegExp(`\\bADD\\s+CONSTRAINT\\s+${name}`, "i")
+      : new RegExp(
+          `\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:UNIQUE\\s+)?${kind.replace(/\s+/g, "\\s+")}\\s+(?:CONCURRENTLY\\s+)?(?:IF\\s+NOT\\s+EXISTS\\s+)?${name}`,
+          "i",
+        );
+    return recreate.test(sql.slice(offset + drop.length)) ? "" : drop;
+  });
+}
 
 /**
  * Strips SQL comments before pattern matching so a `-- DROP TABLE foo` line
@@ -140,6 +181,7 @@ interface ScanResult {
   file: string;
   findings: string[];
   oldCodeReferences: string[];
+  losesData: boolean;
 }
 
 async function findDeployedReference(ref: string, name: string): Promise<string | undefined> {
@@ -180,13 +222,18 @@ async function scanForDestructive(files: PendingFile[], deployedRef?: string): P
   const results: ScanResult[] = [];
   for (const file of files) {
     const raw = await readFile(file.filePath, "utf8");
-    const sql = stripComments(raw);
+    const sql = withoutRecreatedDrops(stripComments(raw));
     const findings: string[] = [];
+    let losesData = false;
 
-    for (const { label, pattern } of DESTRUCTIVE_PATTERNS) {
-      if (pattern.test(sql)) findings.push(label);
+    for (const { label, pattern, losesData: patternLosesData } of DESTRUCTIVE_PATTERNS) {
+      if (!pattern.test(sql)) continue;
+      findings.push(label);
+      losesData ||= patternLosesData;
     }
-    findings.push(...findUnfilteredDeletes(sql));
+    const unfilteredDeletes = findUnfilteredDeletes(sql);
+    findings.push(...unfilteredDeletes);
+    losesData ||= unfilteredDeletes.length > 0;
 
     if (findings.length > 0) {
       const { names, unclassified } = droppedObjects(sql);
@@ -199,7 +246,7 @@ async function scanForDestructive(files: PendingFile[], deployedRef?: string): P
       if (unclassified || otherFindings.length > 0 || !deployedRef) {
         oldCodeReferences.push("A destructive operation cannot be proven safe against the deployed source.");
       }
-      results.push({ file: file.name, findings, oldCodeReferences });
+      results.push({ file: file.name, findings, oldCodeReferences, losesData });
     }
   }
   return results;
@@ -275,20 +322,22 @@ async function main(): Promise<void> {
     for (const f of r.findings) console.log(`    - ${f}`);
     for (const reference of r.oldCodeReferences) console.log(`    - deployed source: ${reference}`);
   }
+  const needsRecoveryPoint = destructive.some((result) => result.losesData);
   const needsDowntime = destructive.some((result) => result.oldCodeReferences.length > 0);
-  if (!recoveryPointOptIn) {
+  if (needsDowntime && process.env.GITHUB_OUTPUT) {
+    await appendFile(process.env.GITHUB_OUTPUT, "downtime_required=true\n");
+  }
+  if (needsRecoveryPoint && !recoveryPointOptIn) {
     console.error(
-      "A destructive migration requires a recovery point request via (Checkpoint) or create_db_backup=true.",
+      "A migration that can lose data requires a recovery point request via (Checkpoint) or create_db_backup=true.",
     );
   }
   if (needsDowntime && !allowDowntime) {
-    console.error(
-      "The deployed bot may use the old schema. Dispatch with allow_migration_downtime=true to stop it before migration.",
-    );
+    console.error("The deployed bot may use the old schema, so migration requires --allow-downtime.");
   }
-  if (!recoveryPointOptIn || (needsDowntime && !allowDowntime)) process.exit(1);
+  if ((needsRecoveryPoint && !recoveryPointOptIn) || (needsDowntime && !allowDowntime)) process.exit(1);
   console.log(
-    allowDowntime ? "Migration downtime authorized." : "Dropped objects are unreferenced by deployed source.",
+    needsDowntime ? "Migration downtime authorized." : "Dropped objects are unreferenced by deployed source.",
   );
 }
 

@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-const workflowPath = path.join(import.meta.dir, "..", "..", "..", ".github", "workflows", "deploy-tomoribot-azure.yml");
+const workflowPath = path.join(import.meta.dir, "..", "..", "..", ".github", "workflows", "deploy-azure.yml");
 const deployScriptPath = path.join(import.meta.dir, "..", "..", "..", "deploy", "azure", "run-command-deploy.sh");
 
 function recoveryPointStep(workflow: string): string {

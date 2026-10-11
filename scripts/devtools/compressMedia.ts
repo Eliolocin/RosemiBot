@@ -37,6 +37,7 @@ import {
   type CompressTarget,
   DEFAULT_LIMIT_BYTES,
   DEFAULT_MAX_DIMENSION,
+  DEFAULT_RELEASE_ANIMATED_WEBP_QUALITY,
   DEFAULT_RELEASE_WEBP_QUALITY,
   formatBytes,
   listCompressTargets,
@@ -89,9 +90,10 @@ type Outcome = {
 async function runLosslessFit(file: CompressTarget, limit: number, maxDim: number, dryRun: boolean): Promise<Outcome> {
   const ext = extOf(file.path);
   const input = Buffer.from(await Bun.file(file.path).arrayBuffer());
+  const isMultiFrameExt = ext === "gif" || ext === "webp";
 
   // Lossless at native resolution: preferred (full quality).
-  const native = await encodeLossless(sharp(input), ext);
+  const native = await encodeLossless(sharp(input, { animated: isMultiFrameExt }), ext);
   if (!native) {
     return {
       path: file.path,
@@ -107,12 +109,17 @@ async function runLosslessFit(file: CompressTarget, limit: number, maxDim: numbe
   let downscaledTo: number | null = null;
 
   if (native.length > limit) {
-    const meta = await sharp(input).metadata();
-    const nativeLongEdge = Math.max(meta.width ?? 0, meta.height ?? 0);
+    const meta = await sharp(input, { animated: isMultiFrameExt }).metadata();
+    const frameHeight = meta.pageHeight ?? meta.height ?? 0;
+    const nativeLongEdge = Math.max(meta.width ?? 0, frameHeight);
     let cap = Math.min(maxDim, nativeLongEdge);
     while (cap >= MIN_DIMENSION) {
       const resized = await encodeLossless(
-        sharp(input).resize(cap, cap, { fit: "inside", withoutEnlargement: true, kernel: "lanczos3" }),
+        sharp(input, { animated: isMultiFrameExt }).resize(cap, cap, {
+          fit: "inside",
+          withoutEnlargement: true,
+          kernel: "lanczos3",
+        }),
         ext,
       );
       if (resized && resized.length < chosen.length) {
@@ -154,7 +161,12 @@ function rewriteSiblingReferences(filePath: string, oldName: string, newName: st
  * source, and rewrite sibling markdown references. Already-WebP files are skipped
  * to avoid lossy generational re-encoding.
  */
-async function runWebp(file: CompressTarget, quality: number, dryRun: boolean): Promise<Outcome> {
+async function runWebp(
+  file: CompressTarget,
+  staticQuality: number,
+  animatedQuality: number,
+  dryRun: boolean,
+): Promise<Outcome> {
   const ext = extOf(file.path);
 
   // Already WebP, so leave it alone (re-encoding lossy WebP each run degrades it).
@@ -171,7 +183,12 @@ async function runWebp(file: CompressTarget, quality: number, dryRun: boolean): 
 
   // Convert to WebP at native resolution (showcase art is viewed full-size).
   const input = Buffer.from(await Bun.file(file.path).arrayBuffer());
-  const webp = await sharp(input).webp({ quality, effort: 6 }).toBuffer();
+  const image = sharp(input, { animated: ext === "gif" });
+  const meta = await image.metadata();
+  const pageCount = meta.pages ?? 1;
+  const isAnimated = pageCount > 1;
+  const quality = isAnimated ? animatedQuality : staticQuality;
+  const webp = await image.webp({ quality, effort: 6 }).toBuffer();
   const newPath = file.path.replace(/\.[^.]+$/, ".webp");
   const oldName = file.path.slice(file.path.lastIndexOf("/") + 1);
   const newName = newPath.slice(newPath.lastIndexOf("/") + 1);
@@ -188,13 +205,15 @@ async function runWebp(file: CompressTarget, quality: number, dryRun: boolean): 
   // Derive the release tag so we can remind the user to fix the published body.
   const tag = file.path.slice(RELEASE_PREFIX.length).split("/")[0];
 
+  const note = isAnimated ? `→ animated webp (${pageCount} frames) q${quality} @native` : `→ webp q${quality} @native`;
+
   return {
     path: file.path,
     newPath,
     oldSize: file.size,
     newSize: webp.length,
     written: !dryRun,
-    note: `→ webp q${quality} @native`,
+    note,
     releaseTagToUpdate: tag,
     refsUpdated,
   };
@@ -204,6 +223,7 @@ async function main(): Promise<void> {
   const limit = DEFAULT_LIMIT_BYTES;
   const maxDim = DEFAULT_MAX_DIMENSION;
   const webpQuality = DEFAULT_RELEASE_WEBP_QUALITY;
+  const webpAnimatedQuality = DEFAULT_RELEASE_ANIMATED_WEBP_QUALITY;
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
   const filters = args.filter((a) => !a.startsWith("--"));
@@ -218,14 +238,14 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `[compress-media] ${dryRun ? "DRY RUN — " : ""}processing ${candidates.length} file(s) · budget ${formatBytes(limit)} · downscale cap ${maxDim}px · release WebP q${webpQuality}\n`,
+    `[compress-media] ${dryRun ? "DRY RUN — " : ""}processing ${candidates.length} file(s) · budget ${formatBytes(limit)} · downscale cap ${maxDim}px · release WebP q${webpQuality} (animated q${webpAnimatedQuality})\n`,
   );
 
   const outcomes: Outcome[] = [];
   for (const file of candidates) {
     outcomes.push(
       file.strategy === "webp"
-        ? await runWebp(file, webpQuality, dryRun)
+        ? await runWebp(file, webpQuality, webpAnimatedQuality, dryRun)
         : await runLosslessFit(file, limit, maxDim, dryRun),
     );
   }
@@ -263,7 +283,7 @@ async function main(): Promise<void> {
       `\n⚠ Converted release cards. Their PUBLISHED GitHub release bodies hotlink raw/release and must be updated:`,
     );
     for (const tag of [...releaseTags].sort()) {
-      console.log(`  - ${tag}: update the image link (.png → .webp) via \`gh release edit ${tag} ...\``);
+      console.log(`  - ${tag}: update the image link (→ .webp) via \`gh release edit ${tag} ...\``);
     }
     console.log("  Then commit + push the .webp to main so the links resolve.");
   }

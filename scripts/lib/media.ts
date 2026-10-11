@@ -58,6 +58,13 @@ export const RELEASE_PREFIX = ".github/release/";
 /** WebP quality used when normalizing release cards. */
 export const DEFAULT_RELEASE_WEBP_QUALITY = 90;
 
+/**
+ * WebP quality used when normalizing animated release cards (such as GIFs).
+ * Lower than static cards because inter-frame dithering noise bloats high-quality
+ * WebP encodes past the original GIF size.
+ */
+export const DEFAULT_RELEASE_ANIMATED_WEBP_QUALITY = 80;
+
 /** Human-readable byte size, e.g. 1572864 -> "1.50 MB". */
 export function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
@@ -144,8 +151,10 @@ export function listCompressTargets(): CompressTarget[] {
     SCOPE_PREFIXES.some((prefix) => path.startsWith(prefix)) || path.startsWith(RELEASE_PREFIX);
 
   const tracked = listTrackedFiles().filter((path) => MEDIA_EXTENSIONS.has(extensionOf(path)) && isInScope(path));
-  // Untracked release cards are transient scratch, so only scope prefixes matter here.
-  const untracked = listUntrackedInScopePaths(SCOPE_PREFIXES).filter((path) => MEDIA_EXTENSIONS.has(extensionOf(path)));
+  // Include untracked files across both gate scopes and release cards so new art can be compressed before commit.
+  const untracked = listUntrackedInScopePaths([...SCOPE_PREFIXES, RELEASE_PREFIX]).filter((path) =>
+    MEDIA_EXTENSIONS.has(extensionOf(path)),
+  );
 
   const seen = new Set<string>();
   return [...tracked, ...untracked]

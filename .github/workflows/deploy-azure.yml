@@ -14,11 +14,6 @@ on:
         required: false
         type: boolean
         default: false
-      allow_migration_downtime:
-        description: "Stop the running bot before schema migration and start the new bot afterward"
-        required: false
-        type: boolean
-        default: false
       run_database_bootstrap:
         description: "Run the idempotent migration/runtime-role bootstrap before deployment"
         required: false
@@ -557,14 +552,16 @@ jobs:
           rm -f "$error_file"
 
       - name: Destructive migration gate
+        id: migration_gate
         # A recovery point request never authorizes the old bot to run against a changed schema.
+        # Downtime is always allowed here because the gate reports downtime_required and the
+        # migration step stops the old bot only then; every deploy restarts it regardless.
         # See docs/en/self-hosting/safe-migration.md.
         if: |
           steps.postgres_bootstrap.outputs.is_initial_bootstrap != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RECOVERY_POINT_OPT_IN: ${{ (github.event_name == 'workflow_dispatch' && inputs.create_db_backup == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '(Checkpoint)')) }}
-          ALLOW_MIGRATION_DOWNTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_migration_downtime == true }}
         run: |
           set -euo pipefail
           # The base must be the last SUCCESSFULLY DEPLOYED commit, not the previous push.
@@ -592,9 +589,9 @@ jobs:
           else
             scan_args=(--changed-since "$PREV_REF" --deployed-ref "$PREV_REF")
           fi
+          scan_args+=(--allow-downtime)
 
           if [ "$RECOVERY_POINT_OPT_IN" = "true" ]; then scan_args+=(--recovery-point-opt-in); fi
-          if [ "$ALLOW_MIGRATION_DOWNTIME" = "true" ]; then scan_args+=(--allow-downtime); fi
           bun run scripts/checks/checkPendingMigrations.ts "${scan_args[@]}"
 
       - name: Validate recovery point or create PostgreSQL backup
@@ -883,11 +880,11 @@ jobs:
           TOMORI_SECRETS_JSON: ${{ secrets.TOMORI_SECRETS_JSON }}
           POSTGRES_ADMIN_LOGIN: ${{ steps.tf_outputs.outputs.postgres_admin_login }}
           POSTGRES_ADMIN_PASSWORD: ${{ secrets.AZURE_POSTGRES_ADMIN_PASSWORD }}
-          ALLOW_MIGRATION_DOWNTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_migration_downtime == true }}
+          ALLOW_MIGRATION_DOWNTIME: ${{ steps.migration_gate.outputs.downtime_required == 'true' }}
         run: |
           set -euo pipefail
           if [ "$ALLOW_MIGRATION_DOWNTIME" = "true" ]; then
-            echo "Migration downtime authorized. The bot will stop before schema changes; a failed migration may leave it stopped." >> "$GITHUB_STEP_SUMMARY"
+            echo "A migration may break the running bot, so it stops before schema changes; a failed migration may leave it stopped." >> "$GITHUB_STEP_SUMMARY"
           fi
           # 1. Assemble the migration (admin) DB credential bundle, same shape as the
           #    role-bootstrap step (host/port/db from the runtime secret, admin login).

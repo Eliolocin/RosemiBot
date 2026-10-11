@@ -157,19 +157,24 @@ database work begins. A `DROP COLUMN` or `DROP TABLE` can run while the old bot 
 source no longer names that object. Ship the new reader and any backfill first; leave the old object
 in place for at least one deployed release, then remove it in a later release.
 
-Destructive migrations require `(Checkpoint)` on a push or `create_db_backup=true` on manual
-dispatch. If the old code still references the object, dispatch the workflow manually with both
-`create_db_backup=true` and `allow_migration_downtime=true`. The latter stops the Compose
-`tomoribot` service and pauses active host restart timers before migration starts. The deploy step
-starts the new bot after migration and restores those timers after the health check.
-The run summary records the downtime path. A failed migration can leave the bot stopped, so inspect
-the Azure Run Command record before retrying. Additive migrations need neither opt-in and keep the
-old bot running through migration.
+A migration that can lose row data (dropping a table, column, type, schema, or sequence, changing a
+column type, truncation, or an unfiltered delete) requires `(Checkpoint)` on a push or
+`create_db_backup=true` on manual dispatch. Dropping a constraint, index, trigger, function, view,
+or policy loses no rows, so it needs no recovery point. A drop followed by a `CREATE` or
+`ADD CONSTRAINT` of the same name in the same file is the idempotent rerun pattern and is not
+flagged at all.
 
-Other destructive statements, including renames, type changes, truncation, and unfiltered deletes,
-also require downtime because the gate cannot prove compatibility from an object-name search.
-When no successful deploy commit is reachable, the gate requires downtime for any destructive
-migration it detects. On the Azure Burstable database tier, the recovery point step records a point-in-time
+When the gate cannot show that the old bot works with the new schema, the deploy takes the downtime
+path on its own: it stops the Compose `tomoribot` service and pauses active host restart timers
+before migration starts. The deploy step starts the new bot after migration and restores those
+timers after the health check, so the bot is offline for one to three minutes instead of the usual
+seconds. That happens when old code still names a dropped object, for any other destructive
+statement (renames, type changes, schema-only drops), and for every destructive migration when no
+successful deploy commit is reachable. The run summary records the downtime path. A failed
+migration can leave the bot stopped, so inspect the Azure Run Command record before retrying.
+Additive migrations keep the old bot running through migration.
+
+On the Azure Burstable database tier, the recovery point step records a point-in-time
 restore target because customer on-demand backups are unavailable. Before migration, it requires
 the server to be ready, backup retention to be enabled, and the earliest available restore time to
 precede the target. The job summary records the UTC target and an `az postgres flexible-server
