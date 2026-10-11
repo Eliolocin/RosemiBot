@@ -95,9 +95,6 @@ export async function generateConversationSummaryAnthropic(
 
 /**
  * Generate a structured roleplay summary using the Anthropic API.
- *
- * Delegates to callAnthropicStructuredJSON which uses the forced tool-use
- * pattern for structured output with Zod validation.
  */
 export async function generateRoleplaySummaryAnthropic(
   request: ProviderCompactSummaryRequest,
@@ -112,7 +109,6 @@ export async function generateRoleplaySummaryAnthropic(
     },
     buildRoleplaySchema(),
     CompactRoleplaySummarySchema,
-    "roleplay_summary",
   );
 
   if (!result.success) {

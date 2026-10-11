@@ -9,6 +9,8 @@ import { log } from "@/utils/misc/logger";
 import { fetchAndOptimizeImage } from "@/utils/image/imageProcessor";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { buildOpenRouterReasoningRequest } from "@/utils/provider/thinkingControl";
+import { buildOpenrouterProviderRouting } from "@/providers/openrouter/providerRouting";
+import { getOpenRouterSupportedParameters } from "@/utils/cache/openrouterCapabilityCache";
 type GenericStructuredOutputRequest = ProviderStructuredJsonRequest;
 
 type OpenrouterContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -77,9 +79,14 @@ export async function callOpenrouterStructuredJSON<T>(
       temperature: request.temperature ?? 1.0,
       max_tokens: request.maxOutputTokens ?? 8192,
       response_format: responseFormat,
+      provider: buildOpenrouterProviderRouting({ requiresParameterSupport: true }),
       plugins: [{ id: "response-healing" }],
       stream: false,
-      ...(request.thinkingLevel === undefined ? {} : buildOpenRouterReasoningRequest(request.thinkingLevel)),
+      // `require_parameters` turns an unsupported `reasoning` into a 404 for the whole request, and a
+      // schema-honoring reply matters more than reasoning control, so it is sent only when advertised.
+      ...(request.thinkingLevel !== undefined && getOpenRouterSupportedParameters(request.model)?.has("reasoning")
+        ? buildOpenRouterReasoningRequest(request.thinkingLevel)
+        : {}),
     };
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {

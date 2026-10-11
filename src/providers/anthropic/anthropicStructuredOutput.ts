@@ -3,18 +3,6 @@ import {
   privateStructuredFailure,
   readStructuredResponse,
 } from "@/providers/utils/structuredReview";
-/**
- * Anthropic structured output via forced tool use.
- *
- * Anthropic does not support `response_format: { type: "json_schema" }` like OpenAI.
- * Instead, structured output is achieved by:
- * 1. Defining a tool whose `input_schema` matches the desired output schema
- * 2. Setting `tool_choice: { type: "tool", name: schemaName }` to force the model
- *    to call that specific tool
- * 3. Extracting the tool call arguments as the structured output
- * 4. Validating with Zod
- */
-
 import type { z } from "zod";
 import type {
   ProviderStructuredJsonRequest,
@@ -22,9 +10,23 @@ import type {
   ProviderImageInput,
 } from "@/types/provider/featureInterfaces";
 import { log } from "@/utils/misc/logger";
+import { buildAnthropicThinkingRequest } from "@/utils/provider/thinkingControl";
 
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_API_VERSION = "2023-06-01";
+
+// The output format grammar rejects these keywords with a 400. Dropping them only loosens decoding:
+// the caller's Zod schema still enforces every one of them on the parsed reply.
+const UNSUPPORTED_OUTPUT_SCHEMA_KEYWORDS = new Set([
+  "minLength",
+  "maxLength",
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "multipleOf",
+  "maxItems",
+]);
 
 /**
  * Build Anthropic messages from the request's system and user prompts.
@@ -74,131 +76,129 @@ function buildAnthropicMessages(
 }
 
 /**
- * Make a non-streaming Anthropic API request with forced tool use
- * for structured JSON output.
+ * Rewrites standard JSON Schema into the subset `output_config.format` accepts: `oneOf` becomes
+ * `anyOf` and every object is closed with `additionalProperties: false`, which the API requires.
  */
-async function callAnthropicApi(
-  apiKey: string,
-  model: string,
-  system: string,
-  messages: Array<Record<string, unknown>>,
-  toolDefinition: Record<string, unknown>,
-  toolChoice: Record<string, unknown>,
-  maxTokens: number = 8192,
-  request?: ProviderStructuredJsonRequest,
-): Promise<Record<string, unknown>> {
-  // `request.thinkingLevel` is not applied: the API rejects extended thinking alongside a forced
-  // `tool_choice`, and the forced tool is what makes this call structured.
-  const body = {
-    model,
-    max_tokens: maxTokens,
-    system,
-    messages,
-    tools: [toolDefinition],
-    tool_choice: toolChoice,
-    stream: false,
-  };
+function toAnthropicOutputSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(toAnthropicOutputSchema);
+  if (!schema || typeof schema !== "object") return schema;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (UNSUPPORTED_OUTPUT_SCHEMA_KEYWORDS.has(key)) continue;
+    // Property names are data, so a field called `maxLength` must survive the keyword filter.
+    result[key === "oneOf" ? "anyOf" : key] =
+      key === "properties" && value && typeof value === "object"
+        ? Object.fromEntries(Object.entries(value).map(([name, entry]) => [name, toAnthropicOutputSchema(entry)]))
+        : toAnthropicOutputSchema(value);
+  }
+  if (result.type === "object") result.additionalProperties = false;
+  return result;
+}
 
+/** Carries only the status out of a private call, because the body may echo reviewed content. */
+class PrivateStructuredHttpError extends Error {
+  constructor(readonly status: number) {
+    super("Structured HTTP failure");
+  }
+}
+
+async function callAnthropicApi(
+  request: ProviderStructuredJsonRequest,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   const response = await fetch(ANTHROPIC_MESSAGES_URL, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": apiKey,
+      "x-api-key": request.apiKey,
       "anthropic-version": ANTHROPIC_API_VERSION,
     },
     body: JSON.stringify(body),
-    signal: request?.abortSignal,
+    signal: request.abortSignal,
   });
 
   if (!response.ok) {
-    if (request?.privateOutput) {
+    if (request.privateOutput) {
       await response.body?.cancel();
-      throw new Error("Structured HTTP failure");
+      throw new PrivateStructuredHttpError(response.status);
     }
     const errorText = await response.text();
     throw new Error(`Anthropic API error (${response.status}): ${errorText}`);
   }
 
-  return (request ? await readStructuredResponse(request, response) : await response.json()) as Record<string, unknown>;
+  return (await readStructuredResponse(request, response)) as Record<string, unknown>;
 }
 
-/**
- * Extract the tool use content block from an Anthropic response.
- */
-function extractToolUseFromResponse(
-  response: Record<string, unknown>,
-  toolName: string,
-): Record<string, unknown> | null {
+function extractResponseText(response: Record<string, unknown>): string {
   const content = response.content as Array<Record<string, unknown>> | undefined;
-  if (!content) return null;
-
-  for (const block of content) {
-    if (block.type === "tool_use" && block.name === toolName) {
-      return block.input as Record<string, unknown>;
-    }
-  }
-
-  return null;
+  return (content ?? [])
+    .filter((block) => block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text as string)
+    .join("")
+    .trim();
 }
 
 /**
- * Call Anthropic with structured JSON output via forced tool use.
- *
- * @param schemaName - Name for the forced tool (defaults to "structured_output")
+ * Call Anthropic with native structured outputs (`output_config.format`). Forced tool use is not an
+ * option: Sonnet 5.5, Opus 5.5 and Fable 5.1 reject a forced `tool_choice` with a 400.
  */
 export async function callAnthropicStructuredJSON<T>(
   request: ProviderStructuredJsonRequest,
   responseSchema: Record<string, unknown>,
   zodSchema: z.ZodType<T>,
-  schemaName: string = "structured_output",
 ): Promise<StructuredOutputResult<T>> {
   try {
-    const toolDefinition = {
-      name: schemaName,
-      description: `Generate structured output matching the ${schemaName} schema`,
-      input_schema: responseSchema,
-    };
-
-    // Force the model to call this specific tool
-    const toolChoice = {
-      type: "tool" as const,
-      name: schemaName,
-    };
-
     const { system, messages } = buildAnthropicMessages(request.systemPrompt, request.userPrompt, request.images);
+    const thinking =
+      request.thinkingLevel === undefined
+        ? undefined
+        : buildAnthropicThinkingRequest(request.model, request.thinkingLevel);
 
-    const response = await callAnthropicApi(
-      request.apiKey,
-      request.model,
+    const response = await callAnthropicApi(request, {
+      model: request.model,
+      max_tokens: request.maxOutputTokens ?? 8192,
       system,
       messages,
-      toolDefinition,
-      toolChoice,
-      request.maxOutputTokens,
-      request,
-    );
+      ...(thinking?.thinking && { thinking: thinking.thinking }),
+      output_config: {
+        ...thinking?.output_config,
+        format: { type: "json_schema", schema: toAnthropicOutputSchema(responseSchema) },
+      },
+      stream: false,
+    });
 
-    const toolInput = extractToolUseFromResponse(response, schemaName);
+    const responseText = extractResponseText(response);
     if (request.privateOutput)
       return parsePrivateStructuredOutput(
         request,
-        toolInput,
+        responseText,
         zodSchema,
         response.usage,
         response.stop_reason === "refusal",
       );
-    if (!toolInput) {
-      log.warn("Anthropic structured JSON: No tool_use block found in response", {
-        model: request.model,
-        responseContent: JSON.stringify(response.content).substring(0, 500),
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(responseText);
+    } catch (parseError) {
+      log.error("Anthropic structured JSON parse failed", parseError as Error, {
+        errorType: "AnthropicStructuredJSONParseError",
+        metadata: {
+          model: request.model,
+          stopReason: response.stop_reason,
+          responsePreview: responseText.slice(0, 500),
+        },
       });
       return {
         success: false,
-        error: "Anthropic did not return the expected structured output tool call. Retry the request.",
+        error:
+          response.stop_reason === "max_tokens"
+            ? "Anthropic returned truncated JSON (max_tokens). Please retry with a smaller batch."
+            : "Invalid JSON response from Anthropic.",
       };
     }
 
-    const validationResult = zodSchema.safeParse(toolInput);
+    const validationResult = zodSchema.safeParse(parsed);
     if (!validationResult.success) {
       log.error("Anthropic structured JSON validation failed", validationResult.error);
       return {
@@ -212,7 +212,12 @@ export async function callAnthropicStructuredJSON<T>(
       data: validationResult.data,
     };
   } catch (error) {
-    if (request.privateOutput) return privateStructuredFailure(request);
+    if (request.privateOutput)
+      return privateStructuredFailure(
+        request,
+        "transport",
+        error instanceof PrivateStructuredHttpError ? error.status : undefined,
+      );
     log.error("Error calling Anthropic structured JSON", error as Error, {
       errorType: "AnthropicStructuredJSONError",
       metadata: { model: request.model },

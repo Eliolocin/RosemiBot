@@ -15,7 +15,7 @@ const GOOGLE_GEMINI_25_FLASH_LITE_MIN_BUDGET = 512;
 
 export interface AnthropicThinkingRequest {
   thinking?: {
-    type: "adaptive" | "disabled";
+    type: "adaptive" | "disabled" | "between_tools";
   };
   output_config?: {
     effort: "low" | "medium" | "high";
@@ -107,14 +107,34 @@ function supportsGeminiMinimalThinking(model: string): boolean {
   return GEMINI_MINIMAL_THINKING_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
-function supportsAnthropicAdaptiveThinking(model: string): boolean {
+interface AnthropicThinkingProfile {
+  /** How `none` turns thinking off; `null` where the model always thinks and `none` falls to low effort. */
+  off: "disabled" | "between_tools" | null;
+  /** The API rejects `top_p` and any `temperature` other than 1 with a 400 even when thinking is off. */
+  samplingLocked: boolean;
+}
+
+// Each family answers another family's off switch or sampling fields with a 400, so every profile
+// was confirmed against the live API. An unlisted release keeps the pre-adaptive request (no thinking
+// fields, sampling sent); add it here once its accepted fields are confirmed. A longer codename
+// precedes its prefix so `claude-sonnet-5-5` is not read as `claude-sonnet-5`.
+const ANTHROPIC_THINKING_PROFILES: ReadonlyArray<readonly [prefix: string, profile: AnthropicThinkingProfile]> = [
+  ["claude-fable-", { off: null, samplingLocked: true }],
+  ["claude-opus-5-5", { off: null, samplingLocked: true }],
+  ["claude-sonnet-5-5", { off: "between_tools", samplingLocked: true }],
+  ["claude-haiku-5-5", { off: "disabled", samplingLocked: true }],
+  ["claude-opus-5", { off: "disabled", samplingLocked: true }],
+  ["claude-sonnet-5", { off: "disabled", samplingLocked: true }],
+  ["claude-opus-4-8", { off: "disabled", samplingLocked: true }],
+  ["claude-opus-4-7", { off: "disabled", samplingLocked: true }],
+  ["claude-opus-4-6", { off: "disabled", samplingLocked: false }],
+  ["claude-sonnet-4-6", { off: "disabled", samplingLocked: false }],
+  ["claude-mythos-preview", { off: "disabled", samplingLocked: false }],
+];
+
+function resolveAnthropicThinkingProfile(model: string): AnthropicThinkingProfile | undefined {
   const normalized = normalizeModel(model);
-  return (
-    normalized.includes("claude-sonnet-4-6") ||
-    normalized.includes("claude-opus-4-6") ||
-    normalized.includes("claude-opus-4-7") ||
-    normalized.includes("claude-mythos-preview")
-  );
+  return ANTHROPIC_THINKING_PROFILES.find(([prefix]) => normalized.startsWith(prefix))?.[1];
 }
 
 // API names (after `toDeepseekApiModelName`) that accept the `thinking` switch.
@@ -234,14 +254,22 @@ export function buildAnthropicThinkingRequest(
   forceReason?: boolean,
 ): AnthropicThinkingRequest {
   const effectiveLevel = resolveEffectiveThinkingLevel(configuredLevel, forceReason);
-  if (!supportsAnthropicAdaptiveThinking(model)) {
+  const profile = resolveAnthropicThinkingProfile(model);
+  if (!profile) {
     return { omitSampling: false };
   }
 
   if (effectiveLevel === "none") {
+    if (profile.off === null) {
+      return {
+        thinking: { type: "adaptive" },
+        output_config: { effort: "low" },
+        omitSampling: true,
+      };
+    }
     return {
-      thinking: { type: "disabled" },
-      omitSampling: false,
+      thinking: { type: profile.off },
+      omitSampling: profile.samplingLocked,
     };
   }
 

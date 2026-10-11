@@ -9,7 +9,7 @@ import { draftReviewResultSchema } from "@/utils/chat/responseReview";
 import { log } from "@/utils/misc/logger";
 import type { ProviderStructuredJsonRequest } from "@/types/provider/featureInterfaces";
 import { STUB_PUBLIC_HOST, stubGlobalFetch } from "../../helpers/fetchStub";
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { ApiError, GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { callGoogleStructuredJSON } from "@/providers/google/googleStructuredOutput";
 import { callCustomStructuredJSON } from "@/providers/custom/customStructuredOutput";
 import { NVIDIA_STRUCTURED_OUTPUT_MODELS } from "@/providers/nvidia/nvidiaConstants";
@@ -148,6 +148,9 @@ describe("private structured review transports", () => {
       const result = await callNvidiaStructuredJSON({ ...request, model: nvidiaModel }, {}, draftReviewResultSchema);
       expect(result).toMatchObject({ success: false, failure: "transport", httpStatus: 400 });
       expect(calls).toBe(1);
+      const anthropic = await callAnthropicStructuredJSON(request, {}, draftReviewResultSchema);
+      expect(anthropic).toMatchObject({ success: false, failure: "transport", httpStatus: 400 });
+      expect(JSON.stringify(anthropic)).not.toContain("PRIVATE_");
       const controller = new AbortController();
       controller.abort();
       respond = async (_url, init) => {
@@ -204,14 +207,16 @@ describe("private structured review transports", () => {
       }
       respond = () =>
         Response.json({
-          content: [{ type: "tool_use", name: "response_review", input: { status: "pass" } }],
+          content: [
+            { type: "thinking", thinking: "" },
+            { type: "text", text: JSON.stringify({ status: "pass" }) },
+          ],
           usage: { input_tokens: 5, output_tokens: 1 },
         });
       const result = await callAnthropicStructuredJSON(
         { ...request, onUsage: (value) => usage.push(value) },
         {},
         draftReviewResultSchema,
-        "response_review",
       );
       expect(result).toMatchObject({ success: true, data: { status: "pass" } });
       respond = () =>
@@ -261,6 +266,68 @@ describe("private structured review transports", () => {
       ).toMatchObject({ success: false, failure: "refusal" });
       expect(usage).toHaveLength(2);
       expect(errors).not.toHaveBeenCalled();
+    } finally {
+      generate.mockRestore();
+    }
+  });
+
+  it("sends Anthropic a native output format its schema grammar accepts instead of a forced tool", async () => {
+    let body: Record<string, unknown> = {};
+    const fetchSpy = stubGlobalFetch(async (_url, init) => {
+      body = JSON.parse(String(init?.body));
+      return Response.json({ content: [{ type: "text", text: JSON.stringify({ status: "pass" }) }] });
+    });
+    try {
+      const schema = z.toJSONSchema(z.object({ review: draftReviewResultSchema, maxLength: z.string().max(5) }), {
+        target: "openapi-3.0",
+      });
+      await callAnthropicStructuredJSON(request, schema, z.unknown());
+      expect(body).not.toHaveProperty("tool_choice");
+      expect(body).not.toHaveProperty("tools");
+      const sent = JSON.stringify((body.output_config as { format: unknown }).format);
+      // The API answers each of these keywords with a 400, as it does an object left open.
+      expect(sent).not.toMatch(/"(oneOf|maxItems|maxLength|minLength)":[\d[]/);
+      expect(sent).toContain('"maxLength":{');
+      expect(sent.match(/"type":"object"/g)?.length).toBe(sent.match(/"additionalProperties":false/g)?.length);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("makes OpenRouter reject endpoints that would drop the schema without excluding non-reasoning models", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchSpy = stubGlobalFetch(async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ status: "pass" }) } }] });
+    });
+    try {
+      await callOpenrouterStructuredJSON(
+        { ...request, model: "uncataloged/model", thinkingLevel: "minimal" },
+        {},
+        draftReviewResultSchema,
+        "response_review",
+      );
+      expect(bodies[0]?.provider).toEqual({ require_parameters: true });
+      expect(bodies[0]).not.toHaveProperty("reasoning");
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("sends Google the standard JSON Schema field and keeps a rejected request's HTTP status", async () => {
+    const client = new GoogleGenAI({ apiKey: "fixture" });
+    const generate = spyOn(client.models, "generateContent").mockRejectedValue(
+      new ApiError({ message: "PRIVATE_EVIDENCE", status: 400 }),
+    );
+    // The review union's oneOf and additionalProperties are what Google's OpenAPI subset rejected.
+    const schema = z.toJSONSchema(draftReviewResultSchema, { target: "openapi-3.0" });
+    try {
+      const result = await callGoogleStructuredJSON(request, schema, draftReviewResultSchema, client);
+      expect(result).toMatchObject({ success: false, failure: "transport", httpStatus: 400 });
+      expect(JSON.stringify(result)).not.toContain("PRIVATE_");
+      const config = generate.mock.calls[0]?.[0].config;
+      expect(config?.responseJsonSchema).toBe(schema);
+      expect(config).not.toHaveProperty("responseSchema");
     } finally {
       generate.mockRestore();
     }

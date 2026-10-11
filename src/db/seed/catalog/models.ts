@@ -3379,7 +3379,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
   // Pricing: https://platform.claude.com/docs/en/about-claude/pricing (verified 2026-07-21).
   // Limits: https://platform.claude.com/docs/en/about-claude/models/overview
   {
-    comment: "Anthropic Models (vision + tools + structured output via forced tool use; no video/YouTube)",
+    comment: "Anthropic Models (vision + tools + native structured output; no video/YouTube)",
     rows: [
       {
         provider: "anthropic",
@@ -3579,6 +3579,22 @@ export const llmSections: ModelSection<LlmInput>[] = [
         inputPricePerMillion: 2,
         outputPricePerMillion: 10,
         desc: "Fast Claude model balancing speed and intelligence for everyday coding, reasoning, and agentic work",
+      },
+      {
+        provider: "anthropic",
+        codename: "claude-haiku-5-5",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
+        hasTools: true,
+        seesImages: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        strictRoleAlternation: true,
+        // The rate for prompts up to 100k tokens; longer prompts bill at $0.50 / $2.50, so cost
+        // estimates undercount a channel whose context grows past that.
+        inputPricePerMillion: 0.1,
+        outputPricePerMillion: 0.5,
+        desc: "Fastest and most cost-efficient Claude model for high-volume everyday tasks",
       },
     ],
   },
