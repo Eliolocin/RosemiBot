@@ -209,6 +209,7 @@ export default {
     mcp_server_type_custom: `Tùy chỉnh`,
     mcp_server_type_web_search: `Tìm kiếm web`,
     mcp_server_type_url_fetcher: `Trình trích xuất URL`,
+    mcp_server_type_prose_linter: `Trình kiểm tra văn phong`,
     mcp_server_auth_present: `Có xác thực`,
     mcp_server_auth_absent: `Không xác thực`,
     field_avatar: `Avatar`,

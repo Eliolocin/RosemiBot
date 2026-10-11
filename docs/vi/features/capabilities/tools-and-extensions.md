@@ -97,7 +97,7 @@ Sử dụng endpoint HTTPS trực tiếp của nhà cung cấp hỗ trợ MCP St
 
 1. Lấy endpoint MCP và các yêu cầu xác thực từ nhà cung cấp.
 2. Mở `/config` > Plugins > MCP server và chọn `+ Thêm MCP`.
-3. Dán endpoint vào `URL`, nhập token Bearer vào `Token xác thực` nếu được yêu cầu, và chọn `Loại máy chủ` bắt buộc. **Mục đích chung** được chọn theo mặc định.
+3. Dán endpoint vào `URL`, nhập token Bearer vào `Token xác thực` nếu được yêu cầu, và chọn `Loại máy chủ` bắt buộc. **Mục đích chung** được chọn theo mặc định. Chọn `Trình kiểm tra văn phong` cho linter mà bạn muốn dùng làm công cụ kiểm tra quy tắc cho Duyệt phản hồi: Tomori không bao giờ tự mình gọi các công cụ của máy chủ này, và nó xuất hiện dưới mục `Kiểm tra quy tắc` trong trang Duyệt phản hồi.
 
 ### Thêm máy chủ Smithery
 

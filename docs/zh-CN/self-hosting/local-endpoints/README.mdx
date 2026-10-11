@@ -51,6 +51,8 @@ import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 ## 自定义工具
 
 <CardGrid>
+  <LinkCard title="slop-guard" href="/zh-CN/self-hosting/local-endpoints/setup-slop-guard/"
+    description="一个基于规则的文本校对器，回复审核可将其用作规则检查器。" />
   <LinkCard title="本地 MCP 服务器" href="/zh-CN/self-hosting/local-endpoints/setup-local-mcp/"
     description="运行一个本地 MCP 服务器，用你自己的工具扩展 TomoriBot（仅限自部署实例）。" />
 </CardGrid>
@@ -66,6 +68,9 @@ bun run launch
 # 带上 SearXNG 与 Crawl4AI 这两个 Docker 容器
 bun run launch --searxng --crawl4ai
 
+# 带上用于回复审核的 slop-guard 文本校对器
+bun run launch --slopguard
+
 # 带上本地 TTS 服务器（必须先建好 venv，见下面的语音合成指南）
 bun run launch --qwen3tts
 bun run launch --fishs2
@@ -76,8 +81,8 @@ bun run launch --cosyvoice3
 bun run launch --help
 ```
 
-可用参数：`--searxng`、`--crawl4ai`、`--qwen3tts`、`--chatterbox`、`--irodoritts`、`--voxcpm2`、`--fishs2`、`--cosyvoice3`、`--moss`、`--whisperx`
+可用参数：`--searxng`、`--crawl4ai`、`--slopguard`（别名 `--slop-guard`）、`--qwen3tts`、`--chatterbox`、`--irodoritts`、`--voxcpm2`、`--fishs2`、`--cosyvoice3`、`--moss`、`--whisperx`
 
-跑在 Docker 里的服务器（`--searxng`、`--crawl4ai`）在首次运行时创建，之后复用。Python 的 TTS 与 STT 服务器需要事先建好各自的 venv；详见[语音合成](/zh-CN/self-hosting/local-endpoints/text-to-speech/)和[语音识别](/zh-CN/self-hosting/local-endpoints/speech-to-text/)下的各篇配置指南。
+跑在 Docker 里的服务器（`--searxng`、`--crawl4ai`、`--slopguard`）在首次运行时创建，之后复用。Python 的 TTS 与 STT 服务器需要事先建好各自的 venv；详见[语音合成](/zh-CN/self-hosting/local-endpoints/text-to-speech/)和[语音识别](/zh-CN/self-hosting/local-endpoints/speech-to-text/)下的各篇配置指南。
 
-Ctrl+C 会停掉 bot 和所有 Python 服务器进程。Docker 容器会被有意留在运行状态，用完请用 `docker stop searxng` / `docker stop crawl4ai` 手动停掉它们。
+Ctrl+C 会停掉 bot 和所有 Python 服务器进程。Docker 容器会被有意留在运行状态，用完请用 `docker stop searxng`、`docker stop crawl4ai` 或 `docker stop slop-guard` 手动停掉它们。

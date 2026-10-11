@@ -209,6 +209,7 @@ export default {
     mcp_server_type_custom: `自訂`,
     mcp_server_type_web_search: `網頁搜尋`,
     mcp_server_type_url_fetcher: `URL 擷取器`,
+    mcp_server_type_prose_linter: `文章檢查器`,
     mcp_server_auth_present: `已驗證`,
     mcp_server_auth_absent: `未驗證`,
     field_avatar: `頭像`,

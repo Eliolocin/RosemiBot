@@ -40,6 +40,8 @@ export default {
     },
     text_preview: {
       truncated_footer: `显示 {total} 个字符中的前 {shown} 个。`,
+      hidden_marker: `已隐藏另外 {count} 个字符。`,
+      hidden_marker_action: `已隐藏另外 {count} 个字符。按下 {action} 查看剩余内容。`,
     },
     pagination: {
       page_info: `第 {current} 页，共 {total} 页`,
