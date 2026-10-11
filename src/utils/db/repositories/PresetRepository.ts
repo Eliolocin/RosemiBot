@@ -936,7 +936,7 @@ class PresetRepository {
       let triggerWords: string[] | null = null;
       let personaPrompt: string | null = null;
       const personaConfigRows = await sql`
-        SELECT trigger_words, persona_prompt
+        SELECT trigger_words, persona_prompt, preserve_preset_identity
         FROM persona_configs
         WHERE persona_id = ${presetData.persona_id}
         LIMIT 1
@@ -946,8 +946,9 @@ class PresetRepository {
         personaPrompt = personaConfigRows[0].persona_prompt ?? null;
       }
 
+      const preserveIdentity = personaConfigRows[0]?.preserve_preset_identity === true;
       if (pointerPreset) {
-        triggerWords = resolveOfficialPresetTriggerWords(pointerPreset);
+        if (!preserveIdentity) triggerWords = resolveOfficialPresetTriggerWords(pointerPreset);
         personaPrompt = resolveOfficialPresetPrompt(pointerPreset);
       }
 
@@ -976,12 +977,14 @@ class PresetRepository {
       const exportedPresetLineageId = pointerPreset
         ? normalizeLineageId(pointerPreset.preset_lineage_id)
         : normalizeLineageId(presetData.preset_lineage_id);
-      const namingConfigs = pointerPreset
-        ? null
-        : await userNamingRepository.loadPersonaConfigs([presetData.persona_id as number]);
-      const exportedNamingConfig = pointerPreset
-        ? pointerPreset.preset_naming_config
-        : (namingConfigs?.get(presetData.persona_id as number) ?? EMPTY_PERSONA_NAMING_CONFIG);
+      const namingConfigs =
+        pointerPreset && !preserveIdentity
+          ? null
+          : await userNamingRepository.loadPersonaConfigs([presetData.persona_id as number]);
+      const exportedNamingConfig =
+        pointerPreset && !preserveIdentity
+          ? pointerPreset.preset_naming_config
+          : (namingConfigs?.get(presetData.persona_id as number) ?? EMPTY_PERSONA_NAMING_CONFIG);
 
       // Build export object with metadata (includes NovelAI persona fields)
       const exportData: PresetExport = {

@@ -26,8 +26,8 @@ import { validateComponentsV2MessageLimits } from "@/utils/discord/ui/components
 import { RANDOM_TRIGGER_ADD_PERSONA_PAGE_SIZE } from "@/utils/discord/ui/configBehaviorModals";
 import { buildConfigModelsBody } from "@/utils/discord/ui/configModelsPanel";
 import { buildConfigPanelPayload } from "@/utils/discord/ui/configPanel";
-import { initializeLocalizer } from "@/utils/text/localizer";
-import { localizedCopy, localizedProse } from "../../helpers/localeCases";
+import { initializeLocalizer, hasLocaleKey } from "@/utils/text/localizer";
+import { localizedCopy, localizedProse, expectForEveryLocale } from "../../helpers/localeCases";
 import { createLlmRow, createPersona } from "../../helpers/fixtures";
 
 beforeAll(async () => initializeLocalizer());
@@ -2036,5 +2036,83 @@ describe("config Behavior pages", () => {
         }
       });
     }
+  });
+});
+
+describe("config preset resync panels", () => {
+  it("renders all persona states and confirmation within Discord limits across locales", () => {
+    expectForEveryLocale((locale) => {
+      for (const isAlter of [false, true]) {
+        for (const state of ["custom", "fork", "pointer"] as const) {
+          for (const stale of [false, true]) {
+            const persona = makePersona({
+              persona_id: 55,
+              persona_nickname: "M".repeat(32),
+              is_alter: isAlter,
+              is_pointer: state === "pointer",
+              preset_lineage_id: state === "custom" ? null : 4,
+              preset_language: state === "custom" ? null : "en-US",
+              attribute_list: Array.from({ length: 30 }, (_, index) => `Attribute ${index}`),
+              sample_dialogues_in: Array.from({ length: 30 }, (_, index) => `Input ${index}`),
+              sample_dialogues_out: Array.from({ length: 30 }, (_, index) => `Output ${index}`),
+            });
+            const payload = build(GUILD_MANAGER, {
+              locale,
+              personas: [persona],
+              readStatus: stale ? "stale" : "fresh",
+              selectedAttributeIndex: 0,
+              receipt: { tone: "warning", heading: "Saved", detail: "Avatar pending." },
+            });
+            const limits = validateComponentsV2MessageLimits(payload);
+            expect(limits.valid, JSON.stringify(limits.violations)).toBe(true);
+            const button = buttonFor(payload, { action: "resync-view", locale, personaId: 55 });
+            if (state === "custom") expect(button).toBeUndefined();
+            else {
+              expect(button?.disabled).toBe(stale || state === "pointer");
+              const labelKey =
+                state === "pointer"
+                  ? "commands.config.panel.resync_synced_button"
+                  : "commands.config.panel.resync_button";
+              expect(button?.label).toBe(localizedCopy(hasLocaleKey(locale, labelKey) ? locale : "en-US", labelKey));
+            }
+            if (state === "fork") {
+              const confirm = build(GUILD_MANAGER, {
+                locale,
+                personas: [persona],
+                view: {
+                  kind: "resync-confirm",
+                  personaId: 55,
+                  nonce: "nonce1234567",
+                  presetName: "Mirri",
+                  diff: {
+                    attributes: { changed: 99, added: 99, removed: 99 },
+                    dialogues: { changed: 99, added: 99, removed: 99 },
+                    promptChanged: true,
+                    customAvatar: true,
+                    addedSprites: 99,
+                  },
+                },
+                receipt: { tone: "warning", heading: "Saved", detail: "Avatar pending." },
+              });
+              const confirmLimits = validateComponentsV2MessageLimits(confirm);
+              expect(confirmLimits.valid, JSON.stringify(confirmLimits.violations)).toBe(true);
+              const rendered = JSON.stringify(confirm);
+              for (const [key, visible] of [
+                ["commands.config.panel.resync_main_avatar_detail", !isAlter],
+                ["commands.config.panel.resync_avatar_diff", isAlter],
+              ] as const) {
+                const copy = localizedProse(hasLocaleKey(locale, key) ? locale : "en-US", key);
+                if (visible) expect(rendered).toMatch(copy);
+                else expect(rendered).not.toMatch(copy);
+              }
+              expect(
+                buttonFor(confirm, { action: "resync-confirm", locale, personaId: 55, nonce: "nonce1234567" })?.style,
+              ).toBe(4);
+              expect(buttonFor(confirm, { action: "resync-cancel", locale, personaId: 55 })?.style).toBe(2);
+            }
+          }
+        }
+      }
+    });
   });
 });

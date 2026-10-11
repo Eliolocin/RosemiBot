@@ -36,6 +36,7 @@ import {
   llmModelRepo,
   llmOverrideRepo,
   personaRepository,
+  personaSpriteRepository,
   serverMemoryRepository,
   serverScheduleRepository,
   userRepository,
@@ -169,6 +170,7 @@ import { createNonce } from "@/utils/discord/panelRouteTokens";
 import { resolvePersonaPanelAvatar, resolvePersonaPanelAvatarReference } from "@/utils/discord/personaPanelAvatar";
 import { resolvePersonaPanelCharacterReference } from "@/utils/discord/personaPanelCharacterReference";
 import { fetchElevenLabsVoiceCatalog } from "@/utils/audio/elevenLabsVoiceCatalog";
+import { isSharedPresetAssetReference } from "@/utils/storage/avatarStorage";
 import { resolveActiveSpeechEndpoint } from "@/utils/provider/speechEndpointResolver";
 import {
   buildConfigModalFieldId,
@@ -651,6 +653,9 @@ const defaultDependencies: ConfigRouteDependencies = {
   loadModelProviders: async (state, capability) =>
     (await loadConfigModelProviders(state.server_id, capability)).map((row) => row.provider),
   createGuildIdentity: createGuildIdentityPort,
+  loadPersonaPreset: (lineageId, language) => configRepository.loadPresetByReference(lineageId, language),
+  loadPresetSprites: (personaId, lineageId, language) =>
+    personaSpriteRepository.listForPreset(personaId, lineageId, language),
   recordAction: (input) => {
     void recordPanelActionStat(input);
   },
@@ -2678,6 +2683,57 @@ async function runPersonaWrite(
       }
     }
 
+    case "resync-confirm": {
+      if (
+        scope.readStatus !== "fresh" ||
+        persona.is_pointer ||
+        !persona.preset_lineage_id ||
+        !persona.preset_language
+      ) {
+        return { receipt: staleReceipt(locale) };
+      }
+      const preset = await dependencies.loadPersonaPreset(persona.preset_lineage_id, persona.preset_language);
+      if (!preset) {
+        return {
+          receipt: receipt(
+            locale,
+            "error",
+            "commands.config.panel.resync_unavailable_heading",
+            "commands.config.panel.resync_unavailable_detail",
+          ),
+        };
+      }
+      const result = await dependencies.operations.resyncToPreset({
+        persona,
+        preset,
+        serverDiscId: scope.serverDiscId,
+        guildIdentity,
+      });
+      if (result.status === "stale") return { receipt: staleReceipt(locale) };
+      if (result.status === "write-failed") {
+        return {
+          receipt: receipt(
+            locale,
+            "error",
+            "commands.config.panel.resync_failed_heading",
+            "commands.config.panel.resync_failed_detail",
+          ),
+        };
+      }
+      return {
+        receipt: receipt(
+          locale,
+          result.avatarSynced ? "success" : "warning",
+          "commands.config.panel.resync_success_heading",
+          result.avatarSynced
+            ? "commands.config.panel.resync_success_detail"
+            : "commands.config.panel.resync_partial_detail",
+          { persona: persona.persona_nickname },
+        ),
+        telemetry: "server-config.workspace.persona.resync",
+      };
+    }
+
     case "promote-confirm": {
       if (!scope.guildId || !guildIdentity) return null;
       const mainPersona = scope.personas.find((candidate) => candidate.is_alter !== true) ?? null;
@@ -3068,7 +3124,14 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
             dependencies,
           });
         },
-        load: () => dependencies.resolveScope(interaction, route.action === "retry" || route.action === "refresh"),
+        load: () =>
+          dependencies.resolveScope(
+            interaction,
+            route.action === "retry" ||
+              route.action === "refresh" ||
+              route.action === "resync-confirm" ||
+              route.action === "resync-view",
+          ),
         onMissing: () =>
           interaction.editReply(terminalPayload(route.locale, missingScopeMessageKey(interaction, dependencies))),
       });
@@ -3342,6 +3405,76 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
             }
           }
         }
+      }
+
+      if (
+        route.action === "resync-view" ||
+        (route.action === "resync-confirm" && !findExactPersona(scope.personas, requestedPersonaId))
+      ) {
+        const target = findExactPersona(scope.personas, requestedPersonaId);
+        let view: ConfigPanelView | undefined;
+        let resyncReceipt = staleReceipt(route.locale);
+        if (
+          scope.readStatus === "fresh" &&
+          target?.persona_id &&
+          !target.is_pointer &&
+          target.preset_lineage_id &&
+          target.preset_language
+        ) {
+          const preset = await dependencies.loadPersonaPreset(target.preset_lineage_id, target.preset_language);
+          if (preset) {
+            const [sprites, presetSprites] = await Promise.all([
+              dependencies.loadPersonaSprites(target.persona_id),
+              dependencies.loadPresetSprites(target.persona_id, target.preset_lineage_id, target.preset_language),
+            ]);
+            const presetKeys = new Set(presetSprites.map((sprite) => sprite.sprite_key));
+            const compare = (current: readonly string[], next: readonly string[]) => ({
+              changed: current.slice(0, next.length).filter((value, index) => value !== next[index]).length,
+              added: Math.max(0, next.length - current.length),
+              removed: Math.max(0, current.length - next.length),
+            });
+            const pairs = (inputs: string[], outputs: string[]) =>
+              Array.from({ length: Math.max(inputs.length, outputs.length) }, (_, index) =>
+                JSON.stringify([inputs[index], outputs[index]]),
+              );
+            view = {
+              kind: "resync-confirm",
+              personaId: target.persona_id,
+              nonce: dependencies.createNonce(),
+              presetName: preset.persona_preset_name,
+              diff: {
+                attributes: compare(target.attribute_list, preset.preset_attribute_list),
+                dialogues: compare(
+                  pairs(target.sample_dialogues_in, target.sample_dialogues_out),
+                  pairs(preset.preset_sample_dialogues_in, preset.preset_sample_dialogues_out),
+                ),
+                promptChanged: (target.persona_prompt || null) !== (preset.persona_preset_desc || null),
+                customAvatar: Boolean(
+                  target.webhook_avatar_url && !isSharedPresetAssetReference(target.webhook_avatar_url),
+                ),
+                addedSprites: sprites.filter((sprite) => !presetKeys.has(sprite.sprite_key)).length,
+              },
+            };
+          } else {
+            resyncReceipt = receipt(
+              route.locale,
+              "error",
+              "commands.config.panel.resync_unavailable_heading",
+              "commands.config.panel.resync_unavailable_detail",
+            );
+          }
+        }
+        await repaint(interaction, {
+          locale: route.locale,
+          scope,
+          category: "persona",
+          page: "general",
+          selectedPersonaId: target?.persona_id ?? persona?.persona_id ?? null,
+          dependencies,
+          view,
+          receipt: view ? undefined : resyncReceipt,
+        });
+        return;
       }
 
       if (route.action === "promote-view") {

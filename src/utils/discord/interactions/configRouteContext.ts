@@ -25,6 +25,7 @@ import type {
   ServerSpeechConfigRow,
   VoiceSampleRow,
   TomoriState,
+  TomoriPresetRow,
 } from "@/types/db/schema";
 import type { NoticeVerbosity, ToolNoticeKey } from "@/constants/toolNotices";
 import type { DeliberateToolTriggerMap } from "@/utils/tools/deliberateToolMode";
@@ -222,6 +223,8 @@ export interface ConfigChannelsView {
 }
 
 export interface ConfigRouteDependencies {
+  loadPersonaPreset(lineageId: number, language: string): Promise<TomoriPresetRow | null>;
+  loadPresetSprites(personaId: number, lineageId: number, language: string): Promise<PersonaSpriteRow[]>;
   resolveScope(
     interaction: GlobalRoutableInteraction | ChatInputCommandInteraction,
     forceRefresh?: boolean,

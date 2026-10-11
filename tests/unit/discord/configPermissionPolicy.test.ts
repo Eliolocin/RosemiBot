@@ -191,6 +191,7 @@ describe("Persona General action policy", () => {
     "trigger-add",
     "trigger-remove",
     "promote",
+    "resync",
   ];
 
   it("allows every identity action for a guild manager", () => {
@@ -200,14 +201,22 @@ describe("Persona General action policy", () => {
   });
 
   it("disables trigger and identity actions for an ordinary guild member", () => {
-    for (const action of ["avatar", "rename", "naming", "trigger-add", "trigger-remove", "promote"] as const) {
+    for (const action of [
+      "avatar",
+      "rename",
+      "naming",
+      "trigger-add",
+      "trigger-remove",
+      "promote",
+      "resync",
+    ] as const) {
       expect(resolvePersonaGeneralActionState(action, GUILD_MEMBER)).toBe("disabled");
     }
   });
 
   it("omits the guild-only actions in a DM workspace", () => {
     // `/persona avatar`, both trigger leaves, and `/persona swap` reject a DM outright.
-    for (const action of ["avatar", "trigger-add", "trigger-remove", "promote"] as const) {
+    for (const action of ["avatar", "trigger-add", "trigger-remove", "promote", "resync"] as const) {
       expect(resolvePersonaGeneralActionState(action, DM_OWNER)).toBe("omitted");
     }
     expect(resolvePersonaGeneralActionState("rename", DM_OWNER)).toBe("enabled");
@@ -588,6 +597,9 @@ describe("isConfigRouteAuthorized", () => {
     { action: "rename-submit", locale: "en-US", personaId: 5, nonce: "nonce1234567" },
     { action: "naming-open", locale: "en-US", personaId: 5, style: "neutral" },
     { action: "naming-submit", locale: "en-US", personaId: 5, style: "neutral", nonce: "nonce1234567" },
+    { action: "resync-view", locale: "en-US", personaId: 5 },
+    { action: "resync-confirm", locale: "en-US", personaId: 5, nonce: "nonce1234567" },
+    { action: "resync-cancel", locale: "en-US", personaId: 5 },
     { action: "promote-view", locale: "en-US", personaId: 5 },
     { action: "promote-confirm", locale: "en-US", personaId: 5, nonce: "nonce1234567" },
   ];

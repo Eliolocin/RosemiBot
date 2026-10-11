@@ -1,5 +1,5 @@
 import type { APIAttachment, Attachment } from "discord.js";
-import type { TomoriState } from "@/types/db/schema";
+import type { PersonaSpriteRow, TomoriPresetRow, TomoriState } from "@/types/db/schema";
 import type { ConditioningGroup } from "@/utils/db/repositories/ConditioningMemoryRepository";
 import {
   personaNamingConfigSchema,
@@ -9,7 +9,8 @@ import {
 } from "@/types/personaNaming";
 import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
 import { conditioningMemoryRepository } from "@/utils/db/repositories/ConditioningMemoryRepository";
-import { personaRepository } from "@/utils/db/repositories";
+import { personaRepository, personaSpriteRepository } from "@/utils/db/repositories";
+import { invalidatePersonaSpriteCache } from "@/utils/cache/personaSpriteCacheStore";
 import { shortTermMemoryRepository } from "@/utils/db/repositories/ShortTermMemoryRepository";
 import { convertToPNG } from "@/utils/image/imageProcessor";
 import { parseAndValidateImageTags } from "@/utils/image/tagHelpers";
@@ -27,6 +28,7 @@ import { PERSONA_LIMITS, memoryGuard, reserveAvatarQuota } from "@/utils/securit
 import { safeDownload } from "@/utils/security/safeDownload";
 import {
   deletePersonaAvatarFromStorage,
+  deletePersonaSpriteFromStorage,
   loadStoredPersonaAvatarBuffer,
   uploadPersonaAvatarToStorage,
 } from "@/utils/storage/avatarStorage";
@@ -61,7 +63,7 @@ const promotionsInFlight = new Set<string>();
 type ConfigAvatarAttachment = Attachment | APIAttachment;
 
 /**
- * The Discord-side effects the two identity operations need. Guild nickname and guild avatar are
+ * The Discord-side effects identity operations need. Guild nickname and guild avatar are
  * REST writes rather than repository writes, so they arrive as a port: the operation stays testable
  * and the route layer owns the transport.
  */
@@ -210,6 +212,12 @@ type ConfigCharacterReferenceResult =
   | { status: "write-failed" };
 
 export interface ConfigPersonaOperations {
+  resyncToPreset(input: {
+    persona: TomoriState;
+    preset: TomoriPresetRow;
+    serverDiscId: string;
+    guildIdentity: GuildIdentityPort | null;
+  }): Promise<{ status: "success"; avatarSynced: boolean } | { status: "stale" } | { status: "write-failed" }>;
   rename(input: {
     persona: TomoriState;
     serverDiscId: string;
@@ -361,6 +369,59 @@ function validateAvatarImage(
 }
 
 export const configPersonaOperations: ConfigPersonaOperations = {
+  async resyncToPreset({ persona, preset, serverDiscId, guildIdentity }) {
+    const personaId = persona.persona_id;
+    if (!personaId || persona.is_pointer || !persona.preset_lineage_id || !persona.preset_language) {
+      return { status: "stale" };
+    }
+    let sprites: PersonaSpriteRow[];
+    try {
+      sprites = await personaSpriteRepository.listForPersona(personaId);
+    } catch (error) {
+      log.warn("Could not capture sprites before preset resync", { personaId, error });
+      return { status: "write-failed" };
+    }
+    const oldAvatar = persona.webhook_avatar_url;
+    const written = await personaRepository.applyPresetPointerToPersona({
+      personaId,
+      nickname: persona.persona_nickname,
+      preset,
+      personaLineageId: persona.persona_lineage_id,
+      triggerWords: persona.trigger_words,
+      personaPrompt: preset.persona_preset_desc || null,
+      preservedNamingConfig: persona.naming_config,
+    });
+    if (!written) return { status: "write-failed" };
+
+    invalidateTomoriStateCache(serverDiscId);
+    invalidatePersonaSpriteCache(personaId);
+    try {
+      for (const sprite of sprites) await deletePersonaSpriteFromStorage(sprite.avatar_url);
+      if (oldAvatar) await deletePersonaAvatarFromStorage(oldAvatar);
+    } catch (error) {
+      log.warn("Could not clean up images after preset resync", { personaId, error });
+    }
+
+    let avatarSynced = true;
+    if (!persona.is_alter && guildIdentity) {
+      avatarSynced = false;
+      try {
+        const reference = preset.preset_avatar_shared_url;
+        const buffer = reference ? await loadStoredPersonaAvatarBuffer(reference) : null;
+        if (!reference || buffer) {
+          const applied = await guildIdentity.setAvatar(
+            buffer ? `data:image/png;base64,${buffer.toString("base64")}` : null,
+          );
+          avatarSynced = applied.ok;
+          if (applied.ok) await personaRepository.markServerMainAvatarSynced(serverDiscId);
+        }
+      } catch (error) {
+        log.warn("Could not sync guild avatar after preset resync", { personaId, error });
+      }
+    }
+    return { status: "success", avatarSynced };
+  },
+
   async setImageTags({ persona, serverDiscId, rawTags }) {
     const personaId = persona.persona_id;
     if (!personaId) return { status: "write-failed" };

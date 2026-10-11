@@ -18,6 +18,7 @@ import {
 import { ColorCode, log } from "../misc/logger";
 import { localizer } from "../text/localizer";
 import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
+import { recordChannelDeliveredBotMessage } from "@/utils/discord/stream/channelDeliveryContinuity";
 import { attachTextDisplayModalCollector, buildTextDisplayModalRow } from "./textDisplayModal";
 import { withStatusCircle } from "./ui/statusTitle";
 import { resolveFooterLines } from "./ui/noticeFooter";
@@ -283,6 +284,8 @@ export async function sendStandardEmbed(
   } else {
     sentMessage = await channel.send({ embeds: [embed], components });
   }
+
+  if (!sentViaWebhook) recordChannelDeliveredBotMessage(channel.id);
 
   if (!disabledModalRow) return;
 

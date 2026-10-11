@@ -1160,6 +1160,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
     personaLineageId?: number | null;
     triggerWords?: string[];
     personaPrompt?: string | null;
+    preservedNamingConfig?: PersonaNamingConfig;
   }): Promise<TomoriRow | null> {
     const pointerLineageId = normalizeLineageId(params.preset.preset_lineage_id);
     if (pointerLineageId === null) {
@@ -1187,6 +1188,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
             -- The caller deletes the old server-owned image (shared presets/ images
             -- are immutable and skipped by the delete guard).
             webhook_avatar_url = NULL,
+            applied_avatar_hash = NULL,
             updated_at = NOW()
           WHERE persona_id = ${params.personaId}
           RETURNING *
@@ -1201,7 +1203,11 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
           params.personaId,
           params.triggerWords ?? resolvePresetTriggerWords(params.preset),
           params.personaPrompt ?? resolvePresetPersonaPrompt(params.preset),
+          params.preservedNamingConfig !== undefined,
         );
+        if (params.preservedNamingConfig) {
+          await userNamingRepository.savePersonaConfig(params.personaId, params.preservedNamingConfig, tx);
+        }
         // Re-pointing resets sprites: drop the persona's own rows so it resolves
         // the official preset sprite set live again. Server-owned sprite IMAGES
         // are cleaned up by the caller (the shared preset images are immutable).
@@ -1479,67 +1485,6 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
     } catch (e) {
       log.error(`Error setting persona config for persona ${personaId}:`, e);
       return false;
-    }
-  }
-
-  /**
-   * Check if a server has reached its trigger word limit.
-   *
-   * @param serverId  - Internal server DB ID
-   * @param personaId  - Optional tomori ID for persona-scoped trigger words
-   * @returns MemoryValidationResult indicating whether the limit is exceeded
-   */
-  async checkTriggerWordLimit(serverId: number, personaId?: number): Promise<MemoryValidationResult> {
-    const limits = getMemoryLimits();
-
-    try {
-      const [configResult] = personaId
-        ? await sql`
-            SELECT
-              CASE
-                WHEN pp.persona_preset_id IS NOT NULL THEN array_length(pp.preset_trigger_words, 1)
-                ELSE array_length(pc.trigger_words, 1)
-              END as trigger_count
-            FROM personas p
-            LEFT JOIN persona_configs pc ON pc.persona_id = p.persona_id
-            LEFT JOIN persona_presets pp
-              ON p.is_pointer = true
-              AND pp.preset_lineage_id = p.preset_lineage_id
-              AND pp.preset_language = p.preset_language
-            WHERE p.persona_id = ${personaId}
-          `
-        : await sql`
-            SELECT
-              CASE
-                WHEN pp.persona_preset_id IS NOT NULL THEN array_length(pp.preset_trigger_words, 1)
-                ELSE array_length(pc.trigger_words, 1)
-              END as trigger_count
-            FROM persona_configs pc
-            JOIN personas t ON t.persona_id = pc.persona_id
-            LEFT JOIN persona_presets pp
-              ON t.is_pointer = true
-              AND pp.preset_lineage_id = t.preset_lineage_id
-              AND pp.preset_language = t.preset_language
-            WHERE t.server_id = ${serverId}
-              AND t.is_alter = false
-            LIMIT 1
-          `;
-
-      const currentCount = configResult?.trigger_count || 0;
-
-      if (currentCount >= limits.maxTriggerWords) {
-        return {
-          isValid: false,
-          error: "TRIGGER_WORD_LIMIT_EXCEEDED",
-          currentCount,
-          maxAllowed: limits.maxTriggerWords,
-        };
-      }
-
-      return { isValid: true, currentCount, maxAllowed: limits.maxTriggerWords };
-    } catch (error) {
-      log.error(`Error checking trigger word limit for server ${serverId}:`, error);
-      return { isValid: false, error: "TRIGGER_WORD_LIMIT_EXCEEDED" };
     }
   }
 
@@ -2228,13 +2173,20 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
       WHERE persona_id = ${personaId}
     `;
     await this.replacePresetAttributesWithClient(client, personaId, preset);
+    const [identityConfig] = await client<PersonaConfigRow[]>`
+      SELECT * FROM persona_configs WHERE persona_id = ${personaId}
+    `;
+    const preserveIdentity = identityConfig?.preserve_preset_identity === true;
     await this.writePresetPersonaConfigWithClient(
       client,
       personaId,
-      resolvePresetTriggerWords(preset),
+      preserveIdentity ? identityConfig.trigger_words : resolvePresetTriggerWords(preset),
       resolvePresetPersonaPrompt(preset),
+      preserveIdentity,
     );
-    await userNamingRepository.savePersonaConfig(personaId, preset.preset_naming_config, client);
+    if (!preserveIdentity) {
+      await userNamingRepository.savePersonaConfig(personaId, preset.preset_naming_config, client);
+    }
     // Copy the shared preset sprites into this persona's own rows, reusing the
     // shared image URL (no byte duplication). The persona stops resolving sprites
     // live once materialized, so this freezes its current default sprite set.
@@ -2441,15 +2393,17 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
     personaId: number,
     triggerWords: string[],
     personaPrompt: string | null,
+    preservePresetIdentity = false,
   ): Promise<void> {
     const normalizedTriggers = dedupeTriggerWords(triggerWords, { lowercase: false });
     await client`
-      INSERT INTO persona_configs (persona_id, trigger_words, persona_prompt)
-      VALUES (${personaId}, ${sql.array(normalizedTriggers, "TEXT")}, ${personaPrompt})
+      INSERT INTO persona_configs (persona_id, trigger_words, persona_prompt, preserve_preset_identity)
+      VALUES (${personaId}, ${sql.array(normalizedTriggers, "TEXT")}, ${personaPrompt}, ${preservePresetIdentity})
       ON CONFLICT (persona_id) DO UPDATE
       SET
         trigger_words = EXCLUDED.trigger_words,
         persona_prompt = EXCLUDED.persona_prompt,
+        preserve_preset_identity = EXCLUDED.preserve_preset_identity,
         updated_at = NOW()
     `;
   }
@@ -2733,15 +2687,17 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
       const sampleDialoguesOut = pointerPreset
         ? pointerPreset.preset_sample_dialogues_out
         : ((tomoriData.sample_dialogues_out as string[] | undefined) ?? []);
-      const triggerWords = pointerPreset
-        ? resolvePresetTriggerWords(pointerPreset)
-        : (personaConfig?.trigger_words ?? []);
+      const triggerWords =
+        pointerPreset && !personaConfig?.preserve_preset_identity
+          ? resolvePresetTriggerWords(pointerPreset)
+          : (personaConfig?.trigger_words ?? []);
       const personaPrompt = pointerPreset
         ? resolvePresetPersonaPrompt(pointerPreset)
         : (personaConfig?.persona_prompt ?? null);
-      const namingConfig = pointerPreset
-        ? pointerPreset.preset_naming_config
-        : (personaNamingConfigs.get(personaId) ?? EMPTY_PERSONA_NAMING_CONFIG);
+      const namingConfig =
+        pointerPreset && !personaConfig?.preserve_preset_identity
+          ? pointerPreset.preset_naming_config
+          : (personaNamingConfigs.get(personaId) ?? EMPTY_PERSONA_NAMING_CONFIG);
 
       // Per-persona humanizer override: overlay onto a copy of the server config at
       // load time so every runtime consumer of config.humanizer_degree (providers,
@@ -3102,19 +3058,19 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
           const sampleDialoguesOut = pointerPreset
             ? pointerPreset.preset_sample_dialogues_out
             : ((tomoriRow.sample_dialogues_out as string[] | undefined) ?? []);
-          // A live pointer resolves trigger_words from its preset (mirrors
-          // persona_prompt below), so preset edits propagate until the first
-          // content edit forks the persona. Once forked, `pointerPreset` is
-          // undefined and the persona's own persona_configs triggers are used.
-          const triggerWords = pointerPreset
-            ? resolvePresetTriggerWords(pointerPreset)
-            : (personaConfig?.trigger_words ?? []);
+          // Resynced pointers retain the workspace's triggers and naming habits while
+          // content continues following the preset.
+          const triggerWords =
+            pointerPreset && !personaConfig?.preserve_preset_identity
+              ? resolvePresetTriggerWords(pointerPreset)
+              : (personaConfig?.trigger_words ?? []);
           const personaPrompt = pointerPreset
             ? resolvePresetPersonaPrompt(pointerPreset)
             : (personaConfig?.persona_prompt ?? null);
-          const namingConfig = pointerPreset
-            ? pointerPreset.preset_naming_config
-            : (personaNamingConfigs.get(personaId) ?? EMPTY_PERSONA_NAMING_CONFIG);
+          const namingConfig =
+            pointerPreset && !personaConfig?.preserve_preset_identity
+              ? pointerPreset.preset_naming_config
+              : (personaNamingConfigs.get(personaId) ?? EMPTY_PERSONA_NAMING_CONFIG);
 
           // Per-persona humanizer override: overlay onto a copy of the shared server
           // config so only this persona's state sees the overridden degree. Each

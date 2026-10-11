@@ -10,7 +10,9 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { forkPointerForAvatarChange } from "@/utils/persona/pointerFork";
-import { personaRepository } from "@/utils/db/repositories";
+import type { TomoriPresetRow } from "@/types/db/schema";
+import { configPersonaOperations } from "@/utils/discord/interactions/configPersonaOperations";
+import { presetRepository, personaSpriteRepository, personaRepository } from "@/utils/db/repositories";
 import { splitSqlStatements } from "@/utils/db/sqlSplitter";
 import { FIXTURE_IDS, cleanupFixtures, insertFixtures, type FixtureRefs } from "./setup/fixtures";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
@@ -852,5 +854,109 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Persona — regression", () => {
     const personas = await personaRepository.loadAllForServer(FIXTURE_IDS.serverDiscId);
     const main = personas.find((p) => p.persona_id === refs.personaId);
     expect(main?.persona_nickname).toBe("_rt_persona_renamed");
+  });
+  it("resyncs main and alter presets without moving lineage, memories, or identity settings", async () => {
+    const presetLineageId = 900_105;
+    const [preset] = await testSql<TomoriPresetRow[]>`
+      INSERT INTO persona_presets (
+        persona_preset_name, persona_preset_desc, preset_lineage_id, preset_attribute_list,
+        preset_attribute_public_flags, preset_sample_dialogues_in, preset_sample_dialogues_out,
+        preset_language, preset_trigger_words
+      ) VALUES (
+        '_rt_resync_preset', '_rt_preset_prompt', ${presetLineageId}, ARRAY['_rt_preset_attribute']::TEXT[],
+        ARRAY[true]::BOOLEAN[], ARRAY['_rt_input']::TEXT[], ARRAY['_rt_output']::TEXT[],
+        'en-US', ARRAY['_rt_preset_trigger']::TEXT[]
+      ) RETURNING *
+    `;
+    const alter = await personaRepository.createAlterPersona({
+      serverId: refs.serverId,
+      nickname: "_rt_resync_alter",
+      attributes: [],
+      sampleDialoguesIn: [],
+      sampleDialoguesOut: [],
+    });
+    if (!alter?.persona_id) throw new Error("Could not create the resync alter fixture");
+    try {
+      for (const personaId of [refs.personaId, alter.persona_id]) {
+        const [before] = await testSql`SELECT persona_lineage_id FROM personas WHERE persona_id = ${personaId}`;
+        const lineageId = Number(before.persona_lineage_id);
+        expect(lineageId).not.toBe(presetLineageId);
+        await personaRepository.applyPresetPointerToPersona({
+          personaId,
+          nickname: `_rt_resync_${personaId}`,
+          preset,
+          personaLineageId: lineageId,
+        });
+        await personaRepository.addAttributes(personaId, ["_rt_local_attribute"], false);
+        await personaRepository.removeTrigger(personaId, [`_rt_local_${personaId}`, `_rt_second_${personaId}`]);
+        const naming = { prefixes: { neutral: "Dear" }, suffixes: {}, addressTerms: { neutral: "friend" } };
+        await personaRepository.updateNamingConfig(personaId, naming);
+        await personaRepository.setContextNote(personaId, "_rt_keep_note", 4);
+        await personaSpriteRepository.upsertSprite({
+          personaId,
+          spriteName: "Extra",
+          spriteKey: "extra",
+          avatarUrl: "data/avatars/presets/900105/sprites/extra-hash.png",
+          usageInstructions: "",
+          isIdentity: false,
+        });
+        await testSql`UPDATE personas SET applied_avatar_hash = 'old-hash' WHERE persona_id = ${personaId}`;
+        const [memory] = await testSql`
+          INSERT INTO server_memories (server_id, persona_id, persona_lineage_id, user_id, content)
+          VALUES (${refs.serverId}, ${personaId}, ${lineageId}, ${refs.userId}, '_rt_keep_memory') RETURNING *
+        `;
+        const persona = (await personaRepository.loadAllForServer(FIXTURE_IDS.serverDiscId)).find(
+          (item) => item.persona_id === personaId,
+        );
+        if (!persona) throw new Error("Missing persona in resync fixture");
+        const result = await configPersonaOperations.resyncToPreset({
+          persona,
+          preset,
+          serverDiscId: FIXTURE_IDS.serverDiscId,
+          guildIdentity: null,
+        });
+        expect(result.status).toBe("success");
+        const [stored] = await testSql`SELECT * FROM personas WHERE persona_id = ${personaId}`;
+        expect(Number(stored.persona_lineage_id)).toBe(lineageId);
+        expect(stored.is_pointer).toBe(true);
+        expect(stored.applied_avatar_hash).toBeNull();
+        const sprites = await testSql`SELECT * FROM persona_sprites WHERE persona_id = ${personaId}`;
+        expect(sprites).toHaveLength(0);
+        const [keptMemory] =
+          await testSql`SELECT * FROM server_memories WHERE server_memory_id = ${memory.server_memory_id}`;
+        expect(keptMemory).toEqual(memory);
+        const resolved = (await personaRepository.loadAllForServer(FIXTURE_IDS.serverDiscId)).find(
+          (item) => item.persona_id === personaId,
+        );
+        if (!resolved) throw new Error("Missing persona in resync fixture");
+        expect(resolved.attribute_list).toEqual(preset.preset_attribute_list);
+        expect(resolved.sample_dialogues_out).toEqual(preset.preset_sample_dialogues_out);
+        expect(resolved.trigger_words).toEqual(persona.trigger_words);
+        expect(resolved.naming_config).toEqual(naming);
+        expect(resolved.context_note).toBe("_rt_keep_note");
+        const exported = await presetRepository.exportPresetData(FIXTURE_IDS.serverDiscId, personaId);
+        expect(exported.success).toBe(true);
+        if (exported.success) {
+          expect(exported.data.data.trigger_words).toEqual(persona.trigger_words);
+          expect(exported.data.data.naming_config).toEqual(naming);
+        }
+        if (!resolved.is_alter) {
+          const main = await personaRepository.loadState(FIXTURE_IDS.serverDiscId);
+          expect(main?.trigger_words).toEqual(persona.trigger_words);
+          expect(main?.naming_config).toEqual(naming);
+        }
+        await personaRepository.addAttributes(personaId, ["_rt_fork_again"], false);
+        const forked = (await personaRepository.loadAllForServer(FIXTURE_IDS.serverDiscId)).find(
+          (item) => item.persona_id === personaId,
+        );
+        if (!forked) throw new Error("Missing persona in resync fixture");
+        expect(forked.is_pointer).toBe(false);
+        expect(forked.trigger_words).toEqual(persona.trigger_words);
+        expect(forked.naming_config).toEqual(naming);
+      }
+    } finally {
+      if (alter?.persona_id) await testSql`DELETE FROM personas WHERE persona_id = ${alter.persona_id}`;
+      await testSql`DELETE FROM persona_presets WHERE preset_lineage_id = ${presetLineageId}`;
+    }
   });
 });

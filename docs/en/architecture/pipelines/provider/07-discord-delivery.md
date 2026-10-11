@@ -55,7 +55,7 @@ or interrupt arrives.
   invalidation and retry with a recreated webhook.
 - **Bot messages:** Used for standard bot personas via `channel.send()` or `message.reply()`.
 
-After each successful send, `recordChannelDeliveredWebhookIdentity()` records the author identity
+After each successful webhook send, `recordChannelDeliveredWebhookIdentity()` records the author identity
 in `src/utils/discord/stream/channelDeliveryContinuity.ts`. Subsequent artifacts in the turn, such
 as sticker expressions and fallback notices, read this record so their messages group under the same
 author. Persona webhook posts outside the stream (tool notices, generated media, voice messages)
@@ -65,7 +65,9 @@ join the sprite alternation, so the next sprite cannot merge under the post's av
 the persona speaks outside the stream (`/impersonate` and the reply tool) take the stream's own
 alternation for their sprite or base appearance and record themselves too. The payload's reference
 is recorded in `context.deliveredMessageRefs` so the chat pipeline can delete partial output if a
-generation attempt is superseded.
+generation attempt is superseded. Successful ordinary bot sends, including notice fallbacks after a
+webhook failure, call `recordChannelDeliveredBotMessage()` to clear the previous webhook identity.
+Failed sends leave the last successful delivery intact.
 
 ## Rendered markdown tables
 

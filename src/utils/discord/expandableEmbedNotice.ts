@@ -37,6 +37,7 @@ import type { StandardEmbedOptions } from "@/types/discord/embed";
 import type { ToolContext } from "@/types/tool/interfaces";
 import { createStandardEmbed, type WebhookEmbedContext } from "@/utils/discord/embedHelper";
 import { recordMinimalNoticeRef } from "@/utils/discord/minimalNoticeBodies";
+import { recordChannelDeliveredBotMessage } from "@/utils/discord/stream/channelDeliveryContinuity";
 import {
   isMinimalNotice,
   isNoticeEmbedVisible,
@@ -198,6 +199,7 @@ async function deliverNoticeComponents(
 
   try {
     const message = await channel.send(payload);
+    recordChannelDeliveredBotMessage(channel.id);
     return { message, sentViaWebhook: false, threadId };
   } catch (error) {
     log.warn("CV2 notice: channel send failed", error as Error);
