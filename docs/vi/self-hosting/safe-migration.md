@@ -2,6 +2,7 @@
 title: "Hướng dẫn di chuyển an toàn"
 sidebar:
   order: 6
+aiGenerated: true
 ---
 
 Khi bạn `git pull` mã nguồn mới và khởi động lại TomoriBot, bot sẽ tự động chạy các migration schema cơ sở dữ liệu khi khởi động. Điều này rất mạnh mẽ: bạn không cần phải quản lý các bản cập nhật SQL thủ công, nhưng điều đó cũng đồng nghĩa với việc các thao tác phá hủy dữ liệu có thể ảnh hưởng đến dữ liệu của bạn một cách âm thầm. Hướng dẫn này chỉ cho bạn cách bảo vệ dữ liệu trước khi kéo mã nguồn mới.

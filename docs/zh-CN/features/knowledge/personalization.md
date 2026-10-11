@@ -2,6 +2,7 @@
 title: "个性化"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot可以记住你在与她共享的每台服务器上跟踪你的个人详细信息、自定义名称和AI提供商凭据。你可以使用`/personal`命令管理这些设置，而无需更改任何服务器的共享配置。

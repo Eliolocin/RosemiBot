@@ -1,5 +1,6 @@
 ---
 title: "01: Input Normalization"
+aiGenerated: true
 ---
 
 Input normalization prepares the typed invocation record for the chat pipeline. It converts

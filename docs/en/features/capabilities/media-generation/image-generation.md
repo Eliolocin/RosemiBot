@@ -2,6 +2,7 @@
 title: "Image Generation"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot can generate images from a text prompt or by editing a reference image. Use

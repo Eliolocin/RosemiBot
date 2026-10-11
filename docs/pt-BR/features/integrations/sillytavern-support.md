@@ -11,6 +11,7 @@ head:
 description: "Importe cards de personagem e predefinições de prompt do SillyTavern no Discord com a TomoriBot. Traga seus personagens existentes para o seu servidor."
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot pode importar dois ativos de [SillyTavern](https://github.com/SillyTavern/SillyTavern): predefinições do Prompt Manager (que controlam a estrutura do prompt) e cartões de caracteres (a definição de caracteres). Se você nunca usou SillyTavern, pode pular esta página com segurança.

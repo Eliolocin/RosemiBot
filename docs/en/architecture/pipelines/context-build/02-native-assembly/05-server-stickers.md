@@ -1,5 +1,6 @@
 ---
 title: "02.5: Server Stickers"
+aiGenerated: true
 ---
 
 The server sticker contributor emits available native and custom server stickers that the persona can send using the sticker tool.

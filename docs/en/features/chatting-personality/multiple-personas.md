@@ -12,6 +12,7 @@ head:
 description: "Run multiple AI companions in one Discord server. Custom personas with their own avatars, triggers, and speaking styles."
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 

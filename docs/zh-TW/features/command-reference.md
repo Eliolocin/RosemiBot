@@ -2,6 +2,7 @@
 title: "指令參考"
 sidebar:
   order: 6
+aiGenerated: true
 ---
 
 <!--

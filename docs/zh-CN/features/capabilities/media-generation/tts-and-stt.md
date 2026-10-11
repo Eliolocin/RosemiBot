@@ -2,6 +2,7 @@
 title: "语音：TTS与STT"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot可以在Discord中说和听：通过文本转语音 (TTS) 发送语音回复，并通过语音转文本 (STT) 将音频消息转录到对话上下文中。

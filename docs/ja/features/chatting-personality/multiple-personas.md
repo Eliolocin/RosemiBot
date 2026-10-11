@@ -12,6 +12,7 @@ head:
 description: "1つのDiscordサーバーで複数のAIを稼働させます。独自のアバター、トリガー、話し方を持つカスタムペルソナ。"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBotの名前、アバター、性格、話し方、動作はペルソナに保存されます。複数のペルソナを同時に使い、それぞれ別のキャラクターとして独自のトリガーワードとWebhookアバターで会話できます。このページではペルソナの動作を説明します。知識や記憶については[記憶](/ja/features/knowledge/memory/)を参照してください。

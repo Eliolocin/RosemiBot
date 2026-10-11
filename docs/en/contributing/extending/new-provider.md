@@ -2,6 +2,7 @@
 title: "Add a New AI Provider"
 sidebar:
   order: 10
+aiGenerated: true
 ---
 
 How to wire a new AI provider into TomoriBot. For how the provider layer works, read

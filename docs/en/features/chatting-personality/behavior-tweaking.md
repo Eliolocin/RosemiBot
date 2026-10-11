@@ -2,6 +2,7 @@
 title: "Behavior Tweaking"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot's behavior (what she is allowed to do and how she generates) is controlled

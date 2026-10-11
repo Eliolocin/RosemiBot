@@ -2,6 +2,7 @@
 title: "Referencia de comandos"
 sidebar:
   order: 6
+aiGenerated: true
 ---
 
 <!--

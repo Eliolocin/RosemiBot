@@ -2,6 +2,7 @@
 title: "Geração de Imagens"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot pode gerar imagens a partir de um prompt de texto ou editando uma imagem de referência. Use `/generate image`, ou descreva o que deseja no chat (“desenhe um panda vermelho tomando café”).

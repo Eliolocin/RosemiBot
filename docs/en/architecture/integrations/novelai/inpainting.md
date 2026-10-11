@@ -1,5 +1,6 @@
 ---
 title: "NovelAI Inpainting Pipeline"
+aiGenerated: true
 ---
 
 The inpainting pipeline edits existing images in response to natural language requests. It pairs

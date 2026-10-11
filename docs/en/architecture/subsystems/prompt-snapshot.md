@@ -1,5 +1,6 @@
 ---
 title: "Prompt Snapshot"
+aiGenerated: true
 ---
 
 The prompt snapshot subsystem reconstructs a prompt for the current channel history, persona, and configuration. It includes system instructions and request parameters, but does not capture an earlier generation request. It powers two surfaces sharing a single assembler (`assemblePromptInspection()`):

@@ -2,6 +2,7 @@
 title: "Tạo hình ảnh"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot có thể tạo hình ảnh từ lời nhắc văn bản hoặc bằng cách chỉnh sửa hình ảnh tham chiếu. Sử dụng `/generate image` hoặc mô tả những gì bạn muốn trong cuộc trò chuyện ("vẽ gấu trúc đỏ uống cà phê").

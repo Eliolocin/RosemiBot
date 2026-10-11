@@ -1,5 +1,6 @@
 ---
 title: "In-Memory Caching System"
+aiGenerated: true
 ---
 
 The in-memory caching subsystem reduces repetitive database and network queries for frequently accessed server configurations, user preferences, whitelists, expression data, and provider capabilities. Many caches expire on read. Creation gates and size caps bound selected stores, write owners invalidate derived state after database success, and memory guards can evict recoverable entries.

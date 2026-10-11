@@ -2,6 +2,7 @@
 title: "WhisperXの文字起こし"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 バンドルされている [WhisperX](https://github.com/m-bain/whisperX) サーバーを使用して、TomoriBotのローカルで正確な音声認識をセットアップします。WhisperXは、単語レベルのアライメントによる高速音声転写を提供します。

@@ -1,5 +1,6 @@
 ---
 title: "03: Chunk Normalization"
+aiGenerated: true
 ---
 
 Chunk normalization converts provider-native `RawStreamChunk` envelopes into uniform `ProcessedChunk`

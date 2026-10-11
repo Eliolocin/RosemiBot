@@ -10,6 +10,7 @@ head:
 description: "用TomoriBot把SillyTavern角色卡與提示詞預設集匯入Discord。把你既有的角色帶進你的伺服器。"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot可以從 [SillyTavern](https://github.com/SillyTavern/SillyTavern) 匯入兩種資源：提示管理員預設（控制提示結構）和角色卡（角色定義）。如果你從未使用過SillyTavern，你可以安全地跳過此頁面。

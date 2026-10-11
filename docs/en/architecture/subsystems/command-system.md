@@ -1,5 +1,6 @@
 ---
 title: "Command System"
+aiGenerated: true
 ---
 
 TomoriBot loads Discord slash commands dynamically from `src/commands/` and dispatches interactions through a unified pipeline in `src/events/interactionCreate/handleCommands.ts`.

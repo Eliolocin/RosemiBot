@@ -1,5 +1,6 @@
 ---
 title: "Runtime Utilities and Shared Services"
+aiGenerated: true
 ---
 
 The `src/utils/` tree provides cross-cutting infrastructure supporting runtime dispatch, network safety, destination resolution, error attribution, and UI formatting across TomoriBot.

@@ -11,6 +11,7 @@ head:
 description: "Import SillyTavern character cards and prompt presets into Discord with TomoriBot. Bring your existing characters to your server."
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot can import two assets from [SillyTavern](https://github.com/SillyTavern/SillyTavern):

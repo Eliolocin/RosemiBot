@@ -2,6 +2,7 @@
 title: "行为调整"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 你可以在`/config`中调整TomoriBot能执行哪些操作，以及如何生成回复，包括权限设置。人格设置请见[多个人格](/zh-CN/features/chatting-personality/multiple-personas/)，知识设置请见[记忆](/zh-CN/features/knowledge/memory/)。这一页介绍常用的行为设置。

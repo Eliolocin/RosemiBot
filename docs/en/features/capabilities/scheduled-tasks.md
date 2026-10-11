@@ -2,6 +2,7 @@
 title: "Scheduled Tasks"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 Set reminders for yourself or schedule recurring announcements without leaving chat.

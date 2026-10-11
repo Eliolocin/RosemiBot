@@ -1,5 +1,6 @@
 ---
 title: "05: Buffer Management"
+aiGenerated: true
 ---
 
 Buffer management accumulates streamed text into semantic buffers and flushes discrete segments to

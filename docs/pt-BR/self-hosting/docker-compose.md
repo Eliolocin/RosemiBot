@@ -2,6 +2,7 @@
 title: "Docker Compose"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 Docker Compose executa TomoriBot e PostgreSQL juntos em contêineres. É a terceira opção de instalação junto com o [assistente de configuração](/pt-BR/self-hosting/setup-wizard/) e [configuração manual](/pt-BR/self-hosting/manual-setup/): escolha-a quando quiser executar tudo no Docker sem instalar Bun ou PostgreSQL em seu sistema host. Ele ignora o assistente de configuração interativo e configura a conexão com o banco de dados automaticamente.

@@ -2,6 +2,7 @@
 title: "Setup: slop-guard"
 sidebar:
   order: 8
+aiGenerated: true
 ---
 
 Run [slop-guard](https://github.com/eric-tramel/slop-guard), a rule-based prose linter, as the

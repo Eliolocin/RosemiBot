@@ -2,6 +2,7 @@
 title: "セットアップ: Crawl4AI"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 ローカルの [Crawl4AI](https://github.com/unclecode/crawl4ai) サーバーを使用して、JavaScriptを多用したWebページをTomoriBotのクリーンなMarkdownにレンダリングします。

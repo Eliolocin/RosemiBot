@@ -1,5 +1,6 @@
 ---
 title: "Localization System"
+aiGenerated: true
 ---
 
 TomoriBot localizes user-facing text through modular category files in `src/locales/`. The localization system handles translation loading, key resolution, fallback chains, Discord command metadata, embed protocols, and UI status formatting.

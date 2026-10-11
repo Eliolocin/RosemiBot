@@ -2,6 +2,7 @@
 title: "Transcrição com whisper.cpp"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 Execute fala em texto leve e de alto desempenho para TomoriBot usando [whisper.cpp](https://github.com/ggerganov/whisper.cpp).

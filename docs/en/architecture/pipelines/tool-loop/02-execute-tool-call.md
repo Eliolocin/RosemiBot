@@ -1,5 +1,6 @@
 ---
 title: "02: Execute Tool Call"
+aiGenerated: true
 ---
 
 `executeToolCall` validates, gates, and dispatches a single tool call from the provider. It returns a

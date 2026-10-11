@@ -2,6 +2,7 @@
 title: "サーバーのモデレーション"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBotは、サーバー マネージャーに、`/moderation`および`/config`を通じて使用量、コスト、権限、チャネルをきめ細かく制御できるようにします。これらのコントロールのほとんどは、`サーバー管理`権限を必要とします。コマンドの完全なリストについては、[コマンドリファレンス](/ja/features/command-reference/)を参照してください。

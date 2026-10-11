@@ -2,6 +2,7 @@
 title: "Adding a Slash Command"
 sidebar:
   order: 10
+aiGenerated: true
 ---
 
 How to add a slash command. `commandLoader.ts` registers any `.ts` file under `src/commands/` on the

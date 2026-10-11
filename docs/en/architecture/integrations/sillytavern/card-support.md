@@ -1,5 +1,6 @@
 ---
 title: "SillyTavern Card Import Support"
+aiGenerated: true
 ---
 
 TomoriBot's `/persona import` command ingests and converts SillyTavern character cards into native

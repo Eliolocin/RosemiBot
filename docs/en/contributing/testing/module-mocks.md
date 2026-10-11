@@ -2,6 +2,7 @@
 title: "Testing with Bun Module Mocks"
 sidebar:
   order: 30
+aiGenerated: true
 ---
 
 How to mock a module in a test without breaking other test files. Bun's `mock.module()` registry is

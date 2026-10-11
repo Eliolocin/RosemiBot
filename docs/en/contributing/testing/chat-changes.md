@@ -2,6 +2,7 @@
 title: "Testing Chat Changes"
 sidebar:
   order: 30
+aiGenerated: true
 ---
 
 How to use the chat regression tests, which pin the decisions made before a provider is called: whether

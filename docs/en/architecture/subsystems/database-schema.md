@@ -1,5 +1,6 @@
 ---
 title: "Database Schema and Data Model"
+aiGenerated: true
 ---
 
 The database schema defines persisted relational state, encryption boundaries, and entity lifecycles

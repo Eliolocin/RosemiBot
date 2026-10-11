@@ -2,6 +2,7 @@
 title: "Công cụ & tiện ích mở rộng"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Ngoài trò chuyện, TomoriBot có thể gọi các công cụ để tìm kiếm trên web, đọc tài liệu, tạo phương tiện, đặt lời nhắc và tương tác với tin nhắn Discord. Cô ấy quyết định khi nào nên sử dụng chúng dựa trên cuộc trò chuyện. Trang này bao gồm các công cụ tích hợp sẵn, cách mở rộng cô ấy với máy chủ MCP và cách giữ cho lời nhắc gọn gàng với Chế độ công cụ có chủ ý.

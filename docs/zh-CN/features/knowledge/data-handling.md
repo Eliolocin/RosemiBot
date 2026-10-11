@@ -2,6 +2,7 @@
 title: "数据处理"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 使用Discord斜线命令导出、备份、导入或删除你的设置、记忆和人格。有关服务条款和隐私详细信息，请参阅`/legal terms-of-service`和`/legal privacy-policy`。

@@ -2,6 +2,7 @@
 title: "Matrix Bridge"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Bridge a Matrix room to a Discord channel so people can chat across both platforms.

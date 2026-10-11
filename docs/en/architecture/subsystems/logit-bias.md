@@ -1,5 +1,6 @@
 ---
 title: "Logit Bias"
+aiGenerated: true
 ---
 
 Logit bias modifies token sampling probabilities by injecting numeric bias adjustments into LLM requests. TomoriBot provides a text-first interface that stores canonical terms and resolves tokenizer-specific token maps at runtime.

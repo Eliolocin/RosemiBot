@@ -2,6 +2,7 @@
 title: "Puente de Matrix"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Conecte una sala Matrix a un canal Discord para que las personas puedan chatear en ambas plataformas. Los mensajes enviados desde Matrix aparecen en Discord como mensajes de webhook y TomoriBot responde directamente en la sala Matrix.

@@ -4,6 +4,7 @@ sidebar:
   label: "Overview"
   groupLabel: "Pipelines"
   order: 20
+aiGenerated: true
 ---
 
 Pipeline documentation explains linear runtime execution paths: what starts them, what each stage

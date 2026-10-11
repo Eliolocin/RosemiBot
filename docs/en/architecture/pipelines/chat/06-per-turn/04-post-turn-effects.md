@@ -1,5 +1,6 @@
 ---
 title: "06.4: Post-Turn Effects"
+aiGenerated: true
 ---
 
 The post-turn stage executes side effects after generation finishes. It coordinates empty-response

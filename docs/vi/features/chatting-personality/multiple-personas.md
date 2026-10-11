@@ -6,6 +6,7 @@ head:
 description: "Chạy nhiều bạn đồng hành AI trong một máy chủ Discord. Tùy chỉnh persona với avatar, từ kích hoạt và phong cách nói chuyện riêng."
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 Tên, avatar, đặc điểm, phong cách nói chuyện và hành vi của TomoriBot được lưu trong persona. Bạn có thể dùng nhiều persona cùng lúc, mỗi persona là một nhân vật riêng với từ kích hoạt và avatar webhook riêng. Trang này giải thích hành vi của persona. Xem [Bộ nhớ](/vi/features/knowledge/memory/) để quản lý kiến thức và bộ nhớ.

@@ -2,6 +2,7 @@
 title: "Wiki"
 sidebar:
   hidden: true
+aiGenerated: true
 ---
 
 <!-- Hidden top-level folder (no navbar entry): sidebar.hidden hides the whole wiki

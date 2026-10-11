@@ -1,5 +1,6 @@
 ---
 title: "Strict Chat-Completion Compatibility"
+aiGenerated: true
 ---
 
 Different LLM provider APIs enforce conflicting message structure requirements. TomoriBot normalizes role alternation, prefix completion, and assistant media behind a shared seam in `src/providers/utils/strictChatCompat.ts` so built-in and custom-endpoint proxies can communicate with strict backends.

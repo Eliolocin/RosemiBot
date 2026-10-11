@@ -2,6 +2,7 @@
 title: "Tools & Extensions"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Beyond chatting, TomoriBot can call tools to search the web, read documents, generate media,

@@ -2,6 +2,7 @@
 title: "whisper.cpp语音转写"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 使用 [whisper.cpp](https://github.com/ggerganov/whisper.cpp) 为TomoriBot运行高性能、轻量级的语音转文本。

@@ -2,6 +2,7 @@
 title: "セットアップ: slop-guard"
 sidebar:
   order: 8
+aiGenerated: true
 ---
 
 ルールベースの文章校正ツールである [slop-guard](https://github.com/eric-tramel/slop-guard) を、[下書きレビュー](/ja/features/chatting-personality/behavior-tweaking/#response-drafting) のルールチェッカーとして実行します。保留された各返答を定型的な執筆パターンについてスコアリングし、レビュアーにレポートを渡します。チェックはルールベースで行われるため、トークンを消費しません。

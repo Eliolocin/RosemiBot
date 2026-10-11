@@ -12,6 +12,7 @@ head:
 description: "在一个Discord服务器里运行多个AI伙伴。每个人格都有自己的头像、触发设置和说话风格。"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot的名称、头像、性格、说话风格与行为都保存在人格中。你可以同时使用多个人格，让每个角色通过自己的触发词与Webhook头像参与对话。这一页介绍人格的行为；知识与记忆请见[记忆](/zh-CN/features/knowledge/memory/)。

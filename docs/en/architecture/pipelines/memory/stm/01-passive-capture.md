@@ -1,5 +1,6 @@
 ---
 title: "STM 01: Passive Capture"
+aiGenerated: true
 ---
 
 Passive capture records completed dialogue turns into the in-process short-term memory cache immediately after generation finishes.

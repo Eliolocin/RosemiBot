@@ -1,5 +1,6 @@
 ---
 title: "02.8: RAG Documents"
+aiGenerated: true
 ---
 
 The RAG document contributor injects relevant text chunks from server-uploaded documents into the prompt using vector similarity retrieval.

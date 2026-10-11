@@ -2,6 +2,7 @@
 title: "Refactor Record"
 sidebar:
   order: 99
+aiGenerated: true
 ---
 
 Historical record of the plugin-architecture-prerequisite refactor (`refactor/plugin-architecture` branch, Phases 1-5.5e). Covers module restructuring decisions, behavioral verification results, DB layer reorganization, and cache invalidation ownership after the repository migration.

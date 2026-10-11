@@ -1,5 +1,6 @@
 ---
 title: "SillyTavern Preset System"
+aiGenerated: true
 ---
 
 SillyTavern presets are JSON configurations that control prompt node ordering, custom prompt

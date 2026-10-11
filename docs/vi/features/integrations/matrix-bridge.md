@@ -2,6 +2,7 @@
 title: "Cầu nối Matrix"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Kết nối phòng Ma trận với kênh Discord để mọi người có thể trò chuyện trên cả hai nền tảng. Tin nhắn được gửi từ Matrix xuất hiện trong Discord dưới dạng tin nhắn webhook và TomoriBot trả lời trực tiếp vào phòng Matrix.

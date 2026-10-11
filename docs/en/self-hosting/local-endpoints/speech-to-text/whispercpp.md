@@ -2,6 +2,7 @@
 title: "whisper.cpp Transcription"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 Run high-performance, lightweight speech-to-text for TomoriBot using [whisper.cpp](https://github.com/ggerganov/whisper.cpp).

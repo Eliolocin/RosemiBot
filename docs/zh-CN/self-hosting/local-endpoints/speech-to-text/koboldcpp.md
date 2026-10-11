@@ -2,6 +2,7 @@
 title: "KoboldCPP语音转写"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 使用现有的 [KoboldCPP](https://github.com/LostRuins/koboldcpp) 实例转录TomoriBot中的音频附件和语音消息。

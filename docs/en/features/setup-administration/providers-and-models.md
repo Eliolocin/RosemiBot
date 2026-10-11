@@ -2,6 +2,7 @@
 title: "Providers & Models"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot connects to external AI providers rather than hosting a built-in model. You can

@@ -2,6 +2,7 @@
 title: "Ajuste de Comportamento"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 Você pode ajustar o que a TomoriBot pode fazer e como ela gera respostas em `/config`, incluindo a página de permissões. Para personalidade, veja [Múltiplas personas](/pt-BR/features/chatting-personality/multiple-personas/); para conhecimento, veja [Memória](/pt-BR/features/knowledge/memory/). Esta página cobre as configurações mais comuns.

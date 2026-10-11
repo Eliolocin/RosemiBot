@@ -2,6 +2,7 @@
 title: "Age-Restricted Commands"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot keeps its adult-only `/nsfw` command category behind Discord's built-in age gate,

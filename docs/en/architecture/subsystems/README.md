@@ -4,6 +4,7 @@ sidebar:
   label: "Overview"
   groupLabel: "Subsystems"
   order: 30
+aiGenerated: true
 ---
 
 Subsystem documentation describes cross-cutting services and persistent domain capabilities that

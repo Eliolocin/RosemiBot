@@ -1,5 +1,6 @@
 ---
 title: "LTM 02: Memory Update & Delete"
+aiGenerated: true
 ---
 
 The memory update and delete stage handles model-initiated modifications or removals of existing persistent memories using the integer identifier shown in prompt context.

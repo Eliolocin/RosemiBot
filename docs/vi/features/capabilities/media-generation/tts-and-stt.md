@@ -2,6 +2,7 @@
 title: "Giọng nói: TTS & STT"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot có thể nói và nghe trong Discord: gửi câu trả lời bằng giọng nói bằng tính năng chuyển văn bản thành giọng nói (TTS) và chuyển âm tin nhắn sang ngữ cảnh hội thoại bằng tính năng chuyển lời nói thành văn bản (STT).

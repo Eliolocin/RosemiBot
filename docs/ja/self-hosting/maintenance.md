@@ -2,6 +2,7 @@
 title: "メンテナンスとバックアップ"
 sidebar:
   order: 5
+aiGenerated: true
 ---
 
 CLIメンテナンススクリプトを使用してセルフホスト型TomoriBotインスタンスを管理し、コードの更新、データのバックアップまたは復元、暗号化キーのローテーション、環境変数の検査を行います。ホスト端末またはDocker環境からこれらのコマンドを実行します。Discord内のデータのエクスポートと削除については、[データ処理](/ja/features/knowledge/data-handling/) を参照してください。

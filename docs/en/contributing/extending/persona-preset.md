@@ -2,6 +2,7 @@
 title: "Adding a Persona Preset"
 sidebar:
   order: 10
+aiGenerated: true
 ---
 
 How to add an official persona preset to the seed catalog. Locale variants of an existing preset are

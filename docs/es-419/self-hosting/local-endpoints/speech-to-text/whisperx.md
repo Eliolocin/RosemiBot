@@ -2,6 +2,7 @@
 title: "Transcripción de WhisperX"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Configura conversión de voz a texto local y precisa para TomoriBot utilizando el servidor [WhisperX](https://github.com/m-bain/whisperX) incluido. WhisperX proporciona una transcripción de audio rápida con alineación a nivel de palabra.

@@ -2,6 +2,7 @@
 title: "設定：本機MCP伺服器"
 sidebar:
   order: 6
+aiGenerated: true
 ---
 
 將TomoriBot連接到在本機或專用網路上執行的Model Context Protocol ([MCP](https://modelcontextprotocol.io/)) 伺服器，以提供自訂本機工具。

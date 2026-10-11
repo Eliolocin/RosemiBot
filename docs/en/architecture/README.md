@@ -4,6 +4,7 @@ sidebar:
   label: "Overview"
   groupLabel: "Architecture"
   order: 5
+aiGenerated: true
 ---
 
 TomoriBot is a TypeScript and Bun Discord AI chatbot focused on configurable personalities, memory,

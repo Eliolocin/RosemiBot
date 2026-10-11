@@ -2,6 +2,7 @@
 title: "データ処理"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 Discordスラッシュコマンドを使用して、設定、メモリ、ペルソナをエクスポート、バックアップ、インポート、または削除します。サービス条件とプライバシーの詳細については、`/legal terms-of-service`および`/legal privacy-policy`を参照してください。

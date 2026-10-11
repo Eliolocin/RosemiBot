@@ -1,5 +1,6 @@
 ---
 title: "06.3: Generation Turn"
+aiGenerated: true
 ---
 
 The generation stage executes the model request for a persona turn. It manages primary and fallback

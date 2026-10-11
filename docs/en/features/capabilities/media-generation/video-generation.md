@@ -2,6 +2,7 @@
 title: "Video Generation"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot can generate short videos from a text prompt or by animating an existing image.

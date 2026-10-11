@@ -2,6 +2,7 @@
 title: "Herramientas y extensiones"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Más allá del chat, TomoriBot puede llamar a herramientas para buscar en la web, leer documentos, generar medios, configurar recordatorios e interactuar con mensajes de Discord. Ella decide cuándo usarlos según la conversación. Esta página cubre las herramientas integradas, cómo ampliarla con servidores MCP y cómo mantener las indicaciones optimizadas con el modo de herramienta deliberada.

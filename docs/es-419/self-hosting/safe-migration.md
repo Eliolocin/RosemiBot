@@ -2,6 +2,7 @@
 title: "Guía de migración segura"
 sidebar:
   order: 6
+aiGenerated: true
 ---
 
 Esta traducción se proporciona para tu comodidad. La versión en inglés es la autoritativa.

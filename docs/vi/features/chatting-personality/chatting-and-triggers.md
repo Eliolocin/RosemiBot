@@ -2,6 +2,7 @@
 title: "Trò chuyện & từ kích hoạt"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot phản hồi khi được triệu tập. Trang này trình bày các cách có thể kích hoạt cô ấy, cách bật trò chuyện rảnh tay bằng trình kích hoạt tự động và cách ngăn chặn việc vô tình kích hoạt bằng Chế độ kích hoạt có chủ ý.

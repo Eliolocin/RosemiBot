@@ -1,5 +1,6 @@
 ---
 title: "03: Enhanced Context Restart"
+aiGenerated: true
 ---
 
 `handleEnhancedContextRestart` intercepts `context_restart_*` payloads from successful tool results.

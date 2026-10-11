@@ -2,6 +2,7 @@
 title: "Nhà cung cấp và model"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot kết nối với các nhà cung cấp AI bên ngoài thay vì lưu trữ model tích hợp sẵn. Bạn có thể kết nối các dịch vụ được lưu trữ như Google Gemini, OpenRouter và NovelAI hoặc trỏ cô ấy đến các điểm cuối self-hosting cục bộ. Bạn cần ít nhất một nhà cung cấp để bắt đầu trò chuyện.

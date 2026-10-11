@@ -12,6 +12,7 @@ head:
 description: "Run multiple AI companions in one Discord server. Custom personas with their own avatars, triggers, and speaking styles."
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 La personalidad de TomoriBot se guarda en una persona: su nombre, avatar, rasgos, forma de hablar y comportamiento. Puedes usar varias personas a la vez, cada una como un personaje distinto con sus propias palabras de activación y avatar de webhook. Esta página explica cómo se comportan las personas. Para hechos y recuerdos, consulta [Memoria](/es-419/features/knowledge/memory/).

@@ -2,6 +2,7 @@
 title: "Ferramentas & Extensões"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Além do bate-papo, o TomoriBot pode chamar ferramentas para pesquisar na web, ler documentos, gerar mídia, definir lembretes e interagir com mensagens do Discord. Ela decide quando usá-los com base na conversa. Esta página aborda ferramentas integradas, como estendê-la com servidores MCP e como manter os prompts simples com o modo de ferramenta deliberada.

@@ -2,6 +2,7 @@
 title: "Adding a DB Column"
 sidebar:
   order: 10
+aiGenerated: true
 ---
 
 How to add a column to an existing table.

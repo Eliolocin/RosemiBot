@@ -2,6 +2,7 @@
 title: "Manejo de datos"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 Exporta, respalda, importa o elimina tus ajustes, recuerdos y personas con los comandos de barra de Discord. Para conocer las condiciones del servicio y la privacidad, consulta `/legal terms-of-service` y `/legal privacy-policy`.

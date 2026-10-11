@@ -1,5 +1,6 @@
 ---
 title: "Security & Privacy"
+aiGenerated: true
 ---
 
 The security and privacy subsystem enforces trust boundaries across environment secrets, database encryption, remote network fetches, and Discord user privacy. It isolates infrastructure credentials, encrypts API keys at rest with versioned keys, guards against SSRF attacks on user-supplied URLs, and protects user data through tiered privacy levels and server blacklists.

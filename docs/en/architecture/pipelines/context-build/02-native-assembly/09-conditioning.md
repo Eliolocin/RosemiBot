@@ -1,5 +1,6 @@
 ---
 title: "02.9: Conditioning"
+aiGenerated: true
 ---
 
 The conditioning contributor injects feedback memories detailing behaviors the persona was thanked or corrected for in past interactions.

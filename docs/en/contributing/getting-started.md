@@ -2,6 +2,7 @@
 title: "Getting Started with TomoriBot Development"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 How to run TomoriBot locally with Bun and PostgreSQL for development.

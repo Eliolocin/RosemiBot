@@ -1,5 +1,6 @@
 ---
 title: "Thinking Level"
+aiGenerated: true
 ---
 
 The `thinking_level` setting is a provider-scoped preference (`auto`, `none`, `low`, `medium`, `high`) configured in `/config` > Models > Text Samplers & Parameters or `/personal config`. It translates abstract reasoning effort into provider-specific request parameters at runtime, leaving providers without request-side controls unaffected.

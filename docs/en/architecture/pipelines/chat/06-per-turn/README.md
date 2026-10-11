@@ -3,6 +3,7 @@ title: "06: Per-Turn Loop"
 sidebar:
   label: "Overview"
   groupLabel: "06: Per-Turn"
+aiGenerated: true
 ---
 
 The per-turn loop executes inside `runWithChannelLock()`. It iterates through each planned persona turn,

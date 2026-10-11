@@ -2,6 +2,7 @@
 title: Local Grafana Monitoring
 sidebar:
   order: 7
+aiGenerated: true
 ---
 
 Monitor your local TomoriBot instance with prebuilt Grafana dashboards to track memory usage, cache sizes, token consumption, and command traffic.

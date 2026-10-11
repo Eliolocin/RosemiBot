@@ -1,5 +1,6 @@
 ---
 title: "03: Chat Disposition"
+aiGenerated: true
 ---
 
 The disposition stage handles non-runnable admission outcomes. It emits structured logs for ignored,

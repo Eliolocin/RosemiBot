@@ -2,6 +2,7 @@
 title: "Testing DB Changes"
 sidebar:
   order: 30
+aiGenerated: true
 ---
 
 How to run and add database regression tests. `bun run test` creates a disposable Postgres database,

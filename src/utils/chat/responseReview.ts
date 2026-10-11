@@ -267,7 +267,7 @@ function compactToolCatalog(tools: ProviderConfig["tools"] = []): ReviewerToolEn
 }
 
 /** Why a reviewer packet could not be built; traced as the unavailable category. */
-export type ReviewerPacketGap =
+type ReviewerPacketGap =
   | "review_inactive"
   | "candidate_credential"
   | "tool_arguments_redacted"

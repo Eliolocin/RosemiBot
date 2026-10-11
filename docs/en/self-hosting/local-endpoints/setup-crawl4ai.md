@@ -2,6 +2,7 @@
 title: "Setup: Crawl4AI"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 Render JavaScript-heavy web pages into clean Markdown for TomoriBot using a local [Crawl4AI](https://github.com/unclecode/crawl4ai) server.

@@ -1,5 +1,6 @@
 ---
 title: "MOSS-TTS"
+aiGenerated: true
 ---
 
 Đánh giá cục bộ việc sao chép giọng nói và thiết kế giọng nói bằng ngôn ngữ tự nhiên thông qua điểm cuối giọng nói thống nhất bằng cách sử dụng [MOSS-TTS](https://github.com/OpenMOSS/MOSS-TTS).

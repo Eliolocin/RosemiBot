@@ -1,5 +1,6 @@
 ---
 title: "04: Orchestrator State Machine"
+aiGenerated: true
 ---
 
 The orchestrator state machine drives the provider generator loop, routes normalized chunks to downstream

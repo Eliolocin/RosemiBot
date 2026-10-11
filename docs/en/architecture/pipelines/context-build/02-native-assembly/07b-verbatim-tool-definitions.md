@@ -1,5 +1,6 @@
 ---
 title: "02.7b: Verbatim Tool Definitions"
+aiGenerated: true
 ---
 
 The verbatim tool definitions contributor emits an in-band JSON dump of active tool schemas for models operating under verbatim tool-calling mode.

@@ -2,6 +2,7 @@
 title: "whisper.cppの文字起こし"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 [whisper.cpp](https://github.com/ggerganov/whisper.cpp) を使用して、TomoriBot向けの高性能かつ軽量の音声認識を実行します。

@@ -2,6 +2,7 @@
 title: "Manuseio de Dados"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 Exporte, faça backup, importe ou exclua suas configurações, memórias e personas usando comandos de barra Discord. Para termos de serviço e detalhes de privacidade, consulte `/legal terms-of-service` e `/legal privacy-policy`.

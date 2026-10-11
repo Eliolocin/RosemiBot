@@ -1,5 +1,6 @@
 ---
 title: "01: Preset Routing"
+aiGenerated: true
 ---
 
 The routing stage determines whether the LLM prompt follows TomoriBot's native fixed-order layout or is rearranged through an active SillyTavern preset.

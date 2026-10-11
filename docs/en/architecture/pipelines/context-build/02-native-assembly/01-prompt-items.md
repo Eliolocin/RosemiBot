@@ -1,5 +1,6 @@
 ---
 title: "02.1: Prompt Items"
+aiGenerated: true
 ---
 
 Prompt items form the top of the context list, establishing the LLM's identity framing and behavioral rules.

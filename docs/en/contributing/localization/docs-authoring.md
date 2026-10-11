@@ -2,6 +2,7 @@
 title: "Docs Authoring Conventions"
 sidebar:
   order: 20
+aiGenerated: true
 ---
 
 Conventions for adding, moving, and formatting pages on the TomoriBot docs site.
@@ -133,13 +134,15 @@ sidebar:
 | `sidebar.groupLabel` | Folder label, set on that folder's README |
 | `sidebar.order` | Order among siblings |
 | `sidebar.hidden` | Hide a page or top-level folder |
-| `aiGenerated` | `false` marks human-reviewed substantive content and removes the draft disclaimer |
+| `aiGenerated` | `true` marks substantive content nobody has reviewed yet and shows the draft disclaimer |
 
 The sidebar builder reads strings, numbers, booleans, and one nested level. The disclaimer is added
-at render time by `MarkdownContent.astro`, never written into Markdown. Human review here covers
-substantive content: the page's claims, instructions, and meaning. Every translated page must mirror
-its English source's `aiGenerated` field, including its absence. AI translation alone does not change
-this status, and the field does not certify translation quality. See
+at render time by `MarkdownContent.astro`, never written into Markdown. Review here covers
+substantive content: the page's claims, instructions, and meaning. A new page that an AI drafted
+needs `aiGenerated: true`; the default is no disclaimer. Remove the field once a person has reviewed
+the page. Every translated page must mirror its English source's `aiGenerated` field, including its
+absence. AI translation alone does not change this status, and the field does not certify
+translation quality. See
 [Docs Site Localization](/contributing/localization/docs-site/#review-state).
 
 ## Search and `llms.txt`
@@ -159,6 +162,11 @@ this status, and the field does not certify translation quality. See
 ## Links
 
 Link between pages with root-absolute URLs that end in a slash: `[Manual Setup](/self-hosting/manual-setup/)`.
+Pages deploy only under a locale prefix, so `remarkLocaleLinks` adds it at build time: the page's
+own locale when that page is translated, otherwise `/en/`. A link that already starts with a locale
+is left as written. Each English page also gets a redirect from its bare path, so older links and
+bookmarks keep working.
+
 Pages deploy as directories, and relative links are not rewritten, so `./setup-wizard` on
 `/self-hosting/manual-setup/` points at `/self-hosting/manual-setup/setup-wizard`. Only `README`
 index pages, which sit at their directory root, may use `./child` links.

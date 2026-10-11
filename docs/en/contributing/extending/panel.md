@@ -2,6 +2,7 @@
 title: "Adding a Panel or Panel Button"
 sidebar:
   order: 10
+aiGenerated: true
 ---
 
 How to build a Components V2 panel that users click through, and how to add a button or select to an

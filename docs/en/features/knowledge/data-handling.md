@@ -2,6 +2,7 @@
 title: "Data Handling"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 Export, back up, import, or delete your settings, memories, and personas using Discord slash

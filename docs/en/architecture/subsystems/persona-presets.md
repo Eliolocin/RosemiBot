@@ -1,5 +1,6 @@
 ---
 title: "Persona Presets"
+aiGenerated: true
 ---
 
 Official persona presets are seeded from typed catalog definitions under `src/db/seed/catalog/personas/` into `persona_presets`. They provide copy-on-write pointers that receive upstream catalog updates until local customization forks them into independent rows.

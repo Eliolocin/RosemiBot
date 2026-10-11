@@ -2,6 +2,7 @@
 title: "Transcrição com KoboldCPP"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 Use sua instância [KoboldCPP](https://github.com/LostRuins/koboldcpp) existente para transcrever anexos de áudio e mensagens de voz em TomoriBot.

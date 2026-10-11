@@ -2,6 +2,7 @@
 title: "Transcrição WhisperX"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 Configure fala para texto local e precisa para TomoriBot usando o servidor [WhisperX](https://github.com/m-bain/whisperX) incluído. WhisperX fornece transcrição de áudio rápida com alinhamento em nível de palavra.

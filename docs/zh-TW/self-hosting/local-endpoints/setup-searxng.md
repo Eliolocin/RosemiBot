@@ -2,6 +2,7 @@
 title: "設定：SearXNG"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 使用 [SearXNG](https://docs.searxng.org/) 將私有、自架的Web搜尋新增至TomoriBot。

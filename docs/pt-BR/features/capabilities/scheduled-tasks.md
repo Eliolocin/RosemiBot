@@ -2,6 +2,7 @@
 title: "Tarefas Agendadas"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 Defina lembretes para você mesmo ou agende anúncios recorrentes sem sair do chat. Pergunte diretamente ao bot e ela criará a programação para você. As tarefas agendadas pertencem à persona ativa.

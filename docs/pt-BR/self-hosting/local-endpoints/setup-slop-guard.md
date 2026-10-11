@@ -2,6 +2,7 @@
 title: "Configuração: slop-guard"
 sidebar:
   order: 8
+aiGenerated: true
 ---
 
 Execute o [slop-guard](https://github.com/eric-tramel/slop-guard), um verificador de prosa baseado em regras, como o verificador de regras para a [Revisão de respostas](/pt-BR/features/chatting-personality/behavior-tweaking/#response-drafting). Ele pontua cada resposta retida em busca de padrões de escrita repetitivos e passa o relatório ao revisor. A verificação é baseada em regras, portanto não consome tokens.

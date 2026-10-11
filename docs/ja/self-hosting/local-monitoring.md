@@ -2,6 +2,7 @@
 title: "ローカルのGrafanaモニタリング"
 sidebar:
   order: 7
+aiGenerated: true
 ---
 
 事前構築されたGrafanaダッシュボードを使用してローカルのTomoriBotインスタンスを監視し、メモリ使用量、キャッシュサイズ、トークン消費量、コマンドトラフィックを追跡します。

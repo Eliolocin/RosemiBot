@@ -2,6 +2,7 @@
 title: "資料處理"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 使用Discord斜線指令匯出、備份、匯入或刪除你的設定、記憶和人格。有關服務條款和隱私詳細信息，請參閱`/legal terms-of-service`和`/legal privacy-policy`。

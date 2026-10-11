@@ -2,6 +2,7 @@
 title: "Code Comment Policy"
 sidebar:
   order: 40
+aiGenerated: true
 ---
 
 A comment carries a fact the code cannot state. Before writing one, name the criterion that

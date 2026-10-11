@@ -4,6 +4,7 @@ sidebar:
   label: "Overview"
   groupLabel: "LTM"
   order: 520
+aiGenerated: true
 ---
 
 The long-term memory (LTM) sub-pipeline manages durable facts and preferences learned by the model. It handles database persistence and cache invalidation initiated by tool calls during generation.

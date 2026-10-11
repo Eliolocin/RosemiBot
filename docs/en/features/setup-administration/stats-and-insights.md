@@ -2,6 +2,7 @@
 title: "Stats & Insights"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 TomoriBot tracks interaction metrics so you can inspect activity trends, model token usage,

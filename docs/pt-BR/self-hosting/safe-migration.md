@@ -2,6 +2,7 @@
 title: "Guia de Migração Segura"
 sidebar:
   order: 6
+aiGenerated: true
 ---
 
 Quando você faz `git pull` de um código novo e reinicia a TomoriBot, o bot executa automaticamente as migrações de esquema do banco de dados na inicialização. Isso é poderoso (significa que você não precisa gerenciar atualizações SQL manualmente) mas também significa que operações destrutivas podem afetar silenciosamente seus dados. Este guia mostra como se proteger antes de fazer um pull.

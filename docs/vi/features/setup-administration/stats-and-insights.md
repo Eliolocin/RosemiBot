@@ -2,6 +2,7 @@
 title: "Thống kê và thông tin chuyên sâu"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 TomoriBot theo dõi số liệu tương tác để bạn có thể kiểm tra xu hướng hoạt động, mức sử dụng mã thông báo model, các tính cách phổ biến và lệnh gọi công cụ hoặc hiển thị thẻ tóm tắt đồ họa thông tin có thể chia sẻ.

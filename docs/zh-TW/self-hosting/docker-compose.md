@@ -2,6 +2,7 @@
 title: "Docker Compose"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 Docker Compose在容器中一起運行TomoriBot和PostgreSQL。它是與[安裝精靈](/zh-TW/self-hosting/setup-wizard/)和[手動安裝](/zh-TW/self-hosting/manual-setup/)並列的第三個安裝選項：當你想要執行Docker中的所有內容而不在主機系統上安裝Bun或PostgreSQL時，請選擇它。它繞過互動式安裝精靈並自動配置資料庫連接。

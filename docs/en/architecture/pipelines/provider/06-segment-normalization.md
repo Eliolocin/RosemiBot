@@ -1,5 +1,6 @@
 ---
 title: "06: Segment Normalization"
+aiGenerated: true
 ---
 
 Segment normalization transforms a flushed text segment by resolving render modifiers, cleaning

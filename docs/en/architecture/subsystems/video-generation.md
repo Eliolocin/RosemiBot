@@ -1,5 +1,6 @@
 ---
 title: "Video Generation"
+aiGenerated: true
 ---
 
 The video generation subsystem coordinates asynchronous AI video generation across external providers and custom endpoints for the `/generate video` command and the `generate_video` built-in tool.

@@ -1,5 +1,6 @@
 ---
 title: "NovelAI GLM 4.6 Tool Calling"
+aiGenerated: true
 ---
 
 NovelAI's GLM 4.6 model lacks a native API for structured function calling. TomoriBot implements

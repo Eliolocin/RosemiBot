@@ -2,6 +2,7 @@
 title: "安全迁移指南"
 sidebar:
   order: 6
+aiGenerated: true
 ---
 
 当你`git pull`拉到新代码并重启TomoriBot时，bot会在启动时自动运行数据库结构迁移。这很强大：意味着你不必手动管理SQL更新，但也意味着破坏性操作可能悄无声息地影响你的数据。这份指南告诉你拉取之前该怎么保护自己。

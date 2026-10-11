@@ -2,6 +2,7 @@
 title: "設定：slop-guard"
 sidebar:
   order: 8
+aiGenerated: true
 ---
 
 將基於規則的文章檢查器 [slop-guard](https://github.com/eric-tramel/slop-guard) 作為 [回覆審查](/zh-TW/features/chatting-personality/behavior-tweaking/#response-drafting) 的規則檢查器運行。它會對每個暫扣的回覆進行制式寫作模式的評分，並將報告傳遞給審查者。此檢查基於規則，因此不消耗 token。

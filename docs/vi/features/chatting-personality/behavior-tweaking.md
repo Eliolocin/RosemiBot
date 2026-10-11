@@ -2,6 +2,7 @@
 title: "Tinh chỉnh hành vi"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 Bạn có thể điều chỉnh các hành động TomoriBot được phép thực hiện và cách bot tạo câu trả lời trong `/config`, bao gồm trang quyền hạn. Xem [Nhiều persona](/vi/features/chatting-personality/multiple-personas/) để chỉnh tính cách và [Bộ nhớ](/vi/features/knowledge/memory/) để chỉnh kiến thức. Trang này giới thiệu các cài đặt thường dùng.

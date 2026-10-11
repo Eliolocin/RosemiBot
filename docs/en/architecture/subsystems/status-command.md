@@ -1,5 +1,6 @@
 ---
 title: "Status Command"
+aiGenerated: true
 ---
 
 The `/status` slash command provides a read-only snapshot dashboard for durable personal, server, and persona configuration state. It lets users inspect active settings without opening separate management commands.

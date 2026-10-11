@@ -2,6 +2,7 @@
 title: "Thiết lập: slop-guard"
 sidebar:
   order: 8
+aiGenerated: true
 ---
 
 Chạy [slop-guard](https://github.com/eric-tramel/slop-guard), một trình kiểm tra văn phong dựa trên quy tắc, làm công cụ kiểm tra quy tắc cho [Duyệt phản hồi](/vi/features/chatting-personality/behavior-tweaking/#response-drafting). Nó chấm điểm từng câu trả lời bị giữ lại theo các khuôn mẫu hành văn rập khuôn và chuyển báo cáo cho người duyệt. Việc kiểm tra dựa trên quy tắc, do đó không tiêu tốn token.

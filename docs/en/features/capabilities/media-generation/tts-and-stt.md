@@ -2,6 +2,7 @@
 title: "Voice: TTS & STT"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBot can speak and listen in Discord: send voice replies with text-to-speech (TTS),

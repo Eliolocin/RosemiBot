@@ -2,6 +2,7 @@
 title: "コマンドリファレンス"
 sidebar:
   order: 6
+aiGenerated: true
 ---
 
 <!--

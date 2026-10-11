@@ -2,6 +2,7 @@
 title: "Dependency Security Policy"
 sidebar:
   order: 40
+aiGenerated: true
 ---
 
 How to fix a dependency advisory, where each security gate runs, and how to record an advisory you
@@ -55,6 +56,11 @@ latest and affected), and the newest `starlight-llms-txt` still depends on `micr
 written in `apps/docs/astro.config.mts`, never user input. The image prunes the docs workspace with
 `--production`, so Trivy never sees it. Remove the entry when `braces` publishes a fix (then add an
 override floor) or `starlight-llms-txt` drops `micromatch`.
+- **`GHSA-w5hq-g745-h8pq`, uuid (`bun audit` only, moderate)**: `uuid` 8 and 9 are pinned by
+`gaxios` (^9.0.1) and `@google-cloud/storage` (^8.0.0), so a global override to a patched release
+breaks the `@google-cloud/storage` import (`bun run check-runtime-imports` guards this). The flaw needs
+`v3`, `v5`, or `v6` called with a caller-supplied `buf`; those libraries only call `v4` without one.
+Remove the entry when `gaxios` and `@google-cloud/storage` declare `uuid` 11 or newer.
 
 ## Adding an exception
 

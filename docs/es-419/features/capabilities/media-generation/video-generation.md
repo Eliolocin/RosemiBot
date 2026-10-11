@@ -2,6 +2,7 @@
 title: "Generación de videos"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBot puede generar videos cortos a partir de un mensaje de texto o animando una imagen existente. Utilice `/generate video` o pregúntele directamente en el chat.

@@ -2,6 +2,7 @@
 title: "Chatting & Triggers"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 TomoriBot responds when summoned. This page covers the ways she can be triggered,

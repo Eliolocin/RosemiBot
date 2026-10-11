@@ -1,5 +1,6 @@
 ---
 title: "Matrix Bridge"
+aiGenerated: true
 ---
 
 TomoriBot includes an embedded Matrix appservice bridge that connects Matrix rooms to Discord

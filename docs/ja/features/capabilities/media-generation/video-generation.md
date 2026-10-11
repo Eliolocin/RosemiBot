@@ -2,6 +2,7 @@
 title: "動画生成"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 TomoriBotは、テキストプロンプトから、または既存の画像をアニメーション化することによって、短いビデオを生成できます。`/generate video`を使用するか、チャットで直接質問してください。

@@ -1,5 +1,6 @@
 ---
 title: "MOSS-TTS"
+aiGenerated: true
 ---
 
 Evalúe la clonación de voz y el diseño de voz en lenguaje natural localmente a través de un punto final de voz unificado usando [MOSS-TTS](https://github.com/OpenMOSS/MOSS-TTS).

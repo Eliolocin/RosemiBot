@@ -1,3 +1,4 @@
+import { buildExampleJsonFromSchema } from "@/providers/utils/structuredOutput";
 import { readStructuredResponse } from "@/providers/utils/structuredReview";
 import { CUSTOM_PROVIDER_PLACEHOLDER_API_KEY, normalizeCustomApiUrl } from "@/providers/custom/customStreamAdapter";
 import { logSanitizedOpenAICompatibleRequest } from "@/providers/openaiCompatible/openaiCompatibleMessageBuilder";
@@ -183,58 +184,6 @@ export function extractCustomResponseText(messageContent: unknown): string {
     .map((part) => part.text)
     .join("")
     .trim();
-}
-
-function buildExampleJsonFromSchema(schema: unknown): unknown {
-  if (!schema || typeof schema !== "object") {
-    return {};
-  }
-
-  const record = schema as Record<string, unknown>;
-
-  if ("const" in record) {
-    return record.const;
-  }
-
-  if (Array.isArray(record.enum) && record.enum.length > 0) {
-    return record.enum[0];
-  }
-
-  // Zod emits discriminated unions as `oneOf`; without this branch the example collapses to `{}`.
-  const variants = record.anyOf ?? record.oneOf;
-  if (Array.isArray(variants) && variants.length > 0) {
-    return buildExampleJsonFromSchema(variants[0]);
-  }
-
-  const schemaType = record.type;
-  if (schemaType === "object") {
-    const properties =
-      record.properties && typeof record.properties === "object" ? (record.properties as Record<string, unknown>) : {};
-    const example: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(properties)) {
-      example[key] = buildExampleJsonFromSchema(value);
-    }
-    return example;
-  }
-
-  if (schemaType === "array") {
-    return [buildExampleJsonFromSchema(record.items)];
-  }
-
-  if (schemaType === "integer" || schemaType === "number") {
-    const minimum = typeof record.minimum === "number" && Number.isFinite(record.minimum) ? record.minimum : 0;
-    return minimum;
-  }
-
-  if (schemaType === "boolean") {
-    return false;
-  }
-
-  if (schemaType === "string") {
-    return "<string>";
-  }
-
-  return {};
 }
 
 export function buildSchemaSteeredSystemPrompt(

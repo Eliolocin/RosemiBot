@@ -2,6 +2,7 @@
 title: "工具与扩展"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
 除了聊天之外，TomoriBot还可以调用工具来搜索网络、阅读文档、生成媒体、设置提醒以及与Discord消息交互。她根据对话决定何时使用它们。本页介绍了内置工具、如何使用MCP服务器扩展她，以及如何使用Deliberate Tool模式保持提示精简。

@@ -2,6 +2,7 @@
 title: "振る舞いの調整"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
 TomoriBotに許可する操作や返答の生成方法は、`/config`の設定で調整できます。性格は[複数のペルソナ](/ja/features/chatting-personality/multiple-personas/)、知識は[記憶](/ja/features/knowledge/memory/)のページを参照してください。このページでは、よく使う動作設定を紹介します。

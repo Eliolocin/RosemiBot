@@ -1,5 +1,6 @@
 ---
 title: "LTM 01: Memory Creation"
+aiGenerated: true
 ---
 
 The memory creation stage handles model-initiated persistence of new facts, preferences, or instructions into the database.

@@ -2,6 +2,7 @@
 title: "Xử lý dữ liệu"
 sidebar:
   order: 4
+aiGenerated: true
 ---
 
 Xuất, sao lưu, nhập hoặc xóa cài đặt, kỷ niệm và cá tính của bạn bằng lệnh gạch chéo Discord. Để biết điều khoản dịch vụ và chi tiết về quyền riêng tư, hãy xem `/legal terms-of-service` và `/legal privacy-policy`.

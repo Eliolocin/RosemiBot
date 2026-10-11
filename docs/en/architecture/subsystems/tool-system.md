@@ -1,5 +1,6 @@
 ---
 title: "Tool System"
+aiGenerated: true
 ---
 
 The tool system owns tool registration, availability filtering, dynamic schema assembly, and execution dispatch across built-in tools and guild Model Context Protocol (MCP) integrations. The bot starts no local or stdio MCP server. Model orchestration, multi-turn tool loops, and result serialization belong to the [tool loop](/architecture/pipelines/tool-loop/).

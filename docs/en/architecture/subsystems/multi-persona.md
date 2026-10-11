@@ -1,5 +1,6 @@
 ---
 title: "Multi-Persona System"
+aiGenerated: true
 ---
 
 The multi-persona subsystem manages server-scoped character identities, coordinating one main persona and multiple alter personas. It governs identity persistence, single-owner trigger routing, sequential reply queuing, and webhook-based chat rendering while sharing conversation history and server configuration.

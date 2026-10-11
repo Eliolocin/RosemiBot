@@ -4,6 +4,7 @@ sidebar:
   label: "Overview"
   groupLabel: "Context Build"
   order: 200
+aiGenerated: true
 ---
 
 The context-build pipeline assembles system messages, memories, persona instructions, sample dialogues, and recent conversation turns into structured context items for an LLM provider.
