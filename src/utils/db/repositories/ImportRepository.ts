@@ -125,6 +125,7 @@ const WORKSPACE_SECTION_TABLES: Record<WorkspaceConfigSection, readonly SectionT
         "response_decision_model_id",
         "response_reviewer_prompt",
         "response_rule_checker_ref",
+        "response_tool_review_enabled",
       ],
     },
     { tableName: "server_welcome_configs", fields: ["welcome_prompt"] },
@@ -886,6 +887,9 @@ class ImportRepository {
         response_decision_model_id: config.response_decision_model_id,
         response_reviewer_prompt: config.response_reviewer_prompt,
         response_rule_checker_ref: config.response_rule_checker_ref,
+        ...(config.response_tool_review_enabled !== undefined && {
+          response_tool_review_enabled: config.response_tool_review_enabled,
+        }),
         ...(hasMaxOutputTokens && { llm_max_output_tokens: config.llm_max_output_tokens ?? null }),
         ...(config.context_note !== undefined && { context_note: config.context_note }),
         ...(config.context_note_depth !== undefined && { context_note_depth: config.context_note_depth }),

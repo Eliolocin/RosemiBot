@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, it, spyOn } from "bun:test";
 import { Type, type CallableTool } from "@google/genai";
 import type { GuildMcpServerRow } from "@/types/db/schema";
-import { checkResponseRules, validateRuleAnalysis, type RuleCheckState } from "@/utils/chat/responseRuleCheck";
+import { checkResponseRules, parseRuleReport, type RuleCheckState } from "@/utils/chat/responseRuleCheck";
 import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
 import { mcpRepository } from "@/utils/db/repositories";
 import { toolRepository } from "@/utils/db/repositories/ToolRepository";
@@ -33,7 +33,7 @@ const checker: CallableTool = {
   tool: async () => ({
     functionDeclarations: [
       {
-        name: "check_slop",
+        name: "lint_reply",
         parameters: { type: Type.OBJECT, properties: { text: { type: Type.STRING } }, required: ["text"] },
       },
     ],
@@ -49,9 +49,10 @@ const row: GuildMcpServerRow = {
   url: "https://example.com/mcp",
   key_version: 1,
   is_enabled: true,
-  last_discovered_tool_names: ["check_slop"],
+  server_type: "prose_linter",
+  last_discovered_tool_names: ["lint_reply"],
 };
-const reference = { scope: "workspace", registrationId: 7, toolName: "check_slop" } as const;
+const reference = { scope: "workspace", registrationId: 7, toolName: "lint_reply" } as const;
 
 describe("optional response rule evidence", () => {
   const guild = getGuildMcpManager();
@@ -76,41 +77,28 @@ describe("optional response rule evidence", () => {
     for (const spy of [registration, discovery, invoke, errors, info]) spy.mockRestore();
   });
 
-  it("keeps Python code-point spans and rejects invalid shape, sizes, identifiers, numbers and coverage", () => {
-    expect(validateRuleAnalysis(analysis(), prose).offsetConvention).toBe("unicode_code_points");
-    const length = Array.from(prose).length;
-    for (const changed of [
-      { score: NaN },
-      { score: 101 },
-      { density: Infinity },
-      { word_count: -1 },
-      { word_count: 9 },
-      { word_count: length + 1 },
-      { advice: ["x".repeat(1001)] },
-      { violations: Array.from({ length: 65 }, () => analysis().violations[0]) },
-      { violations: [{ ...analysis().violations[0], rule: "PRIVATE arbitrary rule" }] },
-      { violations: [{ ...analysis().violations[0], start: 8, end: 7 }] },
-      { violations: [{ ...analysis().violations[0], end: prose.length }] },
-      { violations: [{ ...analysis().violations[0], start: 0.5 }] },
-      { counts: { bad: NaN } },
-      { source: "PRIVATE_UNEXPECTED" },
-      { advice: Array.from({ length: 64 }, () => "x".repeat(1000)) },
+  it("accepts structured, JSON text or plain text reports and rejects tool errors, media and oversize output", () => {
+    expect(parseRuleReport({ content: [], structuredContent: analysis() })).toEqual(analysis());
+    expect(parseRuleReport({ content: [{ type: "text", text: JSON.stringify(analysis()) }] })).toEqual(analysis());
+    expect(parseRuleReport({ content: [{ type: "text", text: "Line 1: hedge word" }] })).toBe("Line 1: hedge word");
+    expect(parseRuleReport({ content: [{ type: "text", text: "  " }] })).toBeNull();
+    for (const raw of [
+      { isError: true, content: [{ type: "text", text: "PRIVATE_FAILURE" }] },
+      { content: [{ type: "image", data: "", mimeType: "image/png" }] },
+      { content: [{ type: "text", text: "x".repeat(40000) }] },
+      { content: Array.from({ length: 9 }, () => ({ type: "text", text: "x" })) },
     ])
-      expect(() => validateRuleAnalysis({ ...analysis(), ...changed }, prose)).toThrow();
-    expect(validateRuleAnalysis({ ...analysis(), word_count: 2, violations: [] }, "Stay here").coverage).toBe(
-      "short_text",
-    );
-    expect(validateRuleAnalysis({ ...analysis(), violations: [] }, prose).profileVersion).toBeNull();
+      expect(() => parseRuleReport(raw)).toThrow();
   });
 
   it("reuses exact text on the same connection and bounds changed candidates to two calls", async () => {
     const state: RuleCheckState = { calls: 0 };
     const signal = new AbortController().signal;
     expect((await checkResponseRules(42, null, prose, state, signal)).status).toBe("disabled");
-    expect((await checkResponseRules(42, reference, prose, state, signal)).status).toBe("hits");
-    expect((await checkResponseRules(42, reference, prose, state, signal)).status).toBe("hits");
+    expect((await checkResponseRules(42, reference, prose, state, signal)).status).toBe("report");
+    expect((await checkResponseRules(42, reference, prose, state, signal)).status).toBe("report");
     expect(invoke).toHaveBeenCalledTimes(1);
-    expect(invoke.mock.calls[0]?.[1]).toBe(prose);
+    expect(invoke.mock.calls[0]?.slice(1, 3)).toEqual(["lint_reply", prose]);
     await checkResponseRules(42, reference, `${prose} Again.`, state, signal);
     expect((await checkResponseRules(42, reference, `${prose} Finally.`, state, signal)).status).toBe("exhausted");
     expect(invoke).toHaveBeenCalledTimes(2);
@@ -127,12 +115,13 @@ describe("optional response rule evidence", () => {
       [{ ...row, server_id: 99 }],
       [{ ...row, is_enabled: false }],
       [{ ...row, guild_mcp_id: 8 }],
+      [{ ...row, server_type: null }],
     ]) {
       registration.mockResolvedValue({ status: "fresh", configs });
       expect((await checkResponseRules(42, reference, prose, state, signal)).status).toBe("failed");
     }
     expect(invoke).toHaveBeenCalledTimes(1);
-    expect(errors).toHaveBeenCalledTimes(4);
+    expect(errors).toHaveBeenCalledTimes(5);
   });
 
   it("detects removal during discovery and invalidates reuse after connection replacement", async () => {
@@ -152,8 +141,7 @@ describe("optional response rule evidence", () => {
   it("reports transport and malformed checker errors once without private payloads", async () => {
     for (const raw of [
       { isError: true, content: [{ type: "text", text: "PRIVATE_FAILURE" }] },
-      { content: [{ type: "text", text: "PRIVATE_MALFORMED" }] },
-      { content: [], structuredContent: { ...analysis(), score: Infinity } },
+      { content: [{ type: "image", data: "PRIVATE_MEDIA", mimeType: "image/png" }] },
     ]) {
       invoke.mockResolvedValue(raw);
       expect((await checkResponseRules(42, reference, prose, { calls: 0 }, new AbortController().signal)).status).toBe(
@@ -162,7 +150,7 @@ describe("optional response rule evidence", () => {
     }
     invoke.mockRejectedValue(new Error("PRIVATE_PROVIDER_BODY"));
     await checkResponseRules(42, reference, prose, { calls: 0 }, new AbortController().signal);
-    expect(errors).toHaveBeenCalledTimes(4);
+    expect(errors).toHaveBeenCalledTimes(3);
     expect(JSON.stringify([errors.mock.calls, info.mock.calls])).not.toContain("PRIVATE_");
   });
 
@@ -198,7 +186,7 @@ describe("optional response rule evidence", () => {
         });
       else {
         discovery.mockResolvedValue(checker);
-        invoke.mockImplementation(async (_row, _text, signal) => {
+        invoke.mockImplementation(async (_row, _tool, _text, signal) => {
           controller.abort();
           expect(signal.aborted).toBe(true);
           return new Promise(() => {});

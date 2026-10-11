@@ -154,6 +154,11 @@ export async function handleDraftRoutes(context: ConfigModelRouteContext): Promi
       () => dependencies.draftingOperations.setEnabled(state, context.scope.serverDiscId, route.enabled),
       "server-config.workspace.response-drafting.set",
     );
+  } else if (route.action === "draft-tools-set") {
+    await write(
+      () => dependencies.draftingOperations.setToolReview(state, context.scope.serverDiscId, route.enabled),
+      "server-config.workspace.response-tool-review.set",
+    );
   } else if (route.action === "draft-default") {
     await write(
       () => dependencies.draftingOperations.setPrompt(state, context.scope.serverDiscId, null),

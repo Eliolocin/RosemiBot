@@ -9,66 +9,44 @@ import { log } from "@/utils/misc/logger";
 const MAX_RULE_CALLS = 2;
 const MAX_RULE_INPUT_BYTES = 96000;
 const MAX_RULE_OUTPUT_BYTES = 32768;
+const MAX_RULE_TEXT_PARTS = 8;
 const RULE_TIMEOUT_MS = 30000;
-const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/);
-const integer = z.number().int().safe().nonnegative();
-const analysisSchema = z
-  .object({
-    score: z.number().int().min(0).max(100),
-    band: z.enum(["clean", "light", "moderate", "heavy", "saturated"]),
-    word_count: integer,
-    violations: z
-      .array(
-        z
-          .object({
-            type: z.literal("Violation"),
-            rule: identifier,
-            match: z.string().max(1000),
-            context: z.string().max(2000),
-            penalty: z.number().int().safe(),
-            start: integer,
-            end: integer,
-          })
-          .strict(),
-      )
-      .max(64),
-    counts: z.record(identifier, integer).refine((counts) => Object.keys(counts).length <= 64),
-    total_penalty: z.number().int().safe(),
-    weighted_sum: z.number().finite().nonnegative(),
-    density: z.number().finite().nonnegative(),
-    advice: z.array(z.string().max(1000)).max(64),
-  })
-  .strict();
 
-export type RuleEvidence = z.infer<typeof analysisSchema> & {
-  coverage: "short_text" | "unknown_profile_and_language";
-  offsetConvention: "unicode_code_points";
-  engineVersion: null;
-  profileVersion: null;
-};
+/** Any linter's own output, passed to the reviewer as untrusted advisory evidence. */
+export type RuleReport = unknown;
 export interface RuleCheckState {
   calls: number;
-  cache?: { identity: string; connection: object; evidence: RuleEvidence };
+  cache?: { identity: string; connection: object; report: RuleReport | null };
 }
 export type RuleCheckOutcome =
-  | { status: "disabled" | "exhausted" | "failed" | "cancelled" }
-  | { status: "hits" | "clean" | "short_text"; evidence: RuleEvidence };
+  | { status: "disabled" | "exhausted" | "failed" | "cancelled" | "clean" }
+  | { status: "report"; evidence: RuleReport };
 
-/** Slopguard's Python spans index Unicode code points, including best-effort structural spans. */
-export function validateRuleAnalysis(payload: unknown, text: string): RuleEvidence {
-  if (Buffer.byteLength(JSON.stringify(payload), "utf8") > MAX_RULE_OUTPUT_BYTES) throw new Error("Rule output size");
-  const parsed = analysisSchema.parse(payload);
-  const length = Array.from(text).length;
-  if (parsed.word_count > length || parsed.violations.some((hit) => hit.start > hit.end || hit.end > length))
-    throw new Error("Rule output coverage or offsets");
-  if (parsed.word_count < 10 && parsed.violations.length) throw new Error("Rule short-text coverage");
-  return {
-    ...parsed,
-    coverage: parsed.word_count < 10 ? "short_text" : "unknown_profile_and_language",
-    offsetConvention: "unicode_code_points",
-    engineVersion: null,
-    profileVersion: null,
-  };
+/** Linters differ in output shape, so a report is structured content, JSON text, or plain text. */
+export function parseRuleReport(raw: unknown): RuleReport | null {
+  const envelope = z
+    .object({
+      isError: z.boolean().optional(),
+      structuredContent: z.unknown().optional(),
+      content: z
+        .array(z.object({ type: z.literal("text"), text: z.string().max(MAX_RULE_OUTPUT_BYTES) }).passthrough())
+        .max(MAX_RULE_TEXT_PARTS),
+    })
+    .passthrough()
+    .parse(raw);
+  if (envelope.isError) throw new Error("Rule tool failure");
+  if (Buffer.byteLength(JSON.stringify(raw), "utf8") > MAX_RULE_OUTPUT_BYTES) throw new Error("Rule envelope size");
+  if (envelope.structuredContent !== undefined) return envelope.structuredContent;
+  const text = envelope.content
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 export async function checkResponseRules(
@@ -80,18 +58,14 @@ export async function checkResponseRules(
 ): Promise<RuleCheckOutcome> {
   const started = Date.now();
   const correlation = randomUUID();
-  const trace = (status: string, count = 0, reused = false, coverage = "unknown_profile_and_language") =>
+  const trace = (status: string, reused = false) =>
     log.info(
       `Response rule check ${JSON.stringify({
         status,
         correlation,
-        count,
         reused,
         calls: state.calls,
         elapsedMs: Date.now() - started,
-        coverage,
-        engineVersion: null,
-        profileVersion: null,
       })}`,
     );
   if (!reference) {
@@ -127,22 +101,30 @@ export async function checkResponseRules(
     const config =
       reference.scope === "workspace" && registration?.status === "fresh"
         ? registration.configs.find(
-            (row) => row.server_id === serverId && row.guild_mcp_id === reference.registrationId && row.is_enabled,
+            (row) =>
+              row.server_id === serverId &&
+              row.guild_mcp_id === reference.registrationId &&
+              row.is_enabled &&
+              row.server_type === "prose_linter",
           )
         : undefined;
     const tool = config ? await bounded(guild.getRegisteredTool(config, true)) : null;
     signal.throwIfAborted();
-    if (!tool || !(await bounded(tool.tool())).functionDeclarations?.some(isCompatibleRuleChecker))
+    if (
+      !tool ||
+      !(await bounded(tool.tool())).functionDeclarations?.some(
+        (declaration) => declaration.name === reference.toolName && isCompatibleRuleChecker(declaration),
+      )
+    )
       throw new Error("Rule binding unavailable");
     signal.throwIfAborted();
     const identity = createHash("sha256")
       .update(JSON.stringify([reference, config?.url, text]))
       .digest("hex");
-    // The standard server loads its profile at startup. A replacement connection invalidates reuse.
-    let evidence =
-      state.cache?.identity === identity && state.cache.connection === tool ? state.cache.evidence : undefined;
-    const reused = Boolean(evidence);
-    if (!evidence) {
+    // A replacement connection may serve a different rule configuration, so it invalidates reuse.
+    const cached = state.cache?.identity === identity && state.cache.connection === tool ? state.cache : undefined;
+    let report = cached?.report;
+    if (!cached) {
       if (state.calls >= MAX_RULE_CALLS) {
         trace("exhausted");
         return { status: "exhausted" };
@@ -159,6 +141,7 @@ export async function checkResponseRules(
               row.server_id === serverId &&
               row.guild_mcp_id === reference.registrationId &&
               row.is_enabled &&
+              row.server_type === "prose_linter" &&
               row.name === config?.name &&
               row.url === config.url,
           )
@@ -166,28 +149,20 @@ export async function checkResponseRules(
           throw new Error("Rule registration changed");
       }
       signal.throwIfAborted();
-      const raw = config ? await bounded(guild.callInternalRuleChecker(config, text, signal)) : null;
+      const raw = config
+        ? await bounded(guild.callInternalRuleChecker(config, reference.toolName, text, signal))
+        : null;
       signal.throwIfAborted();
       stage = "validation";
-      const envelope = z
-        .object({
-          isError: z.boolean().optional(),
-          structuredContent: z.unknown().optional(),
-          content: z
-            .array(z.object({ type: z.literal("text"), text: z.string().max(MAX_RULE_OUTPUT_BYTES) }).strict())
-            .max(1),
-        })
-        .passthrough()
-        .parse(raw);
-      if (envelope.isError) throw new Error("Rule tool failure");
-      if (Buffer.byteLength(JSON.stringify(raw), "utf8") > MAX_RULE_OUTPUT_BYTES) throw new Error("Rule envelope size");
-      const payload = envelope.structuredContent ?? JSON.parse(envelope.content[0]?.text ?? "");
-      evidence = validateRuleAnalysis(payload, text);
-      state.cache = { identity, connection: tool, evidence };
+      report = parseRuleReport(raw);
+      state.cache = { identity, connection: tool, report };
     }
-    const status = evidence.coverage === "short_text" ? "short_text" : evidence.violations.length ? "hits" : "clean";
-    trace(status, evidence.violations.length, reused, evidence.coverage);
-    return { status, evidence };
+    if (report === null || report === undefined) {
+      trace("clean", Boolean(cached));
+      return { status: "clean" };
+    }
+    trace("report", Boolean(cached));
+    return { status: "report", evidence: report };
   } catch {
     if (turnSignal.aborted) {
       trace("cancelled");

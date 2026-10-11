@@ -194,8 +194,6 @@ class ToolRegistryImpl implements ToolRegistryInterface {
     const refreshed = await refreshToolExecutionContext(context);
     if (!refreshed) return unavailable();
     context = refreshed;
-    if (resolvedToolName === context.tomoriState?.config.response_rule_checker_ref?.toolName)
-      return { success: false, error: "Internal review evidence is unavailable to author tools" };
     const resolvedArgs =
       context.preparedToolRequest?.name === resolvedToolName && context.preparedToolRequest.args === args
         ? args
@@ -209,7 +207,6 @@ class ToolRegistryImpl implements ToolRegistryInterface {
         const current = await refreshToolExecutionContext(context);
         if (!current) return unavailable();
         context = current;
-        if (resolvedToolName === context.tomoriState.config.response_rule_checker_ref?.toolName) return unavailable();
         const route = routing.routes.get(resolvedToolName);
         const isGuildMcp = Boolean(route);
         if (context.isExecutionCancelled?.()) return { success: false };
@@ -264,8 +261,7 @@ class ToolRegistryImpl implements ToolRegistryInterface {
           return unavailable();
         // MCP cannot own other built-ins, but flags may have changed during the failed lookup.
         const current = await refreshToolExecutionContext(context);
-        if (!current || resolvedToolName === current.tomoriState.config.response_rule_checker_ref?.toolName)
-          return unavailable();
+        if (!current) return unavailable();
         context = current;
       }
     }

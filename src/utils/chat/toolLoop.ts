@@ -885,7 +885,7 @@ async function executeToolCall(
     const available =
       !tool ||
       ToolRegistry.getAvailableTools(toolContext.provider, toolContext).some((entry) => entry.name === functionName);
-    if (available) {
+    if (available && review.toolReview) {
       const verdict = await reviewToolCandidate(params.context, params.provider, params.providerConfig, prepared);
       if (verdict.status === "cancelled" || responseReviewCancelled(params.context)) return cancelReviewedCall();
       if (verdict.status === "revise") {

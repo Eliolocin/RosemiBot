@@ -54,7 +54,6 @@ export async function refreshToolExecutionContext(context: ToolContext): Promise
           user_blocking_enabled: current.config.user_blocking_enabled,
           user_info_updates_enabled: current.config.user_info_updates_enabled,
           thread_creation_enabled: current.config.thread_creation_enabled,
-          response_rule_checker_ref: current.config.response_rule_checker_ref,
         },
       },
     };
@@ -196,10 +195,9 @@ export async function getAvailableToolsWithMCP(
       );
       mcpFunctionNames = [...routing.routes]
         .filter(
-          ([name, route]) =>
-            name !== stateForContext.config.response_rule_checker_ref?.toolName &&
-            (!(route.config.server_type === "url_fetcher" || route.config.server_type === "web_search") ||
-              configToFeatureFlags(stateForContext.config).web_search),
+          ([, route]) =>
+            !(route.config.server_type === "url_fetcher" || route.config.server_type === "web_search") ||
+            configToFeatureFlags(stateForContext.config).web_search,
         )
         .map(([name]) => name);
     }

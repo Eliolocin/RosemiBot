@@ -281,7 +281,7 @@ describe("MCP collection panel", () => {
     expect(serialized).toContain('"custom_id":"url_12345678"');
     expect(serialized).toContain('"custom_id":"auth-token_12345678"');
     expect(serialized).toContain(
-      '"label":"Server Type","description":"What this server replaces (disables matching built-in tools)","component":{"type":21,"custom_id":"server-type_12345678","required":true',
+      `"description":${JSON.stringify(localizedCopy("en-US", "commands.mcps.server_type_description"))},"component":{"type":21,"custom_id":"server-type_12345678","required":true`,
     );
     expect(serialized).toContain('"value":"none","label":"General Purpose"');
     expect(serialized).toContain('"default":true');
@@ -290,6 +290,8 @@ describe("MCP collection panel", () => {
     expect(serialized).toContain(localizedCopy("en-US", "commands.mcps.type_web_search_description"));
     expect(serialized).toContain('"value":"url_fetcher","label":"URL Fetcher"');
     expect(serialized).toContain(localizedCopy("en-US", "commands.mcps.type_url_fetcher_description"));
+    expect(serialized).toContain('"value":"prose_linter"');
+    expect(serialized).toContain(localizedCopy("en-US", "commands.mcps.type_prose_linter_description"));
     expect(serialized).not.toContain('"label":"Server Type (Optional)"');
     expect(JSON.stringify(buildAddMcpModal("ja", "12345678", CONFIG_MCP_PANEL_ROUTE_ADAPTER))).not.toContain(
       '"label":"サーバータイプ（任意）"',

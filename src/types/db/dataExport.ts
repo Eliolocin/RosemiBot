@@ -174,6 +174,7 @@ const serverChatConfigExportSchema = z.object({
   response_decision_model_id: z.number().int().positive().nullable().optional(),
   response_reviewer_prompt: responseReviewerPromptSchema.nullable().optional(),
   response_rule_checker_ref: z.preprocess(normalizeJsonColumn, responseRuleCheckerRefSchema.nullable()).optional(),
+  response_tool_review_enabled: z.boolean().optional(),
   llm_top_p: z.number().min(0.0).max(1.0).default(0.95),
   llm_top_k: z.number().int().min(0).max(40).default(0),
   llm_frequency_penalty: z.number().min(-2.0).max(2.0).default(0.0),

@@ -55,18 +55,19 @@ it("defaults to Off with inherited review and no auxiliary selections", () => {
     "response_reviewer_prompt",
     "response_rule_checker_ref",
     "response_drafting_enabled",
+    "response_tool_review_enabled",
   ])
     delete input[key];
   const config = assembledServerConfigSchema.parse(input);
   expect(config.response_drafting_enabled).toBe(false);
+  expect(config.response_tool_review_enabled).toBe(false);
   expect(config.response_reviewer_llm_id).toBeNull();
   expect(config.response_decision_model_id).toBeNull();
   expect(config.response_reviewer_prompt).toBeNull();
   expect(config.response_rule_checker_ref).toBeNull();
-  expect(
-    responseRuleCheckerRefSchema.safeParse({ scope: "workspace", registrationId: 5, toolName: "check_slop_file" })
-      .success,
-  ).toBe(false);
+  expect(responseRuleCheckerRefSchema.safeParse({ scope: "workspace", registrationId: 5, toolName: "" }).success).toBe(
+    false,
+  );
 });
 
 it("renders the fullest panel, unavailable states and real modals within Discord limits in every locale", () => {
@@ -176,7 +177,7 @@ it("disables Use Default only while the reviewer prompt is already the default",
 it("validates checker input contracts and Unicode prompt limits", () => {
   expect(
     isCompatibleRuleChecker({
-      name: "check_slop",
+      name: "lint_reply",
       parametersJsonSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
     }),
   ).toBe(true);
@@ -216,6 +217,8 @@ it("invalidates only after successful writes and leaves model choices intact on 
   expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_decision_model_id: null });
   expect(await responseDraftingOperations.setChecker(state, "draft-fixture", null)).toBe("success");
   expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_rule_checker_ref: null });
+  expect(await responseDraftingOperations.setToolReview(state, "draft-fixture", true)).toBe("success");
+  expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_tool_review_enabled: true });
   expect(await responseDraftingOperations.setEnabled(state, "draft-fixture", false)).toBe("success");
   expect(caps).toHaveBeenLastCalledWith(state.server_id, { response_drafting_enabled: false });
 });
@@ -252,6 +255,10 @@ function harness(isManager = true, dm = false, currentView: ResponseDraftingView
     takeSelectValue: () => "2",
     draftingOperations: {
       setEnabled: async (...args) => {
+        writes.push(args);
+        return "success";
+      },
+      setToolReview: async (...args) => {
         writes.push(args);
         return "success";
       },

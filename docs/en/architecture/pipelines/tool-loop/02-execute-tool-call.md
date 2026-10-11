@@ -44,7 +44,8 @@ sequence of validation and safety gates before invoking the registry:
 Response Drafting On calls `ToolRegistry.prepareToolRequest` after admission checks. It resolves
 aliases, message identities and MCP defaults before the private reviewer sees the detached request
 that execution will receive. Built-in availability and permission checks precede paid review;
-dispatch retains its own checks.
+dispatch retains its own checks. Review itself runs only with Tool Call Check On
+(`ResponseReviewState.toolReview`); Off still prepares requests so successful identities are reused below.
 
 Pass dispatches that request once. Rejection returns `review_rejected` history with
 `actionExecuted: false`, correction eligibility and concise findings. It adds no failed-tool notice

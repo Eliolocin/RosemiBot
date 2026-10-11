@@ -288,3 +288,20 @@ describe("pending stream presentation", () => {
     expect(accepted.content.length).toBeLessThanOrEqual(config.maxMessageLength);
   });
 });
+
+describe("held draft text", () => {
+  it("keeps the line breaks between split segments that the reviewer and rewrite request read", async () => {
+    const { context, provider, send } = fixture([
+      { type: "text", content: "Mirri sets the tea down.\nYou wanted it hot.\nDrink before it cools." },
+      { type: "done" },
+    ]);
+    const result = await new StreamOrchestrator().streamToDiscord(
+      provider,
+      { ...config, humanizerDegree: HumanizerDegree.LIGHT },
+      context,
+    );
+    expect(result.pendingResponse?.segments).toBeGreaterThan(1);
+    expect(result.pendingResponse?.text).toBe("Mirri sets the tea down.\nYou wanted it hot.\nDrink before it cools.");
+    expect(send).not.toHaveBeenCalled();
+  });
+});

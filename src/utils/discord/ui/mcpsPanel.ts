@@ -58,6 +58,7 @@ function sortMcpConfigs(configs: readonly GuildMcpServerRow[]): GuildMcpServerRo
 function typeLabelKey(serverType: string | null | undefined): string {
   if (serverType === "web_search") return "commands.mcps.type_web_search";
   if (serverType === "url_fetcher") return "commands.mcps.type_url_fetcher";
+  if (serverType === "prose_linter") return "commands.mcps.type_prose_linter";
   return "commands.mcps.type_general";
 }
 
@@ -389,6 +390,11 @@ export function buildAddMcpModal(
               value: "url_fetcher",
               label: localizer(locale, "commands.mcps.type_url_fetcher"),
               description: localizer(locale, "commands.mcps.type_url_fetcher_description"),
+            },
+            {
+              value: "prose_linter",
+              label: localizer(locale, "commands.mcps.type_prose_linter"),
+              description: localizer(locale, "commands.mcps.type_prose_linter_description"),
             },
           ],
         },

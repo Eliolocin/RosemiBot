@@ -381,6 +381,7 @@ function makeParams(context: ChatTurnContext, provider: LLMProvider): ToolLoopPa
 function makeReviewContext(): ChatTurnContext & { responseReview: ResponseReviewState } {
   const context = makeContext();
   context.currentPersona.config.response_drafting_enabled = true;
+  context.currentPersona.config.response_tool_review_enabled = true;
   context.currentPersona.config.response_reviewer_prompt = "Evaluate the character in the admitted scene.";
   context.tomoriState.llm.supports_structoutput = true;
   context.tomoriState.llm.context_window = 64000;
@@ -1250,16 +1251,19 @@ describe("runToolLoop — contract tests", () => {
     expect(result.personaResponses[0]?.text).toBe("*nods*");
     expect(result.usageEntries?.map((entry) => entry.kind)).toEqual(["author", "reviewer"]);
     expect(calls[0]?.apiKey).toBe(makeProviderConfig().apiKey);
+    expect(calls[0]?.systemPrompt).toBe(context.currentPersona.config.response_reviewer_prompt ?? "");
     const prompt = calls[0]?.userPrompt ?? "";
     expect(prompt).toContain('<pending_candidate status="pending">\n*nods*\n</pending_candidate>');
     expect(prompt).toContain("<trigger>\nJuno: Stay here with me.\n</trigger>");
     expect(prompt).toContain("<representative_dialogues>\nA sample invitation.\n\nA sample quiet reply.");
+    expect(prompt).toContain("Representative dialogues: 1 of 1 pairs.");
   });
 
-  it("sends the reviewer the saved thinking level and the chat output budget", async () => {
+  it("sends the reviewer the saved thinking level, temperature and chat output budget", async () => {
     const context = makeReviewContext();
     context.tomoriState.config.thinking_level = "high";
     context.tomoriState.config.llm_max_output_tokens = 3000;
+    context.tomoriState.config.llm_temperature = 1.4;
     context.responseReview.pending = [held("*nods*", []).pendingResponse];
     const { provider } = makeProvider([]);
     const calls: ProviderStructuredJsonRequest[] = [];
@@ -1272,6 +1276,7 @@ describe("runToolLoop — contract tests", () => {
     await reviewResponseCandidate(context, provider, makeProviderConfig());
     expect(calls[0]?.thinkingLevel).toBe("high");
     expect(calls[0]?.maxOutputTokens).toBe(3000);
+    expect(calls[0]?.temperature).toBe(1.4);
   });
 
   it("revises the whole held response once while preserving successful tools and their outcomes", async () => {
@@ -1839,37 +1844,14 @@ describe("runToolLoop — contract tests", () => {
       expect(buildReviewerPacket(context, candidate, 64000)).toBe("candidate_credential");
   });
 
-  it("routes checker hits/failures directly to review and keeps diagnostics out of author continuation and accepted dialogue", async () => {
+  it("routes linter reports/failures directly to review and keeps diagnostics out of author continuation and accepted dialogue", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
-    const evidence = ruleChecks.validateRuleAnalysis(
-      {
-        score: 50,
-        band: "moderate",
-        word_count: 12,
-        violations: [
-          {
-            type: "Violation",
-            rule: "tone",
-            match: "PRIVATE_RULE_SNIPPET",
-            context: "PRIVATE_RULE_CONTEXT",
-            penalty: 4,
-            start: 0,
-            end: 4,
-          },
-        ],
-        counts: { tone: 1 },
-        total_penalty: 4,
-        weighted_sum: 4,
-        density: 1,
-        advice: ["PRIVATE_RULE_ADVICE"],
-      },
-      "A sufficiently long fictional reply with a quiet gesture by the door.",
-    );
+    const evidence = { score: 50, advice: ["PRIVATE_RULE_ADVICE"] };
     const rules = spyOn(ruleChecks, "checkResponseRules");
     const decisions = spyOn(decisionRouting, "routeResponseDecision").mockResolvedValue("review");
     try {
-      for (const status of ["hits", "failed"] as const) {
-        rules.mockResolvedValue(status === "hits" ? { status, evidence } : { status });
+      for (const status of ["report", "failed"] as const) {
+        rules.mockResolvedValue(status === "report" ? { status, evidence } : { status });
         const context = makeReviewContext();
         const delivered: string[] = [];
         const { provider, capturedHistories, capturedContexts } = makeProvider([
@@ -1900,7 +1882,7 @@ describe("runToolLoop — contract tests", () => {
         });
         const result = await runToolLoop(makeParams(context, provider));
         expect(packets).toHaveLength(2);
-        expect(packets[0]?.includes("<rule_evidence>")).toBe(status === "hits");
+        expect(packets[0]?.includes('<prose_linter_report advisory="true">')).toBe(status === "report");
         expect(result.status).toBe("completed");
         expect(delivered).toEqual(["chosen reply"]);
         expect(JSON.stringify(capturedHistories)).not.toContain("PRIVATE_RULE_");
@@ -1915,29 +1897,14 @@ describe("runToolLoop — contract tests", () => {
     }
   });
 
-  it("clean/short/disabled rules cannot approve prose and tool review never checks arbitrary argument JSON", async () => {
+  it("clean/disabled rules cannot approve prose and tool review never checks arbitrary argument JSON", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
     const rules = spyOn(ruleChecks, "checkResponseRules");
     const decisions = spyOn(decisionRouting, "routeResponseDecision").mockResolvedValue("review");
     try {
-      for (const status of ["clean", "short_text", "disabled"] as const) {
-        const text =
-          status === "clean" ? "A quiet character waits by the door while the rain falls outside." : "Stay here.";
-        const evidence = ruleChecks.validateRuleAnalysis(
-          {
-            score: 100,
-            band: "clean",
-            word_count: status === "clean" ? 13 : 2,
-            violations: [],
-            counts: {},
-            total_penalty: 0,
-            weighted_sum: 0,
-            density: 0,
-            advice: [],
-          },
-          text,
-        );
-        rules.mockResolvedValue(status === "disabled" ? { status } : { status, evidence });
+      for (const status of ["clean", "disabled"] as const) {
+        const text = "A quiet character waits by the door while the rain falls outside.";
+        rules.mockResolvedValue({ status });
         const context = makeReviewContext();
         context.responseReview.pending = [held(text, []).pendingResponse];
         const { provider } = makeProvider([]);
@@ -2234,6 +2201,39 @@ describe("runToolLoop — contract tests", () => {
     expect(packets[1]).toContain("<completed_tools>\nlookup ");
     expect(packets[1]).toContain('<proposed_tool_call status="not_executed">\nmirror_action ');
     expect(context.responseReview.toolReviews).toBe(2);
+  });
+
+  it("with Tool Call Check off, executes calls unreviewed and keeps tool choice out of the reply review", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    context.currentPersona.config.response_tool_review_enabled = false;
+    context.responseReview.toolReview = false;
+    const delivered: string[] = [];
+    const { provider } = makeProvider([
+      makeFunctionCallResult("lookup", { target: "fixture" }),
+      held("Found it.", delivered),
+    ]);
+    const providerConfig = {
+      ...makeProviderConfig(),
+      tools: [{ functionDeclarations: [{ name: "lookup", parameters: { type: "object", properties: {} } }] }],
+    };
+    const calls: Array<{ prompt: string; schema: unknown }> = [];
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest, schema: unknown) => {
+        calls.push({ prompt: request.userPrompt, schema });
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    await runToolLoop({ ...makeParams(context, provider), providerConfig });
+    expect(toolExecuteCalls.map((call) => call.name)).toEqual(["lookup"]);
+    expect(context.responseReview.toolReviews).toBe(0);
+    expect(calls).toHaveLength(1);
+    expect(delivered).toEqual(["Found it."]);
+    const [review] = calls;
+    expect(review?.prompt).toContain("<completed_tools>\nlookup ");
+    expect(review?.prompt).not.toContain("<available_tools>");
+    expect(review?.prompt).not.toContain("tool_corrections=");
+    expect(JSON.stringify(review?.schema)).not.toContain("tool_use");
   });
 
   it("bounds review calls for independent requests without borrowing the response budget", async () => {

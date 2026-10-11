@@ -82,6 +82,8 @@ precedes the candidate, findings and tool outcomes, so a second review reuses th
 prefix cache. Pending prose is labeled separately from history. The reviewer reads as a blind model:
 admitted media and tool images become placeholders, and that coverage keeps Decision routing from
 skipping review. Available tools are a compact catalog of names, descriptions and parameter names.
+With Tool Call Check Off, response review omits that catalog, the correction count and the `tool_use`
+finding category, but keeps completed tool outcomes as evidence for the reply.
 Incomplete required evidence, a candidate containing a credential-shaped string (`containsCredential`,
 not the log redactor's `key: value` heuristic, which matches ordinary prose), or tool arguments that
 redaction would alter make review unavailable, and the trace category names the gap. Inherited reviewers use the
@@ -97,9 +99,12 @@ for the turn and permits current prose, while prior tool rejections remain block
 successful tool outcomes. `/kill`, follow-up interruption and abort discard held prose. Actual tools
 use the separate [pre-execution checkpoint](../../tool-loop/02-execute-tool-call.md#actual-request-review).
 
-An optional owned MCP `check_slop(text)` binding supplies advisory evidence only to the reviewer.
-Raw findings cannot reach author feedback, memory or logs. The checker is hidden from author tool
-schemas and blocked at dispatch. Checker failure proceeds to review; a clean result cannot approve prose.
+An optional rule checker is a tool on an owned `prose_linter` MCP registration whose only required
+input is a `text` string. Its output (structured content, JSON text or plain text, at most 32 KB) goes
+to the reviewer as `<prose_linter_report advisory="true">` and forces a detailed review. Raw output
+cannot reach author feedback, memory or logs. `getGuildMCPRouting` excludes `prose_linter`
+registrations, so the author never sees or dispatches their tools. Checker failure proceeds to review;
+an empty report cannot approve prose.
 
 Decision routing can skip detailed review only with validated calibration for the exact model and
 response or tool rubric. The registry is empty, so selections remain visibly inactive and make no

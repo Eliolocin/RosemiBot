@@ -146,7 +146,8 @@ dependency failures preserve the schema. Normal startup restores the selection c
 
 The capability toggle defaults Off. Nullable fields in `server_chat_configs` store the reviewer,
 Decision selection, prompt override and checker binding. A null reviewer inherits the actual response
-model; other nulls mean no Decision routing, default locale instructions and no checker. Both assembled
+model; other nulls mean no Decision routing, default locale instructions and no checker.
+`response_tool_review_enabled` (default false) adds tool-call review. Both assembled
 persona reads carry these fields from the idempotent schema into runtime snapshots.
 
 Reviewer and Decision foreign keys use `ON DELETE SET NULL`. Owned registration/provider deletion

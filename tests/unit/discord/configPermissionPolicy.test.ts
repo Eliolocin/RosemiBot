@@ -871,6 +871,7 @@ describe("isConfigRouteAuthorized", () => {
 
   const draftRoutes: ConfigPanelRoute[] = [
     { action: "draft-set", locale: "en-US", enabled: true },
+    { action: "draft-tools-set", locale: "en-US", enabled: true },
     { action: "draft-prompt-open", locale: "en-US" },
     { action: "draft-prompt-submit", locale: "en-US", nonce: "nonce123" },
     { action: "draft-default", locale: "en-US" },

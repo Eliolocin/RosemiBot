@@ -130,7 +130,7 @@ describe("Smithery Connect transport", () => {
     try {
       expect(await manager.getRegisteredTool(row, true)).not.toBeNull();
       expect(snapshot).toHaveBeenCalledWith(42, 920, ["check_slop"]);
-      expect(await manager.callInternalRuleChecker(row, "fixture", AbortSignal.timeout(2000))).toEqual({
+      expect(await manager.callInternalRuleChecker(row, "check_slop", "fixture", AbortSignal.timeout(2000))).toEqual({
         content: [{ type: "text", text: "accepted" }],
       });
       expect(seen.some((request) => request.path.endsWith("/mcp"))).toBe(true);

@@ -725,7 +725,7 @@ export const responseRuleCheckerRefSchema = z.discriminatedUnion("scope", [
     .object({
       scope: z.literal("workspace"),
       registrationId: z.number().int().positive(),
-      toolName: z.literal("check_slop"),
+      toolName: z.string().min(1).max(128),
     })
     .strict(),
   // Bot-wide checkers no longer exist, but saved rows and exports still hold this shape. Parsing it keeps
@@ -755,6 +755,7 @@ const serverChatConfigSchema = z.object({
   response_decision_model_id: z.number().int().positive().nullable().default(null),
   response_reviewer_prompt: responseReviewerPromptSchema.nullable().default(null),
   response_rule_checker_ref: responseRuleCheckerConfigSchema,
+  response_tool_review_enabled: z.boolean().default(false),
   server_id: z.number().int(),
   humanizer_degree: z.nativeEnum(HumanizerDegree).default(HumanizerDegree.LIGHT),
   message_fetch_limit: z.number().int().default(80),

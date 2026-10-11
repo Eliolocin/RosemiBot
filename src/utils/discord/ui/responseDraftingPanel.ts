@@ -136,6 +136,32 @@ export function buildResponseDraftingBody(
       `> ${t(state.config.response_drafting_enabled ? "commands.config.drafting.on" : "commands.config.drafting.off")}`,
     ),
     text(
+      `### ${t("commands.config.drafting.tool_review_title")}\n${t("commands.config.drafting.tool_review_description")}`,
+    ),
+    buildStateControlRow(
+      [
+        {
+          value: false,
+          label: t("commands.config.panel.off_button"),
+          customId: buildConfigRouteId({ action: "draft-tools-set", locale, enabled: false }),
+        },
+        {
+          value: true,
+          label: t("commands.config.panel.on_button"),
+          customId: buildConfigRouteId({ action: "draft-tools-set", locale, enabled: true }),
+        },
+      ],
+      state.config.response_tool_review_enabled,
+      disabled,
+    ),
+    text(
+      `> ${t(
+        state.config.response_tool_review_enabled
+          ? "commands.config.drafting.tool_review_on"
+          : "commands.config.drafting.tool_review_off",
+      )}`,
+    ),
+    text(
       `### ${t("commands.config.drafting.models_title")}\n${t("commands.config.drafting.models_description")}${
         view && state.config.response_reviewer_llm_id === null && !view.inheritedReviewerAvailable
           ? `\n> ${t("commands.config.drafting.inherited_unavailable")}`

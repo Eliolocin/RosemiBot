@@ -58,6 +58,7 @@ function state(): ResponseReviewState {
     prompt: "PRIVATE_PROMPT",
     customPrompt: false,
     decisionModelId: 7,
+    toolReview: true,
     decisionRequests: 0,
     rules: { calls: 0 },
     responseReviews: 0,

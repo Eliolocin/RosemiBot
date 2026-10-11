@@ -12,7 +12,11 @@ export default {
       description:
         "My responses get reviewed then revised first before being sent. Can increase response time and cost.",
       off: "I send replies and use tools without Response Drafting review.",
-      on: "My replies and tool calls enter a review pipeline before I send them or act.",
+      on: "My replies enter a review pipeline before I send them.",
+      tool_review_title: "Tool Call Check",
+      tool_review_description: "Determine if I should double-check tool calls used.",
+      tool_review_off: "I do not check tool calls, I only focus on the reply.",
+      tool_review_on: "I also check and suggest tool calls used.",
       models_title: "Switch Models",
       models_description: "Choose who reviews my drafts. Optionally set a decision model to speed up reviews.",
       reviewer_button: "Choose Reviewer Model",

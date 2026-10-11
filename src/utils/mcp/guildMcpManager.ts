@@ -118,7 +118,11 @@ class GuildMcpManager {
   async getGuildMCPRouting(serverId: number): Promise<GuildMcpRouting> {
     const read = await getGuildMcpConfigReadResult(serverId);
     if (read.status !== "fresh") throw new Error("Current MCP registrations unavailable");
-    const configs = read.configs.filter((config) => config.server_id === serverId && config.is_enabled);
+    // A prose linter only reviews drafts; author routing would let the model call it (or a sibling
+    // tool such as slop-guard's `check_slop_file`, which reads paths on the MCP host).
+    const configs = read.configs.filter(
+      (config) => config.server_id === serverId && config.is_enabled && config.server_type !== "prose_linter",
+    );
     const reserved = ToolRegistry.getReservedToolNames();
     const replaced = new Set(
       configs
@@ -166,21 +170,22 @@ class GuildMcpManager {
   }
 
   /** The caller revalidates the owned row; dispatch also checks the exact pooled registration. */
-  async callInternalRuleChecker(config: GuildMcpServerRow, text: string, signal: AbortSignal): Promise<unknown> {
+  async callInternalRuleChecker(
+    config: GuildMcpServerRow,
+    toolName: string,
+    text: string,
+    signal: AbortSignal,
+  ): Promise<unknown> {
     signal.throwIfAborted();
     const connection = this.pool.get(this.poolKey(config.server_id, config.name));
     if (!config.is_enabled || !connection || connection.guildMcpId !== config.guild_mcp_id)
       throw new Error("Internal rule registration unavailable");
     connection.lastUsedAt = Date.now();
     return CallToolResultSchema.parse(
-      await (connection.client as MCPClient).callTool(
-        { name: "check_slop", arguments: { text } },
-        CallToolResultSchema,
-        {
-          signal,
-          timeout: EXECUTION_TIMEOUT_MS,
-        },
-      ),
+      await (connection.client as MCPClient).callTool({ name: toolName, arguments: { text } }, CallToolResultSchema, {
+        signal,
+        timeout: EXECUTION_TIMEOUT_MS,
+      }),
     );
   }
 
@@ -276,7 +281,7 @@ class GuildMcpManager {
       const route = (await this.getGuildMCPRouting(serverId)).routes.get(functionName);
       if (context) {
         const current = await refreshToolExecutionContext(context);
-        if (!current || current.tomoriState.config.response_rule_checker_ref?.toolName === functionName)
+        if (!current)
           return {
             success: false,
             error: localizer(context.locale, "tools.execution.unavailable", { tool: functionName }),
@@ -367,11 +372,7 @@ class GuildMcpManager {
       if (context) {
         const current = await refreshToolExecutionContext(context);
         const family = route?.config.server_type === "url_fetcher" || route?.config.server_type === "web_search";
-        if (
-          !current ||
-          current.tomoriState.config.response_rule_checker_ref?.toolName === functionName ||
-          (family && !configToFeatureFlags(current.tomoriState.config).web_search)
-        )
+        if (!current || (family && !configToFeatureFlags(current.tomoriState.config).web_search))
           return {
             success: false,
             error: localizer(context.locale, "tools.execution.unavailable", { tool: functionName }),

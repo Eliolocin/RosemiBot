@@ -33,9 +33,10 @@ every persona in that workspace, including queued replies and generated scenes. 
 change guild settings; your DM workspace has its own settings.
 
 When On, Tomori holds her reply while a reviewer checks its character voice and scene fit. The
-reviewer can ask for one complete revision. Tool requests also enter review before execution;
-rejected requests can receive a bounded correction. Successful actions are retained while the
-reply is revised. Text still uses the usual persona identity, emoji handling, and formatting.
+reviewer can ask for one complete revision. Turn on `Tool Call Check` (Off by default) to also
+review tool requests before they run; rejected requests can receive a bounded correction. With it
+Off, tools run as usual and the reviewer focuses on the reply. Successful actions are retained while
+the reply is revised. Text still uses the usual persona identity, emoji handling, and formatting.
 Review and revisions can increase response time and token cost; the page shows this in both states.
 
 The `Reviewer` dropdown selects an eligible registered text model. `Use current response model`
