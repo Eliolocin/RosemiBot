@@ -200,8 +200,10 @@ function buildExampleJsonFromSchema(schema: unknown): unknown {
     return record.enum[0];
   }
 
-  if (Array.isArray(record.anyOf) && record.anyOf.length > 0) {
-    return buildExampleJsonFromSchema(record.anyOf[0]);
+  // Zod emits discriminated unions as `oneOf`; without this branch the example collapses to `{}`.
+  const variants = record.anyOf ?? record.oneOf;
+  if (Array.isArray(variants) && variants.length > 0) {
+    return buildExampleJsonFromSchema(variants[0]);
   }
 
   const schemaType = record.type;

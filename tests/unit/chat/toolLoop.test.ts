@@ -384,6 +384,9 @@ function makeReviewContext(): ChatTurnContext & { responseReview: ResponseReview
   context.currentPersona.config.response_reviewer_prompt = "Evaluate the character in the admitted scene.";
   context.tomoriState.llm.supports_structoutput = true;
   context.tomoriState.llm.context_window = 64000;
+  // The author-model reviewer takes its key from the provider config. A stored key would start a
+  // background live-limits lookup that fails to decrypt the fixture value and logs an error.
+  context.tomoriState.config.api_key = null;
   context.contextItems = [
     {
       role: "system",
@@ -1248,6 +1251,24 @@ describe("runToolLoop — contract tests", () => {
     expect(prompt).toContain("<representative_dialogues>\nA sample invitation.\n\nA sample quiet reply.");
   });
 
+  it("sends the reviewer the saved thinking level and the chat output budget", async () => {
+    const context = makeReviewContext();
+    context.tomoriState.config.thinking_level = "high";
+    context.tomoriState.config.llm_max_output_tokens = 3000;
+    context.responseReview.pending = [held("*nods*", []).pendingResponse];
+    const { provider } = makeProvider([]);
+    const calls: ProviderStructuredJsonRequest[] = [];
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+        calls.push(request);
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    await reviewResponseCandidate(context, provider, makeProviderConfig());
+    expect(calls[0]?.thinkingLevel).toBe("high");
+    expect(calls[0]?.maxOutputTokens).toBe(3000);
+  });
+
   it("revises the whole held response once while preserving successful tools and their outcomes", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
     const context = makeReviewContext();
@@ -1486,14 +1507,59 @@ describe("runToolLoop — contract tests", () => {
         }),
       ),
     );
-    const packet = buildReviewerPacket(context, "pending", 3000);
+    const packet = buildReviewerPacket(context, "pending", 750);
     expect(packet?.candidate.text).toBe("pending");
     expect(packet?.coverage.historyIncluded).toBeLessThan(50);
     expect(packet?.coverage.historyIncluded).toBeGreaterThan(0);
-    expect(buildReviewerPacket(context, "x".repeat(5000), 3000)).toBeNull();
+    expect(buildReviewerPacket(context, "x".repeat(5000), 750)).toBeNull();
     context.contextItems = [];
-    expect(buildReviewerPacket(context, "pending", 3000)).toBeNull();
+    expect(buildReviewerPacket(context, "pending", 750)).toBeNull();
     expect(draftReviewResultSchema.safeParse({ status: "revise", findings: [] }).success).toBe(false);
+  });
+
+  it("keeps a packet whose available tools nest array-of-object parameters past the sanitizer depth", () => {
+    const context = makeReviewContext();
+    const deepParameters = {
+      type: "object",
+      properties: {
+        characters: {
+          type: "array",
+          items: { type: "object", properties: { prompt: { type: "string" } } },
+        },
+      },
+    };
+    const tools = [
+      { type: "function", function: { name: "fixture_image", description: "Draw.", parameters: deepParameters } },
+      { functionDeclarations: [{ name: "fixture_lookup", parameters: { type: "object", properties: {} } }] },
+    ];
+    const packet = buildReviewerPacket(context, "pending", 64000, tools, { name: "fixture_lookup", args: {} });
+    expect(packet?.availableTools.map((tool) => tool.name)).toEqual(["fixture_image", "fixture_lookup"]);
+    expect(packet?.availableTools[0]?.parameters).toEqual(["characters"]);
+    expect(buildReviewerPacket(context, "pending", 64000, tools, { name: "fixture_missing", args: {} })).toBeNull();
+  });
+
+  it("reviews admitted media and tool images as placeholders and blocks decision skipping", () => {
+    const context = makeReviewContext();
+    context.contextItems.push({
+      role: "user",
+      metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+      messageId: "history_media",
+      parts: [{ type: "image", mimeType: "image/png", uri: "https://example.com/fixture.png" }],
+    });
+    context.responseReview.functionHistory.push({
+      functionCall: { name: "lookup", args: {} },
+      functionResponse: { fact: "outcome" },
+      imageMetadata: {
+        imageUrls: [{ url: "https://example.com/tool-image.png", mimeType: "image/png" }],
+        totalSent: 1,
+        totalValidated: 1,
+      },
+    });
+    const packet = buildReviewerPacket(context, "pending", 64000);
+    expect(packet?.coverage.media).toBe("placeholders");
+    expect(packet?.tools[0]?.imageOmitted).toBe(true);
+    expect(JSON.stringify(packet)).not.toContain("example.com/fixture.png");
+    expect(packet?.historicalDialogue.some((item) => item.messageId === "history_media" && item.text)).toBe(true);
   });
 
   it("pins only an owned reviewer and uses its saved credentials independently of the author", async () => {
@@ -1519,6 +1585,7 @@ describe("runToolLoop — contract tests", () => {
       llm_disabled_params: [],
       llm_logit_biases: [],
       fallback_model_refs: [],
+      thinking_level: "low",
     });
     const modelSpy = spyOn(llmModelRepo, "loadById").mockResolvedValue(reviewer);
     const availableSpy = spyOn(llmModelRepo, "loadAvailableModelsForProvider").mockResolvedValue([reviewer]);
@@ -1541,6 +1608,7 @@ describe("runToolLoop — contract tests", () => {
       );
       expect(calls[0]?.apiKey).toBe("owned-review-key");
       expect(calls[0]?.model).toBe("review-model");
+      expect(calls[0]?.thinkingLevel).toBe("low");
       expect(availableSpy.mock.calls[0]?.[2]).toEqual({ kind: "server", ownerId: context.currentPersona.server_id });
       availableSpy.mockResolvedValue([]);
       const inaccessible = makeReviewContext();
@@ -1575,7 +1643,9 @@ describe("runToolLoop — contract tests", () => {
       await reviewResponseCandidate(context, provider, makeProviderConfig());
       expect(errorSpy).toHaveBeenCalledTimes(1);
       expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("PRIVATE_");
-      expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("PRIVATE_");
+      // The prompt dump carries the draft at info; the provider's raw error text never reaches it.
+      expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("PRIVATE_EVIDENCE");
+      expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("token=secret");
       errorSpy.mockClear();
       const refusal = makeReviewContext();
       refusal.responseReview.pending = [held("PRIVATE_DRAFT", []).pendingResponse];
@@ -2198,16 +2268,11 @@ describe("runToolLoop — contract tests", () => {
     }
   });
 
-  it("tool evidence with redacted effects, missing definition or unsupported admitted media becomes unavailable", async () => {
+  it("tool evidence with redacted effects or a missing definition becomes unavailable", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
-    for (const mode of ["secret", "definition", "media"] as const) {
+    for (const mode of ["secret", "definition"] as const) {
       toolExecuteCalls = [];
       const context = makeReviewContext();
-      if (mode === "media")
-        context.contextItems.push({
-          role: "user",
-          parts: [{ type: "image", mimeType: "image/png", uri: "https://example.com/fixture.png" }],
-        });
       const args = mode === "secret" ? { api_key: "PRIVATE_KEY" } : { target: "fixture" };
       const { provider } = makeProvider([makeFunctionCallResult("mirror_action", args), { status: "completed" }]);
       if (mode === "definition") Object.assign(provider, { getTools: async () => [] });

@@ -79,9 +79,15 @@ preserving successful tools, rejections, correction budgets and reported usage.
 `responseReview.ts` builds a bounded private packet from admitted persona/task evidence, privacy-filtered
 context and actual tool history, and renders it as a tagged transcript. Evidence fixed for the turn
 precedes the candidate, findings and tool outcomes, so a second review reuses the provider's prompt
-prefix cache. Pending prose is labeled separately from history. Incomplete required
-evidence, uninspected media or unsafe redaction makes review unavailable. Inherited reviewers use the
+prefix cache. Pending prose is labeled separately from history. The reviewer reads as a blind model:
+admitted media and tool images become placeholders, and that coverage keeps Decision routing from
+skipping review. Available tools are a compact catalog of names, descriptions and parameter names.
+Incomplete required evidence or unsafe redaction makes review unavailable. Inherited reviewers use the
 actual author attempt's model and key; pinned reviewers revalidate their owned registration and credentials.
+Either way the request follows the reviewer provider's saved `thinking_level` and asks for the chat
+reply budget, because a reasoning model spends its thinking from the output allowance before the JSON
+verdict. Anthropic ignores the level: its structured call forces a tool, which the API refuses
+alongside extended thinking.
 
 Review can pass, request one author revision, or become unavailable. Two response reviews
 bound the turn; another revision verdict delivers the latest candidate. Unavailability ends review

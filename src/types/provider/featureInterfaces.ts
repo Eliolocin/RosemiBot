@@ -56,6 +56,11 @@ export interface ProviderStructuredJsonRequest {
   images?: ProviderImageInput[];
   temperature?: number;
   maxOutputTokens?: number;
+  /**
+   * The saved provider's `thinking_level`, applied through the same builder as a chat request.
+   * Omitted leaves the model's own default, which the one-shot utility calls rely on.
+   */
+  thinkingLevel?: string;
   schemaName?: string;
 }
 

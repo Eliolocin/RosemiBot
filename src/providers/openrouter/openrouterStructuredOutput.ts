@@ -8,6 +8,7 @@ import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/ty
 import { log } from "@/utils/misc/logger";
 import { fetchAndOptimizeImage } from "@/utils/image/imageProcessor";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { buildOpenRouterReasoningRequest } from "@/utils/provider/thinkingControl";
 type GenericStructuredOutputRequest = ProviderStructuredJsonRequest;
 
 type OpenrouterContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -78,6 +79,7 @@ export async function callOpenrouterStructuredJSON<T>(
       response_format: responseFormat,
       plugins: [{ id: "response-healing" }],
       stream: false,
+      ...(request.thinkingLevel === undefined ? {} : buildOpenRouterReasoningRequest(request.thinkingLevel)),
     };
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {

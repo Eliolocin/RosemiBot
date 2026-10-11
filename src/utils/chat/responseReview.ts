@@ -13,22 +13,26 @@ import { MAX_PENDING_RESPONSE_BYTES, MAX_PENDING_RESPONSE_SEGMENTS } from "@/uti
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
 import { log, sanitizeLogPayload } from "@/utils/misc/logger";
 import { resolveCustomTextEndpointTarget } from "@/utils/provider/customEndpointService";
+import { resolveChatMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
+import { resolveModelLimits } from "@/utils/provider/modelLimits";
+import { normalizeProviderName } from "@/utils/provider/providerInfoRegistry";
 import { resolveStructuredOutputCapability } from "@/utils/provider/providerCapabilityResolver";
 import { withSavedProviderConfig } from "@/utils/provider/savedProviderConfig";
 import { decryptApiKey } from "@/utils/security/crypto";
 import { localizer } from "@/utils/text/localizer";
-import type { TokenUsage } from "@/utils/text/tokenEstimate";
+import { charsToTokensText, type TokenUsage } from "@/utils/text/tokenEstimate";
 import { redactToolParametersForStorage } from "@/utils/tools/toolParameterRedaction";
 import { checkResponseRules, type RuleCheckState } from "@/utils/chat/responseRuleCheck";
 import { routeResponseDecision, getDecisionCalibration } from "@/utils/chat/responseDecisionRouting";
 
-const MAX_RESPONSE_REVIEWS = 2;
 export const MAX_RESPONSE_REVISIONS = 1;
+// Every revision is reviewed again, after the original candidate's review.
+const MAX_RESPONSE_REVIEWS = MAX_RESPONSE_REVISIONS + 1;
 export const MAX_TOOL_REVIEWS = 8;
 export const MAX_TOOL_CORRECTIONS = 2;
-const REVIEW_OUTPUT_TOKENS = 1024;
 const REVIEW_TIMEOUT_MS = 120000;
-const MAX_REVIEW_INPUT_BYTES = 96000;
+// Role and message framing the provider adds around the system and user prompts.
+const PROMPT_FRAMING_TOKENS = 1024;
 const RUBRIC_VERSION = "roleplay-response-v1";
 
 const findingSchema = z
@@ -137,6 +141,15 @@ const OMITTED_TAGS = new Set([
   ContextItemTag.SYSTEM_FUNCTION_GUIDE,
 ]);
 
+/**
+ * The reviewer reads as a blind model even when it has vision: it judges prose, and loading media
+ * would add a fetch and image tokens to each of up to ten reviews per turn for little gain.
+ */
+const MEDIA_PLACEHOLDERS = {
+  image: "[Image attached here. It is not shown to the reviewer.]",
+  video: "[Video attached here. It is not shown to the reviewer.]",
+} as const;
+
 function projectItem(item: StructuredContextItem) {
   return {
     tag: item.metadataTag ?? "admitted_context",
@@ -152,7 +165,7 @@ function projectItem(item: StructuredContextItem) {
       : undefined,
     text: item.participantReviewEvidence
       ? undefined
-      : item.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
+      : item.parts.map((part) => (part.type === "text" ? part.text : MEDIA_PLACEHOLDERS[part.type])).join("\n"),
   };
 }
 type ProjectedItem = ReturnType<typeof projectItem>;
@@ -162,21 +175,51 @@ export interface ProposedToolRequest {
   args: Record<string, unknown>;
 }
 
+interface ReviewerToolEntry {
+  name: string;
+  description?: string;
+  parameters: string[];
+}
+
+/**
+ * The reviewer judges tool choice, not argument syntax, so it gets names, purposes and parameter
+ * names. Full schemas nest past the sanitizer's depth cap (array-of-object parameters such as
+ * NovelAI characters), and the `[TRUNCATED` marker that leaves would void every packet of the turn.
+ * Providers hand tools in OpenAI (`function`), Gemini (`functionDeclarations`) or flat Anthropic shape.
+ */
+function compactToolCatalog(tools: ProviderConfig["tools"] = []): ReviewerToolEntry[] {
+  const describe = (definition: Record<string, unknown>): ReviewerToolEntry[] => {
+    if (typeof definition.name !== "string") return [];
+    const schema = (definition.parameters ?? definition.input_schema ?? definition.parametersJsonSchema) as
+      | { properties?: Record<string, unknown> }
+      | undefined;
+    return [
+      {
+        name: definition.name,
+        description: typeof definition.description === "string" ? definition.description : undefined,
+        parameters: Object.keys(schema?.properties ?? {}),
+      },
+    ];
+  };
+  return tools.flatMap((tool) => {
+    if (Array.isArray(tool.functionDeclarations))
+      return (tool.functionDeclarations as Array<Record<string, unknown>>).flatMap(describe);
+    if (tool.function && typeof tool.function === "object") return describe(tool.function as Record<string, unknown>);
+    return describe(tool);
+  });
+}
+
 /** Uses admitted evidence only. Required prose is complete; optional dialogue carries coverage. */
 export function buildReviewerPacket(
   context: ChatTurnContext,
   candidate: string,
-  inputBytes: number,
+  inputTokens: number,
   tools: ProviderConfig["tools"] = [],
   proposedCall?: ProposedToolRequest,
 ) {
   const state = context.responseReview;
   if (!state) return null;
-  if (
-    sanitizeLogPayload(candidate, 0, false) !== candidate ||
-    state.functionHistory.some((entry) => entry.imageMetadata)
-  )
-    return null;
+  if (sanitizeLogPayload(candidate, 0, false) !== candidate) return null;
   if (
     proposedCall &&
     JSON.stringify(
@@ -184,18 +227,8 @@ export function buildReviewerPacket(
     ) !== JSON.stringify(proposedCall.args)
   )
     return null;
-  if (
-    proposedCall &&
-    !tools.some(
-      (tool) =>
-        tool.name === proposedCall.name ||
-        (tool.function as Record<string, unknown> | undefined)?.name === proposedCall.name ||
-        (tool.functionDeclarations as Array<Record<string, unknown>> | undefined)?.some(
-          (definition) => definition.name === proposedCall.name,
-        ),
-    )
-  )
-    return null;
+  const catalog = compactToolCatalog(tools);
+  if (proposedCall && !catalog.some((tool) => tool.name === proposedCall.name)) return null;
   const items = context.contextItems.filter((item) => !item.metadataTag || !OMITTED_TAGS.has(item.metadataTag));
   const trigger = items.find((item) => item.messageId === context.message.id);
   const replyId = context.message.reference?.messageId;
@@ -207,8 +240,6 @@ export function buildReviewerPacket(
       item.metadataTag === ContextItemTag.SYSTEM_INSTRUCTION_BLOCK,
   );
   if (!trigger || !persona.length || (replyId && !replyTarget)) return null;
-  // Uncaptioned media requires inspection. A text packet cannot establish that coverage.
-  if (items.some((item) => item.parts.some((part) => part.type !== "text"))) return null;
   const history = items.filter(
     (item) => item.metadataTag === ContextItemTag.DIALOGUE_HISTORY && item !== trigger && item !== replyTarget,
   );
@@ -234,7 +265,7 @@ export function buildReviewerPacket(
       .slice(-2)
       .map((item) => sanitizeLogPayload(projectItem(item), 0, false) as ReturnType<typeof projectItem>),
     representativeDialogues: [] as ReturnType<typeof projectItem>[],
-    availableTools: sanitizeLogPayload(tools, 0, false),
+    availableTools: sanitizeLogPayload(catalog, 0, false) as ReviewerToolEntry[],
     tools: state.functionHistory.map((entry) => ({
       name: entry.functionCall.name,
       arguments: sanitizeLogPayload(
@@ -244,6 +275,7 @@ export function buildReviewerPacket(
       ),
       outcome: sanitizeLogPayload(entry.functionResponse, 0, false),
       status: "actual_outcome",
+      imageOmitted: entry.imageMetadata ? true : undefined,
     })),
     revision: {
       count: state.revisions,
@@ -255,12 +287,17 @@ export function buildReviewerPacket(
       historyTotal: history.length,
       samplesIncluded: 0,
       samplesTotal: samples.length,
-      media: "text_only",
+      // Decision routing treats anything but "text_only" as insufficient evidence for skipping review.
+      media:
+        items.some((item) => item.parts.some((part) => part.type !== "text")) ||
+        state.functionHistory.some((entry) => entry.imageMetadata)
+          ? "placeholders"
+          : "text_only",
       toolArguments: "redacted",
       omittedCatalogs: true,
     },
   };
-  const fits = () => Buffer.byteLength(renderReviewerPrompt(packet), "utf8") <= inputBytes;
+  const fits = () => charsToTokensText(renderReviewerPrompt(packet).length) <= inputTokens;
   if (!fits() || JSON.stringify(packet).includes("[TRUNCATED")) return null;
   // Keep recent dialogue and complete user/model sample pairs; an oversized optional item is omitted.
   for (let index = 0; index < samples.length; index += 2) {
@@ -309,7 +346,7 @@ function renderEvidenceItem(item: ProjectedItem): string {
  */
 export function renderReviewerPrompt(packet: ReviewerPacket, ruleEvidence?: unknown): string {
   const items = (list: ProjectedItem[]) => list.map(renderEvidenceItem).join("\n\n");
-  const tools = Array.isArray(packet.availableTools) ? packet.availableTools : [];
+  const tools = packet.availableTools;
   const { coverage, revision } = packet;
   const findings = revision.findings.map(
     (finding) => `- [${finding.category}] ${finding.problem} Direction: ${finding.direction}`,
@@ -332,7 +369,10 @@ export function renderReviewerPrompt(packet: ReviewerPacket, ruleEvidence?: unkn
       ? section(
           "completed_tools",
           packet.tools
-            .map((tool) => `${tool.name} ${JSON.stringify(tool.arguments)}\nOutcome: ${JSON.stringify(tool.outcome)}`)
+            .map(
+              (tool) =>
+                `${tool.name} ${JSON.stringify(tool.arguments)}\nOutcome: ${JSON.stringify(tool.outcome)}${tool.imageOmitted ? `\n${MEDIA_PLACEHOLDERS.image}` : ""}`,
+            )
             .join("\n\n"),
         )
       : "",
@@ -419,7 +459,6 @@ async function reviewCandidate(
   const state = context.responseReview;
   if (!state) return { status: "unavailable" };
   if (responseReviewCancelled(context)) return { status: "cancelled" };
-  if (state.unavailable) return { status: "unavailable" };
   const kind = proposedCall ? "tool_call" : "response_text";
   const started = Date.now();
   const correlation = randomUUID();
@@ -450,6 +489,12 @@ async function reviewCandidate(
         ...extra,
       })}`,
     );
+  // Unavailable holds for the rest of the turn; logging each skip keeps a later held reply
+  // from looking reviewed when only the first failure was traced.
+  if (state.unavailable) {
+    trace("unavailable", { category: "earlier_in_turn" });
+    return { status: "unavailable" };
+  }
   const unavailable = async (
     category: string,
     operational = false,
@@ -519,8 +564,21 @@ async function reviewCandidate(
       return { status: "cancelled" };
     }
     if (timeout.aborted) return unavailable("timeout", true);
-    const window = target?.numCtx ?? resolved.state.llm.context_window;
-    const outputTokens = Math.min(REVIEW_OUTPUT_TOKENS, resolved.state.llm.max_output_tokens ?? REVIEW_OUTPUT_TOKENS);
+    const limits = await runUnderWatchdog(context.channel.id, () => wait(resolveModelLimits(resolved.state)));
+    if (cancelled()) {
+      trace("cancelled");
+      return { status: "cancelled" };
+    }
+    if (timeout.aborted || !limits) return unavailable("timeout", true);
+    const window = limits.contextWindow;
+    // The chat reply budget, not a verdict-sized one: a reasoning model spends its thinking from the
+    // same allowance before it writes the JSON, so a small cap ends in empty content.
+    const outputTokens = resolveChatMaxOutputTokens({
+      provider: normalizeProviderName(provider),
+      configured: resolved.state.config.llm_max_output_tokens,
+      modelMaxOutputTokens: limits.maxOutputTokens,
+      contextWindow: window,
+    });
     const toolTask = proposedCall
       ? "\nEvaluate this exact normalized tool name, full arguments and target, including user-visible argument prose and pending narration. Compare available definitions/alternatives and completed actions. Identify a wrong target, invented argument, redundant completed action or distracting choice with a concrete correction grounded in the admitted task and persona. Revise rejects execution; never provide replacement arguments for automatic execution."
       : "";
@@ -531,9 +589,11 @@ async function reviewCandidate(
         ? "\nA pending_cut_at_length_limit candidate stopped at the delivery length limit and will be delivered as cut. Judge the kept text; an abrupt ending alone never requires revision."
         : "";
     const systemPrompt = `${REVIEW_PROTOCOL}${toolTask}${ruleTask}${cutTask}\n\nEditable creative rubric:\n${state.prompt}\n\n${REVIEW_PROTOCOL}${toolTask}${ruleTask}${cutTask}`;
-    // UTF-8 bytes conservatively bound unknown tokenizer ratios. Upgrade when real packet sizes need a tokenizer.
-    const inputBytes =
-      Math.min(MAX_REVIEW_INPUT_BYTES, window ?? 0) - outputTokens - Buffer.byteLength(systemPrompt, "utf8") - 1024;
+    // An unknown window is trusted the way the author's own request trusts it; the provider rejects
+    // an oversized prompt as an ordinary transport failure.
+    const inputTokens = window
+      ? window - outputTokens - charsToTokensText(systemPrompt.length) - PROMPT_FRAMING_TOKENS
+      : Number.POSITIVE_INFINITY;
     const candidate = state.pending.map((part) => part.text).join("\n");
     const tools = proposedCall
       ? await runUnderWatchdog(context.channel.id, () =>
@@ -542,7 +602,7 @@ async function reviewCandidate(
       : config.tools;
     if (cancelled()) return { status: "cancelled" };
     if (timeout.aborted) return unavailable("timeout", true);
-    const packet = buildReviewerPacket(context, candidate, inputBytes, tools ?? [], proposedCall);
+    const packet = buildReviewerPacket(context, candidate, inputTokens, tools ?? [], proposedCall);
     if (!packet) return unavailable("evidence_coverage");
     if (proposedCall && state.toolReviews >= MAX_TOOL_REVIEWS) return unavailable("tool_review_budget");
     if (!proposedCall && state.responseReviews >= MAX_RESPONSE_REVIEWS) {
@@ -594,7 +654,7 @@ async function reviewCandidate(
       packet,
       ruleEvidence === undefined ? undefined : sanitizeLogPayload(ruleEvidence, 0, false),
     );
-    if (Buffer.byteLength(userPrompt, "utf8") > inputBytes) return unavailable("rule_evidence_budget");
+    if (charsToTokensText(userPrompt.length) > inputTokens) return unavailable("rule_evidence_budget");
     const identity = createHash("sha256")
       .update(JSON.stringify([modelId, provider, model, userPrompt, systemPrompt]))
       .digest("hex");
@@ -602,10 +662,14 @@ async function reviewCandidate(
     if (proposedCall) state.toolReviews++;
     else state.responseReviews++;
     trace("start", {
-      inputBytes: Buffer.byteLength(userPrompt, "utf8"),
+      estimatedInputTokens: charsToTokensText(userPrompt.length),
       outputTokens,
       coverage: packet.coverage,
     });
+    // Info is hidden at the production default level, the same exposure as the author's request dump.
+    log.info(
+      `Response review prompt ${correlation}\n${section("system", systemPrompt)}\n${section("user", userPrompt)}`,
+    );
     let usage: TokenUsage | undefined;
     const request = resolved.capability.callStructuredJSON(
       {
@@ -616,6 +680,7 @@ async function reviewCandidate(
         userPrompt,
         temperature: 0.3,
         maxOutputTokens: outputTokens,
+        thinkingLevel: resolved.state.config.thinking_level,
         schemaName: proposedCall ? "tool_review" : "response_review",
         privateOutput: true,
         abortSignal: signal,
@@ -640,6 +705,7 @@ async function reviewCandidate(
         result.failure !== "refusal" && result.failure !== "cancelled",
         result.httpStatus,
       );
+    log.info(`Response review reply ${correlation}\n${JSON.stringify(result.data, null, 2)}`);
     const validated = draftReviewResultSchema.safeParse(result.data);
     if (!validated.success) return unavailable("malformed", true);
     state.verdict = { identity, result: validated.data };

@@ -7,6 +7,7 @@ import type { z } from "zod";
 import { toDeepseekApiModelName } from "@/providers/deepseek/deepseekShared";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import { log } from "@/utils/misc/logger";
+import { buildDeepSeekThinkingRequest } from "@/utils/provider/thinkingControl";
 import { fetchAndOptimizeImage } from "@/utils/image/imageProcessor";
 
 type DeepseekStructuredOutputRequest = ProviderStructuredJsonRequest;
@@ -32,8 +33,10 @@ function buildExampleJsonFromSchema(schema: unknown): unknown {
     return record.enum[0];
   }
 
-  if (Array.isArray(record.anyOf) && record.anyOf.length > 0) {
-    return buildExampleJsonFromSchema(record.anyOf[0]);
+  // Zod emits discriminated unions as `oneOf`; without this branch the example collapses to `{}`.
+  const variants = record.anyOf ?? record.oneOf;
+  if (Array.isArray(variants) && variants.length > 0) {
+    return buildExampleJsonFromSchema(variants[0]);
   }
 
   const schemaType = record.type;
@@ -188,8 +191,9 @@ export async function callDeepseekStructuredJSON<T>(
       },
     ];
 
+    const apiModel = toDeepseekApiModelName(request.model);
     const body: Record<string, unknown> = {
-      model: toDeepseekApiModelName(request.model),
+      model: apiModel,
       messages,
       response_format: {
         type: "json_object",
@@ -198,7 +202,10 @@ export async function callDeepseekStructuredJSON<T>(
       stream: false,
     };
 
-    if (request.model !== "deepseek-reasoner") {
+    const thinking =
+      request.thinkingLevel === undefined ? undefined : buildDeepSeekThinkingRequest(apiModel, request.thinkingLevel);
+    if (thinking?.thinking) body.thinking = thinking.thinking;
+    if (request.model !== "deepseek-reasoner" && !thinking?.omitSampling) {
       body.temperature = request.temperature ?? 1.0;
     }
 

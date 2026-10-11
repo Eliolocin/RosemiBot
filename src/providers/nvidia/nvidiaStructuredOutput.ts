@@ -11,6 +11,7 @@ import type {
 } from "@/types/provider/featureInterfaces";
 import { fetchAndOptimizeImage } from "@/utils/image/imageProcessor";
 import { log } from "@/utils/misc/logger";
+import { buildNvidiaThinkingRequest } from "@/utils/provider/thinkingControl";
 import {
   NVIDIA_CHAT_COMPLETIONS_URL,
   NVIDIA_STRUCTURED_OUTPUT_MODELS,
@@ -38,8 +39,10 @@ function buildExampleJsonFromSchema(schema: unknown): unknown {
     return record.enum[0];
   }
 
-  if (Array.isArray(record.anyOf) && record.anyOf.length > 0) {
-    return buildExampleJsonFromSchema(record.anyOf[0]);
+  // Zod emits discriminated unions as `oneOf`; without this branch the example collapses to `{}`.
+  const variants = record.anyOf ?? record.oneOf;
+  if (Array.isArray(variants) && variants.length > 0) {
+    return buildExampleJsonFromSchema(variants[0]);
   }
 
   const schemaType = record.type;
@@ -258,6 +261,9 @@ async function executeStructuredJsonRequest<T>(params: {
     stream: false,
     temperature: params.request.temperature ?? 1.0,
   };
+  if (params.request.thinkingLevel !== undefined) {
+    Object.assign(body, buildNvidiaThinkingRequest(params.request.thinkingLevel));
+  }
 
   if (params.responseFormat) {
     body.response_format = params.responseFormat;

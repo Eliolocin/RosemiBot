@@ -6,6 +6,7 @@ import {
 import type { z } from "zod";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import { log } from "@/utils/misc/logger";
+import { buildZaiThinkingRequest } from "@/utils/provider/thinkingControl";
 import {
   toZaiApiModelName,
   ZAI_GENERAL_CHAT_COMPLETIONS_URL,
@@ -32,8 +33,10 @@ function buildExampleJsonFromSchema(schema: unknown): unknown {
     return record.enum[0];
   }
 
-  if (Array.isArray(record.anyOf) && record.anyOf.length > 0) {
-    return buildExampleJsonFromSchema(record.anyOf[0]);
+  // Zod emits discriminated unions as `oneOf`; without this branch the example collapses to `{}`.
+  const variants = record.anyOf ?? record.oneOf;
+  if (Array.isArray(variants) && variants.length > 0) {
+    return buildExampleJsonFromSchema(variants[0]);
   }
 
   const schemaType = record.type;
@@ -148,8 +151,10 @@ export async function callZaiStructuredJSON<T>(
       stream: false,
     };
 
+    const thinking = request.thinkingLevel === undefined ? undefined : buildZaiThinkingRequest(request.thinkingLevel);
+    if (thinking?.thinking) body.thinking = thinking.thinking;
     // Skip temperature for reasoning models
-    if (!ZAI_REASONING_MODELS.includes(apiModel)) {
+    if (!ZAI_REASONING_MODELS.includes(apiModel) && !thinking?.omitSampling) {
       body.temperature = request.temperature ?? 1.0;
     }
 

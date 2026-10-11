@@ -106,8 +106,7 @@ flushes held prose. A speaker guard can complete a valid collected prefix for re
 retains ordinary empty-response handling.
 
 Collection is bounded before text is retained, because a reviewer limit checked afterwards cannot
-stop a runaway provider. One turn holds at most `MAX_PENDING_RESPONSE_BYTES` (64 KiB, below the
-reviewer's 96,000-byte packet) and `MAX_PENDING_RESPONSE_SEGMENTS` across all tool-loop passes; the
+stop a runaway provider. One turn holds at most `MAX_PENDING_RESPONSE_BYTES` (64 KiB) and `MAX_PENDING_RESPONSE_SEGMENTS` across all tool-loop passes; the
 tool loop passes the remaining room as `pendingResponseLimit`. Each pass also stops at the length one
 replay could send (`send_message_limit`, or the flush cap times the message length), and a buffer that
 can never flush, such as an unterminated table or fence, is cut once it exceeds the byte room. The cut

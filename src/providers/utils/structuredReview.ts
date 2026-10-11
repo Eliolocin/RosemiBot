@@ -1,7 +1,8 @@
 import type { ZodType } from "zod";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
+import { log } from "@/utils/misc/logger";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
-import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
+import { normalizeProviderUsage, type TokenUsage } from "@/utils/text/tokenEstimate";
 
 const MAX_PRIVATE_RESPONSE_BYTES = 1024 * 1024;
 const MAX_PRIVATE_OUTPUT_CHARS = 16384;
@@ -28,6 +29,20 @@ export async function readStructuredResponse(
     : response.json();
 }
 
+/**
+ * Info is hidden at the production default level, the same exposure as the reviewer prompt dump, and
+ * a rejected reply is the one an operator needs to see to tell a format drift from a refusal. Output
+ * tokens beside an empty reply separate an exhausted budget (reasoning or truncation) from a blank answer.
+ */
+function logMalformedPrivateOutput(serialized: string, usage: TokenUsage | null): void {
+  const detail = serialized
+    ? serialized.length > MAX_PRIVATE_OUTPUT_CHARS
+      ? `${serialized.length} chars, over the ${MAX_PRIVATE_OUTPUT_CHARS} char limit`
+      : serialized
+    : "empty reply";
+  log.info(`Structured output rejected as malformed (output tokens: ${usage?.outputTokens ?? "unknown"})\n${detail}`);
+}
+
 /** Private callers receive validated data or bounded metadata, never provider prose in errors. */
 export function parsePrivateStructuredOutput<T>(
   request: ProviderStructuredJsonRequest,
@@ -42,12 +57,17 @@ export function parsePrivateStructuredOutput<T>(
   if (refused) return privateStructuredFailure(request, "refusal");
   try {
     const serialized = typeof raw === "string" ? raw : JSON.stringify(raw);
-    if (!serialized || serialized.length > MAX_PRIVATE_OUTPUT_CHARS)
+    if (!serialized || serialized.length > MAX_PRIVATE_OUTPUT_CHARS) {
+      logMalformedPrivateOutput(serialized ?? "", normalized);
       return privateStructuredFailure(request, "malformed");
+    }
     const parsed: unknown = typeof raw === "string" ? JSON.parse(raw) : raw;
     const result = schema.safeParse(parsed);
-    return result.success ? { success: true, data: result.data } : privateStructuredFailure(request, "malformed");
+    if (result.success) return { success: true, data: result.data };
+    logMalformedPrivateOutput(serialized, normalized);
+    return privateStructuredFailure(request, "malformed");
   } catch {
+    if (typeof raw === "string") logMalformedPrivateOutput(raw, normalized);
     return privateStructuredFailure(request, "malformed");
   }
 }

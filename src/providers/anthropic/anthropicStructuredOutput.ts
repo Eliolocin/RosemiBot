@@ -87,6 +87,8 @@ async function callAnthropicApi(
   maxTokens: number = 8192,
   request?: ProviderStructuredJsonRequest,
 ): Promise<Record<string, unknown>> {
+  // `request.thinkingLevel` is not applied: the API rejects extended thinking alongside a forced
+  // `tool_choice`, and the forced tool is what makes this call structured.
   const body = {
     model,
     max_tokens: maxTokens,

@@ -5,6 +5,7 @@ import type { z } from "zod";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import { log } from "@/utils/misc/logger";
 import { omitGeminiSampling } from "@/utils/provider/samplingControl";
+import { buildGoogleThinkingConfig } from "@/utils/provider/thinkingControl";
 import { fetchAndOptimizeImage } from "@/utils/image/imageProcessor";
 type GenericStructuredOutputRequest = ProviderStructuredJsonRequest;
 
@@ -39,8 +40,11 @@ export async function callGoogleStructuredJSON<T>(
       }
     }
 
+    const thinkingConfig =
+      request.thinkingLevel === undefined ? undefined : buildGoogleThinkingConfig(request.model, request.thinkingLevel);
     const generationConfig: GenerateContentConfig = omitGeminiSampling(request.model, {
       abortSignal: request.abortSignal,
+      ...(thinkingConfig && { thinkingConfig }),
       temperature: request.temperature ?? 1.0,
       maxOutputTokens: request.maxOutputTokens ?? 8192,
       responseMimeType: "application/json",
