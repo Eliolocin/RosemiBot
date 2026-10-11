@@ -73,6 +73,28 @@ describe("private structured review transports", () => {
     }
   });
 
+  it("classifies malformed private replies so the caller can retry with the exact problem", async () => {
+    let content = "";
+    const fetchSpy = stubGlobalFetch(async () =>
+      Response.json({ choices: [{ message: { content } }], usage: { prompt_tokens: 1, completion_tokens: 1024 } }),
+    );
+    try {
+      const call = () => callOpenrouterStructuredJSON(request, {}, draftReviewResultSchema, "response_review");
+      content = "";
+      expect(await call()).toMatchObject({ success: false, failure: "malformed", malformed: { reason: "empty" } });
+      content = "PRIVATE_PROSE without any object";
+      expect(await call()).toMatchObject({ malformed: { reason: "unparsable" } });
+      content = '```json\n{"status":"pass"}\n```';
+      expect(await call()).toEqual({ success: true, data: { status: "pass" } });
+      content = JSON.stringify({ status: "revise", findings: [{ category: "style", problem: "p", direction: "d" }] });
+      const schemaFailure = await call();
+      expect(schemaFailure).toMatchObject({ malformed: { reason: "schema" } });
+      expect(JSON.stringify(schemaFailure)).toContain("findings.0.category");
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it("gives prompt-schema providers a concrete example for the review union", async () => {
     let systemPrompt = "";
     const fetchSpy = stubGlobalFetch(async (_url, init) => {

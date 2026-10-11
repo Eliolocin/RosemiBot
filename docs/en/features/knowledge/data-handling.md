@@ -41,17 +41,19 @@ privacy policy. Avoid sharing sensitive personal credentials or confidential dat
 ### Response Drafting selections
 
 `/config` > `Plugins` > `Response Drafting` stores reviewer, Decision model, optional rule checker,
-and prompt choices for the workspace. When On, replies and actual tool requests are reviewed before
-they are sent or executed. An optional checker receives pending reply text and sends advisory findings
+prompt choices, and enabled review items for the workspace. When On, replies are reviewed before
+they are sent. Tool requests are reviewed before execution only with `Tool Calls` enabled. An optional checker receives pending reply text and sends advisory findings
 only to the reviewer. Decision skipping is inactive pending labeled validation, and saved Decision
 selections make no paid calls while calibration is missing. Off keeps ordinary replies and tools
 without review requests.
 
-The selected reviewer receives the pending response and context already admitted to its author:
-persona instructions, representative dialogues, trigger and reply target, relevant conversation,
-visible participant relationships, memories, documents, and actual tool outcomes. For a tool
-request, the reviewer also receives its exact target and arguments, including any message text,
-and available tool definitions. Review adds no
+The selected reviewer always receives the pending response, triggering message, and reply target.
+`Content to Check` controls which additional context already admitted to the author it receives:
+persona instructions, example dialogues, recent conversation, memories and other context, and tool
+calls. Persona instructions, example dialogues, and recent conversation start enabled. Memories and
+other context includes visible participant relationships and documents. With `Tool Calls` enabled,
+the reviewer receives completed outcomes and available tool definitions; a proposed request includes
+its exact target and arguments, including any message text. Review adds no
 private profile lookup. Credentials and authentication arguments are redacted. Required evidence
 must fit; incomplete media coverage, hidden tool arguments or missing model limits makes review
 unavailable. An unavailable review keeps ordinary application checks; an earlier rejected action

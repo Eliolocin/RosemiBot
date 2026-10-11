@@ -42,6 +42,7 @@ function packet(kind: Packet["kind"] = "response_text"): Packet {
     tools: [],
     revision: { count: 0, toolCorrections: 0, findings: [] },
     coverage: {
+      reviewItems: ["persona", "examples", "history", "context", "tools"],
       historyIncluded: 1,
       historyTotal: 1,
       samplesIncluded: 0,
@@ -58,7 +59,7 @@ function state(): ResponseReviewState {
     prompt: "PRIVATE_PROMPT",
     customPrompt: false,
     decisionModelId: 7,
-    toolReview: true,
+    reviewItems: ["persona", "examples", "history", "context", "tools"],
     decisionRequests: 0,
     rules: { calls: 0 },
     responseReviews: 0,
@@ -190,6 +191,9 @@ describe("response and tool decision routing", () => {
     const missingSamples = packet();
     missingSamples.coverage.samplesTotal++;
     expect(await routeResponseDecision(42, state(), missingSamples, signal, calibration())).toBe("review");
+    const disabledContext = packet();
+    disabledContext.coverage.reviewItems = ["persona", "examples", "history"];
+    expect(await routeResponseDecision(42, state(), disabledContext, signal, calibration())).toBe("review");
     load.mockResolvedValue([]);
     expect(await routeResponseDecision(42, state(), packet(), signal, calibration())).toBe("review");
     expect(call).not.toHaveBeenCalled();

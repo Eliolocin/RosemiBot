@@ -314,7 +314,8 @@ async function dispatch(harness: Harness, interaction: RouteInteraction): Promis
  */
 const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
   ["config:v2:draft-set:en-US:1", { action: "draft-set", locale: "en-US", enabled: true }],
-  ["config:v2:draft-tools-set:en-US:0", { action: "draft-tools-set", locale: "en-US", enabled: false }],
+  ["config:v2:draft-items-open:en-US", { action: "draft-items-open", locale: "en-US" }],
+  ["config:v2:draft-items-submit:en-US:nonce123", { action: "draft-items-submit", locale: "en-US", nonce: "nonce123" }],
   ["config:v2:draft-prompt-open:en-US", { action: "draft-prompt-open", locale: "en-US" }],
   ["config:v2:draft-default:en-US", { action: "draft-default", locale: "en-US" }],
   [

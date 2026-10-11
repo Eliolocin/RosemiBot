@@ -2721,7 +2721,7 @@ CREATE TABLE IF NOT EXISTS server_chat_configs (
   response_decision_model_id INT REFERENCES decision_models(decision_model_id) ON DELETE SET NULL,
   response_reviewer_prompt TEXT CHECK (char_length(response_reviewer_prompt) BETWEEN 1 AND 4000),
   response_rule_checker_ref JSONB,
-  response_tool_review_enabled     BOOLEAN     NOT NULL DEFAULT false,
+  response_review_items TEXT[] NOT NULL DEFAULT '{persona,examples,history}' CHECK (response_review_items <@ ARRAY['persona', 'examples', 'history', 'context', 'tools']::TEXT[]),
   server_id                        INT         PRIMARY KEY REFERENCES servers(server_id) ON DELETE CASCADE,
   humanizer_degree                 INT         NOT NULL DEFAULT 1,
   message_fetch_limit              INT         NOT NULL DEFAULT 80,
@@ -2754,7 +2754,7 @@ SELECT add_column_if_not_exists('server_chat_configs', 'response_reviewer_llm_id
 SELECT add_column_if_not_exists('server_chat_configs', 'response_decision_model_id', 'INT REFERENCES decision_models(decision_model_id) ON DELETE SET NULL');
 SELECT add_column_if_not_exists('server_chat_configs', 'response_reviewer_prompt', 'TEXT CHECK (char_length(response_reviewer_prompt) BETWEEN 1 AND 4000)');
 SELECT add_column_if_not_exists('server_chat_configs', 'response_rule_checker_ref', 'JSONB');
-SELECT add_column_if_not_exists('server_chat_configs', 'response_tool_review_enabled', 'BOOLEAN', 'false', 'NOT NULL');
+SELECT add_column_if_not_exists('server_chat_configs', 'response_review_items', 'TEXT[] CHECK (response_review_items <@ ARRAY[''persona'', ''examples'', ''history'', ''context'', ''tools'']::TEXT[])', '''{persona,examples,history}''', 'NOT NULL');
 
 DROP TRIGGER IF EXISTS update_server_chat_configs_timestamp ON server_chat_configs;
 CREATE TRIGGER update_server_chat_configs_timestamp

@@ -1,9 +1,10 @@
+import type { ResponseReviewItem } from "@/constants/responseReview";
 import { observeStopRequest } from "@/utils/discord/stream/stopRequests";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { ErrorContext, TomoriState } from "@/types/db/schema";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
-import type { SupportsStructuredOutput } from "@/types/provider/featureInterfaces";
+import type { StructuredOutputResult, SupportsStructuredOutput } from "@/types/provider/featureInterfaces";
 import type { LLMProvider, ProviderConfig } from "@/types/provider/interfaces";
 import type { PendingResponseLimit, PendingStreamResponse } from "@/types/stream/pendingResponse";
 import type { ChatTurnContext, ToolHistoryEntry } from "@/utils/chat/types";
@@ -64,6 +65,30 @@ export const draftReviewResultSchema = reviewResultSchema([...REPLY_FINDING_CATE
 const replyOnlyReviewResultSchema = reviewResultSchema(REPLY_FINDING_CATEGORIES);
 export type DraftReviewResult = z.infer<typeof draftReviewResultSchema>;
 
+/**
+ * The provider still receives the strict schema; this only decides what is accepted back. A pass or
+ * unavailable carries no other meaning, so a stray key such as `"findings": []` is dropped instead of
+ * voiding the review. A revise is never repaired: its findings go to the author verbatim.
+ */
+function acceptReviewResult<T extends z.ZodType>(schema: T) {
+  return z.preprocess((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    const status = (value as { status?: unknown }).status;
+    return status === "pass" || status === "unavailable" ? { status } : value;
+  }, schema);
+}
+
+type MalformedReply = NonNullable<Extract<StructuredOutputResult<unknown>, { success: false }>["malformed"]>;
+
+function formatRetryNote(malformed: MalformedReply): string {
+  const ask = "Answer again with only the JSON object, without code fences or other text.";
+  if (malformed.reason === "empty")
+    return `Your previous answer was empty, most likely because reasoning used up the output limit. ${ask}`;
+  if (malformed.reason === "unparsable") return `Your previous answer was not one valid JSON object. ${ask}`;
+  const issues = (malformed.issues ?? []).map((issue) => `- ${issue}`).join("\n");
+  return `Your previous answer did not match the schema:\n${issues}\n${ask}`;
+}
+
 export type TurnUsageEntry = {
   model: string;
   usage: TokenUsage;
@@ -75,8 +100,7 @@ export interface ResponseReviewState {
   prompt: string;
   customPrompt: boolean;
   decisionModelId: number | null;
-  /** Off skips proposed-call reviews and keeps tool choice out of reply reviews. */
-  toolReview: boolean;
+  reviewItems: ResponseReviewItem[];
   decisionRequests: number;
   decisionVerdict?: { identity: string; skip: boolean };
   rules: RuleCheckState;
@@ -131,7 +155,7 @@ export function createResponseReviewState(context: ChatTurnContext): ResponseRev
     reviewerId: context.currentPersona.config.response_reviewer_llm_id,
     customPrompt: context.currentPersona.config.response_reviewer_prompt !== null,
     decisionModelId: context.currentPersona.config.response_decision_model_id,
-    toolReview: context.currentPersona.config.response_tool_review_enabled,
+    reviewItems: [...context.currentPersona.config.response_review_items],
     decisionRequests: 0,
     rules: { calls: 0 },
     prompt:
@@ -158,6 +182,21 @@ const OMITTED_TAGS = new Set([
   ContextItemTag.KNOWLEDGE_VERBATIM_TOOL_DEFINITIONS,
   ContextItemTag.SYSTEM_FUNCTION_GUIDE,
 ]);
+
+const PERSONA_TAGS = new Set([
+  ContextItemTag.SYSTEM_PERSONALITY,
+  ContextItemTag.SYSTEM_PERSONA_PROMPT,
+  ContextItemTag.SYSTEM_INSTRUCTION_BLOCK,
+  ContextItemTag.SYSTEM_HUMANIZER_RULES,
+  ContextItemTag.SYSTEM_CHANNEL_PROMPT,
+]);
+
+function reviewItemGroup(item: StructuredContextItem): ResponseReviewItem {
+  if (item.metadataTag && PERSONA_TAGS.has(item.metadataTag)) return "persona";
+  if (item.metadataTag === ContextItemTag.DIALOGUE_SAMPLE) return "examples";
+  if (item.metadataTag === ContextItemTag.DIALOGUE_HISTORY) return "history";
+  return "context";
+}
 
 /**
  * The reviewer reads as a blind model even when it has vision: it judges prose, and loading media
@@ -248,7 +287,8 @@ export function buildReviewerPacket(
   proposedCall?: ProposedToolRequest,
 ) {
   const state = context.responseReview;
-  if (!state) return "review_inactive" satisfies ReviewerPacketGap;
+  if (!state || (proposedCall && !state.reviewItems.includes("tools")))
+    return "review_inactive" satisfies ReviewerPacketGap;
   if (containsCredential(candidate)) return "candidate_credential" satisfies ReviewerPacketGap;
   if (
     proposedCall &&
@@ -257,7 +297,7 @@ export function buildReviewerPacket(
     ) !== JSON.stringify(proposedCall.args)
   )
     return "tool_arguments_redacted" satisfies ReviewerPacketGap;
-  const catalog = compactToolCatalog(tools);
+  const catalog = state.reviewItems.includes("tools") ? compactToolCatalog(tools) : [];
   if (proposedCall && !catalog.some((tool) => tool.name === proposedCall.name))
     return "unknown_tool" satisfies ReviewerPacketGap;
   const items = context.contextItems.filter((item) => !item.metadataTag || !OMITTED_TAGS.has(item.metadataTag));
@@ -275,15 +315,20 @@ export function buildReviewerPacket(
       item.metadataTag === ContextItemTag.SYSTEM_INSTRUCTION_BLOCK,
   );
   if (!trigger) return "trigger_missing" satisfies ReviewerPacketGap;
-  if (!persona.length) return "persona_missing" satisfies ReviewerPacketGap;
+  if (state.reviewItems.includes("persona") && !persona.length) return "persona_missing" satisfies ReviewerPacketGap;
   if (replyId && !replyTarget) return "reply_target_missing" satisfies ReviewerPacketGap;
-  const history = items.filter(
+  const selectedItems = items.filter((item) => state.reviewItems.includes(reviewItemGroup(item)));
+  const functionHistory = state.reviewItems.includes("tools") ? state.functionHistory : [];
+  const history = selectedItems.filter(
     (item) => item.metadataTag === ContextItemTag.DIALOGUE_HISTORY && item !== trigger && item !== replyTarget,
   );
-  const samples = items.filter((item) => item.metadataTag === ContextItemTag.DIALOGUE_SAMPLE);
-  const required = items.filter(
+  const samples = selectedItems.filter((item) => item.metadataTag === ContextItemTag.DIALOGUE_SAMPLE);
+  const required = selectedItems.filter(
     (item) =>
-      item.metadataTag !== ContextItemTag.DIALOGUE_HISTORY && item.metadataTag !== ContextItemTag.DIALOGUE_SAMPLE,
+      item !== trigger &&
+      item !== replyTarget &&
+      item.metadataTag !== ContextItemTag.DIALOGUE_HISTORY &&
+      item.metadataTag !== ContextItemTag.DIALOGUE_SAMPLE,
   );
   const packet = {
     kind: proposedCall ? ("tool_call" as const) : ("response_text" as const),
@@ -303,7 +348,7 @@ export function buildReviewerPacket(
       .map((item) => sanitizeLogPayload(projectItem(item), 0, false) as ReturnType<typeof projectItem>),
     representativeDialogues: [] as ReturnType<typeof projectItem>[],
     availableTools: sanitizeLogPayload(catalog, 0, false) as ReviewerToolEntry[],
-    tools: state.functionHistory.map((entry) => ({
+    tools: functionHistory.map((entry) => ({
       name: entry.functionCall.name,
       arguments: sanitizeLogPayload(
         redactToolParametersForStorage(entry.functionCall.name, entry.functionCall.args ?? {}),
@@ -316,19 +361,23 @@ export function buildReviewerPacket(
     })),
     revision: {
       count: state.revisions,
-      toolCorrections: state.toolReview ? state.toolCorrections : undefined,
+      toolCorrections: state.reviewItems.includes("tools") ? state.toolCorrections : undefined,
       findings: state.feedback?.findings ?? [],
     },
     coverage: {
+      reviewItems: state.reviewItems,
       historyIncluded: Math.min(2, history.length),
-      historyTotal: history.length,
+      historyTotal: items.filter(
+        (item) => item.metadataTag === ContextItemTag.DIALOGUE_HISTORY && item !== trigger && item !== replyTarget,
+      ).length,
       samplesIncluded: 0,
       // Samples are user/model pairs and are admitted whole, so coverage counts pairs.
-      samplesTotal: Math.ceil(samples.length / 2),
+      samplesTotal: Math.ceil(items.filter((item) => item.metadataTag === ContextItemTag.DIALOGUE_SAMPLE).length / 2),
       // Decision routing treats anything but "text_only" as insufficient evidence for skipping review.
       media:
-        items.some((item) => item.parts.some((part) => part.type !== "text")) ||
-        state.functionHistory.some((entry) => entry.imageMetadata)
+        [trigger, ...(replyTarget ? [replyTarget] : []), ...selectedItems].some((item) =>
+          item.parts.some((part) => part.type !== "text"),
+        ) || functionHistory.some((entry) => entry.imageMetadata)
           ? "placeholders"
           : "text_only",
       toolArguments: "redacted",
@@ -390,7 +439,9 @@ export function renderReviewerPrompt(packet: ReviewerPacket, ruleEvidence?: unkn
   );
   return [
     `Persona under review: ${packet.personaName}`,
-    section("persona_and_requirements", items(packet.requirementsAndEvidence)),
+    packet.requirementsAndEvidence.length
+      ? section("persona_and_requirements", items(packet.requirementsAndEvidence))
+      : "",
     packet.representativeDialogues.length
       ? section("representative_dialogues", items(packet.representativeDialogues))
       : "",
@@ -400,7 +451,7 @@ export function renderReviewerPrompt(packet: ReviewerPacket, ruleEvidence?: unkn
     tools.length ? section("available_tools", JSON.stringify(tools)) : "",
     section(
       "coverage",
-      `Recent dialogue: ${coverage.historyIncluded} of ${coverage.historyTotal} messages. Representative dialogues: ${coverage.samplesIncluded} of ${coverage.samplesTotal} pairs. Media: ${coverage.media}. Tool arguments: ${coverage.toolArguments}. Emoji, sticker and sprite catalogs omitted.`,
+      `Selected review items: ${coverage.reviewItems.join(", ") || "draft only"}. Intentionally disabled context is not a defect. Recent dialogue: ${coverage.historyIncluded} of ${coverage.historyTotal} messages. Representative dialogues: ${coverage.samplesIncluded} of ${coverage.samplesTotal} pairs. Media: ${coverage.media}. Tool arguments: ${coverage.toolArguments}. Emoji, sticker and sprite catalogs omitted.`,
     ),
     packet.tools.length
       ? section(
@@ -643,7 +694,7 @@ async function reviewCandidate(
       ? await runUnderWatchdog(context.channel.id, () =>
           wait(author.getTools(context.tomoriState, context.streamingContext)),
         )
-      : state.toolReview
+      : state.reviewItems.includes("tools")
         ? config.tools
         : [];
     if (cancelled()) return { status: "cancelled" };
@@ -716,36 +767,59 @@ async function reviewCandidate(
     log.info(
       `Response review prompt ${correlation}\n${section("system", systemPrompt)}\n${section("user", userPrompt)}`,
     );
-    const resultSchema = state.toolReview ? draftReviewResultSchema : replyOnlyReviewResultSchema;
+    const resultSchema = state.reviewItems.includes("tools") ? draftReviewResultSchema : replyOnlyReviewResultSchema;
+    const jsonSchema = z.toJSONSchema(resultSchema, { target: "openapi-3.0" });
     let usage: TokenUsage | undefined;
-    const request = resolved.capability.callStructuredJSON(
-      {
-        apiKey: resolved.apiKey,
-        model,
-        endpointUrl: target?.endpointUrl ?? undefined,
-        systemPrompt,
-        userPrompt,
-        temperature: resolved.state.config.llm_temperature,
-        maxOutputTokens: outputTokens,
-        thinkingLevel,
-        schemaName: proposedCall ? "tool_review" : "response_review",
-        privateOutput: true,
-        abortSignal: signal,
-        onUsage: (reported) => {
-          usage = reported;
-          recordResponseReviewUsage(state, { kind: "reviewer", model: model ?? "", usage: reported });
-        },
-      },
-      z.toJSONSchema(resultSchema, { target: "openapi-3.0" }),
-      resultSchema,
-    );
-    const result = await runUnderWatchdog(context.channel.id, () => wait(request));
+    const ask = (prompt: string, thinking: string | undefined) =>
+      runUnderWatchdog(context.channel.id, () =>
+        wait(
+          resolved.capability.callStructuredJSON(
+            {
+              apiKey: resolved.apiKey,
+              model: resolved.state.llm.llm_codename,
+              endpointUrl: target?.endpointUrl ?? undefined,
+              systemPrompt,
+              userPrompt: prompt,
+              temperature: resolved.state.config.llm_temperature,
+              maxOutputTokens: outputTokens,
+              thinkingLevel: thinking,
+              schemaName: proposedCall ? "tool_review" : "response_review",
+              privateOutput: true,
+              abortSignal: signal,
+              onUsage: (reported) => {
+                usage = reported;
+                recordResponseReviewUsage(state, { kind: "reviewer", model: model ?? "", usage: reported });
+              },
+            },
+            jsonSchema,
+            acceptReviewResult(resultSchema),
+          ),
+        ),
+      );
+    let result = await ask(userPrompt, thinkingLevel);
     touchChannelLock(context.channel.id);
     if (cancelled()) {
       trace("cancelled", { usage });
       return { status: "cancelled" };
     }
     if (!result || timeout.aborted) return unavailable("timeout", true);
+    // One retry with reasoning off, because an exhausted reasoning budget is the usual cause of an
+    // empty reply. It reuses this review's count and deadline, so a bad format cannot add a review.
+    if (!result.success && result.failure === "malformed" && result.malformed) {
+      trace("format_retry", { reason: result.malformed.reason, usage });
+      result = await ask(
+        `${userPrompt}
+
+${section("format_retry", formatRetryNote(result.malformed))}`,
+        "none",
+      );
+      touchChannelLock(context.channel.id);
+      if (cancelled()) {
+        trace("cancelled", { usage });
+        return { status: "cancelled" };
+      }
+      if (!result || timeout.aborted) return unavailable("timeout", true);
+    }
     if (!result.success)
       return unavailable(
         result.failure ?? "transport",
@@ -841,7 +915,7 @@ export function responseRevisionInstruction(state: ResponseReviewState): Structu
     parts: [
       {
         type: "text",
-        text: `Privately revise the entire pending reply as this persona. Preserve character voice and actual completed tool outcomes. Earlier pending narration has not reached the user. Do not repeat successful actions. Return the complete replacement reply.\nPending reply: ${JSON.stringify(state.revisionDraft)}\nCorrections: ${JSON.stringify(state.feedback.findings)}`,
+        text: `[System: Your editor left notes on your draft post. Nothing in it has been sent yet. Rewrite the whole post as this character and apply every note. Keep the character's voice and every completed tool result. Do not repeat actions that already succeeded. Reply with the complete rewritten post only.\nDraft post: ${JSON.stringify(state.revisionDraft)}\nEditor notes: ${JSON.stringify(state.feedback.findings)}]`,
       },
     ],
   };

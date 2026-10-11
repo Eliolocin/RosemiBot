@@ -1,9 +1,11 @@
+import type { ResponseReviewItem } from "@/constants/responseReview";
 import { z } from "zod";
 import { log } from "@/utils/misc/logger";
 import type { CallableTool } from "@google/genai";
 import { createHash } from "node:crypto";
 import type { FunctionDeclaration } from "@google/genai";
 import {
+  responseReviewItemsSchema,
   responseRuleCheckerRefSchema,
   responseReviewerPromptSchema,
   type ResponseRuleCheckerRef,
@@ -155,7 +157,7 @@ export function effectiveReviewerPrompt(state: TomoriState, locale: string): str
 export type DraftWriteResult = "success" | "stale" | "invalid" | "write-failed";
 export interface ResponseDraftingOperations {
   setEnabled(state: TomoriState, workspaceId: string, enabled: boolean): Promise<DraftWriteResult>;
-  setToolReview(state: TomoriState, workspaceId: string, enabled: boolean): Promise<DraftWriteResult>;
+  setReviewItems(state: TomoriState, workspaceId: string, items: ResponseReviewItem[]): Promise<DraftWriteResult>;
   setModel(
     state: TomoriState,
     workspaceId: string,
@@ -188,8 +190,10 @@ export const responseDraftingOperations: ResponseDraftingOperations = {
     invalidateTomoriStateCache(workspaceId);
     return "success";
   },
-  setToolReview(state, workspaceId, enabled) {
-    return writeChat(state, workspaceId, { response_tool_review_enabled: enabled });
+  setReviewItems(state, workspaceId, items) {
+    const parsed = responseReviewItemsSchema.safeParse(items);
+    if (!parsed.success) return Promise.resolve("invalid");
+    return writeChat(state, workspaceId, { response_review_items: parsed.data });
   },
   async setModel(state, workspaceId, slot, provider, modelId) {
     if (modelId !== null) {

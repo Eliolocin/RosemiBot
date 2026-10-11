@@ -1,3 +1,4 @@
+import { RESPONSE_REVIEW_ITEM_VALUES, DEFAULT_RESPONSE_REVIEW_ITEMS } from "@/constants/responseReview";
 import { getDiscordTextLength } from "@/utils/text/discordTextLimits";
 import { StickerFormatType } from "discord.js";
 import { z } from "zod";
@@ -745,6 +746,10 @@ const responseRuleCheckerConfigSchema = z
   }, responseRuleCheckerRefSchema.nullable())
   .default(null);
 export type ResponseRuleCheckerRef = z.infer<typeof responseRuleCheckerRefSchema>;
+export const responseReviewItemsSchema = z
+  .array(z.enum(RESPONSE_REVIEW_ITEM_VALUES))
+  .max(RESPONSE_REVIEW_ITEM_VALUES.length)
+  .refine((items) => new Set(items).size === items.length);
 export const RESPONSE_REVIEWER_PROMPT_MAX_LENGTH = 4000;
 export const responseReviewerPromptSchema = z
   .string()
@@ -755,7 +760,7 @@ const serverChatConfigSchema = z.object({
   response_decision_model_id: z.number().int().positive().nullable().default(null),
   response_reviewer_prompt: responseReviewerPromptSchema.nullable().default(null),
   response_rule_checker_ref: responseRuleCheckerConfigSchema,
-  response_tool_review_enabled: z.boolean().default(false),
+  response_review_items: responseReviewItemsSchema.default(() => [...DEFAULT_RESPONSE_REVIEW_ITEMS]),
   server_id: z.number().int(),
   humanizer_degree: z.nativeEnum(HumanizerDegree).default(HumanizerDegree.LIGHT),
   message_fetch_limit: z.number().int().default(80),

@@ -1,4 +1,8 @@
-import { responseRuleCheckerRefSchema, responseReviewerPromptSchema } from "@/types/db/schema";
+import {
+  responseReviewItemsSchema,
+  responseRuleCheckerRefSchema,
+  responseReviewerPromptSchema,
+} from "@/types/db/schema";
 import { z } from "zod";
 import { SUPPORTED_PARAM_VALUES } from "@/constants/supportedParams";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_VALUES } from "@/constants/thinkingLevels";
@@ -174,7 +178,7 @@ const serverChatConfigExportSchema = z.object({
   response_decision_model_id: z.number().int().positive().nullable().optional(),
   response_reviewer_prompt: responseReviewerPromptSchema.nullable().optional(),
   response_rule_checker_ref: z.preprocess(normalizeJsonColumn, responseRuleCheckerRefSchema.nullable()).optional(),
-  response_tool_review_enabled: z.boolean().optional(),
+  response_review_items: responseReviewItemsSchema.optional(),
   llm_top_p: z.number().min(0.0).max(1.0).default(0.95),
   llm_top_k: z.number().int().min(0).max(40).default(0),
   llm_frequency_penalty: z.number().min(-2.0).max(2.0).default(0.0),

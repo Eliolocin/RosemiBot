@@ -41,6 +41,8 @@ export type StructuredOutputResult<T> =
       error: string;
       failure?: "transport" | "malformed" | "refusal" | "cancelled";
       httpStatus?: number;
+      /** Why a private reply was malformed, so the caller can ask once more with the exact format problem. */
+      malformed?: { reason: "empty" | "unparsable" | "schema"; issues?: string[] };
     };
 
 export interface ProviderStructuredJsonRequest {

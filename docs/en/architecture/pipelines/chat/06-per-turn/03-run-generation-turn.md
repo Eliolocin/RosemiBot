@@ -82,8 +82,12 @@ precedes the candidate, findings and tool outcomes, so a second review reuses th
 prefix cache. Pending prose is labeled separately from history. The reviewer reads as a blind model:
 admitted media and tool images become placeholders, and that coverage keeps Decision routing from
 skipping review. Available tools are a compact catalog of names, descriptions and parameter names.
-With Tool Call Check Off, response review omits that catalog, the correction count and the `tool_use`
-finding category, but keeps completed tool outcomes as evidence for the reply.
+The workspace's `Content to Check` selection filters persona instructions, example dialogues, recent
+conversation, memories and other context, and tools before packet budgeting. The draft, triggering
+message and reply target remain required. Disabled persona instructions do not cause a missing-persona
+failure. With `Tool Calls` unchecked, response review omits tool definitions, completed tool outcomes,
+the correction count and the `tool_use` finding category, and skips proposed-call reviews. Coverage
+records the selection; intentionally omitted context cannot qualify for calibrated Decision skipping.
 Incomplete required evidence, a candidate containing a credential-shaped string (`containsCredential`,
 not the log redactor's `key: value` heuristic, which matches ordinary prose), or tool arguments that
 redaction would alter make review unavailable, and the trace category names the gap. Inherited reviewers use the

@@ -572,7 +572,7 @@ async function streamOnce(
           parts: [
             {
               type: "text" as const,
-              text: "Assistant narration in tool history is pending and has not reached the user. Continue without repeating it.",
+              text: "[System: The text you wrote before calling a tool has not been sent yet. It will be posted together with what you write next, so continue without repeating it.]",
             },
           ],
         }
@@ -885,7 +885,7 @@ async function executeToolCall(
     const available =
       !tool ||
       ToolRegistry.getAvailableTools(toolContext.provider, toolContext).some((entry) => entry.name === functionName);
-    if (available && review.toolReview) {
+    if (available && review.reviewItems.includes("tools")) {
       const verdict = await reviewToolCandidate(params.context, params.provider, params.providerConfig, prepared);
       if (verdict.status === "cancelled" || responseReviewCancelled(params.context)) return cancelReviewedCall();
       if (verdict.status === "revise") {

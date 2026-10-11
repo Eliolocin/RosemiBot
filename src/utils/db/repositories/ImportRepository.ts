@@ -125,7 +125,7 @@ const WORKSPACE_SECTION_TABLES: Record<WorkspaceConfigSection, readonly SectionT
         "response_decision_model_id",
         "response_reviewer_prompt",
         "response_rule_checker_ref",
-        "response_tool_review_enabled",
+        "response_review_items",
       ],
     },
     { tableName: "server_welcome_configs", fields: ["welcome_prompt"] },
@@ -257,6 +257,7 @@ const PERSONAL_SECTION_TABLES: Record<PersonalConfigSection, readonly SectionTab
 };
 
 const TEXT_ARRAY_CONFIG_COLUMNS = new Set([
+  "response_review_items",
   "llm_disabled_params",
   "llm_stop_strings",
   "tool_notice_hidden_keys",
@@ -887,8 +888,8 @@ class ImportRepository {
         response_decision_model_id: config.response_decision_model_id,
         response_reviewer_prompt: config.response_reviewer_prompt,
         response_rule_checker_ref: config.response_rule_checker_ref,
-        ...(config.response_tool_review_enabled !== undefined && {
-          response_tool_review_enabled: config.response_tool_review_enabled,
+        ...(config.response_review_items !== undefined && {
+          response_review_items: config.response_review_items,
         }),
         ...(hasMaxOutputTokens && { llm_max_output_tokens: config.llm_max_output_tokens ?? null }),
         ...(config.context_note !== undefined && { context_note: config.context_note }),

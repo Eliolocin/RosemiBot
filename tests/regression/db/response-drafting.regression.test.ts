@@ -76,7 +76,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
   it("loads defaults and every saved field through both assembled SELECTs and the capabilities repository", async () => {
     const initial = await personaRepository.loadState(FIXTURE_IDS.serverDiscId);
     expect(initial?.config.response_drafting_enabled).toBe(false);
-    expect(initial?.config.response_tool_review_enabled).toBe(false);
+    expect(initial?.config.response_review_items).toEqual(["persona", "examples", "history"]);
     for (const key of [
       "response_reviewer_llm_id",
       "response_decision_model_id",
@@ -107,7 +107,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     const prompt = "🙂".repeat(4000);
     expect(await responseDraftingOperations.setPrompt(state(), FIXTURE_IDS.serverDiscId, prompt)).toBe("success");
     expect(await responseDraftingOperations.setEnabled(state(), FIXTURE_IDS.serverDiscId, true)).toBe("success");
-    expect(await responseDraftingOperations.setToolReview(state(), FIXTURE_IDS.serverDiscId, true)).toBe("success");
+    expect(
+      await responseDraftingOperations.setReviewItems(state(), FIXTURE_IDS.serverDiscId, ["tools", "context"]),
+    ).toBe("success");
     const binding = { scope: "workspace" as const, registrationId: 99, toolName: "check_slop" as const };
     await configRepository.updateChatConfig(refs.serverId, { response_rule_checker_ref: binding });
     await executeTestSqlFile("src/db/schema.sql");
@@ -117,7 +119,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
       response_decision_model_id: decisionId,
       response_reviewer_prompt: prompt,
       response_rule_checker_ref: binding,
-      response_tool_review_enabled: true,
+      response_review_items: ["tools", "context"],
     };
     for (const loaded of [
       await personaRepository.loadState(FIXTURE_IDS.serverDiscId),
@@ -205,6 +207,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     expect(exported.data.chat).toMatchObject({
       response_reviewer_llm_id: reviewerId,
       response_decision_model_id: decisionId,
+      response_review_items: ["tools", "context"],
     });
     expect(JSON.stringify(exported)).not.toContain("api_key");
     expect(JSON.stringify(exported)).not.toContain("auth_token");
@@ -214,11 +217,18 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     const [other] =
       await testSql`SELECT response_reviewer_prompt FROM server_chat_configs WHERE server_id = ${otherServerId}`;
     expect(other.response_reviewer_prompt).toBeNull();
+    expect(await responseDraftingOperations.setReviewItems(state(), FIXTURE_IDS.serverDiscId, [])).toBe("success");
+    expect((await personaRepository.loadState(FIXTURE_IDS.serverDiscId))?.config.response_review_items).toEqual([]);
     expect((await importRepository.importWorkspaceConfig(FIXTURE_IDS.serverDiscId, exported)).success).toBe(true);
+    expect((await personaRepository.loadState(FIXTURE_IDS.serverDiscId))?.config.response_review_items).toEqual([
+      "tools",
+      "context",
+    ]);
     await resetRepository.resetServerConfiguration(refs.serverId);
     const reset = await personaRepository.loadState(FIXTURE_IDS.serverDiscId);
     expect(reset?.config).toMatchObject({
       response_drafting_enabled: false,
+      response_review_items: ["persona", "examples", "history"],
       response_reviewer_llm_id: null,
       response_decision_model_id: null,
       response_reviewer_prompt: null,

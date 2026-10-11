@@ -1,3 +1,5 @@
+import { RESPONSE_REVIEW_ITEM_VALUES } from "@/constants/responseReview";
+import type { z } from "zod";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import * as capabilityResolver from "@/utils/provider/providerCapabilityResolver";
 import * as crypto from "@/utils/security/crypto";
@@ -8,6 +10,7 @@ import { log } from "@/utils/misc/logger";
 import { requestFollowUp, deleteStopRequest } from "@/utils/discord/stream/stopRequests";
 import {
   buildReviewerPacket,
+  renderReviewerPrompt,
   createResponseReviewState,
   draftReviewResultSchema,
   reviewResponseCandidate,
@@ -381,7 +384,7 @@ function makeParams(context: ChatTurnContext, provider: LLMProvider): ToolLoopPa
 function makeReviewContext(): ChatTurnContext & { responseReview: ResponseReviewState } {
   const context = makeContext();
   context.currentPersona.config.response_drafting_enabled = true;
-  context.currentPersona.config.response_tool_review_enabled = true;
+  context.currentPersona.config.response_review_items = ["persona", "examples", "history", "context", "tools"];
   context.currentPersona.config.response_reviewer_prompt = "Evaluate the character in the admitted scene.";
   context.tomoriState.llm.supports_structoutput = true;
   context.tomoriState.llm.context_window = 64000;
@@ -1533,6 +1536,92 @@ describe("runToolLoop — contract tests", () => {
     expect(draftReviewResultSchema.safeParse({ status: "revise", findings: [] }).success).toBe(false);
   });
 
+  it("loads only selected review groups while always retaining the draft, trigger and reply target", () => {
+    const context = makeReviewContext();
+    const evidence: StructuredContextItem[] = [
+      {
+        role: "system",
+        metadataTag: ContextItemTag.SYSTEM_PERSONALITY,
+        parts: [{ type: "text", text: "PERSONA_EVIDENCE" }],
+      },
+      {
+        role: "system",
+        metadataTag: ContextItemTag.SYSTEM_HUMANIZER_RULES,
+        parts: [{ type: "text", text: "SYSTEM_EVIDENCE" }],
+      },
+      { role: "user", metadataTag: ContextItemTag.DIALOGUE_SAMPLE, parts: [{ type: "text", text: "EXAMPLE_USER" }] },
+      { role: "model", metadataTag: ContextItemTag.DIALOGUE_SAMPLE, parts: [{ type: "text", text: "EXAMPLE_MODEL" }] },
+      {
+        role: "model",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: "earlier",
+        parts: [{ type: "text", text: "HISTORY_EVIDENCE" }],
+      },
+      {
+        role: "system",
+        metadataTag: ContextItemTag.KNOWLEDGE_SERVER_MEMORIES,
+        parts: [{ type: "text", text: "MEMORY_EVIDENCE" }],
+      },
+      {
+        role: "system",
+        metadataTag: ContextItemTag.KNOWLEDGE_SHORT_TERM_MEMORY,
+        parts: [{ type: "text", text: "STM_EVIDENCE" }],
+      },
+      {
+        role: "system",
+        metadataTag: ContextItemTag.KNOWLEDGE_SERVER_DOCUMENTS,
+        parts: [{ type: "text", text: "DOCUMENT_EVIDENCE" }],
+      },
+      { role: "system", parts: [{ type: "text", text: "OTHER_EVIDENCE" }] },
+      {
+        role: "user",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: context.message.id,
+        parts: [{ type: "text", text: "TRIGGER_EVIDENCE" }],
+      },
+      {
+        role: "model",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: "target",
+        parts: [{ type: "text", text: "TARGET_EVIDENCE" }],
+      },
+    ];
+    context.contextItems = evidence;
+    context.message.reference = { messageId: "target" } as typeof context.message.reference;
+    context.responseReview.functionHistory.push({
+      functionCall: { name: "lookup", args: {} },
+      functionResponse: { text: "TOOL_EVIDENCE" },
+    });
+    const tools = [
+      {
+        functionDeclarations: [
+          { name: "lookup", description: "CATALOG_EVIDENCE", parameters: { type: "object", properties: {} } },
+        ],
+      },
+    ];
+    for (let mask = 0; mask < 2 ** RESPONSE_REVIEW_ITEM_VALUES.length; mask++) {
+      const selected = RESPONSE_REVIEW_ITEM_VALUES.filter((_item, index) => mask & (1 << index));
+      context.responseReview.reviewItems = selected;
+      const packet = packetOf(buildReviewerPacket(context, "DRAFT_EVIDENCE", 64000, tools));
+      const prompt = renderReviewerPrompt(packet);
+      for (const marker of ["DRAFT_EVIDENCE", "TRIGGER_EVIDENCE", "TARGET_EVIDENCE"]) expect(prompt).toContain(marker);
+      const markers = {
+        persona: ["PERSONA_EVIDENCE", "SYSTEM_EVIDENCE"],
+        examples: ["EXAMPLE_USER", "EXAMPLE_MODEL"],
+        history: ["HISTORY_EVIDENCE"],
+        context: ["MEMORY_EVIDENCE", "STM_EVIDENCE", "DOCUMENT_EVIDENCE", "OTHER_EVIDENCE"],
+        tools: ["TOOL_EVIDENCE", "CATALOG_EVIDENCE"],
+      };
+      for (const group of RESPONSE_REVIEW_ITEM_VALUES)
+        for (const marker of markers[group]) {
+          expect(prompt.includes(marker)).toBe(selected.includes(group));
+        }
+    }
+    context.responseReview.reviewItems = [];
+    context.contextItems = evidence.filter((item) => item.metadataTag !== ContextItemTag.SYSTEM_PERSONALITY);
+    expect(typeof buildReviewerPacket(context, "draft", 64000)).toBe("object");
+  });
+
   it("resolves a reply to a later chunk of a merged persona reply to its prose", () => {
     const context = makeReviewContext();
     const chunkIds = ["persona_chunk_1", "persona_chunk_2", "persona_chunk_3"];
@@ -1702,6 +1791,46 @@ describe("runToolLoop — contract tests", () => {
     } finally {
       errorSpy.mockImplementation(async () => {});
       infoSpy.mockImplementation(() => {});
+    }
+  });
+
+  it("retries a malformed verdict once with reasoning off and accepts a pass that carries stray keys", async () => {
+    const errorSpy = spyOn(log, "error").mockImplementation(async () => {});
+    try {
+      const context = makeReviewContext();
+      context.tomoriState.config.thinking_level = "high";
+      context.responseReview.pending = [held("*nods*", []).pendingResponse];
+      const { provider } = makeProvider([]);
+      const calls: ProviderStructuredJsonRequest[] = [];
+      Object.assign(provider, {
+        callStructuredJSON: async (request: ProviderStructuredJsonRequest, _json: unknown, schema: z.ZodType) => {
+          calls.push(request);
+          if (calls.length === 1)
+            return { success: false, error: "x", failure: "malformed", malformed: { reason: "empty" } };
+          const accepted = schema.safeParse({ status: "pass", findings: [] });
+          return accepted.success ? { success: true, data: accepted.data } : { success: false, error: "x" };
+        },
+      });
+      expect(await reviewResponseCandidate(context, provider, makeProviderConfig())).toEqual({ status: "pass" });
+      expect(calls.map((call) => call.thinkingLevel)).toEqual(["high", "none"]);
+      expect(calls[1]?.userPrompt).toContain("<format_retry>");
+      expect(context.responseReview.responseReviews).toBe(1);
+      expect(errorSpy).not.toHaveBeenCalled();
+
+      const failing = makeReviewContext();
+      failing.responseReview.pending = [held("*nods*", []).pendingResponse];
+      let attempts = 0;
+      Object.assign(provider, {
+        callStructuredJSON: async () => {
+          attempts++;
+          return { success: false, error: "x", failure: "malformed", malformed: { reason: "unparsable" } };
+        },
+      });
+      expect((await reviewResponseCandidate(failing, provider, makeProviderConfig())).status).toBe("unavailable");
+      expect(attempts).toBe(2);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      errorSpy.mockImplementation(async () => {});
     }
   });
 
@@ -2203,11 +2332,11 @@ describe("runToolLoop — contract tests", () => {
     expect(context.responseReview.toolReviews).toBe(2);
   });
 
-  it("with Tool Call Check off, executes calls unreviewed and keeps tool choice out of the reply review", async () => {
+  it("with Tool Calls unchecked, executes calls unreviewed and omits tool evidence from reply review", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
     const context = makeReviewContext();
-    context.currentPersona.config.response_tool_review_enabled = false;
-    context.responseReview.toolReview = false;
+    context.currentPersona.config.response_review_items = ["persona", "examples", "history", "context"];
+    context.responseReview.reviewItems = [...context.currentPersona.config.response_review_items];
     const delivered: string[] = [];
     const { provider } = makeProvider([
       makeFunctionCallResult("lookup", { target: "fixture" }),
@@ -2230,7 +2359,7 @@ describe("runToolLoop — contract tests", () => {
     expect(calls).toHaveLength(1);
     expect(delivered).toEqual(["Found it."]);
     const [review] = calls;
-    expect(review?.prompt).toContain("<completed_tools>\nlookup ");
+    expect(review?.prompt).not.toContain("<completed_tools>");
     expect(review?.prompt).not.toContain("<available_tools>");
     expect(review?.prompt).not.toContain("tool_corrections=");
     expect(JSON.stringify(review?.schema)).not.toContain("tool_use");

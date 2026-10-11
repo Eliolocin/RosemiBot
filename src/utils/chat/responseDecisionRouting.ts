@@ -149,6 +149,9 @@ export async function routeResponseDecision(
   }
   // Repetition and continuity decisions require the full admitted history, not a reduced packet.
   if (
+    !["persona", "examples", "history", "context"].every((item) =>
+      packet.coverage.reviewItems.some((selected) => selected === item),
+    ) ||
     packet.coverage.historyIncluded !== packet.coverage.historyTotal ||
     packet.coverage.samplesIncluded !== packet.coverage.samplesTotal ||
     packet.coverage.media !== "text_only" ||

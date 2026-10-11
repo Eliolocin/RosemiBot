@@ -1,3 +1,4 @@
+import { RESPONSE_REVIEW_ITEMS } from "@/constants/responseReview";
 import { ButtonStyle, ComponentType, type ButtonComponentData, type ComponentInContainerData } from "discord.js";
 import { RESPONSE_REVIEWER_PROMPT_MAX_LENGTH, type TomoriState } from "@/types/db/schema";
 import { CONFIG_MODEL_PAGE_SIZE, buildConfigRouteId, type DraftModelSlot } from "@/utils/discord/configPanelCatalog";
@@ -14,7 +15,7 @@ import {
   type ResponseDraftingView,
   type DraftModelGroup,
 } from "@/utils/discord/interactions/responseDraftingOperations";
-import { buildConfigModalFieldId } from "@/utils/discord/ui/configModals";
+import { buildCheckboxGroupComponent, buildConfigModalFieldId } from "@/utils/discord/ui/configModals";
 import { buildConfigModelSelectModal } from "@/utils/discord/ui/configModelModals";
 import type { RawModalPayload } from "@/utils/discord/ui/configModals";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
@@ -28,6 +29,31 @@ export type DraftPicker =
 export const DRAFT_CLEAR_VALUE = "__none__";
 /** None and the advance entry reserve two of Discord's 25 options. */
 export const DRAFT_CHECKER_PAGE_SIZE = 23;
+
+export const DRAFT_REVIEW_ITEMS_FIELD = "draft_items";
+
+export function buildDraftReviewItemsModal(state: TomoriState, locale: string, nonce: string): RawModalPayload {
+  return {
+    custom_id: buildConfigRouteId({ action: "draft-items-submit", locale, nonce }),
+    title: localizer(locale, "commands.config.drafting.review_items_button"),
+    components: [
+      {
+        type: 18,
+        label: localizer(locale, "commands.config.drafting.review_items_title"),
+        description: localizer(locale, "commands.config.drafting.review_items_guidance"),
+        component: buildCheckboxGroupComponent(
+          buildConfigModalFieldId(DRAFT_REVIEW_ITEMS_FIELD, nonce),
+          RESPONSE_REVIEW_ITEMS,
+          (item) => ({
+            value: item.value,
+            label: localizer(locale, item.labelKey),
+            default: state.config.response_review_items.includes(item.value),
+          }),
+        ),
+      },
+    ],
+  };
+}
 
 export function buildDraftPromptModal(state: TomoriState, locale: string, nonce: string): RawModalPayload {
   return {
@@ -136,31 +162,12 @@ export function buildResponseDraftingBody(
       `> ${t(state.config.response_drafting_enabled ? "commands.config.drafting.on" : "commands.config.drafting.off")}`,
     ),
     text(
-      `### ${t("commands.config.drafting.tool_review_title")}\n${t("commands.config.drafting.tool_review_description")}`,
+      `### ${t("commands.config.drafting.review_items_title")}\n${t("commands.config.drafting.review_items_description")}\n${RESPONSE_REVIEW_ITEMS.map((item) => `> ${state.config.response_review_items.includes(item.value) ? "🟢" : "🔴"} ${t(item.labelKey)}`).join("\n")}`,
     ),
-    buildStateControlRow(
-      [
-        {
-          value: false,
-          label: t("commands.config.panel.off_button"),
-          customId: buildConfigRouteId({ action: "draft-tools-set", locale, enabled: false }),
-        },
-        {
-          value: true,
-          label: t("commands.config.panel.on_button"),
-          customId: buildConfigRouteId({ action: "draft-tools-set", locale, enabled: true }),
-        },
-      ],
-      state.config.response_tool_review_enabled,
-      disabled,
-    ),
-    text(
-      `> ${t(
-        state.config.response_tool_review_enabled
-          ? "commands.config.drafting.tool_review_on"
-          : "commands.config.drafting.tool_review_off",
-      )}`,
-    ),
+    {
+      type: ComponentType.ActionRow,
+      components: [button(t("commands.config.drafting.review_items_button"), { action: "draft-items-open", locale })],
+    },
     text(
       `### ${t("commands.config.drafting.models_title")}\n${t("commands.config.drafting.models_description")}${
         view && state.config.response_reviewer_llm_id === null && !view.inheritedReviewerAvailable

@@ -2895,6 +2895,7 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
       const expectsPersonaVoiceSelect = route.action === "voice-select";
       const expectsChannelSelect = route.action === "channels-overrides-select";
       const expectsModal =
+        route.action === "draft-items-submit" ||
         route.action === "draft-prompt-submit" ||
         route.action === "draft-model-submit" ||
         route.action === "avatar-submit" ||
