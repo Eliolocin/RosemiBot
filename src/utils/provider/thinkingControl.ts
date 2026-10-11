@@ -84,16 +84,27 @@ function isGemini3FamilyModel(model: string): boolean {
   return normalized.startsWith("gemini-3") || normalized.startsWith("gemini-3.1");
 }
 
-function isGeminiFlashModel(model: string): boolean {
-  return normalizeModel(model).includes("flash");
-}
-
 function isGeminiFlashLiteModel(model: string): boolean {
   return normalizeModel(model).includes("flash-lite");
 }
 
 function isGeminiProModel(model: string): boolean {
   return normalizeModel(model).includes("pro");
+}
+
+// Pro models and Gemini 3.7 Flash onward reject MINIMAL with a 400 instead of clamping it, while
+// every Gemini 3 model accepts LOW. An allow-list therefore costs an unlisted release a little extra
+// thinking rather than every request; add a Flash release here once it is confirmed to accept MINIMAL.
+const GEMINI_MINIMAL_THINKING_PREFIXES = [
+  "gemini-3-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-3.6-flash",
+];
+
+function supportsGeminiMinimalThinking(model: string): boolean {
+  const normalized = normalizeModel(model);
+  return GEMINI_MINIMAL_THINKING_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
 function supportsAnthropicAdaptiveThinking(model: string): boolean {
@@ -185,17 +196,9 @@ export function buildGoogleThinkingConfig(
     return undefined;
   }
 
-  if (effectiveLevel === "none") {
-    const isMinimalSupported = isGeminiFlashModel(model) && !model.includes("3.7");
+  if (effectiveLevel === "none" || effectiveLevel === "minimal") {
     return {
-      thinkingLevel: isMinimalSupported ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW,
-    };
-  }
-
-  if (effectiveLevel === "minimal") {
-    const isMinimalSupported = !model.includes("3.7");
-    return {
-      thinkingLevel: isMinimalSupported ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW,
+      thinkingLevel: supportsGeminiMinimalThinking(model) ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW,
     };
   }
 

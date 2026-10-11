@@ -77,6 +77,12 @@ export default {
       inactivity_timeout_description: `AI 提供方停止响应，连接超时了。提供方过载或出问题时都可能这样。请再试一次。`,
       first_token_timeout_description: `AI 提供方接受了请求，但一直没有开始回复，连接因此超时。它的队列很可能已经积压。请再试一次，或者换一个没那么忙的模型。`,
     },
+    error_detail: {
+      button: `显示完整错误`,
+      title: `完整的提供方错误`,
+      manage_server_only: `只有拥有 \`管理服务器\` 权限的成员才能查看完整错误。`,
+      personal_only: `这个错误来自个人提供方，所以只有它的所有者才能查看完整错误。`,
+    },
     // Atomic tip-item strings rendered by createTipText() as a dashed bullet list in a read-only
     // modal. Each key is one bullet; callers compose conditional items instead of maintaining
     // whole-paragraph tip strings. Text displays render markdown and hyperlinks.

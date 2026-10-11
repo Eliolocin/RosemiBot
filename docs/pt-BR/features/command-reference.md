@@ -2,7 +2,6 @@
 title: "Referência de Comandos"
 sidebar:
   order: 6
-aiGenerated: true
 ---
 
 <!--

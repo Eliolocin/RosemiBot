@@ -77,6 +77,12 @@ export default {
       inactivity_timeout_description: `AI 供應商停止回應，連線已逾時。供應商超載或發生問題時可能會這樣。請再試一次。`,
       first_token_timeout_description: `AI 供應商接受了請求，但一直沒有開始回覆，連線因此逾時。它的佇列很可能已經塞滿。請再試一次，或改用比較不忙的模型。`,
     },
+    error_detail: {
+      button: `顯示完整錯誤`,
+      title: `完整的供應商錯誤`,
+      manage_server_only: `只有具備 \`管理伺服器\` 權限的成員才能查看完整錯誤。`,
+      personal_only: `這個錯誤來自個人供應商，所以只有它的擁有者才能查看完整錯誤。`,
+    },
     // createTipText() 會把這些單則提示字串算繪成唯讀 modal 中的破折號項目清單。
     // 每個鍵是一則項目；呼叫端組合條件式項目，而不是維護整段提示字串。
     // 文字顯示會算繪 markdown 與超連結。

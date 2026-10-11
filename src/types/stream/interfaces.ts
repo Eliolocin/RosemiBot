@@ -142,6 +142,7 @@ export interface StreamContext {
 
   /** Internal `users` FK of the turn's triggerer; scopes provider-failure telemetry. */
   triggererUserId?: number;
+  triggererDiscId?: string;
 
   // Shared sink (reference threaded from StreamingContext) that the orchestrator appends to on
   // every successful send, so runGenerationTurn can delete a superseded attempt's partial output.

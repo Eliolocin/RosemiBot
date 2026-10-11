@@ -77,6 +77,12 @@ export default {
       inactivity_timeout_description: `Nhà cung cấp AI đã ngừng phản hồi và kết nối bị hết thời gian. Điều này có thể xảy ra khi nhà cung cấp bị quá tải hoặc gặp sự cố. Vui lòng thử lại.`,
       first_token_timeout_description: `Nhà cung cấp AI đã nhận yêu cầu nhưng không bao giờ bắt đầu phản hồi, nên kết nối bị hết thời gian. Hàng đợi của họ có thể đang quá tải. Vui lòng thử lại, hoặc chuyển sang một model ít bận hơn.`,
     },
+    error_detail: {
+      button: `Xem lỗi đầy đủ`,
+      title: `Lỗi đầy đủ từ nhà cung cấp`,
+      manage_server_only: `Chỉ thành viên có quyền \`Quản lý máy chủ\` mới xem được lỗi đầy đủ.`,
+      personal_only: `Lỗi này đến từ nhà cung cấp cá nhân, nên chỉ chủ sở hữu mới xem được lỗi đầy đủ.`,
+    },
     // Atomic tip-item strings rendered by createTipText() as a dashed bullet list in a read-only
     // modal. Each key is one bullet; callers compose conditional items instead of maintaining
     // whole-paragraph tip strings. Text displays render markdown and hyperlinks.

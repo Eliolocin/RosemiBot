@@ -107,6 +107,7 @@ export function buildStreamContext(params: BuildStreamContextParams): StreamCont
     messageIdMap: streamingContext?.messageIdMap,
 
     triggererUserId: streamingContext?.triggererUserId,
+    triggererDiscId: streamingContext?.triggererDiscId,
 
     // Superseded-delivery sink: copy the ARRAY REFERENCE (not a clone) so the orchestrator's
     //    successful-send appends are visible to runGenerationTurn even after the SDK-call-timeout

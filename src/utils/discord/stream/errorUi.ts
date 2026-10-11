@@ -1,7 +1,8 @@
-import { MessageFlags, type ColorResolvable } from "discord.js";
+import { MessageFlags, PermissionFlagsBits, type ButtonInteraction, type ColorResolvable } from "discord.js";
+import type { RestrictedDetailModal } from "@/types/discord/embed";
 import type { ProviderError, StreamProvider, StreamContext } from "@/types/stream/interfaces";
 import { sendStandardEmbed } from "@/utils/discord/embedHelper";
-import { ColorCode, log } from "@/utils/misc/logger";
+import { ColorCode, log, redactLogString } from "@/utils/misc/logger";
 import {
   getProviderErrorDetail,
   isAccountBalanceExhaustedError,
@@ -28,7 +29,8 @@ export class StreamErrorUi {
         reason: providerError.type || "unknown",
       });
 
-    const operatorDetail = boundOperatorDetail(getProviderErrorDetail(providerError));
+    const providerDetail = getProviderErrorDetail(providerError);
+    const operatorDetail = boundOperatorDetail(providerDetail);
     if (isOperatorActionableProviderError(providerError)) {
       const providerName = provider.getProviderInfo().name;
       // Not awaited: an unacknowledged initialInteraction is replied to below. The raw provider
@@ -67,6 +69,8 @@ export class StreamErrorUi {
       return;
     }
 
+    const restrictedDetail = providerDetail ? buildRestrictedErrorDetail(providerDetail, context) : undefined;
+
     if (providerDescription) {
       const { titleKey, tipKeys, color } = this.resolveProviderErrorPresentation(providerError, provider, context);
 
@@ -75,6 +79,7 @@ export class StreamErrorUi {
         description: providerDescription,
         color,
         tipKeys,
+        restrictedDetail,
       }).catch((e) => log.warn("Stream: Failed to send provider error embed to channel", e));
       return;
     }
@@ -92,6 +97,7 @@ export class StreamErrorUi {
           ? "genai.tips.switch_model_provider_personal"
           : "genai.tips.switch_model_provider",
       ],
+      restrictedDetail,
     }).catch((e) => log.warn("Stream: Failed to send error embed to channel", e));
   }
 
@@ -324,9 +330,10 @@ export class StreamErrorUi {
   }
 
   /**
-   * The provider's localized, classified headline. Upstream response text stays in the operator
-   * log: the embed is public, self-debug feeds it back into model context, and an endpoint can
-   * echo the bearer value it received in any encoding pattern redaction would miss.
+   * The provider's localized, classified headline. Upstream response text stays out of the embed:
+   * the embed is public, self-debug feeds it back into model context, and an endpoint can echo the
+   * bearer value it received in any encoding pattern redaction would miss. The raw text is offered
+   * only through {@link buildRestrictedErrorDetail}.
    * @param isModelError - Whether the error classifies as a model-selection error (drives the headline fallback).
    * @returns The headline, or null when no headline can be produced.
    */
@@ -347,4 +354,90 @@ const OPERATOR_ERROR_DETAIL_CHARS = 2000;
 function boundOperatorDetail(detail: string | null): string {
   if (!detail) return "no provider detail";
   return detail.length > OPERATOR_ERROR_DETAIL_CHARS ? `${detail.slice(0, OPERATOR_ERROR_DETAIL_CHARS)}...` : detail;
+}
+
+/** One 4000-char text display minus the code fence, so the fence never splits across displays. */
+const ERROR_DETAIL_MODAL_CHARS = 3_900;
+/** Adapter prefixes are a short label; anything longer is upstream text that must leave room for the body. */
+const ERROR_DETAIL_PREFIX_CHARS = 500;
+/** Placed between adjacent backticks so provider text cannot close the code fence early. */
+const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
+const CODE_FENCE = "```";
+const NESTED_JSON_DEPTH = 4;
+
+/**
+ * Offers the raw provider error behind a gated modal. A modal reaches only the viewer and never
+ * enters channel history, so neither the channel nor self-debug sees it; the remaining exposure
+ * is limited to the people who could already replace the failing key.
+ */
+export function buildRestrictedErrorDetail(detail: string, context: StreamContext): RestrictedDetailModal {
+  // A personal route ran on the triggerer's own key and endpoint, which server managers do not own.
+  if (context.textCredentialSource === "personal") {
+    const ownerDiscId = context.triggererDiscId;
+    return {
+      content: formatProviderErrorDetail(detail),
+      access: {
+        canOpen: (interaction) => ownerDiscId !== undefined && interaction.user.id === ownerDiscId,
+        deniedKey: "genai.error_detail.personal_only",
+      },
+    };
+  }
+  return {
+    content: formatProviderErrorDetail(detail),
+    access: { canOpen: canManageServerCredentials, deniedKey: "genai.error_detail.manage_server_only" },
+  };
+}
+
+/** Outside a guild the only person who can press the button is the DM's own user. */
+function canManageServerCredentials(interaction: ButtonInteraction): boolean {
+  if (!interaction.inGuild()) return true;
+  return interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild);
+}
+
+/**
+ * Pretty-prints the JSON body an adapter wraps in its own prefix (Google nests a second JSON
+ * document inside `error.message`), then redacts the rendered text so unwrapping cannot expose a
+ * credential that was escaped in the original.
+ */
+export function formatProviderErrorDetail(detail: string): string {
+  const jsonStart = detail.indexOf("{");
+  const parsed = jsonStart === -1 ? undefined : tryParseJson(detail.slice(jsonStart));
+  const prefix =
+    parsed === undefined
+      ? ""
+      : boundText(redactLogString(detail.slice(0, jsonStart).trim()), ERROR_DETAIL_PREFIX_CHARS);
+  const body = parsed === undefined ? detail : JSON.stringify(unwrapNestedJson(parsed, 0), null, 2);
+  const language = parsed === undefined ? "" : "json";
+  const escaped = redactLogString(body).replace(/`(?=`)/g, `\`${ZERO_WIDTH_SPACE}`);
+  const fenced = boundText(escaped, ERROR_DETAIL_MODAL_CHARS - prefix.length);
+  const block = [`${CODE_FENCE}${language}`, fenced, CODE_FENCE].join("\n");
+  return prefix ? `${prefix}\n${block}` : block;
+}
+
+/** Redact before bounding, so a cut never leaves half a credential the patterns can no longer match. */
+function boundText(text: string, maxChars: number): string {
+  return text.length > maxChars ? `${text.slice(0, maxChars)}...` : text;
+}
+
+function tryParseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function unwrapNestedJson(value: unknown, depth: number): unknown {
+  if (depth >= NESTED_JSON_DEPTH) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return value;
+    const parsed = tryParseJson(trimmed);
+    return parsed === undefined ? value : unwrapNestedJson(parsed, depth + 1);
+  }
+  if (Array.isArray(value)) return value.map((entry) => unwrapNestedJson(entry, depth + 1));
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, unwrapNestedJson(entry, depth + 1)]));
+  }
+  return value;
 }

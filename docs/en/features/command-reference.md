@@ -2,7 +2,6 @@
 title: "Command Reference"
 sidebar:
   order: 6
-aiGenerated: true
 ---
 
 <!--

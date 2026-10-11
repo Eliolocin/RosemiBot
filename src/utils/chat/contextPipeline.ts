@@ -241,6 +241,7 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
     emptyResponseRetryCount: incoming.retryCount,
     messageIdMap,
     triggererUserId: turn.userRow.user_id,
+    triggererDiscId: turn.userRow.user_disc_id,
     forcedMentions: await resolveForcedMentions(turn),
   };
 
