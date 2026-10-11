@@ -657,6 +657,7 @@ export async function execute(
       // A locally stored avatar resolves to a data URI with no URL form, so reading `avatarUrl`
       // alone drops it and the webhook silently posts with the bot's default picture.
       personaAvatarUrl: identity.avatarDataUri ?? identity.avatarUrl ?? null,
+      personaId: persona.persona_id,
     };
   }
 

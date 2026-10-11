@@ -15,7 +15,7 @@ import { BaseTool, type ToolContext, type ToolParameterSchema, type ToolResult }
 import { resolveChannelTarget } from "@/utils/discord/targetResolver";
 import { getKnownPersonaSpeakerNames, stripLeadingKnownSpeakerPrefixes } from "@/utils/discord/modelAuthoredText";
 import { getOrCreateWebhook } from "@/utils/discord/webhook/lifecycle";
-import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
 import { log } from "@/utils/misc/logger";
 import { storePendingBoomerang, type PendingBoomerang } from "@/tools/functionCalls/crossChannelMessageTool";
 import { resolveContextAuthorLabel } from "@/utils/discord/contextAuthorLabel";
@@ -428,7 +428,7 @@ export class CreateThreadTool extends BaseTool {
       });
 
       if (personaWebhook && context.personaUsername) {
-        await sendWebhookMessageWithIdentity(
+        await sendPersonaPostViaWebhook(
           personaWebhook,
           {
             content: firstMessage,
@@ -438,8 +438,9 @@ export class CreateThreadTool extends BaseTool {
           {
             username: context.personaUsername,
             avatarUrl: context.personaAvatarUrl,
-            avatarDataUri: context.personaAvatarUrl?.startsWith("data:image/") ? context.personaAvatarUrl : undefined,
+            personaId: context.tomoriState.persona_id,
           },
+          thread,
         );
       } else {
         await thread.send({

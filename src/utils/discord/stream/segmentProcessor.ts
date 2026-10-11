@@ -26,10 +26,8 @@ import type {
 } from "@/utils/discord/stream/messageDelivery";
 import {
   collectRenderModifierSourceNames,
-  formatRenderModifierWebhookName,
   hasLeadingPlainOwnNameLabel,
   isAllowedRenderModifierSpeakerLabel,
-  NEUTRAL_APPEARANCE_MODIFIER,
   type LeadingGenericSpeakerLabelMatch,
   matchesRenderModifierName,
   parseLeadingGenericSpeakerLabel,
@@ -43,9 +41,11 @@ import {
 } from "@/utils/discord/renderModifierResolver";
 import { getCachedPersonaSprites } from "@/utils/cache/personaSpriteCache";
 import { normalizePersonaSpriteKey } from "@/utils/persona/sprites";
-import { advanceChannelSpriteGroupParity } from "@/utils/discord/stream/channelDeliveryContinuity";
+import {
+  resolveChannelBaseAppearanceIdentity,
+  resolveChannelGroupBreakIdentity,
+} from "@/utils/discord/stream/channelDeliveryContinuity";
 import { isUserImpersonationStreamContext } from "@/utils/discord/stream/uiUpdater";
-import { toGroupBreakName } from "@/utils/text/groupBreakName";
 
 type StreamSegmentProcessorDependencies = {
   delivery: StreamMessageDelivery;
@@ -63,10 +63,6 @@ const SUSPECTED_RENDER_MODIFIER_LABEL_RE = /\([^()\n\r:：]{1,64}\)\s*[:：]/;
 
 /** How much of a segment to echo into the diagnostic line. */
 const RENDER_MODIFIER_DIAGNOSTIC_HEAD_CHARS = 80;
-
-// Sprite keys can never contain parentheses (validatePersonaSpriteName rejects them), so this key
-// cannot collide with a real sprite named "neutral" in the channel's group alternation.
-const NEUTRAL_APPEARANCE_GROUP_KEY = "(neutral)";
 
 /**
  * Owns normalization and routing for flushed stream text segments before Discord delivery.
@@ -157,11 +153,11 @@ export class StreamSegmentProcessor {
         // are excluded.
         const identity =
           renderTarget.spriteRecord && !renderTarget.isIdentitySprite && !context.holdResponseText
-            ? this.resolveSpriteGroupBreakIdentity(
+            ? resolveChannelGroupBreakIdentity(
+                context.channel.id,
                 renderTarget.identity,
                 renderTarget.contextLabel,
                 renderTarget.spriteRecord.spriteName,
-                context.channel.id,
                 context.channel.lastMessageId,
               )
             : renderTarget.identity;
@@ -498,41 +494,6 @@ export class StreamSegmentProcessor {
   }
 
   /**
-   * Returns the sprite identity with its webhook username chosen to avoid Discord's
-   * consecutive-message grouping collapsing different sprites under one avatar.
-   *
-   * Discord groups webhook messages by `webhook_id` + `username` (ignoring the
-   * per-message avatar) and strips zero-width/blank characters from usernames, so
-   * two adjacent sprites need names that differ in a character Discord keeps. The
-   * "true" half of the parity uses the lookalike-letter variant from
-   * {@link toGroupBreakName}, which reads as the clean name; only a name with no
-   * swappable letter (kana, hanzi, very short words) falls back to the visible
-   * `Persona (sprite)` suffix. A parity toggle flipped on each sprite change guarantees
-   * that adjacent different-sprite messages alternate and therefore never match;
-   * same-sprite runs keep an identical username and still group naturally.
-   *
-   * The alternation is tracked per CHANNEL, not per stream. Discord's grouping spans turns,
-   * so bookkeeping held in `StreamState` was reset at every turn boundary and let a queued
-   * turn's first sprite collide with the previous turn's last sprite. That per-turn reset also
-   * used to stand in for adjacency, which is now tested directly via the channel's last message
-   * id, so the suffix no longer appears after someone else has already broken the group.
-   * See {@link advanceChannelSpriteGroupParity}.
-   */
-  private resolveSpriteGroupBreakIdentity(
-    identity: ResolvedWebhookIdentity,
-    fallbackDecoratedUsername: string,
-    spriteKey: string,
-    channelId: string,
-    channelLastMessageId: string | null,
-  ): ResolvedWebhookIdentity {
-    if (!advanceChannelSpriteGroupParity(channelId, spriteKey, channelLastMessageId)) {
-      return identity;
-    }
-    const groupBreakName = identity.username ? toGroupBreakName(identity.username) : null;
-    return { ...identity, username: groupBreakName ?? fallbackDecoratedUsername };
-  }
-
-  /**
    * An alter leaving a non-identity sprite sends its base messages through the webhook under the
    * same clean username the sprite used, so Discord would group the reverted line under the
    * sprite's avatar. The base appearance then joins the channel's sprite alternation under its own
@@ -561,11 +522,10 @@ export class StreamSegmentProcessor {
       avatarUrl: context.personaAvatarUrl,
       avatarDataUri: context.personaAvatarUrl?.startsWith("data:image/") ? context.personaAvatarUrl : undefined,
     };
-    const identity = this.resolveSpriteGroupBreakIdentity(
-      baseIdentity,
-      formatRenderModifierWebhookName(sourceDisplayName, NEUTRAL_APPEARANCE_MODIFIER),
-      NEUTRAL_APPEARANCE_GROUP_KEY,
+    const identity = resolveChannelBaseAppearanceIdentity(
       context.channel.id,
+      baseIdentity,
+      sourceDisplayName,
       context.channel.lastMessageId,
     );
     return identity === baseIdentity ? undefined : { identity, isNeutralAppearance: true };

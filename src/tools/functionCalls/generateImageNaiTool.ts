@@ -16,7 +16,7 @@ import { prepareGeneratedImage } from "@/utils/image/generatedImageMetadata";
 import { log, ColorCode } from "../../utils/misc/logger";
 import { localizer } from "../../utils/text/localizer";
 import { buildGeneratedImageComponentsV2Payload } from "@/utils/discord/generatedImageMessage";
-import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
 import {
   buildImageToolNoticeDescription,
   buildReferencedMessageUrl,
@@ -276,7 +276,7 @@ export class GenerateImageNaiTool extends BaseTool {
 
     if (context.webhook && context.personaUsername) {
       try {
-        return await sendWebhookMessageWithIdentity(
+        return await sendPersonaPostViaWebhook(
           context.webhook,
           {
             files,
@@ -287,8 +287,9 @@ export class GenerateImageNaiTool extends BaseTool {
           {
             username: context.personaUsername,
             avatarUrl: context.personaAvatarUrl,
-            avatarDataUri: context.personaAvatarUrl?.startsWith("data:image/") ? context.personaAvatarUrl : undefined,
+            personaId: context.tomoriState.persona_id,
           },
+          context.channel,
         );
       } catch (error) {
         log.warn(
@@ -296,7 +297,7 @@ export class GenerateImageNaiTool extends BaseTool {
           error,
         );
         try {
-          return await sendWebhookMessageWithIdentity(
+          return await sendPersonaPostViaWebhook(
             context.webhook,
             {
               files,
@@ -305,8 +306,9 @@ export class GenerateImageNaiTool extends BaseTool {
             {
               username: context.personaUsername,
               avatarUrl: context.personaAvatarUrl,
-              avatarDataUri: context.personaAvatarUrl?.startsWith("data:image/") ? context.personaAvatarUrl : undefined,
+              personaId: context.tomoriState.persona_id,
             },
+            context.channel,
           );
         } catch (fallbackError) {
           log.warn(

@@ -58,8 +58,14 @@ or interrupt arrives.
 After each successful send, `recordChannelDeliveredWebhookIdentity()` records the author identity
 in `src/utils/discord/stream/channelDeliveryContinuity.ts`. Subsequent artifacts in the turn, such
 as sticker expressions and fallback notices, read this record so their messages group under the same
-author. The payload's reference is recorded in `context.deliveredMessageRefs` so the chat pipeline
-can delete partial output if a generation attempt is superseded.
+author. Persona webhook posts outside the stream (tool notices, generated media, voice messages)
+go through `src/utils/discord/webhook/personaPost.ts` and record themselves the same way. Directly
+after the same persona's line they reuse its identity; otherwise they show the base appearance and
+join the sprite alternation, so the next sprite cannot merge under the post's avatar. Lines where
+the persona speaks outside the stream (`/impersonate` and the reply tool) take the stream's own
+alternation for their sprite or base appearance and record themselves too. The payload's reference
+is recorded in `context.deliveredMessageRefs` so the chat pipeline can delete partial output if a
+generation attempt is superseded.
 
 ## Rendered markdown tables
 

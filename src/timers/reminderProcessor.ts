@@ -9,11 +9,8 @@ import { tomoriChat, suppressNextSelfReply } from "../events/messageCreate/tomor
 import { createStandardEmbed, truncateForEmbedDescription } from "../utils/discord/embedHelper";
 import { getCachedAllPersonas } from "../utils/cache/tomoriStateCache";
 import { getCachedUserRow } from "../utils/cache/userCache";
-import {
-  getOrCreateWebhook,
-  resolvePersonaWebhookIdentity,
-  sendWebhookMessageWithIdentity,
-} from "../utils/discord/webhookManager";
+import { getOrCreateWebhook, resolvePersonaWebhookIdentity } from "../utils/discord/webhookManager";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
 import { ensureDiscordUserMention } from "../utils/discord/mentionHelper";
 import { isBridgeUserId } from "../utils/bridges";
 import { sendMatrixReminderMention } from "../utils/bridges/matrix";
@@ -418,7 +415,7 @@ export class ReminderProcessor {
       if (!webhook) return false;
 
       const identity = await resolvePersonaWebhookIdentity(persona, channel.guild);
-      await sendWebhookMessageWithIdentity(
+      await sendPersonaPostViaWebhook(
         webhook,
         {
           content,
@@ -429,7 +426,12 @@ export class ReminderProcessor {
           },
           ...(isThread ? { threadId: channel.id } : {}),
         },
-        identity,
+        {
+          username: identity.username ?? persona.persona_nickname,
+          avatarUrl: identity.avatarDataUri ?? identity.avatarUrl,
+          personaId: persona.persona_id,
+        },
+        channel,
       );
       return true;
     } catch (error) {

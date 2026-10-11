@@ -14,7 +14,7 @@
 import { AttachmentBuilder } from "discord.js";
 import { log } from "../../../utils/misc/logger";
 import type { ToolContext, ToolResult } from "../../../types/tool/interfaces";
-import { sendWebhookMessageWithIdentity } from "../../../utils/discord/webhookManager";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
 import { addFetchCapabilityReminder } from "../brave/braveSearchService";
 import { safeDownload } from "@/utils/security/safeDownload";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
@@ -311,14 +311,15 @@ export async function searxng_image_search(args: Record<string, unknown>, contex
         : undefined;
     const sentMessage =
       context.webhook && context.personaUsername
-        ? await sendWebhookMessageWithIdentity(
+        ? await sendPersonaPostViaWebhook(
             context.webhook,
             { files: attachments, ...(threadId ? { threadId } : {}) },
             {
               username: context.personaUsername,
               avatarUrl: context.personaAvatarUrl,
-              avatarDataUri: context.personaAvatarUrl?.startsWith("data:image/") ? context.personaAvatarUrl : undefined,
+              personaId: context.tomoriState.persona_id,
             },
+            context.channel,
           )
         : await context.channel.send({ files: attachments });
 
