@@ -9,7 +9,7 @@
  */
 
 import { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { type CallableTool, mcpToTool } from "@google/genai";
@@ -613,6 +613,21 @@ class GuildMcpManager {
       };
 
       this.pool.set(key, conn);
+      client.onerror = (error) => {
+        const transport = client.transport;
+        if (
+          error instanceof StreamableHTTPError &&
+          error.code === 404 &&
+          transport instanceof StreamableHTTPClientTransport &&
+          transport.sessionId &&
+          this.pool.get(key) === conn
+        ) {
+          // A session-scoped 404 requires a fresh handshake. A late error from this client
+          // must not retire a replacement that has already connected under the same key.
+          this.pool.delete(key);
+          void this.safeCloseClient(client);
+        }
+      };
       this.connectFailures.delete(key); // clear any prior quarantine on success
       const guildMcpId = config.guild_mcp_id;
       if (typeof guildMcpId === "number" && Number.isSafeInteger(guildMcpId) && guildMcpId > 0) {
@@ -798,7 +813,7 @@ class GuildMcpManager {
     }
   }
 
-  /** Best-effort close of a client whose connect attempt failed, releasing any half-open transport. */
+  /** Best-effort close of a failed client, releasing its transport. */
   private async safeCloseClient(client: MCPClient): Promise<void> {
     try {
       await client.close();
