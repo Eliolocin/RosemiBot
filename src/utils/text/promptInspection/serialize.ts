@@ -429,6 +429,7 @@ export function buildRequestConfig(
     deepseek: () => {
       const thinkingRequest = buildDeepSeekThinkingRequest(modelName, config.thinking_level);
       if (thinkingRequest.thinking) out.thinking = thinkingRequest.thinking;
+      if (thinkingRequest.reasoning_effort) out.reasoning_effort = thinkingRequest.reasoning_effort;
       if (thinkingRequest.omitSampling) {
         delete out.temperature;
         delete out.top_p;

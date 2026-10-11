@@ -205,7 +205,8 @@ export async function callDeepseekStructuredJSON<T>(
     const thinking =
       request.thinkingLevel === undefined ? undefined : buildDeepSeekThinkingRequest(apiModel, request.thinkingLevel);
     if (thinking?.thinking) body.thinking = thinking.thinking;
-    if (request.model !== "deepseek-reasoner" && !thinking?.omitSampling) {
+    if (thinking?.reasoning_effort) body.reasoning_effort = thinking.reasoning_effort;
+    if (!thinking?.omitSampling) {
       body.temperature = request.temperature ?? 1.0;
     }
 

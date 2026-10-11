@@ -369,6 +369,7 @@ export class OpenrouterStreamAdapter extends BaseStreamAdapter {
           metadata?: { raw?: string };
         };
         message?: string;
+        detail?: unknown;
       };
       errorCode = errorData?.error?.code !== undefined ? String(errorData.error.code) : undefined;
       rawErrorBodyFromMetadata = errorData?.error?.metadata?.raw;
@@ -376,6 +377,8 @@ export class OpenrouterStreamAdapter extends BaseStreamAdapter {
         errorData?.error?.metadata?.raw ||
         errorData?.error?.message ||
         errorData?.message ||
+        // Some upstream backends relay their own FastAPI-style `{"detail": "..."}` body unwrapped.
+        (typeof errorData?.detail === "string" ? errorData.detail : "") ||
         errorText ||
         responseStatusText;
     } catch {

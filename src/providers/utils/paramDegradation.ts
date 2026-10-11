@@ -124,6 +124,9 @@ function isLikelyGenericErrorMessage(message: string): boolean {
     normalized === "error" ||
     normalized === "bad request" ||
     normalized === "request failed" ||
+    normalized === "invalid request" ||
+    // Xiaomi's backend, relayed through OpenRouter, rejects without naming a field.
+    normalized === "invalid request. please check your input and try again" ||
     normalized === "internal server error" ||
     normalized === "internal error"
   );
