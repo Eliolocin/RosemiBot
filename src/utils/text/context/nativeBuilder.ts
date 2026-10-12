@@ -125,8 +125,10 @@ export async function buildContextNative(params: BuildContextParams): Promise<Na
     isUserImpersonation && impersonatedUserId
       ? client.guilds.cache.get(guildId)?.members.cache.get(impersonatedUserId)
       : null;
+  // The naming-aware label comes first so the "Imitate" instruction matches the speaker labels in the
+  // history; the Discord names are only a fallback when no label could be resolved.
   const impersonatedIdentityName =
-    impersonatedMember?.displayName || impersonatedMember?.user.displayName || impersonatedUserNickname || null;
+    impersonatedUserNickname || impersonatedMember?.displayName || impersonatedMember?.user.displayName || null;
   const uncensorInputOptions = {
     unicodeSpacesEnabled: tomoriConfig.uncensor_unicode_space_enabled,
     sanitizeEnabled: tomoriConfig.uncensor_sanitize_enabled,

@@ -48,7 +48,7 @@ Prompt order matters for LLM reasoning and caching: identity framing sits at the
 
 Directives and deferred short-term memory items are kept out of `contextItems` so that the downstream chat pipeline can position them relative to assembled dialogue turns:
 
-- `tailDirectives` receive the impersonation command directive (`Imitate <User>, start your message with <User>:`).
+- `tailDirectives` receive the impersonation command directive (`Imitate <User>, start your message with <User>:`). `<User>` is the same naming-aware label the history uses, not the Discord display name, and the stream cleaner strips that label as well as the webhook name.
 - `uncensorDirective` receives cleaned uncensor text when enabled.
 - `nudgeItem` holds the cadence-gated `update_short_term_memory` prompt.
 - `memoryInjectionItems` holds the short-term memory content block when the server configures a non-negative content depth. A negative depth keeps the block inline inside `contextItems`.

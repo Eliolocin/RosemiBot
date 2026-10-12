@@ -203,7 +203,7 @@ export class VertexStreamAdapter extends BaseStreamAdapter {
     const botName = context.prefixStrippingName ?? context.personaUsername ?? context.tomoriState.persona_nickname;
     this.speakerGuardAllowedSourceNames = collectRenderModifierSourceNames(
       botName,
-      collectPersonaNameAliases(context.tomoriState, botName),
+      collectPersonaNameAliases(context.tomoriState, botName, context.impersonatedSpeakerLabel),
     );
     const speakerStopPatternEnabled = context.tomoriState.config.llm_stop_speaker_pattern_enabled ?? false;
     this.speakerGuardEnabled = speakerStopPatternEnabled;

@@ -97,10 +97,18 @@ describe("verified managed webhook identity", () => {
     await verifyMessageWebhook(matrix);
     expect(isMatrixRelayMessage(matrix)).toBe(true);
     expect(resolvePersonaForMessage(matrix, personas, "fixture-bot")).toBeNull();
-    cacheUserImpersonationWebhook("managed-hook", "fixture-user");
-    const impersonated = webhookMessage("Juno");
-    await verifyMessageWebhook(impersonated);
+    // Temporary impersonation webhooks are never persisted, so the managed-webhook lookup returns null.
+    cacheUserImpersonationWebhook("temp-hook", "fixture-user", "fixture-guild", "fixture-channel");
+    const impersonated = webhookMessage("Juno", "temp-hook");
+    expect(await verifyMessageWebhook(impersonated)).toBe(true);
     expect(resolveReferencedWebhookTarget(impersonated, names, null).impersonatedUserId).toBe("fixture-user");
+    const wrongChannel = {
+      ...webhookMessage("Juno", "temp-hook"),
+      channelId: "other-channel",
+      channel: { id: "other-channel", isThread: () => false },
+    } as unknown as Message;
+    expect(await verifyMessageWebhook(wrongChannel)).toBe(false);
+    expect(resolveReferencedWebhookTarget(wrongChannel, names, null).impersonatedUserId).toBeNull();
     const foreignGuild = { ...webhookMessage("Mirri"), guildId: "another-guild" } as Message;
     expect(await verifyMessageWebhook(foreignGuild)).toBe(false);
     expect(resolveReferencedWebhookTarget(foreignGuild, names, null).impersonatedUserId).toBeNull();

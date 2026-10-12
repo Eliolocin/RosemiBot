@@ -94,6 +94,7 @@ export function buildStreamContext(params: BuildStreamContextParams): StreamCont
     prefixStrippingName: params.prefixStrippingName,
 
     forcedMentions: streamingContext?.forcedMentions,
+    impersonatedSpeakerLabel: streamingContext?.impersonatedSpeakerLabel,
 
     // NAI GLM-4.6 prompt continuation: trailing fragment from a previous truncated stream.
     //    Only ever populated for NovelAI streams; a no-op copy-through for other providers.

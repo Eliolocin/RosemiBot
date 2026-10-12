@@ -455,6 +455,7 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
   });
   if (incoming.impersonatedUserId) {
     impersonatedUserNickname = historyNaming.userLabels.get(incoming.impersonatedUserId) ?? impersonatedUserNickname;
+    streamingContext.impersonatedSpeakerLabel = impersonatedUserNickname;
   }
 
   // Resolve any per-channel system prompt override (append/replace). Negative results

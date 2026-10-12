@@ -14,6 +14,11 @@ export async function verifyMessageWebhook(message: Message): Promise<boolean> {
   if (cached !== undefined) return cached;
   const channelId = message.channel.isThread() ? message.channel.parentId : message.channelId;
   if (!channelId) return false;
+  const relay = getCachedWebhookRelay(message.webhookId);
+  if (relay && relay.guildId === message.guildId && relay.channelId === channelId) {
+    managedMessageTrust.set(message, true);
+    return true;
+  }
   try {
     const webhook = getCachedManagedWebhookForChannel(channelId, message.webhookId);
     if (webhook && webhook.guildId === message.guildId && webhook.channelId === channelId) {
@@ -46,12 +51,20 @@ type CachedWebhookRelayKind = "user_impersonation";
 type CachedWebhookRelay = {
   userId: string;
   kind: CachedWebhookRelayKind;
+  guildId: string;
+  channelId: string;
   cachedAt: number;
 };
 
 const webhookRelayCache = new Map<string, CachedWebhookRelay>();
 
-function cacheWebhookRelay(webhookId: string, userId: string, kind: CachedWebhookRelayKind): void {
+function cacheWebhookRelay(
+  webhookId: string,
+  userId: string,
+  kind: CachedWebhookRelayKind,
+  guildId: string,
+  channelId: string,
+): void {
   if (!webhookId || !userId) {
     return;
   }
@@ -59,12 +72,25 @@ function cacheWebhookRelay(webhookId: string, userId: string, kind: CachedWebhoo
   webhookRelayCache.set(webhookId, {
     userId,
     kind,
+    guildId,
+    channelId,
     cachedAt: Date.now(),
   });
 }
 
-export function cacheUserImpersonationWebhook(webhookId: string, userId: string): void {
-  cacheWebhookRelay(webhookId, userId, "user_impersonation");
+/**
+ * Registers a temporary impersonation webhook as ours. It is deleted right after the response and
+ * never persisted as a managed webhook, so this cache is the only record that later replies to its
+ * messages came from TomoriBot. The guild and channel binding keeps a foreign webhook that reuses
+ * the id from being trusted elsewhere.
+ */
+export function cacheUserImpersonationWebhook(
+  webhookId: string,
+  userId: string,
+  guildId: string,
+  channelId: string,
+): void {
+  cacheWebhookRelay(webhookId, userId, "user_impersonation", guildId, channelId);
 }
 
 export function clearWebhookIdentityCache(): void {
