@@ -228,8 +228,10 @@ write_files:
       [Service]
       Type=oneshot
       ExecStart=/usr/local/sbin/tomoribot-scheduled-restart.sh
-      # Must exceed the co-tenant recycles plus the bot's 30s stop grace and 90s health wait.
-      TimeoutStartSec=300
+      # Sized for a starved host, not a healthy one: the recycle runs exactly when the host is
+      # failing, and there a single co-tenant restart has taken about two minutes. A kill here
+      # mid-recycle leaves the unit failed even when dockerd completes the restart anyway.
+      TimeoutStartSec=600
   - path: /etc/systemd/system/tomoribot-restart.timer
     owner: root:root
     permissions: "0644"
@@ -417,7 +419,7 @@ write_files:
       HISTORY=""
       save_state
 
-      # Co-tenants first, matching the daily recycle order: recycling them alone was measured
+      # Co-tenants first, matching the scheduled recycle order: recycling them alone was measured
       # cutting host IO pressure 43%, and it is the cheaper rung. A failure here must not block
       # the bot's own restart, which is the one that matters.
       SEARX_CID=$(docker ps -q --filter 'label=com.docker.compose.service=searxng' | head -1)
@@ -453,8 +455,10 @@ write_files:
       [Service]
       Type=oneshot
       ExecStart=/usr/local/sbin/tomoribot-progress-watchdog.sh
-      # Must exceed the co-tenant recycle plus the bot's 30s stop grace and 90s health wait.
-      TimeoutStartSec=180
+      # Sized for a starved host, not a healthy one. At 180s, three recycles in one outage were
+      # killed after the searxng restart alone used the budget, so the bot itself was never
+      # restarted. A long run cannot stack checks: systemd never starts a unit that is still running.
+      TimeoutStartSec=600
   - path: /etc/systemd/system/tomoribot-watchdog.timer
     owner: root:root
     permissions: "0644"

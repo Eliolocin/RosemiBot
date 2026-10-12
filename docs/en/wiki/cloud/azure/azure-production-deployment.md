@@ -83,14 +83,19 @@ Four rules keep it from becoming a restart loop, and all of them are configured 
 - **Several failures in a window**, not one. Five of the last eight checks at a one-minute cadence,
   so most of an eight-minute span. Acting on a single sample is how a naive threshold has already
   taken this host down once. The window is not a strict streak because a starved host still answers
-  `/healthz` intermittently, and each answer reset the old consecutive counter: one memory-pressure
-  outage kept that counter at four or below for hours while the bot was unusable.
+  `/healthz` intermittently, and each answer reset the old consecutive counter: in one
+  memory-pressure outage it stayed at four or below for over three hours while the bot was unusable.
 - **A startup grace period**, so a cold start is not read as a stall.
 - **A minimum interval between recycles.** A repeat inside that interval means the previous recycle
   did not fix it, which is a worse problem than a single stall, so it is logged as an alert instead
   of retried.
-- **Co-tenants first**, matching the daily recycle order. Recycling them alone was measured cutting
-  host IO pressure 43%, so the cheap rung sits below the expensive one.
+- **Co-tenants first**, matching the scheduled recycle order. Recycling them alone was measured
+  cutting host IO pressure 43%, so the cheap rung sits below the expensive one.
+
+Both the watchdog and the scheduled recycle carry `TimeoutStartSec=600`, sized for a starved host
+rather than a healthy one, because a recycle only runs when the host is failing. At 180 seconds, every
+watchdog recycle in one outage was killed after the searxng restart alone used the budget, so the bot
+was never restarted.
 
 **It ships armed** (`WATCHDOG_ARMED=true`) because production ran it disarmed through an observation
 period that logged zero would-act lines. On a new deployment, consider setting it to `false` first:
