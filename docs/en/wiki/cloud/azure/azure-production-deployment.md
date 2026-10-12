@@ -731,7 +731,9 @@ schedule itself:
 - **Use `Persistent=false`.** Catching up a missed run at boot would restart a container that booting
   had just created.
 
-Pick the hour from your own traffic histogram rather than copying one. Note also that `docker
+Pick the interval from how long your host lasts before swap depth hurts, and the hours from your own
+traffic histogram rather than copying them. This deployment recycles every 12 hours because a daily
+cadence stopped covering the time to starvation once traffic grew. Note also that `docker
 restart` does not increment `RestartCount`, so adopting a restart schedule does not blunt the
 "something is killing it" signal that a rising `RestartCount` gives during triage.
 

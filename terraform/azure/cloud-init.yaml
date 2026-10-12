@@ -235,14 +235,16 @@ write_files:
     permissions: "0644"
     content: |
       [Unit]
-      Description=Recycle TomoriBot daily at its lowest-traffic hour
+      Description=Recycle TomoriBot every 12 hours at its lowest-traffic pair of hours
 
       [Timer]
-      # Set to the lowest-traffic hour in this deployment's activity histogram, so the
-      # brief outage lands where it interrupts the fewest turns. Derive it from your own
-      # traffic before reusing this value. The explicit UTC suffix keeps the schedule
-      # correct if the host timezone is ever changed away from Etc/UTC.
-      OnCalendar=*-*-* 00:00:00 UTC
+      # Twice daily because the host began starving roughly 18 hours after a recycle once
+      # traffic grew, so a daily cadence no longer bounds swap depth. 00:00 and 12:00 are the
+      # lowest-traffic 12-hour pair in this deployment's active_hour histogram, so the brief
+      # outage interrupts the fewest turns. Derive both from your own traffic before reusing
+      # them. The explicit UTC suffix keeps the schedule correct if the host timezone is ever
+      # changed away from Etc/UTC.
+      OnCalendar=*-*-* 00,12:00:00 UTC
       AccuracySec=1min
       # A missed run must not fire at boot: booting already produced a fresh container,
       # so catching up would restart a process that has nothing accumulated yet.

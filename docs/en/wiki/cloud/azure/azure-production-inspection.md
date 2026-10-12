@@ -560,10 +560,10 @@ silently returns `null`, which looks identical to a dead agent.
 
 ### Scheduled restarts are routine
 
-`tomoribot-restart.timer` recycles the container daily to bound that growth, so **a container whose
-uptime resets on a daily boundary is the timer working, not an incident**. Check what it did with
-`journalctl -u tomoribot-restart.service`; it logs swap depth before and after each run, and it skips
-containers younger than six hours.
+`tomoribot-restart.timer` recycles the container at 00:00 and 12:00 UTC to bound that growth, so
+**a container whose uptime resets on one of those boundaries is the timer working, not an incident**.
+Check what it did with `journalctl -u tomoribot-restart.service`; it logs swap depth before and after
+each run, and it skips containers younger than six hours.
 
 **It also recycles searxng and the Azure Monitor agent, and those are not subject to the six-hour
 gate.** They grow with host uptime rather than container age, so a run that logs
