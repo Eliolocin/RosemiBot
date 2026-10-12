@@ -213,32 +213,32 @@ The selected model requires allowing data for paid model training, but your Open
       unknown_default_message: `An unexpected error occurred`,
     },
     self_teach: {
-      server_memory_learned_title: `🧠 {persona_nickname} Learned Something New!`,
+      server_memory_learned_title: `🧠 {persona_nickname} learned something new!`,
       server_memory_learned_description: `A **[Server Memory](https://docs.tomoribot.app/en/features/knowledge/memory/#long-term-memory)** has been saved:
 \`\`\`
 {memory_content}
 \`\`\``,
-      server_memory_updated_title: `📝 {persona_nickname} Updated a Memory!`,
+      server_memory_updated_title: `📝 {persona_nickname} updated a memory!`,
       server_memory_updated_description: `A **[Server Memory](https://docs.tomoribot.app/en/features/knowledge/memory/#long-term-memory)** has been updated:
 \`\`\`
 {memory_content}
 \`\`\``,
-      server_memory_deleted_title: `🗑️ {persona_nickname} Deleted a Memory!`,
+      server_memory_deleted_title: `🗑️ {persona_nickname} deleted a memory!`,
       server_memory_deleted_description: `A **[Server Memory](https://docs.tomoribot.app/en/features/knowledge/memory/#long-term-memory)** has been deleted:
 \`\`\`
 {memory_content}
 \`\`\``,
-      personal_memory_learned_title: `💡 {persona_nickname} Learned Something New about {user_nickname}!`,
+      personal_memory_learned_title: `💡 {persona_nickname} learned something new about {user_nickname}!`,
       personal_memory_learned_description: `A **[Personal Memory](https://docs.tomoribot.app/en/features/knowledge/memory/#long-term-memory)** about {user_nickname} has been saved:
 \`\`\`
 {memory_content}
 \`\`\``,
-      personal_memory_updated_title: `📝 {persona_nickname} Updated a Memory about {user_nickname}!`,
+      personal_memory_updated_title: `📝 {persona_nickname} updated a memory about {user_nickname}!`,
       personal_memory_updated_description: `A **[Personal Memory](https://docs.tomoribot.app/en/features/knowledge/memory/#long-term-memory)** about {user_nickname} has been updated:
 \`\`\`
 {memory_content}
 \`\`\``,
-      personal_memory_deleted_title: `🗑️ {persona_nickname} Deleted a Memory about {user_nickname}!`,
+      personal_memory_deleted_title: `🗑️ {persona_nickname} deleted a memory about {user_nickname}!`,
       personal_memory_deleted_description: `A **[Personal Memory](https://docs.tomoribot.app/en/features/knowledge/memory/#long-term-memory)** about {user_nickname} has been deleted:
 \`\`\`
 {memory_content}

@@ -68,6 +68,8 @@ Dicas para exemplos de diálogos eficazes:
 
 Abra `/config` > `Persona` > `Identidade e Personalidade` para definir como ela se chama e fazer upload de sua foto de perfil.
 
+Para uma persona integrada personalizada, os gerentes de servidor podem escolher `Ressincronizar com predefinição` nesta página. A confirmação mostra quais prompts, atributos, diálogos de exemplo, avatares e sprites serão alterados. A ressincronização segue futuras atualizações da predefinição e descarta essas edições locais. Ela mantém o nome da persona, as palavras-gatilho, os hábitos de nomenclatura, as memórias, o histórico e outras configurações. Uma persona que já segue sua predefinição exibe `Sincronizada com predefinição`; personas personalizadas não têm botão de ressincronização.
+
 Você também pode definir um prompt de sistema personalizado em `/config` > `Comportamento` > `Comportamento Geral`; consulte [Ajustes de comportamento](/pt-BR/features/chatting-personality/behavior-tweaking/).
 
 ### Hábitos de nomenclatura

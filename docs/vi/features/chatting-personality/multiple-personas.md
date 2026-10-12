@@ -62,6 +62,8 @@ Lời khuyên cho các cuộc đối thoại mẫu hiệu quả:
 
 Mở `/config` > `Persona` > `Danh tính & Tính cách` để đặt tên cô ấy tự gọi và tải ảnh hồ sơ của mình lên.
 
+Đối với persona tích hợp sẵn đã được tùy chỉnh, người quản lý máy chủ có thể chọn `Đồng bộ lại với preset` trên trang này. Xác nhận sẽ hiển thị những prompt, thuộc tính, đoạn hội thoại mẫu, ảnh đại diện và sprite nào sẽ thay đổi. Đồng bộ lại sẽ tuân theo các cập nhật preset trong tương lai và hủy bỏ những chỉnh sửa cục bộ đó. Thao tác này giữ lại tên của persona, từ kích hoạt, thói quen xưng hô, bộ nhớ, lịch sử và các cài đặt khác. Persona đã theo preset của nó sẽ hiển thị `Đã đồng bộ với preset`; persona tùy chỉnh không có nút đồng bộ lại.
+
 Bạn cũng có thể đặt lời nhắc hệ thống tùy chỉnh trong `/config` > `Hành vi` > `Hành vi chung`; xem [Tinh chỉnh hành vi](/vi/features/chatting-personality/behavior-tweaking/).
 
 ### Thói quen đặt tên

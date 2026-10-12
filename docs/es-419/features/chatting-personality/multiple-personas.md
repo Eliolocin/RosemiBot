@@ -68,6 +68,8 @@ Consejos para ejemplos de diálogos eficaces:
 
 Abre `/config` > `Persona` > `Identidad y personalidad` para configurar cómo se llama y cargar su foto de perfil.
 
+Para una persona integrada personalizada, los administradores del servidor pueden elegir `Resincronizar con preajuste` en esta página. La confirmación muestra qué prompt, atributos, diálogos de muestra, avatar y sprites cambiarán. La resincronización sigue las futuras actualizaciones del preajuste y descarta esas ediciones locales. Mantiene el nombre de la persona, las palabras de activación, los hábitos de nombramiento, las memorias, el historial y otros ajustes. Una persona que ya sigue su preajuste muestra `Sincronizada con preajuste`; las personas personalizadas no tienen botón de resincronización.
+
 También puede configurar un mensaje de sistema personalizado en `/config` > `Comportamiento` > `Comportamiento general`; consulte [Ajustes de comportamiento](/es-419/features/chatting-personality/behavior-tweaking/).
 
 ### Hábitos de nomenclatura
