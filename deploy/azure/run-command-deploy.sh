@@ -322,9 +322,12 @@ if [ -f "$paused_timers" ]; then
   rm -f "$paused_timers"
 fi
 
-# After the health check so a failed deploy keeps the prior image for rollback. Never fatal: the
+# `-a` is required because images pulled by digest keep a digest reference and are never dangling,
+# so a dangling-only prune reclaimed nothing and every deploy's images accumulated until the disk
+# filled. Rollback redeploys an immutable digest and re-pulls it, so no local copy is kept. Runs
+# after the health check so a failed deploy exits before touching the prior image. Never fatal: the
 # deploy has already succeeded here, so reclaiming disk must not fail it.
-docker image prune -f >/dev/null 2>&1 || echo "Image prune skipped; disk reclaim deferred." >&2
+docker image prune -a -f >/dev/null 2>&1 || echo "Image prune skipped; disk reclaim deferred." >&2
 
 echo "TomoriBot deployment succeeded through Azure Run Command."
 echo "TOMORIBOT_DEPLOYMENT_SUCCEEDED"

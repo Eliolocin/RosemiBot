@@ -491,11 +491,15 @@ Cache and process-memory samples land in the `metric_samples` table, pruned on t
 `METRIC_SAMPLE_RETENTION_DAYS` (30 by default). Backup and application-data mounts remain under
 `/var/lib/tomoribot` and require explicit operator retention decisions.
 
-Each deploy pulls a new image digest and leaves the previous one untagged, so
-`run-command-deploy.sh` runs `docker image prune -f` after the health check and file-permission
-assertions pass. Pruning after the health check keeps the prior image available for rollback, and it
-is dangling-only so tagged images and anything a running container references survive. The step is
-never fatal: the deploy has already succeeded by that point, and reclaiming disk must not fail it.
+Each deploy pulls a new image digest of about 1.5 GB, so `run-command-deploy.sh` runs
+`docker image prune -a -f` after the health check and file-permission assertions pass. It must be
+`-a`: an image pulled by digest keeps that digest reference and is never dangling, so a dangling-only
+prune reclaims nothing and the OS disk eventually fills. The first symptom is the next deploy's
+migration step failing on `docker pull` with an empty Run Command output, because the host cannot
+write the error either. `prune -a` keeps only images a container references, which is safe because
+rollback redeploys an immutable digest and pulls it again. Pruning after the health check means a
+failed deploy exits before touching the prior image. The step is never fatal: the deploy has already
+succeeded by that point, and reclaiming disk must not fail it.
 
 ### Memory limits must track physical RAM
 
