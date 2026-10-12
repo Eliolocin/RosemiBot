@@ -167,7 +167,12 @@ async function createUserImpersonationTarget(
     reason: "TomoriBot user impersonation",
   });
 
-  cacheUserImpersonationWebhook(webhook.id, context.impersonatedUserId);
+  cacheUserImpersonationWebhook(
+    webhook.id,
+    context.impersonatedUserId,
+    webhookTargetChannel.guildId,
+    webhookTargetChannel.id,
+  );
   return {
     webhook,
     temporaryWebhook: webhook,

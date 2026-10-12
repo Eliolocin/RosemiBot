@@ -126,6 +126,11 @@ export interface StreamingContext {
     handle: string;
     userId: string;
   }>; // Additional mention handles to force-resolve (e.g., reminder recipients)
+  /**
+   * The speaker label the user-impersonation prompt tells the model to open with. It can differ from
+   * the webhook display name (the Discord name), so the output cleaner must strip both.
+   */
+  impersonatedSpeakerLabel?: string;
   holdResponseText?: boolean;
   pendingResponseLimit?: import("@/types/stream/pendingResponse").PendingResponseLimit;
   suppressTextOutput?: boolean; // Suppress text output to Discord (NAI tool retry mode : keeps model state coherent but hides repeated text)

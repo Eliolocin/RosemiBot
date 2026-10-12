@@ -125,7 +125,7 @@ export class OpenAICompatibleStreamAdapter extends BaseStreamAdapter {
     const botName = context.prefixStrippingName ?? context.personaUsername ?? context.tomoriState.persona_nickname;
     this.speakerGuardAllowedSourceNames = collectRenderModifierSourceNames(
       botName,
-      collectPersonaNameAliases(context.tomoriState, botName),
+      collectPersonaNameAliases(context.tomoriState, botName, context.impersonatedSpeakerLabel),
     );
 
     // Determine whether the resolved endpoint accepts system-role messages.

@@ -413,7 +413,7 @@ export class OpenrouterStreamAdapter extends BaseStreamAdapter {
     const botName = context.prefixStrippingName ?? context.personaUsername ?? context.tomoriState.persona_nickname;
     this.speakerGuardAllowedSourceNames = collectRenderModifierSourceNames(
       botName,
-      collectPersonaNameAliases(context.tomoriState, botName),
+      collectPersonaNameAliases(context.tomoriState, botName, context.impersonatedSpeakerLabel),
     );
     this.speakerGuardEnabled = false;
     this.reasoningContentSpillGuard.reset();

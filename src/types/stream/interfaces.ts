@@ -113,6 +113,7 @@ export interface StreamContext {
   personaAvatarUrl?: string; // Avatar URL or data URI for current persona
   personaUsername?: string; // Username override for current persona (shown in Discord UI)
   prefixStrippingName?: string; // Name used for prefix stripping (may differ from personaUsername for user impersonation)
+  impersonatedSpeakerLabel?: string; // Naming-aware label the impersonation prompt asks the model to open with; stripped like prefixStrippingName
 
   forcedMentions?: Array<{
     handle: string;

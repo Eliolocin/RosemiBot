@@ -52,7 +52,7 @@ Stores scheduled reminder tasks:
 Incoming messages route through these priorities:
 
 - **Direct bot replies**: Replying to a message sent by the bot user routes to the main persona.
-- **Webhook replies**: `webhookIdentity.ts` verifies the webhook ID against the managed webhook cache or repository for that guild and channel before matching a persona nickname. Threads use the parent channel's registration. Copied render names resolve only after this check. A failed lookup grants no persona identity.
+- **Webhook replies**: `webhookIdentity.ts` verifies the webhook ID against the managed webhook cache or repository for that guild and channel before matching a persona nickname. Threads use the parent channel's registration. A temporary user-impersonation webhook is never persisted, so it is trusted from the in-memory relay cache (24 hours) when its guild and channel match, which means replies to its messages stop triggering after a restart or the TTL. Copied render names resolve only after this check. A failed lookup grants no persona identity.
 - **Bot mentions**: Mentioning the bot routes to the main persona.
 - **Explicit trigger words**: Matching strings in `persona_configs.trigger_words` activate the matching personas.
 
@@ -112,7 +112,7 @@ Incoming Turn
 Alters deliver through a shared channel webhook (`TomoriBot Multi-Persona`):
 
 - **Identity overrides**: Each send specifies `username` (persona nickname) and `avatarURL` (`webhook_avatar_url`).
-- **Historic identity resolution**: Admission, reply attribution, context assembly, history import, and queued persona routing use verified managed webhook identity. The bot's own direct messages retain the main persona identity. Matrix relay prefixes and cached user impersonation are trusted only on a managed webhook. Foreign webhooks keep a generic webhook identity in history and cannot start natural persona jobs or gain their quota/cooldown exemptions. Managed cascades keep their originating user's metering. `getReplyContextAuthorName()` strips bridge prefixes only on verified sources. Direct bot messages use the available member display name, so later nickname changes can affect reconstructed attribution.
+- **Historic identity resolution**: Admission, reply attribution, context assembly, history import, and queued persona routing use verified managed webhook identity. The bot's own direct messages retain the main persona identity. Matrix relay prefixes are trusted only on a managed webhook, and cached user impersonation only on a webhook registered in the relay cache for that guild and channel. Foreign webhooks keep a generic webhook identity in history and cannot start natural persona jobs or gain their quota/cooldown exemptions. Managed cascades keep their originating user's metering. `getReplyContextAuthorName()` strips bridge prefixes only on verified sources. Direct bot messages use the available member display name, so later nickname changes can affect reconstructed attribution.
 
 ### Copied rendering and sprites
 

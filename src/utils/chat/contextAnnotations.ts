@@ -1,4 +1,4 @@
-import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
+import { getCachedImpersonatedUserIdForWebhook, verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import type { Embed, Message, MessageReaction } from "discord.js";
 import { MessageType } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
@@ -535,12 +535,17 @@ async function resolveMessageAuthorDisplayName(params: {
   const matchedPersona = trustedWebhook
     ? (renderModifierSource?.persona ?? params.personaByNickname.get(normalizeRenderModifierName(webhookName)))
     : undefined;
+  // A user-impersonation webhook's author id is the webhook's, so its speaker's saved nickname
+  // is only reachable through the relay cache.
+  const nicknameOwnerId =
+    (trustedWebhook ? getCachedImpersonatedUserIdForWebhook(params.message.webhookId) : null) ??
+    params.message.author.id;
   const userRow =
     params.message.author.id !== params.clientUserId && !matchedPersona
-      ? await getCachedUserRow(params.message.author.id)
+      ? await getCachedUserRow(nicknameOwnerId)
       : null;
   const userBlacklisted =
-    userRow !== null ? await getCachedBlacklistStatus(params.serverDiscId, params.message.author.id) : false;
+    userRow !== null ? await getCachedBlacklistStatus(params.serverDiscId, nicknameOwnerId) : false;
   const fallbackName = resolvePreferredDiscordDisplayName({
     memberDisplayName: params.message.member?.displayName,
     user: params.message.author,
