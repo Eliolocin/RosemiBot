@@ -901,7 +901,7 @@ ${localizer(locale, "commands.config.panel.dialogues_description")}${renderedSel
   return components;
 }
 
-export interface PersonaResyncDiff {
+interface PersonaResyncDiff {
   attributes: { changed: number; added: number; removed: number };
   dialogues: { changed: number; added: number; removed: number };
   promptChanged: boolean;

@@ -18,6 +18,13 @@ function makeEmbed(title: string, description: string): Embed {
   return { title, description, fields: [], color: null } as unknown as Embed;
 }
 
+function expectedTitle(titleKey: string, subjects: string[] = []): string {
+  const fields = new Intl.ListFormat("en-US", { type: "conjunction", style: "long" }).format(
+    subjects.map((subject) => localizedCopy("en-US", `tools.user_info_update.subject_${subject}`)),
+  );
+  return localizedCopy("en-US", `tools.user_info_update.${titleKey}`, { target_user: "Bau", fields });
+}
+
 function buildContext(embed: Embed): string {
   return processEmbedsFromMessage({
     embeds: [embed],
@@ -57,12 +64,6 @@ describe("update_user_info notice visibility", () => {
       expect(checkTargetEmbedTitle(title)).toEqual({ isTarget: true, type: "user_info_update" });
       expect(checkTargetEmbedTitle(title.replace(/^✅\s*/u, ""))).toEqual({ isTarget: true, type: "user_info_update" });
     }
-    expect(
-      localizer("en-US", "tools.user_info_update.success_title_fields", {
-        target_user: "Bau",
-        fields: "nickname and timezone",
-      }),
-    ).toBe("✅ Updated Bau's nickname and timezone");
   });
 
   it("classifies the cleared title in every locale, including its Minimal emoji-free form", () => {
@@ -83,7 +84,7 @@ describe("update_user_info notice visibility", () => {
     };
 
     expect(heading([{ field: "timezone_offset", cleared: true }])).toEqual({
-      title: "🗑️ Cleared Bau's timezone",
+      title: expectedTitle("success_title_cleared_fields", ["timezone_offset"]),
       color: ColorCode.ERROR,
     });
     expect(
@@ -91,9 +92,9 @@ describe("update_user_info notice visibility", () => {
         { field: "nickname", cleared: true },
         { field: "prefix", cleared: true },
       ]),
-    ).toEqual({ title: "🗑️ Cleared Bau's nickname", color: ColorCode.ERROR });
+    ).toEqual({ title: expectedTitle("success_title_cleared_fields", ["nickname"]), color: ColorCode.ERROR });
     expect(heading([{ field: "prefix", cleared: true }])).toEqual({
-      title: "✅ Updated Bau's nickname",
+      title: expectedTitle("success_title_fields", ["nickname"]),
       color: ColorCode.SUCCESS,
     });
     expect(
@@ -101,14 +102,17 @@ describe("update_user_info notice visibility", () => {
         { field: "suffix", cleared: false, value: "-san" },
         { field: "timezone_offset", cleared: false, value: 9 },
       ]),
-    ).toEqual({ title: "✅ Updated Bau's nickname and timezone", color: ColorCode.SUCCESS });
+    ).toEqual({
+      title: expectedTitle("success_title_fields", ["nickname", "timezone_offset"]),
+      color: ColorCode.SUCCESS,
+    });
     expect(
       heading([
         { field: "pronouns", cleared: true },
         { field: "gender_identity", cleared: true },
         { field: "timezone_offset", cleared: true },
       ]),
-    ).toEqual({ title: "✅ Updated Bau's Profile", color: ColorCode.SUCCESS });
+    ).toEqual({ title: expectedTitle("success_title"), color: ColorCode.SUCCESS });
   });
 
   it("renders the notice into the [System: ...] block for a later turn", () => {
@@ -146,7 +150,7 @@ describe("update_user_info notice visibility", () => {
     }).content;
 
     expect(content).toContain("[System:");
-    expect(content).toContain("Updated Bau's Profile");
+    expect(content).toContain(expectedTitle("success_title"));
     expect(content).toContain("Master Bau");
   });
 
