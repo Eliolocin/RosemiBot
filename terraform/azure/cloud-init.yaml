@@ -266,10 +266,13 @@ write_files:
       # Event-loop staleness that counts as a stalled check. The monitor ticks once a second, so
       # healthy staleness is a few hundred ms; 30s is far above noise and deliberately loose.
       WATCHDOG_STALENESS_LIMIT_MS=30000
-      # Consecutive stalled checks required before acting. The timer runs every minute, so five
-      # means roughly five minutes of continuous failure. One bad check is never enough: that is
-      # how a naive threshold has already taken this host down once.
+      # Stalled checks required within the last WATCHDOG_WINDOW_CHECKS before acting. The timer
+      # runs every minute, so five of eight means most of an eight-minute span failed. One bad
+      # check is never enough: that is how a naive threshold has already taken this host down
+      # once. The window is not a strict streak because a starved host answers /healthz often
+      # enough to reset one: an outage once held a streak below five for hours.
       WATCHDOG_REQUIRED_FAILURES=5
+      WATCHDOG_WINDOW_CHECKS=8
       # No action within this many seconds of container start, so a cold start cannot be read as
       # a stall. The startup working set is reached within about ten minutes.
       WATCHDOG_STARTUP_GRACE_SEC=900
@@ -304,6 +307,7 @@ write_files:
       WATCHDOG_ARMED=false
       WATCHDOG_STALENESS_LIMIT_MS=30000
       WATCHDOG_REQUIRED_FAILURES=5
+      WATCHDOG_WINDOW_CHECKS=8
       WATCHDOG_STARTUP_GRACE_SEC=900
       WATCHDOG_MIN_ACTION_INTERVAL_SEC=3600
 
@@ -311,17 +315,30 @@ write_files:
       if [ -r "$CONF" ]; then . "$CONF"; fi
 
       # State lives on tmpfs so a reboot clears it, which is correct: booting already produced a
-      # fresh container, and an accumulated failure count describes a process that is gone.
+      # fresh container, and accumulated check history describes a process that is gone.
+      # HISTORY holds one character per recent check, oldest first: x stalled, . made progress.
       STATE=/run/tomoribot-watchdog.state
-      FAILURES=0
+      HISTORY=""
       LAST_ACTION_AT=0
       if [ -r "$STATE" ]; then . "$STATE"; fi
 
       save_state() {
-        printf 'FAILURES=%s\nLAST_ACTION_AT=%s\n' "$FAILURES" "$LAST_ACTION_AT" > "$STATE"
+        printf 'HISTORY=%s\nLAST_ACTION_AT=%s\n' "$HISTORY" "$LAST_ACTION_AT" > "$STATE"
+      }
+
+      count_failures() {
+        printf '%s' "$HISTORY" | tr -cd x | wc -c | tr -d ' '
       }
 
       NOW=$(date +%s)
+      PREVIOUS=$(printf '%s' "$HISTORY" | tail -c 1)
+
+      # Recorded as a stall before probing and corrected only on success. Under deep starvation
+      # systemd kills this unit at TimeoutStartSec before it finishes, and a check that could not
+      # complete is itself evidence of no progress; recording afterwards would drop exactly those
+      # checks from the window.
+      HISTORY=$(printf '%sx' "$HISTORY" | tail -c "$WATCHDOG_WINDOW_CHECKS")
+      save_state
 
       BODY=$(curl -sf --max-time 5 http://127.0.0.1:8081/healthz 2>/dev/null)
       PROBE_RC=$?
@@ -336,7 +353,7 @@ write_files:
         if [ -z "$STALENESS" ]; then
           # A build with no eventLoop field is not a stall and must not be treated as one.
           echo "no stalenessMs in /healthz body; this build predates the event-loop monitor, skipping"
-          FAILURES=0
+          HISTORY=""
           save_state
           exit 0
         fi
@@ -349,15 +366,16 @@ write_files:
       fi
 
       if [ "$STALLED" -eq 0 ]; then
-        if [ "$FAILURES" -gt 0 ]; then echo "progress resumed after $FAILURES failed check(s)"; fi
-        FAILURES=0
+        HISTORY="$(printf '%s' "$HISTORY" | sed 's/x$//')."
         save_state
+        if [ "$PREVIOUS" = "x" ]; then
+          echo "progress resumed ($(count_failures) of the last $WATCHDOG_WINDOW_CHECKS checks stalled)"
+        fi
         exit 0
       fi
 
-      FAILURES=$(( FAILURES + 1 ))
-      save_state
-      echo "no progress: $REASON (consecutive=$FAILURES of $WATCHDOG_REQUIRED_FAILURES)"
+      FAILURES=$(count_failures)
+      echo "no progress: $REASON ($FAILURES of the last $WATCHDOG_WINDOW_CHECKS checks stalled, acting at $WATCHDOG_REQUIRED_FAILURES)"
 
       if [ "$FAILURES" -lt "$WATCHDOG_REQUIRED_FAILURES" ]; then exit 0; fi
 
@@ -387,14 +405,14 @@ write_files:
         # The action time advances even when disarmed, so the rate limit is exercised during the
         # observation period rather than meeting reality for the first time once armed.
         LAST_ACTION_AT=$NOW
-        FAILURES=0
+        HISTORY=""
         save_state
         exit 0
       fi
 
       echo "ACTING: $REASON (age=$AGE s)"
       LAST_ACTION_AT=$NOW
-      FAILURES=0
+      HISTORY=""
       save_state
 
       # Co-tenants first, matching the daily recycle order: recycling them alone was measured

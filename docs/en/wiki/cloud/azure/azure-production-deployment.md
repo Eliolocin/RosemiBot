@@ -70,7 +70,9 @@ A host timer (`tomoribot-watchdog.timer`, every minute) probes `/healthz` and re
 `eventLoop.stalenessMs` field the bot publishes. Two shapes count as no progress, and they look
 different on the wire: a *starved* loop still answers with an inflated staleness, while a *fully
 blocked* one cannot answer at all, because the health server shares that loop, so the probe times
-out. Both increment the same counter.
+out. Both count as a stalled check. Each run records itself as stalled before probing and corrects
+that only on success, so a run that systemd kills at `TimeoutStartSec` on a starved host still
+counts.
 
 It runs on the host rather than inside the bot deliberately. An in-process detector stops running
 during exactly the starvation it exists to detect.
@@ -78,9 +80,11 @@ during exactly the starvation it exists to detect.
 Four rules keep it from becoming a restart loop, and all of them are configured in
 `/etc/tomoribot/watchdog.conf`:
 
-- **Consecutive failures**, not one. Five checks at a one-minute cadence, so roughly five minutes of
-  continuous failure. Acting on a single sample is how a naive threshold has already taken this host
-  down once.
+- **Several failures in a window**, not one. Five of the last eight checks at a one-minute cadence,
+  so most of an eight-minute span. Acting on a single sample is how a naive threshold has already
+  taken this host down once. The window is not a strict streak because a starved host still answers
+  `/healthz` intermittently, and each answer reset the old consecutive counter: one memory-pressure
+  outage kept that counter at four or below for hours while the bot was unusable.
 - **A startup grace period**, so a cold start is not read as a stall.
 - **A minimum interval between recycles.** A repeat inside that interval means the previous recycle
   did not fix it, which is a worse problem than a single stall, so it is logged as an alert instead
@@ -111,7 +115,7 @@ rebuild come up with the watchdog already present.
 Verify the install by what the timer does, not by whether the files exist. On a healthy bot the
 script prints nothing at all and exits 0, so `journalctl -u tomoribot-watchdog.service` should show
 only `Starting` and `Finished` pairs at a one-minute cadence, and `/run/tomoribot-watchdog.state`
-should read `FAILURES=0`. Note the unit name: the script logs with plain `echo`, so its output
+should show a `HISTORY` of dots (one per recent check, `x` for a stall). Note the unit name: the script logs with plain `echo`, so its output
 belongs to the unit and `journalctl -t tomoribot-watchdog` finds nothing.
 
 ### Production data protection
