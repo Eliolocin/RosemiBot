@@ -824,5 +824,11 @@
       "provider": "zai",
       "codename": "cogvideox-3"
     }
+  ],
+  "decisionSections": [
+    {
+      "provider": "openrouter",
+      "codename": "typesafe/jev-1.13"
+    }
   ]
 }

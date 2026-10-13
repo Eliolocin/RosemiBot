@@ -223,7 +223,7 @@ const decisionSpec: TableSpec<DecisionInput> = {
   sections: decisionSections,
 };
 
-function rowsOf<T extends RowLike>(spec: TableSpec<T>): T[] {
+function rowsOf<T extends RowLike>(spec: Pick<TableSpec<T>, "sections">): T[] {
   return spec.sections.flatMap((s) => s.rows);
 }
 
@@ -448,7 +448,7 @@ export const MAX_ACTIVE_ROWS_PER_PROVIDER = 20;
  * @returns One violation per unfinished row or over-limit provider table.
  */
 export function validateModelDriftReview(): string[] {
-  return [llmSpec, imageSpec, videoSpec].flatMap((spec) => [
+  return [llmSpec, imageSpec, videoSpec, decisionSpec].flatMap((spec) => [
     ...collectModelDriftTodoViolations(spec.table, rowsOf(spec)),
     ...collectProviderRowLimitViolations(spec.table, rowsOf(spec)),
   ]);

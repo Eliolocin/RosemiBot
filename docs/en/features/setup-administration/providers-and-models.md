@@ -107,7 +107,9 @@ calibration, or enable response-review skipping. These panels do not yet select 
 
 OpenRouter is the supported native provider. Save its key, open its model dropdown, and choose
 `+ Add a Decisions Model`. Enter an ID from its verified Decision catalog. The global catalog
-includes `typesafe/jev-1.13`; additional registrations belong to their server or personal owner.
+includes verified models from OpenRouter's Decision catalog, including free variants and aliases.
+The weekly catalog check offers new entries for review. Additional registrations belong to their
+server or personal owner.
 Native discovery supplies the documented input limit and prices. Chat catalogs cannot establish
 Decision support.
 

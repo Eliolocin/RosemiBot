@@ -132,7 +132,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Decision model persistence", () => {
     ).toBe(true);
     expect(await llmModelRepo.loadDecisionModelByProviderAndCodename("openrouter", "fixture-decision")).toBeNull();
     const seeds = personal.filter((model) => !model.is_scoped_registration);
-    expect(seeds.some((model) => model.codename === "typesafe/jev-1.13" && model.input_token_limit === 32000)).toBe(
+    expect(seeds.some((model) => model.codename === "typesafe/jev-1.13" && model.input_token_limit === 64000)).toBe(
       true,
     );
     expect(seeds.every((model) => model.provider === "openrouter")).toBe(true);

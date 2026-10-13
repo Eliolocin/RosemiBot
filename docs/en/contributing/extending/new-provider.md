@@ -186,6 +186,7 @@ so list only the true ones:
 | `imageSections` | `image_diffusion_models` | Native image generation |
 | `videoSections` | `video_generation_models` | Native video generation |
 | `embeddingSections` | `embedding_models` | Embeddings |
+| `decisionSections` | `decision_models` | Native Decisions API |
 
 Set `hasTools` and `supportsStructoutput` per model, only for models you tested. To retire a model
 set `isDeprecated: true`; to remove it, delete the row.
@@ -195,6 +196,12 @@ routes. Google and Vertex image candidates require a `gemini-` ID and image outp
 Google video candidates require a `veo-` ID and video output metadata. OpenRouter uses output
 metadata for both. Extend the route predicate and catalog section mapping when adding a route,
 so supported models are drafted into the right section rather than reported as unsupported.
+
+Decision drift reads OpenRouter's `models?output_modalities=decisions` catalog directly and uses
+the runtime discovery validator. Every valid uncarried entry is drafted, including aliases and free
+variants, without a family or release-date filter. Rows carry the documented input limit, image
+support, and prices. Entries with invalid metadata stay in the report for review and are retried on
+later runs. Decision rows use the same description review and per-provider row limit gates.
 
 Set `contextWindow` and `maxOutputTokens` from the vendor's official docs. Without a window, history
 truncation is skipped and a long channel fails with a context-length error instead of trimming. Add the
