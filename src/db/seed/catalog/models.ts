@@ -2393,21 +2393,6 @@ export const llmSections: ModelSection<LlmInput>[] = [
         outputPricePerMillion: 0.47,
         desc: "Multimodal Qwen 3.8 Flash model with image/video understanding, reasoning, and tool use",
       },
-      {
-        provider: "openrouter",
-        codename: "mistralai/mistral-large-4-0",
-        // isFree: true,
-        // isUncensored: true,
-        hasTools: true,
-        seesImages: true,
-        // seesVideos: true,
-        // seesYoutube: true,
-        isReasoning: true,
-        supportsStructoutput: true,
-        inputPricePerMillion: 0.68,
-        outputPricePerMillion: 2.09,
-        desc: "MODEL_DRIFT_TODO",
-      },
     ],
   },
   // Pricing: https://api-docs.deepseek.com/quick_start/pricing (verified 2026-09-25). Rows carry the
@@ -3644,6 +3629,11 @@ export const imageSections: ModelSection<ImageInput>[] = [
     rows: [
       {
         provider: "google",
+        codename: "gemini-nano-banana-2.1",
+        desc: "Nano Banana 2.1 image generation and editing with improved text rendering and character consistency",
+      },
+      {
+        provider: "google",
         codename: "gemini-2.5-flash-image",
         isDefault: true,
         desc: "Fast and efficient image generation model with balanced quality and speed",
@@ -3659,7 +3649,7 @@ export const imageSections: ModelSection<ImageInput>[] = [
       {
         provider: "google",
         codename: "gemini-3.1-flash-image",
-        desc: "Latest fast image generation model with Gemini 3.1 Flash",
+        desc: "Fast image generation with Gemini 3.1 Flash, superseded by Nano Banana 2.1",
         i18n: {
           ja: "Gemini 3.1 Flashによる最新の高速画像生成モデル",
           "pt-BR": "Geração de imagem rápida mais recente com Gemini 3.1 Flash",
@@ -3716,6 +3706,11 @@ export const imageSections: ModelSection<ImageInput>[] = [
   {
     comment: "OpenRouter Image Generation Models (via OpenRouter API)",
     rows: [
+      {
+        provider: "openrouter",
+        codename: "google/gemini-nano-banana-2.1",
+        desc: "Nano Banana 2.1 image generation and editing via OpenRouter",
+      },
       {
         provider: "openrouter",
         codename: "google/gemini-2.5-flash-image",
@@ -3799,18 +3794,16 @@ export const imageSections: ModelSection<ImageInput>[] = [
         codename: "openai/gpt-5-image",
         desc: "GPT-5 model with image generation capabilities via OpenRouter",
       },
-      {
-        provider: "openrouter",
-        codename: "google/gemini-nano-banana-2.1",
-        // isFree: true,
-        // isUncensored: true,
-        desc: "MODEL_DRIFT_TODO",
-      },
     ],
   },
   {
     comment: "Vertex AI Gemini Image Generation Models",
     rows: [
+      {
+        provider: "vertex",
+        codename: "gemini-nano-banana-2.1",
+        desc: "Nano Banana 2.1 image generation and editing via Vertex AI (requires global location)",
+      },
       {
         provider: "vertex",
         codename: "gemini-2.5-flash-image",
@@ -3828,7 +3821,7 @@ export const imageSections: ModelSection<ImageInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-3.1-flash-image",
-        desc: "Latest fast image generation via Vertex AI with Gemini 3.1 Flash Image",
+        desc: "Fast image generation via Vertex AI with Gemini 3.1 Flash Image, superseded by Nano Banana 2.1",
         i18n: {
           ja: "Gemini 3.1 Flash ImageによるVertex AI経由の最新高速画像生成",
           "pt-BR": "Geração de imagem mais recente via Vertex AI (Gemini 3.1 Flash)",
