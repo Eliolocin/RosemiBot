@@ -20,6 +20,7 @@ import type {
   TextQuotaSource,
 } from "@/utils/chat/types";
 import { parseIntegerEnvFlag } from "@/utils/misc/envFlags";
+import { getMessageProxyMessageRecord } from "@/utils/messageProxy/proxyExpectation";
 
 export const CHANNEL_LOCK_TIMEOUT_MS = parseIntegerEnvFlag(process.env.CHANNEL_LOCK_TIMEOUT_MS, 180000, 10000);
 const DISCORD_TYPING_KEEPALIVE_INTERVAL_MS = 8000;
@@ -33,7 +34,11 @@ export type QueuedMessage = {
   reasoningQuery?: string;
   llmOverrideCodename?: string;
   isStopResponse?: boolean;
-  isFollowUp?: boolean;
+  /**
+   * Set only on a follow-up: the account whose newer follow-up supersedes this one. A verified
+   * proxy repost is authored by the service's webhook, so its author ID cannot key this.
+   */
+  followUpUserDiscId?: string;
   selectedPersonaId?: number;
   triggeredPersonaIds?: number[];
   isPersonaJob?: boolean;
@@ -66,6 +71,8 @@ export interface ChannelLockEntry {
   currentMessageId?: string;
   serverDiscId: string;
   userDiscId?: string;
+  activeProxyIdentityUserDiscId?: string | null;
+  activeMessageWasProxy?: boolean;
   currentIsPersonaJob?: boolean;
   activePersonaId?: number;
   activeTriggeredPersonaIds?: number[];
@@ -248,6 +255,8 @@ export function releaseStaleChannelLockIfExpired(channelId: string, lockEntry: C
   stopDiscordTypingKeepalive(channelId, lockEntry, "stale_lock_release");
   lockEntry.isLocked = false;
   lockEntry.userDiscId = undefined;
+  lockEntry.activeProxyIdentityUserDiscId = undefined;
+  lockEntry.activeMessageWasProxy = false;
   lockEntry.currentIsPersonaJob = false;
   lockEntry.activePersonaId = undefined;
   lockEntry.activeTriggeredPersonaIds = undefined;
@@ -279,6 +288,9 @@ export function acquireChannelLockForTurn(
   lockEntry.activeWatchdogs?.clear();
   lockEntry.currentMessageId = args.messageId;
   lockEntry.userDiscId = args.userDiscId;
+  const activeProxyRecord = getMessageProxyMessageRecord(args.messageId);
+  lockEntry.activeMessageWasProxy = Boolean(activeProxyRecord);
+  lockEntry.activeProxyIdentityUserDiscId = activeProxyRecord?.identityUserDiscId ?? null;
   lockEntry.currentIsPersonaJob = args.isPersonaJob;
   lockEntry.activePersonaId = args.selectedPersonaId;
   lockEntry.activeTriggeredPersonaIds = args.triggeredPersonaIds;
@@ -496,11 +508,20 @@ export async function requestNaturalStopForLockedTurn(args: {
   log.info(`Stop signal sent for channel ${args.channelId}. Stop response will be generated after stream completes.`);
 }
 
+/**
+ * Queues a message from the active turn's user as a follow-up, interrupting the stream unless a
+ * tool chain is running.
+ * @param args.verifiedProxySenderDiscId - Attested host of a confirmed message-proxy repost whose
+ *   original never ran. Only this admits a bot-authored webhook message, so an unrelated webhook
+ *   can neither interrupt the turn nor speak as its user.
+ * @returns Whether the message was queued as a follow-up
+ */
 export function queueFollowUpForLockedTurn(args: {
   lockEntry: ChannelLockEntry;
   channelId: string;
   userDiscId: string;
   message: Message;
+  verifiedProxySenderDiscId?: string;
   textQuotaSource: TextQuotaSource;
   textQuotaTriggerKey: string;
   textQuotaUserDiscId: string;
@@ -512,10 +533,21 @@ export function queueFollowUpForLockedTurn(args: {
   onGenerationResult?: ChatGenerationResultHandler;
   onQueueDiscard?: QueuedMessageDiscardHandler;
 }): boolean {
+  const isVerifiedProxyRepost = args.verifiedProxySenderDiscId === args.userDiscId;
+  const incomingProxyIdentityUserDiscId = isVerifiedProxyRepost
+    ? getMessageProxyMessageRecord(args.message.id)?.identityUserDiscId
+    : null;
+  const sameSpeaker =
+    args.lockEntry.activeMessageWasProxy || isVerifiedProxyRepost
+      ? Boolean(
+          args.lockEntry.activeProxyIdentityUserDiscId &&
+            incomingProxyIdentityUserDiscId === args.lockEntry.activeProxyIdentityUserDiscId,
+        )
+      : true;
   if (
     !args.lockEntry.isLocked ||
-    args.message.author.bot ||
-    args.message.webhookId ||
+    !sameSpeaker ||
+    (!isVerifiedProxyRepost && (args.message.author.bot || args.message.webhookId)) ||
     args.lockEntry.followUpEligible !== true ||
     args.lockEntry.isCommandTriggered ||
     args.lockEntry.userDiscId !== args.userDiscId ||
@@ -525,39 +557,11 @@ export function queueFollowUpForLockedTurn(args: {
     return false;
   }
 
-  if (args.lockEntry.isInToolCallChain) {
-    const removedSupersededFollowUps = enqueueLatestFollowUp(args.lockEntry, args.userDiscId, {
-      message: args.message,
-      isManuallyTriggered: true,
-      forceReason: false,
-      isFollowUp: true,
-      selectedPersonaId: args.lockEntry.activePersonaId,
-      triggeredPersonaIds: args.lockEntry.activeTriggeredPersonaIds,
-      isUserImpersonation: args.isUserImpersonation,
-      impersonatedUserId: args.impersonatedUserId,
-      textQuotaSource: args.textQuotaSource,
-      textQuotaTriggerKey: args.textQuotaTriggerKey,
-      textQuotaUserDiscId: args.textQuotaUserDiscId,
-      shouldSurfaceUserErrors: args.shouldSurfaceUserErrors,
-      manualStreamingContextOverrides: args.manualStreamingContextOverrides,
-      onGenerationResult: args.onGenerationResult,
-      onQueueDiscard: args.onQueueDiscard,
-    });
-
-    log.info(
-      `Follow-up message during tool-call chain in channel ${args.channelId} from user ${args.userDiscId}. ` +
-        `Queued latest without interrupt to preserve tool progress. ` +
-        `Superseded follow-ups: ${removedSupersededFollowUps}. Queue size: ${args.lockEntry.messageQueue.length}`,
-    );
-    return true;
-  }
-
-  StreamOrchestrator.requestFollowUp(args.channelId, args.userDiscId);
-  const removedSupersededFollowUps = enqueueLatestFollowUp(args.lockEntry, args.userDiscId, {
+  const followUp: QueuedMessage = {
     message: args.message,
     isManuallyTriggered: true,
     forceReason: false,
-    isFollowUp: true,
+    followUpUserDiscId: args.userDiscId,
     selectedPersonaId: args.lockEntry.activePersonaId,
     triggeredPersonaIds: args.lockEntry.activeTriggeredPersonaIds,
     isUserImpersonation: args.isUserImpersonation,
@@ -569,7 +573,21 @@ export function queueFollowUpForLockedTurn(args: {
     manualStreamingContextOverrides: args.manualStreamingContextOverrides,
     onGenerationResult: args.onGenerationResult,
     onQueueDiscard: args.onQueueDiscard,
-  });
+  };
+
+  if (args.lockEntry.isInToolCallChain) {
+    const removedSupersededFollowUps = enqueueLatestFollowUp(args.lockEntry, args.userDiscId, followUp);
+
+    log.info(
+      `Follow-up message during tool-call chain in channel ${args.channelId} from user ${args.userDiscId}. ` +
+        `Queued latest without interrupt to preserve tool progress. ` +
+        `Superseded follow-ups: ${removedSupersededFollowUps}. Queue size: ${args.lockEntry.messageQueue.length}`,
+    );
+    return true;
+  }
+
+  StreamOrchestrator.requestFollowUp(args.channelId, args.userDiscId);
+  const removedSupersededFollowUps = enqueueLatestFollowUp(args.lockEntry, args.userDiscId, followUp);
 
   log.info(
     `Follow-up message detected in channel ${args.channelId} from user ${args.userDiscId}. ` +
@@ -606,6 +624,8 @@ export function releaseChannelLockAndReplayQueue(args: {
   args.lockEntry.activeWatchdogs?.clear();
   args.lockEntry.currentMessageId = undefined;
   args.lockEntry.userDiscId = undefined;
+  args.lockEntry.activeProxyIdentityUserDiscId = undefined;
+  args.lockEntry.activeMessageWasProxy = false;
   args.lockEntry.currentIsPersonaJob = false;
   args.lockEntry.activePersonaId = undefined;
   args.lockEntry.activeIsUserImpersonation = undefined;
@@ -775,10 +795,7 @@ export function enqueueLatestFollowUp(
   const removedMessages: QueuedMessage[] = [];
   lockEntry.messageQueue = lockEntry.messageQueue.filter((queuedMessage) => {
     const shouldRemove =
-      queuedMessage.isFollowUp &&
-      !queuedMessage.isPersonaJob &&
-      !queuedMessage.isStopResponse &&
-      queuedMessage.message.author.id === userDiscId;
+      queuedMessage.followUpUserDiscId === userDiscId && !queuedMessage.isPersonaJob && !queuedMessage.isStopResponse;
     if (shouldRemove) {
       removedMessages.push(queuedMessage);
       return false;

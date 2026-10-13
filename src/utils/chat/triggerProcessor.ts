@@ -2,6 +2,7 @@ import type { Client, Message } from "discord.js";
 import { DMChannel } from "discord.js";
 import type { AssembledServerConfig, TomoriState } from "@/types/db/schema";
 import { isMatrixBridgeWebhookUsername } from "@/utils/bridges";
+import { isKnownMessageProxyMessage } from "@/utils/messageProxy/proxyExpectation";
 import { normalizeRenderModifierName, resolveRenderModifierSourcePersona } from "@/utils/discord/renderModifierParser";
 import { escapeRegExp, isUnspacedScriptText, wrapWithWordBoundary } from "@/utils/text/processors/regexUtils";
 import { normalizeTriggerWord } from "@/utils/text/triggerWords";
@@ -137,8 +138,12 @@ export function isMatrixRelayMessage(message: Message): boolean {
   return isManagedWebhookMessage(message) && isMatrixBridgeWebhookUsername(message.author.username);
 }
 
+export function isMessageProxyMessage(message: Pick<Message, "id" | "webhookId">): boolean {
+  return isKnownMessageProxyMessage(message);
+}
+
 export function isRealUserLikeMessage(message: Message): boolean {
-  return (!message.author.bot && !message.webhookId) || isMatrixRelayMessage(message);
+  return (!message.author.bot && !message.webhookId) || isMatrixRelayMessage(message) || isMessageProxyMessage(message);
 }
 
 export function isSelfTriggerMessage(message: Message, allPersonas: TomoriState[]): boolean {
@@ -150,6 +155,9 @@ export function isSelfTriggerMessage(message: Message, allPersonas: TomoriState[
   }
 
   if (!isManagedWebhookMessage(message)) {
+    return false;
+  }
+  if (isMessageProxyMessage(message)) {
     return false;
   }
 

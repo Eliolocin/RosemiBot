@@ -8,6 +8,7 @@ import { personaUserBlockRepository } from "@/utils/db/repositories";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
 import { formatTimeWithOffset, formatUTCOffset } from "@/utils/text/timezoneHelper";
+import { isMessageProxyIdentityUserId } from "@/utils/messageProxy/identityUserId";
 
 /** One week, the ceiling a persona may block a user for in a single tool call. */
 export const DEFAULT_BLOCK_USER_MAX_DURATION_HOURS = 168;
@@ -148,7 +149,7 @@ export async function resolveDiscordBlockTarget(input: string, context: ToolCont
     };
   }
 
-  if (resolution.isBridgeUser) {
+  if (resolution.isBridgeUser || isMessageProxyIdentityUserId(resolution.targetId)) {
     return {
       ok: false,
       status: "user_block_failed_bridge_user",

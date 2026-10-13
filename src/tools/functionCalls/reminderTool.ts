@@ -18,7 +18,7 @@ import {
 import { localizer } from "@/utils/text/localizer";
 import { isMatrixRelayMessage } from "@/utils/chat/triggerProcessor";
 import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
-import { resolveChannelTarget, resolveUserTarget } from "@/utils/discord/targetResolver";
+import { resolveChannelTarget, resolveTriggererDiscordId, resolveUserTarget } from "@/utils/discord/targetResolver";
 import { MAX_REMINDERS_PER_SERVER, ReminderLimitError } from "@/utils/db/repositories/ServerScheduleRepository";
 
 /**
@@ -171,7 +171,7 @@ export class ReminderTool extends BaseTool {
     const { ColorCode } = await import("../../utils/misc/logger");
 
     const tomoriState = context.tomoriState;
-    const resolvedUserId = context.message?.author?.id || context.userId;
+    const resolvedUserId = resolveTriggererDiscordId(context);
 
     // Matrix relay messages arrive via Discord webhook (author = webhook bot).
     // The webhook bot has no users table record, so loadUserRow returns null.

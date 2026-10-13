@@ -11,6 +11,12 @@ import type {
 import type { StructuredContextItem } from "@/types/misc/context";
 import type { PreparedParticipantContext } from "@/utils/text/participants/preparation";
 
+export type MessageProxyConversationUser = {
+  serviceId: string;
+  displayName: string;
+  senderDiscId: string;
+};
+
 /**
  * Simplified message structure received from tomoriChat.ts.
  * This is an internal representation before converting to StructuredContextItem.

@@ -1,12 +1,18 @@
 import type { Client } from "discord.js";
 import type { TomoriState, UserRow } from "@/types/db/schema";
 import type { ContributionExecutionDiagnostic } from "@/utils/contributions/registry";
-import type { PublicPersonaProfile, SimplifiedMessageForContext } from "@/utils/text/context/types";
+import type {
+  MessageProxyConversationUser,
+  PublicPersonaProfile,
+  SimplifiedMessageForContext,
+} from "@/utils/text/context/types";
 import { resolveContextReferences, type ResolvedContextReferences } from "@/utils/text/contextReferences";
 import {
   createDiscordParticipantMemberDirectory,
+  repositoryMessageProxyIdentityReferenceSource,
   repositoryUserReferenceCandidateSource,
   type ParticipantMemberDirectory,
+  type MessageProxyIdentityReferenceSource,
   type UserReferenceCandidateSource,
 } from "@/utils/text/participants/candidateSources";
 import {
@@ -26,6 +32,7 @@ interface ParticipantPreparationExternalCalls {
   candidateSourceReads: number;
   memberCacheHits: number;
   memberFetches: number;
+  messageProxyIdentityReads: number;
 }
 
 interface ParticipantPreparationDiagnostics {
@@ -42,6 +49,7 @@ export interface PreparedParticipantContext {
   discoveryPlan: ParticipantDiscoveryPlan;
   matrixUsers: ReadonlyMap<string, string>;
   syntheticUsers: ReadonlyMap<string, { displayName: string; type: "persona" | "webhook" }>;
+  messageProxyUsers: ReadonlyMap<string, MessageProxyConversationUser>;
   publicPersonaProfiles: readonly PublicPersonaProfile[];
   referencedUserRows: ReadonlyMap<string, UserRow>;
   referencedUserIds: ReadonlySet<string>;
@@ -58,9 +66,11 @@ export interface ParticipantPreparationInput {
   visibleUserIds: readonly string[];
   syntheticUsers?: ReadonlyMap<string, { displayName: string; type: "persona" | "webhook" }>;
   matrixUsers?: ReadonlyMap<string, string>;
+  messageProxyUsers?: ReadonlyMap<string, MessageProxyConversationUser>;
   responderPersonaIds?: ReadonlySet<number>;
   requestScope?: ParticipantRequestScope;
   candidateSource?: UserReferenceCandidateSource;
+  messageProxyIdentitySource?: MessageProxyIdentityReferenceSource;
   memberDirectory?: ParticipantMemberDirectory | null;
   sourceRegistry?: ParticipantSourceRegistry;
   profileEnricherRegistry?: ParticipantProfileEnricherRegistry;
@@ -94,7 +104,9 @@ export async function prepareParticipantContext(
   const requestScope = input.requestScope ?? createParticipantRequestScope();
   const cached = requestScope.discoveries.get(cacheKey);
   const discoveryCacheHit = Boolean(cached);
-  const discoveryPromise = cached ?? discoverParticipants(frozen, input.candidateSource, input.memberDirectory);
+  const discoveryPromise =
+    cached ??
+    discoverParticipants(frozen, input.candidateSource, input.memberDirectory, input.messageProxyIdentitySource);
   if (!cached) requestScope.discoveries.set(cacheKey, discoveryPromise);
   const discoveryStartedAt = performance.now();
   let discovery: CachedParticipantDiscovery;
@@ -137,6 +149,7 @@ export async function prepareParticipantContext(
     discoveryPlan,
     matrixUsers: frozen.matrixUsers,
     syntheticUsers: frozen.syntheticUsers,
+    messageProxyUsers: frozen.messageProxyUsers,
     publicPersonaProfiles,
     referencedUserRows: discovery.references.referencedUserRows,
     referencedUserIds: discovery.references.referencedUserIds,
@@ -147,7 +160,7 @@ export async function prepareParticipantContext(
       includedCount: discoveryPlan.seeds.length,
       rejectionCounts,
       externalCalls: discoveryCacheHit
-        ? { candidateSourceReads: 0, memberCacheHits: 0, memberFetches: 0 }
+        ? { candidateSourceReads: 0, memberCacheHits: 0, memberFetches: 0, messageProxyIdentityReads: 0 }
         : discovery.externalCalls,
       sourceContributions: composition.diagnostics,
     },
@@ -196,6 +209,7 @@ function freezeParticipantInput(input: ParticipantPreparationInput): Participant
   visibleUserIds: readonly string[];
   syntheticUsers: ReadonlyMap<string, { displayName: string; type: "persona" | "webhook" }>;
   matrixUsers: ReadonlyMap<string, string>;
+  messageProxyUsers: ReadonlyMap<string, MessageProxyConversationUser>;
 } {
   return {
     ...input,
@@ -213,6 +227,7 @@ function freezeParticipantInput(input: ParticipantPreparationInput): Participant
     visibleUserIds: [...input.visibleUserIds],
     syntheticUsers: new Map([...(input.syntheticUsers ?? [])].map(([id, user]) => [id, { ...user }])),
     matrixUsers: new Map(input.matrixUsers ?? []),
+    messageProxyUsers: new Map([...(input.messageProxyUsers ?? [])].map(([id, user]) => [id, { ...user }])),
     responderPersonaIds: new Set(input.responderPersonaIds ?? []),
   };
 }
@@ -221,18 +236,28 @@ async function discoverParticipants(
   input: ReturnType<typeof freezeParticipantInput>,
   candidateSourceOverride?: UserReferenceCandidateSource,
   memberDirectoryOverride?: ParticipantMemberDirectory | null,
+  messageProxyIdentitySourceOverride?: MessageProxyIdentityReferenceSource,
 ): Promise<CachedParticipantDiscovery> {
   const startedAt = performance.now();
   const externalCalls: ParticipantPreparationExternalCalls = {
     candidateSourceReads: 0,
     memberCacheHits: 0,
     memberFetches: 0,
+    messageProxyIdentityReads: 0,
   };
   const candidateSource = candidateSourceOverride ?? repositoryUserReferenceCandidateSource;
   const countedCandidateSource: UserReferenceCandidateSource = {
     loadCandidates: async (query) => {
       externalCalls.candidateSourceReads += 1;
       return candidateSource.loadCandidates(query);
+    },
+  };
+  const messageProxyIdentitySource =
+    messageProxyIdentitySourceOverride ?? repositoryMessageProxyIdentityReferenceSource;
+  const countedMessageProxyIdentitySource: MessageProxyIdentityReferenceSource = {
+    loadIdentities: async (query) => {
+      externalCalls.messageProxyIdentityReads += 1;
+      return messageProxyIdentitySource.loadIdentities(query);
     },
   };
   const memberDirectory =
@@ -266,6 +291,7 @@ async function discoverParticipants(
     existingPersonaIds,
     responderPersonaIds: input.responderPersonaIds,
     candidateSource: countedCandidateSource,
+    messageProxyIdentitySource: countedMessageProxyIdentitySource,
     memberDirectory: countedMemberDirectory,
   });
   return { references, durationMs: performance.now() - startedAt, externalCalls };

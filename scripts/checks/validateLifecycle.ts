@@ -65,6 +65,29 @@ const requiredTables = [
   "nai_presets",
   "st_presets",
   "st_preset_nodes",
+  "external_identities",
+  "message_proxy_instances",
+  "pluralbuddy_oauth_connections",
+  "message_proxy_namespaces",
+  "message_proxy_identities",
+  "message_proxy_namespace_accounts",
+  "message_proxy_message_index",
+] as const;
+
+const messageProxyTables = [
+  "message_proxy_instances",
+  "pluralbuddy_oauth_connections",
+  "external_identities",
+  "message_proxy_namespaces",
+  "message_proxy_identities",
+  "message_proxy_namespace_accounts",
+  "message_proxy_message_index",
+] as const;
+
+const messageProxyIndexes = [
+  "idx_message_proxy_identities_namespace",
+  "idx_message_proxy_namespace_accounts_host",
+  "idx_message_proxy_message_index_created",
 ] as const;
 
 const seedChecks: SeedCheck[] = [
@@ -352,6 +375,96 @@ async function assertStartupFunctionsExist(client: SQL): Promise<void> {
   }
 }
 
+async function assertMessageProxyMigrationPresent(client: SQL): Promise<void> {
+  for (const table of messageProxyTables) {
+    const [row] = await client<ExistsRow[]>`
+      SELECT to_regclass(${`public.${table}`}) IS NOT NULL AS exists
+    `;
+    if (!row?.exists) {
+      throw new Error(`Message-proxy migration is missing table ${table}.`);
+    }
+  }
+
+  for (const index of messageProxyIndexes) {
+    const [row] = await client<ExistsRow[]>`
+      SELECT to_regclass(${`public.${index}`}) IS NOT NULL AS exists
+    `;
+    if (!row?.exists) {
+      throw new Error(`Message-proxy migration is missing index ${index}.`);
+    }
+  }
+
+  const [serviceColumn] = await client<{ data_type: string; is_nullable: string }[]>`
+    SELECT data_type, is_nullable
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'users'
+      AND column_name = 'message_proxy_service'
+  `;
+  if (serviceColumn?.data_type !== "text" || serviceColumn.is_nullable !== "YES") {
+    throw new Error("users.message_proxy_service must be nullable TEXT.");
+  }
+
+  const [constraintCount] = await client<CountRow[]>`
+    SELECT COUNT(*) AS count
+    FROM pg_constraint
+    WHERE conname IN (
+      'external_identities_user_id_key',
+      'external_identities_kind_instance_id_external_key_key',
+      'external_identities_user_id_fkey',
+      'message_proxy_namespaces_instance_id_namespace_key_key',
+      'message_proxy_identities_external_identity_id_key',
+      'message_proxy_identities_message_proxy_namespace_id_fkey',
+      'message_proxy_identities_external_identity_id_fkey',
+      'message_proxy_namespace_accounts_pkey',
+      'message_proxy_namespace_account_message_proxy_namespace_id_fkey',
+      'message_proxy_message_index_pkey',
+      'message_proxy_message_index_external_identity_id_fkey'
+    )
+  `;
+  if (Number(constraintCount?.count ?? 0) !== 11) {
+    throw new Error("Message-proxy migration is missing required unique, primary-key, or foreign-key constraints.");
+  }
+
+  const migrationRows = await client<{ name: string }[]>`
+    SELECT name
+    FROM schema_migrations
+    WHERE name LIKE '056\_%' ESCAPE '\\'
+       OR name LIKE '060\_%' ESCAPE '\\'
+  `;
+  const names = new Set(migrationRows.map(({ name }) => name));
+  if (!names.has("056_message_proxy_identity")) {
+    throw new Error("Expected migration 056 was not applied.");
+  }
+  if (!names.has("060_personal_capability_assignment")) {
+    throw new Error("Expected migration 060 was not applied.");
+  }
+}
+
+async function assertMessageProxyMigrationAbsent(client: SQL): Promise<void> {
+  for (const table of messageProxyTables) {
+    const [row] = await client<ExistsRow[]>`
+      SELECT to_regclass(${`public.${table}`}) IS NOT NULL AS exists
+    `;
+    if (row?.exists) {
+      throw new Error(`Message-proxy rollback left table ${table} behind.`);
+    }
+  }
+
+  const [serviceColumn] = await client<ExistsRow[]>`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+        AND column_name = 'message_proxy_service'
+    ) AS exists
+  `;
+  if (serviceColumn?.exists) {
+    throw new Error("Message-proxy rollback left users.message_proxy_service behind.");
+  }
+}
+
 async function assertNoPublicTablesRemain(client: SQL): Promise<void> {
   const tables = await client<TableNameRow[]>`
     SELECT tablename
@@ -467,6 +580,7 @@ async function validateFreshInitialization(client: SQL): Promise<void> {
   await assertRequiredTablesExist(client);
   await assertSeedDataExists(client);
   await assertStartupFunctionsExist(client);
+  await assertMessageProxyMigrationPresent(client);
 }
 
 async function main(): Promise<void> {
@@ -492,6 +606,19 @@ async function main(): Promise<void> {
     await validateFreshInitialization(appSql);
 
     const commandEnv = buildCommandEnv(validationUrl, baseUrl);
+
+    section("Validating Message-Proxy Migration Down And Re-Up");
+    await appSql.close({ timeout: 1 });
+    appSql = null;
+    await runCommand("bun run migrate:down 056 --yes", ["bun", "run", "migrate:down", "056", "--yes"], commandEnv);
+    appSql = createScriptSqlClient(validationUrl);
+    await assertMessageProxyMigrationAbsent(appSql);
+    await appSql.close({ timeout: 1 });
+    appSql = null;
+    await runCommand("bun run migrate", ["bun", "run", "migrate"], commandEnv);
+    appSql = createScriptSqlClient(validationUrl);
+    // Reapplying DDL does not restore catalogs removed by later migration rollbacks.
+    await validateFreshInitialization(appSql);
 
     section("Seeding User Data");
     await seedUserData(appSql);

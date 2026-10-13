@@ -213,6 +213,8 @@ export function createUserRow(overrides: UserFixtureOverrides = {}): UserRow {
     personal_deliberate_tool_mode: "follow",
     personal_server_fallback_enabled: true,
     shortterm_cache_crossserver_opt_in: false,
+    message_proxy_service: null,
+    message_proxy_instance_id: null,
     prefix_override: null,
     suffix_override: null,
     ...overrides,

@@ -58,6 +58,13 @@ import {
 import { log } from "@/utils/misc/logger";
 import { recordPanelActionStat, type RecordPanelActionInput } from "@/utils/stats/panelActionMetrics";
 import { localizer } from "@/utils/text/localizer";
+import { messageProxyRepository } from "@/utils/db/repositories/MessageProxyRepository";
+import {
+  IDENTITY_MEMORIES_VERSION,
+  formatManagedIdentityLabel,
+  parseManagedIdentityRoute,
+  rewriteManagedIdentityRouteIds,
+} from "@/utils/discord/interactions/managedIdentityPanelRoutes";
 
 const memoryLimits = getMemoryLimits();
 
@@ -74,6 +81,9 @@ function rangeIndexAfterRemoval<T>(
 }
 
 interface PersonalMemoriesScope {
+  identityId?: number;
+  identityAvatarUrl?: string | null;
+  identityLabel?: string;
   userId: number;
   userDiscId: string;
   guildId: string | null;
@@ -82,6 +92,24 @@ interface PersonalMemoriesScope {
   privacyLevel: PrivacyLevel;
   personas: TomoriState[];
   readStatus: PanelReadStatus;
+}
+
+async function resolveIdentityMemoriesScope(
+  interaction: GlobalRoutableInteraction | ChatInputCommandInteraction,
+  identityId: number,
+): Promise<PersonalMemoriesScope | null> {
+  const managed = await messageProxyRepository.getManagedIdentity(interaction.user.id, identityId);
+  if (!managed) return null;
+  const hostScope = await resolveScope(interaction);
+  if (!hostScope) return null;
+  return {
+    ...hostScope,
+    identityId,
+    identityAvatarUrl: managed.avatarUrl,
+    identityLabel: formatManagedIdentityLabel(managed, interaction.locale),
+    userId: managed.userId,
+    userDiscId: managed.userDiscId,
+  };
 }
 
 export interface PersonalMemoriesOperations {
@@ -404,7 +432,7 @@ async function repaint(
   panelReceipt?: PanelReceipt,
   dependencies: PersonalMemoriesRouteDependencies = defaultDependencies,
 ): Promise<void> {
-  const stmCount = category === "global" ? await dependencies.getStmCount(scope.userDiscId) : 0;
+  const stmCount = category === "global" && !scope.identityId ? await dependencies.getStmCount(scope.userDiscId) : 0;
   const memoryCountsByLineage =
     category === "persona" ? await dependencies.getMemoryCountsByLineage(scope.userId) : undefined;
   const representative =
@@ -415,25 +443,52 @@ async function repaint(
   await deliverGuardedPanel(
     interaction,
     withPersonaPanelAvatar(
-      buildPersonalMemoriesPanelPayload({
-        locale,
-        category,
-        selectedLineageId,
-        personas: scope.personas,
-        memories,
-        memoryCountsByLineage,
-        selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
-        userAvatarUrl: category === "global" ? resolveInvokerAvatarUrl(interaction) : undefined,
-        stmCount,
-        privacyLevel: scope.privacyLevel,
-        readStatus: scope.readStatus,
-        page,
-        receipt: panelReceipt,
-      }),
+      buildScopedPersonalMemoriesPanelPayload(
+        {
+          locale,
+          identityMode: Boolean(scope.identityId),
+          identityLabel: scope.identityLabel,
+          category,
+          selectedLineageId,
+          personas: scope.personas,
+          memories,
+          memoryCountsByLineage,
+          selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
+          userAvatarUrl:
+            category === "global"
+              ? scope.identityId
+                ? scope.identityAvatarUrl
+                : resolveInvokerAvatarUrl(interaction)
+              : undefined,
+          stmCount,
+          privacyLevel: scope.privacyLevel,
+          readStatus: scope.readStatus,
+          page,
+          receipt: panelReceipt,
+        },
+        scope,
+      ),
       selectedPersonaAvatar,
     ),
     { locale, receipt: panelReceipt },
   );
+}
+
+function buildScopedPersonalMemoriesPanelPayload(
+  input: Parameters<typeof buildPersonalMemoriesPanelPayload>[0],
+  scope: PersonalMemoriesScope,
+): ReturnType<typeof buildPersonalMemoriesPanelPayload> {
+  const payload = buildPersonalMemoriesPanelPayload(input);
+  if (scope.identityId) {
+    rewriteManagedIdentityRouteIds(
+      payload,
+      PERSONAL_MEMORIES_ROUTE_NAMESPACE,
+      PERSONAL_MEMORIES_ROUTE_VERSION,
+      IDENTITY_MEMORIES_VERSION,
+      scope.identityId,
+    );
+  }
+  return payload;
 }
 
 const defaultDependencies: PersonalMemoriesRouteDependencies = {
@@ -1093,6 +1148,72 @@ export function createPersonalMemoriesInteractionRoute(
 
 export const personalMemoriesInteractionRoute = createPersonalMemoriesInteractionRoute();
 
+export const identityMemoriesInteractionRoute: GlobalInteractionRoute = {
+  namespace: PERSONAL_MEMORIES_ROUTE_NAMESPACE,
+  version: IDENTITY_MEMORIES_VERSION,
+  async execute(client, interaction, parsed) {
+    const managedRoute = parseManagedIdentityRoute(parsed, PERSONAL_MEMORIES_ROUTE_VERSION);
+    const route = managedRoute && parsePersonalMemoriesPanelRoute(managedRoute.original);
+    if (!managedRoute || !route || route.action === "stm-clear") {
+      await interaction.reply({
+        content: localizer(interaction.locale, "commands.personal.memories.unavailable"),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const identityId = managedRoute.identityId;
+    const managed = await messageProxyRepository.getManagedIdentity(interaction.user.id, identityId);
+    if (!managed) {
+      await interaction.reply({
+        content: localizer(interaction.locale, "commands.personal.memories.unavailable"),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    if (
+      (route.action === "add-submit" || route.action === "edit-submit") &&
+      (await userRepository.getPrivacyLevel(interaction.user.id)) === PrivacyLevel.FULL
+    ) {
+      await interaction.reply({
+        content: localizer(route.locale, "commands.personal.memories.privacy_blocked_error_detail"),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const modal = <T extends { custom_id: string }>(value: T): T => {
+      rewriteManagedIdentityRouteIds(
+        value,
+        PERSONAL_MEMORIES_ROUTE_NAMESPACE,
+        PERSONAL_MEMORIES_ROUTE_VERSION,
+        IDENTITY_MEMORIES_VERSION,
+        identityId,
+      );
+      return value;
+    };
+    const identityRoute = createPersonalMemoriesInteractionRoute({
+      resolveScope: (target) => resolveIdentityMemoriesScope(target, identityId),
+      showAddModal: (target, locale, category, lineageId, nonce) =>
+        showRoutedRawModal(target, modal(buildAddPersonalMemoryModal(locale, category, lineageId, nonce))),
+      showEditModal: (target, locale, category, lineageId, memory, nonce) =>
+        showRoutedRawModal(
+          target,
+          modal(
+            buildEditPersonalMemoryModal(
+              locale,
+              category,
+              lineageId,
+              memory.personal_memory_id ?? 0,
+              memory.content,
+              memory.tags ?? [],
+              nonce,
+            ),
+          ),
+        ),
+    });
+    await identityRoute.execute(client, interaction, managedRoute.original);
+  },
+};
+
 export type PersonalMemoriesPanelPayloadOrTerminal =
   | ReturnType<typeof buildPersonalMemoriesPanelPayload>
   | InteractionEditReplyOptions;
@@ -1102,12 +1223,15 @@ export async function buildInitialPersonalMemoriesPanel(
   locale: string,
   dependenciesOverride?: Partial<PersonalMemoriesRouteDependencies>,
   requestedLineageId?: number,
+  identityId?: number,
 ): Promise<PersonalMemoriesPanelPayloadOrTerminal> {
   const dependencies: PersonalMemoriesRouteDependencies = {
     ...defaultDependencies,
     ...dependenciesOverride,
   };
-  const scope = await dependencies.resolveScope(interaction);
+  const scope = identityId
+    ? await resolveIdentityMemoriesScope(interaction, identityId)
+    : await dependencies.resolveScope(interaction);
   if (!scope) {
     return terminalPayload(locale, "commands.personal.memories.unavailable") as PersonalMemoriesPanelPayloadOrTerminal;
   }
@@ -1117,27 +1241,37 @@ export async function buildInitialPersonalMemoriesPanel(
       : scope.personas.find((persona) => persona.persona_lineage_id === requestedLineageId);
   const selectedLineageId = selectedPersona?.persona_lineage_id ?? 0;
   const memories = await dependencies.loadMemories(scope.userId, selectedLineageId);
-  const stmCount = selectedLineageId === 0 ? await dependencies.getStmCount(scope.userDiscId) : 0;
+  const stmCount = selectedLineageId === 0 && !scope.identityId ? await dependencies.getStmCount(scope.userDiscId) : 0;
   const memoryCountsByLineage =
     selectedLineageId === 0 ? undefined : await dependencies.getMemoryCountsByLineage(scope.userId);
   const selectedPersonaAvatar = selectedPersona
     ? await dependencies.getPersonaAvatarData(interaction, selectedPersona)
     : undefined;
   return withPersonaPanelAvatar(
-    buildPersonalMemoriesPanelPayload({
-      locale,
-      category: selectedLineageId === 0 ? "global" : "persona",
-      selectedLineageId,
-      personas: scope.personas,
-      memories,
-      stmCount,
-      memoryCountsByLineage,
-      selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
-      userAvatarUrl: selectedLineageId === 0 ? resolveInvokerAvatarUrl(interaction) : undefined,
-      privacyLevel: scope.privacyLevel,
-      readStatus: scope.readStatus,
-      page: { kind: "main" },
-    }),
+    buildScopedPersonalMemoriesPanelPayload(
+      {
+        locale,
+        identityMode: Boolean(scope.identityId),
+        identityLabel: scope.identityLabel,
+        category: selectedLineageId === 0 ? "global" : "persona",
+        selectedLineageId,
+        personas: scope.personas,
+        memories,
+        stmCount,
+        memoryCountsByLineage,
+        selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
+        userAvatarUrl:
+          selectedLineageId === 0
+            ? scope.identityId
+              ? scope.identityAvatarUrl
+              : resolveInvokerAvatarUrl(interaction)
+            : undefined,
+        privacyLevel: scope.privacyLevel,
+        readStatus: scope.readStatus,
+        page: { kind: "main" },
+      },
+      scope,
+    ),
     selectedPersonaAvatar,
   );
 }

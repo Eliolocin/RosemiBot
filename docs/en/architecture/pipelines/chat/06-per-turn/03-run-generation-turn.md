@@ -25,6 +25,9 @@ Prepare sink and generation plan
 
 `buildGenerationPlan()` orders the primary and configured fallback models. An enabled randomizer can
 promote a pool member to lead; key rotation tries available credentials before advancing models.
+Cross-provider fallbacks use saved credentials from the turn's scope. Personal turns look up only
+the user's saved providers and omit entries without a key; server credentials become available only
+through the deferred server route.
 
 ### Deferred server route fallback
 

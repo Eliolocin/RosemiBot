@@ -1,6 +1,7 @@
 import type { Client, Guild, TextBasedChannel } from "discord.js";
 import type { ForcedMention } from "@/types/discord/mentions";
 import { getCachedUserRow } from "@/utils/cache/userCache";
+import { isExternalUserId } from "@/utils/externalIdentityUserId";
 import { log } from "@/utils/misc/logger";
 
 type SendableChannel = TextBasedChannel & {
@@ -26,6 +27,10 @@ export async function buildForcedMentionsForUser(
   client: Client,
   guild?: Guild | null,
 ): Promise<ForcedMention[]> {
+  if (isExternalUserId(userId)) {
+    return [];
+  }
+
   const handles = new Set<string>();
   const addHandle = (value?: string | null) => {
     const normalized = normalizeMentionHandle(value);
@@ -62,6 +67,10 @@ export async function ensureDiscordUserMention(params: {
   fallbackSender?: (content: string) => Promise<boolean>;
 }): Promise<void> {
   const { client, channel, targetUserId, afterMessageId, triggerStartTime, contextLabel, fallbackSender } = params;
+  if (isExternalUserId(targetUserId)) {
+    log.warn(`Skipping fallback mention for ${contextLabel}: ${targetUserId} is not a Discord user snowflake`);
+    return;
+  }
 
   const botUserId = client.user?.id;
   if (!botUserId) {

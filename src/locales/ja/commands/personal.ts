@@ -21,6 +21,7 @@ export default {
     },
     memories: {
       description: `個人の長期記憶や短期間の会話コンテキストを管理します。`,
+      identity_description: `編集するメッセージプロキシのアイデンティティ。メッセージプロキシが無効の場合でも機能します。`,
       outdated_panel: `このパネルは古くなっています。{command} を使用して新しいパネルを開いてください。`,
       title: `個人の記憶`,
       category_global: `グローバル`,
@@ -103,6 +104,7 @@ export default {
     },
     config: {
       description: `個人の設定、プライバシー、モデル、プロフィールを管理します。`,
+      identity_description: `編集するメッセージプロキシのアイデンティティ。メッセージプロキシが無効の場合でも機能します。`,
       outdated_panel: `このパネルは古くなっています。{command} を使用して新しいパネルを開いてください。`,
       category_profile: `プロフィール`,
       category_privacy: `プライバシー`,
@@ -525,6 +527,29 @@ export default {
     },
     "deliberate-tool-mode": {
       description: `個人の明示的ツールモード設定を変更します。`,
+    },
+    "message-proxy": {
+      description: `あなたのアカウントで使用する対応メッセージプロキシサービスを選択します。`,
+      service_description: `使用するメッセージプロキシサービス。無効にする場合は「なし」を選択します。`,
+      instance_description: `ボットのホストが承認したインスタンス。空欄の場合は公式インスタンスを使用します。`,
+      none_option: `なし`,
+      pluralkit_option: `PluralKit`,
+      pluralbuddy_option: `PluralBuddy`,
+      pluralbuddy_unavailable_title: `PluralBuddyを利用できません`,
+      pluralbuddy_unavailable_description: `ここではPluralBuddyのメッセージを確認できません。設定は変更されていません。`,
+      instance_unavailable_title: `インスタンスを利用できません`,
+      instance_unavailable_description: `そのメッセージプロキシインスタンスは利用できません。設定は変更されていません。`,
+      already_selected_title: `変更はありません`,
+      already_selected_description: `メッセージプロキシサービスは既に**{service}**に設定されています。`,
+      enabled_success_title: `メッセージプロキシサービスを有効にしました`,
+      pluralkit_enabled_success_description: `**{service}**をメッセージプロキシサービスとして設定しました。
+
+あなたからのメッセージを検出すると、PluralKitがそれを削除してプロキシのWebhook経由で再投稿する可能性があるため、約{delay_seconds}秒待ってから返信します。あなたのシステムのメンバーを初めて見かけたとき、PluralKit上で設定された公開プロフィール文があれば、そのメンバーの初期記憶として保存されることがあります。システムの公開説明文が設定されている場合は、メンバーとの会話中に参照できるよう、そちらも保存します。`,
+      pluralbuddy_enabled_success_description: `**{service}**をメッセージプロキシサービスとして設定しました。
+
+あなたからのメッセージを検出すると、プロキシ再投稿の可能性があるため約{delay_seconds}秒待機します。PluralBuddyは再投稿、ホストアカウント、およびオルタを検証しますが、そのAPIは元のメッセージを特定しません。再投稿が遅れた場合、まれに2回目の返信が行われることがあります。TomoriBotは検証された最初のメッセージの後に各オルタを保存し、サービスを切り替えるかプロキシを無効にしても保存されたアイデンティティを保持します。`,
+      disabled_success_title: `メッセージプロキシサービスを無効にしました`,
+      disabled_success_description: `あなたのアカウントのメッセージプロキシ処理を**無効**にしました。プロキシ再投稿を待つことなく、メッセージは通常どおり処理されます。保存されたアイデンティティや記憶は、/personal config や /personal memories から引き続き利用できます。`,
     },
   },
 };

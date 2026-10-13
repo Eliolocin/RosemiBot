@@ -54,6 +54,8 @@ Notes are injected at calculated depths measured from the end of history (`total
 - **Reunion note**: Injects a precomputed reunion note at `TIME_AWARENESS_NOTE_DEPTH` (3) when a returning triggerer has an eligible absence gap.
 - **Date spacers**: Injects an absolute-date `[System: ...]` separator before any message whose server-calendar day differs from the preceding timestamped turn. The pointer to `reveal_message_metadata` sits inside `{{if tool:reveal_message_metadata}}`.
 
+Verified proxy history uses the persisted message index to recover the stable member identity and attested host. Superseded originals are excluded. Reply references outside the history window use the same attribution lookup. Host blocks filter these messages, while names and memories belong to the member. See [message-proxy integration](/architecture/integrations/message-proxy/).
+
 ## Constraints and rationale
 
 - **Capability-neutral history**: Decoupling media descriptors from provider vision capabilities allows the same assembled context to be evaluated across fallback models without rebuilding history.

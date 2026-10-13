@@ -80,8 +80,11 @@ function coreFieldEnricher(
   };
 }
 
+// Every core field kind needs an entry here: enrichment rebuilds the field list
+// from this registry, so an unregistered kind is dropped without an error.
 const CORE_FIELD_ENRICHERS: readonly ParticipantProfileEnricher[] = [
-  coreFieldEnricher("core.status", "status", 100),
+  coreFieldEnricher("core.message-proxy-identity", "message_proxy_identity", 90),
+  coreFieldEnricher("core.status", "status", 100, "core.message-proxy-identity"),
   coreFieldEnricher("core.physical-appearance", "physical_appearance", 110, "core.status"),
   coreFieldEnricher("core.naming", "naming", 112, "core.physical-appearance"),
   coreFieldEnricher("core.identity", "identity", 115, "core.naming"),

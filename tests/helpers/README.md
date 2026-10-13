@@ -13,6 +13,7 @@ Shared fixtures and assertion helpers. Reach for these before writing a local `m
 | `configMcpPage.ts` | the real `/config` > Plugins > MCP Servers payload, the only surface that renders MCP components |
 | `transferPanelFixture.ts` | `findTransferAction`: locate one routed transfer action in a panel payload |
 | `mockSurface.ts` | `createScopedModuleMocker`, `overrideMembers`, `stubLogMembers` for the few suites that must mock a module |
+| `messageProxyInstance.ts` | Official PluralKit and PluralBuddy instance contexts for transport and router tests |
 | `env.ts` | `useEnvSandbox`: restores named `process.env` variables after each test and after the enclosing scope; `useFullEnvSandbox` restores the whole environment |
 
 ## Rules the helpers depend on

@@ -30,3 +30,5 @@ local MCP servers) each have their own page, see
 
 Once she's up and running, [`maintenance`](./maintenance) covers the host-side scripts, updating,
 and backing up/restoring your database.
+
+To verify PluralBuddy webhook reposts, follow [PluralBuddy OAuth Setup](./pluralbuddy-oauth).

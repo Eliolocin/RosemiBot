@@ -15,6 +15,7 @@ import { ColorCode, log } from "@/utils/misc/logger";
 import { checkTextQuota } from "@/utils/quota/textQuotaManager";
 import { checkServerRateLimit, checkUserRateLimit } from "@/utils/security/rateLimiter";
 import { isBaseTriggerWordMatch } from "@/utils/chat/errorVisibility";
+import { isMessageProxyMessage } from "@/utils/chat/triggerProcessor";
 import { isAutochatOverrideChannel } from "@/utils/chat/triggerProcessor";
 import type { ChatIncoming } from "@/utils/chat/types";
 import {
@@ -474,7 +475,7 @@ export async function validateDirectChatTrigger(params: {
       if (referenceMessage) {
         if (referenceMessage.author.id === params.client.user?.id) {
           isReplyToBot = true;
-        } else if (referenceMessage.webhookId) {
+        } else if (referenceMessage.webhookId && !isMessageProxyMessage(referenceMessage)) {
           await verifyMessageWebhook(referenceMessage);
           const webhookReplyTarget = resolveReferencedWebhookTarget(referenceMessage, personaByNickname, params.guild);
 

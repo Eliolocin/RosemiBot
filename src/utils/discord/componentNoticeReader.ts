@@ -96,6 +96,13 @@ function collectTextDisplayBlocks(component: unknown, blocks: string[]): void {
   }
 }
 
+export function extractTextDisplayContent(components: readonly unknown[] | undefined): string {
+  if (!components) return "";
+  const blocks: string[] = [];
+  for (const component of components) collectTextDisplayBlocks(component, blocks);
+  return blocks.join("\n").trim();
+}
+
 /**
  * Reconstructs the embed-equivalent {title, description, footer} triple from a
  * message's Components V2 tree.

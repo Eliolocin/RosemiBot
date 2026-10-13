@@ -12,6 +12,7 @@ import {
   type TopLevelComponentData,
 } from "discord.js";
 import { PrivacyLevel, type PersonalMemoryRow, type TomoriState } from "@/types/db/schema";
+import { escapeDiscordMarkdown } from "@/utils/text/discordMarkdown";
 import type { PanelReadStatus, PanelReceipt } from "@/types/discord/panel";
 import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
 import { resolveRangeSelection } from "@/utils/discord/interactions/panelController";
@@ -110,6 +111,8 @@ export interface PersonalMemoriesPanelPayload {
 }
 
 export interface PersonalMemoriesPanelRenderInput {
+  identityMode?: boolean;
+  identityLabel?: string;
   locale: string;
   category: PersonalMemoriesCategory;
   selectedLineageId: number;
@@ -335,6 +338,9 @@ export function buildPersonalMemoriesPanelPayload(
   );
 
   const components: ComponentInContainerData[] = [
+    ...(input.identityMode && input.identityLabel
+      ? [{ type: ComponentType.TextDisplay as const, content: `### ${escapeDiscordMarkdown(input.identityLabel)}` }]
+      : []),
     categoryButtons,
     { type: ComponentType.Separator, divider: true, spacing: 1 },
   ];
@@ -496,30 +502,37 @@ ${localizer(locale, "commands.personal.memories.selector_guidance")}`,
     }
 
     if (selectedMemory) {
-      const bottomComponents: ComponentInContainerData[] = [
-        { type: ComponentType.Separator, divider: true, spacing: 1 },
-        {
-          type: ComponentType.TextDisplay,
-          content: `**${localizer(locale, "commands.personal.memories.stm_title")}**
-> ${localizer(locale, "commands.personal.memories.stm_active_count", { count: input.stmCount })}`,
-        },
-        {
-          type: ComponentType.ActionRow,
-          components: [
+      const bottomComponents: ComponentInContainerData[] = input.identityMode
+        ? []
+        : [
+            { type: ComponentType.Separator, divider: true, spacing: 1 },
             {
-              type: ComponentType.Button,
-              style: ButtonStyle.Secondary,
-              customId: buildPersonalMemoriesRouteId({ action: "stm-clear", locale, category: "global", lineageId: 0 }),
-              label: localizer(locale, "commands.personal.memories.stm_clear_button"),
-              disabled: writesDisabled,
+              type: ComponentType.TextDisplay,
+              content: `**${localizer(locale, "commands.personal.memories.stm_title")}**
+> ${localizer(locale, "commands.personal.memories.stm_active_count", { count: input.stmCount })}`,
             },
-          ],
-        },
-        {
-          type: ComponentType.TextDisplay,
-          content: withLinePrefix("-# ", localizer(locale, "commands.personal.memories.stm_crossserver_hint")),
-        },
-      ];
+            {
+              type: ComponentType.ActionRow,
+              components: [
+                {
+                  type: ComponentType.Button,
+                  style: ButtonStyle.Secondary,
+                  customId: buildPersonalMemoriesRouteId({
+                    action: "stm-clear",
+                    locale,
+                    category: "global",
+                    lineageId: 0,
+                  }),
+                  label: localizer(locale, "commands.personal.memories.stm_clear_button"),
+                  disabled: writesDisabled,
+                },
+              ],
+            },
+            {
+              type: ComponentType.TextDisplay,
+              content: withLinePrefix("-# ", localizer(locale, "commands.personal.memories.stm_crossserver_hint")),
+            },
+          ];
       const staleComponent =
         readStatus === "stale"
           ? [
@@ -579,30 +592,31 @@ ${localizer(locale, "commands.personal.memories.selector_guidance")}`,
       ],
     });
 
-    components.push(
-      { type: ComponentType.Separator, divider: true, spacing: 1 },
-      {
-        type: ComponentType.TextDisplay,
-        content: `**${localizer(locale, "commands.personal.memories.stm_title")}**
+    if (!input.identityMode)
+      components.push(
+        { type: ComponentType.Separator, divider: true, spacing: 1 },
+        {
+          type: ComponentType.TextDisplay,
+          content: `**${localizer(locale, "commands.personal.memories.stm_title")}**
 > ${localizer(locale, "commands.personal.memories.stm_active_count", { count: input.stmCount })}`,
-      },
-      {
-        type: ComponentType.ActionRow,
-        components: [
-          {
-            type: ComponentType.Button,
-            style: ButtonStyle.Secondary,
-            customId: buildPersonalMemoriesRouteId({ action: "stm-clear", locale, category: "global", lineageId: 0 }),
-            label: localizer(locale, "commands.personal.memories.stm_clear_button"),
-            disabled: writesDisabled,
-          },
-        ],
-      },
-      {
-        type: ComponentType.TextDisplay,
-        content: withLinePrefix("-# ", localizer(locale, "commands.personal.memories.stm_crossserver_hint")),
-      },
-    );
+        },
+        {
+          type: ComponentType.ActionRow,
+          components: [
+            {
+              type: ComponentType.Button,
+              style: ButtonStyle.Secondary,
+              customId: buildPersonalMemoriesRouteId({ action: "stm-clear", locale, category: "global", lineageId: 0 }),
+              label: localizer(locale, "commands.personal.memories.stm_clear_button"),
+              disabled: writesDisabled,
+            },
+          ],
+        },
+        {
+          type: ComponentType.TextDisplay,
+          content: withLinePrefix("-# ", localizer(locale, "commands.personal.memories.stm_crossserver_hint")),
+        },
+      );
   } else {
     // Persona category
     const personaHeading: TextDisplayComponentData = {

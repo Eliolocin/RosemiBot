@@ -39,6 +39,14 @@ import {
 } from "@/utils/discord/personaPanelAvatar";
 import type { RecordPanelActionInput } from "@/utils/stats/panelActionMetrics";
 import { localizer } from "@/utils/text/localizer";
+import {
+  rewriteManagedIdentityRouteIds,
+  IDENTITY_CONFIG_VERSION,
+} from "@/utils/discord/interactions/managedIdentityPanelRoutes";
+import {
+  PERSONAL_CONFIG_ROUTE_NAMESPACE,
+  PERSONAL_CONFIG_ROUTE_VERSION,
+} from "@/utils/discord/personalConfigPanelCatalog";
 import { personaRepresentativeForLineage } from "@/utils/persona/lineage";
 
 export interface PersonalConfigRouteDependencies {
@@ -279,7 +287,12 @@ export async function repaint(
     }
   }
 
-  const userAvatarUrl = category === "profile" && page === "general" ? resolveInvokerAvatarUrl(interaction) : undefined;
+  const userAvatarUrl =
+    category === "profile" && page === "general"
+      ? scope.identityId
+        ? scope.identityAvatarUrl
+        : resolveInvokerAvatarUrl(interaction)
+      : undefined;
 
   const memoryCount = category === "privacy" ? await dependencies.getMemoryCount(scope.userId) : 0;
   const stmCount = category === "privacy" ? await dependencies.getStmCount(scope.userDiscId) : 0;
@@ -362,41 +375,63 @@ export async function repaint(
   await deliverGuardedPanel(
     interaction,
     withPersonaPanelAvatar(
-      buildPersonalConfigPanelPayload({
-        locale,
-        category,
-        page,
-        user: scope.user,
-        resolvedNickname: scope.resolvedNickname,
-        personas: scope.personas,
-        guildId: scope.guildId,
-        selectedLineageId,
-        selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
-        userAvatarUrl,
-        personaNamingPreference: personaPref,
-        memoryCount,
-        stmCount,
-        readStatus: scope.readStatus,
-        receipt: panelReceipt,
-        savedProviders,
-        selectedCapability,
-        selectedParametersProvider,
-        selectedFallbacksProvider,
-        selectedModelProvider,
-        providerStart,
-        modelTotalCount,
-        fallbackEntryStart,
-        fallbackOptionCount,
-        modelDisplayInfo,
-        spotlightDisplayInfo,
-        serverTriggerBehavior,
-        serverModelAccess,
-        view,
-      }),
+      buildScopedPersonalConfigPanelPayload(
+        {
+          locale,
+          identityMode: Boolean(scope.identityId),
+          identityLabel: scope.identityLabel,
+          category,
+          page,
+          user: scope.user,
+          resolvedNickname: scope.resolvedNickname,
+          personas: scope.personas,
+          guildId: scope.guildId,
+          selectedLineageId,
+          selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
+          userAvatarUrl,
+          personaNamingPreference: personaPref,
+          memoryCount,
+          stmCount,
+          readStatus: scope.readStatus,
+          receipt: panelReceipt,
+          savedProviders,
+          selectedCapability,
+          selectedParametersProvider,
+          selectedFallbacksProvider,
+          selectedModelProvider,
+          providerStart,
+          modelTotalCount,
+          fallbackEntryStart,
+          fallbackOptionCount,
+          modelDisplayInfo,
+          spotlightDisplayInfo,
+          serverTriggerBehavior,
+          serverModelAccess,
+          view,
+        },
+        scope,
+      ),
       selectedPersonaAvatar,
     ),
     { locale, receipt: panelReceipt },
   );
+}
+
+export function buildScopedPersonalConfigPanelPayload(
+  input: Parameters<typeof buildPersonalConfigPanelPayload>[0],
+  scope: PersonalConfigScope,
+): ReturnType<typeof buildPersonalConfigPanelPayload> {
+  const payload = buildPersonalConfigPanelPayload(input);
+  if (scope.identityId) {
+    rewriteManagedIdentityRouteIds(
+      payload,
+      PERSONAL_CONFIG_ROUTE_NAMESPACE,
+      PERSONAL_CONFIG_ROUTE_VERSION,
+      IDENTITY_CONFIG_VERSION,
+      scope.identityId,
+    );
+  }
+  return payload;
 }
 
 export type SpotlightPersona = { id: number; name: string; isAlter: boolean };

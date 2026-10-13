@@ -123,6 +123,8 @@ const defaultUser = (): UserRow => ({
   personal_deliberate_tool_mode: "follow",
   personal_server_fallback_enabled: true,
   timezone_offset: null,
+  message_proxy_service: null,
+  message_proxy_instance_id: null,
 });
 
 describe("context reference discovery", () => {
@@ -334,6 +336,7 @@ describe("context reference discovery", () => {
         simplifiedMessageHistory: [message("<@100>, ask Guild Alias. Bot Alias and User 400 are also named.")],
         personas: [],
         existingParticipantIds: new Set(),
+        messageProxyIdentitySource: { loadIdentities: async () => [] },
       });
 
       expect(resolved.referencedUserIds).toEqual(new Set(["200", "100"]));
@@ -347,6 +350,136 @@ describe("context reference discovery", () => {
     } finally {
       userRepository.loadContextReferenceCandidates = originalLoadCandidates;
     }
+  });
+});
+
+describe("message-proxy identity reference discovery", () => {
+  const HOST_ID = "700";
+  const MEMBER_ID = "pk:11111111-1111-4111-8111-111111111111";
+
+  function guildClient(cachedMemberIds: readonly string[] = [HOST_ID]): Client {
+    const makeMember = (id: string) =>
+      ({
+        id,
+        displayName: `Display ${id}`,
+        nickname: null,
+        user: { id, bot: false, globalName: `Global ${id}`, username: `username_${id}` },
+      }) as never;
+    const cache = new Map(cachedMemberIds.map((id) => [id, makeMember(id)]));
+    return {
+      guilds: {
+        cache: new Map([["guild", { members: { cache, fetch: async () => null } }]]),
+      },
+    } as unknown as Client;
+  }
+
+  async function resolveWithMembers(params: {
+    content: string;
+    identities: readonly {
+      serviceId: string;
+      userDiscId: string;
+      displayName: string | null;
+      savedNickname: string | null;
+    }[];
+    humanCandidates?: readonly UserRow[];
+    existingParticipantIds?: ReadonlySet<string>;
+    onQuery?: (query: { hostUserDiscIds: readonly string[]; normalizedHistoryText: string }) => void;
+  }) {
+    const originalLoadCandidates = userRepository.loadContextReferenceCandidates;
+    userRepository.loadContextReferenceCandidates = async () =>
+      (params.humanCandidates ?? []).map((userRow) => ({
+        userRow,
+        evidence: { hasServerActivity: true, hasPersonalMemories: false, hasPendingTasks: false },
+      }));
+
+    try {
+      return await resolveContextReferences({
+        client: guildClient(),
+        guildId: "guild",
+        simplifiedMessageHistory: [message(params.content)],
+        personas: [],
+        existingParticipantIds: params.existingParticipantIds ?? new Set(),
+        messageProxyIdentitySource: {
+          loadIdentities: async (query) => {
+            params.onQuery?.(query);
+            return params.identities;
+          },
+        },
+      });
+    } finally {
+      userRepository.loadContextReferenceCandidates = originalLoadCandidates;
+    }
+  }
+
+  it("discovers a member named in conversation that never spoke in the window", async () => {
+    const observedQueries: Array<{ hostUserDiscIds: readonly string[]; normalizedHistoryText: string }> = [];
+    const resolved = await resolveWithMembers({
+      content: "What did Mirri say about that?",
+      identities: [{ serviceId: "pluralkit", userDiscId: MEMBER_ID, displayName: "Mirri", savedNickname: null }],
+      onQuery: (query) => {
+        observedQueries.push(query);
+      },
+    });
+
+    expect(resolved.referencedUserIds).toEqual(new Set([MEMBER_ID]));
+    expect(resolved.referencedUserReasons).toEqual(new Map([[MEMBER_ID, new Set(["unique_text_alias"])]]));
+    // Host scoping is what keeps member names from colliding across every system
+    // the bot has ever seen; the pool is the guild's cached members.
+    expect(observedQueries[0]?.hostUserDiscIds).toContain(HOST_ID);
+
+    const seed = resolved.discoveryPlan.seeds.find(
+      (candidate) => candidate.key.kind === "discord_user" && candidate.key.discordId === MEMBER_ID,
+    );
+    expect(seed?.sourceDisplayName).toBe("Mirri");
+    expect(seed?.capabilities.has("mentionable")).toBe(false);
+  });
+
+  it("resolves a member by its saved nickname as well as its PluralKit display name", async () => {
+    const resolved = await resolveWithMembers({
+      content: "Ask Spar about it.",
+      identities: [{ serviceId: "pluralkit", userDiscId: MEMBER_ID, displayName: "Mirri", savedNickname: "Spar" }],
+    });
+
+    expect(resolved.referencedUserIds).toEqual(new Set([MEMBER_ID]));
+  });
+
+  it("drops a name shared by a member and a human instead of guessing between them", async () => {
+    const human: UserRow = { ...defaultUser(), user_disc_id: HOST_ID, user_nickname: "Mirri" };
+    const resolved = await resolveWithMembers({
+      content: "Mirri said so.",
+      identities: [{ serviceId: "pluralkit", userDiscId: MEMBER_ID, displayName: "Mirri", savedNickname: null }],
+      humanCandidates: [human],
+    });
+
+    expect(resolved.referencedUserIds).toEqual(new Set());
+    expect(resolved.discoveryPlan.aliasReferenceDiagnostics.ambiguousAliasCount).toBe(1);
+    expect(resolved.discoveryPlan.rejections).toContainEqual({ reason: "ambiguous_alias", count: 1 });
+  });
+
+  it("does not re-add a member that is already a visible participant", async () => {
+    const resolved = await resolveWithMembers({
+      content: "Mirri said so.",
+      identities: [{ serviceId: "pluralkit", userDiscId: MEMBER_ID, displayName: "Mirri", savedNickname: null }],
+      existingParticipantIds: new Set([MEMBER_ID]),
+    });
+
+    expect(resolved.referencedUserIds).toEqual(new Set());
+    expect(resolved.discoveryPlan.rejections).toContainEqual({ reason: "existing_participant", count: 1 });
+  });
+
+  it("keeps a proxy identity row out of the guild-member lane", async () => {
+    // The human candidate query selects by nickname and server activity, which a
+    // member's real users row can satisfy. Reaching resolveMember would spend a
+    // fetch on a non-snowflake and log an Unknown Member error.
+    const memberRow: UserRow = { ...defaultUser(), user_disc_id: MEMBER_ID, user_nickname: "Mirri" };
+    const resolved = await resolveWithMembers({
+      content: "Mirri said so.",
+      identities: [{ serviceId: "pluralkit", userDiscId: MEMBER_ID, displayName: "Mirri", savedNickname: null }],
+      humanCandidates: [memberRow],
+    });
+
+    expect(resolved.referencedUserIds).toEqual(new Set([MEMBER_ID]));
+    expect(resolved.discoveryPlan.rejections).not.toContainEqual({ reason: "non_member", count: 1 });
   });
 });
 

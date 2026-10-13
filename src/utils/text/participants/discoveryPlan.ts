@@ -1,4 +1,5 @@
 import type { TomoriState } from "@/types/db/schema";
+import { isMessageProxyIdentityUserId } from "@/utils/messageProxy/identityUserId";
 import { buildBridgeUserAliases, buildPersonaAliases, buildWebhookAliases } from "@/utils/text/participants/aliases";
 import {
   createBotKey,
@@ -121,7 +122,9 @@ function visibleParticipantIdentity(
     }
     return { key: createPersonaKey(personaId), sourceDisplayName: syntheticUser.displayName };
   }
-  if (syntheticUser?.type === "webhook") {
+  // A stable proxy identity arrives through a webhook but owns a real user row, so its kind comes
+  // from the ID, never from a webhook entry a caller happened to record for it.
+  if (syntheticUser?.type === "webhook" && !isMessageProxyIdentityUserId(normalizedId)) {
     return { key: createWebhookKey(normalizedId), sourceDisplayName: syntheticUser.displayName };
   }
 
@@ -156,20 +159,25 @@ export function discoverVisibleAuthorCandidates(input: ParticipantVisibleInput):
 export function discoverHistoricalSyntheticCandidates(
   syntheticUsers: ParticipantVisibleInput["syntheticUsers"],
 ): DiscoveredParticipantCandidate[] {
-  return [...(syntheticUsers ?? [])].map(([participantId, syntheticUser]) => {
+  return [...(syntheticUsers ?? [])].flatMap(([participantId, syntheticUser]) => {
+    if (isMessageProxyIdentityUserId(participantId)) return [];
     const personaId = syntheticUser.type === "persona" ? parsePersonaId(participantId) : null;
     if (syntheticUser.type === "persona" && personaId === null) {
       throw new Error(`Synthetic persona key ${participantId} does not contain a valid persona ID`);
     }
     const key = personaId === null ? createWebhookKey(participantId) : createPersonaKey(personaId);
-    return {
-      key,
-      reasons: new Set<ParticipantInclusionReason>([key.kind === "persona" ? "historical_persona" : "visible_author"]),
-      aliases: aliasesForSyntheticParticipant(key, syntheticUser.displayName),
-      capabilities: new Set(),
-      sourceDisplayName: syntheticUser.displayName,
-      evidenceSources: [key.kind === "persona" ? "historical_persona" : "historical_synthetic"],
-    };
+    return [
+      {
+        key,
+        reasons: new Set<ParticipantInclusionReason>([
+          key.kind === "persona" ? "historical_persona" : "visible_author",
+        ]),
+        aliases: aliasesForSyntheticParticipant(key, syntheticUser.displayName),
+        capabilities: new Set<ParticipantCapability>(),
+        sourceDisplayName: syntheticUser.displayName,
+        evidenceSources: [key.kind === "persona" ? "historical_persona" : "historical_synthetic"],
+      } satisfies DiscoveredParticipantCandidate,
+    ];
   });
 }
 
