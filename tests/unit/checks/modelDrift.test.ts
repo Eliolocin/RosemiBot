@@ -88,12 +88,28 @@ describe("model drift", () => {
     ).toBe(true);
   });
 
-  it("does not reoffer carried Decision models and rejects a malformed catalog envelope", async () => {
+  it("does not reoffer carried or declined Decision models but still offers new ones", async () => {
     const source = await Bun.file(fixture).json();
     source["openrouter-decisions"] = decisionSource(
       await Bun.file(new URL("../../fixtures/openrouterDecisionDrift.json", import.meta.url)).json(),
     );
-    expect(findCandidates(source, []).candidates.some((row) => row.table === "decisionSections")).toBe(false);
+    const seen: SeenEntry[] = await Bun.file(
+      new URL("../../../scripts/data/modelDriftSeen.json", import.meta.url),
+    ).json();
+    const uncarried = findCandidates(source, []).candidates.filter((row) => row.table === "decisionSections");
+    expect(uncarried.length).toBeGreaterThan(0);
+    const declinedKeys = new Set(seen.filter((entry) => entry.table === "decisionSections").map(seenKey));
+    for (const row of uncarried) expect(declinedKeys.has(seenKey(row))).toBe(true);
+    expect(findCandidates(source, seen).candidates.some((row) => row.table === "decisionSections")).toBe(false);
+    source["openrouter-decisions"].models["typesafe/jev-1.14"] = {
+      ...source["openrouter-decisions"].models["typesafe/jev-1.13"],
+      id: "typesafe/jev-1.14",
+    };
+    expect(
+      findCandidates(source, seen)
+        .candidates.filter((row) => row.table === "decisionSections")
+        .map((row) => row.codename),
+    ).toEqual(["typesafe/jev-1.14"]);
     expect(() => decisionSource({ error: "unavailable" })).toThrow();
   });
 

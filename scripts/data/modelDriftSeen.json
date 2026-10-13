@@ -670,5 +670,96 @@
     "codename": "google/gemini-nano-banana-2.1",
     "releaseDate": "2026-10-06",
     "offeredAt": "2026-10-12"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "~perplexity/pplx-decider-27b-latest",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "nace-ai/drex-v2.0",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "microsoft/microsoft-decision-1",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "nace-ai/drex-v1.5",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "cloudflare/clef-omni",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "liquid/d1",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "cloudflare/clef-flash",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "cloudflare/clef",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "togethercomputer/tev1-4b-experimental",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "inception/mercury-decide",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "upstage/solar-decide",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "jaredpalmer/kev-4b",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "~typesafe/jev-latest",
+    "releaseDate": null,
+    "offeredAt": "2026-10-13"
   }
 ]

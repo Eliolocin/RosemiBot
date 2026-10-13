@@ -525,7 +525,7 @@ export function report(
     "",
     "## Review",
     "",
-    "1. Verify each row against the provider. Fixed OpenRouter chat models carry a drafted fallback price; chat aliases have none. Decision rows carry discovered input limits and prices, including aliases.",
+    "1. Verify each row against the provider. Fixed OpenRouter chat models carry a drafted fallback price; chat aliases have none. Decision rows carry discovered input limits and prices, including aliases. Keep a Decision row only if it adds a distinct use case or replaces an existing choice. Decline overlapping drafts by deleting their rows and keeping their seen entries.",
     `2. Replace each \`${MODEL_DRIFT_TODO}\` English description, then tick its box below. Avoid "latest" in descriptions, and fix older rows a new model makes stale. Translations are optional and fall back to English.`,
     "3. Commented flags had no source evidence. Uncomment one only after verifying it, and delete the rest. `isFree` and `isUncensored` never have source metadata.",
     "4. Moving `isDefault` or `isSmartest` to a newer row is fine with a stated reason. Each provider keeps exactly one of each.",

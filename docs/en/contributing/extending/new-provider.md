@@ -202,6 +202,10 @@ the runtime discovery validator. Every valid uncarried entry is drafted, includi
 variants, without a family or release-date filter. Rows carry the documented input limit, image
 support, and prices. Entries with invalid metadata stay in the report for review and are retried on
 later runs. Decision rows use the same description review and per-provider row limit gates.
+Keep an active Decision row only when it adds a distinct use case or replaces an existing choice.
+Decline an unshipped draft by removing its seed row and keeping its entry in
+`scripts/data/modelDriftSeen.json`, so drift does not offer it again. Curation alone is not evidence
+that a provider deprecated a model.
 
 Set `contextWindow` and `maxOutputTokens` from the vendor's official docs. Without a window, history
 truncation is skipped and a long channel fails with a context-length error instead of trimming. Add the
