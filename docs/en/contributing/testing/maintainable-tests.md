@@ -2,6 +2,7 @@
 title: "Writing Maintainable Tests"
 sidebar:
   order: 30
+aiGenerated: true
 ---
 
 Patterns that made the test suite larger, slower, or quietly wrong, and what to write instead. Each one was

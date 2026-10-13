@@ -2,6 +2,7 @@
 title: "配置：本地 LLM"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBot 可以使用任何与 OpenAI 兼容的本地 LLM 服务器做文本生成与嵌入。

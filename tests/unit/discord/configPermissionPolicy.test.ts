@@ -134,6 +134,7 @@ describe("config page filtering", () => {
     expect(visibleConfigPages("plugins", DM_OWNER)).toEqual([
       "available-tools",
       "context-additions",
+      "response-drafting",
       "mcp-servers",
       "sillytavern-presets",
       "nsfw-jailbreaks",
@@ -190,6 +191,7 @@ describe("Persona General action policy", () => {
     "trigger-add",
     "trigger-remove",
     "promote",
+    "resync",
   ];
 
   it("allows every identity action for a guild manager", () => {
@@ -199,14 +201,22 @@ describe("Persona General action policy", () => {
   });
 
   it("disables trigger and identity actions for an ordinary guild member", () => {
-    for (const action of ["avatar", "rename", "naming", "trigger-add", "trigger-remove", "promote"] as const) {
+    for (const action of [
+      "avatar",
+      "rename",
+      "naming",
+      "trigger-add",
+      "trigger-remove",
+      "promote",
+      "resync",
+    ] as const) {
       expect(resolvePersonaGeneralActionState(action, GUILD_MEMBER)).toBe("disabled");
     }
   });
 
   it("omits the guild-only actions in a DM workspace", () => {
     // `/persona avatar`, both trigger leaves, and `/persona swap` reject a DM outright.
-    for (const action of ["avatar", "trigger-add", "trigger-remove", "promote"] as const) {
+    for (const action of ["avatar", "trigger-add", "trigger-remove", "promote", "resync"] as const) {
       expect(resolvePersonaGeneralActionState(action, DM_OWNER)).toBe("omitted");
     }
     expect(resolvePersonaGeneralActionState("rename", DM_OWNER)).toBe("enabled");
@@ -587,6 +597,9 @@ describe("isConfigRouteAuthorized", () => {
     { action: "rename-submit", locale: "en-US", personaId: 5, nonce: "nonce1234567" },
     { action: "naming-open", locale: "en-US", personaId: 5, style: "neutral" },
     { action: "naming-submit", locale: "en-US", personaId: 5, style: "neutral", nonce: "nonce1234567" },
+    { action: "resync-view", locale: "en-US", personaId: 5 },
+    { action: "resync-confirm", locale: "en-US", personaId: 5, nonce: "nonce1234567" },
+    { action: "resync-cancel", locale: "en-US", personaId: 5 },
     { action: "promote-view", locale: "en-US", personaId: 5 },
     { action: "promote-confirm", locale: "en-US", personaId: 5, nonce: "nonce1234567" },
   ];
@@ -868,10 +881,30 @@ describe("isConfigRouteAuthorized", () => {
     }
   });
 
+  const draftRoutes: ConfigPanelRoute[] = [
+    { action: "draft-set", locale: "en-US", enabled: true },
+    { action: "draft-items-open", locale: "en-US" },
+    { action: "draft-items-submit", locale: "en-US", nonce: "nonce123" },
+    { action: "draft-prompt-open", locale: "en-US" },
+    { action: "draft-prompt-submit", locale: "en-US", nonce: "nonce123" },
+    { action: "draft-default", locale: "en-US" },
+    { action: "draft-provider", locale: "en-US", slot: "reviewer" },
+    { action: "draft-model-submit", locale: "en-US", slot: "decision", provider: "openrouter", nonce: "nonce123" },
+    { action: "draft-checker-select", locale: "en-US", start: 0, fp: "abcdefgh" },
+  ];
+  it("keeps all Response Drafting routes for managers and DM owners", () => {
+    for (const route of draftRoutes) {
+      expect(isConfigRouteAuthorized(route, GUILD_MANAGER)).toBe(true);
+      expect(isConfigRouteAuthorized(route, GUILD_MEMBER)).toBe(false);
+      expect(isConfigRouteAuthorized(route, DM_OWNER)).toBe(true);
+    }
+  });
+
   it("covers every declared action, so a new route cannot default to authorized", () => {
     // A route added without a policy branch falls through to `false`; this pins that the suite
     // above actually names each action rather than leaving new ones silently denied and untested.
     const covered = new Set<string>([
+      ...draftRoutes.map((route) => route.action),
       ...personaWriteRoutes.map((route) => route.action),
       ...triggerRoutes.map((route) => route.action),
       "attribute-select",

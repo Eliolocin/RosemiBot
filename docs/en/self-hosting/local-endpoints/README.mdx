@@ -21,6 +21,8 @@ Pick a capability to set up:
     description="Any OpenAI-compatible server such as Ollama, KoboldCPP, LM Studio, vLLM, or LiteLLM for text generation and embeddings." />
   <LinkCard title="Codex CLI via ChatMock" href="/self-hosting/local-endpoints/setup-chatmock/"
     description="A local OpenAI-compatible bridge that lets TomoriBot use Codex CLI models." />
+  <LinkCard title="Local Decision Model" href="/self-hosting/local-endpoints/setup-local-system-one/"
+    description="Run Kev, a small open Decision model, and register it as a System One endpoint for Response Drafting." />
 </CardGrid>
 
 ## Image & Video
@@ -51,6 +53,8 @@ Pick a capability to set up:
 ## Custom Tools
 
 <CardGrid>
+  <LinkCard title="slop-guard" href="/self-hosting/local-endpoints/setup-slop-guard/"
+    description="A rule-based prose linter that Response Drafting can use as its rule checker." />
   <LinkCard title="Local MCP Server" href="/self-hosting/local-endpoints/setup-local-mcp/"
     description="Run a local MCP server to extend TomoriBot with your own tools (self-hosted instances only)." />
 </CardGrid>
@@ -66,6 +70,9 @@ bun run launch
 # With the SearXNG and Crawl4AI Docker containers
 bun run launch --searxng --crawl4ai
 
+# With the slop-guard prose linter for Response Drafting
+bun run launch --slopguard
+
 # With a local TTS server (venv must be set up first — see the Text-to-Speech guide below)
 bun run launch --qwen3tts
 bun run launch --fishs2
@@ -76,8 +83,8 @@ bun run launch --cosyvoice3
 bun run launch --help
 ```
 
-Available flags: `--searxng`, `--crawl4ai`, `--qwen3tts`, `--chatterbox`, `--irodoritts`, `--voxcpm2`, `--fishs2`, `--cosyvoice3`, `--moss`, `--whisperx`
+Available flags: `--searxng`, `--crawl4ai`, `--slopguard` (alias `--slop-guard`), `--qwen3tts`, `--chatterbox`, `--irodoritts`, `--voxcpm2`, `--fishs2`, `--cosyvoice3`, `--moss`, `--whisperx`
 
-Docker-backed servers (`--searxng`, `--crawl4ai`) are created on first run and reused on subsequent runs. Python TTS/STT servers require their venv to be set up once beforehand; see the individual setup guides under [Text-to-Speech](/self-hosting/local-endpoints/text-to-speech/) and [Speech-to-Text](/self-hosting/local-endpoints/speech-to-text/).
+Docker-backed servers (`--searxng`, `--crawl4ai`, `--slopguard`) are created on first run and reused on subsequent runs. Python TTS/STT servers require their venv to be set up once beforehand; see the individual setup guides under [Text-to-Speech](/self-hosting/local-endpoints/text-to-speech/) and [Speech-to-Text](/self-hosting/local-endpoints/speech-to-text/).
 
-`Ctrl+C` stops the bot and any Python server processes. Docker containers are intentionally left running. Stop them manually with `docker stop searxng` / `docker stop crawl4ai` when done.
+`Ctrl+C` stops the bot and any Python server processes. Docker containers are intentionally left running. Stop them manually with `docker stop searxng`, `docker stop crawl4ai`, or `docker stop slop-guard` when done.

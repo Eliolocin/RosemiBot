@@ -41,6 +41,10 @@ export interface TtsCloneResult {
   /** Script text with markup stripped, suitable for transcript display. */
   cleanedCaptionText?: string;
   errorKind?: TtsCloneErrorKind;
+  /**
+   * Shown in the command reply and returned to the model by the voice tool. An endpoint can echo the
+   * request key in its error body or headers, so those stay in the log and only the status goes here.
+   */
   details?: string;
 }
 
@@ -254,7 +258,7 @@ export async function synthesizeSpeechViaTtsCloneBuffer(request: TtsCloneBufferR
       if (structuredDetail) errorDetails += `: ${structuredDetail}`;
     } catch {}
     log.warn(`[TtsClone] ${endpointUrl}/synthesize returned error: ${errorDetails}`);
-    return { success: false, errorKind: "request_failed", details: errorDetails };
+    return { success: false, errorKind: "request_failed", details: `HTTP ${response.status}` };
   }
 
   const rawContentType = response.headers.get("content-type") ?? "audio/wav";
@@ -266,7 +270,7 @@ export async function synthesizeSpeechViaTtsCloneBuffer(request: TtsCloneBufferR
     return {
       success: false,
       errorKind: "invalid_response",
-      details: `Expected audio/* content-type, got: ${rawContentType}`,
+      details: "The TTS server did not return audio.",
     };
   }
 

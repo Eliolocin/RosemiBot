@@ -1,3 +1,9 @@
+import { buildExampleJsonFromSchema } from "@/providers/utils/structuredOutput";
+import {
+  parsePrivateStructuredOutput,
+  privateStructuredFailure,
+  readStructuredResponse,
+} from "@/providers/utils/structuredReview";
 import type { z } from "zod";
 import type {
   ProviderImageInput,
@@ -6,6 +12,7 @@ import type {
 } from "@/types/provider/featureInterfaces";
 import { fetchAndOptimizeImage } from "@/utils/image/imageProcessor";
 import { log } from "@/utils/misc/logger";
+import { buildNvidiaThinkingRequest } from "@/utils/provider/thinkingControl";
 import {
   NVIDIA_CHAT_COMPLETIONS_URL,
   NVIDIA_STRUCTURED_OUTPUT_MODELS,
@@ -17,56 +24,6 @@ type NvidiaStructuredOutputRequest = ProviderStructuredJsonRequest;
 type NvidiaMessage = { role: "system"; content: string } | { role: "user"; content: string | NvidiaUserContentPart[] };
 
 type NvidiaUserContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
-
-function buildExampleJsonFromSchema(schema: unknown): unknown {
-  if (!schema || typeof schema !== "object") {
-    return {};
-  }
-
-  const record = schema as Record<string, unknown>;
-
-  if ("const" in record) {
-    return record.const;
-  }
-
-  if (Array.isArray(record.enum) && record.enum.length > 0) {
-    return record.enum[0];
-  }
-
-  if (Array.isArray(record.anyOf) && record.anyOf.length > 0) {
-    return buildExampleJsonFromSchema(record.anyOf[0]);
-  }
-
-  const schemaType = record.type;
-  if (schemaType === "object") {
-    const properties =
-      record.properties && typeof record.properties === "object" ? (record.properties as Record<string, unknown>) : {};
-    const example: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(properties)) {
-      example[key] = buildExampleJsonFromSchema(value);
-    }
-    return example;
-  }
-
-  if (schemaType === "array") {
-    return [buildExampleJsonFromSchema(record.items)];
-  }
-
-  if (schemaType === "integer" || schemaType === "number") {
-    const minimum = typeof record.minimum === "number" && Number.isFinite(record.minimum) ? record.minimum : 0;
-    return minimum;
-  }
-
-  if (schemaType === "boolean") {
-    return false;
-  }
-
-  if (schemaType === "string") {
-    return "<string>";
-  }
-
-  return {};
-}
 
 function buildNvidiaStructuredSystemPrompt(
   systemPrompt: string,
@@ -233,6 +190,8 @@ async function executeStructuredJsonRequest<T>(params: {
   | {
       success: false;
       error: string;
+      failure?: "transport" | "malformed" | "refusal" | "cancelled";
+      httpStatus?: number;
       status?: number;
       statusText?: string;
       errorBody?: string;
@@ -251,6 +210,9 @@ async function executeStructuredJsonRequest<T>(params: {
     stream: false,
     temperature: params.request.temperature ?? 1.0,
   };
+  if (params.request.thinkingLevel !== undefined) {
+    Object.assign(body, buildNvidiaThinkingRequest(params.request.thinkingLevel));
+  }
 
   if (params.responseFormat) {
     body.response_format = params.responseFormat;
@@ -264,9 +226,14 @@ async function executeStructuredJsonRequest<T>(params: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: params.request.abortSignal,
     });
 
     if (!response.ok) {
+      if (params.request.privateOutput) {
+        await response.body?.cancel();
+        return privateStructuredFailure(params.request, "transport", response.status);
+      }
       const errorBody = await response.text();
       log.error(`${params.logLabel} request failed`, new Error(errorBody), {
         errorType: "NvidiaStructuredJSONHttpError",
@@ -285,10 +252,19 @@ async function executeStructuredJsonRequest<T>(params: {
       };
     }
 
-    const result = (await response.json()) as {
-      choices?: Array<{ message?: { content?: unknown } }>;
+    const result = (await readStructuredResponse(params.request, response)) as {
+      usage?: unknown;
+      choices?: Array<{ message?: { content?: unknown; refusal?: unknown } }>;
     };
     const responseText = extractResponseText(result.choices?.[0]?.message?.content);
+    if (params.request.privateOutput)
+      return parsePrivateStructuredOutput(
+        params.request,
+        responseText,
+        params.zodSchema,
+        result.usage,
+        Boolean(result.choices?.[0]?.message?.refusal),
+      );
     if (!responseText) {
       return {
         success: false,
@@ -333,6 +309,7 @@ async function executeStructuredJsonRequest<T>(params: {
       data: validationResult.data,
     };
   } catch (error) {
+    if (params.request.privateOutput) return privateStructuredFailure(params.request);
     log.error(`${params.logLabel} request failed`, error as Error, {
       errorType: "NvidiaStructuredJSONRequestError",
       metadata: {
@@ -383,6 +360,7 @@ export async function callNvidiaStructuredJSON<T>(
     logLabel: "NVIDIA structured JSON",
   });
 
+  if (request.privateOutput) return jsonSchemaResult;
   if (jsonSchemaResult.success) {
     return {
       success: true,

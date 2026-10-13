@@ -1,4 +1,4 @@
-const OPENROUTER_APP_REFERER = "https://docs.tomoribot.app";
+const OPENROUTER_APP_REFERER = "https://tomoribot.app";
 const OPENROUTER_APP_TITLE = "TomoriBot";
 const OPENROUTER_APP_CATEGORIES = "roleplay,personal-agent";
 const ATTRIBUTION_ENABLED_ENV = "OPENROUTER_APP_ATTRIBUTION_ENABLED";

@@ -167,7 +167,12 @@ async function createUserImpersonationTarget(
     reason: "TomoriBot user impersonation",
   });
 
-  cacheUserImpersonationWebhook(webhook.id, context.impersonatedUserId);
+  cacheUserImpersonationWebhook(
+    webhook.id,
+    context.impersonatedUserId,
+    webhookTargetChannel.guildId,
+    webhookTargetChannel.id,
+  );
   return {
     webhook,
     temporaryWebhook: webhook,
@@ -225,9 +230,6 @@ async function emitGenerationError(context: ChatTurnContext, error: unknown): Pr
       color: ColorCode.ERROR,
       titleKey: "genai.generic_error_title",
       descriptionKey: "genai.stream.streaming_failed_description",
-      descriptionVars: {
-        error_message: error instanceof Error ? error.message : "Unknown Error",
-      },
       tipKeys: ["genai.tips.refresh_context"],
     },
     {

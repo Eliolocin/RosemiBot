@@ -1,5 +1,6 @@
 export default {
   status: {
+    prompt_hidden: `プロンプトのテキストは非表示です。閲覧するには「サーバーの管理」権限または有効化されたプロンプト確認設定が必要です。`,
     description: `現在の個人、サーバー、またはペルソナのステータスを表示します。`,
     scope_choice_behavior: `動作`,
     scope_choice_models: `モデル`,
@@ -208,6 +209,7 @@ export default {
     mcp_server_type_custom: `カスタム`,
     mcp_server_type_web_search: `ウェブ検索`,
     mcp_server_type_url_fetcher: `URL取得`,
+    mcp_server_type_prose_linter: `文章校正`,
     mcp_server_auth_present: `認証あり`,
     mcp_server_auth_absent: `認証なし`,
     field_avatar: `アバター`,

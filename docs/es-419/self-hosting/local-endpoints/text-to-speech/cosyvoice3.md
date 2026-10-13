@@ -1,28 +1,29 @@
 ---
 title: "CosyVoice 3"
+aiGenerated: true
 ---
 
-CosyVoice 3 es la generación actual del proyecto multilingüe de texto a voz CosyVoice de Alibaba/QwenAudio. TomoriBot envuelve el tiempo de ejecución oficial en `servers/tts/cosyvoice3/` y expone la misma interfaz `POST /synthesize` utilizada por los otros endpoints de voz locales.
+Sintetiza voces de personajes naturales y multilingües con entrega emocional basada en instrucciones utilizando [CosyVoice 3](https://github.com/QwenAudio/CosyVoice) de Alibaba.
 
-TomoriBot usa por defecto el punto de control oficial `FunAudioLLM/Fun-CosyVoice3-0.5B-2512`. Es el lanzamiento actual de CosyVoice 3 recomendado por los desarrolladores, usa el modelo normal sin cuantificar y es lo suficientemente pequeño como para ejecutarse cómodamente en una GPU NVIDIA de 16 GB manteniendo intacto el diseño de baja latencia de CosyVoice.
+CosyVoice 3 proporciona clonación de voz multilingüe y sin disparos en 9 idiomas y más de 18 dialectos chinos. TomoriBot incluye el tiempo de ejecución oficial en `servers/tts/cosyvoice3/` para exponer la interfaz de voz estándar `POST /synthesize`. El instalador incluido utiliza de forma predeterminada el modelo oficial no cuantificado `FunAudioLLM/Fun-CosyVoice3-0.5B-2512`, que se ejecuta con 16 GB de VRAM.
 
 ## Qué admite
 
-El lanzamiento actual de CosyVoice 3 admite:
+La versión actual CosyVoice 3 admite:
 
 - Chino, inglés, japonés, coreano, alemán, español, francés, italiano y ruso
-- 18+ dialectos y acentos chinos
-- clonación de voz zero-shot
-- clonación de voz multilingüe y translingüe
-- instrucciones en lenguaje natural para el idioma, dialecto, emoción, velocidad de habla y volumen
-- controles detallados en el tiempo de ejecución ascendente, incluyendo `[breath]` y `[laughter]`
+- Más de 18 dialectos y acentos chinos
+- clonación de voz de disparo cero
+- clonación de voz multilingüe y entre idiomas
+- Instrucciones en lenguaje natural para lenguaje, dialecto, emoción, velocidad de habla y volumen.
+- controles detallados en el tiempo de ejecución ascendente, incluidos `[breath]` y `[laughter]`
 - transmisión de entrada de texto y salida de audio en el tiempo de ejecución ascendente
 
-Los ejemplos oficiales de CosyVoice 3 incluyen actualmente una importante advertencia para el japonés: el texto en japonés se muestra después de la conversión a katakana. El japonés es un idioma admitido, pero si la ortografía japonesa normal da una mala pronunciación, la solución alternativa recomendada es convertir el texto de síntesis a katakana.
+Los ejemplos oficiales de CosyVoice 3 incluyen una advertencia en japonés: el texto en japonés se muestra después de la conversión a katakana. El japonés es un idioma admitido, pero si la ortografía japonesa normal produce una pronunciación deficiente, la solución alternativa recomendada por los desarrolladores es convertir el texto de síntesis a katakana.
 
 ## Cómo asigna las solicitudes TomoriBot
 
-El envoltorio acepta los campos normales de `tts-clone`:
+El contenedor acepta los campos estándar `tts-clone`:
 
 - `text`
 - `ref_audio`
@@ -30,64 +31,55 @@ El envoltorio acepta los campos normales de `tts-clone`:
 - `instruct`
 - `language`
 
-Elige la API actual de CosyVoice 3 de la siguiente manera:
+Enruta solicitudes a funciones de inferencia CosyVoice 3 de la siguiente manera:
 
-| Solicitud | Ruta de CosyVoice 3 |
+| Pedido | CosyVoice 3 camino |
 |---|---|
 | Audio de referencia + transcripción | `inference_zero_shot` |
-| Audio de referencia sin transcripción | `inference_cross_lingual` |
+| Audio de referencia sin transcripción. | `inference_cross_lingual` |
 | `instruct` o `language` explícito | `inference_instruct2` |
 
-Para obtener la mejor calidad de clonación ordinaria, proporciona tanto el audio de referencia como su transcripción coincidente. La API de instrucciones actual de CosyVoice 3 se condiciona con el audio de referencia pero no acepta también la transcripción de referencia, por lo que las solicitudes que usan `instruct` cambian a la ruta oficial `inference_instruct2`.
+Para obtener la mejor calidad de clonación, proporcione tanto el audio de referencia como su transcripción correspondiente. La instrucción actual API de CosyVoice 3 condiciona el audio de referencia sin aceptar transcripciones de referencia, por lo que las solicitudes que contienen `instruct` cambian a la ruta oficial `inference_instruct2`.
 
 ### Estilo y controles de emoción
 
-Registra el endpoint con el marcado `Plano`. La directriz de entrega pertenece al campo global
-`voice_instructions` del endpoint, no a etiquetas arbitrarias entre corchetes en línea. Esto preserva el significado de
-la instrucción para todo el enunciado y evita tratar un guion como `[happy] Hello.
-[sad] Goodbye.` como dos instrucciones globales contradictorias. El soporte nativo de `[breath]` y `[laughter]`
-se pospone intencionalmente hasta que TomoriBot pueda anunciar una capacidad de etiqueta exacta consciente del proveedor.
+Registre el punto final con el marcado `Plano`. La dirección de entrega pertenece al campo global `voice_instructions` del terminal. Se evitan etiquetas de corchetes arbitrarias en línea porque corren el riesgo de instrucciones contradictorias, como `[happy] Hello. [sad] Goodbye.`. Las etiquetas nativas `[breath]` y `[laughter]` se difieren hasta que TomoriBot admita la detección de etiquetas específicas del motor.
 
-El campo `instruct` de `/synthesize` se pasa al condicionamiento de instrucciones de CosyVoice 3. Ejemplos
-incluyen `sound relieved but still tired`, `speak as quickly as possible`, o `speak quietly with
-restrained excitement`.
+El campo `/synthesize` `instruct` se pasa al condicionamiento de instrucciones de CosyVoice 3. Los ejemplos incluyen `sound relieved but still tired`, `speak as quickly as possible` o `speak quietly with restrained excitement`.
 
 ## Transmisión
 
-CosyVoice 3 admite transmisión bidireccional upstream. El proyecto documenta tanto la transmisión de texto de entrada como la de audio de salida, con una latencia de primer audio tan baja como aproximadamente 150 ms en su configuración optimizada.
+CosyVoice 3 admite transmisión bidireccional ascendente. Los puntos de referencia ascendentes informan transmisión de entrada de texto y salida de audio con una latencia de audio inicial de alrededor de 150 ms en configuraciones optimizadas.
 
-La interfaz personalizada actual de texto a voz de TomoriBot espera una respuesta de audio completa para un mensaje de voz
-de Discord, por lo que este servidor devuelve un WAV completo y predetermina la inferencia upstream a
-`stream=False`. Configura `COSYVOICE3_UPSTREAM_STREAM=1` solo cuando pruebes el generador upstream; no
-reduce la latencia de respuesta de TomoriBot hasta que exista un transporte de voz por transmisión.
+La interfaz de voz de TomoriBot espera una única respuesta de audio completa para los mensajes de voz de Discord, por lo que el contenedor devuelve un archivo WAV completo y establece de forma predeterminada la inferencia ascendente en `stream=False`. Configura `COSYVOICE3_UPSTREAM_STREAM=1` solo cuando compare directamente el comportamiento de transmisión ascendente; no cambia la latencia de TomoriBot.
 
 ## Hardware
 
-Punto de partida recomendado para TomoriBot:
+Hardware recomendado:
 
-- GPU NVIDIA con 16 GB VRAM
-- Python 3.10
-- controlador NVIDIA reciente compatible con CUDA 12
+- GPU NVIDIA con 16 GB de VRAM
+- Pitón 3.10
+- Controlador NVIDIA compatible con CUDA 12
 - `git`
-- `ffmpeg` para la normalización de muestras de voz de TomoriBot
-- `sox` y `libsox-dev` en Linux si ocurren problemas de compatibilidad de audio upstream
+- `ffmpeg` para normalización de muestras de voz
+- `sox` y `libsox-dev` en Linux si ocurren problemas de compatibilidad de audio
 
-El modelo en sí tiene 0.5B de parámetros y no necesita cuantificación para caber en una tarjeta de 16 GB. La descarga del punto de control de Hugging Face es mucho mayor de lo que sugiere el recuento de parámetros porque también incluye el modelo de flujo, los tokenizadores de voz, el modelo de texto en inglés y los pesos del LLM base y RL. Permite aproximadamente 10 GB de espacio en disco para el paquete de modelos actual, más el entorno de Python y el tiempo de ejecución.
+El modelo de parámetros de 0,5 B cabe fácilmente en 16 GB de VRAM sin cuantificación. La descarga del punto de control incluye modelos de flujo, tokenizadores de voz, modelos de texto y pesos de aprendizaje por refuerzo, lo que requiere aproximadamente 10 GB de espacio en disco más dependencias de Python.
 
-La inferencia de CPU es posible a través del tiempo de ejecución upstream pero no es la ruta recomendada para el uso de voz de Discord de baja latencia.
+Si bien la inferencia de CPU es técnicamente compatible en sentido ascendente, es demasiado lenta para las interacciones de voz Discord.
 
 ## Instalación
 
-### Linux / WSL2 (recomendado)
+### Linux y WSL2 (recomendado)
 
-Desde la raíz del repositorio de TomoriBot:
+Desde la raíz del repositorio TomoriBot:
 
 ```bash
 bash servers/tts/cosyvoice3/install-cosyvoice3.sh
 servers/tts/cosyvoice3/.venv/bin/python servers/tts/cosyvoice3/server.py
 ```
 
-O inicia el servidor configurado y TomoriBot juntos:
+O inicie el servidor configurado y TomoriBot juntos:
 
 ```bash
 bun run launch --cosyvoice3
@@ -95,25 +87,25 @@ bun run launch --cosyvoice3
 
 El instalador:
 
-1. clona recursivamente el commit revisado de `QwenAudio/CosyVoice` `074ca6dc9e80a2f424f1f74b48bdd7d3fea531cc` en `servers/tts/cosyvoice3/CosyVoice/`;
+1. comprueba que `QwenAudio/CosyVoice` confirme `074ca6dc9e80a2f424f1f74b48bdd7d3fea531cc` de forma recursiva en `servers/tts/cosyvoice3/CosyVoice/`;
 2. crea `servers/tts/cosyvoice3/.venv`;
-3. instala los requisitos actuales upstream de CosyVoice más el pequeño conjunto de dependencias del envoltorio; y
+3. instala requisitos de CosyVoice ascendentes y dependencias de contenedor; y
 4. descarga `FunAudioLLM/Fun-CosyVoice3-0.5B-2512` en la revisión de Hugging Face `29e01c4e8d000f4bcd70751be16fa94bf3d85a18` en `CosyVoice/pretrained_models/Fun-CosyVoice3-0.5B/`.
 
-Las ejecuciones posteriores conservan esas revisiones exactas; pasar a revisiones más nuevas significa cambiar ambos valores fijados en el instalador. El instalador se niega a reinstalar sobre una copia del tiempo de ejecución que tenga cambios locales.
+Al volver a ejecutar el script se mantienen estas revisiones fijadas. El instalador se niega a sobrescribir los pagos con cambios locales no confirmados.
 
-Los requisitos upstream actualmente usan PyTorch 2.3.1 con el índice del paquete CUDA 12.1, paquetes ONNX Runtime de CUDA 12 en Linux, y paquetes TensorRT 10.13 en Linux. Si estás usando hardware que requiere una compilación más reciente de PyTorch CUDA, instala una compilación compatible de PyTorch en el entorno virtual del servidor después de los requisitos upstream y pruébala con tu controlador.
+Los requisitos ascendentes instalan PyTorch 2.3.1 con paquetes CUDA 12.1, paquetes CUDA 12 ONNX Runtime en Linux y paquetes TensorRT 10.13 en Linux. Si su GPU requiere una compilación de PyTorch más nueva, instale una compilación de PyTorch compatible dentro del entorno virtual una vez completada la instalación.
 
 ### Windows PowerShell
 
-El Windows nativo se proporciona como un esfuerzo de buena fe:
+Windows nativo se proporciona como la mejor opción:
 
 ```powershell
 .\servers\tts\cosyvoice3\install-cosyvoice3.ps1
 .\servers\tts\cosyvoice3\.venv\Scripts\python.exe servers\tts\cosyvoice3\server.py
 ```
 
-Para uso de GPU NVIDIA, se recomienda WSL2. Los requisitos upstream actuales instalan GPU ONNX Runtime en Linux pero CPU ONNX Runtime en Windows, por lo que WSL2 se adapta más a la configuración que el proyecto CosyVoice optimiza y prueba para baja latencia.
+Se recomienda encarecidamente WSL2 para el uso de GPU NVIDIA en Windows. Los requisitos ascendentes instalan ONNX Runtime solo para CPU en Windows, mientras que Linux y WSL2 instalan paquetes acelerados por GPU.
 
 ## Registro en TomoriBot
 
@@ -128,69 +120,63 @@ Ejecuta `/providers`, elige `Agregar nuevo punto de conexión personalizado`, y 
 
 Después de guardar la conexión, selecciónala y agrega un modelo de Voz. Un código de modelo claro es `Fun-CosyVoice3-0.5B-2512`.
 
-Luego abre `/config` > Modelos > Cambiar modelos y activa el endpoint de voz de CosyVoice 3.
+Luego abre `/config` > Modelos > `Cambiar modelos` y activa el endpoint de voz de CosyVoice 3.
 
 ## Asignación de una voz de persona
 
-Para la clonación zero-shot normal:
+Para clonación de voz cero:
 
-1. Prepara una muestra limpia de 3 a 30 segundos con un solo orador y poco o ningún ruido de fondo.
-2. Abre `/config` bajo Modelos > Parámetros y voces TTS y sube la muestra.
-3. Ingresa la transcripción coincidente cuando sea posible. CosyVoice 3 la usa para la ruta zero-shot respaldada por transcripción, y se tokeniza como prefijo del prompt, así que debe describir el audio que realmente se usa: los primeros 30 segundos del clip.
-4. Abre `/config` bajo Persona > Voz y asigna esa muestra a la persona.
+1. Prepare un clip de audio limpio de 3 a 30 segundos con un altavoz y un mínimo de ruido de fondo.
+2. Abre `/config` en Modelos > `Parámetros y voces TTS` y cargue la muestra.
+3. Ingresa la transcripción correspondiente cuando esté disponible. CosyVoice 3 tokeniza esta transcripción como un prefijo de aviso para la clonación de disparo cero; debe describir los primeros 30 segundos del audio.
+4. Abre `/config` en Persona > `Voz` y asigne la muestra a la persona.
 
-El tokenizador de voz de CosyVoice trabaja con una ventana de prompt de 30 segundos, y el upstream la impone al fallar: su propia interfaz web indica mantener el audio de prompt por debajo de 30 segundos, y el tokenizador afirma ese límite en lugar de acortar el audio en sí. En cambio, el servidor local recorta, así que un clip más largo se recorta a sus primeros 30 segundos, la síntesis continúa y el recorte queda registrado en la consola del servidor.
+CosyVoice impone una ventana de aviso de 30 segundos. Mientras que el motor ascendente genera un error cuando el audio excede los 30 segundos, el contenedor de TomoriBot recorta los clips a sus primeros 30 segundos automáticamente y registra el recorte en la consola.
 
-El recorte lee el clip en su propio lugar, lo que significa que el embedding de locutor se toma de los mismos 30 segundos iniciales que los tokens de voz del prompt. Es ese par lo que CosyVoice usa como condicionamiento, así que una referencia larga no pierde nada que el motor habría usado. El efecto práctico es que solo los 30 segundos iniciales de una subida larga condicionan la voz, mientras que el resto se sube y se almacena sin usarse.
+Las incrustaciones de oradores y los tokens de voz rápida se calculan a partir de los primeros 30 segundos, por lo que los clips de más de 30 segundos no agregan detalles de voz. El uso de un clip limpio entre 10 y 20 segundos garantiza una alineación rápida y precisa.
 
-Mantener la muestra asignada entre 10 y 20 segundos se queda dentro de la ventana con margen de sobra, lo que también mantiene la transcripción almacenada alineada con el audio que lee el modelo.
-
-Se admite la clonación translingüe. El orador de referencia puede hablar un idioma diferente al del texto generado. Si una transcripción de referencia no está disponible, el envoltorio usa la ruta translingüe dedicada de CosyVoice 3.
+Se admite la clonación multilingüe: el hablante de referencia puede hablar un idioma diferente al del texto generado. Si no se proporciona una transcripción de referencia, el contenedor enruta las solicitudes a la ruta del motor multilingüe dedicada de CosyVoice 3.
 
 ## Prueba con `/generate voice-message`
 
-Usa `/generate voice-message` para probar el endpoint activo sin esperar a que un turno normal de chat elija la herramienta de voz. Puedes usar la muestra configurada de la persona o subir una muestra única. Al subir una muestra, proporciona su transcripción en el modal cuando sea posible.
+Utilice `/generate voice-message` para probar la síntesis sin esperar a que se active el chat automatizado. Puedes realizar la prueba con la muestra asignada a la persona o cargar un clip único con su transcripción.
 
-Para una entrega expresiva, ingresa una directriz global de entrega en el modal o deja que la herramienta de voz envíe
-`voice_instructions`. Mantén el guion hablado como texto sin formato; las etiquetas de estilo en línea arbitrarias se eliminan
-antes de la síntesis en lugar de representarse incorrectamente como instrucciones de todo el enunciado.
+Para guiar la emoción y la entrega, ingrese la dirección en el modal o deje que la persona indique `voice_instructions`. Mantén el texto hablado como un diálogo sencillo; Las etiquetas de estilo en línea se eliminan antes de la síntesis.
 
 ## Variables de entorno
 
-| Variable | Predeterminado | Propósito |
+| Variable | Por defecto | Objetivo |
 |---|---|---|
-| `COSYVOICE3_MODEL_DIR` | `CosyVoice/pretrained_models/Fun-CosyVoice3-0.5B` | Directorio local del punto de control |
-| `TOMORI_TTS_HOST` | `127.0.0.1` | Dirección de enlace del envoltorio; consulta [Acceso de red](/self-hosting/local-endpoints/text-to-speech/#network-access) |
-| `COSYVOICE3_PORT` | `8017` | Puerto del envoltorio |
-| `COSYVOICE3_UPSTREAM_STREAM` | `0` | Habilitar el generador de transmisión interna de CosyVoice |
-| `COSYVOICE3_SPEED` | `1.0` | Multiplicador numérico global de velocidad pasado a la inferencia upstream |
-| `COSYVOICE3_DEFAULT_INSTRUCT` | vacío | Instrucción opcional añadida cuando una solicitud no proporciona una |
-| `COSYVOICE3_FP16` | `0` | Pide al tiempo de ejecución oficial que use su modo fp16 |
-| `COSYVOICE3_LOAD_TRT` | `0` | Habilitar la carga upstream de TensorRT cuando se prepare adecuadamente |
-| `COSYVOICE3_LOAD_VLLM` | `0` | Habilitar la carga upstream de vLLM cuando sus dependencias separadas estén instaladas |
+| `COSYVOICE3_MODEL_DIR` | `CosyVoice/pretrained_models/Fun-CosyVoice3-0.5B` | Directorio de puntos de control locales |
+| `TOMORI_TTS_HOST` | `127.0.0.1` | Dirección de enlace del contenedor; consulte [Acceso a la red](/es-419/self-hosting/local-endpoints/text-to-speech/#network-access) |
+| `COSYVOICE3_PORT` | `8017` | Puerto contenedor |
+| `COSYVOICE3_UPSTREAM_STREAM` | `0` | Habilita el generador de transmisión interno de CosyVoice |
+| `COSYVOICE3_SPEED` | `1.0` | Multiplicador de velocidad numérica global pasado a inferencia ascendente |
+| `COSYVOICE3_DEFAULT_INSTRUCT` | vacía | Instrucción opcional agregada cuando una solicitud no proporciona una |
+| `COSYVOICE3_FP16` | `0` | Solicite al tiempo de ejecución oficial que use su modo fp16 |
+| `COSYVOICE3_LOAD_TRT` | `0` | Habilita la carga TensorRT aguas arriba cuando esté preparada adecuadamente |
+| `COSYVOICE3_LOAD_VLLM` | `0` | Habilita la carga de vLLM ascendente cuando sus dependencias separadas estén instaladas |
 
-El valor predeterminado mantiene TensorRT, vLLM y fp16 apagados. El tiempo de ejecución normal de PyTorch ya se ajusta a la GPU objetivo de 16 GB, es más simple de instalar y evita convertir la ruta predeterminada en una configuración específica de optimización.
+De forma predeterminada, TensorRT, vLLM y fp16 permanecen deshabilitados. El tiempo de ejecución estándar de PyTorch se ejecuta cómodamente en GPU de 16 GB sin dependencias de tiempo de ejecución adicionales.
 
 ## Rendimiento y variantes del modelo
 
 ### Predeterminado: `Fun-CosyVoice3-0.5B-2512` base
 
-Esta es la opción predeterminada recomendada para TomoriBot. Tiene una fuerte similitud con el orador, admite todos los modos actuales de clonación e instrucción de CosyVoice 3 y no necesita cuantificación en una GPU de 16 GB.
+Este es el valor predeterminado recomendado para TomoriBot. Proporciona una alta similitud de los altavoces, admite todos los modos de instrucción y clonación del CosyVoice 3 y no requiere cuantificación en GPU de 16 GB.
 
-### Peso RL
+### Pesos de aprendizaje por refuerzo
 
-El paquete del punto de control actual también incluye `llm.rl.pt`. Upstream publica los resultados base y RL por separado. El peso RL mejora algunas métricas de error de contenido, mientras que el resultado base conserva puntuaciones de similitud de orador ligeramente más fuertes en la tabla publicada. Debido a que TomoriBot enfatiza la clonación de voz de la persona, el envoltorio deja el `llm.pt` normal como el predeterminado.
+El paquete de punto de control incluye `llm.rl.pt` junto con pesos base. Las ponderaciones RL reducen las tasas de error de contenido, mientras que las ponderaciones base obtienen una puntuación ligeramente más alta en los puntos de referencia de similitud de hablantes. Debido a que se prioriza la fidelidad de la voz de la persona, el contenedor predeterminado es `llm.pt`.
 
-El cargador oficial actual siempre lee un archivo llamado `llm.pt`. Para experimentar con el peso RL sin sobrescribir la instalación predeterminada, copia el directorio del modelo, reemplaza el `llm.pt` de la copia por `llm.rl.pt`, y apunta `COSYVOICE3_MODEL_DIR` a esa copia.
+El cargador ascendente espera `llm.pt`. Para probar los pesos RL sin modificar los archivos predeterminados, duplique el directorio del modelo, cambie el nombre de `llm.rl.pt` a `llm.pt` dentro de la copia y configure `COSYVOICE3_MODEL_DIR` en la carpeta copiada.
 
 ### vLLM y TensorRT
 
-CosyVoice 3 también admite rutas opcionales de vLLM y TensorRT. Upstream documenta actualmente vLLM 0.11.x+ usando el motor V1 y vLLM 0.9.0 como la ruta heredada. Estos tiempos de ejecución tienen restricciones adicionales de versión y hardware, por lo que TomoriBot no los instala ni los habilita de forma predeterminada.
-
-Úsalos solo después de que el servidor de PyTorch ordinario esté funcionando. Para una carga de trabajo de mensaje de voz de Discord, evitar la complejidad adicional del tiempo de ejecución suele ser más útil que optimizar un modelo ya pequeño de 0.5B.
+CosyVoice 3 admite tiempos de ejecución opcionales de vLLM y TensorRT. Los documentos ascendentes vLLM 0.11.x+ con el motor V1 y vLLM 0.9.0 como legado. Debido a que estas bibliotecas introducen requisitos estrictos de versión de dependencia y CUDA, TomoriBot no las instala de forma predeterminada.
 
 ## Licencia
 
-El repositorio de código actual de CosyVoice tiene licencia bajo la Apache License 2.0, y el repositorio de Hugging Face `FunAudioLLM/Fun-CosyVoice3-0.5B-2512` también está marcado como Apache-2.0.
+El código base CosyVoice y los pesos `FunAudioLLM/Fun-CosyVoice3-0.5B-2512` se publican bajo la licencia Apache-2.0.
 
-La tarjeta del modelo upstream contiene además un descargo de responsabilidad que dice que el contenido mostrado es para demostración académica y que algunos ejemplos pueden provenir de Internet. Una discusión upstream abierta pide una aclaración explícita sobre cómo se relaciona ese descargo de responsabilidad con el uso comercial de los pesos. TomoriBot no redistribuye el modelo. Los autoalojadores deben revisar la licencia actual upstream y los términos de la tarjeta del modelo para su propia implementación, especialmente antes del uso comercial.
+La tarjeta modelo anterior señala que los materiales de demostración son para evaluación académica. TomoriBot no distribuye pesos de modelos. Revisa las licencias y los términos ascendentes para su caso de uso específico antes de realizar la implementación comercial.

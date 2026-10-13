@@ -164,10 +164,6 @@ function getRecentlyUsedCustomEmojis(contextItems: StructuredContextItem[], conf
     }
   }
 
-  log.info(
-    `[Unique Emoji] Found ${usedEmojis.size} unique custom emoji(s) in last ${messagesToCheck} message(s): ${Array.from(usedEmojis).join(", ") || "(none)"}`,
-  );
-
   return usedEmojis;
 }
 
@@ -191,10 +187,7 @@ export function filterDuplicateCustomEmojis(generatedText: string, contextItems:
     }
   }
 
-  if (emojisToRemove.size === 0) {
-    log.info("[Unique Emoji] No duplicate custom emojis found in generated text");
-    return generatedText;
-  }
+  if (emojisToRemove.size === 0) return generatedText;
 
   const filtered = filterCustomEmojis(generatedText, emojisToRemove);
 
@@ -207,11 +200,7 @@ export function filterDuplicateCustomEmojis(generatedText: string, contextItems:
     return generatedText;
   }
 
-  log.info(
-    `[Unique Emoji] Filtered ${emojisToRemove.size} duplicate custom emoji(s): ${Array.from(emojisToRemove).join(", ")}`,
-  );
-  log.info(`[Unique Emoji] Original: "${generatedText}"`);
-  log.info(`[Unique Emoji] Filtered: "${filtered}"`);
+  log.info(`[Unique Emoji] Filtered ${emojisToRemove.size} duplicate custom emoji(s)`);
 
   return filtered;
 }

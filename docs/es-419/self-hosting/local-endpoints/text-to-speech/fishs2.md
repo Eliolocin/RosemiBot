@@ -1,12 +1,13 @@
 ---
 title: "Fish Audio S2 Pro"
+aiGenerated: true
 ---
 
-Fish Audio S2 Pro es un modelo de texto a voz multilingüe de 4B enfocado en la clonación de voz de alta fidelidad y la entrega expresiva. TomoriBot lo usa a través del envoltorio local en `servers/tts/fishs2/`.
+Sintetice discursos de personajes multilingües altamente expresivos con etiquetas de emociones detalladas utilizando [Fish Audio S2 Pro](https://github.com/fishaudio/fish-speech).
 
-La configuración predeterminada de TomoriBot usa los pesos oficiales BF16 (`fishaudio/s2-pro`) para proporcionar la fidelidad de síntesis más alta y evitar incompatibilidades de cuantificación. Para los usuarios con GPU de consumo con memoria limitada, se admite una cuantificación INT8 opcional de solo peso (`Imagilux/fishaudio-s2-pro`) a través de anulaciones de entorno.
+Fish Audio S2 Pro es un modelo multilingüe de conversión de texto a voz con parámetros 4B creado para la clonación de voz de alta fidelidad. TomoriBot se conecta al modelo a través del contenedor local en `servers/tts/fishs2/`. El valor predeterminado es el peso oficial BF16 (`fishaudio/s2-pro`), con un punto de control cuantificado INT8 opcional (`Imagilux/fishaudio-s2-pro`) para GPU con 8 a 12 GB de VRAM.
 
-Fish S2 Pro admite etiquetas de expresión entre corchetes como `[whisper]`, `[excited]`, y `[angry]`. Configura el endpoint con el marcado `Etiquetas entre corchetes` para que TomoriBot conserve estos controles en los guiones de voz generados.
+Fish S2 Pro admite etiquetas de expresión entre corchetes como `[whisper]`, `[excited]` y `[angry]`. Configura el punto final con el marcado `Etiquetas entre corchetes` para que TomoriBot conserve estos controles en los scripts de voz generados.
 
 ## Licencia
 
@@ -14,25 +15,24 @@ El código de Fish Speech y los pesos del modelo S2 Pro se distribuyen bajo la L
 
 TomoriBot no redistribuye los pesos del modelo. Cada usuario de autoalojamiento descarga Fish S2 Pro directamente de Hugging Face y es responsable de cumplir con la Licencia de Investigación de Fish Audio. La atribución requerida es: Built with Fish Audio.
 
-## Hardware y Sistema Operativo
+## Hardware y sistemas operativos
 
-> [!IMPORTANT]
-> Usa Linux o WSL2 para Fish Speech: Fish Audio se dirige oficialmente a Linux y WSL2. Fish S2 Pro usa una arquitectura Dual-Autoregressive (Dual-AR) (36 capas lentas de transformadores + 10 pasadas rápidas de codebook = 76 evaluaciones de capas por token). En Linux, OpenAI Triton puede compilar este bucle anidado en kernels fusionados de GPU (`torch.compile(backend="inductor")`), que según los benchmarks upstream permite la síntesis en tiempo real en GPU de servidores Linux. El envoltorio deja la compilación desactivada de forma predeterminada, así que configura `FISH_S2_COMPILE=1` para usarla.
->
-> En el Windows nativo, Triton no es compatible, lo que obliga a PyTorch a un modo entusiasta sin compilar con más de 120,000 despachos secuenciales de kernel CUDA a través del controlador de Windows WDDM. Esto causa un grave estancamiento de despacho, lo que ralentiza la generación hasta ~8-10 minutos (~65s de cómputo por segundo de audio) para exactamente el mismo clip. Para una inferencia utilizable, ejecuta Fish S2 Pro dentro de Linux o WSL2.
+> [!IMPORTANTE]
+> Fish Audio apunta oficialmente a Linux y WSL2. Fish S2 Pro utiliza una arquitectura dual autorregresiva (Dual-AR) (36 capas de transformador lento + 10 pases rápidos del libro de códigos = 76 evaluaciones de capa por token). En Linux, OpenAI Triton compila este bucle en núcleos de GPU fusionados (`torch.compile(backend="inductor")`), lo que permite la síntesis en tiempo real. El contenedor deja la compilación desactivada de forma predeterminada; configure `FISH_S2_COMPILE=1` para habilitarlo. >
+> En Windows nativo, Triton no es compatible, lo que obliga a PyTorch a entrar en modo ansioso sin compilar con más de 120.000 envíos secuenciales de kernel CUDA a través del controlador WDDM de Windows. Esto provoca una grave parada en el envío, lo que ralentiza la generación a ~8-10 minutos (~65 s de cálculo por segundo de audio) para exactamente el mismo clip. Para una inferencia utilizable, ejecute Fish S2 Pro dentro de Linux o WSL2.
 
 Hardware recomendado:
 
-- Linux o WSL2 (Altamente Recomendado)
-- GPU NVIDIA con 16 GB a 24 GB VRAM (BF16 cabe cómodamente en ~16-18 GB VRAM con almacenamiento en caché KV y descarga)
-- Se recomienda Python 3.12
-- `git`, `ffmpeg`, y las bibliotecas de audio estándar requeridas por Fish Speech
+- **Linux o WSL2 (muy recomendado)**
+- GPU NVIDIA con 16 GB a 24 GB de VRAM (BF16 cabe cómodamente en ~16-18 GB de VRAM con almacenamiento en caché y descarga KV)
+- Python 3.12 recomendada
+- `git`, `ffmpeg` y bibliotecas de audio estándar requeridas por Fish Speech
 
 ## Configuración
 
-### Linux / WSL2 (Recomendado)
+### Linux y WSL2 (recomendado)
 
-Desde la raíz del repositorio de TomoriBot:
+Desde la raíz del repositorio TomoriBot:
 
 ```bash
 bash servers/tts/fishs2/install-fishs2.sh
@@ -41,57 +41,51 @@ servers/tts/fishs2/.venv/bin/python servers/tts/fishs2/server.py
 
 El instalador:
 
-1. clona `Imagilux/fish-speech` en `servers/tts/fishs2/fish-speech/` y cambia al commit de tiempo de ejecución fijado;
+1. clona `Imagilux/fish-speech` en `servers/tts/fishs2/fish-speech/` y verifica la confirmación del tiempo de ejecución fijada;
 2. crea el `.venv` aislado;
-3. instala Fish Speech más las dependencias del envoltorio de TomoriBot; y
+3. instala Fish Speech más las dependencias del contenedor TomoriBot; y
 4. descarga el punto de control oficial BF16 `fishaudio/s2-pro` en `fish-speech/checkpoints/fish-speech-s2-pro/`.
 
-Una reinstalación normal se mantiene en el commit de tiempo de ejecución fijado `2225e924e7d35cc0a1d24dbc67cd1819e6cf429f` en lugar
-de seguir una rama en movimiento; pasar a un tiempo de ejecución más nuevo significa cambiar ese valor fijado en el instalador. La revisión del modelo predeterminada es `main`; fija `FISH_S2_MODEL_REVISION` a
-una revisión inmutable de Hugging Face cuando una implementación deba ser reproducible. La configuración del instalador
-se enumera en [Variables del instalador](#installer-variables).
+Una reinstalación normal permanece en la confirmación de tiempo de ejecución fijada `2225e924e7d35cc0a1d24dbc67cd1819e6cf429f` en lugar de seguir una rama en movimiento; pasar a un tiempo de ejecución más nuevo significa cambiar ese pin en el instalador. La revisión del modelo por defecto es `main`; fije `FISH_S2_MODEL_REVISION` a una revisión de Hugging Face inmutable cuando una implementación debe ser reproducible. La configuración del instalador se enumera en [Variables del instalador](#installer-variables).
 
-El modelo de Hugging Face está restringido. Acepta primero su licencia en Hugging Face. Si la descarga pide autenticación, ejecuta:
+El modelo Hugging Face está cerrado. Primero acepte su licencia en Hugging Face. Si la descarga solicita autenticación, ejecute:
 
 ```bash
 servers/tts/fishs2/.venv/bin/hf auth login
 ```
 
-Luego vuelve a ejecutar el instalador.
+Luego vuelva a ejecutar el instalador.
 
-### Windows PowerShell (Solo esfuerzo de buena fe)
+### Windows PowerShell (solo mejor esfuerzo)
 
-El Windows nativo se proporciona solo para evaluación. Debido a la latencia de despacho del controlador en el modo entusiasta sin compilar, la generación será extremadamente lenta (~8-10 minutos por clip):
+Windows nativo se proporciona únicamente para evaluación. Debido a la latencia de envío del controlador en el modo ansioso sin compilar, la generación será extremadamente lenta (~8-10 minutos por clip):
 
 ```powershell
 .\servers\tts\fishs2\install-fishs2.ps1
 .\servers\tts\fishs2\.venv\Scripts\python.exe servers\tts\fishs2\server.py
 ```
 
-El instalador de PowerShell se dirige a la aceleración de GPU CUDA (`cu124`) de forma predeterminada. Para instalar en una máquina solo con CPU sin una GPU NVIDIA, pasa `-Cpu`:
+El instalador de PowerShell tiene como objetivo la aceleración CUDA GPU (`cu124`) de forma predeterminada. Para instalar en una máquina que solo tiene CPU y sin una GPU NVIDIA, pase `-Cpu`:
 
 ```powershell
 .\servers\tts\fishs2\install-fishs2.ps1 -Cpu
 ```
 
-Si PyTorch en Windows alguna vez necesita ser instalado o actualizado manualmente con soporte de CUDA, ejecuta:
+Si alguna vez es necesario instalar o actualizar PyTorch en Windows manualmente con soporte CUDA, ejecute:
 
 ```powershell
 .\servers\tts\fishs2\.venv\Scripts\pip.exe install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 ```
 
-TomoriBot deja de esperar un mensaje de voz después de `TTS_SYNTHESIZE_TIMEOUT_MS` (predeterminado 240000 ms), lo cual
-es más corto de lo que tarda un clip de Windows nativo. Auméntalo en el `.env` de TomoriBot (por ejemplo
-`TTS_SYNTHESIZE_TIMEOUT_MS=900000`) mientras lo evalúas en Windows.
+TomoriBot deja de esperar un mensaje de voz después de `TTS_SYNTHESIZE_TIMEOUT_MS` (240000 ms predeterminado), que es más corto que lo que tarda un clip nativo de Windows. Levántelo en `.env` de TomoriBot (por ejemplo, `TTS_SYNTHESIZE_TIMEOUT_MS=900000`) mientras evalúa en Windows.
 
-## Transcripción de Referencia Obligatoria
+## Transcripción de referencia obligatoria
 
-> [!WARNING]
-> El Texto de Referencia (`ref_text`) es requerido para la clonación de voz: el mecanismo de atención cruzada de Fish S2 Pro requiere la transcripción del audio de referencia para alinear los tokens fonéticos con los códigos acústicos.
->
-> Si subes una muestra de voz sin proporcionar su transcripción de referencia coincidente, Fish Speech descarta silenciosamente los tokens de audio de referencia y recurre a la voz de referencia cero aleatoria. El envoltorio Fish de TomoriBot valida y rechaza las solicitudes de síntesis que carecen de texto de referencia con un `400 Bad Request` para prevenir una generación accidental sin condicionamiento.
+> [!ADVERTENCIA]
+> Se requiere el texto de referencia (`ref_text`) para la clonación de voz; El mecanismo de atención cruzada de Fish S2 Pro requiere la transcripción del audio de referencia para alinear tokens fonéticos con códigos acústicos. >
+> Si carga una muestra de voz sin proporcionar su transcripción de referencia coincidente, Fish Speech descarta silenciosamente los tokens de audio de referencia y vuelve al habla aleatoria de referencia cero. El contenedor TomoriBot Fish valida y rechaza solicitudes de síntesis que carecen de texto de referencia con un `400 Bad Request` para evitar la generación accidental no condicionada.
 
-Al agregar una voz de persona en `/config` bajo `Modelos > Parámetros y voces TTS`, siempre completa el campo `Transcripción de referencia` con el texto literal hablado en tu clip de audio de referencia.
+Al agregar una voz de persona en `/config` en el campo `Models > `Parámetros y voces TTS``, always fill in the `Reference transcript` con el texto textual hablado en su clip de audio de referencia.
 
 ## Registro en TomoriBot
 
@@ -102,14 +96,14 @@ En `/providers`, elige `Agregar nuevo punto de conexión personalizado` y config
 - Endpoint URL: `http://127.0.0.1:8015`
 - Modo de fuente de voz: `Clone`
 - Estilo de marcado del guion: `Etiquetas entre corchetes`
-- Clave de API: déjalo vacío. El envoltorio no tiene autenticación; consulta [Acceso de red](/self-hosting/local-endpoints/text-to-speech/#network-access).
+- Clave de API: déjalo vacío. El envoltorio no tiene autenticación; consulta [Acceso de red](/es-419/self-hosting/local-endpoints/text-to-speech/#network-access).
 
-Luego agrega la entrada del modelo del endpoint y actívala a través de `/config` bajo Modelos > Cambiar modelos.
+Luego agrega la entrada del modelo del endpoint y actívala a través de `/config` bajo Modelos > `Cambiar modelos`.
 
 ## Agrega voces de personas
 
 1. Prepara un clip de referencia limpio de 10-20 segundos con un solo orador y poco o ningún ruido de fondo.
-2. En `/config`, abre Modelos > Parámetros y voces TTS y sube la muestra de voz.
+2. En `/config`, abre Modelos > `Parámetros y voces TTS` y sube la muestra de voz.
 3. Ingresa la transcripción exacta hablada en el clip de referencia en el campo de texto de referencia.
 4. En `/config`, abre Persona > Voz y asigna la muestra a la persona.
 5. Genera un mensaje de voz con `/generate voice-message` o deja que TomoriBot genere uno a través de su herramienta de mensajes de voz.
@@ -132,7 +126,7 @@ Debido a que el endpoint usa el marcado `Etiquetas entre corchetes`, TomoriBot c
 |---|---|---|
 | `FISH_S2_MODEL_DIR` | `fish-speech/checkpoints/fish-speech-s2-pro` | Directorio del punto de control S2 Pro |
 | `FISH_S2_MODEL_ID` | `fishaudio/s2-pro` | Repositorio de modelos y etiqueta de metadatos de salud para el punto de control configurado |
-| `TOMORI_TTS_HOST` | `127.0.0.1` | Dirección de enlace del envoltorio; consulta [Acceso de red](/self-hosting/local-endpoints/text-to-speech/#network-access) |
+| `TOMORI_TTS_HOST` | `127.0.0.1` | Dirección de enlace del envoltorio; consulta [Acceso de red](/es-419/self-hosting/local-endpoints/text-to-speech/#network-access) |
 | `FISH_S2_PORT` | `8015` | Puerto del envoltorio Fish |
 | `FISH_S2_UPSTREAM_PORT` | `8025` | Puerto de la API interna de Fish |
 | `FISH_S2_COMPILE` | `0` | Habilitar Fish Speech `torch.compile` (requiere Linux/WSL2 con Triton) |
@@ -155,14 +149,14 @@ Leídas por `install-fishs2.sh` e `install-fishs2.ps1`. Registra cualquier valor
 
 El audio de referencia debe ser un archivo RIFF/WAVE PCM no vacío, sin comprimir y de 10 MB decodificados como máximo. El límite se verifica antes de la inferencia para que una solicitud base64 de gran tamaño no consuma memoria sin límites, y alcanza para unos 237 segundos del WAV mono de 22.05 kHz que envía TomoriBot.
 
-## Opción de VRAM Baja (Cuantificación INT8)
+## Opción de baja VRAM (cuantización INT8)
 
-Los usuarios que se ejecutan en GPU con VRAM limitada (por ejemplo, 8-12 GB) que no pueden alojar el punto de control BF16 oficial pueden optar por el modelo cuantificado INT8 (`Imagilux/fishaudio-s2-pro`).
+Los usuarios que ejecutan GPU con VRAM restringida (por ejemplo, de 8 a 12 GB) que no pueden ajustarse al punto de control oficial BF16 pueden optar por el modelo cuantificado INT8 (`Imagilux/fishaudio-s2-pro`).
 
 Para instalar y ejecutar el punto de control INT8:
 
 ```bash
-# En Linux / WSL2:
+# In Linux / WSL2:
 export FISH_S2_MODEL_ID="Imagilux/fishaudio-s2-pro"
 export FISH_S2_MODEL_DIR="servers/tts/fishs2/fish-speech/checkpoints/fish-speech-s2-pro-int8"
 export FISH_S2_MODEL_REVISION="9706ff036580881d87cc09465dd10014527bc481"
@@ -170,13 +164,13 @@ bash servers/tts/fishs2/install-fishs2.sh
 ```
 
 ```powershell
-# En Windows PowerShell:
+# In Windows PowerShell:
 $env:FISH_S2_MODEL_ID = "Imagilux/fishaudio-s2-pro"
 $env:FISH_S2_MODEL_DIR = "servers/tts/fishs2/fish-speech/checkpoints/fish-speech-s2-pro-int8"
 $env:FISH_S2_MODEL_REVISION = "9706ff036580881d87cc09465dd10014527bc481"
 .\servers\tts\fishs2\install-fishs2.ps1
 ```
 
-Inicia `server.py` desde el mismo shell, o establece las mismas tres variables antes de lanzarlo, para que el envoltorio cargue el directorio INT8 en lugar del valor predeterminado BF16.
+Inicia `server.py` desde el mismo shell, o configure las mismas tres variables antes de iniciarlo, de modo que el contenedor cargue el directorio INT8 en lugar del predeterminado BF16.
 
-El punto de control INT8 reduce los pesos del transformador de ~10.3 GB a ~5.1 GB mientras mantiene las incrustaciones de audio y las capas del códec en BF16, cabiendo dentro de un total de VRAM de ~10 GB.
+El punto de control INT8 reduce el peso del transformador de ~10,3 GB a ~5,1 GB mientras mantiene las incrustaciones de audio y las capas de códec en BF16, cabendo dentro de ~10 GB de VRAM total.

@@ -39,7 +39,7 @@ interface CommonInput {
 
 /** A row in the `llms` (text/chat) table. */
 export interface LlmInput extends CommonInput {
-  /** Marks the provider's most capable model. At least one per provider. */
+  /** Marks the provider's most capable active model. Exactly one non-deprecated row per provider. */
   isSmartest?: boolean;
   isReasoning?: boolean;
   isFree?: boolean;
@@ -60,12 +60,28 @@ export interface LlmInput extends CommonInput {
    */
   supportsPrefixCompletion?: boolean;
   /**
+   * Continues a trailing assistant turn instead of rejecting it or restarting the answer. Measured
+   * per model with `plans/prefill-probe.ts`; leave unset for moving aliases, because the model
+   * behind one can drop support without the row changing.
+   */
+  supportsAssistantPrefill?: boolean;
+  /**
    * Official uncached input price in USD per million tokens. Omit for OpenRouter (priced live from its
    * API) and free/non-metered models, so the column stays NULL and the cost command falls back.
    */
   inputPricePerMillion?: number;
   /** Official uncached output price in USD per million tokens. See {@link inputPricePerMillion}. */
   outputPricePerMillion?: number;
+  /**
+   * Official context window in tokens. Omit for OpenRouter (its live capability cache answers), NovelAI
+   * (subscription-tier windows), and custom endpoints (their `num_ctx` is the window).
+   */
+  contextWindow?: number;
+  /**
+   * The model's own output ceiling in tokens, not the smaller budget TomoriBot requests by default.
+   * Clamps every request so a server override above it is not rejected. See {@link contextWindow}.
+   */
+  maxOutputTokens?: number;
 }
 
 /** A row in the `image_diffusion_models` table. */
@@ -77,6 +93,14 @@ export interface ImageInput extends CommonInput {
 /** A row in the `video_generation_models` table. */
 export interface VideoInput extends CommonInput {
   isFree?: boolean;
+}
+
+/** A predicate-capable row in the decision catalog. */
+export interface DecisionInput extends CommonInput {
+  inputTokenLimit: number;
+  seesImages?: boolean;
+  inputPricePerMillion?: number;
+  outputPricePerMillion?: number;
 }
 
 /** A row in the `embedding_models` table. */
@@ -119,6 +143,8 @@ export interface PersonaInput {
    * simply has no default sprites, so a graceful no-op.
    */
   sprites?: PresetSpriteInput[];
+  /** Hides the preset from `/persona default`; only the age-restricted `/nsfw persona default` lists it. */
+  isNsfw?: boolean;
 }
 
 /** A row in the `system_prompt_presets` seed catalog. */

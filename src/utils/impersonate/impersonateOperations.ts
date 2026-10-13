@@ -9,6 +9,11 @@ import { resolvePersonaWebhookIdentity } from "@/utils/discord/webhook/identity"
 import type { ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
 import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
 import {
+  recordChannelDeliveredWebhookIdentity,
+  resolveChannelBaseAppearanceIdentity,
+  resolveChannelGroupBreakIdentity,
+} from "@/utils/discord/stream/channelDeliveryContinuity";
+import {
   formatRenderModifierWebhookName,
   parseLeadingImpersonationSpriteModifier,
 } from "@/utils/discord/renderModifierParser";
@@ -27,6 +32,7 @@ import { tomoriChat } from "@/events/messageCreate/tomoriChat";
 import { CooldownType } from "@/types/db/schema";
 import { cooldownRepository } from "@/utils/db/repositories/CooldownRepository";
 import { sendCooldownDM } from "@/utils/discord/cooldownDM";
+import { NOTICE_CONFIG_HINT_KEY } from "@/constants/toolNotices";
 import { isNoticeEmbedVisible } from "@/utils/discord/toolProgressNotice";
 import { getCachedWhitelistStatus } from "@/utils/cache/channelWhitelistCache";
 import { getCachedUserRow } from "@/utils/cache/userCache";
@@ -181,7 +187,7 @@ export async function executePersonaImpersonation(
           });
 
       const noticeEmbed = new EmbedBuilder()
-        .setDescription(localizer(locale, "commands.impersonate.persona_impersonation_notice_description"))
+        .setDescription(localizer(locale, NOTICE_CONFIG_HINT_KEY))
         .setFooter({
           text: localizer(locale, "commands.impersonate.persona_impersonation_notice_footer", {
             user: interaction.user.username,
@@ -221,9 +227,25 @@ export async function executePersonaImpersonation(
         return;
       }
 
-      const identity =
-        spriteRenderTarget?.identity ??
-        (await resolvePersonaWebhookIdentity(selectedPersona, interaction.guild as import("discord.js").Guild));
+      // Same alternation as the response stream, so an impersonated line next to the persona's
+      // own sprite lines cannot merge under their avatar. Identity sprites already carry a
+      // distinct decorated name.
+      const identity = !spriteRenderTarget
+        ? resolveChannelBaseAppearanceIdentity(
+            channel.id,
+            await resolvePersonaWebhookIdentity(selectedPersona, interaction.guild as import("discord.js").Guild),
+            selectedPersona.persona_nickname,
+            channel.lastMessageId,
+          )
+        : spriteRenderTarget.record.isIdentity
+          ? spriteRenderTarget.identity
+          : resolveChannelGroupBreakIdentity(
+              channel.id,
+              spriteRenderTarget.identity,
+              formatRenderModifierWebhookName(selectedPersona.persona_nickname, spriteRenderTarget.record.spriteName),
+              spriteRenderTarget.record.spriteName,
+              channel.lastMessageId,
+            );
       sentMessage = await sendWebhookMessageWithIdentity(
         webhook,
         {
@@ -233,6 +255,10 @@ export async function executePersonaImpersonation(
         },
         identity,
       );
+      recordChannelDeliveredWebhookIdentity(channel.id, identity, sentMessage.id, {
+        personaId: selectedPersona.persona_id,
+        kind: spriteRenderTarget?.record.isIdentity ? "identity_sprite" : "appearance",
+      });
 
       if (spriteRenderTarget && sentMessage?.webhookId) {
         void recordPersonaSpriteMessage({
@@ -434,7 +460,9 @@ export async function executeUserImpersonation(
             });
 
         const noticeEmbed = new EmbedBuilder()
-          .setDescription(localizer(locale, "commands.impersonate.user_impersonation_notice_description"))
+          .setDescription(
+            `${localizer(locale, NOTICE_CONFIG_HINT_KEY)}\n${localizer(locale, "commands.impersonate.user_impersonation_teach_hint")}`,
+          )
           .setFooter({
             text: localizer(locale, "commands.impersonate.user_impersonation_notice_footer", {
               user: interaction.user.username,
@@ -512,9 +540,8 @@ export async function executeUserImpersonation(
         ? localizer(locale, "genai.error_stream_timeout_description")
         : isSkippedError
           ? localizer(locale, "commands.impersonate.user_generation_skipped_description")
-          : localizer(locale, "genai.generic_error_description", {
-              error_message: error instanceof Error ? error.message : "Unknown error",
-            });
+          : // The error text can carry a provider response; the full error is logged above.
+            localizer(locale, "general.errors.generic_error_description");
       const errorEmbed = new EmbedBuilder()
         .setTitle(
           localizedStatusTitle(

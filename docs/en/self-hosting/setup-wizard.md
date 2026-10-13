@@ -44,7 +44,6 @@ bun run setup
 ## What to have ready
 
 - **[Bun](https://bun.sh/)** to run the bot and the wizard itself.
-- **Node.js v20+** (used for MCP tooling).
 - **A Discord bot token** with the `GuildMembers`, `MessageContent`, and `GuildPresences`
   privileged intents enabled.
 - **A database.** TomoriBot stores everything in PostgreSQL. You don't set it up by hand as
@@ -124,7 +123,7 @@ beside `/legal license`; every other value registers only `/legal license`.
   validated against the provider and encrypted into the draft; the panel shows only that a key is
   stored, never the key itself. Run `/help`, then `Setup` > `Get an API Key` for the
   per-provider walkthrough.
-- **Custom Endpoint (Advanced)**: a two-button sub-area for a self-hosted or proxy endpoint.
+- **Custom Endpoint**: a two-button sub-area for a self-hosted or proxy endpoint.
   `Configure Connection` collects the API compatibility, a label, the URL, and an optional auth
   token, and checks that the endpoint answers. `Configure Text Model` collects the model code, its
   context size, and its capability declarations, and stays disabled until a connection validates.

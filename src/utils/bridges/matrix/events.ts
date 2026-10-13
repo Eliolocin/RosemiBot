@@ -7,15 +7,22 @@ import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
 import { sendMatrixInviteSetupNotice } from "./client";
-import { downloadMatrixMedia, MATRIX_MAX_ATTACHMENT_BYTES } from "./media";
-import { getDiscordChannelForRoom, getJoinViaServers } from "./rooms";
+import { downloadMatrixMedia } from "./media";
+import { ensureRoomRelayable, getDiscordChannelForRoom, getJoinViaServers } from "./rooms";
 import {
   getPersonaReplyEventMetadata,
   getTrackedPersonaReply,
   markPendingMatrixReply,
   stripMatrixReplyFallback,
 } from "./stateSync";
-import { getMatrixBridge, MATRIX_MEMBER_EVENT_TYPE, MATRIX_TEXT_MSG_TYPE } from "./state";
+import {
+  getMatrixBridge,
+  getMatrixSettings,
+  MATRIX_ENCRYPTED_EVENT_TYPE,
+  MATRIX_ENCRYPTION_STATE_TYPE,
+  MATRIX_MEMBER_EVENT_TYPE,
+  MATRIX_TEXT_MSG_TYPE,
+} from "./state";
 import { rememberMatrixDisplayName, sendMatrixTypingIndicator } from "./userMapping";
 
 export async function handleMatrixEvent(
@@ -30,6 +37,11 @@ export async function handleMatrixEvent(
     return;
   }
 
+  if (event.type === MATRIX_ENCRYPTION_STATE_TYPE || event.type === MATRIX_ENCRYPTED_EVENT_TYPE) {
+    await recheckLinkedRoomEncryption(event, discordClient);
+    return;
+  }
+
   if (event.type !== MATRIX_TEXT_MSG_TYPE) return;
 
   const isOwnVirtualUser = event.sender.startsWith("@_tomori_") && event.sender.endsWith(`:${serverName}`);
@@ -37,6 +49,7 @@ export async function handleMatrixEvent(
 
   const channelDiscId = await getDiscordChannelForRoom(event.room_id);
   if (!channelDiscId) return;
+  if (!(await ensureRoomRelayable(event.room_id, discordClient))) return;
 
   const channel = await discordClient.channels.fetch(channelDiscId).catch(() => null);
   if (!channel?.isTextBased() || channel.isDMBased()) return;
@@ -85,6 +98,16 @@ export async function handleMatrixEvent(
   });
 }
 
+/**
+ * An encryption state event is authorized by the room's power levels, so it forces a fresh check.
+ * Any member can send an encrypted-message event, so that one only reuses the cached confirmation
+ * and catches a state change the bridge missed while offline.
+ */
+async function recheckLinkedRoomEncryption(event: WeakEvent, discordClient: Client): Promise<void> {
+  if (!(await getDiscordChannelForRoom(event.room_id))) return;
+  await ensureRoomRelayable(event.room_id, discordClient, { refresh: event.type === MATRIX_ENCRYPTION_STATE_TYPE });
+}
+
 async function handleInviteEvent(event: WeakEvent, botUserId: string): Promise<boolean> {
   if (
     event.type !== MATRIX_MEMBER_EVENT_TYPE ||
@@ -123,7 +146,7 @@ async function relayMatrixMediaIfNeeded(
 
   const info = content.info as Record<string, unknown> | undefined;
   const knownSize = typeof info?.size === "number" ? info.size : undefined;
-  if (knownSize !== undefined && knownSize > MATRIX_MAX_ATTACHMENT_BYTES) {
+  if (knownSize !== undefined && knownSize > getMatrixSettings().maxAttachmentBytes) {
     const sizeMb = (knownSize / (1024 * 1024)).toFixed(1);
     await webhook.send({
       content: `[Matrix: attachment too large to relay (${sizeMb} MB)]`,

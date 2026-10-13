@@ -2,6 +2,7 @@
 title: "憂鬱的 Aphel"
 sidebar:
   order: 3
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Source: src/db/seed/catalog/personas/gloomy/en-US.ts.

@@ -2,6 +2,7 @@
 title: "Adding a Locale"
 sidebar:
   order: 20
+aiGenerated: true
 ---
 
 How to add a display language: runtime strings, seed descriptions, and the gates to run. Publishing

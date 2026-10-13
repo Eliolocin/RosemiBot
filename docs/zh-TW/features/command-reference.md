@@ -11,7 +11,7 @@ sidebar:
 
 TomoriBot 目前註冊的每一個斜線指令，都是從 Discord 註冊時使用的同一批指令建構器與繁體中文說明產生的（尚未翻譯的說明會以英文顯示）。
 
-頂層指令群組：**40**。可執行的斜線指令：**83**。
+頂層指令群組：**41**。可執行的斜線指令：**86**。
 
 ## `/comment`
 
@@ -46,6 +46,14 @@ TomoriBot 目前註冊的每一個斜線指令，都是從 Discord 註冊時使�
 |---|---|
 | `/config` | 設定人格、行為、頻道、權限與模型。 |
 
+## `/context`
+
+查看在目前頻道中，某個人格的提示詞占用了模型脈絡視窗的多少空間。
+
+| 指令 | 摘要 |
+|---|---|
+| `/context` | 查看在目前頻道中，某個人格的提示詞占用了模型脈絡視窗的多少空間。 |
+
 ## `/contribute`
 
 找到原始碼，以及協助打造 TomoriBot 的方式。
@@ -79,8 +87,8 @@ TomoriBot 目前註冊的每一個斜線指令，都是從 Discord 註冊時使�
 
 | 指令 | 摘要 |
 |---|---|
-| `/expressions edit` | 編輯單一表情符號或貼圖的情緒與用途說明 |
 | `/expressions initialize` | 用 AI 視覺分析並分類所有自訂表情符號與貼圖 |
+| `/expressions manage` | 管理表情符號、貼圖、自訂表情及人格存取權。 |
 
 ## `/generate`
 
@@ -197,6 +205,8 @@ TomoriBot 目前註冊的每一個斜線指令，都是從 Discord 註冊時使�
 | 指令 | 摘要 |
 |---|---|
 | `/nsfw jailbreaks` | 管理這個伺服器上我提示詞的選用越獄行為。 |
+| `/nsfw persona default` | 套用 NSFW 的預設人格設定 |
+| `/nsfw persona import` | 從 PNG、JSON 或 CHARX 檔匯入人格，包含 NSFW 人格 |
 
 ## `/nuke`
 

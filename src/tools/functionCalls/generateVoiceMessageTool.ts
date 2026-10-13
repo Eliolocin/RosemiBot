@@ -357,6 +357,7 @@ export class GenerateVoiceMessageTool extends BaseTool {
       threadId,
       personaUsername: context.personaUsername,
       personaAvatarUrl: context.personaAvatarUrl,
+      personaId: context.tomoriState.persona_id,
     };
 
     const sentMessageId = await deliverVoiceMessage({

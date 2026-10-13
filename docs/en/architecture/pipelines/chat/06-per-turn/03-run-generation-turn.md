@@ -1,307 +1,131 @@
 ---
 title: "06.3: Generation Turn"
+aiGenerated: true
 ---
 
-Drive the provider call with model fallback and API-key rotation.
+The generation stage executes the model request for a persona turn. It manages primary and fallback
+models, rotates API keys upon failures, resolves server-route failovers for personal accounts, and
+deletes superseded partial messages committed by failed attempts.
 
-- **File**: `src/utils/chat/generationTurn.ts:77-283` (`runGenerationTurn` and the attempt loop)
+## Flow and ownership
 
-## Mission
+`runGenerationTurn()` in `src/utils/chat/generationTurn.ts` prepares the response sink, builds a
+`GenerationPlan`, and executes attempts in sequence:
 
-Run the LLM call for this turn, with two layers of resilience: a **model
-fallback chain** (primary model + any configured fallback entries) and, per
-attempt, an API-key rotation loop (cycles through saved rotation keys
-before giving up). Each attempt delegates the actual streaming + tool-call
-dispatch to the [tool-loop pipeline](../../tool-loop/). Emits stream results to the sink and finalizes
-with the first non-error result (or the last attempt's result if all fail).
-
-## Input
-
-- `ChatTurnContext` (from per-turn stage 01, with `responseTarget` populated
-  by stage 02).
-- `ChatResponseSink` (from per-turn stage 02).
-
-## Output
-
-`GenerationTurnResult`: see `src/utils/chat/types.ts:244-250`:
-
-```ts
-{
-  status: StreamResult["status"] | "skipped";
-  streamResults: StreamResult[];
-  personaResponses: ChatPersonaResponse[];
-  thoughtLog?: ThoughtLogPayload;
-  thoughtLogOwner?: ThoughtLogOwner;
-}
+```text
+Prepare sink and generation plan
+  -> Prepare model context and prefill
+  -> Run tool loop with key rotation
+       -> Failure: clean partial messages, advance model or deferred server route
+       -> Success: finalize sink, report fallback when applicable
+  -> Always clean up sink
 ```
 
-`status === "skipped"` is emitted when the attempts list is exhausted without
-a non-error result *and* the loop falls through (rare; defensive).
+### Generation plan and model fallbacks
 
-## Side effects
+`buildGenerationPlan()` orders the primary and configured fallback models. An enabled randomizer can
+promote a pool member to lead; key rotation tries available credentials before advancing models.
+Cross-provider fallbacks use saved credentials from the turn's scope. Personal turns look up only
+the user's saved providers and omit entries without a key; server credentials become available only
+through the deferred server route.
 
-### Per-attempt setup (`buildGenerationPlan`, `createAttempt`)
+### Deferred server route fallback
 
-- Resolves the primary `TomoriState`: applies personal-provider selection
-  (if BYOK), channel LLM override, and any `llmOverrideCodename` from the
-  incoming.
-- Selects an API key from the rotation pool, falling back to the server's
-  own encrypted key via `decryptApiKey`.
-- Builds a `ProviderConfig` via the resolved `LLMProvider.createConfig`.
-- Assembles a unified pool with the primary model at index 0 followed by
-  every configured fallback entry, then builds one attempt per pool member
-  (custom-endpoint or saved-provider-config flavor). The lead attempt is always
-  labelled `"primary"` in logs even when the randomizer (below) promoted a
-  fallback into that slot; the true model is still visible via `successModel`.
-- Resolves a custom-endpoint fallback from the endpoint row's connection ID. Server
-  endpoints use the server's saved custom provider, while personal endpoints use
-  the owning user's saved provider and key. Personal fallback refs are isolated
-  from the server chain and retain their configured order.
-- Re-credentials any fallback whose model belongs to a **different provider** than
-  the primary's, via `applyCrossProviderConfig`. The scope follows the turn: a
-  personal-routed turn (`textCredentialSource === "personal"`) resolves against
-  the routing user's own saved providers and **never** falls through to the
-  server's, so a user's chain cannot spend the server owner's key. An entry whose
-  provider has no key in the applicable scope is **dropped from the pool** with a
-  warning rather than attempted. The primary's own entry shares the primary's
-  provider and so never re-credentials, which is what guarantees at least one
-  attempt survives however the randomizer orders the pool.
-- Returns a plan rather than a bare list: the attempts for the route the turn was
-  planned on, plus an optional extension thunk for the server route (below). The
-  thunk is not invoked here, so a turn that never leaves its planned route never
-  resolves server provider config or asks for the server's quota admission.
+Personal BYOK turns outside impersonation resolve the deferred server route only after all personal
+attempts fail. Server cooldown and quota admission must pass before server attempts are appended.
+Running such an attempt switches credential attribution to the server. Tools retain their own routing.
 
-### Per-turn model randomizer (`buildPlannedRouteAttempts`, `buildServerRouteAttempts`)
+### Context preparation and prefill
 
-- When `config.model_randomizer_enabled` is `true` and the pool has ≥2 members,
-  a random pool member is spliced to the front of the attempt list **per
-  generation turn**; the remaining members keep their relative order as the
-  failover tail. This is a pure *reordering*: the original primary stays in the
-  chain and serves as failover if the random lead errors. No model is dropped
-  and no model is attempted twice.
-- Because the fallback-used notice keys on `index > 0`, a randomized lead that
-  *succeeds* stays silent (no spurious "Fallback Used" embed); a genuine
-  failover after the lead fails still notifies correctly.
-- When the toggle is `false`, the pool order is unchanged (`[primary,
-  ...fallbacks]`), preserving the deterministic primary-first behavior.
-- The server toggle is `server_chat_configs.model_randomizer_enabled`, set via
-  `/config` > Models > Fallbacks & Randomizer, which refuses to enable unless ≥1 fallback model is
-  configured, guaranteeing the pool always has ≥2 members.
-- `config.model_randomizer_enabled` is not always the server value. When a user has
-  an active personal Text route, `applyPersonalProviderSelectionsToTomoriState`
-  overlays that provider row's own `user_saved_provider_configs.model_randomizer_enabled`
-  (migration 076), so a personal preference wins in both directions: personal `false`
-  suppresses a server `true`, and personal `true` applies under a server `false`. A row
-  counts as the active Text route only when it has the `text` capability enabled and
-  a configured text model, so a personal row whose model pointer went NULL leaves the
-  server value in place. `/personal config` > Models > Fallbacks writes it through
-  `personalConfigOperations.setRandomizer`.
-- Each pool draws on its own state: the planned route's pool reads the overlaid
-  personal flag, and the server route's pool reads the unmodified server flag. A
-  personal randomizer therefore never reorders the server route, and vice versa.
+Each attempt prepares media for its capabilities, trims history to known context limits with an
+output reserve, and formats prefill as a model continuation or tail directive.
 
-### Server route fallback (`resolveServerRouteExtension`, `buildServerRouteAttempts`)
+### Superseded message cleanup
 
-- Exists only for a turn planned on personal text credentials outside user
-  impersonation. Every other turn's planned route already is the server route,
-  so there is nothing to extend with.
-- Is materialized once, and only after every planned attempt has failed on an
-  `error`/`timeout`. Until then nothing about the server route is resolved: no
-  server provider config, no server key, no admission. The extension runs from the
-  attempt loop, not from the plan builder.
-- Rebuilds its pool from the unmodified server state
-  (`resolveTomoriStateForRoute(context, "server")`: persona server model, channel
-  override, then `llmOverrideCodename`), so each attempt carries the server's
-  credentials even when both routes name models from one provider. Attempt numbering
-  continues from the planned route, so log labels stay unique.
-- Is withheld when the server sets `user_byok_mode`: the server does not lend its
-  models to member-triggered turns, so a failure on member credentials is the turn's
-  outcome rather than a reason to reach for them.
-- Is withheld when the account set `personal_server_fallback_enabled` to `false` in
-  `/personal config` > Models > Fallbacks. The column defaults to `true` and the
-  projection reports that default, so only an explicit opt-out withholds it.
-- Admits itself against the server's own rules before building any attempt
-  (`admitServerRoute`), because planning skipped both of them while the personal route
-  was paying. A refused admission contributes no attempts, so the personal failure
-  stays the outcome:
-  - **Message cooldown.** `admitServerRouteCooldown` runs the same
-    `enforceServerTriggerCooldownForAdmission` planning runs for a server-sourced turn,
-    under the same exemptions (stop responses, persona jobs, the bot's own messages).
-    Without it, a personal provider that fails on every message would buy a server reply
-    on every message for as long as the server's quota allows, and a server that leaves
-    quota off would never stop at all.
-  - **Text quota.** `admitServerRouteTextQuota` reuses `checkTextQuotaForAdmission` with
-    the applicability predicate planning uses (`shouldApplyServerTextQuota`). A refusal
-    is reported once per trigger: a refusal stores no quota state, so a reply that runs
-    several persona turns would otherwise take the check again and post one quota embed
-    per turn (`markTextQuotaRefused` / `hasTextQuotaBeenRefused`).
-- A granted quota admission arms `context.shouldApplyTextQuota` and
-  `context.textQuotaState`, which is what makes post-turn consumption charge the
-  server. Consumption itself stays in post-turn effects and still requires a reply,
-  so a server route that also fails costs the quota nothing.
-- Once it contributes an attempt, the turn's reported credential source switches to
-  `server` on both `ChatTurnContext` and `StreamingContext`. Everything downstream reads
-  that field as "who is answering": the thought-log attribution no longer credits the
-  user's personal provider, and a failing server attempt gets server-scoped recovery
-  tips instead of "switch your personal model".
-- A suppressed attempt holds its SDK-call timeout notice back while a fallback is still
-  pending (`StreamingContext.deferredTimeoutNotice`). If the server route then
-  contributes nothing, the terminal branch resends it, because no error result carries a
-  timeout and the turn would otherwise end in silence. The resend only happens on a turn
-  that surfaces user errors outside impersonation: the tool loop also defers on turns
-  that hide errors on purpose (auto-chat, random triggers), and those stay silent.
-- A success on this route is the only fallback that names an opt-out: the
-  `Fallback Used` details modal then points at `/personal config` > Models >
-  Fallbacks through `offerPersonalFallbackOptOut`. A personal-route success has no
-  such control to point at, and a model that is its route's own lead reports slot 1
-  rather than a fallback slot it does not hold.
+After a partially delivered failure, `deleteSupersededStreamMessages()` removes tracked messages
+before the next attempt:
 
-### Per-attempt context prep (`prepareProviderContextItems`)
+- Committed message references are tracked in `streamingContext.deliveredMessageRefs`.
+- Deletion targets persona webhooks directly, falling back to channel-level message deletion if needed.
+- Deleting partial messages prevents truncated fragments from lingering above the fallback model's
+  complete response.
+- Before cleanup after an SDK timeout, the tool loop awaits the abandoned stream for up to
+  `STREAM_ABANDONED_SETTLE_TIMEOUT_MS` (5000ms) to let in-flight sends register before deletion.
+  Sends that outlive this window and failed deletions can leave partial output visible.
 
-- Resolves dialogue `mediaDescriptors` into final image/video parts or
-  model-appropriate system notices using the attempt's `TomoriState`. This is
-  where personal-provider routing, fallback model capability differences, and
-  OpenRouter live media capability corrections affect media visibility.
-- Applies provider-specific token-limit truncation
-  (`truncateDialogueHistory`) for Gemini, OpenRouter, NovelAI. The reserved
-  output budget is resolved by `resolveMaxOutputTokens` so it matches what the
-  request builder actually sends: the server's `/config` > Models > Text Samplers & Parameters override
-  (`config.llm_max_output_tokens`) wins, then the provider env cap
-  (`OPENROUTER_MAX_OUTPUT_TOKENS` / `GOOGLE_MAX_OUTPUT_TOKENS`), then a
-  per-provider fallback (flat 8192 for OpenRouter and Gemini, the model-reported
-  completion ceiling for NovelAI), always clamped to the model's reported
-  ceiling. Keeping the reserve in lockstep with the request avoids over-dropping
-  history.
-- If the previous attempt ended with `emptyResponseFinishReason === "length"`
-  and we're on a retry, additionally drops the oldest history exchange
-  pairs.
+### Error suppression and notices
 
-### Per-attempt execution (key rotation inner loop)
+- **Suppression during failover**: error embeds are suppressed while further rotation keys or fallback
+  models remain available, preventing transient provider hiccups from posting false failure notices.
+- **Fallback notice**: if a fallback model succeeds (`index > 0`), `sendFallbackModelUsageNotice()`
+  renders a compact Discord button notice informing users that a fallback model answered the turn.
+  Each failed attempt is listed by error type and display-safe code only, because context assembly
+  reads the notice back for the model; the upstream message stays in the operator log.
+- **Final emission**: if all attempts fail, only the terminal error is emitted to the response sink.
 
-- Calls `runToolLoop(...)`: see [tool-loop pipeline](../../tool-loop/).
-- On success: `recordKeySuccess(rotationKeyId)`, break out of the rotation
-  loop.
-- On error: classifies the error (rate-limit vs api-error),
-  `recordKeyError(...)`, rotates to the next rotation key (up to
-- Suppresses user-facing stream errors while another rotation key or model
-  fallback can still be tried.
-- Holds non-final failed model attempts out of `responseSink.emitStreamResult`
-  so their details can be summarized by the fallback notice instead of posted
-  as public errors.
-- On completed model fallback: sends the compact `Fallback Used` button notice
-  with the earlier failure chain available in a read-only text modal, unless a stop/follow-up
-  interrupt is pending for the channel.
-- On non-error or last attempt: emits only final error results, calls
-  `responseSink.finalize(result)`, and returns.
-- A pending server route counts as a pending model, so the last planned attempt keeps its
-  errors suppressed while a server model may still answer. The terminal branch resets
-  suppression before emitting the error, and reports a held-back timeout notice.
-- On thrown error: calls `responseSink.emitError(error)` and finalizes with
-  an `error` result, except under user impersonation, where `emitError`
-  rethrows by design and neither the `error` result nor `finalize` is reached.
-  `responseSink.cleanup()` runs from a `finally` on every path, so per-turn
-  resources are released even then.
+## Constraints and rationale
 
-### Superseded-message cleanup (`purgeSupersededDeliveries`)
+- **Failover effects**: cleanup does not roll back tool writes, external requests, or independent tool
+  messages. Off starts a new tool history on replacement attempts. With Response Drafting On, shared
+  history and successful-request identities survive fallback, preventing identical effects from replaying.
+- **Deferred server admission**: resolving server fallback routes only on personal failure prevents
+  unnecessary database writes and server quota checks on successful member turns.
+- **Per-turn cleanup**: a `finally` block invokes sink cleanup after exceptions. Temporary webhook
+  deletion is best-effort, as described by [Response Sink](/architecture/pipelines/chat/06-per-turn/02-create-response-sink/).
 
-- A shared, per-turn sink (`streamingContext.deliveredMessageRefs`) collects one
-  entry per message the streaming layer commits to Discord. The orchestrator
-  appends to it in `uiUpdater.recordSuccessfulSend`, and because it is threaded
-  through `buildStreamContext` as an array *reference*, the entries survive even
-  when a stalled `streamToDiscord` promise is abandoned by the SDK-call-timeout
-  race in the tool loop (that path returns `timeout` but never reports the
-  messages it had already flushed).
-- Whenever the stage decides not to keep an invocation's result (a
-  key-rotation retry, or a model fallback after an `error`/`timeout`), it deletes
-  that invocation's already-committed messages. Deletion tries the persona webhook
-  first (`webhook.deleteMessage`, no Manage Messages needed) and falls back to a
-  channel-level delete (`channel.messages.delete`) if that fails (e.g. the
-  webhook was recreated mid-stream) or for bot-native messages. It is
-  best-effort: individual failures are logged and skipped. This prevents a
-  timed-out primary's truncated partial output from lingering above the fallback
-  model's complete response (two conflicting messages). The surviving/final
-  attempt's messages are always kept. On total failure, the last attempt's output
-  stays and the error embed is shown.
-- **Straggler safety:** on the SDK-call timeout the tool loop aborts the stalled
-  stream but the losing `streamToDiscord` promise is not cancelled; only its HTTP
-  request is. `streamOnce` therefore awaits that promise settling (bounded by
-  `STREAM_ABANDONED_SETTLE_TIMEOUT_MS`) before returning `timeout`, so any Discord
-  send that was already in flight is recorded in `deliveredMessageRefs` *before*
-  the fallback path's cleanup runs and cannot leak past it.
-- **Scope:** only messages sent through `StreamUiUpdater.recordSuccessfulSend` are
-  tracked. Ancillary artifacts posted outside that path (the alter "Replying
-  to…" notice, warning/progress embeds) are not tracked and may persist after a
-  purge.
+## Response-text review
 
-### NovelAI subscription refresh
+Response Drafting On creates one `ResponseReviewState` across model fallback and key rotation.
+Ordinary prose is held by the existing presentation parser; Off streams normally. Impersonation and
+text-suppressed work retain their existing paths. Failed attempts discard pending presentation while
+preserving successful tools, rejections, correction budgets and reported usage.
 
-- For NovelAI providers without a cached context-token count, refreshes the
-  subscription via `refreshNovelAISubscription` (one-shot, cached for
-  subsequent turns).
+`responseReview.ts` builds a bounded private packet from admitted persona/task evidence, privacy-filtered
+context and actual tool history, and renders it as a tagged transcript. Evidence fixed for the turn
+precedes the candidate, findings and tool outcomes, so a second review reuses the provider's prompt
+prefix cache. Pending prose is labeled separately from history. The reviewer reads as a blind model:
+admitted media and tool images become placeholders, and that coverage keeps Decision routing from
+skipping review. Available tools are a compact catalog of names, descriptions and parameter names.
+The workspace's `Content to Check` selection filters persona instructions, example dialogues, recent
+conversation, memories and other context, and tools before packet budgeting. The draft, triggering
+message and reply target remain required. Disabled persona instructions do not cause a missing-persona
+failure. With `Tool Calls` unchecked, response review omits tool definitions, completed tool outcomes,
+the correction count and the `tool_use` finding category, and skips proposed-call reviews. Coverage
+records the selection; intentionally omitted context cannot qualify for calibrated Decision skipping.
+Incomplete required evidence, a candidate containing a credential-shaped string (`containsCredential`,
+not the log redactor's `key: value` heuristic, which matches ordinary prose), or tool arguments that
+redaction would alter make review unavailable, and the trace category names the gap. Inherited reviewers use the
+actual author attempt's model and key; pinned reviewers revalidate their owned registration and credentials.
+Either way the request follows the reviewer provider's saved `thinking_level` and asks for the chat
+reply budget, because a reasoning model spends its thinking from the output allowance before the JSON
+verdict. Anthropic ignores the level: its structured call forces a tool, which the API refuses
+alongside extended thinking.
 
-## Invariants
+Review can pass, request one author revision, or become unavailable. Two response reviews
+bound the turn; another revision verdict delivers the latest candidate. Unavailability ends review
+for the turn and permits current prose, while prior tool rejections remain blocked. Revision preserves
+successful tool outcomes. `/kill`, follow-up interruption and abort discard held prose. Actual tools
+use the separate [pre-execution checkpoint](../../tool-loop/02-execute-tool-call.md#actual-request-review).
 
-After this stage runs:
+An optional rule checker is a tool on an owned `prose_linter` MCP registration whose only required
+input is a `text` string. Its output (structured content, JSON text or plain text, at most 32 KB) goes
+to the reviewer as `<prose_linter_report advisory="true">` and forces a detailed review. Raw output
+cannot reach author feedback, memory or logs. `getGuildMCPRouting` excludes `prose_linter`
+registrations, so the author never sees or dispatches their tools. Checker failure proceeds to review;
+an empty report cannot approve prose.
 
-- `responseSink.finalize(result)` has been called exactly once on every path
-  that returns a result: that is, all of them except user impersonation, whose
-  rethrowing error handler propagates instead of returning.
-- `responseSink.cleanup()` has been called exactly once, without exception.
-  This is the invariant per-turn resource release relies on; `finalize` is not.
-- If the result is non-error, `result.personaResponses.length > 0` (or the
-  status is `"skipped"`, which post-turn effects will distinguish).
-- Rotation-key bookkeeping (`recordKeySuccess`/`recordKeyError`) reflects
-  the outcome of the key that was actually used for each attempt.
-- The server route never charges the server's text quota for a turn it did not
-  answer: consumption is armed only when the route is entered, and post-turn
-  consumption still requires a reply from the winning attempt.
-- An account that turned the server fallback off never has server provider config
-  resolved, and a server that requires member-provided providers never contributes a
-  server route.
-- No superseded attempt's partial output committed through the streaming send
-  path (`recordSuccessfulSend`) remains in the channel: those messages are
-  deleted, leaving only the surviving (or final) attempt's response. Artifacts
-  sent outside that path (alter reply notice, warning embeds) are not tracked and
-  are out of scope for this guarantee.
+Decision routing can skip detailed review only with validated calibration for the exact model and
+response or tool rubric. The registry is empty, so selections remain visibly inactive and make no
+paid routing calls. Custom reviewer prompts disable skipping. Activation requires labeled hold-out
+evidence for character fit, false skips, coverage, latency and cost. INFO traces describe outcomes
+and budgets without private packets; operational failures have one sanitized ERROR owner.
 
-## Extension points
+## Source pointers
 
-The stage is a coordinator over several plugin-relevant subsystems:
-
-| Subsystem | Helper | Plugin-relevance |
-|---|---|---|
-| Provider dispatch | `ProviderFactory.getProviderByName`, `getProviderForTomori` | The provider plugin contract is the seam: see [provider pipeline](../../provider/) |
-| Tool execution | `runToolLoop` | See [tool-loop pipeline](../../tool-loop/) |
-| Key rotation | `selectApiKey`, `recordKeySuccess`, `recordKeyError`, `hasAvailableRotationKey` | Internal: rotation-key schema is core, not plugin-relevant |
-| Fallback chain | `createFallbackAttempt`, `applySavedProviderConfig`, `resolveServerRouteExtension` | The fallback-entry schema (`FallbackEntry` union: `model` or `custom_endpoint`) is the data-model seam |
-| Context truncation | `truncateDialogueHistory` | Per-provider token-limit table is the registration surface |
-| Personal-provider routing | `applyPersonalProviderSelectionsToTomoriState` | BYOK substitution; see [provider pipeline](../../provider/) |
-
-- **The stage itself is internal**: its job is to orchestrate the
-"attempt with fallback + key rotation" pattern. Plugins wanting to:
-
-- **Add a new provider**: register it via the provider plugin contract.
-- **Change attempt-list construction** (e.g. add a probe attempt before the
-  primary): would extend `buildGenerationPlan`. → plugin plan candidate.
-- **Intercept stream results**: wrap the sink (per-turn stage 02), not this
-  stage.
-
-## Configuration
-
-| Source | Key | Value | Purpose |
-|---|---|---|---|
-| Env var | `OPENROUTER_APP_ATTRIBUTION_ENABLED` | `true` | Sends TomoriBot app attribution headers to OpenRouter for app rankings and aggregated usage analytics. Set to `false` to omit them. |
-| Constant (`generationTurn.ts`) | `OPENROUTER_LENGTH_EMPTY_RETRY_DROP_PAIRS` | `2` | Per-retry history-pair drop count when OpenRouter returns empty/length |
-| Env var | `OPENROUTER_MAX_OUTPUT_TOKENS` | `8192` | OpenRouter truncation/request output-token cap (overridden by `/config` > Models > Text Samplers & Parameters) |
-| Env var | `GOOGLE_MAX_OUTPUT_TOKENS` | `8192` | Gemini truncation/request output-token cap (overridden by `/config` > Models > Text Samplers & Parameters) |
-| Constant (`toolLoop.ts`) | `STREAM_ABANDONED_SETTLE_TIMEOUT_MS` | `5000` | Max wait (ms) for an SDK-timeout-aborted stream to settle so its in-flight sends are recorded before superseded-message cleanup. `0` disables the wait. |
-
-Plus `MAX_KEY_ATTEMPTS` from `keyRotation.ts`.
-
-## Related docs
-
-- Tool execution loop: → [tool-loop pipeline](../../tool-loop/)
-- Provider streaming + adapter pattern: → [provider pipeline](../../provider/)
-- Key rotation: → no dedicated doc yet; `keyRotation.ts` helper only
-- Fallback chain schema: → [`docs/en/architecture/subsystems/database-schema.md`](../../../subsystems/database-schema) (`fallback_chain` column)
-- Personal-provider runtime substitution: → [provider pipeline](../../provider/)
+- `src/utils/chat/generationTurn.ts`: `runGenerationTurn()` and generation plan execution.
+- `src/utils/chat/toolLoop.ts`: `runToolLoop()` function-calling loop.
+- `src/utils/discord/stream/supersededMessageCleanup.ts`: deletion of abandoned partial message sends.
+- `src/utils/security/keyRotation.ts`: API key selection and rotation tracking.
+- `src/utils/chat/responseReview.ts`: shared state, admitted evidence and reviewer lifecycle.
+- `src/utils/chat/responseRuleCheck.ts`: internal checker validation and bounded evidence.
+- `src/utils/chat/responseDecisionRouting.ts`: independent rubrics and calibration eligibility.

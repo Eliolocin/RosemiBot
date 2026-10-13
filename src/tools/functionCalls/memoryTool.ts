@@ -313,8 +313,7 @@ export class MemoryTool extends BaseTool {
           // The expand helper uses the same preview limit, letting users read
           // the full memory ephemerally without channel clutter.
           await sendMemoryEmbedWithExpand(
-            context.channel,
-            context.locale,
+            context,
             {
               color: ColorCode.SUCCESS,
               titleKey: "genai.self_teach.server_memory_learned_title",
@@ -328,11 +327,9 @@ export class MemoryTool extends BaseTool {
               footerKey: "genai.self_teach.server_memory_footer",
             },
             processedMemoryContent,
-            {
-              webhook: context.webhook,
-              personaUsername: context.personaUsername,
-              personaAvatarUrl: context.personaAvatarUrl,
-            },
+            dbResult.server_memory_id === undefined
+              ? undefined
+              : { kind: "server_memory", id: dbResult.server_memory_id },
           );
 
           // Invalidate TomoriState cache so next message includes new memory
@@ -406,9 +403,11 @@ export class MemoryTool extends BaseTool {
               status: "memory_save_failed_privacy_restricted",
               scope: "target_user",
               reason:
-                messageProxyHostProtection.reason === "host_blacklisted"
-                  ? `The host account for ${targetUserDisplayName} is blacklisted in this server. I cannot save personal memories for its message-proxy identities.`
-                  : `The host account for ${targetUserDisplayName} has full privacy enabled. I cannot save personal memories for its message-proxy identities.`,
+                messageProxyHostProtection.reason === "host_unresolved"
+                  ? `The host accounts for ${targetUserDisplayName} could not be resolved. I cannot save personal memories until their privacy restrictions can be checked.`
+                  : messageProxyHostProtection.reason === "host_blacklisted"
+                    ? `The host account for ${targetUserDisplayName} is blacklisted in this server. I cannot save personal memories for its message-proxy identities.`
+                    : `The host account for ${targetUserDisplayName} has full privacy enabled. I cannot save personal memories for its message-proxy identities.`,
             },
           };
         }
@@ -506,8 +505,7 @@ export class MemoryTool extends BaseTool {
           // Send notification notice (non-fatal: missing permissions won't block the memory save).
           try {
             await sendMemoryEmbedWithExpand(
-              context.channel,
-              context.locale,
+              context,
               {
                 color: ColorCode.SUCCESS,
                 titleKey: "genai.self_teach.personal_memory_learned_title",
@@ -523,11 +521,9 @@ export class MemoryTool extends BaseTool {
                 footerKey: personalMemoryFooterKey,
               },
               processedMemoryContent,
-              {
-                webhook: context.webhook,
-                personaUsername: context.personaUsername,
-                personaAvatarUrl: context.personaAvatarUrl,
-              },
+              dbResult.personal_memory_id === undefined
+                ? undefined
+                : { kind: "personal_memory", id: dbResult.personal_memory_id },
             );
           } catch (embedError) {
             log.warn("Failed to send personal memory notification notice (non-fatal)", embedError as Error);

@@ -50,7 +50,12 @@ type DiagnosticEvent =
     }
   | { kind: "provider_context"; ordinal: number; dialogueCount: number; recentMessages: string[] }
   | { kind: "tool_continuation"; iteration: number; historyEntries: number; contextItems: number }
-  | { kind: "tool_outcome"; outcome: "restart" | "abort" | "history"; success?: boolean }
+  | {
+      kind: "tool_outcome";
+      outcome: "restart" | "abort" | "history";
+      success?: boolean;
+      reviewStatus?: "rejected" | "reused";
+    }
   | {
       kind: "message_sent";
       message: string;

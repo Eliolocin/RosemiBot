@@ -12,6 +12,7 @@ export const novelaiProviderInfo: ProviderInfo = {
   supportsVideos: false,
   apiFamily: "novelai",
   featureSupport: {
+    decisions: false,
     imageGeneration: "nai-pipeline",
     videoGeneration: "none",
     embeddings: false,

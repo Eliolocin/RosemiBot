@@ -26,6 +26,11 @@ export type ProducerManifestEntry = FixturedProducerManifestEntry | DeclaredProd
  */
 export const COMPONENTS_V2_PRODUCER_MANIFEST: readonly ProducerManifestEntry[] = [
   {
+    modulePath: "src/utils/discord/ui/expressionsPanel.ts",
+    builderName: "buildExpressionsPanelPayload",
+    coverage: { kind: "suite", suites: ["tests/unit/discord/expressionsPanel.test.ts"] },
+  },
+  {
     modulePath: "src/utils/discord/ui/configPanel.ts",
     builderName: "buildConfigPanelPayload",
     coverage: {
@@ -216,6 +221,11 @@ export const COMPONENTS_V2_PRODUCER_MANIFEST: readonly ProducerManifestEntry[] =
       kind: "delivery",
       note: "Payloads are validated at construction by validateAndFallbackPanelPayload; collector payloads are assembled inline by attachImportNowCollector, so the module exports no payload builder.",
     },
+  },
+  {
+    modulePath: "src/utils/discord/ui/contextUsagePanel.ts",
+    reason: "/context window usage grid with full-prompt buttons",
+    coverage: { kind: "suite", suites: ["tests/unit/discord/componentsV2DeclaredProducerSmoke.test.ts"] },
   },
   {
     modulePath: "src/utils/stats/statsDashboard.ts",

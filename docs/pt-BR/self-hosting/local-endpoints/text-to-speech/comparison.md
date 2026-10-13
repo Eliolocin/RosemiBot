@@ -1,8 +1,8 @@
 ---
 title: "Comparação de Motores TTS"
-aiGenerated: true
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 O TomoriBot suporta vários servidores locais de Text-to-Speech, cada um adequado a diferentes idiomas, perfis de hardware e requisitos de latência.

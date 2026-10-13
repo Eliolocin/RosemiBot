@@ -23,6 +23,7 @@ import generate from "./commands/generate";
 import stats from "./commands/stats";
 import setup from "./commands/setup";
 import compact from "./commands/compact";
+import context from "./commands/context";
 import choices from "./commands/choices";
 import stPreset from "./commands/st-preset";
 import stPresets from "./commands/st-presets";
@@ -80,6 +81,7 @@ export default {
     ...stats,
     ...setup,
     ...compact,
+    ...context,
     ...choices,
     ...stPreset,
     ...stPresets,

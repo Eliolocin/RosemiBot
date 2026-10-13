@@ -9,13 +9,14 @@
  *
  * Usage:
  *   bun run check-seed-catalogs
+ *   bun run check-seed-catalogs --defer-drift-review
  *   bun run scripts/checks/checkSeedCatalogs.ts
  */
 import { readFileSync } from "node:fs";
 import { personaSections } from "../../src/db/seed/catalog/personas";
 import { validateNaiPresets } from "../../src/db/seed/catalog/naiSeed";
 import { validatePersonas } from "../../src/db/seed/catalog/personaSeed";
-import { validateModels } from "../../src/db/seed/catalog/modelSeed";
+import { validateModelDriftReview, validateModels } from "../../src/db/seed/catalog/modelSeed";
 import { validateSystemPrompts } from "../../src/db/seed/catalog/systemPromptSeed";
 
 function validateStartupSeedOrder(): string[] {
@@ -93,8 +94,12 @@ function validatePresetSprites(): string[] {
   return errors;
 }
 
+// CI defers drift review to its last step so a drift PR still runs lifecycle and tests first.
+const deferDriftReview = process.argv.includes("--defer-drift-review");
+
 const violations = [
   ...validateModels(),
+  ...(deferDriftReview ? [] : validateModelDriftReview()),
   ...validatePersonas(),
   ...validatePresetSprites(),
   ...validateSystemPrompts(),

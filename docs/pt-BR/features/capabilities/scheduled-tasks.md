@@ -2,44 +2,47 @@
 title: "Tarefas Agendadas"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
-A TomoriBot pode definir lembretes e agendar tarefas para mais tarde: pontuais ou recorrentes. A forma mais fácil é simplesmente pedir a ela; ela cria a tarefa por meio de sua ferramenta `create_task`. As tarefas agendadas são específicas de cada persona.
+Defina lembretes para você mesmo ou agende anúncios recorrentes sem sair do chat. Pergunte diretamente ao bot e ela criará a programação para você. As tarefas agendadas pertencem à persona ativa.
 
-Cada persona mantém suas tarefas próprias pendentes no contexto sempre que responde, independentemente de quais membros aparecem na conversa recente. Lembretes direcionados a humanos são mais seletivos: o alvo deve estar presente ou referenciado no contexto da conversa ativa, e o lembrete deve pertencer à persona ativa.
+Os lembretes notificam o usuário alvo quando eles são acionados, enquanto as autotarefas são ações que a persona realiza por conta própria no horário agendado.
 
 ## Criando uma Tarefa
 
-Basta dizer a ela no chat:
+Diga a ela o que agendar no chat:
 
 ```text
-lembre-me de enviar o relatório às 14:30
-toda sexta-feira às 20h, poste um lembrete de que a noite de jogos está começando
+remind me to submit the report at 14:30
+every Friday at 8pm, post a reminder that game night is starting
 ```
 
-Ela analisa o horário e a recorrência e faz o agendamento. Os lembretes mencionam o usuário-alvo quando disparam; as tarefas são ações próprias silenciosas que a persona executa no horário agendado.
+Ela analisa o tempo solicitado e a recorrência. Os lembretes enviam ping ao usuário alvo quando eles são acionados. As tarefas são ações silenciosas que a persona realiza quando chega a hora.
 
 ## Fusos Horários
 
-Horários absolutos ("at 14:30", "on Friday at 8pm") são interpretados no fuso horário do servidor (`/config` > Engine > General) por padrão. Se você tiver configurado um fuso horário pessoal com `/personal config`, a IA verá seu relógio local no contexto e rotulará seus horários com seu deslocamento UTC ao criar a tarefa. O bot então faz a conversão de forma determinística, de modo que "remind me at 9am" signifique as *suas* 9h, mesmo se o servidor estiver em outro continente. Horários relativos ("in 2 hours") não dependem de fuso horário e são sempre seguros.
+Horários absolutos (como "às 14h30" ou "na sexta-feira às 20h") usam o fuso horário do servidor (`/config` > `Comportamento` > `Comportamento Geral`) por padrão. Se você definir seu próprio fuso horário com `/personal config`, o bot converterá sua hora local automaticamente. "lembre-me às 9h" significa 9h, mesmo que o servidor esteja em outro fuso horário. Os tempos relativos (como "em 2 horas") não dependem de fusos horários e são sempre seguros.
 
-Quando um lembrete tem como alvo um usuário cujo fuso horário pessoal difere do servidor, o embed de confirmação mostra ambos os relógios (horário do servidor e o horário local do alvo), para que um horário rotulado incorretamente fique imediatamente visível e possa ser corrigido com uma mensagem de acompanhamento ou com `/scheduled-task edit`.
+Quando um lembrete é direcionado a um usuário cujo fuso horário pessoal é diferente do do servidor, a confirmação mostra os dois relógios: o horário do servidor e o horário local do destino. Se um horário estiver rotulado incorretamente, corrija-o com uma mensagem de acompanhamento ou `/scheduled-task edit`.
 
 ## Gerenciando Tarefas
 
-Dois comandos slash permitem revisar e ajustar agendamentos existentes:
+Dois comandos de barra permitem revisar e ajustar programações existentes:
 
-- `/scheduled-task edit`: altera o conteúdo de uma tarefa, o próximo horário de disparo, o intervalo de recorrência ou se é um lembrete. Defina o intervalo como `0` para desativar a recorrência.
-- `/scheduled-task remove`: exclui um lembrete ou tarefa.
+- `/scheduled-task edit`: altera o conteúdo de uma tarefa, o próximo horário de acionamento, o intervalo de recorrência ou o alvo do lembrete. Defina o intervalo como `0` para tornar uma tarefa recorrente única.
+- `/scheduled-task remove`: exclua um lembrete ou tarefa.
 
-Ambos abrem um seletor listando seus agendamentos existentes (persona, horário, canal e recorrência), para que você não precise se lembrar de IDs.
+Ambos os comandos abrem um seletor listando suas programações existentes por pessoa, horário, canal e recorrência.
+
+Um servidor pode conter até 100 lembretes e tarefas pendentes por vez. Quando estiver cheio, a TomoriBot avisará você em vez de adicionar outro; remova os antigos com `/scheduled-task remove` para liberar espaço.
 
 ## Como Funciona a Entrega
 
-Os lembretes são entregues por um agendador interno do aplicativo e só são marcados como concluídos após o sucesso da entrega; se uma entrega for abortada ou a fila do canal for limpa, ela será repetida automaticamente. Os atrasos de repetição não alteram a cadência recorrente original.
+Os lembretes só são marcados como concluídos após a entrega ser bem-sucedida. Se a entrega for interrompida, TomoriBot tenta novamente automaticamente sem alterar a programação recorrente.
 
-Tentativas automatizadas não publicam uma mensagem de erro a cada tentativa. Se a entrega ainda falhar após o limite de repetições, a TomoriBot publicará um aviso contendo o conteúdo agendado inalterado e seu ID. Lembretes humanos com falha mencionam o alvo para que o lembrete não seja perdido; tarefas próprias com falha não mencionam ninguém. Os agendamentos pontuais são então removidos, enquanto os agendamentos recorrentes permanecem ativos para a próxima ocorrência original e podem ser gerenciados com `/scheduled-task edit` ou `/scheduled-task remove`. Para obter detalhes do runtime, consulte a [visão geral da arquitetura](/en/architecture/#runtime-extensions).
+Se a entrega falhar repetidamente e atingir o limite de novas tentativas, TomoriBot publicará um aviso com o conteúdo agendado e o ID da tarefa. Lembretes de usuário com falha enviam ping ao alvo para que o lembrete não seja perdido, enquanto tarefas automáticas com falha não enviam ping. As programações únicas são então removidas, enquanto as programações recorrentes permanecem ativas para a próxima ocorrência e podem ser gerenciadas com `/scheduled-task edit` ou `/scheduled-task remove`.
 
 ---
 
-O agendamento é uma das várias capacidades de agente; veja [Ferramentas & Extensões](/pt-BR/features/capabilities/tools-and-extensions/) para obter uma visão completa.
+Para obter mais recursos, consulte [Ferramentas e extensões](/pt-BR/features/capabilities/tools-and-extensions/).

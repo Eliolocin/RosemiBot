@@ -43,6 +43,19 @@ type ServerScheduleExportShape = {
   auto_trigger: ServerAutoTriggerConfigsRow | null;
 };
 
+/**
+ * Pending reminders and scheduled tasks one server may hold. A model tool call creates them from
+ * ordinary chat, and every recurring self-task runs a paid generation on its schedule, so the
+ * count is what bounds both storage and scheduled spend.
+ */
+export const MAX_REMINDERS_PER_SERVER = 100;
+
+export class ReminderLimitError extends Error {
+  constructor() {
+    super(`A server can hold at most ${MAX_REMINDERS_PER_SERVER} pending reminders`);
+  }
+}
+
 export type ReminderSelectionRow = {
   reminder_id: number;
   reminder_purpose: string;
@@ -593,32 +606,41 @@ class ServerScheduleRepository implements IRepository<ServerScheduleExportShape>
           `in server ${reminderData.server_id} at ${reminderData.reminder_time.toISOString()}`,
       );
 
-      const [reminderResult] = await sql`
-        INSERT INTO reminders (
-          server_id,
-          channel_disc_id,
-          user_discord_id,
-          user_nickname,
-          reminder_purpose,
-          reminder_time,
-          repetition_interval_hours,
-          self_reminder,
-          created_by_user_id,
-          persona_id
-        ) VALUES (
-          ${reminderData.server_id},
-          ${reminderData.channel_disc_id},
-          ${reminderData.user_discord_id},
-          ${reminderData.user_nickname},
-          ${reminderData.reminder_purpose},
-          ${reminderData.reminder_time},
-          ${reminderData.repetition_interval_hours ?? null},
-          ${reminderData.self_reminder ?? false},
-          ${reminderData.created_by_user_id},
-          ${reminderData.persona_id ?? null}
-        )
-        RETURNING *
-      `;
+      const reminderResult = await sql.transaction(async (tx) => {
+        // The server lock serializes count checks across concurrent creations.
+        await tx`SELECT server_id FROM servers WHERE server_id = ${reminderData.server_id} FOR UPDATE`;
+        const [pending] = await tx<Array<{ count: number }>>`
+          SELECT COUNT(*)::int AS count FROM reminders WHERE server_id = ${reminderData.server_id}
+        `;
+        if ((pending?.count ?? 0) >= MAX_REMINDERS_PER_SERVER) throw new ReminderLimitError();
+        const [inserted] = await tx`
+          INSERT INTO reminders (
+            server_id,
+            channel_disc_id,
+            user_discord_id,
+            user_nickname,
+            reminder_purpose,
+            reminder_time,
+            repetition_interval_hours,
+            self_reminder,
+            created_by_user_id,
+            persona_id
+          ) VALUES (
+            ${reminderData.server_id},
+            ${reminderData.channel_disc_id},
+            ${reminderData.user_discord_id},
+            ${reminderData.user_nickname},
+            ${reminderData.reminder_purpose},
+            ${reminderData.reminder_time},
+            ${reminderData.repetition_interval_hours ?? null},
+            ${reminderData.self_reminder ?? false},
+            ${reminderData.created_by_user_id},
+            ${reminderData.persona_id ?? null}
+          )
+          RETURNING *
+        `;
+        return inserted;
+      });
 
       if (!reminderResult) {
         log.warn("Failed to create reminder: No result returned from database");
@@ -654,6 +676,7 @@ class ServerScheduleRepository implements IRepository<ServerScheduleExportShape>
       emitScheduledWorkNudge(`reminder-create:${validatedReminder.data.reminder_id ?? "unknown"}`);
       return validatedReminder.data;
     } catch (error) {
+      if (error instanceof ReminderLimitError) throw error;
       const context: ErrorContext = {
         serverId: reminderData.server_id,
         userId: reminderData.created_by_user_id,

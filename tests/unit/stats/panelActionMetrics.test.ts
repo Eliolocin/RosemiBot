@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "bun:test";
+import type { ErrorContext } from "@/types/db/schema";
 import type { RecordStatInput } from "@/utils/db/repositories/StatRepository";
 import { log } from "@/utils/misc/logger";
 import {
@@ -104,18 +105,18 @@ describe("recordPanelActionStat", () => {
 });
 
 describe("panel_action failure reporting", () => {
-  interface RecordedMetric {
-    name: string;
-    fields: Record<string, number | string>;
+  interface RecordedError {
+    context?: ErrorContext;
+    options?: { persist?: boolean };
   }
 
-  function captureMetrics(): { metrics: RecordedMetric[]; restore(): void } {
-    const metrics: RecordedMetric[] = [];
-    const original = log.metric;
-    log.metric = (name: string, fields: Record<string, number | string>) => {
-      metrics.push({ name, fields });
+  function captureErrors(): { errors: RecordedError[]; restore(): void } {
+    const errors: RecordedError[] = [];
+    const original = log.error;
+    log.error = async (_msg, _err, context, options) => {
+      errors.push({ context, options });
     };
-    return { metrics, restore: () => Object.assign(log, { metric: original }) };
+    return { errors, restore: () => Object.assign(log, { error: original }) };
   }
 
   const failingDeps: PanelActionMetricsDependencies = {
@@ -132,38 +133,38 @@ describe("panel_action failure reporting", () => {
   });
 
   it("reports a failed counter write where production can see it", async () => {
-    const { metrics, restore } = captureMetrics();
+    const { errors, restore } = captureErrors();
     try {
       await recordPanelActionStat({ action, serverId: 1, userDiscId: "user-1" }, failingDeps);
 
-      // Not log.warn, which production's level: "error" pin drops before either sink. A silently
+      // Not log.warn, which the production default level drops before either sink. A silently
       // dead success counter previously left no trace anywhere.
-      expect(metrics).toHaveLength(1);
-      expect(metrics[0]?.name).toBe("panel_action_failure");
-      expect(metrics[0]?.fields.reason).toBe("panel_action_stat_write_failed");
-      expect(metrics[0]?.fields.action).toBe(action);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.context?.errorType).toBe("panel_action_stat_write_failed");
+      // An error_logs insert would queue on the pool whose failure is being reported.
+      expect(errors[0]?.options?.persist).toBe(false);
     } finally {
       restore();
     }
   });
 
   it("reports once per outage rather than once per panel action", async () => {
-    const { metrics, restore } = captureMetrics();
+    const { errors, restore } = captureErrors();
     try {
       for (let index = 0; index < 5; index++) {
         await recordPanelActionStat({ action, serverId: 1, userDiscId: "user-1" }, failingDeps);
       }
-      expect(metrics).toHaveLength(1);
+      expect(errors).toHaveLength(1);
     } finally {
       restore();
     }
   });
 
   it("re-arms reporting after a write gets far enough to be recorded", async () => {
-    const { metrics, restore } = captureMetrics();
+    const { errors, restore } = captureErrors();
     try {
       await recordPanelActionStat({ action, serverId: 1, userDiscId: "user-1" }, failingDeps);
-      expect(metrics).toHaveLength(1);
+      expect(errors).toHaveLength(1);
 
       // A second outage after a recovery is a new incident and must be reported again.
       await recordPanelActionStat(
@@ -172,7 +173,7 @@ describe("panel_action failure reporting", () => {
       );
       await recordPanelActionStat({ action, serverId: 1, userDiscId: "user-1" }, failingDeps);
 
-      expect(metrics).toHaveLength(2);
+      expect(errors).toHaveLength(2);
     } finally {
       restore();
     }

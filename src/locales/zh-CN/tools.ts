@@ -1,5 +1,8 @@
 export default {
   tools: {
+    execution: {
+      unavailable: `在当前设置、模型能力或 bot 权限下，工具 \`{tool}\` 不可用。`,
+    },
     generate_image: {
       quota_exceeded_generic: `图像生成配额已经用完。`,
       user_quota_exceeded: `你已经用完今天的图像生成配额。{reset_info}`,
@@ -29,7 +32,7 @@ export default {
       invalid_character_identity: `角色标识无效：{id}。请用 persona:<id>、简短的数字人格 ID，或者 Discord 用户 snowflake。`,
     },
     search: {
-      category_search_title: `🔍 正在 __{category}__ 里搜索 \`{query}\`……`,
+      category_search_title: `🔍 正在 {category} 里搜索 \`{query}\`……`,
       category_labels: {
         text: `网页`,
         image: `图像`,
@@ -49,8 +52,8 @@ export default {
       tool_invoke_no_params: `没有参数。`,
     },
     tool_notice: {
-      hide_footer: `用 \`/config\` > 行为 > 提示 隐藏它`,
-      hide_footer_with_kill: `用 \`/config\` > 行为 > 提示 隐藏它 · 觉得我卡住了就用 \`/kill\``,
+      configure_hint: `可在 \`/config\` > 行为 > 提示 中设置这些提示`,
+      kill_hint: `觉得我卡住了就用 \`/kill\``,
     },
     user_block: {
       error_missing_permission: `我需要此频道的 {permission} 权限才能发布屏蔽通知。请让服务器管理员授予该权限后重试。`,
@@ -70,6 +73,13 @@ export default {
     },
     user_info_update: {
       success_title: `✅ 已更新 {target_user} 的资料`,
+      success_title_fields: `✅ 已更新 {target_user} 的{fields}`,
+      success_title_cleared_fields: `🗑️ 已清空 {target_user} 的{fields}`,
+      subject_nickname: `昵称`,
+      subject_gender_identity: `性别认同`,
+      subject_pronouns: `代词`,
+      subject_addressing_style: `称呼习惯`,
+      subject_timezone_offset: `时区`,
       success_intro: `更新了以下内容：`,
       change_line: `{index}. {field}：\`{previous}\` → \`{next}\``,
       success_summary: `{persona_name} 现在称呼 {target_user} 为「{formatted_name}」。`,
@@ -212,7 +222,6 @@ export default {
         "message-action": ["编辑消息", "删掉消息", "撤回", "重发", "引用", "删除这条", "改一下这条", "重新生成"],
         "user-blocking": ["禁言", "屏蔽", "拉黑", "别理他", "静音", "封锁", "解禁"],
         "user-info": ["昵称", "称呼", "资料", "性别", "代词", "个人信息", "叫我", "怎么称呼"],
-        sticker: ["贴纸", "表情", "表情包", "gif", "动图", "来个贴纸", "发个表情"],
         thread: ["子区", "开个帖", "新帖", "建个子区", "开个新帖", "创建子区", "帖子"],
         capabilities: ["你会什么", "能做什么", "功能列表", "有什么功能", "工具列表", "能用什么", "会做什么"],
       },

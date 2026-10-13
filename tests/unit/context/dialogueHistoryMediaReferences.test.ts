@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Client } from "discord.js";
 import { HumanizerDegree, type AssembledServerConfig, type TomoriState } from "@/types/db/schema";
-import { appendDialogueHistoryContext } from "@/utils/text/context/dialogueHistory";
+import { appendDialogueHistoryContext, DOCUMENT_HINT_TEMPLATE } from "@/utils/text/context/dialogueHistory";
 import type { SimplifiedMessageForContext } from "@/utils/text/context/types";
 import { MessageIdMap } from "@/utils/text/messageIdMap";
 import { createPersona } from "../../helpers/fixtures";
@@ -66,6 +66,7 @@ async function buildMediaReference(
     botName: "Tomori",
     tomoriConfig: makeConfig(),
     tomoriState: makeTomoriState(),
+    documentHintTemplate: DOCUMENT_HINT_TEMPLATE,
     includeTimestamps: false,
     isUserImpersonation: false,
     triggererFormattedName: "Alice",
@@ -117,6 +118,7 @@ describe("appendDialogueHistoryContext — remote media references", () => {
       botName: "Tomori",
       tomoriConfig: makeConfig(),
       tomoriState: makeTomoriState(),
+      documentHintTemplate: DOCUMENT_HINT_TEMPLATE,
       includeTimestamps: false,
       isUserImpersonation: false,
       triggererFormattedName: "Alice",
@@ -154,6 +156,7 @@ describe("appendDialogueHistoryContext — remote media references", () => {
       botName: "Tomori",
       tomoriConfig: makeConfig(),
       tomoriState: makeTomoriState(),
+      documentHintTemplate: DOCUMENT_HINT_TEMPLATE,
       includeTimestamps: false,
       isUserImpersonation: false,
       triggererFormattedName: "Alice",
@@ -168,5 +171,39 @@ describe("appendDialogueHistoryContext — remote media references", () => {
     expect(descriptorMediaIds).toEqual(["media_1"]);
     expect(messageIdMap.resolve("media_1")).toBe("image-message");
     expect(messageIdMap.getOpaque("wrapper-message", "media")).toBeUndefined();
+  });
+
+  it("points a reply-carried file hint at its source message and never expands the filename", async () => {
+    const filename = "{document_tool} {{if tool:read_file}}x{{/if}} $&.pdf";
+    const message: SimplifiedMessageForContext = {
+      ...makeRemoteImageMessage(undefined, "unused"),
+      content: "pdf見て",
+      mediaSourceMessageIds: undefined,
+      imageAttachments: [],
+      documentAttachments: [{ filename, sourceMessageId: "file-message" }],
+    };
+
+    const contextItems: Parameters<typeof appendDialogueHistoryContext>[0]["contextItems"] = [];
+    const messageIdMap = new MessageIdMap();
+    await appendDialogueHistoryContext({
+      contextItems,
+      client: {} as Client,
+      guildId: "guild-1",
+      simplifiedMessageHistory: [message],
+      botName: "Tomori",
+      tomoriConfig: makeConfig(),
+      tomoriState: makeTomoriState(),
+      documentHintTemplate: "[System: `{filename}` ({media_id})]",
+      includeTimestamps: false,
+      isUserImpersonation: false,
+      triggererFormattedName: "Alice",
+      messageIdMap,
+      uncensorInputOptions: { unicodeSpacesEnabled: false, sanitizeEnabled: false },
+      convertMentions: async (text) => text,
+    });
+
+    const texts = contextItems.flatMap((item) => item.parts.map((part) => (part.type === "text" ? part.text : "")));
+    expect(texts).toContain(`[System: \`${filename}\` (media_1)]`);
+    expect(messageIdMap.resolve("media_1")).toBe("file-message");
   });
 });

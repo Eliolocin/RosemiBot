@@ -1,5 +1,8 @@
 export default {
   tools: {
+    execution: {
+      unavailable: `在目前的設定、模型功能或 bot 權限下，工具 \`{tool}\` 無法使用。`,
+    },
     generate_image: {
       quota_exceeded_generic: `圖片生成額度已用完。`,
       user_quota_exceeded: `你已經用完今天的圖片生成額度。{reset_info}`,
@@ -29,7 +32,7 @@ export default {
       invalid_character_identity: `角色身分無效：{id}。請使用 persona:<id>、簡短的數字人格 ID，或 Discord 使用者 snowflake。`,
     },
     search: {
-      category_search_title: `🔍 正在 __{category}__ 搜尋 \`{query}\`...`,
+      category_search_title: `🔍 正在 {category} 搜尋 \`{query}\`...`,
       category_labels: {
         text: `網路`,
         image: `圖片`,
@@ -49,8 +52,8 @@ export default {
       tool_invoke_no_params: `沒有參數。`,
     },
     tool_notice: {
-      hide_footer: `使用 \`/config\` > 行為 > 通知隱藏這則訊息`,
-      hide_footer_with_kill: `使用 \`/config\` > 行為 > 通知隱藏這則訊息 · 覺得我卡住了可以用 \`/kill\``,
+      configure_hint: `可在 \`/config\` > 行為 > 通知 中設定這些通知`,
+      kill_hint: `覺得我卡住了可以用 \`/kill\``,
     },
     user_block: {
       error_missing_permission: `我需要此頻道的 {permission} 權限才能發布封鎖通知。請讓伺服器管理員授予該權限後重試。`,
@@ -70,6 +73,13 @@ export default {
     },
     user_info_update: {
       success_title: `✅ 已更新 {target_user} 的個人資料`,
+      success_title_fields: `✅ 已更新 {target_user} 的{fields}`,
+      success_title_cleared_fields: `🗑️ 已清除 {target_user} 的{fields}`,
+      subject_nickname: `暱稱`,
+      subject_gender_identity: `性別認同`,
+      subject_pronouns: `代稱`,
+      subject_addressing_style: `稱呼方式`,
+      subject_timezone_offset: `時區`,
       success_intro: `已更新下列項目：`,
       change_line: `{index}. {field}：\`{previous}\` → \`{next}\``,
       success_summary: `{persona_name} 現在稱呼 {target_user} 為「{formatted_name}」。`,
@@ -358,7 +368,6 @@ export default {
           "換個稱呼",
           "改稱呼",
         ],
-        sticker: ["貼圖", "貼圖生成", "傳貼圖", "發貼圖", "用貼圖", "做貼圖", "生成貼圖", "貼圖回"],
         thread: [
           "開討論串",
           "開一串",

@@ -47,6 +47,7 @@ import shared from "./commands/shared";
 import nuke from "./commands/nuke";
 import setup from "./commands/setup";
 import compact from "./commands/compact";
+import context from "./commands/context";
 import moderation from "./commands/moderation";
 import quota from "./commands/quota";
 import providers from "./commands/providers";
@@ -112,5 +113,6 @@ export default {
     ...nuke,
     ...setup,
     ...compact,
+    ...context,
   },
 };

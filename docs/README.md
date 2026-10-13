@@ -64,8 +64,10 @@ source open to follow these.
   - [`local-endpoints/setup-comfyui.md`](./en/self-hosting/local-endpoints/setup-comfyui.md)
   - [`local-endpoints/setup-searxng.md`](./en/self-hosting/local-endpoints/setup-searxng.md)
   - [`local-endpoints/setup-crawl4ai.md`](./en/self-hosting/local-endpoints/setup-crawl4ai.md)
+  - [`local-endpoints/setup-slop-guard.md`](./en/self-hosting/local-endpoints/setup-slop-guard.md)
   - [`local-endpoints/setup-chatmock.md`](./en/self-hosting/local-endpoints/setup-chatmock.md)
   - [`local-endpoints/setup-local-mcp.md`](./en/self-hosting/local-endpoints/setup-local-mcp.md)
+  - [`local-endpoints/setup-local-system-one.md`](./en/self-hosting/local-endpoints/setup-local-system-one.md)
   - [`local-endpoints/text-to-speech/`](./en/self-hosting/local-endpoints/text-to-speech/README.mdx): local TTS engines
     - [`comparison.md`](./en/self-hosting/local-endpoints/text-to-speech/comparison.md): empirical benchmarks, audio sample playback, and speed comparisons
     - [`MOSS-TTS`](./en/self-hosting/local-endpoints/text-to-speech/moss.md): experimental clone and voice-design auto endpoint
@@ -122,7 +124,7 @@ Code-level reference for deep-divers and plugin authors.
 
 Per-stage reference. Each folder has a `README.md` (overview + ASCII flow) and numbered stage files.
 
-- [`architecture/pipelines/chat/`](./en/architecture/pipelines/chat/README.md): message ingress → per-turn execution
+- [`architecture/pipelines/chat/`](./en/architecture/pipelines/chat/README.mdx): message ingress → per-turn execution
 - [`architecture/pipelines/context-build/`](./en/architecture/pipelines/context-build/README.md): preset routing + native context assembly
 - [`architecture/pipelines/tool-loop/`](./en/architecture/pipelines/tool-loop/README.md): tool-call dispatch loop
 - [`architecture/pipelines/provider/`](./en/architecture/pipelines/provider/README.md): stream adapter → chunk normalization → Discord delivery

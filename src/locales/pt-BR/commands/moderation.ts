@@ -25,8 +25,8 @@ export default {
     member_access_attributelist_disabled: `🔴 Membros não podem gerenciar atributos da persona.`,
     member_access_sampledialogues_enabled: `🟢 Membros podem gerenciar diálogos de exemplo da persona.`,
     member_access_sampledialogues_disabled: `🔴 Membros não podem gerenciar diálogos de exemplo da persona.`,
-    member_access_promptsnapshot_enabled: `🟢 Membros podem criar capturas de prompt.`,
-    member_access_promptsnapshot_disabled: `🔴 Membros não podem criar capturas de prompt.`,
+    member_access_promptsnapshot_enabled: `🟢 Membros podem ver prompts completos a partir de \`/context\` e snapshots de prompt.`,
+    member_access_promptsnapshot_disabled: `🔴 Membros não podem ver prompts completos ou criar snapshots de prompt.`,
     edit_permissions: `Editar Permissões`,
     model_access_title: `Acesso a modelos do servidor`,
     model_access_description: `Controla quais modelos os membros podem usar.`,
@@ -192,7 +192,6 @@ export default {
     remove_blacklist_group_description: `Desmarque e envie para remover a entrada`,
     remove_whitelist_group_description: `Desmarque e envie para remover da lista branca`,
     remove_group_continuation: `Continuação ({index})`,
-    remove_modal_limit: `Esta lista tem mais de 50 entradas e não cabe em um modal.`,
     remove_nothing_changed: `Nada foi removido`,
     remove_nothing_changed_detail: `Todas as entradas continuaram selecionadas. Sem mudanças.`,
 

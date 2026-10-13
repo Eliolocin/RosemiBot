@@ -8,10 +8,11 @@
  */
 import { beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { AttachmentBuilder, MessageFlags, type APIAttachment, type Client } from "discord.js";
-import type { PersonaSpriteRow, StmCategoryRow, TomoriState } from "@/types/db/schema";
+import type { PersonaSpriteRow, StmCategoryRow, TomoriState, TomoriPresetRow } from "@/types/db/schema";
 import type { ConditioningGroup } from "@/utils/db/repositories/ConditioningMemoryRepository";
 import { conditioningMemoryRepository } from "@/utils/db/repositories/ConditioningMemoryRepository";
 import * as shortTermMemoryCache from "@/utils/cache/shortTermMemoryCache";
+import * as spriteCacheStore from "@/utils/cache/personaSpriteCacheStore";
 import * as tomoriStateCacheStore from "@/utils/cache/tomoriStateCacheStore";
 import {
   llmOverrideRepo,
@@ -72,6 +73,7 @@ import {
 } from "@/utils/discord/ui/configModals";
 import { initializeLocalizer, localizer } from "@/utils/text/localizer";
 import { createPersona, type PersonaFixtureOverrides } from "../../helpers/fixtures";
+import { localizedCopy, localizedProse } from "../../helpers/localeCases";
 import {
   createInteractionRecorder,
   createRouteInteraction,
@@ -181,6 +183,7 @@ const SPRITES: PersonaSpriteRow[] = [
 ];
 
 interface HarnessOptions {
+  readStatus?: ConfigScope["readStatus"];
   isManager?: boolean;
   inGuild?: boolean;
   personas?: TomoriState[];
@@ -190,6 +193,7 @@ interface HarnessOptions {
   sprites?: PersonaSpriteRow[];
   spriteOperations?: Partial<ConfigRouteDependencies["spriteOperations"]>;
   getPersonaAvatarReferenceData?: ConfigRouteDependencies["getPersonaAvatarReferenceData"];
+  preset?: TomoriPresetRow | null;
 }
 
 interface Harness {
@@ -225,7 +229,7 @@ function makeHarness(options: HarnessOptions = {}): Harness {
         ? { workspaceKind: "dm", isManager: true }
         : { workspaceKind: "guild", isManager: options.isManager ?? true },
     personas: (forceRefresh ? (options.refreshedPersonas ?? options.personas) : options.personas) ?? [MAIN, ALTER],
-    readStatus: "fresh",
+    readStatus: options.readStatus ?? "fresh",
   });
 
   return {
@@ -251,6 +255,8 @@ function makeHarness(options: HarnessOptions = {}): Harness {
       getPersonaAvatarData: async () => ({ url: null, files: [] }),
       getPersonaAvatarReferenceData: options.getPersonaAvatarReferenceData ?? (async () => ({ url: null, files: [] })),
       loadPersonaMemoryView: async () => options.personaMemoryView ?? makeMemoryView(),
+      loadPersonaPreset: async () => options.preset ?? null,
+      loadPresetSprites: async () => [],
       openServerMemoryPanel: async () => ({ components: [], flags: 32768 }),
       openPersonalMemoryPanel: async () => ({ components: [], flags: 32768 }),
       createGuildIdentity: () => ({
@@ -312,6 +318,24 @@ async function dispatch(harness: Harness, interaction: RouteInteraction): Promis
  * both sides move together and a round-trip still succeeds; only literal bytes can.
  */
 const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
+  ["config:v2:draft-set:en-US:1", { action: "draft-set", locale: "en-US", enabled: true }],
+  ["config:v2:draft-items-open:en-US", { action: "draft-items-open", locale: "en-US" }],
+  ["config:v2:draft-items-submit:en-US:nonce123", { action: "draft-items-submit", locale: "en-US", nonce: "nonce123" }],
+  ["config:v2:draft-prompt-open:en-US", { action: "draft-prompt-open", locale: "en-US" }],
+  ["config:v2:draft-default:en-US", { action: "draft-default", locale: "en-US" }],
+  [
+    "config:v2:draft-prompt-submit:en-US:nonce1234567",
+    { action: "draft-prompt-submit", locale: "en-US", nonce: "nonce1234567" },
+  ],
+  ["config:v2:draft-provider:en-US:reviewer", { action: "draft-provider", locale: "en-US", slot: "reviewer" }],
+  [
+    "config:v2:draft-model-submit:en-US:reviewer:openrouter:nonce1234567",
+    { action: "draft-model-submit", locale: "en-US", slot: "reviewer", provider: "openrouter", nonce: "nonce1234567" },
+  ],
+  [
+    "config:v2:draft-checker-select:en-US:25:abcd1234",
+    { action: "draft-checker-select", locale: "en-US", start: 25, fp: "abcd1234" },
+  ],
   [
     "config:v2:category:en-US:persona:general",
     { action: "category", locale: "en-US", category: "persona", page: "general" },
@@ -537,6 +561,12 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     "config:v2:dlg-remove:en-US:55:0:abcd1234",
     { action: "dialogue-remove", locale: "en-US", personaId: 55, index: 0, fp: "abcd1234" },
   ],
+  ["config:v2:resync-view:en-US:56", { action: "resync-view", locale: "en-US", personaId: 56 }],
+  [
+    "config:v2:resync-confirm:en-US:56:nonce1234567",
+    { action: "resync-confirm", locale: "en-US", personaId: 56, nonce: "nonce1234567" },
+  ],
+  ["config:v2:resync-cancel:en-US:56", { action: "resync-cancel", locale: "en-US", personaId: 56 }],
   ["config:v2:promote-view:en-US:56", { action: "promote-view", locale: "en-US", personaId: 56 }],
   [
     "config:v2:promote-confirm:en-US:56:nonce1234567",
@@ -635,6 +665,11 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     { action: "behavior-preset-submit", locale: "en-US", nonce: "nonce1234567" },
   ],
   ["config:v2:beh-prompt-remove:en-US", { action: "behavior-prompt-remove", locale: "en-US" }],
+  ["config:v2:beh-prefill-open:en-US", { action: "behavior-prefill-open", locale: "en-US" }],
+  [
+    "config:v2:beh-prefill-sub:en-US:nonce1234567",
+    { action: "behavior-prefill-submit", locale: "en-US", nonce: "nonce1234567" },
+  ],
   ["config:v2:beh-context-open:en-US", { action: "behavior-context-open", locale: "en-US" }],
   [
     "config:v2:beh-context-sub:en-US:nonce1234567",
@@ -713,6 +748,10 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     { action: "behavior-notice-visibility-submit", locale: "en-US", nonce: "nonce1234567" },
   ],
   [
+    "config:v2:beh-notice-verbosity-set:en-US:verbose",
+    { action: "behavior-notice-verbosity-set", locale: "en-US", verbosity: "verbose" },
+  ],
+  [
     "config:v2:beh-transcripts-set:en-US:0",
     { action: "behavior-speech-transcripts-set", locale: "en-US", enabled: false },
   ],
@@ -721,6 +760,7 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     "config:v2:beh-memory-tag-sub:en-US:nonce1234567",
     { action: "behavior-memory-tagging-submit", locale: "en-US", nonce: "nonce1234567" },
   ],
+  ["config:v2:beh-stm-enabled-set:en-US:0", { action: "behavior-stm-enabled-set", locale: "en-US", enabled: false }],
   ["config:v2:beh-stm-params-open:en-US", { action: "behavior-stm-parameters-open", locale: "en-US" }],
   [
     "config:v2:beh-stm-params-sub:en-US:nonce1234567",
@@ -2942,7 +2982,7 @@ describe("config promotion", () => {
     });
     const swapSpy = spyOn(personaRepository, "swapPersona").mockImplementation(async (mainId, alterId) => {
       events.push(`swap:${mainId}:${alterId}`);
-      return true;
+      return "swapped";
     });
     const setAvatarSpy = spyOn(personaRepository, "setAvatar").mockImplementation(async (personaId, reference) => {
       events.push(`persist:${personaId}:${reference}`);
@@ -3052,7 +3092,7 @@ describe("config promotion", () => {
     }
   });
 
-  it("orders the live-CDN load, swap, upload, persist, delete, and final invalidation", async () => {
+  it("orders the live-CDN load, swap, early invalidation, upload, persist, delete, and final invalidation", async () => {
     const run = installLiveCdnPromotion();
     try {
       await run.promote();
@@ -3064,6 +3104,7 @@ describe("config promotion", () => {
       );
       const formerPersistIndex = run.events.indexOf(`persist:${run.mainPersona.persona_id}:${run.formerMainReference}`);
       const formerDeleteIndex = run.events.indexOf(`delete:${run.mainPersona.webhook_avatar_url}`);
+      const earlyInvalidateIndex = run.events.indexOf("invalidate:guild-1");
       const finalInvalidateIndex = run.events.lastIndexOf("invalidate:guild-1");
 
       expect(loadIndex).toBeGreaterThanOrEqual(0);
@@ -3073,7 +3114,9 @@ describe("config promotion", () => {
       expect(formerUploadIndex).toBeLessThan(formerPersistIndex);
       expect(formerPersistIndex).toBeGreaterThanOrEqual(0);
       expect(formerPersistIndex).toBeLessThan(formerDeleteIndex);
-      expect(run.invalidateSpy).toHaveBeenCalledTimes(1);
+      expect(run.invalidateSpy).toHaveBeenCalledTimes(2);
+      expect(earlyInvalidateIndex).toBeGreaterThan(swapIndex);
+      expect(earlyInvalidateIndex).toBeLessThan(formerUploadIndex);
       expect(finalInvalidateIndex).toBe(run.events.length - 1);
     } finally {
       run.restore();
@@ -3107,7 +3150,7 @@ describe("config promotion", () => {
     const pngSpy = spyOn(imageProcessor, "convertToPNG").mockImplementation(async (buffer: Buffer) => buffer);
     const swapSpy = spyOn(personaRepository, "swapPersona").mockImplementation(async (mainId, alterId) => {
       events.push(`swap:${mainId}:${alterId}`);
-      return true;
+      return "swapped";
     });
     const setAvatarSpy = spyOn(personaRepository, "setAvatar").mockImplementation(async (personaId, reference) => {
       events.push(`persist:${personaId}:${reference}`);
@@ -3209,7 +3252,7 @@ describe("config promotion", () => {
     }
   });
 
-  it("orders the local-fallback load, swap, upload, persist, delete, and final invalidation", async () => {
+  it("orders the local-fallback load, swap, early invalidation, upload, persist, delete, and final invalidation", async () => {
     const run = installLocalFallbackPromotion();
     try {
       await run.promote();
@@ -3221,6 +3264,7 @@ describe("config promotion", () => {
       );
       const formerPersistIndex = run.events.indexOf(`persist:${run.mainPersona.persona_id}:${run.formerMainReference}`);
       const formerDeleteIndex = run.events.indexOf(`delete:${run.mainPersona.webhook_avatar_url}`);
+      const earlyInvalidateIndex = run.events.indexOf("invalidate:guild-1");
       const finalInvalidateIndex = run.events.lastIndexOf("invalidate:guild-1");
 
       expect(loadIndex).toBeLessThan(swapIndex);
@@ -3229,11 +3273,152 @@ describe("config promotion", () => {
       expect(formerUploadIndex).toBeLessThan(formerPersistIndex);
       expect(formerPersistIndex).toBeGreaterThanOrEqual(0);
       expect(formerPersistIndex).toBeLessThan(formerDeleteIndex);
-      expect(run.invalidateSpy).toHaveBeenCalledTimes(1);
+      expect(run.invalidateSpy).toHaveBeenCalledTimes(2);
+      expect(earlyInvalidateIndex).toBeGreaterThan(swapIndex);
+      expect(earlyInvalidateIndex).toBeLessThan(formerUploadIndex);
       expect(finalInvalidateIndex).toBe(run.events.length - 1);
     } finally {
       run.restore();
     }
+  });
+
+  it("treats a lost swap race as stale: evicts the cache and touches no avatar", async () => {
+    const run = installLocalFallbackPromotion();
+    run.swapSpy.mockImplementation(async () => "roles-changed");
+    try {
+      const result = await run.promote();
+
+      expect(result).toEqual({ status: "not-alter" });
+      expect(run.invalidateSpy).toHaveBeenCalledTimes(1);
+      expect(run.uploadSpy).not.toHaveBeenCalled();
+      expect(run.setAvatarSpy).not.toHaveBeenCalled();
+      expect(run.deleteSpy).not.toHaveBeenCalled();
+    } finally {
+      run.restore();
+    }
+  });
+
+  it("reports write-failed without evicting when the swap itself fails", async () => {
+    const run = installLocalFallbackPromotion();
+    run.swapSpy.mockImplementation(async () => "failed");
+    try {
+      expect(await run.promote()).toEqual({ status: "write-failed" });
+      expect(run.invalidateSpy).not.toHaveBeenCalled();
+    } finally {
+      run.restore();
+    }
+  });
+
+  it("refuses a concurrent promotion on the same server and frees the lock when the first ends", async () => {
+    const run = installLocalFallbackPromotion();
+    let releaseNickname: () => void = () => {};
+    const nicknameGate = new Promise<void>((resolve) => {
+      releaseNickname = resolve;
+    });
+    const gatedPromote = () =>
+      configPersonaOperations.promoteToMain({
+        alterPersona: run.alterPersona,
+        mainPersona: run.mainPersona,
+        serverDiscId: "guild-1",
+        guildId: "guild-1",
+        guildIdentity: {
+          currentAvatarReference: async () => null,
+          setNickname: async () => {
+            await nicknameGate;
+            return true;
+          },
+          setAvatar: async () => ({ ok: true, rateLimited: false }),
+        },
+      });
+    try {
+      const first = gatedPromote();
+      // The first run parks inside setNickname, i.e. after the swap committed and before its avatar work.
+      await Bun.sleep(0);
+
+      expect(await gatedPromote()).toEqual({ status: "in-progress" });
+      expect(run.swapSpy).toHaveBeenCalledTimes(1);
+
+      releaseNickname();
+      expect(await first).toMatchObject({ status: "success" });
+      expect(await run.promote()).toMatchObject({ status: "success" });
+      expect(run.swapSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      releaseNickname();
+      run.restore();
+    }
+  });
+
+  it("does not let a different server's promotion block this one", async () => {
+    const run = installLocalFallbackPromotion();
+    let releaseNickname: () => void = () => {};
+    const nicknameGate = new Promise<void>((resolve) => {
+      releaseNickname = resolve;
+    });
+    try {
+      const other = configPersonaOperations.promoteToMain({
+        alterPersona: run.alterPersona,
+        mainPersona: run.mainPersona,
+        serverDiscId: "guild-2",
+        guildId: "guild-2",
+        guildIdentity: {
+          currentAvatarReference: async () => null,
+          setNickname: async () => {
+            await nicknameGate;
+            return true;
+          },
+          setAvatar: async () => ({ ok: true, rateLimited: false }),
+        },
+      });
+      await Bun.sleep(0);
+
+      expect(await run.promote()).toMatchObject({ status: "success" });
+
+      releaseNickname();
+      await other;
+    } finally {
+      releaseNickname();
+      run.restore();
+    }
+  });
+
+  it("frees the lock when a promotion throws after the swap", async () => {
+    const run = installLocalFallbackPromotion();
+    run.uploadSpy.mockImplementation(async ({ personaId }) => {
+      if (personaId === run.alterPersona.persona_id) throw new Error("storage down");
+      return run.formerMainReference;
+    });
+    try {
+      await expect(run.promote()).rejects.toThrow("storage down");
+
+      run.uploadSpy.mockImplementation(async () => run.formerMainReference);
+      expect(await run.promote()).toMatchObject({ status: "success" });
+    } finally {
+      run.restore();
+    }
+  });
+
+  it("answers a promotion refused by the lock with its own receipt, not a write failure", async () => {
+    const harness = makeHarness({
+      operations: { promoteToMain: async () => ({ status: "in-progress" }) },
+    });
+
+    await dispatch(
+      harness,
+      makeInteraction({
+        customId: buildConfigRouteId({
+          action: "promote-confirm",
+          locale: "en-US",
+          personaId: 56,
+          nonce: "nonce1234567",
+        }),
+        harness,
+      }),
+    );
+
+    const rendered = JSON.stringify(harness.edits.at(-1));
+    expect(rendered).toContain(localizedCopy("en-US", "commands.config.panel.promote_in_progress_heading"));
+    expect(rendered).not.toContain(localizedCopy("en-US", "commands.config.panel.stale_heading"));
+    expect(rendered).not.toContain(localizedCopy("en-US", "commands.config.panel.write_failed_heading"));
   });
 
   it("opens a confirmation before promoting rather than swapping on the first press", async () => {
@@ -4640,5 +4825,350 @@ describe("config modal opening", () => {
     // which would make unchecked-means-remove delete every presented word.
     expect(modal.components.every((label) => label.type === 18)).toBe(true);
     expect(modal.components.map((label) => label.component.type)).toEqual([22]);
+  });
+});
+
+const RESYNC_PRESET: TomoriPresetRow = {
+  persona_preset_id: 1,
+  persona_preset_name: "Mirri",
+  persona_preset_desc: "Preset prompt",
+  preset_lineage_id: 4,
+  preset_attribute_list: ["Preset attribute"],
+  preset_attribute_public_flags: [false],
+  preset_sample_dialogues_in: ["Hello"],
+  preset_sample_dialogues_out: ["Hi"],
+  preset_language: "en-US",
+  preset_avatar_path: null,
+  preset_avatar_shared_url: null,
+  preset_avatar_hash: null,
+  preset_trigger_words: ["mirri"],
+  preset_naming_config: { prefixes: {}, suffixes: {}, addressTerms: {} },
+  is_nsfw: false,
+};
+
+const RESYNC_PERSONA = makePersona({
+  preset_lineage_id: 4,
+  preset_language: "en-US",
+  attribute_list: ["Changed attribute", "Extra attribute"],
+  sample_dialogues_in: ["Hello"],
+  sample_dialogues_out: ["Different response"],
+  webhook_avatar_url: "data/avatars/personas/55/avatar.png",
+});
+
+describe("config persona preset resync", () => {
+  it("previews the content and sprite differences and cancels without writing", async () => {
+    const harness = makeHarness({ personas: [RESYNC_PERSONA], preset: RESYNC_PRESET });
+    harness.dependencies.loadPresetSprites = async () => [
+      makeSprite({ sprite_key: "happy", avatar_url: "data/avatars/presets/4/sprites/happy-hash.png" }),
+    ];
+    await dispatch(
+      harness,
+      makeInteraction({
+        harness,
+        customId: buildConfigRouteId({ action: "resync-view", locale: "en-US", personaId: 55 }),
+      }),
+    );
+    let rendered = JSON.stringify(harness.edits.at(-1));
+    expect(rendered).toContain(
+      buildConfigRouteId({ action: "resync-confirm", locale: "en-US", personaId: 55, nonce: "nonce1234567" }),
+    );
+    expect(rendered).toMatch(
+      localizedProse("en-US", "commands.config.panel.resync_attributes_diff", { changed: 1, added: 0, removed: 1 }),
+    );
+    expect(rendered).toMatch(
+      localizedProse("en-US", "commands.config.panel.resync_dialogues_diff", { changed: 1, added: 0, removed: 0 }),
+    );
+    expect(rendered).toMatch(localizedProse("en-US", "commands.config.panel.resync_sprites_diff", { count: 1 }));
+    await dispatch(
+      harness,
+      makeInteraction({
+        harness,
+        customId: buildConfigRouteId({ action: "resync-cancel", locale: "en-US", personaId: 55 }),
+      }),
+    );
+    rendered = JSON.stringify(harness.edits.at(-1));
+    expect(rendered).not.toContain("resync-confirm");
+    expect(harness.telemetry).toEqual([]);
+  });
+
+  it("refuses pointer, custom, deleted, and stale personas on view and confirm", async () => {
+    for (const state of [
+      { personas: [makePersona({ is_pointer: true, preset_lineage_id: 4, preset_language: "en-US" })] },
+      { personas: [MAIN] },
+      { personas: [] },
+      { personas: [RESYNC_PERSONA], readStatus: "stale" as const },
+    ]) {
+      for (const action of ["resync-view", "resync-confirm"] as const) {
+        let writes = 0;
+        const harness = makeHarness({
+          ...state,
+          operations: {
+            resyncToPreset: async () => {
+              writes++;
+              return { status: "success", avatarSynced: true };
+            },
+          },
+        });
+        await dispatch(
+          harness,
+          makeInteraction({
+            harness,
+            customId: buildConfigRouteId({ action, locale: "en-US", personaId: 55, nonce: "nonce1234567" }),
+          }),
+        );
+        expect(writes).toBe(0);
+        expect(JSON.stringify(harness.edits.at(-1))).toMatch(
+          localizedProse("en-US", "commands.config.panel.stale_detail"),
+        );
+      }
+    }
+  });
+
+  it("allows a zero-difference relink and omits unchanged details", async () => {
+    const harness = makeHarness({
+      personas: [
+        makePersona({
+          ...RESYNC_PERSONA,
+          attribute_list: RESYNC_PRESET.preset_attribute_list,
+          sample_dialogues_in: RESYNC_PRESET.preset_sample_dialogues_in,
+          sample_dialogues_out: RESYNC_PRESET.preset_sample_dialogues_out,
+          persona_prompt: RESYNC_PRESET.persona_preset_desc,
+          webhook_avatar_url: null,
+        }),
+      ],
+      preset: RESYNC_PRESET,
+      sprites: [],
+    });
+    await dispatch(
+      harness,
+      makeInteraction({
+        harness,
+        customId: buildConfigRouteId({ action: "resync-view", locale: "en-US", personaId: 55 }),
+      }),
+    );
+    const rendered = JSON.stringify(harness.edits.at(-1));
+    expect(rendered).toContain(
+      buildConfigRouteId({ action: "resync-confirm", locale: "en-US", personaId: 55, nonce: "nonce1234567" }),
+    );
+    expect(rendered).not.toMatch(localizedProse("en-US", "commands.config.panel.resync_attributes_diff"));
+    expect(rendered).not.toMatch(localizedProse("en-US", "commands.config.panel.resync_dialogues_diff"));
+    expect(rendered).not.toMatch(localizedProse("en-US", "commands.config.panel.resync_prompt_diff"));
+    expect(rendered).not.toMatch(localizedProse("en-US", "commands.config.panel.resync_avatar_diff"));
+    expect(rendered).toMatch(localizedProse("en-US", "commands.config.panel.resync_main_avatar_detail"));
+    expect(rendered).not.toMatch(localizedProse("en-US", "commands.config.panel.resync_sprites_diff"));
+  });
+
+  it("reports unavailable presets on both view and confirm", async () => {
+    for (const action of ["resync-view", "resync-confirm"] as const) {
+      const harness = makeHarness({ personas: [RESYNC_PERSONA] });
+      await dispatch(
+        harness,
+        makeInteraction({
+          harness,
+          customId: buildConfigRouteId({ action, locale: "en-US", personaId: 55, nonce: "nonce1234567" }),
+        }),
+      );
+      expect(JSON.stringify(harness.edits.at(-1))).toMatch(
+        localizedProse("en-US", "commands.config.panel.resync_unavailable_detail"),
+      );
+    }
+  });
+
+  it("rechecks fresh state and records only committed resyncs, including avatar warnings", async () => {
+    for (const result of [
+      { status: "success", avatarSynced: true },
+      { status: "success", avatarSynced: false },
+      { status: "write-failed" },
+    ] as const) {
+      const harness = makeHarness({
+        personas: [RESYNC_PERSONA],
+        preset: RESYNC_PRESET,
+        operations: { resyncToPreset: async () => result },
+      });
+      await dispatch(
+        harness,
+        makeInteraction({
+          harness,
+          customId: buildConfigRouteId({
+            action: "resync-confirm",
+            locale: "en-US",
+            personaId: 55,
+            nonce: "nonce1234567",
+          }),
+        }),
+      );
+      expect(harness.scopeLoads[0]).toBe(true);
+      const rendered = JSON.stringify(harness.edits.at(-1));
+      if (result.status === "success") {
+        expect(harness.telemetry).toContain("server-config.workspace.persona.resync");
+        expect(rendered).toMatch(
+          localizedProse(
+            "en-US",
+            result.avatarSynced
+              ? "commands.config.panel.resync_success_detail"
+              : "commands.config.panel.resync_partial_detail",
+            { persona: RESYNC_PERSONA.persona_nickname },
+          ),
+        );
+      } else {
+        expect(harness.telemetry).toEqual([]);
+        expect(rendered).toMatch(localizedProse("en-US", "commands.config.panel.resync_failed_detail"));
+      }
+    }
+    let writes = 0;
+    const harness = makeHarness({
+      personas: [RESYNC_PERSONA],
+      refreshedPersonas: [{ ...RESYNC_PERSONA, is_pointer: true }],
+      operations: {
+        resyncToPreset: async () => {
+          writes++;
+          return { status: "success", avatarSynced: true };
+        },
+      },
+    });
+    await dispatch(
+      harness,
+      makeInteraction({
+        harness,
+        customId: buildConfigRouteId({
+          action: "resync-confirm",
+          locale: "en-US",
+          personaId: 55,
+          nonce: "nonce1234567",
+        }),
+      }),
+    );
+    expect(writes).toBe(0);
+  });
+
+  it("denies resync writes for guild members", async () => {
+    let writes = 0;
+    const harness = makeHarness({
+      isManager: false,
+      personas: [RESYNC_PERSONA],
+      operations: {
+        resyncToPreset: async () => {
+          writes++;
+          return { status: "success", avatarSynced: true };
+        },
+      },
+    });
+    await dispatch(
+      harness,
+      makeInteraction({
+        harness,
+        isManager: false,
+        customId: buildConfigRouteId({
+          action: "resync-confirm",
+          locale: "en-US",
+          personaId: 55,
+          nonce: "nonce1234567",
+        }),
+      }),
+    );
+    expect(writes).toBe(0);
+  });
+});
+
+describe("config preset resync side effects", () => {
+  async function runResync(writeOk: boolean, avatarOk: boolean) {
+    const events: string[] = [];
+    const preset = { ...RESYNC_PRESET, preset_avatar_shared_url: "data/avatars/presets/4/avatar-hash.png" };
+    const spriteSpy = spyOn(personaSpriteRepository, "listForPersona").mockImplementation(async () => {
+      events.push("snapshot");
+      return SPRITES;
+    });
+    const writeSpy = spyOn(personaRepository, "applyPresetPointerToPersona").mockImplementation(async () => {
+      events.push("write");
+      return writeOk ? { ...RESYNC_PERSONA, is_pointer: true } : null;
+    });
+    const stateCacheSpy = spyOn(tomoriStateCacheStore, "invalidateTomoriStateCache").mockImplementation(() => {
+      events.push("state-cache");
+    });
+    const spriteCacheSpy = spyOn(spriteCacheStore, "invalidatePersonaSpriteCache").mockImplementation(() => {
+      events.push("sprite-cache");
+    });
+    const deleteSpriteSpy = spyOn(avatarStorage, "deletePersonaSpriteFromStorage").mockImplementation(async () => {
+      events.push("delete-sprite");
+      return true;
+    });
+    const deleteAvatarSpy = spyOn(avatarStorage, "deletePersonaAvatarFromStorage").mockImplementation(async () => {
+      events.push("delete-avatar");
+      return true;
+    });
+    const bufferSpy = spyOn(avatarStorage, "loadStoredPersonaAvatarBuffer").mockResolvedValue(
+      Buffer.from("preset-image"),
+    );
+    const stampSpy = spyOn(personaRepository, "markServerMainAvatarSynced").mockImplementation(async () => {
+      events.push("stamp");
+    });
+    const patched: Array<string | null> = [];
+    try {
+      const result = await configPersonaOperations.resyncToPreset({
+        persona: RESYNC_PERSONA,
+        preset,
+        serverDiscId: "guild-1",
+        guildIdentity: {
+          setNickname: async () => true,
+          currentAvatarReference: async () => null,
+          setAvatar: async (value) => {
+            events.push("patch");
+            patched.push(value);
+            return { ok: avatarOk, rateLimited: !avatarOk };
+          },
+        },
+      });
+      return { result, events, patched, writeInput: writeSpy.mock.calls[0]?.[0] };
+    } finally {
+      for (const spy of [
+        spriteSpy,
+        writeSpy,
+        stateCacheSpy,
+        spriteCacheSpy,
+        deleteSpriteSpy,
+        deleteAvatarSpy,
+        bufferSpy,
+        stampSpy,
+      ])
+        spy.mockRestore();
+    }
+  }
+
+  it("commits before cache eviction and cleanup, then applies and stamps the preset avatar", async () => {
+    const { result, events, patched, writeInput } = await runResync(true, true);
+    expect(result).toEqual({ status: "success", avatarSynced: true });
+    expect(events).toEqual([
+      "snapshot",
+      "write",
+      "state-cache",
+      "sprite-cache",
+      "delete-sprite",
+      "delete-sprite",
+      "delete-avatar",
+      "patch",
+      "stamp",
+    ]);
+    expect(patched).toEqual([`data:image/png;base64,${Buffer.from("preset-image").toString("base64")}`]);
+    expect(writeInput).toMatchObject({
+      personaLineageId: RESYNC_PERSONA.persona_lineage_id,
+      nickname: RESYNC_PERSONA.persona_nickname,
+      triggerWords: RESYNC_PERSONA.trigger_words,
+      preservedNamingConfig: RESYNC_PERSONA.naming_config,
+    });
+  });
+
+  it("leaves caches, images, and Discord untouched when the write fails", async () => {
+    const { result, events, patched } = await runResync(false, true);
+    expect(result.status).toBe("write-failed");
+    expect(events).toEqual(["snapshot", "write"]);
+    expect(patched).toHaveLength(0);
+  });
+
+  it("keeps the committed resync and leaves the avatar unstamped when Discord rejects it", async () => {
+    const { result, events } = await runResync(true, false);
+    expect(result).toEqual({ status: "success", avatarSynced: false });
+    expect(events).toContain("delete-avatar");
+    expect(events).toContain("patch");
+    expect(events).not.toContain("stamp");
   });
 });

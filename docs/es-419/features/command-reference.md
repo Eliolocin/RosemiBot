@@ -11,7 +11,7 @@ sidebar:
 
 Todos los comandos de barra que TomoriBot tiene registrados actualmente, generados a partir de los mismos constructores de comandos y descripciones en español que se usan para el registro en Discord (las descripciones sin traducir aparecen en inglés).
 
-Grupos de comandos de nivel superior: **40**. Comandos de barra ejecutables: **83**.
+Grupos de comandos de nivel superior: **41**. Comandos de barra ejecutables: **86**.
 
 ## `/comment`
 
@@ -46,6 +46,14 @@ Configura ajustes de persona, comportamiento, canal, permisos y modelo.
 |---|---|
 | `/config` | Configura ajustes de persona, comportamiento, canal, permisos y modelo. |
 
+## `/context`
+
+Mira qué parte de la ventana de contexto del modelo ocupa el prompt de una persona en este canal.
+
+| Comando | Resumen |
+|---|---|
+| `/context` | Mira qué parte de la ventana de contexto del modelo ocupa el prompt de una persona en este canal. |
+
 ## `/contribute`
 
 Encuentra el código fuente y las formas de ayudar a construir TomoriBot.
@@ -79,8 +87,8 @@ Enséñale a TomoriBot cuándo usar los emojis y stickers personalizados de este
 
 | Comando | Resumen |
 |---|---|
-| `/expressions edit` | Edita la emoción y las instrucciones de uso de un solo emoji o sticker |
 | `/expressions initialize` | Analiza y clasifica todos los emojis y stickers personalizados usando visión de IA |
+| `/expressions manage` | Administra emojis, stickers, expresiones personalizadas y acceso de las personas. |
 
 ## `/generate`
 
@@ -197,6 +205,8 @@ Comandos y ajustes con restricción de edad.
 | Comando | Resumen |
 |---|---|
 | `/nsfw jailbreaks` | Administra comportamientos opcionales de jailbreak para mis prompts en este servidor. |
+| `/nsfw persona default` | Aplica una configuración de personalidad preajustada NSFW |
+| `/nsfw persona import` | Importa una persona desde un archivo PNG, JSON o CHARX, incluidas las personas NSFW |
 
 ## `/nuke`
 

@@ -9,6 +9,63 @@ import type { CommandAutocompleteFunction } from "@/utils/discord/commandLoader"
 import { getCachedTomoriState, getCachedAllPersonas } from "@/utils/cache/tomoriStateCache";
 
 /**
+ * Suggests every persona on the server, ignoring channel whitelists and spotlights, for commands
+ * that inspect a persona rather than trigger it (`/stats persona`, `/context`).
+ */
+export const handleServerPersonaAutocomplete: CommandAutocompleteFunction = async (
+  _client: Client,
+  interaction: AutocompleteInteraction,
+): Promise<void> => {
+  let responded = false;
+  try {
+    if (!interaction.guild) {
+      responded = true;
+      await interaction.respond([]);
+      return;
+    }
+
+    const allPersonas = await getCachedAllPersonas(interaction.guild.id);
+    const focusedValue = (interaction.options.getFocused() || "").toLowerCase();
+
+    let filtered = allPersonas;
+    if (focusedValue) {
+      const exact: typeof allPersonas = [];
+      const prefix: typeof allPersonas = [];
+      const substring: typeof allPersonas = [];
+
+      for (const p of allPersonas) {
+        const nickname = (p.persona_nickname ?? "").toLowerCase();
+        if (nickname === focusedValue) {
+          exact.push(p);
+        } else if (nickname.startsWith(focusedValue)) {
+          prefix.push(p);
+        } else if (nickname.includes(focusedValue)) {
+          substring.push(p);
+        }
+      }
+
+      filtered = [...exact, ...prefix, ...substring];
+    }
+
+    responded = true;
+    await interaction.respond(
+      filtered.slice(0, 25).map((p) => ({
+        name: safeSelectOptionText(p.persona_nickname ?? "Unknown Persona", 100),
+        value: String(p.persona_id),
+      })),
+    );
+  } catch {
+    if (!responded) {
+      try {
+        await interaction.respond([]);
+      } catch {
+        // Autocomplete must fail silently if respond throws
+      }
+    }
+  }
+};
+
+/**
  * Shaped as `CommandAutocompleteFunction` so a module can export it directly. The client is unused
  * but must stay in the signature: a shorter one still assigns cleanly and would silently receive
  * the client as its first argument.

@@ -48,6 +48,7 @@ import {
   validateComponentsV2MessageLimits,
 } from "@/utils/discord/ui/componentsV2Limits";
 import { buildConfigPanelPayload } from "@/utils/discord/ui/configPanel";
+import { FENCED_PREVIEW_MAX_CHARS } from "@/utils/text/textPreview";
 import { formatPanelProse } from "@/utils/discord/ui/panelProse";
 import { getCapabilitiesManagePermissionDefinitions } from "@/utils/discord/manageConfigMapping";
 import { HUMANIZER_DEFAULT } from "@/utils/discord/humanizerOptions";
@@ -507,6 +508,9 @@ describe("config page text budgeting at stored maxima", () => {
         const behaviorView: ConfigBehaviorView = {
           general: {
             systemPrompt: "S".repeat(16000),
+            responsePrefill: "P".repeat(2000),
+            prefillBlocker: null,
+            prefillModelName: "gemini-2.5-flash",
             contextNote: "G".repeat(2000),
             contextNoteDepth: 0,
             humanizerDegree: 1,
@@ -535,6 +539,9 @@ describe("config page text budgeting at stored maxima", () => {
         const behaviorView: ConfigBehaviorView = {
           general: {
             systemPrompt: null,
+            responsePrefill: null,
+            prefillBlocker: null,
+            prefillModelName: "gemini-2.5-flash",
             contextNote: null,
             contextNoteDepth: 0,
             humanizerDegree: HUMANIZER_DEFAULT,
@@ -545,6 +552,8 @@ describe("config page text budgeting at stored maxima", () => {
           memory: {
             memoryTaggingEnabled: true,
             channelMemoryEnabled: true,
+            stmEnabled: true,
+            toolUseEnabled: true,
             stmCategories: [{ server_id: 9, position: 0, label: "Summary", description: "Scene summary" }],
             stmConfig: {
               server_id: 9,
@@ -754,12 +763,14 @@ describe("config page text budgeting at stored maxima", () => {
             }
             expect(totalText).toBeLessThanOrEqual(DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX);
 
+            // A cut preview stops at the shared ceiling rather than filling the page, so only
+            // list truncation still has to use the remaining space.
+            for (const block of displays.join("\n").match(/```markdown\n[\s\S]*?\n<!-- [^\n]+ -->\n```/g) ?? []) {
+              expect(getDiscordTextLength(block)).toBeLessThanOrEqual(FENCED_PREVIEW_MAX_CHARS);
+            }
             const slack = DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX - totalText;
             const isTruncated = displays.some(
-              (text) =>
-                text.includes("Content truncated") ||
-                text.includes("channels hidden") ||
-                /Showing \d+ of \d+ channels/.test(text),
+              (text) => text.includes("channels hidden") || /Showing \d+ of \d+ channels/.test(text),
             );
             if (isTruncated) {
               expect(slack, `slack ${slack} exceeds tolerance ${tc.maxTolerance}`).toBeLessThanOrEqual(tc.maxTolerance);
@@ -1851,6 +1862,9 @@ describe("bounded preview unicode and truncation boundary assertions", () => {
         const behaviorView: ConfigBehaviorView = {
           general: {
             systemPrompt: content,
+            responsePrefill: null,
+            prefillBlocker: null,
+            prefillModelName: "gemini-2.5-flash",
             contextNote: null,
             contextNoteDepth: 0,
             humanizerDegree: 0,
@@ -1895,7 +1909,7 @@ describe("bounded preview unicode and truncation boundary assertions", () => {
     const shortDisplays = getTextDisplays(shortPayload);
     const shortPromptDisplay = shortDisplays.find((text) => text.includes("Short prompt"));
     expect(shortPromptDisplay).toBeDefined();
-    expect(shortPromptDisplay).not.toContain("Content truncated");
+    expect(shortPromptDisplay).not.toContain("\n<!-- ");
 
     const longPrompt = "X".repeat(4000);
     const longPayload = buildConfigPanelPayload({
@@ -1908,9 +1922,9 @@ describe("bounded preview unicode and truncation boundary assertions", () => {
       readStatus: "fresh",
     });
     const longDisplays = getTextDisplays(longPayload);
-    const longPromptDisplay = longDisplays.find((text) => text.includes("Content truncated"));
+    const longPromptDisplay = longDisplays.find((text) => text.includes("\n<!-- "));
     expect(longPromptDisplay).toBeDefined();
-    expect(longPromptDisplay).toMatch(/Content truncated \(\d+\/4000 shown\)\./);
+    expect(longPromptDisplay).toMatch(/\n<!-- [^\n]+ -->\n```/);
   });
 
   it("prevents triple backticks from breaking out of fence after truncation", () => {
@@ -1926,6 +1940,9 @@ describe("bounded preview unicode and truncation boundary assertions", () => {
       behaviorView: {
         general: {
           systemPrompt: breakoutContent,
+          responsePrefill: null,
+          prefillBlocker: null,
+          prefillModelName: "gemini-2.5-flash",
           contextNote: null,
           contextNoteDepth: 0,
           humanizerDegree: 0,
@@ -1993,6 +2010,9 @@ describe("bounded preview unicode and truncation boundary assertions", () => {
       behaviorView: {
         general: {
           systemPrompt: `before ${run} after`,
+          responsePrefill: null,
+          prefillBlocker: null,
+          prefillModelName: "gemini-2.5-flash",
           contextNote: null,
           contextNoteDepth: 0,
           humanizerDegree: 0,
@@ -2315,7 +2335,7 @@ describe("channels collection bounds and truncation notices", () => {
     const shortDisplays = getTextDisplays(shortPayload);
     const shortWelcome = shortDisplays.find((text) => text.includes("Short welcome"));
     expect(shortWelcome).toBeDefined();
-    expect(shortWelcome).not.toContain("Content truncated");
+    expect(shortWelcome).not.toContain("\n<!-- ");
 
     const longPayload = buildConfigPanelPayload({
       locale: "en-US",
@@ -2336,9 +2356,9 @@ describe("channels collection bounds and truncation notices", () => {
       },
     });
     const longDisplays = getTextDisplays(longPayload);
-    const longWelcome = longDisplays.find((text) => text.includes("Content truncated"));
+    const longWelcome = longDisplays.find((text) => text.includes("\n<!-- "));
     expect(longWelcome).toBeDefined();
-    expect(longWelcome).toMatch(/Content truncated \(\d+\/4000 shown\)\./);
+    expect(longWelcome).toMatch(/\n<!-- [^\n]+ -->\n```/);
   });
 
   it("shows truncation notices with counts when Overrides values are cut and omits notices when within budget", () => {
@@ -2366,7 +2386,7 @@ describe("channels collection bounds and truncation notices", () => {
       },
     });
     const shortDisplays = getTextDisplays(shortPayload);
-    expect(shortDisplays.some((text) => text.includes("Content truncated"))).toBe(false);
+    expect(shortDisplays.some((text) => text.includes("\n<!-- "))).toBe(false);
 
     const longPayload = buildConfigPanelPayload({
       locale: "en-US",
@@ -2391,11 +2411,11 @@ describe("channels collection bounds and truncation notices", () => {
       },
     });
     const longDisplays = getTextDisplays(longPayload);
-    const promptDisplay = longDisplays.find((text) => text.includes("Mode:") && text.includes("Content truncated"));
-    const noteDisplay = longDisplays.find((text) => text.includes("Depth:") && text.includes("Content truncated"));
+    const promptDisplay = longDisplays.find((text) => text.includes("Mode:") && text.includes("\n<!-- "));
+    const noteDisplay = longDisplays.find((text) => text.includes("Depth:") && text.includes("\n<!-- "));
     expect(promptDisplay).toBeDefined();
-    expect(promptDisplay).toMatch(/Content truncated \(\d+\/4000 shown\)\./);
+    expect(promptDisplay).toMatch(/\n<!-- [^\n]+ -->\n```/);
     expect(noteDisplay).toBeDefined();
-    expect(noteDisplay).toMatch(/Content truncated \(\d+\/2000 shown\)\./);
+    expect(noteDisplay).toMatch(/\n<!-- [^\n]+ -->\n```/);
   });
 });

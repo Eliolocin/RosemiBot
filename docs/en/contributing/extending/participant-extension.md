@@ -2,6 +2,7 @@
 title: "Adding a Participant Source or Profile Enricher"
 sidebar:
   order: 10
+aiGenerated: true
 ---
 
 How to add participant identities or profile fields from a new integration without changing reply

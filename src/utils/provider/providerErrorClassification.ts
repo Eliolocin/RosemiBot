@@ -114,6 +114,93 @@ export function isCreditAffordabilityError(error: ProviderError): boolean {
   );
 }
 
+// Adapters write `code` in their own vocabulary: HTTP statuses, Google status names, Anthropic error
+// types, Vertex's own config codes, and the OpenAI-compatible composites. Each entry names a
+// failure the server's own key, account, or endpoint causes, or one that clears on its own.
+const NON_INCIDENT_PROVIDER_CODES = new Set([
+  "401",
+  "402",
+  "403",
+  "404",
+  "429_balance",
+  "429_plan_access",
+  "ECONNREFUSED",
+  "PERMISSION_DENIED",
+  "UNAUTHENTICATED",
+  "authentication_error",
+  "billing_error",
+  "permission_error",
+  "not_found_error",
+  // Anthropic's mid-stream SSE error event arrives as a non-retryable api_error whatever its cause.
+  "rate_limit_error",
+  // NovelAI's adapter already records this at error level with the raw tool-call block, which
+  // cannot ride on the ProviderError because the embed would show it to the user as "Details".
+  "tool_call_parse_error",
+  "vertex_auth_error",
+  "vertex_config_error",
+]);
+
+// Google answers a bad key and a billing problem with a plain 400, and some providers report a
+// moderation refusal the same way, so these are only distinguishable by message. Bun's fetch words
+// its connection failures without the errno text the adapters look for ("Unable to connect", "The
+// socket connection was closed unexpectedly"), so those arrive as `unknown` and would file every
+// message to a server's dead custom endpoint as an incident.
+const NON_INCIDENT_MESSAGE_PATTERNS: RegExp[] = [
+  /\bunable\s+to\s+connect\b/i,
+  /\bconnection\s+refused\b/i,
+  /\bsocket\s+connection\s+was\s+closed\s+unexpectedly\b/i,
+  /\b(?:ENOTFOUND|ECONNRESET|EHOSTUNREACH|ENETUNREACH)\b/,
+  /\bapi[\s_-]?key\s+(?:is\s+)?(?:not\s+valid|invalid|expired|revoked)\b/i,
+  /\b(?:invalid|incorrect|expired)\s+api[\s_-]?key\b/i,
+  /\bPERMISSION_DENIED\b/,
+  /\bUNAUTHENTICATED\b/,
+  /\bbilling\b/i,
+  /\bfree\s+tier\b/i,
+  /\bcontent[\s_-]?(?:filter|policy|management)\b/i,
+  /\bmoderation\b/i,
+  /\bflagged\b/i,
+];
+
+/**
+ * Decides whether a provider failure belongs in `error_logs`, which production reads as the
+ * operator's incident feed.
+ *
+ * Transient failures and anything the server can repair itself (its key, balance, model choice,
+ * conversation length, or content) stay at warn level: on a public instance they arrive constantly
+ * and only that server can act on them. What remains is mostly a request TomoriBot built wrong or a
+ * failure no classifier recognized, and those need the raw provider text to diagnose.
+ */
+export function isOperatorActionableProviderError(error: ProviderError): boolean {
+  if (error.retryable || (error.type !== "api_error" && error.type !== "unknown")) {
+    return false;
+  }
+  if (error.code !== undefined && NON_INCIDENT_PROVIDER_CODES.has(String(error.code))) {
+    return false;
+  }
+  if (
+    isProviderModelError(error) ||
+    isContextLengthError(error) ||
+    isCreditAffordabilityError(error) ||
+    isAccountBalanceExhaustedError(error)
+  ) {
+    return false;
+  }
+  return !collectProviderErrorMessages(error).some((message) =>
+    matchesAnyPattern(message, NON_INCIDENT_MESSAGE_PATTERNS),
+  );
+}
+
+/**
+ * Detects a timeout from error text, for classifiers that have no status code to go on.
+ *
+ * Bun's fetch abandons a server that has sent nothing for 300 seconds with "The operation timed
+ * out.", which has no "timeout" substring. A slow local backend processing a long prompt hits that
+ * ceiling, and matching only "timeout" told the user to check their API key.
+ */
+export function isProviderTimeoutMessage(message: string): boolean {
+  return /timeout|timed\s+out/i.test(message);
+}
+
 /**
  * Tests a message against a set of patterns after collapsing whitespace.
  * @param message - Candidate message (nullable).
@@ -136,16 +223,32 @@ export function isProviderModelErrorMessage(message: string | null | undefined):
   return MODEL_ERROR_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
+const DISPLAYABLE_ERROR_CODE_PATTERNS = [/^\d{3}(?:_[a-z]+)*$/, /^[A-Z]+(?:_[A-Z]+)*$/, /^[a-z]+(?:_[a-z]+)*$/];
+
+/**
+ * Error codes can come from a response body, so a hostile endpoint can return its received bearer
+ * value as the code. Only HTTP statuses (including re-coded ones such as `429_balance`) and
+ * single-case enum words are shown, which excludes the digits and mixed case keys carry.
+ */
+export function formatProviderErrorCodeForDisplay(code: string | number | null | undefined): string {
+  const value = code === null || code === undefined ? "" : String(code);
+  return value.length <= 40 && DISPLAYABLE_ERROR_CODE_PATTERNS.some((pattern) => pattern.test(value))
+    ? value
+    : "unknown";
+}
+
+/**
+ * Raw upstream text for restricted operator logs. Endpoints can echo request headers here, so it
+ * never belongs in a channel, an interaction reply, or model context.
+ */
 export function getProviderErrorDetail(error: ProviderError): string | null {
   const messages = collectProviderErrorMessages(error);
   return messages.find((message) => message.trim().length > 0) ?? null;
 }
 
 function collectProviderErrorMessages(error: ProviderError): string[] {
-  // Order matters: prefer the raw provider message and original error payload over the
-  // friendly `userMessage`. Callers append this as a "Details" section beneath a localized
-  // headline, so surfacing the raw provider text (e.g. "Unsupported model X. Supported IDs: ...")
-  // is more actionable than echoing the headline, and keeps the de-dupe check meaningful.
+  // The raw provider message and original payload come first because they name the actual cause
+  // (e.g. "Unsupported model X. Supported IDs: ...") for the operator reading the log.
   const messages: string[] = [];
   appendMessage(messages, error.message);
   appendMessage(messages, extractUnknownErrorMessage(error.originalError));

@@ -1,151 +1,123 @@
 ---
 title: "04: Orchestrator State Machine"
+aiGenerated: true
 ---
 
-Drives the provider generator as a state machine, routing each `ProcessedChunk` and resolving stop signals, timeouts, and stream completion into a `StreamResult`.
+The orchestrator state machine drives the provider generator loop, routes normalized chunks to downstream
+stages, resolves stop and interrupt signals, and compiles the terminal `StreamResult`.
 
-- **File**: `src/utils/discord/stream/stateMachine.ts:119-485`
+## Flow and ownership
 
-## Mission
+`StreamOrchestrator.streamToDiscord()` is the universal coordinator for Discord streaming. It wraps
+the private `executeStream()` method, which instantiates fresh `StreamMetrics`, `StreamState`, and
+delivery configurations before consuming the generator yielded by
+[stage 02](/architecture/pipelines/provider/02-raw-chunk-generation/).
 
-`StreamOrchestrator.executeStream()` is the central coordinator of the Discord-side pipeline.
-It owns the `for await` loop over the stage 02 generator and makes the per-chunk decisions that
-determine the shape of the final `StreamResult`. Three concerns are woven through the loop:
+The state machine runs through a `for await` loop over the raw chunk generator:
 
-1. **Stop / interrupt resolution**: the stop registry is checked both before processing each
-   chunk and again immediately after it is written out. A user stop (`/kill`) flushes the pending
-   buffer and returns `{ status: "stopped_by_user" }`. A follow-up interrupt discards the buffer
-   and returns `{ status: "follow_up_interrupt" }` so the chat pipeline can restart for the new
-   message. The post-write check exists because delivery-side stops (the send and flush limits in
-   stage 07) are raised *during* the write; resolving them there cancels the upstream response one
-   chunk sooner than waiting for the next loop iteration would.
-
-   A stop the delivery layer raised itself skips the flush instead of taking it. The stop request is
-   cleared before the flush runs, so a flush would reach the send path with nothing left to consult
-   and post the buffered text as a real Discord call: for a destination the bot cannot post into
-   that is a second rejected send, and the stop it raises on the way out is registered after the
-   clear, so it outlives the stream and silently aborts the next turn. The skip list covers the send
-   and flush limits for the same reason they are raised at all.
-
-2. **Chunk routing**: after stop checks, the `ProcessedChunk.type` determines the path:
-   - `"text"` → stage 05 (`StreamBufferFlusher.processTextChunk`)
-   - `"function_call"` → flush the pending buffer → return `{ status: "function_call", data: functionCall }`
-   - `"error"` → flush the pending buffer → display an error embed if not suppressed →
-     return `{ status: "error", data: error }`
-   - `"done"` → record `terminalDoneMetadata` (finish reason); continue the loop (generator will
-     exhaust on the next `await`)
-   - **Token usage**: on *any* chunk (not just `"done"`), if `metadata.usage` is present it is
-     normalized (`normalizeProviderUsage`) into `state.usage`, latest-wins. This captures providers
-     that emit usage on a trailing empty-choices chunk (OpenAI `include_usage`) or that clobber the
-     terminal `done` metadata (Anthropic `message_stop`). `state.usage` is drained into
-     `StreamResult.usage` on the `function_call` and `completed` results.
-
-3. **No local timeout**: every chunk calls `context.onStreamProgress`, and the stage 01 watchdog in
-   the tool loop owns stall detection. The orchestrator used to keep its own inactivity flag, but
-   `for await` blocks while the provider is silent, so the flag was only ever read after a chunk
-   arrived: it could never catch a dead stream, and it discarded streams that had recovered.
-
-After the generator exhausts normally, `completeStreamAfterProviderEnd()` runs the final flush
-path (stage 05 `flushFinalBuffer`) and assembles the completed `StreamResult`.
-
-The outer `streamToDiscord()` method (the public entry point) calls `executeStream()` and then
-does one additional check: if the result is `"completed"` but `wasEmptyStreamResponse()` is true
-(no text and no function call were emitted), it returns `{ status: "empty_response" }` instead,
-so the tool-loop pipeline's retry logic can handle it.
-
-## Input
-
-- `provider: StreamProvider`: the stage 02/03 adapter (generator + `processChunk`).
-- `config: StreamConfig`: timing and buffer size configuration.
-- `context: StreamContext`: full Discord and application state (channel, tomoriState, etc.).
-
-`StreamMetrics` and `StreamState` objects are created fresh at the start of `executeStream()`.
-
-## Output
-
-`StreamResult`: defined at `src/types/provider/interfaces.ts:88`:
-
-```ts
-interface StreamResult {
-  status:
-    | "completed"        // generator exhausted; text was sent
-    | "function_call"    // provider requested a tool; tool-loop handles it
-    | "error"            // provider or Discord error
-    | "timeout"          // stage 01 watchdog fired
-    | "stopped_by_user"  // user /kill command
-    | "empty_response"   // completed but no text or function call
-    | "follow_up_interrupt"; // new user message arrived during generation
-  data?: unknown | Error;
-  accumulatedText?: string;    // all text sent to Discord (for STM write)
-  detailsContent?: string;     // <details> block body (for STM write)
-  stopReason?: StreamStopReason;
-  thoughtLog?: ThoughtLogPayload;
-  naiContinuationPrefill?: string; // NAI-specific trailing fragment for retry
-  spritesShown?: SpriteShownEntry[]; // { name, isIdentity } per delivered sprite (sprite_shown + sprite_emotion attribution)
-  usage?: TokenUsage;              // real provider token usage, normalized (when surfaced)
-}
+```
+Stream generator
+       |
+       v
+Check stop registry (pre-chunk)
+       |
+       +---> Stop / Interrupt detected? ---> Return stop result
+       |
+Reset caller watchdog (onStreamProgress)
+       |
+Normalize chunk (stage 03 processChunk)
+       |
+Route chunk by type:
+  - "text"          -> stage 05 processTextChunk
+  - "function_call" -> flush pending buffer -> return { status: "function_call" }
+  - "error"         -> flush pending buffer -> show error embed -> return { status: "error" }
+  - "done"          -> record terminal metadata; continue loop
+       |
+Check stop registry (post-write)
+       |
+Loop exhausted?
+       |
+       v
+completeStreamAfterProviderEnd()
+       |  (flushFinalBuffer, clear internal stops, assemble StreamResult)
+       v
+Check wasEmptyStreamResponse()
+       |
+       +---> Empty? ---> return { status: "empty_response" }
+       +---> Output? -> return { status: "completed" }
 ```
 
-`usage` carries the provider's real `{ inputTokens, outputTokens }` for this segment when the
-provider reports it (OpenRouter, OpenAI-compatible, Anthropic, Gemini). The post-turn stat
-recorder (`recordUsageStats`) sums it across the turn's segments; each tool-loop request is
-billed separately, so the sum is billing-accurate, and falls back to the character estimate
-(`@/utils/text/tokenEstimate`) only when no segment surfaced usage.
+## Stop and interrupt resolution
 
-## Side effects
+The orchestrator inspects the stop registry (`src/utils/discord/stream/stopRequests.ts`) before
+processing each chunk and again immediately after delivery writes. The post-write check resolves
+delivery caps (such as message limits) without awaiting another token from the provider.
 
-- **Stop-request mutation**: `clearStopRequest(channelId)` is called on exit paths that consumed
-  a stop. The stop registry is a shared module-level map in `stopRequests.ts`.
-- **Error embed**: when `chunk.type === "error"` and `!context.suppressUserErrors`, calls
-  `StreamErrorUi.handleProviderError()` which sends a Discord embed to the channel. The embed is
-  composed centrally: a provider's localized headline (`createErrorDescription`) followed by the
-  raw provider detail for every error type, extracted via `getProviderErrorDetail` and
-  truncated to Discord's embed description limit. This means providers that map known codes to
-  hardcoded locale strings (e.g. OpenRouter) no longer hide the actual provider message; the detail
-  is de-duped so a provider that already appended it is not echoed twice. Recognized `model_error`
-  failures additionally get a dedicated "Model Configuration Error" title. This is the sole
-  embed send path for `ProviderError` types: the downstream response sink (`emitStreamResult` in
-  `responseEmitter.ts`) deliberately skips the generic fallback embed when `result.data` is a
-  `ProviderError`, to avoid double-sending.
-- **Progress callback**: calls `context.onStreamProgress?.()` on each chunk to reset the
-  rolling timeout in the stage 01 caller (`streamOnce` in the tool-loop pipeline).
-- **`currentTurnModelParts` accumulation**: stage 05 (`processTextChunk`) pushes text parts into
-  `context.currentTurnModelParts` as a side effect; the orchestrator does not do this directly.
+Stop handling distinguishes these cases:
 
-## Invariants
+- **Follow-up interrupts:** When a user sends a new message while generation is in flight, the
+  orchestrator clears the stop request, discards the buffer, and exits immediately with
+  `{ status: "follow_up_interrupt" }`. This lets the chat pipeline start the next turn without delay.
+- **Graceful user stops:** Ordinary streaming flushes pending buffered text and exits with
+  `{ status: "stopped_by_user" }`. Held response text is discarded. `/kill` additionally aborts the transport and
+  rejects the [stream race](/architecture/pipelines/tool-loop/01-stream-once/), which can bypass this flush.
+- **Internal delivery stops:** Stops triggered by delivery caps (`send_message_limit`, `flush_limit`,
+  `speaker_guard`, `channel_deleted`, `missing_access`, `pending_response_limit`) skip the pending
+  buffer flush. Flushing into
+  an inaccessible or rate-limited destination would trigger redundant rejected Discord requests and
+  risk re-registering stops that leak into subsequent turns. A speaker-guard stop can still flush
+  already-accepted aggregated text; it discards the unsafe remainder.
+- **Silent speaker-guard stops:** When a speaker guard stops generation before any visible text is
+  sent, the orchestrator returns `{ status: "empty_response" }` so retry logic can reschedule the turn.
 
-After this stage:
+## Chunk routing and token usage
 
-- Exactly one `StreamResult` is returned; the method never throws to its caller
-  (`streamToDiscord` catches all errors and converts them to `{ status: "error" }`).
-- If `status === "function_call"`, `result.data` is a `FunctionCall` and
-  `result.accumulatedText` contains all text sent to Discord before the tool call.
-- If `status === "completed"`, all buffered text has been flushed (including final `<think>`
-  and `<details>` block captures).
-- `clearStopRequest` has been called for any stop that was consumed during this stream.
+The orchestrator routes normalized chunks based on `ProcessedChunk.type`:
 
-## Extension points
+- **Text:** Sent to [stage 05](/architecture/pipelines/provider/05-buffer-management/)
+  (`StreamBufferFlusher.processTextChunk()`) for semantic buffering and boundary detection.
+- **Tool calls:** Triggers a pending buffer flush before returning `{ status: "function_call" }`.
+  The tool loop executes the tool and starts a subsequent generation turn with the tool result.
+- **Errors:** Flushes pending buffer text and displays a Discord error embed via `StreamErrorUi`
+  (unless suppressed by retries or user impersonation), returning `{ status: "error" }`.
+- **Done metadata:** Captures terminal completion data such as `finishReason`.
+- **Token usage:** Captured from `metadata.usage` on any chunk (latest non-null wins). This handles
+  providers that report usage on trailing empty chunks or override terminal metadata. Terminal results
+  retain reported usage, including errors, stops and empty replies.
 
-| Surface | Plugin-relevance |
-|---|---|
-| `StreamOrchestrator.streamToDiscord()` public method | The universal Discord streaming entry point: `src/types/stream/interfaces.ts:313`. All providers delegate here. Internal: the orchestrator is not designed to be replaced; new providers plug in via the `StreamProvider` adapter contract. |
-| Stop registry (`requestStop`, `hasStopRequest`, `clearStopRequest`) | `src/utils/discord/stream/stopRequests.ts`. The stop registry is a shared per-channel state map. A plugin that wants to interrupt streaming (e.g., a moderation system) would call `StreamOrchestrator.requestStop(channelId, requesterId)`. → plugin plan candidate |
-| `context.onStreamProgress` callback | Set by the tool-loop pipeline (`streamOnce`) before calling `streamToDiscord`. The orchestrator calls it on each chunk. Internal: the callback is an operational heartbeat, not a plugin seam. |
-| `StreamResult` status union | Consumed by the tool-loop pipeline's outer switch. Adding a new status requires changes in both the orchestrator and the tool-loop consumer. Internal until the tool-loop plugin contract is defined. |
-| `context.suppressUserErrors` | When `true`, error and timeout embeds are not sent to Discord (used during retries in `runGenerationTurn`). Internal: set by the chat pipeline's key-rotation loop. |
+## Stream completion
 
-## Configuration
+When the generator finishes normally, `completeStreamAfterProviderEnd()` invokes `flushFinalBuffer()`,
+clears internal stop requests, and constructs the completed `StreamResult`.
 
-| Source | Key / Env var | Default | Purpose |
-|---|---|---|---|
-| `StreamConfig` / env var | `INACTIVITY_TIMEOUT_MS` | `120 000` ms | Time with no chunk before stream is considered stalled |
-| `TomoriState.config` | `send_message_limit` | `0` (no limit) | Maximum Discord messages per stream; enforced in stage 07 |
+The outer `streamToDiscord()` wrapper inspects the completed result. If `wasEmptyStreamResponse()`
+detects that no visible text and no tool call were delivered, it returns `{ status: "empty_response" }`
+instead of `"completed"`, allowing upstream fallback and retry logic to trigger.
 
-## Related docs
+## Held response presentation
 
-- Stop signal registry: `src/utils/discord/stream/stopRequests.ts`
-- Error embed rendering: `src/utils/discord/stream/errorUi.ts`
-- Empty-response detection: `wasEmptyStreamResponse` in `src/utils/discord/stream/thoughtLog.ts`
-- Stage 05 (text path from this stage): → [`05-buffer-management.md`](05-buffer-management.md)
-- Tool-loop consumer of `StreamResult`: → [tool-loop pipeline: Stage 01](../tool-loop/01-stream-once)
-- `StreamResult` type: `src/types/provider/interfaces.ts:88`
+Response Drafting sets `holdResponseText` to collect normalized prose and its presentation segments
+without sending messages or recording delivery receipts. Unlike `suppressTextOutput`, collection
+still runs ordinary formatting, reasoning removal, emoji processing and speaker guards.
+
+Completed and function-call results expose `pendingResponse.text` and a single-use `deliver(signal)`
+closure. Approval replays the saved segments through ordinary delivery with webhook identity and
+Discord limits intact. Only accepted sends create accumulated text and receipts. Cancellation never
+flushes held prose. A speaker guard can complete a valid collected prefix for review; an empty prefix
+retains ordinary empty-response handling.
+
+Collection is bounded before text is retained, because a reviewer limit checked afterwards cannot
+stop a runaway provider. One turn holds at most `MAX_PENDING_RESPONSE_BYTES` (64 KiB) and `MAX_PENDING_RESPONSE_SEGMENTS` across all tool-loop passes; the
+tool loop passes the remaining room as `pendingResponseLimit`. Each pass also stops at the length one
+replay could send (`send_message_limit`, or the flush cap times the message length), and a buffer that
+can never flush, such as an unterminated table or fence, is cut once it exceeds the byte room. The cut
+lands on a code-point boundary, records `pendingResponse.truncation`, and raises the internal
+`pending_response_limit` stop, which completes with the kept prefix like a speaker guard. A truncated
+result never becomes `empty_response`, because rescheduling would regenerate the same oversized output.
+
+## Source pointers
+
+- `src/utils/discord/stream/stateMachine.ts`: `StreamOrchestrator.executeStream` and loop routing.
+- `src/types/provider/interfaces.ts`: `StreamResult` definition.
+- `src/utils/discord/stream/stopRequests.ts`: channel stop registry.
+- `src/utils/discord/stream/thoughtLog.ts`: `wasEmptyStreamResponse` evaluation.

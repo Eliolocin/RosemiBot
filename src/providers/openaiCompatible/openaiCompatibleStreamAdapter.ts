@@ -9,7 +9,6 @@ import {
   normalizeOpenAICompatibleProviderError,
 } from "@/providers/openaiCompatible/openaiCompatibleErrorFormatter";
 import { streamOpenAICompatibleSseChunks } from "@/providers/openaiCompatible/openaiCompatibleSse";
-import { logRawProviderError } from "@/utils/provider/providerErrorLogging";
 import type {
   OpenAICompatibleAccumulatedToolCall,
   OpenAICompatibleStreamAdapterOptions,
@@ -126,7 +125,7 @@ export class OpenAICompatibleStreamAdapter extends BaseStreamAdapter {
     const botName = context.prefixStrippingName ?? context.personaUsername ?? context.tomoriState.persona_nickname;
     this.speakerGuardAllowedSourceNames = collectRenderModifierSourceNames(
       botName,
-      collectPersonaNameAliases(context.tomoriState, botName),
+      collectPersonaNameAliases(context.tomoriState, botName, context.impersonatedSpeakerLabel),
     );
 
     // Determine whether the resolved endpoint accepts system-role messages.
@@ -171,7 +170,7 @@ export class OpenAICompatibleStreamAdapter extends BaseStreamAdapter {
       log.info(`${this.options.adapterName}: Tools:\n${JSON.stringify(config.tools, null, 2)}`);
     }
 
-    logSanitizedOpenAICompatibleRequest(this.options.adapterName, messages);
+    if (!context.holdResponseText) logSanitizedOpenAICompatibleRequest(this.options.adapterName, messages);
 
     try {
       const disabledParams = config.disabledParams ?? [];
@@ -774,7 +773,6 @@ export class OpenAICompatibleStreamAdapter extends BaseStreamAdapter {
   }
 
   handleProviderError(error: unknown): ProviderError {
-    logRawProviderError(this.options.adapterName, error);
     return normalizeOpenAICompatibleProviderError(error, {
       errorMessagePrefix: this.options.errorMessagePrefix,
     });
@@ -785,7 +783,6 @@ export class OpenAICompatibleStreamAdapter extends BaseStreamAdapter {
       localeNamespace: this.options.localeNamespace,
       fallbackMessage: localizer(locale, `${this.options.localeNamespace}.unknown_default_message`),
       connectionRefusedMessage: localizer(locale, `${this.options.localeNamespace}.connection_refused`),
-      appendDetailsForCodes: this.options.appendErrorDetailsForCodes,
     });
   }
 

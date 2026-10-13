@@ -13,7 +13,6 @@ export class NvidiaStreamAdapter extends OpenAICompatibleStreamAdapter {
       adapterName: "NvidiaStreamAdapter",
       localeNamespace: ["genai", "nvidia"].join("."),
       errorMessagePrefix: "NVIDIA API error",
-      appendErrorDetailsForCodes: ["500"],
       // NIM answers "I do not support this input" with an opaque mid-SSE 500 rather than a
       // parameter rejection, so without this the ladder queues no retry at all. Gated on a
       // generic message, so a descriptive NVIDIA outage still fails fast into key/model fallback.

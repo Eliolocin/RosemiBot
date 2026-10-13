@@ -28,8 +28,8 @@ model as the main prompt/context, in this order:
 | Server info | | *(none, from Discord)* | The server name, description, and the channel she's in, pulled from Discord itself. |
 | [Persona-user blocks](/features/capabilities/tools-and-extensions/#built-in-tools) | *(Optional)* | `/moderation` to review/clear; gated by `/config` > Permissions (User Blocking) | Active mute/block restrictions this persona holds against specific users. |
 | [Server memories](/features/knowledge/memory/#personal-vs-server-memories) | | `/memories` | The long-term facts saved for this server. |
-| [Server emojis](/features/chatting-personality/behavior-tweaking/#capabilities-what-shes-allowed-to-do) | *(Optional)* | `/config` > Permissions (Emoji Usage) (toggle only), initialize with `/expressions initialize` | The custom emojis present in the server.|
-| [Server stickers](/features/chatting-personality/behavior-tweaking/#capabilities-what-shes-allowed-to-do) | *(Optional)* | `/config` > Permissions (Sticker Usage) (toggle only), initialize with `/expressions initialize` | The custom stickers present in the server. |
+| [Server emojis](/features/chatting-personality/behavior-tweaking/#capabilities-what-shes-allowed-to-do) | *(Optional)* | `/config` > Plugins > Context Additions (Emojis in Replies) (toggle only), initialize with `/expressions initialize` | The custom emojis present in the server.|
+| [Server stickers](/features/chatting-personality/behavior-tweaking/#expressions) | *(Optional)* | `/config` > Plugins > Available Tools (Sticker Usage), classify native assets with `/expressions initialize`, manage with `/expressions manage` | Sendable native stickers and every custom expression eligible for the responding persona, with names, descriptions, and emotions. Media sources and persona access rules stay outside the prompt. |
 | [Persona sprites](/features/chatting-personality/multiple-personas/#sprites-emotion-avatars) | *(Optional)* | `/config` > Persona > Sprites | Named expression sprites configured for the persona, if it has any. |
 | [Conversation Participants](/features/knowledge/memory/#personal-vs-server-memories) | *(Optional)* | `/personal memories` (gated by `/config` > Permissions (Personalization)) | The people in the conversation, their nicknames and mention handles, and the personal memories saved about each of them. Loaded when the person owns a message in context, or if their name/alias get mentioned. Also carries the current channel and local time as a footer, using `/config` > Engine > General. |
 | [Short-term memory](/features/knowledge/memory/#short-term-memory-stm) | | `/config` > Persona > Memories; `/memories` to clear entries; gated by `/config` > Permissions (Short-Term Memory) | Contains summaries and recent messages of different channels |
@@ -45,6 +45,11 @@ Recent messages are the largest and most fragile part, it is a window that slide
 `/tool prompt snapshot` dumps the exact bundle for a persona to a file. It is the ground
 truth for which memories are currently active, whether a document matched, and how much of
 the conversation actually fit.
+
+`/context` draws the same bundle as a colored grid of the model's context window, one color
+per group of blocks above, so you can see at a glance what fills it and how much room is left. A
+circle marks a group smaller than one square. It also shows the estimated input cost per reply and how many input tokens the provider
+reported for the last real reply.
 
 `/tool estimate cost` breaks the same bundle down by size, which is useful for working out
 what is eating your context before you raise any limits.

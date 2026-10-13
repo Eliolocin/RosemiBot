@@ -9,11 +9,13 @@ import type {
 import { PERSONAL_PROVIDERS_ROUTE_NAMESPACE, PROVIDERS_ROUTE_NAMESPACE } from "@/utils/discord/providersPanelCatalog";
 import {
   buildProvidersPanelPayload,
+  buildAddEndpointModal,
+  buildProviderModelModal,
   PROVIDERS_ENTRIES_PER_SELECTOR_PAGE,
   PROVIDERS_MODELS_PER_SELECTOR_PAGE,
 } from "@/utils/discord/ui/providersPanel";
-import { initializeLocalizer } from "@/utils/text/localizer";
-import { RUNTIME_LOCALES } from "../../helpers/localeCases";
+import { initializeLocalizer, hasLocaleKey } from "@/utils/text/localizer";
+import { RUNTIME_LOCALES, expectForEveryLocale, localizedCopy } from "../../helpers/localeCases";
 import { BACKTICK_RUNS, expectSafePanelPayload } from "../../helpers/panelLimits";
 
 beforeAll(async () => initializeLocalizer());
@@ -50,6 +52,7 @@ function model(id: number, codeName = `provider-model-${id}`, custom = true): Pr
       supportsStructOutput: false,
       strictRoleAlternation: false,
       supportsPrefixCompletion: true,
+      supportsAssistantPrefill: false,
       verbatimToolCalling: false,
     },
   };
@@ -295,5 +298,117 @@ describe("Providers panel Components V2 limits", () => {
         `endpoint/brave/${page.kind}/${page.entryId}`,
       );
     }
+  });
+});
+
+describe("Decision registration controls", () => {
+  it("keeps every registered model reachable with native OpenRouter capabilities", () => {
+    const models = Array.from({ length: 55 }, (_, index) => ({
+      ...model(index + 1),
+      isWorkspaceActive: false,
+      isWorkspaceFallback: false,
+      isProviderFallback: false,
+    }));
+    const entry: ProviderPanelEntry = {
+      ...providerEntry("provider:openrouter"),
+      kind: "provider",
+      provider: "openrouter",
+      rotationKeyCount: 1,
+      capabilities: [
+        section("text", []),
+        section("image", []),
+        section("embedding", []),
+        section("video", []),
+        section("decision", models),
+      ],
+    };
+    const seen: string[] = [];
+    for (let index = 0; index < Math.ceil(models.length / PROVIDERS_MODELS_PER_SELECTOR_PAGE); index++) {
+      const payload = buildProvidersPanelPayload({
+        locale: "en-US",
+        entries: [entry],
+        initialEntryId: entry.id,
+        readStatus: "fresh",
+        page: { kind: "entry", entryId: entry.id, modelRangeIndex: index },
+        enabledActions: ALL_ACTIONS,
+        routeNamespace: PROVIDERS_ROUTE_NAMESPACE,
+      });
+      expectSafePanelPayload(payload, `decision-page-${index}`);
+      seen.push(...entryValues(payload).filter((value) => value.startsWith("edit:decision:")));
+    }
+    expect(seen.sort()).toEqual(models.map((model) => `edit:decision:${model.id}`).sort());
+  });
+
+  it("localizes eligible add actions and keeps modal radio options within ten", () => {
+    expectForEveryLocale((locale) => {
+      const modal = buildAddEndpointModal(locale, "fixture");
+      const compatibility = modal.components.find(
+        (component) => component.type === 18 && component.component?.type === 21,
+      )?.component;
+      expect(compatibility?.options?.length).toBeLessThanOrEqual(10);
+      for (const style of ["system-one", "openai-decisions"]) {
+        expect(compatibility?.options).toContainEqual(
+          expect.objectContaining({
+            value: style,
+            label: localizedCopy(
+              hasLocaleKey(locale, `commands.providers.api_styles.${style}`) ? locale : "en-US",
+              `commands.providers.api_styles.${style}`,
+            ),
+          }),
+        );
+      }
+      const endpoint = endpointEntry(1);
+      const chat = buildProvidersPanelPayload({
+        locale,
+        entries: [endpoint],
+        initialEntryId: endpoint.id,
+        readStatus: "fresh",
+        page: { kind: "entry", entryId: endpoint.id },
+        enabledActions: ALL_ACTIONS,
+      });
+      expect(JSON.stringify(chat)).not.toContain('"value":"add:decision"');
+      const decision: ProviderPanelEntry = {
+        ...endpoint,
+        kind: "endpoint",
+        connectionIds: [1],
+        isPreset: false,
+        connectionDetails: [
+          {
+            connectionId: 1,
+            endpointUrl: "https://example.invalid/v1",
+            apiStyle: "system-one",
+            capability: "decision",
+            vramHandoff: null,
+          },
+        ],
+        capabilities: [{ ...section("decision", []), apiStyle: "system-one" }],
+      };
+      const payload = buildProvidersPanelPayload({
+        locale,
+        entries: [decision],
+        initialEntryId: decision.id,
+        readStatus: "fresh",
+        page: { kind: "entry", entryId: decision.id },
+        enabledActions: ALL_ACTIONS,
+      });
+      expect(JSON.stringify(payload)).toContain('"value":"add:decision"');
+      expect(JSON.stringify(payload)).toContain(
+        localizedCopy(
+          hasLocaleKey(locale, "commands.providers.add_decision_model") ? locale : "en-US",
+          "commands.providers.add_decision_model",
+        ),
+      );
+      expectSafePanelPayload(payload, locale);
+      const edit = buildProviderModelModal(locale, "endpoint", "1", "decision", 2, "fixture", {
+        decision: { inputTokenLimit: 8192 },
+      });
+      expect(edit.components.length).toBeLessThanOrEqual(5);
+      expect(JSON.stringify(edit)).toContain(
+        localizedCopy(
+          hasLocaleKey(locale, "commands.providers.decision_action_delete") ? locale : "en-US",
+          "commands.providers.decision_action_delete",
+        ),
+      );
+    });
   });
 });

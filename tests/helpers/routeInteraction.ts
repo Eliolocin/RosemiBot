@@ -12,6 +12,7 @@
  */
 
 import type { FakeCall } from "./fakeInteraction";
+import { Collection, type Attachment } from "discord.js";
 
 /** Which component kind the route should think it received. */
 type RouteInteractionKind = "button" | "string-select" | "channel-select" | "modal";
@@ -54,6 +55,8 @@ export interface RouteInteraction {
   client: { user: unknown };
   memberPermissions: { has: (flag: unknown) => boolean };
   values: string[];
+  attachmentSizeLimit: number;
+  message: { attachments: Collection<string, Pick<Attachment, "id" | "name" | "size">> };
   fields: RouteModalFields;
   deferred: boolean;
   replied: boolean;
@@ -93,6 +96,9 @@ export interface RouteInteractionOptions {
   isManager?: boolean;
   /** Select values the route reads off `interaction.values`. */
   values?: string[];
+  attachmentSizeLimit?: number;
+  messageAttachments?: ReadonlyArray<Pick<Attachment, "id" | "name" | "size">>;
+  onEditReply?: (payload: unknown) => Promise<unknown>;
   /** Raw modal field values keyed by field ID. */
   fields?: Record<string, string>;
   /** Overrides `guild.channels.fetch`, for routes that resolve channels by ID. */
@@ -118,6 +124,9 @@ const OPTION_KEYS = new Set<string>([
   "guildId",
   "isManager",
   "values",
+  "attachmentSizeLimit",
+  "messageAttachments",
+  "onEditReply",
   "fields",
   "fetch",
   "channelCache",
@@ -154,6 +163,9 @@ export function createRouteInteraction(options: RouteInteractionOptions = {}): R
     guildId = "guild-1",
     isManager = true,
     values = [],
+    attachmentSizeLimit = 10 * 1024 * 1024,
+    messageAttachments = [],
+    onEditReply,
     fields = {},
     fetch,
     channelCache,
@@ -221,6 +233,8 @@ export function createRouteInteraction(options: RouteInteractionOptions = {}): R
       has: (flag: unknown) => isManager && (flag === MANAGE_GUILD_FLAG || flag === MANAGE_GUILD_NAME),
     },
     values,
+    attachmentSizeLimit,
+    message: { attachments: new Collection(messageAttachments.map((attachment) => [attachment.id, attachment])) },
     fields: {
       fields: modalFields,
       getTextInputValue: (fieldId: string) => fields[fieldId] ?? "",
@@ -258,6 +272,7 @@ export function createRouteInteraction(options: RouteInteractionOptions = {}): R
     editReply: async (payload?: unknown) => {
       calls.push({ method: "editReply", args: [payload], payload });
       edits.push(payload);
+      if (onEditReply) return onEditReply(payload);
       return payload;
     },
     followUp: async (payload?: unknown) => {

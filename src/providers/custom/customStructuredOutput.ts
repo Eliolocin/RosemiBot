@@ -1,3 +1,4 @@
+import { parsePrivateStructuredOutput, privateStructuredFailure } from "@/providers/utils/structuredReview";
 import type { ZodType } from "zod";
 import {
   buildCustomMessages,
@@ -9,6 +10,7 @@ import {
 } from "@/providers/custom/customOpenAICompatibleUtils";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import { log } from "@/utils/misc/logger";
+import { buildCustomThinkingRequest } from "@/utils/provider/thinkingControl";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -183,6 +185,8 @@ async function executeStructuredJsonRequest<T>(params: {
   | {
       success: false;
       error: string;
+      failure?: "transport" | "malformed" | "refusal" | "cancelled";
+      httpStatus?: number;
       status?: number;
       statusText?: string;
       errorBody?: string;
@@ -201,6 +205,9 @@ async function executeStructuredJsonRequest<T>(params: {
     max_tokens: params.request.maxOutputTokens ?? 8192,
     stream: false,
   };
+  if (params.request.thinkingLevel !== undefined) {
+    Object.assign(body, buildCustomThinkingRequest(params.request.endpointUrl, params.request.thinkingLevel));
+  }
 
   if (params.responseFormat) {
     body.response_format = params.responseFormat;
@@ -211,10 +218,14 @@ async function executeStructuredJsonRequest<T>(params: {
     apiKey: params.request.apiKey,
     body,
     logLabel: params.logLabel,
-    messagesForLog: messages as Array<Record<string, unknown>>,
+    messagesForLog: params.request.privateOutput ? undefined : (messages as Array<Record<string, unknown>>),
+    abortSignal: params.request.abortSignal,
+    privateOutput: params.request.privateOutput,
   });
 
   if (!response.success) {
+    if (params.request.privateOutput)
+      return privateStructuredFailure(params.request, "transport", response.error.status);
     log.error(`${params.logLabel} request failed`, new Error(response.error.errorBody), {
       errorType: "CustomStructuredJSONHttpError",
       metadata: {
@@ -236,6 +247,14 @@ async function executeStructuredJsonRequest<T>(params: {
   }
 
   const responseText = extractCustomResponseText(response.data.choices?.[0]?.message?.content);
+  if (params.request.privateOutput)
+    return parsePrivateStructuredOutput(
+      params.request,
+      responseText,
+      params.zodSchema,
+      response.data.usage,
+      Boolean(response.data.choices?.[0]?.message?.refusal),
+    );
   if (!responseText) {
     return {
       success: false,
@@ -321,6 +340,7 @@ export async function callCustomStructuredJSON<T>(
     logLabel: "Custom structured JSON",
   });
 
+  if (request.privateOutput) return jsonSchemaResult;
   if (jsonSchemaResult.success) {
     return {
       success: true,

@@ -1,5 +1,6 @@
 import type { Message } from "discord.js";
 import type { MessageIdMap } from "@/utils/text/messageIdMap";
+import type { ChatIncoming } from "@/utils/chat/types";
 import { stripBridgePrefix } from "@/utils/bridges";
 
 const QUEUED_REPLY_DIRECTIVE_MAX_CONTENT_LENGTH = 280;
@@ -76,6 +77,24 @@ function buildQueuedReplyAttachmentSummary(message: Message): string | null {
   }
 
   return parts.length > 0 ? parts.join(", ") : null;
+}
+
+/**
+ * Whether a queued turn is answering its trigger message, which earns it the reply directive
+ * and a native Discord reply to that message.
+ *
+ * Scene turns all share one trigger message, so pointing each of them at it would make every
+ * persona answer the same unrelated line. System triggers (welcome, random trigger, reminder,
+ * cross-channel task, boomerang) anchor on whatever the channel's latest message happened to be,
+ * so answering it would make the model address that author: a queued welcome once pinged the
+ * newcomer while replying to someone else's message. The stop response is also system-sourced
+ * but genuinely answers the stop message.
+ */
+export function answersQueuedTriggerMessage(
+  incoming: Pick<ChatIncoming, "isFromQueue" | "isStopResponse" | "sceneTurn" | "textQuotaSource">,
+): boolean {
+  if (!incoming.isFromQueue || incoming.sceneTurn) return false;
+  return incoming.isStopResponse === true || incoming.textQuotaSource !== "system";
 }
 
 /**

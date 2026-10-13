@@ -21,7 +21,6 @@ import * as realRepositories from "@/utils/db/repositories";
 // loaded later. Spreading the real namespace keeps each mock full-surface.
 import * as realChannelLlmCache from "@/utils/cache/channelLlmCache";
 import * as realAdmissionGuards from "@/utils/chat/admissionGuards";
-import * as realGeminiCapabilityCache from "@/utils/cache/geminiCapabilityCache";
 import * as realNovelaiCapabilityCache from "@/utils/cache/novelaiCapabilityCache";
 import * as realNovelaiSubscriptionCache from "@/utils/cache/novelaiSubscriptionCache";
 import * as realOpenrouterCapabilityCache from "@/utils/cache/openrouterCapabilityCache";
@@ -45,6 +44,7 @@ const toolLoopCalls: Array<{
   model: string;
   suppressUserErrors: boolean | undefined;
   contextItems: ToolLoopParams["context"]["contextItems"];
+  numCtx: number | null | undefined;
 }> = [];
 const providerConfigCalls: Array<{ model: string; apiKey: string }> = [];
 const fallbackNoticeCalls: Array<{
@@ -89,7 +89,6 @@ type TestStopContext = {
 const scopedMock = createScopedModuleMocker(mock, {
   "@/utils/cache/channelLlmCache": realChannelLlmCache,
   "@/utils/chat/admissionGuards": realAdmissionGuards,
-  "@/utils/cache/geminiCapabilityCache": realGeminiCapabilityCache,
   "@/utils/cache/novelaiCapabilityCache": realNovelaiCapabilityCache,
   "@/utils/cache/novelaiSubscriptionCache": realNovelaiSubscriptionCache,
   "@/utils/cache/openrouterCapabilityCache": realOpenrouterCapabilityCache,
@@ -115,11 +114,6 @@ stubLogMembers({
 scopedMock.module("@/utils/cache/channelLlmCache", () => ({
   ...realChannelLlmCache,
   getCachedChannelLlm: async () => null,
-}));
-
-scopedMock.module("@/utils/cache/geminiCapabilityCache", () => ({
-  ...realGeminiCapabilityCache,
-  getGeminiTokenLimits: () => undefined,
 }));
 
 scopedMock.module("@/utils/cache/novelaiCapabilityCache", () => ({
@@ -368,6 +362,7 @@ async function runToolLoopMock(params: ToolLoopParams): Promise<GenerationTurnRe
       model: params.tomoriState.llm.llm_codename,
       suppressUserErrors: params.context.streamingContext.suppressUserErrors,
       contextItems: params.context.contextItems,
+      numCtx: params.tomoriState.config.custom_num_ctx,
     });
     // Simulate this attempt committing messages to the channel before it resolves, so the
     // supersede-cleanup path in runGenerationTurn has refs to act on.
@@ -773,7 +768,12 @@ describe("runGenerationTurn fallback behavior", () => {
     queuedResults.push(
       {
         status: "error",
-        streamResults: [{ status: "error", data: { type: "rate_limit", code: "429", message: "rate limited" } }],
+        streamResults: [
+          {
+            status: "error",
+            data: { type: "rate_limit", code: "429", message: "rate limited for key sk-live-CANARY0001 <@&42>" },
+          },
+        ],
         personaResponses: [],
       },
       fallbackSuccess,
@@ -790,15 +790,50 @@ describe("runGenerationTurn fallback behavior", () => {
     expect(emittedErrors).toHaveLength(0);
     expect(finalizedResults).toEqual([fallbackSuccess]);
     expect(fallbackNoticeCalls).toHaveLength(1);
-    expect(fallbackNoticeCalls[0]?.failures).toEqual([{ modelCodename: "primary-model", errorDetail: "rate limited" }]);
+    expect(fallbackNoticeCalls[0]?.failures).toEqual([
+      { modelCodename: "primary-model", errorDetail: "rate_limit (429)" },
+    ]);
     expect(fallbackNoticeCalls[0]?.successModel.llm_codename).toBe("fallback-model");
     expect(context.streamingContext.suppressUserErrors).toBe(false);
     expect(context.streamingContext.forceModelFallback).toBe(false);
   });
 
-  it("uses personal saved credentials for a user-scoped custom endpoint fallback", async () => {
+  it("re-resolves the prefill per attempt so a fallback that rejects it gets no trailing assistant turn", async () => {
+    const primaryModel = {
+      ...makeLlm(1, "claude-haiku-4-5"),
+      llm_provider: "anthropic",
+      supports_assistant_prefill: true,
+    } as LlmRow;
+    const fallbackModel = { ...makeLlm(2, "claude-sonnet-4-6"), llm_provider: "anthropic" } as LlmRow;
+    const context = makeContext(primaryModel, fallbackModel);
+    context.assistantPrefill = { text: "Sure, here", source: "manual" };
+    const sink: ChatResponseSink = {
+      emitStreamResult: async () => undefined,
+      emitError: async () => undefined,
+      finalize: async () => undefined,
+    };
+    queuedResults.push(
+      {
+        status: "error",
+        streamResults: [{ status: "error", data: { type: "rate_limit", code: "429", message: "rate limited" } }],
+        personaResponses: [],
+      },
+      { status: "completed", streamResults: [{ status: "completed", accumulatedText: "ok" }], personaResponses: [] },
+    );
+
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    await runGenerationTurn(context, sink);
+
+    const [primaryCall, fallbackCall] = toolLoopCalls;
+    expect(primaryCall?.contextItems.at(-1)?.role).toBe("model");
+    expect(fallbackCall?.contextItems.some((item) => item.role === "model")).toBe(false);
+    expect(context.streamingContext.outputPrefill).toBe("Tomori: Sure, here");
+  });
+
+  it("runs a user-scoped custom endpoint fallback on its own saved credentials and num_ctx", async () => {
     const primaryModel = makeLlm(1, "primary-model");
     const context = makeContext(primaryModel, makeLlm(2, "unused-fallback"));
+    context.currentPersona.config.custom_num_ctx = 32_768;
     const endpoint = {
       custom_endpoint_id: 5,
       connection_id: 42,
@@ -809,12 +844,14 @@ describe("runGenerationTurn fallback behavior", () => {
       endpoint_url: "https://example.invalid/v1",
       model_name: "personal-fallback",
       model_ref_id: 9,
+      num_ctx: 4_096,
       has_tools: false,
       sees_images: false,
       sees_videos: false,
       supports_structoutput: false,
       strict_role_alternation: false,
       supports_prefix_completion: false,
+      supports_assistant_prefill: false,
     } as CustomEndpointRow;
     context.currentPersona.fallback_chain = [{ kind: "custom_endpoint", endpoint }];
     queuedResults.push(
@@ -838,7 +875,10 @@ describe("runGenerationTurn fallback behavior", () => {
     const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
     await runGenerationTurn(context, sink);
 
-    expect(toolLoopCalls.map((call) => call.model)).toEqual(["primary-model", "personal-fallback"]);
+    expect(toolLoopCalls.map(({ model, numCtx }) => ({ model, numCtx }))).toEqual([
+      { model: "primary-model", numCtx: 32_768 },
+      { model: "personal-fallback", numCtx: 4_096 },
+    ]);
     expect(personalSavedConfigLoads).toEqual([{ userId: 4, provider: "custom:42" }]);
   });
 
@@ -871,7 +911,7 @@ describe("runGenerationTurn fallback behavior", () => {
     expect(fallbackNoticeCalls).toHaveLength(1);
     expect(fallbackNoticeCalls[0]?.offerPersonalFallbackOptOut).toBe(true);
     expect(fallbackNoticeCalls[0]?.failures).toEqual([
-      { modelCodename: "personal-primary", errorDetail: "rate limited" },
+      { modelCodename: "personal-primary", errorDetail: "rate_limit (429)" },
     ]);
   });
 

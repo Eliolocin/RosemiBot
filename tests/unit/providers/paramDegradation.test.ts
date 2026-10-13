@@ -329,6 +329,7 @@ describe("buildImageStripAttempt", () => {
 describe("classifyDegradableError", () => {
   it.each([
     [400, "Bad request", "generic_400"],
+    [400, "Invalid request. Please check your input and try again.", "generic_400"],
     [400, "Unsupported parameter: min_p", "parameter_rejection_400"],
     [404, "No endpoints found that support these parameters", "no_endpoints_404"],
     [502, "Bad gateway", null],

@@ -2,149 +2,158 @@
 title: "工具與擴充"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
-TomoriBot 具備代理能力：聊天之外，她可以呼叫`工具`來搜尋網頁、讀取文件、生成媒體、設定提醒、在其他頻道行動，還有更多。她會依對話內容決定什麼時候使用它們。這一頁涵蓋內建工具、如何用 MCP 伺服器擴充她，以及如何用明確工具模式讓工具宣告保持精簡。
+除了聊天之外，TomoriBot還可以呼叫工具來搜尋網路、閱讀文件、產生媒體、設定提醒以及與Discord訊息互動。她根據對話決定何時使用它們。本頁介紹了內建工具、如何使用MCP伺服器擴充她，以及如何使用Deliberate Tool模式保持提示精簡。
 
-以下是幾個搞笑範例：
+以下是一些工具在對話中啟用的範例：
 
-- 1. 健康關懷檢查
+- **1.健康檢查器**
   ```text
-  每隔幾小時，對 @Bredrumb 做一次強制健康關懷。
-  問問對方現在感覺如何、最近有沒有從寫程式的工作中休息一下。
-  用 {memory_tool} 或 {memory_update_tool} 長期記錄對方的情緒狀態，之後再回報給對方。
+  Every few hours, do a mandatory wellness check on @bau_h.
+  Ask them how they feel right now and if they've taken a break from coding recently.
+  Track their emotional state over time with {memory_tool} and/or {memory_update_tool} to report back to them later.
   ```
-- 2. 每週 ~~時事~~ 百合新聞
+- **2.每週尤里新聞**
   ```text
-  每週五用 {web_search_tool} 整理本週值得注意的百合漫畫章節、動畫集數與社群二創圖。
-  用 {voice_message_tool} 以誘惑的 ASMR 嗓音發表整理結果。
+  Every Friday, compile the week's notable yuri manga chapters, anime episodes, and community fanart drops using {web_search_tool}.
+  Present findings with {voice_message_tool} in a seductive ASMR voice.
   ```
-- 3. 睡眠警察
+- **3.睡眠警察**
   ```text
-  如果你透過 {message_metadata_tool} 發現有人凌晨兩點後還在聊天，就用 {voice_message_tool} 送一首平靜到有點威脅的 ASMR 搖籃曲，叫對方去睡覺。
-  如果十分鐘後對方還在講，就用 {manage_message_tool} 為了對方好刪掉訊息，並提醒對方睡眠不足是造成各種問題的主因。
+  If you notice through {message_metadata_tool} that someone is chatting past 2 AM, use {voice_message_tool} to send them a threateningly calm ASMR lullaby telling them to go to bed.
+  If they keep talking 10 minutes later, use {manage_message_tool} to delete their message for their own good and remind them that sleep deprivation is a leading cause of their issues.
   ```
 
 ## 內建工具
 <!-- anchor: built-in-tools -->
 
-工具取決於目前生效的供應商與模型是否支援工具呼叫，而且許多工具受到功能旗標（`/config` > 權限 的切換項目）、Discord 權限、模型能力或選用 API 金鑰的管制。
+工具取決於支援工具呼叫的活動供應商和模型。許多都受到功能標誌（`/config` > `權限`）、Discord權限、模型功能或可選的API金鑰的限制。
 
-| 工具 | 提示詞巨集 | 需要 | 功能 |
+| 工具 | 提示巨集 | 需要 | 它的作用 |
 |---|---|---|---|
-| 檢視功能 | `{capabilities_tool}` | — | 回答前先確認目前聊天可用的能力、指令或設定。 |
-| 建立或更新長期記憶 | `{memory_tool}` / `{memory_update_tool}` | `self_teaching_enabled` | 儲存或取代穩定的伺服器事實或使用者偏好。 |
-| 更新短期記憶 | `{short_term_memory_tool}` | （NovelAI 不支援） | 為目前頻道或故事線儲存臨時的工作記憶。 |
-| 建立或更新任務 | `{task_tool}` / `{task_update_tool}` | — | 安排或編輯提醒與自我任務（請看[排程任務](/zh-TW/features/capabilities/scheduled-tasks/)）。 |
-| 跨頻道訊息 | `{cross_channel_tool}` | （NovelAI 不支援） | 在其他頻道或討論串行動，並可選擇回報。 |
-| 建立討論串 | `{create_thread_tool}` | `thread_creation_enabled` + 討論串權限 | 開啟公開討論串並送出它的起始訊息。 |
-| 選擇貼圖 | `{sticker_tool}` | `sticker_usage_enabled` | 在回覆中加上相符的伺服器貼圖。 |
-| 管理訊息 | `{manage_message_tool}` | `manage_message_enabled` | 釘選、編輯或刪除最近的訊息（釘選需要 `管理訊息`）。 |
-| 封鎖或解除封鎖使用者 | `{block_user_tool}` / `{unblock_user_tool}` | `user_blocking_enabled` | 以人格為範圍對某位使用者禁言或封鎖（不會動到記憶）。 |
-| 與最近的訊息互動 | `{message_interaction_tool}` | — | 對最近的訊息做出回應，或送出一則簡短回覆。 |
-| 窺看個人圖片 | `{profile_picture_tool}` | 視覺模型或 `vision_llm` | 檢視某位使用者或人格的頭像。 |
-| 讀取文件 | `{document_tool}` | — | 從 PDF 或任何 UTF-8 文字檔擷取文字：原始碼（`.py`/`.ts`/`.rs`/……）、`.json`、`.yaml`、`.md`、`.txt`，以及任何非二進位的附件。 |
-| 揭露訊息中繼資料 | `{message_metadata_tool}` | — | 為最近的對話輪加上代稱與時間戳，方便精準指定對象。 |
-| 處理 YouTube 影片 | `{youtube_tool}` | 支援影片的模型 | 依需求分析特定的 YouTube 連結。 |
-| 分析圖片 | `{image_analysis_tool}` | 已設定的 `vision_llm` | 把圖片理解交給另一套視覺模型處理。 |
-| 生成圖片或動漫圖片 | `{image_generation_tool}` / `{anime_image_generation_tool}` | `imagegen_enabled` + 支援的供應商 | 生成或編輯圖片（請看[媒體生成](/zh-TW/features/capabilities/media-generation/)）。 |
-| 生成語音訊息 | `{voice_message_tool}` | ElevenLabs 金鑰 + 人格語音 + `voice_message_enabled` | 送出以語音呈現的 Discord 回覆。 |
+| 審核能力 | `{capabilities_tool}` | - | 在回答之前檢查當前的聊天能力、命令或設定。|
+| 創建/更新長期記憶 | `{memory_tool}` / `{memory_update_tool}` | `self_teaching_enabled` | 儲存或替換穩定的伺服器事實或使用者首選項。|
+| 更新短期記憶 | `{short_term_memory_tool}` | （不適用於NovelAI） | 為目前頻道或故事線儲存臨時工作記憶。|
+| 建立/更新任務 | `{task_tool}` / `{task_update_tool}` | - | 安排或編輯提醒和自我任務（請參閱[計劃任務](/zh-TW/features/capabilities/scheduled-tasks/)）。|
+| 跨通路訊息 | `{cross_channel_tool}` | （不適用於NovelAI） | 在另一個管道或線程中採取行動，並提供可選的報告。|
+| 創建線程 | `{create_thread_tool}` | `thread_creation_enabled` + 討論串權限 | 打開公共線程並發布其起始訊息。|
+| 選擇貼圖 | `{sticker_tool}` | `sticker_usage_enabled` | 在回覆中加入相符的伺服器貼圖或自訂表達式。|
+| 管理訊息 | `{manage_message_tool}` | `manage_message_enabled` | 固定、編輯或刪除最近的訊息（固定需要`管理訊息`）。|
+| 封鎖/取消封鎖使用者 | `{block_user_tool}` / `{unblock_user_tool}` | `user_blocking_enabled` | 人格範圍內的使用者靜音/阻止（不觸及記憶）。|
+| 與最近的消息互動 | `{message_interaction_tool}` | - | 對最近的訊息做出反應或發送簡短的回應。|
+| 偷看個人資料圖片 | `{profile_picture_tool}` | 視覺模型或`vision_llm` | 檢查使用者或人格的頭像。|
+| 閱讀文件 | `{document_tool}` | - | 從PDF或任何UTF-8文字檔案中提取文字：原始程式碼 (`.py`/`.ts`/`.rs`/…)、`.json`、`.yaml`、`.md`、`.txt`和任何非二進位配件。|
+| 顯示訊息元數據 | `{message_metadata_tool}` | - | 使用句柄和時間戳註釋最近的轉彎，以實現精確定位。|
+| 處理YouTube影片 | `{youtube_tool}` | 具有視訊支援的模型 | 按需分析特定的YouTube連結。|
+| 分析影像 | `{image_analysis_tool}` | 配置為`vision_llm` | 將圖像理解委託給單獨的視覺模型。|
+| 生成影像/動漫影像 | `{image_generation_tool}` / `{anime_image_generation_tool}` | `imagegen_enabled` + 有能力的供應商 | 產生或編輯圖像（請參閱[媒體生成](/zh-TW/features/capabilities/media-generation/)）。|
+| 產生語音訊息 | `{voice_message_tool}` | ElevenLabs鍵+人格語音+`voice_message_enabled` | 發送語音Discord語音回覆。|
 
-:::note[給提示詞作者]
-自訂她的系統提示詞或人格指示時，請用上方表格中的提示詞巨集來引用工具，而不是把工具名稱寫死；巨集會在組裝脈絡時展開成正確的名稱，並在工具無法使用時平順地退化。`{pin_tool}` 與 `{timestamp_refresh_tool}` 仍然可以作為 `{manage_message_tool}` 與 `{message_metadata_tool}` 的相容別名。下方的網頁搜尋與 URL 工具也有巨集：`{web_search_tool}`、`{image_search_tool}`、`{video_search_tool}`、`{news_search_tool}`、`{url_fetch_tool}` 與 `{url_metadata_tool}`，這些會動態解析成目前可用的最佳引擎，包括伺服器的 MCP 替代品。
+:::note[For prompt authors]
+自訂系統提示或人格指令時，請透過上表中的**提示巨集**來引用工具，而不是硬編碼工具名稱，因為巨集會在上下文組裝時擴展為正確的名稱，並在工具不可用時優雅地降級。`{pin_tool}`和`{timestamp_refresh_tool}`仍然用作`{manage_message_tool}`和`{message_metadata_tool}`的兼容性別名稱。下面的網路搜尋和URL工具也有巨集：`{web_search_tool}`、`{image_search_tool}`、`{video_search_tool}`、`{news_search_tool}`、`{url_fetch_tool}`和`{url_metadata_tool}`。這些動態解析為最佳可用引擎，包括公會MCP替代品。
 :::
 
 ### 條件式提示詞區塊
 
-支援上方工具巨集的提示詞文字，也支援有範圍的條件式語法：
+支援上述工具巨集的提示文字也支援作用域條件：
 
 ```text
 {{if capability:self_teaching}}
-遇到值得記住的細節時，使用 {memory_tool}。
+Use {memory_tool} when a detail is worth remembering.
 {{else}}
-不要承諾會儲存長期記憶。
+Do not promise to save long-term memories.
 {{/if}}
 ```
 
-`capability:<name>` 用於已啟用的 TomoriBot 設定；`tool:<function_name>` 則用於只有當那個確切的工具對目前生效的供應商與模型可用時，文字才該出現的情況。當內建的 URL 讀取器或伺服器的 MCP 替代品任一可用時，使用 `tool_family:url_fetch`。在條件前加上 `!` 可以反轉它。區塊可以嵌套，而且最多只能包含一個 `{{else}}`；不支援一般的 `and`/`or` 運算式。
+對於啟用的TomoriBot設定使用`capability:<name>`，或當僅當該確切工具可用於活動供應商和模型時才應顯示文字時，請使用`tool:<function_name>`。當捆綁URL閱讀器或公會MCP替代品可用時，請使用`tool_family:url_fetch`。在条件前面加上`!`可将其反转。區塊可以嵌套，並且可以包含一個`{{else}}`；不支援一般的`and`/`or`表達式。
 
-支援的功能名稱有 `tool_use`、`self_teaching`、`personal_memories`、`emoji_usage`、`sticker_usage`、`web_search`、`manage_message`、`thread_creation`、`image_generation`、`video_generation`、`voice_message`、`user_blocking`、`short_term_memory` 與 `time_awareness`。
+支援的功能名稱包括`tool_use`、`self_teaching`、`personal_memories`、`emoji_usage`、`sticker_usage`、`web_search`、`manage_message`、`thread_creation`、`image_generation`、`video_generation`、`voice_message`、`user_blocking`、`short_term_memory`、`time_awareness`。
 
-工具條件反映的是供應商與模型支援、伺服器設定、已設定的後端、MCP 替代品，以及目前的明確工具模式允許清單。它們不會繞過或預測工具執行時所做的 Discord 權限檢查。未知的功能名稱會判定為 false 並寫入紀錄；格式錯誤的區塊會被略過。原始聊天訊息、模型輸出與工具結果永遠不會被當成條件式範本處理。
+工具條件反映了供應商/模型支援、伺服器配置、配置的後端、MCP替換以及當前的故意工具模式白名單。它們不會繞過或預測工具執行時執行的Discord權限檢查。未知的功能名稱評估為錯誤並被記錄；格式錯誤的區塊被省略。原始聊天訊息、模型輸出和工具結果永遠不會被視為條件模板。
 
-## 網頁搜尋與 URL 讀取
+## 網頁搜尋與URL讀取
 <!-- anchor: web-search--url-reading -->
 
-模型看到的是一個統一的 `web_search(query, category)` 工具。它背後有一個分派器，會把每次呼叫送進一條引擎鏈，並回傳第一個成功的結果：
+該模型看到一個統一的`web_search(query, category)`工具。在其後面，調度程序通過引擎鏈路由每個調用並返回第一個成功：
 
-Brave → SearXNG → DuckDuckGo → IAsk
+Brave → SearXNG → DuckDuckGo
 
-- 設定了 Brave API 金鑰時，Brave 會優先執行（用 `/providers` 設定）；它會加入圖片、影片與新聞搜尋。⚠️ 請在 Brave 儀表板設定 $5 使用上限，以免收到意外的帳單。
-- 沒有設定金鑰時，DuckDuckGo 是預設選項，遇到速率限制或沒有結果時會串接至 IAsk。
-- SearXNG 與 Crawl4AI 是選用的自架伺服器，可以解鎖更多分類與瀏覽器渲染的頁面抓取，請看[自架](/zh-TW/self-hosting/)。
+- 當配置了Brave API密鑰（使用`/providers`設定）時，**Brave** 首先運行；它增加了圖像、視訊和新聞搜尋。⚠️ 在Brave儀表板中設定5美元的使用限額，以避免意外收費。
+- DuckDuckGo 是未設定金鑰時的預設引擎。它僅涵蓋文字搜尋。當 DuckDuckGo 對 bot 進行速率限制或顯示機器人驗證時，搜尋將會失敗，她會發布通知建議使用 Brave。
+- SearXNG和Crawl4AI是選購的自架伺服器，可新增更多類別和瀏覽器呈現的頁面取得；請參閱[自架](/zh-TW/self-hosting/)。
 
-要讀取特定頁面時，她使用 `fetch_url`。NovelAI 不支援這項功能。
+為了閱讀特定頁面，她使用`fetch_url`。NovelAI上不可用。
 
-## MCP 伺服器
+## MCP伺服器
 <!-- anchor: mcp-servers -->
 
 [MCP](https://modelcontextprotocol.io/)（Model Context Protocol）伺服器可以用你自己註冊的外部工具擴充她。
 
 ### 新增線上 MCP
 
-任何公開託管、具備 HTTPS 端點的 MCP 伺服器都可以使用。以下以 [Smithery.ai](https://smithery.ai) 為例：
+使用支援 MCP Streamable HTTP 或 SSE 的供應商直連 HTTPS 端點：
 
-1. 建立帳號，並從你的個人檔案產生一組 API 金鑰。
-2. 在目錄中開啟一個 MCP，複製它的連線 URL（例如 `https://youtube.run.tools`）。
-3. 開啟 `/config` > 外掛 > MCP 伺服器，選擇 `新增 MCP`，把連線 URL 貼進 URL，把你的 Smithery 金鑰貼進 `驗證權杖`，並選擇需要的 `伺服器類型`。`一般用途`是預設選項。
+1. 向供應商取得 MCP 端點及其驗證要求。
+2. 開啟 `/config` > 外掛 > MCP 伺服器，選擇 `+ 新增 MCP`。
+3. 將端點貼入 `URL`，若有需要則在 `驗證權杖` 輸入其 Bearer 權杖，並選擇需要的 `伺服器類型`。預設已選取 **一般用途**。若想要作為回覆草稿審查的規則檢查器，請選擇 `文章檢查器`：Tomori 本身絕不會呼叫其工具，它會出現在回覆草稿頁面的 `規則檢查` 底下。
 
-如果伺服器不需要驗證，把 `驗證權杖`留空。你的驗證權杖會加密儲存，而且不會再顯示。開啟同一個設定頁面即可檢視已設定的狀態、啟用或停用伺服器，或經明確確認後移除。移除會立刻中斷連線並釋出一個位置。每一列已儲存的紀錄也會顯示上次成功探索到的工具名稱（有數量上限）。未探索到任何工具是已知的零工具結果；探索狀態未知代表這是一筆較舊的紀錄，或伺服器還沒有成功的快照。開啟 MCP 管理介面只會讀取已儲存的中繼資料，不會聯絡遠端伺服器。
+### 新增 Smithery 伺服器
 
-### 本機 MCP 伺服器
+託管在 Smithery 上的伺服器，位址結尾為 `.run.tools`。將該位址貼入 `URL`，並將你的 Smithery API 金鑰貼入 `驗證權杖`。TomoriBot 只會將金鑰傳送至 Smithery 位於 `api.smithery.ai` 的 API，絕不會傳送到伺服器位址本身。接著 Smithery 會將每次工具呼叫轉發給該伺服器，因此 Smithery 能看到所有工具請求與結果。在此支援恢復前儲存的註冊資料，無需修改即可再次正常運作。
 
-本機 MCP 伺服器只支援自架執行個體：公開託管的 bot 要求 HTTPS，並封鎖本機與私人位址。如果你自己跑執行個體，請看[設定：本機 MCP 伺服器](/zh-TW/self-hosting/local-endpoints/setup-local-mcp/)。
+TomoriBot 會在你 Smithery 帳號的第一個命名空間中（若你沒有命名空間，Smithery 會自動建立一個），為每個伺服器位址保留一個 Smithery 連線並重複使用它，因此新增、測試與重新連線都不會累積重複連線。TomoriBot 絕不會刪除連線。早期版本的 TomoriBot 每次重新連線都會建立新連線，因此你的帳號可能針對同一台伺服器留有多個未使用的連線；你可以從 Smithery 控制面板將它們移除。
 
-:::danger[只新增你信任的 MCP 伺服器]
-惡意的 MCP 伺服器可以用隱藏的指示對她進行提示詞注入、外洩使用者傳給它工具的資料，或回傳有害或錯誤的結果，再由她轉達到你伺服器。把 MCP 伺服器當成瀏覽器擴充功能看待：有疑慮就不要新增。新增之前一定要先檢視 MCP 所描述的工具。
+部分伺服器會要求你登入其所封裝的服務。新增這類伺服器時會失敗並提示需要授權，且 TomoriBot 絕不會在 Discord 中顯示登入連結。請開啟你的 Smithery 控制面板，為名稱以 `tomoribot-` 開頭的連線完成登入，然後再次新增該伺服器。連線與列出工具必須在 15 秒內完成。
+
+停用已選用於搜尋或 URL 讀取的註冊項目會還原 TomoriBot 的內建選擇；保持其啟用則可防止自動切換。儲存的工具名稱僅反映上次探索到的內容，因此無法證明連線目前依然有效。
+
+下載時的回應會在達到 8 MiB 時停止。大型工具目錄或結果可能導致外掛無法使用或造成工具呼叫失敗。對於 SSE 連線，此限制涵蓋整個回應串流，包含後續的連續更新。當工具回傳大型文件或嵌入媒體時，請向供應商要求較小的結果、分頁或檔案連結。
+
+如果伺服器不需要驗證，請將 `驗證權杖` 留空。你的驗證權杖會加密儲存，而且不會再顯示。開啟同一個設定頁面即可檢視已設定的狀態、啟用或停用伺服器，或在明確確認後將其移除。移除會立刻中斷連線並釋出名額。每一列已儲存的紀錄也會顯示上次成功探索到的工具名稱（有數量上限）。`未探索到任何工具` 是已知的零工具結果；`探索狀態未知` 則代表舊版紀錄或尚未成功取得快照的伺服器。開啟 MCP 管理介面只會讀取已儲存的中繼資料，不會連線至遠端伺服器。
+
+### 本機MCP伺服器
+
+本機MCP伺服器只支援自架執行個體：公開託管的bot要求HTTPS，並封鎖本機與私人位址。如果你自己跑執行個體，請看[設定：本機MCP伺服器](/zh-TW/self-hosting/local-endpoints/setup-local-mcp/)。
+
+:::danger[只新增你信任的MCP伺服器]
+惡意的MCP伺服器可以用隱藏的指示對她進行提示詞注入、外洩使用者傳給它工具的資料，或回傳有害或錯誤的結果，再由她轉達到你伺服器。把MCP伺服器當成瀏覽器擴充功能看待：有疑慮就不要新增。新增之前一定要先檢視MCP所描述的工具。
 :::
 
 ## 明確工具模式
 <!-- anchor: deliberate-tool-mode -->
 
-每一個宣告的工具都會讓提示詞變長。`明確工具模式`會讓工具宣告不出現在一般的聊天輪次中，除非訊息看起來真的需要工具；這能縮小提示詞，並幫助較小或本機的模型更快回答。
+每個宣告的工具都會增加提示詞長度。`明確工具模式`會在訊息需要任務工具時才加入工具宣告，藉此縮短提示詞，讓較小的本機模型更快回覆。不過，只要貼圖使用與工具使用已開啟，而且供應商支援，貼圖選擇工具仍會保留，讓她自然表達情緒。私訊、模仿與角色扮演的限制仍然適用。若要阻止貼圖回覆，請關閉貼圖使用。短期記憶到了更新期限時，也會加入維護工具，不需要使用者提出要求。
 
-- 她會先檢查訊息是否帶有工具意圖。內建觸發涵蓋常見的請求（提醒、網頁搜尋、記憶更新、跨頻道訊息、圖片／影片／語音生成、媒體分析、建立討論串、訊息操作）。關於她目前的模型、工具、設定，或某項功能為何無法使用的問題，會同時提供功能檢視與官方文件存取。接續性的說法也有效，例如在要求語音訊息之後接著說「再一次，但再生氣一點」。
-- 伺服器管理員可以用 `/server trigger add` 加入字面的自訂觸發詞句，例如把 `pic`、`img` 或 `pfp` 對應到圖片生成。
-- 內建觸發讀取的是英文說法。其他語言會透過各自的關鍵字清單觸及同樣的工具。無論你的語言設定是什麼，每一則訊息都會檢查所有已出貨語言的清單，所以雙語伺服器在兩種語言下都能運作。
-- 日文、中文或韓文的自訂詞句也會在較長的詞裡面比對，因為這些語言不用空格分隔詞彙。以 `*` 結尾的詞句會比對任何以它開頭的詞：`remind*` 涵蓋 `reminder` 與 `reminding`。
+- 她首先檢查訊息中的工具意圖。內建觸發器涵蓋常見請求（提醒、網路搜尋、記憶體更新、跨頻道訊息、圖像/視訊/語音產生、媒體分析、執行緒建立、訊息操作）。有關她當前模型、工具、設定或功能為何不可用的問題會同時暴露功能審核和官方文件存取。後續措辭也有效，例如在語音訊息請求後「再做一次，但更生氣」。
+- 伺服器管理員可以使用`/server trigger add`新增文字自訂觸發短語，例如將`pic`、`img`或`pfp`對應到影像產生。
+- 內建觸發器可讀取英文片語。其他語言透過每種語言的關鍵字清單可以使用相同的工具。無論你的語言設定是什麼，每個訊息都會檢查每種出貨語言的列表，因此雙語伺服器可以同時使用兩種語言。
+- 日語、中文或韓語中的自訂短語也可以匹配較長的單詞，因為這些語言不使用空格分隔單字。以`*`結尾的短語與以其開頭的任何單字相符：`remind*`涵蓋`reminder`和`reminding`。
 
 ### 控制項
 
 - `/server dtm`：伺服器管理員切換它。
-- `/personal config`：使用者為自己覆寫。
-- 設定思考紀錄頻道之後（`/server thought-logs`），明確工具模式下成功的工具呼叫會記錄在那裡，連同讓該工具出現的觸發詞。
+- `/personal config`：用戶自己覆蓋它。
+- 配置思想日誌通道 (`/server thought-logs`) 後，成功的深思熟慮模式工具呼叫以及暴露該工具的觸發器都會記錄在那裡。
 
-明確工具模式只決定要*顯示*哪些工具給模型，模型仍然必須自己選擇呼叫其中一個。在 `/help` 中選擇 `行為`，然後選 `明確工具模式`，就能看到 Discord 裡的摘要。
+有意工具模式僅決定向模型「顯示」哪些工具，但模型仍必須選擇呼叫一個工具。在`/help`中，選擇`行為`，然後選擇`明確工具模式`，作為Discord摘要。
 
 :::note
-明確工具模式（本節）與`明確觸發模式`無關，後者控制*她*如何被觸發，請看[聊天與觸發](/zh-TW/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode)。兩者在 Discord 裡都縮寫成「DTM」。
+`明確工具模式`（本節）與`明確觸發模式`無關，後者控制*she*如何觸發；參見[聊天與觸發](/zh-TW/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode)。兩者都縮寫為“Discord”中的“DTM”。
 :::
 
 ## 結構化的使用者資訊更新
 
-內建的 `update_user_info` 工具負責處理明確要求變更已註冊使用者暱稱、前綴、後綴、性別認同、代稱、稱呼方式或數值 UTC 位移的請求。它使用與其他個人工具相同的、能處理衝突的名稱、別名、標註與 Discord ID 解析器。省略目標時，代表觸發這一輪對話的那個人；`all` 與 `everyone` 永遠不是萬用目標。
+當你在聊天中直接詢問時（例如“叫我隊長”或“我的代名詞是他們/他們”），TomoriBot可以自動更新你的個人資料和人格命名偏好：
 
-每個欄位都是各自獨立的選用參數，所以要變更就是傳入該欄位。移除則是一份欄位名稱的 `clear` 清單，這讓文字、列舉與數值欄位都適用同一套規則；空字串會被收斂成移除，而不是被拒絕。沒有範圍或動作參數，因為範圍是跟著欄位走的：
-
-| 欄位 | 儲存方式 | 效果 |
+| 偏愛 | 範圍 | 影響 |
 |---|---|---|
-| 暱稱、前綴、後綴 | 以 persona lineage 為單位 | 只有做出變更的那個人格會用不同方式稱呼他們 |
-| 性別認同、代稱、稱呼方式、時區 | 每位使用者一次 | 每個人格讀到的都是同一個值 |
+| 暱稱、前綴、後綴 | 每個人格 | 只有活躍人格才會用此名稱或頭銜稱呼你。|
+| 性別認同、代名詞、稱呼風格、時區 | 全球的 | 每個人格在所有伺服器上使用相同的值。|
 
-這個切分是按照儲存方式，而不是偏好：身分欄位每位使用者只有一個位置，沒有以人格為單位的對應欄位。成功通知會在以人格為範圍的列上標示人格名稱，所以差異是可見的，而不是要靠推測。沒有標示的列就是全域，這本身不需要解釋，因為全域才是不令人意外的情況。
+- **刪除頭銜**：要求她停止使用頭銜（例如“停止叫我大師”）可以清除該人格。
+- **隱私**：限制性隱私等級會阻止新的新增和編輯，同時仍允許你清除現有資料。
+- **權限**：伺服器管理員可以使用`/config` > `權限`中的`使用者資訊更新`切換自動更新。你始終可以使用`/personal config`手動編輯你的個人資料。
 
-參與者脈絡會把每位使用者的前綴與後綴與暱稱分開命名，所以要求去掉一個稱謂時，會解析成詞綴變更，而不是改寫暱稱。被清除的詞綴會存成明確的抑制，所以即使有優先順序較低的層級仍在提供值，也無法讓這個移除失效。
-
-當提交的暱稱附帶一個已經解析過的詞綴時，會透過與解析後的值比對來移除多餘的詞綴；永遠不會用空白切割暱稱來猜測邊界。只要名稱真的變動了，更新就會回報最後的稱呼形式，所以即使這一輪沒有出現任何命名欄位，稱呼方式的切換仍然看得出來；而代稱或時區的編輯則不會重述沒有被動到的名稱。
-
-每個欄位都會在單一次原子寫入之前完成驗證。限制性的隱私設定會阻擋新增與變更，但仍然允許清除值。這個工具無法編輯人格層級的稱呼詞。`/config` > 權限 中預設開啟的「自動更新使用者資訊」切換，同時控制工具是否出現，以及對過期呼叫的防禦。關閉時，手動的 `/personal config` 仍然可以使用。
+工具參數架構與資料庫儲存佈局請參考[工具系統架構](/en/architecture/subsystems/tool-system/#structured-user-info-updates)。

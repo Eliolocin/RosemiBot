@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   PRESET_LINEAGE_BY_AVATAR,
+  resolveAlterPersonaName,
   resolveAvailablePersonaName,
   resolvePresetLineageId,
   resolvePresetTriggerWords,
@@ -23,6 +24,7 @@ function makePreset(overrides: Partial<TomoriPresetRow> = {}): TomoriPresetRow {
     preset_avatar_path: null,
     preset_trigger_words: [],
     preset_naming_config: structuredClone(EMPTY_PERSONA_NAMING_CONFIG),
+    is_nsfw: false,
     ...overrides,
   };
 }
@@ -103,6 +105,13 @@ describe("persona default — name resolution helpers", () => {
         persona_preset_name: "The Gloomy One",
       });
       expect(resolvePresetLineageId(preset)).toBe(1770);
+
+      const lockePreset = makePreset({
+        preset_lineage_id: null,
+        preset_avatar_path: "custom.png",
+        persona_preset_name: "Locke",
+      });
+      expect(resolvePresetLineageId(lockePreset)).toBe(666);
     });
 
     it("returns null when no lineage can be resolved", () => {
@@ -115,7 +124,7 @@ describe("persona default — name resolution helpers", () => {
     });
 
     it("all PRESET_LINEAGE_BY_AVATAR keys map to known lineage ids", () => {
-      const knownIds = new Set([4, 716, 1770, 3585, 50]);
+      const knownIds = new Set([4, 716, 1770, 3585, 50, 666]);
       for (const [filename, lineageId] of Object.entries(PRESET_LINEAGE_BY_AVATAR)) {
         expect(knownIds.has(lineageId)).toBe(true);
         expect(filename.endsWith(".png")).toBe(true);
@@ -146,5 +155,23 @@ describe("persona default — name resolution helpers", () => {
         expect(typeof word).toBe("string");
       }
     });
+  });
+});
+
+describe("resolveAlterPersonaName", () => {
+  it("names the alter after a trigger it still answers to when the main owns the default name's trigger", () => {
+    expect(resolveAlterPersonaName("Tomori", ["tomori", "locke"], ["locke"], ["Mirri"])).toBe("Locke");
+  });
+
+  it("keeps the default name when the alter still answers to it", () => {
+    expect(resolveAlterPersonaName("Tomori", ["tomori", "locke"], ["tomori", "locke"], ["Mirri"])).toBe("Tomori");
+  });
+
+  it("skips an answered trigger whose name is taken", () => {
+    expect(resolveAlterPersonaName("Tomori", ["tomori", "locke", "lo"], ["locke", "lo"], ["Locke"])).toBe("Lo");
+  });
+
+  it("falls back to the default name when every trigger is claimed", () => {
+    expect(resolveAlterPersonaName("Tomori", ["tomori", "locke"], [], ["Mirri"])).toBe("Tomori");
   });
 });

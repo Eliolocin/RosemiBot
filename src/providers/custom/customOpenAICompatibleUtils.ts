@@ -1,3 +1,5 @@
+import { buildExampleJsonFromSchema } from "@/providers/utils/structuredOutput";
+import { readStructuredResponse } from "@/providers/utils/structuredReview";
 import { CUSTOM_PROVIDER_PLACEHOLDER_API_KEY, normalizeCustomApiUrl } from "@/providers/custom/customStreamAdapter";
 import { logSanitizedOpenAICompatibleRequest } from "@/providers/openaiCompatible/openaiCompatibleMessageBuilder";
 import type { ProviderImageInput } from "@/types/provider/featureInterfaces";
@@ -13,9 +15,11 @@ export type CustomMessage =
   | { role: "user"; content: string | CustomContentPart[] };
 
 export interface CustomChatCompletionResponse {
+  usage?: unknown;
   choices?: Array<{
     message?: {
       content?: unknown;
+      refusal?: unknown;
     };
   }>;
 }
@@ -99,6 +103,8 @@ export async function callCustomChatCompletions(params: {
   body: Record<string, unknown>;
   logLabel: string;
   messagesForLog?: Array<Record<string, unknown>>;
+  abortSignal?: AbortSignal;
+  privateOutput?: boolean;
 }): Promise<
   { success: true; data: CustomChatCompletionResponse } | { success: false; error: CustomChatCompletionError }
 > {
@@ -122,22 +128,27 @@ export async function callCustomChatCompletions(params: {
       method: "POST",
       headers: buildCustomHeaders(params.apiKey),
       body: JSON.stringify(params.body),
+      signal: params.abortSignal,
     });
 
     if (!response.ok) {
+      if (params.privateOutput) await response.body?.cancel();
       return {
         success: false,
         error: {
           status: response.status,
           statusText: response.statusText,
-          errorBody: await response.text(),
+          errorBody: params.privateOutput ? "HTTP failure" : await response.text(),
         },
       };
     }
 
     return {
       success: true,
-      data: (await response.json()) as CustomChatCompletionResponse,
+      data: (await readStructuredResponse(
+        { apiKey: params.apiKey, model: "", systemPrompt: "", userPrompt: "", privateOutput: params.privateOutput },
+        response,
+      )) as CustomChatCompletionResponse,
     };
   } catch (error) {
     return {
@@ -145,7 +156,7 @@ export async function callCustomChatCompletions(params: {
       error: {
         status: 0,
         statusText: "Request failed",
-        errorBody: error instanceof Error ? error.message : String(error),
+        errorBody: params.privateOutput ? "Request failed" : error instanceof Error ? error.message : String(error),
       },
     };
   }
@@ -173,56 +184,6 @@ export function extractCustomResponseText(messageContent: unknown): string {
     .map((part) => part.text)
     .join("")
     .trim();
-}
-
-function buildExampleJsonFromSchema(schema: unknown): unknown {
-  if (!schema || typeof schema !== "object") {
-    return {};
-  }
-
-  const record = schema as Record<string, unknown>;
-
-  if ("const" in record) {
-    return record.const;
-  }
-
-  if (Array.isArray(record.enum) && record.enum.length > 0) {
-    return record.enum[0];
-  }
-
-  if (Array.isArray(record.anyOf) && record.anyOf.length > 0) {
-    return buildExampleJsonFromSchema(record.anyOf[0]);
-  }
-
-  const schemaType = record.type;
-  if (schemaType === "object") {
-    const properties =
-      record.properties && typeof record.properties === "object" ? (record.properties as Record<string, unknown>) : {};
-    const example: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(properties)) {
-      example[key] = buildExampleJsonFromSchema(value);
-    }
-    return example;
-  }
-
-  if (schemaType === "array") {
-    return [buildExampleJsonFromSchema(record.items)];
-  }
-
-  if (schemaType === "integer" || schemaType === "number") {
-    const minimum = typeof record.minimum === "number" && Number.isFinite(record.minimum) ? record.minimum : 0;
-    return minimum;
-  }
-
-  if (schemaType === "boolean") {
-    return false;
-  }
-
-  if (schemaType === "string") {
-    return "<string>";
-  }
-
-  return {};
 }
 
 export function buildSchemaSteeredSystemPrompt(

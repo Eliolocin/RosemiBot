@@ -25,6 +25,7 @@ import {
   type ModerationPanelRoute,
 } from "@/utils/discord/moderationPanelCatalog";
 import { parseInteractionRoute, type ParsedInteractionRoute } from "@/utils/discord/interactions/routeRegistry";
+import { MODERATION_PANEL_RANGE_SIZE } from "@/utils/discord/interactions/panelController";
 import { dispatchGlobalInteraction } from "@/utils/discord/interactions/router";
 import {
   buildMemberAccessModal,
@@ -79,6 +80,10 @@ function createScopeData(overrides: Partial<ModerationScopeData> = {}): Moderati
   };
 }
 
+function blacklistIds(count: number): string[] {
+  return Array.from({ length: count }, (_, index) => `1234567890123${String(index).padStart(5, "0")}`);
+}
+
 describe("moderation interaction routes", () => {
   it("acknowledges with deferUpdate and repaints on category switch without writing to database", async () => {
     const log: string[] = [];
@@ -88,7 +93,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:category:en-US:user-blacklist",
+      customId: "moderation:v2:category:en-US:user-blacklist",
       guildId: "guild-1",
       memberPermissions: {
         has: (perm: string) => perm === "ManageGuild",
@@ -112,7 +117,7 @@ describe("moderation interaction routes", () => {
     const route = createModerationInteractionRoute(deps);
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["category", "en-US", "user-blacklist"],
     });
 
@@ -127,7 +132,7 @@ describe("moderation interaction routes", () => {
       isButton: () => false,
       isStringSelectMenu: () => true,
       isModalSubmit: () => false,
-      customId: "moderation:v1:select-page:en-US",
+      customId: "moderation:v2:select-page:en-US",
       values: ["roles"],
       guildId: "guild-1",
       memberPermissions: {
@@ -145,7 +150,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["select-page", "en-US"],
     });
 
@@ -159,7 +164,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:range:en-US:user-blacklist:none:1",
+      customId: "moderation:v2:range:en-US:user-blacklist:none:1",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -176,7 +181,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["range", "en-US", "user-blacklist", "none", "1"],
     });
 
@@ -189,7 +194,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:range:en-US:user-blacklist:none:99",
+      customId: "moderation:v2:range:en-US:user-blacklist:none:99",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -214,7 +219,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["range", "en-US", "user-blacklist", "none", "99"],
     });
 
@@ -241,7 +246,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:category:en-US:whitelist",
+      customId: "moderation:v2:category:en-US:whitelist",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -254,7 +259,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["category", "en-US", "whitelist"],
     });
 
@@ -272,7 +277,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:member-access-open:en-US",
+      customId: "moderation:v2:member-access-open:en-US",
       guildId: "guild-1",
       memberPermissions: {
         has: () => false,
@@ -303,7 +308,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["member-access-open", "en-US"],
     });
 
@@ -321,7 +326,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:member-access-open:en-US",
+      customId: "moderation:v2:member-access-open:en-US",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -340,7 +345,7 @@ describe("moderation interaction routes", () => {
 
     await missingRoute.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["member-access-open", "en-US"],
     });
 
@@ -361,7 +366,7 @@ describe("moderation interaction routes", () => {
 
     await unavailableRoute.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["member-access-open", "en-US"],
     });
 
@@ -382,7 +387,7 @@ describe("moderation interaction routes", () => {
 
     await staleRoute.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["member-access-open", "en-US"],
     });
 
@@ -400,7 +405,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:member-access-open:en-US",
+      customId: "moderation:v2:member-access-open:en-US",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -434,7 +439,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["member-access-open", "en-US"],
     });
 
@@ -456,7 +461,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:model-access-set:en-US:require-personal",
+      customId: "moderation:v2:model-access-set:en-US:require-personal",
       guildId: "guild-1",
       user: { id: "u-manager" },
       memberPermissions: { has: () => true },
@@ -483,7 +488,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, interaction as never, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["model-access-set", "en-US", "require-personal"],
     });
 
@@ -498,7 +503,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:model-access-set:en-US:require-personal",
+      customId: "moderation:v2:model-access-set:en-US:require-personal",
       guildId: "guild-1",
       user: { id: "u-member" },
       memberPermissions: { has: () => false },
@@ -521,7 +526,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, interaction as never, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["model-access-set", "en-US", "require-personal"],
     });
 
@@ -537,7 +542,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:model-access-set:en-US:allow",
+      customId: "moderation:v2:model-access-set:en-US:allow",
       guildId: "guild-1",
       user: { id: "u-manager" },
       memberPermissions: { has: () => true },
@@ -560,7 +565,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, interaction as never, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["model-access-set", "en-US", "allow"],
     });
 
@@ -580,7 +585,7 @@ describe("moderation interaction routes", () => {
       isButton: () => false,
       isStringSelectMenu: () => false,
       isModalSubmit: () => true,
-      customId: "moderation:v1:member-access-submit:en-US:nonce123",
+      customId: "moderation:v2:member-access-submit:en-US:nonce123",
       guildId: "guild-1",
       memberPermissions: {
         has: () => false,
@@ -608,7 +613,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["member-access-submit", "en-US", "nonce123"],
     });
 
@@ -628,7 +633,7 @@ describe("moderation interaction routes", () => {
       isButton: () => false,
       isStringSelectMenu: () => false,
       isModalSubmit: () => true,
-      customId: "moderation:v1:member-access-submit:en-US:nonce123",
+      customId: "moderation:v2:member-access-submit:en-US:nonce123",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -653,7 +658,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["member-access-submit", "en-US", "nonce123"],
     });
 
@@ -674,7 +679,7 @@ describe("moderation interaction routes", () => {
       isButton: () => false,
       isStringSelectMenu: () => false,
       isModalSubmit: () => true,
-      customId: "moderation:v1:member-access-submit:en-US:nonce123",
+      customId: "moderation:v2:member-access-submit:en-US:nonce123",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -699,7 +704,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["member-access-submit", "en-US", "nonce123"],
     });
 
@@ -718,7 +723,7 @@ describe("moderation interaction routes", () => {
       isButton: () => false,
       isStringSelectMenu: () => false,
       isModalSubmit: () => true,
-      customId: "moderation:v1:member-access-submit:en-US:nonce123",
+      customId: "moderation:v2:member-access-submit:en-US:nonce123",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -754,7 +759,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["member-access-submit", "en-US", "nonce123"],
     });
 
@@ -773,7 +778,7 @@ describe("moderation interaction routes", () => {
       isButton: () => false,
       isStringSelectMenu: () => false,
       isModalSubmit: () => true,
-      customId: "moderation:v1:member-access-submit:en-US:nonce123",
+      customId: "moderation:v2:member-access-submit:en-US:nonce123",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -802,7 +807,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["member-access-submit", "en-US", "nonce123"],
     });
 
@@ -823,7 +828,7 @@ describe("moderation interaction routes", () => {
       isButton: () => false,
       isStringSelectMenu: () => false,
       isModalSubmit: () => true,
-      customId: "moderation:v1:member-access-submit:en-US:nonce123",
+      customId: "moderation:v2:member-access-submit:en-US:nonce123",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -852,7 +857,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["member-access-submit", "en-US", "nonce123"],
     });
 
@@ -873,7 +878,7 @@ describe("moderation interaction routes", () => {
       isButton: () => false,
       isStringSelectMenu: () => false,
       isModalSubmit: () => true,
-      customId: "moderation:v1:member-access-submit:en-US:nonce123",
+      customId: "moderation:v2:member-access-submit:en-US:nonce123",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -912,7 +917,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["member-access-submit", "en-US", "nonce123"],
     });
 
@@ -928,7 +933,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:retry:en-US:member-access:none",
+      customId: "moderation:v2:retry:en-US:member-access:none",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -946,7 +951,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["retry", "en-US", "member-access", "none"],
     });
 
@@ -959,7 +964,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:category:en-US:whitelist",
+      customId: "moderation:v2:category:en-US:whitelist",
       guildId: "guild-1",
       memberPermissions: {
         has: () => false,
@@ -976,7 +981,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["category", "en-US", "whitelist"],
     });
 
@@ -990,7 +995,7 @@ describe("moderation interaction routes", () => {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v1:category:en-US:whitelist",
+      customId: "moderation:v2:category:en-US:whitelist",
       guildId: "guild-1",
       memberPermissions: {
         has: () => true,
@@ -1007,7 +1012,7 @@ describe("moderation interaction routes", () => {
 
     await route.execute({} as Client, mockInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["category", "en-US", "whitelist"],
     });
 
@@ -1015,13 +1020,14 @@ describe("moderation interaction routes", () => {
     expect(serialized).toContain(localizedCopy("en-US", "commands.moderation.not_setup"));
   });
 
-  it("handles stale route versions through router dispatch", async () => {
+  // v1 remove buttons carry no range index, which v2 requires; they must reach the outdated notice, not a crash.
+  it("answers a v1 removal button with the outdated-panel notice", async () => {
     let replyPayload: unknown = null;
     const mockInteraction = {
       isButton: () => true,
       isStringSelectMenu: () => false,
       isModalSubmit: () => false,
-      customId: "moderation:v0:category:en-US:whitelist",
+      customId: "moderation:v1:user-blacklist-remove-open:en-US",
       locale: "en-US",
       reply: async (payload: unknown) => {
         replyPayload = payload;
@@ -1102,7 +1108,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-add-open:en-US",
+        customId: "moderation:v2:user-blacklist-add-open:en-US",
         guildId: "guild-1",
         memberPermissions: {
           has: () => false,
@@ -1124,7 +1130,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-open", "en-US"],
       });
 
@@ -1141,7 +1147,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-add-open:en-US",
+        customId: "moderation:v2:user-blacklist-add-open:en-US",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1160,7 +1166,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-open", "en-US"],
       });
 
@@ -1176,7 +1182,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-add-open:en-US",
+        customId: "moderation:v2:user-blacklist-add-open:en-US",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1199,7 +1205,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-open", "en-US"],
       });
 
@@ -1215,7 +1221,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-add-open:en-US",
+        customId: "moderation:v2:user-blacklist-add-open:en-US",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1238,7 +1244,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-open", "en-US"],
       });
 
@@ -1255,7 +1261,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-add-open:en-US",
+        customId: "moderation:v2:user-blacklist-add-open:en-US",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1285,7 +1291,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-open", "en-US"],
       });
 
@@ -1305,7 +1311,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:user-blacklist-add-submit:en-US:nonce123",
+        customId: "moderation:v2:user-blacklist-add-submit:en-US:nonce123",
         guildId: "guild-1",
         memberPermissions: {
           has: () => false,
@@ -1327,7 +1333,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-submit", "en-US", "nonce123"],
       });
 
@@ -1345,7 +1351,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:user-blacklist-add-submit:en-US:nonce123",
+        customId: "moderation:v2:user-blacklist-add-submit:en-US:nonce123",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1363,7 +1369,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-submit", "en-US", "nonce123"],
       });
 
@@ -1380,7 +1386,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:user-blacklist-add-submit:en-US:nonce123",
+        customId: "moderation:v2:user-blacklist-add-submit:en-US:nonce123",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1399,7 +1405,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-submit", "en-US", "nonce123"],
       });
 
@@ -1418,7 +1424,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:user-blacklist-add-submit:en-US:nonce123",
+        customId: "moderation:v2:user-blacklist-add-submit:en-US:nonce123",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1437,7 +1443,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-submit", "en-US", "nonce123"],
       });
 
@@ -1459,7 +1465,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:user-blacklist-add-submit:en-US:nonce123",
+        customId: "moderation:v2:user-blacklist-add-submit:en-US:nonce123",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1498,7 +1504,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-submit", "en-US", "nonce123"],
       });
 
@@ -1525,7 +1531,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:user-blacklist-add-submit:en-US:nonce123",
+        customId: "moderation:v2:user-blacklist-add-submit:en-US:nonce123",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1549,7 +1555,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-submit", "en-US", "nonce123"],
       });
 
@@ -1570,7 +1576,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:user-blacklist-add-submit:en-US:nonce123",
+        customId: "moderation:v2:user-blacklist-add-submit:en-US:nonce123",
         guildId: "guild-1",
         guild: {
           members: {
@@ -1616,7 +1622,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-submit", "en-US", "nonce123"],
       });
 
@@ -1635,7 +1641,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:user-blacklist-add-submit:en-US:nonce123",
+        customId: "moderation:v2:user-blacklist-add-submit:en-US:nonce123",
         guildId: "guild-1",
         guild: {
           members: {
@@ -1660,7 +1666,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-submit", "en-US", "nonce123"],
       });
 
@@ -1681,7 +1687,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-remove-prompt:en-US:personalization:123456789012345678",
+        customId: "moderation:v2:user-blacklist-remove-prompt:en-US:personalization:123456789012345678",
         guildId: "guild-1",
         memberPermissions: {
           has: () => false,
@@ -1701,7 +1707,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-remove-prompt", "en-US", "personalization", "123456789012345678"],
       });
 
@@ -1718,7 +1724,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-remove-prompt:en-US:personalization:123456789012345678",
+        customId: "moderation:v2:user-blacklist-remove-prompt:en-US:personalization:123456789012345678",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1735,7 +1741,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-remove-prompt", "en-US", "personalization", "123456789012345678"],
       });
 
@@ -1751,7 +1757,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-remove-prompt:en-US:personalization:999999999999999999",
+        customId: "moderation:v2:user-blacklist-remove-prompt:en-US:personalization:999999999999999999",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1774,7 +1780,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-remove-prompt", "en-US", "personalization", "999999999999999999"],
       });
 
@@ -1791,7 +1797,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-remove-prompt:en-US:personalization:123456789012345678",
+        customId: "moderation:v2:user-blacklist-remove-prompt:en-US:personalization:123456789012345678",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1814,7 +1820,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-remove-prompt", "en-US", "personalization", "123456789012345678"],
       });
 
@@ -1836,7 +1842,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-remove-cancel:en-US",
+        customId: "moderation:v2:user-blacklist-remove-cancel:en-US",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1886,7 +1892,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-remove-cancel", "en-US"],
       });
 
@@ -1906,7 +1912,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-remove-confirm:en-US:personalization:123456789012345678",
+        customId: "moderation:v2:user-blacklist-remove-confirm:en-US:personalization:123456789012345678",
         guildId: "guild-1",
         memberPermissions: {
           has: () => false,
@@ -1933,7 +1939,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-remove-confirm", "en-US", "personalization", "123456789012345678"],
       });
 
@@ -1951,7 +1957,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-remove-confirm:en-US:personalization:123456789012345678",
+        customId: "moderation:v2:user-blacklist-remove-confirm:en-US:personalization:123456789012345678",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -1985,7 +1991,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-remove-confirm", "en-US", "personalization", "123456789012345678"],
       });
 
@@ -2004,7 +2010,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-remove-confirm:en-US:personalization:123456789012345678",
+        customId: "moderation:v2:user-blacklist-remove-confirm:en-US:personalization:123456789012345678",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2037,7 +2043,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-remove-confirm", "en-US", "personalization", "123456789012345678"],
       });
 
@@ -2055,7 +2061,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-remove-confirm:en-US:personalization:123456789012345678",
+        customId: "moderation:v2:user-blacklist-remove-confirm:en-US:personalization:123456789012345678",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2092,7 +2098,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-remove-confirm", "en-US", "personalization", "123456789012345678"],
       });
 
@@ -2111,7 +2117,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-remove-confirm:en-US:persona-block:2:123456789012345678",
+        customId: "moderation:v2:user-blacklist-remove-confirm:en-US:persona-block:2:123456789012345678",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2162,7 +2168,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-remove-confirm", "en-US", "persona-block", "2", "123456789012345678"],
       });
 
@@ -2180,7 +2186,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:user-blacklist-remove-confirm:en-US:personalization:123456789012345678",
+        customId: "moderation:v2:user-blacklist-remove-confirm:en-US:personalization:123456789012345678",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2214,7 +2220,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-remove-confirm", "en-US", "personalization", "123456789012345678"],
       });
 
@@ -2233,7 +2239,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:whitelist-channel-add-open:en-US",
+        customId: "moderation:v2:whitelist-channel-add-open:en-US",
         guildId: "guild-1",
         memberPermissions: {
           has: () => false,
@@ -2252,7 +2258,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-add-open", "en-US"],
       });
 
@@ -2270,7 +2276,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:whitelist-channel-add-open:en-US",
+        customId: "moderation:v2:whitelist-channel-add-open:en-US",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2295,7 +2301,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-add-open", "en-US"],
       });
 
@@ -2312,7 +2318,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:whitelist-channel-add-submit:en-US:testnonce789",
+        customId: "moderation:v2:whitelist-channel-add-submit:en-US:testnonce789",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2374,7 +2380,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockModal, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-add-submit", "en-US", "testnonce789"],
       });
 
@@ -2400,7 +2406,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:whitelist-channel-add-submit:en-US:testnonce789",
+        customId: "moderation:v2:whitelist-channel-add-submit:en-US:testnonce789",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2424,7 +2430,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockModal, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-add-submit", "en-US", "testnonce789"],
       });
 
@@ -2444,7 +2450,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:whitelist-channel-add-submit:en-US:testnonce789",
+        customId: "moderation:v2:whitelist-channel-add-submit:en-US:testnonce789",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2499,7 +2505,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockModal, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-add-submit", "en-US", "testnonce789"],
       });
 
@@ -2521,7 +2527,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:whitelist-channel-add-submit:en-US:testnonce789",
+        customId: "moderation:v2:whitelist-channel-add-submit:en-US:testnonce789",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2569,7 +2575,7 @@ describe("moderation interaction routes", () => {
 
       await nullRoute.execute({} as Client, mockModal, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-add-submit", "en-US", "testnonce789"],
       });
 
@@ -2615,7 +2621,7 @@ describe("moderation interaction routes", () => {
 
       await staleRoute.execute({} as Client, mockModal, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-add-submit", "en-US", "testnonce789"],
       });
 
@@ -2631,7 +2637,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:whitelist-channel-add-submit:en-US:testnonce789",
+        customId: "moderation:v2:whitelist-channel-add-submit:en-US:testnonce789",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2684,7 +2690,7 @@ describe("moderation interaction routes", () => {
 
       await mismatchedRoute.execute({} as Client, mockModal, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-add-submit", "en-US", "testnonce789"],
       });
 
@@ -2700,7 +2706,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:whitelist-channel-remove-prompt:en-US:111222333444555666",
+        customId: "moderation:v2:whitelist-channel-remove-prompt:en-US:111222333444555666",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2735,15 +2741,15 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-remove-prompt", "en-US", "111222333444555666"],
       });
 
       expect(editReplies).toHaveLength(1);
       const serialized = JSON.stringify(editReplies[0]);
       expect(serialized).toContain("### Remove Whitelisted Channel");
-      expect(serialized).toContain("moderation:v1:whitelist-channel-remove-confirm:en-US:111222333444555666");
-      expect(serialized).toContain("moderation:v1:whitelist-channel-remove-cancel:en-US");
+      expect(serialized).toContain("moderation:v2:whitelist-channel-remove-confirm:en-US:111222333444555666");
+      expect(serialized).toContain("moderation:v2:whitelist-channel-remove-cancel:en-US");
     });
 
     it("renders changed-state receipt and does not show confirmation when channel disappears before remove prompt", async () => {
@@ -2752,7 +2758,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:whitelist-channel-remove-prompt:en-US:111222333444555666",
+        customId: "moderation:v2:whitelist-channel-remove-prompt:en-US:111222333444555666",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2787,7 +2793,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-remove-prompt", "en-US", "111222333444555666"],
       });
 
@@ -2804,7 +2810,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:whitelist-channel-remove-prompt:en-US:111222333444555666",
+        customId: "moderation:v2:whitelist-channel-remove-prompt:en-US:111222333444555666",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2839,7 +2845,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-remove-prompt", "en-US", "111222333444555666"],
       });
 
@@ -2856,7 +2862,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:whitelist-channel-remove-cancel:en-US",
+        customId: "moderation:v2:whitelist-channel-remove-cancel:en-US",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2873,7 +2879,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-remove-cancel", "en-US"],
       });
 
@@ -2889,7 +2895,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:whitelist-channel-remove-confirm:en-US:111222333444555666",
+        customId: "moderation:v2:whitelist-channel-remove-confirm:en-US:111222333444555666",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -2955,7 +2961,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-remove-confirm", "en-US", "111222333444555666"],
       });
 
@@ -2977,7 +2983,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:whitelist-channel-remove-confirm:en-US:111222333444555666",
+        customId: "moderation:v2:whitelist-channel-remove-confirm:en-US:111222333444555666",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -3042,7 +3048,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-remove-confirm", "en-US", "111222333444555666"],
       });
 
@@ -3059,7 +3065,7 @@ describe("moderation interaction routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:whitelist-channel-remove-confirm:en-US:111222333444555666",
+        customId: "moderation:v2:whitelist-channel-remove-confirm:en-US:111222333444555666",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -3124,7 +3130,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, mockInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-remove-confirm", "en-US", "111222333444555666"],
       });
 
@@ -3203,7 +3209,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:user-blacklist-add-submit:en-US:testnonce789",
+        customId: "moderation:v2:user-blacklist-add-submit:en-US:testnonce789",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -3216,7 +3222,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, modalSubmit, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-submit", "en-US", "testnonce789"],
       });
 
@@ -3298,7 +3304,7 @@ describe("moderation interaction routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:whitelist-channel-add-submit:en-US:testnonce789",
+        customId: "moderation:v2:whitelist-channel-add-submit:en-US:testnonce789",
         guildId: "guild-1",
         memberPermissions: {
           has: () => true,
@@ -3314,7 +3320,7 @@ describe("moderation interaction routes", () => {
 
       await route.execute({} as Client, modalSubmit, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["whitelist-channel-add-submit", "en-US", "testnonce789"],
       });
 
@@ -3366,8 +3372,8 @@ describe("moderation bulk removal routes", () => {
     });
     await route.execute({} as Client, interaction, {
       namespace: "moderation",
-      version: "v1",
-      segments: ["user-blacklist-remove-open", "en-US"],
+      version: "v2",
+      segments: ["user-blacklist-remove-open", "en-US", "0"],
     });
     expect(events).toEqual(["snapshot:bulk_nonce:u:123456789012345678", "modal:bulk_nonce:user-blacklist:Bau (bau_h)"]);
   });
@@ -3404,11 +3410,53 @@ describe("moderation bulk removal routes", () => {
     });
     await route.execute({} as Client, interaction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["user-blacklist-remove-submit", "en-US", "bulk_nonce"],
     });
     expect(writes).toHaveLength(1);
     expect(writes[0]).toMatchObject({ personalizationUserIds: ["123456789012345678"], personaBlockKeys: [] });
+  });
+
+  it("gives Remove the page the panel shows", () => {
+    const ids = blacklistIds(MODERATION_PANEL_RANGE_SIZE * 5 + 1);
+    const payload = buildModerationPanelPayload({
+      locale: "en-US",
+      category: "user-blacklist",
+      whitelistPage: "channels",
+      rangeIndex: 5,
+      data: createScopeData({ userBlacklist: { personalizationUserIds: ids, personaBlocks: [] } }),
+    });
+    expect(JSON.stringify(payload)).toContain(
+      buildModerationRouteId({ action: "user-blacklist-remove-open", locale: "en-US", rangeIndex: 5 }),
+    );
+  });
+
+  it("opens a later page's removal modal with only that page's entries", async () => {
+    const ids = blacklistIds(MODERATION_PANEL_RANGE_SIZE * 5 + 1);
+    const events: string[] = [];
+    const interaction = {
+      isButton: () => true,
+      isStringSelectMenu: () => false,
+      isModalSubmit: () => false,
+      guildId: "guild-1",
+      memberPermissions: { has: () => true },
+      reply: async () => events.push("reply"),
+    } as unknown as ButtonInteraction;
+    const route = createModerationInteractionRoute({
+      resolveScope: async () => createScopeData({ userBlacklist: { personalizationUserIds: ids, personaBlocks: [] } }),
+      resolveUser: async () => null,
+      createNonce: () => "page_nonce",
+      storeRemovalSnapshot: (nonce, values) => events.push(`snapshot:${nonce}:${values.join(",")}`),
+      showRemovalModal: async (_interaction, _locale, nonce, action, options) => {
+        events.push(`modal:${nonce}:${action}:${options.length}`);
+      },
+    });
+    await route.execute({} as Client, interaction, {
+      namespace: "moderation",
+      version: "v2",
+      segments: ["user-blacklist-remove-open", "en-US", "5"],
+    });
+    expect(events).toEqual([`snapshot:page_nonce:u:${ids.at(-1)}`, "modal:page_nonce:user-blacklist:1"]);
   });
 });
 
@@ -3447,7 +3495,7 @@ describe("moderation whitelist role routes", () => {
 
     await route.execute({} as Client, interaction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["whitelist-role-add-open", "en-US"],
     });
 
@@ -3493,7 +3541,7 @@ describe("moderation whitelist role routes", () => {
 
     await route.execute({} as Client, interaction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["whitelist-role-add-submit", "en-US", "nonce123"],
     });
     expect(writes).toEqual(["123456789012345678"]);
@@ -3520,7 +3568,7 @@ describe("moderation whitelist role routes", () => {
     } as unknown as ModalSubmitInteraction;
     await everyoneRoute.execute({} as Client, everyoneInteraction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["whitelist-role-add-submit", "en-US", "nonce123"],
     });
     expect(writes).toHaveLength(1);
@@ -3570,14 +3618,14 @@ describe("moderation whitelist role routes", () => {
 
     await route.execute({} as Client, interaction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["whitelist-role-remove-prompt", "en-US", roleId],
     });
     expect(JSON.stringify(edits.at(-1))).toContain("whitelist-role-remove-confirm");
 
     await route.execute({} as Client, interaction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["whitelist-role-remove-confirm", "en-US", roleId],
     });
     expect(resolves).toBe(2);
@@ -3631,7 +3679,7 @@ describe("moderation whitelist role routes", () => {
 
     await route.execute({} as Client, interaction, {
       namespace: "moderation",
-      version: "v1",
+      version: "v2",
       segments: ["whitelist-role-add-submit", "en-US", "nonce123"],
     });
 
@@ -3665,7 +3713,7 @@ describe("moderation whitelist role routes", () => {
 
       await route.execute({} as Client, interaction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["quota-edit-open", "en-US", "image"],
       });
 
@@ -3696,7 +3744,7 @@ describe("moderation whitelist role routes", () => {
 
       await route.execute({} as Client, interaction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["quota-edit-open", "en-US", "image"],
       });
 
@@ -3738,7 +3786,7 @@ describe("moderation whitelist role routes", () => {
 
       await route.execute({} as Client, interaction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["quota-edit-open", "en-US", "image"],
       });
 
@@ -3785,7 +3833,7 @@ describe("moderation whitelist role routes", () => {
 
       await route.execute({} as Client, interaction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["quota-edit-submit", "en-US", "image", "nonce_submit"],
       });
 
@@ -3852,7 +3900,7 @@ describe("moderation whitelist role routes", () => {
 
       await route.execute({} as Client, quotaSubmitInteraction(daily, serverwide, resets, edits), {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["quota-edit-submit", "en-US", "image", "nonce_val"],
       });
 
@@ -3906,7 +3954,7 @@ describe("moderation whitelist role routes", () => {
 
       await route.execute({} as Client, interaction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["quota-edit-submit", "en-US", "image", "nonce_unchanged"],
       });
 
@@ -3971,7 +4019,7 @@ describe("moderation whitelist role routes", () => {
 
       await route.execute({} as Client, interaction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["quota-edit-submit", "en-US", "image", "nonce_success"],
       });
 
@@ -4020,7 +4068,7 @@ describe("moderation whitelist role routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:user-blacklist-add-submit:en-US:nonce12345678",
+        customId: "moderation:v2:user-blacklist-add-submit:en-US:nonce12345678",
         guildId: "guild-1",
         user: { id: "mod-1" },
         memberPermissions: { has: () => true },
@@ -4031,7 +4079,7 @@ describe("moderation whitelist role routes", () => {
 
       await addRoute.execute({} as Client, addInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["user-blacklist-add-submit", "en-US", "nonce12345678"],
       });
 
@@ -4052,7 +4100,7 @@ describe("moderation whitelist role routes", () => {
         isButton: () => true,
         isStringSelectMenu: () => false,
         isModalSubmit: () => false,
-        customId: "moderation:v1:model-access-set:en-US:allow",
+        customId: "moderation:v2:model-access-set:en-US:allow",
         guildId: "guild-1",
         user: { id: "mod-1" },
         memberPermissions: { has: () => true },
@@ -4062,7 +4110,7 @@ describe("moderation whitelist role routes", () => {
 
       await modelRoute.execute({} as Client, modelInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["model-access-set", "en-US", "allow"],
       });
 
@@ -4087,7 +4135,7 @@ describe("moderation whitelist role routes", () => {
         isButton: () => false,
         isStringSelectMenu: () => false,
         isModalSubmit: () => true,
-        customId: "moderation:v1:quota-edit-submit:en-US:text:nonce1234",
+        customId: "moderation:v2:quota-edit-submit:en-US:text:nonce1234",
         guildId: "guild-1",
         user: { id: "mod-1" },
         memberPermissions: { has: () => true },
@@ -4105,7 +4153,7 @@ describe("moderation whitelist role routes", () => {
 
       await quotaRoute.execute({} as Client, quotaInteraction, {
         namespace: "moderation",
-        version: "v1",
+        version: "v2",
         segments: ["quota-edit-submit", "en-US", "text", "nonce1234"],
       });
 
@@ -4115,42 +4163,45 @@ describe("moderation whitelist role routes", () => {
 });
 
 const WIRE_CONTRACT_V1: ReadonlyArray<readonly [string, ModerationPanelRoute]> = [
-  ["moderation:v1:category:en-US:member-access", { action: "category", locale: "en-US", category: "member-access" }],
-  ["moderation:v1:select-page:en-US", { action: "select-page", locale: "en-US" }],
-  ["moderation:v1:page:en-US:channels", { action: "page", locale: "en-US", page: "channels" }],
+  ["moderation:v2:category:en-US:member-access", { action: "category", locale: "en-US", category: "member-access" }],
+  ["moderation:v2:select-page:en-US", { action: "select-page", locale: "en-US" }],
+  ["moderation:v2:page:en-US:channels", { action: "page", locale: "en-US", page: "channels" }],
   [
-    "moderation:v1:range:en-US:whitelist:channels:2",
+    "moderation:v2:range:en-US:whitelist:channels:2",
     { action: "range", locale: "en-US", category: "whitelist", page: "channels", rangeIndex: 2 },
   ],
   [
-    "moderation:v1:retry:en-US:user-blacklist:none",
+    "moderation:v2:retry:en-US:user-blacklist:none",
     { action: "retry", locale: "en-US", category: "user-blacklist", page: "none" },
   ],
-  ["moderation:v1:member-access-open:en-US", { action: "member-access-open", locale: "en-US" }],
+  ["moderation:v2:member-access-open:en-US", { action: "member-access-open", locale: "en-US" }],
   [
-    "moderation:v1:member-access-submit:en-US:nonce12345678",
+    "moderation:v2:member-access-submit:en-US:nonce12345678",
     { action: "member-access-submit", locale: "en-US", nonce: "nonce12345678" },
   ],
   [
-    "moderation:v1:model-access-set:en-US:allow",
+    "moderation:v2:model-access-set:en-US:allow",
     { action: "model-access-set", locale: "en-US", allowServerModels: true },
   ],
   [
-    "moderation:v1:model-access-set:en-US:require-personal",
+    "moderation:v2:model-access-set:en-US:require-personal",
     { action: "model-access-set", locale: "en-US", allowServerModels: false },
   ],
-  ["moderation:v1:user-blacklist-add-open:en-US", { action: "user-blacklist-add-open", locale: "en-US" }],
+  ["moderation:v2:user-blacklist-add-open:en-US", { action: "user-blacklist-add-open", locale: "en-US" }],
   [
-    "moderation:v1:user-blacklist-add-submit:en-US:nonce12345678",
+    "moderation:v2:user-blacklist-add-submit:en-US:nonce12345678",
     { action: "user-blacklist-add-submit", locale: "en-US", nonce: "nonce12345678" },
   ],
-  ["moderation:v1:user-blacklist-remove-open:en-US", { action: "user-blacklist-remove-open", locale: "en-US" }],
   [
-    "moderation:v1:user-blacklist-remove-submit:en-US:nonce12345678",
+    "moderation:v2:user-blacklist-remove-open:en-US:2",
+    { action: "user-blacklist-remove-open", locale: "en-US", rangeIndex: 2 },
+  ],
+  [
+    "moderation:v2:user-blacklist-remove-submit:en-US:nonce12345678",
     { action: "user-blacklist-remove-submit", locale: "en-US", nonce: "nonce12345678" },
   ],
   [
-    "moderation:v1:user-blacklist-remove-prompt:en-US:personalization:123456789012345678",
+    "moderation:v2:user-blacklist-remove-prompt:en-US:personalization:123456789012345678",
     {
       action: "user-blacklist-remove-prompt",
       locale: "en-US",
@@ -4158,7 +4209,7 @@ const WIRE_CONTRACT_V1: ReadonlyArray<readonly [string, ModerationPanelRoute]> =
     },
   ],
   [
-    "moderation:v1:user-blacklist-remove-prompt:en-US:persona-block:42:123456789012345678",
+    "moderation:v2:user-blacklist-remove-prompt:en-US:persona-block:42:123456789012345678",
     {
       action: "user-blacklist-remove-prompt",
       locale: "en-US",
@@ -4166,7 +4217,7 @@ const WIRE_CONTRACT_V1: ReadonlyArray<readonly [string, ModerationPanelRoute]> =
     },
   ],
   [
-    "moderation:v1:user-blacklist-remove-confirm:en-US:personalization:123456789012345678",
+    "moderation:v2:user-blacklist-remove-confirm:en-US:personalization:123456789012345678",
     {
       action: "user-blacklist-remove-confirm",
       locale: "en-US",
@@ -4174,68 +4225,77 @@ const WIRE_CONTRACT_V1: ReadonlyArray<readonly [string, ModerationPanelRoute]> =
     },
   ],
   [
-    "moderation:v1:user-blacklist-remove-confirm:en-US:persona-block:42:123456789012345678",
+    "moderation:v2:user-blacklist-remove-confirm:en-US:persona-block:42:123456789012345678",
     {
       action: "user-blacklist-remove-confirm",
       locale: "en-US",
       target: { source: "persona-block", personaId: 42, userId: "123456789012345678" },
     },
   ],
-  ["moderation:v1:user-blacklist-remove-cancel:en-US", { action: "user-blacklist-remove-cancel", locale: "en-US" }],
-  ["moderation:v1:whitelist-channel-add-open:en-US", { action: "whitelist-channel-add-open", locale: "en-US" }],
+  ["moderation:v2:user-blacklist-remove-cancel:en-US", { action: "user-blacklist-remove-cancel", locale: "en-US" }],
+  ["moderation:v2:whitelist-channel-add-open:en-US", { action: "whitelist-channel-add-open", locale: "en-US" }],
   [
-    "moderation:v1:whitelist-channel-add-submit:en-US:nonce12345678",
+    "moderation:v2:whitelist-channel-add-submit:en-US:nonce12345678",
     { action: "whitelist-channel-add-submit", locale: "en-US", nonce: "nonce12345678" },
   ],
-  ["moderation:v1:whitelist-channel-remove-open:en-US", { action: "whitelist-channel-remove-open", locale: "en-US" }],
   [
-    "moderation:v1:whitelist-channel-remove-submit:en-US:nonce12345678",
+    "moderation:v2:whitelist-channel-remove-open:en-US:2",
+    { action: "whitelist-channel-remove-open", locale: "en-US", rangeIndex: 2 },
+  ],
+  [
+    "moderation:v2:whitelist-channel-remove-submit:en-US:nonce12345678",
     { action: "whitelist-channel-remove-submit", locale: "en-US", nonce: "nonce12345678" },
   ],
   [
-    "moderation:v1:whitelist-channel-remove-prompt:en-US:123456789012345678",
+    "moderation:v2:whitelist-channel-remove-prompt:en-US:123456789012345678",
     { action: "whitelist-channel-remove-prompt", locale: "en-US", channelId: "123456789012345678" },
   ],
   [
-    "moderation:v1:whitelist-channel-remove-confirm:en-US:123456789012345678",
+    "moderation:v2:whitelist-channel-remove-confirm:en-US:123456789012345678",
     { action: "whitelist-channel-remove-confirm", locale: "en-US", channelId: "123456789012345678" },
   ],
   [
-    "moderation:v1:whitelist-channel-remove-cancel:en-US",
+    "moderation:v2:whitelist-channel-remove-cancel:en-US",
     { action: "whitelist-channel-remove-cancel", locale: "en-US" },
   ],
-  ["moderation:v1:whitelist-role-add-open:en-US", { action: "whitelist-role-add-open", locale: "en-US" }],
+  ["moderation:v2:whitelist-role-add-open:en-US", { action: "whitelist-role-add-open", locale: "en-US" }],
   [
-    "moderation:v1:whitelist-role-add-submit:en-US:nonce12345678",
+    "moderation:v2:whitelist-role-add-submit:en-US:nonce12345678",
     { action: "whitelist-role-add-submit", locale: "en-US", nonce: "nonce12345678" },
   ],
-  ["moderation:v1:whitelist-role-remove-open:en-US", { action: "whitelist-role-remove-open", locale: "en-US" }],
   [
-    "moderation:v1:whitelist-role-remove-submit:en-US:nonce12345678",
+    "moderation:v2:whitelist-role-remove-open:en-US:2",
+    { action: "whitelist-role-remove-open", locale: "en-US", rangeIndex: 2 },
+  ],
+  [
+    "moderation:v2:whitelist-role-remove-submit:en-US:nonce12345678",
     { action: "whitelist-role-remove-submit", locale: "en-US", nonce: "nonce12345678" },
   ],
   [
-    "moderation:v1:whitelist-role-remove-prompt:en-US:123456789012345678",
+    "moderation:v2:whitelist-role-remove-prompt:en-US:123456789012345678",
     { action: "whitelist-role-remove-prompt", locale: "en-US", roleId: "123456789012345678" },
   ],
   [
-    "moderation:v1:whitelist-role-remove-confirm:en-US:123456789012345678",
+    "moderation:v2:whitelist-role-remove-confirm:en-US:123456789012345678",
     { action: "whitelist-role-remove-confirm", locale: "en-US", roleId: "123456789012345678" },
   ],
-  ["moderation:v1:whitelist-role-remove-cancel:en-US", { action: "whitelist-role-remove-cancel", locale: "en-US" }],
-  ["moderation:v1:persona-channel-add-open:en-US", { action: "persona-channel-add-open", locale: "en-US" }],
+  ["moderation:v2:whitelist-role-remove-cancel:en-US", { action: "whitelist-role-remove-cancel", locale: "en-US" }],
+  ["moderation:v2:persona-channel-add-open:en-US", { action: "persona-channel-add-open", locale: "en-US" }],
   [
-    "moderation:v1:persona-channel-add-submit:en-US:nonce12345678",
+    "moderation:v2:persona-channel-add-submit:en-US:nonce12345678",
     { action: "persona-channel-add-submit", locale: "en-US", nonce: "nonce12345678" },
   ],
-  ["moderation:v1:persona-channel-remove-open:en-US", { action: "persona-channel-remove-open", locale: "en-US" }],
   [
-    "moderation:v1:persona-channel-remove-submit:en-US:nonce12345678",
+    "moderation:v2:persona-channel-remove-open:en-US:2",
+    { action: "persona-channel-remove-open", locale: "en-US", rangeIndex: 2 },
+  ],
+  [
+    "moderation:v2:persona-channel-remove-submit:en-US:nonce12345678",
     { action: "persona-channel-remove-submit", locale: "en-US", nonce: "nonce12345678" },
   ],
-  ["moderation:v1:quota-edit-open:en-US:image", { action: "quota-edit-open", locale: "en-US", quotaType: "image" }],
+  ["moderation:v2:quota-edit-open:en-US:image", { action: "quota-edit-open", locale: "en-US", quotaType: "image" }],
   [
-    "moderation:v1:quota-edit-submit:en-US:text:nonce12345678",
+    "moderation:v2:quota-edit-submit:en-US:text:nonce12345678",
     { action: "quota-edit-submit", locale: "en-US", quotaType: "text", nonce: "nonce12345678" },
   ],
 ];
@@ -4601,7 +4661,7 @@ describe("moderation route codec wire contract, exhaustiveness, and producer cov
 
     const maxCustomId = buildModerationRouteId(maxPersonaBlockRoute);
     expect(maxCustomId).toBe(
-      "moderation:v1:user-blacklist-remove-confirm:zh-Hans:persona-block:2147483647:12345678901234567890",
+      "moderation:v2:user-blacklist-remove-confirm:zh-Hans:persona-block:2147483647:12345678901234567890",
     );
     expect(maxCustomId.length).toBe(97);
     expect(maxCustomId.length).toBeLessThanOrEqual(100);
@@ -4623,11 +4683,11 @@ describe("moderation route codec wire contract, exhaustiveness, and producer cov
   const REJECTED_ROUTE_OBJECTS: Array<{ label: string; route: ParsedInteractionRoute }> = [
     {
       label: "a foreign namespace",
-      route: { namespace: "wrong", version: "v1", segments: ["category", "en-US", "member-access"] },
+      route: { namespace: "wrong", version: "v2", segments: ["category", "en-US", "member-access"] },
     },
     {
       label: "a future version",
-      route: { namespace: "moderation", version: "v2", segments: ["category", "en-US", "member-access"] },
+      route: { namespace: "moderation", version: "v3", segments: ["category", "en-US", "member-access"] },
     },
   ];
 
@@ -4636,33 +4696,34 @@ describe("moderation route codec wire contract, exhaustiveness, and producer cov
    * the field that makes it invalid. Each row is one arity or enum case: a new action adds one row.
    */
   const REJECTED_WIRE_STRINGS: ReadonlyArray<readonly [string, string]> = [
-    ["moderation:v1:category:invalid-locale:member-access", "an unknown locale"],
-    ["moderation:v1:unknown-action:en-US", "an action no codec declares"],
-    ["moderation:v1:category:en-US:invalid-category", "a category outside the accepted set"],
-    ["moderation:v1:page:en-US:invalid-page", "a whitelist page outside the accepted set"],
-    ["moderation:v1:quota-edit-open:en-US:invalid-quota", "a quota type outside the accepted set"],
-    ["moderation:v1:model-access-set:en-US:invalid-choice", "a model-access choice outside the accepted set"],
-    ["moderation:v1:range:en-US:whitelist:channels:-1", "a negative range index"],
-    ["moderation:v1:range:en-US:whitelist:channels:abc", "a non-numeric range index"],
-    ["moderation:v1:whitelist-channel-remove-confirm:en-US:not-a-snowflake", "a channel id that is not a snowflake"],
-    ["moderation:v1:whitelist-role-remove-confirm:en-US:short", "a role id that is too short to be a snowflake"],
+    ["moderation:v2:category:invalid-locale:member-access", "an unknown locale"],
+    ["moderation:v2:unknown-action:en-US", "an action no codec declares"],
+    ["moderation:v2:category:en-US:invalid-category", "a category outside the accepted set"],
+    ["moderation:v2:page:en-US:invalid-page", "a whitelist page outside the accepted set"],
+    ["moderation:v2:quota-edit-open:en-US:invalid-quota", "a quota type outside the accepted set"],
+    ["moderation:v2:model-access-set:en-US:invalid-choice", "a model-access choice outside the accepted set"],
+    ["moderation:v2:range:en-US:whitelist:channels:-1", "a negative range index"],
+    ["moderation:v2:range:en-US:whitelist:channels:abc", "a non-numeric range index"],
+    ["moderation:v2:user-blacklist-remove-open:en-US:-1", "a negative removal page"],
+    ["moderation:v2:whitelist-channel-remove-confirm:en-US:not-a-snowflake", "a channel id that is not a snowflake"],
+    ["moderation:v2:whitelist-role-remove-confirm:en-US:short", "a role id that is too short to be a snowflake"],
     [
-      "moderation:v1:user-blacklist-remove-prompt:en-US:unknown-source:123456789012345678",
+      "moderation:v2:user-blacklist-remove-prompt:en-US:unknown-source:123456789012345678",
       "a removal source outside the accepted set",
     ],
     [
-      "moderation:v1:user-blacklist-remove-prompt:en-US:persona-block:-1:123456789012345678",
+      "moderation:v2:user-blacklist-remove-prompt:en-US:persona-block:-1:123456789012345678",
       "a negative persona id in a persona-block target",
     ],
     [
-      "moderation:v1:user-blacklist-remove-prompt:en-US:persona-block:0:123456789012345678",
+      "moderation:v2:user-blacklist-remove-prompt:en-US:persona-block:0:123456789012345678",
       "a zero persona id in a persona-block target",
     ],
-    ["moderation:v1:member-access-submit:en-US:bad!nonce#", "a nonce carrying characters a custom ID cannot hold"],
-    ["moderation:v1:user-blacklist-add-submit:en-US:short", "a nonce shorter than the declared minimum"],
-    ["moderation:v1:select-page:en-US:extra-segment", "a trailing segment the action does not declare"],
-    ["moderation:v1:member-access-open:en-US:extra", "a trailing segment the action does not declare"],
-    ["moderation:v1:user-blacklist-remove-cancel:en-US:extra", "a trailing segment the action does not declare"],
+    ["moderation:v2:member-access-submit:en-US:bad!nonce#", "a nonce carrying characters a custom ID cannot hold"],
+    ["moderation:v2:user-blacklist-add-submit:en-US:short", "a nonce shorter than the declared minimum"],
+    ["moderation:v2:select-page:en-US:extra-segment", "a trailing segment the action does not declare"],
+    ["moderation:v2:member-access-open:en-US:extra", "a trailing segment the action does not declare"],
+    ["moderation:v2:user-blacklist-remove-cancel:en-US:extra", "a trailing segment the action does not declare"],
   ];
 
   it.each(REJECTED_ROUTE_OBJECTS)("rejects a route object carrying $label", (entry) => {

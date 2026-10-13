@@ -2,6 +2,7 @@
 title: "Testing DB Changes"
 sidebar:
   order: 30
+aiGenerated: true
 ---
 
 How to run and add database regression tests. `bun run test` creates a disposable Postgres database,
@@ -63,8 +64,9 @@ runner through `scripts/checks/lib/testIsolation.ts`:
 1. Tests that touch the database go under `tests/regression/`. A unit test would race the DB lane on
    the same fixture rows.
 2. Restore process-wide state (`setSystemTime()`, `globalThis.x`, `process.env.X`) in `afterEach` or
-   `afterAll`, or the next file in the batch fails instead of yours. Files that call `mock.module()`
-   have their own process and are exempt.
+   `afterAll`, or the next file in the batch fails instead of yours. For environment variables, call
+   `useEnvSandbox()` from `tests/helpers/env.ts` with every name the file writes or deletes. Files that call
+   `mock.module()` have their own process and are exempt.
 
 With `BUN_TEST_JUNIT_OUTFILE` set (as `vl` does), the runner merges each batch's JUnit file and keeps
 one `<testsuite>` per test file.

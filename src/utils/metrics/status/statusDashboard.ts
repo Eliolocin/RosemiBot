@@ -9,6 +9,7 @@ import { buildServerChannelPages } from "@/utils/metrics/status/serverChannelPag
 import { buildServerConfigPages } from "@/utils/metrics/status/serverConfigPages";
 import { buildServerModelPages } from "@/utils/metrics/status/serverModelPages";
 import type { StatusPageCategory } from "@/utils/metrics/status/statusPageRenderer";
+import { canViewPromptText } from "@/utils/text/promptInspection/delivery";
 
 export interface StatusDashboardBuildDependencies {
   buildServerChannelPages: typeof buildServerChannelPages;
@@ -34,7 +35,12 @@ export async function resolveStatusDashboardCategories(
   dependencies: StatusDashboardBuildDependencies = defaultDependencies,
 ): Promise<StatusPageCategory[]> {
   const [configPages, modelPages, channelPages, personalPages] = await Promise.all([
-    dependencies.buildServerConfigPages(client, tomoriState, locale),
+    dependencies.buildServerConfigPages(
+      client,
+      tomoriState,
+      locale,
+      canViewPromptText(interaction.memberPermissions ?? null, tomoriState),
+    ),
     dependencies.buildServerModelPages(client, serverDiscId, tomoriState, locale),
     dependencies.buildServerChannelPages(client, serverDiscId, tomoriState, locale),
     dependencies.buildPersonalStatusPages(interaction, userData, locale),

@@ -1,14 +1,17 @@
 ---
 title: "Qwen3-TTS"
+aiGenerated: true
 ---
 
-用 `servers/tts/qwen3tts/server.py` 可同时运行 Qwen3-TTS 12Hz 1.7B 的两种模式，它是目前 TomoriBot 各项选择中体积较大但也最准确的语音合成。默认情况下它以自动模式启动，会根据每个请求的形态在 Base 语音克隆模型与 VoiceDesign 模型之间做出选择。
+在语音克隆和文本描述的VoiceDesign模式下使用 [Qwen3-TTS](https://github.com/QwenAudio/Qwen3-TTS) 合成高精度的多语言字符语音。
+
+Qwen3-TTS 12Hz 1.7B提供高精度本地语音合成。在默认自动模式下运行`servers/tts/qwen3tts/server.py`会根据每个传入请求动态选择基本语音克隆模型或VoiceDesign模型。
 
 ## 设置
 
-请在 TomoriBot 仓库根目录，也就是你克隆 TomoriBot 的那个文件夹里运行这些命令：
+从TomoriBot存储库根（克隆TomoriBot的文件夹）运行这些命令：
 
-### 使用 Windows PowerShell
+### Windows PowerShell
 
 ```powershell
 python -m venv servers\tts\qwen3tts\.venv
@@ -18,7 +21,7 @@ pip install -r servers\tts\qwen3tts\requirements.txt
 python servers\tts\qwen3tts\server.py
 ```
 
-### 使用 Linux/macOS Bash
+### Linux和macOS Bash
 
 ```bash
 python3 -m venv servers/tts/qwen3tts/.venv
@@ -28,54 +31,54 @@ python -m pip install -r servers/tts/qwen3tts/requirements.txt
 python servers/tts/qwen3tts/server.py
 ```
 
-默认的自动模式端点 URL 是 `http://127.0.0.1:8012`；要使用其他端口，请设置 `QWEN3TTS_PORT`。你也可以显式指定自动模式：
+默认自动模式端点URL为`http://127.0.0.1:8012`； 设置`QWEN3TTS_PORT`使用另一个端口。你还可以显式指定自动模式：
 
 ```powershell
 python servers\tts\qwen3tts\server.py --mode auto
 ```
 
-自动模式会检查每个 `/synthesize` 请求：带 `ref_audio` 的请求使用克隆模型，带 `instruct` 的请求则使用 VoiceDesign 模型。它一次只保持一个模型处于加载状态，并在请求类型变化时切换模型，所以切换后的第一个请求可能会更慢。
+自动模式检查每个`/synthesize`请求：带有`ref_audio`的请求使用克隆模型，而带有`instruct`的请求使用VoiceDesign模型。它一次只加载一个模型，并在请求类型更改时交换模型，因此交换后的第一个请求可能会更慢。
 
-## 在 TomoriBot 中注册
+## 在TomoriBot中注册
 
-对大多数用户来说，请注册自动模式的服务器，这样一个端点就能同时支持语音克隆与 VoiceDesign 两种人格。
+对大多数用户来说，请注册自动模式的服务器，这样一个端点就能同时支持语音克隆与VoiceDesign两种人格。
 
-运行 `/providers`，选择`添加新自定义端点`，并使用语音合成的 API 兼容性：
+运行`/providers`，选择`添加新自定义端点`，并使用语音合成的API兼容性：
 
-- API 兼容性：`tts-clone`
+- API兼容性：`tts-clone`
 - `endpoint_url`：`http://127.0.0.1:8012`
 
-保存连接后，选中它并用它的模型下拉菜单添加一个 Speech 模型。模型表单会询问`语音来源模式`与`脚本标记风格`；自动模式的服务器请选择 `Auto` 与 `Plain`。
+保存连接后，选中它并用它的模型下拉菜单添加一个Speech模型。模型表单会询问`语音来源模式`与`脚本标记风格`；自动模式的服务器请选择`Auto`与`Plain`。
 
-端点注册与模型设置请用 `/providers`。然后打开 `/config` > 模型 > 切换模型，选中并启用已注册的端点。
+端点注册与模型设置请用`/providers`。然后打开`/config` > 模型 > `切换模型`，选中并启用已注册的端点。
 
-## 设置人格语音
+## 设置人格声音
 
 ### 语音克隆
 
-适用于应当模仿参考片段的人格：
+将其用于应模仿参考剪辑的人格：
 
-1. 准备一段干净的 10-20 秒语音片段，只有一位说话者，没有背景音乐。
-2. 打开 `/config`，进入模型 > TTS 参数与语音，上传该片段。
-3. 打开 `/config`，进入人格 > 语音，然后选择人格与语音样本。
+1. 准备一段干净的10-20秒语音片段，只有一个扬声器，没有背景音乐。
+2. 在模型 > `TTS参数与语音`下打开`/config`并上传剪辑。
+3. 在人格 > `语音`下打开`/config`，然后选择人格和语音样本。
 
-Qwen3-TTS 宣称只要 3 秒的参考音频就能快速克隆，而它的运行时既不记载、也不强制任何参考音频时长上限。因此片段长度是你可以自行取舍的质量权衡，而不是服务器会检查的限制。
+Qwen3-TTS宣传从短至3秒的参考音频进行快速克隆，其运行时既不记录也不强制执行参考持续时间上限。因此，剪辑长度是你控制的质量权衡，而不是服务器检查的限制。
 
-### VoiceDesign
+### 声音设计
 
-适用于应当使用文字语音描述而不是样本的人格：
+将此用于应使用书面语音描述而不是示例的人格：
 
-1. 打开 `/config`，进入人格 > 语音，选择 VoiceDesign。
-2. 选择人格。
-3. 输入一段自然语言的语音提示词，例如说话者的年龄、语气、口音与表达方式。
+1. 在人格 > `语音`下打开`/config`并选择VoiceDesign。
+2. 选择人格人格。
+3. 输入自然语言语音提示，例如说话者的年龄、语气、口音和表达方式。
 
-要移除某个人格的 VoiceDesign 提示词，请在 `/config` 的人格 > 语音 里操作。生成时，TomoriBot 会把保存的提示词作为 `instruct` 放进 `/synthesize` 的 JSON 请求体；来自工具的一次性 `voice_instructions` 会追加在后面
+从`/config`中的人格 > `语音`中删除人格的VoiceDesign提示。生成时，TomoriBot将`/synthesize` JSON体中保存的提示作为`instruct`发送； 附加了工具中的一次性`voice_instructions`。
 
-自动模式会保留这两种设置。在 `/config` 的人格 > 语音 下配置好的人格，会按自己的选择使用克隆合成或 VoiceDesign 合成。
+自动模式保留这两种设置。`/config`中的人格 > `语音`下配置的人格根据其选择使用克隆合成或VoiceDesign合成。
 
-## （可选）仅 VoiceDesign 的服务器
+## 可选：仅限VoiceDesign的服务器
 
-在服务 `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` 时，用 VoiceDesign 模式启动同一个服务器。
+为`Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign`提供服务时，以VoiceDesign模式启动同一服务器。
 
 Windows PowerShell：
 
@@ -85,13 +88,13 @@ $env:TOMORI_TTS_MODE = "voice-design"
 python servers\tts\qwen3tts\server.py
 ```
 
-Bash：
+重击：
 
 ```bash
 source servers/tts/qwen3tts/.venv/bin/activate
 TOMORI_TTS_MODE=voice-design python servers/tts/qwen3tts/server.py
 ```
 
-你也可以传入 `--mode voice-design` 来代替设置 `TOMORI_TTS_MODE`。仅 VoiceDesign 模式的默认端点 URL 是 `http://127.0.0.1:8014`。
+你也可以传递`--mode voice-design`而不是设置`TOMORI_TTS_MODE`。默认仅限VoiceDesign的端点URL是`http://127.0.0.1:8014`。
 
-注册方式与自动模式相同，但端点 URL 用 `http://127.0.0.1:8014`，并在 Speech 模型上把 `VoiceDesign` 选为语音来源模式。
+注册方式与自动模式相同，但使用端点URL `http://127.0.0.1:8014`并选择`VoiceDesign`作为语音模型上的语音源模式。

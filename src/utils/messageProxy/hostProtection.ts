@@ -5,6 +5,12 @@ import { messageProxyRepository } from "@/utils/db/repositories/MessageProxyRepo
 
 export type MessageProxyHostProtection =
   | {
+      protected: true;
+      isMessageProxyIdentity: true;
+      reason: "host_unresolved";
+      hostUserDiscId: null;
+    }
+  | {
       protected: false;
       isMessageProxyIdentity: boolean;
     }
@@ -28,7 +34,11 @@ export async function getMessageProxyHostProtection(
   }
 
   const identityContext = await messageProxyRepository.getIdentityContextByUserDiscId(targetUserDiscId);
-  const hostUserDiscIds = identityContext?.hostUserDiscIds ?? [];
+  const hostUserDiscIds = identityContext?.hostUserDiscIds;
+  // An absent host link cannot authorize writes to the synthetic identity.
+  if (!hostUserDiscIds?.length) {
+    return { protected: true, isMessageProxyIdentity: true, reason: "host_unresolved", hostUserDiscId: null };
+  }
   for (const hostUserDiscId of hostUserDiscIds) {
     if ((await getCachedPrivacyLevel(hostUserDiscId)) === PrivacyLevel.FULL) {
       return {

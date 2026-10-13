@@ -2,6 +2,7 @@
 title: "Configuración: ComfyUI"
 sidebar:
   order: 2
+aiGenerated: false
 ---
 
 Esta traducción se proporciona para tu comodidad. La versión en inglés es la autoritativa.

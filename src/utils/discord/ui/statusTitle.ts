@@ -69,6 +69,16 @@ export function withStatusCircle(title: string, color?: ColorResolvable | null):
   return `${STATUS_CIRCLE_BY_TONE[tone]} ${bare}`;
 }
 
+/**
+ * Titles open with multi-code-point emoji (`👁️`, `🗑️`), so stopping at the first pictograph would
+ * strand a variation selector or joiner in front of the title, which Discord renders as a blank box.
+ */
+const LEADING_EMOJI_RUN = /^(?:\p{Extended_Pictographic}(?:️|‍|\p{Emoji_Modifier})*)+[\s ]*/u;
+
+export function stripLeadingEmoji(title: string): string {
+  return title.replace(LEADING_EMOJI_RUN, "");
+}
+
 /** Localizes a status title and renders it with the circle its surface color implies. */
 export function localizedStatusTitle(
   locale: string,

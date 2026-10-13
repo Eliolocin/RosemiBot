@@ -1,12 +1,13 @@
 ---
 title: "Fish Audio S2 Pro"
+aiGenerated: true
 ---
 
-Fish Audio S2 Pro là một model TTS 4B đa ngôn ngữ tập trung vào việc sao chép giọng nói có độ trung thực cao và cách truyền đạt biểu cảm. TomoriBot sử dụng model này thông qua wrapper cục bộ trong `servers/tts/fishs2/`.
+Tổng hợp lời nói của nhân vật đa ngôn ngữ, có tính biểu cảm cao với các thẻ cảm xúc chi tiết bằng [Fish Audio S2 Pro](https://github.com/fishaudio/fish-speech).
 
-Thiết lập mặc định của TomoriBot sử dụng các trọng số BF16 chính thức (`fishaudio/s2-pro`) để cung cấp độ trung thực tổng hợp cao nhất và tránh sự không tương thích do lượng tử hóa. Đối với người dùng có GPU tiêu dùng bị giới hạn bộ nhớ, lượng tử hóa chỉ tính trọng số INT8 tùy chọn (`Imagilux/fishaudio-s2-pro`) được hỗ trợ thông qua việc ghi đè biến môi trường.
+Fish Audio S2 Pro là model chuyển văn bản thành giọng nói tham số 4B đa ngôn ngữ được thiết kế để sao chép giọng nói có độ trung thực cao. TomoriBot kết nối với model thông qua trình bao bọc cục bộ trong `servers/tts/fishs2/`. Nó mặc định có trọng số BF16 chính thức (`fishaudio/s2-pro`), với điểm kiểm tra lượng tử hóa INT8 tùy chọn (`Imagilux/fishaudio-s2-pro`) dành cho GPU có 8 đến 12 GB VRAM.
 
-Fish S2 Pro hỗ trợ các thẻ biểu cảm trong ngoặc vuông như `[whisper]`, `[excited]`, và `[angry]`. Hãy cấu hình endpoint với markup `Thẻ trong ngoặc vuông` để TomoriBot giữ lại các tùy chọn điều khiển này trong kịch bản giọng nói được tạo.
+Fish S2 Pro hỗ trợ các thẻ biểu thức ngoặc như `[whisper]`, `[excited]` và `[angry]`. Định cấu hình điểm cuối bằng đánh dấu `Thẻ trong ngoặc vuông` để TomoriBot duy trì các điều khiển này trong tập lệnh thoại được tạo.
 
 ## Giấy phép
 
@@ -14,41 +15,40 @@ Mã nguồn Fish Speech và trọng số model S2 Pro được phân phối theo
 
 TomoriBot không phân phối lại trọng số model. Mỗi người dùng self-hosting sẽ tải trực tiếp Fish S2 Pro từ Hugging Face và chịu trách nhiệm tuân thủ Giấy phép Nghiên cứu Fish Audio. Ghi nhận tác giả bắt buộc là: Built with Fish Audio.
 
-## Phần cứng & Hệ điều hành
+## Phần cứng và hệ điều hành
 
-> [!IMPORTANT]
-> Sử dụng Linux hoặc WSL2 cho Fish Speech: Fish Audio chính thức nhắm mục tiêu đến Linux và WSL2. Fish S2 Pro sử dụng kiến trúc Dual-Autoregressive (Dual-AR) (36 lớp transformer chậm + 10 lượt codebook nhanh = 76 lượt đánh giá lớp trên mỗi token). Trên Linux, OpenAI Triton có thể biên dịch vòng lặp lồng nhau này thành các GPU kernel hợp nhất (`torch.compile(backend="inductor")`), điều mà các benchmark thượng nguồn đã chứng minh là cho phép tổng hợp theo thời gian thực trên các GPU máy chủ Linux. Wrapper tắt tính năng biên dịch theo mặc định, vì vậy hãy đặt `FISH_S2_COMPILE=1` để sử dụng.
->
-> Trên Windows gốc, Triton không được hỗ trợ, buộc PyTorch phải chuyển sang chế độ eager mode chưa biên dịch với hơn 120.000 lượt điều phối CUDA kernel tuần tự thông qua driver Windows WDDM. Điều này gây ra tình trạng nghẽn điều phối nghiêm trọng, làm chậm quá trình tạo xuống còn ~8-10 phút (~65 giây tính toán cho mỗi giây âm thanh) cho cùng một đoạn clip. Để suy luận khả thi, hãy chạy Fish S2 Pro bên trong Linux hoặc WSL2.
+> [!QUAN TRỌNG]
+> Fish Audio chính thức nhắm tới Linux và WSL2. Fish S2 Pro sử dụng kiến trúc Tự động hồi quy kép (Dual-AR) (36 lớp biến áp chậm + 10 lượt chuyển sách mã nhanh = 76 lớp đánh giá cho mỗi mã thông báo). Trên Linux, OpenAI Triton biên dịch vòng lặp này thành các nhân GPU hợp nhất (`torch.compile(backend="inductor")`), cho phép tổng hợp theo thời gian thực. Trình bao bọc tắt quá trình biên dịch theo mặc định; đặt `FISH_S2_COMPILE=1` để kích hoạt nó. >
+> Trên Windows gốc, Triton không được hỗ trợ, buộc PyTorch chuyển sang chế độ háo hức chưa được biên dịch với hơn 120.000 hạt nhân CUDA tuần tự gửi qua trình điều khiển WDDM của Windows. Điều này gây ra hiện tượng dừng truyền dữ liệu nghiêm trọng, làm chậm quá trình tạo xuống còn ~8-10 phút (~65 giây tính toán mỗi giây âm thanh) cho cùng một clip. Để có thể suy luận có thể sử dụng được, hãy chạy Fish S2 Pro bên trong Linux hoặc WSL2.
 
-Phần cứng được khuyến nghị:
+Phần cứng được đề xuất:
 
-- Linux hoặc WSL2 (Được khuyến nghị mạnh mẽ)
-- GPU NVIDIA với 16 GB đến 24 GB VRAM (BF16 vừa vặn thoải mái trong ~16-18 GB VRAM với bộ nhớ đệm KV và offload)
-- Khuyến nghị Python 3.12
-- `git`, `ffmpeg`, và các thư viện âm thanh tiêu chuẩn theo yêu cầu của Fish Speech
+- **Linux hoặc WSL2 (Rất khuyến khích)**
+- GPU NVIDIA có VRAM 16 GB đến 24 GB (BF16 vừa vặn thoải mái trong VRAM ~ 16-18 GB với bộ đệm và giảm tải KV)
+- Đề xuất Python 3.12
+- `git`, `ffmpeg` và các thư viện âm thanh tiêu chuẩn theo yêu cầu của Fish Speech
 
 ## Cài đặt
 
-### Linux / WSL2 (Được khuyến nghị)
+### Linux và WSL2 (được khuyến nghị)
 
-Từ thư mục gốc của kho lưu trữ TomoriBot:
+Từ kho lưu trữ gốc TomoriBot:
 
 ```bash
 bash servers/tts/fishs2/install-fishs2.sh
 servers/tts/fishs2/.venv/bin/python servers/tts/fishs2/server.py
 ```
 
-Trình cài đặt thực hiện:
+Trình cài đặt:
 
-1. sao chép `Imagilux/fish-speech` vào `servers/tts/fishs2/fish-speech/` và chuyển sang commit runtime đã được ghim;
-2. tạo môi trường ảo `.venv` cô lập;
-3. cài đặt Fish Speech cùng các phần phụ thuộc wrapper của TomoriBot; và
-4. tải checkpoint BF16 chính thức `fishaudio/s2-pro` vào `fish-speech/checkpoints/fish-speech-s2-pro/`.
+1. sao chép `Imagilux/fish-speech` vào `servers/tts/fishs2/fish-speech/` và kiểm tra cam kết thời gian chạy được ghim;
+2. tạo `.venv` bị cô lập;
+3. cài đặt Fish Speech cộng với các phụ thuộc của trình bao bọc TomoriBot; Và
+4. tải điểm kiểm tra BF16 `fishaudio/s2-pro` chính thức vào `fish-speech/checkpoints/fish-speech-s2-pro/`.
 
-Một lần cài đặt lại thông thường sẽ giữ nguyên commit runtime đã ghim `2225e924e7d35cc0a1d24dbc67cd1819e6cf429f` thay vì đi theo một nhánh đang thay đổi; để chuyển sang runtime mới hơn, hãy thay đổi giá trị đã ghim trong trình cài đặt. Bản sửa đổi model mặc định là `main`; hãy ghim `FISH_S2_MODEL_REVISION` vào một bản sửa đổi Hugging Face cố định khi quá trình triển khai cần khả năng tái lập. Các cài đặt trình cài đặt được liệt kê trong [Biến bộ cài đặt](#biến-bộ-cài-đặt).
+Quá trình cài đặt lại bình thường vẫn nằm trên cam kết thời gian chạy được ghim `2225e924e7d35cc0a1d24dbc67cd1819e6cf429f` thay vì đi theo nhánh đang di chuyển; chuyển sang thời gian chạy mới hơn có nghĩa là thay đổi mã pin đó trong trình cài đặt. Bản sửa đổi model mặc định là `main`; ghim `FISH_S2_MODEL_REVISION` vào bản sửa đổi Khuôn mặt ôm bất biến khi quá trình triển khai phải được lặp lại. Cài đặt trình cài đặt được liệt kê trong [Biến trình cài đặt](#installer-variables).
 
-Model Hugging Face bị giới hạn quyền truy cập. Hãy chấp nhận giấy phép của model trên Hugging Face trước. Nếu quá trình tải xuống yêu cầu xác thực, hãy chạy:
+Model Ôm Mặt được kiểm soát. Trước tiên hãy chấp nhận giấy phép của nó trên Ôm Mặt. Nếu quá trình tải xuống yêu cầu xác thực, hãy chạy:
 
 ```bash
 servers/tts/fishs2/.venv/bin/hf auth login
@@ -56,37 +56,36 @@ servers/tts/fishs2/.venv/bin/hf auth login
 
 Sau đó chạy lại trình cài đặt.
 
-### Windows PowerShell (Chỉ áp dụng theo khả năng tốt nhất)
+### Windows PowerShell (chỉ nỗ lực tốt nhất)
 
-Bản Windows gốc chỉ được cung cấp cho mục đích đánh giá. Do độ trễ điều phối driver ở chế độ eager mode chưa biên dịch, việc tạo âm thanh sẽ cực kỳ chậm (~8-10 phút mỗi clip):
+Windows gốc chỉ được cung cấp để đánh giá. Do độ trễ gửi trình điều khiển ở chế độ háo hức chưa được biên dịch nên quá trình tạo sẽ cực kỳ chậm (~8-10 phút mỗi clip):
 
 ```powershell
 .\servers\tts\fishs2\install-fishs2.ps1
 .\servers\tts\fishs2\.venv\Scripts\python.exe servers\tts\fishs2\server.py
 ```
 
-Trình cài đặt PowerShell nhắm mục tiêu tăng tốc GPU CUDA (`cu124`) theo mặc định. Để cài đặt trên máy chỉ có CPU không có GPU NVIDIA, hãy truyền tham số `-Cpu`:
+Trình cài đặt PowerShell nhắm mục tiêu tăng tốc GPU CUDA (`cu124`) theo mặc định. Để cài đặt trên máy chỉ có CPU không có GPU NVIDIA, hãy vượt qua `-Cpu`:
 
 ```powershell
 .\servers\tts\fishs2\install-fishs2.ps1 -Cpu
 ```
 
-Nếu PyTorch trên Windows cần được cài đặt thủ công hoặc cập nhật với hỗ trợ CUDA, hãy chạy:
+Nếu PyTorch trên Windows cần được cài đặt hoặc cập nhật thủ công với sự hỗ trợ CUDA, hãy chạy:
 
 ```powershell
 .\servers\tts\fishs2\.venv\Scripts\pip.exe install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 ```
 
-TomoriBot dừng chờ tin nhắn thoại sau `TTS_SYNTHESIZE_TIMEOUT_MS` (mặc định 240000 ms), mức thời gian này ngắn hơn thời gian tạo một clip trên Windows gốc. Hãy tăng giá trị này trong tệp `.env` của TomoriBot (chẳng hạn như `TTS_SYNTHESIZE_TIMEOUT_MS=900000`) khi đánh giá trên Windows.
+TomoriBot dừng chờ tin nhắn thoại sau `TTS_SYNTHESIZE_TIMEOUT_MS` (mặc định 240000 mili giây), ngắn hơn so với thời lượng của một đoạn clip gốc của Windows. Nâng nó lên trong `.env` của TomoriBot (ví dụ `TTS_SYNTHESIZE_TIMEOUT_MS=900000`) trong khi đánh giá trên Windows.
 
-## Bắt buộc có bản phiên âm tham chiếu
+## Bảng điểm tham khảo bắt buộc
 
-> [!WARNING]
-> Văn bản tham chiếu (`ref_text`) là bắt buộc để sao chép giọng nói: Cơ chế cross-attention của Fish S2 Pro yêu cầu bản phiên âm của âm thanh tham chiếu để căn chỉnh các token ngữ âm với các mã âm học.
->
-> Nếu bạn tải lên một mẫu giọng nói mà không cung cấp bản phiên âm tham chiếu khớp, Fish Speech sẽ âm thầm loại bỏ các token âm thanh tham chiếu và rơi vào trạng thái tạo giọng nói ngẫu nhiên không có tham chiếu. Wrapper Fish của TomoriBot sẽ xác thực và từ chối các yêu cầu tổng hợp thiếu văn bản tham chiếu với lỗi `400 Bad Request` để ngăn chặn việc tạo giọng nói không được điều kiện hóa ngoài ý muốn.
+> [!CẢNH BÁO]
+> Cần có văn bản tham chiếu (`ref_text`) để sao chép giọng nói; Cơ chế chú ý chéo của Fish S2 Pro yêu cầu bản ghi âm thanh tham chiếu để căn chỉnh mã thông báo ngữ âm với mã âm thanh. >
+> Nếu bạn tải mẫu giọng nói lên mà không cung cấp bản ghi tham chiếu phù hợp, Fish Speech sẽ âm thầm loại bỏ mã thông báo âm thanh tham chiếu và quay lại giọng nói không tham chiếu ngẫu nhiên. Trình bao bọc Cá TomoriBot xác thực và từ chối các yêu cầu tổng hợp thiếu văn bản tham chiếu với `400 Bad Request` để ngăn chặn việc vô tình tạo ra vô điều kiện.
 
-Khi thêm giọng nói persona trong `/config` dưới phần `Model > Tham số TTS & giọng nói`, hãy luôn điền vào trường `Bản chép lời tham chiếu` văn bản chính xác từng từ được nói trong đoạn âm thanh tham chiếu của bạn.
+Khi thêm giọng nói cá nhân trong `/config` trong trường `Models > `Tham số & Giọng đọc TTS``, always fill in the `Reference Transcript` với văn bản nguyên văn được nói trong clip âm thanh tham chiếu của bạn.
 
 ## Đăng ký trong TomoriBot
 
@@ -97,14 +96,14 @@ Trong `/providers`, chọn `Thêm endpoint tùy chỉnh mới` và cấu hình:
 - Endpoint URL: `http://127.0.0.1:8015`
 - Chế độ nguồn giọng đọc: `Clone`
 - Script Markup: `Thẻ trong ngoặc vuông`
-- API key: để trống. Wrapper không có xác thực; xem [Truy cập mạng](/self-hosting/local-endpoints/text-to-speech/#network-access).
+- API key: để trống. Wrapper không có xác thực; xem [Truy cập mạng](/vi/self-hosting/local-endpoints/text-to-speech/#network-access).
 
 Sau đó thêm mục model của endpoint và kích hoạt mục đó qua `/config` dưới phần Models > Switch Models.
 
 ## Thêm giọng nói persona
 
 1. Chuẩn bị một đoạn clip tham chiếu rõ ràng dài 10-20 giây với một người nói và ít hoặc không có tiếng ồn nền.
-2. Trong `/config`, mở Models > Tham số & Giọng đọc TTS và tải mẫu giọng nói lên.
+2. Trong `/config`, mở Models > `Tham số & Giọng đọc TTS` và tải mẫu giọng nói lên.
 3. Nhập chính xác bản phiên âm được nói trong đoạn clip tham chiếu vào trường văn bản tham chiếu.
 4. Trong `/config`, mở Persona > Voice và gán mẫu cho persona.
 5. Tạo tin nhắn thoại bằng `/generate voice-message` hoặc để TomoriBot tạo tin nhắn qua công cụ tin nhắn thoại của bot.
@@ -127,7 +126,7 @@ Vì endpoint sử dụng markup `Thẻ trong ngoặc vuông`, TomoriBot sẽ gi�
 |---|---|---|
 | `FISH_S2_MODEL_DIR` | `fish-speech/checkpoints/fish-speech-s2-pro` | Thư mục checkpoint S2 Pro |
 | `FISH_S2_MODEL_ID` | `fishaudio/s2-pro` | Kho lưu trữ model và nhãn siêu dữ liệu trạng thái cho checkpoint đã cấu hình |
-| `TOMORI_TTS_HOST` | `127.0.0.1` | Địa chỉ liên kết của wrapper; xem [Truy cập mạng](/self-hosting/local-endpoints/text-to-speech/#network-access) |
+| `TOMORI_TTS_HOST` | `127.0.0.1` | Địa chỉ liên kết của wrapper; xem [Truy cập mạng](/vi/self-hosting/local-endpoints/text-to-speech/#network-access) |
 | `FISH_S2_PORT` | `8015` | Cổng wrapper Fish |
 | `FISH_S2_UPSTREAM_PORT` | `8025` | Cổng API Fish nội bộ |
 | `FISH_S2_COMPILE` | `0` | Bật `torch.compile` của Fish Speech (yêu cầu Linux/WSL2 với Triton) |
@@ -150,14 +149,14 @@ Vì endpoint sử dụng markup `Thẻ trong ngoặc vuông`, TomoriBot sẽ gi�
 
 Âm thanh tham chiếu phải là một tệp PCM RIFF/WAVE không nén, không rỗng và tối đa 10 MB sau khi giải mã. Giới hạn này được kiểm tra trước khi suy luận để yêu cầu base64 quá lớn không tiêu tốn bộ nhớ không giới hạn, và chứa được khoảng 237 giây WAV mono 22,05 kHz mà TomoriBot gửi.
 
-## Tùy chọn VRAM thấp (Lượng tử hóa INT8)
+## Tùy chọn VRAM thấp (lượng tử hóa INT8)
 
-Người dùng chạy trên GPU có VRAM hạn chế (chẳng hạn 8-12 GB) không thể vừa với checkpoint BF16 chính thức có thể chọn model lượng tử hóa INT8 (`Imagilux/fishaudio-s2-pro`).
+Người dùng chạy trên GPU có VRAM bị hạn chế (ví dụ: 8-12 GB) không phù hợp với điểm kiểm tra BF16 chính thức có thể chọn tham gia model lượng tử hóa INT8 (`Imagilux/fishaudio-s2-pro`).
 
-Để cài đặt và chạy checkpoint INT8:
+Để cài đặt và chạy điểm kiểm tra INT8:
 
 ```bash
-# Trong Linux / WSL2:
+# In Linux / WSL2:
 export FISH_S2_MODEL_ID="Imagilux/fishaudio-s2-pro"
 export FISH_S2_MODEL_DIR="servers/tts/fishs2/fish-speech/checkpoints/fish-speech-s2-pro-int8"
 export FISH_S2_MODEL_REVISION="9706ff036580881d87cc09465dd10014527bc481"
@@ -165,13 +164,13 @@ bash servers/tts/fishs2/install-fishs2.sh
 ```
 
 ```powershell
-# Trong Windows PowerShell:
+# In Windows PowerShell:
 $env:FISH_S2_MODEL_ID = "Imagilux/fishaudio-s2-pro"
 $env:FISH_S2_MODEL_DIR = "servers/tts/fishs2/fish-speech/checkpoints/fish-speech-s2-pro-int8"
 $env:FISH_S2_MODEL_REVISION = "9706ff036580881d87cc09465dd10014527bc481"
 .\servers\tts\fishs2\install-fishs2.ps1
 ```
 
-Khởi động `server.py` từ cùng một shell, hoặc đặt cùng ba biến đó trước khi khởi chạy, để wrapper tải thư mục INT8 thay vì mặc định BF16.
+Khởi động `server.py` từ cùng một shell hoặc đặt ba biến giống nhau trước khi khởi chạy nó, để trình bao bọc tải thư mục INT8 thay vì mặc định BF16.
 
-Checkpoint INT8 giảm trọng số transformer từ ~10.3 GB xuống ~5.1 GB trong khi vẫn giữ audio embedding và các lớp codec ở dạng BF16, vừa vặn bên trong tổng lượng VRAM ~10 GB.
+Điểm kiểm tra INT8 giảm trọng lượng máy biến áp từ ~10,3 GB xuống ~5,1 GB trong khi vẫn giữ các phần nhúng âm thanh và lớp codec trong BF16, vừa vặn bên trong tổng VRAM ~10 GB.

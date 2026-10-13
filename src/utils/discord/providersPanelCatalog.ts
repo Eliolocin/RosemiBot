@@ -131,7 +131,9 @@ const capabilityField: RouteFieldCodec<"capability", CustomEndpointCapability> =
   key: "capability",
   encode: (v) => String(v),
   decode: (v) =>
-    ["text", "embedding", "image", "video", "speech", "transcription"].includes(v as CustomEndpointCapability)
+    ["text", "embedding", "image", "video", "speech", "transcription", "decision"].includes(
+      v as CustomEndpointCapability,
+    )
       ? (v as CustomEndpointCapability)
       : null,
 };

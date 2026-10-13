@@ -2,6 +2,7 @@
 title: "Rose，男孩子气的那个"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Source: src/db/seed/catalog/personas/default/en-US.ts.

@@ -19,6 +19,7 @@ import { getAllEmotionKeys } from "@/types/misc/emotions";
 import { type ExpressionBatchResult, ExpressionBatchResultSchema } from "@/providers/utils/structuredOutput";
 import type { StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import { decryptApiKey } from "@/utils/security/crypto";
+import { invalidateEmojiStickerCache } from "@/utils/cache/emojiStickerCache";
 import { lazySyncGuildEmojis } from "@/utils/cache/emojiLazySync";
 import { lazySyncGuildStickers } from "@/utils/cache/stickerLazySync";
 import { callExpressionInitializationForProvider } from "@/providers/utils/providerFeatureExecutors";
@@ -277,15 +278,6 @@ export async function execute(
       return;
     }
 
-    // Handle overwrite before querying for uninitialized
-    if (overwrite) {
-      log.info(`[Initialize Expressions] Overwriting existing expressions for guild ${interaction.guild.name}`);
-      await Promise.all([
-        serverRepository.clearEmojiExpressions(tomoriState.server_id),
-        serverRepository.clearStickerExpressions(tomoriState.server_id),
-      ]);
-    }
-
     // Resolve the provider and its per-batch image cap once. These are constant
     //    across every loop iteration, so there is no need to recompute them per batch.
     const provider = effectiveLlm.llm_provider.toLowerCase();
@@ -320,12 +312,23 @@ export async function execute(
     const keyVersion = tomoriState.config.key_version || 1;
     const decryptedApiKey = await decryptApiKey(tomoriState.config.api_key, keyVersion);
 
-    // Snapshot the starting backlog so the final report can compare against it
-    const [initialEmojis, initialStickers] = await Promise.all([
-      serverRepository.loadUninitializedEmojis(tomoriState.server_id),
-      serverRepository.loadUninitializedStickers(tomoriState.server_id),
-    ]);
-    const grandTotalUninitialized = initialEmojis.length + initialStickers.length;
+    // Overwrite never clears up front: a provider outage mid-run must leave the old
+    // classifications intact, so rows are replaced only as each batch succeeds.
+    const classifiedEmojiIds = new Set<string>();
+    const classifiedStickerIds = new Set<string>();
+    const loadPending = async () => {
+      const [emojis, stickers] = await Promise.all([
+        serverRepository.loadEmojisForClassification(tomoriState.server_id, overwrite),
+        serverRepository.loadStickersForClassification(tomoriState.server_id, overwrite),
+      ]);
+      return {
+        pendingEmojis: emojis.filter((emoji) => !classifiedEmojiIds.has(emoji.emoji_disc_id)),
+        pendingStickers: stickers.filter((sticker) => !classifiedStickerIds.has(sticker.sticker_disc_id)),
+      };
+    };
+
+    const initialBacklog = await loadPending();
+    const grandTotalUninitialized = initialBacklog.pendingEmojis.length + initialBacklog.pendingStickers.length;
 
     if (grandTotalUninitialized === 0) {
       await interaction.editReply({
@@ -343,18 +346,13 @@ export async function execute(
     const systemPrompt = buildSystemPrompt();
     const temperature = 1.0;
 
-    let totalEmojiProcessed = 0;
-    let totalStickerProcessed = 0;
     let batchNumber = 0;
     let chunkRetries = 0; // consecutive no-progress iterations on the current chunk
     let previousRemaining = -1; // backlog size observed at the start of the previous iteration
 
     while (true) {
       // Re-query the backlog each iteration so prior batches' DB writes shrink it
-      const [pendingEmojis, pendingStickers] = await Promise.all([
-        serverRepository.loadUninitializedEmojis(tomoriState.server_id),
-        serverRepository.loadUninitializedStickers(tomoriState.server_id),
-      ]);
+      const { pendingEmojis, pendingStickers } = await loadPending();
       const remaining = pendingEmojis.length + pendingStickers.length;
 
       if (remaining === 0) {
@@ -381,6 +379,7 @@ export async function execute(
 
       const images: Array<{ url: string; name: string }> = [];
       const items: Array<{ name: string; type: "emoji" | "sticker" }> = [];
+      const batchTargets: Array<{ type: "emoji" | "sticker"; discId: string }> = [];
 
       for (const emoji of pendingEmojis) {
         images.push({
@@ -388,6 +387,7 @@ export async function execute(
           name: emoji.emoji_name,
         });
         items.push({ name: emoji.emoji_name, type: "emoji" });
+        batchTargets.push({ type: "emoji", discId: emoji.emoji_disc_id });
       }
 
       for (const sticker of pendingStickers) {
@@ -396,12 +396,14 @@ export async function execute(
           name: sticker.sticker_name,
         });
         items.push({ name: sticker.sticker_name, type: "sticker" });
+        batchTargets.push({ type: "sticker", discId: sticker.sticker_disc_id });
       }
 
       // Apply provider batch size limit (different token/cost constraints per provider)
       if (expressionBatchSize && images.length > expressionBatchSize) {
         images.splice(expressionBatchSize);
         items.splice(expressionBatchSize);
+        batchTargets.splice(expressionBatchSize);
         log.info(
           `[Initialize Expressions] Batch ${batchNumber}: limited to ${expressionBatchSize} of ${remaining} remaining items for ${provider} provider`,
         );
@@ -414,7 +416,7 @@ export async function execute(
               batch_number: batchNumber,
               batch_size: images.length,
               remaining,
-              processed: totalEmojiProcessed + totalStickerProcessed,
+              processed: classifiedEmojiIds.size + classifiedStickerIds.size,
               grand_total: grandTotalUninitialized,
             }),
             color: hexToNumber(ColorCode.INFO),
@@ -478,21 +480,27 @@ export async function execute(
         continue;
       }
 
-      const { emojiCount, stickerCount } = await serverRepository.initializeExpressions(
+      const { emojiDiscIds, stickerDiscIds } = await serverRepository.initializeExpressions(
         tomoriState.server_id,
         validationResult.data.expressions,
+        {
+          overwrite,
+          emojiDiscIds: batchTargets.filter((target) => target.type === "emoji").map((target) => target.discId),
+          stickerDiscIds: batchTargets.filter((target) => target.type === "sticker").map((target) => target.discId),
+        },
       );
-      totalEmojiProcessed += emojiCount;
-      totalStickerProcessed += stickerCount;
+      invalidateEmojiStickerCache(tomoriState.server_id);
+      for (const id of emojiDiscIds) classifiedEmojiIds.add(id);
+      for (const id of stickerDiscIds) classifiedStickerIds.add(id);
 
       // Brief pause between batches to stay within provider rate limits, skipped
       //     when this batch drained the remaining backlog (no further iteration needed)
-      if (EXPRESSION_INIT_BATCH_DELAY_MS > 0 && remaining - (emojiCount + stickerCount) > 0) {
+      if (EXPRESSION_INIT_BATCH_DELAY_MS > 0 && remaining - (emojiDiscIds.length + stickerDiscIds.length) > 0) {
         await new Promise((resolve) => setTimeout(resolve, EXPRESSION_INIT_BATCH_DELAY_MS));
       }
     }
 
-    const totalProcessed = totalEmojiProcessed + totalStickerProcessed;
+    const totalProcessed = classifiedEmojiIds.size + classifiedStickerIds.size;
 
     if (totalProcessed === 0) {
       await interaction.editReply({
@@ -525,8 +533,8 @@ export async function execute(
           {
             title: localizer(locale, "commands.expressions.initialize.success_title"),
             description: localizer(locale, "commands.expressions.initialize.success_description", {
-              emoji_count: totalEmojiProcessed,
-              sticker_count: totalStickerProcessed,
+              emoji_count: classifiedEmojiIds.size,
+              sticker_count: classifiedStickerIds.size,
               total: totalProcessed,
             }),
             color: hexToNumber(ColorCode.SUCCESS),

@@ -4,6 +4,8 @@ import { terminalPayload as buildConfigTerminalPayload } from "@/utils/discord/i
 import { terminalPayload as buildPersonalConfigTerminalPayload } from "@/utils/discord/interactions/personalConfigRouteContext";
 import { buildGeneratedImageComponentsV2Payload } from "@/utils/discord/generatedImageMessage";
 import { buildGeneratedVideoComponentsV2Payload } from "@/utils/discord/generatedVideoMessage";
+import { ContextItemTag } from "@/types/misc/context";
+import { buildContextUsagePayload } from "@/utils/discord/ui/contextUsagePanel";
 import { buildRangeSelectorPayload } from "@/utils/discord/ui/interactionCore";
 import { buildPersonaWorkflowNotice } from "@/utils/discord/ui/personaWorkflow";
 import {
@@ -12,6 +14,7 @@ import {
 } from "@/utils/discord/ui/componentsV2Limits";
 import { buildStatsDashboardPayload, type StatsTab } from "@/utils/stats/statsDashboard";
 import { initializeLocalizer } from "@/utils/text/localizer";
+import { createPersona } from "../../helpers/fixtures";
 
 beforeAll(async () => initializeLocalizer());
 
@@ -78,6 +81,44 @@ describe("Declared Components V2 producer smoke fixtures", () => {
         },
       }),
       "personaWorkflow.buildPersonaWorkflowNotice",
+    );
+  });
+
+  it("validates the context usage payload with every segment and note present", () => {
+    const persona = createPersona();
+    const segmentTags = [
+      ContextItemTag.SYSTEM_HUMANIZER_RULES,
+      ContextItemTag.SYSTEM_PERSONALITY,
+      ContextItemTag.KNOWLEDGE_SERVER_INFO,
+      ContextItemTag.KNOWLEDGE_SERVER_MEMORIES,
+      ContextItemTag.KNOWLEDGE_USERS_IN_CONVERSATION,
+      ContextItemTag.DIALOGUE_HISTORY,
+      ContextItemTag.KNOWLEDGE_VERBATIM_TOOL_DEFINITIONS,
+    ];
+    assertValidPayload(
+      buildContextUsagePayload(
+        "en-US",
+        {
+          selectedPersona: persona,
+          answeringState: persona,
+          providerName: "google",
+          modelName: "gemini-2.5-pro",
+          channelId: "123456789012345678",
+          channelName: "general",
+          presetName: null,
+          capturedAt: new Date(0).toISOString(),
+          contextItems: segmentTags.map((metadataTag) => ({
+            role: "system",
+            parts: [{ type: "text", text: "x".repeat(4_000) }],
+            metadataTag,
+          })),
+          toolsData: [{ name: "weather" }],
+          budget: { contextLength: 1_048_576, outputReserve: 8192 },
+          historyPairsDropped: 3,
+        },
+        false,
+      ),
+      "contextUsagePanel.buildContextUsagePayload",
     );
   });
 

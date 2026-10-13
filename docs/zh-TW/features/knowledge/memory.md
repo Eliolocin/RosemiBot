@@ -2,6 +2,7 @@
 title: "記憶"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBot 有一套持久記憶系統，讓她能跨對話記住事實。這一頁談的是*她知道什麼*（事實、脈絡、文件）。至於*她怎麼表現*（個性、語氣），請看[多個人格](/zh-TW/features/chatting-personality/multiple-personas/)。

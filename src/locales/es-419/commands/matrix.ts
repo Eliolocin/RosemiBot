@@ -14,6 +14,10 @@ Abre {help_matrix}, luego Integraciones > Matrix, para conocer los pasos de conf
       join_failed_description: `<#{channel_id}> se vinculó a \`{room_id}\`, pero no pude unirme a la sala de Matrix automáticamente. Invita a \`{bot_user_id}\` a la sala manualmente. Si necesitas los pasos de configuración y la lista de limitaciones, abre {help_matrix} y ve a Integraciones > Matrix.`,
       encrypted_room_title: `No se puede vincular una sala cifrada`,
       encrypted_room_description: `\`{room_id}\` tiene el cifrado de extremo a extremo habilitado. El cifrado de Matrix no se puede desactivar una vez configurado, así que esta sala no se puede usar para la conexión. Crea una nueva sala de Matrix **sin** cifrado e invita a \`{bot_user_id}\` en su lugar.`,
+      encryption_unknown_title: `No se pudo verificar el cifrado de la sala`,
+      encryption_unknown_description: `No pude confirmar que \`{room_id}\` no esté cifrada, así que no la vinculé. Solo retransmito salas que puedo verificar, ya que los mensajes se envían como texto sin formato.
+
+Invita a \`{bot_user_id}\` a la sala, espera a que se una y vuelve a ejecutar este comando. Si el bot ya está en la sala, es posible que el homeserver no esté disponible; vuelve a intentarlo en unos minutos.`,
       matrix_not_configured_title: `El puente de Matrix no está disponible`,
       matrix_not_configured_description: `El puente de Matrix no está configurado en esta instancia del bot. Contacta al propietario del bot para habilitarlo.`,
     },

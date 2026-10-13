@@ -1,15 +1,14 @@
 import {
   AttachmentBuilder,
   MessageFlags,
-  type AutocompleteInteraction,
   type ChatInputCommandInteraction,
   type Client,
   type SlashCommandSubcommandBuilder,
 } from "discord.js";
 import type { UserRow } from "@/types/db/schema";
 import { getCachedAllPersonas, getCachedTomoriState } from "@/utils/cache/tomoriStateCache";
-import type { CommandAutocompleteFunction } from "@/utils/discord/commandLoader";
-import { replyInfoEmbed, safeSelectOptionText } from "@/utils/discord/ui/interactionCore";
+import { handleServerPersonaAutocomplete } from "@/utils/discord/autocomplete/personaAutocomplete";
+import { replyInfoEmbed } from "@/utils/discord/ui/interactionCore";
 import {
   isLocalPersonaAvatarPath,
   loadStoredPersonaAvatarBuffer,
@@ -48,71 +47,7 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
         ),
     );
 
-/**
- * Autocomplete handler for the persona option on /stats persona.
- * Returns all personas for this guild, ranked by exact match, prefix, and substring.
- */
-export const autocomplete: CommandAutocompleteFunction = async (
-  _client: Client,
-  interaction: AutocompleteInteraction,
-): Promise<void> => {
-  let responded = false;
-  try {
-    if (!interaction.guild) {
-      responded = true;
-      await interaction.respond([]);
-      return;
-    }
-
-    const allPersonas = await getCachedAllPersonas(interaction.guild.id);
-    if (allPersonas.length === 0) {
-      responded = true;
-      await interaction.respond([]);
-      return;
-    }
-
-    const focusedOption = interaction.options.getFocused();
-    const focusedValue = (focusedOption || "").toLowerCase();
-
-    let filtered = allPersonas;
-    if (focusedValue) {
-      const exact: typeof allPersonas = [];
-      const prefix: typeof allPersonas = [];
-      const substring: typeof allPersonas = [];
-
-      for (const p of allPersonas) {
-        const nickname = (p.persona_nickname ?? "").toLowerCase();
-        if (nickname === focusedValue) {
-          exact.push(p);
-        } else if (nickname.startsWith(focusedValue)) {
-          prefix.push(p);
-        } else if (nickname.includes(focusedValue)) {
-          substring.push(p);
-        }
-      }
-
-      filtered = [...exact, ...prefix, ...substring];
-    }
-
-    const limited = filtered.slice(0, 25);
-
-    const choices = limited.map((p) => ({
-      name: safeSelectOptionText(p.persona_nickname ?? "Unknown Persona", 100),
-      value: String(p.persona_id),
-    }));
-
-    responded = true;
-    await interaction.respond(choices);
-  } catch {
-    if (!responded) {
-      try {
-        await interaction.respond([]);
-      } catch {
-        // Autocomplete must fail silently if respond throws
-      }
-    }
-  }
-};
+export const autocomplete = handleServerPersonaAutocomplete;
 
 /**
  * Executes the /stats persona command: validates the selected persona, loads telemetry,

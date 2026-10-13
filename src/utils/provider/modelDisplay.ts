@@ -1,5 +1,6 @@
 import type { LlmRow } from "@/types/db/schema";
 import { isCustomProvider } from "@/utils/provider/customProviderUtils";
+import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 
 export function getEffectiveLlmModelName(
   llm: LlmRow,
@@ -32,5 +33,5 @@ export function formatLlmDisplayLabel(
   customModelName?: string | null,
   otherModelCodename?: string | null,
 ): string {
-  return `\`${getLlmDisplayName(llm, customModelName, otherModelCodename)}\` (${llm.llm_provider})`;
+  return `\`${getLlmDisplayName(llm, customModelName, otherModelCodename)}\` (${getProviderDisplayName(llm.llm_provider)})`;
 }

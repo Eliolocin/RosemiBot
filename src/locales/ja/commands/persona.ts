@@ -176,6 +176,7 @@ export default {
       error_invalid_config: `ペルソナデータに無効な設定フィールドがあります`,
       error_no_server_data: `データベースにサーバーが見つかりません。まず \`/setup\` を実行してください。`,
       error_name_conflict: `**{name}** という名前のペルソナは既にこのサーバーに存在します。別の名前を使用してください。`,
+      error_nsfw_persona: `このペルソナはNSFWに指定されているため、\`/persona import\`では読み込めません。代わりに\`/nsfw persona import\`を使ってください。`,
       error_import_failed: `ペルソナデータのインポートに失敗しました`,
       error_not_json: `インポートしたファイルには有効なJSONデータが含まれている必要があります`,
       error_incompatible_version: `互換性のないペルソナバージョン。期待: {expected}、実際: {actual}`,

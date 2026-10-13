@@ -26,6 +26,7 @@ import {
   type StatusDashboardBuildDependencies,
 } from "@/utils/metrics/status/statusDashboard";
 import { localizer } from "@/utils/text/localizer";
+import { canViewPromptText } from "@/utils/text/promptInspection/delivery";
 
 export interface StatusRouteDependencies extends StatusDashboardBuildDependencies {
   loadUserByDiscordId(userDiscId: string): Promise<UserRow | null>;
@@ -43,6 +44,7 @@ export interface StatusRouteDependencies extends StatusDashboardBuildDependencie
     selectedPersona: TomoriState,
     userData: UserRow,
     locale: string,
+    canViewText?: boolean,
   ): Promise<StatusPageCategory["pages"]>;
 }
 
@@ -187,7 +189,12 @@ export function createStatusInteractionRoute(overrides: Partial<StatusRouteDepen
       );
 
       if (selectedPersona && activeCategory === "persona") {
-        const personaPages = await dependencies.buildPersonaStatusPages(selectedPersona, userData, route.locale);
+        const personaPages = await dependencies.buildPersonaStatusPages(
+          selectedPersona,
+          userData,
+          route.locale,
+          canViewPromptText(interaction.memberPermissions, tomoriState),
+        );
         const personaCategory = categories.find((candidate) => candidate.id === "persona");
         if (personaCategory) personaCategory.pages = personaPages;
       }

@@ -1,10 +1,11 @@
 ---
 title: "VoxCPM2"
+aiGenerated: true
 ---
 
-VoxCPM2は、OpenBMBによる2Bパラメーターの多言語テキスト音声合成モデルです。30言語、48 kHz出力、自然言語によるボイスデザイン、参照音声によるボイスクローン、制御可能なクローン、そして文字起こし支援の「Ultimate Cloning」に対応しています。TomoriBotは、`servers/tts/voxcpm2/`にある薄いラッパーを通じて公式の`voxcpm` Pythonパッケージを使用します。
+OpenBMBの [VoxCPM2](https://github.com/OpenBMB/VoxCPM) テキスト読み上げモデルを使用して、30言語にわたる表現力豊かな48 kHz音声を合成します。
 
-既定モデルは公式の`openbmb/VoxCPM2` BF16チェックポイントです。OpenBMBは標準ランタイムでおよそ8 GBのVRAMを報告しており、通常のモデルは16 GBのNVIDIA GPUに無理なく収まるため、既定では量子化済みチェックポイントを必要としません。
+VoxCPM2は、音声クローン作成、トランスクリプト支援による究極のクローン作成、および自然言語音声デザインをサポートする2Bパラメーターの多言語音声モデルです。TomoriBotは、`servers/tts/voxcpm2/`のサーバーを介して公式`voxcpm` Pythonライブラリに接続し、量子化されていない公式の`openbmb/VoxCPM2` BF16チェックポイントを16 GBのVRAM内で快適に実行します。
 
 ## ライセンス
 
@@ -68,11 +69,11 @@ OpenBMBは、標準ランタイムでRTX 4090においておよそ0.30 RTFを報
 
 ## インストール
 
-このローカルサーバーは、現行の安定版である`voxcpm` 2.0.3パッケージに固定し、`openbmb/VoxCPM2`を通常のHugging Faceキャッシュにダウンロードします。
+サーバーは現在の安定した`voxcpm` 2.0.3パッケージを固定し、`openbmb/VoxCPM2`を通常のHugging Faceキャッシュにダウンロードします。
 
-### Linux / WSL Bash
+### LinuxとWSL Bash
 
-TomoriBotリポジトリのルートから実行します。
+TomoriBotリポジトリルートから:
 
 ```bash
 bash servers/tts/voxcpm2/install-voxcpm2.sh
@@ -81,29 +82,29 @@ servers/tts/voxcpm2/.venv/bin/python servers/tts/voxcpm2/server.py
 
 ### Windows PowerShell
 
-TomoriBotリポジトリのルートから実行します。
+TomoriBotリポジトリルートから:
 
 ```powershell
 .\servers\tts\voxcpm2\install-voxcpm2.ps1
 .\servers\tts\voxcpm2\.venv\Scripts\python.exe servers\tts\voxcpm2\server.py
 ```
 
-最初のセットアップでは、数ギガバイトのモデル重みをダウンロードします。モデルを事前取得せずにPython環境だけをインストールするには、`VOXCPM2_PREFETCH=0`を設定してください。その場合、公式ライブラリがサーバーの初回起動時にチェックポイントをダウンロードします。
+最初のセットアップでは、数ギガバイトのモデルウェイトをダウンロードします。モデルをプリフェッチせずにPython環境をインストールするには、`VOXCPM2_PREFETCH=0`を設定します。公式ライブラリは、最初のサーバー起動時にチェックポイントをダウンロードします。
 
-Linux / WSL:
+LinuxとWSL:
 
 ```bash
 VOXCPM2_PREFETCH=0 bash servers/tts/voxcpm2/install-voxcpm2.sh
 ```
 
-PowerShell:
+パワーシェル:
 
 ```powershell
 $env:VOXCPM2_PREFETCH = "0"
 .\servers\tts\voxcpm2\install-voxcpm2.ps1
 ```
 
-セットアップ後、`bun run launch --voxcpm2`でローカルサーバーをTomoriBotと一緒に起動できます。既定のエンドポイントは`http://127.0.0.1:8016`です。
+セットアップ後、`bun run launch --voxcpm2`はTomoriBotとともにサーバーを起動します。デフォルトのエンドポイントは`http://127.0.0.1:8016`です。
 
 ## TomoriBotへの登録
 
@@ -133,26 +134,26 @@ $env:VOXCPM2_PREFETCH = "0"
 
 5〜30秒という数字は、適用される上限ではなく文書化された品質範囲です。VoxCPM2は独自の参照音声の長さ制限を設けていないため、より長いクリップを止めるのはTomoriBotのアップロード上限です。
 
-## ペルソナのボイスデザイン
+## ペルソナボイスデザイン
 
-サンプルではなく文章による声の説明から作成すべきペルソナの場合:
+サンプルではなく書かれた音声の説明から作成する必要があるペルソナの場合:
 
-1. `/config`でペルソナ > 音声を開き、ボイスデザインを選びます。
+1. [ペルソナ] > `音声` で`/config`を開き、[VoiceDesign] を選択します。
 2. ペルソナを選択します。
-3. 「若い女性、柔らかく温かみのある声、落ち着いたペース、少し茶目っ気のある話し方」のような自然言語の説明を入力します。
+3. `Young adult woman, soft warm voice, relaxed pace, slightly playful delivery`などの自然言語の説明を入力します。
 
-TomoriBotは保存した説明を`instruct`として送信します。VoxCPM2はそれを自身のネイティブなボイスデザイン制御用プレフィックスに変換します。
+TomoriBotは、保存された説明を`instruct`として送信します。VoxCPM2は、それをネイティブの音声デザインコントロールプレフィックスに変換します。
 
-クローンされたペルソナがその場限りの音声指示も受け取る場合、VoxCPM2は制御可能なクローンを使用します。参照サンプルが話者の同一性を提供し、指示が感情や話速、発話などの性質を誘導します。文字起こしも保存されている場合は、上流のUltimate Cloningパスに信頼できる制御指示モードがないため、その指示が優先され、そのリクエストでは文字起こしが意図的に省かれます。
+クローン化されたペルソナが1回限りの音声指示も受け取る場合、VoxCPM2は制御可能なクローン作成を使用します。つまり、参照サンプルが話者のIDを提供し、指示が感情、ペース、伝え方などの品質を制御します。トランスクリプトも保存されている場合は、上流のUltimate Cloningパスが信頼性の高い制御命令モードを提供しないため、命令が優先されます。そのリクエストではトランスクリプトは意図的に省略されています。
 
-## `/generate voice-message`
+## `/generate voice-message`でのテスト
 
-VoxCPM2が有効な音声モデルになると、`/generate voice-message`は通常のvoice-messageツール呼び出しと同じ方法でペルソナに設定済みの音声ソースを使用します。
+VoxCPM2がアクティブな音声モデルになると、`/generate voice-message`は通常の音声メッセージツール呼び出しと同じ方法でペルソナの設定された音声ソースを使用します。
 
-- クローンペルソナは、保存済みの`ref_audio`とオプションの`ref_text`を送信する。
-- ボイスデザインペルソナは、保存済みのプロンプトを`instruct`として送信する。
-- 指示の対応が有効なクローン対応エンドポイントは、話し方の指示欄を表示し、その場限りの指示を`instruct`で渡す。
-- クローンサンプルとともに指示が存在する場合、TomoriBotは`reference_wav_path`のみを使用し、文字起こしのプロンプトフィールドは送信しない。
+- クローンペルソナは、保存されている`ref_audio`とオプションの`ref_text`を送信します。
+- VoiceDesignペルソナは、保存されたプロンプトを`instruct`として送信します。
+- Supports Instructが有効になっているクローン対応エンドポイントは、配信方向フィールドを公開し、`instruct`を通じて1回限りの命令を渡します。
+- クローンサンプルに命令が存在する場合、TomoriBotは`reference_wav_path`のみを使用し、トランスクリプトプロンプトフィールドを送信しません。
 
 ## 環境変数
 
@@ -171,7 +172,7 @@ VoxCPM2が有効な音声モデルになると、`/generate voice-message`は通
 | `VOXCPM2_RETRY_BADCASE_RATIO_THRESHOLD` | `6.0` | 上流の不良ケース長のしきい値 |
 | `VOXCPM2_PREFETCH` | `1` | インストーラー専用: セットアップ中にモデルをダウンロード |
 | `VOXCPM2_PORT` | `8016` | VoxCPM2ローカルサーバーのポート |
-| `TOMORI_TTS_HOST` | `127.0.0.1` | ローカルサーバーのバインドアドレス。[ネットワークアクセス](/self-hosting/local-endpoints/text-to-speech/#network-access)を参照 |
+| `TOMORI_TTS_HOST` | `127.0.0.1` | ローカルサーバーのバインドアドレス。[ネットワークアクセス](/ja/self-hosting/local-endpoints/text-to-speech/#network-access)を参照 |
 
 参照音声はデコード後10 MB以下の空でないWAVコンテナである必要があり、ラッパーは一時ファイルを書き込む前にこれを確認します。
 

@@ -51,6 +51,7 @@ import {
 export { ComponentsV2LimitError, validateComponentsV2MessageLimits, type ComponentsV2MessagePayload };
 import { buildPanelContainer, resolveAccentColor, type AccentColorInput } from "./panel";
 import { withStatusCircle } from "./statusTitle";
+import { resolveFooterLines } from "./noticeFooter";
 
 // Clean storage for select values (Discord.js will strip them, so we preserve them)
 const modalSelectValues = new Map<string, Record<string, string>>();
@@ -506,6 +507,21 @@ export function takeRawModalFileUpload(interactionId: string, customId: string):
   }
 
   return attachment;
+}
+
+export function takeRawModalFileUploads(interactionId: string, customId: string): APIAttachment[] {
+  const storedAttachments = modalResolvedAttachments.get(interactionId);
+  const storedValues = modalFileUploadValues.get(interactionId);
+  const ids = storedValues?.[customId] ?? [];
+  const files = ids.map((id) => storedAttachments?.[id]);
+  if (storedValues) {
+    delete storedValues[customId];
+    if (!Object.keys(storedValues).length) modalFileUploadValues.delete(interactionId);
+  }
+  for (const id of ids) if (storedAttachments) delete storedAttachments[id];
+  if (storedAttachments && !Object.keys(storedAttachments).length) modalResolvedAttachments.delete(interactionId);
+  if (files.some((file) => !file)) throw new Error("Modal upload attachment was not resolved");
+  return files.filter((file): file is APIAttachment => !!file);
 }
 
 /**
@@ -1355,8 +1371,12 @@ export interface NoticeContainerOptions {
   footerKey?: string;
   /** Variables for the footer. */
   footerVars?: Record<string, string | number | boolean>;
+  /** Adds the shared `/config` > Behavior > Notices line below the footer. */
+  configHint?: boolean;
   /** Optional action button placed inside the container. */
   button?: NoticeContainerButtonOptions;
+  /** Renders only the emoji-free title; body, footer, config hint, and button are dropped. */
+  minimal?: boolean;
 }
 
 /**
@@ -1368,6 +1388,15 @@ export interface NoticeContainerOptions {
 export function buildNoticeContainer(options: NoticeContainerOptions): TopLevelComponentData[] {
   const { locale } = options;
   const accentColor = resolveAccentColor(options.color);
+  if (options.minimal) {
+    const title: ComponentInContainerData = {
+      type: ComponentType.TextDisplay,
+      content: formatContainerTitle(
+        withStatusCircle(localizer(locale, options.titleKey, options.titleVars), accentColor),
+      ),
+    };
+    return [buildPanelContainer([title], accentColor, { formatProse: false })];
+  }
   const components: ComponentInContainerData[] = [];
   const descriptionText =
     options.description ??
@@ -1387,11 +1416,12 @@ export function buildNoticeContainer(options: NoticeContainerOptions): TopLevelC
     });
   }
 
-  if (options.footerKey) {
+  const footerLines = resolveFooterLines(locale, options.footerKey, options.footerVars, options.configHint);
+  if (footerLines.length > 0) {
     components.push({ type: ComponentType.Separator, divider: true, spacing: 1 });
     components.push({
       type: ComponentType.TextDisplay,
-      content: `-# ${localizer(locale, options.footerKey, options.footerVars)}`,
+      content: footerLines.map((line) => `-# ${line}`).join("\n"),
     });
   }
 
@@ -1458,6 +1488,8 @@ export function buildRangeSelectorPayload(
   optionCount: number,
   rangePage: number,
   pageSize: number = MODAL_OPTIONS_PER_PAGE,
+  titleKey: string = "general.pagination.select_page_title",
+  descriptionKey: string = "general.pagination.select_page_description",
 ): ComponentsV2Payload {
   const totalRanges = Math.ceil(optionCount / pageSize);
   const totalRangePages = Math.ceil(totalRanges / RANGES_PER_SELECTOR_PAGE);
@@ -1466,11 +1498,11 @@ export function buildRangeSelectorPayload(
   const components: ComponentInContainerData[] = [
     {
       type: ComponentType.TextDisplay,
-      content: `### ${localizer(locale, "general.pagination.select_page_title")}`,
+      content: `### ${localizer(locale, titleKey)}`,
     },
     {
       type: ComponentType.TextDisplay,
-      content: localizer(locale, "general.pagination.select_page_description", {
+      content: localizer(locale, descriptionKey, {
         totalItems: optionCount,
         totalPages: totalRanges,
       }),
@@ -1973,11 +2005,11 @@ function recordPanelFailureSample(fields: Record<string, number | string>): void
  * place a receipt can be observed without an opt-in line in each of the roughly sixteen `repaint`
  * helpers.
  *
- * Emitted as a metric rather than an error record: the metric level is never filtered out of the
- * production stream, while `error_logs` is reserved for incidents. Most of these receipts are
- * expected outcomes the actor can correct (bad input, stale panel, unavailable read), and writing
- * every one of them at error level is the storm the repository's circuit breaker exists to absorb.
- * The genuinely broken paths log at error level where their cause is still in scope.
+ * Emitted as a metric rather than an error record, because `error_logs` is reserved for incidents.
+ * Most of these receipts are expected outcomes the actor can correct (bad input, stale panel,
+ * unavailable read), and writing every one of them at error level is the storm the repository's
+ * circuit breaker exists to absorb. The genuinely broken paths log at error level where their cause
+ * is still in scope, and a site with free-text cause detail writes it to `log.warn`.
  *
  * Both sinks carry the same fields, so `stat_counters.panel_action` (successes) and
  * `metric_samples.panel_failure` (failures) join on `metric_key` / `fields->>'reason'` and answer
@@ -2000,11 +2032,10 @@ function reportPanelFailure(
     const fields = {
       locale: options?.locale ?? "en-US",
       tone: receipt.tone,
-      // Deliberately not the heading as the grouping key: a localized heading files the same defect
-      // under a different label per locale.
+      // The heading is left out entirely: it is localized free text, so it files the same defect
+      // under a different value per locale and cannot be grouped.
       reason: receipt.reason ?? `${namespace}_${receipt.tone}`,
       namespace,
-      heading: receipt.heading,
       // Omitted rather than defaulted when the site does not know its action: the field shares the
       // `stat_counters.panel_action` key space, and a placeholder would join to nothing while
       // looking like it had.
@@ -2953,7 +2984,10 @@ export async function replyPaginatedPersonaChoicesV2(
         if (isTimeout) {
           log.warn(`Pagination interaction timed out for user ${interaction.user.id}`);
         } else {
-          log.warn(`Pagination interaction failed for user ${interaction.user.id}`, innerError);
+          await log.error("Pagination interaction ended abnormally in replyPaginatedPersonaChoicesV2", innerError, {
+            errorType: "PaginationCollectorEnded",
+            metadata: { userDiscordId: interaction.user.id, currentPage },
+          });
         }
 
         // Best-effort: show a status message. We swallow any editReply failure
@@ -3244,6 +3278,7 @@ export async function promptWithRawModal(
                   ? safeSelectOptionText(option.description, SELECT_OPTION_TEXT_MAX_LENGTH)
                   : undefined,
                 emoji: option.emoji,
+                default: option.default,
               })),
               required: component.required !== false,
             };
@@ -3591,8 +3626,8 @@ export async function promptWithPaginatedModal(
   const totalPages = Math.ceil(optionCount / ITEMS_PER_PAGE);
 
   const pageSelectEmbed = createStandardEmbed(locale, {
-    titleKey: "general.pagination.select_page_title",
-    descriptionKey: "general.pagination.select_page_description",
+    titleKey: options.pageSelectTitleKey ?? "general.pagination.select_page_title",
+    descriptionKey: options.pageSelectDescriptionKey ?? "general.pagination.select_page_description",
     descriptionVars: { totalItems: optionCount, totalPages },
     color: ColorCode.INFO,
   });
@@ -3683,12 +3718,22 @@ async function runComponentsV2RangeSelectorModal(
   const prefix = `paginated_modal_${interaction.id}_${Date.now().toString(36)}`;
   const totalRangePages = Math.ceil(Math.ceil(optionCount / MODAL_OPTIONS_PER_PAGE) / RANGES_PER_SELECTOR_PAGE);
   let rangePage = 0;
+  const renderSelector = () =>
+    buildRangeSelectorPayload(
+      locale,
+      prefix,
+      optionCount,
+      rangePage,
+      MODAL_OPTIONS_PER_PAGE,
+      options.pageSelectTitleKey,
+      options.pageSelectDescriptionKey,
+    );
 
   // Render the initial selector via the path-specific transport, always resolving
   //    to a Message so awaitMessageComponent works on ephemeral replies. The reply now
   //    carries IsComponentsV2, so mark the interaction so a later legacy embed sink renders
   //    a V2 notice instead of throwing (Phase 1 collision guard).
-  const payload = buildRangeSelectorPayload(locale, prefix, optionCount, rangePage);
+  const payload = renderSelector();
   let selectorMessage: Message;
   try {
     if (interaction.deferred || interaction.replied) {
@@ -3753,7 +3798,7 @@ async function runComponentsV2RangeSelectorModal(
           ? Math.max(0, rangePage - 1)
           : Math.min(totalRangePages - 1, rangePage + 1);
       try {
-        await button.update(buildRangeSelectorPayload(locale, prefix, optionCount, rangePage));
+        await button.update(renderSelector());
       } catch (error) {
         log.warn("Failed to paginate the range selector:", error);
         return { outcome: "error", error };

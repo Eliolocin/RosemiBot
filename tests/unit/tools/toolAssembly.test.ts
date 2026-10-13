@@ -133,17 +133,11 @@ describe("tool schema assembly", () => {
   it("assembles web_search with text-only fallback categories", () => {
     const tool = buildWebSearchToolVariant(new WebSearchTool(), {
       categories: ["text"],
-      engineLabel: "DuckDuckGo MCP",
+      engineLabel: "DuckDuckGo",
     });
 
-    expect(getEnum(tool as Tool, "category")).toEqual(["text"]);
-    expect(tool?.parameters.properties.category.description).toContain("Only 'text'");
-  });
-
-  it("omits web_search when no backend categories are available", () => {
-    const tool = buildWebSearchToolVariant(new WebSearchTool(), null);
-
-    expect(tool).toBeNull();
+    expect(getEnum(tool, "category")).toEqual(["text"]);
+    expect(tool.parameters.properties.category.description).toContain("Only 'text'");
   });
 
   it("assembles generate_image as text-to-image only", () => {

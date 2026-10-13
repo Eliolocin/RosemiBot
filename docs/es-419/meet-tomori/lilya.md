@@ -1,8 +1,8 @@
 ---
 title: "Lilya, la tímida"
-aiGenerated: true
 sidebar:
   order: 4
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Source: src/db/seed/catalog/personas/shy/en-US.ts.

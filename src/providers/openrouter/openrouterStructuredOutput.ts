@@ -1,8 +1,16 @@
+import {
+  parsePrivateStructuredOutput,
+  privateStructuredFailure,
+  readStructuredResponse,
+} from "@/providers/utils/structuredReview";
 import type { z } from "zod";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import { log } from "@/utils/misc/logger";
 import { fetchAndOptimizeImage } from "@/utils/image/imageProcessor";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { buildOpenRouterReasoningRequest } from "@/utils/provider/thinkingControl";
+import { buildOpenrouterProviderRouting } from "@/providers/openrouter/providerRouting";
+import { getOpenRouterSupportedParameters } from "@/utils/cache/openrouterCapabilityCache";
 type GenericStructuredOutputRequest = ProviderStructuredJsonRequest;
 
 type OpenrouterContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -71,8 +79,14 @@ export async function callOpenrouterStructuredJSON<T>(
       temperature: request.temperature ?? 1.0,
       max_tokens: request.maxOutputTokens ?? 8192,
       response_format: responseFormat,
+      provider: buildOpenrouterProviderRouting({ requiresParameterSupport: true }),
       plugins: [{ id: "response-healing" }],
       stream: false,
+      // `require_parameters` turns an unsupported `reasoning` into a 404 for the whole request, and a
+      // schema-honoring reply matters more than reasoning control, so it is sent only when advertised.
+      ...(request.thinkingLevel !== undefined && getOpenRouterSupportedParameters(request.model)?.has("reasoning")
+        ? buildOpenRouterReasoningRequest(request.thinkingLevel)
+        : {}),
     };
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -83,9 +97,14 @@ export async function callOpenrouterStructuredJSON<T>(
         ...buildOpenRouterAttributionHeaders(),
       },
       body: JSON.stringify(body),
+      signal: request.abortSignal,
     });
 
     if (!response.ok) {
+      if (request.privateOutput) {
+        await response.body?.cancel();
+        return privateStructuredFailure(request, "transport", response.status);
+      }
       const errorBody = await response.text();
       log.error("OpenRouter structured JSON request failed", new Error(errorBody), {
         errorType: "OpenrouterStructuredJSONHttpError",
@@ -97,8 +116,9 @@ export async function callOpenrouterStructuredJSON<T>(
       };
     }
 
-    const result = (await response.json()) as {
-      choices?: Array<{ message?: { content?: unknown } }>;
+    const result = (await readStructuredResponse(request, response)) as {
+      usage?: unknown;
+      choices?: Array<{ message?: { content?: unknown; refusal?: unknown } }>;
     };
     const messageContent = result.choices?.[0]?.message?.content;
     const responseText =
@@ -119,6 +139,14 @@ export async function callOpenrouterStructuredJSON<T>(
               .join("")
           : "";
 
+    if (request.privateOutput)
+      return parsePrivateStructuredOutput(
+        request,
+        responseText,
+        zodSchema,
+        result.usage,
+        Boolean(result.choices?.[0]?.message?.refusal),
+      );
     if (!responseText) {
       return {
         success: false,
@@ -151,6 +179,7 @@ export async function callOpenrouterStructuredJSON<T>(
 
     return { success: true, data: validationResult.data };
   } catch (error) {
+    if (request.privateOutput) return privateStructuredFailure(request);
     log.error("Error calling OpenRouter structured JSON", error as Error, {
       errorType: "OpenrouterStructuredJSONError",
       metadata: { model: request.model },

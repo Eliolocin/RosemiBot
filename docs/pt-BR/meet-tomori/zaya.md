@@ -2,6 +2,7 @@
 title: "Zaya, a Orgulhosa"
 sidebar:
   order: 2
+aiGenerated: false
 ---
 
 <!-- STUB (tarefa secundária). Fonte: src/db/seed/catalog/personas/prideful/en-US.ts

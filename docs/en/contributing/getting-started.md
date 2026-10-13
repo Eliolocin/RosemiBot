@@ -2,6 +2,7 @@
 title: "Getting Started with TomoriBot Development"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
 How to run TomoriBot locally with Bun and PostgreSQL for development.
@@ -55,7 +56,7 @@ With `RUN_ENV=development` the checklist has two steps:
 - **AI Provider**, one select with three modes:
   - **AI Provider (Recommended)**: pick a provider and enter an API key, which is validated and
     encrypted into the draft.
-  - **Custom Endpoint (Advanced)**: `Configure Connection`, then `Configure Text Model`, which is
+  - **Custom Endpoint**: `Configure Connection`, then `Configure Text Model`, which is
     enabled once the connection validates.
   - **User BYOK** (servers only): members bring their own providers and the server keeps no text
     provider.
@@ -89,6 +90,7 @@ Quick checks: `/ping`, `/status`, and mentioning the bot in chat. If commands do
 | `bun run purge-commands` | Remove registered slash commands |
 
 Persona PNGs are already well compressed, so meeting the budget usually needs the downscale; Discord
-shows avatars at 128 px or less. On a `release` checkout, `compress-media` also converts release cards
-in `.github/release/**` to WebP (quality 90) and rewrites `release-notes.md` references. For a release
-already published, update its body with `gh release edit` afterwards.
+shows avatars at 128 px or less. On a `release` checkout, `compress-media` also converts static release
+cards in `.github/release/**` to WebP (quality 90) and rewrites `release-notes.md` references. GIF cards
+stay GIF and are replaced only by a smaller re-encode. For a release already published, update its body
+with `gh release edit` afterwards.

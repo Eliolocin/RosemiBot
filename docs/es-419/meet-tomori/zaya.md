@@ -1,8 +1,8 @@
 ---
 title: "Zaya, la orgullosa"
-aiGenerated: true
 sidebar:
   order: 2
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Source: src/db/seed/catalog/personas/prideful/en-US.ts

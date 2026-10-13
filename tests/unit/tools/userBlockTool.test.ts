@@ -132,9 +132,7 @@ describe("formatBlockedUserNoticeContent", () => {
     const expiresAt = new Date(now.getTime() + 2.5 * 60 * 60 * 1000);
     const notice = formatBlockedUserNoticeContent("Alice", expiresAt, now);
 
-    expect(notice).toBe(
-      "[System: Alice sent a message but is currently blocked by you for 3 more hours. Use `unblock_user` to unblock if needed]",
-    );
+    expect(notice).toBe("[System: Alice sent a message but is currently blocked by you for 3 more hours.]");
   });
 
   it("floors at one hour and uses singular when under an hour remains", () => {

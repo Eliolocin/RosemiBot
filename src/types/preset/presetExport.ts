@@ -78,6 +78,8 @@ export interface PresetExportData {
   nai_attg_genre?: string | null;
   /** ATTG: Quality stars (Erato only, 1-5) */
   nai_attg_stars?: number | null;
+  /** Absent in exports that predate the flag, which were all SFW. */
+  is_nsfw?: boolean;
 }
 
 /**
@@ -165,6 +167,7 @@ export const presetExportDataSchema = z.object({
   nai_attg_tags: z.string().max(PRESET_MAX_STRING_LENGTH).nullable().optional(),
   nai_attg_genre: z.string().max(PRESET_MAX_STRING_LENGTH).nullable().optional(),
   nai_attg_stars: z.number().int().min(1).max(5).nullable().optional(),
+  is_nsfw: z.boolean().optional(),
 });
 
 /**

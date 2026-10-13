@@ -23,7 +23,7 @@ export function createStreamTextProcessingConfig(config: StreamConfig, context: 
     mentionIdSet,
     personaMentionMap,
     botName,
-    botNameAliases: collectPersonaNameAliases(context.tomoriState, botName),
+    botNameAliases: collectPersonaNameAliases(context.tomoriState, botName, context.impersonatedSpeakerLabel),
     registeredSpeakerNamesLower: collectRegisteredSpeakerNames(context.contextItems, botName),
     maxMessageLength: config.maxMessageLength,
     uncensorUnicodeSpacesEnabled: context.tomoriState.config.uncensor_unicode_space_enabled ?? false,
@@ -44,14 +44,23 @@ export function createStreamTextProcessingConfig(config: StreamConfig, context: 
  * to avoid emitting a redundant alias.
  *
  * @param botName - The persona's current display name (already handled by the cleaner)
+ * @param impersonatedSpeakerLabel - The label a user-impersonation prompt asked the model to open with
  * @returns De-duplicated alias names (excluding the active display name)
  */
-export function collectPersonaNameAliases(tomoriState: TomoriState, botName: string): string[] {
+export function collectPersonaNameAliases(
+  tomoriState: TomoriState,
+  botName: string,
+  impersonatedSpeakerLabel?: string,
+): string[] {
   const botNameLower = botName.trim().toLowerCase();
   const aliases: string[] = [];
   const seen = new Set<string>([botNameLower]);
 
-  const candidates = [process.env.DEFAULT_BOTNAME || "Tomori", ...(tomoriState.trigger_words ?? [])];
+  const candidates = [
+    process.env.DEFAULT_BOTNAME || "Tomori",
+    ...(tomoriState.trigger_words ?? []),
+    ...(impersonatedSpeakerLabel ? [impersonatedSpeakerLabel] : []),
+  ];
   for (const candidate of candidates) {
     const trimmed = candidate?.trim();
     if (!trimmed) continue;

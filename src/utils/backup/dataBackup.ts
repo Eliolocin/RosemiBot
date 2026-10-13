@@ -1,13 +1,14 @@
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { log } from "@/utils/misc/logger";
 
@@ -29,6 +30,9 @@ interface DataBackupManifest {
   botVersion: string;
   backupType: DataBackupType;
   triggerReasons: string[];
+  formatVersion: 2;
+  contents: "database-only";
+  requiredKeyVersions: number[];
   files: string[];
 }
 
@@ -66,13 +70,14 @@ class ExternalCommandError extends Error {
 async function runExternalCommand(
   command: string,
   args: string[],
-  options: { stdout?: "inherit" | "ignore" } = {},
+  options: { stdout?: "inherit" | "ignore"; env?: Record<string, string | undefined> } = {},
 ): Promise<void> {
   let subprocess: ReturnType<typeof Bun.spawn>;
   try {
     subprocess = Bun.spawn([command, ...args], {
       stdout: options.stdout ?? "inherit",
       stderr: "pipe",
+      env: options.env,
     });
   } catch (error) {
     throw new ExternalCommandError(command, null, "", error);
@@ -143,10 +148,6 @@ function logPgDumpFailureGuidance(error: unknown): void {
   log.info("pg_dump is installed, but PostgreSQL rejected or failed the dump request. Check the pg_dump output above.");
 }
 
-function resolveEnvPath(): string {
-  return process.env.TOMORI_ENV_FILE ? resolve(process.env.TOMORI_ENV_FILE) : join(process.cwd(), ".env");
-}
-
 export function resolveBackupsRoot(): string {
   return process.env.TOMORI_BACKUP_DIR ? resolve(process.env.TOMORI_BACKUP_DIR) : join(process.cwd(), "backups");
 }
@@ -172,6 +173,59 @@ function resolveDatabaseUrl(): string {
   return `postgresql://${user}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
 }
 
+/** Connection settings for one PostgreSQL client process, with the password kept out of argv. */
+export interface PostgresClientConnection {
+  connectionUrl: string;
+  env: Record<string, string | undefined>;
+}
+
+/** Environment variables that hold this bot's database password and that libpq never reads. */
+const BOT_DATABASE_CREDENTIAL_ENV = ["DATABASE_URL", "POSTGRES_URL", "POSTGRES_PASSWORD"] as const;
+
+function escapePassfileField(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
+}
+
+/**
+ * Runs a PostgreSQL client with its password in a private, short-lived `PGPASSFILE`.
+ *
+ * Command-line arguments are readable by other local users through the process table, and
+ * `PGPASSWORD` stays readable in the child's environment, so the password travels only through
+ * a file in a fresh temp directory outside every backup bundle. The single wildcard entry matches
+ * whatever host form the URL or its query options select. The URL keeps every other component,
+ * including query options such as `sslmode`, so the target stays exactly the one the caller chose.
+ */
+export async function withPostgresPassfile<T>(
+  databaseUrl: string,
+  run: (connection: PostgresClientConnection) => Promise<T>,
+): Promise<T> {
+  let url: URL;
+  try {
+    url = new URL(databaseUrl);
+  } catch {
+    throw new Error("The database connection string is not a valid URL.");
+  }
+
+  const password = decodeURIComponent(url.password);
+  url.password = "";
+
+  const env: Record<string, string | undefined> = { ...process.env };
+  for (const name of BOT_DATABASE_CREDENTIAL_ENV) delete env[name];
+  if (!password) return await run({ connectionUrl: url.toString(), env });
+
+  const passfileDir = mkdtempSync(join(tmpdir(), "tomoribot-pgpass-"));
+  try {
+    const passfilePath = join(passfileDir, "pgpass");
+    // libpq ignores a passfile readable by group or others on POSIX systems.
+    writeFileSync(passfilePath, `*:*:*:*:${escapePassfileField(password)}\n`, { mode: 0o600 });
+    delete env.PGPASSWORD;
+    env.PGPASSFILE = passfilePath;
+    return await run({ connectionUrl: url.toString(), env });
+  } finally {
+    rmSync(passfileDir, { recursive: true, force: true });
+  }
+}
+
 function getCurrentBotVersion(): string {
   const parsed: unknown = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf-8"));
   if (!isRecord(parsed) || typeof parsed.version !== "string" || parsed.version.trim().length === 0) {
@@ -193,7 +247,7 @@ function createBundleDirectory(backupsRoot: string, backupType: DataBackupType):
     const suffix = attempt === 0 ? "" : `_${attempt + 1}`;
     const bundleDir = join(backupsRoot, `${baseName}${suffix}`);
     if (!existsSync(bundleDir)) {
-      mkdirSync(bundleDir, { recursive: false });
+      mkdirSync(bundleDir, { recursive: false, mode: 0o700 });
       return bundleDir;
     }
   }
@@ -332,48 +386,64 @@ function pruneAutomaticBackups(maxAutomaticBackups: number): void {
   }
 }
 
+/**
+ * Reminds the operator that the bundle excludes `.env` and names the master keys a restore needs.
+ * Bundles deliberately omit `.env` so a copied bundle never carries the keys that decrypt its own
+ * credentials. Manual runs warn because the operator is present and about to move the bundle;
+ * automatic runs log at info level so routine startup output is not flagged as a problem.
+ */
+function logMissingKeyReminder(backupType: DataBackupType, requiredKeyVersions: number[]): void {
+  const reminder =
+    requiredKeyVersions.length === 0
+      ? "This bundle does not include .env. It holds no encrypted credentials, so restore only needs normal startup settings."
+      : `This bundle does not include .env. Save ${requiredKeyVersions.map((version) => `CRYPTO_SECRET_V${version}`).join(", ")} ` +
+        "(or legacy CRYPTO_SECRET for V1) in protected storage such as a password manager, separate from this bundle. " +
+        "Without them, a restore cannot decrypt stored API keys.";
+
+  if (backupType === "manual") {
+    log.warn(reminder);
+  } else {
+    log.info(reminder);
+  }
+}
+
 export async function runDataBackup(options: DataBackupOptions = {}): Promise<DataBackupResult> {
   const backupType = options.backupType ?? "manual";
   const triggerReasons = options.triggerReasons ?? [];
   const botVersion = options.botVersion ?? getCurrentBotVersion();
 
   log.section(backupType === "automatic" ? "Automatic Data Backup" : "Transfer Backup");
-  log.info("Creating a migration bundle with your database and config...");
-
-  const envPath = resolveEnvPath();
-  if (!existsSync(envPath)) {
-    throw new Error(`Environment file not found: ${envPath}. Cannot bundle config.`);
-  }
 
   const backupsRoot = resolveBackupsRoot();
   if (!existsSync(backupsRoot)) {
-    mkdirSync(backupsRoot, { recursive: true });
+    mkdirSync(backupsRoot, { recursive: true, mode: 0o700 });
   }
 
   const bundleDir = createBundleDirectory(backupsRoot, backupType);
   const dbDumpPath = join(bundleDir, "database.sql");
-  const envBackupPath = join(bundleDir, "config.env");
   const manifestPath = join(bundleDir, "bundle_info.json");
 
   log.info(`Bundle directory: ${bundleDir}`);
 
   const dbUrl = resolveDatabaseUrl();
   log.info("Running pg_dump...");
+  let requiredKeyVersions: number[];
   try {
+    writeFileSync(dbDumpPath, "", { mode: 0o600 });
     // --no-owner/--no-privileges keep dumps restorable across role names (e.g. Cloud SQL
     // `postgres` → Azure `tomoriadmin`); objects are owned by whichever role runs the restore.
-    await runExternalCommand("pg_dump", [
-      dbUrl,
-      "--clean",
-      "--if-exists",
-      "--no-owner",
-      "--no-privileges",
-      "-f",
-      dbDumpPath,
-    ]);
-    log.success("Database dump completed.");
+    await withPostgresPassfile(dbUrl, ({ connectionUrl, env }) =>
+      runExternalCommand(
+        "pg_dump",
+        [connectionUrl, "--clean", "--if-exists", "--no-owner", "--no-privileges", "-f", dbDumpPath],
+        { env },
+      ),
+    );
+    const { inspectBackupKeyVersions } = await import("@/utils/backup/backupRecovery");
+    requiredKeyVersions = await inspectBackupKeyVersions(dbDumpPath);
+    log.success("Database dump completed and encryption versions inventoried.");
   } catch (error) {
-    await log.error("pg_dump failed. No database changes were made.", error);
+    await log.error("Backup failed. No database changes were made.", new Error("Dump or version inventory failed."));
     logPgDumpFailureGuidance(error);
     const resolvedBundleDir = resolve(bundleDir);
     if (isPathInside(backupsRoot, resolvedBundleDir) && existsSync(resolvedBundleDir)) {
@@ -383,27 +453,29 @@ export async function runDataBackup(options: DataBackupOptions = {}): Promise<Da
     throw error;
   }
 
-  copyFileSync(envPath, envBackupPath);
-  log.success("Config (.env) copied.");
-
   const manifest: DataBackupManifest = {
     createdAt: new Date().toISOString(),
     botVersion,
     backupType,
     triggerReasons,
-    files: ["database.sql", "config.env"],
+    formatVersion: 2,
+    contents: "database-only",
+    requiredKeyVersions,
+    files: ["database.sql"],
   };
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), { mode: 0o600 });
 
   log.section("Bundle Created");
   log.info(`Location:    ${bundleDir}`);
   log.info("Contents:");
   log.info("  database.sql     - PostgreSQL dump (restore with: bun run restore-backup)");
-  log.info("  config.env       - Copy of your .env (review before restoring!)");
+  log.info(`  Required encryption versions: ${requiredKeyVersions.join(", ") || "none"} (not included)`);
   log.info("  bundle_info.json - Bundle metadata");
   log.info("");
   log.info("To restore on a new install:");
   log.info(`  bun run restore-backup --from ${bundleDir}`);
+  log.info("");
+  logMissingKeyReminder(backupType, requiredKeyVersions);
 
   return { bundleDir, manifest };
 }

@@ -123,7 +123,7 @@ After adding her to your server through either method above, run the `/setup` co
 
 Choose one install path:
 
-- **A. Local Bun Setup (Recommended):** requires Bun, Node.js v20+ for MCP tooling, and either PostgreSQL or Docker for the database.
+- **A. Local Bun Setup (Recommended):** requires Bun and either PostgreSQL or Docker for the database.
 - **B. Docker Compose Setup:** requires Docker only for running the bot/database, but host-side maintenance scripts still need host tooling.
 
 The recommended path for most self-hosters is the local Bun setup wizard. `bun run setup` installs the locked dependencies first, so it works in a fresh clone. Its default **Full Install** path creates `.env`, generates a safe `CRYPTO_SECRET`, asks for your Discord bot token, configures PostgreSQL, then attempts the database and AI helper extras.

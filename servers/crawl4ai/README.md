@@ -4,13 +4,13 @@ Optional self-hosted Crawl4AI Docker server used by TomoriBot's hidden
 `fetch_url` engine chain:
 
 ```text
-crawl4ai -> mcp_fetch
+crawl4ai -> safe_http
 ```
 
 The LLM still sees only `fetch_url(url, max_length?, start_index?, raw?)`.
 Crawl4AI is enabled only when `CRAWL4AI_BASE_URL` is set and `/health` responds
-successfully. If the server is absent or unhealthy, TomoriBot falls back to the
-bundled MCP fetch server.
+successfully. If the server is absent, unhealthy, or fails a fetch, TomoriBot
+falls back to its built-in `safe_http` fetcher.
 
 ## Local Development
 
@@ -26,16 +26,13 @@ Set the bot env to the compose service URL:
 
 ```env
 CRAWL4AI_BASE_URL=http://crawl4ai:11235/
-FETCH_URL_ENGINE_ORDER=crawl4ai,safe_http
+CRAWL4AI_TOKEN=change-me
 # Only needed when RUN_ENV=production; outside production the guard auto-relaxes.
 # FETCH_URL_ALLOW_PRIVATE_NETWORK=true
 ```
 
-If you enable Crawl4AI JWT/API-token auth, set the same secret in both places:
-
-```env
-CRAWL4AI_TOKEN=change-me
-```
+Crawl4AI 0.9.4 refuses outside connections without an API token, so
+`CRAWL4AI_TOKEN` is required.
 
 The compose service passes `CRAWL4AI_TOKEN` to the container as
 `CRAWL4AI_API_TOKEN`, while TomoriBot sends it as `Authorization: Bearer ...`.
@@ -121,7 +118,6 @@ deployment, keep it private to the Crawl4AI service.
 |---|---|---|
 | `CRAWL4AI_BASE_URL` | TomoriBot | unset, Crawl4AI disabled |
 | `CRAWL4AI_TOKEN` | TomoriBot and the compose container | unset |
-| `FETCH_URL_ENGINE_ORDER` | TomoriBot | `safe_http` (`crawl4ai,safe_http` for trusted development) |
 | `FETCH_URL_TIMEOUT_MS` | TomoriBot | `15000` |
 | `FETCH_URL_HEALTHCHECK_CACHE_SEC` | TomoriBot | `60` |
 | `FETCH_URL_ALLOW_PRIVATE_NETWORK` | TomoriBot | `false` (production-only opt-in; auto-relaxed outside production) |

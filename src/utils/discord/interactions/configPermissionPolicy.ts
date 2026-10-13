@@ -29,7 +29,14 @@ export type ConfigSurfaceState = "enabled" | "disabled" | "omitted";
 /** A page whose controls are inert but whose explanatory prose still renders. */
 export type ConfigPageState = "enabled" | "read-only" | "omitted";
 
-export type ConfigPersonaGeneralAction = "avatar" | "rename" | "naming" | "trigger-add" | "trigger-remove" | "promote";
+export type ConfigPersonaGeneralAction =
+  | "avatar"
+  | "rename"
+  | "naming"
+  | "trigger-add"
+  | "trigger-remove"
+  | "promote"
+  | "resync";
 export type ConfigPersonaCollectionAction =
   | "attribute-add"
   | "attribute-edit"
@@ -52,8 +59,13 @@ export type ConfigBehaviorTriggerAction =
   | "cooldown";
 
 export type ConfigBehaviorExperimentalAction = "tool-mode" | "tool-context" | "tool-trigger" | "send-limit";
-export type ConfigBehaviorNoticesAction = "notice-visibility" | "speech-transcripts";
-export type ConfigBehaviorMemoryAction = "memory-tagging" | "stm-parameters" | "stm-categories" | "stm-prompt";
+export type ConfigBehaviorNoticesAction = "notice-visibility" | "notice-verbosity" | "speech-transcripts";
+export type ConfigBehaviorMemoryAction =
+  | "memory-tagging"
+  | "stm-enabled"
+  | "stm-parameters"
+  | "stm-categories"
+  | "stm-prompt";
 export type ConfigPermissionsCapabilitiesAction = "tool-use" | "manage";
 export type ConfigPermissionsPrivacyAction = "privacy-bypass";
 export type ConfigPluginsContextAdditionsAction = "self-debug";
@@ -293,6 +305,9 @@ const PERSONA_GENERAL_ACTION_BY_ROUTE: Partial<Record<ConfigPanelRoute["action"]
   "promote-view": "promote",
   "promote-confirm": "promote",
   "promote-cancel": "promote",
+  "resync-view": "resync",
+  "resync-confirm": "resync",
+  "resync-cancel": "resync",
 };
 
 const PERSONA_COLLECTION_ACTION_BY_ROUTE: Partial<Record<ConfigPanelRoute["action"], ConfigPersonaCollectionAction>> = {
@@ -393,6 +408,8 @@ export const BEHAVIOR_GENERAL_ACTION_BY_ROUTE: Partial<
   "behavior-preset-open": "prompt",
   "behavior-preset-submit": "prompt",
   "behavior-prompt-remove": "prompt",
+  "behavior-prefill-open": "prompt",
+  "behavior-prefill-submit": "prompt",
   "behavior-context-open": "context-note",
   "behavior-context-submit": "context-note",
   "behavior-humanizer-open": "humanizer",
@@ -442,6 +459,7 @@ export const BEHAVIOR_NOTICES_ACTION_BY_ROUTE: Partial<
 > = {
   "behavior-notice-visibility-open": "notice-visibility",
   "behavior-notice-visibility-submit": "notice-visibility",
+  "behavior-notice-verbosity-set": "notice-verbosity",
   "behavior-speech-transcripts-set": "speech-transcripts",
 };
 
@@ -449,6 +467,7 @@ export const BEHAVIOR_MEMORY_ACTION_BY_ROUTE: Partial<Record<ConfigPanelRoute["a
   {
     "behavior-memory-tagging-open": "memory-tagging",
     "behavior-memory-tagging-submit": "memory-tagging",
+    "behavior-stm-enabled-set": "stm-enabled",
     "behavior-stm-parameters-open": "stm-parameters",
     "behavior-stm-parameters-submit": "stm-parameters",
     "behavior-stm-categories-open": "stm-categories",
@@ -592,7 +611,7 @@ export function resolveBehaviorNoticesActionState(
   actor: ConfigActor,
 ): ConfigSurfaceState {
   if (actor.workspaceKind === "dm") return "enabled";
-  if (action === "notice-visibility" || action === "speech-transcripts") {
+  if (action === "notice-visibility" || action === "notice-verbosity" || action === "speech-transcripts") {
     return actor.isManager ? "enabled" : "disabled";
   }
   return "disabled";
@@ -730,6 +749,9 @@ export const MODELS_PAGE_BY_ROUTE: Partial<Record<ConfigPanelRoute["action"], Co
  * read the message, so the answer must come from the actor resolved on this interaction.
  */
 export function isConfigRouteAuthorized(route: ConfigPanelRoute, actor: ConfigActor): boolean {
+  if (route.action.startsWith("draft-")) {
+    return resolveConfigPageState("plugins", "response-drafting", actor) === "enabled";
+  }
   const personaAction = PERSONA_GENERAL_ACTION_BY_ROUTE[route.action];
   if (personaAction) {
     const page = personaAction === "trigger-add" || personaAction === "trigger-remove" ? "triggers" : "general";

@@ -2,12 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import sharp from "sharp";
 import { initMediaProcessing } from "@/init/media";
 import { log } from "@/utils/misc/logger";
+import { useEnvSandbox } from "../../helpers/env";
 
-const savedConcurrency = process.env.SHARP_CONCURRENCY;
-const savedCacheMemory = process.env.SHARP_CACHE_MEMORY_MB;
-const savedCacheItems = process.env.SHARP_CACHE_ITEMS;
-const savedCacheFiles = process.env.SHARP_CACHE_FILES;
-const savedRunEnv = process.env.RUN_ENV;
+useEnvSandbox(["SHARP_CONCURRENCY", "SHARP_CACHE_MEMORY_MB", "SHARP_CACHE_ITEMS", "SHARP_CACHE_FILES", "RUN_ENV"]);
 
 let concurrencySpy: ReturnType<typeof spyOn>;
 let cacheSpy: ReturnType<typeof spyOn>;
@@ -39,17 +36,6 @@ afterEach(() => {
   concurrencySpy.mockRestore();
   cacheSpy.mockRestore();
   metricSpy.mockRestore();
-
-  if (savedConcurrency === undefined) delete process.env.SHARP_CONCURRENCY;
-  else process.env.SHARP_CONCURRENCY = savedConcurrency;
-  if (savedCacheMemory === undefined) delete process.env.SHARP_CACHE_MEMORY_MB;
-  else process.env.SHARP_CACHE_MEMORY_MB = savedCacheMemory;
-  if (savedCacheItems === undefined) delete process.env.SHARP_CACHE_ITEMS;
-  else process.env.SHARP_CACHE_ITEMS = savedCacheItems;
-  if (savedCacheFiles === undefined) delete process.env.SHARP_CACHE_FILES;
-  else process.env.SHARP_CACHE_FILES = savedCacheFiles;
-  if (savedRunEnv === undefined) delete process.env.RUN_ENV;
-  else process.env.RUN_ENV = savedRunEnv;
 });
 
 describe("initMediaProcessing", () => {

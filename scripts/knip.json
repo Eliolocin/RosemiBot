@@ -2,7 +2,6 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
     ".": {
-      "ignoreDependencies": ["@oevortex/ddg_search"],
       "entry": [
         "src/db/initializeCli.ts",
         "src/commands/**/*.ts",

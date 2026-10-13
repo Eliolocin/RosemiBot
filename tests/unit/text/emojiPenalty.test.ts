@@ -1,27 +1,19 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
 import { filterDuplicateCustomEmojis, getEmojiPenaltyDirective } from "@/utils/text/emojiPenalty";
+import { useEnvSandbox } from "../../helpers/env";
 
 function botMessage(text: string): StructuredContextItem {
   return { role: "model", parts: [{ type: "text", text }], metadataTag: ContextItemTag.DIALOGUE_HISTORY };
 }
 
 const SWITCHES = ["EMOJI_PENALTY_ENABLED", "EMOJI_UNIQUE_ENABLED"] as const;
-const savedSwitches = new Map<string, string | undefined>();
+
+useEnvSandbox(SWITCHES);
 
 // A developer .env that turns either switch off would make every assertion here vacuous.
 beforeAll(() => {
-  for (const name of SWITCHES) {
-    savedSwitches.set(name, process.env[name]);
-    delete process.env[name];
-  }
-});
-
-afterAll(() => {
-  for (const [name, value] of savedSwitches) {
-    if (value === undefined) delete process.env[name];
-    else process.env[name] = value;
-  }
+  for (const name of SWITCHES) delete process.env[name];
 });
 
 describe("getEmojiPenaltyDirective", () => {

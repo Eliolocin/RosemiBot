@@ -1,5 +1,6 @@
 import { sql } from "@/utils/db/client";
 import { log } from "@/utils/misc/logger";
+import type { NoticeVerbosity } from "@/constants/toolNotices";
 import {
   EXPORT_VERSION,
   EXPORT_V2_VERSION,
@@ -43,6 +44,13 @@ interface WorkspaceConfigProjectionRow {
   send_message_limit: number;
   context_note: string | null;
   context_note_depth: number;
+  response_reviewer_llm_id: number | null;
+  response_decision_model_id: number | null;
+  response_reviewer_prompt: string | null;
+  response_rule_checker_ref: import("@/types/db/schema").ResponseRuleCheckerRef | null;
+  response_review_items: import("@/constants/responseReview").ResponseReviewItem[];
+  response_drafting_enabled: boolean;
+  response_prefill: string | null;
   server_memteaching_enabled: boolean;
   attribute_memteaching_enabled: boolean;
   sampledialogue_memteaching_enabled: boolean;
@@ -63,6 +71,7 @@ interface WorkspaceConfigProjectionRow {
   short_term_memory_enabled: boolean;
   user_info_updates_enabled: boolean;
   tool_notice_hidden_keys: string[];
+  tool_notice_verbosity: NoticeVerbosity | null;
   uncensor_injection_enabled: boolean;
   uncensor_unicode_space_enabled: boolean;
   uncensor_sanitize_enabled: boolean;
@@ -331,7 +340,14 @@ export class ExportRepository {
           COALESCE(scac.sticker_usage_enabled, true)                AS sticker_usage_enabled,
           COALESCE(scac.imagegen_enabled, true)                     AS imagegen_enabled,
           COALESCE(snec.tool_notice_hidden_keys, ARRAY[]::TEXT[])   AS tool_notice_hidden_keys,
+          snec.tool_notice_verbosity                                AS tool_notice_verbosity,
           COALESCE(scc.self_debug_enabled, false)                   AS self_debug_enabled,
+          scc.response_reviewer_llm_id AS response_reviewer_llm_id,
+          scc.response_decision_model_id AS response_decision_model_id,
+          scc.response_reviewer_prompt AS response_reviewer_prompt,
+          scc.response_rule_checker_ref AS response_rule_checker_ref,
+          scc.response_review_items AS response_review_items,
+          scac.response_drafting_enabled AS response_drafting_enabled,
           COALESCE(scc.model_randomizer_enabled, false)             AS model_randomizer_enabled,
           snaic.image_default_positive_tags                                       AS image_default_positive_tags,
           snaic.image_default_negative_tags                                    AS image_default_negative_tags,
@@ -355,6 +371,7 @@ export class ExportRepository {
           COALESCE(sbc.user_byok_mode, false)                       AS user_byok_mode,
           scc.context_note                                           AS context_note,
           COALESCE(scc.context_note_depth, 0)                       AS context_note_depth,
+          scc.response_prefill                                      AS response_prefill,
           COALESCE(scac.manage_message_enabled, true)               AS manage_message_enabled,
           COALESCE(scac.videogen_enabled, false)                    AS videogen_enabled,
           COALESCE(scac.voice_message_enabled, true)                AS voice_message_enabled,
@@ -509,8 +526,15 @@ export class ExportRepository {
             sticker_usage_enabled: configData.sticker_usage_enabled,
             imagegen_enabled: configData.imagegen_enabled,
             tool_notice_hidden_keys: configData.tool_notice_hidden_keys ?? [],
+            tool_notice_verbosity: configData.tool_notice_verbosity ?? undefined,
             self_debug_enabled: configData.self_debug_enabled,
             model_randomizer_enabled: configData.model_randomizer_enabled,
+            response_reviewer_llm_id: configData.response_reviewer_llm_id,
+            response_decision_model_id: configData.response_decision_model_id,
+            response_reviewer_prompt: configData.response_reviewer_prompt,
+            response_rule_checker_ref: configData.response_rule_checker_ref,
+            response_review_items: configData.response_review_items,
+            response_drafting_enabled: configData.response_drafting_enabled,
             image_default_positive_tags: configData.image_default_positive_tags ?? undefined,
             image_default_negative_tags: configData.image_default_negative_tags ?? undefined,
             nai_sampler: configData.nai_sampler ?? null,
@@ -533,6 +557,7 @@ export class ExportRepository {
             user_byok_mode: configData.user_byok_mode,
             context_note: configData.context_note ?? null,
             context_note_depth: configData.context_note_depth,
+            response_prefill: configData.response_prefill ?? null,
             manage_message_enabled: configData.manage_message_enabled,
             videogen_enabled: configData.videogen_enabled,
             voice_message_enabled: configData.voice_message_enabled,
@@ -699,6 +724,13 @@ export class ExportRepository {
           COALESCE(scc.send_message_limit, 0) AS send_message_limit,
           scc.context_note AS context_note,
           COALESCE(scc.context_note_depth, 0) AS context_note_depth,
+          scc.response_prefill AS response_prefill,
+          scc.response_reviewer_llm_id AS response_reviewer_llm_id,
+          scc.response_decision_model_id AS response_decision_model_id,
+          scc.response_reviewer_prompt AS response_reviewer_prompt,
+          scc.response_rule_checker_ref AS response_rule_checker_ref,
+          scc.response_review_items AS response_review_items,
+          scac.response_drafting_enabled AS response_drafting_enabled,
           COALESCE(smpc.server_memteaching_enabled, false) AS server_memteaching_enabled,
           COALESCE(smpc.attribute_memteaching_enabled, false) AS attribute_memteaching_enabled,
           COALESCE(smpc.sampledialogue_memteaching_enabled, false) AS sampledialogue_memteaching_enabled,
@@ -719,6 +751,7 @@ export class ExportRepository {
           COALESCE(scac.short_term_memory_enabled, true) AS short_term_memory_enabled,
           COALESCE(scac.user_info_updates_enabled, true) AS user_info_updates_enabled,
           COALESCE(snec.tool_notice_hidden_keys, ARRAY[]::TEXT[]) AS tool_notice_hidden_keys,
+          snec.tool_notice_verbosity AS tool_notice_verbosity,
           COALESCE(snc.uncensor_injection_enabled, false) AS uncensor_injection_enabled,
           COALESCE(snc.uncensor_unicode_space_enabled, false) AS uncensor_unicode_space_enabled,
           COALESCE(snc.uncensor_sanitize_enabled, false) AS uncensor_sanitize_enabled,
@@ -811,6 +844,12 @@ export class ExportRepository {
           send_message_limit: configData.send_message_limit,
           context_note: configData.context_note,
           context_note_depth: configData.context_note_depth,
+          response_prefill: configData.response_prefill ?? null,
+          response_reviewer_llm_id: configData.response_reviewer_llm_id,
+          response_decision_model_id: configData.response_decision_model_id,
+          response_reviewer_prompt: configData.response_reviewer_prompt,
+          response_rule_checker_ref: configData.response_rule_checker_ref,
+          response_review_items: configData.response_review_items,
           welcome_prompt: configData.welcome_prompt,
         },
         triggers: {
@@ -823,6 +862,7 @@ export class ExportRepository {
           cooldown_length: configData.cooldown_length,
         },
         capabilities: {
+          response_drafting_enabled: configData.response_drafting_enabled,
           web_search_enabled: configData.web_search_enabled,
           emoji_usage_enabled: configData.emoji_usage_enabled,
           sticker_usage_enabled: configData.sticker_usage_enabled,
@@ -837,6 +877,7 @@ export class ExportRepository {
           short_term_memory_enabled: configData.short_term_memory_enabled,
           user_info_updates_enabled: configData.user_info_updates_enabled,
           tool_notice_hidden_keys: configData.tool_notice_hidden_keys,
+          tool_notice_verbosity: configData.tool_notice_verbosity ?? undefined,
           uncensor_injection_enabled: configData.uncensor_injection_enabled,
           uncensor_unicode_space_enabled: configData.uncensor_unicode_space_enabled,
           uncensor_sanitize_enabled: configData.uncensor_sanitize_enabled,

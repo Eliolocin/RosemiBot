@@ -19,8 +19,10 @@ export interface ProviderPanelModel {
     supportsStructOutput: boolean;
     strictRoleAlternation: boolean;
     supportsPrefixCompletion: boolean;
+    supportsAssistantPrefill: boolean;
     verbatimToolCalling: boolean;
   };
+  decisionSettings?: { inputTokenLimit: number };
   imageSettings?: ImageEndpointSupports;
   speechSettings?: SpeechEndpointSettings;
 }

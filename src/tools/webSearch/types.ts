@@ -2,7 +2,7 @@
  * Web Search engine-abstraction types.
  *
  * Defines the uniform interface implemented by each search engine
- * (Brave, DuckDuckGo, IAsk, and SearXNG). The dispatcher
+ * (Brave, SearXNG, and DuckDuckGo). The dispatcher
  * walks an ordered chain of engines per category, calling `search()`
  * on the first one whose `available()` returns true.
  */
@@ -27,7 +27,7 @@ export const SEARCH_CATEGORIES = [...BASE_SEARCH_CATEGORIES, ...SEARXNG_ONLY_SEA
 /**
  * Search categories supported by the unified `web_search` tool.
  *
- * Only `text` has fallback engines (DuckDuckGo/IAsk). Brave supports the base four.
+ * Only `text` has a keyless fallback (DuckDuckGo). Brave supports the base four.
  * SearXNG supports the base four plus the SearXNG-only verticals above.
  */
 export type SearchCategory = (typeof SEARCH_CATEGORIES)[number];
@@ -35,7 +35,7 @@ export type SearchCategory = (typeof SEARCH_CATEGORIES)[number];
 /**
  * Canonical engine identifiers. Used for logging and embed labelling.
  */
-export type WebSearchEngineName = "brave" | "searxng" | "duckduckgo" | "iask";
+export type WebSearchEngineName = "brave" | "searxng" | "duckduckgo";
 
 /**
  * Uniform contract every web-search engine implements so the dispatcher
@@ -57,7 +57,7 @@ export interface WebSearchEngine {
 
   /**
    * Whether this engine can handle the given category.
-   * DuckDuckGo/IAsk return true only for `text`; Brave supports the base four;
+   * DuckDuckGo returns true only for `text`; Brave supports the base four;
    * SearXNG supports the base four plus its specialty verticals.
    */
   supportsCategory(category: SearchCategory): boolean;

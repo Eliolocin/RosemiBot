@@ -2,6 +2,7 @@
 title: "Command Archetypes"
 sidebar:
   order: 40
+aiGenerated: true
 ---
 
 Which kind of interaction a command should be, before anything is built. Every TomoriBot command follows

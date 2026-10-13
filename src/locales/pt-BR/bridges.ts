@@ -1,5 +1,11 @@
 export default {
   matrix: {
+    encryption_unlinked: {
+      title: `Ponte do Matrix Interrompida`,
+      description: `A sala do Matrix \`{room_id}\` ativou a criptografia de ponta a ponta, por isso desvinculei-a deste canal e parei de retransmitir mensagens. A criptografia do Matrix não pode ser desativada.
+
+Para continuar usando a ponte, crie uma nova sala do Matrix sem criptografia, convide a conta do bot e vincule-a com {link_command}.`,
+    },
     notices: {
       invited: `TomoriBot entrou nesta sala.
 

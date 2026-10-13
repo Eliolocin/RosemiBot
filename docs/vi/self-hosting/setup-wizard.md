@@ -3,6 +3,7 @@ title: "Trình hướng dẫn thiết lập"
 sidebar:
   label: "Trình hướng dẫn thiết lập"
   order: 1
+aiGenerated: false
 ---
 
 :::note
@@ -35,7 +36,6 @@ bun run setup
 ## Những thứ cần chuẩn bị sẵn
 
 - [Bun](https://bun.sh/) để chạy bot và chính trình hướng dẫn này.
-- Node.js v20+ (được sử dụng cho các công cụ MCP).
 - Token bot Discord với các privileged intent `GuildMembers`, `MessageContent` và `GuildPresences` đã được bật.
 - Cơ sở dữ liệu. TomoriBot lưu trữ mọi thứ trong PostgreSQL. Bạn không cần thiết lập thủ công vì trình hướng dẫn sẽ thực hiện giúp bạn: hệ thống sẽ dùng PostgreSQL nếu bạn đã cài sẵn, hoặc chạy cơ sở dữ liệu cho bạn trong [Docker](https://www.docker.com/) nếu chưa có. Bạn chỉ cần đảm bảo một trong hai đã được cài đặt trước khi bắt đầu.
 
@@ -83,7 +83,7 @@ Mọi giá trị `RUN_ENV` khác đều hiển thị bố cục hai bước và 
 ### Chế độ truy cập nhà cung cấp
 
 - **Nhà cung cấp AI (Khuyên dùng)**: chọn một nhà cung cấp từ danh mục và dán khóa API tương ứng. Khóa được xác thực với nhà cung cấp và mã hóa vào bản nháp; bảng điều khiển chỉ hiển thị thông tin rằng khóa đã được lưu, không bao giờ hiển thị chính khóa đó. Hãy chạy `/help`, sau đó vào `Thiết lập` > **Step 1: Lấy API key** để xem hướng dẫn từng bước cho từng nhà cung cấp.
-- **Endpoint tùy chỉnh (Nâng cao)**: khu vực phụ gồm hai nút dành cho endpoint tự host hoặc proxy. `Cấu hình kết nối` thu thập khả năng tương thích API, nhãn, URL và token xác thực tùy chọn, đồng thời kiểm tra xem endpoint có phản hồi hay không. `Cấu hình model văn bản` thu thập mã model, kích thước ngữ cảnh và các khai báo tính năng của model, nút này sẽ bị vô hiệu hóa cho đến khi kết nối được xác thực thành công. Việc lưu lại kết nối một lần nữa sẽ xóa khai báo model, vì các khai báo này phụ thuộc vào khả năng tương thích API đã chọn. Đây chính là quy trình đăng ký mà `/providers` thực hiện, được tích hợp bên trong trình hướng dẫn và không tạo bất kỳ hàng nào trước khi nhấn `Hoàn tất thiết lập`.
+- **Endpoint tùy chỉnh**: khu vực phụ gồm hai nút dành cho endpoint tự host hoặc proxy. `Cấu hình kết nối` thu thập khả năng tương thích API, nhãn, URL và token xác thực tùy chọn, đồng thời kiểm tra xem endpoint có phản hồi hay không. `Cấu hình model văn bản` thu thập mã model, kích thước ngữ cảnh và các khai báo tính năng của model, nút này sẽ bị vô hiệu hóa cho đến khi kết nối được xác thực thành công. Việc lưu lại kết nối một lần nữa sẽ xóa khai báo model, vì các khai báo này phụ thuộc vào khả năng tương thích API đã chọn. Đây chính là quy trình đăng ký mà `/providers` thực hiện, được tích hợp bên trong trình hướng dẫn và không tạo bất kỳ hàng nào trước khi nhấn `Hoàn tất thiết lập`.
 - BYOK người dùng (chỉ dành cho guild, không áp dụng trong DM): không gian làm việc không giữ nhà cung cấp riêng và mọi phản hồi do thành viên kích hoạt sẽ sử dụng nhà cung cấp cá nhân của họ để xử lý. Hãy xác nhận điều này trong modal, sau đó yêu cầu các thành viên đăng ký nhà cung cấp của họ bằng `/personal providers`. Xem
   [Kiểm duyệt máy chủ](/vi/features/setup-administration/server-moderation/#user-byok-bring-your-own-key).
 

@@ -1,5 +1,5 @@
 import type { APIAttachment, Attachment } from "discord.js";
-import type { TomoriState } from "@/types/db/schema";
+import type { PersonaSpriteRow, TomoriPresetRow, TomoriState } from "@/types/db/schema";
 import type { ConditioningGroup } from "@/utils/db/repositories/ConditioningMemoryRepository";
 import {
   personaNamingConfigSchema,
@@ -9,7 +9,8 @@ import {
 } from "@/types/personaNaming";
 import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
 import { conditioningMemoryRepository } from "@/utils/db/repositories/ConditioningMemoryRepository";
-import { personaRepository } from "@/utils/db/repositories";
+import { personaRepository, personaSpriteRepository } from "@/utils/db/repositories";
+import { invalidatePersonaSpriteCache } from "@/utils/cache/personaSpriteCacheStore";
 import { shortTermMemoryRepository } from "@/utils/db/repositories/ShortTermMemoryRepository";
 import { convertToPNG } from "@/utils/image/imageProcessor";
 import { parseAndValidateImageTags } from "@/utils/image/tagHelpers";
@@ -27,6 +28,7 @@ import { PERSONA_LIMITS, memoryGuard, reserveAvatarQuota } from "@/utils/securit
 import { safeDownload } from "@/utils/security/safeDownload";
 import {
   deletePersonaAvatarFromStorage,
+  deletePersonaSpriteFromStorage,
   loadStoredPersonaAvatarBuffer,
   uploadPersonaAvatarToStorage,
 } from "@/utils/storage/avatarStorage";
@@ -51,10 +53,17 @@ export const PERSONA_NICKNAME_MAX_LENGTH = 32;
 
 const AVATAR_DOWNLOAD_TIMEOUT_MS = 15000;
 
+/**
+ * Servers with a promotion running. The guild avatar PATCH is rate limited and can stall for a
+ * minute, so without this a second click would start a concurrent sync that interleaves its
+ * avatar uploads and deletes with the first one's.
+ */
+const promotionsInFlight = new Set<string>();
+
 type ConfigAvatarAttachment = Attachment | APIAttachment;
 
 /**
- * The Discord-side effects the two identity operations need. Guild nickname and guild avatar are
+ * The Discord-side effects identity operations need. Guild nickname and guild avatar are
  * REST writes rather than repository writes, so they arrive as a port: the operation stays testable
  * and the route layer owns the transport.
  */
@@ -115,6 +124,7 @@ type ConfigPromoteResult =
     }
   | { status: "not-alter" }
   | { status: "no-main-persona" }
+  | { status: "in-progress" }
   | { status: "write-failed" };
 
 type ConfigStmEditResult = { status: "success" } | { status: "write-failed" };
@@ -202,6 +212,12 @@ type ConfigCharacterReferenceResult =
   | { status: "write-failed" };
 
 export interface ConfigPersonaOperations {
+  resyncToPreset(input: {
+    persona: TomoriState;
+    preset: TomoriPresetRow;
+    serverDiscId: string;
+    guildIdentity: GuildIdentityPort | null;
+  }): Promise<{ status: "success"; avatarSynced: boolean } | { status: "stale" } | { status: "write-failed" }>;
   rename(input: {
     persona: TomoriState;
     serverDiscId: string;
@@ -353,6 +369,59 @@ function validateAvatarImage(
 }
 
 export const configPersonaOperations: ConfigPersonaOperations = {
+  async resyncToPreset({ persona, preset, serverDiscId, guildIdentity }) {
+    const personaId = persona.persona_id;
+    if (!personaId || persona.is_pointer || !persona.preset_lineage_id || !persona.preset_language) {
+      return { status: "stale" };
+    }
+    let sprites: PersonaSpriteRow[];
+    try {
+      sprites = await personaSpriteRepository.listForPersona(personaId);
+    } catch (error) {
+      log.warn("Could not capture sprites before preset resync", { personaId, error });
+      return { status: "write-failed" };
+    }
+    const oldAvatar = persona.webhook_avatar_url;
+    const written = await personaRepository.applyPresetPointerToPersona({
+      personaId,
+      nickname: persona.persona_nickname,
+      preset,
+      personaLineageId: persona.persona_lineage_id,
+      triggerWords: persona.trigger_words,
+      personaPrompt: preset.persona_preset_desc || null,
+      preservedNamingConfig: persona.naming_config,
+    });
+    if (!written) return { status: "write-failed" };
+
+    invalidateTomoriStateCache(serverDiscId);
+    invalidatePersonaSpriteCache(personaId);
+    try {
+      for (const sprite of sprites) await deletePersonaSpriteFromStorage(sprite.avatar_url);
+      if (oldAvatar) await deletePersonaAvatarFromStorage(oldAvatar);
+    } catch (error) {
+      log.warn("Could not clean up images after preset resync", { personaId, error });
+    }
+
+    let avatarSynced = true;
+    if (!persona.is_alter && guildIdentity) {
+      avatarSynced = false;
+      try {
+        const reference = preset.preset_avatar_shared_url;
+        const buffer = reference ? await loadStoredPersonaAvatarBuffer(reference) : null;
+        if (!reference || buffer) {
+          const applied = await guildIdentity.setAvatar(
+            buffer ? `data:image/png;base64,${buffer.toString("base64")}` : null,
+          );
+          avatarSynced = applied.ok;
+          if (applied.ok) await personaRepository.markServerMainAvatarSynced(serverDiscId);
+        }
+      } catch (error) {
+        log.warn("Could not sync guild avatar after preset resync", { personaId, error });
+      }
+    }
+    return { status: "success", avatarSynced };
+  },
+
   async setImageTags({ persona, serverDiscId, rawTags }) {
     const personaId = persona.persona_id;
     if (!personaId) return { status: "write-failed" };
@@ -999,94 +1068,105 @@ export const configPersonaOperations: ConfigPersonaOperations = {
   async promoteToMain({ alterPersona, mainPersona, serverDiscId, guildId, guildIdentity }) {
     if (alterPersona.is_alter !== true || !alterPersona.persona_id) return { status: "not-alter" };
     if (!mainPersona?.persona_id) return { status: "no-main-persona" };
+    if (promotionsInFlight.has(serverDiscId)) return { status: "in-progress" };
 
-    const previousMainAvatarUrl = mainPersona.webhook_avatar_url;
-    const previousAlterAvatarUrl = alterPersona.webhook_avatar_url;
+    promotionsInFlight.add(serverDiscId);
+    try {
+      const previousMainAvatarUrl = mainPersona.webhook_avatar_url;
+      const previousAlterAvatarUrl = alterPersona.webhook_avatar_url;
 
-    // The bot's live guild avatar is what the outgoing main persona actually looked like, so it is
-    // captured before the swap rather than reconstructed from the row afterwards.
-    const formerMainAvatarReference = (await guildIdentity.currentAvatarReference()) ?? previousMainAvatarUrl ?? null;
-    let formerMainAvatarBuffer: Buffer | null = null;
-    if (formerMainAvatarReference) {
-      try {
-        formerMainAvatarBuffer = await loadStoredPersonaAvatarBuffer(formerMainAvatarReference);
-      } catch (error) {
-        log.warn("Failed to prefetch former main persona avatar before promotion (non-fatal)", error);
-      }
-    }
-
-    if (!(await personaRepository.swapPersona(mainPersona.persona_id, alterPersona.persona_id))) {
-      return { status: "write-failed" };
-    }
-
-    // Everything past the swap is non-fatal: the promotion has committed, and a Discord identity
-    // call that fails must degrade to a warning rather than imply the promotion did not happen.
-    const nicknameSynced = await guildIdentity.setNickname(alterPersona.persona_nickname);
-
-    let avatarSynced = false;
-    let avatarRateLimited = false;
-    let promotedAvatarBuffer: Buffer | null = null;
-    const avatarAttempted = Boolean(previousAlterAvatarUrl);
-    if (previousAlterAvatarUrl) {
-      try {
-        const stored = await loadStoredPersonaAvatarBuffer(previousAlterAvatarUrl);
-        if (stored) {
-          promotedAvatarBuffer = await convertToPNG(stored);
-          const applied = await guildIdentity.setAvatar(
-            `data:image/png;base64,${promotedAvatarBuffer.toString("base64")}`,
-          );
-          avatarSynced = applied.ok;
-          avatarRateLimited = applied.rateLimited;
+      // The bot's live guild avatar is what the outgoing main persona actually looked like, so it is
+      // captured before the swap rather than reconstructed from the row afterwards.
+      const formerMainAvatarReference = (await guildIdentity.currentAvatarReference()) ?? previousMainAvatarUrl ?? null;
+      let formerMainAvatarBuffer: Buffer | null = null;
+      if (formerMainAvatarReference) {
+        try {
+          formerMainAvatarBuffer = await loadStoredPersonaAvatarBuffer(formerMainAvatarReference);
+        } catch (error) {
+          log.warn("Failed to prefetch former main persona avatar before promotion (non-fatal)", error);
         }
-      } catch (error) {
-        log.warn("Failed to apply promoted persona avatar to the guild (non-fatal)", error);
       }
-    }
 
-    if (formerMainAvatarBuffer) {
-      try {
-        const storedUrl = await uploadPersonaAvatarToStorage({
-          personaId: mainPersona.persona_id,
+      const swap = await personaRepository.swapPersona(mainPersona.persona_id, alterPersona.persona_id);
+      if (swap === "failed") return { status: "write-failed" };
+
+      // Evicted before the slow Discord calls below, not only at the end: a concurrent panel click
+      // reads this cache, and until it is evicted it still sees the pre-swap roles. The final
+      // eviction further down stays because the avatar rows change after this point.
+      invalidateTomoriStateCache(serverDiscId);
+      if (swap === "roles-changed") return { status: "not-alter" };
+
+      // Everything past the swap is non-fatal: the promotion has committed, and a Discord identity
+      // call that fails must degrade to a warning rather than imply the promotion did not happen.
+      const nicknameSynced = await guildIdentity.setNickname(alterPersona.persona_nickname);
+
+      let avatarSynced = false;
+      let avatarRateLimited = false;
+      let promotedAvatarBuffer: Buffer | null = null;
+      const avatarAttempted = Boolean(previousAlterAvatarUrl);
+      if (previousAlterAvatarUrl) {
+        try {
+          const stored = await loadStoredPersonaAvatarBuffer(previousAlterAvatarUrl);
+          if (stored) {
+            promotedAvatarBuffer = await convertToPNG(stored);
+            const applied = await guildIdentity.setAvatar(
+              `data:image/png;base64,${promotedAvatarBuffer.toString("base64")}`,
+            );
+            avatarSynced = applied.ok;
+            avatarRateLimited = applied.rateLimited;
+          }
+        } catch (error) {
+          log.warn("Failed to apply promoted persona avatar to the guild (non-fatal)", error);
+        }
+      }
+
+      if (formerMainAvatarBuffer) {
+        try {
+          const storedUrl = await uploadPersonaAvatarToStorage({
+            personaId: mainPersona.persona_id,
+            serverDiscId: guildId,
+            label: "former main swap",
+            buffer: formerMainAvatarBuffer,
+          });
+          if (storedUrl) {
+            await personaRepository.setAvatar(mainPersona.persona_id, storedUrl);
+            if (previousMainAvatarUrl && previousMainAvatarUrl !== storedUrl) {
+              await deletePersonaAvatarFromStorage(previousMainAvatarUrl);
+            }
+          }
+        } catch (error) {
+          log.warn("Failed to store former main persona avatar after promotion (non-fatal)", error);
+        }
+      }
+
+      if (promotedAvatarBuffer) {
+        const promotedStoredUrl = await uploadPersonaAvatarToStorage({
+          personaId: alterPersona.persona_id,
           serverDiscId: guildId,
-          label: "former main swap",
-          buffer: formerMainAvatarBuffer,
+          label: "selected alter swap",
+          buffer: promotedAvatarBuffer,
         });
-        if (storedUrl) {
-          await personaRepository.setAvatar(mainPersona.persona_id, storedUrl);
-          if (previousMainAvatarUrl && previousMainAvatarUrl !== storedUrl) {
-            await deletePersonaAvatarFromStorage(previousMainAvatarUrl);
+        if (promotedStoredUrl) {
+          await personaRepository.setAvatar(alterPersona.persona_id, promotedStoredUrl);
+          if (previousAlterAvatarUrl && previousAlterAvatarUrl !== promotedStoredUrl) {
+            await deletePersonaAvatarFromStorage(previousAlterAvatarUrl);
           }
         }
-      } catch (error) {
-        log.warn("Failed to store former main persona avatar after promotion (non-fatal)", error);
       }
-    }
 
-    if (promotedAvatarBuffer) {
-      const promotedStoredUrl = await uploadPersonaAvatarToStorage({
-        personaId: alterPersona.persona_id,
-        serverDiscId: guildId,
-        label: "selected alter swap",
-        buffer: promotedAvatarBuffer,
-      });
-      if (promotedStoredUrl) {
-        await personaRepository.setAvatar(alterPersona.persona_id, promotedStoredUrl);
-        if (previousAlterAvatarUrl && previousAlterAvatarUrl !== promotedStoredUrl) {
-          await deletePersonaAvatarFromStorage(previousAlterAvatarUrl);
-        }
-      }
+      invalidateTomoriStateCache(serverDiscId);
+      return {
+        status: "success",
+        newMainNickname: alterPersona.persona_nickname,
+        formerMainNickname: mainPersona.persona_nickname,
+        nicknameSynced,
+        avatarSynced,
+        avatarRateLimited,
+        avatarAttempted,
+      };
+    } finally {
+      promotionsInFlight.delete(serverDiscId);
     }
-
-    invalidateTomoriStateCache(serverDiscId);
-    return {
-      status: "success",
-      newMainNickname: alterPersona.persona_nickname,
-      formerMainNickname: mainPersona.persona_nickname,
-      nicknameSynced,
-      avatarSynced,
-      avatarRateLimited,
-      avatarAttempted,
-    };
   },
 
   async editStm({

@@ -1,5 +1,12 @@
-import { describe, expect, it } from "bun:test";
-import { resolveCharRefDisplayAsset, type CharRefStorageConfig } from "@/utils/storage/charrefStorage";
+import { afterAll, describe, expect, it } from "bun:test";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  deleteCharRef,
+  loadCharRefAsBase64,
+  resolveCharRefDisplayAsset,
+  type CharRefStorageConfig,
+} from "@/utils/storage/charrefStorage";
 
 const storageConfig: CharRefStorageConfig = {
   bucket: "tomori-media",
@@ -74,5 +81,56 @@ describe("character-reference display resolver", () => {
     });
 
     expect(result).toBeNull();
+  });
+});
+
+describe("character-reference generation loader", () => {
+  const ownerDir = join(process.cwd(), "data", "charreferences", "users", "900000000000000001");
+  const otherDir = join(process.cwd(), "data", "charreferences", "users", "900000000000000002");
+
+  afterAll(() => {
+    rmSync(ownerDir, { recursive: true, force: true });
+    rmSync(otherDir, { recursive: true, force: true });
+  });
+
+  it("reads only a local reference inside the requesting owner's directory", async () => {
+    mkdirSync(ownerDir, { recursive: true });
+    mkdirSync(otherDir, { recursive: true });
+    writeFileSync(join(ownerDir, "own.png"), "own");
+    writeFileSync(join(otherDir, "foreign.png"), "foreign");
+
+    const own = await loadCharRefAsBase64(
+      "data/charreferences/users/900000000000000001/own.png",
+      "users",
+      "900000000000000001",
+    );
+    expect(Buffer.from(own ?? "", "base64").toString()).toBe("own");
+    for (const reference of [
+      "data/charreferences/users/900000000000000002/foreign.png",
+      "data/charreferences/users/900000000000000001/../900000000000000002/foreign.png",
+      "data/charreferences/personas/900000000000000001/own.png",
+    ]) {
+      expect(await loadCharRefAsBase64(reference, "users", "900000000000000001")).toBeNull();
+    }
+  });
+
+  it("deletes only a local reference inside the requesting owner's directory", async () => {
+    mkdirSync(ownerDir, { recursive: true });
+    mkdirSync(otherDir, { recursive: true });
+    writeFileSync(join(ownerDir, "replaced.png"), "own");
+    writeFileSync(join(otherDir, "kept.png"), "foreign");
+
+    for (const reference of [
+      "data/charreferences/users/900000000000000002/kept.png",
+      "data/charreferences/users/900000000000000001/../900000000000000002/kept.png",
+    ]) {
+      expect(await deleteCharRef(reference, "users", "900000000000000001")).toBe(false);
+    }
+    expect(existsSync(join(otherDir, "kept.png"))).toBe(true);
+
+    expect(
+      await deleteCharRef("data/charreferences/users/900000000000000001/replaced.png", "users", "900000000000000001"),
+    ).toBe(true);
+    expect(existsSync(join(ownerDir, "replaced.png"))).toBe(false);
   });
 });

@@ -1,8 +1,8 @@
 ---
 title: "Configuração: ComfyUI"
-aiGenerated: true
 sidebar:
   order: 2
+aiGenerated: false
 ---
 
 O TomoriBot pode gerar imagens e vídeos através da sua própria instância do

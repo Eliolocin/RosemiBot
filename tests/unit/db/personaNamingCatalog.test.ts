@@ -40,6 +40,11 @@ describe("official persona naming catalog", () => {
         suffixes: {},
         addressTerms: { masculine: "哥们", feminine: "姐妹", neutral: "朋友" },
       },
+      "666:en-US": {
+        prefixes: {},
+        suffixes: {},
+        addressTerms: { masculine: "mon chéri", feminine: "ma chérie", neutral: "mon amour" },
+      },
       "50:en-US": {
         prefixes: { masculine: "Master", feminine: "Mistress", neutral: "Master" },
         suffixes: {},

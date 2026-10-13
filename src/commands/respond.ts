@@ -1,11 +1,12 @@
 import type { SlashCommandBuilder } from "discord.js";
 import type { ChatInputCommandInteraction, Client, Message } from "discord.js";
-import { EmbedBuilder, MessageFlags, PermissionFlagsBits } from "discord.js";
+import { DiscordAPIError, EmbedBuilder, MessageFlags, PermissionFlagsBits, RESTJSONErrorCodes } from "discord.js";
 import { promptWithPaginatedModal, replyInfoEmbed, safeSelectOptionText } from "@/utils/discord/interactionHelper";
 import { sendCooldownDM } from "@/utils/discord/cooldownDM";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
-import type { UserRow } from "@/types/db/schema";
+import type { LlmRow, UserRow } from "@/types/db/schema";
+import { ASSISTANT_PREFILL_MAX_LENGTH, resolvePrefillBlocker, resolvePrefillMode } from "@/utils/chat/assistantPrefill";
 import type { ModalComponent, SelectOption } from "@/types/discord/modal";
 import { tomoriChat } from "@/events/messageCreate/tomoriChat";
 import { llmModelRepo, personaRepository } from "@/utils/db/repositories";
@@ -16,6 +17,7 @@ import { resolveFallbackPersona } from "@/utils/discord/personaTurnDetectionReso
 import { filterPersonasForTrigger, isPersonaAllowedForTrigger } from "@/utils/persona/personaAccess";
 import { CooldownType } from "@/types/db/schema";
 import { cooldownRepository } from "@/utils/db/repositories/CooldownRepository";
+import { NOTICE_CONFIG_HINT_KEY } from "@/constants/toolNotices";
 import { isNoticeEmbedVisible } from "@/utils/discord/toolProgressNotice";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
@@ -78,7 +80,9 @@ export async function execute(
     const permissions = guildChannel.permissionsFor(botMember);
     if (
       !permissions?.has(PermissionFlagsBits.ViewChannel) ||
-      !permissions?.has(PermissionFlagsBits.ReadMessageHistory)
+      !permissions?.has(PermissionFlagsBits.ReadMessageHistory) ||
+      // Discord requires Connect to fetch the text history of a voice channel.
+      (guildChannel.isVoiceBased() && !permissions?.has(PermissionFlagsBits.Connect))
     ) {
       await replyInfoEmbed(interaction, locale, {
         titleKey: "general.errors.channel_missing_permissions_title",
@@ -170,9 +174,25 @@ export async function execute(
     return;
   }
 
-  const fetchedMessages = await interaction.channel.messages.fetch({
-    limit: normalizeMessageFetchLimit(tomoriState.config.message_fetch_limit),
-  });
+  const fetchedMessages = await interaction.channel.messages
+    .fetch({ limit: normalizeMessageFetchLimit(tomoriState.config.message_fetch_limit) })
+    .catch(async (error: unknown) => {
+      // Channel overwrites can change after the cached permission check.
+      if (
+        !(error instanceof DiscordAPIError) ||
+        (error.code !== RESTJSONErrorCodes.MissingAccess && error.code !== RESTJSONErrorCodes.MissingPermissions)
+      ) {
+        throw error;
+      }
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "general.errors.channel_missing_permissions_title",
+        descriptionKey: "general.errors.channel_missing_permissions_description",
+        color: ColorCode.ERROR,
+        flags: MessageFlags.Ephemeral,
+      });
+      return null;
+    });
+  if (!fetchedMessages) return;
   const messages = [...fetchedMessages.values()].reverse();
   const latestMessage = fetchedMessages.first();
 
@@ -218,6 +238,7 @@ export async function execute(
   let manualPrefill: string | undefined;
   let forceReason: boolean | undefined;
   let llmOverrideCodename: string | undefined;
+  let reasoningModel: LlmRow | undefined;
 
   if (extraOptions) {
     const modalComponents: ModalComponent[] = [];
@@ -268,13 +289,15 @@ export async function execute(
       descriptionKey: "commands.respond.prefill_description",
       placeholder: localizer(locale, "commands.respond.prefill_placeholder"),
       required: false,
-      maxLength: 2000,
+      maxLength: ASSISTANT_PREFILL_MAX_LENGTH,
       style: 2, // TextInputStyle.Paragraph
     });
 
     const modalResult = await promptWithPaginatedModal(interaction, locale, {
       modalCustomId: "respond_persona_select",
       modalTitleKey: "commands.respond.extra_options_title",
+      pageSelectTitleKey: "general.pagination.select_persona_title",
+      pageSelectDescriptionKey: "general.pagination.select_persona_page_description",
       components: modalComponents,
     });
 
@@ -334,6 +357,7 @@ export async function execute(
 
       forceReason = true;
       llmOverrideCodename = smartestModel.llm_codename;
+      reasoningModel = smartestModel;
     }
   } else {
     await interaction.deferReply({ flags: deferFlags });
@@ -352,14 +376,29 @@ export async function execute(
   }
 
   try {
+    // Fallback attempts can resolve differently, but a mismatch only costs an inaccurate hint.
+    const prefillBecomesInstruction =
+      manualPrefill !== undefined &&
+      resolvePrefillMode(
+        "manual",
+        resolvePrefillBlocker(
+          { llm: reasoningModel ?? selectedPersona.llm, config: selectedPersona.config },
+          forceReason,
+        ),
+      ) === "instruction";
+    const successDescription = localizer(locale, "commands.respond.success_description");
     const successEmbed = new EmbedBuilder()
       .setTitle(localizedStatusTitle(locale, "commands.respond.success_title", ColorCode.SUCCESS))
-      .setDescription(localizer(locale, "commands.respond.success_description"))
+      .setDescription(
+        prefillBecomesInstruction
+          ? `${successDescription}\n${localizer(locale, "commands.respond.prefill_instruction_notice")}`
+          : successDescription,
+      )
       .setColor(ColorCode.SUCCESS);
 
     if (!hideEmbed) {
       successEmbed.setFooter({
-        text: localizer(locale, "commands.respond.embed_hide_notice"),
+        text: localizer(locale, NOTICE_CONFIG_HINT_KEY),
       });
     }
 

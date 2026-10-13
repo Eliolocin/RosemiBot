@@ -1,317 +1,102 @@
 ---
 title: "07: Discord Delivery"
+aiGenerated: true
 ---
 
-Delivers a normalized text segment to Discord, applying typing simulation and routing through webhooks for persona mode.
+Discord delivery formats, paces, and transmits normalized segments to Discord. It manages delivery
+modes, typing simulation, webhook identity routing, and Discord API rate caps.
 
-- **Files**:
-- `StreamMessageDelivery.sendSegment`: `src/utils/discord/stream/messageDelivery.ts:154-194`
-- `StreamUiUpdater.sendSinglePayload`: `src/utils/discord/stream/uiUpdater.ts:51-~230`
+## Flow and ownership
 
-## Mission
+Delivery is shared by `StreamMessageDelivery.sendSegment()` and `StreamUiUpdater.sendSinglePayload()`.
+The flusher passes normalized segments from [stage 06](/architecture/pipelines/provider/06-segment-normalization/)
+to `sendSegment()`, which selects the delivery mode and chunks text:
 
-This is the final stage of the provider pipeline: text that has passed through stages 05 and 06
-is delivered to Discord. Two classes share the responsibility:
+- **Aggregated mode (`HumanizerDegree.NONE`):** Queues segments into `state.pendingAggregatedText`.
+  Output is withheld until a tool call, table attachment, or final flush, delivering content in a
+  single batch. Identity overrides flush queued text immediately to keep webhook identities aligned
+  with their specific lines.
+- **Streaming mode (`HumanizerDegree.LIGHT`, `MEDIUM`, `HEAVY`):** Splits segments into Discord-safe
+  chunks via `chunkMessage()`. Chunks send immediately or pace through `sendChunksWithTyping()`.
 
-Sticker tools use a post-turn companion path rather than this text pipeline.
-`runToolLoop` carries the latest successful cached `Sticker` only on a
-completed `GenerationTurnResult`; `runPostTurnEffects` then sends it after the
-streamed text. Alter personas send the sticker URL through their identity
-webhook (including the thread ID when applicable). Main personas send the
-native Discord sticker as a reply for queued turns or directly to the channel
-otherwise. Webhook failure falls back to the native bot sticker send, and a
-final sticker-send failure is logged without failing the completed turn.
+`StreamUiUpdater.sendSinglePayload()` executes Discord REST calls, routing payloads through webhooks
+or standard bot messages based on context.
 
-`StreamMessageDelivery.sendSegment()` makes the delivery-mode decision:
+## Message chunking and formatting
 
-- **Aggregated mode** (`HumanizerDegree.NONE`): the segment is queued into
-  `state.pendingAggregatedText` via `queueAggregatedSegment()`. Aggregated text is only sent to
-  Discord when a flush boundary that forces output arrives: a tool call, a final flush, or a
-  Markdown table attachment. This produces a single, uninterrupted Discord message from what would
-  otherwise be many small streaming messages. A render-modifier identity override flushes any
-  pending aggregate first and sends immediately through the webhook path, because webhook identity
-  is line-scoped and cannot be mixed into the regular aggregate buffer.
+`chunkMessage()` parses text into typed blocks to fit within Discord message limits:
 
-- **Streaming mode** (degree 1-3): the segment is split into Discord-safe chunks via
-  `chunkMessage()`, then optionally humanized (degree 3 only: `humanizeString()`), and sent
-  through one of two paths:
-  - **With typing simulation** (degree 1-2): `sendChunksWithTyping()` sends the first chunk
-    immediately, then inserts an interruptible typing delay (`interruptibleDelay()`) between
-    subsequent chunks scaled to `chunk.length × baseSpeedMsPerChar` (capped at `maxTypingTimeMs`,
-    minimum `minVisibleDurationMs`). An optional random "thinking pause" (`thinkingPauseChance`)
-    adds further natural variance. Each delay is interruptible; it polls `hasStopRequest()`
-    every 250 ms and returns early if a stop is pending.
-  - **Immediate** (no simulation): `sendChunksImmediate()` sends all chunks back-to-back.
+- **Preserved spans:** Protects regions that must not split across message boundaries, including
+  fenced code blocks, URLs, markdown formatting (`**`, `*`, `~~`, `` ` ``, markdown links), paired
+  quotes, balanced parentheses, and custom emoji tags. An oversized code block repeats its opening
+  fence and syntax language tag on subsequent messages so syntax formatting survives.
+- **Emoji isolation:** Custom emojis isolate into individual messages unless positioned mid-sentence
+  or inside numbered or bulleted list items. Consecutive emojis sharing an initial name prefix merge
+  into emoji runs.
+- **Humanizer splitting:** Paragraph breaks divide messages at degrees 1 and 2. Degree 3 splits at
+  sentence boundaries and runs `humanizeString()`, rolling punctuation marks between deletion,
+  splitting, and preservation while keeping styled markup spans intact.
 
-`StreamUiUpdater.sendSinglePayload()` executes the Discord API call for a single message
-payload. It handles:
+## Typing simulation
 
-- **Send-message-limit enforcement**: if `state.messageSentCount >= config.send_message_limit`
-  (server-configured cap), a stop is requested and the send is skipped. The absolute safety cap
-  `STREAMING_LIMITS.MAX_FLUSH_COUNT` is also enforced here with a user-facing embed (suppressed
-  under user impersonation, like every other notice in this subsystem).
-  Both caps resolve as stop requests for every delivery mode, including impersonation. They are
-  deterministic, so raising them as errors would only drive the generation stage to retry across
-  rotation keys and fallback models against a condition no retry can satisfy.
-- **Webhook path**: when `context.webhook` and `context.personaUsername` are set (alter persona
-  mode), the message is sent via `sendWebhookMessageWithIdentity()` with the persona's name and
-  avatar. Webhooks cannot use Discord's native reply, so for the *first* message of any webhook
-  response that has a `replyToMessage`, a standalone reply notice is sent first via
-  `sendWebhookReplyNotice()`. This covers the main persona too whenever a sprite pushes it onto the
-  webhook path; the notice is gated on webhook delivery, not on `is_alter`. Sprite identity
-  overrides (carrying a `spriteRecord`) still get the notice since the persona is speaking as itself;
-  copied identities (impersonating a user or another persona) are excluded, because a notice
-  posted under the disguise would attribute the reply to the wrong speaker.
-- **Delivered-identity recording**: after every successful send, the identity Discord actually
-  saw is recorded per channel in `channelDeliveryContinuity.ts`: the webhook identity on a
-  webhook send, or a cleared marker on an ordinary bot send. Post-turn artifacts (stickers, the
-  "Fallback Used" notice) read it back so they post as the same author and group with the
-  message they follow, instead of splitting off under the persona's default name.
-- **Render-modifier identity override**: when stage 06 resolves `SourcePersona (modifier): text`,
-  the payload carries `identityOverride`. The UI updater lazily creates or reuses the managed
-  channel webhook even for the main persona. Ordinary sprite matches send with the clean username
-  `SourcePersona` and the sprite avatar; identity sprites (`persona_sprites.is_identity`) and
-  copied-identity matches send with the flipped username `target (SourcePersona)` and the
-  target's/sprite avatar (the model-facing context label stays `SourcePersona (target)`).
-  Ordinary main-persona output
-  remains a regular bot message; the managed webhook is used only for override payloads. Unknown,
-  ambiguous, or unusable modifiers are stripped before this stage and therefore follow the regular
-  path.
-- **Sprite message persistence**: payloads carrying a `spriteRecord` write a
-  `persona_sprite_messages` row fire-and-forget after a successful *webhook* send (bot-fallback
-  sends are skipped; they cannot carry persona identity in context). Context rebuilding uses
-  this mapping to recover the decorated `SourcePersona (sprite):` label; a lost row degrades the
-  label to the plain persona name, never an error.
-- **Regular path**: otherwise the message is sent via `context.channel.send()` or
-  `context.replyToMessage.reply()` (first message only), with `allowedMentions` set to suppress
-  `@everyone` / `@here` pings while allowing user and role mentions.
-- **State tracking**: on a successful send: `state.messageSentCount++`, `state.accumulatedText`
-  is appended, and `state.firstReplyUrl` is set on the first message sent (used in thought-log embeds).
-  The message's `{ messageId, channelId, isWebhook }` is also appended to
-  `context.deliveredMessageRefs` when that shared sink is present, so a later fallback attempt can
-  delete this attempt's partial output if it is superseded (see
-  [06.3 Generation Turn](../chat/06-per-turn/03-run-generation-turn) → superseded-message cleanup).
-  For render-modifier payloads, `state.accumulatedText` is prefixed with the model-facing
-  source-first label (`SourcePersona (modifier): `), which may differ from the visible webhook
-  username (clean name for sprites, flipped name for copied identities), so result capture,
-  STM, and future prompt context remain reversible.
-- **Invalid-webhook recovery**: if the webhook send fails with Discord error 10015 or 50027
-  (unknown/invalid webhook), the webhook cache is invalidated and a fresh webhook is fetched for
-  retry.
-- **Progress notification**: `context.onStreamProgress?.()` is called after a successful send,
-  resetting the rolling SDK timeout in the tool-loop pipeline.
+`sendChunksWithTyping()` calculates delays scaled to character count, bounded by
+`minVisibleDurationMs` (750 ms) and `maxTypingTimeMs` (4,000 ms), with optional thinking pauses.
+Delays poll the stop registry every 250 ms through `interruptibleDelay()` and exit promptly if a stop
+or interrupt arrives.
 
-## Rendered Markdown tables
+## Dispatch and identity routing
 
-`sendRenderedMarkdownTable()` bypasses `chunkMessage()` entirely: the table is rasterized by
-`renderMarkdownTableToPng()` and sent as a PNG attachment, because Discord's Markdown dialect has
-no table support and raw pipe rows render as unaligned text.
+`StreamUiUpdater.sendSinglePayload()` routes messages through one of two channels:
 
-The message carries a single `Show Markdown` button (`createShowMarkdownButtonRow`,
-`src/utils/discord/markdownTableButton.ts`), following the same collector pattern as the
-`Fallback Used` notice:
+- **Webhook delivery:** Used when alter personas or render-modifier identity overrides are active.
+  The updater routes sends to `sendWebhookMessageWithIdentity()` with persona avatars and names.
+  The initial message answering a source message sends a standalone reply notice via
+  `sendWebhookReplyNotice()`. Invalid webhook errors (Discord codes 10015 and 50027) trigger cache
+  invalidation and retry with a recreated webhook.
+- **Bot messages:** Used for standard bot personas via `channel.send()` or `message.reply()`.
 
-- Pressing it replies ephemerally with the table's original Markdown inside a
-  ` ```markdown ` fence, so a viewer can copy the source the image was rendered from.
-- Source text is read from `markdownTableCache` (keyed by message ID) on each press rather than
-  captured in the collector closure, so the collector does not pin every rendered table's source in
-  memory. A press after the cache TTL replies with `genai.markdown_table.source_expired`.
-- Tables too long for a Discord message go out as a `table.md` attachment instead of being
-  truncated; half a table defeats the copy/paste the button exists for.
-- The button is disabled when the collector window (`SHOW_MARKDOWN_BUTTON_TIMEOUT_MS`) closes.
-  Webhook-authored messages are edited through the authoring webhook, since the bot token cannot
-  edit them.
+After each successful webhook send, `recordChannelDeliveredWebhookIdentity()` records the author identity
+in `src/utils/discord/stream/channelDeliveryContinuity.ts`. Subsequent artifacts in the turn, such
+as sticker expressions and fallback notices, read this record so their messages group under the same
+author. Persona webhook posts outside the stream (tool notices, generated media, voice messages)
+go through `src/utils/discord/webhook/personaPost.ts` and record themselves the same way. Directly
+after the same persona's line they reuse its identity; otherwise they show the base appearance and
+join the sprite alternation, so the next sprite cannot merge under the post's avatar. Lines where
+the persona speaks outside the stream (`/impersonate` and the reply tool) take the stream's own
+alternation for their sprite or base appearance and record themselves too. The payload's reference
+is recorded in `context.deliveredMessageRefs` so the chat pipeline can delete partial output if a
+generation attempt is superseded. Successful ordinary bot sends, including notice fallbacks after a
+webhook failure, call `recordChannelDeliveredBotMessage()` to clear the previous webhook identity.
+Failed sends leave the last successful delivery intact.
 
-Delivering the button required `StreamSendPayload.components`, which `StreamUiUpdater` forwards on
-all four send paths (webhook, webhook recovery, reply, and channel send).
+## Rendered markdown tables
 
-Stage 05 guarantees the table arrives here as one intact block; see
-[`05-buffer-management.md`](05-buffer-management.md) § Markdown table atomicity.
+Tables detected in stage 06 bypass `chunkMessage()`. They are rasterized to PNG via
+`renderMarkdownTableToPng()` and delivered as attachments with an interactive `Show Markdown` button:
 
-## Chunking behavior (`chunkMessage`)
+- Clicking the button replies ephemerally with the table's cached source markdown.
+- Source text is read on demand from `markdownTableCache` rather than held in event closures.
+- The button disables after `SHOW_MARKDOWN_BUTTON_TIMEOUT_MS` (2 hours), matching the cache TTL.
+- Table atomicity in stage 05 guarantees the block arrives intact; see
+  [stage 05 table atomicity](/architecture/pipelines/provider/05-buffer-management/#markdown-table-atomicity).
 
-`chunkMessage()` (`src/utils/text/processors/chunkProcessor.ts`) is the function that converts a
-single normalized text segment into one or more Discord-safe messages. It runs as a multi-pass
-parser that classifies the input into typed blocks, then emits chunks.
+## Constraints and rationale
 
-### Preserved spans
+- **Deterministic stops over retries:** Hitting server `send_message_limit` or the safety cap
+  `STREAMING_LIMITS.MAX_FLUSH_COUNT` (40 messages) queues an internal stop. Raising an error would
+  trigger futile fallback retries against an unchangeable limit.
+- **Quiet teardown for inaccessible channels:** If a channel is deleted or access is revoked
+  (Discord error 10003 or 50001), `stopForUnreachableChannel()` terminates the stream without
+  retrying.
+- **Native reply limitations:** Webhooks cannot create native Discord reply references. The
+  standalone reply notice provides the only visual link between an alter persona message and its
+  source prompt.
 
-The parser locates and protects regions whose internal structure must not be split mid-region.
-A chunk break can only happen at the boundary *between* such regions, never inside. The one
-exception, a span containing a newline at `LIGHT`/`MEDIUM`, is described under Humanizer interaction:
+## Source pointers
 
-- Fenced code blocks (``` ``` ```): kept whole; split across multiple messages only if a single
-  block exceeds the chunk limit, in which case the opening fence + language tag is repeated on
-  each subsequent chunk so syntax highlighting survives.
-- URLs (matched outside markdown link parens): never split.
-- Markdown spans: bold (`**` / `__`), italic (`*` / `_`), strikethrough (`~~`),
-  inline code (`` ` ``), and links (`[text](url)`).
-- Quoted strings: straight `"..."` and every distinct open/close pair in `PAIRED_QUOTE_MARKS`
-  (`「」`, `『』`, `｢｣`, `«»`, `‹›`, `“”`, `〈〉`, `《》`). `'` and `‘’` are excluded because they
-  double as apostrophes.
-- Balanced parentheses `(...)`.
-- Discord custom emoji tags `<:name:id>` and `<a:name:id>`.
-
-### Emoji isolation and runs
-
-By default, every custom emoji block is isolated: flushed into its own Discord message rather
-than carried inline with surrounding text. Consecutive emojis are merged into a single
-"emoji-run" message if and only if their normalized names share the same prefix (length set by the
-`EMOJI_RUN_PREFIX_LENGTH` constant in `chunkProcessor.ts`, 3 characters; the regex `[^a-z0-9]` strips separators before slicing).
-This produces Discord's large-emoji rendering for reaction-style messages, while keeping
-unrelated emoji packs in separate messages.
-
-Two carve-outs override the default isolation and fold the emoji inline with adjacent text:
-
-1. **Mid-sentence**: non-emoji text exists on both sides of the emoji on the same `\n`-delimited
-   line, AND the text immediately before does not end in sentence-terminating punctuation
-   (`. ! ? 。 ！ ？`). Example: `"I really like :Soup:, don't you?"` → one chunk.
-2. **List item**: the emoji's line begins with a list marker (`\d+[.)] ` or `- ` / `* ` / `• `).
-   Example: `"1. :Soup:\n2. :Smile:"` → list numbering stays attached to each emoji.
-
-Trailing emojis after a completed sentence (`"That was amazing! :Soup:"`) and leading emojis
-(`":Soup: looks tasty"`) intentionally remain isolated; the carve-outs target structural
-contexts, not stylistic prose.
-
-### Humanizer interaction
-
-`HumanizerDegree` (a `TomoriState.config` field) controls how the resulting blocks emit as
-messages after parsing. The value is per-answering-persona: a persona-level override
-(`persona_configs.humanizer_degree`, set via `/config` > Engine > General with `scope: Persona`) is
-overlaid onto that persona's `config.humanizer_degree` at state-load time, falling back to
-the server-wide `server_chat_configs` value when NULL:
-
-| Degree | Behavior |
-|---|---|
-| `NONE` (0) | Aggregated delivery: chunks join into one message at flush boundaries (see Mission §) |
-| `LIGHT` / `MEDIUM` (1-2) | Each paragraph (`\n+`-separated) becomes its own Discord message |
-| `HEAVY` (3) | Each sentence becomes its own message; sentence splitting uses an abbreviation-aware regex (`createSentenceSplitRegex`) to avoid breaking on "Mr.", "e.g.", numbered references, etc. `humanizeString()` then runs per sentence and can split it further (see below). |
-
-At `HEAVY`, the preserved spans above are also held out of both splits named in the table: the whole
-segment is scanned for spans before the paragraph split, each span is replaced by a placeholder, and
-the span is restored into whichever message holds it. Without that step the semantic-block merge that
-keeps a span with its surrounding prose would leave the span inside the paragraph and sentence
-splits, which cut at its internal newlines and periods, so each half would reach Discord as a separate
-message with one unmatched marker. A span longer than `chunkLength` is still split, because Discord's
-message limit outranks the no-split rule. At `LIGHT`/`MEDIUM` this pass does not run, so the paragraph
-split still cuts a span that contains a newline.
-
-Only emphasis candidates whose delimiter runs clear the flanking rules are held whole, so the markers
-prose is full of stay splittable: a `* ` list bullet, `2 * 3`, a kaomoji pair (`-_-`, `^_^`, `>_<`),
-`user_id`, and a marker inside inline code or a URL. Han, kana, and Hangul letters are not word
-characters, so a marker glued to Japanese or Chinese text is still a span
-(`ふん*顔をそむける。でも嬉しい*わけじゃない`). A paren candidate whose `(` is glued to a face
-(`ugh :( that sucks. anyway. glad you're back :)`) is an emoticon, not an aside, so the sentences
-between the two faces still split. Stage 05's hold decides the same emphasis question from the same
-classifier, which is what keeps the two stages aligned on which runs pair up.
-
-Standalone-punctuation chunks (a chunk that is purely `.,!?;:。！？、，` after trimming) are
-merged into the previous or next chunk by `mergeStandalonePunctuationChunks`, preventing orphan
-punctuation messages.
-
-At `HEAVY`, `humanizeString()` lowercases the sentence, strips semicolons (`;`/`；`), and independently rolls
-each comma (`,`/`、`/`，`/`､`) between remove / flush / keep and each run of `!`/`?`/`！`/`？` between flush /
-keep (marks are never removed). A "flush" strips the comma (the mark stays for `!`/`?`) and splits
-the sentence into an additional Discord message, sent through the same typing-simulated path as
-the sentence-per-message split above, because `sendSegment()` pushes every returned piece into
-`finalMessageChunks` rather than embedding a literal newline. An ASCII `,`/`!`/`?` only rolls when
-whitespace or the end of the text follows it, so tokens like `1,000`, `a,b`, `<@!id>`, `!help`,
-and `?...` are never stripped or split; full-width `、`/`，`/`！`/`？` have no such requirement because
-CJK prose has no spaces. Every rule classifies by character script, never by the user's locale,
-because a persona can reply in a language other than the user's preference: lowercasing applies to
-every cased script (accented Latin, Cyrillic, Greek) and leaves uncased scripts unchanged, and
-sender prefixes and inline code are protected in any script. Any comma/mark inside bold, italic, or strikethrough markup,
-`||spoiler||`, a `"quoted"` span or any `PAIRED_QUOTE_MARKS` pair, a parenthesized aside, or a
-`[markdown link](url)` is also left untouched, so a flush can never sever formatting across two
-messages. More messages per reply means a server's `send_message_limit` is reached sooner; that
-tradeoff is accepted. Sample dialogues and dialogue-history
-reconstruction call the same function; see
-[10-sample-dialogues.md](/architecture/pipelines/context-build/02-native-assembly/10-sample-dialogues/).
-
-## Input
-
-- `segment: string`: normalized text from stage 06.
-- `boundary: BufferedDeliveryBoundary | undefined`: forwarded from stage 06 for aggregated-mode
-  newline joining logic.
-- `textConfig: TextProcessingConfig`: `visibleDeliveryMode`, `humanizerDegree`, `maxMessageLength`.
-- `typingConfig: TypingSimulationConfig`: speed, duration limits, random-pause config.
-- `context: StreamContext`: channel, webhook, locale, tomoriState, progress callback.
-- `state: StreamState`: `messageSentCount`, `accumulatedText`, `pendingAggregatedText`,
-  `firstReplyUrl`.
-
-## Output
-
-No return value from `sendSegment()`. `sendSinglePayload()` returns `Promise<Message | null>`:
-the sent Discord `Message` object (used by `sendRenderedMarkdownTable` to cache table content by
-message ID), or `null` if the send was skipped (stop request, limit reached, empty content).
-
-## Side effects
-
-- **Discord message sent**: the primary side effect; one or more Discord messages are created in
-  `context.channel` (or via `context.webhook`).
-- **Post-turn sticker sent**: when a completed tool loop selects a sticker,
-  `postTurnEffects.ts` appends a webhook sticker URL or native Discord sticker
-  after text delivery; this is intentionally outside stream message counts.
-- **`state.messageSentCount`**: incremented per message sent.
-- **`state.accumulatedText`**: appended with the text of each sent message (used for STM write
-  at pipeline end). Render-modifier sends append the visible `SourcePersona (modifier): ` label once
-  at the start of the modified line, even when the line is split across multiple Discord messages.
-- **`state.firstReplyUrl`**: set to the URL of the first reply message (if not already set).
-- **`state.hasRepliedToOriginalMessage`**: set to `true` after the first successful reply.
-- **`state.pendingAggregatedText`**: cleared after an aggregated-mode flush.
-- **`context.replyNoticeState`**: `attempted` and `sent` flags updated when the alter reply
-  notice is sent.
-- **Webhook cache invalidation**: on invalid-webhook error: `invalidateWebhookCache(channelId)`
-  is called and a new webhook is fetched.
-- **`context.onStreamProgress?.()` callback**: called on each successful send.
-
-## Invariants
-
-After this stage (per successful send):
-
-- `state.accumulatedText` contains all text that has been delivered to Discord so far in this
-  stream.
-- `state.messageSentCount` reflects the total number of Discord messages sent.
-- If a stop request was detected before or during a typing delay, no further sends occur and the
-  method returns early.
-
-## Extension points
-
-| Surface | Plugin-relevance |
-|---|---|
-| `sendWebhookMessageWithIdentity()` | `src/utils/discord/webhook/personaDispatch.ts`. The webhook persona dispatch path is the extension seam for persona-specific message appearance. A plugin adding a new persona display mode (e.g., custom embed layout) would extend here. → plugin plan candidate |
-| `chunkMessage()` | `src/utils/text/processors/chunkProcessor.ts`. Internal: message chunking is tightly coupled to Discord's 2000-character limit and the humanizer sentence-split regex. |
-| `humanizeString()` | `src/utils/text/processors/formatters.ts`. Internal: degree-3 humanization is a randomized comma/emphasis noise function that can split a sentence into extra messages; no plugin-relevant seam. |
-| Typing simulation (`sendChunksWithTyping`, `interruptibleDelay`) | Internal: typing simulation timing constants are configurable via `DISCORD_STREAMING_CONSTANTS`; the `HumanizerDegree` DB field is the user-facing control. |
-| `STREAMING_LIMITS.MAX_FLUSH_COUNT` | `src/utils/security/rateLimiter.ts`. Internal: an operational safety cap, not a plugin seam. The server-configured `send_message_limit` is the user-facing control. |
-| Aggregated-mode buffer (`pendingAggregatedText`, `flushAggregatedTextBuffer`) | Internal: aggregated delivery is driven by `HumanizerDegree.NONE`; not designed for external control. |
-| `StreamSendPayload.components` | `src/utils/discord/stream/uiUpdater.ts`. The seam for attaching interactive rows to a streamed message; currently only the rendered table's "Show Markdown" button uses it. A plugin adding message-level controls would extend here. → plugin plan candidate |
-
-## Configuration
-
-| Source | Key | Value | Purpose |
-|---|---|---|---|
-| `TomoriState.config` | `humanizer_degree` | `MEDIUM` | Controls delivery mode (aggregated vs. streaming) and typing simulation |
-| `TomoriState.config` | `send_message_limit` | `0` (no limit) | Per-stream Discord message cap; `0` means unlimited |
-| `DISCORD_STREAMING_CONSTANTS` | `BASE_TYPE_SPEED_MS_PER_CHAR` | `10` ms | Typing speed multiplier per character |
-| `DISCORD_STREAMING_CONSTANTS` | `MAX_TYPING_TIME_MS` | `4 000` ms | Cap on typing delay per chunk |
-| `DISCORD_STREAMING_CONSTANTS` | `MIN_VISIBLE_TYPING_DURATION_MS` | `750` ms | Minimum typing delay shown |
-| `DISCORD_STREAMING_CONSTANTS` | `THINKING_PAUSE_CHANCE` | `0.25` | Probability of an extra "thinking" pause between chunks |
-| `DISCORD_STREAMING_CONSTANTS` | `MIN_RANDOM_PAUSE_MS` / `MAX_RANDOM_PAUSE_MS` | `250` / `1500` ms | Thinking pause duration range |
-| `STREAMING_LIMITS.MAX_FLUSH_COUNT` | `src/utils/security/rateLimiter.ts` | `40` | Absolute safety cap on messages per stream; a HEAVY-degree reply with many commas/emphasis marks reaches this sooner than a plain sentence-per-message split would |
-| `formatters.ts` constant | `COMMA_REMOVE_PROBABILITY` | `0.4` | Chance each comma is deleted outright (HEAVY only) |
-| `formatters.ts` constant | `COMMA_FLUSH_PROBABILITY` | `0.2` | Chance each comma instead splits into a new message (HEAVY only) |
-| `formatters.ts` constant | `EMPHASIS_FLUSH_PROBABILITY` | `0.5` | Chance each `!`/`?`/`！`/`？` run splits into a new message right after it (HEAVY only) |
-| `markdownTableButton.ts` constant | `SHOW_MARKDOWN_BUTTON_TIMEOUT_MS` | `7 200 000` ms (2 h) | How long a rendered table's "Show Markdown" button stays interactive; matches the markdown-table cache TTL so the button never outlives its cached source |
-
-## Related docs
-
-- Stage 06 (produces the segment delivered here): → [`06-segment-normalization.md`](06-segment-normalization.md)
-- Webhook lifecycle: `src/utils/discord/webhook/lifecycle.ts`
-- Webhook persona dispatch: `src/utils/discord/webhook/personaDispatch.ts`
-- Reply notice: `src/utils/discord/webhookReply.ts`
-- Message chunking: `src/utils/text/processors/chunkProcessor.ts`
-- Rendered table button: `src/utils/discord/markdownTableButton.ts`
-- `HumanizerDegree` enum: `src/types/db/schema.ts`
-- `DISCORD_STREAMING_CONSTANTS`: `src/types/stream/types.ts:15`
-- Multi-persona webhook behavior: `docs/en/architecture/subsystems/multi-persona.md` (webhook-persona pipeline TBD)
+- `src/utils/discord/stream/messageDelivery.ts`: `StreamMessageDelivery` and typing simulation.
+- `src/utils/discord/stream/uiUpdater.ts`: `StreamUiUpdater.sendSinglePayload` and webhook routing.
+- `src/utils/text/processors/chunkProcessor.ts`: `chunkMessage` and span preservation.
+- `src/utils/discord/markdownTableButton.ts`: interactive table button and cache interaction.
+- `src/utils/discord/stream/channelDeliveryContinuity.ts`: delivered identity recording.
+- `src/utils/security/rateLimiter.ts`: `STREAMING_LIMITS.MAX_FLUSH_COUNT` definition.

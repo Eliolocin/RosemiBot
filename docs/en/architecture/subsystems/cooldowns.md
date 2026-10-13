@@ -1,106 +1,73 @@
 ---
 title: "Cooldown System"
+aiGenerated: true
 ---
 
-This document describes the currently implemented cooldown behavior.
+The cooldown subsystem bounds command and message-trigger invocation traffic before pipeline admission. It persists ephemeral limits in PostgreSQL unlogged storage, scales command rates by category, and coordinates channel-level whitelist overrides with manager exemptions.
 
-## Scope
+## Flow and ownership
 
-TomoriBot has two cooldown domains:
+TomoriBot enforces two distinct cooldown scopes: slash command category cooldowns during interaction dispatch, and message-trigger cooldowns during chat admission planning.
 
-1. Slash command category cooldowns (`interactionCreate`)
-2. Message-trigger cooldowns (`messageCreate`) with whitelist-aware channel/role gating and per-channel overrides
+### Slash command category cooldowns
 
-## Data Storage
+Interaction dispatch in `src/events/interactionCreate/handleCommands.ts` guards command execution through `CooldownRepository`:
 
-Table: `cooldowns` (UNLOGGED) in `src/db/schema.sql`
+- **Scope**: keyed by Discord user ID and command category. The root slash command name acts as its category.
+- **Type**: uses `CooldownType.COMMAND_CATEGORY` (value 5).
+- **Duration**: base durations are defined in `handleCommands.ts`: 10,000 ms for `/persona` (`COOLDOWN_PERSONA_MS`), 3,000 ms for listed feature categories (`CATEGORY_COOLDOWN_MS`), and 1,600 ms fallback (`DEFAULT_COOLDOWN_MS`).
+- **Scaling**: the environment multiplier `COMMAND_COOLDOWN_SCALE` scales every base duration (default `1`). Setting this to `0` disables category cooldown checks and database writes entirely.
+- **Rejection**: a command rejected by cooldown replies with localized error embeds (`general.cooldown_title` and `general.cooldown`).
 
-Columns used for explicit scope:
+### Message trigger admission cooldowns
 
-- `cooldown_type`
-- `server_disc_id`
-- `user_disc_id`
-- `channel_disc_id`
-- `command_category`
-- `expiry_time` (ms epoch)
+Message-triggered conversations pass through admission gating in `src/utils/chat/admissionGuards.ts` via `rejectOnMessageTriggerCooldown()`, which queries `cooldownRepository.checkMessageTriggerCooldownWithWhitelist()`:
 
-Unique scope index is built with COALESCE across those columns for safe UPSERT behavior.
-
-## Command Category Cooldowns
-
-Handler: `src/events/interactionCreate/handleCommands.ts`
-
-- Cooldown type: `CooldownType.COMMAND_CATEGORY`
-- Key shape: `user_disc_id + command_category`
-- Base durations are constants in `handleCommands.ts`: `COOLDOWN_PERSONA_MS` (10,000 ms) for `/persona`, `CATEGORY_COOLDOWN_MS` (3,000 ms) for the other listed categories, and `DEFAULT_COOLDOWN_MS` (1,600 ms) for everything else
-- `COMMAND_COOLDOWN_SCALE` multiplies every base duration (default `1`), so the ratio between categories holds at any scale; `0` skips both the cooldown check and the write
-- Cooldown warning uses localized `general.cooldown*` keys
-
-## Message Trigger Cooldowns
-
-Core module: `src/utils/db/messageCooldown.ts`
-
-Used for automatic message-triggered chat flow.
-
-### Effective cooldown source
-
-1. Check whitelist cache (`getCachedWhitelistStatus`).
-2. If the trigger is in a thread, first check the thread itself, then fall back to its parent channel's whitelist entry.
-3. If channel whitelist is active and current channel (or its parent channel for threads) is not whitelisted -> blocked.
-4. If role whitelist is active and triggering member has no whitelisted role -> blocked.
-5. If a persona has a channel whitelist configured anywhere in the server, that persona is only eligible in its whitelisted channels (threads inherit the parent channel entry); personas with no rows remain eligible everywhere. Disallowed automatic persona matches fail silently and manual persona selections (for example `/respond`, `/impersonate persona`, conditioning, and scene-image sender selection) are rejected.
-6. If the triggering user has a personal spotlight for the effective channel, that spotlight becomes an additional persona filter on top of the server whitelist. Only personas present in both sets may trigger, including proxy/self chains. The spotlight's optional personal auto-trigger persona behaves like a user+channel-scoped always-reply fallback, but still respects the server whitelist result.
-7. If channel is whitelisted and has an explicit override, use that channel-specific cooldown type/length.
-8. If channel is whitelisted without an override, inherit global `server_trigger_behavior_configs.cooldown_type/cooldown_length`.
-9. Otherwise use global `server_trigger_behavior_configs.cooldown_type/cooldown_length`.
+1. **Whitelist evaluation**: queries `getCachedWhitelistStatus()` using the server ID, channel ID, member roles, and thread parent channel ID if applicable.
+2. **Channel and role admission**: if a channel or role whitelist is enabled and the message fails admission, the trigger is blocked without recording a cooldown.
+3. **Persona gating**: if a persona restricts participation to specific whitelisted channels, matching is rejected outside those channels. Personal spotlights add an additional user-and-channel filter on eligible personas.
+4. **Effective cooldown resolution**:
+   - If the channel is whitelisted with explicit overrides, the channel-specific cooldown type and duration take precedence.
+   - If the channel is whitelisted without an override, or is unwhitelisted on a server with open access, settings inherit from global `server_trigger_behavior_configs.cooldown_type` and `cooldown_length`.
+5. **Cooldown execution**: on admission rejection, the bot sends an optional DM notice to the user (`sendCooldownDM`) using localized keys (`general.message_cooldown_title`, `general.message_cooldown`) and the cooldown type footer key.
 
 ### Cooldown types
 
-Enum in `src/types/db/schema.ts`:
+The `CooldownType` enum in `src/types/db/schema.ts` defines six operational modes:
 
-- `OFF` (0)
-- `PER_USER` (1)
-- `PER_CHANNEL` (2)
-- `SERVER_WIDE` (3)
-- `STRICT_SERVER_WIDE` (4)
-- `COMMAND_CATEGORY` (5, for slash command cooldowns)
+- `OFF` (0): no trigger cooldown.
+- `PER_USER` (1): individual cooldown per user within a server.
+- `PER_CHANNEL` (2): shared cooldown per channel.
+- `SERVER_WIDE` (3): server-wide cooldown across all members.
+- `STRICT_SERVER_WIDE` (4): legacy server-wide cooldown without exemptions.
+- `COMMAND_CATEGORY` (5): global cross-server category cooldown for slash commands.
 
-Operational note:
+Server managers with `ManageGuild` permission bypass trigger cooldown types 1 through 3. Type 4 (`STRICT_SERVER_WIDE`) allows no exemptions. The environment flag `DISABLE_COOLDOWN_EXEMPTIONS=true` disables exemptions during automated testing.
 
-- `/config` > Engine > Trigger currently allows selecting types `0..3`.
-- Type 4 remains in enum/runtime support for legacy rows.
+## Data storage and lifecycle
 
-### Manager exemption
+Cooldown records are persisted in the `cooldowns` table in `src/db/schema.sql`.
 
-- ManageGuild members bypass message cooldowns for types 1..3
-- no exemption for strict type 4
-- test override: `DISABLE_COOLDOWN_EXEMPTIONS=true`
+- **Unlogged storage**: `cooldowns` is an `UNLOGGED` PostgreSQL table. Ephemeral rate limits bypass write-ahead logging (WAL), reducing disk I/O on busy instances. An unclean database restart empties the table safely, resetting active cooldowns without risking application data integrity.
+- **Scope columns**: records store `cooldown_type`, `server_disc_id`, `user_disc_id`, `channel_disc_id`, `command_category`, and `expiry_time` (Unix timestamp in milliseconds).
+- **Idempotent upsert**: unique index `uq_cooldown_scope` uses `COALESCE` across all scope identifiers to handle null values safely. Calling `setCommandCategoryCooldown()` or `setMessageTriggerCooldownWithWhitelist()` updates `expiry_time` on conflict.
+- **Fail-open behavior**: database query errors during cooldown checks log warnings and report `isOnCooldown: false`. A database brownout does not lock users out of chat, though it creates a window for repeated invocations. Text, image, and video quotas fail open the same way, so failing cooldowns closed alone would not bound spend during a brownout. Change both together if an outage is observed admitting traffic above its limits, or if unprivileged senders can saturate the database pool.
+- **Cleanup**: PostgreSQL stored procedure `cleanup_expired_cooldowns()` deletes expired rows (`expiry_time <= current_ms`). It executes at startup in `src/index.ts` and runs hourly via `src/db/pgcron.sql` when `pg_cron` is enabled.
 
-## Configuration Commands
+## Cache interaction
 
-- Global trigger cooldown: `/config` > Engine > Trigger
-- Trigger whitelist:
-  - `/moderation` Whitelist Channels (leave cooldown options empty to inherit the global cooldown)
-  - `/moderation` Whitelist Personas
-  - `/moderation` Whitelist Roles
-- Personal spotlight:
-  - `/personal config`
+When an administrator modifies trigger cooldown or whitelist rules via `/config` or `/moderation`, the write paths invalidate cached state directly after the database transaction commits:
 
-## Cleanup
+- `invalidateTomoriStateCache(serverDiscId)`
+- `invalidateWhitelistCache(serverDiscId, channelDiscId?)`
+- `invalidatePersonalSpotlightCache(serverId)`
 
-Function: `cleanup_expired_cooldowns()` in schema.
+Invalidation ensures subsequent message admission checks observe the updated rules immediately.
 
-Invoked by:
+## Source pointers
 
-- startup cleanup in `src/index.ts`
-- optional `pg_cron` scheduled job (hourly) when available
-
-## Cache Interaction
-
-When cooldown config/whitelist settings change, invalidate:
-
-- Tomori state cache
-- whitelist cache
-- personal spotlight cache
-
-to avoid stale trigger behavior.
+- `src/utils/db/repositories/CooldownRepository.ts`: database queries, upserts, scope resolution, and cleanup.
+- `src/utils/chat/admissionGuards.ts`: admission cooldown evaluation, scope resolution, and user notifications.
+- `src/events/interactionCreate/handleCommands.ts`: slash command category cooldown evaluation and multiplier scaling.
+- `src/db/schema.sql`: `cooldowns` unlogged table schema, unique scope index, and `cleanup_expired_cooldowns()`.
+- `src/types/db/schema.ts`: `CooldownType` enum definition.

@@ -10,7 +10,7 @@ config();
 
 // scripts/devtools/launch.ts
 //
-//   bun run launch [--searxng] [--crawl4ai] [--qwen3tts] [--chatterbox] [--irodoritts] [--voxcpm2] [--fishs2] [--cosyvoice3] [--moss]
+//   bun run launch [--searxng] [--crawl4ai] [--slopguard] [--qwen3tts] [--chatterbox] [--irodoritts] [--voxcpm2] [--fishs2] [--cosyvoice3] [--moss]
 //
 //   Starts requested local servers, waits for them to be ready, then
 //   launches the bot in watch mode (equivalent to `bun run dev`).
@@ -24,7 +24,14 @@ config();
 const ROOT = process.cwd();
 
 const argv = process.argv.slice(2);
-const flags = new Set(argv.filter((a) => a.startsWith("--")).map((a) => a.slice(2)));
+// The alias matches the server's own spelling, which `docker compose --profile slop-guard` also uses.
+const FLAG_ALIASES: Record<string, string> = { "slop-guard": "slopguard" };
+const flags = new Set(
+  argv
+    .filter((a) => a.startsWith("--"))
+    .map((a) => a.slice(2))
+    .map((flag) => FLAG_ALIASES[flag] ?? flag),
+);
 
 if (flags.has("help") || flags.has("h")) {
   console.log(`
@@ -36,6 +43,7 @@ ${pc.bold("Usage:")}
 ${pc.bold("Options:")}
   --searxng     Start the SearXNG metasearch Docker container (port 8080 by default)
   --crawl4ai    Start the Crawl4AI browser-render Docker container (port 11235 by default)
+  --slopguard   Start the slop-guard prose linter Docker container (port 8765, MCP at /mcp; alias --slop-guard)
   --qwen3tts    Start the Qwen3-TTS Python server (requires venv setup)
   --chatterbox  Start the Chatterbox TTS Python server (requires venv setup)
   --irodoritts  Start the IrodoriTTS Python server (requires venv setup)
@@ -49,6 +57,7 @@ ${pc.bold("Options:")}
 ${pc.bold("Examples:")}
   bun run launch
   bun run launch --searxng --crawl4ai
+  bun run launch --slopguard
   bun run launch --qwen3tts --searxng
   bun run launch --voxcpm2
   bun run launch --fishs2
@@ -63,8 +72,15 @@ interface DockerLocalServer {
   containerName: string;
   /** image used when creating a container */
   image: string;
+  /** repo directory holding a Dockerfile; set when `image` is built locally before each launch */
+  buildContext?: string;
   /** args passed after "docker run" when creating a fresh container */
   runArgs: string[];
+  /**
+   * Environment for the `docker run` process. Secrets go here and runArgs names them with a bare
+   * `-e NAME`, because argv is readable by every local user through the process list.
+   */
+  runEnv?: Record<string, string>;
   /** milliseconds to wait for healthcheck before aborting (default 120s) */
   healthTimeoutMs?: number;
   /**
@@ -92,12 +108,16 @@ interface PythonLocalServer {
 
 type LocalServerDef = DockerLocalServer | PythonLocalServer;
 
+// Pinned so its egress policy and token requirement match the self-hosting guide.
+const CRAWL4AI_IMAGE = "unclecode/crawl4ai:0.9.4";
+
 /** Registry of all supported --flag → local server definitions. */
 const LOCAL_SERVERS: Record<string, LocalServerDef> = {
   searxng: {
     kind: "docker",
     containerName: "searxng",
     image: "tomoribot-searxng:latest",
+    buildContext: "servers/searxng",
     httpHealthUrl: "http://localhost:8080/healthz",
     runArgs: [
       "-d",
@@ -126,7 +146,8 @@ const LOCAL_SERVERS: Record<string, LocalServerDef> = {
   crawl4ai: {
     kind: "docker",
     containerName: "crawl4ai",
-    image: "unclecode/crawl4ai:latest",
+    image: CRAWL4AI_IMAGE,
+    runEnv: process.env.CRAWL4AI_TOKEN ? { CRAWL4AI_API_TOKEN: process.env.CRAWL4AI_TOKEN } : undefined,
     // Crawl4AI has a longer first-run startup (model download), give it 3 min.
     healthTimeoutMs: 180_000,
     httpHealthUrl: "http://localhost:11235/health",
@@ -135,9 +156,9 @@ const LOCAL_SERVERS: Record<string, LocalServerDef> = {
       "--name",
       "crawl4ai",
       "-p",
-      "11235:11235",
+      "127.0.0.1:11235:11235",
       "--shm-size=3g",
-      ...(process.env.CRAWL4AI_TOKEN ? ["-e", `CRAWL4AI_API_TOKEN=${process.env.CRAWL4AI_TOKEN}`] : []),
+      ...(process.env.CRAWL4AI_TOKEN ? ["-e", "CRAWL4AI_API_TOKEN"] : []),
       "--health-cmd",
       "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:11235/health', timeout=3).read()\"",
       "--health-interval",
@@ -148,7 +169,32 @@ const LOCAL_SERVERS: Record<string, LocalServerDef> = {
       "12",
       "--health-start-period",
       "45s",
-      "unclecode/crawl4ai:latest",
+      CRAWL4AI_IMAGE,
+    ],
+  },
+
+  slopguard: {
+    kind: "docker",
+    containerName: "slop-guard",
+    image: "tomoribot-slop-guard:latest",
+    buildContext: "servers/slop-guard",
+    runArgs: [
+      "-d",
+      "--name",
+      "slop-guard",
+      "-p",
+      "127.0.0.1:8765:8765",
+      "--health-cmd",
+      "python -c \"import socket; socket.create_connection(('localhost', 8765), 3)\"",
+      "--health-interval",
+      "5s",
+      "--health-timeout",
+      "3s",
+      "--health-retries",
+      "5",
+      "--health-start-period",
+      "5s",
+      "tomoribot-slop-guard:latest",
     ],
   },
 
@@ -324,7 +370,7 @@ async function ensureDockerLocalServer(def: DockerLocalServer): Promise<void> {
 
   const state = await getContainerState(containerName);
 
-  if (containerName === "searxng" && state !== null) {
+  if (def.buildContext && state !== null) {
     const containerImage = Bun.spawnSync(["docker", "inspect", "-f", "{{.Image}}", containerName]);
     const builtImage = Bun.spawnSync(["docker", "image", "inspect", "-f", "{{.Id}}", def.image]);
     if (
@@ -332,13 +378,16 @@ async function ensureDockerLocalServer(def: DockerLocalServer): Promise<void> {
       builtImage.exitCode !== 0 ||
       containerImage.stdout.toString().trim() !== builtImage.stdout.toString().trim()
     ) {
-      throw new Error("The existing searxng container uses an older image. Stop and remove it, then run launch again.");
+      throw new Error(
+        `The existing ${containerName} container uses an older image. Stop and remove it, then run launch again.`,
+      );
     }
   }
 
   if (state === null) {
     console.log(`${label} Container not found. Running docker run...`);
     const run = Bun.spawn(["docker", "run", ...def.runArgs], {
+      env: { ...process.env, ...def.runEnv },
       stdout: "inherit",
       stderr: "inherit",
     });
@@ -436,20 +485,16 @@ async function main(): Promise<void> {
     const def = LOCAL_SERVERS[flag];
     try {
       if (def.kind === "docker") {
-        if (flag === "searxng") {
+        if (def.buildContext) {
           const build = Bun.spawn(
-            [
-              "docker",
-              "build",
-              "-t",
-              "tomoribot-searxng:latest",
-              "-f",
-              "servers/searxng/Dockerfile",
-              "servers/searxng",
-            ],
+            ["docker", "build", "-t", def.image, "-f", `${def.buildContext}/Dockerfile`, def.buildContext],
             { cwd: ROOT, stdout: "inherit", stderr: "inherit" },
           );
-          if ((await build.exited) !== 0) throw new Error("SearXNG image build failed.");
+          if ((await build.exited) !== 0) throw new Error(`${def.containerName} image build failed.`);
+        }
+        // Without a token the pinned image binds only the container's loopback, so the bot could never connect.
+        if (flag === "crawl4ai" && !process.env.CRAWL4AI_TOKEN) {
+          throw new Error("Set CRAWL4AI_TOKEN in .env; Crawl4AI refuses outside connections without an API token.");
         }
         await ensureDockerLocalServer(def);
       } else {

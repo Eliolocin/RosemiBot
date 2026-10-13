@@ -6,6 +6,7 @@ import type {
 import { log } from "@/utils/misc/logger";
 import { pollForCompletion } from "@/utils/async/pollForCompletion";
 import { safeDownload } from "@/utils/security/safeDownload";
+import { PROVIDER_VIDEO_DOWNLOAD_MAX_MB } from "@/providers/utils/providerVideoDownload";
 
 /** Z.ai video generation API endpoint */
 const ZAI_VIDEO_GENERATIONS_URL = "https://api.z.ai/api/paas/v4/videos/generations";
@@ -18,11 +19,6 @@ const POLL_INTERVAL_MS = 10_000;
 
 /** Maximum poll attempts before timeout (~5 minutes at 10s intervals) */
 const MAX_POLL_ATTEMPTS = 30;
-
-const PROVIDER_VIDEO_DOWNLOAD_MAX_MB = Math.max(
-  1,
-  Number.parseInt(process.env.PROVIDER_VIDEO_DOWNLOAD_MAX_MB ?? "25", 10) || 25,
-);
 
 function selectClosestSupportedDuration(
   requestedDuration: number | undefined,

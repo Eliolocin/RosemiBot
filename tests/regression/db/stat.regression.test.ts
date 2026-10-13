@@ -82,6 +82,40 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("StatRepository — regression", () => {
     expect(await readCount("message_sent", "", lineageA, refs.userId)).toBe(1);
   });
 
+  it("prices decision tokens separately from author tokens without double-counting subset metrics", async () => {
+    const [model] = await testSql<{ decision_model_id: number }[]>`
+      INSERT INTO decision_models (provider, codename, input_token_limit, input_price_per_million, output_price_per_million)
+      VALUES ('openrouter', '_rt_stat_decision', 32000, 5, 10)
+      RETURNING decision_model_id
+    `;
+    const metricKey = `decision:${model.decision_model_id}`;
+    try {
+      for (const metric of ["tokens_in", "decision_tokens_in"] as const)
+        statRepository.recordStat({
+          serverId: refs.serverId,
+          userId: refs.userId,
+          lineageId: lineageA,
+          metric,
+          metricKey,
+          delta: 1000000,
+        });
+      await statRepository.flush();
+      expect(await statRepository.getEstimatedCost({ serverId: refs.serverId })).toBe(5);
+      expect(
+        (await statRepository.getModelCostBreakdown({ serverId: refs.serverId })).find(
+          (entry) => entry.model === "_rt_stat_decision",
+        )?.cost,
+      ).toBe(5);
+      expect(
+        (await statRepository.getPersonaTokenCostBreakdown({ serverId: refs.serverId })).find(
+          (entry) => Number(entry.lineageId) === lineageA,
+        )?.cost,
+      ).toBe(5);
+    } finally {
+      await testSql`DELETE FROM decision_models WHERE decision_model_id = ${model.decision_model_id}`;
+    }
+  });
+
   it("repeated recordStat on the same tuple collapses to one UPSERT with summed count", async () => {
     for (let i = 0; i < 5; i++) {
       statRepository.recordStat({

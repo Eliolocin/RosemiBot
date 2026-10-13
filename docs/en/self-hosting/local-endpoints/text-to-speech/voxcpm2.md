@@ -3,9 +3,9 @@ title: "VoxCPM2"
 aiGenerated: true
 ---
 
-VoxCPM2 is OpenBMB's 2B-parameter multilingual text-to-speech model. It supports 30 languages, 48 kHz output, natural-language Voice Design, reference-audio voice cloning, controllable cloning, and transcript-assisted "Ultimate Cloning". TomoriBot uses the official `voxcpm` Python package through the thin wrapper in `servers/tts/voxcpm2/`.
+Synthesize expressive 48 kHz speech across 30 languages using OpenBMB's [VoxCPM2](https://github.com/OpenBMB/VoxCPM) text-to-speech model.
 
-The default model is the official `openbmb/VoxCPM2` BF16 checkpoint. OpenBMB reports roughly 8 GB VRAM for the standard runtime, so the normal model comfortably fits a 16 GB NVIDIA GPU and no quantized checkpoint is needed by default.
+VoxCPM2 is a 2B-parameter multilingual speech model supporting voice cloning, transcript-assisted Ultimate Cloning, and natural-language Voice Design. TomoriBot connects to the official `voxcpm` Python library through the server in `servers/tts/voxcpm2/`, running the official unquantized `openbmb/VoxCPM2` BF16 checkpoint comfortably within 16 GB of VRAM.
 
 ## License
 
@@ -71,7 +71,7 @@ OpenBMB reports about 0.30 RTF on an RTX 4090 with the standard runtime. Upstrea
 
 The server pins the current stable `voxcpm` 2.0.3 package and downloads `openbmb/VoxCPM2` into the normal Hugging Face cache.
 
-### Linux / WSL Bash
+### Linux and WSL Bash
 
 From the TomoriBot repository root:
 
@@ -91,7 +91,7 @@ From the TomoriBot repository root:
 
 The first setup downloads several gigabytes of model weights. To install the Python environment without prefetching the model, set `VOXCPM2_PREFETCH=0`; the official library will then download the checkpoint on first server start.
 
-Linux / WSL:
+Linux and WSL:
 
 ```bash
 VOXCPM2_PREFETCH=0 bash servers/tts/voxcpm2/install-voxcpm2.sh
@@ -134,7 +134,7 @@ If no transcript is stored, VoxCPM2 still performs normal reference-audio clonin
 
 The 5 to 30 second figure is a documented quality range rather than an enforced cap: VoxCPM2 applies no reference-duration limit of its own, so TomoriBot's upload ceiling is what stops a longer clip.
 
-## Persona Voice Design
+## Persona voice design
 
 For a persona that should be created from a written voice description instead of a sample:
 
@@ -146,7 +146,7 @@ TomoriBot sends the saved description as `instruct`. VoxCPM2 converts it into it
 
 When a cloned persona also receives one-off voice instructions, VoxCPM2 uses controllable cloning: the reference sample supplies the speaker identity while the instruction steers qualities such as emotion, pace, or delivery. If a transcript is also stored, the instruction takes precedence because the upstream Ultimate Cloning path does not provide a reliable control-instruction mode; the transcript is intentionally omitted for that request.
 
-## `/generate voice-message`
+## Testing with `/generate voice-message`
 
 Once VoxCPM2 is the active Speech model, `/generate voice-message` uses the persona's configured voice source in the same way as normal voice-message tool calls:
 

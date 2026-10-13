@@ -65,7 +65,7 @@ describe("SSE consumer releases abandoned response bodies", () => {
  * This is a source-level heuristic rather than a proof. It cannot tie a specific `getReader` call to
  * a specific `cancel`, so it catches the regression that actually happened (teardown reverting to
  * `releaseLock`, or a new reader with no teardown at all) and nothing subtler. It exists because
- * `novelaiService` and `mcpFetchEngine` reach their readers only through a live provider response or
+ * `novelaiService` and `safeHttpFetchEngine` reach their readers only through a live provider response or
  * the SSRF gate, which would otherwise leave those sites with no net at all.
  */
 describe("no response body reader relies on releaseLock alone", () => {

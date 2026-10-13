@@ -11,10 +11,18 @@ import { ColorCode } from "@/utils/misc/logger";
 import { processEmbedsFromMessage } from "@/utils/chat/contextEmbeds";
 import { checkTargetEmbedTitle } from "@/utils/discord/embedClassifier";
 import { initializeLocalizer, localizer } from "@/utils/text/localizer";
+import { buildSuccessHeading, type FieldPlan } from "@/tools/functionCalls/updateUserInfoTool";
 import { localizedCopy } from "../../helpers/localeCases";
 
 function makeEmbed(title: string, description: string): Embed {
   return { title, description, fields: [], color: null } as unknown as Embed;
+}
+
+function expectedTitle(titleKey: string, subjects: string[] = []): string {
+  const fields = new Intl.ListFormat("en-US", { type: "conjunction", style: "long" }).format(
+    subjects.map((subject) => localizedCopy("en-US", `tools.user_info_update.subject_${subject}`)),
+  );
+  return localizedCopy("en-US", `tools.user_info_update.${titleKey}`, { target_user: "Bau", fields });
 }
 
 function buildContext(embed: Embed): string {
@@ -45,6 +53,66 @@ describe("update_user_info notice visibility", () => {
 
     const memoryTitle = localizer("en-US", "genai.self_teach.personal_memory_learned_title");
     expect(checkTargetEmbedTitle(memoryTitle).isTarget).toBe(true);
+  });
+
+  it("classifies the field-specific title in every locale, including its Minimal emoji-free form", () => {
+    for (const locale of ["en-US", "ja", "pt-BR", "es-419", "zh-TW", "zh-CN", "vi"]) {
+      const title = localizer(locale, "tools.user_info_update.success_title_fields", {
+        target_user: "Bau",
+        fields: localizer(locale, "tools.user_info_update.subject_timezone_offset"),
+      });
+      expect(checkTargetEmbedTitle(title)).toEqual({ isTarget: true, type: "user_info_update" });
+      expect(checkTargetEmbedTitle(title.replace(/^✅\s*/u, ""))).toEqual({ isTarget: true, type: "user_info_update" });
+    }
+  });
+
+  it("classifies the cleared title in every locale, including its Minimal emoji-free form", () => {
+    for (const locale of ["en-US", "ja", "pt-BR", "es-419", "zh-TW", "zh-CN", "vi"]) {
+      const title = localizer(locale, "tools.user_info_update.success_title_cleared_fields", {
+        target_user: "Bau",
+        fields: localizer(locale, "tools.user_info_update.subject_pronouns"),
+      });
+      expect(checkTargetEmbedTitle(title)).toEqual({ isTarget: true, type: "user_info_update" });
+      expect(checkTargetEmbedTitle(title.replace(/^🗑️\s*/u, ""))).toEqual({ isTarget: true, type: "user_info_update" });
+    }
+  });
+
+  it("titles a pure removal as cleared in red, but a removed affix alone as a nickname update", () => {
+    const heading = (plans: FieldPlan[]) => {
+      const { titleKey, titleVars, color } = buildSuccessHeading("en-US", plans, "Bau");
+      return { title: localizer("en-US", titleKey, titleVars), color };
+    };
+
+    expect(heading([{ field: "timezone_offset", cleared: true }])).toEqual({
+      title: expectedTitle("success_title_cleared_fields", ["timezone_offset"]),
+      color: ColorCode.ERROR,
+    });
+    expect(
+      heading([
+        { field: "nickname", cleared: true },
+        { field: "prefix", cleared: true },
+      ]),
+    ).toEqual({ title: expectedTitle("success_title_cleared_fields", ["nickname"]), color: ColorCode.ERROR });
+    expect(heading([{ field: "prefix", cleared: true }])).toEqual({
+      title: expectedTitle("success_title_fields", ["nickname"]),
+      color: ColorCode.SUCCESS,
+    });
+    expect(
+      heading([
+        { field: "suffix", cleared: false, value: "-san" },
+        { field: "timezone_offset", cleared: false, value: 9 },
+      ]),
+    ).toEqual({
+      title: expectedTitle("success_title_fields", ["nickname", "timezone_offset"]),
+      color: ColorCode.SUCCESS,
+    });
+    expect(
+      heading([
+        { field: "pronouns", cleared: true },
+        { field: "gender_identity", cleared: true },
+        { field: "timezone_offset", cleared: true },
+      ]),
+    ).toEqual({ title: expectedTitle("success_title"), color: ColorCode.SUCCESS });
   });
 
   it("renders the notice into the [System: ...] block for a later turn", () => {
@@ -82,7 +150,7 @@ describe("update_user_info notice visibility", () => {
     }).content;
 
     expect(content).toContain("[System:");
-    expect(content).toContain("Updated Bau's Profile");
+    expect(content).toContain(expectedTitle("success_title"));
     expect(content).toContain("Master Bau");
   });
 

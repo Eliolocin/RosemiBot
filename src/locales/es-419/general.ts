@@ -40,6 +40,8 @@ export default {
     },
     text_preview: {
       truncated_footer: `Mostrando los primeros {shown} de {total} caracteres.`,
+      hidden_marker: `{count} caracteres más ocultos.`,
+      hidden_marker_action: `{count} caracteres más ocultos. Presiona {action} para ver el resto.`,
     },
     pagination: {
       page_info: `Página {current} de {total}`,
@@ -53,6 +55,7 @@ export default {
       select_page_title: `Seleccionar página`,
       select_page_description: `Elige una página para ver entre {totalItems} elementos en {totalPages} páginas:`,
       select_persona_title: `Seleccionar persona`,
+      select_persona_page_description: `Elige una página para ver entre {totalItems} personas en {totalPages} páginas:`,
       persona_no_attributes: `Aún no hay atributos configurados.`,
       persona_select_button: `Seleccionar`,
     },

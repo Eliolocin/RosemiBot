@@ -1,5 +1,5 @@
 import type { Guild } from "discord.js";
-import type { ServerEmojiRow, ServerStickerRow } from "../../types/db/schema";
+import type { CustomExpressionRow, ServerEmojiRow, ServerStickerRow } from "@/types/db/schema";
 import { serverRepository } from "@/utils/db/repositories";
 import { log } from "../misc/logger";
 import { lazySyncGuildEmojis } from "./emojiLazySync";
@@ -12,6 +12,9 @@ import { lazySyncGuildStickers } from "./stickerLazySync";
 interface EmojiStickerCacheEntry {
   emojis: ServerEmojiRow[];
   stickers: ServerStickerRow[];
+  customs: CustomExpressionRow[];
+  emojisLoaded: boolean;
+  stickersLoaded: boolean;
   cachedAt: number; // Timestamp in milliseconds
 }
 
@@ -56,9 +59,10 @@ export async function loadEmojiStickerCache(
 ): Promise<{
   emojis: ServerEmojiRow[] | null;
   stickers: ServerStickerRow[] | null;
+  customs: CustomExpressionRow[] | null;
 }> {
   if (!emojiUsageEnabled && !stickerUsageEnabled) {
-    return { emojis: null, stickers: null };
+    return { emojis: null, stickers: null, customs: null };
   }
 
   const now = Date.now();
@@ -67,11 +71,16 @@ export async function loadEmojiStickerCache(
   if (cachedEntry) {
     // Check if cache is still fresh (< 5 minutes old)
     const cacheAge = now - cachedEntry.cachedAt;
-    if (cacheAge < MEMORY_CACHE_DURATION_MS) {
+    if (
+      cacheAge < MEMORY_CACHE_DURATION_MS &&
+      (!emojiUsageEnabled || cachedEntry.emojisLoaded) &&
+      (!stickerUsageEnabled || cachedEntry.stickersLoaded)
+    ) {
       cacheHits++;
       return {
         emojis: emojiUsageEnabled ? cachedEntry.emojis : null,
         stickers: stickerUsageEnabled ? cachedEntry.stickers : null,
+        customs: stickerUsageEnabled ? cachedEntry.customs : null,
       };
     }
 
@@ -92,6 +101,7 @@ export async function loadEmojiStickerCache(
 
     let emojis: ServerEmojiRow[] | null = null;
     let stickers: ServerStickerRow[] | null = null;
+    let customs: CustomExpressionRow[] | null = null;
 
     if (emojiUsageEnabled) {
       emojis = await serverRepository.loadEmojis(serverId);
@@ -99,15 +109,19 @@ export async function loadEmojiStickerCache(
 
     if (stickerUsageEnabled) {
       stickers = await serverRepository.loadStickersByInternalId(serverId);
+      customs = await serverRepository.loadCustomExpressions(serverId);
     }
 
     cache.set(serverId, {
       emojis: emojis || [],
       stickers: stickers || [],
+      customs: customs || [],
+      emojisLoaded: emojiUsageEnabled,
+      stickersLoaded: stickerUsageEnabled,
       cachedAt: now,
     });
 
-    return { emojis, stickers };
+    return { emojis, stickers, customs };
   } catch (error) {
     log.error(`[Emoji/Sticker Cache] Error loading data for server ${serverId}:`, error);
 
@@ -117,10 +131,12 @@ export async function loadEmojiStickerCache(
       return {
         emojis: emojiUsageEnabled ? cachedEntry.emojis : null,
         stickers: stickerUsageEnabled ? cachedEntry.stickers : null,
+        // A stale whitelist can expose media after access was revoked, so customs fail closed.
+        customs: null,
       };
     }
 
-    return { emojis: null, stickers: null };
+    return { emojis: null, stickers: null, customs: null };
   }
 }
 

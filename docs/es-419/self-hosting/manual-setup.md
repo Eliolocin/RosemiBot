@@ -1,8 +1,8 @@
 ---
 title: "Instalación manual"
-aiGenerated: true
 sidebar:
   order: 2
+aiGenerated: false
 ---
 
 :::note
@@ -18,7 +18,6 @@ seguro, configura PostgreSQL y ejecuta la instalación por ti.
 ## Requisitos previos
 
 - [Bun](https://bun.sh/)
-- Node.js v20+ (usado para las herramientas de MCP)
 - PostgreSQL instalado de forma nativa, o ejecutado en un contenedor de Docker (consulta el paso 2)
 
 El esquema de PostgreSQL, `pgcrypto`, las semillas y las migraciones se inicializan automáticamente al
@@ -34,23 +33,24 @@ bun install --frozen-lockfile
 
 ## 2. Configura
 
-Crea tu archivo de entorno a partir del ejemplo y completa los valores requeridos:
+Cree su archivo de entorno a partir del ejemplo y complete los valores requeridos:
 
 ```sh
 cp .env.example .env
 ```
 
-Requeridos:
+Requerida:
 
-- `DISCORD_TOKEN`: el token de tu bot de Discord (habilita los intents privilegiados `GuildMembers`,
-  `MessageContent` y `GuildPresences`).
-- `CRYPTO_SECRET`: una clave de cifrado de 32 caracteres (usada para cifrar las claves de API
-  almacenadas).
-- Conexión a PostgreSQL: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`,
-  `POSTGRES_PASSWORD`, `POSTGRES_DB`.
+- `DISCORD_TOKEN`: su token de bot Discord (habilite los intents privilegiados `GuildMembers`, `MessageContent` y `GuildPresences`).
+- `CRYPTO_SECRET`: una clave de cifrado de 32 caracteres (utilizada para cifrar las claves API almacenadas).
+- Conexión PostgreSQL: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`.
 
-:::note[¿No tienes PostgreSQL nativo?]
-Ejecuta solo la base de datos en un contenedor y luego apunta los valores `POSTGRES_*` a ella:
+Guarda una copia protegida de tu secreto de cifrado por separado de las copias de seguridad de la base de datos. Las copias de seguridad nuevas no contienen `.env`. Para la rotación, utiliza `CRYPTO_SECRET_V1`, `CRYPTO_SECRET_V2` o cualquier versión posterior con números enteros positivos, con la selección opcional de `CRYPTO_SECRET_CURRENT`. `CRYPTO_SECRET` sigue siendo V1. Los comandos de inicio y mantenimiento cargan la misma fuente: valores de entorno locales en desarrollo, o JSON montado / AWS Secrets Manager en producción. Consulta [Rotación de claves de cifrado](/es-419/self-hosting/maintenance/#rotating-encryption-keys) antes de reemplazar un secreto.
+
+En las fuentes de secretos JSON, las claves maestras deben ser cadenas. `CRYPTO_SECRET_CURRENT` acepta una cadena como `"2"` o un número entero seguro positivo como `2` que nombra una versión disponible.
+
+:::note[No native PostgreSQL?]
+Ejecuta solo la base de datos en un contenedor, luego apunte los valores `POSTGRES_*` hacia ella:
 
 ```sh
 docker run -d --name tomori-db \
@@ -58,15 +58,14 @@ docker run -d --name tomori-db \
   -p 5432:5432 pgvector/pgvector:pg16
 ```
 
-Luego establece `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432`, y el usuario/contraseña/base de datos
-de arriba. La imagen `pgvector/pgvector` incluye la extensión de RAG preinstalada; cámbiala por
-`postgres:16` si no necesitas memoria de documentos/RAG. Esto solo ejecuta la base de datos en Docker y
-el bot sigue ejecutándose en el Bun del host. Para un bot y una base de datos completamente en
-contenedores, usa [Docker Compose](/es-419/self-hosting/docker-compose/) en su lugar.
+Luego configure `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432` y el usuario/contraseña/db arriba. La imagen `pgvector/pgvector` incluye la extensión RAG preinstalada; cámbielo por `postgres:16` si no necesita memoria de documentos/RAG. Esto ejecuta solo la base de datos en Docker y el bot aún se ejecuta en el host Bun. Para un bot y una base de datos completamente en contenedores, utilice [Docker Compose](/es-419/self-hosting/docker-compose/) en su lugar.
 :::
 
-El ajuste opcional vive en `.env.optional.example`. Copia los valores que quieras personalizar (límites,
-tiempos de espera, interruptores de funciones, URLs de servidores locales, etc.).
+El tuning opcional se encuentra en `.env.optional.example`. Copia cualquier valor que desee personalizar (límites, tiempos de espera, alternancia de funciones, URL del servidor local, etc.).
+
+Las cargas de expresiones personalizadas se realizan de forma predeterminada en archivos locales en `data/custom-expressions/`. Mantén ese directorio en un almacenamiento persistente. `EXPRESSION_STORAGE_BACKEND` acepta `local`, `gcs` o `s3`. Los backends en la nube requieren `EXPRESSION_STORAGE_BUCKET` y las credenciales del SDK correspondientes. S3 también usa `AWS_REGION` (`us-east-1` predeterminado) y `S3_ENDPOINT` opcional. GCS utiliza las credenciales predeterminadas de la aplicación. Las expresiones utilizan su propia configuración de depósito; La configuración de almacenamiento de avatar no selecciona un depósito de expresión. Los objetos siguen siendo legibles a través del SDK y se adjuntan como bytes, por lo que no es necesaria una URL de medios publicada públicamente. Conserve las claves de backend, depósito y objeto al restaurar referencias existentes.
+
+`MAX_CUSTOM_EXPRESSIONS_PER_SERVER` limita las expresiones personalizadas por servidor (predeterminado `20`, mínimo `1`). Los enlaces y los archivos subidos comparten el límite entre todas las personas; los emojis y stickers nativos están excluidos. Reinicia el bot después de cambiarlo. Reducir el límite conserva las expresiones existentes y permite editar y eliminar, pero bloquea las adiciones hasta que el recuento caiga por debajo del límite.
 
 ## 3. Ejecuta
 
@@ -85,7 +84,7 @@ TTS/STT local) se inicien junto al bot:
 
 ```sh
 bun run launch --searxng --crawl4ai
-bun run launch --help        # ver todos los indicadores
+bun run launch --help        # see all flags
 ```
 
 ## Extras opcionales (la "instalación completa" manual)
@@ -102,7 +101,7 @@ que necesita la extensión [pgvector](https://github.com/pgvector/pgvector). Ins
 mayor de PostgreSQL:
 
 ```sh
-# Debian/Ubuntu, por ejemplo para PostgreSQL 16
+# Debian/Ubuntu, e.g. for PostgreSQL 16
 sudo apt-get install -y postgresql-16-pgvector
 ```
 
@@ -118,10 +117,10 @@ muestra arriba en [Configura](#2-configura), que incluye la extensión preinstal
 :::
 
 ```sh
-# psql nativo / del host (sustituye tu propio POSTGRES_USER y POSTGRES_DB):
+# Native / host psql (substitute your own POSTGRES_USER and POSTGRES_DB):
 psql -h localhost -p 5432 -U tomori -d tomodb
 
-# O bien, si la base de datos se ejecuta en el contenedor de Docker del paso 2:
+# Or, if the database runs in the Docker container from step 2:
 docker exec -it tomori-db psql -U tomori -d tomori
 ```
 
@@ -189,9 +188,7 @@ HF_TOKEN=hf_xxx bun run setup:tokenizers
 Sin este paso, el sesgo de logit se deshabilita silenciosamente y todo lo demás funciona con
 normalidad.
 
-El respaldo seguro de `fetch_url` se ejecuta en el proceso y no necesita ningún paquete de Python.
-`web_search` de DuckDuckGo/IAsk se incluye con `bun install --frozen-lockfile`, así que tampoco necesita
-instalación adicional.
+El respaldo seguro de `fetch_url` y el respaldo de `web_search` de DuckDuckGo se ejecutan dentro del proceso, por lo que ninguno necesita una instalación adicional.
 
 ## Mantenimiento, actualización y copias de seguridad
 

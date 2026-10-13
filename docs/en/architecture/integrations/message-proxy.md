@@ -59,6 +59,8 @@ Both metrics the gap lookup spans (`presence_seen` and `message_sent`) are host-
 newly persisted identity has no history and correctly reads as a first meeting. See
 [dialogue history](/architecture/pipelines/context-build/02-native-assembly/11-dialogue-history/).
 
+Personal memory creation, updates, and bio seeding check every linked host. Full host privacy or a server blacklist blocks the write. A missing identity context, failed lookup, or empty host list also blocks the write because host authorization cannot be established.
+
 ## Lifecycle
 
 ```text

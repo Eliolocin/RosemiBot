@@ -122,7 +122,7 @@ TomoriBot 支持长期记忆、多人格行为、Web 与 MCP 工具、聊天内�
 
 从下面选一条安装路径：
 
-- **A. 本地 Bun 安装（推荐）：** 需要 Bun、用于 MCP 工具的 Node.js v20+，以及数据库所需的 PostgreSQL 或 Docker。
+- **A. 本地 Bun 安装（推荐）：** 需要 Bun，以及数据库所需的 PostgreSQL 或 Docker。
 - **B. Docker Compose 安装：** 只需要 Docker 就能运行 bot 和数据库，但主机端的维护脚本仍需要主机上装好工具。
 
 对大多数自部署用户来说，推荐路径是本地 Bun 的安装向导。它默认的**完整安装**会创建 `.env`、生成安全的 `CRYPTO_SECRET`、询问你的 Discord bot token、配置 PostgreSQL、运行 `bun install --frozen-lockfile`，然后尝试安装轻量的数据库与 AI 辅助组件。

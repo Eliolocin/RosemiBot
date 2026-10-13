@@ -2,67 +2,47 @@
 title: "Tareas programadas"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
-TomoriBot puede establecer recordatorios y programar tareas para después, puntuales o recurrentes. La
-forma más fácil es pedírselo. Ella crea la tarea mediante su herramienta `create_task`.
-Las tareas programadas son específicas de cada persona.
+Configura recordatorios para usted o programe anuncios recurrentes sin salir del chat. Pregúntale directamente al robot y ella creará el cronograma por ti. Las tareas programadas pertenecen a la persona activa.
 
-Cada persona mantiene sus tareas propias pendientes en el contexto cuando responde, sin importar
-qué miembros aparecen en la conversación reciente. Los recordatorios dirigidos a personas son más
-selectivos: la persona destinataria debe estar presente o mencionada en el contexto activo, y el
-recordatorio debe pertenecer a la persona activa.
+Los recordatorios notifican al usuario objetivo cuando dispara, mientras que las tareas automáticas son acciones que la persona realiza por sí sola a la hora programada.
 
 ## Crear una tarea
 
-Solo díselo en el chat:
+Dile qué programar en el chat:
 
 ```text
-recuérdame enviar el informe a las 14:30
-cada viernes a las 8 p. m., publica un recordatorio de que empieza la noche de juegos
+remind me to submit the report at 14:30
+every Friday at 8pm, post a reminder that game night is starting
 ```
 
-Ella interpreta la hora y la recurrencia y la programa. Los recordatorios **mencionan a la persona
-destinataria** al activarse. Las tareas son acciones propias silenciosas que la persona ejecuta a la hora programada.
+Ella analiza el tiempo solicitado y la recurrencia. Los recordatorios hacen ping al usuario objetivo cuando dispara. Las tareas son acciones silenciosas que la persona lleva a cabo cuando llega el momento.
 
 ## Zonas horarias
 
-Las horas absolutas ("a las 14:30", "el viernes a las 8 p. m.") se interpretan por defecto en la **zona
-horaria del servidor** (`/config` > Motor > General). Si estableciste una zona horaria personal con
-`/personal config`, la IA ve tu hora local en el contexto y etiqueta tus horas con tu desplazamiento UTC
-al crear la tarea. El bot hace la conversión de forma determinista, así que "recuérdame a las 9 a. m."
-significa tus 9 a. m., aunque el servidor esté en otro continente. Las horas relativas ("en 2 horas")
-no dependen de la zona horaria y siempre son seguras.
+Las horas absolutas (como "a las 14:30" o "el viernes a las 8 p.m.") utilizan la zona horaria del servidor (`/config` > `Comportamiento` > `Comportamiento general`) de forma predeterminada. Si configura su propia zona horaria con `/personal config`, el bot convierte su hora local automáticamente. "recuérdamelo a las 9 a. m." significa tus 9:00 a. m., incluso si el servidor está en otra zona horaria. Los tiempos relativos (como "en 2 horas") no dependen de zonas horarias y siempre son seguros.
 
-Cuando un recordatorio tiene como destinataria a una persona cuya zona horaria personal difiere de la
-del servidor, el embed de confirmación muestra ambos relojes (la hora del servidor y la hora local de
-la persona destinataria), para que una hora mal etiquetada sea visible de inmediato y puedas corregirla
-con otro mensaje o con `/scheduled-task edit`.
+Cuando un recordatorio se dirige a un usuario cuya zona horaria personal difiere de la del servidor, la confirmación muestra ambos relojes: la hora del servidor y la hora local del objetivo. Si una hora está mal etiquetada, corríjala con un mensaje de seguimiento o `/scheduled-task edit`.
 
 ## Administrar tareas
 
-Dos comandos de barra te permiten revisar y ajustar programas existentes:
+Dos comandos de barra diagonal le permiten revisar y ajustar los horarios existentes:
 
-- `/scheduled-task edit`: cambia el contenido, la próxima hora de activación, el intervalo de recurrencia o si es un recordatorio. Establece el intervalo en `0` para desactivar la recurrencia.
-- `/scheduled-task remove`: elimina un recordatorio o una tarea.
+- `/scheduled-task edit`: cambia el contenido de una tarea, la próxima hora de activación, el intervalo de recurrencia o el objetivo del recordatorio. Establece el intervalo en `0` para realizar una tarea recurrente por única vez.
+- `/scheduled-task remove`: eliminar un recordatorio o tarea.
 
-Ambos abren un selector con tus programas existentes (persona, hora, canal y recurrencia), así que no
-necesitas recordar los identificadores.
+Ambos comandos abren un selector que enumera sus programaciones existentes por persona, hora, canal y recurrencia.
+
+Un servidor puede almacenar hasta 100 recordatorios y tareas pendientes a la vez. Cuando esté lleno, TomoriBot te avisará en lugar de agregar otro; elimina los anteriores con `/scheduled-task remove` para liberar espacio.
 
 ## Cómo se entregan
 
-Los recordatorios se entregan mediante un programador dentro de la aplicación y solo se marcan como
-completados después de que la entrega tiene éxito. Si una entrega se interrumpe o se vacía la cola
-del canal, se reintenta automáticamente. Los retrasos de reintento no cambian la cadencia recurrente original.
+Los recordatorios solo se marcan como completos después de que la entrega se realiza correctamente. Si se interrumpe la entrega, TomoriBot vuelve a intentarlo automáticamente sin alterar el cronograma recurrente.
 
-Los intentos automáticos no publican un mensaje de error cada vez. Si la entrega sigue fallando después
-del límite de reintentos, TomoriBot publica una advertencia con el contenido programado sin cambios y su
-identificador. Los recordatorios humanos fallidos mencionan a la persona destinataria para que no se pierdan;
-las tareas propias fallidas no mencionan a nadie. Los programas puntuales se eliminan, mientras que los
-recurrentes siguen activos para la siguiente ocurrencia original y se pueden administrar con
-`/scheduled-task edit` o `/scheduled-task remove`. Para conocer los detalles de ejecución, consulta la
-[descripción general de la arquitectura](/en/architecture/#runtime-extensions).
+Si la entrega falla repetidamente y alcanza el límite de reintentos, TomoriBot publica una advertencia con el contenido programado y el ID de la tarea. Los recordatorios de usuario fallidos hacen ping al objetivo para que no se pierda el recordatorio, mientras que las tareas automáticas fallidas no envían ping. Luego se eliminan las programaciones únicas, mientras que las programaciones recurrentes permanecen activas para la próxima aparición y se pueden administrar con `/scheduled-task edit` o `/scheduled-task remove`.
 
 ---
 
-La programación es una de varias capacidades agénticas. Consulta [Herramientas y extensiones](/es-419/features/capabilities/tools-and-extensions/) para conocer el panorama completo.
+Para obtener más capacidades, consulte [Herramientas y extensiones](/es-419/features/capabilities/tools-and-extensions/).

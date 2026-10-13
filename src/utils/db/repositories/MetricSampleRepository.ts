@@ -41,8 +41,8 @@ export class MetricSampleRepository {
     return this.db ?? sql;
   }
 
-  /** Suppresses repeat warnings so a pool-wide failure logs once, not once per sample. */
-  private hasWarnedSinceSuccess = false;
+  /** Suppresses repeat reports so a pool-wide failure logs once, not once per sample. */
+  private hasReportedSinceSuccess = false;
 
   /**
    * Records one sample and prunes expired rows when due. Never throws and never rejects:
@@ -64,10 +64,10 @@ export class MetricSampleRepository {
         INSERT INTO metric_samples (metric_name, fields)
         VALUES (${metricName}, ${fields})
       `;
-      this.hasWarnedSinceSuccess = false;
+      this.hasReportedSinceSuccess = false;
       await this.pruneIfDue();
     } catch (error) {
-      await this.warnOnce("Failed to record metric sample", error);
+      await this.reportOnce("Failed to record metric sample", error);
     }
   }
 
@@ -98,7 +98,7 @@ export class MetricSampleRepository {
         WHERE created_at < CURRENT_TIMESTAMP - MAKE_INTERVAL(days => ${retentionDays})
       `;
     } catch (error) {
-      await this.warnOnce("Failed to prune metric samples", error);
+      await this.reportOnce("Failed to prune metric samples", error);
     }
   }
 
@@ -107,23 +107,17 @@ export class MetricSampleRepository {
    * add its own log storm to the incident that caused it. The logger import is deferred to
    * keep this repository out of `logger.ts`'s import cycle, matching `ErrorLogRepository`.
    *
-   * Emitted through `log.metric` for two reasons that both rule out the obvious alternatives.
-   * Production pins pino at level `error`, so the `log.warn` this used to call was dropped
-   * before either sink: a 26-minute gap in `metric_samples` during a live outage left no trace
-   * anywhere, which is the one artifact that would have named the cause. And `log.error` would
-   * attempt an `error_logs` insert down the same pool that just failed, adding load to the
-   * incident it is reporting.
+   * An error, because a gap in `metric_samples` during an outage is otherwise traceless, and this
+   * line is the one artifact that names the cause. Not persisted: an `error_logs` insert would
+   * queue on the same pool that just failed, adding load to the incident it is reporting.
    */
-  private async warnOnce(message: string, error: unknown): Promise<void> {
-    if (this.hasWarnedSinceSuccess) return;
-    this.hasWarnedSinceSuccess = true;
+  private async reportOnce(message: string, error: unknown): Promise<void> {
+    if (this.hasReportedSinceSuccess) return;
+    this.hasReportedSinceSuccess = true;
 
     try {
       const { log } = await import("@/utils/misc/logger");
-      log.metric("metric_sink_failure", {
-        reason: message,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      await log.error(message, error, { errorType: "metric_sink_failure" }, { persist: false });
     } catch {
       // Reporting a telemetry failure must not itself become one, so the "never rejects"
       // contract of recordSample() holds even if the logger module fails to resolve.

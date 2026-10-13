@@ -1,6 +1,15 @@
 export default {
   nsfw: {
     description: "Configurações e comandos com restrição de idade.",
+    persona: {
+      description: `Comandos de persona com restrição de idade.`,
+      default: {
+        description: `Aplicar uma predefinição de personalidade NSFW`,
+      },
+      import: {
+        description: `Importar uma persona a partir de um arquivo PNG, JSON ou CHARX, incluindo personas NSFW`,
+      },
+    },
     jailbreaks: {
       description: "Gerenciar comportamentos opcionais de jailbreak para meus prompts neste servidor.",
       modal_title: "Gerenciar Estratégias de Jailbreak",

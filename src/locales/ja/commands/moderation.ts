@@ -26,8 +26,8 @@ export default {
     member_access_attributelist_disabled: `🔴 メンバーはペルソナ属性を管理できません。`,
     member_access_sampledialogues_enabled: `🟢 メンバーはペルソナのサンプル会話を管理できます。`,
     member_access_sampledialogues_disabled: `🔴 メンバーはペルソナのサンプル会話を管理できません。`,
-    member_access_promptsnapshot_enabled: `🟢 メンバーはプロンプトスナップショットを作成できます。`,
-    member_access_promptsnapshot_disabled: `🔴 メンバーはプロンプトスナップショットを作成できません。`,
+    member_access_promptsnapshot_enabled: `🟢 メンバーは \`/context\` とプロンプトスナップショットからプロンプト全文を閲覧できます。`,
+    member_access_promptsnapshot_disabled: `🔴 メンバーはプロンプト全文の閲覧やプロンプトスナップショットの作成ができません。`,
     edit_permissions: `権限を編集`,
     model_access_title: `サーバーのモデルアクセス`,
     model_access_description: `サーバーメンバーが使用できるモデルを制御します。`,
@@ -195,7 +195,6 @@ export default {
     remove_blacklist_group_description: `削除するブラックリスト項目のチェックを外してから送信してください`,
     remove_whitelist_group_description: `削除するホワイトリスト項目のチェックを外してから送信してください`,
     remove_group_continuation: `続き（{index}）`,
-    remove_modal_limit: `このリストは50件を超えており、1つのモーダルには収まりません。`,
     remove_nothing_changed: `何も削除されませんでした`,
     remove_nothing_changed_detail: `すべての項目が選択されたままでした。書き込みは行われませんでした。`,
 

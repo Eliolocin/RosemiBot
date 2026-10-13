@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { Client } from "discord.js";
 import { HumanizerDegree, type AssembledServerConfig, type TomoriState } from "@/types/db/schema";
 import { convertMentions } from "@/utils/text/context/mentionNormalizer";
-import { appendDialogueHistoryContext } from "@/utils/text/context/dialogueHistory";
+import { appendDialogueHistoryContext, DOCUMENT_HINT_TEMPLATE } from "@/utils/text/context/dialogueHistory";
 import { buildSampleDialogueContextItems } from "@/utils/text/context/templates";
 import type { SimplifiedMessageForContext } from "@/utils/text/context/types";
 import { createLlmRow, createPersona } from "../../helpers/fixtures";
@@ -136,6 +136,7 @@ async function buildHistoryText(
     botName: "Tomori",
     tomoriConfig: makeConfig(),
     tomoriState: makeTomoriState(),
+    documentHintTemplate: DOCUMENT_HINT_TEMPLATE,
     includeTimestamps: false,
     isUserImpersonation: false,
     triggererFormattedName: "Alice",

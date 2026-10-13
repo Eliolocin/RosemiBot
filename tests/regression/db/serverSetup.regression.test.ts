@@ -176,7 +176,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server setup transaction regression", () =
         textModel: {
           modelCode: "llama-3.3-70b",
           numCtx: 8192,
-          capabilities: ["tools", "vision"],
+          capabilities: ["tools", "vision", "assistant_prefill", "verbatim_tool_calling"],
         },
       },
       systemPrompt: null,
@@ -192,14 +192,24 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server setup transaction regression", () =
     expect(conn.endpoint_url).toBe("http://localhost:11434/v1");
 
     const customProvider = `custom:${conn.connection_id}`;
-    const [syntheticModel] = await testSql<Array<{ llm_id: number; has_tools: boolean; sees_images: boolean }>>`
-      SELECT llm_id, has_tools, sees_images
+    const [syntheticModel] = await testSql<
+      Array<{
+        llm_id: number;
+        has_tools: boolean;
+        sees_images: boolean;
+        supports_assistant_prefill: boolean;
+        verbatim_tool_calling: boolean;
+      }>
+    >`
+      SELECT llm_id, has_tools, sees_images, supports_assistant_prefill, verbatim_tool_calling
       FROM llms
       WHERE llm_provider = ${customProvider} AND llm_codename = 'llama-3.3-70b'
     `;
     expect(syntheticModel).toBeDefined();
     expect(syntheticModel.has_tools).toBe(true);
     expect(syntheticModel.sees_images).toBe(true);
+    expect(syntheticModel.supports_assistant_prefill).toBe(true);
+    expect(syntheticModel.verbatim_tool_calling).toBe(true);
 
     const [scopedReg] = await testSql<Array<{ scoped_model_registration_id: number }>>`
       SELECT smr.scoped_model_registration_id
@@ -209,14 +219,23 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server setup transaction regression", () =
     `;
     expect(scopedReg).toBeDefined();
 
-    const [ep] = await testSql<Array<{ model_ref_id: number | null; num_ctx: number | null }>>`
-      SELECT ce.model_ref_id, ce.num_ctx
+    const [ep] = await testSql<
+      Array<{
+        model_ref_id: number | null;
+        num_ctx: number | null;
+        supports_assistant_prefill: boolean;
+        verbatim_tool_calling: boolean;
+      }>
+    >`
+      SELECT ce.model_ref_id, ce.num_ctx, ce.supports_assistant_prefill, ce.verbatim_tool_calling
       FROM custom_endpoints ce
       WHERE ce.connection_id = ${conn.connection_id}
     `;
     expect(ep).toBeDefined();
     expect(ep.model_ref_id).toBe(syntheticModel.llm_id);
     expect(ep.num_ctx).toBe(8192);
+    expect(ep.supports_assistant_prefill).toBe(true);
+    expect(ep.verbatim_tool_calling).toBe(true);
 
     const [modelConfig] = await testSql<Array<{ llm_id: number | null; api_key: Buffer | null }>>`
       SELECT mc.llm_id, mc.api_key

@@ -2,6 +2,7 @@
 title: "Comparación de motores de texto a voz"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBot admite múltiples servidores locales de texto a voz, cada uno adecuado para diferentes idiomas, perfiles de hardware y requisitos de latencia.

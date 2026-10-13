@@ -20,7 +20,10 @@ import type { TomoriState } from "@/types/db/schema";
  * @param providerReportedHasTools - The provider's own capability verdict, which for a provider
  *   with no capability override is just `state.llm.has_tools`.
  */
-export function resolveToolsEnabled(state: TomoriState, providerReportedHasTools: boolean): boolean {
+export function resolveToolsEnabled(
+  state: { llm: Pick<TomoriState["llm"], "has_tools">; config: Pick<TomoriState["config"], "tool_use_enabled"> },
+  providerReportedHasTools: boolean,
+): boolean {
   if (state.config.tool_use_enabled === false) return false;
   if (!state.llm.has_tools) return false;
   return providerReportedHasTools;

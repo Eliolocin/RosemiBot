@@ -2,6 +2,7 @@
 title: "Locke, a Desequilibrada"
 sidebar:
   order: 6
+aiGenerated: false
 ---
 
 <!-- STUB (tarefa secundária). Locke é uma persona PLANEJADA: ela substitui o modelo

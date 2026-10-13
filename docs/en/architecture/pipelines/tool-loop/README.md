@@ -4,166 +4,143 @@ sidebar:
   label: "Overview"
   groupLabel: "Tool Loop"
   order: 300
+aiGenerated: true
 ---
 
-`runToolLoop` drives the streaming + tool-dispatch loop for one LLM generation
-attempt. It is called by `runGenerationTurn` (chat per-turn stage 03) once per
-model-fallback attempt, after the provider, config, and context have been
-prepared. It loops until the provider completes, the user stops it, a limit is
-hit, or a non-recoverable error occurs.
+`runToolLoop` drives the streaming and tool dispatch loop for one LLM generation attempt.
+The chat per-turn stage [Run Generation Turn](/architecture/pipelines/chat/06-per-turn/03-run-generation-turn/)
+calls `runToolLoop` for each model fallback and key rotation attempt, after context and provider
+configuration are prepared. The loop coordinates repeated generation passes, tool execution,
+context-enrichment restarts, and result assembly until the model finishes, a stop signal arrives,
+or a guard limit is reached.
 
-## Read order
+## Two tiers of loop control
+<!-- anchor: two-tiers-of-loop-control -->
 
-1. `README.md`: this file (coordinator lifecycle, env config, ASCII flow)
-2. `01-stream-once.md`: provider call with rolling SDK timeout
-3. `02-execute-tool-call.md`: deliberate-mode gate, registry dispatch, affordance
-4. `03-enhanced-context-restart.md`: context-enrichment restart signal
-5. `04-build-result.md`: `GenerationTurnResult` assembly
+Generation control is split into two distinct tiers:
+
+1. **Outer attempt control (`runGenerationTurn`):**
+   `runGenerationTurn` manages the fallback chain and API key rotation. When a generation attempt
+   fails with a retryable status (`error` or `timeout`), it selects the next available key or advances
+   to the next model in the fallback chain. Before starting a replacement attempt, it attempts to delete
+   tracked partial messages from Discord. Failed deletions and sends that
+   outlive the settling window can leave partial output visible.
+   It also owns server-route fallback admission and model failure notice delivery.
+
+2. **Inner generation and tool dispatch (`runToolLoop`):**
+   `runToolLoop` operates within a single generation attempt. It repeatedly calls the provider adapter,
+   dispatches requested tools, handles context-enrichment restart signals, and accumulates dialogue state.
+   The loop continues until the provider emits a final response, hits a fatal error, or terminates through
+   tool policy.
 
 ## Stage flow
+<!-- anchor: stage-flow -->
 
-```
-runToolLoop(ToolLoopParams)
-     │
-     │  init: streamResults=[], functionHistory=[],
-     │         accumulatedModelParts=[], finalText="", detailsText=""
-     │
- ╔═══╧═ for iteration = 0 .. MAX_FUNCTION_CALL_ITERATIONS ═════════════════╗
- ║                                                                          ║
- ║   [iteration == SOFT_WARN_ITERATION_THRESHOLD]                           ║
- ║       └─► "still working" embed (if shouldSurfaceUserErrors)             ║
- ║                                                                          ║
- ║   ┌── [01] streamOnce ─────────────────────────────────────────────┐    ║
- ║   │   provider.streamToDiscord + rolling AbortController timeout    │    ║
- ║   └───────────────────────────┬────────────────────────────────────┘    ║
- ║                               │ StreamResult.status                      ║
- ║          ┌────────────────────┴──────────────────────┐                  ║
- ║   terminal statuses                           "function_call"            ║
- ║   (completed / error / timeout /                     │                  ║
- ║    empty_response / stopped_by_user /                ▼                  ║
- ║    follow_up_interrupt)                   setChannelToolCallChainActive  ║
- ║          │                                           │                  ║
- ║          │                           ┌── [02] executeToolCall ────────┐ ║
- ║          │                           │  deliberate gate               │ ║
- ║          │                           │  → ToolRegistry.executeTool    │ ║
- ║          │                           │  → affordance retention        │ ║
- ║          │                           │  → [03] enhanced ctx restart   │ ║
- ║          │                           └──────────────┬─────────────────┘ ║
- ║          │                               kind=?     │                   ║
- ║          │                      ┌─────────┬─────────┘                   ║
- ║          │                   restart    abort     history                ║
- ║          │                      │         │         │                   ║
- ║          │                   continue  buildResult  push functionHistory ║
- ║          │                                          │                   ║
- ║          │                               endTurn or shouldEndAfterPreToolText?
- ║          │                               yes ──► buildResult("completed") ║
- ║          │                               no  ──► break (next iteration) ║
- ║          │                                                              ║
- ╚══════════╪══════════════════════════════════════════════════════════════╝
-            │  [MAX_FUNCTION_CALL_ITERATIONS reached]
-            │  └─► "max iterations" embed → buildResult("timeout")
-            │
-            ▼
-       [04] buildResult → GenerationTurnResult
+```text
+Provider stream
+  ├─ Final response or stop → result assembly
+  └─ Tool call → allowlist and execution checks → tool dispatch
+                  ├─ Tool history → next provider stream
+                  ├─ Context enrichment → restart with enriched context
+                  └─ Tool completion or failure limit → result assembly
 ```
 
 ## Stage index
+<!-- anchor: stage-index -->
 
-| File | Stage | Symbol | Mission |
-|---|---|---|---|
-| `01-stream-once.md` | 01 | `streamOnce` | One provider generation pass with rolling SDK timeout |
-| `02-execute-tool-call.md` | 02 | `executeToolCall` | Deliberate-mode gate, registry dispatch, history assembly |
-| `03-enhanced-context-restart.md` | 03 | `handleEnhancedContextRestart` | Context-enrichment restart signal from tool responses |
-| `04-build-result.md` | 04 | `buildResult` | `GenerationTurnResult` assembly with details merge and thought-log identity |
-
-## Cross-references
-
-- **Caller:** chat per-turn stage 03: `runGenerationTurn` in
-  `src/utils/chat/generationTurn.ts` calls `runToolLoop` per model-fallback
-  attempt. See
-  [`docs/en/architecture/pipelines/chat/06-per-turn/03-run-generation-turn.md`](../chat/06-per-turn/03-run-generation-turn).
-- **Provider streaming:** each iteration delegates actual LLM I/O to the
-  provider pipeline. See
-  [`docs/en/architecture/pipelines/provider/`](../provider/).
-- **Tool registry:** `ToolRegistry.executeTool` is the dispatch surface in
-  `src/tools/toolRegistry.ts`.
-
-## Pipeline-wide concerns
-
-### Verbatim Tool-Calling Mode
-
-`/providers` > select a custom endpoint > add or edit a text model > **Chat Completion
-Compatibilities** can enable `verbatim_tool_calling` for Custom OpenAI-compatible endpoints that
-stream only assistant text. The setting is per model, stored on both `custom_endpoints` and the
-synthetic `llms` row the runtime reads, so one connection can host a native-tool-calling model and a
-text-only one side by side. The parser lives in `CustomStreamAdapter`, not in `toolLoop.ts`: it
-anchors on a known tool name and converts a bare, code-span, or fenced tool call (even one preceded
-by prose narration) into the same provider-agnostic `FunctionCall` shape as native
-`delta.tool_calls`. From this pipeline's perspective, normal and verbatim tool calls both enter at
-`streamResult.status === "function_call"` and execute through `executeToolCall`, preserving
-deliberate-mode gating, tool-timeout handling, enhanced-context restarts, and function history.
-
-- **Fallback-chain adaptation**: the verbatim *nudge* (the in-context instruction to emit calls as a
-code span), the in-band *schema dump*, and the verbatim *parser* must agree per attempt, or a
-fallback leaks the call as text. `shouldInjectVerbatimToolCallingNudge` decides this per attempt:
-the model's `verbatim_tool_calling` flag and tools and a `custom` provider (the only adapter
-with the parser). Because base context is assembled once from the *primary* model,
-`generationTurn.prepareProviderContextItems` adapts it for every attempt in both directions:
-
-- **Native primary, verbatim fallback:** injects the schema dump and the nudge, so the custom model
-  still receives tool schemas and calling-format instructions.
-- **Verbatim primary, native fallback:** strips both halves, so a native provider is not handed a
-  redundant JSON schema dump beside its own native tool payload, nor text-form instructions whose
-  calls its adapter cannot parse.
-
-### Iteration state
-
-The following state is shared across all iterations of the loop. Each call to
-`streamOnce` receives the current snapshot of `accumulatedModelParts` and
-`functionHistory` so the provider sees its own prior tool responses as part of
-the growing conversation.
-
-| Variable | Type | Role |
+| Stage | Symbol | Purpose |
 |---|---|---|
-| `streamResults` | `StreamResult[]` | Accumulated per-iteration stream results (included in final `GenerationTurnResult`) |
-| `functionHistory` | `ToolHistoryEntry[]` | Paired call/response records passed back to the provider on each subsequent iteration; each entry also carries `preToolCallTextParts`: the visible text that iteration streamed before its tool call, so the follow-up call knows the text was already sent and does not repeat it |
-| `accumulatedModelParts` | `Record<string, unknown>[]` | Provider-native model turn parts used for restarts/prefill; cleared after a normal tool history entry takes ownership of its pre-tool text |
-| `finalText` / `detailsText` | `string` | Last non-empty accumulated text and NovelAI scene-metadata suffix; updated on `completed` or `function_call` with pre-tool text |
-| `consecutiveToolErrors` | `number` | Reset on success or restart; abort when it reaches `MAX_CONSECUTIVE_TOOL_ERRORS` |
-| `naiConsecutiveToolFailures` | `number` | Counts NovelAI tool failures after visible pre-tool text; retries with text delivery suppressed, then emits the localized retry-exhausted embed |
-| `selectedStickerToSend` | `Sticker \| null` | Latest sticker-tool selection; later sticker misses clear it, and only completed results carry it to post-turn delivery |
-| `thoughtLog` | `ThoughtLogPayload \| undefined` | Carried from whichever iteration last emitted one |
+| [01: Stream Once](/architecture/pipelines/tool-loop/01-stream-once/) | `streamOnce` | Executes one provider generation pass with a rolling inactivity timeout |
+| [02: Execute Tool Call](/architecture/pipelines/tool-loop/02-execute-tool-call/) | `executeToolCall` | Validates, gates, dispatches tools, delivers expressions, and records history |
+| [03: Enhanced Context Restart](/architecture/pipelines/tool-loop/03-enhanced-context-restart/) | `handleEnhancedContextRestart` | Consumes context-enrichment signals from tool results and restarts the generation pass |
+| [04: Build Result](/architecture/pipelines/tool-loop/04-build-result/) | `buildResult` | Assembles `GenerationTurnResult`, merging NovelAI scene metadata and resolving thought log identity |
 
-### `shouldEndAfterPreToolText`: pre-tool-text exit policy
+## Iteration state
+<!-- anchor: iteration-state -->
 
-When a successful tool follows already-visible text,
-`shouldEndAfterPreToolText` applies the original four-case policy:
+The loop retains tool call/response history and provider-native assistant parts for the next stream. Visible text before a tool call belongs to its history entry so replay does not ask the model to repeat it. Delivery state also records tools that already sent an expression or another channel response; an empty follow-up can then settle without treating that delivered output as a failure.
 
-| Provider/tool case | Result |
-|---|---|
-| NovelAI + `update_short_term_memory` | End immediately; STM is always silent |
-| NovelAI + `ToolRegistry.requiresFollowUp(...) === true` | Continue so search/fetch/MCP results can be presented; clear any retry text suppression |
-| NovelAI + any other successful tool | End with the pre-tool text |
-| Non-NovelAI tool in `TOOLS_SUPPRESS_FOLLOWUP_AFTER_PRETOOL_TEXT` | Continue only when the registry says the tool requires follow-up; otherwise end |
+Provider results accumulate for final text, usage, and thought-log attribution. Error counters bound repeated failures, with separate recovery for NovelAI turns that have already delivered text. The exact state shape belongs to `runToolLoop` and `ToolHistoryEntry`.
 
-Other providers/tools continue normally. Their visible pre-tool text remains in
-`preToolCallTextParts` (see [stage 02](02-execute-tool-call.md)), preventing a
-follow-up provider call from repeating text already delivered to Discord.
+## Termination conditions and policy
+<!-- anchor: termination-conditions-and-policy -->
 
-NovelAI failures use a separate branch before this success policy: failures
-after pre-tool text set `suppressTextOutput` and retry. At
-`NAI_TOOL_FAILURE_RETRY_THRESHOLD`, the loop sends the localized tool-error
-embed and ends with the already-delivered text.
+The loop terminates through one of four pathways:
 
-- **File**: `src/utils/chat/toolLoop.ts` (`shouldEndAfterPreToolText`)
+1. **Provider completion (`completed`):**
+   The model completes its response without requesting further tools. The accumulated response text and
+   details are packaged into the final result.
 
-### Iteration guards
+2. **Cancellation or interruption:**
+   A `/kill` command yields `stopped_by_user`. If a stop response was requested, the stop message is
+   queued at the front of the channel queue. If a new user message arrives while streaming, the stream
+   yields `follow_up_interrupt` so the turn can yield to the incoming message.
 
-| Constant | Source | Value | Effect |
-|---|---|---|---|
-| `MAX_FUNCTION_CALL_ITERATIONS` | Constant in `toolLoop.ts` | `100` | Hard ceiling; loop exits with `buildResult("timeout")` |
-| `SOFT_WARN_ITERATION_THRESHOLD` | Hardcoded | `20` | Sends "still working" embed once at this iteration if `shouldSurfaceUserErrors` |
-| `MAX_CONSECUTIVE_TOOL_ERRORS` | Constant in `toolLoop.ts` | `5` | Consecutive tool failures before `emitToolErrorLoop` + `buildResult("error")` |
-| `NAI_TOOL_FAILURE_RETRY_THRESHOLD` | Constant in `toolLoop.ts` | `3` | NovelAI failures after visible pre-tool text before the retry-exhausted embed ends the turn |
-| `STREAM_SDK_CALL_TIMEOUT_MS` | `STREAM_SDK_CALL_TIMEOUT_MS` env | `120000` | Per-call SDK inactivity timeout (rolling; see stage 01) |
-| `TOOL_EXECUTION_TIMEOUT_MS` | `TOOL_EXECUTION_TIMEOUT_MS` env | `300000` | Per-tool execution timeout; fresh per tool call; chains are unaffected (see stage 02) |
+3. **Tool-driven completion:**
+   - **Explicit end turn:** If a tool result sets `endTurn: true`, the turn finishes immediately with
+     `completed`.
+   - **Pre-tool-text exit policy (`shouldEndAfterPreToolText`):**
+     When a successful tool follows visible text streamed to Discord:
+     - NovelAI with `update_short_term_memory`: ends immediately because memory updates are silent.
+     - NovelAI with tools requiring follow-up: continues so search, fetch, or MCP results can be presented.
+     - NovelAI with other successful tools: ends immediately with the pre-tool text.
+     - Non-NovelAI tools in `TOOLS_SUPPRESS_FOLLOWUP_AFTER_PRETOOL_TEXT`: continues only if the tool
+       requires follow-up; otherwise ends immediately.
+     - Other tools and providers continue normally.
+   - **Empty response resolution (`isSettledAfterTool`):**
+     When the provider returns an empty response after visible text or an expression was delivered,
+     `isSettledAfterTool` checks whether the preceding tool required follow-up. If the tool completed
+     its task and required no follow-up, the turn settles cleanly as `completed` rather than failing
+     with `empty_response`.
+
+4. **Guard ceilings:**
+   Reaching `MAX_FUNCTION_CALL_ITERATIONS` terminates the turn with `timeout`. Reaching
+   `MAX_CONSECUTIVE_TOOL_ERRORS` emits the localized tool error embed and terminates with `error`.
+   Reaching `NAI_TOOL_FAILURE_RETRY_THRESHOLD` emits the NovelAI retry exhausted embed and terminates
+   with `completed`, preserving the already delivered text.
+
+## Verbatim tool-calling mode
+<!-- anchor: verbatim-tool-calling-mode -->
+
+For models using verbatim tool calling (assistant text with code-span or fenced tool invocations),
+the provider stream adapter (`CustomStreamAdapter`) parses the tool call from text into standard
+`FunctionCall` objects before yielding to the orchestrator. Normal and verbatim tool calls enter
+`runToolLoop` identically at `streamResult.status === "function_call"`. Gating, timeouts, restarts,
+and history assembly apply equally to both. Prompt-level verbatim adaptation (injecting the schema dump
+and calling format nudge) is owned by `runGenerationTurn` during context preparation
+([Verbatim Tool Definitions](/architecture/pipelines/context-build/02-native-assembly/07b-verbatim-tool-definitions/)).
+
+## Iteration guards
+<!-- anchor: iteration-guards -->
+
+Stream and tool deadlines bound each external operation. Stream inactivity deadlines advance on progress, while first-token waiting has a separate budget. An aborted stream receives a bounded settling window before cleanup; late sends can outlive that window. Iteration and consecutive-error ceilings prevent indefinitely repeating tool requests. `toolLoop.ts` owns their values; [Stream Once](/architecture/pipelines/tool-loop/01-stream-once/) explains timeout and cancellation ownership.
+
+## Pending response completion
+
+With Response Drafting On, `runToolLoop` shares function history and review state across attempts.
+Pre-tool narration stays pending and joins the final candidate. `completeResponse` reviews that
+candidate before replaying approved presentation or requesting the bounded revision. Revision clears
+pending presentation and model parts while keeping actual tool outcomes; successful tools are not
+replayed to reconstruct a reply. Tool-only turns do not invent prose.
+
+Each pass receives the room left under the turn's
+[held-prose ceiling](/architecture/pipelines/provider/04-orchestrator-state-machine/#held-response-presentation).
+A pass that stops at that ceiling aborts its provider request, because an adapter that does not
+cancel its reader on early return would keep generating undeliverable text. The reviewer packet
+labels a cut candidate `pending_cut_at_length_limit` and is told the kept text will be delivered as
+cut. A cut pass without reported usage records estimated author usage. After delivery,
+`completeResponse` posts the ordinary `flush_limit` notice unless the replay already posted it or the
+operator's `send_message_limit` caused the cut, which stays silent as it does when streaming.
+
+Cancellation discards held text and retains the existing queued stop/follow-up handling. Result
+assembly includes accepted dialogue and the actual-usage ledger; presentation carries no second
+usage copy. The [tool checkpoint](02-execute-tool-call.md#actual-request-review) runs before dispatch,
+with correction budgets independent of final-response review.
+
+## Source pointers
+<!-- anchor: source-pointers -->
+
+- `src/utils/chat/toolLoop.ts`: `runToolLoop`, `shouldEndAfterPreToolText`, `isSettledAfterTool`.
+- `src/utils/chat/generationTurn.ts`: `runGenerationTurn` (outer fallback and key rotation coordinator).
+- `src/types/provider/interfaces.ts`: `StreamResult` interface and statuses.
+- `src/utils/chat/types.ts`: `GenerationTurnResult`, `ToolHistoryEntry`, and `ChatTurnContext`.

@@ -26,8 +26,8 @@ export default {
     member_access_attributelist_disabled: `🔴 Thành viên không thể quản lý thuộc tính persona.`,
     member_access_sampledialogues_enabled: `🟢 Thành viên có thể quản lý hội thoại mẫu của persona.`,
     member_access_sampledialogues_disabled: `🔴 Thành viên không thể quản lý hội thoại mẫu của persona.`,
-    member_access_promptsnapshot_enabled: `🟢 Thành viên có thể tạo ảnh chụp nhanh prompt.`,
-    member_access_promptsnapshot_disabled: `🔴 Thành viên không thể tạo ảnh chụp nhanh prompt.`,
+    member_access_promptsnapshot_enabled: `🟢 Thành viên có thể xem toàn bộ prompt từ \`/context\` và snapshot prompt.`,
+    member_access_promptsnapshot_disabled: `🔴 Thành viên không thể xem toàn bộ prompt hoặc tạo snapshot prompt.`,
     edit_permissions: `Sửa quyền hạn`,
     model_access_title: `Quyền truy cập model máy chủ`,
     model_access_description: `Kiểm soát những model mà thành viên máy chủ được phép dùng.`,
@@ -194,7 +194,6 @@ export default {
     remove_blacklist_group_description: `Bỏ chọn ô rồi gửi để xóa mục khỏi blacklist`,
     remove_whitelist_group_description: `Bỏ chọn ô rồi gửi để xóa khỏi whitelist`,
     remove_group_continuation: `Tiếp theo ({index})`,
-    remove_modal_limit: `Danh sách này có hơn 50 mục và không thể hiển thị trong một biểu mẫu.`,
     remove_nothing_changed: `Không có mục nào bị xóa`,
     remove_nothing_changed_detail: `Tất cả các mục vẫn được chọn. Không cần ghi dữ liệu.`,
 

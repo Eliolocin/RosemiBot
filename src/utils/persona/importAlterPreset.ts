@@ -181,6 +181,7 @@ export async function importAlterPreset(params: ImportAlterPresetParams): Promis
           naiAttgTags: presetData.nai_attg_tags ?? null,
           naiAttgGenre: presetData.nai_attg_genre ?? null,
           naiAttgStars: presetData.nai_attg_stars ?? null,
+          isNsfw: presetData.is_nsfw === true,
         })) ?? undefined);
   } catch (error) {
     // Surface a duplicate-name race as a friendly conflict; rethrow others.

@@ -85,6 +85,8 @@ export async function execute(
     const modalResult = await promptWithPaginatedModal(interaction, locale, {
       modalCustomId: MODAL_CUSTOM_ID,
       modalTitleKey: "commands.persona.remove.modal_title",
+      pageSelectTitleKey: "general.pagination.select_persona_title",
+      pageSelectDescriptionKey: "general.pagination.select_persona_page_description",
       components: [
         {
           customId: PERSONA_SELECT_ID,

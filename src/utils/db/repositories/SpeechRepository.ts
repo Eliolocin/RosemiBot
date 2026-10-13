@@ -62,6 +62,7 @@ export async function loadActiveEndpoint(
         ce.supports_structoutput,
         ce.strict_role_alternation,
         ce.supports_prefix_completion,
+        ce.supports_assistant_prefill,
         ce.is_default,
         ce.created_at,
         ce.updated_at

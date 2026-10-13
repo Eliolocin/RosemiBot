@@ -3,7 +3,8 @@ import { PrivacyLevel } from "@/types/db/schema";
 import { getCachedBlacklistStatus, getCachedPrivacyLevel } from "@/utils/cache/userCache";
 import { extractNoticeTextFromComponents } from "@/utils/discord/componentNoticeReader";
 import { MAX_MESSAGE_FETCH_LIMIT } from "@/utils/discord/messageFetchLimit";
-import { classifyProtocolEmbed, classifyProtocolTitle } from "@/utils/discord/embedProtocol";
+import { classifyProtocolEmbed, classifyProtocolTitle, isMinimalTitleKind } from "@/utils/discord/embedProtocol";
+import { resolveMinimalNoticeBodies } from "@/utils/discord/minimalNoticeBodies";
 import type { ConversationContext, ImageReference } from "./types";
 
 export async function buildConversationContext(
@@ -14,6 +15,7 @@ export async function buildConversationContext(
   const messagesArray = Array.from(fetchedMessages.values()).reverse();
   const resetIndex = findLastResetIndex(messagesArray);
   const relevantMessages = messagesArray.slice(resetIndex === -1 ? 0 : resetIndex + 1);
+  const minimalNoticeBodies = await resolveMinimalNoticeBodies(relevantMessages);
   const conversationLines: string[] = [];
   const imageReferences: ImageReference[] = [];
   const userIdSet = new Set<string>();
@@ -42,7 +44,10 @@ export async function buildConversationContext(
     // silently dropped from the compaction summary.
     const notice = extractNoticeTextFromComponents(msg.components);
     if (notice) {
-      messageContent = appendEmbedContent(messageContent, notice);
+      messageContent = appendEmbedContent(messageContent, {
+        title: notice.title,
+        description: notice.description ?? minimalNoticeBodies.get(msg.id) ?? null,
+      });
     }
 
     const messageImages: ImageReference[] = [];
@@ -141,7 +146,7 @@ function appendEmbedContent(
   source: { title: string | null; description: string | null },
   kind = classifyProtocolTitle(source.title),
 ): string {
-  if (!source.description || !source.title) return baseContent;
+  if (!source.title) return baseContent;
 
   if (
     kind !== "system_injection" &&
@@ -153,14 +158,15 @@ function appendEmbedContent(
     return baseContent;
   }
 
-  const description = source.description.trim();
-  if (!description) return baseContent;
+  const description = source.description?.trim() ?? "";
+  if (!description && !isMinimalTitleKind(kind)) return baseContent;
 
+  const titledBody = [source.title, description].filter((part) => part.length > 0).join("\n");
   const systemContent =
     kind === "memory_learning"
-      ? `[System: ${source.title}\n${description}]`
+      ? `[System: ${titledBody}]`
       : kind === "system_injection" || kind === "compact_summary" || kind === "compact_refresh"
         ? `[System: ${description}]`
-        : `[The following is a system-produced embed]\n${source.title}\n${description}`;
+        : `[The following is a system-produced embed]\n${titledBody}`;
   return baseContent ? `${baseContent}\n${systemContent}` : systemContent;
 }

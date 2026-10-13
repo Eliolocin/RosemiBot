@@ -3,6 +3,8 @@ import { stripBridgePrefix } from "@/utils/bridges";
 import { localizer } from "@/utils/text/localizer";
 import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
 import type { ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
+import type { WebhookIdentitySendOptions } from "@/utils/discord/webhook/webhookCore";
+import { verifyMessageWebhook, isManagedWebhookMessage } from "@/utils/chat/webhookIdentity";
 
 /**
  * Resolves the author label for a historic message in the reply-context embed.
@@ -16,7 +18,7 @@ export function getReplyContextAuthorName(message: Message, botUserId?: string, 
   // Webhook-delivered messages: the per-message `username` override captures the
   //    persona identity at send time.
   if (message.webhookId) {
-    return stripBridgePrefix(message.author.username);
+    return isManagedWebhookMessage(message) ? stripBridgePrefix(message.author.username) : message.author.username;
   }
   // Non-webhook bot-authored messages (direct reply fallback). Discord snapshots the
   //    author's guild member on each message, so `message.member.displayName` reflects
@@ -98,8 +100,9 @@ export async function sendWebhookReplyNotice(
     threadId?: string;
     botUserId?: string;
     botName?: string;
-  },
+  } & WebhookIdentitySendOptions,
 ): Promise<Message> {
+  await verifyMessageWebhook(targetMessage);
   return await sendWebhookMessageWithIdentity(
     webhook,
     {
@@ -108,5 +111,6 @@ export async function sendWebhookReplyNotice(
     },
     identity,
     options?.threadId ?? webhook.channelId ?? webhook.id,
+    { deferAvatarEditOnRateLimit: options?.deferAvatarEditOnRateLimit },
   );
 }

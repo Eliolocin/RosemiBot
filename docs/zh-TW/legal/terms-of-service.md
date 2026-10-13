@@ -1,6 +1,7 @@
 ---
 title: 服務條款
 description: 規範官方託管 TomoriBot 執行個體使用的條款。
+aiGenerated: false
 ---
 
 > 關於這份翻譯： 本頁為英文版[服務條款](/en/legal/terms-of-service/)的翻譯，僅為方便閱讀而提供，內容以英文版為準。若本頁與英文版有任何不一致，一律以英文版為準。

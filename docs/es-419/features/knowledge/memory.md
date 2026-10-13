@@ -2,7 +2,7 @@
 title: "Memoria"
 sidebar:
   order: 1
-aiGenerated: true
+aiGenerated: false
 ---
 
 TomoriBot tiene un sistema de memoria persistente, así que recuerda datos entre conversaciones.

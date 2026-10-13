@@ -6,6 +6,7 @@ import { isKnownMessageProxyMessage } from "@/utils/messageProxy/proxyExpectatio
 import { normalizeRenderModifierName, resolveRenderModifierSourcePersona } from "@/utils/discord/renderModifierParser";
 import { escapeRegExp, isUnspacedScriptText, wrapWithWordBoundary } from "@/utils/text/processors/regexUtils";
 import { normalizeTriggerWord } from "@/utils/text/triggerWords";
+import { isManagedWebhookMessage } from "@/utils/chat/webhookIdentity";
 
 const NEVER_MATCH_REGEX = /a^/i;
 
@@ -133,8 +134,8 @@ export function doesMessageMatchTrigger(message: Message, trigger: string, delib
   return getTriggerFirstMatchIndex(message, trigger, deliberateOnly) !== Number.POSITIVE_INFINITY;
 }
 
-export function isMatrixRelayMessage(message: Pick<Message, "webhookId" | "author">): boolean {
-  return Boolean(message.webhookId) && isMatrixBridgeWebhookUsername(message.author.username);
+export function isMatrixRelayMessage(message: Message): boolean {
+  return isManagedWebhookMessage(message) && isMatrixBridgeWebhookUsername(message.author.username);
 }
 
 export function isMessageProxyMessage(message: Pick<Message, "id" | "webhookId">): boolean {
@@ -153,7 +154,7 @@ export function isSelfTriggerMessage(message: Message, allPersonas: TomoriState[
     return true;
   }
 
-  if (!message.webhookId) {
+  if (!isManagedWebhookMessage(message)) {
     return false;
   }
   if (isMessageProxyMessage(message)) {
@@ -269,7 +270,7 @@ export function hasExplicitCrossPersonaTrigger(
     return true;
   }
 
-  if (refMessage?.webhookId) {
+  if (refMessage && isManagedWebhookMessage(refMessage)) {
     const webhookPersona =
       resolveRenderModifierSourcePersona(refMessage.author.username, personaByNickname)?.persona ??
       personaByNickname.get(normalizeRenderModifierName(refMessage.author.username));
@@ -348,7 +349,7 @@ export function determineMatchingPersonas(
     if (!nicknameKey || personaByNickname.has(nicknameKey)) continue;
     personaByNickname.set(nicknameKey, persona);
   }
-  if (message.webhookId && !isMessageProxyMessage(message)) {
+  if (isManagedWebhookMessage(message)) {
     const webhookName = message.author.username;
     senderPersona =
       resolveRenderModifierSourcePersona(webhookName, personaByNickname)?.persona ??
@@ -363,7 +364,7 @@ export function determineMatchingPersonas(
     if (referenceMessage) {
       if (referenceMessage.author.id === client.user?.id) {
         repliedToPersona = allPersonas.find((persona) => !persona.is_alter);
-      } else if (referenceMessage.webhookId && !isMessageProxyMessage(referenceMessage)) {
+      } else if (isManagedWebhookMessage(referenceMessage)) {
         const webhookName = referenceMessage.author.username;
         repliedToPersona =
           resolveRenderModifierSourcePersona(webhookName, personaByNickname)?.persona ??

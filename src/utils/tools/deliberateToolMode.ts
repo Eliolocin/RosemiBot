@@ -1,3 +1,6 @@
+import { isManagedWebhookMessage } from "@/utils/chat/webhookIdentity";
+import type { TomoriState } from "@/types/db/schema";
+import { StickerTool } from "@/tools/functionCalls/stickerTool";
 import type { Message } from "discord.js";
 import { isAudioAttachment } from "@/utils/audio/audioAttachmentTranscription";
 import {
@@ -5,6 +8,7 @@ import {
   isSupportedVideoAttachmentContentType,
 } from "@/utils/chat/contextMedia";
 import { log } from "@/utils/misc/logger";
+import type { SimplifiedMessageForContext } from "@/utils/text/context/types";
 import { DELIBERATE_TOOL_PACK_KEYS, getIntentPackUnion } from "@/utils/text/localeIntentPacks";
 import { isUnspacedScriptText } from "@/utils/text/processors/regexUtils";
 
@@ -133,11 +137,6 @@ const CROSS_CHANNEL_INTENT_PATTERNS: RegExp[] = [
   /\b(?:boomerang|report\s+back)\b.{0,120}\b(?:channel|thread|<#\d+>|#[^\s]+|`[^`]+`)\b/iu,
 ];
 
-const STICKER_INTENT_PATTERNS: RegExp[] = [
-  /\b(?:send|use|pick|choose|select|add)\b.{0,80}\b(?:sticker|stickers|emote|reaction\s+sticker)\b/i,
-  /\b(?:sticker|stickers)\b.{0,80}\b(?:please|pls|plz|too|also|instead|for\s+that|with\s+that)\b/i,
-];
-
 const MESSAGE_METADATA_INTENT_PATTERNS: RegExp[] = [
   /\b(?:metadata|message\s+id|message\s+link|timestamp|jump\s+link)\b/i,
   /\b(?:when|what\s+time)\b.{0,80}\b(?:was|did)\b.{0,80}\b(?:sent|posted|say|write)\b/i,
@@ -173,8 +172,6 @@ const TOOL_FOLLOW_UP_PATTERNS: RegExp[] = [
 const WEB_TOOL_NAMES = [
   "web_search",
   "web-search",
-  "iask-search",
-  "monica-search",
   "brave_web_search",
   "brave_image_search",
   "brave_video_search",
@@ -201,7 +198,6 @@ const MEDIA_ANALYSIS_TOOL_NAMES = [
 ];
 const MESSAGE_ACTION_TOOL_NAMES = ["interact_with_recent_message", "manage_message", "reveal_message_metadata"];
 const CAPABILITY_TOOL_NAMES = ["review_capabilities"];
-const STICKER_TOOL_NAMES = ["select_sticker_for_response"];
 const USER_BLOCKING_TOOL_NAMES = ["block_user", "unblock_user"];
 const USER_INFO_TOOL_NAMES = ["update_user_info"];
 
@@ -224,7 +220,6 @@ export const DELIBERATE_TOOL_TRIGGER_TARGETS = [
   { value: "message-action", label: "Message actions", toolNames: MESSAGE_ACTION_TOOL_NAMES },
   { value: "user-blocking", label: "Persona user blocking", toolNames: USER_BLOCKING_TOOL_NAMES },
   { value: "user-info", label: "User info updates", toolNames: USER_INFO_TOOL_NAMES },
-  { value: "sticker", label: "Sticker selection", toolNames: STICKER_TOOL_NAMES },
   { value: "thread", label: "Thread creation", toolNames: ["create_thread"] },
   { value: "capabilities", label: "Capability review", toolNames: CAPABILITY_TOOL_NAMES },
 ] as const;
@@ -375,10 +370,6 @@ export function hasDeliberateToolIntent(
   }
 
   if (VIDEO_GENERATION_REQUEST_PATTERNS.some((pattern) => pattern.test(text))) {
-    return true;
-  }
-
-  if (STICKER_INTENT_PATTERNS.some((pattern) => pattern.test(text))) {
     return true;
   }
 
@@ -598,10 +589,6 @@ export function getDeliberateToolIntentResult(
     addToolMatches(allowedToolNames, matches, ["cross_channel_message"], "cross-channel request", "built-in");
   }
 
-  if (STICKER_INTENT_PATTERNS.some((pattern) => pattern.test(text))) {
-    addToolMatches(allowedToolNames, matches, STICKER_TOOL_NAMES, "sticker request", "built-in");
-  }
-
   if (/\b(create|make|start|open)\b.*\b(thread)\b/i.test(text)) {
     addToolMatches(allowedToolNames, matches, ["create_thread"], "thread request", "built-in");
   }
@@ -671,13 +658,29 @@ export function isToolAllowedByDeliberateMode(
   return !allowedToolNames?.length || allowedToolNames.includes(toolName);
 }
 
+/** Family intent follows the configured service's discovered names without changing its argument schema. */
+export function expandDeliberateToolAllowedNames(
+  allowedToolNames: readonly string[] | null | undefined,
+  families: Record<string, string> = {},
+): string[] | null | undefined {
+  if (!allowedToolNames?.length) return allowedToolNames ? [...allowedToolNames] : allowedToolNames;
+  const names = new Set(allowedToolNames);
+  for (const [name, family] of Object.entries(families)) {
+    if ((family === "web_search" && names.has("web_search")) || (family === "url_fetcher" && names.has("fetch_url")))
+      names.add(name);
+  }
+  return [...names];
+}
+
 export function applyDeliberateToolAllowlist<T extends { name: string }>(params: {
   providerLabel: string;
   builtInTools: T[];
   mcpFunctionNames: string[];
   allowedToolNames?: string[] | null;
+  mcpToolFamilies?: Record<string, string>;
 }): { builtInTools: T[]; mcpFunctionNames: string[] } {
-  const { providerLabel, builtInTools, mcpFunctionNames, allowedToolNames } = params;
+  const { providerLabel, builtInTools, mcpFunctionNames } = params;
+  const allowedToolNames = expandDeliberateToolAllowedNames(params.allowedToolNames, params.mcpToolFamilies);
   if (!allowedToolNames?.length) {
     return { builtInTools, mcpFunctionNames };
   }
@@ -726,7 +729,7 @@ export function getRecentToolAffordanceNames(
     .reverse();
 
   for (const msg of lookbackMessages) {
-    const isPersonaOutput = Boolean(msg.webhookId) || (Boolean(clientUserId) && msg.author.id === clientUserId);
+    const isPersonaOutput = isManagedWebhookMessage(msg) || (Boolean(clientUserId) && msg.author.id === clientUserId);
 
     if (!isPersonaOutput) {
       const recentIntentResult = getDeliberateToolIntentResult(msg.content, customTriggers);
@@ -773,7 +776,7 @@ export function getRecentTriggeredToolIntentResult(
     .slice(-lookbackMessageCount);
 
   for (const msg of lookbackMessages) {
-    const isPersonaOutput = Boolean(msg.webhookId) || (Boolean(clientUserId) && msg.author.id === clientUserId);
+    const isPersonaOutput = isManagedWebhookMessage(msg) || (Boolean(clientUserId) && msg.author.id === clientUserId);
     if (msg.author.bot || isPersonaOutput) continue;
 
     const recentIntentResult = getDeliberateToolIntentResult(msg.content, customTriggers);
@@ -793,4 +796,49 @@ export function getRecentTriggeredToolIntentResult(
       new Map(matches.map((match) => [`${match.toolName}\0${match.trigger}\0${match.source}`, match])).values(),
     ),
   };
+}
+
+/**
+ * Media on the triggering message is itself the request to look at it, so each kind admits only the
+ * tool that reads that kind. Media elsewhere in history admits nothing; otherwise one old GIF would
+ * keep its tool exposed for every later turn. Each tool's own availability gate still decides whether
+ * the model receives it (`analyze_image` only reaches a model that cannot see images).
+ */
+export function getAttachmentDeliberateToolIntentResult(
+  message:
+    | Pick<SimplifiedMessageForContext, "imageAttachments" | "videoAttachments" | "documentAttachments">
+    | undefined,
+): DeliberateToolIntentResult {
+  const allowedToolNames: string[] = [];
+  const matches: DeliberateToolIntentMatch[] = [];
+  if (!message) return { allowedToolNames, matches };
+
+  const images = message.imageAttachments.filter((attachment) => !attachment.isEmoji);
+  if ((message.documentAttachments?.length ?? 0) > 0) {
+    addToolMatches(allowedToolNames, matches, ["read_file"], "attached file", "built-in");
+  }
+  if (images.length > 0) {
+    addToolMatches(allowedToolNames, matches, ["analyze_image"], "attached image", "built-in");
+  }
+  if (images.some((attachment) => attachment.mimeType === "image/gif")) {
+    addToolMatches(allowedToolNames, matches, ["process_gif"], "attached GIF", "built-in");
+  }
+  if (message.videoAttachments.some((attachment) => attachment.isYouTubeLink)) {
+    addToolMatches(allowedToolNames, matches, ["process_youtube_video"], "YouTube link", "built-in");
+  }
+
+  return { allowedToolNames, matches };
+}
+
+/** Expression tools remain available without a task request; their feature toggles still apply. */
+export function getAutonomousDeliberateToolNames(state: TomoriState): string[] {
+  const stickerTool = new StickerTool();
+  if (
+    !state.llm.has_tools ||
+    state.config.tool_use_enabled === false ||
+    !state.config.sticker_usage_enabled ||
+    !stickerTool.isAvailableFor(state.llm.llm_provider)
+  )
+    return [];
+  return [stickerTool.name];
 }

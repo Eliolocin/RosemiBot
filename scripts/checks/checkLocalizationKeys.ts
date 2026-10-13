@@ -276,7 +276,7 @@ function isValidLocalizationKey(key: string): boolean {
     // known panel list because "workspace|personal" alone also matches real keys such as
     // "commands.personal.memories.description", which would exempt the whole commands.personal namespace from
     // validation. A new panel surface that omits itself here fails loudly as a missing key.
-    /^(?:mcps|st-presets|providers|moderation|personal-memories|personal-config|server-config|memories|setup)\.(?:workspace|personal)\.[a-z0-9-]+\.[a-z0-9-]+$/,
+    /^(?:mcps|st-presets|providers|moderation|expressions|personal-memories|personal-config|server-config|memories|setup)\.(?:workspace|personal)\.[a-z0-9-]+\.[a-z0-9-]+$/,
   ];
 
   for (const pattern of falsePositives) {
@@ -361,6 +361,17 @@ function getLocalizationAliases(key: string): string[] {
     "commands.memory.personal.remove.description": "commands.forget.memory.personal.description",
     "commands.memory.server.add.description": "commands.teach.memory.server.description",
     "commands.memory.server.remove.description": "commands.forget.memory.server.description",
+    "commands.nsfw.persona.default.type_description": "commands.persona.default.type_description",
+    "commands.nsfw.persona.default.type_choice_default": "commands.persona.default.type_choice_default",
+    "commands.nsfw.persona.default.type_choice_alter": "commands.persona.default.type_choice_alter",
+    "commands.nsfw.persona.import.file_description": "commands.persona.import.file_description",
+    "commands.nsfw.persona.import.type_description": "commands.persona.import.type_description",
+    "commands.nsfw.persona.import.triggers_description": "commands.persona.import.triggers_description",
+    "commands.nsfw.persona.import.memories_description": "commands.persona.import.memories_description",
+    "commands.nsfw.persona.import.type_choice_main": "commands.persona.import.type_choice_main",
+    "commands.nsfw.persona.import.type_choice_alter": "commands.persona.import.type_choice_alter",
+    "commands.nsfw.persona.import.memories_choice_preserve": "commands.persona.import.memories_choice_preserve",
+    "commands.nsfw.persona.import.memories_choice_fork": "commands.persona.import.memories_choice_fork",
   };
 
   const staticAlias = staticAliases[key];

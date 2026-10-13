@@ -5,14 +5,11 @@
 // Why render-time instead of injecting into each .md file:
 //   1. The docs markdown stays clean: no 100+ file diff, no marker to migrate.
 //   2. The wording lives in the shared locale table, so a new locale adds one entry.
-//   3. Opt-out is a single frontmatter flag, defaulted to true in the schema.
+//   3. Opt-in is a single frontmatter flag, defaulted to false in the schema.
 //
-// Locale awareness: a translated page is generated content, so it gets its own locale's wording. A
-// translation whose source page is human-written (`aiGenerated: false` in the source frontmatter)
-// shows the lighter "AI translation" notice instead of the full drafts disclaimer, because the
-// content was authored by a person and only the translation is generated. Setting
-// `aiGenerated: false` in the translated file itself, after a human reviews it, hides the notice
-// entirely.
+// Translations mirror the English source's aiGenerated flag, which marks substantively unreviewed
+// content. Unmarked content shows no notice in any locale. A translation marked `true` whose
+// English source is not marked retains the lighter translation notice.
 //
 // The default MarkdownContent is just <div class="sl-markdown-content"><slot/></div>, so we render
 // it and place the <Aside> as the first child: this keeps the note inside the markdown content flow,
@@ -37,9 +34,8 @@ import {
 // so a module-relative path would point at a directory that does not exist.
 const docsRoot = join(process.cwd(), "src/content/docs");
 
-// Reader-facing "AI translation of a human-written page" notice, disabled by default so unreviewed
-// translations don't alarm readers. Review state is still tracked in frontmatter regardless: a
-// translated file without `aiGenerated: false` is an unreviewed machine translation. Set
+// The optional translation notice covers files whose flag differs from their reviewed English
+// source. Synchronized pages use the source's substantive content review status. Set
 // DOCS_SHOW_TRANSLATION_NOTICE=true in the docs build environment to render it.
 const showTranslationNotice =
   process.env.DOCS_SHOW_TRANSLATION_NOTICE?.trim().toLowerCase() === "true";
@@ -52,13 +48,13 @@ const locale = routeLocale ?? localeFromEntryId(entry.id) ?? DEFAULT_DOCS_LOCALE
 const baseId = stripLocaleFromEntryId(entry.id);
 const notices = getDocsLocaleConfig(locale)?.notices ?? getDocsLocaleConfig(DEFAULT_DOCS_LOCALE_ID)?.notices;
 
-// Opt-out flag from frontmatter. Schema defaults it to true, so a page is
-// treated as generated unless it explicitly sets `aiGenerated: false`.
+// Opt-in flag from frontmatter. Schema defaults it to false, so a page carries the notice only
+// when it explicitly sets `aiGenerated: true`.
 const mode = resolveTranslationNoticeMode({
   docsRoot,
   entryId: entry.id,
   locale,
-  aiGenerated: entry.data.aiGenerated !== false,
+  aiGenerated: entry.data.aiGenerated,
   isFallback: Astro.locals.starlightRoute.isFallback,
 });
 

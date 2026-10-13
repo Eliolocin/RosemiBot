@@ -26,8 +26,8 @@ import { validateComponentsV2MessageLimits } from "@/utils/discord/ui/components
 import { RANDOM_TRIGGER_ADD_PERSONA_PAGE_SIZE } from "@/utils/discord/ui/configBehaviorModals";
 import { buildConfigModelsBody } from "@/utils/discord/ui/configModelsPanel";
 import { buildConfigPanelPayload } from "@/utils/discord/ui/configPanel";
-import { initializeLocalizer } from "@/utils/text/localizer";
-import { localizedCopy, localizedProse } from "../../helpers/localeCases";
+import { initializeLocalizer, hasLocaleKey } from "@/utils/text/localizer";
+import { localizedCopy, localizedProse, expectForEveryLocale } from "../../helpers/localeCases";
 import { createLlmRow, createPersona } from "../../helpers/fixtures";
 
 beforeAll(async () => initializeLocalizer());
@@ -324,6 +324,7 @@ describe("config panel shell", () => {
     expect(dmPageSelect?.options?.map((option) => option.value)).toEqual([
       "available-tools",
       "context-additions",
+      "response-drafting",
       "mcp-servers",
       "sillytavern-presets",
       "nsfw-jailbreaks",
@@ -335,6 +336,7 @@ describe("config panel shell", () => {
     expect(managerPageSelect?.options?.map((option) => option.value)).toEqual([
       "available-tools",
       "context-additions",
+      "response-drafting",
       "mcp-servers",
       "sillytavern-presets",
       "nsfw-jailbreaks",
@@ -1286,7 +1288,7 @@ describe("config Persona Memories body", () => {
     );
 
     expect(stmDisplay?.content?.length).toBeLessThanOrEqual(3800);
-    expect(stmDisplay?.content).toMatch(/Content truncated \(\d+\/\d+ shown\)\./);
+    expect(stmDisplay?.content).toMatch(/\n<!-- [^\n]+ -->\n```/);
   });
 });
 
@@ -1678,6 +1680,9 @@ describe("config Behavior pages", () => {
   const behaviorView = {
     general: {
       systemPrompt: "Keep replies concise.",
+      responsePrefill: null,
+      prefillBlocker: null,
+      prefillModelName: "gemini-2.5-flash",
       contextNote: "Stay on topic.",
       contextNoteDepth: 2,
       humanizerDegree: 2,
@@ -1801,11 +1806,14 @@ describe("config Behavior pages", () => {
       },
       notices: {
         hiddenNoticeKeys: ["web_search" as const],
+        verbosity: "minimal" as const,
         speechTranscriptsEnabled: true,
       },
       memory: {
         memoryTaggingEnabled: true,
         channelMemoryEnabled: false,
+        stmEnabled: true,
+        toolUseEnabled: true,
         stmConfig: null,
         stmCategories: MEMORY_CATEGORIES,
       },
@@ -1829,6 +1837,17 @@ describe("config Behavior pages", () => {
       ),
     ).toBe(true);
     expect(
+      buttonFor(notices, { action: "behavior-notice-verbosity-set", locale: "en-US", verbosity: "minimal" })?.disabled,
+    ).toBe(true);
+    expect(
+      buttonFor(notices, { action: "behavior-notice-verbosity-set", locale: "en-US", verbosity: "verbose" })?.disabled,
+    ).toBe(false);
+    expect(
+      walk(notices).some((component) =>
+        component.content?.includes(localizedCopy("en-US", "commands.config.panel.notice_verbosity_minimal")),
+      ),
+    ).toBe(true);
+    expect(
       buttonFor(notices, { action: "behavior-speech-transcripts-set", locale: "en-US", enabled: true })?.disabled,
     ).toBe(true);
     expect(
@@ -1839,6 +1858,20 @@ describe("config Behavior pages", () => {
     ).toBeDefined();
     expect(buttonFor(memory, { action: "behavior-stm-categories-open", locale: "en-US" })?.disabled).toBe(false);
     expect(walk(memory).some((component) => component.content?.includes("memory/#stm-configuration"))).toBe(true);
+    expect(buttonFor(memory, { action: "behavior-stm-enabled-set", locale: "en-US", enabled: false })?.disabled).toBe(
+      false,
+    );
+
+    const memoryToolUseOff = build(GUILD_MANAGER, {
+      category: "behavior",
+      page: "memory",
+      behaviorView: { ...d10View, memory: { ...d10View.memory, toolUseEnabled: false } },
+    });
+    const toolUseOffSerialized = walk(memoryToolUseOff)
+      .map((component) => component.content ?? "")
+      .join("\n");
+    expect(toolUseOffSerialized).toMatch(localizedProse("en-US", "commands.config.panel.stm_enabled_tool_use_off"));
+    expect(toolUseOffSerialized).not.toMatch(localizedProse("en-US", "commands.config.panel.stm_enabled_on"));
   });
 
   it("keeps the overflow removal selector off the ordinary Trigger page", () => {
@@ -2003,5 +2036,83 @@ describe("config Behavior pages", () => {
         }
       });
     }
+  });
+});
+
+describe("config preset resync panels", () => {
+  it("renders all persona states and confirmation within Discord limits across locales", () => {
+    expectForEveryLocale((locale) => {
+      for (const isAlter of [false, true]) {
+        for (const state of ["custom", "fork", "pointer"] as const) {
+          for (const stale of [false, true]) {
+            const persona = makePersona({
+              persona_id: 55,
+              persona_nickname: "M".repeat(32),
+              is_alter: isAlter,
+              is_pointer: state === "pointer",
+              preset_lineage_id: state === "custom" ? null : 4,
+              preset_language: state === "custom" ? null : "en-US",
+              attribute_list: Array.from({ length: 30 }, (_, index) => `Attribute ${index}`),
+              sample_dialogues_in: Array.from({ length: 30 }, (_, index) => `Input ${index}`),
+              sample_dialogues_out: Array.from({ length: 30 }, (_, index) => `Output ${index}`),
+            });
+            const payload = build(GUILD_MANAGER, {
+              locale,
+              personas: [persona],
+              readStatus: stale ? "stale" : "fresh",
+              selectedAttributeIndex: 0,
+              receipt: { tone: "warning", heading: "Saved", detail: "Avatar pending." },
+            });
+            const limits = validateComponentsV2MessageLimits(payload);
+            expect(limits.valid, JSON.stringify(limits.violations)).toBe(true);
+            const button = buttonFor(payload, { action: "resync-view", locale, personaId: 55 });
+            if (state === "custom") expect(button).toBeUndefined();
+            else {
+              expect(button?.disabled).toBe(stale || state === "pointer");
+              const labelKey =
+                state === "pointer"
+                  ? "commands.config.panel.resync_synced_button"
+                  : "commands.config.panel.resync_button";
+              expect(button?.label).toBe(localizedCopy(hasLocaleKey(locale, labelKey) ? locale : "en-US", labelKey));
+            }
+            if (state === "fork") {
+              const confirm = build(GUILD_MANAGER, {
+                locale,
+                personas: [persona],
+                view: {
+                  kind: "resync-confirm",
+                  personaId: 55,
+                  nonce: "nonce1234567",
+                  presetName: "Mirri",
+                  diff: {
+                    attributes: { changed: 99, added: 99, removed: 99 },
+                    dialogues: { changed: 99, added: 99, removed: 99 },
+                    promptChanged: true,
+                    customAvatar: true,
+                    addedSprites: 99,
+                  },
+                },
+                receipt: { tone: "warning", heading: "Saved", detail: "Avatar pending." },
+              });
+              const confirmLimits = validateComponentsV2MessageLimits(confirm);
+              expect(confirmLimits.valid, JSON.stringify(confirmLimits.violations)).toBe(true);
+              const rendered = JSON.stringify(confirm);
+              for (const [key, visible] of [
+                ["commands.config.panel.resync_main_avatar_detail", !isAlter],
+                ["commands.config.panel.resync_avatar_diff", isAlter],
+              ] as const) {
+                const copy = localizedProse(hasLocaleKey(locale, key) ? locale : "en-US", key);
+                if (visible) expect(rendered).toMatch(copy);
+                else expect(rendered).not.toMatch(copy);
+              }
+              expect(
+                buttonFor(confirm, { action: "resync-confirm", locale, personaId: 55, nonce: "nonce1234567" })?.style,
+              ).toBe(4);
+              expect(buttonFor(confirm, { action: "resync-cancel", locale, personaId: 55 })?.style).toBe(2);
+            }
+          }
+        }
+      }
+    });
   });
 });

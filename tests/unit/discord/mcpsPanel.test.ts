@@ -9,7 +9,7 @@ import {
   validateComponentsV2MessageLimits,
 } from "@/utils/discord/ui/componentsV2Limits";
 import { initializeLocalizer } from "@/utils/text/localizer";
-import { localizedCopy } from "../../helpers/localeCases";
+import { localizedCopy, localizedProse } from "../../helpers/localeCases";
 import { buildConfigMcpPagePayload } from "../../helpers/configMcpPage";
 
 beforeAll(async () => initializeLocalizer());
@@ -55,6 +55,28 @@ describe("MCP collection panel", () => {
       serialized.indexOf('"label":"+ Add MCP"'),
     );
     expect(serialized.indexOf('"label":"+ Add MCP"')).toBeLessThan(serialized.indexOf("Only add MCP servers"));
+  });
+
+  it("explains a failing streak and an automatic disable", () => {
+    const failingSince = new Date(1_700_000_000_000);
+    const serialized = JSON.stringify(
+      buildConfigMcpPagePayload({
+        locale: "en-US",
+        scope: "guild",
+        configs: [
+          row(1, { failing_since: failingSince, failure_reason: "unauthorized" }),
+          row(2, { is_enabled: false, failing_since: failingSince, failure_reason: "unreachable" }),
+        ],
+        readStatus: "fresh",
+        page: { kind: "collection" },
+      }),
+    );
+    expect(serialized).toMatch(
+      localizedProse("en-US", "commands.mcps.connection_failing_unauthorized", { since: "<t:1700000000:R>" }),
+    );
+    expect(serialized).toMatch(localizedProse("en-US", "commands.mcps.auto_disabled_unreachable"));
+    expect(serialized).not.toMatch(localizedProse("en-US", "commands.mcps.auto_disabled_unauthorized"));
+    expect(serialized).not.toMatch(localizedProse("en-US", "commands.mcps.connection_failing_unreachable"));
   });
 
   it("renders every supported row in deterministic order with per-entity actions", () => {
@@ -281,7 +303,7 @@ describe("MCP collection panel", () => {
     expect(serialized).toContain('"custom_id":"url_12345678"');
     expect(serialized).toContain('"custom_id":"auth-token_12345678"');
     expect(serialized).toContain(
-      '"label":"Server Type","description":"What this server replaces (disables matching built-in tools)","component":{"type":21,"custom_id":"server-type_12345678","required":true',
+      `"description":${JSON.stringify(localizedCopy("en-US", "commands.mcps.server_type_description"))},"component":{"type":21,"custom_id":"server-type_12345678","required":true`,
     );
     expect(serialized).toContain('"value":"none","label":"General Purpose"');
     expect(serialized).toContain('"default":true');
@@ -290,6 +312,8 @@ describe("MCP collection panel", () => {
     expect(serialized).toContain(localizedCopy("en-US", "commands.mcps.type_web_search_description"));
     expect(serialized).toContain('"value":"url_fetcher","label":"URL Fetcher"');
     expect(serialized).toContain(localizedCopy("en-US", "commands.mcps.type_url_fetcher_description"));
+    expect(serialized).toContain('"value":"prose_linter"');
+    expect(serialized).toContain(localizedCopy("en-US", "commands.mcps.type_prose_linter_description"));
     expect(serialized).not.toContain('"label":"Server Type (Optional)"');
     expect(JSON.stringify(buildAddMcpModal("ja", "12345678", CONFIG_MCP_PANEL_ROUTE_ADAPTER))).not.toContain(
       '"label":"サーバータイプ（任意）"',

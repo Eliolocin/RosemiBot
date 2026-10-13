@@ -2,69 +2,65 @@
 title: "Scheduled Tasks"
 sidebar:
   order: 2
+aiGenerated: true
 ---
 
-TomoriBot can set reminders and schedule tasks for later (one-time or recurring). The
-easiest way is to ask her; she creates the task through her `create_task` tool.
-Scheduled tasks are persona-specific.
+Set reminders for yourself or schedule recurring announcements without leaving chat.
+Ask the bot directly, and she creates the schedule for you. Scheduled tasks belong to
+the active persona.
 
-Each persona keeps its pending self-tasks in context whenever it responds, regardless of
-which members appear in the recent conversation. Human-targeted reminders are more selective:
-the target must be present or referenced in the active conversation context, and the reminder
-must belong to the active persona.
+Reminders notify the targeted user when they fire, while self-tasks are actions the
+persona performs on its own at the scheduled time.
 
 ## Creating One
 
-Just tell her in chat:
+Tell her what to schedule in chat:
 
 ```text
 remind me to submit the report at 14:30
 every Friday at 8pm, post a reminder that game night is starting
 ```
 
-She parses the time and recurrence and schedules it. Reminders ping the target user when
-they fire; tasks are silent self-actions the persona performs at the scheduled time.
+She parses the requested time and recurrence. Reminders ping the target user when they
+fire. Tasks are silent self-actions the persona carries out when the time comes.
 
 ## Timezones
 
-Absolute times ("at 14:30", "on Friday at 8pm") are interpreted in the server's timezone
-(`/config` > Engine > General) by default. If you've set a personal timezone with `/personal config`,
-the AI sees your local clock in context and labels your times with your UTC offset when
-creating the task; the bot then does the conversion deterministically, so "remind me at 9am"
-means *your* 9am even if the server is on another continent. Relative times ("in 2 hours")
-are timezone-free and always safe.
+Absolute times (such as "at 14:30" or "on Friday at 8pm") use the server's timezone
+(`/config` > Behavior > General Behavior) by default. If you set your own timezone
+with `/personal config`, the bot converts your local time automatically. "remind me at 9am"
+means your 9:00 AM, even if the server is in another timezone. Relative times (such as
+"in 2 hours") do not depend on timezones and are always safe.
 
 When a reminder targets a user whose personal timezone differs from the server's, the
-confirmation embed shows both clocks (server time and the target's local time), so a
-mislabeled time is immediately visible and can be fixed with a follow-up message or
-`/scheduled-task edit`.
+confirmation shows both clocks: the server time and the target's local time. If a time is
+mislabeled, fix it with a follow-up message or `/scheduled-task edit`.
 
 ## Managing Tasks
 
 Two slash commands let you review and adjust existing schedules:
 
 - `/scheduled-task edit`: change a task's content, next trigger time, recurrence interval,
-  or whether it's a reminder. Set the interval to `0` to disable recurrence.
+  or reminder target. Set the interval to `0` to make a recurring task one-time.
 - `/scheduled-task remove`: delete a reminder or task.
 
-Both open a picker listing your existing schedules (persona, time, channel, and recurrence),
-so you don't need to remember IDs.
+Both commands open a picker listing your existing schedules by persona, time, channel,
+and recurrence.
+
+A server can hold up to 100 pending reminders and tasks at once. When it is full, TomoriBot
+tells you instead of adding another; remove old ones with `/scheduled-task remove` to make room.
 
 ## How Delivery Works
 
-Reminders are delivered by an in-app scheduler and are only marked done **after delivery
-succeeds**: if a delivery is aborted or the channel queue is cleared, it's automatically
-retried. Retry delays do not change the original recurring cadence.
+Reminders are only marked complete after delivery succeeds. If delivery is interrupted,
+TomoriBot automatically retries without altering the recurring schedule.
 
-Automated attempts do not post an error message each time. If delivery still fails after the
-retry limit, TomoriBot posts one warning containing the unchanged scheduled content and its ID.
-Failed human reminders ping the target so the reminder is not missed; failed self-tasks do not
-ping anyone. One-time schedules are then removed, while recurring schedules stay active for the
-next original occurrence and can be managed with `/scheduled-task edit` or
-`/scheduled-task remove`. For the runtime details, see the
-[architecture overview](/architecture/#runtime-extensions).
+If delivery fails repeatedly and hits the retry limit, TomoriBot posts one warning with
+the scheduled content and task ID. Failed user reminders ping the target so the reminder
+is not missed, while failed self-tasks send no ping. One-time schedules are then removed,
+while recurring schedules remain active for the next occurrence and can be managed with
+`/scheduled-task edit` or `/scheduled-task remove`.
 
 ---
 
-Scheduling is one of several agentic capabilities; see
-[Tools & Extensions](/features/capabilities/tools-and-extensions/) for the full picture.
+For more capabilities, see [Tools & Extensions](/features/capabilities/tools-and-extensions/).

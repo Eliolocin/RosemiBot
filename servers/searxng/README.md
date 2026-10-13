@@ -1,7 +1,7 @@
 # SearXNG Local Server
 
 Self-hosted [SearXNG](https://docs.searxng.org/) instance fronted by the TomoriBot
-web-search engine chain (`Brave → SearXNG → DuckDuckGo → IAsk`).
+web-search engine chain (`Brave → SearXNG → DuckDuckGo`).
 
 SearXNG is a privacy-respecting metasearch aggregator. It calls upstream engines
 (Google, Bing, DDG, Brave, Wikipedia, …) and returns a unified JSON result. By
@@ -59,7 +59,7 @@ SEARXNG_BASE_URL=http://localhost:8080/ bun run dev
 
 ### No SearXNG (graceful absence)
 
-Leave `SEARXNG_BASE_URL` unset. The chain falls back to `Brave → DuckDuckGo → IAsk`.
+Leave `SEARXNG_BASE_URL` unset. The chain falls back to `Brave → DuckDuckGo`.
 
 SearXNG-only categories return the standard category-unavailable message in
 this mode.

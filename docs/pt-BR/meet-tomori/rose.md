@@ -2,6 +2,7 @@
 title: "Rose, a Garota Masculina"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 <!-- STUB (tarefa secundária). Fonte: src/db/seed/catalog/personas/default/en-US.ts.

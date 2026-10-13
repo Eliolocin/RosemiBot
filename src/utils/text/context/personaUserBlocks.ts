@@ -4,6 +4,14 @@ import type { AssembledServerConfig, PersonaUserBlockRow, PersonaUserBlockType }
 import { userRepository } from "@/utils/db/repositories";
 import { isExternalUserId } from "@/utils/externalIdentityUserId";
 import { formatTimeWithOffset, formatUTCOffset } from "@/utils/text/timezoneHelper";
+import type { ToolPromptMacroResolver } from "@/utils/tools/toolPromptMacros";
+
+/**
+ * Expanded on its own, apart from the block lines, because those carry user-controlled names and
+ * reasons that must never be parsed as conditionals or macros.
+ */
+const UNBLOCK_AFFORDANCE_TEMPLATE =
+  "{{if tool:unblock_user}}Use {unblock_user_tool} to lift a block early if needed.{{/if}}";
 
 export async function buildPersonaUserBlocksContextItem(params: {
   client: Client;
@@ -11,6 +19,7 @@ export async function buildPersonaUserBlocksContextItem(params: {
   botName: string;
   tomoriConfig: AssembledServerConfig;
   personaUserBlocks?: PersonaUserBlockRow[];
+  toolPromptMacroResolver: ToolPromptMacroResolver;
 }): Promise<StructuredContextItem | null> {
   const activeBlocks = params.personaUserBlocks ?? [];
   if (activeBlocks.length === 0) {
@@ -37,6 +46,8 @@ export async function buildPersonaUserBlocksContextItem(params: {
     );
   }
 
+  const unblockAffordance = await params.toolPromptMacroResolver.expand(UNBLOCK_AFFORDANCE_TEMPLATE);
+  if (unblockAffordance) lines.push("", unblockAffordance);
   lines.push("]");
 
   return {

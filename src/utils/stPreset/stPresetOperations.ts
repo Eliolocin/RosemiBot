@@ -188,15 +188,11 @@ export async function importStPreset(
   try {
     rawPreset = JSON.parse(downloadResult.buffer.toString("utf-8"));
   } catch (error) {
-    // A preset that will not parse, or is not JSON at all, is the actor's file rather than an
-    // incident, but the uploaded bytes are gone by the time they see the receipt, so warn here is
-    // still not enough to diagnose a report. Recorded as a metric to stay out of the error stream.
-    log.metric("panel_failure_detail", {
-      namespace: "config",
-      tone: "error",
-      reason: "st_preset_upload_invalid_json",
-      detail: error instanceof Error ? error.message.slice(0, 200) : "unknown",
-    });
+    // The actor's file rather than an incident. The parser message is the only trace of why once
+    // the uploaded bytes are gone, so it is kept for whoever reproduces the report.
+    log.warn(
+      `SillyTavern preset upload is not valid JSON: ${error instanceof Error ? error.message.slice(0, 200) : "unknown"}`,
+    );
     return { status: "invalid_json" };
   }
 

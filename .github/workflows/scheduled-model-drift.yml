@@ -28,6 +28,7 @@ jobs:
       - run: bun install --frozen-lockfile
         if: steps.draft.outputs.open != 'true'
       - name: Draft catalog rows
+        id: drift
         if: steps.draft.outputs.open != 'true'
         run: bun scripts/checks/modelDrift.ts --write --report "$RUNNER_TEMP/model-drift-pr.md"
       - name: Format catalog
@@ -35,13 +36,14 @@ jobs:
         run: bunx biome check --write src/db/seed/catalog/models.ts
       - name: Open review PR
         if: steps.draft.outputs.open != 'true'
-        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
-          token: ${{ secrets.PAT_TOKEN }}
+          token: ${{ secrets.MODEL_DRIFT_PAT }}
           branch: automation/model-drift
           delete-branch: true
+          draft: true
           commit-message: "Draft model catalog updates"
-          title: "Draft model catalog updates"
+          title: ${{ steps.drift.outputs.title }}
           body-path: ${{ runner.temp }}/model-drift-pr.md
           add-paths: |
             src/db/seed/catalog/models.ts

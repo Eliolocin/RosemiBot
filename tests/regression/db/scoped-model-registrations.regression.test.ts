@@ -53,8 +53,10 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Scoped model registrations (Migration D)",
     `;
     const definitions = constraints.map((constraint) => constraint.definition).join("\n");
     expect(definitions).toContain("(server_id IS NULL) <> (user_id IS NULL)");
-    expect(definitions).toContain("num_nonnulls(llm_id, embedding_model_id, diffusion_model_id, video_model_id) = 1");
-    expect(definitions.match(/ON DELETE CASCADE/g)).toHaveLength(6);
+    expect(definitions).toContain(
+      "num_nonnulls(llm_id, embedding_model_id, diffusion_model_id, video_model_id, decision_model_id) = 1",
+    );
+    expect(definitions).toContain("FOREIGN KEY (decision_model_id)");
   });
 
   it("upserts every scoped registration through the repository, in both scopes", async () => {

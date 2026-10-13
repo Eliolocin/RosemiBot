@@ -1,8 +1,10 @@
 import { defineConfig } from "astro/config";
+import { unified } from "@astrojs/markdown-remark";
 import starlight from "@astrojs/starlight";
 import sitemap from "@astrojs/sitemap";
 import starlightLlmsTxt from "starlight-llms-txt";
 import { remarkHeadingIds } from "./src/remarkHeadingIds";
+import { remarkLocaleLinks } from "./src/remarkLocaleLinks";
 import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -383,13 +385,30 @@ function collectPageIds(localeRoot: string): Map<string, string> {
   return pages;
 }
 
+/**
+ * Pages deploy only under a locale prefix, but search results, bookmarks, and older links use the
+ * bare path (`/self-hosting/`). One stub per default-locale page sends each to its `/en/` page.
+ * Written before the hand-maintained redirects below, which win where both name the same path, and
+ * without `wiki/`, which has no bare URL to preserve. A bare path cannot collide with a content
+ * route because every content route starts with a locale id.
+ */
+const bareRouteRedirects = Object.fromEntries(
+  [...collectPageIds(defaultLocaleTarget).values()]
+    .filter((route) => route !== "" && !/^wiki(\/|$)/.test(route))
+    .map((route) => [`/${route}/`, `/${DEFAULT_DOCS_LOCALE_ID}/${route}/`]),
+);
+
 const isInternalOrFallbackPath = (pathname: string): boolean =>
   /\/wiki(\/|$)/.test(pathname) || fallbackRoutePattern.test(pathname);
 
 export default defineConfig({
   site: "https://docs.tomoribot.app",
+  // Astro's default 4321 sits inside the dynamic TCP ranges Windows reserves for Hyper-V, WSL, and
+  // Docker (`netsh interface ipv4 show excludedportrange protocol=tcp`). Binding there fails with
+  // EACCES, which Astro does not treat as "port busy", so it never falls back to the next port.
+  server: { port: 4600 },
   markdown: {
-    remarkPlugins: [remarkHeadingIds],
+    processor: unified({ remarkPlugins: [remarkHeadingIds, remarkLocaleLinks(docsTarget)] }),
   },
   // Redirects for the /features/ restructure: the flat pages were bucketed into
   // task-based sub-category folders, changing their slugs. Keep the old URLs
@@ -398,6 +417,7 @@ export default defineConfig({
   redirects: {
     "/": "/en/introduction/",
     ...localeRootRedirects,
+    ...bareRouteRedirects,
     "/architecture/entry-point/": "/en/architecture/entry-point/",
     "/architecture/integrations/discord/message-components-v2/": "/en/architecture/integrations/discord/message-components-v2/",
     "/architecture/integrations/discord/modal-input-components/": "/en/architecture/integrations/discord/modal-input-components/",

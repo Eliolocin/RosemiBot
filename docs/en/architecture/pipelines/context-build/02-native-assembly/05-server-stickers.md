@@ -1,104 +1,31 @@
 ---
 title: "02.5: Server Stickers"
+aiGenerated: true
 ---
 
-List of the server's custom stickers with metadata, framed for tool use.
+The server sticker contributor emits available native and custom server stickers that the persona can send using the sticker tool.
 
-- **File**: `src/utils/text/context/serverAssets.ts:128-221`
+## Flow and ownership
 
-## Mission
+The contributor `buildServerStickerContextItem` in `src/utils/text/context/serverAssets.ts` emits a `system`-role item tagged `KNOWLEDGE_SERVER_STICKERS`:
 
-Emit one context item listing every server-custom sticker available, with
-optional emotion-key and description metadata. Unlike emojis (which the LLM
-can use inline via `:name:`), stickers must be emitted via the
-`{sticker_tool}` function call; so so the framing includes a tool-usage
-instruction expanded via the tool-prompt macro resolver.
+1. **Eligibility**: Returns `null` if sticker usage is disabled (`sticker_usage_enabled === false`), the turn is a DM or user impersonation, or persona state is missing.
+2. **Candidate projection**: Loads sticker metadata and custom expressions (using preloaded collections or querying `ServerRepository`). `projectStickerCandidates` in `src/utils/discord/stickerCandidates.ts` filters sendable native guild stickers and custom stickers assigned to the persona ID.
+3. **Tool macro gating**: Wraps the projected sticker list inside `{{if tool:select_sticker_for_response}}...{{/if}}`. The tool macro resolver suppresses the entire block if `select_sticker_for_response` is unavailable to the provider, model, or turn allowlist.
+4. **Formatting**: Formats entries as `- "<name>" (Expresses <emotion>; <description>)`, followed by an instruction to invoke `{sticker_tool}` with the sticker's case-insensitive name.
 
-## Input
+The output passes through `convertMentions` before emission.
 
-- `client`, `guildId`, `serverName`, `botName`
-- `isDMChannel`, `isUserImpersonation`
-- `tomoriConfig.sticker_usage_enabled`,
-  `tomoriConfig.personal_memories_enabled`
-- `tomoriState` (provides `server_id`)
-- `preloadedStickers`: sticker metadata pre-loaded by the chat pipeline's
-  `loadPersonaAssets`; falls back to
-  `serverRepository.loadStickersByInternalId` if not provided
-- `toolPromptMacroResolver`, `convertMentions`
+## Constraints and rationale
 
-## Output
+- **Sendability filtering**: Native stickers check `isStickerSendable`. Explicitly unavailable stickers and IDs rejected by Discord are excluded from the candidate list.
+- **Persona restriction**: Custom expressions can restrict access to specific persona IDs. Unrestricted expressions are available to all personas in the guild; restricted expressions require an exact match with the active persona.
+- **Preset reassembly**: Tagged as `KNOWLEDGE_SERVER_STICKERS`, which SillyTavern preset reassembly flushes at the first knowledge anchor.
 
-`Promise<StructuredContextItem | null>`: `null` if any precondition fails,
-otherwise one `system`-role item tagged `KNOWLEDGE_SERVER_STICKERS`.
+## Source pointers
 
-Content shape:
-
-```
-## {serverName}'s Stickers
-This server has the following stickers available for {botName} to use with the
-'{sticker_tool}' function:
-- "name1" (Expresses happy; "celebration mood")
-- "name2"
-- "name3" (Expresses sad)
-
-To use a sticker, call '{sticker_tool}' with the sticker's name (case-insensitive).
-```
-
-The `{sticker_tool}` macros expand to the provider-correct function name
-(e.g. `send_sticker_image` for OpenRouter, etc.).
-
-## Side effects
-
-- **Discord cache read**: `client.guilds.cache.get(guildId).stickers.cache`
-  for the live sticker list, filtered through `isStickerSendable()`
-  (`utils/discord/stickerAvailability.ts`).
-- **DB read (conditional)**: falls back to
-  `serverRepository.loadStickersByInternalId(server_id)` when
-  `preloadedStickers` is empty.
-- **Metadata dedup**: same pattern as emojis: pick richest metadata, then
-  latest timestamp.
-- **Sort stability**: sorted by `createdTimestamp` ascending.
-- **Tool-prompt macro expansion**: the `{sticker_tool}` macro is expanded
-  to the provider-correct function name before mention conversion.
-- **Mention conversion**: final text passes through `convertMentions`.
-
-## Invariants
-
-After this stage runs:
-
-- Returns `null` if: `sticker_usage_enabled === false`, DM channel,
-  impersonation, `tomoriState === null`, or the guild sticker cache is
-  empty.
-- Only sendable stickers are listed. A guild sticker stays in the Discord cache
-  after it stops being usable (the guild dropped below the boost tier that
-  unlocked the slot, so `Sticker.available` is `false`, or the sticker was
-  deleted and the cache has not caught up), and sending one returns
-  `50081 Cannot use this sticker`. `isStickerSendable()` also excludes IDs
-  retired at send time, so a rejected sticker stops being offered rather than
-  being reselected every turn. `available` is `null` on a partial sticker and
-  is treated as sendable: only an explicit `false` is a lock.
-- Stickers are referenced by *name* in the function call (case-insensitive),
-  not by Discord sticker ID; the LLM never needs the ID.
-- Skipped on impersonation (stickers are persona-flavored output, not
-  user-flavored).
-
-## Configuration
-
-| Source | Field | Effect |
-|---|---|---|
-| `tomoriConfig` | `sticker_usage_enabled` | Master switch; `false` returns `null` |
-
-## Extension points
-
-| Surface | Plugin-relevance |
-|---|---|
-| `StickerMetadata` shape | Defined in `serverAssets.ts:20-29`; tightly coupled to the `server_stickers` table schema. A plugin adding sticker-source kinds would extend the metadata-load path. |
-| `{sticker_tool}` tool-prompt macro | The macro expansion makes the contributor provider-agnostic; adding a new provider that names the sticker tool differently is a single registration in `toolPromptMacros.ts`, not an edit here. |
-| Sister contributor: emojis (stage 04) | Stickers and emojis share the same metadata + dedup pattern. A plugin formalizing "server asset" as a category should consider whether these two should generalize over a shared interface. → plugin plan candidate. |
-
-## Related docs
-
-- Emoji contributor: [`04-server-emojis.md`](/architecture/pipelines/context-build/02-native-assembly/04-server-emojis/)
-- Sticker tool execution: tool registry (→ [tool-loop pipeline](../../../tool-loop/))
-- Tool-prompt macros: covered in
-  [native-assembly README](/architecture/pipelines/context-build/02-native-assembly/#shared-helpers-used-across-contributors).
+- `src/utils/text/context/serverAssets.ts`: `buildServerStickerContextItem`.
+- `src/utils/discord/stickerCandidates.ts`: `projectStickerCandidates`.
+- `src/utils/db/repositories/ServerRepository.ts`: `loadStickersByInternalId` and `loadCustomExpressions`.
+- [04: Server Emojis](/architecture/pipelines/context-build/02-native-assembly/04-server-emojis/): companion asset contributor.
+- [Execute Tool Call](/architecture/pipelines/tool-loop/02-execute-tool-call/): tool execution and sticker delivery.

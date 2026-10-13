@@ -1,3 +1,4 @@
+import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import type { AnyThreadChannel, ChatInputCommandInteraction, Client, Message } from "discord.js";
 import { BaseGuildTextChannel, EmbedBuilder, MessageFlags, type SlashCommandSubcommandBuilder } from "discord.js";
 import { tomoriChat, suppressNextSelfReply } from "@/events/messageCreate/tomoriChat";
@@ -185,6 +186,7 @@ export async function execute(
       // so index 0 = oldest and the last index = newest
       const messages: Message[] = [...fetched.values()].reverse();
 
+      await Promise.all(messages.map(verifyMessageWebhook));
       const detectedTurn = findLastPersonaTurnBlock({
         messages,
         allPersonas,

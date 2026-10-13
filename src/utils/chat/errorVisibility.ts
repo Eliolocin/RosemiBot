@@ -1,3 +1,4 @@
+import { isManagedWebhookMessage } from "@/utils/chat/webhookIdentity";
 import type { Client, Message } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import type { ChatIncoming } from "@/utils/chat/types";
@@ -42,7 +43,7 @@ function isCachedReplyToKnownPersona(message: Message, client: Client, allPerson
     return true;
   }
 
-  if (!referencedMessage.webhookId) {
+  if (!isManagedWebhookMessage(referencedMessage)) {
     return false;
   }
 

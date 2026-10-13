@@ -1,6 +1,15 @@
 export default {
   nsfw: {
     description: `Comandos y ajustes con restricción de edad.`,
+    persona: {
+      description: `Comandos de persona con restricción de edad.`,
+      default: {
+        description: `Aplica una configuración de personalidad preajustada NSFW`,
+      },
+      import: {
+        description: `Importa una persona desde un archivo PNG, JSON o CHARX, incluidas las personas NSFW`,
+      },
+    },
     jailbreaks: {
       description: `Administra comportamientos opcionales de jailbreak para mis prompts en este servidor.`,
       modal_title: `Administrar estrategias de jailbreak`,

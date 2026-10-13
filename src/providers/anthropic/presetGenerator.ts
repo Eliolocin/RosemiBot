@@ -1,9 +1,9 @@
 /**
  * AI-Powered Preset Generation for the Anthropic provider.
  *
- * Uses the forced tool-use pattern for structured output, where a single
- * tool whose input_schema matches the preset response schema is defined and
- * the model is forced to call it via tool_choice.
+ * Offers a `preset_export_data` tool whose input_schema matches the preset response schema and
+ * leaves `tool_choice` at auto, because Sonnet 5.5, Opus 5.5 and Fable 5.1 reject a forced choice.
+ * A reply that skips the tool is parsed from its text instead.
  *
  * Includes a tool-calling loop for models with web-search tools enabled.
  */
@@ -77,7 +77,6 @@ export async function generatePresetFromPromptAnthropic(
   const toolContext = options.toolContext;
   const toolsEnabled = tools.length > 0 && toolContext;
 
-  // Build the preset tool definition (forced tool use for structured output)
   const presetToolDef = {
     name: "preset_export_data",
     description: "Generate structured character preset data",
@@ -127,7 +126,7 @@ export async function generatePresetFromPromptAnthropic(
         },
       });
       return {
-        error: `Anthropic request failed (${response.status}): ${response.statusText}`,
+        error: `Anthropic request failed (HTTP ${response.status}).`,
         errorType: "CONNECTION",
       };
     }

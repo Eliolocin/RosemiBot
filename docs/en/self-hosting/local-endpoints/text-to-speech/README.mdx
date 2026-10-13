@@ -9,30 +9,32 @@ sidebar:
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 
+Generate natural voice messages and character speech directly on your machine without paying per-character fees or streaming audio to third-party voice APIs.
+
 TomoriBot treats speech as a custom endpoint capability. Local engines run outside the bot as HTTP servers and implement `POST /synthesize`; clone engines receive text plus the configured reference audio sample, while VoiceDesign-capable engines can also receive natural-language instructions.
 
-## Available Engines
+## Available engines
 
 <CardGrid>
-  <LinkCard title="Chatterbox TTS" href="/en/self-hosting/local-endpoints/text-to-speech/chatterbox/"
+  <LinkCard title="Chatterbox TTS" href="/self-hosting/local-endpoints/text-to-speech/chatterbox/"
     description="English voice cloning with event tags. Turbo is the default; Nano and Standard are optional variants." />
-  <LinkCard title="Qwen3-TTS" href="/en/self-hosting/local-endpoints/text-to-speech/qwen3tts/"
+  <LinkCard title="Qwen3-TTS" href="/self-hosting/local-endpoints/text-to-speech/qwen3tts/"
     description="Multilingual local TTS with clone and VoiceDesign modes." />
-  <LinkCard title="MOSS-TTS" href="/en/self-hosting/local-endpoints/text-to-speech/moss/"
+  <LinkCard title="MOSS-TTS" href="/self-hosting/local-endpoints/text-to-speech/moss/"
     description="Trial auto endpoint: 4B multilingual voice cloning or text-described English/Chinese voice design." />
-  <LinkCard title="IrodoriTTS" href="/en/self-hosting/local-endpoints/text-to-speech/irodoritts/"
+  <LinkCard title="IrodoriTTS" href="/self-hosting/local-endpoints/text-to-speech/irodoritts/"
     description="Japanese-focused voice cloning and VoiceDesign with Unicode emoji markup for emotion control." />
-  <LinkCard title="Fish Audio S2 Pro" href="/en/self-hosting/local-endpoints/text-to-speech/fishs2/"
+  <LinkCard title="Fish Audio S2 Pro" href="/self-hosting/local-endpoints/text-to-speech/fishs2/"
     description="High-quality multilingual voice cloning with fine-grained bracket expression controls. Defaults to the official BF16 weights, with an optional INT8 checkpoint for smaller GPUs." />
-  <LinkCard title="VoxCPM2" href="/en/self-hosting/local-endpoints/text-to-speech/voxcpm2/"
+  <LinkCard title="VoxCPM2" href="/self-hosting/local-endpoints/text-to-speech/voxcpm2/"
     description="30-language TTS with Voice Design, reference-audio cloning, transcript-assisted Ultimate Cloning, and natural-language delivery control." />
-  <LinkCard title="CosyVoice 3" href="/en/self-hosting/local-endpoints/text-to-speech/cosyvoice3/"
+  <LinkCard title="CosyVoice 3" href="/self-hosting/local-endpoints/text-to-speech/cosyvoice3/"
     description="0.5B multilingual zero-shot and cross-lingual cloning with natural-language delivery instructions." />
-  <LinkCard title="TTS Engine Comparison" href="/en/self-hosting/local-endpoints/text-to-speech/comparison/"
+  <LinkCard title="TTS Engine Comparison" href="/self-hosting/local-endpoints/text-to-speech/comparison/"
     description="Empirical synthesis timings, audio sample players, and speed comparisons across all 7 engines." />
 </CardGrid>
 
-## Setup Flow
+## Setup flow
 
 1. Pick one engine from the cards above and set up its wrapper from `servers/tts/`.
 2. In `/providers`, choose `Add New Custom Endpoint` and use API Compatibility `tts-clone`.
@@ -48,7 +50,7 @@ The servers have no authentication: anyone who can reach the port can run synthe
 
 Each server reads its own port variable (`CHATTERBOX_PORT`, `QWEN3TTS_PORT`, `IRODORI_TTS_PORT`, `FISH_S2_PORT`, `VOXCPM2_PORT`, `COSYVOICE3_PORT`, `MOSS_TTS_PORT`), so several can run at once from one `.env`. `bun run launch` passes `.env` to the servers it starts; a server started by hand reads only its shell environment.
 
-## Persona Voice Flow
+## Persona voice flow
 
 For clone engines, add and assign one voice sample per persona:
 
@@ -57,7 +59,7 @@ For clone engines, add and assign one voice sample per persona:
 3. Provide a matching transcript when the engine benefits from it. Fish S2 Pro forwards the stored reference transcript into the cloning request, and VoxCPM2 uses it for higher-fidelity Ultimate Cloning.
 4. Open `/config` under Persona > Voice, then choose the persona and voice sample.
 
-The 130-second upload ceiling is TomoriBot's, not any engine's. Each engine applies its own reference-audio limit when the clip is sent, and those limits differ enough that a clip which suits one engine can be rejected or partly ignored by another. Check the engine's guide before uploading a long clip.
+The 130-second upload ceiling is enforced by TomoriBot. Each engine applies its own reference-audio limit when the clip is sent, and those limits differ enough that a clip which suits one engine can be rejected or partly ignored by another. Check the engine's guide before uploading a long clip.
 
 The upload size limit and the duration ceiling are independent, and the size check runs first. Uncompressed WAV costs roughly 10 MB per minute as stereo 44.1 kHz, so a 130-second DAW export can be around 22 MB and be refused as too large while a compressed export of the same clip fits easily. `SPEECH_SAMPLE_MAX_MB` raises that size limit (10 MB by default). For a long reference clip, export it as FLAC, MP3, or OGG rather than WAV: TomoriBot converts any accepted format to mono WAV at 22.05 kHz before storing it, so the compressed upload costs nothing in quality.
 
@@ -71,6 +73,6 @@ VoxCPM2 uses `Plain` Script Markup. Its Voice Design and speaking-style controls
 
 CosyVoice 3 also uses `Plain` Script Markup. It maps transcript-backed references to zero-shot cloning, transcript-free references to cross-lingual cloning, and `voice_instructions` to its instruction-conditioned path. Inline bracket tags are removed because CosyVoice instructions apply to the whole utterance.
 
-## Engine Comparison
+## Engine comparison
 
-For side-by-side empirical latency benchmarks, audio sample playback, and a detailed feature matrix comparing all supported engines, see [TTS Engine Comparison](/en/self-hosting/local-endpoints/text-to-speech/comparison/).
+For side-by-side empirical latency benchmarks, audio sample playback, and a detailed feature matrix comparing all supported engines, see [TTS Engine Comparison](/self-hosting/local-endpoints/text-to-speech/comparison/).

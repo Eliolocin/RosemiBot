@@ -2,6 +2,7 @@
 title: "Adding an Environment Variable"
 sidebar:
   order: 10
+aiGenerated: true
 ---
 
 When a setting should be an environment variable, where it goes in `.env.optional.example`, and how

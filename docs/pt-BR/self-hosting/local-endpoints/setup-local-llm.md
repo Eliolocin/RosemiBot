@@ -1,8 +1,8 @@
 ---
 title: "Configuração: LLM Local"
-aiGenerated: true
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 O TomoriBot pode usar qualquer servidor de LLM local compatível com OpenAI para geração de texto e embeddings.

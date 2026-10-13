@@ -29,6 +29,7 @@ function endpoint(apiStyle: CustomEndpointApiStyle, extraConfig: Record<string, 
     supports_structoutput: false,
     strict_role_alternation: false,
     supports_prefix_completion: false,
+    supports_assistant_prefill: false,
     verbatim_tool_calling: false,
     is_default: true,
   };

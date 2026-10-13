@@ -34,7 +34,7 @@ const defaultDependencies: PanelActionMetricsDependencies = {
 /**
  * Suppresses repeat reports so a pool-wide failure reports once, not once per panel action.
  *
- * Mirrors `MetricSampleRepository.warnOnce`, including the reset on the next write that gets far
+ * Mirrors `MetricSampleRepository.reportOnce`, including the reset on the next write that gets far
  * enough to be recorded: a second outage after a recovery is worth knowing about.
  */
 let hasReportedSinceSuccess = false;
@@ -42,20 +42,20 @@ let hasReportedSinceSuccess = false;
 /**
  * Reports a failed `panel_action` write, once per outage.
  *
- * `log.metric`, not `log.warn`: production pins pino at level `error`, so the warn this replaces
- * was dropped before either sink and a silently dead success counter left no trace anywhere. Not
- * `log.error` either, which would attempt an `error_logs` insert down the same pool that just
- * failed, adding load to the incident it reports.
+ * An error, because a silently dead success counter blanks the hoster's dashboards. Not persisted:
+ * an `error_logs` insert would queue on the same pool that just failed, adding load to the incident
+ * it reports.
  */
 function reportPanelActionFailure(action: PanelAction, error: unknown): void {
   if (hasReportedSinceSuccess) return;
   hasReportedSinceSuccess = true;
 
-  log.metric("panel_action_failure", {
-    reason: "panel_action_stat_write_failed",
-    action,
-    error: error instanceof Error ? error.message : String(error),
-  });
+  void log.error(
+    `Panel action counter write failed (${action})`,
+    error,
+    { errorType: "panel_action_stat_write_failed" },
+    { persist: false },
+  );
 }
 
 /**

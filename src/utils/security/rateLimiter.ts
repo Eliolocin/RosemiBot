@@ -1,4 +1,5 @@
 import { log } from "@/utils/misc/logger";
+import { z } from "zod";
 import { DEFAULT_MESSAGE_FETCH_LIMIT } from "@/utils/discord/messageFetchLimit";
 import {
   addProcessMemoryDeltaFields,
@@ -173,9 +174,13 @@ export const FETCH_LIMITS = {
    * Prevents downloading excessively large webpages into memory
    * @default 5 MB in production, 50 MB in development
    */
-  MAX_FETCH_SIZE_MB: GUARDS_ENABLED
-    ? Number.parseInt(process.env.MAX_FETCH_SIZE_MB || "5", 10)
-    : Number.parseInt(process.env.MAX_FETCH_SIZE_MB || "50", 10),
+  // NaN defeats both HEAD rejection and the streaming caps used by native fetch and Crawl4AI.
+  MAX_FETCH_SIZE_MB: z.coerce
+    .number()
+    .int()
+    .positive()
+    .catch(GUARDS_ENABLED ? 5 : 50)
+    .parse(process.env.MAX_FETCH_SIZE_MB ?? (GUARDS_ENABLED ? 5 : 50)),
 
   /**
    * Base maximum character count for fetch content

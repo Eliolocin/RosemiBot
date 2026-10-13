@@ -4,7 +4,7 @@
  * Replaces the previously-LLM-visible 4-tool Brave surface (`brave_web_search`,
  * `brave_image_search`, `brave_video_search`, `brave_news_search`) with one
  * tool that takes a `category` enum. The dispatcher routes to whichever
- * engine in the chain (Brave → SearXNG → DuckDuckGo → IAsk) can serve the
+ * engine in the chain (Brave → SearXNG → DuckDuckGo) can serve the
  * requested category.
  *
  * Saves ~400 tokens/turn from removed tool declarations and eliminates
@@ -29,11 +29,7 @@ function formatCategoryList(categories: SearchCategory[]): string {
   return categories.map((category) => `'${category}'`).join(", ");
 }
 
-export function buildWebSearchToolVariant(tool: Tool, capabilities: WebSearchToolCapabilities | null): Tool | null {
-  if (!capabilities || capabilities.categories.length === 0) {
-    return null;
-  }
-
+export function buildWebSearchToolVariant(tool: Tool, capabilities: WebSearchToolCapabilities): Tool {
   const categoryDescription =
     capabilities.categories.length === 1 && capabilities.categories[0] === "text"
       ? "Search category. Only 'text' is available for the active search backend this turn."
@@ -146,7 +142,7 @@ export class WebSearchTool extends BaseTool {
 
       // The dispatcher emits the per-engine Discord notice through the engine's underlying
       // tool wrapper: BraveEngine reuses the Internal*Tool classes that already call
-      // sendToolNotice, while DuckDuckGo and IAsk do it inside processWebSearch.
+      // sendToolNotice, while the SearXNG and DuckDuckGo engines send it themselves.
       return await executeWebSearchWithFallback(args.query as string, category, context, rawCount);
     } catch (error) {
       log.error("Error in web_search tool:", error as Error);

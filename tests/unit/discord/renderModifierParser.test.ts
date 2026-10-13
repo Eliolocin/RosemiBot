@@ -3,6 +3,7 @@ import type { TomoriState } from "@/types/db/schema";
 import {
   collectRenderModifierSourceNames,
   formatRenderModifierWebhookName,
+  hasLeadingPlainOwnNameLabel,
   isAllowedRenderModifierSpeakerLabel,
   matchesRenderModifierName,
   parseLeadingGenericSpeakerLabel,
@@ -232,5 +233,43 @@ describe("generic leading speaker label parser (opening-label leak guard)", () =
     expect(matchesRenderModifierName("CHRIS", ["chris"])).toBe(true);
     expect(matchesRenderModifierName("Matt", ["Chris"])).toBe(false);
     expect(matchesRenderModifierName("", ["Chris"])).toBe(false);
+  });
+});
+
+describe("plain own-name label detection (sprite revert)", () => {
+  const sourceNames = collectRenderModifierSourceNames("Locke", ["Lockie"]);
+
+  it("matches the active name and its aliases in plain and bold forms", () => {
+    expect(hasLeadingPlainOwnNameLabel("Locke: I was speaking.", sourceNames)).toBe(true);
+    expect(hasLeadingPlainOwnNameLabel("  lockie: hi", sourceNames)).toBe(true);
+    expect(hasLeadingPlainOwnNameLabel("**Locke:** hi", sourceNames)).toBe(true);
+    expect(hasLeadingPlainOwnNameLabel("**Locke**: hi", sourceNames)).toBe(true);
+  });
+
+  it("ignores decorated labels, mid-line labels, other names, and code fences", () => {
+    expect(hasLeadingPlainOwnNameLabel("Locke (smug): hi", sourceNames)).toBe(false);
+    expect(hasLeadingPlainOwnNameLabel("Note: Locke: hi", sourceNames)).toBe(false);
+    expect(hasLeadingPlainOwnNameLabel("I said Locke: hi", sourceNames)).toBe(false);
+    expect(hasLeadingPlainOwnNameLabel("Lockette: hi", sourceNames)).toBe(false);
+    expect(hasLeadingPlainOwnNameLabel("```\nLocke: hi", sourceNames)).toBe(false);
+  });
+});
+
+describe("neutral appearance webhook names", () => {
+  it("resolves an alter's neutral group-break name back to the plain persona name", () => {
+    const personaByNickname = new Map([["locke", persona("Locke", 7)]]);
+
+    const result = resolveRenderModifierSourcePersona("Locke (neutral)", personaByNickname);
+
+    expect(result).toEqual({ persona: persona("Locke", 7), displayName: "Locke", isNeutralAppearance: true });
+  });
+
+  it("leaves other decorated sprite names untouched", () => {
+    const personaByNickname = new Map([["locke", persona("Locke", 7)]]);
+
+    const result = resolveRenderModifierSourcePersona("Locke (smug)", personaByNickname);
+
+    expect(result?.displayName).toBe("Locke (smug)");
+    expect(result?.isNeutralAppearance).toBeUndefined();
   });
 });

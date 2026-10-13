@@ -1,5 +1,6 @@
 export default {
   status: {
+    prompt_hidden: `Nội dung prompt bị ẩn. Thành viên cần có quyền Quản lý Máy chủ hoặc bật tính năng xem prompt để xem nội dung này.`,
     description: `Xem trạng thái hiện tại của cá nhân, máy chủ hoặc persona.`,
     scope_choice_behavior: `Hành vi`,
     scope_choice_models: `Model`,
@@ -208,6 +209,7 @@ export default {
     mcp_server_type_custom: `Tùy chỉnh`,
     mcp_server_type_web_search: `Tìm kiếm web`,
     mcp_server_type_url_fetcher: `Trình trích xuất URL`,
+    mcp_server_type_prose_linter: `Trình kiểm tra văn phong`,
     mcp_server_auth_present: `Có xác thực`,
     mcp_server_auth_absent: `Không xác thực`,
     field_avatar: `Avatar`,

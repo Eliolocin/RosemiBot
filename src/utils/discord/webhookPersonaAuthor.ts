@@ -13,6 +13,8 @@ export interface ResolvedWebhookPersonaAuthor {
  * A decorated webhook name already contains the display label reconstructed from its render
  * modifier. A clean webhook name needs the persisted sprite mapping instead, because Discord
  * stores the persona name while the context pipeline needs the label the message rendered with.
+ * "Persona (neutral)" consults the mapping too, so a real sprite named "neutral" keeps its label
+ * while an alter's base-appearance revert reads back as the plain persona name.
  */
 export async function resolveWebhookPersonaAuthor(
   messageId: string,
@@ -23,12 +25,13 @@ export async function resolveWebhookPersonaAuthor(
   const persona = renderModifierSource?.persona ?? personaByNickname.get(normalizeRenderModifierName(webhookName));
   if (!persona) return null;
 
-  const spriteDisplayName = renderModifierSource
-    ? null
-    : await resolveSpriteMessageDisplayName(messageId, persona.persona_id, persona.persona_nickname);
+  const spriteDisplayName =
+    renderModifierSource && !renderModifierSource.isNeutralAppearance
+      ? null
+      : await resolveSpriteMessageDisplayName(messageId, persona.persona_id, persona.persona_nickname);
 
   return {
     persona,
-    displayName: renderModifierSource?.displayName ?? spriteDisplayName ?? persona.persona_nickname,
+    displayName: spriteDisplayName ?? renderModifierSource?.displayName ?? persona.persona_nickname,
   };
 }

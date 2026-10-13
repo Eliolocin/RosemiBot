@@ -49,6 +49,7 @@ import { persistMessageProxyAttestationIdentity } from "@/utils/messageProxy/per
 import { messageProxyInstanceRepository } from "@/utils/db/repositories/MessageProxyInstanceRepository";
 import { isMessageProxyInstanceBotPresent } from "@/utils/messageProxy/guildPresence";
 import type { Message } from "discord.js";
+import { verifyMessageWebhook, isManagedWebhookMessage } from "@/utils/chat/webhookIdentity";
 
 /**
  * Whether a moderator has timed the bot out in this guild.
@@ -104,6 +105,7 @@ export function normalizeChatInvocation(input: TomoriChatInput): ChatIncoming {
     systemTriggerIdentity: input.systemTriggerIdentity,
     manualStreamingContextOverrides: input.manualStreamingContextOverrides,
     sceneTurn: input.sceneTurn,
+    carriedExpressionDelivery: input.carriedExpressionDelivery,
     onGenerationResult: input.onGenerationResult,
     onQueueDiscard: input.onQueueDiscard,
   };
@@ -122,6 +124,11 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
 
   const { client, message } = incoming;
   const channel = message.channel;
+  await verifyMessageWebhook(message);
+  const cachedReference = message.reference?.messageId
+    ? message.channel.messages.cache.get(message.reference.messageId)
+    : undefined;
+  if (cachedReference) await verifyMessageWebhook(cachedReference);
   const isBotAuthor = message.author.bot;
   const isWebhookMessage = Boolean(message.webhookId);
   const isInteractionResponse = Boolean(message.interaction);
@@ -129,7 +136,8 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
   const isMatrixRelay = isMatrixRelayMessage(message);
   const messageProxyRecord = await resolveMessageProxyRecord(message, isWebhookMessage, isMatrixRelay);
   const isMessageProxy = Boolean(messageProxyRecord);
-  const isLikelySelfMessage = !isMatrixRelay && !isMessageProxy && (isFromClientUser || isWebhookMessage);
+  const isLikelySelfMessage =
+    !isMatrixRelay && !isMessageProxy && (isFromClientUser || isManagedWebhookMessage(message));
   const isRealUserMessage = isRealUserLikeMessage(message);
   const isActiveNaturalStopMessage =
     !incoming.isStopResponse &&
@@ -151,6 +159,10 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
     locale: "en-US",
     reason,
   });
+
+  if (isWebhookMessage && !isManagedWebhookMessage(message) && !isMessageProxy && !incoming.isManuallyTriggered) {
+    return ignored("untrusted_webhook");
+  }
 
   const isSeedPlaceholderMessage =
     isFromClientUser &&
@@ -186,7 +198,11 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
       }
     }
 
-    if (referencedMessage && (referencedMessage.author.id === client.user?.id || referencedMessage.webhookId)) {
+    if (referencedMessage) await verifyMessageWebhook(referencedMessage);
+    if (
+      referencedMessage &&
+      (referencedMessage.author.id === client.user?.id || isManagedWebhookMessage(referencedMessage))
+    ) {
       updateSelfReplyChainState(channel.id, false);
       return ignored("self_reply_reference");
     }
@@ -388,9 +404,8 @@ async function resolveMessageProxyRecord(
 
   // Client-owned webhooks (persona replies, user impersonation) can never be message-proxy reposts.
   // Skipping them avoids guaranteed transport misses that would stall this message's admission for
-  // the full retry cap and extend live speedbump waits. A proxied identity whose display name
-  // exactly matches a persona nickname is misclassified as self and falls back to plain-webhook
-  // behavior.
+  // the full retry cap and extend live speedbump waits. Managed webhook ownership is verified
+  // before this check, so a proxy member may safely share a persona's display name.
   if (getCachedImpersonatedUserIdForWebhook(message.webhookId)) {
     return null;
   }

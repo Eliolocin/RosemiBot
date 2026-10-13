@@ -1,12 +1,15 @@
 ---
 title: "Chatterbox TTS"
+aiGenerated: true
 ---
 
-Sử dụng `servers/tts/chatterbox/server.py` để sao chép giọng nói tiếng Anh với các thẻ sự kiện được hỗ trợ. Đường dẫn model nhanh mặc định là Chatterbox-Turbo (350M tham số). Bạn có thể chọn Chatterbox-Nano (110M tham số) cho các triển khai nhỏ hơn hướng tới CPU. Wrapper này không tải Chatterbox Multilingual V3.
+Sao chép giọng nói tiếng Anh với thẻ cảm xúc bằng cách sử dụng máy chủ chuyển văn bản thành giọng nói [Chatterbox](https://github.com/resemble-ai/chatterbox).
+
+Chatterbox chạy cục bộ thông qua `servers/tts/chatterbox/server.py`. Nó mặc định là model Chatterbox-Turbo nhanh (thông số 350M) với các thẻ sự kiện cảm xúc nội tuyến như `[laugh]` và `[sigh]`. Bạn cũng có thể định cấu hình model Chatterbox-Nano nhẹ (thông số 110M) để thiết lập CPU hoặc model 0,5B tiêu chuẩn để có hướng dẫn không cần phân loại (`cfg_weight`) và điều chỉnh `exaggeration` theo cảm xúc. Trình bao bọc này không tải Chatterbox Multilingual V3.
 
 ## Cài đặt
 
-Chạy các lệnh này từ thư mục gốc của kho lưu trữ TomoriBot, thư mục nơi bạn đã sao chép TomoriBot:
+Chạy các lệnh này từ thư mục gốc repo TomoriBot, thư mục nơi bạn đã sao chép TomoriBot:
 
 ### Windows PowerShell
 
@@ -30,36 +33,36 @@ python -m pip install -r servers/tts/chatterbox/requirements.txt
 python servers/tts/chatterbox/server.py
 ```
 
-Giữ cửa sổ terminal đó mở trong khi TomoriBot đang sử dụng Chatterbox. URL endpoint mặc định là `http://127.0.0.1:8011`; đặt `CHATTERBOX_PORT` để dùng cổng khác.
+Giữ thiết bị đầu cuối đó mở trong khi TomoriBot đang sử dụng Chatterbox. URL điểm cuối mặc định là `http://127.0.0.1:8011`; đặt `CHATTERBOX_PORT` để sử dụng cổng khác.
 
 ### Tùy chọn: sử dụng Chatterbox-Nano
 
-Nano yêu cầu bản dựng Chatterbox có tùy chọn trình tải `nano=True`. Sau khi thiết lập thông thường ở trên, hãy cài đặt bản sửa đổi thượng nguồn được ghim trong cùng môi trường ảo. Mã băm commit cố định phiên bản nguồn tương thích; đây không phải là một bảo đảm an ninh. Lệnh này yêu cầu `git` và giữ lại các phần phụ thuộc runtime đã được cài đặt:
+Nano yêu cầu bản dựng Chatterbox với tùy chọn trình tải `nano=True`. Sau quá trình thiết lập bình thường ở trên, hãy cài đặt bản sửa đổi ngược dòng được ghim trong cùng một môi trường ảo. Hàm băm cam kết sửa phiên bản nguồn tương thích; nó không phải là một đảm bảo an ninh. Lệnh này yêu cầu `git` và giữ các phần phụ thuộc thời gian chạy đã được cài đặt:
 
 ```sh
 python -m pip install --no-deps --force-reinstall "git+https://github.com/resemble-ai/chatterbox.git@5de7a54aa4e5e2baadb0182dde554908b48b85c2"
 ```
 
-Sau đó đặt `CHATTERBOX_FAST_MODEL=nano` trước khi khởi động wrapper. Để trống biến này đối với Turbo. Trên Windows PowerShell, hãy đặt biến bằng `$env:CHATTERBOX_FAST_MODEL = "nano"`; trên Linux hoặc macOS, sử dụng `CHATTERBOX_FAST_MODEL=nano python servers/tts/chatterbox/server.py`. Phản hồi `/health` báo cáo `fast_model` để bạn có thể xác minh lựa chọn đã tải. Nano và Turbo sử dụng cùng yêu cầu sao chép và các thẻ sự kiện được hỗ trợ. Cả hai đều chỉ hỗ trợ tiếng Anh.
+Sau đó đặt `CHATTERBOX_FAST_MODEL=nano` trước khi khởi động trình bao bọc. Không đặt biến cho Turbo. Trên Windows PowerShell, đặt nó bằng `$env:CHATTERBOX_FAST_MODEL = "nano"`; trên Linux hoặc macOS, hãy sử dụng `CHATTERBOX_FAST_MODEL=nano python servers/tts/chatterbox/server.py`. Phản hồi `/health` báo cáo `fast_model` để bạn có thể xác minh lựa chọn đã tải. Nano và Turbo sử dụng cùng một yêu cầu nhân bản và thẻ sự kiện được hỗ trợ. Cả hai đều chỉ có tiếng Anh.
 
-Nút bật tắt model nhanh trong `/config` phải luôn được bật để sử dụng Nano hoặc Turbo. Việc tắt nút này sẽ chọn model Chatterbox 0.5B tiêu chuẩn để tinh chỉnh trọng số CFG và độ phóng đại.
+`Chuyển đổi model` nhanh `/config` phải luôn được bật để sử dụng Nano hoặc Turbo. Việc tắt nó sẽ chọn model Chatterbox 0,5B tiêu chuẩn để điều chỉnh trọng số và cường điệu CFG.
 
-### Chatterbox tiêu chuẩn (0.5B với CFG & độ phóng đại)
+### Chatterbox tiêu chuẩn (0,5B với CFG và cường điệu)
 
-Model Chatterbox 0.5B gốc (`ChatterboxTTS`) được tích hợp trực tiếp vào server wrapper. Model này đánh đổi các thẻ sự kiện trong ngoặc vuông nội dòng của Turbo để lấy khả năng kiểm soát giọng nói chi tiết bằng cách sử dụng Classifier-Free Guidance (`cfg_weight`) và `exaggeration` (độ phóng đại cảm xúc).
+Model Chatterbox cơ sở 0,5B ban đầu (`ChatterboxTTS`) được tích hợp trực tiếp vào trình bao bọc máy chủ. Nó giao dịch các thẻ sự kiện trong khung nội tuyến của Turbo để kiểm soát giọng hát chi tiết hơn bằng cách sử dụng Hướng dẫn không cần phân loại (`cfg_weight`) và `exaggeration` đầy cảm xúc.
 
-Cách sử dụng model Tiêu chuẩn:
-1. Khởi động server wrapper như bình thường.
+Để sử dụng model Tiêu chuẩn:
+1. Khởi động trình bao bọc máy chủ như bình thường.
 2. Trong Discord, chạy `/config` > `Model` > `Tham số & Giọng đọc TTS`.
-3. Chuyển nút bật tắt tùy chọn Fast Model (Turbo) sang TẮT.
-4. Ở lần tạo tiếp theo, wrapper sẽ tải trễ và nạp model 0.5B tiêu chuẩn vào bộ nhớ.
+3. Tắt tùy chọn `Fast Model (Turbo)`.
+4. Ở thế hệ tiếp theo, trình bao bọc tải xuống và tải model 0,5B tiêu chuẩn vào bộ nhớ một cách lười biếng.
 
-Cả hai giá trị đều là các trường văn bản trong cửa sổ tương tác `Sửa tham số`. Chúng luôn có thể chỉnh sửa được, và trang có lưu ý rằng chúng sẽ bị bỏ qua khi model nhanh được bật:
-- `cfg_weight` (mặc định `0.5`): Điều chỉnh mức độ âm thanh tổng hợp bám sát theo nhịp độ và phong cách giọng nói tham chiếu.
-- `exaggeration` (mặc định `0.5`): Kiểm soát cường độ cảm xúc và ngữ điệu kịch tính khi truyền đạt.
+Cả hai giá trị đều là trường văn bản ở chế độ `Sửa tham số`. Chúng luôn có thể chỉnh sửa được và trang lưu ý rằng chúng bị bỏ qua khi model nhanh được bật:
+- **`cfg_weight`** (`0.5` mặc định): Điều chỉnh mức độ tuân thủ chặt chẽ của âm thanh tổng hợp với nhịp độ tham chiếu và phong cách giọng hát.
+- **`exaggeration`** (`0.5` mặc định): Kiểm soát cường độ cảm xúc và chuyển biến kịch tính của cách truyền tải.
 
-> [!NOTE]
-> Chatterbox tiêu chuẩn không hỗ trợ các thẻ sự kiện trong ngoặc vuông nội dòng (chẳng hạn như `[laughs]` hoặc `[sigh]`). TomoriBot tự động loại bỏ các thẻ trong ngoặc vuông khỏi văn bản prompt khi nút bật tắt Fast Model bị tắt.
+> [!GHI CHÚ]
+> Chatterbox tiêu chuẩn không hỗ trợ các thẻ sự kiện trong khung nội tuyến (chẳng hạn như `[laughs]` hoặc `[sigh]`). TomoriBot tự động loại bỏ các thẻ ngoặc khỏi văn bản nhắc khi tắt `Chuyển đổi model` nhanh.
 
 ## Đăng ký trong TomoriBot
 
@@ -74,31 +77,31 @@ Sau khi lưu kết nối, hãy chọn kết nối đó và sử dụng menu th�
 
 Sử dụng `/providers` để đăng ký endpoint và thiết lập model. Sau đó mở `/config` > Models > Switch Models để chọn và kích hoạt endpoint đã đăng ký.
 
-## Thiết lập giọng nói persona
+## Thiết lập giọng nói cá nhân
 
-1. Chuẩn bị một đoạn âm thanh giọng nói rõ ràng dài 10 giây với một người nói và không có nhạc nền.
-2. Mở `/config` trong phần Models > Tham số & Giọng đọc TTS và tải đoạn âm thanh lên.
-3. Mở `/config` trong phần Persona > Voice, sau đó chọn persona và mẫu giọng nói.
+1. Chuẩn bị một đoạn thoại ngắn gọn dài 10 giây với một loa và không có nhạc nền.
+2. Mở `/config` trong Models > `Tham số & Giọng đọc TTS` và tải clip lên.
+3. Mở `/config` trong Persona > `Giọng nói`, sau đó chọn persona và mẫu giọng nói.
 
-Đoạn âm thanh dài hơn không mang lại thêm giá trị nào cho Chatterbox, và cũng không bị từ chối. Runtime của nó cắt đoạn tham chiếu trước khi điều kiện hóa, nên phần âm thanh vượt quá cửa sổ vẫn được tải lên, lưu trữ, rồi sau đó bị bỏ qua ([`tts_turbo.py`](https://github.com/resemble-ai/chatterbox/blob/master/src/chatterbox/tts_turbo.py), [`tts.py`](https://github.com/resemble-ai/chatterbox/blob/master/src/chatterbox/tts.py)):
+Một đoạn clip dài hơn không bổ sung thêm điều gì cho Chatterbox và nó cũng không bị từ chối. Thời gian chạy của nó cắt bớt tham chiếu trước khi điều chỉnh, do đó, âm thanh qua cửa sổ sẽ được tải lên, lưu trữ và sau đó bị bỏ qua ([`tts_turbo.py`](https://github.com/resemble-ai/chatterbox/blob/master/src/chatterbox/tts_turbo.py), [`tts.py`](https://github.com/resemble-ai/chatterbox/blob/master/src/chatterbox/tts.py)):
 
-- Prompt âm học là 10 giây đầu tiên trên mọi biến thể.
-- Ngữ cảnh token giọng nói là 15 giây đầu tiên trên Turbo và Nano, và 6 giây trên Standard.
+- Lời nhắc bằng âm thanh là 10 giây đầu tiên trên mỗi biến thể.
+- Ngữ cảnh của mã thông báo lời nói là 15 giây đầu tiên trên Turbo và Nano và 6 giây trên Standard.
 
-Những cửa sổ này là hằng số trong runtime của thượng nguồn chứ không phải hướng dẫn được công bố: README của kho lưu trữ không nêu độ dài đoạn tham chiếu, và tên tệp ví dụ chỉ là `your_10s_ref_clip.wav`. Độ dài duy nhất mà runtime thực sự áp đặt là mức tối thiểu, yêu cầu prompt dài hơn 5 giây.
+Các cửa sổ đó là các hằng số trong thời gian chạy ngược dòng chứ không phải là hướng dẫn đã xuất bản: kho lưu trữ README không cung cấp độ dài clip tham chiếu và tên tệp ví dụ của nó chỉ là `your_10s_ref_clip.wav`. Độ dài mà thời gian chạy thực sự thực thi là tối thiểu, khẳng định rằng lời nhắc dài hơn 5 giây.
 
-Vì vậy, mười giây là mục tiêu thực tế. Độ dài này lấp đầy prompt âm học, nơi quyết định âm sắc và cách truyền đạt, và một đoạn từ 10 đến 15 giây chỉ bổ sung ngữ cảnh token giọng nói trên Turbo và Nano. Embedding của người nói vẫn được tính từ toàn bộ đoạn âm thanh, nên kéo dài hơn không làm thay đổi danh tính người nói, mà chỉ thay đổi lượng prompt bị bỏ đi mà không được đọc.
+Do đó, mười giây là mục tiêu thực tế. Nó lấp đầy lời nhắc âm thanh, nơi đặt âm sắc và cách phân phối, đồng thời một đoạn clip từ 10 đến 15 giây sẽ chỉ thêm bối cảnh mã thông báo lời nói trên Turbo và Nano. Việc nhúng người nói vẫn được tính toán từ toàn bộ clip, do đó, việc kéo dài thời gian hơn không làm thay đổi danh tính người nói mà chỉ loại bỏ bao nhiêu lời nhắc chưa đọc.
 
-Turbo và Nano có thể sử dụng các thẻ sự kiện trong ngoặc vuông như `[laugh]` và `[sigh]` khi nút bật tắt model nhanh được bật.
+Turbo và Nano có thể sử dụng các thẻ sự kiện khung như `[laugh]` và `[sigh]` khi bật `Chuyển đổi model` nhanh.
 
-## Tinh chỉnh tùy chọn
+## Điều chỉnh tùy chọn
 
-Sử dụng `/config` trong phần Models > Tham số & Giọng đọc TTS để tinh chỉnh payload yêu cầu Chatterbox:
+Sử dụng `/config` trong Model > `Tham số & Giọng đọc TTS` để điều chỉnh tải trọng yêu cầu Chatterbox:
 
-- Nút bật tắt model nhanh mặc định là bật. TomoriBot giữ lại các thẻ sự kiện Turbo/Nano được hỗ trợ và loại bỏ các thẻ mô tả trong ngoặc vuông không được hỗ trợ trước khi wrapper gọi `ChatterboxTurboTTS.generate(...)`.
-- `cfg_weight` mặc định là `0.5`. Giá trị tối thiểu là `0`; TomoriBot không đặt mức tối đa cứng. Giá trị này chỉ áp dụng khi `turbo` là `false`; các giá trị thấp hơn có thể giúp làm chậm các giọng nói tham chiếu nhanh, trong khi các giá trị cao hơn sẽ bám sát giọng tham chiếu mạnh mẽ hơn.
-- `exaggeration` mặc định là `0.5`. Giá trị tối thiểu là `0`; TomoriBot không đặt mức tối đa cứng. Giá trị này chỉ áp dụng khi `turbo` là `false`; các giá trị cao hơn làm cho cách truyền đạt giàu cảm xúc hoặc kịch tính hơn và có thể tăng tốc độ nói.
+- `Chuyển đổi model` nhanh được bật theo mặc định. TomoriBot giữ lại các thẻ sự kiện Turbo/Nano được hỗ trợ và loại bỏ các bộ mô tả khung không được hỗ trợ trước khi trình bao bọc gọi `ChatterboxTurboTTS.generate(...)`.
+- `cfg_weight` mặc định là `0.5`. Tối thiểu là `0`; TomoriBot không đặt mức tối đa cố định. Nó chỉ áp dụng khi `turbo` là `false`; các giá trị thấp hơn có thể giúp làm chậm các giọng nói tham chiếu nhanh, trong khi các giá trị cao hơn sẽ bám theo tham chiếu mạnh hơn.
+- `exaggeration` mặc định là `0.5`. Tối thiểu là `0`; TomoriBot không đặt mức tối đa cố định. Nó chỉ áp dụng khi `turbo` là `false`; giá trị cao hơn làm cho việc truyền tải trở nên biểu cảm hoặc kịch tính hơn và có thể tăng tốc độ nói.
 
-Các thẻ sự kiện Turbo/Nano được hỗ trợ là `[clear throat]`, `[sigh]`, `[shush]`, `[cough]`, `[groan]`, `[sniff]`, `[gasp]`, `[chuckle]`, và `[laugh]`. Các thẻ mô tả không được hỗ trợ như `[excited]`, `[whisper]`, hoặc `[smiles]` sẽ bị loại bỏ thay vì được gửi đến TTS.
+Các thẻ sự kiện Turbo/Nano được hỗ trợ là `[clear throat]`, `[sigh]`, `[shush]`, `[cough]`, `[groan]`, `[sniff]`, `[gasp]`, `[chuckle]` và `[laugh]`. Các bộ mô tả không được hỗ trợ như `[excited]`, `[whisper]` hoặc `[smiles]` sẽ bị loại bỏ thay vì được gửi tới TTS.
 
-Khi `turbo` bị tắt, TomoriBot sẽ loại bỏ tất cả các thẻ mô tả trong ngoặc vuông trước khi gửi văn bản đến TTS, sau đó wrapper sẽ tải trễ model `ChatterboxTTS` tiêu chuẩn và gọi `model.generate(..., cfg_weight, exaggeration)`.
+Khi `turbo` bị tắt, TomoriBot sẽ loại bỏ tất cả các bộ mô tả khung trước khi gửi văn bản tới TTS, sau đó trình bao bọc tải model `ChatterboxTTS` tiêu chuẩn một cách lười biếng và gọi `model.generate(..., cfg_weight, exaggeration)`.

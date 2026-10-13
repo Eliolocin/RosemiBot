@@ -2,139 +2,166 @@
 title: "Nhà cung cấp và model"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
-TomoriBot không tích hợp sẵn model AI nào, bạn cần kết nối model từ một nhà cung cấp. Một nhà cung cấp là một dịch vụ AI (Google Gemini, OpenRouter, NovelAI, một endpoint cục bộ, …), và một model là một model cụ thể trên nhà cung cấp đó. Bạn cần ít nhất một nhà cung cấp để có thể sử dụng bot.
+TomoriBot kết nối với các nhà cung cấp AI bên ngoài thay vì lưu trữ model tích hợp sẵn. Bạn có thể kết nối các dịch vụ được lưu trữ như Google Gemini, OpenRouter và NovelAI hoặc trỏ cô ấy đến các điểm cuối self-hosting cục bộ. Bạn cần ít nhất một nhà cung cấp để bắt đầu trò chuyện.
 
 ## API key
 <!-- anchor: api-keys -->
 
-Thêm key của nhà cung cấp trong lần thiết lập đầu tiên bằng lệnh `/setup`, hoặc sau này từ `/providers` bằng cách chọn `Thêm nhà cung cấp mới`. Các key được mã hóa khi lưu trữ, vì vậy không ai, kể cả quản trị viên máy chủ, có thể đọc lại được.
+Thêm khóa nhà cung cấp trong lần thiết lập đầu tiên với `/setup` hoặc sau này từ `/providers` bằng cách chọn `+ Add new Provider`. Khóa được mã hóa ở trạng thái lưu trữ nên không ai, kể cả quản trị viên máy chủ, có thể đọc lại chúng.
 
-Lệnh `/setup` sẽ hỏi cách chuyển câu trả lời đến model trước tiên, và câu trả lời sẽ quyết định những thông tin cần thu thập:
+`/setup` hỏi làm thế nào các câu trả lời sẽ tiếp cận một model trước bất kỳ điều gì khác và câu trả lời sẽ quyết định những gì nó thu thập:
 
-| Chế độ | Thông tin thu thập |
+| Cách thức | Những gì nó thu thập |
 |---|---|
-| Nhà cung cấp AI (Khuyên dùng) | Một nhà cung cấp từ danh mục kèm theo API key, được xác thực và mã hóa dưới dạng bản nháp. |
-| Endpoint tùy chỉnh (Nâng cao) | Kết nối của endpoint và một model văn bản, được đăng ký bên trong trình hướng dẫn. Xem [Endpoint tùy chỉnh](#endpoint-tuy-chinh). |
-| BYOK người dùng (chỉ dành cho máy chủ) | Không có gì: không gian làm việc không giữ nhà cung cấp riêng nào, vì vậy các thành viên phải tự cung cấp nhà cung cấp cá nhân. |
+| Nhà cung cấp AI (Được khuyến nghị) | Một nhà cung cấp từ danh mục cộng với khóa API của nó, được xác thực và mã hóa dưới dạng bản nháp. |
+| Endpoint tùy chỉnh | Kết nối điểm cuối và một model văn bản, được đăng ký bên trong trình hướng dẫn. Xem [Điểm cuối tùy chỉnh](#custom-endpoints). |
+| Người dùng BYOK (chỉ dành cho bang hội) | Không có gì: không gian làm việc không có nhà cung cấp riêng, vì vậy các thành viên phải cung cấp nhà cung cấp cá nhân. |
 
-Không có gì được ghi lại cho đến khi nhấn `Hoàn tất thiết lập`, vì vậy việc hủy bỏ hoặc để trình hướng dẫn hết hạn sẽ giữ nguyên các hàng nhà cung cấp hiện có của không gian làm việc. Để thay thế một key đã lưu, hãy sử dụng `/providers`, vì `/setup` từ chối chạy trên một không gian làm việc đã được cấu hình.
+Không có gì được ghi vào cơ sở dữ liệu cho đến khi bạn nhấn `Hoàn tất thiết lập`. Trình hướng dẫn bị bỏ rơi hoặc đã hết hạn sẽ giữ nguyên các hàng nhà cung cấp hiện có của không gian làm việc. Để thay thế khóa hiện có, hãy sử dụng `/providers`, vì `/setup` sẽ không chạy trên không gian làm việc đã được định cấu hình.
 
-Mỗi nhà cung cấp có các bước tạo key riêng. Hãy chạy `/help`, chọn `Thiết lập`, sau đó chọn Step 1: Lấy API key, và chọn nhà cung cấp của bạn để xem hướng dẫn từng bước chính xác, hoặc sử dụng các điểm bắt đầu sau:
+Mỗi nhà cung cấp có các bước tạo khóa riêng. Trong `/help`, chọn `Thiết lập`, sau đó là `Lấy API key` và chọn nhà cung cấp của bạn để xem hướng dẫn từng bước hoặc sử dụng các điểm bắt đầu sau:
 
-| Nhà cung cấp | Ghi chú | Lấy key |
+| nhà cung cấp | Ghi chú | Nhận chìa khóa |
 |---|---|---|
-| Google Gemini | Gói miễn phí, chạy được mọi tính năng. Khuyến nghị cho lần thiết lập đầu tiên. | [AI Studio](https://aistudio.google.com/apikey) |
-| OpenRouter | Một key, nhiều model (một số model miễn phí). | [OpenRouter keys](https://openrouter.ai/settings/keys) |
-| NovelAI | Trả phí định kỳ; kể chuyện/nhập vai không kiểm duyệt (chỉ văn bản). | [NovelAI](https://novelai.net/) |
-| DeepSeek | Model suy luận trả phí theo mức sử dụng. | [DeepSeek](https://platform.deepseek.com/api_keys) |
-| NVIDIA NIM | Văn bản, embedding và hình ảnh được lưu trữ sẵn. | [NVIDIA Build](https://build.nvidia.com/) |
-| Anthropic | Các model Claude qua API (không phải Claude Code). | - |
-| Z.ai | Dòng GLM. ⚠️ Điều khoản dịch vụ giới hạn sử dụng cho lập trình/tác tử. | [Z.ai](https://z.ai/) |
-| Vertex AI | Google Cloud qua `gcloud` ADC (tốt nhất cho thiết lập chạy cục bộ/phát triển). | xem bên dưới |
-| Vertex AI Express | Google Cloud API key BYOK (Bản xem trước, tập hợp con của Gemini). | [Express Mode](https://console.cloud.google.com/expressmode) |
-| Custom | Bất kỳ endpoint nào tương thích OpenAI (Ollama, vLLM, LiteLLM, …). | xem [Endpoint tùy chỉnh](#endpoint-tuy-chinh) |
+| Google Song Tử | Cấp miễn phí, chạy mọi tính năng. Khuyến nghị thiết lập đầu tiên. | [AI Studio](https://aistudio.google.com/apikey) |
+| OpenRouter | Một phím, nhiều mẫu (một số miễn phí). | [Phím OpenRouter](https://openrouter.ai/settings/keys) |
+| NovelAI | Đăng ký; kể chuyện và nhập vai không bị kiểm duyệt (chỉ văn bản). | [NovelAI](https://novelai.net/) |
+| tìm kiếm sâu | Model lý luận trả tiền khi bạn đi. | [Tìm sâu](https://platform.deepseek.com/api_keys) |
+| NVIDIA NIM | Lưu trữ văn bản, nội dung nhúng và hình ảnh. | [Bản dựng NVIDIA](https://build.nvidia.com/) |
+| nhân loại | Model Claude thông qua API (không phải Mã Claude). | [Nhân loại](https://console.anthropic.com/) |
+| Z.ai | Gia đình GLM. ⚠️ ToS hạn chế sử dụng trong các tình huống mã hóa và tác nhân. | [Z.ai](https://z.ai/) |
+| Vertex AI | Đám mây Google thông qua `gcloud` ADC (tốt nhất cho thiết lập nhà phát triển hoặc chạy cục bộ). | xem bên dưới |
+| Vertex AI Express | Google Đám mây API-key BYOK (Xem trước, tập hợp con Gemini). | [Chế độ tốc hành](https://console.cloud.google.com/expressmode) |
+| Phong tục | Bất kỳ điểm cuối tương thích OpenAI nào (Ollama, vLLM, LiteLLM,…). | xem [Điểm cuối tùy chỉnh](#custom-endpoints) |
 
 :::caution
-Không bao giờ chia sẻ API key của bạn với bất kỳ ai khác. Thêm hoặc thay thế mã thông báo xác thực Bearer của endpoint tùy chỉnh từ hành động `Sửa endpoint` trong `/providers`.
+Không bao giờ chia sẻ khóa API của bạn với bất kỳ ai khác. Thêm hoặc thay thế mã thông báo xác thực Bearer của điểm cuối tùy chỉnh từ hành động `Sửa endpoint` của nó trong `/providers`.
 :::
 
-Vertex AI xác thực bằng Application Default Credentials (ADC) thay vì khóa bí mật được lưu trữ. Đối với host cục bộ, ADC có thể lấy từ `gcloud`; các bản triển khai trên dịch vụ lưu trữ nên sử dụng workload identity hoặc tài khoản dịch vụ (service account). Riêng API key của AI Studio không thể xác thực toàn bộ Vertex AI. Dự án được chọn phải bật thanh toán và Vertex AI API, đồng thời danh tính của máy chủ cần có quyền truy cập Vertex. Hướng dẫn thiết lập có sẵn từ mục Google Vertex AI trên trang API Keys trong `/help`.
+Vertex AI xác thực bằng Thông tin xác thực mặc định của ứng dụng (ADC) thay vì bí mật được lưu trữ. Đối với lưu trữ cục bộ, ADC có thể đến từ `gcloud`; triển khai được lưu trữ trên máy chủ nên sử dụng danh tính khối lượng công việc hoặc tài khoản dịch vụ. Chỉ riêng khóa AI Studio API không thể xác thực toàn bộ Vertex AI. Dự án Google Cloud đã chọn phải có tính năng thanh toán và bật Vertex AI API, đồng thời danh tính máy chủ cần có quyền truy cập Vertex. Hướng dẫn thiết lập có sẵn từ Google Vertex AI trên trang `API Keys` trong `/help`.
 
-Thiết lập nhà cung cấp do Google hỗ trợ xác thực thông tin đăng nhập qua endpoint liệt kê model đã được chứng thực. Thao tác này không tạo văn bản hay phụ thuộc vào model trò chuyện nào hiện được đánh dấu là mặc định của danh mục, do đó một model mặc định bị khai tử không thể ngăn cản việc lưu thông tin đăng nhập hợp lệ.
+Thiết lập nhà cung cấp được Google hỗ trợ xác thực thông tin đăng nhập thông qua điểm cuối danh sách model được xác thực. Nó không tạo ra văn bản hoặc phụ thuộc vào bất kỳ model trò chuyện nào hiện được đánh dấu là mặc định của danh mục, do đó, model mặc định đã ngừng hoạt động không thể ngăn việc lưu thông tin xác thực hợp lệ.
 
 ### Tùy chọn: Key Brave Search
 
-Brave Search tách biệt với nhà cung cấp AI của bạn và chỉ tăng cường tính năng tìm kiếm web (thêm tìm kiếm hình ảnh, video và tin tức). Thiết lập bằng `/providers`. ⚠️ Brave bao gồm 5 USD/tháng tín dụng miễn phí, vì vậy hãy đặt hạn mức sử dụng 5 USD trong trang quản trị của Brave để tránh phát sinh chi phí.
+Brave Search tách biệt với nhà cung cấp AI của bạn và nâng cao khả năng tìm kiếm trên web bằng các kết quả hình ảnh, video và tin tức. Đặt nó trong `/providers`. ⚠️ Brave bao gồm tín dụng miễn phí $5/tháng, vì vậy hãy đặt giới hạn sử dụng $5 trong bảng điều khiển Brave để tránh các khoản phí không mong muốn.
 
 ## Chọn model
 
-Lệnh `/providers` quản lý thông tin xác thực của máy chủ, danh mục model và đăng ký endpoint, trong khi `/config` > Models > Switch Models chọn các chỉ định tính năng dùng chung mà mọi thành viên của máy chủ này sử dụng. Cả hai đều yêu cầu quyền cần thiết trong máy chủ. Các thành viên riêng lẻ quản lý thông tin xác thực và danh mục model của riêng mình bằng `/personal providers`, sau đó chọn model cá nhân trong `/personal config`. Cài đặt cá nhân đi theo họ trên mọi máy chủ mà họ sử dụng TomoriBot. Xem [Cá nhân hóa](/vi/features/knowledge/personalization/#your-own-providers) để biết thêm chi tiết.
+Sử dụng `/providers` để quản lý thông tin xác thực máy chủ, danh mục model và đăng ký điểm cuối. Sau đó, sử dụng `/config` > `Model` > Switch Models để chọn các nhiệm vụ khả năng chia sẻ mà mọi thành viên của máy chủ sử dụng. Cả hai lệnh đều yêu cầu quyền quản lý máy chủ.
 
-Các bảng điều khiển có tiêu đề `Nhà cung cấp của máy chủ` và `Nhà cung cấp cá nhân` để quyền sở hữu của chúng vẫn hiển thị rõ ràng sau khi tương tác lệnh mở ra.
+Các thành viên cá nhân quản lý thông tin xác thực và danh mục của riêng họ bằng `/personal providers`, sau đó chọn các mẫu cá nhân trong `/personal config`. Cài đặt cá nhân tuân theo họ trên mọi máy chủ nơi họ sử dụng TomoriBot. Xem [Cá nhân hóa](/vi/features/knowledge/personalization/#your-own-providers) để biết thiết lập của người dùng.
 
-Sau khi thiết lập nhà cung cấp, hãy dùng `/config` > Models > Switch Models để chọn các chỉ định tính năng dùng chung. Sáu vị trí thông thường chọn các mục model từ danh mục của nhà cung cấp:
+Các bảng này có tiêu đề `Nhà cung cấp của máy chủ` và `Nhà cung cấp cá nhân` nên quyền sở hữu rõ ràng khi mở.
 
-- `/config` > Models > Switch Models: model trò chuyện chính
-- `/config` > Models > Switch Models: model thị giác (để đọc hình ảnh khi model trò chuyện không hỗ trợ)
-- `/config` > Models > Switch Models: embedding cho [cơ sở tri thức tài liệu](/vi/features/knowledge/memory/#document-knowledge-base-rag)
-- `/config` > Models > Switch Models: tạo ảnh tiêu chuẩn (xem [Tạo ảnh](/vi/features/capabilities/media-generation/image-generation/))
-- `/config` > Models > Switch Models: tạo ảnh NovelAI
-- `/config` > Models > Switch Models: tạo video
-- `/config` > Models > Switch Models: endpoint chuyển văn bản thành giọng nói (TTS)
-- `/config` > Models > Switch Models: endpoint chuyển giọng nói thành văn bản (STT)
+Trong `/config` > `Model` > `Chuyển đổi model`, bạn có thể chỉ định model và điểm cuối trên tám khe khả năng:
 
-Sáu mục đầu tiên chọn các bản ghi danh mục model. Các vị trí TTS và STT chọn các endpoint trong phạm vi không gian làm việc, vì vậy chúng kích hoạt endpoint đã chọn thay vì ghi vào một cột model. Đăng ký và chỉnh sửa các endpoint đó trong `/providers`; trình điều khiển kích hoạt endpoint của lệnh này vẫn hoạt động. Lệnh `/personal config` giữ lại sáu vị trí định tuyến model cá nhân và không thêm bộ chọn endpoint TTS/STT cá nhân.
+- **Văn bản**: model trò chuyện chính.
+- **Tầm nhìn**: đọc hình ảnh khi model trò chuyện không thể đọc được.
+- **Phần nhúng**: hỗ trợ [cơ sở kiến thức tài liệu](/vi/features/knowledge/memory/#document-knowledge-base-rag).
+- **Hình ảnh tiêu chuẩn**: tạo hình ảnh tiêu chuẩn (xem [Tạo hình ảnh](/vi/features/capabilities/media-generation/image-generation/)).
+- **Hình ảnh NovelAI**: Tạo hình ảnh NovelAI.
+- **Video**: tạo video.
+- **Điểm cuối TTS**: điểm cuối chuyển văn bản thành giọng nói.
+- **Điểm cuối STT**: điểm cuối chuyển âm thanh từ giọng nói thành văn bản.
 
-Bạn cũng có thể quản lý các key dự phòng của máy chủ này để tự động chuyển đổi dự phòng và cân bằng tải bằng `/providers`.
+Sáu vị trí đầu tiên chọn bản ghi danh mục model. Thay vào đó, các khe TTS và STT chọn điểm cuối trong phạm vi không gian làm việc, kích hoạt điểm cuối đã chọn thay vì ghi cột model. Đăng ký và chỉnh sửa các điểm cuối đó trong `/providers`. `/personal config` giữ lại sáu khe định tuyến model cá nhân và không bao gồm bộ chọn điểm cuối TTS/STT cá nhân.
+
+Bạn cũng có thể quản lý các khóa dự phòng để tự động chuyển đổi dự phòng và cân bằng tải trong `/providers`.
+
+## Model quyết định
+<!-- anchor: decision-models -->
+
+Model quyết định là một danh mục riêng biệt trong `/providers` và `/personal providers`. Chúng trả lời các vị từ được định kiểu bằng xác suất. Việc đăng ký không làm thay đổi model trò chuyện đang hoạt động, không thiết lập hiệu chuẩn hoặc kích hoạt tính năng bỏ qua duyệt phản hồi. Các bảng điều khiển này vẫn chưa chọn một model quyết định.
+
+OpenRouter là nhà cung cấp gốc được hỗ trợ. Hãy lưu khóa của nó, mở menu thả xuống model và chọn `+ Thêm một model quyết định`. Nhập ID từ danh mục Quyết định đã được xác minh của nó. Danh mục toàn cầu bao gồm `typesafe/jev-1.13`; các đăng ký bổ sung thuộc về máy chủ hoặc chủ sở hữu cá nhân của chúng. Tính năng khám phá gốc cung cấp giới hạn đầu vào và giá đã được ghi nhận. Danh mục trò chuyện không thể thiết lập hỗ trợ Quyết định.
+
+Đối với dịch vụ tùy chỉnh, chọn `Thêm endpoint tùy chỉnh mới`, sau đó chọn `Tương thích System One` hoặc `Tương thích OpenAI Decisions` trong `Độ tương thích API`. Lưu URL cơ sở API và thông tin xác thực Bearer tùy chọn. Menu thả xuống model của nó cung cấp `+ Thêm một model quyết định` và kế thừa giao thức đó. Nhập ID model đã được ghi nhận và giới hạn token đầu vào (tối thiểu 512). Jev, Laya và Kev sử dụng khả năng tương thích System One. Các endpoint tương thích trò chuyện và gốc Ollama hiện có không cung cấp hành động này.
+
+Nguồn gốc thuần túy được chuẩn hóa thành `/v1`. Các phiên bản rõ ràng và tiền tố gateway vẫn được giữ nguyên: `https://decision.example.invalid/gateway/v1` gọi `/gateway/v1/systemone` cho System One hoặc `/gateway/v1/decisions` cho OpenAI Decisions. Khả năng truy cập sử dụng `GET <stored-base>/models` mà không gửi dữ liệu cuộc trò chuyện; điều này không chứng nhận khả năng của model. Các model tùy chỉnh được đăng ký thủ công từ tài liệu dịch vụ của chúng khi tính năng khám phá không thể thiết lập siêu dữ liệu tính năng cần thiết.
+
+Mở đăng ký Quyết định đã lưu để chỉnh sửa. Các chỉnh sửa tùy chỉnh bảo toàn chính xác danh tính model và endpoint của nó. Chọn `Xóa đăng ký quyết định này` trong `Thao tác đăng ký` để xóa nó trong khi vẫn giữ lại kết nối và thông tin xác thực. Việc xóa nhà cung cấp hoặc endpoint chính của nó sẽ xóa các đăng ký của chủ sở hữu đó. Các chủ sở hữu khác giữ lại các mục được chia sẻ. Danh sách model phân trang sau 18 đăng ký có thể chỉnh sửa bằng các điều khiển trang hiện có.
+
+Đăng ký và thông tin xác thực của nhà cung cấp vẫn nằm ngoài việc xuất và nhập persona/cấu hình. Đặt lại cấu hình sẽ giữ nguyên các đăng ký đã lưu; việc xóa mục cha sẽ dọn dẹp chúng một cách rõ ràng.
 
 ## Endpoint tùy chỉnh
 <!-- anchor: custom-endpoints -->
 
-Các endpoint tùy chỉnh cho phép bạn đăng ký các dịch vụ tự host hoặc thông qua proxy (Ollama, LM Studio, LiteLLM, vLLM, ComfyUI, TTS/STT cục bộ) dưới dạng các gói nhà cung cấp có nhãn.
+Điểm cuối tùy chỉnh cho phép bạn đăng ký các dịch vụ self-hosting hoặc hỗ trợ proxy (Ollama, LM Studio, LiteLLM, vLLM, ComfyUI, TTS/STT cục bộ) dưới dạng gói nhà cung cấp được gắn nhãn.
 
-- Phạm vi máy chủ: mở `/providers` để đăng ký và chỉnh sửa endpoint của không gian làm việc.
-- Phạm vi cá nhân: mở `/personal providers` cho danh mục model cá nhân (chỉ riêng bạn: xem [Cá nhân hóa](/vi/features/knowledge/personalization/#your-own-providers)). Các endpoint giọng nói cá nhân không được chọn từ `/personal config`.
+- **Phạm vi máy chủ**: mở `/providers` để đăng ký và chỉnh sửa điểm cuối không gian làm việc.
+- **Phạm vi cá nhân**: mở `/personal providers` để xem danh mục mẫu cá nhân (xem [Cá nhân hóa](/vi/features/knowledge/personalization/#your-own-providers)). Điểm cuối lời nói cá nhân không được chọn từ `/personal config`.
 
-Một nhãn (label) là tên menu hiển thị cho người dùng và gom nhóm các tính năng dưới một gói khi chúng dùng chung một URL endpoint. Nhãn không bao giờ được gửi đến endpoint từ xa. Các tính năng được phân phối từ các URL khác nhau cần có các nhãn riêng biệt. Chọn `Thêm endpoint tùy chỉnh mới`, chọn tính tương thích API và lưu kết nối. Việc lưu sẽ chuẩn bị các tính năng được giao thức đó hỗ trợ mà không cần đăng ký bất kỳ model nào. Sau đó chọn endpoint mới và sử dụng menu thả xuống model của endpoint để đăng ký chính xác mã model và tính năng. Việc thêm một model sẽ kích hoạt model đó cho tính năng tương ứng. Sử dụng cùng một menu thả xuống để đính kèm thêm model hoặc chỉnh sửa đăng ký do không gian làm việc thêm vào. Các model văn bản tự khai báo tính năng của mình trong biểu mẫu đó, và các model hình ảnh khai báo chế độ yêu cầu mà chúng hỗ trợ.
+Nhãn là tên menu giao diện người dùng và nhóm các khả năng trong một gói khi chúng chia sẻ một URL điểm cuối. Nó không bao giờ được gửi đến dịch vụ từ xa. Khả năng được phân phát từ các URL khác nhau cần có nhãn riêng biệt.
 
-Đối với TTS và STT, hãy đăng ký endpoint và model của nó trong `/providers`, sau đó chọn và kích hoạt endpoint trong `/config` > Models > Switch Models. Các vị trí giọng nói đó chọn một endpoint thay vì một mục danh mục model. `/providers` vẫn là giao diện đăng ký endpoint, thiết lập model và chỉnh sửa.
+Để thêm điểm cuối tùy chỉnh:
 
-Tính tương thích API xác định đường dẫn yêu cầu và payload mà dịch vụ triển khai, do đó nó cũng xác định các vị trí tính năng mà kết nối chuẩn bị. Việc đăng ký model chính xác cho các vị trí đó là một bước riêng biệt, và giao thức không thể suy luận một cách đáng tin cậy từ URL endpoint.
+1. Trong `/providers`, chọn `Add New Custom Endpoint`.
+2. Chọn khả năng tương thích API và lưu kết nối. Việc lưu chuẩn bị các khả năng được giao thức đó hỗ trợ mà không cần đăng ký bất kỳ model nào.
+3. Chọn điểm cuối mới và sử dụng model thả xuống của nó để đăng ký mã và khả năng chính xác của model. Việc thêm một model sẽ kích hoạt nó cho khả năng đó.
+4. Sử dụng cùng một danh sách thả xuống để đính kèm nhiều model hơn hoặc chỉnh sửa các đăng ký hiện có. Các model văn bản khai báo các khả năng của chính chúng ở dạng đó và các model hình ảnh khai báo các chế độ yêu cầu mà chúng hỗ trợ.
 
-Chế độ `Endpoint tùy chỉnh (Nâng cao)` của `/setup` thực hiện hai bước tương tự bên trong trình hướng dẫn: `Cấu hình kết nối` lưu tính tương thích API, nhãn, URL và mã thông báo xác thực tùy chọn phía sau bước kiểm tra khả năng tiếp cận, và `Cấu hình model văn bản` đăng ký model văn bản chính xác cùng các khai báo tính năng của nó. Nút model vẫn bị tắt cho đến khi kết nối được xác thực, và việc lưu lại kết nối sẽ xóa khai báo model vì các khai báo phụ thuộc vào tính tương thích API. Trình hướng dẫn tạo kết nối, nhà cung cấp đã lưu, model và các hàng model đang hoạt động cùng nhau khi bạn nhấn `Hoàn tất thiết lập`, vì vậy nó không bao giờ để lại một kết nối không có model văn bản khả dụng. Nó chỉ đăng ký model văn bản; các tính năng hình ảnh, video, TTS và STT vẫn được đăng ký trong `/providers`.
+Đối với TTS và STT, hãy đăng ký điểm cuối và các model của nó trong `/providers`, sau đó chọn và kích hoạt điểm cuối trong `/config` > `Model` > `Chuyển đổi model`. Các khe giọng nói đó chọn điểm cuối thay vì mục nhập danh mục model.
 
-Để xem hướng dẫn đầy đủ về cách chạy các máy chủ, hãy xem:
+Khả năng tương thích của API xác định đường dẫn yêu cầu và tải trọng mà dịch vụ triển khai, do đó, nó cũng xác định khe cắm khả năng nào mà kết nối chuẩn bị. Việc đăng ký model chính xác cho các vị trí đó là một bước riêng biệt vì giao thức không thể được suy ra một cách đáng tin cậy chỉ từ URL điểm cuối.
+
+Chế độ `Endpoint tùy chỉnh` của `/setup` thực hiện hai bước tương tự bên trong trình hướng dẫn: `Cấu hình kết nối` lưu khả năng tương thích, nhãn, URL và mã thông báo xác thực tùy chọn của API đằng sau kiểm tra khả năng tiếp cận và `Cấu hình model văn bản` đăng ký model văn bản chính xác và các khai báo khả năng của nó. Nút model vẫn bị tắt cho đến khi kết nối xác thực và việc lưu lại kết nối sẽ xóa phần khai báo model vì các phần khai báo phụ thuộc vào khả năng tương thích API. Trình hướng dẫn tạo các hàng kết nối, nhà cung cấp đã lưu, model và model hoạt động cùng nhau khi bạn nhấn `Hoàn tất thiết lập`. Trình hướng dẫn chỉ đăng ký các mẫu văn bản; Các khả năng hình ảnh, video, TTS và STT được đăng ký trong `/providers`.
+
+OpenCode Go (`https://opencode.ai/zen/go/v1`) và OpenCode Zen (`https://opencode.ai/zen/v1`) hoạt động như các điểm cuối tùy chỉnh tương thích với OpenAI. TomoriBot gửi cho họ ID phiên cho mỗi cuộc trò chuyện mà họ yêu cầu, bắt nguồn từ hàm băm của kênh và cá nhân, vì vậy không có ID Discord nào rời khỏi bot.
+
+Để biết hướng dẫn đầy đủ về cách chạy máy chủ cục bộ, hãy xem:
 
 - [Thiết lập: LLM cục bộ](/vi/self-hosting/local-endpoints/setup-local-llm/): Ollama, KoboldCPP, LM Studio, vLLM, LiteLLM.
-- [Thiết lập: ComfyUI](/vi/self-hosting/local-endpoints/setup-comfyui/): tạo hình ảnh/video cục bộ.
-- [Thiết lập: ChatMock](/vi/self-hosting/local-endpoints/setup-chatmock/): tài khoản ChatGPT / Codex CLI.
+- [Thiết lập: ComfyUI](/vi/self-hosting/local-endpoints/setup-comfyui/): tạo hình ảnh và video cục bộ.
+- [Thiết lập: ChatMock](/vi/self-hosting/local-endpoints/setup-chatmock/): Tài khoản ChatGPT hoặc Codex CLI.
 
 ## Các nhà cung cấp được hỗ trợ
 <!-- anchor: supported-providers -->
 
-Nếu bạn không có phần cứng để tự host model của riêng mình, TomoriBot hỗ trợ nhiều loại dịch vụ. Không phải mọi tính năng đều có sẵn trên mọi nhà cung cấp.
+Nếu bạn không có phần cứng để lưu trữ các model của riêng mình, TomoriBot hỗ trợ nhiều dịch vụ đám mây. Không phải mọi tính năng đều có sẵn trên mọi nhà cung cấp.
 
 ### Nhà cung cấp LLM
 
-| Nhà cung cấp | Truyền phát (Streaming) | Gọi công cụ (Tool Calling) | Nhận diện hình ảnh (Image Input) | Embeddings | Ghi chú |
+| nhà cung cấp | Truyền phát | Gọi công cụ | Nhập hình ảnh | Nhúng | Ghi chú |
 |---|---|---|---|---|---|
-| Google Gemini | ✅ | ✅ | ✅ | ✅ | Có sẵn các model miễn phí |
-| OpenRouter | ✅ | ✅ | ✅ | ✅ | Có sẵn các model miễn phí |
-| Anthropic (API) | ✅ | ✅ | ✅ | - | Không phải Claude Code |
-| NovelAI | ✅ | ✅ | - | - | Chỉ GLM 4.6 có thể dùng công cụ |
-| NVIDIA NIM | ✅ | ✅ | ✅ | ✅ | Có sẵn các model miễn phí |
-| DeepSeek | ✅ | ✅ | - | - | - |
-| Z.ai | ✅ | ✅ | ✅ | - | Model miễn phí; ⚠️ Điều khoản dịch vụ = chỉ dùng cho lập trình/tác tử |
-| Z.ai Coding | ✅ | ✅ | - | - | Gói thuê bao trả phí |
+| Google Song Tử | ✅ | ✅ | ✅ | ✅ | Có sẵn các mẫu miễn phí |
+| OpenRouter | ✅ | ✅ | ✅ | ✅ | Có sẵn các mẫu miễn phí |
+| Nhân loại (API) | ✅ | ✅ | ✅ | - | Không phải mã Claude |
+| NovelAI | ✅ | ✅ | - | - | Chỉ GLM 4.6 mới có thể sử dụng công cụ |
+| NVIDIA NIM | ✅ | ✅ | ✅ | ✅ | Có sẵn các mẫu miễn phí |
+| tìm kiếm sâu | ✅ | ✅ | - | - | - |
+| Z.ai | ✅ | ✅ | ✅ | - | Model miễn phí; ⚠️ ToS = chỉ sử dụng mã hóa và tác nhân |
+| Mã hóa Z.ai | ✅ | ✅ | - | - | Gói đăng ký |
 | Google Vertex AI | ✅ | ✅ | ✅ | ✅ | Bao gồm phiên bản Express 'miễn phí' |
-| Codex CLI (qua ChatMock) | ✅ | ✅ | ✅ | - | [Thiết lập](/vi/self-hosting/local-endpoints/setup-chatmock/) |
+| Codex CLI (thông qua ChatMock) | ✅ | ✅ | ✅ | - | [Thiết lập](/vi/self-hosting/local-endpoints/setup-chatmock/) |
 
 ### Tạo hình ảnh
 
-| Nhà cung cấp | Văn bản thành ảnh | Ảnh thành ảnh | Vẽ đè (Inpainting) | Ghi chú |
+| nhà cung cấp | Chuyển văn bản thành hình ảnh | Chuyển hình ảnh thành hình ảnh | Sơn trong | Ghi chú |
 |---|---|---|---|---|
 | Google | ✅ | ✅ | - | - |
 | OpenRouter | ✅ | ✅ | - | - |
 | NovelAI | ✅ | ✅ | ✅ | Có thể kết hợp với các nhà cung cấp khác |
-| NVIDIA | ✅ | - | - | Chỉ hỗ trợ chuyển văn bản thành ảnh; ảnh tham chiếu bị bỏ qua |
+| NVIDIA | ✅ | - | - | Chỉ chuyển văn bản thành hình ảnh; hình ảnh tham khảo bị bỏ qua |
 | Z.ai | ✅ | - | - | - |
 
-Đây là các thiết lập mặc định mà model hình ảnh của nhà cung cấp bắt đầu, và NovelAI chạy qua quy trình riêng của nó thay vì bảng này. Việc đăng ký model hình ảnh thông qua `/providers` cho phép bạn khai báo các chế độ riêng của model đó, đó là cách bạn bật inpainting trên quy trình làm việc ComfyUI hoặc trên model của nhà cung cấp có API hỗ trợ chỉnh sửa theo vùng chọn (mask). Một model bạn không bao giờ khai báo sẽ tiếp tục tuân theo các giá trị mặc định ở trên, do đó một chỉnh sửa sau này cho chúng sẽ tự động áp dụng cho model đó. Chỉ khai báo những gì model thực sự hỗ trợ: Tomori cung cấp cho công cụ chính xác các chế độ bạn đánh dấu, và một chế độ mà API từ chối sẽ khiến quá trình tạo ảnh thất bại.
+Đây là các giá trị mặc định mà model hình ảnh của nhà cung cấp bắt đầu từ đó. NovelAI chạy qua đường dẫn riêng của nó chứ không phải bảng này. Đăng ký model hình ảnh thông qua `/providers` cho phép bạn khai báo các chế độ riêng của model đó, đó là cách bạn kích hoạt tính năng inpainting trên quy trình công việc ComfyUI hoặc trên model nhà cung cấp có API hỗ trợ chỉnh sửa ẩn. Một model bạn không bao giờ khai báo sẽ tiếp tục tuân theo các giá trị mặc định ở trên. Chỉ khai báo những gì model hỗ trợ: TomoriBot chỉ cung cấp các công cụ cho các chế độ bạn chọn và các chế độ không được hỗ trợ sẽ không thành công tại thời điểm tạo.
 
 ### Tạo video
 
-| Nhà cung cấp | Văn bản thành video | Ảnh thành video | Ghi chú |
+| nhà cung cấp | Chuyển văn bản thành video | Chuyển hình ảnh thành video | Ghi chú |
 |---|---|---|---|
-| Google | ✅ | ✅ | Quy trình thăm dò không đồng bộ |
-| OpenRouter | ✅ | ✅ | Quy trình thăm dò không đồng bộ |
-| Z.ai | ✅ | ✅ | Quy trình thăm dò không đồng bộ |
+| Google | ✅ | ✅ | Quy trình bỏ phiếu không đồng bộ |
+| OpenRouter | ✅ | ✅ | Quy trình bỏ phiếu không đồng bộ |
+| Z.ai | ✅ | ✅ | Quy trình bỏ phiếu không đồng bộ |
 
 ### Giọng nói và âm thanh
 
-| Nhà cung cấp | Chuyển văn bản thành giọng nói (TTS) | Chuyển giọng nói thành văn bản (STT) |
+| nhà cung cấp | Chuyển văn bản thành giọng nói | Chuyển giọng nói thành văn bản |
 |---|---|---|
 | ElevenLabs | ✅ | ✅ |
 
-Các công cụ giọng nói cục bộ được trình bày trong [Self-Hosting](/vi/self-hosting/). Đối với các công cụ tìm kiếm web và đọc URL tích hợp sẵn, hãy xem [Công cụ và tiện ích mở rộng](/vi/features/capabilities/tools-and-extensions/#web-search--url-reading).
+Công cụ giọng nói cục bộ được đề cập trong [Tự lưu trữ](/vi/self-hosting/). Để biết tính năng tìm kiếm trên web và đọc URL tích hợp, hãy xem [Công cụ & tiện ích mở rộng](/vi/features/capabilities/tools-and-extensions/#web-search--url-reading).

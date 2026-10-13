@@ -1,7 +1,6 @@
 export default {
   genai: {
     generic_error_title: `Erro de Geração`,
-    generic_error_description: `{error_message}`,
     error_stream_timeout_title: `Tempo Limite de Conexão`,
     error_stream_timeout_description: `Se isso continuar acontecendo, pode haver um problema temporário com o provedor de IA escolhido. Por favor, tente novamente mais tarde ou use \`/refresh\` para atualizar o histórico de contexto.`,
     empty_response_title: `Resposta Vazia`,
@@ -20,7 +19,6 @@ export default {
 {failure_list}`,
     fallback_used_failure_line: `{index}. {model} falhou com {error_detail}`,
     fallback_used_details_button: `Secundário Usado`,
-    fallback_used_hide_footer: `Oculte isso e redirecione detalhes para os registros de pensamento em \`/config\` > Comportamento > Avisos`,
     fallback_used_personal_opt_out_footer: `Impeça que o modelo do servidor cubra as falhas do seu provedor pessoal em \`/personal config\` > Modelos > Reservas`,
     markdown_table: {
       show_button: `Mostrar Markdown`,
@@ -29,6 +27,8 @@ export default {
     },
     no_response_title: `Sem Resposta`,
     no_response_description: `Não respondi - isso pode ser devido a uma resposta vazia ou tempo limite da IA.`,
+    log_channel_chat_notice_title: `Conversa Desativada no Canal de Logs`,
+    log_channel_chat_notice_description: `Este canal está definido como canal de logs, então não respondo a mensagens aqui. Para conversar aqui, limpe ou altere essa configuração em \`/config\` > Canais > Logs.`,
     thought_log: {
       title: `Registro de Pensamento`,
       description: `Fonte: {source_line}`,
@@ -76,6 +76,12 @@ export default {
       inactivity_timeout_title: `🟡️ Tempo Limite da Resposta Esgotado`,
       inactivity_timeout_description: `O provedor de IA parou de responder e o tempo limite da conexão se esgotou. Isso pode acontecer quando o provedor está sobrecarregado ou com problemas. Por favor, tente novamente.`,
       first_token_timeout_description: `O provedor de IA aceitou a solicitação, mas nunca começou a responder, então o tempo limite da conexão se esgotou. A fila dele provavelmente está congestionada. Por favor, tente novamente ou troque para um modelo menos ocupado.`,
+    },
+    error_detail: {
+      button: `Mostrar erro completo`,
+      title: `Erro completo do provedor`,
+      manage_server_only: `Apenas membros com \`Gerenciar Servidor\` podem ver o erro completo.`,
+      personal_only: `Este erro veio de um provedor pessoal, então apenas o proprietário pode ver o erro completo.`,
     },
     // Atomic tip-item strings rendered by createTipText() as a dashed bullet list in a read-only
     // modal. Each key is one bullet; callers compose conditional items instead of maintaining
@@ -135,6 +141,10 @@ export default {
       content_blocked_default_message: `Seu conteúdo foi bloqueado pelos filtros de segurança`,
       unknown_default_message: `Ocorreu um erro inesperado`,
     },
+    vertex: {
+      config_error_message: `O Vertex AI não conseguiu ler as configurações deste provedor. Informe a chave como \`project-id::location\` em \`/providers\`.`,
+      auth_error_message: `O Vertex AI não conseguiu autenticar. Quem hospeda o TomoriBot precisa configurar as Application Default Credentials do Google Cloud (\`gcloud auth application-default login\` ou \`GOOGLE_APPLICATION_CREDENTIALS\`).`,
+    },
     vertexexpress: {
       "403_predict_permission_message": `Esta chave não pode chamar modelos do Vertex AI Express. Use uma chave do modo Express, ou use o provedor \`vertex\` separado para projetos completos do Google Cloud.`,
       unknown_default_message: `Ocorreu um erro inesperado`,
@@ -178,6 +188,7 @@ O modelo selecionado requer a permissão de dados para treinamento de modelo pag
     },
     custom: {
       "402_default_message": `Sua conta com este endpoint tem saldo insuficiente`,
+      REDIRECT_CREDENTIALS_WITHHELD_default_message: `Este endpoint redirecionou para um endereço diferente, por isso o TomoriBot não enviou sua chave de API para lá. Quem gerencia este endpoint em \`/providers\` pode corrigir isso alterando sua URL para o endereço final para o qual o servidor redireciona.`,
       unknown_default_message: `Ocorreu um erro inesperado`,
     },
     deepseek: {
@@ -194,40 +205,40 @@ O modelo selecionado requer a permissão de dados para treinamento de modelo pag
       "401_default_message": `A NVIDIA não reconheceu esta chave. Verifique se ela foi copiada por completo, incluindo o prefixo \`nvapi-\`.`,
       "403_default_message": `A NVIDIA recusou esta chave. Ela pode estar digitada errado, expirada ou sem acesso a inferência na conta.`,
       "404_default_message": `O modelo NVIDIA NIM solicitado não pôde ser encontrado. Ele pode ter sido descontinuado pela NVIDIA.`,
-      "500_default_message": `O backend da NVIDIA servindo este modelo falhou. Isso geralmente é temporário, então tente novamente em um momento. Os detalhes abaixo são do próprio relatório da NVIDIA e são oficiais: se eles nomearem um parâmetro de solicitação, ajuste essa configuração em vez de adivinhar.`,
+      "500_default_message": `O backend da NVIDIA que serve este modelo falhou. Isso costuma ser temporário, então tente novamente em instantes. Se continuar falhando, quem hospeda o TomoriBot pode ler o relatório completo da NVIDIA nos logs do bot.`,
       // Shown instead of 500_default_message only when NVIDIA's own text names a droppable request
       // parameter. Asserting this cause on every 500 previously sent users to change settings the
       // failing payload never carried.
-      "500_parameter_default_message": `A NVIDIA rejeitou um ou mais parâmetros de solicitação para este modelo. Se os detalhes nomearem parâmetros de sampler não suportados, como \`min_p\`, defina-os como \`0\` com \`/config\` > Modelos > Samplers e Parâmetros para desativá-los. Se os detalhes nomearem \`logit_bias\`, limpe as entradas salvas com \`/config\` > Modelos > Samplers e Parâmetros.`,
+      "500_parameter_default_message": `A NVIDIA rejeitou um ou mais parâmetros de solicitação para este modelo. Em \`/config\` > Modelos > Samplers e Parâmetros, defina como \`0\` os samplers não suportados, como \`min_p\`, e limpe as entradas salvas de \`logit_bias\`.`,
       unknown_default_message: `Ocorreu um erro inesperado`,
     },
     self_teach: {
-      server_memory_learned_title: `🧠 {persona_nickname} Aprendeu Algo Novo!`,
+      server_memory_learned_title: `🧠 {persona_nickname} aprendeu algo novo!`,
       server_memory_learned_description: `Uma **[Memória do Servidor](https://docs.tomoribot.app/pt-BR/features/knowledge/memory/#long-term-memory)** foi salva:
 \`\`\`
 {memory_content}
 \`\`\``,
-      server_memory_updated_title: `📝 {persona_nickname} Atualizou uma Memória!`,
+      server_memory_updated_title: `📝 {persona_nickname} atualizou uma memória!`,
       server_memory_updated_description: `Uma **[Memória do Servidor](https://docs.tomoribot.app/pt-BR/features/knowledge/memory/#long-term-memory)** foi atualizada:
 \`\`\`
 {memory_content}
 \`\`\``,
-      server_memory_deleted_title: `🗑️ {persona_nickname} Apagou uma Memória!`,
+      server_memory_deleted_title: `🗑️ {persona_nickname} apagou uma memória!`,
       server_memory_deleted_description: `Uma **[Memória do Servidor](https://docs.tomoribot.app/pt-BR/features/knowledge/memory/#long-term-memory)** foi apagada:
 \`\`\`
 {memory_content}
 \`\`\``,
-      personal_memory_learned_title: `💡 {persona_nickname} Aprendeu Algo Novo sobre {user_nickname}!`,
+      personal_memory_learned_title: `💡 {persona_nickname} aprendeu algo novo sobre {user_nickname}!`,
       personal_memory_learned_description: `Uma **[Memória Pessoal](https://docs.tomoribot.app/pt-BR/features/knowledge/memory/#long-term-memory)** sobre {user_nickname} foi salva:
 \`\`\`
 {memory_content}
 \`\`\``,
-      personal_memory_updated_title: `📝 {persona_nickname} Atualizou uma Memória sobre {user_nickname}!`,
+      personal_memory_updated_title: `📝 {persona_nickname} atualizou uma memória sobre {user_nickname}!`,
       personal_memory_updated_description: `Uma **[Memória Pessoal](https://docs.tomoribot.app/pt-BR/features/knowledge/memory/#long-term-memory)** sobre {user_nickname} foi atualizada:
 \`\`\`
 {memory_content}
 \`\`\``,
-      personal_memory_deleted_title: `🗑️ {persona_nickname} Apagou uma Memória sobre {user_nickname}!`,
+      personal_memory_deleted_title: `🗑️ {persona_nickname} apagou uma memória sobre {user_nickname}!`,
       personal_memory_deleted_description: `Uma **[Memória Pessoal](https://docs.tomoribot.app/pt-BR/features/knowledge/memory/#long-term-memory)** sobre {user_nickname} foi apagada:
 \`\`\`
 {memory_content}

@@ -185,7 +185,7 @@ Run targeted checks when they can confirm or reject a suspected finding.
 Useful commands include:
 
 ```bash
-bun test <relevant-test>
+bun run test <relevant-test>
 bun run check
 bun run lint:ci
 bun run check-locales
@@ -194,6 +194,8 @@ bun run db:lifecycle
 ```
 
 Use the narrowest relevant check first.
+
+Run tests through `bun run test`, not bare `bun test`: only the wrapper provisions the disposable database, so a bare run silently skips `tests/regression/db/` and reports no failure.
 
 During a read-only review, use `bun run lint:ci`. `bun run lint` rewrites files.
 

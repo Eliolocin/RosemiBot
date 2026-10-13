@@ -16,8 +16,10 @@ import {
   UTC_OFFSET_MAX,
 } from "../../utils/text/timezoneHelper";
 import { localizer } from "@/utils/text/localizer";
-import { isMatrixBridgeWebhookUsername } from "../../utils/bridges";
+import { isMatrixRelayMessage } from "@/utils/chat/triggerProcessor";
+import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import { resolveChannelTarget, resolveTriggererDiscordId, resolveUserTarget } from "@/utils/discord/targetResolver";
+import { MAX_REMINDERS_PER_SERVER, ReminderLimitError } from "@/utils/db/repositories/ServerScheduleRepository";
 
 /**
  * Tool for creating scheduled tasks that trigger messages at specific times
@@ -175,8 +177,8 @@ export class ReminderTool extends BaseTool {
     // The webhook bot has no users table record, so loadUserRow returns null.
     // Detect this case so we can relax the requestingUserRow guard below and
     // store created_by_user_id = null (the column is nullable for this reason).
-    const isMatrixRelayRequester =
-      !!context.message?.webhookId && isMatrixBridgeWebhookUsername(context.message?.author?.username ?? "");
+    if (context.message) await verifyMessageWebhook(context.message);
+    const isMatrixRelayRequester = !!context.message && isMatrixRelayMessage(context.message);
 
     const requestingUserRow = resolvedUserId ? await userRepository.loadByDiscordId(resolvedUserId) : null;
     const channelId = context.channel.id;
@@ -573,8 +575,7 @@ export class ReminderTool extends BaseTool {
         // Long purposes receive an expansion button so the full text remains
         // available ephemerally without adding channel clutter.
         await sendTaskEmbedWithExpand(
-          context.channel,
-          context.locale,
+          context,
           {
             color: useRecurringTaskEmbed ? ColorCode.INFO : ColorCode.SUCCESS,
             titleKey: useRecurringTaskEmbed
@@ -608,11 +609,7 @@ export class ReminderTool extends BaseTool {
                 },
           },
           reminderPurpose,
-          {
-            webhook: context.webhook,
-            personaUsername: context.personaUsername,
-            personaAvatarUrl: context.personaAvatarUrl,
-          },
+          dbResult.reminder_id === undefined ? undefined : { kind: "task", id: dbResult.reminder_id },
         );
 
         return {
@@ -643,6 +640,16 @@ export class ReminderTool extends BaseTool {
         },
       };
     } catch (error) {
+      if (error instanceof ReminderLimitError) {
+        return {
+          success: false,
+          error: `This server already has ${MAX_REMINDERS_PER_SERVER} pending reminders and tasks. Ask the user to remove some with /scheduled-task remove before adding another.`,
+          data: {
+            status: "reminder_creation_failed_limit",
+            reason: `The server reached its limit of ${MAX_REMINDERS_PER_SERVER} pending reminders.`,
+          },
+        };
+      }
       log.error("Error during reminder creation", error as Error);
       return {
         success: false,

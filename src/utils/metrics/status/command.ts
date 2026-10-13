@@ -1,5 +1,6 @@
 import { MessageFlags, type ChatInputCommandInteraction, type Client } from "discord.js";
 import type { UserRow } from "@/types/db/schema";
+import { canViewPromptText } from "@/utils/text/promptInspection/delivery";
 import { getCachedAllPersonas, getCachedTomoriState } from "@/utils/cache/tomoriStateCache";
 import { replyInfoEmbed } from "@/utils/discord/ui/embeds";
 import { ColorCode, log } from "@/utils/misc/logger";
@@ -73,7 +74,12 @@ export async function executeStatusCommand(
 
     const personas = await dependencies.getCachedAllPersonas(serverDiscId);
     const mainPersona = personas.find((persona) => !persona.is_alter) ?? tomoriState;
-    const personaPages = await dependencies.buildPersonaStatusPages(mainPersona, userData, locale);
+    const personaPages = await dependencies.buildPersonaStatusPages(
+      mainPersona,
+      userData,
+      locale,
+      canViewPromptText(interaction.memberPermissions, tomoriState),
+    );
     const personaCategory = categories.find((category) => category.id === "persona");
     if (personaCategory) personaCategory.pages = personaPages;
 

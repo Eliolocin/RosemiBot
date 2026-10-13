@@ -10,7 +10,7 @@
 import { AttachmentBuilder } from "discord.js";
 import { log, ColorCode } from "../../utils/misc/logger";
 import { localizer } from "../../utils/text/localizer";
-import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
 import { buildGeneratedVideoComponentsV2Payload } from "@/utils/discord/generatedVideoMessage";
 import {
   buildReferencedMessageUrl,
@@ -196,7 +196,7 @@ export class GenerateVideoTool extends BaseTool {
         const webhookAttachment = new AttachmentBuilder(videoData, {
           name: filename,
         });
-        return await sendWebhookMessageWithIdentity(
+        return await sendPersonaPostViaWebhook(
           context.webhook,
           {
             files: [webhookAttachment],
@@ -207,8 +207,9 @@ export class GenerateVideoTool extends BaseTool {
           {
             username: context.personaUsername,
             avatarUrl: context.personaAvatarUrl,
-            avatarDataUri: context.personaAvatarUrl?.startsWith("data:image/") ? context.personaAvatarUrl : undefined,
+            personaId: context.tomoriState.persona_id,
           },
+          context.channel,
         );
       } catch (error) {
         log.warn(
@@ -219,7 +220,7 @@ export class GenerateVideoTool extends BaseTool {
           const webhookAttachment = new AttachmentBuilder(videoData, {
             name: filename,
           });
-          return await sendWebhookMessageWithIdentity(
+          return await sendPersonaPostViaWebhook(
             context.webhook,
             {
               files: [webhookAttachment],
@@ -228,8 +229,9 @@ export class GenerateVideoTool extends BaseTool {
             {
               username: context.personaUsername,
               avatarUrl: context.personaAvatarUrl,
-              avatarDataUri: context.personaAvatarUrl?.startsWith("data:image/") ? context.personaAvatarUrl : undefined,
+              personaId: context.tomoriState.persona_id,
             },
+            context.channel,
           );
         } catch (fallbackError) {
           const discordError = fallbackError as Error & {
@@ -717,7 +719,7 @@ export class GenerateVideoTool extends BaseTool {
 
       return {
         success: false,
-        error: `Video generation failed: ${errorMessage}`,
+        error: "Video generation failed because the provider returned an error.",
       };
     }
   }

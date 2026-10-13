@@ -2,7 +2,11 @@ import type {
   ProviderNativeVideoGenerationRequest,
   ProviderNativeVideoGenerationResult,
 } from "@/types/provider/featureInterfaces";
+import type { Subprocess } from "bun";
 import { log } from "@/utils/misc/logger";
+import { readBoundedResponse } from "@/utils/security/boundedResponse";
+import { safeDownload } from "@/utils/security/safeDownload";
+import { PROVIDER_VIDEO_DOWNLOAD_MAX_MB } from "@/providers/utils/providerVideoDownload";
 import { pollForCompletion } from "@/utils/async/pollForCompletion";
 import { getOrFetchOpenRouterVideoModelCapabilities } from "@/utils/cache/openrouterVideoModelCache";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
@@ -32,17 +36,66 @@ interface ExternalHttpResponse {
 /** Whether the current platform is Windows (determines which HTTP backend to use) */
 const IS_WINDOWS = process.platform === "win32";
 
+interface ExternalRequestLimits {
+  maxBodyBytes: number;
+  abortSignal?: AbortSignal;
+}
+
+/** Submit and poll replies are small JSON documents; this only stops a broken or hostile stream. */
+const MAX_API_RESPONSE_BYTES = 1024 * 1024;
+const CURL_HEADER_ALLOWANCE_BYTES = 64 * 1024;
+const MAX_HELPER_STDERR_BYTES = 64 * 1024;
+// Both helpers time their own request out at 120 seconds. This covers a helper that hangs before
+// or after its request, which those timeouts cannot see.
+const EXTERNAL_REQUEST_DEADLINE_MS = 150_000;
+const VIDEO_DOWNLOAD_TIMEOUT_MS = 120_000;
+
+/**
+ * Reads a helper's output with a byte cap and a deadline, killing the process on overflow, timeout
+ * or cancellation so neither its pipe nor its upstream transfer keeps running.
+ */
+export async function readBoundedProcessOutput(
+  proc: Subprocess<"pipe", "pipe", "pipe">,
+  maxStdoutBytes: number,
+  limits: ExternalRequestLimits,
+): Promise<{ stdout: Buffer; stderr: string; exitCode: number }> {
+  let timedOut = false;
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    proc.kill();
+  }, EXTERNAL_REQUEST_DEADLINE_MS);
+  const stop = () => proc.kill();
+  limits.abortSignal?.addEventListener("abort", stop, { once: true });
+  try {
+    const [stdout, stderr] = await Promise.all([
+      readBoundedResponse(new Response(proc.stdout), maxStdoutBytes),
+      readBoundedResponse(new Response(proc.stderr), MAX_HELPER_STDERR_BYTES),
+    ]);
+    const exitCode = await proc.exited;
+    if (timedOut) throw new Error(`External HTTP helper exceeded ${EXTERNAL_REQUEST_DEADLINE_MS}ms`);
+    return { stdout, stderr: stderr.toString("utf8"), exitCode };
+  } catch (error) {
+    proc.kill();
+    throw error;
+  } finally {
+    clearTimeout(deadline);
+    limits.abortSignal?.removeEventListener("abort", stop);
+  }
+}
+
 /**
  * Inline pwsh script that reads a JSON request envelope from stdin and performs
  * the HTTP request using Invoke-WebRequest.
  *
  * Input (stdin JSON): { url, method, headers, body? }
- * Output (stdout JSON): { status, bodyBase64 }
+ * Output (stdout JSON): { status, bodyBase64, location }
  *
  * The response body is base64-encoded so binary content (MP4 video) survives the text pipe.
  * -SkipHttpErrorCheck prevents throwing on non-2xx status codes (PowerShell 7+ feature).
+ * Redirects are returned rather than followed, matching curl without `-L`, so the caller applies
+ * its own destination policy to the Location.
  */
-const PWSH_HTTP_SCRIPT = `
+export const PWSH_HTTP_SCRIPT = `
 $ErrorActionPreference = 'Stop'
 $req = [Console]::In.ReadToEnd() | ConvertFrom-Json
 $headers = @{}
@@ -56,18 +109,24 @@ $params = @{
   UseBasicParsing = $true
   SkipHttpErrorCheck = $true
   TimeoutSec = 120
+  MaximumRedirection = 0
+  # PowerShell 7 reports a 3xx past MaximumRedirection as an error even with SkipHttpErrorCheck, but
+  # still returns the response when the error is not terminating. A missing response is a real failure.
+  ErrorAction = 'SilentlyContinue'
+  ErrorVariable = 'requestError'
 }
 if ($req.method -eq 'POST' -and $req.body) {
   $params.Body = $req.body
   $params.ContentType = 'application/json'
 }
 $resp = Invoke-WebRequest @params
+if ($null -eq $resp) { throw $requestError[0] }
 if ($resp.Content -is [byte[]]) {
   $bodyB64 = [Convert]::ToBase64String($resp.Content)
 } else {
   $bodyB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes([string]$resp.Content))
 }
-$out = @{ status = [int]$resp.StatusCode; bodyBase64 = $bodyB64 }
+$out = @{ status = [int]$resp.StatusCode; bodyBase64 = $bodyB64; location = [string]$resp.Headers['Location'] }
 [Console]::Out.Write(($out | ConvertTo-Json -Compress))
 `;
 
@@ -79,6 +138,7 @@ async function pwshHttpRequest(
   url: string,
   method: "GET" | "POST",
   headers: Record<string, string>,
+  limits: ExternalRequestLimits,
   body?: string,
 ): Promise<ExternalHttpResponse> {
   const requestEnvelope = JSON.stringify({ url, method, headers, body });
@@ -95,18 +155,15 @@ async function pwshHttpRequest(
   proc.stdin.write(requestEnvelope);
   proc.stdin.end();
 
-  const [rawOutput, rawStderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
+  // The body arrives base64-encoded inside a JSON envelope, which is 4/3 of its size.
+  const output = await readBoundedProcessOutput(proc, Math.ceil((limits.maxBodyBytes * 4) / 3) + 4096, limits);
+  const rawOutput = output.stdout.toString("utf8");
 
-  const exitCode = await proc.exited;
-
-  if (exitCode !== 0) {
-    throw new Error(`pwsh HTTP request failed (exit ${exitCode}): ${rawStderr.slice(0, 500)}`);
+  if (output.exitCode !== 0) {
+    throw new Error(`pwsh HTTP request failed (exit ${output.exitCode}): ${output.stderr.slice(0, 500)}`);
   }
 
-  let envelope: { status: number; bodyBase64: string };
+  let envelope: { status: number; bodyBase64: string; location?: string };
   try {
     envelope = JSON.parse(rawOutput) as typeof envelope;
   } catch {
@@ -115,7 +172,36 @@ async function pwshHttpRequest(
 
   const bodyBuffer = Buffer.from(envelope.bodyBase64, "base64");
 
-  return { status: envelope.status, headers: {}, bodyBuffer };
+  return { status: envelope.status, headers: envelope.location ? { location: envelope.location } : {}, bodyBuffer };
+}
+
+/**
+ * Quotes a value for a curl config file. Inside double quotes curl unescapes only backslash,
+ * double quote, and the `t`, `n`, `r`, and `v` control escapes, so escaping exactly those keeps
+ * any header or JSON body byte-exact.
+ */
+function quoteCurlConfigValue(value: string): string {
+  const escaped = value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\t/g, "\\t")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\v/g, "\\v");
+  return `"${escaped}"`;
+}
+
+/**
+ * Builds the curl config read from stdin, so the bearer token and request body never appear in
+ * the process table where other local users can read command-line arguments.
+ */
+export function buildCurlRequestConfig(headers: Record<string, string>, body?: string): string {
+  const lines = Object.entries(headers).map(([key, value]) => `header = ${quoteCurlConfigValue(`${key}: ${value}`)}`);
+  if (body !== undefined) {
+    // `data-raw` keeps a body that starts with `@` from being read as a file name.
+    lines.push(`data-raw = ${quoteCurlConfigValue(body)}`);
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 /**
@@ -124,52 +210,55 @@ async function pwshHttpRequest(
  *
  * Key curl flags for correctness and security:
  *   --proto =https: restricts to HTTPS only (blocks file://, ftp://, gopher://, etc.)
- *   --data-raw: prevents @filename expansion in the body
+ *   -K -: reads headers and body from stdin instead of argv
  *   -H "Expect:"; suppresses 100-Continue which breaks the -i header/body parser
  */
 async function curlHttpRequest(
   url: string,
   method: "GET" | "POST",
   headers: Record<string, string>,
+  limits: ExternalRequestLimits,
   body?: string,
 ): Promise<ExternalHttpResponse> {
-  const args: string[] = ["-s", "-S", "--max-time", "120", "--proto", "=https", "-X", method];
+  const args: string[] = [
+    "-s",
+    "-S",
+    "--max-time",
+    "120",
+    "--max-filesize",
+    String(limits.maxBodyBytes),
+    "--proto",
+    "=https",
+    "-X",
+    method,
+    "-K",
+    "-",
+  ];
 
   // Suppress Expect: 100-continue because curl sends this for POST bodies over ~1KB,
   //    which inserts an intermediate "HTTP/1.1 100 Continue" block before the real response.
   //    Our -i parser splits on the first \r\n\r\n, so 100-Continue would break parsing.
   args.push("-H", "Expect:");
-
-  // Add each header, stripping CRLF to prevent header injection
-  for (const [key, value] of Object.entries(headers)) {
-    args.push("-H", `${key}: ${value}`);
-  }
-
-  if (body !== undefined) {
-    args.push("--data-raw", body);
-  }
-
   args.push("-i");
-
   args.push(url);
 
   const proc = Bun.spawn(["curl", ...args], {
+    stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
   });
 
-  const [rawOutput, rawStderr] = await Promise.all([
-    new Response(proc.stdout).arrayBuffer(),
-    new Response(proc.stderr).text(),
-  ]);
+  proc.stdin.write(buildCurlRequestConfig(headers, body));
+  proc.stdin.end();
 
-  const exitCode = await proc.exited;
+  // `-i` writes the status line and headers ahead of the body on the same stream.
+  const output = await readBoundedProcessOutput(proc, limits.maxBodyBytes + CURL_HEADER_ALLOWANCE_BYTES, limits);
 
-  if (exitCode !== 0) {
-    throw new Error(`curl exited with code ${exitCode}: ${rawStderr.slice(0, 500)}`);
+  if (output.exitCode !== 0) {
+    throw new Error(`curl exited with code ${output.exitCode}: ${output.stderr.slice(0, 500)}`);
   }
 
-  const fullBuffer = Buffer.from(rawOutput);
+  const fullBuffer = output.stdout;
   const headerEndIndex = fullBuffer.indexOf("\r\n\r\n");
 
   if (headerEndIndex === -1) {
@@ -203,7 +292,7 @@ async function curlHttpRequest(
  *   - Linux/Docker: curl with HTTP/2 support
  *
  * @param url - The full URL to request (must be HTTPS)
- * @param method - HTTP method (GET or POST)
+ * @param limits - Body byte cap and optional cancellation applied to the helper process
  * @param body - Optional JSON body string for POST requests
  * @returns Object with HTTP status code, response headers, and raw body as a Buffer
  */
@@ -211,6 +300,7 @@ async function externalHttpRequest(
   url: string,
   method: "GET" | "POST",
   headers: Record<string, string>,
+  limits: ExternalRequestLimits,
   body?: string,
 ): Promise<ExternalHttpResponse> {
   // Validate URL scheme: only HTTPS allowed to prevent protocol attacks
@@ -225,8 +315,8 @@ async function externalHttpRequest(
   }
 
   return IS_WINDOWS
-    ? pwshHttpRequest(url, method, sanitizedHeaders, body)
-    : curlHttpRequest(url, method, sanitizedHeaders, body);
+    ? pwshHttpRequest(url, method, sanitizedHeaders, limits, body)
+    : curlHttpRequest(url, method, sanitizedHeaders, limits, body);
 }
 
 const OPENROUTER_ORIGIN = "https://openrouter.ai";
@@ -299,7 +389,8 @@ export async function generateOpenRouterNativeVideo(
   const submitBodyJson = JSON.stringify(body);
 
   // Submit the generation request via external HTTP helper (bypasses Bun's TLS fingerprint issue)
-  const submitRaw = await externalHttpRequest(OPENROUTER_VIDEO_URL, "POST", apiHeaders, submitBodyJson);
+  const apiLimits = { maxBodyBytes: MAX_API_RESPONSE_BYTES, abortSignal: request.abortSignal };
+  const submitRaw = await externalHttpRequest(OPENROUTER_VIDEO_URL, "POST", apiHeaders, apiLimits, submitBodyJson);
 
   const submitBodyText = submitRaw.bodyBuffer.toString("utf8");
 
@@ -349,7 +440,7 @@ export async function generateOpenRouterNativeVideo(
 
   const completedJob = await pollForCompletion<OpenRouterVideoPollResponse>({
     pollFn: async () => {
-      const pollRaw = await externalHttpRequest(pollingUrl, "GET", pollHeaders);
+      const pollRaw = await externalHttpRequest(pollingUrl, "GET", pollHeaders, apiLimits);
       const pollBodyText = pollRaw.bodyBuffer.toString("utf8");
 
       if (pollRaw.status < 200 || pollRaw.status >= 300) {
@@ -407,36 +498,26 @@ export async function generateOpenRouterNativeVideo(
   const rawVideoUrl = completedJob.unsigned_urls?.[0] ?? `${OPENROUTER_VIDEO_URL}/${jobId}/content?index=0`;
   const videoUrl = new URL(rawVideoUrl, OPENROUTER_ORIGIN).href;
 
-  // Security: only send the Authorization header if the download URL is on OpenRouter's domain.
-  // unsigned_urls could theoretically point to a third-party CDN, so avoid leaking the API key to it.
-  const downloadUrlOrigin = new URL(videoUrl).origin;
-  const openRouterOrigin = new URL(OPENROUTER_VIDEO_URL).origin;
-  const downloadHeaders: Record<string, string> =
-    downloadUrlOrigin === openRouterOrigin
-      ? { Authorization: `Bearer ${request.apiKey}`, ...buildOpenRouterAttributionHeaders() }
-      : {};
-
   log.info(`OpenRouter video generation: downloading video (jobId: ${jobId}, url: ${videoUrl.slice(0, 80)})`);
 
   const maxDownloadAttempts = 4;
   const downloadRetryDelayMs = 5_000;
 
-  let videoRaw = await externalHttpRequest(videoUrl, "GET", downloadHeaders);
-
-  for (let attempt = 2; attempt <= maxDownloadAttempts && videoRaw.status === 404; attempt++) {
+  let download = await downloadOpenRouterVideo(videoUrl, request.apiKey, request.abortSignal);
+  for (let attempt = 2; attempt <= maxDownloadAttempts && download.status === 404; attempt++) {
     log.warn(
       `OpenRouter video download returned 404, retrying in ${downloadRetryDelayMs / 1000}s (jobId: ${jobId}, attempt: ${attempt}/${maxDownloadAttempts})`,
     );
     await new Promise((resolve) => setTimeout(resolve, downloadRetryDelayMs));
-    videoRaw = await externalHttpRequest(videoUrl, "GET", downloadHeaders);
+    download = await downloadOpenRouterVideo(videoUrl, request.apiKey, request.abortSignal);
   }
 
-  if (videoRaw.status < 200 || videoRaw.status >= 300) {
-    log.error(`Failed to download OpenRouter video (jobId: ${jobId})`, new Error(`HTTP ${videoRaw.status}`));
+  if (!download.videoData) {
+    log.error(`Failed to download OpenRouter video (jobId: ${jobId})`, new Error(download.reason));
     return { videoData: null, mimeType: null };
   }
 
-  const videoData = videoRaw.bodyBuffer;
+  const videoData = download.videoData;
 
   log.info(`OpenRouter video generation: download complete (jobId: ${jobId}, sizeBytes: ${videoData.length})`);
 
@@ -444,5 +525,47 @@ export async function generateOpenRouterNativeVideo(
     videoData,
     mimeType: "video/mp4",
     durationSeconds: normalizedOptions.duration,
+  };
+}
+
+/**
+ * Downloads a finished video. Only OpenRouter's own origin needs the external helper (for its
+ * TLS fingerprint) and receives the API key. Any other host, including a redirect Location from
+ * OpenRouter, goes through the bot's pinned downloader: anonymous, SSRF-gated per hop, byte
+ * capped and deadline bound. A provider response can never route the key or the helper elsewhere.
+ */
+export async function downloadOpenRouterVideo(
+  videoUrl: string,
+  apiKey: string,
+  abortSignal: AbortSignal | undefined,
+): Promise<{ videoData: Buffer | null; status?: number; reason: string }> {
+  const maxBodyBytes = PROVIDER_VIDEO_DOWNLOAD_MAX_MB * 1024 * 1024;
+  let anonymousUrl = videoUrl;
+  if (new URL(videoUrl).origin === OPENROUTER_ORIGIN) {
+    const raw = await externalHttpRequest(
+      videoUrl,
+      "GET",
+      { Authorization: `Bearer ${apiKey}`, ...buildOpenRouterAttributionHeaders() },
+      { maxBodyBytes, abortSignal },
+    );
+    const location = raw.headers.location;
+    if (raw.status < 300 || raw.status >= 400 || !location) {
+      return raw.status >= 200 && raw.status < 300
+        ? { videoData: raw.bodyBuffer, status: raw.status, reason: "" }
+        : { videoData: null, status: raw.status, reason: `HTTP ${raw.status}` };
+    }
+    anonymousUrl = new URL(location, videoUrl).href;
+  }
+  const result = await safeDownload(anonymousUrl, {
+    maxSizeMB: PROVIDER_VIDEO_DOWNLOAD_MAX_MB,
+    timeoutMs: VIDEO_DOWNLOAD_TIMEOUT_MS,
+    externalSignal: abortSignal,
+  });
+  if (result.success && result.buffer) return { videoData: result.buffer, status: 200, reason: "" };
+  const status = /^HTTP (\d{3})\b/.exec(result.details ?? "")?.[1];
+  return {
+    videoData: null,
+    status: status ? Number(status) : undefined,
+    reason: result.details ?? result.error ?? "download failed",
   };
 }

@@ -532,3 +532,28 @@ export function tryRepairIncompleteJson(raw: string): Record<string, unknown> | 
     return null;
   }
 }
+
+/**
+ * Parses a complete JSON value that a model wrapped in reasoning tags, a code fence, or a sentence
+ * of prose. Unlike `tryRepairIncompleteJson` it never closes a cut-off payload, so a caller that
+ * acts on the value (a review verdict) cannot receive a fabricated ending.
+ *
+ * @returns The parsed value, or `undefined` when no candidate parses.
+ */
+export function parseEmbeddedJson(text: string): unknown {
+  const cleaned = text
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<\/?think>/gi, "")
+    .trim();
+  const candidates = [cleaned, cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1]];
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) candidates.push(cleaned.slice(firstBrace, lastBrace + 1));
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      return JSON.parse(candidate);
+    } catch {}
+  }
+  return undefined;
+}

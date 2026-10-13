@@ -9,11 +9,8 @@
  *   wrapped inside a user message, not as a separate role
  */
 
-import type { MCPCapableToolAdapter, Tool, ToolContext, ToolResult } from "@/types/tool/interfaces";
-import type { TypedMCPToolResult } from "@/types/tool/mcpTypes";
+import type { MCPCapableToolAdapter, Tool, ToolResult } from "@/types/tool/interfaces";
 import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
-import { getMCPExecutor } from "@/utils/mcp/mcpExecutor";
-import { getMCPManager } from "@/utils/mcp/mcpManager";
 import { log } from "@/utils/misc/logger";
 
 export class AnthropicToolAdapter implements MCPCapableToolAdapter {
@@ -121,7 +118,7 @@ export class AnthropicToolAdapter implements MCPCapableToolAdapter {
   }
 
   /**
-   * Get all available tools (built-in + MCP + guild MCP) in Anthropic format.
+   * Get all available tools (built-in + guild MCP) in Anthropic format.
    * Follows the same filtering pattern as OpenAICompatibleToolAdapter.
    */
   async getAllToolsInProviderFormat(
@@ -135,65 +132,10 @@ export class AnthropicToolAdapter implements MCPCapableToolAdapter {
       // The unified `web_search` tool is gated centrally in `availability.ts`
       //    via its `requiresFeatureFlag = "web_search"`. No per-adapter Brave-key
       //    filtering needed here anymore, because the dispatcher inside the tool itself
-      //    decides which engine (Brave/DDG/IAsk) serves the request at call time.
+      //    decides which engine (Brave/SearXNG/DuckDuckGo) serves the request at call time.
       if (builtInTools.length > 0) {
         allTools.push(...this.convertToolsArray(builtInTools));
         log.info(`Anthropic adapter: Converted ${builtInTools.length} built-in tools`);
-      }
-
-      const mcpManager = getMCPManager();
-      if (mcpManager.isReady() && allowedMCPFunctions) {
-        let addedMCPToolsCount = 0;
-        const disabledDDGFunctions = ["iask-search", "monica-search"];
-        const allowedFunctionSet = new Set(allowedMCPFunctions);
-
-        for (const mcpTool of mcpManager.getMCPTools()) {
-          try {
-            const geminiTool = await mcpTool.tool();
-            if (!geminiTool.functionDeclarations) {
-              continue;
-            }
-
-            const declarations = (geminiTool.functionDeclarations as Record<string, unknown>[]).filter(
-              (declaration) => {
-                const functionName = declaration.name as string;
-                if (disabledDDGFunctions.includes(functionName)) {
-                  return false;
-                }
-                return allowedFunctionSet.has(functionName);
-              },
-            );
-
-            if (declarations.length === 0) {
-              continue;
-            }
-
-            for (const declaration of declarations) {
-              const anthropicDeclaration: Record<string, unknown> = {
-                name: declaration.name,
-                description: declaration.description,
-              };
-
-              // MCP tools use `parametersJsonSchema`, rename to `input_schema`.
-              // Anthropic requires `input_schema` on every tool, so fall back to an
-              // empty object schema if the declaration provides no parameters.
-              if ("parametersJsonSchema" in declaration) {
-                anthropicDeclaration.input_schema = declaration.parametersJsonSchema;
-              } else if ("parameters" in declaration) {
-                anthropicDeclaration.input_schema = declaration.parameters;
-              } else {
-                anthropicDeclaration.input_schema = { type: "object", properties: {} };
-              }
-
-              allTools.push(anthropicDeclaration);
-            }
-            addedMCPToolsCount++;
-          } catch (error) {
-            log.warn("Anthropic adapter: Failed to extract functions from MCP tool", error as Error);
-          }
-        }
-
-        log.info(`Anthropic adapter: Added ${addedMCPToolsCount} MCP tools using centralized filtering`);
       }
 
       if (serverId && allowedMCPFunctions) {
@@ -220,7 +162,7 @@ export class AnthropicToolAdapter implements MCPCapableToolAdapter {
                   description: declaration.description,
                 };
 
-                // Same fallback as global MCP: `input_schema` is required by Anthropic
+                // Anthropic requires `input_schema` on every tool, so fall back to an empty object schema
                 if ("parametersJsonSchema" in declaration) {
                   anthropicDeclaration.input_schema = declaration.parametersJsonSchema;
                 } else if ("parameters" in declaration) {
@@ -250,64 +192,6 @@ export class AnthropicToolAdapter implements MCPCapableToolAdapter {
     } catch (error) {
       log.error("Anthropic adapter: Failed to get all tools in Anthropic format", error as Error);
       return [];
-    }
-  }
-
-  /**
-   * Check if a function name belongs to an MCP tool (global or guild)
-   */
-  async isMCPFunction(functionName: string): Promise<boolean> {
-    try {
-      const mcpManager = getMCPManager();
-      if (!mcpManager.isReady()) {
-        return false;
-      }
-
-      for (const mcpTool of mcpManager.getMCPTools()) {
-        const geminiTool = await mcpTool.tool();
-        if (!geminiTool.functionDeclarations) {
-          continue;
-        }
-
-        const hasFunction = (geminiTool.functionDeclarations as Record<string, unknown>[]).some(
-          (declaration) => declaration.name === functionName,
-        );
-        if (hasFunction) {
-          return true;
-        }
-      }
-
-      return false;
-    } catch (error) {
-      log.warn(`Anthropic adapter: Error checking if function ${functionName} is MCP function`, {
-        error: error as Error,
-      });
-      return false;
-    }
-  }
-
-  /**
-   * Execute an MCP function by name with the given arguments
-   */
-  async executeMCPFunction(
-    functionName: string,
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<TypedMCPToolResult> {
-    try {
-      log.info(`Anthropic adapter: Executing MCP function: ${functionName} with args: ${JSON.stringify(args)}`);
-
-      const executor = getMCPExecutor();
-      const result = await executor.executeMCPFunction(functionName, args, context);
-
-      log.info(`Anthropic adapter: MCP function ${functionName} completed successfully`);
-      return result;
-    } catch (error) {
-      log.error(`Anthropic adapter: Failed to execute MCP function ${functionName}`, error as Error);
-      return {
-        success: false,
-        message: `Failed to execute MCP function: ${error instanceof Error ? error.message : String(error)}`,
-      };
     }
   }
 

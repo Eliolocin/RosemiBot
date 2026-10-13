@@ -5,7 +5,7 @@ Shared fixtures and assertion helpers. Reach for these before writing a local `m
 
 | Helper | Use it for |
 |---|---|
-| `fixtures.ts` | `createPersona` (a complete `TomoriState`), `createUserRow`, `createLlmRow`, `createServerConfig` |
+| `fixtures.ts` | `createPersona` (a complete `TomoriState`), `createUserRow`, `createLlmRow`, `createServerConfig`, `createCustomExpression` (a validated registry row) |
 | `routeInteraction.ts` | `createRouteInteraction`: a button, select, or modal interaction for one route dispatch, recording acknowledgements, edits, and replies |
 | `fakeInteraction.ts` | `makeFakeInteraction`: a slash-command interaction for acknowledgement-timing tests |
 | `localeCases.ts` | `localizedCopy` and `localizedProse` for copy assertions; `RUNTIME_LOCALES` and `expectForEveryLocale` for locale sweeps |
@@ -14,6 +14,7 @@ Shared fixtures and assertion helpers. Reach for these before writing a local `m
 | `transferPanelFixture.ts` | `findTransferAction`: locate one routed transfer action in a panel payload |
 | `mockSurface.ts` | `createScopedModuleMocker`, `overrideMembers`, `stubLogMembers` for the few suites that must mock a module |
 | `messageProxyInstance.ts` | Official PluralKit and PluralBuddy instance contexts for transport and router tests |
+| `env.ts` | `useEnvSandbox`: restores named `process.env` variables after each test and after the enclosing scope; `useFullEnvSandbox` restores the whole environment |
 
 ## Rules the helpers depend on
 
@@ -32,6 +33,11 @@ Shared fixtures and assertion helpers. Reach for these before writing a local `m
 - **Prefer `spyOn(singleton, ...)` or constructor injection over `mock.module`.** Bun cannot unregister a module
   mock. When one is unavoidable, go through `createScopedModuleMocker` with an `@/` specifier: Bun resolves a
   relative specifier from `mockSurface.ts`, not from the test file, so it mocks nothing.
+- **Change env only inside a `useEnvSandbox` scope.** A hand-written `process.env.X = original` stores the string
+  `"undefined"` when `X` was unset. List every name the file writes: the isolation check accepts a dot-form write
+  only when its name is a string literal in the call, and trusts the list for a computed `process.env[name]` or an
+  `Object.assign(process.env, ...)`. Reach for `useFullEnvSandbox` only when the code under test writes names you
+  cannot list, as `loadSecrets()` does.
 
 Add a factory here once a third suite needs the same row shape (memory, document, and chunk rows are the next
 candidates), and give it a contract test under `tests/unit/helpers/`.

@@ -82,9 +82,10 @@ export function buildStreamContext(params: BuildStreamContextParams): StreamCont
     suppressUserErrors: streamingContext?.suppressUserErrors,
     textCredentialSource: streamingContext?.textCredentialSource,
     suppressTextOutput: streamingContext?.suppressTextOutput,
+    holdResponseText: streamingContext?.holdResponseText,
+    pendingResponseLimit: streamingContext?.pendingResponseLimit,
     rotationKeyRetriesUsed: streamingContext?.rotationKeyRetriesUsed,
     outputPrefill: streamingContext?.outputPrefill,
-    outputPrefillState: streamingContext?.outputPrefillState,
     replyNoticeState: streamingContext?.replyNoticeState,
 
     webhook: params.webhook,
@@ -93,6 +94,7 @@ export function buildStreamContext(params: BuildStreamContextParams): StreamCont
     prefixStrippingName: params.prefixStrippingName,
 
     forcedMentions: streamingContext?.forcedMentions,
+    impersonatedSpeakerLabel: streamingContext?.impersonatedSpeakerLabel,
 
     // NAI GLM-4.6 prompt continuation: trailing fragment from a previous truncated stream.
     //    Only ever populated for NovelAI streams; a no-op copy-through for other providers.
@@ -106,6 +108,7 @@ export function buildStreamContext(params: BuildStreamContextParams): StreamCont
     messageIdMap: streamingContext?.messageIdMap,
 
     triggererUserId: streamingContext?.triggererUserId,
+    triggererDiscId: streamingContext?.triggererDiscId,
 
     // Superseded-delivery sink: copy the ARRAY REFERENCE (not a clone) so the orchestrator's
     //    successful-send appends are visible to runGenerationTurn even after the SDK-call-timeout

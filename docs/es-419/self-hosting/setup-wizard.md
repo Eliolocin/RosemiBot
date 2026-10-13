@@ -1,9 +1,9 @@
 ---
 title: "Asistente de instalación"
-aiGenerated: true
 sidebar:
   label: "Asistente de instalación"
   order: 1
+aiGenerated: false
 ---
 
 :::note
@@ -40,7 +40,6 @@ bun run setup
 ## Qué tener listo
 
 - [Bun](https://bun.sh/) para ejecutar el bot y el propio asistente.
-- Node.js v20+ (usado para las herramientas de MCP).
 - Un token de bot de Discord con los intents privilegiados `GuildMembers`, `MessageContent` y
   `GuildPresences` habilitados.
 - Una base de datos. TomoriBot almacena todo en PostgreSQL. No necesitas configurarla a mano, ya
@@ -110,7 +109,7 @@ implementación que se ejecuta con `RUN_ENV=production` registra `/legal terms-o
   valida contra el proveedor y se cifra en el borrador; el panel solo muestra que hay una clave
   almacenada, nunca la clave en sí. Ejecuta `/help`, luego `Configuración` > **Paso 1: Obtén una clave
   de API** para el recorrido específico de cada proveedor.
-- **Punto de conexión personalizado (avanzado)**: un área secundaria de dos botones para un endpoint autoalojado
+- **Punto de conexión personalizado**: un área secundaria de dos botones para un endpoint autoalojado
   o proxy. `Configurar conexión` recopila la compatibilidad de API, una etiqueta, la URL y un token de
   autenticación opcional, y comprueba que el endpoint responda. `Configurar modelo de texto` recopila
   el código del modelo, su tamaño de contexto y sus declaraciones de capacidad, y permanece deshabilitado

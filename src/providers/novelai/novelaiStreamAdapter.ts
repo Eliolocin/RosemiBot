@@ -19,7 +19,11 @@
 
 import type { FunctionCall, ThoughtLogEntry } from "@/types/provider/interfaces";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
-import { log, sanitizeLogPayload } from "@/utils/misc/logger";
+import { log } from "@/utils/misc/logger";
+import {
+  formatProviderErrorCodeForDisplay,
+  isProviderTimeoutMessage,
+} from "@/utils/provider/providerErrorClassification";
 import { localizer } from "@/utils/text/localizer";
 import { escapeRegExp } from "@/utils/text/processors/regexUtils";
 import { findMarkdownCodeRanges } from "@/utils/text/processors/llmOutputProcessor";
@@ -358,7 +362,7 @@ export class NovelaiStreamAdapter extends BaseStreamAdapter {
     log.info(`Assembled NovelAI prompt (${isGlm ? "GLM" : "Kayra"}). Length: ${prompt.length} characters`);
 
     log.section("NovelAI Full Prompt");
-    log.info(prompt);
+    if (!context.holdResponseText) log.info(prompt);
 
     // Neutral values (topK=0, topP=1.0, minP=0.0) preserve the model preset defaults.
     // Non-schema NAI preset fields (order, TFS, phrase_rep_pen, etc.) are extracted
@@ -1998,23 +2002,16 @@ export class NovelaiStreamAdapter extends BaseStreamAdapter {
   }
 
   /**
-   * Records the failure detail as a metric in addition to the base `provider_error` counter.
-   *
-   * NovelAI's transport failures log at `warn`, which production drops, so without this the
-   * response body (e.g. the context-overflow numbers) is unrecoverable after the fact. `log.metric`
-   * does not sanitize its fields, so the message is redacted here before it is truncated.
+   * Adds the response body (e.g. the context-overflow numbers) as trace beside the base
+   * `provider_error` counter, which carries only the code and type.
    */
   protected override onProviderError(error: unknown, providerError: ProviderError, context?: StreamContext): void {
     super.onProviderError(error, providerError, context);
-    const serverId = context?.tomoriState?.server_id;
-    log.metric("provider_error_detail", {
-      provider: "novelai",
-      code: providerError.code ?? "unknown",
-      type: providerError.type,
-      retryable: String(providerError.retryable),
-      message: String(sanitizeLogPayload(providerError.message)).slice(0, 500),
-      ...(serverId ? { server_id: serverId } : {}),
-    });
+    log.warn(
+      `NovelAI provider error (${providerError.code ?? "unknown"}, ${providerError.type}, retryable: ${providerError.retryable}): ${providerError.message.slice(0, 500)}`,
+      undefined,
+      { serverId: context?.tomoriState?.server_id ?? null },
+    );
   }
 
   /**
@@ -2067,7 +2064,7 @@ export class NovelaiStreamAdapter extends BaseStreamAdapter {
     } else if (statusCode === 503) {
       errorType = "provider_overloaded";
       retryable = true;
-    } else if (statusCode === 504 || errorMessage.toLowerCase().includes("timeout")) {
+    } else if (statusCode === 504 || isProviderTimeoutMessage(errorMessage)) {
       errorType = "timeout";
       retryable = true;
     } else {
@@ -2123,23 +2120,8 @@ export class NovelaiStreamAdapter extends BaseStreamAdapter {
       }
     }
 
-    try {
-      const novelaiMessage = localizer(locale, `genai.novelai.${messageKey}`);
-
-      // If this is an unknown error, append the actual API response for debugging
-      if (messageKey === "unknown_default_message") {
-        // Truncate error message to avoid Discord embed limits (max description is 4096, leave room for other text)
-        const maxErrorLength = 1000;
-        const apiErrorSnippet =
-          error.message.length > maxErrorLength ? `${error.message.substring(0, maxErrorLength)}...` : error.message;
-        return `Error Code ${errorCode}: ${novelaiMessage}\n\n**API Response:**\n${apiErrorSnippet}`;
-      }
-
-      return `Error Code ${errorCode}: ${novelaiMessage}`;
-    } catch {
-      // Fallback if locale key doesn't exist
-      return `Error Code ${errorCode}: ${error.message}`;
-    }
+    // Upstream text stays in the operator log (see StreamErrorUi); the message only picked the key.
+    return `Error Code ${formatProviderErrorCodeForDisplay(errorCode)}: ${localizer(locale, `genai.novelai.${messageKey}`)}`;
   }
 
   /**

@@ -1,4 +1,4 @@
-﻿export default {
+export default {
   general: {
     language_name: `English`,
     yes: `Yes`,
@@ -40,6 +40,8 @@
     },
     text_preview: {
       truncated_footer: `Showing the first {shown} of {total} characters.`,
+      hidden_marker: `{count} more characters hidden.`,
+      hidden_marker_action: `{count} more characters hidden. Press {action} to see the rest.`,
     },
     pagination: {
       page_info: `Page {current} of {total}`,
@@ -53,6 +55,7 @@
       select_page_title: `Select Page`,
       select_page_description: `Choose a page to view from {totalItems} items across {totalPages} pages:`,
       select_persona_title: `Select Persona`,
+      select_persona_page_description: `Choose a page to view from {totalItems} personas across {totalPages} pages:`,
       persona_no_attributes: `No attributes configured yet.`,
       persona_select_button: `Select`,
     },
@@ -121,7 +124,7 @@
       provider_not_supported_title: `Provider Not Supported`,
       provider_not_supported_description: `The selected AI provider is not currently supported.`,
       channel_missing_permissions_title: `Missing Permissions`,
-      channel_missing_permissions_description: `I don't have permission to read message history in this channel. Please ensure I have the **View Channel** and **Read Message History** permissions.`,
+      channel_missing_permissions_description: `I can't access message history in this channel. Please grant me **View Channel** and **Read Message History**. For a voice channel's text chat, I also need **Connect**.`,
       webhook_missing_permissions_title: `Missing Webhook Permissions`,
       webhook_missing_permissions_description: `I can't create webhooks in this channel, so alter personas will use regular bot messages. Please grant me the **Manage Webhooks** permission in this channel to enable custom alter avatars.`,
       webhook_limit_title: `Webhook Limit Reached`,

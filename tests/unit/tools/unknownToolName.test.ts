@@ -1,9 +1,23 @@
-import { expect, it, spyOn } from "bun:test";
+import { beforeAll, expect, it, spyOn } from "bun:test";
 import { BlockUserTool } from "@/tools/functionCalls/blockUserTool";
 import { InteractWithRecentMessageTool } from "@/tools/functionCalls/interactWithRecentMessageTool";
 import { ToolRegistry } from "@/tools/toolRegistry";
 import type { ToolContext } from "@/types/tool/interfaces";
 import { log } from "@/utils/misc/logger";
+import { createPersona } from "../../helpers/fixtures";
+import { initializeLocalizer } from "@/utils/text/localizer";
+
+beforeAll(initializeLocalizer);
+
+function context(blockingEnabled = true): ToolContext {
+  return {
+    channel: { id: "fixture-channel" } as ToolContext["channel"],
+    client: { user: { id: "fixture-bot" } } as ToolContext["client"],
+    provider: "google",
+    locale: "en-US",
+    tomoriState: createPersona({ server_id: 0, config: { user_blocking_enabled: blockingEnabled } }),
+  };
+}
 
 it("returns the closest registered name to the model for an unknown tool", async () => {
   if (!ToolRegistry.getTool("interact_with_recent_message")) {
@@ -11,10 +25,7 @@ it("returns the closest registered name to the model for an unknown tool", async
   }
   const errorSpy = spyOn(log, "error").mockImplementation(async () => {});
   try {
-    const result = await ToolRegistry.executeTool("interact_using_recent_message", {}, {
-      provider: "google",
-      tomoriState: { server_id: 0 },
-    } as ToolContext);
+    const result = await ToolRegistry.executeTool("interact_using_recent_message", {}, context());
     expect(result.success).toBe(false);
     expect(result.error).toContain("interact_with_recent_message");
     // Earlier files in a shared batch leave background health checks that log through the same
@@ -34,10 +45,7 @@ it("suggests only tools the current turn can run", async () => {
   }
   const errorSpy = spyOn(log, "error").mockImplementation(async () => {});
   try {
-    const result = await ToolRegistry.executeTool("block_usr", {}, {
-      provider: "google",
-      tomoriState: { server_id: 0, config: {} },
-    } as ToolContext);
+    const result = await ToolRegistry.executeTool("block_usr", {}, context(false));
     expect(result.success).toBe(false);
     expect(result.error).not.toContain("block_user");
   } finally {

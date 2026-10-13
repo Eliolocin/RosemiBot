@@ -2,6 +2,7 @@
 title: "Guia de Migração Segura"
 sidebar:
   order: 6
+aiGenerated: true
 ---
 
 Quando você faz `git pull` de um código novo e reinicia a TomoriBot, o bot executa automaticamente as migrações de esquema do banco de dados na inicialização. Isso é poderoso (significa que você não precisa gerenciar atualizações SQL manualmente) mas também significa que operações destrutivas podem afetar silenciosamente seus dados. Este guia mostra como se proteger antes de fazer um pull.
@@ -10,12 +11,17 @@ Quando você faz `git pull` de um código novo e reinicia a TomoriBot, o bot exe
 
 O executor de migração da TomoriBot (em `src/db/migrationRunner.ts`) executa todas as migrações não aplicadas na ordem de versão. As migrações são somente para frente: se algo der errado, o executor não faz a reversão automática. A maioria das migrações são expansões seguras (novas colunas, novas tabelas), mas de acordo com a política de design interna (OD-R-6) do projeto, operações destrutivas, como `DROP COLUMN` ou `DROP TABLE`, são permitidas. Se uma migração destrutiva for executada sem um backup, você perde dados permanentemente. Em caso de dúvida, faça o backup primeiro.
 
+## Backups de mídia de expressão personalizada
+<!-- anchor: custom-expression-media-backups -->
+
+Os backups de banco de dados retêm metadados de expressões personalizadas, associações pessoais e referências de armazenamento. Eles não incluem bytes de mídia carregados ou importados. Pare o bot antes de fazer backup do banco de dados e da mídia juntos. Com armazenamento local, copie `data/custom-expressions/` e restaure-o no mesmo local. Com GCS ou S3, faça backup dos objetos `custom-expressions/` de propriedade e restaure suas chaves no bucket de expressão configurado. Restaure as configurações `EXPRESSION_STORAGE_BACKEND` e `EXPRESSION_STORAGE_BUCKET` correspondentes. Alterar apenas o back-end ou bucket deixa as referências existentes ilegíveis. As expressões de link são armazenadas apenas como URLs e permanecem dependentes de seus hosts externos. As exportações JSON Discord não carregam registro de expressão ou arquivo de mídia.
+
 ## Lista de verificação pré-pull
 
 Siga estas etapas ANTES de executar `git pull`:
 
 1. **Pare o bot**: desligue o processo da TomoriBot para que nenhuma conexão de banco de dados ativa interfira com o backup.
-2. **Faça backup do banco de dados**: use um dos dois métodos abaixo.
+2. **Faça backup do banco de dados e retenha suas chaves**: use um dos dois métodos abaixo. Mantenha uma cópia protegida separada de cada versão de criptografia necessária para o dump e teste a recuperação em um banco de dados descartável.
 3. **Anote o commit atual**: execute `git rev-parse HEAD` e salve a saída, caso seja necessário reverter.
 4. **Faça o pull e reinicie**: uma vez que o backup esteja seguro no disco, você estará seguro para fazer o pull e reiniciar.
 
@@ -53,7 +59,7 @@ Para uma migração segura, use o backup completo:
 bun run backup
 ```
 
-Isso cria um pacote com carimbo de data e hora em `backups/` (ou em seu `TOMORI_BACKUP_DIR` se for substituído no `.env`) contendo o banco de dados PostgreSQL inteiro como um dump SQL puro. Para restaurar mais tarde, execute:
+Isso cria um pacote com carimbo de data/hora em `backups/` (ou seu `TOMORI_BACKUP_DIR` se substituído no `.env`) contendo todo o banco de dados PostgreSQL como um dump SQL simples. O pacote não contém `.env` nem segredos mestres. Antes de restaurar, provisione versões de criptografia correspondentes separadamente na fonte de segredos de destino e pare todas as instâncias do bot. Consulte [Backups de banco de dados e chaves de recuperação](/pt-BR/self-hosting/maintenance/#database-backups-and-recovery-keys) para o procedimento completo. Chaves ausentes ou incorretas interrompem a restauração antes do SQL destrutivo. Pacotes legados ainda contêm segredos brutos em `config.env`; revise-os em particular e provisione suas chaves você mesmo. A restauração nunca copia esse arquivo. Para restaurar mais tarde, execute:
 
 ```bash
 bun run restore-backup --latest
@@ -148,10 +154,10 @@ Se o bot travar ou congelar durante a migração:
 3. **Decida se deseja restaurar**: se o erro for irrecuperável (por exemplo, a migração tentou descartar uma coluna que não existe), restaure a partir de seu backup:
 
    ```bash
-   # Restauração Opção A
+   # Option A restore
    bun run restore-backup --latest
 
-   # Ou Restauração Opção B
+   # Or Option B restore
    pg_restore \
      -h "$POSTGRES_HOST" \
      -p "$POSTGRES_PORT" \
@@ -188,7 +194,7 @@ De acordo com o design do projeto (OD-R-6), migrações destrutivas não podem s
 
 Para essas operações, a única recuperação é o seu backup. Sempre faça backup antes do pull se você estiver em uma versão mais antiga e um novo refatoramento tiver sido lançado.
 
-O design de ir apenas para frente do executor de migração é intencional: os arquivos de reversão (`.down.sql`) existem para a segurança do desenvolvedor durante os testes, mas a recuperação na produção depende de backups, e não da reexecução de operações irreversíveis.
+O design apenas para frente do executor de migração é intencional: arquivos de reversão (`.down.sql`) existem para a segurança do desenvolvedor durante os testes, mas a recuperação em produção usa backups e suas chaves de criptografia retidas separadamente. A reexecução de uma migração destrutiva não pode recuperar dados excluídos.
 
 ## Testando uma branch de funcionalidade, e então voltando para a `main`
 
@@ -196,13 +202,13 @@ Um caso comum: alguém pede que você teste uma branch na sua instalação exist
 
 Os fatos principais:
 
-- O Git e o PostgreSQL são mundos separados. `git checkout` apenas troca os arquivos no disco; ele nunca se conecta ou modifica o seu banco de dados. Seu estado de migração aplicada vive na tabela `schema_migrations`, não no git.
+- Git e PostgreSQL são mundos separados. O `git checkout` apenas troca arquivos no disco; ele nunca se conecta nem modifica seu banco de dados. O PostgreSQL armazena o estado das migrações aplicadas na tabela `schema_migrations`. Mudar de branch do git não altera essa tabela.
 - Migrações são executadas automaticamente na inicialização (via `initializeDatabase.ts`), de modo que no momento em que você iniciar a branch, suas novas migrações serão aplicadas ao banco de dados para o qual você apontou.
 - O executor para frente nunca faz reversão automática. Ao voltar para a `main`, ele varre os arquivos no disco, não encontra nada pendente e não faz nada. Migrações que a branch aplicou continuam aplicadas.
 
 Então, é seguro? Depende inteiramente do que as migrações da branch fizeram:
 
-- Apenas aditivo (novas tabelas / novas colunas) → seguro. Os novos objetos simplesmente ficam sem uso; o código da `main` nunca faz referência a eles, então eles não podem causar resultados incorretos ou falhas. Eles são um peso morto inofensivo.
+- **Somente aditivo** (novas tabelas / novas colunas) → seguro. Os novos objetos simplesmente ficam sem uso; o código da `main` nunca faz referência a eles, então eles não podem causar resultados errados ou falhas. Remova objetos não utilizados apenas por meio de uma migração revisada.
 - Destrutivo (`DROP`/`RENAME`/`ALTER` em uma tabela que a `main` ainda usa) → não seguro. A mudança da branch deixa o código da `main` trabalhando contra uma coluna/tabela que agora não existe mais ou foi alterada.
 
 A abordagem mais segura: aponte a branch para um banco de dados descartável (um `POSTGRES_DB` separado), assim seus dados reais nunca serão tocados. Você já constrói a conexão a partir das variáveis `POSTGRES_*`, e o `bun run nuke-db` pode resetar um banco de dados de rascunho.
@@ -212,12 +218,12 @@ A abordagem mais segura: aponte a branch para um banco de dados descartável (um
 Se você testou uma branch contra o seu banco de dados real e deseja desfazer suas migrações em seguida, use o executor de rollback. Ao contrário do executor para frente, ele nunca roda automaticamente: o rollback é sempre um ato manual deliberado, já que os arquivos `.down.sql` tipicamente envolvem perda de dados.
 
 ```bash
-# Apenas visualização (dry run): mostrar o que seria revertido
-bun run migrate:down 034          # esta migração + todas as mais recentes aplicadas
-bun run migrate:down --last       # apenas a migração mais recentemente aplicada
-bun run migrate:down --last=2     # as duas migrações mais recentemente aplicadas
+# Preview only (dry run): show what would be rolled back
+bun run migrate:down 034          # this migration + every newer applied one
+bun run migrate:down --last       # only the most recently applied migration
+bun run migrate:down --last=2     # the two most recently applied migrations
 
-# Executar a reversão (roda os arquivos .down.sql, remove as linhas em schema_migrations)
+# Execute the rollback (runs the .down.sql files, removes schema_migrations rows)
 bun run migrate:down 034 --yes
 ```
 

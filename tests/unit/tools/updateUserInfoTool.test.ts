@@ -6,7 +6,7 @@ import { PrivacyLevel } from "@/types/db/schema";
 import { EMPTY_PERSONA_NAMING_CONFIG, type PersonaNamingConfig } from "@/types/personaNaming";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { userNamingRepository, userRepository } from "@/utils/db/repositories";
-import { configToFeatureFlags, filterToolsByFeatureFlags } from "@/utils/tools/featureFlagMapper";
+import { configToFeatureFlags } from "@/utils/tools/featureFlagMapper";
 import { redactToolParametersForStorage } from "@/utils/tools/toolParameterRedaction";
 
 function makeContext(enabled: boolean, namingConfig?: PersonaNamingConfig): ToolContext {
@@ -255,13 +255,6 @@ describe("user info capability mapping", () => {
   it("maps the capability column straight through without a defaulting step", () => {
     expect(configToFeatureFlags(baseConfig).user_info_updates).toBe(true);
     expect(configToFeatureFlags({ ...baseConfig, user_info_updates_enabled: false }).user_info_updates).toBe(false);
-  });
-
-  it("filters the tool by name when the capability is disabled", () => {
-    const disabled = configToFeatureFlags({ ...baseConfig, user_info_updates_enabled: false });
-    expect(filterToolsByFeatureFlags(["update_user_info", "review_capabilities"], disabled)).toEqual([
-      "review_capabilities",
-    ]);
   });
 
   // Guards the gap that shipped: every provider assembles this config by hand, so a

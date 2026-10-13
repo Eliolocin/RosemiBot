@@ -2,6 +2,7 @@
 title: "记忆"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBot 有一套持久记忆系统，所以她能跨对话记住事实。这一页讲的是*她知道什么*（事实、上下文、文档）。至于*她如何表现*（性格、语气），见[多个人格](/zh-CN/features/chatting-personality/multiple-personas/)。

@@ -9,6 +9,7 @@
  * and consumed by the Phase 6 (#16.7) export pipeline composition.
  */
 import type { SQL } from "bun";
+import { presetFallbackLanguages, selectPresetsForLocale } from "@/utils/persona/presetLocale";
 import type {
   ErrorContext,
   AssembledServerConfig,
@@ -39,6 +40,7 @@ import { log } from "@/utils/misc/logger";
 import type { IRepository } from "./IRepository";
 
 const TEXT_ARRAY_CONFIG_COLUMNS = new Set([
+  "response_review_items",
   "autoch_disc_ids",
   "crosschannel_blocklist_ids",
   "llm_disabled_params",
@@ -51,6 +53,7 @@ const TEXT_ARRAY_CONFIG_COLUMNS = new Set([
 ]);
 
 const JSONB_CONFIG_COLUMNS = new Set([
+  "response_rule_checker_ref",
   "fallback_llm_ids",
   "fallback_model_refs",
   "llm_logit_biases",
@@ -63,6 +66,7 @@ function toPostgresTextArrayLiteral(values: readonly unknown[]): string {
 
 /** Row shape for server_capabilities_configs (Phase 6). */
 export type ServerCapabilitiesConfigsRow = {
+  response_drafting_enabled: boolean;
   emoji_usage_enabled: boolean;
   sticker_usage_enabled: boolean;
   web_search_enabled: boolean;
@@ -261,50 +265,39 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
     }
   }
 
-  async loadPresetRowsByLocale(locale: string): Promise<TomoriPresetRow[] | null> {
+  /**
+   * Loads one preset per lineage in the locale's best available language (see `selectPresetsForLocale`).
+   * `nsfw` is required so every caller picks a side; only the age-restricted `/nsfw` routes pass true.
+   */
+  async loadPresetRowsByLocale(locale: string, options: { nsfw: boolean }): Promise<TomoriPresetRow[] | null> {
     try {
-      let presets = await sql`
+      const rows = await sql<TomoriPresetRow[]>`
         SELECT * FROM persona_presets
-        WHERE preset_language = ${locale}
-        ORDER BY persona_preset_name ASC
+        WHERE preset_language = ANY(${sql.array(presetFallbackLanguages(locale), "TEXT")})
       `;
+      const presets = selectPresetsForLocale(rows, locale, options);
 
       if (presets.length === 0) {
-        const baseLanguage = locale.split("-")[0];
-        presets = await sql`
-          SELECT * FROM persona_presets
-          WHERE preset_language = ${baseLanguage}
-          ORDER BY persona_preset_name ASC
-        `;
-
-        if (presets.length > 0) {
-          log.info(`No presets found for locale '${locale}', using base language '${baseLanguage}' instead.`);
-        }
-      }
-
-      if (presets.length === 0 && locale !== "en-US") {
-        presets = await sql`
-          SELECT * FROM persona_presets
-          WHERE preset_language = 'en-US'
-          ORDER BY persona_preset_name ASC
-        `;
-
-        if (presets.length > 0) {
-          log.info(`No presets found for locale '${locale}', falling back to English presets.`);
-        }
-      }
-
-      if (!presets || presets.length === 0) {
         log.warn(`No personality presets found for locale '${locale}' or any fallback language.`);
         return null;
       }
 
       log.info(`Found ${presets.length} personality preset rows for locale '${locale}'.`);
-      return presets as TomoriPresetRow[];
+      return presets;
     } catch (error) {
       log.error(`Error loading preset rows for locale '${locale}' from database:`, error);
       return null;
     }
+  }
+
+  /** Loads the exact localized preset referenced by a persona, without locale substitution. */
+  async loadPresetByReference(lineageId: number, language: string): Promise<TomoriPresetRow | null> {
+    const [preset] = await sql<TomoriPresetRow[]>`
+      SELECT * FROM persona_presets
+      WHERE preset_lineage_id = ${lineageId} AND preset_language = ${language}
+      LIMIT 1
+    `;
+    return preset ?? null;
   }
 
   /** Loads all preset rows regardless of locale. */
@@ -1093,7 +1086,7 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
         SELECT emoji_usage_enabled, sticker_usage_enabled, web_search_enabled,
                manage_message_enabled, thread_creation_enabled, imagegen_enabled,
                videogen_enabled, voice_message_enabled, user_blocking_enabled, time_awareness_enabled,
-               tool_use_enabled
+               tool_use_enabled, response_drafting_enabled
         FROM server_capabilities_configs
         WHERE server_id = ${serverId}
       `;
@@ -1168,12 +1161,12 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
         server_id, emoji_usage_enabled, sticker_usage_enabled, web_search_enabled,
         manage_message_enabled, thread_creation_enabled, imagegen_enabled,
         videogen_enabled, voice_message_enabled, user_blocking_enabled, time_awareness_enabled,
-        tool_use_enabled
+        tool_use_enabled, response_drafting_enabled
       ) VALUES (
         ${serverId}, ${row.emoji_usage_enabled}, ${row.sticker_usage_enabled},
         ${row.web_search_enabled}, ${row.manage_message_enabled}, ${row.thread_creation_enabled},
         ${row.imagegen_enabled}, ${row.videogen_enabled}, ${row.voice_message_enabled},
-        ${row.user_blocking_enabled}, ${row.time_awareness_enabled}, ${row.tool_use_enabled}
+        ${row.user_blocking_enabled}, ${row.time_awareness_enabled}, ${row.tool_use_enabled}, ${row.response_drafting_enabled}
       )
       ON CONFLICT (server_id) DO UPDATE SET
         emoji_usage_enabled    = EXCLUDED.emoji_usage_enabled,
@@ -1187,6 +1180,7 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
         user_blocking_enabled  = EXCLUDED.user_blocking_enabled,
         time_awareness_enabled = EXCLUDED.time_awareness_enabled,
         tool_use_enabled       = EXCLUDED.tool_use_enabled,
+        response_drafting_enabled = EXCLUDED.response_drafting_enabled,
         updated_at             = NOW()
     `;
   }

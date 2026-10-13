@@ -40,6 +40,8 @@ export default {
     },
     text_preview: {
       truncated_footer: `Hiển thị {shown} trên tổng số {total} ký tự đầu tiên.`,
+      hidden_marker: `Ẩn thêm {count} ký tự.`,
+      hidden_marker_action: `Ẩn thêm {count} ký tự. Nhấn {action} để xem phần còn lại.`,
     },
     pagination: {
       page_info: `Trang {current}/{total}`,
@@ -53,6 +55,7 @@ export default {
       select_page_title: `Chọn trang`,
       select_page_description: `Chọn một trang để xem từ {totalItems} mục trên {totalPages} trang:`,
       select_persona_title: `Chọn persona`,
+      select_persona_page_description: `Chọn một trang để xem từ {totalItems} persona trên {totalPages} trang:`,
       persona_no_attributes: `Chưa có thuộc tính nào được định cấu hình.`,
       persona_select_button: `Chọn`,
     },

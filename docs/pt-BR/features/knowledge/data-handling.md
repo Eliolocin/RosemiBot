@@ -5,82 +5,89 @@ sidebar:
 aiGenerated: true
 ---
 
-A TomoriBot é construída para ser transparente sobre seus dados. Você pode exportar, importar ou excluir
-tudo que ela armazena, e esta página explica exatamente o que é. Para o texto legal,
-veja `/legal privacy-policy` e `/legal terms-of-service`.
+Exporte, faça backup, importe ou exclua suas configurações, memórias e personas usando comandos de barra Discord. Para termos de serviço e detalhes de privacidade, consulte `/legal terms-of-service` e `/legal privacy-policy`.
 
 :::note
-Esta página cobre os controles no Discord, por usuário. Hospedando sua própria instância?
-Backups e restaurações de banco de dados completo são uma operação do lado do host; veja
-[Manutenção & Backups](/pt-BR/self-hosting/maintenance/).
+Esta página aborda os controles do usuário no Discord. Em instâncias auto-hospedadas, os backups e restaurações completos do banco de dados são operações do lado do host; consulte [Manutenção e backups](/pt-BR/self-hosting/maintenance/).
 :::
 
-## O Que Ela Armazena
+## O que ela armazena
 
-Armazenado:
+### Dados armazenados
 
-- Memórias do servidor e pessoais
-- Configurações e dados de persona dela
-- Configuração do servidor
-- Chaves de API criptografadas
+- Servidor e memórias pessoais
+- Perfis de personalidade, características e exemplos de diálogo
+- Definições de configuração do servidor
+- Chaves API do provedor criptografado
+- Metadados de expressão, regras de acesso de persona e mídia de expressão carregada
 
-Não armazenado:
+### Não armazenado
 
-- Suas mensagens do Discord
-- Histórico de chat
+- Histórico de mensagens Discord (as mensagens não são arquivadas em um log de mensagens persistente)
 
-Enviado ao seu provedor de IA: sempre que ela é acionada, ela busca as mensagens mais recentes
-no canal mais quaisquer memórias relevantes como contexto para o modelo. Ela não monitora
-nem lê mensagens fora desses acionamentos.
+### Enviado para seu provedor de IA
+
+Sempre que acionado, TomoriBot busca mensagens recentes no canal junto com memórias relevantes como contexto para o modelo. Ela não lê nem processa mensagens fora desses gatilhos.
 
 :::note
-O provedor de IA escolhido por você (Google, OpenRouter, NovelAI, …) processa as mensagens sob *suas próprias*
-políticas de privacidade. Nunca compartilhe informações pessoais sensíveis com qualquer IA.
+O provedor de IA escolhido (Google, OpenRouter, NovelAI,…) processa mensagens de acordo com sua própria política de privacidade. Evite compartilhar credenciais pessoais confidenciais ou dados confidenciais.
 :::
+
+### Seleções de Revisão de respostas
+<!-- anchor: response-drafting-selections -->
+
+`/config` > `Plugins` > `Revisão de respostas` armazena as escolhas de revisor, modelo de decisões, verificador de regras opcional, prompt e itens de revisão ativados para o espaço de trabalho. Quando ativada, as respostas são revisadas antes de serem enviadas. Solicitações de ferramentas são revisadas antes da execução apenas com `Chamadas de ferramentas` ativado. Um verificador opcional recebe o texto da resposta pendente e envia conclusões consultivas apenas ao revisor. A dispensa por decisão permanece inativa até que haja validação rotulada, e as seleções de decisões salvas não fazem chamadas pagas enquanto faltar calibração. Desativar mantém respostas e ferramentas normais sem solicitações de revisão.
+
+O revisor selecionado sempre recebe a resposta pendente, a mensagem disparadora e o destino da resposta. `Itens a verificar` controla quais contextos adicionais já admitidos para o autor ele recebe: instruções da persona, diálogos de exemplo, conversa recente, memórias e outro contexto e chamadas de ferramentas. Instruções da persona, diálogos de exemplo e conversa recente começam ativados. Memórias e outro contexto inclui relacionamentos visíveis entre participantes e documentos. Com `Chamadas de ferramentas` ativado, o revisor recebe os resultados concluídos e as definições de ferramentas disponíveis; uma solicitação proposta inclui seu alvo exato e argumentos, incluindo qualquer texto de mensagem. A revisão não adiciona consulta a perfis privados. Credenciais e argumentos de autenticação são ocultados. As evidências necessárias precisam caber; cobertura incompleta de mídia, argumentos de ferramentas ocultos ou limites de modelo ausentes tornam a revisão indisponível. Uma revisão indisponível mantém as verificações normais do aplicativo; uma ação rejeitada anteriormente permanece bloqueada.
+
+A herança usa o modelo e as credenciais que realmente respondem, incluindo roteamento pessoal, rotação de chaves, substituições e fallback. Um revisor fixado usa o registro do próprio espaço de trabalho e a chave do provedor salva. Seu provedor tem sua própria política de privacidade. Escolhê-lo mantém o provedor de respostas principal inalterado. Respostas pendentes e pacotes de correção duram apenas durante o turno. Apenas diálogos aceitos pelo Discord entram na memória de conversa; a contabilidade de tokens inclui tentativas reais sem sucesso quando o provedor relata o uso. Os diagnósticos contêm metadados e contagens, sem rascunhos, evidências, correções, corpos de resposta do provedor ou chaves.
+
+As exportações de configuração incluem essas definições sem chaves de API ou tokens de autenticação MCP. As importações preservam referências de modelo e verificador apenas quando disponíveis no espaço de trabalho receptor. Registre um equivalente local ou limpe seleções indisponíveis antes de importar. A redefinição de configuração do servidor restaura o estado desativado, herança de revisor, nenhum modelo de decisões, o prompt padrão e nenhum verificador.
 
 ## Exporte Seus Dados
 
-Tudo que é exportável é enviado para suas DMs como um arquivo JSON:
+Os dados exportáveis são entregues aos seus DMs como um arquivo JSON:
 
-- `/export config`: valores de configuração do servidor (sem chaves de API, credenciais ou configurações de provedores).
-- `/export personal config`: suas configurações pessoais (perfil, privacidade, aparência, modos de resposta).
-- `/export memories`: memórias do servidor, com escopo para a persona principal, uma persona selecionada ou cada persona separadamente.
-- `/export personal memories`: suas memórias pessoais, com escopo global, para uma persona ou para cada persona separadamente.
-- `/persona export`: definições completas de personas.
+- `/export config`: valores de configuração do servidor (exclui chaves e credenciais API).
+- `/export personal config`: configurações de perfil pessoal (privacidade, tags de aparência, nomenclatura).
+- `/export memories`: memórias do servidor, com escopo para a persona principal, uma persona ou todas as personas.
+- `/export personal memories`: memórias pessoais, com escopo global ou individual.
+- `/persona export`: definições completas de personalidade.
+
+A mídia de expressão carregada é armazenada no host do servidor e está fora dessas exportações JSON. Os auto-hosters devem fazer backup do armazenamento de banco de dados e dos ativos de mídia juntos; consulte [backups de mídia personalizados](/pt-BR/self-hosting/safe-migration/#custom-expression-media-backups).
 
 ## Importe Seus Dados
 
-Anexe um arquivo previamente exportado para restaurá-lo:
+Anexe um arquivo exportado para restaurá-lo:
 
-- `/import config`: configuração do servidor; requer Gerenciar Servidor. Escolha quais seções detectadas aplicar.
-- `/import personal config`: suas configurações pessoais. Escolha quais seções detectadas aplicar.
-- `/import memories`: memórias do servidor; requer Gerenciar Servidor. Mesclar ou substituir, e mapear cada persona de origem se o arquivo tiver mais de uma.
-- `/import personal memories`: suas memórias pessoais. Mesclar ou substituir, e mapear cada persona de origem se o arquivo tiver mais de uma.
-- `/persona import`: restaurar uma persona. Também aceita cards PNG e JSON do SillyTavern e
-  arquivos `.charx` Character Card V3, que importam apenas o texto do personagem (veja
-  [Suporte ao SillyTavern](/pt-BR/features/integrations/sillytavern-support/)).
+- `/import config`: configuração do servidor (requer Gerenciar Servidor). Escolha quais seções aplicar.
+- `/import personal config`: configurações pessoais. Escolha quais seções detectadas serão aplicadas.
+- `/import memories`: memórias do servidor (requer Gerenciar Servidor). Mesclar ou substituir e mapear personas.
+- `/import personal memories`: memórias pessoais. Mesclar ou substituir e mapear personas.
+- `/persona import`: restaurar uma persona. Também importa cartões SillyTavern PNG, cartões JSON e arquivos `.charx` (consulte [Suporte SillyTavern](/pt-BR/features/integrations/sillytavern-support/)).
 
 ## Exclua Seus Dados
 
-Estes removem ou resetam dados permanentemente; não podem ser desfeitos:
+Estas ações removem ou redefinem permanentemente os dados armazenados:
 
-- `/personal memories`, `/memories`
-- `/reset config`: reseta a configuração do servidor em todas as 29 tabelas de configuração para os padrões do banco de dados.
-  - Singletons restaurados para padrões DDL (18 tabelas): chat configs, model configs, member permissions, capabilities, notice embeds, nsfw configs, speech configs, auto-trigger configs, channel scope configs, trigger behavior configs, NovelAI image generation configs, BYOK configs, memory configs, short-term memory configs, welcome configs, image quota configs, text quota configs e video quota configs.
-  - Configuração preservada (dois conjuntos): IDs de modelos ativos, credenciais e parâmetros de endpoints personalizados em `server_model_configs` (`llm_id`, `embedding_model_id`, `diffusion_model_id`, `video_model_id`, `vision_llm_id`, `api_key`, `key_version`, `custom_endpoint_url`, `custom_model_name`, `custom_num_ctx`, `other_model_codename`, `other_model_capabilities`, `other_model_capabilities_fetched_at`), além da identidade do modelo de difusão NovelAI ativo (`nai_diffusion_model_id` em `server_novelai_imagegen_configs`).
-  - Coleções limpas (11 tabelas): `server_auto_trigger_persona_overrides`, `stm_categories`, `random_triggers`, `channel_llm_overrides`, `channel_prompt_overrides`, `channel_context_notes`, `personalization_blacklist`, `persona_user_blocks`, `channel_whitelist`, `role_whitelist` e `channel_persona_whitelist`.
-  - Domínios preservados: Personas e configurações de personas, memórias do servidor, memórias de curto prazo, expressões (emojis e figurinhas), consumo de cota registrado, configurações salvas de provedores e integrações externas (Matrix e MCP).
-  - Contexto e permissões: Requer permissão Gerenciar Servidor em guildas. Suportado em mensagens diretas (DMs) usando o snowflake do workspace do usuário invocador.
-- `/reset personal config`: reseta a configuração do usuário e destaques pessoais de canal em todos os servidores para os padrões do banco de dados.
-  - Campos resetados: Restaura `users.language_pref` ('en-US') e `users.privacy_level` (0), restaura todas as 13 colunas em `user_personalization_configs` (nickname, cross-server opt-in, appearance tags, character reference URL, impersonation prompt, personal DTM, deliberate tool mode, timezone offset, prefix/suffix overrides, gender identity, pronouns, addressing style) para os padrões do esquema, e exclui todos os `user_persona_naming_preferences`.
-  - Coleções limpas: Exclui todos os `personal_spotlights` do usuário em todos os workspaces, com cascata para `personal_spotlight_personas`.
-  - Domínios pessoais preservados: Identidade da conta do usuário, locale de registro, memórias pessoais, configurações salvas de provedores (`user_saved_provider_configs`), endpoints personalizados e tarefas/lembretes agendados.
-  - Contexto: Disponível para todos os usuários tanto em guildas quanto em DMs.
+- `/personal memories`: gerencie ou remova memórias pessoais.
+- `/memories`: gerencia ou remove memórias do servidor (requer Gerenciar Servidor).
+- `/personal nuke`: exclui permanentemente todos os dados pessoais dos servidores.
+- `/nuke`: limpa os dados do servidor, incluindo expressões personalizadas e regras de acesso pessoal. Defina `preserve_personas: true` para manter personas enquanto remove expressões e mídia personalizadas.
+- `/reset config`: restaura a configuração do servidor para os padrões do banco de dados.
+  - **Preserva**: atribuições de modelos ativos, chaves API, endpoints personalizados, personas, memórias de servidor e integrações.
+  - **Limpas**: substituições de canais, regras de acionamento automático, listas negras de usuários e listas brancas de canais.
+  - Requer a permissão Gerenciar Servidor em servidores; também disponível em DMs.
+- `/reset personal config`: restaura as configurações de perfil pessoal e destaques do canal para os padrões.
+  - **Preserva**: identidade do usuário, memórias pessoais, chaves API do provedor salvas, endpoints personalizados e tarefas agendadas.
+  - **Clears**: substituições de apelidos, tags de aparência, pronomes, estilo de endereçamento e destaques do canal.
+  - Disponível para todos os usuários em servidores e DMs.
+
+Para tabelas exatas de banco de dados e listas de colunas preservadas, consulte [arquitetura de esquema de banco de dados](/en/architecture/subsystems/database-schema/#reset-domain-classifications).
 
 ## Optando por Sair
 
-- `/personal config`: controlar sua visibilidade para ela, até invisibilidade total (optar por sair dos
-  recursos de memória inteiramente).
-- `/config` > Permissions: administradores do servidor podem desativar o autoaprendizado e outros recursos.
+- `/personal config`: controle sua visibilidade, até a invisibilidade total (optando por sair do contexto de memória).
+- `/config` > `Permissões`: os gerenciadores de servidores podem desativar os recursos de autoaprendizado e memória.
 
-Veja [Memória](/pt-BR/features/knowledge/memory/) para saber como as memórias funcionam no dia a dia.
+Consulte [Memória](/pt-BR/features/knowledge/memory/) para gerenciamento diário de memória.

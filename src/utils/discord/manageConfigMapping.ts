@@ -22,7 +22,6 @@ type CapabilitiesManageCapabilityColumn = Extract<
   | "videogen_enabled"
   | "voice_message_enabled"
   | "user_blocking_enabled"
-  | "short_term_memory_enabled"
   | "user_info_updates_enabled"
   | "time_awareness_enabled"
 >;
@@ -197,15 +196,6 @@ const CAPABILITIES_MANAGE_PERMISSION_DEFINITIONS: readonly CapabilitiesManagePer
     labelKey: "commands.capabilities.manage.emojiusage_option",
     descKey: "commands.capabilities.manage.emojiusage_desc",
     getState: (c) => c.emoji_usage_enabled,
-  },
-  {
-    value: "shorttermmemory",
-    page: "context-additions",
-    table: "capabilities",
-    dbColumn: "short_term_memory_enabled",
-    labelKey: "commands.capabilities.manage.shorttermmemory_option",
-    descKey: "commands.capabilities.manage.shorttermmemory_desc",
-    getState: (c) => c.short_term_memory_enabled ?? true,
   },
   {
     value: "timeawareness",

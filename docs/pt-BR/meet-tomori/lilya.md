@@ -2,6 +2,7 @@
 title: "Lilya, a Tímida"
 sidebar:
   order: 4
+aiGenerated: false
 ---
 
 <!-- STUB (tarefa secundária). Fonte: src/db/seed/catalog/personas/shy/en-US.ts.

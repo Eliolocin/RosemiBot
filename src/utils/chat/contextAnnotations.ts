@@ -1,3 +1,4 @@
+import { getCachedImpersonatedUserIdForWebhook, verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import type { Embed, Message, MessageReaction } from "discord.js";
 import { MessageType } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
@@ -552,16 +553,27 @@ async function resolveMessageAuthorDisplayName(params: {
     return identityRow?.user_nickname?.trim() || messageProxyIdentity.displayName;
   }
 
-  const webhookName = stripBridgePrefix(params.message.author.username);
-  const renderModifierSource = params.message.webhookId
+  const trustedWebhook = await verifyMessageWebhook(params.message);
+  const webhookName = trustedWebhook
+    ? stripBridgePrefix(params.message.author.username)
+    : params.message.author.username;
+  const renderModifierSource = trustedWebhook
     ? resolveRenderModifierSourcePersona(webhookName, params.personaByNickname)
     : null;
-  const matchedPersona = params.message.webhookId
+  const matchedPersona = trustedWebhook
     ? (renderModifierSource?.persona ?? params.personaByNickname.get(normalizeRenderModifierName(webhookName)))
     : undefined;
-  const userRow = matchedPersona ? null : await getCachedUserRow(params.message.author.id);
+  // A user-impersonation webhook's author id is the webhook's, so its speaker's saved nickname
+  // is only reachable through the relay cache.
+  const nicknameOwnerId =
+    (trustedWebhook ? getCachedImpersonatedUserIdForWebhook(params.message.webhookId) : null) ??
+    params.message.author.id;
+  const userRow =
+    params.message.author.id !== params.clientUserId && !matchedPersona
+      ? await getCachedUserRow(nicknameOwnerId)
+      : null;
   const userBlacklisted =
-    userRow !== null ? await getCachedBlacklistStatus(params.serverDiscId, params.message.author.id) : false;
+    userRow !== null ? await getCachedBlacklistStatus(params.serverDiscId, nicknameOwnerId) : false;
   const fallbackName = resolvePreferredDiscordDisplayName({
     memberDisplayName: params.message.member?.displayName,
     user: params.message.author,
@@ -569,7 +581,7 @@ async function resolveMessageAuthorDisplayName(params: {
   });
 
   const spriteDisplayName =
-    !renderModifierSource && matchedPersona
+    (!renderModifierSource || renderModifierSource.isNeutralAppearance) && matchedPersona
       ? await resolveSpriteMessageDisplayName(
           params.message.id,
           matchedPersona.persona_id,
@@ -578,8 +590,8 @@ async function resolveMessageAuthorDisplayName(params: {
       : null;
 
   return (
-    renderModifierSource?.displayName ??
     spriteDisplayName ??
+    renderModifierSource?.displayName ??
     matchedPersona?.persona_nickname ??
     (userBlacklisted || params.serverPersonalizationDisabled || !userRow?.user_nickname
       ? fallbackName

@@ -2,6 +2,7 @@
 title: "ダウナー系のアフェル"
 sidebar:
   order: 3
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Source: src/db/seed/catalog/personas/gloomy/en-US.ts.

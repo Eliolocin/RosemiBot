@@ -51,6 +51,7 @@ function addFailureReceipt(locale: string, status: string, detail?: string): Pan
     "invalid-input": "commands.mcps.invalid_input",
     "invalid-name": "commands.mcps.invalid_name",
     "invalid-type": "commands.mcps.invalid_type",
+    "family-in-use": "commands.mcps.family_in_use",
     "invalid-url": "commands.mcps.invalid_url",
     unavailable: "commands.mcps.read_unavailable",
     "limit-reached": "commands.mcps.limit_reached",
@@ -78,7 +79,11 @@ function mutationFailureReceipt(locale: string, status: string): PanelReceipt {
     heading: localizer(locale, "commands.mcps.change_failed"),
     detail: localizer(
       locale,
-      status === "unavailable" ? "commands.mcps.read_unavailable" : "commands.mcps.write_failed",
+      status === "unavailable"
+        ? "commands.mcps.read_unavailable"
+        : status === "family-in-use"
+          ? "commands.mcps.family_in_use"
+          : "commands.mcps.write_failed",
     ),
   };
 }

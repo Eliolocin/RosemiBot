@@ -8,7 +8,6 @@ WORKDIR /app
 
 # Install system dependencies that might be needed
 # Alpine Linux is minimal, so we add some common tools
-# Include Node.js for the bundled DuckDuckGo MCP server executable
 # Include curl for health checks
 # --- SECURITY FIX: Added 'apk update && apk upgrade' to patch OpenSSL CVEs ---
 RUN apk update && apk upgrade && \
@@ -17,8 +16,7 @@ RUN apk update && apk upgrade && \
     tzdata \
     curl \
     ffmpeg \
-    postgresql-client \
-    nodejs
+    postgresql-client
 
 # Create a non-root user for security
 # It's like giving TomoriBot her own user account instead of admin access
@@ -31,8 +29,6 @@ RUN mkdir -p /app/backups /app/logs /app/data && \
 
 # Switch to non-root user
 USER tomori
-
-ENV PATH="/app/node_modules/.bin:$PATH"
 
 # Copy package files first for better Docker layer caching
 # This is like getting the "lease agreement" (dependencies) ready first
@@ -50,10 +46,6 @@ COPY --chown=tomori:tomori apps/docs/package.json ./apps/docs/package.json
 # Install dependencies
 # Think of this as "furnishing the apartment" with all the tools TomoriBot needs
 RUN bun install --frozen-lockfile --production
-
-# This executable is loaded from config rather than a TypeScript import. Fail
-# the image build if dependency pruning ever removes it again.
-RUN test -x /app/node_modules/.bin/ddg-search-mcp
 
 # Copy the rest of the application code
 # This is like moving TomoriBot's belongings into her new apartment

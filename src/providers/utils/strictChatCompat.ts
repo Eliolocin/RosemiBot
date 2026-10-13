@@ -37,6 +37,17 @@ const ALTERNATION_REQUIRED_PROVIDERS = new Set<string>(["anthropic"]);
 const PREFIX_COMPLETION_REQUIRED_PROVIDERS = new Set<string>(["deepseek", "zai", "zaicoding"]);
 
 /**
+ * Prefix-completion providers whose backend rejects `prefix: true` in a request that also carries
+ * `tools` (DeepSeek: "Function call should not be used with prefix"). Z.ai is absent because no
+ * such rejection has been observed there.
+ */
+const PREFIX_COMPLETION_EXCLUDES_TOOLS_PROVIDERS = new Set<string>(["deepseek"]);
+
+export function providerPrefixCompletionExcludesTools(provider: string): boolean {
+  return PREFIX_COMPLETION_EXCLUDES_TOOLS_PROVIDERS.has(provider);
+}
+
+/**
  * @returns `true` when the provider must always apply strict role alternation.
  * @param provider - Provider codename (e.g. "anthropic").
  */

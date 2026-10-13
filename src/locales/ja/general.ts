@@ -1,4 +1,4 @@
-﻿export default {
+export default {
   general: {
     language_name: `日本語`,
     yes: `はい`,
@@ -6,7 +6,7 @@
     none: `なし`,
     unknown: `不明`,
     openrouter_model_moved_title: `機能の場所が変わりました`,
-    openrouter_model_moved_description: `\`other-model\` の直接選択は OpenRouter モデル登録に移動しました。まず {add_command} で正確なモデルコードネームを登録し、不要な登録は {remove_command} で削除してください。その後、通常の OpenRouter モデル一覧から登録済みモデルを選択してください。`,
+    openrouter_model_moved_description: `\`other-model\` の選択は {add_command} に移動しました。登録後に再度 \`/config\` > モデル > モデル切り替え から選択してください。`,
     defaults: {
       bot_name: `ともり`,
       base_trigger_words: ["tomori", "tomo", "トモリ", "ともり"],
@@ -40,6 +40,8 @@
     },
     text_preview: {
       truncated_footer: `全 {total} 文字のうち、最初の {shown} 文字を表示しています。`,
+      hidden_marker: `{count}文字が非表示になっています。`,
+      hidden_marker_action: `{count}文字が非表示になっています。{action}を押して続きを読む。`,
     },
     pagination: {
       page_info: `ページ {current}/{total}`,
@@ -53,6 +55,7 @@
       select_page_title: `ページを選択`,
       select_page_description: `{totalItems}項目から{totalPages}ページ中の表示するページを選択してください：`,
       select_persona_title: `ペルソナを選択`,
+      select_persona_page_description: `{totalItems}人のペルソナから{totalPages}ページ中の表示するページを選択してください：`,
       persona_no_attributes: `属性はまだ設定されていません。`,
       persona_select_button: `選択`,
     },
@@ -163,12 +166,12 @@
     task_set_description: `「**{reminder_purpose}**」を\`{reminder_time}\`に実行します`,
     task_set_footer: `{time_remaining}後にタスクを実行します。リマインダーは\`/scheduled-task remove\`で削除できます。`,
     task_updated_title: `✅ {persona_nickname}が予定タスクを更新しました`,
-    task_updated_description: `ID:{reminder_id}を更新しました: 「**{reminder_purpose}**」
+    task_updated_description: `リマインダーを「**{reminder_purpose}**」に更新しました
 次回実行: \`{reminder_time}\`
 繰り返し: {repeat_text}`,
     task_updated_footer: `予定タスクは\`/scheduled-task edit\`と\`/scheduled-task remove\`でも編集・削除できます。`,
     task_deleted_title: `🗑️ {persona_nickname}が予定タスクを削除しました`,
-    task_deleted_description: `ID:{reminder_id}を削除しました: 「**{reminder_purpose}**」`,
+    task_deleted_description: `削除しました: 「**{reminder_purpose}**」`,
     task_deleted_footer: `この予定タスクは今後実行されません。`,
     task_update_repeat_none: `1回のみ`,
     task_update_repeat_hours: `{repetition_interval_hours}時間ごと`,

@@ -1,3 +1,4 @@
+import { createPersona } from "../../helpers/fixtures";
 import { describe, expect, it } from "bun:test";
 import {
   ButtonStyle,
@@ -33,6 +34,7 @@ type MockInteraction = {
   options: { getString: (name: string, required: boolean) => string };
   deferred: boolean;
   replied: boolean;
+  memberPermissions?: { has(permission: "ManageGuild"): boolean };
   deferReply: (options?: { flags?: MessageFlags }) => Promise<void>;
 };
 
@@ -51,7 +53,7 @@ type DependencyCalls = {
 
 const client = { user: { id: "bot-user" } } as Client;
 const userData = { user_id: 42, user_disc_id: "user-42" } as UserRow;
-const tomoriState = { persona_id: 1, persona_nickname: "Main", is_alter: false } as CachedTomoriState;
+const tomoriState = createPersona({ persona_nickname: "Main", config: { prompt_snapshot_enabled: false } });
 const personas = [tomoriState] as TomoriState[];
 const personaPages = Array.from(
   { length: 5 },
@@ -170,7 +172,7 @@ function createDependencies(interaction: MockInteraction, state: CachedTomoriSta
     getCachedAllPersonas: async (...args) => {
       calls.personas.push(args);
       expectAcknowledged();
-      return personas;
+      return state ? [state] : [];
     },
     getCachedTomoriState: async (...args) => {
       calls.cache.push(args);
@@ -231,6 +233,24 @@ function expectNoPageBuilderCalls(calls: DependencyCalls): void {
 }
 
 describe("executeStatusCommand", () => {
+  it("applies the existing prompt policy to the initial member and administrator reply", async () => {
+    for (const administrator of [false, true])
+      for (const inspectionEnabled of [false, true]) {
+        const { interaction } = createInteraction("guild-123");
+        interaction.memberPermissions = { has: () => administrator };
+        const state = createPersona({ config: { prompt_snapshot_enabled: inspectionEnabled } });
+        const { dependencies, calls } = createDependencies(interaction, state);
+        await executeStatusCommand(
+          client,
+          interaction as unknown as ChatInputCommandInteraction,
+          userData,
+          "en-US",
+          dependencies,
+        );
+        expect(calls.buildPersonaPages[0]?.[3]).toBe(administrator || inspectionEnabled);
+        expect(calls.configPages[0]?.[3]).toBe(administrator || inspectionEnabled);
+      }
+  });
   it("acknowledges before reads and opens the main Persona with all five categories", async () => {
     const { interaction, deferCalls } = createInteraction("guild-123");
     const { dependencies, calls } = createDependencies(interaction, tomoriState);
@@ -245,7 +265,7 @@ describe("executeStatusCommand", () => {
     expect(deferCalls).toEqual([{ flags: MessageFlags.Ephemeral }]);
     expect(calls.info).toHaveLength(0);
     expect(calls.cache).toEqual([["guild-123"]]);
-    expect(calls.configPages).toEqual([[client, tomoriState, "en-US"]]);
+    expect(calls.configPages).toEqual([[client, tomoriState, "en-US", false]]);
     expect(calls.modelPages).toEqual([[client, "guild-123", tomoriState, "en-US"]]);
     expect(calls.channelPages).toEqual([[client, "guild-123", tomoriState, "en-US"]]);
     expect(calls.buildPersonalPages).toEqual([
@@ -253,7 +273,7 @@ describe("executeStatusCommand", () => {
     ]);
     expect(calls.dashboard).toHaveLength(1);
     expect(calls.personas).toEqual([["guild-123"]]);
-    expect(calls.buildPersonaPages).toEqual([[tomoriState, userData, "en-US"]]);
+    expect(calls.buildPersonaPages).toEqual([[tomoriState, userData, "en-US", false]]);
     expect(calls.dashboard[0]?.[2]).toEqual(expectedCategories);
     expect((calls.dashboard[0]?.[2] as StatusPageCategory[]).map(({ id }) => id)).toEqual([
       "persona",
@@ -315,7 +335,7 @@ describe("executeStatusCommand", () => {
     expect(calls.channelPages).toEqual([[client, "dm-user", tomoriState, "ja"]]);
     expect(calls.modelPages).toEqual([[client, "dm-user", tomoriState, "ja"]]);
     expect(calls.personas).toEqual([["dm-user"]]);
-    expect(calls.buildPersonaPages).toEqual([[tomoriState, userData, "ja"]]);
+    expect(calls.buildPersonaPages).toEqual([[tomoriState, userData, "ja", false]]);
     expect(calls.dashboard[0]?.[2]).toEqual(expectedCategories);
     expect(calls.dashboard[0]?.[3]).toBe("persona");
   });

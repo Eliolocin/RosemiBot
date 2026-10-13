@@ -1,16 +1,21 @@
 import type { TextBasedChannel } from "discord.js";
 import type { ReminderRow } from "@/types/db/schema";
 import { log } from "@/utils/misc/logger";
-import { getLinkedMatrixRoom } from "./rooms";
+import { readBoundedResponse } from "@/utils/security/boundedResponse";
+import { ensureRoomRelayable, getLinkedMatrixRoom } from "./rooms";
 import {
   MATRIX_MAX_TRACKED_SENT_EVENTS,
-  MATRIX_MEDIA_TIMEOUT_MS,
+  getMatrixSettings,
   pendingMatrixReplyChannels,
   sentEventPersonas,
 } from "./state";
 import { sendToMatrixRoom } from "./media";
 
 export { pendingMatrixReplyChannels } from "./state";
+
+// The spec caps an event at 64 KiB in federation format; the client format adds `unsigned`
+// metadata, so the headroom admits every valid event while bounding a misbehaving homeserver.
+const EVENT_RESPONSE_MAX_BYTES = 128 * 1024;
 
 export type PersonaReplyLookup = {
   isPersonaReply: boolean;
@@ -59,23 +64,26 @@ export async function getPersonaReplyEventMetadata(
     const url = `${homeserverUrl}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/event/${encodeURIComponent(eventId)}`;
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${asToken}` },
-      signal: AbortSignal.timeout(MATRIX_MEDIA_TIMEOUT_MS),
+      redirect: "error",
+      signal: AbortSignal.timeout(getMatrixSettings().mediaTimeoutMs),
     });
-    if (!response.ok) return { isPersonaReply: false };
+    if (!response.ok) {
+      await response.body?.cancel();
+      return { isPersonaReply: false };
+    }
 
-    const data = (await response.json()) as {
-      sender?: string;
-      content?: { body?: string };
-    };
+    const data: unknown = JSON.parse((await readBoundedResponse(response, EVENT_RESPONSE_MAX_BYTES)).toString("utf8"));
+    if (!data || typeof data !== "object" || Array.isArray(data)) return { isPersonaReply: false };
+    const { sender, content } = data as { sender?: unknown; content?: unknown };
     const isPersonaReply =
-      typeof data.sender === "string" && data.sender.startsWith("@_tomori_") && data.sender.endsWith(`:${serverName}`);
+      typeof sender === "string" && sender.startsWith("@_tomori_") && sender.endsWith(`:${serverName}`);
+    if (!isPersonaReply) return { isPersonaReply: false };
 
-    return isPersonaReply
-      ? {
-          isPersonaReply: true,
-          replySnippet: buildReplySnippet(data.content?.body),
-        }
-      : { isPersonaReply: false };
+    const body = content && typeof content === "object" ? (content as { body?: unknown }).body : undefined;
+    return {
+      isPersonaReply: true,
+      replySnippet: typeof body === "string" ? buildReplySnippet(body) : undefined,
+    };
   } catch (error) {
     log.warn(`Matrix bridge: failed to inspect reply event ${eventId} in room ${roomId}`, error);
     return { isPersonaReply: false };
@@ -91,6 +99,7 @@ export async function sendMatrixReminderMention(
 ): Promise<void> {
   const matrixRoomId = await getLinkedMatrixRoom(reminder.channel_disc_id);
   if (!matrixRoomId || !botUserId || !("messages" in channel)) return;
+  if (!(await ensureRoomRelayable(matrixRoomId, channel.client))) return;
 
   const matrixLocalpart = reminder.user_discord_id.split(":")[0].replace(/^@/, "");
   const mentionPlaceholder = `@{${matrixLocalpart}}`;

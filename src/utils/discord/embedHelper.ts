@@ -17,9 +17,11 @@ import {
 } from "discord.js";
 import { ColorCode, log } from "../misc/logger";
 import { localizer } from "../text/localizer";
-import { sendWebhookMessageWithIdentity } from "./webhookManager";
-import { attachTextDisplayModalCollector, buildTextDisplayModalButton } from "./textDisplayModal";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
+import { recordChannelDeliveredBotMessage } from "@/utils/discord/stream/channelDeliveryContinuity";
+import { attachTextDisplayModalCollector, buildTextDisplayModalRow } from "./textDisplayModal";
 import { withStatusCircle } from "./ui/statusTitle";
+import { resolveFooterLines } from "./ui/noticeFooter";
 import type { StandardEmbedOptions, SummaryEmbedOptions, TranslationEmbedOptions } from "../../types/discord/embed";
 import { TRANSLATOR_COLORS, TranslationProvider } from "../../types/discord/embed";
 
@@ -40,6 +42,7 @@ export const MAX_EMBED_DESCRIPTION_LENGTH = 4096;
  */
 export const SUPPORT_SERVER_TIP_KEY = "genai.tips.support_server";
 export const TIP_DETAILS_BUTTON_ID = "error_tip_details";
+const ERROR_DETAIL_BUTTON_ID = "error_full_detail";
 export const TIP_BUTTON_TIMEOUT_MS = 86_400_000;
 
 /**
@@ -60,6 +63,8 @@ export type WebhookEmbedContext = {
   webhook?: Webhook;
   personaUsername?: string;
   personaAvatarUrl?: string;
+  /** Persona the notice speaks for, so it can continue that persona's adjacent line. */
+  personaId?: number;
 };
 
 function canUseWebhookForChannel(
@@ -101,8 +106,14 @@ export function createStandardEmbed(locale: string, options: StandardEmbedOption
     color = ColorCode.INFO,
     footerKey,
     footerVars = {},
+    configHint,
     thumbnailUrl,
+    minimal,
   } = options;
+
+  if (minimal) {
+    return new EmbedBuilder().setColor(color).setTitle(withStatusCircle(localizer(locale, titleKey, titleVars), color));
+  }
 
   // Use raw description if provided, otherwise use descriptionKey with localization
   const descriptionText = description
@@ -116,9 +127,10 @@ export function createStandardEmbed(locale: string, options: StandardEmbedOption
     .setTitle(withStatusCircle(localizer(locale, titleKey, titleVars), color))
     .setDescription(descriptionText);
 
-  if (footerKey) {
+  const footerLines = resolveFooterLines(locale, footerKey, footerVars, configHint);
+  if (footerLines.length > 0) {
     embed.setFooter({
-      text: localizer(locale, footerKey, footerVars),
+      text: footerLines.join("\n"),
     });
   }
 
@@ -236,39 +248,33 @@ export async function sendStandardEmbed(
 ): Promise<void> {
   const embed = createStandardEmbed(locale, options);
   const tipText = options.tipKeys?.length ? createTipText(locale, options.tipKeys, options.tipVars) : null;
-  const activeTipRow = tipText
-    ? buildTextDisplayModalButton(TIP_DETAILS_BUTTON_ID, localizer(locale, "genai.tips.button"))
-    : undefined;
-  const disabledTipRow = tipText
-    ? buildTextDisplayModalButton(TIP_DETAILS_BUTTON_ID, localizer(locale, "genai.tips.button"), true)
-    : undefined;
-  const components = activeTipRow ? [activeTipRow] : [];
+  const { restrictedDetail } = options;
+  const modalButtons = [
+    ...(tipText ? [{ customId: TIP_DETAILS_BUTTON_ID, label: localizer(locale, "genai.tips.button") }] : []),
+    ...(restrictedDetail
+      ? [{ customId: ERROR_DETAIL_BUTTON_ID, label: localizer(locale, "genai.error_detail.button") }]
+      : []),
+  ];
+  const disabledModalRow = modalButtons.length > 0 ? buildTextDisplayModalRow(modalButtons, true) : undefined;
+  const components = modalButtons.length > 0 ? [buildTextDisplayModalRow(modalButtons)] : [];
   let sentMessage: Message;
   let sentViaWebhook = false;
   let threadId: string | undefined;
 
-  if (
-    webhookContext?.webhook &&
-    webhookContext.personaUsername &&
-    canUseWebhookForChannel(channel, webhookContext.webhook)
-  ) {
+  const personaUsername = webhookContext?.personaUsername;
+  if (webhookContext?.webhook && personaUsername && canUseWebhookForChannel(channel, webhookContext.webhook)) {
     threadId =
       "isThread" in channel && typeof channel.isThread === "function" && channel.isThread() ? channel.id : undefined;
     try {
-      sentMessage = await sendWebhookMessageWithIdentity(
+      sentMessage = await sendPersonaPostViaWebhook(
         webhookContext.webhook,
         {
           embeds: [embed],
           components,
           ...(threadId ? { threadId } : {}),
         },
-        {
-          username: webhookContext.personaUsername,
-          avatarUrl: webhookContext.personaAvatarUrl,
-          avatarDataUri: webhookContext.personaAvatarUrl?.startsWith("data:image/")
-            ? webhookContext.personaAvatarUrl
-            : undefined,
-        },
+        { username: personaUsername, avatarUrl: webhookContext.personaAvatarUrl, personaId: webhookContext.personaId },
+        channel,
       );
       sentViaWebhook = true;
     } catch (error) {
@@ -279,27 +285,46 @@ export async function sendStandardEmbed(
     sentMessage = await channel.send({ embeds: [embed], components });
   }
 
-  if (!tipText || !disabledTipRow) return;
+  if (!sentViaWebhook) recordChannelDeliveredBotMessage(channel.id);
 
-  attachTextDisplayModalCollector({
-    message: sentMessage,
-    customId: TIP_DETAILS_BUTTON_ID,
-    title: localizer(locale, "genai.tips.title"),
-    content: tipText,
-    timeoutMs: TIP_BUTTON_TIMEOUT_MS,
-    logLabel: "Error tips",
-    onExpire: async () => {
-      if (sentViaWebhook && webhookContext?.webhook) {
-        await webhookContext.webhook.editMessage(sentMessage.id, {
-          embeds: [embed],
-          components: [disabledTipRow],
-          ...(threadId ? { threadId } : {}),
-        });
-        return;
-      }
-      await sentMessage.edit({ embeds: [embed], components: [disabledTipRow] });
-    },
-  });
+  if (!disabledModalRow) return;
+
+  const disableButtons = async (): Promise<void> => {
+    if (sentViaWebhook && webhookContext?.webhook) {
+      await webhookContext.webhook.editMessage(sentMessage.id, {
+        embeds: [embed],
+        components: [disabledModalRow],
+        ...(threadId ? { threadId } : {}),
+      });
+      return;
+    }
+    await sentMessage.edit({ embeds: [embed], components: [disabledModalRow] });
+  };
+
+  if (tipText) {
+    attachTextDisplayModalCollector({
+      message: sentMessage,
+      customId: TIP_DETAILS_BUTTON_ID,
+      title: localizer(locale, "genai.tips.title"),
+      content: tipText,
+      timeoutMs: TIP_BUTTON_TIMEOUT_MS,
+      logLabel: "Error tips",
+      onExpire: disableButtons,
+    });
+  }
+  if (restrictedDetail) {
+    // Both collectors share one timeout, so only one of them disables the shared row.
+    attachTextDisplayModalCollector({
+      message: sentMessage,
+      customId: ERROR_DETAIL_BUTTON_ID,
+      title: localizer(locale, "genai.error_detail.title"),
+      content: restrictedDetail.content,
+      timeoutMs: TIP_BUTTON_TIMEOUT_MS,
+      logLabel: "Error detail",
+      access: restrictedDetail.access,
+      onExpire: tipText ? undefined : disableButtons,
+    });
+  }
 }
 
 const TRANSLATION_TIMEOUT = 90000;

@@ -2,6 +2,7 @@
 title: "設定：ComfyUI"
 sidebar:
   order: 2
+aiGenerated: false
 ---
 
 TomoriBot 可以透過你自己的

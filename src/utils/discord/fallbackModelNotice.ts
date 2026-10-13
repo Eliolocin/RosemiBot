@@ -3,10 +3,14 @@ import type { LlmRow } from "@/types/db/schema";
 import type { ToolContext } from "@/types/tool/interfaces";
 import { truncateForEmbedDescription } from "@/utils/discord/embedHelper";
 import { attachTextDisplayModalCollector, buildTextDisplayModalButton } from "@/utils/discord/textDisplayModal";
+import { NOTICE_CONFIG_HINT_KEY } from "@/constants/toolNotices";
 import { isNoticeEmbedVisible, routeHiddenToolNotice } from "@/utils/discord/toolProgressNotice";
 import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
 import { resolveManagedChannelWebhook } from "@/utils/discord/webhook/webhookCore";
-import { getChannelDeliveredWebhookIdentity } from "@/utils/discord/stream/channelDeliveryContinuity";
+import {
+  getChannelLastDelivery,
+  recordChannelDeliveredWebhookIdentity,
+} from "@/utils/discord/stream/channelDeliveryContinuity";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
 
@@ -110,7 +114,7 @@ export async function sendFallbackModelUsageNotice({
     context.locale,
     detailsOptions.descriptionKey,
     detailsOptions.descriptionVars,
-  )}\n\n-# ${localizer(context.locale, "genai.fallback_used_hide_footer")}${optOutFooter}`;
+  )}\n\n-# ${localizer(context.locale, NOTICE_CONFIG_HINT_KEY)}${optOutFooter}`;
 
   try {
     const buttonLabel = localizer(context.locale, "genai.fallback_used_details_button");
@@ -134,7 +138,8 @@ export async function sendFallbackModelUsageNotice({
     // The main persona has no pre-resolved `context.webhook` (it normally replies as the bot),
     // so when a sprite put it on the webhook path the webhook is resolved lazily here: the
     // lookup is cached, so this costs nothing on the common path.
-    const deliveredIdentity = getChannelDeliveredWebhookIdentity(context.channel.id);
+    const lastDelivery = getChannelLastDelivery(context.channel.id);
+    const deliveredIdentity = lastDelivery?.via === "webhook" ? lastDelivery.identity : null;
     const noticeWebhook: Webhook | undefined = deliveredIdentity
       ? (context.webhook ?? (await resolveManagedChannelWebhook(context.channel)) ?? undefined)
       : undefined;
@@ -148,6 +153,12 @@ export async function sendFallbackModelUsageNotice({
         },
         deliveredIdentity,
         threadId ?? noticeWebhook.channelId ?? noticeWebhook.id,
+      );
+      recordChannelDeliveredWebhookIdentity(
+        context.channel.id,
+        deliveredIdentity,
+        noticeMessage.id,
+        lastDelivery?.speaker ?? null,
       );
     } else {
       noticeMessage = await context.channel.send({ components: [buttonRow] });

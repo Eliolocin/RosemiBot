@@ -105,12 +105,19 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     );
 
     const result = await this.executeStream(provider, config, context);
-    if (result.status === "completed" && wasEmptyStreamResponse(result) && !context.suppressTextOutput) {
+    // An empty prefix at the held ceiling is not an empty reply: rescheduling would regenerate the
+    // same oversized output.
+    if (
+      result.status === "completed" &&
+      !result.pendingResponse?.truncation &&
+      !result.pendingResponse?.text.trim() &&
+      wasEmptyStreamResponse(result) &&
+      !context.suppressTextOutput
+    ) {
       log.info("Empty response detected. Returning empty_response status for retry at tomoriChat level.");
       return {
+        ...result,
         status: "empty_response",
-        data: result.data,
-        naiContinuationPrefill: result.naiContinuationPrefill,
       };
     }
 
@@ -146,7 +153,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
 
         if (context.abortSignal?.aborted) {
           log.warn(`Stream loop breaking due to external abort signal for channel ${context.channel.id}.`);
-          return { status: "error", data: new Error("Stream aborted by SDK call timeout") };
+          return { status: "error", data: new Error("Stream aborted by SDK call timeout"), usage: state.usage };
         }
 
         this.notifyStreamProgress(context);
@@ -222,7 +229,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         log.warn("Stream: Suppressing stream error embed due to retryable failure", lastError);
       }
 
-      return { status: "error", data: lastError };
+      return { status: "error", data: lastError, usage: state.usage };
     }
   }
 
@@ -260,7 +267,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     if (isFollowUpRequest(context.channel.id)) {
       log.info(`Stream interrupted by follow-up message for channel ${context.channel.id}. Skipping buffer flush.`);
       deleteStopRequest(context.channel.id);
-      return { status: "follow_up_interrupt" };
+      return { status: "follow_up_interrupt", usage: state.usage };
     }
 
     log.info(`Stream loop breaking due to stop request for channel ${context.channel.id}.`);
@@ -272,12 +279,13 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     // bot cannot post into that means a second rejected send and a re-registered stop that outlives
     // the stream. The two caps below already skip for the same reason.
     const shouldSkipBufferFlush =
-      (stopRequest?.requesterId === "flush_limit" ||
+      context.holdResponseText ||
+      ((stopRequest?.requesterId === "flush_limit" ||
         stopRequest?.requesterId === "speaker_guard" ||
         stopRequest?.requesterId === "channel_deleted" ||
         stopRequest?.requesterId === "missing_access" ||
         stopRequest?.requesterId === "send_message_limit") &&
-      !stopRequest?.stopContext;
+        !stopRequest?.stopContext);
 
     clearStopRequest(context.channel.id);
     if ((state.buffer.length > 0 || this.delivery.hasPendingAggregatedText(state)) && !shouldSkipBufferFlush) {
@@ -299,14 +307,21 @@ export class StreamOrchestrator implements IStreamOrchestrator {
 
     if (isSilentSpeakerGuardStop(stopRequest?.requesterId, state)) {
       log.warn("Stream: Silent speaker-guard stop produced no user-visible output; treating as empty response.");
-      return { status: "empty_response", data: { emptyResponseReason: "speaker_guard" } };
+      return { status: "empty_response", data: { emptyResponseReason: "speaker_guard" }, usage: state.usage };
     }
 
+    // A held speaker-guard or ceiling stop leaves a valid prefix for review, the same text ordinary
+    // streaming would already have sent before stopping.
+    const completesHeldPrefix =
+      context.holdResponseText && (stopReason === "speaker_guard" || stopReason === "pending_response_limit");
     // Carry the same payload `completeStreamAfterProviderEnd` assembles. A stop is an early return
     // out of the loop, so without this the turn's delivered text, usage, thoughts and sprite records
     // never reach short-term memory, stat recording, or the thought log.
     return {
-      status: "stopped_by_user",
+      status: completesHeldPrefix ? "completed" : "stopped_by_user",
+      pendingResponse: completesHeldPrefix
+        ? this.collectPendingResponse(state, textConfig, context, createTypingSimulationConfig(config.humanizerDegree))
+        : undefined,
       stopReason,
       accumulatedText: state.accumulatedText,
       detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
@@ -334,15 +349,14 @@ export class StreamOrchestrator implements IStreamOrchestrator {
           if (state.buffer.length > 0 || this.delivery.hasPendingAggregatedText(state)) {
             await this.bufferFlusher.flushPendingBuffer(state, textConfig, typingConfig, context, true);
             if (hasStopRequest(context.channel.id)) {
-              return {
-                status: "stopped_by_user",
-                stopReason: getStopReason(peekStopRequest(context.channel.id)),
-              };
+              const stopped = await this.tryResolveLoopStop(state, config, context, textConfig, metrics);
+              if (stopped) return stopped;
             }
           }
           return {
             status: "function_call",
             data: chunk.functionCall,
+            pendingResponse: this.collectPendingResponse(state, textConfig, context, typingConfig),
             accumulatedText: state.accumulatedText,
             detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
             thoughtLog: buildThoughtLogPayload(state, Date.now() - metrics.startTime),
@@ -410,7 +424,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     } else {
       log.warn("Stream: Suppressing provider error embed due to retryable failure", chunk.error);
     }
-    return { status: "error", data: chunk.error };
+    return { status: "error", data: chunk.error, usage: state.usage };
   }
 
   private async completeStreamAfterProviderEnd(
@@ -437,13 +451,77 @@ export class StreamOrchestrator implements IStreamOrchestrator {
 
     return {
       status: "completed",
+      pendingResponse: this.collectPendingResponse(state, textConfig, context, typingConfig),
       messageSentCount: state.messageSentCount,
+
       accumulatedText: state.accumulatedText,
       detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
       thoughtLog: buildThoughtLogPayload(state, metrics.endTime - metrics.startTime),
       data: terminalDoneMetadata,
       spritesShown: state.spritesShown.length > 0 ? [...state.spritesShown] : undefined,
       usage: state.usage,
+    };
+  }
+
+  private collectPendingResponse(
+    collected: StreamState,
+    textConfig: TextProcessingConfig,
+    context: StreamContext,
+    typingConfig: TypingSimulationConfig,
+  ): StreamResult["pendingResponse"] {
+    if (!context.holdResponseText) return undefined;
+    const segments = collected.pendingResponseSegments ?? [];
+    let consumed = false;
+    return {
+      text: collected.pendingResponseText ?? "",
+      retainedBytes: collected.pendingResponseBytes ?? 0,
+      segments: segments.length,
+      truncation: collected.pendingResponseTruncation,
+      deliver: async (abortSignal) => {
+        if (consumed) return { status: "completed" };
+        consumed = true;
+        const state = createDefaultStreamState();
+        const deliveryContext = { ...context, holdResponseText: false, abortSignal };
+        await this.segmentProcessor.prepareOutputPrefill(deliveryContext, textConfig, state);
+        for (const segment of segments) {
+          if (abortSignal?.aborted || hasStopRequest(context.channel.id)) break;
+          state.isInsideCodeBlock = segment.codeBlock;
+          await this.segmentProcessor.sendBufferSegment(
+            segment.text,
+            segment.boundary,
+            textConfig,
+            typingConfig,
+            deliveryContext,
+            state,
+          );
+        }
+        // The reviewed prefix remains deliverable when replay reaches the same foreign-speaker boundary.
+        const replayStop = peekStopRequest(context.channel.id);
+        if (replayStop?.requesterId === "speaker_guard" && !replayStop.stopContext)
+          clearStopRequest(context.channel.id);
+        if (!abortSignal?.aborted && !hasStopRequest(context.channel.id)) {
+          await this.segmentProcessor.flushHeldOrphanPunctuation(
+            "final",
+            textConfig,
+            typingConfig,
+            deliveryContext,
+            state,
+          );
+          if (textConfig.visibleDeliveryMode === VisibleDeliveryMode.AGGREGATED_PHASE) {
+            await this.delivery.flushAggregatedTextBuffer(textConfig, deliveryContext, state);
+          }
+        }
+        const stop = peekStopRequest(context.channel.id);
+        const status = abortSignal?.aborted || stop ? "stopped_by_user" : "completed";
+        const stopReason = stop ? getStopReason(stop) : undefined;
+        if (stop && INTERNAL_STOP_REQUESTER_IDS.has(stop.requesterId)) clearStopRequest(context.channel.id);
+        return {
+          status,
+          stopReason,
+          accumulatedText: state.accumulatedText,
+          spritesShown: state.spritesShown.length ? state.spritesShown : undefined,
+        };
+      },
     };
   }
 

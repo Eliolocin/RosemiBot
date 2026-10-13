@@ -43,14 +43,16 @@ English file layout, so a key lives at the same path in every tree.
 - `features/command-reference.md` is generated in every locale from the command description keys.
   Never edit it by hand: after translating command descriptions, run
   `bun run generate-command-reference`.
-- Translate the whole changed passage in its context, not only the changed line, and keep the
+- Translate the whole changed passage in its context, and keep the
   translated page's existing structure and wording elsewhere.
-- Frontmatter: translate `title` and `description`. Keep every other field as the translated file
-  already has it, except `aiGenerated: false`, which marks a human-reviewed translation: delete it
-  from any page you edit, so the review notice returns until a human checks your change.
-- Links: a route to a page that exists in the locale's tree takes the locale prefix
-  (`/ja/features/knowledge/memory/`); a route to an English-only or untranslated page takes `/en/`.
-  An unprefixed route in a translated page ejects the reader into English.
+- Frontmatter: translate `title` and `description`. Always mirror the English source's `aiGenerated`
+  field, including its absence: copy `true` exactly, or omit the field when English omits it. This
+  field marks substantive content nobody has reviewed. AI translation alone does not change that
+  status or certify translation quality. Keep every other field as the translated
+  file already has it.
+- Links: keep the English source's unprefixed route (`/features/knowledge/memory/`). The build adds
+  the locale prefix, or `/en/` for an untranslated page; a hand-written prefix stays fixed after the
+  target gets translated.
 - Keep every `<!-- anchor: english-slug -->` (in MDX, `{/* anchor: english-slug */}`) comment under
   its heading exactly as it is: it is the English anchor that links in every locale target.
 - UI labels are the exception to "code spans stay verbatim". A code span that names something the
@@ -72,7 +74,7 @@ URLs, environment variable names, product names, and Discord markers (`-# `, `> 
 Locale prose follows the repository dash rule. In `ja`, use `：`, `。`, and `（）` instead of dashes;
 the Chinese glossaries state their own punctuation.
 
-Persona-voiced strings keep the persona's character. Translate the voice, not only the words.
+Persona-voiced strings keep the persona's character. Preserve that voice in the translation.
 
 ## Verify
 

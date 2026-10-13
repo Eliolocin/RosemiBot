@@ -23,7 +23,7 @@ import * as realCustomEndpointService from "@/utils/provider/customEndpointServi
 import * as realDbStats from "@/utils/metrics/dbStats";
 import { createScopedModuleMocker, overrideMembers, stubLogMembers } from "../../helpers/mockSurface";
 import { createPersona, createServerConfig } from "../../helpers/fixtures";
-import { RUNTIME_LOCALES } from "../../helpers/localeCases";
+import { localizedCopy, RUNTIME_LOCALES } from "../../helpers/localeCases";
 
 const emptyRows = async () => [];
 const quotaConfig = {
@@ -167,6 +167,40 @@ beforeAll(async () => {
 });
 
 describe("actual status page builders", () => {
+  it("omits protected text before reading it and permits authorized previews", async () => {
+    const { buildServerConfigPages } = await import("@/utils/metrics/status/serverConfigPages");
+    const { buildPersonaStatusPages } = await import("@/utils/metrics/status/personaPages");
+    const secret = "FIXTURE_PRIVATE_PROMPT";
+    const protectedState = createPersona({
+      persona_prompt: secret,
+      context_note: secret,
+      config: { system_prompt: secret, context_note: secret },
+    });
+    const privateState = { ...protectedState, config: { ...protectedState.config } };
+    for (const object of [privateState, privateState.config]) {
+      for (const key of object === privateState
+        ? ["persona_prompt", "context_note"]
+        : ["system_prompt", "context_note"]) {
+        Object.defineProperty(object, key, {
+          get: () => {
+            throw new Error("Protected text read before authorization");
+          },
+        });
+      }
+    }
+    const hiddenPages = [
+      ...(await buildServerConfigPages(client, privateState, "en-US", false)),
+      ...(await buildPersonaStatusPages(privateState, user, "en-US", false)),
+    ];
+    expect(JSON.stringify(hiddenPages)).not.toContain(secret);
+    expect(JSON.stringify(hiddenPages)).toContain(localizedCopy("en-US", "commands.status.prompt_hidden"));
+    const visiblePages = [
+      ...(await buildServerConfigPages(client, protectedState, "en-US", true)),
+      ...(await buildPersonaStatusPages(protectedState, user, "en-US", true)),
+    ];
+    expect(JSON.stringify(visiblePages)).toContain(secret);
+  });
+
   it("renders API and welcome prompt producers without their sensitive values", async () => {
     const apiKeySecret = "builder-api-secret";
     const welcomePromptSecret = "builder-welcome-prompt-secret";

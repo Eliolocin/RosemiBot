@@ -123,7 +123,7 @@ Después de agregarla a tu servidor usando cualquiera de los métodos anteriores
 
 Elige una ruta de instalación:
 
-- **A. Configuración local de Bun (Recomendado):** requiere Bun, Node.js v20+ para las herramientas MCP y PostgreSQL o Docker para la base de datos.
+- **A. Configuración local de Bun (Recomendado):** requiere Bun y PostgreSQL o Docker para la base de datos.
 - **B. Configuración de Docker Compose:** solo requiere Docker para ejecutar el bot y la base de datos, pero los scripts de mantenimiento en el host aún necesitan las herramientas del host.
 
 La ruta recomendada para la mayoría de los usuarios que optan por el autoalojamiento es el asistente de configuración local de Bun. Su ruta de **Instalación completa** predeterminada crea `.env`, genera un `CRYPTO_SECRET` seguro, te pide el token de bot de Discord, configura PostgreSQL, ejecuta `bun install --frozen-lockfile` y luego intenta configurar la base de datos liviana y los extras del asistente de inteligencia artificial.

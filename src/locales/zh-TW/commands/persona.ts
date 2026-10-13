@@ -176,6 +176,7 @@ export default {
       error_invalid_config: `人格資料中的設定欄位無效`,
       error_no_server_data: `資料庫找不到這個伺服器。請先執行 \`/setup\`。`,
       error_name_conflict: `這個伺服器已經有人格叫 **{name}**。請改用其他名稱。`,
+      error_nsfw_persona: `這個人格被標記為 NSFW，所以 \`/persona import\` 無法載入。請改用 \`/nsfw persona import\`。`,
       error_import_failed: `人格資料匯入失敗`,
       error_not_json: `匯入的檔案必須包含有效的 JSON 資料`,
       error_incompatible_version: `預設集版本不相容。預期 {expected}，實際為 {actual}`,

@@ -89,11 +89,8 @@ export async function generatePresetFromPromptDeepseek(
       max_tokens: maxOutputTokens,
       response_format: { type: "json_object" },
       stream: false,
+      temperature: options.temperature ?? 1.0,
     };
-
-    if (options.model !== "deepseek-reasoner") {
-      body.temperature = options.temperature ?? 1.0;
-    }
 
     if (toolsEnabled) {
       body.tools = tools;
@@ -120,7 +117,7 @@ export async function generatePresetFromPromptDeepseek(
         },
       });
       return {
-        error: `DeepSeek request failed (${response.status}): ${response.statusText}`,
+        error: `DeepSeek request failed (HTTP ${response.status}).`,
         errorType: "CONNECTION",
       };
     }

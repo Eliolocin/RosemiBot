@@ -11,7 +11,7 @@ sidebar:
 
 TomoriBot 当前注册的全部斜杠指令，由与 Discord 注册所用的同一批指令构建器和简体中文描述生成（尚未翻译的描述以英文显示）。
 
-顶层指令组：**40**。可执行的斜杠指令：**83**。
+顶层指令组：**41**。可执行的斜杠指令：**86**。
 
 ## `/comment`
 
@@ -46,6 +46,14 @@ TomoriBot 当前注册的全部斜杠指令，由与 Discord 注册所用的同�
 |---|---|
 | `/config` | 配置人格、行为、频道、权限与模型设置。 |
 
+## `/context`
+
+查看在当前频道中，某个人格的提示词占用了模型上下文窗口的多少。
+
+| 指令 | 摘要 |
+|---|---|
+| `/context` | 查看在当前频道中，某个人格的提示词占用了模型上下文窗口的多少。 |
+
 ## `/contribute`
 
 找到源码，以及参与 TomoriBot 开发的方式。
@@ -79,8 +87,8 @@ TomoriBot 当前注册的全部斜杠指令，由与 Discord 注册所用的同�
 
 | 指令 | 摘要 |
 |---|---|
-| `/expressions edit` | 编辑单个表情或贴纸的情绪与使用说明 |
 | `/expressions initialize` | 用 AI 视觉分析并分类所有自定义表情和贴纸 |
+| `/expressions manage` | 管理表情符号、贴纸、自定义表情及人格访问权限。 |
 
 ## `/generate`
 
@@ -197,6 +205,8 @@ TomoriBot 当前注册的全部斜杠指令，由与 Discord 注册所用的同�
 | 指令 | 摘要 |
 |---|---|
 | `/nsfw jailbreaks` | 管理这个服务器上我的提示词使用的可选越狱行为。 |
+| `/nsfw persona default` | 应用一套 NSFW 人格预设集 |
+| `/nsfw persona import` | 从 PNG、JSON 或 CHARX 文件导入人格，包括 NSFW 人格 |
 
 ## `/nuke`
 

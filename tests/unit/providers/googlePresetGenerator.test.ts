@@ -69,6 +69,37 @@ describe("Google preset generation", () => {
     expect(result.error).toContain("Error Code 404");
   });
 
+  it("replies with a localized summary, never the upstream message or an unrecognized code", async () => {
+    const canary = "sk-live-CANARY0001";
+    const client = {
+      models: {
+        generateContent: async () => {
+          throw new Error(
+            JSON.stringify({ error: { code: canary, message: `PERMISSION_DENIED for API key ${canary} <@&42>` } }),
+          );
+        },
+      },
+    } as unknown as GoogleGenAI;
+
+    const result = await generatePresetFromPrompt(
+      "test-api-key",
+      {
+        characterName: "Juno",
+        characterDescription: "A helpful guide.",
+        speechExamples: "Calm and clear.",
+        useWebSearch: false,
+        modelName: "selected-persona-model",
+      },
+      "en-US",
+      client,
+    );
+
+    expect(result.errorType).toBe("API_KEY");
+    expect(result.error).toContain("Error Code unknown");
+    expect(result.error).not.toContain(canary);
+    expect(result.error).not.toContain("<@&42>");
+  });
+
   it("classifies a retired persona generation model as a model error", async () => {
     const client = {
       models: {

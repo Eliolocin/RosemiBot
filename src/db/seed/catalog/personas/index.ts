@@ -34,6 +34,7 @@ import { persona as brattyZhCn } from "./bratty/zh-CN";
 import { persona as gloomyZhCn } from "./gloomy/zh-CN";
 import { persona as shyZhCn } from "./shy/zh-CN";
 import { persona as nerineZhCn } from "./loyal/zh-CN";
+import { persona as lockeEn } from "./unhinged/en-US";
 
 export const personaSections: CatalogSection<PersonaInput>[] = [
   { comment: "Tomori-kun", rows: [defaultEn] },
@@ -41,6 +42,7 @@ export const personaSections: CatalogSection<PersonaInput>[] = [
   { comment: "Tomori-san", rows: [gloomyEn] },
   { comment: "Shy Tomori (Lilya)", rows: [shyEn] },
   { comment: "Nerine (Discontinued Model)", rows: [nerineEn] },
+  { comment: "Unhinged Tomori (Locke)", rows: [lockeEn] },
   { comment: "Tomori-kun (Japanese)", rows: [defaultJa] },
   { comment: "Tomori-chan (Japanese)", rows: [brattyJa] },
   { comment: "Tomori-san (Japanese)", rows: [gloomyJa] },

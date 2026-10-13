@@ -1,33 +1,27 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
-import type { StreamMessageDelivery } from "@/utils/discord/stream/messageDelivery";
-import { StreamSegmentProcessor } from "@/utils/discord/stream/segmentProcessor";
 import {
   clearAllChannelDeliveryContinuity,
+  type DeliveredSpeaker,
   recordChannelDeliveredBotMessage,
   recordChannelDeliveredWebhookIdentity,
+  resolveChannelGroupBreakIdentity,
+  resolveChannelPersonaPostIdentity,
 } from "@/utils/discord/stream/channelDeliveryContinuity";
 
-// `resolveSpriteGroupBreakIdentity` is private; we exercise it through a typed cast
-// so the toggle behavior is pinned without standing up the full resolver/delivery
-// chain. The method keys its alternation off the channel id alone, so the processor's
-// dependencies can be inert stubs.
 type SpriteGroupBreakFn = (
   identity: ResolvedWebhookIdentity,
-  decoratedUsername: string,
+  fallbackDecoratedUsername: string,
   spriteKey: string,
   channelId: string,
   channelLastMessageId: string | null,
 ) => ResolvedWebhookIdentity;
 
+// A fresh resolver per "turn" keeps the cross-turn tests readable; the alternation itself is keyed
+// off the channel id alone.
 function makeResolver(): SpriteGroupBreakFn {
-  const processor = new StreamSegmentProcessor({
-    delivery: {} as StreamMessageDelivery,
-    requestStop: () => false,
-  });
-  return (
-    processor as unknown as { resolveSpriteGroupBreakIdentity: SpriteGroupBreakFn }
-  ).resolveSpriteGroupBreakIdentity.bind(processor);
+  return (identity, fallbackDecoratedUsername, spriteKey, channelId, channelLastMessageId) =>
+    resolveChannelGroupBreakIdentity(channelId, identity, fallbackDecoratedUsername, spriteKey, channelLastMessageId);
 }
 
 const CLEAN = "Touko Fukawa";
@@ -37,6 +31,8 @@ const cleanIdentity: ResolvedWebhookIdentity = {
   avatarUrl: "https://example.com/sprites/clean.png",
 };
 const decoratedFor = (sprite: string) => `${CLEAN} (${sprite})`;
+// Last swappable letter of the last word: the final Latin "a" of "Fukawa" becomes Cyrillic U+0430.
+const GROUP_BREAK = `Touko Fukaw${String.fromCodePoint(0x0430)}`;
 
 /**
  * Stands in for the Discord channel the alternation reads adjacency from. Ids must be real
@@ -57,10 +53,10 @@ function makeChannel(channelId: string = CHANNEL) {
       return lastMessageId;
     },
     /** A webhook send by us landing in the channel, as `recordSuccessfulSend` would report it. */
-    deliverWebhook(identity: ResolvedWebhookIdentity): void {
+    deliverWebhook(identity: ResolvedWebhookIdentity, speaker: DeliveredSpeaker | null = null): void {
       const id = nextId();
       lastMessageId = id;
-      recordChannelDeliveredWebhookIdentity(channelId, identity, id);
+      recordChannelDeliveredWebhookIdentity(channelId, identity, id, speaker);
     },
     /** A bot-user fallback send, which is a different Discord author than the webhook. */
     deliverBotMessage(): void {
@@ -74,14 +70,14 @@ function makeChannel(channelId: string = CHANNEL) {
   };
 }
 
-describe("StreamSegmentProcessor sprite group-break naming", () => {
+describe("sprite group-break naming", () => {
   // Continuity is module-level and channel-scoped, so it deliberately outlives any one
   // stream which means tests must clear it explicitly rather than rely on fresh state.
   beforeEach(() => {
     clearAllChannelDeliveryContinuity();
   });
 
-  it("keeps the first sprite clean so the decorated suffix never appears unnecessarily", () => {
+  it("keeps the first sprite clean so the group-break name never appears unnecessarily", () => {
     const resolve = makeResolver();
     const channel = makeChannel();
 
@@ -90,7 +86,7 @@ describe("StreamSegmentProcessor sprite group-break naming", () => {
     expect(result.username).toBe(CLEAN);
   });
 
-  it("alternates clean/decorated so adjacent different sprites never share a username", () => {
+  it("alternates clean/group-break so adjacent different sprites never share a username", () => {
     const resolve = makeResolver();
     const channel = makeChannel();
     const send = (sprite: string): string | undefined => {
@@ -101,12 +97,12 @@ describe("StreamSegmentProcessor sprite group-break naming", () => {
 
     // First sprite stays clean.
     expect(send("imagining")).toBe(CLEAN);
-    // Sprite change collides with the previous clean name → decorated fallback.
-    expect(send("mad")).toBe(decoratedFor("mad"));
-    // Another change flips back to clean (still distinct from the prior decorated name).
+    // Sprite change collides with the previous clean name, so it takes the group-break name.
+    expect(send("mad")).toBe(GROUP_BREAK);
+    // Another change flips back to clean (still distinct from the prior group-break name).
     expect(send("imagining")).toBe(CLEAN);
-    // And back to decorated.
-    expect(send("mad")).toBe(decoratedFor("mad"));
+    // And back to the group-break name.
+    expect(send("mad")).toBe(GROUP_BREAK);
   });
 
   it("keeps a consecutive run of the same sprite on one identical username so Discord still groups it", () => {
@@ -122,9 +118,9 @@ describe("StreamSegmentProcessor sprite group-break naming", () => {
     expect(send("mad")).toBe(CLEAN);
     expect(send("mad")).toBe(CLEAN);
 
-    // Switch sprite → decorated, then repeat it: both decorated and identical → group.
-    expect(send("imagining")).toBe(decoratedFor("imagining"));
-    expect(send("imagining")).toBe(decoratedFor("imagining"));
+    // Switch sprite to the group-break name, then repeat it: identical names still group.
+    expect(send("imagining")).toBe(GROUP_BREAK);
+    expect(send("imagining")).toBe(GROUP_BREAK);
   });
 
   it("only rewrites the username, leaving the resolved avatar untouched", () => {
@@ -133,10 +129,10 @@ describe("StreamSegmentProcessor sprite group-break naming", () => {
 
     const primed = resolve(cleanIdentity, decoratedFor("imagining"), "imagining", CHANNEL, channel.lastMessageId);
     channel.deliverWebhook(primed);
-    const decorated = resolve(cleanIdentity, decoratedFor("mad"), "mad", CHANNEL, channel.lastMessageId);
+    const groupBreak = resolve(cleanIdentity, decoratedFor("mad"), "mad", CHANNEL, channel.lastMessageId);
 
-    expect(decorated.username).toBe(decoratedFor("mad"));
-    expect(decorated.avatarUrl).toBe(cleanIdentity.avatarUrl);
+    expect(groupBreak.username).toBe(GROUP_BREAK);
+    expect(groupBreak.avatarUrl).toBe(cleanIdentity.avatarUrl);
     // The clean source identity must not be mutated in place.
     expect(cleanIdentity.username).toBe(CLEAN);
   });
@@ -159,14 +155,14 @@ describe("StreamSegmentProcessor sprite group-break naming", () => {
     // sprite CHANGE must still break the group rather than restart on the clean name.
     const queuedTurn = makeResolver();
     expect(queuedTurn(cleanIdentity, decoratedFor("shy"), "shy", CHANNEL, channel.lastMessageId).username).toBe(
-      decoratedFor("shy"),
+      GROUP_BREAK,
     );
   });
 
   /**
    * Regression: the suffix is a collision breaker, not an emotion display. Discord groups a
    * message only with the one directly above it, so once anyone else has posted there is
-   * nothing to collide with and the decorated name is pure noise.
+   * nothing to collide with and the group-break name is unnecessary.
    */
   it("restarts on the clean name when another author posted since our last delivery", () => {
     const resolve = makeResolver();
@@ -196,7 +192,7 @@ describe("StreamSegmentProcessor sprite group-break naming", () => {
 
     // ...but the next sprite change is adjacent to our own message and must still break.
     expect(resolve(cleanIdentity, decoratedFor("mad"), "mad", CHANNEL, channel.lastMessageId).username).toBe(
-      decoratedFor("mad"),
+      GROUP_BREAK,
     );
   });
 
@@ -229,7 +225,7 @@ describe("StreamSegmentProcessor sprite group-break naming", () => {
     channel.deliverWebhook(first);
 
     // The gateway has not caught up, so the channel still reports the pre-send id.
-    expect(resolve(cleanIdentity, decoratedFor("shy"), "shy", CHANNEL, staleId).username).toBe(decoratedFor("shy"));
+    expect(resolve(cleanIdentity, decoratedFor("shy"), "shy", CHANNEL, staleId).username).toBe(GROUP_BREAK);
   });
 
   it("tracks channels independently so one channel's sprite run cannot skew another's", () => {
@@ -249,7 +245,75 @@ describe("StreamSegmentProcessor sprite group-break naming", () => {
 
     // The original channel's alternation is unaffected by the interleaved channel.
     expect(resolve(cleanIdentity, decoratedFor("shy"), "shy", CHANNEL, channel.lastMessageId).username).toBe(
-      decoratedFor("shy"),
+      GROUP_BREAK,
     );
+  });
+
+  it("falls back to the visible suffix when the name has no swappable letter", () => {
+    const resolve = makeResolver();
+    const channel = makeChannel();
+    const kanaIdentity: ResolvedWebhookIdentity = { ...cleanIdentity, username: "ともり" };
+    const kanaDecorated = "ともり (mad)";
+
+    channel.deliverWebhook(resolve(kanaIdentity, "ともり (shy)", "shy", CHANNEL, channel.lastMessageId));
+
+    expect(resolve(kanaIdentity, kanaDecorated, "mad", CHANNEL, channel.lastMessageId).username).toBe(kanaDecorated);
+  });
+});
+
+describe("persona notice group-break naming", () => {
+  const PERSONA_ID = 7;
+  const persona: DeliveredSpeaker = { personaId: PERSONA_ID, kind: "appearance" };
+  const baseIdentity = { username: CLEAN, avatarUrl: "https://example.com/sprites/base.png" };
+
+  beforeEach(() => {
+    clearAllChannelDeliveryContinuity();
+  });
+
+  /**
+   * Regression: tool notices were sent under the base appearance without touching the channel's
+   * continuity, so the sprite line after one read it as a foreign message, restarted on the clean
+   * name, and merged under the notice's avatar.
+   */
+  it("gives a sprite following a turn-leading notice a different username", () => {
+    const resolve = makeResolver();
+    const channel = makeChannel();
+    channel.deliverWebhook(
+      resolve(cleanIdentity, decoratedFor("smile"), "smile", CHANNEL, channel.lastMessageId),
+      persona,
+    );
+    channel.foreignMessage();
+
+    const notice = resolveChannelPersonaPostIdentity(CHANNEL, baseIdentity, PERSONA_ID, channel.lastMessageId);
+    channel.deliverWebhook(notice, persona);
+    const sprite = resolve(cleanIdentity, decoratedFor("smile"), "smile", CHANNEL, channel.lastMessageId);
+
+    expect(notice.username).toBe(CLEAN);
+    expect(sprite.username).not.toBe(notice.username);
+  });
+
+  it("reuses the identity of the same persona's adjacent line so the notice stays in its block", () => {
+    const resolve = makeResolver();
+    const channel = makeChannel();
+    channel.deliverWebhook(
+      resolve(cleanIdentity, decoratedFor("calm"), "calm", CHANNEL, channel.lastMessageId),
+      persona,
+    );
+    const sprite = resolve(cleanIdentity, decoratedFor("smile"), "smile", CHANNEL, channel.lastMessageId);
+    channel.deliverWebhook(sprite, persona);
+
+    expect(resolveChannelPersonaPostIdentity(CHANNEL, baseIdentity, PERSONA_ID, channel.lastMessageId)).toEqual(sprite);
+  });
+
+  it("shows the base appearance on a group-break name after another persona's adjacent sprite", () => {
+    const resolve = makeResolver();
+    const channel = makeChannel();
+    const otherSprite = resolve(cleanIdentity, decoratedFor("smile"), "smile", CHANNEL, channel.lastMessageId);
+    channel.deliverWebhook(otherSprite, { personaId: PERSONA_ID + 1, kind: "appearance" });
+
+    const notice = resolveChannelPersonaPostIdentity(CHANNEL, baseIdentity, PERSONA_ID, channel.lastMessageId);
+
+    expect(notice.avatarUrl).toBe(baseIdentity.avatarUrl);
+    expect(notice.username).not.toBe(otherSprite.username);
   });
 });

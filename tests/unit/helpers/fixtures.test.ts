@@ -6,7 +6,13 @@
 
 import { describe, expect, it } from "bun:test";
 import { PrivacyLevel, assembledServerConfigSchema, tomoriStateSchema, userSchema } from "@/types/db/schema";
-import { createLlmRow, createPersona, createServerConfig, createUserRow } from "../../helpers/fixtures";
+import {
+  createLlmRow,
+  createPersona,
+  createServerConfig,
+  createUserRow,
+  createCustomExpression,
+} from "../../helpers/fixtures";
 
 /** As `loadServerState` reads them after setup with nothing changed. */
 function schemaConfigDefaults() {
@@ -26,6 +32,13 @@ function schemaConfigDefaults() {
 }
 
 describe("shared fixture factories", () => {
+  it("keeps custom expression overrides scoped and validates the stored media shape", () => {
+    expect(createCustomExpression({ restricted: true, persona_ids: [3] })).toMatchObject({
+      restricted: true,
+      persona_ids: [3],
+    });
+    expect(() => createCustomExpression({ delivery_kind: "stored", storage_reference: null })).toThrow();
+  });
   it("keeps the default config on the schema's declared defaults", () => {
     const schemaDefaults = schemaConfigDefaults() as Record<string, unknown>;
     const fixture = createServerConfig() as Record<string, unknown>;
@@ -148,6 +161,7 @@ describe("shared fixture factories", () => {
       "supports_structoutput",
       "strict_role_alternation",
       "supports_prefix_completion",
+      "supports_assistant_prefill",
       "verbatim_tool_calling",
     ]);
     expect(row.has_tools).toBe(true);

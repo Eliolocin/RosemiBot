@@ -73,3 +73,18 @@ describe("normalizeCustomEndpointUrlForStorage", () => {
     expect(normalizeCustomEndpointUrlForStorage("tts-clone", "http://localhost:9880")).toBe("http://localhost:9880");
   });
 });
+
+describe("decision endpoint bases", () => {
+  it("preserves explicit versions and gateway prefixes for both styles", () => {
+    for (const style of ["system-one", "openai-decisions"] as const) {
+      expect(normalizeCustomEndpointUrlForStorage(style, "https://example.invalid/")).toBe(
+        "https://example.invalid/v1",
+      );
+      for (const path of ["/v1", "/v2", "/gateway/api/v1"]) {
+        expect(normalizeCustomEndpointUrlForStorage(style, `https://example.invalid${path}/?token=fixture`)).toBe(
+          `https://example.invalid${path}?token=fixture`,
+        );
+      }
+    }
+  });
+});

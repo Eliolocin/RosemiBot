@@ -13,11 +13,15 @@
  * loop by rejecting awaitMessageComponent, so no modal is ever shown.
  */
 
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import { MessageFlags } from "discord.js";
 import type { ChatInputCommandInteraction } from "discord.js";
 import type { ModalOptions } from "@/types/discord/modal";
 import { hasComponentsV2Reply, promptWithPaginatedModal } from "@/utils/discord/ui/interactionCore";
+import { initializeLocalizer } from "@/utils/text/localizer";
+import { localizedCopy } from "../../helpers/localeCases";
+
+beforeAll(async () => initializeLocalizer());
 
 interface RecordedCall {
   method: "reply" | "editReply" | "webhook.send";
@@ -137,5 +141,62 @@ describe("promptWithPaginatedModal selectorStyle", () => {
     expect(ids.some((id) => id.endsWith("_next"))).toBe(true);
     // The interaction is marked so a later legacy embed sink renders a V2 notice.
     expect(hasComponentsV2Reply(interaction)).toBe(true);
+  });
+
+  it("titles the selector with the generic page title when no key is passed", async () => {
+    const title = localizedCopy("en-US", "general.pagination.select_page_title");
+    const label = localizedCopy("en-US", "commands.providers.provider_label");
+    const failures: string[] = [];
+    for (const style of ["legacy", "componentsV2"] as const) {
+      const { interaction, calls } = makeInteraction();
+      await promptWithPaginatedModal(interaction, "en-US", makeOptions(26, style));
+      const rendered = JSON.stringify(calls[0]?.payload ?? {});
+      if (!rendered.includes(title) || rendered.includes(label)) failures.push(style);
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it("uses custom pageSelectTitleKey and pageSelectDescriptionKey in legacy mode", async () => {
+    const { interaction, calls } = makeInteraction();
+    const options: ModalOptions = {
+      ...makeOptions(26),
+      pageSelectTitleKey: "general.pagination.select_persona_title",
+      pageSelectDescriptionKey: "general.pagination.select_persona_page_description",
+    };
+
+    const result = await promptWithPaginatedModal(interaction, "en-US", options);
+
+    expect(result.outcome).toBe("timeout");
+    const payload = calls[0].payload;
+    const embeds = payload.embeds as Array<{ data: { description?: string } }>;
+    expect(embeds[0].data.description).toBe(
+      localizedCopy("en-US", "general.pagination.select_persona_page_description", {
+        totalItems: 26,
+        totalPages: 2,
+      }),
+    );
+  });
+
+  it("uses custom pageSelectTitleKey and pageSelectDescriptionKey in componentsV2 mode", async () => {
+    const { interaction, calls } = makeInteraction();
+    const options: ModalOptions = {
+      ...makeOptions(26, "componentsV2"),
+      pageSelectTitleKey: "general.pagination.select_persona_title",
+      pageSelectDescriptionKey: "general.pagination.select_persona_page_description",
+    };
+
+    const result = await promptWithPaginatedModal(interaction, "en-US", options);
+
+    expect(result.outcome).toBe("timeout");
+    const payload = calls[0].payload;
+    const container = (payload.components as Array<{ components?: Array<{ content?: string }> }>)[0];
+    const textComponents = (container.components ?? []).filter((c) => typeof c.content === "string");
+    expect(textComponents[0].content).toBe(`### ${localizedCopy("en-US", "general.pagination.select_persona_title")}`);
+    expect(textComponents[1].content).toBe(
+      localizedCopy("en-US", "general.pagination.select_persona_page_description", {
+        totalItems: 26,
+        totalPages: 2,
+      }),
+    );
   });
 });

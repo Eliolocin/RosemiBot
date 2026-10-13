@@ -1,7 +1,13 @@
 import type { Client } from "discord.js";
 import type { MessageIdMap } from "@/utils/text/messageIdMap";
 import type { RequestSnapshot } from "@/types/misc/context";
-import type { AssembledServerConfig, PersonaUserBlockRow, ServerEmojiRow, ServerStickerRow } from "@/types/db/schema";
+import type {
+  CustomExpressionRow,
+  AssembledServerConfig,
+  PersonaUserBlockRow,
+  ServerEmojiRow,
+  ServerStickerRow,
+} from "@/types/db/schema";
 import type { StructuredContextItem } from "@/types/misc/context";
 import type { PreparedParticipantContext } from "@/utils/text/participants/preparation";
 
@@ -49,6 +55,16 @@ export type SimplifiedMessageForContext = {
     filename: string;
     isYouTubeLink: boolean;
     /** Discord message that media-reference tools should fetch for this attachment. */
+    sourceMessageId?: string;
+  }>;
+  /**
+   * Text-readable file attachments. Kept structured rather than as hint text in `content`
+   * because the `read_file` hint must follow the turn's tool list, which is decided after
+   * history is simplified.
+   */
+  documentAttachments?: Array<{
+    filename: string;
+    /** Discord message that `read_file` should fetch for this attachment. */
     sourceMessageId?: string;
   }>;
 };
@@ -105,6 +121,7 @@ export interface BuildContextParams {
   snapshot?: RequestSnapshot;
   preloadedEmojis?: ServerEmojiRow[] | null;
   preloadedStickers?: ServerStickerRow[] | null;
+  preloadedCustomExpressions?: CustomExpressionRow[] | null;
   isUserImpersonation?: boolean;
   impersonatedUserId?: string;
   impersonatedUserNickname?: string;

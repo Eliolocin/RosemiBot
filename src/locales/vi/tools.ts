@@ -1,5 +1,8 @@
 export default {
   tools: {
+    execution: {
+      unavailable: `Công cụ \`{tool}\` không khả dụng theo cài đặt hiện tại, khả năng của model hoặc quyền hạn của bot.`,
+    },
     generate_image: {
       quota_exceeded_generic: `Đã vượt quá hạn mức tạo ảnh.`,
       user_quota_exceeded: `Bạn đã đạt hạn mức tạo ảnh hàng ngày. {reset_info}`,
@@ -29,7 +32,7 @@ export default {
       invalid_character_identity: `Danh tính nhân vật không hợp lệ: {id}. Hãy dùng persona:<id>, ID persona dạng số ngắn, hoặc snowflake người dùng Discord.`,
     },
     search: {
-      category_search_title: `🔍 Đang tìm __{category}__ cho \`{query}\`...`,
+      category_search_title: `🔍 Đang tìm {category} cho \`{query}\`...`,
       category_labels: {
         text: `trang web`,
         image: `hình ảnh`,
@@ -49,8 +52,8 @@ export default {
       tool_invoke_no_params: `Không có tham số.`,
     },
     tool_notice: {
-      hide_footer: `Ẩn thông báo này bằng \`/config\` > Behavior > Notices`,
-      hide_footer_with_kill: `Ẩn thông báo bằng \`/config\` > Behavior > Notices · Dùng \`/kill\` nếu bạn nghĩ mình bị kẹt`,
+      configure_hint: `Tùy chỉnh các thông báo này trong \`/config\` > Hành vi > Thông báo`,
+      kill_hint: `Dùng \`/kill\` nếu bạn nghĩ mình bị kẹt`,
     },
     user_block: {
       error_missing_permission: `Tôi cần quyền {permission} trong kênh này để thông báo việc chặn. Hãy nhờ quản trị viên cấp quyền rồi thử lại.`,
@@ -70,6 +73,13 @@ export default {
     },
     user_info_update: {
       success_title: `✅ Đã cập nhật hồ sơ của {target_user}`,
+      success_title_fields: `✅ Đã cập nhật {fields} của {target_user}`,
+      success_title_cleared_fields: `🗑️ Đã xóa {fields} của {target_user}`,
+      subject_nickname: `biệt danh`,
+      subject_gender_identity: `bản dạng giới`,
+      subject_pronouns: `đại từ xưng hô`,
+      subject_addressing_style: `kiểu xưng hô`,
+      subject_timezone_offset: `múi giờ`,
       success_intro: `Đã cập nhật các mục sau:`,
       change_line: `{index}. {field}: \`{previous}\` → \`{next}\``,
       success_summary: `{persona_name} bây giờ gọi {target_user} là "{formatted_name}".`,
@@ -153,7 +163,7 @@ export default {
       fetch_url_title: `🌐  Đang đọc trang web...`,
       fetch_failed_description: `Mình không thể lấy trang đó: {error}`,
       private_network_blocked_description: `Mình không thể lấy trang đó vì nó trỏ đến một địa chỉ mạng riêng tư hoặc nội bộ. TomoriBot chặn những địa chỉ này trong môi trường production trừ khi máy chủ thiết lập \`FETCH_URL_ALLOW_PRIVATE_NETWORK=true\`. {error}`,
-      reading_title_page: `🌐  Đang đọc trang web (Trang {page})...`,
+      reading_title_page: `🌐  Đang đọc trang web (trang {page})...`,
       reading_description: `Đang tìm nạp và đọc: {url}`,
       reading_offset_line: `Bắt đầu từ ký tự {start_index}`,
       reading_footer: `Quá trình này có thể mất chút thời gian tùy thuộc vào kích thước trang`,
@@ -650,34 +660,6 @@ export default {
           "nho gi ve*",
           "nhớ những gì*",
           "nho nhung gi*",
-        ],
-        sticker: [
-          "sticker*",
-          "nhãn dán*",
-          "nhan dan*",
-          "hình dán*",
-          "hinh dan*",
-          "bộ sticker*",
-          "bo sticker*",
-          "thả sticker*",
-          "tha sticker*",
-          "gửi sticker*",
-          "gui sticker*",
-          "bắn sticker*",
-          "ban sticker*",
-          "bộ nhãn dán*",
-          "bo nhan dan*",
-          "thả nhãn dán*",
-          "tha nhan dan*",
-          "gửi nhãn dán*",
-          "gui nhan dan*",
-          "emote*",
-          "thả emote*",
-          "tha emote*",
-          "gửi emote*",
-          "gui emote*",
-          "bắn emote*",
-          "ban emote*",
         ],
         thread: [
           "luồng*",

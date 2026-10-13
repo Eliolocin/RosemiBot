@@ -1,8 +1,11 @@
-import { GoogleGenAI, type GoogleGenAI as GoogleGenAIType } from "@google/genai";
+import { parsePrivateStructuredOutput, privateStructuredFailure } from "@/providers/utils/structuredReview";
+import { ApiError, GoogleGenAI, type GoogleGenAI as GoogleGenAIType } from "@google/genai";
 import type { Content, GenerateContentConfig, Part } from "@google/genai";
 import type { z } from "zod";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import { log } from "@/utils/misc/logger";
+import { omitGeminiSampling } from "@/utils/provider/samplingControl";
+import { buildGoogleThinkingConfig } from "@/utils/provider/thinkingControl";
 import { fetchAndOptimizeImage } from "@/utils/image/imageProcessor";
 type GenericStructuredOutputRequest = ProviderStructuredJsonRequest;
 
@@ -37,13 +40,19 @@ export async function callGoogleStructuredJSON<T>(
       }
     }
 
-    const generationConfig: GenerateContentConfig = {
+    const thinkingConfig =
+      request.thinkingLevel === undefined ? undefined : buildGoogleThinkingConfig(request.model, request.thinkingLevel);
+    const generationConfig: GenerateContentConfig = omitGeminiSampling(request.model, {
+      abortSignal: request.abortSignal,
+      ...(thinkingConfig && { thinkingConfig }),
       temperature: request.temperature ?? 1.0,
       maxOutputTokens: request.maxOutputTokens ?? 8192,
       responseMimeType: "application/json",
-      responseSchema,
+      // `responseSchema` is Google's OpenAPI subset and rejects standard keywords such as
+      // `additionalProperties` with a 400; callers hand us standard JSON Schema.
+      responseJsonSchema: responseSchema,
       systemInstruction: request.systemPrompt,
-    };
+    });
 
     const contents: Content = { role: "user", parts };
     const result = await genAI.models.generateContent({
@@ -53,6 +62,17 @@ export async function callGoogleStructuredJSON<T>(
     });
 
     const responseText = result.text?.trim() ?? "";
+    if (request.privateOutput)
+      return parsePrivateStructuredOutput(
+        request,
+        responseText,
+        zodSchema,
+        result.usageMetadata,
+        Boolean(result.promptFeedback?.blockReason) ||
+          ["SAFETY", "PROHIBITED_CONTENT", "RECITATION", "BLOCKLIST"].includes(
+            result.candidates?.[0]?.finishReason ?? "",
+          ),
+      );
     if (!responseText) {
       log.error("Google structured JSON returned empty response", new Error("Empty response"), {
         errorType: "GoogleStructuredJSONEmptyResponse",
@@ -101,6 +121,8 @@ export async function callGoogleStructuredJSON<T>(
 
     return { success: true, data: validationResult.data };
   } catch (error) {
+    if (request.privateOutput)
+      return privateStructuredFailure(request, "transport", error instanceof ApiError ? error.status : undefined);
     log.error("Error calling Google structured JSON", error as Error, {
       errorType: "GoogleStructuredJSONError",
       metadata: { model: request.model },

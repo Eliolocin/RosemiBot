@@ -8,7 +8,7 @@ import {
 } from "@/utils/discord/embedClassifier";
 import { extractNoticeTextFromComponents } from "@/utils/discord/componentNoticeReader";
 import { ColorCode } from "@/utils/misc/logger";
-import { classifyProtocolEmbed } from "@/utils/discord/embedProtocol";
+import { classifyProtocolEmbed, isMinimalTitleKind } from "@/utils/discord/embedProtocol";
 import { escapeRegExp } from "@/utils/text/processors/regexUtils";
 import { truncateForSystemContext } from "@/utils/chat/contextDirectives";
 
@@ -26,6 +26,8 @@ export function processEmbedsFromMessage(args: {
    * drop them entirely and Tomori would re-run tools she already ran.
    */
   components?: readonly unknown[];
+  /** Body restored from `resolveMinimalNoticeBodies` for a Minimal notice that rendered its title alone. */
+  minimalNoticeBody?: string;
   content: string;
   imageAttachments: SimplifiedMessageForContext["imageAttachments"];
   isTomoriAuthoredMessage: boolean;
@@ -79,11 +81,11 @@ export function processEmbedsFromMessage(args: {
   // This runs after the embed loop and is mutually exclusive with it, because
   // Discord rejects messages that mix `embeds` with the IsComponentsV2 flag.
   const notice = extractNoticeTextFromComponents(args.components);
-  if (notice?.title && notice.description) {
+  if (notice?.title) {
     const noticeCheck = checkTargetEmbedTitle(notice.title);
-    if (noticeCheck.isTarget) {
+    if (noticeCheck.isTarget && (notice.description || isMinimalTitleKind(noticeCheck.type))) {
       const noticeContent = formatTargetEmbedForContext(
-        { title: notice.title, description: notice.description },
+        { title: notice.title, description: notice.description ?? args.minimalNoticeBody ?? "" },
         noticeCheck.type,
         args.tomoriNickname,
       );
@@ -104,7 +106,7 @@ export function processEmbedsFromMessage(args: {
  *
  * @param tomoriNickname - Used to strip a leading "Nickname:" prefix from the body.
  */
-function formatTargetEmbedForContext(
+export function formatTargetEmbedForContext(
   source: { title: string | null; description: string },
   embedType: ReturnType<typeof checkTargetEmbedTitle>["type"],
   tomoriNickname: string | null | undefined,
@@ -133,8 +135,8 @@ function formatTargetEmbedForContext(
   // Titles of action-record notices carry the target and the action itself, so
   // the body alone would not say who was changed.
   const titledTypes = ["memory_learning", "reminder_set", "user_info_update", "user_moderation"];
-  const titleLine = titledTypes.includes(embedType ?? "") && source.title ? `${source.title}\n` : "";
-  const embedBody = `${titleLine}${cleanedDescription}`;
+  const titleLine = titledTypes.includes(embedType ?? "") && source.title ? source.title : "";
+  const embedBody = [titleLine, cleanedDescription].filter((part) => part.length > 0).join("\n");
   const inlineSystemTypes = ["memory_learning", "reward", "punish", "user_info_update", "user_moderation"];
   return inlineSystemTypes.includes(embedType ?? "")
     ? `[System: ${embedBody}]`

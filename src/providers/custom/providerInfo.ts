@@ -12,6 +12,7 @@ export const customProviderInfo: ProviderInfo = {
   supportsVideos: false,
   apiFamily: "openai-compatible",
   featureSupport: {
+    decisions: true,
     imageGeneration: "none",
     videoGeneration: "none",
     embeddings: true,

@@ -1,7 +1,6 @@
 export default {
   genai: {
     generic_error_title: `Generation Error`,
-    generic_error_description: `{error_message}`,
     error_stream_timeout_title: `Connection Timeout`,
     error_stream_timeout_description: `If this keeps happening, there might be a temporary issue with your chosen AI provider. Please try again later or use \`/refresh\` to refresh the context history.`,
     empty_response_title: `Empty Response`,
@@ -20,7 +19,6 @@ export default {
 {failure_list}`,
     fallback_used_failure_line: `{index}. {model} errored with {error_detail}`,
     fallback_used_details_button: `Fallback Used`,
-    fallback_used_hide_footer: `Hide this and reroute details to thought logs with \`/config\` > Behavior > Notices`,
     fallback_used_personal_opt_out_footer: `Stop the server's model from covering your personal provider's failures in \`/personal config\` > Models > Fallbacks`,
     markdown_table: {
       show_button: `Show Markdown`,
@@ -29,6 +27,8 @@ export default {
     },
     no_response_title: `No Response`,
     no_response_description: `I didn't respond - this may be due to an empty response or timeout from the AI.`,
+    log_channel_chat_notice_title: `Chat Is Off in the Log Channel`,
+    log_channel_chat_notice_description: `This channel is set as the log channel, so I don't reply to messages here. To chat here, clear or change it in \`/config\` > Channels > Logs.`,
     thought_log: {
       title: `Thought Log`,
       description: `Source: {source_line}`,
@@ -76,6 +76,12 @@ export default {
       inactivity_timeout_title: `Response Timed Out`,
       inactivity_timeout_description: `The AI provider stopped responding and the connection timed out. This can happen when the provider is overloaded or experiencing issues. Please try again.`,
       first_token_timeout_description: `The AI provider accepted the request but never started replying, so the connection timed out. Its queue is likely backed up. Please try again, or switch to a less busy model.`,
+    },
+    error_detail: {
+      button: `Show Full Error`,
+      title: `Full Provider Error`,
+      manage_server_only: `Only members with \`Manage Server\` can view the full error.`,
+      personal_only: `This error came from a personal provider, so only its owner can view the full error.`,
     },
     // Atomic tip-item strings rendered by createTipText() as a dashed bullet list in a read-only
     // modal. Each key is one bullet; callers compose conditional items instead of maintaining
@@ -135,6 +141,10 @@ export default {
       content_blocked_default_message: `Your content was blocked by safety filters`,
       unknown_default_message: `An unexpected error occurred`,
     },
+    vertex: {
+      config_error_message: `Vertex AI could not read this provider's settings. Enter the key as \`project-id::location\` in \`/providers\`.`,
+      auth_error_message: `Vertex AI could not authenticate. Whoever hosts TomoriBot needs to set up Google Cloud Application Default Credentials (\`gcloud auth application-default login\`, or \`GOOGLE_APPLICATION_CREDENTIALS\`).`,
+    },
     vertexexpress: {
       "403_predict_permission_message": `This key can't call Vertex AI Express models. Use an Express-mode key, or use the separate \`vertex\` provider for full Google Cloud projects.`,
       unknown_default_message: `An unexpected error occurred`,
@@ -178,6 +188,7 @@ The selected model requires allowing data for paid model training, but your Open
     },
     custom: {
       "402_default_message": `Your account with this endpoint has insufficient balance`,
+      REDIRECT_CREDENTIALS_WITHHELD_default_message: `This endpoint redirected to a different address, so TomoriBot did not send its API key there. Whoever manages this endpoint in \`/providers\` can fix it by changing its URL to the final address the server redirects to.`,
       unknown_default_message: `An unexpected error occurred`,
     },
     deepseek: {
@@ -194,40 +205,40 @@ The selected model requires allowing data for paid model training, but your Open
       "401_default_message": `NVIDIA did not recognize this key. Check that it was copied in full, including its \`nvapi-\` prefix.`,
       "403_default_message": `NVIDIA refused this key. It may be mistyped, expired, or missing inference access on its account.`,
       "404_default_message": `The requested NVIDIA NIM model could not be found. It may be deprecated by NVIDIA.`,
-      "500_default_message": `The NVIDIA backend serving this model failed. This is usually transient, so try again in a moment. The details below are NVIDIA's own report and are authoritative: if they name a request parameter, adjust that setting rather than guessing.`,
+      "500_default_message": `The NVIDIA backend serving this model failed. This is usually transient, so try again in a moment. If it keeps failing, whoever hosts TomoriBot can read NVIDIA's full report in the bot logs.`,
       // Shown instead of 500_default_message only when NVIDIA's own text names a droppable request
       // parameter. Asserting this cause on every 500 previously sent users to change settings the
       // failing payload never carried.
-      "500_parameter_default_message": `NVIDIA rejected one or more request parameters for this model. If the details name unsupported sampler parameters such as \`min_p\`, set them to \`0\` with \`/config\` > Models > Samplers & Parameters to turn them off. If the details name \`logit_bias\`, clear saved entries with \`/config\` > Models > Samplers & Parameters.`,
+      "500_parameter_default_message": `NVIDIA rejected one or more request parameters for this model. In \`/config\` > Models > Samplers & Parameters, set unsupported samplers such as \`min_p\` to \`0\` and clear saved \`logit_bias\` entries.`,
       unknown_default_message: `An unexpected error occurred`,
     },
     self_teach: {
-      server_memory_learned_title: `🧠 {persona_nickname} Learned Something New!`,
+      server_memory_learned_title: `🧠 {persona_nickname} learned something new!`,
       server_memory_learned_description: `A **[Server Memory](https://docs.tomoribot.app/en/features/knowledge/memory/#long-term-memory)** has been saved:
 \`\`\`
 {memory_content}
 \`\`\``,
-      server_memory_updated_title: `📝 {persona_nickname} Updated a Memory!`,
+      server_memory_updated_title: `📝 {persona_nickname} updated a memory!`,
       server_memory_updated_description: `A **[Server Memory](https://docs.tomoribot.app/en/features/knowledge/memory/#long-term-memory)** has been updated:
 \`\`\`
 {memory_content}
 \`\`\``,
-      server_memory_deleted_title: `🗑️ {persona_nickname} Deleted a Memory!`,
+      server_memory_deleted_title: `🗑️ {persona_nickname} deleted a memory!`,
       server_memory_deleted_description: `A **[Server Memory](https://docs.tomoribot.app/en/features/knowledge/memory/#long-term-memory)** has been deleted:
 \`\`\`
 {memory_content}
 \`\`\``,
-      personal_memory_learned_title: `💡 {persona_nickname} Learned Something New about {user_nickname}!`,
+      personal_memory_learned_title: `💡 {persona_nickname} learned something new about {user_nickname}!`,
       personal_memory_learned_description: `A **[Personal Memory](https://docs.tomoribot.app/en/features/knowledge/memory/#long-term-memory)** about {user_nickname} has been saved:
 \`\`\`
 {memory_content}
 \`\`\``,
-      personal_memory_updated_title: `📝 {persona_nickname} Updated a Memory about {user_nickname}!`,
+      personal_memory_updated_title: `📝 {persona_nickname} updated a memory about {user_nickname}!`,
       personal_memory_updated_description: `A **[Personal Memory](https://docs.tomoribot.app/en/features/knowledge/memory/#long-term-memory)** about {user_nickname} has been updated:
 \`\`\`
 {memory_content}
 \`\`\``,
-      personal_memory_deleted_title: `🗑️ {persona_nickname} Deleted a Memory about {user_nickname}!`,
+      personal_memory_deleted_title: `🗑️ {persona_nickname} deleted a memory about {user_nickname}!`,
       personal_memory_deleted_description: `A **[Personal Memory](https://docs.tomoribot.app/en/features/knowledge/memory/#long-term-memory)** about {user_nickname} has been deleted:
 \`\`\`
 {memory_content}

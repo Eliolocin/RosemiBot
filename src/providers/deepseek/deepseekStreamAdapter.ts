@@ -31,6 +31,9 @@ export class DeepseekStreamAdapter extends OpenAICompatibleStreamAdapter {
         if (thinkingRequest.thinking) {
           requestBody.thinking = thinkingRequest.thinking;
         }
+        if (thinkingRequest.reasoning_effort) {
+          requestBody.reasoning_effort = thinkingRequest.reasoning_effort;
+        }
         if (thinkingRequest.omitSampling) {
           delete requestBody.temperature;
           delete requestBody.top_p;

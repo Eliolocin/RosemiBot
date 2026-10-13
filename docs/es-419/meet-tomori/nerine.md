@@ -1,8 +1,8 @@
 ---
 title: "Nerine, la leal"
-aiGenerated: true
 sidebar:
   order: 5
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Source: src/db/seed/catalog/personas/loyal/en-US.ts.

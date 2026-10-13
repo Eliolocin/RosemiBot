@@ -2,6 +2,7 @@
 title: "Adding a Built-In Tool"
 sidebar:
   order: 10
+aiGenerated: true
 ---
 
 How to add a tool the model can call during the tool loop. `toolInitializer.ts` discovers it at

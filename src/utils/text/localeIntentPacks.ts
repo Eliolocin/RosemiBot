@@ -16,7 +16,6 @@ export const DELIBERATE_TOOL_PACK_KEYS = {
   "message-action": "tools.intent_packs.deliberate.message-action",
   "user-blocking": "tools.intent_packs.deliberate.user-blocking",
   "user-info": "tools.intent_packs.deliberate.user-info",
-  sticker: "tools.intent_packs.deliberate.sticker",
   thread: "tools.intent_packs.deliberate.thread",
   capabilities: "tools.intent_packs.deliberate.capabilities",
 } as const satisfies Record<DeliberateToolTriggerTarget, string>;

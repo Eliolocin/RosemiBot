@@ -138,6 +138,7 @@ export async function loadConfigModelChoices(
   capability: ConfigCatalogModelCapability,
   provider: string,
   locale = "en-US",
+  textModelFilter?: (model: LlmRow) => boolean,
 ): Promise<ConfigModelChoice[]> {
   const owner = { kind: "server", ownerId: serverId } as const;
   switch (capability) {
@@ -146,6 +147,7 @@ export async function loadConfigModelChoices(
       const models = (await llmModelRepo.loadAvailableModelsForProvider(provider, false, owner)) ?? [];
       const eligible = capability === "vision" ? models.filter((model) => model.sees_images) : models;
       return eligible
+        .filter((model) => !textModelFilter || textModelFilter(model))
         .filter((model): model is LlmRow & { llm_id: number } => model.llm_id !== undefined)
         .map((model) => ({
           id: model.llm_id,

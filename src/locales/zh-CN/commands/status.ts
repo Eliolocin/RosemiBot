@@ -1,5 +1,6 @@
 export default {
   status: {
+    prompt_hidden: `提示词文本已隐藏。成员需要拥有「管理服务器」权限或启用了提示词查看才能查看它。`,
     description: `查看当前个人、服务器或人格状态。`,
     scope_choice_behavior: `行为`,
     scope_choice_models: `模型`,
@@ -208,6 +209,7 @@ export default {
     mcp_server_type_custom: `自定义`,
     mcp_server_type_web_search: `网页搜索`,
     mcp_server_type_url_fetcher: `URL 抓取`,
+    mcp_server_type_prose_linter: `文本校对器`,
     mcp_server_auth_present: `需要认证`,
     mcp_server_auth_absent: `无需认证`,
     field_avatar: `头像`,

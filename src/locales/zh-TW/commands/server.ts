@@ -49,7 +49,7 @@ export default {
       servermemories_desc: `新增或移除伺服器層級的記憶`,
       attributelist_desc: `新增或移除人格屬性`,
       sampledialogues_desc: `新增或移除範例對話配對`,
-      promptsnapshot_desc: `使用 /tool prompt snapshot`,
+      promptsnapshot_desc: `從 /context 與 /tool prompt snapshot 檢視完整提示詞`,
       select_placeholder: `選擇成員可以對我做的事`,
       select_embed_title: `伺服器成員權限`,
       select_embed_description: `選擇非管理員成員可以做的事。勾選代表允許。`,

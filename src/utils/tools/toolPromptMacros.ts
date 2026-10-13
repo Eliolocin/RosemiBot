@@ -1,7 +1,8 @@
 import { type ToolStateForContext, getAvailableToolsWithMCP } from "@/tools/toolRegistry";
 import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
+import { expandDeliberateToolAllowedNames } from "@/utils/tools/deliberateToolMode";
 import { log } from "@/utils/misc/logger";
-import type { AssembledServerConfig } from "@/types/db/schema";
+import type { AssembledServerConfig, TomoriState } from "@/types/db/schema";
 import { renderPromptConditionals, type PromptConditionPredicate } from "./promptConditionals";
 
 const PROMPT_CAPABILITY_NAMES = [
@@ -119,7 +120,7 @@ const DYNAMIC_TOOL_PROMPT_MACROS = {
         availability.guildUrlFetcherToolNames,
         [/metadata/, /meta/, /head/, /headers/, /preview/, /info/],
         [/fetch/, /read/, /crawl/],
-      ) || pickFirstAvailable(availability.availableToolNames, ["url-metadata", "fetch_url", "fetch"]),
+      ) || pickFirstAvailable(availability.availableToolNames, ["fetch_url"]),
   },
 } as const;
 
@@ -265,33 +266,40 @@ async function loadToolPromptMacroAvailability(
     return fallbackAvailability;
   }
 
-  const preloadedToolNames = context?.availableToolNames;
-  if (preloadedToolNames) {
-    const deliberateToolAllowedNames = context?.deliberateToolAllowedNames;
-    const availableToolNames = deliberateToolAllowedNames
-      ? new Set([...preloadedToolNames].filter((name) => deliberateToolAllowedNames.includes(name)))
-      : new Set(preloadedToolNames);
-    return {
-      availableToolNames,
-      guildWebSearchToolNames: [],
-      guildUrlFetcherToolNames: [],
-    };
-  }
-
   try {
-    const [{ builtInTools, mcpFunctionNames }, guildToolNames] = await Promise.all([
-      getAvailableToolsWithMCP(provider, stateForContext),
-      loadGuildToolFamilyNames(stateForContext.server_id),
-    ]);
-    // Names that are filtered globally in `availability.ts` but might still
-    // appear in MCP listings, so kept here as a defensive trim.
-    const providerHiddenGlobalFunctions = new Set([
-      "iask-search",
-      "monica-search",
-      "fetch",
-      "fetch-url",
-      "url-metadata",
-    ]);
+    const preloadedToolNames = context?.availableToolNames;
+    if (preloadedToolNames) {
+      const guildToolNames = await loadGuildToolFamilyNames(stateForContext.server_id).catch(() => ({
+        webSearch: [],
+        urlFetcher: [],
+      }));
+      const families = Object.fromEntries([
+        ...guildToolNames.webSearch.map((name) => [name, "web_search"]),
+        ...guildToolNames.urlFetcher.map((name) => [name, "url_fetcher"]),
+      ]);
+      const deliberateToolAllowedNames = expandDeliberateToolAllowedNames(
+        context?.deliberateToolAllowedNames,
+        families,
+      );
+      const availableToolNames = deliberateToolAllowedNames
+        ? new Set([...preloadedToolNames].filter((name) => deliberateToolAllowedNames.includes(name)))
+        : new Set(preloadedToolNames);
+      return {
+        availableToolNames,
+        guildWebSearchToolNames: guildToolNames.webSearch.filter((name) => availableToolNames.has(name)),
+        guildUrlFetcherToolNames: guildToolNames.urlFetcher.filter((name) => availableToolNames.has(name)),
+      };
+    }
+
+    const {
+      builtInTools,
+      mcpFunctionNames,
+      mcpToolFamilies = {},
+    } = await getAvailableToolsWithMCP(provider, stateForContext);
+    const guildToolNames = {
+      webSearch: mcpFunctionNames.filter((name) => mcpToolFamilies[name] === "web_search"),
+      urlFetcher: mcpFunctionNames.filter((name) => mcpToolFamilies[name] === "url_fetcher"),
+    };
     const availableToolNames = new Set<string>();
 
     for (const tool of builtInTools) {
@@ -299,13 +307,14 @@ async function loadToolPromptMacroAvailability(
     }
 
     for (const functionName of mcpFunctionNames) {
-      if (providerHiddenGlobalFunctions.has(functionName)) {
-        continue;
-      }
       availableToolNames.add(functionName);
     }
 
-    const deliberateToolAllowedNames = context?.deliberateToolAllowedNames;
+    const families = Object.fromEntries([
+      ...guildToolNames.webSearch.map((name) => [name, "web_search"]),
+      ...guildToolNames.urlFetcher.map((name) => [name, "url_fetcher"]),
+    ]);
+    const deliberateToolAllowedNames = expandDeliberateToolAllowedNames(context?.deliberateToolAllowedNames, families);
     const filteredAvailableToolNames = deliberateToolAllowedNames
       ? new Set([...availableToolNames].filter((name) => deliberateToolAllowedNames.includes(name)))
       : availableToolNames;
@@ -328,12 +337,11 @@ async function loadGuildToolFamilyNames(serverId: string): Promise<{ webSearch: 
   }
 
   const guildMcpManager = getGuildMcpManager();
-  const [webSearch, urlFetcher] = await Promise.all([
-    guildMcpManager.getGuildMCPFunctionNamesByServerType(parsedServerId, "web_search"),
-    guildMcpManager.getGuildMCPFunctionNamesByServerType(parsedServerId, "url_fetcher"),
-  ]);
-
-  return { webSearch, urlFetcher };
+  const { routes } = await guildMcpManager.getGuildMCPRouting(parsedServerId);
+  return {
+    webSearch: [...routes].filter(([, route]) => route.config.server_type === "web_search").map(([name]) => name),
+    urlFetcher: [...routes].filter(([, route]) => route.config.server_type === "url_fetcher").map(([name]) => name),
+  };
 }
 
 function resolveWebSearchToolName(availability: ToolPromptMacroAvailability): string | null {
@@ -385,15 +393,12 @@ function resolveGuildFamilyToolName(
 }
 
 function resolveUrlFetchToolName(availability: ToolPromptMacroAvailability): string | null {
-  const inferredUrlFetcherNames = [...availability.availableToolNames].filter(
-    (name) => name === "fetch" || /(?:url|web|http|fetch|crawl|page|visit)/i.test(name),
-  );
   return (
     resolveGuildFamilyToolName(
-      [...availability.guildUrlFetcherToolNames, ...inferredUrlFetcherNames],
+      availability.guildUrlFetcherToolNames,
       [/fetch/, /read/, /crawl/, /page/, /open/, /visit/, /url/],
       [/metadata/, /meta/, /head/],
-    ) || pickFirstAvailable(availability.availableToolNames, ["fetch_url", "fetch"])
+    ) || pickFirstAvailable(availability.availableToolNames, ["fetch_url"])
   );
 }
 
@@ -405,4 +410,42 @@ function pickFirstAvailable(availableToolNames: Set<string>, preferredToolNames:
   }
 
   return null;
+}
+
+/**
+ * A resolver scoped to one generation attempt's provider and config. Macros are provider-specific,
+ * so a fallback attempt must not reuse the primary model's resolver.
+ */
+export function createToolPromptMacroResolverForState(
+  tomoriState: TomoriState,
+  deliberateToolAllowedNames?: readonly string[],
+): ToolPromptMacroResolver {
+  return createToolPromptMacroResolver({
+    provider: tomoriState.llm.llm_provider,
+    deliberateToolAllowedNames,
+    capabilities: resolvePromptCapabilityValues(tomoriState.config),
+    stateForContext:
+      tomoriState.server_id && tomoriState.llm
+        ? {
+            server_id: tomoriState.server_id.toString(),
+            activePersonaHasElevenlabsVoice: false,
+            llm: tomoriState.llm,
+            diffusion_model_id: tomoriState.config.diffusion_model_id,
+            nai_diffusion_model_id: tomoriState.config.nai_diffusion_model_id,
+            video_model_id: tomoriState.config.video_model_id,
+            config: {
+              sticker_usage_enabled: tomoriState.config.sticker_usage_enabled,
+              web_search_enabled: tomoriState.config.web_search_enabled,
+              self_teaching_enabled: tomoriState.config.self_teaching_enabled,
+              manage_message_enabled: tomoriState.config.manage_message_enabled,
+              imagegen_enabled: tomoriState.config.imagegen_enabled,
+              videogen_enabled: tomoriState.config.videogen_enabled,
+              voice_message_enabled: tomoriState.config.voice_message_enabled,
+              user_blocking_enabled: tomoriState.config.user_blocking_enabled,
+              user_info_updates_enabled: tomoriState.config.user_info_updates_enabled,
+              thread_creation_enabled: tomoriState.config.thread_creation_enabled,
+            },
+          }
+        : undefined,
+  });
 }

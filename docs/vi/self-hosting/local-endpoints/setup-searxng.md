@@ -2,73 +2,85 @@
 title: "Thiết lập: SearXNG"
 sidebar:
   order: 3
+aiGenerated: true
 ---
 
-Công cụ `web_search` định tuyến qua một chuỗi các engine: Brave → SearXNG → DuckDuckGo → IAsk. Bằng cách chạy phiên bản SearXNG của riêng mình, chúng ta tránh được các giới hạn tần suất của từng engine đơn lẻ cũng như sự cố trích xuất dữ liệu, đồng thời mở khóa các danh mục chỉ có trên SearXNG: `science`, `it`, `files`, và `music`.
+Thêm tìm kiếm web riêng tư, self-hosting vào TomoriBot bằng [SearXNG](https://docs.searxng.org/).
 
-Chọn một phương thức thiết lập SearXNG:
+Công cụ `web_search` truy vấn chuỗi dự phòng động cơ: Brave, SearXNG và DuckDuckGo. Chạy phiên bản SearXNG cục bộ sẽ cung cấp nguồn tìm kiếm self-hosting khi nhà cung cấp bên ngoài đạt đến giới hạn tốc độ hoặc không thành công, đồng thời kích hoạt các danh mục tìm kiếm chuyên biệt: `science`, `it`, `files` và `music`.
 
-### A. Docker Compose (khi TomoriBot chạy trong Docker)
+Chọn đường dẫn thiết lập:
 
-Sử dụng phương thức này nếu bạn chạy TomoriBot bằng ngăn xếp Docker Compose của kho lưu trữ. Sau đó chạy với profile `searxng`:
+### Tùy chọn A: Docker Compose (khi TomoriBot chạy trong Docker)
+
+Sử dụng đường dẫn này nếu bạn chạy TomoriBot với ngăn xếp Docker Compose của repo. Sau đó chạy với cấu hình `searxng`:
 
 ```sh
 docker compose --profile searxng up -d
 ```
-Lệnh này khởi động dịch vụ `searxng` cùng với TomoriBot. Bot sẽ tự động kết nối tới dịch vụ tại `http://searxng:8080/`.
 
-Nếu bạn chạy TomoriBot trực tiếp bằng `bun run dev`, hãy sử dụng phương thức độc lập bên dưới.
+Đặt `SEARXNG_BASE_URL=http://searxng:8080/` trong `.env` trước khi bắt đầu cấu hình này. Bot sử dụng địa chỉ đó để tiếp cận dịch vụ `searxng`. Để lại biến không được đặt khi cấu hình tắt.
 
-Nếu sử dụng trong môi trường production, hãy đặt `SEARXNG_SECRET` trong `.env` thành bất kỳ chuỗi nào từ 32 ký tự trở lên (biến này được tự động gán mặc định trong môi trường dev).
+Nếu bạn chạy trực tiếp TomoriBot bằng `bun run dev`, hãy sử dụng đường dẫn độc lập bên dưới.
+
+Đặt `SEARXNG_SECRET` trong `.env` thành một giá trị ngẫu nhiên riêng cho khóa ký của vùng chứa.
 
 ---
 
-### B. Docker độc lập (khi chạy `bun run dev`)
-Trước tiên, hãy đặt `SEARXNG_BASE_URL=http://localhost:8080/` trong `.env` để bot biết nơi kết nối.
+### Tùy chọn B: Docker độc lập (khi chạy `bun run dev`)
 
-Sau đó, thay vì chạy TomoriBot trực tiếp bằng `bun run dev`, hãy sử dụng `bun run launch --searxng`. Lệnh này sẽ tự động xử lý vòng đời của container và đợi container ở trạng thái hoạt động tốt trước khi khởi động bot:
+Đầu tiên, đặt `SEARXNG_BASE_URL=http://localhost:8080/` trong `.env` để bot biết nơi kết nối.
+
+Sau đó, thay vì chạy trực tiếp TomoriBot với `bun run dev`, hãy sử dụng `bun run launch --searxng`. Điều này tự động xử lý vòng đời của vùng chứa và đợi vùng chứa hoạt động tốt trước khi khởi động bot:
 
 ```sh
 bun run launch --searxng
 ```
 
-Nếu bạn thích tự quản lý container, hãy giữ `SEARXNG_BASE_URL=http://localhost:8080/` trong `.env` và chạy:
+Nếu bạn muốn tự mình quản lý vùng chứa, hãy giữ `SEARXNG_BASE_URL=http://localhost:8080/` trong `.env`. Trước tiên hãy xây dựng hình ảnh của kho lưu trữ để nó tải cài đặt tìm kiếm JSON và thay thế khóa ký:
+
+```sh
+docker build -t tomoribot-searxng:latest -f servers/searxng/Dockerfile servers/searxng
+```
+
+Sau đó chạy nó:
 
 PowerShell:
+
 ```powershell
 docker run -d --name searxng -p 8080:8080 `
-  -v "${PWD}/servers/searxng:/etc/searxng:rw" `
-  -e SEARXNG_SECRET=dev-only-not-for-production `
-  searxng/searxng:latest
+  --tmpfs /etc/searxng `
+  tomoribot-searxng:latest
 ```
 
 Bash (Linux/macOS):
+
 ```bash
 docker run -d --name searxng -p 8080:8080 \
-  -v "${PWD}/servers/searxng:/etc/searxng:rw" \
-  -e SEARXNG_SECRET=dev-only-not-for-production \
-  searxng/searxng:latest
+  --tmpfs /etc/searxng \
+  tomoribot-searxng:latest
 ```
 
-Sau đó chạy `bun run dev` khi container đã ở trạng thái hoạt động tốt (`docker ps` hiển thị `(healthy)`).
+Sau đó chạy `bun run dev` khi vùng chứa hoạt động tốt (`docker ps` hiển thị `(healthy)`). Nếu không có `SEARXNG_SECRET` trong môi trường vùng chứa, hình ảnh sẽ tạo khóa ký tạm thời.
 
 ---
 
-### C. Không sử dụng SearXNG
-Để trống `SEARXNG_BASE_URL`. Chuỗi tìm kiếm sẽ tự động chuyển sang `Brave → DuckDuckGo → IAsk`.
+### Tùy chọn C: Không SearXNG
 
-Khi không có máy chủ SearXNG nào được cấu hình, schema `web_search` được tổng hợp sẽ không còn thông báo các danh mục chỉ có trên SearXNG. Các danh mục thông thường (`text`, `image`, `video`, `news`) vẫn xuất hiện khi Brave được cấu hình, và tìm kiếm chỉ dạng văn bản xuất hiện khi chỉ có phương án dự phòng MCP DuckDuckGo/IAsk.
+Không đặt `SEARXNG_BASE_URL`. Chuỗi rơi trở lại `Brave → DuckDuckGo`.
+
+Khi không có máy chủ SearXNG nào được định cấu hình, lược đồ `web_search` đã tập hợp không còn quảng cáo các danh mục chỉ dành cho SearXNG nữa. Các danh mục phổ biến (`text`, `image`, `video`, `news`) vẫn xuất hiện khi Brave được định cấu hình và tìm kiếm chỉ có văn bản xuất hiện khi chỉ có phần dự phòng DuckDuckGo tích hợp sẵn.
 
 ---
 
-## Tinh chỉnh kết quả hình ảnh
+## Điều chỉnh kết quả hình ảnh
 
-Kết quả hình ảnh từ SearXNG được xác thực bằng yêu cầu HEAD, có thể nén tùy chọn và được gửi dưới dạng tệp đính kèm Discord: trải nghiệm người dùng giống hệt với tìm kiếm hình ảnh của Brave. Nếu tất cả các URL ứng viên đều không vượt qua xác thực, SearXNG sẽ trả về danh sách liên kết hình ảnh dạng văn bản thay vì báo lỗi nghiêm trọng.
+Kết quả hình ảnh SearXNG được xác thực HEAD, được nén tùy chọn và được đăng dưới dạng tệp đính kèm Discord: hình ảnh UX và Brave giống hệt nhau. Nếu tất cả các URL ứng cử viên không được xác thực, SearXNG sẽ trả về danh sách văn bản các liên kết hình ảnh thay vì lỗi cứng.
 
-| Biến | Mặc định | Mô tả |
+| Biến | Mặc định | Sự miêu tả |
 |---|---|---|
-| `SEARXNG_IMAGE_COUNT` | `3` (tối đa 10) | Số lượng hình ảnh hợp lệ được gửi tới Discord. Bị ghi đè bởi đối số `count` của LLM. |
-| `SEARXNG_IMAGE_POOL` | `10` | Tập hợp các URL ứng viên khi LLM không chỉ định `count`. Khi `count` được chỉ định, tập hợp sẽ là `count × 3` (tối đa 30) để xử lý các lỗi chặn hotlink. |
-| `WEB_SEARCH_TIMEOUT_MS` | không đặt | Thời gian chờ yêu cầu cho từng engine. |
+| `SEARXNG_IMAGE_COUNT` | `3` (tối đa 10) | Có bao nhiêu hình ảnh hợp lệ được gửi đến Discord. Bị ghi đè bởi đối số `count` của LLM. |
+| `SEARXNG_IMAGE_POOL` | `10` | Nhóm URL ứng viên khi LLM không chỉ định `count`. Khi `count` được chỉ định, nhóm là `count × 3` (giới hạn ở mức 30) để xử lý các lỗi bảo vệ liên kết nóng. |
+| `WEB_SEARCH_TIMEOUT_MS` | — | Hết thời gian chờ yêu cầu cho mỗi động cơ. |
 
-*(Xem `.env.optional.example` để biết tất cả các tùy chọn cấu hình.)*
+*(Xem `.env.optional.example` để biết tất cả các điều chỉnh được.)*

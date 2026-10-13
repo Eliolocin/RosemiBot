@@ -1,4 +1,26 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { RESPONSE_REVIEW_ITEM_VALUES } from "@/constants/responseReview";
+import type { z } from "zod";
+import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
+import * as capabilityResolver from "@/utils/provider/providerCapabilityResolver";
+import * as crypto from "@/utils/security/crypto";
+import * as ruleChecks from "@/utils/chat/responseRuleCheck";
+import * as decisionRouting from "@/utils/chat/responseDecisionRouting";
+import { savedProviderConfigSchema } from "@/types/db/schema";
+import { log } from "@/utils/misc/logger";
+import { requestFollowUp, deleteStopRequest } from "@/utils/discord/stream/stopRequests";
+import {
+  buildReviewerPacket,
+  renderReviewerPrompt,
+  createResponseReviewState,
+  draftReviewResultSchema,
+  reviewResponseCandidate,
+  MAX_TOOL_REVIEWS,
+  MAX_TOOL_CORRECTIONS,
+  toolRequestIdentity,
+} from "@/utils/chat/responseReview";
+import type { ProviderStructuredJsonRequest } from "@/types/provider/featureInterfaces";
+import { ContextItemTag } from "@/types/misc/context";
+import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 // Captured BEFORE the `mock.module` calls below run. Static imports are
 // evaluated at link time, ahead of any top-level statement, so this binds the
 // REAL deliberateToolMode module; we re-register it in afterAll to undo the
@@ -21,19 +43,24 @@ import type { LLMProvider, ProviderConfig, StreamResult } from "@/types/provider
 import type { StandardEmbedOptions } from "@/types/discord/embed";
 import type { StructuredContextItem } from "@/types/misc/context";
 import type { ChatTurnContext } from "@/utils/chat/types";
+import type { ResponseReviewState } from "@/utils/chat/responseReview";
+import type { PendingStreamResponse } from "@/types/stream/pendingResponse";
 import type { TomoriState } from "@/types/db/schema";
 import type { ToolResult } from "@/types/tool/interfaces";
 import type { ToolLoopParams } from "@/utils/chat/toolLoop";
+import { createExpressionDeliveryState } from "@/utils/chat/expressionDelivery";
 
 let toolExecuteCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 let toolExecuteQueue: ToolResult[] = [];
 let requiresFollowUp = false;
-let requiresFollowUpCalls: Array<{ name: string; provider: string; serverId?: number }> = [];
+let requiresFollowUpCalls: Array<{ name: string; serverId?: number }> = [];
 let hasStopRequest = false;
 let isFollowUpRequest = false;
 let clearStopRequestCalls = 0;
 let standardEmbedCalls: StandardEmbedOptions[] = [];
 let hiddenToolNotices: string[] = [];
+let activeStreamKill: ((reason: Error) => void) | null = null;
+let onStopCheck: (() => void) | null = null;
 
 // Module mocks: all must appear before the first lazy import of toolLoop.ts
 
@@ -77,7 +104,10 @@ scopedMock.module("@/utils/discord/streamOrchestrator", () => ({
   ...realStreamOrchestrator,
   // Statics are non-enumerable, so a spread would drop the whole class surface.
   StreamOrchestrator: overrideMembers(realStreamOrchestrator.StreamOrchestrator, {
-    hasStopRequest: (_channelId: string) => hasStopRequest,
+    hasStopRequest: (_channelId: string) => {
+      onStopCheck?.();
+      return hasStopRequest;
+    },
     isFollowUpRequest: (_channelId: string) => isFollowUpRequest,
     clearStopRequest: (_channelId: string) => {
       clearStopRequestCalls += 1;
@@ -112,7 +142,9 @@ scopedMock.module("@/utils/tools/deliberateToolMode", () => ({ ...realDeliberate
 scopedMock.module("@/utils/chat/channelQueue", () => ({
   ...realChannelQueue,
   channelLocks: new Map(),
-  setChannelStreamKill: () => undefined,
+  setChannelStreamKill: (_channelId: string, kill: ((reason: Error) => void) | null) => {
+    activeStreamKill = kill;
+  },
   setChannelToolCallChainActive: () => undefined,
   getChannelTurnAbortSignal: () => undefined,
   incrementChannelFollowUpCount: () => undefined,
@@ -139,8 +171,8 @@ scopedMock.module("@/tools/toolRegistry", () => ({
       const next = toolExecuteQueue.shift();
       return next ?? { success: true, data: { result: "ok" } };
     },
-    requiresFollowUp: async (name: string, provider: string, serverId?: number) => {
-      requiresFollowUpCalls.push({ name, provider, serverId });
+    requiresFollowUp: async (name: string, serverId?: number) => {
+      requiresFollowUpCalls.push({ name, serverId });
       return requiresFollowUp;
     },
   }),
@@ -212,6 +244,7 @@ function makeContext(): ChatTurnContext {
     deliberateToolModeActive: false,
     deliberateToolContextTurns: 0,
     deliberateToolTriggerMatchByToolName: new Map(),
+    expressionDelivery: createExpressionDeliveryState(),
     responseTarget: undefined,
     turn: {
       lockedTurn: {
@@ -223,6 +256,20 @@ function makeContext(): ChatTurnContext {
       },
     },
   } as unknown as ChatTurnContext;
+}
+
+/** A guild text channel whose sends record into `events`, with sticker sends eligible to deliver. */
+function makeStickerContext(events: string[]): ChatTurnContext {
+  const context = makeContext();
+  const send = async () => {
+    events.push("send");
+    return { id: "900000000000000001", webhookId: null };
+  };
+  context.channel = { id: "ch_test", send, isThread: () => false } as unknown as ChatTurnContext["channel"];
+  context.message = { id: "msg_1", channel: context.channel, reply: send } as unknown as ChatTurnContext["message"];
+  context.guild = { id: "guild_1" } as unknown as ChatTurnContext["guild"];
+  context.client = { user: null } as unknown as ChatTurnContext["client"];
+  return context;
 }
 
 function makeProviderConfig(): ProviderConfig {
@@ -250,9 +297,11 @@ function makeProvider(
 ): {
   provider: LLMProvider;
   capturedHistories: Array<unknown[]>;
+  capturedContexts: unknown[];
   capturedModelParts: Array<Array<Record<string, unknown>>>;
 } {
   const capturedHistories: Array<unknown[]> = [];
+  const capturedContexts: unknown[] = [];
   const capturedModelParts: Array<Array<Record<string, unknown>>> = [];
   const queue = [...results];
 
@@ -291,6 +340,7 @@ function makeProvider(
       functionHistory: unknown[] | undefined,
     ) => {
       capturedHistories.push(functionHistory ? [...functionHistory] : []);
+      capturedContexts.push(JSON.parse(JSON.stringify(_ctx)));
       const modelParts = modelPartsInput as Array<Record<string, unknown>>;
       capturedModelParts.push([...modelParts]);
       const next = queue.shift();
@@ -302,17 +352,99 @@ function makeProvider(
     },
     validateApiKey: async () => ({ valid: true }),
     formatErrorDescription: () => null,
-    getTools: async () => [],
+    getTools: async () => [
+      {
+        functionDeclarations: [
+          "lookup",
+          "create_long_term_memory",
+          "mirror_action",
+          "other_action",
+          "fetch-url",
+          "fetch",
+          "brave_web_search",
+        ].map((name) => ({
+          name,
+          description: "Harmless fixture action",
+          parameters: { type: "object", properties: { target: { type: "string" }, text: { type: "string" } } },
+        })),
+      },
+    ],
     getDefaultModel: async () => "test-model",
     createConfig: async () => makeProviderConfig(),
   } as unknown as LLMProvider;
 
-  return { provider, capturedHistories, capturedModelParts };
+  return { provider, capturedHistories, capturedModelParts, capturedContexts };
 }
 
 /** Convenience: build ToolLoopParams from a context and provider. */
 function makeParams(context: ChatTurnContext, provider: LLMProvider): ToolLoopParams {
   return { context, provider, providerConfig: makeProviderConfig(), tomoriState: context.tomoriState };
+}
+
+function makeReviewContext(): ChatTurnContext & { responseReview: ResponseReviewState } {
+  const context = makeContext();
+  context.currentPersona.config.response_drafting_enabled = true;
+  context.currentPersona.config.response_review_items = ["persona", "examples", "history", "context", "tools"];
+  context.currentPersona.config.response_reviewer_prompt = "Evaluate the character in the admitted scene.";
+  context.tomoriState.llm.supports_structoutput = true;
+  context.tomoriState.llm.context_window = 64000;
+  // The author-model reviewer takes its key from the provider config. A stored key would start a
+  // background live-limits lookup that fails to decrypt the fixture value and logs an error.
+  context.tomoriState.config.api_key = null;
+  context.contextItems = [
+    {
+      role: "system",
+      metadataTag: ContextItemTag.SYSTEM_PERSONALITY,
+      parts: [{ type: "text", text: "Mirri is terse, stubborn and speaks softly." }],
+    },
+    {
+      role: "user",
+      metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+      messageId: context.message.id,
+      sender: { name: "Juno", type: "user" },
+      parts: [{ type: "text", text: "Juno: Stay here with me." }],
+    },
+    {
+      role: "user",
+      metadataTag: ContextItemTag.DIALOGUE_SAMPLE,
+      parts: [{ type: "text", text: "A sample invitation." }],
+    },
+    {
+      role: "model",
+      metadataTag: ContextItemTag.DIALOGUE_SAMPLE,
+      parts: [{ type: "text", text: "A sample quiet reply." }],
+    },
+  ];
+  const responseReview = createResponseReviewState(context);
+  if (!responseReview) throw new Error("Review fixture must be enabled");
+  context.streamingContext.holdResponseText = true;
+  return Object.assign(context, { responseReview });
+}
+
+function packetOf(result: ReturnType<typeof buildReviewerPacket>) {
+  if (typeof result === "string") throw new Error(`Expected a reviewer packet, got gap ${result}`);
+  return result;
+}
+
+function held(
+  text: string,
+  delivered: string[],
+  status: StreamResult["status"] = "completed",
+): StreamResult & { pendingResponse: PendingStreamResponse } {
+  return {
+    status,
+    accumulatedText: "",
+    usage: { inputTokens: 10, outputTokens: 5 },
+    pendingResponse: {
+      text,
+      retainedBytes: Buffer.byteLength(text, "utf8"),
+      segments: 1,
+      deliver: async () => {
+        delivered.push(text);
+        return { status: "completed", accumulatedText: text };
+      },
+    },
+  };
 }
 
 describe("runToolLoop — contract tests", () => {
@@ -326,6 +458,8 @@ describe("runToolLoop — contract tests", () => {
     clearStopRequestCalls = 0;
     standardEmbedCalls = [];
     hiddenToolNotices = [];
+    onStopCheck = null;
+    activeStreamKill = null;
   });
 
   it("executes tool with correct args and delivers result to next provider call", async () => {
@@ -716,69 +850,129 @@ describe("runToolLoop — contract tests", () => {
     expect(requiresFollowUpCalls).toHaveLength(0);
   });
 
-  it("successful sticker selection is carried on the completed result", async () => {
+  it("an empty follow-up after delivered text completes only when the model had nothing to add", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
-    const sticker = { id: "sticker_1", name: "Wave", url: "https://cdn.example/sticker.png" } as unknown as Sticker;
-    const { provider } = makeProvider([
-      makeFunctionCallResult("select_sticker_for_response", { sticker_name: "Wave" }),
-      { status: "completed", accumulatedText: "Hello!" },
-    ]);
-    toolExecuteQueue.push({
-      success: true,
-      data: { status: "sticker_selected_successfully", sticker_id: sticker.id, sticker_name: sticker.name },
-    });
+    const cases: Array<{ label: string; empty: StreamResult; needsFollowUp: boolean; expected: string }> = [
+      { label: "settled", empty: { status: "empty_response" }, needsFollowUp: false, expected: "completed" },
+      { label: "lookup tool", empty: { status: "empty_response" }, needsFollowUp: true, expected: "empty_response" },
+      {
+        label: "token cap",
+        empty: { status: "empty_response", data: { finishReason: "length" } },
+        needsFollowUp: false,
+        expected: "empty_response",
+      },
+      {
+        label: "speaker guard",
+        empty: { status: "empty_response", data: { emptyResponseReason: "speaker_guard" } },
+        needsFollowUp: false,
+        expected: "empty_response",
+      },
+      {
+        label: "held NovelAI fragment",
+        empty: { status: "empty_response", naiContinuationPrefill: "and then" },
+        needsFollowUp: false,
+        expected: "empty_response",
+      },
+    ];
 
-    const context = makeContext();
-    context.guild = { stickers: { cache: new Map([[sticker.id, sticker]]) } } as unknown as ChatTurnContext["guild"];
-    const result = await runToolLoop(makeParams(context, provider));
+    const failures: string[] = [];
+    for (const testCase of cases) {
+      const { provider } = makeProvider([
+        makeFunctionCallResult("echo_tool", {}, "Let me check that."),
+        testCase.empty,
+      ]);
+      toolExecuteQueue.push({ success: true, data: { saved: true } });
+      requiresFollowUp = testCase.needsFollowUp;
 
-    expect(result.status).toBe("completed");
-    expect(result.selectedSticker).toBe(sticker);
-  });
-
-  it("a later failed sticker selection clears an earlier selection", async () => {
-    const { runToolLoop } = await import("@/utils/chat/toolLoop");
-    const sticker = { id: "sticker_1", name: "Wave", url: "https://cdn.example/sticker.png" };
-    const { provider } = makeProvider([
-      makeFunctionCallResult("select_sticker_for_response", { sticker_name: "Wave" }),
-      makeFunctionCallResult("select_sticker_for_response", { sticker_name: "Missing" }),
-      { status: "completed", accumulatedText: "No sticker this time." },
-    ]);
-    toolExecuteQueue.push({
-      success: true,
-      data: { status: "sticker_selected_successfully", sticker_id: sticker.id, sticker_name: sticker.name },
-    });
-    toolExecuteQueue.push({ success: false, data: { status: "sticker_not_found" }, error: "not found" });
-
-    const context = makeContext();
-    context.guild = { stickers: { cache: new Map([[sticker.id, sticker]]) } } as unknown as ChatTurnContext["guild"];
-    const result = await runToolLoop(makeParams(context, provider));
-
-    expect(result.status).toBe("completed");
-    expect(result.selectedSticker).toBeUndefined();
-  });
-
-  it("max-iterations timeout clears a selected sticker", async () => {
-    const { runToolLoop } = await import("@/utils/chat/toolLoop");
-    const sticker = { id: "sticker_1", name: "Wave", url: "https://cdn.example/sticker.png" };
-    const { provider } = makeProvider([
-      makeFunctionCallResult("select_sticker_for_response", { sticker_name: "Wave" }),
-      ...Array.from({ length: 99 }, () => makeFunctionCallResult("infinite_tool")),
-    ]);
-    toolExecuteQueue.push({
-      success: true,
-      data: { status: "sticker_selected_successfully", sticker_id: sticker.id, sticker_name: sticker.name },
-    });
-    for (let i = 0; i < 99; i++) {
-      toolExecuteQueue.push({ success: true, data: { ok: true } });
+      const result = await runToolLoop(makeParams(makeContext(), provider));
+      if (result.status !== testCase.expected) failures.push(`${testCase.label}: ${result.status}`);
     }
+    expect(failures).toEqual([]);
+  });
 
-    const context = makeContext();
-    context.guild = { stickers: { cache: new Map([[sticker.id, sticker]]) } } as unknown as ChatTurnContext["guild"];
+  it("an empty first stream is still reported as empty so the turn retries", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const { provider } = makeProvider([{ status: "empty_response" }]);
+
+    const result = await runToolLoop(makeParams(makeContext(), provider));
+
+    expect(result.status).toBe("empty_response");
+  });
+
+  it("sends a resolved sticker at invocation, after pre-tool text and before continuing text", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const events: string[] = [];
+    const { provider, capturedHistories } = makeProvider([
+      makeFunctionCallResult("select_sticker_for_response", { sticker_name: "Wave" }, "Oh hi!"),
+      { status: "completed", accumulatedText: "Nice to see you." },
+    ]);
+    const originalStream = provider.streamToDiscord;
+    provider.streamToDiscord = async (...args: Parameters<LLMProvider["streamToDiscord"]>) => {
+      const result = await originalStream(...args);
+      events.push(`text:${result.accumulatedText ?? ""}`);
+      return result;
+    };
+    const sticker = { id: "sticker_1", name: "Wave", url: "https://cdn.example/s.png", available: true };
+    toolExecuteQueue.push({
+      success: true,
+      data: { sticker_name: "Wave" },
+      stickerSelection: { kind: "native", sticker: sticker as unknown as Sticker },
+    });
+    const context = makeStickerContext(events);
+
     const result = await runToolLoop(makeParams(context, provider));
 
-    expect(result.status).toBe("timeout");
-    expect(result.selectedSticker).toBeUndefined();
+    expect(events).toEqual(["text:Oh hi!", "send", "text:Nice to see you."]);
+    expect(result.status).toBe("completed");
+    expect(JSON.stringify(capturedHistories)).toContain("sticker_sent");
+    expect(JSON.stringify(capturedHistories)).not.toContain("sticker_1");
+  });
+
+  it("treats a sticker-only reply as delivered output rather than an empty response", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const { provider } = makeProvider([
+      makeFunctionCallResult("select_sticker_for_response", { sticker_name: "Wave" }),
+      { status: "empty_response" },
+    ]);
+    const sticker = { id: "sticker_1", name: "Wave", url: "https://cdn.example/s.png", available: true };
+    toolExecuteQueue.push({
+      success: true,
+      data: { sticker_name: "Wave" },
+      stickerSelection: { kind: "native", sticker: sticker as unknown as Sticker },
+    });
+
+    const result = await runToolLoop(makeParams(makeStickerContext([]), provider));
+
+    expect(result.status).toBe("completed");
+    expect(result.toolResponseDelivered).toBe(true);
+    expect(result.personaResponses).toEqual([]);
+  });
+
+  it("a stop raised after the tool resolved but before the send prevents the send", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const events: string[] = [];
+    const { provider } = makeProvider([
+      makeFunctionCallResult("select_sticker_for_response", { sticker_name: "Wave" }),
+    ]);
+    const sticker = { id: "sticker_1", name: "Wave", url: "https://cdn.example/s.png", available: true };
+    toolExecuteQueue.push({
+      success: true,
+      data: { sticker_name: "Wave" },
+      stickerSelection: { kind: "native", sticker: sticker as unknown as Sticker },
+    });
+    // The stop lands after the dispatcher's own pre- and post-execution checks, so only the
+    // delivery's recheck immediately before the send can observe it.
+    let stopChecks = 0;
+    onStopCheck = () => {
+      stopChecks += 1;
+      if (stopChecks === 3) hasStopRequest = true;
+    };
+
+    const result = await runToolLoop(makeParams(makeStickerContext(events), provider));
+
+    expect(stopChecks).toBeGreaterThanOrEqual(3);
+    expect(result.status).toBe("stopped_by_user");
+    expect(events).not.toContain("send");
   });
 
   it("NovelAI continues after pre-tool text when the successful tool requires follow-up", async () => {
@@ -801,7 +995,7 @@ describe("runToolLoop — contract tests", () => {
     expect(capturedHistories).toHaveLength(2);
     expect(result.personaResponses[0]?.text).toBe("Here is what I found.");
     expect(context.streamingContext.suppressTextOutput).toBe(false);
-    expect(requiresFollowUpCalls).toEqual([{ name: "web_search", provider: "novelai", serverId: 1 }]);
+    expect(requiresFollowUpCalls).toEqual([{ name: "web_search", serverId: 1 }]);
   });
 
   it("NovelAI ends after pre-tool text when the successful tool does not require follow-up", async () => {
@@ -817,7 +1011,7 @@ describe("runToolLoop — contract tests", () => {
     expect(result.status).toBe("completed");
     expect(capturedHistories).toHaveLength(1);
     expect(result.personaResponses[0]?.text).toBe("That is done.");
-    expect(requiresFollowUpCalls).toEqual([{ name: "non_follow_up_tool", provider: "novelai", serverId: 1 }]);
+    expect(requiresFollowUpCalls).toEqual([{ name: "non_follow_up_tool", serverId: 1 }]);
   });
 
   it("NovelAI suppresses repeated text and retries a tool failure after pre-tool text", async () => {
@@ -995,5 +1189,1285 @@ describe("runToolLoop — contract tests", () => {
 
     expect(result.status).toBe("error");
     expect(toolExecuteCalls).toHaveLength(0);
+  });
+
+  it("retains reported author usage when a held stream settles after cancellation", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const { provider } = makeProvider([]);
+    const review = mock(async () => ({ success: true, data: { status: "pass" } }));
+    Object.assign(provider, {
+      callStructuredJSON: review,
+      streamToDiscord: () =>
+        new Promise<StreamResult>((resolve) => {
+          context.streamingContext.abortSignal?.addEventListener(
+            "abort",
+            () => {
+              setTimeout(() => resolve({ status: "stopped_by_user", usage: { inputTokens: 25, outputTokens: 3 } }), 0);
+            },
+            { once: true },
+          );
+          queueMicrotask(() => {
+            hasStopRequest = true;
+            activeStreamKill?.(new Error("Fixture cancellation"));
+          });
+        }),
+    });
+    const result = await runToolLoop(makeParams(context, provider));
+    expect(result.status).toBe("stopped_by_user");
+    expect(result.personaResponses).toEqual([]);
+    expect(result.usageEntries).toEqual([
+      { kind: "author", model: "test-model", usage: { inputTokens: 25, outputTokens: 3 } },
+    ]);
+    expect(review).not.toHaveBeenCalled();
+  });
+
+  it("keeps Off on the ordinary path without an auxiliary request", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeContext();
+    const { provider } = makeProvider([{ status: "completed", accumulatedText: "A quiet reply." }]);
+    const review = mock(async () => ({ success: true, data: { status: "pass" } }));
+    Object.assign(provider, { callStructuredJSON: review });
+    const result = await runToolLoop(makeParams(context, provider));
+    expect(review).not.toHaveBeenCalled();
+    expect(result.personaResponses[0]?.text).toBe("A quiet reply.");
+    expect(result.usageEntries).toBeUndefined();
+  });
+
+  it("reviews a quiet short reply once, passes without another author request and delivers once", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const delivered: string[] = [];
+    const { provider, capturedHistories } = makeProvider([held("*nods*", delivered)]);
+    const calls: ProviderStructuredJsonRequest[] = [];
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+        calls.push(request);
+        request.onUsage?.({ inputTokens: 20, outputTokens: 2 });
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    const result = await runToolLoop(makeParams(context, provider));
+    expect(calls).toHaveLength(1);
+    expect(capturedHistories).toHaveLength(1);
+    expect(delivered).toEqual(["*nods*"]);
+    expect(result.personaResponses[0]?.text).toBe("*nods*");
+    expect(result.usageEntries?.map((entry) => entry.kind)).toEqual(["author", "reviewer"]);
+    expect(calls[0]?.apiKey).toBe(makeProviderConfig().apiKey);
+    expect(calls[0]?.systemPrompt).toBe(context.currentPersona.config.response_reviewer_prompt ?? "");
+    const prompt = calls[0]?.userPrompt ?? "";
+    expect(prompt).toContain('<pending_candidate status="pending">\n*nods*\n</pending_candidate>');
+    expect(prompt).toContain("<trigger>\nJuno: Stay here with me.\n</trigger>");
+    expect(prompt).toContain("<representative_dialogues>\nA sample invitation.\n\nA sample quiet reply.");
+    expect(prompt).toContain("Representative dialogues: 1 of 1 pairs.");
+  });
+
+  it("sends the reviewer the saved thinking level, temperature and chat output budget", async () => {
+    const context = makeReviewContext();
+    context.tomoriState.config.thinking_level = "high";
+    context.tomoriState.config.llm_max_output_tokens = 3000;
+    context.tomoriState.config.llm_temperature = 1.4;
+    context.responseReview.pending = [held("*nods*", []).pendingResponse];
+    const { provider } = makeProvider([]);
+    const calls: ProviderStructuredJsonRequest[] = [];
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+        calls.push(request);
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    await reviewResponseCandidate(context, provider, makeProviderConfig());
+    expect(calls[0]?.thinkingLevel).toBe("high");
+    expect(calls[0]?.maxOutputTokens).toBe(3000);
+    expect(calls[0]?.temperature).toBe(1.4);
+  });
+
+  it("revises the whole held response once while preserving successful tools and their outcomes", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const delivered: string[] = [];
+    const preTool = held("I will check.", delivered, "function_call");
+    preTool.data = { name: "lookup", args: { query: "scene fact" } };
+    toolExecuteQueue.push({ success: true, data: { fact: "The door is closed." } });
+    const { provider, capturedHistories } = makeProvider([
+      preTool,
+      held("Generic assistant answer.", delivered),
+      held("*rests against the closed door* I stay.", delivered),
+    ]);
+    const requests: ProviderStructuredJsonRequest[] = [];
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+        requests.push(request);
+        return {
+          success: true,
+          data:
+            request.schemaName === "response_review" &&
+            requests.filter((entry) => entry.schemaName === "response_review").length === 1
+              ? {
+                  status: "revise",
+                  findings: [
+                    {
+                      category: "voice",
+                      problem: "The voice is detached.",
+                      direction: "Use the character's terse voice and the closed door.",
+                    },
+                  ],
+                }
+              : { status: "pass" },
+        };
+      },
+    });
+    const result = await runToolLoop(makeParams(context, provider));
+    expect(toolExecuteCalls).toHaveLength(1);
+    expect(requests).toHaveLength(3);
+    const [firstReview, secondReview] = [requests[1]?.userPrompt ?? "", requests[2]?.userPrompt ?? ""];
+    expect(firstReview).toContain('<pending_candidate status="pending">\nI will check.');
+    expect(secondReview).toContain(
+      `Outcome: ${JSON.stringify(context.responseReview?.functionHistory[0]?.functionResponse)}`,
+    );
+    // A revision changes only the sections after <coverage>, so the provider can reuse the cached prefix.
+    expect(secondReview.split("<coverage>")[0]).toBe(firstReview.split("<coverage>")[0]);
+    expect(capturedHistories[2]).toHaveLength(1);
+    expect(delivered).toEqual(["*rests against the closed door* I stay."]);
+    expect(result.personaResponses[0]?.text).not.toContain("Generic");
+    expect(context.responseReview?.revisions).toBe(1);
+    expect(result.usageEntries?.filter((entry) => entry.kind === "author")).toHaveLength(3);
+  });
+
+  it("carries the held-prose ceiling across tool passes", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const { MAX_PENDING_RESPONSE_BYTES, MAX_PENDING_RESPONSE_SEGMENTS } = await import(
+      "@/utils/discord/stream/constants"
+    );
+    const context = makeReviewContext();
+    const delivered: string[] = [];
+    const narration = held("I will check the shelf.", delivered, "function_call");
+    narration.data = { name: "lookup", args: {} };
+    const { provider } = makeProvider([narration, held("It is here.", delivered)]);
+    const limits: unknown[] = [];
+    const streamToDiscord = provider.streamToDiscord.bind(provider);
+    provider.streamToDiscord = (...args: Parameters<LLMProvider["streamToDiscord"]>) => {
+      limits.push({ ...context.streamingContext.pendingResponseLimit });
+      return streamToDiscord(...args);
+    };
+    Object.assign(provider, { callStructuredJSON: async () => ({ success: true, data: { status: "pass" } }) });
+    await runToolLoop(makeParams(context, provider));
+    const narrationBytes = Buffer.byteLength("I will check the shelf.", "utf8");
+    expect(limits).toEqual([
+      { maxBytes: MAX_PENDING_RESPONSE_BYTES, maxSegments: MAX_PENDING_RESPONSE_SEGMENTS },
+      { maxBytes: MAX_PENDING_RESPONSE_BYTES - narrationBytes, maxSegments: MAX_PENDING_RESPONSE_SEGMENTS - 1 },
+    ]);
+    expect(delivered).toEqual(["I will check the shelf.", "It is here."]);
+  });
+
+  it("reviews a reply cut at the held ceiling as cut, then delivers it with usage and the length notice", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    context.shouldSurfaceUserErrors = true;
+    const delivered: string[] = [];
+    const cut = held("Mirri keeps talking", delivered);
+    cut.usage = undefined;
+    cut.stopReason = "pending_response_limit";
+    cut.pendingResponse.truncation = "retention_limit";
+    const { provider } = makeProvider([cut]);
+    const requests: ProviderStructuredJsonRequest[] = [];
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+        requests.push(request);
+        expect(delivered).toEqual([]);
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    const result = await runToolLoop(makeParams(context, provider));
+    const review = requests.find((request) => request.schemaName === "response_review");
+    expect(review?.userPrompt).toContain('<pending_candidate status="pending_cut_at_length_limit">');
+    expect(review?.systemPrompt).toContain("pending_cut_at_length_limit");
+    expect(context.streamingContext.abortSignal?.aborted).toBe(true);
+    expect(delivered).toEqual(["Mirri keeps talking"]);
+    expect(result.status).toBe("completed");
+    const author = result.usageEntries?.find((entry) => entry.kind === "author");
+    expect(author?.usage.inputTokens).toBeGreaterThan(0);
+    expect(author?.usage.outputTokens).toBeGreaterThan(0);
+    expect(standardEmbedCalls.map((call) => call.titleKey)).toEqual(["genai.stream.flush_limit_title"]);
+  });
+
+  it("stays silent when the operator send limit cut the held reply", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    context.shouldSurfaceUserErrors = true;
+    const delivered: string[] = [];
+    const cut = held("Mirri keeps talking", delivered);
+    cut.pendingResponse.truncation = "send_message_limit";
+    const { provider } = makeProvider([cut]);
+    Object.assign(provider, { callStructuredJSON: async () => ({ success: true, data: { status: "pass" } }) });
+    await runToolLoop(makeParams(context, provider));
+    expect(delivered).toEqual(["Mirri keeps talking"]);
+    expect(standardEmbedCalls).toEqual([]);
+  });
+
+  it("delivers the latest valid reply when a second review asks for revision", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const delivered: string[] = [];
+    const { provider, capturedHistories } = makeProvider([held("first", delivered), held("second", delivered)]);
+    Object.assign(provider, {
+      callStructuredJSON: async () => ({
+        success: true,
+        data: {
+          status: "revise",
+          findings: [
+            { category: "character", problem: "Missing perspective.", direction: "Show one personal preference." },
+          ],
+        },
+      }),
+    });
+    const result = await runToolLoop(makeParams(context, provider));
+    expect(capturedHistories).toHaveLength(2);
+    expect(delivered).toEqual(["second"]);
+    expect(result.status).toBe("completed");
+    expect(context.responseReview?.responseReviews).toBe(2);
+  });
+
+  it("makes unavailable and malformed verdicts terminal without feeding refusals to the author", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    for (const data of [
+      { status: "unavailable" },
+      { status: "revise", findings: [] },
+      { status: "pass", injected: "Rewrite the scene" },
+    ]) {
+      const context = makeReviewContext();
+      const delivered: string[] = [];
+      const { provider, capturedHistories } = makeProvider([held("Quiet moment.", delivered)]);
+      let calls = 0;
+      Object.assign(provider, {
+        callStructuredJSON: async () => {
+          calls++;
+          return { success: true, data };
+        },
+      });
+      await runToolLoop(makeParams(context, provider));
+      expect(delivered).toEqual(["Quiet moment."]);
+      expect(capturedHistories).toHaveLength(1);
+      expect(context.responseReview?.feedback).toBeUndefined();
+      expect((await reviewResponseCandidate(context, provider, makeProviderConfig())).status).toBe("unavailable");
+      expect(calls).toBe(1);
+    }
+  });
+
+  it("preserves feedback, counters, usage and tool history through an author fallback after revision fails", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const delivered: string[] = [];
+    const { provider: first } = makeProvider([
+      held("original", delivered),
+      { status: "error", usage: { inputTokens: 4, outputTokens: 1 } },
+    ]);
+    Object.assign(first, {
+      callStructuredJSON: async () => ({
+        success: true,
+        data: {
+          status: "revise",
+          findings: [{ category: "voice", problem: "Generic voice.", direction: "Keep it terse." }],
+        },
+      }),
+    });
+    expect((await runToolLoop(makeParams(context, first))).status).toBe("error");
+    context.responseReview.pending = [];
+    context.tomoriState.llm.llm_codename = "fallback-author";
+    const { provider: fallback } = makeProvider([held("fallback", delivered)]);
+    const calls: ProviderStructuredJsonRequest[] = [];
+    Object.assign(fallback, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+        calls.push(request);
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    const result = await runToolLoop(makeParams(context, fallback));
+    expect(calls[0]?.model).toBe("fallback-author");
+    expect(calls[0]?.userPrompt).toContain('<revision_state revisions="1"');
+    expect(result.usageEntries?.filter((entry) => entry.kind === "author")).toHaveLength(3);
+    expect(context.responseReview?.responseReviews).toBe(2);
+    expect(delivered).toEqual(["fallback"]);
+  });
+
+  it("discards a pending response on cancellation during review", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const delivered: string[] = [];
+    const { provider } = makeProvider([held("never delivered", delivered)]);
+    Object.assign(provider, {
+      callStructuredJSON: async () => {
+        hasStopRequest = true;
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    const result = await runToolLoop(makeParams(context, provider));
+    expect(result.status).toBe("stopped_by_user");
+    expect(result.personaResponses).toEqual([]);
+    expect(delivered).toEqual([]);
+  });
+
+  it("requires persona, trigger and full candidate evidence and bounds optional history", () => {
+    const context = makeReviewContext();
+    context.contextItems.push(
+      ...Array.from(
+        { length: 50 },
+        (_, index): StructuredContextItem => ({
+          role: "model",
+          metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+          messageId: `history_${index}`,
+          parts: [{ type: "text", text: "A long historical reply. ".repeat(10) }],
+        }),
+      ),
+    );
+    const packet = packetOf(buildReviewerPacket(context, "pending", 750));
+    expect(packet.candidate.text).toBe("pending");
+    expect(packet.coverage.historyIncluded).toBeLessThan(50);
+    expect(packet.coverage.historyIncluded).toBeGreaterThan(0);
+    expect(buildReviewerPacket(context, "x".repeat(5000), 750)).toBe("evidence_over_budget");
+    context.message.reference = { messageId: "outside_context" } as typeof context.message.reference;
+    expect(buildReviewerPacket(context, "pending", 750)).toBe("reply_target_missing");
+    context.contextItems = context.contextItems.filter(
+      (item) => item.metadataTag !== ContextItemTag.SYSTEM_PERSONALITY,
+    );
+    expect(buildReviewerPacket(context, "pending", 750)).toBe("persona_missing");
+    context.contextItems = [];
+    expect(buildReviewerPacket(context, "pending", 750)).toBe("trigger_missing");
+    expect(draftReviewResultSchema.safeParse({ status: "revise", findings: [] }).success).toBe(false);
+  });
+
+  it("loads only selected review groups while always retaining the draft, trigger and reply target", () => {
+    const context = makeReviewContext();
+    const evidence: StructuredContextItem[] = [
+      {
+        role: "system",
+        metadataTag: ContextItemTag.SYSTEM_PERSONALITY,
+        parts: [{ type: "text", text: "PERSONA_EVIDENCE" }],
+      },
+      {
+        role: "system",
+        metadataTag: ContextItemTag.SYSTEM_HUMANIZER_RULES,
+        parts: [{ type: "text", text: "SYSTEM_EVIDENCE" }],
+      },
+      { role: "user", metadataTag: ContextItemTag.DIALOGUE_SAMPLE, parts: [{ type: "text", text: "EXAMPLE_USER" }] },
+      { role: "model", metadataTag: ContextItemTag.DIALOGUE_SAMPLE, parts: [{ type: "text", text: "EXAMPLE_MODEL" }] },
+      {
+        role: "model",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: "earlier",
+        parts: [{ type: "text", text: "HISTORY_EVIDENCE" }],
+      },
+      {
+        role: "system",
+        metadataTag: ContextItemTag.KNOWLEDGE_SERVER_MEMORIES,
+        parts: [{ type: "text", text: "MEMORY_EVIDENCE" }],
+      },
+      {
+        role: "system",
+        metadataTag: ContextItemTag.KNOWLEDGE_SHORT_TERM_MEMORY,
+        parts: [{ type: "text", text: "STM_EVIDENCE" }],
+      },
+      {
+        role: "system",
+        metadataTag: ContextItemTag.KNOWLEDGE_SERVER_DOCUMENTS,
+        parts: [{ type: "text", text: "DOCUMENT_EVIDENCE" }],
+      },
+      { role: "system", parts: [{ type: "text", text: "OTHER_EVIDENCE" }] },
+      {
+        role: "user",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: context.message.id,
+        parts: [{ type: "text", text: "TRIGGER_EVIDENCE" }],
+      },
+      {
+        role: "model",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: "target",
+        parts: [{ type: "text", text: "TARGET_EVIDENCE" }],
+      },
+    ];
+    context.contextItems = evidence;
+    context.message.reference = { messageId: "target" } as typeof context.message.reference;
+    context.responseReview.functionHistory.push({
+      functionCall: { name: "lookup", args: {} },
+      functionResponse: { text: "TOOL_EVIDENCE" },
+    });
+    const tools = [
+      {
+        functionDeclarations: [
+          { name: "lookup", description: "CATALOG_EVIDENCE", parameters: { type: "object", properties: {} } },
+        ],
+      },
+    ];
+    for (let mask = 0; mask < 2 ** RESPONSE_REVIEW_ITEM_VALUES.length; mask++) {
+      const selected = RESPONSE_REVIEW_ITEM_VALUES.filter((_item, index) => mask & (1 << index));
+      context.responseReview.reviewItems = selected;
+      const packet = packetOf(buildReviewerPacket(context, "DRAFT_EVIDENCE", 64000, tools));
+      const prompt = renderReviewerPrompt(packet);
+      for (const marker of ["DRAFT_EVIDENCE", "TRIGGER_EVIDENCE", "TARGET_EVIDENCE"]) expect(prompt).toContain(marker);
+      const markers = {
+        persona: ["PERSONA_EVIDENCE", "SYSTEM_EVIDENCE"],
+        examples: ["EXAMPLE_USER", "EXAMPLE_MODEL"],
+        history: ["HISTORY_EVIDENCE"],
+        context: ["MEMORY_EVIDENCE", "STM_EVIDENCE", "DOCUMENT_EVIDENCE", "OTHER_EVIDENCE"],
+        tools: ["TOOL_EVIDENCE", "CATALOG_EVIDENCE"],
+      };
+      for (const group of RESPONSE_REVIEW_ITEM_VALUES)
+        for (const marker of markers[group]) {
+          expect(prompt.includes(marker)).toBe(selected.includes(group));
+        }
+    }
+    context.responseReview.reviewItems = [];
+    context.contextItems = evidence.filter((item) => item.metadataTag !== ContextItemTag.SYSTEM_PERSONALITY);
+    expect(typeof buildReviewerPacket(context, "draft", 64000)).toBe("object");
+  });
+
+  it("resolves a reply to a later chunk of a merged persona reply to its prose", () => {
+    const context = makeReviewContext();
+    const chunkIds = ["persona_chunk_1", "persona_chunk_2", "persona_chunk_3"];
+    context.contextItems.splice(
+      1,
+      0,
+      {
+        role: "user",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: chunkIds[0],
+        combinedMessageIds: chunkIds,
+        parts: [{ type: "text", text: "[System: Sent earlier]" }],
+      },
+      {
+        role: "model",
+        metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+        messageId: chunkIds[0],
+        combinedMessageIds: chunkIds,
+        parts: [{ type: "text", text: "Mirri kneels.\nNow. About that favor." }],
+      },
+    );
+    context.message.reference = { messageId: chunkIds[2] } as typeof context.message.reference;
+    expect(packetOf(buildReviewerPacket(context, "pending", 64000)).replyTarget?.text).toContain("About that favor");
+  });
+
+  it("keeps a packet whose available tools nest array-of-object parameters past the sanitizer depth", () => {
+    const context = makeReviewContext();
+    const deepParameters = {
+      type: "object",
+      properties: {
+        characters: {
+          type: "array",
+          items: { type: "object", properties: { prompt: { type: "string" } } },
+        },
+      },
+    };
+    const tools = [
+      { type: "function", function: { name: "fixture_image", description: "Draw.", parameters: deepParameters } },
+      { functionDeclarations: [{ name: "fixture_lookup", parameters: { type: "object", properties: {} } }] },
+    ];
+    const packet = packetOf(
+      buildReviewerPacket(context, "pending", 64000, tools, { name: "fixture_lookup", args: {} }),
+    );
+    expect(packet.availableTools.map((tool) => tool.name)).toEqual(["fixture_image", "fixture_lookup"]);
+    expect(packet.availableTools[0]?.parameters).toEqual(["characters"]);
+    expect(buildReviewerPacket(context, "pending", 64000, tools, { name: "fixture_missing", args: {} })).toBe(
+      "unknown_tool",
+    );
+  });
+
+  it("reviews admitted media and tool images as placeholders and blocks decision skipping", () => {
+    const context = makeReviewContext();
+    context.contextItems.push({
+      role: "user",
+      metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+      messageId: "history_media",
+      parts: [{ type: "image", mimeType: "image/png", uri: "https://example.com/fixture.png" }],
+    });
+    context.responseReview.functionHistory.push({
+      functionCall: { name: "lookup", args: {} },
+      functionResponse: { fact: "outcome" },
+      imageMetadata: {
+        imageUrls: [{ url: "https://example.com/tool-image.png", mimeType: "image/png" }],
+        totalSent: 1,
+        totalValidated: 1,
+      },
+    });
+    const packet = packetOf(buildReviewerPacket(context, "pending", 64000));
+    expect(packet.coverage.media).toBe("placeholders");
+    expect(packet.tools[0]?.imageOmitted).toBe(true);
+    expect(JSON.stringify(packet)).not.toContain("example.com/fixture.png");
+    expect(packet.historicalDialogue.some((item) => item.messageId === "history_media" && item.text)).toBe(true);
+  });
+
+  it("pins only an owned reviewer and uses its saved credentials independently of the author", async () => {
+    const context = makeReviewContext();
+    context.responseReview.reviewerId = 88;
+    context.responseReview.pending = [held("quiet", []).pendingResponse];
+    const reviewer = createLlmRow({
+      llm_id: 88,
+      llm_provider: "openrouter",
+      llm_codename: "review-model",
+      context_window: 64000,
+      supports_structoutput: true,
+    });
+    const saved = savedProviderConfigSchema.parse({
+      server_id: context.currentPersona.server_id,
+      provider: "openrouter",
+      api_key: Buffer.from("owned-encrypted"),
+      llm_id: 88,
+      diffusion_model_id: null,
+      embedding_model_id: null,
+      nai_diffusion_model_id: null,
+      nai_preset_name: null,
+      llm_disabled_params: [],
+      llm_logit_biases: [],
+      fallback_model_refs: [],
+      thinking_level: "low",
+    });
+    const modelSpy = spyOn(llmModelRepo, "loadById").mockResolvedValue(reviewer);
+    const availableSpy = spyOn(llmModelRepo, "loadAvailableModelsForProvider").mockResolvedValue([reviewer]);
+    const savedSpy = spyOn(llmProviderRepo, "loadSavedProviderConfig").mockResolvedValue(saved);
+    const decryptSpy = spyOn(crypto, "decryptApiKey").mockResolvedValue("owned-review-key");
+    const { provider } = makeProvider([]);
+    const calls: ProviderStructuredJsonRequest[] = [];
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+        calls.push(request);
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    const capabilitySpy = spyOn(capabilityResolver, "resolveStructuredOutputCapability").mockResolvedValue(
+      provider as Awaited<ReturnType<typeof capabilityResolver.resolveStructuredOutputCapability>>,
+    );
+    try {
+      expect((await reviewResponseCandidate(context, makeProvider([]).provider, makeProviderConfig())).status).toBe(
+        "pass",
+      );
+      expect(calls[0]?.apiKey).toBe("owned-review-key");
+      expect(calls[0]?.model).toBe("review-model");
+      expect(calls[0]?.thinkingLevel).toBe("low");
+      expect(availableSpy.mock.calls[0]?.[2]).toEqual({ kind: "server", ownerId: context.currentPersona.server_id });
+      availableSpy.mockResolvedValue([]);
+      const inaccessible = makeReviewContext();
+      inaccessible.responseReview.reviewerId = 88;
+      inaccessible.responseReview.pending = [held("quiet", []).pendingResponse];
+      expect((await reviewResponseCandidate(inaccessible, provider, makeProviderConfig())).status).toBe("unavailable");
+      expect(calls).toHaveLength(1);
+    } finally {
+      modelSpy.mockRestore();
+      availableSpy.mockRestore();
+      savedSpy.mockRestore();
+      decryptSpy.mockRestore();
+      capabilitySpy.mockRestore();
+    }
+  });
+
+  it("logs operational reviewer failures once with safe metadata and treats refusal as an ordinary outcome", async () => {
+    const errorSpy = spyOn(log, "error").mockImplementation(async () => {});
+    const infoSpy = spyOn(log, "info").mockImplementation(() => {});
+    errorSpy.mockClear();
+    infoSpy.mockClear();
+    try {
+      const context = makeReviewContext();
+      const { provider } = makeProvider([]);
+      context.responseReview.pending = [held("PRIVATE_DRAFT", []).pendingResponse];
+      Object.assign(provider, {
+        callStructuredJSON: async () => {
+          throw new Error("PRIVATE_DRAFT PRIVATE_EVIDENCE PRIVATE_KEY https://example.invalid?token=secret");
+        },
+      });
+      expect((await reviewResponseCandidate(context, provider, makeProviderConfig())).status).toBe("unavailable");
+      await reviewResponseCandidate(context, provider, makeProviderConfig());
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("PRIVATE_");
+      // The prompt dump carries the draft at info; the provider's raw error text never reaches it.
+      expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("PRIVATE_EVIDENCE");
+      expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("token=secret");
+      errorSpy.mockClear();
+      const refusal = makeReviewContext();
+      refusal.responseReview.pending = [held("PRIVATE_DRAFT", []).pendingResponse];
+      Object.assign(provider, {
+        callStructuredJSON: async () => ({ success: false, error: "PRIVATE_REFUSAL", failure: "refusal" }),
+      });
+      expect((await reviewResponseCandidate(refusal, provider, makeProviderConfig())).status).toBe("unavailable");
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockImplementation(async () => {});
+      infoSpy.mockImplementation(() => {});
+    }
+  });
+
+  it("retries a malformed verdict once with reasoning off and accepts a pass that carries stray keys", async () => {
+    const errorSpy = spyOn(log, "error").mockImplementation(async () => {});
+    try {
+      const context = makeReviewContext();
+      context.tomoriState.config.thinking_level = "high";
+      context.responseReview.pending = [held("*nods*", []).pendingResponse];
+      const { provider } = makeProvider([]);
+      const calls: ProviderStructuredJsonRequest[] = [];
+      Object.assign(provider, {
+        callStructuredJSON: async (request: ProviderStructuredJsonRequest, _json: unknown, schema: z.ZodType) => {
+          calls.push(request);
+          if (calls.length === 1)
+            return { success: false, error: "x", failure: "malformed", malformed: { reason: "empty" } };
+          const accepted = schema.safeParse({ status: "pass", findings: [] });
+          return accepted.success ? { success: true, data: accepted.data } : { success: false, error: "x" };
+        },
+      });
+      expect(await reviewResponseCandidate(context, provider, makeProviderConfig())).toEqual({ status: "pass" });
+      expect(calls.map((call) => call.thinkingLevel)).toEqual(["high", "none"]);
+      expect(calls[1]?.userPrompt).toContain("<format_retry>");
+      expect(context.responseReview.responseReviews).toBe(1);
+      expect(errorSpy).not.toHaveBeenCalled();
+
+      const failing = makeReviewContext();
+      failing.responseReview.pending = [held("*nods*", []).pendingResponse];
+      let attempts = 0;
+      Object.assign(provider, {
+        callStructuredJSON: async () => {
+          attempts++;
+          return { success: false, error: "x", failure: "malformed", malformed: { reason: "unparsable" } };
+        },
+      });
+      expect((await reviewResponseCandidate(failing, provider, makeProviderConfig())).status).toBe("unavailable");
+      expect(attempts).toBe(2);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      errorSpy.mockImplementation(async () => {});
+    }
+  });
+
+  it("reports pinned reviewer decryption failure once without raw error or credential content", async () => {
+    const context = makeReviewContext();
+    context.responseReview.reviewerId = 88;
+    context.responseReview.pending = [held("PRIVATE_DRAFT", []).pendingResponse];
+    const reviewer = createLlmRow({ llm_id: 88, supports_structoutput: true });
+    const saved = savedProviderConfigSchema.parse({
+      server_id: context.currentPersona.server_id,
+      provider: reviewer.llm_provider,
+      api_key: Buffer.from("PRIVATE_KEY"),
+      key_version: 2147483647,
+      llm_id: 88,
+      diffusion_model_id: null,
+      embedding_model_id: null,
+      nai_diffusion_model_id: null,
+      nai_preset_name: null,
+      llm_disabled_params: [],
+      llm_logit_biases: [],
+      fallback_model_refs: [],
+    });
+    const model = spyOn(llmModelRepo, "loadById").mockResolvedValue(reviewer);
+    const available = spyOn(llmModelRepo, "loadAvailableModelsForProvider").mockResolvedValue([reviewer]);
+    const registration = spyOn(llmProviderRepo, "loadSavedProviderConfig").mockResolvedValue(saved);
+    const { provider } = makeProvider([]);
+    const structured = mock(async () => ({ success: true, data: { status: "pass" } }));
+    Object.assign(provider, { callStructuredJSON: structured });
+    const capability = spyOn(capabilityResolver, "resolveStructuredOutputCapability").mockResolvedValue(
+      provider as Awaited<ReturnType<typeof capabilityResolver.resolveStructuredOutputCapability>>,
+    );
+    const errors = spyOn(log, "error").mockImplementation(async () => {});
+    errors.mockClear();
+    try {
+      expect((await reviewResponseCandidate(context, provider, makeProviderConfig())).status).toBe("unavailable");
+      expect(errors).toHaveBeenCalledTimes(1);
+      expect(errors.mock.calls[0]?.[2]).toMatchObject({ metadata: { category: "credentials", reviewerId: 88 } });
+      const records = JSON.stringify(
+        errors.mock.calls.map(([message, cause, metadata]) => ({
+          message,
+          cause: cause instanceof Error ? { message: cause.message, stack: cause.stack } : cause,
+          metadata,
+        })),
+      );
+      expect(records).not.toContain("PRIVATE_");
+      expect(structured).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of [model, available, registration, capability]) spy.mockRestore();
+      errors.mockImplementation(async () => {});
+    }
+  });
+
+  it("bounds a silent reviewer timeout without triggering an author rewrite or another review", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const actualTimeout = AbortSignal.timeout.bind(AbortSignal);
+    const timeoutSpy = spyOn(AbortSignal, "timeout").mockImplementation(() => actualTimeout(5));
+    try {
+      const context = makeReviewContext();
+      const delivered: string[] = [];
+      const { provider, capturedHistories } = makeProvider([held("latest valid", delivered)]);
+      let calls = 0;
+      Object.assign(provider, {
+        callStructuredJSON: () => {
+          calls++;
+          return new Promise(() => {});
+        },
+      });
+      const result = await runToolLoop(makeParams(context, provider));
+      expect(result.status).toBe("completed");
+      expect(capturedHistories).toHaveLength(1);
+      expect(calls).toBe(1);
+      expect(delivered).toEqual(["latest valid"]);
+      expect(context.responseReview?.unavailable).toBe(true);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
+  it("aborts reviewer transport promptly on a follow-up interruption", async () => {
+    const context = makeReviewContext();
+    context.responseReview.pending = [held("pending", []).pendingResponse];
+    const { provider } = makeProvider([]);
+    let signal: AbortSignal | undefined;
+    Object.assign(provider, {
+      callStructuredJSON: (request: ProviderStructuredJsonRequest) => {
+        signal = request.abortSignal;
+        requestFollowUp(context.channel.id, "fixture_user");
+        return new Promise(() => {});
+      },
+    });
+    try {
+      expect((await reviewResponseCandidate(context, provider, makeProviderConfig())).status).toBe("cancelled");
+      expect(signal?.aborted).toBe(true);
+      expect(context.responseReview?.unavailable).toBe(false);
+    } finally {
+      deleteStopRequest(context.channel.id);
+    }
+  });
+
+  it("reuses verdicts only for identical evidence and candidate, and excludes optional protocol instructions", async () => {
+    const context = makeReviewContext();
+    context.responseReview.pending = [held("pending", []).pendingResponse];
+    const { provider } = makeProvider([]);
+    let calls = 0;
+    Object.assign(provider, {
+      callStructuredJSON: async () => {
+        calls++;
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    await reviewResponseCandidate(context, provider, makeProviderConfig());
+    await reviewResponseCandidate(context, provider, makeProviderConfig());
+    expect(calls).toBe(1);
+    context.responseReview.functionHistory.push({
+      functionCall: { name: "lookup", args: { api_key: "PRIVATE_KEY" } },
+      functionResponse: { fact: "new outcome" },
+    });
+    await reviewResponseCandidate(context, provider, makeProviderConfig());
+    expect(calls).toBe(2);
+    const packet = packetOf(buildReviewerPacket(context, "pending", 64000));
+    expect(JSON.stringify(packet.tools)).not.toContain("PRIVATE_KEY");
+    expect(packet.candidate.text).toBe("pending");
+    expect(buildReviewerPacket(context, `sk-proj-${"a".repeat(30)}`, 64000)).toBe("candidate_credential");
+  });
+
+  it("reviews roleplay prose that only resembles log key-value pairs", () => {
+    const context = makeReviewContext();
+    for (const candidate of [
+      "Here's my secret: I never sleep.",
+      "The password: swordfish, she whispered.",
+      "*hands you a token: a silver coin*",
+      "Authorization: denied, traveler. Basic training starts at dawn.",
+    ])
+      expect(packetOf(buildReviewerPacket(context, candidate, 64000)).candidate.text).toBe(candidate);
+    for (const candidate of [
+      `Bearer ${"b".repeat(32)}`,
+      "postgres://mirri:hunter2@db.example.com/app",
+      `https://discord.com/api/webhooks/123/${"w".repeat(40)}`,
+    ])
+      expect(buildReviewerPacket(context, candidate, 64000)).toBe("candidate_credential");
+  });
+
+  it("routes linter reports/failures directly to review and keeps diagnostics out of author continuation and accepted dialogue", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const evidence = { score: 50, advice: ["PRIVATE_RULE_ADVICE"] };
+    const rules = spyOn(ruleChecks, "checkResponseRules");
+    const decisions = spyOn(decisionRouting, "routeResponseDecision").mockResolvedValue("review");
+    try {
+      for (const status of ["report", "failed"] as const) {
+        rules.mockResolvedValue(status === "report" ? { status, evidence } : { status });
+        const context = makeReviewContext();
+        const delivered: string[] = [];
+        const { provider, capturedHistories, capturedContexts } = makeProvider([
+          held("first pending reply", delivered),
+          held("chosen reply", delivered),
+        ]);
+        const packets: string[] = [];
+        Object.assign(provider, {
+          callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+            packets.push(request.userPrompt);
+            return {
+              success: true,
+              data:
+                packets.length === 1
+                  ? {
+                      status: "revise",
+                      findings: [
+                        {
+                          category: "voice",
+                          problem: "The reply contradicts the quiet persona.",
+                          direction: "Keep her voice quiet.",
+                        },
+                      ],
+                    }
+                  : { status: "pass" },
+            };
+          },
+        });
+        const result = await runToolLoop(makeParams(context, provider));
+        expect(packets).toHaveLength(2);
+        expect(packets[0]?.includes('<prose_linter_report advisory="true">')).toBe(status === "report");
+        expect(result.status).toBe("completed");
+        expect(delivered).toEqual(["chosen reply"]);
+        expect(JSON.stringify(capturedHistories)).not.toContain("PRIVATE_RULE_");
+        expect(JSON.stringify(capturedContexts)).not.toContain("PRIVATE_RULE_");
+        expect(JSON.stringify(result.personaResponses)).not.toContain("PRIVATE_RULE_");
+        expect(JSON.stringify(context.responseReview.functionHistory)).not.toContain("PRIVATE_RULE_");
+      }
+      expect(decisions).not.toHaveBeenCalled();
+    } finally {
+      rules.mockRestore();
+      decisions.mockRestore();
+    }
+  });
+
+  it("clean/disabled rules cannot approve prose and tool review never checks arbitrary argument JSON", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const rules = spyOn(ruleChecks, "checkResponseRules");
+    const decisions = spyOn(decisionRouting, "routeResponseDecision").mockResolvedValue("review");
+    try {
+      for (const status of ["clean", "disabled"] as const) {
+        const text = "A quiet character waits by the door while the rain falls outside.";
+        rules.mockResolvedValue({ status });
+        const context = makeReviewContext();
+        context.responseReview.pending = [held(text, []).pendingResponse];
+        const { provider } = makeProvider([]);
+        let reviews = 0;
+        Object.assign(provider, {
+          callStructuredJSON: async () => {
+            reviews++;
+            return { success: true, data: { status: "pass" } };
+          },
+        });
+        expect((await reviewResponseCandidate(context, provider, makeProviderConfig())).status).toBe("pass");
+        expect(reviews).toBe(1);
+      }
+      rules.mockClear();
+      const context = makeReviewContext();
+      const first = held("", [], "function_call");
+      first.data = { name: "mirror_action", args: { text: "PRIVATE_ARGUMENT_JSON" } };
+      const { provider } = makeProvider([first, held("", [])]);
+      Object.assign(provider, { callStructuredJSON: async () => ({ success: true, data: { status: "pass" } }) });
+      await runToolLoop(makeParams(context, provider));
+      expect(rules).not.toHaveBeenCalled();
+      expect(decisions.mock.calls.some(([, , packet]) => packet.kind === "tool_call")).toBe(true);
+    } finally {
+      rules.mockRestore();
+      decisions.mockRestore();
+    }
+  });
+  const rejection = {
+    status: "revise" as const,
+    findings: [
+      { category: "tool_use" as const, problem: "The target is invented.", direction: "Use the admitted target." },
+    ],
+  };
+
+  for (const name of ["create_long_term_memory", "mirror_action"]) {
+    it(`${name}: approves the exact snapshot once and preserves pending narration until text review`, async () => {
+      const { runToolLoop } = await import("@/utils/chat/toolLoop");
+      const context = makeReviewContext();
+      const delivered: string[] = [];
+      const args = { target: "fixture", text: "Quiet fictional note", nested: { count: 2 } };
+      const first = held("I will leave a note.", delivered, "function_call");
+      first.data = { name, args };
+      const { provider } = makeProvider([first, held("Done.", delivered)]);
+      const packets: string[] = [];
+      Object.assign(provider, {
+        callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+          packets.push(request.userPrompt);
+          expect(delivered).toEqual([]);
+          if (request.schemaName === "tool_review") {
+            expect(toolExecuteCalls).toEqual([]);
+            args.text = "Mutation of original provider object";
+          }
+          request.onUsage?.({ inputTokens: 7, outputTokens: 2 });
+          return { success: true, data: { status: "pass" } };
+        },
+      });
+      const result = await runToolLoop(makeParams(context, provider));
+      expect(toolExecuteCalls).toEqual([
+        { name, args: { target: "fixture", text: "Quiet fictional note", nested: { count: 2 } } },
+      ]);
+      expect(packets[0]).toContain(
+        `<proposed_tool_call status="not_executed">\n${name} ${JSON.stringify(toolExecuteCalls[0]?.args)}\n</proposed_tool_call>`,
+      );
+      expect(packets[1]).toContain(
+        '<pending_candidate status="pending">\nI will leave a note.\nDone.\n</pending_candidate>',
+      );
+      expect(delivered).toEqual(["I will leave a note.", "Done."]);
+      expect(result.usageEntries?.filter((entry) => entry.kind === "reviewer")).toHaveLength(2);
+      expect(context.responseReview.toolReviews).toBe(1);
+      expect(context.responseReview.responseReviews).toBe(1);
+    });
+
+    it(`${name}: pairs rejection, blocks identical retries and executes only the passed correction`, async () => {
+      const { runToolLoop } = await import("@/utils/chat/toolLoop");
+      const context = makeReviewContext();
+      const { provider, capturedHistories } = makeProvider([
+        makeFunctionCallResult(name, { target: "invented", text: "note" }),
+        makeFunctionCallResult(name, { text: "note", target: "invented" }),
+        makeFunctionCallResult(name, { target: "fixture", text: "note" }),
+        { status: "completed" },
+      ]);
+      toolExecuteQueue.push({ success: true, data: { written: true } });
+      const review = mock(async () => ({
+        success: true,
+        data: review.mock.calls.length === 1 ? rejection : { status: "pass" },
+      }));
+      Object.assign(provider, { callStructuredJSON: review });
+      const result = await runToolLoop(makeParams(context, provider));
+      expect(result.status).toBe("completed");
+      expect(result.personaResponses).toEqual([]);
+      expect(toolExecuteCalls).toEqual([{ name, args: { target: "fixture", text: "note" } }]);
+      expect(review).toHaveBeenCalledTimes(2);
+      const rejectedHistory = capturedHistories[2] as ResponseReviewState["functionHistory"];
+      for (const entry of rejectedHistory) {
+        expect(entry.functionResponse).toMatchObject({
+          functionResponse: {
+            name: entry.functionCall.name,
+            response: { result: { status: "review_rejected", actionExecuted: false } },
+          },
+        });
+      }
+      expect(context.responseReview.toolCorrections).toBe(1);
+      expect(context.responseReview.revisions).toBe(0);
+      expect(hiddenToolNotices).toEqual([]);
+    });
+
+    it(`${name}: bounds changed corrections and identical rejections without counting tool failures`, async () => {
+      const { runToolLoop } = await import("@/utils/chat/toolLoop");
+      const context = makeReviewContext();
+      const { provider } = makeProvider([
+        ...Array.from({ length: 7 }, (_, index) => makeFunctionCallResult(name, { target: `invented_${index}` })),
+        { status: "completed" },
+      ]);
+      const review = mock(async () => ({ success: true, data: rejection }));
+      Object.assign(provider, { callStructuredJSON: review });
+      expect((await runToolLoop(makeParams(context, provider))).status).toBe("completed");
+      expect(toolExecuteCalls).toEqual([]);
+      expect(review).toHaveBeenCalledTimes(2);
+      expect(context.responseReview.toolCorrections).toBe(1);
+      expect(
+        context.responseReview.functionHistory.every((entry) =>
+          JSON.stringify(entry.functionResponse).includes("review_rejected"),
+        ),
+      ).toBe(true);
+      expect(standardEmbedCalls).toEqual([]);
+    });
+
+    it(`${name}: unavailable permits independent requests but cannot approve a rejected correction`, async () => {
+      const { runToolLoop } = await import("@/utils/chat/toolLoop");
+      const context = makeReviewContext();
+      const { provider } = makeProvider([
+        makeFunctionCallResult(name, { target: "invented" }),
+        makeFunctionCallResult(name, { target: "fixture" }),
+        makeFunctionCallResult(name, { target: "invented" }),
+        makeFunctionCallResult("other_action", { target: "fixture" }),
+        { status: "completed" },
+      ]);
+      const review = mock(async () => ({
+        success: true,
+        data: review.mock.calls.length === 1 ? rejection : { status: "unavailable" },
+      }));
+      Object.assign(provider, { callStructuredJSON: review });
+      await runToolLoop(makeParams(context, provider));
+      expect(toolExecuteCalls).toEqual([{ name: "other_action", args: { target: "fixture" } }]);
+      expect(context.responseReview.unavailable).toBe(true);
+      expect(review).toHaveBeenCalledTimes(2);
+      expect(
+        context.responseReview.functionHistory
+          .slice(0, 3)
+          .every((entry) => JSON.stringify(entry.functionResponse).includes("review_rejected")),
+      ).toBe(true);
+    });
+
+    it(`${name}: exhaustion permits a new request while retaining prior rejection across author fallback`, async () => {
+      const { runToolLoop } = await import("@/utils/chat/toolLoop");
+      const context = makeReviewContext();
+      const { provider: first } = makeProvider([
+        makeFunctionCallResult(name, { target: "invented" }),
+        { status: "error" },
+      ]);
+      Object.assign(first, { callStructuredJSON: async () => ({ success: true, data: rejection }) });
+      expect((await runToolLoop(makeParams(context, first))).status).toBe("error");
+      context.responseReview.toolReviews = MAX_TOOL_REVIEWS;
+      const { provider: fallback } = makeProvider([
+        makeFunctionCallResult(name, { target: "invented" }),
+        makeFunctionCallResult(name, { target: "fixture" }),
+        makeFunctionCallResult("other_action", { target: "fixture" }),
+        { status: "completed" },
+      ]);
+      const review = mock(async () => ({ success: true, data: { status: "pass" } }));
+      Object.assign(fallback, { callStructuredJSON: review });
+      await runToolLoop(makeParams(context, fallback));
+      expect(toolExecuteCalls).toEqual([{ name: "other_action", args: { target: "fixture" } }]);
+      expect(review).not.toHaveBeenCalled();
+      expect(context.responseReview.toolReviews).toBe(MAX_TOOL_REVIEWS);
+      expect(context.responseReview.unavailable).toBe(true);
+    });
+
+    it(`${name}: cancellation and follow-up during or after approval execute nothing`, async () => {
+      const { runToolLoop } = await import("@/utils/chat/toolLoop");
+      for (const followUp of [false, true]) {
+        const context = makeReviewContext();
+        const delivered: string[] = [];
+        const pending = held("never send", delivered, "function_call");
+        pending.data = { name, args: { target: "fixture" } };
+        const { provider } = makeProvider([pending]);
+        Object.assign(provider, {
+          callStructuredJSON: async () => {
+            hasStopRequest = true;
+            isFollowUpRequest = followUp;
+            return { success: true, data: { status: "pass" } };
+          },
+        });
+        const result = await runToolLoop(makeParams(context, provider));
+        expect(result.status).toBe(followUp ? "follow_up_interrupt" : "stopped_by_user");
+        expect(toolExecuteCalls).toEqual([]);
+        expect(delivered).toEqual([]);
+        expect(context.responseReview.pending).toEqual([]);
+        hasStopRequest = false;
+        isFollowUpRequest = false;
+      }
+    });
+
+    it(`${name}: a repeated successful action during response revision reuses history without replay`, async () => {
+      const { runToolLoop } = await import("@/utils/chat/toolLoop");
+      const context = makeReviewContext();
+      const delivered: string[] = [];
+      const args = { target: "fixture" };
+      const { provider } = makeProvider([
+        makeFunctionCallResult(name, args),
+        held("generic", delivered),
+        makeFunctionCallResult(name, args),
+        held("quiet", delivered),
+      ]);
+      let textReviews = 0;
+      Object.assign(provider, {
+        callStructuredJSON: async (request: ProviderStructuredJsonRequest) => ({
+          success: true,
+          data: request.schemaName === "response_review" && ++textReviews === 1 ? rejection : { status: "pass" },
+        }),
+      });
+      await runToolLoop(makeParams(context, provider));
+      expect(toolExecuteCalls).toEqual([{ name, args }]);
+      expect(context.responseReview.functionHistory).toHaveLength(2);
+      expect(context.responseReview.functionHistory[0]?.functionResponse).toEqual(
+        context.responseReview.functionHistory[1]?.functionResponse,
+      );
+      expect(context.responseReview.toolReviews).toBe(1);
+      expect(delivered).toEqual(["quiet"]);
+    });
+
+    it(`${name}: Off executes ordinarily without review, preparation or replay suppression`, async () => {
+      const { runToolLoop } = await import("@/utils/chat/toolLoop");
+      const { provider } = makeProvider([
+        makeFunctionCallResult(name, { target: "fixture" }),
+        makeFunctionCallResult(name, { target: "fixture" }),
+        { status: "completed" },
+      ]);
+      const review = mock(async () => ({ success: true, data: rejection }));
+      Object.assign(provider, { callStructuredJSON: review });
+      await runToolLoop(makeParams(makeContext(), provider));
+      expect(toolExecuteCalls).toHaveLength(2);
+      expect(review).not.toHaveBeenCalled();
+    });
+  }
+
+  it("applies the two turn-wide correction opportunities across independent chains and fallback", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const { provider: first } = makeProvider([
+      makeFunctionCallResult("lookup", { target: "invented" }),
+      makeFunctionCallResult("lookup", { target: "fixture" }),
+      { status: "error" },
+    ]);
+    let calls = 0;
+    Object.assign(first, {
+      callStructuredJSON: async () => ({ success: true, data: ++calls === 1 ? rejection : { status: "pass" } }),
+    });
+    await runToolLoop(makeParams(context, first));
+    const { provider } = makeProvider([
+      makeFunctionCallResult("mirror_action", { target: "invented" }),
+      makeFunctionCallResult("mirror_action", { target: "fixture" }),
+      makeFunctionCallResult("other_action", { target: "invented" }),
+      makeFunctionCallResult("other_action", { target: "fixture" }),
+      { status: "completed" },
+    ]);
+    calls = 0;
+    Object.assign(provider, {
+      callStructuredJSON: async () => ({ success: true, data: ++calls === 2 ? { status: "pass" } : rejection }),
+    });
+    await runToolLoop(makeParams(context, provider));
+    expect(context.responseReview.toolCorrections).toBe(MAX_TOOL_CORRECTIONS);
+    expect(toolExecuteCalls.map((call) => call.name)).toEqual(["lookup", "mirror_action"]);
+    expect(context.responseReview.toolReviews).toBe(5);
+  });
+
+  it("reviews each actual call independently with prior successful effects as evidence", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const { provider } = makeProvider([
+      makeFunctionCallResult("lookup", { target: "fixture" }),
+      makeFunctionCallResult("mirror_action", { target: "invented" }),
+      { status: "completed" },
+    ]);
+    const packets: string[] = [];
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+        packets.push(request.userPrompt);
+        return { success: true, data: packets.length === 1 ? { status: "pass" } : rejection };
+      },
+    });
+    await runToolLoop(makeParams(context, provider));
+    expect(toolExecuteCalls.map((call) => call.name)).toEqual(["lookup"]);
+    expect(packets[1]).toContain("<completed_tools>\nlookup ");
+    expect(packets[1]).toContain('<proposed_tool_call status="not_executed">\nmirror_action ');
+    expect(context.responseReview.toolReviews).toBe(2);
+  });
+
+  it("with Tool Calls unchecked, executes calls unreviewed and omits tool evidence from reply review", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    context.currentPersona.config.response_review_items = ["persona", "examples", "history", "context"];
+    context.responseReview.reviewItems = [...context.currentPersona.config.response_review_items];
+    const delivered: string[] = [];
+    const { provider } = makeProvider([
+      makeFunctionCallResult("lookup", { target: "fixture" }),
+      held("Found it.", delivered),
+    ]);
+    const providerConfig = {
+      ...makeProviderConfig(),
+      tools: [{ functionDeclarations: [{ name: "lookup", parameters: { type: "object", properties: {} } }] }],
+    };
+    const calls: Array<{ prompt: string; schema: unknown }> = [];
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest, schema: unknown) => {
+        calls.push({ prompt: request.userPrompt, schema });
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    await runToolLoop({ ...makeParams(context, provider), providerConfig });
+    expect(toolExecuteCalls.map((call) => call.name)).toEqual(["lookup"]);
+    expect(context.responseReview.toolReviews).toBe(0);
+    expect(calls).toHaveLength(1);
+    expect(delivered).toEqual(["Found it."]);
+    const [review] = calls;
+    expect(review?.prompt).not.toContain("<completed_tools>");
+    expect(review?.prompt).not.toContain("<available_tools>");
+    expect(review?.prompt).not.toContain("tool_corrections=");
+    expect(JSON.stringify(review?.schema)).not.toContain("tool_use");
+  });
+
+  it("bounds review calls for independent requests without borrowing the response budget", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const { provider } = makeProvider([
+      ...Array.from({ length: MAX_TOOL_REVIEWS + 2 }, (_, index) =>
+        makeFunctionCallResult("mirror_action", { target: `fixture_${index}` }),
+      ),
+      { status: "completed" },
+    ]);
+    const review = mock(async () => ({ success: true, data: { status: "pass" } }));
+    Object.assign(provider, { callStructuredJSON: review });
+    await runToolLoop(makeParams(context, provider));
+    expect(toolExecuteCalls).toHaveLength(MAX_TOOL_REVIEWS + 2);
+    expect(review).toHaveBeenCalledTimes(MAX_TOOL_REVIEWS);
+    expect(context.responseReview.unavailable).toBe(true);
+    expect(context.responseReview.responseReviews).toBe(0);
+  });
+
+  it("canonicalizes nested argument order while retaining changed effects", () => {
+    const first = { name: "lookup", args: { target: "fixture", nested: { b: 2, a: 1 } } };
+    expect(toolRequestIdentity(first)).toBe(
+      toolRequestIdentity({ name: "lookup", args: { nested: { a: 1, b: 2 }, target: "fixture" } }),
+    );
+    expect(toolRequestIdentity(first)).not.toBe(
+      toolRequestIdentity({ ...first, args: { ...first.args, target: "other" } }),
+    );
+  });
+  it("tool refusal, malformed output and operation failure end review without injecting refusal feedback", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    for (const failure of ["refusal", "malformed", "throw"] as const) {
+      toolExecuteCalls = [];
+      const context = makeReviewContext();
+      const { provider } = makeProvider([
+        makeFunctionCallResult("mirror_action", { target: "fixture" }),
+        makeFunctionCallResult("lookup", { target: "fixture" }),
+        { status: "completed" },
+      ]);
+      let calls = 0;
+      Object.assign(provider, {
+        callStructuredJSON: async () => {
+          calls++;
+          if (failure === "throw") throw new Error("PRIVATE_REFUSAL");
+          return failure === "refusal"
+            ? { success: false, failure: "refusal" }
+            : { success: true, data: { status: "revise", findings: [] } };
+        },
+      });
+      await runToolLoop(makeParams(context, provider));
+      expect(calls).toBe(1);
+      expect(toolExecuteCalls).toHaveLength(2);
+      expect(context.responseReview.feedback).toBeUndefined();
+      expect(JSON.stringify(context.responseReview.functionHistory)).not.toContain("PRIVATE_REFUSAL");
+    }
+  });
+
+  it("tool reviewer cancellation aborts a pending transport and ignores its late approval", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const { provider } = makeProvider([makeFunctionCallResult("mirror_action", { target: "fixture" })]);
+    let lateApproval!: (value: unknown) => void;
+    let aborted = false;
+    Object.assign(provider, {
+      callStructuredJSON: (request: ProviderStructuredJsonRequest) => {
+        request.abortSignal?.addEventListener(
+          "abort",
+          () => {
+            aborted = true;
+          },
+          { once: true },
+        );
+        queueMicrotask(() => requestFollowUp(context.channel.id, "fixture-user"));
+        return new Promise((resolve) => {
+          lateApproval = resolve;
+        });
+      },
+    });
+    try {
+      const result = await runToolLoop(makeParams(context, provider));
+      expect(result.personaResponses).toEqual([]);
+      expect(aborted).toBe(true);
+      lateApproval({ success: true, data: { status: "pass" } });
+      await Promise.resolve();
+      expect(toolExecuteCalls).toEqual([]);
+      expect(context.responseReview.unavailable).toBe(false);
+    } finally {
+      deleteStopRequest(context.channel.id);
+    }
+  });
+
+  it("tool evidence with redacted effects or a missing definition becomes unavailable", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    for (const mode of ["secret", "definition"] as const) {
+      toolExecuteCalls = [];
+      const context = makeReviewContext();
+      const args = mode === "secret" ? { api_key: "PRIVATE_KEY" } : { target: "fixture" };
+      const { provider } = makeProvider([makeFunctionCallResult("mirror_action", args), { status: "completed" }]);
+      if (mode === "definition") Object.assign(provider, { getTools: async () => [] });
+      const review = mock(async () => ({ success: true, data: { status: "pass" } }));
+      Object.assign(provider, { callStructuredJSON: review });
+      await runToolLoop(makeParams(context, provider));
+      expect(review).not.toHaveBeenCalled();
+      expect(context.responseReview.unavailable).toBe(true);
+      expect(toolExecuteCalls).toEqual([{ name: "mirror_action", args }]);
+    }
   });
 });

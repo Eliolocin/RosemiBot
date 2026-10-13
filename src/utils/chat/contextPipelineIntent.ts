@@ -14,12 +14,8 @@ const SHORT_TERM_MEMORY_TOOL_NAME = "update_short_term_memory";
  * allowlist before its fail-closed gate. We use that existing pre-context path as
  * a temporary intent carrier, then remove the temporary end-turn behavior before
  * generation starts. This keeps the resulting tool allowlist exact without making
- * STM depend on user keywords:
- *
- * - no user intent + STM not due -> no tools
- * - user tool intent + STM not due -> user-requested tools only
- * - no user intent + STM due -> update_short_term_memory only
- * - user tool intent + STM due -> user-requested tools + update_short_term_memory
+ * STM depend on user keywords. Eligible expression tools remain available on every
+ * turn; a due refresh adds `update_short_term_memory` alongside any requested task tools.
  */
 export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnContext> {
   const incoming = turn.lockedTurn.admission.incoming;

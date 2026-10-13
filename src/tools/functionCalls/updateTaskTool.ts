@@ -5,7 +5,9 @@
  * The ID is shown in participant context as "ID:N".
  */
 
-import { extractBridgeUserId, isMatrixBridgeWebhookUsername } from "@/utils/bridges";
+import { extractBridgeUserId } from "@/utils/bridges";
+import { isMatrixRelayMessage } from "@/utils/chat/triggerProcessor";
+import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import { sendTaskEmbedWithExpand } from "@/utils/discord/expandableEmbedNotice";
 import { resolveTriggererDiscordId } from "@/utils/discord/targetResolver";
 import { log, ColorCode } from "@/utils/misc/logger";
@@ -360,8 +362,8 @@ export class UpdateTaskTool extends BaseTool {
 
     const { serverScheduleRepository, userRepository } = await import("@/utils/db/repositories");
 
-    const isMatrixRelayRequester =
-      !!context.message?.webhookId && isMatrixBridgeWebhookUsername(context.message.author.username ?? "");
+    if (context.message) await verifyMessageWebhook(context.message);
+    const isMatrixRelayRequester = !!context.message && isMatrixRelayMessage(context.message);
     const requesterBridgeUserId = isMatrixRelayRequester
       ? (extractBridgeUserId(context.message?.author.username ?? "") ?? undefined)
       : undefined;
@@ -410,8 +412,7 @@ export class UpdateTaskTool extends BaseTool {
         context.personaUsername || tomoriState.persona_nickname || context.client.user?.username || "TomoriBot";
 
       await sendTaskEmbedWithExpand(
-        context.channel,
-        context.locale,
+        context,
         {
           color: ColorCode.ERROR,
           titleKey: "reminders.task_deleted_title",
@@ -426,11 +427,6 @@ export class UpdateTaskTool extends BaseTool {
           footerKey: "reminders.task_deleted_footer",
         },
         deleteResult.reminder.reminder_purpose,
-        {
-          webhook: context.webhook,
-          personaUsername: context.personaUsername,
-          personaAvatarUrl: context.personaAvatarUrl,
-        },
       );
 
       return {
@@ -538,8 +534,7 @@ export class UpdateTaskTool extends BaseTool {
     const repeatText = formatRepeatText(context.locale, finalRepetitionIntervalHours);
 
     await sendTaskEmbedWithExpand(
-      context.channel,
-      context.locale,
+      context,
       {
         color: ColorCode.MEMORY_UPDATE,
         titleKey: "reminders.task_updated_title",
@@ -556,11 +551,7 @@ export class UpdateTaskTool extends BaseTool {
         footerKey: "reminders.task_updated_footer",
       },
       parsedArgs.newPurpose,
-      {
-        webhook: context.webhook,
-        personaUsername: context.personaUsername,
-        personaAvatarUrl: context.personaAvatarUrl,
-      },
+      { kind: "task", id: parsedArgs.reminderId },
     );
 
     return {

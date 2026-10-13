@@ -1,7 +1,10 @@
 import { expect, spyOn, test } from "bun:test";
+import JSZip from "jszip";
 import sharp from "sharp";
 import {
+  extractPngFromZipResponse,
   generateNovelAiImage,
+  naiImageRequestSignal,
   supportsNaiPreciseReference,
   usesNaiStructuredPromptFormat,
 } from "@/utils/image/naiImageGeneration";
@@ -74,4 +77,68 @@ test("keeps a failed V4.5 reference request visible instead of retrying without 
   } finally {
     fetchSpy.mockRestore();
   }
+});
+
+async function zipResponse(files: Record<string, Buffer>): Promise<Response> {
+  const zip = new JSZip();
+  for (const [name, data] of Object.entries(files)) zip.file(name, data);
+  return new Response(await zip.generateAsync({ type: "blob", compression: "DEFLATE" }));
+}
+
+test("extracts the generated PNG from a NovelAI ZIP", async () => {
+  const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: "white" } })
+    .png()
+    .toBuffer();
+  expect(await extractPngFromZipResponse(await zipResponse({ "image_0.png": png }))).toEqual(png);
+});
+
+test("refuses an entry that would inflate past the limit before inflating it", async () => {
+  // 40 MiB of zeros deflates to a few dozen kilobytes, so only the declared size reveals it.
+  const bomb = await zipResponse({ "image_0.png": Buffer.alloc(40 * 1024 * 1024) });
+  await expect(extractPngFromZipResponse(bomb)).rejects.toThrow("declares no size or more");
+});
+
+test("refuses archives with too many entries and stops reading an oversized archive", async () => {
+  const many = Object.fromEntries(Array.from({ length: 9 }, (_, index) => [`part_${index}.png`, Buffer.from("x")]));
+  await expect(extractPngFromZipResponse(await zipResponse(many))).rejects.toThrow("entries");
+
+  let produced = 0;
+  const chunk = new Uint8Array(1024 * 1024);
+  const endless = new Response(
+    new ReadableStream({
+      pull(controller) {
+        produced += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  await expect(extractPngFromZipResponse(endless)).rejects.toThrow("exceeds");
+  expect(produced).toBeLessThanOrEqual(34 * 1024 * 1024);
+});
+
+test("bounds a NovelAI error body and joins cancellation with the request deadline", async () => {
+  const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response("E".repeat(2 * 1024 * 1024), { status: 500, statusText: "Server Error" }),
+  );
+  try {
+    const failure = await generateNovelAiImage({
+      apiKey: "test-key",
+      model: "nai-diffusion-3",
+      prompt: "portrait",
+      negativePrompt: "",
+      orientation: "portrait",
+      imageParams: resolveNaiImageParams(createPersona().config),
+    }).catch((error: Error) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message.length).toBeLessThan(1000);
+    expect((fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined)?.signal).toBeInstanceOf(AbortSignal);
+  } finally {
+    fetchSpy.mockRestore();
+  }
+
+  const controller = new AbortController();
+  const signal = naiImageRequestSignal(controller.signal);
+  expect(signal.aborted).toBe(false);
+  controller.abort();
+  expect(signal.aborted).toBe(true);
 });

@@ -12,6 +12,7 @@ export const nvidiaProviderInfo: ProviderInfo = {
   supportsVideos: false,
   apiFamily: "openai-compatible",
   featureSupport: {
+    decisions: false,
     imageGeneration: "chat-completion",
     videoGeneration: "none",
     embeddings: true,

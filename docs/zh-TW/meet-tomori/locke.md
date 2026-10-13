@@ -2,6 +2,7 @@
 title: "瘋狂的 Locke"
 sidebar:
   order: 6
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Locke is a PLANNED persona: she replaces the retired Temari

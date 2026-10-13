@@ -1,20 +1,14 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import {
   normalizeCustomEndpointUrlForStorage,
   validateCustomEndpointReachability,
 } from "@/utils/provider/customEndpointService";
+import { useEnvSandbox } from "../../helpers/env";
 
 const RUN_ENV_NAME = "RUN_ENV";
-const originalRunEnv = process.env[RUN_ENV_NAME];
 
 describe("custom endpoint reachability", () => {
-  afterEach(() => {
-    if (originalRunEnv === undefined) {
-      delete process.env[RUN_ENV_NAME];
-    } else {
-      process.env[RUN_ENV_NAME] = originalRunEnv;
-    }
-  });
+  useEnvSandbox([RUN_ENV_NAME]);
 
   it("uses Ollama's native model discovery route", async () => {
     process.env[RUN_ENV_NAME] = "development";
@@ -39,6 +33,39 @@ describe("custom endpoint reachability", () => {
       expect(requestedPaths).toEqual(["/api/tags"]);
     } finally {
       server.stop(true);
+    }
+  });
+
+  it("reports withheld credentials when a probe redirects to an origin that demands them", async () => {
+    process.env[RUN_ENV_NAME] = "development";
+    const finalHostAuthorization: Array<string | null> = [];
+    const finalHost = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) => {
+        finalHostAuthorization.push(request.headers.get("authorization"));
+        return new Response("unauthorized", { status: 401 });
+      },
+    });
+    const redirectingHost = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () =>
+        new Response(null, { status: 307, headers: { Location: `http://127.0.0.1:${finalHost.port}/v1/models` } }),
+    });
+
+    try {
+      const result = await validateCustomEndpointReachability({
+        apiStyle: "openai-compatible",
+        endpointUrl: `http://127.0.0.1:${redirectingHost.port}/v1`,
+        apiKey: "synthetic-probe-canary",
+      });
+
+      expect(result).toMatchObject({ ok: false, credentialsWithheld: true });
+      expect(finalHostAuthorization).toEqual([null]);
+    } finally {
+      redirectingHost.stop(true);
+      finalHost.stop(true);
     }
   });
 

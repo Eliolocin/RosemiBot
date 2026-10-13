@@ -15,6 +15,10 @@
 import type { FunctionCall, FunctionResponseImageMetadata, ThoughtLogEntry } from "../../types/provider/interfaces";
 import type { StructuredContextItem } from "../../types/misc/context";
 import { log } from "../../utils/misc/logger";
+import {
+  formatProviderErrorCodeForDisplay,
+  isProviderTimeoutMessage,
+} from "@/utils/provider/providerErrorClassification";
 import { localizer } from "../../utils/text/localizer";
 import { fetchAndOptimizeImage } from "../../utils/image/imageProcessor";
 import { isParamDisabled, selectAnthropicSamplingParams } from "@/utils/provider/samplingControl";
@@ -241,19 +245,9 @@ export class AnthropicStreamAdapter extends BaseStreamAdapter {
       log.info(`AnthropicStreamAdapter: Added stop sequences`);
     }
 
-    if (context.outputPrefill?.trim()) {
-      // Anthropic supports assistant prefill natively by adding an assistant message
-      const prefill = context.outputPrefill.trim();
-      messages.push({
-        role: "assistant",
-        content: prefill,
-      });
-      log.info(`AnthropicStreamAdapter: Added prefill assistant message (${prefill.length} chars)`);
-    }
-
     log.info(`AnthropicStreamAdapter: Starting stream for model ${config.model}, max_tokens ${requestBody.max_tokens}`);
 
-    this.logSanitizedRequest(requestBody);
+    if (!context.holdResponseText) this.logSanitizedRequest(requestBody);
 
     const headers: Record<string, string> = {
       "content-type": "application/json",
@@ -277,7 +271,7 @@ export class AnthropicStreamAdapter extends BaseStreamAdapter {
         errorData = { message: errorText };
       }
 
-      log.error(`AnthropicStreamAdapter: HTTP ${response.status} error: ${errorText}`);
+      log.warn(`AnthropicStreamAdapter: HTTP ${response.status} error: ${errorText}`);
 
       const anthropicError = new Error(JSON.stringify({ error: errorData }));
       Object.assign(anthropicError, { statusCode: response.status });
@@ -556,7 +550,7 @@ export class AnthropicStreamAdapter extends BaseStreamAdapter {
         const errorData = data as { error?: { type?: string; message?: string } };
         const error = errorData.error;
 
-        log.error(`AnthropicStreamAdapter: Stream error: ${error?.type} - ${error?.message}`);
+        log.warn(`AnthropicStreamAdapter: Stream error: ${error?.type} - ${error?.message}`);
 
         return {
           type: "error",
@@ -649,7 +643,7 @@ export class AnthropicStreamAdapter extends BaseStreamAdapter {
         } else if (statusCode === 503) {
           providerErrorType = "provider_overloaded";
           retryable = true;
-        } else if (statusCode === 504 || statusCode === 408) {
+        } else if (statusCode === 504 || statusCode === 408 || isProviderTimeoutMessage(errorMessage)) {
           providerErrorType = "timeout";
           retryable = true;
         }
@@ -670,34 +664,22 @@ export class AnthropicStreamAdapter extends BaseStreamAdapter {
    * Create provider-specific error description for display in embeds
    */
   createErrorDescription(error: ProviderError, locale: string): string | null {
-    const errorCode = error.code;
-    let message = error.userMessage;
+    const errorCode = formatProviderErrorCodeForDisplay(error.code);
     const isTemperatureTopPConflict =
-      errorCode === "invalid_request_error" &&
+      error.code === "invalid_request_error" &&
       typeof error.userMessage === "string" &&
       error.userMessage.includes("`temperature` and `top_p` cannot both be specified");
 
+    let message: string;
     if (isTemperatureTopPConflict) {
       message = localizer(locale, "genai.anthropic.temperature_top_p_conflict_message");
+    } else {
+      const messageKey = `genai.anthropic.${errorCode}_default_message`;
+      message = localizer(locale, messageKey);
+      if (message === messageKey) message = localizer(locale, "genai.anthropic.unknown_default_message");
     }
 
-    if (!message) {
-      const messageKey = errorCode ? `genai.anthropic.${errorCode}_default_message` : null;
-
-      if (messageKey) {
-        message = localizer(locale, messageKey);
-      }
-
-      if (!message || message === messageKey) {
-        message = localizer(locale, "genai.anthropic.unknown_default_message");
-      }
-    }
-
-    if (errorCode) {
-      return `Error Code ${errorCode}: ${message}`;
-    }
-
-    return message || null;
+    return error.code ? `Error Code ${errorCode}: ${message}` : message;
   }
 
   /**

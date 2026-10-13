@@ -2,6 +2,7 @@
 title: "Adding a Panel or Panel Button"
 sidebar:
   order: 10
+aiGenerated: true
 ---
 
 How to build a Components V2 panel that users click through, and how to add a button or select to an
@@ -96,7 +97,8 @@ and `deliverGuardedPanel()` runs it:
 
 - 40 components per message, counting every nested component. Modal components do not count, so a
   long form belongs in a modal.
-- 4,000 characters across all `TextDisplay` components. Bound body text with `buildTextPreview()`.
+- 4,000 characters across all `TextDisplay` components. Bound body text with `buildTextPreview()`,
+  and render a stored prompt or note with `renderFencedPreview()`.
 - 25 options per select, each value unique. A duplicate value makes Discord reject the payload, and
   no static check catches it.
 

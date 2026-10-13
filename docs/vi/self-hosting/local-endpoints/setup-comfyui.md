@@ -2,6 +2,7 @@
 title: "Thiết lập: ComfyUI"
 sidebar:
   order: 2
+aiGenerated: false
 ---
 
 TomoriBot có thể tạo hình ảnh và video thông qua phiên bản

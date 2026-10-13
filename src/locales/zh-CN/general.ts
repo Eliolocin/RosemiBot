@@ -40,6 +40,8 @@ export default {
     },
     text_preview: {
       truncated_footer: `显示 {total} 个字符中的前 {shown} 个。`,
+      hidden_marker: `已隐藏另外 {count} 个字符。`,
+      hidden_marker_action: `已隐藏另外 {count} 个字符。按下 {action} 查看剩余内容。`,
     },
     pagination: {
       page_info: `第 {current} 页，共 {total} 页`,
@@ -53,6 +55,7 @@ export default {
       select_page_title: `选择页面`,
       select_page_description: `从 {totalPages} 页共 {totalItems} 个项目中选一页查看：`,
       select_persona_title: `选择人格`,
+      select_persona_page_description: `从 {totalPages} 页共 {totalItems} 个人格中选一页查看：`,
       persona_no_attributes: `还没有配置属性。`,
       persona_select_button: `选择`,
     },
@@ -155,7 +158,7 @@ export default {
     reminder_set_description: `我会在 \`{reminder_time}\` 提醒 {user_nickname}：「**{reminder_purpose}**」`,
     reminder_set_footer: `从现在起 {time_remaining} 后会发送提醒。用 \`/scheduled-task remove\` 删除提醒。`,
     reminder_set_footer_recurring: `首次提醒在 {time_remaining} 后。每 {repetition_interval_hours} 小时重复一次。用 \`/scheduled-task remove\` 删除提醒。`,
-    recurring_task_set_title: `🔁 {persona_nickname} 设置了一个定时任务`,
+    recurring_task_set_title: `🔁 {persona_nickname} 设置了一个周期任务`,
     recurring_task_set_description: `我会从 \`{reminder_time}\` 开始执行「**{reminder_purpose}**」，之后每 {repetition_interval_hours} 小时重复一次。`,
     recurring_task_set_footer: `你可以用 \`/scheduled-task remove\` 删除提醒。`,
     task_set_title: `✅ {persona_nickname} 设置了一个定时任务`,

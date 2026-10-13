@@ -3,13 +3,15 @@ title: "Qwen3-TTS"
 aiGenerated: true
 ---
 
-Use `servers/tts/qwen3tts/server.py` for both Qwen3-TTS 12Hz 1.7B modes, large but most accurate TTS amongst current TomoriBot options. By default it starts in auto mode, which chooses the Base voice-clone model or VoiceDesign model from each request shape.
+Synthesize highly accurate multilingual character speech using [Qwen3-TTS](https://github.com/QwenAudio/Qwen3-TTS) in both voice cloning and text-described VoiceDesign modes.
+
+Qwen3-TTS 12Hz 1.7B provides high-accuracy local speech synthesis. Running `servers/tts/qwen3tts/server.py` in its default auto mode dynamically selects the Base voice-cloning model or the VoiceDesign model based on each incoming request.
 
 ## Setup
 
 Run these commands from the TomoriBot repo root, the folder where you cloned TomoriBot:
 
-### Using Windows PowerShell
+### Windows PowerShell
 
 ```powershell
 python -m venv servers\tts\qwen3tts\.venv
@@ -19,7 +21,7 @@ pip install -r servers\tts\qwen3tts\requirements.txt
 python servers\tts\qwen3tts\server.py
 ```
 
-### Using Linux/macOS Bash
+### Linux and macOS Bash
 
 ```bash
 python3 -m venv servers/tts/qwen3tts/.venv
@@ -46,12 +48,11 @@ Run `/providers`, choose `Add New Custom Endpoint`, and use the speech API compa
 - API Compatibility: `tts-clone`
 - `endpoint_url`: `http://127.0.0.1:8012`
 
-After saving the connection, select it and use its model dropdown to add a Speech model. The model form
-asks for `Voice Source Mode` and `Script Markup`; choose `Auto` and `Plain` for the auto-mode server.
+After saving the connection, select it and use its model dropdown to add a Speech model. The model form asks for `Voice Source Mode` and `Script Markup`; choose `Auto` and `Plain` for the auto-mode server.
 
 Use `/providers` for endpoint registration and model setup. Then open `/config` > Models > Switch Models to select and activate the registered endpoint.
 
-## Set Up Persona Voices
+## Set up persona voices
 
 ### Voice cloning
 
@@ -71,11 +72,11 @@ Use this for personas that should use a written voice description instead of a s
 2. Choose the persona.
 3. Enter a natural-language voice prompt, such as the speaker's age, tone, accent, and delivery.
 
-Remove a persona's VoiceDesign prompt from Persona > Voice in `/config`. During generation, TomoriBot sends the saved prompt in the `/synthesize` JSON body as `instruct`; one-off `voice_instructions` from the tool are appended
+Remove a persona's VoiceDesign prompt from Persona > Voice in `/config`. During generation, TomoriBot sends the saved prompt in the `/synthesize` JSON body as `instruct`; one-off `voice_instructions` from the tool are appended.
 
 Auto mode keeps both setups. Personas configured under Persona > Voice in `/config` use clone synthesis or VoiceDesign synthesis according to their selection.
 
-## (Optional) VoiceDesign-Only Server
+## Optional: VoiceDesign-only server
 
 Start the same server in VoiceDesign mode when serving `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign`.
 
@@ -96,5 +97,4 @@ TOMORI_TTS_MODE=voice-design python servers/tts/qwen3tts/server.py
 
 You can also pass `--mode voice-design` instead of setting `TOMORI_TTS_MODE`. The default VoiceDesign-only endpoint URL is `http://127.0.0.1:8014`.
 
-Register it the same way as auto mode, but use endpoint URL `http://127.0.0.1:8014` and choose `VoiceDesign`
-as the Voice Source Mode on the Speech model.
+Register it the same way as auto mode, but use endpoint URL `http://127.0.0.1:8014` and choose `VoiceDesign` as the Voice Source Mode on the Speech model.

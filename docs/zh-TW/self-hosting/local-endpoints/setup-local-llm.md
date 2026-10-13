@@ -2,6 +2,7 @@
 title: "設定：本機 LLM"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBot 可以使用任何 OpenAI 相容的本機 LLM 伺服器進行文字生成與嵌入。

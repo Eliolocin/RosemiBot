@@ -31,6 +31,7 @@ type ImageGenerationStyle = "chat-completion" | "nai-pipeline" | "none";
 type VideoGenerationStyle = "chat-completion" | "none";
 
 interface ProviderFeatureSupport {
+  decisions: boolean;
   imageGeneration: ImageGenerationStyle;
   videoGeneration: VideoGenerationStyle;
   embeddings: boolean;
@@ -67,6 +68,7 @@ export type StreamStopReason =
   | "flush_limit"
   | "channel_deleted"
   | "missing_access"
+  | "pending_response_limit"
   | "unknown";
 
 type ThoughtLogKind = "summary" | "raw";
@@ -98,6 +100,7 @@ export interface StreamResult {
     | "empty_response"
     | "follow_up_interrupt";
   data?: unknown | Error; // Function call data or error details
+  pendingResponse?: import("@/types/stream/pendingResponse").PendingStreamResponse;
   accumulatedText?: string; // Text sent to Discord (for short-term memory storage)
   /** Extracted <details> block body text (with <summary> stripped), for routing to STM. */
   detailsContent?: string;
@@ -238,7 +241,7 @@ export interface LLMProvider {
    * Get available tools/functions based on Tomori's configuration
    * @param tomoriState - The current Tomori state with configuration
    */
-  getTools(tomoriState: TomoriState): Promise<Array<Record<string, unknown>>>;
+  getTools(tomoriState: TomoriState, streamingContext?: StreamingContext): Promise<Array<Record<string, unknown>>>;
 
   /**
    * Stream LLM response directly to a Discord channel
@@ -300,7 +303,10 @@ export abstract class BaseLLMProvider implements LLMProvider {
   abstract getInfo(): ProviderInfo;
   abstract validateApiKey(apiKey: string): Promise<ApiKeyValidationResult>;
   abstract formatErrorDescription(error: ProviderError, locale: string): string | null;
-  abstract getTools(tomoriState: TomoriState): Promise<Array<Record<string, unknown>>>;
+  abstract getTools(
+    tomoriState: TomoriState,
+    streamingContext?: StreamingContext,
+  ): Promise<Array<Record<string, unknown>>>;
   abstract streamToDiscord(
     channel: BaseGuildTextChannel | BaseGuildVoiceChannel | DMChannel | AnyThreadChannel,
     client: Client,

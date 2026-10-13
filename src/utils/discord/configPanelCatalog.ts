@@ -21,9 +21,12 @@ import type {
 import { normalizeTriggerWord } from "@/utils/text/triggerWords";
 import type { RandomTriggerRow } from "@/types/db/schema";
 import type { AddressingStyle } from "@/types/personaNaming";
+import { NOTICE_VERBOSITY_LEVELS, type NoticeVerbosity } from "@/constants/toolNotices";
 
 export const CONFIG_ROUTE_NAMESPACE = "config";
 export const CONFIG_ROUTE_VERSION = "v2";
+
+export type DraftModelSlot = "reviewer" | "decision";
 
 export type ConfigCategory = "persona" | "behavior" | "plugins" | "channels" | "models";
 
@@ -38,7 +41,13 @@ type PersonaPage =
   | "voice"
   | "naming";
 type BehaviorPage = "general" | "trigger" | "experimental" | "notices" | "memory";
-type PluginsPage = "available-tools" | "context-additions" | "mcp-servers" | "sillytavern-presets" | "nsfw-jailbreaks";
+type PluginsPage =
+  | "response-drafting"
+  | "available-tools"
+  | "context-additions"
+  | "mcp-servers"
+  | "sillytavern-presets"
+  | "nsfw-jailbreaks";
 type ChannelsPage = "destinations" | "auto-trigger" | "rules" | "overrides";
 type ModelsPage = "switch" | "parameters" | "fallbacks" | "image" | "voices";
 
@@ -52,7 +61,14 @@ export type ConfigPage = PersonaPage | BehaviorPage | PluginsPage | ChannelsPage
 export const CONFIG_PAGES_BY_CATEGORY: Record<ConfigCategory, readonly ConfigPage[]> = {
   persona: ["general", "triggers", "memories", "naming", "sprites", "appearance", "voice", "overrides", "advanced"],
   behavior: ["general", "trigger", "notices", "experimental", "memory"],
-  plugins: ["available-tools", "context-additions", "mcp-servers", "sillytavern-presets", "nsfw-jailbreaks"],
+  plugins: [
+    "available-tools",
+    "context-additions",
+    "response-drafting",
+    "mcp-servers",
+    "sillytavern-presets",
+    "nsfw-jailbreaks",
+  ],
   channels: ["destinations", "auto-trigger", "rules", "overrides"],
   models: ["switch", "parameters", "image", "fallbacks", "voices"],
 };
@@ -373,6 +389,15 @@ export function computeLogitBiasFingerprint(serverId: number, entryIds: readonly
 }
 
 export type ConfigPanelRoute =
+  | { action: "draft-set"; locale: string; enabled: boolean }
+  | { action: "draft-items-open"; locale: string }
+  | { action: "draft-items-submit"; locale: string; nonce: string }
+  | { action: "draft-prompt-open"; locale: string }
+  | { action: "draft-default"; locale: string }
+  | { action: "draft-prompt-submit"; locale: string; nonce: string }
+  | { action: "draft-provider"; locale: string; slot: DraftModelSlot }
+  | { action: "draft-model-submit"; locale: string; slot: DraftModelSlot; provider: string; nonce: string }
+  | { action: "draft-checker-select"; locale: string; start: number; fp: string }
   | { action: "category"; locale: string; category: ConfigCategory; page: ConfigPage }
   | { action: "page"; locale: string; category: ConfigCategory; page: ConfigPage }
   | { action: "persona-page-select"; locale: string; category: "persona"; page: ConfigPage; personaId: number }
@@ -412,6 +437,9 @@ export type ConfigPanelRoute =
   | { action: "promote-view"; locale: string; personaId: number }
   | { action: "promote-confirm"; locale: string; personaId: number; nonce: string }
   | { action: "promote-cancel"; locale: string; personaId: number }
+  | { action: "resync-view"; locale: string; personaId: number }
+  | { action: "resync-confirm"; locale: string; personaId: number; nonce: string }
+  | { action: "resync-cancel"; locale: string; personaId: number }
   | { action: "server-memory-open"; locale: string; personaId: number }
   | { action: "personal-memory-open"; locale: string; personaId: number }
   | { action: "stm-edit-open"; locale: string; personaId: number }
@@ -511,6 +539,8 @@ export type ConfigPanelRoute =
   | { action: "behavior-preset-open"; locale: string }
   | { action: "behavior-preset-submit"; locale: string; nonce: string }
   | { action: "behavior-prompt-remove"; locale: string }
+  | { action: "behavior-prefill-open"; locale: string }
+  | { action: "behavior-prefill-submit"; locale: string; nonce: string }
   | { action: "behavior-context-open"; locale: string }
   | { action: "behavior-context-submit"; locale: string; nonce: string }
   | { action: "behavior-humanizer-open"; locale: string }
@@ -545,9 +575,11 @@ export type ConfigPanelRoute =
   | { action: "behavior-self-debug-set"; locale: string; enabled: boolean }
   | { action: "behavior-notice-visibility-open"; locale: string }
   | { action: "behavior-notice-visibility-submit"; locale: string; nonce: string }
+  | { action: "behavior-notice-verbosity-set"; locale: string; verbosity: NoticeVerbosity }
   | { action: "behavior-speech-transcripts-set"; locale: string; enabled: boolean }
   | { action: "behavior-memory-tagging-open"; locale: string }
   | { action: "behavior-memory-tagging-submit"; locale: string; nonce: string }
+  | { action: "behavior-stm-enabled-set"; locale: string; enabled: boolean }
   | { action: "behavior-stm-parameters-open"; locale: string }
   | { action: "behavior-stm-parameters-submit"; locale: string; nonce: string }
   | { action: "behavior-stm-categories-open"; locale: string }
@@ -713,6 +745,12 @@ const pluginsPageField: RouteFieldCodec<"page", "available-tools" | "context-add
   decode: (v) => (v === "available-tools" || v === "context-additions" ? v : null),
 };
 
+const noticeVerbosityField: RouteFieldCodec<"verbosity", NoticeVerbosity> = {
+  key: "verbosity",
+  encode: (v) => String(v),
+  decode: (v) => NOTICE_VERBOSITY_LEVELS.find((level) => level === v) ?? null,
+};
+
 const mcpRangeIndexField: RouteFieldCodec<"rangeIndex", number> = {
   key: "rangeIndex",
   encode: (v) => String(v),
@@ -852,7 +890,22 @@ const requiredChannelIdField: RouteFieldCodec<"channelId", string> = {
  * Authoritative codec table for every `/config` panel route, keyed by semantic action so a new
  * action is a compile error until it has a wire token.
  */
+const draftSlotField: RouteFieldCodec<"slot", DraftModelSlot> = {
+  key: "slot",
+  encode: (value) => String(value),
+  decode: (value) => (value === "reviewer" || value === "decision" ? value : null),
+};
+
 export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
+  "draft-set": { wireToken: "draft-set", fields: [enabledField] },
+  "draft-items-open": { wireToken: "draft-items-open", fields: [] },
+  "draft-items-submit": { wireToken: "draft-items-submit", fields: [nonceField] },
+  "draft-prompt-open": { wireToken: "draft-prompt-open", fields: [] },
+  "draft-default": { wireToken: "draft-default", fields: [] },
+  "draft-prompt-submit": { wireToken: "draft-prompt-submit", fields: [nonceField] },
+  "draft-provider": { wireToken: "draft-provider", fields: [draftSlotField] },
+  "draft-model-submit": { wireToken: "draft-model-submit", fields: [draftSlotField, providerField, nonceField] },
+  "draft-checker-select": { wireToken: "draft-checker-select", fields: [startField, fpField] },
   category: { wireToken: "category", fields: [categoryField, pageField] },
   page: { wireToken: "page", fields: [categoryField, pageField] },
   "persona-page-select": {
@@ -901,6 +954,9 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "promote-view": { wireToken: "promote-view", fields: [personaIdField] },
   "promote-confirm": { wireToken: "promote-confirm", fields: [personaIdField, nonceField] },
   "promote-cancel": { wireToken: "promote-cancel", fields: [personaIdField] },
+  "resync-view": { wireToken: "resync-view", fields: [personaIdField] },
+  "resync-confirm": { wireToken: "resync-confirm", fields: [personaIdField, nonceField] },
+  "resync-cancel": { wireToken: "resync-cancel", fields: [personaIdField] },
   "server-memory-open": { wireToken: "server-memory", fields: [personaIdField] },
   "personal-memory-open": { wireToken: "personal-memory", fields: [personaIdField] },
   "stm-edit-open": { wireToken: "stm-edit-open", fields: [personaIdField] },
@@ -1005,6 +1061,8 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "behavior-preset-open": { wireToken: "beh-preset-open", fields: [] },
   "behavior-preset-submit": { wireToken: "beh-preset-sub", fields: [nonceField] },
   "behavior-prompt-remove": { wireToken: "beh-prompt-remove", fields: [] },
+  "behavior-prefill-open": { wireToken: "beh-prefill-open", fields: [] },
+  "behavior-prefill-submit": { wireToken: "beh-prefill-sub", fields: [nonceField] },
   "behavior-context-open": { wireToken: "beh-context-open", fields: [] },
   "behavior-context-submit": { wireToken: "beh-context-sub", fields: [nonceField] },
   "behavior-humanizer-open": { wireToken: "beh-humanizer-open", fields: [] },
@@ -1039,9 +1097,11 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "behavior-self-debug-set": { wireToken: "beh-self-debug-set", fields: [enabledField] },
   "behavior-notice-visibility-open": { wireToken: "beh-notices-open", fields: [] },
   "behavior-notice-visibility-submit": { wireToken: "beh-notices-sub", fields: [nonceField] },
+  "behavior-notice-verbosity-set": { wireToken: "beh-notice-verbosity-set", fields: [noticeVerbosityField] },
   "behavior-speech-transcripts-set": { wireToken: "beh-transcripts-set", fields: [enabledField] },
   "behavior-memory-tagging-open": { wireToken: "beh-memory-tag-open", fields: [] },
   "behavior-memory-tagging-submit": { wireToken: "beh-memory-tag-sub", fields: [nonceField] },
+  "behavior-stm-enabled-set": { wireToken: "beh-stm-enabled-set", fields: [enabledField] },
   "behavior-stm-parameters-open": { wireToken: "beh-stm-params-open", fields: [] },
   "behavior-stm-parameters-submit": { wireToken: "beh-stm-params-sub", fields: [nonceField] },
   "behavior-stm-categories-open": { wireToken: "beh-stm-categories-open", fields: [] },

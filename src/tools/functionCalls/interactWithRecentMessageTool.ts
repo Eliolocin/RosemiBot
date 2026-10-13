@@ -1,3 +1,4 @@
+import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 /**
  * Recent Message Interaction Tool
  * Lets Tomori react to or reply to a recent message without needing message-management permissions.
@@ -13,6 +14,10 @@ import { getOrCreateWebhook } from "@/utils/discord/webhook/lifecycle";
 import { log } from "@/utils/misc/logger";
 import { cleanToolReplyText } from "@/utils/discord/toolReplyText";
 import { getReplyContextAuthorName, sendWebhookReplyWithContext } from "@/utils/discord/webhookReply";
+import {
+  recordChannelDeliveredWebhookIdentity,
+  resolveChannelBaseAppearanceIdentity,
+} from "@/utils/discord/stream/channelDeliveryContinuity";
 import { getCachedAllPersonas } from "@/utils/cache/tomoriStateCache";
 import { resolvePersonaForMessage } from "@/utils/chat/webhookIdentity";
 import { resolvePersonaWebhookIdentity, type ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
@@ -112,7 +117,7 @@ type ReplyDeliveryContext =
 export class InteractWithRecentMessageTool extends BaseTool {
   name = "interact_with_recent_message";
   description =
-    "Interact with a recent message in the current channel for expressive follow-up behavior. `react` adds an emoji reaction. `reply` sends a short reply or backtrack comment about an earlier message. Replies targeting a known persona message are delivered from that persona identity when possible. Use `reveal_message_metadata` first when you need fresh `ref_N` handles or sent timestamps.";
+    "Interact with a recent message in the current channel for expressive follow-up behavior. `react` adds an emoji reaction. `reply` sends a short reply or backtrack comment about an earlier message. Replies are always sent as yourself, even when the target is another persona's message. Use `reveal_message_metadata` first when you need fresh `ref_N` handles or sent timestamps.";
   category = "discord" as const;
 
   parameters: ToolParameterSchema = {
@@ -303,9 +308,17 @@ export class InteractWithRecentMessageTool extends BaseTool {
     targetMessage: Message,
   ): Promise<ReplyDeliveryContext> {
     const allPersonas = await this.loadPersonasForContext(context);
+    await verifyMessageWebhook(targetMessage);
     const targetPersona = resolvePersonaForMessage(targetMessage, allPersonas, context.client.user?.id);
 
-    if (targetPersona) {
+    // Only a backtrack on the active persona's own message may speak as the target's identity.
+    // Routing a reply to ANOTHER persona's message through that persona posts the active
+    // persona's words under someone else's name.
+    if (
+      targetPersona &&
+      context.activePersonaId !== undefined &&
+      targetPersona.persona_id === context.activePersonaId
+    ) {
       if (!targetPersona.is_alter) {
         return {
           kind: "direct",
@@ -556,16 +569,26 @@ export class InteractWithRecentMessageTool extends BaseTool {
       let sentMessage: Message;
 
       if (replyDeliveryContext.kind === "webhook") {
+        const identity = resolveChannelBaseAppearanceIdentity(
+          context.channel.id,
+          replyDeliveryContext.identity,
+          replyDeliveryContext.identity.username ?? "",
+          context.channel.lastMessageId,
+        );
         sentMessage = await sendWebhookReplyWithContext(
           replyDeliveryContext.webhook,
           targetMessage,
           context.locale,
           sanitizedReplyContent,
-          replyDeliveryContext.identity,
+          identity,
           {
             threadId: replyDeliveryContext.threadId,
           },
         );
+        recordChannelDeliveredWebhookIdentity(context.channel.id, identity, sentMessage.id, {
+          personaId: context.activePersonaId ?? null,
+          kind: "appearance",
+        });
 
         if (context.streamContext?.replyNoticeState) {
           context.streamContext.replyNoticeState.attempted = true;

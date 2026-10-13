@@ -8,14 +8,99 @@ import {
 } from "@/utils/text/localeIntentPacks";
 import {
   applyDeliberateToolAllowlist,
+  getAttachmentDeliberateToolIntentResult,
+  getAutonomousDeliberateToolNames,
   getDeliberateToolAllowedNames,
   matchesLocaleDeliberateToolPack,
   resolveDeliberateToolContextTurns,
 } from "@/utils/tools/deliberateToolMode";
 
+import { createPersona } from "../../helpers/fixtures";
+
 const ALL_PACK_KEYS = [...Object.values(DELIBERATE_TOOL_PACK_KEYS), EXPLICIT_MEMORY_PACK_KEY];
 
 describe("deliberate tool mode", () => {
+  it("admits spontaneous stickers while retaining task restrictions", () => {
+    const state = createPersona({ config: { sticker_usage_enabled: true } });
+    for (const prompt of ["hello", "search the web for cats"]) {
+      const allowed = [...getDeliberateToolAllowedNames(prompt), ...getAutonomousDeliberateToolNames(state)];
+      const result = applyDeliberateToolAllowlist({
+        providerLabel: "test",
+        builtInTools: [{ name: "select_sticker_for_response" }, { name: "web_search" }, { name: "generate_image" }],
+        mcpFunctionNames: [],
+        allowedToolNames: allowed,
+      });
+      expect(result.builtInTools.map((tool) => tool.name)).toEqual(
+        prompt === "hello" ? ["select_sticker_for_response"] : ["select_sticker_for_response", "web_search"],
+      );
+    }
+    for (const disabled of [
+      createPersona({ config: { sticker_usage_enabled: false } }),
+      createPersona({ config: { sticker_usage_enabled: true, tool_use_enabled: false } }),
+      createPersona({ llm: { ...state.llm, has_tools: false }, config: { sticker_usage_enabled: true } }),
+      createPersona({ llm: { ...state.llm, llm_provider: "novelai" }, config: { sticker_usage_enabled: true } }),
+    ])
+      expect(getAutonomousDeliberateToolNames(disabled)).toEqual([]);
+  });
+
+  it("admits only the reader for each media kind on the triggering message", () => {
+    const image = (mimeType: string, isEmoji?: boolean) => ({
+      url: "https://cdn.discordapp.com/a.png",
+      proxyUrl: "https://media.discordapp.net/a.png",
+      mimeType,
+      filename: "a",
+      ...(isEmoji && { isEmoji }),
+    });
+    const cases: Array<{
+      label: string;
+      message: Parameters<typeof getAttachmentDeliberateToolIntentResult>[0];
+      expected: string[];
+    }> = [
+      {
+        label: "file with wording no trigger matches",
+        message: { imageAttachments: [], videoAttachments: [], documentAttachments: [{ filename: "a.pdf" }] },
+        expected: ["read_file"],
+      },
+      {
+        label: "GIF",
+        message: { imageAttachments: [image("image/gif")], videoAttachments: [] },
+        expected: ["analyze_image", "process_gif"],
+      },
+      {
+        label: "YouTube link",
+        message: {
+          imageAttachments: [],
+          videoAttachments: [
+            {
+              url: "https://youtu.be/x",
+              proxyUrl: "https://youtu.be/x",
+              mimeType: null,
+              filename: "x",
+              isYouTubeLink: true,
+            },
+          ],
+        },
+        expected: ["process_youtube_video"],
+      },
+      {
+        label: "custom emoji only",
+        message: { imageAttachments: [image("image/png", true)], videoAttachments: [] },
+        expected: [],
+      },
+      { label: "no history entry", message: undefined, expected: [] },
+    ];
+
+    const failures = cases.flatMap(({ label, message, expected }) => {
+      const actual = getAttachmentDeliberateToolIntentResult(message).allowedToolNames;
+      return JSON.stringify(actual) === JSON.stringify(expected) ? [] : [`${label}: ${JSON.stringify(actual)}`];
+    });
+    expect(failures).toEqual([]);
+  });
+
+  it("ignores obsolete stored sticker triggers", () => {
+    expect(getDeliberateToolAllowedNames("hello", { sticker: ["^"] })).not.toContain("select_sticker_for_response");
+  });
+
   it("allows the unified web_search tool for web-search intent", () => {
     const allowedNames = getDeliberateToolAllowedNames("can you search the web for current TypeScript news?");
 

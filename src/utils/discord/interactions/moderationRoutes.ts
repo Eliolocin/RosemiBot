@@ -30,6 +30,7 @@ import {
   parseModerationPanelRoute,
   parseWhitelistPage,
   type ModerationCategory,
+  type ModerationRemovalList,
   type QuotaType,
   type UserBlacklistRemovalTarget,
   type WhitelistPage,
@@ -44,6 +45,9 @@ import {
   buildUserBlacklistAddModal,
   buildWhitelistChannelAddModal,
   buildWhitelistRoleAddModal,
+  listModerationRemovalPage,
+  listModerationRemovalValues,
+  type ModerationRemovalOption,
 } from "@/utils/discord/ui/moderationPanel";
 import {
   showRoutedRawModal,
@@ -126,8 +130,8 @@ export interface ModerationRouteDependencies {
     interaction: ButtonInteraction,
     locale: string,
     nonce: string,
-    action: "user-blacklist" | "whitelist-channel" | "whitelist-role" | "persona-channel",
-    options: Array<{ value: string; label: string; description?: string }>,
+    action: ModerationRemovalList,
+    options: ModerationRemovalOption[],
   ): Promise<void>;
   showPersonaChannelAddModal(
     interaction: ButtonInteraction,
@@ -344,6 +348,13 @@ async function repaint(
   );
 }
 
+const REMOVAL_OPEN_LISTS = {
+  "user-blacklist-remove-open": "user-blacklist",
+  "whitelist-channel-remove-open": "whitelist-channel",
+  "whitelist-role-remove-open": "whitelist-role",
+  "persona-channel-remove-open": "persona-channel",
+} as const satisfies Record<string, ModerationRemovalList>;
+
 export function createModerationInteractionRoute(
   overrides: Partial<ModerationRouteDependencies> = {},
 ): GlobalInteractionRoute {
@@ -395,6 +406,47 @@ export function createModerationInteractionRoute(
     resolveRole: defaultResolveRole,
     ...overrides,
   };
+
+  async function buildRemovalOption(
+    interaction: GlobalRoutableInteraction,
+    locale: string,
+    scope: ModerationScopeData,
+    value: string,
+  ): Promise<ModerationRemovalOption> {
+    const [kind, first = "", second = ""] = value.split(":");
+    switch (kind) {
+      case "u":
+        return {
+          value,
+          label: formatGuildMemberLabel(await dependencies.resolveUser(interaction, first)),
+          description: localizer(locale, "commands.moderation.user_blacklist_option_server"),
+        };
+      case "b":
+        return {
+          value,
+          label: formatGuildMemberLabel(await dependencies.resolveUser(interaction, second)),
+          description:
+            scope.whitelist.personaNames.get(Number(first)) ??
+            localizer(locale, "commands.moderation.user_blacklist_option_persona"),
+        };
+      case "c": {
+        const channel = await dependencies.resolveChannel(interaction, first);
+        return { value, label: channel?.name ?? "Unknown channel" };
+      }
+      case "r": {
+        const role = await dependencies.resolveRole(interaction, first);
+        return { value, label: role?.name ?? "Unknown role" };
+      }
+      default: {
+        const channel = await dependencies.resolveChannel(interaction, second);
+        return {
+          value,
+          label: scope.whitelist.personaNames.get(Number(first)) ?? "Persona",
+          description: channel?.name ?? "Unknown channel",
+        };
+      }
+    }
+  }
 
   return {
     namespace: MODERATION_ROUTE_NAMESPACE,
@@ -758,7 +810,12 @@ export function createModerationInteractionRoute(
         return;
       }
 
-      if (route.action === "user-blacklist-remove-open") {
+      if (
+        route.action === "user-blacklist-remove-open" ||
+        route.action === "whitelist-channel-remove-open" ||
+        route.action === "whitelist-role-remove-open" ||
+        route.action === "persona-channel-remove-open"
+      ) {
         if (!isAuthorized(interaction)) {
           await interaction.reply({
             content: localizer(route.locale, "commands.moderation.permission_denied"),
@@ -777,52 +834,23 @@ export function createModerationInteractionRoute(
           });
           return;
         }
-        const values = [
-          ...scope.userBlacklist.personalizationUserIds.map((id) => `u:${id}`),
-          ...scope.userBlacklist.personaBlocks.map((block) => `b:${block.persona_id}:${block.user_disc_id}`),
-        ];
-        if (values.length === 0 || values.length > 50) {
+        const list = REMOVAL_OPEN_LISTS[route.action];
+        // Entries that moved since the panel rendered only change which entries this page offers;
+        // the snapshot below still limits removal to what the modal presented.
+        const presented = listModerationRemovalPage(scope, list, route.rangeIndex);
+        if (presented.length === 0) {
           await interaction.reply({
-            content: localizer(
-              route.locale,
-              values.length > 50
-                ? "commands.moderation.remove_modal_limit"
-                : "commands.moderation.remove_nothing_changed_detail",
-            ),
+            content: localizer(route.locale, "commands.moderation.remove_nothing_changed_detail"),
             flags: MessageFlags.Ephemeral,
           });
           return;
         }
         const options = await Promise.all(
-          values.map(async (value) => {
-            const parts = value.split(":");
-            const userId = parts.at(-1) ?? "";
-            const user = await dependencies.resolveUser(interaction, userId);
-            if (parts[0] === "u")
-              return {
-                value,
-                label: formatGuildMemberLabel(user),
-                description: localizer(route.locale, "commands.moderation.user_blacklist_option_server"),
-              };
-            const personaId = Number(parts[1]);
-            return {
-              value,
-              label: formatGuildMemberLabel(user),
-              description:
-                scope.whitelist.personaNames.get(personaId) ??
-                localizer(route.locale, "commands.moderation.user_blacklist_option_persona"),
-            };
-          }),
+          presented.map((value) => buildRemovalOption(interaction, route.locale, scope, value)),
         );
         const nonce = dependencies.createNonce();
-        dependencies.storeRemovalSnapshot(nonce, values);
-        await dependencies.showRemovalModal(
-          interaction as ButtonInteraction,
-          route.locale,
-          nonce,
-          "user-blacklist",
-          options,
-        );
+        dependencies.storeRemovalSnapshot(nonce, presented);
+        await dependencies.showRemovalModal(interaction as ButtonInteraction, route.locale, nonce, list, options);
         return;
       }
 
@@ -845,10 +873,7 @@ export function createModerationInteractionRoute(
           );
           return;
         }
-        const current = new Set([
-          ...scope.userBlacklist.personalizationUserIds.map((id) => `u:${id}`),
-          ...scope.userBlacklist.personaBlocks.map((block) => `b:${block.persona_id}:${block.user_disc_id}`),
-        ]);
+        const current = new Set(listModerationRemovalValues(scope, "user-blacklist"));
         const removed = presented.filter((value) => !kept.has(value) && current.has(value));
         const personalizationUserIds = removed.filter((value) => value.startsWith("u:")).map((value) => value.slice(2));
         const personaBlockKeys = removed
@@ -1283,56 +1308,6 @@ export function createModerationInteractionRoute(
         return;
       }
 
-      if (route.action === "whitelist-channel-remove-open") {
-        if (!isAuthorized(interaction)) {
-          await interaction.reply({
-            content: localizer(route.locale, "commands.moderation.permission_denied"),
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
-        }
-        const scope = await dependencies.resolveScope(interaction, false);
-        if (!scope || scope.readStatus !== "fresh") {
-          await interaction.reply({
-            content: localizer(
-              route.locale,
-              scope ? "commands.moderation.unavailable" : "commands.moderation.not_setup",
-            ),
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
-        }
-        const values = scope.whitelist.channels.map((row) => `c:${row.channel_disc_id}`);
-        if (values.length === 0 || values.length > 50) {
-          await interaction.reply({
-            content: localizer(
-              route.locale,
-              values.length > 50
-                ? "commands.moderation.remove_modal_limit"
-                : "commands.moderation.remove_nothing_changed_detail",
-            ),
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
-        }
-        const options = await Promise.all(
-          scope.whitelist.channels.map(async (row) => {
-            const channel = await dependencies.resolveChannel(interaction, row.channel_disc_id);
-            return { value: `c:${row.channel_disc_id}`, label: channel?.name ?? "Unknown channel" };
-          }),
-        );
-        const nonce = dependencies.createNonce();
-        dependencies.storeRemovalSnapshot(nonce, values);
-        await dependencies.showRemovalModal(
-          interaction as ButtonInteraction,
-          route.locale,
-          nonce,
-          "whitelist-channel",
-          options,
-        );
-        return;
-      }
-
       if (route.action === "whitelist-channel-remove-submit") {
         await interaction.deferUpdate();
         const presented = dependencies.takeRemovalSnapshot(route.nonce);
@@ -1351,7 +1326,7 @@ export function createModerationInteractionRoute(
           );
           return;
         }
-        const current = new Set(scope.whitelist.channels.map((row) => `c:${row.channel_disc_id}`));
+        const current = new Set(listModerationRemovalValues(scope, "whitelist-channel"));
         const candidateIds = presented
           .filter((value) => !kept.has(value) && current.has(value))
           .map((value) => value.slice(2));
@@ -1742,56 +1717,6 @@ export function createModerationInteractionRoute(
         return;
       }
 
-      if (route.action === "whitelist-role-remove-open") {
-        if (!isAuthorized(interaction)) {
-          await interaction.reply({
-            content: localizer(route.locale, "commands.moderation.permission_denied"),
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
-        }
-        const scope = await dependencies.resolveScope(interaction, false);
-        if (!scope || scope.readStatus !== "fresh") {
-          await interaction.reply({
-            content: localizer(
-              route.locale,
-              scope ? "commands.moderation.unavailable" : "commands.moderation.not_setup",
-            ),
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
-        }
-        const values = scope.whitelist.roles.map((row) => `r:${row.role_disc_id}`);
-        if (values.length === 0 || values.length > 50) {
-          await interaction.reply({
-            content: localizer(
-              route.locale,
-              values.length > 50
-                ? "commands.moderation.remove_modal_limit"
-                : "commands.moderation.remove_nothing_changed_detail",
-            ),
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
-        }
-        const options = await Promise.all(
-          scope.whitelist.roles.map(async (row) => {
-            const role = await dependencies.resolveRole(interaction, row.role_disc_id);
-            return { value: `r:${row.role_disc_id}`, label: role?.name ?? "Unknown role" };
-          }),
-        );
-        const nonce = dependencies.createNonce();
-        dependencies.storeRemovalSnapshot(nonce, values);
-        await dependencies.showRemovalModal(
-          interaction as ButtonInteraction,
-          route.locale,
-          nonce,
-          "whitelist-role",
-          options,
-        );
-        return;
-      }
-
       if (route.action === "whitelist-role-remove-submit") {
         await interaction.deferUpdate();
         const presented = dependencies.takeRemovalSnapshot(route.nonce);
@@ -1810,7 +1735,7 @@ export function createModerationInteractionRoute(
           );
           return;
         }
-        const current = new Set(scope.whitelist.roles.map((row) => `r:${row.role_disc_id}`));
+        const current = new Set(listModerationRemovalValues(scope, "whitelist-role"));
         const candidateIds = presented
           .filter((value) => !kept.has(value) && current.has(value))
           .map((value) => value.slice(2));
@@ -2089,60 +2014,6 @@ export function createModerationInteractionRoute(
         return;
       }
 
-      if (route.action === "persona-channel-remove-open") {
-        if (!isAuthorized(interaction)) {
-          await interaction.reply({
-            content: localizer(route.locale, "commands.moderation.permission_denied"),
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
-        }
-        const scope = await dependencies.resolveScope(interaction, false);
-        if (!scope || scope.readStatus !== "fresh") {
-          await interaction.reply({
-            content: localizer(
-              route.locale,
-              scope ? "commands.moderation.unavailable" : "commands.moderation.not_setup",
-            ),
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
-        }
-        const values = scope.whitelist.personaChannels.map((row) => `p:${row.persona_id}:${row.channel_disc_id}`);
-        if (values.length === 0 || values.length > 50) {
-          await interaction.reply({
-            content: localizer(
-              route.locale,
-              values.length > 50
-                ? "commands.moderation.remove_modal_limit"
-                : "commands.moderation.remove_nothing_changed_detail",
-            ),
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
-        }
-        const options = await Promise.all(
-          scope.whitelist.personaChannels.map(async (row) => {
-            const channel = await dependencies.resolveChannel(interaction, row.channel_disc_id);
-            return {
-              value: `p:${row.persona_id}:${row.channel_disc_id}`,
-              label: scope.whitelist.personaNames.get(row.persona_id) ?? "Persona",
-              description: channel?.name ?? "Unknown channel",
-            };
-          }),
-        );
-        const nonce = dependencies.createNonce();
-        dependencies.storeRemovalSnapshot(nonce, values);
-        await dependencies.showRemovalModal(
-          interaction as ButtonInteraction,
-          route.locale,
-          nonce,
-          "persona-channel",
-          options,
-        );
-        return;
-      }
-
       if (route.action === "persona-channel-remove-submit") {
         await interaction.deferUpdate();
         const presented = dependencies.takeRemovalSnapshot(route.nonce);
@@ -2161,9 +2032,7 @@ export function createModerationInteractionRoute(
           );
           return;
         }
-        const currentValues = new Set(
-          scope.whitelist.personaChannels.map((row) => `p:${row.persona_id}:${row.channel_disc_id}`),
-        );
+        const currentValues = new Set(listModerationRemovalValues(scope, "persona-channel"));
         const removed = new Set(presented.filter((value) => !kept.has(value) && currentValues.has(value)));
         const affectedPersonaIds = new Set([...removed].map((value) => Number(value.split(":")[1])));
         let failed = false;

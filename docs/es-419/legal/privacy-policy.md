@@ -1,7 +1,7 @@
 ---
 title: Política de privacidad
 description: Cómo la instancia oficial alojada de TomoriBot recopila, almacena y elimina tus datos.
-aiGenerated: true
+aiGenerated: false
 ---
 
 Aviso de traducción: Esta traducción se proporciona para tu comodidad. La versión en inglés controla en caso de conflicto.

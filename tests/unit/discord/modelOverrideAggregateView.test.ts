@@ -956,10 +956,10 @@ describe("buildModelOverrideRemoveModal option descriptions and mixed chunk cont
       .options;
 
     expect(options[0].label).toBe("#general");
-    expect(options[0].description).toBe("gemini-2.5-flash (google)");
+    expect(options[0].description).toBe("gemini-2.5-flash (Google Gemini)");
 
     expect(options[1].label).toBe("Mirri");
-    expect(options[1].description).toBe("gemini-2.5-flash (google)");
+    expect(options[1].description).toBe("gemini-2.5-flash (Google Gemini)");
   });
 
   it("keeps scope and editor destination in the group context instead of every option", () => {
@@ -1078,7 +1078,7 @@ describe("buildModelOverrideRemoveModal option descriptions and mixed chunk cont
     const options = (modal.components[0].component as { options: Array<{ label: string; description: string }> })
       .options;
     // A summary inside the checkbox option description allowance is never ellipsized.
-    expect(options[0].description).toBe("deepseek/deepseek-v4-flash-2026-02-14-exp (openrouter)");
+    expect(options[0].description).toBe("deepseek/deepseek-v4-flash-2026-02-14-exp (OpenRouter)");
     expect(options[0].description).not.toContain("...");
 
     const overCapLlm: LlmRow = {

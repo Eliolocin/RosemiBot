@@ -8,14 +8,10 @@ import { log } from "../../utils/misc/logger";
 import type {
   Tool,
   MCPCapableToolAdapter,
-  ToolContext,
   ToolResult,
   ToolParameterPropertySchema,
   ToolParameterType,
 } from "../../types/tool/interfaces";
-import type { TypedMCPToolResult } from "../../types/tool/mcpTypes";
-import { getMCPManager } from "../../utils/mcp/mcpManager";
-import { getMCPExecutor } from "../../utils/mcp/mcpExecutor";
 import { getGuildMcpManager } from "../../utils/mcp/guildMcpManager";
 
 /**
@@ -186,73 +182,6 @@ export class OpenrouterToolAdapter implements MCPCapableToolAdapter {
         log.info(`Converted ${builtInTools.length} built-in tools to OpenAI format`);
       }
 
-      // Add MCP tools if available (using pre-filtered list or legacy filtering)
-      const mcpManager = getMCPManager();
-      if (mcpManager.isReady()) {
-        let addedMCPToolsCount = 0;
-
-        // Raw AI-search modes stay internal to the unified web_search dispatcher.
-        const disabledDDGFunctions = ["iask-search", "monica-search"];
-        let disabledFunctionsCount = 0;
-
-        if (allowedMCPFunctions) {
-          const mcpTools = mcpManager.getMCPTools();
-          const allowedFunctionSet = new Set(allowedMCPFunctions);
-
-          for (const mcpTool of mcpTools) {
-            try {
-              const geminiTool = await mcpTool.tool();
-              if (geminiTool.functionDeclarations) {
-                // Filter declarations to only include allowed functions and exclude disabled DDG functions
-                const declarations = (geminiTool.functionDeclarations as Record<string, unknown>[]).filter(
-                  (declaration) => {
-                    const functionName = declaration.name as string;
-
-                    if (disabledDDGFunctions.includes(functionName)) {
-                      disabledFunctionsCount++;
-                      return false;
-                    }
-
-                    return allowedFunctionSet.has(functionName);
-                  },
-                );
-
-                if (declarations.length > 0) {
-                  // Wrap each MCP function in OpenAI tool format
-                  for (const declaration of declarations) {
-                    // MCP uses "parametersJsonSchema", OpenAI uses "parameters"
-                    const openAIDeclaration: Record<string, unknown> = {
-                      ...declaration,
-                    };
-                    if ("parametersJsonSchema" in declaration) {
-                      delete openAIDeclaration.parametersJsonSchema;
-                      openAIDeclaration.parameters = declaration.parametersJsonSchema;
-                    }
-
-                    allTools.push({
-                      type: "function",
-                      function: openAIDeclaration,
-                    });
-                  }
-                  addedMCPToolsCount++;
-                }
-              }
-            } catch (error) {
-              log.warn("Failed to extract functions from MCP tool:", error as Error);
-            }
-          }
-
-          log.info(
-            `Added ${addedMCPToolsCount} MCP tools using centralized filtering (${allowedMCPFunctions.length} functions allowed)`,
-          );
-          if (disabledFunctionsCount > 0) {
-            log.info(
-              `Excluded ${disabledFunctionsCount} disabled DuckDuckGo functions (${disabledDDGFunctions.join(", ")})`,
-            );
-          }
-        }
-      }
-
       // Add guild MCP tools (per-guild remote servers)
       if (serverId && allowedMCPFunctions) {
         try {
@@ -299,67 +228,6 @@ export class OpenrouterToolAdapter implements MCPCapableToolAdapter {
     } catch (error) {
       log.error(`Failed to get all tools in OpenRouter format (${builtInTools.length} built-in tools)`, error as Error);
       return [];
-    }
-  }
-
-  /**
-   * Check if a function name belongs to an MCP server
-   * @returns Promise<boolean> - True if the function is from an MCP server
-   */
-  async isMCPFunction(functionName: string): Promise<boolean> {
-    try {
-      const mcpManager = getMCPManager();
-      if (!mcpManager.isReady()) {
-        return false;
-      }
-
-      const mcpTools = mcpManager.getMCPTools();
-      for (const mcpTool of mcpTools) {
-        const geminiTool = await mcpTool.tool();
-        if (geminiTool.functionDeclarations) {
-          const hasFunction = (geminiTool.functionDeclarations as Record<string, unknown>[]).some(
-            (declaration) => declaration.name === functionName,
-          );
-          if (hasFunction) {
-            return true;
-          }
-        }
-      }
-
-      return false;
-    } catch (error) {
-      log.warn(`Error checking if function ${functionName} is MCP function:`, {
-        error: error as Error,
-      });
-      return false;
-    }
-  }
-
-  /**
-   * Execute an MCP function and return the result
-   * @param context - Optional tool context for additional information
-   */
-  async executeMCPFunction(
-    functionName: string,
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<TypedMCPToolResult> {
-    try {
-      log.info(`Executing MCP function: ${functionName} with args: ${JSON.stringify(args)}`);
-
-      const executor = getMCPExecutor();
-      const result = await executor.executeMCPFunction(functionName, args, context);
-
-      log.info(`MCP function ${functionName} completed successfully (imagesSent: ${result.data?.imagesSent || 0})`);
-
-      return result;
-    } catch (error) {
-      log.error(`Failed to execute MCP function ${functionName}`, error as Error);
-
-      return {
-        success: false,
-        message: `Failed to execute MCP function: ${error instanceof Error ? error.message : String(error)}`,
-      };
     }
   }
 

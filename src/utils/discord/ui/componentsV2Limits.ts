@@ -133,7 +133,7 @@ export const DISCORD_CHECKBOX_GROUP_OPTIONS_MIN = 1;
 export const DISCORD_CHECKBOX_GROUP_OPTIONS_MAX = 10;
 
 /** Minimum options in a modal Radio Group. */
-export const DISCORD_RADIO_GROUP_OPTIONS_MIN = 1;
+export const DISCORD_RADIO_GROUP_OPTIONS_MIN = 2;
 
 /** Maximum options in a modal Radio Group. */
 export const DISCORD_RADIO_GROUP_OPTIONS_MAX = 10;

@@ -112,7 +112,7 @@ export async function generatePresetFromPromptOpenrouter(
 
     if (toolsEnabled) {
       body.tools = tools;
-      const providerRouting = buildOpenrouterProviderRouting({ hasTools: true });
+      const providerRouting = buildOpenrouterProviderRouting({ requiresParameterSupport: true });
       if (providerRouting) {
         body.provider = providerRouting;
       }
@@ -147,7 +147,7 @@ export async function generatePresetFromPromptOpenrouter(
         },
       });
       return {
-        error: `OpenRouter request failed (${response.status}): ${response.statusText}`,
+        error: `OpenRouter request failed (HTTP ${response.status}).`,
         errorType: "CONNECTION",
       };
     }

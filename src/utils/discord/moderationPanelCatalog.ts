@@ -13,7 +13,7 @@ import {
 import { parseLocale } from "@/utils/discord/panelRouteTokens";
 
 export const MODERATION_ROUTE_NAMESPACE = "moderation";
-export const MODERATION_ROUTE_VERSION = "v1";
+export const MODERATION_ROUTE_VERSION = "v2";
 
 export const MODERATION_CATEGORIES = ["member-access", "user-blacklist", "whitelist", "quotas"] as const;
 export type ModerationCategory = (typeof MODERATION_CATEGORIES)[number];
@@ -23,6 +23,11 @@ export type WhitelistPage = (typeof WHITELIST_PAGES)[number];
 
 const QUOTA_TYPES = ["image", "text", "video"] as const;
 export type QuotaType = (typeof QUOTA_TYPES)[number];
+
+export type ModerationRemovalList = "user-blacklist" | "whitelist-channel" | "whitelist-role" | "persona-channel";
+
+/** Entries one removal checklist modal presents: five checkbox groups of ten. */
+export const MODERATION_REMOVAL_MODAL_CAPACITY = 50;
 
 export type UserBlacklistRemovalTarget =
   | { source: "personalization"; userId: string }
@@ -50,28 +55,28 @@ export type ModerationPanelRoute =
   | { action: "model-access-set"; locale: string; allowServerModels: boolean }
   | { action: "user-blacklist-add-open"; locale: string }
   | { action: "user-blacklist-add-submit"; locale: string; nonce: string }
-  | { action: "user-blacklist-remove-open"; locale: string }
+  | { action: "user-blacklist-remove-open"; locale: string; rangeIndex: number }
   | { action: "user-blacklist-remove-submit"; locale: string; nonce: string }
   | { action: "user-blacklist-remove-prompt"; locale: string; target: UserBlacklistRemovalTarget }
   | { action: "user-blacklist-remove-confirm"; locale: string; target: UserBlacklistRemovalTarget }
   | { action: "user-blacklist-remove-cancel"; locale: string }
   | { action: "whitelist-channel-add-open"; locale: string }
   | { action: "whitelist-channel-add-submit"; locale: string; nonce: string }
-  | { action: "whitelist-channel-remove-open"; locale: string }
+  | { action: "whitelist-channel-remove-open"; locale: string; rangeIndex: number }
   | { action: "whitelist-channel-remove-submit"; locale: string; nonce: string }
   | { action: "whitelist-channel-remove-prompt"; locale: string; channelId: string }
   | { action: "whitelist-channel-remove-confirm"; locale: string; channelId: string }
   | { action: "whitelist-channel-remove-cancel"; locale: string }
   | { action: "whitelist-role-add-open"; locale: string }
   | { action: "whitelist-role-add-submit"; locale: string; nonce: string }
-  | { action: "whitelist-role-remove-open"; locale: string }
+  | { action: "whitelist-role-remove-open"; locale: string; rangeIndex: number }
   | { action: "whitelist-role-remove-submit"; locale: string; nonce: string }
   | { action: "whitelist-role-remove-prompt"; locale: string; roleId: string }
   | { action: "whitelist-role-remove-confirm"; locale: string; roleId: string }
   | { action: "whitelist-role-remove-cancel"; locale: string }
   | { action: "persona-channel-add-open"; locale: string }
   | { action: "persona-channel-add-submit"; locale: string; nonce: string }
-  | { action: "persona-channel-remove-open"; locale: string }
+  | { action: "persona-channel-remove-open"; locale: string; rangeIndex: number }
   | { action: "persona-channel-remove-submit"; locale: string; nonce: string }
   | { action: "quota-edit-open"; locale: string; quotaType: QuotaType }
   | { action: "quota-edit-submit"; locale: string; quotaType: QuotaType; nonce: string };
@@ -240,7 +245,7 @@ export const MODERATION_ROUTE_CODECS: ModerationRouteCodecs = {
   },
   "user-blacklist-remove-open": {
     wireToken: "user-blacklist-remove-open",
-    fields: [],
+    fields: [rangeIndexField],
   },
   "user-blacklist-remove-submit": {
     wireToken: "user-blacklist-remove-submit",
@@ -260,7 +265,7 @@ export const MODERATION_ROUTE_CODECS: ModerationRouteCodecs = {
   },
   "whitelist-channel-remove-open": {
     wireToken: "whitelist-channel-remove-open",
-    fields: [],
+    fields: [rangeIndexField],
   },
   "whitelist-channel-remove-submit": {
     wireToken: "whitelist-channel-remove-submit",
@@ -288,7 +293,7 @@ export const MODERATION_ROUTE_CODECS: ModerationRouteCodecs = {
   },
   "whitelist-role-remove-open": {
     wireToken: "whitelist-role-remove-open",
-    fields: [],
+    fields: [rangeIndexField],
   },
   "whitelist-role-remove-submit": {
     wireToken: "whitelist-role-remove-submit",
@@ -316,7 +321,7 @@ export const MODERATION_ROUTE_CODECS: ModerationRouteCodecs = {
   },
   "persona-channel-remove-open": {
     wireToken: "persona-channel-remove-open",
-    fields: [],
+    fields: [rangeIndexField],
   },
   "persona-channel-remove-submit": {
     wireToken: "persona-channel-remove-submit",

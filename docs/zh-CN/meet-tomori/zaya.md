@@ -2,6 +2,7 @@
 title: "Zaya，骄傲的那个"
 sidebar:
   order: 2
+aiGenerated: false
 ---
 
 <!-- STUB (side task). Source: src/db/seed/catalog/personas/prideful/en-US.ts

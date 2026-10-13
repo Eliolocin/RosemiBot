@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { LlmRow } from "@/types/db/schema";
 import { buildInteractionRouteId, type ParsedInteractionRoute } from "@/utils/discord/interactions/routeRegistry";
 import { DISCORD_SELECT_OPTION_DESCRIPTION_MAX, truncateDiscordText } from "@/utils/discord/ui/componentsV2Limits";
+import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import {
   buildRouteSegments,
   decodeRouteSegments,
@@ -27,7 +28,7 @@ const MODEL_OVERRIDE_MODEL_SUMMARY_MAX_LENGTH = DISCORD_SELECT_OPTION_DESCRIPTIO
 
 export function formatModelOverrideModelSummary(llm: LlmRow): string {
   return truncateDiscordText(
-    `${llm.llm_codename} (${llm.llm_provider})`,
+    `${llm.llm_codename} (${getProviderDisplayName(llm.llm_provider)})`,
     MODEL_OVERRIDE_MODEL_SUMMARY_MAX_LENGTH,
     "...",
   );

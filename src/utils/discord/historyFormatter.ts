@@ -1,3 +1,4 @@
+import { isManagedWebhookMessage } from "@/utils/chat/webhookIdentity";
 /**
  * Formats Discord messages into a text representation suitable for LLM fact extraction.
  * Also detects which bot personas participated (via webhook author matching)
@@ -182,7 +183,8 @@ export function formatMessagesForExtraction(
     //    Strip "[Matrix|@user:host] " prefix from Matrix bridge webhook messages
     //    so TomoriBot sees just the display name (e.g., "Neko Neechan") in context
     const rawAuthorName = msg.member?.displayName ?? msg.author?.username ?? "Unknown";
-    const authorName = stripBridgePrefix(rawAuthorName);
+    const authorName =
+      msg.webhookId && !isManagedWebhookMessage(msg) ? rawAuthorName : stripBridgePrefix(rawAuthorName);
 
     lines.push(`[${timestamp}] ${authorName}: ${content}`);
 
@@ -190,7 +192,7 @@ export function formatMessagesForExtraction(
     //    Decorated names carry the persona in either part: flipped copied
     //    identities ("impersonated (SourcePersona)") put it inside the parens,
     //    legacy decorations ("SourcePersona (modifier)") put it first.
-    if (msg.webhookId && msg.author) {
+    if (isManagedWebhookMessage(msg) && msg.author) {
       // Matrix bridge messages also arrive as webhooks; a bridged user whose display name
       // happens to match a persona nickname must not register as that persona.
       if (isMatrixBridgeWebhookUsername(msg.author.username)) continue;

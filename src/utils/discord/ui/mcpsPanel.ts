@@ -58,7 +58,18 @@ function sortMcpConfigs(configs: readonly GuildMcpServerRow[]): GuildMcpServerRo
 function typeLabelKey(serverType: string | null | undefined): string {
   if (serverType === "web_search") return "commands.mcps.type_web_search";
   if (serverType === "url_fetcher") return "commands.mcps.type_url_fetcher";
+  if (serverType === "prose_linter") return "commands.mcps.type_prose_linter";
   return "commands.mcps.type_general";
+}
+
+/** A manual enable or disable clears `failure_reason`, so a disabled row that keeps one was disabled automatically. */
+function connectionHealthLine(locale: string, row: GuildMcpServerRow): string | null {
+  if (!row.failure_reason) return null;
+  if (!row.is_enabled) return localizer(locale, `commands.mcps.auto_disabled_${row.failure_reason}`);
+  if (!row.failing_since) return null;
+  return localizer(locale, `commands.mcps.connection_failing_${row.failure_reason}`, {
+    since: `<t:${Math.floor(row.failing_since.getTime() / 1000)}:R>`,
+  });
 }
 
 function buildRetryRow(
@@ -234,6 +245,7 @@ export function buildMcpsPanelComponents(input: McpsPanelRenderInput): Component
         : formattedToolNames
           ? localizer(input.locale, "commands.mcps.tools_known", { tools: formattedToolNames })
           : localizer(input.locale, "commands.mcps.tools_empty");
+    const healthLine = connectionHealthLine(input.locale, row);
     components.push(
       {
         type: ComponentType.TextDisplay,
@@ -244,7 +256,7 @@ export function buildMcpsPanelComponents(input: McpsPanelRenderInput): Component
             status: localizer(input.locale, row.is_enabled ? "commands.mcps.enabled" : "commands.mcps.disabled"),
             type: localizer(input.locale, typeLabelKey(row.server_type)),
           },
-        )}\n> ${toolSnapshot}${
+        )}\n> ${toolSnapshot}${healthLine ? `\n> ${healthLine}` : ""}${
           namePreview.truncated || endpointPreview.truncated
             ? `\n-# ${localizer(
                 input.locale,
@@ -389,6 +401,11 @@ export function buildAddMcpModal(
               value: "url_fetcher",
               label: localizer(locale, "commands.mcps.type_url_fetcher"),
               description: localizer(locale, "commands.mcps.type_url_fetcher_description"),
+            },
+            {
+              value: "prose_linter",
+              label: localizer(locale, "commands.mcps.type_prose_linter"),
+              description: localizer(locale, "commands.mcps.type_prose_linter_description"),
             },
           ],
         },

@@ -2,6 +2,7 @@
 title: "セットアップ: ローカルLLM"
 sidebar:
   order: 1
+aiGenerated: false
 ---
 
 TomoriBotは、テキスト生成や埋め込みに任意のOpenAI互換ローカルLLMサーバーを使用できます。

@@ -191,7 +191,7 @@ export async function generatePresetFromPromptNvidia(
         },
       });
       return {
-        error: `NVIDIA request failed (${response.status}): ${response.statusText}`,
+        error: `NVIDIA request failed (HTTP ${response.status}).`,
         errorType: "CONNECTION",
       };
     }

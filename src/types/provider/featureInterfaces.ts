@@ -1,5 +1,5 @@
-import type { ZodType } from "zod";
-import type { TomoriState } from "@/types/db/schema";
+import { z, type ZodType } from "zod";
+import type { DecisionModelRow, TomoriState } from "@/types/db/schema";
 import type { StructuredContextItem } from "@/types/misc/context";
 import type { CompactRoleplaySummary } from "@/types/misc/compact";
 import type { PresetExportData } from "@/types/preset/presetExport";
@@ -34,9 +34,22 @@ export interface ProviderImageInput {
   mimeType?: string;
 }
 
-export type StructuredOutputResult<T> = { success: true; data: T } | { success: false; error: string };
+export type StructuredOutputResult<T> =
+  | { success: true; data: T }
+  | {
+      success: false;
+      error: string;
+      failure?: "transport" | "malformed" | "refusal" | "cancelled";
+      httpStatus?: number;
+      /** Why a private reply was malformed, so the caller can ask once more with the exact format problem. */
+      malformed?: { reason: "empty" | "unparsable" | "schema"; issues?: string[] };
+    };
 
 export interface ProviderStructuredJsonRequest {
+  abortSignal?: AbortSignal;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
+  /** Private output uses one attempt and returns safe failure metadata to its caller for logging. */
+  privateOutput?: boolean;
   apiKey: string;
   model: string;
   endpointUrl?: string;
@@ -45,6 +58,11 @@ export interface ProviderStructuredJsonRequest {
   images?: ProviderImageInput[];
   temperature?: number;
   maxOutputTokens?: number;
+  /**
+   * The saved provider's `thinking_level`, applied through the same builder as a chat request.
+   * Omitted leaves the model's own default, which the one-shot utility calls rely on.
+   */
+  thinkingLevel?: string;
   schemaName?: string;
 }
 
@@ -259,6 +277,7 @@ export interface SupportsNativeVideoGeneration {
 }
 
 export interface ProviderCapabilityMap {
+  decisions: SupportsDecisions;
   embeddings: SupportsEmbeddings;
   structuredOutput: SupportsStructuredOutput;
   presetGeneration: SupportsPresetGeneration;
@@ -269,3 +288,92 @@ export interface ProviderCapabilityMap {
 }
 
 export type ProviderCapabilityName = keyof ProviderCapabilityMap;
+
+export type DecisionApiStyle = "openrouter-decisions" | "system-one" | "openai-decisions";
+
+export const decisionModelReferenceSchema = z
+  .object({
+    provider: z.string().regex(/^(openrouter|custom:[1-9][0-9]*)$/),
+    modelId: z.number().int().positive(),
+    /** Null for a global catalog row or custom endpoint; scoped registrations retain their exact ID. */
+    registrationId: z.number().int().positive().nullable(),
+    customEndpointId: z.number().int().positive().nullable(),
+  })
+  .refine((reference) =>
+    reference.provider === "openrouter"
+      ? reference.customEndpointId === null
+      : reference.customEndpointId !== null && reference.registrationId === null,
+  );
+export type DecisionModelReference = z.infer<typeof decisionModelReferenceSchema>;
+
+export interface DecisionModelOption {
+  model: DecisionModelRow;
+  reference: DecisionModelReference;
+}
+
+export interface DecisionPredicateQuestion {
+  type: "predicate";
+  id: string;
+  instructions: string;
+}
+
+export interface DecisionInput {
+  evidence: string;
+  questions: readonly DecisionPredicateQuestion[];
+  abortSignal?: AbortSignal;
+  /** Report validated usage before verdict validation, including late cancelled responses. */
+  onUsage?: (usage: DecisionUsage) => void;
+}
+
+export interface ProviderDecisionRequest extends DecisionInput {
+  reference: DecisionModelReference;
+  model: string;
+  inputTokenLimit: number;
+  apiKey: string | null;
+  apiStyle: DecisionApiStyle;
+  endpointUrl?: string;
+  correlationId: string;
+}
+
+export type DecisionAnswer = { type: "predicate"; id: string; probability: number } | { type: "refusal"; id: string };
+
+export interface DecisionUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cachedInputTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
+  costUsd?: number;
+}
+
+export type DecisionFailureCategory =
+  | "http"
+  | "authentication"
+  | "network"
+  | "timeout"
+  | "malformed"
+  | "unexpected"
+  | "credentials";
+
+export type DecisionResult =
+  | {
+      status: "completed" | "refused";
+      answers: DecisionAnswer[];
+      usage?: DecisionUsage;
+      correlationId: string;
+      providerRequestId?: string;
+      actualModel: string;
+    }
+  | { status: "cancelled" | "invalid-input"; correlationId: string; errorLogged: false }
+  | {
+      status: "unavailable";
+      reason: "not-selected" | "unsupported" | "not-owned";
+      correlationId: string;
+      errorLogged: false;
+    }
+  | { status: "failed"; category: DecisionFailureCategory; correlationId: string; errorLogged: true };
+
+export interface SupportsDecisions {
+  callDecisions(request: ProviderDecisionRequest): Promise<DecisionResult>;
+}

@@ -1,6 +1,8 @@
 import JSZip from "jszip";
 import type { EffectiveNaiImageParams } from "@/utils/image/naiImageParams";
 import { log } from "@/utils/misc/logger";
+import { readBoundedResponse } from "@/utils/security/boundedResponse";
+import { getDeclaredUncompressedSize } from "@/utils/zip/zipEntryGuards";
 
 const NAI_IMAGE_BASE_URL = "https://image.novelai.net";
 
@@ -88,17 +90,52 @@ export function classifyNaiImageError(error: unknown): NaiImageErrorKind {
   return "other";
 }
 
-async function extractPngFromZipResponse(response: Response): Promise<Buffer> {
-  const zipBuffer = Buffer.from(await response.arrayBuffer());
-  const zip = await JSZip.loadAsync(zipBuffer);
-  const pngFileName = Object.keys(zip.files).find((name) => name.toLowerCase().endsWith(".png"));
+// One generated PNG is a few megabytes and PNG data barely deflates, so a single cap bounds both
+// the archive and its expanded entry with room to spare for the largest supported resolution.
+const MAX_NAI_ZIP_BYTES = 32 * 1024 * 1024;
+const MAX_NAI_ZIP_ENTRIES = 8;
+const MAX_NAI_ERROR_BODY_BYTES = 4096;
+// Generation queues for seconds, not minutes. A body that trickles past this is abandoned rather
+// than holding the tool, its sockets and its buffers until the outer tool timeout gives up on it.
+const NAI_IMAGE_REQUEST_TIMEOUT_MS = 180_000;
 
-  if (!pngFileName) {
+/** The caller's cancellation joined with a deadline that also covers reading the response body. */
+export function naiImageRequestSignal(abortSignal?: AbortSignal): AbortSignal {
+  const deadline = AbortSignal.timeout(NAI_IMAGE_REQUEST_TIMEOUT_MS);
+  return abortSignal ? AbortSignal.any([abortSignal, deadline]) : deadline;
+}
+
+/** A bounded slice of an error body for the thrown message and its operator log. */
+export async function readNaiErrorSnippet(response: Response): Promise<string> {
+  const body = await readBoundedResponse(response, MAX_NAI_ERROR_BODY_BYTES).catch(() => null);
+  return body ? body.toString("utf8").slice(0, 500) : "";
+}
+
+/**
+ * Extracts the generated PNG from NovelAI's ZIP reply. The archive is read with a byte cap, and
+ * the entry's declared size is checked before it is inflated, because a small archive can declare
+ * and deliver gigabytes.
+ */
+export async function extractPngFromZipResponse(response: Response): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(await readBoundedResponse(response, MAX_NAI_ZIP_BYTES));
+  const entries = Object.values(zip.files).filter((entry) => !entry.dir);
+  if (entries.length > MAX_NAI_ZIP_ENTRIES) {
+    throw new Error(`NovelAI response ZIP has ${entries.length} entries`);
+  }
+  const png = entries.find((entry) => entry.name.toLowerCase().endsWith(".png"));
+  if (!png) {
     throw new Error("NovelAI response ZIP did not contain a PNG file");
   }
-
-  const pngData = await zip.files[pngFileName].async("nodebuffer");
-  return Buffer.from(pngData);
+  // Without a declared size the expansion cannot be bounded before paying for it, so refuse.
+  const declaredSize = getDeclaredUncompressedSize(png);
+  if (declaredSize === null || declaredSize > MAX_NAI_ZIP_BYTES) {
+    throw new Error("NovelAI response PNG declares no size or more than the expanded size limit");
+  }
+  const pngData = await png.async("nodebuffer");
+  if (pngData.length > MAX_NAI_ZIP_BYTES) {
+    throw new Error("NovelAI response PNG exceeds the expanded size limit");
+  }
+  return pngData;
 }
 
 export async function generateNovelAiImage(options: {
@@ -231,12 +268,12 @@ export async function generateNovelAiImage(options: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestPayload),
-      signal: abortSignal,
+      signal: naiImageRequestSignal(abortSignal),
     });
     if (response.ok) return await extractPngFromZipResponse(response);
 
     const correlationId = response.headers.get("x-correlation-id");
-    const errorText = await response.text().catch(() => "");
+    const errorText = await readNaiErrorSnippet(response);
     throw new Error(
       `NovelAI image generation failed (${response.status} ${response.statusText})${correlationId ? ` [correlation-id: ${correlationId}]` : ""}: ${errorText.slice(0, 500)}`,
     );
@@ -268,12 +305,12 @@ export async function generateNovelAiImage(options: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(requestPayload),
-    signal: abortSignal,
+    signal: naiImageRequestSignal(abortSignal),
   });
 
   if (!response.ok) {
     const correlationId = response.headers.get("x-correlation-id");
-    const errorText = await response.text().catch(() => "");
+    const errorText = await readNaiErrorSnippet(response);
     const snippet = errorText.slice(0, 500);
     throw new Error(
       `NovelAI image generation failed (${response.status} ${response.statusText})${correlationId ? ` [correlation-id: ${correlationId}]` : ""}: ${snippet}`,

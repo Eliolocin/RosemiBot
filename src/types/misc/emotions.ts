@@ -2,6 +2,8 @@
  * Enum of 28 emotion categories for emoji and sticker classification
  * Used by /expressions initialize command
  * to categorize emojis/stickers based on their visual emotional expression
+ * All members are consumed dynamically by schemas and classifier prompts.
+ * @public
  */
 export enum EmotionKey {
   ADMIRATION = "admiration",
@@ -42,7 +44,7 @@ export const getAllEmotionKeys = (): string[] => {
 };
 
 /**
- * Emotion keys intentionally excluded from the manual `/expressions edit`
+ * Emotion keys intentionally excluded from the manual `/expressions manage`
  * picker. The full 28-key taxonomy is retained everywhere else (AI classification,
  * storage, any future classifier) , so these three are simply hidden from the manual
  * dropdown so it fits within Discord's 25-option string-select limit. Each was chosen

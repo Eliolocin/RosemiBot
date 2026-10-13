@@ -13,6 +13,7 @@
  * - Chat streaming + tool calling (via VertexStreamAdapter)
  */
 
+import { resolveRequestMaxOutputTokens } from "@/utils/provider/modelLimits";
 import type { ZodType } from "zod";
 import type { GoogleGenAI, HarmBlockThreshold, HarmCategory } from "@google/genai";
 import type {
@@ -71,7 +72,7 @@ import { callGoogleStructuredJSON } from "../google/googleStructuredOutput";
 import { generateConversationSummaryGoogle, generateRoleplaySummaryGoogle } from "../google/compactGenerator";
 import { generatePresetFromPrompt } from "../google/presetGenerator";
 import { validateGoogleModelsEndpoint } from "../google/googleCredentialValidation";
-import { getActiveTemperature, isParamDisabled } from "@/utils/provider/samplingControl";
+import { getActiveTemperature, isParamDisabled, omitGeminiSampling } from "@/utils/provider/samplingControl";
 import { applyDeliberateToolAllowlist } from "@/utils/tools/deliberateToolMode";
 import { resolveToolsEnabled } from "@/utils/tools/toolUseGate";
 
@@ -362,6 +363,7 @@ export class VertexProvider
       const {
         builtInTools: availableBuiltInTools,
         mcpFunctionNames: availableMcpFunctionNames,
+        mcpToolFamilies,
         totalCount,
       } = await getAvailableToolsWithMCP("vertex", toolStateForContext);
 
@@ -378,6 +380,7 @@ export class VertexProvider
         providerLabel: "Vertex provider",
         builtInTools: finalBuiltInTools,
         mcpFunctionNames: finalMcpFunctionNames,
+        mcpToolFamilies,
         allowedToolNames: streamingContext?.deliberateToolAllowedNames,
       }));
 
@@ -405,8 +408,7 @@ export class VertexProvider
   }
 
   async createConfig(tomoriState: TomoriState, apiKey: string): Promise<VertexProviderConfig> {
-    const maxOutputTokens =
-      tomoriState.config.llm_max_output_tokens ?? Number.parseInt(process.env.GOOGLE_MAX_OUTPUT_TOKENS || "8192", 10);
+    const maxOutputTokens = await resolveRequestMaxOutputTokens(tomoriState);
     const disabledParams = tomoriState.config.llm_disabled_params ?? [];
     const temperature = getActiveTemperature(tomoriState.config);
     const topKDisabled = isParamDisabled(disabledParams, "topK");
@@ -436,7 +438,7 @@ export class VertexProvider
           threshold: "BLOCK_NONE",
         },
       ],
-      generationConfig: {
+      generationConfig: omitGeminiSampling(tomoriState.llm.llm_codename, {
         ...(temperature !== undefined && {
           temperature,
         }),
@@ -450,7 +452,7 @@ export class VertexProvider
           }),
         maxOutputTokens,
         stopSequences: [],
-      },
+      }),
     };
 
     // Only attach tools for models that support function calling

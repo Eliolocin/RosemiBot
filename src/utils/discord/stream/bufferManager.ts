@@ -240,13 +240,22 @@ export function hasIncompleteSemanticMarkers(buffer: string): boolean {
     else if (char === ")" && unclosedOpeners > 0) unclosedOpeners--;
   }
   if (unclosedOpeners > 0) {
-    log.info(`Stream: Buffer has unclosed parentheses (open: ${unclosedOpeners})`);
     return true;
   }
 
   const regularQuoteCount = (buffer.match(/"/g) || []).length;
   if (regularQuoteCount % 2 !== 0) {
-    log.info("Stream: Buffer has unclosed quotes");
+    return true;
+  }
+
+  const spoilerScanSegments = extractMarkdownTableSegments(buffer);
+  const spoilerProseText = spoilerScanSegments
+    .filter((seg) => seg.type === "text")
+    .map((seg) => seg.content)
+    .join("");
+  const spoilerScanText = maskInlineCodeAndUrls(spoilerProseText);
+  const spoilerMarkerCount = (spoilerScanText.match(/\|\|/g) || []).length;
+  if (spoilerMarkerCount % 2 !== 0) {
     return true;
   }
 
@@ -255,7 +264,6 @@ export function hasIncompleteSemanticMarkers(buffer: string): boolean {
     ([open, close]) => buffer.split(open).length > buffer.split(close).length,
   );
   if (unclosedQuotePair) {
-    log.info(`Stream: Buffer has an unclosed ${unclosedQuotePair[0]} quote`);
     return true;
   }
 
@@ -268,7 +276,6 @@ export function hasIncompleteSemanticMarkers(buffer: string): boolean {
   for (const marker of HOLD_EMPHASIS_MARKERS) {
     const openMarkers = countOpenEmphasisMarkers(emphasisScanText, marker);
     if (openMarkers > 0) {
-      log.info(`Stream: Buffer has ${openMarkers} unclosed "${marker}" emphasis marker(s)`);
       return true;
     }
   }
@@ -280,37 +287,31 @@ export function hasIncompleteSemanticMarkers(buffer: string): boolean {
 
   if (openBrackets > closeBrackets || openParens > closeParens) {
     if (buffer.includes("[") && (buffer.includes("](") || buffer.endsWith("]("))) {
-      log.info("Stream: Buffer might contain incomplete markdown link");
       return true;
     }
   }
 
   if (buffer.match(/https?:$|https?:\/$|https?:\/\/$/)) {
-    log.info("Stream: Buffer ends with incomplete URL protocol");
     return true;
   }
 
   if (hasTrailingIncompleteMarkdownTable(buffer)) {
-    log.info("Stream: Buffer ends with an incomplete markdown table");
     return true;
   }
 
   // Hold the buffer when it ends mid think tag (incl. namespaced variants like
   // `<mm:think>`) so a split marker is not flushed as visible text.
   if (endsWithReasoningTagPrefix(buffer)) {
-    log.info("Stream: Buffer ends with partial think tag prefix");
     return true;
   }
 
   if (/<details(?:\s[^>]*)?$/.test(buffer)) {
-    log.info("Stream: Buffer ends with partial or unclosed <details> tag");
     return true;
   }
 
   const DETAILS_PREFIX = "<details";
   for (let len = DETAILS_PREFIX.length - 1; len >= 1; len--) {
     if (buffer.endsWith(DETAILS_PREFIX.slice(0, len))) {
-      log.info("Stream: Buffer ends with partial <details> tag prefix");
       return true;
     }
   }
@@ -384,6 +385,13 @@ function appendUnbalancedMarkerClosers(buffer: string): string {
     fixes.push("markdown strikethrough (~~)");
   }
 
+  const spoilerScanText = maskInlineCodeAndUrls(fixedBuffer);
+  const spoilerPipes = (spoilerScanText.match(/\|\|/g) || []).length;
+  if (spoilerPipes % 2 !== 0) {
+    fixedBuffer += "||";
+    fixes.push("discord spoiler (||)");
+  }
+
   if (fixedBuffer.match(/\[[^\]]+\]\([^)]*$/)) {
     fixedBuffer += ")";
     fixes.push("markdown link closing parenthesis");
@@ -393,9 +401,7 @@ function appendUnbalancedMarkerClosers(buffer: string): string {
   }
 
   if (fixes.length > 0) {
-    log.info(
-      `Stream Auto-Close: Applied fixes - ${fixes.join(", ")} to buffer: "${buffer.substring(0, 100)}${buffer.length > 100 ? "..." : ""}"`,
-    );
+    log.info(`Stream Auto-Close: Applied fixes - ${fixes.join(", ")} (${buffer.length} buffer chars)`);
   }
 
   return fixedBuffer;

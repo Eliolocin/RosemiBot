@@ -4,6 +4,7 @@ sidebar:
   label: "Visão Geral"
   groupLabel: "Endpoints Locais e de Hospedagem Própria"
   order: 4
+aiGenerated: false
 ---
 
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
@@ -48,6 +49,8 @@ Escolha uma capacidade para configurar:
 ## Ferramentas Personalizadas
 
 <CardGrid>
+  <LinkCard title="slop-guard" href="/pt-BR/self-hosting/local-endpoints/setup-slop-guard/"
+    description="Um verificador de prosa baseado em regras que a Revisão de respostas pode usar como verificador de regras." />
   <LinkCard title="Servidor MCP Local" href="/pt-BR/self-hosting/local-endpoints/setup-local-mcp/"
     description="Execute um servidor MCP local para estender o TomoriBot com suas próprias ferramentas (apenas instâncias de hospedagem própria)." />
 </CardGrid>
@@ -63,6 +66,9 @@ bun run launch
 # Com os contêineres Docker do SearXNG e Crawl4AI
 bun run launch --searxng --crawl4ai
 
+# Com o verificador de prosa slop-guard para Revisão de respostas
+bun run launch --slopguard
+
 # Com um servidor TTS local (o venv deve ser configurado primeiro — veja o guia de Text-to-Speech abaixo)
 bun run launch --qwen3tts
 bun run launch --fishs2
@@ -73,8 +79,8 @@ bun run launch --cosyvoice3
 bun run launch --help
 ```
 
-Flags disponíveis: `--searxng`, `--crawl4ai`, `--qwen3tts`, `--chatterbox`, `--irodoritts`, `--voxcpm2`, `--fishs2`, `--cosyvoice3`, `--moss`, `--whisperx`
+Flags disponíveis: `--searxng`, `--crawl4ai`, `--slopguard` (alias `--slop-guard`), `--qwen3tts`, `--chatterbox`, `--irodoritts`, `--voxcpm2`, `--fishs2`, `--cosyvoice3`, `--moss`, `--whisperx`
 
-Os servidores baseados em Docker (`--searxng`, `--crawl4ai`) são criados na primeira execução e reutilizados nas execuções subsequentes. Os servidores TTS/STT em Python exigem que seu venv seja configurado uma vez de antemão; veja os guias individuais de configuração em [Text-to-Speech](/pt-BR/self-hosting/local-endpoints/text-to-speech/) e [Speech-to-Text](/pt-BR/self-hosting/local-endpoints/speech-to-text/).
+Os servidores baseados em Docker (`--searxng`, `--crawl4ai`, `--slopguard`) são criados na primeira execução e reutilizados nas execuções subsequentes. Os servidores TTS/STT em Python exigem que seu venv seja configurado uma vez de antemão; veja os guias individuais de configuração em [Text-to-Speech](/pt-BR/self-hosting/local-endpoints/text-to-speech/) e [Speech-to-Text](/pt-BR/self-hosting/local-endpoints/speech-to-text/).
 
-Ctrl+C para o bot e qualquer processo de servidor em Python. Os contêineres Docker são intencionalmente mantidos em execução. Pare-os manualmente com `docker stop searxng` / `docker stop crawl4ai` quando terminar.
+Ctrl+C para o bot e qualquer processo de servidor em Python. Os contêineres Docker são intencionalmente mantidos em execução. Pare-os manualmente com `docker stop searxng`, `docker stop crawl4ai` ou `docker stop slop-guard` quando terminar.

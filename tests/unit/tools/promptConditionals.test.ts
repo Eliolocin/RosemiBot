@@ -1,9 +1,14 @@
-import { describe, expect, it } from "bun:test";
+import { beforeEach, afterEach, describe, expect, it, spyOn } from "bun:test";
+import { getGuildMcpManager, type GuildMcpRouting } from "@/utils/mcp/guildMcpManager";
+import type { GuildMCPConnection } from "@/types/tool/mcpTypes";
+import type { GuildMcpServerRow } from "@/types/db/schema";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AssembledServerConfig } from "@/types/db/schema";
 import type { ToolStateForContext } from "@/tools/toolRegistry";
+import { DOCUMENT_HINT_TEMPLATE } from "@/utils/text/context/dialogueHistory";
 import { DEFAULT_SYSTEM_PROMPT } from "@/utils/text/context/templates";
+import { SPACER_TEMPLATE } from "@/utils/text/context/timeAwareness";
 import { findUnsupportedPresetMacros } from "@/utils/text/stPresetEngine";
 import {
   createToolPromptMacroResolver,
@@ -166,6 +171,14 @@ describe("prompt conditionals", () => {
 });
 
 describe("prompt macro resolver condition integration", () => {
+  let routing: ReturnType<typeof spyOn<ReturnType<typeof getGuildMcpManager>, "getGuildMCPRouting">>;
+  beforeEach(() => {
+    routing = spyOn(getGuildMcpManager(), "getGuildMCPRouting").mockResolvedValue({
+      routes: new Map(),
+      replaced: new Set(),
+    });
+  });
+  afterEach(() => routing.mockRestore());
   it("keeps the migration rollback fallback synchronized", () => {
     const migration = readFileSync(
       join(process.cwd(), "src/db/migrations/061_default_system_prompt_read_time.down.sql"),
@@ -215,6 +228,30 @@ describe("prompt macro resolver condition integration", () => {
     expect(expanded).toBe("no-memory/search");
   });
 
+  it("names a tool in a context hint only when the turn exposes it", async () => {
+    const hints = [
+      { template: DOCUMENT_HINT_TEMPLATE, toolName: "read_file" },
+      { template: SPACER_TEMPLATE, toolName: "reveal_message_metadata" },
+    ];
+    const failures: string[] = [];
+    for (const { template, toolName } of hints) {
+      for (const allowed of [true, false]) {
+        const resolver = createToolPromptMacroResolver({
+          provider: "google",
+          stateForContext: TOOL_STATE,
+          capabilities: ENABLED_CAPABILITIES,
+          availableToolNames: new Set([toolName, "web_search"]),
+          deliberateToolAllowedNames: allowed ? [toolName] : ["web_search"],
+        });
+        const expanded = await resolver.expand(template);
+        if (expanded.includes(toolName) !== allowed || expanded.includes("{{")) {
+          failures.push(`${toolName} allowed=${allowed}: ${expanded}`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
   it("hides tool branches when the active model cannot call tools", async () => {
     const resolver = createToolPromptMacroResolver({
       provider: "google",
@@ -261,6 +298,19 @@ describe("prompt macro resolver condition integration", () => {
     });
 
     const bundled = await bundledResolver.expand(DEFAULT_SYSTEM_PROMPT);
+    const selected: GuildMcpRouting = {
+      routes: new Map([
+        [
+          "read_webpage",
+          {
+            config: { server_type: "url_fetcher" } as GuildMcpServerRow,
+            connection: {} as GuildMCPConnection,
+          },
+        ],
+      ]),
+      replaced: new Set(["url_fetcher"]),
+    };
+    routing.mockResolvedValue(selected);
     const guild = await guildResolver.expand(DEFAULT_SYSTEM_PROMPT);
 
     expect(bundled).toContain("`review_capabilities`");

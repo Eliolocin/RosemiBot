@@ -76,12 +76,25 @@ interface StreamRenderModifierState {
   };
   /** Present when the active render modifier is a persona sprite. */
   spriteRecord?: SpriteMessageRecordInfo;
+  /**
+   * The alter's base appearance under the decorated "Persona (neutral)" name, held after a
+   * plain-label revert so the base lines that follow keep one username and still group.
+   */
+  isNeutralAppearance?: boolean;
 }
 
 /**
  * Stream state tracking for buffer management and code block and think block detection
  */
 export interface StreamState {
+  pendingResponseText?: string;
+  pendingResponseSegments?: Array<{
+    text: string;
+    boundary?: import("@/utils/discord/stream/messageDelivery").BufferedDeliveryBoundary;
+    codeBlock: boolean;
+  }>;
+  pendingResponseBytes?: number;
+  pendingResponseTruncation?: import("@/types/stream/pendingResponse").PendingResponseTruncation;
   buffer: string;
   isInsideCodeBlock: boolean;
   isInsideThinkBlock: boolean;
@@ -98,8 +111,8 @@ export interface StreamState {
   accumulatedText: string; // Track all text sent to Discord for short-term memory
   prefillTarget?: string; // Prefill text to strip from streamed output (hybrid prefix)
   prefillMatched: number; // Number of prefill chars matched/stripped so far
-  prefillInjected: boolean; // Whether the prefill has been injected into output
   prefillMatchFailed: boolean; // Whether prefill matching failed (no stripping)
+  prefillHeld: string; // Segment text withheld while a partial echo match spans segments
   thoughtSummarySegments: string[];
   thoughtRawSegments: string[];
   /** OpenRouter-only: upstream serving provider/endpoint (e.g. "minimax-cn") for thought logs. */
@@ -120,6 +133,11 @@ export interface StreamState {
   pendingAggregateJoinNextWithBlankLine: boolean;
   /** Active render-modifier identity for the current generated line. */
   activeRenderModifier?: StreamRenderModifierState;
+  /**
+   * Whether the next flushed segment begins a line. Sentence ("period") and overflow flushes
+   * split mid-line, and a plain own-name label there is prose, not a return to the base persona.
+   */
+  nextSegmentOpensLine?: boolean;
   /**
    * Sprite labels delivered during this stream, in render order (one entry per
    * delivered sprite message, repeats kept). Drained into StreamResult.spritesShown
@@ -203,8 +221,8 @@ export function createDefaultStreamState(): StreamState {
     accumulatedText: "", // Initialize empty for short-term memory tracking
     prefillTarget: undefined,
     prefillMatched: 0,
-    prefillInjected: false,
     prefillMatchFailed: false,
+    prefillHeld: "",
     thoughtSummarySegments: [],
     thoughtRawSegments: [],
     firstReplyUrl: undefined,
@@ -212,6 +230,7 @@ export function createDefaultStreamState(): StreamState {
     pendingAggregatedText: "",
     pendingAggregateJoinNextWithBlankLine: false,
     activeRenderModifier: undefined,
+    nextSegmentOpensLine: true,
     spritesShown: [],
     usage: undefined,
   };

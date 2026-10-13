@@ -1,5 +1,6 @@
 export default {
   status: {
+    prompt_hidden: `提示詞文字已隱藏。成員需要擁有「管理伺服器」權限或已啟用的提示詞檢視設定才能查看。`,
     description: `顯示目前的個人、伺服器或人格狀態。`,
     scope_choice_behavior: `行為`,
     scope_choice_models: `模型`,
@@ -208,6 +209,7 @@ export default {
     mcp_server_type_custom: `自訂`,
     mcp_server_type_web_search: `網頁搜尋`,
     mcp_server_type_url_fetcher: `URL 擷取器`,
+    mcp_server_type_prose_linter: `文章檢查器`,
     mcp_server_auth_present: `已驗證`,
     mcp_server_auth_absent: `未驗證`,
     field_avatar: `頭像`,

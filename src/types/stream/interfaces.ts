@@ -113,15 +113,18 @@ export interface StreamContext {
   personaAvatarUrl?: string; // Avatar URL or data URI for current persona
   personaUsername?: string; // Username override for current persona (shown in Discord UI)
   prefixStrippingName?: string; // Name used for prefix stripping (may differ from personaUsername for user impersonation)
+  impersonatedSpeakerLabel?: string; // Naming-aware label the impersonation prompt asks the model to open with; stripped like prefixStrippingName
 
   forcedMentions?: Array<{
     handle: string;
     userId: string;
   }>;
 
+  /** The attempt's `{bot}: {text}` prefill: stripped when the model echoes it, never shown. */
   outputPrefill?: string;
-  outputPrefillState?: { sent: boolean };
 
+  holdResponseText?: boolean;
+  pendingResponseLimit?: import("@/types/stream/pendingResponse").PendingResponseLimit;
   suppressTextOutput?: boolean;
 
   // NAI GLM-4.6 prompt continuation: incomplete trailing fragment from previous stream, appended to the
@@ -140,6 +143,7 @@ export interface StreamContext {
 
   /** Internal `users` FK of the turn's triggerer; scopes provider-failure telemetry. */
   triggererUserId?: number;
+  triggererDiscId?: string;
 
   // Shared sink (reference threaded from StreamingContext) that the orchestrator appends to on
   // every successful send, so runGenerationTurn can delete a superseded attempt's partial output.

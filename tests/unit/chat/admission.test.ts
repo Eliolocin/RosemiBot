@@ -456,9 +456,7 @@ describe("evaluateChatAdmission message-proxy lookup failure", () => {
 
     const fetchMock = mock(async (_input: RequestInfo | URL, init?: RequestInit) => stallUntilAborted(init?.signal));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
-    // The blacklist stops admission right after the lookup stage. That the check runs at
-    // all against the webhook's own author is the point: a fabricated host identity would
-    // have re-keyed authorization to the host account instead.
+    // A failed attestation must not grant the foreign webhook a host identity or authorization.
     const personasSpy = spyOn(personaRepository, "loadAllForServer").mockResolvedValue([]);
     const privacySpy = spyOn(userRepository, "getPrivacyLevel").mockResolvedValue(PrivacyLevel.MINIMAL);
     const blacklistSpy = spyOn(userRepository, "isBlacklisted").mockResolvedValue(true);
@@ -484,7 +482,13 @@ describe("evaluateChatAdmission message-proxy lookup failure", () => {
           client: { user: { id: "tomori" } },
           author: { id: webhookAuthorId, bot: true, username: "Mirri" },
           guild: { id: guildId, members: { cache: { get: () => null } } },
-          channel: { id: channelId, type: ChannelType.PublicThread },
+          channel: {
+            id: channelId,
+            type: ChannelType.PublicThread,
+            isThread: () => true,
+            parentId: "proxy-parent",
+            messages: { cache: new Map() },
+          },
         },
         isManuallyTriggered: false,
       } as unknown as ChatIncoming;
@@ -497,8 +501,8 @@ describe("evaluateChatAdmission message-proxy lookup failure", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(getMessageProxyRouteMetricsSnapshot()).toMatchObject({ timeout_or_error: 1, unmatched: 0 });
       expect(getMessageProxyMessageRecord(webhookMessageId)).toBeNull();
-      expect(blacklistSpy).toHaveBeenCalledWith(guildId, webhookAuthorId);
-      expect(admission.disposition === "run" ? null : admission.reason).toBe("server_blacklisted_user");
+      expect(blacklistSpy).not.toHaveBeenCalled();
+      expect(admission.disposition === "run" ? null : admission.reason).toBe("untrusted_webhook");
     } finally {
       for (const spy of [personasSpy, privacySpy, blacklistSpy, instanceSpy]) spy.mockRestore();
       clearMessageProxyExpectationStateForTests();
@@ -594,7 +598,13 @@ describe("evaluateChatAdmission verified proxy follow-ups", () => {
         client: { user: { id: "tomori" } },
         author: { id: "999000000000000061", bot: true, username: "Mirri", avatar: null },
         guild: { id: guildId, members: { cache: { get: () => null } } },
-        channel: { id: channelId, type: ChannelType.PublicThread, messages: { cache: new Map() } },
+        channel: {
+          id: channelId,
+          type: ChannelType.PublicThread,
+          isThread: () => true,
+          parentId: "proxy-parent",
+          messages: { cache: new Map() },
+        },
       },
       isFromQueue: false,
       isManuallyTriggered: false,

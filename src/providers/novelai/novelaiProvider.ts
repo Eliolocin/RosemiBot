@@ -9,6 +9,7 @@
  * - Specializes in creative storytelling and roleplay
  */
 
+import { resolveRequestMaxOutputTokens } from "@/utils/provider/modelLimits";
 import type {
   BaseGuildTextChannel,
   BaseGuildVoiceChannel,
@@ -220,6 +221,7 @@ export class NovelaiProvider extends BaseLLMProvider implements LLMProvider {
       const {
         builtInTools: availableBuiltInTools,
         mcpFunctionNames: availableMcpFunctionNames,
+        mcpToolFamilies,
         totalCount,
       } = await getAvailableToolsWithMCP("novelai", toolStateForContext);
 
@@ -236,6 +238,7 @@ export class NovelaiProvider extends BaseLLMProvider implements LLMProvider {
         providerLabel: "NovelAI provider",
         builtInTools: finalBuiltInTools,
         mcpFunctionNames: finalMcpFunctionNames,
+        mcpToolFamilies,
         allowedToolNames: streamingContext?.deliberateToolAllowedNames,
       }));
 
@@ -276,7 +279,7 @@ export class NovelaiProvider extends BaseLLMProvider implements LLMProvider {
       apiKey: apiKey,
       temperature: getActiveTemperature(tomoriState.config) ?? tomoriState.config.llm_temperature,
       disabledParams: tomoriState.config.llm_disabled_params ?? [],
-      maxOutputTokens: tomoriState.config.llm_max_output_tokens ?? 2048,
+      maxOutputTokens: await resolveRequestMaxOutputTokens(tomoriState),
       tools: tools,
     };
   }

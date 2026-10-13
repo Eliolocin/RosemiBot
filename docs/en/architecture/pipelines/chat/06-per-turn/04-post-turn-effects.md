@@ -1,244 +1,92 @@
 ---
 title: "06.4: Post-Turn Effects"
+aiGenerated: true
 ---
 
-Side-effect sequence after generation completes.
+The post-turn stage executes side effects after generation finishes. It coordinates empty-response
+retries, text quota consumption, self-reply tracking, short-term memory caching, thought logging,
+cross-channel boomerangs, and usage statistics.
 
-- **File**: `src/utils/chat/postTurnEffects.ts:21-28`
+## Flow and ownership
 
-## Mission
+`runPostTurnEffects()` in `src/utils/chat/postTurnEffects.ts` runs after `runGenerationTurn()` settles:
 
-Run the post-generation side effects that depend on the produced result.
-Eight ordered steps: selected-sticker delivery, empty-response retry,
-text-quota consumption, self-reply chain bookkeeping, short-term memory write,
-thought-log emission, boomerang follow-up scheduling, and fire-and-forget usage
-statistics. Recoverable delivery/storage failures are logged without breaking
-the completed turn.
+```
+ChatTurnContext & GenerationTurnResult
+  │
+  ├─► 1. recordReunionPresence()           ──► commits or releases triggerer presence claim
+  ├─► 2. maybeScheduleEmptyResponseRetry() ──► re-enters tomoriChat(skipLock=true) on empty output
+  ├─► 3. consumeTextQuota()                ──► charges server text quota on non-empty reply
+  ├─► 4. updateSelfReplyBookkeeping()      ──► updates last-responded persona and chain counters
+  ├─► 5. writeShortTermMemory()            ──► stores conversation turn in STM cache per persona
+  ├─► 6. emitThoughtLog()                  ──► sends reasoning or BYOK attribution embeds
+  ├─► 7. scheduleBoomerangFollowUp()       ──► schedules cross-channel re-entry via setImmediate
+  ├─► 8. rememberLastReplyUsage()          ──► caches prompt token usage for /context inspection
+  └─► 9. recordUsageStats()                ──► fire-and-forget dispatch of turn & token metrics
+```
 
-## Input
+### Side effect sequence
 
-- `ChatTurnContext` (the closure built in per-turn stage 01).
-- `GenerationTurnResult` (from per-turn stage 03).
+1. **Reunion presence**: `recordReunionPresence()` commits or releases the direct-triggerer presence
+   claim before any retry can rebuild context.
+2. **Empty-response retry**: if `result.status === "empty_response"` and `retryCount < MAX_EMPTY_RESPONSE_RETRIES` (2):
+   - Waits `EMPTY_RESPONSE_RETRY_DELAY_MS` (1000ms).
+   - If caused by a speaker guard trigger or foreign speaker label leak, it prepends a speaker-guard directive
+     via `buildSpeakerGuardRetryDirective()`.
+   - Re-enters `tomoriChat()` with `skipLock=true`, incremented `retryCount`, pinned persona, and carried
+     expression delivery receipts so already-posted stickers or reactions are not duplicated.
+   - Upon retry exhaustion, deliberate turns post a warning embed while passive autochat turns stay silent.
+3. **Text quota consumption**: `consumeTextQuota()` checks whether text quota was armed during admission
+   and the response was non-empty. If so, it increments the server quota via `incrementTextQuota()` and
+   marks the trigger key consumed in `textQuotaTriggerStates`.
+4. **Self-reply bookkeeping**: on non-empty responses, `setLastRespondedPersona()` records which persona
+   spoke last. For non-stop real user messages, it increments `selfReplyChainState.triggerCount`.
+5. **Short-term memory write**: for non-stop responses where the user is not full-privacy,
+   `writeShortTermMemory()` saves conversation turns to cache via `storeShortTermMemory()` for each responding
+   persona. It then increments the cadence counter via `incrementStmTurnCounter()`, driving proactive memory
+   refresh nudges in future turns.
+6. **Thought log emission**: if a thought-log channel is configured in a guild text channel, `emitThoughtLog()`
+   sends reasoning and duration details via `sendThoughtLogEmbed()`. If personal BYOK was used without reasoning,
+   it sends an attribution embed crediting the user's provider. Like tool notices and image diagnostics, it
+   copies only when `canMirrorToThoughtLog()` confirms the log is in the same guild and everyone there can
+   already read the source channel (or a public thread's parent) with no `ViewChannel` deny overwrite.
+   The bot cannot list who reads the log, so a private thread, a private-listed channel, or an
+   undeterminable audience is never mirrored. Each refusal logs its reason, at warn level only for an
+   undeterminable audience.
+7. **Boomerang follow-up**: if the turn invoked the cross-channel message tool, `scheduleBoomerangFollowUp()`
+   consumes the pending boomerang. It schedules a re-entry in the source channel via `setImmediate`,
+   calling `suppressNextSelfReply()` so the follow-up does not trigger self-reply suppression.
+8. **Last reply token cache**: `rememberLastReplyUsage()` caches the prompt token count in `lastReplyUsageCache`
+   so the `/context` command can display prompt token consumption.
+9. **Usage statistics**: `recordUsageStats()` dispatches fire-and-forget database writes recording model
+   usage, token counts, and delivery-gated expression stats (emojis and sprites).
 
-## Output
+## Constraints and rationale
 
-`Promise<void>`: terminal stage for this turn iteration.
+- **Non-blocking failure tolerance**: errors in secondary side effects (such as memory writes, thought logs,
+  or usage stats) are caught and logged, so completed replies are never disrupted by cache or logging errors.
+- **Single quota deduction**: text quota increments at most once per trigger sequence, requiring a successful,
+  non-empty response.
+- **Coordinated re-entrancy**: recursive calls explicitly declare lock behavior: empty-response retries reuse
+  the active lock (`skipLock=true`), whereas cross-channel boomerangs defer execution until after lock release
+  via `setImmediate`.
 
-## Side effects
+## Response review accounting
 
-Steps run in this order:
+With Response Drafting On, `GenerationTurnResult.usageEntries` carries actual author, reviewer and
+Decision usage across failed attempts, discarded drafts and cancellation. `recordUsageStats` drains
+that ledger before requiring delivered dialogue and retains a recorder for late usage. Late verdicts
+cannot authorize delivery. Missing usage stays unknown; discarded draft length supplies no estimate.
+Reviewer and Decision counters are subsets of total tokens, so cost attribution does not bill them
+twice. DMs retain their exclusion from persistent guild telemetry. Off keeps ordinary usage accounting.
 
-### 1. `sendSelectedSticker`
+Only Discord-accepted presentation populates `personaResponses` for memory and reply quotas.
+Superseded drafts and held narration consume neither. Expression receipts and tool telemetry still
+describe their actual effects independently of prose review.
 
-If a completed `GenerationTurnResult` carries `selectedSticker`:
+## Source pointers
 
-- The sticker URL is sent through a webhook using the identity the stream last
-  delivered under, read from `getChannelDeliveredWebhookIdentity()`, forwarding
-  the thread ID where applicable. The webhook is taken from
-  `responseTarget.webhook` when present and otherwise resolved lazily via
-  `resolveManagedChannelWebhook()`, since the main persona has none.
-- This is not gated on `is_alter`: the main persona also delivers through a
-  webhook whenever a sprite renders, and the sticker must match it.
-- The recorded username is reused verbatim: it may be the decorated
-  `Persona (sprite)` form chosen by the group-break alternation. Re-resolving the
-  persona's default identity would yield a different name, and Discord would
-  split the sticker into its own message group instead of attaching it to the
-  message it belongs with.
-- A null identity means the last delivery was an ordinary bot message, so the
-  sticker follows: a queued turn replies to the trigger message with the native
-  sticker; a non-queued turn sends it directly to the channel. The same path is
-  the fallback if the webhook send fails.
-- A `50081 Cannot use this sticker` rejection is permanent for that ID rather
-  than transient, so the sticker is retired via `markStickerRejected()`
-  (`utils/discord/stickerAvailability.ts`) and logged at `warn`. Without that
-  retirement the sticker stays in the Discord cache, stays in the candidate list
-  the model is shown, and gets reselected on the next turn. Retirement is
-  process-local: a restart refetches every guild's stickers, which is also when
-  a restored boost tier should get a clean slate.
-- Other final delivery failures are logged at `error` with the server and
-  sticker IDs and do not propagate.
-
-### 2. `maybeScheduleEmptyResponseRetry`
-
-If `result.status === "empty_response"` and `incoming.retryCount <
-MAX_EMPTY_RESPONSE_RETRIES` (default 2):
-
-- Logs the current attempt and terminal finish reason.
-- Sleeps `EMPTY_RESPONSE_RETRY_DELAY_MS` (default 1000ms).
-- If the empty-response reason was `"speaker_guard"`, prepends a synthetic
-  speaker-guard directive to `injectedContextItems` via
-  `buildSpeakerGuardRetryDirective`.
-- Re-enters `tomoriChat()` with `skipLock=true`, `retryCount + 1`,
-  `selectedPersonaId` pinned to the same persona, and the OpenRouter
-  finish-reason-length flag forwarded so stage 03 can trim history.
-
-The `"speaker_guard"` reason is produced both by the config-gated mid-text
-speaker guard and by the always-on opening-label leak guard (a response
-opening with a foreign speaker label like `Chris (smug):`: see provider
-stage 06). The stream side reads `incoming.retryCount` (threaded through
-`StreamingContext.emptyResponseRetryCount`) to strip-and-deliver instead of
-discarding once this retry budget is exhausted, so leak turns degrade to a
-label-stripped reply rather than silence.
-
-The speaker-guard retry directive allows a `Name (sprite):` opening when the discarded turn had a
-persona-sprite prompt. Without that prompt, it asks for `Name:` only.
-
-When the retry budget is exhausted:
-
-- Deliberate turns (`context.shouldSurfaceUserErrors === true`) receive the
-  localized `genai.empty_response_*` warning embed.
-- Passive autochat and other non-deliberate turns log the exhaustion without
-  posting an error embed into the conversation.
-- User-impersonation turns throw an error back to their command flow instead
-  of posting the standard warning embed.
-
-### 3. `consumeTextQuota`
-
-If `shouldApplyTextQuota` was true, quota state exists, it wasn't already
-consumed, and the response was non-empty:
-
-- `incrementTextQuota(serverId, userDiscId)`.
-- Marks the quota state consumed and writes it back to
-  `textQuotaTriggerStates`.
-
-### 4. `updateSelfReplyBookkeeping`
-
-If the response was non-empty:
-
-- `setLastRespondedPersona(channel.id, persona_id)`: records which persona
-  spoke last (used by stage 05 self-message persona-rotation).
-- Increments `selfReplyChainState.triggerCount` for non-manual, non-reminder,
-  non-stop real responses. If the message was a self-message, also sets
-  `lastWasSelf = true`.
-
-### 5. `writeShortTermMemory`
-
-If not a stop response, history is non-empty, user is not privacy-FULL, and
-the response was non-empty:
-
-- Builds the user/persona conversation entries plus persona responses (one
-  entry per responding persona); the STM cache applies its configured
-  per-channel storage cap.
-- Calls `storeShortTermMemory(...)` once per unique persona ID (or once with
-  `null` if no persona IDs are known).
-- After storing the short-term memory entries, advances the STM cadence
-  counter via `incrementStmTurnCounter()`. The counter tracks
-  bot-participation cycles (not raw inbound messages) and is scoped to the
-  live STM row (server-shared in guilds, user-scoped in DMs). It increments
-  unconditionally (whether or not an STM was written this turn) and is reset
-  to `0` only when the bot calls `update_short_term_memory`. The counter
-  value gates the unified create/update nudge in the context-build STM stage.
-- Failures are logged but don't propagate.
-
-### 6. `emitThoughtLog`
-
-If a `thought_log_channel_disc_id` is configured, the source channel isn't
-DM, and the source channel isn't in the persona's `private_channel_ids`:
-
-- If `thoughtLog` has content (provider emitted reasoning/thinking blocks):
-  computes `generationDurationMs = now - message.createdTimestamp`, sends a
-  full thought-log embed via `sendThoughtLogEmbed`.
-- Else if the response was via personal BYOK (`textCredentialSource ===
-  "personal"`): sends an attribution-only embed crediting the user's
-  provider.
-- Else: no-op.
-
-### 7. `scheduleBoomerangFollowUp`
-
-Schedules a `setImmediate` callback:
-
-- Checks `consumePendingBoomerang(channel.id)`, set by the
-  `crossChannelMessage` tool when the active turn used it.
-- If pending, fetches the latest message in the boomerang's source channel,
-  calls `suppressNextSelfReply(sourceChannel.id)` to prevent the boomerang
-  from triggering its own self-reply detection, and re-enters
-  `tomoriChat()` against the source channel with the boomerang's persona +
-  injected context.
-
-### 8. `recordUsageStats`
-
-Starts fire-and-forget recording for completed persona responses: turn/model,
-token, impersonation, emoji, and sprite metrics.
-
-Expression metrics are delivery-gated: they count what Discord accepted, not
-what the model produced. `emoji_used` is therefore scanned from each stream
-segment's `StreamResult.accumulatedText` (appended only inside the post-send
-`recordSuccessfulSend` block) rather than from `personaResponses[].text`, which
-is the short-term-memory payload and carries the `[Scene Metadata]` block drained
-out of `<details>` (content that never reaches the channel). Scanning the
-segments also picks up text delivered *before* a tool call, which the response
-text drops because stream state is fresh per `streamOnce`.
-
-`sticker_used` follows the same rule from its own delivery site: it is recorded
-in `recordStickerDelivery`, called by `sendSelectedSticker` once a webhook or
-native send succeeds, not at tool-selection time.
-
-## Invariants
-
-After this stage runs:
-
-- The text-quota state for this trigger is *consumed exactly once* per
-  successful turn-sequence (across multiple personas responding to the same
-  trigger, only the first non-empty response increments).
-- `setLastRespondedPersona` reflects the last persona to actually speak in
-  this channel, used by the next turn's persona-rotation logic.
-- Short-term memory entries are scoped per-persona-ID (so each persona has
-  its own conversational continuity in the cache).
-- The STM cadence counter (`turnsSinceRefresh`) advances once per
-  bot-participation cycle after each STM write.
-- A pending boomerang from this turn is consumed exactly once.
-- A selected sticker is delivered only for a completed result and always after
-  the provider text stream has finalized.
-- Recursive re-entries (empty-response retry, boomerang) are *scheduled*
-  with the appropriate flags (`skipLock=true` for retry,
-  `suppressNextSelfReply` for boomerang) so they do not interfere with the
-  outer lock or self-reply chain semantics.
-- Empty-response exhaustion is user-visible only for deliberate turns;
-  passive and internal chat turns remain silent.
-
-## Extension points
-
-This is the richest plugin surface in the chat pipeline. Each of the six
-steps is an independent side-effect concern that a plugin might want to
-extend or replace:
-
-| Step | Named helper | Plugin-relevance |
-|---|---|---|
-| Sticker delivery | `sendSelectedSticker` | Post-stream media companion path; reuses the last delivered webhook identity, with native-sticker fallback |
-| Empty-response retry | `maybeScheduleEmptyResponseRetry` | Retry policy (provider-specific): extension via per-provider hook |
-| Text-quota consumption | `incrementTextQuota` | Quota-manager subsystem; plugins shipping their own quotas would add hooks here |
-| Self-reply bookkeeping | `setLastRespondedPersona`, `getSelfReplyChainState` | Cascade-trigger limit semantics; coupled to stage 05 |
-| Short-term memory write | `storeShortTermMemory` | → [memory pipeline: STM Stage 01](../../memory/stm/01-passive-capture) |
-| Thought-log emission | `sendThoughtLogEmbed`, `sendAttributionOnlyEmbed` | New "logging channel kinds" plug in here |
-| Boomerang follow-up | `consumePendingBoomerang`, `buildBoomerangContext` | Cross-channel-tool-specific; one plugin (the cross-channel tool) owns the pending-boomerang state |
-| Usage statistics | `recordUsageStats` | Post-turn metrics chokepoint; intentionally fire-and-forget |
-
-- **The sequencing matters**: sticker delivery runs first but is completed-turn
-only; an empty result therefore proceeds directly to retry handling. Quota
-consumption runs *before* memory write so quota
-exhaustion doesn't pollute the memory cache; boomerang runs *last* via
-`setImmediate` (before the non-blocking stats dispatch) so the outer lock has
-released before the cross-channel re-entry attempts to acquire its own lock.
-
-A future plugin extension for "add a new post-turn hook" would likely take
-the form of a hook list (`postTurnHooks: PostTurnHook[]`) where each hook
-runs after the built-in steps with the same `(context, result)` signature.
-→ plugin plan candidate.
-
-## Configuration
-
-| Constant | Default | Purpose |
-|---|---|---|
-| `MAX_EMPTY_RESPONSE_RETRIES` | `2` | Cap on empty-response retry chain (shared constant in `src/utils/discord/stream/constants.ts`; also read by the stage 06 opening-label leak guard) |
-| `EMPTY_RESPONSE_RETRY_DELAY_MS` | `1000` | Backoff between retries (file-local constant) |
-
-Both are currently file-local: promoting to env vars would be a small
-follow-up if operational tuning becomes useful.
-
-## Related docs
-
-- Short-term memory: → [memory pipeline](../../memory/): see [STM Stage 01](../../memory/stm/01-passive-capture) for the write path
-- Thought log: → no dedicated doc; `thoughtLog.ts` helper only
-- Boomerang / cross-channel tool: → no dedicated doc;
-  `crossChannelMessageTool.ts` helper only
-- Self-reply chain semantics: → folded into stage 05 docs (cascade limits)
+- `src/utils/chat/postTurnEffects.ts`: `runPostTurnEffects()` and side effect helpers.
+- `src/utils/cache/shortTermMemoryCache.ts`: short-term memory caching and cadence tracking.
+- `src/utils/quota/textQuotaManager.ts`: text quota deduction.
+- `src/utils/discord/thoughtLog.ts`: thought-log and provider attribution embeds.

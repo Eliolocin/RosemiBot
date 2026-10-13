@@ -4,7 +4,12 @@ import { CooldownType } from "@/types/db/schema";
 import type { PanelReadStatus, PanelReceipt } from "@/types/discord/panel";
 import { MODERATION_PANEL_RANGE_SIZE } from "@/utils/discord/interactions/panelController";
 import { PERSONA_NICKNAME_MAX_LENGTH } from "@/utils/discord/interactions/configPersonaOperations";
-import { buildModerationPanelPayload } from "@/utils/discord/ui/moderationPanel";
+import { MODERATION_REMOVAL_MODAL_CAPACITY } from "@/utils/discord/moderationPanelCatalog";
+import {
+  buildModerationPanelPayload,
+  listModerationRemovalPage,
+  pagePersonaChannels,
+} from "@/utils/discord/ui/moderationPanel";
 import type { ModerationScopeData } from "@/utils/moderation/moderationOperations";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { RUNTIME_LOCALES } from "../../helpers/localeCases";
@@ -322,5 +327,39 @@ describe("Moderation panel Components V2 limits", () => {
         ?.slice()
         .sort(),
     ).toEqual(Array.from({ length: total }, (_, index) => `role-${index + 1}`).sort());
+  });
+
+  it("pages persona channels so every page fits one removal modal and every row appears once", () => {
+    // A persona too large for one modal, many single-channel personas, then one that cannot share a page.
+    const rows = [
+      ...Array.from({ length: MODERATION_REMOVAL_MODAL_CAPACITY * 2 + 7 }, (_, index) =>
+        makePersonaChannel(index, { persona_id: 1, channel_disc_id: `big-${index}` }),
+      ),
+      ...Array.from({ length: MODERATION_PANEL_RANGE_SIZE + 3 }, (_, index) =>
+        makePersonaChannel(index, { persona_id: index + 2, channel_disc_id: `small-${index}` }),
+      ),
+      ...Array.from({ length: MODERATION_REMOVAL_MODAL_CAPACITY - 1 }, (_, index) =>
+        makePersonaChannel(index, { persona_id: 999, channel_disc_id: `wide-${index}` }),
+      ),
+    ];
+    const data = makeData("fresh", {
+      whitelist: { channels: [], personaChannels: rows, roles: [], personaNames: new Map() },
+    });
+    const pages = pagePersonaChannels(rows);
+
+    const presented: string[] = [];
+    for (const [pageIndex, page] of pages.entries()) {
+      expect(page.length).toBeLessThanOrEqual(MODERATION_PANEL_RANGE_SIZE);
+      const values = listModerationRemovalPage(data, "persona-channel", pageIndex);
+      expect(values.length).toBeLessThanOrEqual(MODERATION_REMOVAL_MODAL_CAPACITY);
+      presented.push(...values);
+      expectSafePanelPayload(
+        buildModerationPanelPayload(
+          buildInput("en-US", "whitelist", "persona-channels", data, REALISTIC_RECEIPT, pageIndex),
+        ),
+        `persona-channel page ${pageIndex}`,
+      );
+    }
+    expect(presented.sort()).toEqual(rows.map((row) => `p:${row.persona_id}:${row.channel_disc_id}`).sort());
   });
 });

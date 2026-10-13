@@ -14,6 +14,10 @@ export default {
       join_failed_description: `<#{channel_id}>が\`{room_id}\`にリンクされましたが、Matrixルームに自動的に参加できませんでした。\`{bot_user_id}\`をルームに手動で招待し、必要なら {help_matrix} でセットアップ手順と制限一覧を確認してください。`,
       encrypted_room_title: `暗号化されたルームはリンクできません`,
       encrypted_room_description: `\`{room_id}\`はエンドツーエンド暗号化が有効です。Matrixの暗号化は一度設定すると無効にできないため、このルームはブリッジに使用できません。暗号化なしの新しいMatrixルームを作成し、代わりに\`{bot_user_id}\`を招待してください。`,
+      encryption_unknown_title: `ルームの暗号化を確認できませんでした`,
+      encryption_unknown_description: `\`{room_id}\` が暗号化されていないことを確認できなかったため、リンクしませんでした。メッセージは平文で転送されるため、確認できたルームのみをブリッジします。
+
+\`{bot_user_id}\` をルームに招待し、参加を待ってからこのコマンドをもう一度実行してください。Botが既に参加している場合は、ホームサーバーに接続できない可能性があるため、数分後に再試行してください。`,
       matrix_not_configured_title: `Matrixブリッジ利用不可`,
       matrix_not_configured_description: `このBotインスタンスではMatrixブリッジが設定されていません。有効にするにはBot管理者にお問い合わせください。`,
     },

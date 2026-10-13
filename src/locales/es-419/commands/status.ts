@@ -1,5 +1,6 @@
 export default {
   status: {
+    prompt_hidden: `El texto del prompt está oculto. Los miembros necesitan el permiso de Administrar servidor o tener habilitada la inspección de prompts para verlo.`,
     description: `Muestra el estado personal, del servidor o de una persona.`,
     scope_choice_behavior: `Comportamiento`,
     scope_choice_models: `Modelos`,
@@ -208,6 +209,7 @@ export default {
     mcp_server_type_custom: `Personalizado`,
     mcp_server_type_web_search: `Búsqueda Web`,
     mcp_server_type_url_fetcher: `Obtención de URL`,
+    mcp_server_type_prose_linter: `Corrector de prosa`,
     mcp_server_auth_present: `Auth`,
     mcp_server_auth_absent: `Sin auth`,
     field_avatar: `Avatar`,

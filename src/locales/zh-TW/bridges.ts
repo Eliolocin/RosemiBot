@@ -1,5 +1,11 @@
 export default {
   matrix: {
+    encryption_unlinked: {
+      title: `Matrix 橋接已停止`,
+      description: `Matrix 房間 \`{room_id}\` 開啟了端對端加密，因此我已解除它與此頻道的連結並停止轉發訊息。Matrix 加密一旦開啟便無法關閉。
+
+若要繼續橋接，請建立一個未加密的新 Matrix 房間，邀請 bot 帳號，並使用 {link_command} 進行連結。`,
+    },
     notices: {
       invited: `TomoriBot 已加入這個房間。
 

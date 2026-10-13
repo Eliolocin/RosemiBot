@@ -21,6 +21,7 @@ type RegistrationPayload = {
   name: string;
   contexts?: number[];
   default_member_permissions?: string;
+  options?: Array<{ name: string }>;
 };
 
 describe("/expressions, /matrix, /punish, /reward, /conditioning registration restrictions", () => {
@@ -43,6 +44,7 @@ describe("/expressions, /matrix, /punish, /reward, /conditioning registration re
     expect(matrixCommand.contexts).toEqual([0]);
     // default_member_permissions: "32" means PermissionsBitField.Flags.ManageGuild
     expect(expressionsCommand.default_member_permissions).toBe("32");
+    expect(expressionsCommand.options?.map((option) => option.name).sort()).toEqual(["initialize", "manage"]);
     expect(matrixCommand.default_member_permissions).toBe("32");
   });
 

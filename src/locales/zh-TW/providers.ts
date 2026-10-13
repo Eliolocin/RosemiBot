@@ -1,7 +1,6 @@
 export default {
   genai: {
     generic_error_title: `生成錯誤`,
-    generic_error_description: `{error_message}`,
     error_stream_timeout_title: `連線逾時`,
     error_stream_timeout_description: `如果一直發生，可能是你選擇的 AI 供應商暫時有問題。請稍後再試，或用 \`/refresh\` 重新整理脈絡紀錄。`,
     empty_response_title: `空回覆`,
@@ -20,7 +19,6 @@ export default {
 {failure_list}`,
     fallback_used_failure_line: `{index}. {model} 發生錯誤：{error_detail}`,
     fallback_used_details_button: `備援使用情形`,
-    fallback_used_hide_footer: `用 \`/config\` > 行為 > 通知隱藏這則訊息，並把詳細資料改送到思考紀錄`,
     fallback_used_personal_opt_out_footer: `用 \`/personal config\` > 模型 > 備援停止讓伺服器模型代為處理你個人供應商的失敗`,
     markdown_table: {
       show_button: `顯示 Markdown`,
@@ -29,6 +27,8 @@ export default {
     },
     no_response_title: `沒有回覆`,
     no_response_description: `我沒有回覆，可能是 AI 回傳空白或逾時。`,
+    log_channel_chat_notice_title: `紀錄頻道不開放聊天`,
+    log_channel_chat_notice_description: `這個頻道被設為紀錄頻道，所以我不會在這裡回覆訊息。若要在這裡聊天，請到 \`/config\` > 頻道 > 紀錄 清除或更改設定。`,
     thought_log: {
       title: `思考紀錄`,
       description: `來源：{source_line}`,
@@ -76,6 +76,12 @@ export default {
       inactivity_timeout_title: `🟡️ 回覆逾時`,
       inactivity_timeout_description: `AI 供應商停止回應，連線已逾時。供應商超載或發生問題時可能會這樣。請再試一次。`,
       first_token_timeout_description: `AI 供應商接受了請求，但一直沒有開始回覆，連線因此逾時。它的佇列很可能已經塞滿。請再試一次，或改用比較不忙的模型。`,
+    },
+    error_detail: {
+      button: `顯示完整錯誤`,
+      title: `完整的供應商錯誤`,
+      manage_server_only: `只有具備 \`管理伺服器\` 權限的成員才能查看完整錯誤。`,
+      personal_only: `這個錯誤來自個人供應商，所以只有它的擁有者才能查看完整錯誤。`,
     },
     // createTipText() 會把這些單則提示字串算繪成唯讀 modal 中的破折號項目清單。
     // 每個鍵是一則項目；呼叫端組合條件式項目，而不是維護整段提示字串。
@@ -135,6 +141,10 @@ export default {
       content_blocked_default_message: `你的內容被安全篩選機制阻擋`,
       unknown_default_message: `發生未預期的錯誤`,
     },
+    vertex: {
+      config_error_message: `Vertex AI 無法讀取這個供應商的設定。請在 \`/providers\` 以 \`project-id::location\` 的格式輸入金鑰。`,
+      auth_error_message: `Vertex AI 驗證失敗。架設 TomoriBot 的人需要設定 Google Cloud 的 Application Default Credentials（\`gcloud auth application-default login\` 或 \`GOOGLE_APPLICATION_CREDENTIALS\`）。`,
+    },
     vertexexpress: {
       "403_predict_permission_message": `這組金鑰無法呼叫 Vertex AI Express 模型。請使用 Express 模式的金鑰，或改用獨立的 \`vertex\` 供應商來連接完整的 Google Cloud 專案。`,
       unknown_default_message: `發生未預期的錯誤`,
@@ -178,6 +188,7 @@ export default {
     },
     custom: {
       "402_default_message": `你在這個端點的帳號餘額不足`,
+      REDIRECT_CREDENTIALS_WITHHELD_default_message: `該端點重新導向到了另一個位址，因此 TomoriBot 沒有向其傳送 API 金鑰。在 \`/providers\` 中管理此端點的人可以將其 URL 改為伺服器最終重新導向的位址來修正此問題。`,
       unknown_default_message: `發生未預期的錯誤`,
     },
     deepseek: {
@@ -194,10 +205,10 @@ export default {
       "401_default_message": `NVIDIA 無法辨識這組金鑰。請確認它是否完整複製，包含 \`nvapi-\` 前綴。`,
       "403_default_message": `NVIDIA 拒絕了這組金鑰。可能是輸錯、已過期，或所屬帳號沒有推論存取權限。`,
       "404_default_message": `找不到要求的 NVIDIA NIM 模型。可能已被 NVIDIA 下架。`,
-      "500_default_message": `服務這個模型的 NVIDIA 後端發生錯誤。這通常是暫時性的，請稍後再試一次。下方詳細資料是 NVIDIA 自己的回報，最為準確：如果裡面提到某個要求參數，請調整該設定，不要自行猜測。`,
+      "500_default_message": `為這個模型提供服務的 NVIDIA 後端發生故障。這通常是暫時的，請稍後再試。如果持續失敗，架設 TomoriBot 的人可以在機器人日誌中查看 NVIDIA 的完整報告。`,
       // 只有在 NVIDIA 自己的訊息提到可移除的要求參數時，才會取代 500_default_message 顯示。
       // 先前每次 500 都斷定這個原因，會讓使用者去改失敗的內容根本沒帶到的設定。
-      "500_parameter_default_message": `NVIDIA 拒絕了這個模型的一或多個要求參數。如果詳細資料提到 \`min_p\` 等不支援的取樣器參數，請用 \`/config\` > 模型 > 取樣器與參數把它們設為 \`0\` 來關閉。如果詳細資料提到 \`logit_bias\`，請用 \`/config\` > 模型 > 取樣器與參數清除已儲存的項目。`,
+      "500_parameter_default_message": `NVIDIA 拒絕了這個模型的一或多個要求參數。請到 \`/config\` > 模型 > 取樣器與參數，把 \`min_p\` 等不支援的取樣器設為 \`0\`，並清除已儲存的 \`logit_bias\` 項目。`,
       unknown_default_message: `發生未預期的錯誤`,
     },
     self_teach: {

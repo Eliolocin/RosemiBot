@@ -176,6 +176,7 @@ Please edit the import file to use a different name, or remove the existing pers
       error_invalid_config: `Invalid configuration fields in persona data`,
       error_no_server_data: `Server not found in database. Please run \`/setup\` first.`,
       error_name_conflict: `A persona with the name **{name}** already exists on this server. Please use a different name.`,
+      error_nsfw_persona: `This persona is marked as NSFW, so \`/persona import\` can't load it. Use \`/nsfw persona import\` instead.`,
       error_import_failed: `Failed to import persona data`,
       error_not_json: `The imported file must contain valid JSON data`,
       error_incompatible_version: `Incompatible preset version. Expected {expected}, got {actual}`,

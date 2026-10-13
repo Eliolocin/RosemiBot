@@ -60,22 +60,25 @@ async function renderTips(
   options: { providerName?: string; fallbackChain?: unknown[] } = {},
 ): Promise<string> {
   let modal: ReturnType<ModalBuilder["toJSON"]> | undefined;
-  const collector = {
-    on(event: string, listener: (interaction: unknown) => Promise<void>) {
-      if (event === "collect") {
-        void listener({
-          customId: "error_tip_details",
-          user: { bot: false },
-          showModal: async (builtModal: ModalBuilder) => {
-            modal = builtModal.toJSON();
-          },
-        });
-      }
-      return collector;
+  const tipClick = {
+    customId: "error_tip_details",
+    user: { bot: false },
+    showModal: async (builtModal: ModalBuilder) => {
+      modal = builtModal.toJSON();
     },
   };
+  const makeCollector = (filter: (interaction: typeof tipClick) => boolean) => {
+    const collector = {
+      on(event: string, listener: (interaction: unknown) => Promise<void>) {
+        if (event === "collect" && filter(tipClick)) void listener(tipClick);
+        return collector;
+      },
+    };
+    return collector;
+  };
   const send = mock(async (_payload: unknown) => ({
-    createMessageComponentCollector: () => collector,
+    createMessageComponentCollector: (options: { filter: (interaction: typeof tipClick) => boolean }) =>
+      makeCollector(options.filter),
   }));
   await new StreamErrorUi().handleProviderError(
     error,

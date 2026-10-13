@@ -3,6 +3,8 @@ import { getOpenRouterPricing, getOrFetchOpenRouterCapabilities } from "@/utils/
 import { getOrFetchOpenRouterEmbeddingModel } from "@/utils/cache/openrouterEmbeddingModelCache";
 import { getOrFetchOpenRouterImageModel } from "@/utils/cache/openrouterImageModelCache";
 import { getOrFetchOpenRouterVideoModelCapabilities } from "@/utils/cache/openrouterVideoModelCache";
+import { getOrFetchOpenRouterDecisionModel } from "@/utils/cache/openrouterDecisionModelCache";
+import { log } from "@/utils/misc/logger";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import type { ImageEndpointSupports } from "@/utils/provider/customImageEndpointSupport";
 import { isOpenRouterGeminiModelCodename } from "@/utils/provider/openrouterModelCapabilities";
@@ -18,7 +20,7 @@ export type OpenRouterModelRegistryScope =
       ownerId: number;
     };
 
-export type OpenRouterModelCapability = "text" | "embedding" | "image" | "video";
+export type OpenRouterModelCapability = "text" | "embedding" | "image" | "video" | "decision";
 
 interface RegisteredOpenRouterModelEntry {
   capability: OpenRouterModelCapability;
@@ -126,6 +128,8 @@ async function modelExistsInOpenRouterCatalog(
       return Boolean(await getOrFetchOpenRouterImageModel(modelCodename, fresh));
     case "video":
       return Boolean(await getOrFetchOpenRouterVideoModelCapabilities(modelCodename, fresh));
+    case "decision":
+      return Boolean(await getOrFetchOpenRouterDecisionModel(modelCodename, fresh));
   }
 }
 
@@ -205,6 +209,15 @@ async function loadRegisteredOpenRouterEntriesForCapability(
         .filter((model) => model.is_scoped_registration)
         .map(buildRegisteredEntryFromVideoModel)
         .filter((model): model is RegisteredOpenRouterModelEntry => model !== null);
+    case "decision":
+      return (await llmModelRepo.loadAvailableDecisionModels("openrouter", true, scope))
+        .filter((model) => model.is_scoped_registration)
+        .map((model) => ({
+          capability,
+          codename: model.codename,
+          description: null,
+          modelId: model.decision_model_id,
+        }));
   }
 }
 
@@ -247,6 +260,12 @@ async function loadOpenRouterBuiltInEntry(
         ? buildRegisteredEntryFromVideoModel(model)
         : null;
     }
+    case "decision": {
+      const model = await llmModelRepo.loadDecisionModelByProviderAndCodename("openrouter", modelCodename);
+      return model && !model.is_scoped_registration && !model.is_deprecated
+        ? { capability, codename: model.codename, description: null, modelId: model.decision_model_id }
+        : null;
+    }
   }
 }
 
@@ -285,6 +304,33 @@ export async function registerOpenRouterModelForScope(
   }
 
   switch (capability) {
+    case "decision": {
+      const discovered = await getOrFetchOpenRouterDecisionModel(normalizedModelName);
+      if (!discovered) return { status: "invalid_model" };
+      const modelId = await llmModelRepo.upsertDecisionModel({
+        provider: "openrouter",
+        codename: discovered.id,
+        inputTokenLimit: discovered.context_length,
+        seesImages: discovered.architecture.input_modalities.includes("image"),
+        inputPricePerMillion: Number(discovered.pricing.prompt) * 1_000_000,
+        outputPricePerMillion: Number(discovered.pricing.completion) * 1_000_000,
+      });
+      const registration = await llmProviderRepo.upsertDecisionModelRegistration({
+        ...(scope.kind === "server" ? { serverId: scope.ownerId } : { userId: scope.ownerId }),
+        decisionModelId: modelId,
+      });
+      if (!registration) throw new Error("Decision registration write failed");
+      log.info(
+        `Decision registration ${JSON.stringify({
+          provider: "openrouter",
+          apiStyle: "openrouter-decisions",
+          modelId,
+          registrationId: registration.scoped_model_registration_id,
+          outcome: "saved",
+        })}`,
+      );
+      return { status: "registered", model: { capability, codename: discovered.id, description: null, modelId } };
+    }
     case "text": {
       const llm = await upsertScopedOpenRouterLlm(normalizedModelName);
       const entry = llm ? buildRegisteredEntryFromLlm(llm) : null;

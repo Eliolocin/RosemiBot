@@ -22,9 +22,13 @@ import {
   buildEditEndpointModal,
   buildEditProviderModal,
   buildProviderModelModal,
+  buildProviderModelModalFieldId,
   buildProvidersPanelPayload,
   type ProvidersPanelRenderInput,
 } from "@/utils/discord/ui/providersPanel";
+import { createPersona } from "../../helpers/fixtures";
+import { createRouteInteraction } from "../../helpers/routeInteraction";
+import { localizedCopy } from "../../helpers/localeCases";
 import { initializeLocalizer, localizer } from "@/utils/text/localizer";
 
 beforeAll(async () => initializeLocalizer());
@@ -136,6 +140,7 @@ const scope: LoadedProviderPanelScope = {
                   supportsStructOutput: false,
                   strictRoleAlternation: false,
                   supportsPrefixCompletion: false,
+                  supportsAssistantPrefill: false,
                   verbatimToolCalling: false,
                 },
               },
@@ -899,6 +904,7 @@ describe("providers routes", () => {
         supportsStructOutput: false,
         strictRoleAlternation: false,
         supportsPrefixCompletion: false,
+        supportsAssistantPrefill: false,
         verbatimToolCalling: false,
       },
     });
@@ -1168,6 +1174,7 @@ describe("providers routes", () => {
                       supportsStructOutput: false,
                       strictRoleAlternation: true,
                       supportsPrefixCompletion: true,
+                      supportsAssistantPrefill: false,
                       verbatimToolCalling: false,
                     },
                   },
@@ -1891,5 +1898,119 @@ describe("providers routes", () => {
     );
     await modelSaveRoute.execute({} as Client, modelSaveInteraction as never, parsed(modelSaveCustomId));
     expect(recorded).toContain("providers.personal.model.save:42:user-456");
+  });
+});
+
+describe("Decision registration routes", () => {
+  const entry: ProviderPanelEntry = {
+    id: "endpoint:73",
+    kind: "endpoint",
+    displayName: "Fixture Decisions",
+    savedAt: null,
+    connectionIds: [73],
+    isPreset: false,
+    connectionDetails: [
+      {
+        connectionId: 73,
+        endpointUrl: "https://example.invalid/v1",
+        apiStyle: "system-one",
+        capability: "decision",
+        vramHandoff: null,
+      },
+    ],
+    capabilities: [
+      {
+        capability: "decision",
+        availability: "available",
+        apiStyle: "system-one",
+        models: [
+          {
+            id: 91,
+            codeName: "jev-latest",
+            isWorkspaceActive: false,
+            isWorkspaceFallback: false,
+            isProviderFallback: false,
+            isCustomRegistration: true,
+            decisionSettings: { inputTokenLimit: 32000 },
+          },
+        ],
+      },
+    ],
+  };
+  const decisionScope: LoadedProviderPanelScope = {
+    ...scope,
+    state: createPersona(),
+    data: { ...scope.data, entries: [entry], initialEntryId: entry.id },
+  };
+
+  it("acknowledges by opening the inherited Decision model modal", async () => {
+    const customId = buildProvidersRouteId(PROVIDERS_ROUTE_NAMESPACE, {
+      action: "model-select",
+      locale: "en-US",
+      entryKind: "endpoint",
+      entryKey: "73",
+    });
+    const interaction = createRouteInteraction({ customId, kind: "string-select", values: ["edit:decision:91"] });
+    let opened: unknown;
+    const route = createProvidersInteractionRoute({
+      resolveScope: async () => decisionScope,
+      createNonce: () => "abcdefgh",
+      showModelModal: async (_interaction, _locale, _kind, _key, capability, id, _nonce, defaults) => {
+        opened = { capability, id, defaults };
+      },
+    });
+    await route.execute({} as Client, interaction as never, parsed(customId));
+    expect(opened).toEqual({
+      capability: "decision",
+      id: 91,
+      defaults: { codeName: "jev-latest", decision: { inputTokenLimit: 32000 } },
+    });
+    expect(interaction.deferred).toBe(false);
+  });
+
+  it("takes delete before acknowledgement, reauthorizes, and reports localized removal", async () => {
+    const customId = buildProvidersRouteId(PROVIDERS_ROUTE_NAMESPACE, {
+      action: "model-submit",
+      locale: "en-US",
+      entryKind: "endpoint",
+      entryKey: "73",
+      capability: "decision",
+      editingModelId: 91,
+      nonce: "abcdefgh",
+    });
+    const interaction = createRouteInteraction({
+      customId,
+      kind: "modal",
+      fields: {
+        [buildProviderModelModalFieldId("code-name", "abcdefgh")]: "jev-latest",
+        [buildProviderModelModalFieldId("num-ctx", "abcdefgh")]: "32000",
+      },
+    });
+    let wrote = false;
+    const route = createProvidersInteractionRoute({
+      takeDecisionAction: () => {
+        expect(interaction.deferred).toBe(false);
+        return "delete";
+      },
+      resolveScope: async () => decisionScope,
+      recordAction: () => {},
+      operations: {
+        ...providerPanelOperations,
+        saveProviderModel: async (input) => {
+          expect(interaction.deferred).toBe(true);
+          expect(input).toMatchObject({
+            capability: "decision",
+            removeDecisionModel: true,
+            editingModelId: 91,
+            numCtx: 32000,
+          });
+          wrote = true;
+          return { status: "success", entryId: entry.id, codeName: input.codeName, removed: true };
+        },
+      },
+    });
+    await route.execute({} as Client, interaction as never, parsed(customId));
+    expect(wrote).toBe(true);
+    expect(JSON.stringify(interaction.edits)).toContain(localizedCopy("en-US", "commands.providers.decision_removed"));
   });
 });

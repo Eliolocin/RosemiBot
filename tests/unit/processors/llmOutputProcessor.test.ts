@@ -8,26 +8,19 @@ import {
 } from "@/utils/text/processors/llmOutputProcessor";
 import { isAllowedRenderModifierSpeakerLabel } from "@/utils/discord/renderModifierParser";
 import { buildPersonaMentionCatalog } from "@/utils/text/personaMentionHandles";
+import { useEnvSandbox } from "../../helpers/env";
 
 const PRESERVE_UNRESOLVED_EMOJI_SHORTCODES_ENV = "EMOJI_PRESERVE_UNRESOLVED_SHORTCODES";
 
+useEnvSandbox([PRESERVE_UNRESOLVED_EMOJI_SHORTCODES_ENV]);
+
 function withPreserveUnresolvedShortcodes(value: string | undefined, assertion: () => void): void {
-  const previous = process.env[PRESERVE_UNRESOLVED_EMOJI_SHORTCODES_ENV];
   if (value === undefined) {
     delete process.env[PRESERVE_UNRESOLVED_EMOJI_SHORTCODES_ENV];
   } else {
     process.env[PRESERVE_UNRESOLVED_EMOJI_SHORTCODES_ENV] = value;
   }
-
-  try {
-    assertion();
-  } finally {
-    if (previous === undefined) {
-      delete process.env[PRESERVE_UNRESOLVED_EMOJI_SHORTCODES_ENV];
-    } else {
-      process.env[PRESERVE_UNRESOLVED_EMOJI_SHORTCODES_ENV] = previous;
-    }
-  }
+  assertion();
 }
 
 describe("cleanLLMOutput", () => {

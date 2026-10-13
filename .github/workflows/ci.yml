@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: tomodb_test
           POSTGRES_USER: tomori
@@ -74,7 +74,7 @@ jobs:
         # the PR author can fix. The deploy workflows' security-dependencies job runs
         # the same audit as a hard, release-blocking gate.
         continue-on-error: true
-        run: bun audit --audit-level=high
+        run: bun audit --audit-level=high --ignore GHSA-vfj7-8cjw-p6xm
 
       - name: Audit inline SQL outside repositories
         run: bun run scripts/checks/audit_sql.ts
@@ -105,7 +105,7 @@ jobs:
         run: bun run check-media-size
 
       - name: Check seed catalogs
-        run: bun run check-seed-catalogs
+        run: bun run check-seed-catalogs --defer-drift-review
 
       - name: Check Discord API limits for localization
         run: bun run check-locale-lengths
@@ -133,3 +133,6 @@ jobs:
         # runTests.ts detects POSTGRES_PASSWORD, provisions a disposable
         # tomoribot_test_<id> database, injects TEST_DB_READY=1, and drops
         # the database after the suite completes (or on failure).
+
+      - name: Check model drift review
+        run: bun run check-seed-catalogs

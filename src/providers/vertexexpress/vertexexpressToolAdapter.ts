@@ -1,5 +1,4 @@
-import type { MCPCapableToolAdapter, Tool, ToolContext, ToolResult } from "@/types/tool/interfaces";
-import type { TypedMCPToolResult } from "@/types/tool/mcpTypes";
+import type { MCPCapableToolAdapter, Tool, ToolResult } from "@/types/tool/interfaces";
 import { GoogleToolAdapter } from "@/providers/google/googleToolAdapter";
 
 export class VertexexpressToolAdapter implements MCPCapableToolAdapter {
@@ -35,18 +34,6 @@ export class VertexexpressToolAdapter implements MCPCapableToolAdapter {
     allowedMCPFunctions?: string[],
   ): Promise<Array<Record<string, unknown>>> {
     return this.googleAdapter.getAllToolsInGoogleFormat(builtInTools, serverId, allowedMCPFunctions);
-  }
-
-  async isMCPFunction(functionName: string): Promise<boolean> {
-    return this.googleAdapter.isMCPFunction(functionName);
-  }
-
-  async executeMCPFunction(
-    functionName: string,
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<TypedMCPToolResult> {
-    return this.googleAdapter.executeMCPFunction(functionName, args, context);
   }
 }
 

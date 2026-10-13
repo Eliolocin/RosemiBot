@@ -878,7 +878,7 @@ class PresetRepository {
               SELECT
                 p.persona_id, p.persona_nickname, p.persona_lineage_id,
                 p.attribute_list, p.sample_dialogues_in, p.sample_dialogues_out,
-                p.is_alter, p.is_pointer, p.preset_lineage_id, p.preset_language,
+                p.is_alter, p.is_pointer, p.preset_lineage_id, p.preset_language, p.is_nsfw,
                 pic.physical_appearance_tags, pic.nai_char_ref_url,
                 ptc.nai_attg_author, ptc.nai_attg_title, ptc.nai_attg_tags, ptc.nai_attg_genre, ptc.nai_attg_stars
               FROM personas p
@@ -892,7 +892,7 @@ class PresetRepository {
               SELECT
                 p.persona_id, p.persona_nickname, p.persona_lineage_id,
                 p.attribute_list, p.sample_dialogues_in, p.sample_dialogues_out,
-                p.is_alter, p.is_pointer, p.preset_lineage_id, p.preset_language,
+                p.is_alter, p.is_pointer, p.preset_lineage_id, p.preset_language, p.is_nsfw,
                 pic.physical_appearance_tags, pic.nai_char_ref_url,
                 ptc.nai_attg_author, ptc.nai_attg_title, ptc.nai_attg_tags, ptc.nai_attg_genre, ptc.nai_attg_stars
               FROM personas p
@@ -936,7 +936,7 @@ class PresetRepository {
       let triggerWords: string[] | null = null;
       let personaPrompt: string | null = null;
       const personaConfigRows = await sql`
-        SELECT trigger_words, persona_prompt
+        SELECT trigger_words, persona_prompt, preserve_preset_identity
         FROM persona_configs
         WHERE persona_id = ${presetData.persona_id}
         LIMIT 1
@@ -946,8 +946,9 @@ class PresetRepository {
         personaPrompt = personaConfigRows[0].persona_prompt ?? null;
       }
 
+      const preserveIdentity = personaConfigRows[0]?.preserve_preset_identity === true;
       if (pointerPreset) {
-        triggerWords = resolveOfficialPresetTriggerWords(pointerPreset);
+        if (!preserveIdentity) triggerWords = resolveOfficialPresetTriggerWords(pointerPreset);
         personaPrompt = resolveOfficialPresetPrompt(pointerPreset);
       }
 
@@ -976,12 +977,14 @@ class PresetRepository {
       const exportedPresetLineageId = pointerPreset
         ? normalizeLineageId(pointerPreset.preset_lineage_id)
         : normalizeLineageId(presetData.preset_lineage_id);
-      const namingConfigs = pointerPreset
-        ? null
-        : await userNamingRepository.loadPersonaConfigs([presetData.persona_id as number]);
-      const exportedNamingConfig = pointerPreset
-        ? pointerPreset.preset_naming_config
-        : (namingConfigs?.get(presetData.persona_id as number) ?? EMPTY_PERSONA_NAMING_CONFIG);
+      const namingConfigs =
+        pointerPreset && !preserveIdentity
+          ? null
+          : await userNamingRepository.loadPersonaConfigs([presetData.persona_id as number]);
+      const exportedNamingConfig =
+        pointerPreset && !preserveIdentity
+          ? pointerPreset.preset_naming_config
+          : (namingConfigs?.get(presetData.persona_id as number) ?? EMPTY_PERSONA_NAMING_CONFIG);
 
       // Build export object with metadata (includes NovelAI persona fields)
       const exportData: PresetExport = {
@@ -1006,6 +1009,7 @@ class PresetRepository {
           nai_attg_tags: presetData.nai_attg_tags ?? null,
           nai_attg_genre: presetData.nai_attg_genre ?? null,
           nai_attg_stars: presetData.nai_attg_stars ?? null,
+          is_nsfw: pointerPreset ? pointerPreset.is_nsfw : presetData.is_nsfw === true,
         },
       };
 
@@ -1161,7 +1165,8 @@ class PresetRepository {
             END,
             is_pointer = false,
             preset_lineage_id = ${importedPresetLineageId},
-            preset_language = NULL
+            preset_language = NULL,
+            is_nsfw = ${validatedImportData.is_nsfw === true}
           WHERE persona_id = ${mainTomoriId}
         `;
       } catch (error) {

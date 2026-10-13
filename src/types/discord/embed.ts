@@ -13,6 +13,14 @@ export interface StandardEmbedOptions {
   color?: ColorResolvable;
   footerKey?: string;
   footerVars?: Record<string, string | number | boolean>;
+  /** Adds the shared `/config` > Behavior > Notices line below the footer, for notices a server can hide. */
+  configHint?: boolean;
+  /**
+   * Renders a Minimal notice: the title exactly as Verbose renders it (emoji and status circle
+   * included), in the notice color, and nothing else.
+   * Description, footer, config hint, thumbnail, and any expand button are all dropped.
+   */
+  minimal?: boolean;
   thumbnailUrl?: string;
   flags?: MessageFlags;
   timestamp?: boolean;
@@ -23,7 +31,20 @@ export interface StandardEmbedOptions {
   tipKeys?: string[];
   /** Shared interpolation vars applied to every tip item in {@link tipKeys}. */
   tipVars?: Record<string, string | number | boolean>;
+  /** Raw diagnostic text behind a second button. Only `sendStandardEmbed` renders it. */
+  restrictedDetail?: RestrictedDetailModal;
   files?: AttachmentBuilder[];
+}
+
+/** Restricts who may open a read-only text modal; anyone else gets `deniedKey` as an ephemeral reply. */
+export interface TextDisplayModalAccess {
+  canOpen: (interaction: ButtonInteraction) => boolean;
+  deniedKey: string;
+}
+
+export interface RestrictedDetailModal {
+  content: string;
+  access: TextDisplayModalAccess;
 }
 
 /**

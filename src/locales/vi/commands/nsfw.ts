@@ -1,6 +1,15 @@
 export default {
   nsfw: {
     description: `Các lệnh và cài đặt giới hạn độ tuổi.`,
+    persona: {
+      description: `Các lệnh persona giới hạn độ tuổi.`,
+      default: {
+        description: `Áp dụng cấu hình preset persona NSFW`,
+      },
+      import: {
+        description: `Nhập persona từ tệp PNG, JSON hoặc CHARX, bao gồm cả persona NSFW`,
+      },
+    },
     jailbreaks: {
       description: `Quản lý các hành vi jailbreak tùy chọn cho prompt của mình trên máy chủ này.`,
       modal_title: `Quản lý chiến lược jailbreak`,

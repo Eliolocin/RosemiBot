@@ -353,10 +353,16 @@ async function persistImportedMainAvatar(serverDiscId: string, avatarImageBuffer
   invalidateTomoriStateCache(serverDiscId);
 }
 
+// Stays above addPersonaImportOptions: check-locales reads the first `.setName()` in a command file as the
+// subcommand name, so the `file` option name must not come first.
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
+  addPersonaImportOptions(
+    subcommand.setName("import").setDescription(localizer("en-US", "commands.persona.import.description")),
+  );
+
+/** One builder for both import routes, because the `/nsfw` route's option locale aliases assume identical option names. */
+export const addPersonaImportOptions = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand
-    .setName("import")
-    .setDescription(localizer("en-US", "commands.persona.import.description"))
     .addAttachmentOption((option) =>
       option
         .setName("file")
@@ -403,14 +409,38 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
     );
 
 /**
+ * An import counts as NSFW when the file says so or when it matches an NSFW official preset, because a
+ * matching import becomes a pointer that takes its flag from the preset, not from the file.
+ */
+export async function isNsfwPersonaImport(presetData: PresetExportData): Promise<boolean> {
+  if (presetData.is_nsfw === true) return true;
+  const matchingPreset = await presetRepository.findMatchingOfficialPresetForImport(presetData);
+  return matchingPreset?.is_nsfw === true;
+}
+
+/**
  * Executes the 'import' command
  * Imports TomoriBot's personality from an uploaded PNG or JSON file
  */
 export async function execute(
   client: Client,
   interaction: ChatInputCommandInteraction,
+  userData: UserRow,
+  locale: string,
+): Promise<void> {
+  await importPersona(client, interaction, userData, locale, { allowNsfw: false });
+}
+
+/**
+ * Shared body of `/persona import` and `/nsfw persona import`; only the age-restricted route may import
+ * a persona flagged NSFW.
+ */
+export async function importPersona(
+  client: Client,
+  interaction: ChatInputCommandInteraction,
   _userData: UserRow,
   locale: string,
+  options: { allowNsfw: boolean },
 ): Promise<void> {
   try {
     const importType = interaction.options.getString("type", true);
@@ -807,6 +837,18 @@ export async function execute(
       return;
     }
     const presetData = mergedPresetValidation.data;
+
+    if (!options.allowNsfw && (await isNsfwPersonaImport(presetData))) {
+      await interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(localizedStatusTitle(locale, "commands.persona.import.failed_title", ColorCode.ERROR))
+            .setDescription(localizer(locale, "commands.persona.import.error_nsfw_persona"))
+            .setColor(ColorCode.ERROR),
+        ],
+      });
+      return;
+    }
 
     const serverDiscId = interaction.guild?.id ?? interaction.user.id;
     const isDM = !interaction.guild;

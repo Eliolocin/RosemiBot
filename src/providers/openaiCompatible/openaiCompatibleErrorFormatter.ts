@@ -1,6 +1,11 @@
 import { errorMessageNamesRejectableParam } from "@/providers/utils/paramDegradation";
 import type { ProviderError } from "@/types/stream/interfaces";
-import { isProviderModelErrorMessage } from "@/utils/provider/providerErrorClassification";
+import {
+  formatProviderErrorCodeForDisplay,
+  isProviderModelErrorMessage,
+  isProviderTimeoutMessage,
+} from "@/utils/provider/providerErrorClassification";
+import { RemoteUrlPolicyError } from "@/utils/security/userRemoteFetch";
 import { localizer } from "@/utils/text/localizer";
 
 interface ParsedOpenAICompatibleErrorPayload {
@@ -12,7 +17,6 @@ interface CreateErrorDescriptionOptions {
   localeNamespace: string;
   fallbackMessage: string;
   connectionRefusedMessage?: string;
-  appendDetailsForCodes?: readonly string[];
 }
 
 interface NormalizeProviderErrorOptions {
@@ -92,6 +96,18 @@ export function normalizeOpenAICompatibleProviderError(
 ): ProviderError {
   const errorMessage = error instanceof Error ? error.message : String(error);
 
+  // Keyed by code so the channel-facing copy explains the redirect without echoing the
+  // destination origin that the message carries for the operator's logs.
+  if (error instanceof RemoteUrlPolicyError && error.failureCode === "REDIRECT_CREDENTIALS_WITHHELD") {
+    return {
+      type: "api_error",
+      message: `${options.errorMessagePrefix}: ${errorMessage}`,
+      code: error.failureCode,
+      retryable: false,
+      originalError: error,
+    };
+  }
+
   let errorCode = "unknown";
   let errorType: ProviderError["type"] = "unknown";
   let retryable = false;
@@ -119,7 +135,7 @@ export function normalizeOpenAICompatibleProviderError(
     retryable = false;
   }
 
-  if (normalizedMessage.includes("timeout")) {
+  if (isProviderTimeoutMessage(normalizedMessage)) {
     errorType = "timeout";
     retryable = true;
   }
@@ -138,7 +154,7 @@ export function createOpenAICompatibleErrorDescription(
   locale: string,
   options: CreateErrorDescriptionOptions,
 ): string {
-  const errorCode = error.code || "unknown";
+  const errorCode = formatProviderErrorCodeForDisplay(error.code);
 
   if (errorCode === "ECONNREFUSED" && options.connectionRefusedMessage) {
     return `Error Code ECONNREFUSED: ${options.connectionRefusedMessage}`;
@@ -178,16 +194,11 @@ export function createOpenAICompatibleErrorDescription(
 
   const localeKey = `${options.localeNamespace}.${messageKey}`;
   let message = parameterMessage ?? localizer(locale, localeKey);
-  let detailsAppended = false;
 
+  // Upstream text never joins this description; the caller logs it for the operator.
   if (error.type === "model_error") {
-    const details = getProviderErrorDisplayMessage(error);
     if (message === localeKey) {
       message = localizer(locale, "genai.stream.model_error_description");
-    }
-    if (details && !message.includes(details)) {
-      message += `\n\n**Details:**\n${details}`;
-      detailsAppended = true;
     }
   } else {
     if (message === localeKey && error.type === "provider_overloaded") {
@@ -207,14 +218,7 @@ export function createOpenAICompatibleErrorDescription(
       if (message === `${options.localeNamespace}.unknown_default_message`) {
         message = options.fallbackMessage;
       }
-
-      message = appendProviderErrorDetails(message, error);
-      detailsAppended = true;
     }
-  }
-
-  if (!detailsAppended && options.appendDetailsForCodes?.includes(errorCode)) {
-    message = appendProviderErrorDetails(message, error);
   }
 
   return `Error Code ${errorCode}: ${message}`;
@@ -226,17 +230,6 @@ export function createOpenAICompatibleErrorDescription(
 function resolveLocalizedOrNull(locale: string, key: string): string | null {
   const value = localizer(locale, key);
   return value === key ? null : value;
-}
-
-function appendProviderErrorDetails(message: string, error: ProviderError): string {
-  const maxErrorLength = 500;
-  const detail = error.message.trim();
-  if (!detail || message.includes(detail)) {
-    return message;
-  }
-
-  const errorSnippet = detail.length > maxErrorLength ? `${detail.substring(0, maxErrorLength)}...` : detail;
-  return `${message}\n\n**Details:**\n${errorSnippet}`;
 }
 
 function parseOpenAICompatibleErrorPayload(errorText: string): ParsedOpenAICompatibleErrorPayload {
@@ -281,13 +274,4 @@ function parseOpenAICompatibleErrorPayload(errorText: string): ParsedOpenAICompa
       message: errorText,
     };
   }
-}
-
-function getProviderErrorDisplayMessage(error: ProviderError): string | null {
-  const maxErrorLength = 1200;
-  const detail = error.userMessage?.trim() || error.message.trim();
-  if (!detail) {
-    return null;
-  }
-  return detail.length > maxErrorLength ? `${detail.substring(0, maxErrorLength)}...` : detail;
 }

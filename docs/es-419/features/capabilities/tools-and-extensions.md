@@ -2,122 +2,89 @@
 title: "Herramientas y extensiones"
 sidebar:
   order: 1
+aiGenerated: true
 ---
 
-TomoriBot es agéntica: además de chatear, puede usar herramientas para buscar en la web, leer
-documentos, generar medios, establecer recordatorios, actuar en otros canales y más. Decide cuándo
-usarlas según la conversación. Esta página cubre las herramientas integradas, cómo ampliarla con
-servidores MCP y cómo mantener ligeras las declaraciones de herramientas con el modo de
-herramientas deliberado.
+Más allá del chat, TomoriBot puede llamar a herramientas para buscar en la web, leer documentos, generar medios, configurar recordatorios e interactuar con mensajes de Discord. Ella decide cuándo usarlos según la conversación. Esta página cubre las herramientas integradas, cómo ampliarla con servidores MCP y cómo mantener las indicaciones optimizadas con el modo de herramienta deliberada.
 
-Aquí tienes algunos ejemplos graciosos:
+A continuación se muestran algunos ejemplos de lo que las herramientas permiten en la conversación:
 
-- 1. Verificador de bienestar
+- **1. Comprobador de bienestar**
   ```text
-  Cada pocas horas, realiza un chequeo de bienestar obligatorio a @Bredrumb.
-  Pregúntale cómo se siente ahora mismo y si se ha tomado un descanso de la programación recientemente.
-  Rastrea su estado emocional a lo largo del tiempo con {memory_tool} y/o {memory_update_tool} para informarle más tarde.
+  Every few hours, do a mandatory wellness check on @bau_h.
+  Ask them how they feel right now and if they've taken a break from coding recently.
+  Track their emotional state over time with {memory_tool} and/or {memory_update_tool} to report back to them later.
   ```
-- 2. Noticias semanales de manga yuri
+- **2. Noticias semanales de Yuri**
   ```text
-  Todos los viernes, recopila los capítulos de manga yuri destacados de la semana, los episodios de anime y las entregas de fanart de la comunidad utilizando {web_search_tool}.
-  Presenta los hallazgos con {voice_message_tool} en una voz ASMR seductora.
+  Every Friday, compile the week's notable yuri manga chapters, anime episodes, and community fanart drops using {web_search_tool}.
+  Present findings with {voice_message_tool} in a seductive ASMR voice.
   ```
-- 3. Policía del sueño
+- **3. Policía del sueño**
   ```text
-  Si notas a través de {message_metadata_tool} que alguien está chateando después de las 2 AM, usa {voice_message_tool} para enviarle una canción de cuna ASMR amenazadoramente calmada diciéndole que se vaya a dormir.
-  Si siguen hablando 10 minutos después, usa {manage_message_tool} para eliminar su mensaje por su propio bien y recuérdales que la privación del sueño es una causa principal de sus problemas.
+  If you notice through {message_metadata_tool} that someone is chatting past 2 AM, use {voice_message_tool} to send them a threateningly calm ASMR lullaby telling them to go to bed.
+  If they keep talking 10 minutes later, use {manage_message_tool} to delete their message for their own good and remind them that sleep deprivation is a leading cause of their issues.
   ```
 
 ## Herramientas integradas
 <!-- anchor: built-in-tools -->
 
-Las herramientas dependen de que el proveedor y modelo activos admitan llamadas a herramientas, y
-muchas están controladas por una marca de función (un interruptor de `/config` > Permisos), un
-permiso de Discord, una capacidad del modelo o una clave de API opcional.
+Las herramientas dependen del proveedor activo y del modelo que respalda la llamada de herramientas. Muchos están cerrados detrás de un indicador de característica (`/config` > `Permisos`), un permiso Discord, una capacidad de modelo o una clave API opcional.
 
-| Herramienta | Macro del prompt | Requiere | Qué hace |
+| Herramienta | Macro rápida | Requiere | que hace |
 |---|---|---|---|
-| Revisar capacidades | `{capabilities_tool}` | Ninguno | Comprueba las capacidades, comandos o ajustes actuales antes de responder. |
-| Crear o actualizar memoria a largo plazo | `{memory_tool}` / `{memory_update_tool}` | `self_teaching_enabled` | Guarda o reemplaza un dato estable del servidor o una preferencia del usuario. |
-| Actualizar memoria a corto plazo | `{short_term_memory_tool}` | Ninguno (no en NovelAI) | Guarda memoria de trabajo temporal para el canal o arco narrativo actual. |
-| Crear o actualizar tarea | `{task_tool}` / `{task_update_tool}` | Ninguno | Programa o edita recordatorios y tareas propias (consulta [Tareas programadas](/es-419/features/capabilities/scheduled-tasks/)). |
-| Mensaje entre canales | `{cross_channel_tool}` | Ninguno (no en NovelAI) | Actúa en otro canal o hilo, con un informe opcional. |
-| Crear hilo | `{create_thread_tool}` | `thread_creation_enabled` + permisos de hilo | Abre un hilo público y publica su mensaje inicial. |
-| Seleccionar sticker | `{sticker_tool}` | `sticker_usage_enabled` | Añade a una respuesta un sticker del servidor que coincida. |
-| Administrar mensaje | `{manage_message_tool}` | `manage_message_enabled` | Fija, edita o elimina mensajes recientes (fijar requiere `Administrar mensajes`). |
-| Bloquear o desbloquear usuario | `{block_user_tool}` / `{unblock_user_tool}` | `user_blocking_enabled` | Silencia o bloquea a un usuario para una persona (no toca las memorias). |
-| Interactuar con mensaje reciente | `{message_interaction_tool}` | Ninguno | Reacciona a un mensaje reciente o le envía una respuesta corta. |
-| Consultar foto de perfil | `{profile_picture_tool}` | modelo de visión o `vision_llm` | Inspecciona el avatar de un usuario o de la persona. |
-| Leer documento | `{document_tool}` | Ninguno | Extrae texto de un PDF o de cualquier archivo de texto UTF-8: código fuente (`.py`/`.ts`/`.rs`/…), `.json`, `.yaml`, `.md`, `.txt` y cualquier adjunto no binario. |
-| Mostrar metadatos del mensaje | `{message_metadata_tool}` | Ninguno | Anota turnos recientes con identificadores y marcas de tiempo para dirigir acciones con precisión. |
-| Procesar video de YouTube | `{youtube_tool}` | modelo compatible con video | Analiza bajo demanda un enlace específico de YouTube. |
-| Analizar imagen | `{image_analysis_tool}` | `vision_llm` configurado | Delega la comprensión de imágenes a un modelo de visión separado. |
-| Generar imagen / imagen anime | `{image_generation_tool}` / `{anime_image_generation_tool}` | `imagegen_enabled` + proveedor compatible | Genera o edita imágenes (consulta [Generación de medios](/es-419/features/capabilities/media-generation/)). |
-| Generar mensaje de voz | `{voice_message_tool}` | clave de ElevenLabs + voz de persona + `voice_message_enabled` | Envía una respuesta de voz hablada de Discord. |
+| Capacidades de revisión | `{capabilities_tool}` | - | Verifique las capacidades, comandos o configuraciones actuales del chat antes de responder. |
+| Crear/actualizar memoria a largo plazo | `{memory_tool}` / `{memory_update_tool}` | `self_teaching_enabled` | Guarda o reemplace un dato de servidor estable o una preferencia de usuario. |
+| Actualizar la memoria a corto plazo | `{short_term_memory_tool}` | (no en NovelAI) | Guarda la memoria de trabajo temporal para el canal actual o el arco de la historia. |
+| Crear/actualizar tarea | `{task_tool}` / `{task_update_tool}` | - | Programe o edite recordatorios y tareas automáticas (consulte [Tareas programadas](/es-419/features/capabilities/scheduled-tasks/)). |
+| Mensaje multicanal | `{cross_channel_tool}` | (no en NovelAI) | Actuar en otro canal o hilo, con reporte opcional. |
+| Crear hilo | `{create_thread_tool}` | `thread_creation_enabled` + permisos de hilo | Abre un hilo público y publique su mensaje inicial. |
+| Seleccionar sticker | `{sticker_tool}` | `sticker_usage_enabled` | Agrega una etiqueta de servidor coincidente o una expresión personalizada a una respuesta. |
+| Administrar mensaje | `{manage_message_tool}` | `manage_message_enabled` | Anclar, editar o eliminar mensajes recientes (el ancla necesita `Administrar mensajes`). |
+| Bloquear/desbloquear usuario | `{block_user_tool}` / `{unblock_user_tool}` | `user_blocking_enabled` | Silenciar/bloquear a un usuario con alcance personal (no toca los recuerdos). |
+| Interactuar con mensaje reciente | `{message_interaction_tool}` | - | Reacciona o envía una breve respuesta a un mensaje reciente. |
+| Echar un vistazo a la foto de perfil | `{profile_picture_tool}` | modelo de visión o `vision_llm` | Inspecciona el avatar de una usuario o de la persona. |
+| Leer documento | `{document_tool}` | - | Extraiga texto de un PDF o cualquier archivo de texto UTF-8: código fuente (`.py`/`.ts`/`.rs`/…), `.json`, `.yaml`, `.md`, `.txt` y cualquier archivo adjunto no binario. |
+| Revelar metadatos del mensaje | `{message_metadata_tool}` | - | Anota giros recientes con identificadores y marcas de tiempo para apuntar con precisión. |
+| Procesar vídeo de YouTube | `{youtube_tool}` | modelo con soporte de video | Analiza un enlace específico de YouTube bajo demanda. |
+| Analizar imagen | `{image_analysis_tool}` | configurado `vision_llm` | Delegar la comprensión de la imagen a un modelo de visión independiente. |
+| Generar imagen/imagen anime | `{image_generation_tool}` / `{anime_image_generation_tool}` | Proveedor compatible con `imagegen_enabled` + | Genere o edite imágenes (consulte [Generación de medios](/es-419/features/capabilities/media-generation/)). |
+| Generar mensaje de voz | `{voice_message_tool}` | Tecla ElevenLabs + voz personal + `voice_message_enabled` | Envíe una respuesta de voz hablada Discord. |
 
-:::note[Para autores de prompts]
-Al personalizar el prompt del sistema o las instrucciones de una persona, referencia las
-herramientas mediante sus macros del prompt de la tabla anterior en lugar de codificar sus
-nombres: las macros se expanden a los nombres correctos al ensamblar el contexto y se degradan de
-forma controlada cuando una herramienta no está disponible. `{pin_tool}` y
-`{timestamp_refresh_tool}` siguen funcionando como alias de compatibilidad para
-`{manage_message_tool}` y `{message_metadata_tool}`. Las herramientas de búsqueda web y URL de
-abajo también tienen macros: `{web_search_tool}`, `{image_search_tool}`, `{video_search_tool}`,
-`{news_search_tool}`, `{url_fetch_tool}` y `{url_metadata_tool}`; se resuelven dinámicamente con
-el mejor motor disponible, incluidos reemplazos MCP del servidor.
+:::note[For prompt authors]
+Al personalizar el mensaje del sistema o las instrucciones de la persona, haga referencia a las herramientas por sus **macros de mensajes** de la tabla anterior en lugar de codificar los nombres de las herramientas, porque las macros se expanden a los nombres correctos en el momento del ensamblaje del contexto y se degradan elegantemente cuando una herramienta no está disponible. `{pin_tool}` y `{timestamp_refresh_tool}` todavía funcionan como alias de compatibilidad para `{manage_message_tool}` y `{message_metadata_tool}`. Las siguientes herramientas de búsqueda web y URL también tienen macros: `{web_search_tool}`, `{image_search_tool}`, `{video_search_tool}`, `{news_search_tool}`, `{url_fetch_tool}` y `{url_metadata_tool}`. Estos se resuelven dinámicamente con el mejor motor disponible, incluidos los reemplazos del gremio MCP.
 :::
 
 ### Bloques de prompt condicionales
 
-El texto de prompt que admite las macros de herramientas anteriores también admite condicionales
-con alcance:
+El texto de aviso que admite las macros de herramientas anteriores también admite condicionales de ámbito:
 
 ```text
 {{if capability:self_teaching}}
-Usa {memory_tool} cuando valga la pena recordar un detalle.
+Use {memory_tool} when a detail is worth remembering.
 {{else}}
-No prometas guardar memorias a largo plazo.
+Do not promise to save long-term memories.
 {{/if}}
 ```
 
-Usa `capability:<name>` para un ajuste de TomoriBot activado, o `tool:<function_name>` cuando el
-texto solo deba aparecer si esa herramienta exacta está disponible para el proveedor y modelo
-activos. Usa `tool_family:url_fetch` cuando esté disponible el lector de URL integrado o un
-reemplazo MCP del servidor. Antepón `!` a una condición para invertirla. Los bloques pueden
-anidarse y pueden contener un `{{else}}`; no se admiten expresiones generales `and`/`or`.
+Utilice `capability:<name>` para una configuración TomoriBot habilitada, o `tool:<function_name>` cuando el texto debería aparecer solo si esa herramienta exacta está disponible para el proveedor y modelo activo. Utilice `tool_family:url_fetch` cuando esté disponible el lector de URL incluido o un reemplazo del gremio MCP. Anteponga una condición con `!` para invertirla. Los bloques se pueden anidar y pueden contener un `{{else}}`; No se admiten expresiones generales `and`/`or`.
 
-Los nombres de capacidades admitidos son `tool_use`, `self_teaching`, `personal_memories`,
-`emoji_usage`, `sticker_usage`, `web_search`, `manage_message`, `thread_creation`,
-`image_generation`, `video_generation`, `voice_message`, `user_blocking`, `short_term_memory` y
-`time_awareness`.
+Los nombres de capacidad admitidos son `tool_use`, `self_teaching`, `personal_memories`, `emoji_usage`, `sticker_usage`, `web_search`, `manage_message`, `thread_creation`, `image_generation`, `video_generation`, `voice_message`, `user_blocking`, `short_term_memory` y `time_awareness`.
 
-Las condiciones de herramienta reflejan la compatibilidad del proveedor y modelo, la
-configuración del servidor, los backends configurados, los reemplazos MCP y la lista permitida
-actual del modo de herramientas deliberado. No evitan ni predicen las comprobaciones de permisos
-de Discord que se realizan cuando una herramienta se ejecuta. Los nombres de capacidad
-desconocidos se evalúan como falsos y quedan registrados; los bloques mal formados se omiten. Los
-mensajes de chat sin procesar, la salida del modelo y los resultados de herramientas nunca se
-tratan como plantillas condicionales.
+Las condiciones de la herramienta reflejan la compatibilidad del proveedor/modelo, la configuración del servidor, los backends configurados, los reemplazos de MCP y la lista de permitidos actual del modo de herramienta deliberada. No omiten ni predicen las comprobaciones de permisos Discord realizadas cuando se ejecuta una herramienta. Los nombres de capacidades desconocidas se evalúan como falsos y se registran; Se omiten los bloques mal formados. Los mensajes de chat sin procesar, los resultados del modelo y los resultados de las herramientas nunca se tratan como plantillas condicionales.
 
 ## Búsqueda web y lectura de URL
 <!-- anchor: web-search--url-reading -->
 
-El modelo ve una sola herramienta unificada `web_search(query, category)`. Detrás, un distribuidor
-dirige cada llamada por una cadena de motores y devuelve el primer éxito:
+El modelo ve una única herramienta `web_search(query, category)` unificada. Detrás de él, un despachador dirige cada llamada a través de una cadena de motores y devuelve el primer éxito:
 
-Brave → SearXNG → DuckDuckGo → IAsk
+Brave → SearXNG → DuckDuckGo
 
-- Brave se ejecuta primero cuando hay una clave de API de Brave configurada (establécela con
-  `/providers`); añade búsqueda de imágenes, videos y noticias. ⚠️ Establece un límite de uso de
-  $5 en el panel de Brave para evitar cargos inesperados.
-- DuckDuckGo es el predeterminado cuando no hay clave establecida, y pasa a IAsk en caso de
-  límites de frecuencia o resultados vacíos.
-- SearXNG y Crawl4AI son servidores opcionales con autoalojamiento que desbloquean más
-  categorías y obtención de páginas renderizadas por navegador; consulta
-  [Autoalojamiento](/es-419/self-hosting/).
+- **Brave** se ejecuta primero cuando se configura una clave Brave API (configúrela con `/providers`); Agrega búsqueda de imágenes, videos y noticias. ⚠️ Establece un límite de uso de $5 en el panel de Brave para evitar cargos sorpresa.
+- DuckDuckGo es la opción predeterminada cuando no se ha configurado ninguna clave. Solo cubre búsquedas de texto. Cuando DuckDuckGo aplica un límite de velocidad al bot o muestra una verificación antibot, la búsqueda falla y TomoriBot publica un aviso sugiriendo Brave.
+- SearXNG y Crawl4AI son servidores autohospedados opcionales que agregan más categorías y búsquedas de páginas renderizadas por el navegador; consulte [Autohospedaje](/es-419/self-hosting/).
 
-Para leer una página específica, usa `fetch_url`. No está disponible en NovelAI.
+Para leer una página específica, utiliza `fetch_url`. No está disponible en NovelAI.
 
 ## Servidores MCP
 <!-- anchor: mcp-servers -->
@@ -127,24 +94,25 @@ externas que registras tú mismo.
 
 ### Añadir un MCP en línea
 
-Cualquier servidor MCP alojado públicamente con un endpoint HTTPS funciona. Como ejemplo, usa
-[Smithery.ai](https://smithery.ai):
+Usa un endpoint HTTPS directo de un proveedor que admita MCP Streamable HTTP o SSE:
 
-1. Crea una cuenta y genera una clave de API desde tu perfil.
-2. Abre un MCP en el catálogo y copia su URL de conexión (por ejemplo, `https://youtube.run.tools`).
-3. Abre `/config` > Plugins > Servidores MCP, elige `+ Agregar MCP`, pega la URL de conexión en
-   `URL del servidor`, pega tu clave de Smithery en `Token de autenticación (opcional)` y elige el
-   `Tipo de servidor` requerido. `Uso general` está seleccionado por defecto.
+1. Obtén el endpoint MCP y sus requisitos de autenticación del proveedor.
+2. Abre `/config` > Plugins > Servidores MCP y elige `+ Agregar MCP`.
+3. Pega el endpoint en `URL`, ingresa su token Bearer en `Token de autenticación` si es necesario y elige el `Tipo de servidor` requerido. **Uso general** está seleccionado por defecto. Elige `Corrector de prosa` para un corrector que quieras como comprobador de reglas en la Revisión de respuestas: Tomori nunca llama a sus herramientas ella misma y aparece bajo `Comprobaciones de reglas` en la página de Revisión de respuestas.
 
-Si un servidor no necesita autenticación, deja vacío `Token de autenticación`. Tu token de
-autenticación se cifra en reposo y nunca vuelve a mostrarse. Abre la misma página de Config para
-revisar el estado configurado, activar o desactivar un servidor, o eliminarlo con confirmación
-explícita. Eliminarlo lo desconecta de inmediato y libera un espacio. Cada fila guardada también
-muestra los nombres de herramientas acotados de su último descubrimiento exitoso. `Herramientas: ninguna descubierta`
-es un resultado conocido de cero herramientas; `Herramientas: descubrimiento desconocido`
-identifica una fila heredada o un servidor que aún no tiene una instantánea exitosa. Abrir la
-superficie de administración de MCP solo lee metadatos guardados y no contacta al servidor
-remoto.
+### Añadir un servidor Smithery
+
+Los servidores alojados en Smithery tienen direcciones que terminan en `.run.tools`. Pega esa dirección en `URL` y tu clave de API de Smithery en `Token de autenticación`. TomoriBot envía la clave únicamente a la API de Smithery en `api.smithery.ai`, nunca a la dirección del servidor en sí. Smithery luego pasa cada llamada a herramientas al servidor, por lo que Smithery ve cada solicitud y resultado de herramienta. Los registros guardados antes de que este soporte volviera a estar disponible funcionan nuevamente sin cambios.
+
+TomoriBot mantiene una conexión de Smithery por dirección de servidor en el primer espacio de nombres de tu cuenta de Smithery (Smithery crea un espacio de nombres si no tienes ninguno) y la reutiliza, por lo que agregar, probar y reconectar no acumulan conexiones. TomoriBot nunca elimina conexiones. Las versiones anteriores de TomoriBot creaban una nueva conexión en cada reconexión, por lo que tu cuenta puede tener muchas conexiones sin usar para el mismo servidor; puedes eliminarlas desde tu panel de Smithery.
+
+Algunos servidores te piden iniciar sesión en el servicio que envuelven. Si intentas agregar uno, fallará con un mensaje de que se requiere autorización, y TomoriBot nunca muestra el enlace de inicio de sesión en Discord. Abre tu panel de Smithery, completa el inicio de sesión para la conexión cuyo nombre comienza con `tomoribot-` y vuelve a agregar el servidor. La conexión y la obtención de la lista de herramientas deben completarse en un plazo de 15 segundos.
+
+Desactivar un registro seleccionado para búsqueda o lectura de URL restablece la selección integrada de TomoriBot; dejarlo activado impide un cambio automático. Los nombres de herramientas guardados describen el último descubrimiento, por lo que no garantizan que la conexión aún funcione.
+
+Las respuestas se detienen a los 8 MiB durante la descarga. Los catálogos grandes de herramientas o resultados voluminosos pueden dejar un plugin no disponible o hacer que una llamada a una herramienta falle. Para conexiones SSE, el límite cubre todo el flujo de respuestas, incluidas las actualizaciones sucesivas. Pide al proveedor resultados más pequeños, paginación o enlaces a archivos cuando una herramienta devuelva documentos grandes o contenido multimedia incrustado.
+
+Si un servidor no necesita autenticación, deja vacío `Token de autenticación`. Tu token de autenticación se cifra en reposo y nunca vuelve a mostrarse. Abre la misma página de Config para revisar el estado configurado, activar o desactivar un servidor, o eliminarlo con confirmación explícita. Eliminarlo lo desconecta de inmediato y libera un espacio. Cada fila guardada también muestra los nombres de herramientas acotados de su último descubrimiento exitoso. `ninguna descubierta` es un resultado conocido de cero herramientas; `descubrimiento desconocido` identifica una fila heredada o un servidor que aún no tiene una instantánea exitosa. Abrir la superficie de administración de MCP solo lee metadatos guardados y no contacta al servidor remoto.
 
 ### Servidores MCP locales
 
@@ -164,88 +132,36 @@ MCP antes de añadirlo.
 ## Modo de herramientas deliberado
 <!-- anchor: deliberate-tool-mode -->
 
-Cada herramienta declarada se añade al prompt. El modo de herramientas deliberado mantiene las
-declaraciones de herramientas fuera de los turnos de chat normales, salvo que el mensaje parezca
-necesitar realmente una herramienta: esto reduce el tamaño del prompt y ayuda a que los modelos
-pequeños o locales respondan más rápido.
+Cada herramienta declarada aumenta el tamaño del prompt. El `Modo de Herramientas Deliberado` mantiene las declaraciones fuera de los turnos normales de chat, salvo que el mensaje necesite una herramienta de tarea; así reduce el prompt y ayuda a los modelos pequeños o locales a responder más rápido. La selección de stickers sigue disponible para expresarse espontáneamente cuando el uso de stickers y herramientas está activado y el proveedor lo admite. Las restricciones de DM, suplantación y rol siguen vigentes. Desactiva el uso de stickers para impedir respuestas con stickers. Cuando vence el plazo de actualización de la memoria a corto plazo, su herramienta de mantenimiento también queda disponible sin una solicitud del usuario.
 
-- Primero comprueba si el mensaje tiene intención de uso de herramienta. Los activadores
-  integrados cubren solicitudes comunes (recordatorios, búsqueda web, actualizaciones de memoria,
-  mensajes entre canales, generación de imágenes/video/voz, análisis de medios, creación de hilos,
-  acciones sobre mensajes). Las preguntas sobre su modelo actual, sus herramientas, sus ajustes o
-  por qué una capacidad no está disponible exponen juntas la revisión de capacidades y el acceso a
-  la documentación oficial. El texto de seguimiento también funciona, como "hazlo de nuevo pero
-  más enojada" después de una solicitud de mensaje de voz.
-- Los administradores del servidor pueden añadir frases de activación personalizadas literales
-  con `/server trigger add`; por ejemplo, asociar `pic`, `img` o `pfp` con la generación de
-  imágenes.
-- Los activadores integrados leen frases en inglés. Otros idiomas llegan a las mismas herramientas
-  mediante la lista de palabras clave de cada idioma. Se comprueba la lista de cada idioma
-  incluido en cada mensaje, sin importar cuál sea tu configuración de idioma, así que un servidor
-  bilingüe funciona en ambos idiomas.
-- Las frases personalizadas en japonés, chino o coreano también coinciden dentro de palabras más
-  largas, porque esos idiomas no separan las palabras con espacios. Una frase que termina en `*`
-  coincide con cualquier palabra que comience con ella: `remind*` cubre `reminder` y `reminding`.
+- Primero comprueba el mensaje en busca de la intención de la herramienta. Los activadores integrados cubren solicitudes comunes (recordatorios, búsqueda web, actualizaciones de memoria, mensajes entre canales, generación de imágenes/vídeo/voz, análisis de medios, creación de hilos, acciones de mensajes). Las preguntas sobre su modelo actual, herramientas, configuraciones o por qué una capacidad no está disponible exponen la revisión de capacidades y el acceso a la documentación oficial juntos. Las frases de seguimiento también funcionan, como "haz eso de nuevo pero más enojado" después de una solicitud de mensaje de voz.
+- Los administradores de servidores pueden agregar frases de activación personalizadas literales con `/server trigger add`, por ejemplo, asignando `pic`, `img` o `pfp` a la generación de imágenes.
+- Los disparadores incorporados leen frases en inglés. Otros idiomas llegan a las mismas herramientas a través de la lista de palabras clave de cada idioma. La lista de cada idioma enviado se verifica en cada mensaje, cualquiera que sea su configuración de idioma, por lo que un servidor bilingüe funciona en ambos idiomas.
+- Las frases personalizadas en japonés, chino o coreano también coinciden dentro de palabras más largas, porque esos idiomas no separan las palabras con espacios. Una frase que termina en `*` coincide con cualquier palabra que comience con ella: `remind*` cubre `reminder` y `reminding`.
 
 ### Controles
 
-- `/server dtm`: los administradores del servidor lo activan o desactivan.
-- `/personal config`: los usuarios lo ajustan para sí mismos.
-- Con un canal de registros de pensamiento configurado (`/server thought-logs`), las llamadas de
-  herramientas exitosas en modo deliberado se registran allí junto con el activador que expuso la
-  herramienta.
+- `/server dtm`: los administradores del servidor lo alternan.
+- `/personal config`: las usuarios lo anulan por sí mismas.
+- Con un canal de registro de pensamiento configurado (`/server thought-logs`), las llamadas exitosas a la herramienta en modo deliberado se registran allí junto con el disparador que expuso la herramienta.
 
-El modo de herramientas deliberado solo decide qué herramientas se *muestran* al modelo: el
-modelo aún debe elegir llamar a una. En `/help`, elige `Comportamiento` y luego
-`Modo de herramientas deliberado` para ver el resumen de Discord.
+El modo de herramienta deliberada solo decide qué herramientas se *muestran* al modelo, pero el modelo aún tiene que elegir llamar a una. En `/help`, elija `Comportamiento` y luego `Modo de Herramientas Deliberado` para obtener el resumen de Discord.
 
 :::note
-El modo de herramientas deliberado (esta sección) no está relacionado con el **modo de
-activación deliberada**, que controla cómo se activa *ella*; consulta
-[Chat y activadores](/es-419/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode).
-Ambos se abrevian como "DTM" en Discord.
+`Modo de Herramientas Deliberado` (esta sección) no está relacionado con `Modo de Activación Deliberada`, que controla cómo se activa *ella*; consulte [Chat y activadores](/es-419/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode). Ambos se abrevian "DTM" en Discord.
 :::
 
 ## Actualizaciones estructuradas de información del usuario
 
-La herramienta integrada `update_user_info` gestiona solicitudes explícitas para cambiar el
-apodo, prefijo, sufijo, identidad de género, pronombres, estilo de trato o desfase UTC numérico
-de un usuario registrado. Usa el mismo resolutor de nombres, alias, menciones e ID de Discord con
-detección de colisiones que otras herramientas personales. Un objetivo omitido significa la
-persona humana que activó el turno; `all` y `everyone` nunca son objetivos comodín.
+TomoriBot puede actualizar automáticamente tu perfil y tus preferencias de nombres de personas cuando preguntas directamente en el chat (como "llámame Capitán" o "mis pronombres son ellos"):
 
-Cada campo es su propio parámetro opcional, así que un cambio se expresa pasando el campo. La
-eliminación es una lista `clear` de nombres de campo, lo que mantiene una sola regla para los
-campos de texto, enumeración y numéricos por igual; una cadena vacía se pliega en una eliminación
-en lugar de rechazarse. No hay parámetro de alcance ni de acción, porque el alcance sigue al
-campo:
-
-| Campos | Almacenado | Efecto |
+| Preferencia | Alcance | Efecto |
 |---|---|---|
-| apodo, prefijo, sufijo | por linaje de persona | solo la persona que hizo el cambio se dirige a ellos de forma distinta |
-| identidad de género, pronombres, estilo de trato, zona horaria | una vez por usuario | todas las personas leen el mismo valor |
+| Apodo, prefijo, sufijo | por persona | Sólo la persona activa se dirige a usted con este nombre o título. |
+| Identidad de género, pronombres, estilo de direccionamiento, zona horaria. | Global | Cada persona usa el mismo valor en todos los servidores. |
 
-Esa división sigue al almacenamiento y no a la preferencia: los campos de identidad tienen un
-único espacio por usuario y no tienen equivalente por persona. El aviso de éxito etiqueta las
-filas con alcance de persona con el nombre de la persona, así que la diferencia es visible en
-lugar de implícita. Una fila sin etiqueta es global, lo que no necesita explicación propia porque
-lo global es el caso esperado.
+- **Eliminar un título**: pedirle que deje de usar un título (como "deja de llamarme Maestro") lo borra para esa persona.
+- **Privacidad**: los niveles de privacidad restrictivos bloquean nuevas adiciones y ediciones y al mismo tiempo te permiten borrar los datos existentes.
+- **Permisos**: los administradores de servidores pueden alternar actualizaciones automáticas usando `Actualizaciones de Información del Usuario` en `/config` > `Permisos`. Siempre puedes editar tu perfil manualmente con `/personal config`.
 
-El contexto de participante nombra el prefijo y el sufijo de cada usuario por separado de su
-apodo, así que una solicitud para quitar un título se resuelve como un cambio de afijo en lugar
-de una reescritura de apodo. Un afijo eliminado se guarda como una supresión explícita, así que la
-eliminación no puede deshacerla una capa de menor precedencia que aún proporcione un valor.
-
-Cuando se envía un apodo con un afijo que ya está resuelto, el afijo redundante se elimina
-comparándolo con el valor resuelto; el apodo nunca se divide por espacios en blanco para adivinar
-un límite. Una actualización informa la forma de trato resultante siempre que ese nombre
-realmente haya cambiado, así que un cambio de estilo de trato es visible en el mismo turno aunque
-ningún campo de nombre haya aparecido en él, mientras que una edición de pronombre o zona horaria
-no repite un nombre que nada tocó.
-
-Cada campo se valida antes de una única escritura atómica. La privacidad restrictiva bloquea
-adiciones y cambios, pero sigue permitiendo eliminar valores. La herramienta no puede editar los
-términos de trato específicos de una persona. El interruptor de Actualizaciones de información del
-usuario, activado por defecto en `/config` > Permisos, controla tanto la exposición de la
-herramienta como la defensa contra invocaciones obsoletas. La opción manual `/personal config`
-sigue disponible cuando está desactivada.
+Para conocer los esquemas de parámetros de herramientas y el diseño de almacenamiento de la base de datos, consulte la [arquitectura del sistema de herramientas](/en/architecture/subsystems/tool-system/#structured-user-info-updates).

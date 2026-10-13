@@ -1,10 +1,63 @@
 import { BaseTool, type ToolContext, type ToolResult } from "@/types/tool/interfaces";
-import { sendFetchProgressNotice, validateFetchSize } from "@/utils/mcp/mcpExecutor";
 import { log } from "@/utils/misc/logger";
+import { FETCH_LIMITS } from "@/utils/security/rateLimiter";
+import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
 import { localizer } from "@/utils/text/localizer";
 import { executeFetchUrlWithFallback } from "./dispatcher";
+import { sendFetchProgressNotice } from "./fetchProgressNotice";
 import type { FetchOpts } from "./types";
-import { validateFetchUrlTarget } from "./urlSafety";
+import { isPrivateNetworkFetchAllowed, validateFetchUrlTarget } from "./urlSafety";
+
+/**
+ * Validates fetch URL size before downloading
+ * Performs HEAD request to check Content-Length header
+ */
+async function validateFetchSize(url: string): Promise<{ allowed: boolean; reason?: string; sizeMB?: number }> {
+  try {
+    const maxSizeMB = FETCH_LIMITS.MAX_FETCH_SIZE_MB;
+
+    // Perform HEAD request to get Content-Length without downloading body
+    // Use the same DNS validation, pinning, and per-hop redirect checks as the
+    // body fetch. A plain fetch() here could be redirected to IMDS or another
+    // private address before the guarded engine runs.
+    const headResponse = await fetchUserRemoteUrl(
+      url,
+      {
+        method: "HEAD",
+        signal: AbortSignal.timeout(5000), // 5 second timeout
+      },
+      { allowPrivateNetwork: isPrivateNetworkFetchAllowed() },
+    );
+
+    // Get Content-Length header (may not always be present)
+    const contentLengthHeader = headResponse.headers.get("content-length");
+
+    if (!contentLengthHeader) {
+      log.warn(`No Content-Length header for URL: ${url}. Proceeding with fetch but size is unknown.`);
+      return { allowed: true };
+    }
+
+    const contentLengthBytes = Number.parseInt(contentLengthHeader, 10);
+    const contentLengthMB = contentLengthBytes / (1024 * 1024);
+
+    if (contentLengthMB > maxSizeMB) {
+      log.warn(`Fetch size validation failed: ${contentLengthMB.toFixed(2)} MB > ${maxSizeMB} MB for URL: ${url}`);
+      return {
+        allowed: false,
+        reason: `Content size (${contentLengthMB.toFixed(2)} MB) exceeds maximum allowed size (${maxSizeMB} MB)`,
+        sizeMB: contentLengthMB,
+      };
+    }
+
+    log.info(`Fetch size validated: ${contentLengthMB.toFixed(2)} MB (limit: ${maxSizeMB} MB)`);
+    return { allowed: true, sizeMB: contentLengthMB };
+  } catch (error) {
+    log.warn(`HEAD request failed for URL: ${url}. Proceeding with fetch.`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { allowed: true };
+  }
+}
 
 export class FetchUrlTool extends BaseTool {
   name = "fetch_url";

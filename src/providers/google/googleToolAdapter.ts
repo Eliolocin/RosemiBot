@@ -8,14 +8,10 @@ import { log } from "../../utils/misc/logger";
 import type {
   Tool,
   MCPCapableToolAdapter,
-  ToolContext,
   ToolResult,
   ToolParameterPropertySchema,
   ToolParameterType,
 } from "../../types/tool/interfaces";
-import type { TypedMCPToolResult } from "../../types/tool/mcpTypes";
-import { getMCPManager } from "../../utils/mcp/mcpManager";
-import { getMCPExecutor } from "../../utils/mcp/mcpExecutor";
 import { getGuildMcpManager } from "../../utils/mcp/guildMcpManager";
 
 interface GoogleFunctionDeclaration extends Record<string, unknown> {
@@ -193,118 +189,11 @@ export class GoogleToolAdapter implements MCPCapableToolAdapter {
 
       // Brave-key dance removed: the unified `web_search` tool is gated centrally
       // in `availability.ts` via `requiresFeatureFlag = "web_search"`, and the
-      // engine chain inside the tool decides Brave-vs-DDG-vs-IAsk at call time.
+      // engine chain inside the tool decides Brave-vs-SearXNG-vs-DuckDuckGo at call time.
       if (builtInTools.length > 0) {
         const builtInDeclarations = builtInTools.map((tool) => this.convertTool(tool));
         allFunctionDeclarations.push(...builtInDeclarations);
         log.info(`Converted ${builtInTools.length} built-in tools to Google format`);
-      }
-
-      const mcpManager = getMCPManager();
-      if (mcpManager.isReady()) {
-        let addedMCPToolsCount = 0;
-        let excludedDDGFunctionsCount = 0;
-
-        // Raw AI-search modes stay internal to the unified web_search dispatcher.
-        const disabledDDGFunctions = ["iask-search", "monica-search"];
-        let disabledFunctionsCount = 0;
-
-        if (allowedMCPFunctions) {
-          // Use pre-filtered list from centralized filtering (preferred path)
-          const mcpTools = mcpManager.getMCPTools();
-          const allowedFunctionSet = new Set(allowedMCPFunctions);
-
-          for (const mcpTool of mcpTools) {
-            try {
-              const geminiTool = await mcpTool.tool();
-              if (geminiTool.functionDeclarations) {
-                const declarations = (geminiTool.functionDeclarations as Record<string, unknown>[]).filter(
-                  (declaration) => {
-                    const functionName = declaration.name as string;
-
-                    if (disabledDDGFunctions.includes(functionName)) {
-                      disabledFunctionsCount++;
-                      return false;
-                    }
-
-                    return allowedFunctionSet.has(functionName);
-                  },
-                );
-
-                if (declarations.length > 0) {
-                  allFunctionDeclarations.push(...declarations);
-                  addedMCPToolsCount++;
-                }
-              }
-            } catch (error) {
-              log.warn("Failed to extract functions from MCP tool:", error as Error);
-            }
-          }
-
-          log.info(
-            `Added ${addedMCPToolsCount} MCP tools using centralized filtering (${allowedMCPFunctions.length} functions allowed)`,
-          );
-          if (disabledFunctionsCount > 0) {
-            log.info(
-              `Excluded ${disabledFunctionsCount} disabled DuckDuckGo functions (${disabledDDGFunctions.join(", ")})`,
-            );
-          }
-        } else {
-          // Legacy path with Brave API key filtering (for backward compatibility)
-          const mcpTools = mcpManager.getMCPTools();
-
-          const duckduckgoSearchFunctions = ["web-search", "iask-search", "monica-search"];
-
-          for (const mcpTool of mcpTools) {
-            try {
-              const geminiTool = await mcpTool.tool();
-              if (geminiTool.functionDeclarations) {
-                // Cast FunctionDeclaration to Record<string, unknown> for type compatibility
-                let declarations = geminiTool.functionDeclarations as Record<string, unknown>[];
-
-                const originalCount = declarations.length;
-                declarations = declarations.filter((declaration: Record<string, unknown>) => {
-                  const functionName = declaration.name as string;
-
-                  if (disabledDDGFunctions.includes(functionName)) {
-                    disabledFunctionsCount++;
-                    return false;
-                  }
-
-                  // DuckDuckGo/IAsk MCP function names are unconditionally
-                  // hidden in `availability.ts` and consumed only via the unified
-                  // `web_search` tool. The legacy Brave-key gate here is a no-op now.
-                  if (duckduckgoSearchFunctions.includes(functionName)) {
-                    return false;
-                  }
-
-                  return true;
-                });
-
-                excludedDDGFunctionsCount += originalCount - declarations.length - disabledFunctionsCount;
-
-                if (declarations.length > 0) {
-                  allFunctionDeclarations.push(...declarations);
-                  addedMCPToolsCount++;
-                }
-              }
-            } catch (error) {
-              log.warn("Failed to extract functions from MCP tool:", error as Error);
-            }
-          }
-
-          if (addedMCPToolsCount > 0) {
-            log.info(`Added ${addedMCPToolsCount} MCP tools to Google format`);
-          }
-          if (disabledFunctionsCount > 0) {
-            log.info(
-              `Excluded ${disabledFunctionsCount} disabled DuckDuckGo functions (${disabledDDGFunctions.join(", ")})`,
-            );
-          }
-          if (excludedDDGFunctionsCount > 0) {
-            log.info(`Excluded ${excludedDDGFunctionsCount} DuckDuckGo search functions (Brave API key available)`);
-          }
-        }
       }
 
       if (serverId && allowedMCPFunctions) {
@@ -348,31 +237,6 @@ export class GoogleToolAdapter implements MCPCapableToolAdapter {
       log.error("Failed to get all tools in Google format:", error as Error);
       return this.convertToolsArray(builtInTools);
     }
-  }
-
-  /**
-   * Check if a function name belongs to an MCP tool (global or guild)
-   * Delegates to the provider-agnostic MCP executor for global,
-   * and checks guild MCP manager for per-guild tools
-   */
-  async isMCPFunction(functionName: string): Promise<boolean> {
-    const mcpExecutor = getMCPExecutor();
-    return mcpExecutor.isMCPFunction(functionName);
-    // Note: Guild MCP is checked separately in toolRegistry.executeTool()
-    // because isMCPFunction here doesn't have serverId context
-  }
-
-  /**
-   * Execute an MCP tool function
-   * Delegates to the provider-agnostic MCP executor for all processing
-   */
-  async executeMCPFunction(
-    functionName: string,
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<TypedMCPToolResult> {
-    const mcpExecutor = getMCPExecutor();
-    return mcpExecutor.executeMCPFunction(functionName, args, context);
   }
 
   /**

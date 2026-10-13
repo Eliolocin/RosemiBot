@@ -1,3 +1,4 @@
+import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 /**
  * /memory history import - Extract atomic facts from channel message history using an LLM
  * and store them as document chunks for RAG retrieval.
@@ -533,6 +534,7 @@ async function fetchAndFormatMessages(params: {
     reachedEnd = false;
   }
 
+  await Promise.all(messages.map(verifyMessageWebhook));
   const formattedResult = formatMessagesForExtraction(messages, allPersonas, channel.client.user?.id);
 
   return {

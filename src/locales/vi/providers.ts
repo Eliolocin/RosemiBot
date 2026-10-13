@@ -1,7 +1,6 @@
 export default {
   genai: {
     generic_error_title: `Lỗi tạo nội dung`,
-    generic_error_description: `{error_message}`,
     error_stream_timeout_title: `Hết thời gian kết nối`,
     error_stream_timeout_description: `Nếu tình trạng này tiếp diễn, có thể nhà cung cấp AI đã chọn gặp sự cố tạm thời. Vui lòng thử lại sau hoặc dùng \`/refresh\` để làm mới lịch sử ngữ cảnh.`,
     empty_response_title: `Phản hồi trống`,
@@ -20,7 +19,6 @@ export default {
 {failure_list}`,
     fallback_used_failure_line: `{index}. {model} gặp lỗi {error_detail}`,
     fallback_used_details_button: `Đã dùng dự phòng`,
-    fallback_used_hide_footer: `Ẩn thông báo này và chuyển chi tiết vào nhật ký suy nghĩ bằng \`/config\` > Behavior > Notices`,
     fallback_used_personal_opt_out_footer: `Ngừng để model của máy chủ trả lời thay khi nhà cung cấp cá nhân của bạn gặp lỗi trong \`/personal config\` > Model > Model dự phòng`,
     markdown_table: {
       show_button: `Hiện Markdown`,
@@ -29,6 +27,8 @@ export default {
     },
     no_response_title: `Không có phản hồi`,
     no_response_description: `Mình không phản hồi: điều này có thể do phản hồi trống hoặc hết thời gian chờ từ AI.`,
+    log_channel_chat_notice_title: `Không trò chuyện trong kênh nhật ký`,
+    log_channel_chat_notice_description: `Kênh này đang được đặt làm kênh nhật ký, nên mình không trả lời tin nhắn ở đây. Để trò chuyện ở đây, hãy xóa hoặc đổi kênh trong \`/config\` > Kênh > Nhật ký.`,
     thought_log: {
       title: `Nhật ký suy nghĩ`,
       description: `Nguồn: {source_line}`,
@@ -76,6 +76,12 @@ export default {
       inactivity_timeout_title: `🟡️ Phản hồi đã hết thời gian`,
       inactivity_timeout_description: `Nhà cung cấp AI đã ngừng phản hồi và kết nối bị hết thời gian. Điều này có thể xảy ra khi nhà cung cấp bị quá tải hoặc gặp sự cố. Vui lòng thử lại.`,
       first_token_timeout_description: `Nhà cung cấp AI đã nhận yêu cầu nhưng không bao giờ bắt đầu phản hồi, nên kết nối bị hết thời gian. Hàng đợi của họ có thể đang quá tải. Vui lòng thử lại, hoặc chuyển sang một model ít bận hơn.`,
+    },
+    error_detail: {
+      button: `Xem lỗi đầy đủ`,
+      title: `Lỗi đầy đủ từ nhà cung cấp`,
+      manage_server_only: `Chỉ thành viên có quyền \`Quản lý máy chủ\` mới xem được lỗi đầy đủ.`,
+      personal_only: `Lỗi này đến từ nhà cung cấp cá nhân, nên chỉ chủ sở hữu mới xem được lỗi đầy đủ.`,
     },
     // Atomic tip-item strings rendered by createTipText() as a dashed bullet list in a read-only
     // modal. Each key is one bullet; callers compose conditional items instead of maintaining
@@ -135,6 +141,10 @@ export default {
       content_blocked_default_message: `Nội dung của bạn đã bị chặn bởi bộ lọc an toàn`,
       unknown_default_message: `Đã xảy ra lỗi ngoài dự kiến`,
     },
+    vertex: {
+      config_error_message: `Vertex AI không đọc được cài đặt của nhà cung cấp này. Hãy nhập key theo dạng \`project-id::location\` trong \`/providers\`.`,
+      auth_error_message: `Vertex AI không xác thực được. Người host TomoriBot cần thiết lập Application Default Credentials của Google Cloud (\`gcloud auth application-default login\` hoặc \`GOOGLE_APPLICATION_CREDENTIALS\`).`,
+    },
     vertexexpress: {
       "403_predict_permission_message": `Key này không thể gọi các model Vertex AI Express. Hãy dùng key ở chế độ Express, hoặc dùng nhà cung cấp \`vertex\` riêng cho các dự án Google Cloud đầy đủ.`,
       unknown_default_message: `Đã xảy ra lỗi ngoài dự kiến`,
@@ -178,6 +188,7 @@ Model đã chọn yêu cầu cấp quyền dữ liệu để huấn luyện tr�
     },
     custom: {
       "402_default_message": `Tài khoản của bạn với endpoint này không đủ số dư`,
+      REDIRECT_CREDENTIALS_WITHHELD_default_message: `Endpoint này đã chuyển hướng sang địa chỉ khác, vì vậy TomoriBot không gửi API key đến đó. Người quản lý endpoint này trong \`/providers\` có thể khắc phục bằng cách đổi URL thành địa chỉ chuyển hướng cuối cùng của máy chủ.`,
       unknown_default_message: `Đã xảy ra lỗi ngoài dự kiến`,
     },
     deepseek: {
@@ -194,11 +205,11 @@ Model đã chọn yêu cầu cấp quyền dữ liệu để huấn luyện tr�
       "401_default_message": `NVIDIA không nhận ra key này. Hãy kiểm tra key đã được sao chép đầy đủ chưa, bao gồm cả tiền tố \`nvapi-\`.`,
       "403_default_message": `NVIDIA đã từ chối key này. Key có thể bị gõ sai, đã hết hạn, hoặc tài khoản thiếu quyền truy cập inference.`,
       "404_default_message": `Không tìm thấy model NVIDIA NIM được yêu cầu. Model có thể đã bị NVIDIA ngừng hỗ trợ.`,
-      "500_default_message": `Hệ thống phụ trợ NVIDIA cung cấp model này gặp sự cố. Lỗi này thường chỉ là tạm thời, hãy thử lại sau giây lát. Chi tiết bên dưới là báo cáo từ chính NVIDIA và mang tính xác thực: nếu có nêu tên tham số yêu cầu, hãy điều chỉnh cài đặt đó thay vì suy đoán.`,
+      "500_default_message": `Backend của NVIDIA phục vụ model này đã gặp lỗi. Lỗi này thường chỉ tạm thời, hãy thử lại sau giây lát. Nếu vẫn tiếp tục lỗi, người host TomoriBot có thể đọc báo cáo đầy đủ của NVIDIA trong log của bot.`,
       // Shown instead of 500_default_message only when NVIDIA's own text names a droppable request
       // parameter. Asserting this cause on every 500 previously sent users to change settings the
       // failing payload never carried.
-      "500_parameter_default_message": `NVIDIA đã từ chối một hoặc nhiều tham số yêu cầu cho model này. Nếu phần chi tiết nêu tên tham số lấy mẫu không được hỗ trợ như \`min_p\`, hãy đặt chúng về \`0\` bằng \`/config\` > Models > Samplers & Parameters để tắt. Nếu phần chi tiết nêu \`logit_bias\`, hãy xóa các mục đã lưu bằng \`/config\` > Models > Samplers & Parameters.`,
+      "500_parameter_default_message": `NVIDIA đã từ chối một hoặc nhiều tham số yêu cầu cho model này. Trong \`/config\` > Models > Samplers & Parameters, hãy đặt các sampler không được hỗ trợ như \`min_p\` về \`0\` và xóa các mục \`logit_bias\` đã lưu.`,
       unknown_default_message: `Đã xảy ra lỗi ngoài dự kiến`,
     },
     self_teach: {

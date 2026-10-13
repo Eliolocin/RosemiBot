@@ -1,11 +1,18 @@
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
+import { getDiscordTextLength } from "@/utils/text/discordTextLimits";
+import { initializeLocalizer } from "@/utils/text/localizer";
 import {
   buildTextPreview,
   CONFIRMATION_PREVIEW_BUDGET,
   CV2_TEXT_PREVIEW_BUDGET,
+  FENCED_PREVIEW_MAX_CHARS,
+  renderFencedPreview,
   textPreviewFooterKey,
   textPreviewFooterVars,
 } from "@/utils/text/textPreview";
+import { localizedCopy } from "../../helpers/localeCases";
+
+beforeAll(initializeLocalizer);
 
 describe("buildTextPreview", () => {
   it("passes short text through untouched", () => {
@@ -157,5 +164,37 @@ describe("textPreviewFooter helpers", () => {
     const preview = buildTextPreview("x".repeat(7412));
     expect(textPreviewFooterKey(preview)).toBe("general.text_preview.truncated_footer");
     expect(textPreviewFooterVars(preview, "en-US")).toEqual({ shown: "3,000", total: "7,412" });
+  });
+});
+
+describe("renderFencedPreview", () => {
+  const fenceBody = (rendered: string): string => rendered.slice("```markdown\n".length, -"\n```".length);
+
+  it("renders text that fits without a marker", () => {
+    expect(renderFencedPreview("en-US", "short prompt", { actionLabel: "Set Prompt" })).toBe(
+      "```markdown\nshort prompt\n```",
+    );
+  });
+
+  it("caps every caller at the shared ceiling and accounts for every hidden character", () => {
+    const source = `\`\`\`\n${"🙂".repeat(4000)}`;
+    const rendered = renderFencedPreview("en-US", source, { budget: 3000, actionLabel: "Set Prompt" });
+    expect(getDiscordTextLength(rendered)).toBeLessThanOrEqual(FENCED_PREVIEW_MAX_CHARS);
+    expect(rendered.endsWith("\n```")).toBe(true);
+    const body = fenceBody(rendered);
+    expect(body).not.toContain("``");
+    const markerMatch = body.match(/\n<!-- (.+) -->$/u);
+    const shown = getDiscordTextLength(body.slice(0, markerMatch?.index).replaceAll("​", ""));
+    const hidden = getDiscordTextLength(source) - shown;
+    expect(markerMatch?.[1]).toBe(
+      localizedCopy("en-US", "general.text_preview.hidden_marker_action", {
+        count: hidden.toLocaleString("en-US"),
+        action: "Set Prompt",
+      }),
+    );
+  });
+
+  it("returns nothing when the budget cannot hold the closing fence and marker", () => {
+    expect(renderFencedPreview("en-US", "x".repeat(1000), { budget: 20 })).toBe("");
   });
 });

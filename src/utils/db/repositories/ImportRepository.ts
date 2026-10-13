@@ -1,3 +1,4 @@
+import { validateDraftingImportReferences } from "@/utils/discord/interactions/responseDraftingOperations";
 import { sql } from "@/utils/db/client";
 import type { SQL } from "bun";
 import { log } from "@/utils/misc/logger";
@@ -119,6 +120,12 @@ const WORKSPACE_SECTION_TABLES: Record<WorkspaceConfigSection, readonly SectionT
         "send_message_limit",
         "context_note",
         "context_note_depth",
+        "response_prefill",
+        "response_reviewer_llm_id",
+        "response_decision_model_id",
+        "response_reviewer_prompt",
+        "response_rule_checker_ref",
+        "response_review_items",
       ],
     },
     { tableName: "server_welcome_configs", fields: ["welcome_prompt"] },
@@ -142,6 +149,7 @@ const WORKSPACE_SECTION_TABLES: Record<WorkspaceConfigSection, readonly SectionT
       tableName: "server_capabilities_configs",
       fields: [
         "web_search_enabled",
+        "response_drafting_enabled",
         "emoji_usage_enabled",
         "sticker_usage_enabled",
         "imagegen_enabled",
@@ -156,7 +164,7 @@ const WORKSPACE_SECTION_TABLES: Record<WorkspaceConfigSection, readonly SectionT
         "user_info_updates_enabled",
       ],
     },
-    { tableName: "server_notice_embeds_configs", fields: ["tool_notice_hidden_keys"] },
+    { tableName: "server_notice_embeds_configs", fields: ["tool_notice_hidden_keys", "tool_notice_verbosity"] },
     {
       tableName: "server_nsfw_configs",
       fields: ["uncensor_injection_enabled", "uncensor_unicode_space_enabled", "uncensor_sanitize_enabled"],
@@ -249,6 +257,7 @@ const PERSONAL_SECTION_TABLES: Record<PersonalConfigSection, readonly SectionTab
 };
 
 const TEXT_ARRAY_CONFIG_COLUMNS = new Set([
+  "response_review_items",
   "llm_disabled_params",
   "llm_stop_strings",
   "tool_notice_hidden_keys",
@@ -257,7 +266,7 @@ const TEXT_ARRAY_CONFIG_COLUMNS = new Set([
   "physical_appearance_tags",
 ]);
 
-const JSONB_CONFIG_COLUMNS = new Set(["llm_logit_biases", "deliberate_tool_triggers"]);
+const JSONB_CONFIG_COLUMNS = new Set(["response_rule_checker_ref", "llm_logit_biases", "deliberate_tool_triggers"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -475,7 +484,7 @@ class ImportRepository {
         values.push(toPostgresTextArrayLiteral(value));
       } else if (JSONB_CONFIG_COLUMNS.has(field)) {
         setParts.push(`${field} = ${placeholder}::JSONB`);
-        values.push(JSON.stringify(value));
+        values.push(value === null ? null : JSON.stringify(value));
       } else {
         setParts.push(`${field} = ${placeholder}`);
         values.push(value);
@@ -532,6 +541,14 @@ class ImportRepository {
       );
       if (!serverId) return { success: false, error: "commands.data.import.error_no_server_data" };
 
+      for (const tablePatch of prepared.tablePatches) {
+        if (
+          tablePatch.tableName === "server_chat_configs" &&
+          !(await validateDraftingImportReferences(serverId, tablePatch.patch))
+        ) {
+          return { success: false, error: "commands.config.drafting.import_unavailable" };
+        }
+      }
       const tablePatches = prepared.tablePatches.map((tablePatch) => ({ ...tablePatch, id: serverId }));
       await sql.begin(async (tx: SQL) => {
         for (const tablePatch of tablePatches) await this.updateConfigRow(tx, tablePatch);
@@ -844,6 +861,9 @@ class ImportRepository {
         return { success: false, error: "commands.data.import.error_no_server_data" };
       }
 
+      if (!(await validateDraftingImportReferences(serverId, config)))
+        return { success: false, error: "commands.config.drafting.import_unavailable" };
+
       // STM customization travels as nested keys (stm_config / stm_categories) that are
       // restored via shortTermMemoryRepository.fromExportShape, NOT the dynamic flat-config
       // SQL writer: so exclude them from the column-name allowlist validation below.
@@ -878,9 +898,17 @@ class ImportRepository {
         system_prompt: config.system_prompt ?? null,
         self_debug_enabled: config.self_debug_enabled,
         model_randomizer_enabled: config.model_randomizer_enabled,
+        response_reviewer_llm_id: config.response_reviewer_llm_id,
+        response_decision_model_id: config.response_decision_model_id,
+        response_reviewer_prompt: config.response_reviewer_prompt,
+        response_rule_checker_ref: config.response_rule_checker_ref,
+        ...(config.response_review_items !== undefined && {
+          response_review_items: config.response_review_items,
+        }),
         ...(hasMaxOutputTokens && { llm_max_output_tokens: config.llm_max_output_tokens ?? null }),
         ...(config.context_note !== undefined && { context_note: config.context_note }),
         ...(config.context_note_depth !== undefined && { context_note_depth: config.context_note_depth }),
+        ...(config.response_prefill !== undefined && { response_prefill: config.response_prefill }),
         ...(config.cascade_limit !== undefined && { cascade_limit: config.cascade_limit }),
         ...(config.match_limit !== undefined && { match_limit: config.match_limit }),
         ...(config.send_message_limit !== undefined && { send_message_limit: config.send_message_limit }),
@@ -898,6 +926,9 @@ class ImportRepository {
       };
 
       const capsPatch = {
+        ...(config.response_drafting_enabled !== undefined && {
+          response_drafting_enabled: config.response_drafting_enabled,
+        }),
         emoji_usage_enabled: config.emoji_usage_enabled,
         sticker_usage_enabled: config.sticker_usage_enabled,
         imagegen_enabled: config.imagegen_enabled,
@@ -926,6 +957,7 @@ class ImportRepository {
       const noticeEmbedsPatch: Partial<ServerNoticeEmbedsConfigRow> = {
         tool_notice_hidden_keys:
           config.tool_notice_hidden_keys as ServerNoticeEmbedsConfigRow["tool_notice_hidden_keys"],
+        ...(config.tool_notice_verbosity !== undefined && { tool_notice_verbosity: config.tool_notice_verbosity }),
       };
 
       const requiredWriteResults = await Promise.all([

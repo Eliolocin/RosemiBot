@@ -7,6 +7,7 @@ export interface SelectOption {
   label: string;
   value: string;
   description?: string;
+  default?: boolean;
   emoji?: {
     name: string;
   };
@@ -279,6 +280,13 @@ export interface ModalOptions {
    * unchanged by construction until they explicitly opt in.
    */
   selectorStyle?: "legacy" | "componentsV2";
+  /** Title of the page selector shown past 25 options; defaults to `general.pagination.select_page_title`. */
+  pageSelectTitleKey?: string;
+  /**
+   * Description of that selector, receiving `{totalItems}` and `{totalPages}`; defaults to
+   * `general.pagination.select_page_description`.
+   */
+  pageSelectDescriptionKey?: string;
 }
 
 export type ModalResult = {

@@ -131,3 +131,30 @@ describe("turn cancellation", () => {
     expect(result.errorKind).toBe("request_failed");
   });
 });
+
+describe("failure details", () => {
+  it("keeps an echoed credential in the endpoint's error body and headers out of details", async () => {
+    const canary = "sk-live-CANARY0001";
+    const request = {
+      endpoint: COSYVOICE3_ENDPOINT,
+      refAudio: Buffer.from("reference-audio"),
+      refText: null,
+      script: "Hello there",
+      apiKey: canary,
+    };
+
+    fetchMock.mockImplementationOnce(async () =>
+      Response.json({ detail: `rejected Authorization: Bearer ${canary} <@&42>` }, { status: 500 }),
+    );
+    const httpFailure = await synthesizeSpeechViaTtsCloneBuffer(request);
+
+    fetchMock.mockImplementationOnce(
+      async () => new Response("not audio", { headers: { "content-type": `text/html; echo=${canary}` } }),
+    );
+    const contentTypeFailure = await synthesizeSpeechViaTtsCloneBuffer(request);
+
+    expect(httpFailure.details).toBe("HTTP 500");
+    expect(contentTypeFailure.success).toBe(false);
+    expect(contentTypeFailure.details).not.toContain(canary);
+  });
+});

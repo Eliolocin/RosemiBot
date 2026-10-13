@@ -25,8 +25,8 @@ export default {
     member_access_attributelist_disabled: `🔴 成員無法管理人格屬性。`,
     member_access_sampledialogues_enabled: `🟢 成員可以管理人格範例對話。`,
     member_access_sampledialogues_disabled: `🔴 成員無法管理人格範例對話。`,
-    member_access_promptsnapshot_enabled: `🟢 成員可以建立提示詞快照。`,
-    member_access_promptsnapshot_disabled: `🔴 成員無法建立提示詞快照。`,
+    member_access_promptsnapshot_enabled: `🟢 成員可以從 \`/context\` 與提示詞快照中檢視完整提示詞。`,
+    member_access_promptsnapshot_disabled: `🔴 成員無法檢視完整提示詞或建立提示詞快照。`,
     edit_permissions: `編輯權限`,
     model_access_title: `伺服器模型存取`,
     model_access_description: `控制伺服器成員可以使用哪些模型。`,
@@ -191,7 +191,6 @@ export default {
     remove_blacklist_group_description: `取消勾選後送出，即可移除黑名單項目`,
     remove_whitelist_group_description: `取消勾選後送出，即可移除白名單`,
     remove_group_continuation: `續（{index}）`,
-    remove_modal_limit: `這份清單超過 50 個項目，無法放進同一個視窗。`,
     remove_nothing_changed: `沒有移除任何項目`,
     remove_nothing_changed_detail: `所有項目都保持選取。不需要寫入。`,
 

@@ -402,6 +402,26 @@ describe("raw config modal limits", () => {
     expect(radio11Result.valid).toBe(false);
     expect(radio11Result.violations.some((v) => v.code === "MODAL_OPTION_COUNT_INVALID")).toBe(true);
 
+    for (const count of [0, 1, 2, 10]) {
+      const payload: RawModalPayload = {
+        ...elevenRadioPayload,
+        components: [
+          {
+            type: LABEL,
+            label: "Group",
+            component: {
+              type: RADIO_GROUP,
+              custom_id: "radio_group",
+              options: Array.from({ length: count }, (_, index) => ({ label: `Opt ${index}`, value: `val_${index}` })),
+            },
+          },
+        ],
+      };
+      const result = validateRawModalLimits(payload);
+      expect(result.valid, `radio option count ${count}`).toBe(count >= 2);
+      expect(result.violations.some((violation) => violation.code === "MODAL_OPTION_COUNT_INVALID")).toBe(count < 2);
+    }
+
     // String Select: 25 options accepted, 26 rejected
     const twentySixSelectPayload: RawModalPayload = {
       title: "Select",
@@ -527,7 +547,10 @@ describe("raw config modal limits", () => {
           component: {
             type: RADIO_GROUP,
             custom_id: "radio_group_desc",
-            options: [{ label: "Opt", value: "val", description: "d".repeat(101) }],
+            options: [
+              { label: "Opt", value: "val", description: "d".repeat(101) },
+              { label: "Other", value: "other" },
+            ],
           },
         },
       ],

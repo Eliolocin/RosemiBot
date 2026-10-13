@@ -1,249 +1,61 @@
-/**
- * Force rotation script to migrate all encrypted keys to the current version
- *
- * This script:
- * - Finds all keys encrypted with old versions
- * - Re-encrypts them with the current version
- * - Updates the database with new ciphertext and version
- * - Supports --dry-run mode to preview changes
- *
- * Usage:
- *   bun run rotate-keys           # Perform rotation
- *   bun run rotate-keys --dry-run # Preview without changes
- */
-
-import { sql } from "bun";
 import { loadInitializedKeyManager } from "../lib/keyManagerBootstrap";
+import { isGeneratedLengthKey, MIN_GENERATED_KEY_LENGTH } from "@/utils/security/keyManager";
+import {
+  scanEncryptedRows,
+  storedKeyVersion,
+  verifyCiphertext,
+  rotateEncryptedRow,
+} from "@/utils/security/encryptedColumns";
 
-const keyManager = await loadInitializedKeyManager();
-const { decryptApiKey, encryptApiKey } = await import("@/utils/security/crypto");
-
-/**
- * Get PostgreSQL connection URL from environment variables
- * Supports both POSTGRES_URL and component-based configuration
- */
-function getPostgresUrl(): string {
-  // If POSTGRES_URL is provided, use it directly (backwards compatibility)
-  if (process.env.POSTGRES_URL) {
-    return process.env.POSTGRES_URL;
+async function rotateAllKeys(): Promise<void> {
+  const dryRun = process.argv.includes("--dry-run");
+  if (!dryRun && !process.argv.includes("--bot-stopped")) {
+    throw new Error("Stop every bot instance and pass --bot-stopped. Restart after rotation to clear process caches.");
   }
-
-  const host = process.env.POSTGRES_HOST || "localhost";
-  const port = process.env.POSTGRES_PORT || "5432";
-  const user = process.env.POSTGRES_USER || "postgres";
-  const password = process.env.POSTGRES_PASSWORD;
-  const database = process.env.POSTGRES_DB || "tomodb";
-
-  if (!password) {
-    throw new Error("Database password must be provided via POSTGRES_PASSWORD or POSTGRES_URL");
+  const manager = await loadInitializedKeyManager();
+  // Rotation moves every credential onto the current version, so that is where weak new key
+  // material would spread. Older versions keep loading for decryption.
+  if (!dryRun && !isGeneratedLengthKey(manager.getCurrentKey())) {
+    console.error(
+      `Current key V${manager.getCurrentVersion()} is shorter than ${MIN_GENERATED_KEY_LENGTH} characters. Generate a new version with \`openssl rand -base64 32\`, select it, and rerun.`,
+    );
+    throw new Error("Weak current key.");
   }
-
-  return `postgresql://${user}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
-}
-
-const postgresUrl = getPostgresUrl();
-process.env.DATABASE_URL = postgresUrl;
-
-interface OldKeyRow {
-  table: "opt_api_keys" | "pluralbuddy_oauth_connections";
-  id: number | string;
-  field?: "client_secret" | "refresh_token" | "access_token";
-  api_key: Buffer;
-  key_version: number | undefined;
-  identifier: string; // For logging (e.g., "server_id: 123, service: brave-search")
-}
-
-async function rotateAllKeys() {
-  const isDryRun = process.argv.includes("--dry-run");
-  const currentVersion = keyManager.getCurrentVersion();
-
-  console.log("\n=== TomoriBot Key Rotation ===\n");
-
-  if (isDryRun) {
-    console.log("🔍 DRY RUN MODE - No changes will be made\n");
-  }
-
-  console.log(`Current version: V${currentVersion}`);
-  console.log(
-    `Available versions: ${keyManager
-      .getAvailableVersions()
-      .map((v) => `V${v}`)
-      .join(", ")}\n`,
-  );
-
-  const oldKeys: OldKeyRow[] = [];
-
+  const { sql } = await import("@/utils/db/client");
+  let scanned = 0;
+  let migrated = 0;
+  let failed = 0;
   try {
-    const optApiKeys = await sql`
-			SELECT opt_api_key_id, server_id, service_name, api_key, key_version
-			FROM opt_api_keys
-			WHERE (key_version != ${currentVersion} OR key_version IS NULL)
-			  AND api_key IS NOT NULL
-		`;
-
-    for (const row of optApiKeys) {
-      oldKeys.push({
-        table: "opt_api_keys",
-        id: row.opt_api_key_id,
-        api_key: row.api_key,
-        key_version: row.key_version || 1,
-        identifier: `server_id: ${row.server_id}, service: ${row.service_name}`,
-      });
-    }
-  } catch (error) {
-    console.error("❌ Failed to query opt_api_keys:", error);
-  }
-
-  try {
-    const connections = await sql`
-      SELECT instance_id, client_secret, client_secret_key_version,
-        refresh_token, refresh_token_key_version, access_token, access_token_key_version
-      FROM pluralbuddy_oauth_connections
-    `;
-    for (const row of connections) {
-      for (const field of ["client_secret", "refresh_token", "access_token"] as const) {
-        const ciphertext = row[field] as Buffer | null;
-        const version = row[`${field}_key_version`] as number | null;
-        if (!ciphertext || version === currentVersion) continue;
-        oldKeys.push({
-          table: "pluralbuddy_oauth_connections",
-          id: row.instance_id as string,
-          field,
-          api_key: ciphertext,
-          key_version: version ?? 1,
-          identifier: `instance_id: ${row.instance_id}, field: ${field}`,
-        });
+    for await (const { target, row } of scanEncryptedRows(sql)) {
+      scanned++;
+      try {
+        const version = storedKeyVersion(row.key_version);
+        await verifyCiphertext(sql, row.ciphertext, version);
+        if (row.key_version === null || version !== manager.getCurrentVersion()) {
+          if (!dryRun) await rotateEncryptedRow(sql, target, row);
+          migrated++;
+        }
+      } catch {
+        failed++;
+        console.error(`Credential check or rotation failed: ${target.table}, row ${row.id}.`);
       }
     }
-  } catch (error) {
-    console.error("❌ Failed to query pluralbuddy_oauth_connections:", error);
-  }
-
-  if (oldKeys.length === 0) {
-    console.log(`✅ All keys are already on the current version (V${currentVersion})`);
-    console.log("   No rotation needed!\n");
-    return;
-  }
-
-  console.log(`Found ${oldKeys.length} keys to rotate:\n`);
-
-  const byTable = oldKeys.reduce(
-    (acc, key) => {
-      acc[key.table] = (acc[key.table] || 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  for (const [table, count] of Object.entries(byTable)) {
-    console.log(`   ${table}: ${count} keys`);
-  }
-
-  console.log();
-
-  if (isDryRun) {
-    console.log("📋 Keys that would be rotated:\n");
-    for (const key of oldKeys.slice(0, 10)) {
-      console.log(`   V${key.key_version} → V${currentVersion}: ${key.table} (${key.identifier})`);
-    }
-    if (oldKeys.length > 10) {
-      console.log(`   ... and ${oldKeys.length - 10} more`);
-    }
-    console.log("\n✅ Dry run complete. Remove --dry-run to perform rotation.\n");
-    return;
-  }
-
-  console.log("🔄 Starting rotation...\n");
-
-  let successCount = 0;
-  let failCount = 0;
-  const errors: Array<{ key: OldKeyRow; error: unknown }> = [];
-
-  for (const oldKey of oldKeys) {
-    try {
-      const plaintext = await decryptApiKey(oldKey.api_key, oldKey.key_version);
-
-      const { encrypted, version } = await encryptApiKey(plaintext);
-
-      if (oldKey.table === "opt_api_keys") {
-        await sql`
-					UPDATE opt_api_keys
-					SET api_key = ${encrypted},
-					    key_version = ${version},
-					    updated_at = CURRENT_TIMESTAMP
-					WHERE opt_api_key_id = ${oldKey.id}
-        `;
-      } else if (oldKey.field === "client_secret") {
-        const updated = await sql`
-          UPDATE pluralbuddy_oauth_connections
-          SET client_secret = ${encrypted}, client_secret_key_version = ${version}
-          WHERE instance_id = ${oldKey.id} AND client_secret = ${oldKey.api_key}
-          RETURNING instance_id
-        `;
-        if (updated.length === 0) continue;
-      } else if (oldKey.field === "refresh_token") {
-        const updated = await sql`
-          UPDATE pluralbuddy_oauth_connections
-          SET refresh_token = ${encrypted}, refresh_token_key_version = ${version}
-          WHERE instance_id = ${oldKey.id} AND refresh_token = ${oldKey.api_key}
-          RETURNING instance_id
-        `;
-        if (updated.length === 0) continue;
-      } else if (oldKey.field === "access_token") {
-        const updated = await sql`
-          UPDATE pluralbuddy_oauth_connections
-          SET access_token = ${encrypted}, access_token_key_version = ${version}
-          WHERE instance_id = ${oldKey.id} AND access_token = ${oldKey.api_key}
-          RETURNING instance_id
-        `;
-        if (updated.length === 0) continue;
-      }
-
-      successCount++;
-      console.log(`   ✅ Rotated V${oldKey.key_version} → V${version}: ${oldKey.table} (${oldKey.identifier})`);
-    } catch (error) {
-      failCount++;
-      errors.push({ key: oldKey, error });
-      console.error(
-        `   ❌ Failed: ${oldKey.table} (${oldKey.identifier}): ${error instanceof Error ? error.message : error}`,
-      );
-    }
-  }
-
-  console.log("\n=== Rotation Summary ===\n");
-  console.log(`   ✅ Succeeded: ${successCount}`);
-  console.log(`   ❌ Failed: ${failCount}`);
-  console.log(`   📊 Total: ${oldKeys.length}\n`);
-
-  if (failCount > 0) {
-    console.log("⚠️  Some keys failed to rotate. Details:");
-    for (const { key, error } of errors.slice(0, 5)) {
-      console.log(`   - ${key.table} (${key.identifier}): ${error instanceof Error ? error.message : error}`);
-    }
-    if (errors.length > 5) {
-      console.log(`   ... and ${errors.length - 5} more errors`);
-    }
-    console.log();
-  }
-
-  if (successCount === oldKeys.length) {
-    console.log(`🎉 All keys successfully rotated to V${currentVersion}!`);
-    console.log("   Run 'bun run audit-keys' to verify.\n");
-  } else if (successCount > 0) {
-    console.log(`⚠️  Partial success: ${successCount}/${oldKeys.length} keys rotated.`);
-    console.log("   Run 'bun run audit-keys' to see current status.\n");
-  } else {
-    console.log("❌ Rotation failed - no keys were migrated.");
-    console.log("   Check error messages above and try again.\n");
-    process.exit(1);
+    console.log(`Scanned: ${scanned}; ${dryRun ? "would migrate" : "migrated"}: ${migrated}; failed: ${failed}.`);
+    if (failed > 0) throw new Error("Incomplete rotation.");
+    console.log(
+      dryRun
+        ? "Dry run complete: all scanned credentials are decryptable."
+        : "Rotation complete. Run audit-keys, then restart every bot instance.",
+    );
+    console.log("Keep separately archived keys for retained backups; this command does not authorize key retirement.");
+  } finally {
+    await sql.close();
   }
 }
 
-rotateAllKeys()
-  .catch((error) => {
-    console.error("\n❌ Rotation script failed:", error);
-    process.exitCode = 1;
-  })
-  .finally(() => {
-    process.exit(process.exitCode ?? 0);
-  });
+await rotateAllKeys().catch(() => {
+  console.error(
+    "Rotation incomplete. Queries, keys, or rows may have failed. Keep all key versions; retry after recovery. Stop every bot instance and use --bot-stopped for writes.",
+  );
+  process.exitCode = 1;
+});

@@ -4,22 +4,31 @@
 // is no generated SQL file. Edit and commit; the change seeds on the next boot.
 // Run `bun run check-seed-catalogs` to validate the per-provider invariants offline.
 
-import type { EmbeddingInput, ImageInput, LlmInput, ModelSection, VideoInput } from "./types";
+import type { DecisionInput, EmbeddingInput, ImageInput, LlmInput, ModelSection, VideoInput } from "./types";
 
 // inputPricePerMillion / outputPricePerMillion are official standard USD rates per million tokens
 // (uncached base input and output). Vertex and Vertex Express reuse the Gemini SKU prices, and a
 // deprecated Gemini preview snapshot carries its stable SKU's rate so users still on the old codename
 // keep accurate costs. A deprecated row Google never priced (gemini-3.5-pro, gemini-3-flash) stays
 // undefined and reads as "pricing unavailable".
+//
+// contextWindow / maxOutputTokens are official limits (verified 2026-10-05), sourced per section below.
+// A vendor's "1M" or "256K" is read as decimal, which rounds down so truncation errs safe; exact
+// published figures are used as given, and maxOutputTokens is omitted where no ceiling is published.
 export const llmSections: ModelSection<LlmInput>[] = [
   // Pricing: https://ai.google.dev/gemini-api/docs/pricing (verified 2026-06-10). Pro tiers use the
   // ≤200k-context rate because TomoriBot contexts stay under 200k. Gemma has no paid tier, so it stays unpriced.
+  // Limits: https://ai.google.dev/gemini-api/docs/models/<codename>. The GA codenames gemini-3-pro and
+  // gemini-3.1-pro have no page, so they carry their -preview limits. Gemma 4 (256K, no output ceiling):
+  // https://ai.google.dev/gemma/docs/core/model_card_4. Deprecated rows keep their family's limits.
   {
     comment: "Google Models (all Gemini models support vision, videos, YouTube, and structured output)",
     rows: [
       {
         provider: "google",
         codename: "gemini-2.0-flash",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 8_192,
         inputPricePerMillion: 0.1,
         outputPricePerMillion: 0.4,
         isFree: true,
@@ -34,6 +43,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-2.5-flash-lite",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.1,
         outputPricePerMillion: 0.4,
         isFree: true,
@@ -56,6 +68,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-2.5-flash-preview-05-20",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.3,
         outputPricePerMillion: 2.5,
         isFree: true,
@@ -70,6 +84,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-2.5-flash-preview-09-2025",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.3,
         outputPricePerMillion: 2.5,
         isFree: true,
@@ -92,6 +108,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-2.5-flash",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.3,
         outputPricePerMillion: 2.5,
         isFree: true,
@@ -114,9 +133,10 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-2.5-pro",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 1.25,
         outputPricePerMillion: 10.0,
-        isSmartest: true,
         isReasoning: true,
         isFree: true,
         hasTools: true,
@@ -137,6 +157,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-3-flash",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         isFree: true,
         hasTools: true,
         seesImages: true,
@@ -157,6 +180,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-3-flash-preview",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         isFree: true,
         hasTools: true,
         seesImages: true,
@@ -177,6 +203,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-3.1-flash-lite-preview",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.25,
         outputPricePerMillion: 1.5,
         hasTools: true,
@@ -196,6 +225,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-3.1-flash-lite",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.25,
         outputPricePerMillion: 1.5,
         hasTools: true,
@@ -216,6 +248,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-3.5-flash",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 1.5,
         outputPricePerMillion: 9.0,
         hasTools: true,
@@ -236,6 +271,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-3.5-flash-lite",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.3,
         outputPricePerMillion: 2.5,
         isDefault: true,
@@ -257,6 +294,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-3.6-flash",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 1.5,
         outputPricePerMillion: 7.5,
         hasTools: true,
@@ -280,6 +319,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-3.7-flash",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.75,
         outputPricePerMillion: 3.75,
         hasTools: true,
@@ -287,14 +328,14 @@ export const llmSections: ModelSection<LlmInput>[] = [
         seesVideos: true,
         seesYoutube: true,
         supportsStructoutput: true,
-        desc: "Latest Gemini 3.7 Flash model for general-purpose applications",
+        desc: "Gemini 3.7 Flash model for general-purpose applications",
         i18n: {
-          ja: "汎用アプリケーション向けの最新Gemini 3.7 Flashモデル",
-          "pt-BR": "Modelo Gemini 3.7 Flash mais recente para uso geral",
-          "es-419": "El modelo Gemini 3.7 Flash más reciente para aplicaciones de uso general",
-          "zh-TW": "適合一般用途的最新 Gemini 3.7 Flash 模型",
-          vi: "Model Gemini 3.7 Flash mới nhất cho ứng dụng đa mục đích",
-          "zh-CN": "适合通用场景的最新 Gemini 3.7 Flash 模型",
+          ja: "汎用アプリケーション向けのGemini 3.7 Flashモデル",
+          "pt-BR": "Modelo Gemini 3.7 Flash para uso geral",
+          "es-419": "Modelo Gemini 3.7 Flash para aplicaciones de uso general",
+          "zh-TW": "適合一般用途的 Gemini 3.7 Flash 模型",
+          vi: "Model Gemini 3.7 Flash cho ứng dụng đa mục đích",
+          "zh-CN": "适合通用场景的 Gemini 3.7 Flash 模型",
         },
       },
       {
@@ -320,6 +361,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-3-pro-preview",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 2.0,
         outputPricePerMillion: 12.0,
         isReasoning: true,
@@ -342,6 +385,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-3.1-pro",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 2.0,
         outputPricePerMillion: 12.0,
         isReasoning: true,
@@ -363,6 +408,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemini-3.1-pro-preview",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 2.0,
         outputPricePerMillion: 12.0,
         isReasoning: true,
@@ -385,6 +432,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemma-4-31b-it",
+        contextWindow: 256_000,
         hasTools: true,
         seesImages: true,
         seesVideos: true,
@@ -402,6 +450,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemma-4-26b-a4b-it",
+        contextWindow: 256_000,
         hasTools: true,
         seesImages: true,
         seesVideos: true,
@@ -419,6 +468,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "google",
         codename: "gemma-3-27b-it",
+        contextWindow: 128_000,
         isFree: true,
         seesImages: true,
         isDeprecated: true,
@@ -432,14 +482,50 @@ export const llmSections: ModelSection<LlmInput>[] = [
           "zh-CN": "支持图像理解的指令微调 Gemma 模型",
         },
       },
+      {
+        provider: "google",
+        codename: "gemini-3.1-pro-preview-customtools",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
+        hasTools: true,
+        seesImages: true,
+        seesVideos: true,
+        seesYoutube: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        inputPricePerMillion: 2,
+        outputPricePerMillion: 12,
+        desc: "Gemini 3.1 Pro preview tuned for agentic workflows that use custom tools and bash",
+      },
+      {
+        provider: "google",
+        codename: "gemini-3.8-flash",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
+        hasTools: true,
+        seesImages: true,
+        seesVideos: true,
+        seesYoutube: true,
+        isSmartest: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        inputPricePerMillion: 0.75,
+        outputPricePerMillion: 3.75,
+        desc: "Fast multimodal Gemini 3.8 model for reasoning and general-purpose tasks",
+      },
     ],
   },
+  // Limits: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/<slug>, which
+  // match the Gemini API pages for every shared codename.
   {
     comment: "Vertex AI Models (full feature parity with Google AI Studio via ADC)",
     rows: [
       {
         provider: "vertex",
         codename: "gemini-2.5-flash-lite",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.1,
         outputPricePerMillion: 0.4,
         hasTools: true,
@@ -461,6 +547,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-2.5-flash",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.3,
         outputPricePerMillion: 2.5,
         hasTools: true,
@@ -482,9 +571,10 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-2.5-pro",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 1.25,
         outputPricePerMillion: 10.0,
-        isSmartest: true,
         isReasoning: true,
         hasTools: true,
         seesImages: true,
@@ -504,6 +594,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-3-flash",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         hasTools: true,
         seesImages: true,
         seesVideos: true,
@@ -523,6 +616,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-3-flash-preview",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         hasTools: true,
         seesImages: true,
         seesVideos: true,
@@ -542,6 +638,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-3.1-flash-lite-preview",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.25,
         outputPricePerMillion: 1.5,
         hasTools: true,
@@ -563,6 +662,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-3.1-flash-lite",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.25,
         outputPricePerMillion: 1.5,
         hasTools: true,
@@ -581,6 +683,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-3.5-flash",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 1.5,
         outputPricePerMillion: 9.0,
         hasTools: true,
@@ -601,6 +706,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-3.5-flash-lite",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.3,
         outputPricePerMillion: 2.5,
         isDefault: true,
@@ -620,6 +727,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-3.6-flash",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 1.5,
         outputPricePerMillion: 7.5,
         hasTools: true,
@@ -640,6 +749,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-3.7-flash",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.75,
         outputPricePerMillion: 3.75,
         hasTools: true,
@@ -647,14 +758,14 @@ export const llmSections: ModelSection<LlmInput>[] = [
         seesVideos: true,
         seesYoutube: true,
         supportsStructoutput: true,
-        desc: "Latest Gemini 3.7 Flash model for general-purpose applications via Vertex AI",
+        desc: "Gemini 3.7 Flash model for general-purpose applications via Vertex AI",
         i18n: {
-          ja: "Vertex AI経由の汎用アプリケーション向けの最新Gemini 3.7 Flashモデル",
-          "pt-BR": "Modelo Gemini 3.7 Flash mais recente para uso geral via Vertex AI",
-          "es-419": "El Gemini 3.7 Flash más reciente para uso general vía Vertex AI",
-          "zh-TW": "經由 Vertex AI、適合一般用途的最新 Gemini 3.7 Flash 模型",
-          vi: "Model Gemini 3.7 Flash mới nhất cho ứng dụng đa mục đích qua Vertex AI",
-          "zh-CN": "经由 Vertex AI、适合通用场景的最新 Gemini 3.7 Flash 模型",
+          ja: "Vertex AI経由の汎用アプリケーション向けのGemini 3.7 Flashモデル",
+          "pt-BR": "Modelo Gemini 3.7 Flash para uso geral via Vertex AI",
+          "es-419": "Gemini 3.7 Flash para uso general vía Vertex AI",
+          "zh-TW": "經由 Vertex AI、適合一般用途的 Gemini 3.7 Flash 模型",
+          vi: "Model Gemini 3.7 Flash cho ứng dụng đa mục đích qua Vertex AI",
+          "zh-CN": "经由 Vertex AI、适合通用场景的 Gemini 3.7 Flash 模型",
         },
       },
       {
@@ -681,6 +792,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-3.1-pro",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 2.0,
         outputPricePerMillion: 12.0,
         isReasoning: true,
@@ -702,6 +815,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-3.1-pro-preview",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 2.0,
         outputPricePerMillion: 12.0,
         isReasoning: true,
@@ -722,6 +837,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemma-4-31b-it",
+        contextWindow: 256_000,
         hasTools: true,
         seesImages: true,
         supportsStructoutput: true,
@@ -739,6 +855,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertex",
         codename: "gemma-3-27b-it",
+        contextWindow: 128_000,
         seesImages: true,
         isDeprecated: true,
         desc: "Instruction-tuned Gemma model with image understanding via Vertex AI",
@@ -751,14 +868,48 @@ export const llmSections: ModelSection<LlmInput>[] = [
           "zh-CN": "经由 Vertex AI、支持图像理解的指令微调 Gemma 模型",
         },
       },
+      {
+        provider: "vertex",
+        codename: "gemini-3.1-pro-preview-customtools",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
+        hasTools: true,
+        seesImages: true,
+        seesVideos: true,
+        seesYoutube: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        inputPricePerMillion: 2,
+        outputPricePerMillion: 12,
+        desc: "Gemini 3.1 Pro preview via Vertex AI tuned for agentic workflows that use custom tools and bash",
+      },
+      {
+        provider: "vertex",
+        codename: "gemini-3.8-flash",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
+        hasTools: true,
+        seesImages: true,
+        seesVideos: true,
+        seesYoutube: true,
+        isSmartest: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        inputPricePerMillion: 0.75,
+        outputPricePerMillion: 3.75,
+        desc: "Fast multimodal Gemini 3.8 model for reasoning and general-purpose tasks via Vertex AI",
+      },
     ],
   },
+  // Limits: same sources as the Vertex AI section.
   {
     comment: "Vertex AI Express Models (Gemini-only Express Mode subset; no video, YouTube, or embeddings)",
     rows: [
       {
         provider: "vertexexpress",
         codename: "gemini-2.0-flash-001",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 8_192,
         inputPricePerMillion: 0.1,
         outputPricePerMillion: 0.4,
         hasTools: true,
@@ -777,6 +928,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-2.0-flash-lite-001",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 8_192,
         inputPricePerMillion: 0.075,
         outputPricePerMillion: 0.3,
         hasTools: true,
@@ -795,6 +948,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-2.5-flash-lite-09-2025",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.1,
         outputPricePerMillion: 0.4,
         hasTools: true,
@@ -813,6 +968,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-2.5-flash-lite-preview-09-2025",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.1,
         outputPricePerMillion: 0.4,
         hasTools: true,
@@ -832,6 +989,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-2.5-flash-lite",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.1,
         outputPricePerMillion: 0.4,
         hasTools: true,
@@ -850,6 +1010,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-2.5-flash",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.3,
         outputPricePerMillion: 2.5,
         isDefault: true,
@@ -869,9 +1032,10 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-2.5-pro",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 1.25,
         outputPricePerMillion: 10.0,
-        isSmartest: true,
         isReasoning: true,
         hasTools: true,
         seesImages: true,
@@ -889,6 +1053,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-3-flash",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         hasTools: true,
         seesImages: true,
         supportsStructoutput: true,
@@ -906,6 +1073,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-3-flash-preview",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         hasTools: true,
         seesImages: true,
         supportsStructoutput: true,
@@ -923,6 +1093,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-3-pro",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 2.0,
         outputPricePerMillion: 12.0,
         isReasoning: true,
@@ -942,6 +1114,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-3-pro-preview",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 2.0,
         outputPricePerMillion: 12.0,
         isReasoning: true,
@@ -962,6 +1136,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-3.1-pro",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 2.0,
         outputPricePerMillion: 12.0,
         isReasoning: true,
@@ -982,6 +1158,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-3.1-pro-preview",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 2.0,
         outputPricePerMillion: 12.0,
         isReasoning: true,
@@ -1001,6 +1179,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-3.5-flash-lite",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.3,
         outputPricePerMillion: 2.5,
         hasTools: true,
@@ -1019,6 +1199,9 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-3.5-flash",
+        supportsAssistantPrefill: true,
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 1.5,
         outputPricePerMillion: 9.0,
         hasTools: true,
@@ -1037,6 +1220,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-3.6-flash",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 1.5,
         outputPricePerMillion: 7.5,
         hasTools: true,
@@ -1055,8 +1240,11 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "vertexexpress",
         codename: "gemini-3.7-flash",
+        contextWindow: 1_048_576,
+        maxOutputTokens: 65_536,
         inputPricePerMillion: 0.75,
         outputPricePerMillion: 3.75,
+        isSmartest: true,
         hasTools: true,
         seesImages: true,
         supportsStructoutput: true,
@@ -1209,11 +1397,12 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "openrouter",
         codename: "z-ai/glm-5",
+        isDeprecated: true,
         inputPricePerMillion: 0.6,
         outputPricePerMillion: 1.92,
         hasTools: true,
         supportsStructoutput: true,
-        desc: "Latest GLM 5 model with advanced natural language understanding and roleplay capabilities",
+        desc: "Latest GLM 5 model with advanced natural language understanding and roleplay capabilities (deprecated, use ~z-ai/glm-latest)",
         i18n: {
           ja: "高度な自然言語理解とロールプレイ機能を備えた最新のGLM 5モデル",
           "pt-BR": "GLM 5 com compreensão avançada de linguagem natural e roleplay",
@@ -1226,12 +1415,13 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "openrouter",
         codename: "z-ai/glm-4.6v",
+        isDeprecated: true,
         isReasoning: true,
         hasTools: true,
         seesImages: true,
         seesVideos: true,
         supportsStructoutput: true,
-        desc: "Multimodal GLM model for visual understanding, document analysis, video input, and tool use",
+        desc: "Multimodal GLM model for visual understanding, document analysis, video input, and tool use (deprecated, use ~z-ai/glm-flash-latest)",
         i18n: {
           ja: "視覚理解・文書分析・動画入力・ツール利用に対応するマルチモーダルGLMモデル",
           "pt-BR": "GLM multimodal para visão, análise de documentos, vídeo e ferramentas",
@@ -1419,6 +1609,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "openrouter",
         codename: "google/gemini-3-flash-preview",
+        supportsAssistantPrefill: true,
         hasTools: true,
         seesImages: true,
         seesVideos: true,
@@ -1438,6 +1629,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "openrouter",
         codename: "google/gemini-3.1-flash-lite-preview",
+        supportsAssistantPrefill: true,
         inputPricePerMillion: 0.25,
         outputPricePerMillion: 1.5,
         hasTools: true,
@@ -1457,6 +1649,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "openrouter",
         codename: "google/gemini-3.1-flash-lite",
+        supportsAssistantPrefill: true,
         isReasoning: true,
         hasTools: true,
         seesImages: true,
@@ -1584,6 +1777,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "openrouter",
         codename: "anthropic/claude-sonnet-4.5",
+        supportsAssistantPrefill: true,
         hasTools: true,
         seesImages: true,
         supportsStructoutput: true,
@@ -1654,6 +1848,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "openrouter",
         codename: "anthropic/claude-haiku-4.5",
+        supportsAssistantPrefill: true,
         inputPricePerMillion: 1.0,
         outputPricePerMillion: 5.0,
         hasTools: true,
@@ -2038,12 +2233,13 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "openrouter",
         codename: "xiaomi/mimo-v2.5",
+        isDeprecated: true,
         isReasoning: true,
         hasTools: true,
         seesImages: true,
         seesVideos: true,
         supportsStructoutput: true,
-        desc: "Cost-efficient omnimodal model for agentic tasks and image and video understanding",
+        desc: "Cost-efficient omnimodal model for agentic tasks and image and video understanding (deprecated, use xiaomi/mimo-v2.6-flash)",
         i18n: {
           ja: "エージェントタスクと画像・動画理解に対応するコスト効率の高いオムニモーダルモデル",
           "pt-BR": "Modelo omnimodal econômico para tarefas autônomas, imagens e vídeos",
@@ -2114,17 +2310,103 @@ export const llmSections: ModelSection<LlmInput>[] = [
           "zh-CN": "极度高效且便宜的多模态模型，建议搭配不具备视觉的模型来生成图像说明",
         },
       },
+
+      {
+        provider: "openrouter",
+        codename: "~z-ai/glm-flash-latest",
+        hasTools: true,
+        seesImages: true,
+        seesVideos: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        desc: "Always redirects to the latest model in the Z.ai GLM Flash family",
+      },
+      {
+        provider: "openrouter",
+        codename: "~z-ai/glm-latest",
+        hasTools: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        desc: "Always redirects to the latest model in the Z.ai GLM family",
+      },
+
+      {
+        provider: "openrouter",
+        codename: "~openai/gpt-luna-latest",
+        hasTools: true,
+        seesImages: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        desc: "Always redirects to the latest model in the OpenAI GPT Luna family",
+      },
+      {
+        provider: "openrouter",
+        codename: "~openai/gpt-sol-latest",
+        hasTools: true,
+        seesImages: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        desc: "Always redirects to the latest model in the OpenAI GPT Sol family",
+      },
+      {
+        provider: "openrouter",
+        codename: "~openai/gpt-astra-latest",
+        hasTools: true,
+        seesImages: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        desc: "Always redirects to the latest model in the OpenAI GPT Astra family",
+      },
+
+      {
+        provider: "openrouter",
+        codename: "~anthropic/claude-fable-latest",
+        hasTools: true,
+        seesImages: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        desc: "Always redirects to the latest model in the Anthropic Claude Fable family",
+      },
+
+      {
+        provider: "openrouter",
+        codename: "xiaomi/mimo-v2.6-flash",
+        hasTools: true,
+        seesImages: true,
+        seesVideos: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        inputPricePerMillion: 0.14,
+        outputPricePerMillion: 0.28,
+        desc: "Cost-efficient MiMo V2.6 Flash model for agentic tasks and multimodal understanding",
+      },
+
+      {
+        provider: "openrouter",
+        codename: "qwen/qwen3.8-flash",
+        hasTools: true,
+        seesImages: true,
+        seesVideos: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        inputPricePerMillion: 0.15,
+        outputPricePerMillion: 0.47,
+        desc: "Multimodal Qwen 3.8 Flash model with image/video understanding, reasoning, and tool use",
+      },
     ],
   },
   // Pricing: https://api-docs.deepseek.com/quick_start/pricing (verified 2026-09-25). Rows carry the
   // off-peak rate; peak hours (weekday 01:00-04:00 and 06:00-10:00 UTC) bill double. Every legacy Flash
   // name (deepseek-chat/-reasoner, deepseek-v4-flash*) is served and billed as deepseek-flash.
+  // Limits: same page (1M context, 384K maximum output).
   {
     comment: "DeepSeek Models",
     rows: [
       {
         provider: "deepseek",
         codename: "deepseek-flash",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 384_000,
         inputPricePerMillion: 0.15,
         outputPricePerMillion: 0.6,
         supportsPrefixCompletion: true,
@@ -2207,6 +2489,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "deepseek",
         codename: "deepseek-v4-pro",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 384_000,
         inputPricePerMillion: 0.66,
         outputPricePerMillion: 1.98,
         supportsPrefixCompletion: true,
@@ -2265,6 +2549,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       },
     ],
   },
+  // Limits: https://build.nvidia.com/<org>/<model>/modelcard. Cards rarely state an output ceiling;
+  // gpt-oss-20b's 4096 is the hosted API's max_tokens bound from its card.
   {
     comment: "NVIDIA NIM Models (curated hosted NVIDIA catalog)",
     rows: [
@@ -2386,6 +2672,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "nvidia",
         codename: "google/gemma-4-31b-it",
+        contextWindow: 256_000,
         hasTools: true,
         seesImages: true,
         supportsStructoutput: true,
@@ -2471,6 +2758,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "nvidia",
         codename: "nvidia/nemotron-3-ultra-550b-a55b",
+        contextWindow: 1_000_000,
         isReasoning: true,
         hasTools: true,
         // NVIDIA's hosted endpoint serves this model via vLLM without
@@ -2492,6 +2780,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "nvidia",
         codename: "nvidia/nemotron-3.5-lightning-30b-a3b",
+        contextWindow: 1_000_000,
         hasTools: true,
         isFree: true,
         desc: "Fast and lightweight Nemotron 3.5 Lightning 30B model for general-purpose applications",
@@ -2507,6 +2796,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "nvidia",
         codename: "deepseek-ai/deepseek-v4.1-flash",
+        contextWindow: 1_048_576,
         isDefault: true,
         isReasoning: true,
         hasTools: true,
@@ -2527,6 +2817,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "nvidia",
         codename: "z-ai/glm-5.3",
+        contextWindow: 1_048_576,
         isSmartest: true,
         hasTools: true,
         supportsStructoutput: true,
@@ -2545,6 +2836,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "nvidia",
         codename: "nvidia/nemotron-3-super-120b-a12b",
+        contextWindow: 1_000_000,
         hasTools: true,
         supportsStructoutput: true,
         isFree: true,
@@ -2561,6 +2853,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "nvidia",
         codename: "openai/gpt-oss-20b",
+        contextWindow: 128_000,
+        maxOutputTokens: 4_096,
         hasTools: true,
         supportsStructoutput: true,
         isFree: true,
@@ -2577,6 +2871,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "nvidia",
         codename: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        contextWindow: 256_000,
         isReasoning: true,
         hasTools: true,
         seesImages: true,
@@ -2595,6 +2890,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "nvidia",
         codename: "meta/llama-3.2-11b-vision-instruct",
+        contextWindow: 128_000,
         hasTools: true,
         seesImages: true,
         isFree: true,
@@ -2608,16 +2904,30 @@ export const llmSections: ModelSection<LlmInput>[] = [
           "zh-CN": "经由 NVIDIA NIM 的 Llama 3.2 11B Vision：支持工具使用的小型视觉模型",
         },
       },
+      {
+        provider: "nvidia",
+        codename: "google/diffusiongemma-26b-a4b-it",
+        contextWindow: 262_144,
+        hasTools: true,
+        seesImages: true,
+        isReasoning: true,
+        inputPricePerMillion: 0,
+        outputPricePerMillion: 0,
+        desc: "High-speed multimodal DiffusionGemma model with reasoning, tool use, and image understanding via NVIDIA NIM",
+      },
     ],
   },
   // Pricing for both Z.ai sections: https://docs.z.ai/guides/overview/pricing (direct-API rates;
-  // *-flash variants are free).
+  // *-flash variants are free). Limits: https://docs.z.ai/guides/llm/<model> and /guides/vlm/<model>;
+  // GLM-4.6V lists no output ceiling.
   {
     comment: "Z.ai (Coding) Models (plain codenames preserved for backward compatibility)",
     rows: [
       {
         provider: "zaicoding",
         codename: "glm-4.6",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 0.6,
         outputPricePerMillion: 2.2,
         supportsPrefixCompletion: true,
@@ -2636,6 +2946,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zaicoding",
         codename: "glm-4.6v",
+        contextWindow: 128_000,
         inputPricePerMillion: 0.3,
         outputPricePerMillion: 0.9,
         supportsPrefixCompletion: true,
@@ -2655,6 +2966,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zaicoding",
         codename: "glm-4.6v-flash",
+        contextWindow: 128_000,
         inputPricePerMillion: 0.1,
         outputPricePerMillion: 0.1,
         supportsPrefixCompletion: true,
@@ -2674,11 +2986,11 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zaicoding",
         codename: "glm-4.7",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 0.6,
         outputPricePerMillion: 2.2,
         supportsPrefixCompletion: true,
-        isDefault: true,
-        isSmartest: true,
         isReasoning: true,
         hasTools: true,
         supportsStructoutput: true,
@@ -2695,6 +3007,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zaicoding",
         codename: "glm-4.7-flash",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 0.1,
         outputPricePerMillion: 0.1,
         supportsPrefixCompletion: true,
@@ -2713,6 +3027,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zaicoding",
         codename: "glm-5",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 1.0,
         outputPricePerMillion: 3.2,
         supportsPrefixCompletion: true,
@@ -2732,25 +3048,29 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zaicoding",
         codename: "glm-5.1",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 1.4,
         outputPricePerMillion: 4.4,
         supportsPrefixCompletion: true,
         isReasoning: true,
         hasTools: true,
         supportsStructoutput: true,
-        desc: "Latest flagship GLM model with advanced reasoning and tool support",
+        desc: "GLM 5.1 model with advanced reasoning and tool support",
         i18n: {
-          ja: "最新のフラッグシップGLMモデル（高度な推論・ツール対応）",
-          "pt-BR": "Modelo GLM de ponta mais recente com raciocínio e ferramentas",
-          "es-419": "El modelo GLM insignia más reciente, con razonamiento avanzado y herramientas",
-          "zh-TW": "支援進階推理與工具的最新旗艦 GLM 模型",
-          vi: "Model GLM đầu bảng mới nhất có suy luận nâng cao và hỗ trợ công cụ",
-          "zh-CN": "支持进阶推理与工具的最新旗舰 GLM 模型",
+          ja: "高度な推論・ツール対応のGLM 5.1モデル",
+          "pt-BR": "Modelo GLM 5.1 com raciocínio e ferramentas",
+          "es-419": "Modelo GLM 5.1 con razonamiento avanzado y herramientas",
+          "zh-TW": "支援進階推理與工具的 GLM 5.1 模型",
+          vi: "Model GLM 5.1 có suy luận nâng cao và hỗ trợ công cụ",
+          "zh-CN": "支持进阶推理与工具的 GLM 5.1 模型",
         },
       },
       {
         provider: "zaicoding",
         codename: "glm-5-turbo",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 1.2,
         outputPricePerMillion: 4.0,
         supportsPrefixCompletion: true,
@@ -2769,6 +3089,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zaicoding",
         codename: "glm-5v-turbo",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 1.2,
         outputPricePerMillion: 4.0,
         supportsPrefixCompletion: true,
@@ -2786,6 +3108,36 @@ export const llmSections: ModelSection<LlmInput>[] = [
           "zh-CN": "支持视觉、针对长上下文与稳定工具链调校的 GLM-5 Turbo",
         },
       },
+      {
+        provider: "zaicoding",
+        codename: "glm-5.3-flash",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
+        hasTools: true,
+        seesImages: true,
+        seesVideos: true,
+        isDefault: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        supportsPrefixCompletion: true,
+        inputPricePerMillion: 0.15,
+        outputPricePerMillion: 0.5,
+        desc: "Cost-efficient multimodal GLM 5.3 model for reasoning, coding, image/video understanding, and tool use",
+      },
+      {
+        provider: "zaicoding",
+        codename: "glm-5.3",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
+        hasTools: true,
+        isSmartest: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        supportsPrefixCompletion: true,
+        inputPricePerMillion: 1.4,
+        outputPricePerMillion: 4.4,
+        desc: "Flagship GLM 5.3 model for complex coding, reasoning, and long-horizon agent tasks",
+      },
     ],
   },
   {
@@ -2794,6 +3146,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zai",
         codename: "zai/glm-4.6",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 0.6,
         outputPricePerMillion: 2.2,
         supportsPrefixCompletion: true,
@@ -2812,6 +3166,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zai",
         codename: "zai/glm-4.6v",
+        contextWindow: 128_000,
         inputPricePerMillion: 0.3,
         outputPricePerMillion: 0.9,
         supportsPrefixCompletion: true,
@@ -2831,6 +3186,7 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zai",
         codename: "zai/glm-4.6v-flash",
+        contextWindow: 128_000,
         inputPricePerMillion: 0.1,
         outputPricePerMillion: 0.1,
         supportsPrefixCompletion: true,
@@ -2850,11 +3206,11 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zai",
         codename: "zai/glm-4.7",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 0.6,
         outputPricePerMillion: 2.2,
         supportsPrefixCompletion: true,
-        isDefault: true,
-        isSmartest: true,
         isReasoning: true,
         hasTools: true,
         supportsStructoutput: true,
@@ -2871,6 +3227,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zai",
         codename: "zai/glm-4.7-flash",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 0.1,
         outputPricePerMillion: 0.1,
         supportsPrefixCompletion: true,
@@ -2889,6 +3247,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zai",
         codename: "zai/glm-5",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 1.0,
         outputPricePerMillion: 3.2,
         supportsPrefixCompletion: true,
@@ -2908,25 +3268,29 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zai",
         codename: "zai/glm-5.1",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 1.4,
         outputPricePerMillion: 4.4,
         supportsPrefixCompletion: true,
         isReasoning: true,
         hasTools: true,
         supportsStructoutput: true,
-        desc: "Latest flagship GLM model from the general Z.ai API",
+        desc: "GLM 5.1 model from the general Z.ai API",
         i18n: {
-          ja: "通常のZ.ai APIで利用する最新のフラッグシップGLMモデル",
-          "pt-BR": "Modelo GLM de ponta mais recente da API Z.ai geral",
-          "es-419": "El modelo GLM insignia más reciente de la API general de Z.ai",
-          "zh-TW": "來自一般 Z.ai API 的最新旗艦 GLM 模型",
-          vi: "Model GLM đầu bảng mới nhất từ API tổng quát của Z.ai",
-          "zh-CN": "来自通用 Z.ai API 的最新旗舰 GLM 模型",
+          ja: "通常のZ.ai APIで利用するGLM 5.1モデル",
+          "pt-BR": "Modelo GLM 5.1 da API Z.ai geral",
+          "es-419": "Modelo GLM 5.1 de la API general de Z.ai",
+          "zh-TW": "來自一般 Z.ai API 的 GLM 5.1 模型",
+          vi: "Model GLM 5.1 từ API tổng quát của Z.ai",
+          "zh-CN": "来自通用 Z.ai API 的 GLM 5.1 模型",
         },
       },
       {
         provider: "zai",
         codename: "zai/glm-5-turbo",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 1.2,
         outputPricePerMillion: 4.0,
         supportsPrefixCompletion: true,
@@ -2945,6 +3309,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "zai",
         codename: "zai/glm-5v-turbo",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 1.2,
         outputPricePerMillion: 4.0,
         supportsPrefixCompletion: true,
@@ -2962,15 +3328,65 @@ export const llmSections: ModelSection<LlmInput>[] = [
           "zh-CN": "支持视觉、针对长上下文与稳定工具链调校的 GLM-5 Turbo",
         },
       },
+      {
+        provider: "zai",
+        codename: "zai/glm-5.3-flash",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
+        hasTools: true,
+        seesImages: true,
+        seesVideos: true,
+        isDefault: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        supportsPrefixCompletion: true,
+        inputPricePerMillion: 0.15,
+        outputPricePerMillion: 0.5,
+        desc: "Cost-efficient multimodal GLM 5.3 model for reasoning, coding, image/video understanding, and tool use",
+      },
+      {
+        provider: "zai",
+        codename: "zai/glm-5.3-flashx",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
+        hasTools: true,
+        seesImages: true,
+        seesVideos: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        supportsPrefixCompletion: true,
+        inputPricePerMillion: 0.37,
+        outputPricePerMillion: 1.25,
+        desc: "GLM 5.3 FlashX model for multimodal reasoning, coding, and tool use",
+      },
+
+      {
+        provider: "zai",
+        codename: "zai/glm-5.3",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
+        hasTools: true,
+        isSmartest: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        supportsPrefixCompletion: true,
+        inputPricePerMillion: 1.4,
+        outputPricePerMillion: 4.4,
+        desc: "Flagship GLM 5.3 model for complex coding, reasoning, and long-horizon agent tasks",
+      },
     ],
   },
   // Pricing: https://platform.claude.com/docs/en/about-claude/pricing (verified 2026-07-21).
+  // Limits: https://platform.claude.com/docs/en/about-claude/models/overview
   {
-    comment: "Anthropic Models (vision + tools + structured output via forced tool use; no video/YouTube)",
+    comment: "Anthropic Models (vision + tools + native structured output; no video/YouTube)",
     rows: [
       {
         provider: "anthropic",
         codename: "claude-haiku-4-5",
+        supportsAssistantPrefill: true,
+        contextWindow: 200_000,
+        maxOutputTokens: 64_000,
         inputPricePerMillion: 1.0,
         outputPricePerMillion: 5.0,
         strictRoleAlternation: true,
@@ -2990,10 +3406,11 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "anthropic",
         codename: "claude-sonnet-4-6",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 3.0,
         outputPricePerMillion: 15.0,
         strictRoleAlternation: true,
-        isDefault: true,
         hasTools: true,
         seesImages: true,
         supportsStructoutput: true,
@@ -3010,10 +3427,11 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "anthropic",
         codename: "claude-opus-4-6",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 5.0,
         outputPricePerMillion: 25.0,
         strictRoleAlternation: true,
-        isSmartest: true,
         isReasoning: true,
         hasTools: true,
         seesImages: true,
@@ -3031,10 +3449,11 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "anthropic",
         codename: "claude-opus-4-7",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 5.0,
         outputPricePerMillion: 25.0,
         strictRoleAlternation: true,
-        isSmartest: true,
         isReasoning: true,
         hasTools: true,
         seesImages: true,
@@ -3052,6 +3471,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "anthropic",
         codename: "claude-fable-5",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 10.0,
         outputPricePerMillion: 50.0,
         strictRoleAlternation: true,
@@ -3072,10 +3493,11 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "anthropic",
         codename: "claude-opus-4-8",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 5.0,
         outputPricePerMillion: 25.0,
         strictRoleAlternation: true,
-        isSmartest: true,
         isReasoning: true,
         hasTools: true,
         seesImages: true,
@@ -3093,6 +3515,8 @@ export const llmSections: ModelSection<LlmInput>[] = [
       {
         provider: "anthropic",
         codename: "claude-sonnet-5",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
         inputPricePerMillion: 2.0,
         outputPricePerMillion: 10.0,
         strictRoleAlternation: true,
@@ -3109,6 +3533,68 @@ export const llmSections: ModelSection<LlmInput>[] = [
           vi: "Model Claude cân bằng thế hệ mới cho lập trình, suy luận và tác vụ agent",
           "zh-CN": "适合编程、推理与代理任务的次世代均衡型 Claude 模型",
         },
+      },
+
+      {
+        provider: "anthropic",
+        codename: "claude-opus-5-5",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
+        hasTools: true,
+        seesImages: true,
+        isSmartest: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        strictRoleAlternation: true,
+        inputPricePerMillion: 4,
+        outputPricePerMillion: 20,
+        desc: "Claude model for long-running agentic coding, complex systems work, and knowledge tasks",
+      },
+      {
+        provider: "anthropic",
+        codename: "claude-fable-5-1",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
+        hasTools: true,
+        seesImages: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        strictRoleAlternation: true,
+        inputPricePerMillion: 10,
+        outputPricePerMillion: 50,
+        desc: "Claude model for demanding reasoning and long-horizon agentic work",
+      },
+
+      {
+        provider: "anthropic",
+        codename: "claude-sonnet-5-5",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
+        isDefault: true,
+        hasTools: true,
+        seesImages: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        strictRoleAlternation: true,
+        inputPricePerMillion: 2,
+        outputPricePerMillion: 10,
+        desc: "Fast Claude model balancing speed and intelligence for everyday coding, reasoning, and agentic work",
+      },
+      {
+        provider: "anthropic",
+        codename: "claude-haiku-5-5",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 128_000,
+        hasTools: true,
+        seesImages: true,
+        isReasoning: true,
+        supportsStructoutput: true,
+        strictRoleAlternation: true,
+        // The rate for prompts up to 100k tokens; longer prompts bill at $0.50 / $2.50, so cost
+        // estimates undercount a channel whose context grows past that.
+        inputPricePerMillion: 0.1,
+        outputPricePerMillion: 0.5,
+        desc: "Fastest and most cost-efficient Claude model for high-volume everyday tasks",
       },
     ],
   },
@@ -3143,6 +3629,11 @@ export const imageSections: ModelSection<ImageInput>[] = [
     rows: [
       {
         provider: "google",
+        codename: "gemini-nano-banana-2.1",
+        desc: "Nano Banana 2.1 image generation and editing with improved text rendering and character consistency",
+      },
+      {
+        provider: "google",
         codename: "gemini-2.5-flash-image",
         isDefault: true,
         desc: "Fast and efficient image generation model with balanced quality and speed",
@@ -3158,7 +3649,7 @@ export const imageSections: ModelSection<ImageInput>[] = [
       {
         provider: "google",
         codename: "gemini-3.1-flash-image",
-        desc: "Latest fast image generation model with Gemini 3.1 Flash",
+        desc: "Fast image generation with Gemini 3.1 Flash, superseded by Nano Banana 2.1",
         i18n: {
           ja: "Gemini 3.1 Flashによる最新の高速画像生成モデル",
           "pt-BR": "Geração de imagem rápida mais recente com Gemini 3.1 Flash",
@@ -3205,11 +3696,21 @@ export const imageSections: ModelSection<ImageInput>[] = [
           "zh-CN": "支持更高分辨率（1K/2K/4K）与强化画质的进阶图像生成模型（已淘汰，请改用 gemini-3-pro-image）",
         },
       },
+      {
+        provider: "google",
+        codename: "gemini-3.1-flash-lite-image",
+        desc: "Cost-efficient Gemini 3.1 Flash Lite image generation and editing model",
+      },
     ],
   },
   {
     comment: "OpenRouter Image Generation Models (via OpenRouter API)",
     rows: [
+      {
+        provider: "openrouter",
+        codename: "google/gemini-nano-banana-2.1",
+        desc: "Nano Banana 2.1 image generation and editing via OpenRouter",
+      },
       {
         provider: "openrouter",
         codename: "google/gemini-2.5-flash-image",
@@ -3278,11 +3779,31 @@ export const imageSections: ModelSection<ImageInput>[] = [
           "zh-CN": "不是有效的 OpenRouter 模型 ID（已淘汰，请改用 google/gemini-3-pro-image-preview）",
         },
       },
+      {
+        provider: "openrouter",
+        codename: "google/gemini-3.1-flash-lite-image",
+        desc: "Cost-efficient Gemini 3.1 Flash Lite image generation and editing model via OpenRouter",
+      },
+      {
+        provider: "openrouter",
+        codename: "openai/gpt-5.4-image-2",
+        desc: "GPT-5.4 model with GPT Image 2 generation capabilities via OpenRouter",
+      },
+      {
+        provider: "openrouter",
+        codename: "openai/gpt-5-image",
+        desc: "GPT-5 model with image generation capabilities via OpenRouter",
+      },
     ],
   },
   {
     comment: "Vertex AI Gemini Image Generation Models",
     rows: [
+      {
+        provider: "vertex",
+        codename: "gemini-nano-banana-2.1",
+        desc: "Nano Banana 2.1 image generation and editing via Vertex AI (requires global location)",
+      },
       {
         provider: "vertex",
         codename: "gemini-2.5-flash-image",
@@ -3300,7 +3821,7 @@ export const imageSections: ModelSection<ImageInput>[] = [
       {
         provider: "vertex",
         codename: "gemini-3.1-flash-image",
-        desc: "Latest fast image generation via Vertex AI with Gemini 3.1 Flash Image",
+        desc: "Fast image generation via Vertex AI with Gemini 3.1 Flash Image, superseded by Nano Banana 2.1",
         i18n: {
           ja: "Gemini 3.1 Flash ImageによるVertex AI経由の最新高速画像生成",
           "pt-BR": "Geração de imagem mais recente via Vertex AI (Gemini 3.1 Flash)",
@@ -3875,6 +4396,68 @@ export const embeddingSections: ModelSection<EmbeddingInput>[] = [
           vi: "Model embedding NVIDIA NIM mặc định cho truy xuất và lập chỉ mục tài liệu",
           "zh-CN": "用于检索与文档索引的 NVIDIA NIM 默认嵌入模型",
         },
+      },
+    ],
+  },
+];
+
+// Active rows cover the default, low-cost bulk checks, Korean/long documents, largest inputs, and free trials.
+export const decisionSections: ModelSection<DecisionInput>[] = [
+  {
+    comment: "OpenRouter Decisions",
+    rows: [
+      {
+        provider: "openrouter",
+        codename: "typesafe/jev-1.13",
+        isDefault: true,
+        inputTokenLimit: 64000,
+        inputPricePerMillion: 0.042,
+        outputPricePerMillion: 0,
+        desc: "Text predicates through the Decisions API. Registration does not activate response-review skipping.",
+        i18n: {
+          ja: "Decisions APIでテキストの条件を判定します。登録だけでは応答レビューのスキップは有効になりません。",
+          "pt-BR":
+            "Avalia condições de texto pela API Decisions. O registro não ativa o salto da revisão de respostas.",
+          "es-419":
+            "Evalúa condiciones de texto mediante la API Decisions. El registro no activa la omisión de la revisión de respuestas.",
+          "zh-TW": "透過Decisions API判斷文字條件。註冊不會啟用略過回覆審查。",
+          "zh-CN": "通过Decisions API判断文本条件。注册不会启用跳过回复审查。",
+          vi: "Đánh giá điều kiện văn bản qua API Decisions. Việc đăng ký không bật tính năng bỏ qua bước kiểm tra phản hồi.",
+        },
+      },
+      {
+        provider: "openrouter",
+        codename: "upstage/solar-decide-flash",
+        inputTokenLimit: 524288,
+        inputPricePerMillion: 0.05,
+        outputPricePerMillion: 0,
+        desc: "Low-latency checks over long documents, with Korean-language support.",
+      },
+      {
+        provider: "openrouter",
+        codename: "perplexity/pplx-decider-v1.1-27b",
+        inputTokenLimit: 262144,
+        seesImages: true,
+        inputPricePerMillion: 0.02,
+        outputPricePerMillion: 0,
+        desc: "Low-cost bulk classification, moderation, and rubric checks.",
+      },
+      {
+        provider: "openrouter",
+        codename: "openai/gpt-6-luna-decisions",
+        inputTokenLimit: 1050000,
+        seesImages: true,
+        inputPricePerMillion: 0.1,
+        outputPricePerMillion: 0,
+        desc: "Classification and verification over inputs up to 1,050,000 tokens.",
+      },
+      {
+        provider: "openrouter",
+        codename: "inception/mercury-decide:free",
+        inputTokenLimit: 65536,
+        inputPricePerMillion: 0,
+        outputPricePerMillion: 0,
+        desc: "Free text predicate checks for experimentation with the Decisions API.",
       },
     ],
   },

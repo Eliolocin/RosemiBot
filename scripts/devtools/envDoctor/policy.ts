@@ -115,12 +115,7 @@ export function roleForPath(path: string, language: ScanLanguage): ConsumerRole 
  * declared variable. An unregistered unresolved read downgrades every dead verdict to undecided,
  * so a new dynamic read must be registered here with its reason before the report trusts itself.
  */
-export const REGISTERED_DYNAMIC_READS: { file: string; reason: string }[] = [
-  {
-    file: "src/utils/mcp/mcpConfig.ts",
-    reason: "reads names listed in MCP server definitions; each listed name is also a string literal",
-  },
-];
+export const REGISTERED_DYNAMIC_READS: { file: string; reason: string }[] = [];
 
 /**
  * Consumers in `deploy/` and `terraform/`, which exist only on the `release` branch. Used only

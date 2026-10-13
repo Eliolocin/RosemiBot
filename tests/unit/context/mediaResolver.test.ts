@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { ToolRegistry } from "@/tools/toolRegistry";
+import type { Tool } from "@/types/tool/interfaces";
 import type { LlmRow, TomoriState } from "@/types/db/schema";
 import type { StructuredContextItem } from "@/types/misc/context";
 import { resolveMediaForModel } from "@/utils/text/context/mediaResolver";
@@ -116,13 +118,26 @@ describe("resolveMediaForModel", () => {
   });
 
   test("emits analyze_image guidance for blind in-window images when a vision tool is configured", async () => {
-    const resolved = await resolveMediaForModel([imageItem()], makeState({ hasVisionTool: true }));
-
-    expect(resolved[0].parts[0]).toEqual({
-      type: "text",
-      text: "[System: This message (ID: media_1) contains an image. Do not guess the image contents. Use the `analyze_image` tool with this media ID only if the user explicitly asks about the image or if unseen visual details are necessary to answer correctly. The media ID can also be used with tools that accept media references.]",
+    const availability = spyOn(ToolRegistry, "getAvailableToolsWithMCP").mockResolvedValue({
+      builtInTools: [{ name: "analyze_image" } as Tool],
+      mcpFunctionNames: [],
+      totalCount: 1,
     });
-    expect(resolved[0].parts[1].type).toBe("text");
+    try {
+      const resolved = await resolveMediaForModel([imageItem()], makeState({ hasVisionTool: true }));
+      expect(resolved[0].parts[0]).toEqual({
+        type: "text",
+        text: "[System: This message (ID: media_1) contains an image. Do not guess the image contents. Use the `analyze_image` tool with this media ID only if the user explicitly asks about the image or if unseen visual details are necessary to answer correctly. The media ID can also be used with tools that accept media references.]",
+      });
+      expect(resolved[0].parts[1].type).toBe("text");
+
+      const scoped = await resolveMediaForModel([imageItem()], makeState({ hasVisionTool: true }), ["web_search"]);
+      const scopedText = scoped[0].parts[0].type === "text" ? scoped[0].parts[0].text : "";
+      expect(scopedText).not.toContain("analyze_image");
+      expect(scopedText).toContain("media_1");
+    } finally {
+      availability.mockRestore();
+    }
   });
 
   test("emits plain blind-model guidance when no vision tool is configured", async () => {

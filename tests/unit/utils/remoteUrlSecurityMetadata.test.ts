@@ -1,16 +1,10 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { validateRemoteUrl } from "@/utils/security/remoteUrlSecurity";
+import { useEnvSandbox } from "../../helpers/env";
 
 const RUN_ENV_NAME = "RUN_ENV";
-const originalRunEnv = process.env[RUN_ENV_NAME];
 
-afterEach(() => {
-  if (originalRunEnv === undefined) {
-    delete process.env[RUN_ENV_NAME];
-  } else {
-    process.env[RUN_ENV_NAME] = originalRunEnv;
-  }
-});
+useEnvSandbox([RUN_ENV_NAME]);
 
 // Gate 2 (validateRemoteUrl) backs the safe_http fetch engine, every redirect
 // hop, and all custom-endpoint/MCP HTTP calls. The cloud-metadata denylist must
@@ -47,6 +41,25 @@ describe("validateRemoteUrl cloud-metadata denylist", () => {
     // Link-local / metadata stays blocked regardless of the opt-in.
     const metadataResult = await validateRemoteUrl("https://169.254.169.254/", { allowPrivateNetwork: true });
     expect(metadataResult.valid).toBe(false);
+  });
+
+  it("blocks every documented metadata address under the private-network opt-in", async () => {
+    process.env[RUN_ENV_NAME] = "production";
+    const metadataUrls = [
+      "https://169.254.169.254/",
+      "https://[fd00:ec2::254]/",
+      "https://[fd20:ce::254]/computeMetadata/v1/",
+      "https://100.100.100.200/latest/meta-data/",
+    ];
+
+    const admitted: string[] = [];
+    for (const url of metadataUrls) {
+      if ((await validateRemoteUrl(url, { allowPrivateNetwork: true })).valid) admitted.push(url);
+    }
+
+    expect(admitted).toEqual([]);
+    // Only the exact Alibaba address is metadata; the surrounding carrier-grade NAT range stays usable.
+    expect((await validateRemoteUrl("https://100.100.100.100/", { allowPrivateNetwork: true })).valid).toBe(true);
   });
 
   it("still enforces the full blocklist in production without an opt-in", async () => {

@@ -1,13 +1,21 @@
 import type { StreamContext } from "@/types/stream/interfaces";
-import type { StreamState, TextProcessingConfig, TypingSimulationConfig } from "@/types/stream/types";
+import type { PendingResponseLimit, PendingResponseTruncation } from "@/types/stream/pendingResponse";
+import {
+  DISCORD_STREAMING_CONSTANTS,
+  type StreamState,
+  type TextProcessingConfig,
+  type TypingSimulationConfig,
+} from "@/types/stream/types";
 import { log } from "@/utils/misc/logger";
+import { STREAMING_LIMITS } from "@/utils/security/rateLimiter";
 import { cleanLLMOutput, truncateBeforeGenericSpeakerLine } from "@/utils/text/processors/llmOutputProcessor";
 import { filterDuplicateCustomEmojis } from "@/utils/text/emojiPenalty";
 import { extractMarkdownTableSegments } from "@/utils/text/markdownTable";
 import {
   MAX_EMPTY_RESPONSE_RETRIES,
+  MAX_PENDING_RESPONSE_BYTES,
+  MAX_PENDING_RESPONSE_SEGMENTS,
   ORPHAN_PUNCTUATION_REGEX,
-  PREFILL_WHITESPACE_SENTINEL,
 } from "@/utils/discord/stream/constants";
 import type { ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
 import { resolveGuildMentions } from "@/utils/discord/stream/mentionResolver";
@@ -18,6 +26,7 @@ import type {
 } from "@/utils/discord/stream/messageDelivery";
 import {
   collectRenderModifierSourceNames,
+  hasLeadingPlainOwnNameLabel,
   isAllowedRenderModifierSpeakerLabel,
   type LeadingGenericSpeakerLabelMatch,
   matchesRenderModifierName,
@@ -32,7 +41,10 @@ import {
 } from "@/utils/discord/renderModifierResolver";
 import { getCachedPersonaSprites } from "@/utils/cache/personaSpriteCache";
 import { normalizePersonaSpriteKey } from "@/utils/persona/sprites";
-import { advanceChannelSpriteGroupParity } from "@/utils/discord/stream/channelDeliveryContinuity";
+import {
+  resolveChannelBaseAppearanceIdentity,
+  resolveChannelGroupBreakIdentity,
+} from "@/utils/discord/stream/channelDeliveryContinuity";
 import { isUserImpersonationStreamContext } from "@/utils/discord/stream/uiUpdater";
 
 type StreamSegmentProcessorDependencies = {
@@ -59,21 +71,28 @@ export class StreamSegmentProcessor {
   public constructor(private readonly deps: StreamSegmentProcessorDependencies) {}
 
   public async sendBufferSegment(
-    segment: string,
+    flushedSegment: string,
     boundary: BufferedDeliveryBoundary | undefined,
     textConfig: TextProcessingConfig,
     typingConfig: TypingSimulationConfig,
     context: StreamContext,
     state: StreamState,
   ): Promise<void> {
+    const segment = context.holdResponseText
+      ? this.retainHeldSegment(flushedSegment, boundary, context, state)
+      : flushedSegment;
+    if (segment === null) return;
+    const opensLine = state.nextSegmentOpensLine ?? true;
+    state.nextSegmentOpensLine = segmentEndsLine(segment, boundary);
     if (!segment.trim()) return;
 
     const trimmedGuard = segment.trim();
     if (ORPHAN_PUNCTUATION_REGEX.test(trimmedGuard) && (trimmedGuard.length >= 3 || trimmedGuard.includes("…"))) {
       state.pendingOrphanPunctuation = (state.pendingOrphanPunctuation ?? "") + trimmedGuard;
-      log.info(
-        `Stream Orphan: Holding "${trimmedGuard}" (pending="${state.pendingOrphanPunctuation}") for next segment`,
-      );
+      if (!context.holdResponseText)
+        log.info(
+          `Stream Orphan: Holding "${trimmedGuard}" (pending="${state.pendingOrphanPunctuation}") for next segment`,
+        );
       return;
     }
 
@@ -85,7 +104,8 @@ export class StreamSegmentProcessor {
     // happens BEFORE the anchored render-modifier parse and can single-handedly defeat it.
     let orphanPrefixApplied: string | undefined;
     if (state.pendingOrphanPunctuation) {
-      log.info(`Stream Orphan: Prepending held "${state.pendingOrphanPunctuation}" to next segment`);
+      if (!context.holdResponseText)
+        log.info(`Stream Orphan: Prepending held "${state.pendingOrphanPunctuation}" to next segment`);
       orphanPrefixApplied = state.pendingOrphanPunctuation;
       workingSegment = `${state.pendingOrphanPunctuation}${segment}`;
       state.pendingOrphanPunctuation = undefined;
@@ -94,7 +114,8 @@ export class StreamSegmentProcessor {
     const renderModifierSourceNames = collectRenderModifierSourceNames(textConfig.botName, textConfig.botNameAliases);
     const renderModifierChainSourceNames = collectRenderModifierChainSourceNames(textConfig, renderModifierSourceNames);
     let deliveryOptions: StreamDeliveryOptions | undefined;
-    const canUseRenderModifier = !state.isInsideCodeBlock && !isUserImpersonationStreamContext(context);
+    const isUserImpersonation = isUserImpersonationStreamContext(context);
+    const canUseRenderModifier = !state.isInsideCodeBlock && !isUserImpersonation;
     const renderModifierMatch = canUseRenderModifier
       ? parseLeadingRenderModifier(workingSegment, renderModifierSourceNames, renderModifierChainSourceNames)
       : null;
@@ -128,18 +149,15 @@ export class StreamSegmentProcessor {
         // Non-identity sprites all share the clean persona username, and Discord groups
         // consecutive webhook messages by webhook + username while ignoring the
         // per-message avatar, so back-to-back sprites would render under the first
-        // sprite's avatar. When a sprite change would collide with the previous
-        // message's clean name, fall back to the decorated "Persona (sprite)" name for
-        // that one message so Discord treats it as a distinct author and renders its
-        // avatar. Identity sprites already use a distinct decorated name, so they are
-        // excluded.
+        // sprite's avatar. Identity sprites already use a distinct decorated name, so they
+        // are excluded.
         const identity =
-          renderTarget.spriteRecord && !renderTarget.isIdentitySprite
-            ? this.resolveSpriteGroupBreakIdentity(
+          renderTarget.spriteRecord && !renderTarget.isIdentitySprite && !context.holdResponseText
+            ? resolveChannelGroupBreakIdentity(
+                context.channel.id,
                 renderTarget.identity,
                 renderTarget.contextLabel,
                 renderTarget.spriteRecord.spriteName,
-                context.channel.id,
                 context.channel.lastMessageId,
               )
             : renderTarget.identity;
@@ -159,11 +177,22 @@ export class StreamSegmentProcessor {
         await this.logUnresolvedRenderModifierTarget(renderModifierMatch.modifier, spriteResolution.status, context);
         state.activeRenderModifier = undefined;
       }
-    } else if (canUseRenderModifier && state.activeRenderModifier) {
-      deliveryOptions = {
-        identityOverride: state.activeRenderModifier.identity,
-        spriteRecord: state.activeRenderModifier.spriteRecord,
-      };
+    } else if (!isUserImpersonation && state.activeRenderModifier) {
+      // Code-block content is still this speaker's turn, so the active identity carries into it;
+      // only label parsing is vetoed there. The flusher sends a closing-fence or overflow segment
+      // before clearing isInsideCodeBlock, so gating the carry on it drops the sprite and moves
+      // a main persona off its webhook onto the bot user for that segment.
+      // The label itself is left in place: cleanLLMOutput strips it like any opening own-name label.
+      if (canUseRenderModifier && opensLine && hasLeadingPlainOwnNameLabel(workingSegment, renderModifierSourceNames)) {
+        state.activeRenderModifier = this.resolveBaseAppearanceRevert(state.activeRenderModifier, context, textConfig);
+      }
+      if (state.activeRenderModifier) {
+        deliveryOptions = {
+          identityOverride: state.activeRenderModifier.identity,
+          spriteRecord: state.activeRenderModifier.spriteRecord,
+          isNeutralAppearance: state.activeRenderModifier.isNeutralAppearance,
+        };
+      }
     }
 
     // Opening-label leak guard: a response that OPENS with a speaker label the render-modifier
@@ -175,7 +204,7 @@ export class StreamSegmentProcessor {
     if (
       !renderModifierMatch &&
       canUseRenderModifier &&
-      !state.accumulatedText.trim() &&
+      !(state.accumulatedText || state.pendingResponseText || "").trim() &&
       !state.pendingAggregatedText.trim()
     ) {
       const leak = await this.matchLeadingSpeakerLeak(workingSegment, context, renderModifierSourceNames);
@@ -185,23 +214,24 @@ export class StreamSegmentProcessor {
           // Budget remains: discard the whole attempt. The speaker_guard stop with nothing
           //    sent classifies the turn as empty_response, and maybeScheduleEmptyResponseRetry
           //    regenerates with the "reply only as {persona}" directive injected.
-          log.warn(
-            `Stream opening-label leak guard: discarding response opening with "${leak.matchedPrefix.trim()}" (retry ${retryCount + 1}/${MAX_EMPTY_RESPONSE_RETRIES} will be scheduled)`,
-          );
+          if (!context.holdResponseText)
+            log.warn(
+              `Stream opening-label leak guard: discarding response opening with "${leak.matchedPrefix.trim()}" (retry ${retryCount + 1}/${MAX_EMPTY_RESPONSE_RETRIES} will be scheduled)`,
+            );
           this.deps.requestStop(context.channel.id, "speaker_guard");
           return;
         }
         // Budget exhausted: better a stripped reply than silence, so drop the leaked label
         //    and deliver the body as the active persona.
-        log.warn(
-          `Stream opening-label leak guard: retry budget exhausted, stripping leaked label "${leak.matchedPrefix.trim()}" and delivering body`,
-        );
+        if (!context.holdResponseText)
+          log.warn(
+            `Stream opening-label leak guard: retry budget exhausted, stripping leaked label "${leak.matchedPrefix.trim()}" and delivering body`,
+          );
         workingSegment = leak.body;
         if (!workingSegment.trim()) return;
       }
     }
 
-    const wasPrefillInjected = state.prefillInjected;
     const leadingWhitespaceMatch = workingSegment.match(/^\s+/);
     const leadingWhitespace = leadingWhitespaceMatch?.[0] ?? "";
     const normalizedLeadingWhitespace = textConfig.uncensorUnicodeSpacesEnabled
@@ -243,24 +273,21 @@ export class StreamSegmentProcessor {
       resolvedSegment = normalizedLeadingWhitespace + resolvedSegment;
     }
 
-    const strippedSegment = this.stripPrefillFromSegment(resolvedSegment, state);
-    const prefixedSegment = this.applyPrefillToSegment(strippedSegment, state, context);
-    let segmentToSend = prefixedSegment;
-    const injectedPrefillThisSegment = !wasPrefillInjected && state.prefillInjected;
-    if (injectedPrefillThisSegment && state.prefillTarget && /^\s+/.test(strippedSegment)) {
-      segmentToSend = `${state.prefillTarget}${PREFILL_WHITESPACE_SENTINEL}${strippedSegment}`;
-    }
+    let segmentToSend = this.stripPrefillFromSegment(resolvedSegment, state);
 
     let shouldStopForSpeakerGuard = false;
     if (context.tomoriState.config.llm_stop_speaker_pattern_enabled ?? false) {
       const speakerGuardResult = truncateBeforeGenericSpeakerLine(segmentToSend, {
-        includeStart: Boolean(state.accumulatedText.trim() || state.pendingAggregatedText.trim()),
+        includeStart: Boolean(
+          state.accumulatedText.trim() || state.pendingResponseText?.trim() || state.pendingAggregatedText.trim(),
+        ),
         isAllowedSpeakerLabel: (label) => isAllowedRenderModifierSpeakerLabel(label, renderModifierSourceNames),
       });
       if (speakerGuardResult.stopTriggered) {
-        log.warn(
-          `Stream speaker guard: stopping before speaker label "${speakerGuardResult.matchedSpeaker ?? "unknown"}"`,
-        );
+        if (!context.holdResponseText)
+          log.warn(
+            `Stream speaker guard: stopping before speaker label "${speakerGuardResult.matchedSpeaker ?? "unknown"}"`,
+          );
         segmentToSend = speakerGuardResult.text;
         shouldStopForSpeakerGuard = true;
       }
@@ -279,12 +306,30 @@ export class StreamSegmentProcessor {
     // appears, because an expression is a sustained visual state: e.g.
     //   "Touko (mad): ARGGHHH!\nFine... I'll do it"
     // keeps the "mad" sprite for the second line, and switching only happens when
-    // a new "Touko (regret):" label is declared. Sprites (including is_identity
-    // ones) are distinguished by carrying a spriteRecord; copied identities don't.
+    // a new "Touko (regret):" label is declared, or a plain "Touko:" label returns
+    // to the base persona. Sprites (including is_identity ones) are distinguished by
+    // carrying a spriteRecord; copied identities don't. The neutral appearance has
+    // no spriteRecord either but is the persona itself, so it persists like a sprite.
     const shouldClearActiveRenderModifier =
       Boolean(deliveryOptions?.identityOverride) &&
       !deliveryOptions?.spriteRecord &&
+      !state.activeRenderModifier?.isNeutralAppearance &&
       (boundary === "newline" || segmentToSend.includes("\n"));
+    if (context.holdResponseText) {
+      const held = state.pendingResponseText ?? "";
+      const next = (deliveryOptions?.accumulatedTextPrefix ?? "") + segmentToSend;
+      // The buffer consumes the newline or space it flushed at, and replay posts each segment as its
+      // own message, but the reviewer and the rewrite request read this as one continuous draft.
+      const separator = held && !/\s$/u.test(held) && !/^\s/u.test(next) ? (opensLine ? "\n" : " ") : "";
+      state.pendingResponseText = held + separator + next;
+      if (shouldClearActiveRenderModifier) state.activeRenderModifier = undefined;
+      if (shouldStopForSpeakerGuard) this.deps.requestStop(context.channel.id, "speaker_guard");
+      const deliverable = resolveDeliverableHeldLength(context);
+      if (deliverable && !state.pendingResponseTruncation && state.pendingResponseText.length > deliverable.chars) {
+        this.truncateHeldCollection(deliverable.truncation, context, state);
+      }
+      return;
+    }
     const segmentedParts = extractMarkdownTableSegments(segmentToSend);
     const hasRenderedTable = segmentedParts.some((part) => part.type === "table");
     if (!hasRenderedTable) {
@@ -379,6 +424,7 @@ export class StreamSegmentProcessor {
     renderModifierSourceNames: readonly string[];
     renderModifierChainSourceNames: readonly string[];
   }): void {
+    if (args.context.holdResponseText) return;
     // Only interesting when the strict parser declined text that still looks like a label.
     if (args.renderModifierMatch) return;
     const labelHead = args.workingSegment.slice(0, RENDER_MODIFIER_DIAGNOSTIC_HEAD_CHARS);
@@ -424,6 +470,7 @@ export class StreamSegmentProcessor {
     spriteStatus: SpriteRenderModifierResolution["status"],
     context: StreamContext,
   ): Promise<void> {
+    if (context.holdResponseText) return;
     const personaId = context.tomoriState.persona_id;
     // Read back the sprite roster actually visible to the lookup; a cache miss here is
     //    itself a finding, so failures degrade to an explicit marker rather than throwing.
@@ -447,39 +494,41 @@ export class StreamSegmentProcessor {
   }
 
   /**
-   * Returns the sprite identity with its webhook username chosen to avoid Discord's
-   * consecutive-message grouping collapsing different sprites under one avatar.
-   *
-   * Discord groups webhook messages by `webhook_id` + `username` (ignoring the
-   * per-message avatar) and strips zero-width/blank characters from usernames, so
-   * the only reliable way to make two adjacent sprites distinct is a visibly
-   * different name. We keep the clean persona name by default and only fall back to
-   * the decorated `Persona (sprite)` name (`contextLabel`) on the *follow-up* of a
-   * sprite change, so the suffix appears only at a boundary that would otherwise
-   * merge. A parity toggle flipped on each sprite change guarantees that adjacent
-   * different-sprite messages alternate clean/decorated and therefore never match;
-   * same-sprite runs keep an identical username and still group naturally.
-   *
-   * The alternation is tracked per CHANNEL, not per stream. Discord's grouping spans turns,
-   * so bookkeeping held in `StreamState` was reset at every turn boundary and let a queued
-   * turn's first sprite collide with the previous turn's last sprite. That per-turn reset also
-   * used to stand in for adjacency, which is now tested directly via the channel's last message
-   * id, so the suffix no longer appears after someone else has already broken the group.
-   * See {@link advanceChannelSpriteGroupParity}.
+   * An alter leaving a non-identity sprite sends its base messages through the webhook under the
+   * same clean username the sprite used, so Discord would group the reverted line under the
+   * sprite's avatar. The base appearance then joins the channel's sprite alternation under its own
+   * key, and on the decorated half it is delivered as "Persona (neutral)". That state is returned
+   * so later base lines keep the same name.
    */
-  private resolveSpriteGroupBreakIdentity(
-    identity: ResolvedWebhookIdentity,
-    decoratedUsername: string,
-    spriteKey: string,
-    channelId: string,
-    channelLastMessageId: string | null,
-  ): ResolvedWebhookIdentity {
-    // The "false" half keeps the clean persona name; the "true" half uses the
-    //    decorated "Persona (sprite)" name so it reads as a distinct Discord author.
-    if (!advanceChannelSpriteGroupParity(channelId, spriteKey, channelLastMessageId)) {
-      return identity;
-    }
-    return { ...identity, username: decoratedUsername };
+  private resolveBaseAppearanceRevert(
+    previous: NonNullable<StreamState["activeRenderModifier"]>,
+    context: StreamContext,
+    textConfig: TextProcessingConfig,
+  ): StreamState["activeRenderModifier"] {
+    if (context.holdResponseText) return undefined;
+    if (previous.isNeutralAppearance) return previous;
+
+    const sourceDisplayName = context.tomoriState.persona_nickname || textConfig.botName;
+    const baseUsername = context.personaUsername;
+    const sharesSpriteUsername =
+      Boolean(context.webhook) &&
+      baseUsername === sourceDisplayName &&
+      previous.spriteRecord !== undefined &&
+      !previous.spriteRecord.isIdentity;
+    if (!sharesSpriteUsername) return undefined;
+
+    const baseIdentity: ResolvedWebhookIdentity = {
+      username: baseUsername,
+      avatarUrl: context.personaAvatarUrl,
+      avatarDataUri: context.personaAvatarUrl?.startsWith("data:image/") ? context.personaAvatarUrl : undefined,
+    };
+    const identity = resolveChannelBaseAppearanceIdentity(
+      context.channel.id,
+      baseIdentity,
+      sourceDisplayName,
+      context.channel.lastMessageId,
+    );
+    return identity === baseIdentity ? undefined : { identity, isNeutralAppearance: true };
   }
 
   /**
@@ -565,7 +614,7 @@ export class StreamSegmentProcessor {
     state.prefillTarget = resolvedPrefill;
     state.prefillMatched = 0;
     state.prefillMatchFailed = false;
-    state.prefillInjected = Boolean(context.outputPrefillState?.sent);
+    state.prefillHeld = "";
 
     log.info(`Stream Prefill: Prepared output prefill (${resolvedPrefill.length} chars).`);
   }
@@ -577,11 +626,17 @@ export class StreamSegmentProcessor {
     context: StreamContext,
     state: StreamState,
   ): Promise<void> {
+    if (context.holdResponseText) {
+      state.pendingResponseText = (state.pendingResponseText ?? "") + (state.pendingOrphanPunctuation ?? "");
+      state.pendingOrphanPunctuation = undefined;
+      return;
+    }
     const deliveryOptions =
       state.activeRenderModifier && !isUserImpersonationStreamContext(context)
         ? {
             identityOverride: state.activeRenderModifier.identity,
             spriteRecord: state.activeRenderModifier.spriteRecord,
+            isNeutralAppearance: state.activeRenderModifier.isNeutralAppearance,
           }
         : undefined;
     await this.deps.delivery.flushHeldOrphanPunctuation(
@@ -594,48 +649,132 @@ export class StreamSegmentProcessor {
     );
   }
 
-  private applyPrefillToSegment(segment: string, state: StreamState, context: StreamContext): string {
-    if (!state.prefillTarget) return segment;
-
-    if (!state.prefillInjected) {
-      if (!segment.trim()) return "";
-      state.prefillInjected = true;
-      if (context.outputPrefillState) {
-        context.outputPrefillState.sent = true;
-      }
-      return state.prefillTarget + segment;
-    }
-
-    return segment;
-  }
-
   private stripPrefillFromSegment(segment: string, state: StreamState): string {
     const target = state.prefillTarget;
     if (!target || state.prefillMatchFailed || state.prefillMatched >= target.length) {
       return segment;
     }
 
-    let index = 0;
+    // The target is trimmed, so whitespace before an echo would otherwise fail the match at index 0.
+    let index = state.prefillMatched === 0 ? (segment.match(/^\s*/)?.[0].length ?? 0) : 0;
     while (index < segment.length && state.prefillMatched < target.length) {
-      const expected = target[state.prefillMatched];
-      const actual = segment[index];
-
-      if (actual === expected) {
+      if (segment[index] === target[state.prefillMatched]) {
         state.prefillMatched += 1;
         index += 1;
         continue;
       }
+      // Text withheld by an earlier partial match is model output, not an echo, so it is released.
+      const released = state.prefillHeld + segment;
+      state.prefillHeld = "";
       state.prefillMatchFailed = true;
       state.prefillMatched = target.length;
-      return segment;
+      return released;
     }
 
     if (state.prefillMatched >= target.length) {
+      state.prefillHeld = "";
       return segment.slice(index);
     }
 
+    state.prefillHeld += segment;
     return "";
   }
+
+  /**
+   * Whether `text` waiting in the stream buffer could no longer be retained as held prose. An
+   * unterminated table, code fence or semantic marker can keep the buffer from ever flushing a
+   * segment, so the segment ceiling alone cannot bound it.
+   */
+  public exceedsHeldRetention(text: string, context: StreamContext, state: StreamState): boolean {
+    const room = resolveHeldLimit(context).maxBytes - (state.pendingResponseBytes ?? 0);
+    // A UTF-16 code unit encodes to 1-3 UTF-8 bytes, which skips the byte count for short buffers.
+    if (text.length * 3 <= room) return false;
+    return text.length > room || Buffer.byteLength(text, "utf8") > room;
+  }
+
+  /**
+   * Records a flushed segment for replay within the turn's held-prose ceiling, cutting it at the
+   * ceiling when it does not fit.
+   *
+   * @returns The text to normalize, or null once collection has stopped.
+   */
+  private retainHeldSegment(
+    segment: string,
+    boundary: BufferedDeliveryBoundary | undefined,
+    context: StreamContext,
+    state: StreamState,
+  ): string | null {
+    if (state.pendingResponseTruncation) return null;
+    const limit = resolveHeldLimit(context);
+    state.pendingResponseSegments ??= [];
+    if (state.pendingResponseSegments.length >= limit.maxSegments) {
+      this.truncateHeldCollection("retention_limit", context, state);
+      return null;
+    }
+    const usedBytes = state.pendingResponseBytes ?? 0;
+    let retained = segment;
+    let bytes = Buffer.byteLength(segment, "utf8");
+    if (usedBytes + bytes > limit.maxBytes) {
+      retained = sliceToUtf8Bytes(segment, Math.max(0, limit.maxBytes - usedBytes));
+      bytes = Buffer.byteLength(retained, "utf8");
+      this.truncateHeldCollection("retention_limit", context, state);
+      if (!retained) return null;
+    }
+    state.pendingResponseBytes = usedBytes + bytes;
+    state.pendingResponseSegments.push({ text: retained, boundary, codeBlock: state.isInsideCodeBlock });
+    return retained;
+  }
+
+  private truncateHeldCollection(
+    truncation: PendingResponseTruncation,
+    context: StreamContext,
+    state: StreamState,
+  ): void {
+    state.pendingResponseTruncation = truncation;
+    log.warn(
+      `Stream: Held response stopped at its ${truncation} (${state.pendingResponseBytes ?? 0} bytes, ${state.pendingResponseSegments?.length ?? 0} segments)`,
+    );
+    this.deps.requestStop(context.channel.id, "pending_response_limit");
+  }
+}
+
+function resolveHeldLimit(context: StreamContext): PendingResponseLimit {
+  return (
+    context.pendingResponseLimit ?? {
+      maxBytes: MAX_PENDING_RESPONSE_BYTES,
+      maxSegments: MAX_PENDING_RESPONSE_SEGMENTS,
+    }
+  );
+}
+
+/**
+ * The longest held text one replay could send, using the same caps `StreamUiUpdater` applies to
+ * each delivery. Text past this length can never reach Discord, so collecting it only spends
+ * generation and memory. Each pass replays with fresh counters, so the length applies per pass.
+ */
+function resolveDeliverableHeldLength(
+  context: StreamContext,
+): { chars: number; truncation: PendingResponseTruncation } | null {
+  const sendMessageLimit = context.tomoriState.config.send_message_limit ?? 0;
+  const operatorLimited = sendMessageLimit > 0 && sendMessageLimit <= STREAMING_LIMITS.MAX_FLUSH_COUNT;
+  const messages = operatorLimited ? sendMessageLimit : STREAMING_LIMITS.MAX_FLUSH_COUNT;
+  if (!Number.isFinite(messages)) return null;
+  return {
+    chars: messages * DISCORD_STREAMING_CONSTANTS.MAX_SINGLE_MESSAGE_LENGTH,
+    truncation: operatorLimited ? "send_message_limit" : "flush_limit",
+  };
+}
+
+/** `encodeInto` writes only whole code points, so `read` never splits a character. */
+function sliceToUtf8Bytes(text: string, maxBytes: number): string {
+  if (maxBytes <= 0) return "";
+  return text.slice(0, new TextEncoder().encodeInto(text, new Uint8Array(maxBytes)).read);
+}
+
+/** Only sentence and overflow flushes cut mid-line. */
+function segmentEndsLine(segment: string, boundary: BufferedDeliveryBoundary | undefined): boolean {
+  if (/\n[ \t]*$/u.test(segment)) return true;
+  return boundary !== "period" && boundary !== "overflow";
 }
 
 function collectRenderModifierChainSourceNames(

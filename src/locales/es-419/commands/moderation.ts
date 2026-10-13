@@ -26,8 +26,8 @@ export default {
     member_access_attributelist_disabled: `🔴 Los miembros no pueden administrar los atributos de las personas.`,
     member_access_sampledialogues_enabled: `🟢 Los miembros pueden administrar los diálogos de muestra de las personas.`,
     member_access_sampledialogues_disabled: `🔴 Los miembros no pueden administrar los diálogos de muestra de las personas.`,
-    member_access_promptsnapshot_enabled: `🟢 Los miembros pueden crear capturas de prompt.`,
-    member_access_promptsnapshot_disabled: `🔴 Los miembros no pueden crear capturas de prompt.`,
+    member_access_promptsnapshot_enabled: `🟢 Los miembros pueden ver prompts completos desde \`/context\` y crear capturas de prompt.`,
+    member_access_promptsnapshot_disabled: `🔴 Los miembros no pueden ver prompts completos ni crear capturas de prompt.`,
     edit_permissions: `Editar permisos`,
     model_access_title: `Acceso a modelos del servidor`,
     model_access_description: `Controla qué modelos pueden usar los miembros del servidor.`,
@@ -194,7 +194,6 @@ export default {
     remove_blacklist_group_description: `Desmarca la casilla y envía para quitar la entrada de la lista negra`,
     remove_whitelist_group_description: `Desmarca la casilla y envía para quitar de la lista blanca`,
     remove_group_continuation: `Continuación ({index})`,
-    remove_modal_limit: `Esta lista tiene más de 50 entradas y no cabe en un solo formulario.`,
     remove_nothing_changed: `No se quitó nada`,
     remove_nothing_changed_detail: `Todas las entradas siguieron seleccionadas. No fue necesario escribir nada.`,
 

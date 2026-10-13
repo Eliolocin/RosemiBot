@@ -4,6 +4,7 @@
  * Used by both /teach document and the read_file tool
  */
 
+import type { PdfParseReply } from "@/utils/documents/pdfParseWorker";
 import { log } from "@/utils/misc/logger";
 import { safeDownload } from "@/utils/security/safeDownload";
 import { normalizeDocumentText } from "@/utils/documents/documentService";
@@ -136,13 +137,43 @@ export async function extractTextFromBuffer(
   const lowerName = filename.toLowerCase();
   const isPdf = contentType === "application/pdf" || lowerName.endsWith(".pdf");
 
-  if (isPdf) {
-    const pdfParse = (await import("pdf-parse")).default;
-    const parsed = await pdfParse(buffer);
-    return parsed.text ?? "";
-  }
+  if (isPdf) return parsePdfWithDeadline(buffer, PDF_PARSE_TIMEOUT_MS);
 
   return buffer.toString("utf8");
+}
+
+// The size cap bounds bytes, not parse time: a crafted PDF under the cap can loop in pdf.js. An
+// ordinary document parses in a few seconds, so this only stops pathological files.
+const PDF_PARSE_TIMEOUT_MS = 20_000;
+
+export class PdfParseTimeoutError extends Error {}
+
+/**
+ * Parses in a worker so a stalled parse cannot block the event loop, and terminates it at the
+ * deadline because `pdf-parse` offers no way to abort.
+ */
+export function parsePdfWithDeadline(buffer: Buffer, timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // Resolved beside this source file. Tools and commands are imported from `src/` at runtime even
+    // under `dist/index.js`, so this module never lands in the bundle; a static import from the
+    // entry point would make this URL point into `dist/`, where no worker file is emitted.
+    const worker = new Worker(new URL("./pdfParseWorker.ts", import.meta.url));
+    const finish = (settle: () => void) => {
+      clearTimeout(timer);
+      worker.terminate();
+      settle();
+    };
+    const timer = setTimeout(
+      () => finish(() => reject(new PdfParseTimeoutError(`PDF parse exceeded ${timeoutMs} ms`))),
+      timeoutMs,
+    );
+    worker.onmessage = (event: MessageEvent<PdfParseReply>) => {
+      const reply = event.data;
+      finish(() => ("text" in reply ? resolve(reply.text) : reject(new Error(reply.error))));
+    };
+    worker.onerror = (event) => finish(() => reject(new Error(event.message)));
+    worker.postMessage(new Uint8Array(buffer));
+  });
 }
 
 /**

@@ -122,7 +122,7 @@ Sau khi thêm bot vào máy chủ của bạn bằng một trong hai cách trên
 
 Chọn một phương thức cài đặt:
 
-- **A. Cài đặt Bun cục bộ (Khuyến nghị):** yêu cầu Bun, Node.js v20+ cho công cụ MCP, và PostgreSQL hoặc Docker cho cơ sở dữ liệu.
+- **A. Cài đặt Bun cục bộ (Khuyến nghị):** yêu cầu Bun và PostgreSQL hoặc Docker cho cơ sở dữ liệu.
 - **B. Cài đặt Docker Compose:** chỉ yêu cầu Docker để chạy bot/cơ sở dữ liệu, nhưng các tập lệnh bảo trì phía máy chủ host vẫn cần các công cụ trên host.
 
 Phương thức được khuyến nghị cho hầu hết người dùng self-hosting là trình hướng dẫn cài đặt Bun cục bộ. Quy trình **Full Install** mặc định của nó sẽ tạo `.env`, tạo một `CRYPTO_SECRET` an toàn, yêu cầu token bot Discord của bạn, cấu hình PostgreSQL, chạy `bun install --frozen-lockfile`, sau đó thử cài đặt cơ sở dữ liệu gọn nhẹ và các tiện ích hỗ trợ AI bổ sung.
