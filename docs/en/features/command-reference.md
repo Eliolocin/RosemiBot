@@ -299,6 +299,8 @@ Reset server or personal configuration to defaults.
 
 Manually trigger response to the latest message in this channel.
 
+The bot needs `View Channel` and `Read Message History`. In a voice channel's text chat, it also needs `Connect` to read the messages.
+
 | Command | Summary |
 |---|---|
 | `/respond` | Manually trigger response to the latest message in this channel. |

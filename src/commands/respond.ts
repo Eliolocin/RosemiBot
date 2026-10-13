@@ -1,6 +1,6 @@
 import type { SlashCommandBuilder } from "discord.js";
 import type { ChatInputCommandInteraction, Client, Message } from "discord.js";
-import { EmbedBuilder, MessageFlags, PermissionFlagsBits } from "discord.js";
+import { DiscordAPIError, EmbedBuilder, MessageFlags, PermissionFlagsBits, RESTJSONErrorCodes } from "discord.js";
 import { promptWithPaginatedModal, replyInfoEmbed, safeSelectOptionText } from "@/utils/discord/interactionHelper";
 import { sendCooldownDM } from "@/utils/discord/cooldownDM";
 import { ColorCode, log } from "@/utils/misc/logger";
@@ -80,7 +80,9 @@ export async function execute(
     const permissions = guildChannel.permissionsFor(botMember);
     if (
       !permissions?.has(PermissionFlagsBits.ViewChannel) ||
-      !permissions?.has(PermissionFlagsBits.ReadMessageHistory)
+      !permissions?.has(PermissionFlagsBits.ReadMessageHistory) ||
+      // Discord requires Connect to fetch the text history of a voice channel.
+      (guildChannel.isVoiceBased() && !permissions?.has(PermissionFlagsBits.Connect))
     ) {
       await replyInfoEmbed(interaction, locale, {
         titleKey: "general.errors.channel_missing_permissions_title",
@@ -172,9 +174,25 @@ export async function execute(
     return;
   }
 
-  const fetchedMessages = await interaction.channel.messages.fetch({
-    limit: normalizeMessageFetchLimit(tomoriState.config.message_fetch_limit),
-  });
+  const fetchedMessages = await interaction.channel.messages
+    .fetch({ limit: normalizeMessageFetchLimit(tomoriState.config.message_fetch_limit) })
+    .catch(async (error: unknown) => {
+      // Channel overwrites can change after the cached permission check.
+      if (
+        !(error instanceof DiscordAPIError) ||
+        (error.code !== RESTJSONErrorCodes.MissingAccess && error.code !== RESTJSONErrorCodes.MissingPermissions)
+      ) {
+        throw error;
+      }
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "general.errors.channel_missing_permissions_title",
+        descriptionKey: "general.errors.channel_missing_permissions_description",
+        color: ColorCode.ERROR,
+        flags: MessageFlags.Ephemeral,
+      });
+      return null;
+    });
+  if (!fetchedMessages) return;
   const messages = [...fetchedMessages.values()].reverse();
   const latestMessage = fetchedMessages.first();
 
