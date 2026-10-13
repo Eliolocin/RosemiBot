@@ -25,6 +25,12 @@ export default {
     tools_known: `工具：{tools}`,
     tools_empty: `工具：未发现`,
     tools_unknown: `工具：发现状态未知`,
+    connection_failing_unauthorized:
+      "自 {since} 起连接失败：服务器拒绝了保存的认证令牌。如果持续失败满 24 小时，TomoriBot 将自动停用此 MCP。",
+    connection_failing_unreachable:
+      "自 {since} 起连接失败：无法访问该服务器。如果持续失败满 24 小时，TomoriBot 将自动停用此 MCP。",
+    auto_disabled_unauthorized: "因服务器拒绝保存的认证令牌已达 24 小时，已自动停用。请将其移除并使用新令牌重新添加。",
+    auto_disabled_unreachable: "因无法访问该服务器已达 24 小时，已自动停用。请重新启用以再次尝试。",
     endpoint_unavailable: `不可用`,
     enable: `启用`,
     disable: `停用`,

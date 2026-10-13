@@ -17,7 +17,7 @@ Agrega una clave de proveedor durante la configuración inicial con `/setup`, o 
 | Modo | lo que recoge |
 |---|---|
 | Proveedor de IA (recomendado) | Un proveedor del catálogo más su clave API, validada y cifrada como borrador. |
-| Punto final personalizado (avanzado) | La conexión del punto final y un modelo de texto, registrados dentro del asistente. Consulta [Puntos finales personalizados](#custom-endpoints). |
+| Punto de conexión personalizado | La conexión del punto final y un modelo de texto, registrados dentro del asistente. Consulta [Puntos finales personalizados](#custom-endpoints). |
 | Usuario BYOK (solo gremios) | Nada: el espacio de trabajo no cuenta con ningún proveedor propio, por lo que los miembros deberán suministrar uno personal. |
 
 No se escribe nada en la base de datos hasta que presione `Finalizar configuración`. Un asistente abandonado o caducado deja intactas las filas de proveedores existentes del espacio de trabajo. Para reemplazar una clave existente, use `/providers`, porque `/setup` no se ejecutará en un espacio de trabajo ya configurado.
@@ -108,7 +108,7 @@ Para TTS y STT, registre el terminal y sus modelos en `/providers`, luego elija 
 
 La compatibilidad API determina las rutas de solicitud y las cargas útiles que implementa el servicio, por lo que también determina qué ranuras de capacidad prepara la conexión. Registrar modelos exactos para esas ranuras es un paso aparte, porque el protocolo no se puede inferir de manera confiable únicamente a partir de la URL del punto final.
 
-El modo `Punto de conexión personalizado (avanzado)` de `/setup` realiza los mismos dos pasos dentro del asistente: `Configurar conexión` guarda la compatibilidad, la etiqueta, la URL y el token de autenticación opcional de API detrás de una verificación de accesibilidad, y `Configurar modelo de texto` registra el modelo de texto exacto y sus declaraciones de capacidad. El botón de modelo permanece deshabilitado hasta que se valida la conexión y al volver a guardar la conexión se borra la declaración del modelo porque las declaraciones dependen de la compatibilidad de API. El asistente crea las filas de conexión, proveedor guardado, modelo y modelo activo juntas cuando presiona `Finalizar configuración`. El asistente registra únicamente modelos de texto; Las capacidades de imagen, video, TTS y STT están registradas en `/providers`.
+El modo `Punto de conexión personalizado` de `/setup` realiza los mismos dos pasos dentro del asistente: `Configurar conexión` guarda la compatibilidad, la etiqueta, la URL y el token de autenticación opcional de API detrás de una verificación de accesibilidad, y `Configurar modelo de texto` registra el modelo de texto exacto y sus declaraciones de capacidad. El botón de modelo permanece deshabilitado hasta que se valida la conexión y al volver a guardar la conexión se borra la declaración del modelo porque las declaraciones dependen de la compatibilidad de API. El asistente crea las filas de conexión, proveedor guardado, modelo y modelo activo juntas cuando presiona `Finalizar configuración`. El asistente registra únicamente modelos de texto; Las capacidades de imagen, video, TTS y STT están registradas en `/providers`.
 
 OpenCode Go (`https://opencode.ai/zen/go/v1`) y OpenCode Zen (`https://opencode.ai/zen/v1`) funcionan como puntos finales personalizados compatibles con OpenAI. TomoriBot les envía el ID de sesión por conversación que necesitan, derivado de un hash del canal y la persona, por lo que ningún ID de Discord sale del bot.
 

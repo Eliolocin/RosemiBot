@@ -25,6 +25,12 @@ export default {
     tools_known: `工具：{tools}`,
     tools_empty: `工具：未探索到任何工具`,
     tools_unknown: `工具：探索狀態未知`,
+    connection_failing_unauthorized:
+      "自 {since} 起連線失敗：伺服器拒絕了儲存的驗證權杖。若持續失敗達 24 小時，TomoriBot 將自動停用此 MCP。",
+    connection_failing_unreachable:
+      "自 {since} 起連線失敗：無法連線至該伺服器。若持續失敗達 24 小時，TomoriBot 將自動停用此 MCP。",
+    auto_disabled_unauthorized: "由於伺服器拒絕儲存的驗證權杖達 24 小時，已自動停用。請將其移除並使用新權杖重新新增。",
+    auto_disabled_unreachable: "由於無法連線至該伺服器達 24 小時，已自動停用。請重新啟用以再次嘗試。",
     endpoint_unavailable: `無法使用`,
     enable: `啟用`,
     disable: `停用`,

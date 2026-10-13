@@ -17,7 +17,7 @@ Thêm khóa nhà cung cấp trong lần thiết lập đầu tiên với `/setup
 | Cách thức | Những gì nó thu thập |
 |---|---|
 | Nhà cung cấp AI (Được khuyến nghị) | Một nhà cung cấp từ danh mục cộng với khóa API của nó, được xác thực và mã hóa dưới dạng bản nháp. |
-| Điểm cuối tùy chỉnh (Nâng cao) | Kết nối điểm cuối và một model văn bản, được đăng ký bên trong trình hướng dẫn. Xem [Điểm cuối tùy chỉnh](#custom-endpoints). |
+| Endpoint tùy chỉnh | Kết nối điểm cuối và một model văn bản, được đăng ký bên trong trình hướng dẫn. Xem [Điểm cuối tùy chỉnh](#custom-endpoints). |
 | Người dùng BYOK (chỉ dành cho bang hội) | Không có gì: không gian làm việc không có nhà cung cấp riêng, vì vậy các thành viên phải cung cấp nhà cung cấp cá nhân. |
 
 Không có gì được ghi vào cơ sở dữ liệu cho đến khi bạn nhấn `Hoàn tất thiết lập`. Trình hướng dẫn bị bỏ rơi hoặc đã hết hạn sẽ giữ nguyên các hàng nhà cung cấp hiện có của không gian làm việc. Để thay thế khóa hiện có, hãy sử dụng `/providers`, vì `/setup` sẽ không chạy trên không gian làm việc đã được định cấu hình.
@@ -108,7 +108,7 @@ Nhãn là tên menu giao diện người dùng và nhóm các khả năng trong 
 
 Khả năng tương thích của API xác định đường dẫn yêu cầu và tải trọng mà dịch vụ triển khai, do đó, nó cũng xác định khe cắm khả năng nào mà kết nối chuẩn bị. Việc đăng ký model chính xác cho các vị trí đó là một bước riêng biệt vì giao thức không thể được suy ra một cách đáng tin cậy chỉ từ URL điểm cuối.
 
-Chế độ `Endpoint tùy chỉnh (Nâng cao)` của `/setup` thực hiện hai bước tương tự bên trong trình hướng dẫn: `Cấu hình kết nối` lưu khả năng tương thích, nhãn, URL và mã thông báo xác thực tùy chọn của API đằng sau kiểm tra khả năng tiếp cận và `Cấu hình model văn bản` đăng ký model văn bản chính xác và các khai báo khả năng của nó. Nút model vẫn bị tắt cho đến khi kết nối xác thực và việc lưu lại kết nối sẽ xóa phần khai báo model vì các phần khai báo phụ thuộc vào khả năng tương thích API. Trình hướng dẫn tạo các hàng kết nối, nhà cung cấp đã lưu, model và model hoạt động cùng nhau khi bạn nhấn `Hoàn tất thiết lập`. Trình hướng dẫn chỉ đăng ký các mẫu văn bản; Các khả năng hình ảnh, video, TTS và STT được đăng ký trong `/providers`.
+Chế độ `Endpoint tùy chỉnh` của `/setup` thực hiện hai bước tương tự bên trong trình hướng dẫn: `Cấu hình kết nối` lưu khả năng tương thích, nhãn, URL và mã thông báo xác thực tùy chọn của API đằng sau kiểm tra khả năng tiếp cận và `Cấu hình model văn bản` đăng ký model văn bản chính xác và các khai báo khả năng của nó. Nút model vẫn bị tắt cho đến khi kết nối xác thực và việc lưu lại kết nối sẽ xóa phần khai báo model vì các phần khai báo phụ thuộc vào khả năng tương thích API. Trình hướng dẫn tạo các hàng kết nối, nhà cung cấp đã lưu, model và model hoạt động cùng nhau khi bạn nhấn `Hoàn tất thiết lập`. Trình hướng dẫn chỉ đăng ký các mẫu văn bản; Các khả năng hình ảnh, video, TTS và STT được đăng ký trong `/providers`.
 
 OpenCode Go (`https://opencode.ai/zen/go/v1`) và OpenCode Zen (`https://opencode.ai/zen/v1`) hoạt động như các điểm cuối tùy chỉnh tương thích với OpenAI. TomoriBot gửi cho họ ID phiên cho mỗi cuộc trò chuyện mà họ yêu cầu, bắt nguồn từ hàm băm của kênh và cá nhân, vì vậy không có ID Discord nào rời khỏi bot.
 

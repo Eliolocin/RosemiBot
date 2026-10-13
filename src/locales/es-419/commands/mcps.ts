@@ -26,6 +26,14 @@ export default {
     tools_known: `Herramientas: {tools}`,
     tools_empty: `Herramientas: ninguna descubierta`,
     tools_unknown: `Herramientas: descubrimiento desconocido`,
+    connection_failing_unauthorized:
+      "Fallando desde {since}: el servidor rechazó el token de autenticación guardado. TomoriBot desactivará este MCP si sigue fallando durante 24 horas.",
+    connection_failing_unreachable:
+      "Fallando desde {since}: no se pudo conectar con el servidor. TomoriBot desactivará este MCP si sigue fallando durante 24 horas.",
+    auto_disabled_unauthorized:
+      "Desactivado automáticamente porque el servidor rechazó el token de autenticación guardado durante 24 horas. Elimínalo y vuelve a agregarlo con un token nuevo.",
+    auto_disabled_unreachable:
+      "Desactivado automáticamente porque no se pudo conectar con el servidor durante 24 horas. Actívalo para volver a intentarlo.",
     endpoint_unavailable: `No disponible`,
     enable: `Activar`,
     disable: `Desactivar`,

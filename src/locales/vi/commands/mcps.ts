@@ -25,6 +25,13 @@ export default {
     tools_known: `Công cụ: {tools}`,
     tools_empty: `Công cụ: Không tìm thấy`,
     tools_unknown: `Công cụ: Chưa xác định`,
+    connection_failing_unauthorized:
+      "Lỗi từ {since}: máy chủ đã từ chối token xác thực đã lưu. TomoriBot sẽ tắt MCP này nếu lỗi kéo dài trong 24 giờ.",
+    connection_failing_unreachable:
+      "Lỗi từ {since}: không thể kết nối tới máy chủ. TomoriBot sẽ tắt MCP này nếu lỗi kéo dài trong 24 giờ.",
+    auto_disabled_unauthorized:
+      "Đã tự động tắt vì máy chủ từ chối token xác thực đã lưu suốt 24 giờ. Hãy xóa và thêm lại với token mới.",
+    auto_disabled_unreachable: "Đã tự động tắt vì không thể kết nối tới máy chủ suốt 24 giờ. Hãy bật lại để thử lại.",
     endpoint_unavailable: `Không khả dụng`,
     enable: `Bật`,
     disable: `Tắt`,

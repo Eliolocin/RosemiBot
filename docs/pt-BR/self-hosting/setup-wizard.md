@@ -104,7 +104,7 @@ ao lado de `/legal license`; todo outro valor registra apenas `/legal license`.
   validada contra o provedor e criptografada no rascunho; o painel mostra apenas que uma chave está
   armazenada, nunca a própria chave. Execute `/help`, depois `Configuração` > Step 1: Obter uma Chave de API (Passo 1: Obter uma Chave de API) para o
   guia passo a passo por provedor.
-- **Endpoint Personalizado (Avançado)**: uma subárea de dois botões para um endpoint de hospedagem própria ou proxy.
+- **Endpoint Personalizado**: uma subárea de dois botões para um endpoint de hospedagem própria ou proxy.
   Configurar Conexão coleta a compatibilidade da API, um rótulo, a URL e um token
   de autenticação opcional, e verifica se o endpoint responde. `Configurar Modelo de Texto` coleta o código do modelo, o
   tamanho de contexto e suas declarações de capacidade (capability declarations), e permanece desabilitado até que uma conexão seja validada.

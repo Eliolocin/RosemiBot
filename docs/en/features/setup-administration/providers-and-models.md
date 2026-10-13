@@ -22,7 +22,7 @@ collects:
 | Mode | What it collects |
 |---|---|
 | AI Provider (Recommended) | A provider from the catalog plus its API key, validated and encrypted as a draft. |
-| Custom Endpoint (Advanced) | The endpoint connection and one text model, registered inside the wizard. See [Custom Endpoints](#custom-endpoints). |
+| Custom Endpoint | The endpoint connection and one text model, registered inside the wizard. See [Custom Endpoints](#custom-endpoints). |
 | User BYOK (guilds only) | Nothing: the workspace keeps no provider of its own, so members must supply personal ones. |
 
 Nothing is written to the database until you press `Finish Setup`. An abandoned or expired
@@ -170,7 +170,7 @@ API compatibility determines the request paths and payloads the service implemen
 determines which capability slots the connection prepares. Registering exact models for those slots
 is a separate step, because the protocol cannot be inferred reliably from the endpoint URL alone.
 
-`/setup`'s `Custom Endpoint (Advanced)` mode performs the same two steps inside the wizard:
+`/setup`'s `Custom Endpoint` mode performs the same two steps inside the wizard:
 `Configure Connection` saves the API compatibility, label, URL, and optional auth token behind a
 reachability check, and `Configure Text Model` registers the exact text model and its capability
 declarations. The model button stays disabled until the connection validates, and re-saving the

@@ -17,7 +17,7 @@ Adicione uma chave de provedor durante a configuração inicial com `/setup` ou 
 | Modo | O que coleta |
 |---|---|
 | Provedor de IA (recomendado) | Um provedor do catálogo mais sua chave API, validada e criptografada como rascunho. |
-| Endpoint personalizado (avançado) | A conexão do endpoint e um modelo de texto, registrado dentro do assistente. Consulte [Endpoints personalizados](#custom-endpoints). |
+| Endpoint Personalizado | A conexão do endpoint e um modelo de texto, registrado dentro do assistente. Consulte [Endpoints personalizados](#custom-endpoints). |
 | Usuário BYOK (somente guildas) | Nada: o espaço de trabalho não mantém provedor próprio, portanto os membros devem fornecer provedores pessoais. |
 
 Nada é gravado no banco de dados até que você pressione `Concluir Configuração`. Um assistente abandonado ou expirado deixa as linhas de provedor existentes do espaço de trabalho intactas. Para substituir uma chave existente, use `/providers`, porque `/setup` não será executado em um espaço de trabalho já configurado.
@@ -108,7 +108,7 @@ Para TTS e STT, registre o endpoint e seus modelos em `/providers` e, em seguida
 
 A compatibilidade API determina os caminhos de solicitação e as cargas que o serviço implementa, portanto, também determina quais slots de capacidade a conexão prepara. O registro de modelos exatos para esses slots é uma etapa separada, porque o protocolo não pode ser inferido de forma confiável apenas a partir do URL do terminal.
 
-O modo `Endpoint Personalizado (Avançado)` do `/setup` executa as mesmas duas etapas dentro do assistente: `Configurar Conexão` salva a compatibilidade, rótulo, URL e token de autenticação opcional do API atrás de uma verificação de acessibilidade, e `Configurar Modelo de Texto` registra o modelo de texto exato e suas declarações de capacidade. O botão do modelo permanece desativado até que a conexão seja validada e salvar novamente a conexão limpa a declaração do modelo porque as declarações dependem da compatibilidade do API. O assistente cria as linhas de conexão, provedor salvo, modelo e modelo ativo juntos quando você pressiona `Concluir Configuração`. O assistente registra apenas modelos de texto; Os recursos de imagem, vídeo, TTS e STT são registrados em `/providers`.
+O modo `Endpoint Personalizado` do `/setup` executa as mesmas duas etapas dentro do assistente: `Configurar Conexão` salva a compatibilidade, rótulo, URL e token de autenticação opcional do API atrás de uma verificação de acessibilidade, e `Configurar Modelo de Texto` registra o modelo de texto exato e suas declarações de capacidade. O botão do modelo permanece desativado até que a conexão seja validada e salvar novamente a conexão limpa a declaração do modelo porque as declarações dependem da compatibilidade do API. O assistente cria as linhas de conexão, provedor salvo, modelo e modelo ativo juntos quando você pressiona `Concluir Configuração`. O assistente registra apenas modelos de texto; Os recursos de imagem, vídeo, TTS e STT são registrados em `/providers`.
 
 OpenCode Go (`https://opencode.ai/zen/go/v1`) e OpenCode Zen (`https://opencode.ai/zen/v1`) funcionam como endpoints personalizados compatíveis com OpenAI. TomoriBot envia a eles o ID de sessão por conversa necessário, derivado de um hash do canal e da persona, para que nenhum ID Discord saia do bot.
 

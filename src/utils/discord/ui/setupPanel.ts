@@ -328,11 +328,13 @@ export function buildSetupWizardPayload(
   const providerOptions: SelectMenuComponentOptionData[] = [
     {
       label: localizer(locale, "commands.setup.wizard.provider_option_catalog"),
+      description: localizer(locale, "commands.setup.wizard.provider_option_catalog_description"),
       value: "catalog",
       default: draft.providerAccess?.mode === "catalog",
     },
     {
       label: localizer(locale, "commands.setup.wizard.provider_option_custom"),
+      description: localizer(locale, "commands.setup.wizard.provider_option_custom_description"),
       value: "custom-endpoint",
       default: draft.providerAccess?.mode === "custom-endpoint",
     },
@@ -341,6 +343,7 @@ export function buildSetupWizardPayload(
   if (draft.context !== "dm") {
     providerOptions.push({
       label: localizer(locale, "commands.setup.wizard.provider_option_byok"),
+      description: localizer(locale, "commands.setup.wizard.provider_option_byok_description"),
       value: "user-byok",
       default: draft.providerAccess?.mode === "user-byok",
     });

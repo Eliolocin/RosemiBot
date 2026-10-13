@@ -56,7 +56,7 @@ With `RUN_ENV=development` the checklist has two steps:
 - **AI Provider**, one select with three modes:
   - **AI Provider (Recommended)**: pick a provider and enter an API key, which is validated and
     encrypted into the draft.
-  - **Custom Endpoint (Advanced)**: `Configure Connection`, then `Configure Text Model`, which is
+  - **Custom Endpoint**: `Configure Connection`, then `Configure Text Model`, which is
     enabled once the connection validates.
   - **User BYOK** (servers only): members bring their own providers and the server keeps no text
     provider.
