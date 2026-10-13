@@ -11,6 +11,7 @@ import {
   insertRows,
   report,
   seenKey,
+  sourceAdvisories,
   type CatalogLookup,
   type ModelTable,
   type SeenEntry,
@@ -95,7 +96,71 @@ describe("model drift", () => {
     const source = await Bun.file(fixture).json();
     const { candidates } = findCandidates(source, [], frozenCatalog);
     expect(candidates.some((item) => item.provider === "nvidia" && item.table !== "llmSections")).toBe(false);
-    expect(candidates.some((item) => item.provider === "vertex" && item.table !== "llmSections")).toBe(false);
+    expect(candidates.some((item) => item.provider === "vertex" && item.table === "videoSections")).toBe(false);
+  });
+
+  it("drafts Gemini image models for Google and Vertex and inserts them into their own sections", async () => {
+    const source = await Bun.file(fixture).json();
+    const models: SourceModel[] = [
+      { id: "gemini-nano-banana-2.1", modalities: { output: ["text", "image"] } },
+      { id: "gemini-3.1-flash-lite-image", modalities: { output: ["text", "image"] } },
+      { id: "imagen-4.0-generate-001", modalities: { output: ["image"] } },
+      { id: "gemini-3.8-flash", modalities: { output: ["text"] } },
+      { id: "veo-3.1-generate", modalities: { output: ["video"] } },
+    ];
+    for (const key of ["google", "google-vertex"]) {
+      source[key].models = Object.fromEntries(models.map((model) => [model.id, model]));
+    }
+    const candidates = findCandidates(source, [], frozenCatalog).candidates.filter(
+      (row) => (row.provider === "google" || row.provider === "vertex") && row.table === "imageSections",
+    );
+    for (const provider of ["google", "vertex"]) {
+      expect(
+        candidates
+          .filter((row) => row.provider === provider)
+          .map((row) => row.codename)
+          .sort(),
+      ).toEqual(["gemini-3.1-flash-lite-image", "gemini-nano-banana-2.1"]);
+    }
+    const inserted = insertRows(await Bun.file(catalog).text(), candidates);
+    const file = ts.createSourceFile("models.ts", inserted, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    for (const candidate of candidates) {
+      let found = false;
+      function visit(node: ts.Node): void {
+        if (ts.isObjectLiteralExpression(node)) {
+          const fields = new Map(
+            node.properties
+              .filter(ts.isPropertyAssignment)
+              .map((property) => [property.name.getText(file), property.initializer]),
+          );
+          const desc = fields.get("desc");
+          if (
+            desc &&
+            ts.isStringLiteral(desc) &&
+            desc.text === MODEL_DRIFT_TODO &&
+            fields.get("codename")?.getText(file) === JSON.stringify(candidate.codename) &&
+            fields.get("provider")?.getText(file) === JSON.stringify(candidate.provider)
+          ) {
+            const section = node.parent.parent.parent;
+            const comment = section.getText(file).match(/comment: "([^"]+)"/)?.[1];
+            expect(comment).toBe(
+              candidate.provider === "google"
+                ? "Google Gemini Image Generation Models"
+                : "Vertex AI Gemini Image Generation Models",
+            );
+            found = true;
+          }
+        }
+        ts.forEachChild(node, visit);
+      }
+      visit(file);
+      expect(found).toBe(true);
+    }
+    const advisories = sourceAdvisories(source).unsupportedMedia;
+    expect(advisories.some((item) => item.includes("gemini-nano-banana-2.1"))).toBe(false);
+    expect(advisories.some((item) => item.includes("gemini-3.1-flash-lite-image"))).toBe(false);
+    expect(advisories.some((item) => item.includes("imagen-4.0-generate-001"))).toBe(true);
+    expect(advisories.some((item) => item.includes("veo-3.1-generate"))).toBe(true);
   });
 
   it("does not reoffer models already in the catalog", async () => {

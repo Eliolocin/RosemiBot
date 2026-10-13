@@ -155,6 +155,13 @@ function carriedCodenames(catalog: CatalogLookup, table: ModelTable, provider: s
   );
 }
 
+function supportsMediaModel(provider: string, model: SourceModel, kind: "image" | "video"): boolean {
+  if (!outputIs(model, kind) || REJECT_MEDIA.test(model.id)) return false;
+  if (provider === "openrouter") return true;
+  if (kind === "video") return provider === "google" && model.id.startsWith("veo-");
+  return (provider === "google" || provider === "vertex") && model.id.startsWith("gemini-");
+}
+
 function mediaCandidates(
   models: SourceModel[],
   provider: string,
@@ -162,15 +169,9 @@ function mediaCandidates(
   catalog: CatalogLookup,
 ): SourceModel[] {
   const kind = table === "imageSections" ? "image" : "video";
-  if (kind === "video" && provider !== "google" && provider !== "openrouter") return [];
-  if (kind === "image" && provider !== "google" && provider !== "openrouter") return [];
   const carried = carriedCodenames(catalog, table, provider);
   return models.filter(
-    (model) =>
-      outputIs(model, kind) &&
-      !REJECT_MEDIA.test(model.id) &&
-      !carriedHas(carried, provider, model.id) &&
-      (provider !== "google" || (kind === "image" ? model.id.includes("-image") : model.id.startsWith("veo-"))),
+    (model) => supportsMediaModel(provider, model, kind) && !carriedHas(carried, provider, model.id),
   );
 }
 
@@ -321,6 +322,7 @@ function sectionFor(table: ModelTable, provider: string): string {
     );
   }
   if (table === "imageSections") {
+    if (provider === "vertex") return "Vertex AI Gemini Image Generation Models";
     return provider === "google" ? "Google Gemini Image Generation Models" : "OpenRouter Image Generation Models";
   }
   return provider === "google" ? "Google Veo Video Generation Models" : "OpenRouter Video Generation Models";
@@ -373,7 +375,7 @@ function reviewLabel(provider: string, table: ModelTable, codename: string): str
   return `\`${codename}\` (${provider}${media})`;
 }
 
-function sourceAdvisories(source: SourceCatalog): { absent: string[]; unsupportedMedia: string[] } {
+export function sourceAdvisories(source: SourceCatalog): { absent: string[]; unsupportedMedia: string[] } {
   const absent: string[] = [];
   for (const table of ["llmSections", "imageSections", "videoSections"] as const) {
     for (const row of catalogRows(table)) {
@@ -396,6 +398,7 @@ function sourceAdvisories(source: SourceCatalog): { absent: string[]; unsupporte
     for (const model of Object.values(source[sourceKey].models)) {
       if (!outputIs(model, "image") && !outputIs(model, "video")) continue;
       const table = outputIs(model, "video") ? "videoSections" : "imageSections";
+      if (supportsMediaModel(provider, model, table === "videoSections" ? "video" : "image")) continue;
       const carried = catalogRows(table).some((row) => row.provider === provider && row.codename === model.id);
       if (!carried) unsupportedMedia.push(reviewLabel(provider, table, model.id));
     }

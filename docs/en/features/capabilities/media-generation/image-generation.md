@@ -55,5 +55,8 @@ Native image generation is available on Google, Vertex AI, Vertex AI Express, Op
 Z.ai, NVIDIA NIM, and NovelAI (anime-styled). For the full provider matrix, see
 [Providers & Models](/features/setup-administration/providers-and-models/#supported-providers).
 
+Nano Banana 2.1 is available through Google, Vertex AI, and OpenRouter. On Vertex AI,
+configure the location as `global` to use this model.
+
 For local generation on your own hardware via ComfyUI, see
 [Setup: ComfyUI](/self-hosting/local-endpoints/setup-comfyui/).

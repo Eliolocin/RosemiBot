@@ -190,6 +190,12 @@ so list only the true ones:
 Set `hasTools` and `supportsStructoutput` per model, only for models you tested. To retire a model
 set `isDeprecated: true`; to remove it, delete the row.
 
+The weekly drift check in `scripts/checks/modelDrift.ts` drafts media rows only for supported
+routes. Google and Vertex image candidates require a `gemini-` ID and image output metadata;
+Google video candidates require a `veo-` ID and video output metadata. OpenRouter uses output
+metadata for both. Extend the route predicate and catalog section mapping when adding a route,
+so supported models are drafted into the right section rather than reported as unsupported.
+
 Set `contextWindow` and `maxOutputTokens` from the vendor's official docs. Without a window, history
 truncation is skipped and a long channel fails with a context-length error instead of trimming. Add the
 provider to `LIMIT_REQUIRED_PROVIDERS` in `modelSeed.ts` so a future row cannot forget them.
