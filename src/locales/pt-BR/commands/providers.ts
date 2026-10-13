@@ -126,7 +126,7 @@ export default {
     activate_option_description: `Endpoint de {capability} ({name})`,
     activate_option_active_description: `[ativo] Endpoint de {capability} ({name})`,
     manage_models_placeholder: `Escolha um modelo ou capacidade...`,
-    add_decision_model: `+ Adicionar um modelo de decisões`,
+    add_decision_model: `+ Adicionar Novo Modelo de Decisão`,
     add_capability_model: `+ Adicionar Novo Modelo de {capability}`,
     add_model_modal_title: `Adicionar Modelo de Provedor`,
     edit_model_modal_title: `Editar Modelo de Provedor`,

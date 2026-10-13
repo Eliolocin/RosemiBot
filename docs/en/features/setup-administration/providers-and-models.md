@@ -106,7 +106,7 @@ predicates with probabilities. Registration does not change the active chat mode
 calibration, or enable response-review skipping. These panels do not yet select a Decision model.
 
 OpenRouter is the supported native provider. Save its key, open its model dropdown, and choose
-`+ Add a Decisions Model`. Enter an ID from its verified Decision catalog. The global catalog
+`+ Add new Decision Model`. Enter an ID from its verified Decision catalog. The global catalog
 keeps a short list for different needs: Jev 1.13 (default), Decider V1.1 27B (low-cost bulk checks),
 Solar Decide Flash (Korean and long documents), GPT-6 Luna Decisions (largest inputs), and Mercury
 Decide Free (experimentation). These roles follow documented capabilities; accuracy and thresholds
@@ -117,7 +117,7 @@ Decision support.
 
 For a custom service, choose `Add New Custom Endpoint`, then `System One compatible` or
 `OpenAI Decisions compatible` in `API Compatibility`. Save the API base URL and optional Bearer
-credential. Its model dropdown offers `+ Add a Decisions Model` and inherits that protocol. Enter
+credential. Its model dropdown offers `+ Add new Decision Model` and inherits that protocol. Enter
 the documented model ID and input token limit (at least 512). Jev, Laya, and Kev use System One
 compatibility. Existing chat-compatible and Ollama-native endpoints do not offer this action.
 

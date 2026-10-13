@@ -128,7 +128,7 @@ export default {
     activate_option_description: `Punto de conexión de {capability} ({name})`,
     activate_option_active_description: `[activo] Punto de conexión de {capability} ({name})`,
     manage_models_placeholder: `Elige un modelo o capacidad...`,
-    add_decision_model: `+ Agregar un modelo de decisiones`,
+    add_decision_model: `+ Agregar nuevo modelo de decisión`,
     add_capability_model: `+ Agregar nuevo modelo de {capability}`,
     add_model_modal_title: `Agregar modelo de proveedor`,
     edit_model_modal_title: `Editar modelo de proveedor`,

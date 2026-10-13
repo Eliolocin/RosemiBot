@@ -126,7 +126,7 @@ export default {
     activate_option_description: `{capability} endpoint ({name})`,
     activate_option_active_description: `[hoạt động] Endpoint {capability} ({name})`,
     manage_models_placeholder: `Chọn một model hoặc tính năng...`,
-    add_decision_model: `+ Thêm một model quyết định`,
+    add_decision_model: `+ Thêm model quyết định mới`,
     add_capability_model: `+ Thêm model {capability} mới`,
     add_model_modal_title: `Thêm model nhà cung cấp`,
     edit_model_modal_title: `Sửa model nhà cung cấp`,
