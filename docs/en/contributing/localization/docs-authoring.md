@@ -34,22 +34,20 @@ Write them in everyday words, and open a feature with why someone would want it 
 up. `self-hosting/` readers run their own bot and are often not developers: use plain words and a
 clear order, but keep every step, command, and setting, because a missing step is a failed install.
 
-The repository is public and every page outside `docs/en/wiki/` is indexed by search engines. Decide
-which kind of page you are writing, because the rules are opposite:
+All tracked docs are public, including `wiki/` and `release`; sidebar hiding and `noindex` do not
+restrict access.
 
-- **A guide** teaches readers to run their own deployment. Use second person and placeholders for
-  anything tied to one account (`<gcp-project-id>`, `<resource-group>`). A reader who copies a literal
-  project ID gets an error, so a real ID in a guide is a bug.
-- **A runbook** operates the project's own production. It lives in `docs/en/wiki/` with real resource
-  names, linked from the related architecture page rather than the sidebar. Cloud runbooks live under
-  `docs/en/wiki/cloud/<provider>/` on the `release` branch.
+Write guides in second person for readers running their own deployment. Runbooks describe operational
+procedures; cloud runbooks live under `docs/en/wiki/cloud/<provider>/` on `release`.
 
-A page that is part of each gets split: the description stays public and the procedure moves to
-`wiki/` with a one-line pointer.
+Both use placeholders for production resource names, workspace IDs, subscription IDs, tenant IDs,
+and IPs, such as `/v1/workspaces/<workspace-id>/query`. Keep the steps readers need, including
+authenticated lookup commands for current deployment values. Verify exact values instead of relying
+on agent memory.
 
-Never write credentials, API keys, tokens, private keys, connection strings, tenant IDs, or the
-production VM's IP on any page. GitHub push protection blocks credentials but not infrastructure
-identifiers.
+Never copy credentials into docs or agent memory; reference secret stores. Keep private incident
+evidence and sensitive production access details in access-controlled storage outside this repository.
+Secret scanning does not enforce these documentation rules.
 
 ## Architecture scope
 <!-- anchor: architecture-scope -->
