@@ -316,7 +316,7 @@ Records where cache invalidation lives after the repository migration. All inval
 | Tomori state: config/provider/model settings | `ConfigRepository.update*Config()` methods; LLM/provider-specific writes owned by `LlmModelRepository`, `LlmProviderRepository`, `LlmOverrideRepository` |
 | Tomori state: persona/profile/settings | `PersonaRepository.update`; import/persona-creation/delete/default/swap flows |
 | Tomori state: server memories/documents/history | `ServerMemoryRepository.add` and edit/remove variants |
-| Guild MCP config | `ToolRepository.insertMcpServer`, `deleteMcpServer`, `updateMcpServerEnabled` |
+| Guild MCP config | `ToolRepository.insertMcpServer`, `deleteMcpServerById`, `updateMcpServerEnabledById`, `recordMcpConnectFailure`, `clearMcpConnectFailure` |
 | Channel LLM overrides | `LlmOverrideRepository.setChannelLlmOverride`, `deleteChannelLlmOverride`, `clearAllChannelLlmOverrides` |
 | Whitelist decisions | `WhitelistRepository.upsertChannelWhitelist`, `removeChannelWhitelist`, `replacePersonaWhitelistChannels`, `removeChannelPersonaWhitelist`, `upsertRoleWhitelist`, `removeRoleWhitelist` |
 | Full import/export | `ImportRepository.importPersonalSettings`, `importPersonalMemories`, `importServerConfig`, `importServerMemories`, `importPersonalData`, `importServerData` |

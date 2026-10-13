@@ -1770,10 +1770,13 @@ const guildMcpServerSchema = z.object({
   is_enabled: z.boolean().default(true),
   server_type: z.string().nullable().optional(),
   last_discovered_tool_names: z.array(z.string()).nullable().optional(),
+  failing_since: z.date().nullable().optional(),
+  failure_reason: z.enum(["unauthorized", "unreachable"]).nullable().optional(),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });
 export type GuildMcpServerRow = z.infer<typeof guildMcpServerSchema>;
+export type GuildMcpFailureReason = NonNullable<GuildMcpServerRow["failure_reason"]>;
 
 /**
  * Saved Provider Config : snapshot of provider-specific settings stored in

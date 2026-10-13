@@ -62,6 +62,16 @@ function typeLabelKey(serverType: string | null | undefined): string {
   return "commands.mcps.type_general";
 }
 
+/** A manual enable or disable clears `failure_reason`, so a disabled row that keeps one was disabled automatically. */
+function connectionHealthLine(locale: string, row: GuildMcpServerRow): string | null {
+  if (!row.failure_reason) return null;
+  if (!row.is_enabled) return localizer(locale, `commands.mcps.auto_disabled_${row.failure_reason}`);
+  if (!row.failing_since) return null;
+  return localizer(locale, `commands.mcps.connection_failing_${row.failure_reason}`, {
+    since: `<t:${Math.floor(row.failing_since.getTime() / 1000)}:R>`,
+  });
+}
+
 function buildRetryRow(
   locale: string,
   selectedId: number | "none",
@@ -235,6 +245,7 @@ export function buildMcpsPanelComponents(input: McpsPanelRenderInput): Component
         : formattedToolNames
           ? localizer(input.locale, "commands.mcps.tools_known", { tools: formattedToolNames })
           : localizer(input.locale, "commands.mcps.tools_empty");
+    const healthLine = connectionHealthLine(input.locale, row);
     components.push(
       {
         type: ComponentType.TextDisplay,
@@ -245,7 +256,7 @@ export function buildMcpsPanelComponents(input: McpsPanelRenderInput): Component
             status: localizer(input.locale, row.is_enabled ? "commands.mcps.enabled" : "commands.mcps.disabled"),
             type: localizer(input.locale, typeLabelKey(row.server_type)),
           },
-        )}\n> ${toolSnapshot}${
+        )}\n> ${toolSnapshot}${healthLine ? `\n> ${healthLine}` : ""}${
           namePreview.truncated || endpointPreview.truncated
             ? `\n-# ${localizer(
                 input.locale,

@@ -9,7 +9,7 @@ import {
   validateComponentsV2MessageLimits,
 } from "@/utils/discord/ui/componentsV2Limits";
 import { initializeLocalizer } from "@/utils/text/localizer";
-import { localizedCopy } from "../../helpers/localeCases";
+import { localizedCopy, localizedProse } from "../../helpers/localeCases";
 import { buildConfigMcpPagePayload } from "../../helpers/configMcpPage";
 
 beforeAll(async () => initializeLocalizer());
@@ -55,6 +55,28 @@ describe("MCP collection panel", () => {
       serialized.indexOf('"label":"+ Add MCP"'),
     );
     expect(serialized.indexOf('"label":"+ Add MCP"')).toBeLessThan(serialized.indexOf("Only add MCP servers"));
+  });
+
+  it("explains a failing streak and an automatic disable", () => {
+    const failingSince = new Date(1_700_000_000_000);
+    const serialized = JSON.stringify(
+      buildConfigMcpPagePayload({
+        locale: "en-US",
+        scope: "guild",
+        configs: [
+          row(1, { failing_since: failingSince, failure_reason: "unauthorized" }),
+          row(2, { is_enabled: false, failing_since: failingSince, failure_reason: "unreachable" }),
+        ],
+        readStatus: "fresh",
+        page: { kind: "collection" },
+      }),
+    );
+    expect(serialized).toMatch(
+      localizedProse("en-US", "commands.mcps.connection_failing_unauthorized", { since: "<t:1700000000:R>" }),
+    );
+    expect(serialized).toMatch(localizedProse("en-US", "commands.mcps.auto_disabled_unreachable"));
+    expect(serialized).not.toMatch(localizedProse("en-US", "commands.mcps.auto_disabled_unauthorized"));
+    expect(serialized).not.toMatch(localizedProse("en-US", "commands.mcps.connection_failing_unreachable"));
   });
 
   it("renders every supported row in deterministic order with per-entity actions", () => {

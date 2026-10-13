@@ -160,6 +160,51 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Tool — regression", () => {
     });
   });
 
+  it("auto-disables only after a persisted failure streak outlives the window, and enabling clears it", async () => {
+    const DAY_MS = 24 * 60 * 60_000;
+    const [inserted] = await testSql`
+      INSERT INTO guild_mcp_servers (server_id, name, url)
+      VALUES (${refs.serverId}, 'rt-mcp-failing', 'https://failing.example.invalid/mcp')
+      RETURNING guild_mcp_id
+    `;
+    const guildMcpId = Number(inserted?.guild_mcp_id);
+    const readRow = async () =>
+      (
+        await testSql`
+          SELECT is_enabled, failing_since, failure_reason
+          FROM guild_mcp_servers WHERE guild_mcp_id = ${guildMcpId}
+        `
+      )[0];
+
+    const first = await toolRepository.recordMcpConnectFailure(refs.serverId, guildMcpId, "unreachable", DAY_MS);
+    const second = await toolRepository.recordMcpConnectFailure(refs.serverId, guildMcpId, "unauthorized", DAY_MS);
+    if (first.status !== "failing" || second.status !== "failing") throw new Error("Expected an ongoing streak");
+    expect(second.failingSince).toEqual(first.failingSince);
+    expect(await readRow()).toMatchObject({ is_enabled: true, failure_reason: "unauthorized" });
+
+    await toolRepository.clearMcpConnectFailure(refs.serverId, guildMcpId);
+    expect(await readRow()).toMatchObject({ is_enabled: true, failing_since: null, failure_reason: null });
+
+    await testSql`
+      UPDATE guild_mcp_servers SET failing_since = now() - interval '25 hours'
+      WHERE guild_mcp_id = ${guildMcpId}
+    `;
+    tomoriStateCache.set(FIXTURE_IDS.serverDiscId, { personas: [], mainPersona: {} as never, cachedAt: Date.now() });
+    const disabled = await toolRepository.recordMcpConnectFailure(refs.serverId, guildMcpId, "unauthorized", DAY_MS);
+    expect(disabled.status).toBe("auto-disabled");
+    expect(tomoriStateCache.has(FIXTURE_IDS.serverDiscId)).toBe(false);
+    expect(await readRow()).toMatchObject({ is_enabled: false, failure_reason: "unauthorized" });
+    expect((await readRow())?.failing_since).toBeInstanceOf(Date);
+    expect(
+      (await toolRepository.recordMcpConnectFailure(refs.serverId, guildMcpId, "unreachable", DAY_MS)).status,
+    ).toBe("not-found");
+
+    expect(
+      await toolRepository.updateMcpServerEnabledById(refs.serverId, guildMcpId, true, FIXTURE_IDS.serverDiscId),
+    ).toBe(true);
+    expect(await readRow()).toMatchObject({ is_enabled: true, failing_since: null, failure_reason: null });
+  });
+
   it("does not refresh a same-name recreation through an obsolete stable ID", async () => {
     const [original] = await testSql`
       INSERT INTO guild_mcp_servers (server_id, name, url)

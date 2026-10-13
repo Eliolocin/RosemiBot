@@ -26,6 +26,14 @@ export default {
     tools_known: `Tools: {tools}`,
     tools_empty: `Tools: None discovered`,
     tools_unknown: `Tools: Discovery unknown`,
+    connection_failing_unauthorized:
+      "Failing since {since}: the server rejected the saved auth token. TomoriBot turns this MCP off if it keeps failing for 24 hours.",
+    connection_failing_unreachable:
+      "Failing since {since}: the server could not be reached. TomoriBot turns this MCP off if it keeps failing for 24 hours.",
+    auto_disabled_unauthorized:
+      "Turned off automatically because the server rejected the saved auth token for 24 hours. Remove it and add it again with a new token.",
+    auto_disabled_unreachable:
+      "Turned off automatically because the server could not be reached for 24 hours. Enable it to try again.",
     endpoint_unavailable: `Unavailable`,
     enable: `Enable`,
     disable: `Disable`,

@@ -10,11 +10,11 @@
 
 import { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { SSEClientTransport, SseError } from "@modelcontextprotocol/sdk/client/sse.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { type CallableTool, mcpToTool } from "@google/genai";
 import { log } from "@/utils/misc/logger";
-import type { GuildMcpServerRow } from "@/types/db/schema";
+import type { GuildMcpFailureReason, GuildMcpServerRow } from "@/types/db/schema";
 import type {
   GuildMCPConnection,
   GuildMCPTestResult,
@@ -71,12 +71,50 @@ const CONNECT_TIMEOUT_MS = Number(process.env.GUILD_MCP_CONNECT_TIMEOUT_MS) || 1
 const EXECUTION_TIMEOUT_MS = Number(process.env.GUILD_MCP_EXECUTION_TIMEOUT_MS) || 30_000;
 
 /**
- * How long a server that failed to connect is quarantined before it may be
- * re-dialed (default: 5 min). This is the circuit breaker that stops one
- * unreachable server from re-paying the full connect timeout on every
- * generation (and every fallback-model attempt), which otherwise stalls chat.
+ * Base quarantine after a failed connect (default: 5 min). This is the circuit
+ * breaker that stops one unreachable server from re-paying the full connect
+ * timeout on every generation (and every fallback-model attempt), which
+ * otherwise stalls chat.
  */
 const CONNECT_FAILURE_COOLDOWN_MS = Number(process.env.GUILD_MCP_FAILURE_COOLDOWN_MS) || 5 * 60_000;
+
+/**
+ * Quarantine multiplier per consecutive failure; the last entry repeats. At the
+ * default base this is 5m, 15m, 1h, then 3h, so a dead server costs about a dozen
+ * attempts a day while a recovered one returns within three hours.
+ */
+const CONNECT_FAILURE_BACKOFF_MULTIPLIERS = [1, 3, 12, 36] as const;
+
+/**
+ * A registration that has failed every attempt for this long is disabled in the
+ * database, and the panel shows why. The streak start is persisted, so restarts
+ * and deploys do not reset the window.
+ */
+const AUTO_DISABLE_AFTER_FAILING_MS = 24 * 60 * 60_000;
+
+/** Failures in memory outlive their retry time by this much, so a backoff survives quiet hours. */
+const CONNECT_FAILURE_MEMORY_MS = AUTO_DISABLE_AFTER_FAILING_MS;
+
+interface ConnectFailureState {
+  retryAt: number;
+  attempts: number;
+}
+
+/** Carries the failure kind across the transport fallback, whose message is a joined summary. */
+class GuildMcpConnectError extends Error {
+  constructor(
+    message: string,
+    readonly reason: GuildMcpFailureReason,
+  ) {
+    super(message);
+  }
+}
+
+/** Both SDK transport errors expose the HTTP status as `code`. */
+function isAuthRejection(error: unknown): boolean {
+  if (!(error instanceof StreamableHTTPError || error instanceof SseError)) return false;
+  return error.code === 401 || error.code === 403;
+}
 
 /** Eviction sweep interval (60s) */
 const EVICTION_INTERVAL_MS = 60_000;
@@ -97,11 +135,11 @@ class GuildMcpManager {
   private connectingKeys = new Set<string>();
 
   /**
-   * Circuit breaker: pool key → epoch-ms timestamp until which the server is
-   * quarantined after a failed connect. Cleared on successful connect, on
-   * explicit disconnect, and once the cooldown elapses.
+   * Circuit breaker keyed by pool key. Cleared on successful connect and on explicit
+   * disconnect (which an administrator's enable or disable performs); an elapsed
+   * entry is kept so the next failure escalates the backoff.
    */
-  private connectFailures = new Map<string, number>();
+  private connectFailures = new Map<string, ConnectFailureState>();
 
   private constructor() {
     this.evictionTimer = setInterval(() => this.evictIdleConnections(), EVICTION_INTERVAL_MS);
@@ -574,11 +612,8 @@ class GuildMcpManager {
     // cooldown elapses. Without this, one unreachable server re-pays the full
     // connect timeout on EVERY generation (and every fallback-model attempt),
     // blowing the stream inactivity budget and stalling chat for that guild.
-    const cooldownUntil = this.connectFailures.get(key);
-    if (cooldownUntil !== undefined) {
-      if (Date.now() < cooldownUntil) return null; // still quarantined, so skip silently
-      this.connectFailures.delete(key); // cooldown elapsed, so allow one fresh attempt
-    }
+    const failure = this.connectFailures.get(key);
+    if (failure && Date.now() < failure.retryAt) return null;
 
     if (this.connectingKeys.has(key)) {
       log.info(`[GuildMcpManager] Connection already in progress for ${key}, skipping`);
@@ -628,9 +663,12 @@ class GuildMcpManager {
           void this.safeCloseClient(client);
         }
       };
-      this.connectFailures.delete(key); // clear any prior quarantine on success
+      this.connectFailures.delete(key);
       const guildMcpId = config.guild_mcp_id;
       if (typeof guildMcpId === "number" && Number.isSafeInteger(guildMcpId) && guildMcpId > 0) {
+        if (config.failing_since || config.failure_reason) {
+          void toolRepository.clearMcpConnectFailure(config.server_id, guildMcpId);
+        }
         try {
           void toolRepository
             .updateMcpToolNameSnapshot(config.server_id, guildMcpId, functionNames)
@@ -662,17 +700,53 @@ class GuildMcpManager {
 
       return conn;
     } catch (error) {
-      this.connectFailures.set(key, Date.now() + CONNECT_FAILURE_COOLDOWN_MS);
-      if (!privateFailure)
-        log.error(
-          `[GuildMcpManager] Failed to connect to guild MCP server "${config.name}" (server: ${config.server_id}); ` +
-            `quarantining for ${Math.round(CONNECT_FAILURE_COOLDOWN_MS / 1000)}s`,
-          error,
-        );
+      await this.recordConnectFailure(config, key, error, privateFailure);
       return null;
     } finally {
       this.connectingKeys.delete(key);
     }
+  }
+
+  /**
+   * Escalates the quarantine and extends the persisted failure streak. Failures are the guild's
+   * configuration or the remote host, not a bot fault, so they log as warnings: the full error once
+   * per streak, then one line per retry.
+   */
+  private async recordConnectFailure(
+    config: GuildMcpServerRow,
+    key: string,
+    error: unknown,
+    privateFailure: boolean,
+  ): Promise<void> {
+    const attempts = (this.connectFailures.get(key)?.attempts ?? 0) + 1;
+    const multiplier =
+      CONNECT_FAILURE_BACKOFF_MULTIPLIERS[Math.min(attempts, CONNECT_FAILURE_BACKOFF_MULTIPLIERS.length) - 1] ?? 1;
+    const retryDelayMs = CONNECT_FAILURE_COOLDOWN_MS * multiplier;
+    this.connectFailures.set(key, { retryAt: Date.now() + retryDelayMs, attempts });
+
+    const reason: GuildMcpFailureReason = error instanceof GuildMcpConnectError ? error.reason : "unreachable";
+    const label = `"${config.name}" (server: ${config.server_id})`;
+    if (!privateFailure) {
+      const summary =
+        `[GuildMcpManager] Failed to connect to guild MCP server ${label} (${reason}, attempt ${attempts}); ` +
+        `retrying in ${Math.round(retryDelayMs / 60_000)}m`;
+      if (attempts === 1) log.warn(summary, error);
+      else log.info(summary);
+    }
+
+    const guildMcpId = config.guild_mcp_id;
+    if (typeof guildMcpId !== "number" || !Number.isSafeInteger(guildMcpId) || guildMcpId <= 0) return;
+    const recorded = await toolRepository.recordMcpConnectFailure(
+      config.server_id,
+      guildMcpId,
+      reason,
+      AUTO_DISABLE_AFTER_FAILING_MS,
+    );
+    if (recorded.status !== "auto-disabled") return;
+    log.warn(
+      `[GuildMcpManager] Auto-disabled guild MCP server ${label} after failing since ` +
+        `${recorded.failingSince.toISOString()} (${reason})`,
+    );
   }
 
   /** A client whose discovery fails is closed here, so callers never hold a half-open transport. */
@@ -721,6 +795,7 @@ class GuildMcpManager {
     // throws "Already connected to a transport" if the same instance is reused after
     // a failed/timed-out connect, which previously broke the SSE fallback outright.
     const errors: string[] = [];
+    let authRejected = false;
 
     const guardedFetch = createGuildMcpFetch(url);
 
@@ -747,6 +822,7 @@ class GuildMcpManager {
         log.info(`[GuildMcpManager] Connected via StreamableHTTP: ${label}`);
         return client;
       } catch (streamableError) {
+        authRejected ||= isAuthRejection(streamableError);
         const message = privateFailure
           ? "Transport connection failed"
           : streamableError instanceof Error
@@ -772,6 +848,7 @@ class GuildMcpManager {
         log.info(`[GuildMcpManager] Connected via SSE fallback: ${label}`);
         return client;
       } catch (sseError) {
+        authRejected ||= isAuthRejection(sseError);
         const message = privateFailure
           ? "Transport connection failed"
           : sseError instanceof Error
@@ -779,7 +856,10 @@ class GuildMcpManager {
             : String(sseError);
         errors.push(`SSE: ${message}`);
         await this.safeCloseClient(client);
-        throw new Error(`All MCP transports failed for '${label}': ${errors.join("; ")}`);
+        throw new GuildMcpConnectError(
+          `All MCP transports failed for '${label}': ${errors.join("; ")}`,
+          authRejected ? "unauthorized" : "unreachable",
+        );
       }
     }
   }
@@ -829,10 +909,10 @@ class GuildMcpManager {
     const now = Date.now();
     const toEvict: string[] = [];
 
-    // Prune expired circuit-breaker entries so the map stays bounded even for
+    // Prune long-elapsed circuit-breaker entries so the map stays bounded even for
     // servers that were removed from config and are never dialed again.
-    for (const [key, cooldownUntil] of this.connectFailures.entries()) {
-      if (now >= cooldownUntil) {
+    for (const [key, failure] of this.connectFailures.entries()) {
+      if (now - failure.retryAt >= CONNECT_FAILURE_MEMORY_MS) {
         this.connectFailures.delete(key);
       }
     }

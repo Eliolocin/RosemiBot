@@ -38,7 +38,8 @@ class McpRepository implements IRepository<null> {
     try {
       const rows = await sql`
         SELECT guild_mcp_id, server_id, name, url, auth_token, key_version,
-               is_enabled, server_type, last_discovered_tool_names, created_at, updated_at
+               is_enabled, server_type, last_discovered_tool_names, failing_since, failure_reason,
+               created_at, updated_at
         FROM guild_mcp_servers
         WHERE server_id = ${serverId}
         ORDER BY created_at ASC

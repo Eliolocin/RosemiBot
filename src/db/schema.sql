@@ -2220,6 +2220,8 @@ CREATE TABLE IF NOT EXISTS guild_mcp_servers (
   auth_token BYTEA,                -- PGP-encrypted bearer token (nullable — not all servers require auth)
   key_version INT DEFAULT 1,       -- Encryption key version for lazy rotation
   is_enabled BOOLEAN DEFAULT true,
+  failing_since TIMESTAMPTZ,
+  failure_reason TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (server_id, name),
@@ -2232,6 +2234,12 @@ CREATE INDEX IF NOT EXISTS idx_guild_mcp_servers_server ON guild_mcp_servers(ser
 SELECT add_column_if_not_exists('guild_mcp_servers', 'server_type', 'TEXT');
 -- NULL = unknown/legacy, empty = last discovery returned no tools.
 SELECT add_column_if_not_exists('guild_mcp_servers', 'last_discovered_tool_names', 'TEXT[]');
+-- Start of the current unbroken connect-failure streak (NULL = last attempt succeeded or none yet).
+-- Persisted so the auto-disable window survives restarts and deploys.
+SELECT add_column_if_not_exists('guild_mcp_servers', 'failing_since', 'TIMESTAMPTZ');
+-- Latest connect-failure kind: 'unauthorized' (401/403) or 'unreachable'. Kept after auto-disable
+-- so the panel can say why; cleared by a successful connect or a manual enable/disable.
+SELECT add_column_if_not_exists('guild_mcp_servers', 'failure_reason', 'TEXT');
 
 -- Trigger for updated_at auto-update
 DROP TRIGGER IF EXISTS update_guild_mcp_servers_timestamp ON guild_mcp_servers;
