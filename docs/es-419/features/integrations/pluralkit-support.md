@@ -45,6 +45,6 @@ Tu cuenta de Discord sigue siendo lo que *controla* todo: nivel de privacidad, l
 - `/personal memories identity:` edita las memorias globales y de persona de un miembro guardado. Usa `/personal config identity:` para editar el perfil, el apodo y la apariencia de ese miembro.
 - La importación de biografía ocurre exactamente una vez por miembro en toda su historia. Las modificaciones posteriores de la biografía en PluralKit nunca se propagan. Díselo en el chat en su lugar.
 - Tomori no puede mencionar con `@` a los miembros (los webhooks no son mencionables); se dirige a los miembros por su nombre.
-- Si la API de PluralKit va lenta o está caída, Tomori recurre a tratar el mensaje como un webhook común en ese momento. Nunca inventa una identidad que no haya podido verificar.
+- Si la API de PluralKit no puede verificar un mensaje republicado, TomoriBot lo ignora. Si PluralKit ya eliminó el mensaje original, TomoriBot no responderá a ese turno. No se crea ninguna identidad de miembro.
 
 Si una limitación no aparece en la lista anterior, asume que debería funcionar y reporta cualquier fallo en el servidor de soporte (`/support discord`).

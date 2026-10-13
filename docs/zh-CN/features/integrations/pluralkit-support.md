@@ -45,6 +45,6 @@ TomoriBot 能够识别 [PluralKit](https://pluralkit.me/) 代理消息。启用�
 - `/personal memories identity:` 可编辑已存储成员的全局记忆与人格记忆。使用 `/personal config identity:` 编辑该成员的个人资料、昵称与外观。
 - 简介导入对每位成员终生仅发生一次。之后在 PluralKit 上的简介编辑绝不会同步过来。请改在聊天中告诉她。
 - Tomori 无法 `@` 提及成员（Webhook 无法被提及）；她会以名字称呼成员。
-- 如果 PluralKit API 较慢或宕机，Tomori 在那一刻会退回到将消息视为普通 Webhook 处理。她绝不会凭空捏造无法验证的身份。
+- 如果 PluralKit API 无法验证重新发布的消息，TomoriBot 会忽略该消息。如果 PluralKit 已删除原始消息，TomoriBot 就不会回应这次发言，也不会创建成员身份。
 
 如果某项限制未在上方列出，请假定它应该正常工作，并在支持服务器（`/support discord`）中报告 bug。

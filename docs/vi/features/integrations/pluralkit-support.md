@@ -45,6 +45,6 @@ Tài khoản Discord của bạn vẫn là nơi *kiểm soát* mọi thứ: mứ
 - `/personal memories identity:` chỉnh sửa bộ nhớ toàn cục và bộ nhớ theo persona của một thành viên đã lưu. Dùng `/personal config identity:` để chỉnh sửa hồ sơ, biệt danh và ngoại hình của thành viên đó.
 - Việc nhập tiểu sử chỉ diễn ra đúng một lần cho mỗi thành viên. Các chỉnh sửa tiểu sử sau này trên PluralKit không bao giờ được đồng bộ. Hãy nói với bot trong đoạn chat thay vào đó.
 - Tomori không thể `@` đề cập thành viên (webhook không thể được đề cập); bot sẽ gọi thành viên bằng tên.
-- Nếu API PluralKit bị chậm hoặc ngừng hoạt động, Tomori sẽ quay lại xử lý tin nhắn như một webhook thông thường tại thời điểm đó. Bot không bao giờ tự bịa ra một danh tính mà mình không thể xác minh.
+- Nếu API PluralKit không thể xác minh tin nhắn được đăng lại, TomoriBot sẽ bỏ qua tin nhắn đó. Nếu PluralKit đã xóa tin nhắn gốc, TomoriBot sẽ không trả lời lượt đó. Không có danh tính thành viên nào được tạo.
 
 Nếu một hạn chế không được liệt kê ở trên, hãy coi như tính năng sẽ hoạt động bình thường và báo cáo lỗi trong máy chủ hỗ trợ (`/support discord`).

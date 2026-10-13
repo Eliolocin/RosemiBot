@@ -70,6 +70,6 @@ account privacy to full shields every member at once.
   for their profile, nickname, and appearance.
 - Bio and pronoun imports occur only on first registration.
 - Webhook members cannot be `@`-mentioned; TomoriBot addresses them by name.
-- If PluralKit's API is unavailable, messages fall back to standard unverified webhooks without
-  inventing an identity.
+- If PluralKit's API cannot verify a repost, TomoriBot ignores it. If PluralKit has already
+  deleted the original, TomoriBot will not respond to that turn. No member identity is created.
 
