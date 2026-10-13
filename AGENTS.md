@@ -50,8 +50,13 @@ proposed follow-up's premise in source before suggesting it.
    - Use path alias imports (`@/*`) for `src/*`.
    - Avoid `any`; use typed interfaces/schemas.
    - Full conventions: `docs/en/contributing/development-tasks.md` (Coding Conventions section).
-2. Comment to explain rationale.
-   - Explain why a constraint, quirk, or invariant exists; never restate the line below it.
+2. Default to zero new comments.
+   - Write one only for what the code cannot say: an external quirk (Discord, a provider, a
+     library), a security or redaction reason, an ordering, cache, or acknowledgement invariant, why
+     a constant has its value, what a sentinel or dense regex means, a measured performance
+     tradeoff, why a suppression stays, or a constraint someone could break while simplifying.
+     Otherwise write none.
+   - Each comment is one sentence. List each added comment and its reason in your final report.
    - No step numbering or `Rule N:` scaffolding in comments and JSDoc.
    - No prose em/en dashes or spaced double hyphens in comments, JSDoc, `docs/`, or locale strings.
      Use the punctuation that names the relationship: colon when the second half explains the first,

@@ -5,6 +5,9 @@ import { escapeRegExp } from "@/utils/text/processors/regexUtils";
 const WEBHOOK_USERNAME_LIMIT = 80;
 const RENDER_MODIFIER_LIMIT = 64;
 const TRUNCATION_SUFFIX = "...";
+const MODIFIER_SEGMENT = `[^()（）\\n\\r:：]{1,${RENDER_MODIFIER_LIMIT}}`;
+// One nested level carries a copied persona's sprite: "Locke (Tomori (shocked)):".
+const LABEL_MODIFIER_PATTERN = `${MODIFIER_SEGMENT}(?:[（(]${MODIFIER_SEGMENT}[）)])?`;
 
 /**
  * Modifier in the decorated "Persona (neutral)" webhook name an alter uses when it reverts from a
@@ -45,6 +48,14 @@ export function parseRenderModifierWebhookName(value?: string | null): RenderMod
   if (!sourceName || !modifier) return null;
 
   return { sourceName, modifier };
+}
+
+export function parseNestedRenderModifier(modifier: string): { targetName: string; spriteLabel: string } | null {
+  const match = new RegExp(`^(${MODIFIER_SEGMENT}?)\\s*[（(](${MODIFIER_SEGMENT})[）)]$`, "u").exec(modifier.trim());
+  const targetName = match?.[1]?.trim();
+  const spriteLabel = match?.[2]?.trim();
+  if (!targetName || !spriteLabel) return null;
+  return { targetName, spriteLabel };
 }
 
 export function formatRenderModifierWebhookName(sourceName: string, modifier: string): string {
@@ -108,7 +119,7 @@ export function parseLeadingRenderModifier(
 
   for (const sourceName of collectedSourceNames) {
     const pattern = new RegExp(
-      `^\\s*${labelChainPrefix}(${escapeRegExp(sourceName)})\\s*[（(]([^()（）\\n\\r:：]{1,${RENDER_MODIFIER_LIMIT}})[）)]\\s*[:：]`,
+      `^\\s*${labelChainPrefix}(${escapeRegExp(sourceName)})\\s*[（(](${LABEL_MODIFIER_PATTERN})[）)]\\s*[:：]`,
       "iu",
     );
     const match = pattern.exec(labelText);

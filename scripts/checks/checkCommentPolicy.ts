@@ -122,6 +122,9 @@ const LICENSE_HEADER_PATTERN =
 // decision rather than rationale copied between call sites.
 const INLINE_SUPPRESSION_PATTERN = /biome-ignore|@ts-expect-error|@ts-ignore|eslint-disable|oxlint-disable/;
 const TEST_PATH_PATTERN = /(?:^|\/)tests\//;
+// The policy's own ceiling: past this, a comment "usually retells how the code came to be".
+const NEW_COMMENT_MAX_LINES = 3;
+const JSDOC_TAG_LINE_PATTERN = /^@\w/;
 
 /**
  * The calibrated limits the audit heuristics run with, and the shape a caller can pass to
@@ -184,13 +187,15 @@ export function resolveAuditLimits(): CommentAuditLimits {
 export type CommentPolicyRule =
   | "duplicate-comment"
   | "long-comment-block"
+  | "long-new-comment"
   | "orphaned-comment"
   | "jsdoc-restatement"
   | "numbered-narration"
   | "obvious-narration"
   | "prose-dash"
   | "rule-scaffolding"
-  | "stale-exception";
+  | "stale-exception"
+  | "unexplained-comment";
 
 export interface CommentPolicyFinding {
   file: string;
@@ -204,7 +209,7 @@ export interface CommentPolicyFinding {
 export interface CommentPolicyException {
   file: string;
   reason: string;
-  rule: Exclude<CommentPolicyRule, "obvious-narration" | "stale-exception">;
+  rule: Exclude<CommentPolicyRule, "obvious-narration" | "stale-exception" | "unexplained-comment">;
   text: string;
 }
 
@@ -254,6 +259,7 @@ interface CommentBlock {
   startLine: number;
   /** Prose lines after dropping empty `//` paragraph separators. */
   lines: string[];
+  lineNumbers: number[];
   words: number;
   chars: number;
   normalized: string;
@@ -317,6 +323,7 @@ export async function checkCommentPolicy(options: CommentPolicyOptions = {}): Pr
       ...collectStructuralCommentFindings(source, file),
       ...collectJsDocFindings(source, file, options),
       ...(options.auditNarration ? collectLongCommentBlockFindings(source, file, auditLimits) : []),
+      ...collectNewCommentFindings(source, file, options.changedLines),
       ...collectLocaleStringFindings(source, file),
     ];
 
@@ -372,6 +379,7 @@ export function inspectCommentPolicySource(
     ...collectStructuralCommentFindings(source, file),
     ...collectJsDocFindings(source, file, options),
     ...(options.auditNarration ? collectLongCommentBlockFindings(source, file, limits) : []),
+    ...collectNewCommentFindings(source, file, options.changedLines),
   ];
 }
 
@@ -487,6 +495,85 @@ export function collectLongCommentBlockFindings(
       severity: "warning" as const,
       text: block.lines[0] ?? "",
     }));
+}
+
+/**
+ * Holds comments written in this change to the policy's length ceiling, and warns when one states
+ * no reason. A block counts as new when most of its prose lines changed, so a one-word fix inside
+ * an older long block does not force rewriting it.
+ */
+export function collectNewCommentFindings(
+  source: string,
+  file: string,
+  changedLines: ReadonlyMap<string, ReadonlySet<number>> | undefined,
+): CommentPolicyFinding[] {
+  const changed = changedLines?.get(file);
+  if (!changed?.size) {
+    return [];
+  }
+  const isNew = (lineNumbers: readonly number[]): boolean =>
+    lineNumbers.filter((line) => changed.has(line)).length * 2 > lineNumbers.length;
+
+  const findings: CommentPolicyFinding[] = [];
+  const lengthFinding = (startLine: number, lineCount: number, text: string): CommentPolicyFinding => ({
+    file,
+    line: startLine,
+    message: `This new comment runs ${lineCount} lines; keep only the sentence that states the constraint, or record an exception with its reason.`,
+    rule: "long-new-comment",
+    severity: "error",
+    text,
+  });
+
+  for (const block of collectCommentBlocks(source, file)) {
+    if (!isNew(block.lineNumbers)) continue;
+    const text = `// ${block.lines[0] ?? ""}`;
+    if (block.lines.length > NEW_COMMENT_MAX_LINES) {
+      findings.push(lengthFinding(block.startLine, block.lines.length, text));
+    }
+    const prose = block.lines.join(" ");
+    const firstLine: CommentLine = { file, kind: "line", line: block.startLine, standalone: true, text };
+    if (!RATIONALE_PATTERN.test(prose) && !REASON_PATTERN.test(prose) && !isNarrationCandidate(firstLine)) {
+      findings.push({
+        file,
+        line: block.startLine,
+        message: "This new comment states no reason, condition, or unit; name the constraint it protects or remove it.",
+        rule: "unexplained-comment",
+        severity: "warning",
+        text,
+      });
+    }
+  }
+
+  for (const token of collectCommentTokens(source, file)) {
+    if (token.kind !== "block" || token.inline || (token.line <= 10 && LICENSE_HEADER_PATTERN.test(token.text))) {
+      continue;
+    }
+    const prose = jsDocProseLines(token);
+    const [first] = prose;
+    if (first && prose.length > NEW_COMMENT_MAX_LINES && isNew(prose.map((line) => line.line))) {
+      findings.push(lengthFinding(first.line, prose.length, first.text));
+    }
+  }
+  return findings;
+}
+
+/**
+ * The description lines of a block comment. Tags are excluded because the JSDoc rules already
+ * judge them, and each kept tag carries contract detail rather than narrative.
+ */
+function jsDocProseLines(token: CommentToken): { line: number; text: string }[] {
+  const lines: { line: number; text: string }[] = [];
+  for (const [offset, raw] of token.text.split(/\r?\n/).entries()) {
+    const text = raw
+      .trim()
+      .replace(/^\/\*\*?/, "")
+      .replace(/\*\/$/, "")
+      .replace(/^\*/, "")
+      .trim();
+    if (JSDOC_TAG_LINE_PATTERN.test(text)) break;
+    if (text) lines.push({ line: token.line + offset, text });
+  }
+  return lines;
 }
 
 async function loadExceptions(path: string): Promise<CommentPolicyException[]> {
@@ -1118,7 +1205,7 @@ function collectCommentBlocks(source: string, file: string): CommentBlock[] {
     .filter((token) => token.kind === "line" && token.standalone)
     .sort((left, right) => left.line - right.line);
   const blocks: CommentBlock[] = [];
-  let current: { endLine: number; lines: string[]; startLine: number } | null = null;
+  let current: { endLine: number; lines: string[]; lineNumbers: number[]; startLine: number } | null = null;
 
   const flush = (): void => {
     if (!current) return;
@@ -1127,6 +1214,7 @@ function collectCommentBlocks(source: string, file: string): CommentBlock[] {
       chars: key.prose.length,
       file,
       lines: current.lines,
+      lineNumbers: current.lineNumbers,
       normalized: key.prose,
       startLine: current.startLine,
       words: key.words,
@@ -1143,6 +1231,7 @@ function collectCommentBlocks(source: string, file: string): CommentBlock[] {
       current.endLine = token.line;
       if (content) {
         current.lines.push(content);
+        current.lineNumbers.push(token.line);
       }
       continue;
     }
@@ -1150,6 +1239,7 @@ function collectCommentBlocks(source: string, file: string): CommentBlock[] {
     current = {
       endLine: token.line,
       lines: content ? [content] : [],
+      lineNumbers: content ? [token.line] : [],
       startLine: token.line,
     };
   }
@@ -1286,33 +1376,24 @@ async function filterGitIgnoredFiles(repoRoot: string, paths: string[]): Promise
   return paths.filter((_, index) => !ignored.has(relativePaths[index]));
 }
 
+/**
+ * Lines written since `baseRef` (its merge base with HEAD, through the working tree and untracked
+ * files), or the staged lines. Gates run before a commit, so committed-only diffs miss the change
+ * under review.
+ */
 async function collectChangedLines(
   repoRoot: string,
   mode: { baseRef?: string; staged: boolean },
   paths: string[],
 ): Promise<Map<string, Set<number>>> {
-  const args = ["git", "diff", "--unified=0", "--no-color"];
+  const args = ["diff", "--unified=0", "--no-color"];
   if (mode.staged) {
     args.push("--cached");
   } else if (mode.baseRef) {
-    args.push(`${mode.baseRef}...HEAD`);
+    args.push((await runGit(repoRoot, ["merge-base", mode.baseRef, "HEAD"])).trim());
   }
   args.push("--", ...paths);
-
-  const process = Bun.spawn({
-    cmd: args,
-    cwd: repoRoot,
-    stderr: "pipe",
-    stdout: "pipe",
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    process.exited,
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-  ]);
-  if (exitCode !== 0) {
-    throw new Error(`git diff failed: ${stderr.trim()}`);
-  }
+  const stdout = await runGit(repoRoot, args);
 
   const changed = new Map<string, Set<number>>();
   let file: string | undefined;
@@ -1336,7 +1417,33 @@ async function collectChangedLines(
     }
     changed.set(file, lines);
   }
+
+  if (!mode.staged) {
+    const untracked = await runGit(repoRoot, ["ls-files", "--others", "--exclude-standard", "-z", "--", ...paths]);
+    for (const file of untracked.split("\0").filter(Boolean)) {
+      const lineCount = (await Bun.file(resolve(repoRoot, file)).text()).split(/\r?\n/).length;
+      changed.set(normalizePath(file), new Set(Array.from({ length: lineCount }, (_, index) => index + 1)));
+    }
+  }
   return changed;
+}
+
+async function runGit(repoRoot: string, args: string[]): Promise<string> {
+  const process = Bun.spawn({
+    cmd: ["git", ...args],
+    cwd: repoRoot,
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    process.exited,
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(`git ${args[0]} failed: ${stderr.trim()}`);
+  }
+  return stdout;
 }
 
 function parseArguments(args: string[]): ParsedArguments {
@@ -1385,8 +1492,9 @@ function parseArguments(args: string[]): ParsedArguments {
   if (parsed.baseRef && parsed.staged) {
     throw new Error("Use either --base or --staged, not both");
   }
-  if (parsed.docProse && (parsed.baseRef || parsed.staged)) {
-    throw new Error("--docs scans whole files; it cannot be combined with --base or --staged");
+  // `audit-comments` always passes `--base HEAD`, so `audit-comments --docs` must not reject it.
+  if (parsed.docProse && parsed.staged) {
+    throw new Error("--docs scans whole files; it cannot be combined with --staged");
   }
   return parsed;
 }

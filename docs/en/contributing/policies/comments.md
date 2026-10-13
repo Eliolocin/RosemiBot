@@ -15,7 +15,8 @@ instead.
 - **b.** A security, privacy, or redaction reason.
 - **c.** A cache, ordering, transaction, or acknowledgement invariant, including anything that must
   happen before slow work.
-- **d.** The meaning of a magic number, sentinel, opaque constant, or dense pattern.
+- **d.** Why a constant has its value, or what a sentinel or dense pattern means. A name already says
+  what a constant is for, so a comment that repeats it goes.
 - **e.** A measured performance tradeoff.
 - **f.** Why a lint or type suppression cannot be removed.
 - **g.** A constraint someone could break while simplifying the code.
@@ -107,15 +108,18 @@ quoted output from another system.
 ## The checker
 
 ```bash
-bun run audit-comments                  # full-tree audit; prints every finding
+bun run audit-comments                  # full-tree audit, plus the new-comment rules on your uncommitted work
 bun run audit-comments --docs [paths]   # prose audit of Markdown, default docs/en/contributing
 bun test ./scripts/checks/commentPolicy.test.ts
 ```
 
 `scripts/checks/checkCommentPolicy.ts` runs deterministic rules that fail in any mode, and heuristic
-rules that warn. `--staged` or `--base <ref>` limits the heuristics to changed lines, where
-`obvious-narration` becomes an error. It runs as a non-blocking warning under Documentation in
-`bun run vl`, and is not part of the test runner.
+rules that warn. `--staged` or `--base <ref>` also judges changed lines: `--base` covers everything
+since the merge base with `<ref>`, including uncommitted and untracked files, and `audit-comments`
+passes `--base HEAD`. On changed lines, `obvious-narration` becomes an error and the new-comment rules
+apply. A block counts as new when most of its lines changed, so a small edit inside an older block
+does not trigger them. Errors fail `bun run vl` (under Documentation); the checker is not part of the
+test runner.
 
 | Rule | Kind | Catches |
 |---|---|---|
@@ -127,6 +131,8 @@ rules that warn. `--staged` or `--base <ref>` limits the heuristics to changed l
 | `orphaned-comment` | Error | Cleanup damage: a continuation with no opening line, a bare divider, an empty JSDoc block |
 | `duplicate-comment` | Audit warning | Blocks with the same text after normalizing markers, whitespace, and case. Floor: 12 words and 60 characters |
 | `long-comment-block` | Audit warning | A non-JSDoc block of 11 lines or more outside `tests/` |
+| `long-new-comment` | Error on changed lines | A new comment over 3 prose lines. JSDoc tags do not count toward the limit |
+| `unexplained-comment` | Warning on changed lines | A new `//` block with no reason, condition, or unit signal (`because`, `so`, `when`, a colon, and similar) |
 
 A locale tree counts as one identity for `duplicate-comment`, so an English comment copied into every
 translated tree reports once. Suppression comments are skipped because each one is a separate lint

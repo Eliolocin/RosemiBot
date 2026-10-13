@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -334,6 +334,70 @@ describe("comment policy", () => {
     const findings = inspectCommentPolicySource("/**\n *\n */\nexport function value(): void {}\n");
 
     expect(findings.map((finding) => finding.rule)).toEqual(["orphaned-comment"]);
+  });
+});
+
+describe("new comments", () => {
+  const changedAll = (source: string) =>
+    new Map([["fixture.ts", new Set(source.split("\n").map((_, index) => index + 1))]]);
+  const rulesFor = (source: string, changedLines = changedAll(source)) =>
+    inspectCommentPolicySource(source, "fixture.ts", { changedLines }).map((finding) => [
+      finding.rule,
+      finding.severity,
+    ]);
+
+  const FOUR_LINE_BLOCK = [
+    "// Discord groups consecutive webhook messages by username,",
+    "// so a copied sprite keeps its label in the name. The context",
+    "// rebuild recovers the label from that name, because a sprite",
+    "// record would count as the source persona's own sprite.",
+    "const value = true;",
+    "",
+  ].join("\n");
+
+  it("holds a new line-comment block to three lines", () => {
+    expect(rulesFor(FOUR_LINE_BLOCK)).toEqual([["long-new-comment", "error"]]);
+    expect(rulesFor(FOUR_LINE_BLOCK.split("\n").slice(1).join("\n"))).toEqual([]);
+  });
+
+  it("leaves an older long block alone when only one of its lines changed", () => {
+    expect(rulesFor(FOUR_LINE_BLOCK, new Map([["fixture.ts", new Set([2])]]))).toEqual([]);
+  });
+
+  it("counts JSDoc description lines but not tags", () => {
+    const tagged = [
+      "/**",
+      " * Copies a persona's sprite because history shows it by label.",
+      " * @param modifier - Label text without the colon",
+      " * @param context - Stream state, read for the guild",
+      " * @returns Null when no participant matches",
+      " */",
+      "export function resolve(modifier: string, context: string): string | null {",
+      "  return modifier || context;",
+      "}",
+      "",
+    ].join("\n");
+    const narrative = tagged.replace(
+      " * Copies a persona's sprite because history shows it by label.",
+      [" * First line of story.", " * Second line of story.", " * Third line of story.", " * Fourth line."].join("\n"),
+    );
+
+    expect(rulesFor(tagged)).toEqual([]);
+    expect(rulesFor(narrative)).toEqual([["long-new-comment", "error"]]);
+  });
+
+  it("warns when a new comment states no reason, without repeating a narration error", () => {
+    expect(rulesFor("// The resolver reads the clean nickname\nconst value = true;\n")).toEqual([
+      ["unexplained-comment", "warning"],
+    ]);
+    expect(rulesFor("// Discord drops blank names, so the fallback is a letter\nconst value = true;\n")).toEqual([]);
+    expect(rulesFor("// Build the payload\nconst payload = buildPayload();\n")).toEqual([
+      ["obvious-narration", "error"],
+    ]);
+  });
+
+  it("does not judge comments outside the change", () => {
+    expect(inspectCommentPolicySource(FOUR_LINE_BLOCK, "fixture.ts", { auditNarration: true })).toEqual([]);
   });
 });
 
@@ -783,28 +847,60 @@ describe("audit command line", () => {
     expect(malformed.code).toBe(0);
   });
 
-  it("keeps the documented audit command reviewable", async () => {
-    // The plan's review step is `bun run audit-comments`, so that invocation itself has to print
-    // the locations. A count-only report would make the command useless for its stated purpose.
+  it("keeps the documented audit command reviewable and scoped to the working change", async () => {
     const packageJson = (await Bun.file(join(import.meta.dir, "..", "..", "package.json")).json()) as {
       scripts?: Record<string, string>;
     };
     const script = packageJson.scripts?.["audit-comments"] ?? "";
     expect(script).toContain("--verbose");
+    expect(script).toContain("--base HEAD");
+  });
 
-    const process = Bun.spawn({
-      cmd: ["bun", "run", "audit-comments"],
-      cwd: join(import.meta.dir, "..", ".."),
-      env: withoutAuditOverrides(),
-      stderr: "pipe",
-      stdout: "pipe",
-    });
-    const [code, stdout] = await Promise.all([process.exited, new Response(process.stdout).text()]);
+  it("judges uncommitted and untracked comments under --base", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "comment-policy-git-"));
+    const git = async (...args: string[]) => {
+      const process = Bun.spawn({ cmd: ["git", ...args], cwd: directory, stderr: "pipe", stdout: "pipe" });
+      expect(await process.exited).toBe(0);
+    };
+    const longBlock = ["// one", "// two", "// three", "// four", "const value = true;", ""].join("\n");
+    try {
+      await mkdir(join(directory, "scripts", "checks"), { recursive: true });
+      await mkdir(join(directory, "src"));
+      await writeFile(join(directory, "scripts", "checks", "comment-policy-exceptions.json"), '{"exceptions":[]}');
+      await writeFile(join(directory, "src", "committed.ts"), "const value = true;\n");
+      await git("init", "--quiet");
+      await git(
+        "-c",
+        "user.name=Mirri",
+        "-c",
+        "user.email=mirri@example.test",
+        "commit",
+        "--quiet",
+        "--allow-empty",
+        "-m",
+        "base",
+      );
+      await git("add", "src/committed.ts");
+      await git("-c", "user.name=Mirri", "-c", "user.email=mirri@example.test", "commit", "--quiet", "-m", "file");
+      await writeFile(join(directory, "src", "committed.ts"), longBlock);
+      await writeFile(join(directory, "src", "untracked.ts"), longBlock);
 
-    expect(stdout).toMatch(/^WARN .*\[duplicate-comment\]/m);
-    expect(stdout).toMatch(/^at /m);
-    expect(code).toBe(0);
-  }, 180_000);
+      const process = Bun.spawn({
+        cmd: ["bun", "run", join(import.meta.dir, "checkCommentPolicy.ts"), "--base", "HEAD", "src"],
+        cwd: directory,
+        env: withoutAuditOverrides(),
+        stderr: "pipe",
+        stdout: "pipe",
+      });
+      const [code, stdout] = await Promise.all([process.exited, new Response(process.stdout).text()]);
+
+      expect(stdout).toContain("ERROR src/committed.ts:1 [long-new-comment]");
+      expect(stdout).toContain("ERROR src/untracked.ts:1 [long-new-comment]");
+      expect(code).toBe(1);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  }, 60_000);
 });
 
 describe("doc prose repository patterns", () => {

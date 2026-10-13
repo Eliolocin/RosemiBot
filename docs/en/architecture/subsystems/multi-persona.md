@@ -125,7 +125,7 @@ SourcePersona (target): message
 Resolution follows this sequence:
 
 1. **Sprite match**: Matches `persona_sprites.sprite_key` on the active persona. Ordinary sprites (`is_identity = false`) render the clean persona nickname in Discord; identity sprites (`is_identity = true`) render `sprite (SourcePersona)`. To prevent Discord from grouping consecutive messages under the first avatar, alternating messages fall back to decorated usernames. Delivered mappings are recorded in `persona_sprite_messages` so context rebuilding restores model-facing labels.
-2. **Copied identity**: Resolves `target` against known personas and conversation users, rendering `target (SourcePersona)` with the target's avatar.
+2. **Copied identity**: Resolves `target` against known personas and conversation users, rendering `target (SourcePersona)` with the target's avatar. A nested `SourcePersona (Target (sprite)):` label copies one of another persona's sprites, rendering `Target (sprite) (SourcePersona)` with the sprite avatar; an unknown sprite falls back to the target's base look. The sprite stays in the username instead of `persona_sprite_messages`, so context rebuilding recovers the label from the name alone.
 3. **Plain output**: Unmatched modifiers are stripped before delivery.
 
 ### Embeds and stickers

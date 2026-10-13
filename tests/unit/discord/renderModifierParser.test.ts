@@ -8,6 +8,7 @@ import {
   matchesRenderModifierName,
   parseLeadingGenericSpeakerLabel,
   parseLeadingRenderModifier,
+  parseNestedRenderModifier,
   parseRenderModifierWebhookName,
   resolveRenderModifierSourcePersona,
 } from "@/utils/discord/renderModifierParser";
@@ -94,6 +95,29 @@ describe("render modifier parser", () => {
     expect(parseLeadingRenderModifier("```\nRen (Obonya): hi\n```", ["Ren"])).toBeNull();
     expect(parseLeadingRenderModifier("- Ren (Obonya): hi", ["Ren"])).toBeNull();
     expect(parseLeadingRenderModifier("1. Ren (Obonya): hi", ["Ren"])).toBeNull();
+  });
+
+  it("parses one nested level so a copied persona's sprite survives the label", () => {
+    expect(parseLeadingRenderModifier("Locke (Tomori (shocked)): hi", ["Locke"])).toMatchObject({
+      modifier: "Tomori (shocked)",
+      body: "hi",
+    });
+    expect(parseLeadingRenderModifier("Locke（Tomori（shocked））：hi", ["Locke"])?.modifier).toBe("Tomori（shocked）");
+    expect(parseLeadingRenderModifier("Locke (Tomori (shocked (very))): hi", ["Locke"])).toBeNull();
+    expect(parseNestedRenderModifier("Tomori（shocked）")).toEqual({ targetName: "Tomori", spriteLabel: "shocked" });
+    expect(parseNestedRenderModifier("Tomori")).toBeNull();
+  });
+
+  it("rebuilds a copied sprite's webhook name into the source-first label", () => {
+    const personas = new Map([
+      ["locke", persona("Locke", 3)],
+      ["tomori", persona("Tomori", 2)],
+    ]);
+
+    expect(resolveRenderModifierSourcePersona("Tomori (shocked) (Locke)", personas)).toMatchObject({
+      persona: { persona_id: 3 },
+      displayName: "Locke (Tomori (shocked))",
+    });
   });
 
   it("rejects overlong modifiers", () => {
