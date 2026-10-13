@@ -8,6 +8,7 @@ import {
 import { createDiscordParticipantMemberDirectory } from "@/utils/text/participants/candidateSources";
 import {
   buildParticipantDiscoveryPlan,
+  discoverHistoricalSyntheticCandidates,
   discoverPersonaReferenceCandidates,
   discoverVisibleAuthorCandidates,
   parsePersonaId,
@@ -58,6 +59,8 @@ function userRow(discordId: string, nickname: string): UserRow {
     personal_deliberate_tool_mode: "follow",
     personal_server_fallback_enabled: true,
     timezone_offset: null,
+    message_proxy_service: null,
+    message_proxy_instance_id: null,
   };
 }
 
@@ -121,6 +124,17 @@ describe("participant discovery plan", () => {
         referencePlan,
       }),
     ).rejects.toThrow("cannot be both a synthetic webhook and a Matrix user");
+  });
+
+  it("keys a stable proxy identity as a Discord-shaped user even when a webhook entry exists", () => {
+    const messageProxyUserId = "pk:11111111-2222-4333-8444-555555555555";
+    const syntheticUsers = new Map([[messageProxyUserId, { displayName: "Hiro", type: "webhook" as const }]]);
+
+    const visible = discoverVisibleAuthorCandidates({ participantIds: [messageProxyUserId], syntheticUsers });
+    expect(visible).toHaveLength(1);
+    expect(visible[0]?.key).toEqual(createDiscordUserKey(messageProxyUserId));
+
+    expect(discoverHistoricalSyntheticCandidates(syntheticUsers)).toHaveLength(0);
   });
 
   it("is pure, merges multiple reasons, and retains active-turn-independent aliases and evidence", async () => {

@@ -28,8 +28,13 @@ import {
 } from "@/utils/provider/personalProviderHelpers";
 import { loadUserSavedProvidersForCapability } from "@/utils/provider/savedProviderConfig";
 import { resolveDescription } from "@/utils/text/localizer";
+import { messageProxyRepository } from "@/utils/db/repositories/MessageProxyRepository";
+import { formatManagedIdentityLabel } from "@/utils/discord/interactions/managedIdentityPanelRoutes";
 
 export interface PersonalConfigScope {
+  identityId?: number;
+  identityAvatarUrl?: string | null;
+  identityLabel?: string;
   userId: number;
   userDiscId: string;
   guildId: string | null;
@@ -39,6 +44,29 @@ export interface PersonalConfigScope {
   resolvedNickname: string;
   personas: TomoriState[];
   readStatus: PanelReadStatus;
+}
+
+export async function resolveIdentityConfigScope(
+  interaction: GlobalRoutableInteraction | ChatInputCommandInteraction,
+  identityId: number,
+): Promise<PersonalConfigScope | null> {
+  const managed = await messageProxyRepository.getManagedIdentity(interaction.user.id, identityId);
+  if (!managed) return null;
+  const [hostScope, identityUser] = await Promise.all([
+    resolveScope(interaction),
+    userRepository.loadByDiscordId(managed.userDiscId),
+  ]);
+  if (!hostScope || !identityUser?.user_id) return null;
+  return {
+    ...hostScope,
+    identityId,
+    identityAvatarUrl: managed.avatarUrl,
+    identityLabel: formatManagedIdentityLabel(managed, interaction.locale),
+    userId: identityUser.user_id,
+    userDiscId: managed.userDiscId,
+    user: identityUser,
+    resolvedNickname: managed.displayName,
+  };
 }
 
 export async function resolveScope(

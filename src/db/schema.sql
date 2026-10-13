@@ -946,6 +946,11 @@ SELECT add_column_if_not_exists('users', 'registration_locale', 'TEXT');
 --   user_personalization_configs.impersonation_prompt
 --   user_personalization_configs.personal_dtm
 
+-- NULL means never configured, "none" is an explicit opt-out, and a registered
+-- service ID enables that adapter. Unknown values fail closed in the registry.
+SELECT add_column_if_not_exists('users', 'message_proxy_service', 'TEXT');
+SELECT add_column_if_not_exists('users', 'message_proxy_instance_id', 'TEXT');
+
 -- Create updated_at trigger for users table
 DROP TRIGGER IF EXISTS update_users_timestamp ON users;
 CREATE TRIGGER update_users_timestamp
@@ -3316,6 +3321,194 @@ CREATE INDEX IF NOT EXISTS idx_stat_counters_user_metric_bucket
   ON stat_counters(user_id, metric, bucket);
 CREATE INDEX IF NOT EXISTS idx_stat_counters_user_lineage_metric
   ON stat_counters(user_id, persona_lineage_id, metric);
+
+-- ============================================================================
+-- Message-proxy identities and durable message attribution
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS message_proxy_instances (
+  instance_id TEXT PRIMARY KEY,
+  service_id TEXT NOT NULL CHECK (service_id IN ('pluralkit', 'pluralbuddy')),
+  origin TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
+  bot_user_id TEXT,
+  enabled BOOLEAN NOT NULL DEFAULT false,
+  removed_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT message_proxy_instances_id_format CHECK (
+    instance_id = service_id || ':official'
+    OR instance_id ~ ('^' || service_id || ':[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+  ),
+  CONSTRAINT message_proxy_instances_bot_user_id_format CHECK (
+    bot_user_id IS NULL OR bot_user_id ~ '^[0-9]{17,20}$'
+  )
+);
+
+SELECT add_column_if_not_exists('message_proxy_instances', 'bot_user_id', 'TEXT');
+SELECT add_column_if_not_exists('message_proxy_instances', 'removed_at', 'TIMESTAMP');
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'message_proxy_instances_bot_user_id_format'
+  ) THEN
+    ALTER TABLE message_proxy_instances
+      ADD CONSTRAINT message_proxy_instances_bot_user_id_format
+      CHECK (bot_user_id IS NULL OR bot_user_id ~ '^[0-9]{17,20}$');
+  END IF;
+END $$;
+
+INSERT INTO message_proxy_instances (instance_id, service_id, origin, display_name, bot_user_id, enabled)
+VALUES
+  ('pluralkit:official', 'pluralkit', 'https://api.pluralkit.me', 'PluralKit', '466378653216014359', true),
+  ('pluralbuddy:official', 'pluralbuddy', 'https://pluralbuddy.app', 'PluralBuddy', '1436973163211657278', true)
+ON CONFLICT (instance_id) DO UPDATE SET bot_user_id = EXCLUDED.bot_user_id;
+
+CREATE OR REPLACE FUNCTION keep_message_proxy_instance_identity()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.instance_id <> OLD.instance_id OR NEW.service_id <> OLD.service_id OR NEW.origin <> OLD.origin THEN
+    RAISE EXCEPTION 'Message-proxy instance identity and origin are immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS keep_message_proxy_instance_identity_before_update ON message_proxy_instances;
+CREATE TRIGGER keep_message_proxy_instance_identity_before_update
+BEFORE UPDATE ON message_proxy_instances
+FOR EACH ROW EXECUTE FUNCTION keep_message_proxy_instance_identity();
+
+DROP TRIGGER IF EXISTS update_message_proxy_instances_timestamp ON message_proxy_instances;
+CREATE TRIGGER update_message_proxy_instances_timestamp
+BEFORE UPDATE ON message_proxy_instances
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TABLE IF NOT EXISTS pluralbuddy_oauth_connections (
+  instance_id TEXT PRIMARY KEY REFERENCES message_proxy_instances(instance_id),
+  origin TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  client_secret BYTEA NOT NULL,
+  client_secret_key_version INTEGER NOT NULL,
+  refresh_token BYTEA NOT NULL,
+  refresh_token_key_version INTEGER NOT NULL,
+  access_token BYTEA,
+  access_token_key_version INTEGER,
+  access_expires_at TIMESTAMPTZ,
+  refresh_blocked_at TIMESTAMPTZ,
+  refresh_retry_after TIMESTAMPTZ,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT pluralbuddy_access_token_complete CHECK (
+    (access_token IS NULL AND access_token_key_version IS NULL AND access_expires_at IS NULL)
+    OR (access_token IS NOT NULL AND access_token_key_version IS NOT NULL AND access_expires_at IS NOT NULL)
+  )
+);
+
+CREATE OR REPLACE FUNCTION validate_pluralbuddy_oauth_connection()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM message_proxy_instances
+    WHERE instance_id = NEW.instance_id
+      AND service_id = 'pluralbuddy'
+      AND origin = NEW.origin
+  ) THEN
+    RAISE EXCEPTION 'PluralBuddy OAuth connection must match its instance and origin';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS validate_pluralbuddy_oauth_connection_before_write ON pluralbuddy_oauth_connections;
+CREATE TRIGGER validate_pluralbuddy_oauth_connection_before_write
+BEFORE INSERT OR UPDATE ON pluralbuddy_oauth_connections
+FOR EACH ROW EXECUTE FUNCTION validate_pluralbuddy_oauth_connection();
+
+DROP TRIGGER IF EXISTS update_pluralbuddy_oauth_connections_timestamp ON pluralbuddy_oauth_connections;
+CREATE TRIGGER update_pluralbuddy_oauth_connections_timestamp
+BEFORE UPDATE ON pluralbuddy_oauth_connections
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_message_proxy_instance_id_fkey') THEN
+    ALTER TABLE users ADD CONSTRAINT users_message_proxy_instance_id_fkey
+      FOREIGN KEY (message_proxy_instance_id) REFERENCES message_proxy_instances(instance_id);
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS external_identities (
+  external_identity_id SERIAL PRIMARY KEY,
+  kind         TEXT NOT NULL,
+  instance_id TEXT NOT NULL REFERENCES message_proxy_instances(instance_id),
+  external_key TEXT NOT NULL,
+  user_id      INT NOT NULL UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT external_identities_kind_instance_id_external_key_key UNIQUE (kind, instance_id, external_key)
+);
+
+DROP TRIGGER IF EXISTS update_external_identities_timestamp ON external_identities;
+CREATE TRIGGER update_external_identities_timestamp
+BEFORE UPDATE ON external_identities
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TABLE IF NOT EXISTS message_proxy_namespaces (
+  message_proxy_namespace_id SERIAL PRIMARY KEY,
+  service_id TEXT NOT NULL,
+  instance_id TEXT NOT NULL REFERENCES message_proxy_instances(instance_id),
+  namespace_key TEXT NOT NULL,
+  short_id TEXT,
+  display_name TEXT,
+  tag TEXT,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT message_proxy_namespaces_instance_id_namespace_key_key UNIQUE (instance_id, namespace_key)
+);
+
+DROP TRIGGER IF EXISTS update_message_proxy_namespaces_timestamp ON message_proxy_namespaces;
+CREATE TRIGGER update_message_proxy_namespaces_timestamp
+BEFORE UPDATE ON message_proxy_namespaces
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TABLE IF NOT EXISTS message_proxy_identities (
+  message_proxy_identity_id SERIAL PRIMARY KEY,
+  message_proxy_namespace_id INT NOT NULL REFERENCES message_proxy_namespaces(message_proxy_namespace_id) ON DELETE CASCADE,
+  external_identity_id INT NOT NULL UNIQUE REFERENCES external_identities(external_identity_id) ON DELETE CASCADE,
+  short_id TEXT,
+  display_name TEXT,
+  avatar_url TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_proxy_identities_namespace
+  ON message_proxy_identities(message_proxy_namespace_id);
+
+DROP TRIGGER IF EXISTS update_message_proxy_identities_timestamp ON message_proxy_identities;
+CREATE TRIGGER update_message_proxy_identities_timestamp
+BEFORE UPDATE ON message_proxy_identities
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TABLE IF NOT EXISTS message_proxy_namespace_accounts (
+  message_proxy_namespace_id INT NOT NULL REFERENCES message_proxy_namespaces(message_proxy_namespace_id) ON DELETE CASCADE,
+  host_user_disc_id TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (message_proxy_namespace_id, host_user_disc_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_proxy_namespace_accounts_host
+  ON message_proxy_namespace_accounts(host_user_disc_id);
+
+CREATE TABLE IF NOT EXISTS message_proxy_message_index (
+  message_disc_id TEXT PRIMARY KEY,
+  external_identity_id INT NOT NULL REFERENCES external_identities(external_identity_id) ON DELETE CASCADE,
+  sender_disc_id TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_proxy_message_index_created
+  ON message_proxy_message_index(created_at);
 
 -- ============================================================================
 -- command_catalog — dimension table holding the full universe of registered

@@ -418,7 +418,24 @@ export async function loadUserSavedProvidersForCapability(
  */
 export function withSavedProviderConfig(
   tomoriState: TomoriState,
-  savedConfig: SavedProviderConfigRow | null,
+  savedConfig:
+    | (Pick<SavedProviderConfigRow, "api_key"> &
+        Partial<
+          Pick<
+            SavedProviderConfigRow,
+            | "key_version"
+            | "llm_temperature"
+            | "llm_top_p"
+            | "llm_top_k"
+            | "llm_frequency_penalty"
+            | "llm_presence_penalty"
+            | "llm_min_p"
+            | "thinking_level"
+            | "llm_disabled_params"
+            | "llm_logit_biases"
+          >
+        >)
+    | null,
 ): TomoriState {
   const { config } = tomoriState;
   return {

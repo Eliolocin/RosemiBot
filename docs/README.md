@@ -43,6 +43,9 @@ Pages are bucketed into task-based sub-categories, each with a landing card-grid
   - [`age-restricted-commands.md`](./en/features/setup-administration/age-restricted-commands/)
   - [`stats-and-insights.md`](./en/features/setup-administration/stats-and-insights/)
 - **Integrations**: [`integrations/`](./en/features/integrations/README.mdx)
+  - [`message-proxy-support.md`](./en/features/integrations/message-proxy-support/)
+  - [`pluralkit-support.md`](./en/features/integrations/pluralkit-support/)
+  - [`pluralbuddy-support.md`](./en/features/integrations/pluralbuddy-support/)
   - [`matrix-bridge.md`](./en/features/integrations/matrix-bridge/)
   - [`sillytavern-support.md`](./en/features/integrations/sillytavern-support/)
 - [`features/command-reference.md`](./en/features/command-reference/): generated from command locales (Phase 3)
@@ -70,6 +73,7 @@ source open to follow these.
     - [`MOSS-TTS`](./en/self-hosting/local-endpoints/text-to-speech/moss.md): experimental clone and voice-design auto endpoint
   - [`local-endpoints/speech-to-text/`](./en/self-hosting/local-endpoints/speech-to-text/README.mdx): local STT engines
 - [`self-hosting/maintenance.md`](./en/self-hosting/maintenance.md): maintenance scripts, updating, backups/restore
+- [`self-hosting/pluralbuddy-oauth.md`](./en/self-hosting/pluralbuddy-oauth.md): authorize the official PluralBuddy message lookup
 - [`self-hosting/safe-migration.md`](./en/self-hosting/safe-migration.md)
 - [`self-hosting/local-monitoring.md`](./en/self-hosting/local-monitoring.md)
 
@@ -137,6 +141,8 @@ Supporting services that pipelines depend on.
 
 - [`architecture/integrations/`](./en/architecture/integrations/README.md): Discord platform, Matrix bridge,
   NovelAI, SillyTavern, and voice pipeline internals
+- [`architecture/integrations/message-proxy.md`](./en/architecture/integrations/message-proxy/): proxy routing and identity contract
+- [`architecture/integrations/pluralkit.md`](./en/architecture/integrations/pluralkit/): PluralKit adapter behavior
 
 ### Cloud
 

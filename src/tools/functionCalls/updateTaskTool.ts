@@ -9,6 +9,7 @@ import { extractBridgeUserId } from "@/utils/bridges";
 import { isMatrixRelayMessage } from "@/utils/chat/triggerProcessor";
 import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import { sendTaskEmbedWithExpand } from "@/utils/discord/expandableEmbedNotice";
+import { resolveTriggererDiscordId } from "@/utils/discord/targetResolver";
 import { log, ColorCode } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
 import { validateFutureTime } from "@/utils/text/processors/timeUtils";
@@ -366,7 +367,7 @@ export class UpdateTaskTool extends BaseTool {
     const requesterBridgeUserId = isMatrixRelayRequester
       ? (extractBridgeUserId(context.message?.author.username ?? "") ?? undefined)
       : undefined;
-    const requesterDiscordId = requesterBridgeUserId ? undefined : context.message?.author?.id || context.userId;
+    const requesterDiscordId = requesterBridgeUserId ? undefined : resolveTriggererDiscordId(context);
     const requesterUserRow = requesterDiscordId ? await userRepository.loadByDiscordId(requesterDiscordId) : null;
 
     if (!requesterBridgeUserId && (!requesterDiscordId || !requesterUserRow?.user_id)) {

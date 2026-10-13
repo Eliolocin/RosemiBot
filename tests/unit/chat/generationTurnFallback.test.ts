@@ -53,6 +53,9 @@ const fallbackNoticeCalls: Array<{
   offerPersonalFallbackOptOut: boolean | undefined;
 }> = [];
 const personalSavedConfigLoads: Array<{ userId: number; provider: string }> = [];
+// Flipped off to model a user who has no personal key saved for the provider a
+// chain entry belongs to.
+let personalKeyAvailable = true;
 // Records the server text quota admissions the fallback phase takes, so a test can tell an
 // admission that never happened from one that was granted.
 const textQuotaAdmissions: Array<{
@@ -149,7 +152,7 @@ scopedMock.module("@/utils/db/repositories", () => ({
     loadSavedProviderConfig: async () => ({ api_key: Buffer.from("encrypted-key"), key_version: 1 }),
     loadUserSavedProviderConfig: async (userId: number, provider: string) => {
       personalSavedConfigLoads.push({ userId, provider });
-      return { api_key: Buffer.from("encrypted-key"), key_version: 1 };
+      return personalKeyAvailable ? { api_key: Buffer.from("encrypted-key"), key_version: 1 } : null;
     },
   }),
   configRepository: overrideMembers(realRepositories.configRepository, {
@@ -555,11 +558,11 @@ const fakeProvider = {
   getInfo: () => ({ name: "google" }),
 };
 
-function makeLlm(id: number, codename: string): LlmRow {
+function makeLlm(id: number, codename: string, provider = "google"): LlmRow {
   return {
     llm_id: id,
     llm_codename: codename,
-    llm_provider: "google",
+    llm_provider: provider,
     has_tools: false,
     sees_images: false,
     sees_videos: false,
@@ -715,6 +718,7 @@ describe("runGenerationTurn fallback behavior", () => {
     providerConfigCalls.length = 0;
     fallbackNoticeCalls.length = 0;
     personalSavedConfigLoads.length = 0;
+    personalKeyAvailable = true;
     textQuotaAdmissions.length = 0;
     textQuotaAdmissionResult = {
       allowed: true,
@@ -1321,6 +1325,69 @@ describe("runGenerationTurn fallback behavior", () => {
 
     // The draw lands on the last pool member, so only the server's own flag can reorder this pool.
     expect(toolLoopCalls.map((call) => call.model)).toEqual(["personal-primary", "server-fallback"]);
+  });
+
+  it("resolves a cross-provider fallback against the user's key on a personal-routed turn", async () => {
+    const context = makeContext(makeLlm(1, "primary-model"), makeLlm(2, "deepseek-fallback", "deepseek"));
+    context.textCredentialSource = "personal";
+    (context as unknown as { personalRoutingUserId: number }).personalRoutingUserId = 4;
+    queuedResults.push(
+      {
+        status: "error",
+        streamResults: [{ status: "error", data: { type: "rate_limit", code: "429", message: "rate limited" } }],
+        personaResponses: [],
+      },
+      {
+        status: "completed",
+        streamResults: [{ status: "completed", accumulatedText: "ok" }],
+        personaResponses: [{ personaName: "Tomori", text: "ok", personaId: 10, personaLineageId: 100 }],
+      },
+    );
+    const sink: ChatResponseSink = {
+      emitStreamResult: async () => undefined,
+      emitError: async () => undefined,
+      finalize: async () => undefined,
+    };
+
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    await runGenerationTurn(context, sink);
+
+    expect(toolLoopCalls.map((call) => call.model)).toEqual(["primary-model", "deepseek-fallback"]);
+    // The server's saved DeepSeek config must never be consulted here, or the
+    // user's chain would spend the server owner's key.
+    expect(personalSavedConfigLoads).toEqual([{ userId: 4, provider: "deepseek" }]);
+  });
+
+  it("skips a cross-provider fallback the user has no personal key for", async () => {
+    const context = makeContext(makeLlm(1, "primary-model"), makeLlm(2, "deepseek-fallback", "deepseek"));
+    context.textCredentialSource = "personal";
+    (context as unknown as { personalRoutingUserId: number }).personalRoutingUserId = 4;
+    personalKeyAvailable = false;
+    const emittedErrors: unknown[] = [];
+    queuedResults.push({
+      status: "error",
+      streamResults: [{ status: "error", data: { type: "rate_limit", code: "429", message: "rate limited" } }],
+      personaResponses: [],
+    });
+    const sink: ChatResponseSink = {
+      emitStreamResult: async (result) => {
+        emittedErrors.push(result);
+      },
+      emitError: async (error) => {
+        emittedErrors.push(error);
+      },
+      finalize: async () => undefined,
+    };
+
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    await runGenerationTurn(context, sink);
+
+    // Only the primary runs: the unusable entry leaves the pool rather than
+    // falling through to the server's key.
+    expect(toolLoopCalls.map((call) => call.model)).toEqual(["primary-model"]);
+    expect(personalSavedConfigLoads).toEqual([{ userId: 4, provider: "deepseek" }]);
+    expect(emittedErrors).toHaveLength(1);
+    expect(fallbackNoticeCalls).toHaveLength(0);
   });
 
   it("deletes the timed-out primary's partial message when a fallback succeeds", async () => {

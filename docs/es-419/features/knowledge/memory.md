@@ -65,6 +65,12 @@ memorias compartidas del servidor está desactivado por defecto. Los miembros co
 `Administrar servidor` mantienen acceso en todo momento, y los administradores pueden habilitar a otros
 miembros mediante Acceso de miembros en `/moderation`.
 
+### Identidades de proxy de mensajes
+
+Cuando activas un servicio de proxy de mensajes compatible, TomoriBot puede mantener memorias personales para cada identidad de proxy verificada de forma independiente de la cuenta de Discord que envió el mensaje. La cuenta anfitriona sigue controlando la privacidad, los bloqueos, los enfriamientos y la autorización. TomoriBot nunca deduce una identidad a partir del nombre o avatar de un webhook, y un webhook no verificado no recibe un perfil de memoria independiente.
+
+Actualmente, PluralKit es el único servicio seleccionable. Consulta [Compatibilidad con proxy de mensajes](/es-419/features/integrations/message-proxy-support/) para conocer la configuración y las limitaciones.
+
 ### Cómo se guardan las memorias
 
 Hay exactamente dos formas en que se crea una memoria a largo plazo:

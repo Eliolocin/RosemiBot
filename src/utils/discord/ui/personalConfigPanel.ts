@@ -138,6 +138,8 @@ export interface PersonalConfigSpotlightDisplayInfo {
 }
 
 export interface PersonalConfigPanelRenderInput {
+  identityMode?: boolean;
+  identityLabel?: string;
   locale: string;
   category: PersonalConfigCategory;
   page: PersonalConfigPage;
@@ -799,11 +801,15 @@ export function buildPersonalConfigPanelPayload(input: PersonalConfigPanelRender
     ],
   };
 
-  const components: ComponentInContainerData[] = [
-    categoryButtons,
-    { type: ComponentType.Separator, divider: true, spacing: 1 },
-    pageSelectorRow,
-  ];
+  const components: ComponentInContainerData[] = input.identityMode
+    ? [
+        {
+          type: ComponentType.TextDisplay,
+          content: `### ${escapeDiscordMarkdown(input.identityLabel ?? resolvedNickname)}`,
+        },
+        pageSelectorRow,
+      ]
+    : [categoryButtons, { type: ComponentType.Separator, divider: true, spacing: 1 }, pageSelectorRow];
 
   if (readStatus === "unavailable") {
     components.push(
@@ -856,39 +862,44 @@ ${localizer(locale, "commands.personal.config.preferences_description")}`,
           },
           input.userAvatarUrl,
         ),
-        {
-          type: ComponentType.TextDisplay,
-          content: `**${localizer(locale, "commands.personal.config.interface_section")}**
+      );
+      if (!input.identityMode)
+        components.push(
+          {
+            type: ComponentType.TextDisplay,
+            content: `**${localizer(locale, "commands.personal.config.interface_section")}**
 ${localizer(locale, "commands.personal.config.interface_description")}
 > ${localizer(locale, "commands.personal.config.language_label")}: ${languageLabel}
 > ${localizer(locale, "commands.personal.config.timezone_label")}: ${timezoneLabel}`,
-        },
-        {
-          type: ComponentType.ActionRow,
-          components: [
-            {
-              type: ComponentType.Button,
-              style: ButtonStyle.Secondary,
-              customId: buildPersonalConfigRouteId({ action: "language-open", locale }),
-              label: localizer(locale, "commands.personal.config.change_language_button"),
-              disabled: writesDisabled,
-            },
-            {
-              type: ComponentType.Button,
-              style: ButtonStyle.Secondary,
-              customId: buildPersonalConfigRouteId({ action: "timezone-open", locale }),
-              label: localizer(locale, "commands.personal.config.set_timezone_button"),
-              disabled: writesDisabled,
-            },
-            {
-              type: ComponentType.Button,
-              style: ButtonStyle.Secondary,
-              customId: buildPersonalConfigRouteId({ action: "timezone-server", locale }),
-              label: localizer(locale, "commands.personal.config.use_server_timezone_button"),
-              disabled: writesDisabled || user.timezone_offset === null,
-            },
-          ],
-        },
+          },
+          {
+            type: ComponentType.ActionRow,
+            components: [
+              {
+                type: ComponentType.Button,
+                style: ButtonStyle.Secondary,
+                customId: buildPersonalConfigRouteId({ action: "language-open", locale }),
+                label: localizer(locale, "commands.personal.config.change_language_button"),
+                disabled: writesDisabled,
+              },
+              {
+                type: ComponentType.Button,
+                style: ButtonStyle.Secondary,
+                customId: buildPersonalConfigRouteId({ action: "timezone-open", locale }),
+                label: localizer(locale, "commands.personal.config.set_timezone_button"),
+                disabled: writesDisabled,
+              },
+              {
+                type: ComponentType.Button,
+                style: ButtonStyle.Secondary,
+                customId: buildPersonalConfigRouteId({ action: "timezone-server", locale }),
+                label: localizer(locale, "commands.personal.config.use_server_timezone_button"),
+                disabled: writesDisabled || user.timezone_offset === null,
+              },
+            ],
+          },
+        );
+      components.push(
         {
           type: ComponentType.TextDisplay,
           content: `**${localizer(locale, "commands.personal.config.naming_section")}**

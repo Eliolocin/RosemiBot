@@ -27,6 +27,7 @@ export default {
     },
     memories: {
       description: `管理你的个人长期记忆和短期对话上下文。`,
+      identity_description: `要编辑的消息代理身份。即使消息代理处于关闭状态也可以使用。`,
       outdated_panel: `这个面板已过期。请用 {command} 打开新面板。`,
       title: `个人记忆`,
       category_global: `全局`,
@@ -108,6 +109,7 @@ export default {
     },
     config: {
       description: `管理你的个人偏好、隐私、模型和资料。`,
+      identity_description: `要编辑的消息代理身份。即使消息代理处于关闭状态也可以使用。`,
       outdated_panel: `这个面板已过期。请用 {command} 打开新面板。`,
       category_profile: `资料`,
       category_privacy: `隐私`,
@@ -518,6 +520,29 @@ export default {
     },
     "deliberate-tool-mode": {
       description: `设置你个人的明确工具模式偏好。`,
+    },
+    "message-proxy": {
+      description: `为你的账号选择支持的消息代理服务。`,
+      service_description: `要使用的消息代理服务，或选择「关闭」以停用消息代理处理。`,
+      instance_description: `由机器人托管者批准的实例。留空则使用官方实例。`,
+      none_option: `关闭`,
+      pluralkit_option: `PluralKit`,
+      pluralbuddy_option: `PluralBuddy`,
+      pluralbuddy_unavailable_title: `PluralBuddy 不可用`,
+      pluralbuddy_unavailable_description: `此处无法验证 PluralBuddy 消息。你的选择未更改。`,
+      instance_unavailable_title: `实例不可用`,
+      instance_unavailable_description: `该消息代理实例不可用。你的选择未更改。`,
+      already_selected_title: `未进行任何更改`,
+      already_selected_description: `你的消息代理服务已经设置为 **{service}**。`,
+      enabled_success_title: `消息代理服务已启用`,
+      pluralkit_enabled_success_description: `**{service}** 现在是你选择的消息代理服务。
+
+当我看到你的消息时，会等待约 {delay_seconds} 秒后再回复，以防 PluralKit 通过代理 Webhook 将其删除并重新发送。当我第一次见到你系统的成员时，他们在 PluralKit 上设置的任何公开简介文字都可能被保存为他们的初始记忆。如果你的系统有公开说明，我也会保留它，以便在你的成员与我交谈时查阅。`,
+      pluralbuddy_enabled_success_description: `**{service}** 现在是你选择的消息代理服务。
+
+当我看到你的消息时，会等待约 {delay_seconds} 秒以检查是否有代理重发。PluralBuddy 会验证重发消息、宿主账号和副人格，但其 API 无法识别原始消息。较晚到达的重发偶尔可能会导致第二次回复。TomoriBot 会在收到每位副人格的第一条验证消息后将其保存，并在你切换服务或关闭代理时保留已存储的身份。`,
+      disabled_success_title: `消息代理服务已停用`,
+      disabled_success_description: `你的账号现在已**停用**消息代理处理。你的消息将按正常流程处理，不再等待可能的代理重发。已存储的身份和记忆仍可通过 /personal config 和 /personal memories 继续使用。`,
     },
   },
 };

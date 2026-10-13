@@ -4,6 +4,7 @@ import type {
   GuildMember,
   Interaction,
   Message,
+  PartialMessage,
   Presence,
   RateLimitData,
   VoiceState,
@@ -24,6 +25,7 @@ export type EventArg =
   | GuildMember
   | Interaction
   | Message
+  | PartialMessage
   | GuildEmoji
   | RateLimitData
   | Sticker;

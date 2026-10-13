@@ -1,5 +1,6 @@
-import type { ChatInputCommandInteraction, InteractionEditReplyOptions } from "discord.js";
+import { MessageFlags, type ChatInputCommandInteraction, type InteractionEditReplyOptions } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
+import { localizer } from "@/utils/text/localizer";
 import { getCachedAllPersonas, getCachedTomoriState } from "@/utils/cache/tomoriStateCache";
 import { userRepository } from "@/utils/db/repositories";
 import type { GlobalInteractionRoute } from "@/utils/discord/interactions/routeRegistry";
@@ -12,6 +13,7 @@ import {
   loadPersonaNamingPreference,
   loadUserSavedProviders,
   resolveScope,
+  resolveIdentityConfigScope,
 } from "@/utils/discord/interactions/personalConfigLoaders";
 import { personalConfigOperations } from "@/utils/discord/interactions/personalConfigOperations";
 import { createNonce } from "@/utils/discord/panelRouteTokens";
@@ -40,7 +42,12 @@ import {
   buildSpotlightStep1Modal,
   buildTimezoneModal,
 } from "@/utils/discord/ui/personalConfigModals";
-import { buildPersonalConfigPanelPayload } from "@/utils/discord/ui/personalConfigPanel";
+import type { buildPersonalConfigPanelPayload } from "@/utils/discord/ui/personalConfigPanel";
+import {
+  IDENTITY_CONFIG_VERSION,
+  parseManagedIdentityRoute,
+  rewriteManagedIdentityRouteIds,
+} from "@/utils/discord/interactions/managedIdentityPanelRoutes";
 import { showRoutedRawModal } from "@/utils/discord/ui/modals";
 import { recordPanelActionStat } from "@/utils/stats/panelActionMetrics";
 import {
@@ -50,6 +57,7 @@ import {
 } from "@/utils/discord/personaPanelAvatar";
 import {
   terminalPayload,
+  buildScopedPersonalConfigPanelPayload,
   type PersonalConfigPostDeferContext,
   type PersonalConfigRouteDependencies,
 } from "@/utils/discord/interactions/personalConfigRouteContext";
@@ -218,6 +226,74 @@ export function createPersonalConfigInteractionRoute(
 
 export const personalConfigInteractionRoute = createPersonalConfigInteractionRoute();
 
+const IDENTITY_CONFIG_ACTIONS = new Set([
+  "page",
+  "persona-select",
+  "retry",
+  "refresh",
+  "naming-open",
+  "naming-submit",
+  "about-open",
+  "about-submit",
+  "persona-naming-open",
+  "persona-naming-submit",
+  "appearance-open",
+  "appearance-submit",
+  "character-reference-open",
+  "character-reference-submit",
+  "character-reference-clear",
+]);
+
+export const identityConfigInteractionRoute: GlobalInteractionRoute = {
+  namespace: PERSONAL_CONFIG_ROUTE_NAMESPACE,
+  version: IDENTITY_CONFIG_VERSION,
+  async execute(client, interaction, parsed) {
+    const managedRoute = parseManagedIdentityRoute(parsed, PERSONAL_CONFIG_ROUTE_VERSION);
+    const route = managedRoute && parsePersonalConfigPanelRoute(managedRoute.original);
+    if (
+      !managedRoute ||
+      !route ||
+      !IDENTITY_CONFIG_ACTIONS.has(route.action) ||
+      ("category" in route && route.category !== "profile") ||
+      ("page" in route && !["general", "persona", "appearance"].includes(route.page)) ||
+      (route.action === "page" &&
+        (!interaction.isStringSelectMenu() ||
+          !["general", "persona", "appearance"].includes(interaction.values[0] ?? "")))
+    ) {
+      await interaction.reply({
+        content: localizer(interaction.locale, "commands.personal.config.unavailable"),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const identityId = managedRoute.identityId;
+    const modal = <T extends { custom_id: string }>(value: T): T => {
+      rewriteManagedIdentityRouteIds(
+        value,
+        PERSONAL_CONFIG_ROUTE_NAMESPACE,
+        PERSONAL_CONFIG_ROUTE_VERSION,
+        IDENTITY_CONFIG_VERSION,
+        identityId,
+      );
+      return value;
+    };
+    const identityRoute = createPersonalConfigInteractionRoute({
+      resolveScope: (target) => resolveIdentityConfigScope(target, identityId),
+      showNamingModal: (target, locale, nonce, current) =>
+        showRoutedRawModal(target, modal(buildNamingModal(locale, nonce, current))),
+      showPersonaNamingModal: (target, locale, lineageId, nonce, current) =>
+        showRoutedRawModal(target, modal(buildPersonaNamingModal(locale, lineageId, nonce, current))),
+      showAboutModal: (target, locale, nonce, current) =>
+        showRoutedRawModal(target, modal(buildAboutModal(locale, nonce, current))),
+      showAppearanceModal: (target, locale, nonce, tags) =>
+        showRoutedRawModal(target, modal(buildAppearanceModal(locale, nonce, tags))),
+      showCharacterReferenceModal: (target, locale, nonce) =>
+        showRoutedRawModal(target, modal(buildCharacterReferenceModal(locale, nonce))),
+    });
+    await identityRoute.execute(client, interaction, managedRoute.original);
+  },
+};
+
 export type PersonalConfigPanelPayloadOrTerminal =
   | ReturnType<typeof buildPersonalConfigPanelPayload>
   | InteractionEditReplyOptions;
@@ -226,30 +302,38 @@ export async function buildInitialPersonalConfigPanel(
   interaction: ChatInputCommandInteraction,
   locale: string,
   dependenciesOverride?: Partial<PersonalConfigRouteDependencies>,
+  identityId?: number,
 ): Promise<PersonalConfigPanelPayloadOrTerminal> {
   const dependencies: PersonalConfigRouteDependencies = {
     ...defaultDependencies,
     ...dependenciesOverride,
   };
-  const scope = await dependencies.resolveScope(interaction);
+  const scope = identityId
+    ? await resolveIdentityConfigScope(interaction, identityId)
+    : await dependencies.resolveScope(interaction);
   if (!scope) {
     return terminalPayload(locale, "commands.personal.config.unavailable") as PersonalConfigPanelPayloadOrTerminal;
   }
   return withPersonaPanelAvatar(
-    buildPersonalConfigPanelPayload({
-      locale,
-      category: "profile",
-      page: "general",
-      user: scope.user,
-      resolvedNickname: scope.resolvedNickname,
-      personas: scope.personas,
-      guildId: scope.guildId,
-      userAvatarUrl: resolveInvokerAvatarUrl(interaction),
-      // Only the privacy page renders these, and the panel always opens on profile, so the counts are
-      // never read here. Changing the opening category means fetching them, as `repaint` does.
-      memoryCount: 0,
-      stmCount: 0,
-      readStatus: scope.readStatus,
-    }),
+    buildScopedPersonalConfigPanelPayload(
+      {
+        locale,
+        identityMode: Boolean(scope.identityId),
+        identityLabel: scope.identityLabel,
+        category: "profile",
+        page: "general",
+        user: scope.user,
+        resolvedNickname: scope.resolvedNickname,
+        personas: scope.personas,
+        guildId: scope.guildId,
+        userAvatarUrl: scope.identityId ? scope.identityAvatarUrl : resolveInvokerAvatarUrl(interaction),
+        // Only the privacy page renders these, and the panel always opens on profile, so the counts are
+        // never read here. Changing the opening category means fetching them, as `repaint` does.
+        memoryCount: 0,
+        stmCount: 0,
+        readStatus: scope.readStatus,
+      },
+      scope,
+    ),
   );
 }

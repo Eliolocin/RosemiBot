@@ -6,6 +6,8 @@
  */
 
 import type { Embed } from "discord.js";
+import { isMessageProxyReplyEmbed } from "@/utils/messageProxy/registry";
+
 import {
   classifyProtocolEmbed,
   classifyProtocolTitle,
@@ -61,6 +63,12 @@ export function processLinkEmbed(embed: Embed): LinkPreviewResult {
   // Skip bot-produced system embeds because those are handled separately
   const embedCheck = checkTargetEmbed(embed);
   if (embedCheck.isTarget) {
+    return { isLinkPreview: false, textContent: null, imageInfo: null, thumbnailInfo: null };
+  }
+
+  // A message-proxy reply embed restates a reference the pipeline already annotates
+  // from the pre-proxy original, so rendering it would duplicate the notice.
+  if (isMessageProxyReplyEmbed(embed)) {
     return { isLinkPreview: false, textContent: null, imageInfo: null, thumbnailInfo: null };
   }
 

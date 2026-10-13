@@ -27,6 +27,7 @@ TomoriBot sẽ xem bạn như người dùng mới từ tin nhắn tiếp theo.`
     },
     memories: {
       description: `Quản lý bộ nhớ dài hạn cá nhân và ngữ cảnh hội thoại ngắn hạn.`,
+      identity_description: `Danh tính proxy tin nhắn cần chỉnh sửa. Hoạt động ngay cả khi proxy tin nhắn đang tắt.`,
       outdated_panel: `Bảng điều khiển này đã cũ. Dùng {command} để mở bảng điều khiển mới.`,
       title: `Bộ nhớ cá nhân`,
       category_global: `Toàn cục`,
@@ -110,6 +111,7 @@ TomoriBot sẽ xem bạn như người dùng mới từ tin nhắn tiếp theo.`
     },
     config: {
       description: `Quản lý tùy chọn cá nhân, quyền riêng tư, model và hồ sơ.`,
+      identity_description: `Danh tính proxy tin nhắn cần chỉnh sửa. Hoạt động ngay cả khi proxy tin nhắn đang tắt.`,
       outdated_panel: `Bảng điều khiển này đã cũ. Dùng {command} để mở bảng điều khiển mới.`,
       category_profile: `Hồ sơ`,
       category_privacy: `Quyền riêng tư`,
@@ -530,6 +532,29 @@ Dùng Xóa prompt để gỡ bỏ.`,
     },
     "deliberate-tool-mode": {
       description: `Đặt tùy chọn chế độ công cụ có chủ đích cá nhân.`,
+    },
+    "message-proxy": {
+      description: `Chọn dịch vụ proxy tin nhắn được hỗ trợ cho tài khoản của bạn.`,
+      service_description: `Dịch vụ proxy tin nhắn cần dùng, hoặc chọn Tắt để hủy kích hoạt xử lý proxy tin nhắn.`,
+      instance_description: `Một phiên bản được người chạy bot phê duyệt. Để trống để dùng phiên bản chính thức.`,
+      none_option: `Tắt`,
+      pluralkit_option: `PluralKit`,
+      pluralbuddy_option: `PluralBuddy`,
+      pluralbuddy_unavailable_title: `Không thể dùng PluralBuddy`,
+      pluralbuddy_unavailable_description: `Hiện không thể xác minh tin nhắn PluralBuddy tại đây. Lựa chọn của bạn không thay đổi.`,
+      instance_unavailable_title: `Không thể dùng máy chủ`,
+      instance_unavailable_description: `Máy chủ proxy tin nhắn đó hiện không khả dụng. Lựa chọn của bạn không thay đổi.`,
+      already_selected_title: `Không có thay đổi nào`,
+      already_selected_description: `Dịch vụ proxy tin nhắn của bạn đã được đặt thành **{service}**.`,
+      enabled_success_title: `Đã bật dịch vụ proxy tin nhắn`,
+      pluralkit_enabled_success_description: `**{service}** hiện là dịch vụ proxy tin nhắn đã chọn của bạn.
+
+Khi mình thấy tin nhắn từ bạn, mình sẽ đợi khoảng {delay_seconds} giây trước khi phản hồi, phòng trường hợp PluralKit xóa và đăng lại tin nhắn qua webhook proxy. Lần đầu tiên mình thấy một thành viên trong hệ thống của bạn, mọi văn bản tiểu sử công khai họ đã đặt trên PluralKit có thể được lưu làm bộ nhớ khởi đầu cho họ. Nếu hệ thống của bạn có phần mô tả công khai, mình cũng sẽ giữ lại để có thể đọc trong khi các thành viên của bạn trò chuyện với mình.`,
+      pluralbuddy_enabled_success_description: `**{service}** hiện là dịch vụ proxy tin nhắn đã chọn của bạn.
+
+Khi mình thấy tin nhắn từ bạn, mình sẽ đợi khoảng {delay_seconds} giây cho một bài đăng lại bằng proxy có thể xảy ra. PluralBuddy xác nhận bài đăng lại, tài khoản chủ và alter, nhưng API của dịch vụ này không định danh tin nhắn gốc. Một bài đăng lại đến muộn đôi khi có thể tạo ra câu trả lời thứ hai. TomoriBot lưu trữ từng alter sau tin nhắn xác minh đầu tiên của họ và giữ lại các danh tính đã lưu khi bạn chuyển đổi dịch vụ hoặc tắt tính năng proxy.`,
+      disabled_success_title: `Đã tắt dịch vụ proxy tin nhắn`,
+      disabled_success_description: `Tính năng xử lý proxy tin nhắn hiện đã **tắt** đối với tài khoản của bạn. Tin nhắn của bạn sẽ được xử lý bình thường mà không cần đợi bài đăng lại bằng proxy. Các danh tính và bộ nhớ đã lưu vẫn khả dụng qua /personal config và /personal memories.`,
     },
   },
 };

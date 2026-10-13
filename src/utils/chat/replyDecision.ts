@@ -11,6 +11,7 @@ import {
   isAutochatConfiguredChannel,
   isAutochatCounterHit,
   isAutochatQualifyingMessage,
+  isMessageProxyMessage,
   isSelfTriggerMessage,
   isMatrixRelayMessage as isTrustedMatrixRelayMessage,
 } from "@/utils/chat/triggerProcessor";
@@ -35,10 +36,11 @@ export function shouldBotReply(
 ): boolean {
   const isSelfMessage = isSelfTriggerMessage(message, allPersonas);
   const isMatrixRelayMessage = isTrustedMatrixRelayMessage(message);
+  const isMessageProxy = isMessageProxyMessage(message);
   const rawCascadeLimit = tomoriState.config.cascade_limit ?? DEFAULT_CASCADE_LIMIT;
   const cascadeLimit = Math.min(Math.max(rawCascadeLimit, 0), MAX_CASCADE_LIMIT);
 
-  if (message.webhookId && !isSelfMessage && !isMatrixRelayMessage) {
+  if (message.webhookId && !isSelfMessage && !isMatrixRelayMessage && !isMessageProxy) {
     return false;
   }
   if (isSelfMessage && cascadeLimit <= 0) {
@@ -52,7 +54,7 @@ export function shouldBotReply(
   const isVoiceChannel =
     message.channel.type === ChannelType.GuildVoice || message.channel.type === ChannelType.GuildStageVoice;
   if (
-    (message.author.bot && (!isSelfMessage || cascadeLimit <= 0) && !isMatrixRelayMessage) ||
+    (message.author.bot && (!isSelfMessage || cascadeLimit <= 0) && !isMatrixRelayMessage && !isMessageProxy) ||
     message.content.startsWith("!") ||
     !(
       message.channel instanceof TextChannel ||
@@ -97,7 +99,7 @@ export function shouldBotReply(
       isReplyToBot = true;
       isReplyToPersona = true;
       replyPersonaTarget = mainPersona ?? null;
-    } else if (referenceMessage?.webhookId) {
+    } else if (referenceMessage?.webhookId && !isMessageProxyMessage(referenceMessage)) {
       const webhookReplyTarget = resolveReferencedWebhookTarget(referenceMessage, personaByNickname, message.guild);
       if (webhookReplyTarget.replyPersona) {
         isReplyToPersona = true;

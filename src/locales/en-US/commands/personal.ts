@@ -27,6 +27,7 @@ TomoriBot will treat you as a new user from your next message.`,
     },
     memories: {
       description: `Manage your personal long-term memories and short-term conversational context.`,
+      identity_description: `Message-proxy identity to edit. Works even when message proxy is off.`,
       outdated_panel: `This panel is outdated. Use {command} to open a fresh panel.`,
       title: `Personal Memories`,
       category_global: `Global`,
@@ -111,6 +112,7 @@ TomoriBot will treat you as a new user from your next message.`,
     },
     config: {
       description: `Manage your personal preferences, privacy, models, and profile.`,
+      identity_description: `Message-proxy identity to edit. Works even when message proxy is off.`,
       outdated_panel: `This panel is outdated. Use {command} to open a fresh panel.`,
       category_profile: `Profile`,
       category_privacy: `Privacy`,
@@ -530,6 +532,29 @@ Use Clear Prompt to remove it.`,
     },
     "deliberate-tool-mode": {
       description: `Set your personal deliberate tool mode preference.`,
+    },
+    "message-proxy": {
+      description: `Choose a supported message proxy service for your account.`,
+      service_description: `The message proxy service to use, or Off to disable message proxy handling.`,
+      instance_description: `An instance approved by the bot host. Leave empty for the official instance.`,
+      none_option: `Off`,
+      pluralkit_option: `PluralKit`,
+      pluralbuddy_option: `PluralBuddy`,
+      pluralbuddy_unavailable_title: `PluralBuddy Unavailable`,
+      pluralbuddy_unavailable_description: `PluralBuddy message verification is unavailable here. Your selection was not changed.`,
+      instance_unavailable_title: `Instance Unavailable`,
+      instance_unavailable_description: `That message proxy instance is unavailable. Your selection was not changed.`,
+      already_selected_title: `No Changes Made`,
+      already_selected_description: `Your message proxy service is already set to **{service}**.`,
+      enabled_success_title: `Message Proxy Service Enabled`,
+      pluralkit_enabled_success_description: `**{service}** is now your selected message proxy service.
+
+When I see a message from you, I'll wait about {delay_seconds}s before responding, in case PluralKit deletes and reposts it through a proxy webhook. The first time I see one of your system's members, any public bio text they've set on PluralKit may be saved as a starting memory for them. If your system has a public description, I'll also keep it so I can read it while your members are talking with me.`,
+      pluralbuddy_enabled_success_description: `**{service}** is now your selected message proxy service.
+
+When I see a message from you, I'll wait about {delay_seconds}s for a possible proxy repost. PluralBuddy confirms the repost, host account, and alter, but its API does not identify the original message. A late repost can occasionally produce a second reply. TomoriBot stores each alter after their first verified message and keeps stored identities when you switch services or turn proxying off.`,
+      disabled_success_title: `Message Proxy Service Disabled`,
+      disabled_success_description: `Message proxy handling is now **disabled** for your account. Your messages will be handled normally, without waiting for a possible proxy repost. Stored identities and memories remain available through /personal config and /personal memories.`,
     },
   },
 };

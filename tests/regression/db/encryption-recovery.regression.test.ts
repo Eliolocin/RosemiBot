@@ -99,6 +99,11 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Encrypted credential recovery", () => {
     await testSql`INSERT INTO guild_mcp_servers (server_id, name, url, auth_token, key_version) VALUES (${serverId}, 'synthetic', 'https://mcp.example', ${encrypted[2]}, 4), (${serverId}, 'anonymous', 'https://anonymous.example', NULL, 9)`;
     await testSql`INSERT INTO discord_managed_webhooks (guild_disc_id, kind, channel_disc_id, webhook_disc_id, webhook_token, key_version) VALUES ('_recovery_guild', 'persona', '_recovery_channel', '_recovery_webhook', ${encrypted[0]}, NULL)`;
     await testSql`INSERT INTO server_model_configs (server_id, api_key, key_version) VALUES (${serverId}, ${encrypted[1]}, 2)`;
+    await testSql`INSERT INTO pluralbuddy_oauth_connections (
+      instance_id, origin, client_id, client_secret, client_secret_key_version,
+      refresh_token, refresh_token_key_version, access_token, access_token_key_version, access_expires_at
+    ) VALUES ('pluralbuddy:official', 'https://pluralbuddy.app', 'synthetic_client', ${encrypted[0]}, 1,
+      ${encrypted[1]}, 2, ${encrypted[2]}, 4, NOW() + INTERVAL '1 hour')`;
     expect((await run("backupData", ["--backup"])).code).toBe(0);
     const bundle = join(childEnv.TOMORI_BACKUP_DIR ?? "", readdirSync(childEnv.TOMORI_BACKUP_DIR ?? "")[0]);
     const manifest = JSON.parse(readFileSync(join(bundle, "bundle_info.json"), "utf8"));
@@ -123,6 +128,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Encrypted credential recovery", () => {
   });
 
   afterAll(async () => {
+    await testSql`DELETE FROM pluralbuddy_oauth_connections WHERE instance_id = 'pluralbuddy:official'`;
     await testSql`DELETE FROM discord_managed_webhooks WHERE webhook_disc_id = '_recovery_webhook'`;
     await testSql`DELETE FROM servers WHERE server_id = ${serverId}`;
     await testSql`DELETE FROM users WHERE user_id = ${userId}`;
@@ -152,7 +158,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Encrypted credential recovery", () => {
       }
     } finally {
       for (const { target, row } of originals) {
-        await testSql`UPDATE ${testSql(`public.${target.table}`)} SET ${testSql(target.column)} = ${row.ciphertext}, key_version = ${row.key_version} WHERE ${testSql(target.id)} = ${row.id}`;
+        await testSql`UPDATE ${testSql(`public.${target.table}`)} SET ${testSql(target.column)} = ${row.ciphertext}, ${testSql("keyVersion" in target ? target.keyVersion : "key_version")} = ${row.key_version} WHERE ${testSql(target.id)} = ${row.id}`;
       }
     }
     const [failedRow] =
@@ -219,6 +225,36 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Encrypted credential recovery", () => {
       await testSql`SELECT pgp_sym_decrypt(api_key, ${KEYS.CRYPTO_SECRET_V4}) AS plaintext, key_version FROM opt_api_keys WHERE opt_api_key_id = ${row.id}`;
     expect(after.plaintext).toBe(replacement);
     expect(after.key_version).toBe(4);
+  });
+
+  it("requires recovery keys for every PluralBuddy OAuth credential field", async () => {
+    for (const column of ["client_secret", "refresh_token", "access_token"] as const) {
+      const versionColumn = `${column}_key_version`;
+      await testSql`UPDATE pluralbuddy_oauth_connections
+        SET ${testSql(column)} = pgp_sym_encrypt(${CREDENTIAL}, ${KEYS.CRYPTO_SECRET_V2}),
+          ${testSql(versionColumn)} = 2 WHERE instance_id = 'pluralbuddy:official'`;
+      try {
+        expect((await run("backupData", ["--backup"])).code).toBe(0);
+        const latest = readdirSync(childEnv.TOMORI_BACKUP_DIR ?? "")
+          .sort()
+          .at(-1);
+        if (!latest) throw new Error("Missing OAuth recovery bundle.");
+        const bundle = join(childEnv.TOMORI_BACKUP_DIR ?? "", latest);
+        const manifest = JSON.parse(readFileSync(join(bundle, "bundle_info.json"), "utf8"));
+        expect(manifest.requiredKeyVersions).toEqual([2, 4]);
+        await testSql`UPDATE servers SET server_disc_id = '_oauth_recovery_sentinel' WHERE server_id = ${serverId}`;
+        expect((await run("backupData", ["--restore", "--from", bundle], { CRYPTO_SECRET_V2: undefined })).code).toBe(
+          1,
+        );
+        const [sentinel] = await testSql`SELECT server_disc_id FROM servers WHERE server_id = ${serverId}`;
+        expect(sentinel.server_disc_id).toBe("_oauth_recovery_sentinel");
+      } finally {
+        await testSql`UPDATE pluralbuddy_oauth_connections
+          SET ${testSql(column)} = pgp_sym_encrypt(${CREDENTIAL}, ${KEYS.CRYPTO_SECRET_V4}),
+            ${testSql(versionColumn)} = 4 WHERE instance_id = 'pluralbuddy:official'`;
+        await testSql`UPDATE servers SET server_disc_id = '_encryption_recovery_server' WHERE server_id = ${serverId}`;
+      }
+    }
   });
 
   it("restores database-only and legacy bundles and rejects missing or wrong keys before destructive SQL", async () => {

@@ -11,7 +11,7 @@ sidebar:
 
 Todos os comandos de barra (slash commands) atualmente registrados pela TomoriBot, gerados a partir dos mesmos construtores de comando e descrições em português usados para o registro no Discord (descrições ainda não traduzidas aparecem em inglês).
 
-Grupos de comandos de nível superior: **41**. Comandos de barra executáveis: **85**.
+Grupos de comandos de nível superior: **41**. Comandos de barra executáveis: **86**.
 
 ## `/comment`
 
@@ -238,6 +238,7 @@ Gerencie suas configurações pessoais
 | `/personal config` | Gerencie suas preferências pessoais, privacidade, modelos e perfil. |
 | `/personal language` | Escolha o idioma em que a TomoriBot fala com você. |
 | `/personal memories` | Gerencie suas memórias pessoais de longo prazo e contexto conversacional de curto prazo. |
+| `/personal message-proxy` | Escolha um serviço de proxy de mensagens compatível para sua conta. |
 | `/personal nuke` | Apague tudo que o TomoriBot armazena sobre você, em todos os servidores. |
 | `/personal providers` | Gerencie suas credenciais de provedor pessoais, endpoints e catálogos de modelos. |
 

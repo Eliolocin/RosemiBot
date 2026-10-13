@@ -1,6 +1,8 @@
 import type { Client } from "discord.js";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
 import type { AssembledServerConfig, PersonaUserBlockRow, PersonaUserBlockType } from "@/types/db/schema";
+import { userRepository } from "@/utils/db/repositories";
+import { isExternalUserId } from "@/utils/externalIdentityUserId";
 import { formatTimeWithOffset, formatUTCOffset } from "@/utils/text/timezoneHelper";
 import type { ToolPromptMacroResolver } from "@/utils/tools/toolPromptMacros";
 
@@ -56,6 +58,9 @@ export async function buildPersonaUserBlocksContextItem(params: {
 }
 
 async function resolveBlockedUserDisplayName(client: Client, guildId: string, userDiscId: string): Promise<string> {
+  if (isExternalUserId(userDiscId)) {
+    return (await userRepository.loadByDiscordId(userDiscId))?.user_nickname ?? userDiscId;
+  }
   const guild = client.guilds.cache.get(guildId) ?? (await client.guilds.fetch(guildId).catch(() => null));
   const member = guild ? await guild.members.fetch(userDiscId).catch(() => null) : null;
   const user = member?.user ?? (await client.users.fetch(userDiscId).catch(() => null));

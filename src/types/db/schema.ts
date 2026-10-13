@@ -61,6 +61,8 @@ export const userSchema = z.object({
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).default("follow"), // Added May 2026 - User-scoped deliberate tool mode tri-state
   personal_server_fallback_enabled: z.boolean().default(true), // Whether a failed personal text route may fall back to the server's model
   timezone_offset: z.number().int().min(-12).max(14).nullable().optional(), // Added June 2026 - Personal UTC offset; NULL = not set / opt-out
+  message_proxy_service: z.string().nullable().default(null),
+  message_proxy_instance_id: z.string().nullable().default(null),
   prefix_override: z.string().nullable().optional(),
   suffix_override: z.string().nullable().optional(),
   gender_identity: z.string().nullable().optional(),
@@ -212,6 +214,32 @@ export const personaAutochRuntimeStateSchema = z.object({
   updated_at: z.date().optional(),
 });
 export type PersonaAutochRuntimeStateRow = z.infer<typeof personaAutochRuntimeStateSchema>;
+export const messageProxyNamespaceSchema = z.object({
+  message_proxy_namespace_id: z.number().int().optional(),
+  service_id: z.string().min(1),
+  instance_id: z.string().min(1),
+  namespace_key: z.string().min(1),
+  short_id: z.string().nullable().optional(),
+  display_name: z.string().nullable().optional(),
+  tag: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  created_at: z.date().optional(),
+  updated_at: z.date().optional(),
+});
+export type MessageProxyNamespaceRow = z.infer<typeof messageProxyNamespaceSchema>;
+
+export const messageProxyIdentitySchema = z.object({
+  message_proxy_identity_id: z.number().int().optional(),
+  message_proxy_namespace_id: z.number().int(),
+  external_identity_id: z.number().int(),
+  short_id: z.string().nullable().optional(),
+  display_name: z.string().nullable().optional(),
+  avatar_url: z.string().nullable().optional(),
+  created_at: z.date().optional(),
+  updated_at: z.date().optional(),
+});
+export type MessageProxyIdentityRow = z.infer<typeof messageProxyIdentitySchema>;
+
 /**
  * Schema for voice_samples table : reference audio clips for local TTS voice cloning.
  * file_path stores either a production S3/CloudFront URL or a local data/voice-samples path.

@@ -27,6 +27,7 @@ TomoriBot te tratará como un usuario nuevo a partir de tu próximo mensaje.`,
     },
     memories: {
       description: `Administra tus memorias personales a largo plazo y contexto corto de conversación.`,
+      identity_description: `Identidad de proxy de mensajes a editar. Funciona incluso con el proxy desactivado.`,
       outdated_panel: `Este panel está desactualizado. Usa {command} para abrir uno nuevo.`,
       title: `Memorias personales`,
       category_global: `Global`,
@@ -112,6 +113,7 @@ TomoriBot te tratará como un usuario nuevo a partir de tu próximo mensaje.`,
     },
     config: {
       description: `Administra tus preferencias personales, privacidad, modelos y perfil.`,
+      identity_description: `Identidad de proxy de mensajes a editar. Funciona incluso con el proxy desactivado.`,
       outdated_panel: `Este panel está desactualizado. Usa {command} para abrir uno nuevo.`,
       category_profile: `Perfil`,
       category_privacy: `Privacidad`,
@@ -533,6 +535,29 @@ Usa Borrar prompt para eliminarlo.`,
     },
     "deliberate-tool-mode": {
       description: `Establece tu preferencia de modo de herramientas deliberado personal.`,
+    },
+    "message-proxy": {
+      description: `Elige un servicio de proxy de mensajes compatible para tu cuenta.`,
+      service_description: `El servicio de proxy de mensajes a usar, o Desactivado para inhabilitar el procesamiento.`,
+      instance_description: `Una instancia aprobada por quien aloja el bot. Déjalo vacío para usar la instancia oficial.`,
+      none_option: `Desactivado`,
+      pluralkit_option: `PluralKit`,
+      pluralbuddy_option: `PluralBuddy`,
+      pluralbuddy_unavailable_title: `PluralBuddy no disponible`,
+      pluralbuddy_unavailable_description: `La verificación de mensajes de PluralBuddy no está disponible aquí. Tu selección no cambió.`,
+      instance_unavailable_title: `Instancia no disponible`,
+      instance_unavailable_description: `Esa instancia de proxy de mensajes no está disponible. Tu selección no cambió.`,
+      already_selected_title: `No se realizaron cambios`,
+      already_selected_description: `Tu servicio de proxy de mensajes ya está configurado en **{service}**.`,
+      enabled_success_title: `Servicio de proxy de mensajes activado`,
+      pluralkit_enabled_success_description: `**{service}** es ahora tu servicio de proxy de mensajes seleccionado.
+
+Cuando vea un mensaje tuyo, esperaré unos {delay_seconds} s antes de responder, por si PluralKit lo elimina y lo vuelve a publicar mediante un webhook de proxy. La primera vez que vea a un miembro de tu sistema, cualquier biografía pública que haya configurado en PluralKit podrá guardarse como memoria inicial para él. Si tu sistema tiene una descripción pública, también la conservaré para poder leerla mientras tus miembros conversan conmigo.`,
+      pluralbuddy_enabled_success_description: `**{service}** es ahora tu servicio de proxy de mensajes seleccionado.
+
+Cuando vea un mensaje tuyo, esperaré unos {delay_seconds} s a una posible republicación del proxy. PluralBuddy confirma la republicación, la cuenta anfitriona y el alter, pero su API no identifica el mensaje original. Una republicación tardía puede generar ocasionalmente una segunda respuesta. TomoriBot almacena cada alter tras su primer mensaje verificado y conserva las identidades guardadas al cambiar de servicio o desactivar el proxy.`,
+      disabled_success_title: `Servicio de proxy de mensajes desactivado`,
+      disabled_success_description: `El procesamiento del proxy de mensajes ahora está **desactivado** para tu cuenta. Tus mensajes se procesarán con normalidad, sin esperar una posible republicación del proxy. Las identidades y memorias almacenadas siguen disponibles a través de /personal config y /personal memories.`,
     },
   },
 };
