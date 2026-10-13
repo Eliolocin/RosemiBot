@@ -40,6 +40,18 @@ xpu = [
 
 [tool.uv]
 package = false
+# Keep transitive HTTP dependencies above their security fixes.
+constraint-dependencies = [
+    "multidict>=6.9.1",
+    "urllib3>=2.8.0",
+    "werkzeug>=3.1.9",
+]
+# Upstream audio and tokenizer metadata cap these below patched releases.
+# Remove each override when its parent admits the patched version.
+override-dependencies = [
+    "protobuf>=5.29.6,<6",
+    "sentencepiece>=0.2.1,<0.3",
+]
 conflicts = [
     [
         { extra = "cpu" },
