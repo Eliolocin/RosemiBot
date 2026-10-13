@@ -7,10 +7,10 @@ aiGenerated: false
 ---
 
 :::caution[Operator runbook]
-This page targets the single TomoriBot production VM and its mounted secret file. The resource names
-and container name below are literal, not placeholders, because this is a runbook rather than a
-guide. Self-hosters should read
-[Azure Production Deployment](/architecture/cloud/azure-production-deployment/) instead.
+These procedures require Azure permission to run commands on the target VM. Replace
+`<resource-group>`, `<vm-name>`, and `<container-name>` with values from your deployment configuration.
+Confirm the subscription with `az account show` and the container name with `docker ps` on the VM.
+See [Azure Production Deployment](./azure-production-deployment) for the access model.
 :::
 
 Host lockdown removes every inbound NSG allow rule, so `ssh` cannot reach the VM and the PostgreSQL
@@ -18,11 +18,11 @@ firewall does not admit an operator workstation. Ad-hoc production queries there
 bot container, driven through VM Run Command**. This is the supported path for incident triage; do
 not reopen SSH or widen the database firewall for it.
 
-Credentials are not in the container environment: Compose mounts them as a JSON secret file at
-`SECRET_FILE=/run/secrets/tomoribot.json`, so `docker exec … env` shows empty `POSTGRES_*`. Read them
-from that file. The container root filesystem is read-only, so `docker cp` fails; pass the script on
-stdin instead. Write the query as a local file, base64 it to survive Run Command's shell quoting, and
-decode it into the host's `/tmp`:
+Compose mounts credentials through `SECRET_FILE`; startup also loads them into the bot process's
+environment. A new `docker exec` process does not inherit that runtime environment, so the probe
+reads the mounted file without printing its contents. The container root filesystem is read-only,
+so pass the script on stdin. Write the query as a local file, base64 it to survive Run Command's
+shell quoting, and decode it into the host's `/tmp`:
 
 ```bash
 # probe.js uses Bun.SQL directly: the app's own client.ts is not importable via `bun -e`
@@ -38,9 +38,9 @@ await sql.end();
 EOF
 
 B64=$(base64 -w0 probe.js)
-printf 'echo %s | base64 -d > /tmp/probe.js\ndocker exec -i tomoribot-azure-tomoribot-1 bun -e "$(cat /tmp/probe.js)"\n' "$B64" > run.sh
+printf 'echo %s | base64 -d > /tmp/probe.js\ndocker exec -i "<container-name>" bun -e "$(cat /tmp/probe.js)"\n' "$B64" > run.sh
 
-az vm run-command invoke -g tomoribot-rg -n tomoribot-vm \
+az vm run-command invoke -g "<resource-group>" -n "<vm-name>" \
   --command-id RunShellScript --scripts @run.sh \
   --query "value[0].message" -o tsv
 ```
@@ -51,8 +51,6 @@ Notes that save a round trip:
   `ERR_POSTGRES_CONNECTION_CLOSED`.
 - `az` lives at `C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin` and may need adding to `PATH`
   inside a tool shell.
-- The same wrapper reaches the Discord REST API using `s.DISCORD_TOKEN`, which is how a
-  `channel_disc_id` or bot-authored message is resolved to a real channel or user during triage.
 - Keep these scripts read-only. Route writes through a migration or an explicitly confirmed
   one-off, never through casual triage.
 
@@ -67,10 +65,8 @@ The Azure Monitor Agent was removed once the bot began writing its own telemetry
 it or lose the index. There are two producers, both emitted every `CACHE_METRICS_INTERVAL_MS`
 (5 min): `cache_sizes` for this process's caches and memory, and `host_memory` for the host's.
 
-**Memory growth. Aggregate with `min()`, never `avg()`.** `external_mb` sawtooths roughly 250 MB
-between GC cycles against daily growth under 100 MB, so an hourly mean reports which GC phase each
-sample landed in rather than accumulation. The post-GC floor is the baseline that survives
-collection:
+**Memory growth.** Compare post-GC floors with `min()`: an hourly mean can confuse GC cycles with
+retained growth. The minimum estimates what survives collection:
 
 ```sql
 SELECT date_trunc('hour', created_at) AS hr, count(*) AS n,
@@ -82,11 +78,8 @@ SELECT date_trunc('hour', created_at) AS hr, count(*) AS n,
  GROUP BY 1 ORDER BY 1;
 ```
 
-Fit only **full 12-sample hours**: a `min()` over a partial hour is biased high and tilts the slope
-at whichever end it sits. Prefer `array_buffers_mb`, whose residual scatter is about 1.6 MB, over
-`external_mb`, whose 95% confidence interval on a 10 h window spans zero. Splitting a window into
-first and second halves distinguishes a bounded working set from a leak faster than any fit does: a
-plateau is not a leak.
+Compare complete sampling windows: a minimum over a partial hour can be biased high. Inspect both
+`array_buffers_mb` and `external_mb`, and compare successive windows before treating growth as a leak.
 
 **Did the emitter stall?** Use gaps, not counts. A restart *adds* a sample rather than costing one,
 because `cacheMetricsLogger.ts:214` emits before arming the interval, so a count cannot separate a
@@ -98,7 +91,7 @@ SELECT created_at, created_at - lag(created_at) OVER (ORDER BY created_at) AS ga
  ORDER BY gap DESC NULLS LAST LIMIT 5;
 ```
 
-Anything beyond ~5 min is a stall. Steady state runs 12.09 samples/hour.
+Compare gaps with the configured `CACHE_METRICS_INTERVAL_MS`, allowing for sampling jitter.
 
 **Cache entry counts**, which is the series that named the four lazy-expiry caches:
 
@@ -271,25 +264,29 @@ reports it cannot connect, the cause is almost always an ISP address rotation: u
 not just the Azure rule, because the next `terraform apply` reverts a direct edit.
 
 **Errors** are in `error_logs`, but never size an incident from it. Insert failures are swallowed by
-design (`logger.ts:323-325`), so it under-records during exactly the pool-timeout incidents it exists
-to capture: one incident produced 2,775 level-50 lines in the host JSONL and about 21 rows here. The
-JSONL is the witness; the table is useful for the error-type *mix*, not the volume.
+design (`logger.ts:323-325`), so it under-records when the database is unreachable. Use the host
+JSONL for incident volume and the table for the error-type mix.
 
 ### The Log Analytics path is historical
 
 `api.loganalytics.io` still answers for data already ingested, up to the workspace retention window,
 so the recipe below stays useful for looking backwards. It will not show anything newer than the
-agent removal.
+agent removal. Retrieve the workspace ID through authenticated Azure access:
+
+```bash
+az monitor log-analytics workspace show \
+  --resource-group "<workspace-resource-group>" --workspace-name "<workspace-name>" \
+  --query customerId -o tsv
+```
 
 ```bash
 TOKEN=$(az account get-access-token --resource https://api.loganalytics.io --query accessToken -o tsv)
-curl -s -X POST "https://api.loganalytics.io/v1/workspaces/c29999d0-e1bf-47c7-bfe2-dbfddc476b53/query" \
+curl -s -X POST "https://api.loganalytics.io/v1/workspaces/<workspace-id>/query" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"query":"TomoriBotCacheMetrics_CL | where TimeGenerated > ago(24h) | summarize n=count()"}'
 ```
 
-The `log-analytics` CLI extension has no stable version and will not install, so
-`az monitor log-analytics query` fails outright. REST is the only route.
+The REST query avoids depending on the optional `log-analytics` CLI extension.
 
 ## Host memory and swap forensics
 
@@ -308,7 +305,7 @@ echo "=== EFFECTIVE LIMIT ==="; docker inspect $(docker ps -q --filter name=tomo
 ```
 
 ```bash
-az vm run-command invoke -g tomoribot-rg -n tomoribot-vm \
+az vm run-command invoke -g "<resource-group>" -n "<vm-name>" \
   --command-id RunShellScript --scripts @mem-triage.sh \
   --query "value[0].message" -o tsv
 ```
@@ -337,7 +334,7 @@ for p in /proc/[0-9]*; do [ "$(cat $p/comm 2>/dev/null)" = "bun" ] && \
 actually killed, so it settles "was this an OOM" in one reading:
 
 ```sh
-C=$(docker inspect -f "{{.Id}}" tomoribot-azure-tomoribot-1); B=/sys/fs/cgroup/system.slice/docker-$C.scope
+C=$(docker inspect -f "{{.Id}}" "<container-name>"); B=/sys/fs/cgroup/system.slice/docker-$C.scope
 echo "current=$(cat $B/memory.current) swap=$(cat $B/memory.swap.current) swapmax=$(cat $B/memory.swap.max)"
 cat $B/memory.events
 ```
@@ -472,15 +469,14 @@ Confirm it with the error mix rather than the symptom:
 grep -c "Idle timeout reached" /var/log/tomoribot/tomoribot.jsonl
 ```
 
-A large count arriving inside one or two minutes is a pool-wide retirement, which means host
-pressure. Check the database itself before suspecting it: during one of these the server sat at
-single-digit connections and near-zero IOPS, so the fault is entirely client-side.
+A burst of retirements can indicate host pressure. Check database connections and IOPS alongside
+host metrics before attributing the failure to either side.
 
 Then check swap depth against uptime, which is what actually predicts this failure:
 
 ```sh
-docker inspect -f '{{.State.StartedAt}}' tomoribot-azure-tomoribot-1
-C=$(docker inspect -f "{{.Id}}" tomoribot-azure-tomoribot-1)
+docker inspect -f '{{.State.StartedAt}}' "<container-name>"
+C=$(docker inspect -f "{{.Id}}" "<container-name>")
 echo $(( $(cat /sys/fs/cgroup/system.slice/docker-$C.scope/memory.swap.current) / 1048576 ))MB
 ```
 
@@ -490,8 +486,8 @@ half as much swap immediately after a restart as it does days later.
 ### Capturing a heap snapshot: RETIRED, do not do this
 
 > **The method is retired. Do not take a heap snapshot on a memory-constrained host, on a larger
-> one, or on any other.** It was attempted twice and caused an outage both times. What follows is
-> the reasoning, so it is not rediscovered, rather than a procedure to follow.
+> one, or on any other.** Serialization can increase memory pressure and starve the main thread.
+> Use the cheaper measurements below during production triage.
 
 `cache_sizes` counts cache *entries*, so it can name a cache that grows without telling you how many
 bytes it holds, and it does not decompose `external`/`array_buffers` at all. A heap snapshot is the
@@ -547,11 +543,10 @@ expensive. The snapshot serializes a large fraction of the live heap as a single
 allocation roughly doubles at the worst possible moment, and with headroom the *serialization itself*
 is what never gives the thread back.
 
-`HEAP_SNAPSHOT_DIR` is still set in the Azure compose file and the `SIGUSR2` handler is still armed,
-so the capability has not been removed from the code. Treat that as a loaded footgun rather than as
-permission: **the signal is deliberately not documented here.** If a future change genuinely needs
-heap attribution, move the serialization off the main thread first and prove it on a throwaway host,
-because that is the defect, not the host size.
+Azure Compose leaves `HEAP_SNAPSHOT_DIR` empty by default, and no handler is registered without it.
+Check the effective deployment configuration before assuming diagnostics are enabled. Keep snapshots
+disabled during routine operation; any future diagnostic method must be proved on a throwaway host
+and keep secret-bearing files outside log shipping.
 
 One recovery note worth keeping, since it applies to any guest-agent starvation: if
 `instanceView.vmAgent.statuses[0]` reads `Not Ready`, Run Command is gone and `az vm restart` is the
@@ -600,7 +595,7 @@ Run these in order. Each one invalidates the next if it fails, and the first two
 which is the only in-guest access path. If `az vm run-command invoke` hangs past a couple of minutes:
 
 ```bash
-az vm get-instance-view -g tomoribot-rg -n tomoribot-vm \
+az vm get-instance-view -g "<resource-group>" -n "<vm-name>" \
   --query "{power:instanceView.statuses[?starts_with(code,'PowerState')].displayStatus|[0], \
             agent:instanceView.vmAgent.statuses[0].displayStatus}" -o json
 ```
@@ -610,11 +605,11 @@ az vm get-instance-view -g tomoribot-rg -n tomoribot-vm \
 need the guest agent:
 
 ```bash
-az vm restart -g tomoribot-rg -n tomoribot-vm
+az vm restart -g "<resource-group>" -n "<vm-name>"
 ```
 
 This loses no forensics: the observer log, `tomoribot.jsonl`, and journald are all on persistent disk.
-Prefer `docker restart tomoribot-azure-tomoribot-1` whenever the guest still answers, since it is far
+Prefer `docker restart "<container-name>"` whenever the guest still answers, since it is far
 faster and avoids the `swapoff` OOM that zram teardown causes on shutdown.
 
 **1. Was anything actually killed?** A restarted process and a hung process need opposite fixes.
@@ -651,7 +646,7 @@ these. Query the freeze window at `PT15M`:
 ```bash
 for M in "Percentage CPU" "CPU Credits Remaining" "OS Disk Queue Depth" "OS Disk Latency" \
          "OS Disk Read Operations/Sec" "OS Disk Write Operations/Sec" "Available Memory Bytes"; do
-  az monitor metrics list --resource tomoribot-vm --resource-group tomoribot-rg \
+  az monitor metrics list --resource "<vm-name>" --resource-group "<resource-group>" \
     --resource-type Microsoft.Compute/virtualMachines --metrics "$M" \
     --start-time <start>Z --end-time <end>Z --interval PT15M --aggregation Average -o table
 done
@@ -674,15 +669,15 @@ slope, erasing exactly the distinction a dwell-based trigger depends on. Note al
 series can lag its final buckets by longer than a 1-minute series, so an apparent cutoff at `PT5M`
 may just be an unclosed bucket rather than a stalled agent.
 
-A flat memory plateau with a storage stall and no kill is the zram livelock described in
-[Azure Production Deployment](/architecture/cloud/azure-production-deployment/). **There is currently
-no automatic recovery from it**, so clearing one means restarting the container or the VM by hand.
+A flat memory plateau with a storage stall and no kill is consistent with the zram livelock described
+in [Azure Production Deployment](./azure-production-deployment). Check `tomoribot-watchdog.timer`
+and its journal for attempted recovery. If recovery fails, use the container or VM restart path above.
 
 Before concluding a freeze is that livelock, rule out the opposite failure. A restart *loop* also
 presents as an unresponsive bot, and the two need opposite responses:
 
 ```sh
-docker inspect tomoribot-azure-tomoribot-1 --format 'restarts={{.RestartCount}} health={{.State.Health.Status}}'
+docker inspect "<container-name>" --format 'restarts={{.RestartCount}} health={{.State.Health.Status}}'
 systemctl is-active earlyoom systemd-oomd
 ```
 

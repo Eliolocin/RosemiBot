@@ -216,12 +216,11 @@ text over appending; do not narrate implementation branches.
    `meet-tomori/`) use everyday words. Self-hosting guides use plain words but keep every step,
    command, and setting. Contributor guides are recipes: files to touch, types and limits to satisfy,
    commands to run.
-4. A page centered on a cloud provider service goes under `docs/en/wiki/cloud/<provider>/` on
-   `release`. `docs/en/self-hosting/` is for provider-agnostic hosting on the user's own machines.
-5. This repo is public and every page outside `docs/en/wiki/` is indexed. Guides use placeholders
-   (`<gcp-project-id>`, `<resource-group>`); a literal value a reader would copy is a bug. Runbooks act
-   on our production, so they go in `docs/en/wiki/` (hidden + `noindex`) and keep real names. Never
-   write credentials, tenant IDs, or the production public IP into any page. Full rules:
+4. Cloud architecture and runbooks go under `docs/en/wiki/cloud/<provider>/` on `release`.
+   `docs/en/self-hosting/` is for provider-agnostic hosting on the user's own machines.
+5. All tracked docs are public, including `wiki/` and `release`; `hidden` and `noindex` do not restrict
+   access. Use placeholders for production names, IDs (including workspace IDs), and IPs. Never copy
+   credentials into docs or agent memory. Full rules:
    `docs/en/contributing/localization/docs-authoring.md` ("Audience").
 
 ## Maintaining This File

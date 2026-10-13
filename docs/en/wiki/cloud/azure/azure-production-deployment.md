@@ -19,7 +19,7 @@ workflow has `contents: read` by default, grants `id-token: write` only to
 federated credential subject must be exactly:
 
 ```text
-repo:Bredrumb/TomoriBot:environment:production
+repo:<github-owner>/<repository>:environment:production
 ```
 
 The GitHub deployment principal needs `Contributor` only on the deployment resource group and
@@ -62,9 +62,8 @@ The workflow deliberately separates recurring releases from one-time lifecycle o
 ### Progress watchdog
 
 Docker restarts a container that *exits* and leaves a merely `unhealthy` one alone, so neither
-covers the case where the process is alive and reporting healthy while making no progress. That gap
-is not theoretical: a long synchronous main-thread job once pinned the event loop for over fifteen
-hours while the gateway stayed connected and `/healthz` kept answering 200.
+covers a process that reports healthy while making no progress. A long synchronous main-thread job
+can stall handlers while the gateway remains connected and `/healthz` still answers 200.
 
 A host timer (`tomoribot-watchdog.timer`, every minute) probes `/healthz` and reads the
 `eventLoop.stalenessMs` field the bot publishes. Two shapes count as no progress, and they look
@@ -81,21 +80,17 @@ Four rules keep it from becoming a restart loop, and all of them are configured 
 `/etc/tomoribot/watchdog.conf`:
 
 - **Several failures in a window**, not one. Five of the last eight checks at a one-minute cadence,
-  so most of an eight-minute span. Acting on a single sample is how a naive threshold has already
-  taken this host down once. The window is not a strict streak because a starved host still answers
-  `/healthz` intermittently, and each answer reset the old consecutive counter: in one
-  memory-pressure outage it stayed at four or below for over three hours while the bot was unusable.
+  so most of an eight-minute span. A window tolerates intermittent successful probes without
+  forgetting a sustained stall.
 - **A startup grace period**, so a cold start is not read as a stall.
 - **A minimum interval between recycles.** A repeat inside that interval means the previous recycle
   did not fix it, which is a worse problem than a single stall, so it is logged as an alert instead
   of retried.
-- **Co-tenants first**, matching the scheduled recycle order. Recycling them alone was measured
-  cutting host IO pressure 43%, so the cheap rung sits below the expensive one.
+- **Co-tenants first**, matching the scheduled recycle order, to reclaim their memory before
+  restarting the bot.
 
-Both the watchdog and the scheduled recycle carry `TimeoutStartSec=600`, sized for a starved host
-rather than a healthy one, because a recycle only runs when the host is failing. At 180 seconds, every
-watchdog recycle in one outage was killed after the searxng restart alone used the budget, so the bot
-was never restarted.
+Both the watchdog and scheduled recycle carry `TimeoutStartSec=600`. Allow enough time for every
+service restart under host pressure; a timeout during a co-tenant restart can prevent bot recovery.
 
 **It ships armed** (`WATCHDOG_ARMED=true`) because production ran it disarmed through an observation
 period that logged zero would-act lines. On a new deployment, consider setting it to `false` first:
@@ -210,16 +205,12 @@ two data collection rule associations were Terraform-managed children of the VM 
 writing its own telemetry to PostgreSQL, at which point they were removed: this stack installs no
 monitoring agent, and `terraform.ci.tfvars` carries no data collection rule IDs.
 
-**The driver was memory, not cost.** On a host with 842 MB of usable RAM, the agent held roughly
-179 MB of resident set, a fifth of the machine spent shipping metrics that a table in a database the
-bot already holds a connection to can store instead. The bot now writes a row to `metric_samples`
-every `CACHE_METRICS_INTERVAL_MS`, and Grafana reads that table through the operator firewall rule
-it already needs. See [Caching](/architecture/subsystems/caching/) for the dual-sink design.
+The database sink avoids a monitoring agent's memory overhead on a constrained host. The bot writes
+to `metric_samples` every `CACHE_METRICS_INTERVAL_MS`, and Grafana reads that table through its
+operator firewall rule. See [Caching](/architecture/subsystems/caching/) for the dual-sink design.
 
 The three metric alerts are unaffected, because they read `Microsoft.Compute/virtualMachines`
-platform metrics served by the Azure guest agent rather than by the monitoring agent. That is
-measured rather than assumed: during a ten-hour window when the monitoring agent was dead, Available
-Memory Bytes and OS Disk Queue Depth both kept reporting.
+platform metrics served by the Azure guest agent rather than by the monitoring agent.
 
 Reinstating the pipeline is a rollback, not a rebuild. The Log Analytics workspace, its custom
 tables, the data collection endpoint, and the rule definitions were always externally managed, so
@@ -428,9 +419,8 @@ instructions for a server that is already configured.
 
 #### Pool telemetry
 
-A single cascade once produced 8,276 error lines from repositories each blaming their own subsystem,
-which buried the one fact that mattered and made the log a load source during the incident. Only the
-first retirement in an episode is now logged, as a `pool_event` record; the rest are counted into the
+A pool cascade can flood logs and add load during an incident. Only the first retirement in an
+episode is logged as a `pool_event` record; the rest are counted into the
 periodic `host_memory` metric sample as `pool_errors_5m`, `pool_lifetime_5m`, `pool_idle_5m`,
 `pool_other_5m`, `pool_retries_recovered_5m`, and `pool_retries_exhausted_5m`. `POOL_EVENT_EPISODE_QUIET_MS`
 (default 60000) sets how much silence starts a new episode.
@@ -518,9 +508,9 @@ sheds media load at 75% of that value and enters emergency cache clearing at 85%
 ceiling were lower than what the app believes it has, the container would be OOM-killed before it
 ever shed load.
 
-The value is sized against the `Standard_B2ats_v2`'s roughly 842 MB of usable RAM, not rounded up to
-a convenient number. A limit above physical memory is unreachable: RSS cannot climb to it, the guard
-never fires, and the kernel silently swaps the heap instead.
+Size the limit against usable RAM after reserving memory for the host and sidecars. A limit above
+physical memory is unreachable: RSS cannot climb to it, the guard never fires, and the kernel
+silently swaps the heap instead.
 
 `TOMORIBOT_MEMORY_SWAP_LIMIT_MB` (default 2048) sets Compose's `memswap_limit`, which is **total**
 memory plus swap, so the swap allowance is that figure minus `mem_limit`. It is declared explicitly
@@ -635,49 +625,17 @@ happens whenever a newer kernel has landed in the archive but the host has not r
 
 ### A free-memory threshold is the wrong trigger for it
 
-The obvious remedy is a userspace OOM daemon such as `earlyoom`, which kills the largest consumer
-when available memory crosses a threshold. **This was tried on this deployment and had to be
-reverted.** It is recorded here because the failure is instructive and easy to repeat.
+A userspace OOM daemon such as `earlyoom` can kill the largest consumer when available memory
+crosses a threshold. A cold-starting bot warming its caches can cross the same threshold briefly,
+so an instantaneous free-memory trigger can create a restart loop.
 
-`earlyoom` polls `MemAvailable` and acts on the instantaneous reading. Configured to fire at 120 MiB
-on an 843 MiB host, sized to sit between the measured healthy floor (~148 MiB) and the measured
-thrash plateau (~95 MiB), it killed the bot **21 times in 19 minutes**:
-
-```
-mem avail: 119 of 842 MiB (14.19%)
-low memory! at or below SIGTERM limits
-sending SIGTERM to process 56123 uid 1001 "bun": badness 1034, VmRSS 321 MiB
-```
-
-A cold-starting bot warming its caches crosses that threshold *transiently and harmlessly*, so each
-kill produced a restart that produced the next kill. The bot was less available than it had been with
-no protection at all. Two details make this trap easy to walk into:
-
-- `MemAvailable` counts reclaimable page cache, so it drops sharply during ordinary allocation bursts
-  and recovers on its own seconds later. The same 119 MiB reading means "warming up" and "livelocked"
-  at different moments.
-- The healthy floor and the failure plateau are only ~50 MiB apart on a host this small, so no
-  instantaneous threshold cleanly separates them.
-
-What actually distinguishes the two states is **duration, not depth**: a startup burst shows memory
-pressure for seconds, while the livelock held it for 80 minutes. The trigger therefore has to be a
-sustained-pressure signal (`/proc/pressure/memory`, as `systemd-oomd` uses, with a dwell window)
-rather than a single free-memory sample. An in-process event-loop lag watchdog that exits when its
-own timers are starved is a reasonable complement, since it measures the symptom users actually see.
-
-A later recurrence measured this directly rather than inferring it. Available memory touched the same
-120 MiB threshold and **recovered unaided within four minutes**, fourteen minutes before the genuine
-event began; the real livelock then held below that level continuously for the better part of an
-hour. Sustained memory pressure separated them by two orders of magnitude (`full` avg60 of 0.27 while
-healthy against 27.96 during the event) where free memory did not separate them at all.
+Use sustained-pressure measurements and a dwell window to distinguish startup bursts from a stall.
+Calibrate against your deployment in observe-only mode before allowing a detector to restart services.
 
 #### A detector that has to be scheduled cannot act while nothing is being scheduled
 
-This is the constraint that eliminates most homegrown answers, and it was learned the expensive way.
-A collector was deployed to gather exactly the data above, deliberately deprioritised with `Nice=10`
-and `IOSchedulingClass=idle` so it could never add to the load it was measuring. During the next
-livelock it recorded **nothing for 54 minutes**. The process was never killed: the service manager
-later stopped it cleanly and reported over a minute of consumed CPU. It simply never got scheduled.
+A detector that is paged out or deprived of IO can stop observing the host during the pressure
+it is meant to detect. Its scheduling and memory-residency requirements are part of the design.
 
 `IOSchedulingClass=idle` means "receive IO only when nothing else wants it", which during a
 disk-thrash livelock means never, so its own major page faults went unserviced. Deprioritising a

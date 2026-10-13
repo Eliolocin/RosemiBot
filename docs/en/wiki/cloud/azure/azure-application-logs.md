@@ -17,8 +17,7 @@ For monitoring a local instance with Grafana instead, see
 Everything below still works and is still supported. It is simply no longer what the reference
 deployment does: the Azure Monitor Agent was removed once the bot began writing its cache and
 process-memory samples straight into PostgreSQL, where Grafana already had a datasource. The reason
-was memory rather than cost. The agent held roughly 179 MB of resident set on a host with 842 MB of
-usable RAM, which is a fifth of the machine spent shipping telemetry.
+was the agent's memory overhead on a constrained host.
 
 Choose this pipeline if you want log *search* over structured error records, which a table of
 counters cannot give you. Choose the database sink if your host is small, you already run Grafana
@@ -167,15 +166,10 @@ the transform parser, so the Pino timestamp field must be accessed as `p["time"]
 
 ### Terraform ownership of VM attachments
 
-The existing workspace, DCE, DCR definitions, and custom tables remain external to Terraform, but
-the production VM's `AzureMonitorLinuxAgent` extension and its VM Insights/application-log DCR
-associations are Terraform-managed. Their complete, non-sensitive existing resource IDs are set in
-`terraform/azure/terraform.ci.tfvars` and must be updated if either DCR is deliberately replaced.
-
-This boundary is intentional: replacing the VM deletes its extensions and associations, while the
-workspace and DCRs survive. The next Terraform apply therefore restores collection without
-rewriting the existing streams, table schemas, or ingestion transforms. Do not re-create the
-workspace or DCR definitions merely because a replacement VM has no incoming data.
+The current Azure stack uses PostgreSQL telemetry and does not declare a monitoring-agent extension
+or DCR associations. If you add this pipeline, manage the extension and associations alongside the VM:
+replacing a VM removes those attachments while the workspace, DCE, DCRs, and tables can survive.
+Supply resource IDs through deployment configuration; keep public examples as placeholders.
 
 ## Step 4: Test ingestion end to end
 

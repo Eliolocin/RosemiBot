@@ -7,13 +7,13 @@ aiGenerated: false
 ---
 
 :::caution[Operator runbook]
-This page documents recovery against one specific storage account that only the TomoriBot operator
-can reach. It is not a guide for self-hosters. If you run your own deployment, the equivalent
-procedure applies to your own Terraform backend with your own account and container names.
+These procedures require the designated operator identity and a verified Terraform backend.
+Replace `<terraform-state-account>` with the account name from your backend configuration.
+Confirm the subscription with `az account show` before changing state or leases.
 :::
 
 The Azure production backend stores `production.tfstate` in the `tfstate` container of
-`tomoribottfstate`. The account uses Microsoft Entra authorization only, TLS 1.2+, blob versioning,
+`<terraform-state-account>`. The account uses Microsoft Entra authorization only, TLS 1.2+, blob versioning,
 30-day blob/container soft delete, and a `CanNotDelete` account lock. Recovery is an operator action,
 not part of routine deployment.
 
@@ -46,7 +46,7 @@ List available versions with Entra authentication:
 
 ```sh
 az storage blob list \
-  --account-name tomoribottfstate \
+  --account-name "<terraform-state-account>" \
   --container-name tfstate \
   --prefix production.tfstate \
   --include v \
@@ -59,7 +59,7 @@ Download the selected immutable version without overwriting the live blob:
 
 ```sh
 az storage blob download \
-  --account-name tomoribottfstate \
+  --account-name "<terraform-state-account>" \
   --container-name tfstate \
   --name production.tfstate \
   --version-id "<VERSION_ID>" \
@@ -95,7 +95,7 @@ storage lease operation only as a last resort:
 
 ```sh
 az storage blob lease break \
-  --account-name tomoribottfstate \
+  --account-name "<terraform-state-account>" \
   --container-name tfstate \
   --blob-name production.tfstate \
   --auth-mode login

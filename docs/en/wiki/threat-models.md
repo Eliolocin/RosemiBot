@@ -3,7 +3,7 @@ title: "Threat Models"
 aiGenerated: true
 ---
 
-Updated on: 2026-10-10
+Updated on: 2026-10-13
 
 <!-- Evidence paths under `terraform/` and `deploy/` cited below live on the `release` branch and are
      absent from `main`. Read one with `git show release:terraform/aws/ecs-health-check.tf`. -->
@@ -40,7 +40,7 @@ PostgreSQL stores server configuration, personas, memories, API credentials, man
 ### Key custody
 <!-- anchor: key-custody -->
 
-The production instance holds roughly a thousand registered provider keys across guilds and personal scopes, so key custody gets its own table.
+Provider credentials belong to guilds and personal scopes, so key custody includes tenant isolation as well as encryption and access controls.
 
 | Path | Who can reach it | Control | Source | Residual risk |
 | :--- | :--- | :--- | :--- | :--- |

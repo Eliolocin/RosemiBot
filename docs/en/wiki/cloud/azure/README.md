@@ -32,8 +32,8 @@ and that content stays on `main`.
 
 ## Runbooks
 
-These act on the one production deployment rather than describing the architecture, so they name
-real resources on purpose. Substituting placeholders in a runbook makes it wrong.
+These procedures require an authorized operator. Replace resource placeholders with values from
+your deployment configuration; public runbooks do not record production identifiers.
 
 - [`azure-production-inspection.md`](./azure-production-inspection) read-only production triage
   through VM Run Command, plus host memory and swap forensics
