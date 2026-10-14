@@ -213,6 +213,12 @@ See the [PluralKit adapter](/architecture/integrations/pluralkit/) for its separ
 
 ## PluralBuddy bot host authorization bootstrap
 
+`src/utils/oauth/` owns authorization-response validation, PKCE, discovery, bounded token requests,
+and refresh coordination. PluralBuddy supplies its exact issuer, endpoints and resource, with its
+loopback callback and encrypted repository adapter. Discovery and token requests use the pinned
+public-network fetch path, refuse redirects, and bound response size and duration. Storage failures
+report an allowlisted exception class and validated SQLSTATE without messages, queries or credentials.
+
 `scripts/db/authorize-pluralbuddy-instance.ts` initializes one encrypted OAuth connection for an
 instance in `message_proxy_instances`. It listens on `127.0.0.1`, validates discovery, callback
 state and issuer, then exchanges the code with S256 PKCE and the instance origin as `resource`. It
@@ -230,7 +236,8 @@ The renewable token source reads the connection for the selected instance and ex
 refreshes with HTTP Basic client authentication and `resource` set to that origin. A database row lock
 serializes refreshes across bot processes. When the provider rotates the refresh token, the bot
 encrypts and commits its replacement with the new access token and expiry before caching the access
-token in process memory. Another process reuses that committed access token. A revoked refresh token
-blocks further attempts until the bot host repeats authorization;
-a rate limit or transient failure sets a database retry time. A crash after the provider rotates a
+token in process memory. Another process reuses that committed access token. An invalid grant, client
+or resource target blocks refresh until the bot host repairs its configuration or repeats
+authorization. Other failures, including unrecognized HTTP 400 responses, set a database retry time
+and honor HTTP `Retry-After`. A crash after the provider rotates a
 token but before PostgreSQL commits it may require authorization by the bot host again.

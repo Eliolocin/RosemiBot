@@ -78,14 +78,6 @@ class PluralBuddyOAuthConnectionRepository {
     `;
   }
 
-  async setRefreshRetryAfter(tx: SQL, instanceId: string, retryAfter: Date): Promise<void> {
-    await tx`
-      UPDATE pluralbuddy_oauth_connections
-      SET refresh_retry_after = ${retryAfter}
-      WHERE instance_id = ${instanceId}
-    `;
-  }
-
   async storeRefreshedTokens(
     tx: SQL,
     instanceId: string,

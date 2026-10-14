@@ -124,7 +124,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("PluralBuddy OAuth refresh persistence", ()
       expect(String(input)).toBe(`${official.origin}/api/auth/oauth2/token`);
       expect(init?.redirect).toBe("manual");
       expect(new Headers(init?.headers).get("Authorization")).toBe(
-        `Basic ${btoa(`client-${official.instanceId}:secret-one`)}`,
+        `Basic ${btoa(`${encodeURIComponent(`client-${official.instanceId}`)}:secret-one`)}`,
       );
       const body = new URLSearchParams(String(init?.body));
       expect(body.get("grant_type")).toBe("refresh_token");
@@ -207,6 +207,46 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("PluralBuddy OAuth refresh persistence", ()
     request.mockImplementationOnce(async () => new Response(null, { status: 429 }));
     expect(await getPluralBuddyAccessToken(official)).toBeNull();
     expect(await getPluralBuddyAccessToken(official)).toBeNull();
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("persists invalid-target blocking across refresh attempts and process restarts", async () => {
+    await storeConnection(official, "secret-one", "refresh-one");
+    request.mockImplementationOnce(async () => Response.json({ error: "invalid_target" }, { status: 400 }));
+    expect(await getPluralBuddyAccessToken(official)).toBeNull();
+    clearPluralBuddyOAuthTokenStateForTests();
+    expect(await getPluralBuddyAccessToken(official)).toBeNull();
+    expect(request).toHaveBeenCalledTimes(1);
+    const [row] = await testSql<{ refresh_blocked_at: Date | null; refresh_retry_after: Date | null }[]>`
+      SELECT refresh_blocked_at, refresh_retry_after FROM pluralbuddy_oauth_connections WHERE instance_id = ${official.instanceId}
+    `;
+    expect(row.refresh_blocked_at).not.toBeNull();
+    expect(row.refresh_retry_after).toBeNull();
+  });
+
+  it("persists unknown HTTP 400 backoff without requiring reauthorization", async () => {
+    await storeConnection(official, "secret-one", "refresh-one");
+    request.mockImplementationOnce(async () =>
+      Response.json(
+        { error: "temporarily_unavailable" },
+        {
+          status: 400,
+          headers: { "Retry-After": "120" },
+        },
+      ),
+    );
+    expect(await getPluralBuddyAccessToken(official)).toBeNull();
+    clearPluralBuddyOAuthTokenStateForTests();
+    expect(await getPluralBuddyAccessToken(official)).toBeNull();
+    expect(request).toHaveBeenCalledTimes(1);
+    const [row] = await testSql<{ refresh_blocked_at: Date | null; refresh_retry_after: Date }[]>`
+      SELECT refresh_blocked_at, refresh_retry_after FROM pluralbuddy_oauth_connections WHERE instance_id = ${official.instanceId}
+    `;
+    expect(row.refresh_blocked_at).toBeNull();
+    expect(new Date(row.refresh_retry_after).getTime()).toBeGreaterThan(Date.now() + 115_000);
+    await testSql`UPDATE pluralbuddy_oauth_connections SET refresh_retry_after = NULL WHERE instance_id = ${official.instanceId}`;
+    clearPluralBuddyOAuthTokenStateForTests();
+    expect(await getPluralBuddyAccessToken(official)).toBe("access-one");
     expect(request).toHaveBeenCalledTimes(2);
   });
 
