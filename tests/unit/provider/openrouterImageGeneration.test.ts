@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from "bun:test";
 import {
   generateOpenRouterImage,
   usesChatCompletionsImageGeneration,
+  OPENROUTER_IMAGE_RESPONSE_MAX_BYTES,
 } from "@/providers/openrouter/openrouterImageGeneration";
 import { stubGlobalFetch } from "../../helpers/fetchStub";
+import { ResponseSizeError } from "@/utils/security/boundedResponse";
 
 interface CapturedCall {
   url: string;
@@ -80,6 +82,57 @@ describe("OpenRouter image generation routing", () => {
     expect(result).toEqual({ imageData: "QUJD", mimeType: "image/png" });
   });
 
+  it("cancels oversized success and error responses on both image transports", async () => {
+    for (const modelCodename of ["test/image-model", "google/gemini-3.1-flash-image"]) {
+      for (const status of [200, 401]) {
+        let cancelled = false;
+        const limit = status === 200 ? OPENROUTER_IMAGE_RESPONSE_MAX_BYTES : 1024 * 1024;
+        let remainingBytes = limit + 3 * 1024 * 1024;
+        const chunk = new Uint8Array(1024 * 1024);
+        const body = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (remainingBytes <= 0) return controller.close();
+            const next = chunk.subarray(0, Math.min(remainingBytes, chunk.length));
+            remainingBytes -= next.byteLength;
+            controller.enqueue(next);
+          },
+          cancel() {
+            cancelled = true;
+          },
+        });
+        const signal = new AbortController().signal;
+        restore.push(
+          stubGlobalFetch((_url, init) => {
+            expect(init?.signal).toBe(signal);
+            return new Response(body, { status });
+          }),
+        );
+        await expect(
+          generateOpenRouterImage({
+            apiKey: "fixture-key",
+            modelCodename,
+            prompt: "Fixture image",
+            aspectRatio: "1:1",
+            abortSignal: signal,
+          }),
+        ).rejects.toBeInstanceOf(ResponseSizeError);
+        expect(cancelled).toBe(true);
+      }
+    }
+  });
+
+  it("rejects malformed provider image fields before media delivery", async () => {
+    for (const [modelCodename, payload] of [
+      ["test/image-model", { data: [{ b64_json: { private: true } }] }],
+      ["google/gemini-3.1-flash-image", { choices: [{ message: { images: [{ image_url: { url: 42 } }] } }] }],
+    ] as const) {
+      restore.push(stubGlobalFetch(() => Response.json(payload)));
+      await expect(
+        generateOpenRouterImage({ apiKey: "fixture-key", modelCodename, prompt: "x", aspectRatio: "1:1" }),
+      ).rejects.toThrow();
+    }
+  });
+
   it("surfaces the provider's own error message on failure", async () => {
     const captured: CapturedCall[] = [];
     const spy = stubFetch(
@@ -97,5 +150,28 @@ describe("OpenRouter image generation routing", () => {
         aspectRatio: "1:1",
       }),
     ).rejects.toThrow("is an image generation model");
+  });
+
+  it("redacts the supplied credential from image errors on both transports", async () => {
+    const apiKey = "fixture-credential-without-a-recognizable-prefix";
+    for (const modelCodename of ["test/image-model", "google/gemini-3.1-flash-image"]) {
+      restore.push(
+        stubGlobalFetch(
+          async () =>
+            new Response(
+              JSON.stringify({ error: { message: `Rejected credential ${apiKey}` } }).replaceAll("-", "\\u002d"),
+              { status: 401, headers: { "Content-Type": "application/json" } },
+            ),
+        ),
+      );
+      let failure: unknown;
+      try {
+        await generateOpenRouterImage({ apiKey, modelCodename, prompt: "Fixture image", aspectRatio: "1:1" });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).not.toContain(apiKey);
+    }
   });
 });
