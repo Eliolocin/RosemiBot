@@ -731,35 +731,6 @@ async function runWithFixedRandom(leadFraction: number, run: () => Promise<void>
 describe("runGenerationTurn fallback behavior", () => {
   afterEach(() => fetchStub.mockRestore());
 
-  it("refuses another owner's custom fallback before reading its credential", async () => {
-    const context = makePersonalContext(
-      makeLlm(1, "server-primary"),
-      makeLlm(2, "server-fallback"),
-      makeLlm(3, "personal-primary"),
-    );
-    context.turn.userRow.personal_server_fallback_enabled = false;
-    if (!personalOverlayState) throw new Error("Expected personal overlay");
-    personalOverlayState.fallback_chain = [
-      {
-        kind: "custom_endpoint",
-        endpoint: customEndpointSchema.parse({
-          extra_config: {},
-          connection_id: 42,
-          user_id: 9,
-          server_id: null,
-          label: "other-owner",
-          capability: "text",
-          api_style: "openai-compatible",
-          endpoint_url: "https://example.invalid/v1",
-        }),
-      },
-    ];
-    queuedResults.push(personalRouteFailure());
-    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
-    await runGenerationTurn(context, collectingSink());
-    expect(personalSavedConfigLoads).toHaveLength(0);
-    expect(toolLoopCalls.map((call) => call.model)).toEqual(["personal-primary"]);
-  });
   it("keeps personal success and failure outside an enabled server rotation pool", async () => {
     for (const outcome of [successfulReply(), personalRouteFailure()]) {
       rotationEnabled = true;

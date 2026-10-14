@@ -67,8 +67,7 @@ before the next attempt:
 
 Each generation attempt owns its credential source. Personal attempts use the user's saved key and
 bypass server rotation queries and retries. Deferred server attempts use server credentials and
-rotation only after server admission succeeds. Custom fallback endpoints must belong to the route's
-personal owner, or have server scope on a server route.
+rotation only after server admission succeeds.
 
 - **Failover effects**: cleanup does not roll back tool writes, external requests, or independent tool
   messages. Off starts a new tool history on replacement attempts. With Response Drafting On, shared

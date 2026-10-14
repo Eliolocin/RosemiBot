@@ -757,7 +757,6 @@ async function createFallbackAttempt(
   credentialSource: TextCredentialSource,
 ): Promise<GenerationAttempt | null> {
   if (entry.kind === "custom_endpoint") {
-    if ((entry.endpoint.user_id ?? null) !== personalUserId) return null;
     if (!entry.endpoint.connection_id) {
       log.warn(`Skipping custom endpoint fallback ${entry.endpoint.label}: missing connection_id.`);
       return null;
