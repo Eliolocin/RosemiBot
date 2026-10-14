@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { customEndpointSchema } from "@/types/db/schema";
+import { stubGlobalFetch } from "../../helpers/fetchStub";
 import type { Client, Message } from "discord.js";
-import type { CustomEndpointRow, LlmRow, TomoriState } from "@/types/db/schema";
+import type { LlmRow, TomoriState } from "@/types/db/schema";
 import { ContextItemTag } from "@/types/misc/context";
 import type { ProviderConfig, StreamResult } from "@/types/provider/interfaces";
 import type { FallbackNoticeAttempt } from "@/utils/discord/fallbackModelNotice";
@@ -45,6 +47,8 @@ const toolLoopCalls: Array<{
   suppressUserErrors: boolean | undefined;
   contextItems: ToolLoopParams["context"]["contextItems"];
   numCtx: number | null | undefined;
+  apiKey: string;
+  credentialSource: ChatTurnContext["textCredentialSource"];
 }> = [];
 const providerConfigCalls: Array<{ model: string; apiKey: string }> = [];
 const fallbackNoticeCalls: Array<{
@@ -77,6 +81,10 @@ let cooldownAdmissionResult = true;
 const timeoutNotices: Array<{ providerName: string; sawStreamProgress: boolean }> = [];
 const testStopRequests = new Map<string, { type: "stop" | "follow_up"; stopContext?: TestStopContext }>();
 let personalOverlayState: TomoriState | null = null;
+let rotationEnabled = false;
+const rotationSelections: string[] = [];
+const rotationChecks: string[] = [];
+let fetchStub: ReturnType<typeof stubGlobalFetch>;
 
 type TestStopContext = {
   originalStopMessage: Message;
@@ -290,10 +298,18 @@ scopedMock.module("@/utils/security/crypto", () => ({
 scopedMock.module("@/utils/security/keyRotation", () => ({
   ...realKeyRotation,
   MAX_KEY_ATTEMPTS: 3,
-  hasAvailableRotationKey: async () => false,
+  hasAvailableRotationKey: async (state: TomoriState, excluded: number[] = []) => {
+    rotationChecks.push(state.llm.llm_codename);
+    return rotationEnabled && !excluded.includes(42);
+  },
   recordKeyError: async () => undefined,
   recordKeySuccess: async () => undefined,
-  selectApiKey: async () => null,
+  selectApiKey: async (state: TomoriState, excluded: number[] = []) => {
+    rotationSelections.push(state.llm.llm_codename);
+    if (!rotationEnabled) return null;
+    const rotationKeyId = excluded.includes(41) ? 42 : 41;
+    return { apiKey: `server-pool-${rotationKeyId}`, rotationKeyId, isMainKey: false };
+  },
 }));
 
 scopedMock.module("@/utils/chat/toolLoop", () => ({
@@ -363,6 +379,8 @@ async function runToolLoopMock(params: ToolLoopParams): Promise<GenerationTurnRe
       suppressUserErrors: params.context.streamingContext.suppressUserErrors,
       contextItems: params.context.contextItems,
       numCtx: params.tomoriState.config.custom_num_ctx,
+      apiKey: params.providerConfig.apiKey,
+      credentialSource: params.context.textCredentialSource,
     });
     // Simulate this attempt committing messages to the channel before it resolves, so the
     // supersede-cleanup path in runGenerationTurn has refs to act on.
@@ -711,7 +729,78 @@ async function runWithFixedRandom(leadFraction: number, run: () => Promise<void>
 }
 
 describe("runGenerationTurn fallback behavior", () => {
+  afterEach(() => fetchStub.mockRestore());
+
+  it("refuses another owner's custom fallback before reading its credential", async () => {
+    const context = makePersonalContext(
+      makeLlm(1, "server-primary"),
+      makeLlm(2, "server-fallback"),
+      makeLlm(3, "personal-primary"),
+    );
+    context.turn.userRow.personal_server_fallback_enabled = false;
+    if (!personalOverlayState) throw new Error("Expected personal overlay");
+    personalOverlayState.fallback_chain = [
+      {
+        kind: "custom_endpoint",
+        endpoint: customEndpointSchema.parse({
+          extra_config: {},
+          connection_id: 42,
+          user_id: 9,
+          server_id: null,
+          label: "other-owner",
+          capability: "text",
+          api_style: "openai-compatible",
+          endpoint_url: "https://example.invalid/v1",
+        }),
+      },
+    ];
+    queuedResults.push(personalRouteFailure());
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    await runGenerationTurn(context, collectingSink());
+    expect(personalSavedConfigLoads).toHaveLength(0);
+    expect(toolLoopCalls.map((call) => call.model)).toEqual(["personal-primary"]);
+  });
+  it("keeps personal success and failure outside an enabled server rotation pool", async () => {
+    for (const outcome of [successfulReply(), personalRouteFailure()]) {
+      rotationEnabled = true;
+      const context = makePersonalContext(
+        makeLlm(1, "server-primary"),
+        makeLlm(2, "server-fallback"),
+        makeLlm(3, "personal-primary"),
+      );
+      context.turn.userRow.personal_server_fallback_enabled = false;
+      queuedResults.push(outcome);
+      const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+      expect((await runGenerationTurn(context, collectingSink())).status).toBe(outcome.status);
+    }
+    expect(toolLoopCalls.map((call) => call.apiKey)).toEqual(["personal-key", "personal-key"]);
+    expect(rotationSelections).toHaveLength(0);
+    expect(rotationChecks).toHaveLength(0);
+  });
+
+  it("admits server fallback separately and rotates only its attempts", async () => {
+    rotationEnabled = true;
+    const context = makePersonalContext(
+      makeLlm(1, "server-primary"),
+      makeLlm(2, "server-fallback"),
+      makeLlm(3, "personal-primary"),
+    );
+    queuedResults.push(personalRouteFailure(), personalRouteFailure(), successfulReply());
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    expect((await runGenerationTurn(context, collectingSink())).status).toBe("completed");
+    expect(toolLoopCalls.map(({ apiKey, credentialSource }) => ({ apiKey, credentialSource }))).toEqual([
+      { apiKey: "personal-key", credentialSource: "personal" },
+      { apiKey: "server-pool-41", credentialSource: "server" },
+      { apiKey: "server-pool-42", credentialSource: "server" },
+    ]);
+    expect(rotationSelections).not.toContain("personal-primary");
+    expect(rotationChecks).not.toContain("personal-primary");
+    expect(textQuotaAdmissions).toHaveLength(1);
+    expect(cooldownAdmissions).toHaveLength(1);
+  });
+
   beforeEach(async () => {
+    fetchStub = stubGlobalFetch(() => Response.json({ data: [] }));
     queuedResults.length = 0;
     queuedDeliveries.length = 0;
     toolLoopCalls.length = 0;
@@ -729,6 +818,9 @@ describe("runGenerationTurn fallback behavior", () => {
     cooldownAdmissionResult = true;
     timeoutNotices.length = 0;
     personalOverlayState = null;
+    rotationEnabled = false;
+    rotationSelections.length = 0;
+    rotationChecks.length = 0;
 
     const { StreamOrchestrator } = await import("@/utils/discord/streamOrchestrator");
     StreamOrchestrator.clearStopRequest("channel_1");
@@ -834,13 +926,15 @@ describe("runGenerationTurn fallback behavior", () => {
     const primaryModel = makeLlm(1, "primary-model");
     const context = makeContext(primaryModel, makeLlm(2, "unused-fallback"));
     context.currentPersona.config.custom_num_ctx = 32_768;
-    const endpoint = {
+    const endpoint = customEndpointSchema.parse({
+      extra_config: {},
       custom_endpoint_id: 5,
       connection_id: 42,
       server_id: null,
       user_id: 4,
       label: "local",
       capability: "text",
+      api_style: "openai-compatible",
       endpoint_url: "https://example.invalid/v1",
       model_name: "personal-fallback",
       model_ref_id: 9,
@@ -852,8 +946,11 @@ describe("runGenerationTurn fallback behavior", () => {
       strict_role_alternation: false,
       supports_prefix_completion: false,
       supports_assistant_prefill: false,
-    } as CustomEndpointRow;
+    });
     context.currentPersona.fallback_chain = [{ kind: "custom_endpoint", endpoint }];
+    context.textCredentialSource = "personal";
+    context.personalRoutingUserId = 4;
+    personalOverlayState = context.currentPersona;
     queuedResults.push(
       {
         status: "error",

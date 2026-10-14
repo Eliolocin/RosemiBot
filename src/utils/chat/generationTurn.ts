@@ -52,7 +52,10 @@ import {
 /** The channel shape quota notices are sent through, matching the admission path's own alias. */
 type SendableChannel = Parameters<typeof sendStandardEmbed>[0];
 
+type TextCredentialSource = ChatTurnContext["textCredentialSource"];
+
 interface GenerationAttempt {
+  credentialSource: TextCredentialSource;
   label: string;
   tomoriState: TomoriState;
   provider: LLMProvider;
@@ -126,6 +129,8 @@ async function runGenerationAttempts(
     for (let index = 0; index < attempts.length; index++) {
       const attempt = attempts[index];
       if (!attempt) continue;
+      context.textCredentialSource = attempt.credentialSource;
+      context.streamingContext.textCredentialSource = attempt.credentialSource;
       recordChatAttemptStarted(
         index + 1,
         context.textCredentialSource,
@@ -176,7 +181,9 @@ async function runGenerationAttempts(
         }
 
         const retryExcludedKeyIds = getRetryExcludedKeyIds(excludedKeyIds, rotationKeyId);
-        const hasFallbackKey = await hasAvailableRotationKey(attempt.tomoriState, retryExcludedKeyIds);
+        const hasFallbackKey =
+          attempt.credentialSource === "server" &&
+          (await hasAvailableRotationKey(attempt.tomoriState, retryExcludedKeyIds));
         setStreamUserErrorSuppression(context, hasFallbackKey || hasPendingModelFallback);
         context.streamingContext.forceModelFallback = hasPendingModelFallback;
 
@@ -256,11 +263,6 @@ async function runGenerationAttempts(
         if (serverAttempts.length > 0) {
           serverRouteStartIndex = attempts.length;
           attempts.push(...serverAttempts);
-          // The server is paying from here on, and everything downstream reads the credential source
-          // as "who is answering": the thought-log attribution and the error tips would otherwise
-          // keep naming the user's own provider for a reply the server produced.
-          context.textCredentialSource = "server";
-          context.streamingContext.textCredentialSource = "server";
         }
       }
 
@@ -414,7 +416,14 @@ async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<Gene
   const attempts: GenerationAttempt[] = [];
   for (const [index, entry] of pool.entries()) {
     try {
-      const attempt = await createFallbackAttempt(primaryState, entry, index, disableAllTools, personalUserId);
+      const attempt = await createFallbackAttempt(
+        primaryState,
+        entry,
+        index,
+        disableAllTools,
+        personalUserId,
+        context.textCredentialSource,
+      );
       if (!attempt) {
         // An unusable custom endpoint, or an llm whose provider has no key in the
         // applicable scope, resolves to null. The primary's own llm entry shares
@@ -459,7 +468,7 @@ async function buildServerRouteAttempts(context: ChatTurnContext, startIndex: nu
   for (const entry of serverPool) {
     const fallbackIndex = startIndex + attempts.length;
     try {
-      const attempt = await createFallbackAttempt(serverState, entry, fallbackIndex, disableAllTools, null);
+      const attempt = await createFallbackAttempt(serverState, entry, fallbackIndex, disableAllTools, null, "server");
       if (attempt) {
         attempts.push(attempt);
       }
@@ -745,8 +754,10 @@ async function createFallbackAttempt(
   fallbackIndex: number,
   disableAllTools: boolean,
   personalUserId: number | null,
+  credentialSource: TextCredentialSource,
 ): Promise<GenerationAttempt | null> {
   if (entry.kind === "custom_endpoint") {
+    if ((entry.endpoint.user_id ?? null) !== personalUserId) return null;
     if (!entry.endpoint.connection_id) {
       log.warn(`Skipping custom endpoint fallback ${entry.endpoint.label}: missing connection_id.`);
       return null;
@@ -786,7 +797,13 @@ async function createFallbackAttempt(
         verbatim_tool_calling: entry.endpoint.verbatim_tool_calling,
       },
     };
-    return await createAttempt(`fallback ${fallbackIndex}: ${entry.endpoint.label}`, state, "custom", disableAllTools);
+    return await createAttempt(
+      `fallback ${fallbackIndex}: ${entry.endpoint.label}`,
+      state,
+      credentialSource,
+      "custom",
+      disableAllTools,
+    );
   }
 
   let state: TomoriState = { ...primaryState, llm: entry.model };
@@ -803,6 +820,7 @@ async function createFallbackAttempt(
   return await createAttempt(
     `fallback ${fallbackIndex}: ${entry.model.llm_codename}`,
     state,
+    credentialSource,
     undefined,
     disableAllTools,
   );
@@ -811,6 +829,7 @@ async function createFallbackAttempt(
 async function createAttempt(
   label: string,
   tomoriState: TomoriState,
+  credentialSource: TextCredentialSource,
   forcedProviderName?: string,
   disableAllTools = false,
 ): Promise<GenerationAttempt> {
@@ -820,13 +839,14 @@ async function createAttempt(
     ? await ProviderFactory.getProviderByName(forcedProviderName)
     : await getProviderForTomori(effectiveState);
 
-  const rotationSelection = await selectApiKey(effectiveState);
+  const rotationSelection = credentialSource === "server" ? await selectApiKey(effectiveState) : null;
   const apiKey = rotationSelection ? rotationSelection.apiKey : await resolveApiKey(effectiveState);
   const rotationKeyId = rotationSelection?.rotationKeyId ?? null;
 
   const providerConfig = await provider.createConfig(effectiveState, apiKey);
 
   return {
+    credentialSource,
     label,
     tomoriState: effectiveState,
     provider,
