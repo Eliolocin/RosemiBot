@@ -29,6 +29,11 @@ Cross-provider fallbacks use saved credentials from the turn's scope. Personal t
 the user's saved providers and omit entries without a key; server credentials become available only
 through the deferred server route.
 
+Custom endpoint fallbacks must belong to the route's user or server before generation loads a saved
+key. Server persona loaders resolve stored endpoint IDs without enforcing ownership, so generation
+checks both owner fields: personal endpoints have that user and no server; server endpoints have
+that server and no user. Credential lookup uses the route owner after this check.
+
 ### Deferred server route fallback
 
 Personal BYOK turns outside impersonation resolve the deferred server route only after all personal

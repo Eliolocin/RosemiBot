@@ -757,15 +757,22 @@ async function createFallbackAttempt(
   credentialSource: TextCredentialSource,
 ): Promise<GenerationAttempt | null> {
   if (entry.kind === "custom_endpoint") {
+    const endpointServerId = personalUserId === null ? primaryState.server_id : null;
+    if (
+      (entry.endpoint.user_id ?? null) !== personalUserId ||
+      (entry.endpoint.server_id ?? null) !== endpointServerId
+    ) {
+      return null;
+    }
     if (!entry.endpoint.connection_id) {
       log.warn(`Skipping custom endpoint fallback ${entry.endpoint.label}: missing connection_id.`);
       return null;
     }
     const customProviderName = buildCustomProviderName(entry.endpoint.connection_id);
-    const endpointUserId = entry.endpoint.user_id ?? null;
-    const savedConfig = endpointUserId
-      ? await llmProviderRepo.loadUserSavedProviderConfig(endpointUserId, customProviderName)
-      : await llmProviderRepo.loadSavedProviderConfig(primaryState.server_id, customProviderName);
+    const savedConfig =
+      personalUserId !== null
+        ? await llmProviderRepo.loadUserSavedProviderConfig(personalUserId, customProviderName)
+        : await llmProviderRepo.loadSavedProviderConfig(primaryState.server_id, customProviderName);
     if (!savedConfig?.api_key) {
       log.warn(`Skipping custom endpoint fallback ${entry.endpoint.label}: no saved key.`);
       return null;

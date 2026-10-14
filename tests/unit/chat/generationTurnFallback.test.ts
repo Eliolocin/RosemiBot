@@ -57,6 +57,7 @@ const fallbackNoticeCalls: Array<{
   offerPersonalFallbackOptOut: boolean | undefined;
 }> = [];
 const personalSavedConfigLoads: Array<{ userId: number; provider: string }> = [];
+const serverSavedConfigLoads: Array<{ serverId: number; provider: string }> = [];
 // Flipped off to model a user who has no personal key saved for the provider a
 // chain entry belongs to.
 let personalKeyAvailable = true;
@@ -157,7 +158,10 @@ scopedMock.module("@/utils/db/repositories", () => ({
   llmProviderRepo: overrideMembers(realRepositories.llmProviderRepo, {
     // A stored key for every provider, so a cross-provider fallback arm can be constructed here
     // instead of failing on `applySavedProviderConfig`'s missing-credentials throw.
-    loadSavedProviderConfig: async () => ({ api_key: Buffer.from("encrypted-key"), key_version: 1 }),
+    loadSavedProviderConfig: async (serverId: number, provider: string) => {
+      serverSavedConfigLoads.push({ serverId, provider });
+      return { api_key: Buffer.from("encrypted-key"), key_version: 1 };
+    },
     loadUserSavedProviderConfig: async (userId: number, provider: string) => {
       personalSavedConfigLoads.push({ userId, provider });
       return personalKeyAvailable ? { api_key: Buffer.from("encrypted-key"), key_version: 1 } : null;
@@ -778,6 +782,7 @@ describe("runGenerationTurn fallback behavior", () => {
     providerConfigCalls.length = 0;
     fallbackNoticeCalls.length = 0;
     personalSavedConfigLoads.length = 0;
+    serverSavedConfigLoads.length = 0;
     personalKeyAvailable = true;
     textQuotaAdmissions.length = 0;
     textQuotaAdmissionResult = {
@@ -949,6 +954,52 @@ describe("runGenerationTurn fallback behavior", () => {
     ]);
     expect(personalSavedConfigLoads).toEqual([{ userId: 4, provider: "custom:42" }]);
   });
+
+  for (const deferred of [false, true]) {
+    it.each([
+      { scope: "the owning server", serverId: 1, userId: null, allowed: true },
+      { scope: "a personal account", serverId: null, userId: 4, allowed: false },
+      { scope: "another server", serverId: 2, userId: null, allowed: false },
+    ])(`${deferred ? "deferred" : "initial"} server fallback checks an endpoint owned by $scope before loading credentials`, async ({
+      serverId,
+      userId,
+      allowed,
+    }) => {
+      const primary = makeLlm(1, "server-primary");
+      const fallback = makeLlm(2, "unused-fallback");
+      const context = deferred
+        ? makePersonalContext(primary, fallback, makeLlm(3, "personal-primary"))
+        : makeContext(primary, fallback);
+      const endpoint = customEndpointSchema.parse({
+        extra_config: {},
+        custom_endpoint_id: 5,
+        connection_id: 42,
+        server_id: serverId,
+        user_id: userId,
+        label: "local",
+        capability: "text",
+        api_style: "openai-compatible",
+        endpoint_url: "https://example.invalid/v1",
+        model_name: "custom-fallback",
+        model_ref_id: 9,
+      });
+      context.currentPersona.fallback_chain = [{ kind: "custom_endpoint", endpoint }];
+      if (deferred) queuedResults.push(personalRouteFailure());
+      queuedResults.push(personalRouteFailure(), successfulReply());
+
+      const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+      await runGenerationTurn(context, collectingSink());
+
+      const expectedModels = deferred ? ["personal-primary", "server-primary"] : ["server-primary"];
+      if (allowed) expectedModels.push("custom-fallback");
+      expect(toolLoopCalls.map((call) => call.model)).toEqual(expectedModels);
+      expect(personalSavedConfigLoads).toEqual([]);
+      expect(serverSavedConfigLoads).toEqual(allowed ? [{ serverId: 1, provider: "custom:42" }] : []);
+      expect(toolLoopCalls.filter((call) => call.model === "custom-fallback")).toEqual(
+        allowed ? [expect.objectContaining({ credentialSource: "server", apiKey: "server-key" })] : [],
+      );
+    });
+  }
 
   it("falls back from a failed personal text model to the configured server model", async () => {
     const context = makePersonalContext(
