@@ -152,26 +152,48 @@ describe("OpenRouter image generation routing", () => {
     ).rejects.toThrow("is an image generation model");
   });
 
-  it("redacts the supplied credential from image errors on both transports", async () => {
+  it("preserves validated provider reasons and redacts decoded credentials on both image transports", async () => {
     const apiKey = "fixture-credential-without-a-recognizable-prefix";
+    const providerReason = "PROVIDER_REJECTION_CANARY";
     for (const modelCodename of ["test/image-model", "google/gemini-3.1-flash-image"]) {
-      restore.push(
-        stubGlobalFetch(
-          async () =>
-            new Response(
-              JSON.stringify({ error: { message: `Rejected credential ${apiKey}` } }).replaceAll("-", "\\u002d"),
-              { status: 401, headers: { "Content-Type": "application/json" } },
-            ),
-        ),
-      );
+      for (const payload of [
+        { error: `${providerReason} ${apiKey}` },
+        { error: { message: `${providerReason} ${apiKey}` } },
+        { message: `${providerReason} ${apiKey}` },
+      ]) {
+        restore.push(
+          stubGlobalFetch(
+            async () =>
+              new Response(JSON.stringify(payload).replaceAll("-", "\\u002d"), {
+                status: 401,
+                headers: { "Content-Type": "application/json" },
+              }),
+          ),
+        );
+        let failure: unknown;
+        try {
+          await generateOpenRouterImage({ apiKey, modelCodename, prompt: "Fixture image", aspectRatio: "1:1" });
+        } catch (error) {
+          failure = error;
+        }
+        expect(failure).toBeInstanceOf(Error);
+        expect((failure as Error).message).toContain(providerReason);
+        expect((failure as Error).message).not.toContain(apiKey);
+      }
+    }
+  });
+
+  it("formats status-only failures without trailing status whitespace", async () => {
+    for (const modelCodename of ["test/image-model", "google/gemini-3.1-flash-image"]) {
+      restore.push(stubGlobalFetch(() => new Response("{}", { status: 401, statusText: "" })));
       let failure: unknown;
       try {
-        await generateOpenRouterImage({ apiKey, modelCodename, prompt: "Fixture image", aspectRatio: "1:1" });
+        await generateOpenRouterImage({ apiKey: "fixture-key", modelCodename, prompt: "x", aspectRatio: "1:1" });
       } catch (error) {
         failure = error;
       }
       expect(failure).toBeInstanceOf(Error);
-      expect((failure as Error).message).not.toContain(apiKey);
+      expect((failure as Error).message).toContain("(401)");
     }
   });
 

@@ -47,13 +47,21 @@ function buildRequestFailure(
   let parsedMessage = "";
   try {
     const parsed = z
-      .object({ error: z.object({ message: z.string().optional() }).optional(), message: z.string().optional() })
+      .object({
+        error: z.union([z.string(), z.object({ message: z.string().optional() })]).optional(),
+        message: z.string().optional(),
+      })
       .safeParse(JSON.parse(safeBody));
-    if (parsed.success) parsedMessage = parsed.data.error?.message || parsed.data.message || "";
+    if (parsed.success) {
+      const providerError = parsed.data.error;
+      parsedMessage =
+        (typeof providerError === "string" ? providerError : providerError?.message) || parsed.data.message || "";
+    }
   } catch {}
 
-  const friendlyMessage = parsedMessage || `${status} ${statusText}`.trim();
-  const message = `OpenRouter API request failed (${status} ${statusText}) for model "${modelCodename}": ${friendlyMessage}`;
+  const statusLabel = `${status} ${statusText}`.trim();
+  const friendlyMessage = parsedMessage || statusLabel;
+  const message = `OpenRouter API request failed (${statusLabel}) for model "${modelCodename}": ${friendlyMessage}`;
   return new Error(redactLogString(apiKey ? message.replaceAll(apiKey, "[REDACTED]") : message));
 }
 
