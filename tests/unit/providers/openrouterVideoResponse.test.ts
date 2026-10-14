@@ -1,5 +1,6 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import {
+  downloadOpenRouterVideo,
   fetchOpenRouterVideoApi,
   generateOpenRouterNativeVideo,
   openRouterVideoJobSchema,
@@ -82,6 +83,37 @@ describe("OpenRouter video response boundaries", () => {
     } finally {
       spawn.mockRestore();
       fetchStub.mockRestore();
+    }
+  });
+
+  it("refuses already-cancelled submission, polling and authenticated download before spawning", async () => {
+    const apiKey = "fixture-private-credential";
+    const controller = new AbortController();
+    controller.abort(new Error(`Cancelled ${apiKey}`));
+    const spawn = spyOn(Bun, "spawn").mockImplementation(() => {
+      throw new Error("Unexpected submission");
+    });
+    const init = { headers: { Authorization: `Bearer ${apiKey}` }, signal: controller.signal };
+    const requests = [
+      () => fetchOpenRouterVideoApi("https://openrouter.ai/api/v1/videos", { ...init, method: "POST", body: "{}" }),
+      () => fetchOpenRouterVideoApi("https://openrouter.ai/api/v1/videos/fixture-job", { ...init, method: "GET" }),
+      () =>
+        downloadOpenRouterVideo("https://openrouter.ai/api/v1/videos/fixture-job/content", apiKey, controller.signal),
+    ];
+    try {
+      for (const request of requests) {
+        let failure: unknown;
+        try {
+          await request();
+        } catch (error) {
+          failure = error;
+        }
+        expect(failure).toBeInstanceOf(Error);
+        expect(String(failure)).not.toContain(apiKey);
+        expect(spawn).not.toHaveBeenCalled();
+      }
+    } finally {
+      spawn.mockRestore();
     }
   });
 

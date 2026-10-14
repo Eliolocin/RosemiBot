@@ -68,6 +68,7 @@ export async function readBoundedProcessOutput(
   const stop = () => proc.kill();
   limits.abortSignal?.addEventListener("abort", stop, { once: true });
   try {
+    if (limits.abortSignal?.aborted) stop();
     const [stdout, stderr] = await Promise.all([
       readBoundedResponse(new Response(proc.stdout), maxStdoutBytes),
       readBoundedResponse(new Response(proc.stderr), MAX_HELPER_STDERR_BYTES),
@@ -316,6 +317,7 @@ async function externalHttpRequest(
   }
 
   try {
+    limits.abortSignal?.throwIfAborted();
     return await (IS_WINDOWS
       ? pwshHttpRequest(url, method, sanitizedHeaders, limits, body)
       : curlHttpRequest(url, method, sanitizedHeaders, limits, body));
