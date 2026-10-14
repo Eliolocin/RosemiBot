@@ -43,7 +43,6 @@ function buildRequestFailure(
   apiKey: string,
 ): Error {
   const safeBody = redactLogString(apiKey ? body.replaceAll(apiKey, "[REDACTED]") : body);
-  const bodySnippet = safeBody.slice(0, 500);
 
   let parsedMessage = "";
   try {
@@ -53,7 +52,7 @@ function buildRequestFailure(
     if (parsed.success) parsedMessage = parsed.data.error?.message || parsed.data.message || "";
   } catch {}
 
-  const friendlyMessage = parsedMessage || bodySnippet || `${status} ${statusText}`.trim();
+  const friendlyMessage = parsedMessage || `${status} ${statusText}`.trim();
   const message = `OpenRouter API request failed (${status} ${statusText}) for model "${modelCodename}": ${friendlyMessage}`;
   return new Error(redactLogString(apiKey ? message.replaceAll(apiKey, "[REDACTED]") : message));
 }

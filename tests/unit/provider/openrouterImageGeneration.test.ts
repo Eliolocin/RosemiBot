@@ -174,4 +174,21 @@ describe("OpenRouter image generation routing", () => {
       expect((failure as Error).message).not.toContain(apiKey);
     }
   });
+
+  it("omits malformed error bodies containing encoded credentials", async () => {
+    const apiKey = "fixture-private-credential";
+    const encodedKey = apiKey.replaceAll("-", "\\u002d");
+    restore.push(
+      stubGlobalFetch(() => new Response(`{"error":{"message":42},"credential":"${encodedKey}"}`, { status: 401 })),
+    );
+    let failure: unknown;
+    try {
+      await generateOpenRouterImage({ apiKey, modelCodename: "test/image-model", prompt: "x", aspectRatio: "1:1" });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure)).not.toContain(encodedKey);
+    expect(String(failure)).not.toContain(apiKey);
+  });
 });
