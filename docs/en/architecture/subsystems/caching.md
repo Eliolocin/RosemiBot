@@ -28,7 +28,7 @@ Scheduled sweepers in `src/init/discord.ts` prune client collections periodicall
 
 - **Messages**: hourly sweep with a 30-minute lifetime.
 - **Guild members**: hourly sweep. Excludes the client's own member (required for synchronous permission checks) and any user currently in a voice channel (read synchronously by audio handlers).
-- **Users**: hourly sweep restricted to bot accounts. Human users remain reachable so synchronous mention resolution in `historyFormatter` resolves member names without falling back to placeholder strings.
+- **Users**: hourly sweep of every user with no cached member in any guild, except the client user. A cached member holds its own user reference, so only these orphans free memory; most arrive through presence updates. `historyFormatter` still resolves mentions synchronously because fetching a message caches the users it mentions.
 
 ## Active cache layers
 

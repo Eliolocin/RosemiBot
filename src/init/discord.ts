@@ -125,7 +125,7 @@ export function createDiscordClient(includePresences: boolean): Client {
     intents.push(GatewayIntentBits.GuildPresences);
   }
 
-  const client = new Client({
+  const client: Client = new Client({
     intents,
     partials: [Partials.Channel, Partials.Message],
     rest: { rejectOnRateLimit: shouldRejectWebhookRateLimit },
@@ -140,9 +140,17 @@ export function createDiscordClient(includePresences: boolean): Client {
         interval: 3600,
         filter: () => (member) => member.id !== member.client.user.id && !member.voice.channelId,
       },
+      // A cached member holds its own User reference, so evicting a member's user frees nothing;
+      // the users worth evicting are the ones presence updates cache for members never stored.
       users: {
         interval: 3600,
-        filter: () => (user) => user.bot,
+        filter: () => {
+          const memberIds = new Set<string>();
+          for (const guild of client.guilds.cache.values()) {
+            for (const memberId of guild.members.cache.keys()) memberIds.add(memberId);
+          }
+          return (user) => user.id !== client.user?.id && !memberIds.has(user.id);
+        },
       },
       // Presence data is gateway-only with no REST fetch, so a swept entry stays missing until
       // that user's next presence change. Offline-with-no-activity is the only safe set to drop:
