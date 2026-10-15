@@ -671,6 +671,7 @@ async function handleSwitchModels(context: ConfigModelRouteContext): Promise<boo
           scopeKind: "server",
           capability: endpointCapability,
           customEndpointId: endpoint.id,
+          targetKind: endpoint.targetKind,
         }),
       () => dependencies.resolveScope(context.interaction, true),
     );

@@ -741,9 +741,13 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
    * @param personaId - Internal persona DB ID
    * @param voice - Complete voice config row excluding persona_id
    */
-  async setVoiceConfig(personaId: number, voice: Omit<PersonaVoiceConfigsRow, "persona_id">): Promise<boolean> {
+  async setVoiceConfig(
+    personaId: number,
+    voice: Omit<PersonaVoiceConfigsRow, "persona_id">,
+    options: { materialize?: boolean } = {},
+  ): Promise<boolean> {
     try {
-      const materialized = await this.materializeIfPointer(personaId);
+      const materialized = options.materialize === false || (await this.materializeIfPointer(personaId));
       if (!materialized) {
         return false;
       }

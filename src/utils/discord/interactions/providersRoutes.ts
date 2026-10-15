@@ -441,7 +441,7 @@ function speechModalDefaults(
   section: ProviderPanelCapabilitySection,
   editing: ProviderPanelModel | undefined,
 ): Pick<ProviderModelModalDefaults, "speech"> {
-  if (capability !== "speech") return {};
+  if (capability !== "speech" || !section.apiStyle) return {};
 
   // Only a `tts-clone` server implements the clone/VoiceDesign/Auto split; `isVoiceDesignEndpoint`
   // requires that api style, so offering it for the ElevenLabs preset would store a dead value.

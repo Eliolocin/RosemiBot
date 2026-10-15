@@ -630,9 +630,7 @@ export function buildProviderModelModal(
       },
     });
   }
-  // A curated provider has no speech capability at all, so these only ever reach an endpoint. The
-  // clone/VoiceDesign/Auto split describes a `tts-clone` server, which is why the ElevenLabs preset
-  // gets script markup without it.
+  // ElevenLabs has no clone/design body shapes, so its preset exposes script markup without a voice-mode selector.
   if (capability === "speech" && defaults?.speech) {
     const speech = defaults.speech;
     if (speech.allowVoiceMode) {

@@ -393,6 +393,7 @@ export const PERSONA_VOICE_PAGE_BY_ROUTE: Partial<Record<ConfigPanelRoute["actio
   "voice-priority-design": "voice",
   "voice-priority-clone": "voice",
   "voice-clear": "voice",
+  "voice-provider-clear": "voice",
   "voice-design-open": "voice",
   "voice-design-submit": "voice",
   "voice-design-remove": "voice",

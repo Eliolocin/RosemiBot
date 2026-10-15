@@ -72,8 +72,7 @@ Use `/providers` to manage server credentials, model catalogs, and endpoint regi
 Then use `/config` > Models > Switch Models to select the shared capability assignments every
 member of the server uses. Both commands require server management permissions.
 
-Speech has separate `TTS (Voice Design)` and `TTS (Voice Clone)` selections. A Design endpoint and a
-Clone endpoint can run together. Activating an Auto endpoint selects it for both; clearing one
+Speech has separate `TTS (Voice Design)` and `TTS (Voice Clone)` selections. A hosted model or custom endpoint can fill each slot independently. Activating an Auto endpoint selects it for both; clearing one
 selection keeps the other. In Persona > Voice, choose which saved source to prioritize and edit the
 voice description at any time. If the preferred source has no saved voice or matching target, TomoriBot
 uses the other saved source.
@@ -87,7 +86,7 @@ where they use TomoriBot. See
 The panels are titled `Server Providers` and `Personal Providers` so ownership is clear upon
 opening.
 
-In `/config` > Models > Switch Models, you can assign models and endpoints across eight capability slots:
+In `/config` > Models > Switch Models, you can assign models and endpoints across these capability slots:
 
 - **Text**: the main chat model.
 - **Vision**: reads images when the chat model cannot.
@@ -95,7 +94,8 @@ In `/config` > Models > Switch Models, you can assign models and endpoints acros
 - **Standard Image**: standard image generation (see [Image Generation](/features/capabilities/media-generation/image-generation/)).
 - **NovelAI Image**: NovelAI image generation.
 - **Video**: video generation.
-- **TTS Endpoint**: text-to-speech voice endpoint.
+- **TTS (Voice Design)**: speaks using a saved voice description.
+- **TTS (Voice Clone)**: speaks using a reference sample or provider voice.
 - **STT Endpoint**: speech-to-text audio transcription endpoint.
 
 The first six slots choose model catalog records. The TTS and STT slots choose workspace-scoped
@@ -151,8 +151,8 @@ LiteLLM, vLLM, ComfyUI, local TTS/STT) as labeled provider bundles.
 
 - **Server scope**: open `/providers` for workspace endpoint registration and editing.
 - **Personal scope**: open `/personal providers` for personal model catalogs (see
-  [Personalization](/features/knowledge/personalization/#your-own-providers)). Personal speech
-  endpoints are not selected from `/personal config`.
+  [Personalization](/features/knowledge/personalization/#your-own-providers)). Personal hosted speech models are selected independently under Voice Design and Voice Clone
+  in `/personal config`; personal local speech endpoints are unsupported.
 
 A label is the user-facing menu name and groups capabilities under one bundle when they share one
 endpoint URL. It is never sent to the remote service. Capabilities served from different URLs need
@@ -170,8 +170,7 @@ To add a custom endpoint:
    they support.
 
 For TTS and STT, register the endpoint and its models in `/providers`, then choose and activate the
-endpoint in `/config` > Models > Switch Models. Those speech slots select an endpoint rather than a
-model catalog entry.
+endpoint in `/config` > Models > Switch Models. TTS slots also accept admitted Google, standard Vertex, and OpenRouter speech models.
 
 API compatibility determines the request paths and payloads the service implements, so it also
 determines which capability slots the connection prepares. Registering exact models for those slots
@@ -247,6 +246,9 @@ unsupported modes will fail at generation time.
 | Provider | Text-to-Speech | Speech-to-Text |
 |---|---|---|
 | ElevenLabs | ✅ | ✅ |
+| Google Gemini | Voice Design | No |
+| Vertex AI (standard, global) | Voice Design | No |
+| OpenRouter Fish | Voice Clone | No |
 
 Local voice engines are covered under [Self-Hosting](/self-hosting/). For built-in web search and
 URL reading, see [Tools & Extensions](/features/capabilities/tools-and-extensions/#web-search--url-reading).

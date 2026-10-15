@@ -1,3 +1,7 @@
+import { localizer } from "@/utils/text/localizer";
+import { HOSTED_SPEECH_LIMITS } from "@/utils/speech/hostedSpeech";
+import { loadSpeechRoutingPolicy } from "@/utils/db/repositories/SpeechRepository";
+import { personaRepository } from "@/utils/db/repositories";
 import type { BaseGuildTextChannel, TextChannel } from "discord.js";
 import {
   BaseTool,
@@ -17,7 +21,12 @@ import {
   postVoiceTranscriptCaption,
   type VoiceDeliveryTarget,
 } from "@/utils/discord/webhook/voiceMessageDelivery";
-import { resolveSpeechTargets } from "@/utils/provider/speechEndpointResolver";
+import {
+  resolveSpeechTargets,
+  speechTargetSource,
+  speechTargetFingerprint,
+  speechTargetLabel,
+} from "@/utils/provider/speechEndpointResolver";
 import { resolveVoiceSourceCandidates } from "@/utils/speech/voiceSourceResolution";
 import { resolveVoiceSourceCapabilities } from "@/utils/speech/voiceSourceCapabilities";
 import { synthesizeVoiceMessage, type ResolvedVoiceSource } from "@/utils/speech/voiceMessageSynthesis";
@@ -139,10 +148,16 @@ export class GenerateVoiceMessageTool extends BaseTool {
 
   async assembleForContext(context: ToolAssemblyContext): Promise<Tool | null> {
     const serverId = Number.parseInt(context.state.server_id, 10);
-    const targets = Number.isInteger(serverId) ? await resolveSpeechTargets(serverId) : { design: null, clone: null };
+    const targets = Number.isInteger(serverId)
+      ? await resolveSpeechTargets(serverId, context.state.speechToolState?.userId)
+      : { design: null, clone: null };
     const candidate = resolveVoiceSourceCandidates({
-      targets: { design: targets.design?.endpoint ?? null, clone: targets.clone?.endpoint ?? null },
-      legacyElevenLabsAvailable: !targets.clone && (await hasOptApiKey(serverId, ELEVENLABS_SERVICE_NAME)),
+      targets: { design: speechTargetSource(targets.design), clone: speechTargetSource(targets.clone) },
+      legacyElevenLabsAvailable:
+        !targets.clone &&
+        (!context.state.speechToolState?.userId ||
+          (await loadSpeechRoutingPolicy(serverId, context.state.speechToolState.userId)).serverAllowed) &&
+        (await hasOptApiKey(serverId, ELEVENLABS_SERVICE_NAME)),
       persona: {
         speech_voice_sample_id: context.state.activePersonaVoiceSampleId,
         speech_voice_id: context.state.activePersonaVoiceId,
@@ -153,10 +168,12 @@ export class GenerateVoiceMessageTool extends BaseTool {
     if (!candidate) return null;
     const activeSpeechEndpoint = candidate.shape === "design" ? targets.design : targets.clone;
     const scriptMarkup =
-      (activeSpeechEndpoint?.endpoint?.extra_config.script_markup as string | undefined) ?? "bracket-tags";
+      activeSpeechEndpoint?.kind === "hosted-model"
+        ? "plain"
+        : ((activeSpeechEndpoint?.endpoint?.extra_config.script_markup as string | undefined) ?? "bracket-tags");
     const voiceDesign = candidate.shape === "design";
     const cloneInstructionsAvailable = resolveVoiceSourceCapabilities(
-      activeSpeechEndpoint?.endpoint,
+      speechTargetSource(activeSpeechEndpoint),
     ).cloneInstructionsAvailable;
     const variant = voiceDesign
       ? "voice-design"
@@ -164,6 +181,12 @@ export class GenerateVoiceMessageTool extends BaseTool {
         ? (scriptMarkup as VoiceScriptMarkup)
         : "bracket-tags";
 
+    if (context.state.speechToolState) {
+      context.state.speechToolState.selection = JSON.stringify([
+        speechTargetFingerprint(activeSpeechEndpoint),
+        candidate,
+      ]);
+    }
     return buildVoiceMessageToolVariant(this, variant, {
       voiceInstructionsAvailable: voiceDesign || cloneInstructionsAvailable,
     });
@@ -205,23 +228,41 @@ export class GenerateVoiceMessageTool extends BaseTool {
       };
     }
 
-    const targets = await resolveSpeechTargets(context.tomoriState.server_id);
-    const legacyKey = !targets.clone
-      ? ((await getOptApiKey(context.tomoriState.server_id, ELEVENLABS_SERVICE_NAME)) ?? "")
-      : "";
+    const userId = context.internalUserId ?? context.streamContext?.triggererUserId;
+    const targets = await resolveSpeechTargets(context.tomoriState.server_id, userId);
+    const scopeId = context.guildId ?? ("recipientId" in context.channel ? context.channel.recipientId : undefined);
+    const persona = scopeId
+      ? (await personaRepository.loadAllForServer(scopeId)).find(
+          (entry) => entry.persona_id === context.tomoriState.persona_id,
+        )
+      : context.tomoriState;
+    if (!persona)
+      return { success: false, error: localizer(context.locale, "tools.generate_voice_message.persona_missing") };
+    const legacyKey =
+      !targets.clone &&
+      (!userId || (await loadSpeechRoutingPolicy(context.tomoriState.server_id, userId)).serverAllowed)
+        ? ((await getOptApiKey(context.tomoriState.server_id, ELEVENLABS_SERVICE_NAME)) ?? "")
+        : "";
     const candidate = resolveVoiceSourceCandidates({
-      targets: { design: targets.design?.endpoint ?? null, clone: targets.clone?.endpoint ?? null },
+      targets: { design: speechTargetSource(targets.design), clone: speechTargetSource(targets.clone) },
       legacyElevenLabsAvailable: Boolean(legacyKey),
-      persona: context.tomoriState,
+      persona,
     })[0];
     if (!candidate) {
       return { success: false, error: "No configured persona voice matches the server's speech selections." };
     }
     const speechEndpoint = candidate.shape === "design" ? targets.design : targets.clone;
+    const snapshot = context.streamContext?.speechToolState?.selection;
+    if (snapshot && snapshot !== JSON.stringify([speechTargetFingerprint(speechEndpoint), candidate])) {
+      return {
+        success: false,
+        error: localizer(context.locale, "tools.generate_voice_message.stale"),
+      };
+    }
     const activeEndpoint = speechEndpoint?.endpoint ?? null;
     const source: ResolvedVoiceSource =
       candidate.shape === "design"
-        ? { kind: "design", designPrompt: candidate.designPrompt ?? "" }
+        ? { kind: "design", designPrompt: candidate.designPrompt ?? "", personaId: persona.persona_id }
         : candidate.id === "persona-sample"
           ? { kind: "clone", voiceSampleId: candidate.sampleId ?? 0 }
           : { kind: "elevenlabs", voiceId: candidate.voiceId ?? "" };
@@ -229,6 +270,18 @@ export class GenerateVoiceMessageTool extends BaseTool {
     const endpointApiKey = speechEndpoint?.apiKey ?? "";
 
     const synthesisResult = await synthesizeVoiceMessage({
+      target: speechEndpoint ?? undefined,
+      maxOutputBytes: HOSTED_SPEECH_LIMITS.outputBytes,
+      ...(userId && persona.persona_id
+        ? {
+            routing: {
+              serverId: context.tomoriState.server_id,
+              userId,
+              persona: { ...persona, persona_id: persona.persona_id },
+              sourceIsExplicit: false,
+            },
+          }
+        : {}),
       endpoint: activeEndpoint,
       endpointApiKey,
       elevenLabsApiKey,
@@ -253,6 +306,7 @@ export class GenerateVoiceMessageTool extends BaseTool {
       return {
         success: false,
         error: synthesisResult.details || "Failed to generate the voice message.",
+        data: { attempts: synthesisResult.attempts, cleanupPending: synthesisResult.cleanupPending },
       };
     }
 
@@ -264,6 +318,9 @@ export class GenerateVoiceMessageTool extends BaseTool {
     const mimeType = (synthesisResult.contentType ?? (isElevenLabs ? "audio/mpeg" : "audio/wav")).split(";")[0].trim();
     const voiceMeta = await generateVoiceMessageMetadata(synthesisResult.audioBuffer, mimeType);
 
+    if (context.abortSignal?.aborted || context.isExecutionCancelled?.()) {
+      return { success: false, error: "Voice message generation was cancelled." };
+    }
     if (!voiceMeta) {
       log.warn("[VoiceWaveform] Waveform generation returned null — falling back to plain attachment");
     }
@@ -288,13 +345,18 @@ export class GenerateVoiceMessageTool extends BaseTool {
     });
 
     if (!sentMessageId) {
-      return { success: false, error: "Voice message delivery failed.", responseDelivered: false };
+      return {
+        success: false,
+        error: "Voice message delivery failed.",
+        responseDelivered: false,
+        data: { attempts: synthesisResult.attempts, cleanupPending: synthesisResult.cleanupPending },
+      };
     }
 
     if (sentMessageId && captionText) {
       setCachedVoiceTranscript(sentMessageId, captionText, "tts");
       log.info(
-        `[VoiceCache] SET tts (${synthesisResult.backendKey}) | msg=${sentMessageId} | chars=${captionText.length} | preview="${captionText.slice(0, 60)}${captionText.length > 60 ? "…" : ""}"`,
+        `[VoiceCache] SET tts (${synthesisResult.backendKey}) | msg=${sentMessageId} | chars=${captionText.length}`,
       );
     }
 
@@ -319,9 +381,12 @@ export class GenerateVoiceMessageTool extends BaseTool {
       success: true,
       message: "Voice message generated and sent to Discord.",
       data: {
-        source: candidate.id,
-        mode: candidate.shape === "design" ? "design" : "clone",
-        target: activeEndpoint?.label ?? "ElevenLabs",
+        source: synthesisResult.effectiveSource ?? source.kind,
+        mode: (synthesisResult.effectiveSource ?? source.kind) === "design" ? "design" : "clone",
+        target: synthesisResult.targetLabel ?? speechTargetLabel(speechEndpoint),
+        usedServerFallback: synthesisResult.usedServerFallback ?? false,
+        attempts: synthesisResult.attempts,
+        cleanupPending: synthesisResult.cleanupPending,
       },
       responseDelivered: true,
       endTurn: true,

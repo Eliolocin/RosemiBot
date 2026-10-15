@@ -1,3 +1,4 @@
+import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCacheStore";
 /**
  * PresetRepository: manages SillyTavern preset data, persona preset import/export,
  * and SillyTavern card conversion.
@@ -879,9 +880,11 @@ class PresetRepository {
                 p.persona_id, p.persona_nickname, p.persona_lineage_id,
                 p.attribute_list, p.sample_dialogues_in, p.sample_dialogues_out,
                 p.is_alter, p.is_pointer, p.preset_lineage_id, p.preset_language, p.is_nsfw,
+                pvc.speech_voice_design_prompt, pvc.voice_source_priority,
                 pic.physical_appearance_tags, pic.nai_char_ref_url,
                 ptc.nai_attg_author, ptc.nai_attg_title, ptc.nai_attg_tags, ptc.nai_attg_genre, ptc.nai_attg_stars
               FROM personas p
+              LEFT JOIN persona_voice_configs pvc ON pvc.persona_id = p.persona_id
               LEFT JOIN persona_imagegen_configs pic ON pic.persona_id = p.persona_id
               LEFT JOIN persona_textgen_configs ptc ON ptc.persona_id = p.persona_id
               WHERE p.server_id = ${serverId}
@@ -893,9 +896,11 @@ class PresetRepository {
                 p.persona_id, p.persona_nickname, p.persona_lineage_id,
                 p.attribute_list, p.sample_dialogues_in, p.sample_dialogues_out,
                 p.is_alter, p.is_pointer, p.preset_lineage_id, p.preset_language, p.is_nsfw,
+                pvc.speech_voice_design_prompt, pvc.voice_source_priority,
                 pic.physical_appearance_tags, pic.nai_char_ref_url,
                 ptc.nai_attg_author, ptc.nai_attg_title, ptc.nai_attg_tags, ptc.nai_attg_genre, ptc.nai_attg_stars
               FROM personas p
+              LEFT JOIN persona_voice_configs pvc ON pvc.persona_id = p.persona_id
               LEFT JOIN persona_imagegen_configs pic ON pic.persona_id = p.persona_id
               LEFT JOIN persona_textgen_configs ptc ON ptc.persona_id = p.persona_id
               WHERE p.server_id = ${serverId}
@@ -999,6 +1004,8 @@ class PresetRepository {
           sample_dialogues_out: exportedSampleDialoguesOut,
           trigger_words: triggerWords || [],
           persona_prompt: personaPrompt,
+          speech_voice_design_prompt: presetData.speech_voice_design_prompt ?? null,
+          voice_source_priority: presetData.voice_source_priority ?? "design",
           naming_config: exportedNamingConfig,
           persona_lineage_id: lineageId,
           ...(exportedPresetLineageId !== null ? { preset_lineage_id: exportedPresetLineageId } : {}),
@@ -1116,6 +1123,22 @@ class PresetRepository {
           return { success: false, error: "commands.persona.import.error_import_failed" };
         }
 
+        if (
+          !(await personaRepository.setVoiceConfig(
+            mainTomoriId,
+            {
+              speech_voice_design_prompt: validatedImportData.speech_voice_design_prompt ?? null,
+              voice_source_priority: validatedImportData.voice_source_priority ?? "design",
+              speech_voice_sample_id: null,
+              speech_voice_id: null,
+              speech_voice_name: null,
+            },
+            { materialize: Boolean(validatedImportData.speech_voice_design_prompt) },
+          ))
+        )
+          return { success: false, error: "commands.persona.import.error_import_failed" };
+        invalidateTomoriStateCache(serverDiscId);
+        await sql`UPDATE speech_voice_bindings SET pending_delete = true WHERE persona_id = ${mainTomoriId}`;
         log.success(
           `Successfully imported preset pointer for server ${serverDiscId}: ${validatedImportData.tomori_nickname}`,
         );
@@ -1128,7 +1151,7 @@ class PresetRepository {
             dialogueCount: validatedImportData.sample_dialogues_in.length,
             triggerWordCount: validatedImportData.trigger_words.length,
           },
-          mainPersonaIsPointer: true,
+          mainPersonaIsPointer: !validatedImportData.speech_voice_design_prompt,
         };
       }
 
@@ -1228,6 +1251,18 @@ class PresetRepository {
         validatedImportData.naming_config ?? EMPTY_PERSONA_NAMING_CONFIG,
       );
 
+      if (
+        !(await personaRepository.setVoiceConfig(mainTomoriId, {
+          speech_voice_design_prompt: validatedImportData.speech_voice_design_prompt ?? null,
+          voice_source_priority: validatedImportData.voice_source_priority ?? "design",
+          speech_voice_sample_id: null,
+          speech_voice_id: null,
+          speech_voice_name: null,
+        }))
+      )
+        return { success: false, error: "commands.persona.import.error_import_failed" };
+      invalidateTomoriStateCache(serverDiscId);
+      await sql`UPDATE speech_voice_bindings SET pending_delete = true WHERE persona_id = ${mainTomoriId}`;
       log.success(`Successfully imported preset for server ${serverDiscId}: ${validatedImportData.tomori_nickname}`);
 
       return {

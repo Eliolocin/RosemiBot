@@ -1,10 +1,11 @@
 import { parseBuffer } from "music-metadata";
+import { MAX_VOICE_DESIGN_PROMPT_LENGTH } from "@/constants/speech";
 import { z } from "zod";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 
 export const HOSTED_SPEECH_LIMITS = {
   scriptCharacters: 2_000,
-  descriptionCharacters: 1_000,
+  descriptionCharacters: MAX_VOICE_DESIGN_PROMPT_LENGTH,
   directionCharacters: 300,
   generationTimeoutMs: 240_000,
   outputBytes: 10 * 1024 * 1024,

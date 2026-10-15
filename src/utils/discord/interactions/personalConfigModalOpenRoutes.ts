@@ -551,6 +551,8 @@ export async function handlePersonalConfigModalOpen(
         else if (route.capability === "image") currentModelId = currentConfig.diffusion_model_id ?? null;
         else if (route.capability === "image_nai") currentModelId = currentConfig.nai_diffusion_model_id ?? null;
         else if (route.capability === "video") currentModelId = currentConfig.video_model_id ?? null;
+        else if (route.capability === "speech_design") currentModelId = currentConfig.speech_design_model_id ?? null;
+        else if (route.capability === "speech_clone") currentModelId = currentConfig.speech_clone_model_id ?? null;
       }
       const nonce = dependencies.createNonce();
       await dependencies.showModelSelectModal(
@@ -607,6 +609,8 @@ export async function handlePersonalConfigModalOpen(
       else if (route.capability === "image") currentModelId = currentConfig.diffusion_model_id ?? null;
       else if (route.capability === "image_nai") currentModelId = currentConfig.nai_diffusion_model_id ?? null;
       else if (route.capability === "video") currentModelId = currentConfig.video_model_id ?? null;
+      else if (route.capability === "speech_design") currentModelId = currentConfig.speech_design_model_id ?? null;
+      else if (route.capability === "speech_clone") currentModelId = currentConfig.speech_clone_model_id ?? null;
     }
 
     const nonce = dependencies.createNonce();

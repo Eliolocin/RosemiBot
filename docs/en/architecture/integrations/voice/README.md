@@ -81,9 +81,9 @@ Outbound synthesis is driven by two pathways:
 - The `/generate voice-message` slash command, which drives the speech endpoint directly without an
   LLM call.
 
-The command and tool currently pass custom endpoints to the dispatcher. Hosted selections can be
-saved and resolved, but neither caller passes a hosted target, so selecting a hosted model does not
-enable voice generation through these callers. The hosted dispatcher contract is described below.
+The command, tool availability, tool assembly, and execution resolve speech targets for the
+triggering user independently of the chat provider. Both callers pass the discriminated target,
+source, credential ownership, and fallback context to the shared dispatcher.
 
 Both callers converge on shared synthesis and delivery modules:
 
@@ -129,20 +129,31 @@ both slots with the same endpoint. Clearing one slot preserves the other. Mode e
 selections, and endpoint or connection deletion clears its references. The migration selects the
 former default by `updated_at DESC, custom_endpoint_id DESC` and fills only its supported slots.
 
-Both generation callers resolve saved sources against selected custom endpoints before synthesis.
+Both generation callers resolve saved sources against selected custom or hosted targets before synthesis.
 A persona's `voice_source_priority` defaults to Design; if that saved source or its matching target
 is unavailable, the other usable pair wins. Existing Auto personas with a sample and no
 `VoiceDesign` marker migrate to Clone priority. Voice names are display text.
 
 The command puts an uploaded reference first, then a typed description, then saved sources in persona
 priority order. Its source selection applies only to that invocation. Submission rechecks the target
-and saved source; stale forms require a new invocation. Delivery direction and expressiveness apply
+and saved source; stale forms require a new invocation. Revalidation includes target kind, model
+identity, provider, credential owner, and credential revision. Tool assembly records the selected
+source and target identity in the turn context; execution checks them against fresh selections and
+persona state before synthesis. Delivery direction and expressiveness apply
 to the selected target. Neither caller retries synthesis through the other slot after a failure.
 
-Persona > Voice keeps the description editor available without an active target. Saving or clearing
+Persona > Voice keeps both source sections and priority controls available without an active target.
+The description preview uses the same fenced preview as other persona text editors. Saving or clearing
 a description preserves the reference sample, ElevenLabs voice ID, and priority. Only the Clone target
-chooses between the reference library and ElevenLabs catalogue. Legacy installations with an
-ElevenLabs optional key and no Clone endpoint retain that credential path.
+chooses between the reference library and ElevenLabs catalogue, including when no Clone target is
+selected. The quote below the selector identifies its contents and points to reference management.
+Clear actions name and remove only their own source, even if the provider changes before the click.
+The priority effect names the effective source and target and explains why a secondary source is used.
+Missing or incompatible targets produce a quote notice linking to `/providers` while authoring stays
+available. Generation retains the legacy optional ElevenLabs credential path; the persona selector shows an
+ElevenLabs catalogue only when ElevenLabs is the active Clone target. A saved ElevenLabs ID has a separate
+clear action beside the reference library when another Clone target or no Clone target is selected.
+Saved descriptions, preset imports, and hosted synthesis share the 1,000-character description limit.
 
 ### Stored voice bindings
 
@@ -179,7 +190,6 @@ Cleanup has no scheduler.
 ### Hosted dispatcher contract
 
 The shared dispatcher implements hosted synthesis when a request supplies a resolved `target`.
-The command and tool use its endpoint request fields and do not supply `target` or `routing`.
 Hosted requests enforce 2,000 script, 1,000 description, and 300 delivery-direction characters, a
 240-second generation deadline, and a 10 MiB decoded output ceiling. `maxOutputBytes` can impose a
 smaller destination attachment limit. Reference audio uses the existing sample download and WAV
@@ -205,7 +215,8 @@ failed personal attempt before server fallback. Creation and synthesis usage rem
 OpenRouter generation IDs support one bounded metadata lookup; missing cost stays unknown, and a
 failed lookup preserves generated audio. The dispatcher reports synthesis success independently of
 Discord delivery. The command and tool own delivery and `audio_generated` metrics for their connected
-custom endpoint paths.
+custom and hosted paths. Command receipts and tool results report the final source and target label,
+including server fallback: a custom endpoint's label or a hosted model's codename.
 
 ## Native Discord delivery constraints
 

@@ -4,6 +4,7 @@
  */
 
 import { z } from "zod";
+import { MAX_VOICE_DESIGN_PROMPT_LENGTH } from "@/constants/speech";
 import {
   EMPTY_PERSONA_NAMING_CONFIG,
   personaNamingConfigSchema,
@@ -60,6 +61,8 @@ export interface PresetExportData {
   sample_dialogues_out: string[];
   trigger_words: string[];
   persona_prompt?: string | null;
+  speech_voice_design_prompt?: string | null;
+  voice_source_priority?: "design" | "clone";
   naming_config?: PersonaNamingConfig;
   persona_lineage_id?: number;
   /** Official preset lineage, when this export was materialized from a preset pointer */
@@ -137,6 +140,8 @@ export const presetExportDataSchema = z.object({
   sample_dialogues_out: z.array(z.string().max(PRESET_MAX_STRING_LENGTH)).max(PRESET_MAX_SAMPLE_DIALOGUES),
   trigger_words: z.array(z.string().max(PRESET_MAX_STRING_LENGTH)).max(PRESET_MAX_TRIGGER_WORDS),
   persona_prompt: z.string().max(PRESET_MAX_PERSONA_PROMPT_LENGTH).nullable().optional(),
+  speech_voice_design_prompt: z.string().max(MAX_VOICE_DESIGN_PROMPT_LENGTH).nullable().optional(),
+  voice_source_priority: z.enum(["design", "clone"]).default("design"),
   naming_config: personaNamingConfigSchema.default(EMPTY_PERSONA_NAMING_CONFIG),
   persona_lineage_id: z
     .preprocess((value) => {

@@ -93,6 +93,7 @@ import { loadConfigVoicesView } from "@/utils/discord/interactions/configVoicesL
 import { loadConfigPersonaVoiceView } from "@/utils/discord/interactions/configPersonaVoiceLoader";
 import {
   CONFIG_PERSONA_VOICE_MODAL_OPEN_ACTIONS,
+  buildConfigPersonaVoiceRemoteView,
   handleConfigPersonaVoiceModalOpen,
   handleConfigPersonaVoiceRoutes,
 } from "@/utils/discord/interactions/configPersonaVoiceRoutes";
@@ -171,7 +172,7 @@ import { resolvePersonaPanelAvatar, resolvePersonaPanelAvatarReference } from "@
 import { resolvePersonaPanelCharacterReference } from "@/utils/discord/personaPanelCharacterReference";
 import { fetchElevenLabsVoiceCatalog } from "@/utils/audio/elevenLabsVoiceCatalog";
 import { isSharedPresetAssetReference } from "@/utils/storage/avatarStorage";
-import { resolveActiveSpeechEndpoint } from "@/utils/provider/speechEndpointResolver";
+import { resolveSpeechTargets } from "@/utils/provider/speechEndpointResolver";
 import {
   buildConfigModalFieldId,
   buildConditioningCheckboxGroupId,
@@ -500,8 +501,25 @@ const defaultDependencies: ConfigRouteDependencies = {
   getPersonaAvatarReferenceData: resolvePersonaPanelAvatarReference,
   getPersonaCharacterReferenceData: resolvePersonaPanelCharacterReference,
   loadPersonaMemoryView: loadConfigPersonaMemoryView,
-  loadPersonaVoiceView: loadConfigPersonaVoiceView,
-  resolveActiveSpeechEndpoint,
+  loadPersonaVoiceView: async (state, locale) => {
+    const view = await loadConfigPersonaVoiceView(state);
+    if (view.capability.apiStyle !== "elevenlabs") return view;
+    const target = (await resolveSpeechTargets(state.server_id)).clone;
+    const key = target?.endpoint?.api_style === "elevenlabs" ? target.apiKey : null;
+    if (!key) return view;
+    const result = await fetchElevenLabsVoiceCatalog(key);
+    if (!result.success || !result.voices?.length) return view;
+    return {
+      ...view,
+      remoteChooser: buildConfigPersonaVoiceRemoteView(
+        locale,
+        [...result.voices].sort((left, right) => left.name.localeCompare(right.name, "en")),
+        0,
+        state.speech_voice_id,
+      ),
+    };
+  },
+  resolveActiveSpeechEndpoint: async (serverId, mode) => (await resolveSpeechTargets(serverId))[mode],
   fetchElevenLabsVoiceCatalog,
   setPersonaVoiceConfig: (personaId, voice) => personaRepository.setVoiceConfig(personaId, voice),
   invalidatePersonaVoiceCache: invalidateTomoriStateCache,

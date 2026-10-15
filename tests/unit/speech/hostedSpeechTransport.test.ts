@@ -1,5 +1,4 @@
 import { afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test";
-import ffmpegPath from "ffmpeg-static";
 import { createGoogleSpeechTransport } from "@/providers/google/googleSpeech";
 import { synthesizeOpenRouterSpeech } from "@/providers/openrouter/openrouterSpeech";
 import { createVertexClient } from "@/providers/vertex/vertexClient";
@@ -9,7 +8,7 @@ import { synthesizeVoiceMessage } from "@/utils/speech/voiceMessageSynthesis";
 import { speechModelSchema } from "@/types/db/schema";
 import { SPEECH_SAMPLE_MAX_DURATION_SECS } from "@/utils/speech/voiceSampleAddOperation";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
-import { createSpeechWav } from "../../helpers/speechAudio";
+import { createSpeechWav, createSpeechMp3 } from "../../helpers/speechAudio";
 
 const wav = createSpeechWav();
 let mp3: Buffer;
@@ -32,14 +31,7 @@ const googleAudio = (data = wav.toString("base64"), mime = "audio/wav") => ({
 });
 
 beforeAll(async () => {
-  if (!ffmpegPath) throw new Error("Missing bundled audio converter");
-  const proc = Bun.spawn([ffmpegPath, "-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-f", "mp3", "pipe:1"], {
-    stdin: new Blob([new Uint8Array(wav)]),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  mp3 = Buffer.from(await new Response(proc.stdout).arrayBuffer());
-  expect(await proc.exited).toBe(0);
+  mp3 = await createSpeechMp3();
 });
 
 afterEach(() => fetchSpy?.mockRestore());

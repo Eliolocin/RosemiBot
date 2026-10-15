@@ -38,7 +38,7 @@ import {
   voiceSampleAttachmentName,
   type ConfigVoicesView,
 } from "@/utils/discord/ui/configVoicesPanel";
-import type { ConfigPersonaVoiceRemoteView } from "@/utils/discord/ui/configVoicePanel";
+import { buildConfigVoiceBody, type ConfigPersonaVoiceRemoteView } from "@/utils/discord/ui/configVoicePanel";
 import type { ConfigCapabilityEndpoint } from "@/utils/discord/interactions/configModelLoaders";
 import type { ConfigParametersView, ConfigSwitchModelsView } from "@/utils/discord/ui/configModelsPanel";
 import {
@@ -55,7 +55,7 @@ import { HUMANIZER_DEFAULT } from "@/utils/discord/humanizerOptions";
 import { DEFAULT_MESSAGE_FETCH_LIMIT } from "@/utils/discord/messageFetchLimit";
 import { withLinePrefix } from "@/utils/discord/ui/panel";
 import { getMemoryLimits } from "@/utils/misc/memoryLimits";
-import { initializeLocalizer, localizer } from "@/utils/text/localizer";
+import { initializeLocalizer, localizer, hasLocaleKey } from "@/utils/text/localizer";
 import { collectCaseFailures, RUNTIME_LOCALES, localizedCopy, localizedProse } from "../../helpers/localeCases";
 import { BACKTICK_RUNS } from "../../helpers/panelLimits";
 import { createLlmRow, createPersona } from "../../helpers/fixtures";
@@ -1634,7 +1634,7 @@ describe("Persona Voice page text and component budgeting", () => {
     const validation = validateComponentsV2MessageLimits(payload);
     expect(validation.valid, `Violations: ${JSON.stringify(validation.violations)}`).toBe(true);
     const componentCount = countRenderedComponents(payload);
-    expect(componentCount).toBeLessThanOrEqual(36);
+    expect(componentCount).toBeLessThanOrEqual(38);
     if (expectedComponents !== undefined) expect(componentCount).toBe(expectedComponents);
     expect(getPayloadTextTotal(payload)).toBeLessThanOrEqual(DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX);
   };
@@ -1650,7 +1650,7 @@ describe("Persona Voice page text and component budgeting", () => {
   ];
 
   const expectedLocalMaximum = (receipt: boolean, avatarPresent: boolean): number =>
-    31 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0);
+    33 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0);
 
   const makePrompt = (length: number, runLength: number): string => {
     const seed = `${"`".repeat(runLength)} 🌸✨ warm, unhurried voice. `;
@@ -1698,7 +1698,7 @@ describe("Persona Voice page text and component budgeting", () => {
           personas: maximumPersonaSet(prompt),
           selectedPersonaAvatarUrl: "https://cdn.example/avatar.png",
         });
-        assertValid(payload, 35);
+        assertValid(payload, 37);
         const promptDisplay = getTextDisplays(payload).find((text) =>
           text.includes(localizedCopy("en-US", "commands.config.panel.voice_page_design_preview_title")),
         );
@@ -1752,9 +1752,54 @@ describe("Persona Voice page text and component budgeting", () => {
     });
     assertValid(missing);
     expect(JSON.stringify(missing)).toMatch(
-      localizedProse("en-US", "commands.config.panel.voice_page_no_endpoint_description"),
+      localizedProse("en-US", "commands.config.panel.voice_page_no_model_notice", { providers: "`/providers`" }),
     );
     expect(JSON.stringify(missing)).toContain("voice-design-open");
+  });
+
+  it("keeps legacy provider IDs clearable beside the sample library with normal write restrictions", () => {
+    const cases = collectCaseFailures();
+    for (const locale of RUNTIME_LOCALES) {
+      cases.check(locale, () => {
+        for (const apiStyle of [null, "tts-clone"] as const) {
+          for (const readStatus of ["fresh", "stale"] as const) {
+            for (const isManager of [true, false]) {
+              const persona = makePersona({
+                persona_id: 55,
+                speech_voice_id: "legacy-private-id",
+                speech_voice_sample_id: VOICE_SAMPLES[0]?.sample_id,
+              });
+              const view = makePersonaVoiceView(apiStyle, VOICE_SAMPLES, true);
+              const actor = { ...GUILD_MANAGER, isManager };
+              const body = buildConfigVoiceBody({ locale, actor, readStatus, selectedPersona: persona, view });
+              const clearRow = body.find((component) => JSON.stringify(component).includes(":voice-provider-clear:"));
+              const labelKey = "commands.config.panel.voice_page_clear_provider_button";
+              expect(clearRow).toMatchObject({
+                type: ComponentType.ActionRow,
+                components: expect.arrayContaining([
+                  expect.objectContaining({
+                    label: localizedCopy(hasLocaleKey(locale, labelKey) ? locale : "en-US", labelKey),
+                    disabled: !isManager || readStatus !== "fresh",
+                  }),
+                ]),
+              });
+              const payload = buildVoicePayload(locale, true, {
+                personas: [persona],
+                personaVoiceView: view,
+                actor,
+                readStatus,
+              });
+              assertValid(payload);
+              expect(
+                getStringSelectMenus(body).find((menu) => String(menu.customId).includes("voice-select"))?.options,
+              ).toEqual(expect.arrayContaining([expect.objectContaining({ value: "0" })]));
+              expect(JSON.stringify(payload)).not.toContain(persona.speech_voice_id);
+            }
+          }
+        }
+      });
+    }
+    cases.expectNoFailures();
   });
 
   it("ends unsupported capability views with their notice so the persona hint remains absorbed", () => {
@@ -1798,7 +1843,7 @@ describe("Persona Voice page text and component budgeting", () => {
             personaVoiceRemoteView: remoteView,
             receipt: receipt ? { tone: "success", heading: "Saved", detail: "Voice saved." } : undefined,
           });
-          assertValid(payload, 32 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0));
+          assertValid(payload, 34 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0));
           const selector = getStringSelectMenus(payload).find((menu) => String(menu.customId).includes("voice-select"));
           const options = (selector?.options ?? []) as Array<Record<string, unknown>>;
           expect(options).toHaveLength(25);

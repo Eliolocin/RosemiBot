@@ -26,11 +26,15 @@ const VERBATIM_TOOL_DEFINITIONS_HEADER =
  * @param tomoriState - Active persona/server state used for tool availability gating.
  * @returns Provider-native tool JSON array, or an empty array when none apply.
  */
-async function buildVerbatimToolDefinitionsJson(tomoriState: TomoriState): Promise<Array<Record<string, unknown>>> {
+async function buildVerbatimToolDefinitionsJson(
+  tomoriState: TomoriState,
+  userId?: number,
+): Promise<Array<Record<string, unknown>>> {
   // Build the minimal availability state (mirrors every <Provider>.getTools block).
   const provider = tomoriState.llm.llm_provider;
   const toolStateForContext: ToolStateForContext = {
     server_id: tomoriState.server_id.toString(),
+    speechToolState: { userId },
     activePersonaHasElevenlabsVoice: Boolean(
       tomoriState.speech_voice_sample_id ||
         tomoriState.speech_voice_design_prompt?.trim() ||
@@ -87,6 +91,7 @@ async function buildVerbatimToolDefinitionsJson(tomoriState: TomoriState): Promi
  */
 export async function buildVerbatimToolDefinitionsContextItem(params: {
   tomoriState: TomoriState | null | undefined;
+  userId?: number;
 }): Promise<StructuredContextItem | null> {
   try {
     const { tomoriState } = params;
@@ -94,7 +99,7 @@ export async function buildVerbatimToolDefinitionsContextItem(params: {
       return null;
     }
 
-    const tools = await buildVerbatimToolDefinitionsJson(tomoriState);
+    const tools = await buildVerbatimToolDefinitionsJson(tomoriState, params.userId);
     if (tools.length === 0) {
       return null;
     }

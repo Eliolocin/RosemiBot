@@ -22,7 +22,11 @@ import {
   loadVoiceSampleById,
   SpeechBindingChangedError,
 } from "@/utils/db/repositories/SpeechRepository";
-import { resolveSpeechTargets, type SpeechTargetResult } from "@/utils/provider/speechEndpointResolver";
+import {
+  resolveSpeechTargets,
+  speechTargetLabel,
+  type SpeechTargetResult,
+} from "@/utils/provider/speechEndpointResolver";
 import { loadStoredVoiceSampleBuffer } from "@/utils/storage/voiceSampleStorage";
 import {
   normalizeVoiceSampleToWav,
@@ -73,6 +77,7 @@ export interface VoiceMessageSynthesisResult {
   backendKey: VoiceBackendKey;
   attempts?: VoiceSynthesisAttempt[];
   effectiveSource?: ResolvedVoiceSource["kind"];
+  targetLabel?: string;
   usedServerFallback?: boolean;
   cleanupPending?: boolean;
 }
@@ -432,14 +437,14 @@ export async function synthesizeVoiceMessage(
       result.success ||
       attempt.operations.some((operation) => operation.operation === "synthesize" && operation.success);
     attempt.errorKind = result.errorKind;
-    return { ...result, attempts, effectiveSource: current.source.kind };
+    return { ...result, attempts, effectiveSource: current.source.kind, targetLabel: speechTargetLabel(target) };
   }
   if (request.abortSignal?.aborted)
     return { success: false, backendKey: "tts-clone", errorKind: "cancelled", attempts };
   let policy: Awaited<ReturnType<typeof loadSpeechRoutingPolicy>> | undefined;
   if (request.routing) {
     policy = await loadSpeechRoutingPolicy(request.routing.serverId, request.routing.userId);
-    if (request.target?.owner.kind === "server" && !policy.serverAllowed)
+    if ((!request.target || request.target.owner.kind === "server") && !policy.serverAllowed)
       return { success: false, backendKey: "tts-clone", errorKind: "invalid_request", attempts };
   }
   const result = await run(request);

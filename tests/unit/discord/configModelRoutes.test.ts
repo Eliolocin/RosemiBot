@@ -91,6 +91,8 @@ function makeState(overrides: Record<string, unknown> = {}): TomoriState {
     config: {
       speech_design_endpoint_id: null,
       speech_clone_endpoint_id: null,
+      speech_design_model_id: null,
+      speech_clone_model_id: null,
       llm_id: 1,
       vision_llm_id: null,
       embedding_model_id: null,
@@ -2270,7 +2272,7 @@ describe("config models view loaders", () => {
       makeState(),
     ] as unknown as TomoriState[]);
 
-    const view = await loadConfigSwitchModelsView(makeState(), "guild-1", undefined);
+    const view = await loadConfigSwitchModelsView(makeState(), "guild-1", undefined, undefined, async () => []);
     expect(view.slots).toHaveLength(6);
     expect<readonly ConfigCatalogModelCapability[]>(view.slots.map((slot) => slot.capability)).toEqual(
       CATALOG_MODEL_CAPABILITIES,
@@ -2319,7 +2321,7 @@ describe("config models view loaders", () => {
     );
     const personas = spyOn(tomoriStateCache, "getCachedAllPersonas").mockResolvedValue([] as unknown as TomoriState[]);
 
-    const view = await loadConfigSwitchModelsView(makeState(), "guild-1", undefined);
+    const view = await loadConfigSwitchModelsView(makeState(), "guild-1", undefined, undefined, async () => []);
     const payload = buildConfigPanelPayload({
       locale: "en-US",
       actor: { workspaceKind: "guild", isManager: true },

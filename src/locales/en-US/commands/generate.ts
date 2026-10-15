@@ -153,6 +153,11 @@ export default {
     },
 
     "voice-message": {
+      success_routing_field: `Speech Routing`,
+      routing_server: `Server speech model`,
+      routing_personal: `Personal speech model`,
+      routing_server_fallback: `Server speech model after personal provider failure`,
+      incompatible_override_description: `The selected speech models do not support your uploaded reference or typed description. Choose a compatible model in /providers.`,
       description: `Speak a message with a voice you pick`,
       persona_description: `Persona that speaks the message`,
       voice_sample_description: `Voice to clone for this message only; never saved`,

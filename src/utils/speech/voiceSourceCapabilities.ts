@@ -27,13 +27,6 @@ function getVoiceMode(
   return rawMode === "voice-design" || rawMode === "auto" ? rawMode : "clone";
 }
 
-/**
- * Resolves the endpoint's accepted request shapes.
- *
- * `auto` accepts both: one URL that reads `ref_audio`/`ref_text` for clone bodies and `instruct`
- * for design bodies. ElevenLabs accepts neither, which is why its user-supplied options are
- * ignored rather than rejected.
- */
 export function resolveVoiceSourceCapabilities(
   endpoint: VoiceSourceTarget | null | undefined,
 ): VoiceSourceCapabilities {

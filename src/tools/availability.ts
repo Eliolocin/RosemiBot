@@ -1,3 +1,4 @@
+import { loadSpeechRoutingPolicy } from "@/utils/db/repositories/SpeechRepository";
 import { resolveVoiceSourceCandidates } from "@/utils/speech/voiceSourceResolution";
 import { type BaseGuildTextChannel, ChannelType, type Client } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
@@ -13,7 +14,7 @@ import { ELEVENLABS_SERVICE_NAME } from "@/utils/audio/elevenLabsAccount";
 import { sql } from "@/utils/db/client";
 import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
 import { log } from "@/utils/misc/logger";
-import { resolveSpeechTargets } from "@/utils/provider/speechEndpointResolver";
+import { resolveSpeechTargets, speechTargetSource } from "@/utils/provider/speechEndpointResolver";
 import { hasOptApiKey } from "@/utils/security/crypto";
 import { getCachedTomoriState } from "@/utils/cache/tomoriStateCache";
 import { configToFeatureFlags } from "@/utils/tools/featureFlagMapper";
@@ -205,11 +206,15 @@ export async function getAvailableToolsWithMCP(
 
     const serverIdNumber = stateForContext.server_id ? Number.parseInt(stateForContext.server_id, 10) : undefined;
     if (serverIdNumber) {
-      const targets = await resolveSpeechTargets(serverIdNumber);
-      const hasElevenLabsOptKey = await hasOptApiKey(serverIdNumber, ELEVENLABS_SERVICE_NAME);
+      const targets = await resolveSpeechTargets(serverIdNumber, stateForContext.speechToolState?.userId);
+      const hasElevenLabsOptKey =
+        !targets.clone &&
+        (!stateForContext.speechToolState?.userId ||
+          (await loadSpeechRoutingPolicy(serverIdNumber, stateForContext.speechToolState.userId)).serverAllowed) &&
+        (await hasOptApiKey(serverIdNumber, ELEVENLABS_SERVICE_NAME));
       const hasSpeechProvider =
         resolveVoiceSourceCandidates({
-          targets: { design: targets.design?.endpoint ?? null, clone: targets.clone?.endpoint ?? null },
+          targets: { design: speechTargetSource(targets.design), clone: speechTargetSource(targets.clone) },
           legacyElevenLabsAvailable: !targets.clone && hasElevenLabsOptKey,
           persona: {
             speech_voice_sample_id: stateForContext.activePersonaVoiceSampleId,

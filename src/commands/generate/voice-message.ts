@@ -10,6 +10,7 @@
  * neither value reaches `persona_voice_configs` or `voice_samples`.
  */
 
+import { MAX_VOICE_DESIGN_PROMPT_LENGTH } from "@/constants/speech";
 import {
   EmbedBuilder,
   MessageFlags,
@@ -21,7 +22,7 @@ import {
 } from "discord.js";
 import { parseBuffer } from "music-metadata";
 import { personaRepository, statRepository } from "@/utils/db/repositories";
-import { loadVoiceSamples } from "@/utils/db/repositories/SpeechRepository";
+import { loadVoiceSamples, loadSpeechRoutingPolicy } from "@/utils/db/repositories/SpeechRepository";
 import { cooldownRepository } from "@/utils/db/repositories/CooldownRepository";
 import { getCachedPersonalSpotlightStatus } from "@/utils/cache/personalSpotlightCache";
 import { getCachedWhitelistStatus } from "@/utils/cache/channelWhitelistCache";
@@ -48,7 +49,12 @@ import { generateVoiceMessageMetadata } from "@/utils/audio/voiceMessageMetadata
 import { ELEVENLABS_SERVICE_NAME } from "@/utils/audio/elevenLabsAccount";
 import { isChatterboxEndpoint } from "@/providers/custom/styles/ttsCloningAdapter";
 import type { CustomEndpointRow } from "@/types/db/schema";
-import { resolveSpeechTargets } from "@/utils/provider/speechEndpointResolver";
+import {
+  resolveSpeechTargets,
+  speechTargetSource,
+  speechTargetFingerprint,
+  speechTargetLabel,
+} from "@/utils/provider/speechEndpointResolver";
 import { getOptApiKey } from "@/utils/security/crypto";
 import { safeDownload } from "@/utils/security/safeDownload";
 import {
@@ -110,7 +116,7 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
         .setName("voice_design")
         .setDescription(localizer("en-US", "commands.generate.voice-message.voice_design_description"))
         .setRequired(false)
-        .setMaxLength(1000),
+        .setMaxLength(MAX_VOICE_DESIGN_PROMPT_LENGTH),
     );
 
 /**
@@ -392,11 +398,12 @@ export async function execute(
   }
   const persona = personaResolution.persona;
 
-  const targets = await resolveSpeechTargets(mainPersona.server_id);
+  const targets = await resolveSpeechTargets(mainPersona.server_id, userData.user_id);
   let elevenLabsApiKey =
     targets.clone?.endpoint?.api_style === "elevenlabs"
       ? targets.clone.apiKey
-      : !targets.clone
+      : !targets.clone &&
+          (!userData.user_id || (await loadSpeechRoutingPolicy(mainPersona.server_id, userData.user_id)).serverAllowed)
         ? ((await getOptApiKey(mainPersona.server_id, ELEVENLABS_SERVICE_NAME)) ?? "")
         : "";
 
@@ -425,13 +432,26 @@ export async function execute(
   const typedDesignPrompt = interaction.options.getString("voice_design");
   const personaSampleName = await resolvePersonaSampleName(persona);
   const candidateInput = {
-    targets: { design: targets.design?.endpoint ?? null, clone: targets.clone?.endpoint ?? null },
+    targets: { design: speechTargetSource(targets.design), clone: speechTargetSource(targets.clone) },
     legacyElevenLabsAvailable: !targets.clone && Boolean(elevenLabsApiKey),
     persona,
     personaSampleName,
     uploadFilename: uploadAttachment?.name ?? null,
     typedDesignPrompt,
   };
+  if (
+    (uploadAttachment && !resolveVoiceSourceCapabilities(speechTargetSource(targets.clone)).acceptsCloneShape) ||
+    (typedDesignPrompt?.trim() &&
+      !resolveVoiceSourceCapabilities(speechTargetSource(targets.design)).acceptsDesignShape)
+  ) {
+    await replyInfoEmbed(interaction, locale, {
+      titleKey: "commands.generate.voice-message.no_voice_source_title",
+      descriptionKey: "commands.generate.voice-message.incompatible_override_description",
+      color: ColorCode.ERROR,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
   const candidates = resolveVoiceSourceCandidates(candidateInput);
   if (candidates.length === 0) {
     log.warn(
@@ -487,7 +507,9 @@ export async function execute(
   }
 
   const anyDesignShape = candidates.some((candidate) => candidate.shape === "design");
-  const cloneInstructionsAvailable = resolveVoiceSourceCapabilities(targets.clone?.endpoint).cloneInstructionsAvailable;
+  const cloneInstructionsAvailable = resolveVoiceSourceCapabilities(
+    speechTargetSource(targets.clone),
+  ).cloneInstructionsAvailable;
   const expressiveness = resolveExpressivenessBackend({
     endpoint: targets.clone?.endpoint ?? null,
     usesElevenLabs: candidates.some((candidate) => candidate.shape === "elevenlabs"),
@@ -555,20 +577,21 @@ export async function execute(
   }
 
   const selectedSourceId = modalResult.values?.[VOICE_MESSAGE_SOURCE_INPUT_ID] ?? defaultSource?.id;
-  const freshTargets = await resolveSpeechTargets(mainPersona.server_id);
+  const freshTargets = await resolveSpeechTargets(mainPersona.server_id, userData.user_id);
   const freshPersona = (await personaRepository.loadAllForServer(serverDiscId)).find(
     (entry) => entry.persona_id === persona.persona_id,
   );
   elevenLabsApiKey =
     freshTargets.clone?.endpoint?.api_style === "elevenlabs"
       ? freshTargets.clone.apiKey
-      : !freshTargets.clone
+      : !freshTargets.clone &&
+          (!userData.user_id || (await loadSpeechRoutingPolicy(mainPersona.server_id, userData.user_id)).serverAllowed)
         ? ((await getOptApiKey(mainPersona.server_id, ELEVENLABS_SERVICE_NAME)) ?? "")
         : "";
   const freshCandidates = freshPersona
     ? resolveVoiceSourceCandidates({
         ...candidateInput,
-        targets: { design: freshTargets.design?.endpoint ?? null, clone: freshTargets.clone?.endpoint ?? null },
+        targets: { design: speechTargetSource(freshTargets.design), clone: speechTargetSource(freshTargets.clone) },
         legacyElevenLabsAvailable: !freshTargets.clone && Boolean(elevenLabsApiKey),
         persona: freshPersona,
       })
@@ -582,7 +605,7 @@ export async function execute(
     originalSource?.sampleId !== selectedSource?.sampleId ||
     originalSource?.designPrompt !== selectedSource?.designPrompt ||
     originalSource?.voiceId !== selectedSource?.voiceId ||
-    originalTarget?.endpoint?.custom_endpoint_id !== speechEndpoint?.endpoint?.custom_endpoint_id ||
+    speechTargetFingerprint(originalTarget) !== speechTargetFingerprint(speechEndpoint) ||
     originalTarget?.endpoint?.api_style !== speechEndpoint?.endpoint?.api_style ||
     originalTarget?.endpoint?.endpoint_url !== speechEndpoint?.endpoint?.endpoint_url ||
     JSON.stringify(originalTarget?.endpoint?.extra_config) !== JSON.stringify(speechEndpoint?.endpoint?.extra_config)
@@ -626,7 +649,11 @@ export async function execute(
     }
     voiceSource = { kind: "clone-buffer", refAudio: loaded.refAudio, refText: referenceTranscript };
   } else if (selectedSource.shape === "design") {
-    voiceSource = { kind: "design", designPrompt: selectedSource.designPrompt ?? "" };
+    voiceSource = {
+      kind: "design",
+      designPrompt: selectedSource.designPrompt ?? "",
+      ...(selectedSource.id === "persona-design" ? { personaId: persona.persona_id } : {}),
+    };
   } else if (selectedSource.id === "persona-sample" && selectedSource.sampleId) {
     voiceSource = { kind: "clone", voiceSampleId: selectedSource.sampleId };
   } else if (selectedSource.id === "elevenlabs" && selectedSource.voiceId) {
@@ -689,7 +716,23 @@ export async function execute(
   );
 
   const startedAt = performance.now();
+  const sourceIsExplicit =
+    selectedSource.id === "upload" ||
+    selectedSource.id === "typed-design" ||
+    (candidates.length > 1 && selectedSource.id !== defaultSource?.id);
   const synthesisResult = await synthesizeVoiceMessage({
+    target: speechEndpoint ?? undefined,
+    maxOutputBytes: modalInteraction.attachmentSizeLimit,
+    ...(userData.user_id && freshPersona?.persona_id
+      ? {
+          routing: {
+            serverId: mainPersona.server_id,
+            userId: userData.user_id,
+            persona: { ...freshPersona, persona_id: freshPersona.persona_id },
+            sourceIsExplicit,
+          },
+        }
+      : {}),
     endpoint: effectiveEndpoint,
     endpointApiKey: speechEndpoint?.apiKey ?? "",
     elevenLabsApiKey,
@@ -764,7 +807,16 @@ export async function execute(
   const elapsedSeconds = ((performance.now() - startedAt) / 1000).toFixed(1);
   const sourceDisplayText = resolveSourceDisplayText({
     locale,
-    candidate: selectedSource,
+    candidate:
+      synthesisResult.usedServerFallback && !sourceIsExplicit && synthesisResult.effectiveSource
+        ? synthesisResult.effectiveSource === "design"
+          ? { id: "persona-design", shape: "design", designPrompt: freshPersona?.speech_voice_design_prompt ?? "" }
+          : synthesisResult.effectiveSource === "clone"
+            ? { id: "persona-sample", shape: "clone" }
+            : synthesisResult.effectiveSource === "elevenlabs"
+              ? { id: "elevenlabs", shape: "elevenlabs", voiceId: freshPersona?.speech_voice_id ?? "" }
+              : selectedSource
+        : selectedSource,
     personaSampleName,
     uploadFilename: uploadAttachment?.name ?? null,
   });
@@ -783,7 +835,18 @@ export async function execute(
     })
     .addFields({
       name: localizer(locale, "commands.generate.voice-message.success_target_field"),
-      value: safeSelectOptionText(effectiveEndpoint?.label ?? "ElevenLabs", 1024),
+      value: safeSelectOptionText(synthesisResult.targetLabel ?? speechTargetLabel(speechEndpoint), 1024),
+    })
+    .addFields({
+      name: localizer(locale, "commands.generate.voice-message.success_routing_field"),
+      value: localizer(
+        locale,
+        synthesisResult.usedServerFallback
+          ? "commands.generate.voice-message.routing_server_fallback"
+          : synthesisResult.attempts?.at(-1)?.owner.kind === "personal"
+            ? "commands.generate.voice-message.routing_personal"
+            : "commands.generate.voice-message.routing_server",
+      ),
     })
     .setColor(ColorCode.SUCCESS);
 

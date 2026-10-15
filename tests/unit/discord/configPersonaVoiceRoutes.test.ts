@@ -344,7 +344,10 @@ describe("Persona > Voice routes", () => {
         speech_voice_design_prompt: "Existing prompt",
       }),
     });
-    await harness.dispatch(buildConfigRouteId({ action: "voice-clear", locale: "en-US", personaId: 55 }), "button");
+    await harness.dispatch(
+      buildConfigRouteId({ action: "voice-provider-clear", locale: "en-US", personaId: 55 }),
+      "button",
+    );
 
     expect(harness.writes[0]).toEqual({
       personaId: 55,
@@ -383,7 +386,38 @@ describe("Persona > Voice routes", () => {
       },
     ]);
     expect(harness.invalidations).toEqual(["guild-1"]);
-    expect(harness.events).toContain("endpoint");
+    expect(harness.events).not.toContain("endpoint");
+  });
+
+  it("clears a legacy provider ID without a Clone target while preserving the sample and description", async () => {
+    const harness = makeHarness({
+      noEndpoint: true,
+      persona: makePersona({
+        speech_voice_sample_id: 101,
+        speech_voice_id: "legacy-provider-id",
+        speech_voice_design_prompt: "Warm narration",
+        voice_source_priority: "clone",
+      }),
+    });
+    await harness.dispatch(
+      buildConfigRouteId({ action: "voice-provider-clear", locale: "en-US", personaId: 55 }),
+      "button",
+    );
+    expect(harness.writes).toEqual([
+      {
+        personaId: 55,
+        voice: {
+          speech_voice_sample_id: 101,
+          speech_voice_id: null,
+          speech_voice_name: null,
+          speech_voice_design_prompt: "Warm narration",
+          voice_source_priority: "clone",
+        },
+      },
+    ]);
+    expect(harness.invalidations).toEqual(["guild-1"]);
+    expect(harness.events.indexOf("write")).toBeLessThan(harness.events.indexOf("invalidate"));
+    expect(harness.events).not.toContain("endpoint");
   });
 
   it("preserves the design-removal ladder and all four columns", async () => {
@@ -556,7 +590,7 @@ describe("Persona > Voice routes", () => {
         labels: {},
       },
     ]);
-    expect(view.voices?.[0]).toEqual({ label: "Harbor", fingerprint: expect.any(String) });
+    expect(view.voices?.[0]).toMatchObject({ label: "Harbor", fingerprint: expect.any(String) });
     expect(JSON.stringify(view)).not.toContain("provider-secret-id");
 
     const unnamed = buildConfigPersonaVoiceRemoteView("en-US", [

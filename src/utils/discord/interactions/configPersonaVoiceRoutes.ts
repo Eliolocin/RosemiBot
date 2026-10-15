@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
+import { MAX_VOICE_DESIGN_PROMPT_LENGTH } from "@/constants/speech";
 import { MessageFlags, TextInputStyle, type ModalSubmitInteraction } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
-import { ELEVENLABS_SERVICE_NAME } from "@/utils/audio/elevenLabsAccount";
 import type { ElevenLabsVoiceCatalogEntry } from "@/utils/audio/elevenLabsVoiceCatalog";
 import { buildConfigModalFieldId, type RawModalPayload } from "@/utils/discord/ui/configModals";
 import { isConfigRouteAuthorized, type ConfigActor } from "@/utils/discord/interactions/configPermissionPolicy";
@@ -15,12 +15,10 @@ import {
 import type { ConfigPersonaVoiceRemoteView } from "@/utils/discord/ui/configVoicePanel";
 import { buildConfigRouteId, type ConfigPanelRoute } from "@/utils/discord/configPanelCatalog";
 import type { GlobalRoutableInteraction } from "@/utils/discord/interactions/routeRegistry";
-import { getOptApiKey } from "@/utils/security/crypto";
 import { buildTextPreview } from "@/utils/text/textPreview";
 import { localizer } from "@/utils/text/localizer";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 
-const MAX_VOICE_DESIGN_PROMPT_LENGTH = 1000;
 const VOICE_DESIGN_PROMPT_FIELD = "voice_design_prompt";
 const VOICE_PAGE_SIZE = 25;
 const VOICE_PAGE_SIZE_WITH_MORE = VOICE_PAGE_SIZE - 1;
@@ -34,6 +32,7 @@ const CONFIG_PERSONA_VOICE_ACTIONS = new Set<ConfigPanelRoute["action"]>([
   "voice-page",
   "voice-chooser-cancel",
   "voice-clear",
+  "voice-provider-clear",
   "voice-design-open",
   "voice-design-submit",
   "voice-design-remove",
@@ -46,10 +45,7 @@ export interface ConfigPersonaVoiceRouteContext {
   dependencies: ConfigRouteDependencies;
 }
 
-type ActiveVoiceMode =
-  | { apiStyle: "tts-clone"; supportsVoiceDesign: boolean }
-  | { apiStyle: "elevenlabs"; apiKey: string }
-  | null;
+type ActiveVoiceMode = { apiStyle: "tts-clone" } | { apiStyle: "elevenlabs"; apiKey: string };
 
 function receipt(
   locale: string,
@@ -84,21 +80,9 @@ async function resolveActiveVoiceMode(
   dependencies: ConfigRouteDependencies,
 ): Promise<ActiveVoiceMode> {
   const endpoint = await dependencies.resolveActiveSpeechEndpoint(persona.server_id, "clone");
-  if (endpoint?.endpoint.api_style === "tts-clone") {
-    return {
-      apiStyle: "tts-clone",
-      supportsVoiceDesign: endpoint.endpoint.extra_config.supports_instruct === true,
-    };
-  }
-
-  if (endpoint?.endpoint.api_style === "elevenlabs" && endpoint.apiKey.trim()) {
-    return { apiStyle: "elevenlabs", apiKey: endpoint.apiKey };
-  }
-
-  const legacyKey = await getOptApiKey(persona.server_id, ELEVENLABS_SERVICE_NAME);
-  return legacyKey?.trim()
-    ? { apiStyle: "elevenlabs", apiKey: legacyKey }
-    : { apiStyle: "tts-clone", supportsVoiceDesign: false };
+  return endpoint?.endpoint?.api_style === "elevenlabs" && endpoint.apiKey.trim()
+    ? { apiStyle: "elevenlabs", apiKey: endpoint.apiKey }
+    : { apiStyle: "tts-clone" };
 }
 
 function buildVoiceDesignModal(
@@ -172,13 +156,17 @@ export function buildConfigPersonaVoiceRemoteView(
   locale: string,
   voices: readonly ElevenLabsVoiceCatalogEntry[],
   pageStart = 0,
+  selectedVoiceId?: string | null,
 ): ConfigPersonaVoiceRemoteView {
+  const selectedVoice = voices.find((voice) => voice.voiceId === selectedVoiceId);
   return {
     voices: voices.map((voice) => ({
       label: localizedRemoteVoiceLabel(locale, voice),
       fingerprint: catalogEntryFingerprint(voice),
+      selected: voice.voiceId === selectedVoiceId,
     })),
     catalogFingerprint: catalogFingerprint(voices),
+    selectedVoiceLabel: selectedVoice ? localizedRemoteVoiceLabel(locale, selectedVoice) : undefined,
     pageStart,
   };
 }
@@ -225,11 +213,11 @@ async function loadRemoteCatalog(
   locale: string,
 ): Promise<{ voices: ElevenLabsVoiceCatalogEntry[]; view: ConfigPersonaVoiceRemoteView } | null> {
   const mode = await resolveActiveVoiceMode(persona, dependencies);
-  if (!mode || mode.apiStyle !== "elevenlabs") return null;
+  if (mode.apiStyle !== "elevenlabs") return null;
   const result = await dependencies.fetchElevenLabsVoiceCatalog(mode.apiKey);
   if (!result.success || !result.voices?.length) return null;
   const voices = [...result.voices].sort((left, right) => left.name.localeCompare(right.name, "en"));
-  return { voices, view: buildConfigPersonaVoiceRemoteView(locale, voices) };
+  return { voices, view: buildConfigPersonaVoiceRemoteView(locale, voices, 0, persona.speech_voice_id) };
 }
 
 async function repaintVoice(
@@ -329,17 +317,6 @@ async function handleVoiceSelection(
   const scope = current.scope;
   const persona = current.persona;
   const mode = await resolveActiveVoiceMode(persona, context.dependencies);
-  if (!mode) {
-    await repaintVoice(context, scope, persona.persona_id ?? null, {
-      receipt: receipt(
-        context.route.locale,
-        "warning",
-        "commands.config.panel.voice_page_no_endpoint_title",
-        "commands.config.panel.voice_page_no_endpoint_description",
-      ),
-    });
-    return;
-  }
 
   if (mode.apiStyle === "tts-clone") {
     const parsed = parseVoiceSelection(submittedValue);
@@ -364,7 +341,7 @@ async function handleVoiceSelection(
       return;
     }
     const writeMode = await resolveActiveVoiceMode(persona, context.dependencies);
-    if (!writeMode || writeMode.apiStyle !== "tts-clone") {
+    if (writeMode.apiStyle !== "tts-clone") {
       await repaintVoice(context, scope, persona.persona_id ?? null, { receipt: staleReceipt(context.route.locale) });
       return;
     }
@@ -452,7 +429,7 @@ async function handleVoiceSelection(
   }
 
   const writeMode = await resolveActiveVoiceMode(persona, context.dependencies);
-  if (!writeMode || writeMode.apiStyle !== "elevenlabs") {
+  if (writeMode.apiStyle !== "elevenlabs") {
     await repaintVoice(context, scope, persona.persona_id ?? null, {
       remoteView: remote.view,
       receipt: staleReceipt(context.route.locale),
@@ -508,8 +485,7 @@ async function handleVoiceClear(context: ConfigPersonaVoiceRouteContext): Promis
     });
     return;
   }
-  const mode = await resolveActiveVoiceMode(current.persona, context.dependencies);
-  const clearProviderVoice = mode?.apiStyle === "elevenlabs";
+  const clearProviderVoice = context.route.action === "voice-provider-clear";
   const updated = await context.dependencies.setPersonaVoiceConfig(current.persona.persona_id as number, {
     speech_voice_sample_id: clearProviderVoice ? (current.persona.speech_voice_sample_id ?? null) : null,
     speech_voice_id: clearProviderVoice ? null : (current.persona.speech_voice_id ?? null),
@@ -675,7 +651,7 @@ export async function handleConfigPersonaVoiceRoutes(context: ConfigPersonaVoice
     await handleVoiceDesignRemove(context);
     return true;
   }
-  if (context.route.action === "voice-clear") {
+  if (context.route.action === "voice-clear" || context.route.action === "voice-provider-clear") {
     await handleVoiceClear(context);
     return true;
   }
@@ -732,7 +708,7 @@ export async function handleConfigPersonaVoiceRoutes(context: ConfigPersonaVoice
 
   if (context.route.action === "voice-page") {
     const mode = await resolveActiveVoiceMode(persona, context.dependencies);
-    if (mode?.apiStyle === "elevenlabs") {
+    if (mode.apiStyle === "elevenlabs") {
       const remote = await loadRemoteCatalog(persona, context.dependencies, context.route.locale);
       if (!remote) {
         await repaintVoice(context, scope, persona.persona_id ?? null, {
@@ -757,7 +733,7 @@ export async function handleConfigPersonaVoiceRoutes(context: ConfigPersonaVoice
       });
       return true;
     }
-    if (mode?.apiStyle !== "tts-clone") {
+    if (mode.apiStyle !== "tts-clone") {
       await repaintVoice(context, scope, persona.persona_id ?? null, {
         receipt: staleReceipt(context.route.locale),
       });
@@ -780,7 +756,7 @@ export async function handleConfigPersonaVoiceRoutes(context: ConfigPersonaVoice
   const submittedValue = context.interaction.isStringSelectMenu() ? (context.interaction.values[0] ?? null) : null;
   if (context.route.action === "voice-select" && !submittedValue) {
     const mode = await resolveActiveVoiceMode(persona, context.dependencies);
-    if (mode?.apiStyle === "elevenlabs") {
+    if (mode.apiStyle === "elevenlabs") {
       const remote = await loadRemoteCatalog(persona, context.dependencies, context.route.locale);
       if (remote) {
         await repaintVoice(context, scope, persona.persona_id ?? null, { remoteView: remote.view });

@@ -49,10 +49,11 @@ export type ConfigEndpointServiceCapability = Extract<CustomEndpointCapability, 
 
 export interface ConfigCapabilityEndpoint {
   id: number;
+  targetKind?: "custom-endpoint" | "hosted-model";
   capability: ConfigEndpointServiceCapability;
   label: string;
   modelLabel: string;
-  apiStyle: CustomEndpointApiStyle;
+  apiStyle: CustomEndpointApiStyle | null;
   isActive: boolean;
   voiceMode?: "clone" | "voice-design" | "auto";
 }
@@ -108,7 +109,39 @@ export function normalizeConfigCapabilityEndpoints(
 
 export const loadConfigCapabilityEndpoints: LoadConfigCapabilityEndpoints = async (state, capability) => {
   const rows = await llmProviderRepo.loadCustomEndpointsForServer(state.server_id);
-  return normalizeConfigCapabilityEndpoints(rows, capability, state);
+  const endpoints = normalizeConfigCapabilityEndpoints(rows, capability, state);
+  if (capability === "stt") return endpoints;
+  const mode = capability === "tts-design" ? "design" : "clone";
+  const providers = await llmProviderRepo.loadSavedProviderConfigs(state.server_id);
+  const hosted = (
+    await Promise.all(
+      providers
+        .filter((row) => row.api_key && !isCustomProvider(row.provider))
+        .map(async (row) => {
+          const models = await llmModelRepo.loadAvailableSpeechModels(row.provider, {
+            kind: "server",
+            ownerId: state.server_id,
+          });
+          return models
+            .filter((model) => supportsSpeechMode(model, mode))
+            .map(
+              (model): ConfigCapabilityEndpoint => ({
+                id: model.speech_model_id,
+                targetKind: "hosted-model",
+                capability: "speech",
+                label: getProviderDisplayName(model.provider),
+                modelLabel: model.codename,
+                apiStyle: null,
+                voiceMode: model.voice_mode === "design" ? "voice-design" : model.voice_mode,
+                isActive:
+                  model.speech_model_id ===
+                  (mode === "design" ? state.config.speech_design_model_id : state.config.speech_clone_model_id),
+              }),
+            );
+        }),
+    )
+  ).flat();
+  return [...endpoints, ...hosted];
 };
 
 /** Binds an endpoint choice to its ordered list and the identifying fields of every presented row. */
@@ -121,6 +154,7 @@ export function computeConfigEndpointFingerprint(
       `config-endpoints:${capability}:${JSON.stringify(
         endpoints.map((endpoint) => ({
           id: endpoint.id,
+          targetKind: endpoint.targetKind ?? "custom-endpoint",
           capability: endpoint.capability,
           label: endpoint.label,
           modelLabel: endpoint.modelLabel,

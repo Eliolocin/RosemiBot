@@ -290,6 +290,9 @@ export class NvidiaProvider
     }
 
     try {
+      if (streamingContext) {
+        streamingContext.speechToolState ??= { userId: streamingContext.triggererUserId };
+      }
       const toolStateForContext: ToolStateForContext = {
         server_id: tomoriState.server_id.toString(),
         activePersonaHasElevenlabsVoice: Boolean(
@@ -301,6 +304,7 @@ export class NvidiaProvider
         activePersonaVoiceSampleId: tomoriState.speech_voice_sample_id,
         activePersonaVoiceId: tomoriState.speech_voice_id,
         activePersonaVoiceSourcePriority: tomoriState.voice_source_priority,
+        speechToolState: streamingContext?.speechToolState,
 
         diffusion_model_id: tomoriState.config.diffusion_model_id,
         nai_diffusion_model_id: tomoriState.config.nai_diffusion_model_id,

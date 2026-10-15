@@ -78,7 +78,7 @@ import type { ConfigVoicesLoaderDependencies } from "@/utils/discord/interaction
 import type { ConfigPersonaVoiceView } from "@/utils/discord/interactions/configPersonaVoiceLoader";
 import type { ConfigPersonaVoiceRemoteView } from "@/utils/discord/ui/configVoicePanel";
 import type { ElevenLabsVoiceCatalogResult } from "@/utils/audio/elevenLabsVoiceCatalog";
-import type { SpeechEndpointResult } from "@/utils/provider/speechEndpointResolver";
+import type { SpeechTargetResult } from "@/utils/provider/speechEndpointResolver";
 import type { GlobalRoutableInteraction } from "@/utils/discord/interactions/routeRegistry";
 import { type PersonaPanelAvatarData, withPersonaPanelAvatar } from "@/utils/discord/personaPanelAvatar";
 import type { PersonaPanelCharacterReferenceData } from "@/utils/discord/personaPanelCharacterReference";
@@ -250,8 +250,8 @@ export interface ConfigRouteDependencies {
     scope: ConfigScope,
     persona: TomoriState,
   ): Promise<ConfigPersonaMemoryView>;
-  loadPersonaVoiceView(state: TomoriState): Promise<ConfigPersonaVoiceView>;
-  resolveActiveSpeechEndpoint(serverId: number, mode: "design" | "clone"): Promise<SpeechEndpointResult | null>;
+  loadPersonaVoiceView(state: TomoriState, locale: string): Promise<ConfigPersonaVoiceView>;
+  resolveActiveSpeechEndpoint(serverId: number, mode: "design" | "clone"): Promise<SpeechTargetResult | null>;
   fetchElevenLabsVoiceCatalog(apiKey: string): Promise<ElevenLabsVoiceCatalogResult>;
   setPersonaVoiceConfig(
     personaId: number,
@@ -557,7 +557,7 @@ export async function repaint(
         );
       }
       if (page === "voice" && !personaVoiceView) {
-        personaVoiceView = await dependencies.loadPersonaVoiceView(persona);
+        personaVoiceView = await dependencies.loadPersonaVoiceView(persona, options.locale);
       }
     }
   }

@@ -1,3 +1,19 @@
+import { getAvailableToolsWithMCP } from "@/tools/availability";
+import { ChannelType, type ChatInputCommandInteraction, type Client } from "discord.js";
+import { execute as generateVoiceMessage } from "@/commands/generate/voice-message";
+import { GenerateVoiceMessageTool } from "@/tools/functionCalls/generateVoiceMessageTool";
+import type { ToolContext, ToolAssemblyState } from "@/types/tool/interfaces";
+import { createPersona, createUserRow } from "../../helpers/fixtures";
+import { makeFakeInteraction } from "../../helpers/fakeInteraction";
+import * as delivery from "@/utils/discord/webhook/voiceMessageDelivery";
+import * as metadata from "@/utils/audio/voiceMessageMetadata";
+import * as modals from "@/utils/discord/ui/modals";
+import * as whitelist from "@/utils/cache/channelWhitelistCache";
+import * as spotlight from "@/utils/cache/personalSpotlightCache";
+import { cooldownRepository } from "@/utils/db/repositories/CooldownRepository";
+import { storeVoiceSample, deleteStoredVoiceSample } from "@/utils/storage/voiceSampleStorage";
+import { activateProviderSpeechDefaults } from "@/utils/provider/providerActivation";
+import { initializeLocalizer } from "@/utils/text/localizer";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { llmModelRepo, llmProviderRepo, personaRepository } from "@/utils/db/repositories";
 import {
@@ -12,9 +28,9 @@ import { log } from "@/utils/misc/logger";
 import { resolveSpeechTargets } from "@/utils/provider/speechEndpointResolver";
 import { synthesizeVoiceMessage, type VoiceMessageSynthesisRequest } from "@/utils/speech/voiceMessageSynthesis";
 import { encryptApiKey } from "@/utils/security/crypto";
-import { createSpeechWav } from "../../helpers/speechAudio";
+import { createSpeechWav, createSpeechMp3 } from "../../helpers/speechAudio";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
-import { cleanupFixtures, insertFixtures, type FixtureRefs } from "./setup/fixtures";
+import { cleanupFixtures, insertFixtures, FIXTURE_IDS, type FixtureRefs } from "./setup/fixtures";
 
 describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fallback", () => {
   let refs: FixtureRefs;
@@ -30,11 +46,14 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
   let onSynthesize: (() => Promise<void>) | undefined;
   const requests: Array<{ url: string; init: RequestInit }> = [];
   const wav = createSpeechWav();
+  let mp3: Buffer;
   const serverScope = () => ({ kind: "server" as const, ownerId: refs.serverId });
   const personalScope = () => ({ kind: "personal" as const, ownerId: refs.userId });
 
   beforeAll(async () => {
     await setupTestDb();
+    await initializeLocalizer();
+    mp3 = await createSpeechMp3();
     refs = await insertFixtures(testSql);
     await testSql`INSERT INTO persona_voice_configs (persona_id) VALUES (${refs.personaId}) ON CONFLICT DO NOTHING`;
     const models = await llmModelRepo.loadAvailableSpeechModels("google", serverScope());
@@ -70,6 +89,14 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
           const url = String(input);
           requests.push({ url, init: init ?? {} });
           if (init?.method === "DELETE") return new Response(null, { status: deleteFails ? 500 : 204 });
+          if (url.includes("openrouter.ai/api/v1/models"))
+            return Response.json(
+              url.endsWith("/endpoints")
+                ? { data: { endpoints: [{ supports_voice_cloning: true }] } }
+                : { data: [{ id: "fish-audio/s2.1-pro" }] },
+            );
+          if (url.endsWith("/audio/speech"))
+            return new Response(new Uint8Array(mp3), { headers: { "Content-Type": "audio/mpeg" } });
           if (init?.method === "GET") return new Response(null, { status: 404 });
           if (url.endsWith("/voices")) {
             const voiceId = `voice_synthetic_${++created}`;
@@ -141,6 +168,170 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
   const syntheses = () =>
     requests.filter(({ url }) => url.endsWith("/interactions") || url.includes("/text-to-speech/"));
   const deletes = () => requests.filter(({ init }) => init.method === "DELETE");
+
+  it("connects provider-add defaults to both callers in server and personal scope", async () => {
+    const [sample] =
+      await testSql`INSERT INTO voice_samples (server_id, name, file_path, duration_ms) VALUES (${refs.serverId}, 'Synthetic sample', 'pending', 200) RETURNING sample_id`;
+    const storedPath = await storeVoiceSample({ serverId: refs.serverId, sampleId: sample.sample_id, buffer: wav });
+    if (!storedPath) throw new Error("Missing stored sample");
+    await testSql`UPDATE voice_samples SET file_path = ${storedPath} WHERE sample_id = ${sample.sample_id}`;
+    const key = await encryptApiKey("synthetic-openrouter");
+    await testSql`INSERT INTO saved_provider_configs (server_id, provider, api_key, key_version) VALUES (${refs.serverId}, 'openrouter', ${key.encrypted}, ${key.version}) ON CONFLICT (server_id, provider) DO UPDATE SET api_key = EXCLUDED.api_key, key_version = EXCLUDED.key_version`;
+    await testSql`INSERT INTO user_saved_provider_configs (user_id, provider, api_key, key_version) VALUES (${refs.userId}, 'openrouter', ${key.encrypted}, ${key.version}) ON CONFLICT (user_id, provider) DO UPDATE SET api_key = EXCLUDED.api_key, key_version = EXCLUDED.key_version`;
+    const endpoint = await llmProviderRepo.upsertCustomEndpoint({
+      serverId: refs.serverId,
+      label: "Synthetic Auto",
+      capability: "speech",
+      apiStyle: "tts-clone",
+      endpointUrl: "http://127.0.0.1:9000",
+      requiresAuth: false,
+      extraConfig: { voice_mode: "auto" },
+    });
+    if (!endpoint?.custom_endpoint_id) throw new Error("Missing custom target");
+    const preset = await llmProviderRepo.upsertCustomEndpoint({
+      serverId: refs.serverId,
+      label: "Synthetic ElevenLabs",
+      capability: "speech",
+      apiStyle: "elevenlabs",
+      endpointUrl: "https://api.elevenlabs.io",
+      requiresAuth: true,
+    });
+    if (!preset?.custom_endpoint_id || !preset.connection_id) throw new Error("Missing preset target");
+    const saved = await llmProviderRepo.loadSavedProviderConfig(refs.serverId, "google");
+    if (!saved) throw new Error("Missing credential fixture");
+    await llmProviderRepo.upsertSavedProviderConfig(refs.serverId, {
+      ...saved,
+      provider: `custom:${preset.connection_id}`,
+      api_key: key.encrypted,
+      key_version: key.version,
+    });
+    const spies: Array<{ mockRestore(): void }> = [];
+    let delivered = 0;
+    let persona = createPersona({
+      persona_id: refs.personaId,
+      server_id: refs.serverId,
+      speech_voice_design_prompt: "Warm narration",
+      speech_voice_sample_id: sample.sample_id,
+      speech_voice_id: "preset_synthetic",
+      config: { voice_message_enabled: true },
+    });
+    const channel = { id: "channel-1", type: ChannelType.GuildText, isThread: () => false };
+    const modal = makeFakeInteraction();
+    spies.push(spyOn(personaRepository, "loadAllForServer").mockImplementation(async () => [persona]));
+    spies.push(
+      spyOn(cooldownRepository, "checkMessageTriggerCooldownWithWhitelist").mockResolvedValue({
+        isOnCooldown: false,
+        remainingSeconds: 0,
+        cooldownType: 0,
+      }),
+    );
+    spies.push(
+      spyOn(whitelist, "getCachedWhitelistStatus").mockResolvedValue({
+        hasActiveWhitelist: false,
+        hasActiveChannelWhitelist: false,
+        isChannelWhitelisted: false,
+        hasActiveRoleWhitelist: false,
+        isRoleWhitelisted: false,
+        hasActivePersonaWhitelist: false,
+        isTriggerAllowed: true,
+        hasChannelCooldownOverride: false,
+      }),
+    );
+    spies.push(spyOn(spotlight, "getCachedPersonalSpotlightStatus").mockResolvedValue(null));
+    spies.push(spyOn(metadata, "generateVoiceMessageMetadata").mockResolvedValue(null));
+    spies.push(
+      spyOn(delivery, "deliverVoiceMessage").mockImplementation(async () => `synthetic-message-${++delivered}`),
+    );
+    spies.push(
+      spyOn(modals, "promptWithRawModal").mockImplementation(
+        async () =>
+          ({ outcome: "submit", interaction: modal.interaction, values: { voice_message_script: "Hello" } }) as never,
+      ),
+    );
+    try {
+      for (const previous of [endpoint, preset]) {
+        for (const personal of [false, true]) {
+          await testSql`UPDATE user_saved_provider_configs SET enabled_capabilities = '{}', assigned_capabilities = '{}' WHERE user_id = ${refs.userId}`;
+          expect(await setSpeechEndpointSelection(refs.serverId, endpoint.custom_endpoint_id)).toBe(true);
+          if (previous === preset)
+            expect(await setSpeechEndpointSelection(refs.serverId, preset.custom_endpoint_id)).toBe(true);
+          expect((await resolveSpeechTargets(refs.serverId, refs.userId)).clone?.endpoint?.custom_endpoint_id).toBe(
+            previous.custom_endpoint_id,
+          );
+          const scope = personal ? personalScope() : serverScope();
+          expect(await activateProviderSpeechDefaults(scope, "google")).toBe(true);
+          expect(await activateProviderSpeechDefaults(scope, "openrouter")).toBe(true);
+          for (const mode of ["design", "clone"] as const) {
+            persona = { ...persona, voice_source_priority: mode };
+            await testSql`UPDATE persona_voice_configs SET speech_voice_sample_id = ${sample.sample_id}, voice_source_priority = ${mode} WHERE persona_id = ${refs.personaId}`;
+            const targets = await resolveSpeechTargets(refs.serverId, refs.userId);
+            expect(targets[mode]?.owner.kind).toBe(personal ? "personal" : "server");
+            expect(targets[mode]?.kind).toBe("hosted-model");
+            const command = makeFakeInteraction({ guildId: FIXTURE_IDS.serverDiscId, channel });
+            Object.assign(command.interaction.options, { getAttachment: () => null });
+            const before = requests.length;
+            await generateVoiceMessage(
+              {} as Client,
+              command.interaction as unknown as ChatInputCommandInteraction,
+              createUserRow({ user_id: refs.userId }),
+              "en-US",
+            );
+            expect(
+              requests
+                .slice(before)
+                .some(({ url }) => url.endsWith(mode === "design" ? "/interactions" : "/audio/speech")),
+            ).toBe(true);
+            const tool = new GenerateVoiceMessageTool();
+            const speechToolState: NonNullable<ToolAssemblyState["speechToolState"]> = { userId: refs.userId };
+            const available = await getAvailableToolsWithMCP([tool], "google", {
+              server_id: String(refs.serverId),
+              speechToolState,
+              activePersonaHasElevenlabsVoice: true,
+              activePersonaVoiceDesignPrompt: persona.speech_voice_design_prompt,
+              activePersonaVoiceSampleId: persona.speech_voice_sample_id,
+              activePersonaVoiceSourcePriority: mode,
+              llm: persona.llm,
+              config: persona.config,
+            });
+            expect(available.builtInTools.map((entry) => entry.name)).toContain("generate_voice_message");
+            const result = await tool.execute({ title: "test", script: "Hello" }, {
+              tomoriState: persona,
+              channel,
+              internalUserId: refs.userId,
+              streamContext: { speechToolState },
+              locale: "en-US",
+            } as unknown as ToolContext);
+            expect(result.success).toBe(true);
+            expect(result.data).toMatchObject({
+              mode,
+              target: mode === "design" ? "gemini-3.8-flash-tts" : "fish-audio/s2.1-pro",
+            });
+          }
+        }
+      }
+      expect(delivered).toBe(16);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+      await deleteStoredVoiceSample(storedPath);
+      await testSql`UPDATE persona_voice_configs SET speech_voice_sample_id = NULL WHERE persona_id = ${refs.personaId}`;
+      await testSql`DELETE FROM voice_samples WHERE sample_id = ${sample.sample_id}`;
+    }
+  });
+
+  it("rechecks BYOK before using a legacy server credential without a selected target", async () => {
+    await testSql`UPDATE server_byok_configs SET user_byok_mode = true WHERE server_id = ${refs.serverId}`;
+    const result = await synthesizeVoiceMessage({
+      endpoint: null,
+      endpointApiKey: "",
+      elevenLabsApiKey: "synthetic-legacy-key",
+      script: "Hello",
+      source: { kind: "elevenlabs", voiceId: "synthetic-voice" },
+      routing: routing(),
+    });
+    expect(result.success).toBe(false);
+    expect(result.errorKind).toBe("invalid_request");
+    expect(requests).toHaveLength(0);
+  });
 
   it("reuses saved identity across models and direction changes while keeping usage per operation", async () => {
     const first = await synthesizeVoiceMessage(await request());
@@ -265,6 +456,36 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
       "synthetic-server-google",
     ]);
     expect(syntheses()).toHaveLength(2);
+  });
+
+  it("reports the custom endpoint label after personal fallback regardless of its model metadata", async () => {
+    const endpoint = await llmProviderRepo.upsertCustomEndpoint({
+      serverId: refs.serverId,
+      label: "Fallback ElevenLabs",
+      capability: "speech",
+      apiStyle: "elevenlabs",
+      endpointUrl: "https://api.elevenlabs.io",
+      requiresAuth: true,
+    });
+    if (!endpoint?.custom_endpoint_id || !endpoint.connection_id) throw new Error("Missing fallback target");
+    const saved = await llmProviderRepo.loadSavedProviderConfig(refs.serverId, "google");
+    if (!saved) throw new Error("Missing credential fixture");
+    await llmProviderRepo.upsertSavedProviderConfig(refs.serverId, {
+      ...saved,
+      provider: `custom:${endpoint.connection_id}`,
+    });
+    expect(await setHostedSpeechSelection(serverScope(), null, "design")).toBe(true);
+    expect(await setSpeechEndpointSelection(refs.serverId, endpoint.custom_endpoint_id)).toBe(true);
+    for (const modelName of [null, "", "   ", "custom-model"]) {
+      await testSql`UPDATE custom_endpoints SET model_name = ${modelName} WHERE custom_endpoint_id = ${endpoint.custom_endpoint_id}`;
+      synthesisStatuses = [429];
+      const result = await synthesizeVoiceMessage({ ...(await request(true)), routing: routing() });
+      expect(result.success).toBe(true);
+      expect(result.usedServerFallback).toBe(true);
+      expect(result.targetLabel).toBe(endpoint.label);
+      expect(result.attempts?.map((attempt) => attempt.owner.kind)).toEqual(["personal", "server"]);
+      expect(result.attempts?.at(-1)?.model).toBe(modelName ?? "");
+    }
   });
 
   it("withholds fallback for opt-out, BYOK, invalid input, cancellation, and successful synthesis", async () => {

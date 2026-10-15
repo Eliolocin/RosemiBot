@@ -8,13 +8,40 @@ aiGenerated: true
 TomoriBot can speak and listen in Discord: send voice replies with text-to-speech (TTS),
 and transcribe audio messages into conversation context with speech-to-text (STT).
 
-Both use the provider endpoint system. ElevenLabs is the quickest cloud option. You can
-also run local voice models on your own hardware using self-hosted engines.
+Choose speech providers in `/providers`, or use `/personal providers` for your own Google or
+OpenRouter speech models. You can also run local voice models on your own hardware.
 
 ## Text-to-Speech
 <!-- anchor: text-to-speech -->
 
-### ElevenLabs (cloud, easiest)
+### Google Voice Design and OpenRouter Voice Clone
+
+Adding Google selects Gemini Flash TTS for `TTS (Voice Design)`. Adding OpenRouter selects paid
+Fish S2.1 Pro for `TTS (Voice Clone)`. Each replaces only its matching selection, so both can stay
+active together. Flash-Lite and free Fish require explicit model selection; availability and
+provider quotas still apply. Use `/config` > Models > Switch Models to change or clear either slot.
+Personal selections and their on/off controls are in `/personal config` > Models > Switch Models.
+Turning off one personal mode lets that mode use the server selection while the other stays active.
+
+In `/config` > Persona > Voice, choose `Describe Voice` to save a description of up to 1,000
+characters. You can write it before choosing a model. To use Fish or a local cloning model,
+add a reference in `/config` > Models > TTS Parameters & Voices and assign it on the persona's
+Voice page. Both inputs stay saved when you change providers. Choose `Voice Design` or `Voice
+Clone` to set priority; if the preferred input has no matching model or usable voice, the other
+saved input can be used. The page explains which source is effective for the server's selections.
+
+Run `/generate voice-message` to enter a short script, or ask the persona to send a voice message.
+The command also accepts a one-off description or reference upload. Saved descriptions reuse a
+Gemini voice identity; edits retire it. One-off descriptions create a temporary identity that the
+bot deletes after generation. Failed cleanup is retried when those credentials are used again;
+operators may need to remove voices in the provider console after a crash or ambiguous timeout.
+Gemini reference-audio cloning is deferred.
+
+Personal speech failures follow the Server Model Fallback setting and server permissions. A
+successful fallback appears in the command receipt. Providers may bill failed or cancelled work;
+script and audio limits do not set a spending cap.
+
+### ElevenLabs (cloud)
 
 1. Get an API key from [ElevenLabs](https://elevenlabs.io/app/settings/api-keys).
 2. Run `/providers`, choose `Add New Provider`, select `ElevenLabs`, and paste the key. This flow:

@@ -290,10 +290,17 @@ export function buildReviewerPacket(
   if (!state || (proposedCall && !state.reviewItems.includes("tools")))
     return "review_inactive" satisfies ReviewerPacketGap;
   if (containsCredential(candidate)) return "candidate_credential" satisfies ReviewerPacketGap;
+  // Proposed speech stays in transient reviewer evidence because storage redaction would hide the prose being judged.
   if (
     proposedCall &&
     JSON.stringify(
-      sanitizeLogPayload(redactToolParametersForStorage(proposedCall.name, proposedCall.args), 0, false),
+      sanitizeLogPayload(
+        proposedCall.name === "generate_voice_message"
+          ? proposedCall.args
+          : redactToolParametersForStorage(proposedCall.name, proposedCall.args),
+        0,
+        false,
+      ),
     ) !== JSON.stringify(proposedCall.args)
   )
     return "tool_arguments_redacted" satisfies ReviewerPacketGap;

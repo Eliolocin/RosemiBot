@@ -368,6 +368,8 @@ interface PanelModelContext {
   activeVideoId: number | null;
   activeSpeechDesignId: number | null;
   activeSpeechCloneId: number | null;
+  activeSpeechDesignModelId: number | null;
+  activeSpeechCloneModelId: number | null;
   scopeFallbacks: readonly FallbackModelRef[];
 }
 
@@ -381,6 +383,8 @@ function serverModelContext(state: TomoriState): PanelModelContext {
     activeVideoId: state.config.video_model_id ?? null,
     activeSpeechDesignId: state.config.speech_design_endpoint_id,
     activeSpeechCloneId: state.config.speech_clone_endpoint_id,
+    activeSpeechDesignModelId: state.config.speech_design_model_id,
+    activeSpeechCloneModelId: state.config.speech_clone_model_id,
     scopeFallbacks: state.config.fallback_model_refs ?? [],
   };
 }
@@ -399,6 +403,10 @@ function personalModelContext(userId: number, configs: UserSavedProviderConfigRo
     activeVideoId: getActivePersonalProviderForCapability(configs, "video")?.video_model_id ?? null,
     activeSpeechDesignId: null,
     activeSpeechCloneId: null,
+    activeSpeechDesignModelId:
+      getActivePersonalProviderForCapability(configs, "speech_design")?.speech_design_model_id ?? null,
+    activeSpeechCloneModelId:
+      getActivePersonalProviderForCapability(configs, "speech_clone")?.speech_clone_model_id ?? null,
     scopeFallbacks: text?.fallback_model_refs ?? [],
   };
 }
@@ -408,17 +416,40 @@ async function buildCuratedCapabilities(
   savedConfig: PanelSavedConfig,
   context: PanelModelContext,
 ): Promise<ProviderPanelCapabilitySection[]> {
-  const [textRows, imageRows, embeddingRows, videoRows, decisionRows] = await Promise.all([
+  const [textRows, imageRows, embeddingRows, videoRows, decisionRows, speechRows] = await Promise.all([
     llmModelRepo.loadAvailableModelsForProvider(provider, false, context.scope),
     llmModelRepo.loadAvailableDiffusionModels(provider, false, context.scope),
     llmModelRepo.loadAvailableEmbeddingModels(provider, false, context.scope),
     llmModelRepo.loadAvailableVideoGenerationModels(provider, false, context.scope),
     llmModelRepo.loadAvailableDecisionModels(provider, false, context.scope),
+    llmModelRepo.loadAvailableSpeechModels(provider, context.scope),
   ]);
   const workspaceFallbacks = context.scopeFallbacks;
   const providerFallbacks = savedConfig.fallback_model_refs ?? [];
 
-  const modelsByCapability: Record<"text" | "image" | "embedding" | "video" | "decision", ProviderPanelModel[]> = {
+  const modelsByCapability: Record<
+    "text" | "image" | "embedding" | "video" | "decision" | "speech",
+    ProviderPanelModel[]
+  > = {
+    speech: speechRows.map((row) => ({
+      id: row.speech_model_id,
+      codeName: row.codename,
+      isWorkspaceActive:
+        row.speech_model_id === context.activeSpeechDesignModelId ||
+        row.speech_model_id === context.activeSpeechCloneModelId,
+      isWorkspaceFallback: false,
+      isProviderFallback: false,
+      isCustomRegistration: row.is_scoped_registration,
+      speechActiveModes: [
+        ...(row.speech_model_id === context.activeSpeechDesignModelId ? ["design" as const] : []),
+        ...(row.speech_model_id === context.activeSpeechCloneModelId ? ["clone" as const] : []),
+      ],
+      speechSettings: {
+        voiceMode: row.voice_mode === "design" ? "voice-design" : row.voice_mode,
+        scriptMarkup: "plain",
+        supportsInstruct: true,
+      },
+    })),
     decision: decisionRows.map((row) => ({
       id: row.decision_model_id,
       codeName: row.codename,
@@ -494,7 +525,7 @@ async function buildCuratedCapabilities(
 
   return CAPABILITIES.map((capability) => {
     if (
-      capability === "speech" ||
+      (capability === "speech" && speechRows.length === 0) ||
       capability === "transcription" ||
       (capability === "decision" && !getStaticProviderInfo(provider)?.featureSupport.decisions)
     ) {

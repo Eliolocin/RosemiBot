@@ -42,7 +42,15 @@ export const DEFAULT_PAGE_FOR_CATEGORY: Record<PersonalConfigCategory, PersonalC
   advanced: "response-modes",
 };
 
-export type PersonalConfigManagedCapability = "text" | "vision" | "embedding" | "image" | "image_nai" | "video";
+export type PersonalConfigManagedCapability =
+  | "text"
+  | "vision"
+  | "embedding"
+  | "image"
+  | "image_nai"
+  | "video"
+  | "speech_design"
+  | "speech_clone";
 
 export const QUICK_TOGGLE_CAPABILITIES: readonly PersonalConfigManagedCapability[] = [
   "text",
@@ -51,6 +59,8 @@ export const QUICK_TOGGLE_CAPABILITIES: readonly PersonalConfigManagedCapability
   "image",
   "image_nai",
   "video",
+  "speech_design",
+  "speech_clone",
 ] as const;
 
 /**
@@ -456,7 +466,9 @@ function parseManagedCapability(value: string | undefined): PersonalConfigManage
     value === "embedding" ||
     value === "image" ||
     value === "image_nai" ||
-    value === "video"
+    value === "video" ||
+    value === "speech_design" ||
+    value === "speech_clone"
   ) {
     return value;
   }

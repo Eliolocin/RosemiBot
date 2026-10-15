@@ -1,3 +1,4 @@
+import { validateOpenRouterSpeechModel } from "@/utils/cache/openrouterSpeechModelCache";
 import { DEFAULT_THINKING_LEVEL, isThinkingLevelValue } from "@/constants/thinkingLevels";
 import { getRegisterableLocales } from "@/utils/text/localizer";
 import type { APIAttachment } from "discord.js";
@@ -349,6 +350,20 @@ export const personalConfigOperations: PersonalConfigOperations = {
     const availableModels = await loadAvailableModelsForCapability(userId, provider, capability);
     if (!availableModels.some((model) => model.id === modelId)) return { status: "write-failed" };
 
+    if (capability === "speech_design" || capability === "speech_clone") {
+      const selected = availableModels.find((model) => model.id === modelId);
+      if (
+        provider.toLowerCase() === "openrouter" &&
+        (!selected || !(await validateOpenRouterSpeechModel(selected.name)))
+      )
+        return { status: "write-failed" };
+      return (await assignPersonalCapabilityToProvider(userId, provider, capability, (row) => ({
+        ...row,
+        ...(capability === "speech_design" ? { speech_design_model_id: modelId } : { speech_clone_model_id: modelId }),
+      })))
+        ? { status: "success" }
+        : { status: "write-failed" };
+    }
     const currentModelId =
       capability === "text"
         ? targetRow.llm_id

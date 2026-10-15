@@ -1,7 +1,7 @@
 import { beforeAll, afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { ChannelType, type ChatInputCommandInteraction, type Client } from "discord.js";
 import { execute } from "@/commands/generate/voice-message";
-import type { CustomEndpointRow } from "@/types/db/schema";
+import { speechModelSchema, type CustomEndpointRow } from "@/types/db/schema";
 import { personaRepository, statRepository } from "@/utils/db/repositories";
 import { cooldownRepository } from "@/utils/db/repositories/CooldownRepository";
 import * as realTargets from "@/utils/provider/speechEndpointResolver";
@@ -48,6 +48,32 @@ const clone: CustomEndpointRow = {
   extra_config: { voice_mode: "clone", script_markup: "plain" },
 };
 let cloneEndpoint = clone;
+let hostedTargets: Awaited<ReturnType<typeof realTargets.resolveSpeechTargets>> | null = null;
+const resolvedUserIds: Array<number | undefined> = [];
+function customTarget(endpoint: CustomEndpointRow): realTargets.SpeechTargetResult {
+  return {
+    kind: "custom-endpoint",
+    owner: { kind: "server", ownerId: 1 },
+    endpoint,
+    apiKey: `${endpoint.label.toLowerCase()}-key`,
+  };
+}
+function hostedTarget(mode: "design" | "clone", personal = false): realTargets.SpeechTargetResult {
+  return {
+    kind: "hosted-model",
+    endpoint: null,
+    owner: { kind: personal ? "personal" : "server", ownerId: 1 },
+    credentialId: 10,
+    credentialRevision: 1,
+    apiKey: "synthetic-key",
+    model: speechModelSchema.parse({
+      speech_model_id: mode === "design" ? 1 : 2,
+      provider: mode === "design" ? "google" : "openrouter",
+      voice_mode: mode,
+      codename: mode === "design" ? "gemini-3.8-flash-tts" : "fish-audio/s2.1-pro",
+    }),
+  };
+}
 let persona = createPersona({
   speech_voice_sample_id: 12,
   speech_voice_design_prompt: "Warm voice",
@@ -60,6 +86,7 @@ let failDelivery = false;
 let onSubmit: (() => void) | null = null;
 let modal: ReturnType<typeof makeFakeInteraction>;
 const requests: realSynthesis.VoiceMessageSynthesisRequest[] = [];
+let synthesisResultOverride: Partial<realSynthesis.VoiceMessageSynthesisResult> = {};
 
 const scoped = createScopedModuleMocker(mock, {
   "@/utils/db/repositories/SpeechRepository": realSamples,
@@ -73,6 +100,7 @@ const scoped = createScopedModuleMocker(mock, {
 });
 scoped.module("@/utils/db/repositories/SpeechRepository", () => ({
   ...realSamples,
+  loadSpeechRoutingPolicy: async () => ({ serverAllowed: true, fallbackEnabled: true }),
   loadVoiceSamples: async () => [
     {
       sample_id: 12,
@@ -86,10 +114,15 @@ scoped.module("@/utils/db/repositories/SpeechRepository", () => ({
 }));
 scoped.module("@/utils/provider/speechEndpointResolver", () => ({
   ...realTargets,
-  resolveSpeechTargets: async () => ({
-    design: { endpoint: changeTarget ? { ...design, custom_endpoint_id: 3 } : design, apiKey: "design-key" },
-    clone: { endpoint: cloneEndpoint, apiKey: "clone-key" },
-  }),
+  resolveSpeechTargets: async (_serverId: number, userId?: number) => {
+    resolvedUserIds.push(userId);
+    return (
+      hostedTargets ?? {
+        design: customTarget(changeTarget ? { ...design, custom_endpoint_id: 3 } : design),
+        clone: customTarget(cloneEndpoint),
+      }
+    );
+  },
 }));
 scoped.module("@/utils/speech/voiceMessageSynthesis", () => ({
   ...realSynthesis,
@@ -102,6 +135,7 @@ scoped.module("@/utils/speech/voiceMessageSynthesis", () => ({
       audioBuffer: Buffer.from("audio"),
       contentType: isElevenLabs ? "audio/mpeg" : "audio/wav",
       extension: isElevenLabs ? "mp3" : "wav",
+      ...synthesisResultOverride,
     };
   },
 }));
@@ -149,9 +183,16 @@ async function run(
     deliveryFailure?: boolean;
     elevenLabs?: boolean;
     replacementVoiceId?: string;
+    targets?: NonNullable<typeof hostedTargets>;
+    sourceOnly?: "design" | "clone";
+    changeHosted?: () => void;
+    synthesisResult?: Partial<realSynthesis.VoiceMessageSynthesisResult>;
   } = {},
 ) {
   requests.length = 0;
+  synthesisResultOverride = options.synthesisResult ?? {};
+  resolvedUserIds.length = 0;
+  hostedTargets = options.targets ?? null;
   selectedSource = options.source ?? null;
   changeTarget = false;
   failSynthesis = options.synthesisFailure ?? false;
@@ -166,14 +207,15 @@ async function run(
       }
     : clone;
   persona = createPersona({
-    speech_voice_sample_id: options.elevenLabs ? null : 12,
-    speech_voice_design_prompt: options.elevenLabs ? null : "Warm voice",
+    speech_voice_sample_id: options.elevenLabs || options.sourceOnly === "design" ? null : 12,
+    speech_voice_design_prompt: options.elevenLabs || options.sourceOnly === "clone" ? null : "Warm voice",
     speech_voice_id: options.elevenLabs ? "voice-initial" : null,
     voice_source_priority: options.priority ?? "design",
     config: { voice_message_enabled: true },
   });
   modal = makeFakeInteraction();
   onSubmit = () => {
+    options.changeHosted?.();
     if (options.stale) changeTarget = true;
     if (options.replacementVoiceId) persona = { ...persona, speech_voice_id: options.replacementVoiceId };
   };
@@ -194,6 +236,84 @@ async function run(
 }
 
 describe("Voice message command routing", () => {
+  it("renders the final target label after server fallback even when its model name is empty", async () => {
+    const targetLabel = "Server fallback speech";
+    const calls = await run({
+      targets: { design: hostedTarget("design", true), clone: null },
+      sourceOnly: "design",
+      synthesisResult: {
+        targetLabel,
+        usedServerFallback: true,
+        attempts: [
+          {
+            provider: "tts-clone",
+            model: "",
+            owner: { kind: "server", ownerId: 1 },
+            source: "design",
+            synthesisSuccess: true,
+            operations: [],
+          },
+        ],
+      },
+    });
+    const receipt = calls.findLast((call) => call.method === "editReply")?.args[0] as {
+      embeds: Array<{ toJSON(): { fields?: Array<{ name: string; value: string }> } }>;
+    };
+    const fields = receipt.embeds[0]?.toJSON().fields;
+    expect(
+      fields?.find(
+        (field) => field.name === localizedCopy("en-US", "commands.generate.voice-message.success_target_field"),
+      )?.value,
+    ).toBe(targetLabel);
+    expect(fields?.every((field) => field.value.trim().length > 0)).toBe(true);
+  });
+
+  it("passes independently owned hosted targets and saved source identity through opening and submission", async () => {
+    for (const mode of ["design", "clone"] as const) {
+      for (const personal of [false, true]) {
+        const targets = { design: hostedTarget("design", personal), clone: hostedTarget("clone", !personal) };
+        await run({ targets, sourceOnly: mode });
+        expect(requests).toHaveLength(1);
+        expect(requests[0]?.target).toEqual(targets[mode]);
+        expect(requests[0]?.routing?.userId).toBe(1);
+        expect(requests[0]?.routing?.sourceIsExplicit).toBe(false);
+        expect(requests[0]?.source.kind).toBe(mode);
+        if (mode === "design") expect(requests[0]?.source).toHaveProperty("personaId", persona.persona_id);
+        expect(resolvedUserIds).toEqual([1, 1]);
+      }
+    }
+  });
+  it("rejects model, credential, owner, and target-kind changes even when numeric IDs collide", async () => {
+    const initial = hostedTarget("design");
+    if (initial.kind !== "hosted-model") throw new Error("Missing hosted fixture");
+    const replacements: realTargets.SpeechTargetResult[] = [
+      { ...initial, model: { ...initial.model, codename: "gemini-3.8-flash-lite-tts", speech_model_id: 3 } },
+      { ...initial, credentialRevision: 2 },
+      { ...initial, owner: { kind: "personal", ownerId: 1 } },
+      customTarget(design),
+    ];
+    for (const replacement of replacements) {
+      const calls = await run({
+        targets: { design: initial, clone: null },
+        sourceOnly: "design",
+        changeHosted: () => {
+          hostedTargets = { design: replacement, clone: null };
+        },
+      });
+      expect(requests).toHaveLength(0);
+      expect(JSON.stringify(calls)).toContain(
+        localizedCopy("en-US", "commands.generate.voice-message.stale_description"),
+      );
+    }
+    await run({
+      targets: { design: customTarget(design), clone: null },
+      sourceOnly: "design",
+      changeHosted: () => {
+        hostedTargets = { design: initial, clone: null };
+      },
+    });
+    expect(requests).toHaveLength(0);
+  });
   it("synthesizes once through each matching target when personas prioritize different sources", async () => {
     for (const priority of ["design", "clone"] as const) {
       await run({ priority });

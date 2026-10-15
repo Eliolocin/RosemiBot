@@ -235,6 +235,8 @@ function makeSpotlight(
 
 /** What the loaders report per capability when the account has no saved provider for it. */
 const EMPTY_ROUTING_ROWS: Record<PersonalConfigManagedCapability, PersonalConfigRoutingRow> = {
+  speech_design: { capability: "speech_design", activeModelName: null, storedProvider: null, storedModelName: null },
+  speech_clone: { capability: "speech_clone", activeModelName: null, storedProvider: null, storedModelName: null },
   text: { capability: "text", activeModelName: null, storedProvider: null, storedModelName: null },
   vision: { capability: "vision", activeModelName: null, storedProvider: null, storedModelName: null },
   embedding: { capability: "embedding", activeModelName: null, storedProvider: null, storedModelName: null },
@@ -244,6 +246,8 @@ const EMPTY_ROUTING_ROWS: Record<PersonalConfigManagedCapability, PersonalConfig
 };
 
 const EMPTY_CAPABILITY_PROVIDERS: Record<PersonalConfigManagedCapability, string[]> = {
+  speech_design: [],
+  speech_clone: [],
   text: [],
   vision: [],
   embedding: [],
@@ -456,6 +460,18 @@ function makeDependencies(
     ],
     loadPersonalModelDisplayInfo: async () => ({
       routingRows: {
+        speech_design: {
+          capability: "speech_design",
+          activeModelName: null,
+          storedProvider: null,
+          storedModelName: null,
+        },
+        speech_clone: {
+          capability: "speech_clone",
+          activeModelName: null,
+          storedProvider: null,
+          storedModelName: null,
+        },
         text: {
           capability: "text",
           activeModelName: "Claude 3.5 Sonnet",
@@ -495,6 +511,8 @@ function makeDependencies(
       },
       availableCapabilities: ["text", "vision", "embedding", "image", "image_nai", "video"],
       eligibleProvidersForCapability: {
+        speech_design: [],
+        speech_clone: [],
         text: ["openrouter"],
         vision: ["openrouter"],
         embedding: ["openrouter"],
@@ -2232,7 +2250,7 @@ describe("personal config Appearance character reference", () => {
 });
 
 describe("Models panel rendering", () => {
-  it("renders six always-visible routing controls with bounded placeholders and no cursor or duplicate buttons", () => {
+  it("renders independent routing controls with bounded placeholders and no cursor or duplicate buttons", () => {
     const user = makeUser();
     const payload = buildPersonalConfigPanelPayload({
       locale: "en-US",
@@ -2247,6 +2265,18 @@ describe("Models panel rendering", () => {
       readStatus: "fresh",
       modelDisplayInfo: {
         routingRows: {
+          speech_design: {
+            capability: "speech_design",
+            activeModelName: null,
+            storedProvider: null,
+            storedModelName: null,
+          },
+          speech_clone: {
+            capability: "speech_clone",
+            activeModelName: null,
+            storedProvider: null,
+            storedModelName: null,
+          },
           text: {
             capability: "text",
             activeModelName: "Claude 3.5 Sonnet",
@@ -2286,6 +2316,8 @@ describe("Models panel rendering", () => {
         },
         availableCapabilities: ["text", "vision", "embedding", "image", "image_nai", "video"],
         eligibleProvidersForCapability: {
+          speech_design: [],
+          speech_clone: [],
           text: ["openrouter"],
           vision: ["openrouter"],
           embedding: ["openrouter"],
@@ -2308,7 +2340,7 @@ describe("Models panel rendering", () => {
     const routingControls = components.filter((component) =>
       component.customId?.includes(":model-provider-select:en-US:"),
     );
-    expect(routingControls).toHaveLength(6);
+    expect(routingControls).toHaveLength(8);
     expect(routingControls.map((component) => component.customId?.split(":").at(-1))).toEqual([
       "text",
       "vision",
@@ -2316,6 +2348,8 @@ describe("Models panel rendering", () => {
       "image",
       "image_nai",
       "video",
+      "speech_design",
+      "speech_clone",
     ]);
     expect(routingControls.map((component) => component.placeholder)).toEqual([
       "Text: Claude 3.5 Sonnet (OpenRouter)",
@@ -2324,6 +2358,8 @@ describe("Models panel rendering", () => {
       "Standard Image: Flux.1 Schnell (OpenRouter)",
       "NovelAI Image: NAI Diffusion V3 (NovelAI)",
       "Video: Using Server Default",
+      `${localizedCopy("en-US", "commands.config.panel.capability_tts_design")}: ${localizedCopy("en-US", "commands.personal.config.override_status_server_default")}`,
+      `${localizedCopy("en-US", "commands.config.panel.capability_tts_clone")}: ${localizedCopy("en-US", "commands.personal.config.override_status_server_default")}`,
     ]);
     expect(routingControls.every((component) => component.placeholder && component.placeholder.length <= 150)).toBe(
       true,
@@ -2359,12 +2395,26 @@ describe("Models panel rendering", () => {
       stmCount: 0,
       readStatus: "fresh",
       modelDisplayInfo: {
-        routingRows: {} as unknown as Record<PersonalConfigManagedCapability, PersonalConfigRoutingRow>,
+        routingRows: {
+          speech_design: {
+            capability: "speech_design",
+            activeModelName: null,
+            storedProvider: null,
+            storedModelName: null,
+          },
+          speech_clone: {
+            capability: "speech_clone",
+            activeModelName: null,
+            storedProvider: null,
+            storedModelName: null,
+          },
+        } as unknown as Record<PersonalConfigManagedCapability, PersonalConfigRoutingRow>,
         availableCapabilities: ["text"],
-        eligibleProvidersForCapability: { text: ["openrouter"] } as unknown as Record<
-          PersonalConfigManagedCapability,
-          string[]
-        >,
+        eligibleProvidersForCapability: {
+          speech_design: [],
+          speech_clone: [],
+          text: ["openrouter"],
+        } as unknown as Record<PersonalConfigManagedCapability, string[]>,
         parametersProviders: ["openrouter"],
         selectedParametersConfig: {
           user_saved_config_id: 1,
@@ -2507,12 +2557,26 @@ describe("Models panel rendering", () => {
       stmCount: 0,
       readStatus: "fresh",
       modelDisplayInfo: {
-        routingRows: {} as unknown as Record<PersonalConfigManagedCapability, PersonalConfigRoutingRow>,
+        routingRows: {
+          speech_design: {
+            capability: "speech_design",
+            activeModelName: null,
+            storedProvider: null,
+            storedModelName: null,
+          },
+          speech_clone: {
+            capability: "speech_clone",
+            activeModelName: null,
+            storedProvider: null,
+            storedModelName: null,
+          },
+        } as unknown as Record<PersonalConfigManagedCapability, PersonalConfigRoutingRow>,
         availableCapabilities: ["text"],
-        eligibleProvidersForCapability: { text: ["openrouter"] } as unknown as Record<
-          PersonalConfigManagedCapability,
-          string[]
-        >,
+        eligibleProvidersForCapability: {
+          speech_design: [],
+          speech_clone: [],
+          text: ["openrouter"],
+        } as unknown as Record<PersonalConfigManagedCapability, string[]>,
         parametersProviders: ["openrouter"],
         selectedParametersConfig: null,
         fallbacksProviders: ["openrouter"],
@@ -2862,10 +2926,7 @@ describe("Range pagination workflow", () => {
       const info = await originalLoader(...args);
       return {
         ...info,
-        eligibleProvidersForCapability: {
-          ...info.eligibleProvidersForCapability,
-          text: providers,
-        },
+        eligibleProvidersForCapability: { ...info.eligibleProvidersForCapability, text: providers },
       };
     };
 
@@ -2951,10 +3012,7 @@ describe("Range pagination workflow", () => {
       const info = await originalLoader(...args);
       return {
         ...info,
-        eligibleProvidersForCapability: {
-          ...info.eligibleProvidersForCapability,
-          text: providers,
-        },
+        eligibleProvidersForCapability: { ...info.eligibleProvidersForCapability, text: providers },
       };
     };
 
@@ -3070,6 +3128,18 @@ describe("Range pagination workflow", () => {
       loadPersonalModelDisplayInfo: async () =>
         makeModelDisplayInfo({
           routingRows: {
+            speech_design: {
+              capability: "speech_design",
+              activeModelName: null,
+              storedProvider: null,
+              storedModelName: null,
+            },
+            speech_clone: {
+              capability: "speech_clone",
+              activeModelName: null,
+              storedProvider: null,
+              storedModelName: null,
+            },
             text: {
               capability: "text",
               activeModelName: "Model 1",
@@ -3078,9 +3148,7 @@ describe("Range pagination workflow", () => {
             },
           },
           availableCapabilities: ["text"],
-          eligibleProvidersForCapability: {
-            text: twentyFourProviders,
-          },
+          eligibleProvidersForCapability: { speech_design: [], speech_clone: [], text: twentyFourProviders },
           parametersProviders: ["provider_1"],
           selectedParametersConfig: null,
         }),
@@ -3767,7 +3835,7 @@ describe("Fallbacks submission re-resolution and invariants", () => {
 });
 
 describe("Quick-Toggle modal structure and routing copy", () => {
-  it("renders 6 checkbox options with type 22 and max_values 6 in canonical order", () => {
+  it("renders all routing capabilities within the checkbox limit", () => {
     const { buildQuickToggleModal } = require("@/utils/discord/ui/personalConfigModals");
     const modal = buildQuickToggleModal("en-US", "nonce123456", [
       {
@@ -3797,14 +3865,34 @@ describe("Quick-Toggle modal structure and routing copy", () => {
     const component = modal.components[0]?.component;
     expect(component?.type).toBe(22);
     expect(component?.min_values).toBe(0);
-    expect(component?.max_values).toBe(6);
-    expect(component?.options).toHaveLength(6);
+    expect(component?.max_values).toBe(8);
+    expect(component?.options).toHaveLength(8);
 
     const values = component?.options.map((opt: { value: string }) => opt.value);
-    expect(values).toEqual(["text", "vision", "embedding", "image", "image_nai", "video"]);
+    expect(values).toEqual([
+      "speech_design",
+      "speech_clone",
+      "text",
+      "vision",
+      "embedding",
+      "image",
+      "image_nai",
+      "video",
+    ]);
 
     const labels = component?.options.map((opt: { label: string }) => opt.label);
-    expect(labels).toEqual(["Text", "Vision", "Embedding", "Standard Image", "NovelAI Image", "Video"]);
+    expect(labels).toEqual(
+      [
+        "commands.config.panel.capability_tts_design",
+        "commands.config.panel.capability_tts_clone",
+        "commands.personal.config.routing_text",
+        "commands.personal.config.routing_vision",
+        "commands.personal.config.routing_embedding",
+        "commands.personal.config.routing_image_standard",
+        "commands.personal.config.routing_image_nai",
+        "commands.personal.config.routing_video",
+      ].map((key) => localizedCopy("en-US", key)),
+    );
 
     const imageOpt = component?.options.find((opt: { value: string }) => opt.value === "image");
     expect(imageOpt?.default).toBe(true);
@@ -4639,6 +4727,18 @@ describe("personalConfigRoutes Advanced interactions and telemetry", () => {
       readStatus: "fresh",
       modelDisplayInfo: {
         routingRows: {
+          speech_design: {
+            capability: "speech_design",
+            activeModelName: null,
+            storedProvider: null,
+            storedModelName: null,
+          },
+          speech_clone: {
+            capability: "speech_clone",
+            activeModelName: null,
+            storedProvider: null,
+            storedModelName: null,
+          },
           text: {
             capability: "text",
             activeModelName: "Claude 3.5 Sonnet",
@@ -4653,6 +4753,8 @@ describe("personalConfigRoutes Advanced interactions and telemetry", () => {
         },
         availableCapabilities: ["text", "vision", "embedding", "image", "image_nai", "video"],
         eligibleProvidersForCapability: {
+          speech_design: [],
+          speech_clone: [],
           text: ["openrouter"],
           vision: [],
           embedding: [],
@@ -7101,7 +7203,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
 
         const payloadJson = JSON.stringify(payload);
         expect(payloadJson).toContain(localizedCopy("en-US", "commands.personal.config.server_fallback_section_title"));
-        expect(payloadJson).toContain(localizedCopy("en-US", "commands.personal.config.server_fallback_effect_on"));
+        expect(payloadJson).toMatch(localizedProse("en-US", "commands.personal.config.server_fallback_effect_on"));
         expect(payloadJson).not.toContain(
           localizedCopy("en-US", "commands.personal.config.server_fallback_effect_off"),
         );

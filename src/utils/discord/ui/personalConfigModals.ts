@@ -462,9 +462,18 @@ export function buildQuickToggleModal(
           type: 22,
           custom_id: buildPersonalConfigModalFieldId("capabilities", nonce),
           min_values: 0,
-          max_values: 6,
+          max_values: 8,
           required: false,
           options: [
+            ...(["speech_design", "speech_clone"] as const).map((capability) => ({
+              value: capability,
+              label: safeSelectOptionText(localizer(locale, ROUTING_CAPABILITY_LOCALE_KEYS[capability]), 100),
+              description: safeSelectOptionText(
+                getDesc(getStoredPersonalProviderForCapability(savedProviders, capability)),
+                100,
+              ),
+              default: Boolean(getActivePersonalProviderForCapability(savedProviders, capability)),
+            })),
             {
               value: "text",
               label: safeSelectOptionText(localizer(locale, "commands.personal.config.routing_text"), 100),

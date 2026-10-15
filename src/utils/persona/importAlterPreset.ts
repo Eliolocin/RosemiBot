@@ -211,6 +211,22 @@ export async function importAlterPreset(params: ImportAlterPresetParams): Promis
     }
   }
 
+  if (
+    !(await personaRepository.setVoiceConfig(
+      newTomoriId,
+      {
+        speech_voice_design_prompt: presetData.speech_voice_design_prompt ?? null,
+        voice_source_priority: presetData.voice_source_priority ?? "design",
+        speech_voice_sample_id: null,
+        speech_voice_id: null,
+        speech_voice_name: null,
+      },
+      { materialize: Boolean(presetData.speech_voice_design_prompt) },
+    ))
+  )
+    return { ok: false, reason: "config_failed" };
+  invalidateTomoriStateCache(serverDiscId);
+
   const usedMainAvatarFallback = !avatarImageBuffer && Boolean(fallbackAvatarReference);
   let avatarUrl: string | null;
   if (avatarImageBuffer) {

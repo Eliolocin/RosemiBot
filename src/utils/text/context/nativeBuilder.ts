@@ -363,7 +363,10 @@ export async function buildContextNative(params: BuildContextParams): Promise<Na
   // schemas as JSON in-band so endpoints that ignore the native `tools` field
   // still expose them to the model. Placed in the stable reference zone (right
   // before server documents) to stay inside the prompt-cache-friendly prefix.
-  await appendOptionalItem(contextItems, buildVerbatimToolDefinitionsContextItem({ tomoriState }));
+  await appendOptionalItem(
+    contextItems,
+    buildVerbatimToolDefinitionsContextItem({ tomoriState, userId: triggererUserId }),
+  );
   await appendOptionalItem(
     contextItems,
     buildServerDocumentContextItem({ tomoriState, simplifiedMessageHistory, triggererUserId, channelName }),

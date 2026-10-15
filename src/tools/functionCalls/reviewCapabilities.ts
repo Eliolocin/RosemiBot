@@ -31,6 +31,7 @@ function buildToolAssemblyState(context: ToolContext): ToolStateForContext {
     activePersonaVoiceSampleId: context.tomoriState.speech_voice_sample_id,
     activePersonaVoiceId: context.tomoriState.speech_voice_id,
     activePersonaVoiceSourcePriority: context.tomoriState.voice_source_priority,
+    speechToolState: context.streamContext?.speechToolState ?? { userId: context.internalUserId },
 
     diffusion_model_id: config.diffusion_model_id,
     nai_diffusion_model_id: config.nai_diffusion_model_id,

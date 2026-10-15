@@ -85,6 +85,7 @@ export interface DeliveredStreamMessage {
  * Streaming context for enhanced functionality during streaming
  */
 export interface StreamingContext {
+  speechToolState?: { userId?: number; selection?: string };
   disableYouTubeProcessing: boolean; // Flag to temporarily disable YouTube function during enhanced context restart
   disableProfilePictureProcessing?: boolean; // Flag to temporarily disable profile picture processing during enhanced context restart
   disableGifProcessing?: boolean; // Flag to temporarily disable GIF processing during enhanced context restart
@@ -252,6 +253,7 @@ export type ToolAvailabilityLlmState = Pick<LlmRow, "llm_codename" | ToolModelCa
  * provider-specific adapters serialize it.
  */
 export interface ToolAssemblyState {
+  speechToolState?: { userId?: number; selection?: string };
   server_id: string;
   /** True when the active persona has either a local voice sample or provider-hosted voice assigned. */
   activePersonaHasElevenlabsVoice: boolean;

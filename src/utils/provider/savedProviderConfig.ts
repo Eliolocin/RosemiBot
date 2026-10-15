@@ -24,7 +24,14 @@ import {
   supportsVisionCapability,
 } from "@/utils/provider/providerInfoRegistry";
 
-export type SavedProviderCapability = "text" | "embedding" | "image" | "video" | "vision";
+export type SavedProviderCapability =
+  | "text"
+  | "embedding"
+  | "image"
+  | "video"
+  | "vision"
+  | "speech_design"
+  | "speech_clone";
 
 interface ProviderDefaultSelectionIds {
   llm_id: number | null;
@@ -332,6 +339,10 @@ function savedProviderSelectionServesCapability(
 ): boolean {
   if (!isCustomProvider(provider)) {
     switch (capability) {
+      case "speech_design":
+        return provider === "google" || provider === "vertex";
+      case "speech_clone":
+        return provider === "openrouter";
       case "text":
         return true;
       case "embedding":

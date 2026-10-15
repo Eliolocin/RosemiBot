@@ -1,4 +1,5 @@
 import type { VoiceSourceMode } from "@/utils/speech/voiceSourceCapabilities";
+import { createHash } from "node:crypto";
 import type { CustomEndpointRow } from "@/types/db/schema";
 import { loadHostedSpeechSelection, type HostedSpeechSelection } from "@/utils/db/repositories/SpeechRepository";
 import { log } from "@/utils/misc/logger";
@@ -19,6 +20,45 @@ export interface SpeechEndpointResult {
 export type SpeechTargetResult =
   | (SpeechEndpointResult & { kind: "custom-endpoint"; owner: { kind: "server"; ownerId: number } })
   | (Omit<HostedSpeechSelection, "apiKey" | "keyVersion"> & { kind: "hosted-model"; endpoint: null; apiKey: string });
+
+export function speechTargetSource(target: SpeechTargetResult | null | undefined) {
+  return target?.kind === "hosted-model" ? target.model : (target?.endpoint ?? null);
+}
+
+export function speechTargetFingerprint(target: SpeechTargetResult | null | undefined): string {
+  if (!target) return "none";
+  return createHash("sha256")
+    .update(
+      JSON.stringify(
+        target.kind === "hosted-model"
+          ? [
+              target.kind,
+              target.model.speech_model_id,
+              target.model.provider,
+              target.model.codename,
+              target.model.voice_mode,
+              target.owner,
+              target.credentialId,
+              target.credentialRevision,
+            ]
+          : [
+              target.kind,
+              target.endpoint.custom_endpoint_id,
+              target.endpoint.connection_id,
+              target.endpoint.api_style,
+              target.endpoint.endpoint_url,
+              target.endpoint.extra_config,
+              target.owner,
+              target.apiKey,
+            ],
+      ),
+    )
+    .digest("hex");
+}
+
+export function speechTargetLabel(target: SpeechTargetResult | null | undefined): string {
+  return target?.kind === "hosted-model" ? target.model.codename : (target?.endpoint.label ?? "ElevenLabs");
+}
 
 async function resolveActiveEndpointByCapability(
   serverId: number,

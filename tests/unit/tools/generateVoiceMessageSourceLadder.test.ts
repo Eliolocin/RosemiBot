@@ -1,3 +1,6 @@
+import { initializeLocalizer } from "@/utils/text/localizer";
+import { localizedCopy } from "../../helpers/localeCases";
+import { redactToolParametersForStorage } from "@/utils/tools/toolParameterRedaction";
 import * as realCrypto from "@/utils/security/crypto";
 import { createPersona } from "../../helpers/fixtures";
 /**
@@ -16,9 +19,9 @@ import { createPersona } from "../../helpers/fixtures";
  * a success result: a stub that fails would replace the tool's own refusal message with its own and
  * silently make every refusal assertion vacuous, which is the trap this file walked into once.
  */
-import { describe, expect, it, mock } from "bun:test";
-import type { CustomEndpointRow } from "@/types/db/schema";
-import type { ToolContext } from "@/types/tool/interfaces";
+import { beforeAll, describe, expect, it, mock } from "bun:test";
+import { speechModelSchema, type CustomEndpointRow } from "@/types/db/schema";
+import type { ToolContext, ToolAssemblyState } from "@/types/tool/interfaces";
 import type { ResolvedVoiceSource } from "@/utils/speech/voiceMessageSynthesis";
 import * as realSpeechEndpointResolver from "@/utils/provider/speechEndpointResolver";
 import * as realVoiceMessageSynthesis from "@/utils/speech/voiceMessageSynthesis";
@@ -27,9 +30,31 @@ import * as realVoiceMessageMetadata from "@/utils/audio/voiceMessageMetadata";
 import { createScopedModuleMocker } from "../../helpers/mockSurface";
 import { GenerateVoiceMessageTool } from "@/tools/functionCalls/generateVoiceMessageTool";
 
+beforeAll(initializeLocalizer);
+
 type VoiceMode = "clone" | "voice-design" | "auto";
 
 let activeEndpoint: CustomEndpointRow | null = null;
+let hostedTargets: Awaited<ReturnType<typeof realSpeechEndpointResolver.resolveSpeechTargets>> | null = null;
+const resolvedOwners: Array<number | undefined> = [];
+const synthesisRequests: realVoiceMessageSynthesis.VoiceMessageSynthesisRequest[] = [];
+let synthesisResultOverride: Partial<realVoiceMessageSynthesis.VoiceMessageSynthesisResult> = {};
+function hostedTarget(mode: "design" | "clone"): realSpeechEndpointResolver.SpeechTargetResult {
+  return {
+    kind: "hosted-model",
+    endpoint: null,
+    owner: { kind: mode === "design" ? "personal" : "server", ownerId: 1 },
+    credentialId: 12,
+    credentialRevision: 1,
+    apiKey: "synthetic-key",
+    model: speechModelSchema.parse({
+      speech_model_id: 1,
+      voice_mode: mode,
+      provider: mode === "design" ? "google" : "openrouter",
+      codename: mode === "design" ? "gemini-3.8-flash-tts" : "fish-audio/s2.1-pro",
+    }),
+  };
+}
 /** Sources the tool handed to the dispatcher, most recent last. */
 const dispatchedSources: ResolvedVoiceSource[] = [];
 const dispatchedSignals: Array<AbortSignal | undefined> = [];
@@ -39,7 +64,8 @@ const endpointResolverMock = mock(async () =>
   activeEndpoint ? { endpoint: activeEndpoint, apiKey: "endpoint-key" } : null,
 );
 
-const synthesizeMock = mock(async (request: { source: ResolvedVoiceSource; abortSignal?: AbortSignal }) => {
+const synthesizeMock = mock(async (request: realVoiceMessageSynthesis.VoiceMessageSynthesisRequest) => {
+  synthesisRequests.push(request);
   dispatchedSources.push(request.source);
   dispatchedSignals.push(request.abortSignal);
   return {
@@ -49,6 +75,7 @@ const synthesizeMock = mock(async (request: { source: ResolvedVoiceSource; abort
     contentType: "audio/wav",
     extension: "wav",
     cleanedCaptionText: "",
+    ...synthesisResultOverride,
   };
 });
 
@@ -62,7 +89,9 @@ const scopedMock = createScopedModuleMocker(mock, {
 
 scopedMock.module("@/utils/provider/speechEndpointResolver", () => ({
   ...realSpeechEndpointResolver,
-  resolveSpeechTargets: async () => {
+  resolveSpeechTargets: async (_serverId: number, userId?: number) => {
+    resolvedOwners.push(userId);
+    if (hostedTargets) return hostedTargets;
     const target = await endpointResolverMock();
     return { design: target, clone: target };
   },
@@ -129,6 +158,7 @@ async function runTool(
   endpoint: CustomEndpointRow | null,
 ): Promise<{ source: ResolvedVoiceSource | null; error: string | null }> {
   activeEndpoint = endpoint;
+  hostedTargets = null;
   dispatchedSources.length = 0;
 
   const result = await new GenerateVoiceMessageTool().execute(
@@ -147,6 +177,89 @@ const DESIGN_PROMPT = { speech_voice_design_prompt: "Warm and unhurried" };
 const ELEVENLABS_VOICE = { speech_voice_id: "voice-abc" };
 
 describe("GenerateVoiceMessageTool source ladder", () => {
+  it("returns the final target label instead of empty model metadata after fallback", async () => {
+    activeEndpoint = makeEndpoint("voice-design");
+    hostedTargets = null;
+    synthesisResultOverride = {
+      targetLabel: "Fallback speech",
+      usedServerFallback: true,
+      attempts: [
+        {
+          provider: "tts-clone",
+          model: "",
+          owner: { kind: "server", ownerId: 1 },
+          source: "design",
+          synthesisSuccess: true,
+          operations: [],
+        },
+      ],
+    };
+    try {
+      const result = await new GenerateVoiceMessageTool().execute(
+        { title: "invitation", script: "Hello" },
+        makeContext(DESIGN_PROMPT),
+      );
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({ target: synthesisResultOverride.targetLabel, usedServerFallback: true });
+    } finally {
+      synthesisResultOverride = {};
+    }
+  });
+
+  it("keeps speech input values out of execution history and thought-log details", () => {
+    const script = "Synthetic private script";
+    const direction = "Synthetic private direction";
+    const redacted = redactToolParametersForStorage("generate_voice_message", {
+      title: "Private title",
+      script,
+      voice_instructions: direction,
+    });
+    expect(redacted).toEqual({ script_characters: script.length, instruction_characters: direction.length });
+    expect(JSON.stringify(redacted)).not.toContain(script);
+    expect(JSON.stringify(redacted)).not.toContain(direction);
+  });
+  it("assembles and executes hosted voices for the triggering owner and rejects stale selections", async () => {
+    const tool = new GenerateVoiceMessageTool();
+    for (const mode of ["design", "clone"] as const) {
+      const persona = createPersona(mode === "design" ? DESIGN_PROMPT : SAMPLE);
+      const speechToolState: NonNullable<ToolAssemblyState["speechToolState"]> = { userId: 1 };
+      const state: ToolAssemblyState = {
+        server_id: "1",
+        speechToolState,
+        activePersonaHasElevenlabsVoice: true,
+        activePersonaVoiceDesignPrompt: persona.speech_voice_design_prompt,
+        activePersonaVoiceSampleId: persona.speech_voice_sample_id,
+        activePersonaVoiceId: null,
+        activePersonaVoiceSourcePriority: "design",
+        llm: persona.llm,
+        config: persona.config,
+      };
+      hostedTargets = { design: hostedTarget("design"), clone: hostedTarget("clone") };
+      resolvedOwners.length = 0;
+      synthesisRequests.length = 0;
+      expect(await tool.assembleForContext({ provider: "google", state })).not.toBeNull();
+      const context = {
+        ...makeContext(mode === "design" ? DESIGN_PROMPT : SAMPLE),
+        internalUserId: 1,
+        streamContext: { speechToolState },
+        locale: "en-US",
+      } as ToolContext;
+      const result = await tool.execute({ title: "test", script: "Hello" }, context);
+      expect(result.success).toBe(true);
+      expect(synthesisRequests[0]?.target).toEqual(hostedTargets[mode] ?? undefined);
+      expect(synthesisRequests[0]?.routing?.sourceIsExplicit).toBe(false);
+      expect(resolvedOwners).toEqual([1, 1]);
+      const target = hostedTargets[mode];
+      if (target?.kind !== "hosted-model") throw new Error("Missing hosted fixture");
+      hostedTargets[mode] = { ...target, credentialRevision: 2 };
+      synthesisRequests.length = 0;
+      const stale = await tool.execute({ title: "test", script: "Hello" }, context);
+      expect(stale.success).toBe(false);
+      expect(stale.error).toBe(localizedCopy("en-US", "tools.generate_voice_message.stale"));
+      expect(synthesisRequests).toHaveLength(0);
+    }
+    hostedTargets = null;
+  });
   it("uses an ElevenLabs voice when the persona has one and no endpoint is registered", async () => {
     // The legacy opt_api_keys deployment: no speech endpoint at all.
     const { source, error } = await runTool(ELEVENLABS_VOICE, null);
@@ -197,14 +310,14 @@ describe("GenerateVoiceMessageTool source ladder", () => {
     );
 
     expect(error).toBeNull();
-    expect(source).toEqual({ kind: "design", designPrompt: "Warm and unhurried" });
+    expect(source).toEqual({ kind: "design", designPrompt: "Warm and unhurried", personaId: 1 });
   });
 
   it("uses the design prompt on a dedicated voice-design endpoint", async () => {
     const { source, error } = await runTool(DESIGN_PROMPT, makeEndpoint("voice-design"));
 
     expect(error).toBeNull();
-    expect(source).toEqual({ kind: "design", designPrompt: "Warm and unhurried" });
+    expect(source).toEqual({ kind: "design", designPrompt: "Warm and unhurried", personaId: 1 });
   });
 
   it("falls past a design prompt to the sample on a clone endpoint", async () => {
@@ -228,7 +341,7 @@ describe("GenerateVoiceMessageTool source ladder", () => {
     );
 
     expect(error).toBeNull();
-    expect(source).toEqual({ kind: "design", designPrompt: "Warm and unhurried" });
+    expect(source).toEqual({ kind: "design", designPrompt: "Warm and unhurried", personaId: 1 });
   });
 });
 
@@ -260,7 +373,9 @@ describe("GenerateVoiceMessageTool refusals", () => {
     });
     const { error } = await runTool({ ...SAMPLE, ...DESIGN_PROMPT }, makeEndpoint("auto"));
     expect(Boolean(error)).toBe(true);
-    expect(dispatchedSources).toEqual([{ kind: "design", designPrompt: DESIGN_PROMPT.speech_voice_design_prompt }]);
+    expect(dispatchedSources).toEqual([
+      { kind: "design", designPrompt: DESIGN_PROMPT.speech_voice_design_prompt, personaId: 1 },
+    ]);
   });
 });
 

@@ -1,3 +1,5 @@
+import { validateOpenRouterSpeechModel } from "@/utils/cache/openrouterSpeechModelCache";
+import { setHostedSpeechSelection } from "@/utils/db/repositories/SpeechRepository";
 import { setSpeechEndpointSelection } from "@/utils/db/repositories/SpeechRepository";
 import type {
   CustomEndpointRow,
@@ -302,6 +304,7 @@ export interface ConfigModelOperations {
     scopeKind?: "server" | "personal";
     capability: "tts-design" | "tts-clone" | "stt";
     customEndpointId: number;
+    targetKind?: "custom-endpoint" | "hosted-model";
   }): Promise<ActivateWorkspaceEndpointResult>;
   setProviderParameters(input: {
     tomoriState: TomoriState;
@@ -598,7 +601,9 @@ export const configModelOperations: ConfigModelOperations = {
       const mode = capability === "tts-design" ? "design" : "clone";
       const selectedId =
         mode === "design" ? tomoriState.config.speech_design_endpoint_id : tomoriState.config.speech_clone_endpoint_id;
-      if (selectedId === null) return { status: "already-clear" };
+      const hostedId =
+        mode === "design" ? tomoriState.config.speech_design_model_id : tomoriState.config.speech_clone_model_id;
+      if (selectedId === null && hostedId === null) return { status: "already-clear" };
       return (await setSpeechEndpointSelection(tomoriState.server_id, null, mode))
         ? { status: "success" }
         : { status: "write-failed" };
@@ -622,7 +627,44 @@ export const configModelOperations: ConfigModelOperations = {
     return { status: "success" };
   },
 
-  async activateWorkspaceEndpoint({ tomoriState, serverDiscId, ownerId, scopeKind, capability, customEndpointId }) {
+  async activateWorkspaceEndpoint({
+    tomoriState,
+    serverDiscId,
+    ownerId,
+    scopeKind,
+    capability,
+    customEndpointId,
+    targetKind,
+  }) {
+    if (targetKind === "hosted-model") {
+      if (capability === "stt") return { status: "not-found" };
+      const mode = capability === "tts-design" ? "design" : "clone";
+      const providers = await llmProviderRepo.loadSavedProviderConfigs(tomoriState.server_id);
+      const choices = (
+        await Promise.all(
+          providers
+            .filter((row) => row.api_key)
+            .map((row) =>
+              llmModelRepo.loadAvailableSpeechModels(row.provider, { kind: "server", ownerId: tomoriState.server_id }),
+            ),
+        )
+      ).flat();
+      const target = choices.find(
+        (model) =>
+          model.speech_model_id === customEndpointId && (model.voice_mode === mode || model.voice_mode === "auto"),
+      );
+      if (!target) return { status: "not-found" };
+      if (target.provider === "openrouter" && !(await validateOpenRouterSpeechModel(target.codename)))
+        return { status: "not-found" };
+      const success = await setHostedSpeechSelection(
+        { kind: "server", ownerId: tomoriState.server_id },
+        customEndpointId,
+        mode,
+      );
+      return success
+        ? { status: "success", identity: target.codename, sourceChanged: false }
+        : { status: "write-failed" };
+    }
     return providerPanelOperations.activateWorkspaceEndpoint({
       serverDiscId,
       ownerId,

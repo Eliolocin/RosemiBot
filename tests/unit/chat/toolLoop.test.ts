@@ -2332,6 +2332,62 @@ describe("runToolLoop — contract tests", () => {
     expect(context.responseReview.toolReviews).toBe(2);
   });
 
+  it("reviews spoken scripts without disabling later tool or response reviews and redacts completed speech evidence", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const script = "Let the lantern stay lit.";
+    const args = { title: "invitation", script, voice_instructions: "Speak softly" };
+    const delivered: string[] = [];
+    const { provider } = makeProvider([
+      makeFunctionCallResult("generate_voice_message", args),
+      makeFunctionCallResult("mirror_action", { target: "fixture" }),
+      held("I am here.", delivered),
+    ]);
+    const tools = await provider.getTools(context.tomoriState);
+    const packets: Array<{ kind: string | undefined; prompt: string }> = [];
+    Object.assign(provider, {
+      getTools: async () => [
+        ...tools,
+        {
+          functionDeclarations: [
+            {
+              name: "generate_voice_message",
+              parameters: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  script: { type: "string" },
+                  voice_instructions: { type: "string" },
+                },
+                required: ["title", "script"],
+              },
+            },
+          ],
+        },
+      ],
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+        packets.push({ kind: request.schemaName, prompt: request.userPrompt });
+        return { success: true, data: { status: "pass" } };
+      },
+    });
+    await runToolLoop(makeParams(context, provider));
+    expect(packets.map((packet) => packet.kind)).toEqual(["tool_review", "tool_review", "response_review"]);
+    expect(packets[0]?.prompt).toContain(JSON.stringify(args));
+    expect(packets[1]?.prompt).not.toContain(script);
+    expect(packets[1]?.prompt).toContain(
+      JSON.stringify({ script_characters: script.length, instruction_characters: args.voice_instructions.length }),
+    );
+    expect(toolExecuteCalls.map((call) => call.name)).toEqual(["generate_voice_message", "mirror_action"]);
+    expect(context.responseReview.unavailable).toBe(false);
+    expect(delivered).toEqual(["I am here."]);
+    expect(
+      buildReviewerPacket(context, "", 64000, await provider.getTools(context.tomoriState), {
+        name: "generate_voice_message",
+        args: { ...args, script: `sk-proj-${"a".repeat(30)}` },
+      }),
+    ).toBe("tool_arguments_redacted");
+  });
+
   it("with Tool Calls unchecked, executes calls unreviewed and omits tool evidence from reply review", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
     const context = makeReviewContext();
