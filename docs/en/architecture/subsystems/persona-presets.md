@@ -77,7 +77,9 @@ The first local edit to prompt text, attributes, sprites, or naming forks the po
   materializes the persona; older cards without it keep their pointer behavior. Main and alter
   imports restore the description and priority, defaulting missing priority to Design, and need a
   new reference assignment for Clone. Main imports retire previous Gemini bindings even when the
-  imported description matches, so the imported persona creates its own identity lazily.
+  imported description matches, so the imported persona creates its own identity lazily. Retired
+  IDs stay pending for cleanup with the original credentials. Importing a card does not activate a
+  speech provider or change the workspace's Design and Clone targets.
 - **Image captioning**: During `/persona generate`, an uploaded image is paired with the primary model. If the primary model cannot accept images, `analyzeImageWithVisionModel()` requests a description from the configured vision model and passes that text via `appearanceDescription`, keeping raw images out of text-only model requests.
 
 ## Source pointers

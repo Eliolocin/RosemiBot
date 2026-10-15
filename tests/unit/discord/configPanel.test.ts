@@ -1746,7 +1746,8 @@ describe("config Behavior pages", () => {
   it("renders Trigger as direct Off/On state controls and no live values for a member", () => {
     const manager = build(GUILD_MANAGER, { category: "behavior", page: "trigger", behaviorView });
     const controls = walk(manager).filter((component) => component.label === "Off" || component.label === "On");
-    expect(controls.map((component) => component.style)).toEqual([2, 1, 1, 2]);
+    expect(controls.map((component) => component.style)).toEqual([2, 2, 2, 2]);
+    expect(controls.map((component) => component.disabled)).toEqual([false, true, true, false]);
     expect(walk(manager).some((component) => component.content?.includes("<#channel-1>"))).toBe(true);
 
     const member = build(GUILD_MEMBER, { category: "behavior", page: "trigger", behaviorView });

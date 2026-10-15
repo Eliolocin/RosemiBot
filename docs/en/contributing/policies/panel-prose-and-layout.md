@@ -103,10 +103,17 @@ Keep the `/en/` segment, as every docs link in `src/locales/en-US/` does.
   personal memory below:`), because users do not look inside a dropdown for an add action.
 - Option values must be unique. A duplicate makes Discord reject the payload with
   `COMPONENT_OPTION_VALUE_DUPLICATED`, and no static gate catches it.
-- Past 25 options, paginate in place. The add action is the first option on every page, leaving 24
-  records. Below the select: `← Previous`, a disabled `Page 2 of 7`, `Next →`, with each end disabled
-  at its boundary and the row omitted when one page is enough. Use `←` (U+2190) and `→` (U+2192): `<`
-  and `>` read as operators, and `◀`/`▶` can render as coloured emoji.
+- A select that assigns or browses items orders its options as `None`, then `+ Add ...`, then the items.
+  `None` clears the assignment and appears only while something is assigned; `+ Add ...` appears only
+  where the panel can create an item. Clearing and adding are options, not buttons below the select.
+- A persona picker that chooses from a shared library offers no `+ Add ...`; its notice points to the
+  library page instead.
+- Past 25 options, paginate in place with `buildPaginationRow`, never a `More ...` option. Reserve the
+  action options before slicing items: `resolveRangeSelection(items, range, { reservedOptions })` sizes
+  each page so the select stays within 25 options. Below the select: `← Previous`, a disabled
+  `Page 2 of 7`, `Next →`, with each end disabled at its boundary and the row omitted when one page is
+  enough. Use `←` (U+2190) and `→` (U+2192): `<` and `>` read as operators, and `◀`/`▶` can render as
+  coloured emoji.
 - Keep the selection and the page body while paging. Do not swap the body for a range chooser.
 
 ## Modals
@@ -137,14 +144,16 @@ acts on the visible page (`/moderation`).
 
 ## Buttons
 
-- Collection actions pair `+ Add ...` with a red `- Remove ...`, and Remove is disabled while the list
-  is empty.
+- Removing an item is a red `- Remove ...` button, disabled while nothing is selected.
+- A value the current select cannot show (a saved provider voice while a different endpoint is active)
+  keeps a `Clear ...` button, because no `None` option can reach it.
 - `Retry` and the subdued stale-read warning go at the bottom of the page.
 
 - A label names the object acted on (`Remove Document`), not the internal category it came from and
   never its own colour (`Danger: Remove`).
-- Blue (`Primary`) marks the active category, or the selected choice in a state-control row, shown as
-  a disabled button. Other choices are enabled `Secondary`; unavailable ones are disabled `Secondary`.
+- Blue (`Primary`) marks only the active category. In a state-control row the selected choice is a
+  disabled `Secondary` button, other choices are enabled `Secondary`, and unavailable ones are disabled
+  `Secondary`.
 - A state-control row holds mutually exclusive stored states: `[Off] [On]`,
   `[Off] [Follow Server] [On]`, `[Server-wide] [Persona]`. Pagination, navigation, confirmation, and
   action rows are not state controls.

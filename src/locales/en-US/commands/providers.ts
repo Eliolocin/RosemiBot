@@ -121,7 +121,6 @@ export default {
     endpoint_label_url_conflict: `That label belongs to a different URL. Use the existing URL or choose a distinct label.`,
     endpoint_unreachable: `The endpoint did not answer using that API protocol. Nothing was saved. Details: {reason}`,
     endpoint_redirect_credentials_withheld: `The endpoint redirected to a different address, so its API key was not sent there and nothing was saved. Enter the final address the server redirects to as the endpoint URL.`,
-    activate_placeholder: `Choose the active speech or transcription endpoint...`,
     activate_option_description: `{capability} endpoint ({name})`,
     activate_option_active_description: `[active] {capability} endpoint ({name})`,
     manage_models_placeholder: `Choose a model or capability...`,

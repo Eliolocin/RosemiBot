@@ -34,7 +34,10 @@ import {
   buildPaginationRow,
   withLinePrefix,
 } from "@/utils/discord/ui/panel";
-import { DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX } from "@/utils/discord/ui/componentsV2Limits";
+import {
+  DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX,
+  DISCORD_SELECT_OPTIONS_MAX,
+} from "@/utils/discord/ui/componentsV2Limits";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { measureFormattedPanelTextLength } from "@/utils/discord/ui/panelProse";
 import type { ImageEndpointSupports } from "@/utils/provider/customImageEndpointSupport";
@@ -52,8 +55,7 @@ import { providerRequiresAlternation, providerRequiresPrefixCompletion } from "@
 import { buildTextPreview, textPreviewFooterKey, textPreviewFooterVars } from "@/utils/text/textPreview";
 import { localizer } from "@/utils/text/localizer";
 
-export const PROVIDERS_ENTRIES_PER_SELECTOR_PAGE = 23;
-export const PROVIDERS_MODELS_PER_SELECTOR_PAGE = 18;
+export const PROVIDERS_ENTRIES_PER_SELECTOR_PAGE = DISCORD_SELECT_OPTIONS_MAX - 2;
 export const PROVIDERS_ADD_PROVIDER_VALUE = "action:add-provider";
 export const PROVIDERS_ADD_ENDPOINT_VALUE = "action:add-endpoint";
 
@@ -145,6 +147,8 @@ export const ENDPOINT_API_STYLES: Readonly<Record<CustomEndpointCapability, read
   transcription: ["openai-compatible-transcription"],
   decision: ["system-one", "openai-decisions"],
 };
+
+export const PROVIDERS_MODELS_PER_SELECTOR_PAGE = DISCORD_SELECT_OPTIONS_MAX - Object.keys(ENDPOINT_API_STYLES).length;
 
 export type AddEndpointModalField = "label" | "url" | "api-style" | "auth-token";
 
@@ -850,26 +854,29 @@ function buildCapabilitySection(
   const label = localizer(locale, `commands.providers.capabilities.${section.capability}`);
   if (section.capability === "speech") {
     return (["design", "clone"] as const)
-      .map((mode) => {
+      .flatMap((mode) => {
         const eligible = section.models.filter(
           (model) =>
             model.speechSettings &&
             (model.speechSettings.voiceMode === "auto" ||
               model.speechSettings.voiceMode === (mode === "design" ? "voice-design" : "clone")),
         );
+        if (eligible.length === 0) return [];
         return [
-          `**${localizer(locale, `commands.config.panel.capability_tts_${mode}`)}**`,
-          ...eligible.map((model) =>
-            buildModelLine(
-              locale,
-              {
-                ...model,
-                isWorkspaceActive: model.speechActiveModes?.includes(mode) ?? false,
-              },
-              routeNamespace,
+          [
+            `**${localizer(locale, `commands.config.panel.capability_tts_${mode}`)}**`,
+            ...eligible.map((model) =>
+              buildModelLine(
+                locale,
+                {
+                  ...model,
+                  isWorkspaceActive: model.speechActiveModes?.includes(mode) ?? false,
+                },
+                routeNamespace,
+              ),
             ),
-          ),
-        ].join("\n");
+          ].join("\n"),
+        ];
       })
       .join("\n\n");
   }
@@ -1120,12 +1127,7 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
   const selectedId = selectedEntryId(input);
   const selectedIndex = selectedId ? entries.findIndex((entry) => entry.id === selectedId) : -1;
   const implicitRangeIndex = selectedIndex < 0 ? 0 : Math.floor(selectedIndex / PROVIDERS_ENTRIES_PER_SELECTOR_PAGE);
-  const selection = resolveRangeSelection(
-    entries,
-    input.rangeIndex ?? implicitRangeIndex,
-    PROVIDERS_ENTRIES_PER_SELECTOR_PAGE,
-  );
-  const options: SelectMenuComponentOptionData[] = [
+  const actionOptions: SelectMenuComponentOptionData[] = [
     {
       label: localizer(locale, "commands.providers.select_add_provider"),
       value: PROVIDERS_ADD_PROVIDER_VALUE,
@@ -1137,6 +1139,12 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
       value: PROVIDERS_ADD_ENDPOINT_VALUE,
       description: localizer(locale, "commands.providers.select_add_endpoint_description"),
     },
+  ];
+  const selection = resolveRangeSelection(entries, input.rangeIndex ?? implicitRangeIndex, {
+    reservedOptions: actionOptions.length,
+  });
+  const options: SelectMenuComponentOptionData[] = [
+    ...actionOptions,
     ...selection.visibleItems.map((entry) => ({
       label: safeSelectOptionText(entry.displayName, 100),
       value: entry.id,

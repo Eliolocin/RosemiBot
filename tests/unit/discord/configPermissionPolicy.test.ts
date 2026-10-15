@@ -816,7 +816,7 @@ describe("isConfigRouteAuthorized", () => {
       { action: "voice-select", locale: "en-US", personaId: 5 },
       { action: "voice-page", locale: "en-US", personaId: 5, start: 0 },
       { action: "voice-chooser-cancel", locale: "en-US", personaId: 5 },
-      { action: "voice-clear", locale: "en-US", personaId: 5 },
+      { action: "voice-provider-clear", locale: "en-US", personaId: 5 },
       { action: "voice-design-open", locale: "en-US", personaId: 5 },
       { action: "voice-design-submit", locale: "en-US", personaId: 5, nonce: "nonce1234567" },
       { action: "voice-design-remove", locale: "en-US", personaId: 5 },

@@ -2629,7 +2629,7 @@ describe("Models panel rendering", () => {
 
     // The primary model is chosen on Switch Models, so the Fallbacks page deliberately no longer
     // restates it or the provider. A regression that reintroduces either belongs to this assertion.
-    expect(payloadJson).not.toContain("Primary");
+    expect(payloadJson).not.toContain("Secondary");
     expect(payloadJson).not.toContain("Claude 3.5 Sonnet");
 
     // The provider select replaced the Edit button and is the only way into the fallback modal, so
@@ -4506,17 +4506,17 @@ describe("personalConfigRoutes Advanced interactions and telemetry", () => {
 
             expect(dtmOff.customId).toBe("personal-config:v2:trigger-mode-set:en-US:off");
             expect(dtmOff.label).toBe("Off");
-            expect(dtmOff.style).toBe(dtmMode === "off" ? ButtonStyle.Primary : ButtonStyle.Secondary);
+            expect(dtmOff.style).toBe(dtmMode === "off" ? ButtonStyle.Secondary : ButtonStyle.Secondary);
             expect(dtmOff.disabled).toBe(dtmMode === "off");
 
             expect(dtmFollow.customId).toBe("personal-config:v2:trigger-mode-set:en-US:follow");
             expect(dtmFollow.label).toBe(localizedCopy("en-US", "commands.personal.config.mode_follow"));
-            expect(dtmFollow.style).toBe(dtmMode === "follow" ? ButtonStyle.Primary : ButtonStyle.Secondary);
+            expect(dtmFollow.style).toBe(dtmMode === "follow" ? ButtonStyle.Secondary : ButtonStyle.Secondary);
             expect(dtmFollow.disabled).toBe(dtmMode === "follow");
 
             expect(dtmOn.customId).toBe("personal-config:v2:trigger-mode-set:en-US:on");
             expect(dtmOn.label).toBe("On");
-            expect(dtmOn.style).toBe(dtmMode === "on" ? ButtonStyle.Primary : ButtonStyle.Secondary);
+            expect(dtmOn.style).toBe(dtmMode === "on" ? ButtonStyle.Secondary : ButtonStyle.Secondary);
             expect(dtmOn.disabled).toBe(dtmMode === "on");
 
             // Find Tool Mode action row and its surrounding text displays
@@ -4558,17 +4558,17 @@ describe("personalConfigRoutes Advanced interactions and telemetry", () => {
 
             expect(toolOff.customId).toBe("personal-config:v2:tool-mode-set:en-US:off");
             expect(toolOff.label).toBe("Off");
-            expect(toolOff.style).toBe(toolMode === "off" ? ButtonStyle.Primary : ButtonStyle.Secondary);
+            expect(toolOff.style).toBe(toolMode === "off" ? ButtonStyle.Secondary : ButtonStyle.Secondary);
             expect(toolOff.disabled).toBe(toolMode === "off");
 
             expect(toolFollow.customId).toBe("personal-config:v2:tool-mode-set:en-US:follow");
             expect(toolFollow.label).toBe(localizedCopy("en-US", "commands.personal.config.mode_follow"));
-            expect(toolFollow.style).toBe(toolMode === "follow" ? ButtonStyle.Primary : ButtonStyle.Secondary);
+            expect(toolFollow.style).toBe(toolMode === "follow" ? ButtonStyle.Secondary : ButtonStyle.Secondary);
             expect(toolFollow.disabled).toBe(toolMode === "follow");
 
             expect(toolOn.customId).toBe("personal-config:v2:tool-mode-set:en-US:on");
             expect(toolOn.label).toBe("On");
-            expect(toolOn.style).toBe(toolMode === "on" ? ButtonStyle.Primary : ButtonStyle.Secondary);
+            expect(toolOn.style).toBe(toolMode === "on" ? ButtonStyle.Secondary : ButtonStyle.Secondary);
             expect(toolOn.disabled).toBe(toolMode === "on");
 
             // Ensure no retired status prose exists in the payload
@@ -4582,7 +4582,7 @@ describe("personalConfigRoutes Advanced interactions and telemetry", () => {
     }
   });
 
-  it("disables all Response Mode buttons when writes are disabled while preserving Primary selection", () => {
+  it("disables all Response Mode buttons when writes are disabled while preserving Secondary selection", () => {
     const payload = buildPersonalConfigPanelPayload({
       locale: "en-US",
       category: "advanced",
@@ -4621,7 +4621,7 @@ describe("personalConfigRoutes Advanced interactions and telemetry", () => {
       expect(btn.disabled).toBe(true);
     }
     expect(dtmRow.components[0].style).toBe(ButtonStyle.Secondary);
-    expect(dtmRow.components[1].style).toBe(ButtonStyle.Primary);
+    expect(dtmRow.components[1].style).toBe(ButtonStyle.Secondary);
     expect(dtmRow.components[2].style).toBe(ButtonStyle.Secondary);
 
     for (const btn of toolRow.components) {
@@ -4629,7 +4629,7 @@ describe("personalConfigRoutes Advanced interactions and telemetry", () => {
     }
     expect(toolRow.components[0].style).toBe(ButtonStyle.Secondary);
     expect(toolRow.components[1].style).toBe(ButtonStyle.Secondary);
-    expect(toolRow.components[2].style).toBe(ButtonStyle.Primary);
+    expect(toolRow.components[2].style).toBe(ButtonStyle.Secondary);
   });
 
   it("renders Profile General and Persona with section descriptions and precise fallback wording (never bare Inherited)", () => {
@@ -6792,7 +6792,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
 
   describe("Model Randomizer and Cross-Server STM state controls", () => {
     describe("Cross-Server STM state control rendering and custom IDs", () => {
-      it("renders Off as disabled Primary and On as enabled Secondary when cross-server STM is off", () => {
+      it("renders Off as disabled Secondary and On as enabled Secondary when cross-server STM is off", () => {
         const payload = buildPersonalConfigPanelPayload({
           locale: "en-US",
           category: "privacy",
@@ -6825,7 +6825,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
         const onButton = buttonRow?.components.find((b) => b.label === "On");
 
         expect(offButton).toBeDefined();
-        expect(offButton?.style).toBe(ButtonStyle.Primary);
+        expect(offButton?.style).toBe(ButtonStyle.Secondary);
         expect(offButton?.disabled).toBe(true);
 
         expect(onButton).toBeDefined();
@@ -6844,7 +6844,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
         expect(payloadJson).toContain("> I cannot remember recent conversations with you");
       });
 
-      it("renders Off as enabled Secondary and On as disabled Primary when cross-server STM is on", () => {
+      it("renders Off as enabled Secondary and On as disabled Secondary when cross-server STM is on", () => {
         const payload = buildPersonalConfigPanelPayload({
           locale: "en-US",
           category: "privacy",
@@ -6881,7 +6881,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
         expect(offButton?.disabled).toBe(false);
 
         expect(onButton).toBeDefined();
-        expect(onButton?.style).toBe(ButtonStyle.Primary);
+        expect(onButton?.style).toBe(ButtonStyle.Secondary);
         expect(onButton?.disabled).toBe(true);
 
         const offRoute = parsePersonalConfigPanelRoute(requireRoute(offButton?.customId ?? ""));
@@ -6896,7 +6896,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
     });
 
     describe("Model Randomizer state control rendering and custom IDs", () => {
-      it("renders Off as disabled Primary and On as enabled Secondary when randomizer is off and canEnableRandomizer is true", () => {
+      it("renders Off as disabled Secondary and On as enabled Secondary when randomizer is off and canEnableRandomizer is true", () => {
         const payload = buildPersonalConfigPanelPayload({
           locale: "en-US",
           category: "models",
@@ -6939,7 +6939,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
         const onButton = buttonRow?.components.find((b) => b.label === "On");
 
         expect(offButton).toBeDefined();
-        expect(offButton?.style).toBe(ButtonStyle.Primary);
+        expect(offButton?.style).toBe(ButtonStyle.Secondary);
         expect(offButton?.disabled).toBe(true);
 
         expect(onButton).toBeDefined();
@@ -6969,7 +6969,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
         );
       });
 
-      it("renders Off as enabled Secondary and On as disabled Primary when randomizer is on and canEnableRandomizer is true", () => {
+      it("renders Off as enabled Secondary and On as disabled Secondary when randomizer is on and canEnableRandomizer is true", () => {
         const payload = buildPersonalConfigPanelPayload({
           locale: "en-US",
           category: "models",
@@ -7016,14 +7016,14 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
         expect(offButton?.disabled).toBe(false);
 
         expect(onButton).toBeDefined();
-        expect(onButton?.style).toBe(ButtonStyle.Primary);
+        expect(onButton?.style).toBe(ButtonStyle.Secondary);
         expect(onButton?.disabled).toBe(true);
 
         const payloadJson = JSON.stringify(payload);
         expect(payloadJson).toContain("> I pick a random model from my primary and fallbacks first");
       });
 
-      it("renders On as unavailable (disabled Secondary), Off as disabled Primary, and explains precondition in prose when canEnableRandomizer is false", () => {
+      it("renders On as unavailable (disabled Secondary), Off as disabled Secondary, and explains precondition in prose when canEnableRandomizer is false", () => {
         const payload = buildPersonalConfigPanelPayload({
           locale: "en-US",
           category: "models",
@@ -7065,9 +7065,9 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
         const offButton = buttonRow?.components.find((b) => b.label === "Off");
         const onButton = buttonRow?.components.find((b) => b.label === "On");
 
-        // Off is the selection: disabled Primary
+        // Off is the selection: disabled Secondary
         expect(offButton).toBeDefined();
-        expect(offButton?.style).toBe(ButtonStyle.Primary);
+        expect(offButton?.style).toBe(ButtonStyle.Secondary);
         expect(offButton?.disabled).toBe(true);
 
         // On is an unavailable alternative: disabled Secondary
@@ -7131,8 +7131,8 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
         const offButton = buttonRow?.components.find((b) => b.label === "Off");
         const onButton = buttonRow?.components.find((b) => b.label === "On");
 
-        // On is the stored selection, so it stays disabled Primary rather than being rewritten to Off.
-        expect(onButton?.style).toBe(ButtonStyle.Primary);
+        // On is the stored selection, so it stays disabled Secondary rather than being rewritten to Off.
+        expect(onButton?.style).toBe(ButtonStyle.Secondary);
         expect(onButton?.disabled).toBe(true);
 
         // Off stays reachable so the user can clear the stored flag without adding a fallback first.
@@ -7190,7 +7190,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
         const offButton = buttonRow.components.find((b) => b.label === "Off");
         const onButton = buttonRow.components.find((b) => b.label === "On");
 
-        expect(onButton?.style).toBe(ButtonStyle.Primary);
+        expect(onButton?.style).toBe(ButtonStyle.Secondary);
         expect(onButton?.disabled).toBe(true);
         expect(offButton?.style).toBe(ButtonStyle.Secondary);
         expect(offButton?.disabled).toBe(false);
@@ -7227,7 +7227,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
         const offButton = buttonRow.components.find((b) => b.label === "Off");
         const onButton = buttonRow.components.find((b) => b.label === "On");
 
-        expect(offButton?.style).toBe(ButtonStyle.Primary);
+        expect(offButton?.style).toBe(ButtonStyle.Secondary);
         expect(offButton?.disabled).toBe(true);
         expect(onButton?.style).toBe(ButtonStyle.Secondary);
         expect(onButton?.disabled).toBe(false);

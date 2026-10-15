@@ -11,6 +11,7 @@ import {
   loadSpeechVoiceBinding,
   loadPendingSpeechVoiceDeletions,
   deleteSpeechModelRegistration,
+  insertVoiceSample,
 } from "@/utils/db/repositories/SpeechRepository";
 import { setPersonalCapabilityEnabled } from "@/utils/provider/personalProviderHelpers";
 import { resolveSpeechTargets } from "@/utils/provider/speechEndpointResolver";
@@ -80,7 +81,22 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
     expect(fish.find((model) => model.is_default)?.codename).toBe("fish-audio/s2.1-pro");
     expect(fish.some((model) => model.codename === "fish-audio/s2.1-pro-free:free" && !model.is_default)).toBe(true);
     expect(google.some((model) => model.codename === "gemini-3.8-flash-lite-tts" && !model.is_default)).toBe(true);
-    expect(await loadHostedSpeechSelection(refs.serverId, "design")).toBeNull();
+    await executeTestSqlFile(migration);
+    for (const userId of [undefined, refs.userId])
+      expect(await resolveSpeechTargets(refs.serverId, userId)).toEqual({ design: null, clone: null });
+    const personalCredentials = await llmProviderRepo.loadUserSavedProviderConfigs(refs.userId);
+    expect(personalCredentials.map(({ provider }) => provider)).toEqual(
+      expect.arrayContaining(["google", "openrouter"]),
+    );
+    expect(
+      personalCredentials.every(
+        (row) =>
+          !row.assigned_capabilities.includes("speech_design") &&
+          !row.assigned_capabilities.includes("speech_clone") &&
+          !row.enabled_capabilities.includes("speech_design") &&
+          !row.enabled_capabilities.includes("speech_clone"),
+      ),
+    ).toBe(true);
   });
 
   it("replaces all supported endpoint slots atomically and preserves the other mode", async () => {
@@ -149,11 +165,16 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
     if (!vertex) throw new Error("Missing Vertex model");
     expect(await setHostedSpeechSelection(personal(), vertex.speech_model_id)).toBe(false);
     expect((await resolveSpeechTargets(refs.serverId, refs.userId)).design?.apiKey).toBe("test-personal-google-speech");
-    expect(await setPersonalCapabilityEnabled(refs.userId, "speech_design", false)).toBe(true);
-    targets = await resolveSpeechTargets(refs.serverId, refs.userId);
-    expect(targets.design?.apiKey).toBe("test-server-google-speech");
-    expect(targets.clone?.apiKey).toBe("test-personal-openrouter-speech");
-    expect(await setPersonalCapabilityEnabled(refs.userId, "speech_design", true)).toBe(true);
+    for (const [mode, other, provider, otherProvider] of [
+      ["design", "clone", "google", "openrouter"],
+      ["clone", "design", "openrouter", "google"],
+    ] as const) {
+      expect(await setPersonalCapabilityEnabled(refs.userId, `speech_${mode}`, false)).toBe(true);
+      targets = await resolveSpeechTargets(refs.serverId, refs.userId);
+      expect(targets[mode]?.apiKey).toBe(`test-server-${provider}-speech`);
+      expect(targets[other]?.apiKey).toBe(`test-personal-${otherProvider}-speech`);
+      expect(await setPersonalCapabilityEnabled(refs.userId, `speech_${mode}`, true)).toBe(true);
+    }
     expect(await setHostedSpeechSelection(personal(), fishId, "design")).toBe(false);
     expect((await resolveSpeechTargets(refs.serverId, refs.userId)).design?.apiKey).toBe("test-personal-google-speech");
     const rows = await llmProviderRepo.loadUserSavedProviderConfigs(refs.userId);
@@ -174,26 +195,45 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
       ),
     );
     try {
-      await testSql`UPDATE persona_voice_configs SET speech_voice_design_prompt = 'Warm narration', voice_source_priority = 'clone' WHERE persona_id = ${refs.personaId}`;
-      const [savedPersona] =
-        await testSql`SELECT speech_voice_design_prompt, voice_source_priority FROM persona_voice_configs WHERE persona_id = ${refs.personaId}`;
-      const result = await registerHostedSpeechModelForScope(scope(), "openrouter", "fish-audio/s2.1-pro-free:free");
-      expect(result.status).toBe("registered");
-      expect((await loadHostedSpeechSelection(refs.serverId, "clone"))?.model.codename).toBe(
-        "fish-audio/s2.1-pro-free:free",
+      const sampleId = await insertVoiceSample(
+        refs.serverId,
+        "Default activation reference",
+        "Synthetic transcript",
+        200,
       );
-      expect(await activateProviderSpeechDefaults(scope(), "openrouter")).toBe(true);
-      expect((await loadHostedSpeechSelection(refs.serverId, "clone"))?.model.speech_model_id).toBe(fishId);
+      if (!sampleId) throw new Error("Missing reference fixture");
+      expect(
+        await personaRepository.setVoiceConfig(refs.personaId, {
+          speech_voice_design_prompt: "Warm narration",
+          voice_source_priority: "clone",
+          speech_voice_sample_id: sampleId,
+          speech_voice_id: "synthetic-preset-identity",
+          speech_voice_name: "Default activation reference",
+        }),
+      ).toBe(true);
+      const [savedPersona] = await testSql`SELECT * FROM persona_voice_configs WHERE persona_id = ${refs.personaId}`;
       const lite = (await llmModelRepo.loadAvailableSpeechModels("google", scope())).find((model) => !model.is_default);
       if (!lite) throw new Error("Missing Flash-Lite model");
-      expect(await setHostedSpeechSelection(scope(), lite.speech_model_id)).toBe(true);
-      expect(await activateProviderSpeechDefaults(scope(), "google")).toBe(true);
-      expect((await loadHostedSpeechSelection(refs.serverId, "design"))?.model.speech_model_id).toBe(googleId);
-      expect((await loadHostedSpeechSelection(refs.serverId, "clone"))?.model.speech_model_id).toBe(fishId);
-      expect(await activateProviderSpeechDefaults(personal(), "google")).toBe(true);
-      expect(await activateProviderSpeechDefaults(personal(), "openrouter")).toBe(true);
-      const [persona] =
-        await testSql`SELECT speech_voice_design_prompt, voice_source_priority FROM persona_voice_configs WHERE persona_id = ${refs.personaId}`;
+      for (const owner of [scope(), personal()]) {
+        const userId = owner.kind === "personal" ? refs.userId : undefined;
+        expect(await setHostedSpeechSelection(owner, lite.speech_model_id)).toBe(true);
+        const result = await registerHostedSpeechModelForScope(owner, "openrouter", "fish-audio/s2.1-pro-free:free");
+        expect(result.status).toBe("registered");
+        expect((await loadHostedSpeechSelection(refs.serverId, "clone", userId))?.model.codename).toBe(
+          "fish-audio/s2.1-pro-free:free",
+        );
+        expect(await activateProviderSpeechDefaults(owner, "openrouter")).toBe(true);
+        expect((await loadHostedSpeechSelection(refs.serverId, "clone", userId))?.model.speech_model_id).toBe(fishId);
+        expect((await loadHostedSpeechSelection(refs.serverId, "design", userId))?.model.speech_model_id).toBe(
+          lite.speech_model_id,
+        );
+        expect(await activateProviderSpeechDefaults(owner, "google")).toBe(true);
+        expect((await loadHostedSpeechSelection(refs.serverId, "design", userId))?.model.speech_model_id).toBe(
+          googleId,
+        );
+        expect((await loadHostedSpeechSelection(refs.serverId, "clone", userId))?.model.speech_model_id).toBe(fishId);
+      }
+      const [persona] = await testSql`SELECT * FROM persona_voice_configs WHERE persona_id = ${refs.personaId}`;
       expect(persona).toEqual(savedPersona);
     } finally {
       fetchSpy.mockRestore();
@@ -273,6 +313,83 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
     expect(cache.get(FIXTURE_IDS.serverDiscId)).toBe(entry);
     expect(await setHostedSpeechSelection(scope(), googleId)).toBe(true);
     expect(cache.has(FIXTURE_IDS.serverDiscId)).toBe(false);
+  });
+
+  it("rolls back registrations, selections, personal ownership, and caches after a database write failure", async () => {
+    const lite = (await llmModelRepo.loadAvailableSpeechModels("google", scope())).find((model) => !model.is_default);
+    const auto = await llmProviderRepo.upsertCustomEndpoint({
+      serverId: refs.serverId,
+      label: "Rollback Auto",
+      capability: "speech",
+      apiStyle: "tts-clone",
+      endpointUrl: "http://127.0.0.1:9001",
+      requiresAuth: false,
+      extraConfig: { voice_mode: "auto" },
+    });
+    if (!lite || !auto?.custom_endpoint_id) throw new Error("Missing rollback fixtures");
+    await testSql.unsafe(`
+      CREATE FUNCTION _rt_speech_write_failure() RETURNS TRIGGER AS $fn$
+      BEGIN RAISE EXCEPTION '_rt injected speech write failure'; END;
+      $fn$ LANGUAGE plpgsql;
+    `);
+    try {
+      for (const owner of [scope(), personal()]) {
+        expect(await setHostedSpeechSelection(owner, googleId)).toBe(true);
+        expect(await setHostedSpeechSelection(owner, fishId)).toBe(true);
+        await deleteSpeechModelRegistration(owner, lite.speech_model_id);
+        const snapshot = async () => ({
+          server: await testSql`SELECT * FROM server_speech_configs WHERE server_id = ${refs.serverId}`,
+          personal: await testSql`
+            SELECT provider, speech_design_model_id, speech_clone_model_id, assigned_capabilities, enabled_capabilities
+            FROM user_saved_provider_configs WHERE user_id = ${refs.userId} ORDER BY provider
+          `,
+          registrations: await testSql`
+            SELECT * FROM scoped_model_registrations
+            WHERE server_id = ${refs.serverId} OR user_id = ${refs.userId}
+            ORDER BY scoped_model_registration_id
+          `,
+        });
+        const before = await snapshot();
+        const persona = createPersona({ server_id: refs.serverId });
+        const entry = { personas: [persona], mainPersona: persona, cachedAt: Date.now() };
+        const discordId = owner.kind === "server" ? FIXTURE_IDS.serverDiscId : FIXTURE_IDS.userDiscId;
+        cache.set(discordId, entry);
+        const table = owner.kind === "server" ? "server_speech_configs" : "user_saved_provider_configs";
+        await testSql.unsafe(`
+          CREATE TRIGGER _rt_speech_write_failure_trg BEFORE UPDATE OF speech_design_model_id ON ${table}
+          FOR EACH STATEMENT EXECUTE FUNCTION _rt_speech_write_failure();
+        `);
+        try {
+          expect(
+            await saveProviderModel({
+              state: persona,
+              serverDiscId: FIXTURE_IDS.serverDiscId,
+              scopeKind: owner.kind,
+              ownerId: owner.ownerId,
+              entryId: "provider:google",
+              capability: "speech",
+              codeName: lite.codename,
+            }),
+          ).toEqual({ status: "write-failed" });
+          expect(await snapshot()).toEqual(before);
+          expect(cache.get(discordId)).toBe(entry);
+          if (owner.kind === "server") {
+            expect(await setSpeechEndpointSelection(refs.serverId, auto.custom_endpoint_id)).toBe(false);
+            expect(await snapshot()).toEqual(before);
+            expect(cache.get(discordId)).toBe(entry);
+          }
+        } finally {
+          await testSql.unsafe(`DROP TRIGGER _rt_speech_write_failure_trg ON ${table}`);
+          cache.delete(discordId);
+        }
+        expect(await setHostedSpeechSelection(owner, lite.speech_model_id, undefined, true)).toBe(true);
+        expect(
+          (await resolveSpeechTargets(refs.serverId, owner.kind === "personal" ? refs.userId : undefined)).design,
+        ).toMatchObject({ kind: "hosted-model", model: { speech_model_id: lite.speech_model_id } });
+      }
+    } finally {
+      await testSql.unsafe("DROP FUNCTION _rt_speech_write_failure()");
+    }
   });
 
   it("preserves hosted targets through reset and configuration export and clears only removed registrations", async () => {

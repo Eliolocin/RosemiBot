@@ -239,6 +239,23 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
   });
 
   it("refuses a lossy downgrade and backfills the deterministic legacy winner and sample intent", async () => {
+    const transcription = await llmProviderRepo.upsertCustomEndpoint({
+      serverId,
+      label: "Preserved transcription",
+      capability: "transcription",
+      apiStyle: "openai-compatible-transcription",
+      endpointUrl: "http://127.0.0.1:9002",
+      requiresAuth: false,
+      isDefault: true,
+    });
+    if (!transcription?.custom_endpoint_id) throw new Error("Missing transcription fixture");
+    const speechSettings = {
+      voice_transcript_chat_mode: false,
+      chatterbox_turbo_enabled: false,
+      chatterbox_cfg_weight: 0.25,
+      chatterbox_exaggeration: 0.75,
+    };
+    expect(await configRepository.updateSpeechConfig(serverId, speechSettings)).toBe(true);
     const design = await endpoint("Migration Design", "voice-design");
     const clone = await endpoint("Migration Clone", "clone");
     const auto = await endpoint("Migration Auto", "auto");
@@ -273,6 +290,14 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
     }
     expect((await selections()).design?.custom_endpoint_id).toBe(auto.custom_endpoint_id);
     expect((await selections()).clone?.custom_endpoint_id).toBe(auto.custom_endpoint_id);
+    expect((await loadActiveEndpoint(serverId, "transcription"))?.custom_endpoint_id).toBe(
+      transcription.custom_endpoint_id,
+    );
+    const [settings] = await testSql`
+      SELECT voice_transcript_chat_mode, chatterbox_turbo_enabled, chatterbox_cfg_weight, chatterbox_exaggeration
+      FROM server_speech_configs WHERE server_id = ${serverId}
+    `;
+    expect(settings).toEqual(speechSettings);
     const [voice] =
       await testSql`SELECT voice_source_priority FROM persona_voice_configs WHERE persona_id = ${personaId}`;
     expect(voice.voice_source_priority).toBe("clone");

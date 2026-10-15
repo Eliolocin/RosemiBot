@@ -320,7 +320,9 @@ describe("Persona > Voice routes", () => {
         speech_voice_design_prompt: "Existing prompt",
       }),
     });
-    await harness.dispatch(buildConfigRouteId({ action: "voice-clear", locale: "en-US", personaId: 55 }), "button");
+    await harness.dispatch(buildConfigRouteId({ action: "voice-select", locale: "en-US", personaId: 55 }), "select", [
+      "none:reference",
+    ]);
 
     expect(harness.writes[0]).toEqual({
       personaId: 55,
@@ -361,6 +363,55 @@ describe("Persona > Voice routes", () => {
     });
   });
 
+  it("keeps the saved reference sample when an ElevenLabs voice is chosen", async () => {
+    const voice = {
+      voiceId: "provider-secret-id",
+      name: "Harbor",
+      category: "premade",
+      description: null,
+      previewUrl: null,
+      labels: {},
+    };
+    const fingerprint = buildConfigPersonaVoiceRemoteView("en-US", [voice]).voices?.[0]?.fingerprint;
+    const harness = makeHarness({
+      apiStyle: "elevenlabs",
+      voices: [voice],
+      persona: makePersona({ speech_voice_sample_id: 101, speech_voice_name: "Harbor sample" }),
+    });
+    await harness.dispatch(buildConfigRouteId({ action: "voice-select", locale: "en-US", personaId: 55 }), "select", [
+      `voice:0:${fingerprint}`,
+    ]);
+
+    expect(harness.writes[0]?.voice).toEqual(
+      expect.objectContaining({ speech_voice_id: "provider-secret-id", speech_voice_sample_id: 101 }),
+    );
+  });
+
+  it("clears only the matching source when None is chosen from a voice dropdown", async () => {
+    for (const [value, expected] of [
+      ["none:reference", { speech_voice_sample_id: null, speech_voice_id: "provider-id" }],
+      ["none:provider", { speech_voice_sample_id: 101, speech_voice_id: null }],
+    ] as const) {
+      const harness = makeHarness({
+        apiStyle: value === "none:provider" ? "elevenlabs" : "tts-clone",
+        persona: makePersona({
+          speech_voice_sample_id: 101,
+          speech_voice_id: "provider-id",
+          speech_voice_design_prompt: "Existing prompt",
+        }),
+      });
+      await harness.dispatch(buildConfigRouteId({ action: "voice-select", locale: "en-US", personaId: 55 }), "select", [
+        value,
+      ]);
+
+      expect(harness.writes).toHaveLength(1);
+      expect(harness.writes[0]?.voice).toEqual(
+        expect.objectContaining({ ...expected, speech_voice_design_prompt: "Existing prompt" }),
+      );
+      expect(harness.events.indexOf("write")).toBeLessThan(harness.events.indexOf("invalidate"));
+    }
+  });
+
   it("clears stored voice state without an endpoint and invalidates after success", async () => {
     const harness = makeHarness({
       noEndpoint: true,
@@ -371,7 +422,9 @@ describe("Persona > Voice routes", () => {
         speech_voice_design_prompt: "Existing prompt",
       }),
     });
-    await harness.dispatch(buildConfigRouteId({ action: "voice-clear", locale: "en-US", personaId: 55 }), "button");
+    await harness.dispatch(buildConfigRouteId({ action: "voice-select", locale: "en-US", personaId: 55 }), "select", [
+      "none:reference",
+    ]);
 
     expect(harness.writes).toEqual([
       {
@@ -516,7 +569,9 @@ describe("Persona > Voice routes", () => {
     const harness = makeHarness({ apiStyle: "tts-clone", isManager: false, useRepositoryVoiceWriter: true });
     const repositoryWrite = spyOn(personaRepository, "setVoiceConfig").mockResolvedValue(true);
     try {
-      await harness.dispatch(buildConfigRouteId({ action: "voice-clear", locale: "en-US", personaId: 55 }), "button");
+      await harness.dispatch(buildConfigRouteId({ action: "voice-select", locale: "en-US", personaId: 55 }), "select", [
+        "none:reference",
+      ]);
       expect(repositoryWrite).not.toHaveBeenCalled();
       expect(harness.writes).toEqual([]);
     } finally {

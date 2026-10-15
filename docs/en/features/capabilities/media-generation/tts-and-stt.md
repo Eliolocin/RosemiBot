@@ -23,6 +23,12 @@ provider quotas still apply. Use `/config` > Models > Switch Models to change or
 Personal selections and their on/off controls are in `/personal config` > Models > Switch Models.
 Turning off one personal mode lets that mode use the server selection while the other stays active.
 
+Use an API key for the provider in the same scope as the selection. A chat subscription alone does
+not establish API access. Gemini's [free API tier](https://ai.google.dev/gemini-api/docs/pricing)
+has project quotas and eligibility requirements; check access in AI Studio. Free Fish is a separate
+model code, `fish-audio/s2.1-pro-free:free`, and must be selected explicitly. A personal free-model
+failure can still fall back to the server's paid selection when Server Model Fallback is enabled.
+
 In `/config` > Persona > Voice, choose `Describe Voice` to save a description of up to 1,000
 characters. You can write it before choosing a model. To use Fish or a local cloning model,
 add a reference in `/config` > Models > TTS Parameters & Voices and assign it on the persona's
@@ -35,7 +41,9 @@ The command also accepts a one-off description or reference upload. Saved descri
 Gemini voice identity; edits retire it. One-off descriptions create a temporary identity that the
 bot deletes after generation. Failed cleanup is retried when those credentials are used again;
 operators may need to remove voices in the provider console after a crash or ambiguous timeout.
-Gemini reference-audio cloning is deferred.
+Descriptions are included in exported PNG and JSON persona cards; remote voice identities and
+reference assignments are excluded. Google stores the designed identity in the API project.
+Gemini reference-audio cloning is deferred until the bot can collect consent recordings.
 
 Personal speech failures follow the Server Model Fallback setting and server permissions. A
 successful fallback appears in the command receipt. Providers may bill failed or cancelled work;
@@ -87,8 +95,11 @@ See the [Text-to-Speech comparison table](/self-hosting/local-endpoints/text-to-
 ## Speech-to-Text
 <!-- anchor: speech-to-text -->
 
-Transcription endpoints turn user audio attachments into text for conversation context.
-Whether transcripts are posted publicly in chat is controlled in `/config` > Behavior > Notice Behavior.
+Transcription endpoints turn user audio attachments into text for conversation context. TTS model
+selection does not enable STT: choose a separate transcription endpoint in `/config` > Models >
+Switch Models. `/config` > Behavior > Notice Behavior > `Speech Transcripts` controls visible
+transcripts. Turning it off keeps incoming transcripts in conversation context. Notice visibility
+controls failure notices separately.
 
 ### ElevenLabs (cloud)
 

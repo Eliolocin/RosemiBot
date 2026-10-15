@@ -1,4 +1,7 @@
 import type { Client } from "discord.js";
+import { createHash } from "node:crypto";
+import { encryptApiKey } from "@/utils/security/crypto";
+import { saveSpeechVoiceBinding, loadSpeechVoiceBinding } from "@/utils/db/repositories/SpeechRepository";
 import { importAlterPreset } from "@/utils/persona/importAlterPreset";
 import { embedMetadataInPNG, extractMetadataFromPNG } from "@/utils/image/pngMetadata";
 /**
@@ -33,22 +36,48 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Preset import - regression", () => {
       speech_voice_id: "synthetic-provider-id",
       speech_voice_name: "Synthetic",
     });
+    const key = await encryptApiKey("synthetic-card-credential");
+    const [credential] = await testSql`
+      INSERT INTO saved_provider_configs (server_id, provider, api_key, key_version)
+      VALUES (${refs.serverId}, 'google', ${key.encrypted}, ${key.version})
+      RETURNING saved_config_id, credential_revision
+    `;
+    const identity = {
+      persona_id: refs.personaId,
+      saved_config_id: credential.saved_config_id,
+      user_saved_config_id: null,
+      credential_revision: credential.credential_revision,
+      transport: "google" as const,
+      project: "",
+      location: "",
+      prompt_hash: createHash("sha256").update("Warm narration").digest("hex"),
+    };
+    await saveSpeechVoiceBinding(identity, "voice_original_card_identity", null);
     const exported = await presetRepository.exportPresetData(FIXTURE_IDS.serverDiscId);
     if (!exported.success) throw new Error("Missing export");
     expect(exported.data.data.speech_voice_design_prompt).toBe("Warm narration");
     expect(exported.data.data.voice_source_priority).toBe("clone");
     for (const key of ["speech_voice_sample_id", "speech_voice_id", "speech_voice_bindings", "api_key"])
       expect(exported.data.data).not.toHaveProperty(key);
+    expect(JSON.stringify(exported.data)).not.toContain("voice_original_card_identity");
+    expect(JSON.stringify(exported.data)).not.toContain("synthetic-card-credential");
     const png = Buffer.from(await Bun.file("src/db/seed/catalog/personas/default/default.png").arrayBuffer());
     const payloads = [
       JSON.parse(JSON.stringify(exported.data)),
       extractMetadataFromPNG(embedMetadataInPNG(png, exported.data)),
     ];
     for (const [index, payload] of payloads.entries()) {
+      const binding = await saveSpeechVoiceBinding(identity, `voice_import_${index}`, null);
       const validated = presetRepository.validatePresetFile(payload);
       if (!validated.valid || !validated.data) throw new Error("Invalid portable voice");
       const result = await presetRepository.importPresetData(FIXTURE_IDS.serverDiscId, validated.data);
       expect(result.success).toBe(true);
+      expect(await loadSpeechVoiceBinding(identity)).toBeNull();
+      const [retired] = await testSql`
+        SELECT voice_id, pending_delete FROM speech_voice_bindings
+        WHERE speech_voice_binding_id = ${binding.speech_voice_binding_id}
+      `;
+      expect(retired).toEqual({ voice_id: binding.voice_id, pending_delete: true });
       const alter = await importAlterPreset({
         client: {} as Client,
         guild: null,
@@ -59,6 +88,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Preset import - regression", () => {
       });
       expect(alter.ok).toBe(true);
       if (!alter.ok) throw new Error("Alter import failed");
+      expect(await testSql`SELECT * FROM speech_voice_bindings WHERE persona_id = ${alter.personaId}`).toHaveLength(0);
       for (const personaId of [refs.personaId, alter.personaId]) {
         const [voice] = await testSql`SELECT * FROM persona_voice_configs WHERE persona_id = ${personaId}`;
         expect(voice).toMatchObject({

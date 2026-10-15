@@ -13,14 +13,20 @@ import type { TomoriState } from "@/types/db/schema";
 import type { PanelReadStatus } from "@/types/discord/panel";
 import type { ConfigActor } from "@/utils/discord/interactions/configPermissionPolicy";
 import type { ConfigPersonaVoiceView } from "@/utils/discord/interactions/configPersonaVoiceLoader";
-import { buildConfigRouteId } from "@/utils/discord/configPanelCatalog";
-import { buildOptionalThumbnailSection, buildStateControlRow } from "@/utils/discord/ui/panel";
+import {
+  buildConfigRouteId,
+  buildConfigRouteSegments,
+  CONFIG_ROUTE_NAMESPACE,
+  CONFIG_ROUTE_VERSION,
+} from "@/utils/discord/configPanelCatalog";
+import { buildOptionalThumbnailSection, buildStateControlRow, buildPaginationRow } from "@/utils/discord/ui/panel";
+import { resolveRangeSelection } from "@/utils/discord/interactions/panelController";
+import { DISCORD_SELECT_OPTIONS_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { localizer } from "@/utils/text/localizer";
 import { renderFencedPreview } from "@/utils/text/textPreview";
 
-const CONFIG_PERSONA_VOICE_PAGE_SIZE = 25;
-const CONFIG_PERSONA_VOICE_PAGE_SIZE_WITH_MORE = CONFIG_PERSONA_VOICE_PAGE_SIZE - 1;
+const CONFIG_PERSONA_VOICE_PAGE_SIZE = DISCORD_SELECT_OPTIONS_MAX;
 
 /**
  * The route layer owns remote catalog fetching. The renderer receives only bounded labels and
@@ -67,7 +73,7 @@ function buildVoiceRoute(
   route:
     | { action: "voice-select"; personaId: number }
     | { action: "voice-page"; personaId: number; start: number }
-    | { action: "voice-clear" | "voice-provider-clear"; personaId: number }
+    | { action: "voice-provider-clear"; personaId: number }
     | { action: "voice-design-open"; personaId: number }
     | { action: "voice-design-remove"; personaId: number },
 ): string {
@@ -101,51 +107,69 @@ function currentVoiceLabel(input: ConfigVoicePanelInput, view: ConfigPersonaVoic
   return localizer(input.locale, "commands.config.panel.voice_page_unassigned");
 }
 
-function resolveSamplePage(samplesLength: number, requestedStart: number | undefined): number {
-  const pageSize =
-    samplesLength > CONFIG_PERSONA_VOICE_PAGE_SIZE
-      ? CONFIG_PERSONA_VOICE_PAGE_SIZE_WITH_MORE
-      : CONFIG_PERSONA_VOICE_PAGE_SIZE;
-  const pageCount = Math.max(1, Math.ceil(samplesLength / pageSize));
+function voicePageSize(input: ConfigVoicePanelInput): number {
+  const hasSelection =
+    input.view?.capability.apiStyle === "elevenlabs"
+      ? Boolean(input.selectedPersona?.speech_voice_id?.trim())
+      : input.selectedPersona?.speech_voice_sample_id != null;
+  return CONFIG_PERSONA_VOICE_PAGE_SIZE - Number(hasSelection);
+}
+
+function resolveSamplePage(
+  input: ConfigVoicePanelInput,
+  samplesLength: number,
+  requestedStart: number | undefined,
+): number {
+  const pageSize = voicePageSize(input);
   const requestedPage = Number.isFinite(requestedStart) ? Math.floor((requestedStart ?? 0) / pageSize) : 0;
+  const pageCount = Math.max(1, Math.ceil(samplesLength / pageSize));
   return Math.min(Math.max(requestedPage, 0), pageCount - 1) * pageSize;
+}
+
+function buildVoicePagination(input: ConfigVoicePanelInput, count: number, start: number): ComponentInContainerData[] {
+  const row = buildPaginationRow({
+    locale: input.locale,
+    rangeIndex: start / voicePageSize(input),
+    rangeCount: Math.ceil(count / voicePageSize(input)),
+    namespace: CONFIG_ROUTE_NAMESPACE,
+    version: CONFIG_ROUTE_VERSION,
+    disabled: input.readStatus !== "fresh" || !input.actor.isManager,
+    buildSegments: {
+      page: (page) =>
+        buildConfigRouteSegments({
+          action: "voice-page",
+          locale: input.locale,
+          personaId: selectedPersonaId(input) ?? 0,
+          start: page * voicePageSize(input),
+        }),
+    },
+  });
+  return row ? [row] : [];
 }
 
 function buildSampleSelector(input: ConfigVoicePanelInput, view: ConfigPersonaVoiceView): ComponentInContainerData {
   const personaId = selectedPersonaId(input) ?? 0;
   const samples = view.samples;
-  const start = resolveSamplePage(samples.length, input.samplePageStart);
-  const pageSize =
-    samples.length > CONFIG_PERSONA_VOICE_PAGE_SIZE
-      ? CONFIG_PERSONA_VOICE_PAGE_SIZE_WITH_MORE
-      : CONFIG_PERSONA_VOICE_PAGE_SIZE;
-  const visibleSamples = samples.slice(start, start + pageSize);
-  const options = visibleSamples.map((sample, offset) => ({
-    label: safeSelectOptionText(sample.name, 100),
-    value: String(start + offset),
-    description: sample.ref_text?.trim()
-      ? safeSelectOptionText(sample.ref_text.trim(), 100)
-      : sample.duration_ms > 0
-        ? `${(sample.duration_ms / 1000).toFixed(1)}s`
-        : undefined,
-    default: sample.sample_id === input.selectedPersona?.speech_voice_sample_id,
-  }));
-
-  if (start + visibleSamples.length < samples.length) {
-    const nextStart = start + pageSize;
-    options.push({
-      label: safeSelectOptionText(localizer(input.locale, "commands.config.panel.voice_page_more_option"), 100),
-      value: `page:${nextStart}`,
-      description: safeSelectOptionText(
-        localizer(input.locale, "commands.config.panel.voice_page_more_description", {
-          start: String(nextStart + 1),
-          end: String(Math.min(nextStart + pageSize, samples.length)),
-        }),
-        100,
-      ),
-      default: false,
-    });
-  }
+  const start = resolveSamplePage(input, samples.length, input.samplePageStart);
+  const options: SelectMenuComponentOptionData[] =
+    input.selectedPersona?.speech_voice_sample_id != null
+      ? [{ label: localizer(input.locale, "commands.config.panel.none_label"), value: "none:reference" }]
+      : [];
+  const visibleSamples = resolveRangeSelection(samples, start / voicePageSize(input), {
+    reservedOptions: options.length,
+  }).visibleItems;
+  options.push(
+    ...visibleSamples.map((sample, offset) => ({
+      label: safeSelectOptionText(sample.name, 100),
+      value: String(start + offset),
+      description: sample.ref_text?.trim()
+        ? safeSelectOptionText(sample.ref_text.trim(), 100)
+        : sample.duration_ms > 0
+          ? `${(sample.duration_ms / 1000).toFixed(1)}s`
+          : undefined,
+      default: sample.sample_id === input.selectedPersona?.speech_voice_sample_id,
+    })),
+  );
 
   if (options.length === 0) {
     options.push({
@@ -167,7 +191,10 @@ function buildSampleSelector(input: ConfigVoicePanelInput, view: ConfigPersonaVo
           150,
         ),
         options,
-        disabled: input.readStatus !== "fresh" || !input.actor.isManager || samples.length === 0,
+        disabled:
+          input.readStatus !== "fresh" ||
+          !input.actor.isManager ||
+          (samples.length === 0 && input.selectedPersona?.speech_voice_sample_id == null),
       },
     ],
   } satisfies ActionRowData<StringSelectMenuComponentData>;
@@ -182,7 +209,7 @@ function buildVoiceActionRow(
     includeDesign?: boolean;
     chooseProviderDisabled?: boolean;
   } = {},
-): ComponentInContainerData {
+): ComponentInContainerData | null {
   const prompt = input.selectedPersona?.speech_voice_design_prompt?.trim();
   const disabled = input.readStatus !== "fresh" || !input.actor.isManager;
   const buttons: ButtonComponentData[] = [];
@@ -229,36 +256,27 @@ function buildVoiceActionRow(
   }
 
   if (!options.includeDesign) {
-    const clearActions: Array<"voice-clear" | "voice-provider-clear"> =
-      input.view?.capability.apiStyle === "elevenlabs" ? ["voice-provider-clear"] : ["voice-clear"];
+    const clearActions: Array<"voice-provider-clear"> = [];
     if (input.view?.capability.apiStyle !== "elevenlabs" && input.selectedPersona?.speech_voice_id?.trim()) {
       clearActions.push("voice-provider-clear");
     }
     for (const action of clearActions) {
-      const clearProviderVoice = action === "voice-provider-clear";
       buttons.push({
         type: ComponentType.Button,
         style: ButtonStyle.Secondary,
         customId: buildVoiceRoute(input, { action, personaId }),
-        label: localizer(
-          input.locale,
-          clearProviderVoice
-            ? "commands.config.panel.voice_page_clear_provider_button"
-            : "commands.config.panel.voice_page_clear_button",
-        ),
-        disabled:
-          disabled ||
-          (clearProviderVoice
-            ? !input.selectedPersona?.speech_voice_id?.trim()
-            : input.selectedPersona?.speech_voice_sample_id == null),
+        label: localizer(input.locale, "commands.config.panel.voice_page_clear_provider_button"),
+        disabled,
       });
     }
   }
 
-  return {
-    type: ComponentType.ActionRow,
-    components: buttons,
-  } satisfies ActionRowData<ButtonComponentData>;
+  return buttons.length === 0
+    ? null
+    : ({
+        type: ComponentType.ActionRow,
+        components: buttons,
+      } satisfies ActionRowData<ButtonComponentData>);
 }
 
 function remoteCatalogOptions(view: ConfigPersonaVoiceRemoteView): readonly ConfigPersonaVoiceRemoteOptionView[] {
@@ -274,10 +292,6 @@ function buildRemoteVoiceValue(position: number, fingerprint: string | undefined
   return `voice:${Math.max(0, Math.floor(position))}:${boundedFingerprint(fingerprint)}`;
 }
 
-function buildRemotePageValue(start: number, fingerprint: string | undefined): string {
-  return `page:${Math.max(0, Math.floor(start))}:${boundedFingerprint(fingerprint)}`;
-}
-
 function applyRemotePageStart(
   view: ConfigPersonaVoiceRemoteView,
   pageStart: number | undefined,
@@ -291,41 +305,23 @@ function buildRemoteChooser(
 ): ComponentInContainerData {
   const personaId = selectedPersonaId(input) ?? 0;
   const voices = remoteCatalogOptions(view);
-  const pageSize =
-    voices.length > CONFIG_PERSONA_VOICE_PAGE_SIZE
-      ? CONFIG_PERSONA_VOICE_PAGE_SIZE_WITH_MORE
-      : CONFIG_PERSONA_VOICE_PAGE_SIZE;
-  const pageCount = Math.max(1, Math.ceil(voices.length / pageSize));
-  const requestedPageStart = view.pageStart ?? 0;
-  const pageIndex = Number.isFinite(requestedPageStart)
-    ? Math.min(Math.max(Math.floor(requestedPageStart / pageSize), 0), pageCount - 1)
-    : 0;
-  const start = pageIndex * pageSize;
-  const visibleVoices = voices.slice(start, start + pageSize);
-  const options: SelectMenuComponentOptionData[] = visibleVoices.map((voice, offset) => ({
-    label: safeSelectOptionText(
-      voice.label || localizer(input.locale, "commands.config.voice.elevenlabs.voice_available_description"),
-      100,
-    ),
-    value: buildRemoteVoiceValue(start + offset, voice.fingerprint ?? view.catalogFingerprint),
-    default: voice.selected ?? false,
-  }));
-
-  if (start + visibleVoices.length < voices.length) {
-    const nextStart = start + pageSize;
-    options.push({
-      label: safeSelectOptionText(localizer(input.locale, "commands.config.panel.voice_page_more_option"), 100),
-      value: buildRemotePageValue(nextStart, view.catalogFingerprint),
-      description: safeSelectOptionText(
-        localizer(input.locale, "commands.config.panel.voice_page_more_description", {
-          start: String(nextStart + 1),
-          end: String(Math.min(nextStart + pageSize, voices.length)),
-        }),
+  const start = resolveSamplePage(input, voices.length, view.pageStart);
+  const options: SelectMenuComponentOptionData[] = input.selectedPersona?.speech_voice_id?.trim()
+    ? [{ label: localizer(input.locale, "commands.config.panel.none_label"), value: "none:provider" }]
+    : [];
+  const visibleVoices = resolveRangeSelection(voices, start / voicePageSize(input), {
+    reservedOptions: options.length,
+  }).visibleItems;
+  options.push(
+    ...visibleVoices.map((voice, offset) => ({
+      label: safeSelectOptionText(
+        voice.label || localizer(input.locale, "commands.config.voice.elevenlabs.voice_available_description"),
         100,
       ),
-      default: false,
-    });
-  }
+      value: buildRemoteVoiceValue(start + offset, voice.fingerprint ?? view.catalogFingerprint),
+      default: voice.selected ?? false,
+    })),
+  );
 
   if (options.length === 0) {
     options.push({
@@ -386,26 +382,23 @@ export function buildConfigVoiceBody(input: ConfigVoicePanelInput): ComponentInC
         input.readStatus !== "fresh" || !input.actor.isManager,
       ),
     );
-    components.push({
-      type: ComponentType.TextDisplay,
-      content:
-        `> ${localizer(input.locale, `commands.config.panel.voice_priority_${priority}_effect`)}` +
-        (view.effectiveSource
-          ? `\n> ${localizer(
-              input.locale,
-              view.effectiveSource === priority
-                ? "commands.config.panel.voice_priority_effect"
-                : view.preferredUnavailableReason === "target"
-                  ? "commands.config.panel.voice_priority_fallback_target"
-                  : "commands.config.panel.voice_priority_fallback_input",
-              {
-                priority: localizer(input.locale, `commands.config.panel.voice_priority_${priority}`),
-                source: localizer(input.locale, `commands.config.panel.voice_priority_${view.effectiveSource}`),
-                target: view.effectiveTarget ?? localizer(input.locale, "commands.choices.none"),
-              },
-            )}`
-          : ""),
-    });
+    if (view.effectiveSource)
+      components.push({
+        type: ComponentType.TextDisplay,
+        content: `> ${localizer(
+          input.locale,
+          view.effectiveSource === priority
+            ? "commands.config.panel.voice_priority_effect"
+            : view.preferredUnavailableReason === "target"
+              ? "commands.config.panel.voice_priority_fallback_target"
+              : "commands.config.panel.voice_priority_fallback_input",
+          {
+            priority: localizer(input.locale, `commands.config.panel.voice_priority_${priority}`),
+            source: localizer(input.locale, `commands.config.panel.voice_priority_${view.effectiveSource}`),
+            target: view.effectiveTarget ?? localizer(input.locale, "commands.choices.none"),
+          },
+        )}`,
+      });
     const prompt = input.selectedPersona?.speech_voice_design_prompt?.trim();
     components.push({
       type: ComponentType.TextDisplay,
@@ -417,7 +410,8 @@ export function buildConfigVoiceBody(input: ConfigVoicePanelInput): ComponentInC
           : localizer(input.locale, "commands.config.panel.voice_page_unassigned")
       }`,
     });
-    components.push(buildVoiceActionRow(input, personaId, { includeDesign: true }));
+    const designActions = buildVoiceActionRow(input, personaId, { includeDesign: true });
+    if (designActions) components.push(designActions);
   }
   components.push({
     type: ComponentType.TextDisplay,
@@ -425,32 +419,52 @@ export function buildConfigVoiceBody(input: ConfigVoicePanelInput): ComponentInC
   });
   if (view.capability.apiStyle === "elevenlabs") {
     const remoteView = input.remoteView ?? view.remoteChooser;
-    if (remoteView) components.push(buildRemoteChooser(input, applyRemotePageStart(remoteView, input.remotePageStart)));
+    if (remoteView) {
+      const visibleView = applyRemotePageStart(remoteView, input.remotePageStart);
+      components.push(buildRemoteChooser(input, visibleView));
+      components.push(
+        ...buildVoicePagination(
+          input,
+          remoteCatalogOptions(visibleView).length,
+          resolveSamplePage(input, remoteCatalogOptions(visibleView).length, visibleView.pageStart),
+        ),
+      );
+    }
     components.push({
       type: ComponentType.TextDisplay,
       content: `> ${localizer(input.locale, "commands.config.panel.voice_page_provider_notice")}`,
     });
-    if (personaId !== null)
-      components.push(
-        buildVoiceActionRow(input, personaId, {
-          chooseProvider: !remoteView,
-          cancelChooser: Boolean(remoteView),
-        }),
-      );
+    if (personaId !== null) {
+      const actions = buildVoiceActionRow(input, personaId, {
+        chooseProvider: !remoteView,
+        cancelChooser: Boolean(remoteView),
+      });
+      if (actions) components.push(actions);
+    }
   } else {
     components.push(buildSampleSelector(input, view));
+    components.push(
+      ...buildVoicePagination(
+        input,
+        view.samples.length,
+        resolveSamplePage(input, view.samples.length, input.samplePageStart),
+      ),
+    );
     components.push({
       type: ComponentType.TextDisplay,
       content: `> ${localizer(input.locale, "commands.config.panel.voice_page_reference_notice", {
         page: localizer(input.locale, "commands.config.panel.page_models_voices"),
       })}`,
     });
-    if (personaId !== null) components.push(buildVoiceActionRow(input, personaId));
+    if (personaId !== null) {
+      const actions = buildVoiceActionRow(input, personaId);
+      if (actions) components.push(actions);
+    }
   }
   if (!view.effectiveSource) {
     components.push({
       type: ComponentType.TextDisplay,
-      content: `> ${localizer(
+      content: `**${localizer(input.locale, "commands.config.panel.capability_notice_title")}**\n${localizer(
         input.locale,
         view.hasTargets
           ? "commands.config.panel.voice_page_no_usable_source"

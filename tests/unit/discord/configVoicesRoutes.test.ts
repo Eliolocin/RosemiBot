@@ -7,6 +7,7 @@ import * as voiceSampleStorage from "@/utils/storage/voiceSampleStorage";
 import { configRepository } from "@/utils/db/repositories";
 import { buildConfigRouteId } from "@/utils/discord/configPanelCatalog";
 import {
+  CONFIG_VOICE_SAMPLE_PAGE_SIZE,
   computeVoiceSampleFingerprint,
   encodeVoiceSampleOptionValue,
   voiceSampleAttachmentName,
@@ -194,7 +195,7 @@ function makeHarness(options: HarnessOptions = {}): Harness {
         turboEnabled: true,
         cfgWeight: 0.5,
         exaggeration: 0.5,
-        samples: currentSamples.slice(requestedStart, requestedStart + 25),
+        samples: currentSamples.slice(requestedStart, requestedStart + CONFIG_VOICE_SAMPLE_PAGE_SIZE),
         totalSampleCount: currentSamples.length,
         start: requestedStart,
         selectedIndex: null,
@@ -306,9 +307,9 @@ function ttsModalFields(values: { cfgWeight?: string; exaggeration?: string } = 
 }
 
 describe("config voice sample routes", () => {
-  it("loads speech settings and a clamped 25-record page from the full library", async () => {
+  it("loads speech settings and a clamped page from the full library", async () => {
     const state = makeState();
-    const samples = Array.from({ length: 51 }, (_, index) => makeSample(index));
+    const samples = Array.from({ length: CONFIG_VOICE_SAMPLE_PAGE_SIZE * 2 + 1 }, (_, index) => makeSample(index));
     const view = await loadConfigVoicesView(state, 999, {
       loadSpeechConfig: async () => ({
         server_id: 9,
@@ -327,14 +328,15 @@ describe("config voice sample routes", () => {
     expect(view.turboEnabled).toBe(false);
     expect(view.cfgWeight).toBe(0.7);
     expect(view.exaggeration).toBe(0.9);
-    expect(view.start).toBe(50);
+    expect(view.start).toBe(CONFIG_VOICE_SAMPLE_PAGE_SIZE * 2);
     expect(view.samples).toHaveLength(1);
-    expect(view.totalSampleCount).toBe(51);
+    expect(view.totalSampleCount).toBe(CONFIG_VOICE_SAMPLE_PAGE_SIZE * 2 + 1);
   });
 
   it("pages every current sample through the dispatcher and selects absolute index zero", async () => {
-    const harness = makeHarness({ samples: Array.from({ length: 51 }, (_, index) => makeSample(index)) });
-    for (const start of [0, 25, 50]) {
+    const sampleCount = CONFIG_VOICE_SAMPLE_PAGE_SIZE * 2 + 1;
+    const harness = makeHarness({ samples: Array.from({ length: sampleCount }, (_, index) => makeSample(index)) });
+    for (const start of [0, CONFIG_VOICE_SAMPLE_PAGE_SIZE, CONFIG_VOICE_SAMPLE_PAGE_SIZE * 2]) {
       await dispatch(
         harness,
         makeInteraction({
@@ -346,8 +348,12 @@ describe("config voice sample routes", () => {
     }
 
     const visibleIds = new Set(harness.voiceViews.flatMap((view) => view.samples.map((sample) => sample.sample_id)));
-    expect(visibleIds.size).toBe(51);
-    expect(harness.voiceViews.map((view) => view.samples.length)).toEqual([25, 25, 1]);
+    expect(visibleIds.size).toBe(sampleCount);
+    expect(harness.voiceViews.map((view) => view.samples.length)).toEqual([
+      CONFIG_VOICE_SAMPLE_PAGE_SIZE,
+      CONFIG_VOICE_SAMPLE_PAGE_SIZE,
+      1,
+    ]);
     expect(harness.voiceSampleLoadCalls.value).toBe(3);
 
     const firstSample = harness.samples[0] as VoiceSampleRow;
@@ -457,7 +463,11 @@ describe("config voice sample routes", () => {
     await dispatch(
       harness,
       makeInteraction({
-        customId: buildConfigRouteId({ action: "voice-sample-page", locale: "en-US", start: 25 }),
+        customId: buildConfigRouteId({
+          action: "voice-sample-page",
+          locale: "en-US",
+          start: CONFIG_VOICE_SAMPLE_PAGE_SIZE,
+        }),
         kind: "button",
         harness,
       }),
@@ -782,9 +792,10 @@ describe("config voice sample routes", () => {
   });
 
   it("shows a fresh remove confirmation with current reference count", async () => {
-    const samples = Array.from({ length: 51 }, (_, index) => makeSample(index));
+    const samples = Array.from({ length: CONFIG_VOICE_SAMPLE_PAGE_SIZE * 2 + 1 }, (_, index) => makeSample(index));
     const harness = makeHarness({ samples, refCount: 3 });
-    const sample = samples[26] as VoiceSampleRow;
+    const sampleIndex = CONFIG_VOICE_SAMPLE_PAGE_SIZE + 1;
+    const sample = samples[sampleIndex] as VoiceSampleRow;
 
     await dispatch(
       harness,
@@ -792,7 +803,7 @@ describe("config voice sample routes", () => {
         customId: buildConfigRouteId({
           action: "voice-sample-remove-view",
           locale: "en-US",
-          index: 26,
+          index: sampleIndex,
           fp: computeVoiceSampleFingerprint(sample),
         }),
         kind: "button",
@@ -801,8 +812,8 @@ describe("config voice sample routes", () => {
     );
 
     const view = harness.voiceViews.at(-1);
-    expect(view?.start).toBe(25);
-    expect(view?.selectedIndex).toBe(26);
+    expect(view?.start).toBe(CONFIG_VOICE_SAMPLE_PAGE_SIZE);
+    expect(view?.selectedIndex).toBe(sampleIndex);
     expect(JSON.stringify(harness.edits[0])).toContain("3 persona(s)");
     expect(harness.voiceSampleLoadCalls.value).toBe(1);
   });

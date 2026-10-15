@@ -8,7 +8,7 @@ describe("buildStateControlRow", () => {
     { value: true, label: "Server Models Allowed", customId: "mod:set:true" },
   ];
 
-  it("renders selected choice as disabled Primary and available alternative as enabled Secondary", () => {
+  it("renders selected choice as disabled Secondary and available alternative as enabled Secondary", () => {
     const row = buildStateControlRow(booleanChoices, true);
 
     expect(row.type).toBe(ComponentType.ActionRow);
@@ -20,17 +20,17 @@ describe("buildStateControlRow", () => {
     expect(requiredBtn.label).toBe("Personal Providers Required");
     expect(requiredBtn && "customId" in requiredBtn ? requiredBtn.customId : "").toBe("mod:set:false");
 
-    expect(allowedBtn.style).toBe(ButtonStyle.Primary);
+    expect(allowedBtn.style).toBe(ButtonStyle.Secondary);
     expect(allowedBtn.disabled).toBe(true);
     expect(allowedBtn.label).toBe("Server Models Allowed");
     expect(allowedBtn && "customId" in allowedBtn ? allowedBtn.customId : "").toBe("mod:set:true");
   });
 
-  it("renders selected choice as disabled Primary when first option is selected", () => {
+  it("renders selected choice as disabled Secondary when first option is selected", () => {
     const row = buildStateControlRow(booleanChoices, false);
 
     const [requiredBtn, allowedBtn] = row.components;
-    expect(requiredBtn.style).toBe(ButtonStyle.Primary);
+    expect(requiredBtn.style).toBe(ButtonStyle.Secondary);
     expect(requiredBtn.disabled).toBe(true);
 
     expect(allowedBtn.style).toBe(ButtonStyle.Secondary);
@@ -46,14 +46,14 @@ describe("buildStateControlRow", () => {
     const row = buildStateControlRow(stringChoices, "off");
 
     const [offBtn, onBtn] = row.components;
-    expect(offBtn.style).toBe(ButtonStyle.Primary);
+    expect(offBtn.style).toBe(ButtonStyle.Secondary);
     expect(offBtn.disabled).toBe(true);
 
     expect(onBtn.style).toBe(ButtonStyle.Secondary);
     expect(onBtn.disabled).toBe(true);
   });
 
-  it("disables all buttons when writes are disabled while keeping selected choice Primary", () => {
+  it("disables all buttons when writes are disabled while keeping selected choice Secondary", () => {
     const threeChoices: readonly StateControlChoice<string>[] = [
       { value: "off", label: "Off", customId: "mode:off" },
       { value: "follow", label: "Follow Server", customId: "mode:follow" },
@@ -66,7 +66,7 @@ describe("buildStateControlRow", () => {
     expect(offBtn.style).toBe(ButtonStyle.Secondary);
     expect(offBtn.disabled).toBe(true);
 
-    expect(followBtn.style).toBe(ButtonStyle.Primary);
+    expect(followBtn.style).toBe(ButtonStyle.Secondary);
     expect(followBtn.disabled).toBe(true);
 
     expect(onBtn.style).toBe(ButtonStyle.Secondary);

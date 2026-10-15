@@ -158,7 +158,7 @@ describe("setupPanel Components V2 layout and limits", () => {
     expect(nonHostedTexts[0]).not.toContain("0 of 3");
   });
 
-  it("keeps Finish Setup disabled Secondary while pending and enabled Primary when complete", () => {
+  it("keeps Finish Setup disabled Secondary while pending and enabled Secondary when complete", () => {
     const pendingPayload = buildSetupWizardPayload({
       draft: createDraft(),
       locale: "en-US",
@@ -185,7 +185,7 @@ describe("setupPanel Components V2 layout and limits", () => {
     const finishCompleteBtn = completeFooter.components[0];
 
     expect(finishCompleteBtn.disabled).toBe(false);
-    expect(finishCompleteBtn.style).toBe(ButtonStyle.Primary);
+    expect(finishCompleteBtn.style).toBe(ButtonStyle.Secondary);
   });
 
   it("relabels completed step controls while keeping them enabled", () => {

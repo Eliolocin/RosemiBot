@@ -122,7 +122,6 @@ export default {
     endpoint_label_url_conflict: `Nhãn đó thuộc về một URL khác. Hãy dùng URL hiện có hoặc chọn một nhãn khác biệt.`,
     endpoint_unreachable: `Endpoint không phản hồi theo giao thức API đó. Chưa lưu thông tin nào. Chi tiết: {reason}`,
     endpoint_redirect_credentials_withheld: `Endpoint đã chuyển hướng sang địa chỉ khác, vì vậy API key không được gửi tới đó và chưa lưu thông tin nào. Hãy nhập địa chỉ chuyển hướng cuối cùng của máy chủ làm URL endpoint.`,
-    activate_placeholder: `Chọn endpoint giọng nói hoặc chép lời đang hoạt động...`,
     activate_option_description: `{capability} endpoint ({name})`,
     activate_option_active_description: `[hoạt động] Endpoint {capability} ({name})`,
     manage_models_placeholder: `Chọn một model hoặc tính năng...`,

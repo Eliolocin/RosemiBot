@@ -44,6 +44,7 @@ import type {
 import {
   buildModelRoutingControl,
   buildProviderPageEntries,
+  formatModelSelectionLabel,
   type ProviderSelectEntry,
 } from "@/utils/discord/ui/modelRoutingControls";
 import { buildProviderSelectWindow, resolveProviderEntryStart } from "@/utils/discord/ui/providerSelectWindow";
@@ -382,6 +383,7 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
     const slot = view.endpointSlots?.find((candidate) => candidate.capability === capability);
     if (!slot) continue;
     const capabilityLabel = localizer(locale, CONFIG_MODEL_CAPABILITY_LOCALE_KEYS[capability]);
+    const activeEndpoint = slot.endpoints.find((endpoint) => endpoint.isActive);
     const windowSize = configEndpointWindowSize(capability, slot.endpoints.length);
     const overflows = slot.endpoints.length > windowSize;
     const rangeCount = Math.max(1, Math.ceil(slot.endpoints.length / windowSize));
@@ -391,7 +393,7 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
     const options: SelectMenuComponentOptionData[] = slot.endpoints
       .slice(visibleStart, visibleStart + windowSize)
       .map((endpoint, offset) => {
-        const displayName = `${endpoint.label}: ${endpoint.modelLabel}`;
+        const displayName = formatModelSelectionLabel(endpoint.modelLabel, endpoint.label, "");
         return {
           value: encodeConfigEndpointSelection(visibleStart + offset, fingerprint),
           label: safeSelectOptionText(displayName, 100),
@@ -424,7 +426,7 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
         default: false,
       });
     }
-    if (capability !== "stt") {
+    if (capability !== "stt" && activeEndpoint) {
       options.unshift({
         value: `ep-clear|${fingerprint}`,
         label: safeSelectOptionText(localizer(locale, "commands.config.panel.model_no_model_option"), 100),
@@ -442,10 +444,7 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
         default: false,
       });
     }
-    const activeEndpoint = slot.endpoints.find((endpoint) => endpoint.isActive);
-    const placeholder = activeEndpoint
-      ? `${capabilityLabel}: ${activeEndpoint.label}: ${activeEndpoint.modelLabel}`
-      : `${capabilityLabel}: ${localizer(locale, "commands.providers.activate_placeholder")}`;
+    const placeholder = `${capabilityLabel}: ${formatModelSelectionLabel(activeEndpoint?.modelLabel ?? null, activeEndpoint?.label ?? null, localizer(locale, "commands.config.panel.none_label"))}`;
     components.push({
       type: ComponentType.ActionRow,
       components: [

@@ -143,6 +143,7 @@ persona state before synthesis. Delivery direction and expressiveness apply
 to the selected target. Neither caller retries synthesis through the other slot after a failure.
 
 Persona > Voice keeps both source sections and priority controls available without an active target.
+The workspace exposes this page to server managers and the DM owner; non-manager guild views omit it.
 The description preview uses the same fenced preview as other persona text editors. Saving or clearing
 a description preserves the reference sample, ElevenLabs voice ID, and priority. Only the Clone target
 chooses between the reference library and ElevenLabs catalogue, including when no Clone target is

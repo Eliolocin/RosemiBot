@@ -1218,7 +1218,7 @@ describe("memories permissions and scoping", () => {
 
     expect(serverwide.customId).toBe("memories:v1:document-scope:en-US:0");
     expect(serverwide.label).toBe(localizer("en-US", "commands.memories.document_scope_serverwide"));
-    expect(serverwide.style).toBe(ButtonStyle.Primary);
+    expect(serverwide.style).toBe(ButtonStyle.Secondary);
     expect(serverwide.disabled).toBe(true);
 
     expect(persona.customId).toBe("memories:v1:document-scope:en-US:10");
@@ -1238,7 +1238,7 @@ describe("memories permissions and scoping", () => {
     expect(serverwide.style).toBe(ButtonStyle.Secondary);
     expect(serverwide.disabled).toBe(false);
 
-    expect(persona.style).toBe(ButtonStyle.Primary);
+    expect(persona.style).toBe(ButtonStyle.Secondary);
     expect(persona.disabled).toBe(true);
   });
 
@@ -1252,7 +1252,7 @@ describe("memories permissions and scoping", () => {
       readStatus: "fresh",
     });
 
-    expect(serverwide.style).toBe(ButtonStyle.Primary);
+    expect(serverwide.style).toBe(ButtonStyle.Secondary);
     expect(serverwide.disabled).toBe(true);
 
     expect(persona.style).toBe(ButtonStyle.Secondary);
@@ -1267,7 +1267,7 @@ describe("memories permissions and scoping", () => {
       readStatus: "stale",
     });
 
-    expect(serverwide.style).toBe(ButtonStyle.Primary);
+    expect(serverwide.style).toBe(ButtonStyle.Secondary);
     expect(serverwide.disabled).toBe(true);
 
     expect(persona.style).toBe(ButtonStyle.Secondary);

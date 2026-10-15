@@ -447,7 +447,7 @@ export function buildSetupWizardPayload(
     components: [
       {
         type: ComponentType.Button,
-        style: isComplete ? ButtonStyle.Primary : ButtonStyle.Secondary,
+        style: ButtonStyle.Secondary,
         customId: buildSetupFinishRouteId({ locale, nonce }),
         label: localizer(locale, "commands.setup.wizard.finish_label"),
         disabled: !isComplete,

@@ -42,6 +42,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
   let deleteFails: boolean;
   let creationExpiry: string;
   let malformedSynthesis: boolean;
+  let upstreamError: string;
   let onCreate: (() => Promise<void>) | undefined;
   let onSynthesize: (() => Promise<void>) | undefined;
   const requests: Array<{ url: string; init: RequestInit }> = [];
@@ -74,6 +75,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
     deleteFails = false;
     creationExpiry = "2099-01-01T00:00:00Z";
     malformedSynthesis = false;
+    upstreamError = "synthetic upstream content";
     onCreate = undefined;
     onSynthesize = undefined;
     requests.length = 0;
@@ -88,7 +90,10 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
         async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
           const url = String(input);
           requests.push({ url, init: init ?? {} });
-          if (init?.method === "DELETE") return new Response(null, { status: deleteFails ? 500 : 204 });
+          if (init?.method === "DELETE")
+            return deleteFails
+              ? Response.json({ error: { message: upstreamError } }, { status: 500 })
+              : new Response(null, { status: 204 });
           if (url.includes("openrouter.ai/api/v1/models"))
             return Response.json(
               url.endsWith("/endpoints")
@@ -110,10 +115,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
           await onSynthesize?.();
           const status = synthesisStatuses.shift() ?? 200;
           if (status !== 200)
-            return Response.json(
-              { usage: { total_input_tokens: 3 }, error: { message: "synthetic upstream content" } },
-              { status },
-            );
+            return Response.json({ usage: { total_input_tokens: 3 }, error: { message: upstreamError } }, { status });
           if (url.startsWith("https://api.elevenlabs.io/"))
             return new Response(new Uint8Array(wav), { headers: { "Content-Type": "audio/wav" } });
           const data = malformedSynthesis ? "invalid" : wav.toString("base64");
@@ -444,18 +446,65 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
   });
 
   it("uses fresh server credentials once after a personal failure and retains both attempts' usage", async () => {
-    synthesisStatuses = [429];
-    const result = await synthesizeVoiceMessage({ ...(await request(true)), routing: routing() });
-    expect(result.success).toBe(true);
-    expect(result.usedServerFallback).toBe(true);
-    expect(result.attempts?.map((attempt) => attempt.owner.kind)).toEqual(["personal", "server"]);
-    expect(result.attempts?.[0].operations[0].usage?.total_input_tokens).toBe(11);
-    expect(result.attempts?.[0].operations[1].usage?.total_input_tokens).toBe(3);
-    expect(syntheses().map(({ init }) => new Headers(init.headers).get("x-goog-api-key"))).toEqual([
-      "synthetic-personal-google",
-      "synthetic-server-google",
-    ]);
-    expect(syntheses()).toHaveLength(2);
+    for (const status of [401, 403, 402, 429, 500]) {
+      await testSql`DELETE FROM speech_voice_bindings`;
+      requests.length = 0;
+      synthesisStatuses = [status];
+      const result = await synthesizeVoiceMessage({ ...(await request(true)), routing: routing() });
+      expect(result.success).toBe(true);
+      expect(result.usedServerFallback).toBe(true);
+      expect(result.attempts?.map((attempt) => attempt.owner.kind)).toEqual(["personal", "server"]);
+      expect(result.attempts?.[0].errorKind).toBe(
+        status < 402 || status === 403 ? "authentication" : status === 500 ? "provider_error" : "quota",
+      );
+      expect(result.attempts?.[0].operations[0].usage?.total_input_tokens).toBe(11);
+      expect(result.attempts?.[0].operations[1].usage?.total_input_tokens).toBe(3);
+      expect(syntheses().map(({ init }) => new Headers(init.headers).get("x-goog-api-key"))).toEqual([
+        "synthetic-personal-google",
+        "synthetic-server-google",
+      ]);
+      expect(syntheses()).toHaveLength(2);
+    }
+  });
+
+  it("reports cleanup failure without exposing prompts, scripts, direction, credentials, or provider bodies", async () => {
+    const input = await request(false, true);
+    const privateValues = [
+      "private-script-marker",
+      "private-description-marker",
+      "private-direction-marker",
+      input.target?.apiKey ?? "",
+    ];
+    upstreamError = privateValues.join(" ");
+    deleteFails = true;
+    synthesisStatuses = [500];
+    const errorSpy = spyOn(log, "error").mockResolvedValue(undefined);
+    const warnSpy = spyOn(log, "warn").mockImplementation(() => undefined);
+    try {
+      const result = await synthesizeVoiceMessage({
+        ...input,
+        script: privateValues[0],
+        source: { kind: "design", designPrompt: privateValues[1] },
+        voiceInstructions: privateValues[2],
+      });
+      expect(result.success).toBe(false);
+      expect(result.cleanupPending).toBe(true);
+      expect(result.attempts?.[0].operations.map(({ operation, success }) => ({ operation, success }))).toEqual([
+        { operation: "create", success: true },
+        { operation: "synthesize", success: false },
+        { operation: "delete", success: false },
+      ]);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const diagnostics = JSON.stringify({ result, errors: errorSpy.mock.calls, warnings: warnSpy.mock.calls });
+      for (const value of privateValues) {
+        expect(value.length).toBeGreaterThan(0);
+        expect(diagnostics).not.toContain(value);
+      }
+      expect(await testSql`SELECT * FROM speech_voice_bindings WHERE pending_delete`).toHaveLength(1);
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
   });
 
   it("reports the custom endpoint label after personal fallback regardless of its model metadata", async () => {
@@ -573,6 +622,34 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
     const explicit = await synthesizeVoiceMessage({ ...(await request(true, true)), routing: routing(true) });
     expect(explicit.success).toBe(false);
     expect(syntheses()).toHaveLength(1);
+    await setHostedSpeechSelection(serverScope(), googleId);
+    requests.length = 0;
+    synthesisStatuses = [429];
+    const explicitInput = await request(true, true);
+    explicitInput.source = { kind: "design", designPrompt: "One-off bright narrator" };
+    const explicitFallback = await synthesizeVoiceMessage({
+      ...explicitInput,
+      routing: { ...routing(true), persona: { ...routing().persona, voice_source_priority: "clone" } },
+    });
+    expect(explicitFallback.success).toBe(true);
+    expect(explicitFallback.effectiveSource).toBe("design");
+    expect(explicitFallback.attempts?.map(({ source }) => source)).toEqual(["design", "design"]);
+    expect(
+      requests
+        .filter(({ url }) => url.endsWith("/voices"))
+        .map(({ init }) => JSON.parse(String(init.body)).voice.prompted.input),
+    ).toEqual(["One-off bright narrator", "One-off bright narrator"]);
+    requests.length = 0;
+    synthesisStatuses = [401, 503];
+    const failedFallback = await synthesizeVoiceMessage({ ...(await request(true)), routing: routing() });
+    expect(failedFallback.success).toBe(false);
+    expect(failedFallback.usedServerFallback).toBe(true);
+    expect(failedFallback.attempts?.map(({ owner, source }) => [owner.kind, source])).toEqual([
+      ["personal", "design"],
+      ["server", "design"],
+    ]);
+    expect(syntheses()).toHaveLength(2);
+    expect(syntheses().every(({ url }) => url.endsWith("/interactions"))).toBe(true);
   });
 
   it("cleans personal bindings with their old credential before replacement and registration removal", async () => {

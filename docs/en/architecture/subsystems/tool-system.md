@@ -18,7 +18,7 @@ Filtering evaluates multiple layers:
 2. **Model capabilities:** The tool's `requiredModelCapabilities` must match active model flags in `ToolAvailabilityLlmState`.
 3. **Feature flags:** Tools requiring feature flags (`requiresFeatureFlag`) are evaluated against guild configuration via `configToFeatureFlags`.
 4. **Channel permissions:** Tools with `requiresPermissions` verify that the bot holds necessary Discord channel permissions (such as `SendMessages` or `UseExternalStickers`).
-5. **Backend slot availability:** Feature tools verify configured backend slots before admission. `generate_image` requires a standard diffusion model; `generate_image_nai` requires a NovelAI image slot; `generate_video` requires a video model slot; and `generate_voice_message` requires a speech provider and an assigned persona voice.
+5. **Backend slot availability:** Feature tools verify configured backend slots before admission. `generate_image` requires a standard diffusion model; `generate_image_nai` requires a NovelAI image slot; `generate_video` requires a video model slot; and `generate_voice_message` requires a saved persona source with a usable matching Design or Clone target for the triggering user.
 6. **Streaming context filtering:** `applyStreamContextAvailability()` evaluates live-turn constraints (`isAvailableForContext`) before schema declaration. This removes tools whose turn eligibility has lapsed (such as per-turn deduplication flags) so unavailable tools are not advertised to the model.
 
 ## Dynamic tool assembly
@@ -27,7 +27,7 @@ Before provider serialization, tools pass through `assembleToolsForContext()` in
 
 - `web_search`: Narrows category enums to the active search backend. SearXNG exposes all categories; Brave exposes text, image, video, and news; and the built-in DuckDuckGo fallback exposes text search only.
 - `generate_image`: Prunes parameters to match active backend capabilities (text-to-image, reference image fields, and ComfyUI inpaint or outpaint controls). Parameter descriptions omit instructions for unconfigured modes, preventing the model from receiving unsupported guidance.
-- `generate_voice_message`: Prunes script markup and voice instruction schemas based on the active speech endpoint and persona voice design. Delivery logic is shared with `/generate voice-message`; see [Voice System](/architecture/integrations/voice/).
+- `generate_voice_message`: Resolves persona priority against independently inherited personal/server Design and Clone targets, then prunes markup and delivery controls for the selected target. Execution revalidates that source, target, and credential revision. Speech synthesis and delivery are shared with `/generate voice-message`; see [Voice System](/architecture/integrations/voice/).
 
 Assembly guards prevent the model from seeing unsupported parameters, while execution-time checks guard against stale configurations and crafted tool calls.
 

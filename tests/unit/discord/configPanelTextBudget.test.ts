@@ -14,7 +14,7 @@
  * matching English marker text, so it only runs in `en-US`, and the sweep is cheap.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
-import { ChannelType, ComponentType } from "discord.js";
+import { ChannelType, ComponentType, type ActionRowData, type ButtonComponentData } from "discord.js";
 import type { LlmRow, NaiPresetRow, SavedProviderConfigRow, TomoriState, VoiceSampleRow } from "@/types/db/schema";
 import type { PanelReadStatus } from "@/types/discord/panel";
 import type { BlocklistChannelTarget, ChecklistChannelTarget } from "@/utils/discord/channelChecklistManager";
@@ -35,6 +35,8 @@ import {
 } from "@/utils/discord/configPanelCatalog";
 import {
   computeVoiceSampleFingerprint,
+  CONFIG_VOICE_SAMPLE_PAGE_SIZE,
+  CONFIG_VOICE_SAMPLE_ADD_VALUE,
   voiceSampleAttachmentName,
   type ConfigVoicesView,
 } from "@/utils/discord/ui/configVoicesPanel";
@@ -1364,7 +1366,7 @@ describe("Switch Models capability notice budgeting", () => {
       expect(placeholder).toContain(
         localizer("en-US", `commands.config.panel.capability_${capability.replaceAll("-", "_")}`),
       );
-      expect(placeholder).toContain(`${capability}-endpoint-1: ${capability}-model-1`);
+      expect(placeholder).toContain(`${capability}-model-1 (${capability}-endpoint-1)`);
       const options = menu?.options;
       expect(Array.isArray(options)).toBe(true);
       for (const option of (options ?? []) as Array<Record<string, unknown>>) {
@@ -1494,7 +1496,7 @@ describe("voices page text and component budgeting", () => {
     cases.expectNoFailures();
   };
 
-  it("renders an empty library with one placeholder option", () =>
+  it("keeps Add Sample available in an empty library", () =>
     expectForEveryLocaleAndReceipt((locale, receipt) => {
       const payload = buildVoicePayload(locale, receipt, [], 0, 0);
       expectValidVoicePayload(payload);
@@ -1504,12 +1506,12 @@ describe("voices page text and component budgeting", () => {
       expect(Array.isArray(options)).toBe(true);
       expect(options).toHaveLength(1);
       const [option] = (options ?? []) as Array<Record<string, unknown>>;
-      expect(option.value).toBe("none");
+      expect(option.value).toBe(CONFIG_VOICE_SAMPLE_ADD_VALUE);
     }));
 
-  it("renders a one-page library with 25 sample options", () =>
+  it("renders a full page of references alongside Add Sample", () =>
     expectForEveryLocaleAndReceipt((locale, receipt) => {
-      const pageSamples = VOICE_SAMPLES.slice(0, 25);
+      const pageSamples = VOICE_SAMPLES.slice(0, CONFIG_VOICE_SAMPLE_PAGE_SIZE);
       const payload = buildVoicePayload(locale, receipt, pageSamples, pageSamples.length, 0);
       expectValidVoicePayload(payload);
 
@@ -1519,8 +1521,9 @@ describe("voices page text and component budgeting", () => {
       expect(options).toHaveLength(25);
       if (!Array.isArray(options)) return;
 
-      const firstOption = options[0] as Record<string, unknown>;
-      const secondOption = options[1] as Record<string, unknown>;
+      expect((options[0] as Record<string, unknown>).value).toBe(CONFIG_VOICE_SAMPLE_ADD_VALUE);
+      const firstOption = options[1] as Record<string, unknown>;
+      const secondOption = options[2] as Record<string, unknown>;
       expect(firstOption.label).toBe("A".repeat(80));
       expect(secondOption.label).toBe("B".repeat(81));
       expect(typeof firstOption.description).toBe("string");
@@ -1539,22 +1542,22 @@ describe("voices page text and component budgeting", () => {
 
   it("covers every sample across deep library page slices", () =>
     expectForEveryLocaleAndReceipt((locale, receipt) => {
-      const starts = [0, 25, 50];
+      const starts = [0, 24, 48];
       const coveredIndices = new Set<number>();
 
       for (const start of starts) {
-        const pageSamples = VOICE_SAMPLES.slice(start, start + 25);
+        const pageSamples = VOICE_SAMPLES.slice(start, start + CONFIG_VOICE_SAMPLE_PAGE_SIZE);
         const payload = buildVoicePayload(locale, receipt, pageSamples, VOICE_SAMPLES.length, start);
         expectValidVoicePayload(payload);
 
         const menu = getVoiceSelectMenu(payload);
         const options = menu.options;
         expect(Array.isArray(options)).toBe(true);
-        expect(options).toHaveLength(pageSamples.length);
+        expect(options).toHaveLength(pageSamples.length + 1);
         if (!Array.isArray(options)) continue;
 
         const pageIndices: number[] = [];
-        for (const option of options) {
+        for (const option of options.slice(1)) {
           const value = (option as Record<string, unknown>).value;
           expect(typeof value).toBe("string");
           if (typeof value !== "string") continue;
@@ -1569,9 +1572,9 @@ describe("voices page text and component budgeting", () => {
       expect(coveredIndices).toEqual(new Set(VOICE_SAMPLES.map((_sample, index) => index)));
     }));
 
-  it("reports 26 unsliced samples as an oversized select", () =>
+  it("reports references overflowing the space reserved for Add Sample", () =>
     expectForEveryLocaleAndReceipt((locale, receipt) => {
-      const payload = buildVoicePayload(locale, receipt, VOICE_SAMPLES.slice(0, 26), VOICE_SAMPLES.length, 0);
+      const payload = buildVoicePayload(locale, receipt, VOICE_SAMPLES.slice(0, 25), VOICE_SAMPLES.length, 0);
       const validation = validateComponentsV2MessageLimits(payload);
       expect(validation.valid).toBe(false);
       expect(validation.violations).toContainEqual(
@@ -1582,18 +1585,18 @@ describe("voices page text and component budgeting", () => {
       );
     }));
 
-  it("observes the 28-component receipt and deep-page ceiling from the rendered payload", () => {
-    const payload = buildVoicePayload("en-US", true, VOICE_SAMPLES.slice(25, 50), VOICE_SAMPLES.length, 25);
+  it("observes the 27-component receipt and deep-page ceiling from the rendered payload", () => {
+    const payload = buildVoicePayload("en-US", true, VOICE_SAMPLES.slice(24, 48), VOICE_SAMPLES.length, 24);
     expectValidVoicePayload(payload);
 
     const observedCount = countRenderedComponents(payload);
-    expect(observedCount).toBe(28);
+    expect(observedCount).toBe(27);
 
     const payloadWithOverGenerousReserve = {
       ...payload,
       components: [...payload.components, { type: ComponentType.TextDisplay, content: "Reserve" }],
     };
-    expect(countRenderedComponents(payloadWithOverGenerousReserve)).toBeGreaterThan(28);
+    expect(countRenderedComponents(payloadWithOverGenerousReserve)).toBeGreaterThan(27);
   });
 });
 
@@ -1634,7 +1637,7 @@ describe("Persona Voice page text and component budgeting", () => {
     const validation = validateComponentsV2MessageLimits(payload);
     expect(validation.valid, `Violations: ${JSON.stringify(validation.violations)}`).toBe(true);
     const componentCount = countRenderedComponents(payload);
-    expect(componentCount).toBeLessThanOrEqual(38);
+    expect(componentCount).toBeLessThanOrEqual(40);
     if (expectedComponents !== undefined) expect(componentCount).toBe(expectedComponents);
     expect(getPayloadTextTotal(payload)).toBeLessThanOrEqual(DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX);
   };
@@ -1650,7 +1653,7 @@ describe("Persona Voice page text and component budgeting", () => {
   ];
 
   const expectedLocalMaximum = (receipt: boolean, avatarPresent: boolean): number =>
-    33 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0);
+    34 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0);
 
   const makePrompt = (length: number, runLength: number): string => {
     const seed = `${"`".repeat(runLength)} 🌸✨ warm, unhurried voice. `;
@@ -1679,7 +1682,8 @@ describe("Persona Voice page text and component budgeting", () => {
             expect(voiceSelector).toBeDefined();
             const options = voiceSelector?.options as unknown[];
             expect(options).toHaveLength(25);
-            expect((options.at(-1) as Record<string, unknown>).value).toBe("page:24");
+            expect((options[0] as Record<string, unknown>).value).toBe("none:reference");
+            expect((options.at(-1) as Record<string, unknown>).value).toBe("23");
           });
         }
       }
@@ -1698,7 +1702,7 @@ describe("Persona Voice page text and component budgeting", () => {
           personas: maximumPersonaSet(prompt),
           selectedPersonaAvatarUrl: "https://cdn.example/avatar.png",
         });
-        assertValid(payload, 37);
+        assertValid(payload, 38);
         const promptDisplay = getTextDisplays(payload).find((text) =>
           text.includes(localizedCopy("en-US", "commands.config.panel.voice_page_design_preview_title")),
         );
@@ -1718,7 +1722,7 @@ describe("Persona Voice page text and component budgeting", () => {
     expect(JSON.stringify(unsupported)).toContain("voice-design-open");
   });
 
-  it("keeps the local library's advance entry within one select and fails its boundary if reserve is weakened", () => {
+  it("pages local references with buttons and preserves every selectable item", () => {
     const payload = buildVoicePayload("en-US", false, {
       personaVoiceView: makePersonaVoiceView("tts-clone", VOICE_SAMPLES.slice(0, 26), true),
     });
@@ -1730,7 +1734,7 @@ describe("Persona Voice page text and component budgeting", () => {
     );
 
     const coveredPositions = new Set<number>();
-    for (const pageStart of [0, 24, 48]) {
+    for (const pageStart of [0, 25, 50]) {
       const pagePayload = buildVoicePayload("en-US", false, {
         personaVoicePageStart: pageStart,
         personaVoiceView: makePersonaVoiceView("tts-clone", VOICE_SAMPLES, true),
@@ -1815,6 +1819,60 @@ describe("Persona Voice page text and component budgeting", () => {
     }
   });
 
+  it("keeps localized description and priority controls usable without a model only for managers", () => {
+    const cases = collectCaseFailures();
+    for (const locale of RUNTIME_LOCALES) {
+      cases.check(locale, () => {
+        const copy = (key: string) => localizedCopy(hasLocaleKey(locale, key) ? locale : "en-US", key);
+        for (const isManager of [true, false]) {
+          const persona = makePersona({ persona_id: 55, speech_voice_design_prompt: "Saved description" });
+          const view = { ...makePersonaVoiceView(null, VOICE_SAMPLES, true), hasTargets: false };
+          const payload = buildVoicePayload(locale, false, {
+            personas: [persona],
+            actor: { ...GUILD_MANAGER, isManager },
+            personaVoiceView: view,
+          });
+          assertValid(payload);
+          const body = buildConfigVoiceBody({
+            locale,
+            actor: { ...GUILD_MANAGER, isManager },
+            readStatus: "fresh",
+            selectedPersona: persona,
+            view,
+          });
+          const text = getTextDisplays(body).join("\n");
+          expect(text).toContain(persona.speech_voice_design_prompt ?? "");
+          for (const key of ["voice_page_design_preview_title", "voice_priority_title"])
+            expect(text).toContain(copy(`commands.config.panel.${key}`));
+          const noticeKey = "commands.config.panel.voice_page_no_model_notice";
+          expect(text).toMatch(localizedProse(hasLocaleKey(locale, noticeKey) ? locale : "en-US", noticeKey));
+          if (isManager)
+            expect(getTextDisplays(payload).join("\n")).toContain(persona.speech_voice_design_prompt ?? "");
+          else expect(JSON.stringify(payload)).not.toContain(":voice-design-open:");
+          const controls = body
+            .filter(
+              (component): component is ActionRowData<ButtonComponentData> =>
+                component.type === ComponentType.ActionRow,
+            )
+            .flatMap((component) => component.components);
+          for (const [action, key] of [
+            ["voice-design-open", "voice_page_edit_design_button"],
+            ["voice-priority-design", "voice_priority_design"],
+            ["voice-priority-clone", "voice_priority_clone"],
+          ]) {
+            expect(
+              controls.find((control) => "customId" in control && control.customId?.includes(`:${action}:`)),
+            ).toMatchObject({
+              label: copy(`commands.config.panel.${key}`),
+              disabled: !isManager || action === "voice-priority-design",
+            });
+          }
+        }
+      });
+    }
+    cases.expectNoFailures();
+  });
+
   it("measures a deep remote chooser separately and keeps position plus fingerprint values bounded", () => {
     const remoteView: ConfigPersonaVoiceRemoteView = {
       voices: Array.from({ length: 73 }, (_, index) => ({
@@ -1843,14 +1901,15 @@ describe("Persona Voice page text and component budgeting", () => {
             personaVoiceRemoteView: remoteView,
             receipt: receipt ? { tone: "success", heading: "Saved", detail: "Voice saved." } : undefined,
           });
-          assertValid(payload, 34 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0));
+          assertValid(payload, 36 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0));
           const selector = getStringSelectMenus(payload).find((menu) => String(menu.customId).includes("voice-select"));
           const options = (selector?.options ?? []) as Array<Record<string, unknown>>;
           expect(options).toHaveLength(25);
-          expect(options.slice(0, 24).every((option) => /^voice:\d+:[A-Za-z0-9_-]+$/.test(String(option.value)))).toBe(
+          expect(options[0]?.value).toBe("none:provider");
+          expect(options.slice(1).every((option) => /^voice:\d+:[A-Za-z0-9_-]+$/.test(String(option.value)))).toBe(
             true,
           );
-          expect(String(options.at(-1)?.value)).toMatch(/^page:\d+:[A-Za-z0-9_-]+$/);
+          expect(JSON.stringify(payload)).toContain(":voice-page:");
           expect(JSON.stringify(payload)).not.toContain("external-voice-id-48");
           expect(JSON.stringify(payload)).toContain("stored but hidden by provider mode");
         }
@@ -1866,7 +1925,7 @@ describe("Persona Voice page text and component budgeting", () => {
     ).toHaveLength(25);
 
     const coveredPositions = new Set<number>();
-    for (const pageStart of [0, 24, 48, 72]) {
+    for (const pageStart of [0, 25, 50]) {
       const pagePayload = buildVoicePayload("en-US", false, {
         personaVoiceView: makePersonaVoiceView("elevenlabs"),
         personaVoiceRemoteView: { ...remoteView, pageStart: undefined },

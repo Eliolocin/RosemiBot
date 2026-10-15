@@ -422,7 +422,7 @@ export type ConfigPanelRoute =
   | { action: "voice-page"; locale: string; personaId: number; start: number }
   | { action: "voice-chooser-cancel"; locale: string; personaId: number }
   | { action: "voice-priority-design" | "voice-priority-clone"; locale: string; personaId: number }
-  | { action: "voice-clear" | "voice-provider-clear"; locale: string; personaId: number }
+  | { action: "voice-provider-clear"; locale: string; personaId: number }
   | { action: "voice-design-open"; locale: string; personaId: number }
   | { action: "voice-design-submit"; locale: string; personaId: number; nonce: string }
   | { action: "voice-design-remove"; locale: string; personaId: number }
@@ -936,7 +936,6 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "voice-priority-design": { wireToken: "voice-priority-design", fields: [personaIdField] },
   "voice-priority-clone": { wireToken: "voice-priority-clone", fields: [personaIdField] },
   "voice-provider-clear": { wireToken: "voice-provider-clear", fields: [personaIdField] },
-  "voice-clear": { wireToken: "voice-clear", fields: [personaIdField] },
   "voice-design-open": { wireToken: "voice-design-open", fields: [personaIdField] },
   "voice-design-submit": { wireToken: "voice-design-sub", fields: [personaIdField, nonceField] },
   "voice-design-remove": { wireToken: "voice-design-rem", fields: [personaIdField] },

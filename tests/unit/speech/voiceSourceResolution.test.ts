@@ -5,7 +5,8 @@
  * input must outrank stored persona configuration.
  */
 import { describe, expect, it } from "bun:test";
-import type { CustomEndpointRow } from "@/types/db/schema";
+import { speechModelSchema, type CustomEndpointRow } from "@/types/db/schema";
+import { createPersona } from "../../helpers/fixtures";
 import {
   formatVoiceSourceOptionDescription,
   resolveVoiceSourceCandidates,
@@ -100,6 +101,52 @@ describe("resolveVoiceSourceCapabilities", () => {
 });
 
 describe("resolveVoiceSourceCandidates", () => {
+  it("resolves saved priority across hosted pairs and a shared Auto target as inputs or selections disappear", () => {
+    const hosted = {
+      design: speechModelSchema.parse({
+        speech_model_id: 1,
+        provider: "google",
+        codename: "gemini-3.8-flash-tts",
+        voice_mode: "design",
+      }),
+      clone: speechModelSchema.parse({
+        speech_model_id: 2,
+        provider: "openrouter",
+        codename: "fish-audio/s2.1-pro",
+        voice_mode: "clone",
+      }),
+    };
+    const auto = makeEndpoint("tts-clone", "auto");
+    for (const targets of [hosted, { design: auto, clone: auto }]) {
+      for (const priority of ["design", "clone"] as const) {
+        const persona = createPersona({
+          speech_voice_design_prompt: "Warm narration",
+          speech_voice_sample_id: 12,
+          speech_voice_id: "unused-preset-id",
+          voice_source_priority: priority,
+        });
+        expect(resolveVoiceSourceCandidates({ targets, persona }).map(({ shape }) => shape)).toEqual(
+          priority === "design" ? ["design", "clone"] : ["clone", "design"],
+        );
+        const secondary = priority === "design" ? "clone" : "design";
+        expect(resolveVoiceSourceCandidates({ targets: { ...targets, [priority]: null }, persona })[0]?.shape).toBe(
+          secondary,
+        );
+        const missingPreferred = {
+          ...persona,
+          ...(priority === "design" ? { speech_voice_design_prompt: "  " } : { speech_voice_sample_id: null }),
+        };
+        expect(resolveVoiceSourceCandidates({ targets, persona: missingPreferred })[0]?.shape).toBe(secondary);
+        expect(
+          resolveVoiceSourceCandidates({
+            targets,
+            persona: { ...missingPreferred, speech_voice_design_prompt: null, speech_voice_sample_id: null },
+          }),
+        ).toEqual([]);
+      }
+    }
+  });
+
   it("offers both clone sources on a clone endpoint, upload first", () => {
     const candidates = resolveVoiceSourceCandidates({
       targets: { design: makeEndpoint("tts-clone", "clone"), clone: makeEndpoint("tts-clone", "clone") },

@@ -143,6 +143,43 @@ describe("providers panel rendering", () => {
     expect(validateRawModalLimits(modal).violations).toEqual([]);
   });
 
+  it("omits a speech mode heading when the provider offers no model for that mode", () => {
+    const entry = providerEntry("provider:elevenlabs", "ElevenLabs");
+    if (!("capabilities" in entry)) throw new Error("Expected a model provider entry");
+    entry.capabilities = entry.capabilities.map((section) =>
+      section.capability === "speech"
+        ? {
+            ...section,
+            availability: "available",
+            models: [
+              {
+                id: 7,
+                codeName: "eleven_multilingual_v2",
+                isWorkspaceActive: false,
+                isWorkspaceFallback: false,
+                isProviderFallback: false,
+                isCustomRegistration: false,
+                speechActiveModes: [],
+                speechSettings: { voiceMode: "clone", scriptMarkup: "plain", supportsInstruct: true },
+              },
+            ],
+          }
+        : section,
+    );
+    const serialized = JSON.stringify(
+      buildProvidersPanelPayload({
+        locale: "en-US",
+        entries: [entry],
+        initialEntryId: entry.id,
+        readStatus: "fresh",
+        page: { kind: "entry" },
+      }),
+    );
+
+    expect(serialized).toContain(localizedCopy("en-US", "commands.config.panel.capability_tts_clone"));
+    expect(serialized).not.toContain(localizedCopy("en-US", "commands.config.panel.capability_tts_design"));
+  });
+
   it("renders an empty selector with both add destinations and a routing hint", () => {
     const payload = buildProvidersPanelPayload({
       locale: "en-US",

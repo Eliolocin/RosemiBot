@@ -36,29 +36,14 @@ function findColourViolations(colour: "Primary" | "Success"): string[] {
       const isComment = /^\s*(\/\/|\/?\*)/.test(line);
       if (isTypePosition || isComment) continue;
 
-      // Primary is permitted for active category button rows, the shared state-control primitive, and a
-      // terminal commit action that is disabled until its whole flow is valid.
       const isCategorySelection =
         (relPath === "utils/discord/ui/panel.ts" &&
           line.includes("cat.id === activeCategory ? ButtonStyle.Primary : ButtonStyle.Secondary")) ||
         (relPath === "utils/discord/ui/helpDashboard.ts" &&
           line.includes("category.id === activeCategoryId ? ButtonStyle.Primary : ButtonStyle.Secondary")) ||
         (relPath === "utils/stats/statsDashboard.ts" &&
-          line.includes("index === activeIndex ? ButtonStyle.Primary : ButtonStyle.Secondary")) ||
-        // The translation switcher is a state-control row: its active provider is the disabled one,
-        // so the selected choice takes Primary under the same rule as a category button.
-        (relPath === "utils/discord/embedHelper.ts" &&
-          line.includes("provider === activeProvider ? ButtonStyle.Primary : ButtonStyle.Secondary"));
-      const isStateControlSelection =
-        relPath === "utils/discord/ui/panel.ts" &&
-        line.includes("isSelected ? ButtonStyle.Primary : ButtonStyle.Secondary");
-      // A terminal commit action earns Primary only while it is also gated: the setup wizard's Finish button is
-      // disabled until every rendered requirement is complete, so Primary marks a state the actor can act on
-      // rather than advertising an action that would fail. An ungated action button does not qualify.
-      const isGatedCommitAction =
-        relPath === "utils/discord/ui/setupPanel.ts" &&
-        line.includes("isComplete ? ButtonStyle.Primary : ButtonStyle.Secondary");
-      if (line.includes(needle) && !isCategorySelection && !isStateControlSelection && !isGatedCommitAction) {
+          line.includes("index === activeIndex ? ButtonStyle.Primary : ButtonStyle.Secondary"));
+      if (line.includes(needle) && !isCategorySelection) {
         violations.push(`${relPath}:${index + 1}`);
       }
     }
@@ -68,13 +53,11 @@ function findColourViolations(colour: "Primary" | "Success"): string[] {
 }
 
 describe("panel button colour convention", () => {
-  it("reserves Primary for the active category button and state-control rows", () => {
+  it("reserves Primary for active navigation categories", () => {
     expect(findColourViolations("Primary")).toEqual([]);
 
     const sharedPanelSource = readFileSync(resolve(SRC_DIR, "utils/discord/ui/panel.ts"), "utf8");
     expect(sharedPanelSource).toContain("cat.id === activeCategory ? ButtonStyle.Primary : ButtonStyle.Secondary");
-    expect(sharedPanelSource).toContain("isSelected ? ButtonStyle.Primary : ButtonStyle.Secondary");
-    expect(sharedPanelSource.match(/ButtonStyle\.Primary/g)).toHaveLength(2);
   });
 
   it("keeps panel actions grey or red rather than green", () => {

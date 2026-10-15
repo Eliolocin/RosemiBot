@@ -124,7 +124,6 @@ export default {
     endpoint_label_url_conflict: `Esa etiqueta pertenece a una URL diferente. Usa la URL existente o elige una etiqueta distinta.`,
     endpoint_unreachable: `El punto de conexión no respondió usando ese protocolo de API. No se guardó nada. Detalles: {reason}`,
     endpoint_redirect_credentials_withheld: `El endpoint redirigió a una dirección diferente, por lo que su clave de API no se envió allí y no se guardó nada. Ingresa como URL del endpoint la dirección final a la que redirige el servidor.`,
-    activate_placeholder: `Elige el punto de conexión de voz o transcripción activo...`,
     activate_option_description: `Punto de conexión de {capability} ({name})`,
     activate_option_active_description: `[activo] Punto de conexión de {capability} ({name})`,
     manage_models_placeholder: `Elige un modelo o capacidad...`,

@@ -18,10 +18,10 @@ import type { GlobalRoutableInteraction } from "@/utils/discord/interactions/rou
 import { buildTextPreview } from "@/utils/text/textPreview";
 import { localizer } from "@/utils/text/localizer";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
+import { DISCORD_SELECT_OPTIONS_MAX } from "@/utils/discord/ui/componentsV2Limits";
 
 const VOICE_DESIGN_PROMPT_FIELD = "voice_design_prompt";
-const VOICE_PAGE_SIZE = 25;
-const VOICE_PAGE_SIZE_WITH_MORE = VOICE_PAGE_SIZE - 1;
+const VOICE_PAGE_SIZE = DISCORD_SELECT_OPTIONS_MAX;
 
 export const CONFIG_PERSONA_VOICE_MODAL_OPEN_ACTIONS = new Set<ConfigPanelRoute["action"]>(["voice-design-open"]);
 
@@ -31,7 +31,6 @@ const CONFIG_PERSONA_VOICE_ACTIONS = new Set<ConfigPanelRoute["action"]>([
   "voice-select",
   "voice-page",
   "voice-chooser-cancel",
-  "voice-clear",
   "voice-provider-clear",
   "voice-design-open",
   "voice-design-submit",
@@ -173,11 +172,7 @@ export function buildConfigPersonaVoiceRemoteView(
 
 function parseVoiceSelection(
   value: string | null,
-):
-  | { kind: "sample"; index: number }
-  | { kind: "remote"; index: number; fingerprint: string }
-  | { kind: "page"; start: number; fingerprint?: string }
-  | null {
+): { kind: "sample"; index: number } | { kind: "remote"; index: number; fingerprint: string } | null {
   if (!value) return null;
   if (/^\d+$/.test(value)) {
     const index = Number(value);
@@ -190,18 +185,12 @@ function parseVoiceSelection(
     return Number.isSafeInteger(index) ? { kind: "remote", index, fingerprint: remote[2] } : null;
   }
 
-  const page = /^page:(\d+)(?::([A-Za-z0-9_-]{1,16}))?$/.exec(value);
-  if (page) {
-    const start = Number(page[1]);
-    return Number.isSafeInteger(start) ? { kind: "page", start, fingerprint: page[2] } : null;
-  }
-
   return null;
 }
 
-function isValidVoicePageStart(start: number, catalogLength: number): boolean {
+function isValidVoicePageStart(start: number, catalogLength: number, hasSelection: boolean): boolean {
   if (!Number.isSafeInteger(start) || start < 0) return false;
-  const pageSize = catalogLength > VOICE_PAGE_SIZE ? VOICE_PAGE_SIZE_WITH_MORE : VOICE_PAGE_SIZE;
+  const pageSize = VOICE_PAGE_SIZE - Number(hasSelection);
   const pageCount = Math.max(1, Math.ceil(catalogLength / pageSize));
   const lastPageStart = (pageCount - 1) * pageSize;
   return start <= lastPageStart && start % pageSize === 0;
@@ -325,16 +314,6 @@ async function handleVoiceSelection(
       await repaintVoice(context, scope, persona.persona_id ?? null, { receipt: staleReceipt(context.route.locale) });
       return;
     }
-    if (parsed.kind === "page") {
-      if (!isValidVoicePageStart(parsed.start, samples.length)) {
-        await repaintVoice(context, scope, persona.persona_id ?? null, { receipt: staleReceipt(context.route.locale) });
-        return;
-      }
-      await repaintVoice(context, scope, persona.persona_id ?? null, {
-        personaVoicePageStart: parsed.start,
-      });
-      return;
-    }
     const sample = samples[parsed.index];
     if (!sample || sample.sample_id === undefined) {
       await repaintVoice(context, scope, persona.persona_id ?? null, { receipt: staleReceipt(context.route.locale) });
@@ -395,22 +374,6 @@ async function handleVoiceSelection(
     await repaintVoice(context, scope, persona.persona_id ?? null, { remoteView: remote.view });
     return;
   }
-  if (parsed.kind === "page") {
-    if (
-      !isValidVoicePageStart(parsed.start, remote.voices.length) ||
-      (parsed.fingerprint && parsed.fingerprint !== remote.view.catalogFingerprint)
-    ) {
-      await repaintVoice(context, scope, persona.persona_id ?? null, {
-        remoteView: remote.view,
-        receipt: staleReceipt(context.route.locale),
-      });
-      return;
-    }
-    await repaintVoice(context, scope, persona.persona_id ?? null, {
-      remoteView: { ...remote.view, pageStart: parsed.start },
-    });
-    return;
-  }
   if (parsed.kind !== "remote") {
     await repaintVoice(context, scope, persona.persona_id ?? null, {
       remoteView: remote.view,
@@ -469,7 +432,7 @@ async function handleVoiceSelection(
   });
 }
 
-async function handleVoiceClear(context: ConfigPersonaVoiceRouteContext): Promise<void> {
+async function handleVoiceClear(context: ConfigPersonaVoiceRouteContext, clearProviderVoice: boolean): Promise<void> {
   const current = await freshPersona(context);
   if (!current) {
     await repaintVoice(context, context.scope, null, { receipt: staleReceipt(context.route.locale) });
@@ -485,7 +448,6 @@ async function handleVoiceClear(context: ConfigPersonaVoiceRouteContext): Promis
     });
     return;
   }
-  const clearProviderVoice = context.route.action === "voice-provider-clear";
   const updated = await context.dependencies.setPersonaVoiceConfig(current.persona.persona_id as number, {
     speech_voice_sample_id: clearProviderVoice ? (current.persona.speech_voice_sample_id ?? null) : null,
     speech_voice_id: clearProviderVoice ? null : (current.persona.speech_voice_id ?? null),
@@ -541,7 +503,7 @@ async function handleVoiceDesignSubmit(context: ConfigPersonaVoiceRouteContext):
       receipt: receipt(
         context.route.locale,
         "warning",
-        "commands.config.panel.voice_design.prompt_required_description",
+        "commands.config.panel.voice_design.prompt_required_title",
         "commands.config.panel.voice_design.prompt_required_description",
       ),
     });
@@ -651,8 +613,8 @@ export async function handleConfigPersonaVoiceRoutes(context: ConfigPersonaVoice
     await handleVoiceDesignRemove(context);
     return true;
   }
-  if (context.route.action === "voice-clear" || context.route.action === "voice-provider-clear") {
-    await handleVoiceClear(context);
+  if (context.route.action === "voice-provider-clear") {
+    await handleVoiceClear(context, true);
     return true;
   }
 
@@ -721,7 +683,7 @@ export async function handleConfigPersonaVoiceRoutes(context: ConfigPersonaVoice
         });
         return true;
       }
-      if (!isValidVoicePageStart(context.route.start, remote.voices.length)) {
+      if (!isValidVoicePageStart(context.route.start, remote.voices.length, Boolean(persona.speech_voice_id?.trim()))) {
         await repaintVoice(context, scope, persona.persona_id ?? null, {
           remoteView: remote.view,
           receipt: staleReceipt(context.route.locale),
@@ -740,7 +702,7 @@ export async function handleConfigPersonaVoiceRoutes(context: ConfigPersonaVoice
       return true;
     }
     const samples = await context.dependencies.loadVoiceSamples(persona.server_id);
-    if (!isValidVoicePageStart(context.route.start, samples.length)) {
+    if (!isValidVoicePageStart(context.route.start, samples.length, persona.speech_voice_sample_id != null)) {
       await repaintVoice(context, scope, persona.persona_id ?? null, {
         personaVoicePageStart: 0,
         receipt: staleReceipt(context.route.locale),
@@ -754,6 +716,13 @@ export async function handleConfigPersonaVoiceRoutes(context: ConfigPersonaVoice
   }
 
   const submittedValue = context.interaction.isStringSelectMenu() ? (context.interaction.values[0] ?? null) : null;
+  if (
+    context.route.action === "voice-select" &&
+    (submittedValue === "none:reference" || submittedValue === "none:provider")
+  ) {
+    await handleVoiceClear(context, submittedValue === "none:provider");
+    return true;
+  }
   if (context.route.action === "voice-select" && !submittedValue) {
     const mode = await resolveActiveVoiceMode(persona, context.dependencies);
     if (mode.apiStyle === "elevenlabs") {

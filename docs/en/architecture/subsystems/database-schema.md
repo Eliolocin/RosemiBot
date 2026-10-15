@@ -102,11 +102,17 @@ Personal speech uses separate `speech_design_model_id` and `speech_clone_model_i
 `user_saved_provider_configs`. Its `assigned_capabilities` and `enabled_capabilities` arrays track
 ownership and activation independently for `speech_design` and `speech_clone`; each mode has at most
 one personal owner. Activation locks the owner row and transfers supported modes in one transaction.
+Registration and activation failures roll back selections, assignments, and enabling together;
+repository callers invalidate cached state only after commit. Seed initialization adds catalogue
+models without assigning provider ownership or replacing existing speech targets.
 
 `speech_voice_bindings` stores remote voice IDs by persona, credential snapshot, revision, transport,
 prompt hash, and Cloud project/location. Credential revisions advance when stored ciphertext changes,
 independently of encryption `key_version`. Prompt or credential changes retire bindings to pending
-deletion. Bindings are operational state and are excluded from configuration exports.
+deletion. Bindings are operational state and are excluded from configuration and persona-card exports.
+Persona descriptions and source priority remain portable; an imported persona establishes its own
+remote identity on its next Design synthesis. Pending deletion rows retain IDs for cleanup with the
+matching credential revision, including after the persona is removed.
 
 ### User identity, privacy, and personalization
 

@@ -91,6 +91,7 @@ import {
 } from "@/utils/discord/interactions/configModelLoaders";
 import { loadConfigVoicesView } from "@/utils/discord/interactions/configVoicesLoader";
 import { loadConfigPersonaVoiceView } from "@/utils/discord/interactions/configPersonaVoiceLoader";
+import { CONFIG_VOICE_SAMPLE_ADD_VALUE } from "@/utils/discord/ui/configVoicesPanel";
 import {
   CONFIG_PERSONA_VOICE_MODAL_OPEN_ACTIONS,
   buildConfigPersonaVoiceRemoteView,
@@ -3089,6 +3090,15 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
         return;
       }
 
+      if (route.action === "voice-sample-select" && submittedValue === CONFIG_VOICE_SAMPLE_ADD_VALUE) {
+        await handleConfigVoicesModalOpen(
+          interaction,
+          { action: "voice-sample-add-open", locale: route.locale },
+          dependencies,
+          actor,
+        );
+        return;
+      }
       if (CONFIG_VOICES_MODAL_OPEN_ACTIONS.has(route.action)) {
         await handleConfigVoicesModalOpen(interaction, route, dependencies, actor);
         return;

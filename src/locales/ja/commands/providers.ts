@@ -121,7 +121,6 @@ export default {
     endpoint_label_url_conflict: `そのラベルは別のURLに割り当てられています。既存のURLを使用するか、別のラベルを選んでください。`,
     endpoint_unreachable: `そのエンドポイントは選択したAPIプロトコルで応答しませんでした。何も保存されていません。詳細: {reason}`,
     endpoint_redirect_credentials_withheld: `エンドポイントが別のアドレスにリダイレクトされたため、APIキーは送信されず何も保存されませんでした。サーバーのリダイレクト先の最終アドレスをエンドポイントURLとして入力してください。`,
-    activate_placeholder: `有効にする音声または文字起こしエンドポイントを選択...`,
     activate_option_description: `{capability} エンドポイント（{name}）`,
     activate_option_active_description: `[有効] {capability} エンドポイント（{name}）`,
     manage_models_placeholder: `モデルまたは機能を選択...`,

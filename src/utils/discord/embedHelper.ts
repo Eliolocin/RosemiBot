@@ -339,7 +339,7 @@ export async function sendTranslationEmbed(message: Message, options: Translatio
     const buttons = Object.values(TranslationProvider).map((provider) => {
       return new ButtonBuilder()
         .setLabel(provider.charAt(0).toUpperCase() + provider.slice(1))
-        .setStyle(provider === activeProvider ? ButtonStyle.Primary : ButtonStyle.Secondary)
+        .setStyle(ButtonStyle.Secondary)
         .setCustomId(`${provider}-trans`)
         .setDisabled(provider === activeProvider);
     });

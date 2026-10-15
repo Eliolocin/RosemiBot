@@ -351,7 +351,6 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
   ["config:v2:voice-page:en-US:55:25", { action: "voice-page", locale: "en-US", personaId: 55, start: 25 }],
   ["config:v2:voice-choose-cancel:en-US:55", { action: "voice-chooser-cancel", locale: "en-US", personaId: 55 }],
   ["config:v2:voice-provider-clear:en-US:55", { action: "voice-provider-clear", locale: "en-US", personaId: 55 }],
-  ["config:v2:voice-clear:en-US:55", { action: "voice-clear", locale: "en-US", personaId: 55 }],
   ["config:v2:voice-design-open:en-US:55", { action: "voice-design-open", locale: "en-US", personaId: 55 }],
   [
     "config:v2:voice-design-sub:en-US:55:nonce1234567",

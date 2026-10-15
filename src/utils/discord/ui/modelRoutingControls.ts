@@ -99,12 +99,22 @@ export interface ModelRoutingControlInput {
   disabled: boolean;
 }
 
+export function formatModelSelectionLabel(
+  model: string | null,
+  providerLabel: string | null,
+  emptyLabel: string,
+): string {
+  return model ? `${model}${providerLabel ? ` (${providerLabel})` : ""}` : emptyLabel;
+}
+
 export function buildModelRoutingControl(
   input: ModelRoutingControlInput,
 ): ActionRowData<StringSelectMenuComponentData> {
-  const activeModel = input.activeModelName
-    ? `${input.activeModelName}${input.activeProvider ? ` (${getProviderDisplayName(input.activeProvider)})` : ""}`
-    : input.serverDefaultDisplay;
+  const activeModel = formatModelSelectionLabel(
+    input.activeModelName,
+    input.activeProvider ? getProviderDisplayName(input.activeProvider) : null,
+    input.serverDefaultDisplay,
+  );
   const options: SelectMenuComponentOptionData[] = [];
   if (input.serverDefaultValue !== undefined && input.serverDefaultLabel !== undefined) {
     options.push({
