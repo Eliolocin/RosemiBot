@@ -1,3 +1,4 @@
+import { setSpeechEndpointSelection } from "@/utils/db/repositories/SpeechRepository";
 import {
   decisionModelRegistrationSchema,
   type DecisionModelRegistrationRow,
@@ -2548,6 +2549,11 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
     options: LlmProviderCacheOptions = {},
   ): Promise<boolean> {
     const { serverId = null, userId = null, clearScope = "label" } = params;
+    if (params.capability === "speech") {
+      return serverId !== null && userId === null
+        ? setSpeechEndpointSelection(serverId, params.customEndpointId)
+        : false;
+    }
 
     try {
       const selectedRows =
@@ -2678,7 +2684,10 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
     serverId: number;
     capability: "speech" | "transcription";
     customEndpointId: number;
+    mode?: "design" | "clone";
   }): Promise<boolean> {
+    if (params.capability === "speech")
+      return setSpeechEndpointSelection(params.serverId, params.customEndpointId, params.mode);
     return await this.setDefaultCustomEndpoint({
       serverId: params.serverId,
       capability: params.capability,

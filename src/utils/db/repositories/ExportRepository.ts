@@ -76,6 +76,8 @@ interface WorkspaceConfigProjectionRow {
   uncensor_unicode_space_enabled: boolean;
   uncensor_sanitize_enabled: boolean;
   self_debug_enabled: boolean;
+  speech_design_endpoint_id: number | null;
+  speech_clone_endpoint_id: number | null;
   voice_transcript_chat_mode: boolean;
   chatterbox_turbo_enabled: boolean;
   chatterbox_cfg_weight: number;
@@ -378,6 +380,8 @@ export class ExportRepository {
           COALESCE(scac.thread_creation_enabled, true)              AS thread_creation_enabled,
           COALESCE(scac.user_blocking_enabled, true)                AS user_blocking_enabled,
           COALESCE(scac.time_awareness_enabled, true)               AS time_awareness_enabled,
+          ssc.speech_design_endpoint_id AS speech_design_endpoint_id,
+          ssc.speech_clone_endpoint_id AS speech_clone_endpoint_id,
           COALESCE(ssc.voice_transcript_chat_mode, true)            AS voice_transcript_chat_mode,
           COALESCE(ssc.chatterbox_turbo_enabled, true)              AS chatterbox_turbo_enabled,
           COALESCE(ssc.chatterbox_cfg_weight, 0.5)                  AS chatterbox_cfg_weight,
@@ -564,6 +568,8 @@ export class ExportRepository {
             thread_creation_enabled: configData.thread_creation_enabled,
             user_blocking_enabled: configData.user_blocking_enabled,
             time_awareness_enabled: configData.time_awareness_enabled,
+            speech_design_endpoint_id: configData.speech_design_endpoint_id,
+            speech_clone_endpoint_id: configData.speech_clone_endpoint_id,
             voice_transcript_chat_mode: configData.voice_transcript_chat_mode,
             chatterbox_turbo_enabled: configData.chatterbox_turbo_enabled,
             chatterbox_cfg_weight: configData.chatterbox_cfg_weight,
@@ -756,6 +762,8 @@ export class ExportRepository {
           COALESCE(snc.uncensor_unicode_space_enabled, false) AS uncensor_unicode_space_enabled,
           COALESCE(snc.uncensor_sanitize_enabled, false) AS uncensor_sanitize_enabled,
           COALESCE(scc.self_debug_enabled, false) AS self_debug_enabled,
+          ssc.speech_design_endpoint_id AS speech_design_endpoint_id,
+          ssc.speech_clone_endpoint_id AS speech_clone_endpoint_id,
           COALESCE(ssc.voice_transcript_chat_mode, true) AS voice_transcript_chat_mode,
           COALESCE(ssc.chatterbox_turbo_enabled, true) AS chatterbox_turbo_enabled,
           COALESCE(ssc.chatterbox_cfg_weight, 0.5) AS chatterbox_cfg_weight,
@@ -921,6 +929,8 @@ export class ExportRepository {
           nai_cfg_rescale: configData.nai_cfg_rescale,
         },
         speech: {
+          speech_design_endpoint_id: configData.speech_design_endpoint_id,
+          speech_clone_endpoint_id: configData.speech_clone_endpoint_id,
           voice_transcript_chat_mode: configData.voice_transcript_chat_mode,
           chatterbox_turbo_enabled: configData.chatterbox_turbo_enabled,
           chatterbox_cfg_weight: configData.chatterbox_cfg_weight,

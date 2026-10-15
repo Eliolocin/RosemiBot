@@ -85,7 +85,7 @@ function buildInput(options: {
   locale?: string;
 }): VoiceMessageModalInput {
   const candidates = resolveVoiceSourceCandidates({
-    endpoint: options.endpoint,
+    targets: { design: options.endpoint, clone: options.endpoint },
     persona: options.persona,
     personaSampleName: "millie.wav",
     uploadFilename: options.uploadFilename ?? null,
@@ -196,7 +196,7 @@ describe("buildVoiceMessageModalComponents", () => {
     expect(
       selectDefaultVoiceSource(
         resolveVoiceSourceCandidates({
-          endpoint: CHATTERBOX_AUTO,
+          targets: { design: CHATTERBOX_AUTO, clone: CHATTERBOX_AUTO },
           persona: PERSONA_WITH_BOTH,
           typedDesignPrompt: "Very happy and kind",
         }),
@@ -257,12 +257,12 @@ describe("buildVoiceMessageModalComponents radio options", () => {
     expect(sourceField.options.map((option) => option.value)).toEqual([
       "upload",
       "typed-design",
-      "persona-sample",
       "persona-design",
+      "persona-sample",
     ]);
     expect(sourceField.options.map((option) => option.default)).toEqual([true, false, false, false]);
     expect(sourceField.options[0]?.description).toBe("Clone | mesu.wav");
-    expect(sourceField.options[2]?.description).toBe("Clone | millie.wav");
+    expect(sourceField.options[3]?.description).toBe("Clone | millie.wav");
     expect(sourceField.options[1]?.description?.startsWith("Design | ")).toBe(true);
   });
 

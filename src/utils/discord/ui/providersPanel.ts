@@ -850,6 +850,31 @@ function buildCapabilitySection(
   routeNamespace: ProvidersRouteNamespace,
 ): string {
   const label = localizer(locale, `commands.providers.capabilities.${section.capability}`);
+  if (section.capability === "speech") {
+    return (["design", "clone"] as const)
+      .map((mode) => {
+        const eligible = section.models.filter(
+          (model) =>
+            model.speechSettings &&
+            (model.speechSettings.voiceMode === "auto" ||
+              model.speechSettings.voiceMode === (mode === "design" ? "voice-design" : "clone")),
+        );
+        return [
+          `**${localizer(locale, `commands.config.panel.capability_tts_${mode}`)}**`,
+          ...eligible.map((model) =>
+            buildModelLine(
+              locale,
+              {
+                ...model,
+                isWorkspaceActive: model.speechActiveModes?.includes(mode) ?? false,
+              },
+              routeNamespace,
+            ),
+          ),
+        ].join("\n");
+      })
+      .join("\n\n");
+  }
   return [
     `**${label}**`,
     localizer(locale, "commands.providers.capability_models_explanation"),

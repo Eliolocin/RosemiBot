@@ -19,6 +19,7 @@ import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCacheStore"
 import { sql } from "@/utils/db/client";
 import { log } from "@/utils/misc/logger";
 import { deleteStoredVoiceSample } from "@/utils/storage/voiceSampleStorage";
+import { supportsSpeechMode, type VoiceSourceMode } from "@/utils/speech/voiceSourceCapabilities";
 import type {} from "./IRepository";
 
 /**
@@ -30,15 +31,9 @@ export type EndpointCredentialRow = {
   key_version: number;
 };
 
-/**
- * Find the active (is_default) custom endpoint for a speech/transcription capability.
- *
- * @param capability - "speech" or "transcription"
- * @returns Parsed CustomEndpointRow or null if none registered
- */
 export async function loadActiveEndpoint(
   serverId: number,
-  capability: "speech" | "transcription",
+  capability: "transcription" | VoiceSourceMode,
 ): Promise<CustomEndpointRow | null> {
   try {
     const rows = await sql`
@@ -68,10 +63,15 @@ export async function loadActiveEndpoint(
         ce.updated_at
       FROM custom_endpoints ce
       JOIN custom_endpoint_connections cec ON ce.connection_id = cec.connection_id
+      LEFT JOIN server_speech_configs ssc ON ssc.server_id = cec.server_id
       WHERE cec.server_id = ${serverId}
-        AND cec.capability = ${capability}
+        AND cec.capability = ${capability === "transcription" ? "transcription" : "speech"}
         AND cec.user_id IS NULL
-        AND ce.is_default = true
+        AND (
+          (${capability} = 'transcription' AND ce.is_default = true)
+          OR (${capability} = 'design' AND ce.custom_endpoint_id = ssc.speech_design_endpoint_id)
+          OR (${capability} = 'clone' AND ce.custom_endpoint_id = ssc.speech_clone_endpoint_id)
+        )
       ORDER BY ce.updated_at DESC, ce.custom_endpoint_id DESC
       LIMIT 1
     `;
@@ -88,6 +88,53 @@ export async function loadActiveEndpoint(
   } catch (error) {
     log.error(`SpeechRepository.loadActiveEndpoint: failed for server ${serverId}`, error);
     return null;
+  }
+}
+
+export async function setSpeechEndpointSelection(
+  serverId: number,
+  endpointId: number | null,
+  mode?: VoiceSourceMode,
+): Promise<boolean> {
+  try {
+    const changed = await sql.begin(async (tx) => {
+      const [server] = await tx`SELECT server_disc_id FROM servers WHERE server_id = ${serverId} FOR UPDATE`;
+      if (!server) return null;
+      let design = mode === "design";
+      let clone = mode === "clone";
+      if (endpointId !== null) {
+        const [row] = await tx`
+          SELECT cec.api_style, ce.extra_config
+          FROM custom_endpoints ce
+          JOIN custom_endpoint_connections cec USING (connection_id)
+          WHERE ce.custom_endpoint_id = ${endpointId}
+            AND cec.server_id = ${serverId} AND cec.user_id IS NULL AND cec.capability = 'speech'
+          FOR UPDATE OF ce, cec
+        `;
+        const parsed = customEndpointSchema.pick({ api_style: true, extra_config: true }).safeParse(row);
+        if (!parsed.success || (mode && !supportsSpeechMode(parsed.data, mode))) return null;
+        design = supportsSpeechMode(parsed.data, "design");
+        clone = supportsSpeechMode(parsed.data, "clone");
+        if (!design && !clone) return null;
+      } else if (!mode) {
+        return null;
+      }
+      await tx`
+        INSERT INTO server_speech_configs (server_id) VALUES (${serverId}) ON CONFLICT DO NOTHING
+      `;
+      await tx`
+        UPDATE server_speech_configs
+        SET speech_design_endpoint_id = CASE WHEN ${design} THEN ${endpointId} ELSE speech_design_endpoint_id END,
+            speech_clone_endpoint_id = CASE WHEN ${clone} THEN ${endpointId} ELSE speech_clone_endpoint_id END
+        WHERE server_id = ${serverId}
+      `;
+      return server.server_disc_id as string;
+    });
+    if (changed) invalidateTomoriStateCache(changed);
+    return changed !== null;
+  } catch (error) {
+    log.error("SpeechRepository.setSpeechEndpointSelection failed", error, { serverId });
+    return false;
   }
 }
 

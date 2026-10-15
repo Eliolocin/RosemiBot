@@ -286,14 +286,23 @@ export function computeConditioningRemoveFingerprint(
  * `tts` and `stt` are endpoint activations, not model-column assignments, so they are recognized by
  * the route codec without becoming model picker slots.
  */
-export type ConfigModelCapability = "text" | "vision" | "embedding" | "image" | "nai-image" | "video" | "tts" | "stt";
+export type ConfigModelCapability =
+  | "text"
+  | "vision"
+  | "embedding"
+  | "image"
+  | "nai-image"
+  | "video"
+  | "tts-design"
+  | "tts-clone"
+  | "stt";
 
-export type ConfigCatalogModelCapability = Exclude<ConfigModelCapability, "tts" | "stt">;
+export type ConfigCatalogModelCapability = Exclude<ConfigModelCapability, "tts-design" | "tts-clone" | "stt">;
 
 export function isConfigCatalogModelCapability(
   capability: ConfigModelCapability,
 ): capability is ConfigCatalogModelCapability {
-  return capability !== "tts" && capability !== "stt";
+  return capability !== "tts-design" && capability !== "tts-clone" && capability !== "stt";
 }
 
 export const CONFIG_MODEL_CAPABILITY_ORDER: readonly ConfigModelCapability[] = [
@@ -303,7 +312,8 @@ export const CONFIG_MODEL_CAPABILITY_ORDER: readonly ConfigModelCapability[] = [
   "image",
   "nai-image",
   "video",
-  "tts",
+  "tts-design",
+  "tts-clone",
   "stt",
 ];
 
@@ -346,6 +356,11 @@ export const CONFIG_MODEL_PROVIDER_DIRECT_LIMIT = 25;
 
 /** Endpoint entries share Discord's 25-option ceiling with one navigation entry when paged. */
 export const CONFIG_ENDPOINT_PAGE_SIZE = 25;
+
+export function configEndpointWindowSize(capability: "tts-design" | "tts-clone" | "stt", count: number): number {
+  const size = CONFIG_ENDPOINT_PAGE_SIZE - (capability === "stt" ? 0 : 1);
+  return count > size ? size - 1 : size;
+}
 
 /**
  * The fallback modal reserves one option for its clear entry, so a provider page holds 24 models.
@@ -406,6 +421,7 @@ export type ConfigPanelRoute =
   | { action: "voice-select"; locale: string; personaId: number }
   | { action: "voice-page"; locale: string; personaId: number; start: number }
   | { action: "voice-chooser-cancel"; locale: string; personaId: number }
+  | { action: "voice-priority-design" | "voice-priority-clone"; locale: string; personaId: number }
   | { action: "voice-clear"; locale: string; personaId: number }
   | { action: "voice-design-open"; locale: string; personaId: number }
   | { action: "voice-design-submit"; locale: string; personaId: number; nonce: string }
@@ -917,6 +933,8 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "voice-select": { wireToken: "voice-select", fields: [personaIdField] },
   "voice-page": { wireToken: "voice-page", fields: [personaIdField, startField] },
   "voice-chooser-cancel": { wireToken: "voice-choose-cancel", fields: [personaIdField] },
+  "voice-priority-design": { wireToken: "voice-priority-design", fields: [personaIdField] },
+  "voice-priority-clone": { wireToken: "voice-priority-clone", fields: [personaIdField] },
   "voice-clear": { wireToken: "voice-clear", fields: [personaIdField] },
   "voice-design-open": { wireToken: "voice-design-open", fields: [personaIdField] },
   "voice-design-submit": { wireToken: "voice-design-sub", fields: [personaIdField, nonceField] },

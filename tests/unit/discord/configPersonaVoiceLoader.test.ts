@@ -50,7 +50,7 @@ function state(): TomoriState {
 }
 
 describe("Persona > Voice speech capability loading", () => {
-  it("keeps a clone endpoint assignable and designable only with instruct support", async () => {
+  it("keeps a clone endpoint assignable and allows Design authoring independently of instruct support", async () => {
     const supported = await resolveActiveSpeechCapability(
       42,
       resolverDependencies(endpoint("tts-clone", { supports_instruct: true })),
@@ -61,13 +61,13 @@ describe("Persona > Voice speech capability loading", () => {
     );
 
     expect(supported).toEqual({ apiStyle: "tts-clone", assignable: true, supportsVoiceDesign: true });
-    expect(unsupported).toEqual({ apiStyle: "tts-clone", assignable: true, supportsVoiceDesign: false });
+    expect(unsupported).toEqual({ apiStyle: "tts-clone", assignable: true, supportsVoiceDesign: true });
   });
 
   it("reports an ElevenLabs endpoint as assignable without loading credentials", async () => {
     const result = await resolveActiveSpeechCapability(42, resolverDependencies(endpoint("elevenlabs")));
 
-    expect(result).toEqual({ apiStyle: "elevenlabs", assignable: true, supportsVoiceDesign: false });
+    expect(result).toEqual({ apiStyle: "elevenlabs", assignable: true, supportsVoiceDesign: true });
     expect(result).not.toHaveProperty("endpoint_url");
     expect(result).not.toHaveProperty("connection_id");
     expect(result).not.toHaveProperty("apiKey");
@@ -87,14 +87,14 @@ describe("Persona > Voice speech capability loading", () => {
       },
     });
 
-    expect(result).toEqual({ apiStyle: "elevenlabs", assignable: true, supportsVoiceDesign: false });
+    expect(result).toEqual({ apiStyle: "elevenlabs", assignable: true, supportsVoiceDesign: true });
     expect(calls).toEqual([{ serverId: 42, serviceName: ELEVENLABS_SERVICE_NAME }]);
   });
 
   it("reports missing endpoint and key as unavailable", async () => {
     const result = await resolveActiveSpeechCapability(42, resolverDependencies(null));
 
-    expect(result).toEqual({ apiStyle: null, assignable: false, supportsVoiceDesign: false });
+    expect(result).toEqual({ apiStyle: null, assignable: false, supportsVoiceDesign: true });
   });
 
   it("treats a rejecting endpoint dependency as unavailable without falling back", async () => {
@@ -109,7 +109,7 @@ describe("Persona > Voice speech capability loading", () => {
       },
     });
 
-    expect(result).toEqual({ apiStyle: null, assignable: false, supportsVoiceDesign: false });
+    expect(result).toEqual({ apiStyle: null, assignable: false, supportsVoiceDesign: true });
     expect(legacyProbeCalled).toBe(false);
   });
 
@@ -134,7 +134,9 @@ describe("Persona > Voice speech capability loading", () => {
 
     const cloneView = await loadConfigPersonaVoiceView(state(), dependencies);
     expect(cloneView).toEqual({
-      capability: { apiStyle: "tts-clone", assignable: true, supportsVoiceDesign: false },
+      effectiveSource: null,
+      effectiveTarget: null,
+      capability: { apiStyle: "tts-clone", assignable: true, supportsVoiceDesign: true },
       samples: [{ sample_id: 5, name: "demo", ref_text: "Hello", duration_ms: 1200 }],
     });
     expect(cloneView).not.toHaveProperty("endpoint_url");

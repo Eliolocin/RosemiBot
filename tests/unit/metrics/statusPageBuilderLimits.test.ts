@@ -110,7 +110,7 @@ scopedMock.module("@/utils/quota/videoQuotaManager", () => ({
 }));
 scopedMock.module("@/utils/provider/speechEndpointResolver", () => ({
   ...realSpeechEndpointResolver,
-  resolveActiveSpeechEndpoint: async () => null,
+  resolveSpeechTargets: async () => ({ design: null, clone: null }),
   resolveActiveTranscriptionEndpoint: async () => null,
 }));
 scopedMock.module("@/utils/provider/customEndpointService", () => ({

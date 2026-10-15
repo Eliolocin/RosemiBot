@@ -682,6 +682,7 @@ export async function setActiveCustomEndpoint(params: {
   serverId: number;
   capability: "speech" | "transcription";
   customEndpointId: number;
+  mode?: "design" | "clone";
 }): Promise<boolean> {
   return await llmProviderRepo.setActiveCustomEndpoint(params);
 }

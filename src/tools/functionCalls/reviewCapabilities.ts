@@ -28,7 +28,10 @@ function buildToolAssemblyState(context: ToolContext): ToolStateForContext {
         context.tomoriState.speech_voice_id?.trim(),
     ),
     activePersonaVoiceDesignPrompt: context.tomoriState.speech_voice_design_prompt?.trim() || null,
-    activePersonaVoiceName: context.tomoriState.speech_voice_name,
+    activePersonaVoiceSampleId: context.tomoriState.speech_voice_sample_id,
+    activePersonaVoiceId: context.tomoriState.speech_voice_id,
+    activePersonaVoiceSourcePriority: context.tomoriState.voice_source_priority,
+
     diffusion_model_id: config.diffusion_model_id,
     nai_diffusion_model_id: config.nai_diffusion_model_id,
     video_model_id: config.video_model_id,

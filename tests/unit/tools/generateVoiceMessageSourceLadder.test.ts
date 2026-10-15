@@ -1,3 +1,5 @@
+import * as realCrypto from "@/utils/security/crypto";
+import { createPersona } from "../../helpers/fixtures";
 /**
  * The tool's source-selection ladder.
  *
@@ -51,6 +53,7 @@ const synthesizeMock = mock(async (request: { source: ResolvedVoiceSource; abort
 });
 
 const scopedMock = createScopedModuleMocker(mock, {
+  "@/utils/security/crypto": realCrypto,
   "@/utils/provider/speechEndpointResolver": realSpeechEndpointResolver,
   "@/utils/speech/voiceMessageSynthesis": realVoiceMessageSynthesis,
   "@/utils/discord/webhook/voiceMessageDelivery": realVoiceMessageDelivery,
@@ -59,8 +62,13 @@ const scopedMock = createScopedModuleMocker(mock, {
 
 scopedMock.module("@/utils/provider/speechEndpointResolver", () => ({
   ...realSpeechEndpointResolver,
-  resolveActiveSpeechEndpoint: endpointResolverMock,
+  resolveSpeechTargets: async () => {
+    const target = await endpointResolverMock();
+    return { design: target, clone: target };
+  },
 }));
+
+scopedMock.module("@/utils/security/crypto", () => ({ ...realCrypto, getOptApiKey: async () => "legacy-key" }));
 
 scopedMock.module("@/utils/speech/voiceMessageSynthesis", () => ({
   ...realVoiceMessageSynthesis,
@@ -105,17 +113,13 @@ interface PersonaVoiceFields {
   speech_voice_design_prompt?: string | null;
   speech_voice_id?: string | null;
   speech_voice_name?: string | null;
+  voice_source_priority?: "design" | "clone";
 }
 
 function makeContext(fields: PersonaVoiceFields): ToolContext {
   return {
     channel: {},
-    tomoriState: {
-      server_id: "1",
-      persona_lineage_id: 1,
-      config: {},
-      ...fields,
-    },
+    tomoriState: createPersona(fields),
   } as unknown as ToolContext;
 }
 
@@ -174,11 +178,11 @@ describe("GenerateVoiceMessageTool source ladder", () => {
     expect(source).toEqual({ kind: "clone", voiceSampleId: 12 });
   });
 
-  it("uses the sample on an auto endpoint when the persona is not the VoiceDesign sentinel", async () => {
+  it("uses Clone priority even when both sources exist", async () => {
     // A design prompt is present too, but the sentinel is what selects the design branch. Without
     // it the sample must stay in play.
     const { source, error } = await runTool(
-      { ...SAMPLE, ...DESIGN_PROMPT, speech_voice_name: "Millie" },
+      { ...SAMPLE, ...DESIGN_PROMPT, speech_voice_name: "VoiceDesign", voice_source_priority: "clone" },
       makeEndpoint("auto"),
     );
 
@@ -186,7 +190,7 @@ describe("GenerateVoiceMessageTool source ladder", () => {
     expect(source).toEqual({ kind: "clone", voiceSampleId: 12 });
   });
 
-  it("uses the design prompt on an auto endpoint when the persona is the VoiceDesign sentinel", async () => {
+  it("uses Design priority independently of the voice name", async () => {
     const { source, error } = await runTool(
       { ...SAMPLE, ...DESIGN_PROMPT, speech_voice_name: "VoiceDesign" },
       makeEndpoint("auto"),
@@ -217,63 +221,46 @@ describe("GenerateVoiceMessageTool source ladder", () => {
     expect(source).toEqual({ kind: "elevenlabs", voiceId: "voice-abc" });
   });
 
-  it("falls past a design prompt to the sample on an auto endpoint without the sentinel", async () => {
+  it("uses the Design default when both sources exist", async () => {
     const { source, error } = await runTool(
       { ...SAMPLE, ...DESIGN_PROMPT, speech_voice_name: "Millie" },
       makeEndpoint("auto"),
     );
 
     expect(error).toBeNull();
-    expect(source).toEqual({ kind: "clone", voiceSampleId: 12 });
+    expect(source).toEqual({ kind: "design", designPrompt: "Warm and unhurried" });
   });
 });
 
 describe("GenerateVoiceMessageTool refusals", () => {
-  it("reports no voice configured when the persona has no voice fields at all", async () => {
-    const { source, error } = await runTool({}, makeEndpoint("clone"));
-
-    expect(source).toBeNull();
-    expect(error).toContain("No voice is configured");
+  it("does not synthesize when no saved source matches its selected target", async () => {
+    for (const [fields, endpoint] of [
+      [{}, makeEndpoint("clone")],
+      [DESIGN_PROMPT, makeEndpoint("clone")],
+      [SAMPLE, makeEndpoint("voice-design")],
+      [SAMPLE, ELEVENLABS_ENDPOINT],
+      [SAMPLE, null],
+    ] as const) {
+      const { source, error } = await runTool(fields, endpoint);
+      expect(source).toBeNull();
+      expect(Boolean(error)).toBe(true);
+    }
   });
-
-  it("names the design-endpoint mismatch when design is the persona's only configuration", async () => {
-    const { source, error } = await runTool(DESIGN_PROMPT, makeEndpoint("clone"));
-
-    expect(source).toBeNull();
-    expect(error).toContain("does not support instruct-based voice design");
-  });
-
-  it("names the VoiceDesign sentinel on an auto endpoint without it", async () => {
-    // The endpoint does accept `instruct`, so the design-endpoint message would be a lie, and the
-    // shape-mismatch message would send the manager to swap an endpoint that is already right.
-    // The sentinel is the entry condition that is actually missing, so the message has to say so.
-    const { source, error } = await runTool({ ...DESIGN_PROMPT, speech_voice_name: "Millie" }, makeEndpoint("auto"));
-
-    expect(source).toBeNull();
-    expect(error).toContain("VoiceDesign");
-    expect(error).not.toContain("does not support instruct");
-    expect(error).not.toContain("cannot be used with the active speech endpoint");
-  });
-
-  it("reports a shape mismatch when the endpoint takes only design bodies and the persona has only a sample", async () => {
-    const { source, error } = await runTool(SAMPLE, makeEndpoint("voice-design"));
-
-    expect(source).toBeNull();
-    expect(error).toContain("cannot be used with the active speech endpoint");
-  });
-
-  it("reports a shape mismatch rather than a missing voice when the persona has a sample only", async () => {
-    const { source, error } = await runTool(SAMPLE, ELEVENLABS_ENDPOINT);
-
-    expect(source).toBeNull();
-    expect(error).toContain("cannot be used with the active speech endpoint");
-  });
-
-  it("reports a shape mismatch when no endpoint is registered and the persona has only a sample", async () => {
-    const { source, error } = await runTool(SAMPLE, null);
-
-    expect(source).toBeNull();
-    expect(error).toContain("cannot be used with the active speech endpoint");
+  it("never retries the other slot after synthesis failure", async () => {
+    synthesizeMock.mockImplementationOnce(async (request) => {
+      dispatchedSources.push(request.source);
+      return {
+        success: false,
+        backendKey: "tts-clone" as const,
+        audioBuffer: Buffer.alloc(0),
+        contentType: "audio/wav",
+        extension: "wav",
+        cleanedCaptionText: "",
+      };
+    });
+    const { error } = await runTool({ ...SAMPLE, ...DESIGN_PROMPT }, makeEndpoint("auto"));
+    expect(Boolean(error)).toBe(true);
+    expect(dispatchedSources).toEqual([{ kind: "design", designPrompt: DESIGN_PROMPT.speech_voice_design_prompt }]);
   });
 });
 

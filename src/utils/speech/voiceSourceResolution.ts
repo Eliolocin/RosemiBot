@@ -28,6 +28,7 @@ export interface VoiceSourceCandidate {
   sampleId?: number;
   /** Design prompt text, present for `persona-design` and `typed-design`. */
   designPrompt?: string;
+  voiceId?: string;
   /**
    * What the source points at, for the option description: the upload's filename or the assigned
    * sample's name. Absent for design sources, which describe themselves with the prompt.
@@ -40,10 +41,12 @@ export interface VoiceSourcePersona {
   speech_voice_sample_id?: number | null;
   speech_voice_design_prompt?: string | null;
   speech_voice_id?: string | null;
+  voice_source_priority?: "design" | "clone";
 }
 
 export interface VoiceSourceResolutionInput {
-  endpoint: CustomEndpointRow | null | undefined;
+  targets: { design: CustomEndpointRow | null; clone: CustomEndpointRow | null };
+  legacyElevenLabsAvailable?: boolean;
   persona: VoiceSourcePersona;
   /** Display name of the persona's assigned sample, shown in the radio option. */
   personaSampleName?: string | null;
@@ -64,16 +67,10 @@ export function formatVoiceSourceOptionDescription(modePrefix: string, text: str
   return `${fullPrefix}${safeSelectOptionText(text, VOICE_SOURCE_OPTION_TEXT_LIMIT - fullPrefix.length)}`;
 }
 
-/**
- * Enumerates the voice sources this invocation can use, in pre-selection order.
- *
- * User intent expressed on this invocation outranks stored persona configuration, and between the
- * two user-supplied sources the uploaded clip wins because clone output is the more deterministic
- * of the two.
- */
 export function resolveVoiceSourceCandidates(input: VoiceSourceResolutionInput): VoiceSourceCandidate[] {
-  const { endpoint, persona } = input;
-  const { acceptsCloneShape, acceptsDesignShape } = resolveVoiceSourceCapabilities(endpoint);
+  const { targets, persona } = input;
+  const { acceptsCloneShape } = resolveVoiceSourceCapabilities(targets.clone);
+  const { acceptsDesignShape } = resolveVoiceSourceCapabilities(targets.design);
   const candidates: VoiceSourceCandidate[] = [];
 
   const uploadFilename = input.uploadFilename?.trim() ?? "";
@@ -86,9 +83,10 @@ export function resolveVoiceSourceCandidates(input: VoiceSourceResolutionInput):
     candidates.push({ id: "typed-design", shape: "design", designPrompt: typedDesignPrompt });
   }
 
+  const stored: VoiceSourceCandidate[] = [];
   const personaSampleId = persona.speech_voice_sample_id ?? null;
   if (personaSampleId && acceptsCloneShape) {
-    candidates.push({
+    stored.push({
       id: "persona-sample",
       shape: "clone",
       sampleId: personaSampleId,
@@ -98,15 +96,23 @@ export function resolveVoiceSourceCandidates(input: VoiceSourceResolutionInput):
 
   const personaDesignPrompt = persona.speech_voice_design_prompt?.trim() ?? "";
   if (personaDesignPrompt && acceptsDesignShape) {
-    candidates.push({ id: "persona-design", shape: "design", designPrompt: personaDesignPrompt });
+    stored.push({ id: "persona-design", shape: "design", designPrompt: personaDesignPrompt });
   }
 
-  // ElevenLabs is the degenerate case: it accepts neither shape, so the stored voice id is the
-  // whole candidate list. It is only reachable when the persona actually has one.
   const elevenLabsVoiceId = persona.speech_voice_id?.trim() ?? "";
-  if (elevenLabsVoiceId && candidates.length === 0) {
-    candidates.push({ id: "elevenlabs", shape: "elevenlabs" });
+  if (
+    elevenLabsVoiceId &&
+    (targets.clone?.api_style === "elevenlabs" || (!targets.clone && input.legacyElevenLabsAvailable))
+  ) {
+    stored.push({ id: "elevenlabs", shape: "elevenlabs", voiceId: elevenLabsVoiceId });
   }
+  const priority = persona.voice_source_priority ?? "design";
+  stored.sort(
+    (left, right) =>
+      Number((left.shape === "design" ? "design" : "clone") !== priority) -
+      Number((right.shape === "design" ? "design" : "clone") !== priority),
+  );
+  candidates.push(...stored);
 
   return candidates;
 }

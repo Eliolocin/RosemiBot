@@ -338,7 +338,10 @@ async function fetchProviderTools(
       persona.speech_voice_sample_id || persona.speech_voice_design_prompt?.trim() || persona.speech_voice_id?.trim(),
     ),
     activePersonaVoiceDesignPrompt: persona.speech_voice_design_prompt?.trim() || null,
-    activePersonaVoiceName: persona.speech_voice_name,
+    activePersonaVoiceSampleId: persona.speech_voice_sample_id,
+    activePersonaVoiceId: persona.speech_voice_id,
+    activePersonaVoiceSourcePriority: persona.voice_source_priority,
+
     llm: {
       llm_codename: activeLlm.llm_codename,
       has_tools: activeLlm.has_tools,

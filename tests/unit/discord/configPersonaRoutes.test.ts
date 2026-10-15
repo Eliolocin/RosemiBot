@@ -582,7 +582,10 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     { action: "refresh", locale: "en-US", category: "persona", page: "general" },
   ],
   ["config:v2:model-prov-select:en-US:text", { action: "model-provider-select", locale: "en-US", capability: "text" }],
-  ["config:v2:ep-select:en-US:tts", { action: "endpoint-select", locale: "en-US", capability: "tts" }],
+  ["config:v2:ep-select:en-US:tts-clone", { action: "endpoint-select", locale: "en-US", capability: "tts-clone" }],
+  ["config:v2:ep-select:en-US:tts-design", { action: "endpoint-select", locale: "en-US", capability: "tts-design" }],
+  ["config:v2:voice-priority-design:en-US:55", { action: "voice-priority-design", locale: "en-US", personaId: 55 }],
+  ["config:v2:voice-priority-clone:en-US:55", { action: "voice-priority-clone", locale: "en-US", personaId: 55 }],
   ["config:v2:ep-select:en-US:stt", { action: "endpoint-select", locale: "en-US", capability: "stt" }],
   [
     "config:v2:model-modal:en-US:video:custom~12:nonce1234567",

@@ -61,6 +61,7 @@ type PersonaVoiceConfigsRow = {
   speech_voice_id: string | null;
   speech_voice_name: string | null;
   speech_voice_design_prompt: string | null;
+  voice_source_priority: "design" | "clone";
 };
 
 /** Row shape for persona_imagegen_configs (Phase 6). */
@@ -1692,7 +1693,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
     try {
       const [row] = await sql`
         SELECT persona_id, speech_voice_sample_id, speech_voice_id, speech_voice_name,
-               speech_voice_design_prompt
+               speech_voice_design_prompt, voice_source_priority
         FROM persona_voice_configs WHERE persona_id = ${personaId}
       `;
       return row ? (row as unknown as PersonaVoiceConfigsRow) : null;
@@ -1743,16 +1744,17 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
     await sql`
       INSERT INTO persona_voice_configs (
         persona_id, speech_voice_sample_id, speech_voice_id, speech_voice_name,
-        speech_voice_design_prompt
+        speech_voice_design_prompt, voice_source_priority
       ) VALUES (
         ${row.persona_id}, ${row.speech_voice_sample_id}, ${row.speech_voice_id},
-        ${row.speech_voice_name}, ${row.speech_voice_design_prompt}
+        ${row.speech_voice_name}, ${row.speech_voice_design_prompt}, ${row.voice_source_priority}
       )
       ON CONFLICT (persona_id) DO UPDATE SET
         speech_voice_sample_id    = EXCLUDED.speech_voice_sample_id,
         speech_voice_id           = EXCLUDED.speech_voice_id,
         speech_voice_name         = EXCLUDED.speech_voice_name,
         speech_voice_design_prompt = EXCLUDED.speech_voice_design_prompt,
+        voice_source_priority = EXCLUDED.voice_source_priority,
         updated_at                = NOW()
     `;
   }
@@ -1926,6 +1928,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         snsfw.uncensor_injection_enabled, snsfw.uncensor_unicode_space_enabled,
         snsfw.uncensor_sanitize_enabled,
         -- 7. server_speech_configs
+        sspeech.speech_design_endpoint_id, sspeech.speech_clone_endpoint_id,
         sspeech.voice_transcript_chat_mode, sspeech.chatterbox_turbo_enabled,
         sspeech.chatterbox_cfg_weight, sspeech.chatterbox_exaggeration,
         -- 8. server_auto_trigger_configs (persona overrides aggregated from junction table)
@@ -2037,6 +2040,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         snsfw.uncensor_injection_enabled, snsfw.uncensor_unicode_space_enabled,
         snsfw.uncensor_sanitize_enabled,
         -- 7. server_speech_configs
+        sspeech.speech_design_endpoint_id, sspeech.speech_clone_endpoint_id,
         sspeech.voice_transcript_chat_mode, sspeech.chatterbox_turbo_enabled,
         sspeech.chatterbox_cfg_weight, sspeech.chatterbox_exaggeration,
         -- 8. server_auto_trigger_configs (persona overrides aggregated from junction table)
@@ -2417,6 +2421,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
       speech_voice_id: (row.split_speech_voice_id as string | null | undefined) ?? null,
       speech_voice_name: (row.split_speech_voice_name as string | null | undefined) ?? null,
       speech_voice_design_prompt: (row.split_speech_voice_design_prompt as string | null | undefined) ?? null,
+      voice_source_priority: (row.split_voice_source_priority as "design" | "clone" | undefined) ?? "design",
       physical_appearance_tags: Array.isArray(row.split_physical_appearance_tags)
         ? (row.split_physical_appearance_tags as string[])
         : [],
@@ -2441,6 +2446,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
           pvc.speech_voice_id AS split_speech_voice_id,
           pvc.speech_voice_name AS split_speech_voice_name,
           pvc.speech_voice_design_prompt AS split_speech_voice_design_prompt,
+          pvc.voice_source_priority AS split_voice_source_priority,
           pic.physical_appearance_tags AS split_physical_appearance_tags,
           pic.nai_char_ref_url AS split_nai_char_ref_url,
           ptc.nai_attg_author AS split_nai_attg_author,
@@ -2757,6 +2763,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
               pvc.speech_voice_id AS split_speech_voice_id,
               pvc.speech_voice_name AS split_speech_voice_name,
               pvc.speech_voice_design_prompt AS split_speech_voice_design_prompt,
+          pvc.voice_source_priority AS split_voice_source_priority,
               pic.physical_appearance_tags AS split_physical_appearance_tags,
               pic.nai_char_ref_url AS split_nai_char_ref_url,
               ptc.nai_attg_author AS split_nai_attg_author,

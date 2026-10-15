@@ -251,7 +251,7 @@ export interface ConfigRouteDependencies {
     persona: TomoriState,
   ): Promise<ConfigPersonaMemoryView>;
   loadPersonaVoiceView(state: TomoriState): Promise<ConfigPersonaVoiceView>;
-  resolveActiveSpeechEndpoint(serverId: number): Promise<SpeechEndpointResult | null>;
+  resolveActiveSpeechEndpoint(serverId: number, mode: "design" | "clone"): Promise<SpeechEndpointResult | null>;
   fetchElevenLabsVoiceCatalog(apiKey: string): Promise<ElevenLabsVoiceCatalogResult>;
   setPersonaVoiceConfig(
     personaId: number,
@@ -260,6 +260,7 @@ export interface ConfigRouteDependencies {
       speech_voice_id: string | null;
       speech_voice_name: string | null;
       speech_voice_design_prompt: string | null;
+      voice_source_priority: "design" | "clone";
     },
   ): Promise<boolean>;
   invalidatePersonaVoiceCache(serverDiscId: string): void;

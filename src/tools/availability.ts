@@ -1,3 +1,4 @@
+import { resolveVoiceSourceCandidates } from "@/utils/speech/voiceSourceResolution";
 import { type BaseGuildTextChannel, ChannelType, type Client } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import type {
@@ -12,7 +13,7 @@ import { ELEVENLABS_SERVICE_NAME } from "@/utils/audio/elevenLabsAccount";
 import { sql } from "@/utils/db/client";
 import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
 import { log } from "@/utils/misc/logger";
-import { resolveActiveSpeechEndpoint } from "@/utils/provider/speechEndpointResolver";
+import { resolveSpeechTargets } from "@/utils/provider/speechEndpointResolver";
 import { hasOptApiKey } from "@/utils/security/crypto";
 import { getCachedTomoriState } from "@/utils/cache/tomoriStateCache";
 import { configToFeatureFlags } from "@/utils/tools/featureFlagMapper";
@@ -204,9 +205,19 @@ export async function getAvailableToolsWithMCP(
 
     const serverIdNumber = stateForContext.server_id ? Number.parseInt(stateForContext.server_id, 10) : undefined;
     if (serverIdNumber) {
-      const activeSpeechEndpoint = await resolveActiveSpeechEndpoint(serverIdNumber);
+      const targets = await resolveSpeechTargets(serverIdNumber);
       const hasElevenLabsOptKey = await hasOptApiKey(serverIdNumber, ELEVENLABS_SERVICE_NAME);
-      const hasSpeechProvider = Boolean(activeSpeechEndpoint) || hasElevenLabsOptKey;
+      const hasSpeechProvider =
+        resolveVoiceSourceCandidates({
+          targets: { design: targets.design?.endpoint ?? null, clone: targets.clone?.endpoint ?? null },
+          legacyElevenLabsAvailable: !targets.clone && hasElevenLabsOptKey,
+          persona: {
+            speech_voice_sample_id: stateForContext.activePersonaVoiceSampleId,
+            speech_voice_id: stateForContext.activePersonaVoiceId,
+            speech_voice_design_prompt: stateForContext.activePersonaVoiceDesignPrompt,
+            voice_source_priority: stateForContext.activePersonaVoiceSourcePriority,
+          },
+        }).length > 0;
       // Read split-table model slots: diffusion_model_id/video_model_id live in
       //    server_model_configs; nai_diffusion_model_id lives in server_novelai_imagegen_configs.
       const [toolConfigRow] = await sql<

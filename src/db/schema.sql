@@ -2946,6 +2946,8 @@ CREATE TRIGGER update_server_nsfw_configs_timestamp
 
 CREATE TABLE IF NOT EXISTS server_speech_configs (
   server_id                  INT     PRIMARY KEY REFERENCES servers(server_id) ON DELETE CASCADE,
+  speech_design_endpoint_id INT REFERENCES custom_endpoints(custom_endpoint_id) ON DELETE SET NULL,
+  speech_clone_endpoint_id INT REFERENCES custom_endpoints(custom_endpoint_id) ON DELETE SET NULL,
   voice_transcript_chat_mode BOOLEAN NOT NULL DEFAULT true,
   chatterbox_turbo_enabled   BOOLEAN NOT NULL DEFAULT true,
   chatterbox_cfg_weight      REAL    NOT NULL DEFAULT 0.5,
@@ -2953,6 +2955,9 @@ CREATE TABLE IF NOT EXISTS server_speech_configs (
   created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+SELECT add_column_if_not_exists('server_speech_configs', 'speech_design_endpoint_id', 'INT REFERENCES custom_endpoints(custom_endpoint_id) ON DELETE SET NULL');
+SELECT add_column_if_not_exists('server_speech_configs', 'speech_clone_endpoint_id', 'INT REFERENCES custom_endpoints(custom_endpoint_id) ON DELETE SET NULL');
 
 DROP TRIGGER IF EXISTS update_server_speech_configs_timestamp ON server_speech_configs;
 CREATE TRIGGER update_server_speech_configs_timestamp
@@ -3067,9 +3072,12 @@ CREATE TABLE IF NOT EXISTS persona_voice_configs (
   speech_voice_id           TEXT,
   speech_voice_name         TEXT,
   speech_voice_design_prompt TEXT,
+  voice_source_priority TEXT NOT NULL DEFAULT 'design' CHECK (voice_source_priority IN ('design', 'clone')),
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+SELECT add_column_if_not_exists('persona_voice_configs', 'voice_source_priority', 'TEXT NOT NULL CHECK (voice_source_priority IN (''design'', ''clone''))', '''design''');
 
 DROP TRIGGER IF EXISTS update_persona_voice_configs_timestamp ON persona_voice_configs;
 CREATE TRIGGER update_persona_voice_configs_timestamp
@@ -3525,3 +3533,76 @@ CREATE TABLE IF NOT EXISTS command_catalog (
   first_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE OR REPLACE FUNCTION validate_speech_endpoint_selections() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.speech_design_endpoint_id IS NOT NULL
+    AND (TG_OP = 'INSERT' OR NEW.speech_design_endpoint_id IS DISTINCT FROM OLD.speech_design_endpoint_id) AND NOT EXISTS (
+    SELECT 1 FROM custom_endpoints ce JOIN custom_endpoint_connections cec USING (connection_id)
+    WHERE ce.custom_endpoint_id = NEW.speech_design_endpoint_id AND cec.server_id = NEW.server_id
+      AND cec.user_id IS NULL AND cec.capability = 'speech' AND cec.api_style = 'tts-clone'
+      AND ce.extra_config->>'voice_mode' IN ('voice-design', 'auto')
+  ) THEN RAISE EXCEPTION 'Invalid server Voice Design selection'; END IF;
+  IF NEW.speech_clone_endpoint_id IS NOT NULL
+    AND (TG_OP = 'INSERT' OR NEW.speech_clone_endpoint_id IS DISTINCT FROM OLD.speech_clone_endpoint_id) AND NOT EXISTS (
+    SELECT 1 FROM custom_endpoints ce JOIN custom_endpoint_connections cec USING (connection_id)
+    WHERE ce.custom_endpoint_id = NEW.speech_clone_endpoint_id AND cec.server_id = NEW.server_id
+      AND cec.user_id IS NULL AND cec.capability = 'speech'
+      AND (cec.api_style = 'elevenlabs' OR (cec.api_style = 'tts-clone'
+        AND COALESCE(ce.extra_config->>'voice_mode', 'clone') NOT IN ('voice-design')))
+  ) THEN RAISE EXCEPTION 'Invalid server Voice Clone selection'; END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DO $speech_selections$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'custom_endpoints' AND column_name = 'connection_id'
+  ) THEN
+DROP TRIGGER IF EXISTS validate_speech_endpoint_selections ON server_speech_configs;
+CREATE TRIGGER validate_speech_endpoint_selections
+  BEFORE INSERT OR UPDATE OF speech_design_endpoint_id, speech_clone_endpoint_id ON server_speech_configs
+  FOR EACH ROW EXECUTE FUNCTION validate_speech_endpoint_selections();
+  END IF;
+END $speech_selections$;
+
+CREATE OR REPLACE FUNCTION clear_unsupported_speech_selections() RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE server_speech_configs ssc SET
+    speech_design_endpoint_id = CASE WHEN EXISTS (
+      SELECT 1 FROM custom_endpoints ce JOIN custom_endpoint_connections cec USING (connection_id)
+      WHERE ce.custom_endpoint_id = ssc.speech_design_endpoint_id AND cec.server_id = ssc.server_id
+        AND cec.user_id IS NULL AND cec.capability = 'speech' AND cec.api_style = 'tts-clone'
+        AND ce.extra_config->>'voice_mode' IN ('voice-design', 'auto')
+    ) THEN speech_design_endpoint_id END,
+    speech_clone_endpoint_id = CASE WHEN EXISTS (
+      SELECT 1 FROM custom_endpoints ce JOIN custom_endpoint_connections cec USING (connection_id)
+      WHERE ce.custom_endpoint_id = ssc.speech_clone_endpoint_id AND cec.server_id = ssc.server_id
+        AND cec.user_id IS NULL AND cec.capability = 'speech'
+        AND (cec.api_style = 'elevenlabs' OR (cec.api_style = 'tts-clone'
+          AND COALESCE(ce.extra_config->>'voice_mode', 'clone') <> 'voice-design'))
+    ) THEN speech_clone_endpoint_id END
+  WHERE speech_design_endpoint_id IN (
+    SELECT custom_endpoint_id FROM custom_endpoints WHERE connection_id = NEW.connection_id
+  ) OR speech_clone_endpoint_id IN (
+    SELECT custom_endpoint_id FROM custom_endpoints WHERE connection_id = NEW.connection_id
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DO $speech_selections$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'custom_endpoints' AND column_name = 'connection_id'
+  ) THEN
+DROP TRIGGER IF EXISTS clear_unsupported_speech_selections ON custom_endpoints;
+CREATE TRIGGER clear_unsupported_speech_selections AFTER UPDATE OF extra_config, connection_id ON custom_endpoints
+  FOR EACH ROW EXECUTE FUNCTION clear_unsupported_speech_selections();
+DROP TRIGGER IF EXISTS clear_unsupported_speech_selections ON custom_endpoint_connections;
+CREATE TRIGGER clear_unsupported_speech_selections AFTER UPDATE OF api_style, capability, server_id, user_id ON custom_endpoint_connections
+  FOR EACH ROW EXECUTE FUNCTION clear_unsupported_speech_selections();
+
+  END IF;
+END $speech_selections$;

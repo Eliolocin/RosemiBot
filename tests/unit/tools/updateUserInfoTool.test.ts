@@ -265,7 +265,7 @@ describe("user info capability mapping", () => {
       server_id: "1",
       activePersonaHasElevenlabsVoice: false,
       activePersonaVoiceDesignPrompt: null,
-      activePersonaVoiceName: null,
+
       diffusion_model_id: null,
       nai_diffusion_model_id: null,
       video_model_id: null,

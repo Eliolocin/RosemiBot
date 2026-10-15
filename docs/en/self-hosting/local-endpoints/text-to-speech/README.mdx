@@ -39,7 +39,7 @@ TomoriBot treats speech as a custom endpoint capability. Local engines run outsi
 1. Pick one engine from the cards above and set up its wrapper from `servers/tts/`.
 2. In `/providers`, choose `Add New Custom Endpoint` and use API Compatibility `tts-clone`.
 3. Select the saved endpoint and use its model dropdown to add its Speech model, Voice Source Mode, and Script Markup.
-4. Open `/config` > Models > Switch Models and select the registered Speech model.
+4. Open `/config` > Models > Switch Models and select the endpoint under `TTS (Voice Design)` or `TTS (Voice Clone)`. Auto endpoints activate both selections; clearing one preserves the other.
 
 ## Network access
 {/* anchor: network-access */}
@@ -63,7 +63,7 @@ The 130-second upload ceiling is enforced by TomoriBot. Each engine applies its 
 
 The upload size limit and the duration ceiling are independent, and the size check runs first. Uncompressed WAV costs roughly 10 MB per minute as stereo 44.1 kHz, so a 130-second DAW export can be around 22 MB and be refused as too large while a compressed export of the same clip fits easily. `SPEECH_SAMPLE_MAX_MB` raises that size limit (10 MB by default). For a long reference clip, export it as FLAC, MP3, or OGG rather than WAV: TomoriBot converts any accepted format to mono WAV at 22.05 kHz before storing it, so the compressed upload costs nothing in quality.
 
-For Qwen3-TTS, MOSS-VoiceGenerator, IrodoriTTS, or VoxCPM2 VoiceDesign, skip the audio sample and use Persona > Voice in `/config` to save a natural-language voice description for the persona. CosyVoice 3 uses Clone mode with a reference sample and accepts one-off delivery direction through `voice_instructions`.
+For Qwen3-TTS, MOSS-VoiceGenerator, IrodoriTTS, or VoxCPM2 VoiceDesign, use Persona > Voice in `/config` to save a natural-language voice description. You can save it before choosing an endpoint and keep a reference sample alongside it. The persona's Voice Source priority chooses which usable source to use first. CosyVoice 3 uses Clone mode with a reference sample and accepts one-off delivery direction through `voice_instructions`.
 
 ElevenLabs users should choose `Add New Provider` and `ElevenLabs` in `/providers`; it registers the speech and transcription endpoints together.
 

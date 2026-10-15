@@ -56,7 +56,7 @@ import { DEFAULT_MESSAGE_FETCH_LIMIT } from "@/utils/discord/messageFetchLimit";
 import { withLinePrefix } from "@/utils/discord/ui/panel";
 import { getMemoryLimits } from "@/utils/misc/memoryLimits";
 import { initializeLocalizer, localizer } from "@/utils/text/localizer";
-import { collectCaseFailures, RUNTIME_LOCALES, localizedCopy } from "../../helpers/localeCases";
+import { collectCaseFailures, RUNTIME_LOCALES, localizedCopy, localizedProse } from "../../helpers/localeCases";
 import { BACKTICK_RUNS } from "../../helpers/panelLimits";
 import { createLlmRow, createPersona } from "../../helpers/fixtures";
 
@@ -326,13 +326,13 @@ function makeExplicitEightSlotView(
   speechCapabilityEnabled: boolean,
   speechActiveIndex: number,
 ): ConfigSwitchModelsView {
-  const makeEndpoints = (capability: "tts" | "stt"): ConfigCapabilityEndpoint[] =>
+  const makeEndpoints = (capability: "tts-clone" | "stt"): ConfigCapabilityEndpoint[] =>
     Array.from({ length: endpointCount }, (_unused, index) => ({
       id: index + 1,
-      capability: capability === "tts" ? "speech" : "transcription",
+      capability: capability === "tts-clone" ? "speech" : "transcription",
       label: `${capability}-endpoint-${index + 1}`,
       modelLabel: `${capability}-model-${index + 1}`,
-      apiStyle: capability === "tts" ? "tts-clone" : "openai-compatible-transcription",
+      apiStyle: capability === "tts-clone" ? "tts-clone" : "openai-compatible-transcription",
       isActive: index === speechActiveIndex,
     }));
 
@@ -351,7 +351,7 @@ function makeExplicitEightSlotView(
     videoGenerationEnabled,
     speechCapabilityEnabled,
     endpointSlots: [
-      { capability: "tts", endpoints: makeEndpoints("tts"), pageStart: 0 },
+      { capability: "tts-clone", endpoints: makeEndpoints("tts-clone"), pageStart: 0 },
       { capability: "stt", endpoints: makeEndpoints("stt"), pageStart: 0 },
     ],
   };
@@ -1353,7 +1353,7 @@ describe("Switch Models capability notice budgeting", () => {
       return typeof customId === "string" && customId.includes("ep-select");
     });
     expect(endpointMenus).toHaveLength(2);
-    for (const capability of ["tts", "stt"] as const) {
+    for (const capability of ["tts-clone", "stt"] as const) {
       const menu = endpointMenus.find((candidate) => {
         const customId = candidate.customId;
         return typeof customId === "string" && customId.includes(capability);
@@ -1361,7 +1361,9 @@ describe("Switch Models capability notice budgeting", () => {
       expect(menu).toBeDefined();
       const placeholder = menu?.placeholder;
       expect(typeof placeholder).toBe("string");
-      expect(placeholder).toContain(localizer("en-US", `commands.config.panel.capability_${capability}`));
+      expect(placeholder).toContain(
+        localizer("en-US", `commands.config.panel.capability_${capability.replaceAll("-", "_")}`),
+      );
       expect(placeholder).toContain(`${capability}-endpoint-1: ${capability}-model-1`);
       const options = menu?.options;
       expect(Array.isArray(options)).toBe(true);
@@ -1632,7 +1634,7 @@ describe("Persona Voice page text and component budgeting", () => {
     const validation = validateComponentsV2MessageLimits(payload);
     expect(validation.valid, `Violations: ${JSON.stringify(validation.violations)}`).toBe(true);
     const componentCount = countRenderedComponents(payload);
-    expect(componentCount).toBeLessThanOrEqual(30);
+    expect(componentCount).toBeLessThanOrEqual(36);
     if (expectedComponents !== undefined) expect(componentCount).toBe(expectedComponents);
     expect(getPayloadTextTotal(payload)).toBeLessThanOrEqual(DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX);
   };
@@ -1648,7 +1650,7 @@ describe("Persona Voice page text and component budgeting", () => {
   ];
 
   const expectedLocalMaximum = (receipt: boolean, avatarPresent: boolean): number =>
-    26 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0);
+    31 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0);
 
   const makePrompt = (length: number, runLength: number): string => {
     const seed = `${"`".repeat(runLength)} 🌸✨ warm, unhurried voice. `;
@@ -1696,8 +1698,10 @@ describe("Persona Voice page text and component budgeting", () => {
           personas: maximumPersonaSet(prompt),
           selectedPersonaAvatarUrl: "https://cdn.example/avatar.png",
         });
-        assertValid(payload, 30);
-        const promptDisplay = getTextDisplays(payload).find((text) => text.includes("Stored VoiceDesign prompt"));
+        assertValid(payload, 35);
+        const promptDisplay = getTextDisplays(payload).find((text) =>
+          text.includes(localizedCopy("en-US", "commands.config.panel.voice_page_design_preview_title")),
+        );
         expect(promptDisplay).toBeDefined();
         const inner = promptDisplay?.replace(/^[\s\S]*```markdown\n/, "").replace(/\n```[\s\S]*$/, "") ?? "";
         expect(inner).not.toContain("``");
@@ -1711,7 +1715,7 @@ describe("Persona Voice page text and component budgeting", () => {
     });
     const unsupportedText = getTextDisplays(unsupported).join("\n");
     expect(unsupportedText).not.toContain(unsupportedPrompt);
-    expect(JSON.stringify(unsupported)).not.toContain("voice-design-open");
+    expect(JSON.stringify(unsupported)).toContain("voice-design-open");
   });
 
   it("keeps the local library's advance entry within one select and fails its boundary if reserve is weakened", () => {
@@ -1747,10 +1751,10 @@ describe("Persona Voice page text and component budgeting", () => {
       personaVoiceView: makePersonaVoiceView(null),
     });
     assertValid(missing);
-    expect(JSON.stringify(missing)).toContain(
-      localizedCopy("en-US", "commands.config.panel.voice_page_no_endpoint_title"),
+    expect(JSON.stringify(missing)).toMatch(
+      localizedProse("en-US", "commands.config.panel.voice_page_no_endpoint_description"),
     );
-    expect(JSON.stringify(missing)).toContain('"disabled":true');
+    expect(JSON.stringify(missing)).toContain("voice-design-open");
   });
 
   it("ends unsupported capability views with their notice so the persona hint remains absorbed", () => {
@@ -1794,7 +1798,7 @@ describe("Persona Voice page text and component budgeting", () => {
             personaVoiceRemoteView: remoteView,
             receipt: receipt ? { tone: "success", heading: "Saved", detail: "Voice saved." } : undefined,
           });
-          assertValid(payload, 24 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0));
+          assertValid(payload, 32 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0));
           const selector = getStringSelectMenus(payload).find((menu) => String(menu.customId).includes("voice-select"));
           const options = (selector?.options ?? []) as Array<Record<string, unknown>>;
           expect(options).toHaveLength(25);
@@ -1803,7 +1807,7 @@ describe("Persona Voice page text and component budgeting", () => {
           );
           expect(String(options.at(-1)?.value)).toMatch(/^page:\d+:[A-Za-z0-9_-]+$/);
           expect(JSON.stringify(payload)).not.toContain("external-voice-id-48");
-          expect(JSON.stringify(payload)).not.toContain("stored but hidden by provider mode");
+          expect(JSON.stringify(payload)).toContain("stored but hidden by provider mode");
         }
       }
     }

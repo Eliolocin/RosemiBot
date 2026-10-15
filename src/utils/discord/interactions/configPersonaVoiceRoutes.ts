@@ -28,6 +28,8 @@ const VOICE_PAGE_SIZE_WITH_MORE = VOICE_PAGE_SIZE - 1;
 export const CONFIG_PERSONA_VOICE_MODAL_OPEN_ACTIONS = new Set<ConfigPanelRoute["action"]>(["voice-design-open"]);
 
 const CONFIG_PERSONA_VOICE_ACTIONS = new Set<ConfigPanelRoute["action"]>([
+  "voice-priority-design",
+  "voice-priority-clone",
   "voice-select",
   "voice-page",
   "voice-chooser-cancel",
@@ -81,7 +83,7 @@ async function resolveActiveVoiceMode(
   persona: TomoriState,
   dependencies: ConfigRouteDependencies,
 ): Promise<ActiveVoiceMode> {
-  const endpoint = await dependencies.resolveActiveSpeechEndpoint(persona.server_id);
+  const endpoint = await dependencies.resolveActiveSpeechEndpoint(persona.server_id, "clone");
   if (endpoint?.endpoint.api_style === "tts-clone") {
     return {
       apiStyle: "tts-clone",
@@ -94,7 +96,9 @@ async function resolveActiveVoiceMode(
   }
 
   const legacyKey = await getOptApiKey(persona.server_id, ELEVENLABS_SERVICE_NAME);
-  return legacyKey?.trim() ? { apiStyle: "elevenlabs", apiKey: legacyKey } : null;
+  return legacyKey?.trim()
+    ? { apiStyle: "elevenlabs", apiKey: legacyKey }
+    : { apiStyle: "tts-clone", supportsVoiceDesign: false };
 }
 
 function buildVoiceDesignModal(
@@ -290,16 +294,6 @@ export async function handleConfigPersonaVoiceModalOpen(
     return true;
   }
 
-  const mode = await resolveActiveVoiceMode(persona, dependencies);
-  if (!mode || mode.apiStyle !== "tts-clone" || !mode.supportsVoiceDesign) {
-    await rejectModalRoute(
-      interaction,
-      route.locale,
-      "commands.config.panel.voice_design.unsupported_endpoint_description",
-    );
-    return true;
-  }
-
   await dependencies.showModal(
     interaction,
     buildVoiceDesignModal(
@@ -376,9 +370,10 @@ async function handleVoiceSelection(
     }
     const updated = await context.dependencies.setPersonaVoiceConfig(persona.persona_id as number, {
       speech_voice_sample_id: sample.sample_id,
-      speech_voice_id: null,
+      speech_voice_id: persona.speech_voice_id ?? null,
       speech_voice_name: sample.name,
       speech_voice_design_prompt: persona.speech_voice_design_prompt ?? null,
+      voice_source_priority: persona.voice_source_priority,
     });
     if (!updated) {
       await repaintVoice(context, scope, persona.persona_id ?? null, {
@@ -468,8 +463,9 @@ async function handleVoiceSelection(
   const updated = await context.dependencies.setPersonaVoiceConfig(persona.persona_id as number, {
     speech_voice_id: chosenVoice.voiceId,
     speech_voice_name: chosenVoice.name ?? (persona.speech_voice_design_prompt?.trim() ? "VoiceDesign" : null),
-    speech_voice_sample_id: null,
+    speech_voice_sample_id: persona.speech_voice_sample_id ?? null,
     speech_voice_design_prompt: persona.speech_voice_design_prompt ?? null,
+    voice_source_priority: persona.voice_source_priority,
   });
   if (!updated) {
     await repaintVoice(context, scope, persona.persona_id ?? null, {
@@ -512,15 +508,14 @@ async function handleVoiceClear(context: ConfigPersonaVoiceRouteContext): Promis
     });
     return;
   }
-  const prompt = current.persona.speech_voice_design_prompt ?? null;
+  const mode = await resolveActiveVoiceMode(current.persona, context.dependencies);
+  const clearProviderVoice = mode?.apiStyle === "elevenlabs";
   const updated = await context.dependencies.setPersonaVoiceConfig(current.persona.persona_id as number, {
-    speech_voice_sample_id: null,
-    speech_voice_id:
-      current.persona.speech_voice_sample_id === null || current.persona.speech_voice_sample_id === undefined
-        ? null
-        : (current.persona.speech_voice_id ?? null),
-    speech_voice_name: prompt?.trim() ? "VoiceDesign" : null,
-    speech_voice_design_prompt: prompt,
+    speech_voice_sample_id: clearProviderVoice ? (current.persona.speech_voice_sample_id ?? null) : null,
+    speech_voice_id: clearProviderVoice ? null : (current.persona.speech_voice_id ?? null),
+    speech_voice_name: null,
+    speech_voice_design_prompt: current.persona.speech_voice_design_prompt ?? null,
+    voice_source_priority: current.persona.voice_source_priority,
   });
   if (!updated) {
     await repaintVoice(context, current.scope, current.persona.persona_id ?? null, {
@@ -562,19 +557,6 @@ async function handleVoiceDesignSubmit(context: ConfigPersonaVoiceRouteContext):
     });
     return;
   }
-  const mode = await resolveActiveVoiceMode(current.persona, context.dependencies);
-  if (!mode || mode.apiStyle !== "tts-clone" || !mode.supportsVoiceDesign) {
-    await repaintVoice(context, current.scope, current.persona.persona_id ?? null, {
-      receipt: receipt(
-        context.route.locale,
-        "warning",
-        "commands.config.panel.voice_design.unsupported_endpoint_title",
-        "commands.config.panel.voice_design.unsupported_endpoint_description",
-      ),
-    });
-    return;
-  }
-
   const modal = context.interaction as ModalSubmitInteraction;
   const nonce = "nonce" in context.route ? context.route.nonce : "";
   const prompt = modal.fields.getTextInputValue(buildConfigModalFieldId(VOICE_DESIGN_PROMPT_FIELD, nonce)).trim();
@@ -594,7 +576,8 @@ async function handleVoiceDesignSubmit(context: ConfigPersonaVoiceRouteContext):
     speech_voice_sample_id: current.persona.speech_voice_sample_id ?? null,
     speech_voice_id: current.persona.speech_voice_id ?? null,
     speech_voice_design_prompt: prompt,
-    speech_voice_name: "VoiceDesign",
+    voice_source_priority: current.persona.voice_source_priority,
+    speech_voice_name: current.persona.speech_voice_name ?? null,
   });
   if (!updated) {
     await repaintVoice(context, current.scope, current.persona.persona_id ?? null, {
@@ -637,13 +620,6 @@ async function handleVoiceDesignRemove(context: ConfigPersonaVoiceRouteContext):
     });
     return;
   }
-  const mode = await resolveActiveVoiceMode(current.persona, context.dependencies);
-  if (!mode || mode.apiStyle !== "tts-clone" || !mode.supportsVoiceDesign) {
-    await repaintVoice(context, current.scope, current.persona.persona_id ?? null, {
-      receipt: staleReceipt(context.route.locale),
-    });
-    return;
-  }
   if (!current.persona.speech_voice_design_prompt?.trim()) {
     await repaintVoice(context, current.scope, current.persona.persona_id ?? null, {
       receipt: receipt(
@@ -656,18 +632,12 @@ async function handleVoiceDesignRemove(context: ConfigPersonaVoiceRouteContext):
     return;
   }
 
-  const voiceNameIfOtherVoiceRemains = current.persona.speech_voice_sample_id
-    ? current.persona.speech_voice_name === "VoiceDesign"
-      ? "Voice Clone"
-      : (current.persona.speech_voice_name ?? null)
-    : current.persona.speech_voice_id?.trim()
-      ? (current.persona.speech_voice_name ?? null)
-      : null;
   const updated = await context.dependencies.setPersonaVoiceConfig(current.persona.persona_id as number, {
     speech_voice_sample_id: current.persona.speech_voice_sample_id ?? null,
     speech_voice_id: current.persona.speech_voice_id ?? null,
     speech_voice_design_prompt: null,
-    speech_voice_name: voiceNameIfOtherVoiceRemains,
+    voice_source_priority: current.persona.voice_source_priority,
+    speech_voice_name: current.persona.speech_voice_name ?? null,
   });
   if (!updated) {
     await repaintVoice(context, current.scope, current.persona.persona_id ?? null, {
@@ -727,6 +697,33 @@ export async function handleConfigPersonaVoiceRoutes(context: ConfigPersonaVoice
   }
   const scope = current.scope;
   const persona = current.persona;
+
+  if (context.route.action === "voice-priority-design" || context.route.action === "voice-priority-clone") {
+    const updated = await context.dependencies.setPersonaVoiceConfig(persona.persona_id as number, {
+      speech_voice_sample_id: persona.speech_voice_sample_id ?? null,
+      speech_voice_id: persona.speech_voice_id ?? null,
+      speech_voice_name: persona.speech_voice_name ?? null,
+      speech_voice_design_prompt: persona.speech_voice_design_prompt ?? null,
+      voice_source_priority: context.route.action === "voice-priority-design" ? "design" : "clone",
+    });
+    if (updated) context.dependencies.invalidatePersonaVoiceCache(scope.serverDiscId);
+    await repaintVoice(
+      context,
+      (await context.dependencies.resolveScope(context.interaction, true)) ?? scope,
+      persona.persona_id ?? null,
+      {
+        receipt: updated
+          ? undefined
+          : receipt(
+              context.route.locale,
+              "error",
+              "commands.config.panel.write_failed_heading",
+              "commands.config.panel.write_failed_detail",
+            ),
+      },
+    );
+    return true;
+  }
 
   if (context.route.action === "voice-chooser-cancel") {
     await repaintVoice(context, scope, persona.persona_id ?? null);

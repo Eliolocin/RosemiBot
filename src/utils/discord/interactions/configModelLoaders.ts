@@ -1,3 +1,5 @@
+import { readSpeechEndpointSettings } from "@/utils/provider/customSpeechEndpointSettings";
+import { supportsSpeechMode } from "@/utils/speech/voiceSourceCapabilities";
 import { createHash } from "node:crypto";
 import type {
   CustomEndpointApiStyle,
@@ -42,7 +44,7 @@ import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import { loadSavedProvidersForCapability } from "@/utils/provider/savedProviderConfig";
 import { localizer, resolveDescription } from "@/utils/text/localizer";
 
-export type ConfigEndpointModelCapability = "tts" | "stt";
+export type ConfigEndpointModelCapability = "tts-design" | "tts-clone" | "stt";
 export type ConfigEndpointServiceCapability = Extract<CustomEndpointCapability, "speech" | "transcription">;
 
 export interface ConfigCapabilityEndpoint {
@@ -52,6 +54,7 @@ export interface ConfigCapabilityEndpoint {
   modelLabel: string;
   apiStyle: CustomEndpointApiStyle;
   isActive: boolean;
+  voiceMode?: "clone" | "voice-design" | "auto";
 }
 
 export type ConfigCapabilityEndpointInput = ConfigCapabilityEndpoint | CustomEndpointRow;
@@ -62,12 +65,13 @@ export type LoadConfigCapabilityEndpoints = (
 ) => Promise<ConfigCapabilityEndpointInput[]>;
 
 export function endpointServiceCapability(capability: ConfigEndpointModelCapability): ConfigEndpointServiceCapability {
-  return capability === "tts" ? "speech" : "transcription";
+  return capability === "tts-design" || capability === "tts-clone" ? "speech" : "transcription";
 }
 
 export function normalizeConfigCapabilityEndpoints(
   rows: readonly ConfigCapabilityEndpointInput[],
   capability: ConfigEndpointModelCapability,
+  state?: TomoriState,
 ): ConfigCapabilityEndpoint[] {
   const serviceCapability = endpointServiceCapability(capability);
   return rows.flatMap((endpoint) => {
@@ -80,6 +84,8 @@ export function normalizeConfigCapabilityEndpoints(
     if (endpoint.capability !== serviceCapability || id === undefined || !Number.isSafeInteger(id) || id <= 0) {
       return [];
     }
+    if (capability !== "stt" && !supportsSpeechMode(endpoint, capability === "tts-design" ? "design" : "clone"))
+      return [];
     return [
       {
         id,
@@ -87,7 +93,14 @@ export function normalizeConfigCapabilityEndpoints(
         label: endpoint.label,
         modelLabel: endpoint.model_name ?? endpoint.label,
         apiStyle: endpoint.api_style,
-        isActive: endpoint.is_default,
+        voiceMode: capability === "stt" ? undefined : readSpeechEndpointSettings(endpoint).voiceMode,
+        isActive:
+          capability === "stt"
+            ? endpoint.is_default
+            : id ===
+              (capability === "tts-design"
+                ? state?.config.speech_design_endpoint_id
+                : state?.config.speech_clone_endpoint_id),
       },
     ];
   });
@@ -95,7 +108,7 @@ export function normalizeConfigCapabilityEndpoints(
 
 export const loadConfigCapabilityEndpoints: LoadConfigCapabilityEndpoints = async (state, capability) => {
   const rows = await llmProviderRepo.loadCustomEndpointsForServer(state.server_id);
-  return normalizeConfigCapabilityEndpoints(rows, capability);
+  return normalizeConfigCapabilityEndpoints(rows, capability, state);
 };
 
 /** Binds an endpoint choice to its ordered list and the identifying fields of every presented row. */
@@ -113,6 +126,7 @@ export function computeConfigEndpointFingerprint(
           modelLabel: endpoint.modelLabel,
           apiStyle: endpoint.apiStyle,
           isActive: endpoint.isActive,
+          voiceMode: endpoint.voiceMode,
         })),
       )}`,
     )
@@ -221,9 +235,13 @@ export async function loadConfigSwitchModelsView(
   );
 
   const endpointSlots = await Promise.all(
-    (["tts", "stt"] as const).map(async (capability) => ({
+    (["tts-design", "tts-clone", "stt"] as const).map(async (capability) => ({
       capability,
-      endpoints: normalizeConfigCapabilityEndpoints(await loadCapabilityEndpoints(state, capability), capability),
+      endpoints: normalizeConfigCapabilityEndpoints(
+        await loadCapabilityEndpoints(state, capability),
+        capability,
+        state,
+      ),
       pageStart: endpointPage?.capability === capability ? endpointPage.start : 0,
     })),
   );

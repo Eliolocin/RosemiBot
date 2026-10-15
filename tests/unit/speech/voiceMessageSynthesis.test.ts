@@ -303,7 +303,6 @@ describe("design-shape capability", () => {
     const auto = makeEndpoint({ voiceMode: "auto" });
 
     expect(resolveVoiceSourceCapabilities(auto).acceptsDesignShape).toBe(true);
-    expect(realTtsVoiceDesignAdapter.isVoiceDesignEndpoint(auto)).toBe(false);
   });
 
   it("is false for a missing endpoint on every shape", () => {

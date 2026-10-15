@@ -1,3 +1,4 @@
+import type { VoiceSourceMode } from "@/utils/speech/voiceSourceCapabilities";
 import type { CustomEndpointRow } from "@/types/db/schema";
 import { log } from "@/utils/misc/logger";
 import { buildCustomProviderName } from "@/utils/provider/customProviderUtils";
@@ -10,19 +11,11 @@ export interface SpeechEndpointResult {
   apiKey: string;
 }
 
-/**
- * Resolves the active speech or transcription endpoint for a server by querying
- * `custom_endpoints` directly (capability-first lookup, bypassing the LLM/model chain).
- *
- * @param capability - "speech" or "transcription"
- * @returns Endpoint row + decrypted API key, or null if none is registered
- */
 async function resolveActiveEndpointByCapability(
   serverId: number,
-  capability: "speech" | "transcription",
+  capability: VoiceSourceMode | "transcription",
 ): Promise<SpeechEndpointResult | null> {
   try {
-    // Find the active (is_default) custom endpoint for this capability on the server via repository
     const endpoint = await loadActiveEndpoint(serverId, capability);
 
     if (!endpoint?.connection_id) {
@@ -68,8 +61,11 @@ async function resolveActiveEndpointByCapability(
  * Resolves the active speech (TTS) endpoint and credentials for a server.
  * Returns null when no speech endpoint is registered.
  */
-export async function resolveActiveSpeechEndpoint(serverId: number): Promise<SpeechEndpointResult | null> {
-  return resolveActiveEndpointByCapability(serverId, "speech");
+export async function resolveActiveSpeechEndpoint(
+  serverId: number,
+  mode: VoiceSourceMode,
+): Promise<SpeechEndpointResult | null> {
+  return resolveActiveEndpointByCapability(serverId, mode);
 }
 
 /**
@@ -78,4 +74,14 @@ export async function resolveActiveSpeechEndpoint(serverId: number): Promise<Spe
  */
 export async function resolveActiveTranscriptionEndpoint(serverId: number): Promise<SpeechEndpointResult | null> {
   return resolveActiveEndpointByCapability(serverId, "transcription");
+}
+
+export async function resolveSpeechTargets(
+  serverId: number,
+): Promise<{ design: SpeechEndpointResult | null; clone: SpeechEndpointResult | null }> {
+  const [design, clone] = await Promise.all([
+    resolveActiveSpeechEndpoint(serverId, "design"),
+    resolveActiveSpeechEndpoint(serverId, "clone"),
+  ]);
+  return { design, clone };
 }

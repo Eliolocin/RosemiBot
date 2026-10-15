@@ -135,7 +135,8 @@ const personaScopedConfigStateSchema = z.object({
   speech_voice_sample_id: z.number().int().nullable().optional(), // From persona_voice_configs
   speech_voice_id: z.string().nullable().optional(), // From persona_voice_configs
   speech_voice_name: z.string().nullable().optional(), // From persona_voice_configs
-  speech_voice_design_prompt: z.string().nullable().optional(), // From persona_voice_configs
+  speech_voice_design_prompt: z.string().nullable().optional(),
+  voice_source_priority: z.enum(["design", "clone"]).default("design"), // From persona_voice_configs
 });
 type PersonaScopedConfigState = z.infer<typeof personaScopedConfigStateSchema>;
 
@@ -883,6 +884,8 @@ const serverNsfwConfigSchema = z.object({
 export type ServerNsfwConfigRow = z.infer<typeof serverNsfwConfigSchema>;
 
 const serverSpeechConfigSchema = z.object({
+  speech_design_endpoint_id: z.number().int().nullable().default(null),
+  speech_clone_endpoint_id: z.number().int().nullable().default(null),
   server_id: z.number().int(),
   voice_transcript_chat_mode: z.boolean().default(true),
   chatterbox_turbo_enabled: z.boolean().default(true),

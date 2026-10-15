@@ -257,8 +257,9 @@ export interface ToolAssemblyState {
   activePersonaHasElevenlabsVoice: boolean;
   /** Present when the active persona should use instruct-based VoiceDesign synthesis. */
   activePersonaVoiceDesignPrompt?: string | null;
-  /** Display/name marker for the active speech voice selection. */
-  activePersonaVoiceName?: string | null;
+  activePersonaVoiceSampleId?: number | null;
+  activePersonaVoiceId?: string | null;
+  activePersonaVoiceSourcePriority?: "design" | "clone";
   llm: ToolAvailabilityLlmState;
   diffusion_model_id?: number | null;
   nai_diffusion_model_id?: number | null;

@@ -1,3 +1,4 @@
+import { resolveVoiceSourceCandidates } from "@/utils/speech/voiceSourceResolution";
 import type { CustomEndpointApiStyle, CustomEndpointRow, TomoriState, VoiceSampleRow } from "@/types/db/schema";
 import { loadActiveEndpoint, loadVoiceSamples } from "@/utils/db/repositories/SpeechRepository";
 import { ELEVENLABS_SERVICE_NAME } from "@/utils/audio/elevenLabsAccount";
@@ -16,10 +17,12 @@ type ConfigPersonaVoiceSampleView = Pick<VoiceSampleRow, "sample_id" | "name" | 
 export interface ConfigPersonaVoiceView {
   capability: ConfigPersonaVoiceCapabilityView;
   samples: ConfigPersonaVoiceSampleView[];
+  effectiveSource?: "design" | "clone" | null;
+  effectiveTarget?: string | null;
 }
 
 export interface ConfigPersonaVoiceResolverDependencies {
-  loadActiveEndpoint: (serverId: number, capability: "speech") => Promise<CustomEndpointRow | null>;
+  loadActiveEndpoint: (serverId: number, capability: "design" | "clone") => Promise<CustomEndpointRow | null>;
   hasOptApiKey: (serverId: number, serviceName: string) => Promise<boolean>;
 }
 
@@ -41,7 +44,7 @@ function unavailableCapability(): ConfigPersonaVoiceCapabilityView {
   return {
     apiStyle: null,
     assignable: false,
-    supportsVoiceDesign: false,
+    supportsVoiceDesign: true,
   };
 }
 
@@ -54,7 +57,7 @@ export async function resolveActiveSpeechCapability(
 ): Promise<ConfigPersonaVoiceCapabilityView> {
   let endpoint: CustomEndpointRow | null;
   try {
-    endpoint = await deps.loadActiveEndpoint(serverId, "speech");
+    endpoint = await deps.loadActiveEndpoint(serverId, "clone");
   } catch {
     log.warn(`[PersonaVoice] Failed to resolve speech capability for server ${serverId}`);
     return unavailableCapability();
@@ -65,7 +68,7 @@ export async function resolveActiveSpeechCapability(
     return {
       apiStyle,
       assignable: true,
-      supportsVoiceDesign: apiStyle === "tts-clone" && endpoint.extra_config.supports_instruct === true,
+      supportsVoiceDesign: true,
     };
   }
 
@@ -84,7 +87,7 @@ export async function resolveActiveSpeechCapability(
   return {
     apiStyle: "elevenlabs",
     assignable: true,
-    supportsVoiceDesign: false,
+    supportsVoiceDesign: true,
   };
 }
 
@@ -103,8 +106,23 @@ export async function loadConfigPersonaVoiceView(
   deps: ConfigPersonaVoiceLoaderDependencies = defaultLoaderDependencies,
 ): Promise<ConfigPersonaVoiceView> {
   const capability = await resolveActiveSpeechCapability(state.server_id, deps);
-  if (capability.apiStyle !== "tts-clone") {
-    return { capability, samples: [] };
+  const [design, clone] = await Promise.all([
+    deps.loadActiveEndpoint(state.server_id, "design"),
+    deps.loadActiveEndpoint(state.server_id, "clone"),
+  ]);
+  const source = resolveVoiceSourceCandidates({
+    targets: { design, clone },
+    persona: state,
+    legacyElevenLabsAvailable: !clone && capability.apiStyle === "elevenlabs",
+  })[0];
+  const effectiveSource = source ? (source.shape === "design" ? "design" : "clone") : null;
+  const effectiveTarget = !effectiveSource
+    ? null
+    : effectiveSource === "design"
+      ? design?.label
+      : (clone?.label ?? (source?.id === "elevenlabs" ? "ElevenLabs" : null));
+  if (capability.apiStyle === "elevenlabs") {
+    return { capability, samples: [], effectiveSource, effectiveTarget };
   }
 
   try {
@@ -112,9 +130,11 @@ export async function loadConfigPersonaVoiceView(
     return {
       capability,
       samples: samples.map(projectVoiceSample),
+      effectiveSource,
+      effectiveTarget,
     };
   } catch {
     log.warn(`[PersonaVoice] Failed to load voice samples for server ${state.server_id}`);
-    return { capability, samples: [] };
+    return { capability, samples: [], effectiveSource, effectiveTarget };
   }
 }

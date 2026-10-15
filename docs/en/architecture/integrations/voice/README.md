@@ -82,8 +82,8 @@ Both callers converge on shared synthesis and delivery modules:
 
 | Module | Responsibility |
 |---|---|
-| `src/utils/speech/voiceSourceCapabilities.ts` | Resolves which request bodies the active endpoint accepts. |
-| `src/utils/speech/voiceSourceResolution.ts` | Discovers available voice sources and defines pre-selection priority. |
+| `src/utils/speech/voiceSourceCapabilities.ts` | Resolves which request bodies an endpoint accepts. |
+| `src/utils/speech/voiceSourceResolution.ts` | Matches voice sources to the two targets and applies persona priority. |
 | `src/utils/speech/voiceMessageSynthesis.ts` | Dispatches synthesis to the target adapter and records metrics. |
 | `src/utils/discord/webhook/voiceMessageDelivery.ts` | Transmits native Discord voice message payloads. |
 
@@ -100,19 +100,30 @@ Endpoints using the `tts-clone` API style declare a `voice_mode` of `clone`, `vo
 `auto`. An `auto` endpoint accepts both clone and design request shapes on a single endpoint URL.
 ElevenLabs endpoints accept neither shape, relying strictly on stored voice identifiers.
 
-Candidate sources resolve with deterministic precedence:
-1. Ad-hoc user upload (voice clip).
-2. Ad-hoc typed design prompt.
-3. Persona's assigned reference sample.
-4. Persona's assigned design prompt.
+Server speech routing uses two nullable selections in `server_speech_configs`:
+`speech_design_endpoint_id` and `speech_clone_endpoint_id`. Both point to existing `speech`
+registrations. Design accepts local `voice-design` or `auto` endpoints; Clone accepts local
+`clone` or `auto` endpoints and ElevenLabs. Transcription continues to use `is_default`.
 
-User-supplied inputs on the active turn outrank stored persona defaults, and audio clips outrank
-design prompts due to higher cloning determinism.
+Activating a registration replaces every slot its mode supports in one transaction. Auto replaces
+both slots with the same endpoint. Clearing one slot preserves the other. Mode edits clear unsupported
+selections, and endpoint or connection deletion clears its references. The migration selects the
+former default by `updated_at DESC, custom_endpoint_id DESC` and fills only its supported slots.
 
-For `auto` endpoints, the `generate_voice_message` tool checks if the persona voice name equals the
-sentinel string `"VoiceDesign"`. That sentinel acts as the branch selector between sample-based
-cloning and prompt-based voice design. The `/generate voice-message` command presents all valid
-sources directly in its modal interface.
+Both generation callers resolve saved sources against their matching targets before synthesis.
+A persona's `voice_source_priority` defaults to Design; if that saved source or its matching target
+is unavailable, the other usable pair wins. Existing Auto personas with a sample and no
+`VoiceDesign` marker migrate to Clone priority. Voice names are display text.
+
+The command puts an uploaded reference first, then a typed description, then saved sources in persona
+priority order. Its source selection applies only to that invocation. Submission rechecks the target
+and saved source; stale forms require a new invocation. Delivery direction and expressiveness apply
+to the selected target. Neither caller retries synthesis through the other slot after a failure.
+
+Persona > Voice keeps the description editor available without an active target. Saving or clearing
+a description preserves the reference sample, ElevenLabs voice ID, and priority. Only the Clone target
+chooses between the reference library and ElevenLabs catalogue. Legacy installations with an
+ElevenLabs optional key and no Clone endpoint retain that credential path.
 
 ## Native Discord delivery constraints
 

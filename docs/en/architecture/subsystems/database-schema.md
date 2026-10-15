@@ -83,12 +83,20 @@ persistence and schema initialization, use the shared SQL client directly.
   - `server_capabilities_configs`: tool exposure switches (video generation, user blocking, time awareness, short-term memory).
   - `server_notice_embeds_configs`: notice verbosity modes (`minimal` or `verbose`) and hidden notice filters.
   - `server_welcome_configs`: welcome greeting channels, prompts, and persona assignments.
-  - `server_speech_configs`: text-to-speech voice models and synthesizer parameters.
+  - `server_speech_configs`: independent Design and Clone endpoint selections, transcript behavior, and synthesizer parameters.
   - `server_novelai_imagegen_configs`: NovelAI diffusion parameters and default prompt tags.
   - `server_nsfw_configs`: jailbreak toggles and content filters.
   - `server_byok_configs`: bring-your-own-key permissions.
   - `server_memory_configs`: memory retrieval limits and decay parameters.
   - `server_stm_configs`: STM render mode, refresh cadence, and injection depths.
+
+Speech selections reference `custom_endpoints` with `ON DELETE SET NULL`. Database validation
+rejects selections from another server or an unsupported mode. Endpoint mode and connection edits
+clear unsupported selections in the same transaction. `persona_voice_configs.voice_source_priority`
+is constrained to `design` or `clone`; it defaults to `design` independently of endpoint capability.
+The speech migration refuses a downgrade when the single-default format cannot preserve selections
+or persona priority. Workspace configuration exports include both selections; imports require
+compatible endpoints owned by the receiving workspace.
 
 ### User identity, privacy, and personalization
 

@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { CustomEndpointRow, TomoriState } from "@/types/db/schema";
+import type { CustomEndpointRow } from "@/types/db/schema";
+import { createPersona } from "../../helpers/fixtures";
 import {
   providerPanelOperations,
   type ActivateWorkspaceEndpointDependencies,
@@ -26,12 +27,16 @@ function endpointRow(overrides: Partial<CustomEndpointRow>): CustomEndpointRow {
     strict_role_alternation: false,
     supports_prefix_completion: false,
     supports_assistant_prefill: false,
+    verbatim_tool_calling: false,
     is_default: false,
     ...overrides,
-  } as CustomEndpointRow;
+  };
 }
 
-const state = { server_id: 42 } as TomoriState;
+const state = createPersona({
+  server_id: 42,
+  config: { speech_clone_endpoint_id: 501 },
+});
 
 function activationDependencies(
   rows: CustomEndpointRow[],

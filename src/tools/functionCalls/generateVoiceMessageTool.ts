@@ -11,17 +11,16 @@ import { createToolVariant } from "@/tools/assembly";
 import { ELEVENLABS_SERVICE_NAME } from "@/utils/audio/elevenLabsAccount";
 import { setCachedVoiceTranscript } from "@/utils/audio/voiceTranscriptCache";
 import { generateVoiceMessageMetadata } from "@/utils/audio/voiceMessageMetadata";
-import { getOptApiKey } from "@/utils/security/crypto";
+import { getOptApiKey, hasOptApiKey } from "@/utils/security/crypto";
 import {
   deliverVoiceMessage,
   postVoiceTranscriptCaption,
   type VoiceDeliveryTarget,
 } from "@/utils/discord/webhook/voiceMessageDelivery";
-import { resolveActiveSpeechEndpoint } from "@/utils/provider/speechEndpointResolver";
-import { shouldUseVoiceDesignForPersona } from "@/providers/custom/styles/ttsVoiceDesignAdapter";
-import { resolveVoiceSourceCapabilities, type VoiceSourceCapabilities } from "@/utils/speech/voiceSourceCapabilities";
+import { resolveSpeechTargets } from "@/utils/provider/speechEndpointResolver";
+import { resolveVoiceSourceCandidates } from "@/utils/speech/voiceSourceResolution";
+import { resolveVoiceSourceCapabilities } from "@/utils/speech/voiceSourceCapabilities";
 import { synthesizeVoiceMessage, type ResolvedVoiceSource } from "@/utils/speech/voiceMessageSynthesis";
-import type { CustomEndpointRow } from "@/types/db/schema";
 import { statRepository } from "@/utils/db/repositories";
 import { log } from "@/utils/misc/logger";
 
@@ -140,14 +139,22 @@ export class GenerateVoiceMessageTool extends BaseTool {
 
   async assembleForContext(context: ToolAssemblyContext): Promise<Tool | null> {
     const serverId = Number.parseInt(context.state.server_id, 10);
-    const activeSpeechEndpoint = Number.isInteger(serverId) ? await resolveActiveSpeechEndpoint(serverId) : null;
+    const targets = Number.isInteger(serverId) ? await resolveSpeechTargets(serverId) : { design: null, clone: null };
+    const candidate = resolveVoiceSourceCandidates({
+      targets: { design: targets.design?.endpoint ?? null, clone: targets.clone?.endpoint ?? null },
+      legacyElevenLabsAvailable: !targets.clone && (await hasOptApiKey(serverId, ELEVENLABS_SERVICE_NAME)),
+      persona: {
+        speech_voice_sample_id: context.state.activePersonaVoiceSampleId,
+        speech_voice_id: context.state.activePersonaVoiceId,
+        speech_voice_design_prompt: context.state.activePersonaVoiceDesignPrompt,
+        voice_source_priority: context.state.activePersonaVoiceSourcePriority,
+      },
+    })[0];
+    if (!candidate) return null;
+    const activeSpeechEndpoint = candidate.shape === "design" ? targets.design : targets.clone;
     const scriptMarkup =
-      (activeSpeechEndpoint?.endpoint.extra_config?.script_markup as string | undefined) ?? "bracket-tags";
-    const voiceDesign = shouldUseVoiceDesignForPersona(
-      activeSpeechEndpoint?.endpoint,
-      context.state.activePersonaVoiceDesignPrompt,
-      context.state.activePersonaVoiceName,
-    );
+      (activeSpeechEndpoint?.endpoint.extra_config.script_markup as string | undefined) ?? "bracket-tags";
+    const voiceDesign = candidate.shape === "design";
     const cloneInstructionsAvailable = resolveVoiceSourceCapabilities(
       activeSpeechEndpoint?.endpoint,
     ).cloneInstructionsAvailable;
@@ -179,59 +186,6 @@ export class GenerateVoiceMessageTool extends BaseTool {
     return `${safeBaseName}.${extension}`;
   }
 
-  /**
-   * The persona's design prompt, when the endpoint is configured to receive one.
-   *
-   * `shouldUseVoiceDesignForPersona` is the ladder's entry condition for this branch, not an
-   * optimization: it carries the `VoiceDesign` sentinel rule, so on an `auto` endpoint a persona
-   * that also holds a sample keeps using that sample unless its voice name is the sentinel. It also
-   * subsumes the shape check, which is why the caller does not pre-gate on `acceptsDesignShape`.
-   */
-  private resolveDesignSource(context: ToolContext, endpoint: CustomEndpointRow | null): ResolvedVoiceSource | null {
-    const voiceDesignPrompt = context.tomoriState.speech_voice_design_prompt?.trim() ?? "";
-    if (!voiceDesignPrompt) return null;
-
-    return shouldUseVoiceDesignForPersona(endpoint, voiceDesignPrompt, context.tomoriState.speech_voice_name)
-      ? { kind: "design", designPrompt: voiceDesignPrompt }
-      : null;
-  }
-
-  /**
-   * The clone or ElevenLabs voices to fall back on, most preferred first.
-   *
-   * Returned as an ordered list rather than one committed choice because the two sources are gated
-   * by different capabilities: a sample is only usable on a clone-capable endpoint, while an
-   * ElevenLabs voice id is the only option on an ElevenLabs endpoint and on servers with no speech
-   * endpoint at all. Committing to the sample first would strand every persona that holds both.
-   */
-  private resolveFallbackCandidates(context: ToolContext): ResolvedVoiceSource[] {
-    const candidates: ResolvedVoiceSource[] = [];
-
-    const voiceSampleId = context.tomoriState.speech_voice_sample_id ?? null;
-    if (voiceSampleId) candidates.push({ kind: "clone", voiceSampleId });
-
-    const voiceId = context.tomoriState.speech_voice_id?.trim() ?? "";
-    if (voiceId) candidates.push({ kind: "elevenlabs", voiceId });
-
-    return candidates;
-  }
-
-  /**
-   * Filters the fallback list down to the shapes the active endpoint can actually receive.
-   *
-   * The guards are per member, not per list: a clone candidate asks the capability table, while an
-   * ElevenLabs candidate only asks whether a voice id is present. Asking the clone question of the
-   * list would make it false for exactly the servers where ElevenLabs is the only option.
-   */
-  private filterUsableFallbacks(
-    candidates: readonly ResolvedVoiceSource[],
-    capabilities: VoiceSourceCapabilities,
-  ): ResolvedVoiceSource[] {
-    return candidates.filter((candidate) =>
-      candidate.kind === "clone" ? capabilities.acceptsCloneShape : candidate.kind === "elevenlabs",
-    );
-  }
-
   async execute(args: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
     const validation = this.validateParameters(args);
     if (!validation.isValid) {
@@ -251,62 +205,27 @@ export class GenerateVoiceMessageTool extends BaseTool {
       };
     }
 
-    const speechEndpoint = await resolveActiveSpeechEndpoint(context.tomoriState.server_id);
+    const targets = await resolveSpeechTargets(context.tomoriState.server_id);
+    const legacyKey = !targets.clone
+      ? ((await getOptApiKey(context.tomoriState.server_id, ELEVENLABS_SERVICE_NAME)) ?? "")
+      : "";
+    const candidate = resolveVoiceSourceCandidates({
+      targets: { design: targets.design?.endpoint ?? null, clone: targets.clone?.endpoint ?? null },
+      legacyElevenLabsAvailable: Boolean(legacyKey),
+      persona: context.tomoriState,
+    })[0];
+    if (!candidate) {
+      return { success: false, error: "No configured persona voice matches the server's speech selections." };
+    }
+    const speechEndpoint = candidate.shape === "design" ? targets.design : targets.clone;
     const activeEndpoint = speechEndpoint?.endpoint ?? null;
-    const capabilities = resolveVoiceSourceCapabilities(activeEndpoint);
-
-    // Design first, then the ladder's clone-then-ElevenLabs order, with the fallbacks filtered to
-    // the shapes this endpoint can actually receive. Filtering per candidate rather than per list
-    // is what keeps an ElevenLabs voice reachable on a server whose endpoint is ElevenLabs or
-    // absent, where no candidate is clone-shaped.
-    const designSource = this.resolveDesignSource(context, activeEndpoint);
-    const usableFallbacks = this.filterUsableFallbacks(this.resolveFallbackCandidates(context), capabilities);
-    const voiceDesignPrompt = context.tomoriState.speech_voice_design_prompt?.trim() ?? "";
-
-    // A design prompt on an endpoint that cannot receive `instruct` is a configuration mismatch
-    // rather than a missing voice, so it keeps the message that names the fix. A persona that also
-    // holds a usable sample or ElevenLabs voice id is not stuck, so this only fires when design is
-    // genuinely the persona's only configuration.
-    if (voiceDesignPrompt && !designSource && usableFallbacks.length === 0 && !capabilities.acceptsDesignShape) {
-      return {
-        success: false,
-        error:
-          "The active persona has a voice design prompt, but the active speech endpoint does not support instruct-based voice design. Select a VoiceDesign speech endpoint or assign a different voice.",
-      };
-    }
-
-    const source = designSource ?? usableFallbacks[0] ?? null;
-    if (!source) {
-      // Reachable only on `auto`, where the sentinel is the entry condition: a dedicated
-      // voice-design endpoint always selects the design branch once a prompt exists. The other two
-      // messages would both send the manager to change a setting that is already correct, so this
-      // one names the voice name, which is the only thing standing between here and synthesis.
-      if (voiceDesignPrompt && capabilities.acceptsDesignShape) {
-        return {
-          success: false,
-          error:
-            "The active persona has a voice design prompt and the active speech endpoint accepts one, but the endpoint is in auto mode, where a persona uses voice design only when its voice name is VoiceDesign. A server manager can set that name in /config under Persona > Voice, or assign a voice sample to use the clone path instead.",
-        };
-      }
-
-      // The persona does have a voice; it is the endpoint that cannot take its shape. Saying "no
-      // voice is configured" here would send the manager to the wrong settings page.
-      const hasMisroutedVoice = this.resolveFallbackCandidates(context).length > 0 || Boolean(voiceDesignPrompt);
-      return {
-        success: false,
-        error: hasMisroutedVoice
-          ? "The active persona's voice cannot be used with the active speech endpoint. A server manager can point /providers at an endpoint matching that voice type, or assign a different voice in /config under Persona > Voice."
-          : "No voice is configured for the active persona. A server manager can set one in /config under Persona > Voice.",
-      };
-    }
-
-    // Credentials resolve per backend: the ElevenLabs path historically preferred the
-    // endpoint key over the legacy opt_api_keys entry, while both local paths use the
-    // endpoint key alone.
-    const elevenLabsApiKey =
-      source.kind === "elevenlabs"
-        ? speechEndpoint?.apiKey || (await getOptApiKey(context.tomoriState.server_id, ELEVENLABS_SERVICE_NAME)) || ""
-        : "";
+    const source: ResolvedVoiceSource =
+      candidate.shape === "design"
+        ? { kind: "design", designPrompt: candidate.designPrompt ?? "" }
+        : candidate.id === "persona-sample"
+          ? { kind: "clone", voiceSampleId: candidate.sampleId ?? 0 }
+          : { kind: "elevenlabs", voiceId: candidate.voiceId ?? "" };
+    const elevenLabsApiKey = source.kind === "elevenlabs" ? speechEndpoint?.apiKey || legacyKey : "";
     const endpointApiKey = speechEndpoint?.apiKey ?? "";
 
     const synthesisResult = await synthesizeVoiceMessage({
@@ -368,6 +287,10 @@ export class GenerateVoiceMessageTool extends BaseTool {
       voiceMeta,
     });
 
+    if (!sentMessageId) {
+      return { success: false, error: "Voice message delivery failed.", responseDelivered: false };
+    }
+
     if (sentMessageId && captionText) {
       setCachedVoiceTranscript(sentMessageId, captionText, "tts");
       log.info(
@@ -395,6 +318,11 @@ export class GenerateVoiceMessageTool extends BaseTool {
     return {
       success: true,
       message: "Voice message generated and sent to Discord.",
+      data: {
+        source: candidate.id,
+        mode: candidate.shape === "design" ? "design" : "clone",
+        target: activeEndpoint?.label ?? "ElevenLabs",
+      },
       responseDelivered: true,
       endTurn: true,
     };

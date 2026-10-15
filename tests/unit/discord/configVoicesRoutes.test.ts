@@ -206,6 +206,8 @@ function makeHarness(options: HarnessOptions = {}): Harness {
       options.speechConfig === undefined
         ? {
             server_id: 9,
+            speech_design_endpoint_id: null,
+            speech_clone_endpoint_id: null,
             voice_transcript_chat_mode: true,
             chatterbox_turbo_enabled: true,
             chatterbox_cfg_weight: 0.5,
@@ -308,6 +310,8 @@ describe("config voice sample routes", () => {
     const view = await loadConfigVoicesView(state, 999, {
       loadSpeechConfig: async () => ({
         server_id: 9,
+        speech_design_endpoint_id: null,
+        speech_clone_endpoint_id: null,
         voice_transcript_chat_mode: true,
         chatterbox_turbo_enabled: false,
         chatterbox_cfg_weight: 0.7,
@@ -539,6 +543,8 @@ describe("config voice sample routes", () => {
     const harness = makeHarness({
       speechConfig: {
         server_id: 9,
+        speech_design_endpoint_id: null,
+        speech_clone_endpoint_id: null,
         voice_transcript_chat_mode: true,
         chatterbox_turbo_enabled: false,
         chatterbox_cfg_weight: 0.75,
@@ -672,6 +678,8 @@ describe("config voice sample routes", () => {
       useDefaultSpeechUpdate: true,
       speechConfig: {
         server_id: 9,
+        speech_design_endpoint_id: null,
+        speech_clone_endpoint_id: null,
         voice_transcript_chat_mode: true,
         chatterbox_turbo_enabled: true,
         chatterbox_cfg_weight: 0.4,
@@ -732,6 +740,8 @@ describe("config voice sample routes", () => {
     const harness = makeHarness({
       speechConfig: {
         server_id: 9,
+        speech_design_endpoint_id: null,
+        speech_clone_endpoint_id: null,
         voice_transcript_chat_mode: true,
         chatterbox_turbo_enabled: false,
         chatterbox_cfg_weight: 0.8,

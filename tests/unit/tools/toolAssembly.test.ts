@@ -16,13 +16,16 @@ const scopedMock = createScopedModuleMocker(mock, {
 
 scopedMock.module("@/utils/provider/speechEndpointResolver", () => ({
   ...realSpeechEndpointResolver,
-  resolveActiveSpeechEndpoint: async () => ({
-    endpoint: {
-      api_style: "tts-clone",
-      endpoint_url: "http://127.0.0.1:8016",
-      extra_config: { voice_mode: "clone", script_markup: "plain", supports_instruct: true },
-    } as unknown as CustomEndpointRow,
-    apiKey: "",
+  resolveSpeechTargets: async () => ({
+    design: null,
+    clone: {
+      endpoint: {
+        api_style: "tts-clone",
+        endpoint_url: "http://127.0.0.1:8016",
+        extra_config: { voice_mode: "clone", script_markup: "plain", supports_instruct: true },
+      } as unknown as CustomEndpointRow,
+      apiKey: "",
+    },
   }),
 }));
 
@@ -31,7 +34,9 @@ function createAssemblyState(overrides: Partial<ToolAssemblyState> = {}): ToolAs
     server_id: "1",
     activePersonaHasElevenlabsVoice: true,
     activePersonaVoiceDesignPrompt: null,
-    activePersonaVoiceName: null,
+
+    activePersonaVoiceSampleId: 12,
+    activePersonaVoiceSourcePriority: "design",
     diffusion_model_id: 1,
     nai_diffusion_model_id: null,
     video_model_id: null,

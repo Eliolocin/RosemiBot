@@ -17,7 +17,7 @@ import {
   CONFIG_MODEL_CLEAR_VALUE,
   CONFIG_MODEL_PAGE_SIZE,
   CONFIG_MODEL_PROVIDER_DIRECT_LIMIT,
-  CONFIG_ENDPOINT_PAGE_SIZE,
+  configEndpointWindowSize,
   CONFIG_NAI_PRESET_NEXT_VALUE,
   CONFIG_NAI_PRESET_PAGE_SIZE,
   CONFIG_NAI_PRESET_PREVIOUS_VALUE,
@@ -81,7 +81,8 @@ export const CONFIG_MODEL_CAPABILITY_LOCALE_KEYS: Record<ConfigModelCapability, 
   image: "commands.config.panel.capability_image",
   "nai-image": "commands.config.panel.capability_nai_image",
   video: "commands.config.panel.capability_video",
-  tts: "commands.config.panel.capability_tts",
+  "tts-design": "commands.config.panel.capability_tts_design",
+  "tts-clone": "commands.config.panel.capability_tts_clone",
   stt: "commands.config.panel.capability_stt",
 };
 
@@ -238,8 +239,9 @@ function buildCapabilityNoticeLine(locale: string, view: ConfigSwitchModelsView)
     // restate a working setup on every repaint. Only the missing endpoint needs an action, and that
     // sentence already names the enabled state, which keeps the healthy case as silent as the Image
     // and Video notices.
-    const speechSlot = view.endpointSlots?.find((slot) => slot.capability === "tts");
-    const hasActiveSpeechEndpoint = speechSlot?.endpoints.some((endpoint) => endpoint.isActive && endpoint.id > 0);
+    const hasActiveSpeechEndpoint = view.endpointSlots?.some(
+      (slot) => slot.capability !== "stt" && slot.endpoints.some((endpoint) => endpoint.isActive && endpoint.id > 0),
+    );
     if (!hasActiveSpeechEndpoint) {
       warnings.push(localizer(locale, "commands.config.panel.speech_capability_missing_endpoint"));
     }
@@ -376,12 +378,12 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
     );
   }
 
-  for (const capability of ["tts", "stt"] as const) {
+  for (const capability of ["tts-design", "tts-clone", "stt"] as const) {
     const slot = view.endpointSlots?.find((candidate) => candidate.capability === capability);
     if (!slot) continue;
     const capabilityLabel = localizer(locale, CONFIG_MODEL_CAPABILITY_LOCALE_KEYS[capability]);
-    const overflows = slot.endpoints.length > CONFIG_ENDPOINT_PAGE_SIZE;
-    const windowSize = overflows ? CONFIG_ENDPOINT_PAGE_SIZE - 1 : CONFIG_ENDPOINT_PAGE_SIZE;
+    const windowSize = configEndpointWindowSize(capability, slot.endpoints.length);
+    const overflows = slot.endpoints.length > windowSize;
     const rangeCount = Math.max(1, Math.ceil(slot.endpoints.length / windowSize));
     const rangeIndex = Math.min(Math.max(0, Math.floor(slot.pageStart / windowSize)), rangeCount - 1);
     const visibleStart = rangeIndex * windowSize;
@@ -422,6 +424,13 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
         default: false,
       });
     }
+    if (capability !== "stt") {
+      options.unshift({
+        value: `ep-clear|${fingerprint}`,
+        label: safeSelectOptionText(localizer(locale, "commands.config.panel.model_no_model_option"), 100),
+        default: false,
+      });
+    }
     if (options.length === 0) {
       options.push({
         value: "ep-none",
@@ -445,7 +454,7 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
           customId: buildConfigRouteId({ action: "endpoint-select", locale, capability }),
           placeholder: safeSelectOptionText(placeholder, 150),
           options,
-          disabled: writesDisabled || slot.endpoints.length === 0,
+          disabled: writesDisabled || (capability === "stt" && slot.endpoints.length === 0),
         },
       ],
     });

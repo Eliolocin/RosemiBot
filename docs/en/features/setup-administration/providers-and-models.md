@@ -72,6 +72,13 @@ Use `/providers` to manage server credentials, model catalogs, and endpoint regi
 Then use `/config` > Models > Switch Models to select the shared capability assignments every
 member of the server uses. Both commands require server management permissions.
 
+Speech has separate `TTS (Voice Design)` and `TTS (Voice Clone)` selections. A Design endpoint and a
+Clone endpoint can run together. Activating an Auto endpoint selects it for both; clearing one
+selection keeps the other. In Persona > Voice, choose which saved source to prioritize and edit the
+voice description at any time. If the preferred source has no saved voice or matching target, TomoriBot
+uses the other saved source.
+
+
 Individual members manage their own credentials and catalogs with `/personal providers`, then
 select personal models in `/personal config`. Personal settings follow them across every server
 where they use TomoriBot. See

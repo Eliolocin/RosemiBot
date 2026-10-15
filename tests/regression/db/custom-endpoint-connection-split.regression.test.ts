@@ -117,7 +117,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom Endpoint connection and model split
     expect(speechEp).not.toBeNull();
     expect(speechEp?.connection_id).toBeDefined();
 
-    const activeSpeech = await SpeechRepository.loadActiveEndpoint(serverId, "speech");
+    await SpeechRepository.setSpeechEndpointSelection(serverId, speechEp?.custom_endpoint_id ?? null);
+    const activeSpeech = await SpeechRepository.loadActiveEndpoint(serverId, "clone");
     expect(activeSpeech).not.toBeNull();
     expect(activeSpeech?.custom_endpoint_id).toBe(speechEp?.custom_endpoint_id);
     expect(activeSpeech?.connection_id).toBe(speechEp?.connection_id);
@@ -219,6 +220,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom Endpoint connection and model split
         DELETE FROM custom_endpoint_connections
         WHERE server_id = ${serverId} AND label = 'divergent' AND capability = 'text'
       `;
+      await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.sql"));
       await testSql`DROP INDEX IF EXISTS idx_custom_endpoint_connections_server_unique`;
       await testSql`CREATE UNIQUE INDEX idx_custom_endpoint_connections_server_unique
         ON custom_endpoint_connections(server_id, label, capability)
@@ -504,6 +506,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom Endpoint connection and model split
       path.join(process.cwd(), "src", "db", "migrations", "084_custom_endpoint_connection_behavior.sql"),
     ];
 
+    await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.down.sql"));
     await executeTestSqlFile(downPath);
 
     try {
@@ -550,6 +553,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom Endpoint connection and model split
     } finally {
       // Keep the shared disposable database at the current fresh-install
       // schema after exercising Migration A's legacy coexistence state.
+      await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.sql"));
       await testSql`DROP INDEX IF EXISTS idx_custom_endpoint_connections_server_unique`;
       await testSql`DROP INDEX IF EXISTS idx_custom_endpoint_connections_user_unique`;
       await testSql`CREATE UNIQUE INDEX idx_custom_endpoint_connections_server_unique

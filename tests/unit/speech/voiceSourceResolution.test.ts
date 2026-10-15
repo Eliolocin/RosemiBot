@@ -102,7 +102,7 @@ describe("resolveVoiceSourceCapabilities", () => {
 describe("resolveVoiceSourceCandidates", () => {
   it("offers both clone sources on a clone endpoint, upload first", () => {
     const candidates = resolveVoiceSourceCandidates({
-      endpoint: makeEndpoint("tts-clone", "clone"),
+      targets: { design: makeEndpoint("tts-clone", "clone"), clone: makeEndpoint("tts-clone", "clone") },
       persona: PERSONA_WITH_BOTH,
       personaSampleName: "millie.wav",
       uploadFilename: "mesu.wav",
@@ -115,7 +115,7 @@ describe("resolveVoiceSourceCandidates", () => {
 
   it("offers both design sources on a voice-design endpoint, typed first", () => {
     const candidates = resolveVoiceSourceCandidates({
-      endpoint: makeEndpoint("tts-clone", "voice-design"),
+      targets: { design: makeEndpoint("tts-clone", "voice-design"), clone: makeEndpoint("tts-clone", "voice-design") },
       persona: PERSONA_WITH_BOTH,
       personaSampleName: "millie.wav",
       uploadFilename: "mesu.wav",
@@ -128,19 +128,19 @@ describe("resolveVoiceSourceCandidates", () => {
 
   it("offers all four sources on an auto endpoint, in pre-selection order", () => {
     const candidates = resolveVoiceSourceCandidates({
-      endpoint: makeEndpoint("tts-clone", "auto"),
+      targets: { design: makeEndpoint("tts-clone", "auto"), clone: makeEndpoint("tts-clone", "auto") },
       persona: PERSONA_WITH_BOTH,
       personaSampleName: "millie.wav",
       uploadFilename: "mesu.wav",
       typedDesignPrompt: "Very happy and kind",
     });
 
-    expect(ids(candidates)).toEqual(["upload", "typed-design", "persona-sample", "persona-design"]);
+    expect(ids(candidates)).toEqual(["upload", "typed-design", "persona-design", "persona-sample"]);
   });
 
   it("offers only the single available source on an auto endpoint", () => {
     const candidates = resolveVoiceSourceCandidates({
-      endpoint: makeEndpoint("tts-clone", "auto"),
+      targets: { design: makeEndpoint("tts-clone", "auto"), clone: makeEndpoint("tts-clone", "auto") },
       persona: PERSONA_WITH_SAMPLE,
       personaSampleName: "millie.wav",
     });
@@ -150,7 +150,7 @@ describe("resolveVoiceSourceCandidates", () => {
 
   it("ignores both user-supplied options on ElevenLabs", () => {
     const candidates = resolveVoiceSourceCandidates({
-      endpoint: makeEndpoint("elevenlabs"),
+      targets: { design: makeEndpoint("elevenlabs"), clone: makeEndpoint("elevenlabs") },
       persona: PERSONA_WITH_ELEVENLABS_VOICE,
       uploadFilename: "mesu.wav",
       typedDesignPrompt: "Very happy and kind",
@@ -162,7 +162,7 @@ describe("resolveVoiceSourceCandidates", () => {
   it("returns nothing when the persona has no voice and nothing was supplied", () => {
     expect(
       resolveVoiceSourceCandidates({
-        endpoint: makeEndpoint("tts-clone", "auto"),
+        targets: { design: makeEndpoint("tts-clone", "auto"), clone: makeEndpoint("tts-clone", "auto") },
         persona: {},
       }),
     ).toEqual([]);
@@ -171,7 +171,7 @@ describe("resolveVoiceSourceCandidates", () => {
   it("returns nothing when there is no endpoint and the persona only has a sample", () => {
     expect(
       resolveVoiceSourceCandidates({
-        endpoint: null,
+        targets: { design: null, clone: null },
         persona: PERSONA_WITH_SAMPLE,
         personaSampleName: "millie.wav",
       }),
@@ -180,7 +180,7 @@ describe("resolveVoiceSourceCandidates", () => {
 
   it("does not offer an upload on a voice-design-only endpoint", () => {
     const candidates = resolveVoiceSourceCandidates({
-      endpoint: makeEndpoint("tts-clone", "voice-design"),
+      targets: { design: makeEndpoint("tts-clone", "voice-design"), clone: makeEndpoint("tts-clone", "voice-design") },
       persona: PERSONA_WITH_DESIGN,
       uploadFilename: "mesu.wav",
     });
@@ -191,7 +191,7 @@ describe("resolveVoiceSourceCandidates", () => {
   it("treats whitespace-only option and prompt values as absent", () => {
     expect(
       resolveVoiceSourceCandidates({
-        endpoint: makeEndpoint("tts-clone", "auto"),
+        targets: { design: makeEndpoint("tts-clone", "auto"), clone: makeEndpoint("tts-clone", "auto") },
         persona: PERSONA_WITH_DESIGN,
         uploadFilename: "   ",
         typedDesignPrompt: "  ",
@@ -209,7 +209,7 @@ describe("resolveVoiceSourceCandidates", () => {
 describe("selectDefaultVoiceSource", () => {
   it("pre-selects the uploaded clip over every stored persona voice", () => {
     const candidates = resolveVoiceSourceCandidates({
-      endpoint: makeEndpoint("tts-clone", "auto"),
+      targets: { design: makeEndpoint("tts-clone", "auto"), clone: makeEndpoint("tts-clone", "auto") },
       persona: PERSONA_WITH_BOTH,
       personaSampleName: "millie.wav",
       uploadFilename: "mesu.wav",
@@ -221,7 +221,7 @@ describe("selectDefaultVoiceSource", () => {
 
   it("pre-selects the typed design prompt over the persona design prompt", () => {
     const candidates = resolveVoiceSourceCandidates({
-      endpoint: makeEndpoint("tts-clone", "auto"),
+      targets: { design: makeEndpoint("tts-clone", "auto"), clone: makeEndpoint("tts-clone", "auto") },
       persona: PERSONA_WITH_DESIGN,
       typedDesignPrompt: "Very happy and kind",
     });
@@ -229,14 +229,14 @@ describe("selectDefaultVoiceSource", () => {
     expect(selectDefaultVoiceSource(candidates)?.id).toBe("typed-design");
   });
 
-  it("pre-selects the persona sample over the persona design prompt", () => {
+  it("pre-selects Design by default when both stored sources are usable", () => {
     const candidates = resolveVoiceSourceCandidates({
-      endpoint: makeEndpoint("tts-clone", "auto"),
+      targets: { design: makeEndpoint("tts-clone", "auto"), clone: makeEndpoint("tts-clone", "auto") },
       persona: PERSONA_WITH_BOTH,
       personaSampleName: "millie.wav",
     });
 
-    expect(selectDefaultVoiceSource(candidates)?.id).toBe("persona-sample");
+    expect(selectDefaultVoiceSource(candidates)?.id).toBe("persona-design");
   });
 
   it("returns null for an empty candidate list", () => {

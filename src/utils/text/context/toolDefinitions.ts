@@ -37,7 +37,10 @@ async function buildVerbatimToolDefinitionsJson(tomoriState: TomoriState): Promi
         tomoriState.speech_voice_id?.trim(),
     ),
     activePersonaVoiceDesignPrompt: tomoriState.speech_voice_design_prompt?.trim() || null,
-    activePersonaVoiceName: tomoriState.speech_voice_name,
+    activePersonaVoiceSampleId: tomoriState.speech_voice_sample_id,
+    activePersonaVoiceId: tomoriState.speech_voice_id,
+    activePersonaVoiceSourcePriority: tomoriState.voice_source_priority,
+
     llm: {
       llm_codename: tomoriState.llm.llm_codename,
       has_tools: tomoriState.llm.has_tools,

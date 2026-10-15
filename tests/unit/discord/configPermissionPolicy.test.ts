@@ -841,7 +841,7 @@ describe("isConfigRouteAuthorized", () => {
   });
 
   it("authorizes endpoint activation through the Models switch page", () => {
-    for (const capability of ["tts", "stt"] as const) {
+    for (const capability of ["tts-clone", "stt"] as const) {
       const route: ConfigPanelRoute = { action: "endpoint-select", locale: "en-US", capability };
       expect(isConfigRouteAuthorized(route, GUILD_MANAGER)).toBe(true);
       expect(isConfigRouteAuthorized(route, GUILD_MEMBER)).toBe(false);

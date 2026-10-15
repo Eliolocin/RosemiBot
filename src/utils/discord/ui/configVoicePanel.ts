@@ -13,7 +13,7 @@ import type { PanelReadStatus } from "@/types/discord/panel";
 import type { ConfigActor } from "@/utils/discord/interactions/configPermissionPolicy";
 import type { ConfigPersonaVoiceView } from "@/utils/discord/interactions/configPersonaVoiceLoader";
 import { buildConfigRouteId } from "@/utils/discord/configPanelCatalog";
-import { buildOptionalThumbnailSection } from "@/utils/discord/ui/panel";
+import { buildOptionalThumbnailSection, buildStateControlRow } from "@/utils/discord/ui/panel";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { localizer } from "@/utils/text/localizer";
 import { renderFencedPreview } from "@/utils/text/textPreview";
@@ -76,7 +76,7 @@ function currentVoiceLabel(input: ConfigVoicePanelInput, view: ConfigPersonaVoic
   if (!persona) return localizer(input.locale, "commands.config.panel.voice_page_unassigned");
 
   if (
-    view.capability.apiStyle === "tts-clone" &&
+    view.capability.apiStyle !== "elevenlabs" &&
     persona.speech_voice_sample_id !== null &&
     persona.speech_voice_sample_id !== undefined
   ) {
@@ -95,33 +95,14 @@ function currentVoiceLabel(input: ConfigVoicePanelInput, view: ConfigPersonaVoic
     });
   }
 
-  if (
-    view.capability.apiStyle === "tts-clone" &&
-    view.capability.supportsVoiceDesign &&
-    persona.speech_voice_design_prompt?.trim()
-  ) {
-    return localizer(input.locale, "commands.config.panel.voice_page_design_value");
-  }
-
-  if (persona.speech_voice_name?.trim()) {
-    return localizer(input.locale, "commands.config.panel.voice_page_provider_value", {
-      name: persona.speech_voice_name,
-    });
-  }
-
   return localizer(input.locale, "commands.config.panel.voice_page_unassigned");
 }
 
-function hasStoredVoice(persona: TomoriState | null): boolean {
-  if (!persona) return false;
-  return (
-    (persona.speech_voice_sample_id !== null && persona.speech_voice_sample_id !== undefined) ||
-    Boolean(
-      persona.speech_voice_id?.trim() ||
-        persona.speech_voice_name?.trim() ||
-        persona.speech_voice_design_prompt?.trim(),
-    )
-  );
+function hasStoredVoice(input: ConfigVoicePanelInput): boolean {
+  const persona = input.selectedPersona;
+  return input.view?.capability.apiStyle === "elevenlabs"
+    ? Boolean(persona?.speech_voice_id?.trim())
+    : persona?.speech_voice_sample_id != null;
 }
 
 function resolveSamplePage(samplesLength: number, requestedStart: number | undefined): number {
@@ -190,7 +171,7 @@ function buildSampleSelector(input: ConfigVoicePanelInput, view: ConfigPersonaVo
           150,
         ),
         options,
-        disabled: input.readStatus !== "fresh" || !view.capability.assignable || samples.length === 0,
+        disabled: input.readStatus !== "fresh" || !input.actor.isManager || samples.length === 0,
       },
     ],
   } satisfies ActionRowData<StringSelectMenuComponentData>;
@@ -251,13 +232,14 @@ function buildVoiceActionRow(
     );
   }
 
-  buttons.push({
-    type: ComponentType.Button,
-    style: ButtonStyle.Secondary,
-    customId: buildVoiceRoute(input, { action: "voice-clear", personaId }),
-    label: localizer(input.locale, "commands.config.panel.voice_page_clear_button"),
-    disabled: disabled || !hasStoredVoice(input.selectedPersona),
-  });
+  if (!options.includeDesign)
+    buttons.push({
+      type: ComponentType.Button,
+      style: ButtonStyle.Secondary,
+      customId: buildVoiceRoute(input, { action: "voice-clear", personaId }),
+      label: localizer(input.locale, "commands.config.panel.voice_page_clear_button"),
+      disabled: disabled || !hasStoredVoice(input),
+    });
 
   return {
     type: ComponentType.ActionRow,
@@ -369,52 +351,77 @@ export function buildConfigVoiceBody(input: ConfigVoicePanelInput): ComponentInC
   };
   components.push(buildOptionalThumbnailSection(heading, input.selectedPersonaAvatarUrl));
 
+  if (personaId !== null) {
+    const priority = input.selectedPersona?.voice_source_priority ?? "design";
+    const priorityLabel = localizer(input.locale, `commands.config.panel.voice_priority_${priority}`);
+    const effectiveLabel = view.effectiveSource
+      ? localizer(input.locale, `commands.config.panel.voice_priority_${view.effectiveSource}`)
+      : localizer(input.locale, "commands.choices.none");
+    components.push({
+      type: ComponentType.TextDisplay,
+      content: `**${localizer(input.locale, "commands.config.panel.voice_priority_title")}**\n> ${localizer(
+        input.locale,
+        view.effectiveSource && view.effectiveSource !== priority
+          ? "commands.config.panel.voice_priority_fallback"
+          : "commands.config.panel.voice_priority_effect",
+        {
+          priority: priorityLabel,
+          source: effectiveLabel,
+          target: view.effectiveTarget ?? localizer(input.locale, "commands.choices.none"),
+        },
+      )}`,
+    });
+    components.push(
+      buildStateControlRow(
+        (["design", "clone"] as const).map((mode) => ({
+          value: mode,
+          customId: buildConfigRouteId({
+            locale: input.locale,
+            action: mode === "design" ? "voice-priority-design" : "voice-priority-clone",
+            personaId,
+          }),
+          label: localizer(input.locale, `commands.config.panel.voice_priority_${mode}`),
+        })),
+        priority,
+        input.readStatus !== "fresh" || !input.actor.isManager,
+      ),
+    );
+    const prompt = input.selectedPersona?.speech_voice_design_prompt?.trim();
+    components.push({
+      type: ComponentType.TextDisplay,
+      content: `**${localizer(input.locale, "commands.config.panel.voice_page_design_preview_title")}**\n${
+        prompt
+          ? renderFencedPreview(input.locale, prompt, {
+              actionLabel: localizer(input.locale, "commands.config.panel.voice_page_edit_design_button"),
+            })
+          : localizer(input.locale, "commands.config.panel.voice_page_unassigned")
+      }`,
+    });
+    components.push(buildVoiceActionRow(input, personaId, { includeDesign: true }));
+  }
   components.push({
     type: ComponentType.TextDisplay,
-    content: `**${localizer(input.locale, "commands.config.panel.voice_page_current_title")}**\n> ${currentVoiceLabel(input, view)}`,
+    content: `**${localizer(input.locale, "commands.config.panel.voice_priority_clone")}**\n> ${currentVoiceLabel(input, view)}`,
   });
-
-  if (view.capability.apiStyle === "tts-clone") {
+  if (view.capability.apiStyle === "elevenlabs") {
+    const remoteView = input.remoteView ?? view.remoteChooser;
+    if (remoteView) components.push(buildRemoteChooser(input, applyRemotePageStart(remoteView, input.remotePageStart)));
+    if (personaId !== null)
+      components.push(
+        buildVoiceActionRow(input, personaId, {
+          chooseProvider: !remoteView,
+          cancelChooser: Boolean(remoteView),
+        }),
+      );
+  } else {
     components.push(buildSampleSelector(input, view));
-  } else if (view.capability.apiStyle === "elevenlabs") {
-    const remoteView = input.remoteView ?? view.remoteChooser;
-    if (remoteView) {
-      components.push(buildRemoteChooser(input, applyRemotePageStart(remoteView, input.remotePageStart)));
-    }
+    if (personaId !== null) components.push(buildVoiceActionRow(input, personaId));
   }
-
-  const supportsDesign = view.capability.apiStyle === "tts-clone" && view.capability.supportsVoiceDesign;
-  if (supportsDesign && personaId !== null) {
-    const prompt = input.selectedPersona?.speech_voice_design_prompt?.trim();
-    if (prompt) {
-      components.push({
-        type: ComponentType.TextDisplay,
-        content: `**${localizer(input.locale, "commands.config.panel.voice_page_design_preview_title")}**\n${renderFencedPreview(input.locale, prompt, { actionLabel: localizer(input.locale, "commands.config.panel.voice_page_edit_design_button") })}`,
-      });
-    }
-    if (personaId !== null) components.push(buildVoiceActionRow(input, personaId, { includeDesign: true }));
-  } else if (personaId !== null) {
-    const remoteView = input.remoteView ?? view.remoteChooser;
-    components.push(
-      buildVoiceActionRow(input, personaId, {
-        chooseProvider: !view.capability.assignable || (view.capability.apiStyle === "elevenlabs" && !remoteView),
-        cancelChooser: view.capability.apiStyle === "elevenlabs" && Boolean(remoteView),
-        chooseProviderDisabled: !view.capability.assignable,
-      }),
-    );
-  }
-
-  if (!view.capability.assignable) {
+  if (!view.effectiveSource) {
     components.push({
       type: ComponentType.TextDisplay,
-      content: `**${localizer(input.locale, "commands.config.panel.voice_page_no_endpoint_title")}**\n${localizer(input.locale, "commands.config.panel.voice_page_no_endpoint_description")}`,
-    });
-  } else if (!supportsDesign) {
-    components.push({
-      type: ComponentType.TextDisplay,
-      content: `-# ${localizer(input.locale, "commands.config.panel.voice_page_design_unavailable_description")}`,
+      content: `> ${localizer(input.locale, "commands.config.panel.voice_page_no_endpoint_description")}`,
     });
   }
-
   return components;
 }

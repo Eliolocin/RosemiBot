@@ -97,7 +97,7 @@ describe("guild MCP replacement availability without a bundled MCP manager", () 
   const enabledConfigs = spyOn(guildMcpConfigCache, "getGuildMcpConfigReadResult");
   // Backend-slot lookups only gate media tools, which this suite does not register.
   const slots = spyOn(dbClient, "sql").mockImplementation((async () => []) as unknown as typeof dbClient.sql);
-  const speech = spyOn(speechEndpointResolver, "resolveActiveSpeechEndpoint").mockResolvedValue(null);
+  const speech = spyOn(speechEndpointResolver, "resolveSpeechTargets").mockResolvedValue({ design: null, clone: null });
   const optKey = spyOn(crypto, "hasOptApiKey").mockResolvedValue(false);
 
   beforeAll(initializeLocalizer);

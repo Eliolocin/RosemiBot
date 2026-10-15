@@ -1,3 +1,4 @@
+import { supportsSpeechMode } from "@/utils/speech/voiceSourceCapabilities";
 import type {
   CustomEndpointConnectionRow,
   CustomEndpointApiStyle,
@@ -361,6 +362,8 @@ interface PanelModelContext {
   activeNaiImageId: number | null;
   activeEmbeddingId: number | null;
   activeVideoId: number | null;
+  activeSpeechDesignId: number | null;
+  activeSpeechCloneId: number | null;
   scopeFallbacks: readonly FallbackModelRef[];
 }
 
@@ -372,6 +375,8 @@ function serverModelContext(state: TomoriState): PanelModelContext {
     activeNaiImageId: state.config.nai_diffusion_model_id ?? null,
     activeEmbeddingId: state.config.embedding_model_id ?? null,
     activeVideoId: state.config.video_model_id ?? null,
+    activeSpeechDesignId: state.config.speech_design_endpoint_id,
+    activeSpeechCloneId: state.config.speech_clone_endpoint_id,
     scopeFallbacks: state.config.fallback_model_refs ?? [],
   };
 }
@@ -388,6 +393,8 @@ function personalModelContext(userId: number, configs: UserSavedProviderConfigRo
     activeNaiImageId: getActivePersonalProviderForCapability(configs, "image")?.nai_diffusion_model_id ?? null,
     activeEmbeddingId: getActivePersonalProviderForCapability(configs, "embedding")?.embedding_model_id ?? null,
     activeVideoId: getActivePersonalProviderForCapability(configs, "video")?.video_model_id ?? null,
+    activeSpeechDesignId: null,
+    activeSpeechCloneId: null,
     scopeFallbacks: text?.fallback_model_refs ?? [],
   };
 }
@@ -526,9 +533,14 @@ function buildEndpointCapabilities(
                 ? context.activeEmbeddingId
                 : capability === "video"
                   ? context.activeVideoId
-                  : endpoint.is_default
-                    ? endpoint.custom_endpoint_id
-                    : null;
+                  : capability === "speech"
+                    ? endpoint.custom_endpoint_id === context.activeSpeechDesignId ||
+                      endpoint.custom_endpoint_id === context.activeSpeechCloneId
+                      ? endpoint.custom_endpoint_id
+                      : null
+                    : endpoint.is_default
+                      ? endpoint.custom_endpoint_id
+                      : null;
         const identityId =
           capability === "speech" || capability === "transcription"
             ? endpoint.custom_endpoint_id
@@ -557,8 +569,13 @@ function buildEndpointCapabilities(
           capability === "image" ? readImageEndpointSupports(endpoint) : undefined,
         );
         if (!model) return [];
-        if (capability === "speech" || capability === "transcription") {
-          model.isWorkspaceActive = endpoint.is_default;
+        if (capability === "transcription") model.isWorkspaceActive = endpoint.is_default;
+        if (capability === "speech") {
+          model.speechActiveModes = [
+            ...(endpoint.custom_endpoint_id === context.activeSpeechDesignId ? ["design" as const] : []),
+            ...(endpoint.custom_endpoint_id === context.activeSpeechCloneId ? ["clone" as const] : []),
+          ];
+          model.isWorkspaceActive = model.speechActiveModes.length > 0;
         }
         if (capability === "decision") {
           model.isWorkspaceActive = false;
@@ -1684,6 +1701,7 @@ interface ActivateWorkspaceEndpointInput {
   scopeKind?: "server" | "personal";
   state: TomoriState;
   capability: "speech" | "transcription";
+  mode?: "design" | "clone";
   customEndpointId: number;
 }
 
@@ -1717,15 +1735,31 @@ async function activateWorkspaceEndpoint(
     (endpoint) => endpoint.capability === input.capability && endpoint.custom_endpoint_id !== undefined,
   );
   const target = endpoints.find((endpoint) => endpoint.custom_endpoint_id === input.customEndpointId);
-  if (!target?.custom_endpoint_id) return { status: "not-found" };
+  if (!target?.custom_endpoint_id || (input.mode && !supportsSpeechMode(target, input.mode)))
+    return { status: "not-found" };
 
   const identity = `${target.label} (${target.capability})`;
-  const previous = endpoints.find((endpoint) => endpoint.is_default) ?? null;
-  if (previous?.custom_endpoint_id === target.custom_endpoint_id) return { status: "already-active", identity };
+  const previousId =
+    input.mode === "design"
+      ? input.state.config.speech_design_endpoint_id
+      : input.state.config.speech_clone_endpoint_id;
+  const previous =
+    endpoints.find((endpoint) =>
+      input.capability === "speech" ? endpoint.custom_endpoint_id === previousId : endpoint.is_default,
+    ) ?? null;
+  const selectedInEveryMode =
+    input.capability === "speech"
+      ? (!supportsSpeechMode(target, "design") ||
+          input.state.config.speech_design_endpoint_id === target.custom_endpoint_id) &&
+        (!supportsSpeechMode(target, "clone") ||
+          input.state.config.speech_clone_endpoint_id === target.custom_endpoint_id)
+      : previous?.custom_endpoint_id === target.custom_endpoint_id;
+  if (selectedInEveryMode) return { status: "already-active", identity };
 
   const updated = await dependencies.setActive({
     serverId: input.state.server_id,
     capability: input.capability,
+    mode: input.mode,
     customEndpointId: target.custom_endpoint_id,
   });
   if (!updated) return { status: "write-failed" };

@@ -246,8 +246,9 @@ const serverNsfwConfigExportSchema = z.object({
   uncensor_sanitize_enabled: z.boolean().optional(),
 });
 
-/** Portable server_speech_configs export fields. */
 const serverSpeechConfigExportSchema = z.object({
+  speech_design_endpoint_id: z.number().int().positive().nullable().optional(),
+  speech_clone_endpoint_id: z.number().int().positive().nullable().optional(),
   voice_transcript_chat_mode: z.boolean().optional(),
   chatterbox_turbo_enabled: z.boolean().optional(),
   chatterbox_cfg_weight: z.number().min(0.0).optional(),
