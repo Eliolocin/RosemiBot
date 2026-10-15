@@ -16,7 +16,7 @@ import {
   formatVoiceSourceOptionDescription,
   selectDefaultVoiceSource,
   type VoiceSourceCandidate,
-  type VoiceSourceShape,
+  type VoiceSourceId,
 } from "@/utils/speech/voiceSourceResolution";
 
 /** Modal custom id, matched by the command's `execute` on the nonced id. */
@@ -105,18 +105,31 @@ function getExpressivenessPresetKey(preset: ExpressivenessPreset): string {
   return preset.value.replace(/-/g, "_");
 }
 
-function modePrefixKey(shape: VoiceSourceShape): string {
-  return shape === "clone"
-    ? "commands.generate.voice-message.modal.mode_clone"
-    : "commands.generate.voice-message.modal.mode_design";
-}
+const SOURCE_LABEL_KEYS: Record<VoiceSourceId, string> = {
+  upload: "commands.generate.voice-message.modal.source_upload_label",
+  "typed-design": "commands.generate.voice-message.modal.source_typed_design_label",
+  "persona-sample": "commands.generate.voice-message.modal.source_persona_sample_label",
+  "persona-design": "commands.generate.voice-message.modal.source_persona_design_label",
+  elevenlabs: "commands.generate.voice-message.modal.source_elevenlabs_label",
+};
 
 function formatSourceDescription(locale: string, candidate: VoiceSourceCandidate): string {
-  const modePrefix = localizer(locale, modePrefixKey(candidate.shape));
+  const modePrefix = localizer(
+    locale,
+    candidate.shape === "design"
+      ? "commands.generate.voice-message.modal.mode_design"
+      : "commands.generate.voice-message.modal.mode_clone",
+  );
   const body =
     candidate.shape === "design"
       ? (candidate.designPrompt ?? "")
-      : (candidate.displayText ?? localizer(locale, "commands.generate.voice-message.modal.source_sample_fallback"));
+      : (candidate.displayText ??
+        localizer(
+          locale,
+          candidate.shape === "elevenlabs"
+            ? "commands.generate.voice-message.source_elevenlabs"
+            : "commands.generate.voice-message.modal.source_sample_fallback",
+        ));
   return formatVoiceSourceOptionDescription(modePrefix, body);
 }
 
@@ -140,7 +153,7 @@ function buildVoiceSourceField(locale: string, candidates: readonly VoiceSourceC
     required: true,
     options: candidates.map((candidate) => ({
       value: candidate.id,
-      label: localizer(locale, `commands.generate.voice-message.modal.source_${candidate.id.replace(/-/g, "_")}_label`),
+      label: localizer(locale, SOURCE_LABEL_KEYS[candidate.id]),
       description: formatSourceDescription(locale, candidate),
       default: candidate.id === defaultSource?.id,
     })),

@@ -222,6 +222,7 @@ export default {
         source_typed_design_label: `使用輸入的語音設計`,
         source_persona_sample_label: `使用人格指派的語音`,
         source_persona_design_label: `使用人格的語音設計`,
+        source_elevenlabs_label: `使用人格的 ElevenLabs 語音`,
         direction_label: `語氣指示（選填）`,
         direction_description: `只有在選用「語音設計」來源時才會使用；塑造語氣，但不會唸出來`,
         direction_placeholder: `例如：聽起來想睡又小聲、快哭出來、開朗又愛鬧`,

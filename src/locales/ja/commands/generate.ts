@@ -222,6 +222,7 @@ export default {
         source_typed_design_label: `入力した声の説明を使う`,
         source_persona_sample_label: `ペルソナの割り当て音声を使う`,
         source_persona_design_label: `ペルソナの声の説明を使う`,
+        source_elevenlabs_label: `ペルソナの ElevenLabs ボイスを使う`,
         direction_label: `話し方の指示（任意）`,
         direction_description: `音声設計ソースを選んだときだけ使われます。話し方を調整し、読み上げはされません`,
         direction_placeholder: `例：眠そうに静かに、泣きそうに、明るくからかうように`,

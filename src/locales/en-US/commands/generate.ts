@@ -222,6 +222,7 @@ export default {
         source_typed_design_label: `Use Typed Voice Design`,
         source_persona_sample_label: `Use Persona's Assigned Voice`,
         source_persona_design_label: `Use Persona's Voice Design`,
+        source_elevenlabs_label: `Use Persona's ElevenLabs Voice`,
         direction_label: `Delivery Direction (Optional)`,
         direction_description: `Only used when a Voice Design source is picked; shapes delivery, never spoken`,
         direction_placeholder: `e.g. sound sleepy and quiet, near tears, bright and teasing`,

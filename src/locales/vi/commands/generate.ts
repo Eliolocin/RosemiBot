@@ -222,6 +222,7 @@ export default {
         source_typed_design_label: `Dùng thiết kế giọng đã nhập`,
         source_persona_sample_label: `Dùng giọng đã gán của persona`,
         source_persona_design_label: `Dùng thiết kế giọng của persona`,
+        source_elevenlabs_label: `Dùng giọng ElevenLabs của persona`,
         direction_label: `Chỉ dẫn diễn đạt (Tùy chọn)`,
         direction_description: `Chỉ dùng khi chọn nguồn Thiết kế giọng; định hình cách đọc, không đọc thành lời`,
         direction_placeholder: `vd: giọng ngái ngủ và thì thầm, nghẹn ngào, tươi vui trêu chọc`,

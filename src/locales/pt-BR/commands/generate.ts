@@ -222,6 +222,7 @@ export default {
         source_typed_design_label: `Usar Design de Voz Digitado`,
         source_persona_sample_label: `Usar Voz Atribuída da Persona`,
         source_persona_design_label: `Usar Design de Voz da Persona`,
+        source_elevenlabs_label: `Usar Voz da Persona no ElevenLabs`,
         direction_label: `Direção de Entrega (Opcional)`,
         direction_description: `Usado apenas quando uma fonte de Design de Voz é escolhida; molda a entrega, nunca falado`,
         direction_placeholder: `ex. soar sonolento e quieto, quase chorando, brilhante e provocante`,

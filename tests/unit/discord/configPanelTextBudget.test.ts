@@ -1662,29 +1662,45 @@ describe("Persona Voice page text and component budgeting", () => {
     return Array.from(prompt).slice(0, length).join("");
   };
 
-  it("pins the clone Voice maximum across locales, receipts, and avatars", () => {
+  it("pins the clone Voice maximum across locales, receipts, avatars, sources, and leftover provider voices", () => {
     const cases = collectCaseFailures();
     for (const locale of RUNTIME_LOCALES) {
       for (const receipt of [false, true]) {
         for (const avatarPresent of [false, true]) {
-          cases.check(`locale=${locale}, receipt=${receipt}, avatar=${avatarPresent}`, () => {
-            const payload = buildVoicePayload(locale, receipt, {
-              personas: maximumPersonaSet(makePrompt(DISCORD_TEXT_INPUT_MAX, 3)),
-              selectedPersonaId: 55,
-              selectedPersonaAvatarUrl: avatarPresent ? "https://cdn.example/avatar.png" : null,
-              receipt: receipt ? { tone: "success", heading: "Saved", detail: "Voice saved." } : undefined,
-            });
-            assertValid(payload, expectedLocalMaximum(receipt, avatarPresent));
+          for (const leftoverProviderVoice of [false, true]) {
+            for (const effectiveSource of [undefined, "clone"] as const) {
+              cases.check(
+                `locale=${locale}, receipt=${receipt}, avatar=${avatarPresent}, provider=${leftoverProviderVoice}, source=${effectiveSource}`,
+                () => {
+                  const payload = buildVoicePayload(locale, receipt, {
+                    personas: maximumPersonaSet(makePrompt(DISCORD_TEXT_INPUT_MAX, 3)).map((persona) =>
+                      persona.persona_id === 55 && leftoverProviderVoice
+                        ? { ...persona, speech_voice_id: "legacy-provider-voice" }
+                        : persona,
+                    ),
+                    selectedPersonaId: 55,
+                    selectedPersonaAvatarUrl: avatarPresent ? "https://cdn.example/avatar.png" : null,
+                    personaVoiceView: {
+                      ...makePersonaVoiceView("tts-clone", VOICE_SAMPLES, true),
+                      effectiveSource,
+                      effectiveTarget: "Fish",
+                    },
+                    receipt: receipt ? { tone: "success", heading: "Saved", detail: "Voice saved." } : undefined,
+                  });
+                  assertValid(payload, expectedLocalMaximum(receipt, avatarPresent) + (leftoverProviderVoice ? 1 : 0));
 
-            const voiceSelector = getStringSelectMenus(payload).find((menu) =>
-              String(menu.customId).includes("voice-select"),
-            );
-            expect(voiceSelector).toBeDefined();
-            const options = voiceSelector?.options as unknown[];
-            expect(options).toHaveLength(25);
-            expect((options[0] as Record<string, unknown>).value).toBe("none:reference");
-            expect((options.at(-1) as Record<string, unknown>).value).toBe("23");
-          });
+                  const voiceSelector = getStringSelectMenus(payload).find((menu) =>
+                    String(menu.customId).includes("voice-select"),
+                  );
+                  expect(voiceSelector).toBeDefined();
+                  const options = voiceSelector?.options as unknown[];
+                  expect(options).toHaveLength(25);
+                  expect((options[0] as Record<string, unknown>).value).toBe("none:reference");
+                  expect((options.at(-1) as Record<string, unknown>).value).toBe("23");
+                },
+              );
+            }
+          }
         }
       }
     }
@@ -1882,39 +1898,65 @@ describe("Persona Voice page text and component budgeting", () => {
       catalogFingerprint: "catalog-fingerprint",
       pageStart: 48,
     };
+    const cases = collectCaseFailures();
     for (const locale of RUNTIME_LOCALES) {
       for (const receipt of [false, true]) {
         for (const avatarPresent of [false, true]) {
-          const payload = buildVoicePayload(locale, receipt, {
-            personas: maximumPersonaSet("stored but hidden by provider mode").map((persona, index) =>
-              index === 0
-                ? {
-                    ...persona,
-                    speech_voice_sample_id: null,
-                    speech_voice_id: "external-voice-id-48",
-                    speech_voice_name: "Remote stored voice",
-                  }
-                : persona,
-            ),
-            selectedPersonaAvatarUrl: avatarPresent ? "https://cdn.example/avatar.png" : null,
-            personaVoiceView: makePersonaVoiceView("elevenlabs"),
-            personaVoiceRemoteView: remoteView,
-            receipt: receipt ? { tone: "success", heading: "Saved", detail: "Voice saved." } : undefined,
-          });
-          assertValid(payload, 36 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0));
-          const selector = getStringSelectMenus(payload).find((menu) => String(menu.customId).includes("voice-select"));
-          const options = (selector?.options ?? []) as Array<Record<string, unknown>>;
-          expect(options).toHaveLength(25);
-          expect(options[0]?.value).toBe("none:provider");
-          expect(options.slice(1).every((option) => /^voice:\d+:[A-Za-z0-9_-]+$/.test(String(option.value)))).toBe(
-            true,
-          );
-          expect(JSON.stringify(payload)).toContain(":voice-page:");
-          expect(JSON.stringify(payload)).not.toContain("external-voice-id-48");
-          expect(JSON.stringify(payload)).toContain("stored but hidden by provider mode");
+          for (const effectiveSource of [undefined, "clone"] as const) {
+            cases.check(
+              `locale=${locale}, receipt=${receipt}, avatar=${avatarPresent}, source=${effectiveSource}`,
+              () => {
+                const payload = buildVoicePayload(locale, receipt, {
+                  personas: maximumPersonaSet("stored but hidden by provider mode").map((persona, index) =>
+                    index === 0
+                      ? {
+                          ...persona,
+                          speech_voice_sample_id: null,
+                          speech_voice_id: "external-voice-id-48",
+                          speech_voice_name: "Remote stored voice",
+                        }
+                      : persona,
+                  ),
+                  selectedPersonaAvatarUrl: avatarPresent ? "https://cdn.example/avatar.png" : null,
+                  personaVoiceView: {
+                    ...makePersonaVoiceView("elevenlabs"),
+                    effectiveSource,
+                    effectiveTarget: "ElevenLabs",
+                  },
+                  personaVoiceRemoteView: remoteView,
+                  receipt: receipt ? { tone: "success", heading: "Saved", detail: "Voice saved." } : undefined,
+                });
+                assertValid(payload, 35 + (receipt ? 2 : 0) + (avatarPresent ? 2 : 0));
+                const pageRow = (payload.components as unknown[])
+                  .flatMap((container) => ((container as { components?: unknown[] }).components ?? []) as unknown[])
+                  .find((component) => JSON.stringify(component).includes(":voice-page:")) as
+                  | ActionRowData<ButtonComponentData>
+                  | undefined;
+                expect(pageRow?.components.at(-1)).toMatchObject({
+                  label: localizedCopy(
+                    hasLocaleKey(locale, "commands.config.panel.voice_page_cancel_button") ? locale : "en-US",
+                    "commands.config.panel.voice_page_cancel_button",
+                  ),
+                });
+                const selector = getStringSelectMenus(payload).find((menu) =>
+                  String(menu.customId).includes("voice-select"),
+                );
+                const options = (selector?.options ?? []) as Array<Record<string, unknown>>;
+                expect(options).toHaveLength(25);
+                expect(options[0]?.value).toBe("none:provider");
+                expect(
+                  options.slice(1).every((option) => /^voice:\d+:[A-Za-z0-9_-]+$/.test(String(option.value))),
+                ).toBe(true);
+                expect(JSON.stringify(payload)).toContain(":voice-page:");
+                expect(JSON.stringify(payload)).not.toContain("external-voice-id-48");
+                expect(JSON.stringify(payload)).toContain("stored but hidden by provider mode");
+              },
+            );
+          }
         }
       }
     }
+    cases.expectNoFailures();
 
     const onePage = buildVoicePayload("en-US", false, {
       personaVoiceView: makePersonaVoiceView("elevenlabs"),

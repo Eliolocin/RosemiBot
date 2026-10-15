@@ -126,8 +126,12 @@ function resolveSamplePage(
   return Math.min(Math.max(requestedPage, 0), pageCount - 1) * pageSize;
 }
 
-function buildVoicePagination(input: ConfigVoicePanelInput, count: number, start: number): ComponentInContainerData[] {
-  const row = buildPaginationRow({
+function buildVoicePagination(
+  input: ConfigVoicePanelInput,
+  count: number,
+  start: number,
+): ActionRowData<ButtonComponentData> | null {
+  return buildPaginationRow({
     locale: input.locale,
     rangeIndex: start / voicePageSize(input),
     rangeCount: Math.ceil(count / voicePageSize(input)),
@@ -144,7 +148,6 @@ function buildVoicePagination(input: ConfigVoicePanelInput, count: number, start
         }),
     },
   });
-  return row ? [row] : [];
 }
 
 function buildSampleSelector(input: ConfigVoicePanelInput, view: ConfigPersonaVoiceView): ComponentInContainerData {
@@ -209,7 +212,7 @@ function buildVoiceActionRow(
     includeDesign?: boolean;
     chooseProviderDisabled?: boolean;
   } = {},
-): ComponentInContainerData | null {
+): ActionRowData<ButtonComponentData> | null {
   const prompt = input.selectedPersona?.speech_voice_design_prompt?.trim();
   const disabled = input.readStatus !== "fresh" || !input.actor.isManager;
   const buttons: ButtonComponentData[] = [];
@@ -348,6 +351,22 @@ function buildRemoteChooser(
   } satisfies ActionRowData<StringSelectMenuComponentData>;
 }
 
+function pushListControls(
+  components: ComponentInContainerData[],
+  pagination: ActionRowData<ButtonComponentData> | null,
+  notice: string,
+  actions: ActionRowData<ButtonComponentData> | null,
+): void {
+  // A list's action buttons share its page row, because a separate row overflows Discord's 40-component limit on a fully loaded page.
+  if (pagination) {
+    components.push(
+      actions ? { ...pagination, components: [...pagination.components, ...actions.components] } : pagination,
+    );
+  }
+  components.push({ type: ComponentType.TextDisplay, content: notice });
+  if (actions && !pagination) components.push(actions);
+}
+
 export function buildConfigVoiceBody(input: ConfigVoicePanelInput): ComponentInContainerData[] {
   const view: ConfigPersonaVoiceRenderView = input.view ?? {
     capability: { apiStyle: null, assignable: false, supportsVoiceDesign: false },
@@ -419,47 +438,38 @@ export function buildConfigVoiceBody(input: ConfigVoicePanelInput): ComponentInC
   });
   if (view.capability.apiStyle === "elevenlabs") {
     const remoteView = input.remoteView ?? view.remoteChooser;
+    let pagination: ActionRowData<ButtonComponentData> | null = null;
     if (remoteView) {
       const visibleView = applyRemotePageStart(remoteView, input.remotePageStart);
       components.push(buildRemoteChooser(input, visibleView));
-      components.push(
-        ...buildVoicePagination(
-          input,
-          remoteCatalogOptions(visibleView).length,
-          resolveSamplePage(input, remoteCatalogOptions(visibleView).length, visibleView.pageStart),
-        ),
+      pagination = buildVoicePagination(
+        input,
+        remoteCatalogOptions(visibleView).length,
+        resolveSamplePage(input, remoteCatalogOptions(visibleView).length, visibleView.pageStart),
       );
     }
-    components.push({
-      type: ComponentType.TextDisplay,
-      content: `> ${localizer(input.locale, "commands.config.panel.voice_page_provider_notice")}`,
-    });
-    if (personaId !== null) {
-      const actions = buildVoiceActionRow(input, personaId, {
-        chooseProvider: !remoteView,
-        cancelChooser: Boolean(remoteView),
-      });
-      if (actions) components.push(actions);
-    }
+    pushListControls(
+      components,
+      pagination,
+      `> ${localizer(input.locale, "commands.config.panel.voice_page_provider_notice")}`,
+      personaId === null
+        ? null
+        : buildVoiceActionRow(input, personaId, { chooseProvider: !remoteView, cancelChooser: Boolean(remoteView) }),
+    );
   } else {
     components.push(buildSampleSelector(input, view));
-    components.push(
-      ...buildVoicePagination(
+    pushListControls(
+      components,
+      buildVoicePagination(
         input,
         view.samples.length,
         resolveSamplePage(input, view.samples.length, input.samplePageStart),
       ),
-    );
-    components.push({
-      type: ComponentType.TextDisplay,
-      content: `> ${localizer(input.locale, "commands.config.panel.voice_page_reference_notice", {
+      `> ${localizer(input.locale, "commands.config.panel.voice_page_reference_notice", {
         page: localizer(input.locale, "commands.config.panel.page_models_voices"),
       })}`,
-    });
-    if (personaId !== null) {
-      const actions = buildVoiceActionRow(input, personaId);
-      if (actions) components.push(actions);
-    }
+      personaId === null ? null : buildVoiceActionRow(input, personaId),
+    );
   }
   if (!view.effectiveSource) {
     components.push({

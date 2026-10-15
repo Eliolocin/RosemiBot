@@ -12,7 +12,7 @@ import { resolveVoiceSourceCapabilities, type VoiceSourceTarget } from "@/utils/
 export { resolveVoiceSourceCapabilities } from "@/utils/speech/voiceSourceCapabilities";
 
 /** Identity of a voice source as it appears in the modal radio and the success embed. */
-type VoiceSourceId = "upload" | "typed-design" | "persona-sample" | "persona-design" | "elevenlabs";
+export type VoiceSourceId = "upload" | "typed-design" | "persona-sample" | "persona-design" | "elevenlabs";
 
 /** Request shape the source produces. */
 export type VoiceSourceShape = "clone" | "design" | "elevenlabs";
@@ -29,8 +29,9 @@ export interface VoiceSourceCandidate {
   designPrompt?: string;
   voiceId?: string;
   /**
-   * What the source points at, for the option description: the upload's filename or the assigned
-   * sample's name. Absent for design sources, which describe themselves with the prompt.
+   * What the source points at, for the option description: the upload's filename, the assigned
+   * sample's name, or the provider voice's name. Absent for design sources, which describe
+   * themselves with the prompt.
    */
   displayText?: string;
 }
@@ -40,6 +41,7 @@ export interface VoiceSourcePersona {
   speech_voice_sample_id?: number | null;
   speech_voice_design_prompt?: string | null;
   speech_voice_id?: string | null;
+  speech_voice_name?: string | null;
   voice_source_priority?: "design" | "clone";
 }
 
@@ -104,7 +106,12 @@ export function resolveVoiceSourceCandidates(input: VoiceSourceResolutionInput):
     ((targets.clone && "api_style" in targets.clone && targets.clone.api_style === "elevenlabs") ||
       (!targets.clone && input.legacyElevenLabsAvailable))
   ) {
-    stored.push({ id: "elevenlabs", shape: "elevenlabs", voiceId: elevenLabsVoiceId });
+    stored.push({
+      id: "elevenlabs",
+      shape: "elevenlabs",
+      voiceId: elevenLabsVoiceId,
+      displayText: persona.speech_voice_name?.trim() || undefined,
+    });
   }
   const priority = persona.voice_source_priority ?? "design";
   stored.sort(

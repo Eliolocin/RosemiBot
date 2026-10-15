@@ -222,6 +222,7 @@ export default {
         source_typed_design_label: `Usar diseño de voz escrito`,
         source_persona_sample_label: `Usar voz asignada de la persona`,
         source_persona_design_label: `Usar diseño de voz de la persona`,
+        source_elevenlabs_label: `Usar voz de ElevenLabs de la persona`,
         direction_label: `Dirección de interpretación (opcional)`,
         direction_description: `Solo se usa con una fuente de diseño de voz; da forma a la interpretación, nunca se habla`,
         direction_placeholder: `p. ej. sonar soñoliento y callado, al borde del llanto, animado y juguetón`,

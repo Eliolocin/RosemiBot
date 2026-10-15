@@ -222,6 +222,7 @@ export default {
         source_typed_design_label: `使用输入的声音设计`,
         source_persona_sample_label: `使用人格已指定的声音`,
         source_persona_design_label: `使用人格的语音设计`,
+        source_elevenlabs_label: `使用人格的 ElevenLabs 声音`,
         direction_label: `表现指示（可选）`,
         direction_description: `只在选择语音设计来源时使用；影响表现方式，不会说出来`,
         direction_placeholder: `例如：听起来困倦而安静，快要哭出来，明亮又带点调侃`,
