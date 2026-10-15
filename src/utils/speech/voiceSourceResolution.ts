@@ -6,9 +6,8 @@
  * tests. User-facing labels stay with the caller so this module never needs a locale.
  */
 
-import type { CustomEndpointRow } from "@/types/db/schema";
 import { safeSelectOptionText } from "@/utils/discord/ui/interactionCore";
-import { resolveVoiceSourceCapabilities } from "@/utils/speech/voiceSourceCapabilities";
+import { resolveVoiceSourceCapabilities, type VoiceSourceTarget } from "@/utils/speech/voiceSourceCapabilities";
 
 export { resolveVoiceSourceCapabilities } from "@/utils/speech/voiceSourceCapabilities";
 
@@ -45,7 +44,7 @@ export interface VoiceSourcePersona {
 }
 
 export interface VoiceSourceResolutionInput {
-  targets: { design: CustomEndpointRow | null; clone: CustomEndpointRow | null };
+  targets: { design: VoiceSourceTarget | null; clone: VoiceSourceTarget | null };
   legacyElevenLabsAvailable?: boolean;
   persona: VoiceSourcePersona;
   /** Display name of the persona's assigned sample, shown in the radio option. */
@@ -102,7 +101,8 @@ export function resolveVoiceSourceCandidates(input: VoiceSourceResolutionInput):
   const elevenLabsVoiceId = persona.speech_voice_id?.trim() ?? "";
   if (
     elevenLabsVoiceId &&
-    (targets.clone?.api_style === "elevenlabs" || (!targets.clone && input.legacyElevenLabsAvailable))
+    ((targets.clone && "api_style" in targets.clone && targets.clone.api_style === "elevenlabs") ||
+      (!targets.clone && input.legacyElevenLabsAvailable))
   ) {
     stored.push({ id: "elevenlabs", shape: "elevenlabs", voiceId: elevenLabsVoiceId });
   }

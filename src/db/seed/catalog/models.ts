@@ -4,7 +4,15 @@
 // is no generated SQL file. Edit and commit; the change seeds on the next boot.
 // Run `bun run check-seed-catalogs` to validate the per-provider invariants offline.
 
-import type { DecisionInput, EmbeddingInput, ImageInput, LlmInput, ModelSection, VideoInput } from "./types";
+import type {
+  DecisionInput,
+  EmbeddingInput,
+  ImageInput,
+  LlmInput,
+  ModelSection,
+  SpeechInput,
+  VideoInput,
+} from "./types";
 
 // inputPricePerMillion / outputPricePerMillion are official standard USD rates per million tokens
 // (uncached base input and output). Vertex and Vertex Express reuse the Gemini SKU prices, and a
@@ -4488,6 +4496,64 @@ export const decisionSections: ModelSection<DecisionInput>[] = [
         inputPricePerMillion: 0,
         outputPricePerMillion: 0,
         desc: "Free text predicate checks for experimentation with the Decisions API.",
+      },
+    ],
+  },
+];
+
+export const speechSections: ModelSection<SpeechInput>[] = [
+  {
+    comment: "Voice Design",
+    rows: [
+      {
+        provider: "google",
+        codename: "gemini-3.8-flash-tts",
+        voiceMode: "design",
+        isDefault: true,
+        desc: "Voice Design with Gemini Flash TTS.",
+        i18n: { ja: "Gemini Flash TTS による音声デザイン。" },
+      },
+      {
+        provider: "google",
+        codename: "gemini-3.8-flash-lite-tts",
+        voiceMode: "design",
+        desc: "Voice Design with Gemini Flash-Lite TTS.",
+        i18n: { ja: "Gemini Flash-Lite TTS による音声デザイン。" },
+      },
+      {
+        provider: "vertex",
+        codename: "gemini-3.8-flash-tts",
+        voiceMode: "design",
+        isDefault: true,
+        desc: "Voice Design with Vertex Gemini Flash TTS.",
+        i18n: { ja: "Vertex Gemini Flash TTS による音声デザイン。" },
+      },
+      {
+        provider: "vertex",
+        codename: "gemini-3.8-flash-lite-tts",
+        voiceMode: "design",
+        desc: "Voice Design with Vertex Gemini Flash-Lite TTS.",
+        i18n: { ja: "Vertex Gemini Flash-Lite TTS による音声デザイン。" },
+      },
+    ],
+  },
+  {
+    comment: "Voice Clone",
+    rows: [
+      {
+        provider: "openrouter",
+        codename: "fish-audio/s2.1-pro",
+        voiceMode: "clone",
+        isDefault: true,
+        desc: "Voice cloning with Fish S2.1 Pro.",
+        i18n: { ja: "Fish S2.1 Pro による音声クローン。" },
+      },
+      {
+        provider: "openrouter",
+        codename: "fish-audio/s2.1-pro-free:free",
+        voiceMode: "clone",
+        desc: "Free Fish S2.1 Pro voice cloning when available.",
+        i18n: { ja: "利用可能な場合に使える無料版 Fish S2.1 Pro の音声クローン。" },
       },
     ],
   },

@@ -246,6 +246,8 @@ export async function buildUserSavedProviderConfigFromExistingOrDefaults(params:
           : (existingConfig?.nai_diffusion_model_id ?? null)
         : null,
     video_model_id: existingConfig?.video_model_id ?? defaults?.video_model_id ?? null,
+    speech_design_model_id: existingConfig?.speech_design_model_id ?? null,
+    speech_clone_model_id: existingConfig?.speech_clone_model_id ?? null,
     vision_llm_id: existingConfig?.vision_llm_id ?? null,
     nai_preset_name: existingConfig?.nai_preset_name ?? null,
     llm_temperature: existingConfig?.llm_temperature ?? params.baseConfig.llm_temperature,

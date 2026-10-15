@@ -5,6 +5,17 @@ import { isCustomProvider } from "@/utils/provider/customProviderUtils";
 import { buildFallbackModelPersistence } from "@/utils/provider/fallbackModelIdentity";
 import { assignPersonalCapabilityToProvider, withPersonalTextPrimary } from "@/utils/provider/personalProviderHelpers";
 import { resolveLogitBiasEntriesForLlm } from "@/utils/provider/logitBiasResolver";
+import type { OpenRouterModelScope } from "@/utils/db/repositories/LlmModelRepository";
+import { setHostedSpeechSelection } from "@/utils/db/repositories/SpeechRepository";
+import { validateOpenRouterSpeechModel } from "@/utils/cache/openrouterSpeechModelCache";
+
+export async function activateProviderSpeechDefaults(scope: OpenRouterModelScope, provider: string): Promise<boolean> {
+  const models = await llmModelRepo.loadAvailableSpeechModels(provider, scope);
+  const model = models.find((entry) => entry.is_default);
+  if (!model) return true;
+  if (provider === "openrouter" && !(await validateOpenRouterSpeechModel(model.codename))) return false;
+  return setHostedSpeechSelection(scope, model.speech_model_id);
+}
 
 type ActivationStatus = "activated" | "missing_model" | "missing_provider" | "update_failed";
 

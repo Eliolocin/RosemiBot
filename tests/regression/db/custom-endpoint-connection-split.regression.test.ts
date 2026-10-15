@@ -506,6 +506,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom Endpoint connection and model split
       path.join(process.cwd(), "src", "db", "migrations", "084_custom_endpoint_connection_behavior.sql"),
     ];
 
+    await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.down.sql"));
     await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.down.sql"));
     await executeTestSqlFile(downPath);
 
@@ -554,6 +555,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom Endpoint connection and model split
       // Keep the shared disposable database at the current fresh-install
       // schema after exercising Migration A's legacy coexistence state.
       await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.sql"));
+      await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.sql"));
       await testSql`DROP INDEX IF EXISTS idx_custom_endpoint_connections_server_unique`;
       await testSql`DROP INDEX IF EXISTS idx_custom_endpoint_connections_user_unique`;
       await testSql`CREATE UNIQUE INDEX idx_custom_endpoint_connections_server_unique

@@ -19,7 +19,16 @@ function collectActiveConfigs(
 ): Partial<Record<PersonalProviderCapability, UserSavedProviderConfigRow>> {
   const active: Partial<Record<PersonalProviderCapability, UserSavedProviderConfigRow>> = {};
 
-  for (const capability of ["text", "embedding", "image", "image_nai", "video", "vision"] as const) {
+  for (const capability of [
+    "text",
+    "embedding",
+    "image",
+    "image_nai",
+    "video",
+    "vision",
+    "speech_design",
+    "speech_clone",
+  ] as const) {
     // The model check keeps this in step with what the commands call active. Without
     // it an enabled row whose model pointer went NULL would swap its credential in
     // under the server's model, while the UI still reported the server default.
@@ -125,6 +134,15 @@ export async function applyPersonalProviderSelectionsToTomoriState(
   }
   if (activeConfigs.vision?.vision_llm_id) {
     nextConfig.vision_llm_id = activeConfigs.vision.vision_llm_id;
+  }
+
+  if (activeConfigs.speech_design?.speech_design_model_id) {
+    nextConfig.speech_design_model_id = activeConfigs.speech_design.speech_design_model_id;
+    nextConfig.speech_design_endpoint_id = null;
+  }
+  if (activeConfigs.speech_clone?.speech_clone_model_id) {
+    nextConfig.speech_clone_model_id = activeConfigs.speech_clone.speech_clone_model_id;
+    nextConfig.speech_clone_endpoint_id = null;
   }
 
   let nextLlm = tomoriState.llm;

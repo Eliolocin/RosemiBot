@@ -64,6 +64,7 @@ function dependencies(calls: string[]): AddServerProviderDependencies {
       calls.push("upsert");
       return true;
     },
+    activateSpeechDefaults: async () => true,
     activateText: async () => {
       calls.push("activate-text");
       return { status: "activated", modelName: "model-one" };

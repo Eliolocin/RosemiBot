@@ -1,5 +1,6 @@
 import type { VoiceSourceMode } from "@/utils/speech/voiceSourceCapabilities";
 import type { CustomEndpointRow } from "@/types/db/schema";
+import { loadHostedSpeechSelection, type HostedSpeechSelection } from "@/utils/db/repositories/SpeechRepository";
 import { log } from "@/utils/misc/logger";
 import { buildCustomProviderName } from "@/utils/provider/customProviderUtils";
 import { decryptApiKey } from "@/utils/security/crypto";
@@ -10,6 +11,10 @@ export interface SpeechEndpointResult {
   /** Empty string when requires_auth = false (local endpoint with no auth). */
   apiKey: string;
 }
+
+export type SpeechTargetResult =
+  | (SpeechEndpointResult & { kind: "custom-endpoint"; owner: { kind: "server"; ownerId: number } })
+  | (Omit<HostedSpeechSelection, "apiKey" | "keyVersion"> & { kind: "hosted-model"; endpoint: null; apiKey: string });
 
 async function resolveActiveEndpointByCapability(
   serverId: number,
@@ -78,10 +83,22 @@ export async function resolveActiveTranscriptionEndpoint(serverId: number): Prom
 
 export async function resolveSpeechTargets(
   serverId: number,
-): Promise<{ design: SpeechEndpointResult | null; clone: SpeechEndpointResult | null }> {
-  const [design, clone] = await Promise.all([
-    resolveActiveSpeechEndpoint(serverId, "design"),
-    resolveActiveSpeechEndpoint(serverId, "clone"),
-  ]);
+  userId?: number,
+): Promise<{ design: SpeechTargetResult | null; clone: SpeechTargetResult | null }> {
+  async function resolve(mode: VoiceSourceMode): Promise<SpeechTargetResult | null> {
+    const hosted = await loadHostedSpeechSelection(serverId, mode, userId);
+    if (hosted) {
+      try {
+        const apiKey = await decryptApiKey(hosted.apiKey, hosted.keyVersion);
+        return apiKey ? { ...hosted, kind: "hosted-model", endpoint: null, apiKey } : null;
+      } catch {
+        log.warn("SpeechResolver: hosted credential decryption failed", { serverId, mode, owner: hosted.owner });
+        return null;
+      }
+    }
+    const endpoint = await resolveActiveSpeechEndpoint(serverId, mode);
+    return endpoint ? { ...endpoint, kind: "custom-endpoint", owner: { kind: "server", ownerId: serverId } } : null;
+  }
+  const [design, clone] = await Promise.all([resolve("design"), resolve("clone")]);
   return { design, clone };
 }

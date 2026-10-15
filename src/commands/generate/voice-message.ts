@@ -394,7 +394,7 @@ export async function execute(
 
   const targets = await resolveSpeechTargets(mainPersona.server_id);
   let elevenLabsApiKey =
-    targets.clone?.endpoint.api_style === "elevenlabs"
+    targets.clone?.endpoint?.api_style === "elevenlabs"
       ? targets.clone.apiKey
       : !targets.clone
         ? ((await getOptApiKey(mainPersona.server_id, ELEVENLABS_SERVICE_NAME)) ?? "")
@@ -444,8 +444,8 @@ export async function execute(
         metadata: {
           command: "generate voice-message",
           personaId: persona.persona_id,
-          designEndpoint: targets.design?.endpoint.connection_id ?? null,
-          cloneEndpoint: targets.clone?.endpoint.connection_id ?? null,
+          designEndpoint: targets.design?.endpoint?.connection_id ?? null,
+          cloneEndpoint: targets.clone?.endpoint?.connection_id ?? null,
         },
       },
     );
@@ -560,7 +560,7 @@ export async function execute(
     (entry) => entry.persona_id === persona.persona_id,
   );
   elevenLabsApiKey =
-    freshTargets.clone?.endpoint.api_style === "elevenlabs"
+    freshTargets.clone?.endpoint?.api_style === "elevenlabs"
       ? freshTargets.clone.apiKey
       : !freshTargets.clone
         ? ((await getOptApiKey(mainPersona.server_id, ELEVENLABS_SERVICE_NAME)) ?? "")
@@ -582,10 +582,10 @@ export async function execute(
     originalSource?.sampleId !== selectedSource?.sampleId ||
     originalSource?.designPrompt !== selectedSource?.designPrompt ||
     originalSource?.voiceId !== selectedSource?.voiceId ||
-    originalTarget?.endpoint.custom_endpoint_id !== speechEndpoint?.endpoint.custom_endpoint_id ||
-    originalTarget?.endpoint.api_style !== speechEndpoint?.endpoint.api_style ||
-    originalTarget?.endpoint.endpoint_url !== speechEndpoint?.endpoint.endpoint_url ||
-    JSON.stringify(originalTarget?.endpoint.extra_config) !== JSON.stringify(speechEndpoint?.endpoint.extra_config)
+    originalTarget?.endpoint?.custom_endpoint_id !== speechEndpoint?.endpoint?.custom_endpoint_id ||
+    originalTarget?.endpoint?.api_style !== speechEndpoint?.endpoint?.api_style ||
+    originalTarget?.endpoint?.endpoint_url !== speechEndpoint?.endpoint?.endpoint_url ||
+    JSON.stringify(originalTarget?.endpoint?.extra_config) !== JSON.stringify(speechEndpoint?.endpoint?.extra_config)
   ) {
     await replyInfoEmbed(modalInteraction, locale, {
       titleKey: "commands.generate.voice-message.stale_title",

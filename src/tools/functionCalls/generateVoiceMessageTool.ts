@@ -153,7 +153,7 @@ export class GenerateVoiceMessageTool extends BaseTool {
     if (!candidate) return null;
     const activeSpeechEndpoint = candidate.shape === "design" ? targets.design : targets.clone;
     const scriptMarkup =
-      (activeSpeechEndpoint?.endpoint.extra_config.script_markup as string | undefined) ?? "bracket-tags";
+      (activeSpeechEndpoint?.endpoint?.extra_config.script_markup as string | undefined) ?? "bracket-tags";
     const voiceDesign = candidate.shape === "design";
     const cloneInstructionsAvailable = resolveVoiceSourceCapabilities(
       activeSpeechEndpoint?.endpoint,

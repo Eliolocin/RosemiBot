@@ -1588,6 +1588,10 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
                   AND model.provider = ${normalizedProvider}
               )
               OR EXISTS (
+                SELECT 1 FROM speech_models model
+                WHERE model.speech_model_id = registration.speech_model_id AND model.provider = ${normalizedProvider}
+              )
+              OR EXISTS (
                 SELECT 1 FROM decision_models model
                 WHERE model.decision_model_id = registration.decision_model_id
                   AND model.provider = ${normalizedProvider}
@@ -1641,6 +1645,10 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
                 SELECT 1 FROM image_diffusion_models model
                 WHERE model.diffusion_model_id = registration.diffusion_model_id
                   AND model.provider = ${normalizedProvider}
+              )
+              OR EXISTS (
+                SELECT 1 FROM speech_models model
+                WHERE model.speech_model_id = registration.speech_model_id AND model.provider = ${normalizedProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM decision_models model
@@ -2073,6 +2081,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
 
       log.info(`Upserted saved provider config for server ${serverId}, provider ${provider}`);
       if (options.serverDiscId) invalidateTomoriStateCache(options.serverDiscId);
+      else this.invalidateWorkspace(serverId);
       return true;
     } catch (error) {
       log.error(`Error upserting saved provider config for server ${serverId}, provider ${config.provider}:`, error);
@@ -2096,6 +2105,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
       if (deleted) {
         log.info(`Deleted saved provider config for server ${serverId}, provider ${provider}`);
         if (options.serverDiscId) invalidateTomoriStateCache(options.serverDiscId);
+        else this.invalidateWorkspace(serverId);
       }
       return deleted;
     } catch (error) {
@@ -2122,7 +2132,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
         INSERT INTO user_saved_provider_configs (
           user_id, provider, api_key, key_version,
           llm_id, diffusion_model_id, embedding_model_id,
-          video_model_id,
+          video_model_id, speech_design_model_id, speech_clone_model_id,
           nai_diffusion_model_id, vision_llm_id, nai_preset_name,
           thinking_level, model_randomizer_enabled, enabled_capabilities, assigned_capabilities, fallback_model_refs,
           llm_temperature, llm_top_p, llm_top_k,
@@ -2132,7 +2142,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
         ) VALUES (
           ${userId}, ${provider}, ${config.api_key}, ${config.key_version},
           ${config.llm_id}, ${config.diffusion_model_id}, ${config.embedding_model_id},
-          ${config.video_model_id ?? null},
+          ${config.video_model_id ?? null}, ${config.speech_design_model_id ?? null}, ${config.speech_clone_model_id ?? null},
           ${config.nai_diffusion_model_id}, ${config.vision_llm_id ?? null}, ${config.nai_preset_name},
           ${config.thinking_level}, ${config.model_randomizer_enabled ?? false}, ${enabledCapabilitiesLiteral}::text[], ${assignedCapabilitiesLiteral}::text[],
           ${fallbackModelRefsJson}::jsonb,
@@ -2148,6 +2158,8 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
           diffusion_model_id = EXCLUDED.diffusion_model_id,
           embedding_model_id = EXCLUDED.embedding_model_id,
           video_model_id = EXCLUDED.video_model_id,
+          speech_design_model_id = EXCLUDED.speech_design_model_id,
+          speech_clone_model_id = EXCLUDED.speech_clone_model_id,
           nai_diffusion_model_id = EXCLUDED.nai_diffusion_model_id,
           vision_llm_id = EXCLUDED.vision_llm_id,
           nai_preset_name = EXCLUDED.nai_preset_name,

@@ -44,7 +44,7 @@ export const DEFAULT_PAGE_FOR_CATEGORY: Record<PersonalConfigCategory, PersonalC
 
 export type PersonalConfigManagedCapability = "text" | "vision" | "embedding" | "image" | "image_nai" | "video";
 
-export const QUICK_TOGGLE_CAPABILITIES: readonly PersonalProviderCapability[] = [
+export const QUICK_TOGGLE_CAPABILITIES: readonly PersonalConfigManagedCapability[] = [
   "text",
   "vision",
   "embedding",
@@ -64,6 +64,8 @@ export const ROUTING_CAPABILITY_LOCALE_KEYS: Record<PersonalProviderCapability, 
   image: "commands.personal.config.routing_image_standard",
   image_nai: "commands.personal.config.routing_image_nai",
   video: "commands.personal.config.routing_video",
+  speech_design: "commands.config.panel.capability_tts_design",
+  speech_clone: "commands.config.panel.capability_tts_clone",
 };
 
 /**

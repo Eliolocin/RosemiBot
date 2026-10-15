@@ -1,4 +1,6 @@
 import {
+  speechModelSchema,
+  type SpeechModelRow,
   decisionModelSchema,
   type DecisionModelRow,
   diffusionModelSchema,
@@ -51,6 +53,20 @@ function toPgNumericArrayLiteral(values: number[]): string {
  * Catalog rows are not exportable per-server state.
  */
 class LlmModelRepository {
+  async loadAvailableSpeechModels(provider: string, scope: OpenRouterModelScope): Promise<SpeechModelRow[]> {
+    const rows = await sql`
+      SELECT m.* FROM speech_models m
+      WHERE m.provider = ${provider} AND NOT m.is_deprecated AND (
+        NOT m.is_scoped_registration OR EXISTS (
+          SELECT 1 FROM scoped_model_registrations r WHERE r.speech_model_id = m.speech_model_id
+            AND ((${scope.kind} = 'server' AND r.server_id = ${scope.ownerId} AND r.user_id IS NULL)
+              OR (${scope.kind} = 'personal' AND r.user_id = ${scope.ownerId} AND r.server_id IS NULL))
+        )
+      ) ORDER BY m.is_default DESC, m.speech_model_id
+    `;
+    return speechModelSchema.array().parse(rows);
+  }
+
   async loadDecisionModelOptions(scope: OpenRouterModelScope): Promise<DecisionModelOption[]> {
     const serverId = scope.kind === "server" ? scope.ownerId : null;
     const userId = scope.kind === "personal" ? scope.ownerId : null;

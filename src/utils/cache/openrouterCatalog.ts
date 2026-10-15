@@ -97,7 +97,7 @@ export function createOpenRouterCatalog<TEntry>(source: OpenRouterCatalogSource<
   let stage: "transport" | "response" = "transport";
 
   async function fetchCatalog(): Promise<Map<string, TEntry>> {
-    const bounded = source.label === "decision" || source.label === "video";
+    const bounded = source.label === "decision" || source.label === "video" || source.label === "speech";
     const response = await fetch(source.url, {
       ...(bounded ? { signal: AbortSignal.timeout(30_000) } : {}),
       headers: {

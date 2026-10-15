@@ -54,7 +54,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Scoped model registrations (Migration D)",
     const definitions = constraints.map((constraint) => constraint.definition).join("\n");
     expect(definitions).toContain("(server_id IS NULL) <> (user_id IS NULL)");
     expect(definitions).toContain(
-      "num_nonnulls(llm_id, embedding_model_id, diffusion_model_id, video_model_id, decision_model_id) = 1",
+      "num_nonnulls(llm_id, embedding_model_id, diffusion_model_id, video_model_id, decision_model_id, speech_model_id) = 1",
     );
     expect(definitions).toContain("FOREIGN KEY (decision_model_id)");
   });
@@ -196,6 +196,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Scoped model registrations (Migration D)",
       ON CONFLICT DO NOTHING
     `;
 
+    await executeMigration("102_hosted_speech_models.down.sql");
     await executeMigration("071_generalize_scoped_model_registrations.down.sql");
     const [legacy] = await testSql<[{ count: string }]>`
       SELECT COUNT(*) AS count FROM openrouter_model_registrations
@@ -210,5 +211,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Scoped model registrations (Migration D)",
       WHERE server_id = ${serverAId} AND llm_id = ${openRouterModel.llm_id}
     `;
     expect(Number(restored.count)).toBe(1);
+    await executeMigration("098_decision_models.sql");
+    await executeMigration("102_hosted_speech_models.sql");
   });
 });

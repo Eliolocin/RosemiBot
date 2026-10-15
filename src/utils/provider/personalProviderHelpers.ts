@@ -6,6 +6,7 @@ import type {
 } from "@/types/db/schema";
 import { llmProviderRepo } from "@/utils/db/repositories";
 import { prunePrimaryFallbackRefs } from "@/utils/provider/fallbackModelIdentity";
+import { setHostedSpeechSelection } from "@/utils/db/repositories/SpeechRepository";
 
 function sortProviderRows(rows: UserSavedProviderConfigRow[]): UserSavedProviderConfigRow[] {
   return [...rows].sort((left, right) => left.provider.localeCompare(right.provider));
@@ -28,6 +29,10 @@ export function hasConfiguredPersonalModel(
       return row.video_model_id !== null;
     case "vision":
       return row.vision_llm_id !== null;
+    case "speech_design":
+      return row.speech_design_model_id != null;
+    case "speech_clone":
+      return row.speech_clone_model_id != null;
   }
 }
 
@@ -168,6 +173,15 @@ export async function assignPersonalCapabilityToProvider(
   const rows = await llmProviderRepo.loadUserSavedProviderConfigs(userId);
   if (rows.length === 0) {
     return false;
+  }
+
+  if (capability === "speech_design" || capability === "speech_clone") {
+    const row = rows.find((entry) => entry.provider === provider.toLowerCase());
+    if (!row) return false;
+    const next = updater(row);
+    const mode = capability === "speech_design" ? "design" : "clone";
+    const modelId = mode === "design" ? next.speech_design_model_id : next.speech_clone_model_id;
+    return modelId != null && setHostedSpeechSelection({ kind: "personal", ownerId: userId }, modelId, mode);
   }
 
   let updated = false;

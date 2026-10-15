@@ -1929,6 +1929,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         snsfw.uncensor_sanitize_enabled,
         -- 7. server_speech_configs
         sspeech.speech_design_endpoint_id, sspeech.speech_clone_endpoint_id,
+        sspeech.speech_design_model_id, sspeech.speech_clone_model_id,
         sspeech.voice_transcript_chat_mode, sspeech.chatterbox_turbo_enabled,
         sspeech.chatterbox_cfg_weight, sspeech.chatterbox_exaggeration,
         -- 8. server_auto_trigger_configs (persona overrides aggregated from junction table)
@@ -2041,6 +2042,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         snsfw.uncensor_sanitize_enabled,
         -- 7. server_speech_configs
         sspeech.speech_design_endpoint_id, sspeech.speech_clone_endpoint_id,
+        sspeech.speech_design_model_id, sspeech.speech_clone_model_id,
         sspeech.voice_transcript_chat_mode, sspeech.chatterbox_turbo_enabled,
         sspeech.chatterbox_cfg_weight, sspeech.chatterbox_exaggeration,
         -- 8. server_auto_trigger_configs (persona overrides aggregated from junction table)

@@ -114,6 +114,7 @@ const SAVED_PROVIDER_CONFIG: SavedProviderConfigRow = {
   provider: "google",
   api_key: null,
   key_version: 1,
+  credential_revision: 1,
   llm_id: null,
   diffusion_model_id: null,
   embedding_model_id: 5,

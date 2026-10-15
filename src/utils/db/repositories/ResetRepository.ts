@@ -148,7 +148,12 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
       "chatterbox_cfg_weight",
       "chatterbox_exaggeration",
     ],
-    preserved: ["speech_design_endpoint_id", "speech_clone_endpoint_id"],
+    preserved: [
+      "speech_design_endpoint_id",
+      "speech_clone_endpoint_id",
+      "speech_design_model_id",
+      "speech_clone_model_id",
+    ],
   },
   {
     table: "server_auto_trigger_configs",

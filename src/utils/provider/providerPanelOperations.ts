@@ -1,3 +1,4 @@
+import { registerHostedSpeechModelForScope } from "@/utils/provider/openrouterModelRegistry";
 import { supportsSpeechMode } from "@/utils/speech/voiceSourceCapabilities";
 import type {
   CustomEndpointConnectionRow,
@@ -63,6 +64,7 @@ import {
   buildUserSavedProviderConfigFromExistingOrDefaults,
 } from "@/utils/provider/savedProviderConfig";
 import {
+  activateProviderSpeechDefaults,
   activatePersonalProviderTextModel,
   activateServerTextModelFromSavedConfig,
 } from "@/utils/provider/providerActivation";
@@ -145,6 +147,7 @@ export interface AddServerProviderDependencies {
   loadSavedConfig(serverId: number, provider: string): Promise<SavedProviderConfigRow | null>;
   upsertSavedConfig: typeof llmProviderRepo.upsertSavedProviderConfig;
   activateText: typeof activateServerTextModelFromSavedConfig;
+  activateSpeechDefaults: typeof activateProviderSpeechDefaults;
   refresh(discordId: string): void | Promise<void>;
 }
 
@@ -289,6 +292,7 @@ const defaultAddDependencies: AddServerProviderDependencies = {
   loadSavedConfig: (serverId, provider) => llmProviderRepo.loadSavedProviderConfig(serverId, provider),
   upsertSavedConfig: (serverId, config) => llmProviderRepo.upsertSavedProviderConfig(serverId, config),
   activateText: activateServerTextModelFromSavedConfig,
+  activateSpeechDefaults: activateProviderSpeechDefaults,
   refresh: (discordId) => invalidateTomoriStateCache(discordId),
 };
 
@@ -904,6 +908,9 @@ async function addCuratedProvider(
   });
   if (activation.status === "missing_model") return { status: "missing-model" };
   if (activation.status !== "activated") return { status: "write-failed" };
+  if (!(await dependencies.activateSpeechDefaults({ kind: "server", ownerId: input.state.server_id }, provider))) {
+    return { status: "write-failed" };
+  }
 
   return {
     status: "success",
@@ -992,6 +999,10 @@ async function addPersonalProvider(input: AddServerProviderInput): Promise<AddSe
   const activation = await activatePersonalProviderTextModel({ userId, provider, llmId: savedConfig.llm_id });
   if (activation.status === "missing_model") return { status: "missing-model" };
   if (activation.status !== "activated") return { status: "write-failed" };
+  if (!(await activateProviderSpeechDefaults({ kind: "personal", ownerId: userId }, provider))) {
+    return { status: "write-failed" };
+  }
+
   return {
     status: "success",
     entryId: `provider:${provider}`,
@@ -1186,9 +1197,19 @@ async function registerSharedProviderModel(
   input: SaveProviderModelInput,
   provider: string,
 ): Promise<SaveProviderModelResult> {
-  if (input.capability === "speech" || input.capability === "transcription") {
-    return { status: "unsupported-capability" };
+  if (input.capability === "speech") {
+    const userId = personalOwnerId(input);
+    const result = await registerHostedSpeechModelForScope(
+      userId ? { kind: "personal", ownerId: userId } : { kind: "server", ownerId: input.state.server_id },
+      provider,
+      input.codeName,
+      input.editingModelId,
+    );
+    if (result.status === "invalid_model") return { status: "invalid-model" };
+    if (result.status === "write_failed") return { status: "write-failed" };
+    return { status: "success", entryId: input.entryId, codeName: result.model.codename };
   }
+  if (input.capability === "transcription") return { status: "unsupported-capability" };
   if (input.capability === "decision" && provider !== "openrouter") return { status: "unsupported-capability" };
   if (provider === "openrouter") {
     const userId = personalOwnerId(input);
@@ -1215,6 +1236,7 @@ async function registerSharedProviderModel(
         : undefined,
     );
     if (result.status === "invalid_model") return { status: "invalid-model" };
+    if (result.status === "write_failed") return { status: "write-failed" };
     if (result.status === "already_available") {
       return { status: "already-available" };
     }

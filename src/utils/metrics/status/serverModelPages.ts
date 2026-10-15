@@ -98,7 +98,9 @@ export async function buildServerModelPages(
   const speechModelValues = (["design", "clone"] as const).map((mode) => {
     const target = speechModel[mode];
     return target
-      ? `${target.endpoint.model_name || target.endpoint.label} (${target.endpoint.api_style})`
+      ? target.kind === "hosted-model"
+        ? `${target.model.codename} (${getProviderDisplayName(target.model.provider)})`
+        : `${target.endpoint.model_name || target.endpoint.label} (${target.endpoint.api_style})`
       : localizer(locale, "commands.choices.none");
   });
   const transcriptionModelValue = transcriptionModel

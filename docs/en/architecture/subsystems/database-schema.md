@@ -15,7 +15,7 @@ TomoriBot organizes database schema across three SQL definitions, a numbered mig
 - **RAG schema (`src/db/schema_rag.sql`)**: document and chunk vector tables (`documents`, `document_chunks`), loaded when the `pgvector` extension is available.
 - **Preset schema (`src/db/schema_stpreset.sql`)**: SillyTavern character card and preset integration tables.
 - **Migration runner (`src/db/migrationRunner.ts`)**: executes structural version upgrades from `src/db/migrations/`.
-- **Seed catalogs (`src/db/seed/catalog/`)**: code-defined catalogs for LLMs, diffusion models, video models, embeddings, persona presets, and system prompts.
+- **Seed catalogs (`src/db/seed/catalog/`)**: code-defined catalogs for LLMs, diffusion models, video models, speech models, embeddings, persona presets, and system prompts.
 
 ### Startup initialization sequence
 
@@ -83,20 +83,30 @@ persistence and schema initialization, use the shared SQL client directly.
   - `server_capabilities_configs`: tool exposure switches (video generation, user blocking, time awareness, short-term memory).
   - `server_notice_embeds_configs`: notice verbosity modes (`minimal` or `verbose`) and hidden notice filters.
   - `server_welcome_configs`: welcome greeting channels, prompts, and persona assignments.
-  - `server_speech_configs`: independent Design and Clone endpoint selections, transcript behavior, and synthesizer parameters.
+  - `server_speech_configs`: independent Design and Clone hosted-model or endpoint selections, transcript behavior, and synthesizer parameters.
   - `server_novelai_imagegen_configs`: NovelAI diffusion parameters and default prompt tags.
   - `server_nsfw_configs`: jailbreak toggles and content filters.
   - `server_byok_configs`: bring-your-own-key permissions.
   - `server_memory_configs`: memory retrieval limits and decay parameters.
   - `server_stm_configs`: STM render mode, refresh cadence, and injection depths.
 
-Speech selections reference `custom_endpoints` with `ON DELETE SET NULL`. Database validation
-rejects selections from another server or an unsupported mode. Endpoint mode and connection edits
-clear unsupported selections in the same transaction. `persona_voice_configs.voice_source_priority`
-is constrained to `design` or `clone`; it defaults to `design` independently of endpoint capability.
-The speech migration refuses a downgrade when the single-default format cannot preserve selections
-or persona priority. Workspace configuration exports include both selections; imports require
-compatible endpoints owned by the receiving workspace.
+Speech selections reference either `custom_endpoints` or `speech_models` for each mode, with
+`ON DELETE SET NULL`. Database validation checks server ownership, model mode, scoped registration,
+and matching saved provider credentials. Endpoint mode edits and registration deletion clear affected
+selections in the same transaction. `persona_voice_configs.voice_source_priority` defaults to `design`
+independently of the target. Configuration exports include both mode selections; imports must satisfy
+the receiving workspace's ownership and credential checks. Downgrades refuse selections or bindings
+that the older schema cannot preserve.
+
+Personal speech uses separate `speech_design_model_id` and `speech_clone_model_id` pointers on
+`user_saved_provider_configs`. Its `assigned_capabilities` and `enabled_capabilities` arrays track
+ownership and activation independently for `speech_design` and `speech_clone`; each mode has at most
+one personal owner. Activation locks the owner row and transfers supported modes in one transaction.
+
+`speech_voice_bindings` stores remote voice IDs by persona, credential snapshot, revision, transport,
+prompt hash, and Cloud project/location. Credential revisions advance when stored ciphertext changes,
+independently of encryption `key_version`. Prompt or credential changes retire bindings to pending
+deletion. Bindings are operational state and are excluded from configuration exports.
 
 ### User identity, privacy, and personalization
 
@@ -123,7 +133,7 @@ including link expressions. Existing rows remain editable when the limit is reac
 
 ### Model catalog and custom endpoints
 
-- **`llms`, `image_diffusion_models`, `video_generation_models`, `embedding_models`, `decision_models`**: global model catalogs seeded from typed code definitions.
+- **`llms`, `image_diffusion_models`, `video_generation_models`, `embedding_models`, `decision_models`, `speech_models`**: global model catalogs seeded from typed code definitions.
 - **Pricing storage**: first-party models record token prices directly in `llms.input_price_per_million` and `output_price_per_million`. OpenRouter pricing uses the live API cache first, falling back to database column values.
 - **Token limits**: `context_window` and `max_output_tokens` record model ceilings. Runtime code queries them through `resolveModelLimits()`, where live provider responses take precedence.
 - **`custom_endpoint_connections`**: logical connection metadata scoped to either `server_id` or `user_id`, grouped by `(owner, label, capability)`.

@@ -35,6 +35,7 @@ function makeConfig(provider: string): SavedProviderConfigRow {
     provider,
     api_key: null,
     key_version: 1,
+    credential_revision: 1,
     llm_id: null,
     diffusion_model_id: null,
     embedding_model_id: null,

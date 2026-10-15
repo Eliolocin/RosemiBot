@@ -83,6 +83,8 @@ const BASE_CONFIG: AssembledServerConfig = {
   uncensor_sanitize_enabled: false,
   speech_design_endpoint_id: null,
   speech_clone_endpoint_id: null,
+  speech_design_model_id: null,
+  speech_clone_model_id: null,
   voice_transcript_chat_mode: true,
   chatterbox_turbo_enabled: true,
   chatterbox_cfg_weight: 0.5,

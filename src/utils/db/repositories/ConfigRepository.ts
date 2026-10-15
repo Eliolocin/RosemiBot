@@ -104,6 +104,8 @@ export type ServerNsfwConfigsRow = {
 export type ServerSpeechConfigsRow = {
   speech_design_endpoint_id: number | null;
   speech_clone_endpoint_id: number | null;
+  speech_design_model_id: number | null;
+  speech_clone_model_id: number | null;
   voice_transcript_chat_mode: boolean;
   chatterbox_turbo_enabled: boolean;
   chatterbox_cfg_weight: number;
@@ -1131,7 +1133,7 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
   private async sqlLoadSpeechConfigs(serverId: number): Promise<ServerSpeechConfigsRow | null> {
     try {
       const [row] = await sql`
-        SELECT speech_design_endpoint_id, speech_clone_endpoint_id, voice_transcript_chat_mode, chatterbox_turbo_enabled,
+        SELECT speech_design_endpoint_id, speech_clone_endpoint_id, speech_design_model_id, speech_clone_model_id, voice_transcript_chat_mode, chatterbox_turbo_enabled,
                chatterbox_cfg_weight, chatterbox_exaggeration
         FROM server_speech_configs
         WHERE server_id = ${serverId}
@@ -1232,15 +1234,17 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
   private async sqlUpsertSpeechConfigs(serverId: number, row: ServerSpeechConfigsRow): Promise<void> {
     await sql`
       INSERT INTO server_speech_configs (
-        server_id, speech_design_endpoint_id, speech_clone_endpoint_id, voice_transcript_chat_mode, chatterbox_turbo_enabled,
+        server_id, speech_design_endpoint_id, speech_clone_endpoint_id, speech_design_model_id, speech_clone_model_id, voice_transcript_chat_mode, chatterbox_turbo_enabled,
         chatterbox_cfg_weight, chatterbox_exaggeration
       ) VALUES (
-        ${serverId}, ${row.speech_design_endpoint_id}, ${row.speech_clone_endpoint_id}, ${row.voice_transcript_chat_mode}, ${row.chatterbox_turbo_enabled},
+        ${serverId}, ${row.speech_design_endpoint_id}, ${row.speech_clone_endpoint_id}, ${row.speech_design_model_id}, ${row.speech_clone_model_id}, ${row.voice_transcript_chat_mode}, ${row.chatterbox_turbo_enabled},
         ${row.chatterbox_cfg_weight}, ${row.chatterbox_exaggeration}
       )
       ON CONFLICT (server_id) DO UPDATE SET
         speech_design_endpoint_id = EXCLUDED.speech_design_endpoint_id,
         speech_clone_endpoint_id = EXCLUDED.speech_clone_endpoint_id,
+        speech_design_model_id = EXCLUDED.speech_design_model_id,
+        speech_clone_model_id = EXCLUDED.speech_clone_model_id,
         voice_transcript_chat_mode = EXCLUDED.voice_transcript_chat_mode,
         chatterbox_turbo_enabled   = EXCLUDED.chatterbox_turbo_enabled,
         chatterbox_cfg_weight      = EXCLUDED.chatterbox_cfg_weight,

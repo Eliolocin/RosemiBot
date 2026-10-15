@@ -100,10 +100,22 @@ Endpoints using the `tts-clone` API style declare a `voice_mode` of `clone`, `vo
 `auto`. An `auto` endpoint accepts both clone and design request shapes on a single endpoint URL.
 ElevenLabs endpoints accept neither shape, relying strictly on stored voice identifiers.
 
-Server speech routing uses two nullable selections in `server_speech_configs`:
-`speech_design_endpoint_id` and `speech_clone_endpoint_id`. Both point to existing `speech`
-registrations. Design accepts local `voice-design` or `auto` endpoints; Clone accepts local
-`clone` or `auto` endpoints and ElevenLabs. Transcription continues to use `is_default`.
+Server speech routing stores an independent Design target and Clone target in `server_speech_configs`.
+Each mode selects either a custom endpoint or a hosted `speech_models` row; database validation
+rejects selecting both. Design accepts local `voice-design` or `auto` endpoints and registered Gemini
+Design models. Clone accepts local `clone` or `auto` endpoints, ElevenLabs, and admitted Fish models.
+Transcription continues to use `is_default`.
+
+`speechEndpointResolver.ts` returns a discriminated hosted-model or custom-endpoint target with its
+credential owner. Hosted credentials come from that model's provider snapshot; custom endpoint keys
+remain connection-bound. Personal `speech_design` and `speech_clone` assignments override their server
+slots independently when enabled. Disabling one mode preserves its saved model and owner, while
+resolution inherits the server target for that mode. Personal local endpoints are unsupported.
+
+Adding Google or OpenRouter applies its default speech model to Design or Clone respectively, using
+matching saved credentials. The catalogue seeds Flash TTS for Design and paid Fish S2.1 Pro for Clone;
+Flash-Lite and free Fish require explicit selection. Schema upgrades preserve existing targets and
+do not activate hosted defaults.
 
 Activating a registration replaces every slot its mode supports in one transaction. Auto replaces
 both slots with the same endpoint. Clearing one slot preserves the other. Mode edits clear unsupported
@@ -124,6 +136,19 @@ Persona > Voice keeps the description editor available without an active target.
 a description preserves the reference sample, ElevenLabs voice ID, and priority. Only the Clone target
 chooses between the reference library and ElevenLabs catalogue. Legacy installations with an
 ElevenLabs optional key and no Clone endpoint retain that credential path.
+
+### Stored voice bindings
+
+`SpeechRepository.ts` persists Gemini voice IDs separately from persona prompts and ElevenLabs IDs.
+Binding identity includes the persona, credential snapshot and revision, transport, prompt hash, and
+Cloud project/location. The synthesis model is excluded, so Flash and Flash-Lite can share a binding.
+A unique index retains one active identity during concurrent creation.
+
+Prompt edits and credential ciphertext replacement mark bindings for deletion. Changing source
+priority preserves them. Persona deletion retains the remote voice ID as a pending deletion with no
+persona reference. Bindings cascade when their credential snapshot is removed, so provider cleanup
+must use the old credential before removing that snapshot. Bindings are excluded from configuration
+exports and have no in-memory cache.
 
 ## Native Discord delivery constraints
 

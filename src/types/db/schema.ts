@@ -321,6 +321,34 @@ export const diffusionModelSchema = z.object({
 });
 export type DiffusionModelRow = z.infer<typeof diffusionModelSchema>;
 
+export const speechModelSchema = z.object({
+  speech_model_id: z.number().int(),
+  provider: z.enum(["google", "openrouter", "vertex"]),
+  codename: z.string().min(1),
+  voice_mode: z.enum(["design", "clone", "auto"]),
+  descriptions: z.record(z.string(), z.string()).nullable().default(null),
+  is_default: z.boolean().default(false),
+  is_deprecated: z.boolean().default(false),
+  is_scoped_registration: z.boolean().default(false),
+});
+export type SpeechModelRow = z.infer<typeof speechModelSchema>;
+
+export const speechVoiceBindingSchema = z.object({
+  speech_voice_binding_id: z.number().int(),
+  persona_id: z.number().int().nullable(),
+  saved_config_id: z.number().int().nullable(),
+  user_saved_config_id: z.number().int().nullable(),
+  credential_revision: z.number().int().positive(),
+  transport: z.enum(["google", "vertex"]),
+  project: z.string(),
+  location: z.string(),
+  prompt_hash: z.string().min(1),
+  voice_id: z.string().min(1),
+  expires_at: z.coerce.date().nullable(),
+  pending_delete: z.boolean(),
+});
+export type SpeechVoiceBindingRow = z.infer<typeof speechVoiceBindingSchema>;
+
 export const videoGenerationModelSchema = z.object({
   video_model_id: z.number().optional(),
   provider: z.string(),
@@ -886,6 +914,8 @@ export type ServerNsfwConfigRow = z.infer<typeof serverNsfwConfigSchema>;
 const serverSpeechConfigSchema = z.object({
   speech_design_endpoint_id: z.number().int().nullable().default(null),
   speech_clone_endpoint_id: z.number().int().nullable().default(null),
+  speech_design_model_id: z.number().int().nullable().default(null),
+  speech_clone_model_id: z.number().int().nullable().default(null),
   server_id: z.number().int(),
   voice_transcript_chat_mode: z.boolean().default(true),
   chatterbox_turbo_enabled: z.boolean().default(true),
@@ -1817,6 +1847,7 @@ export const savedProviderConfigSchema = z.object({
   saved_config_id: z.number().optional(),
   server_id: z.number(),
   provider: z.string(),
+  credential_revision: z.number().int().positive().default(1),
   api_key: z.instanceof(Buffer).nullable(),
   key_version: z.number().int().default(1),
   llm_id: z.number().nullable(),
@@ -1855,9 +1886,21 @@ export type SavedProviderConfigRow = z.infer<typeof savedProviderConfigSchema>;
  * Input type for upserting a saved provider config.
  * Omits auto-generated fields (saved_config_id, saved_at, updated_at).
  */
-export type SavedProviderConfigUpsert = Omit<SavedProviderConfigRow, "saved_config_id" | "saved_at" | "updated_at">;
+export type SavedProviderConfigUpsert = Omit<
+  SavedProviderConfigRow,
+  "saved_config_id" | "saved_at" | "updated_at" | "credential_revision"
+>;
 
-export const personalProviderCapabilitySchema = z.enum(["text", "embedding", "image", "image_nai", "video", "vision"]);
+export const personalProviderCapabilitySchema = z.enum([
+  "text",
+  "embedding",
+  "image",
+  "image_nai",
+  "video",
+  "vision",
+  "speech_design",
+  "speech_clone",
+]);
 export type PersonalProviderCapability = z.infer<typeof personalProviderCapabilitySchema>;
 
 /**
@@ -1868,12 +1911,15 @@ export const userSavedProviderConfigSchema = z.object({
   user_saved_config_id: z.number().optional(),
   user_id: z.number(),
   provider: z.string(),
+  credential_revision: z.number().int().positive().default(1),
   api_key: z.instanceof(Buffer).nullable(),
   key_version: z.number().int().default(1),
   llm_id: z.number().nullable(),
   diffusion_model_id: z.number().nullable(),
   embedding_model_id: z.number().nullable(),
   nai_diffusion_model_id: z.number().nullable(),
+  speech_design_model_id: z.number().int().nullable().optional(),
+  speech_clone_model_id: z.number().int().nullable().optional(),
   video_model_id: z.number().nullable().optional(),
   vision_llm_id: z.number().nullable().optional(),
   nai_preset_name: z.string().nullable(),
@@ -1921,7 +1967,7 @@ export type UserSavedProviderConfigRow = z.infer<typeof userSavedProviderConfigS
  */
 export type UserSavedProviderConfigUpsert = Omit<
   UserSavedProviderConfigRow,
-  "user_saved_config_id" | "saved_at" | "updated_at"
+  "user_saved_config_id" | "saved_at" | "updated_at" | "credential_revision"
 >;
 
 /**

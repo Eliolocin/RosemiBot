@@ -1,5 +1,6 @@
 import { resetRepository } from "@/utils/db/repositories/ResetRepository";
 import path from "node:path";
+import { seedModelsFromCatalog } from "@/db/seed/catalog/modelSeed";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   llmProviderRepo,
@@ -20,6 +21,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
   const otherDiscId = "_speech_source_selections_other";
   const migration = path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.sql");
   const downgrade = path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.down.sql");
+  const hostedMigration = path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.sql");
+  const hostedDowngrade = path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.down.sql");
 
   beforeAll(async () => {
     await setupTestDb();
@@ -238,15 +241,19 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
   it("refuses a lossy downgrade and backfills the deterministic legacy winner and sample intent", async () => {
     const design = await endpoint("Migration Design", "voice-design");
     const clone = await endpoint("Migration Clone", "clone");
+    const auto = await endpoint("Migration Auto", "auto");
     await setSpeechEndpointSelection(serverId, design.custom_endpoint_id ?? null);
     await setSpeechEndpointSelection(serverId, clone.custom_endpoint_id ?? null);
-    await expect(executeTestSqlFile(downgrade)).rejects.toThrow();
-    expect((await selections()).design?.custom_endpoint_id).toBe(design.custom_endpoint_id);
-    await testSql`UPDATE persona_voice_configs SET voice_source_priority = 'design' WHERE persona_id = ${personaId}`;
-    const auto = await endpoint("Migration Auto", "auto");
-    await setSpeechEndpointSelection(serverId, auto.custom_endpoint_id ?? null);
-    await executeTestSqlFile(downgrade);
+    await executeTestSqlFile(hostedDowngrade);
     try {
+      await expect(executeTestSqlFile(downgrade)).rejects.toThrow();
+      expect((await selections()).design?.custom_endpoint_id).toBe(design.custom_endpoint_id);
+      await testSql`UPDATE persona_voice_configs SET voice_source_priority = 'design' WHERE persona_id = ${personaId}`;
+      await testSql`
+        UPDATE server_speech_configs SET speech_design_endpoint_id = ${auto.custom_endpoint_id},
+          speech_clone_endpoint_id = ${auto.custom_endpoint_id} WHERE server_id = ${serverId}
+      `;
+      await executeTestSqlFile(downgrade);
       await testSql`
         UPDATE custom_endpoints SET is_default = true, updated_at = '2020-01-01'
         WHERE custom_endpoint_id IN (${auto.custom_endpoint_id}, ${clone.custom_endpoint_id})
@@ -261,6 +268,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
       `;
     } finally {
       await executeTestSqlFile(migration);
+      await executeTestSqlFile(hostedMigration);
+      await seedModelsFromCatalog(testSql);
     }
     expect((await selections()).design?.custom_endpoint_id).toBe(auto.custom_endpoint_id);
     expect((await selections()).clone?.custom_endpoint_id).toBe(auto.custom_endpoint_id);
@@ -277,5 +286,12 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
     const [preserved] =
       await testSql`SELECT voice_source_priority FROM persona_voice_configs WHERE persona_id = ${personaId}`;
     expect(preserved.voice_source_priority).toBe("design");
+    await expect(
+      testSql`
+      UPDATE server_speech_configs SET speech_clone_model_id = (
+        SELECT speech_model_id FROM speech_models WHERE provider = 'openrouter' AND is_default
+      ) WHERE server_id = ${serverId}
+    `.execute(),
+    ).rejects.toThrow();
   });
 });
