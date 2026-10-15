@@ -47,7 +47,8 @@
  *                         for a bug report. OPERATIONAL TELEMETRY ONLY: nothing behavioral may
  *                         read it, so no persona or routing decision ever takes it as input.
  *   - audio_generated   → TTS backend label ("elevenlabs" | "tts-clone" |
- *                         "tts-voice-design"); one per successful voice message.
+ *                         "tts-voice-design" | "openrouter-speech" | "google-speech" |
+ *                         "vertex-speech"); one per successful voice message.
  *                         Backend (not raw voice id) is used: low-cardinality,
  *                         privacy-safe, and answers "paid API vs local TTS" for cost.
  *   - (all others)      → "" (scalar event counter)

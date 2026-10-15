@@ -1,4 +1,5 @@
 import { setSpeechEndpointSelection } from "@/utils/db/repositories/SpeechRepository";
+import { cleanupSpeechCredentialBeforeChange } from "@/utils/speech/googleVoiceLifecycle";
 import {
   decisionModelRegistrationSchema,
   type DecisionModelRegistrationRow,
@@ -1558,6 +1559,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
   async deleteServerProviderRegistration(serverId: number, provider: string): Promise<boolean> {
     const normalizedProvider = provider.toLowerCase();
     try {
+      await cleanupSpeechCredentialBeforeChange({ kind: "server", ownerId: serverId }, normalizedProvider);
       const deleted = await sql.begin(async (tx) => {
         const deleted = await tx`
           DELETE FROM saved_provider_configs
@@ -1621,6 +1623,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
   async deleteUserProviderRegistration(userId: number, provider: string): Promise<boolean> {
     const normalizedProvider = provider.toLowerCase();
     try {
+      await cleanupSpeechCredentialBeforeChange({ kind: "personal", ownerId: userId }, normalizedProvider);
       return await sql.begin(async (tx) => {
         const deleted = await tx`
           DELETE FROM user_saved_provider_configs
@@ -2019,6 +2022,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
   ): Promise<boolean> {
     try {
       const provider = config.provider.toLowerCase();
+      await cleanupSpeechCredentialBeforeChange({ kind: "server", ownerId: serverId }, provider, config.api_key);
       const fallbackModelRefsJson = JSON.stringify(config.fallback_model_refs ?? []);
       const logitBiasesJson = JSON.stringify(config.llm_logit_biases ?? []);
       const disabledParamsLiteral = this.toPostgresTextArrayLiteral(config.llm_disabled_params);
@@ -2095,6 +2099,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
     options: LlmProviderCacheOptions = {},
   ): Promise<boolean> {
     try {
+      await cleanupSpeechCredentialBeforeChange({ kind: "server", ownerId: serverId }, provider.toLowerCase());
       const result = await sql`
         DELETE FROM saved_provider_configs
         WHERE server_id = ${serverId}
@@ -2122,6 +2127,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
   async upsertUserSavedProviderConfig(userId: number, config: UserSavedProviderConfigUpsert): Promise<boolean> {
     try {
       const provider = config.provider.toLowerCase();
+      await cleanupSpeechCredentialBeforeChange({ kind: "personal", ownerId: userId }, provider, config.api_key);
       const enabledCapabilitiesLiteral = this.toPostgresTextArrayLiteral(config.enabled_capabilities);
       const assignedCapabilitiesLiteral = this.toPostgresTextArrayLiteral(config.assigned_capabilities);
       const fallbackModelRefsJson = JSON.stringify(config.fallback_model_refs ?? []);
@@ -2219,6 +2225,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
 
   async deleteUserSavedProviderConfig(userId: number, provider: string): Promise<boolean> {
     try {
+      await cleanupSpeechCredentialBeforeChange({ kind: "personal", ownerId: userId }, provider.toLowerCase());
       const result = await sql`
         DELETE FROM user_saved_provider_configs
         WHERE user_id = ${userId}

@@ -4,7 +4,11 @@ import { loadHostedSpeechSelection, type HostedSpeechSelection } from "@/utils/d
 import { log } from "@/utils/misc/logger";
 import { buildCustomProviderName } from "@/utils/provider/customProviderUtils";
 import { decryptApiKey } from "@/utils/security/crypto";
-import { loadActiveEndpoint, loadEndpointCredentials } from "@/utils/db/repositories/SpeechRepository";
+import {
+  loadActiveEndpoint,
+  loadEndpointCredentials,
+  loadSpeechRoutingPolicy,
+} from "@/utils/db/repositories/SpeechRepository";
 
 export interface SpeechEndpointResult {
   endpoint: CustomEndpointRow;
@@ -85,9 +89,11 @@ export async function resolveSpeechTargets(
   serverId: number,
   userId?: number,
 ): Promise<{ design: SpeechTargetResult | null; clone: SpeechTargetResult | null }> {
+  const serverAllowed = userId === undefined || (await loadSpeechRoutingPolicy(serverId, userId)).serverAllowed;
   async function resolve(mode: VoiceSourceMode): Promise<SpeechTargetResult | null> {
     const hosted = await loadHostedSpeechSelection(serverId, mode, userId);
     if (hosted) {
+      if (hosted.owner.kind === "server" && !serverAllowed) return null;
       try {
         const apiKey = await decryptApiKey(hosted.apiKey, hosted.keyVersion);
         return apiKey ? { ...hosted, kind: "hosted-model", endpoint: null, apiKey } : null;
@@ -96,6 +102,7 @@ export async function resolveSpeechTargets(
         return null;
       }
     }
+    if (!serverAllowed) return null;
     const endpoint = await resolveActiveSpeechEndpoint(serverId, mode);
     return endpoint ? { ...endpoint, kind: "custom-endpoint", owner: { kind: "server", ownerId: serverId } } : null;
   }

@@ -196,7 +196,8 @@ export async function storeVoiceSample(options: VoiceSampleStoreOptions): Promis
   return storeVoiceSampleLocally(options);
 }
 
-export async function loadStoredVoiceSampleBuffer(reference: string): Promise<Buffer | null> {
+export async function loadStoredVoiceSampleBuffer(reference: string, signal?: AbortSignal): Promise<Buffer | null> {
+  signal?.throwIfAborted();
   const trimmedReference = reference.trim();
   if (!trimmedReference) {
     return null;
@@ -206,6 +207,7 @@ export async function loadStoredVoiceSampleBuffer(reference: string): Promise<Bu
     const downloadResult = await safeDownload(trimmedReference, {
       maxSizeMB: SPEECH_SAMPLE_MAX_MB,
       timeoutMs: 30_000,
+      externalSignal: signal,
     });
 
     if (!downloadResult.success || !downloadResult.buffer) {
@@ -221,7 +223,9 @@ export async function loadStoredVoiceSampleBuffer(reference: string): Promise<Bu
   }
 
   try {
-    return await fs.readFile(absolutePath);
+    const stat = await fs.stat(absolutePath);
+    if (stat.size > SPEECH_SAMPLE_MAX_MB * 1024 * 1024) return null;
+    return await fs.readFile(absolutePath, { signal });
   } catch (error) {
     log.warn(`[Voice Sample Storage] Failed to load local voice sample ${trimmedReference}`, error);
     return null;

@@ -38,6 +38,12 @@ import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCacheStore"
 import { sql, withTransientDbRetry } from "@/utils/db/client";
 import { validateTomoriFields } from "@/utils/db/sqlSecurity";
 import { llmModelRepo } from "@/utils/db/repositories/LlmModelRepository";
+import {
+  loadPersonaSpeechCredentialOwners,
+  loadSpeechCredentialForCleanup,
+} from "@/utils/db/repositories/SpeechRepository";
+import { cleanupPendingGoogleVoices } from "@/utils/speech/googleVoiceLifecycle";
+import { decryptApiKey } from "@/utils/security/crypto";
 import { llmProviderRepo } from "@/utils/db/repositories/LlmProviderRepository";
 import { userNamingRepository } from "@/utils/db/repositories/UserNamingRepository";
 import { type MemoryValidationResult, getMemoryLimits } from "@/utils/misc/memoryLimits";
@@ -923,6 +929,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
 
   async removePersona(personaId: number): Promise<boolean> {
     try {
+      const speechOwners = await loadPersonaSpeechCredentialOwners(personaId);
       const result = await sql.transaction(async (tx) => {
         const affected = await tx`
           SELECT c.custom_expression_id FROM custom_expressions c
@@ -939,6 +946,25 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         return deleted;
       });
       for (const row of result) invalidateEmojiStickerCache(Number(row.server_id));
+      if (result.length > 0) {
+        for (const owner of speechOwners) {
+          try {
+            const credential = await loadSpeechCredentialForCleanup(owner, owner.provider);
+            if (credential)
+              await cleanupPendingGoogleVoices(
+                owner,
+                credential.credentialId,
+                credential.credentialRevision,
+                await decryptApiKey(credential.apiKey, credential.keyVersion),
+                [],
+              );
+          } catch {
+            log.error("Persona speech cleanup failed; remove unused voices in the provider console.", undefined, {
+              personaId,
+            });
+          }
+        }
+      }
       return result.length > 0;
     } catch (e) {
       log.error(`Error removing persona ${personaId}:`, e);

@@ -12,13 +12,16 @@ Discord voice messages for persona replies.
 
 ## Architecture and endpoints
 
-Voice features route through custom endpoint capabilities registered per server:
+Inbound transcription routes through custom endpoints registered per server. Outbound configuration
+stores an independent Voice Design target and Voice Clone target, each a custom endpoint or hosted model:
 
 - `transcription`: powers inbound audio transcription.
 - `speech`: powers outbound voice message synthesis.
 
-Endpoints support local engines (such as `tts-clone` and `openai-compatible-transcription`) and
-hosted providers (ElevenLabs).
+Custom endpoints support local engines (such as `tts-clone` and `openai-compatible-transcription`)
+and ElevenLabs. Hosted synthesis adapters support OpenRouter Fish cloning, direct Gemini Voice
+Design, and standard Vertex Voice Design with a `global` location. Vertex Express has no admitted
+voice lifecycle transport.
 
 ```
 INBOUND (STT)
@@ -46,7 +49,7 @@ voiceSourceResolution.ts (resolveCandidateVoiceSources)
   │  Selects active voice source with deterministic priority
   ▼
 voiceMessageSynthesis.ts (synthesizeVoiceMessage)
-  │  Dispatches to backend adapter, records audio_generated metric
+  │  Dispatches to backend adapter, returns generated audio and backend
   ▼
 voiceMessageDelivery.ts (deliverVoiceMessage)
   │  Multipart payload, waveform, duration, bare MIME type, flags: 8192
@@ -78,18 +81,22 @@ Outbound synthesis is driven by two pathways:
 - The `/generate voice-message` slash command, which drives the speech endpoint directly without an
   LLM call.
 
+The command and tool currently pass custom endpoints to the dispatcher. Hosted selections can be
+saved and resolved, but neither caller passes a hosted target, so selecting a hosted model does not
+enable voice generation through these callers. The hosted dispatcher contract is described below.
+
 Both callers converge on shared synthesis and delivery modules:
 
 | Module | Responsibility |
 |---|---|
 | `src/utils/speech/voiceSourceCapabilities.ts` | Resolves which request bodies an endpoint accepts. |
 | `src/utils/speech/voiceSourceResolution.ts` | Matches voice sources to the two targets and applies persona priority. |
-| `src/utils/speech/voiceMessageSynthesis.ts` | Dispatches synthesis to the target adapter and records metrics. |
+| `src/utils/speech/voiceMessageSynthesis.ts` | Dispatches synthesis and returns generated audio and its backend. |
 | `src/utils/discord/webhook/voiceMessageDelivery.ts` | Transmits native Discord voice message payloads. |
 
 ### Source resolution and endpoint capabilities
 
-`resolveVoiceSourceCapabilities` inspects the active `speech` endpoint to determine supported
+`resolveVoiceSourceCapabilities` inspects a custom endpoint or hosted model to determine supported
 request formats:
 
 - `acceptsCloneShape`: endpoint accepts reference audio clips (`ref_audio` and `ref_text`).
@@ -122,7 +129,7 @@ both slots with the same endpoint. Clearing one slot preserves the other. Mode e
 selections, and endpoint or connection deletion clears its references. The migration selects the
 former default by `updated_at DESC, custom_endpoint_id DESC` and fills only its supported slots.
 
-Both generation callers resolve saved sources against their matching targets before synthesis.
+Both generation callers resolve saved sources against selected custom endpoints before synthesis.
 A persona's `voice_source_priority` defaults to Design; if that saved source or its matching target
 is unavailable, the other usable pair wins. Existing Auto personas with a sample and no
 `VoiceDesign` marker migrate to Clone priority. Voice names are display text.
@@ -147,8 +154,58 @@ A unique index retains one active identity during concurrent creation.
 Prompt edits and credential ciphertext replacement mark bindings for deletion. Changing source
 priority preserves them. Persona deletion retains the remote voice ID as a pending deletion with no
 persona reference. Bindings cascade when their credential snapshot is removed, so provider cleanup
-must use the old credential before removing that snapshot. Bindings are excluded from configuration
-exports and have no in-memory cache.
+uses the old credential before replacing or removing that snapshot. Persona removal attempts cleanup
+after its database write succeeds. Subsequent operations retry known pending deletions for the same
+owner and credential revision; a replacement key never attempts to delete an old revision's voices.
+Pending rows from older revisions or other Cloud projects or locations remain available for manual
+recovery but do not affect subsequent cleanup status or repeat the original operator error. Failures for the
+current credential and project remain retryable and continue to report pending cleanup. Bindings are
+excluded from configuration exports and have no in-memory cache.
+
+`googleVoiceLifecycle.ts` creates saved identities lazily and retains the binding selected by the
+database's unique index. Concurrent creators delete their surplus voices. A prompt check in the save
+transaction rejects an identity created while the persona's description changed. Delivery direction
+does not affect identity. Successful synthesis clears the old expiry estimate because provider use
+extends the voice's lifetime. A recorded expiry, or a failed synthesis followed by a confirmed missing
+voice lookup, permits one recreation. Authentication, quota, and transient failures preserve identity.
+
+One-off descriptions create temporary stored voices and delete them in `finally`. Cleanup uses a
+separate bounded signal so turn cancellation cannot skip it. Failed deletions remain in the binding
+store and produce an operator error with provider-console recovery instructions. A crash before the
+voice ID is saved, cancellation or an ambiguous timeout during creation, or credential removal after
+failed cleanup can leave a remote voice that requires manual removal in the provider console.
+Cleanup has no scheduler.
+
+### Hosted dispatcher contract
+
+The shared dispatcher implements hosted synthesis when a request supplies a resolved `target`.
+The command and tool use its endpoint request fields and do not supply `target` or `routing`.
+Hosted requests enforce 2,000 script, 1,000 description, and 300 delivery-direction characters, a
+240-second generation deadline, and a 10 MiB decoded output ceiling. `maxOutputBytes` can impose a
+smaller destination attachment limit. Reference audio uses the existing sample download and WAV
+conversion owners, with byte limits checked again after conversion. Oversized references are rejected
+without trimming. These limits do not establish a monetary cap.
+
+OpenRouter requests inline reference bytes and MP3 output. Gemini and Vertex requests keep the voice
+description, spoken text, and direction separate and validate WAV output. Response reads are bounded
+before JSON/base64 allocation; audio validation rejects empty, malformed, truncated, wrong-MIME, and
+oversized output. Hosted credentials use fixed provider origins with redirects disabled. Cancellation
+reaches creation, synthesis, response reads, reference downloads, and conversion. It cannot undo
+provider work already accepted.
+
+A request's `routing` context identifies the triggering user and whether its source was explicit.
+After a qualifying personal provider failure, the dispatcher may resolve fresh server targets once.
+The user's `personal_server_fallback_enabled` setting and the server's BYOK restriction both apply.
+Saved persona sources are resolved again against server targets in persona priority order; an explicit
+source stays fixed and requires a compatible target. Invalid input, cancellation, and successful
+synthesis do not start fallback. Delivery runs after synthesis and cannot initiate another generation.
+
+Results retain provider, model, credential scope, and operation usage for every attempt, including a
+failed personal attempt before server fallback. Creation and synthesis usage remain separate.
+OpenRouter generation IDs support one bounded metadata lookup; missing cost stays unknown, and a
+failed lookup preserves generated audio. The dispatcher reports synthesis success independently of
+Discord delivery. The command and tool own delivery and `audio_generated` metrics for their connected
+custom endpoint paths.
 
 ## Native Discord delivery constraints
 
@@ -193,6 +250,6 @@ Voice messages preserve persona identity through the same transport split used b
   turn admission.
 - `src/utils/speech/voiceSourceCapabilities.ts`: Speech endpoint capability resolution.
 - `src/utils/speech/voiceSourceResolution.ts`: Candidate voice source discovery and prioritization.
-- `src/utils/speech/voiceMessageSynthesis.ts`: Multi-backend synthesis dispatcher and metrics.
+- `src/utils/speech/voiceMessageSynthesis.ts`: Multi-backend synthesis dispatcher and attempt metadata.
 - `src/utils/discord/webhook/voiceMessageDelivery.ts`: Native Discord voice message payload delivery.
 - `src/tools/functionCalls/generateVoiceMessageTool.ts`: Built-in LLM voice message tool.

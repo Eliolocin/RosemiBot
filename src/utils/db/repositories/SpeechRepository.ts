@@ -8,6 +8,7 @@ import { log } from "@/utils/misc/logger";
 import { deleteStoredVoiceSample } from "@/utils/storage/voiceSampleStorage";
 import { supportsSpeechMode, type VoiceSourceMode } from "@/utils/speech/voiceSourceCapabilities";
 import type {} from "./IRepository";
+import { createHash } from "node:crypto";
 
 /**
  * Raw credential row returned by loadEndpointCredentials.
@@ -206,6 +207,8 @@ export type SpeechBindingIdentity = Pick<
   | "prompt_hash"
 >;
 
+export class SpeechBindingChangedError extends Error {}
+
 export async function loadSpeechVoiceBinding(identity: SpeechBindingIdentity): Promise<SpeechVoiceBindingRow | null> {
   const [row] = await sql`
     SELECT * FROM speech_voice_bindings
@@ -224,7 +227,19 @@ export async function saveSpeechVoiceBinding(
   voiceId: string,
   expiresAt: Date | null,
 ): Promise<SpeechVoiceBindingRow> {
-  const [row] = await sql`
+  return sql.begin(async (tx) => {
+    if (identity.persona_id !== null) {
+      const [persona] =
+        await tx`SELECT speech_voice_design_prompt FROM persona_voice_configs WHERE persona_id = ${identity.persona_id} FOR UPDATE`;
+      if (
+        !persona ||
+        createHash("sha256")
+          .update(persona.speech_voice_design_prompt?.trim() ?? "")
+          .digest("hex") !== identity.prompt_hash
+      )
+        throw new SpeechBindingChangedError("Speech prompt changed during creation");
+    }
+    const [row] = await tx`
     INSERT INTO speech_voice_bindings (
       persona_id, saved_config_id, user_saved_config_id, credential_revision, transport, project, location,
       prompt_hash, voice_id, expires_at
@@ -233,10 +248,72 @@ export async function saveSpeechVoiceBinding(
       ${identity.transport}, ${identity.project}, ${identity.location}, ${identity.prompt_hash}, ${voiceId}, ${expiresAt}
     ) ON CONFLICT DO NOTHING RETURNING *
   `;
-  if (row) return speechVoiceBindingSchema.parse(row);
-  const retained = await loadSpeechVoiceBinding(identity);
-  if (!retained) throw new Error("Speech binding disappeared during creation");
-  return retained;
+    if (row) return speechVoiceBindingSchema.parse(row);
+    const retained = await loadSpeechVoiceBinding(identity);
+    if (!retained) throw new Error("Speech binding disappeared during creation");
+    return retained;
+  });
+}
+
+export async function refreshSpeechVoiceBinding(bindingId: number, expiresAt: Date | null): Promise<void> {
+  await sql`UPDATE speech_voice_bindings SET expires_at = ${expiresAt} WHERE speech_voice_binding_id = ${bindingId}`;
+}
+
+export async function savePendingSpeechVoiceDeletion(
+  identity: SpeechBindingIdentity,
+  voiceId: string,
+): Promise<SpeechVoiceBindingRow> {
+  const [row] = await sql`
+    INSERT INTO speech_voice_bindings (persona_id, saved_config_id, user_saved_config_id, credential_revision, transport, project, location, prompt_hash, voice_id, pending_delete)
+    VALUES (NULL, ${identity.saved_config_id}, ${identity.user_saved_config_id}, ${identity.credential_revision}, ${identity.transport}, ${identity.project}, ${identity.location}, ${identity.prompt_hash}, ${voiceId}, true)
+    RETURNING *
+  `;
+  return speechVoiceBindingSchema.parse(row);
+}
+
+export async function loadSpeechCredentialForCleanup(
+  scope: OpenRouterModelScope,
+  provider: string,
+): Promise<{ credentialId: number; credentialRevision: number; apiKey: Buffer; keyVersion: number } | null> {
+  const [row] =
+    scope.kind === "server"
+      ? await sql`SELECT saved_config_id AS id, credential_revision, api_key, key_version FROM saved_provider_configs WHERE server_id = ${scope.ownerId} AND provider = ${provider}`
+      : await sql`SELECT user_saved_config_id AS id, credential_revision, api_key, key_version FROM user_saved_provider_configs WHERE user_id = ${scope.ownerId} AND provider = ${provider}`;
+  return row?.api_key
+    ? {
+        credentialId: row.id,
+        credentialRevision: row.credential_revision,
+        apiKey: row.api_key,
+        keyVersion: row.key_version,
+      }
+    : null;
+}
+
+export async function retireSpeechCredentialBindings(
+  credentialId: number,
+  scope: OpenRouterModelScope["kind"],
+): Promise<void> {
+  await sql`UPDATE speech_voice_bindings SET pending_delete = true WHERE (${scope} = 'server' AND saved_config_id = ${credentialId}) OR (${scope} = 'personal' AND user_saved_config_id = ${credentialId})`;
+}
+
+export async function loadPersonaSpeechCredentialOwners(
+  personaId: number,
+): Promise<Array<OpenRouterModelScope & { provider: string }>> {
+  return await sql`
+    SELECT DISTINCT 'server' AS kind, c.server_id AS "ownerId", c.provider FROM speech_voice_bindings b JOIN saved_provider_configs c USING (saved_config_id) WHERE b.persona_id = ${personaId}
+    UNION SELECT DISTINCT 'personal' AS kind, c.user_id AS "ownerId", c.provider FROM speech_voice_bindings b JOIN user_saved_provider_configs c USING (user_saved_config_id) WHERE b.persona_id = ${personaId}
+  `;
+}
+
+export async function loadSpeechRoutingPolicy(
+  serverId: number,
+  userId: number,
+): Promise<{ serverAllowed: boolean; fallbackEnabled: boolean }> {
+  const [row] = await sql`
+    SELECT NOT COALESCE(c.user_byok_mode, false) AS server_allowed, COALESCE(u.personal_server_fallback_enabled, true) AS fallback_enabled
+    FROM servers s LEFT JOIN server_byok_configs c USING (server_id) LEFT JOIN user_personalization_configs u ON u.user_id = ${userId} WHERE s.server_id = ${serverId}
+  `;
+  return { serverAllowed: row?.server_allowed === true, fallbackEnabled: row?.fallback_enabled === true };
 }
 
 export async function markSpeechVoiceBindingForDeletion(bindingId: number): Promise<void> {

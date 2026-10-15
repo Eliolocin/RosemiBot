@@ -1,5 +1,6 @@
 import { resetRepository } from "@/utils/db/repositories/ResetRepository";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { llmModelRepo, llmProviderRepo, configRepository, personaRepository } from "@/utils/db/repositories";
 import {
@@ -290,6 +291,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
   });
 
   it("binds voice identity to credential revision and persona, reuses across models, and retires changed prompts", async () => {
+    await testSql`UPDATE persona_voice_configs SET speech_voice_design_prompt = 'Warm narration' WHERE persona_id = ${refs.personaId}`;
     const [credential] =
       await testSql`SELECT credential_revision FROM saved_provider_configs WHERE saved_config_id = ${googleCredentialId}`;
     const identity = {
@@ -300,7 +302,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
       transport: "google" as const,
       project: "",
       location: "",
-      prompt_hash: "a".repeat(64),
+      prompt_hash: createHash("sha256").update("Warm narration").digest("hex"),
     };
     const [first, concurrent] = await Promise.all([
       saveSpeechVoiceBinding(identity, "voice_first", null),
@@ -337,11 +339,13 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
         (row) => row.voice_id === first.voice_id,
       ),
     ).toBe(true);
-    await saveSpeechVoiceBinding({ ...identity, prompt_hash: "b".repeat(64) }, "voice_revised", null);
+    const revisedHash = createHash("sha256").update("New voice").digest("hex");
+    await saveSpeechVoiceBinding({ ...identity, prompt_hash: revisedHash }, "voice_revised", null);
     const [alter] = await testSql`
       INSERT INTO personas (server_id, persona_nickname, is_alter)
       VALUES (${refs.serverId}, 'Juno', true) RETURNING persona_id
     `;
+    await testSql`INSERT INTO persona_voice_configs (persona_id, speech_voice_design_prompt) VALUES (${alter.persona_id}, 'Warm narration')`;
     const alterBinding = await saveSpeechVoiceBinding(
       { ...identity, persona_id: alter.persona_id },
       "voice_alter",
@@ -366,7 +370,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
         await testSql`SELECT credential_revision FROM saved_provider_configs WHERE saved_config_id = ${googleCredentialId}`
       )[0].credential_revision,
     ).toBe(identity.credential_revision + 1);
-    expect(await loadSpeechVoiceBinding({ ...identity, prompt_hash: "b".repeat(64) })).toBeNull();
+    expect(await loadSpeechVoiceBinding({ ...identity, prompt_hash: revisedHash })).toBeNull();
     await testSql`DELETE FROM saved_provider_configs WHERE saved_config_id = ${googleCredentialId}`;
     expect(await loadHostedSpeechSelection(refs.serverId, "design")).toBeNull();
   });

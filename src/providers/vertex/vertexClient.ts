@@ -67,10 +67,16 @@ export function parseVertexCompositeKey(compositeKey: string): VertexConfig {
  *
  * @returns GoogleGenAI client ready for Vertex AI calls
  */
-export function createVertexClient(config: VertexConfig): GoogleGenAI {
+class VertexClient extends GoogleGenAI {
+  getAuthHeaders(): Promise<Headers> {
+    return this.apiClient.getAuthHeaders();
+  }
+}
+
+export function createVertexClient(config: VertexConfig): VertexClient {
   log.info(`Creating Vertex AI client for project "${config.projectId}" in "${config.location}"`);
 
-  return new GoogleGenAI({
+  return new VertexClient({
     vertexai: true,
     project: config.projectId,
     location: config.location,

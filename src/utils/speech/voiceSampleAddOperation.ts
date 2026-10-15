@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import ffmpegPath from "ffmpeg-static";
 import { parseBuffer } from "music-metadata";
 import { deleteVoiceSample, insertVoiceSample, updateVoiceSamplePath } from "@/utils/db/repositories/SpeechRepository";
@@ -69,11 +70,44 @@ class FfmpegSpawnError extends Error {
   }
 }
 
-async function spawnFfmpeg(binary: string, tmpIn: string, tmpOut: string): Promise<void> {
+const FFMPEG_SIZE_CHECK_INTERVAL_MS = 100;
+
+async function spawnFfmpeg(
+  binary: string,
+  tmpIn: string,
+  tmpOut: string,
+  signal?: AbortSignal,
+  maxBytes?: number,
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const proc = spawn(binary, ["-y", "-i", tmpIn, "-ar", "22050", "-ac", "1", "-f", "wav", tmpOut]);
-    proc.on("error", (err) => reject(new FfmpegSpawnError(err)));
-    proc.on("close", (code: number | null) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`))));
+    const proc = spawn(binary, ["-y", "-i", tmpIn, "-ar", "22050", "-ac", "1", "-f", "wav", tmpOut], {
+      signal,
+      stdio: "ignore",
+    });
+    let oversized = false;
+    let spawnError: Error | undefined;
+    const sizeWatch = maxBytes
+      ? setInterval(() => {
+          void fs
+            .stat(tmpOut)
+            .then((stat) => {
+              if (stat.size > maxBytes) {
+                oversized = true;
+                proc.kill();
+              }
+            })
+            .catch(() => undefined);
+        }, FFMPEG_SIZE_CHECK_INTERVAL_MS)
+      : undefined;
+    proc.on("error", (err) => {
+      spawnError = err;
+    });
+    proc.on("close", (code: number | null) => {
+      clearInterval(sizeWatch);
+      if (spawnError) reject(new FfmpegSpawnError(spawnError));
+      else if (code === 0 && !oversized) resolve();
+      else reject(new Error("Reference conversion failed"));
+    });
   });
 }
 
@@ -81,8 +115,13 @@ async function spawnFfmpeg(binary: string, tmpIn: string, tmpOut: string): Promi
  * Converts an audio buffer to mono WAV at 22050 Hz.
  * Tries the bundled ffmpeg-static binary first and retries system ffmpeg only when spawning fails.
  */
-export async function normalizeVoiceSampleToWav(inputBuffer: Buffer): Promise<Buffer> {
-  const suffix = Date.now();
+export async function normalizeVoiceSampleToWav(
+  inputBuffer: Buffer,
+  signal?: AbortSignal,
+  maxBytes?: number,
+): Promise<Buffer> {
+  signal?.throwIfAborted();
+  const suffix = randomUUID();
   const tmpIn = path.join(os.tmpdir(), `tts-in-${suffix}`);
   const tmpOut = path.join(os.tmpdir(), `tts-out-${suffix}.wav`);
 
@@ -91,17 +130,19 @@ export async function normalizeVoiceSampleToWav(inputBuffer: Buffer): Promise<Bu
   try {
     const primaryBinary = ffmpegPath ?? "ffmpeg";
     try {
-      await spawnFfmpeg(primaryBinary, tmpIn, tmpOut);
+      await spawnFfmpeg(primaryBinary, tmpIn, tmpOut, signal, maxBytes);
     } catch (err) {
-      if (err instanceof FfmpegSpawnError && primaryBinary !== "ffmpeg") {
+      if (err instanceof FfmpegSpawnError && primaryBinary !== "ffmpeg" && !signal?.aborted) {
         log.warn("[VoiceAdd] ffmpeg-static failed to spawn, retrying with system ffmpeg", err);
-        await spawnFfmpeg("ffmpeg", tmpIn, tmpOut);
+        await spawnFfmpeg("ffmpeg", tmpIn, tmpOut, signal, maxBytes);
       } else {
         throw err;
       }
     }
 
-    return await fs.readFile(tmpOut);
+    signal?.throwIfAborted();
+    if (maxBytes && (await fs.stat(tmpOut)).size > maxBytes) throw new Error("Normalized reference exceeds size limit");
+    return await fs.readFile(tmpOut, { signal });
   } finally {
     await Promise.all([
       fs.unlink(tmpIn).catch((err: unknown) => {
