@@ -172,6 +172,13 @@ describe("chunkMessage HEAVY protected spans", () => {
     expect(chunkMessage(text, HumanizerDegree.HEAVY)).toEqual([text]);
   });
 
+  it("keeps an @{handle} with a period in its name in one message", () => {
+    expect(chunkMessage("yo @{Mirri J. Juno} welcome. enjoy", HumanizerDegree.HEAVY)).toEqual([
+      "yo @{Mirri J. Juno} welcome",
+      "enjoy",
+    ]);
+  });
+
   it("keeps a span with an internal sentence period in one message", () => {
     expect(chunkMessage("*he said. then he left*", HumanizerDegree.HEAVY)).toEqual(["*he said. then he left*"]);
     expect(chunkMessage("**bold. still bold**", HumanizerDegree.HEAVY)).toEqual(["**bold. still bold**"]);

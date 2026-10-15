@@ -157,6 +157,16 @@ describe("stream buffer emphasis markers", () => {
  * buffer never split at its newline and the next `Persona:` label shipped inside the spoiler's segment,
  * where the cleaner then dropped the spoiler as a leaked preamble.
  */
+describe("stream buffer mention handles", () => {
+  it("holds while an @{handle} is open so a period inside the name cannot split it", () => {
+    expect(hasIncompleteSemanticMarkers("yo @{Mirri J. ")).toBe(true);
+  });
+
+  it("releases once the handle closes", () => {
+    expect(hasIncompleteSemanticMarkers("yo @{Mirri J. Juno} welcome")).toBe(false);
+  });
+});
+
 describe("stream buffer Discord spoilers", () => {
   it("does not hold a line whose only pipes are spoilers", () => {
     expect(hasIncompleteSemanticMarkers("Mirri (The Voice): ||We like Miso.||\n")).toBe(false);
