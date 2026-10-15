@@ -3,6 +3,10 @@ export default {
     execution: {
       unavailable: `ツール \`{tool}\` は、現在の設定、モデルの機能、またはBotの権限では利用できません。`,
     },
+    generate_voice_message: {
+      persona_missing: `このペルソナはもう利用できません。`,
+      stale: `このターンの間に音声モデル、認証情報、またはペルソナの声が変更されました。ボイスメッセージを生成する前に新しいターンを始めてください。`,
+    },
     generate_image: {
       quota_exceeded_generic: `画像生成クォータを超過しました。`,
       user_quota_exceeded: `日次画像生成クォータに達しました。{reset_info}`,

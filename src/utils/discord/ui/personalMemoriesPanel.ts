@@ -439,7 +439,7 @@ ${localizer(locale, "commands.personal.memories.selector_guidance")}`,
     if (isPrivacyFull) {
       components.push({
         type: ComponentType.TextDisplay,
-        content: withLinePrefix("> ", `⚠️ ${localizer(locale, "commands.personal.memories.privacy_full_warning")}`),
+        content: `-# ${localizer(locale, "commands.personal.memories.privacy_full_warning")}`,
       });
     }
 
@@ -631,7 +631,7 @@ ${localizer(locale, "commands.personal.memories.persona_description")}`,
       if (isPrivacyFull) {
         components.push({
           type: ComponentType.TextDisplay,
-          content: withLinePrefix("> ", `⚠️ ${localizer(locale, "commands.personal.memories.privacy_full_warning")}`),
+          content: `-# ${localizer(locale, "commands.personal.memories.privacy_full_warning")}`,
         });
       }
       components.push({
@@ -724,7 +724,7 @@ ${localizer(locale, "commands.personal.memories.persona_description")}`,
       if (isPrivacyFull) {
         components.push({
           type: ComponentType.TextDisplay,
-          content: withLinePrefix("> ", `⚠️ ${localizer(locale, "commands.personal.memories.privacy_full_warning")}`),
+          content: `-# ${localizer(locale, "commands.personal.memories.privacy_full_warning")}`,
         });
       }
 

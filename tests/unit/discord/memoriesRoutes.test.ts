@@ -169,9 +169,6 @@ describe("memories panel route catalog", () => {
     ["memories:v1:select:en-US:1770:1", { action: "select", locale: "en-US", lineageId: 1770, rangeIndex: 1 }],
     ["memories:v1:select:en-US:1770", { action: "select", locale: "en-US", lineageId: 1770 }],
     ["memories:v1:range:en-US:1770:2", { action: "range", locale: "en-US", lineageId: 1770, rangeIndex: 2 }],
-    ["memories:v1:range-open:en-US:1770", { action: "range-open", locale: "en-US", lineageId: 1770 }],
-    ["memories:v1:range-page:en-US:1770:3", { action: "range-page", locale: "en-US", lineageId: 1770, chooserPage: 3 }],
-    ["memories:v1:range-cancel:en-US:1770", { action: "range-cancel", locale: "en-US", lineageId: 1770 }],
     [
       "memories:v1:add-submit:en-US:1770:nonce123",
       { action: "add-submit", locale: "en-US", lineageId: 1770, nonce: "nonce123" },
@@ -233,12 +230,6 @@ describe("memories panel route catalog", () => {
       "memories:v1:document-range:en-US:10:2",
       { action: "document-range", locale: "en-US", personaId: 10, rangeIndex: 2 },
     ],
-    ["memories:v1:document-range-open:en-US:10", { action: "document-range-open", locale: "en-US", personaId: 10 }],
-    [
-      "memories:v1:document-range-page:en-US:10:3",
-      { action: "document-range-page", locale: "en-US", personaId: 10, chooserPage: 3 },
-    ],
-    ["memories:v1:document-range-cancel:en-US:10", { action: "document-range-cancel", locale: "en-US", personaId: 10 }],
     [
       "memories:v1:document-add-submit:en-US:0:nonce123",
       { action: "document-add-submit", locale: "en-US", personaId: 0, nonce: "nonce123" },
@@ -313,7 +304,6 @@ describe("memories panel route catalog", () => {
       { action: "retry", locale: "en-US", category: "memories", lineageId: 1770 },
     ],
     ["memories:v1:retry:en-US:documents", { action: "retry", locale: "en-US", category: "documents" }],
-    ["memories:v1:refresh:en-US:stm", { action: "refresh", locale: "en-US", category: "stm" }],
   ];
 
   it.each(WIRE_CONTRACT_V1)("decodes the pinned wire string %s to its exact route", (customId, expectedRoute) => {
@@ -867,7 +857,6 @@ describe("memories permissions and scoping", () => {
       page: { kind: "documents" },
     });
     const documentButtons = collectButtons(largeDocumentPayload.components);
-    expect(documentButtons.some((button) => button.customId?.includes(":document-range-open:"))).toBe(false);
     expect(documentButtons.some((button) => button.label === "Page 1 of 7")).toBe(true);
     const documentComponents = (JSON.parse(JSON.stringify(largeDocumentPayload)).components[0].components ??
       []) as unknown[];

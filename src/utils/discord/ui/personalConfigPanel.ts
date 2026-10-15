@@ -45,6 +45,7 @@ import {
   buildStateControlRow,
   withLinePrefix,
 } from "@/utils/discord/ui/panel";
+import { resolveRangeSelection } from "@/utils/discord/interactions/panelController";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { buildModelRoutingControl, buildProviderPageEntries } from "@/utils/discord/ui/modelRoutingControls";
 import { buildProviderSelectWindow } from "@/utils/discord/ui/providerSelectWindow";
@@ -148,6 +149,7 @@ export interface PersonalConfigPanelRenderInput {
   personas: TomoriState[];
   guildId: string | null;
   selectedLineageId?: number;
+  personaRangeIndex?: number;
   selectedPersonaAvatarUrl?: string | null;
   userAvatarUrl?: string | null;
   personaNamingPreference?: UserPersonaNamingPreference | null;
@@ -970,8 +972,14 @@ ${localizer(locale, "commands.personal.config.persona_naming_description")}`,
         }
 
         const lineageEntries = [...personasByLineage.entries()];
-        const visibleLineages = lineageEntries.slice(0, PERSONA_SELECT_MAX_OPTIONS);
-        const hiddenLineageCount = lineageEntries.length - visibleLineages.length;
+        const currentLineagePosition = lineageEntries.findIndex(([lineage]) => lineage === currentLineage);
+        const personaRangeSelection = resolveRangeSelection(
+          lineageEntries,
+          input.personaRangeIndex ??
+            (currentLineagePosition >= 0 ? Math.floor(currentLineagePosition / PERSONA_SELECT_MAX_OPTIONS) : 0),
+          PERSONA_SELECT_MAX_OPTIONS,
+        );
+        const visibleLineages = personaRangeSelection.visibleItems;
 
         const personaOptions: SelectMenuComponentOptionData[] = visibleLineages.map(([lineage, sharing]) => {
           const first = sharing[0];
@@ -1015,13 +1023,25 @@ ${localizer(locale, "commands.personal.config.persona_naming_description")}`,
           ],
         });
 
-        if (hiddenLineageCount > 0) {
-          components.push({
-            type: ComponentType.TextDisplay,
-            content: `-# ${localizer(locale, "commands.personal.config.persona_select_truncated", {
-              count: hiddenLineageCount,
-            })}`,
-          });
+        const personaPaginationRow = buildPaginationRow({
+          locale,
+          rangeIndex: personaRangeSelection.rangeIndex,
+          rangeCount: personaRangeSelection.rangeCount,
+          namespace: PERSONAL_CONFIG_ROUTE_NAMESPACE,
+          version: PERSONAL_CONFIG_ROUTE_VERSION,
+          disabled: writesDisabled,
+          buildSegments: {
+            page: (targetPage) =>
+              buildPersonalConfigRouteSegments({
+                action: "persona-page",
+                locale,
+                lineageId: currentLineage,
+                chooserPage: targetPage,
+              }),
+          },
+        });
+        if (personaPaginationRow) {
+          components.push(personaPaginationRow);
         }
 
         components.push(personaHeadingSection);

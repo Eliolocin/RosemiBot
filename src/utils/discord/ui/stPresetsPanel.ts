@@ -180,15 +180,15 @@ export function buildStPresetsPanelComponents(input: StPresetsPanelRenderInput):
 
   const selectOptions: SelectMenuComponentOptionData[] = [
     {
-      label: localizer(locale, "commands.st-presets.select_add"),
-      value: "add",
-      description: localizer(locale, "commands.st-presets.select_add_description"),
-    },
-    {
       label: localizer(locale, "commands.st-presets.select_none"),
       value: "none",
       description: localizer(locale, "commands.st-presets.select_none_description"),
       default: selectedValue === "none",
+    },
+    {
+      label: localizer(locale, "commands.st-presets.select_add"),
+      value: "add",
+      description: localizer(locale, "commands.st-presets.select_add_description"),
     },
     ...visiblePresets.map((preset) => ({
       label: safeSelectOptionText(preset.preset_name, 100),

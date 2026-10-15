@@ -1591,7 +1591,6 @@ describe("config Persona Sprites page", () => {
     const payload = spritesPage(DM_OWNER, { selectedSpriteIndex: 0 });
     const fp = computeSpriteFingerprint(55, 0, "happy");
 
-    expect(buttonFor(payload, { action: "sprite-add-open", locale: "en-US", personaId: 55 })).toBeUndefined();
     expect(buttonFor(payload, { action: "sprite-import-open", locale: "en-US", personaId: 55 })).toBeUndefined();
     expect(buttonFor(payload, { action: "sprite-export", locale: "en-US", personaId: 55 })?.disabled).toBe(false);
     // Edit and Remove still render beside the inspected sprite, disabled rather than hidden, so the

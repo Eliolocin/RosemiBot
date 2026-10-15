@@ -24,6 +24,7 @@ import {
   buildProviderModelModal,
   buildProviderModelModalFieldId,
   buildProvidersPanelPayload,
+  PROVIDERS_ENTRIES_PER_SELECTOR_PAGE,
   type ProvidersPanelRenderInput,
 } from "@/utils/discord/ui/providersPanel";
 import { createPersona } from "../../helpers/fixtures";
@@ -1708,6 +1709,54 @@ describe("providers routes", () => {
     expect(JSON.stringify(personalPayloads[0])).toContain('"label":"Page 2 of 2"');
     expect(JSON.stringify(personalPayloads[0])).toContain("personal-providers:v1:range:en-US:0");
     expect(JSON.stringify(personalPayloads[0])).not.toContain("Select Page");
+  });
+
+  it("repaints an entry action on the selector page that lists the entry", async () => {
+    const entries = Array.from({ length: PROVIDERS_ENTRIES_PER_SELECTOR_PAGE + 1 }, (_, index) => ({
+      id: `provider:p${index}`,
+      kind: "provider" as const,
+      provider: `p${index}`,
+      displayName: `Provider ${index}`,
+      savedAt: null,
+      rotationKeyCount: 0,
+      capabilities: [],
+    }));
+    const scope: LoadedProviderPanelScope = {
+      state: {} as TomoriState,
+      data: { readStatus: "fresh", entries, initialEntryId: entries[0]?.id ?? null },
+    };
+    const route = createProvidersInteractionRoute({ resolveScope: async () => scope });
+    const render = async (entryIndex: number): Promise<string> => {
+      const payloads: unknown[] = [];
+      const customId = buildProvidersRouteId(PROVIDERS_ROUTE_NAMESPACE, {
+        action: "remove-cancel",
+        locale: "en-US",
+        entryKind: "provider",
+        entryKey: `p${entryIndex}`,
+      });
+      const interaction = {
+        customId,
+        guildId: "123",
+        user: { id: "456" },
+        memberPermissions: { has: () => true },
+        isStringSelectMenu: () => false,
+        isModalSubmit: () => false,
+        isButton: () => true,
+        deferUpdate: async () => undefined,
+        editReply: async (payload: unknown) => payloads.push(payload),
+      };
+      await route.execute({} as Client, interaction as never, parsed(customId));
+      return JSON.stringify(payloads[0]);
+    };
+
+    const lastOnFirstPage = await render(PROVIDERS_ENTRIES_PER_SELECTOR_PAGE - 1);
+    const firstOnSecondPage = await render(PROVIDERS_ENTRIES_PER_SELECTOR_PAGE);
+
+    const pageLabel = (current: number) => localizer("en-US", "general.pagination.page_info", { current, total: 2 });
+    expect(lastOnFirstPage).toContain(`"label":"${pageLabel(1)}"`);
+    expect(lastOnFirstPage).toContain(`"value":"provider:p${PROVIDERS_ENTRIES_PER_SELECTOR_PAGE - 1}"`);
+    expect(firstOnSecondPage).toContain(`"label":"${pageLabel(2)}"`);
+    expect(firstOnSecondPage).toContain(`"value":"provider:p${PROVIDERS_ENTRIES_PER_SELECTOR_PAGE}"`);
   });
 
   it("rechecks guild permission before loading current scope", async () => {

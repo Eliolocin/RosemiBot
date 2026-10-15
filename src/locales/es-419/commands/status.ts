@@ -43,7 +43,6 @@ export default {
     persona_page5_title: `{persona_name}: Prompt y Etiquetas`,
     persona_page5_description: `Prompt de la persona y etiquetas de generación`,
     field_model: `Modelo de IA`,
-    field_speech_model: `Modelo de Voz`,
     field_transcription_model: `Modelo de Transcripción`,
     field_user_byok: `BYOK del Usuario`,
     field_temperature: `Temperatura`,

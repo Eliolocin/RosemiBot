@@ -183,7 +183,7 @@ export function createPersonalConfigInteractionRoute(
       const initialScope = await beginPanelInteraction(interaction, {
         authorize: () => true,
         onDenied: () => Promise.resolve(),
-        load: () => dependencies.resolveScope(interaction, route.action === "retry" || route.action === "refresh"),
+        load: () => dependencies.resolveScope(interaction, route.action === "retry"),
         onMissing: () => interaction.editReply(terminalPayload(route.locale, "commands.personal.config.unavailable")),
       });
       if (!initialScope) return;
@@ -229,8 +229,8 @@ export const personalConfigInteractionRoute = createPersonalConfigInteractionRou
 const IDENTITY_CONFIG_ACTIONS = new Set([
   "page",
   "persona-select",
+  "persona-page",
   "retry",
-  "refresh",
   "naming-open",
   "naming-submit",
   "about-open",

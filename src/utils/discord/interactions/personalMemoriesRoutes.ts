@@ -602,7 +602,7 @@ export function createPersonalMemoriesInteractionRoute(
       const initialScope = await beginPanelInteraction(interaction, {
         authorize: () => true,
         onDenied: () => Promise.resolve(),
-        load: () => dependencies.resolveScope(interaction, route.action === "retry" || route.action === "refresh"),
+        load: () => dependencies.resolveScope(interaction, route.action === "retry"),
         onMissing: () => interaction.editReply(terminalPayload(route.locale, "commands.personal.memories.unavailable")),
       });
       if (!initialScope) return;
@@ -682,22 +682,6 @@ export function createPersonalMemoriesInteractionRoute(
         return;
       }
 
-      if (route.action === "range-open") {
-        const memories = await dependencies.loadMemories(scope.userId, route.lineageId);
-        await repaint(
-          interaction,
-          route.locale,
-          scope,
-          route.category,
-          route.lineageId,
-          memories,
-          { kind: "main", rangeIndex: 0 },
-          undefined,
-          dependencies,
-        );
-        return;
-      }
-
       if (route.action === "range") {
         const memories = await dependencies.loadMemories(scope.userId, route.lineageId);
         await repaint(
@@ -708,38 +692,6 @@ export function createPersonalMemoriesInteractionRoute(
           route.lineageId,
           memories,
           { kind: "main", rangeIndex: route.rangeIndex },
-          undefined,
-          dependencies,
-        );
-        return;
-      }
-
-      if (route.action === "range-page") {
-        const memories = await dependencies.loadMemories(scope.userId, route.lineageId);
-        await repaint(
-          interaction,
-          route.locale,
-          scope,
-          route.category,
-          route.lineageId,
-          memories,
-          { kind: "main", rangeIndex: route.chooserPage },
-          undefined,
-          dependencies,
-        );
-        return;
-      }
-
-      if (route.action === "range-cancel") {
-        const memories = await dependencies.loadMemories(scope.userId, route.lineageId);
-        await repaint(
-          interaction,
-          route.locale,
-          scope,
-          route.category,
-          route.lineageId,
-          memories,
-          { kind: "main" },
           undefined,
           dependencies,
         );
@@ -1127,7 +1079,7 @@ export function createPersonalMemoriesInteractionRoute(
         return;
       }
 
-      if (route.action === "retry" || route.action === "refresh") {
+      if (route.action === "retry") {
         const memories = await dependencies.loadMemories(scope.userId, route.lineageId);
         await repaint(
           interaction,

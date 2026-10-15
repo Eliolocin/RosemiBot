@@ -42,7 +42,7 @@ import {
   buildPersonalMemoriesPanelPayload,
 } from "@/utils/discord/ui/personalMemoriesPanel";
 import { initializeLocalizer, localizer } from "@/utils/text/localizer";
-import { localizedCopy, localizedProse } from "../../helpers/localeCases";
+import { localizedCopy } from "../../helpers/localeCases";
 import { createPersona } from "../../helpers/fixtures";
 
 beforeAll(async () => initializeLocalizer());
@@ -67,20 +67,8 @@ const WIRE_CONTRACT_V1: ReadonlyArray<readonly [string, PersonalMemoriesPanelRou
     { action: "select", locale: "en-US", category: "persona", lineageId: 1, rangeIndex: 0 },
   ],
   [
-    "personal-memories:v1:range-open:en-US:global:0",
-    { action: "range-open", locale: "en-US", category: "global", lineageId: 0 },
-  ],
-  [
     "personal-memories:v1:range:en-US:global:0:0",
     { action: "range", locale: "en-US", category: "global", lineageId: 0, rangeIndex: 0 },
-  ],
-  [
-    "personal-memories:v1:range-page:en-US:global:0:0",
-    { action: "range-page", locale: "en-US", category: "global", lineageId: 0, chooserPage: 0 },
-  ],
-  [
-    "personal-memories:v1:range-cancel:en-US:global:0",
-    { action: "range-cancel", locale: "en-US", category: "global", lineageId: 0 },
   ],
   [
     "personal-memories:v1:add-submit:en-US:global:0:12345678",
@@ -111,10 +99,6 @@ const WIRE_CONTRACT_V1: ReadonlyArray<readonly [string, PersonalMemoriesPanelRou
     { action: "stm-clear", locale: "en-US", category: "global", lineageId: 0 },
   ],
   ["personal-memories:v1:retry:en-US:global:0", { action: "retry", locale: "en-US", category: "global", lineageId: 0 }],
-  [
-    "personal-memories:v1:refresh:en-US:global:0",
-    { action: "refresh", locale: "en-US", category: "global", lineageId: 0 },
-  ],
 ];
 
 function requireRoute(customId: string): ParsedInteractionRoute {
@@ -290,8 +274,8 @@ describe("personal-memories panel route catalog", () => {
     }
   });
 
-  it("guarantees 17-action exhaustiveness across catalog, accepted actions, wire contract, and route handler comparisons", () => {
-    const ACCEPTED_17_ACTIONS = [
+  it("guarantees 13-action exhaustiveness across catalog, accepted actions, wire contract, and route handler comparisons", () => {
+    const ACCEPTED_13_ACTIONS = [
       "add-submit",
       "category",
       "edit-open",
@@ -299,10 +283,6 @@ describe("personal-memories panel route catalog", () => {
       "persona-page",
       "persona-select",
       "range",
-      "range-cancel",
-      "range-open",
-      "range-page",
-      "refresh",
       "remove-cancel",
       "remove-confirm",
       "remove-prompt",
@@ -320,20 +300,19 @@ describe("personal-memories panel route catalog", () => {
     );
     const handlerActions = new Set([...routesSource.matchAll(/route\.action === "([a-z0-9-]+)"/g)].map((m) => m[1]));
 
-    expect(wireActions).toEqual(ACCEPTED_17_ACTIONS);
-    expect(codecTableActions).toEqual(ACCEPTED_17_ACTIONS);
+    expect(wireActions).toEqual(ACCEPTED_13_ACTIONS);
+    expect(codecTableActions).toEqual(ACCEPTED_13_ACTIONS);
 
-    expect(handlerActions.size).toBe(17);
-    expect([...handlerActions].sort()).toEqual(ACCEPTED_17_ACTIONS);
-    expect(ACCEPTED_17_ACTIONS.filter((a) => !handlerActions.has(a))).toEqual([]);
-    expect([...handlerActions].filter((a) => !ACCEPTED_17_ACTIONS.includes(a))).toEqual([]);
+    expect(handlerActions.size).toBe(13);
+    expect([...handlerActions].sort()).toEqual(ACCEPTED_13_ACTIONS);
+    expect(ACCEPTED_13_ACTIONS.filter((a) => !handlerActions.has(a))).toEqual([]);
+    expect([...handlerActions].filter((a) => !ACCEPTED_13_ACTIONS.includes(a))).toEqual([]);
     expect(codecTableActions.filter((a) => !handlerActions.has(a))).toEqual([]);
     expect([...handlerActions].filter((a) => !codecTableActions.includes(a))).toEqual([]);
   });
 
-  it("guarantees producer coverage against production UI and modal surfaces with explicit allowlist for producerless actions", () => {
-    const PRODUCERLESS_ACTIONS = ["range-cancel", "range-open", "range-page", "refresh"] as const;
-    const ACCEPTED_17_ACTIONS = [
+  it("guarantees producer coverage against production UI and modal surfaces", () => {
+    const ACCEPTED_13_ACTIONS = [
       "add-submit",
       "category",
       "edit-open",
@@ -341,10 +320,6 @@ describe("personal-memories panel route catalog", () => {
       "persona-page",
       "persona-select",
       "range",
-      "range-cancel",
-      "range-open",
-      "range-page",
-      "refresh",
       "remove-cancel",
       "remove-confirm",
       "remove-prompt",
@@ -379,9 +354,6 @@ describe("personal-memories panel route catalog", () => {
       makeMemory(3, { persona_lineage_id: 10, content: "Persona memory 1" }),
     ];
     const manyMemories = Array.from({ length: 150 }, (_, i) => makeMemory(i + 1, { persona_lineage_id: 0 }));
-    const multiPageChooserMemories = Array.from({ length: 300 }, (_, i) =>
-      makeMemory(i + 1, { persona_lineage_id: 0 }),
-    );
     const samplePersonas = [makePersona(1, 10, "Tomori"), makePersona(2, 20, "Anon")];
     const manyPersonas = Array.from({ length: 30 }, (_, index) =>
       makePersona(index + 1, 1000 + index, `Persona ${index + 1}`),
@@ -429,21 +401,6 @@ describe("personal-memories panel route catalog", () => {
         privacyLevel: PrivacyLevel.MINIMAL,
         readStatus: "fresh",
         page: { kind: "main" },
-      }),
-    );
-
-    // Retained chooser actions are producerless after the in-place migration.
-    harvestCustomIds(
-      buildPersonalMemoriesPanelPayload({
-        locale: "en-US",
-        category: "global",
-        selectedLineageId: 0,
-        personas: samplePersonas,
-        memories: multiPageChooserMemories,
-        stmCount: 1,
-        privacyLevel: PrivacyLevel.MINIMAL,
-        readStatus: "fresh",
-        page: { kind: "main", rangeIndex: 1 },
       }),
     );
 
@@ -542,12 +499,7 @@ describe("personal-memories panel route catalog", () => {
       }
     }
 
-    for (const action of PRODUCERLESS_ACTIONS) {
-      expect(producedActions.has(action)).toBe(false);
-    }
-
-    const unionedActions = [...new Set([...producedActions, ...PRODUCERLESS_ACTIONS])].sort();
-    expect(unionedActions).toEqual(ACCEPTED_17_ACTIONS);
+    expect([...producedActions].sort()).toEqual(ACCEPTED_13_ACTIONS);
   });
 
   it("distinguishes presence and absence of optional select.rangeIndex", () => {
@@ -683,20 +635,6 @@ describe("personal-memories panel route catalog", () => {
       parsePersonalMemoriesPanelRoute({
         namespace: PERSONAL_MEMORIES_ROUTE_NAMESPACE,
         version: "v1",
-        segments: ["range-page", "en-US", "global", "0"],
-      }),
-    ).toBeNull();
-    expect(
-      parsePersonalMemoriesPanelRoute({
-        namespace: PERSONAL_MEMORIES_ROUTE_NAMESPACE,
-        version: "v1",
-        segments: ["range-page", "en-US", "global", "0", "1", "extra"],
-      }),
-    ).toBeNull();
-    expect(
-      parsePersonalMemoriesPanelRoute({
-        namespace: PERSONAL_MEMORIES_ROUTE_NAMESPACE,
-        version: "v1",
         segments: ["add-submit", "en-US", "global", "0"],
       }),
     ).toBeNull();
@@ -805,20 +743,6 @@ describe("personal-memories panel route catalog", () => {
         segments: ["retry", "en-US", "global", "0", "extra"],
       }),
     ).toBeNull();
-    expect(
-      parsePersonalMemoriesPanelRoute({
-        namespace: PERSONAL_MEMORIES_ROUTE_NAMESPACE,
-        version: "v1",
-        segments: ["refresh", "en-US", "global"],
-      }),
-    ).toBeNull();
-    expect(
-      parsePersonalMemoriesPanelRoute({
-        namespace: PERSONAL_MEMORIES_ROUTE_NAMESPACE,
-        version: "v1",
-        segments: ["refresh", "en-US", "global", "0", "extra"],
-      }),
-    ).toBeNull();
 
     // Value validations
     expect(
@@ -882,20 +806,6 @@ describe("personal-memories panel route catalog", () => {
         namespace: PERSONAL_MEMORIES_ROUTE_NAMESPACE,
         version: "v1",
         segments: ["range", "en-US", "global", "0", "abc"],
-      }),
-    ).toBeNull();
-    expect(
-      parsePersonalMemoriesPanelRoute({
-        namespace: PERSONAL_MEMORIES_ROUTE_NAMESPACE,
-        version: "v1",
-        segments: ["range-page", "en-US", "global", "0", "-1"],
-      }),
-    ).toBeNull();
-    expect(
-      parsePersonalMemoriesPanelRoute({
-        namespace: PERSONAL_MEMORIES_ROUTE_NAMESPACE,
-        version: "v1",
-        segments: ["range-page", "en-US", "global", "0", "abc"],
       }),
     ).toBeNull();
     expect(
@@ -986,10 +896,7 @@ describe("personal-memories panel route catalog", () => {
       { action: "category", locale: maxLocale, category: "persona" },
       { action: "persona-select", locale: maxLocale, category: "persona", lineageId: maxId },
       { action: "select", locale: maxLocale, category: "persona", lineageId: maxId, rangeIndex: maxId },
-      { action: "range-open", locale: maxLocale, category: "persona", lineageId: maxId },
       { action: "range", locale: maxLocale, category: "persona", lineageId: maxId, rangeIndex: maxId },
-      { action: "range-page", locale: maxLocale, category: "persona", lineageId: maxId, chooserPage: maxId },
-      { action: "range-cancel", locale: maxLocale, category: "persona", lineageId: maxId },
       { action: "add-submit", locale: maxLocale, category: "persona", lineageId: maxId, nonce: maxNonce },
       { action: "edit-open", locale: maxLocale, category: "persona", lineageId: maxId, memoryId: maxId },
       {
@@ -1005,7 +912,6 @@ describe("personal-memories panel route catalog", () => {
       { action: "remove-cancel", locale: maxLocale, category: "persona", lineageId: maxId, memoryId: maxId },
       { action: "stm-clear", locale: maxLocale, category: "persona", lineageId: maxId },
       { action: "retry", locale: maxLocale, category: "persona", lineageId: maxId },
-      { action: "refresh", locale: maxLocale, category: "persona", lineageId: maxId },
     ];
 
     for (const route of maxRoutes) {
@@ -1550,9 +1456,6 @@ describe("persona selector lineage identity", () => {
 
     const select = personaSelect(payload);
     expect(select?.options).toHaveLength(25);
-    expect(JSON.stringify(payload)).not.toMatch(
-      localizedProse("en-US", "commands.personal.config.persona_select_truncated"),
-    );
     expect(JSON.stringify(payload)).toContain("personal-memories:v1:persona-page:en-US:persona:20000:1");
 
     const secondPage = buildPersonalMemoriesPanelPayload({

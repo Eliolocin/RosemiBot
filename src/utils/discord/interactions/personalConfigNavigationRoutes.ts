@@ -34,9 +34,11 @@ export async function handlePersonalConfigNavigation(context: PersonalConfigPost
     return true;
   }
 
-  if (route.action === "persona-select") {
-    const selectMenu = interaction as StringSelectMenuInteraction;
-    const selectedLineage = Number(selectMenu.values[0]);
+  if (route.action === "persona-select" || route.action === "persona-page") {
+    const selectedLineage =
+      route.action === "persona-select"
+        ? Number((interaction as StringSelectMenuInteraction).values[0])
+        : route.lineageId;
     const validLineage = scope.personas.some((p) => p.persona_lineage_id === selectedLineage)
       ? selectedLineage
       : (scope.personas[0]?.persona_lineage_id ?? 0);
@@ -46,12 +48,13 @@ export async function handlePersonalConfigNavigation(context: PersonalConfigPost
       category: "profile",
       page: "persona",
       selectedLineageId: validLineage,
+      personaRangeIndex: route.action === "persona-page" ? route.chooserPage : undefined,
       dependencies,
     });
     return true;
   }
 
-  if (route.action === "retry" || route.action === "refresh") {
+  if (route.action === "retry") {
     await repaint(interaction, {
       locale: route.locale,
       scope,

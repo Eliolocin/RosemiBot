@@ -522,7 +522,7 @@ export function buildMemoryMappingPayload(input: {
       ),
       default: input.mapping[selectedBucket.name] === destination.lineageId,
     }));
-  destinationOptions.push({
+  destinationOptions.unshift({
     label: safeSelectOptionText(localizer(input.locale, "commands.transfer.memory_skip_option_label"), 100),
     value: MEMORY_SKIP_VALUE,
     description: safeSelectOptionText(localizer(input.locale, "commands.transfer.memory_skip_option_description"), 100),

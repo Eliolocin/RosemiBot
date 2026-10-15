@@ -415,7 +415,7 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
       options.push({
         value: encodeConfigEndpointPageValue(nextRangeIndex * windowSize),
         label: safeSelectOptionText(
-          localizer(locale, "commands.config.panel.model_provider_more_option", {
+          localizer(locale, "commands.config.panel.model_endpoint_more_option", {
             capability: capabilityLabel,
             page: nextRangeIndex + 1,
             total: rangeCount,
@@ -572,30 +572,18 @@ function buildNaiPresetBlock(
           },
         ];
   if (view.compatibility === "eligible" && pageCount > 1) {
+    const pageInfo = (targetIndex: number) =>
+      localizer(locale, "general.pagination.page_info", { current: targetIndex + 1, total: pageCount });
     options.unshift({
-      label: safeSelectOptionText(
-        localizer(locale, "commands.config.panel.model_provider_more_option", {
-          capability: localizer(locale, "commands.config.panel.nai_preset.select_label"),
-          page: pageIndex === 0 ? pageCount : pageIndex,
-          total: pageCount,
-        }),
-        100,
-      ),
+      label: localizer(locale, "general.pagination.previous"),
       value: CONFIG_NAI_PRESET_PREVIOUS_VALUE,
-      description: undefined,
+      description: pageInfo((pageIndex - 1 + pageCount) % pageCount),
       default: false,
     });
     options.push({
-      label: safeSelectOptionText(
-        localizer(locale, "commands.config.panel.model_provider_more_option", {
-          capability: localizer(locale, "commands.config.panel.nai_preset.select_label"),
-          page: ((pageIndex + 1) % pageCount) + 1,
-          total: pageCount,
-        }),
-        100,
-      ),
+      label: localizer(locale, "general.pagination.next"),
       value: CONFIG_NAI_PRESET_NEXT_VALUE,
-      description: undefined,
+      description: pageInfo((pageIndex + 1) % pageCount),
       default: false,
     });
   }

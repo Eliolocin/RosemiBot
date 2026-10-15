@@ -3,6 +3,10 @@ export default {
     execution: {
       unavailable: `Công cụ \`{tool}\` không khả dụng theo cài đặt hiện tại, khả năng của model hoặc quyền hạn của bot.`,
     },
+    generate_voice_message: {
+      persona_missing: `Persona này không còn khả dụng.`,
+      stale: `Model giọng nói, thông tin xác thực hoặc giọng của persona đã thay đổi trong lượt này. Hãy bắt đầu lượt mới trước khi tạo tin nhắn thoại.`,
+    },
     generate_image: {
       quota_exceeded_generic: `Đã vượt quá hạn mức tạo ảnh.`,
       user_quota_exceeded: `Bạn đã đạt hạn mức tạo ảnh hàng ngày. {reset_info}`,

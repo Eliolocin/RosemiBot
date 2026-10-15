@@ -738,12 +738,13 @@ describe("config voice sample routes", () => {
       return outcome ?? false;
     };
 
-    for (const enabled of [false, true, false]) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       await dispatch(
         harness,
         makeInteraction({
-          customId: buildConfigRouteId({ action: "tts-turbo-set", locale: "en-US", enabled }),
-          kind: "button",
+          customId: buildConfigRouteId({ action: "tts-parameters-submit", locale: "en-US", nonce: "nonce1234567" }),
+          kind: "modal",
+          fields: ttsModalFields(),
           harness,
         }),
       );
@@ -751,44 +752,6 @@ describe("config voice sample routes", () => {
 
     expect(invalidations).toBe(1);
     expect(harness.edits).toHaveLength(3);
-  });
-
-  it("writes turbo with the current cfg weight and exaggeration", async () => {
-    const writes: Record<string, unknown>[] = [];
-    const harness = makeHarness({
-      speechConfig: {
-        server_id: 9,
-        speech_design_endpoint_id: null,
-        speech_clone_endpoint_id: null,
-        speech_design_model_id: null,
-        speech_clone_model_id: null,
-        voice_transcript_chat_mode: true,
-        chatterbox_turbo_enabled: false,
-        chatterbox_cfg_weight: 0.8,
-        chatterbox_exaggeration: 1.1,
-      },
-    });
-    harness.dependencies.updateSpeechConfig = async (_serverId, patch) => {
-      writes.push(patch);
-      return true;
-    };
-
-    await dispatch(
-      harness,
-      makeInteraction({
-        customId: buildConfigRouteId({ action: "tts-turbo-set", locale: "en-US", enabled: true }),
-        kind: "button",
-        harness,
-      }),
-    );
-
-    expect(writes).toEqual([
-      {
-        chatterbox_cfg_weight: 0.8,
-        chatterbox_exaggeration: 1.1,
-        chatterbox_turbo_enabled: true,
-      },
-    ]);
   });
 
   it("shows a fresh remove confirmation with current reference count", async () => {
@@ -1105,9 +1068,12 @@ describe("config voice sample routes", () => {
   it("denies a guild member before the real speech config repository write", async () => {
     const updateSpy = spyOn(configRepository, "updateSpeechConfig").mockResolvedValue(true);
     const harness = makeHarness({ isManager: false, useDefaultSpeechUpdate: true });
-    const routeId = buildConfigRouteId({ action: "tts-turbo-set", locale: "en-US", enabled: false });
+    const routeId = buildConfigRouteId({ action: "tts-parameters-submit", locale: "en-US", nonce: "nonce1234567" });
 
-    await dispatch(harness, makeInteraction({ customId: routeId, kind: "button", isManager: false, harness }));
+    await dispatch(
+      harness,
+      makeInteraction({ customId: routeId, kind: "modal", fields: ttsModalFields(), isManager: false, harness }),
+    );
     expect(updateSpy).not.toHaveBeenCalled();
     updateSpy.mockRestore();
   });

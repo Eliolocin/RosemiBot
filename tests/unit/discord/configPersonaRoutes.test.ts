@@ -388,7 +388,6 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
   ["config:v2:attg-clear-all:en-US:55", { action: "attg-clear-all", locale: "en-US", personaId: 55 }],
   ["config:v2:sprite-select:en-US:55", { action: "sprite-select", locale: "en-US", personaId: 55 }],
   ["config:v2:sprite-page:en-US:55:25", { action: "sprite-page", locale: "en-US", personaId: 55, start: 25 }],
-  ["config:v2:sprite-add-open:en-US:55", { action: "sprite-add-open", locale: "en-US", personaId: 55 }],
   [
     "config:v2:sprite-add-sub:en-US:55:nonce1234567",
     { action: "sprite-add-submit", locale: "en-US", personaId: 55, nonce: "nonce1234567" },
@@ -452,7 +451,6 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     { action: "context-note-submit", locale: "en-US", personaId: 55, nonce: "nonce1234567" },
   ],
   ["config:v2:humanizer-open:en-US:55", { action: "humanizer-open", locale: "en-US", personaId: 55 }],
-  ["config:v2:humanizer-select:en-US:55", { action: "humanizer-select", locale: "en-US", personaId: 55 }],
   [
     "config:v2:humanizer-submit:en-US:55:nonce1234567",
     { action: "humanizer-submit", locale: "en-US", personaId: 55, nonce: "nonce1234567" },
@@ -511,7 +509,6 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
   ],
   ["config:v2:attr-select:en-US:55", { action: "attribute-select", locale: "en-US", personaId: 55 }],
   ["config:v2:attr-page:en-US:55:24", { action: "attribute-page", locale: "en-US", personaId: 55, start: 24 }],
-  ["config:v2:attr-add-open:en-US:55", { action: "attribute-add-open", locale: "en-US", personaId: 55 }],
   [
     "config:v2:attr-add-sub:en-US:55:nonce1234567",
     { action: "attribute-add-submit", locale: "en-US", personaId: 55, nonce: "nonce1234567" },
@@ -537,7 +534,6 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
   ],
   ["config:v2:dlg-select:en-US:55", { action: "dialogue-select", locale: "en-US", personaId: 55 }],
   ["config:v2:dlg-page:en-US:55:24", { action: "dialogue-page", locale: "en-US", personaId: 55, start: 24 }],
-  ["config:v2:dlg-add-open:en-US:55", { action: "dialogue-add-open", locale: "en-US", personaId: 55 }],
   [
     "config:v2:dlg-add-sub:en-US:55:nonce1234567",
     { action: "dialogue-add-submit", locale: "en-US", personaId: 55, nonce: "nonce1234567" },
@@ -576,10 +572,6 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
   [
     "config:v2:retry:en-US:persona:general:55",
     { action: "retry", locale: "en-US", category: "persona", page: "general", personaId: 55 },
-  ],
-  [
-    "config:v2:refresh:en-US:persona:general",
-    { action: "refresh", locale: "en-US", category: "persona", page: "general" },
   ],
   ["config:v2:model-prov-select:en-US:text", { action: "model-provider-select", locale: "en-US", capability: "text" }],
   ["config:v2:ep-select:en-US:tts-clone", { action: "endpoint-select", locale: "en-US", capability: "tts-clone" }],
@@ -795,12 +787,9 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     },
   ],
   ["config:v2:perm-privacy-set:en-US:0", { action: "permissions-privacy-bypass-set", locale: "en-US", enabled: false }],
-  ["config:v2:mcp-select:en-US:0", { action: "mcp-select", locale: "en-US", rangeIndex: 0 }],
   ["config:v2:mcp-range:en-US:1", { action: "mcp-range", locale: "en-US", rangeIndex: 1 }],
   ["config:v2:mcp-retry:en-US:none", { action: "mcp-retry", locale: "en-US", selectedId: "none" }],
-  ["config:v2:mcp-refresh:en-US:1", { action: "mcp-refresh", locale: "en-US", selectedId: 1 }],
   ["config:v2:mcp-add-open:en-US", { action: "mcp-add-open", locale: "en-US" }],
-  ["config:v2:mcp-add-type:en-US", { action: "mcp-add-type", locale: "en-US" }],
   ["config:v2:mcp-add-submit:en-US:nonce1234567", { action: "mcp-add-submit", locale: "en-US", nonce: "nonce1234567" }],
   ["config:v2:mcp-set-enabled:en-US:1:0", { action: "mcp-set-enabled", locale: "en-US", entityId: 1, enabled: false }],
   ["config:v2:mcp-remove-prompt:en-US:1", { action: "mcp-remove-prompt", locale: "en-US", entityId: 1 }],
@@ -1013,7 +1002,6 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     "config:v2:tts-params-sub:en-US:nonce1234567",
     { action: "tts-parameters-submit", locale: "en-US", nonce: "nonce1234567" },
   ],
-  ["config:v2:tts-turbo-set:en-US:1", { action: "tts-turbo-set", locale: "en-US", enabled: true }],
   ["config:v2:vsample-select:en-US:25", { action: "voice-sample-select", locale: "en-US", start: 25 }],
   ["config:v2:vsample-page:en-US:0", { action: "voice-sample-page", locale: "en-US", start: 0 }],
   ["config:v2:vsample-add-open:en-US", { action: "voice-sample-add-open", locale: "en-US" }],
@@ -3891,33 +3879,6 @@ describe("config Persona Advanced routes", () => {
     );
   });
 
-  it("maps Humanizer Inherit to null and acknowledges before the write", async () => {
-    let interaction: RouteInteraction;
-    let acknowledged = false;
-    let selectedValue: number | null | undefined;
-    const harness = makeHarness({
-      operations: {
-        setHumanizerOverride: async (input) => {
-          acknowledged = interaction.deferred || interaction.replied;
-          selectedValue = input.value;
-          return { status: "success" };
-        },
-      },
-    });
-    interaction = makeInteraction({
-      customId: buildConfigRouteId({ action: "humanizer-select", locale: "en-US", personaId: 55 }),
-      kind: "select",
-      values: ["inherit"],
-      harness,
-    });
-
-    await dispatch(harness, interaction);
-
-    expect(acknowledged).toBe(true);
-    expect(selectedValue).toBeNull();
-    expect(JSON.stringify(harness.edits.at(-1))).toContain(localizer("en-US", "commands.config.panel.overrides_title"));
-  });
-
   it("opens Humanizer as a modal with the persona override selected", async () => {
     const persona = makePersona({ persona_id: 55, humanizer_degree_override: 2 });
     const harness = makeHarness({
@@ -4138,11 +4099,6 @@ describe("config Persona Advanced routes", () => {
         [buildConfigModalFieldId("context_note_text", "nonce1234567")]: "note",
         [buildConfigModalFieldId("context_note_depth", "nonce1234567")]: "1",
       },
-    },
-    {
-      label: "humanizer-select",
-      route: { action: "humanizer-select", locale: "en-US", personaId: 55 },
-      kind: "select",
     },
     { label: "text-override-clear", route: { action: "text-override-clear", locale: "en-US", personaId: 55 } },
   ];
@@ -4563,7 +4519,9 @@ describe("config Persona Sprites routes", () => {
     await dispatch(
       harness,
       makeInteraction({
-        customId: buildConfigRouteId({ action: "sprite-add-open", locale: "en-US", personaId: 55 }),
+        customId: buildConfigRouteId({ action: "sprite-select", locale: "en-US", personaId: 55 }),
+        kind: "select",
+        values: ["add"],
         harness,
       }),
     );

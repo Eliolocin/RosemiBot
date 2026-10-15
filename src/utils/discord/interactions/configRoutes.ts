@@ -264,9 +264,7 @@ const MODAL_OPEN_ACTIONS = new Set<ConfigPanelRoute["action"]>([
   "naming-open",
   "trigger-add-open",
   "trigger-remove-open",
-  "attribute-add-open",
   "attribute-edit-open",
-  "dialogue-add-open",
   "dialogue-edit-open",
   "stm-edit-open",
   "conditioning-open",
@@ -276,7 +274,6 @@ const MODAL_OPEN_ACTIONS = new Set<ConfigPanelRoute["action"]>([
   "prompt-open",
   "context-note-open",
   "humanizer-open",
-  "sprite-add-open",
   "sprite-edit-open",
   "sprite-import-open",
 ]);
@@ -288,7 +285,6 @@ const NAMING_ACTIONS = new Set<ConfigPanelRoute["action"]>(["naming-open", "nami
 const SPRITE_ACTIONS = new Set<ConfigPanelRoute["action"]>([
   "sprite-select",
   "sprite-page",
-  "sprite-add-open",
   "sprite-add-submit",
   "sprite-edit-open",
   "sprite-edit-submit",
@@ -725,7 +721,6 @@ function collectionOperationForRoute(
   switch (route.action) {
     case "attribute-select":
       return selectedValue === "add" ? { family: "attribute", operation: "add" } : null;
-    case "attribute-add-open":
     case "attribute-add-submit":
       return { family: "attribute", operation: "add" };
     case "attribute-edit-open":
@@ -735,7 +730,6 @@ function collectionOperationForRoute(
       return { family: "attribute", operation: "remove" };
     case "dialogue-select":
       return selectedValue === "add" ? { family: "dialogue", operation: "add" } : null;
-    case "dialogue-add-open":
     case "dialogue-add-submit":
       return { family: "dialogue", operation: "add" };
     case "dialogue-edit-open":
@@ -918,9 +912,6 @@ async function handleModalOpen(
     case "avatar-open":
       await dependencies.showModal(interaction, buildPersonaAvatarModal(locale, persona.persona_id, nonce));
       return;
-    case "sprite-add-open":
-      await dependencies.showModal(interaction, buildPersonaSpriteAddModal(locale, persona.persona_id, nonce));
-      return;
     case "sprite-import-open":
       await dependencies.showModal(interaction, buildPersonaSpriteImportModal(locale, persona.persona_id, nonce));
       return;
@@ -978,9 +969,6 @@ async function handleModalOpen(
       );
       return;
     }
-    case "attribute-add-open":
-      await dependencies.showModal(interaction, buildPersonaAttributeAddModal(locale, persona.persona_id, nonce));
-      return;
     case "attribute-edit-open": {
       const attribute = persona.attribute_list?.[route.index];
       const isPublic =
@@ -1000,9 +988,6 @@ async function handleModalOpen(
       );
       return;
     }
-    case "dialogue-add-open":
-      await dependencies.showModal(interaction, buildPersonaDialogueAddModal(locale, persona.persona_id, nonce));
-      return;
     case "dialogue-edit-open": {
       if (!(await repairDialogueState(scope, persona, dependencies))) {
         const stale = staleReceipt(locale);
@@ -1636,17 +1621,12 @@ async function runPersonaWrite(
       };
     }
 
-    case "humanizer-select":
     case "humanizer-submit": {
       const selectedValue =
-        route.action === "humanizer-submit"
-          ? (dependencies.takeSelectValue(
-              (interaction as ModalSubmitInteraction).id,
-              buildConfigModalFieldId(CONFIG_HUMANIZER_FIELD, route.nonce),
-            ) ?? "")
-          : interaction.isStringSelectMenu()
-            ? (interaction.values[0] ?? "")
-            : "";
+        dependencies.takeSelectValue(
+          (interaction as ModalSubmitInteraction).id,
+          buildConfigModalFieldId(CONFIG_HUMANIZER_FIELD, route.nonce),
+        ) ?? "";
       const value = selectedValue === HUMANIZER_INHERIT_VALUE ? null : Number.parseInt(selectedValue, 10);
       const result = await dependencies.operations.setHumanizerOverride({
         persona,
@@ -2955,15 +2935,12 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
         route.action === "persona-select" ||
         route.action === "attribute-select" ||
         route.action === "dialogue-select" ||
-        route.action === "humanizer-select" ||
         route.action === "text-override-provider-select" ||
         route.action === "text-override-model-select" ||
         route.action === "channels-overrides-text-provider-select" ||
         route.action === "channels-overrides-text-model-range-select" ||
         route.action === "sprite-select" ||
         route.action === "voice-sample-select" ||
-        route.action === "mcp-select" ||
-        route.action === "mcp-add-type" ||
         CONFIG_MODEL_SELECT_ACTIONS.has(route.action) ||
         CONFIG_CHANNEL_SELECT_ACTIONS.has(route.action) ||
         CONFIG_BEHAVIOR_SELECT_ACTIONS.has(route.action);
@@ -3155,10 +3132,7 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
         load: () =>
           dependencies.resolveScope(
             interaction,
-            route.action === "retry" ||
-              route.action === "refresh" ||
-              route.action === "resync-confirm" ||
-              route.action === "resync-view",
+            route.action === "retry" || route.action === "resync-confirm" || route.action === "resync-view",
           ),
         onMissing: () =>
           interaction.editReply(terminalPayload(route.locale, missingScopeMessageKey(interaction, dependencies))),

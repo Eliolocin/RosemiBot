@@ -1351,7 +1351,7 @@ export function createMemoriesInteractionRoute(
       const initialScope = await beginPanelInteraction(interaction, {
         authorize: () => true,
         onDenied: () => Promise.resolve(),
-        load: () => dependencies.resolveScope(interaction, route.action === "retry" || route.action === "refresh"),
+        load: () => dependencies.resolveScope(interaction, route.action === "retry"),
         onMissing: () => interaction.editReply(terminalPayload(route.locale, "commands.memories.unavailable")),
       });
       if (!initialScope) return;
@@ -1438,54 +1438,6 @@ export function createMemoriesInteractionRoute(
         return;
       }
 
-      if (route.action === "range-open") {
-        const memories = await dependencies.loadMemories(scope.serverId, route.lineageId, ownerFilter);
-        await repaint(
-          interaction,
-          route.locale,
-          scope,
-          "memories",
-          route.lineageId,
-          memories,
-          { kind: "main", rangeIndex: 0 },
-          undefined,
-          dependencies,
-        );
-        return;
-      }
-
-      if (route.action === "range-page") {
-        const memories = await dependencies.loadMemories(scope.serverId, route.lineageId, ownerFilter);
-        await repaint(
-          interaction,
-          route.locale,
-          scope,
-          "memories",
-          route.lineageId,
-          memories,
-          { kind: "main", rangeIndex: route.chooserPage },
-          undefined,
-          dependencies,
-        );
-        return;
-      }
-
-      if (route.action === "range-cancel") {
-        const memories = await dependencies.loadMemories(scope.serverId, route.lineageId, ownerFilter);
-        await repaint(
-          interaction,
-          route.locale,
-          scope,
-          "memories",
-          route.lineageId,
-          memories,
-          { kind: "main" },
-          undefined,
-          dependencies,
-        );
-        return;
-      }
-
       if (route.action === "range") {
         const memories = await dependencies.loadMemories(scope.serverId, route.lineageId, ownerFilter);
         await repaint(
@@ -1559,51 +1511,6 @@ export function createMemoriesInteractionRoute(
           personaId,
           [],
           { kind: "documents", personaRangeIndex: route.rangeIndex },
-          undefined,
-          dependencies,
-        );
-        return;
-      }
-
-      if (route.action === "document-range-open") {
-        await repaint(
-          interaction,
-          route.locale,
-          scope,
-          "documents",
-          route.personaId,
-          [],
-          { kind: "documents", rangeIndex: 0 },
-          undefined,
-          dependencies,
-        );
-        return;
-      }
-
-      if (route.action === "document-range-page") {
-        await repaint(
-          interaction,
-          route.locale,
-          scope,
-          "documents",
-          route.personaId,
-          [],
-          { kind: "documents", rangeIndex: route.chooserPage },
-          undefined,
-          dependencies,
-        );
-        return;
-      }
-
-      if (route.action === "document-range-cancel") {
-        await repaint(
-          interaction,
-          route.locale,
-          scope,
-          "documents",
-          route.personaId,
-          [],
-          { kind: "documents" },
           undefined,
           dependencies,
         );
@@ -2579,7 +2486,7 @@ export function createMemoriesInteractionRoute(
         return;
       }
 
-      if (route.action === "retry" || route.action === "refresh") {
+      if (route.action === "retry") {
         const lineageId =
           route.category === "documents" ? 0 : (route.lineageId ?? scope.personas[0]?.persona_lineage_id ?? 0);
         const memories =

@@ -1388,7 +1388,6 @@ const DYNAMIC_KEY_PATTERNS = [
   /^commands\.conditioning\.shared\./,
   /^commands\.config\.humanizer\.choice_/,
   /^commands\.config\.thinking-level\.choice_/,
-  /^commands\.config\.panel\./,
   /^commands\.config\.cooldown\.type\.choice_/,
   /^commands\.help\.api-key\./,
   /^commands\.server\.stm\.categories-edit\.slot_/,
@@ -1422,13 +1421,25 @@ function isRuntimeDerivedKey(key: string): boolean {
   return DYNAMIC_EXACT_KEYS.has(key) || DYNAMIC_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
 
+// Only prefixes whose `${suffix}` helpers get the suffix as a same-file literal belong here: other
+// prefixes compose suffixes in other files (`error_${code}` in /expressions) and need the wildcard.
+const SAME_FILE_SUFFIX_PREFIXES = new Set(["commands.config.panel."]);
+
 function extractConstructedLocaleKeys(content: string, availableKeys: Set<string>): string[] {
   const keys: string[] = [];
-  const prefixPattern = /`((?:commands|general|events|genai|reminders|tools|matrix)\.[a-zA-Z0-9_.-]+)\$\{/g;
+  const prefixPattern = /`((?:commands|general|events|genai|reminders|tools|matrix)\.[a-zA-Z0-9_.-]+)\$\{[^}]+\}(`)?/g;
+  const fileLiterals = new Set(Array.from(content.matchAll(/["'`]([a-zA-Z0-9_]+)["'`]/g), (literal) => literal[1]));
   for (const match of content.matchAll(prefixPattern)) {
-    if (match[1].split(".").filter(Boolean).length < 3) continue;
+    const prefix = match[1];
+    if (prefix.split(".").filter(Boolean).length < 3) continue;
+    if (match[2] && SAME_FILE_SUFFIX_PREFIXES.has(prefix)) {
+      for (const literal of fileLiterals) {
+        if (availableKeys.has(`${prefix}${literal}`)) keys.push(`${prefix}${literal}`);
+      }
+      continue;
+    }
     for (const key of availableKeys) {
-      if (key.startsWith(match[1])) keys.push(key);
+      if (key.startsWith(prefix)) keys.push(key);
     }
   }
   return keys;

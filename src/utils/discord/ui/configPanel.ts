@@ -62,12 +62,7 @@ import {
   type ConfigActor,
 } from "@/utils/discord/interactions/configPermissionPolicy";
 import { CHECKLIST_CHANNELS_PER_PAGE } from "@/utils/discord/channelChecklistManager";
-import {
-  createHumanizerOptions,
-  getHumanizerLabel,
-  HUMANIZER_DEFAULT,
-  HUMANIZER_INHERIT_VALUE,
-} from "@/utils/discord/humanizerOptions";
+import { getHumanizerLabel, HUMANIZER_DEFAULT } from "@/utils/discord/humanizerOptions";
 import type {
   ConfigChannelsView,
   ConfigChannelsOverridesView,
@@ -106,6 +101,7 @@ import { NOTICE_VERBOSITY_LEVELS, TOOL_NOTICE_DEFINITIONS, type NoticeVerbosity 
 import { DEFAULT_STM_TOOL_DESCRIPTION } from "@/tools/functionCalls/updateShortTermMemoryTool";
 import { SEED_CATEGORY_UPDATE_HINT, SEED_SUMMARY_UPDATE_HINT } from "@/utils/text/context/memories";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
+import { formatModelSelectionLabel } from "@/utils/discord/ui/modelRoutingControls";
 import { escapeDiscordMarkdown } from "@/utils/text/discordMarkdown";
 import { localizer, resolveDescription } from "@/utils/text/localizer";
 import { normalizeTriggerWord } from "@/utils/text/triggerWords";
@@ -143,7 +139,6 @@ export type ConfigPanelView =
   | { kind: "character-reference-clear-confirm"; personaId: number; nonce: string }
   | { kind: "sprite-remove-confirm"; personaId: number; index: number; fp: string; nonce: string }
   | { kind: "voice-sample-remove-confirm"; index: number; fp: string; nonce: string }
-  | { kind: "humanizer-editor"; personaId: number }
   | { kind: "text-override-provider"; personaId: number; providers: string[] }
   | {
       kind: "text-override-model";
@@ -1543,12 +1538,8 @@ ${localizer(locale, "commands.config.panel.response_style_description")}
       : undefined;
 
   const textState = actionState("text-override");
-  const textOverride = persona.persona_llm
-    ? `${getProviderDisplayName(persona.persona_llm.llm_provider)} / ${persona.persona_llm.llm_codename}`
-    : localizer(locale, "commands.config.panel.none_label");
-  const serverModel = persona.llm
-    ? `${getProviderDisplayName(persona.llm.llm_provider)} / ${persona.llm.llm_codename}`
-    : localizer(locale, "commands.config.panel.none_label");
+  const textOverride = modelLabel(locale, persona.persona_llm);
+  const serverModel = modelLabel(locale, persona.llm);
   const textOverrideTextDisplay: ComponentInContainerData | undefined =
     textState !== "omitted"
       ? {
@@ -1562,43 +1553,18 @@ ${localizer(locale, "commands.config.panel.text_override_description")}
 
   if (humanizerTextDisplay) {
     components.push(humanizerTextDisplay);
-    if (input.view?.kind === "humanizer-editor" && input.view.personaId === personaId) {
-      const options = createHumanizerOptions(
-        locale,
-        humanizerValue === null ? HUMANIZER_INHERIT_VALUE : String(humanizerValue),
-        true,
-      ).map((option) => ({
-        label: safeSelectOptionText(option.label, 100),
-        value: option.value,
-        description: safeSelectOptionText(option.description ?? "", 100),
-        default: option.default,
-      }));
-      components.push({
-        type: ComponentType.ActionRow,
-        components: [
-          {
-            type: ComponentType.StringSelect,
-            customId: buildConfigRouteId({ action: "humanizer-select", locale, personaId }),
-            placeholder: localizer(locale, "commands.config.panel.response_style_placeholder"),
-            options,
-            disabled: writesDisabled || humanizerState === "disabled",
-          },
-        ],
-      });
-    } else {
-      components.push({
-        type: ComponentType.ActionRow,
-        components: [
-          {
-            type: ComponentType.Button,
-            style: ButtonStyle.Secondary,
-            customId: buildConfigRouteId({ action: "humanizer-open", locale, personaId }),
-            label: localizer(locale, "commands.config.panel.edit_humanizer_button"),
-            disabled: writesDisabled || humanizerState === "disabled",
-          },
-        ],
-      });
-    }
+    components.push({
+      type: ComponentType.ActionRow,
+      components: [
+        {
+          type: ComponentType.Button,
+          style: ButtonStyle.Secondary,
+          customId: buildConfigRouteId({ action: "humanizer-open", locale, personaId }),
+          label: localizer(locale, "commands.config.panel.edit_humanizer_button"),
+          disabled: writesDisabled || humanizerState === "disabled",
+        },
+      ],
+    });
   }
 
   if (textOverrideTextDisplay) {
@@ -1647,38 +1613,27 @@ ${localizer(locale, "commands.config.panel.text_override_description")}
           },
         ],
       });
-      if (pageCount > 1) {
-        components.push({
-          type: ComponentType.ActionRow,
-          components: [
-            {
-              type: ComponentType.Button,
-              style: ButtonStyle.Secondary,
-              customId: buildConfigRouteId({
-                action: "text-override-model-page",
-                locale,
-                personaId,
-                provider: input.view.provider,
-                start: Math.max(0, start - pageSize),
-              }),
-              label: localizer(locale, "commands.config.panel.previous_page"),
-              disabled: writesDisabled || textState === "disabled" || pageIndex === 0,
-            },
-            {
-              type: ComponentType.Button,
-              style: ButtonStyle.Secondary,
-              customId: buildConfigRouteId({
-                action: "text-override-model-page",
-                locale,
-                personaId,
-                provider: input.view.provider,
-                start: Math.min((pageCount - 1) * pageSize, start + pageSize),
-              }),
-              label: localizer(locale, "commands.config.panel.next_page"),
-              disabled: writesDisabled || textState === "disabled" || pageIndex >= pageCount - 1,
-            },
-          ],
-        });
+      const modelProvider = input.view.provider;
+      const modelPaginationRow = buildPaginationRow({
+        locale,
+        rangeIndex: pageIndex,
+        rangeCount: pageCount,
+        namespace: CONFIG_ROUTE_NAMESPACE,
+        version: CONFIG_ROUTE_VERSION,
+        disabled: writesDisabled || textState === "disabled",
+        buildSegments: {
+          page: (targetPageIndex) =>
+            buildConfigRouteSegments({
+              action: "text-override-model-page",
+              locale,
+              personaId,
+              provider: modelProvider,
+              start: targetPageIndex * pageSize,
+            }),
+        },
+      });
+      if (modelPaginationRow) {
+        components.push(modelPaginationRow);
       }
     } else {
       components.push({
@@ -3899,10 +3854,12 @@ ${localizer(locale, "commands.config.panel.channels_rules_description")}`,
   return components;
 }
 
-function channelOverrideModelLabel(locale: string, model: LlmRow | null): string {
-  return model
-    ? `${getProviderDisplayName(model.llm_provider)} / ${model.llm_codename}`
-    : localizer(locale, "commands.config.panel.none_label");
+function modelLabel(locale: string, model: Pick<LlmRow, "llm_provider" | "llm_codename"> | null | undefined): string {
+  return formatModelSelectionLabel(
+    model?.llm_codename ?? null,
+    model ? getProviderDisplayName(model.llm_provider) : null,
+    localizer(locale, "commands.config.panel.none_label"),
+  );
 }
 
 function buildChannelsOverridesBody(input: ConfigPanelRenderInput): ComponentInContainerData[] {
@@ -3984,8 +3941,8 @@ ${localizer(locale, "commands.config.panel.channels_overrides_text_model_descrip
     ? `> ${localizer(locale, "commands.config.panel.channels_overrides_context_note_depth_label")}: ${contextNote?.depth ?? none}\n`
     : "";
   const textModelValues = selectedChannel
-    ? `> ${localizer(locale, "commands.config.panel.channels_overrides_channel_override_label")}: ${channelOverrideModelLabel(locale, textOverride)}
-> ${localizer(locale, "commands.config.panel.channels_overrides_server_default_label")}: ${channelOverrideModelLabel(locale, serverTextModel)}`
+    ? `> ${localizer(locale, "commands.config.panel.channels_overrides_channel_override_label")}: ${modelLabel(locale, textOverride)}
+> ${localizer(locale, "commands.config.panel.channels_overrides_server_default_label")}: ${modelLabel(locale, serverTextModel)}`
     : "";
   const noneContent = renderFencedCollectionContent(none);
 
@@ -4102,8 +4059,8 @@ ${localizer(locale, "commands.config.panel.channels_overrides_text_model_descrip
   if (selectedChannel) {
     components.push({
       type: ComponentType.TextDisplay,
-      content: `> ${localizer(locale, "commands.config.panel.channels_overrides_channel_override_label")}: ${channelOverrideModelLabel(locale, textOverride)}
-> ${localizer(locale, "commands.config.panel.channels_overrides_server_default_label")}: ${channelOverrideModelLabel(locale, serverTextModel)}`,
+      content: `> ${localizer(locale, "commands.config.panel.channels_overrides_channel_override_label")}: ${modelLabel(locale, textOverride)}
+> ${localizer(locale, "commands.config.panel.channels_overrides_server_default_label")}: ${modelLabel(locale, serverTextModel)}`,
     });
 
     const textView = input.view;

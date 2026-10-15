@@ -26,7 +26,7 @@ import {
 import { buildPanelContainer } from "@/utils/discord/ui/panel";
 import { validateComponentsV2MessageLimits } from "@/utils/discord/ui/componentsV2Limits";
 import { getDiscordTextLength } from "@/utils/text/discordTextLimits";
-import { localizedCopy, localizedProse } from "../../helpers/localeCases";
+import { localizedCopy } from "../../helpers/localeCases";
 
 function makeSample(index: number, overrides: Partial<VoiceSampleRow> = {}): VoiceSampleRow {
   return {
@@ -132,14 +132,6 @@ describe("configVoicesPanel", () => {
     const body = buildConfigVoicesBody({ locale: "en-US", readStatus: "fresh", view: viewTurboOn });
     const paramsText = body[1] as TextDisplayComponentData;
     expect(paramsText.content).toContain("Chatterbox fast model: Enabled");
-    const hasTurboRoute = body.some(
-      (component) =>
-        component.type === ComponentType.ActionRow &&
-        (component as ActionRowData<ButtonComponentData>).components.some((button) =>
-          buttonCustomId(button).includes("tts-turbo-set"),
-        ),
-    );
-    expect(hasTurboRoute).toBe(false);
   });
 
   it("renders only the selected sample and its File component", () => {
@@ -178,7 +170,6 @@ describe("configVoicesPanel", () => {
     expect(libraryText.content).toContain("> *Reference transcript text for sample 1.*");
     expect(libraryText.content).not.toContain("Voice Sample 1");
     expect(libraryText.content).not.toContain("Other Sample");
-    expect(libraryText.content).not.toMatch(localizedProse("en-US", "commands.config.panel.voices.page.hidden_count"));
 
     const selectRow = components.find(
       (component) =>
@@ -472,7 +463,7 @@ describe("configVoicesPanel", () => {
     const confirmTextComp = components[3] as TextDisplayComponentData;
     expect(confirmTextComp.type).toBe(ComponentType.TextDisplay);
     expect(confirmTextComp.content).toContain(
-      localizedCopy("en-US", "commands.config.panel.voices.remove.confirm_title"),
+      localizedCopy("en-US", "commands.config.panel.voices.page.confirm_title"),
     );
     expect(confirmTextComp.content).toContain("3 persona(s)"); // Ref count is present
 

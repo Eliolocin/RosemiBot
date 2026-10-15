@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import {
   ButtonStyle,
   ComponentType,
-  MessageFlags,
   type ActionRowData,
   type ButtonComponentData,
   type Client,
@@ -741,7 +740,6 @@ describe("personalConfigPanelCatalog", () => {
       },
     ],
     ["spotlight-remove-open", { action: "spotlight-remove-open", locale: "en-US" }],
-    ["spot-rem-range", { action: "spot-rem-range", locale: "en-US", start: 50, fp: "a1b2c3d4" }],
     [
       "spotlight-remove-submit",
       { action: "spotlight-remove-submit", locale: "en-US", start: 50, fp: "a1b2c3d4", nonce: "nonce123456" },
@@ -768,6 +766,10 @@ describe("personalConfigPanelCatalog", () => {
       { action: "page", locale: "en-US", category: "models", page: "switch" },
     ],
     ["personal-config:v2:persona-select:en-US:7", { action: "persona-select", locale: "en-US", lineageId: 7 }],
+    [
+      "personal-config:v2:persona-page:en-US:7:1",
+      { action: "persona-page", locale: "en-US", lineageId: 7, chooserPage: 1 },
+    ],
     ["personal-config:v2:trigger-mode-set:en-US:on", { action: "trigger-mode-set", locale: "en-US", mode: "on" }],
     ["personal-config:v2:tool-mode-set:en-US:follow", { action: "tool-mode-set", locale: "en-US", mode: "follow" }],
     ["personal-config:v2:language-open:en-US", { action: "language-open", locale: "en-US" }],
@@ -782,7 +784,6 @@ describe("personalConfigPanelCatalog", () => {
     ["personal-config:v2:crossserver-toggle:en-US", { action: "crossserver-toggle", locale: "en-US" }],
     ["personal-config:v2:crossserver-set:en-US:on", { action: "crossserver-set", locale: "en-US", enabled: true }],
     ["personal-config:v2:quick-toggle-open:en-US", { action: "quick-toggle-open", locale: "en-US" }],
-    ["personal-config:v2:model-act-cancel:en-US", { action: "model-act-cancel", locale: "en-US" }],
     ["personal-config:v2:parameters-provider-select:en-US", { action: "parameters-provider-select", locale: "en-US" }],
     ["personal-config:v2:fallbacks-provider-select:en-US", { action: "fallbacks-provider-select", locale: "en-US" }],
     ["personal-config:v2:impersonation-open:en-US", { action: "impersonation-open", locale: "en-US" }],
@@ -925,19 +926,6 @@ describe("personalConfigPanelCatalog", () => {
       },
     ],
     [
-      "personal-config:v2:s-auto-r:en-US:123456789012345678:12:1:b33j9ynrb3:a1b2c3d4:25",
-      {
-        action: "spot-set-auto-range",
-        locale: "en-US",
-        channelId: "123456789012345678",
-        hours: 12,
-        blockIdx: 1,
-        mask: "b33j9ynrb3",
-        fp: "a1b2c3d4",
-        start: 25,
-      },
-    ],
-    [
       "personal-config:v2:s-auto-p:en-US:123456789012345678:12:1:b33j9ynrb3:a1b2c3d4:2",
       {
         action: "spot-set-auto-page",
@@ -975,10 +963,6 @@ describe("personalConfigPanelCatalog", () => {
       },
     ],
     [
-      "personal-config:v2:s-rem-r:en-US:50:a1b2c3d4",
-      { action: "spot-rem-range", locale: "en-US", start: 50, fp: "a1b2c3d4" },
-    ],
-    [
       "personal-config:v2:s-rem-p:en-US:2:a1b2c3d4",
       { action: "spotlight-remove-page", locale: "en-US", chooserPage: 2, fp: "a1b2c3d4" },
     ],
@@ -1001,26 +985,6 @@ describe("personalConfigPanelCatalog", () => {
     [
       "personal-config:v2:model-provider-select:en-US:text",
       { action: "model-provider-select", locale: "en-US", capability: "text" },
-    ],
-    [
-      "personal-config:v2:model-provider-page:en-US:text:openrouter:24",
-      { action: "model-provider-page", locale: "en-US", capability: "text", provider: "openrouter", start: 24 },
-    ],
-    [
-      "personal-config:v2:model-provider-range-open:en-US:text:25",
-      { action: "model-provider-range-open", locale: "en-US", capability: "text", start: 25 },
-    ],
-    [
-      "personal-config:v2:model-provider-range-page:en-US:text:2",
-      { action: "model-provider-range-page", locale: "en-US", capability: "text", chooserPage: 2 },
-    ],
-    [
-      "personal-config:v2:model-range-open:en-US:text:openrouter:25",
-      { action: "model-range-open", locale: "en-US", capability: "text", provider: "openrouter", start: 25 },
-    ],
-    [
-      "personal-config:v2:model-range-page:en-US:text:openrouter:2",
-      { action: "model-range-page", locale: "en-US", capability: "text", provider: "openrouter", chooserPage: 2 },
     ],
     [
       "personal-config:v2:model-modal-submit:en-US:text:openrouter:nonce1234567",
@@ -1057,14 +1021,6 @@ describe("personalConfigPanelCatalog", () => {
       { action: "fallbacks-page", locale: "en-US", provider: "openrouter", start: 24 },
     ],
     [
-      "personal-config:v2:fallbacks-range-open:en-US:openrouter:25",
-      { action: "fallbacks-range-open", locale: "en-US", provider: "openrouter", start: 25 },
-    ],
-    [
-      "personal-config:v2:fallbacks-range-page:en-US:openrouter:2",
-      { action: "fallbacks-range-page", locale: "en-US", provider: "openrouter", chooserPage: 2 },
-    ],
-    [
       "personal-config:v2:parameters-1-submit:en-US:openrouter:nonce1234567",
       { action: "parameters-1-submit", locale: "en-US", provider: "openrouter", nonce: "nonce1234567" },
     ],
@@ -1084,10 +1040,6 @@ describe("personalConfigPanelCatalog", () => {
       "personal-config:v2:retry:en-US:profile:persona:7",
       { action: "retry", locale: "en-US", category: "profile", page: "persona", lineageId: 7 },
     ],
-    [
-      "personal-config:v2:refresh:en-US:models:switch",
-      { action: "refresh", locale: "en-US", category: "models", page: "switch" },
-    ],
   ];
 
   it.each(WIRE_CONTRACT_V2)("decodes the pinned wire string %s to its exact route", (customId, expected) => {
@@ -1100,16 +1052,16 @@ describe("personalConfigPanelCatalog", () => {
     // The codec table's mapped type requires one key per member of the action union, so its keys
     // are the declared actions without reading the union's source text.
     const declared = Object.keys(PERSONAL_CONFIG_ROUTE_CODECS);
-    expect(declared.length).toBe(76);
+    expect(declared.length).toBe(66);
     expect(declared.filter((action) => !pinned.has(action))).toEqual([]);
   });
 
   /**
-   * The retry and refresh codecs accept a four-segment form (no lineage) and a five-segment form
+   * The retry codec accepts a four-segment form (no lineage) and a five-segment form
    * (lineage present). Each pair is one case: the round-trip proves the field survives, and the
    * field-absence assertions prove the shorter form does not fabricate the longer form's fields.
    */
-  const RETRY_AND_REFRESH_ROUTES: ReadonlyArray<
+  const RETRY_ROUTES: ReadonlyArray<
     readonly [string, PersonalConfigPanelRoute, PersonalConfigPanelRoute, readonly string[]]
   > = [
     [
@@ -1118,16 +1070,10 @@ describe("personalConfigPanelCatalog", () => {
       { action: "retry", locale: "en-US", category: "profile", page: "persona", lineageId: 10 },
       ["lineageId", "capability", "provider"],
     ],
-    [
-      "refresh without a lineage",
-      { action: "refresh", locale: "en-US", category: "models", page: "switch" },
-      { action: "refresh", locale: "en-US", category: "profile", page: "persona", lineageId: 42 },
-      ["lineageId", "capability", "provider"],
-    ],
   ];
 
   it.each(
-    RETRY_AND_REFRESH_ROUTES,
+    RETRY_ROUTES,
   )("round-trips the %s form and enforces exact arity", (_label, fourSegment, fiveSegment, absentFromFour) => {
     const parsedFour = parsePersonalConfigPanelRoute(requireRoute(buildPersonalConfigRouteId(fourSegment)));
     expect(parsedFour).toEqual(fourSegment);
@@ -1168,6 +1114,8 @@ describe("personalConfigPanelCatalog", () => {
         return [{ action, locale, category, page }];
       case "persona-select":
         return [{ action, locale, lineageId }];
+      case "persona-page":
+        return [{ action, locale, lineageId, chooserPage }];
       case "language-open":
       case "timezone-open":
       case "timezone-server":
@@ -1179,7 +1127,6 @@ describe("personalConfigPanelCatalog", () => {
       case "privacy-level-open":
       case "crossserver-toggle":
       case "quick-toggle-open":
-      case "model-act-cancel":
       case "parameters-provider-select":
       case "fallbacks-provider-select":
       case "impersonation-open":
@@ -1209,16 +1156,6 @@ describe("personalConfigPanelCatalog", () => {
         return [{ action, locale, lineageId, nonce }];
       case "model-provider-select":
         return [{ action, locale, capability }];
-      case "model-provider-page":
-        return [{ action, locale, capability, provider, start }];
-      case "model-provider-range-open":
-        return [{ action, locale, capability, start }];
-      case "model-provider-range-page":
-        return [{ action, locale, capability, chooserPage }];
-      case "model-range-open":
-        return [{ action, locale, capability, provider, start }];
-      case "model-range-page":
-        return [{ action, locale, capability, provider, chooserPage }];
       case "model-modal-submit":
         return [{ action, locale, capability, provider, nonce }];
       case "parameters-1-open":
@@ -1230,10 +1167,7 @@ describe("personalConfigPanelCatalog", () => {
       case "fallbacks-submit":
         return [{ action, locale, provider, nonce }];
       case "fallbacks-page":
-      case "fallbacks-range-open":
         return [{ action, locale, provider, start }];
-      case "fallbacks-range-page":
-        return [{ action, locale, provider, chooserPage }];
       case "trigger-mode-set":
       case "tool-mode-set":
         return [{ action, locale, mode }];
@@ -1255,8 +1189,6 @@ describe("personalConfigPanelCatalog", () => {
         return [{ action, locale, channelId: snowflake, hours, autoIdx, blockIdx, mask, fp, nonce }];
       case "spot-set-auto":
         return [{ action, locale, channelId: snowflake, hours, blockIdx, mask, fp, nonce }];
-      case "spot-set-auto-range":
-        return [{ action, locale, channelId: snowflake, hours, blockIdx, mask, fp, start }];
       case "spot-set-auto-page":
         return [{ action, locale, channelId: snowflake, hours, blockIdx, mask, fp, chooserPage }];
       case "spot-set-auto-select":
@@ -1265,8 +1197,6 @@ describe("personalConfigPanelCatalog", () => {
         return [{ action, locale, channelId: snowflake, hours, blockIdx, mask, fp }];
       case "spot-set-auto-sub":
         return [{ action, locale, channelId: snowflake, hours, blockIdx, mask, fp, nonce }];
-      case "spot-rem-range":
-        return [{ action, locale, start, fp }];
       case "spotlight-remove-page":
         return [{ action, locale, chooserPage, fp }];
       case "spotlight-remove-select":
@@ -1274,7 +1204,6 @@ describe("personalConfigPanelCatalog", () => {
       case "spotlight-remove-submit":
         return [{ action, locale, start, fp, nonce }];
       case "retry":
-      case "refresh":
         return isWorstCase
           ? [{ action, locale, category, page, lineageId }]
           : [
@@ -1286,7 +1215,7 @@ describe("personalConfigPanelCatalog", () => {
 
   it("round-trips every action in the codec table", () => {
     const actions = Object.keys(PERSONAL_CONFIG_ROUTE_CODECS) as PersonalConfigAction[];
-    expect(actions.length).toBe(76);
+    expect(actions.length).toBe(66);
 
     for (const action of actions) {
       const routes = buildRoutesForAction(action, false);
@@ -1294,7 +1223,7 @@ describe("personalConfigPanelCatalog", () => {
         const customId = buildPersonalConfigRouteId(route);
         const parsed = parsePersonalConfigPanelRoute(requireRoute(customId));
         expect(parsed).toEqual(route);
-        if (route.action === "retry" || route.action === "refresh") {
+        if (route.action === "retry") {
           if (route.lineageId === undefined) {
             expect("lineageId" in (parsed ?? {})).toBe(false);
           }
@@ -1322,7 +1251,7 @@ describe("personalConfigPanelCatalog", () => {
     // - page: "response-modes" (14 chars) is the longest PersonalConfigPage.
     // - mode: "follow" (6 chars) is the longest deliberate trigger/tool mode.
     const actions = Object.keys(PERSONAL_CONFIG_ROUTE_CODECS) as PersonalConfigAction[];
-    expect(actions.length).toBe(76);
+    expect(actions.length).toBe(66);
 
     for (const action of actions) {
       const routes = buildRoutesForAction(action, true);
@@ -1345,15 +1274,15 @@ describe("personalConfigPanelCatalog", () => {
       handlerSources.flatMap((source) => [...source.matchAll(/route\.action === "([a-z0-9-]+)"/g)].map((m) => m[1])),
     );
 
-    expect(tableActions.size).toBe(76);
-    expect(handlerActions.size).toBe(76);
+    expect(tableActions.size).toBe(66);
+    expect(handlerActions.size).toBe(66);
     expect([...tableActions].filter((a) => !handlerActions.has(a))).toEqual([]);
     expect([...handlerActions].filter((a) => !tableActions.has(a))).toEqual([]);
   });
 
   it("fails closed when dropping or appending a segment for every action in the table", () => {
     const actions = Object.keys(PERSONAL_CONFIG_ROUTE_CODECS) as PersonalConfigAction[];
-    expect(actions.length).toBe(76);
+    expect(actions.length).toBe(66);
 
     for (const action of actions) {
       const routes = buildRoutesForAction(action, false);
@@ -1370,15 +1299,15 @@ describe("personalConfigPanelCatalog", () => {
             version: validRoute.version,
             segments: segmentsDropped,
           };
-          if ((action === "retry" || action === "refresh") && "lineageId" in route && route.lineageId !== undefined) {
+          if (action === "retry" && "lineageId" in route && route.lineageId !== undefined) {
             expect(parsePersonalConfigPanelRoute(droppedParsedRoute)).not.toBeNull();
           } else {
             expect(parsePersonalConfigPanelRoute(droppedParsedRoute)).toBeNull();
           }
         }
 
-        // For 4-segment retry/refresh, dropping one segment drops to 3 segments which must fail closed
-        if ((action === "retry" || action === "refresh") && !("lineageId" in route && route.lineageId !== undefined)) {
+        // For 4-segment retry, dropping one segment drops to 3 segments which must fail closed
+        if (action === "retry" && !("lineageId" in route && route.lineageId !== undefined)) {
           const droppedTwice = {
             namespace: validRoute.namespace,
             version: validRoute.version,
@@ -2778,25 +2707,6 @@ describe("Model assignment writes on modal submit", () => {
     expect(json).toContain("Text now routes to OpenRouter using Claude 3 Opus");
   });
 
-  it("model-act-cancel repaints without writing or emitting telemetry", async () => {
-    const calls: string[] = [];
-    const { dependencies, telemetry } = makeDependencies(calls);
-
-    const route = createPersonalConfigInteractionRoute(dependencies);
-    const customId = buildPersonalConfigRouteId({ action: "model-act-cancel", locale: "en-US" });
-
-    const interaction = makePersonalInteraction({
-      customId,
-    });
-
-    await route.execute({} as Client, interaction, requireRoute(customId));
-
-    expect(calls.some((c) => c.startsWith("setCapabilityModel"))).toBe(false);
-    expect(telemetry).toHaveLength(0);
-    const json = JSON.stringify(interaction.edits.at(-1));
-    expect(json).toContain(localizedCopy("en-US", "commands.personal.config.no_changes_heading"));
-  });
-
   it("fails closed on modal submit when the chosen model is no longer available", async () => {
     const calls: string[] = [];
     const { dependencies, telemetry } = makeDependencies(calls, {
@@ -2917,141 +2827,6 @@ describe("Re-resolution and zero model guard", () => {
 });
 
 describe("Range pagination workflow", () => {
-  it("paginates provider selector in place across page clicks on Switch Models", async () => {
-    const providers = Array.from({ length: 30 }, (_, index) => `custom:${index + 1}`);
-    const calls: string[] = [];
-    const { dependencies, telemetry } = makeDependencies(calls);
-    const originalLoader = dependencies.loadPersonalModelDisplayInfo;
-    dependencies.loadPersonalModelDisplayInfo = async (...args) => {
-      const info = await originalLoader(...args);
-      return {
-        ...info,
-        eligibleProvidersForCapability: { ...info.eligibleProvidersForCapability, text: providers },
-      };
-    };
-
-    const route = createPersonalConfigInteractionRoute(dependencies);
-
-    const page1Id = buildPersonalConfigRouteId({
-      action: "model-provider-range-open",
-      locale: "en-US",
-      capability: "text",
-      start: 24,
-    });
-    const page1Interaction = makePersonalInteraction({
-      customId: page1Id,
-    });
-
-    await route.execute({} as Client, page1Interaction, requireRoute(page1Id));
-
-    const page1Payload = page1Interaction.edits.at(-1);
-    const page1Components = collectComponents(page1Payload);
-    const providerSelect = page1Components.find((component) =>
-      component.customId?.endsWith(":model-provider-select:en-US:text"),
-    );
-    expect(providerSelect?.options?.map((option) => option.value)).toEqual([
-      "__server_default__",
-      "custom~24",
-      "custom~25",
-      "custom~26",
-      "custom~27",
-      "custom~28",
-      "custom~29",
-      "custom~30",
-      "__provider_range__:0:",
-    ]);
-
-    const moreOption = providerSelect?.options?.find((option) => option.value === "__provider_range__:0:");
-    expect(moreOption).toBeDefined();
-    expect(moreOption?.label).toBe("More Text providers (page 1 of 2)");
-
-    const json = JSON.stringify(page1Payload);
-    expect(json).toContain(localizedCopy("en-US", "commands.personal.config.models_title"));
-    expect(calls).toEqual([]);
-    expect(telemetry).toEqual([]);
-  });
-
-  it("fails a stale provider range without writing or emitting telemetry", async () => {
-    const providers = Array.from({ length: 30 }, (_, index) => `custom:${index + 1}`);
-    const calls: string[] = [];
-    const { dependencies, telemetry } = makeDependencies(calls);
-    const originalLoader = dependencies.loadPersonalModelDisplayInfo;
-    dependencies.loadPersonalModelDisplayInfo = async (...args) => {
-      const info = await originalLoader(...args);
-      return {
-        ...info,
-        eligibleProvidersForCapability: { ...info.eligibleProvidersForCapability, text: providers },
-      };
-    };
-    const route = createPersonalConfigInteractionRoute(dependencies);
-    const customId = buildPersonalConfigRouteId({
-      action: "model-provider-range-open",
-      locale: "en-US",
-      capability: "text",
-      start: 50,
-    });
-    const interaction = makePersonalInteraction({
-      customId,
-    });
-
-    await route.execute({} as Client, interaction, requireRoute(customId));
-
-    expect(JSON.stringify(interaction.edits.at(-1))).toContain(
-      localizedCopy("en-US", "commands.personal.config.unavailable"),
-    );
-    expect(calls).toEqual([]);
-    expect(telemetry).toEqual([]);
-  });
-
-  it("accepts retained literal :25 offset for model-provider-range-open without failing stale", async () => {
-    const providers = Array.from({ length: 30 }, (_, index) => `custom:${index + 1}`);
-    const calls: string[] = [];
-    const { dependencies, telemetry } = makeDependencies(calls);
-    const originalLoader = dependencies.loadPersonalModelDisplayInfo;
-    dependencies.loadPersonalModelDisplayInfo = async (...args) => {
-      const info = await originalLoader(...args);
-      return {
-        ...info,
-        eligibleProvidersForCapability: { ...info.eligibleProvidersForCapability, text: providers },
-      };
-    };
-
-    const route = createPersonalConfigInteractionRoute(dependencies);
-
-    // Literal WIRE_CONTRACT_V2 action ending in :25
-    const customId = "personal-config:v2:model-provider-range-open:en-US:text:25";
-    const interaction = makePersonalInteraction({
-      customId,
-    });
-
-    await route.execute({} as Client, interaction, requireRoute(customId));
-
-    const repaintedPayload = interaction.edits.at(-1);
-    const components = collectComponents(repaintedPayload);
-    const providerSelect = components.find((c) => c.customId?.endsWith(":model-provider-select:en-US:text"));
-    expect(providerSelect?.options?.map((o) => o.value)).toEqual([
-      "__server_default__",
-      "custom~24",
-      "custom~25",
-      "custom~26",
-      "custom~27",
-      "custom~28",
-      "custom~29",
-      "custom~30",
-      "__provider_range__:0:",
-    ]);
-
-    const moreOption = providerSelect?.options?.find((o) => o.value === "__provider_range__:0:");
-    expect(moreOption).toBeDefined();
-    expect(moreOption?.label).toBe("More Text providers (page 1 of 2)");
-
-    expect(JSON.stringify(repaintedPayload)).not.toContain(
-      localizedCopy("en-US", "commands.personal.config.unavailable"),
-    );
-    expect(calls).toEqual([]);
-    expect(telemetry).toEqual([]);
-  });
-
   it("defers and repaints Switch Models with one selector entry per model page when model-provider-select has > 25 models", async () => {
     let modalShown = false;
 
@@ -3108,7 +2883,6 @@ describe("Range pagination workflow", () => {
     ]);
 
     // The first page must be selectable directly; a prev/next row would disable the page it sits on.
-    expect(components.some((c) => c.customId?.includes(":model-range-open:"))).toBe(false);
 
     // Expanding rewrites a closed selector, so the repaint has to say what changed.
     expect(textSelect?.placeholder).toBe("Text: choose a page of OpenRouter models");
@@ -3263,44 +3037,6 @@ describe("Range pagination workflow", () => {
     expect(passedModels[19].name).toBe("Model 20");
   });
 
-  it("opens requested slice in modal on model-range-open button click", async () => {
-    let modalShown = false;
-    let passedModels: Array<{ id: number; name: string }> = [];
-
-    const thirtyModels = Array.from({ length: 30 }, (_, i) => ({
-      id: 100 + i,
-      name: `Model ${i + 1}`,
-    }));
-
-    const { dependencies } = makeDependencies([], {
-      loadAvailableModelsForCapability: async () => thirtyModels,
-      showModelSelectModal: async (_interaction, _locale, _nonce, _cap, _prov, models) => {
-        modalShown = true;
-        passedModels = models;
-      },
-    });
-
-    const route = createPersonalConfigInteractionRoute(dependencies);
-    const customId = buildPersonalConfigRouteId({
-      action: "model-range-open",
-      locale: "en-US",
-      capability: "text",
-      provider: "openrouter",
-      start: 25,
-    });
-
-    const interaction = makePersonalInteraction({
-      customId,
-    });
-
-    await route.execute({} as Client, interaction, requireRoute(customId));
-
-    expect(modalShown).toBe(true);
-    expect(passedModels).toHaveLength(5);
-    expect(passedModels[0].name).toBe("Model 26");
-    expect(passedModels[4].name).toBe("Model 30");
-  });
-
   it("defers and repaints Fallbacks with one selector entry per option page when fallbacks-provider-select has > 24 options", async () => {
     const fallbackOptions = Array.from({ length: 30 }, (_, i) => ({
       refKey: `llm:${100 + i}`,
@@ -3350,7 +3086,6 @@ describe("Range pagination workflow", () => {
         "OpenRouter (page 1)",
         "OpenRouter (page 2)",
       ]);
-      expect(components.some((c) => c.customId?.includes(":fallbacks-range-open:"))).toBe(false);
       expect(providerSelect?.placeholder).toBe("Choose a page of OpenRouter models");
       const rendered = JSON.stringify(repaintedPayload);
       expect(rendered).toContain(localizedCopy("en-US", "commands.personal.config.fallbacks_paged_heading"));
@@ -3402,103 +3137,6 @@ describe("Range pagination workflow", () => {
       expect(passedOptions).toHaveLength(20);
       expect(passedOptions[0].label).toBe("Model 1");
       expect(passedOptions[19].label).toBe("Model 20");
-    } finally {
-      loadSpy.mockRestore();
-      eligibleSpy.mockRestore();
-    }
-  });
-
-  it("opens requested slice in modal on fallbacks-range-open button click", async () => {
-    let modalShown = false;
-    let passedProvider = "";
-    let passedOptions: Array<{ refKey: string; label: string }> = [];
-    let passedFallbackRefs: Array<{ type: string; id: number }> = [];
-    const fallbackOptions = Array.from({ length: 30 }, (_, i) => ({
-      refKey: `llm:${100 + i}`,
-      label: `Model ${i + 1}`,
-    }));
-
-    const loaders = await import("@/utils/discord/interactions/personalConfigLoaders");
-    const loadSpy = spyOn(loaders, "loadFallbackSelectionOptions").mockResolvedValue(fallbackOptions);
-    const savedConfig = await import("@/utils/provider/savedProviderConfig");
-    const eligibleSpy = spyOn(savedConfig, "loadUserSavedProvidersForCapability").mockResolvedValue([
-      { provider: "openrouter" } as unknown as UserSavedProviderConfigRow,
-    ]);
-
-    try {
-      const { dependencies } = makeDependencies([], {
-        showFallbacksModal: async (_interaction, _locale, _nonce, provider, options, fallbackRefs) => {
-          modalShown = true;
-          passedProvider = provider;
-          passedOptions = options;
-          passedFallbackRefs = fallbackRefs;
-        },
-      });
-
-      const route = createPersonalConfigInteractionRoute(dependencies);
-      const customId = buildPersonalConfigRouteId({
-        action: "fallbacks-range-open",
-        locale: "en-US",
-        provider: "openrouter",
-        start: 24,
-      });
-
-      const interaction = makePersonalInteraction({
-        customId,
-      });
-
-      await route.execute({} as Client, interaction, requireRoute(customId));
-
-      expect(modalShown).toBe(true);
-      expect(passedProvider).toBe("openrouter");
-      expect(passedOptions).toHaveLength(6);
-      expect(passedOptions[0].label).toBe("Model 25");
-      expect(passedOptions[5].label).toBe("Model 30");
-      expect(passedFallbackRefs).toEqual([{ type: "llm", id: 103 }]);
-    } finally {
-      loadSpy.mockRestore();
-      eligibleSpy.mockRestore();
-    }
-  });
-
-  it("rejects handcrafted :25 fallback button with unavailable reply and shows no modal", async () => {
-    let modalShown = false;
-    const fallbackOptions = Array.from({ length: 30 }, (_, i) => ({
-      refKey: `llm:${100 + i}`,
-      label: `Model ${i + 1}`,
-    }));
-
-    const loaders = await import("@/utils/discord/interactions/personalConfigLoaders");
-    const loadSpy = spyOn(loaders, "loadFallbackSelectionOptions").mockResolvedValue(fallbackOptions);
-    const savedConfig = await import("@/utils/provider/savedProviderConfig");
-    const eligibleSpy = spyOn(savedConfig, "loadUserSavedProvidersForCapability").mockResolvedValue([
-      { provider: "openrouter" } as unknown as UserSavedProviderConfigRow,
-    ]);
-
-    try {
-      const calls: string[] = [];
-      const { dependencies, telemetry } = makeDependencies(calls, {
-        showFallbacksModal: async () => {
-          modalShown = true;
-        },
-      });
-
-      const route = createPersonalConfigInteractionRoute(dependencies);
-      const customId = "personal-config:v2:fallbacks-range-open:en-US:openrouter:25";
-
-      const interaction = makePersonalInteraction({
-        customId,
-      });
-
-      await route.execute({} as Client, interaction, requireRoute(customId));
-
-      expect(modalShown).toBe(false);
-      expect(interaction.replies.at(-1)).toEqual({
-        content: localizer("en-US", "commands.personal.config.unavailable"),
-        flags: MessageFlags.Ephemeral,
-      });
-      expect(calls).toEqual([]);
-      expect(telemetry).toEqual([]);
     } finally {
       loadSpy.mockRestore();
       eligibleSpy.mockRestore();
@@ -5069,32 +4707,6 @@ describe("Stable spotlight identity and destructive safety", () => {
     );
   });
 
-  it("fails stale on spot-rem-range button click when active spotlights drift", async () => {
-    const initialSpotlights = [makeSpotlight("123456789012345678", { personaIds: [1] })];
-    const fp = computeSpotlightRemoveFingerprint("guild-123", "user-123", initialSpotlights);
-    const customId = buildPersonalConfigRouteId({ action: "spot-rem-range", locale: "en-US", start: 0, fp });
-
-    let modalCalled = false;
-    const { dependencies } = makeDependencies([], {
-      loadActiveSpotlights: async () => [],
-      showSpotlightRemoveModal: async () => {
-        modalCalled = true;
-      },
-    });
-    const route = createPersonalConfigInteractionRoute(dependencies);
-
-    const interaction = makePersonalInteraction({
-      customId,
-    });
-
-    await route.execute({} as Client, interaction, requireRoute(customId));
-
-    expect(modalCalled).toBe(false);
-    expect(JSON.stringify(interaction.replies.at(-1))).toContain(
-      localizedCopy("en-US", "commands.personal.config.stale_warning"),
-    );
-  });
-
   it("executes a newly constructed route from transported fingerprint without setup or snapshot state", async () => {
     const calls: string[] = [];
     const activeSpotlights = [makeSpotlight("123456789012345678", { personaIds: [1] })];
@@ -5527,36 +5139,6 @@ describe("Stable spotlight identity and destructive safety", () => {
           fp,
         },
       },
-      {
-        customId: buildPersonalConfigRouteId({
-          action: "model-range-page",
-          locale,
-          capability: "embedding",
-          provider: "fireworks",
-          chooserPage: 398,
-        }),
-        expected: {
-          action: "model-range-page",
-          locale,
-          capability: "embedding",
-          provider: "fireworks",
-          chooserPage: 398,
-        },
-      },
-      {
-        customId: buildPersonalConfigRouteId({
-          action: "fallbacks-range-page",
-          locale,
-          provider: "openrouter",
-          chooserPage: 398,
-        }),
-        expected: {
-          action: "fallbacks-range-page",
-          locale,
-          provider: "openrouter",
-          chooserPage: 398,
-        },
-      },
     ];
 
     for (const { customId, expected } of testCases) {
@@ -5727,18 +5309,19 @@ describe("Personal Spotlight auto-trigger and range chooser", () => {
     expect(json).toContain("25-30");
 
     const rangeCustomId = buildPersonalConfigRouteId({
-      action: "spot-set-auto-range",
+      action: "spot-set-auto-select",
       locale: "en-US",
       channelId: "123456789012345678",
       hours: 0,
       blockIdx: 0,
       mask,
       fp,
-      start: 24,
     });
 
     const rangeInteraction = makePersonalInteraction({
+      kind: "string-select",
       customId: rangeCustomId,
+      values: ["24"],
     });
 
     await route.execute({} as Client, rangeInteraction, requireRoute(rangeCustomId));
@@ -5746,75 +5329,6 @@ describe("Personal Spotlight auto-trigger and range chooser", () => {
     expect(modalOpenedWith).toHaveLength(6);
     expect(modalOpenedWith[0].id).toBe(124);
     expect(modalOpenedWith[5].id).toBe(129);
-  });
-
-  it("lands the retained model and fallback chooser routes on the expanded page selector", async () => {
-    const models = Array.from({ length: 150 }, (_, i) => ({
-      id: 200 + i,
-      name: `Model ${i + 1}`,
-    }));
-    const fallbackOptions = Array.from({ length: 150 }, (_, i) => ({
-      refKey: `llm:${200 + i}`,
-      label: `Model ${i + 1}`,
-    }));
-
-    const { dependencies } = makeDependencies([], {
-      loadAvailableModelsForCapability: async () => models,
-    });
-    const loaders = await import("@/utils/discord/interactions/personalConfigLoaders");
-    const fallbackLoaderSpy = spyOn(loaders, "loadFallbackSelectionOptions").mockResolvedValue(fallbackOptions);
-
-    const route = createPersonalConfigInteractionRoute(dependencies);
-
-    const modelPageCustomId = buildPersonalConfigRouteId({
-      action: "model-range-page",
-      locale: "en-US",
-      capability: "text",
-      provider: "openrouter",
-      chooserPage: 5,
-    });
-
-    const modelInteraction = makePersonalInteraction({
-      customId: modelPageCustomId,
-    });
-
-    try {
-      await route.execute({} as Client, modelInteraction, requireRoute(modelPageCustomId));
-      const modelJson = JSON.stringify(modelInteraction.edits.at(-1));
-      expect(modelJson).toContain(localizedCopy("en-US", "commands.personal.config.models_title"));
-      const modelComponents = collectComponents(modelInteraction.edits.at(-1));
-      const modelSelect = modelComponents.find((c) => c.customId?.includes(":model-provider-select:en-US:text"));
-      expect(modelSelect?.options?.map((option) => option.label)).toEqual([
-        "Using Server Default",
-        "OpenRouter (page 1)",
-        "OpenRouter (page 2)",
-        "OpenRouter (page 3)",
-        "OpenRouter (page 4)",
-        "OpenRouter (page 5)",
-        "OpenRouter (page 6)",
-      ]);
-
-      const fallbackPageCustomId = buildPersonalConfigRouteId({
-        action: "fallbacks-range-page",
-        locale: "en-US",
-        provider: "openrouter",
-        chooserPage: 5,
-      });
-
-      const fallbackInteraction = makePersonalInteraction({
-        customId: fallbackPageCustomId,
-      });
-
-      await route.execute({} as Client, fallbackInteraction, requireRoute(fallbackPageCustomId));
-      const fallbackJson = JSON.stringify(fallbackInteraction.edits.at(-1));
-      expect(fallbackJson).toContain(localizedCopy("en-US", "commands.personal.config.fallbacks_title"));
-      const fallbackComponents = collectComponents(fallbackInteraction.edits.at(-1));
-      const fallbackSelect = fallbackComponents.find((c) => c.customId?.includes(":fallbacks-provider-select:en-US"));
-      expect(fallbackSelect?.options).toHaveLength(7);
-      expect(fallbackSelect?.options?.at(-1)?.label).toBe("OpenRouter (page 7)");
-    } finally {
-      fallbackLoaderSpy.mockRestore();
-    }
   });
 
   it("navigates spotlight remove range page past 25 blocks (1250 spotlights)", async () => {

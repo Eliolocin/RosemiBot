@@ -169,8 +169,6 @@ export default {
       cooldown_active: `This server's managers have configured a cooldown. Please wait **{seconds}** seconds before using \`/generate voice-message\` again. This cooldown is shared with message triggers and other manual commands.`,
       channel_not_whitelisted: `This server has whitelist restrictions active. \`/generate voice-message\` can only be used in whitelisted channels by members with whitelisted roles, and only with personas allowed in this channel.`,
       persona_access_blocked: `Your current whitelist permissions and personal spotlight settings do not allow that persona to speak in this channel, so this voice message was not generated.`,
-      no_endpoint_title: `No Speech Endpoint`,
-      no_endpoint_description: `This server has no active speech endpoint and no ElevenLabs key saved. A server manager can configure one with \`/providers\`.`,
       no_api_key_title: `No Speech API Key`,
       no_api_key_description: `The active ElevenLabs speech endpoint has no saved credentials for this server. A server manager can add them with \`/providers\`.`,
       upload_invalid_format_title: `Unsupported Audio Format`,

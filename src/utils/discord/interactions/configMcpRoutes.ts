@@ -1,4 +1,4 @@
-import { MessageFlags, type ModalSubmitInteraction, type StringSelectMenuInteraction } from "discord.js";
+import { MessageFlags, type ModalSubmitInteraction } from "discord.js";
 import type { PanelReceipt } from "@/types/discord/panel";
 import type { ConfigPanelRoute } from "@/utils/discord/configPanelCatalog";
 import { CONFIG_MCP_PANEL_ROUTE_ADAPTER } from "@/utils/discord/configPanelCatalog";
@@ -23,12 +23,9 @@ import { formatMcpToolNamesForDiscord } from "@/utils/mcp/mcpToolSnapshot";
 import { localizer } from "@/utils/text/localizer";
 
 const MCP_ACTIONS = new Set<ConfigPanelRoute["action"]>([
-  "mcp-select",
   "mcp-range",
   "mcp-retry",
-  "mcp-refresh",
   "mcp-add-open",
-  "mcp-add-type",
   "mcp-add-submit",
   "mcp-set-enabled",
   "mcp-remove-prompt",
@@ -36,7 +33,7 @@ const MCP_ACTIONS = new Set<ConfigPanelRoute["action"]>([
   "mcp-remove-confirm",
 ]);
 
-const MCP_MODAL_OPEN_ACTIONS = new Set<ConfigPanelRoute["action"]>(["mcp-add-open", "mcp-add-type"]);
+const MCP_MODAL_OPEN_ACTIONS = new Set<ConfigPanelRoute["action"]>(["mcp-add-open"]);
 
 function receipt(locale: string, key: string, variables?: Record<string, string | number>): PanelReceipt {
   return {
@@ -180,25 +177,11 @@ export async function handleConfigMcpRoutes(
 ): Promise<boolean> {
   if (!MCP_ACTIONS.has(route.action) || !isConfigRouteAuthorized(route, actor)) return false;
 
-  if (route.action === "mcp-select") {
-    const selectedId = Number((interaction as StringSelectMenuInteraction).values[0]);
-    const read = await loadMcpRead(scope, dependencies);
-    await repaintMcp(
-      interaction,
-      route,
-      scope,
-      dependencies,
-      { kind: "collection", selectedId, rangeIndex: route.rangeIndex },
-      undefined,
-      read,
-    );
-    return true;
-  }
   if (route.action === "mcp-range") {
     await repaintMcp(interaction, route, scope, dependencies, { kind: "collection", rangeIndex: route.rangeIndex });
     return true;
   }
-  if (route.action === "mcp-retry" || route.action === "mcp-refresh") {
+  if (route.action === "mcp-retry") {
     const read = await loadMcpRead(scope, dependencies, true);
     await repaintMcp(
       interaction,

@@ -48,7 +48,6 @@ export const CONFIG_VOICES_MODAL_SUBMIT_ACTIONS = new Set<ConfigPanelRoute["acti
 
 const CONFIG_VOICES_ROUTE_ACTIONS = new Set<ConfigPanelRoute["action"]>([
   ...CONFIG_VOICES_MODAL_SUBMIT_ACTIONS,
-  "tts-turbo-set",
   "voice-sample-select",
   "voice-sample-page",
   "voice-sample-remove-view",
@@ -624,16 +623,6 @@ export async function handleConfigVoicesRoutes(context: ConfigVoicesRouteContext
       exaggeration: exaggeration as number,
       turboEnabled: turboValue === "on",
     };
-  } else if (route.action === "tts-turbo-set") {
-    try {
-      const current = speechConfigValues(await dependencies.loadSpeechConfig(scopeServerId(scope)));
-      values = { ...current, turboEnabled: route.enabled };
-    } catch (error) {
-      await log.error("Config Chatterbox turbo read failed", error, {
-        errorType: "InteractionRouteError",
-        metadata: { serverId: scopeServerId(scope) },
-      });
-    }
   }
 
   if (!values) {

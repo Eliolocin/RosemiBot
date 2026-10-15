@@ -70,12 +70,9 @@ export type ConfigPermissionsCapabilitiesAction = "tool-use" | "manage";
 export type ConfigPermissionsPrivacyAction = "privacy-bypass";
 export type ConfigPluginsContextAdditionsAction = "self-debug";
 export type ConfigMcpAction =
-  | "select"
   | "range"
   | "retry"
-  | "refresh"
   | "add-open"
-  | "add-type"
   | "add-submit"
   | "set-enabled"
   | "remove-prompt"
@@ -313,14 +310,12 @@ const PERSONA_GENERAL_ACTION_BY_ROUTE: Partial<Record<ConfigPanelRoute["action"]
 const PERSONA_COLLECTION_ACTION_BY_ROUTE: Partial<Record<ConfigPanelRoute["action"], ConfigPersonaCollectionAction>> = {
   "attribute-select": "attribute-edit",
   "attribute-page": "attribute-edit",
-  "attribute-add-open": "attribute-add",
   "attribute-add-submit": "attribute-add",
   "attribute-edit-open": "attribute-edit",
   "attribute-edit-submit": "attribute-edit",
   "attribute-remove": "attribute-remove",
   "dialogue-select": "dialogue-edit",
   "dialogue-page": "dialogue-edit",
-  "dialogue-add-open": "dialogue-add",
   "dialogue-add-submit": "dialogue-add",
   "dialogue-edit-open": "dialogue-edit",
   "dialogue-edit-submit": "dialogue-edit",
@@ -360,7 +355,6 @@ export const PERSONA_OVERRIDES_ACTION_BY_ROUTE: Partial<
   Record<ConfigPanelRoute["action"], ConfigPersonaOverridesAction>
 > = {
   "humanizer-open": "humanizer",
-  "humanizer-select": "humanizer",
   "humanizer-submit": "humanizer",
   "text-override-open": "text-override",
   "text-override-provider-select": "text-override",
@@ -376,7 +370,6 @@ export const PERSONA_SPRITES_ACTION_BY_ROUTE: Partial<Record<ConfigPanelRoute["a
     "sprite-page": "inspect",
     "sprite-remove-cancel": "inspect",
     "sprite-export": "export",
-    "sprite-add-open": "add",
     "sprite-add-submit": "add",
     "sprite-edit-open": "edit",
     "sprite-edit-submit": "edit",
@@ -499,12 +492,9 @@ export const PLUGINS_CONTEXT_ADDITIONS_ACTION_BY_ROUTE: Partial<
 };
 
 export const MCP_ACTION_BY_ROUTE: Partial<Record<ConfigPanelRoute["action"], ConfigMcpAction>> = {
-  "mcp-select": "select",
   "mcp-range": "range",
   "mcp-retry": "retry",
-  "mcp-refresh": "refresh",
   "mcp-add-open": "add-open",
-  "mcp-add-type": "add-type",
   "mcp-add-submit": "add-submit",
   "mcp-set-enabled": "set-enabled",
   "mcp-remove-prompt": "remove-prompt",
@@ -735,7 +725,6 @@ export const MODELS_PAGE_BY_ROUTE: Partial<Record<ConfigPanelRoute["action"], Co
   "nai-parameters-submit": "image",
   "tts-parameters-open": "voices",
   "tts-parameters-submit": "voices",
-  "tts-turbo-set": "voices",
   "voice-sample-select": "voices",
   "voice-sample-page": "voices",
   "voice-sample-add-open": "voices",
@@ -889,7 +878,6 @@ export function isConfigRouteAuthorized(route: ConfigPanelRoute, actor: ConfigAc
     case "category":
     case "page":
     case "retry":
-    case "refresh":
       return (
         resolveConfigCategoryState(route.category, actor) === "enabled" &&
         resolveConfigPageState(route.category, route.page, actor) !== "omitted"

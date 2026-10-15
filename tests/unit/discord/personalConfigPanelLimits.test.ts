@@ -334,10 +334,13 @@ describe("PersonalConfigPanel Limits & Boundary Sweeps", () => {
     expect(personaSelect).toBeDefined();
     expect(personaSelect?.options.length).toBe(25);
 
-    // Verify hidden count text display exists
-    const texts = collectTextDisplays(personaPayload);
-    const hasHiddenNotice = texts.some((content) => content.includes("1"));
-    expect(hasHiddenNotice).toBe(true);
+    expect(JSON.stringify(personaPayload)).toContain("personal-config:v2:persona-page:en-US:1000:1");
+
+    const secondPagePayload = buildPersonalConfigPanelPayload({ ...personaInput, personaRangeIndex: 1 });
+    const secondPageSelect = collectSelects(secondPagePayload.components).find((s) =>
+      s.customId?.includes("persona-select"),
+    );
+    expect(secondPageSelect?.options.map((option) => option.value)).toEqual(["1025"]);
   });
 
   it("conforms to Discord Components V2 protocol limits across provider count sweeps on Switch Models", () => {

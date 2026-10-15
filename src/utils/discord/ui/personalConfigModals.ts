@@ -790,8 +790,11 @@ export function buildFallbacksModal(
     const options = [
       {
         value: "__none__",
-        label: safeSelectOptionText(localizer(locale, "commands.personal.config.fallback_none_option"), 100),
-        description: safeSelectOptionText(localizer(locale, "commands.personal.config.fallback_none_desc"), 100),
+        label: safeSelectOptionText(localizer(locale, "commands.config.panel.fallback_clear_option"), 100),
+        description: safeSelectOptionText(
+          localizer(locale, "commands.config.panel.fallback_clear_option_description"),
+          100,
+        ),
         default: currentRefKey === null,
       },
       ...availableOptions.slice(0, PERSONAL_FALLBACK_PAGE_SIZE).map((opt) => ({

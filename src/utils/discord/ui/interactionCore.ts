@@ -106,10 +106,10 @@ export function hasRawModalAcknowledgement(
  * interaction's reply, a subsequent legacy `editReply({ embeds })` on the SAME
  * interaction would be rejected by Discord.
  *
- * The shared legacy sinks below ({@link replyInfoEmbed}, {@link replySummaryEmbed},
- * {@link replyPaginatedStatusPages}) consult this set and emit a V2-safe notice
- * instead. Mirrors the {@link rawModalAcknowledged} `WeakMap` pattern in this file:
- * interaction-keyed state that avoids an extra Discord fetch to read live flags.
+ * The shared legacy sinks below ({@link replyInfoEmbed}, {@link replySummaryEmbed})
+ * consult this set and emit a V2-safe notice instead. Mirrors the {@link rawModalAcknowledged}
+ * `WeakMap` pattern in this file: interaction-keyed state that avoids an extra Discord fetch to
+ * read live flags.
  */
 const componentsV2Reply = new WeakSet<ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction>();
 
@@ -3816,139 +3816,5 @@ async function runComponentsV2RangeSelectorModal(
     const endIndex = Math.min(startIndex + MODAL_OPTIONS_PER_PAGE, optionCount);
     const rangedOptions = sliceModalOptions(options, selectComponent, startIndex, endIndex);
     return promptWithRawModal(button, locale, rangedOptions);
-  }
-}
-
-// Custom ID suffixes for status pagination buttons (scoped per interaction ID)
-const STATUS_PREV_SUFFIX = "_status_prev";
-const STATUS_NEXT_SUFFIX = "_status_next";
-const STATUS_LABEL_SUFFIX = "_status_label";
-
-/**
- * Displays an array of summary embed pages with previous/next navigation buttons.
- * Used by the `/status` command to show paginated scoped status data.
- * If only one page is provided, shows it directly with no buttons.
- * On pagination timeout, removes buttons but preserves the last viewed embed.
- * @param pages - Ordered array of SummaryEmbedOptions pages to display
- * @param flags - Message flags (defaults to Ephemeral)
- */
-export async function replyPaginatedStatusPages(
-  interaction: ChatInputCommandInteraction | ButtonInteraction,
-  locale: string,
-  pages: SummaryEmbedOptions[],
-  flags:
-    | MessageFlags.SuppressEmbeds
-    | MessageFlags.Ephemeral
-    | MessageFlags.SuppressNotifications
-    | undefined = MessageFlags.Ephemeral,
-): Promise<void> {
-  if (pages.length === 0) return;
-
-  // Single page: skip navigation buttons entirely
-  if (pages.length === 1) {
-    await replySummaryEmbed(interaction, locale, pages[0], flags);
-    return;
-  }
-
-  // Components V2 collision guard. Legacy nav buttons + embeds cannot render onto a
-  //      V2 message. This co-occurrence (multi-page status after a V2 selector) is not
-  //      expected in practice, so degrade to the first page rendered as a V2 notice via
-  //      the guarded replySummaryEmbed rather than throw.
-  if (hasComponentsV2Reply(interaction)) {
-    log.warn("Paginated status pages targeting a Components V2 reply; degrading to first page only.");
-    await replySummaryEmbed(interaction, locale, pages[0], flags);
-    return;
-  }
-
-  let currentPage = 0;
-  const totalPages = pages.length;
-
-  // Scope button IDs to this interaction to avoid cross-user conflicts
-  const prevId = `${interaction.id}${STATUS_PREV_SUFFIX}`;
-  const nextId = `${interaction.id}${STATUS_NEXT_SUFFIX}`;
-  const labelId = `${interaction.id}${STATUS_LABEL_SUFFIX}`;
-
-  /** Builds the navigation button row for the given page index */
-  function buildNavRow(page: number): ActionRowBuilder<MessageActionRowComponentBuilder> {
-    return new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(prevId)
-        .setLabel(`◀ ${localizer(locale, "general.pagination.previous")}`)
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(page === 0),
-      new ButtonBuilder()
-        .setCustomId(labelId)
-        .setLabel(
-          localizer(locale, "general.pagination.page_info", {
-            current: page + 1,
-            total: totalPages,
-          }),
-        )
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(true),
-      new ButtonBuilder()
-        .setCustomId(nextId)
-        .setLabel(`${localizer(locale, "general.pagination.next")} ▶`)
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(page === totalPages - 1),
-    );
-  }
-
-  const embed = createSummaryEmbed(locale, pages[currentPage]);
-  const navRow = buildNavRow(currentPage);
-
-  let message: Message;
-  if (interaction.deferred || interaction.replied) {
-    message = await interaction.editReply({
-      embeds: [embed],
-      components: [navRow],
-    });
-  } else {
-    await interaction.reply({
-      embeds: [embed],
-      components: [navRow],
-      flags,
-    });
-    message = await interaction.fetchReply();
-  }
-
-  // Pagination loop: keep collecting button presses until timeout
-  try {
-    while (true) {
-      const buttonInteraction = await message.awaitMessageComponent({
-        filter: (i) => i.user.id === interaction.user.id && (i.customId === prevId || i.customId === nextId),
-        componentType: ComponentType.Button,
-        time: PAGINATION_TIMEOUT_MS,
-      });
-
-      // Advance or retreat page index based on which button was pressed
-      if (buttonInteraction.customId === prevId) {
-        currentPage = Math.max(0, currentPage - 1);
-      } else {
-        currentPage = Math.min(totalPages - 1, currentPage + 1);
-      }
-
-      const newEmbed = createSummaryEmbed(locale, pages[currentPage]);
-      const newNavRow = buildNavRow(currentPage);
-      await buttonInteraction.update({
-        embeds: [newEmbed],
-        components: [newNavRow],
-      });
-    }
-  } catch (error) {
-    log.warn("Status pagination collector ended", {
-      errorType: "PaginationCollectorEnded",
-      metadata: { userId: interaction.user.id, error },
-    });
-    // Timeout: strip buttons from the last viewed page to keep it clean
-    try {
-      const timeoutEmbed = createSummaryEmbed(locale, pages[currentPage]);
-      await interaction.editReply({ embeds: [timeoutEmbed], components: [] });
-    } catch (editError) {
-      log.warn("Failed to clear status pagination buttons after collector ended", {
-        errorType: "InteractionEditFailed",
-        metadata: { userId: interaction.user.id, error: editError },
-      });
-    }
   }
 }

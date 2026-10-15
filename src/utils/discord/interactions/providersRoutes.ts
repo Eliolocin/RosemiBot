@@ -504,7 +504,7 @@ function readUnavailableReceipt(locale: string): PanelReceipt {
 
 function rangeForEntry(scope: LoadedProviderPanelScope, entryId: string | undefined): number {
   const index = entryId ? scope.data.entries.findIndex((entry) => entry.id === entryId) : -1;
-  return index < 0 ? 0 : Math.floor(index / 23);
+  return index < 0 ? 0 : Math.floor(index / PROVIDERS_ENTRIES_PER_SELECTOR_PAGE);
 }
 
 function repaint(

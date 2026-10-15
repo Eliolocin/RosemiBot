@@ -374,61 +374,6 @@ export async function handlePersonalConfigModalOpen(
     return "handled";
   }
 
-  if (route.action === "fallbacks-range-open") {
-    if (!interaction.isButton()) throw new Error("fallbacks-range-open requires Button interaction");
-    const cachedScope = await dependencies.resolveScope(interaction, false);
-    if (!cachedScope) {
-      await interaction.reply({
-        content: localizer(route.locale, "commands.personal.config.unavailable"),
-        flags: MessageFlags.Ephemeral,
-      });
-      return "handled";
-    }
-
-    const rows = await dependencies.loadUserSavedProviders(cachedScope.userId);
-    const config = rows.find((r) => r.provider.toLowerCase() === route.provider.toLowerCase()) ?? null;
-    const eligibleProviders = await loadUserSavedProvidersForCapability(cachedScope.userId, "text");
-    if (!config || !eligibleProviders.some((row) => row.provider.toLowerCase() === route.provider.toLowerCase())) {
-      await interaction.reply({
-        content: localizer(route.locale, "commands.personal.config.unavailable"),
-        flags: MessageFlags.Ephemeral,
-      });
-      return "handled";
-    }
-
-    let availableOptions: Array<{ refKey: string; label: string }> = [];
-    try {
-      availableOptions = await loadFallbackSelectionOptions(cachedScope.userId, route.provider);
-    } catch (error) {
-      log.warn("Failed to load available models for fallbacks modal", { provider: route.provider, error });
-    }
-
-    const start = route.start;
-    if (
-      start % PERSONAL_FALLBACK_PAGE_SIZE !== 0 ||
-      (start >= availableOptions.length && availableOptions.length > 0) ||
-      availableOptions.length === 0
-    ) {
-      await interaction.reply({
-        content: localizer(route.locale, "commands.personal.config.unavailable"),
-        flags: MessageFlags.Ephemeral,
-      });
-      return "handled";
-    }
-
-    const slice = availableOptions.slice(start, start + PERSONAL_FALLBACK_PAGE_SIZE);
-    const nonce = dependencies.createNonce();
-    await dependencies.showFallbacksModal(
-      interaction,
-      route.locale,
-      nonce,
-      route.provider,
-      slice,
-      config.fallback_model_refs ?? [],
-    );
-    return "handled";
-  }
-
   if (route.action === "model-provider-select") {
     if (!interaction.isStringSelectMenu()) {
       throw new Error("model-provider-select requires StringSelectMenu interaction");
@@ -568,62 +513,6 @@ export async function handlePersonalConfigModalOpen(
     }
     // When the selected value is __server_default__, control falls through to the post-defer
     // handler to acknowledge with deferUpdate and update provider assignment.
-  }
-
-  if (route.action === "model-range-open") {
-    if (!interaction.isButton()) throw new Error("model-range-open requires Button interaction");
-    const cachedScope = await dependencies.resolveScope(interaction, false);
-    if (!cachedScope) {
-      await interaction.reply({
-        content: localizer(route.locale, "commands.personal.config.unavailable"),
-        flags: MessageFlags.Ephemeral,
-      });
-      return "handled";
-    }
-    const availableModels = await dependencies.loadAvailableModelsForCapability(
-      cachedScope.userId,
-      route.provider,
-      route.capability,
-      route.locale,
-    );
-    const start = route.start;
-    if (
-      start % PERSONAL_MODEL_PAGE_SIZE !== 0 ||
-      (start >= availableModels.length && availableModels.length > 0) ||
-      availableModels.length === 0
-    ) {
-      await interaction.reply({
-        content: localizer(route.locale, "commands.personal.config.unavailable"),
-        flags: MessageFlags.Ephemeral,
-      });
-      return "handled";
-    }
-
-    const rows = await dependencies.loadUserSavedProviders(cachedScope.userId);
-    const currentConfig = rows.find((r) => r.provider.toLowerCase() === route.provider.toLowerCase());
-    let currentModelId: number | null = null;
-    if (currentConfig) {
-      if (route.capability === "text") currentModelId = currentConfig.llm_id ?? null;
-      else if (route.capability === "vision") currentModelId = currentConfig.vision_llm_id ?? null;
-      else if (route.capability === "embedding") currentModelId = currentConfig.embedding_model_id ?? null;
-      else if (route.capability === "image") currentModelId = currentConfig.diffusion_model_id ?? null;
-      else if (route.capability === "image_nai") currentModelId = currentConfig.nai_diffusion_model_id ?? null;
-      else if (route.capability === "video") currentModelId = currentConfig.video_model_id ?? null;
-      else if (route.capability === "speech_design") currentModelId = currentConfig.speech_design_model_id ?? null;
-      else if (route.capability === "speech_clone") currentModelId = currentConfig.speech_clone_model_id ?? null;
-    }
-
-    const nonce = dependencies.createNonce();
-    await dependencies.showModelSelectModal(
-      interaction,
-      route.locale,
-      nonce,
-      route.capability,
-      route.provider,
-      availableModels.slice(start, start + PERSONAL_MODEL_PAGE_SIZE),
-      currentModelId,
-    );
-    return "handled";
   }
 
   if (route.action === "impersonation-open") {
@@ -870,49 +759,6 @@ export async function handlePersonalConfigModalOpen(
     return "handled";
   }
 
-  if (route.action === "spot-set-auto-range") {
-    if (!interaction.isButton()) throw new Error("spot-set-auto-range requires Button interaction");
-    const cachedScope = await dependencies.resolveScope(interaction, false);
-    if (!cachedScope?.guildId || !cachedScope.internalServerId) {
-      await interaction.reply({
-        content: localizer(route.locale, "commands.personal.config.spotlight_guild_only_detail"),
-        flags: MessageFlags.Ephemeral,
-      });
-      return "handled";
-    }
-    const personas = await dependencies.loadGuildPersonas(cachedScope.guildId);
-    const expectedFp = computeSpotlightSetFingerprint(cachedScope.guildId, cachedScope.userDiscId, personas);
-    if (expectedFp !== route.fp) {
-      await interaction.reply({
-        content: localizer(route.locale, "commands.personal.config.stale_warning"),
-        flags: MessageFlags.Ephemeral,
-      });
-      return "handled";
-    }
-    const resolvedRange = resolveSpotlightBlockSelection(personas, route.blockIdx, route.mask);
-    if (!resolvedRange) {
-      await interaction.reply({
-        content: localizer(route.locale, "commands.personal.config.stale_warning"),
-        flags: MessageFlags.Ephemeral,
-      });
-      return "handled";
-    }
-    const slice = resolvedRange.selected.slice(route.start, route.start + SPOTLIGHT_AUTO_TRIGGER_PAGE_SIZE);
-    const nonce = dependencies.createNonce();
-    await dependencies.showSpotlightAutoTriggerModal(
-      interaction,
-      route.locale,
-      nonce,
-      route.channelId,
-      route.hours,
-      route.blockIdx,
-      route.mask,
-      route.fp,
-      slice,
-    );
-    return "handled";
-  }
-
   if (route.action === "spot-set-auto-select") {
     if (!interaction.isStringSelectMenu()) {
       throw new Error("spot-set-auto-select requires StringSelectMenu interaction");
@@ -1018,42 +864,6 @@ export async function handlePersonalConfigModalOpen(
       return "handled";
     }
     // Above the single-page remove modal limit, fall through to the post-defer range chooser.
-  }
-
-  if (route.action === "spot-rem-range") {
-    if (!interaction.isButton()) throw new Error("spot-rem-range requires Button interaction");
-    const cachedScope = await dependencies.resolveScope(interaction, false);
-    if (!cachedScope?.guildId || !cachedScope.internalServerId) {
-      await interaction.reply({
-        content: localizer(route.locale, "commands.personal.config.spotlight_guild_only_detail"),
-        flags: MessageFlags.Ephemeral,
-      });
-      return "handled";
-    }
-    const allActive = await dependencies.loadActiveSpotlights(cachedScope.internalServerId, cachedScope.userId);
-    const expectedFp = computeSpotlightRemoveFingerprint(cachedScope.guildId, cachedScope.userDiscId, allActive);
-    if (expectedFp !== route.fp) {
-      await interaction.reply({
-        content: localizer(route.locale, "commands.personal.config.stale_warning"),
-        flags: MessageFlags.Ephemeral,
-      });
-      return "handled";
-    }
-    const slice = allActive.slice(route.start, route.start + SPOTLIGHT_REMOVE_PAGE_SIZE);
-    const personas = await dependencies.loadGuildPersonas(cachedScope.guildId);
-    const guildChannels = interaction.guild?.channels.cache;
-    const nonce = dependencies.createNonce();
-    await dependencies.showSpotlightRemoveModal(
-      interaction,
-      route.locale,
-      nonce,
-      route.start,
-      route.fp,
-      slice,
-      personas,
-      guildChannels,
-    );
-    return "handled";
   }
 
   if (route.action === "spotlight-remove-select") {

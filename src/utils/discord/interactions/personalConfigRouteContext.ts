@@ -241,6 +241,7 @@ export interface PersonalConfigRepaintOptions {
   category: PersonalConfigCategory;
   page: PersonalConfigPage;
   selectedLineageId?: number;
+  personaRangeIndex?: number;
   panelReceipt?: PanelReceipt;
   dependencies: PersonalConfigRouteDependencies;
   selectedCapability?: PersonalConfigManagedCapability;
@@ -264,6 +265,7 @@ export async function repaint(
     category,
     page,
     selectedLineageId,
+    personaRangeIndex,
     panelReceipt,
     dependencies,
     selectedCapability,
@@ -387,6 +389,7 @@ export async function repaint(
           personas: scope.personas,
           guildId: scope.guildId,
           selectedLineageId,
+          personaRangeIndex,
           selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
           userAvatarUrl,
           personaNamingPreference: personaPref,

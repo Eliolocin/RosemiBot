@@ -1130,11 +1130,11 @@ describe("Persona Advanced and Overrides component budgeting", () => {
     }
   });
 
-  it("keeps Overrides at 29 components with a receipt and rejects an extra row", () => {
+  it("keeps Overrides at 30 components with a receipt and rejects an extra row", () => {
     const payload = buildSplitPayload("overrides", true);
     const validation = validateComponentsV2MessageLimits(payload);
     expect(validation.valid, JSON.stringify(validation.violations)).toBe(true);
-    expect(countRenderedComponents(payload)).toBe(29);
+    expect(countRenderedComponents(payload)).toBe(30);
     const payloadWithExtraRow = {
       ...payload,
       components: [
@@ -1152,7 +1152,7 @@ describe("Persona Advanced and Overrides component budgeting", () => {
         },
       ],
     };
-    expect(countRenderedComponents(payloadWithExtraRow)).toBeGreaterThan(29);
+    expect(countRenderedComponents(payloadWithExtraRow)).toBeGreaterThan(30);
   });
 
   for (const page of ["advanced", "overrides"] as const) {
