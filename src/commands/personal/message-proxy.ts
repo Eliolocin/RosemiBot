@@ -25,15 +25,15 @@ function formatDelaySeconds(waitMs: number): string {
 }
 
 function serviceLocaleKey(serviceId: MessageProxyServiceSelection): string {
-  if (serviceId === MESSAGE_PROXY_DISABLED_SERVICE_ID) return "none_option";
+  if (serviceId === MESSAGE_PROXY_DISABLED_SERVICE_ID) return "commands.personal.message-proxy.none_option";
   return (
     MESSAGE_PROXY_SERVICE_DESCRIPTORS.find((descriptor) => descriptor.serviceId === serviceId)?.settingsLocaleKey ??
-    "none_option"
+    "commands.personal.message-proxy.none_option"
   );
 }
 
 function selectionLabel(locale: string, serviceId: MessageProxyServiceSelection, instanceName: string | null): string {
-  const service = localizer(locale, `commands.personal.message-proxy.${serviceLocaleKey(serviceId)}`);
+  const service = localizer(locale, serviceLocaleKey(serviceId));
   return instanceName ? `${service} (${instanceName})` : service;
 }
 
@@ -54,7 +54,7 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
         .setRequired(true)
         .addChoices(
           ...getMessageProxyServiceChoices().map((serviceId) => ({
-            name: localizer("en-US", `commands.personal.message-proxy.${serviceLocaleKey(serviceId)}`),
+            name: localizer("en-US", serviceLocaleKey(serviceId)),
             value: serviceId,
           })),
         ),

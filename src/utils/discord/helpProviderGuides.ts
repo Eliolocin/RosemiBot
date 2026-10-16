@@ -53,38 +53,175 @@ export interface ProviderGuideDefinition {
   docsPath: DocsPath;
 }
 
-function providerGuide(
-  id: Exclude<HelpProviderId, "elevenlabs">,
-  sectionStems: readonly string[],
-  footer = true,
-): ProviderGuideDefinition {
-  const prefix = `commands.help.api-key.${id}`;
-  return {
-    id,
-    labelKey: `commands.help.api-key.provider_choice_${id}`,
-    pickerDescriptionKey: `commands.help.api-key.provider_description_${id}`,
-    titleKey: `${prefix}_title`,
-    descriptionKey: `${prefix}_description`,
-    sections: sectionStems.map((stem) => ({
-      titleKey: `${prefix}_${stem}_title`,
-      bodyKey: `${prefix}_${stem}_description`,
-    })),
-    ...(footer ? { footerKey: `${prefix}_footer` } : {}),
-    docsPath: id === "custom" ? DOCS_PATHS.CUSTOM_ENDPOINTS : DOCS_PATHS.API_KEYS,
-  };
-}
-
 const PROVIDER_GUIDES: readonly ProviderGuideDefinition[] = [
-  providerGuide("google", ["getting_key"]),
-  providerGuide("openrouter", ["getting_key", "important"]),
-  providerGuide("deepseek", ["getting_key"]),
-  providerGuide("novelai", ["getting_key"]),
-  providerGuide("nvidia", ["getting_key", "important"]),
-  providerGuide("zai", ["getting_key", "important"]),
-  providerGuide("vertexexpress", ["getting_key", "important"]),
-  providerGuide("vertex", ["getting_key", "important"]),
-  providerGuide("custom", [], false),
-  providerGuide("brave", ["getting_key", "important"]),
+  {
+    id: "google",
+    labelKey: "commands.help.api-key.provider_choice_google",
+    pickerDescriptionKey: "commands.help.api-key.provider_description_google",
+    titleKey: "commands.help.api-key.google_title",
+    descriptionKey: "commands.help.api-key.google_description",
+    sections: [
+      {
+        titleKey: "commands.help.api-key.google_getting_key_title",
+        bodyKey: "commands.help.api-key.google_getting_key_description",
+      },
+    ],
+    footerKey: "commands.help.api-key.google_footer",
+    docsPath: DOCS_PATHS.API_KEYS,
+  },
+  {
+    id: "openrouter",
+    labelKey: "commands.help.api-key.provider_choice_openrouter",
+    pickerDescriptionKey: "commands.help.api-key.provider_description_openrouter",
+    titleKey: "commands.help.api-key.openrouter_title",
+    descriptionKey: "commands.help.api-key.openrouter_description",
+    sections: [
+      {
+        titleKey: "commands.help.api-key.openrouter_getting_key_title",
+        bodyKey: "commands.help.api-key.openrouter_getting_key_description",
+      },
+      {
+        titleKey: "commands.help.api-key.openrouter_important_title",
+        bodyKey: "commands.help.api-key.openrouter_important_description",
+      },
+    ],
+    footerKey: "commands.help.api-key.openrouter_footer",
+    docsPath: DOCS_PATHS.API_KEYS,
+  },
+  {
+    id: "deepseek",
+    labelKey: "commands.help.api-key.provider_choice_deepseek",
+    pickerDescriptionKey: "commands.help.api-key.provider_description_deepseek",
+    titleKey: "commands.help.api-key.deepseek_title",
+    descriptionKey: "commands.help.api-key.deepseek_description",
+    sections: [
+      {
+        titleKey: "commands.help.api-key.deepseek_getting_key_title",
+        bodyKey: "commands.help.api-key.deepseek_getting_key_description",
+      },
+    ],
+    footerKey: "commands.help.api-key.deepseek_footer",
+    docsPath: DOCS_PATHS.API_KEYS,
+  },
+  {
+    id: "novelai",
+    labelKey: "commands.help.api-key.provider_choice_novelai",
+    pickerDescriptionKey: "commands.help.api-key.provider_description_novelai",
+    titleKey: "commands.help.api-key.novelai_title",
+    descriptionKey: "commands.help.api-key.novelai_description",
+    sections: [
+      {
+        titleKey: "commands.help.api-key.novelai_getting_key_title",
+        bodyKey: "commands.help.api-key.novelai_getting_key_description",
+      },
+    ],
+    footerKey: "commands.help.api-key.novelai_footer",
+    docsPath: DOCS_PATHS.API_KEYS,
+  },
+  {
+    id: "nvidia",
+    labelKey: "commands.help.api-key.provider_choice_nvidia",
+    pickerDescriptionKey: "commands.help.api-key.provider_description_nvidia",
+    titleKey: "commands.help.api-key.nvidia_title",
+    descriptionKey: "commands.help.api-key.nvidia_description",
+    sections: [
+      {
+        titleKey: "commands.help.api-key.nvidia_getting_key_title",
+        bodyKey: "commands.help.api-key.nvidia_getting_key_description",
+      },
+      {
+        titleKey: "commands.help.api-key.nvidia_important_title",
+        bodyKey: "commands.help.api-key.nvidia_important_description",
+      },
+    ],
+    footerKey: "commands.help.api-key.nvidia_footer",
+    docsPath: DOCS_PATHS.API_KEYS,
+  },
+  {
+    id: "zai",
+    labelKey: "commands.help.api-key.provider_choice_zai",
+    pickerDescriptionKey: "commands.help.api-key.provider_description_zai",
+    titleKey: "commands.help.api-key.zai_title",
+    descriptionKey: "commands.help.api-key.zai_description",
+    sections: [
+      {
+        titleKey: "commands.help.api-key.zai_getting_key_title",
+        bodyKey: "commands.help.api-key.zai_getting_key_description",
+      },
+      {
+        titleKey: "commands.help.api-key.zai_important_title",
+        bodyKey: "commands.help.api-key.zai_important_description",
+      },
+    ],
+    footerKey: "commands.help.api-key.zai_footer",
+    docsPath: DOCS_PATHS.API_KEYS,
+  },
+  {
+    id: "vertexexpress",
+    labelKey: "commands.help.api-key.provider_choice_vertexexpress",
+    pickerDescriptionKey: "commands.help.api-key.provider_description_vertexexpress",
+    titleKey: "commands.help.api-key.vertexexpress_title",
+    descriptionKey: "commands.help.api-key.vertexexpress_description",
+    sections: [
+      {
+        titleKey: "commands.help.api-key.vertexexpress_getting_key_title",
+        bodyKey: "commands.help.api-key.vertexexpress_getting_key_description",
+      },
+      {
+        titleKey: "commands.help.api-key.vertexexpress_important_title",
+        bodyKey: "commands.help.api-key.vertexexpress_important_description",
+      },
+    ],
+    footerKey: "commands.help.api-key.vertexexpress_footer",
+    docsPath: DOCS_PATHS.API_KEYS,
+  },
+  {
+    id: "vertex",
+    labelKey: "commands.help.api-key.provider_choice_vertex",
+    pickerDescriptionKey: "commands.help.api-key.provider_description_vertex",
+    titleKey: "commands.help.api-key.vertex_title",
+    descriptionKey: "commands.help.api-key.vertex_description",
+    sections: [
+      {
+        titleKey: "commands.help.api-key.vertex_getting_key_title",
+        bodyKey: "commands.help.api-key.vertex_getting_key_description",
+      },
+      {
+        titleKey: "commands.help.api-key.vertex_important_title",
+        bodyKey: "commands.help.api-key.vertex_important_description",
+      },
+    ],
+    footerKey: "commands.help.api-key.vertex_footer",
+    docsPath: DOCS_PATHS.API_KEYS,
+  },
+  {
+    id: "custom",
+    labelKey: "commands.help.api-key.provider_choice_custom",
+    pickerDescriptionKey: "commands.help.api-key.provider_description_custom",
+    titleKey: "commands.help.api-key.custom_title",
+    descriptionKey: "commands.help.api-key.custom_description",
+    sections: [],
+    docsPath: DOCS_PATHS.CUSTOM_ENDPOINTS,
+  },
+  {
+    id: "brave",
+    labelKey: "commands.help.api-key.provider_choice_brave",
+    pickerDescriptionKey: "commands.help.api-key.provider_description_brave",
+    titleKey: "commands.help.api-key.brave_title",
+    descriptionKey: "commands.help.api-key.brave_description",
+    sections: [
+      {
+        titleKey: "commands.help.api-key.brave_getting_key_title",
+        bodyKey: "commands.help.api-key.brave_getting_key_description",
+      },
+      {
+        titleKey: "commands.help.api-key.brave_important_title",
+        bodyKey: "commands.help.api-key.brave_important_description",
+      },
+    ],
+    footerKey: "commands.help.api-key.brave_footer",
+    docsPath: DOCS_PATHS.API_KEYS,
+  },
   {
     id: "elevenlabs",
     labelKey: "commands.help.api-key.provider_choice_elevenlabs",

@@ -782,7 +782,7 @@ export class OpenAICompatibleStreamAdapter extends BaseStreamAdapter {
     return createOpenAICompatibleErrorDescription(error, locale, {
       localeNamespace: this.options.localeNamespace,
       fallbackMessage: localizer(locale, `${this.options.localeNamespace}.unknown_default_message`),
-      connectionRefusedMessage: localizer(locale, `${this.options.localeNamespace}.connection_refused`),
+      connectionRefusedMessage: localizer(locale, "genai.stream.connection_refused_description"),
     });
   }
 

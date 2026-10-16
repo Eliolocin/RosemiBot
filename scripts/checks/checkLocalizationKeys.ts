@@ -1369,23 +1369,9 @@ function extractPipeEncodedLocaleKeys(content: string, availableKeys: Set<string
  * their parent command roots so retired command surfaces remain visible in the report.
  */
 const DYNAMIC_KEY_PATTERNS = [
-  /^genai\./,
-  /^commands\.mcps\./,
-  /^commands\.choices\./,
-  /^commands\.config\.cooldown\.type\.choice_/,
-  /^commands\.help\.api-key\./,
+  /^genai\.(?:anthropic|google|openrouter|custom|deepseek|nvidia|zai)\.[a-zA-Z0-9_]+_default_message$/,
   /^commands\.data\.import\.error_/,
   /^commands\.persona\.import\.error_/,
-  /^commands\.export\.(?:personal\.)?memories\.scope_choice_/,
-  /^commands\.generate\.voice-message\.(?:backend_|modal\.)/,
-  /^commands\.(?:personal\.)?memories\./,
-  /^commands\.personal\.config\.mode_/,
-  /^commands\.personal\.deliberatetriggermode\./,
-  /^commands\.personal\.deliberatetoolmode\./,
-  /^commands\.personal\.profile\.about\.style_/,
-  /^tools\.search\.category_labels\./,
-  /^tools\.user_block\./,
-  /^tools\.user_info_update\.field_/,
   /^tools\.intent_packs\./,
   /^general\.text_preview\./,
 ];
@@ -1395,24 +1381,10 @@ const DYNAMIC_EXACT_KEYS = new Set([
   "general.duration.under_a_minute",
   "general.defaults.base_trigger_words",
   "commands.legal.license-only.description",
-  "commands.config.cooldown.type.choice_strict_server_wide",
 ]);
 
 function isRuntimeDerivedKey(key: string): boolean {
   return DYNAMIC_EXACT_KEYS.has(key) || DYNAMIC_KEY_PATTERNS.some((pattern) => pattern.test(key));
-}
-
-function extractConstructedLocaleKeys(content: string, availableKeys: Set<string>): string[] {
-  const keys: string[] = [];
-  const prefixPattern = /`((?:commands|general|events|genai|reminders|tools|matrix)\.[a-zA-Z0-9_.-]+)\$\{[^}]+\}(`)?/g;
-  for (const match of content.matchAll(prefixPattern)) {
-    const prefix = match[1];
-    if (prefix.split(".").filter(Boolean).length < 3) continue;
-    for (const key of availableKeys) {
-      if (key.startsWith(prefix)) keys.push(key);
-    }
-  }
-  return keys;
 }
 
 /**
@@ -1588,7 +1560,7 @@ async function extractReferencedKeys(availableKeys: Set<string>): Promise<Map<st
     /localizer\s*\(\s*(?:"[^"]*"|'[^']*'|\w+)\s*,\s*["']([a-zA-Z0-9._-]+)["']/g,
     // Quoted strings that look like localization keys (dot-separated paths).
     // Allow 2-segment keys like "general.cancel" in addition to deeper paths.
-    /["']([a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z][a-zA-Z0-9_-]*){1,})["']/g,
+    /["']([a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+){1,})["']/g,
     /[?:]\s*["']([a-zA-Z0-9._-]+)["']/g,
   ];
 
@@ -1650,11 +1622,6 @@ async function extractReferencedKeys(availableKeys: Set<string>): Promise<Map<st
           if (!referencedKeys.has(key)) {
             referencedKeys.set(key, new Set());
           }
-          referencedKeys.get(key)?.add(file);
-        }
-
-        for (const key of extractConstructedLocaleKeys(content, availableKeys)) {
-          if (!referencedKeys.has(key)) referencedKeys.set(key, new Set());
           referencedKeys.get(key)?.add(file);
         }
 

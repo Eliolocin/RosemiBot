@@ -182,11 +182,30 @@ async function loadForModal(interaction: ExpressionInteraction, deps: Expression
   }
 }
 
+const ERROR_DETAIL_KEYS: Record<ExpressionWriteError["code"] | ExpressionMediaError["code"] | "write", string> = {
+  stale: "commands.expressions.manage.error_stale",
+  collision: "commands.expressions.manage.error_collision",
+  invalid: "commands.expressions.manage.error_invalid",
+  scope: "commands.expressions.manage.error_scope",
+  limit: "commands.expressions.manage.error_limit",
+  sources: "commands.expressions.manage.error_sources",
+  files: "commands.expressions.manage.error_files",
+  size: "commands.expressions.manage.error_size",
+  url: "commands.expressions.manage.error_url",
+  download: "commands.expressions.manage.error_download",
+  format: "commands.expressions.manage.error_format",
+  encoding: "commands.expressions.manage.error_encoding",
+  write: "commands.expressions.manage.error_write",
+};
+
 function receipt(locale: string, key: string, success = false): PanelReceipt {
   return {
     tone: success ? "success" : "error",
-    heading: localizer(locale, `commands.expressions.manage.${success ? "saved_title" : "error_title"}`),
-    detail: localizer(locale, `commands.expressions.manage.${key}`, { limit: MAX_CUSTOM_EXPRESSIONS_PER_SERVER }),
+    heading: localizer(
+      locale,
+      success ? "commands.expressions.manage.saved_title" : "commands.expressions.manage.error_title",
+    ),
+    detail: localizer(locale, key, { limit: MAX_CUSTOM_EXPRESSIONS_PER_SERVER }),
   };
 }
 
@@ -357,7 +376,13 @@ export function createExpressionsInteractionRoute(
       if (route.action === "select" && !opensModal) {
         const visible = resolveExpressionsSelection(data, route.category, route.page, route.entityId).visible;
         if (!visible.some((item) => item.id === selectedValue))
-          return repaint(interaction, route, data, deps, receipt(route.locale, "error_stale"));
+          return repaint(
+            interaction,
+            route,
+            data,
+            deps,
+            receipt(route.locale, "commands.expressions.manage.error_stale"),
+          );
         route.entityId = selectedValue ?? "none";
       }
       const selected = data[route.category].find((item) => item.id === route.entityId);
@@ -406,7 +431,13 @@ export function createExpressionsInteractionRoute(
         return repaint(interaction, route, data, deps);
       if (route.action === "delete") {
         if (!selected?.custom || selected.fp !== route.fp)
-          return repaint(interaction, route, data, deps, receipt(route.locale, "error_stale"));
+          return repaint(
+            interaction,
+            route,
+            data,
+            deps,
+            receipt(route.locale, "commands.expressions.manage.error_stale"),
+          );
         return repaint(interaction, route, data, deps, undefined, true);
       }
       let newMedia: CustomExpressionMedia | null = null;
@@ -485,7 +516,11 @@ export function createExpressionsInteractionRoute(
         void deps.recordAction({ action, serverId: data.serverId, userDiscId: interaction.user.id });
         feedback = receipt(
           route.locale,
-          route.action === "confirm" ? "deleted_detail" : route.action === "clear" ? "cleared_detail" : "saved_detail",
+          route.action === "confirm"
+            ? "commands.expressions.manage.deleted_detail"
+            : route.action === "clear"
+              ? "commands.expressions.manage.cleared_detail"
+              : "commands.expressions.manage.saved_detail",
           true,
         );
       } catch (error) {
@@ -497,7 +532,7 @@ export function createExpressionsInteractionRoute(
           serverId: data.serverId,
           metadata: { expressionId: route.entityId, code },
         });
-        feedback = receipt(route.locale, `error_${code}`);
+        feedback = receipt(route.locale, ERROR_DETAIL_KEYS[code]);
       }
       const refreshed = await deps.load(interaction, false).catch(() => null);
       if (!refreshed) {

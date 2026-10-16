@@ -1480,7 +1480,7 @@ export class GenerateImageTool extends BaseTool {
       ) {
         return {
           success: false,
-          error: getReadableError("errors.google.400_billing_default_message", "Billing is required for this service"),
+          error: getReadableError("genai.google.400_billing_default_message", "Billing is required for this service"),
         };
       }
 

@@ -154,8 +154,6 @@ export default {
       bot_user_fallback: `已配置的 Matrix bot 账号`,
     },
     "api-key": {
-      description: `了解如何为 AI 提供方设置 API 密钥`,
-      provider_description: `选择你的 AI 提供方`,
       provider_choice_brave: `Brave Search`,
       provider_choice_google: `Google Gemini（推荐，免费）`,
       provider_choice_deepseek: `DeepSeek`,

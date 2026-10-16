@@ -154,8 +154,6 @@ export default {
       bot_user_fallback: `la cuenta de bot de Matrix configurada`,
     },
     "api-key": {
-      description: `Aprende a configurar claves de API para proveedores de IA`,
-      provider_description: `Elige tu proveedor de IA`,
       provider_choice_brave: `Brave Search`,
       provider_choice_google: `Google Gemini (Recomendado, Gratis)`,
       provider_choice_deepseek: `DeepSeek`,

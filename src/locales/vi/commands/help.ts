@@ -154,8 +154,6 @@ export default {
       bot_user_fallback: `tài khoản bot Matrix đã cấu hình`,
     },
     "api-key": {
-      description: `Tìm hiểu cách thiết lập API key cho các nhà cung cấp AI`,
-      provider_description: `Chọn nhà cung cấp AI của bạn`,
       provider_choice_brave: `Brave Search`,
       provider_choice_google: `Google Gemini (Khuyên dùng, Miễn phí)`,
       provider_choice_deepseek: `DeepSeek`,

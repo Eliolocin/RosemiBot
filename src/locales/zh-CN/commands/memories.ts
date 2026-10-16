@@ -1,7 +1,6 @@
 export default {
   memories: {
     description: `查看和管理服务器记忆、文档和短期记忆。`,
-    title: `服务器记忆`,
     category_memories: `记忆`,
     category_documents: `文档`,
     category_stm: `短期`,

@@ -14,7 +14,6 @@ export default {
     tool_error_loop_title: `工具错误循环`,
     tool_error_loop_description: `我反复遇到工具错误，没能完成这次请求。试着换个说法，如果一直这样请用 \`/refresh\`。`,
     fallback_used_title: `已使用备用模型`,
-    fallback_used_description: `这次用的是 \`{success_model}\`，而不是 {chain}`,
     fallback_used_details_description: `备用槽位 {slot} 用 \`{success_model}\` 给出了回复，此前有这几次失败：
 {failure_list}`,
     fallback_used_failure_line: `{index}. {model} 报错：{error_detail}`,
@@ -26,7 +25,6 @@ export default {
       source_attached: `这张表格太长，没法直接显示，所以用文件发给你：`,
     },
     no_response_title: `没有回复`,
-    no_response_description: `我没有回复，可能是 AI 给了空回复或者超时了。`,
     log_channel_chat_notice_title: `日志频道不开放聊天`,
     log_channel_chat_notice_description: `这个频道被设为日志频道，所以我不会在这里回复消息。如果想在这里聊天，请到 \`/config\` > 频道 > 日志 清除或更改设置。`,
     thought_log: {
@@ -107,7 +105,6 @@ export default {
       google_credential_type: `这看起来像 OAuth 或服务账号令牌。\`google\` 提供方需要来自 [Google AI Studio](https://aistudio.google.com/apikey) 的普通 API 密钥；Google Cloud 凭据请改用 \`vertex\` 提供方。`,
       openrouter_privacy_settings: `到 [OpenRouter 隐私设置](https://openrouter.ai/settings/privacy)调整你的「Data Policy」，允许这个模型，或者换一个模型。`,
       openrouter_fund_account: `往你的 OpenRouter 账户充值至少 10 美元额度，才能解锁每天 1000 次免费模型请求。`,
-      reduce_context_length: `试着缩短你的消息，或者用 \`/refresh\` 清空上下文。`,
       reduce_output_tokens: `用 \`/config\` > 模型 > 文本采样器与参数 调低 **最大输出词元数**，给聊天记录让出空间。`,
       reduce_output_tokens_personal: `用 \`/personal config\` 调低 **最大输出词元数**，给聊天记录让出空间。`,
       openrouter_add_credits: `到 [OpenRouter 额度](https://openrouter.ai/settings/credits)充值，或者用 \`/config\` > 模型 > 文本采样器与参数 调低 **最大输出词元数**。`,
@@ -147,7 +144,6 @@ export default {
     },
     vertexexpress: {
       "403_predict_permission_message": `这把密钥没法调用 Vertex AI Express 模型。请改用 Express 模式的密钥，或者改用独立的 \`vertex\` 提供方来跑完整的 Google Cloud 项目。`,
-      unknown_default_message: `发生了意料之外的错误`,
     },
     novelai: {
       "400_default_message": `请求格式或参数无效。请确认你输入了正确的 API 密钥。`,

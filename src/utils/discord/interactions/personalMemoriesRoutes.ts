@@ -389,19 +389,82 @@ const ERROR_RECEIPT_KEYS = new Set([
   "content_too_long",
   "limit_reached",
   "write_failed",
-  // The first two reach receipt() through a ternary rather than a string literal, so listing them
-  // here is also what makes the composed-key guard test see them.
   "batch_file_invalid",
   "batch_file_too_large",
   "batch_all_duplicates",
   "batch_limit_reached",
 ]);
 
-function receipt(locale: string, key: string, variables?: Record<string, string | number>): PanelReceipt {
+const RECEIPT_LOCALE_KEYS = {
+  privacy_blocked_error: {
+    heading: "commands.personal.memories.privacy_blocked_error_heading",
+    detail: "commands.personal.memories.privacy_blocked_error_detail",
+  },
+  empty_content: {
+    heading: "commands.personal.memories.empty_content_heading",
+    detail: "commands.personal.memories.empty_content_detail",
+  },
+  content_too_long: {
+    heading: "commands.personal.memories.content_too_long_heading",
+    detail: "commands.personal.memories.content_too_long_detail",
+  },
+  limit_reached: {
+    heading: "commands.personal.memories.limit_reached_heading",
+    detail: "commands.personal.memories.limit_reached_detail",
+  },
+  write_failed: {
+    heading: "commands.personal.memories.write_failed_heading",
+    detail: "commands.personal.memories.write_failed_detail",
+  },
+  batch_file_invalid: {
+    heading: "commands.personal.memories.batch_file_invalid_heading",
+    detail: "commands.personal.memories.batch_file_invalid_detail",
+  },
+  batch_file_too_large: {
+    heading: "commands.personal.memories.batch_file_too_large_heading",
+    detail: "commands.personal.memories.batch_file_too_large_detail",
+  },
+  batch_all_duplicates: {
+    heading: "commands.personal.memories.batch_all_duplicates_heading",
+    detail: "commands.personal.memories.batch_all_duplicates_detail",
+  },
+  batch_limit_reached: {
+    heading: "commands.personal.memories.batch_limit_reached_heading",
+    detail: "commands.personal.memories.batch_limit_reached_detail",
+  },
+  batch_added: {
+    heading: "commands.personal.memories.batch_added_heading",
+    detail: "commands.personal.memories.batch_added_detail",
+  },
+  added: {
+    heading: "commands.personal.memories.added_heading",
+    detail: "commands.personal.memories.added_detail",
+  },
+  edited: {
+    heading: "commands.personal.memories.edited_heading",
+    detail: "commands.personal.memories.edited_detail",
+  },
+  removed: {
+    heading: "commands.personal.memories.removed_heading",
+    detail: "commands.personal.memories.removed_detail",
+  },
+  stm_cleared: {
+    heading: "commands.personal.memories.stm_cleared_heading",
+    detail: "commands.personal.memories.stm_cleared_detail",
+  },
+};
+
+type PersonalMemoryReceiptKey = keyof typeof RECEIPT_LOCALE_KEYS;
+
+function receipt(
+  locale: string,
+  key: PersonalMemoryReceiptKey,
+  variables?: Record<string, string | number>,
+): PanelReceipt {
   return {
     tone: ERROR_RECEIPT_KEYS.has(key) ? "error" : "success",
-    heading: localizer(locale, `commands.personal.memories.${key}_heading`),
-    detail: localizer(locale, `commands.personal.memories.${key}_detail`, variables),
+    heading: localizer(locale, RECEIPT_LOCALE_KEYS[key].heading),
+    detail: localizer(locale, RECEIPT_LOCALE_KEYS[key].detail, variables),
   };
 }
 
@@ -775,7 +838,7 @@ export function createPersonalMemoriesInteractionRoute(
             return;
           }
 
-          const batchReceiptByStatus: Record<string, string> = {
+          const batchReceiptByStatus: Record<string, PersonalMemoryReceiptKey> = {
             "privacy-blocked": "privacy_blocked_error",
             "empty-content": "empty_content",
             "content-too-long": "content_too_long",
@@ -838,7 +901,7 @@ export function createPersonalMemoriesInteractionRoute(
           return;
         }
 
-        const receiptByStatus: Record<string, string> = {
+        const receiptByStatus: Record<string, PersonalMemoryReceiptKey> = {
           "privacy-blocked": "privacy_blocked_error",
           "empty-content": "empty_content",
           "content-too-long": "content_too_long",
@@ -940,7 +1003,7 @@ export function createPersonalMemoriesInteractionRoute(
           return;
         }
 
-        const receiptByStatus: Record<string, string> = {
+        const receiptByStatus: Record<string, PersonalMemoryReceiptKey> = {
           "privacy-blocked": "privacy_blocked_error",
           "empty-content": "empty_content",
           "content-too-long": "content_too_long",

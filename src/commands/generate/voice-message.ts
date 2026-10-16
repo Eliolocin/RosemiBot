@@ -94,6 +94,15 @@ import type { WhitelistCheckResult } from "@/types/misc/channelWhitelist";
 import type { PersonalSpotlightStatus } from "@/utils/db/repositories/UserRepository";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
+const BACKEND_LABEL_KEYS: Record<VoiceBackendKey, string> = {
+  elevenlabs: "commands.generate.voice-message.backend_elevenlabs",
+  "tts-clone": "commands.generate.voice-message.backend_tts_clone",
+  "tts-voice-design": "commands.generate.voice-message.backend_tts_voice_design",
+  "openrouter-speech": "commands.generate.voice-message.backend_openrouter_speech",
+  "google-speech": "commands.generate.voice-message.backend_google_speech",
+  "vertex-speech": "commands.generate.voice-message.backend_vertex_speech",
+};
+
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand
     .setName("voice-message")
@@ -182,7 +191,7 @@ function resolvePersonaForInvocation(input: {
 }
 
 function describeBackend(locale: string, backendKey: VoiceBackendKey): string {
-  return localizer(locale, `commands.generate.voice-message.backend_${backendKey.replace(/-/g, "_")}`);
+  return localizer(locale, BACKEND_LABEL_KEYS[backendKey]);
 }
 
 /** True when the persona holds an ElevenLabs voice id the fallback path could use. */
@@ -419,8 +428,14 @@ export async function execute(
     });
     if (validation !== "ok") {
       await replyInfoEmbed(interaction, locale, {
-        titleKey: `commands.generate.voice-message.upload_${validation === "too-large" ? "too_large" : "invalid_format"}_title`,
-        descriptionKey: `commands.generate.voice-message.upload_${validation === "too-large" ? "too_large" : "invalid_format"}_description`,
+        titleKey:
+          validation === "too-large"
+            ? "commands.generate.voice-message.upload_too_large_title"
+            : "commands.generate.voice-message.upload_invalid_format_title",
+        descriptionKey:
+          validation === "too-large"
+            ? "commands.generate.voice-message.upload_too_large_description"
+            : "commands.generate.voice-message.upload_invalid_format_description",
         descriptionVars: { max: String(SPEECH_SAMPLE_MAX_MB) },
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,

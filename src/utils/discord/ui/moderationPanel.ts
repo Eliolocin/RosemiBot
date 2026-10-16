@@ -1,3 +1,4 @@
+import { getBlockTypeLabel } from "@/tools/functionCalls/userBlockToolShared";
 import {
   ButtonStyle,
   ChannelType,
@@ -72,22 +73,14 @@ export interface ModerationPanelPayload {
   flags: MessageFlags.IsComponentsV2;
 }
 
-function getCooldownTypeSuffix(cooldownType: CooldownType): string {
-  switch (cooldownType) {
-    case CooldownType.OFF:
-      return "off";
-    case CooldownType.PER_USER:
-      return "per_user";
-    case CooldownType.PER_CHANNEL:
-      return "per_channel";
-    case CooldownType.SERVER_WIDE:
-      return "server_wide";
-    case CooldownType.STRICT_SERVER_WIDE:
-      return "strict_server_wide";
-    default:
-      return "off";
-  }
-}
+const COOLDOWN_TYPE_KEYS: Record<CooldownType, string> = {
+  [CooldownType.COMMAND_CATEGORY]: "commands.config.cooldown.type.choice_off",
+  [CooldownType.OFF]: "commands.config.cooldown.type.choice_off",
+  [CooldownType.PER_USER]: "commands.config.cooldown.type.choice_per_user",
+  [CooldownType.PER_CHANNEL]: "commands.config.cooldown.type.choice_per_channel",
+  [CooldownType.SERVER_WIDE]: "commands.config.cooldown.type.choice_server_wide",
+  [CooldownType.STRICT_SERVER_WIDE]: "commands.config.cooldown.type.choice_strict_server_wide",
+};
 
 function formatChannelCooldown(
   locale: string,
@@ -97,7 +90,7 @@ function formatChannelCooldown(
   if (cooldownType === null || cooldownLength === null) {
     return localizer(locale, "commands.moderation.cooldown_inherited");
   }
-  const typeKey = `commands.config.cooldown.type.choice_${getCooldownTypeSuffix(cooldownType)}`;
+  const typeKey = COOLDOWN_TYPE_KEYS[cooldownType];
   const typeName = localizer(locale, typeKey);
   if (cooldownLength === 0) {
     return localizer(locale, "commands.moderation.cooldown_instant", { type: typeName });
@@ -438,7 +431,7 @@ export function buildModerationPanelPayload(input: ModerationPanelRenderInput): 
           (b) => b.persona_id === target.personaId && b.user_disc_id === target.userId,
         );
         if (block) {
-          const blockTypeLabel = localizer(locale, `tools.user_block.type_${block.block_type}`);
+          const blockTypeLabel = getBlockTypeLabel(locale, block.block_type);
           components.push(
             {
               type: ComponentType.TextDisplay,
@@ -559,8 +552,7 @@ export function buildModerationPanelPayload(input: ModerationPanelRenderInput): 
       });
       if (visiblePersonaBlocks.length > 0) {
         const lines = visiblePersonaBlocks.map((block) => {
-          const blockTypeKey = `tools.user_block.type_${block.block_type}`;
-          const typeLabel = localizer(locale, blockTypeKey);
+          const typeLabel = getBlockTypeLabel(locale, block.block_type);
           return `> <@${block.user_disc_id}> for **${renderModerationName(locale, block.persona_name)}** (${typeLabel})`;
         });
         components.push({

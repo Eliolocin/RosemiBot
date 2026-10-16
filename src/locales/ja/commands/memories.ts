@@ -1,7 +1,6 @@
 export default {
   memories: {
     description: `サーバーの記憶、ドキュメント、短期記憶を確認・管理します。`,
-    title: `サーバーの記憶`,
     category_memories: `記憶`,
     category_documents: `ドキュメント`,
     category_stm: `短期記憶`,

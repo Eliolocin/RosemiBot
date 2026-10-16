@@ -185,5 +185,12 @@ colour rather than widening the test.
 ## Locale strings
 
 Locale prose follows the [comment policy](/contributing/policies/comments/) dash rule. Use literal
-locale keys: `check-locales` matches literal dot-notation strings only, so a key built at runtime can
-be missing, pass every gate, and show users the raw key.
+locale keys: `check-locales` matches literal dot-notation strings, so a key built at runtime can
+be missing, pass every gate, and show users the raw key. For a fixed set of values, use a
+`Record<Union, string>` of full keys. If a registry already owns the values, store the full key on
+each entry. Helpers that accept keys take full keys from their callers.
+
+Open sets such as provider error codes may construct keys when they handle unknown values. Keep
+their exemptions narrow in `DYNAMIC_KEY_PATTERNS` in `scripts/checks/checkLocalizationKeys.ts` and
+test every supported value with `hasLocaleKey` across authored locales. Run `bun run list-unused-locales`
+after removing an exemption, confirm each unused key has no callers, and remove it from every locale.

@@ -154,8 +154,6 @@ export default {
       bot_user_fallback: `設定されているMatrixボットアカウント`,
     },
     "api-key": {
-      description: `AIプロバイダーのAPIキー設定方法を学ぶ`,
-      provider_description: `AIプロバイダーを選択`,
       provider_choice_brave: `Brave Search`,
       provider_choice_google: `Google Gemini（おすすめ、無料）`,
       provider_choice_deepseek: `DeepSeek`,

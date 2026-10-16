@@ -33,6 +33,20 @@ import { escapeDiscordMarkdown } from "@/utils/text/discordMarkdown";
 import { buildTextPreview, textPreviewFooterKey, textPreviewFooterVars } from "@/utils/text/textPreview";
 import { localizer } from "@/utils/text/localizer";
 
+const CATEGORY_LABEL_KEYS: Record<ExpressionCategory, string> = {
+  emojis: "commands.expressions.manage.emojis",
+  stickers: "commands.expressions.manage.stickers",
+  customs: "commands.expressions.manage.customs",
+};
+
+const FIELD_LABEL_KEYS: Record<"name" | "description" | "emotion" | "link" | "file", string> = {
+  name: "commands.expressions.manage.name_label",
+  description: "commands.expressions.manage.description_label",
+  emotion: "commands.expressions.manage.emotion_label",
+  link: "commands.expressions.manage.link_label",
+  file: "commands.expressions.manage.file_label",
+};
+
 export interface ExpressionPanelItem {
   id: string;
   name: string;
@@ -62,18 +76,18 @@ export type ExpressionPanelPreview =
 // One whole sentence per count combination, because translations inflect the noun and the clause together.
 const NATIVE_SUMMARY_KEYS = {
   emojis: {
-    one: "emojis_usable_one",
-    oneUninitialized: "emojis_usable_one_uninitialized",
-    many: "emojis_usable",
-    manyOneUninitialized: "emojis_usable_uninitialized_one",
-    manyUninitialized: "emojis_usable_uninitialized",
+    one: "commands.expressions.manage.emojis_usable_one",
+    oneUninitialized: "commands.expressions.manage.emojis_usable_one_uninitialized",
+    many: "commands.expressions.manage.emojis_usable",
+    manyOneUninitialized: "commands.expressions.manage.emojis_usable_uninitialized_one",
+    manyUninitialized: "commands.expressions.manage.emojis_usable_uninitialized",
   },
   stickers: {
-    one: "stickers_usable_one",
-    oneUninitialized: "stickers_usable_one_uninitialized",
-    many: "stickers_usable",
-    manyOneUninitialized: "stickers_usable_uninitialized_one",
-    manyUninitialized: "stickers_usable_uninitialized",
+    one: "commands.expressions.manage.stickers_usable_one",
+    oneUninitialized: "commands.expressions.manage.stickers_usable_one_uninitialized",
+    many: "commands.expressions.manage.stickers_usable",
+    manyOneUninitialized: "commands.expressions.manage.stickers_usable_uninitialized_one",
+    manyUninitialized: "commands.expressions.manage.stickers_usable_uninitialized",
   },
 } as const;
 
@@ -109,8 +123,7 @@ export function buildExpressionsPanelPayload(input: {
   preview?: ExpressionPanelPreview;
 }): { components: TopLevelComponentData[]; flags: MessageFlags.IsComponentsV2 } {
   const { locale, category, data } = input;
-  const t = (key: string, vars?: Record<string, string | number>) =>
-    localizer(locale, `commands.expressions.manage.${key}`, vars);
+  const t = (key: string, vars?: Record<string, string | number>) => localizer(locale, key, vars);
   const { page, pageCount, visible, selected } = resolveExpressionsSelection(
     data,
     category,
@@ -144,7 +157,7 @@ export function buildExpressionsPanelPayload(input: {
     buildCategoryButtonRow(
       EXPRESSION_CATEGORIES.map((value) => ({
         id: value,
-        label: t(value),
+        label: t(CATEGORY_LABEL_KEYS[value]),
         customId: buildExpressionsRouteId({
           ...route,
           category: value,
@@ -157,14 +170,18 @@ export function buildExpressionsPanelPayload(input: {
       category,
     ),
     { type: ComponentType.Separator, divider: true, spacing: 1 },
-    { type: ComponentType.TextDisplay, content: `## ${t("title")}` },
+    { type: ComponentType.TextDisplay, content: `## ${t("commands.expressions.manage.title")}` },
   ];
   if (category === "customs") {
     const count = data.customs.length;
     components.push({
       type: ComponentType.TextDisplay,
       content:
-        count === 0 ? t("custom_count_none") : count === 1 ? t("custom_count_one") : t("custom_count", { count }),
+        count === 0
+          ? t("commands.expressions.manage.custom_count_none")
+          : count === 1
+            ? t("commands.expressions.manage.custom_count_one")
+            : t("commands.expressions.manage.custom_count", { count }),
     });
   } else if (data[category].length) {
     const usable = data[category].filter((item) => item.usable);
@@ -181,7 +198,14 @@ export function buildExpressionsPanelPayload(input: {
             ? keys.manyOneUninitialized
             : keys.manyUninitialized;
     const lines = [t(summaryKey, { count: usable.length, uninitialized: pending })];
-    if (pending) lines.push(t(pending === 1 ? "initialize_hint_one" : "initialize_hint"));
+    if (pending)
+      lines.push(
+        t(
+          pending === 1
+            ? "commands.expressions.manage.initialize_hint_one"
+            : "commands.expressions.manage.initialize_hint",
+        ),
+      );
     components.push({ type: ComponentType.TextDisplay, content: lines.join("\n") });
   }
   if (category === "customs" || visible.length) {
@@ -191,9 +215,11 @@ export function buildExpressionsPanelPayload(input: {
         {
           type: ComponentType.StringSelect,
           customId: buildExpressionsRouteId({ ...route, action: "select" }),
-          placeholder: t(category === "customs" ? "select_custom" : "select"),
+          placeholder: t(
+            category === "customs" ? "commands.expressions.manage.select_custom" : "commands.expressions.manage.select",
+          ),
           options: [
-            ...(category === "customs" ? [{ label: t("add"), value: "add" }] : []),
+            ...(category === "customs" ? [{ label: t("commands.expressions.manage.add"), value: "add" }] : []),
             ...visible.map((item) => ({
               label: safeSelectOptionText(item.name, 100),
               value: item.id,
@@ -206,7 +232,11 @@ export function buildExpressionsPanelPayload(input: {
   } else
     components.push({
       type: ComponentType.TextDisplay,
-      content: t(category === "emojis" ? "empty_emojis" : "empty_stickers"),
+      content: t(
+        category === "emojis"
+          ? "commands.expressions.manage.empty_emojis"
+          : "commands.expressions.manage.empty_stickers",
+      ),
     });
   const pagination = buildPaginationRow({
     locale,
@@ -227,18 +257,24 @@ export function buildExpressionsPanelPayload(input: {
       return result.text + (footer ? `\n-# ${localizer(locale, footer, textPreviewFooterVars(result, locale))}` : "");
     };
     const details = [
-      t("name_value", { value: preview(selected.name, 160) }),
-      t("description_value", { value: selected.initialized ? preview(selected.description, 1000) : t("unset") }),
-      t("emotion_value", { value: selected.initialized ? selected.emotion : t("unset") }),
-      t("usage_value", { count: input.usageCount ?? t("count_unknown") }),
+      t("commands.expressions.manage.name_value", { value: preview(selected.name, 160) }),
+      t("commands.expressions.manage.description_value", {
+        value: selected.initialized ? preview(selected.description, 1000) : t("commands.expressions.manage.unset"),
+      }),
+      t("commands.expressions.manage.emotion_value", {
+        value: selected.initialized ? selected.emotion : t("commands.expressions.manage.unset"),
+      }),
+      t("commands.expressions.manage.usage_value", {
+        count: input.usageCount ?? t("commands.expressions.manage.count_unknown"),
+      }),
     ];
     if (selected.custom)
       details.push(
-        t("format_value", {
+        t("commands.expressions.manage.format_value", {
           value:
             selected.custom.source_kind === "link"
-              ? t("link")
-              : `${selected.custom.extension} (${t(selected.custom.mime_type?.startsWith("video/") ? "video" : "image")})`,
+              ? t("commands.expressions.manage.link")
+              : `${selected.custom.extension} (${t(selected.custom.mime_type?.startsWith("video/") ? "commands.expressions.manage.video" : "commands.expressions.manage.image")})`,
         }),
       );
     components.push(
@@ -249,22 +285,28 @@ export function buildExpressionsPanelPayload(input: {
     );
     if (category === "customs" && input.confirmDelete) {
       components.push(
-        { type: ComponentType.TextDisplay, content: t("delete_prompt") },
+        { type: ComponentType.TextDisplay, content: t("commands.expressions.manage.delete_prompt") },
         {
           type: ComponentType.ActionRow,
-          components: [button("confirm", "confirm_delete", false, true), button("view", "cancel")],
+          components: [
+            button("confirm", "commands.expressions.manage.confirm_delete", false, true),
+            button("view", "commands.expressions.manage.cancel"),
+          ],
         },
       );
     } else {
       components.push({
         type: ComponentType.ActionRow,
         components: [
-          button("edit", category === "customs" ? "edit_custom" : "edit"),
+          button(
+            "edit",
+            category === "customs" ? "commands.expressions.manage.edit_custom" : "commands.expressions.manage.edit",
+          ),
           category === "customs"
-            ? button("delete", "delete", false, true)
+            ? button("delete", "commands.expressions.manage.delete", false, true)
             : button(
                 "clear",
-                "clear",
+                "commands.expressions.manage.clear",
                 !selected.description && (!selected.emotion || selected.emotion === "unset"),
                 true,
               ),
@@ -276,19 +318,26 @@ export function buildExpressionsPanelPayload(input: {
       const allowed = data.personas.filter((persona) => row.persona_ids.includes(persona.id));
       const allowedNames = allowed.map((persona) => persona.name).join(", ");
       const whitelistText = !row.restricted
-        ? t("unrestricted")
+        ? t("commands.expressions.manage.unrestricted")
         : !allowed.length
-          ? t("restricted_empty")
-          : t("restricted", { personas: preview(allowedNames, 800) });
-      components.push({ type: ComponentType.TextDisplay, content: `### ${t("whitelist")}\n${whitelistText}` });
+          ? t("commands.expressions.manage.restricted_empty")
+          : t("commands.expressions.manage.restricted", { personas: preview(allowedNames, 800) });
+      components.push({
+        type: ComponentType.TextDisplay,
+        content: `### ${t("commands.expressions.manage.whitelist")}\n${whitelistText}`,
+      });
       const personaSlice = data.personas.slice(personaPage * 25, (personaPage + 1) * 25);
       components.push({
         type: ComponentType.ActionRow,
         components: [
-          button("add-persona", "add_persona", !personaSlice.some((persona) => !row.persona_ids.includes(persona.id))),
+          button(
+            "add-persona",
+            "commands.expressions.manage.add_persona",
+            !personaSlice.some((persona) => !row.persona_ids.includes(persona.id)),
+          ),
           button(
             "remove-persona",
-            "remove_persona",
+            "commands.expressions.manage.remove_persona",
             !personaSlice.some((persona) => row.persona_ids.includes(persona.id)),
           ),
         ],
@@ -304,10 +353,13 @@ export function buildExpressionsPanelPayload(input: {
         },
       });
       if (personaPagination)
-        components.push({ type: ComponentType.TextDisplay, content: t("persona_pages") }, personaPagination);
+        components.push(
+          { type: ComponentType.TextDisplay, content: t("commands.expressions.manage.persona_pages") },
+          personaPagination,
+        );
     }
   }
-  components.push({ type: ComponentType.TextDisplay, content: `-# ${t("stats_hint")}` });
+  components.push({ type: ComponentType.TextDisplay, content: `-# ${t("commands.expressions.manage.stats_hint")}` });
   if (category === "customs" && selected && input.preview) {
     if (input.preview.kind === "gallery") {
       components.push({ type: ComponentType.MediaGallery, items: [{ media: { url: input.preview.url } }] });
@@ -315,11 +367,19 @@ export function buildExpressionsPanelPayload(input: {
       components.push({
         type: ComponentType.ActionRow,
         components: [
-          { type: ComponentType.Button, style: ButtonStyle.Link, label: t("open_link"), url: input.preview.url },
+          {
+            type: ComponentType.Button,
+            style: ButtonStyle.Link,
+            label: t("commands.expressions.manage.open_link"),
+            url: input.preview.url,
+          },
         ],
       });
     } else {
-      components.push({ type: ComponentType.TextDisplay, content: t("preview_unavailable") });
+      components.push({
+        type: ComponentType.TextDisplay,
+        content: t("commands.expressions.manage.preview_unavailable"),
+      });
     }
   }
   return {
@@ -340,14 +400,14 @@ export function buildExpressionsTerminalPayload(locale: string, key: string) {
 }
 
 export function buildExpressionsEditModal(route: ExpressionsPanelRoute, selected?: ExpressionPanelItem) {
-  const t = (key: string) => localizer(route.locale, `commands.expressions.manage.${key}`);
+  const t = (key: string) => localizer(route.locale, key);
   const field = (
     name: "name" | "description" | "emotion" | "link" | "file",
     component: RawDiscordComponent,
     description?: string,
   ): RawDiscordComponent => ({
     type: 18,
-    label: t(`${name}_label`),
+    label: t(FIELD_LABEL_KEYS[name]),
     ...(description ? { description } : {}),
     component: { ...component, custom_id: expressionFieldId(route.nonce, name) },
   });
@@ -369,7 +429,7 @@ export function buildExpressionsEditModal(route: ExpressionsPanelRoute, selected
     field(
       "description",
       { type: 4, style: TextInputStyle.Paragraph, required: true, max_length: 500, value: selected?.description ?? "" },
-      t("description_help"),
+      t("commands.expressions.manage.description_help"),
     ),
     field("emotion", {
       type: 3,
@@ -386,17 +446,20 @@ export function buildExpressionsEditModal(route: ExpressionsPanelRoute, selected
       field(
         "link",
         { type: 4, style: TextInputStyle.Short, required: false, max_length: 2000 },
-        t(selected ? "link_replace_help" : "link_help"),
+        t(selected ? "commands.expressions.manage.link_replace_help" : "commands.expressions.manage.link_help"),
       ),
       field(
         "file",
         { type: 19, required: false, min_values: 0, max_values: 1 },
-        t(selected ? "file_replace_help" : "file_help"),
+        t(selected ? "commands.expressions.manage.file_replace_help" : "commands.expressions.manage.file_help"),
       ),
     );
   return {
     custom_id: buildExpressionsRouteId({ ...route, action: "save" }),
-    title: safeSelectOptionText(t(selected ? "edit_title" : "add_title"), 45),
+    title: safeSelectOptionText(
+      t(selected ? "commands.expressions.manage.edit_title" : "commands.expressions.manage.add_title"),
+      45,
+    ),
     components,
   };
 }
@@ -406,14 +469,17 @@ export function buildExpressionPersonaModal(
   personas: ExpressionsPanelData["personas"],
   add: boolean,
 ) {
-  const t = (key: string) => localizer(route.locale, `commands.expressions.manage.${key}`);
+  const t = (key: string) => localizer(route.locale, key);
   return {
     custom_id: buildExpressionsRouteId({ ...route, action: add ? "allow" : "deny" }),
-    title: safeSelectOptionText(t(add ? "add_persona" : "remove_persona"), 45),
+    title: safeSelectOptionText(
+      t(add ? "commands.expressions.manage.add_persona" : "commands.expressions.manage.remove_persona"),
+      45,
+    ),
     components: [
       {
         type: 18,
-        label: t("persona_label"),
+        label: t("commands.expressions.manage.persona_label"),
         component: {
           type: 3,
           custom_id: expressionFieldId(route.nonce, "persona"),

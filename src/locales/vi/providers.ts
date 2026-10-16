@@ -14,7 +14,6 @@ export default {
     tool_error_loop_title: `Vòng lặp lỗi công cụ`,
     tool_error_loop_description: `Mình liên tục gặp lỗi công cụ và không thể hoàn tất yêu cầu. Hãy thử diễn đạt lại hoặc dùng \`/refresh\` nếu sự cố vẫn tiếp diễn.`,
     fallback_used_title: `Đã dùng model dự phòng`,
-    fallback_used_description: `\`{success_model}\` đã được dùng thay cho {chain}`,
     fallback_used_details_description: `Dự phòng {slot} phản hồi bằng \`{success_model}\` sau các lỗi:
 {failure_list}`,
     fallback_used_failure_line: `{index}. {model} gặp lỗi {error_detail}`,
@@ -26,7 +25,6 @@ export default {
       source_attached: `Bảng này quá dài để hiển thị trực tiếp, nên bảng được gửi dưới dạng tệp:`,
     },
     no_response_title: `Không có phản hồi`,
-    no_response_description: `Mình không phản hồi: điều này có thể do phản hồi trống hoặc hết thời gian chờ từ AI.`,
     log_channel_chat_notice_title: `Không trò chuyện trong kênh nhật ký`,
     log_channel_chat_notice_description: `Kênh này đang được đặt làm kênh nhật ký, nên mình không trả lời tin nhắn ở đây. Để trò chuyện ở đây, hãy xóa hoặc đổi kênh trong \`/config\` > Kênh > Nhật ký.`,
     thought_log: {
@@ -107,7 +105,6 @@ export default {
       google_credential_type: `Thông tin này có vẻ là token OAuth hoặc service account. Nhà cung cấp \`google\` cần API key thông thường từ [Google AI Studio](https://aistudio.google.com/apikey); hãy dùng nhà cung cấp \`vertex\` cho thông tin xác thực Google Cloud.`,
       openrouter_privacy_settings: `Điều chỉnh cài đặt "Data Policy" tại [Cài đặt quyền riêng tư OpenRouter](https://openrouter.ai/settings/privacy) để cho phép model này, hoặc chọn model khác.`,
       openrouter_fund_account: `Nạp ít nhất 10 tín dụng vào tài khoản OpenRouter của bạn để mở khóa 1000 yêu cầu model miễn phí mỗi ngày.`,
-      reduce_context_length: `Hãy thử giảm độ dài tin nhắn hoặc xóa ngữ cảnh bằng \`/refresh\`.`,
       reduce_output_tokens: `Giảm giới hạn độ dài phản hồi bằng \`/config\` > Models > Samplers & Parameters (output tokens) để giải phóng dung lượng cho lịch sử trò chuyện.`,
       reduce_output_tokens_personal: `Giảm giới hạn độ dài phản hồi bằng \`/personal config\` (output tokens) để giải phóng dung lượng cho lịch sử trò chuyện.`,
       openrouter_add_credits: `Nạp tín dụng tại [Tín dụng OpenRouter](https://openrouter.ai/settings/credits), hoặc giảm độ dài phản hồi bằng \`/config\` > Models > Samplers & Parameters (output tokens).`,
@@ -147,7 +144,6 @@ export default {
     },
     vertexexpress: {
       "403_predict_permission_message": `Key này không thể gọi các model Vertex AI Express. Hãy dùng key ở chế độ Express, hoặc dùng nhà cung cấp \`vertex\` riêng cho các dự án Google Cloud đầy đủ.`,
-      unknown_default_message: `Đã xảy ra lỗi ngoài dự kiến`,
     },
     novelai: {
       "400_default_message": `Định dạng yêu cầu hoặc tham số không hợp lệ. Vui lòng đảm bảo bạn đã nhập đúng API key.`,

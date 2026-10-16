@@ -41,7 +41,7 @@ const applicationFilter = createApplicationIdFilter();
 
 export const pluralBuddyProxyService = {
   serviceId: "pluralbuddy",
-  settingsLocaleKey: "pluralbuddy_option",
+  settingsLocaleKey: "commands.personal.message-proxy.pluralbuddy_option",
   enabledSuccessDescriptionLocaleKey: "commands.personal.message-proxy.pluralbuddy_enabled_success_description",
   syntheticUserPrefix: "pb:",
   externalIdentityKind: "pluralbuddy_alter",

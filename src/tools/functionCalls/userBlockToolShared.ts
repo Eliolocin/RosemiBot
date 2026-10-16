@@ -11,6 +11,16 @@ import { formatTimeWithOffset, formatUTCOffset } from "@/utils/text/timezoneHelp
 import { isMessageProxyIdentityUserId } from "@/utils/messageProxy/identityUserId";
 
 /** One week, the ceiling a persona may block a user for in a single tool call. */
+const BLOCK_TYPE_KEYS: Record<PersonaUserBlockType, string> = {
+  mute: "tools.user_block.type_mute",
+  block: "tools.user_block.type_block",
+};
+
+const BLOCK_EFFECT_KEYS: Record<PersonaUserBlockType, string> = {
+  mute: "tools.user_block.effect_mute",
+  block: "tools.user_block.effect_block",
+};
+
 export const DEFAULT_BLOCK_USER_MAX_DURATION_HOURS = 168;
 
 export type ParsedBlockUserArgs =
@@ -224,11 +234,11 @@ function formatExpiry(expiresAt: Date, timezoneOffset: number, locale: string): 
 }
 
 export function getBlockTypeLabel(locale: string, blockType: PersonaUserBlockType): string {
-  return localizer(locale, `tools.user_block.type_${blockType}`);
+  return localizer(locale, BLOCK_TYPE_KEYS[blockType]);
 }
 
 export function getBlockEffectText(locale: string, blockType: PersonaUserBlockType): string {
-  return localizer(locale, `tools.user_block.effect_${blockType}`);
+  return localizer(locale, BLOCK_EFFECT_KEYS[blockType]);
 }
 
 export async function sendUserBlockedEmbed(params: {

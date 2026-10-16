@@ -460,49 +460,176 @@ export interface MemoriesRouteDependencies {
   clearStm(workspaceId: string, channelId: string, personaId: number | null): void;
 }
 
-export const MEMORIES_RECEIPT_KEYS = [
-  "added",
-  "edited",
-  "removed",
-  "no_changes",
-  "changed_state",
-  "write_failed",
-  "content_too_long",
-  "limit_reached",
-  "empty_content",
-  "batch_added",
-  "batch_file_invalid",
-  "batch_file_too_large",
-  "batch_all_duplicates",
-  "batch_limit_reached",
-  "blacklisted_error",
-  "teaching_disabled_error",
-  "manager_only",
-  "document_added",
-  "document_removed",
-  "document_chunk_edited",
-  "document_chunk_removed",
-  "document_removed_with_last_chunk",
-  "vectorized",
-  "vectorize_partial_failure",
-  "document_rag_disabled",
-  "document_memory_critical",
-  "document_invalid_name",
-  "document_invalid_file",
-  "document_file_too_large",
-  "document_download_failed",
-  "document_empty_content",
-  "document_content_too_long",
-  "document_too_many_chunks",
-  "document_limit",
-  "document_chunk_limit",
-  "document_duplicate",
-  "document_quota",
-  "embedding_credentials_missing",
-  "embedding_model_missing",
-  "stm_changed_state",
-  "stm_cleared",
-] as const;
+const RECEIPT_LOCALE_KEYS = {
+  added: {
+    heading: "commands.memories.added_heading",
+    detail: "commands.memories.added_detail",
+  },
+  edited: {
+    heading: "commands.memories.edited_heading",
+    detail: "commands.memories.edited_detail",
+  },
+  removed: {
+    heading: "commands.memories.removed_heading",
+    detail: "commands.memories.removed_detail",
+  },
+  no_changes: {
+    heading: "commands.memories.no_changes_heading",
+    detail: "commands.memories.no_changes_detail",
+  },
+  changed_state: {
+    heading: "commands.memories.changed_state_heading",
+    detail: "commands.memories.changed_state_detail",
+  },
+  write_failed: {
+    heading: "commands.memories.write_failed_heading",
+    detail: "commands.memories.write_failed_detail",
+  },
+  content_too_long: {
+    heading: "commands.memories.content_too_long_heading",
+    detail: "commands.memories.content_too_long_detail",
+  },
+  limit_reached: {
+    heading: "commands.memories.limit_reached_heading",
+    detail: "commands.memories.limit_reached_detail",
+  },
+  empty_content: {
+    heading: "commands.memories.empty_content_heading",
+    detail: "commands.memories.empty_content_detail",
+  },
+  batch_added: {
+    heading: "commands.memories.batch_added_heading",
+    detail: "commands.memories.batch_added_detail",
+  },
+  batch_file_invalid: {
+    heading: "commands.memories.batch_file_invalid_heading",
+    detail: "commands.memories.batch_file_invalid_detail",
+  },
+  batch_file_too_large: {
+    heading: "commands.memories.batch_file_too_large_heading",
+    detail: "commands.memories.batch_file_too_large_detail",
+  },
+  batch_all_duplicates: {
+    heading: "commands.memories.batch_all_duplicates_heading",
+    detail: "commands.memories.batch_all_duplicates_detail",
+  },
+  batch_limit_reached: {
+    heading: "commands.memories.batch_limit_reached_heading",
+    detail: "commands.memories.batch_limit_reached_detail",
+  },
+  blacklisted_error: {
+    heading: "commands.memories.blacklisted_error_heading",
+    detail: "commands.memories.blacklisted_error_detail",
+  },
+  teaching_disabled_error: {
+    heading: "commands.memories.teaching_disabled_error_heading",
+    detail: "commands.memories.teaching_disabled_error_detail",
+  },
+  manager_only: {
+    heading: "commands.memories.manager_only_heading",
+    detail: "commands.memories.manager_only_detail",
+  },
+  document_added: {
+    heading: "commands.memories.document_added_heading",
+    detail: "commands.memories.document_added_detail",
+  },
+  document_removed: {
+    heading: "commands.memories.document_removed_heading",
+    detail: "commands.memories.document_removed_detail",
+  },
+  document_chunk_edited: {
+    heading: "commands.memories.document_chunk_edited_heading",
+    detail: "commands.memories.document_chunk_edited_detail",
+  },
+  document_chunk_removed: {
+    heading: "commands.memories.document_chunk_removed_heading",
+    detail: "commands.memories.document_chunk_removed_detail",
+  },
+  document_removed_with_last_chunk: {
+    heading: "commands.memories.document_removed_with_last_chunk_heading",
+    detail: "commands.memories.document_removed_with_last_chunk_detail",
+  },
+  vectorized: {
+    heading: "commands.memories.vectorized_heading",
+    detail: "commands.memories.vectorized_detail",
+  },
+  vectorize_partial_failure: {
+    heading: "commands.memories.vectorize_partial_failure_heading",
+    detail: "commands.memories.vectorize_partial_failure_detail",
+  },
+  document_rag_disabled: {
+    heading: "commands.memories.document_rag_disabled_heading",
+    detail: "commands.memories.document_rag_disabled_detail",
+  },
+  document_memory_critical: {
+    heading: "commands.memories.document_memory_critical_heading",
+    detail: "commands.memories.document_memory_critical_detail",
+  },
+  document_invalid_name: {
+    heading: "commands.memories.document_invalid_name_heading",
+    detail: "commands.memories.document_invalid_name_detail",
+  },
+  document_invalid_file: {
+    heading: "commands.memories.document_invalid_file_heading",
+    detail: "commands.memories.document_invalid_file_detail",
+  },
+  document_file_too_large: {
+    heading: "commands.memories.document_file_too_large_heading",
+    detail: "commands.memories.document_file_too_large_detail",
+  },
+  document_download_failed: {
+    heading: "commands.memories.document_download_failed_heading",
+    detail: "commands.memories.document_download_failed_detail",
+  },
+  document_empty_content: {
+    heading: "commands.memories.document_empty_content_heading",
+    detail: "commands.memories.document_empty_content_detail",
+  },
+  document_content_too_long: {
+    heading: "commands.memories.document_content_too_long_heading",
+    detail: "commands.memories.document_content_too_long_detail",
+  },
+  document_too_many_chunks: {
+    heading: "commands.memories.document_too_many_chunks_heading",
+    detail: "commands.memories.document_too_many_chunks_detail",
+  },
+  document_limit: {
+    heading: "commands.memories.document_limit_heading",
+    detail: "commands.memories.document_limit_detail",
+  },
+  document_chunk_limit: {
+    heading: "commands.memories.document_chunk_limit_heading",
+    detail: "commands.memories.document_chunk_limit_detail",
+  },
+  document_duplicate: {
+    heading: "commands.memories.document_duplicate_heading",
+    detail: "commands.memories.document_duplicate_detail",
+  },
+  document_quota: {
+    heading: "commands.memories.document_quota_heading",
+    detail: "commands.memories.document_quota_detail",
+  },
+  embedding_credentials_missing: {
+    heading: "commands.memories.embedding_credentials_missing_heading",
+    detail: "commands.memories.embedding_credentials_missing_detail",
+  },
+  embedding_model_missing: {
+    heading: "commands.memories.embedding_model_missing_heading",
+    detail: "commands.memories.embedding_model_missing_detail",
+  },
+  stm_changed_state: {
+    heading: "commands.memories.stm_changed_state_heading",
+    detail: "commands.memories.stm_changed_state_detail",
+  },
+  stm_cleared: {
+    heading: "commands.memories.stm_cleared_heading",
+    detail: "commands.memories.stm_cleared_detail",
+  },
+};
+
+type MemoryReceiptKey = keyof typeof RECEIPT_LOCALE_KEYS;
+
+export const MEMORIES_RECEIPT_KEYS = Object.keys(RECEIPT_LOCALE_KEYS) as MemoryReceiptKey[];
 
 const ERROR_RECEIPT_KEYS = new Set<string>([
   "blacklisted_error",
@@ -535,11 +662,11 @@ const ERROR_RECEIPT_KEYS = new Set<string>([
   "stm_changed_state",
 ]);
 
-function receipt(locale: string, key: string, variables?: Record<string, string | number>): PanelReceipt {
+function receipt(locale: string, key: MemoryReceiptKey, variables?: Record<string, string | number>): PanelReceipt {
   return {
     tone: ERROR_RECEIPT_KEYS.has(key) ? "error" : "success",
-    heading: localizer(locale, `commands.memories.${key}_heading`),
-    detail: localizer(locale, `commands.memories.${key}_detail`, variables),
+    heading: localizer(locale, RECEIPT_LOCALE_KEYS[key].heading),
+    detail: localizer(locale, RECEIPT_LOCALE_KEYS[key].detail, variables),
   };
 }
 
@@ -550,11 +677,22 @@ function receipt(locale: string, key: string, variables?: Record<string, string 
  * deferred by then, so without this the message sits unchanged for several seconds with nothing to
  * say the work started. This paint is overwritten by the real receipt when the operation returns.
  */
-function workingReceipt(locale: string, key: string): PanelReceipt {
+const WORKING_RECEIPT_KEYS: Record<"document_working" | "vectorize_working", { heading: string; detail: string }> = {
+  document_working: {
+    heading: "commands.memories.document_working_heading",
+    detail: "commands.memories.document_working_detail",
+  },
+  vectorize_working: {
+    heading: "commands.memories.vectorize_working_heading",
+    detail: "commands.memories.vectorize_working_detail",
+  },
+};
+
+function workingReceipt(locale: string, key: keyof typeof WORKING_RECEIPT_KEYS): PanelReceipt {
   return {
     tone: "warning",
-    heading: localizer(locale, `commands.memories.${key}_heading`),
-    detail: localizer(locale, `commands.memories.${key}_detail`),
+    heading: localizer(locale, WORKING_RECEIPT_KEYS[key].heading),
+    detail: localizer(locale, WORKING_RECEIPT_KEYS[key].detail),
   };
 }
 
@@ -620,7 +758,7 @@ function parseDocumentChannelTags(raw: string, interaction: GlobalRoutableIntera
  * mapped to a key nobody registered renders the raw key to the user, and `check-locales` cannot
  * see it because the heading and detail suffixes are composed at call time.
  */
-export const DOCUMENT_RESULT_RECEIPT_KEYS: Record<string, string> = {
+export const DOCUMENT_RESULT_RECEIPT_KEYS: Record<string, MemoryReceiptKey> = {
   blacklisted: "blacklisted_error",
   "teaching-disabled": "teaching_disabled_error",
   "rag-disabled": "document_rag_disabled",
@@ -782,7 +920,7 @@ async function refuseInPlace(
   scope: MemoriesScope | null,
   category: MemoriesCategory,
   selectedId: number,
-  receiptKey: string,
+  receiptKey: MemoryReceiptKey,
   dependencies: MemoriesRouteDependencies,
 ): Promise<void> {
   await interaction.deferUpdate();
@@ -2182,7 +2320,7 @@ export function createMemoriesInteractionRoute(
             return;
           }
 
-          const batchReceiptByStatus: Record<string, string> = {
+          const batchReceiptByStatus: Record<string, MemoryReceiptKey> = {
             blacklisted: "blacklisted_error",
             "teaching-disabled": "teaching_disabled_error",
             "empty-content": "empty_content",
@@ -2250,7 +2388,7 @@ export function createMemoriesInteractionRoute(
           return;
         }
 
-        const receiptByStatus: Record<string, string> = {
+        const receiptByStatus: Record<string, MemoryReceiptKey> = {
           blacklisted: "blacklisted_error",
           "teaching-disabled": "teaching_disabled_error",
           "empty-content": "empty_content",
@@ -2356,7 +2494,7 @@ export function createMemoriesInteractionRoute(
           return;
         }
 
-        const receiptByStatus: Record<string, string> = {
+        const receiptByStatus: Record<string, MemoryReceiptKey> = {
           blacklisted: "blacklisted_error",
           "teaching-disabled": "teaching_disabled_error",
           "empty-content": "empty_content",

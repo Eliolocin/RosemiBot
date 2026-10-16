@@ -13,6 +13,12 @@ import {
 import type { UserRow } from "@/types/db/schema";
 import { localizer } from "@/utils/text/localizer";
 
+const SCOPE_LABEL_KEYS: Record<(typeof WORKSPACE_MEMORY_EXPORT_SELECTIONS)[number], string> = {
+  main: "commands.export.memories.scope_choice_main",
+  persona: "commands.export.memories.scope_choice_persona",
+  all: "commands.export.memories.scope_choice_all",
+};
+
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand
     .setName("memories")
@@ -24,7 +30,7 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
         .setRequired(true)
         .addChoices(
           ...WORKSPACE_MEMORY_EXPORT_SELECTIONS.map((value) => ({
-            name: localizer("en-US", `commands.export.memories.scope_choice_${value}`),
+            name: localizer("en-US", SCOPE_LABEL_KEYS[value]),
             value,
           })),
         ),

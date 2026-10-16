@@ -19,6 +19,20 @@ import { formatMcpToolNamesForDiscord } from "@/utils/mcp/mcpToolSnapshot";
 import { buildTextPreview, textPreviewFooterKey, textPreviewFooterVars } from "@/utils/text/textPreview";
 import { localizer } from "@/utils/text/localizer";
 
+const FAILURE_REASON_KEYS: Record<
+  NonNullable<GuildMcpServerRow["failure_reason"]>,
+  { disabled: string; failing: string }
+> = {
+  unauthorized: {
+    disabled: "commands.mcps.auto_disabled_unauthorized",
+    failing: "commands.mcps.connection_failing_unauthorized",
+  },
+  unreachable: {
+    disabled: "commands.mcps.auto_disabled_unreachable",
+    failing: "commands.mcps.connection_failing_unreachable",
+  },
+};
+
 export const MAX_MCP_PANEL_PAGE_SIZE = 4;
 const MCP_ROW_TEXT_PREVIEW_BUDGET = 300;
 
@@ -65,9 +79,9 @@ function typeLabelKey(serverType: string | null | undefined): string {
 /** A manual enable or disable clears `failure_reason`, so a disabled row that keeps one was disabled automatically. */
 function connectionHealthLine(locale: string, row: GuildMcpServerRow): string | null {
   if (!row.failure_reason) return null;
-  if (!row.is_enabled) return localizer(locale, `commands.mcps.auto_disabled_${row.failure_reason}`);
+  if (!row.is_enabled) return localizer(locale, FAILURE_REASON_KEYS[row.failure_reason].disabled);
   if (!row.failing_since) return null;
-  return localizer(locale, `commands.mcps.connection_failing_${row.failure_reason}`, {
+  return localizer(locale, FAILURE_REASON_KEYS[row.failure_reason].failing, {
     since: `<t:${Math.floor(row.failing_since.getTime() / 1000)}:R>`,
   });
 }

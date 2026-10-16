@@ -11,7 +11,7 @@ const applicationFilter = createApplicationIdFilter();
 
 export const pluralKitProxyService = {
   serviceId: "pluralkit",
-  settingsLocaleKey: "pluralkit_option",
+  settingsLocaleKey: "commands.personal.message-proxy.pluralkit_option",
   enabledSuccessDescriptionLocaleKey: "commands.personal.message-proxy.pluralkit_enabled_success_description",
   syntheticUserPrefix: "pk:",
   externalIdentityKind: "pluralkit_member",

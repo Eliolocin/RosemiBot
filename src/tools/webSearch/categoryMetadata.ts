@@ -13,8 +13,19 @@ const CATEGORY_NOTICE_KEYS: Record<SearchCategory, ToolNoticeKey> = {
   music: "web_search",
 };
 
+const CATEGORY_LABEL_KEYS: Record<SearchCategory, string> = {
+  text: "tools.search.category_labels.text",
+  image: "tools.search.category_labels.image",
+  video: "tools.search.category_labels.video",
+  news: "tools.search.category_labels.news",
+  papers: "tools.search.category_labels.papers",
+  code: "tools.search.category_labels.code",
+  files: "tools.search.category_labels.files",
+  music: "tools.search.category_labels.music",
+};
+
 export function getSearchCategoryLabel(locale: string, category: SearchCategory): string {
-  return localizer(locale, `tools.search.category_labels.${category}`);
+  return localizer(locale, CATEGORY_LABEL_KEYS[category]);
 }
 
 export function getSearchNoticeKey(category: SearchCategory): ToolNoticeKey {
