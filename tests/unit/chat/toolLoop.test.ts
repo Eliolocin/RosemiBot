@@ -1973,6 +1973,49 @@ describe("runToolLoop — contract tests", () => {
       expect(buildReviewerPacket(context, candidate, 64000)).toBe("candidate_credential");
   });
 
+  it("keeps ordinary reviewer evidence while redacting credential-shaped values", () => {
+    const context = makeReviewContext();
+    const prose = ["Prefer basic copulatives directly", "a bearer of bad news", "my secret: I never sleep"];
+    const trigger = context.contextItems[1];
+    if (!trigger) throw new Error("Review fixture requires a trigger");
+    trigger.parts = [{ type: "text", text: prose.join(". ") }];
+    context.responseReview.functionHistory.push({
+      functionCall: { name: "lookup", args: { note: prose[1], api_key: "fixture-secret" } },
+      functionResponse: {
+        note: prose[2],
+        authLine: `Bearer ${"b".repeat(32)}`,
+        link: "https://mirri:fixture-secret@host.example/path",
+        key: `sk-proj-${"a".repeat(30)}`,
+        token: "fixture-secret",
+      },
+    });
+    const packet = packetOf(buildReviewerPacket(context, "pending", 64000));
+    for (const line of prose) expect(packet.trigger.text).toContain(line);
+    expect(packet.tools[0]?.arguments).toEqual({ note: prose[1], api_key: "[REDACTED]" });
+    expect(packet.tools[0]?.outcome).toEqual({
+      note: prose[2],
+      authLine: "Bearer [REDACTED]",
+      link: "https://mirri:[REDACTED]@host.example/path",
+      key: "[REDACTED]",
+      token: "[REDACTED]",
+    });
+    const tools = [{ functionDeclarations: [{ name: "lookup", parameters: { type: "object", properties: {} } }] }];
+    expect(
+      packetOf(
+        buildReviewerPacket(context, "pending", 64000, tools, {
+          name: "lookup",
+          args: { note: prose.join(". ") },
+        }),
+      ).proposedCall?.arguments,
+    ).toEqual({ note: prose.join(". ") });
+    expect(
+      buildReviewerPacket(context, "pending", 64000, tools, {
+        name: "lookup",
+        args: { note: `Bearer ${"b".repeat(32)}` },
+      }),
+    ).toBe("tool_arguments_redacted");
+  });
+
   it("routes linter reports/failures directly to review and keeps diagnostics out of author continuation and accepted dialogue", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
     const evidence = { score: 50, advice: ["PRIVATE_RULE_ADVICE"] };

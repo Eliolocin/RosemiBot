@@ -104,6 +104,10 @@ records the selection; intentionally omitted context cannot qualify for calibrat
 Incomplete required evidence, a candidate containing a credential-shaped string (`containsCredential`,
 not the log redactor's `key: value` heuristic, which matches ordinary prose), or tool arguments requiring
 credential or user-info redaction make review unavailable, and the trace category names the gap.
+The packet applies the same credential-shape patterns to admitted prose, tool descriptions and rule
+reports. Structured tool arguments, outcomes and rule reports also mask values under credential keys;
+the proposed-call gate refuses arguments changed by either check. Log-only heuristics do not alter
+reviewer evidence.
 Proposed voice-message arguments retain the script and delivery instructions for review, while
 diagnostic storage and completed-call evidence retain only their character counts; submitted user-info
 values remain excluded from review. Inherited reviewers use the actual author attempt's model and key;

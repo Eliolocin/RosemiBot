@@ -12,7 +12,7 @@ import { getChannelTurnAbortSignal, runUnderWatchdog, touchChannelLock } from "@
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { MAX_PENDING_RESPONSE_BYTES, MAX_PENDING_RESPONSE_SEGMENTS } from "@/utils/discord/stream/constants";
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
-import { containsCredential, log, sanitizeLogPayload } from "@/utils/misc/logger";
+import { containsCredential, log, sanitizeCredentialPayload } from "@/utils/misc/logger";
 import { resolveCustomTextEndpointTarget } from "@/utils/provider/customEndpointService";
 import { resolveChatMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
 import { resolveModelLimits } from "@/utils/provider/modelLimits";
@@ -213,13 +213,7 @@ function projectItem(item: StructuredContextItem) {
     role: item.role,
     sender: item.sender,
     messageId: item.messageId,
-    participants: item.participantReviewEvidence
-      ? (sanitizeLogPayload(
-          item.participantReviewEvidence,
-          0,
-          false,
-        ) as StructuredContextItem["participantReviewEvidence"])
-      : undefined,
+    participants: item.participantReviewEvidence,
     text: item.participantReviewEvidence
       ? undefined
       : item.parts.map((part) => (part.type === "text" ? part.text : MEDIA_PLACEHOLDERS[part.type])).join("\n"),
@@ -294,12 +288,11 @@ export function buildReviewerPacket(
   if (
     proposedCall &&
     JSON.stringify(
-      sanitizeLogPayload(
+      sanitizeCredentialPayload(
         proposedCall.name === "generate_voice_message"
           ? proposedCall.args
           : redactToolParametersForStorage(proposedCall.name, proposedCall.args),
-        0,
-        false,
+        true,
       ),
     ) !== JSON.stringify(proposedCall.args)
   )
@@ -347,22 +340,21 @@ export function buildReviewerPacket(
       status: state.pending.some((part) => part.truncation) ? "pending_cut_at_length_limit" : "pending",
       text: candidate,
     },
-    trigger: sanitizeLogPayload(projectItem(trigger), 0, false) as ProjectedItem,
-    replyTarget: replyTarget ? (sanitizeLogPayload(projectItem(replyTarget), 0, false) as ProjectedItem) : null,
-    requirementsAndEvidence: required.map((item) => sanitizeLogPayload(projectItem(item), 0, false) as ProjectedItem),
+    trigger: sanitizeCredentialPayload(projectItem(trigger)) as ProjectedItem,
+    replyTarget: replyTarget ? (sanitizeCredentialPayload(projectItem(replyTarget)) as ProjectedItem) : null,
+    requirementsAndEvidence: required.map((item) => sanitizeCredentialPayload(projectItem(item)) as ProjectedItem),
     historicalDialogue: history
       .slice(-2)
-      .map((item) => sanitizeLogPayload(projectItem(item), 0, false) as ReturnType<typeof projectItem>),
+      .map((item) => sanitizeCredentialPayload(projectItem(item)) as ReturnType<typeof projectItem>),
     representativeDialogues: [] as ReturnType<typeof projectItem>[],
-    availableTools: sanitizeLogPayload(catalog, 0, false) as ReviewerToolEntry[],
+    availableTools: sanitizeCredentialPayload(catalog) as ReviewerToolEntry[],
     tools: functionHistory.map((entry) => ({
       name: entry.functionCall.name,
-      arguments: sanitizeLogPayload(
+      arguments: sanitizeCredentialPayload(
         redactToolParametersForStorage(entry.functionCall.name, entry.functionCall.args ?? {}),
-        0,
-        false,
+        true,
       ),
-      outcome: sanitizeLogPayload(entry.functionResponse, 0, false),
+      outcome: sanitizeCredentialPayload(entry.functionResponse, true),
       status: "actual_outcome",
       imageOmitted: entry.imageMetadata ? true : undefined,
     })),
@@ -398,7 +390,7 @@ export function buildReviewerPacket(
   for (let index = 0; index < samples.length; index += 2) {
     const pair = samples
       .slice(index, index + 2)
-      .map((item) => sanitizeLogPayload(projectItem(item), 0, false) as ReturnType<typeof projectItem>);
+      .map((item) => sanitizeCredentialPayload(projectItem(item)) as ReturnType<typeof projectItem>);
     packet.representativeDialogues.push(...pair);
     packet.coverage.samplesIncluded++;
     if (!fits()) {
@@ -407,9 +399,7 @@ export function buildReviewerPacket(
     }
   }
   for (const item of history.slice(-24, -2).reverse()) {
-    packet.historicalDialogue.unshift(
-      sanitizeLogPayload(projectItem(item), 0, false) as ReturnType<typeof projectItem>,
-    );
+    packet.historicalDialogue.unshift(sanitizeCredentialPayload(projectItem(item)) as ReturnType<typeof projectItem>);
     packet.coverage.historyIncluded++;
     if (!fits()) {
       packet.historicalDialogue.shift();
@@ -756,7 +746,7 @@ async function reviewCandidate(
     const ruleEvidence = "evidence" in rules ? rules.evidence : undefined;
     const userPrompt = renderReviewerPrompt(
       packet,
-      ruleEvidence === undefined ? undefined : sanitizeLogPayload(ruleEvidence, 0, false),
+      ruleEvidence === undefined ? undefined : sanitizeCredentialPayload(ruleEvidence, true),
     );
     if (charsToTokensText(userPrompt.length) > inputTokens) return unavailable("rule_evidence_budget");
     const identity = createHash("sha256")
