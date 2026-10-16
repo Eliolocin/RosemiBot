@@ -120,6 +120,7 @@ export async function buildParticipantContextItem(params: {
       })),
       channel: params.isDMChannel ? "DM" : params.channelName,
       currentTime: getCurrentTimeWithOffset(timezoneOffset),
+      timezone: formatUTCOffset(timezoneOffset),
     },
     conversationUsers: rendered.conversationUsers,
     participantTargetIndex: rendered.targetIndex,

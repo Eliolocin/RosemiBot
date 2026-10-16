@@ -2183,19 +2183,21 @@ describe("runToolLoop — contract tests", () => {
       expect(hiddenToolNotices).toEqual([]);
     });
 
-    it(`${name}: bounds changed corrections and identical rejections without counting tool failures`, async () => {
+    it(`${name}: bounds changed proposals by the review budget without counting tool failures`, async () => {
       const { runToolLoop } = await import("@/utils/chat/toolLoop");
       const context = makeReviewContext();
-      const { provider } = makeProvider([
-        ...Array.from({ length: 7 }, (_, index) => makeFunctionCallResult(name, { target: `invented_${index}` })),
-        { status: "completed" },
-      ]);
+      const { provider, capturedHistories } = makeProvider(
+        Array.from({ length: MAX_TOOL_REVIEWS + 4 }, (_, index) =>
+          makeFunctionCallResult(name, { target: `invented_${index}` }),
+        ),
+      );
       const review = mock(async () => ({ success: true, data: rejection }));
       Object.assign(provider, { callStructuredJSON: review });
       expect((await runToolLoop(makeParams(context, provider))).status).toBe("completed");
       expect(toolExecuteCalls).toEqual([]);
-      expect(review).toHaveBeenCalledTimes(2);
-      expect(context.responseReview.toolCorrections).toBe(1);
+      expect(review).toHaveBeenCalledTimes(MAX_TOOL_REVIEWS);
+      expect(capturedHistories).toHaveLength(MAX_TOOL_REVIEWS + 1);
+      expect(context.responseReview.toolCorrections).toBe(MAX_TOOL_CORRECTIONS);
       expect(
         context.responseReview.functionHistory.every((entry) =>
           JSON.stringify(entry.functionResponse).includes("review_rejected"),
@@ -2210,23 +2212,22 @@ describe("runToolLoop — contract tests", () => {
       const { provider } = makeProvider([
         makeFunctionCallResult(name, { target: "invented" }),
         makeFunctionCallResult(name, { target: "fixture" }),
-        makeFunctionCallResult(name, { target: "invented" }),
         makeFunctionCallResult("other_action", { target: "fixture" }),
-        { status: "completed" },
+        makeFunctionCallResult(name, { target: "invented" }),
       ]);
       const review = mock(async () => ({
         success: true,
         data: review.mock.calls.length === 1 ? rejection : { status: "unavailable" },
       }));
       Object.assign(provider, { callStructuredJSON: review });
-      await runToolLoop(makeParams(context, provider));
+      expect((await runToolLoop(makeParams(context, provider))).status).toBe("completed");
       expect(toolExecuteCalls).toEqual([{ name: "other_action", args: { target: "fixture" } }]);
       expect(context.responseReview.unavailable).toBe(true);
       expect(review).toHaveBeenCalledTimes(2);
       expect(
-        context.responseReview.functionHistory
-          .slice(0, 3)
-          .every((entry) => JSON.stringify(entry.functionResponse).includes("review_rejected")),
+        [0, 1, 3].every((index) =>
+          JSON.stringify(context.responseReview.functionHistory[index]?.functionResponse).includes("review_rejected"),
+        ),
       ).toBe(true);
     });
 
@@ -2242,9 +2243,8 @@ describe("runToolLoop — contract tests", () => {
       context.responseReview.toolReviews = MAX_TOOL_REVIEWS;
       const { provider: fallback } = makeProvider([
         makeFunctionCallResult(name, { target: "invented" }),
-        makeFunctionCallResult(name, { target: "fixture" }),
         makeFunctionCallResult("other_action", { target: "fixture" }),
-        { status: "completed" },
+        makeFunctionCallResult(name, { target: "fixture" }),
       ]);
       const review = mock(async () => ({ success: true, data: { status: "pass" } }));
       Object.assign(fallback, { callStructuredJSON: review });
@@ -2350,7 +2350,7 @@ describe("runToolLoop — contract tests", () => {
     await runToolLoop(makeParams(context, provider));
     expect(context.responseReview.toolCorrections).toBe(MAX_TOOL_CORRECTIONS);
     expect(toolExecuteCalls.map((call) => call.name)).toEqual(["lookup", "mirror_action"]);
-    expect(context.responseReview.toolReviews).toBe(5);
+    expect(context.responseReview.toolReviews).toBe(6);
   });
 
   it("reviews each actual call independently with prior successful effects as evidence", async () => {
@@ -2370,9 +2370,59 @@ describe("runToolLoop — contract tests", () => {
     });
     await runToolLoop(makeParams(context, provider));
     expect(toolExecuteCalls.map((call) => call.name)).toEqual(["lookup"]);
-    expect(packets[1]).toContain("<completed_tools>\nlookup ");
+    expect(packets[1]).toContain("<earlier_tool_calls>\nlookup ");
     expect(packets[1]).toContain('<proposed_tool_call status="not_executed">\nmirror_action ');
     expect(context.responseReview.toolReviews).toBe(2);
+  });
+
+  it("reviews a later part of a multi-part request after another call of the same tool was finally rejected", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const { provider } = makeProvider([
+      makeFunctionCallResult("mirror_action", { target: "fixture_first" }),
+      makeFunctionCallResult("mirror_action", { target: "invented" }),
+      makeFunctionCallResult("mirror_action", { target: "invented_again" }),
+      makeFunctionCallResult("mirror_action", { target: "fixture_second" }),
+      { status: "completed" },
+    ]);
+    const review = mock(async () => ({
+      success: true,
+      data: [2, 3].includes(review.mock.calls.length) ? rejection : { status: "pass" },
+    }));
+    Object.assign(provider, { callStructuredJSON: review });
+    expect((await runToolLoop(makeParams(context, provider))).status).toBe("completed");
+    expect(toolExecuteCalls).toEqual([
+      { name: "mirror_action", args: { target: "fixture_first" } },
+      { name: "mirror_action", args: { target: "fixture_second" } },
+    ]);
+    expect(review).toHaveBeenCalledTimes(4);
+    expect(context.responseReview.toolCorrections).toBe(1);
+  });
+
+  it("ends the turn when a finally rejected request is proposed again instead of iterating to the cap", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const delivered: string[] = [];
+    const narrated = held("Setting that up.", delivered, "function_call");
+    narrated.data = { name: "mirror_action", args: { target: "invented" } };
+    const { provider, capturedHistories } = makeProvider([
+      narrated,
+      makeFunctionCallResult("mirror_action", { target: "invented_again" }),
+      ...Array.from({ length: 10 }, () => makeFunctionCallResult("mirror_action", { target: "invented_again" })),
+    ]);
+    const kinds: Array<string | undefined> = [];
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
+        kinds.push(request.schemaName);
+        return { success: true, data: request.schemaName === "tool_review" ? rejection : { status: "pass" } };
+      },
+    });
+    expect((await runToolLoop(makeParams(context, provider))).status).toBe("completed");
+    expect(capturedHistories).toHaveLength(3);
+    expect(kinds).toEqual(["tool_review", "tool_review", "response_review"]);
+    expect(toolExecuteCalls).toEqual([]);
+    expect(delivered).toEqual(["Setting that up."]);
+    expect(standardEmbedCalls).toEqual([]);
   });
 
   it("reviews spoken scripts without disabling later tool or response reviews and redacts completed speech evidence", async () => {
@@ -2458,7 +2508,7 @@ describe("runToolLoop — contract tests", () => {
     expect(calls).toHaveLength(1);
     expect(delivered).toEqual(["Found it."]);
     const [review] = calls;
-    expect(review?.prompt).not.toContain("<completed_tools>");
+    expect(review?.prompt).not.toContain("<earlier_tool_calls>");
     expect(review?.prompt).not.toContain("<available_tools>");
     expect(review?.prompt).not.toContain("tool_corrections=");
     expect(JSON.stringify(review?.schema)).not.toContain("tool_use");
