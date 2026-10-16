@@ -2244,7 +2244,14 @@ function buildBehaviorGeneralBody(input: ConfigPanelRenderInput): ComponentInCon
   }
   if (!view) return components;
 
+  const stPresetName = view.activeStPresetName;
+  const promptLocked = Boolean(stPresetName);
   const prompt = view.systemPrompt?.trim() || DEFAULT_SYSTEM_PROMPT.trim();
+  const promptLockNotice = stPresetName
+    ? `> ${localizer(locale, "commands.config.panel.system_prompt_st_preset_active", {
+        preset: escapeDiscordMarkdown(stPresetName),
+      })}`
+    : "";
   const contextNote = view.contextNote?.trim() ?? "";
   const responsePrefill = view.responsePrefill?.trim() ?? "";
   const prefillHeader = `**${localizer(locale, "commands.config.panel.response_prefill_title")}**\n${localizer(
@@ -2287,6 +2294,7 @@ function buildBehaviorGeneralBody(input: ConfigPanelRenderInput): ComponentInCon
   let fixedTextLength =
     measureFormattedPanelTextLength(components[0]) +
     measurePanelTextLength(promptHeader) +
+    measurePanelTextLength(promptLockNotice) +
     measurePanelTextLength(contextHeader) +
     (contextNote ? 0 : getDiscordTextLength(noneContent)) +
     measurePanelTextLength(prefillHeader) +
@@ -2297,13 +2305,16 @@ function buildBehaviorGeneralBody(input: ConfigPanelRenderInput): ComponentInCon
     fixedTextLength += measureFormattedPanelTextLength(timezoneTextDisplay);
   }
   const generalDynamicAllowance = Math.max(0, baseAllowance - fixedTextLength);
-  const boundedValueCount = 1 + (contextNote ? 1 : 0) + (responsePrefill ? 1 : 0);
+  const boundedValueCount = Math.max(1, (promptLocked ? 0 : 1) + (contextNote ? 1 : 0) + (responsePrefill ? 1 : 0));
   const generalPerValueBudget = Math.floor(generalDynamicAllowance / boundedValueCount);
 
-  const renderedPrompt = renderFencedPreview(locale, prompt, {
-    budget: generalPerValueBudget,
-    actionLabel: localizer(locale, "commands.config.panel.set_prompt_button"),
-  });
+  // A preset-controlled prompt is never sent, so previewing the stored or default text would misreport it.
+  const renderedPrompt = promptLocked
+    ? promptLockNotice
+    : renderFencedPreview(locale, prompt, {
+        budget: generalPerValueBudget,
+        actionLabel: localizer(locale, "commands.config.panel.set_prompt_button"),
+      });
   const renderedContextNote = contextNote
     ? renderFencedPreview(locale, contextNote, {
         budget: generalPerValueBudget,
@@ -2337,14 +2348,14 @@ function buildBehaviorGeneralBody(input: ConfigPanelRenderInput): ComponentInCon
           style: ButtonStyle.Secondary,
           customId: buildConfigRouteId({ action: "behavior-prompt-open", locale }),
           label: localizer(locale, "commands.config.panel.set_prompt_button"),
-          disabled: writesDisabled,
+          disabled: writesDisabled || promptLocked,
         },
         {
           type: ComponentType.Button,
           style: ButtonStyle.Secondary,
           customId: buildConfigRouteId({ action: "behavior-preset-open", locale }),
           label: localizer(locale, "commands.config.panel.apply_preset_button"),
-          disabled: writesDisabled,
+          disabled: writesDisabled || promptLocked,
         },
         {
           type: ComponentType.Button,
@@ -2358,8 +2369,23 @@ function buildBehaviorGeneralBody(input: ConfigPanelRenderInput): ComponentInCon
           style: ButtonStyle.Danger,
           customId: buildConfigRouteId({ action: "behavior-prompt-remove", locale }),
           label: localizer(locale, "commands.config.panel.use_default_prompt_button"),
-          disabled: writesDisabled || !view.systemPrompt,
+          disabled: writesDisabled || promptLocked || !view.systemPrompt,
         },
+        ...(promptLocked
+          ? [
+              {
+                type: ComponentType.Button as const,
+                style: ButtonStyle.Secondary as const,
+                customId: buildConfigRouteId({
+                  action: "category",
+                  locale,
+                  category: "plugins",
+                  page: "sillytavern-presets",
+                }),
+                label: localizer(locale, "commands.config.panel.open_st_presets_button"),
+              },
+            ]
+          : []),
       ],
     },
     {

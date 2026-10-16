@@ -78,9 +78,10 @@ Native blocks map directly to TomoriBot prompt components:
 
 ### System Prompt Rule
 
-When an imported preset is active, the built-in fallback system prompt is removed. However,
-if you configure a custom system prompt in `/config` > Behavior > General Behavior, that prompt
-is always included.
+When an imported preset is active, it fully controls the system prompt. TomoriBot's built-in
+prompt and any custom prompt from `/config` > Behavior > General Behavior are not sent, and the
+system prompt buttons there are locked. Your custom prompt is kept, and it comes back when you turn
+the preset off in `/config` > Plugins > SillyTavern Presets.
 
 ### Compatibility Notes
 

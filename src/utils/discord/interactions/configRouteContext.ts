@@ -127,6 +127,8 @@ export interface ConfigBehaviorGeneralView {
   humanizerDegree: number;
   messageFetchLimit: number;
   timezoneOffset: number;
+  /** Name of the active SillyTavern preset, which takes over the system prompt; absent when none. */
+  activeStPresetName?: string | null;
 }
 
 export interface ConfigBehaviorTriggerView {

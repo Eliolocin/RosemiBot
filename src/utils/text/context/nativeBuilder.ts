@@ -83,7 +83,7 @@ export async function buildContextNative(params: BuildContextParams): Promise<Na
     includeTimestamps = false,
     explicitLongTermMemoryIntent: explicitLongTermMemoryIntentOverride,
     deliberateToolAllowedNames,
-    suppressDefaultSystemPrompt = false,
+    presetOwnsSystemPrompt = false,
     messageIdMap,
   } = params;
 
@@ -183,7 +183,7 @@ export async function buildContextNative(params: BuildContextParams): Promise<Na
       isUserImpersonation,
       impersonatedIdentityName,
       impersonatedUserPrompt,
-      suppressDefaultSystemPrompt,
+      presetOwnsSystemPrompt,
       snapshot,
       toolPromptMacroResolver,
       convertMentions,

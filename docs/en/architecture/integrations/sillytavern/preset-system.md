@@ -68,8 +68,8 @@ Preset marker nodes pull items from specific native context buckets:
 Marker blocks move according to the preset layout. Specific native blocks are suppressed only when
 explicitly replaced:
 
-- The default fallback system prompt is omitted if a preset is active and no server-level system
-  prompt is configured.
+- The server-level system prompt and the default fallback are both omitted while a preset is active,
+  so the `main` marker carries only a channel prompt override.
 - The native `charDescription` block is skipped if a custom preset node expands the `{{description}}`
   macro.
 - The native `charPersonality` block is skipped if a custom preset node expands the `{{personality}}`

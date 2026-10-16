@@ -1723,6 +1723,29 @@ describe("config Behavior pages", () => {
     expect(buttonFor(payload, { action: "behavior-timezone-open", locale: "en-US" })).toBeUndefined();
   });
 
+  it("replaces the system prompt preview and locks its controls while a SillyTavern preset is active", () => {
+    const payload = build(GUILD_MANAGER, {
+      category: "behavior",
+      page: "general",
+      behaviorView: { ...behaviorView, general: { ...behaviorView.general, activeStPresetName: "Juno RP" } },
+    });
+    const seen = walk(payload);
+    expect(seen.some((component) => component.content?.includes("Keep replies concise."))).toBe(false);
+    expect(
+      seen.some((component) =>
+        localizedProse("en-US", "commands.config.panel.system_prompt_st_preset_active").test(component.content ?? ""),
+      ),
+    ).toBe(true);
+    for (const action of ["behavior-prompt-open", "behavior-preset-open", "behavior-prompt-remove"] as const) {
+      expect(buttonFor(payload, { action, locale: "en-US" })?.disabled).toBe(true);
+    }
+    expect(buttonFor(payload, { action: "behavior-prefill-open", locale: "en-US" })?.disabled).toBe(false);
+    expect(
+      buttonFor(payload, { action: "category", locale: "en-US", category: "plugins", page: "sillytavern-presets" })
+        ?.disabled,
+    ).not.toBe(true);
+  });
+
   it("swaps the Random Trigger Add entry for a persona range select past one page", () => {
     const renderTrigger = (personaCount: number): string => {
       const personas = Array.from({ length: personaCount }, (_unused, index) => makePersona({ persona_id: index + 1 }));

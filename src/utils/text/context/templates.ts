@@ -123,7 +123,7 @@ export async function buildPromptContextItems(params: {
   isUserImpersonation: boolean;
   impersonatedIdentityName: string | null;
   impersonatedUserPrompt?: string | null;
-  suppressDefaultSystemPrompt: boolean;
+  presetOwnsSystemPrompt: boolean;
   snapshot?: import("@/types/misc/context").RequestSnapshot;
   toolPromptMacroResolver: { expand(text: string): Promise<string> };
   convertMentions: MentionConverter;
@@ -134,8 +134,9 @@ export async function buildPromptContextItems(params: {
     const channelOverride = params.channelPromptOverride;
 
     // Resolve the server-level system prompt (or default fallback).
-    const baseSystemPrompt =
-      params.tomoriConfig.system_prompt?.trim() || (params.suppressDefaultSystemPrompt ? null : DEFAULT_SYSTEM_PROMPT);
+    const baseSystemPrompt = params.presetOwnsSystemPrompt
+      ? null
+      : params.tomoriConfig.system_prompt?.trim() || DEFAULT_SYSTEM_PROMPT;
 
     // Replace mode: the channel prompt fully takes over the system-prompt slot's
     //    content (persona prompt + attributes below are untouched). Otherwise keep

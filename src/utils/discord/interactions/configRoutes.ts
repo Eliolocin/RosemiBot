@@ -19,6 +19,7 @@ import type { AddressingStyle } from "@/types/personaNaming";
 import { isToolNoticeKey } from "@/constants/toolNotices";
 import { getCachedAllPersonas, getCachedTomoriState, getLastDbError } from "@/utils/cache/tomoriStateCache";
 import { getGuildMcpConfigReadResult } from "@/utils/cache/guildMcpConfigCache";
+import { getCachedActivePreset } from "@/utils/cache/stPresetCache";
 import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCacheStore";
 import {
   getShortTermMemoryForServerChannel,
@@ -582,10 +583,11 @@ const defaultDependencies: ConfigRouteDependencies = {
   addVoiceSample,
   loadBehaviorView: async (state) => {
     const rawChatConfig = await configRepository.getChatConfig(state.server_id);
-    const [speechConfig, stmConfig, stmCategories] = await Promise.all([
+    const [speechConfig, stmConfig, stmCategories, activeStPreset] = await Promise.all([
       configRepository.getSpeechConfig(state.server_id),
       shortTermMemoryRepository.getStmConfig(state.server_id),
       shortTermMemoryRepository.getStmCategories(state.server_id),
+      getCachedActivePreset(state.server_id),
     ]);
     const triggers = (await serverScheduleRepository.getServerTriggers(state.server_id)).filter(
       (trigger): trigger is typeof trigger & { trigger_id: number } => trigger.trigger_id !== undefined,
@@ -603,6 +605,7 @@ const defaultDependencies: ConfigRouteDependencies = {
       messageFetchLimit:
         rawChatConfig?.message_fetch_limit ?? state.config.message_fetch_limit ?? DEFAULT_MESSAGE_FETCH_LIMIT,
       timezoneOffset: rawChatConfig?.timezone_offset ?? state.config.timezone_offset ?? 0,
+      activeStPresetName: activeStPreset?.preset.preset_name ?? null,
     };
     const trigger: ConfigBehaviorTriggerView = {
       randomTriggers: triggers,

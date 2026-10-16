@@ -143,6 +143,15 @@ export const CONFIG_BEHAVIOR_MODAL_SUBMIT_ACTIONS = new Set<ConfigPanelRoute["ac
   "behavior-cooldown-submit",
 ]);
 
+/** Actions that edit the server system prompt, which an active SillyTavern preset takes over. */
+const SYSTEM_PROMPT_ACTIONS = new Set<ConfigPanelRoute["action"]>([
+  "behavior-prompt-open",
+  "behavior-prompt-submit",
+  "behavior-preset-open",
+  "behavior-preset-submit",
+  "behavior-prompt-remove",
+]);
+
 const RANDOM_TRIGGER_MAX_PER_SERVER = Number.parseInt(process.env.RANDOM_TRIGGER_MAX_PER_SERVER ?? "10", 10);
 const RANDOM_PERSONA_VALUE = "random";
 const RANDOM_TRIGGER_PAGE_SIZE = CONFIG_RANDOM_TRIGGER_CHECKBOX_CAPACITY;
@@ -352,6 +361,13 @@ export async function handleConfigBehaviorModalOpen(
     return true;
   }
   const view = await behaviorView(scope, dependencies);
+  if (SYSTEM_PROMPT_ACTIONS.has(route.action) && view?.general.activeStPresetName) {
+    await interaction.reply({
+      content: localizer(route.locale, "commands.config.panel.system_prompt_st_preset_locked_detail"),
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
   const nonce = dependencies.createNonce();
   if (route.action === "behavior-prompt-open") {
     await dependencies.showModal(
@@ -520,6 +536,19 @@ async function runGeneralWrite(
   if (!state) return null;
   const modalInteraction = route.action.endsWith("submit") ? modal(interaction) : null;
   const locale = route.locale;
+  if (
+    SYSTEM_PROMPT_ACTIONS.has(route.action) &&
+    (await behaviorView(scope, dependencies))?.general.activeStPresetName
+  ) {
+    return {
+      receipt: receipt(
+        locale,
+        "warning",
+        "commands.config.panel.system_prompt_locked_heading",
+        "commands.config.panel.system_prompt_st_preset_locked_detail",
+      ),
+    };
+  }
   if (route.action === "behavior-prompt-submit" && modalInteraction) {
     const prompt = combineModalPromptParts(
       CONFIG_PERSONA_PROMPT_PART_FIELDS.map((field) => getText(modalInteraction, field, route.nonce)),
