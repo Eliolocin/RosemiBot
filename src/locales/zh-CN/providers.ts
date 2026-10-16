@@ -66,6 +66,7 @@ export default {
       timeout_title: `🟡️ 提供方请求超时`,
       provider_overloaded_title: `🔴 提供方过载`,
       provider_overloaded_description: `提供方目前过载或暂时不可用`,
+      connection_refused_description: `与提供方的连接被拒绝。请检查其端点是否正在运行，以及地址是否正确。`,
       context_length_title: `🔴 消息对这个模型来说太长`,
       credit_limit_title: `🔴 提供方额度不足`,
       balance_exhausted_title: `🔴 提供方账户余额用尽`,

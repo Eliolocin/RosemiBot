@@ -66,6 +66,7 @@ export default {
       timeout_title: `🟡️ 供應商要求逾時`,
       provider_overloaded_title: `🔴 供應商超載`,
       provider_overloaded_description: `供應商目前超載或暫時無法使用`,
+      connection_refused_description: `與供應商的連線被拒絕。請檢查其端點是否正在運作，且位址是否正確。`,
       context_length_title: `🔴 訊息對這個模型來說太長`,
       credit_limit_title: `🔴 供應商額度不足`,
       balance_exhausted_title: `🔴 供應商帳號餘額不足`,

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createOpenRouterCatalog, normalizeOpenRouterCodename } from "@/utils/cache/openrouterCatalog";
+import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 
 const admittedModels = new Set(["fish-audio/s2.1-pro", "fish-audio/s2.1-pro-free:free"]);
@@ -37,7 +38,7 @@ export async function validateOpenRouterSpeechModel(codename: string): Promise<b
     if (!model || revision === catalogRevision) return false;
     const response = await fetch(`https://openrouter.ai/api/v1/models/${normalized}/endpoints`, {
       signal: AbortSignal.timeout(30_000),
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", ...buildOpenRouterAttributionHeaders() },
     });
     if (!response.ok) {
       await response.body?.cancel();

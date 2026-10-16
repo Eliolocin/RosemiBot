@@ -66,6 +66,7 @@ export default {
       timeout_title: `🟡️ Hết thời gian yêu cầu nhà cung cấp`,
       provider_overloaded_title: `🔴 Nhà cung cấp quá tải`,
       provider_overloaded_description: `Nhà cung cấp hiện đang quá tải hoặc tạm thời không khả dụng`,
+      connection_refused_description: `Kết nối tới nhà cung cấp đã bị từ chối. Hãy kiểm tra xem endpoint có đang chạy và địa chỉ có chính xác không.`,
       context_length_title: `🔴 Tin nhắn quá dài cho model này`,
       credit_limit_title: `🔴 Không đủ tín dụng nhà cung cấp`,
       balance_exhausted_title: `🔴 Tài khoản nhà cung cấp hết số dư`,

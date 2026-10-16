@@ -66,6 +66,7 @@ export default {
       timeout_title: `🟡️ プロバイダーリクエストタイムアウト`,
       provider_overloaded_title: `🔴 プロバイダーの過負荷`,
       provider_overloaded_description: `プロバイダーが現在過負荷状態、または一時的に利用できません`,
+      connection_refused_description: `プロバイダーへの接続が拒否されました。エンドポイントが起動しており、アドレスが正しいことを確認してください。`,
       context_length_title: `🔴 このモデルにはメッセージが長すぎます`,
       credit_limit_title: `🔴 プロバイダーのクレジットが不足しています`,
       balance_exhausted_title: `🔴 プロバイダーアカウントの残高がありません`,

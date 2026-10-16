@@ -18,6 +18,7 @@ import { log } from "@/utils/misc/logger";
 import { decryptApiKey } from "@/utils/security/crypto";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
 import { resolveVisionApiModelName } from "@/utils/provider/visionCaption";
+import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { ZAI_CODING_CHAT_COMPLETIONS_URL, ZAI_GENERAL_CHAT_COMPLETIONS_URL } from "@/providers/zai/zaiShared";
 import { waitForWelcomeGate } from "@/events/guildMemberAdd/helpers/welcomeGate";
 import { type WelcomeMembershipCheck, checkWelcomeMembership } from "@/events/guildMemberAdd/helpers/welcomeMembership";
@@ -92,6 +93,7 @@ async function callOpenAICompatibleVisionForAvatar(
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
+      ...(endpointUrl === VISION_PROVIDER_URLS.openrouter && buildOpenRouterAttributionHeaders()),
     },
     body: JSON.stringify(requestBody),
   });

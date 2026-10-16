@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import {
   checkSpeechStatus,
@@ -29,7 +30,11 @@ export async function synthesizeOpenRouterSpeech(request: {
   request.operations.push(operation);
   const response = await fetch("https://openrouter.ai/api/v1/audio/speech", {
     method: "POST",
-    headers: { Authorization: `Bearer ${request.apiKey}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${request.apiKey}`,
+      "Content-Type": "application/json",
+      ...buildOpenRouterAttributionHeaders(),
+    },
     redirect: "error",
     signal: request.signal,
     body: JSON.stringify({
@@ -65,7 +70,7 @@ export async function synthesizeOpenRouterSpeech(request: {
       const costResponse = await fetch(
         `https://openrouter.ai/api/v1/generation?id=${encodeURIComponent(operation.generationId)}`,
         {
-          headers: { Authorization: `Bearer ${request.apiKey}` },
+          headers: { Authorization: `Bearer ${request.apiKey}`, ...buildOpenRouterAttributionHeaders() },
           redirect: "error",
           signal: costSignal,
         },

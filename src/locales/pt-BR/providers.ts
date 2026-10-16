@@ -66,6 +66,7 @@ export default {
       timeout_title: `🟡️ Tempo Limite de Solicitação do Provedor`,
       provider_overloaded_title: `🔴 Provedor Sobrecarregado`,
       provider_overloaded_description: `O provedor está atualmente sobrecarregado ou temporariamente indisponível`,
+      connection_refused_description: `A conexão com o provedor foi recusada. Verifique se o seu endpoint está em execução e se o endereço está correto.`,
       context_length_title: `🔴 Mensagem Muito Longa para Este Modelo`,
       credit_limit_title: `🔴 Créditos do Provedor Insuficientes`,
       balance_exhausted_title: `🔴 Conta do Provedor Sem Saldo`,

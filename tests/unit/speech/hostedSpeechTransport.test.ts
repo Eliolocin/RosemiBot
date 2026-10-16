@@ -13,6 +13,7 @@ import { createSpeechWav, createSpeechMp3 } from "../../helpers/speechAudio";
 const wav = createSpeechWav();
 let mp3: Buffer;
 let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, "fetch">> | undefined;
+const originalAttributionSetting = process.env.OPENROUTER_APP_ATTRIBUTION_ENABLED;
 const signal = () => AbortSignal.timeout(5_000);
 
 function stubFetch(handler: (url: string, init: RequestInit) => Promise<Response>) {
@@ -34,7 +35,11 @@ beforeAll(async () => {
   mp3 = await createSpeechMp3();
 });
 
-afterEach(() => fetchSpy?.mockRestore());
+afterEach(() => {
+  fetchSpy?.mockRestore();
+  if (originalAttributionSetting === undefined) delete process.env.OPENROUTER_APP_ATTRIBUTION_ENABLED;
+  else process.env.OPENROUTER_APP_ATTRIBUTION_ENABLED = originalAttributionSetting;
+});
 
 describe("hosted speech transports", () => {
   it("keeps prompted identity, spoken text, and direction in separate Gemini fields and preserves only usage fields", async () => {
@@ -195,6 +200,7 @@ describe("hosted speech transports", () => {
   });
 
   it("clones with inline WAV and returns MP3 while cost lookup failure preserves audio and unknown cost", async () => {
+    delete process.env.OPENROUTER_APP_ATTRIBUTION_ENABLED;
     for (const cost of [null, 0.12]) {
       const calls: Array<{ url: string; init: RequestInit }> = [];
       stubFetch(async (url, init) => {
@@ -231,10 +237,33 @@ describe("hosted speech transports", () => {
       });
       expect(operations[0].generationId).toBe("gen_synthetic");
       expect(operations[1].actualCost).toBe(cost ?? undefined);
+      for (const { init } of calls) {
+        const headers = new Headers(init.headers);
+        expect(headers.get("HTTP-Referer")).toBe("https://tomoribot.app");
+        expect(headers.get("X-OpenRouter-Title")).toBe("TomoriBot");
+      }
       if (cost !== null) expect(operations[0].usage).toEqual({ tokens_prompt: 12, native_tokens_completion: null });
       expect(calls.every(({ init }) => init.redirect === "error")).toBe(true);
       fetchSpy?.mockRestore();
     }
+  });
+
+  it("omits OpenRouter speech attribution when disabled", async () => {
+    process.env.OPENROUTER_APP_ATTRIBUTION_ENABLED = "false";
+    stubFetch(async () => new Response(new Uint8Array(mp3), { headers: { "Content-Type": "audio/mpeg" } }));
+    await synthesizeOpenRouterSpeech({
+      model: "fish-audio/s2.1-pro",
+      apiKey: "synthetic-fish",
+      script: "Hello",
+      reference: wav,
+      transcript: null,
+      signal: signal(),
+      maxBytes: HOSTED_SPEECH_LIMITS.outputBytes,
+      operations: [],
+    });
+    const headers = new Headers(fetchSpy?.mock.calls[0]?.[1]?.headers);
+    expect(headers.has("HTTP-Referer")).toBe(false);
+    expect(headers.has("X-OpenRouter-Title")).toBe(false);
   });
 
   it("rejects wrong MIME, invalid MP3, byte overflow, and provider refusal without a cost request", async () => {

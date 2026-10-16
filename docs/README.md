@@ -174,5 +174,5 @@ personas TomoriBot ships with). Card sources: `src/db/seed/catalog/personas/*`.
 Reachable only via in-page links: not shown in the sidebar.
 
 - [`wiki/production-tuning.md`](./en/wiki/production-tuning.md): deep operational tuning, container sizing, and incident recovery
-- [`wiki/refactor-record.md`](./en/wiki/refactor-record.md): historical plugin-architecture-prerequisite refactor record
+- [`wiki/refactor-record.md`](./en/wiki/refactor-record.md): module ownership and links to current architecture
 - [`wiki/threat-models.md`](./en/wiki/threat-models.md): security threat models
