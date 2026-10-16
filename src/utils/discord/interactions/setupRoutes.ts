@@ -229,14 +229,15 @@ export function buildSetupFinishRouteId(input: { locale: string; nonce: string }
  * rather than being described as a non-number.
  */
 function describeSetupSettingsRejection(rawTimezone: string | undefined, timezoneOffset: number | null): string {
-  const prefix = "commands.setup.wizard.";
   if (timezoneOffset === null) {
     const typed = rawTimezone?.trim() ?? "";
     // Blank is UTC rather than an error, so a rejection here is either unparseable or out of range.
     const isOutOfRange = typed !== "" && !Number.isNaN(Number.parseFloat(typed));
-    return `${prefix}${isOutOfRange ? "settings_timezone_out_of_range" : "settings_timezone_invalid"}`;
+    return isOutOfRange
+      ? "commands.setup.wizard.settings_timezone_out_of_range"
+      : "commands.setup.wizard.settings_timezone_invalid";
   }
-  return `${prefix}settings_persona_stale`;
+  return "commands.setup.wizard.settings_persona_stale";
 }
 
 /**

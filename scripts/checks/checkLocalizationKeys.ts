@@ -1400,8 +1400,6 @@ const DYNAMIC_KEY_PATTERNS = [
   /^commands\.personal\.deliberatetriggermode\./,
   /^commands\.personal\.deliberatetoolmode\./,
   /^commands\.personal\.profile\.about\.style_/,
-  /^commands\.providers\.(?:api_|capabilities\.|edit_|endpoint_|entry_kind_|model_|remove_impact_|script_|voice_)/,
-  /^commands\.setup\.(?:humanizer_option_|wizard\.)/,
   /^tools\.search\.category_labels\./,
   /^tools\.user_block\./,
   /^tools\.user_info_update\.field_/,
