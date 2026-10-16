@@ -38,6 +38,11 @@ interface ConfigPersonaVoiceRemoteOptionView {
   selected?: boolean;
 }
 
+const VOICE_PRIORITY_KEYS: Record<TomoriState["voice_source_priority"], string> = {
+  design: "commands.config.panel.voice_priority_design",
+  clone: "commands.config.panel.voice_priority_clone",
+};
+
 export interface ConfigPersonaVoiceRemoteView {
   /** `voices` is the normal name; `options` keeps fixture views easy to adapt from catalog APIs. */
   voices?: readonly ConfigPersonaVoiceRemoteOptionView[];
@@ -395,7 +400,7 @@ export function buildConfigVoiceBody(input: ConfigVoicePanelInput): ComponentInC
             action: mode === "design" ? "voice-priority-design" : "voice-priority-clone",
             personaId,
           }),
-          label: localizer(input.locale, `commands.config.panel.voice_priority_${mode}`),
+          label: localizer(input.locale, VOICE_PRIORITY_KEYS[mode]),
         })),
         priority,
         input.readStatus !== "fresh" || !input.actor.isManager,
@@ -412,8 +417,8 @@ export function buildConfigVoiceBody(input: ConfigVoicePanelInput): ComponentInC
               ? "commands.config.panel.voice_priority_fallback_target"
               : "commands.config.panel.voice_priority_fallback_input",
           {
-            priority: localizer(input.locale, `commands.config.panel.voice_priority_${priority}`),
-            source: localizer(input.locale, `commands.config.panel.voice_priority_${view.effectiveSource}`),
+            priority: localizer(input.locale, VOICE_PRIORITY_KEYS[priority]),
+            source: localizer(input.locale, VOICE_PRIORITY_KEYS[view.effectiveSource]),
             target: view.effectiveTarget ?? localizer(input.locale, "commands.choices.none"),
           },
         )}`,

@@ -1,5 +1,5 @@
 import { TextInputStyle } from "discord.js";
-import { THINKING_LEVEL_VALUES } from "@/constants/thinkingLevels";
+import { THINKING_LEVEL_LOCALIZER_KEYS, THINKING_LEVEL_VALUES } from "@/constants/thinkingLevels";
 import type { LogitBiasEntry } from "@/types/provider/logitBias";
 import type { SavedProviderConfigRow } from "@/types/db/schema";
 import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
@@ -201,7 +201,7 @@ export function buildConfigGenerationModal(
           min_values: 0,
           max_values: 1,
           options: THINKING_LEVEL_VALUES.map((value) => ({
-            label: safeSelectOptionText(localizer(locale, `commands.config.thinking-level.choice_${value}`), 100),
+            label: safeSelectOptionText(localizer(locale, THINKING_LEVEL_LOCALIZER_KEYS[value]), 100),
             value,
             default: value === currentThinking,
           })),

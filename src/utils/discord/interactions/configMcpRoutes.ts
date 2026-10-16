@@ -35,11 +35,30 @@ const MCP_ACTIONS = new Set<ConfigPanelRoute["action"]>([
 
 const MCP_MODAL_OPEN_ACTIONS = new Set<ConfigPanelRoute["action"]>(["mcp-add-open"]);
 
-function receipt(locale: string, key: string, variables?: Record<string, string | number>): PanelReceipt {
+const RECEIPT_DETAIL_KEYS: Record<
+  | "commands.mcps.added"
+  | "commands.mcps.unchanged_receipt"
+  | "commands.mcps.enabled_receipt"
+  | "commands.mcps.disabled_receipt"
+  | "commands.mcps.removed_receipt",
+  string
+> = {
+  "commands.mcps.added": "commands.mcps.added_detail",
+  "commands.mcps.unchanged_receipt": "commands.mcps.unchanged_receipt_detail",
+  "commands.mcps.enabled_receipt": "commands.mcps.enabled_receipt_detail",
+  "commands.mcps.disabled_receipt": "commands.mcps.disabled_receipt_detail",
+  "commands.mcps.removed_receipt": "commands.mcps.removed_receipt_detail",
+};
+
+function receipt(
+  locale: string,
+  key: keyof typeof RECEIPT_DETAIL_KEYS,
+  variables?: Record<string, string | number>,
+): PanelReceipt {
   return {
     tone: key.includes("failed") || key.includes("unavailable") ? "error" : "success",
     heading: localizer(locale, key),
-    detail: variables?.detail ? String(variables.detail) : localizer(locale, `${key}_detail`, variables),
+    detail: variables?.detail ? String(variables.detail) : localizer(locale, RECEIPT_DETAIL_KEYS[key], variables),
   };
 }
 

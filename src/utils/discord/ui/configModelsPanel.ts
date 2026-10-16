@@ -516,17 +516,20 @@ function buildNaiPresetBlock(
   writesDisabled: boolean,
   displayBudget: number,
 ): ComponentInContainerData[] {
-  const explanationKey =
+  const explanation =
     view.compatibility === "not-novelai"
-      ? "not_novelai"
+      ? {
+          title: "commands.config.panel.nai_preset.not_novelai_title",
+          description: "commands.config.panel.nai_preset.not_novelai_description",
+        }
       : view.compatibility === "unsupported"
-        ? "not_kayra_erato"
+        ? {
+            title: "commands.config.panel.nai_preset.not_kayra_erato_title",
+            description: "commands.config.panel.nai_preset.not_kayra_erato_description",
+          }
         : null;
-  const display = explanationKey
-    ? `**${localizer(locale, `commands.config.panel.nai_preset.${explanationKey}_title`)}**\n${localizer(
-        locale,
-        `commands.config.panel.nai_preset.${explanationKey}_description`,
-      )}`
+  const display = explanation
+    ? `**${localizer(locale, explanation.title)}**\n${localizer(locale, explanation.description)}`
     : (() => {
         const prefix = `**${localizer(locale, "commands.config.panel.nai_preset.select_label")}**\n${localizer(
           locale,
@@ -562,9 +565,7 @@ function buildNaiPresetBlock(
             description: safeSelectOptionText(
               localizer(
                 locale,
-                explanationKey
-                  ? `commands.config.panel.nai_preset.${explanationKey}_description`
-                  : "commands.config.panel.nai_preset.select_description",
+                explanation ? explanation.description : "commands.config.panel.nai_preset.select_description",
               ),
               100,
             ),

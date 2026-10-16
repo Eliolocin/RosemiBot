@@ -2,7 +2,6 @@ export default {
   conditioning: {
     description: `ご褒美・おしおきの条件付け記憶を管理します。`,
     shared: {
-      select_persona_title: `管理するペルソナを選択`,
       reason_line: `理由: \`\`{reason}\`\``,
       reward_footer: `❤️ {bot}はこれを覚えておきます。管理は /conditioning remove を使用してください。`,
       punish_footer: `💀 {bot}はこれを覚えておきます。管理は /conditioning remove を使用してください。`,

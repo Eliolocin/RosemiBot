@@ -209,19 +209,84 @@ export const MEDIA_GENERATION_TOOL_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 export const DELIBERATE_TOOL_TRIGGER_TARGETS = [
-  { value: "image", label: "Image generation", toolNames: IMAGE_GENERATION_TOOL_NAMES },
-  { value: "video", label: "Video generation", toolNames: VIDEO_GENERATION_TOOL_NAMES },
-  { value: "voice", label: "Voice message", toolNames: VOICE_GENERATION_TOOL_NAMES },
-  { value: "reminder", label: "Reminder/task", toolNames: REMINDER_TOOL_NAMES },
-  { value: "cross-channel", label: "Cross-channel message", toolNames: ["cross_channel_message"] },
-  { value: "search", label: "Web search/fetch", toolNames: WEB_TOOL_NAMES },
-  { value: "memory", label: "Memory", toolNames: [...MEMORY_TOOL_NAMES, ...SHORT_TERM_MEMORY_TOOL_NAMES] },
-  { value: "media-analysis", label: "Media analysis", toolNames: MEDIA_ANALYSIS_TOOL_NAMES },
-  { value: "message-action", label: "Message actions", toolNames: MESSAGE_ACTION_TOOL_NAMES },
-  { value: "user-blocking", label: "Persona user blocking", toolNames: USER_BLOCKING_TOOL_NAMES },
-  { value: "user-info", label: "User info updates", toolNames: USER_INFO_TOOL_NAMES },
-  { value: "thread", label: "Thread creation", toolNames: ["create_thread"] },
-  { value: "capabilities", label: "Capability review", toolNames: CAPABILITY_TOOL_NAMES },
+  {
+    value: "image",
+    labelKey: "commands.config.panel.tool_target_image",
+    label: "Image generation",
+    toolNames: IMAGE_GENERATION_TOOL_NAMES,
+  },
+  {
+    value: "video",
+    labelKey: "commands.config.panel.tool_target_video",
+    label: "Video generation",
+    toolNames: VIDEO_GENERATION_TOOL_NAMES,
+  },
+  {
+    value: "voice",
+    labelKey: "commands.config.panel.tool_target_voice",
+    label: "Voice message",
+    toolNames: VOICE_GENERATION_TOOL_NAMES,
+  },
+  {
+    value: "reminder",
+    labelKey: "commands.config.panel.tool_target_reminder",
+    label: "Reminder/task",
+    toolNames: REMINDER_TOOL_NAMES,
+  },
+  {
+    value: "cross-channel",
+    labelKey: "commands.config.panel.tool_target_cross-channel",
+    label: "Cross-channel message",
+    toolNames: ["cross_channel_message"],
+  },
+  {
+    value: "search",
+    labelKey: "commands.config.panel.tool_target_search",
+    label: "Web search/fetch",
+    toolNames: WEB_TOOL_NAMES,
+  },
+  {
+    value: "memory",
+    labelKey: "commands.config.panel.tool_target_memory",
+    label: "Memory",
+    toolNames: [...MEMORY_TOOL_NAMES, ...SHORT_TERM_MEMORY_TOOL_NAMES],
+  },
+  {
+    value: "media-analysis",
+    labelKey: "commands.config.panel.tool_target_media-analysis",
+    label: "Media analysis",
+    toolNames: MEDIA_ANALYSIS_TOOL_NAMES,
+  },
+  {
+    value: "message-action",
+    labelKey: "commands.config.panel.tool_target_message-action",
+    label: "Message actions",
+    toolNames: MESSAGE_ACTION_TOOL_NAMES,
+  },
+  {
+    value: "user-blocking",
+    labelKey: "commands.config.panel.tool_target_user-blocking",
+    label: "Persona user blocking",
+    toolNames: USER_BLOCKING_TOOL_NAMES,
+  },
+  {
+    value: "user-info",
+    labelKey: "commands.config.panel.tool_target_user-info",
+    label: "User info updates",
+    toolNames: USER_INFO_TOOL_NAMES,
+  },
+  {
+    value: "thread",
+    labelKey: "commands.config.panel.tool_target_thread",
+    label: "Thread creation",
+    toolNames: ["create_thread"],
+  },
+  {
+    value: "capabilities",
+    labelKey: "commands.config.panel.tool_target_capabilities",
+    label: "Capability review",
+    toolNames: CAPABILITY_TOOL_NAMES,
+  },
 ] as const;
 
 export type DeliberateToolTriggerTarget = (typeof DELIBERATE_TOOL_TRIGGER_TARGETS)[number]["value"];

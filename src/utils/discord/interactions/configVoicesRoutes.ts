@@ -46,6 +46,13 @@ export const CONFIG_VOICES_MODAL_SUBMIT_ACTIONS = new Set<ConfigPanelRoute["acti
   "tts-parameters-submit",
 ]);
 
+type SpeechParameterField = "cfg_weight" | "exaggeration";
+
+const SPEECH_PARAMETER_LABEL_KEYS: Record<SpeechParameterField, string> = {
+  cfg_weight: "commands.config.panel.voices.parameters.cfg_weight_label",
+  exaggeration: "commands.config.panel.voices.parameters.exaggeration_label",
+};
+
 const CONFIG_VOICES_ROUTE_ACTIONS = new Set<ConfigPanelRoute["action"]>([
   ...CONFIG_VOICES_MODAL_SUBMIT_ACTIONS,
   "voice-sample-select",
@@ -173,10 +180,8 @@ function parseSpeechParameter(interaction: ModalSubmitInteraction, field: string
   return value;
 }
 
-function invalidSpeechParametersReceipt(locale: string, invalidFields: readonly string[]): VoicesReceipt {
-  const labels = invalidFields.map((field) =>
-    localizer(locale, `commands.config.panel.voices.parameters.${field}_label`),
-  );
+function invalidSpeechParametersReceipt(locale: string, invalidFields: readonly SpeechParameterField[]): VoicesReceipt {
+  const labels = invalidFields.map((field) => localizer(locale, SPEECH_PARAMETER_LABEL_KEYS[field]));
   return {
     tone: "error",
     heading: localizer(locale, "commands.config.panel.voices.parameters.invalid_input_title"),
@@ -593,9 +598,9 @@ export async function handleConfigVoicesRoutes(context: ConfigVoicesRouteContext
       modal.id,
       buildConfigModalFieldId(CONFIG_TTS_TURBO_FIELD, route.nonce),
     );
-    const invalidFields = [
-      ...(cfgWeight === null ? ["cfg_weight"] : []),
-      ...(exaggeration === null ? ["exaggeration"] : []),
+    const invalidFields: (SpeechParameterField | "turbo")[] = [
+      ...(cfgWeight === null ? ["cfg_weight" as const] : []),
+      ...(exaggeration === null ? ["exaggeration" as const] : []),
     ];
     if (turboValue !== "off" && turboValue !== "on") {
       invalidFields.push("turbo");

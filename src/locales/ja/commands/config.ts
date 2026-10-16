@@ -126,12 +126,10 @@ export default {
       naming_modal_title_feminine: `女性向けの呼び方を編集`,
       naming_modal_title_neutral: `通常の呼び方を編集`,
       nai_preset: {
-        description: `このサーバーのテキスト生成設定にNovelAIサンプリングプリセットを適用します。`,
         not_novelai_title: `NovelAIプロバイダーが必要です`,
         not_novelai_description: `このコマンドはAIプロバイダーがNovelAIに設定されている場合にのみ使用できます。\`/config\` > モデル > モデルの切り替え でNovelAIモデルに切り替えてください。`,
         not_kayra_erato_title: `KayraまたはEratoが必要です`,
         not_kayra_erato_description: `サンプリングプリセットは **kayra-v1** および **llama-3-erato-v1** モデルのみで利用可能です。\`/config\` > モデル > モデルの切り替え でモデルを切り替えてください。`,
-        modal_title: `サンプリングプリセットを選択`,
         select_label: `サンプリングプリセット`,
         select_description: `テキスト生成に適用するプリセットを選択してください。`,
         select_placeholder: `サンプリングプリセットを選択...`,
@@ -209,10 +207,6 @@ export default {
           success_description: `**{name}** を削除し、それを使っていたペルソナ割り当てを解除しました。`,
         },
         parameters: {
-          description: `Chatterboxの高速モデルと標準モデルの音声生成を調整します。`,
-          cfg_weight_description: `標準モデルのみ: 下げると速い声のペース調整に役立ち、上げると参照音声により強く寄せます。`,
-          exaggeration_description: `標準モデルのみ: 上げるほど表現が強くドラマチックになり、発話が速くなる場合があります。`,
-          turbo_description: `高速生成と対応済みイベントタグには、設定済みのTurboまたはNanoモデルを使います。`,
           enabled_label: `有効`,
           disabled_label: `無効`,
           success_title: `Chatterboxパラメータを更新しました`,

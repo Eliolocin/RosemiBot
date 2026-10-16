@@ -21,7 +21,6 @@ export default {
         slot_4_label: `分類 4`,
         slot_5_label: `分類 5`,
         slot_instructions: `欄位格式為「標籤：說明」（例如「目標：隊伍任務」）。留空會略過；全部清除則重設。`,
-        slot_placeholder: `標籤：說明`,
       },
     },
     "crosschannel-blocklist": {

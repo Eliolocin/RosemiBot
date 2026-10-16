@@ -2,7 +2,6 @@ export default {
   conditioning: {
     description: `Gerencie memórias persistentes de condicionamento de recompensa e punição.`,
     shared: {
-      select_persona_title: `Selecione uma persona para gerenciar`,
       reason_line: `Motivo: \`\`{reason}\`\``,
       reward_footer: `❤️ {bot} vai se lembrar disso. Use /conditioning para gerenciar.`,
       punish_footer: `💀 {bot} vai se lembrar disso. Use /conditioning para gerenciar.`,

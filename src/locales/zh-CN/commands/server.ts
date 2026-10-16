@@ -21,7 +21,6 @@ export default {
         slot_4_label: `分类 4`,
         slot_5_label: `分类 5`,
         slot_instructions: `输入框格式为「标签：描述」（例如「Goals: 队伍目标」）。留空会跳过；全部清空则恢复默认。`,
-        slot_placeholder: `标签：描述`,
       },
     },
     "crosschannel-blocklist": {

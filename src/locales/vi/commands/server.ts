@@ -21,7 +21,6 @@ export default {
         slot_4_label: `Danh mục 4`,
         slot_5_label: `Danh mục 5`,
         slot_instructions: `Ô = "Nhãn: Mô tả" (vd: "Mục tiêu: nhiệm vụ nhóm"). Bỏ trống để bỏ qua; xóa hết để đặt lại.`,
-        slot_placeholder: `Nhãn: Mô tả`,
       },
     },
     "crosschannel-blocklist": {

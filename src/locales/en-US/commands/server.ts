@@ -21,7 +21,6 @@ export default {
         slot_4_label: `Category 4`,
         slot_5_label: `Category 5`,
         slot_instructions: `Box = "Label: Description" (e.g. "Goals: party objectives"). Empty skipped; clear all resets.`,
-        slot_placeholder: `Label: Description`,
       },
     },
     "crosschannel-blocklist": {

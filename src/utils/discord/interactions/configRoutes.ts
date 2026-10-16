@@ -340,22 +340,35 @@ function spriteFailureReceipt(
   locale: string,
   result: { status: string; reason?: string; resetAt?: number | null },
 ): PanelReceipt {
-  const key = (suffix: string) => `commands.config.panel.${suffix}`;
   switch (result.status) {
     case "invalid-name":
-      return receipt(locale, "error", key("sprite_invalid_name_heading"), key("sprite_invalid_name_detail"), {
-        max_length: PERSONA_SPRITE_LIMITS.MAX_NAME_LENGTH,
-      });
+      return receipt(
+        locale,
+        "error",
+        "commands.config.panel.sprite_invalid_name_heading",
+        "commands.config.panel.sprite_invalid_name_detail",
+        {
+          max_length: PERSONA_SPRITE_LIMITS.MAX_NAME_LENGTH,
+        },
+      );
     case "instructions-too-long":
-      return receipt(locale, "error", key("sprite_invalid_name_heading"), key("sprite_instructions_long_detail"), {
-        max_length: PERSONA_SPRITE_LIMITS.MAX_INSTRUCTIONS_LENGTH,
-      });
+      return receipt(
+        locale,
+        "error",
+        "commands.config.panel.sprite_invalid_name_heading",
+        "commands.config.panel.sprite_instructions_long_detail",
+        {
+          max_length: PERSONA_SPRITE_LIMITS.MAX_INSTRUCTIONS_LENGTH,
+        },
+      );
     case "invalid-image":
       return receipt(
         locale,
         "error",
-        key("sprite_invalid_image_heading"),
-        result.reason === "file_too_large" ? key("sprite_image_too_large_detail") : key("sprite_invalid_image_detail"),
+        "commands.config.panel.sprite_invalid_image_heading",
+        result.reason === "file_too_large"
+          ? "commands.config.panel.sprite_image_too_large_detail"
+          : "commands.config.panel.sprite_invalid_image_detail",
         { max_size: PERSONA_LIMITS.MAX_AVATAR_SIZE_MB },
       );
     case "memory-critical":
@@ -378,11 +391,26 @@ function spriteFailureReceipt(
         },
       );
     case "download-failed":
-      return receipt(locale, "error", key("sprite_invalid_image_heading"), key("sprite_download_failed_detail"));
+      return receipt(
+        locale,
+        "error",
+        "commands.config.panel.sprite_invalid_image_heading",
+        "commands.config.panel.sprite_download_failed_detail",
+      );
     case "conversion-failed":
-      return receipt(locale, "error", key("sprite_invalid_image_heading"), key("sprite_conversion_failed_detail"));
+      return receipt(
+        locale,
+        "error",
+        "commands.config.panel.sprite_invalid_image_heading",
+        "commands.config.panel.sprite_conversion_failed_detail",
+      );
     default:
-      return receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail"));
+      return receipt(
+        locale,
+        "error",
+        "commands.config.panel.write_failed_heading",
+        "commands.config.panel.write_failed_detail",
+      );
   }
 }
 
@@ -1324,7 +1352,6 @@ async function runPersonaWrite(
   dependencies: ConfigRouteDependencies,
 ): Promise<WriteOutcome | null> {
   const locale = route.locale;
-  const key = (suffix: string) => `commands.config.panel.${suffix}`;
   const guildIdentity = scope.guildId ? dependencies.createGuildIdentity(scope.guildId, interaction) : null;
   const personaId = persona.persona_id;
   if (personaId === undefined) return null;
@@ -1385,7 +1412,14 @@ async function runPersonaWrite(
           ),
         };
       }
-      return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+      return {
+        receipt: receipt(
+          locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     }
 
     case "attg-submit":
@@ -1494,7 +1528,14 @@ async function runPersonaWrite(
       if (result.status === "invalid-image") {
         return { receipt: receipt(locale, "error", result.titleKey, result.descriptionKey) };
       }
-      return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+      return {
+        receipt: receipt(
+          locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     }
 
     case "prompt-submit": {
@@ -1517,7 +1558,14 @@ async function runPersonaWrite(
             ),
             telemetry: "server-config.workspace.persona-prompt.set",
           }
-        : { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+        : {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.write_failed_heading",
+              "commands.config.panel.write_failed_detail",
+            ),
+          };
     }
 
     case "prompt-remove": {
@@ -1544,7 +1592,14 @@ async function runPersonaWrite(
         };
       }
       if (result.status !== "success") {
-        return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+        return {
+          receipt: receipt(
+            locale,
+            "error",
+            "commands.config.panel.write_failed_heading",
+            "commands.config.panel.write_failed_detail",
+          ),
+        };
       }
       const detail = localizer(
         locale,
@@ -1593,7 +1648,14 @@ async function runPersonaWrite(
         };
       }
       if (result.status !== "success") {
-        return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+        return {
+          receipt: receipt(
+            locale,
+            "error",
+            "commands.config.panel.write_failed_heading",
+            "commands.config.panel.write_failed_detail",
+          ),
+        };
       }
       const note = rawNote || null;
       const depth = note ? Number.parseInt(rawDepth, 10) : 0;
@@ -1638,7 +1700,7 @@ async function runPersonaWrite(
           receipt: receipt(
             locale,
             "error",
-            key("invalid_input_heading"),
+            "commands.config.panel.invalid_input_heading",
             "commands.config.humanizer.invalid_value_description",
             { min: HUMANIZER_MIN, max: HUMANIZER_MAX },
           ),
@@ -1656,7 +1718,14 @@ async function runPersonaWrite(
         };
       }
       if (result.status !== "success") {
-        return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+        return {
+          receipt: receipt(
+            locale,
+            "error",
+            "commands.config.panel.write_failed_heading",
+            "commands.config.panel.write_failed_detail",
+          ),
+        };
       }
       return {
         receipt: receipt(
@@ -1740,7 +1809,14 @@ async function runPersonaWrite(
             ),
             telemetry: "server-config.workspace.persona-text-model.set",
           }
-        : { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+        : {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.write_failed_heading",
+              "commands.config.panel.write_failed_detail",
+            ),
+          };
     }
 
     case "text-override-clear": {
@@ -1761,7 +1837,14 @@ async function runPersonaWrite(
             ),
             telemetry: "server-config.workspace.persona-text-model.clear",
           }
-        : { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+        : {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.write_failed_heading",
+              "commands.config.panel.write_failed_detail",
+            ),
+          };
     }
 
     case "sprite-add-submit":
@@ -1791,8 +1874,12 @@ async function runPersonaWrite(
             receipt: receipt(
               locale,
               "success",
-              result.replaced ? key("sprite_replaced_heading") : key("sprite_added_heading"),
-              result.replaced ? key("sprite_replaced_detail") : key("sprite_added_detail"),
+              result.replaced
+                ? "commands.config.panel.sprite_replaced_heading"
+                : "commands.config.panel.sprite_added_heading",
+              result.replaced
+                ? "commands.config.panel.sprite_replaced_detail"
+                : "commands.config.panel.sprite_added_detail",
               { persona: persona.persona_nickname, sprite: result.spriteName },
             ),
             telemetry: "server-config.workspace.persona-sprite.add",
@@ -1800,10 +1887,16 @@ async function runPersonaWrite(
         }
         if (result.status === "limit-reached") {
           return {
-            receipt: receipt(locale, "warning", key("sprite_limit_heading"), key("sprite_limit_detail"), {
-              persona: persona.persona_nickname,
-              max_count: PERSONA_SPRITE_LIMITS.MAX_PER_PERSONA,
-            }),
+            receipt: receipt(
+              locale,
+              "warning",
+              "commands.config.panel.sprite_limit_heading",
+              "commands.config.panel.sprite_limit_detail",
+              {
+                persona: persona.persona_nickname,
+                max_count: PERSONA_SPRITE_LIMITS.MAX_PER_PERSONA,
+              },
+            ),
           };
         }
         return { receipt: spriteFailureReceipt(locale, result) };
@@ -1819,22 +1912,41 @@ async function runPersonaWrite(
       });
       if (result.status === "success") {
         return {
-          receipt: receipt(locale, "success", key("sprite_edited_heading"), key("sprite_edited_detail"), {
-            persona: persona.persona_nickname,
-            sprite: result.spriteName,
-          }),
+          receipt: receipt(
+            locale,
+            "success",
+            "commands.config.panel.sprite_edited_heading",
+            "commands.config.panel.sprite_edited_detail",
+            {
+              persona: persona.persona_nickname,
+              sprite: result.spriteName,
+            },
+          ),
           telemetry: "server-config.workspace.persona-sprite.edit",
         };
       }
       if (result.status === "duplicate-name") {
         return {
-          receipt: receipt(locale, "warning", key("sprite_duplicate_heading"), key("sprite_duplicate_detail"), {
-            sprite: result.spriteName,
-          }),
+          receipt: receipt(
+            locale,
+            "warning",
+            "commands.config.panel.sprite_duplicate_heading",
+            "commands.config.panel.sprite_duplicate_detail",
+            {
+              sprite: result.spriteName,
+            },
+          ),
         };
       }
       if (result.status === "no-changes") {
-        return { receipt: receipt(locale, "info", key("sprite_no_changes_heading"), key("sprite_no_changes_detail")) };
+        return {
+          receipt: receipt(
+            locale,
+            "info",
+            "commands.config.panel.sprite_no_changes_heading",
+            "commands.config.panel.sprite_no_changes_detail",
+          ),
+        };
       }
       if (result.status === "not-found") return { receipt: staleReceipt(locale) };
       return { receipt: spriteFailureReceipt(locale, result) };
@@ -1852,16 +1964,29 @@ async function runPersonaWrite(
       });
       if (result.status === "success") {
         return {
-          receipt: receipt(locale, "success", key("sprite_removed_heading"), key("sprite_removed_detail"), {
-            persona: persona.persona_nickname,
-            sprite: result.spriteName,
-          }),
+          receipt: receipt(
+            locale,
+            "success",
+            "commands.config.panel.sprite_removed_heading",
+            "commands.config.panel.sprite_removed_detail",
+            {
+              persona: persona.persona_nickname,
+              sprite: result.spriteName,
+            },
+          ),
           telemetry: "server-config.workspace.persona-sprite.remove",
         };
       }
       // A concurrent removal already deleted the row, so this is staleness rather than a failure.
       if (result.status === "not-found") return { receipt: staleReceipt(locale) };
-      return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+      return {
+        receipt: receipt(
+          locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     }
 
     case "sprite-import-submit": {
@@ -1881,8 +2006,8 @@ async function runPersonaWrite(
           receipt: receipt(
             locale,
             result.failed > 0 ? "warning" : "success",
-            key("sprite_imported_heading"),
-            key("sprite_imported_detail"),
+            "commands.config.panel.sprite_imported_heading",
+            "commands.config.panel.sprite_imported_detail",
             {
               persona: persona.persona_nickname,
               created_count: result.created,
@@ -1895,12 +2020,18 @@ async function runPersonaWrite(
       }
       if (result.status === "limit-reached") {
         return {
-          receipt: receipt(locale, "warning", key("sprite_limit_heading"), key("sprite_import_limit_detail"), {
-            persona: persona.persona_nickname,
-            max_count: PERSONA_SPRITE_LIMITS.MAX_PER_PERSONA,
-            current_count: result.currentCount,
-            incoming_count: result.incomingCount,
-          }),
+          receipt: receipt(
+            locale,
+            "warning",
+            "commands.config.panel.sprite_limit_heading",
+            "commands.config.panel.sprite_import_limit_detail",
+            {
+              persona: persona.persona_nickname,
+              max_count: PERSONA_SPRITE_LIMITS.MAX_PER_PERSONA,
+              current_count: result.currentCount,
+              incoming_count: result.incomingCount,
+            },
+          ),
         };
       }
       if (result.status === "invalid-entry-name" || result.status === "invalid-entry-image") {
@@ -1908,10 +2039,10 @@ async function runPersonaWrite(
           receipt: receipt(
             locale,
             "error",
-            key("sprite_archive_invalid_heading"),
+            "commands.config.panel.sprite_archive_invalid_heading",
             result.status === "invalid-entry-name"
-              ? key("sprite_archive_entry_name_detail")
-              : key("sprite_archive_entry_image_detail"),
+              ? "commands.config.panel.sprite_archive_entry_name_detail"
+              : "commands.config.panel.sprite_archive_entry_image_detail",
             { sprite: result.spriteName },
           ),
         };
@@ -1921,8 +2052,8 @@ async function runPersonaWrite(
           receipt: receipt(
             locale,
             "error",
-            key("sprite_archive_invalid_heading"),
-            key("sprite_archive_invalid_detail"),
+            "commands.config.panel.sprite_archive_invalid_heading",
+            "commands.config.panel.sprite_archive_invalid_detail",
           ),
         };
       }
@@ -1931,8 +2062,8 @@ async function runPersonaWrite(
           receipt: receipt(
             locale,
             "error",
-            key("sprite_archive_invalid_heading"),
-            key("sprite_archive_too_large_detail"),
+            "commands.config.panel.sprite_archive_invalid_heading",
+            "commands.config.panel.sprite_archive_too_large_detail",
             {
               max_size: IMPORT_LIMITS.MAX_PERSONA_IMPORT_SIZE_MB,
             },
@@ -1977,10 +2108,22 @@ async function runPersonaWrite(
         });
         return result.status === "success"
           ? {
-              receipt: receipt(locale, "success", key("stm_success_heading"), key("stm_success_detail")),
+              receipt: receipt(
+                locale,
+                "success",
+                "commands.config.panel.stm_success_heading",
+                "commands.config.panel.stm_success_detail",
+              ),
               telemetry: "server-config.workspace.persona-stm.edit",
             }
-          : { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+          : {
+              receipt: receipt(
+                locale,
+                "error",
+                "commands.config.panel.write_failed_heading",
+                "commands.config.panel.write_failed_detail",
+              ),
+            };
       }
 
       const summarySlug = Array.from(slugMap.keys())[0];
@@ -2004,10 +2147,22 @@ async function runPersonaWrite(
       });
       return result.status === "success"
         ? {
-            receipt: receipt(locale, "success", key("stm_success_heading"), key("stm_success_detail")),
+            receipt: receipt(
+              locale,
+              "success",
+              "commands.config.panel.stm_success_heading",
+              "commands.config.panel.stm_success_detail",
+            ),
             telemetry: "server-config.workspace.persona-stm.edit",
           }
-        : { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+        : {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.write_failed_heading",
+              "commands.config.panel.write_failed_detail",
+            ),
+          };
     }
 
     case "conditioning-submit": {
@@ -2051,17 +2206,33 @@ async function runPersonaWrite(
       });
       if (result.status === "success") {
         return {
-          receipt: receipt(locale, "success", key("conditioning_success_heading"), key("conditioning_success_detail"), {
-            count: groupsToDelete.length,
-          }),
+          receipt: receipt(
+            locale,
+            "success",
+            "commands.config.panel.conditioning_success_heading",
+            "commands.config.panel.conditioning_success_detail",
+            {
+              count: groupsToDelete.length,
+            },
+          ),
           telemetry: "server-config.workspace.persona-conditioning.remove",
         };
       }
       return {
         receipt:
           result.status === "no-removals"
-            ? receipt(locale, "info", key("conditioning_no_changes_heading"), key("conditioning_no_changes_detail"))
-            : receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")),
+            ? receipt(
+                locale,
+                "info",
+                "commands.config.panel.conditioning_no_changes_heading",
+                "commands.config.panel.conditioning_no_changes_detail",
+              )
+            : receipt(
+                locale,
+                "error",
+                "commands.config.panel.write_failed_heading",
+                "commands.config.panel.write_failed_detail",
+              ),
       };
     }
 
@@ -2089,8 +2260,8 @@ async function runPersonaWrite(
             receipt: receipt(
               locale,
               "success",
-              key("attribute_add_success_heading"),
-              key("attribute_add_success_detail"),
+              "commands.config.panel.attribute_add_success_heading",
+              "commands.config.panel.attribute_add_success_detail",
               { count: result.addedAttributes.length },
             ),
             telemetry: "server-config.workspace.persona-attribute.add",
@@ -2107,38 +2278,67 @@ async function runPersonaWrite(
             receipt: receipt(
               locale,
               "error",
-              key("invalid_input_heading"),
+              "commands.config.panel.invalid_input_heading",
               result.error === "invalid_format"
-                ? key("attribute_file_invalid_detail")
+                ? "commands.config.panel.attribute_file_invalid_detail"
                 : result.error === "file_too_large"
-                  ? key("attribute_file_too_large_detail")
-                  : key("attribute_file_download_detail"),
+                  ? "commands.config.panel.attribute_file_too_large_detail"
+                  : "commands.config.panel.attribute_file_download_detail",
             ),
           };
         case "no-input":
-          return { receipt: receipt(locale, "error", key("invalid_input_heading"), key("attribute_no_input_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.attribute_no_input_detail",
+            ),
+          };
         case "content-too-long":
           return {
-            receipt: receipt(locale, "error", key("invalid_input_heading"), key("attribute_too_long_detail"), {
-              max: result.maxAllowed,
-            }),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.attribute_too_long_detail",
+              {
+                max: result.maxAllowed,
+              },
+            ),
           };
         case "duplicate":
-          return { receipt: receipt(locale, "warning", key("no_changes_heading"), key("attribute_duplicate_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "warning",
+              "commands.config.panel.no_changes_heading",
+              "commands.config.panel.attribute_duplicate_detail",
+            ),
+          };
         case "limit-exceeded":
           return {
             receipt: receipt(
               locale,
               "error",
-              key("invalid_input_heading"),
-              result.batch ? key("attribute_batch_limit_detail") : key("attribute_limit_detail"),
+              "commands.config.panel.invalid_input_heading",
+              result.batch
+                ? "commands.config.panel.attribute_batch_limit_detail"
+                : "commands.config.panel.attribute_limit_detail",
               result.batch
                 ? { available: Math.max(0, result.maxAllowed - result.currentCount) }
                 : { current: result.currentCount, max: result.maxAllowed },
             ),
           };
         default:
-          return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.write_failed_heading",
+              "commands.config.panel.write_failed_detail",
+            ),
+          };
       }
     }
 
@@ -2182,8 +2382,8 @@ async function runPersonaWrite(
             receipt: receipt(
               locale,
               "success",
-              key("attribute_edit_success_heading"),
-              key("attribute_edit_success_detail"),
+              "commands.config.panel.attribute_edit_success_heading",
+              "commands.config.panel.attribute_edit_success_detail",
             ),
             telemetry: "server-config.workspace.persona-attribute.edit",
             collectionSelection: {
@@ -2194,17 +2394,44 @@ async function runPersonaWrite(
             },
           };
         case "unchanged":
-          return { receipt: receipt(locale, "info", key("no_changes_heading"), key("attribute_edit_success_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "info",
+              "commands.config.panel.no_changes_heading",
+              "commands.config.panel.attribute_edit_success_detail",
+            ),
+          };
         case "content-too-long":
           return {
-            receipt: receipt(locale, "error", key("invalid_input_heading"), key("attribute_too_long_detail"), {
-              max: result.maxAllowed,
-            }),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.attribute_too_long_detail",
+              {
+                max: result.maxAllowed,
+              },
+            ),
           };
         case "duplicate":
-          return { receipt: receipt(locale, "warning", key("no_changes_heading"), key("attribute_duplicate_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "warning",
+              "commands.config.panel.no_changes_heading",
+              "commands.config.panel.attribute_duplicate_detail",
+            ),
+          };
         default:
-          return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.write_failed_heading",
+              "commands.config.panel.write_failed_detail",
+            ),
+          };
       }
     }
 
@@ -2229,8 +2456,8 @@ async function runPersonaWrite(
           receipt: receipt(
             locale,
             "success",
-            key("attribute_remove_success_heading"),
-            key("attribute_remove_success_detail"),
+            "commands.config.panel.attribute_remove_success_heading",
+            "commands.config.panel.attribute_remove_success_detail",
           ),
           telemetry: "server-config.workspace.persona-attribute.remove",
           collectionSelection: {
@@ -2240,7 +2467,14 @@ async function runPersonaWrite(
           },
         };
       }
-      return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+      return {
+        receipt: receipt(
+          locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     }
 
     case "dialogue-add-submit": {
@@ -2265,8 +2499,8 @@ async function runPersonaWrite(
             receipt: receipt(
               locale,
               "success",
-              key("dialogue_add_success_heading"),
-              key("dialogue_add_success_detail"),
+              "commands.config.panel.dialogue_add_success_heading",
+              "commands.config.panel.dialogue_add_success_detail",
               { count: result.addedDialogues.length },
             ),
             telemetry: "server-config.workspace.persona-dialogue.add",
@@ -2283,55 +2517,101 @@ async function runPersonaWrite(
             receipt: receipt(
               locale,
               "error",
-              key("invalid_input_heading"),
+              "commands.config.panel.invalid_input_heading",
               result.error === "invalid_format"
-                ? key("dialogue_file_invalid_detail")
+                ? "commands.config.panel.dialogue_file_invalid_detail"
                 : result.error === "file_too_large"
-                  ? key("dialogue_file_too_large_detail")
-                  : key("dialogue_file_download_detail"),
+                  ? "commands.config.panel.dialogue_file_too_large_detail"
+                  : "commands.config.panel.dialogue_file_download_detail",
             ),
           };
         case "manual-pair-required":
           return {
-            receipt: receipt(locale, "error", key("invalid_input_heading"), key("dialogue_manual_pair_detail")),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.dialogue_manual_pair_detail",
+            ),
           };
         case "invalid-batch":
           return {
-            receipt: receipt(locale, "error", key("invalid_input_heading"), key("dialogue_batch_invalid_detail"), {
-              line: result.lineNumber,
-              prefix: result.invalidBotPrefix ? "{bot}:" : "{user}:",
-            }),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.dialogue_batch_invalid_detail",
+              {
+                line: result.lineNumber,
+                prefix: result.invalidBotPrefix ? "{bot}:" : "{user}:",
+              },
+            ),
           };
         case "no-input":
-          return { receipt: receipt(locale, "error", key("invalid_input_heading"), key("dialogue_no_input_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.dialogue_no_input_detail",
+            ),
+          };
         case "user-too-long":
           return {
-            receipt: receipt(locale, "error", key("invalid_input_heading"), key("dialogue_user_too_long_detail"), {
-              max: result.maxAllowed,
-            }),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.dialogue_user_too_long_detail",
+              {
+                max: result.maxAllowed,
+              },
+            ),
           };
         case "bot-too-long":
           return {
-            receipt: receipt(locale, "error", key("invalid_input_heading"), key("dialogue_bot_too_long_detail"), {
-              max: result.maxAllowed,
-            }),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.dialogue_bot_too_long_detail",
+              {
+                max: result.maxAllowed,
+              },
+            ),
           };
         case "duplicate":
-          return { receipt: receipt(locale, "warning", key("no_changes_heading"), key("dialogue_duplicate_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "warning",
+              "commands.config.panel.no_changes_heading",
+              "commands.config.panel.dialogue_duplicate_detail",
+            ),
+          };
         case "limit-exceeded":
           return {
             receipt: receipt(
               locale,
               "error",
-              key("invalid_input_heading"),
-              result.batch ? key("dialogue_batch_limit_detail") : key("dialogue_limit_detail"),
+              "commands.config.panel.invalid_input_heading",
+              result.batch
+                ? "commands.config.panel.dialogue_batch_limit_detail"
+                : "commands.config.panel.dialogue_limit_detail",
               result.batch
                 ? { available: Math.max(0, result.maxAllowed - result.currentCount) }
                 : { current: result.currentCount, max: result.maxAllowed },
             ),
           };
         default:
-          return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.write_failed_heading",
+              "commands.config.panel.write_failed_detail",
+            ),
+          };
       }
     }
 
@@ -2376,8 +2656,8 @@ async function runPersonaWrite(
             receipt: receipt(
               locale,
               "success",
-              key("dialogue_edit_success_heading"),
-              key("dialogue_edit_success_detail"),
+              "commands.config.panel.dialogue_edit_success_heading",
+              "commands.config.panel.dialogue_edit_success_detail",
             ),
             telemetry: "server-config.workspace.persona-dialogue.edit",
             collectionSelection: {
@@ -2388,23 +2668,56 @@ async function runPersonaWrite(
             },
           };
         case "unchanged":
-          return { receipt: receipt(locale, "info", key("no_changes_heading"), key("dialogue_edit_success_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "info",
+              "commands.config.panel.no_changes_heading",
+              "commands.config.panel.dialogue_edit_success_detail",
+            ),
+          };
         case "user-too-long":
           return {
-            receipt: receipt(locale, "error", key("invalid_input_heading"), key("dialogue_user_too_long_detail"), {
-              max: result.maxAllowed,
-            }),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.dialogue_user_too_long_detail",
+              {
+                max: result.maxAllowed,
+              },
+            ),
           };
         case "bot-too-long":
           return {
-            receipt: receipt(locale, "error", key("invalid_input_heading"), key("dialogue_bot_too_long_detail"), {
-              max: result.maxAllowed,
-            }),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.dialogue_bot_too_long_detail",
+              {
+                max: result.maxAllowed,
+              },
+            ),
           };
         case "duplicate":
-          return { receipt: receipt(locale, "warning", key("no_changes_heading"), key("dialogue_duplicate_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "warning",
+              "commands.config.panel.no_changes_heading",
+              "commands.config.panel.dialogue_duplicate_detail",
+            ),
+          };
         default:
-          return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.write_failed_heading",
+              "commands.config.panel.write_failed_detail",
+            ),
+          };
       }
     }
 
@@ -2431,8 +2744,8 @@ async function runPersonaWrite(
           receipt: receipt(
             locale,
             "success",
-            key("dialogue_remove_success_heading"),
-            key("dialogue_remove_success_detail"),
+            "commands.config.panel.dialogue_remove_success_heading",
+            "commands.config.panel.dialogue_remove_success_detail",
           ),
           telemetry: "server-config.workspace.persona-dialogue.remove",
           collectionSelection: {
@@ -2442,7 +2755,14 @@ async function runPersonaWrite(
           },
         };
       }
-      return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+      return {
+        receipt: receipt(
+          locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     }
 
     case "rename-submit": {
@@ -2457,38 +2777,74 @@ async function runPersonaWrite(
       switch (result.status) {
         case "success":
           return {
-            receipt: receipt(locale, "success", key("rename_success_heading"), key("rename_success_detail"), {
-              old: result.oldNickname,
-              name: result.newNickname,
-            }),
+            receipt: receipt(
+              locale,
+              "success",
+              "commands.config.panel.rename_success_heading",
+              "commands.config.panel.rename_success_detail",
+              {
+                old: result.oldNickname,
+                name: result.newNickname,
+              },
+            ),
             telemetry: "server-config.workspace.persona.rename",
           };
         case "trigger-write-failed":
           return {
-            receipt: receipt(locale, "warning", key("rename_success_heading"), key("rename_partial_detail"), {
-              old: result.oldNickname,
-              name: result.newNickname,
-            }),
+            receipt: receipt(
+              locale,
+              "warning",
+              "commands.config.panel.rename_success_heading",
+              "commands.config.panel.rename_partial_detail",
+              {
+                old: result.oldNickname,
+                name: result.newNickname,
+              },
+            ),
             telemetry: "server-config.workspace.persona.rename",
           };
         case "unchanged":
           return {
-            receipt: receipt(locale, "info", key("no_changes_heading"), key("rename_unchanged_detail"), {
-              name: result.nickname,
-            }),
+            receipt: receipt(
+              locale,
+              "info",
+              "commands.config.panel.no_changes_heading",
+              "commands.config.panel.rename_unchanged_detail",
+              {
+                name: result.nickname,
+              },
+            ),
           };
         case "name-conflict":
           return {
-            receipt: receipt(locale, "error", key("rename_conflict_heading"), key("rename_conflict_detail"), {
-              name: result.nickname,
-            }),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.rename_conflict_heading",
+              "commands.config.panel.rename_conflict_detail",
+              {
+                name: result.nickname,
+              },
+            ),
           };
         case "invalid-length":
           return {
-            receipt: receipt(locale, "error", key("invalid_input_heading"), key("rename_length_detail")),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.rename_length_detail",
+            ),
           };
         default:
-          return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.write_failed_heading",
+              "commands.config.panel.write_failed_detail",
+            ),
+          };
       }
     }
 
@@ -2505,17 +2861,33 @@ async function runPersonaWrite(
       });
       if (result.status === "success") {
         return {
-          receipt: receipt(locale, "success", key("naming_success_heading"), key("naming_success_detail"), {
-            name: persona.persona_nickname,
-          }),
+          receipt: receipt(
+            locale,
+            "success",
+            "commands.config.panel.naming_success_heading",
+            "commands.config.panel.naming_success_detail",
+            {
+              name: persona.persona_nickname,
+            },
+          ),
           telemetry: "server-config.workspace.persona-naming.set",
         };
       }
       return {
         receipt:
           result.status === "invalid-config"
-            ? receipt(locale, "error", key("naming_invalid_heading"), key("naming_invalid_detail"))
-            : receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")),
+            ? receipt(
+                locale,
+                "error",
+                "commands.config.panel.naming_invalid_heading",
+                "commands.config.panel.naming_invalid_detail",
+              )
+            : receipt(
+                locale,
+                "error",
+                "commands.config.panel.write_failed_heading",
+                "commands.config.panel.write_failed_detail",
+              ),
       };
     }
 
@@ -2530,41 +2902,82 @@ async function runPersonaWrite(
       switch (result.status) {
         case "success":
           return {
-            receipt: receipt(locale, "success", key("trigger_add_success_heading"), key("trigger_add_success_detail"), {
-              words: result.addedTriggers.join(", "),
-              total: result.totalCount,
-            }),
+            receipt: receipt(
+              locale,
+              "success",
+              "commands.config.panel.trigger_add_success_heading",
+              "commands.config.panel.trigger_add_success_detail",
+              {
+                words: result.addedTriggers.join(", "),
+                total: result.totalCount,
+              },
+            ),
             telemetry: "server-config.workspace.persona-trigger.add",
           };
         case "already-exists":
           return {
-            receipt: receipt(locale, "info", key("no_changes_heading"), key("trigger_add_exists_detail"), {
-              words: result.attempted.join(", "),
-            }),
+            receipt: receipt(
+              locale,
+              "info",
+              "commands.config.panel.no_changes_heading",
+              "commands.config.panel.trigger_add_exists_detail",
+              {
+                words: result.attempted.join(", "),
+              },
+            ),
           };
         case "limit-exceeded":
           return {
-            receipt: receipt(locale, "error", key("trigger_add_limit_heading"), key("trigger_add_limit_detail"), {
-              current: result.currentCount,
-              max: result.maxAllowed,
-            }),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.trigger_add_limit_heading",
+              "commands.config.panel.trigger_add_limit_detail",
+              {
+                current: result.currentCount,
+                max: result.maxAllowed,
+              },
+            ),
           };
         case "too-short":
           return {
-            receipt: receipt(locale, "error", key("invalid_input_heading"), key("trigger_add_short_detail")),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.trigger_add_short_detail",
+            ),
           };
         case "content-too-long":
           return {
-            receipt: receipt(locale, "error", key("invalid_input_heading"), key("trigger_add_long_detail"), {
-              max: result.maxLength,
-            }),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.trigger_add_long_detail",
+              {
+                max: result.maxLength,
+              },
+            ),
           };
         case "no-triggers":
           return {
-            receipt: receipt(locale, "error", key("invalid_input_heading"), key("trigger_add_empty_detail")),
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.invalid_input_heading",
+              "commands.config.panel.trigger_add_empty_detail",
+            ),
           };
         default:
-          return { receipt: receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.write_failed_heading",
+              "commands.config.panel.write_failed_detail",
+            ),
+          };
       }
     }
 
@@ -2614,8 +3027,8 @@ async function runPersonaWrite(
           receipt: receipt(
             locale,
             "success",
-            key("trigger_remove_success_heading"),
-            key("trigger_remove_success_detail"),
+            "commands.config.panel.trigger_remove_success_heading",
+            "commands.config.panel.trigger_remove_success_detail",
             { words: result.removedTriggers.join(", ") },
           ),
           telemetry: "server-config.workspace.persona-trigger.remove",
@@ -2624,8 +3037,18 @@ async function runPersonaWrite(
       return {
         receipt:
           result.status === "no-removals"
-            ? receipt(locale, "info", key("no_changes_heading"), key("trigger_remove_none_detail"))
-            : receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")),
+            ? receipt(
+                locale,
+                "info",
+                "commands.config.panel.no_changes_heading",
+                "commands.config.panel.trigger_remove_none_detail",
+              )
+            : receipt(
+                locale,
+                "error",
+                "commands.config.panel.write_failed_heading",
+                "commands.config.panel.write_failed_detail",
+              ),
       };
     }
 
@@ -2645,40 +3068,88 @@ async function runPersonaWrite(
           const avatarReceipt = receipt(
             locale,
             "success",
-            key("avatar_success_heading"),
-            result.cleared ? key("avatar_cleared_detail") : key("avatar_success_detail"),
+            "commands.config.panel.avatar_success_heading",
+            result.cleared
+              ? "commands.config.panel.avatar_cleared_detail"
+              : "commands.config.panel.avatar_success_detail",
             { name: persona.persona_nickname },
           );
           if (result.presetSpritesRemoved > 0) {
-            avatarReceipt.detail += `\n${localizer(locale, key("avatar_preset_sprites_removed_detail"), {
-              count: result.presetSpritesRemoved,
-            })}`;
+            avatarReceipt.detail += `\n${localizer(
+              locale,
+              "commands.config.panel.avatar_preset_sprites_removed_detail",
+              {
+                count: result.presetSpritesRemoved,
+              },
+            )}`;
           }
           return { receipt: avatarReceipt, telemetry: "server-config.workspace.persona-avatar.set" };
         }
         case "memory-critical":
-          return { receipt: receipt(locale, "error", key("avatar_busy_heading"), key("avatar_busy_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.avatar_busy_heading",
+              "commands.config.panel.avatar_busy_detail",
+            ),
+          };
         case "quota-exceeded":
-          return { receipt: receipt(locale, "error", key("avatar_quota_heading"), key("avatar_quota_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.avatar_quota_heading",
+              "commands.config.panel.avatar_quota_detail",
+            ),
+          };
         case "invalid-image":
           return {
             receipt: receipt(
               locale,
               "error",
-              key("invalid_input_heading"),
-              result.reason === "file-too-large" ? key("avatar_too_large_detail") : key("avatar_format_detail"),
+              "commands.config.panel.invalid_input_heading",
+              result.reason === "file-too-large"
+                ? "commands.config.panel.avatar_too_large_detail"
+                : "commands.config.panel.avatar_format_detail",
             ),
           };
         case "download-failed":
-          return { receipt: receipt(locale, "error", key("avatar_failed_heading"), key("avatar_download_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.avatar_failed_heading",
+              "commands.config.panel.avatar_download_detail",
+            ),
+          };
         case "conversion-failed":
-          return { receipt: receipt(locale, "error", key("avatar_failed_heading"), key("avatar_conversion_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.avatar_failed_heading",
+              "commands.config.panel.avatar_conversion_detail",
+            ),
+          };
         case "guild-avatar-rate-limited":
           return {
-            receipt: receipt(locale, "warning", key("avatar_rate_limited_heading"), key("avatar_rate_limited_detail")),
+            receipt: receipt(
+              locale,
+              "warning",
+              "commands.config.panel.avatar_rate_limited_heading",
+              "commands.config.panel.avatar_rate_limited_detail",
+            ),
           };
         default:
-          return { receipt: receipt(locale, "error", key("avatar_failed_heading"), key("avatar_failed_detail")) };
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.avatar_failed_heading",
+              "commands.config.panel.avatar_failed_detail",
+            ),
+          };
       }
     }
 
@@ -2749,8 +3220,8 @@ async function runPersonaWrite(
           receipt: receipt(
             locale,
             degraded ? "warning" : "success",
-            key("promote_success_heading"),
-            degraded ? key("promote_partial_detail") : key("promote_success_detail"),
+            "commands.config.panel.promote_success_heading",
+            degraded ? "commands.config.panel.promote_partial_detail" : "commands.config.panel.promote_success_detail",
             { name: result.newMainNickname, old: result.formerMainNickname },
           ),
           telemetry: "server-config.workspace.persona.promote",
@@ -2758,14 +3229,24 @@ async function runPersonaWrite(
       }
       if (result.status === "in-progress") {
         return {
-          receipt: receipt(locale, "warning", key("promote_in_progress_heading"), key("promote_in_progress_detail")),
+          receipt: receipt(
+            locale,
+            "warning",
+            "commands.config.panel.promote_in_progress_heading",
+            "commands.config.panel.promote_in_progress_detail",
+          ),
         };
       }
       return {
         receipt:
           result.status === "not-alter" || result.status === "no-main-persona"
             ? staleReceipt(locale)
-            : receipt(locale, "error", key("write_failed_heading"), key("write_failed_detail")),
+            : receipt(
+                locale,
+                "error",
+                "commands.config.panel.write_failed_heading",
+                "commands.config.panel.write_failed_detail",
+              ),
       };
     }
   }

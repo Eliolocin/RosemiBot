@@ -2,7 +2,6 @@ export default {
   conditioning: {
     description: `管理持久化的奖励与惩罚偏好记忆。`,
     shared: {
-      select_persona_title: `选择要管理的人格`,
       reason_line: `原因：\`\`{reason}\`\``,
       reward_footer: `❤️ {bot} 会记住这件事。用 /conditioning 管理。`,
       punish_footer: `💀 {bot} 会记住这件事。用 /conditioning 管理。`,

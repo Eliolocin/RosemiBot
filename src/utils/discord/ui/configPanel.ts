@@ -1,3 +1,9 @@
+import {
+  CONDITIONING_ACTION_LOCALE_KEYS,
+  CONDITIONING_MARKER_LOCALE_KEYS,
+  type ConditioningActionKey,
+} from "@/utils/conditioning/conditioning";
+import type { ChannelPromptMode } from "@/types/db/schema";
 import { buildResponseDraftingBody, type DraftPicker } from "@/utils/discord/ui/responseDraftingPanel";
 import type { ResponseDraftingView } from "@/utils/discord/interactions/responseDraftingOperations";
 import {
@@ -125,6 +131,11 @@ import { buildMcpsPanelComponents, type McpsPanelPage } from "@/utils/discord/ui
 import { buildStPresetsPanelComponents, type StPresetsPanelRenderInput } from "@/utils/discord/ui/stPresetsPanel";
 
 const RANDOM_TRIGGER_PAGE_SIZE = CONFIG_RANDOM_TRIGGER_CHECKBOX_CAPACITY;
+
+const CHANNEL_PROMPT_MODE_KEYS: Record<ChannelPromptMode, string> = {
+  append: "commands.config.panel.channels_overrides_prompt_mode_append",
+  replace: "commands.config.panel.channels_overrides_prompt_mode_replace",
+};
 
 export interface ConfigPanelPayload {
   components: TopLevelComponentData[];
@@ -2020,7 +2031,9 @@ ${withLinePrefix("> ", channelText)}
       );
       for (const [actionKey, count] of ranked) {
         const labelKey = count === 1 ? "history_label" : "history_label_plural";
-        summaryLines.push(`> ${count} ${localizer(locale, `commands.${conditioningType}.${actionKey}.${labelKey}`)}`);
+        summaryLines.push(
+          `> ${count} ${localizer(locale, CONDITIONING_ACTION_LOCALE_KEYS[actionKey as ConditioningActionKey][labelKey])}`,
+        );
       }
       return summaryLines;
     });
@@ -2086,15 +2099,6 @@ ${conditioningLines.join("\n")}`,
 
 /** Reward before punish, matching the order the two conditioning command families are listed in. */
 const CONDITIONING_TYPE_ORDER = ["reward", "punish"] as const;
-
-/**
- * Literal locale keys per conditioning type. `check-locales` only sees literal strings, so a key
- * assembled from the type at the call site would drop out of its parity check.
- */
-const CONDITIONING_MARKER_LOCALE_KEYS: Record<(typeof CONDITIONING_TYPE_ORDER)[number], string> = {
-  reward: "commands.conditioning.shared.marker_reward",
-  punish: "commands.conditioning.shared.marker_punish",
-};
 
 const CONDITIONING_SUMMARY_LOCALE_KEYS: Record<
   (typeof CONDITIONING_TYPE_ORDER)[number],
@@ -3931,9 +3935,7 @@ ${localizer(locale, "commands.config.panel.channels_overrides_context_note_descr
   const textModelTitleDesc = `**${localizer(locale, "commands.config.panel.channels_overrides_text_model_title")}**
 ${localizer(locale, "commands.config.panel.channels_overrides_text_model_description")}`;
 
-  const promptMode = prompt
-    ? localizer(locale, `commands.config.panel.channels_overrides_prompt_mode_${prompt.mode}`)
-    : none;
+  const promptMode = prompt ? localizer(locale, CHANNEL_PROMPT_MODE_KEYS[prompt.mode]) : none;
   const promptModeLine = selectedChannel
     ? `> ${localizer(locale, "commands.config.panel.channels_overrides_prompt_mode_label")}: ${promptMode}\n`
     : "";

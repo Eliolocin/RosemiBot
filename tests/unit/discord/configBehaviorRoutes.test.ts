@@ -568,7 +568,10 @@ describe("config Behavior routes", () => {
     expect(stmTypes).toContain(21); // Radio Group
 
     const fiftyTriggerEntries = Object.fromEntries(
-      Array.from({ length: 50 }, (_unused, index) => [`target-${index}`, [`trigger-${index}`]]),
+      ["image", "video", "voice", "reminder", "search"].map((target) => [
+        target,
+        Array.from({ length: 10 }, (_unused, index) => `trigger-${index}`),
+      ]),
     );
     expect(buildBehaviorToolTriggerRemoveModal("en-US", "nonce1234567", fiftyTriggerEntries).components).toHaveLength(
       5,

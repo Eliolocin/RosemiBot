@@ -1,3 +1,8 @@
+import {
+  CONDITIONING_ACTION_LOCALE_KEYS,
+  CONDITIONING_MARKER_LOCALE_KEYS,
+  type ConditioningActionKey,
+} from "@/utils/conditioning/conditioning";
 import { ButtonStyle, ComponentType, type ActionRowData, type ButtonComponentData } from "discord.js";
 import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
 import {
@@ -53,8 +58,11 @@ export function buildConditioningRemoveModal(
         max_values: chunk.length,
         required: false,
         options: chunk.map((entry, indexInChunk) => {
-          const marker = localizer(locale, `commands.conditioning.shared.marker_${entry.conditioningType}`);
-          const actionLabel = localizer(locale, `commands.${entry.conditioningType}.${entry.actionKey}.history_label`);
+          const marker = localizer(locale, CONDITIONING_MARKER_LOCALE_KEYS[entry.conditioningType]);
+          const actionLabel = localizer(
+            locale,
+            CONDITIONING_ACTION_LOCALE_KEYS[entry.actionKey as ConditioningActionKey].history_label,
+          );
           const label = localizer(locale, "commands.conditioning.shared.option_label", {
             type_marker: marker,
             persona_name: entry.personaName,

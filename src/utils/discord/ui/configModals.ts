@@ -1,3 +1,8 @@
+import {
+  CONDITIONING_ACTION_LOCALE_KEYS,
+  CONDITIONING_MARKER_LOCALE_KEYS,
+  type ConditioningActionKey,
+} from "@/utils/conditioning/conditioning";
 import { TextInputStyle } from "discord.js";
 import type { LlmRow, PersonaSpriteRow, StmCategoryRow, TomoriState } from "@/types/db/schema";
 import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
@@ -1134,7 +1139,10 @@ export function buildPersonaConditioningRemoveModal(
         buildConditioningCheckboxGroupId(groupIndex, nonce),
         presented.slice(offset, offset + CONFIG_CONDITIONING_CHECKBOX_GROUP_SIZE),
         (group, indexInGroup) => {
-          const action = localizer(locale, `commands.${group.conditioningType}.${group.actionKey}.history_label`);
+          const action = localizer(
+            locale,
+            CONDITIONING_ACTION_LOCALE_KEYS[group.actionKey as ConditioningActionKey].history_label,
+          );
           const descriptionKey =
             group.totalCount > 1
               ? "commands.conditioning.shared.option_reason_description"
@@ -1148,7 +1156,7 @@ export function buildPersonaConditioningRemoveModal(
             label: safeSelectOptionText(
               localizer(locale, "commands.conditioning.shared.option_label", {
                 persona_name: personaName,
-                type_marker: localizer(locale, `commands.conditioning.shared.marker_${group.conditioningType}`),
+                type_marker: localizer(locale, CONDITIONING_MARKER_LOCALE_KEYS[group.conditioningType]),
                 action,
               }),
               100,

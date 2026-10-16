@@ -1364,33 +1364,16 @@ function extractPipeEncodedLocaleKeys(content: string, availableKeys: Set<string
 }
 
 /**
- * Keys that are provably used at runtime but cannot be detected by static regex analysis
- * because their values come from TypeScript type constraints or object key enumeration.
- * Example: `commands.conditioning.shared.${type}_footer` where type ∈ ConditioningType
- * which is a Zod enum; the values come from a Record<ConditioningType, ...> object
- * whose keys cannot be reliably traced back to the template variable without type inference.
- */
-const KNOWN_DYNAMIC_LOCALE_KEYS = new Set([
-  "commands.conditioning.shared.punish_footer",
-  "commands.conditioning.shared.reward_footer",
-]);
-
-/**
  * Template-key consumers cannot be reduced to one literal key. These patterns mirror the
  * runtime namespaces cataloged in the dead-key sweep and are deliberately narrower than
  * their parent command roots so retired command surfaces remain visible in the report.
  */
 const DYNAMIC_KEY_PATTERNS = [
-  /^commands\.(?:reward|punish)\./,
   /^genai\./,
   /^commands\.mcps\./,
   /^commands\.choices\./,
-  /^commands\.conditioning\.shared\./,
-  /^commands\.config\.humanizer\.choice_/,
-  /^commands\.config\.thinking-level\.choice_/,
   /^commands\.config\.cooldown\.type\.choice_/,
   /^commands\.help\.api-key\./,
-  /^commands\.server\.stm\.categories-edit\.slot_/,
   /^commands\.data\.import\.error_/,
   /^commands\.persona\.import\.error_/,
   /^commands\.export\.(?:personal\.)?memories\.scope_choice_/,
@@ -1419,23 +1402,12 @@ function isRuntimeDerivedKey(key: string): boolean {
   return DYNAMIC_EXACT_KEYS.has(key) || DYNAMIC_KEY_PATTERNS.some((pattern) => pattern.test(key));
 }
 
-// Only prefixes whose `${suffix}` helpers get the suffix as a same-file literal belong here: other
-// prefixes compose suffixes in other files (`error_${code}` in /expressions) and need the wildcard.
-const SAME_FILE_SUFFIX_PREFIXES = new Set(["commands.config.panel."]);
-
 function extractConstructedLocaleKeys(content: string, availableKeys: Set<string>): string[] {
   const keys: string[] = [];
   const prefixPattern = /`((?:commands|general|events|genai|reminders|tools|matrix)\.[a-zA-Z0-9_.-]+)\$\{[^}]+\}(`)?/g;
-  const fileLiterals = new Set(Array.from(content.matchAll(/["'`]([a-zA-Z0-9_]+)["'`]/g), (literal) => literal[1]));
   for (const match of content.matchAll(prefixPattern)) {
     const prefix = match[1];
     if (prefix.split(".").filter(Boolean).length < 3) continue;
-    if (match[2] && SAME_FILE_SUFFIX_PREFIXES.has(prefix)) {
-      for (const literal of fileLiterals) {
-        if (availableKeys.has(`${prefix}${literal}`)) keys.push(`${prefix}${literal}`);
-      }
-      continue;
-    }
     for (const key of availableKeys) {
       if (key.startsWith(prefix)) keys.push(key);
     }
@@ -1787,7 +1759,6 @@ export async function analyzeLocalizationKeys(): Promise<AnalysisResult> {
   }
 
   // Add keys that are provably used but cannot be detected statically
-  for (const key of KNOWN_DYNAMIC_LOCALE_KEYS) referencedKeys.add(key);
   for (const { key } of PROTOCOL_KEYS) referencedKeys.add(key);
   for (const key of availableKeys) {
     if (isRuntimeDerivedKey(key)) referencedKeys.add(key);

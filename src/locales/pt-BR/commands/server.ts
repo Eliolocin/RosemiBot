@@ -21,7 +21,6 @@ export default {
         slot_4_label: `Categoria 4`,
         slot_5_label: `Categoria 5`,
         slot_instructions: `Caixa = "Rótulo: Descrição" (ex. "Metas: objetivos"). Vazias ignoradas; limpar todas redefine.`,
-        slot_placeholder: `Rótulo: Descrição`,
       },
     },
     "crosschannel-blocklist": {
