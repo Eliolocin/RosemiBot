@@ -154,8 +154,8 @@ source
 | project TimeGenerated, Computer, FilePath, level, msg, code, errorType, message, commandName, RawData
 ```
 
-`isempty(tostring(p.metric))` excludes **every** `log.metric()` record, not just `cache_sizes`,
-which keeps error-rate panels counting only genuine errors. Every metric therefore needs a
+`isempty(tostring(p.metric))` excludes all `log.metric()` records, including `cache_sizes`,
+which keeps error-rate panels counting only errors. Every metric therefore needs a
 dataflow of its own or it is discarded at ingestion with no trace: Steps 5 and 6 below claim
 `cache_sizes` and the remainder respectively, so all three filters stay disjoint.
 
@@ -211,8 +211,8 @@ source
 | project TimeGenerated, Computer, rss_mb, rss_pct, /* memory partition */, /* app caches */, /* discord.js caches */
 ```
 
-Cost note: this reverses the original "drop cache_sizes to save ingestion" decision, but the
-volume is tiny (~288 samples/day at ~900 bytes, so ~260 KB/day), well within the free tier.
+Estimate ingestion volume from your configured sampling interval and serialized record size.
+Check that estimate against your workspace's current pricing and retention before enabling it.
 
 `heap_used_mb`, `heap_total_mb`, `external_mb`, and `array_buffers_mb` partition the footprint
 that the cache counts cannot explain. Native allocations, chiefly decoded bitmaps held by

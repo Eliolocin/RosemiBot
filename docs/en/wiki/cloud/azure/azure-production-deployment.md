@@ -27,7 +27,7 @@ The GitHub deployment principal needs `Contributor` only on the deployment resou
 `Contributor`, `Owner`, `User Access Administrator`, or unrelated resource-group roles after the
 replacement workflow is proven.
 
-Store these Azure-only values in the `production` environment, not as repository secrets:
+Store these Azure-only values as secrets in the `production` environment:
 
 - `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`
 - `AZURE_POSTGRES_ADMIN_PASSWORD`
@@ -92,12 +92,9 @@ Four rules keep it from becoming a restart loop, and all of them are configured 
 Both the watchdog and scheduled recycle carry `TimeoutStartSec=600`. Allow enough time for every
 service restart under host pressure; a timeout during a co-tenant restart can prevent bot recovery.
 
-**It ships armed** (`WATCHDOG_ARMED=true`) because production ran it disarmed through an observation
-period that logged zero would-act lines. On a new deployment, consider setting it to `false` first:
-disarmed, it logs `OBSERVE-ONLY` with what it would have done, and arming a watchdog before seeing
-that log on your own host is how you manufacture the outage you were trying to prevent. The
-staleness threshold still has no calibration against a real degradation, which is why the guards
-above must stay in place.
+The default is `WATCHDOG_ARMED=true`. On a new deployment, set it to `false` while checking
+`OBSERVE-ONLY` logs against healthy operation and sustained stalls. Calibrate the staleness threshold
+on your own host before arming it, and retain the restart guards above.
 
 Behaviour is covered by `bun run test-watchdog`, which extracts the script from `cloud-init.yaml` on
 every run rather than testing a copy, so the harness cannot drift from what ships.
@@ -112,7 +109,7 @@ therefore does **not** deliver the watchdog to an existing host. Extract the fou
 is the one the test harness exercises. The entry in `cloud-init.yaml` is what makes a future
 rebuild come up with the watchdog already present.
 
-Verify the install by what the timer does, not by whether the files exist. On a healthy bot the
+Verify the installed timer's behavior. On a healthy bot the
 script prints nothing at all and exits 0, so `journalctl -u tomoribot-watchdog.service` should show
 only `Starting` and `Finished` pairs at a one-minute cadence, and `/run/tomoribot-watchdog.state`
 should show a `HISTORY` of dots (one per recent check, `x` for a stall). Note the unit name: the script logs with plain `echo`, so its output
@@ -212,7 +209,7 @@ operator firewall rule. See [Caching](/architecture/subsystems/caching/) for the
 The three metric alerts are unaffected, because they read `Microsoft.Compute/virtualMachines`
 platform metrics served by the Azure guest agent rather than by the monitoring agent.
 
-Reinstating the pipeline is a rollback, not a rebuild. The Log Analytics workspace, its custom
+Reinstating the pipeline requires restoring its VM attachments. The Log Analytics workspace, its custom
 tables, the data collection endpoint, and the rule definitions were always externally managed, so
 they survive untouched and only the extension and the two associations need re-adding to
 `monitoring.tf`. [Azure Application Logs](/architecture/cloud/azure-application-logs/) covers that
@@ -340,11 +337,8 @@ the pool width explicitly instead of inheriting Bun's. Defaults are production-s
 an incident. This was fixed at the client layer deliberately, so the private endpoint stays removed
 and the free-tier cost target holds.
 
-Both timeouts sit as far from their motivating constraint as that constraint allows, because every
-firing is also a chance to hit the Bun defect described below. The gateway reap at roughly four
-minutes is the binding limit on the idle timer, not the much lower value it is tempting to pick;
-idle retirements were the larger share of a production cascade that left the bot unresponsive while
-every health signal stayed green.
+Keep the idle timeout below the gateway's roughly four-minute reap threshold, allowing for timing
+variation. Excessive recycling increases exposure to the Bun defect described below.
 
 When tuning, keep `POSTGRES_IDLE_TIMEOUT_SECONDS` comfortably above the slowest single statement the
 bot issues. Bun measures that timer as wall-clock silence on the socket, and a statement the server
@@ -357,9 +351,8 @@ starts killing healthy long queries well before it buys any extra reaping headro
 
 Bun's pool fires those recycling timers without draining first: it marks the connection failed and
 rejects every queued and in-flight query on it, even when the query and the server are both healthy
-([oven-sh/bun#30646](https://github.com/oven-sh/bun/issues/30646), still reproducible on Bun 1.4.0). In
-production this surfaced as `PostgresError: Max lifetime timeout reached after 10m`
-(`ERR_POSTGRES_LIFETIME_TIMEOUT`) aborting a slash command and a guild emoji sync.
+([oven-sh/bun#30646](https://github.com/oven-sh/bun/issues/30646), reproducible on Bun 1.4.0).
+`ERR_POSTGRES_LIFETIME_TIMEOUT` can therefore abort an otherwise healthy query.
 
 `withTransientDbRetry` in `src/utils/db/client.ts` re-issues those operations. It also covers the
 stale prepared-statement plans it originally handled, but the two paths differ: a cached-plan error
@@ -379,9 +372,7 @@ than a single value. Alongside `ERR_POSTGRES_LIFETIME_TIMEOUT`, `ERR_POSTGRES_ID
 `ERR_POSTGRES_CONNECTION_CLOSED`, a connection that dies part-way through a wire message surfaces as
 `ERR_POSTGRES_INVALID_MESSAGE` or `ERR_POSTGRES_UNSUPPORTED_INTEGER_SIZE`: Bun rejects the pending
 queries from `#onClose` carrying whatever state its protocol reader stopped in, so the code describes
-where the byte stream was truncated rather than any fault in the data. Production logged 82 of these
-across unrelated servers in two bursts, every stack ending at `#onClose` and none
-retried, because the last two codes were missing from the set. When triaging a new Postgres code,
+where the byte stream was truncated rather than any fault in the data. When triaging a new Postgres code,
 read the stack before the code: a frame in `#onClose` means retirement regardless of the label.
 
 The helper replays `queryFn`, so only reads, idempotent writes, and transactions may use it. A
@@ -516,8 +507,8 @@ silently swaps the heap instead.
 memory plus swap, so the swap allowance is that figure minus `mem_limit`. It is declared explicitly
 rather than left to Docker's implicit 2x default for the reason given under
 [The container's swap ceiling](#the-containers-swap-ceiling-decides-whether-the-host-has-an-escape-route):
-the derived 512 MB ceiling saturated within minutes of boot and cut the container off from the host's
-disk swapfile entirely. Raise both values together, since either one alone moves the other's meaning.
+an exhausted cgroup swap allowance blocks access to the host's disk swapfile even if it has space.
+Size both limits together, since either one alone changes the derived swap allowance.
 
 Two related traps:
 
@@ -687,7 +678,7 @@ minimum* climbs too, the growth is accumulation rather than load. A scheduled re
 `cloud-init.yaml` installs `tomoribot-restart.timer` for that, and three details matter more than the
 schedule itself:
 
-- **Resolve the container by its compose label, not its generated name,** so renaming the compose
+- **Resolve the container by its compose label,** so renaming the compose
   project cannot silently turn the timer into a no-op.
 - **Skip a container that is already young.** A deploy recreates it and resets the same depth, so
   restarting one that started recently spends an outage for nothing.
@@ -695,26 +686,23 @@ schedule itself:
   had just created.
 
 Pick the interval from how long your host lasts before swap depth hurts, and the hours from your own
-traffic histogram rather than copying them. This deployment recycles every 12 hours because a daily
-cadence stopped covering the time to starvation once traffic grew. Note also that `docker
-restart` does not increment `RestartCount`, so adopting a restart schedule does not blunt the
+traffic histogram rather than copying them. The configured recycle interval is in
+`terraform/azure/cloud-init.yaml`. `docker restart` does not increment `RestartCount`, so adopting
+a restart schedule does not blunt the
 "something is killing it" signal that a rising `RestartCount` gives during triage.
 
-### Recycle the co-tenants, not just the application
+### Recycle services alongside the application
 
-**The application is rarely the only thing on the host that grows, and it is easily the only thing
-anything restarts.** On this deployment the search backend and the monitoring agent each roughly
-quadrupled between a fresh boot and thirteen hours of uptime, and together they were comparable in
-size to the headroom that separated a healthy host from a saturated one. The monitoring agent was
-later removed outright, which is the stronger version of the same move: recycling bounds a
-co-tenant's growth, while deleting it reclaims the whole floor.
+Measure the search backend and other host services alongside the application. Their retained memory
+can consume the headroom the bot needs. Recycle services whose measured growth warrants it, and
+remove unused services instead of reserving memory for them.
 
 Two properties make co-tenants worth recycling on the same timer:
 
 - **They are not subject to the application's age gate.** Their growth tracks host uptime, not
   container age, so a run that skips a freshly deployed container should still recycle them.
 - **A runtime that returns freed memory to its own arenas rather than to the OS sets a permanent
-  floor.** Peak concurrency, not steady-state load, decides that floor, so bounding concurrency is
+  floor.** Peak concurrency decides that floor, so bounding concurrency is
   the durable fix and recycling is what reclaims what has already been committed.
 
 Beware of self-limiting guards that key on RSS. A worker configured to respawn above an RSS ceiling
