@@ -109,12 +109,16 @@ Incoming Turn
 
 ### Webhook delivery
 
-Alters deliver through the primary channel webhook (`TomoriBot Multi-Persona`). The managed webhook
-lifecycle also restores persisted avatar slots by exact webhook ID for historic operations. Each
-restored slot must match its stored guild and parent channel; restoring it keeps the primary cache
-entry intact. Ordinary sends continue to use the primary webhook:
+Managed identity sends share a pool of up to four webhooks per parent channel, including the primary
+`TomoriBot Multi-Persona` webhook. Threads share that pool and pass their own `threadId` when posting.
+`dispatchWebhookWithIdentity()` holds the parent-channel lock through local-avatar selection and
+sending, including a reply notice and its following message. It returns the selected webhook ID and
+delivered identity. Callers record that delivered identity and resolve later edits or deletes by
+the message's authoring webhook ID. HTTPS overrides bypass avatar coordination. Raw REST callers
+using `runWithWebhookIdentity()` pin a specific webhook and coordinate when its stored avatar matters.
 
-- **Identity overrides**: Each send specifies `username` (persona nickname) and `avatarURL` (`webhook_avatar_url`).
+- **Identity overrides**: HTTPS avatars travel as per-message overrides. Local avatars reuse a slot with an exact image fingerprint or PATCH the least recently used slot. If the predicted PATCH wait exceeds five seconds, dispatch creates a slot with the image when capacity allows. Creation leaves two of Discord's 15 channel slots free. If creation fails or capacity is exhausted, the message keeps the intended username and shows Discord's generic avatar. Matrix relay messages always specify that generic avatar.
+- **Restoration**: Each restored slot must match its stored guild and parent channel. Its avatar assignment remains known only when the fetched Discord avatar hash matches storage. Restoring a pool slot keeps the primary cache entry intact, and retained slots preserve access to historic messages.
 - **Historic identity resolution**: Admission, reply attribution, context assembly, history import, and queued persona routing use verified managed webhook identity. The bot's own direct messages retain the main persona identity. Matrix relay prefixes are trusted only on a managed webhook, and cached user impersonation only on a webhook registered in the relay cache for that guild and channel. Foreign webhooks keep a generic webhook identity in history and cannot start natural persona jobs or gain their quota/cooldown exemptions. Managed cascades keep their originating user's metering. `getReplyContextAuthorName()` strips bridge prefixes only on verified sources. Direct bot messages use the available member display name, so later nickname changes can affect reconstructed attribution.
 
 ### Copied rendering and sprites

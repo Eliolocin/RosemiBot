@@ -1,4 +1,5 @@
 export {
+  resolveAuthoringWebhook,
   resolveManagedWebhookForChannel,
   sendUserTranscriptViaWebhook,
   type WebhookCreateErrorReason,

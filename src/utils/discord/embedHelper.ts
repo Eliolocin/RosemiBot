@@ -18,6 +18,7 @@ import {
 import { ColorCode, log } from "../misc/logger";
 import { localizer } from "../text/localizer";
 import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
+import { resolveAuthoringWebhook } from "@/utils/discord/webhook/fallback";
 import { recordChannelDeliveredBotMessage } from "@/utils/discord/stream/channelDeliveryContinuity";
 import { attachTextDisplayModalCollector, buildTextDisplayModalRow } from "./textDisplayModal";
 import { withStatusCircle } from "./ui/statusTitle";
@@ -291,7 +292,9 @@ export async function sendStandardEmbed(
 
   const disableButtons = async (): Promise<void> => {
     if (sentViaWebhook && webhookContext?.webhook) {
-      await webhookContext.webhook.editMessage(sentMessage.id, {
+      const author = await resolveAuthoringWebhook(channel, sentMessage.webhookId, webhookContext.webhook);
+      if (!author) throw new Error("Authoring webhook unavailable for embed button edit");
+      await author.editMessage(sentMessage.id, {
         embeds: [embed],
         components: [disabledModalRow],
         ...(threadId ? { threadId } : {}),

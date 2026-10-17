@@ -321,7 +321,7 @@ for (const format of ["components", "embed"] as const) {
     }
 
     function seed(channel: ReturnType<typeof fakeChannel>): void {
-      recordChannelDeliveredWebhookIdentity(channel.id, previousIdentity, "300", previousSpeaker);
+      recordChannelDeliveredWebhookIdentity(channel.id, previousIdentity, "300", previousSpeaker, "400");
     }
 
     function failedWebhook(channel: ReturnType<typeof fakeChannel>) {
@@ -371,6 +371,7 @@ for (const format of ["components", "embed"] as const) {
         expect(botSend).toHaveBeenCalled();
         expect(getChannelLastDelivery(channel.id)).toEqual({
           via: "webhook",
+          webhookId: "400",
           identity: previousIdentity,
           speaker: previousSpeaker,
         });
@@ -382,10 +383,16 @@ for (const format of ["components", "embed"] as const) {
     it("records the successful webhook without replacing it with a bot delivery", async () => {
       const channel = fakeChannel("200");
       const webhook = { id: "400", channelId: channel.id, send: mock(async () => ({ id: "301" })) };
-      recordChannelDeliveredWebhookIdentity(channel.id, { username: "Juno" }, "300", {
-        personaId: 77,
-        kind: "appearance",
-      });
+      recordChannelDeliveredWebhookIdentity(
+        channel.id,
+        { username: "Juno" },
+        "300",
+        {
+          personaId: 77,
+          kind: "appearance",
+        },
+        "400",
+      );
 
       await deliver(channel, webhook as unknown as Webhook);
 
@@ -393,6 +400,7 @@ for (const format of ["components", "embed"] as const) {
       expect(channel.sent).toHaveLength(0);
       expect(getChannelLastDelivery(channel.id)).toEqual({
         via: "webhook",
+        webhookId: "400",
         identity: { username: "Mirri" },
         speaker: previousSpeaker,
       });

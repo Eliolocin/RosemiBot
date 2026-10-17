@@ -1,6 +1,7 @@
 import type { Message, Webhook } from "discord.js";
 import type { DeliveredStreamMessage } from "@/types/tool/interfaces";
 import { log } from "@/utils/misc/logger";
+import { resolveAuthoringWebhook } from "@/utils/discord/webhook/fallback";
 
 /**
  * Deletes the Discord messages a superseded generation attempt already committed to the channel.
@@ -36,16 +37,19 @@ export async function deleteSupersededStreamMessages(
   const threadId = "isThread" in channel && channel.isThread() ? channel.id : undefined;
 
   for (const ref of refs) {
-    // Prefer the webhook for webhook-delivered messages: it can delete its own messages without
-    //    the Manage Messages permission a channel-level delete requires. This can still fail if the
-    //    webhook was recreated mid-stream (its id/token no longer matches the message), so treat it
-    //    as a first attempt only, not the sole path.
-    if (ref.isWebhook && webhook && (await tryWebhookDelete(webhook, ref.messageId, threadId))) {
-      continue;
+    if (ref.webhookId) {
+      try {
+        const author = await resolveAuthoringWebhook(channel, ref.webhookId, webhook);
+        if (author && (await tryWebhookDelete(author, ref.messageId, threadId))) continue;
+      } catch (error) {
+        log.warn("Failed to resolve authoring webhook for superseded message", {
+          messageId: ref.messageId,
+          webhookId: ref.webhookId,
+          error,
+        });
+      }
     }
 
-    // Fallback: a channel-level delete. Covers bot-native messages and webhook messages whose
-    //    originating webhook is no longer the one we hold (needs Manage Messages; best-effort).
     if ("messages" in channel) {
       try {
         await channel.messages.delete(ref.messageId);

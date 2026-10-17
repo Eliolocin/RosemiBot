@@ -1,12 +1,11 @@
-import { afterEach, describe, expect, it } from "bun:test";
-import { type RateLimitData, REST, type Webhook } from "discord.js";
+import { describe, expect, it } from "bun:test";
+import { type RateLimitData, REST } from "discord.js";
 import {
   runDeferrableWebhookAvatarEdit,
   shouldRejectWebhookRateLimit,
   WEBHOOK_AVATAR_PATCH_MAX_WAIT_MS,
   WebhookAvatarEditDeferredError,
 } from "@/utils/discord/webhook/avatarEditRateLimit";
-import { clearWebhookCache, sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/webhookCore";
 
 const LONG_WAIT_MS = 60_000;
 
@@ -114,68 +113,5 @@ describe("a deferrable edit through the real REST client", () => {
     }
     // The queued edit saw the depleted bucket and was rejected before reaching the network.
     expect(networkCalls()).toBe(1);
-  });
-});
-
-describe("sendWebhookMessageWithIdentity avatar edits under a rate limit", () => {
-  afterEach(() => {
-    clearWebhookCache();
-  });
-
-  /**
-   * Stands in for discord.js: the edit consults the same client predicate, so it rejects only
-   * inside a deferrable scope and otherwise "waits" (resolves) as discord.js would.
-   */
-  function makeRateLimitedWebhook(id: string) {
-    const edits: unknown[] = [];
-    const sends: unknown[] = [];
-    const webhook = {
-      id,
-      channelId: "1400000000000000000",
-      avatar: null,
-      async edit(options: unknown) {
-        const data = rateLimitData();
-        if (shouldRejectWebhookRateLimit(data)) {
-          const { RateLimitError } = await import("discord.js");
-          throw new RateLimitError(data);
-        }
-        edits.push(options);
-        return webhook;
-      },
-      async send(payload: unknown) {
-        sends.push(payload);
-        return { id: "1400000000000000001", webhookId: id };
-      },
-    };
-    return { webhook: webhook as unknown as Webhook, edits, sends };
-  }
-
-  it("defers instead of editing or sending when the caller opts in", async () => {
-    const { webhook, edits, sends } = makeRateLimitedWebhook("1500000000000000001");
-
-    const sending = sendWebhookMessageWithIdentity(
-      webhook,
-      { content: "hi" },
-      { username: "Locke", avatarDataUri: "data:image/png;base64,AAAA" },
-      undefined,
-      { deferAvatarEditOnRateLimit: true },
-    );
-
-    await expect(sending).rejects.toBeInstanceOf(WebhookAvatarEditDeferredError);
-    expect(edits).toEqual([]);
-    expect(sends).toEqual([]);
-  });
-
-  it("keeps waiting for every caller that does not opt in", async () => {
-    const { webhook, edits, sends } = makeRateLimitedWebhook("1500000000000000002");
-
-    await sendWebhookMessageWithIdentity(
-      webhook,
-      { content: "hi" },
-      { username: "Locke", avatarDataUri: "data:image/png;base64,AAAA" },
-    );
-
-    expect(edits).toHaveLength(1);
-    expect(sends).toHaveLength(1);
   });
 });

@@ -56,7 +56,7 @@ function makeChannel(channelId: string = CHANNEL) {
     deliverWebhook(identity: ResolvedWebhookIdentity, speaker: DeliveredSpeaker | null = null): void {
       const id = nextId();
       lastMessageId = id;
-      recordChannelDeliveredWebhookIdentity(channelId, identity, id, speaker);
+      recordChannelDeliveredWebhookIdentity(channelId, identity, id, speaker, "1400000000000000002");
     },
     /** A bot-user fallback send, which is a different Discord author than the webhook. */
     deliverBotMessage(): void {

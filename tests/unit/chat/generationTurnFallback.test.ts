@@ -41,7 +41,8 @@ const queuedResults: GenerationTurnResult[] = [];
 // Parallel to queuedResults: the delivered-message refs each runToolLoop call should push into the
 // shared sink before returning its queued result, simulating messages the stream committed to
 // Discord during that attempt. Undefined entries push nothing.
-const queuedDeliveries: Array<Array<{ messageId: string; channelId: string; isWebhook: boolean }> | undefined> = [];
+const queuedDeliveries: Array<Array<{ messageId: string; channelId: string; webhookId: string | null }> | undefined> =
+  [];
 const toolLoopCalls: Array<{
   model: string;
   suppressUserErrors: boolean | undefined;
@@ -1517,6 +1518,8 @@ describe("runGenerationTurn fallback behavior", () => {
     const deletedWebhookMessageIds: string[] = [];
     (context as unknown as { responseTarget?: unknown }).responseTarget = {
       webhook: {
+        id: "webhook_1",
+        token: "synthetic_token",
         deleteMessage: async (messageId: string) => {
           deletedWebhookMessageIds.push(messageId);
         },
@@ -1557,8 +1560,8 @@ describe("runGenerationTurn fallback behavior", () => {
       fallbackSuccess,
     );
     queuedDeliveries.push(
-      [{ messageId: "partial_1", channelId: "channel_1", isWebhook: true }],
-      [{ messageId: "fallback_1", channelId: "channel_1", isWebhook: true }],
+      [{ messageId: "partial_1", channelId: "channel_1", webhookId: "webhook_1" }],
+      [{ messageId: "fallback_1", channelId: "channel_1", webhookId: "webhook_1" }],
     );
 
     const { runGenerationTurn } = await import("@/utils/chat/generationTurn");

@@ -380,7 +380,13 @@ function recordDeliveryContinuity(
   message: SentExpressionMessage,
 ): void {
   if (route.via === "webhook" && message.webhookId) {
-    recordChannelDeliveredWebhookIdentity(context.channel.id, route.identity, message.id, route.speaker);
+    recordChannelDeliveredWebhookIdentity(
+      context.channel.id,
+      route.identity,
+      message.id,
+      route.speaker,
+      message.webhookId,
+    );
     return;
   }
   const persona = context.currentPersona;

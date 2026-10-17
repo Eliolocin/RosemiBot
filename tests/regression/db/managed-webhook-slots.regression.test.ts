@@ -187,6 +187,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("managed webhook slot storage and lifecycle
 
   it("persists successful avatar edits once and clears assignments when the avatar is reset", async () => {
     await store("avatar_pool_1", "_pool");
+    await testSql`UPDATE discord_managed_webhooks SET avatar_fingerprint = NULL WHERE webhook_disc_id = '_pool'`;
     const pool = makeWebhook("_pool");
     const { channel } = makeChannel([pool]);
     await resolveManagedWebhookForChannel(channel, pool.id);
@@ -206,6 +207,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("managed webhook slot storage and lifecycle
   it("retains historic rows and blocks delivery when an avatar PATCH cannot persist", async () => {
     await store("shared_channel", "_primary");
     await store("avatar_pool_1", "_pool");
+    await testSql`UPDATE discord_managed_webhooks SET avatar_fingerprint = NULL WHERE webhook_disc_id = '_pool'`;
     const primary = makeWebhook("_primary");
     const pool = makeWebhook("_pool");
     const { channel } = makeChannel([primary, pool]);

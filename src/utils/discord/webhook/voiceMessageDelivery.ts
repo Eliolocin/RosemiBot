@@ -216,7 +216,7 @@ export async function deliverVoiceMessage(input: {
         voiceMeta,
       });
       if (sentMessageId && speaker) {
-        recordPersonaPostDelivery(target.channel, identity, sentMessageId, speaker);
+        recordPersonaPostDelivery(target.channel, identity, sentMessageId, speaker, webhook.id);
       }
       if (!sentMessageId) {
         log.warn("[VoiceWaveform] Webhook REST send failed — trying bot REST path");

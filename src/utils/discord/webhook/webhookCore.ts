@@ -19,23 +19,27 @@ import {
 import type { TomoriState } from "@/types/db/schema";
 import {
   MANAGED_WEBHOOK_KIND_SHARED_CHANNEL,
+  MANAGED_WEBHOOK_KINDS,
   type ManagedDiscordWebhookRow,
   type ManagedWebhookKind,
   serverRepository,
 } from "@/utils/db/repositories/ServerRepository";
 import { personaRepository } from "@/utils/db/repositories/PersonaRepository";
-import { log } from "../../misc/logger";
-import { safeDownload } from "../../security/safeDownload";
-import { PERSONA_LIMITS } from "../../security/rateLimiter";
-import { convertToPNG } from "../../image/imageProcessor";
-import { invalidateTomoriStateCache } from "../../cache/tomoriStateCache";
+import { log } from "@/utils/misc/logger";
+import { safeDownload } from "@/utils/security/safeDownload";
+import { PERSONA_LIMITS } from "@/utils/security/rateLimiter";
+import { convertToPNG } from "@/utils/image/imageProcessor";
+import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
 import {
   isLocalPersonaAvatarPath,
   loadStoredPersonaAvatarDataUri,
   resolvePersonaAvatarPublicUrl,
   uploadPersonaAvatarToStorage,
 } from "@/utils/storage/avatarStorage";
-import { runDeferrableWebhookAvatarEdit } from "./avatarEditRateLimit";
+import {
+  runDeferrableWebhookAvatarEdit,
+  WebhookAvatarEditDeferredError,
+} from "@/utils/discord/webhook/avatarEditRateLimit";
 
 /**
  * In-memory webhook cache: channelId -> Webhook
@@ -74,6 +78,10 @@ const WEBHOOK_FAILURE_RETRY_MS = 15 * 60_000;
  */
 const WEBHOOK_NAME = "TomoriBot Multi-Persona";
 const PERSONA_WEBHOOK_PREFIX = "TomoriBot Persona";
+export const GENERIC_WEBHOOK_AVATAR_URL = "https://cdn.discordapp.com/embed/avatars/0.png";
+// Discord caps channels at 15 webhooks, so creation leaves two slots for other integrations.
+const DISCORD_WEBHOOK_LIMIT = 15;
+const RESERVED_WEBHOOK_SLOTS = 2;
 const IS_PRODUCTION = process.env.RUN_ENV === "production";
 
 export type WebhookCreateErrorReason = "missing_permissions" | "max_webhooks" | "unknown";
@@ -95,31 +103,18 @@ const MAX_AVATAR_SIZE_BYTES = PERSONA_LIMITS.MAX_AVATAR_SIZE_MB * 1024 * 1024;
 const webhookMutationLocks = new Map<string, Promise<void>>();
 const webhookAvatarStateCache = new Map<string, string>();
 const persistedManagedWebhookIds = new Set<string>();
+let managedWebhookUseSequence = 0;
 const managedWebhookSlots = new Map<
   string,
   {
     webhook: Webhook;
+    channel: TextChannel | BaseGuildTextChannel;
     kind: ManagedWebhookKind;
     avatarFingerprint: string | null;
     discordAvatarHash: string | null;
+    lastUseOrder: number;
   }
 >();
-
-/**
- * Returns the data-URI avatar this process last applied to the webhook, or undefined when the
- * webhook holds no avatar it set (or the state is unknown).
- */
-export function getWebhookStoredAvatarDataUri(webhookId: string): string | undefined {
-  return webhookAvatarStateCache.get(webhookId);
-}
-
-export type WebhookIdentitySendOptions = {
-  /**
-   * Throw `WebhookAvatarEditDeferredError` instead of waiting out a long rate limit on the
-   * avatar edit. Only for callers that can choose another avatar and resend.
-   */
-  deferAvatarEditOnRateLimit?: boolean;
-};
 
 /**
  * Returns current sizes of every in-memory map owned by the webhook manager.
@@ -183,7 +178,7 @@ function getWebhookErrorReason(error: unknown): WebhookCreateErrorReason {
     return "missing_permissions";
   }
 
-  if (code === 30007 || code === "30007") {
+  if (code === 30007 || code === "30007" || code === 30058 || code === "30058") {
     return "max_webhooks";
   }
 
@@ -221,8 +216,14 @@ function isInvalidWebhookError(error: unknown): boolean {
   return code === 10015 || code === "10015" || code === 50027 || code === "50027";
 }
 
-async function withWebhookMutationLock<T>(lockKey: string, operation: () => Promise<T>): Promise<T> {
-  const previous = webhookMutationLocks.get(lockKey);
+async function withWebhookMutationLock<T>(
+  lockKey: string,
+  operation: () => Promise<T>,
+  scope: "identity" | "lifecycle" | "avatar" = "identity",
+): Promise<T> {
+  const coordinationKey = `${scope}:${lockKey}`;
+  const queuedAt = performance.now();
+  const previous = webhookMutationLocks.get(coordinationKey);
   const waitForPrevious = previous?.catch(() => undefined) ?? Promise.resolve();
 
   let releaseLock!: () => void;
@@ -230,16 +231,19 @@ async function withWebhookMutationLock<T>(lockKey: string, operation: () => Prom
     releaseLock = resolve;
   });
   const chained = waitForPrevious.then(() => current);
-  webhookMutationLocks.set(lockKey, chained);
+  webhookMutationLocks.set(coordinationKey, chained);
 
   await waitForPrevious;
+  const metricFields: Record<string, number | string> = { scope, wait_ms: performance.now() - queuedAt };
+  metricFields[scope === "avatar" ? "webhook_id" : "channel_id"] = lockKey;
+  log.metric("webhook_mutation_lock", metricFields);
 
   try {
     return await operation();
   } finally {
     releaseLock();
-    if (webhookMutationLocks.get(lockKey) === chained) {
-      webhookMutationLocks.delete(lockKey);
+    if (webhookMutationLocks.get(coordinationKey) === chained) {
+      webhookMutationLocks.delete(coordinationKey);
     }
   }
 }
@@ -443,9 +447,11 @@ async function persistSharedChannelWebhook(
     persistedManagedWebhookIds.add(webhook.id);
     managedWebhookSlots.set(webhook.id, {
       webhook,
+      channel,
       kind: MANAGED_WEBHOOK_KIND_SHARED_CHANNEL,
       avatarFingerprint: null,
       discordAvatarHash: webhook.avatar,
+      lastUseOrder: 0,
     });
   }
   return stored;
@@ -456,57 +462,67 @@ async function restoreStoredManagedWebhook(
   storedRow: ManagedDiscordWebhookRow,
 ): Promise<Webhook | null> {
   if (storedRow.guild_disc_id !== channel.guildId || storedRow.channel_disc_id !== channel.id) return null;
-  const forgetStoredSlot = async () => {
-    await serverRepository.deleteManagedWebhook(channel.id, storedRow.webhook_disc_id, storedRow.kind);
-    invalidateWebhookCache(channel.id, storedRow.webhook_disc_id);
-  };
-  const decryptedToken = await serverRepository.decryptManagedWebhookToken(storedRow);
-  if (!decryptedToken) {
-    await forgetStoredSlot();
-    return null;
-  }
-  try {
-    const webhook = await channel.client.fetchWebhook(storedRow.webhook_disc_id, decryptedToken);
-    if (
-      webhook.id !== storedRow.webhook_disc_id ||
-      webhook.channelId !== channel.id ||
-      webhook.guildId !== channel.guildId ||
-      !webhook.token
-    ) {
-      await forgetStoredSlot();
-      return null;
-    }
-    const avatarFingerprint = webhook.avatar === storedRow.discord_avatar_hash ? storedRow.avatar_fingerprint : null;
-    if (webhook.avatar !== storedRow.discord_avatar_hash) {
-      const stored = await serverRepository.upsertManagedWebhook({
-        guildDiscId: channel.guildId,
-        channelDiscId: channel.id,
-        webhookDiscId: webhook.id,
-        kind: storedRow.kind,
-        rawToken: webhook.token,
-        avatarFingerprint: null,
-        discordAvatarHash: webhook.avatar,
-      });
-      if (!stored) return null;
-    }
-    managedWebhookSlots.set(webhook.id, {
-      webhook,
-      kind: storedRow.kind,
-      avatarFingerprint,
-      discordAvatarHash: webhook.avatar,
-    });
-    if (storedRow.kind === MANAGED_WEBHOOK_KIND_SHARED_CHANNEL) webhookCache.set(channel.id, webhook);
-    persistedManagedWebhookIds.add(webhook.id);
-    return webhook;
-  } catch (error) {
-    if (isInvalidWebhookError(error)) await forgetStoredSlot();
-    log.warn("[Webhook Manager] Failed to restore stored webhook", {
-      channelId: channel.id,
-      webhookId: storedRow.webhook_disc_id,
-      code: (error as { code?: number | string }).code,
-    });
-    return null;
-  }
+  return await withWebhookMutationLock(
+    storedRow.webhook_disc_id,
+    async () => {
+      const forgetStoredSlot = async () => {
+        await serverRepository.deleteManagedWebhook(channel.id, storedRow.webhook_disc_id, storedRow.kind);
+        invalidateWebhookCache(channel.id, storedRow.webhook_disc_id);
+      };
+      const decryptedToken = await serverRepository.decryptManagedWebhookToken(storedRow);
+      if (!decryptedToken) {
+        await forgetStoredSlot();
+        return null;
+      }
+      try {
+        const webhook = await channel.client.fetchWebhook(storedRow.webhook_disc_id, decryptedToken);
+        if (
+          webhook.id !== storedRow.webhook_disc_id ||
+          webhook.channelId !== channel.id ||
+          webhook.guildId !== channel.guildId ||
+          !webhook.token
+        ) {
+          await forgetStoredSlot();
+          return null;
+        }
+        const avatarFingerprint =
+          webhook.avatar === storedRow.discord_avatar_hash ? storedRow.avatar_fingerprint : null;
+        if (webhook.avatar !== storedRow.discord_avatar_hash) {
+          const stored = await serverRepository.upsertManagedWebhook({
+            guildDiscId: channel.guildId,
+            channelDiscId: channel.id,
+            webhookDiscId: webhook.id,
+            kind: storedRow.kind,
+            rawToken: webhook.token,
+            avatarFingerprint: null,
+            discordAvatarHash: webhook.avatar,
+          });
+          if (!stored) return null;
+        }
+        managedWebhookSlots.set(webhook.id, {
+          webhook,
+          channel,
+          kind: storedRow.kind,
+          avatarFingerprint,
+          discordAvatarHash: webhook.avatar,
+          lastUseOrder: 0,
+        });
+        webhookAvatarStateCache.delete(webhook.id);
+        if (storedRow.kind === MANAGED_WEBHOOK_KIND_SHARED_CHANNEL) webhookCache.set(channel.id, webhook);
+        persistedManagedWebhookIds.add(webhook.id);
+        return webhook;
+      } catch (error) {
+        if (isInvalidWebhookError(error)) await forgetStoredSlot();
+        log.warn("[Webhook Manager] Failed to restore stored webhook", {
+          channelId: channel.id,
+          webhookId: storedRow.webhook_disc_id,
+          code: (error as { code?: number | string }).code,
+        });
+        return null;
+      }
+    },
+    "avatar",
+  );
 }
 
 async function resolvePersonaAvatarIdentity(persona: TomoriState, guild?: Guild): Promise<ResolvedWebhookIdentity> {
@@ -580,32 +596,8 @@ async function resolvePersonaWebhookAvatar(persona: TomoriState, guild?: Guild):
   return `data:image/png;base64,${normalizedBuffer.toString("base64")}`;
 }
 
-/**
- * Gets or creates a shared channel webhook with cache + encrypted DB-backed restore.
- * Webhooks are used to send messages with custom avatars and usernames for alter personas.
- *
- * Flow:
- * 1. Check in-memory cache
- * 2. If cached webhook still exists, return it
- * 3. If the process restarted, try to restore the webhook from encrypted DB storage
- * 4. If still unavailable, fetch existing webhook by name
- * 5. If no usable webhook exists, create a new one
- * 6. Cache and persist the webhook for future use
- *
- * @returns Webhook object, or null if missing permissions
- */
-/**
- * Resolves the managed webhook for the channel a message will appear in, mapping a thread to
- * its parent: webhooks live on the parent channel and post into threads via `threadId`.
- *
- * Thin convenience wrapper over {@link getOrCreateWebhook} for callers that hold an arbitrary
- * channel and only want "the webhook, or null". Used by expression delivery and the
- * "Fallback Used" notice, which (unlike alter turns) have no pre-resolved
- * `responseTarget.webhook` when the main persona reaches the webhook path via a sprite.
- *
- * @returns The managed webhook, or null when the channel cannot host one or permissions are missing
- */
-export async function resolveManagedChannelWebhook(channel: unknown): Promise<Webhook | null> {
+function resolveWebhookParentChannel(channel: unknown): BaseGuildTextChannel | null {
+  if (!channel || typeof channel !== "object") return null;
   const candidate = channel as {
     isThread?: () => boolean;
     parent?: unknown;
@@ -621,11 +613,32 @@ export async function resolveManagedChannelWebhook(channel: unknown): Promise<We
     return null;
   }
 
-  const webhookResult = await getOrCreateWebhook(targetChannel as BaseGuildTextChannel);
+  return targetChannel as BaseGuildTextChannel;
+}
+
+export async function resolveManagedChannelWebhook(channel: unknown): Promise<Webhook | null> {
+  const targetChannel = resolveWebhookParentChannel(channel);
+  if (!targetChannel) return null;
+  const webhookResult = await getOrCreateWebhook(targetChannel);
   return webhookResult.webhook ?? null;
 }
 
+export async function resolveAuthoringWebhook(
+  channel: unknown,
+  webhookId: string | null,
+  suppliedWebhook?: Webhook,
+): Promise<Webhook | null> {
+  if (!webhookId) return null;
+  if (suppliedWebhook?.id === webhookId && suppliedWebhook.token) return suppliedWebhook;
+  const parent = resolveWebhookParentChannel(channel) ?? resolveWebhookParentChannel(suppliedWebhook?.channel);
+  return parent ? await resolveManagedWebhookForChannel(parent, webhookId) : null;
+}
+
 export async function getOrCreateWebhook(channel: TextChannel | BaseGuildTextChannel): Promise<WebhookCreateResult> {
+  return await withWebhookMutationLock(channel.id, () => getOrCreateWebhookInternal(channel), "lifecycle");
+}
+
+async function getOrCreateWebhookInternal(channel: TextChannel | BaseGuildTextChannel): Promise<WebhookCreateResult> {
   const cachedFailure = webhookFailureCache.get(channel.id);
   if (cachedFailure) {
     if (cachedFailure.expiresAt > Date.now()) {
@@ -784,13 +797,18 @@ export async function resolveManagedWebhookForChannel(
     return null;
   }
 
-  const cachedWebhook = getCachedManagedWebhookForChannel(channel.id, webhookId);
-  if (cachedWebhook) {
-    return cachedWebhook;
-  }
-
-  const row = await serverRepository.loadManagedWebhookByChannelAndWebhookId(channel.id, webhookId);
-  return row ? await restoreStoredManagedWebhook(channel, row) : null;
+  const cached = getCachedManagedWebhookForChannel(channel.id, webhookId);
+  if (cached) return cached;
+  return await withWebhookMutationLock(
+    channel.id,
+    async () => {
+      const cachedWebhook = getCachedManagedWebhookForChannel(channel.id, webhookId);
+      if (cachedWebhook) return cachedWebhook;
+      const row = await serverRepository.loadManagedWebhookByChannelAndWebhookId(channel.id, webhookId);
+      return row ? await restoreStoredManagedWebhook(channel, row) : null;
+    },
+    "lifecycle",
+  );
 }
 
 function buildWebhookSendPayload(payload: WebhookSendPayload, identity?: ResolvedWebhookIdentity): WebhookSendPayload {
@@ -816,24 +834,33 @@ async function editWebhookAvatar(
   edit: { avatar: string | null; reason: string },
   deferOnRateLimit: boolean,
 ): Promise<void> {
-  if (deferOnRateLimit) {
-    const updated = await runDeferrableWebhookAvatarEdit(webhook.id, () => webhook.edit(edit));
-    await persistWebhookAvatarAssignment(updated, edit.avatar);
-    return;
-  }
-  const updated = await webhook.edit(edit);
-  await persistWebhookAvatarAssignment(updated, edit.avatar);
+  // Restoration and avatar PATCHes share a webhook lock so a stale fetch cannot republish an earlier assignment.
+  return await withWebhookMutationLock(
+    webhook.id,
+    async () => {
+      try {
+        const updated = deferOnRateLimit
+          ? await runDeferrableWebhookAvatarEdit(webhook.id, () => webhook.edit(edit))
+          : await webhook.edit(edit);
+        await persistWebhookAvatarAssignment(updated, edit.avatar);
+      } catch (error) {
+        if (!(error instanceof WebhookAvatarEditDeferredError)) {
+          webhookAvatarStateCache.delete(webhook.id);
+          const slot = managedWebhookSlots.get(webhook.id);
+          if (slot) slot.avatarFingerprint = null;
+        }
+        throw error;
+      }
+    },
+    "avatar",
+  );
 }
 
 async function persistWebhookAvatarAssignment(webhook: Webhook, avatar: string | null): Promise<void> {
   const slot = managedWebhookSlots.get(webhook.id);
   if (!slot) return;
   if (!webhook.guildId || !webhook.channelId || !webhook.token) throw new Error("Managed webhook lost its credentials");
-  const avatarFingerprint = avatar
-    ? createHash("sha256")
-        .update(Buffer.from(avatar.slice(avatar.indexOf(",") + 1), "base64"))
-        .digest("hex")
-    : null;
+  const avatarFingerprint = avatar ? fingerprintWebhookAvatar(avatar) : null;
   const stored = await serverRepository.upsertManagedWebhook({
     guildDiscId: webhook.guildId,
     channelDiscId: webhook.channelId,
@@ -860,7 +887,10 @@ async function ensureWebhookAvatarState(
 ): Promise<void> {
   if (identity?.avatarDataUri) {
     const cachedAvatar = webhookAvatarStateCache.get(webhook.id);
-    if (cachedAvatar !== identity.avatarDataUri) {
+    const slot = managedWebhookSlots.get(webhook.id);
+    if (slot?.avatarFingerprint === fingerprintWebhookAvatar(identity.avatarDataUri)) {
+      webhookAvatarStateCache.set(webhook.id, identity.avatarDataUri);
+    } else if (cachedAvatar !== identity.avatarDataUri) {
       await editWebhookAvatar(
         webhook,
         { avatar: identity.avatarDataUri, reason: "TomoriBot persona identity update" },
@@ -877,36 +907,262 @@ async function ensureWebhookAvatarState(
   }
 }
 
-/**
- * Runs a custom webhook operation with the same serialized avatar handling as
- * ordinary webhook sends. Local persona avatars are data URIs, which Discord
- * cannot accept as a per-message `avatar_url`, so callers that use raw REST must
- * temporarily apply that image to the shared webhook while holding its mutation
- * lock.
- */
+/** Pins a specific webhook through a raw REST operation because Discord requires data-URI avatars to be stored on it. */
 export async function runWithWebhookIdentity<T>(
   webhook: Webhook,
   identity: ResolvedWebhookIdentity | undefined,
   operation: () => Promise<T>,
-  lockKey?: string,
-  options?: WebhookIdentitySendOptions,
 ): Promise<T> {
   const run = async (): Promise<T> => {
-    await ensureWebhookAvatarState(webhook, identity, options?.deferAvatarEditOnRateLimit === true);
+    await ensureWebhookAvatarState(webhook, identity, false);
     const result = await operation();
-    const slot = managedWebhookSlots.get(webhook.id);
-    if (slot) {
-      managedWebhookSlots.delete(webhook.id);
-      managedWebhookSlots.set(webhook.id, slot);
-    }
+    recordManagedWebhookUse(webhook);
     return result;
   };
 
-  if (identity?.avatarDataUri || shouldResetWebhookAvatar(webhook, identity)) {
-    return await withWebhookMutationLock(lockKey ?? webhook.channelId ?? webhook.id, run);
+  if (!identity?.avatarDataUri && sanitizeAvatarUrl(identity?.avatarUrl)) return await run();
+  return await withWebhookMutationLock(webhook.channelId ?? webhook.id, run);
+}
+
+export type WebhookIdentitySelection = {
+  webhook: Webhook;
+  webhookId: string;
+  identity: ResolvedWebhookIdentity;
+};
+
+export type WebhookIdentityDelivery<T> = WebhookIdentitySelection & { result: T };
+
+function fingerprintWebhookAvatar(avatar: string): string {
+  return createHash("sha256")
+    .update(Buffer.from(avatar.slice(avatar.indexOf(",") + 1), "base64"))
+    .digest("hex");
+}
+
+function recordManagedWebhookUse(webhook: Webhook): void {
+  const slot = managedWebhookSlots.get(webhook.id);
+  if (slot) slot.lastUseOrder = ++managedWebhookUseSequence;
+}
+
+async function selectManagedWebhookIdentity(
+  initialWebhook: Webhook,
+  identity: ResolvedWebhookIdentity,
+): Promise<WebhookIdentitySelection> {
+  const initialSlot = managedWebhookSlots.get(initialWebhook.id);
+  if (!initialSlot) throw new Error("Managed webhook slot is unavailable");
+  const { channel } = initialSlot;
+  const generic = (webhook: Webhook): WebhookIdentitySelection => {
+    log.metric("webhook_avatar_pool", {
+      channel_id: channel.id,
+      webhook_id: webhook.id,
+      outcome: "generic_fallback",
+    });
+    return {
+      webhook,
+      webhookId: webhook.id,
+      identity: { username: identity.username, avatarUrl: GENERIC_WEBHOOK_AVATAR_URL },
+    };
+  };
+  const avatar = identity.avatarDataUri;
+  if (!avatar) {
+    return {
+      webhook: initialSlot.webhook,
+      webhookId: initialWebhook.id,
+      identity: {
+        username: identity.username,
+        avatarUrl: sanitizeAvatarUrl(identity.avatarUrl) ?? GENERIC_WEBHOOK_AVATAR_URL,
+      },
+    };
   }
 
-  return await run();
+  let rows: ManagedDiscordWebhookRow[];
+  try {
+    rows = await serverRepository.listManagedWebhooksByChannel(channel.id);
+  } catch {
+    return generic(initialSlot.webhook);
+  }
+  for (const row of rows) {
+    if (!managedWebhookSlots.has(row.webhook_disc_id)) await restoreStoredManagedWebhook(channel, row);
+  }
+  const slots = [...managedWebhookSlots.values()]
+    .filter(
+      (slot) => slot.webhook.channelId === channel.id && slot.webhook.guildId === channel.guildId && slot.webhook.token,
+    )
+    .sort(
+      (left, right) =>
+        left.lastUseOrder - right.lastUseOrder ||
+        rows.findIndex((row) => row.webhook_disc_id === left.webhook.id) -
+          rows.findIndex((row) => row.webhook_disc_id === right.webhook.id),
+    );
+  const fingerprint = fingerprintWebhookAvatar(avatar);
+  const exact = slots.find((slot) => slot.avatarFingerprint === fingerprint);
+  if (exact) {
+    webhookAvatarStateCache.set(exact.webhook.id, avatar);
+    log.metric("webhook_avatar_pool", { channel_id: channel.id, webhook_id: exact.webhook.id, outcome: "exact_reuse" });
+    return { webhook: exact.webhook, webhookId: exact.webhook.id, identity };
+  }
+  const oldest = slots[0];
+  if (!oldest) throw new Error("No usable managed webhook slot");
+  let deferral: WebhookAvatarEditDeferredError | undefined;
+  log.metric("webhook_avatar_pool", {
+    channel_id: channel.id,
+    webhook_id: oldest.webhook.id,
+    outcome: "patch_attempt",
+  });
+  try {
+    await ensureWebhookAvatarState(oldest.webhook, identity, true);
+    return { webhook: oldest.webhook, webhookId: oldest.webhook.id, identity };
+  } catch (error) {
+    if (error instanceof WebhookAvatarEditDeferredError) {
+      deferral = error;
+    } else {
+      const code = (error as { code?: number | string })?.code;
+      log.metric("webhook_avatar_pool", {
+        channel_id: channel.id,
+        webhook_id: oldest.webhook.id,
+        outcome: "patch_failed",
+        code: code ?? "unknown",
+      });
+      if (isInvalidWebhookError(error)) {
+        invalidateWebhookCache(channel.id, oldest.webhook.id);
+        const remaining = slots.find((slot) => slot.webhook.id !== oldest.webhook.id);
+        if (!remaining) throw error;
+        return generic(remaining.webhook);
+      }
+      return generic(initialSlot.webhook);
+    }
+  }
+
+  let created: Webhook | undefined;
+  const unusedKind = MANAGED_WEBHOOK_KINDS.find(
+    (kind) =>
+      kind !== MANAGED_WEBHOOK_KIND_SHARED_CHANNEL &&
+      !rows.some((row) => row.kind === kind) &&
+      !slots.some((slot) => slot.kind === kind),
+  );
+  let creationOutcome = "pool_full";
+  try {
+    if (unusedKind && rows.length < MANAGED_WEBHOOK_KINDS.length) {
+      creationOutcome = "count_unavailable";
+      const liveWebhooks = await channel.fetchWebhooks();
+      creationOutcome = "channel_full";
+      if (liveWebhooks.size < DISCORD_WEBHOOK_LIMIT - RESERVED_WEBHOOK_SLOTS) {
+        creationOutcome = "create_failed";
+        created = await channel.createWebhook({
+          name: `${WEBHOOK_NAME} Avatar Pool`,
+          avatar,
+          reason: "TomoriBot local avatar pool",
+        });
+        if (!created.token || created.channelId !== channel.id || created.guildId !== channel.guildId) {
+          throw new Error("Created webhook has invalid credentials or channel");
+        }
+        const stored = await serverRepository.upsertManagedWebhook({
+          guildDiscId: channel.guildId,
+          channelDiscId: channel.id,
+          webhookDiscId: created.id,
+          kind: unusedKind,
+          rawToken: created.token,
+          avatarFingerprint: fingerprint,
+          discordAvatarHash: created.avatar,
+        });
+        if (!stored) {
+          creationOutcome = "persist_failed";
+          throw new Error("Failed to persist new avatar pool webhook");
+        }
+        managedWebhookSlots.set(created.id, {
+          webhook: created,
+          channel,
+          kind: unusedKind,
+          avatarFingerprint: fingerprint,
+          discordAvatarHash: created.avatar,
+          lastUseOrder: 0,
+        });
+        persistedManagedWebhookIds.add(created.id);
+        webhookAvatarStateCache.set(created.id, avatar);
+        log.metric("webhook_avatar_pool", { channel_id: channel.id, webhook_id: created.id, outcome: "created" });
+        log.metric("webhook_avatar_patch_rate_limited", {
+          channel_id: channel.id,
+          webhook_id: deferral.webhookId,
+          time_to_reset_ms: deferral.timeToResetMs,
+          outcome: "pool_created",
+        });
+        return { webhook: created, webhookId: created.id, identity };
+      }
+    }
+  } catch (error) {
+    log.metric("webhook_avatar_pool", {
+      channel_id: channel.id,
+      webhook_id: created?.id ?? oldest.webhook.id,
+      outcome: creationOutcome,
+      code: (error as { code?: number | string })?.code ?? "unknown",
+    });
+    if (created) {
+      try {
+        await created.delete("Unused avatar pool webhook could not be persisted");
+      } catch (cleanupError) {
+        log.warn("[Webhook Manager] Failed to remove unused avatar pool webhook", {
+          channelId: channel.id,
+          webhookId: created.id,
+          code: (cleanupError as { code?: number | string })?.code,
+        });
+      }
+    }
+  }
+  log.metric("webhook_avatar_patch_rate_limited", {
+    channel_id: channel.id,
+    webhook_id: deferral.webhookId,
+    time_to_reset_ms: deferral.timeToResetMs,
+    outcome: "generic_fallback",
+    reason: creationOutcome,
+  });
+  return generic(initialSlot.webhook);
+}
+
+// Avatar recovery ends before the operation because an uncertain POST outcome must never trigger a second send.
+export async function dispatchWebhookWithIdentity<T>(
+  webhook: Webhook,
+  identity: ResolvedWebhookIdentity | undefined,
+  operation: (selection: WebhookIdentitySelection) => Promise<T>,
+): Promise<WebhookIdentityDelivery<T>> {
+  if (!managedWebhookSlots.has(webhook.id)) {
+    try {
+      return await runWithWebhookIdentity(webhook, identity, async () => {
+        const selection = { webhook, webhookId: webhook.id, identity: identity ?? {} };
+        return { ...selection, result: await operation(selection) };
+      });
+    } catch (error) {
+      if (isInvalidWebhookError(error) && webhook.channelId) invalidateWebhookCache(webhook.channelId, webhook.id);
+      throw error;
+    }
+  }
+  const run = async () => {
+    const selection = await selectManagedWebhookIdentity(webhook, identity ?? {});
+    try {
+      const result = await operation(selection);
+      recordManagedWebhookUse(selection.webhook);
+      return { ...selection, result };
+    } catch (error) {
+      if (isInvalidWebhookError(error)) invalidateWebhookCache(webhook.channelId ?? webhook.id, selection.webhookId);
+      throw error;
+    }
+  };
+  return identity?.avatarDataUri ? await withWebhookMutationLock(webhook.channelId ?? webhook.id, run) : await run();
+}
+
+export async function sendSelectedWebhookMessage(
+  selection: WebhookIdentitySelection,
+  payload: WebhookSendPayload,
+): Promise<Message> {
+  return await selection.webhook.send(buildIdentityPayload(payload, selection.identity));
+}
+
+export async function sendWebhookMessageWithIdentityDelivery(
+  webhook: Webhook,
+  payload: WebhookSendPayload,
+  identity?: ResolvedWebhookIdentity,
+): Promise<WebhookIdentityDelivery<Message>> {
+  return await dispatchWebhookWithIdentity(webhook, identity, (selected) =>
+    sendSelectedWebhookMessage(selected, payload),
+  );
 }
 
 function buildIdentityPayload(payload: WebhookSendPayload, identity?: ResolvedWebhookIdentity): WebhookSendPayload {
@@ -1019,34 +1275,19 @@ export async function sendWebhookMessagesWithIdentity(
   webhook: Webhook,
   payloads: WebhookSendPayload[],
   identity?: ResolvedWebhookIdentity,
-  lockKey?: string,
-  options?: WebhookIdentitySendOptions,
 ): Promise<Message[]> {
-  try {
-    return await runWithWebhookIdentity(
-      webhook,
-      identity,
-      () => sendWebhookMessagesInternal(webhook, payloads, identity),
-      lockKey,
-      options,
-    );
-  } catch (error) {
-    if (isInvalidWebhookError(error) && webhook.channelId) {
-      invalidateWebhookCache(webhook.channelId, webhook.id);
-    }
-    throw error;
-  }
+  const delivery = await dispatchWebhookWithIdentity(webhook, identity, (selected) =>
+    sendWebhookMessagesInternal(selected.webhook, payloads, selected.identity),
+  );
+  return delivery.result;
 }
 
 export async function sendWebhookMessageWithIdentity(
   webhook: Webhook,
   payload: WebhookSendPayload,
   identity?: ResolvedWebhookIdentity,
-  lockKey?: string,
-  options?: WebhookIdentitySendOptions,
 ): Promise<Message> {
-  const [message] = await sendWebhookMessagesWithIdentity(webhook, [payload], identity, lockKey, options);
-  return message;
+  return (await sendWebhookMessageWithIdentityDelivery(webhook, payload, identity)).result;
 }
 
 /**
@@ -1312,11 +1553,6 @@ export async function sendAsPersona(
     );
     return message;
   } catch (error) {
-    const code = (error as { code?: number | string })?.code;
-    if ((code === 10015 || code === "10015" || code === 50027 || code === "50027") && webhook.channelId) {
-      invalidateWebhookCache(webhook.channelId, webhook.id);
-    }
-
     log.error(`[Webhook Manager] Failed to send message as persona ${persona.persona_nickname}:`, {
       errorType: "webhook_send_error",
       metadata: {
@@ -1390,9 +1626,6 @@ export async function sendUserTranscriptViaWebhook(
     log.info(`[Webhook Manager] Sent voice transcript webhook as "${displayName}" in channel ${channel.id}`);
     return message;
   } catch (error) {
-    if (isInvalidWebhookError(error) && webhookResult.webhook.channelId) {
-      invalidateWebhookCache(webhookResult.webhook.channelId, webhookResult.webhook.id);
-    }
     log.warn(`[Webhook Manager] Failed to send transcript webhook in channel ${channel.id}`, error);
     return null;
   }
@@ -1505,6 +1738,7 @@ export function clearWebhookCache(): void {
   webhookCache.clear();
   const slotSize = managedWebhookSlots.size;
   managedWebhookSlots.clear();
+  managedWebhookUseSequence = 0;
   const personaSize = personaWebhookCache.size;
   personaWebhookCache.clear();
   webhookAvatarStateCache.clear();

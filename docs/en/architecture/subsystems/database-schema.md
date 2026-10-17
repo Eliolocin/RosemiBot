@@ -56,7 +56,9 @@ Existing rows begin with an unknown assignment. Data URIs are never stored in th
 `ServerRepository` lists managed slots in row order and resolves an allowed slot by parent channel
 and exact webhook ID. Restoration checks the guild and parent channel, then clears the fingerprint
 if Discord's current avatar hash differs. Primary discovery excludes persisted pool IDs even when
-their webhook names match the primary name. Ordinary sends still use the primary webhook.
+their webhook names match the primary name. Local-avatar dispatch selects among these slots and
+publishes a newly created slot to the cache only after its token and avatar assignment persist.
+Exact-match sends update only in-memory use order, so they do not write a row on every message.
 
 ## Core entities and relationships
 

@@ -77,8 +77,7 @@ export interface DeliveredStreamMessage {
   messageId: string;
   /** Channel (or thread) ID the message was delivered to. */
   channelId: string;
-  /** True when delivered through a persona/alter webhook (deleted via `webhook.deleteMessage`). */
-  isWebhook: boolean;
+  webhookId: string | null;
 }
 
 /**

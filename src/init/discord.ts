@@ -129,7 +129,7 @@ export function createDiscordClient(includePresences: boolean): Client {
     intents,
     partials: [Partials.Channel, Partials.Message],
     rest: { rejectOnRateLimit: shouldRejectWebhookRateLimit },
-    // Below the discord.js default of 200 per channel, because reply targets resolve through fetch and history reads go to REST.
+    // 50 keeps recent reply targets cached in busy channels (each miss is a REST call for any reply the bot sees); any value is safe because readers fall back to fetch, so tune it from `discord_messages` samples.
     makeCache: Options.cacheWithLimits({ ...Options.DefaultMakeCacheSettings, MessageManager: 50 }),
     sweepers: {
       messages: {

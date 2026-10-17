@@ -5,7 +5,8 @@ import { truncateForEmbedDescription } from "@/utils/discord/embedHelper";
 import { attachTextDisplayModalCollector, buildTextDisplayModalButton } from "@/utils/discord/textDisplayModal";
 import { NOTICE_CONFIG_HINT_KEY } from "@/constants/toolNotices";
 import { isNoticeEmbedVisible, routeHiddenToolNotice } from "@/utils/discord/toolProgressNotice";
-import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
+import { sendWebhookMessageWithIdentityDelivery } from "@/utils/discord/webhook/personaDispatch";
+import { resolveAuthoringWebhook } from "@/utils/discord/webhook/fallback";
 import { resolveManagedChannelWebhook } from "@/utils/discord/webhook/webhookCore";
 import {
   getChannelLastDelivery,
@@ -140,25 +141,29 @@ export async function sendFallbackModelUsageNotice({
     // lookup is cached, so this costs nothing on the common path.
     const lastDelivery = getChannelLastDelivery(context.channel.id);
     const deliveredIdentity = lastDelivery?.via === "webhook" ? lastDelivery.identity : null;
-    const noticeWebhook: Webhook | undefined = deliveredIdentity
-      ? (context.webhook ?? (await resolveManagedChannelWebhook(context.channel)) ?? undefined)
-      : undefined;
+    const noticeWebhook: Webhook | undefined =
+      lastDelivery?.via === "webhook"
+        ? ((await resolveAuthoringWebhook(context.channel, lastDelivery.webhookId, context.webhook)) ??
+          (await resolveManagedChannelWebhook(context.channel)) ??
+          undefined)
+        : undefined;
 
     if (deliveredIdentity && noticeWebhook) {
-      noticeMessage = await sendWebhookMessageWithIdentity(
+      const delivery = await sendWebhookMessageWithIdentityDelivery(
         noticeWebhook,
         {
           components: [buttonRow],
           ...(threadId ? { threadId } : {}),
         },
         deliveredIdentity,
-        threadId ?? noticeWebhook.channelId ?? noticeWebhook.id,
       );
+      noticeMessage = delivery.result;
       recordChannelDeliveredWebhookIdentity(
         context.channel.id,
-        deliveredIdentity,
+        delivery.identity,
         noticeMessage.id,
         lastDelivery?.speaker ?? null,
+        delivery.webhookId,
       );
     } else {
       noticeMessage = await context.channel.send({ components: [buttonRow] });
@@ -173,7 +178,9 @@ export async function sendFallbackModelUsageNotice({
       logLabel: "Fallback model details",
       onExpire: async () => {
         if (deliveredIdentity && noticeWebhook) {
-          await noticeWebhook.editMessage(noticeMessage.id, {
+          const author = await resolveAuthoringWebhook(context.channel, noticeMessage.webhookId, noticeWebhook);
+          if (!author) throw new Error("Authoring webhook unavailable for fallback notice edit");
+          await author.editMessage(noticeMessage.id, {
             components: [disabledButtonRow],
             ...(threadId ? { threadId } : {}),
           });

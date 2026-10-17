@@ -7,7 +7,7 @@ import { personaRepository } from "@/utils/db/repositories";
 import { getOrCreateWebhook } from "@/utils/discord/webhook/lifecycle";
 import { resolvePersonaWebhookIdentity } from "@/utils/discord/webhook/identity";
 import type { ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
-import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
+import { sendWebhookMessageWithIdentityDelivery } from "@/utils/discord/webhook/personaDispatch";
 import {
   recordChannelDeliveredWebhookIdentity,
   resolveChannelBaseAppearanceIdentity,
@@ -246,7 +246,7 @@ export async function executePersonaImpersonation(
               spriteRenderTarget.record.spriteName,
               channel.lastMessageId,
             );
-      sentMessage = await sendWebhookMessageWithIdentity(
+      const delivery = await sendWebhookMessageWithIdentityDelivery(
         webhook,
         {
           content: effectiveMessageContent,
@@ -255,10 +255,17 @@ export async function executePersonaImpersonation(
         },
         identity,
       );
-      recordChannelDeliveredWebhookIdentity(channel.id, identity, sentMessage.id, {
-        personaId: selectedPersona.persona_id,
-        kind: spriteRenderTarget?.record.isIdentity ? "identity_sprite" : "appearance",
-      });
+      sentMessage = delivery.result;
+      recordChannelDeliveredWebhookIdentity(
+        channel.id,
+        delivery.identity,
+        sentMessage.id,
+        {
+          personaId: selectedPersona.persona_id,
+          kind: spriteRenderTarget?.record.isIdentity ? "identity_sprite" : "appearance",
+        },
+        delivery.webhookId,
+      );
 
       if (spriteRenderTarget && sentMessage?.webhookId) {
         void recordPersonaSpriteMessage({

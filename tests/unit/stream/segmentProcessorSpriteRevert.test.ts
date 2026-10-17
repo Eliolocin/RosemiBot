@@ -102,7 +102,13 @@ function makeHarness(options: { isAlter: boolean }) {
         deliveryOptions?.identityOverride ??
         (options.isAlter ? { username: "Locke", avatarUrl: BASE_AVATAR } : undefined);
       if (webhookIdentity) {
-        recordChannelDeliveredWebhookIdentity(channel.id, webhookIdentity, channel.lastMessageId);
+        recordChannelDeliveredWebhookIdentity(
+          channel.id,
+          webhookIdentity,
+          channel.lastMessageId,
+          null,
+          "1400000000000000002",
+        );
       } else {
         recordChannelDeliveredBotMessage(channel.id);
       }

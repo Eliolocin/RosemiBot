@@ -109,14 +109,18 @@ function created(): Response {
 
 /** A real `Webhook` instance, since discord.js only sends identity fields for one. */
 function makeWebhook(edit: () => void = () => undefined): Webhook {
-  return Object.assign(Object.create(Webhook.prototype), {
+  const webhook = Object.assign(Object.create(Webhook.prototype), {
     id: "123456789012345679",
     token: "webhook-token",
     avatar: null,
     channelId: null,
     client: { options: {} },
-    edit: async () => edit(),
+    edit: async () => {
+      edit();
+      return webhook;
+    },
   }) as Webhook;
+  return webhook;
 }
 
 function nativeSticker(id: string, name: string): StickerSelection {
@@ -288,12 +292,18 @@ describe("expression delivery at tool invocation", () => {
         Object.assign(context.channel, { isThread: () => true });
         context.responseTarget = { webhook: makeWebhook(), personaUsername: "Juno" };
         // The channel's last delivery: this turn's sprite line, or an earlier turn's other speaker.
-        recordChannelDeliveredWebhookIdentity(context.channel.id, { username: "Mirri (joy)" });
+        recordChannelDeliveredWebhookIdentity(
+          context.channel.id,
+          { username: "Mirri (joy)" },
+          "1400000000000000001",
+          null,
+          "123456789012345679",
+        );
         if (turnHasText) {
           context.streamingContext.deliveredMessageRefs?.push({
             messageId: "1",
             channelId: context.channel.id,
-            isWebhook: true,
+            webhookId: "webhook_1",
           });
         }
         webhookPosts.posts.length = 0;

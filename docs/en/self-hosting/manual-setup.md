@@ -78,6 +78,11 @@ avatar storage settings do not select an expression bucket. Objects remain reada
 the SDK and are attached as bytes, so a publicly served media URL is unnecessary.
 Preserve backend, bucket, and object keys when restoring existing references.
 
+For locally stored persona avatars, managed webhook sends reuse up to four webhooks per parent
+channel. If Discord delays an avatar change and another webhook cannot be created, the message
+keeps the persona's name and shows Discord's generic avatar. Pool creation leaves two channel
+webhook slots free for other integrations. No additional setting is needed.
+
 `MAX_CUSTOM_EXPRESSIONS_PER_SERVER` caps custom expressions per server (default `20`, minimum `1`).
 Links and uploaded files share the limit across all personas; native emojis and stickers are excluded.
 Restart the bot after changing it. Lowering the limit preserves existing expressions and allows edits
