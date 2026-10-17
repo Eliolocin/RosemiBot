@@ -712,13 +712,9 @@ describe("managed local avatar dispatch", () => {
       {},
       { username: "Juno", avatarDataUri: avatarB },
     );
-    const entries = metric.mock.calls.filter(
-      ([name]) => name === "webhook_avatar_pool" || name === "webhook_avatar_patch_rate_limited",
-    );
-    expect(entries.map(([, fields]) => fields.outcome)).toEqual(
-      expect.arrayContaining(["exact_reuse", "patch_attempt", "create_failed", "generic_fallback"]),
-    );
-    expect(entries.some(([, fields]) => fields.code === 30058)).toBe(true);
+    const entries = metric.mock.calls.filter(([name]) => name === "webhook_avatar_patch_rate_limited");
+    expect(entries.map(([, fields]) => fields.outcome)).toEqual(expect.arrayContaining(["generic_fallback"]));
+    expect(entries.some(([, fields]) => fields.reason === "create_failed")).toBe(true);
     expect(entries.some(([, fields]) => fields.time_to_reset_ms === 60_000)).toBe(true);
     const encoded = JSON.stringify(entries);
     expect(encoded).not.toContain("synthetic_token");

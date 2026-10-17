@@ -222,7 +222,6 @@ async function withWebhookMutationLock<T>(
   scope: "identity" | "lifecycle" | "avatar" = "identity",
 ): Promise<T> {
   const coordinationKey = `${scope}:${lockKey}`;
-  const queuedAt = performance.now();
   const previous = webhookMutationLocks.get(coordinationKey);
   const waitForPrevious = previous?.catch(() => undefined) ?? Promise.resolve();
 
@@ -234,9 +233,6 @@ async function withWebhookMutationLock<T>(
   webhookMutationLocks.set(coordinationKey, chained);
 
   await waitForPrevious;
-  const metricFields: Record<string, number | string> = { scope, wait_ms: performance.now() - queuedAt };
-  metricFields[scope === "avatar" ? "webhook_id" : "channel_id"] = lockKey;
-  log.metric("webhook_mutation_lock", metricFields);
 
   try {
     return await operation();
@@ -951,11 +947,6 @@ async function selectManagedWebhookIdentity(
   if (!initialSlot) throw new Error("Managed webhook slot is unavailable");
   const { channel } = initialSlot;
   const generic = (webhook: Webhook): WebhookIdentitySelection => {
-    log.metric("webhook_avatar_pool", {
-      channel_id: channel.id,
-      webhook_id: webhook.id,
-      outcome: "generic_fallback",
-    });
     return {
       webhook,
       webhookId: webhook.id,
@@ -997,17 +988,11 @@ async function selectManagedWebhookIdentity(
   const exact = slots.find((slot) => slot.avatarFingerprint === fingerprint);
   if (exact) {
     webhookAvatarStateCache.set(exact.webhook.id, avatar);
-    log.metric("webhook_avatar_pool", { channel_id: channel.id, webhook_id: exact.webhook.id, outcome: "exact_reuse" });
     return { webhook: exact.webhook, webhookId: exact.webhook.id, identity };
   }
   const oldest = slots[0];
   if (!oldest) throw new Error("No usable managed webhook slot");
   let deferral: WebhookAvatarEditDeferredError | undefined;
-  log.metric("webhook_avatar_pool", {
-    channel_id: channel.id,
-    webhook_id: oldest.webhook.id,
-    outcome: "patch_attempt",
-  });
   try {
     await ensureWebhookAvatarState(oldest.webhook, identity, true);
     return { webhook: oldest.webhook, webhookId: oldest.webhook.id, identity };
@@ -1015,13 +1000,6 @@ async function selectManagedWebhookIdentity(
     if (error instanceof WebhookAvatarEditDeferredError) {
       deferral = error;
     } else {
-      const code = (error as { code?: number | string })?.code;
-      log.metric("webhook_avatar_pool", {
-        channel_id: channel.id,
-        webhook_id: oldest.webhook.id,
-        outcome: "patch_failed",
-        code: code ?? "unknown",
-      });
       if (isInvalidWebhookError(error)) {
         await serverRepository.deleteManagedWebhook(channel.id, oldest.webhook.id, oldest.kind);
         invalidateWebhookCache(channel.id, oldest.webhook.id);
@@ -1079,7 +1057,6 @@ async function selectManagedWebhookIdentity(
         });
         persistedManagedWebhookIds.add(created.id);
         webhookAvatarStateCache.set(created.id, avatar);
-        log.metric("webhook_avatar_pool", { channel_id: channel.id, webhook_id: created.id, outcome: "created" });
         log.metric("webhook_avatar_patch_rate_limited", {
           channel_id: channel.id,
           webhook_id: deferral.webhookId,
@@ -1089,13 +1066,7 @@ async function selectManagedWebhookIdentity(
         return { webhook: created, webhookId: created.id, identity };
       }
     }
-  } catch (error) {
-    log.metric("webhook_avatar_pool", {
-      channel_id: channel.id,
-      webhook_id: created?.id ?? oldest.webhook.id,
-      outcome: creationOutcome,
-      code: (error as { code?: number | string })?.code ?? "unknown",
-    });
+  } catch {
     if (created) {
       try {
         await created.delete("Unused avatar pool webhook could not be persisted");
