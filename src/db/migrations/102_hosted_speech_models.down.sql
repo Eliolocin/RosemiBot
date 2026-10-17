@@ -26,6 +26,7 @@ ALTER TABLE user_saved_provider_configs DROP COLUMN speech_design_model_id, DROP
 UPDATE user_saved_provider_configs SET
   enabled_capabilities = array_remove(array_remove(enabled_capabilities, 'speech_design'), 'speech_clone'),
   assigned_capabilities = array_remove(array_remove(assigned_capabilities, 'speech_design'), 'speech_clone');
+ALTER TABLE scoped_model_registrations DROP CONSTRAINT IF EXISTS scoped_model_registrations_one_model;
 ALTER TABLE scoped_model_registrations DROP COLUMN speech_model_id;
 ALTER TABLE scoped_model_registrations ADD CONSTRAINT scoped_model_registrations_one_model
   CHECK (num_nonnulls(llm_id, embedding_model_id, diffusion_model_id, video_model_id, decision_model_id) = 1);

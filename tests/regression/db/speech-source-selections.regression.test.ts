@@ -23,6 +23,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
   const downgrade = path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.down.sql");
   const hostedMigration = path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.sql");
   const hostedDowngrade = path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.down.sql");
+  const decisionMigration = path.join(process.cwd(), "src/db/migrations/098_decision_models.sql");
 
   beforeAll(async () => {
     await setupTestDb();
@@ -238,7 +239,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
     }
   });
 
-  it("refuses a lossy downgrade and backfills the deterministic legacy winner and sample intent", async () => {
+  it("refuses a lossy downgrade and restores legacy selections after Decision migration replay", async () => {
     const transcription = await llmProviderRepo.upsertCustomEndpoint({
       serverId,
       label: "Preserved transcription",
@@ -261,6 +262,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
     const auto = await endpoint("Migration Auto", "auto");
     await setSpeechEndpointSelection(serverId, design.custom_endpoint_id ?? null);
     await setSpeechEndpointSelection(serverId, clone.custom_endpoint_id ?? null);
+    await executeTestSqlFile(decisionMigration);
     await executeTestSqlFile(hostedDowngrade);
     try {
       await expect(executeTestSqlFile(downgrade)).rejects.toThrow();
