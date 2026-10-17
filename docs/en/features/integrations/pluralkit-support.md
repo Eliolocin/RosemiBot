@@ -72,4 +72,3 @@ account privacy to full shields every member at once.
 - Webhook members cannot be `@`-mentioned; TomoriBot addresses them by name.
 - If PluralKit's API cannot verify a repost, TomoriBot ignores it. If PluralKit has already
   deleted the original, TomoriBot will not respond to that turn. No member identity is created.
-
