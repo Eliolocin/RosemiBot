@@ -352,7 +352,7 @@ describe("private structured review transports", () => {
       const result = await reviewResponseCandidate(context,{callStructuredJSON:async()=>{throw new Error("PRIVATE_BODY PRIVATE_KEY");}},{apiKey:"PRIVATE_KEY",model:persona.llm.llm_codename});
       if(result.status !== "unavailable") process.exit(1);
       await reviewResponseCandidate(context,{},{});
-      mcpRepository.loadGuildMcpConfigsResult = async () => ({status:"fresh",configs:[{server_id:42,guild_mcp_id:7,is_enabled:true,name:"fixture",url:"https://rules.example.test/mcp"}]});
+      mcpRepository.loadGuildMcpConfigsResult = async () => ({status:"fresh",configs:[{server_id:42,guild_mcp_id:7,is_enabled:true,server_type:"prose_linter",name:"fixture",url:"https://rules.example.test/mcp"}]});
       getGuildMcpManager().getRegisteredTool = async () => ({tool:async()=>{throw new Error("PRIVATE_RULE_BODY PRIVATE_KEY");}});
       const rule = await checkResponseRules(42,{scope:"workspace",registrationId:7,toolName:"check_slop"},"PRIVATE_DRAFT",{calls:0},new AbortController().signal);
       if(rule.status !== "failed") process.exit(1);

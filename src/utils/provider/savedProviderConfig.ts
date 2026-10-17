@@ -24,7 +24,14 @@ import {
   supportsVisionCapability,
 } from "@/utils/provider/providerInfoRegistry";
 
-export type SavedProviderCapability = "text" | "embedding" | "image" | "video" | "vision";
+export type SavedProviderCapability =
+  | "text"
+  | "embedding"
+  | "image"
+  | "video"
+  | "vision"
+  | "speech_design"
+  | "speech_clone";
 
 interface ProviderDefaultSelectionIds {
   llm_id: number | null;
@@ -246,6 +253,8 @@ export async function buildUserSavedProviderConfigFromExistingOrDefaults(params:
           : (existingConfig?.nai_diffusion_model_id ?? null)
         : null,
     video_model_id: existingConfig?.video_model_id ?? defaults?.video_model_id ?? null,
+    speech_design_model_id: existingConfig?.speech_design_model_id ?? null,
+    speech_clone_model_id: existingConfig?.speech_clone_model_id ?? null,
     vision_llm_id: existingConfig?.vision_llm_id ?? null,
     nai_preset_name: existingConfig?.nai_preset_name ?? null,
     llm_temperature: existingConfig?.llm_temperature ?? params.baseConfig.llm_temperature,
@@ -330,6 +339,10 @@ function savedProviderSelectionServesCapability(
 ): boolean {
   if (!isCustomProvider(provider)) {
     switch (capability) {
+      case "speech_design":
+        return provider === "google" || provider === "vertex";
+      case "speech_clone":
+        return provider === "openrouter";
       case "text":
         return true;
       case "embedding":
@@ -418,7 +431,24 @@ export async function loadUserSavedProvidersForCapability(
  */
 export function withSavedProviderConfig(
   tomoriState: TomoriState,
-  savedConfig: SavedProviderConfigRow | null,
+  savedConfig:
+    | (Pick<SavedProviderConfigRow, "api_key"> &
+        Partial<
+          Pick<
+            SavedProviderConfigRow,
+            | "key_version"
+            | "llm_temperature"
+            | "llm_top_p"
+            | "llm_top_k"
+            | "llm_frequency_penalty"
+            | "llm_presence_penalty"
+            | "llm_min_p"
+            | "thinking_level"
+            | "llm_disabled_params"
+            | "llm_logit_biases"
+          >
+        >)
+    | null,
 ): TomoriState {
   const { config } = tomoriState;
   return {

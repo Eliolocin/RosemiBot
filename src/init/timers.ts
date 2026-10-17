@@ -85,6 +85,22 @@ export function initTimers(client: Client): void {
     log.error("Failed to schedule preset art seed and avatar fan-out", error as Error);
   }
 
+  log.section("Initializing Message-Proxy Index Pruner...");
+  try {
+    import("@/timers/messageProxyIndexPruner")
+      .then(({ initializeMessageProxyIndexPruner }) => {
+        client.once("clientReady", () => {
+          initializeMessageProxyIndexPruner();
+          log.success("Message-proxy index pruner initialized");
+        });
+      })
+      .catch((error: Error) => {
+        log.error("Failed to initialize message-proxy index pruner", error);
+      });
+  } catch (error) {
+    log.error("Failed to initialize message-proxy index pruner", error as Error);
+  }
+
   log.section("Initializing Upload Quota System...");
   try {
     import("@/utils/security/rateLimiter")

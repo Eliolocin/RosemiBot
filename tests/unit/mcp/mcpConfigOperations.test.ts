@@ -361,7 +361,8 @@ describe("canonical MCP config operations", () => {
     expect(
       (await operations.setEnabled({ serverId: 10, serverDiscId: "100", guildMcpId: 7, enabled: true })).status,
     ).toBe("success");
-    expect(calls).toEqual(["read-11", "read-10", "read-10", "write"]);
+    // Enabling only lifts the connect quarantine; it never dials, so the server still connects on demand.
+    expect(calls).toEqual(["read-11", "read-10", "read-10", "write", "disconnect"]);
   });
 
   it("redacts submitted credentials from connection errors", () => {

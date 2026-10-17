@@ -3,7 +3,11 @@ import { ButtonStyle, ComponentType, type ButtonComponentData, type ComponentInC
 import { RESPONSE_REVIEWER_PROMPT_MAX_LENGTH, type TomoriState } from "@/types/db/schema";
 import { CONFIG_MODEL_PAGE_SIZE, buildConfigRouteId, type DraftModelSlot } from "@/utils/discord/configPanelCatalog";
 import { buildStateControlRow } from "@/utils/discord/ui/panel";
-import { buildModelRoutingControl, buildProviderPageEntries } from "@/utils/discord/ui/modelRoutingControls";
+import {
+  buildModelRoutingControl,
+  buildProviderPageEntries,
+  formatModelSelectionLabel,
+} from "@/utils/discord/ui/modelRoutingControls";
 import { buildProviderSelectWindow, resolveProviderEntryStart } from "@/utils/discord/ui/providerSelectWindow";
 import {
   encodeConfigProviderPageValue,
@@ -18,6 +22,7 @@ import {
 import { buildCheckboxGroupComponent, buildConfigModalFieldId } from "@/utils/discord/ui/configModals";
 import { buildConfigModelSelectModal } from "@/utils/discord/ui/configModelModals";
 import type { RawModalPayload } from "@/utils/discord/ui/configModals";
+import { DISCORD_SELECT_OPTIONS_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import { localizer } from "@/utils/text/localizer";
@@ -27,8 +32,8 @@ export type DraftPicker =
   | { slot: DraftModelSlot; provider: string | null; start: number }
   | { slot: "checker"; start: number };
 export const DRAFT_CLEAR_VALUE = "__none__";
-/** None and the advance entry reserve two of Discord's 25 options. */
-export const DRAFT_CHECKER_PAGE_SIZE = 23;
+/** None, Previous, and Next reserve three of Discord's 25 options. */
+export const DRAFT_CHECKER_PAGE_SIZE = DISCORD_SELECT_OPTIONS_MAX - 3;
 
 export const DRAFT_REVIEW_ITEMS_FIELD = "draft_items";
 
@@ -128,15 +133,20 @@ export function buildResponseDraftingBody(
     customId: buildConfigRouteId(route),
     disabled,
   });
+  const formatModel = (model: string, provider: string): string =>
+    formatModelSelectionLabel(model, getProviderDisplayName(provider), t("commands.config.panel.none_label"));
   const modelLabel = (slot: DraftModelSlot): string => {
     const id = slot === "reviewer" ? state.config.response_reviewer_llm_id : state.config.response_decision_model_id;
-    if (id === null)
-      return slot === "reviewer"
-        ? `${safeSelectOptionText(state.llm.llm_codename, 150)} (${getProviderDisplayName(state.llm.llm_provider)})${view?.inheritedReviewerAvailable ? "" : `: ${t("commands.config.drafting.unavailable")}`}`
-        : t("commands.config.drafting.none");
+    if (id === null) {
+      if (slot !== "reviewer") return t("commands.config.drafting.none");
+      const inherited = formatModel(safeSelectOptionText(state.llm.llm_codename, 150), state.llm.llm_provider);
+      return view?.inheritedReviewerAvailable
+        ? inherited
+        : `${inherited}: ${t("commands.config.drafting.unavailable")}`;
+    }
     for (const group of slot === "reviewer" ? (view?.reviewers ?? []) : (view?.decisions ?? [])) {
       const model = group.models.find((candidate) => candidate.id === id);
-      if (model) return safeSelectOptionText(`${model.name} (${getProviderDisplayName(group.provider)})`, 180);
+      if (model) return safeSelectOptionText(formatModel(model.name, group.provider), 180);
     }
     return t("commands.config.drafting.unavailable");
   };
@@ -270,18 +280,16 @@ export function buildResponseDraftingBody(
             150,
           ),
           options: [
-            { label: t("commands.config.drafting.none"), value: DRAFT_CLEAR_VALUE },
+            ...(binding ? [{ label: t("commands.config.panel.none_label"), value: DRAFT_CLEAR_VALUE }] : []),
             ...choices.slice(start, start + DRAFT_CHECKER_PAGE_SIZE).map((choice, index) => ({
               label: safeSelectOptionText(choice.label, 100),
               value: String(start + index),
             })),
-            ...(choices.length > DRAFT_CHECKER_PAGE_SIZE
-              ? [
-                  {
-                    label: t("general.pagination.next"),
-                    value: `page|${start + DRAFT_CHECKER_PAGE_SIZE < choices.length ? start + DRAFT_CHECKER_PAGE_SIZE : 0}`,
-                  },
-                ]
+            ...(start > 0
+              ? [{ label: t("general.pagination.previous"), value: `page|${start - DRAFT_CHECKER_PAGE_SIZE}` }]
+              : []),
+            ...(start + DRAFT_CHECKER_PAGE_SIZE < choices.length
+              ? [{ label: t("general.pagination.next"), value: `page|${start + DRAFT_CHECKER_PAGE_SIZE}` }]
               : []),
           ],
           disabled,

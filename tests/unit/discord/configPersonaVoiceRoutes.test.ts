@@ -55,7 +55,8 @@ function makeHarness(options: HarnessOptions = {}) {
   const persona = options.persona ?? makePersona();
   const events: string[] = [];
   const modals: unknown[] = [];
-  const writes: unknown[] = [];
+  const writes: Array<{ personaId: number; voice: Parameters<ConfigRouteDependencies["setPersonaVoiceConfig"]>[1] }> =
+    [];
   const invalidations: string[] = [];
   const renderedPersonaIds: Array<number | null> = [];
   const acknowledgedAtFetch: boolean[] = [];
@@ -192,6 +193,62 @@ function makeHarness(options: HarnessOptions = {}) {
 }
 
 describe("Persona > Voice routes", () => {
+  it("saves a description without a target and preserves the independent Clone sources and priority", async () => {
+    const harness = makeHarness({
+      noEndpoint: true,
+      persona: makePersona({
+        speech_voice_sample_id: 101,
+        speech_voice_id: "provider-id",
+        speech_voice_name: "Harbor",
+        voice_source_priority: "clone",
+      }),
+    });
+    await harness.dispatch(
+      buildConfigRouteId({
+        action: "voice-design-submit",
+        locale: "en-US",
+        personaId: 55,
+        nonce: "nonce1234567",
+      }),
+      "modal",
+      [],
+      { voice_design_prompt_nonce1234567: "Warm narrator" },
+    );
+    expect(harness.writes[0]?.voice).toEqual({
+      speech_voice_sample_id: 101,
+      speech_voice_id: "provider-id",
+      speech_voice_name: "Harbor",
+      speech_voice_design_prompt: "Warm narrator",
+      voice_source_priority: "clone",
+    });
+    expect(harness.events).not.toContain("endpoint");
+    expect(harness.invalidations).toEqual(["guild-1"]);
+  });
+
+  it("changes priority without changing saved sources and rejects non-managers", async () => {
+    for (const action of ["voice-priority-design", "voice-priority-clone"] as const) {
+      const harness = makeHarness({
+        persona: makePersona({
+          speech_voice_sample_id: 101,
+          speech_voice_id: "provider-id",
+          speech_voice_design_prompt: "Warm voice",
+        }),
+      });
+      await harness.dispatch(buildConfigRouteId({ action, locale: "en-US", personaId: 55 }), "button");
+      expect(harness.writes[0]?.voice).toEqual(
+        expect.objectContaining({
+          speech_voice_sample_id: 101,
+          speech_voice_id: "provider-id",
+          speech_voice_design_prompt: "Warm voice",
+          voice_source_priority: action === "voice-priority-design" ? "design" : "clone",
+        }),
+      );
+      const denied = makeHarness({ isManager: false });
+      await denied.dispatch(buildConfigRouteId({ action, locale: "en-US", personaId: 55 }), "button");
+      expect(denied.writes).toHaveLength(0);
+    }
+  });
+
   it("acknowledges before loading a clone sample and writes all four voice columns", async () => {
     const harness = makeHarness({
       apiStyle: "tts-clone",
@@ -211,8 +268,9 @@ describe("Persona > Voice routes", () => {
       {
         personaId: 55,
         voice: {
+          voice_source_priority: "design",
           speech_voice_sample_id: 101,
-          speech_voice_id: null,
+          speech_voice_id: "provider-id",
           speech_voice_name: "Harbor sample",
           speech_voice_design_prompt: "Existing prompt",
         },
@@ -243,6 +301,7 @@ describe("Persona > Voice routes", () => {
     expect(harness.writes[0]).toEqual({
       personaId: 55,
       voice: {
+        voice_source_priority: "design",
         speech_voice_id: "provider-secret-id",
         speech_voice_name: "Harbor",
         speech_voice_sample_id: null,
@@ -261,14 +320,17 @@ describe("Persona > Voice routes", () => {
         speech_voice_design_prompt: "Existing prompt",
       }),
     });
-    await harness.dispatch(buildConfigRouteId({ action: "voice-clear", locale: "en-US", personaId: 55 }), "button");
+    await harness.dispatch(buildConfigRouteId({ action: "voice-select", locale: "en-US", personaId: 55 }), "select", [
+      "none:reference",
+    ]);
 
     expect(harness.writes[0]).toEqual({
       personaId: 55,
       voice: {
+        voice_source_priority: "design",
         speech_voice_sample_id: null,
         speech_voice_id: "stranded-provider-id",
-        speech_voice_name: "VoiceDesign",
+        speech_voice_name: null,
         speech_voice_design_prompt: "Existing prompt",
       },
     });
@@ -284,17 +346,70 @@ describe("Persona > Voice routes", () => {
         speech_voice_design_prompt: "Existing prompt",
       }),
     });
-    await harness.dispatch(buildConfigRouteId({ action: "voice-clear", locale: "en-US", personaId: 55 }), "button");
+    await harness.dispatch(
+      buildConfigRouteId({ action: "voice-provider-clear", locale: "en-US", personaId: 55 }),
+      "button",
+    );
 
     expect(harness.writes[0]).toEqual({
       personaId: 55,
       voice: {
-        speech_voice_sample_id: null,
-        speech_voice_id: "provider-id",
-        speech_voice_name: "VoiceDesign",
+        voice_source_priority: "design",
+        speech_voice_sample_id: 101,
+        speech_voice_id: null,
+        speech_voice_name: null,
         speech_voice_design_prompt: "Existing prompt",
       },
     });
+  });
+
+  it("keeps the saved reference sample when an ElevenLabs voice is chosen", async () => {
+    const voice = {
+      voiceId: "provider-secret-id",
+      name: "Harbor",
+      category: "premade",
+      description: null,
+      previewUrl: null,
+      labels: {},
+    };
+    const fingerprint = buildConfigPersonaVoiceRemoteView("en-US", [voice]).voices?.[0]?.fingerprint;
+    const harness = makeHarness({
+      apiStyle: "elevenlabs",
+      voices: [voice],
+      persona: makePersona({ speech_voice_sample_id: 101, speech_voice_name: "Harbor sample" }),
+    });
+    await harness.dispatch(buildConfigRouteId({ action: "voice-select", locale: "en-US", personaId: 55 }), "select", [
+      `voice:0:${fingerprint}`,
+    ]);
+
+    expect(harness.writes[0]?.voice).toEqual(
+      expect.objectContaining({ speech_voice_id: "provider-secret-id", speech_voice_sample_id: 101 }),
+    );
+  });
+
+  it("clears only the matching source when None is chosen from a voice dropdown", async () => {
+    for (const [value, expected] of [
+      ["none:reference", { speech_voice_sample_id: null, speech_voice_id: "provider-id" }],
+      ["none:provider", { speech_voice_sample_id: 101, speech_voice_id: null }],
+    ] as const) {
+      const harness = makeHarness({
+        apiStyle: value === "none:provider" ? "elevenlabs" : "tts-clone",
+        persona: makePersona({
+          speech_voice_sample_id: 101,
+          speech_voice_id: "provider-id",
+          speech_voice_design_prompt: "Existing prompt",
+        }),
+      });
+      await harness.dispatch(buildConfigRouteId({ action: "voice-select", locale: "en-US", personaId: 55 }), "select", [
+        value,
+      ]);
+
+      expect(harness.writes).toHaveLength(1);
+      expect(harness.writes[0]?.voice).toEqual(
+        expect.objectContaining({ ...expected, speech_voice_design_prompt: "Existing prompt" }),
+      );
+      expect(harness.events.indexOf("write")).toBeLessThan(harness.events.indexOf("invalidate"));
+    }
   });
 
   it("clears stored voice state without an endpoint and invalidates after success", async () => {
@@ -307,20 +422,54 @@ describe("Persona > Voice routes", () => {
         speech_voice_design_prompt: "Existing prompt",
       }),
     });
-    await harness.dispatch(buildConfigRouteId({ action: "voice-clear", locale: "en-US", personaId: 55 }), "button");
+    await harness.dispatch(buildConfigRouteId({ action: "voice-select", locale: "en-US", personaId: 55 }), "select", [
+      "none:reference",
+    ]);
 
     expect(harness.writes).toEqual([
       {
         personaId: 55,
         voice: {
+          voice_source_priority: "design",
           speech_voice_sample_id: null,
           speech_voice_id: "stranded-provider-id",
-          speech_voice_name: "VoiceDesign",
+          speech_voice_name: null,
           speech_voice_design_prompt: "Existing prompt",
         },
       },
     ]);
     expect(harness.invalidations).toEqual(["guild-1"]);
+    expect(harness.events).not.toContain("endpoint");
+  });
+
+  it("clears a legacy provider ID without a Clone target while preserving the sample and description", async () => {
+    const harness = makeHarness({
+      noEndpoint: true,
+      persona: makePersona({
+        speech_voice_sample_id: 101,
+        speech_voice_id: "legacy-provider-id",
+        speech_voice_design_prompt: "Warm narration",
+        voice_source_priority: "clone",
+      }),
+    });
+    await harness.dispatch(
+      buildConfigRouteId({ action: "voice-provider-clear", locale: "en-US", personaId: 55 }),
+      "button",
+    );
+    expect(harness.writes).toEqual([
+      {
+        personaId: 55,
+        voice: {
+          speech_voice_sample_id: 101,
+          speech_voice_id: null,
+          speech_voice_name: null,
+          speech_voice_design_prompt: "Warm narration",
+          voice_source_priority: "clone",
+        },
+      },
+    ]);
+    expect(harness.invalidations).toEqual(["guild-1"]);
+    expect(harness.events.indexOf("write")).toBeLessThan(harness.events.indexOf("invalidate"));
     expect(harness.events).not.toContain("endpoint");
   });
 
@@ -343,10 +492,11 @@ describe("Persona > Voice routes", () => {
     expect(harness.writes[0]).toEqual({
       personaId: 55,
       voice: {
+        voice_source_priority: "design",
         speech_voice_sample_id: 101,
         speech_voice_id: "provider-id",
         speech_voice_design_prompt: null,
-        speech_voice_name: "Voice Clone",
+        speech_voice_name: "VoiceDesign",
       },
     });
   });
@@ -419,7 +569,9 @@ describe("Persona > Voice routes", () => {
     const harness = makeHarness({ apiStyle: "tts-clone", isManager: false, useRepositoryVoiceWriter: true });
     const repositoryWrite = spyOn(personaRepository, "setVoiceConfig").mockResolvedValue(true);
     try {
-      await harness.dispatch(buildConfigRouteId({ action: "voice-clear", locale: "en-US", personaId: 55 }), "button");
+      await harness.dispatch(buildConfigRouteId({ action: "voice-select", locale: "en-US", personaId: 55 }), "select", [
+        "none:reference",
+      ]);
       expect(repositoryWrite).not.toHaveBeenCalled();
       expect(harness.writes).toEqual([]);
     } finally {
@@ -454,10 +606,11 @@ describe("Persona > Voice routes", () => {
     expect(harness.writes[0]).toEqual({
       personaId: 55,
       voice: {
+        voice_source_priority: "design",
         speech_voice_sample_id: 22,
         speech_voice_id: "new-provider",
         speech_voice_design_prompt: "Bright, patient narrator",
-        speech_voice_name: "VoiceDesign",
+        speech_voice_name: "New",
       },
     });
   });
@@ -492,7 +645,7 @@ describe("Persona > Voice routes", () => {
         labels: {},
       },
     ]);
-    expect(view.voices?.[0]).toEqual({ label: "Harbor", fingerprint: expect.any(String) });
+    expect(view.voices?.[0]).toMatchObject({ label: "Harbor", fingerprint: expect.any(String) });
     expect(JSON.stringify(view)).not.toContain("provider-secret-id");
 
     const unnamed = buildConfigPersonaVoiceRemoteView("en-US", [

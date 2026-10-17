@@ -11,11 +11,17 @@ export const ENCRYPTED_COLUMNS = [
   { table: "guild_mcp_servers", id: "guild_mcp_id", column: "auth_token" },
   { table: "discord_managed_webhooks", id: "managed_webhook_id", column: "webhook_token" },
   { table: "server_model_configs", id: "server_id", column: "api_key" },
+  ...(["client_secret", "refresh_token", "access_token"] as const).map((column) => ({
+    table: "pluralbuddy_oauth_connections" as const,
+    id: "instance_id" as const,
+    column,
+    keyVersion: `${column}_key_version`,
+  })),
 ] as const;
 
 export type EncryptedColumn = (typeof ENCRYPTED_COLUMNS)[number];
 export interface EncryptedRow {
-  id: number;
+  id: number | string;
   ciphertext: Buffer;
   key_version: number | null;
 }
@@ -44,10 +50,11 @@ export async function* scanEncryptedRows(client: SQL): AsyncGenerator<{
         `;
         if (columns.length === 0) continue;
       }
-      let lastId = 0;
+      const keyVersionColumn = "keyVersion" in target ? target.keyVersion : "key_version";
+      let lastId: number | string = target.id === "instance_id" ? "" : 0;
       while (true) {
         const rows = await client<EncryptedRow[]>`
-          SELECT ${client(target.id)} AS id, ${client(target.column)} AS ciphertext, key_version
+          SELECT ${client(target.id)} AS id, ${client(target.column)} AS ciphertext, ${client(keyVersionColumn)} AS key_version
           FROM ${client(`public.${target.table}`)}
           WHERE ${client(target.column)} IS NOT NULL AND ${client(target.id)} > ${lastId}
             AND ${target.table === "api_key_rotation" ? client`is_main_key_pointer IS NOT TRUE` : client`TRUE`}
@@ -83,12 +90,13 @@ export async function rotateEncryptedRow(client: SQL, target: EncryptedColumn, r
     const oldKey = keyManager.getKey(storedKeyVersion(row.key_version));
     const currentKey = keyManager.getCurrentKey();
     const version = keyManager.getCurrentVersion();
+    const keyVersionColumn = "keyVersion" in target ? target.keyVersion : "key_version";
     const updated = await client`
       UPDATE ${client(`public.${target.table}`)}
       SET ${client(target.column)} = pgp_sym_encrypt(pgp_sym_decrypt(${row.ciphertext}, ${oldKey}),
-          ${currentKey}, 'compress-algo=1, cipher-algo=aes256'), key_version = ${version}
+          ${currentKey}, 'compress-algo=1, cipher-algo=aes256'), ${client(keyVersionColumn)} = ${version}
       WHERE ${client(target.id)} = ${row.id} AND ${client(target.column)} = ${row.ciphertext}
-        AND key_version IS NOT DISTINCT FROM ${row.key_version}
+        AND ${client(keyVersionColumn)} IS NOT DISTINCT FROM ${row.key_version}
         AND ${target.table === "api_key_rotation" ? client`is_main_key_pointer IS NOT TRUE` : client`TRUE`}
       RETURNING ${client(target.id)}
     `;

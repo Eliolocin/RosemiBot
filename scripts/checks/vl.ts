@@ -94,6 +94,7 @@ interface WarningCheckOptions {
    * failure mode that hides bugs.
    */
   failureNeedsDetail?: boolean;
+  blocksOnFailure?: boolean;
 }
 
 async function runWarningCheck(
@@ -105,6 +106,7 @@ async function runWarningCheck(
     summarizeFailure,
     acceptsDetailFlag = false,
     failureNeedsDetail = true,
+    blocksOnFailure = false,
   }: WarningCheckOptions = {},
 ): Promise<ResultItem> {
   console.log(`> Running ${name}...`);
@@ -112,7 +114,7 @@ async function runWarningCheck(
   const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
   const exitCode = await proc.exited;
   const output = stdout + stderr;
-  const isWarning = exitCode !== 0 || outputHasWarnings(output);
+  const isWarning = (exitCode !== 0 && !blocksOnFailure) || (exitCode === 0 && outputHasWarnings(output));
   const summary = isWarning ? summarizeWarnings?.(output) || undefined : undefined;
   const subItems = exitCode !== 0 ? summarizeFailure?.(output) : undefined;
 
@@ -127,7 +129,7 @@ async function runWarningCheck(
   return {
     name,
     exitCode,
-    fatal: false,
+    fatal: blocksOnFailure,
     isWarning,
     summary,
     subItems: subItems ? [subItems] : undefined,
@@ -730,6 +732,7 @@ async function main() {
       summarizeFailure: (output) => output.match(/\d+ error\(s\), \d+ warning\(s\), \d+ file\(s\) checked/)?.[0],
       // A failing audit is entirely file-and-line findings, so the listing is the report.
       failureNeedsDetail: true,
+      blocksOnFailure: true,
       // No detail flag is forwarded: `audit-comments` already asks for its own listing, and a
       // `--no-verbose` here would arrive after it and mute the warning lines this row counts.
       // Under `vl --verbose` the listing prints, because the aggregator echoes a warned check's

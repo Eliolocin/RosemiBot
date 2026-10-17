@@ -280,6 +280,13 @@ export function hasIncompleteSemanticMarkers(buffer: string): boolean {
     }
   }
 
+  // A handle like "@{Mirri J. Juno}" holds a period the sentence break would cut at, and the
+  // later mention resolver only recognizes the handle whole.
+  const lastMentionOpen = emphasisScanText.lastIndexOf("@{");
+  if (lastMentionOpen !== -1 && emphasisScanText.indexOf("}", lastMentionOpen) === -1) {
+    return true;
+  }
+
   const openBrackets = (buffer.match(/\[/g) || []).length;
   const closeBrackets = (buffer.match(/\]/g) || []).length;
   const openParens = (buffer.match(/\(/g) || []).length;

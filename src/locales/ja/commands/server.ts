@@ -21,7 +21,6 @@ export default {
         slot_4_label: `カテゴリ 4`,
         slot_5_label: `カテゴリ 5`,
         slot_instructions: `1つの枠につき「ラベル: 説明」形式で入力（例：「目標: パーティの現在の目的」）。空欄は無視され、すべて空欄にすると既定の要約に戻ります。`,
-        slot_placeholder: `ラベル: 説明`,
       },
     },
     "crosschannel-blocklist": {

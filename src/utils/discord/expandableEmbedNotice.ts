@@ -49,6 +49,7 @@ import { validateAndFallbackPanelPayload } from "@/utils/discord/ui/interactionC
 import { ColorCode, log } from "@/utils/misc/logger";
 import { buildTextPreview } from "@/utils/text/textPreview";
 import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
+import { resolveAuthoringWebhook } from "@/utils/discord/webhook/fallback";
 
 type SupportedChannel =
   | TextChannel
@@ -307,7 +308,9 @@ async function sendEmbedWithExpand(
     if (!noticeMessage) return;
     // Webhook-sent messages can only be edited through the webhook token.
     if (sentViaWebhook && webhook) {
-      await webhook
+      const author = await resolveAuthoringWebhook(channel, noticeMessage.webhookId, webhook);
+      if (!author) return;
+      await author
         .editMessage(noticeMessage.id, {
           ...disabledPayload,
           withComponents: true,

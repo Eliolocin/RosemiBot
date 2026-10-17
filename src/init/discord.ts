@@ -1,4 +1,4 @@
-import { ApplicationFlags, Client, GatewayIntentBits, Partials, REST, Routes } from "discord.js";
+import { ApplicationFlags, Client, GatewayIntentBits, Options, Partials, REST, Routes } from "discord.js";
 import { log } from "@/utils/misc/logger";
 import { healthTracker } from "@/utils/misc/healthTracker";
 import type { AppEnvironment } from "@/types/config";
@@ -125,10 +125,12 @@ export function createDiscordClient(includePresences: boolean): Client {
     intents.push(GatewayIntentBits.GuildPresences);
   }
 
-  const client = new Client({
+  const client: Client = new Client({
     intents,
     partials: [Partials.Channel, Partials.Message],
     rest: { rejectOnRateLimit: shouldRejectWebhookRateLimit },
+    // 50 keeps recent reply targets cached in busy channels (each miss is a REST call for any reply the bot sees); any value is safe because readers fall back to fetch, so tune it from `discord_messages` samples.
+    makeCache: Options.cacheWithLimits({ ...Options.DefaultMakeCacheSettings, MessageManager: 50 }),
     sweepers: {
       messages: {
         interval: 3600, // Run sweep every 1 hour (in seconds)
@@ -140,9 +142,17 @@ export function createDiscordClient(includePresences: boolean): Client {
         interval: 3600,
         filter: () => (member) => member.id !== member.client.user.id && !member.voice.channelId,
       },
+      // A cached member holds its own User reference, so evicting a member's user frees nothing;
+      // the users worth evicting are the ones presence updates cache for members never stored.
       users: {
         interval: 3600,
-        filter: () => (user) => user.bot,
+        filter: () => {
+          const memberIds = new Set<string>();
+          for (const guild of client.guilds.cache.values()) {
+            for (const memberId of guild.members.cache.keys()) memberIds.add(memberId);
+          }
+          return (user) => user.id !== client.user?.id && !memberIds.has(user.id);
+        },
       },
       // Presence data is gateway-only with no REST fetch, so a swept entry stays missing until
       // that user's next presence change. Offline-with-no-activity is the only safe set to drop:

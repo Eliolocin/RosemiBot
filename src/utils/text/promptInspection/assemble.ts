@@ -325,6 +325,7 @@ async function fetchProviderTools(
   persona: TomoriState,
   providerName: string,
   toolFilter?: SnapshotToolFilter | null,
+  userId?: number,
 ): Promise<Array<Record<string, unknown>>> {
   const activeLlm = persona.persona_llm ?? persona.llm;
 
@@ -334,11 +335,15 @@ async function fetchProviderTools(
 
   const toolStateForContext: ToolStateForContext = {
     server_id: persona.server_id.toString(),
+    speechToolState: { userId },
     activePersonaHasElevenlabsVoice: Boolean(
       persona.speech_voice_sample_id || persona.speech_voice_design_prompt?.trim() || persona.speech_voice_id?.trim(),
     ),
     activePersonaVoiceDesignPrompt: persona.speech_voice_design_prompt?.trim() || null,
-    activePersonaVoiceName: persona.speech_voice_name,
+    activePersonaVoiceSampleId: persona.speech_voice_sample_id,
+    activePersonaVoiceId: persona.speech_voice_id,
+    activePersonaVoiceSourcePriority: persona.voice_source_priority,
+
     llm: {
       llm_codename: activeLlm.llm_codename,
       has_tools: activeLlm.has_tools,
@@ -854,7 +859,7 @@ export async function assemblePromptInspection(request: PromptInspectionRequest)
   let toolsData: Array<Record<string, unknown>> | null = null;
   if (request.includeTools) {
     try {
-      toolsData = await fetchProviderTools(answeringState, providerName, snapshotToolFilter);
+      toolsData = await fetchProviderTools(answeringState, providerName, snapshotToolFilter, userData.user_id);
     } catch (toolError) {
       log.warn(
         `Failed to fetch tools for prompt inspection (provider=${providerName}): ${(toolError as Error).message}`,

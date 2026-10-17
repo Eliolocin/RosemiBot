@@ -32,8 +32,6 @@ describe("config voices route catalog & codecs", () => {
   const testRoutes: ConfigPanelRoute[] = [
     { action: "tts-parameters-open", locale: "en-US" },
     { action: "tts-parameters-submit", locale: "en-US", nonce: "nonce-12345" },
-    { action: "tts-turbo-set", locale: "en-US", enabled: false },
-    { action: "tts-turbo-set", locale: "en-US", enabled: true },
     { action: "voice-sample-select", locale: "en-US", start: 0 },
     { action: "voice-sample-select", locale: "en-US", start: 5 },
     { action: "voice-sample-page", locale: "en-US", start: 0 },

@@ -186,9 +186,26 @@ so list only the true ones:
 | `imageSections` | `image_diffusion_models` | Native image generation |
 | `videoSections` | `video_generation_models` | Native video generation |
 | `embeddingSections` | `embedding_models` | Embeddings |
+| `decisionSections` | `decision_models` | Native Decisions API |
 
 Set `hasTools` and `supportsStructoutput` per model, only for models you tested. To retire a model
 set `isDeprecated: true`; to remove it, delete the row.
+
+The weekly drift check in `scripts/checks/modelDrift.ts` drafts media rows only for supported
+routes. Google and Vertex image candidates require a `gemini-` ID and image output metadata;
+Google video candidates require a `veo-` ID and video output metadata. OpenRouter uses output
+metadata for both. Extend the route predicate and catalog section mapping when adding a route,
+so supported models are drafted into the right section rather than reported as unsupported.
+
+Decision drift reads OpenRouter's `models?output_modalities=decisions` catalog directly and uses
+the runtime discovery validator. Every valid uncarried entry is drafted, including aliases and free
+variants, without a family or release-date filter. Rows carry the documented input limit, image
+support, and prices. Entries with invalid metadata stay in the report for review and are retried on
+later runs. Decision rows use the same description review and per-provider row limit gates.
+Keep an active Decision row only when it adds a distinct use case or replaces an existing choice.
+Decline an unshipped draft by removing its seed row and keeping its entry in
+`scripts/data/modelDriftSeen.json`, so drift does not offer it again. Curation alone is not evidence
+that a provider deprecated a model.
 
 Set `contextWindow` and `maxOutputTokens` from the vendor's official docs. Without a window, history
 truncation is skipped and a long channel fails with a context-length error instead of trimming. Add the

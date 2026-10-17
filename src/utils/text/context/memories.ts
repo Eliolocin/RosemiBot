@@ -345,6 +345,13 @@ export async function buildShortTermMemoryContext(params: {
       );
     }
 
+    // Entries warmed from the DB carry no messages, so a row with a cleared summary has nothing to recall.
+    otherChannelMemories = otherChannelMemories.filter(
+      (memory) =>
+        Boolean(memory.summary) ||
+        memory.messages.length > 0 ||
+        (memory.categories !== undefined && formatCategoryLines(memory.categories) !== ""),
+    );
     otherChannelMemories.sort((a, b) => b.lastUpdated - a.lastUpdated);
 
     const limitedMemories = otherChannelMemories.slice(0, MAX_OTHER_CHANNEL_MEMORIES);

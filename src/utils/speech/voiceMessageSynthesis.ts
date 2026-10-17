@@ -1,13 +1,3 @@
-/**
- * Single synthesis dispatcher shared by `generate_voice_message` and
- * `/generate voice-message`.
- *
- * The tool previously held three inline branches (voice-design, clone, ElevenLabs)
- * that each repeated their own backend key. Routing both callers through one
- * function keeps the branch priority, the error text, and the `audio_generated`
- * metric key in a single place.
- */
-
 import type { CustomEndpointRow } from "@/types/db/schema";
 import type { ElevenLabsTtsErrorKind } from "@/utils/audio/elevenLabsTts";
 import { synthesizeSpeechViaElevenLabsAdapter } from "@/providers/custom/styles/elevenLabsAdapter";
@@ -18,12 +8,47 @@ import {
 } from "@/providers/custom/styles/ttsCloningAdapter";
 import { synthesizeSpeechViaTtsVoiceDesign } from "@/providers/custom/styles/ttsVoiceDesignAdapter";
 import { resolveVoiceSourceCapabilities } from "@/utils/speech/voiceSourceCapabilities";
+import { synthesizeOpenRouterSpeech } from "@/providers/openrouter/openrouterSpeech";
+import { createGoogleSpeechTransport } from "@/providers/google/googleSpeech";
+import { cleanupPendingGoogleVoices, synthesizeGoogleVoice } from "@/utils/speech/googleVoiceLifecycle";
+import {
+  HOSTED_SPEECH_LIMITS,
+  HostedSpeechError,
+  type HostedSpeechErrorKind,
+  type SpeechOperation,
+} from "@/utils/speech/hostedSpeech";
+import {
+  loadSpeechRoutingPolicy,
+  loadVoiceSampleById,
+  SpeechBindingChangedError,
+} from "@/utils/db/repositories/SpeechRepository";
+import {
+  resolveSpeechTargets,
+  speechTargetLabel,
+  type SpeechTargetResult,
+} from "@/utils/provider/speechEndpointResolver";
+import { loadStoredVoiceSampleBuffer } from "@/utils/storage/voiceSampleStorage";
+import {
+  normalizeVoiceSampleToWav,
+  SPEECH_SAMPLE_MAX_MB,
+  SPEECH_SAMPLE_MAX_DURATION_SECS,
+} from "@/utils/speech/voiceSampleAddOperation";
+import { parseBuffer } from "music-metadata";
+import { resolveVoiceSourceCandidates, type VoiceSourcePersona } from "@/utils/speech/voiceSourceResolution";
+import { stripElevenLabsExpressionTags } from "@/utils/audio/elevenLabsShared";
+import { ZodError } from "zod";
+import { ResponseSizeError } from "@/utils/security/boundedResponse";
 
 /** Metric key recorded against the `audio_generated` stat. */
-export type VoiceBackendKey = "elevenlabs" | "tts-clone" | "tts-voice-design";
+export type VoiceBackendKey =
+  | "elevenlabs"
+  | "tts-clone"
+  | "tts-voice-design"
+  | "openrouter-speech"
+  | "google-speech"
+  | "vertex-speech";
 
-/** Union of the error kinds the three backends can report. */
-export type VoiceSynthesisErrorKind = TtsCloneErrorKind | ElevenLabsTtsErrorKind;
+export type VoiceSynthesisErrorKind = TtsCloneErrorKind | ElevenLabsTtsErrorKind | HostedSpeechErrorKind;
 
 /**
  * Which voice the caller wants this message synthesized from.
@@ -33,7 +58,7 @@ export type VoiceSynthesisErrorKind = TtsCloneErrorKind | ElevenLabsTtsErrorKind
  * express every clone request.
  */
 export type ResolvedVoiceSource =
-  | { kind: "design"; designPrompt: string }
+  | { kind: "design"; designPrompt: string; personaId?: number }
   | { kind: "clone"; voiceSampleId: number }
   | { kind: "clone-buffer"; refAudio: Buffer; refText: string | null }
   | { kind: "elevenlabs"; voiceId: string };
@@ -50,9 +75,32 @@ export interface VoiceMessageSynthesisResult {
   details?: string;
   /** The backend that produced the audio, already resolved for `audio_generated`. */
   backendKey: VoiceBackendKey;
+  attempts?: VoiceSynthesisAttempt[];
+  effectiveSource?: ResolvedVoiceSource["kind"];
+  targetLabel?: string;
+  usedServerFallback?: boolean;
+  cleanupPending?: boolean;
+}
+
+export interface VoiceSynthesisAttempt {
+  provider: string;
+  model: string;
+  owner: SpeechTargetResult["owner"];
+  source: ResolvedVoiceSource["kind"];
+  synthesisSuccess: boolean;
+  operations: SpeechOperation[];
+  errorKind?: VoiceSynthesisErrorKind;
 }
 
 export interface VoiceMessageSynthesisRequest {
+  target?: SpeechTargetResult;
+  maxOutputBytes?: number;
+  routing?: {
+    serverId: number;
+    userId: number;
+    persona: VoiceSourcePersona & { persona_id: number };
+    sourceIsExplicit: boolean;
+  };
   endpoint: CustomEndpointRow | null;
   /** Credential for the active speech endpoint; empty for unauthenticated local servers. */
   endpointApiKey: string;
@@ -82,15 +130,7 @@ function failure(
   return { success: false, errorKind, details, backendKey };
 }
 
-/**
- * Synthesizes one voice message from the resolved source.
- *
- * Branch priority mirrors the tool's historic ladder: a design-shaped source wins when the
- * endpoint is configured for voice design, then clone sources, then the ElevenLabs voice id.
- * Returning `backendKey` here is deliberate: it is the `audio_generated` metric key, and
- * recomputing it at each call site is how the three branches drifted apart before.
- */
-export async function synthesizeVoiceMessage(
+async function synthesizeLocalVoiceMessage(
   request: VoiceMessageSynthesisRequest,
 ): Promise<VoiceMessageSynthesisResult> {
   const { endpoint, endpointApiKey, elevenLabsApiKey, source, script, chatterbox, abortSignal } = request;
@@ -210,4 +250,248 @@ export async function synthesizeVoiceMessage(
     details: result.details || "Failed to generate the ElevenLabs voice message.",
     backendKey: "elevenlabs",
   };
+}
+
+async function synthesizeHostedVoiceMessage(
+  request: VoiceMessageSynthesisRequest,
+  target: Extract<SpeechTargetResult, { kind: "hosted-model" }>,
+  attempt: VoiceSynthesisAttempt,
+): Promise<VoiceMessageSynthesisResult> {
+  const backendKey: VoiceBackendKey = `${target.model.provider}-speech`;
+  const source = request.source;
+  const signal = AbortSignal.any([
+    AbortSignal.timeout(HOSTED_SPEECH_LIMITS.generationTimeoutMs),
+    ...(request.abortSignal ? [request.abortSignal] : []),
+  ]);
+  const maxBytes = Math.min(
+    request.maxOutputBytes ?? HOSTED_SPEECH_LIMITS.outputBytes,
+    HOSTED_SPEECH_LIMITS.outputBytes,
+  );
+  let cleanupPending = false;
+  try {
+    signal.throwIfAborted();
+    if (
+      !request.script.trim() ||
+      request.script.length > HOSTED_SPEECH_LIMITS.scriptCharacters ||
+      (request.voiceInstructions?.length ?? 0) > HOSTED_SPEECH_LIMITS.directionCharacters ||
+      maxBytes <= 0
+    )
+      throw new HostedSpeechError("invalid_request");
+    let audio: Buffer;
+    if (target.model.provider === "openrouter") {
+      if (source.kind !== "clone" && source.kind !== "clone-buffer") throw new HostedSpeechError("invalid_request");
+      const sample = source.kind === "clone" ? await loadVoiceSampleById(source.voiceSampleId) : null;
+      const reference =
+        source.kind === "clone-buffer"
+          ? source.refAudio
+          : sample
+            ? await loadStoredVoiceSampleBuffer(sample.file_path, signal)
+            : null;
+      const transcript = source.kind === "clone-buffer" ? source.refText : (sample?.ref_text ?? null);
+      const referenceLimit = Math.min(SPEECH_SAMPLE_MAX_MB * 1024 * 1024, HOSTED_SPEECH_LIMITS.referenceBytes);
+      if (
+        !reference?.length ||
+        reference.length > referenceLimit ||
+        (transcript?.length ?? 0) > HOSTED_SPEECH_LIMITS.transcriptCharacters
+      )
+        throw new HostedSpeechError("invalid_request");
+      let wav: Buffer;
+      try {
+        wav = await normalizeVoiceSampleToWav(reference, signal, referenceLimit);
+      } catch {
+        signal.throwIfAborted();
+        throw new HostedSpeechError("invalid_request");
+      }
+      if (!wav.length || wav.length > referenceLimit) throw new HostedSpeechError("invalid_request");
+      const { format } = await parseBuffer(wav, { mimeType: "audio/wav" });
+      if (!format.duration || format.duration > SPEECH_SAMPLE_MAX_DURATION_SECS)
+        throw new HostedSpeechError("invalid_request");
+      audio = await synthesizeOpenRouterSpeech({
+        model: target.model.codename,
+        apiKey: target.apiKey,
+        script: request.script,
+        direction: request.voiceInstructions,
+        reference: wav,
+        transcript,
+        signal,
+        maxBytes,
+        operations: attempt.operations,
+      });
+    } else {
+      if (
+        source.kind !== "design" ||
+        !source.designPrompt.trim() ||
+        source.designPrompt.length > HOSTED_SPEECH_LIMITS.descriptionCharacters
+      )
+        throw new HostedSpeechError("invalid_request");
+      const transport = createGoogleSpeechTransport(target.model.provider, target.apiKey);
+      cleanupPending = !(await cleanupPendingGoogleVoices(
+        target.owner,
+        target.credentialId,
+        target.credentialRevision,
+        target.apiKey,
+        attempt.operations,
+      ));
+      const result = await synthesizeGoogleVoice({
+        transport,
+        owner: target.owner,
+        credentialId: target.credentialId,
+        credentialRevision: target.credentialRevision,
+        personaId: source.personaId,
+        prompt: source.designPrompt.trim(),
+        script: request.script,
+        direction: request.voiceInstructions,
+        model: target.model.codename,
+        signal,
+        maxBytes,
+        operations: attempt.operations,
+      });
+      audio = result.audio;
+      cleanupPending ||= result.cleanupPending;
+    }
+    request.abortSignal?.throwIfAborted();
+    attempt.synthesisSuccess = true;
+    return {
+      success: true,
+      audioBuffer: audio,
+      contentType: target.model.provider === "openrouter" ? "audio/mpeg" : "audio/wav",
+      extension: target.model.provider === "openrouter" ? "mp3" : "wav",
+      cleanedCaptionText: stripElevenLabsExpressionTags(request.script),
+      backendKey,
+      cleanupPending,
+    };
+  } catch (error) {
+    const errorKind: HostedSpeechErrorKind = request.abortSignal?.aborted
+      ? "cancelled"
+      : signal.aborted
+        ? "timeout"
+        : error instanceof SpeechBindingChangedError
+          ? "invalid_request"
+          : error instanceof HostedSpeechError
+            ? error.kind
+            : error instanceof ZodError || error instanceof ResponseSizeError
+              ? "malformed_response"
+              : "provider_error";
+    attempt.errorKind = errorKind;
+    return {
+      success: false,
+      backendKey,
+      errorKind,
+      details: `Hosted speech failed: ${errorKind}.`,
+      cleanupPending:
+        cleanupPending ||
+        attempt.operations.some((operation) => operation.operation === "delete" && !operation.success),
+    };
+  }
+}
+
+export async function synthesizeVoiceMessage(
+  request: VoiceMessageSynthesisRequest,
+): Promise<VoiceMessageSynthesisResult> {
+  const attempts: VoiceSynthesisAttempt[] = [];
+  async function run(current: VoiceMessageSynthesisRequest): Promise<VoiceMessageSynthesisResult> {
+    if (!current.target) return synthesizeLocalVoiceMessage(current);
+    const target = current.target;
+    const attempt: VoiceSynthesisAttempt = {
+      provider: target.kind === "hosted-model" ? target.model.provider : target.endpoint.api_style,
+      model: target.kind === "hosted-model" ? target.model.codename : (target.endpoint.model_name ?? ""),
+      owner: target.owner,
+      source: current.source.kind,
+      synthesisSuccess: false,
+      operations: [],
+    };
+    attempts.push(attempt);
+    const capabilities = resolveVoiceSourceCapabilities(
+      target.kind === "hosted-model" ? target.model : target.endpoint,
+    );
+    if (
+      current.source.kind === "design"
+        ? !capabilities.acceptsDesignShape
+        : current.source.kind === "elevenlabs"
+          ? target.endpoint?.api_style !== "elevenlabs"
+          : !capabilities.acceptsCloneShape
+    ) {
+      attempt.errorKind = "invalid_request";
+      return {
+        success: false,
+        backendKey:
+          target.kind === "hosted-model"
+            ? `${target.model.provider}-speech`
+            : current.source.kind === "design"
+              ? "tts-voice-design"
+              : "tts-clone",
+        errorKind: "invalid_request",
+        attempts,
+      };
+    }
+    const result =
+      target.kind === "hosted-model"
+        ? await synthesizeHostedVoiceMessage(current, target, attempt)
+        : await synthesizeLocalVoiceMessage({
+            ...current,
+            endpoint: target.endpoint,
+            endpointApiKey: target.apiKey,
+            elevenLabsApiKey: target.endpoint.api_style === "elevenlabs" ? target.apiKey : current.elevenLabsApiKey,
+          });
+    attempt.synthesisSuccess =
+      result.success ||
+      attempt.operations.some((operation) => operation.operation === "synthesize" && operation.success);
+    attempt.errorKind = result.errorKind;
+    return { ...result, attempts, effectiveSource: current.source.kind, targetLabel: speechTargetLabel(target) };
+  }
+  if (request.abortSignal?.aborted)
+    return { success: false, backendKey: "tts-clone", errorKind: "cancelled", attempts };
+  let policy: Awaited<ReturnType<typeof loadSpeechRoutingPolicy>> | undefined;
+  if (request.routing) {
+    policy = await loadSpeechRoutingPolicy(request.routing.serverId, request.routing.userId);
+    if ((!request.target || request.target.owner.kind === "server") && !policy.serverAllowed)
+      return { success: false, backendKey: "tts-clone", errorKind: "invalid_request", attempts };
+  }
+  const result = await run(request);
+  if (
+    result.success ||
+    request.abortSignal?.aborted ||
+    !request.routing ||
+    request.target?.owner.kind !== "personal" ||
+    !policy?.fallbackEnabled ||
+    !policy.serverAllowed ||
+    !result.errorKind ||
+    !["authentication", "quota", "timeout", "provider_error", "malformed_response", "request_failed"].includes(
+      result.errorKind,
+    )
+  )
+    return result;
+  policy = await loadSpeechRoutingPolicy(request.routing.serverId, request.routing.userId);
+  if (!policy.serverAllowed || !policy.fallbackEnabled) return result;
+  const targets = await resolveSpeechTargets(request.routing.serverId);
+  let source = request.source;
+  if (!request.routing.sourceIsExplicit) {
+    const [candidate] = resolveVoiceSourceCandidates({
+      targets: {
+        design: targets.design?.kind === "hosted-model" ? targets.design.model : (targets.design?.endpoint ?? null),
+        clone: targets.clone?.kind === "hosted-model" ? targets.clone.model : (targets.clone?.endpoint ?? null),
+      },
+      persona: request.routing.persona,
+    });
+    if (!candidate) return result;
+    source =
+      candidate.shape === "design"
+        ? { kind: "design", designPrompt: candidate.designPrompt ?? "", personaId: request.routing.persona.persona_id }
+        : candidate.shape === "elevenlabs"
+          ? { kind: "elevenlabs", voiceId: candidate.voiceId ?? "" }
+          : { kind: "clone", voiceSampleId: candidate.sampleId ?? 0 };
+  }
+  const target = source.kind === "design" ? targets.design : targets.clone;
+  if (!target) return result;
+  const capabilities = resolveVoiceSourceCapabilities(target.kind === "hosted-model" ? target.model : target.endpoint);
+  if (
+    source.kind === "design"
+      ? !capabilities.acceptsDesignShape
+      : source.kind === "elevenlabs"
+        ? target.endpoint?.api_style !== "elevenlabs"
+        : !capabilities.acceptsCloneShape
+  )
+    return result;
+  const fallback = await run({ ...request, target, source });
+  return { ...fallback, usedServerFallback: true, cleanupPending: result.cleanupPending || fallback.cleanupPending };
 }

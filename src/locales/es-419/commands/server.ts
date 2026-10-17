@@ -21,7 +21,6 @@ export default {
         slot_4_label: `Categoría 4`,
         slot_5_label: `Categoría 5`,
         slot_instructions: `Caja = "Etiqueta: Descripción" (ej. "Metas: objetivos de equipo"). Vacío se omite; borrar todos reinicia.`,
-        slot_placeholder: `Etiqueta: Descripción`,
       },
     },
     "crosschannel-blocklist": {

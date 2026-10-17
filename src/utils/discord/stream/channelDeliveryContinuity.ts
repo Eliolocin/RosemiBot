@@ -18,8 +18,6 @@ import { toGroupBreakName } from "@/utils/text/groupBreakName";
  * - **Last delivered webhook identity**: artifacts that follow text (expressions, the
  *    "Fallback Used" notice) should be posted as the identity that delivered that text, so
  *    they group with it instead of splitting off under a different name.
- * - **Last speaker**: the rate-limited avatar fallback may reuse the avatar last displayed only
- *    when the same persona, in an ordinary appearance, delivered it.
  *
  * Every webhook send that can sit next to a sprite must take part, including tool notices and media
  * sent outside the stream (`utils/discord/webhook/personaPost.ts`): an unrecorded send looks like a
@@ -57,7 +55,7 @@ export interface DeliveredSpeaker {
 }
 
 export type ChannelLastDelivery =
-  | { via: "webhook"; identity: ResolvedWebhookIdentity; speaker: DeliveredSpeaker | null }
+  | { via: "webhook"; identity: ResolvedWebhookIdentity; speaker: DeliveredSpeaker | null; webhookId: string }
   | { via: "bot"; speaker: DeliveredSpeaker | null };
 
 interface ChannelDeliveryState {
@@ -71,6 +69,7 @@ interface ChannelDeliveryState {
    * as the bot, since that is what they would group with.
    */
   lastWebhookIdentity: ResolvedWebhookIdentity | null;
+  lastWebhookId: string | null;
   /**
    * Message id of the most recent WEBHOOK delivery, or null when the last delivery was an
    * ordinary bot message. Null blocks adjacency outright: a bot-user message is a different
@@ -112,6 +111,7 @@ function getLiveEntry(channelId: string, now: number): ChannelDeliveryState {
     lastSpriteKey: null,
     groupParity: false,
     lastWebhookIdentity: null,
+    lastWebhookId: null,
     lastDeliveredMessageId: null,
     lastDeliveryVia: null,
     lastSpeaker: null,
@@ -280,12 +280,14 @@ export function resolveChannelPersonaPostIdentity(
 export function recordChannelDeliveredWebhookIdentity(
   channelId: string,
   identity: ResolvedWebhookIdentity,
-  messageId: string | null = null,
-  speaker: DeliveredSpeaker | null = null,
+  messageId: string,
+  speaker: DeliveredSpeaker | null,
+  webhookId: string,
 ): void {
   const now = Date.now();
   const entry = getLiveEntry(channelId, now);
   entry.lastWebhookIdentity = { ...identity };
+  entry.lastWebhookId = webhookId;
   entry.lastDeliveredMessageId = messageId;
   entry.lastDeliveryVia = "webhook";
   entry.lastSpeaker = speaker ? { ...speaker } : null;
@@ -303,6 +305,7 @@ export function recordChannelDeliveredBotMessage(channelId: string, speaker: Del
   const now = Date.now();
   const entry = getLiveEntry(channelId, now);
   entry.lastWebhookIdentity = null;
+  entry.lastWebhookId = null;
   entry.lastDeliveredMessageId = null;
   entry.lastDeliveryVia = "bot";
   entry.lastSpeaker = speaker ? { ...speaker } : null;
@@ -335,8 +338,13 @@ export function getChannelLastDelivery(channelId: string): ChannelLastDelivery |
   if (entry.lastDeliveryVia === "bot") {
     return { via: "bot", speaker: entry.lastSpeaker };
   }
-  if (entry.lastDeliveryVia === "webhook" && entry.lastWebhookIdentity) {
-    return { via: "webhook", identity: entry.lastWebhookIdentity, speaker: entry.lastSpeaker };
+  if (entry.lastDeliveryVia === "webhook" && entry.lastWebhookIdentity && entry.lastWebhookId) {
+    return {
+      via: "webhook",
+      identity: entry.lastWebhookIdentity,
+      speaker: entry.lastSpeaker,
+      webhookId: entry.lastWebhookId,
+    };
   }
   return null;
 }

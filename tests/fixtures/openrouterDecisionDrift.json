@@ -1,0 +1,326 @@
+{
+  "data": [
+    {
+      "id": "~perplexity/pplx-decider-27b-latest",
+      "context_length": 262144,
+      "architecture": {
+        "modality": "text+image->decisions",
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Router",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.00000002",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "nace-ai/drex-v2.0",
+      "context_length": 131072,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.00000006",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "microsoft/microsoft-decision-1",
+      "context_length": 32768,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.000000042",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "nace-ai/drex-v1.5",
+      "context_length": 131072,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.00000004",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "cloudflare/clef-omni",
+      "context_length": 65536,
+      "architecture": {
+        "modality": "text+image->decisions",
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Qwen",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.00000015",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "upstage/solar-decide-flash",
+      "context_length": 524288,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.00000005",
+        "completion": "0",
+        "input_cache_read": "0.00000005"
+      }
+    },
+    {
+      "id": "perplexity/pplx-decider-v1.1-27b",
+      "context_length": 262144,
+      "architecture": {
+        "modality": "text+image->decisions",
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.00000002",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "openai/gpt-6-luna-decisions",
+      "context_length": 1050000,
+      "architecture": {
+        "modality": "text+image->decisions",
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "GPT",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.0000001",
+        "completion": "0",
+        "web_search": "0.01",
+        "input_cache_read": "0",
+        "input_cache_write": "0"
+      }
+    },
+    {
+      "id": "liquid/d1",
+      "context_length": 65536,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.00000004",
+        "completion": "0",
+        "input_cache_read": "0.00000004"
+      }
+    },
+    {
+      "id": "cloudflare/clef-flash",
+      "context_length": 65536,
+      "architecture": {
+        "modality": "text+image->decisions",
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Qwen",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.000000021",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "cloudflare/clef",
+      "context_length": 65536,
+      "architecture": {
+        "modality": "text+image->decisions",
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Qwen",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.000000042",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "togethercomputer/tev1-4b-experimental",
+      "context_length": 32768,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Qwen3",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.000000042",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "inception/mercury-decide",
+      "context_length": 65536,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.00000002",
+        "completion": "0",
+        "input_cache_read": "0"
+      }
+    },
+    {
+      "id": "inception/mercury-decide:free",
+      "context_length": 65536,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "upstage/solar-decide",
+      "context_length": 524288,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.00000005",
+        "completion": "0",
+        "input_cache_read": "0.00000005"
+      }
+    },
+    {
+      "id": "respan/span-01",
+      "context_length": 0,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.00000002",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "respan/span-01-lite",
+      "context_length": 0,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "respan/span-01-lite:free",
+      "context_length": 0,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "jaredpalmer/kev-4b",
+      "context_length": 8192,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.000000042",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "~typesafe/jev-latest",
+      "context_length": 64000,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Router",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.000000042",
+        "completion": "0"
+      }
+    },
+    {
+      "id": "typesafe/jev-1.13",
+      "context_length": 64000,
+      "architecture": {
+        "modality": "text->decisions",
+        "input_modalities": ["text"],
+        "output_modalities": ["decisions"],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.000000042",
+        "completion": "0"
+      }
+    }
+  ]
+}

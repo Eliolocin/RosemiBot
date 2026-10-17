@@ -10,6 +10,7 @@ import { UNPAIRED_SAMPLE_DIALOGUE_SENTINEL } from "@/types/preset/presetExport";
 import { humanizeString } from "@/utils/text/processors/formatters";
 import { applyUncensorInputTransforms } from "@/utils/text/uncensor";
 import { buildBotSpeakerLabelPattern } from "@/utils/text/processors/regexUtils";
+import { isExternalUserId } from "@/utils/externalIdentityUserId";
 import type { TomoriState, AssembledServerConfig } from "@/types/db/schema";
 
 // Resolved at read time, never copied into server_chat_configs.system_prompt: a
@@ -122,7 +123,7 @@ export async function buildPromptContextItems(params: {
   isUserImpersonation: boolean;
   impersonatedIdentityName: string | null;
   impersonatedUserPrompt?: string | null;
-  suppressDefaultSystemPrompt: boolean;
+  presetOwnsSystemPrompt: boolean;
   snapshot?: import("@/types/misc/context").RequestSnapshot;
   toolPromptMacroResolver: { expand(text: string): Promise<string> };
   convertMentions: MentionConverter;
@@ -133,8 +134,9 @@ export async function buildPromptContextItems(params: {
     const channelOverride = params.channelPromptOverride;
 
     // Resolve the server-level system prompt (or default fallback).
-    const baseSystemPrompt =
-      params.tomoriConfig.system_prompt?.trim() || (params.suppressDefaultSystemPrompt ? null : DEFAULT_SYSTEM_PROMPT);
+    const baseSystemPrompt = params.presetOwnsSystemPrompt
+      ? null
+      : params.tomoriConfig.system_prompt?.trim() || DEFAULT_SYSTEM_PROMPT;
 
     // Replace mode: the channel prompt fully takes over the system-prompt slot's
     //    content (persona prompt + attributes below are untouched). Otherwise keep
@@ -383,7 +385,9 @@ export async function buildConditioningContextItem(params: {
         : `## Punished Behaviors\nHere are past things ${params.botName} did that got punished for. Avoid doing them again:`;
 
     const lines = visibleGroups.map((group) => {
-      const users = group.userDiscIds.map((userDiscId) => `<@${userDiscId}>`).join(", ");
+      const users = group.userDiscIds
+        .map((userDiscId) => (isExternalUserId(userDiscId) ? userDiscId : `<@${userDiscId}>`))
+        .join(", ");
       const action = getConditioningContextPastParticiple(conditioningType, group.actionKey);
       const countSuffix = group.totalCount > 1 ? ` (${group.totalCount} times)` : "";
       const actionTextSuffix = group.actionText ? ` with \`${group.actionText}\`` : "";

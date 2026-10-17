@@ -19,3 +19,15 @@ export function parseIntegerEnvFlag(value: string | undefined, defaultValue: num
   if (Number.isNaN(parsed)) return defaultValue;
   return Math.max(minimum, parsed);
 }
+
+/**
+ * Non-positive values count as unusable rather than being clamped as `parseIntegerEnvFlag` does,
+ * because raising a `0` to `1` would turn a misconfigured retention window into a one-day one.
+ *
+ * @returns `undefined` when the value is unusable, so callers `??` into the next resolution tier.
+ */
+export function parsePositiveIntegerEnv(value: string | undefined): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}

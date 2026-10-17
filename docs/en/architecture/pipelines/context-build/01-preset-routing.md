@@ -9,7 +9,7 @@ The routing stage determines whether the LLM prompt follows TomoriBot's native f
 
 The public `buildContext` wrapper in `src/utils/text/context/builder.ts` coordinates preset routing:
 
-1. **Native execution**: `buildContextNative` runs first on every turn. Preset reassembly needs native structured context items to populate preset markers. When a preset is active but the server configures no custom `system_prompt`, `suppressDefaultSystemPrompt` is set so the preset's system blocks control the prompt.
+1. **Native execution**: `buildContextNative` runs first on every turn. Preset reassembly needs native structured context items to populate preset markers. When a preset is active, `presetOwnsSystemPrompt` is set: the server's stored `system_prompt` and `DEFAULT_SYSTEM_PROMPT` are both skipped, so the preset's system blocks control the prompt. The stored prompt stays in the database and applies again once the preset is turned off. `/config` > Behavior > General locks its system prompt controls for the same reason.
 2. **Preset check**: The wrapper queries `getCachedActivePreset(serverId)` using the guild's server ID. If no preset is active, or if the turn is a user impersonation, the native output is returned directly.
 3. **Preset reassembly**: When a preset is active and the turn is not an impersonation, `reassembleWithPreset` in `src/utils/text/presetContextBuilder.ts` buckets native items by `metadataTag` and maps them into the preset's ordered nodes.
 4. **Random macro resolution**: After either path completes, `resolveRandomChoiceMacrosInBuildOutput` rolls `{{random:a::b}}` and `{random::a::b}` choices across all context items, tail directives, and deferred short-term memory blocks.

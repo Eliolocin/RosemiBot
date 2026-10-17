@@ -5,9 +5,24 @@ import { invalidateTomoriStateCaches } from "@/utils/cache/tomoriStateCacheStore
 // .sql file to keep in sync, and seeding stays an idempotent upsert on every startup.
 
 import type { SQL } from "bun";
-import { decisionSections, embeddingSections, imageSections, llmSections, videoSections } from "./models";
+import {
+  decisionSections,
+  embeddingSections,
+  imageSections,
+  llmSections,
+  videoSections,
+  speechSections,
+} from "./models";
 import { bool, desc, jsonb, num, str } from "./sql";
-import type { DecisionInput, EmbeddingInput, ImageInput, LlmInput, ModelSection, VideoInput } from "./types";
+import type {
+  DecisionInput,
+  EmbeddingInput,
+  ImageInput,
+  LlmInput,
+  ModelSection,
+  SpeechInput,
+  VideoInput,
+} from "./types";
 
 /** Providers exempt from the default/smartest invariants (bootstrap placeholders). */
 const INVARIANT_EXEMPT = new Set<string>(["custom"]);
@@ -223,7 +238,28 @@ const decisionSpec: TableSpec<DecisionInput> = {
   sections: decisionSections,
 };
 
-function rowsOf<T extends RowLike>(spec: TableSpec<T>): T[] {
+const speechSpec: TableSpec<SpeechInput> = {
+  table: "speech_models",
+  columns: "provider, codename, voice_mode, descriptions, is_default, is_deprecated",
+  tuple: (m) =>
+    [
+      str(m.provider),
+      str(m.codename),
+      str(m.voiceMode),
+      jsonb(localizedDescriptions(m)),
+      bool(m.isDefault),
+      bool(m.isDeprecated),
+    ].join(", "),
+  onConflict: `ON CONFLICT (provider, codename) DO UPDATE SET
+    descriptions = EXCLUDED.descriptions, is_default = EXCLUDED.is_default,
+    is_deprecated = EXCLUDED.is_deprecated, voice_mode = EXCLUDED.voice_mode,
+    updated_at = CURRENT_TIMESTAMP
+    WHERE COALESCE(speech_models.is_scoped_registration, false) = false`,
+  hasSmartest: false,
+  sections: speechSections,
+};
+
+function rowsOf<T extends RowLike>(spec: Pick<TableSpec<T>, "sections">): T[] {
   return spec.sections.flatMap((s) => s.rows);
 }
 
@@ -413,6 +449,7 @@ export function validateModels(): string[] {
   validateSpec(videoSpec, errors);
   validateSpec(embeddingSpec, errors);
   validateSpec(decisionSpec, errors);
+  validateSpec(speechSpec, errors);
   for (const model of rowsOf(decisionSpec)) {
     if (
       model.provider !== "openrouter" ||
@@ -448,7 +485,7 @@ export const MAX_ACTIVE_ROWS_PER_PROVIDER = 20;
  * @returns One violation per unfinished row or over-limit provider table.
  */
 export function validateModelDriftReview(): string[] {
-  return [llmSpec, imageSpec, videoSpec].flatMap((spec) => [
+  return [llmSpec, imageSpec, videoSpec, decisionSpec].flatMap((spec) => [
     ...collectModelDriftTodoViolations(spec.table, rowsOf(spec)),
     ...collectProviderRowLimitViolations(spec.table, rowsOf(spec)),
   ]);
@@ -496,6 +533,7 @@ export function buildModelSeedStatements(): string[] {
     renderStatement(videoSpec),
     renderStatement(embeddingSpec),
     renderStatement(decisionSpec),
+    renderStatement(speechSpec),
   ];
 }
 
@@ -509,9 +547,14 @@ export async function seedModelsFromCatalog(client: SQL): Promise<void> {
   if (violations.length > 0) {
     throw new Error(`Model catalog invariant violations:\n  - ${violations.join("\n  - ")}`);
   }
+  const speechOwners = await client<Array<{ server_disc_id: string }>>`
+    SELECT s.server_disc_id FROM servers s JOIN server_speech_configs c USING (server_id)
+    WHERE c.speech_design_model_id IS NOT NULL OR c.speech_clone_model_id IS NOT NULL
+  `;
   for (const statement of buildModelSeedStatements()) {
     await client.unsafe(statement);
   }
+  invalidateTomoriStateCaches(speechOwners.map((row) => row.server_disc_id));
   const changed = await client<Array<{ server_disc_id: string }>>`
     WITH cleared AS (
       UPDATE server_chat_configs SET

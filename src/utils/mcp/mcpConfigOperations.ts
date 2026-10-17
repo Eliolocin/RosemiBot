@@ -184,7 +184,9 @@ export class McpConfigOperations {
       input.serverDiscId,
     );
     if (!updated) return { status: "write-failed", row: row.row };
-    if (!input.enabled) await this.dependencies.disconnect(input.serverId, row.row.name);
+    // Enabling disconnects too: an auto-disabled server keeps its connect quarantine so turns that
+    // started before the disable cannot redial it, and only this explicit choice should lift it.
+    await this.dependencies.disconnect(input.serverId, row.row.name);
     return { status: "success", row: { ...row.row, is_enabled: input.enabled } };
   }
 

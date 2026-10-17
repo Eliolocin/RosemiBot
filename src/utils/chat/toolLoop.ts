@@ -2,8 +2,6 @@ import { expandDeliberateToolAllowedNames } from "@/utils/tools/deliberateToolMo
 import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
 import {
   MAX_RESPONSE_REVISIONS,
-  MAX_TOOL_REVIEWS,
-  MAX_TOOL_CORRECTIONS,
   reviewResponseCandidate,
   recordResponseReviewUsage,
   remainingPendingResponseLimit,
@@ -889,17 +887,12 @@ async function executeToolCall(
       const verdict = await reviewToolCandidate(params.context, params.provider, params.providerConfig, prepared);
       if (verdict.status === "cancelled" || responseReviewCancelled(params.context)) return cancelReviewedCall();
       if (verdict.status === "revise") {
-        const correctionAllowed =
-          !review.unavailable &&
-          review.toolReviews < MAX_TOOL_REVIEWS &&
-          review.toolCorrections < MAX_TOOL_CORRECTIONS &&
-          !review.rejectedChains.get(functionName)?.retried;
         return {
           kind: "history",
           functionName,
           success: false,
           reviewStatus: "rejected",
-          endTurn: false,
+          endTurn: verdict.futile,
           responseDelivered: false,
           historyEntry: {
             functionCall,
@@ -911,10 +904,10 @@ async function executeToolCall(
                     status: "review_rejected",
                     findings: verdict.findings,
                     actionExecuted: false,
-                    correctionAllowed,
-                    reason: correctionAllowed
+                    correctionAllowed: verdict.correctionAllowed,
+                    reason: verdict.correctionAllowed
                       ? "The action has not happened. Correct the proposal once or continue using available results. Identical rejected requests will not execute."
-                      : "The action has not happened and no correction remains for this chain. Finish using available results; do not re-propose this rejected action.",
+                      : "The action has not happened and no correction remains for it. Do not propose it again in any form; repeating it ends your turn. Other actions, including different calls of this tool, remain available.",
                   },
                 },
               },

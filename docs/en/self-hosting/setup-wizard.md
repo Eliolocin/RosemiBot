@@ -123,7 +123,7 @@ beside `/legal license`; every other value registers only `/legal license`.
   validated against the provider and encrypted into the draft; the panel shows only that a key is
   stored, never the key itself. Run `/help`, then `Setup` > `Get an API Key` for the
   per-provider walkthrough.
-- **Custom Endpoint (Advanced)**: a two-button sub-area for a self-hosted or proxy endpoint.
+- **Custom Endpoint**: a two-button sub-area for a self-hosted or proxy endpoint.
   `Configure Connection` collects the API compatibility, a label, the URL, and an optional auth
   token, and checks that the endpoint answers. `Configure Text Model` collects the model code, its
   context size, and its capability declarations, and stays disabled until a connection validates.

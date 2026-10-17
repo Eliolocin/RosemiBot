@@ -70,7 +70,7 @@ Run `/providers` (server-wide) or `/personal providers` (just you), choose `Add 
 
 TomoriBot checks `GET /v1/models` when you save. A server that answers `404` or `405` there is still accepted.
 
-Open the saved `kev` endpoint, choose `+ Add a Decisions Model` from its model dropdown, and enter:
+Open the saved `kev` endpoint, choose `+ Add new Decision Model` from its model dropdown, and enter:
 
 - `Code Name`: `kev-latest`, the model name Kev's examples use.
 - `Context Window`: `8192`, the longest text Kev-0.8B and Kev-4B are validated for. Kev refuses anything over 65,536 tokens.

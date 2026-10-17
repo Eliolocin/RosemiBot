@@ -61,6 +61,8 @@ export const userSchema = z.object({
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).default("follow"), // Added May 2026 - User-scoped deliberate tool mode tri-state
   personal_server_fallback_enabled: z.boolean().default(true), // Whether a failed personal text route may fall back to the server's model
   timezone_offset: z.number().int().min(-12).max(14).nullable().optional(), // Added June 2026 - Personal UTC offset; NULL = not set / opt-out
+  message_proxy_service: z.string().nullable().default(null),
+  message_proxy_instance_id: z.string().nullable().default(null),
   prefix_override: z.string().nullable().optional(),
   suffix_override: z.string().nullable().optional(),
   gender_identity: z.string().nullable().optional(),
@@ -133,7 +135,8 @@ const personaScopedConfigStateSchema = z.object({
   speech_voice_sample_id: z.number().int().nullable().optional(), // From persona_voice_configs
   speech_voice_id: z.string().nullable().optional(), // From persona_voice_configs
   speech_voice_name: z.string().nullable().optional(), // From persona_voice_configs
-  speech_voice_design_prompt: z.string().nullable().optional(), // From persona_voice_configs
+  speech_voice_design_prompt: z.string().nullable().optional(),
+  voice_source_priority: z.enum(["design", "clone"]).default("design"), // From persona_voice_configs
 });
 type PersonaScopedConfigState = z.infer<typeof personaScopedConfigStateSchema>;
 
@@ -212,6 +215,32 @@ export const personaAutochRuntimeStateSchema = z.object({
   updated_at: z.date().optional(),
 });
 export type PersonaAutochRuntimeStateRow = z.infer<typeof personaAutochRuntimeStateSchema>;
+export const messageProxyNamespaceSchema = z.object({
+  message_proxy_namespace_id: z.number().int().optional(),
+  service_id: z.string().min(1),
+  instance_id: z.string().min(1),
+  namespace_key: z.string().min(1),
+  short_id: z.string().nullable().optional(),
+  display_name: z.string().nullable().optional(),
+  tag: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  created_at: z.date().optional(),
+  updated_at: z.date().optional(),
+});
+export type MessageProxyNamespaceRow = z.infer<typeof messageProxyNamespaceSchema>;
+
+export const messageProxyIdentitySchema = z.object({
+  message_proxy_identity_id: z.number().int().optional(),
+  message_proxy_namespace_id: z.number().int(),
+  external_identity_id: z.number().int(),
+  short_id: z.string().nullable().optional(),
+  display_name: z.string().nullable().optional(),
+  avatar_url: z.string().nullable().optional(),
+  created_at: z.date().optional(),
+  updated_at: z.date().optional(),
+});
+export type MessageProxyIdentityRow = z.infer<typeof messageProxyIdentitySchema>;
+
 /**
  * Schema for voice_samples table : reference audio clips for local TTS voice cloning.
  * file_path stores either a production S3/CloudFront URL or a local data/voice-samples path.
@@ -291,6 +320,34 @@ export const diffusionModelSchema = z.object({
   updated_at: z.date().optional(),
 });
 export type DiffusionModelRow = z.infer<typeof diffusionModelSchema>;
+
+export const speechModelSchema = z.object({
+  speech_model_id: z.number().int(),
+  provider: z.enum(["google", "openrouter", "vertex"]),
+  codename: z.string().min(1),
+  voice_mode: z.enum(["design", "clone", "auto"]),
+  descriptions: z.record(z.string(), z.string()).nullable().default(null),
+  is_default: z.boolean().default(false),
+  is_deprecated: z.boolean().default(false),
+  is_scoped_registration: z.boolean().default(false),
+});
+export type SpeechModelRow = z.infer<typeof speechModelSchema>;
+
+export const speechVoiceBindingSchema = z.object({
+  speech_voice_binding_id: z.number().int(),
+  persona_id: z.number().int().nullable(),
+  saved_config_id: z.number().int().nullable(),
+  user_saved_config_id: z.number().int().nullable(),
+  credential_revision: z.number().int().positive(),
+  transport: z.enum(["google", "vertex"]),
+  project: z.string(),
+  location: z.string(),
+  prompt_hash: z.string().min(1),
+  voice_id: z.string().min(1),
+  expires_at: z.coerce.date().nullable(),
+  pending_delete: z.boolean(),
+});
+export type SpeechVoiceBindingRow = z.infer<typeof speechVoiceBindingSchema>;
 
 export const videoGenerationModelSchema = z.object({
   video_model_id: z.number().optional(),
@@ -855,6 +912,10 @@ const serverNsfwConfigSchema = z.object({
 export type ServerNsfwConfigRow = z.infer<typeof serverNsfwConfigSchema>;
 
 const serverSpeechConfigSchema = z.object({
+  speech_design_endpoint_id: z.number().int().nullable().default(null),
+  speech_clone_endpoint_id: z.number().int().nullable().default(null),
+  speech_design_model_id: z.number().int().nullable().default(null),
+  speech_clone_model_id: z.number().int().nullable().default(null),
   server_id: z.number().int(),
   voice_transcript_chat_mode: z.boolean().default(true),
   chatterbox_turbo_enabled: z.boolean().default(true),
@@ -1770,10 +1831,13 @@ const guildMcpServerSchema = z.object({
   is_enabled: z.boolean().default(true),
   server_type: z.string().nullable().optional(),
   last_discovered_tool_names: z.array(z.string()).nullable().optional(),
+  failing_since: z.date().nullable().optional(),
+  failure_reason: z.enum(["unauthorized", "unreachable"]).nullable().optional(),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });
 export type GuildMcpServerRow = z.infer<typeof guildMcpServerSchema>;
+export type GuildMcpFailureReason = NonNullable<GuildMcpServerRow["failure_reason"]>;
 
 /**
  * Saved Provider Config : snapshot of provider-specific settings stored in
@@ -1783,6 +1847,7 @@ export const savedProviderConfigSchema = z.object({
   saved_config_id: z.number().optional(),
   server_id: z.number(),
   provider: z.string(),
+  credential_revision: z.number().int().positive().default(1),
   api_key: z.instanceof(Buffer).nullable(),
   key_version: z.number().int().default(1),
   llm_id: z.number().nullable(),
@@ -1821,9 +1886,21 @@ export type SavedProviderConfigRow = z.infer<typeof savedProviderConfigSchema>;
  * Input type for upserting a saved provider config.
  * Omits auto-generated fields (saved_config_id, saved_at, updated_at).
  */
-export type SavedProviderConfigUpsert = Omit<SavedProviderConfigRow, "saved_config_id" | "saved_at" | "updated_at">;
+export type SavedProviderConfigUpsert = Omit<
+  SavedProviderConfigRow,
+  "saved_config_id" | "saved_at" | "updated_at" | "credential_revision"
+>;
 
-export const personalProviderCapabilitySchema = z.enum(["text", "embedding", "image", "image_nai", "video", "vision"]);
+export const personalProviderCapabilitySchema = z.enum([
+  "text",
+  "embedding",
+  "image",
+  "image_nai",
+  "video",
+  "vision",
+  "speech_design",
+  "speech_clone",
+]);
 export type PersonalProviderCapability = z.infer<typeof personalProviderCapabilitySchema>;
 
 /**
@@ -1834,12 +1911,15 @@ export const userSavedProviderConfigSchema = z.object({
   user_saved_config_id: z.number().optional(),
   user_id: z.number(),
   provider: z.string(),
+  credential_revision: z.number().int().positive().default(1),
   api_key: z.instanceof(Buffer).nullable(),
   key_version: z.number().int().default(1),
   llm_id: z.number().nullable(),
   diffusion_model_id: z.number().nullable(),
   embedding_model_id: z.number().nullable(),
   nai_diffusion_model_id: z.number().nullable(),
+  speech_design_model_id: z.number().int().nullable().optional(),
+  speech_clone_model_id: z.number().int().nullable().optional(),
   video_model_id: z.number().nullable().optional(),
   vision_llm_id: z.number().nullable().optional(),
   nai_preset_name: z.string().nullable(),
@@ -1887,7 +1967,7 @@ export type UserSavedProviderConfigRow = z.infer<typeof userSavedProviderConfigS
  */
 export type UserSavedProviderConfigUpsert = Omit<
   UserSavedProviderConfigRow,
-  "user_saved_config_id" | "saved_at" | "updated_at"
+  "user_saved_config_id" | "saved_at" | "updated_at" | "credential_revision"
 >;
 
 /**

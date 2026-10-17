@@ -195,6 +195,70 @@ describe("guild MCP transport receipt", () => {
   });
 });
 
+describe("guild MCP connect failures", () => {
+  it("records 401s as unauthorized, escalates the backoff, and keeps quarantine until an explicit re-enable", async () => {
+    const manager = getGuildMcpManager();
+    const row = { ...config(940, "rejected-token"), url: "https://mcp.example.org/mcp" };
+    const validation = spyOn(remotePolicy, "validateRemoteUrl").mockResolvedValue({
+      valid: true,
+      hostname: "mcp.example.org",
+      resolvedAddresses: ["203.0.113.10"],
+    });
+    const decrypt = spyOn(toolRepository, "decryptMcpAuthToken").mockResolvedValue("revoked");
+    const record = spyOn(toolRepository, "recordMcpConnectFailure").mockResolvedValue({
+      status: "failing",
+      failingSince: new Date(0),
+    });
+    const warn = spyOn(log, "warn").mockImplementation(async () => {});
+    const info = spyOn(log, "info").mockImplementation(async () => {});
+    let attempts = 0;
+    const fetchSpy = stubGlobalFetch((_input, init) => {
+      if ((init?.method ?? "GET") === "POST") attempts++;
+      return new Response(null, { status: 401 });
+    });
+    let now = 1_000_000;
+    const clock = spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      expect(await manager.getRegisteredTool(row)).toBeNull();
+      expect(record.mock.calls[0]?.[2]).toBe("unauthorized");
+      const dialed = attempts;
+      expect(dialed).toBeGreaterThan(0);
+
+      now += 5 * 60_000;
+      expect(await manager.getRegisteredTool(row)).toBeNull();
+      expect(record).toHaveBeenCalledTimes(2);
+
+      // The second failure backs off for 15 minutes, so 5 more minutes is still quarantined.
+      now += 5 * 60_000;
+      expect(await manager.getRegisteredTool(row)).toBeNull();
+      expect(record).toHaveBeenCalledTimes(2);
+
+      now += 10 * 60_000;
+      record.mockResolvedValueOnce({ status: "auto-disabled", failingSince: new Date(0), serverDiscId: "fixture" });
+      expect(await manager.getRegisteredTool(row)).toBeNull();
+      expect(record).toHaveBeenCalledTimes(3);
+
+      // A turn still holding the pre-disable row must not redial the dead server.
+      expect(await manager.getRegisteredTool(row)).toBeNull();
+      expect(record).toHaveBeenCalledTimes(3);
+
+      // setEnabled disconnects on enable, which lifts the quarantine.
+      await manager.disconnectGuildServer(row.server_id, row.name);
+      expect(await manager.getRegisteredTool(row)).toBeNull();
+      expect(record).toHaveBeenCalledTimes(4);
+    } finally {
+      await manager.disconnectGuildServer(row.server_id, row.name);
+      clock.mockRestore();
+      fetchSpy.mockRestore();
+      info.mockRestore();
+      warn.mockRestore();
+      record.mockRestore();
+      decrypt.mockRestore();
+      validation.mockRestore();
+    }
+  });
+});
+
 function config(id: number, name: string): GuildMcpServerRow {
   return {
     guild_mcp_id: id,
@@ -418,6 +482,10 @@ describe("guild MCP lazy discovery snapshots", () => {
     };
     const decryptSpy = spyOn(toolRepository, "decryptMcpAuthToken").mockResolvedValue(null);
     const updateSpy = spyOn(toolRepository, "updateMcpToolNameSnapshot");
+    const recordSpy = spyOn(toolRepository, "recordMcpConnectFailure").mockResolvedValue({
+      status: "failing",
+      failingSince: new Date(0),
+    });
     const connectSpy = spyOn(manager, "connectWithFallback").mockResolvedValue(client);
 
     try {
@@ -426,6 +494,7 @@ describe("guild MCP lazy discovery snapshots", () => {
       expect(row.last_discovered_tool_names).toEqual(["prior_tool"]);
     } finally {
       await manager.disconnectGuildServer(42, row.name);
+      recordSpy.mockRestore();
       decryptSpy.mockRestore();
       updateSpy.mockRestore();
       connectSpy.mockRestore();

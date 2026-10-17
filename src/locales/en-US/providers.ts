@@ -14,7 +14,6 @@ export default {
     tool_error_loop_title: `Tool Error Loop`,
     tool_error_loop_description: `I kept running into tool errors and couldn't complete the request. Try rephrasing or use \`/refresh\` if this issue persists.`,
     fallback_used_title: `Fallback Model Used`,
-    fallback_used_description: `\`{success_model}\` was used instead of {chain}`,
     fallback_used_details_description: `Fallback slot {slot} answered with \`{success_model}\` after these earlier failures:
 {failure_list}`,
     fallback_used_failure_line: `{index}. {model} errored with {error_detail}`,
@@ -26,7 +25,6 @@ export default {
       source_attached: `This table is too long to show inline, so here it is as a file:`,
     },
     no_response_title: `No Response`,
-    no_response_description: `I didn't respond - this may be due to an empty response or timeout from the AI.`,
     log_channel_chat_notice_title: `Chat Is Off in the Log Channel`,
     log_channel_chat_notice_description: `This channel is set as the log channel, so I don't reply to messages here. To chat here, clear or change it in \`/config\` > Channels > Logs.`,
     thought_log: {
@@ -68,6 +66,7 @@ export default {
       timeout_title: `Provider Request Timeout`,
       provider_overloaded_title: `Provider Overloaded`,
       provider_overloaded_description: `The provider is currently overloaded or temporarily unavailable`,
+      connection_refused_description: `The connection to the provider was refused. Check that its endpoint is running and its address is correct.`,
       context_length_title: `Message Too Long for This Model`,
       credit_limit_title: `Not Enough Provider Credits`,
       balance_exhausted_title: `Provider Account Out of Credit`,
@@ -107,7 +106,6 @@ export default {
       google_credential_type: `This looks like an OAuth or service account token. The \`google\` provider needs a plain API key from [Google AI Studio](https://aistudio.google.com/apikey); use the \`vertex\` provider for Google Cloud credentials.`,
       openrouter_privacy_settings: `Adjust your "Data Policy" settings at [OpenRouter Privacy Settings](https://openrouter.ai/settings/privacy) to allow this model, or choose a different model.`,
       openrouter_fund_account: `Add at least 10 credits to your OpenRouter account to unlock 1000 free model requests per day.`,
-      reduce_context_length: `Try reducing the length of your message or clearing context with \`/refresh\`.`,
       reduce_output_tokens: `Lower the reply length cap with \`/config\` > Models > Samplers & Parameters (output tokens) to free up room for chat history.`,
       reduce_output_tokens_personal: `Lower the reply length cap with \`/personal config\` (output tokens) to free up room for chat history.`,
       openrouter_add_credits: `Add credits at [OpenRouter Credits](https://openrouter.ai/settings/credits), or lower the reply length with \`/config\` > Models > Samplers & Parameters (output tokens).`,
@@ -147,7 +145,6 @@ export default {
     },
     vertexexpress: {
       "403_predict_permission_message": `This key can't call Vertex AI Express models. Use an Express-mode key, or use the separate \`vertex\` provider for full Google Cloud projects.`,
-      unknown_default_message: `An unexpected error occurred`,
     },
     novelai: {
       "400_default_message": `Invalid request format or parameters. Please ensure you inputted the correct API key.`,

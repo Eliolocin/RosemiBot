@@ -31,31 +31,6 @@ export interface TtsVoiceDesignRequest {
   abortSignal?: AbortSignal;
 }
 
-type TtsVoiceMode = "clone" | "voice-design" | "auto";
-
-function getTtsVoiceMode(endpoint: CustomEndpointRow | null | undefined): TtsVoiceMode {
-  const rawMode = endpoint?.extra_config.voice_mode;
-  return rawMode === "voice-design" || rawMode === "auto" ? rawMode : "clone";
-}
-
-export function isVoiceDesignEndpoint(endpoint: CustomEndpointRow | null | undefined): boolean {
-  return endpoint?.api_style === "tts-clone" && getTtsVoiceMode(endpoint) === "voice-design";
-}
-
-export function shouldUseVoiceDesignForPersona(
-  endpoint: CustomEndpointRow | null | undefined,
-  voiceDesignPrompt: string | null | undefined,
-  activeVoiceName?: string | null,
-): boolean {
-  if (endpoint?.api_style !== "tts-clone") return false;
-
-  const mode = getTtsVoiceMode(endpoint);
-  if (mode === "voice-design") return true;
-  if (mode !== "auto") return false;
-
-  return Boolean(voiceDesignPrompt?.trim()) && activeVoiceName === "VoiceDesign";
-}
-
 function resolveExtensionFromContentType(contentType: string): string {
   const bare = contentType.split(";")[0].trim().toLowerCase();
   if (bare === "audio/wav" || bare === "audio/wave" || bare === "audio/x-wav") return "wav";
@@ -167,7 +142,7 @@ export async function synthesizeSpeechViaTtsVoiceDesign(request: TtsVoiceDesignR
   let response: Response;
   const requestStartedAt = Date.now();
   log.info(
-    `[TtsVoiceDesign] Sending /synthesize | endpoint="${endpoint.model_name || endpoint.label}" label="${endpoint.label}" url="${endpointUrl}" mode=${getTtsVoiceMode(endpoint)} scriptChars=${processedScript.length} instructChars=${instruct.length} oneOffInstructionChars=${cleanedVoiceInstructions.length} timeoutMs=${TTS_SYNTHESIZE_TIMEOUT_MS} payloadLog=${TTS_VOICE_DESIGN_LOG_PAYLOADS ? "full" : "preview"}`,
+    `[TtsVoiceDesign] Sending /synthesize | endpoint="${endpoint.model_name || endpoint.label}" label="${endpoint.label}" url="${endpointUrl}" mode=${endpoint.extra_config.voice_mode ?? "clone"} scriptChars=${processedScript.length} instructChars=${instruct.length} oneOffInstructionChars=${cleanedVoiceInstructions.length} timeoutMs=${TTS_SYNTHESIZE_TIMEOUT_MS} payloadLog=${TTS_VOICE_DESIGN_LOG_PAYLOADS ? "full" : "preview"}`,
   );
   log.info(
     `[TtsVoiceDesign] Script ${TTS_VOICE_DESIGN_LOG_PAYLOADS ? "full" : "preview"}: ${previewForLog(processedScript)}`,

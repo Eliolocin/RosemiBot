@@ -124,12 +124,17 @@ CREATE TABLE IF NOT EXISTS discord_managed_webhooks (
   channel_disc_id TEXT NOT NULL,
   webhook_disc_id TEXT NOT NULL,
   webhook_token BYTEA NOT NULL,
+  avatar_fingerprint TEXT,
+  discord_avatar_hash TEXT,
   key_version INTEGER DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (kind, channel_disc_id),
   UNIQUE (webhook_disc_id)
 );
+
+SELECT add_column_if_not_exists('discord_managed_webhooks', 'avatar_fingerprint', 'TEXT');
+SELECT add_column_if_not_exists('discord_managed_webhooks', 'discord_avatar_hash', 'TEXT');
 
 CREATE INDEX IF NOT EXISTS idx_discord_managed_webhooks_guild ON discord_managed_webhooks(guild_disc_id);
 CREATE INDEX IF NOT EXISTS idx_discord_managed_webhooks_channel ON discord_managed_webhooks(channel_disc_id);
@@ -945,6 +950,11 @@ SELECT add_column_if_not_exists('users', 'registration_locale', 'TEXT');
 --   user_personalization_configs.nai_char_ref_url
 --   user_personalization_configs.impersonation_prompt
 --   user_personalization_configs.personal_dtm
+
+-- NULL means never configured, "none" is an explicit opt-out, and a registered
+-- service ID enables that adapter. Unknown values fail closed in the registry.
+SELECT add_column_if_not_exists('users', 'message_proxy_service', 'TEXT');
+SELECT add_column_if_not_exists('users', 'message_proxy_instance_id', 'TEXT');
 
 -- Create updated_at trigger for users table
 DROP TRIGGER IF EXISTS update_users_timestamp ON users;
@@ -2220,6 +2230,8 @@ CREATE TABLE IF NOT EXISTS guild_mcp_servers (
   auth_token BYTEA,                -- PGP-encrypted bearer token (nullable — not all servers require auth)
   key_version INT DEFAULT 1,       -- Encryption key version for lazy rotation
   is_enabled BOOLEAN DEFAULT true,
+  failing_since TIMESTAMPTZ,
+  failure_reason TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (server_id, name),
@@ -2232,6 +2244,12 @@ CREATE INDEX IF NOT EXISTS idx_guild_mcp_servers_server ON guild_mcp_servers(ser
 SELECT add_column_if_not_exists('guild_mcp_servers', 'server_type', 'TEXT');
 -- NULL = unknown/legacy, empty = last discovery returned no tools.
 SELECT add_column_if_not_exists('guild_mcp_servers', 'last_discovered_tool_names', 'TEXT[]');
+-- Start of the current unbroken connect-failure streak (NULL = last attempt succeeded or none yet).
+-- Persisted so the auto-disable window survives restarts and deploys.
+SELECT add_column_if_not_exists('guild_mcp_servers', 'failing_since', 'TIMESTAMPTZ');
+-- Latest connect-failure kind: 'unauthorized' (401/403) or 'unreachable'. Kept after auto-disable
+-- so the panel can say why; cleared by a successful connect or a manual enable/disable.
+SELECT add_column_if_not_exists('guild_mcp_servers', 'failure_reason', 'TEXT');
 
 -- Trigger for updated_at auto-update
 DROP TRIGGER IF EXISTS update_guild_mcp_servers_timestamp ON guild_mcp_servers;
@@ -2503,6 +2521,21 @@ CREATE TRIGGER update_custom_endpoints_timestamp
 -- Scoped Model Registrations
 -- Stores per-server / per-user visibility for extra rows under shared providers.
 -- ============================================================
+CREATE TABLE IF NOT EXISTS speech_models (
+  speech_model_id SERIAL PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('google', 'openrouter', 'vertex')),
+  codename TEXT NOT NULL,
+  voice_mode TEXT NOT NULL CHECK (voice_mode IN ('design', 'clone', 'auto')),
+  descriptions JSONB,
+  is_default BOOLEAN NOT NULL DEFAULT false,
+  is_deprecated BOOLEAN NOT NULL DEFAULT false,
+  is_scoped_registration BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (provider, codename),
+  CHECK ((provider = 'openrouter' AND voice_mode = 'clone') OR (provider IN ('google', 'vertex') AND voice_mode = 'design'))
+);
+
 CREATE TABLE IF NOT EXISTS scoped_model_registrations (
   scoped_model_registration_id SERIAL PRIMARY KEY,
   server_id INT NULL,
@@ -2512,6 +2545,7 @@ CREATE TABLE IF NOT EXISTS scoped_model_registrations (
   diffusion_model_id INT NULL,
   video_model_id INT NULL,
   decision_model_id INT NULL REFERENCES decision_models(decision_model_id) ON DELETE CASCADE,
+  speech_model_id INT NULL REFERENCES speech_models(speech_model_id) ON DELETE CASCADE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (server_id) REFERENCES servers(server_id) ON DELETE CASCADE,
@@ -2521,9 +2555,10 @@ CREATE TABLE IF NOT EXISTS scoped_model_registrations (
   FOREIGN KEY (diffusion_model_id) REFERENCES image_diffusion_models(diffusion_model_id) ON DELETE CASCADE,
   FOREIGN KEY (video_model_id) REFERENCES video_generation_models(video_model_id) ON DELETE CASCADE,
   CHECK ((server_id IS NULL) <> (user_id IS NULL)),
-  CONSTRAINT scoped_model_registrations_one_model CHECK (num_nonnulls(llm_id, embedding_model_id, diffusion_model_id, video_model_id, decision_model_id) = 1)
+  CONSTRAINT scoped_model_registrations_one_model CHECK (num_nonnulls(llm_id, embedding_model_id, diffusion_model_id, video_model_id, decision_model_id, speech_model_id) = 1)
 );
 
+SELECT add_column_if_not_exists('scoped_model_registrations', 'speech_model_id', 'INT REFERENCES speech_models(speech_model_id) ON DELETE CASCADE');
 SELECT add_column_if_not_exists('scoped_model_registrations', 'decision_model_id', 'INT');
 DO $$
 DECLARE old_check RECORD;
@@ -2536,7 +2571,7 @@ BEGIN
     EXECUTE format('ALTER TABLE scoped_model_registrations DROP CONSTRAINT %I', old_check.conname);
   END LOOP;
   ALTER TABLE scoped_model_registrations ADD CONSTRAINT scoped_model_registrations_one_model
-    CHECK (num_nonnulls(llm_id, embedding_model_id, diffusion_model_id, video_model_id, decision_model_id) = 1);
+    CHECK (num_nonnulls(llm_id, embedding_model_id, diffusion_model_id, video_model_id, decision_model_id, speech_model_id) = 1);
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'scoped_model_registrations'::regclass
                  AND conname = 'scoped_model_registrations_decision_model_id_fkey') THEN
     ALTER TABLE scoped_model_registrations ADD CONSTRAINT scoped_model_registrations_decision_model_id_fkey
@@ -2933,6 +2968,8 @@ CREATE TRIGGER update_server_nsfw_configs_timestamp
 
 CREATE TABLE IF NOT EXISTS server_speech_configs (
   server_id                  INT     PRIMARY KEY REFERENCES servers(server_id) ON DELETE CASCADE,
+  speech_design_endpoint_id INT REFERENCES custom_endpoints(custom_endpoint_id) ON DELETE SET NULL,
+  speech_clone_endpoint_id INT REFERENCES custom_endpoints(custom_endpoint_id) ON DELETE SET NULL,
   voice_transcript_chat_mode BOOLEAN NOT NULL DEFAULT true,
   chatterbox_turbo_enabled   BOOLEAN NOT NULL DEFAULT true,
   chatterbox_cfg_weight      REAL    NOT NULL DEFAULT 0.5,
@@ -2940,6 +2977,9 @@ CREATE TABLE IF NOT EXISTS server_speech_configs (
   created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+SELECT add_column_if_not_exists('server_speech_configs', 'speech_design_endpoint_id', 'INT REFERENCES custom_endpoints(custom_endpoint_id) ON DELETE SET NULL');
+SELECT add_column_if_not_exists('server_speech_configs', 'speech_clone_endpoint_id', 'INT REFERENCES custom_endpoints(custom_endpoint_id) ON DELETE SET NULL');
 
 DROP TRIGGER IF EXISTS update_server_speech_configs_timestamp ON server_speech_configs;
 CREATE TRIGGER update_server_speech_configs_timestamp
@@ -3054,9 +3094,12 @@ CREATE TABLE IF NOT EXISTS persona_voice_configs (
   speech_voice_id           TEXT,
   speech_voice_name         TEXT,
   speech_voice_design_prompt TEXT,
+  voice_source_priority TEXT NOT NULL DEFAULT 'design' CHECK (voice_source_priority IN ('design', 'clone')),
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+SELECT add_column_if_not_exists('persona_voice_configs', 'voice_source_priority', 'TEXT NOT NULL CHECK (voice_source_priority IN (''design'', ''clone''))', '''design''');
 
 DROP TRIGGER IF EXISTS update_persona_voice_configs_timestamp ON persona_voice_configs;
 CREATE TRIGGER update_persona_voice_configs_timestamp
@@ -3310,6 +3353,194 @@ CREATE INDEX IF NOT EXISTS idx_stat_counters_user_lineage_metric
   ON stat_counters(user_id, persona_lineage_id, metric);
 
 -- ============================================================================
+-- Message-proxy identities and durable message attribution
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS message_proxy_instances (
+  instance_id TEXT PRIMARY KEY,
+  service_id TEXT NOT NULL CHECK (service_id IN ('pluralkit', 'pluralbuddy')),
+  origin TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
+  bot_user_id TEXT,
+  enabled BOOLEAN NOT NULL DEFAULT false,
+  removed_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT message_proxy_instances_id_format CHECK (
+    instance_id = service_id || ':official'
+    OR instance_id ~ ('^' || service_id || ':[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+  ),
+  CONSTRAINT message_proxy_instances_bot_user_id_format CHECK (
+    bot_user_id IS NULL OR bot_user_id ~ '^[0-9]{17,20}$'
+  )
+);
+
+SELECT add_column_if_not_exists('message_proxy_instances', 'bot_user_id', 'TEXT');
+SELECT add_column_if_not_exists('message_proxy_instances', 'removed_at', 'TIMESTAMP');
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'message_proxy_instances_bot_user_id_format'
+  ) THEN
+    ALTER TABLE message_proxy_instances
+      ADD CONSTRAINT message_proxy_instances_bot_user_id_format
+      CHECK (bot_user_id IS NULL OR bot_user_id ~ '^[0-9]{17,20}$');
+  END IF;
+END $$;
+
+INSERT INTO message_proxy_instances (instance_id, service_id, origin, display_name, bot_user_id, enabled)
+VALUES
+  ('pluralkit:official', 'pluralkit', 'https://api.pluralkit.me', 'PluralKit', '466378653216014359', true),
+  ('pluralbuddy:official', 'pluralbuddy', 'https://pluralbuddy.app', 'PluralBuddy', '1436973163211657278', true)
+ON CONFLICT (instance_id) DO UPDATE SET bot_user_id = EXCLUDED.bot_user_id;
+
+CREATE OR REPLACE FUNCTION keep_message_proxy_instance_identity()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.instance_id <> OLD.instance_id OR NEW.service_id <> OLD.service_id OR NEW.origin <> OLD.origin THEN
+    RAISE EXCEPTION 'Message-proxy instance identity and origin are immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS keep_message_proxy_instance_identity_before_update ON message_proxy_instances;
+CREATE TRIGGER keep_message_proxy_instance_identity_before_update
+BEFORE UPDATE ON message_proxy_instances
+FOR EACH ROW EXECUTE FUNCTION keep_message_proxy_instance_identity();
+
+DROP TRIGGER IF EXISTS update_message_proxy_instances_timestamp ON message_proxy_instances;
+CREATE TRIGGER update_message_proxy_instances_timestamp
+BEFORE UPDATE ON message_proxy_instances
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TABLE IF NOT EXISTS pluralbuddy_oauth_connections (
+  instance_id TEXT PRIMARY KEY REFERENCES message_proxy_instances(instance_id),
+  origin TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  client_secret BYTEA NOT NULL,
+  client_secret_key_version INTEGER NOT NULL,
+  refresh_token BYTEA NOT NULL,
+  refresh_token_key_version INTEGER NOT NULL,
+  access_token BYTEA,
+  access_token_key_version INTEGER,
+  access_expires_at TIMESTAMPTZ,
+  refresh_blocked_at TIMESTAMPTZ,
+  refresh_retry_after TIMESTAMPTZ,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT pluralbuddy_access_token_complete CHECK (
+    (access_token IS NULL AND access_token_key_version IS NULL AND access_expires_at IS NULL)
+    OR (access_token IS NOT NULL AND access_token_key_version IS NOT NULL AND access_expires_at IS NOT NULL)
+  )
+);
+
+CREATE OR REPLACE FUNCTION validate_pluralbuddy_oauth_connection()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM message_proxy_instances
+    WHERE instance_id = NEW.instance_id
+      AND service_id = 'pluralbuddy'
+      AND origin = NEW.origin
+  ) THEN
+    RAISE EXCEPTION 'PluralBuddy OAuth connection must match its instance and origin';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS validate_pluralbuddy_oauth_connection_before_write ON pluralbuddy_oauth_connections;
+CREATE TRIGGER validate_pluralbuddy_oauth_connection_before_write
+BEFORE INSERT OR UPDATE ON pluralbuddy_oauth_connections
+FOR EACH ROW EXECUTE FUNCTION validate_pluralbuddy_oauth_connection();
+
+DROP TRIGGER IF EXISTS update_pluralbuddy_oauth_connections_timestamp ON pluralbuddy_oauth_connections;
+CREATE TRIGGER update_pluralbuddy_oauth_connections_timestamp
+BEFORE UPDATE ON pluralbuddy_oauth_connections
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_message_proxy_instance_id_fkey') THEN
+    ALTER TABLE users ADD CONSTRAINT users_message_proxy_instance_id_fkey
+      FOREIGN KEY (message_proxy_instance_id) REFERENCES message_proxy_instances(instance_id);
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS external_identities (
+  external_identity_id SERIAL PRIMARY KEY,
+  kind         TEXT NOT NULL,
+  instance_id TEXT NOT NULL REFERENCES message_proxy_instances(instance_id),
+  external_key TEXT NOT NULL,
+  user_id      INT NOT NULL UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT external_identities_kind_instance_id_external_key_key UNIQUE (kind, instance_id, external_key)
+);
+
+DROP TRIGGER IF EXISTS update_external_identities_timestamp ON external_identities;
+CREATE TRIGGER update_external_identities_timestamp
+BEFORE UPDATE ON external_identities
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TABLE IF NOT EXISTS message_proxy_namespaces (
+  message_proxy_namespace_id SERIAL PRIMARY KEY,
+  service_id TEXT NOT NULL,
+  instance_id TEXT NOT NULL REFERENCES message_proxy_instances(instance_id),
+  namespace_key TEXT NOT NULL,
+  short_id TEXT,
+  display_name TEXT,
+  tag TEXT,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT message_proxy_namespaces_instance_id_namespace_key_key UNIQUE (instance_id, namespace_key)
+);
+
+DROP TRIGGER IF EXISTS update_message_proxy_namespaces_timestamp ON message_proxy_namespaces;
+CREATE TRIGGER update_message_proxy_namespaces_timestamp
+BEFORE UPDATE ON message_proxy_namespaces
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TABLE IF NOT EXISTS message_proxy_identities (
+  message_proxy_identity_id SERIAL PRIMARY KEY,
+  message_proxy_namespace_id INT NOT NULL REFERENCES message_proxy_namespaces(message_proxy_namespace_id) ON DELETE CASCADE,
+  external_identity_id INT NOT NULL UNIQUE REFERENCES external_identities(external_identity_id) ON DELETE CASCADE,
+  short_id TEXT,
+  display_name TEXT,
+  avatar_url TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_proxy_identities_namespace
+  ON message_proxy_identities(message_proxy_namespace_id);
+
+DROP TRIGGER IF EXISTS update_message_proxy_identities_timestamp ON message_proxy_identities;
+CREATE TRIGGER update_message_proxy_identities_timestamp
+BEFORE UPDATE ON message_proxy_identities
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TABLE IF NOT EXISTS message_proxy_namespace_accounts (
+  message_proxy_namespace_id INT NOT NULL REFERENCES message_proxy_namespaces(message_proxy_namespace_id) ON DELETE CASCADE,
+  host_user_disc_id TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (message_proxy_namespace_id, host_user_disc_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_proxy_namespace_accounts_host
+  ON message_proxy_namespace_accounts(host_user_disc_id);
+
+CREATE TABLE IF NOT EXISTS message_proxy_message_index (
+  message_disc_id TEXT PRIMARY KEY,
+  external_identity_id INT NOT NULL REFERENCES external_identities(external_identity_id) ON DELETE CASCADE,
+  sender_disc_id TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_proxy_message_index_created
+  ON message_proxy_message_index(created_at);
+
+-- ============================================================================
 -- command_catalog — dimension table holding the full universe of registered
 -- commands (see migration 049). stat_counters only gains a command_used row once
 -- a command is invoked, so never-used commands are absent there; this table lets
@@ -3324,3 +3555,303 @@ CREATE TABLE IF NOT EXISTS command_catalog (
   first_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE OR REPLACE FUNCTION validate_speech_endpoint_selections() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.speech_design_endpoint_id IS NOT NULL
+    AND (TG_OP = 'INSERT' OR NEW.speech_design_endpoint_id IS DISTINCT FROM OLD.speech_design_endpoint_id) AND NOT EXISTS (
+    SELECT 1 FROM custom_endpoints ce JOIN custom_endpoint_connections cec USING (connection_id)
+    WHERE ce.custom_endpoint_id = NEW.speech_design_endpoint_id AND cec.server_id = NEW.server_id
+      AND cec.user_id IS NULL AND cec.capability = 'speech' AND cec.api_style = 'tts-clone'
+      AND ce.extra_config->>'voice_mode' IN ('voice-design', 'auto')
+  ) THEN RAISE EXCEPTION 'Invalid server Voice Design selection'; END IF;
+  IF NEW.speech_clone_endpoint_id IS NOT NULL
+    AND (TG_OP = 'INSERT' OR NEW.speech_clone_endpoint_id IS DISTINCT FROM OLD.speech_clone_endpoint_id) AND NOT EXISTS (
+    SELECT 1 FROM custom_endpoints ce JOIN custom_endpoint_connections cec USING (connection_id)
+    WHERE ce.custom_endpoint_id = NEW.speech_clone_endpoint_id AND cec.server_id = NEW.server_id
+      AND cec.user_id IS NULL AND cec.capability = 'speech'
+      AND (cec.api_style = 'elevenlabs' OR (cec.api_style = 'tts-clone'
+        AND COALESCE(ce.extra_config->>'voice_mode', 'clone') NOT IN ('voice-design')))
+  ) THEN RAISE EXCEPTION 'Invalid server Voice Clone selection'; END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DO $speech_selections$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'custom_endpoints' AND column_name = 'connection_id'
+  ) THEN
+DROP TRIGGER IF EXISTS validate_speech_endpoint_selections ON server_speech_configs;
+CREATE TRIGGER validate_speech_endpoint_selections
+  BEFORE INSERT OR UPDATE OF speech_design_endpoint_id, speech_clone_endpoint_id ON server_speech_configs
+  FOR EACH ROW EXECUTE FUNCTION validate_speech_endpoint_selections();
+  END IF;
+END $speech_selections$;
+
+CREATE OR REPLACE FUNCTION clear_unsupported_speech_selections() RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE server_speech_configs ssc SET
+    speech_design_endpoint_id = CASE WHEN EXISTS (
+      SELECT 1 FROM custom_endpoints ce JOIN custom_endpoint_connections cec USING (connection_id)
+      WHERE ce.custom_endpoint_id = ssc.speech_design_endpoint_id AND cec.server_id = ssc.server_id
+        AND cec.user_id IS NULL AND cec.capability = 'speech' AND cec.api_style = 'tts-clone'
+        AND ce.extra_config->>'voice_mode' IN ('voice-design', 'auto')
+    ) THEN speech_design_endpoint_id END,
+    speech_clone_endpoint_id = CASE WHEN EXISTS (
+      SELECT 1 FROM custom_endpoints ce JOIN custom_endpoint_connections cec USING (connection_id)
+      WHERE ce.custom_endpoint_id = ssc.speech_clone_endpoint_id AND cec.server_id = ssc.server_id
+        AND cec.user_id IS NULL AND cec.capability = 'speech'
+        AND (cec.api_style = 'elevenlabs' OR (cec.api_style = 'tts-clone'
+          AND COALESCE(ce.extra_config->>'voice_mode', 'clone') <> 'voice-design'))
+    ) THEN speech_clone_endpoint_id END
+  WHERE speech_design_endpoint_id IN (
+    SELECT custom_endpoint_id FROM custom_endpoints WHERE connection_id = NEW.connection_id
+  ) OR speech_clone_endpoint_id IN (
+    SELECT custom_endpoint_id FROM custom_endpoints WHERE connection_id = NEW.connection_id
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DO $speech_selections$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'custom_endpoints' AND column_name = 'connection_id'
+  ) THEN
+DROP TRIGGER IF EXISTS clear_unsupported_speech_selections ON custom_endpoints;
+CREATE TRIGGER clear_unsupported_speech_selections AFTER UPDATE OF extra_config, connection_id ON custom_endpoints
+  FOR EACH ROW EXECUTE FUNCTION clear_unsupported_speech_selections();
+DROP TRIGGER IF EXISTS clear_unsupported_speech_selections ON custom_endpoint_connections;
+CREATE TRIGGER clear_unsupported_speech_selections AFTER UPDATE OF api_style, capability, server_id, user_id ON custom_endpoint_connections
+  FOR EACH ROW EXECUTE FUNCTION clear_unsupported_speech_selections();
+
+  END IF;
+END $speech_selections$;
+
+SELECT add_column_if_not_exists('scoped_model_registrations', 'speech_model_id', 'INT REFERENCES speech_models(speech_model_id) ON DELETE CASCADE');
+DO $$
+DECLARE old_check RECORD;
+BEGIN
+  FOR old_check IN SELECT conname FROM pg_constraint
+    WHERE conrelid = 'scoped_model_registrations'::regclass AND contype = 'c'
+      AND pg_get_constraintdef(oid) LIKE '%num_nonnulls%'
+  LOOP
+    EXECUTE format('ALTER TABLE scoped_model_registrations DROP CONSTRAINT %I', old_check.conname);
+  END LOOP;
+  ALTER TABLE scoped_model_registrations ADD CONSTRAINT scoped_model_registrations_one_model
+    CHECK (num_nonnulls(llm_id, embedding_model_id, diffusion_model_id, video_model_id, decision_model_id, speech_model_id) = 1);
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scoped_model_registrations_server_speech
+  ON scoped_model_registrations(server_id, speech_model_id) WHERE user_id IS NULL AND speech_model_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scoped_model_registrations_user_speech
+  ON scoped_model_registrations(user_id, speech_model_id) WHERE server_id IS NULL AND speech_model_id IS NOT NULL;
+
+SELECT add_column_if_not_exists('server_speech_configs', 'speech_design_model_id', 'INT REFERENCES speech_models(speech_model_id) ON DELETE SET NULL');
+SELECT add_column_if_not_exists('server_speech_configs', 'speech_clone_model_id', 'INT REFERENCES speech_models(speech_model_id) ON DELETE SET NULL');
+SELECT add_column_if_not_exists('user_saved_provider_configs', 'speech_design_model_id', 'INT REFERENCES speech_models(speech_model_id) ON DELETE SET NULL');
+SELECT add_column_if_not_exists('user_saved_provider_configs', 'speech_clone_model_id', 'INT REFERENCES speech_models(speech_model_id) ON DELETE SET NULL');
+SELECT add_column_if_not_exists('saved_provider_configs', 'credential_revision', 'INT NOT NULL', '1');
+SELECT add_column_if_not_exists('user_saved_provider_configs', 'credential_revision', 'INT NOT NULL', '1');
+
+CREATE OR REPLACE FUNCTION validate_hosted_speech_selections() RETURNS TRIGGER AS $$
+DECLARE selected RECORD;
+BEGIN
+  IF TG_TABLE_NAME = 'server_speech_configs' THEN
+    IF num_nonnulls(NEW.speech_design_model_id, NEW.speech_design_endpoint_id) > 1
+      OR num_nonnulls(NEW.speech_clone_model_id, NEW.speech_clone_endpoint_id) > 1
+    THEN RAISE EXCEPTION 'Speech mode must select one target'; END IF;
+    FOR selected IN SELECT * FROM (VALUES (NEW.speech_design_model_id, 'design'), (NEW.speech_clone_model_id, 'clone')) AS slots(id, mode)
+    LOOP
+      IF selected.id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM speech_models m JOIN saved_provider_configs c ON c.provider = m.provider
+        WHERE m.speech_model_id = selected.id AND c.server_id = NEW.server_id AND c.api_key IS NOT NULL
+          AND m.voice_mode IN (selected.mode, 'auto') AND NOT m.is_deprecated
+          AND (NOT m.is_scoped_registration OR EXISTS (
+            SELECT 1 FROM scoped_model_registrations r WHERE r.speech_model_id = m.speech_model_id
+              AND r.server_id = NEW.server_id AND r.user_id IS NULL))
+      ) THEN RAISE EXCEPTION 'Invalid server hosted speech selection'; END IF;
+    END LOOP;
+  ELSE
+    FOR selected IN SELECT * FROM (VALUES (NEW.speech_design_model_id, 'design'), (NEW.speech_clone_model_id, 'clone')) AS slots(id, mode)
+    LOOP
+      IF selected.id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM speech_models m WHERE m.speech_model_id = selected.id AND m.provider = NEW.provider
+          AND NEW.api_key IS NOT NULL AND m.voice_mode IN (selected.mode, 'auto') AND NOT m.is_deprecated
+          AND (NOT m.is_scoped_registration OR EXISTS (
+            SELECT 1 FROM scoped_model_registrations r WHERE r.speech_model_id = m.speech_model_id
+              AND r.user_id = NEW.user_id AND r.server_id IS NULL))
+      ) THEN RAISE EXCEPTION 'Invalid personal hosted speech selection'; END IF;
+    END LOOP;
+    IF (NEW.enabled_capabilities @> ARRAY['speech_design'] AND NOT NEW.assigned_capabilities @> ARRAY['speech_design'])
+      OR (NEW.enabled_capabilities @> ARRAY['speech_clone'] AND NOT NEW.assigned_capabilities @> ARRAY['speech_clone'])
+    THEN RAISE EXCEPTION 'Enabled personal speech capabilities require ownership'; END IF;
+    PERFORM 1 FROM users WHERE user_id = NEW.user_id FOR UPDATE;
+    IF EXISTS (
+      SELECT 1 FROM user_saved_provider_configs c WHERE c.user_id = NEW.user_id AND c.provider <> NEW.provider
+        AND ((NEW.assigned_capabilities @> ARRAY['speech_design'] AND c.assigned_capabilities @> ARRAY['speech_design'])
+          OR (NEW.assigned_capabilities @> ARRAY['speech_clone'] AND c.assigned_capabilities @> ARRAY['speech_clone']))
+    ) THEN RAISE EXCEPTION 'Personal speech capability already assigned'; END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS validate_hosted_speech_selections ON server_speech_configs;
+CREATE TRIGGER validate_hosted_speech_selections BEFORE INSERT OR UPDATE OF speech_design_model_id, speech_clone_model_id, speech_design_endpoint_id, speech_clone_endpoint_id
+  ON server_speech_configs FOR EACH ROW EXECUTE FUNCTION validate_hosted_speech_selections();
+DROP TRIGGER IF EXISTS validate_hosted_speech_selections ON user_saved_provider_configs;
+CREATE TRIGGER validate_hosted_speech_selections BEFORE INSERT OR UPDATE OF speech_design_model_id, speech_clone_model_id, provider, api_key, assigned_capabilities, enabled_capabilities
+  ON user_saved_provider_configs FOR EACH ROW EXECUTE FUNCTION validate_hosted_speech_selections();
+
+CREATE TABLE IF NOT EXISTS speech_voice_bindings (
+  speech_voice_binding_id SERIAL PRIMARY KEY,
+  persona_id INT REFERENCES personas(persona_id) ON DELETE SET NULL,
+  saved_config_id INT REFERENCES saved_provider_configs(saved_config_id) ON DELETE CASCADE,
+  user_saved_config_id INT REFERENCES user_saved_provider_configs(user_saved_config_id) ON DELETE CASCADE,
+  credential_revision INT NOT NULL,
+  transport TEXT NOT NULL CHECK (transport IN ('google', 'vertex')),
+  project TEXT NOT NULL DEFAULT '',
+  location TEXT NOT NULL DEFAULT '',
+  prompt_hash TEXT NOT NULL,
+  voice_id TEXT NOT NULL,
+  expires_at TIMESTAMPTZ,
+  pending_delete BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (num_nonnulls(saved_config_id, user_saved_config_id) = 1),
+  CHECK (transport <> 'vertex' OR (project <> '' AND location <> ''))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_speech_voice_bindings_identity
+  ON speech_voice_bindings(persona_id, COALESCE(saved_config_id, 0), COALESCE(user_saved_config_id, 0), credential_revision, transport, project, location, prompt_hash)
+  WHERE NOT pending_delete AND persona_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION revise_speech_credentials() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.api_key IS DISTINCT FROM OLD.api_key THEN
+    NEW.credential_revision = OLD.credential_revision + 1;
+    IF TG_TABLE_NAME = 'saved_provider_configs' THEN
+      UPDATE speech_voice_bindings SET pending_delete = true WHERE saved_config_id = OLD.saved_config_id;
+      IF NEW.api_key IS NULL THEN
+        UPDATE server_speech_configs SET
+          speech_design_model_id = CASE WHEN speech_design_model_id IN (SELECT speech_model_id FROM speech_models WHERE provider = OLD.provider) THEN NULL ELSE speech_design_model_id END,
+          speech_clone_model_id = CASE WHEN speech_clone_model_id IN (SELECT speech_model_id FROM speech_models WHERE provider = OLD.provider) THEN NULL ELSE speech_clone_model_id END
+        WHERE server_id = OLD.server_id;
+      END IF;
+    ELSE
+      UPDATE speech_voice_bindings SET pending_delete = true WHERE user_saved_config_id = OLD.user_saved_config_id;
+      IF NEW.api_key IS NULL THEN
+        NEW.speech_design_model_id = NULL;
+        NEW.speech_clone_model_id = NULL;
+        NEW.enabled_capabilities = array_remove(array_remove(NEW.enabled_capabilities, 'speech_design'), 'speech_clone');
+        NEW.assigned_capabilities = array_remove(array_remove(NEW.assigned_capabilities, 'speech_design'), 'speech_clone');
+      END IF;
+    END IF;
+  ELSE
+    NEW.credential_revision = OLD.credential_revision;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS revise_speech_credentials ON saved_provider_configs;
+CREATE TRIGGER revise_speech_credentials BEFORE UPDATE ON saved_provider_configs
+  FOR EACH ROW EXECUTE FUNCTION revise_speech_credentials();
+DROP TRIGGER IF EXISTS revise_speech_credentials ON user_saved_provider_configs;
+CREATE TRIGGER revise_speech_credentials BEFORE UPDATE ON user_saved_provider_configs
+  FOR EACH ROW EXECUTE FUNCTION revise_speech_credentials();
+
+CREATE OR REPLACE FUNCTION retire_persona_speech_bindings() RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'DELETE' OR NEW.speech_voice_design_prompt IS DISTINCT FROM OLD.speech_voice_design_prompt THEN
+    UPDATE speech_voice_bindings SET pending_delete = true WHERE persona_id = OLD.persona_id
+      AND EXISTS (SELECT 1 FROM personas WHERE persona_id = OLD.persona_id);
+  END IF;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS retire_persona_speech_bindings ON persona_voice_configs;
+CREATE TRIGGER retire_persona_speech_bindings AFTER UPDATE OF speech_voice_design_prompt OR DELETE ON persona_voice_configs
+  FOR EACH ROW EXECUTE FUNCTION retire_persona_speech_bindings();
+
+CREATE OR REPLACE FUNCTION clear_hosted_speech_registration() RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.speech_model_id IS NOT NULL THEN
+    UPDATE server_speech_configs SET
+      speech_design_model_id = CASE WHEN speech_design_model_id = OLD.speech_model_id THEN NULL ELSE speech_design_model_id END,
+      speech_clone_model_id = CASE WHEN speech_clone_model_id = OLD.speech_model_id THEN NULL ELSE speech_clone_model_id END
+    WHERE server_id = OLD.server_id AND EXISTS (SELECT 1 FROM servers WHERE server_id = OLD.server_id);
+    UPDATE user_saved_provider_configs SET
+      assigned_capabilities = array_remove(array_remove(assigned_capabilities,
+        CASE WHEN speech_design_model_id = OLD.speech_model_id THEN 'speech_design' END),
+        CASE WHEN speech_clone_model_id = OLD.speech_model_id THEN 'speech_clone' END),
+      enabled_capabilities = array_remove(array_remove(enabled_capabilities,
+        CASE WHEN speech_design_model_id = OLD.speech_model_id THEN 'speech_design' END),
+        CASE WHEN speech_clone_model_id = OLD.speech_model_id THEN 'speech_clone' END),
+      speech_design_model_id = CASE WHEN speech_design_model_id = OLD.speech_model_id THEN NULL ELSE speech_design_model_id END,
+      speech_clone_model_id = CASE WHEN speech_clone_model_id = OLD.speech_model_id THEN NULL ELSE speech_clone_model_id END
+    WHERE user_id = OLD.user_id AND EXISTS (SELECT 1 FROM users WHERE user_id = OLD.user_id);
+  END IF;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS clear_hosted_speech_registration ON scoped_model_registrations;
+CREATE TRIGGER clear_hosted_speech_registration AFTER DELETE ON scoped_model_registrations
+  FOR EACH ROW EXECUTE FUNCTION clear_hosted_speech_registration();
+
+CREATE OR REPLACE FUNCTION validate_speech_voice_binding() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.persona_id IS NULL THEN NEW.pending_delete = true; END IF;
+  IF NOT NEW.pending_delete AND NOT (
+    EXISTS (
+      SELECT 1 FROM saved_provider_configs c
+      WHERE c.saved_config_id = NEW.saved_config_id AND c.provider = NEW.transport
+        AND c.credential_revision = NEW.credential_revision AND c.api_key IS NOT NULL
+        AND (NEW.persona_id IS NULL OR EXISTS (
+          SELECT 1 FROM personas p WHERE p.persona_id = NEW.persona_id AND p.server_id = c.server_id))
+    ) OR EXISTS (
+      SELECT 1 FROM user_saved_provider_configs c
+      WHERE c.user_saved_config_id = NEW.user_saved_config_id AND c.provider = NEW.transport
+        AND c.credential_revision = NEW.credential_revision AND c.api_key IS NOT NULL
+    )
+  ) THEN RAISE EXCEPTION 'Invalid speech voice credential owner or revision'; END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS validate_speech_voice_binding ON speech_voice_bindings;
+CREATE TRIGGER validate_speech_voice_binding BEFORE INSERT OR UPDATE ON speech_voice_bindings
+  FOR EACH ROW EXECUTE FUNCTION validate_speech_voice_binding();
+
+CREATE OR REPLACE FUNCTION clear_removed_speech_credentials() RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM servers WHERE server_id = OLD.server_id) THEN RETURN OLD; END IF;
+  UPDATE server_speech_configs SET
+    speech_design_model_id = CASE WHEN speech_design_model_id IN (SELECT speech_model_id FROM speech_models WHERE provider = OLD.provider) THEN NULL ELSE speech_design_model_id END,
+    speech_clone_model_id = CASE WHEN speech_clone_model_id IN (SELECT speech_model_id FROM speech_models WHERE provider = OLD.provider) THEN NULL ELSE speech_clone_model_id END
+  WHERE server_id = OLD.server_id;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS clear_removed_speech_credentials ON saved_provider_configs;
+CREATE TRIGGER clear_removed_speech_credentials BEFORE DELETE ON saved_provider_configs
+  FOR EACH ROW EXECUTE FUNCTION clear_removed_speech_credentials();
+
+CREATE OR REPLACE FUNCTION clear_changed_speech_model() RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE server_speech_configs SET
+    speech_design_model_id = CASE WHEN speech_design_model_id = NEW.speech_model_id AND (NEW.is_deprecated OR NEW.voice_mode NOT IN ('design', 'auto') OR NEW.provider <> OLD.provider) THEN NULL ELSE speech_design_model_id END,
+    speech_clone_model_id = CASE WHEN speech_clone_model_id = NEW.speech_model_id AND (NEW.is_deprecated OR NEW.voice_mode NOT IN ('clone', 'auto') OR NEW.provider <> OLD.provider) THEN NULL ELSE speech_clone_model_id END
+  WHERE speech_design_model_id = NEW.speech_model_id OR speech_clone_model_id = NEW.speech_model_id;
+  UPDATE user_saved_provider_configs SET
+    assigned_capabilities = array_remove(array_remove(assigned_capabilities,
+      CASE WHEN speech_design_model_id = NEW.speech_model_id AND (NEW.is_deprecated OR NEW.voice_mode NOT IN ('design', 'auto') OR NEW.provider <> OLD.provider) THEN 'speech_design' END),
+      CASE WHEN speech_clone_model_id = NEW.speech_model_id AND (NEW.is_deprecated OR NEW.voice_mode NOT IN ('clone', 'auto') OR NEW.provider <> OLD.provider) THEN 'speech_clone' END),
+    enabled_capabilities = array_remove(array_remove(enabled_capabilities,
+      CASE WHEN speech_design_model_id = NEW.speech_model_id AND (NEW.is_deprecated OR NEW.voice_mode NOT IN ('design', 'auto') OR NEW.provider <> OLD.provider) THEN 'speech_design' END),
+      CASE WHEN speech_clone_model_id = NEW.speech_model_id AND (NEW.is_deprecated OR NEW.voice_mode NOT IN ('clone', 'auto') OR NEW.provider <> OLD.provider) THEN 'speech_clone' END),
+    speech_design_model_id = CASE WHEN speech_design_model_id = NEW.speech_model_id AND (NEW.is_deprecated OR NEW.voice_mode NOT IN ('design', 'auto') OR NEW.provider <> OLD.provider) THEN NULL ELSE speech_design_model_id END,
+    speech_clone_model_id = CASE WHEN speech_clone_model_id = NEW.speech_model_id AND (NEW.is_deprecated OR NEW.voice_mode NOT IN ('clone', 'auto') OR NEW.provider <> OLD.provider) THEN NULL ELSE speech_clone_model_id END
+  WHERE speech_design_model_id = NEW.speech_model_id OR speech_clone_model_id = NEW.speech_model_id;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS clear_changed_speech_model ON speech_models;
+CREATE TRIGGER clear_changed_speech_model AFTER UPDATE OF voice_mode, provider, is_deprecated ON speech_models
+  FOR EACH ROW EXECUTE FUNCTION clear_changed_speech_model();

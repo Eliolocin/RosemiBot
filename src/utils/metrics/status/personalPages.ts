@@ -17,6 +17,18 @@ import { localizer } from "@/utils/text/localizer";
 import { PrivacyLevel } from "@/types/db/schema";
 import { renderStatusPageDashboard } from "@/utils/metrics/status/statusPageRenderer";
 
+const DTM_LABEL_KEYS: Record<NonNullable<UserRow["personal_dtm"]>, string> = {
+  off: "commands.personal.deliberatetriggermode.off_option",
+  follow: "commands.personal.deliberatetriggermode.follow_option",
+  on: "commands.personal.deliberatetriggermode.on_option",
+};
+
+const TOOL_MODE_LABEL_KEYS: Record<NonNullable<UserRow["personal_deliberate_tool_mode"]>, string> = {
+  off: "commands.personal.deliberatetoolmode.off_option",
+  follow: "commands.personal.deliberatetoolmode.follow_option",
+  on: "commands.personal.deliberatetoolmode.on_option",
+};
+
 export type PersonalStatusIdentity = Pick<
   UserRow,
   | "user_id"
@@ -106,15 +118,12 @@ export async function buildPersonalStatusPages(
       },
       {
         nameKey: "commands.status.field_personal_dtm",
-        value: localizer(locale, `commands.personal.deliberatetriggermode.${userData.personal_dtm ?? "follow"}_option`),
+        value: localizer(locale, DTM_LABEL_KEYS[userData.personal_dtm ?? "follow"]),
         inline: true,
       },
       {
         nameKey: "commands.status.field_personal_deliberate_tool_mode",
-        value: localizer(
-          locale,
-          `commands.personal.deliberatetoolmode.${userData.personal_deliberate_tool_mode ?? "follow"}_option`,
-        ),
+        value: localizer(locale, TOOL_MODE_LABEL_KEYS[userData.personal_deliberate_tool_mode ?? "follow"]),
         inline: true,
       },
       {

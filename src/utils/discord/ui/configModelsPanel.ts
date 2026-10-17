@@ -17,7 +17,7 @@ import {
   CONFIG_MODEL_CLEAR_VALUE,
   CONFIG_MODEL_PAGE_SIZE,
   CONFIG_MODEL_PROVIDER_DIRECT_LIMIT,
-  CONFIG_ENDPOINT_PAGE_SIZE,
+  configEndpointWindowSize,
   CONFIG_NAI_PRESET_NEXT_VALUE,
   CONFIG_NAI_PRESET_PAGE_SIZE,
   CONFIG_NAI_PRESET_PREVIOUS_VALUE,
@@ -44,6 +44,7 @@ import type {
 import {
   buildModelRoutingControl,
   buildProviderPageEntries,
+  formatModelSelectionLabel,
   type ProviderSelectEntry,
 } from "@/utils/discord/ui/modelRoutingControls";
 import { buildProviderSelectWindow, resolveProviderEntryStart } from "@/utils/discord/ui/providerSelectWindow";
@@ -81,7 +82,8 @@ export const CONFIG_MODEL_CAPABILITY_LOCALE_KEYS: Record<ConfigModelCapability, 
   image: "commands.config.panel.capability_image",
   "nai-image": "commands.config.panel.capability_nai_image",
   video: "commands.config.panel.capability_video",
-  tts: "commands.config.panel.capability_tts",
+  "tts-design": "commands.config.panel.capability_tts_design",
+  "tts-clone": "commands.config.panel.capability_tts_clone",
   stt: "commands.config.panel.capability_stt",
 };
 
@@ -238,8 +240,9 @@ function buildCapabilityNoticeLine(locale: string, view: ConfigSwitchModelsView)
     // restate a working setup on every repaint. Only the missing endpoint needs an action, and that
     // sentence already names the enabled state, which keeps the healthy case as silent as the Image
     // and Video notices.
-    const speechSlot = view.endpointSlots?.find((slot) => slot.capability === "tts");
-    const hasActiveSpeechEndpoint = speechSlot?.endpoints.some((endpoint) => endpoint.isActive && endpoint.id > 0);
+    const hasActiveSpeechEndpoint = view.endpointSlots?.some(
+      (slot) => slot.capability !== "stt" && slot.endpoints.some((endpoint) => endpoint.isActive && endpoint.id > 0),
+    );
     if (!hasActiveSpeechEndpoint) {
       warnings.push(localizer(locale, "commands.config.panel.speech_capability_missing_endpoint"));
     }
@@ -376,12 +379,13 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
     );
   }
 
-  for (const capability of ["tts", "stt"] as const) {
+  for (const capability of ["tts-design", "tts-clone", "stt"] as const) {
     const slot = view.endpointSlots?.find((candidate) => candidate.capability === capability);
     if (!slot) continue;
     const capabilityLabel = localizer(locale, CONFIG_MODEL_CAPABILITY_LOCALE_KEYS[capability]);
-    const overflows = slot.endpoints.length > CONFIG_ENDPOINT_PAGE_SIZE;
-    const windowSize = overflows ? CONFIG_ENDPOINT_PAGE_SIZE - 1 : CONFIG_ENDPOINT_PAGE_SIZE;
+    const activeEndpoint = slot.endpoints.find((endpoint) => endpoint.isActive);
+    const windowSize = configEndpointWindowSize(capability, slot.endpoints.length);
+    const overflows = slot.endpoints.length > windowSize;
     const rangeCount = Math.max(1, Math.ceil(slot.endpoints.length / windowSize));
     const rangeIndex = Math.min(Math.max(0, Math.floor(slot.pageStart / windowSize)), rangeCount - 1);
     const visibleStart = rangeIndex * windowSize;
@@ -389,7 +393,7 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
     const options: SelectMenuComponentOptionData[] = slot.endpoints
       .slice(visibleStart, visibleStart + windowSize)
       .map((endpoint, offset) => {
-        const displayName = `${endpoint.label}: ${endpoint.modelLabel}`;
+        const displayName = formatModelSelectionLabel(endpoint.modelLabel, endpoint.label, "");
         return {
           value: encodeConfigEndpointSelection(visibleStart + offset, fingerprint),
           label: safeSelectOptionText(displayName, 100),
@@ -411,7 +415,7 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
       options.push({
         value: encodeConfigEndpointPageValue(nextRangeIndex * windowSize),
         label: safeSelectOptionText(
-          localizer(locale, "commands.config.panel.model_provider_more_option", {
+          localizer(locale, "commands.config.panel.model_endpoint_more_option", {
             capability: capabilityLabel,
             page: nextRangeIndex + 1,
             total: rangeCount,
@@ -419,6 +423,13 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
           100,
         ),
         description: undefined,
+        default: false,
+      });
+    }
+    if (capability !== "stt" && activeEndpoint) {
+      options.unshift({
+        value: `ep-clear|${fingerprint}`,
+        label: safeSelectOptionText(localizer(locale, "commands.config.panel.model_no_model_option"), 100),
         default: false,
       });
     }
@@ -433,10 +444,7 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
         default: false,
       });
     }
-    const activeEndpoint = slot.endpoints.find((endpoint) => endpoint.isActive);
-    const placeholder = activeEndpoint
-      ? `${capabilityLabel}: ${activeEndpoint.label}: ${activeEndpoint.modelLabel}`
-      : `${capabilityLabel}: ${localizer(locale, "commands.providers.activate_placeholder")}`;
+    const placeholder = `${capabilityLabel}: ${formatModelSelectionLabel(activeEndpoint?.modelLabel ?? null, activeEndpoint?.label ?? null, localizer(locale, "commands.config.panel.none_label"))}`;
     components.push({
       type: ComponentType.ActionRow,
       components: [
@@ -445,7 +453,7 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
           customId: buildConfigRouteId({ action: "endpoint-select", locale, capability }),
           placeholder: safeSelectOptionText(placeholder, 150),
           options,
-          disabled: writesDisabled || slot.endpoints.length === 0,
+          disabled: writesDisabled || (capability === "stt" && slot.endpoints.length === 0),
         },
       ],
     });
@@ -508,17 +516,20 @@ function buildNaiPresetBlock(
   writesDisabled: boolean,
   displayBudget: number,
 ): ComponentInContainerData[] {
-  const explanationKey =
+  const explanation =
     view.compatibility === "not-novelai"
-      ? "not_novelai"
+      ? {
+          title: "commands.config.panel.nai_preset.not_novelai_title",
+          description: "commands.config.panel.nai_preset.not_novelai_description",
+        }
       : view.compatibility === "unsupported"
-        ? "not_kayra_erato"
+        ? {
+            title: "commands.config.panel.nai_preset.not_kayra_erato_title",
+            description: "commands.config.panel.nai_preset.not_kayra_erato_description",
+          }
         : null;
-  const display = explanationKey
-    ? `**${localizer(locale, `commands.config.panel.nai_preset.${explanationKey}_title`)}**\n${localizer(
-        locale,
-        `commands.config.panel.nai_preset.${explanationKey}_description`,
-      )}`
+  const display = explanation
+    ? `**${localizer(locale, explanation.title)}**\n${localizer(locale, explanation.description)}`
     : (() => {
         const prefix = `**${localizer(locale, "commands.config.panel.nai_preset.select_label")}**\n${localizer(
           locale,
@@ -554,9 +565,7 @@ function buildNaiPresetBlock(
             description: safeSelectOptionText(
               localizer(
                 locale,
-                explanationKey
-                  ? `commands.config.panel.nai_preset.${explanationKey}_description`
-                  : "commands.config.panel.nai_preset.select_description",
+                explanation ? explanation.description : "commands.config.panel.nai_preset.select_description",
               ),
               100,
             ),
@@ -564,30 +573,18 @@ function buildNaiPresetBlock(
           },
         ];
   if (view.compatibility === "eligible" && pageCount > 1) {
+    const pageInfo = (targetIndex: number) =>
+      localizer(locale, "general.pagination.page_info", { current: targetIndex + 1, total: pageCount });
     options.unshift({
-      label: safeSelectOptionText(
-        localizer(locale, "commands.config.panel.model_provider_more_option", {
-          capability: localizer(locale, "commands.config.panel.nai_preset.select_label"),
-          page: pageIndex === 0 ? pageCount : pageIndex,
-          total: pageCount,
-        }),
-        100,
-      ),
+      label: localizer(locale, "general.pagination.previous"),
       value: CONFIG_NAI_PRESET_PREVIOUS_VALUE,
-      description: undefined,
+      description: pageInfo((pageIndex - 1 + pageCount) % pageCount),
       default: false,
     });
     options.push({
-      label: safeSelectOptionText(
-        localizer(locale, "commands.config.panel.model_provider_more_option", {
-          capability: localizer(locale, "commands.config.panel.nai_preset.select_label"),
-          page: ((pageIndex + 1) % pageCount) + 1,
-          total: pageCount,
-        }),
-        100,
-      ),
+      label: localizer(locale, "general.pagination.next"),
       value: CONFIG_NAI_PRESET_NEXT_VALUE,
-      description: undefined,
+      description: pageInfo((pageIndex + 1) % pageCount),
       default: false,
     });
   }

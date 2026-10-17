@@ -1591,7 +1591,6 @@ describe("config Persona Sprites page", () => {
     const payload = spritesPage(DM_OWNER, { selectedSpriteIndex: 0 });
     const fp = computeSpriteFingerprint(55, 0, "happy");
 
-    expect(buttonFor(payload, { action: "sprite-add-open", locale: "en-US", personaId: 55 })).toBeUndefined();
     expect(buttonFor(payload, { action: "sprite-import-open", locale: "en-US", personaId: 55 })).toBeUndefined();
     expect(buttonFor(payload, { action: "sprite-export", locale: "en-US", personaId: 55 })?.disabled).toBe(false);
     // Edit and Remove still render beside the inspected sprite, disabled rather than hidden, so the
@@ -1724,6 +1723,29 @@ describe("config Behavior pages", () => {
     expect(buttonFor(payload, { action: "behavior-timezone-open", locale: "en-US" })).toBeUndefined();
   });
 
+  it("replaces the system prompt preview and locks its controls while a SillyTavern preset is active", () => {
+    const payload = build(GUILD_MANAGER, {
+      category: "behavior",
+      page: "general",
+      behaviorView: { ...behaviorView, general: { ...behaviorView.general, activeStPresetName: "Juno RP" } },
+    });
+    const seen = walk(payload);
+    expect(seen.some((component) => component.content?.includes("Keep replies concise."))).toBe(false);
+    expect(
+      seen.some((component) =>
+        localizedProse("en-US", "commands.config.panel.system_prompt_st_preset_active").test(component.content ?? ""),
+      ),
+    ).toBe(true);
+    for (const action of ["behavior-prompt-open", "behavior-preset-open", "behavior-prompt-remove"] as const) {
+      expect(buttonFor(payload, { action, locale: "en-US" })?.disabled).toBe(true);
+    }
+    expect(buttonFor(payload, { action: "behavior-prefill-open", locale: "en-US" })?.disabled).toBe(false);
+    expect(
+      buttonFor(payload, { action: "category", locale: "en-US", category: "plugins", page: "sillytavern-presets" })
+        ?.disabled,
+    ).not.toBe(true);
+  });
+
   it("swaps the Random Trigger Add entry for a persona range select past one page", () => {
     const renderTrigger = (personaCount: number): string => {
       const personas = Array.from({ length: personaCount }, (_unused, index) => makePersona({ persona_id: index + 1 }));
@@ -1746,7 +1768,8 @@ describe("config Behavior pages", () => {
   it("renders Trigger as direct Off/On state controls and no live values for a member", () => {
     const manager = build(GUILD_MANAGER, { category: "behavior", page: "trigger", behaviorView });
     const controls = walk(manager).filter((component) => component.label === "Off" || component.label === "On");
-    expect(controls.map((component) => component.style)).toEqual([2, 1, 1, 2]);
+    expect(controls.map((component) => component.style)).toEqual([2, 2, 2, 2]);
+    expect(controls.map((component) => component.disabled)).toEqual([false, true, true, false]);
     expect(walk(manager).some((component) => component.content?.includes("<#channel-1>"))).toBe(true);
 
     const member = build(GUILD_MEMBER, { category: "behavior", page: "trigger", behaviorView });

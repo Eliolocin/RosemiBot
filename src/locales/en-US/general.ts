@@ -124,7 +124,7 @@ export default {
       provider_not_supported_title: `Provider Not Supported`,
       provider_not_supported_description: `The selected AI provider is not currently supported.`,
       channel_missing_permissions_title: `Missing Permissions`,
-      channel_missing_permissions_description: `I don't have permission to read message history in this channel. Please ensure I have the **View Channel** and **Read Message History** permissions.`,
+      channel_missing_permissions_description: `I can't access message history in this channel. Please grant me **View Channel** and **Read Message History**. For a voice channel's text chat, I also need **Connect**.`,
       webhook_missing_permissions_title: `Missing Webhook Permissions`,
       webhook_missing_permissions_description: `I can't create webhooks in this channel, so alter personas will use regular bot messages. Please grant me the **Manage Webhooks** permission in this channel to enable custom alter avatars.`,
       webhook_limit_title: `Webhook Limit Reached`,

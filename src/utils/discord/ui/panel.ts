@@ -154,7 +154,7 @@ export function buildStateControlRow<TValue>(
       const isAvailable = choice.available !== false;
       return {
         type: ComponentType.Button,
-        style: isSelected ? ButtonStyle.Primary : ButtonStyle.Secondary,
+        style: ButtonStyle.Secondary,
         customId: choice.customId,
         label: choice.label,
         disabled: writesDisabled || isSelected || !isAvailable,

@@ -59,6 +59,10 @@ Before loading persona configuration or calling models, guild channels pass thre
    channels where Discord recently refused a send with 50013 or 50001, skipping generations until
    `SEND_FAILURE_RETRY_MS` expires or a subsequent send succeeds.
 
+### Message-proxy admission
+
+For opted-in users, admission creates a service-scoped expectation before checking the proxy bot's guild presence. A verified repost can then replace the original while it is held. PluralKit attests the exact original; PluralBuddy cannot pair concurrent originals from one host. Verified proxy reposts pass the webhook gate, while persona and Matrix handling require a managed webhook. Privacy, quota, and cooldown checks use the attested host account. See [message-proxy integration](/architecture/integrations/message-proxy/) for matching and queue constraints.
+
 ### Audio transcription
 
 When a message contains audio attachments and voice transcription is enabled,
@@ -91,6 +95,11 @@ is currently busy:
   than message author protects DM state resolution during automated self-replies and reminders.
 - **In-place content mutation**: writing transcribed text into `message.content` lets downstream prompt
   and memory builders process audio identically to standard text messages.
+- **One reply-target resolution**: `resolveReferencedMessage()` loads the replied-to message once
+  (cache, then REST) and verifies its webhook. The trigger gate and turn planning read that instance
+  from the admission instead of the channel cache, because the capped message cache can evict the
+  target while a turn waits and webhook trust is recorded per message object. A queued message is
+  admitted again when it replays, so it resolves its target afresh.
 
 ## Source pointers
 

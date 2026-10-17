@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { customEndpointSchema } from "@/types/db/schema";
+import { stubGlobalFetch } from "../../helpers/fetchStub";
 import type { Client, Message } from "discord.js";
-import type { CustomEndpointRow, LlmRow, TomoriState } from "@/types/db/schema";
+import type { LlmRow, TomoriState } from "@/types/db/schema";
 import { ContextItemTag } from "@/types/misc/context";
 import type { ProviderConfig, StreamResult } from "@/types/provider/interfaces";
 import type { FallbackNoticeAttempt } from "@/utils/discord/fallbackModelNotice";
@@ -39,12 +41,15 @@ const queuedResults: GenerationTurnResult[] = [];
 // Parallel to queuedResults: the delivered-message refs each runToolLoop call should push into the
 // shared sink before returning its queued result, simulating messages the stream committed to
 // Discord during that attempt. Undefined entries push nothing.
-const queuedDeliveries: Array<Array<{ messageId: string; channelId: string; isWebhook: boolean }> | undefined> = [];
+const queuedDeliveries: Array<Array<{ messageId: string; channelId: string; webhookId: string | null }> | undefined> =
+  [];
 const toolLoopCalls: Array<{
   model: string;
   suppressUserErrors: boolean | undefined;
   contextItems: ToolLoopParams["context"]["contextItems"];
   numCtx: number | null | undefined;
+  apiKey: string;
+  credentialSource: ChatTurnContext["textCredentialSource"];
 }> = [];
 const providerConfigCalls: Array<{ model: string; apiKey: string }> = [];
 const fallbackNoticeCalls: Array<{
@@ -53,6 +58,10 @@ const fallbackNoticeCalls: Array<{
   offerPersonalFallbackOptOut: boolean | undefined;
 }> = [];
 const personalSavedConfigLoads: Array<{ userId: number; provider: string }> = [];
+const serverSavedConfigLoads: Array<{ serverId: number; provider: string }> = [];
+// Flipped off to model a user who has no personal key saved for the provider a
+// chain entry belongs to.
+let personalKeyAvailable = true;
 // Records the server text quota admissions the fallback phase takes, so a test can tell an
 // admission that never happened from one that was granted.
 const textQuotaAdmissions: Array<{
@@ -74,6 +83,10 @@ let cooldownAdmissionResult = true;
 const timeoutNotices: Array<{ providerName: string; sawStreamProgress: boolean }> = [];
 const testStopRequests = new Map<string, { type: "stop" | "follow_up"; stopContext?: TestStopContext }>();
 let personalOverlayState: TomoriState | null = null;
+let rotationEnabled = false;
+const rotationSelections: string[] = [];
+const rotationChecks: string[] = [];
+let fetchStub: ReturnType<typeof stubGlobalFetch>;
 
 type TestStopContext = {
   originalStopMessage: Message;
@@ -146,10 +159,13 @@ scopedMock.module("@/utils/db/repositories", () => ({
   llmProviderRepo: overrideMembers(realRepositories.llmProviderRepo, {
     // A stored key for every provider, so a cross-provider fallback arm can be constructed here
     // instead of failing on `applySavedProviderConfig`'s missing-credentials throw.
-    loadSavedProviderConfig: async () => ({ api_key: Buffer.from("encrypted-key"), key_version: 1 }),
+    loadSavedProviderConfig: async (serverId: number, provider: string) => {
+      serverSavedConfigLoads.push({ serverId, provider });
+      return { api_key: Buffer.from("encrypted-key"), key_version: 1 };
+    },
     loadUserSavedProviderConfig: async (userId: number, provider: string) => {
       personalSavedConfigLoads.push({ userId, provider });
-      return { api_key: Buffer.from("encrypted-key"), key_version: 1 };
+      return personalKeyAvailable ? { api_key: Buffer.from("encrypted-key"), key_version: 1 } : null;
     },
   }),
   configRepository: overrideMembers(realRepositories.configRepository, {
@@ -287,10 +303,18 @@ scopedMock.module("@/utils/security/crypto", () => ({
 scopedMock.module("@/utils/security/keyRotation", () => ({
   ...realKeyRotation,
   MAX_KEY_ATTEMPTS: 3,
-  hasAvailableRotationKey: async () => false,
+  hasAvailableRotationKey: async (state: TomoriState, excluded: number[] = []) => {
+    rotationChecks.push(state.llm.llm_codename);
+    return rotationEnabled && !excluded.includes(42);
+  },
   recordKeyError: async () => undefined,
   recordKeySuccess: async () => undefined,
-  selectApiKey: async () => null,
+  selectApiKey: async (state: TomoriState, excluded: number[] = []) => {
+    rotationSelections.push(state.llm.llm_codename);
+    if (!rotationEnabled) return null;
+    const rotationKeyId = excluded.includes(41) ? 42 : 41;
+    return { apiKey: `server-pool-${rotationKeyId}`, rotationKeyId, isMainKey: false };
+  },
 }));
 
 scopedMock.module("@/utils/chat/toolLoop", () => ({
@@ -360,6 +384,8 @@ async function runToolLoopMock(params: ToolLoopParams): Promise<GenerationTurnRe
       suppressUserErrors: params.context.streamingContext.suppressUserErrors,
       contextItems: params.context.contextItems,
       numCtx: params.tomoriState.config.custom_num_ctx,
+      apiKey: params.providerConfig.apiKey,
+      credentialSource: params.context.textCredentialSource,
     });
     // Simulate this attempt committing messages to the channel before it resolves, so the
     // supersede-cleanup path in runGenerationTurn has refs to act on.
@@ -555,11 +581,11 @@ const fakeProvider = {
   getInfo: () => ({ name: "google" }),
 };
 
-function makeLlm(id: number, codename: string): LlmRow {
+function makeLlm(id: number, codename: string, provider = "google"): LlmRow {
   return {
     llm_id: id,
     llm_codename: codename,
-    llm_provider: "google",
+    llm_provider: provider,
     has_tools: false,
     sees_images: false,
     sees_videos: false,
@@ -708,13 +734,57 @@ async function runWithFixedRandom(leadFraction: number, run: () => Promise<void>
 }
 
 describe("runGenerationTurn fallback behavior", () => {
+  afterEach(() => fetchStub.mockRestore());
+
+  it("keeps personal success and failure outside an enabled server rotation pool", async () => {
+    for (const outcome of [successfulReply(), personalRouteFailure()]) {
+      rotationEnabled = true;
+      const context = makePersonalContext(
+        makeLlm(1, "server-primary"),
+        makeLlm(2, "server-fallback"),
+        makeLlm(3, "personal-primary"),
+      );
+      context.turn.userRow.personal_server_fallback_enabled = false;
+      queuedResults.push(outcome);
+      const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+      expect((await runGenerationTurn(context, collectingSink())).status).toBe(outcome.status);
+    }
+    expect(toolLoopCalls.map((call) => call.apiKey)).toEqual(["personal-key", "personal-key"]);
+    expect(rotationSelections).toHaveLength(0);
+    expect(rotationChecks).toHaveLength(0);
+  });
+
+  it("admits server fallback separately and rotates only its attempts", async () => {
+    rotationEnabled = true;
+    const context = makePersonalContext(
+      makeLlm(1, "server-primary"),
+      makeLlm(2, "server-fallback"),
+      makeLlm(3, "personal-primary"),
+    );
+    queuedResults.push(personalRouteFailure(), personalRouteFailure(), successfulReply());
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    expect((await runGenerationTurn(context, collectingSink())).status).toBe("completed");
+    expect(toolLoopCalls.map(({ apiKey, credentialSource }) => ({ apiKey, credentialSource }))).toEqual([
+      { apiKey: "personal-key", credentialSource: "personal" },
+      { apiKey: "server-pool-41", credentialSource: "server" },
+      { apiKey: "server-pool-42", credentialSource: "server" },
+    ]);
+    expect(rotationSelections).not.toContain("personal-primary");
+    expect(rotationChecks).not.toContain("personal-primary");
+    expect(textQuotaAdmissions).toHaveLength(1);
+    expect(cooldownAdmissions).toHaveLength(1);
+  });
+
   beforeEach(async () => {
+    fetchStub = stubGlobalFetch(() => Response.json({ data: [] }));
     queuedResults.length = 0;
     queuedDeliveries.length = 0;
     toolLoopCalls.length = 0;
     providerConfigCalls.length = 0;
     fallbackNoticeCalls.length = 0;
     personalSavedConfigLoads.length = 0;
+    serverSavedConfigLoads.length = 0;
+    personalKeyAvailable = true;
     textQuotaAdmissions.length = 0;
     textQuotaAdmissionResult = {
       allowed: true,
@@ -725,6 +795,9 @@ describe("runGenerationTurn fallback behavior", () => {
     cooldownAdmissionResult = true;
     timeoutNotices.length = 0;
     personalOverlayState = null;
+    rotationEnabled = false;
+    rotationSelections.length = 0;
+    rotationChecks.length = 0;
 
     const { StreamOrchestrator } = await import("@/utils/discord/streamOrchestrator");
     StreamOrchestrator.clearStopRequest("channel_1");
@@ -830,13 +903,15 @@ describe("runGenerationTurn fallback behavior", () => {
     const primaryModel = makeLlm(1, "primary-model");
     const context = makeContext(primaryModel, makeLlm(2, "unused-fallback"));
     context.currentPersona.config.custom_num_ctx = 32_768;
-    const endpoint = {
+    const endpoint = customEndpointSchema.parse({
+      extra_config: {},
       custom_endpoint_id: 5,
       connection_id: 42,
       server_id: null,
       user_id: 4,
       label: "local",
       capability: "text",
+      api_style: "openai-compatible",
       endpoint_url: "https://example.invalid/v1",
       model_name: "personal-fallback",
       model_ref_id: 9,
@@ -848,8 +923,11 @@ describe("runGenerationTurn fallback behavior", () => {
       strict_role_alternation: false,
       supports_prefix_completion: false,
       supports_assistant_prefill: false,
-    } as CustomEndpointRow;
+    });
     context.currentPersona.fallback_chain = [{ kind: "custom_endpoint", endpoint }];
+    context.textCredentialSource = "personal";
+    context.personalRoutingUserId = 4;
+    personalOverlayState = context.currentPersona;
     queuedResults.push(
       {
         status: "error",
@@ -877,6 +955,52 @@ describe("runGenerationTurn fallback behavior", () => {
     ]);
     expect(personalSavedConfigLoads).toEqual([{ userId: 4, provider: "custom:42" }]);
   });
+
+  for (const deferred of [false, true]) {
+    it.each([
+      { scope: "the owning server", serverId: 1, userId: null, allowed: true },
+      { scope: "a personal account", serverId: null, userId: 4, allowed: false },
+      { scope: "another server", serverId: 2, userId: null, allowed: false },
+    ])(`${deferred ? "deferred" : "initial"} server fallback checks an endpoint owned by $scope before loading credentials`, async ({
+      serverId,
+      userId,
+      allowed,
+    }) => {
+      const primary = makeLlm(1, "server-primary");
+      const fallback = makeLlm(2, "unused-fallback");
+      const context = deferred
+        ? makePersonalContext(primary, fallback, makeLlm(3, "personal-primary"))
+        : makeContext(primary, fallback);
+      const endpoint = customEndpointSchema.parse({
+        extra_config: {},
+        custom_endpoint_id: 5,
+        connection_id: 42,
+        server_id: serverId,
+        user_id: userId,
+        label: "local",
+        capability: "text",
+        api_style: "openai-compatible",
+        endpoint_url: "https://example.invalid/v1",
+        model_name: "custom-fallback",
+        model_ref_id: 9,
+      });
+      context.currentPersona.fallback_chain = [{ kind: "custom_endpoint", endpoint }];
+      if (deferred) queuedResults.push(personalRouteFailure());
+      queuedResults.push(personalRouteFailure(), successfulReply());
+
+      const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+      await runGenerationTurn(context, collectingSink());
+
+      const expectedModels = deferred ? ["personal-primary", "server-primary"] : ["server-primary"];
+      if (allowed) expectedModels.push("custom-fallback");
+      expect(toolLoopCalls.map((call) => call.model)).toEqual(expectedModels);
+      expect(personalSavedConfigLoads).toEqual([]);
+      expect(serverSavedConfigLoads).toEqual(allowed ? [{ serverId: 1, provider: "custom:42" }] : []);
+      expect(toolLoopCalls.filter((call) => call.model === "custom-fallback")).toEqual(
+        allowed ? [expect.objectContaining({ credentialSource: "server", apiKey: "server-key" })] : [],
+      );
+    });
+  }
 
   it("falls back from a failed personal text model to the configured server model", async () => {
     const context = makePersonalContext(
@@ -1323,6 +1447,69 @@ describe("runGenerationTurn fallback behavior", () => {
     expect(toolLoopCalls.map((call) => call.model)).toEqual(["personal-primary", "server-fallback"]);
   });
 
+  it("resolves a cross-provider fallback against the user's key on a personal-routed turn", async () => {
+    const context = makeContext(makeLlm(1, "primary-model"), makeLlm(2, "deepseek-fallback", "deepseek"));
+    context.textCredentialSource = "personal";
+    (context as unknown as { personalRoutingUserId: number }).personalRoutingUserId = 4;
+    queuedResults.push(
+      {
+        status: "error",
+        streamResults: [{ status: "error", data: { type: "rate_limit", code: "429", message: "rate limited" } }],
+        personaResponses: [],
+      },
+      {
+        status: "completed",
+        streamResults: [{ status: "completed", accumulatedText: "ok" }],
+        personaResponses: [{ personaName: "Tomori", text: "ok", personaId: 10, personaLineageId: 100 }],
+      },
+    );
+    const sink: ChatResponseSink = {
+      emitStreamResult: async () => undefined,
+      emitError: async () => undefined,
+      finalize: async () => undefined,
+    };
+
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    await runGenerationTurn(context, sink);
+
+    expect(toolLoopCalls.map((call) => call.model)).toEqual(["primary-model", "deepseek-fallback"]);
+    // The server's saved DeepSeek config must never be consulted here, or the
+    // user's chain would spend the server owner's key.
+    expect(personalSavedConfigLoads).toEqual([{ userId: 4, provider: "deepseek" }]);
+  });
+
+  it("skips a cross-provider fallback the user has no personal key for", async () => {
+    const context = makeContext(makeLlm(1, "primary-model"), makeLlm(2, "deepseek-fallback", "deepseek"));
+    context.textCredentialSource = "personal";
+    (context as unknown as { personalRoutingUserId: number }).personalRoutingUserId = 4;
+    personalKeyAvailable = false;
+    const emittedErrors: unknown[] = [];
+    queuedResults.push({
+      status: "error",
+      streamResults: [{ status: "error", data: { type: "rate_limit", code: "429", message: "rate limited" } }],
+      personaResponses: [],
+    });
+    const sink: ChatResponseSink = {
+      emitStreamResult: async (result) => {
+        emittedErrors.push(result);
+      },
+      emitError: async (error) => {
+        emittedErrors.push(error);
+      },
+      finalize: async () => undefined,
+    };
+
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    await runGenerationTurn(context, sink);
+
+    // Only the primary runs: the unusable entry leaves the pool rather than
+    // falling through to the server's key.
+    expect(toolLoopCalls.map((call) => call.model)).toEqual(["primary-model"]);
+    expect(personalSavedConfigLoads).toEqual([{ userId: 4, provider: "deepseek" }]);
+    expect(emittedErrors).toHaveLength(1);
+    expect(fallbackNoticeCalls).toHaveLength(0);
+  });
+
   it("deletes the timed-out primary's partial message when a fallback succeeds", async () => {
     const primaryModel = makeLlm(1, "primary-model");
     const fallbackModel = makeLlm(2, "fallback-model");
@@ -1331,6 +1518,8 @@ describe("runGenerationTurn fallback behavior", () => {
     const deletedWebhookMessageIds: string[] = [];
     (context as unknown as { responseTarget?: unknown }).responseTarget = {
       webhook: {
+        id: "webhook_1",
+        token: "synthetic_token",
         deleteMessage: async (messageId: string) => {
           deletedWebhookMessageIds.push(messageId);
         },
@@ -1371,8 +1560,8 @@ describe("runGenerationTurn fallback behavior", () => {
       fallbackSuccess,
     );
     queuedDeliveries.push(
-      [{ messageId: "partial_1", channelId: "channel_1", isWebhook: true }],
-      [{ messageId: "fallback_1", channelId: "channel_1", isWebhook: true }],
+      [{ messageId: "partial_1", channelId: "channel_1", webhookId: "webhook_1" }],
+      [{ messageId: "fallback_1", channelId: "channel_1", webhookId: "webhook_1" }],
     );
 
     const { runGenerationTurn } = await import("@/utils/chat/generationTurn");

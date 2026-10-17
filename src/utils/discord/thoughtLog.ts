@@ -363,7 +363,7 @@ export async function sendThoughtLogEmbed({
       const identity = await resolveThoughtLogOwnerIdentity(owner, thoughtLogChannel as BaseGuildTextChannel);
 
       if (webhookResult.webhook && identity?.username) {
-        await sendWebhookMessagesWithIdentity(webhookResult.webhook, payloads, identity, thoughtLogChannel.id);
+        await sendWebhookMessagesWithIdentity(webhookResult.webhook, payloads, identity);
       } else {
         for (const payload of payloads) {
           await thoughtLogChannel.send(payload);

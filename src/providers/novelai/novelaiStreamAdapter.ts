@@ -2091,37 +2091,37 @@ export class NovelaiStreamAdapter extends BaseStreamAdapter {
 
     const errorMessage = error.message.toLowerCase();
     if (errorCode === "400" && (errorMessage.includes("recaptcha") || errorMessage.includes("trial generation"))) {
-      messageKey = "400_trial_message";
+      messageKey = "genai.novelai.400_trial_message";
     } else {
       switch (error.type) {
         case "rate_limit":
-          messageKey = "429_default_message";
+          messageKey = "genai.novelai.429_default_message";
           break;
         case "timeout":
-          messageKey = "504_default_message";
+          messageKey = "genai.novelai.504_default_message";
           break;
         case "provider_overloaded":
-          messageKey = "503_default_message";
+          messageKey = "genai.novelai.503_default_message";
           break;
         case "api_error":
           if (errorCode === "400") {
-            messageKey = "400_default_message";
+            messageKey = "genai.novelai.400_default_message";
           } else if (errorCode === "401") {
-            messageKey = "401_default_message";
+            messageKey = "genai.novelai.401_default_message";
           } else if (errorCode === "402") {
-            messageKey = "402_default_message";
+            messageKey = "genai.novelai.402_default_message";
           } else {
-            messageKey = "unknown_default_message";
+            messageKey = "genai.novelai.unknown_default_message";
           }
           break;
         default:
-          messageKey = "unknown_default_message";
+          messageKey = "genai.novelai.unknown_default_message";
           break;
       }
     }
 
     // Upstream text stays in the operator log (see StreamErrorUi); the message only picked the key.
-    return `Error Code ${formatProviderErrorCodeForDisplay(errorCode)}: ${localizer(locale, `genai.novelai.${messageKey}`)}`;
+    return `Error Code ${formatProviderErrorCodeForDisplay(errorCode)}: ${localizer(locale, messageKey)}`;
   }
 
   /**

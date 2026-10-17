@@ -49,25 +49,42 @@ or interrupt arrives.
 `StreamUiUpdater.sendSinglePayload()` routes messages through one of two channels:
 
 - **Webhook delivery:** Used when alter personas or render-modifier identity overrides are active.
-  The updater routes sends to `sendWebhookMessageWithIdentity()` with persona avatars and names.
-  The initial message answering a source message sends a standalone reply notice via
-  `sendWebhookReplyNotice()`. Invalid webhook errors (Discord codes 10015 and 50027) trigger cache
+  The updater routes sends through `dispatchWebhookWithIdentity()` with persona avatars and names.
+  The initial message answering a source message sends a standalone reply notice built by
+  `buildWebhookReplyNoticePayload()` under the same selected identity. Invalid webhook errors (Discord codes 10015 and 50027) trigger cache
   invalidation and retry with a recreated webhook.
 - **Bot messages:** Used for standard bot personas via `channel.send()` or `message.reply()`.
+
+`sendWebhookMessageWithIdentity()` and its batch variant use the managed pool dispatcher in
+`webhookCore.ts`. Local avatars reuse verified image assignments across threads; a deferred avatar
+PATCH can create an additional slot or deliver with Discord's generic avatar. Local-avatar selection
+and sending hold one parent-channel lock, including the reply notice and its following body.
+HTTPS overrides bypass that lock, and lifecycle lookup uses separate coordination.
+The dispatch result includes the actual webhook ID and delivered identity; continuity records that
+identity, including a generic-avatar fallback. Avatar fallback is decided before
+the send operation; an uncertain POST failure propagates without another avatar-recovery send.
 
 After each successful webhook send, `recordChannelDeliveredWebhookIdentity()` records the author identity
 in `src/utils/discord/stream/channelDeliveryContinuity.ts`. Subsequent artifacts in the turn, such
 as sticker expressions and fallback notices, read this record so their messages group under the same
-author. Persona webhook posts outside the stream (tool notices, generated media, voice messages)
-go through `src/utils/discord/webhook/personaPost.ts` and record themselves the same way. Directly
+author. Persona webhook posts outside the stream (tool notices, generated media, welcome and
+reminder posts) go through `src/utils/discord/webhook/personaPost.ts` and record themselves the same way. Directly
 after the same persona's line they reuse its identity; otherwise they show the base appearance and
 join the sprite alternation, so the next sprite cannot merge under the post's avatar. Lines where
 the persona speaks outside the stream (`/impersonate` and the reply tool) take the stream's own
 alternation for their sprite or base appearance and record themselves too. The payload's reference
 is recorded in `context.deliveredMessageRefs` so the chat pipeline can delete partial output if a
-generation attempt is superseded. Successful ordinary bot sends, including notice fallbacks after a
+generation attempt is superseded. Each reference carries the authoring webhook ID; button expiry,
+reply-notice cleanup, and superseded-message deletion resolve that ID instead of assuming the primary
+webhook sent the message. Successful ordinary bot sends, including notice fallbacks after a
 webhook failure, call `recordChannelDeliveredBotMessage()` to clear the previous webhook identity.
 Failed sends leave the last successful delivery intact.
+
+Native voice uses the same persona-post identity resolution, then builds its multipart REST request
+from the pool's selected webhook. It records the delivered identity and webhook ID; a successful
+bot fallback clears webhook continuity. Expressions pass pool selection to their single-attempt
+REST transport and record the selected identity, including the generic avatar. Only a refused
+rate-limited POST can be retried; an uncertain outcome blocks another expression send that turn.
 
 ## Rendered markdown tables
 

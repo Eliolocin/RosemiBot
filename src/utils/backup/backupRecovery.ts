@@ -15,7 +15,7 @@ import {
 async function* scanBackupCredentials(dumpPath: string): AsyncGenerator<{ ciphertext: Buffer; version: number }> {
   const input = createReadStream(dumpPath, { encoding: "utf8" });
   const lines = createInterface({ input, crlfDelay: Number.POSITIVE_INFINITY });
-  let copy: { target?: EncryptedColumn; columns: string[] } | undefined;
+  let copy: { targets: EncryptedColumn[]; columns: string[] } | undefined;
   try {
     for await (const line of lines) {
       if (copy) {
@@ -23,26 +23,27 @@ async function* scanBackupCredentials(dumpPath: string): AsyncGenerator<{ cipher
           copy = undefined;
           continue;
         }
-        if (!copy.target) continue;
+        if (copy.targets.length === 0) continue;
         const fields = line.split("\t");
         if (fields.length !== copy.columns.length) throw new Error("Malformed COPY row.");
-        const ciphertext = fields[copy.columns.indexOf(copy.target.column)];
-        const pointerIndex = copy.columns.indexOf("is_main_key_pointer");
-        if (ciphertext === "\\N" || (copy.target.table === "api_key_rotation" && fields[pointerIndex] === "t"))
-          continue;
-        // COPY escapes the bytea backslash, so pg_dump writes two backslashes before x.
-        if (!/^\\\\x(?:[0-9a-fA-F]{2})+$/.test(ciphertext)) throw new Error("Unsupported ciphertext encoding.");
-        const versionIndex = copy.columns.indexOf("key_version");
-        const tag = versionIndex < 0 || fields[versionIndex] === "\\N" ? null : Number(fields[versionIndex]);
-        const version = storedKeyVersion(tag);
-        yield { ciphertext: Buffer.from(ciphertext.slice(3), "hex"), version };
+        for (const target of copy.targets) {
+          const ciphertext = fields[copy.columns.indexOf(target.column)];
+          const pointerIndex = copy.columns.indexOf("is_main_key_pointer");
+          if (ciphertext === "\\N" || (target.table === "api_key_rotation" && fields[pointerIndex] === "t")) continue;
+          // COPY escapes the bytea backslash, so pg_dump writes two backslashes before x.
+          if (!/^\\\\x(?:[0-9a-fA-F]{2})+$/.test(ciphertext)) throw new Error("Unsupported ciphertext encoding.");
+          const versionIndex = copy.columns.indexOf("keyVersion" in target ? target.keyVersion : "key_version");
+          const tag = versionIndex < 0 || fields[versionIndex] === "\\N" ? null : Number(fields[versionIndex]);
+          const version = storedKeyVersion(tag);
+          yield { ciphertext: Buffer.from(ciphertext.slice(3), "hex"), version };
+        }
         continue;
       }
       const match = line.match(/^COPY public\."?([a-z_]+)"? \((.+)\) FROM stdin;$/);
       if (match) {
         const columns = match[2].split(", ").map((column) => column.replaceAll('"', ""));
-        const target = ENCRYPTED_COLUMNS.find((entry) => entry.table === match[1] && columns.includes(entry.column));
-        copy = { target, columns };
+        const targets = ENCRYPTED_COLUMNS.filter((entry) => entry.table === match[1] && columns.includes(entry.column));
+        copy = { targets, columns };
       } else if (
         /^(?:COPY|INSERT INTO) /i.test(line) &&
         ENCRYPTED_COLUMNS.some((entry) => line.includes(entry.table))

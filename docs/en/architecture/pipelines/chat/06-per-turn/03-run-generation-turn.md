@@ -25,6 +25,14 @@ Prepare sink and generation plan
 
 `buildGenerationPlan()` orders the primary and configured fallback models. An enabled randomizer can
 promote a pool member to lead; key rotation tries available credentials before advancing models.
+Cross-provider fallbacks use saved credentials from the turn's scope. Personal turns look up only
+the user's saved providers and omit entries without a key; server credentials become available only
+through the deferred server route.
+
+Custom endpoint fallbacks must belong to the route's user or server before generation loads a saved
+key. Server persona loaders resolve stored endpoint IDs without enforcing ownership, so generation
+checks both owner fields: personal endpoints have that user and no server; server endpoints have
+that server and no user. Credential lookup uses the route owner after this check.
 
 ### Deferred server route fallback
 
@@ -62,6 +70,10 @@ before the next attempt:
 
 ## Constraints and rationale
 
+Each generation attempt owns its credential source. Personal attempts use the user's saved key and
+bypass server rotation queries and retries. Deferred server attempts use server credentials and
+rotation only after server admission succeeds.
+
 - **Failover effects**: cleanup does not roll back tool writes, external requests, or independent tool
   messages. Off starts a new tool history on replacement attempts. With Response Drafting On, shared
   history and successful-request identities survive fallback, preventing identical effects from replaying.
@@ -90,9 +102,16 @@ failure. With `Tool Calls` unchecked, response review omits tool definitions, co
 the correction count and the `tool_use` finding category, and skips proposed-call reviews. Coverage
 records the selection; intentionally omitted context cannot qualify for calibrated Decision skipping.
 Incomplete required evidence, a candidate containing a credential-shaped string (`containsCredential`,
-not the log redactor's `key: value` heuristic, which matches ordinary prose), or tool arguments that
-redaction would alter make review unavailable, and the trace category names the gap. Inherited reviewers use the
-actual author attempt's model and key; pinned reviewers revalidate their owned registration and credentials.
+not the log redactor's `key: value` heuristic, which matches ordinary prose), or tool arguments requiring
+credential or user-info redaction make review unavailable, and the trace category names the gap.
+The packet applies the same credential-shape patterns to admitted prose, tool descriptions and rule
+reports. Structured tool arguments, outcomes and rule reports also mask values under credential keys;
+the proposed-call gate refuses arguments changed by either check. Log-only heuristics do not alter
+reviewer evidence.
+Proposed voice-message arguments retain the script and delivery instructions for review, while
+diagnostic storage and completed-call evidence retain only their character counts; submitted user-info
+values remain excluded from review. Inherited reviewers use the actual author attempt's model and key;
+pinned reviewers revalidate their owned registration and credentials.
 Either way the request follows the reviewer provider's saved `thinking_level` and asks for the chat
 reply budget, because a reasoning model spends its thinking from the output allowance before the JSON
 verdict. Anthropic ignores the level: its structured call forces a tool, which the API refuses
@@ -109,7 +128,8 @@ input is a `text` string. Its output (structured content, JSON text or plain tex
 to the reviewer as `<prose_linter_report advisory="true">` and forces a detailed review. Raw output
 cannot reach author feedback, memory or logs. `getGuildMCPRouting` excludes `prose_linter`
 registrations, so the author never sees or dispatches their tools. Checker failure proceeds to review;
-an empty report cannot approve prose.
+an empty report cannot approve prose. A binding whose registration is disabled or removed acts as no
+checker: it logs no error and does not force review.
 
 Decision routing can skip detailed review only with validated calibration for the exact model and
 response or tool rubric. The registry is empty, so selections remain visibly inactive and make no

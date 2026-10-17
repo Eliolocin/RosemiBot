@@ -1,3 +1,9 @@
+import type { Client } from "discord.js";
+import { createHash } from "node:crypto";
+import { encryptApiKey } from "@/utils/security/crypto";
+import { saveSpeechVoiceBinding, loadSpeechVoiceBinding } from "@/utils/db/repositories/SpeechRepository";
+import { importAlterPreset } from "@/utils/persona/importAlterPreset";
+import { embedMetadataInPNG, extractMetadataFromPNG } from "@/utils/image/pngMetadata";
 /**
  * Regression harness - persona preset imports.
  *
@@ -6,7 +12,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { PresetExportData } from "@/types/preset/presetExport";
-import { presetRepository } from "@/utils/db/repositories";
+import { presetRepository, personaRepository } from "@/utils/db/repositories";
 import { FIXTURE_IDS, cleanupFixtures, insertFixtures, type FixtureRefs } from "./setup/fixtures";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
 
@@ -20,6 +26,92 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Preset import - regression", () => {
 
   afterAll(async () => {
     await cleanupFixtures(testSql);
+  });
+
+  it("round-trips bounded voice descriptions and priority through PNG and JSON for main and alter imports", async () => {
+    await personaRepository.setVoiceConfig(refs.personaId, {
+      speech_voice_design_prompt: "Warm narration",
+      voice_source_priority: "clone",
+      speech_voice_sample_id: null,
+      speech_voice_id: "synthetic-provider-id",
+      speech_voice_name: "Synthetic",
+    });
+    const key = await encryptApiKey("synthetic-card-credential");
+    const [credential] = await testSql`
+      INSERT INTO saved_provider_configs (server_id, provider, api_key, key_version)
+      VALUES (${refs.serverId}, 'google', ${key.encrypted}, ${key.version})
+      RETURNING saved_config_id, credential_revision
+    `;
+    const identity = {
+      persona_id: refs.personaId,
+      saved_config_id: credential.saved_config_id,
+      user_saved_config_id: null,
+      credential_revision: credential.credential_revision,
+      transport: "google" as const,
+      project: "",
+      location: "",
+      prompt_hash: createHash("sha256").update("Warm narration").digest("hex"),
+    };
+    await saveSpeechVoiceBinding(identity, "voice_original_card_identity", null);
+    const exported = await presetRepository.exportPresetData(FIXTURE_IDS.serverDiscId);
+    if (!exported.success) throw new Error("Missing export");
+    expect(exported.data.data.speech_voice_design_prompt).toBe("Warm narration");
+    expect(exported.data.data.voice_source_priority).toBe("clone");
+    for (const key of ["speech_voice_sample_id", "speech_voice_id", "speech_voice_bindings", "api_key"])
+      expect(exported.data.data).not.toHaveProperty(key);
+    expect(JSON.stringify(exported.data)).not.toContain("voice_original_card_identity");
+    expect(JSON.stringify(exported.data)).not.toContain("synthetic-card-credential");
+    const png = Buffer.from(await Bun.file("src/db/seed/catalog/personas/default/default.png").arrayBuffer());
+    const payloads = [
+      JSON.parse(JSON.stringify(exported.data)),
+      extractMetadataFromPNG(embedMetadataInPNG(png, exported.data)),
+    ];
+    for (const [index, payload] of payloads.entries()) {
+      const binding = await saveSpeechVoiceBinding(identity, `voice_import_${index}`, null);
+      const validated = presetRepository.validatePresetFile(payload);
+      if (!validated.valid || !validated.data) throw new Error("Invalid portable voice");
+      const result = await presetRepository.importPresetData(FIXTURE_IDS.serverDiscId, validated.data);
+      expect(result.success).toBe(true);
+      expect(await loadSpeechVoiceBinding(identity)).toBeNull();
+      const [retired] = await testSql`
+        SELECT voice_id, pending_delete FROM speech_voice_bindings
+        WHERE speech_voice_binding_id = ${binding.speech_voice_binding_id}
+      `;
+      expect(retired).toEqual({ voice_id: binding.voice_id, pending_delete: true });
+      const alter = await importAlterPreset({
+        client: {} as Client,
+        guild: null,
+        serverDiscId: FIXTURE_IDS.serverDiscId,
+        presetData: { ...validated.data, tomori_nickname: `Juno ${index}` },
+        identityMode: "fork",
+        avatarImageBuffer: null,
+      });
+      expect(alter.ok).toBe(true);
+      if (!alter.ok) throw new Error("Alter import failed");
+      expect(await testSql`SELECT * FROM speech_voice_bindings WHERE persona_id = ${alter.personaId}`).toHaveLength(0);
+      for (const personaId of [refs.personaId, alter.personaId]) {
+        const [voice] = await testSql`SELECT * FROM persona_voice_configs WHERE persona_id = ${personaId}`;
+        expect(voice).toMatchObject({
+          speech_voice_design_prompt: "Warm narration",
+          voice_source_priority: "clone",
+          speech_voice_sample_id: null,
+          speech_voice_id: null,
+        });
+        const reexported = await presetRepository.exportPresetData(FIXTURE_IDS.serverDiscId, personaId);
+        expect(reexported.success && reexported.data.data.speech_voice_design_prompt).toBe("Warm narration");
+      }
+      await testSql`DELETE FROM personas WHERE persona_id = ${alter.personaId}`;
+    }
+    expect(
+      presetRepository.validatePresetData({ ...exported.data.data, speech_voice_design_prompt: "x".repeat(1001) })
+        .valid,
+    ).toBe(false);
+    const legacy = { ...exported.data.data };
+    delete legacy.speech_voice_design_prompt;
+    delete legacy.voice_source_priority;
+    expect((await presetRepository.importPresetData(FIXTURE_IDS.serverDiscId, legacy)).success).toBe(true);
+    const [voice] = await testSql`SELECT * FROM persona_voice_configs WHERE persona_id = ${refs.personaId}`;
+    expect(voice).toMatchObject({ speech_voice_design_prompt: null, voice_source_priority: "design" });
   });
 
   it("imports normalized main-branch preset trigger words into persona_configs", async () => {
@@ -158,6 +250,21 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Preset import - regression", () => {
         expect(exportResult.data.data.preset_lineage_id).toBe(presetLineageId);
         expect(exportResult.data.data.attribute_list).toEqual(["_rt_import_pointer_attr"]);
       }
+      const voicedData = {
+        ...presetData,
+        speech_voice_design_prompt: "Warm narration",
+        voice_source_priority: "clone" as const,
+      };
+      const voiced = await presetRepository.importPresetData(FIXTURE_IDS.serverDiscId, voicedData);
+      expect(voiced.success).toBe(true);
+      if (voiced.success) expect(voiced.mainPersonaIsPointer).toBe(false);
+      const [voice] =
+        await testSql`SELECT p.is_pointer, v.speech_voice_design_prompt, v.voice_source_priority FROM personas p JOIN persona_voice_configs v USING (persona_id) WHERE p.persona_id = ${refs.personaId}`;
+      expect(voice).toMatchObject({
+        is_pointer: false,
+        speech_voice_design_prompt: "Warm narration",
+        voice_source_priority: "clone",
+      });
     } finally {
       await testSql`
         UPDATE personas

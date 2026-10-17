@@ -25,6 +25,14 @@ export default {
     tools_known: `ツール: {tools}`,
     tools_empty: `ツール: 検出なし`,
     tools_unknown: `ツール: 検出状況不明`,
+    connection_failing_unauthorized:
+      "{since}から失敗中：サーバーが保存済みの認証トークンを拒否しました。失敗が24時間続くと、TomoriBotはこのMCPを無効化します。",
+    connection_failing_unreachable:
+      "{since}から失敗中：サーバーに接続できませんでした。失敗が24時間続くと、TomoriBotはこのMCPを無効化します。",
+    auto_disabled_unauthorized:
+      "サーバーが保存済みの認証トークンを24時間拒否したため、自動的に無効化されました。一度削除し、新しいトークンで再追加してください。",
+    auto_disabled_unreachable:
+      "サーバーに24時間接続できなかったため、自動的に無効化されました。再試行するには有効化してください。",
     endpoint_unavailable: `利用不可`,
     enable: `有効にする`,
     disable: `無効にする`,

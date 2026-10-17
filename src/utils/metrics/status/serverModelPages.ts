@@ -6,10 +6,7 @@ import { getDiffusionModelById } from "@/utils/image/naiDiffusionModels";
 import { getQuotaConfig } from "@/utils/quota/imageQuotaManager";
 import { getTextQuotaConfig } from "@/utils/quota/textQuotaManager";
 import { getVideoQuotaConfig } from "@/utils/quota/videoQuotaManager";
-import {
-  resolveActiveSpeechEndpoint,
-  resolveActiveTranscriptionEndpoint,
-} from "@/utils/provider/speechEndpointResolver";
+import { resolveSpeechTargets, resolveActiveTranscriptionEndpoint } from "@/utils/provider/speechEndpointResolver";
 import { formatLlmDisplayLabel } from "@/utils/provider/modelDisplay";
 import { resolveCustomEndpointForProvider } from "@/utils/provider/customEndpointService";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
@@ -56,7 +53,7 @@ export async function buildServerModelPages(
     config.embedding_model_id ? llmModelRepo.loadEmbeddingModelById(config.embedding_model_id) : Promise.resolve(null),
     config.video_model_id ? loadVideoModelById(config.video_model_id) : Promise.resolve(null),
     config.nai_diffusion_model_id ? getDiffusionModelById(config.nai_diffusion_model_id) : Promise.resolve(null),
-    resolveActiveSpeechEndpoint(tomoriState.server_id),
+    resolveSpeechTargets(tomoriState.server_id),
     resolveActiveTranscriptionEndpoint(tomoriState.server_id),
     tomoriState.vision_llm
       ? resolveCustomEndpointForProvider(
@@ -98,9 +95,14 @@ export async function buildServerModelPages(
   const embeddingModelValue = embeddingModel
     ? `${embeddingModel.codename} (${getProviderDisplayName(embeddingModel.provider)})`
     : localizer(locale, "commands.choices.none");
-  const speechModelValue = speechModel
-    ? `${speechModel.endpoint.model_name || speechModel.endpoint.label} (${speechModel.endpoint.api_style})`
-    : localizer(locale, "commands.choices.none");
+  const speechModelValues = (["design", "clone"] as const).map((mode) => {
+    const target = speechModel[mode];
+    return target
+      ? target.kind === "hosted-model"
+        ? `${target.model.codename} (${getProviderDisplayName(target.model.provider)})`
+        : `${target.endpoint.model_name || target.endpoint.label} (${target.endpoint.api_style})`
+      : localizer(locale, "commands.choices.none");
+  });
   const transcriptionModelValue = transcriptionModel
     ? `${transcriptionModel.endpoint.model_name || transcriptionModel.endpoint.label} (${transcriptionModel.endpoint.api_style})`
     : localizer(locale, "commands.choices.none");
@@ -133,8 +135,13 @@ export async function buildServerModelPages(
         inline: false,
       },
       {
-        nameKey: "commands.status.field_speech_model",
-        value: speechModelValue,
+        nameKey: "commands.config.panel.capability_tts_design",
+        value: speechModelValues[0] ?? localizer(locale, "commands.choices.none"),
+        inline: true,
+      },
+      {
+        nameKey: "commands.config.panel.capability_tts_clone",
+        value: speechModelValues[1] ?? localizer(locale, "commands.choices.none"),
         inline: true,
       },
       {

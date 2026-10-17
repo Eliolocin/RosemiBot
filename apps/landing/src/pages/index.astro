@@ -270,9 +270,25 @@ const structuredData = JSON.stringify({
         }
       };
 
+      // Smooth scrolling is slow, so the observer would report stale slides mid-flight and
+      // rapid clicks or keys would compute their target from the wrong index.
+      let navigating = false;
+      let navigationTimer: ReturnType<typeof setTimeout> | undefined;
+      const NAVIGATION_SETTLE_MS = 700;
+
+      const finishNavigation = () => {
+        clearTimeout(navigationTimer);
+        navigating = false;
+      };
+
       const showSlide = (index: number) => {
-        const slide = slides[Math.max(0, Math.min(index, slides.length - 1))];
+        const targetIndex = Math.max(0, Math.min(index, slides.length - 1));
+        const slide = slides[targetIndex];
         if (!viewport || !slide) return;
+        navigating = true;
+        clearTimeout(navigationTimer);
+        navigationTimer = setTimeout(finishNavigation, NAVIGATION_SETTLE_MS);
+        updateControls(targetIndex);
         const centeredOffset = slide.offsetLeft - (viewport.clientWidth - slide.clientWidth) / 2;
         viewport.scrollTo({ left: centeredOffset, behavior: "smooth" });
       };
@@ -297,14 +313,19 @@ const structuredData = JSON.stringify({
       }
 
       if (viewport) {
-        viewport.addEventListener("keydown", (event) => {
-          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        // Listening on the whole section keeps arrows working after focus lands on a dot or slide button.
+        viewport.closest(".showcase")?.addEventListener("keydown", (event) => {
+          const { key } = event as KeyboardEvent;
+          if (key !== "ArrowLeft" && key !== "ArrowRight") return;
           event.preventDefault();
-          showSlide(activeIndex + (event.key === "ArrowLeft" ? -1 : 1));
+          showSlide(activeIndex + (key === "ArrowLeft" ? -1 : 1));
         });
+
+        viewport.addEventListener("scrollend", finishNavigation);
 
         const observer = new IntersectionObserver(
           (entries) => {
+            if (navigating) return;
             const visible = entries.find((entry) => entry.isIntersecting);
             if (!visible) return;
             const index = slides.indexOf(visible.target as HTMLElement);

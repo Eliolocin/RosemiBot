@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import {
   downloadOpenRouterVideo,
   PWSH_HTTP_SCRIPT,
@@ -35,6 +35,26 @@ describe("OpenRouter video download bounds", () => {
     controller.abort();
     const result = await pending;
     expect(result.exitCode).not.toBe(0);
+  });
+
+  it("kills a helper process when cancellation precedes output reading", async () => {
+    const proc = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const kill = spyOn(proc, "kill");
+    const pending = readBoundedProcessOutput(proc, 1024, { maxBodyBytes: 1024, abortSignal: controller.signal });
+    try {
+      expect(kill).toHaveBeenCalled();
+      expect((await pending).exitCode).not.toBe(0);
+    } finally {
+      proc.kill();
+      await pending.catch(() => {});
+      kill.mockRestore();
+    }
   });
 
   it("downloads a third-party video anonymously, refusing one past the size cap", async () => {

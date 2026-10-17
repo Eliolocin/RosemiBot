@@ -26,6 +26,11 @@ formats that connect to TomoriBot's core pipelines.
   bridging using the Matrix Application Service API, virtual ghost users, loop prevention, and
   permission mapping.
 
+### Message proxy services
+
+- [Message-proxy integration](/architecture/integrations/message-proxy/): verification, host authorization, stable identities, and history attribution for PluralKit and PluralBuddy.
+- [PluralKit](/architecture/integrations/pluralkit/): message attestation and identity presentation.
+
 ### Specialized model services
 
 - [NovelAI Inpainting](/architecture/integrations/novelai/inpainting/): Image inpainting workflows and

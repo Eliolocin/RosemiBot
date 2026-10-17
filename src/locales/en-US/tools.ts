@@ -3,6 +3,10 @@ export default {
     execution: {
       unavailable: `The tool \`{tool}\` is unavailable under the current settings, model capabilities, or bot permissions.`,
     },
+    generate_voice_message: {
+      persona_missing: `The persona is no longer available.`,
+      stale: `The speech model, credentials, or persona voice changed during this turn. Start a new turn before generating a voice message.`,
+    },
     generate_image: {
       quota_exceeded_generic: `Image generation quota has been exceeded.`,
       user_quota_exceeded: `You have reached your daily image generation quota. {reset_info}`,

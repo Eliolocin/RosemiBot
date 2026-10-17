@@ -27,8 +27,8 @@ O TomoriBot o tratará como um novo usuário a partir de sua próxima mensagem.`
     },
     memories: {
       description: `Gerencie suas memórias pessoais de longo prazo e contexto conversacional de curto prazo.`,
+      identity_description: `Identidade de proxy para editar. Funciona mesmo com o proxy de mensagens desativado.`,
       outdated_panel: `Este painel está desatualizado. Use {command} para abrir um painel atualizado.`,
-      title: `Memórias Pessoais`,
       category_global: `Global`,
       category_persona: `Persona`,
       global_title: `Memórias Pessoais Globais`,
@@ -112,6 +112,7 @@ O TomoriBot o tratará como um novo usuário a partir de sua próxima mensagem.`
     },
     config: {
       description: `Gerencie suas preferências pessoais, privacidade, modelos e perfil.`,
+      identity_description: `Identidade de proxy para editar. Funciona mesmo com o proxy de mensagens desativado.`,
       outdated_panel: `Este painel está desatualizado. Use {command} para abrir um painel atualizado.`,
       category_profile: `Perfil`,
       category_privacy: `Privacidade`,
@@ -166,7 +167,6 @@ O TomoriBot o tratará como um novo usuário a partir de sua próxima mensagem.`
       persona_main_description: `Persona principal`,
       persona_alter_description: `Alter da persona`,
       persona_shared_lineage_description: `Nomenclatura compartilhada entre {count} personas`,
-      persona_select_truncated: `Mais {count} personas não estão listadas aqui.`,
       no_personas: `Não há personas disponíveis neste servidor.`,
       edit_persona_naming_button: `Editar Nomenclatura da Persona`,
       appearance_title: `Aparência`,
@@ -210,7 +210,7 @@ O TomoriBot o tratará como um novo usuário a partir de sua próxima mensagem.`
       models_title: `Roteamento de Modelos Pessoais`,
       models_description:
         "Substituições pessoais seguem você entre servidores. Uma capacidade definida como Padrão do Servidor usa os modelos do servidor atual em vez disso.",
-      speech_workspace_scope_direction: `TTS/STT em todo o servidor: \`/config\` > Modelos > Trocar Modelos.`,
+      speech_workspace_scope_direction: `TTS e STT em todo o servidor: \`/config\` > Modelos > Trocar Modelos.`,
       routing_text: `Texto`,
       routing_vision: `Visão`,
       routing_embedding: `Embedding`,
@@ -300,8 +300,6 @@ O TomoriBot o tratará como um novo usuário a partir de sua próxima mensagem.`
       fallbacks_modal_title: `Editar Modelos de Fallback`,
       fallback_slot_label: `Espaço de Fallback {slot}`,
       fallback_slot_desc: `Escolha o modelo de fallback para o espaço {slot}, ou selecione Nenhum.`,
-      fallback_none_option: `Nenhum (limpar este espaço)`,
-      fallback_none_desc: `Deixe este espaço de fallback vazio.`,
       randomizer_section_title: `Randomizador de Modelos`,
       randomizer_section_desc:
         "Escolha aleatoriamente entre seu modelo primário e modelos de fallback para cada resposta. Falhas continuam por esse grupo.",
@@ -318,15 +316,14 @@ O TomoriBot o tratará como um novo usuário a partir de sua próxima mensagem.`
       randomizer_disabled_heading: `Randomizador Desativado`,
       randomizer_disabled_detail: `O Randomizador de Modelos agora está desativado para {provider}.`,
       server_fallback_section_title: `Fallback com o Modelo do Servidor`,
-      server_fallback_section_desc:
-        "Use o modelo e a cota de texto deste servidor quando seu provedor pessoal não conseguir concluir uma solicitação.",
-      server_fallback_effect_on: `Eu respondo com o modelo deste servidor quando seu próprio provedor falha`,
+      server_fallback_section_desc: `Use o modelo de texto ou de fala correspondente deste servidor quando seu provedor pessoal não conseguir concluir uma solicitação. As cotas de texto do servidor continuam valendo para solicitações de texto.`,
+      server_fallback_effect_on: `Eu uso o modelo de texto ou de fala correspondente deste servidor quando seu próprio provedor falha`,
       server_fallback_effect_off: `Eu paro em vez de pegar emprestado o modelo deste servidor`,
       server_fallback_byok_notice: `Este servidor exige que os membros tragam o próprio provedor, então ele nunca empresta o modelo dele aqui`,
       server_fallback_enabled_heading: `Fallback com o Modelo do Servidor Ativado`,
-      server_fallback_enabled_detail: `Um modelo do servidor responderá quando seu provedor de texto pessoal falhar.`,
+      server_fallback_enabled_detail: `Um modelo do servidor responderá quando seu provedor pessoal de texto ou de fala falhar.`,
       server_fallback_disabled_heading: `Fallback com o Modelo do Servidor Desativado`,
-      server_fallback_disabled_detail: `As falhas do seu provedor de texto pessoal não vão mais usar um modelo do servidor como fallback.`,
+      server_fallback_disabled_detail: `As falhas do seu provedor pessoal de texto ou de fala não vão mais usar um modelo do servidor como fallback.`,
       no_text_providers_fallbacks:
         "Nenhum provedor de texto pessoal salvo encontrado. Adicione um com `/personal providers`.",
       response_modes_title: `Modos de Resposta Pessoais`,
@@ -498,8 +495,6 @@ O TomoriBot o tratará como um novo usuário a partir de sua próxima mensagem.`
     },
     profile: {
       about: {
-        style_label: `Estilo de tratamento preferido`,
-        style_description: `Seleciona uma variante de nomenclatura de uma persona; não é deduzido dos seus outros detalhes.`,
         style_masculine: `Masculino`,
         style_feminine: `Feminino`,
         style_neutral: `Neutro`,
@@ -507,32 +502,41 @@ O TomoriBot o tratará como um novo usuário a partir de sua próxima mensagem.`
     },
     deliberatetriggermode: {
       description: `Defina sua preferência pessoal de modo de gatilho deliberado (DTM).`,
-      mode_description: `Escolha como o DTM se aplica a você pessoalmente.`,
       off_option: `Desligado`,
       follow_option: `Seguir Servidor`,
       on_option: `Ligado`,
-      off_title: `Modo de Gatilho Deliberado Pessoal: Desligado`,
-      off_description: `O DTM está **desativado** para você, independentemente da configuração do servidor. Palavras-gatilho simples sempre funcionarão em suas mensagens.`,
-      follow_title: `Modo de Gatilho Deliberado Pessoal: Seguir Servidor`,
-      follow_description: `Seu comportamento de DTM agora **segue a configuração do servidor**.`,
-      on_title: `Modo de Gatilho Deliberado Pessoal: Ligado`,
-      on_description: `O DTM está **sempre ativado** para você, independentemente da configuração do servidor. Use \`@gatilho\`, menção, resposta, ou \`/respond\` para invocar o bot.`,
     },
     deliberatetoolmode: {
       description: `Defina sua preferência pessoal de modo de ferramenta deliberado.`,
-      mode_description: `Escolha como o modo de ferramenta deliberado se aplica a você pessoalmente.`,
       off_option: `Desligado`,
       follow_option: `Seguir Servidor`,
       on_option: `Ligado`,
-      off_title: `Modo de Ferramenta Deliberado Pessoal: Desligado`,
-      off_description: `O modo de ferramenta deliberado está **desativado** para você, independentemente da configuração do servidor. Ferramentas estarão disponíveis normalmente quando o modelo ativo as suportar.`,
-      follow_title: `Modo de Ferramenta Deliberado Pessoal: Seguir Servidor`,
-      follow_description: `Seu comportamento de ferramenta deliberado agora **segue a configuração do servidor**.`,
-      on_title: `Modo de Ferramenta Deliberado Pessoal: Ligado`,
-      on_description: `O modo de ferramenta deliberado está **sempre ativado** para você, independentemente da configuração do servidor. Ferramentas são omitidas a menos que sua mensagem peça deliberadamente por um comportamento baseado em ferramentas.`,
     },
     "deliberate-tool-mode": {
       description: `Defina sua preferência pessoal de modo de ferramenta deliberado.`,
+    },
+    "message-proxy": {
+      description: `Escolha um serviço de proxy de mensagens compatível para sua conta.`,
+      service_description: `Serviço de proxy a usar, ou Desligado para desativar o processamento de proxy.`,
+      instance_description: `Uma instância aprovada por quem hospeda o bot. Deixe em branco para usar a instância oficial.`,
+      none_option: `Desligado`,
+      pluralkit_option: `PluralKit`,
+      pluralbuddy_option: `PluralBuddy`,
+      pluralbuddy_unavailable_title: `PluralBuddy indisponível`,
+      pluralbuddy_unavailable_description: `A verificação de mensagens do PluralBuddy não está disponível aqui. Sua seleção não foi alterada.`,
+      instance_unavailable_title: `Instância indisponível`,
+      instance_unavailable_description: `Essa instância de proxy de mensagens não está disponível. Sua seleção não foi alterada.`,
+      already_selected_title: `Nenhuma alteração feita`,
+      already_selected_description: `Seu serviço de proxy de mensagens já está definido como **{service}**.`,
+      enabled_success_title: `Serviço de proxy de mensagens ativado`,
+      pluralkit_enabled_success_description: `**{service}** agora é o seu serviço de proxy de mensagens selecionado.
+
+Quando eu vir uma mensagem sua, esperarei cerca de {delay_seconds}s antes de responder, caso o PluralKit a exclua e republique por meio de um webhook de proxy. Na primeira vez que eu vir um membro do seu sistema, qualquer texto de biografia pública configurado no PluralKit poderá ser salvo como uma memória inicial para ele. Se o seu sistema tiver uma descrição pública, eu também a manterei para lê-la enquanto seus membros conversam comigo.`,
+      pluralbuddy_enabled_success_description: `**{service}** agora é o seu serviço de proxy de mensagens selecionado.
+
+Quando eu vir uma mensagem sua, esperarei cerca de {delay_seconds}s por uma possível republicação de proxy. O PluralBuddy confirma a republicação, a conta hospedeira e o alter, mas sua API não identifica a mensagem original. Uma republicação tardia pode ocasionalmente produzir uma segunda resposta. O TomoriBot armazena cada alter após sua primeira mensagem verificada e mantém as identidades salvas ao alternar entre serviços ou desativar o proxy.`,
+      disabled_success_title: `Serviço de proxy de mensagens desativado`,
+      disabled_success_description: `O tratamento de proxy de mensagens agora está **desativado** para sua conta. Suas mensagens serão processadas normalmente, sem esperar por uma possível republicação de proxy. Identidades e memórias armazenadas continuam disponíveis em /personal config e /personal memories.`,
     },
   },
 };

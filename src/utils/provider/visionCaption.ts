@@ -23,6 +23,7 @@ import { isCustomProvider } from "@/utils/provider/customProviderUtils";
 import { normalizeProviderName } from "@/utils/provider/providerInfoRegistry";
 import { toDeepseekApiModelName } from "@/providers/deepseek/deepseekShared";
 import { resolveVisionCaptionMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
+import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
 import {
   toZaiApiModelName,
@@ -348,7 +349,7 @@ async function callAnthropicVision(
   return text;
 }
 
-async function callOpenAiCompatibleVision(
+export async function callOpenAiCompatibleVision(
   apiKey: string,
   model: string,
   endpointUrl: string,
@@ -361,6 +362,7 @@ async function callOpenAiCompatibleVision(
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
+      ...(endpointUrl === PROVIDER_CHAT_COMPLETIONS_URLS.openrouter && buildOpenRouterAttributionHeaders()),
     },
     body: JSON.stringify({
       model,

@@ -2,6 +2,14 @@ import { buildInteractionRouteId, type ParsedInteractionRoute } from "@/utils/di
 import { parsePositiveId, parseSnowflake } from "@/utils/discord/panelRouteCodec";
 import { parseLocale } from "@/utils/discord/panelRouteTokens";
 
+export const TIMEFRAME_LABEL_KEYS: Record<StatsDashboardTimeframe, string> = {
+  today: "commands.choices.today",
+  week: "commands.choices.week",
+  month: "commands.choices.month",
+  year: "commands.choices.year",
+  all_time: "commands.choices.all_time",
+};
+
 export const STATS_ROUTE_NAMESPACE = "stats";
 export const STATS_ROUTE_VERSION = "v1";
 

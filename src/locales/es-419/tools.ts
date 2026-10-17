@@ -3,6 +3,10 @@ export default {
     execution: {
       unavailable: `La herramienta \`{tool}\` no está disponible con la configuración actual, las capacidades del modelo o los permisos del bot.`,
     },
+    generate_voice_message: {
+      persona_missing: `La persona ya no está disponible.`,
+      stale: `El modelo de voz, las credenciales o la voz de la persona cambiaron durante este turno. Inicia un nuevo turno antes de generar un mensaje de voz.`,
+    },
     generate_image: {
       quota_exceeded_generic: `Se agotó la cuota de generación de imágenes.`,
       user_quota_exceeded: `Alcanzaste tu cuota diaria de generación de imágenes. {reset_info}`,

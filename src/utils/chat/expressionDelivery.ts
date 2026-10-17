@@ -277,7 +277,8 @@ async function sendPreparedExpression(
     const webhook = await resolveWebhook(context);
     if (webhook) {
       try {
-        return { message: await sendViaWebhook(context, webhook, prepared, route.identity, beforePost), route };
+        const message = await sendViaWebhook(context, webhook, prepared, route.identity, beforePost);
+        return { message, route: { ...route, identity: message.identity } };
       } catch (error) {
         // Only a definite refusal may fall back. Any other failure might have posted the message.
         if (prepared.kind === "custom" || !(error instanceof DiscordAPIError)) throw error;
@@ -309,7 +310,7 @@ function sendViaWebhook(
   prepared: PreparedExpression,
   identity: ResolvedWebhookIdentity,
   beforePost: () => void,
-): Promise<SentExpressionMessage> {
+): ReturnType<typeof sendWebhookMessageOnce> {
   // Webhooks cannot attach native stickers, so a native sticker goes out as its media link.
   const payload = prepared.kind === "native" ? { content: prepared.sticker.url } : prepared.payload;
   return sendWebhookMessageOnce(
@@ -380,7 +381,13 @@ function recordDeliveryContinuity(
   message: SentExpressionMessage,
 ): void {
   if (route.via === "webhook" && message.webhookId) {
-    recordChannelDeliveredWebhookIdentity(context.channel.id, route.identity, message.id, route.speaker);
+    recordChannelDeliveredWebhookIdentity(
+      context.channel.id,
+      route.identity,
+      message.id,
+      route.speaker,
+      message.webhookId,
+    );
     return;
   }
   const persona = context.currentPersona;

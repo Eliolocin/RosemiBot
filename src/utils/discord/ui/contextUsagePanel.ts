@@ -22,6 +22,23 @@ import {
 } from "@/utils/text/promptInspection/contextUsage";
 import type { PromptSnapshotFormat } from "@/utils/text/promptInspection/delivery";
 
+const SNAPSHOT_BUTTON_KEYS: Record<PromptSnapshotFormat, string> = {
+  text: "commands.context.view_text_button",
+  json: "commands.context.view_json_button",
+};
+
+const SEGMENT_LABEL_KEYS: Record<ContextGrid["parts"][number]["id"], string> = {
+  instructions: "commands.context.segment_instructions",
+  persona: "commands.context.segment_persona",
+  server: "commands.context.segment_server",
+  memory: "commands.context.segment_memory",
+  people: "commands.context.segment_people",
+  conversation: "commands.context.segment_conversation",
+  tools: "commands.context.segment_tools",
+  free: "commands.context.segment_free",
+  reserved: "commands.context.segment_reserved",
+};
+
 export const CONTEXT_ROUTE_NAMESPACE = "context";
 export const CONTEXT_ROUTE_VERSION = "v1";
 
@@ -66,7 +83,7 @@ function buildSnapshotButtonRow(
       type: ComponentType.Button,
       style: ButtonStyle.Secondary,
       customId: buildContextSnapshotRouteId(personaId, format),
-      label: localizer(locale, `commands.context.view_${format}_button`),
+      label: localizer(locale, SNAPSHOT_BUTTON_KEYS[format]),
       disabled: !canViewText,
     })),
   };
@@ -97,7 +114,7 @@ function buildLegend(locale: string, grid: ContextGrid): string {
     legendLines.push(
       localizer(locale, "commands.context.legend_line", {
         emoji: part.glyph,
-        label: localizer(locale, `commands.context.segment_${part.id}`),
+        label: localizer(locale, SEGMENT_LABEL_KEYS[part.id]),
         tokens: formatTokens(locale, part.tokens),
         share: formatShare(locale, part.tokens, grid.capacityTokens),
       }),

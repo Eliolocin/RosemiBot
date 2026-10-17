@@ -97,8 +97,9 @@ export function createOpenRouterCatalog<TEntry>(source: OpenRouterCatalogSource<
   let stage: "transport" | "response" = "transport";
 
   async function fetchCatalog(): Promise<Map<string, TEntry>> {
+    const bounded = source.label === "decision" || source.label === "video" || source.label === "speech";
     const response = await fetch(source.url, {
-      ...(source.label === "decision" ? { signal: AbortSignal.timeout(30_000) } : {}),
+      ...(bounded ? { signal: AbortSignal.timeout(30_000) } : {}),
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -108,13 +109,13 @@ export function createOpenRouterCatalog<TEntry>(source: OpenRouterCatalogSource<
     httpStatus = response.status;
 
     if (!response.ok) {
-      if (source.label === "decision") await response.body?.cancel();
+      if (bounded) await response.body?.cancel();
       throw new Error(`OpenRouter ${source.label} catalog returned ${response.status}: ${response.statusText}`);
     }
 
     stage = "response";
     const parsed = source.parse(
-      source.label === "decision"
+      bounded
         ? JSON.parse((await readBoundedResponse(response, 5 * 1024 * 1024)).toString("utf8"))
         : await response.json(),
     );

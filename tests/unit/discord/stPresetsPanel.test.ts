@@ -639,7 +639,7 @@ describe("ST Presets route codec", () => {
 });
 
 describe("ST Presets panel rendering", () => {
-  it("orders selector options as + Add new Preset, None, and presets", () => {
+  it("orders selector options as None, + Add new Preset, and presets", () => {
     const presets = [makePreset(1, { is_active: true }), makePreset(2)];
     const payload = buildStPresetsPanelPayload({
       locale: "en-US",
@@ -658,13 +658,13 @@ describe("ST Presets panel rendering", () => {
     expect(serialized).toContain(localizer("en-US", "commands.st-presets.select_add"));
     expect(serialized).toContain(localizer("en-US", "commands.st-presets.selector_guidance"));
 
-    const nonePos = serialized.indexOf("None (no chat completion preset)");
+    const nonePos = serialized.indexOf(localizer("en-US", "commands.st-presets.select_none"));
     const p1Pos = serialized.indexOf("Preset 1");
     const p2Pos = serialized.indexOf("Preset 2");
-    const addPos = serialized.indexOf("+ Add new Preset");
+    const addPos = serialized.indexOf(localizer("en-US", "commands.st-presets.select_add"));
 
-    expect(addPos).toBeLessThan(nonePos);
-    expect(nonePos).toBeLessThan(p1Pos);
+    expect(nonePos).toBeLessThan(addPos);
+    expect(addPos).toBeLessThan(p1Pos);
     expect(p1Pos).toBeLessThan(p2Pos);
   });
 

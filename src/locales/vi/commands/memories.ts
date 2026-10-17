@@ -1,7 +1,6 @@
 export default {
   memories: {
     description: `Kiểm tra và quản lý bộ nhớ máy chủ, tài liệu và bộ nhớ ngắn hạn.`,
-    title: `Bộ nhớ máy chủ`,
     category_memories: `Bộ nhớ`,
     category_documents: `Tài liệu`,
     category_stm: `Ngắn hạn`,

@@ -22,7 +22,7 @@ collects:
 | Mode | What it collects |
 |---|---|
 | AI Provider (Recommended) | A provider from the catalog plus its API key, validated and encrypted as a draft. |
-| Custom Endpoint (Advanced) | The endpoint connection and one text model, registered inside the wizard. See [Custom Endpoints](#custom-endpoints). |
+| Custom Endpoint | The endpoint connection and one text model, registered inside the wizard. See [Custom Endpoints](#custom-endpoints). |
 | User BYOK (guilds only) | Nothing: the workspace keeps no provider of its own, so members must supply personal ones. |
 
 Nothing is written to the database until you press `Finish Setup`. An abandoned or expired
@@ -72,6 +72,12 @@ Use `/providers` to manage server credentials, model catalogs, and endpoint regi
 Then use `/config` > Models > Switch Models to select the shared capability assignments every
 member of the server uses. Both commands require server management permissions.
 
+Speech has separate `TTS (Voice Design)` and `TTS (Voice Clone)` selections. A hosted model or custom endpoint can fill each slot independently. Activating an Auto endpoint selects it for both; clearing one
+selection keeps the other. In Persona > Voice, choose which saved source to prioritize and edit the
+voice description at any time. If the preferred source has no saved voice or matching target, TomoriBot
+uses the other saved source.
+
+
 Individual members manage their own credentials and catalogs with `/personal providers`, then
 select personal models in `/personal config`. Personal settings follow them across every server
 where they use TomoriBot. See
@@ -80,7 +86,7 @@ where they use TomoriBot. See
 The panels are titled `Server Providers` and `Personal Providers` so ownership is clear upon
 opening.
 
-In `/config` > Models > Switch Models, you can assign models and endpoints across eight capability slots:
+In `/config` > Models > Switch Models, you can assign models and endpoints across these capability slots:
 
 - **Text**: the main chat model.
 - **Vision**: reads images when the chat model cannot.
@@ -88,7 +94,8 @@ In `/config` > Models > Switch Models, you can assign models and endpoints acros
 - **Standard Image**: standard image generation (see [Image Generation](/features/capabilities/media-generation/image-generation/)).
 - **NovelAI Image**: NovelAI image generation.
 - **Video**: video generation.
-- **TTS Endpoint**: text-to-speech voice endpoint.
+- **TTS (Voice Design)**: speaks using a saved voice description.
+- **TTS (Voice Clone)**: speaks using a reference sample or provider voice.
 - **STT Endpoint**: speech-to-text audio transcription endpoint.
 
 The first six slots choose model catalog records. The TTS and STT slots choose workspace-scoped
@@ -106,14 +113,18 @@ predicates with probabilities. Registration does not change the active chat mode
 calibration, or enable response-review skipping. These panels do not yet select a Decision model.
 
 OpenRouter is the supported native provider. Save its key, open its model dropdown, and choose
-`+ Add a Decisions Model`. Enter an ID from its verified Decision catalog. The global catalog
-includes `typesafe/jev-1.13`; additional registrations belong to their server or personal owner.
+`+ Add new Decision Model`. Enter an ID from its verified Decision catalog. The global catalog
+keeps a short list for different needs: Jev 1.13 (default), Decider V1.1 27B (low-cost bulk checks),
+Solar Decide Flash (Korean and long documents), GPT-6 Luna Decisions (largest inputs), and Mercury
+Decide Free (experimentation). These roles follow documented capabilities; accuracy and thresholds
+need testing against your own questions. The weekly catalog check offers new entries for review.
+Additional registrations belong to their server or personal owner.
 Native discovery supplies the documented input limit and prices. Chat catalogs cannot establish
 Decision support.
 
 For a custom service, choose `Add New Custom Endpoint`, then `System One compatible` or
 `OpenAI Decisions compatible` in `API Compatibility`. Save the API base URL and optional Bearer
-credential. Its model dropdown offers `+ Add a Decisions Model` and inherits that protocol. Enter
+credential. Its model dropdown offers `+ Add new Decision Model` and inherits that protocol. Enter
 the documented model ID and input token limit (at least 512). Jev, Laya, and Kev use System One
 compatibility. Existing chat-compatible and Ollama-native endpoints do not offer this action.
 
@@ -140,8 +151,8 @@ LiteLLM, vLLM, ComfyUI, local TTS/STT) as labeled provider bundles.
 
 - **Server scope**: open `/providers` for workspace endpoint registration and editing.
 - **Personal scope**: open `/personal providers` for personal model catalogs (see
-  [Personalization](/features/knowledge/personalization/#your-own-providers)). Personal speech
-  endpoints are not selected from `/personal config`.
+  [Personalization](/features/knowledge/personalization/#your-own-providers)). Personal hosted speech models are selected independently under Voice Design and Voice Clone
+  in `/personal config`; personal local speech endpoints are unsupported.
 
 A label is the user-facing menu name and groups capabilities under one bundle when they share one
 endpoint URL. It is never sent to the remote service. Capabilities served from different URLs need
@@ -159,14 +170,13 @@ To add a custom endpoint:
    they support.
 
 For TTS and STT, register the endpoint and its models in `/providers`, then choose and activate the
-endpoint in `/config` > Models > Switch Models. Those speech slots select an endpoint rather than a
-model catalog entry.
+endpoint in `/config` > Models > Switch Models. TTS slots also accept admitted Google, standard Vertex, and OpenRouter speech models.
 
 API compatibility determines the request paths and payloads the service implements, so it also
 determines which capability slots the connection prepares. Registering exact models for those slots
 is a separate step, because the protocol cannot be inferred reliably from the endpoint URL alone.
 
-`/setup`'s `Custom Endpoint (Advanced)` mode performs the same two steps inside the wizard:
+`/setup`'s `Custom Endpoint` mode performs the same two steps inside the wizard:
 `Configure Connection` saves the API compatibility, label, URL, and optional auth token behind a
 reachability check, and `Configure Text Model` registers the exact text model and its capability
 declarations. The model button stays disabled until the connection validates, and re-saving the
@@ -236,6 +246,9 @@ unsupported modes will fail at generation time.
 | Provider | Text-to-Speech | Speech-to-Text |
 |---|---|---|
 | ElevenLabs | ✅ | ✅ |
+| Google Gemini | Voice Design | No |
+| Vertex AI (standard, global) | Voice Design | No |
+| OpenRouter Fish | Voice Clone | No |
 
 Local voice engines are covered under [Self-Hosting](/self-hosting/). For built-in web search and
 URL reading, see [Tools & Extensions](/features/capabilities/tools-and-extensions/#web-search--url-reading).

@@ -28,6 +28,8 @@ import {
   buildDraftPromptModal,
   buildDraftModelModal,
   buildDraftReviewItemsModal,
+  DRAFT_CHECKER_PAGE_SIZE,
+  DRAFT_CLEAR_VALUE,
   DRAFT_REVIEW_ITEMS_FIELD,
 } from "@/utils/discord/ui/responseDraftingPanel";
 import { validateRawModalLimits } from "@/utils/discord/ui/componentsV2Limits";
@@ -487,11 +489,44 @@ it("preserves Unicode glyphs in existing configuration locale labels", () => {
   const cases: Array<[string, number]> = [
     ["commands.config.panel.channels_welcome_random_label", 0x2685],
     ["commands.config.panel.random_persona_label", 0x2685],
-    ["commands.config.panel.voice_assign.sample_ref_hint_with", 0x00b7],
-    ["commands.config.panel.voices.remove.select_placeholder", 0x2026],
     ["commands.config.panel.voices.page.sample_select_placeholder", 0x2026],
   ];
   for (const [key, codepoint] of cases) {
     expect(Array.from(localizedCopy("en-US", key), (character) => character.codePointAt(0))).toContain(codepoint);
   }
+});
+
+it("offers None for the rule checker only while one is bound, and pages the checker list without wrapping", () => {
+  const checkers = Array.from({ length: DRAFT_CHECKER_PAGE_SIZE + 1 }, (_, index) => ({
+    reference: { scope: "workspace" as const, registrationId: index + 1, toolName: `check_${index}` },
+    label: `Checker ${index}`,
+  }));
+  const checkerOptions = (
+    binding: (typeof checkers)[number]["reference"] | null,
+    start: number,
+  ): Array<{ value: string; label: string }> => {
+    const payload = buildConfigPanelPayload({
+      locale: "en-US",
+      actor: { workspaceKind: "guild", isManager: true },
+      category: "plugins",
+      page: "response-drafting",
+      personas: [createPersona({ config: { response_rule_checker_ref: binding } })],
+      selectedPersonaId: null,
+      readStatus: "fresh",
+      responseDraftingView: { ...view, checkers },
+      draftPicker: { slot: "checker", start },
+    });
+    const match = JSON.stringify(payload).match(/"customId":"[^"]*draft-checker-select[^"]*".*?"options":(\[.*?\])/);
+    return JSON.parse(match?.[1] ?? "[]");
+  };
+  const checkerValues = (binding: (typeof checkers)[number]["reference"] | null, start: number): string[] =>
+    checkerOptions(binding, start).map((option) => option.value);
+
+  expect(checkerValues(null, 0)).not.toContain(DRAFT_CLEAR_VALUE);
+  expect(checkerValues(checkers[0]?.reference ?? null, 0)[0]).toBe(DRAFT_CLEAR_VALUE);
+  expect(checkerValues(null, 0)).toContain(`page|${DRAFT_CHECKER_PAGE_SIZE}`);
+  expect(checkerOptions(null, DRAFT_CHECKER_PAGE_SIZE)).toEqual([
+    { value: String(DRAFT_CHECKER_PAGE_SIZE), label: `Checker ${DRAFT_CHECKER_PAGE_SIZE}` },
+    { value: "page|0", label: localizedCopy("en-US", "general.pagination.previous") },
+  ]);
 });

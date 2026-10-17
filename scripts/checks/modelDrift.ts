@@ -1,15 +1,16 @@
 import { appendFile, writeFile } from "node:fs/promises";
 import ts from "typescript";
-import { imageSections, llmSections, videoSections } from "@/db/seed/catalog/models";
+import { decisionSections, imageSections, llmSections, videoSections } from "@/db/seed/catalog/models";
+import { parseOpenRouterDecisionModelList } from "@/utils/cache/openrouterDecisionModelCache";
 import {
   MAX_ACTIVE_ROWS_PER_PROVIDER,
   MODEL_DRIFT_TODO,
   REQUIRED_ALTERNATION_PROVIDERS,
   REQUIRED_PREFIX_PROVIDERS,
 } from "@/db/seed/catalog/modelSeed";
-import type { ImageInput, LlmInput, VideoInput } from "@/db/seed/catalog/types";
+import type { DecisionInput, ImageInput, LlmInput, VideoInput } from "@/db/seed/catalog/types";
 
-export type ModelTable = "llmSections" | "imageSections" | "videoSections";
+export type ModelTable = "llmSections" | "imageSections" | "videoSections" | "decisionSections";
 export interface SourceModel {
   id: string;
   family?: string;
@@ -19,8 +20,9 @@ export interface SourceModel {
   release_date?: string;
   modalities?: { input?: string[]; output?: string[] };
   cost?: { input?: number; output?: number };
+  limit?: { input: number };
 }
-type SourceCatalog = Record<string, { models: Record<string, SourceModel> }>;
+type SourceCatalog = Record<string, { models: Record<string, SourceModel>; rejected?: string[] }>;
 export interface Candidate {
   provider: string;
   table: ModelTable;
@@ -43,6 +45,7 @@ interface Policy {
 
 /** models.dev: a community-maintained, open-source database of model prices, limits, and capabilities. */
 const SOURCE_URL = "https://models.dev/api.json";
+const DECISION_SOURCE_URL = "https://openrouter.ai/api/v1/models?output_modalities=decisions";
 const CATALOG_URL = new URL("../../src/db/seed/catalog/models.ts", import.meta.url);
 const SEEN_URL = new URL("../data/modelDriftSeen.json", import.meta.url);
 const REJECT_NON_CHAT =
@@ -67,7 +70,7 @@ export function seenKey(entry: Pick<SeenEntry, "provider" | "table" | "codename"
 /** Reads a table's catalog rows; tests pass a frozen snapshot so the source fixture never goes stale. */
 export type CatalogLookup = (table: ModelTable) => Array<Pick<LlmInput, "provider" | "codename">>;
 
-function catalogRows(table: ModelTable): Array<LlmInput | ImageInput | VideoInput> {
+function catalogRows(table: ModelTable): Array<LlmInput | ImageInput | VideoInput | DecisionInput> {
   switch (table) {
     case "llmSections":
       return llmSections.flatMap((section) => section.rows);
@@ -75,7 +78,27 @@ function catalogRows(table: ModelTable): Array<LlmInput | ImageInput | VideoInpu
       return imageSections.flatMap((section) => section.rows);
     case "videoSections":
       return videoSections.flatMap((section) => section.rows);
+    case "decisionSections":
+      return decisionSections.flatMap((section) => section.rows);
   }
+}
+
+export function decisionSource(payload: unknown): SourceCatalog[string] {
+  const entries = parseOpenRouterDecisionModelList(payload);
+  const models: SourceModel[] = entries.map((entry) => ({
+    id: entry.id,
+    modalities: { input: entry.architecture.input_modalities, output: entry.architecture.output_modalities },
+    limit: { input: entry.context_length },
+    cost: { input: entry.pricing.prompt * 1_000_000, output: entry.pricing.completion * 1_000_000 },
+  }));
+  const valid = new Set(entries.map((entry) => entry.id));
+  // The shared parser rejects undocumented limits and prices, so drift cannot admit rows runtime discovery rejects.
+  const rejected = (payload as { data: unknown[] }).data.flatMap((entry) =>
+    entry && typeof entry === "object" && "id" in entry && typeof entry.id === "string" && !valid.has(entry.id)
+      ? [entry.id]
+      : [],
+  );
+  return { models: Object.fromEntries(models.map((model) => [model.id, model])), rejected };
 }
 
 function generationOf(id: string): number {
@@ -155,6 +178,13 @@ function carriedCodenames(catalog: CatalogLookup, table: ModelTable, provider: s
   );
 }
 
+function supportsMediaModel(provider: string, model: SourceModel, kind: "image" | "video"): boolean {
+  if (!outputIs(model, kind) || REJECT_MEDIA.test(model.id)) return false;
+  if (provider === "openrouter") return true;
+  if (kind === "video") return provider === "google" && model.id.startsWith("veo-");
+  return (provider === "google" || provider === "vertex") && model.id.startsWith("gemini-");
+}
+
 function mediaCandidates(
   models: SourceModel[],
   provider: string,
@@ -162,15 +192,9 @@ function mediaCandidates(
   catalog: CatalogLookup,
 ): SourceModel[] {
   const kind = table === "imageSections" ? "image" : "video";
-  if (kind === "video" && provider !== "google" && provider !== "openrouter") return [];
-  if (kind === "image" && provider !== "google" && provider !== "openrouter") return [];
   const carried = carriedCodenames(catalog, table, provider);
   return models.filter(
-    (model) =>
-      outputIs(model, kind) &&
-      !REJECT_MEDIA.test(model.id) &&
-      !carriedHas(carried, provider, model.id) &&
-      (provider !== "google" || (kind === "image" ? model.id.includes("-image") : model.id.startsWith("veo-"))),
+    (model) => supportsMediaModel(provider, model, kind) && !carriedHas(carried, provider, model.id),
   );
 }
 
@@ -221,7 +245,7 @@ function isSeenEntries(value: unknown): value is SeenEntry[] {
       const entry = item as Record<string, unknown>;
       return (
         typeof entry.provider === "string" &&
-        ["llmSections", "imageSections", "videoSections"].includes(entry.table as string) &&
+        ["llmSections", "imageSections", "videoSections", "decisionSections"].includes(entry.table as string) &&
         typeof entry.codename === "string" &&
         (entry.releaseDate === null || typeof entry.releaseDate === "string") &&
         typeof entry.offeredAt === "string"
@@ -261,6 +285,12 @@ export function findCandidates(
       }
     }
   }
+  const carriedDecisions = carriedCodenames(catalog, "decisionSections", "openrouter");
+  for (const model of Object.values(source["openrouter-decisions"]?.models ?? {})) {
+    if (!model.modalities?.output?.includes("decisions") || carriedDecisions.has(model.id)) continue;
+    const candidate: Candidate = { provider: "openrouter", table: "decisionSections", model, codename: model.id };
+    if (!seenKeys.has(seenKey(candidate))) candidates.push(candidate);
+  }
   return { candidates, free, covered };
 }
 
@@ -281,6 +311,12 @@ function renderRow(candidate: Candidate): string {
       if (typeof model.cost?.input === "number") row.inputPricePerMillion = model.cost.input;
       if (typeof model.cost?.output === "number") row.outputPricePerMillion = model.cost.output;
     }
+  } else if (table === "decisionSections") {
+    if (!model.limit) throw new Error(`Missing decision input limit: ${codename}`);
+    row.inputTokenLimit = model.limit.input;
+    if (model.modalities?.input?.includes("image")) row.seesImages = true;
+    row.inputPricePerMillion = model.cost?.input;
+    row.outputPricePerMillion = model.cost?.output;
   }
   row.desc = MODEL_DRIFT_TODO;
   const reviewFlags =
@@ -297,7 +333,9 @@ function renderRow(candidate: Candidate): string {
         ]
       : table === "imageSections"
         ? ["isFree", "isUncensored"]
-        : ["isFree"];
+        : table === "decisionSections"
+          ? ["seesImages"]
+          : ["isFree"];
   const fields = Object.entries(row)
     .filter(([key]) => !reviewFlags.includes(key))
     .map(([key, value]) => `        ${key}: ${JSON.stringify(value)},`);
@@ -306,6 +344,7 @@ function renderRow(candidate: Candidate): string {
 }
 
 function sectionFor(table: ModelTable, provider: string): string {
+  if (table === "decisionSections") return "OpenRouter Decisions";
   if (table === "llmSections") {
     return (
       {
@@ -321,6 +360,7 @@ function sectionFor(table: ModelTable, provider: string): string {
     );
   }
   if (table === "imageSections") {
+    if (provider === "vertex") return "Vertex AI Gemini Image Generation Models";
     return provider === "google" ? "Google Gemini Image Generation Models" : "OpenRouter Image Generation Models";
   }
   return provider === "google" ? "Google Veo Video Generation Models" : "OpenRouter Video Generation Models";
@@ -373,14 +413,23 @@ function reviewLabel(provider: string, table: ModelTable, codename: string): str
   return `\`${codename}\` (${provider}${media})`;
 }
 
-function sourceAdvisories(source: SourceCatalog): { absent: string[]; unsupportedMedia: string[] } {
+export function sourceAdvisories(source: SourceCatalog): {
+  absent: string[];
+  unsupportedMedia: string[];
+  rejectedDecisions?: string[];
+} {
   const absent: string[] = [];
-  for (const table of ["llmSections", "imageSections", "videoSections"] as const) {
+  for (const table of ["llmSections", "imageSections", "videoSections", "decisionSections"] as const) {
     for (const row of catalogRows(table)) {
       // other-model is the user-supplied OpenRouter codename slot, so no source can ever list it.
       if (row.isDeprecated || row.codename === "other-model") continue;
-      const sourceKey = row.provider === "vertexexpress" ? "google-vertex" : POLICIES[row.provider]?.source;
-      if (!sourceKey) continue;
+      const sourceKey =
+        table === "decisionSections"
+          ? "openrouter-decisions"
+          : row.provider === "vertexexpress"
+            ? "google-vertex"
+            : POLICIES[row.provider]?.source;
+      if (!sourceKey || !source[sourceKey]) continue;
       const ids = source[sourceKey].models;
       const bare = row.provider === "zai" ? row.codename.replace(/^zai\//, "") : row.codename;
       if (!ids[bare] && !Object.values(ids).some((model) => model.id === bare)) {
@@ -396,11 +445,12 @@ function sourceAdvisories(source: SourceCatalog): { absent: string[]; unsupporte
     for (const model of Object.values(source[sourceKey].models)) {
       if (!outputIs(model, "image") && !outputIs(model, "video")) continue;
       const table = outputIs(model, "video") ? "videoSections" : "imageSections";
+      if (supportsMediaModel(provider, model, table === "videoSections" ? "video" : "image")) continue;
       const carried = catalogRows(table).some((row) => row.provider === provider && row.codename === model.id);
       if (!carried) unsupportedMedia.push(reviewLabel(provider, table, model.id));
     }
   }
-  return { absent, unsupportedMedia };
+  return { absent, unsupportedMedia, rejectedDecisions: source["openrouter-decisions"]?.rejected ?? [] };
 }
 
 const rowsLabel = (count: number): string => (count === 1 ? "1 new row" : `${count} new rows`);
@@ -475,7 +525,7 @@ export function report(
     "",
     "## Review",
     "",
-    "1. Verify each row against the provider. Fixed OpenRouter models carry a drafted fallback price; floating aliases have none.",
+    "1. Verify each row against the provider. Fixed OpenRouter chat models carry a drafted fallback price; chat aliases have none. Decision rows carry discovered input limits and prices, including aliases. Keep a Decision row only if it adds a distinct use case or replaces an existing choice. Decline overlapping drafts by deleting their rows and keeping their seen entries.",
     `2. Replace each \`${MODEL_DRIFT_TODO}\` English description, then tick its box below. Avoid "latest" in descriptions, and fix older rows a new model makes stale. Translations are optional and fall back to English.`,
     "3. Commented flags had no source evidence. Uncomment one only after verifying it, and delete the rest. `isFree` and `isUncensored` never have source metadata.",
     "4. Moving `isDefault` or `isSmartest` to a newer row is fine with a stated reason. Each provider keeps exactly one of each.",
@@ -517,9 +567,14 @@ export function report(
       "These are marked seen. Add a row by hand if one is worth carrying.",
     ),
     ...collapsible(
-      "Catalog rows missing from models.dev",
+      "Catalog rows missing from their source",
       advisories.absent,
-      "A model missing from models.dev is not evidence of retirement.",
+      "A model missing from models.dev or the OpenRouter Decision catalog is not evidence of retirement.",
+    ),
+    ...collapsible(
+      "Decision models needing valid metadata",
+      advisories.rejectedDecisions ?? [],
+      "These OpenRouter entries failed runtime discovery validation (text/decisions modalities, documented input limit, or finite nonnegative prices). They stay eligible for discovery once their metadata is corrected.",
     ),
     ...collapsible(
       "Provider media models needing implementation review",
@@ -528,7 +583,7 @@ export function report(
     ),
     "---",
     "",
-    "<sub>Opened automatically by the weekly model drift workflow, which compares the catalog against [models.dev](https://models.dev), a community database of model prices and capabilities.</sub>",
+    "<sub>Opened automatically by the weekly model drift workflow, which compares chat and media models against [models.dev](https://models.dev) and Decision models against [OpenRouter's Decision catalog](https://openrouter.ai/api/v1/models?output_modalities=decisions). All valid Decision entries, including free variants and aliases, are offered.</sub>",
   );
   return `${lines.join("\n").trimEnd()}\n`;
 }
@@ -549,10 +604,16 @@ async function main(): Promise<void> {
           return response.json();
         });
   if (!isSourceCatalog(raw)) throw new Error("models.dev catalog is missing a required provider or model id");
+  if (fixtureIndex === -1) {
+    const response = await fetch(DECISION_SOURCE_URL);
+    if (!response.ok) throw new Error(`OpenRouter Decision catalog returned ${response.status}`);
+    raw["openrouter-decisions"] = decisionSource(await response.json());
+  }
   const seenRaw: unknown = await Bun.file(SEEN_URL).json();
   if (!isSeenEntries(seenRaw)) throw new Error("Invalid model drift seen file");
   const seen = seenRaw;
   const { candidates, free, covered } = findCandidates(raw, seen);
+  for (const id of raw["openrouter-decisions"]?.rejected ?? []) console.warn(`Decision metadata rejected: ${id}`);
   for (const candidate of candidates) console.log(`${candidate.provider}\t${candidate.table}\t${candidate.codename}`);
   for (const item of covered) console.log(item);
   console.log(`Drafts: ${candidates.length}; free variants: ${free.length}; alias-covered: ${covered.length}`);

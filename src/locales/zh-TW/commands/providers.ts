@@ -120,7 +120,6 @@ export default {
     endpoint_label_url_conflict: `這個標籤屬於不同的 URL。請沿用現有的 URL，或改用不同的標籤。`,
     endpoint_unreachable: `端點沒有用那個 API 協定回應。沒有儲存任何內容。詳情：{reason}`,
     endpoint_redirect_credentials_withheld: `該端點重新導向到了另一個位址，因此未向其傳送 API 金鑰，也未儲存任何內容。請輸入伺服器最終重新導向的位址作為端點 URL。`,
-    activate_placeholder: `選擇使用中的語音或轉錄端點...`,
     activate_option_description: `{capability}端點：{name}`,
     activate_option_active_description: `[使用中] {capability}端點：{name}`,
     manage_models_placeholder: `選擇模型或功能...`,

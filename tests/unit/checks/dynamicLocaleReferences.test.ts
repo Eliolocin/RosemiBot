@@ -16,11 +16,23 @@ describe("unused locale-key audit", () => {
       "general.duration.now",
       "general.text_preview.truncated_footer",
       "commands.legal.license-only.description",
+      "genai.novelai.400_trial_message",
+      "genai.google.400_billing_default_message",
     ];
     const unused = new Set(result.unusedKeys.map(({ key }) => key));
     for (const key of protectedKeys) {
       expect(result.availableKeys.has(key)).toBe(true);
       expect(unused.has(key)).toBe(false);
     }
+  });
+
+  it("reports no unused keys across authored locales", async () => {
+    const result = await analyzeLocalizationKeys();
+    const unused = new Set(result.unusedKeys.map(({ key }) => key));
+    const failures = [...result.localeKeys].flatMap(([locale, keys]) =>
+      [...keys].filter((key) => unused.has(key)).map((key) => `${locale}:${key}`),
+    );
+    expect(failures).toEqual([]);
+    expect(result.missingKeys).toEqual([]);
   });
 });

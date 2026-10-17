@@ -7,7 +7,8 @@ import { log } from "../../utils/misc/logger";
 import { BaseTool, type ToolContext, type ToolResult, type ToolParameterSchema } from "../../types/tool/interfaces";
 import { invalidateTomoriStateCache } from "../../utils/cache/tomoriStateCache";
 import { invalidateUserCache } from "../../utils/cache/userCache";
-import { resolveUserTarget } from "@/utils/discord/targetResolver";
+import { resolveTriggererDiscordId, resolveUserTarget } from "@/utils/discord/targetResolver";
+import { getMessageProxyHostProtection } from "@/utils/messageProxy/hostProtection";
 import { renderMemoryNoticeContent, memoryServerDiscId } from "./memoryNoticeContent";
 
 /**
@@ -105,7 +106,7 @@ export class MemoryTool extends BaseTool {
     );
 
     const tomoriState = context.tomoriState;
-    const resolvedUserId = context.message?.author?.id || context.userId;
+    const resolvedUserId = resolveTriggererDiscordId(context);
     const userRow = resolvedUserId ? await userRepository.loadByDiscordId(resolvedUserId) : null;
 
     if (!tomoriState || !userRow?.user_id || !tomoriState.server_id || !tomoriState.persona_id || !resolvedUserId) {
@@ -224,7 +225,7 @@ export class MemoryTool extends BaseTool {
       }
     }
 
-    // Sanitize unknown {word} placeholders (e.g. {obonya}), so the LLM sometimes wraps
+    // Sanitize unknown {word} placeholders (e.g. {zallya}), so the LLM sometimes wraps
     // usernames in braces imitating {user}. Strip the braces so the name appears plainly.
     const memoryContent = sanitizeUnknownTemplatePlaceholders(memoryContentArg.trim());
 
@@ -385,7 +386,31 @@ export class MemoryTool extends BaseTool {
           };
         }
         const targetUserDisplayName =
-          resolvedTargetUserLabel || targetUserRow.user_nickname || targetUserRow.user_disc_id;
+          resolvedTargetUserLabel || targetUserRow.user_nickname || resolvedTargetUserId || "user";
+        const contextServerDiscId = "guild" in context.channel ? context.channel.guild.id : context.userId;
+        const messageProxyHostProtection = await getMessageProxyHostProtection(
+          resolvedTargetUserId as string,
+          contextServerDiscId,
+        );
+        if (messageProxyHostProtection.protected) {
+          log.info(
+            `Self-teach blocked: message-proxy identity ${resolvedTargetUserId} is shielded by host ${messageProxyHostProtection.hostUserDiscId} (${messageProxyHostProtection.reason})`,
+          );
+          return {
+            success: false,
+            error: `Cannot save personal memory: ${targetUserDisplayName} has privacy restrictions.`,
+            data: {
+              status: "memory_save_failed_privacy_restricted",
+              scope: "target_user",
+              reason:
+                messageProxyHostProtection.reason === "host_unresolved"
+                  ? `The host accounts for ${targetUserDisplayName} could not be resolved. I cannot save personal memories until their privacy restrictions can be checked.`
+                  : messageProxyHostProtection.reason === "host_blacklisted"
+                    ? `The host account for ${targetUserDisplayName} is blacklisted in this server. I cannot save personal memories for its message-proxy identities.`
+                    : `The host account for ${targetUserDisplayName} has full privacy enabled. I cannot save personal memories for its message-proxy identities.`,
+            },
+          };
+        }
 
         // Check if user has opted out of personalization (privacy setting)
         const { PrivacyLevel } = await import("../../types/db/schema");
@@ -461,7 +486,8 @@ export class MemoryTool extends BaseTool {
             "Critical security error: No valid server or user ID available for blacklist checking",
           );
           const targetUserIsBlacklisted =
-            (await userRepository.isBlacklisted(serverDiscId, resolvedTargetUserId as string)) ?? false;
+            ((await userRepository.isBlacklisted(serverDiscId, resolvedTargetUserId as string)) ?? false) ||
+            (await getMessageProxyHostProtection(resolvedTargetUserId as string, serverDiscId)).protected;
 
           let personalMemoryFooterKey: string;
           if (!personalizationEnabled) {

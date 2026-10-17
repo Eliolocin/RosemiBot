@@ -6,6 +6,7 @@ import {
   type ButtonComponentData,
   type ComponentInContainerData,
   type StringSelectMenuComponentData,
+  type SelectMenuComponentOptionData,
   type TextDisplayComponentData,
 } from "discord.js";
 import type { PanelReadStatus } from "@/types/discord/panel";
@@ -18,6 +19,7 @@ import {
 } from "@/utils/discord/configPanelCatalog";
 import { buildPaginationRow } from "@/utils/discord/ui/panel";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
+import { DISCORD_SELECT_OPTIONS_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { localizer } from "@/utils/text/localizer";
 import {
   buildTextPreview,
@@ -26,7 +28,8 @@ import {
   CV2_TEXT_PREVIEW_BUDGET,
 } from "@/utils/text/textPreview";
 
-export const CONFIG_VOICE_SAMPLE_PAGE_SIZE = 25;
+export const CONFIG_VOICE_SAMPLE_PAGE_SIZE = DISCORD_SELECT_OPTIONS_MAX - 1;
+export const CONFIG_VOICE_SAMPLE_ADD_VALUE = "action:add-sample";
 
 export interface ConfigVoiceSamplePreview {
   sampleId: number;
@@ -233,31 +236,23 @@ ${
 
   components.push(libraryHeader);
 
-  const selectOptions =
-    view.samples.length > 0
-      ? view.samples.map((sample, offset) => {
-          const absoluteIndex = view.start + offset;
-          const fp = computeVoiceSampleFingerprint(sample);
-          return {
-            label: safeSelectOptionText(sample.name, 100),
-            value: encodeVoiceSampleOptionValue(absoluteIndex, fp),
-            description: sample.ref_text
-              ? safeSelectOptionText(sample.ref_text.trim(), 100)
-              : sample.duration_ms > 0
-                ? `${(sample.duration_ms / 1000).toFixed(1)}s`
-                : undefined,
-            default: view.selectedIndex !== null && view.selectedIndex === absoluteIndex,
-          };
-        })
-      : [
-          {
-            label: safeSelectOptionText(
-              localizer(locale, "commands.config.panel.voices.page.empty_select_option"),
-              100,
-            ),
-            value: "none",
-          },
-        ];
+  const selectOptions: SelectMenuComponentOptionData[] = [
+    { label: localizer(locale, "commands.config.panel.voices.page.add_button"), value: CONFIG_VOICE_SAMPLE_ADD_VALUE },
+    ...view.samples.map((sample, offset) => {
+      const absoluteIndex = view.start + offset;
+      const fp = computeVoiceSampleFingerprint(sample);
+      return {
+        label: safeSelectOptionText(sample.name, 100),
+        value: encodeVoiceSampleOptionValue(absoluteIndex, fp),
+        description: sample.ref_text
+          ? safeSelectOptionText(sample.ref_text.trim(), 100)
+          : sample.duration_ms > 0
+            ? `${(sample.duration_ms / 1000).toFixed(1)}s`
+            : undefined,
+        default: view.selectedIndex !== null && view.selectedIndex === absoluteIndex,
+      };
+    }),
+  ];
 
   components.push({
     type: ComponentType.ActionRow,
@@ -274,7 +269,7 @@ ${
           150,
         ),
         options: selectOptions,
-        disabled: writesDisabled || view.samples.length === 0,
+        disabled: writesDisabled,
       },
     ],
   } satisfies ActionRowData<StringSelectMenuComponentData>);
@@ -325,13 +320,6 @@ ${
   components.push({
     type: ComponentType.ActionRow,
     components: [
-      {
-        type: ComponentType.Button,
-        style: ButtonStyle.Secondary,
-        customId: buildConfigRouteId({ action: "voice-sample-add-open", locale }),
-        label: localizer(locale, "commands.config.panel.voices.page.add_button"),
-        disabled: writesDisabled,
-      },
       {
         type: ComponentType.Button,
         style: ButtonStyle.Danger,

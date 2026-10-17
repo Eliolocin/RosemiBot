@@ -25,6 +25,7 @@ export interface ProviderPanelModel {
   decisionSettings?: { inputTokenLimit: number };
   imageSettings?: ImageEndpointSupports;
   speechSettings?: SpeechEndpointSettings;
+  speechActiveModes?: ("design" | "clone")[];
 }
 
 export interface ProviderPanelCapabilitySection {

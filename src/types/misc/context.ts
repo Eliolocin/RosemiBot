@@ -75,6 +75,7 @@ export type StructuredContextItem = {
     participants: Array<{ name: string; fields: string[] }>;
     channel: string;
     currentTime: string;
+    timezone: string;
   };
   conversationUsers?: ConversationUserReference[]; // Hidden metadata for user resolution and mention handling
   participantTargetIndex?: import("@/utils/text/participants/targetIndex").ParticipantTargetIndex;

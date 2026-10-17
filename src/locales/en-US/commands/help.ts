@@ -1,4 +1,4 @@
-﻿export default {
+export default {
   help: {
     description: `Browse setup, features, providers, memory, behavior, tools, media, and integration guides.`,
     dashboard: {
@@ -154,8 +154,6 @@
       bot_user_fallback: `the configured Matrix bot account`,
     },
     "api-key": {
-      description: `Learn how to set up API keys for AI providers`,
-      provider_description: `Choose your AI provider`,
       provider_choice_brave: `Brave Search`,
       provider_choice_google: `Google Gemini (Recommended, Free)`,
       provider_choice_deepseek: `DeepSeek`,
@@ -357,7 +355,7 @@ Enter \`{project_id}::{location}\` using {configSetup} or {configApikeySet}
         description:
           "An API key grants me access to an AI provider's model. Whatever I generate is billed to that key, so treat it like any other password. To finish setup I need one:\n> **1.** Pick a provider below to open its guide.\n> **2.** Copy the key it gives you. **Do NOT share it** with anyone, and never paste it into a channel: only into the box {setup} opens for you.\n> **3.** Run {setup} and paste the key when I ask for it.",
         picker_footer:
-          "-# The second list is optional: Brave Search adds web results, and ElevenLabs adds hosted speech. Each opens its own guide, and neither is needed to finish setup. If your endpoint isn't listed, skip the key and read **Custom Endpoints (Advanced)** in this same page.",
+          "-# If your endpoint isn't listed, skip the key and read **Custom Endpoints (Advanced)** in this same page.",
       },
       change_trigger_behavior: {
         title: `Change Trigger Behavior`,

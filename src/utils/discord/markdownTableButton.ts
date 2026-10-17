@@ -11,6 +11,7 @@ import {
 } from "discord.js";
 import { getCachedRenderedMarkdownTable } from "@/utils/text/markdownTableCache";
 import { log } from "@/utils/misc/logger";
+import { resolveAuthoringWebhook } from "@/utils/discord/webhook/fallback";
 import { localizer } from "@/utils/text/localizer";
 
 /** Custom id carried by every rendered-table "Show Markdown" button. */
@@ -90,16 +91,6 @@ async function replyWithMarkdownSource(
   });
 }
 
-/**
- * Disables the button once its collector window closes.
- *
- * Webhook-authored messages cannot be edited with the bot token, so the send path's webhook
- * is reused when the table was delivered under a persona identity.
- *
- * @param locale - Viewer locale for the (disabled) button label
- * @param webhook - Webhook that authored the message, when there was one
- * @param threadId - Thread the message lives in, when applicable
- */
 async function disableShowMarkdownButton(
   message: Message,
   locale: string,
@@ -108,13 +99,17 @@ async function disableShowMarkdownButton(
 ): Promise<void> {
   const disabledRow = createShowMarkdownButtonRow(locale, true);
 
-  if (webhook && message.webhookId) {
-    await webhook
-      .editMessage(message.id, {
+  if (message.webhookId) {
+    try {
+      const author = await resolveAuthoringWebhook(message.channel, message.webhookId, webhook);
+      if (!author) throw new Error("Authoring webhook unavailable for markdown button edit");
+      await author.editMessage(message.id, {
         components: [disabledRow],
         ...(threadId ? { threadId } : {}),
-      })
-      .catch((error: unknown) => log.warn("[MarkdownTable] Failed to disable Show Markdown button via webhook", error));
+      });
+    } catch (error) {
+      log.warn("[MarkdownTable] Failed to disable Show Markdown button via webhook", error);
+    }
     return;
   }
 
@@ -132,7 +127,6 @@ async function disableShowMarkdownButton(
  *
  * @param message - The message carrying the rendered table and its button
  * @param locale - Viewer locale for button label and notices
- * @param webhook - Webhook that authored the message, when there was one
  * @param threadId - Thread the message lives in, when applicable
  */
 export function attachShowMarkdownCollector(

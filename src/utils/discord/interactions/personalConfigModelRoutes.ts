@@ -8,9 +8,7 @@ import {
   encodeProviderPageValue,
   encodeProviderParam,
   PERSONAL_FALLBACK_PAGE_SIZE,
-  PERSONAL_MODEL_PAGE_SIZE,
   PERSONAL_PROVIDER_DIRECT_LIMIT,
-  PERSONAL_PROVIDER_PAGE_SIZE,
   QUICK_TOGGLE_CAPABILITIES,
   ROUTING_CAPABILITY_LOCALE_KEYS,
 } from "@/utils/discord/personalConfigPanelCatalog";
@@ -160,20 +158,6 @@ export async function handlePersonalConfigModelRoutes(context: PersonalConfigPos
         heading: localizer(route.locale, "commands.personal.config.write_failed_heading"),
         detail: localizer(route.locale, "commands.personal.config.write_failed_detail"),
       },
-      dependencies,
-    });
-    return true;
-  }
-
-  // Now only backs the model, provider, and fallback range choosers: the activation confirmation
-  // it was named for is gone, so the receipt reports the state, not a cancelled activation.
-  if (route.action === "model-act-cancel") {
-    await repaint(interaction, {
-      locale: route.locale,
-      scope: context.scope,
-      category: "models",
-      page: "switch",
-      panelReceipt: noChangesReceipt(route.locale),
       dependencies,
     });
     return true;
@@ -352,136 +336,6 @@ export async function handlePersonalConfigModelRoutes(context: PersonalConfigPos
     return true;
   }
 
-  if (route.action === "model-range-page") {
-    const availableModels = await dependencies.loadAvailableModelsForCapability(
-      context.scope.userId,
-      route.provider,
-      route.capability,
-      route.locale,
-    );
-
-    const start = route.chooserPage * PERSONAL_MODEL_PAGE_SIZE;
-
-    if (start % PERSONAL_MODEL_PAGE_SIZE !== 0 || (start >= availableModels.length && availableModels.length > 0)) {
-      await repaint(interaction, {
-        locale: route.locale,
-        scope: context.scope,
-        category: "models",
-        page: "switch",
-        panelReceipt: {
-          tone: "error",
-          heading: localizer(route.locale, "commands.personal.config.unavailable"),
-          detail: localizer(route.locale, "commands.personal.config.stale_warning"),
-        },
-        dependencies,
-      });
-      return true;
-    }
-
-    await repaint(interaction, {
-      locale: route.locale,
-      scope: context.scope,
-      category: "models",
-      page: "switch",
-      dependencies,
-      selectedCapability: route.capability,
-      selectedModelProvider: route.provider,
-      modelTotalCount: availableModels.length,
-    });
-    return true;
-  }
-
-  if (route.action === "model-provider-page") {
-    const rows = await dependencies.loadUserSavedProviders(context.scope.userId);
-    const displayInfo = await dependencies.loadPersonalModelDisplayInfo(context.scope.userId, rows, route.capability);
-    const providers = displayInfo.eligibleProvidersForCapability[route.capability];
-    const availableModels = await dependencies.loadAvailableModelsForCapability(
-      context.scope.userId,
-      route.provider,
-      route.capability,
-      route.locale,
-    );
-    // Counting through the renderer's own builder keeps the bound check on the list the reader is
-    // actually paging: an expanded provider contributes a page per slice, not a single entry.
-    const { entries } = buildProviderPageEntries({
-      providers,
-      expandedProvider: route.provider,
-      expandedOptionCount: availableModels.length,
-      pageSize: PERSONAL_MODEL_PAGE_SIZE,
-      locale: route.locale,
-      pageLabelKey: "commands.personal.config.provider_page_label",
-      encodeProviderValue: encodeProviderParam,
-      encodePageValue: encodeProviderPageValue,
-    });
-
-    if (route.start % PERSONAL_PROVIDER_DIRECT_LIMIT !== 0 || (route.start >= entries.length && entries.length > 0)) {
-      await repaint(interaction, {
-        locale: route.locale,
-        scope: context.scope,
-        category: "models",
-        page: "switch",
-        panelReceipt: {
-          tone: "error",
-          heading: localizer(route.locale, "commands.personal.config.unavailable"),
-          detail: localizer(route.locale, "commands.personal.config.stale_warning"),
-        },
-        dependencies,
-      });
-      return true;
-    }
-
-    await repaint(interaction, {
-      locale: route.locale,
-      scope: context.scope,
-      category: "models",
-      page: "switch",
-      dependencies,
-      selectedCapability: route.capability,
-      selectedModelProvider: route.provider,
-      modelTotalCount: availableModels.length,
-      providerStart: route.start,
-    });
-    return true;
-  }
-
-  if (route.action === "model-provider-range-open" || route.action === "model-provider-range-page") {
-    const rows = await dependencies.loadUserSavedProviders(context.scope.userId);
-    const displayInfo = await dependencies.loadPersonalModelDisplayInfo(context.scope.userId, rows, route.capability);
-    const providers = displayInfo.eligibleProvidersForCapability[route.capability];
-
-    const start =
-      route.action === "model-provider-range-open" ? route.start : route.chooserPage * PERSONAL_PROVIDER_PAGE_SIZE;
-
-    const isValidStart = start % PERSONAL_PROVIDER_DIRECT_LIMIT === 0 || start % PERSONAL_PROVIDER_PAGE_SIZE === 0;
-
-    if (!isValidStart || (start >= providers.length && providers.length > 0)) {
-      await repaint(interaction, {
-        locale: route.locale,
-        scope: context.scope,
-        category: "models",
-        page: "switch",
-        panelReceipt: {
-          tone: "error",
-          heading: localizer(route.locale, "commands.personal.config.unavailable"),
-          detail: localizer(route.locale, "commands.personal.config.stale_warning"),
-        },
-        dependencies,
-      });
-      return true;
-    }
-
-    await repaint(interaction, {
-      locale: route.locale,
-      scope: context.scope,
-      category: "models",
-      page: "switch",
-      dependencies,
-      selectedCapability: route.capability,
-      providerStart: start,
-    });
-    return true;
-  }
-
   if (route.action === "fallbacks-page") {
     let availableOptions: Array<{ refKey: string; label: string }> = [];
     try {
@@ -528,46 +382,6 @@ export async function handlePersonalConfigModelRoutes(context: PersonalConfigPos
       selectedFallbacksProvider: route.provider,
       fallbackOptionCount: availableOptions.length,
       fallbackEntryStart: route.start,
-    });
-    return true;
-  }
-
-  if (route.action === "fallbacks-range-page") {
-    let availableOptions: Array<{ refKey: string; label: string }> = [];
-    try {
-      availableOptions = await loadFallbackSelectionOptions(context.scope.userId, route.provider);
-    } catch (error) {
-      log.warn("Failed to load available models for fallbacks modal", { provider: route.provider, error });
-    }
-
-    const start = route.chooserPage * PERSONAL_FALLBACK_PAGE_SIZE;
-
-    const isValidStart = start % PERSONAL_FALLBACK_PAGE_SIZE === 0 || start % PERSONAL_PROVIDER_PAGE_SIZE === 0;
-
-    if (!isValidStart || (start >= availableOptions.length && availableOptions.length > 0)) {
-      await repaint(interaction, {
-        locale: route.locale,
-        scope: context.scope,
-        category: "models",
-        page: "fallbacks",
-        panelReceipt: {
-          tone: "error",
-          heading: localizer(route.locale, "commands.personal.config.unavailable"),
-          detail: localizer(route.locale, "commands.personal.config.stale_warning"),
-        },
-        dependencies,
-      });
-      return true;
-    }
-
-    await repaint(interaction, {
-      locale: route.locale,
-      scope: context.scope,
-      category: "models",
-      page: "fallbacks",
-      dependencies,
-      selectedFallbacksProvider: route.provider,
-      fallbackOptionCount: availableOptions.length,
     });
     return true;
   }

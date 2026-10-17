@@ -534,7 +534,7 @@ describe("moderationPanel UI rendering", () => {
     expect(allowedReqBtn?.customId).toBe("moderation:v2:model-access-set:en-US:require-personal");
 
     expect(allowedAllowBtn?.label).toBe(localizer("en-US", "commands.moderation.model_access_allowed_label"));
-    expect(allowedAllowBtn?.style).toBe(ButtonStyle.Primary);
+    expect(allowedAllowBtn?.style).toBe(ButtonStyle.Secondary);
     expect(allowedAllowBtn?.disabled).toBe(true);
     expect(allowedAllowBtn?.customId).toBe("moderation:v2:model-access-set:en-US:allow");
 
@@ -579,7 +579,7 @@ describe("moderationPanel UI rendering", () => {
     );
     expect(requiredRow).toBeDefined();
     const [reqBtn, allowBtn] = requiredRow?.components ?? [];
-    expect(reqBtn?.style).toBe(ButtonStyle.Primary);
+    expect(reqBtn?.style).toBe(ButtonStyle.Secondary);
     expect(reqBtn?.disabled).toBe(true);
     expect(allowBtn?.style).toBe(ButtonStyle.Secondary);
     expect(allowBtn?.disabled).toBe(false);
@@ -612,7 +612,7 @@ describe("moderationPanel UI rendering", () => {
     expect(staleRow?.components[0].disabled).toBe(true);
     expect(staleRow?.components[0].style).toBe(ButtonStyle.Secondary);
     expect(staleRow?.components[1].disabled).toBe(true);
-    expect(staleRow?.components[1].style).toBe(ButtonStyle.Primary);
+    expect(staleRow?.components[1].style).toBe(ButtonStyle.Secondary);
   });
 
   it("renders opposite member access status sentence variants across all four flags", () => {

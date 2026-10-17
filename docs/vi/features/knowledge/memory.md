@@ -40,6 +40,12 @@ Sử dụng `/memories` để duyệt, thêm, chỉnh sửa, xóa hoặc chuyể
 
 Trong các máy chủ mới, quyền truy cập của thành viên không phải quản lý để tạo, chỉnh sửa hoặc xóa bộ nhớ máy chủ dùng chung bị tắt theo mặc định. Thành viên có quyền `Quản lý máy chủ` luôn giữ quyền truy cập, và người quản lý có thể cấp quyền cho các thành viên khác thông qua `/moderation` Quyền thành viên.
 
+### Danh tính proxy tin nhắn
+
+Khi bạn bật dịch vụ proxy tin nhắn được hỗ trợ, TomoriBot có thể lưu giữ bộ nhớ cá nhân cho từng danh tính proxy đã xác minh riêng biệt với tài khoản Discord đã gửi tin nhắn. Tài khoản chủ vẫn kiểm soát quyền riêng tư, chặn, cooldown và phân quyền. TomoriBot không bao giờ đoán danh tính từ tên hoặc avatar webhook, và một webhook chưa được xác minh sẽ không nhận được hồ sơ bộ nhớ riêng.
+
+PluralKit hiện là dịch vụ duy nhất có thể chọn. Xem [Hỗ trợ proxy tin nhắn](/vi/features/integrations/message-proxy-support/) để biết cách thiết lập và các hạn chế.
+
 ### Cách lưu bộ nhớ
 
 Chính xác có hai cách để tạo một bộ nhớ dài hạn:

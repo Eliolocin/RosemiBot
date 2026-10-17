@@ -48,6 +48,8 @@ describe("formatMessagesForExtraction persona detection", () => {
               channel_disc_id: channelId,
               webhook_disc_id: webhookId,
               kind: "shared_channel",
+              avatar_fingerprint: null,
+              discord_avatar_hash: null,
               webhook_token: Buffer.from("fixture"),
               key_version: 1,
             }

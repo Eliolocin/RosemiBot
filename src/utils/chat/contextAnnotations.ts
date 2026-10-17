@@ -8,6 +8,8 @@ import { getCachedBlacklistStatus, getCachedUserRow } from "@/utils/cache/userCa
 import { stripBridgePrefix } from "@/utils/bridges";
 import { resolvePreferredDiscordDisplayName } from "@/utils/discord/displayName";
 import { normalizeRenderModifierName, resolveRenderModifierSourcePersona } from "@/utils/discord/renderModifierParser";
+import type { MessageProxyHistoryIdentity } from "@/utils/messageProxy/historyAttribution";
+import { extractMessageProxyReplyTargetFromEmbed } from "@/utils/messageProxy/registry";
 import { resolveSpriteMessageDisplayName } from "@/utils/discord/spriteMessageLabel";
 import { log } from "@/utils/misc/logger";
 import { compactWhitespace, normalizeTailDirective } from "@/utils/chat/contextDirectives";
@@ -251,6 +253,13 @@ export function findReplyContextTargetInMessage(
 }
 
 function extractReplyContextTargetFromEmbed(embed: Embed): { channelId: string; messageId: string } | null {
+  // The proxy record that restores `message.reference` is memory-resident, so a
+  // refetched proxy arrives with the embed as its only reply evidence.
+  const messageProxyReplyTarget = extractMessageProxyReplyTargetFromEmbed(embed);
+  if (messageProxyReplyTarget) {
+    return messageProxyReplyTarget;
+  }
+
   const description = embed.description?.trim() ?? "";
   const authorName = embed.author?.name?.trim() ?? "";
   const footerText = embed.footer?.text?.trim() ?? "";
@@ -384,6 +393,7 @@ export async function buildReplyReferenceContextAnnotation(params: {
   serverDiscId: string;
   serverPersonalizationDisabled: boolean;
   messageIdMap: MessageIdMap;
+  messageProxyIdentitiesByMessageId?: Map<string, MessageProxyHistoryIdentity>;
 }): Promise<string> {
   const replyAuthorName = await resolveMessageAuthorDisplayName({
     message: params.replyMessage,
@@ -392,6 +402,7 @@ export async function buildReplyReferenceContextAnnotation(params: {
     personaByNickname: params.personaByNickname,
     serverDiscId: params.serverDiscId,
     serverPersonalizationDisabled: params.serverPersonalizationDisabled,
+    messageProxyIdentitiesByMessageId: params.messageProxyIdentitiesByMessageId,
   });
   const referencedAuthorName = await resolveMessageAuthorDisplayName({
     message: params.referencedMessage,
@@ -400,6 +411,7 @@ export async function buildReplyReferenceContextAnnotation(params: {
     personaByNickname: params.personaByNickname,
     serverDiscId: params.serverDiscId,
     serverPersonalizationDisabled: params.serverPersonalizationDisabled,
+    messageProxyIdentitiesByMessageId: params.messageProxyIdentitiesByMessageId,
   });
 
   const replyRef = params.messageIdMap.register(params.replyMessage.id, "ref");
@@ -524,7 +536,23 @@ async function resolveMessageAuthorDisplayName(params: {
   personaByNickname: Map<string, TomoriState>;
   serverDiscId: string;
   serverPersonalizationDisabled: boolean;
+  messageProxyIdentitiesByMessageId?: Map<string, MessageProxyHistoryIdentity>;
 }): Promise<string> {
+  if (params.message.author.id === params.clientUserId) {
+    return params.botDisplayName || "Bot";
+  }
+
+  // A verified, indexed proxy message carries a stable member identity, so it is named from the
+  // same source ordinary history uses. The webhook name is the service's configurable veneer
+  // (PluralKit's name_format can add system tags or drop the member name), so it is never
+  // treated as the member label. Deliberately not gated on personalization: a member name is
+  // identity rather than a saved user nickname, matching how history and participants use it.
+  const messageProxyIdentity = params.messageProxyIdentitiesByMessageId?.get(params.message.id);
+  if (messageProxyIdentity) {
+    const identityRow = await getCachedUserRow(messageProxyIdentity.userDiscId);
+    return identityRow?.user_nickname?.trim() || messageProxyIdentity.displayName;
+  }
+
   const trustedWebhook = await verifyMessageWebhook(params.message);
   const webhookName = trustedWebhook
     ? stripBridgePrefix(params.message.author.username)
@@ -551,10 +579,6 @@ async function resolveMessageAuthorDisplayName(params: {
     user: params.message.author,
     fallback: webhookName,
   });
-
-  if (params.message.author.id === params.clientUserId) {
-    return params.botDisplayName || "Bot";
-  }
 
   const spriteDisplayName =
     (!renderModifierSource || renderModifierSource.isNeutralAppearance) && matchedPersona

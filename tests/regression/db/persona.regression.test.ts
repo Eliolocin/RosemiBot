@@ -62,6 +62,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Persona — regression", () => {
         speech_voice_sample_id: null,
         speech_voice_id: "_rt_voice_from_setter",
         speech_voice_name: "_rt_voice_name_from_setter",
+        voice_source_priority: "design",
         speech_voice_design_prompt: "_rt_voice_prompt_from_setter",
       });
       await personaRepository.setPhysicalAppearanceTags(refs.personaId, ["_rt_tag_from_setter"]);
@@ -351,6 +352,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Persona — regression", () => {
         speech_voice_sample_id: null,
         speech_voice_id: "_rt_046_voice",
         speech_voice_name: "_rt_046_voice_name",
+        voice_source_priority: "design",
         speech_voice_design_prompt: "_rt_046_prompt",
       });
       await personaRepository.setPhysicalAppearanceTags(refs.personaId, ["_rt_046_tag"]);
@@ -414,6 +416,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Persona — regression", () => {
         speech_voice_sample_id: null,
         speech_voice_id: "_rt_export_voice",
         speech_voice_name: "_rt_export_voice_name",
+        voice_source_priority: "design",
         speech_voice_design_prompt: "_rt_export_prompt",
       });
       await personaRepository.setPhysicalAppearanceTags(refs.personaId, ["_rt_export_tag"]);

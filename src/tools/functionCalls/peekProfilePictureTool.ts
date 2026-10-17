@@ -19,6 +19,7 @@ import { ColorCode } from "@/utils/misc/logger";
 import { llmModelRepo } from "@/utils/db/repositories";
 import { getResolvedCapabilityModelId, resolveCapabilityCredentials } from "@/utils/provider/credentialResolver";
 import { resolveVisionApiModelName } from "@/utils/provider/visionCaption";
+import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { MEDIA_LIMITS } from "@/utils/security/rateLimiter";
 import { safeDownload } from "@/utils/security/safeDownload";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
@@ -506,6 +507,7 @@ export class PeekProfilePictureTool extends BaseTool {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
+        ...(endpointUrl === PROVIDER_CHAT_COMPLETIONS_URLS.openrouter && buildOpenRouterAttributionHeaders()),
       },
       body: JSON.stringify(requestBody),
     });

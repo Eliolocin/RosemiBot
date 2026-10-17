@@ -28,6 +28,8 @@ Execution proceeds through several validation and routing steps:
 
 The tool then returns a successful `ToolResult` containing the generated memory ID.
 
+Stable proxy identities retain personal memory scope because they own synthetic user rows. Creation and updates also check all linked hosts through `getMessageProxyHostProtection()`. Full host privacy, a server blacklist, or unresolved host links block writes. A new identity may receive a one-time public bio snapshot under lineage 0 through `bioSeeding.ts`; it uses the same host guard and invalidates cache only after a successful write. See [message-proxy integration](/architecture/integrations/message-proxy/).
+
 ## Constraints and rationale
 
 - **Lineage isolation:** records are partitioned by `persona_lineage_id`. Personas sharing a character lineage share memories, while distinct character lineages remain isolated.

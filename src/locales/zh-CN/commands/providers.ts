@@ -120,7 +120,6 @@ export default {
     endpoint_label_url_conflict: `那个标签属于另一个 URL。请使用已有的 URL，或换一个不同的标签。`,
     endpoint_unreachable: `端点没有按那种 API 协议响应。没有保存任何内容。详情：{reason}`,
     endpoint_redirect_credentials_withheld: `该端点重定向到了另一个地址，因此未向其发送 API 密钥，也未保存任何内容。请输入服务器重定向到的最终地址作为端点 URL。`,
-    activate_placeholder: `选择当前启用的语音合成或语音识别端点...`,
     activate_option_description: `{capability}端点（{name}）`,
     activate_option_active_description: `[启用中] {capability}端点（{name}）`,
     manage_models_placeholder: `选择模型或能力...`,

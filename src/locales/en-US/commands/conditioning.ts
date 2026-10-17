@@ -2,7 +2,6 @@ export default {
   conditioning: {
     description: `Manage persistent reward and punishment conditioning memories.`,
     shared: {
-      select_persona_title: `Select a persona to manage`,
       reason_line: `Reason: \`\`{reason}\`\``,
       reward_footer: `❤️ {bot} will remember this. Use /conditioning to manage.`,
       punish_footer: `💀 {bot} will remember this. Use /conditioning to manage.`,

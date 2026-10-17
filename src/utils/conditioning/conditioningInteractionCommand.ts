@@ -1,3 +1,4 @@
+import { CONDITIONING_ACTION_LOCALE_KEYS, CONDITIONING_FOOTER_LOCALE_KEYS } from "@/utils/conditioning/conditioning";
 import type { ChatInputCommandInteraction, Client, Message, SlashCommandSubcommandBuilder } from "discord.js";
 import { EmbedBuilder, MessageFlags, PermissionFlagsBits } from "discord.js";
 import { replyInfoEmbed } from "@/utils/discord/ui/embeds";
@@ -35,23 +36,23 @@ export function createConditioningInteractionCommand(
   actionKey: ConditioningActionKey,
   cmdOptions?: ConditioningCommandOptions,
 ) {
-  const commandKey = `commands.${type}.${actionKey}`;
+  const commandKeys = CONDITIONING_ACTION_LOCALE_KEYS[actionKey];
 
   const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
     subcommand
       .setName(actionKey)
-      .setDescription(localizer("en-US", `${commandKey}.description`))
+      .setDescription(localizer("en-US", commandKeys.description))
       .addStringOption((option) =>
         option
           .setName("persona")
-          .setDescription(localizer("en-US", `${commandKey}.persona_description`))
+          .setDescription(localizer("en-US", commandKeys.persona_description))
           .setAutocomplete(true)
           .setRequired(false),
       )
       .addStringOption((option) =>
         option
           .setName("reason")
-          .setDescription(localizer("en-US", `${commandKey}.reason_description`))
+          .setDescription(localizer("en-US", commandKeys.reason_description))
           .setMaxLength(CONDITIONING_REASON_MAX_LENGTH)
           .setRequired(false),
       );
@@ -231,14 +232,14 @@ export function createConditioningInteractionCommand(
         actionText: actionTextValue,
       });
 
-      let embedDescription = localizer(locale, `${commandKey}.embed_description`, {
+      let embedDescription = localizer(locale, commandKeys.embed_description, {
         user: `<@${interaction.user.id}>`,
         bot: botName,
         ...extraContext,
       });
 
       const interactionEmbed = new EmbedBuilder()
-        .setTitle(localizedStatusTitle(locale, `${commandKey}.embed_title`, EMBED_COLOR_BY_TYPE[type]))
+        .setTitle(localizedStatusTitle(locale, commandKeys.embed_title, EMBED_COLOR_BY_TYPE[type]))
         .setColor(EMBED_COLOR_BY_TYPE[type]);
 
       if (reasonText.length > 0) {
@@ -247,7 +248,7 @@ export function createConditioningInteractionCommand(
         })}`;
         if (conditioningEvent) {
           interactionEmbed.setFooter({
-            text: localizer(locale, `commands.conditioning.shared.${type}_footer`, {
+            text: localizer(locale, CONDITIONING_FOOTER_LOCALE_KEYS[type], {
               bot: botName,
             }),
           });

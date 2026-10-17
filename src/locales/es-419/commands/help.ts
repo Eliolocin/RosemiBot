@@ -154,8 +154,6 @@ export default {
       bot_user_fallback: `la cuenta de bot de Matrix configurada`,
     },
     "api-key": {
-      description: `Aprende a configurar claves de API para proveedores de IA`,
-      provider_description: `Elige tu proveedor de IA`,
       provider_choice_brave: `Brave Search`,
       provider_choice_google: `Google Gemini (Recomendado, Gratis)`,
       provider_choice_deepseek: `DeepSeek`,
@@ -356,7 +354,7 @@ Ingresa \`{project_id}::{location}\` con {configSetup} o {configApikeySet}
         description:
           "Una clave de API me da acceso al modelo de un proveedor de IA. Todo lo que genero se factura a esa clave, así que trátala como cualquier otra contraseña. Para terminar necesito una:\n> **1.** Elige un proveedor para abrir su guía.\n> **2.** Copia la clave. **NO la compartas** con nadie, y nunca la pegues en un canal: solo en la caja que te abrirá {setup}.\n> **3.** Ejecuta {setup} y pega la clave cuando te la pida.",
         picker_footer:
-          "-# La segunda lista es opcional: Brave Search agrega resultados web, y ElevenLabs agrega voz. Cada uno abre su guía, y no son necesarios para terminar. Si tu endpoint no está listado, omite la clave y lee **Endpoints personalizados (Avanzado)** aquí.",
+          "-# Si tu endpoint no está listado, omite la clave y lee **Endpoints personalizados (Avanzado)** aquí.",
       },
       change_trigger_behavior: {
         title: `Cambiar comportamiento de activación`,

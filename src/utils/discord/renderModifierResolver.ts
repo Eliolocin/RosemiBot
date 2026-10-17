@@ -7,7 +7,11 @@ import type { ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
 import { getCachedPersonaSprites } from "@/utils/cache/personaSpriteCache";
 import { getCachedAllPersonas } from "@/utils/cache/tomoriStateCache";
 import { resolveImpersonatedIdentity } from "@/utils/chat/webhookIdentity";
-import { formatRenderModifierWebhookName, normalizeRenderModifierName } from "@/utils/discord/renderModifierParser";
+import {
+  formatRenderModifierWebhookName,
+  normalizeRenderModifierName,
+  parseNestedRenderModifier,
+} from "@/utils/discord/renderModifierParser";
 import { resolvePersonaWebhookIdentity } from "@/utils/discord/webhook/identity";
 import { log } from "@/utils/misc/logger";
 import { normalizePersonaSpriteKey } from "@/utils/persona/sprites";
@@ -173,7 +177,8 @@ async function collectCopiedRenderCandidates(context: StreamContext): Promise<Co
         addCandidate(candidatesByKey, {
           kind: "persona",
           key: target.serializedKey,
-          displayName: target.displayLabel,
+          // displayLabel keeps the persona's last history decoration, such as "Tomori (shocked)".
+          displayName: persona.persona_nickname,
           persona,
         });
         continue;
@@ -261,35 +266,71 @@ export async function collectKnownSpeakerNames(context: StreamContext): Promise<
   return names;
 }
 
+function findUniqueCandidate(candidates: readonly CopiedRenderCandidate[], name: string): CopiedRenderCandidate | null {
+  const normalizedName = normalizeRenderModifierName(name);
+  if (!normalizedName) return null;
+  const matches = candidates.filter((candidate) => candidateMatches(candidate, normalizedName));
+  return matches.length === 1 ? (matches[0] ?? null) : null;
+}
+
+async function findPersonaSprite(persona: TomoriState, spriteLabel: string): Promise<PersonaSpriteRow | null> {
+  const spriteKey = normalizePersonaSpriteKey(spriteLabel);
+  if (typeof persona.persona_id !== "number" || !spriteKey) return null;
+  const sprites = await getCachedPersonaSprites(persona.persona_id).catch((error) => {
+    log.warn(`Failed to load persona sprites while resolving copied sprite for persona ${persona.persona_id}`, error);
+    return [];
+  });
+  return sprites.find((sprite) => sprite.sprite_key === spriteKey) ?? null;
+}
+
 export async function resolveCopiedRenderModifierTarget(
   modifier: string,
   context: StreamContext,
   sourceDisplayName: string,
 ): Promise<CopiedRenderTarget | null> {
-  const normalizedModifier = normalizeRenderModifierName(modifier);
-  if (!normalizedModifier) {
-    return null;
+  const candidates = await collectCopiedRenderCandidates(context);
+  const direct = findUniqueCandidate(candidates, modifier);
+  if (direct) {
+    return buildCopiedRenderTarget(direct, null, context, sourceDisplayName);
   }
 
-  const candidates = (await collectCopiedRenderCandidates(context)).filter((candidate) =>
-    candidateMatches(candidate, normalizedModifier),
-  );
-
-  if (candidates.length !== 1) {
+  const nested = parseNestedRenderModifier(modifier);
+  const candidate = nested ? findUniqueCandidate(candidates, nested.targetName) : null;
+  if (!nested || !candidate) {
     return null;
   }
+  const sprite = candidate.kind === "persona" ? await findPersonaSprite(candidate.persona, nested.spriteLabel) : null;
+  return buildCopiedRenderTarget(candidate, sprite, context, sourceDisplayName);
+}
 
-  const [candidate] = candidates;
-  // Discord shows the impersonated name first ("Obonya (Ren)") so the
+async function buildCopiedRenderTarget(
+  candidate: CopiedRenderCandidate,
+  sprite: PersonaSpriteRow | null,
+  context: StreamContext,
+  sourceDisplayName: string,
+): Promise<CopiedRenderTarget | null> {
+  // The sprite stays in the username so Discord does not group copied looks under one avatar, and so
+  // context rebuilds the label from the name: a spriteRecord would count as the source's own sprite.
+  const shownName = sprite
+    ? formatRenderModifierWebhookName(candidate.displayName, sprite.sprite_name)
+    : candidate.displayName;
+  // Discord shows the impersonated name first ("Zallya (Ren)") so the
   // disguise reads naturally in chat; the model-facing label keeps the source
-  // persona first ("Ren (Obonya)") so the LLM never confuses who is speaking.
+  // persona first ("Ren (Zallya)") so the LLM never confuses who is speaking.
   // resolveRenderModifierSourcePersona reconstructs the source persona from
   // either orientation when rebuilding context from webhook names.
-  const username = formatRenderModifierWebhookName(candidate.displayName, sourceDisplayName);
-  const contextLabel = formatRenderModifierWebhookName(sourceDisplayName, candidate.displayName);
+  const username = formatRenderModifierWebhookName(shownName, sourceDisplayName);
+  const contextLabel = formatRenderModifierWebhookName(sourceDisplayName, shownName);
   if (candidate.kind === "persona") {
     const guild = getStreamGuild(context);
     if (!guild) return null;
+
+    if (sprite) {
+      const spriteIdentity = await resolveSpriteIdentity(sprite, username);
+      return spriteIdentity
+        ? { displayName: candidate.displayName, identity: spriteIdentity, contextLabel }
+        : buildCopiedRenderTarget(candidate, null, context, sourceDisplayName);
+    }
 
     const personaIdentity = await resolvePersonaWebhookIdentity(candidate.persona, guild);
     return {

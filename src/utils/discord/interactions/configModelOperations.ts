@@ -1,3 +1,6 @@
+import { validateOpenRouterSpeechModel } from "@/utils/cache/openrouterSpeechModelCache";
+import { setHostedSpeechSelection } from "@/utils/db/repositories/SpeechRepository";
+import { setSpeechEndpointSelection } from "@/utils/db/repositories/SpeechRepository";
 import type {
   CustomEndpointRow,
   EmbeddingModelRow,
@@ -299,8 +302,9 @@ export interface ConfigModelOperations {
     serverDiscId: string;
     ownerId?: number;
     scopeKind?: "server" | "personal";
-    capability: "tts" | "stt";
+    capability: "tts-design" | "tts-clone" | "stt";
     customEndpointId: number;
+    targetKind?: "custom-endpoint" | "hosted-model";
   }): Promise<ActivateWorkspaceEndpointResult>;
   setProviderParameters(input: {
     tomoriState: TomoriState;
@@ -380,7 +384,8 @@ export function currentModelIdForCapability(state: TomoriState, capability: Conf
       return state.config.nai_diffusion_model_id ?? null;
     case "video":
       return state.config.video_model_id ?? null;
-    case "tts":
+    case "tts-design":
+    case "tts-clone":
     case "stt":
       // Endpoint activation identity lives in custom_endpoints, not in a model id column.
       return null;
@@ -492,7 +497,7 @@ function parseBoundedFloat(raw: string, min: number, max: number): number | null
 
 export const configModelOperations: ConfigModelOperations = {
   async setCapabilityModel({ tomoriState, serverDiscId, capability, provider, modelId }) {
-    if (capability === "tts" || capability === "stt") {
+    if (capability === "tts-design" || capability === "tts-clone" || capability === "stt") {
       // Endpoint activations are not model-column writes and have no model catalog to query.
       return { status: "not-found" };
     }
@@ -592,10 +597,18 @@ export const configModelOperations: ConfigModelOperations = {
   },
 
   async clearCapabilityModel({ tomoriState, serverDiscId, capability }) {
-    if (capability === "tts" || capability === "stt") {
-      // Endpoint activation identity lives in custom_endpoints, so model clearing cannot handle it.
-      return { status: "not-clearable" };
+    if (capability === "tts-design" || capability === "tts-clone") {
+      const mode = capability === "tts-design" ? "design" : "clone";
+      const selectedId =
+        mode === "design" ? tomoriState.config.speech_design_endpoint_id : tomoriState.config.speech_clone_endpoint_id;
+      const hostedId =
+        mode === "design" ? tomoriState.config.speech_design_model_id : tomoriState.config.speech_clone_model_id;
+      if (selectedId === null && hostedId === null) return { status: "already-clear" };
+      return (await setSpeechEndpointSelection(tomoriState.server_id, null, mode))
+        ? { status: "success" }
+        : { status: "write-failed" };
     }
+    if (capability === "stt") return { status: "not-clearable" };
     if (capability === "text" || capability === "embedding" || capability === "video") {
       return { status: "not-clearable" };
     }
@@ -614,13 +627,51 @@ export const configModelOperations: ConfigModelOperations = {
     return { status: "success" };
   },
 
-  async activateWorkspaceEndpoint({ tomoriState, serverDiscId, ownerId, scopeKind, capability, customEndpointId }) {
+  async activateWorkspaceEndpoint({
+    tomoriState,
+    serverDiscId,
+    ownerId,
+    scopeKind,
+    capability,
+    customEndpointId,
+    targetKind,
+  }) {
+    if (targetKind === "hosted-model") {
+      if (capability === "stt") return { status: "not-found" };
+      const mode = capability === "tts-design" ? "design" : "clone";
+      const providers = await llmProviderRepo.loadSavedProviderConfigs(tomoriState.server_id);
+      const choices = (
+        await Promise.all(
+          providers
+            .filter((row) => row.api_key)
+            .map((row) =>
+              llmModelRepo.loadAvailableSpeechModels(row.provider, { kind: "server", ownerId: tomoriState.server_id }),
+            ),
+        )
+      ).flat();
+      const target = choices.find(
+        (model) =>
+          model.speech_model_id === customEndpointId && (model.voice_mode === mode || model.voice_mode === "auto"),
+      );
+      if (!target) return { status: "not-found" };
+      if (target.provider === "openrouter" && !(await validateOpenRouterSpeechModel(target.codename)))
+        return { status: "not-found" };
+      const success = await setHostedSpeechSelection(
+        { kind: "server", ownerId: tomoriState.server_id },
+        customEndpointId,
+        mode,
+      );
+      return success
+        ? { status: "success", identity: target.codename, sourceChanged: false }
+        : { status: "write-failed" };
+    }
     return providerPanelOperations.activateWorkspaceEndpoint({
       serverDiscId,
       ownerId,
       scopeKind,
       state: tomoriState,
-      capability: capability === "tts" ? "speech" : "transcription",
+      capability: capability === "stt" ? "transcription" : "speech",
+      mode: capability === "stt" ? undefined : capability === "tts-design" ? "design" : "clone",
       customEndpointId,
     });
   },

@@ -154,8 +154,6 @@ export default {
       bot_user_fallback: `tài khoản bot Matrix đã cấu hình`,
     },
     "api-key": {
-      description: `Tìm hiểu cách thiết lập API key cho các nhà cung cấp AI`,
-      provider_description: `Chọn nhà cung cấp AI của bạn`,
       provider_choice_brave: `Brave Search`,
       provider_choice_google: `Google Gemini (Khuyên dùng, Miễn phí)`,
       provider_choice_deepseek: `DeepSeek`,
@@ -357,7 +355,7 @@ Nhập \`{project_id}::{location}\` bằng {configSetup} hoặc {configApikeySet
         description:
           "API key cấp quyền cho mình dùng model của nhà cung cấp. Mọi nội dung mình tạo đều tính vào key đó, hãy giữ nó như bất kỳ mật khẩu nào khác. Để hoàn tất thiết lập, mình cần một key:\n> **1.** Chọn nhà cung cấp bên dưới để mở hướng dẫn.\n> **2.** Sao chép key được cấp. **KHÔNG chia sẻ** với ai, và không dán vào kênh: chỉ dán vào ô mà {setup} mở cho bạn.\n> **3.** Chạy {setup} và dán key khi mình yêu cầu.",
         picker_footer:
-          "-# Danh sách thứ hai là tùy chọn: Brave Search thêm kết quả web, ElevenLabs thêm giọng nói trực tuyến. Cả hai có hướng dẫn riêng và không cần để thiết lập. Nếu endpoint không có ở đây, hãy bỏ qua key và đọc mục **Endpoint tùy chỉnh (nâng cao)** trên trang này.",
+          "-# Nếu endpoint không có ở đây, hãy bỏ qua key và đọc mục **Endpoint tùy chỉnh (nâng cao)** trên trang này.",
       },
       change_trigger_behavior: {
         title: `Đổi hành vi kích hoạt`,

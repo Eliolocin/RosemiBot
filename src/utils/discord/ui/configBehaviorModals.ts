@@ -32,6 +32,21 @@ import { localizer, resolveDescription } from "@/utils/text/localizer";
 import { splitPromptIntoModalParts } from "@/utils/text/modalPromptParts";
 import { promptPartDescription, promptPartLabel } from "@/utils/discord/ui/modalPromptPartLabels";
 
+const HUMANIZER_LABEL_KEYS: Record<0 | 1 | 2 | 3, string> = {
+  "0": "commands.config.humanizer.choice_none",
+  "1": "commands.config.humanizer.choice_light",
+  "2": "commands.config.humanizer.choice_medium",
+  "3": "commands.config.humanizer.choice_heavy",
+};
+
+const STM_CATEGORY_LABEL_KEYS = [
+  "commands.server.stm.categories-edit.slot_1_label",
+  "commands.server.stm.categories-edit.slot_2_label",
+  "commands.server.stm.categories-edit.slot_3_label",
+  "commands.server.stm.categories-edit.slot_4_label",
+  "commands.server.stm.categories-edit.slot_5_label",
+] as const;
+
 export const BEHAVIOR_HUMANIZER_FIELD = "behavior_humanizer";
 export const BEHAVIOR_FETCH_LIMIT_FIELD = "behavior_fetch_limit";
 export const BEHAVIOR_PREFILL_FIELD = "behavior_prefill";
@@ -299,7 +314,7 @@ export function buildBehaviorToolTriggerAddModal(locale: string, nonce: string):
         "commands.config.panel.tool_trigger_target_description",
         "commands.config.panel.tool_trigger_target_placeholder",
         DELIBERATE_TOOL_TRIGGER_TARGETS.map((target) => ({
-          label: localizer(locale, `commands.config.panel.tool_target_${target.value}`),
+          label: localizer(locale, target.labelKey),
           value: target.value,
         })),
       ),
@@ -332,10 +347,10 @@ export function buildBehaviorToolTriggerRemoveModal(
   nonce: string,
   triggerMap: DeliberateToolTriggerMap,
 ): RawModalPayload {
-  const entries = Object.entries(triggerMap).flatMap(([target, triggers]) =>
-    triggers.map((trigger, index) => ({
-      id: `${target}_${index}`,
-      target,
+  const entries = DELIBERATE_TOOL_TRIGGER_TARGETS.flatMap((target) =>
+    (triggerMap[target.value] ?? []).map((trigger, index) => ({
+      id: `${target.value}_${index}`,
+      labelKey: target.labelKey,
       trigger,
     })),
   );
@@ -352,7 +367,7 @@ export function buildBehaviorToolTriggerRemoveModal(
       group.map((entry) => ({
         label: formatTriggerForDisplay(entry.trigger),
         value: entry.id,
-        description: localizer(locale, `commands.config.panel.tool_target_${entry.target}`),
+        description: localizer(locale, entry.labelKey),
         default: true,
       })),
     );
@@ -546,13 +561,13 @@ export function buildBehaviorStmCategoriesModal(
   return {
     custom_id: buildConfigRouteId({ action: "behavior-stm-categories-submit", locale, nonce }),
     title: title(locale, "commands.config.panel.edit_stm_categories_button"),
-    components: Array.from({ length: 5 }, (_unused, index) => {
+    components: STM_CATEGORY_LABEL_KEYS.map((labelKey, index) => {
       const category = byPosition.get(index);
       const field = textField(
         locale,
         nonce,
         `${BEHAVIOR_STM_CATEGORY_PREFIX}${index}`,
-        `commands.server.stm.categories-edit.slot_${index + 1}_label`,
+        labelKey,
         "commands.server.stm.categories-edit.slot_instructions",
         TextInputStyle.Paragraph,
         false,
@@ -748,10 +763,10 @@ export function buildBehaviorHumanizerModal(locale: string, nonce: string, curre
         BEHAVIOR_HUMANIZER_FIELD,
         "commands.config.humanizer.select_label",
         "commands.config.humanizer.select_description",
-        [0, 1, 2, 3].map((value) => ({
+        Object.entries(HUMANIZER_LABEL_KEYS).map(([value, labelKey]) => ({
           value: String(value),
-          label: localizer(locale, `commands.config.humanizer.choice_${["none", "light", "medium", "heavy"][value]}`),
-          default: value === current,
+          label: localizer(locale, labelKey),
+          default: Number(value) === current,
         })),
       ),
     ],

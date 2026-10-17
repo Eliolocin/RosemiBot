@@ -11,7 +11,7 @@ sidebar:
 
 Every slash command currently registered by TomoriBot, generated from the same command builders and English locale descriptions used for Discord registration.
 
-Top-level command groups: **41**. Runnable slash commands: **85**.
+Top-level command groups: **41**. Runnable slash commands: **86**.
 
 ## `/comment`
 
@@ -238,6 +238,7 @@ Manage your personal settings
 | `/personal config` | Manage your personal preferences, privacy, models, and profile. |
 | `/personal language` | Choose the language TomoriBot speaks to you in. |
 | `/personal memories` | Manage your personal long-term memories and short-term conversational context. |
+| `/personal message-proxy` | Choose a supported message proxy service for your account. |
 | `/personal nuke` | Erase everything TomoriBot stores about you, in every server. |
 | `/personal providers` | Manage your personal provider credentials, endpoints, and model catalogs. |
 

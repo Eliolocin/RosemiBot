@@ -1,18 +1,16 @@
-/**
- * Strips submitted values from `update_user_info` arguments before they reach
- * execution history, thought-log details, or structured logs, keeping only which
- * fields were touched. Gender, pronouns, and nicknames are the target's own data
- * and have no place in diagnostic storage.
- *
- * Value fields are derived by exclusion rather than listed, so adding a field to
- * the tool cannot silently leak it here.
- */
 export function redactToolParametersForStorage(
   toolName: string,
   args: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (toolName === "generate_voice_message") {
+    return {
+      script_characters: typeof args.script === "string" ? args.script.length : 0,
+      instruction_characters: typeof args.voice_instructions === "string" ? args.voice_instructions.length : 0,
+    };
+  }
   if (toolName !== "update_user_info") return args;
 
+  // Derive submitted value fields by exclusion so future user-info fields cannot leak into diagnostic storage.
   const { target_user: targetUser, clear, ...values } = args;
   const changedFields = Object.keys(values);
   const clearedFields = Array.isArray(clear) ? clear.filter((field): field is string => typeof field === "string") : [];

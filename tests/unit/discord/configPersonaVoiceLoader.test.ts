@@ -1,6 +1,12 @@
+import { createPersona } from "../../helpers/fixtures";
 import { describe, expect, it } from "bun:test";
-import type { CustomEndpointApiStyle, CustomEndpointRow, TomoriState, VoiceSampleRow } from "@/types/db/schema";
-import { ELEVENLABS_SERVICE_NAME } from "@/utils/audio/elevenLabsAccount";
+import {
+  speechModelSchema,
+  type CustomEndpointApiStyle,
+  type CustomEndpointRow,
+  type TomoriState,
+  type VoiceSampleRow,
+} from "@/types/db/schema";
 import {
   loadConfigPersonaVoiceView,
   resolveActiveSpeechCapability,
@@ -35,22 +41,18 @@ function endpoint(apiStyle: CustomEndpointApiStyle, extraConfig: Record<string, 
   };
 }
 
-function resolverDependencies(
-  activeEndpoint: CustomEndpointRow | null,
-  legacyKeyExists = false,
-): ConfigPersonaVoiceResolverDependencies {
+function resolverDependencies(activeEndpoint: CustomEndpointRow | null): ConfigPersonaVoiceResolverDependencies {
   return {
     loadActiveEndpoint: async () => activeEndpoint,
-    hasOptApiKey: async () => legacyKeyExists,
   };
 }
 
 function state(): TomoriState {
-  return { server_id: 42 } as TomoriState;
+  return createPersona({ server_id: 42 });
 }
 
 describe("Persona > Voice speech capability loading", () => {
-  it("keeps a clone endpoint assignable and designable only with instruct support", async () => {
+  it("keeps a clone endpoint assignable and allows Design authoring independently of instruct support", async () => {
     const supported = await resolveActiveSpeechCapability(
       42,
       resolverDependencies(endpoint("tts-clone", { supports_instruct: true })),
@@ -61,13 +63,13 @@ describe("Persona > Voice speech capability loading", () => {
     );
 
     expect(supported).toEqual({ apiStyle: "tts-clone", assignable: true, supportsVoiceDesign: true });
-    expect(unsupported).toEqual({ apiStyle: "tts-clone", assignable: true, supportsVoiceDesign: false });
+    expect(unsupported).toEqual({ apiStyle: "tts-clone", assignable: true, supportsVoiceDesign: true });
   });
 
   it("reports an ElevenLabs endpoint as assignable without loading credentials", async () => {
     const result = await resolveActiveSpeechCapability(42, resolverDependencies(endpoint("elevenlabs")));
 
-    expect(result).toEqual({ apiStyle: "elevenlabs", assignable: true, supportsVoiceDesign: false });
+    expect(result).toEqual({ apiStyle: "elevenlabs", assignable: true, supportsVoiceDesign: true });
     expect(result).not.toHaveProperty("endpoint_url");
     expect(result).not.toHaveProperty("connection_id");
     expect(result).not.toHaveProperty("apiKey");
@@ -77,40 +79,67 @@ describe("Persona > Voice speech capability loading", () => {
     expect(JSON.stringify(result)).not.toContain("credentials.example.invalid");
   });
 
-  it("uses the existence-only legacy ElevenLabs key probe when no endpoint exists", async () => {
-    const calls: Array<{ serverId: number; serviceName: string }> = [];
-    const result = await resolveActiveSpeechCapability(42, {
-      loadActiveEndpoint: async () => null,
-      hasOptApiKey: async (serverId, serviceName) => {
-        calls.push({ serverId, serviceName });
-        return true;
-      },
-    });
-
-    expect(result).toEqual({ apiStyle: "elevenlabs", assignable: true, supportsVoiceDesign: false });
-    expect(calls).toEqual([{ serverId: 42, serviceName: ELEVENLABS_SERVICE_NAME }]);
-  });
-
   it("reports missing endpoint and key as unavailable", async () => {
     const result = await resolveActiveSpeechCapability(42, resolverDependencies(null));
 
-    expect(result).toEqual({ apiStyle: null, assignable: false, supportsVoiceDesign: false });
+    expect(result).toEqual({ apiStyle: null, assignable: false, supportsVoiceDesign: true });
   });
 
   it("treats a rejecting endpoint dependency as unavailable without falling back", async () => {
-    let legacyProbeCalled = false;
     const result = await resolveActiveSpeechCapability(42, {
       loadActiveEndpoint: async () => {
         throw new Error("endpoint lookup failed with credential-shaped details");
       },
-      hasOptApiKey: async () => {
-        legacyProbeCalled = true;
-        return true;
-      },
     });
 
-    expect(result).toEqual({ apiStyle: null, assignable: false, supportsVoiceDesign: false });
-    expect(legacyProbeCalled).toBe(false);
+    expect(result).toEqual({ apiStyle: null, assignable: false, supportsVoiceDesign: true });
+  });
+
+  it("keeps the complete reference library available with hosted Design, hosted Clone, or no Clone target", async () => {
+    const design = speechModelSchema.parse({
+      speech_model_id: 1,
+      provider: "google",
+      codename: "gemini-3.8-flash-tts",
+      voice_mode: "design",
+    });
+    const clone = speechModelSchema.parse({
+      speech_model_id: 2,
+      provider: "openrouter",
+      codename: "fish-audio/s2.1-pro",
+      voice_mode: "clone",
+    });
+    const samples: VoiceSampleRow[] = [
+      {
+        sample_id: 5,
+        server_id: 42,
+        name: "Synthetic sample",
+        file_path: "private.wav",
+        ref_text: null,
+        duration_ms: 200,
+      },
+    ];
+    for (const [designTarget, cloneTarget] of [
+      [null, null],
+      [design, null],
+      [design, clone],
+    ] as const) {
+      const view = await loadConfigPersonaVoiceView(
+        createPersona({
+          server_id: 42,
+          speech_voice_design_prompt: "Warm narration",
+          speech_voice_sample_id: 5,
+          voice_source_priority: "clone",
+        }),
+        {
+          loadActiveEndpoint: async (_serverId, mode) => (mode === "design" ? designTarget : cloneTarget),
+          loadVoiceSamples: async () => samples,
+        },
+      );
+      expect(view.samples.map((sample) => sample.sample_id)).toEqual([5]);
+      expect(view.capability.apiStyle).not.toBe("elevenlabs");
+      expect(view.effectiveSource).toBe(cloneTarget ? "clone" : designTarget ? "design" : null);
+      expect(view.hasTargets).toBe(Boolean(designTarget || cloneTarget));
+    }
   });
 
   it("loads and projects local samples only for a clone capability", async () => {
@@ -133,8 +162,10 @@ describe("Persona > Voice speech capability loading", () => {
     };
 
     const cloneView = await loadConfigPersonaVoiceView(state(), dependencies);
-    expect(cloneView).toEqual({
-      capability: { apiStyle: "tts-clone", assignable: true, supportsVoiceDesign: false },
+    expect(cloneView).toMatchObject({
+      effectiveSource: null,
+      effectiveTarget: null,
+      capability: { apiStyle: "tts-clone", assignable: true, supportsVoiceDesign: true },
       samples: [{ sample_id: 5, name: "demo", ref_text: "Hello", duration_ms: 1200 }],
     });
     expect(cloneView).not.toHaveProperty("endpoint_url");

@@ -14,6 +14,19 @@ import {
 } from "@/utils/provider/providerErrorClassification";
 import { localizer } from "@/utils/text/localizer";
 
+const PERSONAL_TIP_KEYS = {
+  "genai.tips.adjust_parameters": "genai.tips.adjust_parameters_personal",
+  "genai.tips.choose_supported_model": "genai.tips.choose_supported_model_personal",
+  "genai.tips.model_fallback": "genai.tips.model_fallback_personal",
+  "genai.tips.nvidia_register_free_model": "genai.tips.nvidia_register_free_model_personal",
+  "genai.tips.openrouter_add_credits": "genai.tips.openrouter_add_credits_personal",
+  "genai.tips.openrouter_free_models": "genai.tips.openrouter_free_models_personal",
+  "genai.tips.openrouter_models": "genai.tips.openrouter_models_personal",
+  "genai.tips.reduce_output_tokens": "genai.tips.reduce_output_tokens_personal",
+  "genai.tips.switch_model_provider": "genai.tips.switch_model_provider_personal",
+  "genai.tips.verify_api_key": "genai.tips.verify_api_key_personal",
+};
+
 /**
  * Owns provider and generic stream error reporting to Discord.
  */
@@ -152,7 +165,7 @@ export class StreamErrorUi {
     const isPersonal = context.textCredentialSource === "personal";
 
     /** Picks the personal variant of a tip key when the failing request used a personal key. */
-    const scoped = (key: string): string => (isPersonal ? `${key}_personal` : key);
+    const scoped = (key: keyof typeof PERSONAL_TIP_KEYS): string => (isPersonal ? PERSONAL_TIP_KEYS[key] : key);
 
     // A personal text override reads the user's own fallback chain, not the server's, so the
     // server-side chain says nothing about whether this request had a fallback to fall back to.

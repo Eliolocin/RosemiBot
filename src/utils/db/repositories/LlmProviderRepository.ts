@@ -1,3 +1,5 @@
+import { setSpeechEndpointSelection } from "@/utils/db/repositories/SpeechRepository";
+import { cleanupSpeechCredentialBeforeChange } from "@/utils/speech/googleVoiceLifecycle";
 import {
   decisionModelRegistrationSchema,
   type DecisionModelRegistrationRow,
@@ -1557,6 +1559,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
   async deleteServerProviderRegistration(serverId: number, provider: string): Promise<boolean> {
     const normalizedProvider = provider.toLowerCase();
     try {
+      await cleanupSpeechCredentialBeforeChange({ kind: "server", ownerId: serverId }, normalizedProvider);
       const deleted = await sql.begin(async (tx) => {
         const deleted = await tx`
           DELETE FROM saved_provider_configs
@@ -1585,6 +1588,10 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
                 SELECT 1 FROM image_diffusion_models model
                 WHERE model.diffusion_model_id = registration.diffusion_model_id
                   AND model.provider = ${normalizedProvider}
+              )
+              OR EXISTS (
+                SELECT 1 FROM speech_models model
+                WHERE model.speech_model_id = registration.speech_model_id AND model.provider = ${normalizedProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM decision_models model
@@ -1616,6 +1623,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
   async deleteUserProviderRegistration(userId: number, provider: string): Promise<boolean> {
     const normalizedProvider = provider.toLowerCase();
     try {
+      await cleanupSpeechCredentialBeforeChange({ kind: "personal", ownerId: userId }, normalizedProvider);
       return await sql.begin(async (tx) => {
         const deleted = await tx`
           DELETE FROM user_saved_provider_configs
@@ -1640,6 +1648,10 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
                 SELECT 1 FROM image_diffusion_models model
                 WHERE model.diffusion_model_id = registration.diffusion_model_id
                   AND model.provider = ${normalizedProvider}
+              )
+              OR EXISTS (
+                SELECT 1 FROM speech_models model
+                WHERE model.speech_model_id = registration.speech_model_id AND model.provider = ${normalizedProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM decision_models model
@@ -2010,6 +2022,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
   ): Promise<boolean> {
     try {
       const provider = config.provider.toLowerCase();
+      await cleanupSpeechCredentialBeforeChange({ kind: "server", ownerId: serverId }, provider, config.api_key);
       const fallbackModelRefsJson = JSON.stringify(config.fallback_model_refs ?? []);
       const logitBiasesJson = JSON.stringify(config.llm_logit_biases ?? []);
       const disabledParamsLiteral = this.toPostgresTextArrayLiteral(config.llm_disabled_params);
@@ -2072,6 +2085,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
 
       log.info(`Upserted saved provider config for server ${serverId}, provider ${provider}`);
       if (options.serverDiscId) invalidateTomoriStateCache(options.serverDiscId);
+      else this.invalidateWorkspace(serverId);
       return true;
     } catch (error) {
       log.error(`Error upserting saved provider config for server ${serverId}, provider ${config.provider}:`, error);
@@ -2085,6 +2099,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
     options: LlmProviderCacheOptions = {},
   ): Promise<boolean> {
     try {
+      await cleanupSpeechCredentialBeforeChange({ kind: "server", ownerId: serverId }, provider.toLowerCase());
       const result = await sql`
         DELETE FROM saved_provider_configs
         WHERE server_id = ${serverId}
@@ -2095,6 +2110,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
       if (deleted) {
         log.info(`Deleted saved provider config for server ${serverId}, provider ${provider}`);
         if (options.serverDiscId) invalidateTomoriStateCache(options.serverDiscId);
+        else this.invalidateWorkspace(serverId);
       }
       return deleted;
     } catch (error) {
@@ -2111,6 +2127,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
   async upsertUserSavedProviderConfig(userId: number, config: UserSavedProviderConfigUpsert): Promise<boolean> {
     try {
       const provider = config.provider.toLowerCase();
+      await cleanupSpeechCredentialBeforeChange({ kind: "personal", ownerId: userId }, provider, config.api_key);
       const enabledCapabilitiesLiteral = this.toPostgresTextArrayLiteral(config.enabled_capabilities);
       const assignedCapabilitiesLiteral = this.toPostgresTextArrayLiteral(config.assigned_capabilities);
       const fallbackModelRefsJson = JSON.stringify(config.fallback_model_refs ?? []);
@@ -2121,7 +2138,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
         INSERT INTO user_saved_provider_configs (
           user_id, provider, api_key, key_version,
           llm_id, diffusion_model_id, embedding_model_id,
-          video_model_id,
+          video_model_id, speech_design_model_id, speech_clone_model_id,
           nai_diffusion_model_id, vision_llm_id, nai_preset_name,
           thinking_level, model_randomizer_enabled, enabled_capabilities, assigned_capabilities, fallback_model_refs,
           llm_temperature, llm_top_p, llm_top_k,
@@ -2131,7 +2148,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
         ) VALUES (
           ${userId}, ${provider}, ${config.api_key}, ${config.key_version},
           ${config.llm_id}, ${config.diffusion_model_id}, ${config.embedding_model_id},
-          ${config.video_model_id ?? null},
+          ${config.video_model_id ?? null}, ${config.speech_design_model_id ?? null}, ${config.speech_clone_model_id ?? null},
           ${config.nai_diffusion_model_id}, ${config.vision_llm_id ?? null}, ${config.nai_preset_name},
           ${config.thinking_level}, ${config.model_randomizer_enabled ?? false}, ${enabledCapabilitiesLiteral}::text[], ${assignedCapabilitiesLiteral}::text[],
           ${fallbackModelRefsJson}::jsonb,
@@ -2147,6 +2164,8 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
           diffusion_model_id = EXCLUDED.diffusion_model_id,
           embedding_model_id = EXCLUDED.embedding_model_id,
           video_model_id = EXCLUDED.video_model_id,
+          speech_design_model_id = EXCLUDED.speech_design_model_id,
+          speech_clone_model_id = EXCLUDED.speech_clone_model_id,
           nai_diffusion_model_id = EXCLUDED.nai_diffusion_model_id,
           vision_llm_id = EXCLUDED.vision_llm_id,
           nai_preset_name = EXCLUDED.nai_preset_name,
@@ -2206,6 +2225,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
 
   async deleteUserSavedProviderConfig(userId: number, provider: string): Promise<boolean> {
     try {
+      await cleanupSpeechCredentialBeforeChange({ kind: "personal", ownerId: userId }, provider.toLowerCase());
       const result = await sql`
         DELETE FROM user_saved_provider_configs
         WHERE user_id = ${userId}
@@ -2548,6 +2568,11 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
     options: LlmProviderCacheOptions = {},
   ): Promise<boolean> {
     const { serverId = null, userId = null, clearScope = "label" } = params;
+    if (params.capability === "speech") {
+      return serverId !== null && userId === null
+        ? setSpeechEndpointSelection(serverId, params.customEndpointId)
+        : false;
+    }
 
     try {
       const selectedRows =
@@ -2678,7 +2703,10 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
     serverId: number;
     capability: "speech" | "transcription";
     customEndpointId: number;
+    mode?: "design" | "clone";
   }): Promise<boolean> {
+    if (params.capability === "speech")
+      return setSpeechEndpointSelection(params.serverId, params.customEndpointId, params.mode);
     return await this.setDefaultCustomEndpoint({
       serverId: params.serverId,
       capability: params.capability,

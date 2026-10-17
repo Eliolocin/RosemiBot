@@ -1,5 +1,26 @@
-import { describe, expect, test } from "bun:test";
-import { resolveChatCompletionsUrl, resolveVisionApiModelName } from "@/utils/provider/visionCaption";
+import { afterEach, describe, expect, mock, test } from "bun:test";
+import * as realRemoteFetch from "@/utils/security/userRemoteFetch";
+import { createScopedModuleMocker } from "../../helpers/mockSurface";
+
+const requests: RequestInit[] = [];
+const remoteFetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+  requests.push(init ?? {});
+  return Response.json({ choices: [{ message: { content: "caption" } }] });
+});
+const scopedMock = createScopedModuleMocker(mock, { "@/utils/security/userRemoteFetch": realRemoteFetch });
+scopedMock.module("@/utils/security/userRemoteFetch", () => ({ ...realRemoteFetch, fetchUserRemoteUrl: remoteFetch }));
+
+const { callOpenAiCompatibleVision, resolveChatCompletionsUrl, resolveVisionApiModelName } = await import(
+  "@/utils/provider/visionCaption"
+);
+const originalAttributionSetting = process.env.OPENROUTER_APP_ATTRIBUTION_ENABLED;
+
+afterEach(() => {
+  requests.length = 0;
+  remoteFetch.mockClear();
+  if (originalAttributionSetting === undefined) delete process.env.OPENROUTER_APP_ATTRIBUTION_ENABLED;
+  else process.env.OPENROUTER_APP_ATTRIBUTION_ENABLED = originalAttributionSetting;
+});
 
 /**
  * The shared vision module is the only place a provider's image transport is chosen, so a
@@ -32,6 +53,45 @@ describe("vision api model name resolution", () => {
 });
 
 describe("vision chat-completions transport coverage", () => {
+  test("adds attribution only to OpenRouter requests and honors the opt-out setting", async () => {
+    const image = { data: "aW1hZ2U=", mimeType: "image/png" };
+
+    delete process.env.OPENROUTER_APP_ATTRIBUTION_ENABLED;
+    await callOpenAiCompatibleVision(
+      "synthetic-key",
+      "vision-model",
+      "https://openrouter.ai/api/v1/chat/completions",
+      image,
+      "Describe this image",
+      AbortSignal.timeout(5_000),
+    );
+    await callOpenAiCompatibleVision(
+      "synthetic-key",
+      "vision-model",
+      "https://api.deepseek.com/chat/completions",
+      image,
+      "Describe this image",
+      AbortSignal.timeout(5_000),
+    );
+    process.env.OPENROUTER_APP_ATTRIBUTION_ENABLED = "false";
+    await callOpenAiCompatibleVision(
+      "synthetic-key",
+      "vision-model",
+      "https://openrouter.ai/api/v1/chat/completions",
+      image,
+      "Describe this image",
+      AbortSignal.timeout(5_000),
+    );
+
+    const headers = requests.map((call) => new Headers(call.headers));
+    expect(headers[0].get("HTTP-Referer")).toBe("https://tomoribot.app");
+    expect(headers[0].get("X-OpenRouter-Title")).toBe("TomoriBot");
+    expect(headers[1].has("HTTP-Referer")).toBe(false);
+    expect(headers[1].has("X-OpenRouter-Title")).toBe(false);
+    expect(headers[2].has("HTTP-Referer")).toBe(false);
+    expect(headers[2].has("X-OpenRouter-Title")).toBe(false);
+  });
+
   test("resolves a dedicated endpoint for every OpenAI-compatible provider", () => {
     for (const provider of ["openrouter", "zai", "zaicoding", "deepseek", "nvidia"]) {
       const url = resolveChatCompletionsUrl(provider);

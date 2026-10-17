@@ -1,0 +1,1 @@
+export const MAX_VOICE_DESIGN_PROMPT_LENGTH = 1_000;

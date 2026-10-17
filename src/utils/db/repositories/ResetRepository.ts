@@ -148,7 +148,12 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
       "chatterbox_cfg_weight",
       "chatterbox_exaggeration",
     ],
-    preserved: [],
+    preserved: [
+      "speech_design_endpoint_id",
+      "speech_clone_endpoint_id",
+      "speech_design_model_id",
+      "speech_clone_model_id",
+    ],
   },
   {
     table: "server_auto_trigger_configs",
@@ -268,7 +273,7 @@ export const SERVER_COLLECTION_RESET_TABLES = [
 export const PERSONAL_SINGLETON_RESET_TABLES: readonly SingletonResetClassification[] = [
   {
     table: "users",
-    reset: ["language_pref", "privacy_level"],
+    reset: ["language_pref", "privacy_level", "message_proxy_service", "message_proxy_instance_id"],
     preserved: ["registration_locale"],
   },
   {
@@ -557,7 +562,7 @@ class ResetRepository {
   /**
    * Restores one user's personal configuration to its database defaults in a single transaction.
    *
-   * Resets language preference and privacy level in users, resets all portable personalization
+   * Resets language, privacy, and message-proxy selection in users, resets all portable personalization
    * settings in user_personalization_configs via upsert (repairing missing rows), removes persona
    * naming preferences, and deletes personal spotlights owned by the user across all servers.
    * Returns the user's Discord ID and distinct server IDs whose spotlights were deleted so the
@@ -570,6 +575,8 @@ class ResetRepository {
         SET
           language_pref = DEFAULT,
           privacy_level = DEFAULT,
+          message_proxy_service = DEFAULT,
+          message_proxy_instance_id = DEFAULT,
           updated_at = NOW()
         WHERE user_id = ${userId}
         RETURNING user_disc_id

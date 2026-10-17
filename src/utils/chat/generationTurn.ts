@@ -52,7 +52,10 @@ import {
 /** The channel shape quota notices are sent through, matching the admission path's own alias. */
 type SendableChannel = Parameters<typeof sendStandardEmbed>[0];
 
+type TextCredentialSource = ChatTurnContext["textCredentialSource"];
+
 interface GenerationAttempt {
+  credentialSource: TextCredentialSource;
   label: string;
   tomoriState: TomoriState;
   provider: LLMProvider;
@@ -126,6 +129,8 @@ async function runGenerationAttempts(
     for (let index = 0; index < attempts.length; index++) {
       const attempt = attempts[index];
       if (!attempt) continue;
+      context.textCredentialSource = attempt.credentialSource;
+      context.streamingContext.textCredentialSource = attempt.credentialSource;
       recordChatAttemptStarted(
         index + 1,
         context.textCredentialSource,
@@ -137,6 +142,7 @@ async function runGenerationAttempts(
       context.tomoriState = attempt.tomoriState;
       context.contextItems = await prepareProviderContextItems({
         contextItems: baseContextItems,
+        userId: context.streamingContext.triggererUserId,
         tomoriState: attempt.tomoriState,
         deliberateToolAllowedNames: context.streamingContext.deliberateToolAllowedNames,
         serverDiscId: context.serverDiscId,
@@ -176,7 +182,9 @@ async function runGenerationAttempts(
         }
 
         const retryExcludedKeyIds = getRetryExcludedKeyIds(excludedKeyIds, rotationKeyId);
-        const hasFallbackKey = await hasAvailableRotationKey(attempt.tomoriState, retryExcludedKeyIds);
+        const hasFallbackKey =
+          attempt.credentialSource === "server" &&
+          (await hasAvailableRotationKey(attempt.tomoriState, retryExcludedKeyIds));
         setStreamUserErrorSuppression(context, hasFallbackKey || hasPendingModelFallback);
         context.streamingContext.forceModelFallback = hasPendingModelFallback;
 
@@ -256,11 +264,6 @@ async function runGenerationAttempts(
         if (serverAttempts.length > 0) {
           serverRouteStartIndex = attempts.length;
           attempts.push(...serverAttempts);
-          // The server is paying from here on, and everything downstream reads the credential source
-          // as "who is answering": the thought-log attribution and the error tips would otherwise
-          // keep naming the user's own provider for a reply the server produced.
-          context.textCredentialSource = "server";
-          context.streamingContext.textCredentialSource = "server";
         }
       }
 
@@ -399,6 +402,7 @@ function resolveServerRouteExtension(
 async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<GenerationAttempt[]> {
   const disableAllTools = !!context.streamingContext.disableAllTools;
   const primaryState = await resolveTomoriStateForRoute(context, "planned");
+  const personalUserId = context.textCredentialSource === "personal" ? (context.personalRoutingUserId ?? null) : null;
   const fallbackEntries = resolveFallbackEntries(primaryState);
 
   const pool: FallbackEntry[] = [{ kind: "llm", model: primaryState.llm }, ...fallbackEntries];
@@ -413,10 +417,20 @@ async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<Gene
   const attempts: GenerationAttempt[] = [];
   for (const [index, entry] of pool.entries()) {
     try {
-      const attempt = await createFallbackAttempt(primaryState, entry, index, disableAllTools);
+      const attempt = await createFallbackAttempt(
+        primaryState,
+        entry,
+        index,
+        disableAllTools,
+        personalUserId,
+        context.textCredentialSource,
+      );
       if (!attempt) {
-        // Only an unusable custom-endpoint lead resolves to null; the primary llm entry never does,
-        // so at least one valid attempt always remains in the chain.
+        // An unusable custom endpoint, or an llm whose provider has no key in the
+        // applicable scope, resolves to null. The primary's own llm entry shares
+        // the primary's provider and so never re-credentials, which is what
+        // guarantees at least one valid attempt survives however the pool is
+        // ordered.
         continue;
       }
       // Keep logs readable: the lead is always labelled "primary" regardless of the random draw.
@@ -455,7 +469,7 @@ async function buildServerRouteAttempts(context: ChatTurnContext, startIndex: nu
   for (const entry of serverPool) {
     const fallbackIndex = startIndex + attempts.length;
     try {
-      const attempt = await createFallbackAttempt(serverState, entry, fallbackIndex, disableAllTools);
+      const attempt = await createFallbackAttempt(serverState, entry, fallbackIndex, disableAllTools, null, "server");
       if (attempt) {
         attempts.push(attempt);
       }
@@ -740,17 +754,26 @@ async function createFallbackAttempt(
   entry: FallbackEntry,
   fallbackIndex: number,
   disableAllTools: boolean,
+  personalUserId: number | null,
+  credentialSource: TextCredentialSource,
 ): Promise<GenerationAttempt | null> {
   if (entry.kind === "custom_endpoint") {
+    const endpointServerId = personalUserId === null ? primaryState.server_id : null;
+    if (
+      (entry.endpoint.user_id ?? null) !== personalUserId ||
+      (entry.endpoint.server_id ?? null) !== endpointServerId
+    ) {
+      return null;
+    }
     if (!entry.endpoint.connection_id) {
       log.warn(`Skipping custom endpoint fallback ${entry.endpoint.label}: missing connection_id.`);
       return null;
     }
     const customProviderName = buildCustomProviderName(entry.endpoint.connection_id);
-    const endpointUserId = entry.endpoint.user_id ?? null;
-    const savedConfig = endpointUserId
-      ? await llmProviderRepo.loadUserSavedProviderConfig(endpointUserId, customProviderName)
-      : await llmProviderRepo.loadSavedProviderConfig(primaryState.server_id, customProviderName);
+    const savedConfig =
+      personalUserId !== null
+        ? await llmProviderRepo.loadUserSavedProviderConfig(personalUserId, customProviderName)
+        : await llmProviderRepo.loadSavedProviderConfig(primaryState.server_id, customProviderName);
     if (!savedConfig?.api_key) {
       log.warn(`Skipping custom endpoint fallback ${entry.endpoint.label}: no saved key.`);
       return null;
@@ -781,16 +804,30 @@ async function createFallbackAttempt(
         verbatim_tool_calling: entry.endpoint.verbatim_tool_calling,
       },
     };
-    return await createAttempt(`fallback ${fallbackIndex}: ${entry.endpoint.label}`, state, "custom", disableAllTools);
+    return await createAttempt(
+      `fallback ${fallbackIndex}: ${entry.endpoint.label}`,
+      state,
+      credentialSource,
+      "custom",
+      disableAllTools,
+    );
   }
 
   let state: TomoriState = { ...primaryState, llm: entry.model };
   if (entry.model.llm_provider.toLowerCase() !== primaryState.llm.llm_provider.toLowerCase()) {
-    state = await applySavedProviderConfig(state, entry.model.llm_provider);
+    const recredentialed = await applyCrossProviderConfig(state, entry.model.llm_provider, personalUserId);
+    if (!recredentialed) {
+      log.warn(
+        `Skipping fallback ${entry.model.llm_codename}: no ${personalUserId ? "personal" : "server"} key saved for provider ${entry.model.llm_provider}.`,
+      );
+      return null;
+    }
+    state = recredentialed;
   }
   return await createAttempt(
     `fallback ${fallbackIndex}: ${entry.model.llm_codename}`,
     state,
+    credentialSource,
     undefined,
     disableAllTools,
   );
@@ -799,6 +836,7 @@ async function createFallbackAttempt(
 async function createAttempt(
   label: string,
   tomoriState: TomoriState,
+  credentialSource: TextCredentialSource,
   forcedProviderName?: string,
   disableAllTools = false,
 ): Promise<GenerationAttempt> {
@@ -808,13 +846,14 @@ async function createAttempt(
     ? await ProviderFactory.getProviderByName(forcedProviderName)
     : await getProviderForTomori(effectiveState);
 
-  const rotationSelection = await selectApiKey(effectiveState);
+  const rotationSelection = credentialSource === "server" ? await selectApiKey(effectiveState) : null;
   const apiKey = rotationSelection ? rotationSelection.apiKey : await resolveApiKey(effectiveState);
   const rotationKeyId = rotationSelection?.rotationKeyId ?? null;
 
   const providerConfig = await provider.createConfig(effectiveState, apiKey);
 
   return {
+    credentialSource,
     label,
     tomoriState: effectiveState,
     provider,
@@ -833,12 +872,39 @@ async function resolveApiKey(tomoriState: TomoriState): Promise<string> {
   return await decryptApiKey(encryptedKey, tomoriState.config.key_version || 1);
 }
 
+/**
+ * Re-credentials a fallback attempt whose model belongs to a different provider
+ * than the primary's.
+ *
+ * A personal-routed turn resolves against the user's own saved providers and
+ * never falls through to the server's, so a chain the user configured cannot
+ * silently spend the server owner's key. Returns null when no key exists in the
+ * applicable scope, which drops the entry from the pool.
+ */
+async function applyCrossProviderConfig(
+  tomoriState: TomoriState,
+  providerName: string,
+  personalUserId: number | null,
+): Promise<TomoriState | null> {
+  const provider = providerName.toLowerCase();
+  const savedConfig = personalUserId
+    ? await llmProviderRepo.loadUserSavedProviderConfig(personalUserId, provider)
+    : await llmProviderRepo.loadSavedProviderConfig(tomoriState.server_id, provider);
+
+  return savedConfig?.api_key ? withSavedProviderConfig(tomoriState, savedConfig) : null;
+}
+
+/**
+ * Server-scoped variant for the primary attempt, which cannot be skipped the way a
+ * fallback entry can and so raises instead of returning null.
+ */
 async function applySavedProviderConfig(tomoriState: TomoriState, providerName: string): Promise<TomoriState> {
-  const savedConfig = await llmProviderRepo.loadSavedProviderConfig(tomoriState.server_id, providerName.toLowerCase());
-  if (!savedConfig?.api_key) {
+  const state = await applyCrossProviderConfig(tomoriState, providerName, null);
+  if (!state) {
     throw new Error(`No saved credentials found for provider ${providerName}.`);
   }
-  return withSavedProviderConfig(tomoriState, savedConfig);
+
+  return state;
 }
 
 function extractErrorCode(streamResult: StreamResult | undefined): string {
@@ -869,6 +935,7 @@ function extractErrorDetail(streamResult: StreamResult | undefined): string {
 }
 
 async function prepareProviderContextItems(args: {
+  userId?: number;
   contextItems: StructuredContextItem[];
   tomoriState: TomoriState;
   deliberateToolAllowedNames: string[] | undefined;
@@ -892,7 +959,10 @@ async function prepareProviderContextItems(args: {
     // with neither: without them the custom model receives no tool schemas and no calling-format
     // instructions, so every tool (voice messages included) fails.
     if (!contextItems.some((item) => item.metadataTag === ContextItemTag.KNOWLEDGE_VERBATIM_TOOL_DEFINITIONS)) {
-      const toolItem = await buildVerbatimToolDefinitionsContextItem({ tomoriState: args.tomoriState });
+      const toolItem = await buildVerbatimToolDefinitionsContextItem({
+        tomoriState: args.tomoriState,
+        userId: args.userId,
+      });
       if (toolItem) {
         contextItems = injectVerbatimToolDefinitionsItem(contextItems, toolItem);
       }

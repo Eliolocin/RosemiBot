@@ -154,8 +154,6 @@ export default {
       bot_user_fallback: `a conta configurada do bot Matrix`,
     },
     "api-key": {
-      description: `Aprenda a configurar chaves de API para provedores de IA`,
-      provider_description: `Escolha seu provedor de IA`,
       provider_choice_brave: `Brave Search`,
       provider_choice_google: `Google Gemini (Recomendado, Grátis)`,
       provider_choice_deepseek: `DeepSeek`,
@@ -357,7 +355,7 @@ Digite \`{project_id}::{location}\` usando {configSetup} ou {configApikeySet}
         description:
           "Uma chave de API me concede acesso ao modelo de um provedor de IA. Tudo que eu gerar será cobrado nessa chave, então trate como qualquer outra senha. Para terminar a configuração eu preciso de uma:\n> **1.** Escolha um provedor abaixo para abrir seu guia.\n> **2.** Copie a chave que ele fornece. **NÃO compartilhe-a** com ninguém, e nunca a cole em um canal: apenas na caixa que {setup} abre para você.\n> **3.** Execute {setup} e cole a chave quando eu pedir.",
         picker_footer:
-          "-# A segunda lista é opcional: Brave Search adiciona resultados da web, e ElevenLabs adiciona fala hospedada. Cada um abre seu próprio guia, e nenhum é necessário para terminar a configuração. Se o seu endpoint não estiver listado, pule a chave e leia **Endpoints Personalizados (Avançado)** nesta mesma página.",
+          "-# Se o seu endpoint não estiver listado, pule a chave e leia **Endpoints Personalizados (Avançado)** nesta mesma página.",
       },
       change_trigger_behavior: {
         title: `Mudar Comportamento de Gatilho`,

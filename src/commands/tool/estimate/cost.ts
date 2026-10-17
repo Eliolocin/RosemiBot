@@ -51,6 +51,7 @@ import {
 import { normalizeRenderModifierName } from "@/utils/discord/renderModifierParser";
 import { resolveWebhookPersonaAuthor } from "@/utils/discord/webhookPersonaAuthor";
 import { llmSections } from "@/db/seed/catalog/models";
+import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 
 // Char-per-token ratios and the primitive estimators live in @/utils/text/tokenEstimate
 // so this command and the post-turn stat recorder share one source of truth. The
@@ -1023,6 +1024,7 @@ async function fetchOpenRouterNativePromptTokens(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         Accept: "application/json",
+        ...buildOpenRouterAttributionHeaders(),
       },
     });
 
@@ -1059,7 +1061,7 @@ function buildOpenRouterProbeRequest(
   return requestBody;
 }
 
-async function measureOpenRouterInputTokens(
+export async function measureOpenRouterInputTokens(
   tomoriState: TomoriState,
   apiKey: string,
   contextItems: StructuredContextItem[],
@@ -1080,6 +1082,7 @@ async function measureOpenRouterInputTokens(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
       Accept: "application/json",
+      ...buildOpenRouterAttributionHeaders(),
     },
     body: JSON.stringify(requestBody),
   });

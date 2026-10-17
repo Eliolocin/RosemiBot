@@ -55,7 +55,9 @@ shows `Unavailable`; choose a supported reviewer to enable detailed review.
 `Set Prompt` edits the review instructions, up to 4,000 characters. `Use Default` restores the
 persona-aware default. The `Rule checker` dropdown selects an already registered compatible MCP checker,
 or `None`. Its findings go privately to the reviewer, which decides whether they matter for this
-character. The checker has no validated language/profile guarantee in this release.
+character. The checker has no validated language/profile guarantee in this release. If you disable
+or remove the checker's MCP server, the dropdown shows `Unavailable` and drafting runs as if you chose
+`None`.
 
 The `Decisions` dropdown saves a Decision registration from `/providers`. Skipping detailed review
 is inactive until each model and review rubric has labeled quality evidence. A saved selection

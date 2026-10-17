@@ -19,7 +19,8 @@ import {
 import type { VoiceMessageMetadata } from "@/utils/audio/voiceMessageMetadata";
 import { log } from "@/utils/misc/logger";
 import type { ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
-import { runWithWebhookIdentity } from "@/utils/discord/webhook/personaDispatch";
+import { dispatchWebhookWithIdentity, type WebhookIdentityDelivery } from "@/utils/discord/webhook/personaDispatch";
+import { recordChannelDeliveredBotMessage } from "@/utils/discord/stream/channelDeliveryContinuity";
 import {
   type PersonaPostSpeaker,
   recordPersonaPostDelivery,
@@ -77,57 +78,48 @@ async function sendNativeVoiceMessageViaRest(
   target: VoiceDeliveryTarget,
   identity: ResolvedWebhookIdentity,
   options: NativeVoiceSendOptions,
-): Promise<string | undefined> {
+): Promise<WebhookIdentityDelivery<string | undefined> | undefined> {
   try {
     const { webhook } = target;
     const { audioBuffer, mimeType, filename, voiceMeta } = options;
-    const { username, avatarUrl, avatarDataUri } = identity;
-
     if (!webhook?.token) return undefined;
 
-    return await runWithWebhookIdentity(
-      webhook,
-      {
-        username,
-        avatarUrl: avatarDataUri ? undefined : avatarUrl,
-        avatarDataUri,
-      },
-      async () => {
-        const form = new FormData();
-        const payloadJson: Record<string, unknown> = {
-          flags: IS_VOICE_MESSAGE_FLAG,
-          attachments: [
-            {
-              id: 0,
-              filename,
-              waveform: voiceMeta.waveform,
-              duration_secs: voiceMeta.durationSecs,
-            },
-          ],
-          allowed_mentions: { parse: [] },
-        };
+    return await dispatchWebhookWithIdentity(webhook, identity, async (selected) => {
+      const { username, avatarUrl, avatarDataUri } = selected.identity;
+      const form = new FormData();
+      const payloadJson: Record<string, unknown> = {
+        flags: IS_VOICE_MESSAGE_FLAG,
+        attachments: [
+          {
+            id: 0,
+            filename,
+            waveform: voiceMeta.waveform,
+            duration_secs: voiceMeta.durationSecs,
+          },
+        ],
+        allowed_mentions: { parse: [] },
+      };
 
-        if (username) payloadJson.username = username;
-        if (!avatarDataUri && avatarUrl) payloadJson.avatar_url = avatarUrl;
+      if (username) payloadJson.username = username;
+      if (!avatarDataUri && avatarUrl) payloadJson.avatar_url = avatarUrl;
 
-        form.append("payload_json", JSON.stringify(payloadJson));
-        form.append("files[0]", new Blob([new Uint8Array(audioBuffer)], { type: mimeType }), filename);
+      form.append("payload_json", JSON.stringify(payloadJson));
+      form.append("files[0]", new Blob([new Uint8Array(audioBuffer)], { type: mimeType }), filename);
 
-        // `wait=true` is required to receive the delivered message ID instead of a 204.
-        const threadParam = target.threadId ? `&thread_id=${encodeURIComponent(target.threadId)}` : "";
-        const url = `${DISCORD_API_BASE}/webhooks/${webhook.id}/${webhook.token}?wait=true${threadParam}`;
-        const response = await fetch(url, { method: "POST", body: form });
+      // Discord returns an empty 204 unless `wait=true` is set, so delivery needs it to record the message ID.
+      const threadParam = target.threadId ? `&thread_id=${encodeURIComponent(target.threadId)}` : "";
+      const url = `${DISCORD_API_BASE}/webhooks/${selected.webhookId}/${selected.webhook.token}?wait=true${threadParam}`;
+      const response = await fetch(url, { method: "POST", body: form });
 
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => "unknown");
-          log.warn(`[VoiceWaveform] Discord API rejected native voice message: HTTP ${response.status} — ${errorText}`);
-          return undefined;
-        }
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "unknown");
+        log.warn(`[VoiceWaveform] Discord API rejected native voice message: HTTP ${response.status}: ${errorText}`);
+        return undefined;
+      }
 
-        const data = (await response.json()) as { id?: string };
-        return data.id;
-      },
-    );
+      const data = (await response.json()) as { id?: string };
+      return data.id;
+    });
   } catch (error) {
     log.warn("[VoiceWaveform] Exception during native voice message send", error);
     return undefined;
@@ -209,14 +201,15 @@ export async function deliverVoiceMessage(input: {
       const identity: ResolvedWebhookIdentity = speaker
         ? resolvePersonaPostIdentity(target.channel, speaker)
         : { avatarUrl: target.personaAvatarUrl ?? undefined };
-      sentMessageId = await sendNativeVoiceMessageViaRest(target, identity, {
+      const delivery = await sendNativeVoiceMessageViaRest(target, identity, {
         audioBuffer,
         mimeType,
         filename,
         voiceMeta,
       });
-      if (sentMessageId && speaker) {
-        recordPersonaPostDelivery(target.channel, identity, sentMessageId, speaker);
+      sentMessageId = delivery?.result;
+      if (sentMessageId && speaker && delivery) {
+        recordPersonaPostDelivery(target.channel, delivery.identity, sentMessageId, speaker, delivery.webhookId);
       }
       if (!sentMessageId) {
         log.warn("[VoiceWaveform] Webhook REST send failed — trying bot REST path");
@@ -227,6 +220,7 @@ export async function deliverVoiceMessage(input: {
 
     if (!sentMessageId) {
       sentMessageId = await sendNativeVoiceMessageViaBotRest(target, { audioBuffer, mimeType, filename, voiceMeta });
+      if (sentMessageId) recordChannelDeliveredBotMessage(target.channel.id);
       if (!sentMessageId) {
         log.warn("[VoiceWaveform] Bot REST send failed — falling back to plain attachment");
       }
@@ -250,6 +244,7 @@ export async function deliverVoiceMessage(input: {
     } else {
       const sent = await target.channel.send({ files: [attachment] });
       sentMessageId = sent.id;
+      recordChannelDeliveredBotMessage(target.channel.id);
     }
   }
 
@@ -278,6 +273,7 @@ export async function postVoiceTranscriptCaption(target: VoiceDeliveryTarget, ca
       );
     } else {
       await target.channel.send({ content: quotedCaption, allowedMentions: { parse: [] } });
+      recordChannelDeliveredBotMessage(target.channel.id);
     }
     log.info(`[VoiceChat] Posted TTS transcript | persona="${target.personaUsername ?? "bot"}"`);
   } catch (error) {

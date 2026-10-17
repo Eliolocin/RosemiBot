@@ -157,7 +157,7 @@ describe("UpdateUserInfoTool", () => {
     const row = {
       user_id: 47,
       user_disc_id: "123456789012345678",
-      user_nickname: "Obonya",
+      user_nickname: "Zallya",
       privacy_level: PrivacyLevel.MINIMAL,
       addressing_style: null,
     };
@@ -186,7 +186,39 @@ describe("UpdateUserInfoTool", () => {
         makeContext(true, nerine),
       );
       expect(styleChange.success).toBe(true);
-      expect(styleChange.message).toContain('now calls Obonya "Mistress Obonya"');
+      expect(styleChange.message).toContain('now calls Zallya "Mistress Zallya"');
+    } finally {
+      loadSpy.mockRestore();
+      writeSpy.mockRestore();
+      preferenceSpy.mockRestore();
+    }
+  });
+
+  it("fetches the target's Discord name when the user cache no longer holds them", async () => {
+    const row = {
+      user_id: 47,
+      user_disc_id: "123456789012345678",
+      user_nickname: null,
+      privacy_level: PrivacyLevel.MINIMAL,
+      addressing_style: null,
+    };
+    const loadSpy = spyOn(userRepository, "loadByDiscordId").mockImplementation(async () => row as never);
+    const writeSpy = spyOn(userNamingRepository, "applyUserInfoBatch").mockResolvedValue(undefined as never);
+    const preferenceSpy = spyOn(userNamingRepository, "loadPreferences").mockResolvedValue(new Map() as never);
+    const context = {
+      ...makeContext(true),
+      client: {
+        guilds: { cache: new Map() },
+        users: {
+          cache: new Map(),
+          fetch: async () => ({ id: row.user_disc_id, globalName: "Juno", username: "juno_h" }),
+        },
+      },
+    } as unknown as ToolContext;
+    try {
+      const result = await new UpdateUserInfoTool().execute({ pronouns: "she/her" }, context);
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({ target_user: "Juno" });
     } finally {
       loadSpy.mockRestore();
       writeSpy.mockRestore();
@@ -265,7 +297,7 @@ describe("user info capability mapping", () => {
       server_id: "1",
       activePersonaHasElevenlabsVoice: false,
       activePersonaVoiceDesignPrompt: null,
-      activePersonaVoiceName: null,
+
       diffusion_model_id: null,
       nai_diffusion_model_id: null,
       video_model_id: null,

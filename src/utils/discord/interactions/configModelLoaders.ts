@@ -1,3 +1,5 @@
+import { readSpeechEndpointSettings } from "@/utils/provider/customSpeechEndpointSettings";
+import { supportsSpeechMode } from "@/utils/speech/voiceSourceCapabilities";
 import { createHash } from "node:crypto";
 import type {
   CustomEndpointApiStyle,
@@ -42,16 +44,18 @@ import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import { loadSavedProvidersForCapability } from "@/utils/provider/savedProviderConfig";
 import { localizer, resolveDescription } from "@/utils/text/localizer";
 
-export type ConfigEndpointModelCapability = "tts" | "stt";
+export type ConfigEndpointModelCapability = "tts-design" | "tts-clone" | "stt";
 export type ConfigEndpointServiceCapability = Extract<CustomEndpointCapability, "speech" | "transcription">;
 
 export interface ConfigCapabilityEndpoint {
   id: number;
+  targetKind?: "custom-endpoint" | "hosted-model";
   capability: ConfigEndpointServiceCapability;
   label: string;
   modelLabel: string;
-  apiStyle: CustomEndpointApiStyle;
+  apiStyle: CustomEndpointApiStyle | null;
   isActive: boolean;
+  voiceMode?: "clone" | "voice-design" | "auto";
 }
 
 export type ConfigCapabilityEndpointInput = ConfigCapabilityEndpoint | CustomEndpointRow;
@@ -62,12 +66,13 @@ export type LoadConfigCapabilityEndpoints = (
 ) => Promise<ConfigCapabilityEndpointInput[]>;
 
 export function endpointServiceCapability(capability: ConfigEndpointModelCapability): ConfigEndpointServiceCapability {
-  return capability === "tts" ? "speech" : "transcription";
+  return capability === "tts-design" || capability === "tts-clone" ? "speech" : "transcription";
 }
 
 export function normalizeConfigCapabilityEndpoints(
   rows: readonly ConfigCapabilityEndpointInput[],
   capability: ConfigEndpointModelCapability,
+  state?: TomoriState,
 ): ConfigCapabilityEndpoint[] {
   const serviceCapability = endpointServiceCapability(capability);
   return rows.flatMap((endpoint) => {
@@ -80,6 +85,8 @@ export function normalizeConfigCapabilityEndpoints(
     if (endpoint.capability !== serviceCapability || id === undefined || !Number.isSafeInteger(id) || id <= 0) {
       return [];
     }
+    if (capability !== "stt" && !supportsSpeechMode(endpoint, capability === "tts-design" ? "design" : "clone"))
+      return [];
     return [
       {
         id,
@@ -87,7 +94,14 @@ export function normalizeConfigCapabilityEndpoints(
         label: endpoint.label,
         modelLabel: endpoint.model_name ?? endpoint.label,
         apiStyle: endpoint.api_style,
-        isActive: endpoint.is_default,
+        voiceMode: capability === "stt" ? undefined : readSpeechEndpointSettings(endpoint).voiceMode,
+        isActive:
+          capability === "stt"
+            ? endpoint.is_default
+            : id ===
+              (capability === "tts-design"
+                ? state?.config.speech_design_endpoint_id
+                : state?.config.speech_clone_endpoint_id),
       },
     ];
   });
@@ -95,7 +109,39 @@ export function normalizeConfigCapabilityEndpoints(
 
 export const loadConfigCapabilityEndpoints: LoadConfigCapabilityEndpoints = async (state, capability) => {
   const rows = await llmProviderRepo.loadCustomEndpointsForServer(state.server_id);
-  return normalizeConfigCapabilityEndpoints(rows, capability);
+  const endpoints = normalizeConfigCapabilityEndpoints(rows, capability, state);
+  if (capability === "stt") return endpoints;
+  const mode = capability === "tts-design" ? "design" : "clone";
+  const providers = await llmProviderRepo.loadSavedProviderConfigs(state.server_id);
+  const hosted = (
+    await Promise.all(
+      providers
+        .filter((row) => row.api_key && !isCustomProvider(row.provider))
+        .map(async (row) => {
+          const models = await llmModelRepo.loadAvailableSpeechModels(row.provider, {
+            kind: "server",
+            ownerId: state.server_id,
+          });
+          return models
+            .filter((model) => supportsSpeechMode(model, mode))
+            .map(
+              (model): ConfigCapabilityEndpoint => ({
+                id: model.speech_model_id,
+                targetKind: "hosted-model",
+                capability: "speech",
+                label: getProviderDisplayName(model.provider),
+                modelLabel: model.codename,
+                apiStyle: null,
+                voiceMode: model.voice_mode === "design" ? "voice-design" : model.voice_mode,
+                isActive:
+                  model.speech_model_id ===
+                  (mode === "design" ? state.config.speech_design_model_id : state.config.speech_clone_model_id),
+              }),
+            );
+        }),
+    )
+  ).flat();
+  return [...endpoints, ...hosted];
 };
 
 /** Binds an endpoint choice to its ordered list and the identifying fields of every presented row. */
@@ -108,11 +154,13 @@ export function computeConfigEndpointFingerprint(
       `config-endpoints:${capability}:${JSON.stringify(
         endpoints.map((endpoint) => ({
           id: endpoint.id,
+          targetKind: endpoint.targetKind ?? "custom-endpoint",
           capability: endpoint.capability,
           label: endpoint.label,
           modelLabel: endpoint.modelLabel,
           apiStyle: endpoint.apiStyle,
           isActive: endpoint.isActive,
+          voiceMode: endpoint.voiceMode,
         })),
       )}`,
     )
@@ -221,9 +269,13 @@ export async function loadConfigSwitchModelsView(
   );
 
   const endpointSlots = await Promise.all(
-    (["tts", "stt"] as const).map(async (capability) => ({
+    (["tts-design", "tts-clone", "stt"] as const).map(async (capability) => ({
       capability,
-      endpoints: normalizeConfigCapabilityEndpoints(await loadCapabilityEndpoints(state, capability), capability),
+      endpoints: normalizeConfigCapabilityEndpoints(
+        await loadCapabilityEndpoints(state, capability),
+        capability,
+        state,
+      ),
       pageStart: endpointPage?.capability === capability ? endpointPage.start : 0,
     })),
   );

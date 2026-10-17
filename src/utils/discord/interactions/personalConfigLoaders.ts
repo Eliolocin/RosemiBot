@@ -28,8 +28,13 @@ import {
 } from "@/utils/provider/personalProviderHelpers";
 import { loadUserSavedProvidersForCapability } from "@/utils/provider/savedProviderConfig";
 import { resolveDescription } from "@/utils/text/localizer";
+import { messageProxyRepository } from "@/utils/db/repositories/MessageProxyRepository";
+import { formatManagedIdentityLabel } from "@/utils/discord/interactions/managedIdentityPanelRoutes";
 
 export interface PersonalConfigScope {
+  identityId?: number;
+  identityAvatarUrl?: string | null;
+  identityLabel?: string;
   userId: number;
   userDiscId: string;
   guildId: string | null;
@@ -39,6 +44,29 @@ export interface PersonalConfigScope {
   resolvedNickname: string;
   personas: TomoriState[];
   readStatus: PanelReadStatus;
+}
+
+export async function resolveIdentityConfigScope(
+  interaction: GlobalRoutableInteraction | ChatInputCommandInteraction,
+  identityId: number,
+): Promise<PersonalConfigScope | null> {
+  const managed = await messageProxyRepository.getManagedIdentity(interaction.user.id, identityId);
+  if (!managed) return null;
+  const [hostScope, identityUser] = await Promise.all([
+    resolveScope(interaction),
+    userRepository.loadByDiscordId(managed.userDiscId),
+  ]);
+  if (!hostScope || !identityUser?.user_id) return null;
+  return {
+    ...hostScope,
+    identityId,
+    identityAvatarUrl: managed.avatarUrl,
+    identityLabel: formatManagedIdentityLabel(managed, interaction.locale),
+    userId: identityUser.user_id,
+    userDiscId: managed.userDiscId,
+    user: identityUser,
+    resolvedNickname: managed.displayName,
+  };
 }
 
 export async function resolveScope(
@@ -116,6 +144,16 @@ export async function loadAvailableModelsForCapability(
   locale = "en-US",
 ): Promise<Array<{ id: number; name: string; description?: string }>> {
   try {
+    if (capability === "speech_design" || capability === "speech_clone") {
+      const models = await llmModelRepo.loadAvailableSpeechModels(provider, { kind: "personal", ownerId: userId });
+      const mode = capability === "speech_design" ? "design" : "clone";
+      return models
+        .filter((model) => model.voice_mode === mode || model.voice_mode === "auto")
+        .map((model) => ({
+          id: model.speech_model_id,
+          name: model.codename,
+        }));
+    }
     if (capability === "text") {
       const models = await llmModelRepo.loadAvailableModelsForProvider(provider, false, {
         kind: "personal",
@@ -244,7 +282,14 @@ export async function loadPersonalModelDisplayInfo(
     if (!row) return null;
     let modelName: string | null = null;
     try {
-      if (cap === "text" && row.llm_id) {
+      if (cap === "speech_design" || cap === "speech_clone") {
+        const id = cap === "speech_design" ? row.speech_design_model_id : row.speech_clone_model_id;
+        const models = await llmModelRepo.loadAvailableSpeechModels(row.provider, {
+          kind: "personal",
+          ownerId: userId,
+        });
+        modelName = models.find((model) => model.speech_model_id === id)?.codename ?? null;
+      } else if (cap === "text" && row.llm_id) {
         const m = await llmModelRepo.loadById(row.llm_id);
         modelName = m?.llm_codename ?? null;
       } else if (cap === "vision" && row.vision_llm_id) {
@@ -312,6 +357,30 @@ export async function loadPersonalModelDisplayInfo(
   ]);
 
   const routingRows: Record<PersonalConfigManagedCapability, PersonalConfigRoutingRow> = {
+    speech_design: {
+      capability: "speech_design",
+      activeModelName: await resolveCapName(
+        getActivePersonalProviderForCapability(savedProviders, "speech_design"),
+        "speech_design",
+      ),
+      storedProvider: getStoredPersonalProviderForCapability(savedProviders, "speech_design")?.provider ?? null,
+      storedModelName: await resolveCapName(
+        getStoredPersonalProviderForCapability(savedProviders, "speech_design"),
+        "speech_design",
+      ),
+    },
+    speech_clone: {
+      capability: "speech_clone",
+      activeModelName: await resolveCapName(
+        getActivePersonalProviderForCapability(savedProviders, "speech_clone"),
+        "speech_clone",
+      ),
+      storedProvider: getStoredPersonalProviderForCapability(savedProviders, "speech_clone")?.provider ?? null,
+      storedModelName: await resolveCapName(
+        getStoredPersonalProviderForCapability(savedProviders, "speech_clone"),
+        "speech_clone",
+      ),
+    },
     text: {
       capability: "text",
       activeModelName: activeTextName,
@@ -359,6 +428,8 @@ export async function loadPersonalModelDisplayInfo(
   ]);
 
   const eligibleProvidersForCapability: Record<PersonalConfigManagedCapability, string[]> = {
+    speech_design: (await loadUserSavedProvidersForCapability(userId, "speech_design")).map((row) => row.provider),
+    speech_clone: (await loadUserSavedProvidersForCapability(userId, "speech_clone")).map((row) => row.provider),
     text: textProviders.map((p) => p.provider),
     vision: visionProviders.map((p) => p.provider),
     embedding: embeddingProviders.map((p) => p.provider),
@@ -421,7 +492,16 @@ export async function loadPersonalModelDisplayInfo(
 
   return {
     routingRows,
-    availableCapabilities: ["text", "vision", "embedding", "image", "image_nai", "video"],
+    availableCapabilities: [
+      "text",
+      "vision",
+      "embedding",
+      "image",
+      "image_nai",
+      "video",
+      "speech_design",
+      "speech_clone",
+    ],
     eligibleProvidersForCapability,
     parametersProviders: textProviderNames,
     selectedParametersConfig,

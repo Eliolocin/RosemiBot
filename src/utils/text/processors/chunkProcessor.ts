@@ -262,6 +262,22 @@ export function findMarkdownStrikethrough(
   };
 }
 
+export function findMentionHandle(
+  text: string,
+  startIndex = 0,
+): { start: number; end: number; content: string; type: "mention_handle" } | null {
+  const pattern = /@\{[^}\n]+\}/g;
+  pattern.lastIndex = startIndex;
+  const match = pattern.exec(text);
+  if (!match) return null;
+  return {
+    start: match.index,
+    end: match.index + match[0].length,
+    content: match[0],
+    type: "mention_handle",
+  };
+}
+
 export function findMarkdownSpoiler(
   text: string,
   startIndex = 0,
@@ -515,6 +531,7 @@ function protectSpansForHeavySplit(text: string): { protectedText: string; spans
       findMarkdownStrikethrough(text, searchIndex),
       findMarkdownInlineCode(text, searchIndex),
       findMarkdownLink(text, searchIndex),
+      findMentionHandle(text, searchIndex),
     ].filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null);
 
     if (candidates.length === 0) break;

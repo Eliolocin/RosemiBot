@@ -39,6 +39,7 @@ import {
   isAutochatOverrideChannel,
   isAutochatQualifyingMessage,
   isMatrixRelayMessage,
+  isMessageProxyMessage,
   isSelfTriggerMessage,
 } from "@/utils/chat/triggerProcessor";
 import { getLastRespondedPersonaId, getSelfReplyChainState } from "@/utils/chat/selfReplyState";
@@ -73,12 +74,14 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
       message,
       isDMChannel,
       allPersonas,
+      referencedMessage: admission.referencedMessage,
     });
     incoming.shouldSurfaceUserErrors = shouldSurfaceNoStateError;
     if (shouldSurfaceNoStateError) {
       await validateDirectChatTrigger({
         client,
         message,
+        referencedMessage: admission.referencedMessage,
         guild,
         allPersonas,
         tomoriState: null,
@@ -101,11 +104,13 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
   admission.allPersonas = allPersonas;
 
   const isSelfMessage = isSelfTriggerMessage(message, allPersonas);
+  const isMessageProxy = isMessageProxyMessage(message);
   if (
     (message.author.bot || message.webhookId) &&
     !isSelfMessage &&
     !incoming.isManuallyTriggered &&
-    !isMatrixRelayMessage(message)
+    !isMatrixRelayMessage(message) &&
+    !isMessageProxy
   ) {
     return { lockedTurn, turns: [] };
   }
@@ -113,6 +118,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
   const directTrigger = await validateDirectChatTrigger({
     client,
     message,
+    referencedMessage: admission.referencedMessage,
     guild,
     allPersonas,
     tomoriState,
@@ -135,6 +141,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     message,
     isDMChannel,
     allPersonas,
+    referencedMessage: admission.referencedMessage,
     isReplyToBotOrPersona: directTrigger.isReplyToBot || Boolean(directTrigger.replyPersona),
     isBotMentioned: directTrigger.isBotMentioned,
   });
@@ -182,6 +189,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
       personalAutoTriggerPersonaId: accessState.personalSpotlightStatus?.autoTriggerPersonaId ?? null,
       allowedPersonaIds: accessState.allowedPersonaIds,
       personalDtm: (userRow.personal_dtm as "off" | "follow" | "on") ?? "follow",
+      referencedMessage: admission.referencedMessage,
     })
   ) {
     return { lockedTurn, turns: [] };
@@ -499,7 +507,7 @@ async function updateAutochatCounter(message: Message, tomoriState: TomoriState,
 }
 
 function isRealUserMessage(message: Message): boolean {
-  return (!message.author.bot && !message.webhookId) || isMatrixRelayMessage(message);
+  return (!message.author.bot && !message.webhookId) || isMatrixRelayMessage(message) || isMessageProxyMessage(message);
 }
 
 function getMatchLimit(tomoriState: TomoriState): number {
@@ -704,6 +712,7 @@ function selectPersonasForTurn(args: {
     args.lockedTurn.admission.message,
     args.allPersonas,
     args.lockedTurn.admission.client,
+    args.lockedTurn.admission.referencedMessage,
     args.directTrigger.isReplyToBot,
     args.directTrigger.replyPersona,
     args.directTrigger.isBotMentioned,

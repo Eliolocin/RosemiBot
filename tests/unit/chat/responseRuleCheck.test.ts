@@ -106,7 +106,7 @@ describe("optional response rule evidence", () => {
     expect(errors).not.toHaveBeenCalled();
   });
 
-  it("revalidates current ownership, disablement and removal even for cached text", async () => {
+  it("treats a foreign, disabled, removed or retyped registration as no checker, even for cached text", async () => {
     const state: RuleCheckState = { calls: 0 };
     const signal = new AbortController().signal;
     await checkResponseRules(42, reference, prose, state, signal);
@@ -118,10 +118,11 @@ describe("optional response rule evidence", () => {
       [{ ...row, server_type: null }],
     ]) {
       registration.mockResolvedValue({ status: "fresh", configs });
-      expect((await checkResponseRules(42, reference, prose, state, signal)).status).toBe("failed");
+      expect((await checkResponseRules(42, reference, prose, state, signal)).status).toBe("disabled");
     }
+    expect(discovery).toHaveBeenCalledTimes(1);
     expect(invoke).toHaveBeenCalledTimes(1);
-    expect(errors).toHaveBeenCalledTimes(5);
+    expect(errors).not.toHaveBeenCalled();
   });
 
   it("detects removal during discovery and invalidates reuse after connection replacement", async () => {
@@ -165,6 +166,10 @@ describe("optional response rule evidence", () => {
     const decrypt = spyOn(toolRepository, "decryptMcpAuthToken").mockRejectedValue(
       new Error("PRIVATE_CREDENTIAL_FAILURE"),
     );
+    const failureStreak = spyOn(toolRepository, "recordMcpConnectFailure").mockResolvedValue({
+      status: "failing",
+      failingSince: new Date(),
+    });
     try {
       expect((await checkResponseRules(42, reference, prose, { calls: 0 }, new AbortController().signal)).status).toBe(
         "failed",
@@ -173,6 +178,7 @@ describe("optional response rule evidence", () => {
       expect(JSON.stringify([errors.mock.calls, info.mock.calls])).not.toContain("PRIVATE_");
     } finally {
       decrypt.mockRestore();
+      failureStreak.mockRestore();
     }
   });
 

@@ -21,8 +21,8 @@ export default {
     },
     memories: {
       description: `個人の長期記憶や短期間の会話コンテキストを管理します。`,
+      identity_description: `編集するメッセージプロキシのアイデンティティ。メッセージプロキシが無効の場合でも機能します。`,
       outdated_panel: `このパネルは古くなっています。{command} を使用して新しいパネルを開いてください。`,
-      title: `個人の記憶`,
       category_global: `グローバル`,
       category_persona: `ペルソナ`,
       global_title: `グローバルな個人の記憶`,
@@ -103,6 +103,7 @@ export default {
     },
     config: {
       description: `個人の設定、プライバシー、モデル、プロフィールを管理します。`,
+      identity_description: `編集するメッセージプロキシのアイデンティティ。メッセージプロキシが無効の場合でも機能します。`,
       outdated_panel: `このパネルは古くなっています。{command} を使用して新しいパネルを開いてください。`,
       category_profile: `プロフィール`,
       category_privacy: `プライバシー`,
@@ -157,7 +158,6 @@ export default {
       persona_main_description: `メインペルソナ`,
       persona_alter_description: `オルタペルソナ`,
       persona_shared_lineage_description: `{count}体のペルソナ間で共有されている呼び名`,
-      persona_select_truncated: `他{count}体のペルソナはここにリストされていません。`,
       no_personas: `このサーバーで利用可能なペルソナはありません。`,
       edit_persona_naming_button: `ペルソナの呼び名を編集`,
       appearance_title: `外見`,
@@ -201,7 +201,7 @@ export default {
       models_title: `個人のモデルルーティング`,
       models_description:
         "個人設定のモデルはサーバーを越えて引き継がれます。 「サーバーデフォルト」に設定された機能は、 現在のサーバーのモデルを使用します。",
-      speech_workspace_scope_direction: `サーバー全体のTTS/STT: \`/config\` > モデル > モデルの切り替え。`,
+      speech_workspace_scope_direction: `サーバー全体のTTSとSTT：\`/config\` > モデル > モデルの切り替え。`,
       routing_text: `テキスト`,
       routing_vision: `ビジョン`,
       routing_embedding: `埋め込み`,
@@ -292,8 +292,6 @@ export default {
       fallbacks_modal_title: `フォールバックモデルを編集`,
       fallback_slot_label: `フォールバックスロット {slot}`,
       fallback_slot_desc: `スロット {slot} のフォールバックモデルを選択するか、なしを選択します。`,
-      fallback_none_option: `なし（このスロットをクリア）`,
-      fallback_none_desc: `このフォールバックスロットを空のままにします。`,
       randomizer_section_title: `モデルランダマイザー`,
       randomizer_section_desc:
         "返信ごとにメインモデルとフォールバックモデルからランダムに選択します。失敗時はプール内で続行します。",
@@ -310,15 +308,14 @@ export default {
       randomizer_disabled_heading: `ランダマイザーを無効にしました`,
       randomizer_disabled_detail: `{provider} のモデルランダマイザーが無効になりました。`,
       server_fallback_section_title: `サーバーモデルのフォールバック`,
-      server_fallback_section_desc:
-        "個人のプロバイダーがリクエストを完了できない場合は、このサーバーのモデルとテキストクォータを使用します。",
-      server_fallback_effect_on: `個人のプロバイダーが失敗したときは、このサーバーのモデルで応答します`,
+      server_fallback_section_desc: `個人のプロバイダーがリクエストを完了できない場合は、このサーバーの対応するテキストモデルまたは音声モデルを使用します。テキストのリクエストにはサーバーのテキストクォータが引き続き適用されます。`,
+      server_fallback_effect_on: `個人のプロバイダーが失敗したときは、このサーバーの対応するテキストモデルまたは音声モデルを使います`,
       server_fallback_effect_off: `このサーバーのモデルを借りずに停止します`,
       server_fallback_byok_notice: `このサーバーはメンバー自身のプロバイダーを必須としているため、ここではサーバーのモデルを貸し出しません`,
       server_fallback_enabled_heading: `サーバーモデルのフォールバックを有効にしました`,
-      server_fallback_enabled_detail: `個人のテキストプロバイダーが失敗したときは、サーバーモデルが応答するようになります。`,
+      server_fallback_enabled_detail: `個人のテキストまたは音声プロバイダーが失敗したときは、サーバーモデルが応答するようになります。`,
       server_fallback_disabled_heading: `サーバーモデルのフォールバックを無効にしました`,
-      server_fallback_disabled_detail: `個人のテキストプロバイダーの失敗がサーバーモデルにフォールバックされなくなります。`,
+      server_fallback_disabled_detail: `個人のテキストまたは音声プロバイダーの失敗がサーバーモデルにフォールバックされなくなります。`,
       no_text_providers_fallbacks:
         "保存された個人のテキストプロバイダーが見つかりません。 `/personal providers` で追加してください。",
       response_modes_title: `個人の応答モード`,
@@ -490,8 +487,6 @@ export default {
     },
     profile: {
       about: {
-        style_label: `希望する呼び方`,
-        style_description: `ペルソナの呼称バリエーションを選択します。他の項目から推測しません。`,
         style_masculine: `男性的`,
         style_feminine: `女性的`,
         style_neutral: `中立`,
@@ -499,32 +494,41 @@ export default {
     },
     deliberatetriggermode: {
       description: `個人の明示的トリガーモード（DTM）設定を変更します。`,
-      mode_description: `DTMを個人的にどのように適用するか選択します。`,
       off_option: `オフ`,
       follow_option: `サーバーに従う`,
       on_option: `オン`,
-      off_title: `個人明示的トリガーモード：オフ`,
-      off_description: `サーバー設定に関わらず、あなたのDTMは**無効**です。あなたのメッセージでは通常のトリガーワードが常に機能します。`,
-      follow_title: `個人明示的トリガーモード：サーバーに従う`,
-      follow_description: `DTMの動作が**サーバー設定に従う**ようになりました。`,
-      on_title: `個人明示的トリガーモード：オン`,
-      on_description: `サーバー設定に関わらず、DTMが**常に有効**です。\`@trigger\`、メンション、リプライ、または \`/respond\` でBotを呼び出してください。`,
     },
     deliberatetoolmode: {
       description: `個人の明示的ツールモード設定を変更します。`,
-      mode_description: `明示的ツールモードを個人的にどのように適用するか選択します。`,
       off_option: `オフ`,
       follow_option: `サーバーに従う`,
       on_option: `オン`,
-      off_title: `個人明示的ツールモード：オフ`,
-      off_description: `サーバー設定に関わらず、あなたの明示的ツールモードは**無効**です。対応モデルではツールが通常どおり利用可能です。`,
-      follow_title: `個人明示的ツールモード：サーバーに従う`,
-      follow_description: `明示的ツールモードの動作が**サーバー設定に従う**ようになりました。`,
-      on_title: `個人明示的ツールモード：オン`,
-      on_description: `サーバー設定に関わらず、明示的ツールモードが**常に有効**です。ツールが必要だと明示されたメッセージ以外ではツールを省略します。`,
     },
     "deliberate-tool-mode": {
       description: `個人の明示的ツールモード設定を変更します。`,
+    },
+    "message-proxy": {
+      description: `あなたのアカウントで使用する対応メッセージプロキシサービスを選択します。`,
+      service_description: `使用するメッセージプロキシサービス。無効にする場合は「なし」を選択します。`,
+      instance_description: `ボットのホストが承認したインスタンス。空欄の場合は公式インスタンスを使用します。`,
+      none_option: `なし`,
+      pluralkit_option: `PluralKit`,
+      pluralbuddy_option: `PluralBuddy`,
+      pluralbuddy_unavailable_title: `PluralBuddyを利用できません`,
+      pluralbuddy_unavailable_description: `ここではPluralBuddyのメッセージを確認できません。設定は変更されていません。`,
+      instance_unavailable_title: `インスタンスを利用できません`,
+      instance_unavailable_description: `そのメッセージプロキシインスタンスは利用できません。設定は変更されていません。`,
+      already_selected_title: `変更はありません`,
+      already_selected_description: `メッセージプロキシサービスは既に**{service}**に設定されています。`,
+      enabled_success_title: `メッセージプロキシサービスを有効にしました`,
+      pluralkit_enabled_success_description: `**{service}**をメッセージプロキシサービスとして設定しました。
+
+あなたからのメッセージを検出すると、PluralKitがそれを削除してプロキシのWebhook経由で再投稿する可能性があるため、約{delay_seconds}秒待ってから返信します。あなたのシステムのメンバーを初めて見かけたとき、PluralKit上で設定された公開プロフィール文があれば、そのメンバーの初期記憶として保存されることがあります。システムの公開説明文が設定されている場合は、メンバーとの会話中に参照できるよう、そちらも保存します。`,
+      pluralbuddy_enabled_success_description: `**{service}**をメッセージプロキシサービスとして設定しました。
+
+あなたからのメッセージを検出すると、プロキシ再投稿の可能性があるため約{delay_seconds}秒待機します。PluralBuddyは再投稿、ホストアカウント、およびオルタを検証しますが、そのAPIは元のメッセージを特定しません。再投稿が遅れた場合、まれに2回目の返信が行われることがあります。TomoriBotは検証された最初のメッセージの後に各オルタを保存し、サービスを切り替えるかプロキシを無効にしても保存されたアイデンティティを保持します。`,
+      disabled_success_title: `メッセージプロキシサービスを無効にしました`,
+      disabled_success_description: `あなたのアカウントのメッセージプロキシ処理を**無効**にしました。プロキシ再投稿を待つことなく、メッセージは通常どおり処理されます。保存されたアイデンティティや記憶は、/personal config や /personal memories から引き続き利用できます。`,
     },
   },
 };

@@ -26,6 +26,9 @@ export interface VertexConfig {
 
 const COMPOSITE_KEY_SEPARATOR = "::";
 
+// The SDK interpolates location into the request hostname and attaches the host's ADC token, so anything beyond a DNS label redirects that token.
+const VERTEX_LOCATION_PATTERN = /^[a-z0-9-]+$/i;
+
 /**
  * Parse the composite key string stored as the "API key" for Vertex.
  *
@@ -57,6 +60,12 @@ export function parseVertexCompositeKey(compositeKey: string): VertexConfig {
     throw new Error(`Vertex composite key has an empty location. Expected format: {project_id}::{location}`);
   }
 
+  if (!VERTEX_LOCATION_PATTERN.test(location)) {
+    throw new Error(
+      `Vertex composite key has an invalid location. Use a Google Cloud location such as "global" or "us-central1".`,
+    );
+  }
+
   return { projectId, location };
 }
 
@@ -67,10 +76,16 @@ export function parseVertexCompositeKey(compositeKey: string): VertexConfig {
  *
  * @returns GoogleGenAI client ready for Vertex AI calls
  */
-export function createVertexClient(config: VertexConfig): GoogleGenAI {
+class VertexClient extends GoogleGenAI {
+  getAuthHeaders(): Promise<Headers> {
+    return this.apiClient.getAuthHeaders();
+  }
+}
+
+export function createVertexClient(config: VertexConfig): VertexClient {
   log.info(`Creating Vertex AI client for project "${config.projectId}" in "${config.location}"`);
 
-  return new GoogleGenAI({
+  return new VertexClient({
     vertexai: true,
     project: config.projectId,
     location: config.location,

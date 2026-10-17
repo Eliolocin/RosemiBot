@@ -1,7 +1,6 @@
 export default {
   memories: {
     description: `Consulta y administra memorias del servidor, documentos y memoria a corto plazo.`,
-    title: `Memorias del servidor`,
     category_memories: `Memorias`,
     category_documents: `Documentos`,
     category_stm: `Corto plazo`,

@@ -63,7 +63,8 @@ function resolveMentions(content: string, msg: Message): string {
   resolved = resolved.replace(/<@!?(\d+)>/g, (_match, userId: string) => {
     const member = msg.guild?.members.cache.get(userId);
     if (member) return `@${member.displayName}`;
-    const user = msg.client.users.cache.get(userId);
+    // Read the message's own mentions first because the orphan-user sweeper evicts non-members from the client cache.
+    const user = msg.mentions.users.get(userId) ?? msg.client.users.cache.get(userId);
     if (user) return `@${user.username}`;
     return `@UnknownUser`;
   });

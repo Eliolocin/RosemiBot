@@ -15,3 +15,13 @@ export function stubGlobalFetch(
   return spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request, init?: RequestInit) =>
     handler(input, init)) as typeof fetch);
 }
+
+/**
+ * A fetch that never answers on its own, so only the request's abort signal ends it.
+ * Models a stalled transport: the caller's per-attempt timeout is what rejects it.
+ */
+export function stallUntilAborted(signal: AbortSignal | null | undefined): Promise<Response> {
+  return new Promise<Response>((_resolve, reject) => {
+    signal?.addEventListener("abort", () => reject(signal.reason));
+  });
+}

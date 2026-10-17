@@ -612,7 +612,6 @@ describe("isConfigRouteAuthorized", () => {
   ];
 
   const spriteMutationRoutes: ConfigPanelRoute[] = [
-    { action: "sprite-add-open", locale: "en-US", personaId: 5 },
     { action: "sprite-add-submit", locale: "en-US", personaId: 5, nonce: "nonce1234567" },
     { action: "sprite-edit-open", locale: "en-US", personaId: 5, index: 0, fp: "abcd1234" },
     { action: "sprite-edit-submit", locale: "en-US", personaId: 5, index: 0, fp: "abcd1234", nonce: "nonce1234567" },
@@ -656,7 +655,6 @@ describe("isConfigRouteAuthorized", () => {
 
   const personaOverridesRoutes: ConfigPanelRoute[] = [
     { action: "humanizer-open", locale: "en-US", personaId: 5 },
-    { action: "humanizer-select", locale: "en-US", personaId: 5 },
     { action: "humanizer-submit", locale: "en-US", personaId: 5, nonce: "nonce1234567" },
     { action: "text-override-open", locale: "en-US", personaId: 5 },
     { action: "text-override-provider-select", locale: "en-US", personaId: 5 },
@@ -709,12 +707,9 @@ describe("isConfigRouteAuthorized", () => {
 
   it("keeps every MCP route for DM owners and guild managers only", () => {
     const routes: ConfigPanelRoute[] = [
-      { action: "mcp-select", locale: "en-US", rangeIndex: 0 },
       { action: "mcp-range", locale: "en-US", rangeIndex: 1 },
       { action: "mcp-retry", locale: "en-US", selectedId: "none" },
-      { action: "mcp-refresh", locale: "en-US", selectedId: 1 },
       { action: "mcp-add-open", locale: "en-US" },
-      { action: "mcp-add-type", locale: "en-US" },
       { action: "mcp-add-submit", locale: "en-US", nonce: "nonce1234567" },
       { action: "mcp-set-enabled", locale: "en-US", entityId: 1, enabled: true },
       { action: "mcp-remove-prompt", locale: "en-US", entityId: 1 },
@@ -816,7 +811,7 @@ describe("isConfigRouteAuthorized", () => {
       { action: "voice-select", locale: "en-US", personaId: 5 },
       { action: "voice-page", locale: "en-US", personaId: 5, start: 0 },
       { action: "voice-chooser-cancel", locale: "en-US", personaId: 5 },
-      { action: "voice-clear", locale: "en-US", personaId: 5 },
+      { action: "voice-provider-clear", locale: "en-US", personaId: 5 },
       { action: "voice-design-open", locale: "en-US", personaId: 5 },
       { action: "voice-design-submit", locale: "en-US", personaId: 5, nonce: "nonce1234567" },
       { action: "voice-design-remove", locale: "en-US", personaId: 5 },
@@ -841,7 +836,7 @@ describe("isConfigRouteAuthorized", () => {
   });
 
   it("authorizes endpoint activation through the Models switch page", () => {
-    for (const capability of ["tts", "stt"] as const) {
+    for (const capability of ["tts-clone", "stt"] as const) {
       const route: ConfigPanelRoute = { action: "endpoint-select", locale: "en-US", capability };
       expect(isConfigRouteAuthorized(route, GUILD_MANAGER)).toBe(true);
       expect(isConfigRouteAuthorized(route, GUILD_MEMBER)).toBe(false);
@@ -864,7 +859,6 @@ describe("isConfigRouteAuthorized", () => {
     const routes: ConfigPanelRoute[] = [
       { action: "tts-parameters-open", locale: "en-US" },
       { action: "tts-parameters-submit", locale: "en-US", nonce: "nonce1234567" },
-      { action: "tts-turbo-set", locale: "en-US", enabled: true },
       { action: "voice-sample-select", locale: "en-US", start: 0 },
       { action: "voice-sample-page", locale: "en-US", start: 0 },
       { action: "voice-sample-add-open", locale: "en-US" },
@@ -909,14 +903,12 @@ describe("isConfigRouteAuthorized", () => {
       ...triggerRoutes.map((route) => route.action),
       "attribute-select",
       "attribute-page",
-      "attribute-add-open",
       "attribute-add-submit",
       "attribute-edit-open",
       "attribute-edit-submit",
       "attribute-remove",
       "dialogue-select",
       "dialogue-page",
-      "dialogue-add-open",
       "dialogue-add-submit",
       "dialogue-edit-open",
       "dialogue-edit-submit",
@@ -928,7 +920,6 @@ describe("isConfigRouteAuthorized", () => {
       "persona-page",
       "promote-cancel",
       "retry",
-      "refresh",
       "server-memory-open",
       "personal-memory-open",
       "stm-edit-open",
@@ -951,7 +942,6 @@ describe("isConfigRouteAuthorized", () => {
       "context-note-open",
       "context-note-submit",
       "humanizer-open",
-      "humanizer-select",
       "humanizer-submit",
       "text-override-open",
       "text-override-provider-select",

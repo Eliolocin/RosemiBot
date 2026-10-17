@@ -81,6 +81,7 @@ import {
   validateCustomEndpointReachability,
 } from "@/utils/provider/customEndpointService";
 import { ProviderFactory } from "@/utils/provider/providerFactory";
+import { isAccountBalanceExhaustedError } from "@/utils/provider/providerErrorClassification";
 import { encryptApiKey } from "@/utils/security/crypto";
 import { parseNonce } from "@/utils/discord/panelRouteCodec";
 import { createNonce, parseLocale } from "@/utils/discord/panelRouteTokens";
@@ -229,14 +230,15 @@ export function buildSetupFinishRouteId(input: { locale: string; nonce: string }
  * rather than being described as a non-number.
  */
 function describeSetupSettingsRejection(rawTimezone: string | undefined, timezoneOffset: number | null): string {
-  const prefix = "commands.setup.wizard.";
   if (timezoneOffset === null) {
     const typed = rawTimezone?.trim() ?? "";
     // Blank is UTC rather than an error, so a rejection here is either unparseable or out of range.
     const isOutOfRange = typed !== "" && !Number.isNaN(Number.parseFloat(typed));
-    return `${prefix}${isOutOfRange ? "settings_timezone_out_of_range" : "settings_timezone_invalid"}`;
+    return isOutOfRange
+      ? "commands.setup.wizard.settings_timezone_out_of_range"
+      : "commands.setup.wizard.settings_timezone_invalid";
   }
-  return `${prefix}settings_persona_stale`;
+  return "commands.setup.wizard.settings_persona_stale";
 }
 
 /**
@@ -419,6 +421,15 @@ function providerValidationFailureReceipt(locale: string): PanelReceipt {
     heading: localizer(locale, "commands.setup.wizard.provider_validation_failed_title"),
     detail: localizer(locale, "commands.setup.wizard.provider_validation_failed"),
     reason: "setup_provider_validation_failed",
+  };
+}
+
+function providerNoBalanceReceipt(locale: string): PanelReceipt {
+  return {
+    tone: "error",
+    heading: localizer(locale, "commands.setup.wizard.provider_validation_failed_title"),
+    detail: localizer(locale, "commands.setup.wizard.provider_validation_no_balance"),
+    reason: "setup_provider_validation_no_balance",
   };
 }
 
@@ -643,9 +654,36 @@ function resolveSystemPromptText(draft: SetupDraftRecord, catalogs: SetupSetting
   return catalogs.promptTexts.get(prompt.presetName) ?? null;
 }
 
-/** The `A Few Things to Note` entries that apply to a committed provider mode. */
-function buildSetupReceiptNotes(locale: string, access: SetupDraftProviderAccess, context: SetupDraftContext) {
+/**
+ * Whether the bot can chat in the setup channel, which setup cannot prove by succeeding because
+ * Discord serves interaction-token replies regardless of channel permissions.
+ */
+function canChatInSetupChannel(interaction: ChatInputCommandInteraction | GlobalRoutableInteraction): boolean {
+  const sendFlag = interaction.channel?.isThread()
+    ? PermissionsBitField.Flags.SendMessagesInThreads
+    : PermissionsBitField.Flags.SendMessages;
+  return interaction.appPermissions.has([
+    PermissionsBitField.Flags.ViewChannel,
+    PermissionsBitField.Flags.ReadMessageHistory,
+    sendFlag,
+  ]);
+}
+
+/** The `A Few Things to Note` entries that apply to a committed setup. */
+function buildSetupReceiptNotes(
+  locale: string,
+  access: SetupDraftProviderAccess,
+  context: SetupDraftContext,
+  canChatHere: boolean,
+) {
   const notes: Array<{ label: string; detail: string }> = [];
+
+  if (context === "guild" && !canChatHere) {
+    notes.push({
+      label: localizer(locale, "commands.setup.channel_access_warning_field"),
+      detail: localizer(locale, "commands.setup.channel_access_warning_value"),
+    });
+  }
 
   if (access.mode === "catalog" && access.provider === "novelai") {
     notes.push({
@@ -800,7 +838,7 @@ async function runSetupPostCommitEffects(input: {
     modelName: input.modelName,
     providerLabel: input.providerLabel,
     personaName: input.presetName,
-    notes: buildSetupReceiptNotes(locale, access, draft.context),
+    notes: buildSetupReceiptNotes(locale, access, draft.context, canChatInSetupChannel(input.interaction)),
     learnMore: localizer(locale, "commands.setup.wizard.receipt_learn_more", {
       help: commandRegistry.getCommandMention("help"),
     }),
@@ -1511,7 +1549,10 @@ export const setupInteractionRoute: GlobalInteractionRoute = {
         if (!validation.valid) {
           await repaintSetupWizard(interaction, draft, locale, nonce, {
             method: "editReply",
-            receipt: providerValidationFailureReceipt(locale),
+            receipt:
+              validation.error && isAccountBalanceExhaustedError(validation.error)
+                ? providerNoBalanceReceipt(locale)
+                : providerValidationFailureReceipt(locale),
           });
           return;
         }

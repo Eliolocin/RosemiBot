@@ -141,6 +141,23 @@ const CLONE_BUFFER_SOURCE: ResolvedVoiceSource = {
 const ELEVENLABS_SOURCE: ResolvedVoiceSource = { kind: "elevenlabs", voiceId: "voice-abc" };
 
 describe("synthesizeVoiceMessage design sources", () => {
+  it("reports the custom target label independently of nullable or blank model metadata", async () => {
+    for (const modelName of [null, "", "   ", "custom-model"]) {
+      const endpoint = { ...makeEndpoint({ voiceMode: "voice-design" }), model_name: modelName };
+      const result = await synthesizeVoiceMessage({
+        target: { kind: "custom-endpoint", endpoint, apiKey: "endpoint-key", owner: { kind: "server", ownerId: 1 } },
+        endpoint,
+        endpointApiKey: "endpoint-key",
+        elevenLabsApiKey: "",
+        script: "Hello",
+        source: DESIGN_SOURCE,
+      });
+      expect(result.success).toBe(true);
+      expect(result.targetLabel).toBe(endpoint.label);
+      expect(result.attempts?.[0]?.model).toBe(modelName ?? "");
+    }
+  });
+
   it("reaches the design adapter on a dedicated voice-design endpoint", async () => {
     const { calls, result } = await dispatch(makeEndpoint({ voiceMode: "voice-design" }), DESIGN_SOURCE);
 
@@ -303,7 +320,6 @@ describe("design-shape capability", () => {
     const auto = makeEndpoint({ voiceMode: "auto" });
 
     expect(resolveVoiceSourceCapabilities(auto).acceptsDesignShape).toBe(true);
-    expect(realTtsVoiceDesignAdapter.isVoiceDesignEndpoint(auto)).toBe(false);
   });
 
   it("is false for a missing endpoint on every shape", () => {

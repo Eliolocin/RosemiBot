@@ -45,7 +45,6 @@ export default {
     persona_page5_title: `{persona_name}: プロンプトとタグ`,
     persona_page5_description: `ペルソナプロンプトと生成タグ`,
     field_model: `AIモデル`,
-    field_speech_model: `音声モデル`,
     field_transcription_model: `文字起こしモデル`,
     field_user_byok: `ユーザーBYOK`,
     field_temperature: `温度`,

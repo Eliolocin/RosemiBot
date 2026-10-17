@@ -8,6 +8,7 @@ import {
   matchesRenderModifierName,
   parseLeadingGenericSpeakerLabel,
   parseLeadingRenderModifier,
+  parseNestedRenderModifier,
   parseRenderModifierWebhookName,
   resolveRenderModifierSourcePersona,
 } from "@/utils/discord/renderModifierParser";
@@ -22,13 +23,13 @@ function persona(nickname: string, id = 1): TomoriState {
 
 describe("render modifier parser", () => {
   it("parses active persona copied-render syntax", () => {
-    const result = parseLeadingRenderModifier("Ren (Obonya): hi", ["Ren"]);
+    const result = parseLeadingRenderModifier("Ren (Zallya): hi", ["Ren"]);
 
     expect(result).toEqual({
       sourceName: "Ren",
-      modifier: "Obonya",
+      modifier: "Zallya",
       body: "hi",
-      matchedPrefix: "Ren (Obonya): ",
+      matchedPrefix: "Ren (Zallya): ",
     });
   });
 
@@ -86,14 +87,37 @@ describe("render modifier parser", () => {
   });
 
   it("does not parse other speakers", () => {
-    expect(parseLeadingRenderModifier("Other (Obonya): hi", ["Ren"])).toBeNull();
-    expect(parseLeadingRenderModifier("Other: Ren (Obonya): hi", ["Ren", "Tomori"])).toBeNull();
+    expect(parseLeadingRenderModifier("Other (Zallya): hi", ["Ren"])).toBeNull();
+    expect(parseLeadingRenderModifier("Other: Ren (Zallya): hi", ["Ren", "Tomori"])).toBeNull();
   });
 
   it("ignores code-block and list-like starts", () => {
-    expect(parseLeadingRenderModifier("```\nRen (Obonya): hi\n```", ["Ren"])).toBeNull();
-    expect(parseLeadingRenderModifier("- Ren (Obonya): hi", ["Ren"])).toBeNull();
-    expect(parseLeadingRenderModifier("1. Ren (Obonya): hi", ["Ren"])).toBeNull();
+    expect(parseLeadingRenderModifier("```\nRen (Zallya): hi\n```", ["Ren"])).toBeNull();
+    expect(parseLeadingRenderModifier("- Ren (Zallya): hi", ["Ren"])).toBeNull();
+    expect(parseLeadingRenderModifier("1. Ren (Zallya): hi", ["Ren"])).toBeNull();
+  });
+
+  it("parses one nested level so a copied persona's sprite survives the label", () => {
+    expect(parseLeadingRenderModifier("Locke (Tomori (shocked)): hi", ["Locke"])).toMatchObject({
+      modifier: "Tomori (shocked)",
+      body: "hi",
+    });
+    expect(parseLeadingRenderModifier("Locke（Tomori（shocked））：hi", ["Locke"])?.modifier).toBe("Tomori（shocked）");
+    expect(parseLeadingRenderModifier("Locke (Tomori (shocked (very))): hi", ["Locke"])).toBeNull();
+    expect(parseNestedRenderModifier("Tomori（shocked）")).toEqual({ targetName: "Tomori", spriteLabel: "shocked" });
+    expect(parseNestedRenderModifier("Tomori")).toBeNull();
+  });
+
+  it("rebuilds a copied sprite's webhook name into the source-first label", () => {
+    const personas = new Map([
+      ["locke", persona("Locke", 3)],
+      ["tomori", persona("Tomori", 2)],
+    ]);
+
+    expect(resolveRenderModifierSourcePersona("Tomori (shocked) (Locke)", personas)).toMatchObject({
+      persona: { persona_id: 3 },
+      displayName: "Locke (Tomori (shocked))",
+    });
   });
 
   it("rejects overlong modifiers", () => {
@@ -101,26 +125,26 @@ describe("render modifier parser", () => {
   });
 
   it("formats webhook names within Discord's username limit", () => {
-    const formatted = formatRenderModifierWebhookName("R".repeat(90), "Obonya");
+    const formatted = formatRenderModifierWebhookName("R".repeat(90), "Zallya");
 
     expect(formatted.length).toBeLessThanOrEqual(80);
-    expect(formatted.endsWith(" (Obonya)")).toBe(true);
+    expect(formatted.endsWith(" (Zallya)")).toBe(true);
   });
 
   it("parses visible webhook names back into source and modifier", () => {
-    expect(parseRenderModifierWebhookName("Ren (Obonya)")).toEqual({
+    expect(parseRenderModifierWebhookName("Ren (Zallya)")).toEqual({
       sourceName: "Ren",
-      modifier: "Obonya",
+      modifier: "Zallya",
     });
   });
 
   it("resolves legacy copied-render webhook names to the source persona while preserving display label", () => {
     const personaByNickname = new Map([["ren", persona("Ren", 123)]]);
 
-    const result = resolveRenderModifierSourcePersona("Ren (Obonya)", personaByNickname);
+    const result = resolveRenderModifierSourcePersona("Ren (Zallya)", personaByNickname);
 
     expect(result?.persona.persona_id).toBe(123);
-    expect(result?.displayName).toBe("Ren (Obonya)");
+    expect(result?.displayName).toBe("Ren (Zallya)");
   });
 
   it("resolves flipped copied-render webhook names and rebuilds the source-first context label", () => {
@@ -128,10 +152,10 @@ describe("render modifier parser", () => {
 
     // Discord display puts the impersonated name first; the model-facing label
     // must come back source-persona-first.
-    const result = resolveRenderModifierSourcePersona("Obonya (Ren)", personaByNickname);
+    const result = resolveRenderModifierSourcePersona("Zallya (Ren)", personaByNickname);
 
     expect(result?.persona.persona_id).toBe(123);
-    expect(result?.displayName).toBe("Ren (Obonya)");
+    expect(result?.displayName).toBe("Ren (Zallya)");
   });
 
   it("prefers the flipped orientation when both name parts match personas", () => {
@@ -152,20 +176,20 @@ describe("render modifier parser", () => {
   it("uses the decorated webhook label without a sprite lookup", async () => {
     const personaByNickname = new Map([["ren", persona("Ren", 123)]]);
 
-    const result = await resolveWebhookPersonaAuthor("message-1", "Obonya (Ren)", personaByNickname);
+    const result = await resolveWebhookPersonaAuthor("message-1", "Zallya (Ren)", personaByNickname);
 
     expect(result).toEqual({
       persona: persona("Ren", 123),
-      displayName: "Ren (Obonya)",
+      displayName: "Ren (Zallya)",
     });
   });
 
   it("allows active render-modifier speaker labels through the speaker guard", () => {
     const sourceNames = collectRenderModifierSourceNames("Ren", ["Tomori"]);
 
-    expect(isAllowedRenderModifierSpeakerLabel("Ren (Obonya)", sourceNames)).toBe(true);
-    expect(isAllowedRenderModifierSpeakerLabel("Tomori (Obonya)", sourceNames)).toBe(true);
-    expect(isAllowedRenderModifierSpeakerLabel("Other (Obonya)", sourceNames)).toBe(false);
+    expect(isAllowedRenderModifierSpeakerLabel("Ren (Zallya)", sourceNames)).toBe(true);
+    expect(isAllowedRenderModifierSpeakerLabel("Tomori (Zallya)", sourceNames)).toBe(true);
+    expect(isAllowedRenderModifierSpeakerLabel("Other (Zallya)", sourceNames)).toBe(false);
   });
 });
 

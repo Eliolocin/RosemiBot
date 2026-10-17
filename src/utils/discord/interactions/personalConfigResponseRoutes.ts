@@ -9,6 +9,15 @@ import {
   type PersonalConfigPostDeferContext,
 } from "@/utils/discord/interactions/personalConfigRouteContext";
 
+const MODE_LABEL_KEYS: Record<
+  Extract<PersonalConfigPostDeferContext["route"], { action: "trigger-mode-set" }>["mode"],
+  string
+> = {
+  off: "commands.personal.config.mode_off",
+  follow: "commands.personal.config.mode_follow",
+  on: "commands.personal.config.mode_on",
+};
+
 export async function handlePersonalConfigResponseRoutes(context: PersonalConfigPostDeferContext): Promise<boolean> {
   const { interaction, route, dependencies } = context;
 
@@ -356,7 +365,7 @@ export async function handlePersonalConfigResponseRoutes(context: PersonalConfig
           tone: "success",
           heading: localizer(route.locale, "commands.personal.config.trigger_mode_updated_heading"),
           detail: localizer(route.locale, "commands.personal.config.trigger_mode_updated_detail", {
-            mode: localizer(route.locale, `commands.personal.config.mode_${route.mode}`),
+            mode: localizer(route.locale, MODE_LABEL_KEYS[route.mode]),
           }),
         },
         dependencies,
@@ -434,7 +443,7 @@ export async function handlePersonalConfigResponseRoutes(context: PersonalConfig
           tone: "success",
           heading: localizer(route.locale, "commands.personal.config.tool_mode_updated_heading"),
           detail: localizer(route.locale, "commands.personal.config.tool_mode_updated_detail", {
-            mode: localizer(route.locale, `commands.personal.config.mode_${route.mode}`),
+            mode: localizer(route.locale, MODE_LABEL_KEYS[route.mode]),
           }),
         },
         dependencies,

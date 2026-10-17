@@ -4,8 +4,8 @@
  */
 export type McpsPanelRouteInput =
   | { action: "range"; locale: string; rangeIndex: number }
-  | { action: "retry" | "refresh"; locale: string; selectedId: number | "none" }
-  | { action: "add-open" | "add-type"; locale: string }
+  | { action: "retry"; locale: string; selectedId: number | "none" }
+  | { action: "add-open"; locale: string }
   | { action: "add-submit"; locale: string; nonce: string }
   | { action: "set-enabled"; locale: string; entityId: number; enabled: boolean }
   | { action: "remove-prompt" | "remove-cancel" | "remove-confirm"; locale: string; entityId: number };

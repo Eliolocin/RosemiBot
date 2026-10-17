@@ -1,3 +1,4 @@
+import { TIMEFRAME_LABEL_KEYS } from "@/utils/discord/statsDashboardCatalog";
 import { AttachmentBuilder, MessageFlags, type Client, type Guild, type InteractionReplyOptions } from "discord.js";
 import type { TomoriState, UserRow } from "@/types/db/schema";
 import { getCachedAllPersonas, getCachedTomoriState } from "@/utils/cache/tomoriStateCache";
@@ -138,7 +139,7 @@ async function rebuildDashboard(
       return;
     }
     const scopeServerId = route.scope === "this_server" ? route.serverId : undefined;
-    const timeframeLabel = localizer(route.locale, `commands.choices.${route.timeframe}`);
+    const timeframeLabel = localizer(route.locale, TIMEFRAME_LABEL_KEYS[route.timeframe]);
     const scopeLabel = localizer(
       route.locale,
       route.scope === "this_server" ? "commands.choices.this_server" : "commands.choices.global",

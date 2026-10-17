@@ -22,6 +22,7 @@
  * when usage is unavailable (see tokenEstimate / postTurnEffects). They remain estimates
  * because catalog prices can be incomplete or provider-dependent.
  */
+import { TIMEFRAME_LABEL_KEYS } from "@/utils/discord/statsDashboardCatalog";
 import {
   type AttachmentBuilder,
   ButtonStyle,
@@ -1064,7 +1065,7 @@ export async function buildServerTabs(args: {
 
 /** Builds the localized "{timeframe} • {scope}" subtitle shown under each tab title. */
 export function buildSubtitle(locale: string, timeframe: Timeframe, scopeLabelKey?: string): string {
-  const timeframeLabel = localizer(locale, `commands.choices.${timeframe}`);
+  const timeframeLabel = localizer(locale, TIMEFRAME_LABEL_KEYS[timeframe]);
   if (!scopeLabelKey) return `**${timeframeLabel}**`;
   return `**${timeframeLabel}** • ${localizer(locale, scopeLabelKey)}`;
 }

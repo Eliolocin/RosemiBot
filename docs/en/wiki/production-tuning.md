@@ -11,8 +11,9 @@ and cloud provider environments (such as Azure VM and AWS EC2).
 
 ## Container Sizing and Swap Dynamics
 
-Production Compose files (such as `deploy/azure/docker-compose.yml`) apply strict cgroup resource
-constraints to prevent out-of-memory kernel kills.
+Production Compose files apply cgroup resource constraints to limit container memory use. The Azure
+example, `deploy/azure/docker-compose.yml`, lives on `release` and is absent from `main`; read it
+with `git show release:deploy/azure/docker-compose.yml`.
 
 ### Memory and Swap Bounds
 
@@ -103,7 +104,7 @@ swap activity to identify host-level memory and I/O starvation.
 
 ### Analytical Model and Calibration
 
-The default thresholds were calibrated by replaying 67,967 production telemetry samples through
+The default thresholds were calibrated by replaying production telemetry samples through
 the replay harness (`bun run scripts/devtools/replayPressureDetector.ts <observer.log> --verbose`):
 
 - `PRESSURE_ELEVATED_IO_FULL=15`: PSI `io full avg60` indicating moderate contention.
@@ -148,7 +149,7 @@ run at most once every 6 hours.
 
 Heap snapshots can contain master secrets, decrypted credentials, Discord and database tokens, and private conversation data. Leave `HEAP_SNAPSHOT_DIR` unset during routine operation. An unset value registers no `SIGUSR2` handler. Azure Compose also leaves `TOMORIBOT_HEAP_SNAPSHOT_DIR` empty by default.
 
-For an authorized diagnostic session, create a directory outside general log shipping, owned by the bot user and accessible only to that user (directory `0700`, snapshot files `0600` on POSIX; a private ACL on Windows). Azure uses `/var/lib/tomoribot/diagnostics` mounted at `/app/diagnostics`; explicitly set `TOMORIBOT_HEAP_SNAPSHOT_DIR=/app/diagnostics` and recreate the container. The handler refuses a symlink, a non-directory, or a POSIX directory with other-user access or the wrong owner. It creates files exclusively with mode `0600`. Check Windows ACLs yourself before enabling it.
+For an authorized diagnostic session, create `<private-diagnostics-directory>` outside general log shipping, owned by the bot user and accessible only to that user (directory `0700`, snapshot files `0600` on POSIX; a private ACL on Windows). In Azure Compose on `release`, verify the host source of the `/app/diagnostics` mount, then explicitly set `TOMORIBOT_HEAP_SNAPSHOT_DIR=/app/diagnostics` and recreate the container. The handler refuses a symlink, a non-directory, or a POSIX directory with other-user access or the wrong owner. It creates files exclusively with mode `0600`. Check Windows ACLs yourself before enabling it.
 
 Send `SIGUSR2` only during the diagnostic session. Serialization needs roughly half the live heap as additional temporary memory, so capture during moderate memory use and restart afterward. Transfer a snapshot only through protected storage. Remove it from the host and any analysis copies when diagnosis finishes, unset the directory setting, and recreate or restart the process to remove the handler. There is no automatic snapshot retention policy.
 
@@ -160,7 +161,8 @@ Review existing snapshots under the old log mount, log-shipping destinations, an
 
 - `LOG_LEVEL` (default: `error` in production, `info` otherwise): The lowest level written to
   stdout and the JSONL file. Raise it to `warn` while diagnosing a user's report, then unset it.
-  Metrics are written at every level.
+  Metrics are written at every level. `info` and lower also write each provider request in full,
+  including system prompts, memories, and conversation text, so treat those logs as private data.
 - `TOMORI_LOG_FILE`: Mirrors every emitted record (error, rateLimit, fatal, and metric samples at
   the default level) to an append-only JSONL file for consumption by host agents (e.g. Azure
   Monitor Agent).

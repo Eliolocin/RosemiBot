@@ -33,9 +33,7 @@ export type PersonalMemoriesPanelRoute =
       lineageId: number;
       rangeIndex?: number;
     }
-  | { action: "range-open" | "range-cancel"; locale: string; category: PersonalMemoriesCategory; lineageId: number }
   | { action: "range"; locale: string; category: PersonalMemoriesCategory; lineageId: number; rangeIndex: number }
-  | { action: "range-page"; locale: string; category: PersonalMemoriesCategory; lineageId: number; chooserPage: number }
   | { action: "add-submit"; locale: string; category: PersonalMemoriesCategory; lineageId: number; nonce: string }
   | {
       action: "edit-open" | "remove-prompt" | "remove-confirm" | "remove-cancel";
@@ -53,7 +51,7 @@ export type PersonalMemoriesPanelRoute =
       nonce: string;
     }
   | { action: "stm-clear"; locale: string; category: PersonalMemoriesCategory; lineageId: number }
-  | { action: "retry" | "refresh"; locale: string; category: PersonalMemoriesCategory; lineageId: number };
+  | { action: "retry"; locale: string; category: PersonalMemoriesCategory; lineageId: number };
 
 type PersonalMemoriesAction = PersonalMemoriesPanelRoute["action"];
 
@@ -111,12 +109,6 @@ const rangeIndexField: RouteFieldCodec<"rangeIndex", number> = {
   decode: (v) => parseNonNegativeInt(v),
 };
 
-const chooserPageField: RouteFieldCodec<"chooserPage", number> = {
-  key: "chooserPage",
-  encode: (v) => String(v),
-  decode: (v) => parseNonNegativeInt(v),
-};
-
 const memoryIdField: RouteFieldCodec<"memoryId", number> = {
   key: "memoryId",
   encode: (v) => String(v),
@@ -162,22 +154,6 @@ export const PERSONAL_MEMORIES_ROUTE_CODECS: PersonalMemoriesRouteCodecs = {
   range: {
     wireToken: "range",
     fields: [categoryField, lineageIdField, rangeIndexField],
-  },
-  "range-cancel": {
-    wireToken: "range-cancel",
-    fields: [categoryField, lineageIdField],
-  },
-  "range-open": {
-    wireToken: "range-open",
-    fields: [categoryField, lineageIdField],
-  },
-  "range-page": {
-    wireToken: "range-page",
-    fields: [categoryField, lineageIdField, chooserPageField],
-  },
-  refresh: {
-    wireToken: "refresh",
-    fields: [categoryField, lineageIdField],
   },
   "remove-cancel": {
     wireToken: "remove-cancel",

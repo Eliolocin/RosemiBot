@@ -20,7 +20,7 @@ export async function buildContext(params: BuildContextParams): Promise<BuildCon
       if (presetData) {
         const nativeOutput = await buildContextNative({
           ...paramsWithMap,
-          suppressDefaultSystemPrompt: !params.tomoriConfig.system_prompt?.trim(),
+          presetOwnsSystemPrompt: true,
         });
 
         const lastUserMessage =

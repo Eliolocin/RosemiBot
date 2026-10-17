@@ -3,6 +3,8 @@ import type { Request as BridgeRequest, WeakEvent } from "matrix-appservice-brid
 import { getCachedAllPersonas } from "@/utils/cache/tomoriStateCache";
 import { clearShortTermMemoryForChannel } from "@/utils/cache/shortTermMemoryCache";
 import { getOrCreateWebhook } from "@/utils/discord/webhook/lifecycle";
+import { GENERIC_WEBHOOK_AVATAR_URL } from "@/utils/discord/webhook/identity";
+import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
@@ -91,9 +93,10 @@ export async function handleMatrixEvent(
   const { webhook } = await getOrCreateWebhook(channel as BaseGuildTextChannel);
   if (!webhook) return;
 
-  await webhook.send({
+  await sendWebhookMessageWithIdentity(webhook, {
     content: relayContent,
     username,
+    avatarURL: GENERIC_WEBHOOK_AVATAR_URL,
     allowedMentions: { parse: [] },
   });
 }
@@ -148,9 +151,10 @@ async function relayMatrixMediaIfNeeded(
   const knownSize = typeof info?.size === "number" ? info.size : undefined;
   if (knownSize !== undefined && knownSize > getMatrixSettings().maxAttachmentBytes) {
     const sizeMb = (knownSize / (1024 * 1024)).toFixed(1);
-    await webhook.send({
+    await sendWebhookMessageWithIdentity(webhook, {
       content: `[Matrix: attachment too large to relay (${sizeMb} MB)]`,
       username,
+      avatarURL: GENERIC_WEBHOOK_AVATAR_URL,
       allowedMentions: { parse: [] },
     });
     return true;
@@ -165,18 +169,20 @@ async function relayMatrixMediaIfNeeded(
       knownSize,
     );
     if (media) {
-      await webhook.send({
+      await sendWebhookMessageWithIdentity(webhook, {
         files: [{ attachment: media.buffer, name: filename }],
         username,
+        avatarURL: GENERIC_WEBHOOK_AVATAR_URL,
         allowedMentions: { parse: [] },
       });
       return true;
     }
   }
 
-  await webhook.send({
+  await sendWebhookMessageWithIdentity(webhook, {
     content: `[Matrix: attachment unavailable - ${filename}]`,
     username,
+    avatarURL: GENERIC_WEBHOOK_AVATAR_URL,
     allowedMentions: { parse: [] },
   });
   return true;

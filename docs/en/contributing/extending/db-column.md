@@ -20,7 +20,7 @@ How to add a column to an existing table.
 2. If existing rows need a backfill, or a column moves or is dropped, add a numbered migration
    `src/db/migrations/NNN_name.sql` with a matching `.down.sql`. Choose `NNN` after checking every
    branch (`git ls-tree`), because `bun run check-migrations` only sees the working tree.
-3. Add the field to the Zod schema and types in `src/types/db/schema.ts`.
+3. If the table has a Zod schema in `src/types/db/schema.ts`, add the field to the schema and its types.
 4. Read and write it through the owning repository in `src/utils/db/repositories/` (see
    [Raw SQL Boundary](/contributing/policies/raw-sql/)).
 5. After a successful write, invalidate the affected caches in the same code path; never before the

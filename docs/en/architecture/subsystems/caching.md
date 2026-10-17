@@ -24,11 +24,18 @@ The codebase bounds memory consumption through three coordinated mechanisms:
 Discord gateway collections retain messages, guild members, users, and presences independently of
 application caches. Their memory footprint must be measured alongside application state.
 
-Scheduled sweepers in `src/init/discord.ts` prune client collections periodically:
+`src/init/discord.ts` caps each channel's message cache at 50 entries (the discord.js default is 200),
+evicting the oldest-inserted message first. A history fetch inserts newest first, so a fetch larger
+than the cap evicts its own newest messages. No chat path depends on an older message staying cached:
+admission resolves a reply target once through `resolveReferencedMessage()` (cache, then REST) and
+hands that instance to every later reader, history reads use `fetch`, and history reply annotations
+look up their target in the fetched window before the cache.
+
+Scheduled sweepers in the same file prune client collections periodically:
 
 - **Messages**: hourly sweep with a 30-minute lifetime.
 - **Guild members**: hourly sweep. Excludes the client's own member (required for synchronous permission checks) and any user currently in a voice channel (read synchronously by audio handlers).
-- **Users**: hourly sweep restricted to bot accounts. Human users remain reachable so synchronous mention resolution in `historyFormatter` resolves member names without falling back to placeholder strings.
+- **Users**: hourly sweep of every user with no cached member in any guild, except the client user. A cached member holds its own user reference, so only these orphans free memory; most arrive through presence updates. `historyFormatter` resolves mentions from each message's own mention list, so a swept user still renders by name.
 
 ## Active cache layers
 
@@ -59,15 +66,22 @@ Application caches are partitioned by domain ownership, lifetime, and storage ba
 ### Provider and integration metadata
 
 - **LLM model cache (`llmCacheStore.ts`)**: static model catalog warmed from the `llms` table at startup. Remains immutable during normal runtime.
-- **OpenRouter catalogs (`openrouterCatalog.ts`)**: separates models into text, embedding, image, and video catalogs (`openrouterCapabilityCache.ts`, `openrouterEmbeddingModelCache.ts`, `openrouterImageModelCache.ts`, `openrouterVideoModelCache.ts`). Keyed by lowercase model codename. Refreshed on misses and in the background via a 6-hour TTL. Collapses concurrent lookups into single network requests and enforces a 60-second minimum refresh interval. Excluded from emergency clearing to prevent chat traffic from blocking on provider discovery.
+- **OpenRouter catalogs (`openrouterCatalog.ts`)**: separates models into text, embedding, image, and video catalogs (`openrouterCapabilityCache.ts`, `openrouterEmbeddingModelCache.ts`, `openrouterImageModelCache.ts`, `openrouterVideoModelCache.ts`). Keyed by lowercase model codename. Refreshed on misses and in the background via a 6-hour TTL. Collapses concurrent lookups into single network requests and enforces a 60-second minimum refresh interval. Excluded from emergency clearing to prevent chat traffic from blocking on provider discovery. Speech registration uses the same catalogue machinery in `openrouterSpeechModelCache.ts`, requires a successful fresh snapshot, and checks endpoint cloning flags separately. Speech targets and voice bindings are read from the database.
 - **Live model limits cache (`liveModelLimitsCache.ts`)**: keyed by `provider:codename` for Anthropic and Google models APIs. Successful lookups persist for 24 hours. Failed attempts cache a 10-minute retry interval while serving catalog defaults.
 - **NovelAI caches (`novelaiCapabilityCache.ts`, `novelaiSubscriptionCache.ts`)**: static model token limits and subscription tier definitions.
 - **Guild MCP configuration cache (`guildMcpConfigCache.ts`)**: caches active MCP server registrations and discovered tool name snapshots.
 
 ### Ephemeral workflow sessions
 
-- **Webhook cache (`src/utils/discord/webhook/cache.ts`)**: caches active Discord webhook clients by channel and persona. Webhook tokens are persisted encrypted in PostgreSQL, enabling cache rehydration after process restarts without recreating webhooks.
+- **Webhook cache (`src/utils/discord/webhook/webhookCore.ts`)**: caches the primary Discord webhook by parent channel, managed slots by webhook ID, and legacy persona webhooks by channel and persona. Encrypted tokens restore managed slots after a restart. Primary lookup restores only the primary; local-avatar dispatch restores the other persisted slots for selection. Historic operations restore slots by exact webhook ID and leave the primary entry intact. A failed slot-list query allows the next lookup to retry immediately. Verified SHA-256 assignments hydrate the data-URI cache on an exact match, avoiding a redundant PATCH after restart. An uncertain PATCH clears the cached assignment. Successful sends update in-memory use order; persisted row order supplies the restart order. Parent-channel locks cover local-avatar selection and sending. Lifecycle lookup uses separate coordination, and restoration shares a per-webhook lock with avatar PATCHes. HTTPS overrides bypass avatar locks. Invalidation can remove one failed webhook or every webhook in a channel.
 - **Persona workflow avatar cache (`src/utils/discord/ui/personaWorkflow.ts`)**: transient `Map<number, AvatarCacheEntry>` scoped to an active persona picker interaction. Reuses resolved avatar buffers across pagination, validation failures, and retries. Discarded when the interaction workflow terminates.
+
+Managed webhook caches hold at most four slots per parent channel. Cache counts include pool slots,
+and clearing the cache leaves their database rows and Discord webhooks intact for restoration.
+Delivery continuity stores the actual webhook ID and delivered identity separately from avatar
+assignments. Reassigning a slot changes future sends; historic edits and deletes resolve the
+message's webhook ID even after the cache is cleared. Bot fallbacks clear the channel's webhook
+continuity, while failed sends leave the last successful delivery intact.
 
 ## Write invalidation contracts
 

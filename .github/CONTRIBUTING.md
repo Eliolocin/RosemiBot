@@ -7,8 +7,7 @@ Thanks for your interest in contributing! This guide covers what you need to kno
 | Branch | Purpose |
 |---|---|
 | `main` | Default branch, fork from here, target PRs **here** |
-| `release` | Deploy gate, stable versions that reflect the public deployed TomoriBot.|
-| `dev` | Maintainer's personal (unstable) development branch. |
+| `release` | Deploy gate, stable versions that reflect the public deployed TomoriBot. |
 
 Cloud deployment lives on `release` only. A `main` checkout has no `terraform/`, `deploy/`,
 `.github/release/`, or `docs/en/wiki/cloud/`, which keeps a self-hoster's clone to the bot itself.

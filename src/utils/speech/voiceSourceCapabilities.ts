@@ -1,13 +1,15 @@
-/**
- * Which `/synthesize` request shapes the active speech endpoint accepts.
- *
- * Kept as its own leaf module because both the modal's source table and the synthesis dispatcher
- * need this answer, and the dispatcher must not depend on the modal layer (which pulls in the
- * Discord interaction core) just to learn what an endpoint can take. One table, two consumers, no
- * chance of the two disagreeing about what `auto` accepts.
- */
+import type { CustomEndpointRow, SpeechModelRow } from "@/types/db/schema";
 
-import type { CustomEndpointRow } from "@/types/db/schema";
+export type VoiceSourceTarget = Pick<CustomEndpointRow, "api_style" | "extra_config"> | SpeechModelRow;
+
+export type VoiceSourceMode = "design" | "clone";
+
+export function supportsSpeechMode(endpoint: VoiceSourceTarget, mode: VoiceSourceMode): boolean {
+  const capabilities = resolveVoiceSourceCapabilities(endpoint);
+  return mode === "design"
+    ? capabilities.acceptsDesignShape
+    : capabilities.acceptsCloneShape || ("api_style" in endpoint && endpoint.api_style === "elevenlabs");
+}
 
 export interface VoiceSourceCapabilities {
   /** Endpoint accepts clone-shaped bodies (`ref_audio` + `ref_text`). */
@@ -18,21 +20,23 @@ export interface VoiceSourceCapabilities {
   cloneInstructionsAvailable: boolean;
 }
 
-function getVoiceMode(endpoint: CustomEndpointRow | null | undefined): "clone" | "voice-design" | "auto" {
+function getVoiceMode(
+  endpoint: Pick<CustomEndpointRow, "api_style" | "extra_config"> | null | undefined,
+): "clone" | "voice-design" | "auto" {
   const rawMode = endpoint?.extra_config.voice_mode;
   return rawMode === "voice-design" || rawMode === "auto" ? rawMode : "clone";
 }
 
-/**
- * Resolves the endpoint's accepted request shapes.
- *
- * `auto` accepts both: one URL that reads `ref_audio`/`ref_text` for clone bodies and `instruct`
- * for design bodies. ElevenLabs accepts neither, which is why its user-supplied options are
- * ignored rather than rejected.
- */
 export function resolveVoiceSourceCapabilities(
-  endpoint: CustomEndpointRow | null | undefined,
+  endpoint: VoiceSourceTarget | null | undefined,
 ): VoiceSourceCapabilities {
+  if (endpoint && "speech_model_id" in endpoint) {
+    return {
+      acceptsCloneShape: endpoint.voice_mode !== "design",
+      acceptsDesignShape: endpoint.voice_mode !== "clone",
+      cloneInstructionsAvailable: endpoint.voice_mode !== "design",
+    };
+  }
   if (endpoint?.api_style !== "tts-clone") {
     return { acceptsCloneShape: false, acceptsDesignShape: false, cloneInstructionsAvailable: false };
   }

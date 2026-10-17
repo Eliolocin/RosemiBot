@@ -568,7 +568,10 @@ describe("config Behavior routes", () => {
     expect(stmTypes).toContain(21); // Radio Group
 
     const fiftyTriggerEntries = Object.fromEntries(
-      Array.from({ length: 50 }, (_unused, index) => [`target-${index}`, [`trigger-${index}`]]),
+      ["image", "video", "voice", "reminder", "search"].map((target) => [
+        target,
+        Array.from({ length: 10 }, (_unused, index) => `trigger-${index}`),
+      ]),
     );
     expect(buildBehaviorToolTriggerRemoveModal("en-US", "nonce1234567", fiftyTriggerEntries).components).toHaveLength(
       5,
@@ -628,6 +631,31 @@ describe("config Behavior routes", () => {
     await dispatch(harness, interaction);
     expect(harness.deferredAtWrite).toEqual([true]);
     expect(update).toHaveBeenCalledTimes(1);
+    update.mockRestore();
+  });
+
+  it("refuses system prompt edits from a stale panel while a SillyTavern preset is active", async () => {
+    const harness = makeHarness(true);
+    const loadBase = harness.dependencies.loadBehaviorView;
+    harness.dependencies.loadBehaviorView = async (current) => {
+      // biome-ignore lint/style/noNonNullAssertion: makeHarness always supplies the loader
+      const base = await loadBase!(current);
+      return { ...base, general: { ...base.general, activeStPresetName: "Juno RP" } };
+    };
+    const update = spyOn(configRepository, "updateChatConfig").mockResolvedValue(true);
+    for (const action of ["behavior-prompt-open", "behavior-preset-open"] as const) {
+      const interaction = makeInteraction(harness, buildConfigRouteId({ action, locale: "en-US" }));
+      await dispatch(harness, interaction);
+      expect(JSON.stringify(harness.replies.at(-1))).toContain(
+        localizedCopy("en-US", "commands.config.panel.system_prompt_st_preset_locked_detail"),
+      );
+    }
+    await dispatch(
+      harness,
+      makeInteraction(harness, buildConfigRouteId({ action: "behavior-prompt-remove", locale: "en-US" })),
+    );
+    expect(harness.modals).toHaveLength(0);
+    expect(update).not.toHaveBeenCalled();
     update.mockRestore();
   });
 

@@ -7,9 +7,10 @@ export function getUserActiveMessageCount(userDiscId: string): number {
       count++;
     }
 
-    count += lockEntry.messageQueue.filter(
-      (queuedMsg) => queuedMsg.message.author.id === userDiscId && !queuedMsg.isPersonaJob,
-    ).length;
+    count += lockEntry.messageQueue.filter((queuedMsg) => {
+      const queuedUserDiscId = queuedMsg.textQuotaUserDiscId ?? queuedMsg.message.author.id;
+      return queuedUserDiscId === userDiscId && !queuedMsg.isPersonaJob;
+    }).length;
   }
 
   return count;

@@ -3,6 +3,7 @@
  * Gatherers provide the complete data structs; this module never reads the DB
  * or Discord API.
  */
+import { TIMEFRAME_LABEL_KEYS } from "@/utils/discord/statsDashboardCatalog";
 import type { Timeframe } from "@/utils/stats/statsDashboard";
 import { localizer } from "@/utils/text/localizer";
 
@@ -79,7 +80,7 @@ function formatCost(value: number): string {
 }
 
 function timeframeLabel(locale: string, timeframe: Timeframe): string {
-  return localizer(locale, `commands.choices.${timeframe}`);
+  return localizer(locale, TIMEFRAME_LABEL_KEYS[timeframe]);
 }
 
 export interface PersonIcon {

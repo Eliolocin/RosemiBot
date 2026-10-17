@@ -10,6 +10,7 @@
  * neither value reaches `persona_voice_configs` or `voice_samples`.
  */
 
+import { MAX_VOICE_DESIGN_PROMPT_LENGTH } from "@/constants/speech";
 import {
   EmbedBuilder,
   MessageFlags,
@@ -21,7 +22,7 @@ import {
 } from "discord.js";
 import { parseBuffer } from "music-metadata";
 import { personaRepository, statRepository } from "@/utils/db/repositories";
-import { loadVoiceSamples } from "@/utils/db/repositories/SpeechRepository";
+import { loadVoiceSamples, loadSpeechRoutingPolicy } from "@/utils/db/repositories/SpeechRepository";
 import { cooldownRepository } from "@/utils/db/repositories/CooldownRepository";
 import { getCachedPersonalSpotlightStatus } from "@/utils/cache/personalSpotlightCache";
 import { getCachedWhitelistStatus } from "@/utils/cache/channelWhitelistCache";
@@ -48,7 +49,12 @@ import { generateVoiceMessageMetadata } from "@/utils/audio/voiceMessageMetadata
 import { ELEVENLABS_SERVICE_NAME } from "@/utils/audio/elevenLabsAccount";
 import { isChatterboxEndpoint } from "@/providers/custom/styles/ttsCloningAdapter";
 import type { CustomEndpointRow } from "@/types/db/schema";
-import { resolveActiveSpeechEndpoint } from "@/utils/provider/speechEndpointResolver";
+import {
+  resolveSpeechTargets,
+  speechTargetSource,
+  speechTargetFingerprint,
+  speechTargetLabel,
+} from "@/utils/provider/speechEndpointResolver";
 import { getOptApiKey } from "@/utils/security/crypto";
 import { safeDownload } from "@/utils/security/safeDownload";
 import {
@@ -88,6 +94,15 @@ import type { WhitelistCheckResult } from "@/types/misc/channelWhitelist";
 import type { PersonalSpotlightStatus } from "@/utils/db/repositories/UserRepository";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
+const BACKEND_LABEL_KEYS: Record<VoiceBackendKey, string> = {
+  elevenlabs: "commands.generate.voice-message.backend_elevenlabs",
+  "tts-clone": "commands.generate.voice-message.backend_tts_clone",
+  "tts-voice-design": "commands.generate.voice-message.backend_tts_voice_design",
+  "openrouter-speech": "commands.generate.voice-message.backend_openrouter_speech",
+  "google-speech": "commands.generate.voice-message.backend_google_speech",
+  "vertex-speech": "commands.generate.voice-message.backend_vertex_speech",
+};
+
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand
     .setName("voice-message")
@@ -110,7 +125,7 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
         .setName("voice_design")
         .setDescription(localizer("en-US", "commands.generate.voice-message.voice_design_description"))
         .setRequired(false)
-        .setMaxLength(1000),
+        .setMaxLength(MAX_VOICE_DESIGN_PROMPT_LENGTH),
     );
 
 /**
@@ -176,13 +191,10 @@ function resolvePersonaForInvocation(input: {
 }
 
 function describeBackend(locale: string, backendKey: VoiceBackendKey): string {
-  return localizer(locale, `commands.generate.voice-message.backend_${backendKey.replace(/-/g, "_")}`);
+  return localizer(locale, BACKEND_LABEL_KEYS[backendKey]);
 }
 
 /** True when the persona holds an ElevenLabs voice id the fallback path could use. */
-function usesElevenLabsVoice(persona: TomoriState): boolean {
-  return Boolean(persona.speech_voice_id?.trim());
-}
 
 /**
  * Picks the delivery-knob radio for the resolved endpoint, or null when that endpoint has no knob.
@@ -395,32 +407,14 @@ export async function execute(
   }
   const persona = personaResolution.persona;
 
-  const speechEndpoint = await resolveActiveSpeechEndpoint(mainPersona.server_id);
-  const endpointIsElevenLabs = speechEndpoint?.endpoint.api_style === "elevenlabs";
-
-  // An endpoint-scoped key wins over the legacy opt_api_keys entry, which survives only for
-  // deployments that predate the endpoint pathway, but it counts only when that endpoint is
-  // itself ElevenLabs: the tool forwards any active endpoint's key here, which on a `tts-clone`
-  // server hands a local endpoint's credential to ElevenLabs.
-  // The lookup is keyed on the persona holding a voice id rather than on the endpoint, because
-  // the endpoint does not determine whether the id is reachable: a persona with a sample and a
-  // voice id on an ElevenLabs endpoint resolves to the voice id only after the sample is
-  // discarded, and a voice-id-only persona on a `tts-clone` server can resolve to it too.
-  const elevenLabsApiKey = usesElevenLabsVoice(persona)
-    ? (endpointIsElevenLabs ? speechEndpoint?.apiKey : "") ||
-      ((await getOptApiKey(mainPersona.server_id, ELEVENLABS_SERVICE_NAME)) ?? "")
-    : "";
-
-  const usesElevenLabs = !speechEndpoint && Boolean(elevenLabsApiKey) && usesElevenLabsVoice(persona);
-  if (!speechEndpoint && !usesElevenLabs) {
-    await replyInfoEmbed(interaction, locale, {
-      titleKey: "commands.generate.voice-message.no_endpoint_title",
-      descriptionKey: "commands.generate.voice-message.no_endpoint_description",
-      color: ColorCode.ERROR,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
+  const targets = await resolveSpeechTargets(mainPersona.server_id, userData.user_id);
+  let elevenLabsApiKey =
+    targets.clone?.endpoint?.api_style === "elevenlabs"
+      ? targets.clone.apiKey
+      : !targets.clone &&
+          (!userData.user_id || (await loadSpeechRoutingPolicy(mainPersona.server_id, userData.user_id)).serverAllowed)
+        ? ((await getOptApiKey(mainPersona.server_id, ELEVENLABS_SERVICE_NAME)) ?? "")
+        : "";
 
   const uploadAttachment = interaction.options.getAttachment("voice_sample");
   if (uploadAttachment) {
@@ -434,8 +428,14 @@ export async function execute(
     });
     if (validation !== "ok") {
       await replyInfoEmbed(interaction, locale, {
-        titleKey: `commands.generate.voice-message.upload_${validation === "too-large" ? "too_large" : "invalid_format"}_title`,
-        descriptionKey: `commands.generate.voice-message.upload_${validation === "too-large" ? "too_large" : "invalid_format"}_description`,
+        titleKey:
+          validation === "too-large"
+            ? "commands.generate.voice-message.upload_too_large_title"
+            : "commands.generate.voice-message.upload_invalid_format_title",
+        descriptionKey:
+          validation === "too-large"
+            ? "commands.generate.voice-message.upload_too_large_description"
+            : "commands.generate.voice-message.upload_invalid_format_description",
         descriptionVars: { max: String(SPEECH_SAMPLE_MAX_MB) },
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
@@ -444,18 +444,29 @@ export async function execute(
     }
   }
 
-  // ElevenLabs accepts neither request shape, so an endpoint that is missing entirely means the
-  // persona's stored ElevenLabs voice id is the only candidate.
-  const effectiveEndpoint = speechEndpoint?.endpoint ?? null;
   const typedDesignPrompt = interaction.options.getString("voice_design");
   const personaSampleName = await resolvePersonaSampleName(persona);
   const candidateInput = {
-    endpoint: effectiveEndpoint,
+    targets: { design: speechTargetSource(targets.design), clone: speechTargetSource(targets.clone) },
+    legacyElevenLabsAvailable: !targets.clone && Boolean(elevenLabsApiKey),
     persona,
     personaSampleName,
     uploadFilename: uploadAttachment?.name ?? null,
     typedDesignPrompt,
   };
+  if (
+    (uploadAttachment && !resolveVoiceSourceCapabilities(speechTargetSource(targets.clone)).acceptsCloneShape) ||
+    (typedDesignPrompt?.trim() &&
+      !resolveVoiceSourceCapabilities(speechTargetSource(targets.design)).acceptsDesignShape)
+  ) {
+    await replyInfoEmbed(interaction, locale, {
+      titleKey: "commands.generate.voice-message.no_voice_source_title",
+      descriptionKey: "commands.generate.voice-message.incompatible_override_description",
+      color: ColorCode.ERROR,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
   const candidates = resolveVoiceSourceCandidates(candidateInput);
   if (candidates.length === 0) {
     log.warn(
@@ -468,7 +479,8 @@ export async function execute(
         metadata: {
           command: "generate voice-message",
           personaId: persona.persona_id,
-          endpoint: effectiveEndpoint?.connection_id ?? null,
+          designEndpoint: targets.design?.endpoint?.connection_id ?? null,
+          cloneEndpoint: targets.clone?.endpoint?.connection_id ?? null,
         },
       },
     );
@@ -482,6 +494,9 @@ export async function execute(
   }
 
   const defaultSource = selectDefaultVoiceSource(candidates);
+  const defaultEndpoint = defaultSource?.shape === "design" ? targets.design?.endpoint : targets.clone?.endpoint;
+  let effectiveEndpoint = defaultEndpoint ?? null;
+  let speechEndpoint = defaultSource?.shape === "design" ? targets.design : targets.clone;
 
   // Keyed off the resolved candidate, not off the endpoint: a persona whose only voice is an
   // ElevenLabs id on a server with no speech endpoint is indistinguishable from a `tts-clone`
@@ -507,11 +522,13 @@ export async function execute(
   }
 
   const anyDesignShape = candidates.some((candidate) => candidate.shape === "design");
-  const cloneInstructionsAvailable = resolveVoiceSourceCapabilities(effectiveEndpoint).cloneInstructionsAvailable;
+  const cloneInstructionsAvailable = resolveVoiceSourceCapabilities(
+    speechTargetSource(targets.clone),
+  ).cloneInstructionsAvailable;
   const expressiveness = resolveExpressivenessBackend({
-    endpoint: effectiveEndpoint,
-    usesElevenLabs,
-    cloneShapeSelected: defaultSource?.shape === "clone",
+    endpoint: targets.clone?.endpoint ?? null,
+    usesElevenLabs: candidates.some((candidate) => candidate.shape === "elevenlabs"),
+    cloneShapeSelected: candidates.some((candidate) => candidate.shape === "clone"),
   });
 
   let modalComponents: ModalComponent[];
@@ -575,7 +592,46 @@ export async function execute(
   }
 
   const selectedSourceId = modalResult.values?.[VOICE_MESSAGE_SOURCE_INPUT_ID] ?? defaultSource?.id;
-  const selectedSource = candidates.find((candidate) => candidate.id === selectedSourceId) ?? defaultSource;
+  const freshTargets = await resolveSpeechTargets(mainPersona.server_id, userData.user_id);
+  const freshPersona = (await personaRepository.loadAllForServer(serverDiscId)).find(
+    (entry) => entry.persona_id === persona.persona_id,
+  );
+  elevenLabsApiKey =
+    freshTargets.clone?.endpoint?.api_style === "elevenlabs"
+      ? freshTargets.clone.apiKey
+      : !freshTargets.clone &&
+          (!userData.user_id || (await loadSpeechRoutingPolicy(mainPersona.server_id, userData.user_id)).serverAllowed)
+        ? ((await getOptApiKey(mainPersona.server_id, ELEVENLABS_SERVICE_NAME)) ?? "")
+        : "";
+  const freshCandidates = freshPersona
+    ? resolveVoiceSourceCandidates({
+        ...candidateInput,
+        targets: { design: speechTargetSource(freshTargets.design), clone: speechTargetSource(freshTargets.clone) },
+        legacyElevenLabsAvailable: !freshTargets.clone && Boolean(elevenLabsApiKey),
+        persona: freshPersona,
+      })
+    : [];
+  const selectedSource = freshCandidates.find((candidate) => candidate.id === selectedSourceId);
+  speechEndpoint = selectedSource?.shape === "design" ? freshTargets.design : freshTargets.clone;
+  effectiveEndpoint = speechEndpoint?.endpoint ?? null;
+  const originalTarget = selectedSource?.shape === "design" ? targets.design : targets.clone;
+  const originalSource = candidates.find((candidate) => candidate.id === selectedSourceId);
+  if (
+    originalSource?.sampleId !== selectedSource?.sampleId ||
+    originalSource?.designPrompt !== selectedSource?.designPrompt ||
+    originalSource?.voiceId !== selectedSource?.voiceId ||
+    speechTargetFingerprint(originalTarget) !== speechTargetFingerprint(speechEndpoint) ||
+    originalTarget?.endpoint?.api_style !== speechEndpoint?.endpoint?.api_style ||
+    originalTarget?.endpoint?.endpoint_url !== speechEndpoint?.endpoint?.endpoint_url ||
+    JSON.stringify(originalTarget?.endpoint?.extra_config) !== JSON.stringify(speechEndpoint?.endpoint?.extra_config)
+  ) {
+    await replyInfoEmbed(modalInteraction, locale, {
+      titleKey: "commands.generate.voice-message.stale_title",
+      descriptionKey: "commands.generate.voice-message.stale_description",
+      color: ColorCode.WARN,
+    });
+    return;
+  }
   if (!selectedSource) {
     await replyInfoEmbed(modalInteraction, locale, {
       titleKey: "commands.generate.voice-message.no_voice_source_title",
@@ -588,8 +644,13 @@ export async function execute(
   const voiceInstructions = modalResult.values?.[VOICE_MESSAGE_DIRECTION_INPUT_ID]?.trim() ?? "";
   const referenceTranscript = modalResult.values?.[VOICE_MESSAGE_TRANSCRIPT_INPUT_ID]?.trim() || null;
   const expressivenessValue = modalResult.values?.[VOICE_MESSAGE_EXPRESSIVENESS_INPUT_ID];
-  const preset = expressiveness
-    ? (getExpressivenessPresets(expressiveness).find((entry) => entry.value === expressivenessValue) ?? null)
+  const selectedExpressiveness = resolveExpressivenessBackend({
+    endpoint: effectiveEndpoint,
+    usesElevenLabs: selectedSource.shape === "elevenlabs",
+    cloneShapeSelected: selectedSource.shape === "clone",
+  });
+  const preset = selectedExpressiveness
+    ? (getExpressivenessPresets(selectedExpressiveness).find((entry) => entry.value === expressivenessValue) ?? null)
     : null;
 
   const uploadAttachmentFromModal = selectedSource.id === "upload" ? uploadAttachment : null;
@@ -603,11 +664,15 @@ export async function execute(
     }
     voiceSource = { kind: "clone-buffer", refAudio: loaded.refAudio, refText: referenceTranscript };
   } else if (selectedSource.shape === "design") {
-    voiceSource = { kind: "design", designPrompt: selectedSource.designPrompt ?? "" };
+    voiceSource = {
+      kind: "design",
+      designPrompt: selectedSource.designPrompt ?? "",
+      ...(selectedSource.id === "persona-design" ? { personaId: persona.persona_id } : {}),
+    };
   } else if (selectedSource.id === "persona-sample" && selectedSource.sampleId) {
     voiceSource = { kind: "clone", voiceSampleId: selectedSource.sampleId };
-  } else if (selectedSource.id === "elevenlabs" && persona.speech_voice_id?.trim()) {
-    voiceSource = { kind: "elevenlabs", voiceId: persona.speech_voice_id.trim() };
+  } else if (selectedSource.id === "elevenlabs" && selectedSource.voiceId) {
+    voiceSource = { kind: "elevenlabs", voiceId: selectedSource.voiceId };
   } else {
     await replyInfoEmbed(modalInteraction, locale, {
       titleKey: "commands.generate.voice-message.no_voice_source_title",
@@ -666,7 +731,23 @@ export async function execute(
   );
 
   const startedAt = performance.now();
+  const sourceIsExplicit =
+    selectedSource.id === "upload" ||
+    selectedSource.id === "typed-design" ||
+    (candidates.length > 1 && selectedSource.id !== defaultSource?.id);
   const synthesisResult = await synthesizeVoiceMessage({
+    target: speechEndpoint ?? undefined,
+    maxOutputBytes: modalInteraction.attachmentSizeLimit,
+    ...(userData.user_id && freshPersona?.persona_id
+      ? {
+          routing: {
+            serverId: mainPersona.server_id,
+            userId: userData.user_id,
+            persona: { ...freshPersona, persona_id: freshPersona.persona_id },
+            sourceIsExplicit,
+          },
+        }
+      : {}),
     endpoint: effectiveEndpoint,
     endpointApiKey: speechEndpoint?.apiKey ?? "",
     elevenLabsApiKey,
@@ -741,7 +822,16 @@ export async function execute(
   const elapsedSeconds = ((performance.now() - startedAt) / 1000).toFixed(1);
   const sourceDisplayText = resolveSourceDisplayText({
     locale,
-    candidate: selectedSource,
+    candidate:
+      synthesisResult.usedServerFallback && !sourceIsExplicit && synthesisResult.effectiveSource
+        ? synthesisResult.effectiveSource === "design"
+          ? { id: "persona-design", shape: "design", designPrompt: freshPersona?.speech_voice_design_prompt ?? "" }
+          : synthesisResult.effectiveSource === "clone"
+            ? { id: "persona-sample", shape: "clone" }
+            : synthesisResult.effectiveSource === "elevenlabs"
+              ? { id: "elevenlabs", shape: "elevenlabs", voiceId: freshPersona?.speech_voice_id ?? "" }
+              : selectedSource
+        : selectedSource,
     personaSampleName,
     uploadFilename: uploadAttachment?.name ?? null,
   });
@@ -757,6 +847,21 @@ export async function execute(
     .addFields({
       name: localizer(locale, "commands.generate.voice-message.success_source_field"),
       value: safeSelectOptionText(sourceDisplayText, 1024),
+    })
+    .addFields({
+      name: localizer(locale, "commands.generate.voice-message.success_target_field"),
+      value: safeSelectOptionText(synthesisResult.targetLabel ?? speechTargetLabel(speechEndpoint), 1024),
+    })
+    .addFields({
+      name: localizer(locale, "commands.generate.voice-message.success_routing_field"),
+      value: localizer(
+        locale,
+        synthesisResult.usedServerFallback
+          ? "commands.generate.voice-message.routing_server_fallback"
+          : synthesisResult.attempts?.at(-1)?.owner.kind === "personal"
+            ? "commands.generate.voice-message.routing_personal"
+            : "commands.generate.voice-message.routing_server",
+      ),
     })
     .setColor(ColorCode.SUCCESS);
 

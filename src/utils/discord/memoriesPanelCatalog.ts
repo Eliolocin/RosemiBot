@@ -34,9 +34,6 @@ type MemoriesAction =
   | "persona-page"
   | "select"
   | "range"
-  | "range-open"
-  | "range-page"
-  | "range-cancel"
   | "add-submit"
   | "edit-open"
   | "edit-submit"
@@ -52,9 +49,6 @@ type MemoriesAction =
   | "document-persona-page"
   | "document-select"
   | "document-range"
-  | "document-range-open"
-  | "document-range-page"
-  | "document-range-cancel"
   | "document-add-submit"
   | "document-remove-prompt"
   | "document-remove-confirm"
@@ -72,8 +66,7 @@ type MemoriesAction =
   | "stm-open"
   | "stm-submit"
   | "stm-entry"
-  | "retry"
-  | "refresh";
+  | "retry";
 
 export type MemoriesPanelRoute =
   | { action: "category"; locale: string; category: MemoriesCategory }
@@ -81,8 +74,6 @@ export type MemoriesPanelRoute =
   | { action: "persona-page"; locale: string; lineageId: number; rangeIndex: number }
   | { action: "select"; locale: string; lineageId: number; rangeIndex?: number }
   | { action: "range"; locale: string; lineageId: number; rangeIndex: number }
-  | { action: "range-open" | "range-cancel"; locale: string; lineageId: number }
-  | { action: "range-page"; locale: string; lineageId: number; chooserPage: number }
   | { action: "add-submit"; locale: string; lineageId: number; nonce: string }
   | {
       action: "edit-open" | "remove-prompt" | "remove-confirm" | "remove-cancel";
@@ -110,8 +101,6 @@ export type MemoriesPanelRoute =
   | { action: "document-persona-page"; locale: string; personaId: number; rangeIndex: number }
   | { action: "document-select"; locale: string; personaId: number; rangeIndex?: number }
   | { action: "document-range"; locale: string; personaId: number; rangeIndex: number }
-  | { action: "document-range-open" | "document-range-cancel"; locale: string; personaId: number }
-  | { action: "document-range-page"; locale: string; personaId: number; chooserPage: number }
   | { action: "document-add-submit"; locale: string; personaId: number; nonce: string }
   | {
       action:
@@ -149,7 +138,7 @@ export type MemoriesPanelRoute =
   | { action: "stm-open"; locale: string }
   | { action: "stm-submit"; locale: string; nonce: string }
   | { action: "stm-entry"; locale: string; channelId: string; personaId: number }
-  | { action: "retry" | "refresh"; locale: string; category: MemoriesCategory; lineageId?: number };
+  | { action: "retry"; locale: string; category: MemoriesCategory; lineageId?: number };
 
 const categoryField: RouteFieldCodec<"category", MemoriesCategory> = {
   key: "category",
@@ -219,13 +208,7 @@ const optionalRangeIndexField: RouteFieldCodec<"rangeIndex", number> = {
   decode: (raw) => parseNonNegativeInt(raw),
 };
 
-const chooserPageField: RouteFieldCodec<"chooserPage", number> = {
-  key: "chooserPage",
-  encode: (val) => String(val),
-  decode: (raw) => parseNonNegativeInt(raw),
-};
-
-const MEMORIES_ROUTE_CODECS: Record<
+export const MEMORIES_ROUTE_CODECS: Record<
   MemoriesAction,
   { wireToken: string; fields: readonly RouteFieldCodec<string, unknown>[] }
 > = {
@@ -248,18 +231,6 @@ const MEMORIES_ROUTE_CODECS: Record<
   range: {
     wireToken: "range",
     fields: [lineageIdField, rangeIndexField],
-  },
-  "range-open": {
-    wireToken: "range-open",
-    fields: [lineageIdField],
-  },
-  "range-page": {
-    wireToken: "range-page",
-    fields: [lineageIdField, chooserPageField],
-  },
-  "range-cancel": {
-    wireToken: "range-cancel",
-    fields: [lineageIdField],
   },
   "add-submit": {
     wireToken: "add-submit",
@@ -320,18 +291,6 @@ const MEMORIES_ROUTE_CODECS: Record<
   "document-range": {
     wireToken: "document-range",
     fields: [personaIdField, rangeIndexField],
-  },
-  "document-range-open": {
-    wireToken: "document-range-open",
-    fields: [personaIdField],
-  },
-  "document-range-page": {
-    wireToken: "document-range-page",
-    fields: [personaIdField, chooserPageField],
-  },
-  "document-range-cancel": {
-    wireToken: "document-range-cancel",
-    fields: [personaIdField],
   },
   "document-add-submit": {
     wireToken: "document-add-submit",
@@ -403,10 +362,6 @@ const MEMORIES_ROUTE_CODECS: Record<
   },
   retry: {
     wireToken: "retry",
-    fields: [categoryField, optionalLineageIdField],
-  },
-  refresh: {
-    wireToken: "refresh",
     fields: [categoryField, optionalLineageIdField],
   },
 };

@@ -24,6 +24,7 @@ import {
   resolveVoiceSourceCandidates,
   selectDefaultVoiceSource,
 } from "@/utils/speech/voiceSourceResolution";
+import { localizedCopy } from "../../helpers/localeCases";
 
 type VoiceMode = "clone" | "voice-design" | "auto";
 
@@ -85,7 +86,7 @@ function buildInput(options: {
   locale?: string;
 }): VoiceMessageModalInput {
   const candidates = resolveVoiceSourceCandidates({
-    endpoint: options.endpoint,
+    targets: { design: options.endpoint, clone: options.endpoint },
     persona: options.persona,
     personaSampleName: "millie.wav",
     uploadFilename: options.uploadFilename ?? null,
@@ -196,7 +197,7 @@ describe("buildVoiceMessageModalComponents", () => {
     expect(
       selectDefaultVoiceSource(
         resolveVoiceSourceCandidates({
-          endpoint: CHATTERBOX_AUTO,
+          targets: { design: CHATTERBOX_AUTO, clone: CHATTERBOX_AUTO },
           persona: PERSONA_WITH_BOTH,
           typedDesignPrompt: "Very happy and kind",
         }),
@@ -257,13 +258,40 @@ describe("buildVoiceMessageModalComponents radio options", () => {
     expect(sourceField.options.map((option) => option.value)).toEqual([
       "upload",
       "typed-design",
-      "persona-sample",
       "persona-design",
+      "persona-sample",
     ]);
     expect(sourceField.options.map((option) => option.default)).toEqual([true, false, false, false]);
     expect(sourceField.options[0]?.description).toBe("Clone | mesu.wav");
-    expect(sourceField.options[2]?.description).toBe("Clone | millie.wav");
+    expect(sourceField.options[3]?.description).toBe("Clone | millie.wav");
     expect(sourceField.options[1]?.description?.startsWith("Design | ")).toBe(true);
+  });
+
+  it("labels a persona's ElevenLabs voice as a clone source named after the voice", () => {
+    const candidates = resolveVoiceSourceCandidates({
+      targets: { design: VOICE_DESIGN_ONLY, clone: makeEndpoint({ apiStyle: "elevenlabs" }) },
+      persona: {
+        speech_voice_design_prompt: "Warm and bright",
+        speech_voice_id: "provider-voice",
+        speech_voice_name: "Mirri",
+      },
+    });
+    const sourceField = buildVoiceMessageModalComponents({
+      locale: "en-US",
+      candidates,
+      designShapeAvailable: true,
+      cloneInstructionsAvailable: false,
+      uploadShapeSelected: false,
+      expressiveness: "elevenlabs",
+      scriptMarkup: undefined,
+      chatterboxDefaults: { cfgWeight: 0.5, exaggeration: 0.5 },
+    }).find((component) => component.customId === VOICE_MESSAGE_SOURCE_INPUT_ID);
+    if (!sourceField || !isModalRadioGroupField(sourceField)) throw new Error("expected a radio group");
+
+    expect(sourceField.options.find((option) => option.value === "elevenlabs")).toMatchObject({
+      label: localizedCopy("en-US", "commands.generate.voice-message.modal.source_elevenlabs_label"),
+      description: `${localizedCopy("en-US", "commands.generate.voice-message.modal.mode_clone")} | Mirri`,
+    });
   });
 
   it("pre-selects the Chatterbox server default so ignoring the field reproduces today's behavior", () => {

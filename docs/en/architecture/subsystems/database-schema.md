@@ -15,7 +15,7 @@ TomoriBot organizes database schema across three SQL definitions, a numbered mig
 - **RAG schema (`src/db/schema_rag.sql`)**: document and chunk vector tables (`documents`, `document_chunks`), loaded when the `pgvector` extension is available.
 - **Preset schema (`src/db/schema_stpreset.sql`)**: SillyTavern character card and preset integration tables.
 - **Migration runner (`src/db/migrationRunner.ts`)**: executes structural version upgrades from `src/db/migrations/`.
-- **Seed catalogs (`src/db/seed/catalog/`)**: code-defined catalogs for LLMs, diffusion models, video models, embeddings, persona presets, and system prompts.
+- **Seed catalogs (`src/db/seed/catalog/`)**: code-defined catalogs for LLMs, diffusion models, video models, speech models, embeddings, persona presets, and system prompts.
 
 ### Startup initialization sequence
 
@@ -43,6 +43,27 @@ persistence and schema initialization, use the shared SQL client directly.
 - **SQL encapsulation**: all raw SQL queries remain within their owning repository class methods or module functions. Separate query sibling files are prohibited.
 - **Transient retry handling**: hot-path reads retry transient connection drops and cached-plan errors through shared helpers in `src/utils/db/client.ts`. A cached-plan error resets the connection before retrying the query.
 - **Cache invalidation**: write owners invalidate derived cache entries after successful writes. Some workflows own this in the caller; live working-memory updates use a separate persistence path.
+
+## Managed Discord webhooks
+
+`discord_managed_webhooks` stores encrypted tokens for the primary `shared_channel` webhook and
+three fixed slot kinds (`avatar_pool_1`, `avatar_pool_2`, `avatar_pool_3`) per parent channel.
+The `(kind, channel_disc_id)` constraint reserves each slot, and webhook IDs remain globally unique.
+Nullable `avatar_fingerprint` and `discord_avatar_hash` fields record a local image's SHA-256 digest
+and Discord's observed avatar hash together with the token after creation or an avatar edit.
+Existing rows begin with an unknown assignment. Data URIs are never stored in this table.
+
+`ServerRepository` lists managed slots in row order and resolves an allowed slot by parent channel
+and exact webhook ID. Restoration checks the guild and parent channel, then clears the fingerprint
+if Discord's current avatar hash differs. Primary discovery excludes persisted pool IDs even when
+their webhook names match the primary name. Local-avatar dispatch selects among these slots and
+publishes a newly created slot to the cache only after its token and avatar assignment persist.
+Exact-match sends update only in-memory use order, so they do not write a row on every message.
+
+Rows remain after avatar reassignment or persona deletion because historic messages still need
+their authoring webhook's credentials. Message trust reads the managed row by parent channel and
+webhook ID and verifies the guild without creating a webhook or decrypting a token. Editing and
+deleting those messages restore that exact webhook independently of the primary channel cache.
 
 ## Core entities and relationships
 
@@ -83,12 +104,36 @@ persistence and schema initialization, use the shared SQL client directly.
   - `server_capabilities_configs`: tool exposure switches (video generation, user blocking, time awareness, short-term memory).
   - `server_notice_embeds_configs`: notice verbosity modes (`minimal` or `verbose`) and hidden notice filters.
   - `server_welcome_configs`: welcome greeting channels, prompts, and persona assignments.
-  - `server_speech_configs`: text-to-speech voice models and synthesizer parameters.
+  - `server_speech_configs`: independent Design and Clone hosted-model or endpoint selections, transcript behavior, and synthesizer parameters.
   - `server_novelai_imagegen_configs`: NovelAI diffusion parameters and default prompt tags.
   - `server_nsfw_configs`: jailbreak toggles and content filters.
   - `server_byok_configs`: bring-your-own-key permissions.
   - `server_memory_configs`: memory retrieval limits and decay parameters.
   - `server_stm_configs`: STM render mode, refresh cadence, and injection depths.
+
+Speech selections reference either `custom_endpoints` or `speech_models` for each mode, with
+`ON DELETE SET NULL`. Database validation checks server ownership, model mode, scoped registration,
+and matching saved provider credentials. Endpoint mode edits and registration deletion clear affected
+selections in the same transaction. `persona_voice_configs.voice_source_priority` defaults to `design`
+independently of the target. Configuration exports include both mode selections; imports must satisfy
+the receiving workspace's ownership and credential checks. Downgrades refuse selections or bindings
+that the older schema cannot preserve.
+
+Personal speech uses separate `speech_design_model_id` and `speech_clone_model_id` pointers on
+`user_saved_provider_configs`. Its `assigned_capabilities` and `enabled_capabilities` arrays track
+ownership and activation independently for `speech_design` and `speech_clone`; each mode has at most
+one personal owner. Activation locks the owner row and transfers supported modes in one transaction.
+Registration and activation failures roll back selections, assignments, and enabling together;
+repository callers invalidate cached state only after commit. Seed initialization adds catalogue
+models without assigning provider ownership or replacing existing speech targets.
+
+`speech_voice_bindings` stores remote voice IDs by persona, credential snapshot, revision, transport,
+prompt hash, and Cloud project/location. Credential revisions advance when stored ciphertext changes,
+independently of encryption `key_version`. Prompt or credential changes retire bindings to pending
+deletion. Bindings are operational state and are excluded from configuration and persona-card exports.
+Persona descriptions and source priority remain portable; an imported persona establishes its own
+remote identity on its next Design synthesis. Pending deletion rows retain IDs for cleanup with the
+matching credential revision, including after the persona is removed.
 
 ### User identity, privacy, and personalization
 
@@ -115,7 +160,7 @@ including link expressions. Existing rows remain editable when the limit is reac
 
 ### Model catalog and custom endpoints
 
-- **`llms`, `image_diffusion_models`, `video_generation_models`, `embedding_models`, `decision_models`**: global model catalogs seeded from typed code definitions.
+- **`llms`, `image_diffusion_models`, `video_generation_models`, `embedding_models`, `decision_models`, `speech_models`**: global model catalogs seeded from typed code definitions.
 - **Pricing storage**: first-party models record token prices directly in `llms.input_price_per_million` and `output_price_per_million`. OpenRouter pricing uses the live API cache first, falling back to database column values.
 - **Token limits**: `context_window` and `max_output_tokens` record model ceilings. Runtime code queries them through `resolveModelLimits()`, where live provider responses take precedence.
 - **`custom_endpoint_connections`**: logical connection metadata scoped to either `server_id` or `user_id`, grouped by `(owner, label, capability)`.
@@ -171,6 +216,7 @@ Sensitive provider credentials are encrypted using PostgreSQL `pgcrypto` (`pgp_s
 - `user_saved_provider_configs.api_key`
 - `guild_mcp_servers.auth_token`
 - `discord_managed_webhooks.webhook_token`
+- `pluralbuddy_oauth_connections.client_secret`, `refresh_token`, and `access_token` (each has its own version tag)
 
 `CryptoKeyManager` manages active encryption keys (`CRYPTO_SECRET_V1`, `CRYPTO_SECRET_V2`, etc.). New writes use the active version, while reads decrypt using the row's stored `key_version`. Re-encryption is executed via `bun run rotate-keys --bot-stopped`; see the [operator procedure](/self-hosting/maintenance/#rotating-encryption-keys).
 
@@ -182,8 +228,10 @@ The reset subsystem in `src/utils/db/repositories/ResetRepository.ts` categorize
 - **Server singletons restored to DDL defaults (18 tables)**: `server_chat_configs`, `server_model_configs`, `server_member_permissions_configs`, `server_capabilities_configs`, `server_notice_embeds_configs`, `server_nsfw_configs`, `server_speech_configs`, `server_auto_trigger_configs`, `server_channel_scope_configs`, `server_trigger_behavior_configs`, `server_novelai_imagegen_configs`, `server_byok_configs`, `server_memory_configs`, `server_stm_configs`, `server_welcome_configs`, `image_quota_configs`, `text_quota_configs`, `video_quota_configs`.
 - **Preserved server configuration**: active model foreign keys, credentials, custom endpoint parameters, and the cached Other-model identity/capabilities in `server_model_configs`, plus active NovelAI diffusion model identity (`nai_diffusion_model_id`). `SERVER_SINGLETON_RESET_TABLES` owns the exact preserved columns.
 - **Cleared server collections (11 tables)**: `server_auto_trigger_persona_overrides`, `stm_categories`, `random_triggers`, `channel_llm_overrides`, `channel_prompt_overrides`, `channel_context_notes`, `personalization_blacklist`, `persona_user_blocks`, `channel_whitelist`, `role_whitelist`, `channel_persona_whitelist`.
-- **Preserved server domains**: personas and persona settings, server memories, short-term memories, expressions (emojis, stickers, and custom expressions), recorded quota consumption, saved provider configurations, and external integrations (Matrix and MCP).
-- **Personal reset**: restores `users.language_pref` ('en-US') and `users.privacy_level` (0), restores all configuration columns in `user_personalization_configs` to schema defaults, deletes `user_persona_naming_preferences`, and removes all `personal_spotlights` (cascading to `personal_spotlight_personas`). Preserves user account identity, personal memories, saved provider credentials, custom endpoints, and scheduled reminders.
+- **Preserved server domains**: personas and persona settings, server memories, short-term memories, expressions (emojis, stickers, and custom expressions), recorded quota consumption, saved provider configurations, and external integrations (Matrix, MCP, and message-proxy instances).
+- **Personal reset**: restores `users.language_pref` ('en-US') and `users.privacy_level` (0), restores all configuration columns in `user_personalization_configs` to schema defaults, deletes `user_persona_naming_preferences`, and removes all `personal_spotlights` (cascading to `personal_spotlight_personas`). Preserves user account identity, message-proxy selection and host links, personal memories, saved provider credentials, custom endpoints, and scheduled reminders.
+
+Message-proxy tables link service instances, external identities, namespaces, authorized host accounts, and immutable message attribution. PluralBuddy OAuth credentials are encrypted with separate version tags for each field. See [message-proxy persistence](/architecture/integrations/message-proxy/#persistence) for table ownership.
 
 ## Source pointers
 

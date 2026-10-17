@@ -190,3 +190,7 @@ export interface NaiPresetInput {
   i18n?: Partial<Record<Exclude<LocaleCode, "en-US">, string>>;
   parameters: NaiSamplingParameters;
 }
+
+export interface SpeechInput extends CommonInput {
+  voiceMode: "design" | "clone";
+}

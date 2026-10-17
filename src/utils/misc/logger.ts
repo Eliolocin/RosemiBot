@@ -268,9 +268,12 @@ export function containsCredential(value: string): boolean {
   return CREDENTIAL_REDACTIONS.some(([pattern]) => value.search(pattern) !== -1);
 }
 
+export function redactCredentialString(value: string): string {
+  return CREDENTIAL_REDACTIONS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
+}
+
 export function redactLogString(value: string): string {
-  const credentialsRedacted = CREDENTIAL_REDACTIONS.reduce(
-    (text, [pattern, replacement]) => text.replace(pattern, replacement),
+  const credentialsRedacted = redactCredentialString(
     value.replace(/(data:[a-z0-9/._\\+-]+;base64,)[A-Za-z0-9+/=]{80,}/gi, `$1...[BASE64 TRUNCATED]`),
   );
   return credentialsRedacted
@@ -279,6 +282,23 @@ export function redactLogString(value: string): string {
       /((?:\\?["'])?(?:api[_-]?key|apikey|token|secret|authorization|password|passwd|client[_-]?secret)(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?)[^\s,"'\\]+/gi,
       `$1${REDACTED}`,
     );
+}
+
+export function sanitizeCredentialPayload(value: unknown, redactSensitiveKeys = false, depth = 0): unknown {
+  if (depth > 8) return "[TRUNCATED]";
+  if (typeof value === "string") return redactCredentialString(value);
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value))
+    return value.map((entry) => sanitizeCredentialPayload(entry, redactSensitiveKeys, depth + 1));
+
+  const output: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    output[key] =
+      redactSensitiveKeys && SENSITIVE_NORMALIZED_KEYS.has(normalizeSensitiveKey(key))
+        ? REDACTED
+        : sanitizeCredentialPayload(entry, redactSensitiveKeys, depth + 1);
+  }
+  return output;
 }
 
 /**

@@ -109,7 +109,7 @@ implementación que se ejecuta con `RUN_ENV=production` registra `/legal terms-o
   valida contra el proveedor y se cifra en el borrador; el panel solo muestra que hay una clave
   almacenada, nunca la clave en sí. Ejecuta `/help`, luego `Configuración` > **Paso 1: Obtén una clave
   de API** para el recorrido específico de cada proveedor.
-- **Punto de conexión personalizado (avanzado)**: un área secundaria de dos botones para un endpoint autoalojado
+- **Punto de conexión personalizado**: un área secundaria de dos botones para un endpoint autoalojado
   o proxy. `Configurar conexión` recopila la compatibilidad de API, una etiqueta, la URL y un token de
   autenticación opcional, y comprueba que el endpoint responda. `Configurar modelo de texto` recopila
   el código del modelo, su tamaño de contexto y sus declaraciones de capacidad, y permanece deshabilitado

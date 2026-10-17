@@ -49,13 +49,18 @@ function receipt(
 ): ConfigRepaintOptions["receipt"] {
   return {
     tone,
-    heading: localizer(locale, `commands.config.panel.${heading}`),
-    detail: localizer(locale, `commands.config.panel.${detail}`),
+    heading: localizer(locale, heading),
+    detail: localizer(locale, detail),
   };
 }
 
 function writeFailed(locale: string): ConfigRepaintOptions["receipt"] {
-  return receipt(locale, "error", "write_failed_heading", "write_failed_detail");
+  return receipt(
+    locale,
+    "error",
+    "commands.config.panel.write_failed_heading",
+    "commands.config.panel.write_failed_detail",
+  );
 }
 
 function stateFromScope(scope: ConfigScope): TomoriState | null {
@@ -106,7 +111,14 @@ async function runPermissionWrite(
   if (route.action === "permissions-tool-use-set") {
     const current = state.config.tool_use_enabled ?? true;
     if (current === route.enabled) {
-      return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          route.locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     }
     const updated = await configRepository.updateCapabilitiesConfig(state.server_id, {
       tool_use_enabled: route.enabled,
@@ -114,7 +126,12 @@ async function runPermissionWrite(
     if (!updated) return { receipt: writeFailed(route.locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(route.locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        route.locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.tool-use.set",
     };
   }
@@ -122,7 +139,14 @@ async function runPermissionWrite(
   if (route.action === "permissions-privacy-bypass-set") {
     const current = state.config.stm_privacy_bypass ?? false;
     if (current === route.enabled) {
-      return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          route.locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     }
     const updated = await configRepository.updateChannelScopeConfig(state.server_id, {
       stm_privacy_bypass: route.enabled,
@@ -130,7 +154,12 @@ async function runPermissionWrite(
     if (!updated) return { receipt: writeFailed(route.locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(route.locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        route.locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.stm-privacy-bypass.set",
     };
   }
@@ -163,14 +192,26 @@ async function runPermissionWrite(
     page: route.page,
   });
   if (writePlan.changes.length === 0) {
-    return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+    return {
+      receipt: receipt(
+        route.locale,
+        "info",
+        "commands.config.panel.state_no_changes_heading",
+        "commands.config.panel.state_no_changes_detail",
+      ),
+    };
   }
 
   const updated = await configRepository[writePlan.method](state.server_id, writePlan.patch);
   if (!updated) return { receipt: writeFailed(route.locale) };
   invalidateTomoriStateCache(scope.serverDiscId);
   return {
-    receipt: receipt(route.locale, "success", "state_updated_heading", "state_updated_detail"),
+    receipt: receipt(
+      route.locale,
+      "success",
+      "commands.config.panel.state_updated_heading",
+      "commands.config.panel.state_updated_detail",
+    ),
     telemetry: "server-config.workspace.capabilities.set",
   };
 }

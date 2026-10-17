@@ -58,6 +58,13 @@ import {
 import { log } from "@/utils/misc/logger";
 import { recordPanelActionStat, type RecordPanelActionInput } from "@/utils/stats/panelActionMetrics";
 import { localizer } from "@/utils/text/localizer";
+import { messageProxyRepository } from "@/utils/db/repositories/MessageProxyRepository";
+import {
+  IDENTITY_MEMORIES_VERSION,
+  formatManagedIdentityLabel,
+  parseManagedIdentityRoute,
+  rewriteManagedIdentityRouteIds,
+} from "@/utils/discord/interactions/managedIdentityPanelRoutes";
 
 const memoryLimits = getMemoryLimits();
 
@@ -74,6 +81,9 @@ function rangeIndexAfterRemoval<T>(
 }
 
 interface PersonalMemoriesScope {
+  identityId?: number;
+  identityAvatarUrl?: string | null;
+  identityLabel?: string;
   userId: number;
   userDiscId: string;
   guildId: string | null;
@@ -82,6 +92,24 @@ interface PersonalMemoriesScope {
   privacyLevel: PrivacyLevel;
   personas: TomoriState[];
   readStatus: PanelReadStatus;
+}
+
+async function resolveIdentityMemoriesScope(
+  interaction: GlobalRoutableInteraction | ChatInputCommandInteraction,
+  identityId: number,
+): Promise<PersonalMemoriesScope | null> {
+  const managed = await messageProxyRepository.getManagedIdentity(interaction.user.id, identityId);
+  if (!managed) return null;
+  const hostScope = await resolveScope(interaction);
+  if (!hostScope) return null;
+  return {
+    ...hostScope,
+    identityId,
+    identityAvatarUrl: managed.avatarUrl,
+    identityLabel: formatManagedIdentityLabel(managed, interaction.locale),
+    userId: managed.userId,
+    userDiscId: managed.userDiscId,
+  };
 }
 
 export interface PersonalMemoriesOperations {
@@ -361,19 +389,82 @@ const ERROR_RECEIPT_KEYS = new Set([
   "content_too_long",
   "limit_reached",
   "write_failed",
-  // The first two reach receipt() through a ternary rather than a string literal, so listing them
-  // here is also what makes the composed-key guard test see them.
   "batch_file_invalid",
   "batch_file_too_large",
   "batch_all_duplicates",
   "batch_limit_reached",
 ]);
 
-function receipt(locale: string, key: string, variables?: Record<string, string | number>): PanelReceipt {
+const RECEIPT_LOCALE_KEYS = {
+  privacy_blocked_error: {
+    heading: "commands.personal.memories.privacy_blocked_error_heading",
+    detail: "commands.personal.memories.privacy_blocked_error_detail",
+  },
+  empty_content: {
+    heading: "commands.personal.memories.empty_content_heading",
+    detail: "commands.personal.memories.empty_content_detail",
+  },
+  content_too_long: {
+    heading: "commands.personal.memories.content_too_long_heading",
+    detail: "commands.personal.memories.content_too_long_detail",
+  },
+  limit_reached: {
+    heading: "commands.personal.memories.limit_reached_heading",
+    detail: "commands.personal.memories.limit_reached_detail",
+  },
+  write_failed: {
+    heading: "commands.personal.memories.write_failed_heading",
+    detail: "commands.personal.memories.write_failed_detail",
+  },
+  batch_file_invalid: {
+    heading: "commands.personal.memories.batch_file_invalid_heading",
+    detail: "commands.personal.memories.batch_file_invalid_detail",
+  },
+  batch_file_too_large: {
+    heading: "commands.personal.memories.batch_file_too_large_heading",
+    detail: "commands.personal.memories.batch_file_too_large_detail",
+  },
+  batch_all_duplicates: {
+    heading: "commands.personal.memories.batch_all_duplicates_heading",
+    detail: "commands.personal.memories.batch_all_duplicates_detail",
+  },
+  batch_limit_reached: {
+    heading: "commands.personal.memories.batch_limit_reached_heading",
+    detail: "commands.personal.memories.batch_limit_reached_detail",
+  },
+  batch_added: {
+    heading: "commands.personal.memories.batch_added_heading",
+    detail: "commands.personal.memories.batch_added_detail",
+  },
+  added: {
+    heading: "commands.personal.memories.added_heading",
+    detail: "commands.personal.memories.added_detail",
+  },
+  edited: {
+    heading: "commands.personal.memories.edited_heading",
+    detail: "commands.personal.memories.edited_detail",
+  },
+  removed: {
+    heading: "commands.personal.memories.removed_heading",
+    detail: "commands.personal.memories.removed_detail",
+  },
+  stm_cleared: {
+    heading: "commands.personal.memories.stm_cleared_heading",
+    detail: "commands.personal.memories.stm_cleared_detail",
+  },
+};
+
+type PersonalMemoryReceiptKey = keyof typeof RECEIPT_LOCALE_KEYS;
+
+function receipt(
+  locale: string,
+  key: PersonalMemoryReceiptKey,
+  variables?: Record<string, string | number>,
+): PanelReceipt {
   return {
     tone: ERROR_RECEIPT_KEYS.has(key) ? "error" : "success",
-    heading: localizer(locale, `commands.personal.memories.${key}_heading`),
-    detail: localizer(locale, `commands.personal.memories.${key}_detail`, variables),
+    heading: localizer(locale, RECEIPT_LOCALE_KEYS[key].heading),
+    detail: localizer(locale, RECEIPT_LOCALE_KEYS[key].detail, variables),
   };
 }
 
@@ -404,7 +495,7 @@ async function repaint(
   panelReceipt?: PanelReceipt,
   dependencies: PersonalMemoriesRouteDependencies = defaultDependencies,
 ): Promise<void> {
-  const stmCount = category === "global" ? await dependencies.getStmCount(scope.userDiscId) : 0;
+  const stmCount = category === "global" && !scope.identityId ? await dependencies.getStmCount(scope.userDiscId) : 0;
   const memoryCountsByLineage =
     category === "persona" ? await dependencies.getMemoryCountsByLineage(scope.userId) : undefined;
   const representative =
@@ -415,25 +506,52 @@ async function repaint(
   await deliverGuardedPanel(
     interaction,
     withPersonaPanelAvatar(
-      buildPersonalMemoriesPanelPayload({
-        locale,
-        category,
-        selectedLineageId,
-        personas: scope.personas,
-        memories,
-        memoryCountsByLineage,
-        selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
-        userAvatarUrl: category === "global" ? resolveInvokerAvatarUrl(interaction) : undefined,
-        stmCount,
-        privacyLevel: scope.privacyLevel,
-        readStatus: scope.readStatus,
-        page,
-        receipt: panelReceipt,
-      }),
+      buildScopedPersonalMemoriesPanelPayload(
+        {
+          locale,
+          identityMode: Boolean(scope.identityId),
+          identityLabel: scope.identityLabel,
+          category,
+          selectedLineageId,
+          personas: scope.personas,
+          memories,
+          memoryCountsByLineage,
+          selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
+          userAvatarUrl:
+            category === "global"
+              ? scope.identityId
+                ? scope.identityAvatarUrl
+                : resolveInvokerAvatarUrl(interaction)
+              : undefined,
+          stmCount,
+          privacyLevel: scope.privacyLevel,
+          readStatus: scope.readStatus,
+          page,
+          receipt: panelReceipt,
+        },
+        scope,
+      ),
       selectedPersonaAvatar,
     ),
     { locale, receipt: panelReceipt },
   );
+}
+
+function buildScopedPersonalMemoriesPanelPayload(
+  input: Parameters<typeof buildPersonalMemoriesPanelPayload>[0],
+  scope: PersonalMemoriesScope,
+): ReturnType<typeof buildPersonalMemoriesPanelPayload> {
+  const payload = buildPersonalMemoriesPanelPayload(input);
+  if (scope.identityId) {
+    rewriteManagedIdentityRouteIds(
+      payload,
+      PERSONAL_MEMORIES_ROUTE_NAMESPACE,
+      PERSONAL_MEMORIES_ROUTE_VERSION,
+      IDENTITY_MEMORIES_VERSION,
+      scope.identityId,
+    );
+  }
+  return payload;
 }
 
 const defaultDependencies: PersonalMemoriesRouteDependencies = {
@@ -547,7 +665,7 @@ export function createPersonalMemoriesInteractionRoute(
       const initialScope = await beginPanelInteraction(interaction, {
         authorize: () => true,
         onDenied: () => Promise.resolve(),
-        load: () => dependencies.resolveScope(interaction, route.action === "retry" || route.action === "refresh"),
+        load: () => dependencies.resolveScope(interaction, route.action === "retry"),
         onMissing: () => interaction.editReply(terminalPayload(route.locale, "commands.personal.memories.unavailable")),
       });
       if (!initialScope) return;
@@ -627,22 +745,6 @@ export function createPersonalMemoriesInteractionRoute(
         return;
       }
 
-      if (route.action === "range-open") {
-        const memories = await dependencies.loadMemories(scope.userId, route.lineageId);
-        await repaint(
-          interaction,
-          route.locale,
-          scope,
-          route.category,
-          route.lineageId,
-          memories,
-          { kind: "main", rangeIndex: 0 },
-          undefined,
-          dependencies,
-        );
-        return;
-      }
-
       if (route.action === "range") {
         const memories = await dependencies.loadMemories(scope.userId, route.lineageId);
         await repaint(
@@ -653,38 +755,6 @@ export function createPersonalMemoriesInteractionRoute(
           route.lineageId,
           memories,
           { kind: "main", rangeIndex: route.rangeIndex },
-          undefined,
-          dependencies,
-        );
-        return;
-      }
-
-      if (route.action === "range-page") {
-        const memories = await dependencies.loadMemories(scope.userId, route.lineageId);
-        await repaint(
-          interaction,
-          route.locale,
-          scope,
-          route.category,
-          route.lineageId,
-          memories,
-          { kind: "main", rangeIndex: route.chooserPage },
-          undefined,
-          dependencies,
-        );
-        return;
-      }
-
-      if (route.action === "range-cancel") {
-        const memories = await dependencies.loadMemories(scope.userId, route.lineageId);
-        await repaint(
-          interaction,
-          route.locale,
-          scope,
-          route.category,
-          route.lineageId,
-          memories,
-          { kind: "main" },
           undefined,
           dependencies,
         );
@@ -768,7 +838,7 @@ export function createPersonalMemoriesInteractionRoute(
             return;
           }
 
-          const batchReceiptByStatus: Record<string, string> = {
+          const batchReceiptByStatus: Record<string, PersonalMemoryReceiptKey> = {
             "privacy-blocked": "privacy_blocked_error",
             "empty-content": "empty_content",
             "content-too-long": "content_too_long",
@@ -831,7 +901,7 @@ export function createPersonalMemoriesInteractionRoute(
           return;
         }
 
-        const receiptByStatus: Record<string, string> = {
+        const receiptByStatus: Record<string, PersonalMemoryReceiptKey> = {
           "privacy-blocked": "privacy_blocked_error",
           "empty-content": "empty_content",
           "content-too-long": "content_too_long",
@@ -933,7 +1003,7 @@ export function createPersonalMemoriesInteractionRoute(
           return;
         }
 
-        const receiptByStatus: Record<string, string> = {
+        const receiptByStatus: Record<string, PersonalMemoryReceiptKey> = {
           "privacy-blocked": "privacy_blocked_error",
           "empty-content": "empty_content",
           "content-too-long": "content_too_long",
@@ -1072,7 +1142,7 @@ export function createPersonalMemoriesInteractionRoute(
         return;
       }
 
-      if (route.action === "retry" || route.action === "refresh") {
+      if (route.action === "retry") {
         const memories = await dependencies.loadMemories(scope.userId, route.lineageId);
         await repaint(
           interaction,
@@ -1093,6 +1163,72 @@ export function createPersonalMemoriesInteractionRoute(
 
 export const personalMemoriesInteractionRoute = createPersonalMemoriesInteractionRoute();
 
+export const identityMemoriesInteractionRoute: GlobalInteractionRoute = {
+  namespace: PERSONAL_MEMORIES_ROUTE_NAMESPACE,
+  version: IDENTITY_MEMORIES_VERSION,
+  async execute(client, interaction, parsed) {
+    const managedRoute = parseManagedIdentityRoute(parsed, PERSONAL_MEMORIES_ROUTE_VERSION);
+    const route = managedRoute && parsePersonalMemoriesPanelRoute(managedRoute.original);
+    if (!managedRoute || !route || route.action === "stm-clear") {
+      await interaction.reply({
+        content: localizer(interaction.locale, "commands.personal.memories.unavailable"),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const identityId = managedRoute.identityId;
+    const managed = await messageProxyRepository.getManagedIdentity(interaction.user.id, identityId);
+    if (!managed) {
+      await interaction.reply({
+        content: localizer(interaction.locale, "commands.personal.memories.unavailable"),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    if (
+      (route.action === "add-submit" || route.action === "edit-submit") &&
+      (await userRepository.getPrivacyLevel(interaction.user.id)) === PrivacyLevel.FULL
+    ) {
+      await interaction.reply({
+        content: localizer(route.locale, "commands.personal.memories.privacy_blocked_error_detail"),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const modal = <T extends { custom_id: string }>(value: T): T => {
+      rewriteManagedIdentityRouteIds(
+        value,
+        PERSONAL_MEMORIES_ROUTE_NAMESPACE,
+        PERSONAL_MEMORIES_ROUTE_VERSION,
+        IDENTITY_MEMORIES_VERSION,
+        identityId,
+      );
+      return value;
+    };
+    const identityRoute = createPersonalMemoriesInteractionRoute({
+      resolveScope: (target) => resolveIdentityMemoriesScope(target, identityId),
+      showAddModal: (target, locale, category, lineageId, nonce) =>
+        showRoutedRawModal(target, modal(buildAddPersonalMemoryModal(locale, category, lineageId, nonce))),
+      showEditModal: (target, locale, category, lineageId, memory, nonce) =>
+        showRoutedRawModal(
+          target,
+          modal(
+            buildEditPersonalMemoryModal(
+              locale,
+              category,
+              lineageId,
+              memory.personal_memory_id ?? 0,
+              memory.content,
+              memory.tags ?? [],
+              nonce,
+            ),
+          ),
+        ),
+    });
+    await identityRoute.execute(client, interaction, managedRoute.original);
+  },
+};
+
 export type PersonalMemoriesPanelPayloadOrTerminal =
   | ReturnType<typeof buildPersonalMemoriesPanelPayload>
   | InteractionEditReplyOptions;
@@ -1102,12 +1238,15 @@ export async function buildInitialPersonalMemoriesPanel(
   locale: string,
   dependenciesOverride?: Partial<PersonalMemoriesRouteDependencies>,
   requestedLineageId?: number,
+  identityId?: number,
 ): Promise<PersonalMemoriesPanelPayloadOrTerminal> {
   const dependencies: PersonalMemoriesRouteDependencies = {
     ...defaultDependencies,
     ...dependenciesOverride,
   };
-  const scope = await dependencies.resolveScope(interaction);
+  const scope = identityId
+    ? await resolveIdentityMemoriesScope(interaction, identityId)
+    : await dependencies.resolveScope(interaction);
   if (!scope) {
     return terminalPayload(locale, "commands.personal.memories.unavailable") as PersonalMemoriesPanelPayloadOrTerminal;
   }
@@ -1117,27 +1256,37 @@ export async function buildInitialPersonalMemoriesPanel(
       : scope.personas.find((persona) => persona.persona_lineage_id === requestedLineageId);
   const selectedLineageId = selectedPersona?.persona_lineage_id ?? 0;
   const memories = await dependencies.loadMemories(scope.userId, selectedLineageId);
-  const stmCount = selectedLineageId === 0 ? await dependencies.getStmCount(scope.userDiscId) : 0;
+  const stmCount = selectedLineageId === 0 && !scope.identityId ? await dependencies.getStmCount(scope.userDiscId) : 0;
   const memoryCountsByLineage =
     selectedLineageId === 0 ? undefined : await dependencies.getMemoryCountsByLineage(scope.userId);
   const selectedPersonaAvatar = selectedPersona
     ? await dependencies.getPersonaAvatarData(interaction, selectedPersona)
     : undefined;
   return withPersonaPanelAvatar(
-    buildPersonalMemoriesPanelPayload({
-      locale,
-      category: selectedLineageId === 0 ? "global" : "persona",
-      selectedLineageId,
-      personas: scope.personas,
-      memories,
-      stmCount,
-      memoryCountsByLineage,
-      selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
-      userAvatarUrl: selectedLineageId === 0 ? resolveInvokerAvatarUrl(interaction) : undefined,
-      privacyLevel: scope.privacyLevel,
-      readStatus: scope.readStatus,
-      page: { kind: "main" },
-    }),
+    buildScopedPersonalMemoriesPanelPayload(
+      {
+        locale,
+        identityMode: Boolean(scope.identityId),
+        identityLabel: scope.identityLabel,
+        category: selectedLineageId === 0 ? "global" : "persona",
+        selectedLineageId,
+        personas: scope.personas,
+        memories,
+        stmCount,
+        memoryCountsByLineage,
+        selectedPersonaAvatarUrl: selectedPersonaAvatar?.url,
+        userAvatarUrl:
+          selectedLineageId === 0
+            ? scope.identityId
+              ? scope.identityAvatarUrl
+              : resolveInvokerAvatarUrl(interaction)
+            : undefined,
+        privacyLevel: scope.privacyLevel,
+        readStatus: scope.readStatus,
+        page: { kind: "main" },
+      },
+      scope,
+    ),
     selectedPersonaAvatar,
   );
 }

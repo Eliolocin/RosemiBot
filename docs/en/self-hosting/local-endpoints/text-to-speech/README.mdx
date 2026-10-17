@@ -39,7 +39,18 @@ TomoriBot treats speech as a custom endpoint capability. Local engines run outsi
 1. Pick one engine from the cards above and set up its wrapper from `servers/tts/`.
 2. In `/providers`, choose `Add New Custom Endpoint` and use API Compatibility `tts-clone`.
 3. Select the saved endpoint and use its model dropdown to add its Speech model, Voice Source Mode, and Script Markup.
-4. Open `/config` > Models > Switch Models and select the registered Speech model.
+4. Open `/config` > Models > Switch Models and select the endpoint under `TTS (Voice Design)` or `TTS (Voice Clone)`. Auto endpoints activate both selections; clearing one preserves the other.
+
+Activating a Clone-only registration replaces only Clone; activating a Design-only registration
+replaces only Design. Adding Google or OpenRouter replaces its matching slot with the hosted
+default, even when a local target was selected there. Existing selections survive schema upgrades.
+
+Hosted alternatives require no local TTS server. Adding Google selects Gemini Flash TTS for Design;
+adding OpenRouter selects paid Fish S2.1 Pro for Clone. Flash-Lite and free Fish require explicit
+selection. Free-tier access depends on the provider account and quotas. See
+[Voice: TTS & STT](/features/capabilities/media-generation/tts-and-stt/) for personal selections,
+fallback billing, and provider setup. The local Fish S2 Pro engine uses local weights and is
+separate from OpenRouter's Fish S2.1 Pro model.
 
 ## Network access
 {/* anchor: network-access */}
@@ -63,9 +74,16 @@ The 130-second upload ceiling is enforced by TomoriBot. Each engine applies its 
 
 The upload size limit and the duration ceiling are independent, and the size check runs first. Uncompressed WAV costs roughly 10 MB per minute as stereo 44.1 kHz, so a 130-second DAW export can be around 22 MB and be refused as too large while a compressed export of the same clip fits easily. `SPEECH_SAMPLE_MAX_MB` raises that size limit (10 MB by default). For a long reference clip, export it as FLAC, MP3, or OGG rather than WAV: TomoriBot converts any accepted format to mono WAV at 22.05 kHz before storing it, so the compressed upload costs nothing in quality.
 
-For Qwen3-TTS, MOSS-VoiceGenerator, IrodoriTTS, or VoxCPM2 VoiceDesign, skip the audio sample and use Persona > Voice in `/config` to save a natural-language voice description for the persona. CosyVoice 3 uses Clone mode with a reference sample and accepts one-off delivery direction through `voice_instructions`.
+For Qwen3-TTS, MOSS-VoiceGenerator, IrodoriTTS, or VoxCPM2 VoiceDesign, use Persona > Voice in `/config` to save a natural-language voice description. You can save it before choosing an endpoint and keep a reference sample alongside it. The persona's Voice Source priority chooses which usable source to use first. CosyVoice 3 uses Clone mode with a reference sample and accepts one-off delivery direction through `voice_instructions`.
 
 ElevenLabs users should choose `Add New Provider` and `ElevenLabs` in `/providers`; it registers the speech and transcription endpoints together.
+
+Google Voice Design stores a remote identity for each description and credential owner. Saved
+descriptions reuse it; prompt edits retire it, and one-off descriptions are deleted after generation.
+Failed deletion stays pending for a later request with the same credentials. Check the provider
+console after a crash or failed cleanup before removing credentials. Persona cards carry the
+description and priority, while provider identities and local reference assignments stay out of
+the card. Gemini cloning remains deferred until a consent-recording workflow exists.
 
 TomoriBot strips Discord custom emoji syntax such as `:pepega:` or `<:pepega:123456789012345678>` from generated voice scripts before synthesis. Unicode emojis are also stripped unless the speech endpoint uses emoji markup, which is intended for IrodoriTTS. Bracket tags are preserved for endpoints such as Chatterbox Turbo and Fish S2 Pro when their Script Markup is set to `Bracket Tags`.
 

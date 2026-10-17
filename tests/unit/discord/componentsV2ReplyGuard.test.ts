@@ -3,9 +3,8 @@
  *
  * Once a message carries `IsComponentsV2`, Discord permanently forbids editing it with
  * legacy `embeds`/`content`. `interactionCore` tracks such interactions in a WeakSet and
- * teaches the shared legacy sinks (`replyInfoEmbed`, `replySummaryEmbed`,
- * `replyPaginatedStatusPages`) to emit a V2 notice container instead of embeds when the
- * target is marked.
+ * teaches the shared legacy sinks (`replyInfoEmbed`, `replySummaryEmbed`) to emit a V2
+ * notice container instead of embeds when the target is marked.
  *
  * These tests import the REAL `interactionCore` and use no `mock.module`, so the official
  * runner batches this file into the shared unit lane where `interactionCore` is never

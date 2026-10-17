@@ -232,6 +232,7 @@ function addReceipt(locale: string, result: AddServerProviderResult, scopeKind: 
     "invalid-key": "commands.providers.invalid_key",
     "unsupported-provider": "commands.providers.unsupported_provider",
     "validation-failed": "commands.providers.validation_failed",
+    "no-balance": "commands.providers.validation_no_balance",
     "missing-model": "commands.providers.missing_default_model",
     "write-failed": "commands.providers.write_failed",
   };
@@ -441,7 +442,7 @@ function speechModalDefaults(
   section: ProviderPanelCapabilitySection,
   editing: ProviderPanelModel | undefined,
 ): Pick<ProviderModelModalDefaults, "speech"> {
-  if (capability !== "speech") return {};
+  if (capability !== "speech" || !section.apiStyle) return {};
 
   // Only a `tts-clone` server implements the clone/VoiceDesign/Auto split; `isVoiceDesignEndpoint`
   // requires that api style, so offering it for the ElevenLabs preset would store a dead value.
@@ -504,7 +505,7 @@ function readUnavailableReceipt(locale: string): PanelReceipt {
 
 function rangeForEntry(scope: LoadedProviderPanelScope, entryId: string | undefined): number {
   const index = entryId ? scope.data.entries.findIndex((entry) => entry.id === entryId) : -1;
-  return index < 0 ? 0 : Math.floor(index / 23);
+  return index < 0 ? 0 : Math.floor(index / PROVIDERS_ENTRIES_PER_SELECTOR_PAGE);
 }
 
 function repaint(

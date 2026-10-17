@@ -1,8 +1,6 @@
 export default {
   choices: {
     always: `Sempre`,
-    enable: `Ativar`,
-    disable: `Desativar`,
     enabled: `Ativado`,
     disabled: `Desativado`,
     none: `Nenhum`,

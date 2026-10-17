@@ -48,6 +48,35 @@ afterEach(() => {
 });
 
 describe("OpenRouter catalog refresh", () => {
+  it("bounds video discovery and cancels oversized or rejected responses", async () => {
+    for (const status of [200, 503]) {
+      let cancelled = false;
+      fetchSpy.mockImplementation((async (_input, init) => {
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
+        return new Response(
+          new ReadableStream({
+            pull(controller) {
+              controller.enqueue(new Uint8Array(1024 * 1024));
+            },
+            cancel() {
+              cancelled = true;
+            },
+          }),
+          { status },
+        );
+      }) as typeof fetch);
+      const catalog = createOpenRouterCatalog({
+        label: "video",
+        url: "https://openrouter.ai/api/v1/videos/models",
+        parse: (payload) => parseOpenRouterCatalogModelList("video", payload),
+        keyOf: (entry) => entry.id,
+      });
+      await catalog.initialize();
+      expect(catalog.isReady()).toBe(false);
+      expect(cancelled).toBe(true);
+    }
+  });
+
   it("finds a model published after the initial load", async () => {
     const catalog = makeCatalog({ minRefreshIntervalMs: 0 });
     await catalog.initialize();

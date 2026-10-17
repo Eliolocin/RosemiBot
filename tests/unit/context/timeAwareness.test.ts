@@ -104,6 +104,41 @@ describe("buildReunionNote", () => {
     ).toBeNull();
   });
 
+  it("attributes a proxied speaker's absence to that speaker, never to the account it shares", () => {
+    // Siblings speak from the same host account between this identity's turns, so the note
+    // may only describe the identity's own gap.
+    const note = buildReunionNote({
+      lastPreviousDayAt: new Date("2026-07-12T12:00:00Z"),
+      seenToday: false,
+      displayName: "Locke",
+      nowMs: NOW,
+      reunionDays: 3,
+      isSharedAccount: true,
+    });
+
+    expect(note).toBe(
+      "Locke hasn't interacted with you specifically since July 12, 2026 (3 days ago). Acknowledge them interacting with you again.",
+    );
+    expect(note).not.toContain("the account they share");
+    expect(note).not.toContain("has not been around");
+    expect(note).not.toContain("may have been around the server");
+  });
+
+  it("marks a member's first meeting as a first meeting with that member of a known account", () => {
+    expect(
+      buildReunionNote({
+        lastPreviousDayAt: null,
+        seenToday: false,
+        displayName: "Locke",
+        nowMs: NOW,
+        reunionDays: 3,
+        isSharedAccount: true,
+      }),
+    ).toBe(
+      "Locke is talking to you for the very first time, from an account you already know. Welcome them naturally and ask something friendly to get to know them.",
+    );
+  });
+
   it("uses personal, then server, then UTC timezone fallback", () => {
     const args = {
       lastPreviousDayAt: new Date("2026-07-12T23:30:00Z"),
@@ -189,6 +224,82 @@ describe("appendDialogueHistoryContext — time-awareness injections", () => {
     const noteText = itemText(contextItems[noteIndex]);
     expect(noteText).toBe("[System: Alice is talking to you directly for the very first time!]");
     expect(contextItems.filter((item) => itemText(item).startsWith("[System: Alice"))).toHaveLength(1);
+  });
+
+  it("injects a member's first-meeting note as guidance above the newest messages", async () => {
+    const memberNote = buildReunionNote({
+      lastPreviousDayAt: null,
+      seenToday: false,
+      displayName: "Locke",
+      nowMs: NOW,
+      isSharedAccount: true,
+    });
+    if (!memberNote) throw new Error("Expected a member first-meeting note");
+
+    const contextItems: StructuredContextItem[] = [];
+    await appendDialogueHistoryContext({
+      contextItems,
+      client: {} as Client,
+      guildId: "guild-1",
+      simplifiedMessageHistory: [makeMessage("one"), makeMessage("two"), makeMessage("three")],
+      botName: "Tomori",
+      tomoriConfig: makeConfig(),
+      tomoriState: null,
+      reunionNote: memberNote,
+      documentHintTemplate: DOCUMENT_HINT_TEMPLATE,
+      includeTimestamps: false,
+      isUserImpersonation: false,
+      triggererFormattedName: "Locke",
+      uncensorInputOptions: { unicodeSpacesEnabled: false, sanitizeEnabled: false },
+      convertMentions: async (text) => text,
+    });
+
+    // The prompt carries guidance, not a greeting the model must reproduce. From a shared
+    // account it may only claim this identity is new, never that the account is.
+    const notes = contextItems.filter((item) => itemText(item).startsWith("[System: Locke"));
+    expect(notes).toHaveLength(1);
+    const noteText = itemText(notes[0]);
+    expect(noteText).toContain("Locke is talking to you for the very first time");
+    expect(noteText).toContain("from an account you already know");
+    expect(noteText).toContain("Welcome them naturally");
+    expect(noteText).not.toContain("has not been around");
+  });
+
+  it("injects a member reunion note without an account-level absence claim", async () => {
+    const memberNote = buildReunionNote({
+      lastPreviousDayAt: new Date("2026-07-12T12:00:00Z"),
+      seenToday: false,
+      displayName: "Locke",
+      nowMs: NOW,
+      reunionDays: 3,
+      isSharedAccount: true,
+    });
+    if (!memberNote) throw new Error("Expected a member reunion note");
+
+    const contextItems: StructuredContextItem[] = [];
+    await appendDialogueHistoryContext({
+      contextItems,
+      client: {} as Client,
+      guildId: "guild-1",
+      simplifiedMessageHistory: [makeMessage("one"), makeMessage("two"), makeMessage("three")],
+      botName: "Tomori",
+      tomoriConfig: makeConfig(),
+      tomoriState: null,
+      reunionNote: memberNote,
+      documentHintTemplate: DOCUMENT_HINT_TEMPLATE,
+      includeTimestamps: false,
+      isUserImpersonation: false,
+      triggererFormattedName: "Locke",
+      uncensorInputOptions: { unicodeSpacesEnabled: false, sanitizeEnabled: false },
+      convertMentions: async (text) => text,
+    });
+
+    const notes = contextItems.filter((item) => itemText(item).startsWith("[System: Locke"));
+    expect(notes).toHaveLength(1);
+    const noteText = itemText(notes[0]);
+    expect(noteText).toContain("Locke hasn't interacted with you specifically since July 12, 2026");
+    expect(noteText).toContain("Acknowledge them interacting with you again");
+    expect(noteText).not.toContain("the account they share");
   });
 
   it("emits exactly one spacer per boundary across a multi-day history", async () => {

@@ -31,7 +31,7 @@ function makeSprite(spriteName: string): PersonaSpriteRow {
 
 describe("buildQueuedReplyDirective", () => {
   test("anchors to the bare persona label when the turn carries no sprite prompt", () => {
-    const directive = buildQueuedReplyDirective(makeQueuedMessage("you kinda smell ngl"), "Obonya", "Ellen");
+    const directive = buildQueuedReplyDirective(makeQueuedMessage("you kinda smell ngl"), "Zallya", "Ellen");
 
     expect(directive).toContain('Start your next reply with "Ellen:"');
     // Advertising a sprite form on a turn without the sprite prompt would invite
@@ -42,7 +42,7 @@ describe("buildQueuedReplyDirective", () => {
   test("offers the sprite opening form when the sprite prompt is present", () => {
     const directive = buildQueuedReplyDirective(
       makeQueuedMessage("you kinda smell ngl"),
-      "Obonya",
+      "Zallya",
       "Ellen",
       undefined,
       true,
@@ -55,13 +55,13 @@ describe("buildQueuedReplyDirective", () => {
   test("still names the reply target and quotes the queued message", () => {
     const directive = buildQueuedReplyDirective(
       makeQueuedMessage("i kinda like your smell tho"),
-      "Obonya",
+      "Zallya",
       "Ellen",
       undefined,
       true,
     );
 
-    expect(directive).toContain("Create a reply as Ellen to Obonya's message");
+    expect(directive).toContain("Create a reply as Ellen to Zallya's message");
     expect(directive).toContain("i kinda like your smell tho");
   });
 
@@ -75,7 +75,7 @@ describe("buildQueuedReplyDirective", () => {
   test("sprite label grammar matches the persona-sprite prompt exactly", () => {
     const botName = "Ellen";
     const spritePrompt = buildPersonaSpritePromptText(botName, [makeSprite("shy")]);
-    const directive = buildQueuedReplyDirective(makeQueuedMessage("mwah"), "Obonya", botName, undefined, true);
+    const directive = buildQueuedReplyDirective(makeQueuedMessage("mwah"), "Zallya", botName, undefined, true);
 
     const sharedLabelGrammar = `${botName} ({sprite label}):`;
     expect(spritePrompt).toContain(sharedLabelGrammar);

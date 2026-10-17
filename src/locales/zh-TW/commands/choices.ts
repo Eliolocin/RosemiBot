@@ -1,8 +1,6 @@
 export default {
   choices: {
     always: `總是`,
-    enable: `啟用`,
-    disable: `停用`,
     enabled: `已啟用`,
     disabled: `已停用`,
     none: `無`,

@@ -8,9 +8,11 @@ import {
 } from "@/db/seed/catalog/modelSeed";
 import {
   findCandidates,
+  decisionSource,
   insertRows,
   report,
   seenKey,
+  sourceAdvisories,
   type CatalogLookup,
   type ModelTable,
   type SeenEntry,
@@ -27,6 +29,90 @@ const catalogSnapshot: Record<ModelTable, { provider: string; codename: string }
 const frozenCatalog: CatalogLookup = (table) => catalogSnapshot[table];
 
 describe("model drift", () => {
+  it("offers every valid Decision entry, including new families, aliases, and free variants", async () => {
+    const source = await Bun.file(fixture).json();
+    const payload = await Bun.file(new URL("../../fixtures/openrouterDecisionDrift.json", import.meta.url)).json();
+    source["openrouter-decisions"] = decisionSource(payload);
+    const { candidates, free } = findCandidates(source, [], frozenCatalog);
+    const decisions = candidates.filter((row) => row.table === "decisionSections");
+    const expected = Object.keys(source["openrouter-decisions"].models).filter((id) => id !== "typesafe/jev-1.13");
+    expect(decisions.map((row) => row.codename).sort()).toEqual(expected.sort());
+    expect(decisions.some((row) => row.codename.endsWith(":free"))).toBe(true);
+    expect(decisions.some((row) => row.codename.startsWith("~"))).toBe(true);
+    expect(free.some((row) => row.table === "decisionSections")).toBe(false);
+    expect(candidates.some((row) => row.table === "llmSections" && expected.includes(row.codename))).toBe(false);
+
+    const seen: SeenEntry[] = decisions.map((row) => ({
+      provider: row.provider,
+      table: row.table,
+      codename: row.codename,
+      releaseDate: null,
+      offeredAt: "2026-01-01",
+    }));
+    expect(findCandidates(source, seen, frozenCatalog).candidates.some((row) => row.table === "decisionSections")).toBe(
+      false,
+    );
+    const advisories = sourceAdvisories(source);
+    expect(advisories.rejectedDecisions?.sort()).toEqual([
+      "respan/span-01",
+      "respan/span-01-lite",
+      "respan/span-01-lite:free",
+    ]);
+    const body = report(decisions, [], advisories);
+    for (const id of advisories.rejectedDecisions ?? []) expect(body).toContain(id);
+
+    const inserted = insertRows(await Bun.file(catalog).text(), decisions);
+    const compiled = ts.transpileModule(inserted, { reportDiagnostics: true });
+    expect(compiled.diagnostics).toHaveLength(0);
+    const drafts = inserted.slice(inserted.indexOf("export const decisionSections"));
+    for (const row of decisions) {
+      const start = drafts.lastIndexOf(`codename: ${JSON.stringify(row.codename)}`);
+      const end = drafts.indexOf(`desc: "${MODEL_DRIFT_TODO}"`, start);
+      const text = drafts.slice(start, end);
+      expect(text).toContain(`inputTokenLimit: ${row.model.limit?.input}`);
+      expect(text).toContain(`inputPricePerMillion: ${row.model.cost?.input}`);
+      expect(text).toContain(`outputPricePerMillion: ${row.model.cost?.output}`);
+      expect(text.includes("\n        seesImages: true,")).toBe(
+        row.model.modalities?.input?.includes("image") === true,
+      );
+      expect(text).not.toContain("isFree");
+    }
+
+    const rejected = payload.data.find((row: { id: string }) => row.id === "respan/span-01");
+    rejected.context_length = 32768;
+    source["openrouter-decisions"] = decisionSource(payload);
+    expect(
+      findCandidates(source, seen, frozenCatalog).candidates.some(
+        (row) => row.codename === rejected.id && row.table === "decisionSections",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not reoffer carried or declined Decision models but still offers new ones", async () => {
+    const source = await Bun.file(fixture).json();
+    source["openrouter-decisions"] = decisionSource(
+      await Bun.file(new URL("../../fixtures/openrouterDecisionDrift.json", import.meta.url)).json(),
+    );
+    const seen: SeenEntry[] = await Bun.file(
+      new URL("../../../scripts/data/modelDriftSeen.json", import.meta.url),
+    ).json();
+    const uncarried = findCandidates(source, []).candidates.filter((row) => row.table === "decisionSections");
+    expect(uncarried.length).toBeGreaterThan(0);
+    const declinedKeys = new Set(seen.filter((entry) => entry.table === "decisionSections").map(seenKey));
+    for (const row of uncarried) expect(declinedKeys.has(seenKey(row))).toBe(true);
+    expect(findCandidates(source, seen).candidates.some((row) => row.table === "decisionSections")).toBe(false);
+    source["openrouter-decisions"].models["typesafe/jev-1.14"] = {
+      ...source["openrouter-decisions"].models["typesafe/jev-1.13"],
+      id: "typesafe/jev-1.14",
+    };
+    expect(
+      findCandidates(source, seen)
+        .candidates.filter((row) => row.table === "decisionSections")
+        .map((row) => row.codename),
+    ).toEqual(["typesafe/jev-1.14"]);
+    expect(() => decisionSource({ error: "unavailable" })).toThrow();
+  });
+
   it("treats a carried OpenRouter alias as covering its family despite stale release dates", async () => {
     const source = await Bun.file(fixture).json();
     const models: SourceModel[] = [
@@ -95,7 +181,71 @@ describe("model drift", () => {
     const source = await Bun.file(fixture).json();
     const { candidates } = findCandidates(source, [], frozenCatalog);
     expect(candidates.some((item) => item.provider === "nvidia" && item.table !== "llmSections")).toBe(false);
-    expect(candidates.some((item) => item.provider === "vertex" && item.table !== "llmSections")).toBe(false);
+    expect(candidates.some((item) => item.provider === "vertex" && item.table === "videoSections")).toBe(false);
+  });
+
+  it("drafts Gemini image models for Google and Vertex and inserts them into their own sections", async () => {
+    const source = await Bun.file(fixture).json();
+    const models: SourceModel[] = [
+      { id: "gemini-nano-banana-2.1", modalities: { output: ["text", "image"] } },
+      { id: "gemini-3.1-flash-lite-image", modalities: { output: ["text", "image"] } },
+      { id: "imagen-4.0-generate-001", modalities: { output: ["image"] } },
+      { id: "gemini-3.8-flash", modalities: { output: ["text"] } },
+      { id: "veo-3.1-generate", modalities: { output: ["video"] } },
+    ];
+    for (const key of ["google", "google-vertex"]) {
+      source[key].models = Object.fromEntries(models.map((model) => [model.id, model]));
+    }
+    const candidates = findCandidates(source, [], frozenCatalog).candidates.filter(
+      (row) => (row.provider === "google" || row.provider === "vertex") && row.table === "imageSections",
+    );
+    for (const provider of ["google", "vertex"]) {
+      expect(
+        candidates
+          .filter((row) => row.provider === provider)
+          .map((row) => row.codename)
+          .sort(),
+      ).toEqual(["gemini-3.1-flash-lite-image", "gemini-nano-banana-2.1"]);
+    }
+    const inserted = insertRows(await Bun.file(catalog).text(), candidates);
+    const file = ts.createSourceFile("models.ts", inserted, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    for (const candidate of candidates) {
+      let found = false;
+      function visit(node: ts.Node): void {
+        if (ts.isObjectLiteralExpression(node)) {
+          const fields = new Map(
+            node.properties
+              .filter(ts.isPropertyAssignment)
+              .map((property) => [property.name.getText(file), property.initializer]),
+          );
+          const desc = fields.get("desc");
+          if (
+            desc &&
+            ts.isStringLiteral(desc) &&
+            desc.text === MODEL_DRIFT_TODO &&
+            fields.get("codename")?.getText(file) === JSON.stringify(candidate.codename) &&
+            fields.get("provider")?.getText(file) === JSON.stringify(candidate.provider)
+          ) {
+            const section = node.parent.parent.parent;
+            const comment = section.getText(file).match(/comment: "([^"]+)"/)?.[1];
+            expect(comment).toBe(
+              candidate.provider === "google"
+                ? "Google Gemini Image Generation Models"
+                : "Vertex AI Gemini Image Generation Models",
+            );
+            found = true;
+          }
+        }
+        ts.forEachChild(node, visit);
+      }
+      visit(file);
+      expect(found).toBe(true);
+    }
+    const advisories = sourceAdvisories(source).unsupportedMedia;
+    expect(advisories.some((item) => item.includes("gemini-nano-banana-2.1"))).toBe(false);
+    expect(advisories.some((item) => item.includes("gemini-3.1-flash-lite-image"))).toBe(false);
+    expect(advisories.some((item) => item.includes("imagen-4.0-generate-001"))).toBe(true);
+    expect(advisories.some((item) => item.includes("veo-3.1-generate"))).toBe(true);
   });
 
   it("does not reoffer models already in the catalog", async () => {

@@ -5,6 +5,7 @@ import type { ToolContext } from "@/types/tool/interfaces";
 import { userNamingRepository, userRepository } from "@/utils/db/repositories";
 import { resolveEffectiveUserNaming } from "@/utils/text/userNaming";
 import { isBridgeUserId } from "@/utils/bridges";
+import { isMessageProxyIdentityUserId } from "@/utils/messageProxy/identityUserId";
 import { normalizeParticipantAlias } from "@/utils/text/participants/aliases";
 import {
   collectParticipantTargetIndex,
@@ -326,7 +327,7 @@ function resolveConversationUserMatch(
   }
 
   // Identify targets the input matched on their PRIMARY/display name (e.g. the
-  //    rendered "Misuzu"/"Obonya" label) rather than only on a secondary alias
+  //    rendered "Misuzu"/"Zallya" label) rather than only on a secondary alias
   //    (server nickname, global name, username). The conversation stage flattens
   //    all alias types into one set, so without this distinction a user's
   //    secondary alias can collide with another user's actual name and force a
@@ -404,6 +405,21 @@ function resolveGuildMemberStage(
     input: normalizedInput,
     candidates: dedupedMatches.slice(0, 3),
   };
+}
+
+/**
+ * The Discord id of whoever caused this turn, for tools keying a write or a
+ * permission check on the triggerer rather than on a named target.
+ *
+ * `context.userId` is the identity admission already resolved through the
+ * Message-proxy, Matrix relay, manual-trigger, and self-reply-chain paths, so
+ * it outranks the message author. The author is a fallback for tool contexts
+ * built outside a chat turn, and never used for a webhook message: a proxied
+ * turn authors as the webhook, whose snowflake matches no user row.
+ */
+export function resolveTriggererDiscordId(context: ToolContext): string | undefined {
+  if (context.userId) return context.userId;
+  return context.message?.webhookId ? undefined : context.message?.author?.id;
 }
 
 async function resolveMembersById(
@@ -592,6 +608,19 @@ export async function resolveUserTarget(input: string, context: ToolContext): Pr
         targetId: bridgeReference.targetId,
         displayLabel: formatBridgeUserLabel(bridgeReference),
         isBridgeUser: true,
+        source: "legacy_id",
+      };
+    }
+  }
+
+  if (isMessageProxyIdentityUserId(rawInput)) {
+    const messageProxyReference = conversationReferences.find((reference) => reference.targetId === rawInput);
+    if (messageProxyReference) {
+      return {
+        status: "resolved",
+        targetId: messageProxyReference.targetId,
+        displayLabel: messageProxyReference.displayLabel,
+        isBridgeUser: false,
         source: "legacy_id",
       };
     }

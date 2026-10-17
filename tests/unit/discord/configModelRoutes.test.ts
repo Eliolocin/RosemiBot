@@ -89,6 +89,10 @@ function makeState(overrides: Record<string, unknown> = {}): TomoriState {
     vision_llm: null,
     fallback_chain: [],
     config: {
+      speech_design_endpoint_id: null,
+      speech_clone_endpoint_id: null,
+      speech_design_model_id: null,
+      speech_clone_model_id: null,
       llm_id: 1,
       vision_llm_id: null,
       embedding_model_id: null,
@@ -163,9 +167,9 @@ function makeNaiPreset(name: string, target: "kayra" | "erato" = "kayra"): NaiPr
   };
 }
 
-function makeEndpointSlot(capability: "tts" | "stt", count: number, activeIndex = -1): ConfigEndpointSlotView {
-  const serviceCapability = capability === "tts" ? "speech" : "transcription";
-  const apiStyle = capability === "tts" ? "tts-clone" : "openai-compatible-transcription";
+function makeEndpointSlot(capability: "tts-clone" | "stt", count: number, activeIndex = -1): ConfigEndpointSlotView {
+  const serviceCapability = capability === "tts-clone" ? "speech" : "transcription";
+  const apiStyle = capability === "tts-clone" ? "tts-clone" : "openai-compatible-transcription";
   const endpoints: ConfigCapabilityEndpoint[] = Array.from({ length: count }, (_unused, index) => ({
     id: index + 1,
     capability: serviceCapability,
@@ -488,9 +492,9 @@ describe("config models provider eligibility", () => {
 describe("config models switch page", () => {
   it("keeps endpoint selectors bounded and reaches every endpoint window", async () => {
     for (const count of [0, 1, 24, 25, 26, 60]) {
-      const endpointSlots = [makeEndpointSlot("tts", count), makeEndpointSlot("stt", 0)];
+      const endpointSlots = [makeEndpointSlot("tts-clone", count), makeEndpointSlot("stt", 0)];
       const harness = makeHarness({ endpointSlots });
-      const customId = buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "tts" });
+      const customId = buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "tts-clone" });
       const visited = new Set<number>();
       let values: string[] = [];
       for (let step = 0; step <= count + 1; step += 1) {
@@ -523,7 +527,7 @@ describe("config models switch page", () => {
       }
       expect(visited.size).toBe(count);
       if (count === 0) {
-        expect(findComponentByCustomId(harness.edits.at(-1), customId)?.disabled).toBe(true);
+        expect(findComponentByCustomId(harness.edits.at(-1), customId)?.disabled).toBe(false);
       }
     }
   });
@@ -544,10 +548,10 @@ describe("config models switch page", () => {
         }),
       );
       activationSpies.push(activationSpy);
-      for (const capability of ["tts", "stt"] as const) {
+      for (const capability of ["tts-clone", "stt"] as const) {
         const endpointSlots = [
           makeEndpointSlot(capability, 1),
-          makeEndpointSlot(capability === "tts" ? "stt" : "tts", 0),
+          makeEndpointSlot(capability === "tts-clone" ? "stt" : "tts-clone", 0),
         ];
         const endpoints = endpointSlots[0].endpoints;
         const harness = makeHarness({ endpointSlots });
@@ -564,13 +568,13 @@ describe("config models switch page", () => {
 
         expect(activationSpy).toHaveBeenCalledWith(
           expect.objectContaining({
-            capability: capability === "tts" ? "speech" : "transcription",
+            capability: capability === "tts-clone" ? "speech" : "transcription",
             customEndpointId: 1,
             scopeKind: "server",
           }),
         );
         expect(harness.telemetry).toContain("server-config.workspace.model.endpoint-select");
-        if (capability === "tts")
+        if (capability === "tts-clone")
           expect(JSON.stringify(harness.edits.at(-1))).toMatch(
             localizedProse("en-US", "commands.config.panel.endpoint_source_changed_direction"),
           );
@@ -578,16 +582,16 @@ describe("config models switch page", () => {
     });
 
     it("rejects malformed, out-of-range, and changed-fingerprint selections without a write", async () => {
-      const endpointSlots = [makeEndpointSlot("tts", 1), makeEndpointSlot("stt", 0)];
+      const endpointSlots = [makeEndpointSlot("tts-clone", 1), makeEndpointSlot("stt", 0)];
       const harness = makeHarness({ endpointSlots });
       const activationSpy = spyOn(providerPanelOperations, "activateWorkspaceEndpoint");
       activationSpies.push(activationSpy);
-      const fingerprint = computeConfigEndpointFingerprint("tts", endpointSlots[0].endpoints);
+      const fingerprint = computeConfigEndpointFingerprint("tts-clone", endpointSlots[0].endpoints);
       for (const value of ["not-an-endpoint", `ep|1|${fingerprint}`, encodeConfigEndpointSelection(0, "deadbeef")]) {
         await dispatch(
           harness,
           makeInteraction({
-            customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "tts" }),
+            customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "tts-clone" }),
             kind: "select",
             values: [value],
             harness,
@@ -601,15 +605,15 @@ describe("config models switch page", () => {
     });
 
     it("stops a non-manager at the real route authorization gate", async () => {
-      const endpointSlots = [makeEndpointSlot("tts", 1), makeEndpointSlot("stt", 0)];
+      const endpointSlots = [makeEndpointSlot("tts-clone", 1), makeEndpointSlot("stt", 0)];
       const harness = makeHarness({ endpointSlots, isManager: false });
       const repositoryWriteSpy = spyOn(llmProviderRepo, "setActiveCustomEndpoint");
       activationSpies.push(repositoryWriteSpy);
-      const fingerprint = computeConfigEndpointFingerprint("tts", endpointSlots[0].endpoints);
+      const fingerprint = computeConfigEndpointFingerprint("tts-clone", endpointSlots[0].endpoints);
       await dispatch(
         harness,
         makeInteraction({
-          customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "tts" }),
+          customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "tts-clone" }),
           kind: "select",
           isManager: false,
           values: [encodeConfigEndpointSelection(0, fingerprint)],
@@ -629,14 +633,14 @@ describe("config models switch page", () => {
         }),
       );
       activationSpies.push(activationSpy);
-      const endpointSlots = [makeEndpointSlot("tts", 1), makeEndpointSlot("stt", 0)];
+      const endpointSlots = [makeEndpointSlot("tts-clone", 1), makeEndpointSlot("stt", 0)];
       const harness = makeHarness({ endpointSlots, inGuild: false });
-      const fingerprint = computeConfigEndpointFingerprint("tts", endpointSlots[0].endpoints);
+      const fingerprint = computeConfigEndpointFingerprint("tts-clone", endpointSlots[0].endpoints);
 
       await dispatch(
         harness,
         makeInteraction({
-          customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "tts" }),
+          customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "tts-clone" }),
           kind: "select",
           inGuild: false,
           values: [encodeConfigEndpointSelection(0, fingerprint)],
@@ -1064,7 +1068,7 @@ describe("config models switch page", () => {
   it("refuses an endpoint capability that reaches the provider select", async () => {
     const harness = makeHarness();
     const selection = makeInteraction({
-      customId: buildConfigRouteId({ action: "model-provider-select", locale: "en-US", capability: "tts" }),
+      customId: buildConfigRouteId({ action: "model-provider-select", locale: "en-US", capability: "tts-clone" }),
       kind: "select",
       values: ["google"],
       harness,
@@ -1331,7 +1335,7 @@ describe("config models capability writes", () => {
     const naiUpdate = spyOn(configRepository, "updateNovelaiImagegenConfig").mockResolvedValue(true);
     const invalidate = spyOn(tomoriStateCache, "invalidateTomoriStateCache").mockImplementation(() => undefined);
 
-    for (const capability of ["tts", "stt"] as const) {
+    for (const capability of ["tts-clone", "stt"] as const) {
       const setResult = await configModelOperations.setCapabilityModel({
         tomoriState: makeState(),
         serverDiscId: "guild-1",
@@ -1346,7 +1350,7 @@ describe("config models capability writes", () => {
       });
 
       expect(setResult.status).toBe("not-found");
-      expect(clearResult.status).toBe("not-clearable");
+      expect(clearResult.status).toBe(capability === "stt" ? "not-clearable" : "already-clear");
     }
 
     expect(providers).not.toHaveBeenCalled();
@@ -2268,7 +2272,7 @@ describe("config models view loaders", () => {
       makeState(),
     ] as unknown as TomoriState[]);
 
-    const view = await loadConfigSwitchModelsView(makeState(), "guild-1", undefined);
+    const view = await loadConfigSwitchModelsView(makeState(), "guild-1", undefined, undefined, async () => []);
     expect(view.slots).toHaveLength(6);
     expect<readonly ConfigCatalogModelCapability[]>(view.slots.map((slot) => slot.capability)).toEqual(
       CATALOG_MODEL_CAPABILITIES,
@@ -2317,7 +2321,7 @@ describe("config models view loaders", () => {
     );
     const personas = spyOn(tomoriStateCache, "getCachedAllPersonas").mockResolvedValue([] as unknown as TomoriState[]);
 
-    const view = await loadConfigSwitchModelsView(makeState(), "guild-1", undefined);
+    const view = await loadConfigSwitchModelsView(makeState(), "guild-1", undefined, undefined, async () => []);
     const payload = buildConfigPanelPayload({
       locale: "en-US",
       actor: { workspaceKind: "guild", isManager: true },

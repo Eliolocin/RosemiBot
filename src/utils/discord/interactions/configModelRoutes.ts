@@ -12,6 +12,7 @@ import {
   CONFIG_FALLBACK_SLOT_COUNT,
   computeLogitBiasFingerprint,
   computeStopStringFingerprint,
+  configEndpointWindowSize,
   type ConfigModelCapability,
   CONFIG_MODEL_PAGE_SIZE,
   CONFIG_NAI_PRESET_PAGE_SIZE,
@@ -19,7 +20,6 @@ import {
   CONFIG_NAI_PRESET_PREVIOUS_VALUE,
   computeNaiPresetFingerprint,
   isConfigCatalogModelCapability,
-  type ConfigCatalogModelCapability,
   type ConfigPage,
   type ConfigPanelRoute,
 } from "@/utils/discord/configPanelCatalog";
@@ -176,7 +176,7 @@ function readOptionalNumber(modal: ModalSubmitInteraction, fieldId: string): num
 function isConfigEndpointModelCapability(
   capability: ConfigModelCapability,
 ): capability is ConfigEndpointModelCapability {
-  return capability === "tts" || capability === "stt";
+  return capability === "tts-design" || capability === "tts-clone" || capability === "stt";
 }
 
 export interface ConfigModelRouteContext {
@@ -585,10 +585,7 @@ function recordModelAction(context: ConfigModelRouteContext, action: PanelAction
   });
 }
 
-async function clearSwitchModel(
-  context: ConfigModelRouteContext,
-  capability: ConfigCatalogModelCapability,
-): Promise<boolean> {
+async function clearSwitchModel(context: ConfigModelRouteContext, capability: ConfigModelCapability): Promise<boolean> {
   const { dependencies, route } = context;
   const locale = route.locale;
   const state = serverStateFromScope(context.scope);
@@ -646,6 +643,9 @@ async function handleSwitchModels(context: ConfigModelRouteContext): Promise<boo
       endpointCapability,
     );
     const fingerprint = computeConfigEndpointFingerprint(endpointCapability, endpoints);
+    if (endpointCapability !== "stt" && context.selectedValue === `ep-clear|${fingerprint}`) {
+      return clearSwitchModel(context, endpointCapability);
+    }
     const endpoint =
       selected && selected.fingerprint === fingerprint && selected.position < endpoints.length
         ? endpoints[selected.position]
@@ -671,6 +671,7 @@ async function handleSwitchModels(context: ConfigModelRouteContext): Promise<boo
           scopeKind: "server",
           capability: endpointCapability,
           customEndpointId: endpoint.id,
+          targetKind: endpoint.targetKind,
         }),
       () => dependencies.resolveScope(context.interaction, true),
     );
@@ -680,9 +681,11 @@ async function handleSwitchModels(context: ConfigModelRouteContext): Promise<boo
 
     const endpointPage = {
       capability: endpointCapability,
-      start: Math.floor(selected.position / 24) * 24,
+      start:
+        Math.floor(selected.position / configEndpointWindowSize(endpointCapability, endpoints.length)) *
+        configEndpointWindowSize(endpointCapability, endpoints.length),
     } as const;
-    const speechSourceChanged = endpointCapability === "tts" && result.status === "success" && result.sourceChanged;
+    const speechSourceChanged = endpointCapability !== "stt" && result.status === "success" && result.sourceChanged;
     await baseRepaint(context, "switch", {
       endpointPage,
       receipt:

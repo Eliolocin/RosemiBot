@@ -14,7 +14,6 @@ export default {
     tool_error_loop_title: `Ciclo de Erros de Ferramenta`,
     tool_error_loop_description: `Continuei encontrando erros de ferramenta e não consegui concluir a solicitação. Tente reformular ou use \`/refresh\` se este problema persistir.`,
     fallback_used_title: `Modelo Secundário Usado`,
-    fallback_used_description: `\`{success_model}\` foi usado em vez de {chain}`,
     fallback_used_details_description: `O espaço secundário {slot} respondeu com \`{success_model}\` após estas falhas anteriores:
 {failure_list}`,
     fallback_used_failure_line: `{index}. {model} falhou com {error_detail}`,
@@ -26,7 +25,6 @@ export default {
       source_attached: `Esta tabela é muito longa para ser exibida na linha, então aqui está ela como um arquivo:`,
     },
     no_response_title: `Sem Resposta`,
-    no_response_description: `Não respondi - isso pode ser devido a uma resposta vazia ou tempo limite da IA.`,
     log_channel_chat_notice_title: `Conversa Desativada no Canal de Logs`,
     log_channel_chat_notice_description: `Este canal está definido como canal de logs, então não respondo a mensagens aqui. Para conversar aqui, limpe ou altere essa configuração em \`/config\` > Canais > Logs.`,
     thought_log: {
@@ -68,6 +66,7 @@ export default {
       timeout_title: `🟡️ Tempo Limite de Solicitação do Provedor`,
       provider_overloaded_title: `🔴 Provedor Sobrecarregado`,
       provider_overloaded_description: `O provedor está atualmente sobrecarregado ou temporariamente indisponível`,
+      connection_refused_description: `A conexão com o provedor foi recusada. Verifique se o seu endpoint está em execução e se o endereço está correto.`,
       context_length_title: `🔴 Mensagem Muito Longa para Este Modelo`,
       credit_limit_title: `🔴 Créditos do Provedor Insuficientes`,
       balance_exhausted_title: `🔴 Conta do Provedor Sem Saldo`,
@@ -107,7 +106,6 @@ export default {
       google_credential_type: `Isso parece ser um token de conta de serviço ou OAuth. O provedor \`google\` precisa de uma chave de API simples do [Google AI Studio](https://aistudio.google.com/apikey); use o provedor \`vertex\` para credenciais do Google Cloud.`,
       openrouter_privacy_settings: `Ajuste suas configurações de "Política de Dados" em [Configurações de Privacidade do OpenRouter](https://openrouter.ai/settings/privacy) para permitir este modelo ou escolha um modelo diferente.`,
       openrouter_fund_account: `Adicione pelo menos 10 créditos à sua conta do OpenRouter para desbloquear 1000 solicitações de modelo gratuitas por dia.`,
-      reduce_context_length: `Tente reduzir o comprimento da sua mensagem ou limpar o contexto com \`/refresh\`.`,
       reduce_output_tokens: `Diminua o limite de comprimento de resposta em \`/config\` > Modelos > Samplers e Parâmetros (tokens de saída) para liberar espaço para o histórico do chat.`,
       reduce_output_tokens_personal: `Diminua o limite de comprimento de resposta em \`/personal config\` (tokens de saída) para liberar espaço para o histórico do chat.`,
       openrouter_add_credits: `Adicione créditos em [Créditos do OpenRouter](https://openrouter.ai/settings/credits) ou diminua o comprimento da resposta em \`/config\` > Modelos > Samplers e Parâmetros (tokens de saída).`,
@@ -147,7 +145,6 @@ export default {
     },
     vertexexpress: {
       "403_predict_permission_message": `Esta chave não pode chamar modelos do Vertex AI Express. Use uma chave do modo Express, ou use o provedor \`vertex\` separado para projetos completos do Google Cloud.`,
-      unknown_default_message: `Ocorreu um erro inesperado`,
     },
     novelai: {
       "400_default_message": `Formato ou parâmetros de solicitação inválidos. Por favor, certifique-se de ter inserido a chave de API correta.`,

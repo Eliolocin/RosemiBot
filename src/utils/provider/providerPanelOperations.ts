@@ -1,3 +1,5 @@
+import { registerHostedSpeechModelForScope } from "@/utils/provider/openrouterModelRegistry";
+import { supportsSpeechMode } from "@/utils/speech/voiceSourceCapabilities";
 import type {
   CustomEndpointConnectionRow,
   CustomEndpointApiStyle,
@@ -53,6 +55,8 @@ import {
   curatedImageSupportsFromSubmittedValues,
   resolveCuratedImageSupports,
 } from "@/utils/provider/providerImageCapabilities";
+import type { ApiKeyValidationResult } from "@/types/provider/interfaces";
+import { isAccountBalanceExhaustedError } from "@/utils/provider/providerErrorClassification";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import { getStaticProviderInfo } from "@/utils/provider/providerInfoRegistry";
 import { ProviderFactory } from "@/utils/provider/providerFactory";
@@ -62,6 +66,7 @@ import {
   buildUserSavedProviderConfigFromExistingOrDefaults,
 } from "@/utils/provider/savedProviderConfig";
 import {
+  activateProviderSpeechDefaults,
   activatePersonalProviderTextModel,
   activateServerTextModelFromSavedConfig,
 } from "@/utils/provider/providerActivation";
@@ -119,7 +124,13 @@ export interface ProviderPanelOperationsDependencies {
 export type AddServerProviderResult =
   | { status: "success"; entryId: string; displayName: string; modelName?: string; updated: boolean }
   | {
-      status: "invalid-key" | "unsupported-provider" | "validation-failed" | "missing-model" | "write-failed";
+      status:
+        | "invalid-key"
+        | "unsupported-provider"
+        | "validation-failed"
+        | "no-balance"
+        | "missing-model"
+        | "write-failed";
     };
 
 export interface AddServerProviderInput {
@@ -144,6 +155,7 @@ export interface AddServerProviderDependencies {
   loadSavedConfig(serverId: number, provider: string): Promise<SavedProviderConfigRow | null>;
   upsertSavedConfig: typeof llmProviderRepo.upsertSavedProviderConfig;
   activateText: typeof activateServerTextModelFromSavedConfig;
+  activateSpeechDefaults: typeof activateProviderSpeechDefaults;
   refresh(discordId: string): void | Promise<void>;
 }
 
@@ -288,6 +300,7 @@ const defaultAddDependencies: AddServerProviderDependencies = {
   loadSavedConfig: (serverId, provider) => llmProviderRepo.loadSavedProviderConfig(serverId, provider),
   upsertSavedConfig: (serverId, config) => llmProviderRepo.upsertSavedProviderConfig(serverId, config),
   activateText: activateServerTextModelFromSavedConfig,
+  activateSpeechDefaults: activateProviderSpeechDefaults,
   refresh: (discordId) => invalidateTomoriStateCache(discordId),
 };
 
@@ -361,6 +374,10 @@ interface PanelModelContext {
   activeNaiImageId: number | null;
   activeEmbeddingId: number | null;
   activeVideoId: number | null;
+  activeSpeechDesignId: number | null;
+  activeSpeechCloneId: number | null;
+  activeSpeechDesignModelId: number | null;
+  activeSpeechCloneModelId: number | null;
   scopeFallbacks: readonly FallbackModelRef[];
 }
 
@@ -372,6 +389,10 @@ function serverModelContext(state: TomoriState): PanelModelContext {
     activeNaiImageId: state.config.nai_diffusion_model_id ?? null,
     activeEmbeddingId: state.config.embedding_model_id ?? null,
     activeVideoId: state.config.video_model_id ?? null,
+    activeSpeechDesignId: state.config.speech_design_endpoint_id,
+    activeSpeechCloneId: state.config.speech_clone_endpoint_id,
+    activeSpeechDesignModelId: state.config.speech_design_model_id,
+    activeSpeechCloneModelId: state.config.speech_clone_model_id,
     scopeFallbacks: state.config.fallback_model_refs ?? [],
   };
 }
@@ -388,6 +409,12 @@ function personalModelContext(userId: number, configs: UserSavedProviderConfigRo
     activeNaiImageId: getActivePersonalProviderForCapability(configs, "image")?.nai_diffusion_model_id ?? null,
     activeEmbeddingId: getActivePersonalProviderForCapability(configs, "embedding")?.embedding_model_id ?? null,
     activeVideoId: getActivePersonalProviderForCapability(configs, "video")?.video_model_id ?? null,
+    activeSpeechDesignId: null,
+    activeSpeechCloneId: null,
+    activeSpeechDesignModelId:
+      getActivePersonalProviderForCapability(configs, "speech_design")?.speech_design_model_id ?? null,
+    activeSpeechCloneModelId:
+      getActivePersonalProviderForCapability(configs, "speech_clone")?.speech_clone_model_id ?? null,
     scopeFallbacks: text?.fallback_model_refs ?? [],
   };
 }
@@ -397,17 +424,40 @@ async function buildCuratedCapabilities(
   savedConfig: PanelSavedConfig,
   context: PanelModelContext,
 ): Promise<ProviderPanelCapabilitySection[]> {
-  const [textRows, imageRows, embeddingRows, videoRows, decisionRows] = await Promise.all([
+  const [textRows, imageRows, embeddingRows, videoRows, decisionRows, speechRows] = await Promise.all([
     llmModelRepo.loadAvailableModelsForProvider(provider, false, context.scope),
     llmModelRepo.loadAvailableDiffusionModels(provider, false, context.scope),
     llmModelRepo.loadAvailableEmbeddingModels(provider, false, context.scope),
     llmModelRepo.loadAvailableVideoGenerationModels(provider, false, context.scope),
     llmModelRepo.loadAvailableDecisionModels(provider, false, context.scope),
+    llmModelRepo.loadAvailableSpeechModels(provider, context.scope),
   ]);
   const workspaceFallbacks = context.scopeFallbacks;
   const providerFallbacks = savedConfig.fallback_model_refs ?? [];
 
-  const modelsByCapability: Record<"text" | "image" | "embedding" | "video" | "decision", ProviderPanelModel[]> = {
+  const modelsByCapability: Record<
+    "text" | "image" | "embedding" | "video" | "decision" | "speech",
+    ProviderPanelModel[]
+  > = {
+    speech: speechRows.map((row) => ({
+      id: row.speech_model_id,
+      codeName: row.codename,
+      isWorkspaceActive:
+        row.speech_model_id === context.activeSpeechDesignModelId ||
+        row.speech_model_id === context.activeSpeechCloneModelId,
+      isWorkspaceFallback: false,
+      isProviderFallback: false,
+      isCustomRegistration: row.is_scoped_registration,
+      speechActiveModes: [
+        ...(row.speech_model_id === context.activeSpeechDesignModelId ? ["design" as const] : []),
+        ...(row.speech_model_id === context.activeSpeechCloneModelId ? ["clone" as const] : []),
+      ],
+      speechSettings: {
+        voiceMode: row.voice_mode === "design" ? "voice-design" : row.voice_mode,
+        scriptMarkup: "plain",
+        supportsInstruct: true,
+      },
+    })),
     decision: decisionRows.map((row) => ({
       id: row.decision_model_id,
       codeName: row.codename,
@@ -483,7 +533,7 @@ async function buildCuratedCapabilities(
 
   return CAPABILITIES.map((capability) => {
     if (
-      capability === "speech" ||
+      (capability === "speech" && speechRows.length === 0) ||
       capability === "transcription" ||
       (capability === "decision" && !getStaticProviderInfo(provider)?.featureSupport.decisions)
     ) {
@@ -526,9 +576,14 @@ function buildEndpointCapabilities(
                 ? context.activeEmbeddingId
                 : capability === "video"
                   ? context.activeVideoId
-                  : endpoint.is_default
-                    ? endpoint.custom_endpoint_id
-                    : null;
+                  : capability === "speech"
+                    ? endpoint.custom_endpoint_id === context.activeSpeechDesignId ||
+                      endpoint.custom_endpoint_id === context.activeSpeechCloneId
+                      ? endpoint.custom_endpoint_id
+                      : null
+                    : endpoint.is_default
+                      ? endpoint.custom_endpoint_id
+                      : null;
         const identityId =
           capability === "speech" || capability === "transcription"
             ? endpoint.custom_endpoint_id
@@ -557,8 +612,13 @@ function buildEndpointCapabilities(
           capability === "image" ? readImageEndpointSupports(endpoint) : undefined,
         );
         if (!model) return [];
-        if (capability === "speech" || capability === "transcription") {
-          model.isWorkspaceActive = endpoint.is_default;
+        if (capability === "transcription") model.isWorkspaceActive = endpoint.is_default;
+        if (capability === "speech") {
+          model.speechActiveModes = [
+            ...(endpoint.custom_endpoint_id === context.activeSpeechDesignId ? ["design" as const] : []),
+            ...(endpoint.custom_endpoint_id === context.activeSpeechCloneId ? ["clone" as const] : []),
+          ];
+          model.isWorkspaceActive = model.speechActiveModes.length > 0;
         }
         if (capability === "decision") {
           model.isWorkspaceActive = false;
@@ -782,6 +842,10 @@ async function loadPersonalProviderPanelScope(
   };
 }
 
+function rejectedKeyStatus(validation: ApiKeyValidationResult): "validation-failed" | "no-balance" {
+  return validation.error && isAccountBalanceExhaustedError(validation.error) ? "no-balance" : "validation-failed";
+}
+
 async function addElevenLabsProvider(
   input: AddServerProviderInput,
   dependencies: AddServerProviderDependencies,
@@ -864,7 +928,7 @@ async function addCuratedProvider(
     return { status: "unsupported-provider" };
   }
   const validation = await providerInstance.validateApiKey(input.apiKey);
-  if (!validation.valid) return { status: "validation-failed" };
+  if (!validation.valid) return { status: rejectedKeyStatus(validation) };
 
   const existingConfig = await dependencies.loadSavedConfig(input.state.server_id, provider);
   const encryption = await dependencies.encrypt(input.apiKey);
@@ -887,6 +951,9 @@ async function addCuratedProvider(
   });
   if (activation.status === "missing_model") return { status: "missing-model" };
   if (activation.status !== "activated") return { status: "write-failed" };
+  if (!(await dependencies.activateSpeechDefaults({ kind: "server", ownerId: input.state.server_id }, provider))) {
+    return { status: "write-failed" };
+  }
 
   return {
     status: "success",
@@ -958,7 +1025,8 @@ async function addPersonalProvider(input: AddServerProviderInput): Promise<AddSe
     });
     return { status: "unsupported-provider" };
   }
-  if (!(await instance.validateApiKey(apiKey)).valid) return { status: "validation-failed" };
+  const validation = await instance.validateApiKey(apiKey);
+  if (!validation.valid) return { status: rejectedKeyStatus(validation) };
   const existingConfig = await llmProviderRepo.loadUserSavedProviderConfig(userId, provider);
   const encryption = await encryptApiKey(apiKey);
   const savedConfig = await buildUserSavedProviderConfigFromExistingOrDefaults({
@@ -975,6 +1043,10 @@ async function addPersonalProvider(input: AddServerProviderInput): Promise<AddSe
   const activation = await activatePersonalProviderTextModel({ userId, provider, llmId: savedConfig.llm_id });
   if (activation.status === "missing_model") return { status: "missing-model" };
   if (activation.status !== "activated") return { status: "write-failed" };
+  if (!(await activateProviderSpeechDefaults({ kind: "personal", ownerId: userId }, provider))) {
+    return { status: "write-failed" };
+  }
+
   return {
     status: "success",
     entryId: `provider:${provider}`,
@@ -1169,9 +1241,19 @@ async function registerSharedProviderModel(
   input: SaveProviderModelInput,
   provider: string,
 ): Promise<SaveProviderModelResult> {
-  if (input.capability === "speech" || input.capability === "transcription") {
-    return { status: "unsupported-capability" };
+  if (input.capability === "speech") {
+    const userId = personalOwnerId(input);
+    const result = await registerHostedSpeechModelForScope(
+      userId ? { kind: "personal", ownerId: userId } : { kind: "server", ownerId: input.state.server_id },
+      provider,
+      input.codeName,
+      input.editingModelId,
+    );
+    if (result.status === "invalid_model") return { status: "invalid-model" };
+    if (result.status === "write_failed") return { status: "write-failed" };
+    return { status: "success", entryId: input.entryId, codeName: result.model.codename };
   }
+  if (input.capability === "transcription") return { status: "unsupported-capability" };
   if (input.capability === "decision" && provider !== "openrouter") return { status: "unsupported-capability" };
   if (provider === "openrouter") {
     const userId = personalOwnerId(input);
@@ -1198,6 +1280,7 @@ async function registerSharedProviderModel(
         : undefined,
     );
     if (result.status === "invalid_model") return { status: "invalid-model" };
+    if (result.status === "write_failed") return { status: "write-failed" };
     if (result.status === "already_available") {
       return { status: "already-available" };
     }
@@ -1684,6 +1767,7 @@ interface ActivateWorkspaceEndpointInput {
   scopeKind?: "server" | "personal";
   state: TomoriState;
   capability: "speech" | "transcription";
+  mode?: "design" | "clone";
   customEndpointId: number;
 }
 
@@ -1717,15 +1801,31 @@ async function activateWorkspaceEndpoint(
     (endpoint) => endpoint.capability === input.capability && endpoint.custom_endpoint_id !== undefined,
   );
   const target = endpoints.find((endpoint) => endpoint.custom_endpoint_id === input.customEndpointId);
-  if (!target?.custom_endpoint_id) return { status: "not-found" };
+  if (!target?.custom_endpoint_id || (input.mode && !supportsSpeechMode(target, input.mode)))
+    return { status: "not-found" };
 
   const identity = `${target.label} (${target.capability})`;
-  const previous = endpoints.find((endpoint) => endpoint.is_default) ?? null;
-  if (previous?.custom_endpoint_id === target.custom_endpoint_id) return { status: "already-active", identity };
+  const previousId =
+    input.mode === "design"
+      ? input.state.config.speech_design_endpoint_id
+      : input.state.config.speech_clone_endpoint_id;
+  const previous =
+    endpoints.find((endpoint) =>
+      input.capability === "speech" ? endpoint.custom_endpoint_id === previousId : endpoint.is_default,
+    ) ?? null;
+  const selectedInEveryMode =
+    input.capability === "speech"
+      ? (!supportsSpeechMode(target, "design") ||
+          input.state.config.speech_design_endpoint_id === target.custom_endpoint_id) &&
+        (!supportsSpeechMode(target, "clone") ||
+          input.state.config.speech_clone_endpoint_id === target.custom_endpoint_id)
+      : previous?.custom_endpoint_id === target.custom_endpoint_id;
+  if (selectedInEveryMode) return { status: "already-active", identity };
 
   const updated = await dependencies.setActive({
     serverId: input.state.server_id,
     capability: input.capability,
+    mode: input.mode,
     customEndpointId: target.custom_endpoint_id,
   });
   if (!updated) return { status: "write-failed" };

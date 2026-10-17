@@ -25,6 +25,8 @@ function makeChannel(options?: { isThread?: boolean; channelId?: string }) {
 function makeWebhook(options?: { throwOnDelete?: boolean }) {
   const webhookDeletes: Array<{ messageId: string; threadId: string | undefined }> = [];
   const webhook = {
+    id: "webhook_1",
+    token: "synthetic_token",
     deleteMessage: async (messageId: string, threadId?: string) => {
       webhookDeletes.push({ messageId, threadId });
       if (options?.throwOnDelete) {
@@ -36,7 +38,7 @@ function makeWebhook(options?: { throwOnDelete?: boolean }) {
 }
 
 function webhookRef(messageId: string): DeliveredStreamMessage {
-  return { messageId, channelId: "channel_1", isWebhook: true };
+  return { messageId, channelId: "channel_1", webhookId: "webhook_1" };
 }
 
 describe("deleteSupersededStreamMessages", () => {
@@ -66,7 +68,7 @@ describe("deleteSupersededStreamMessages", () => {
     const { webhook, webhookDeletes } = makeWebhook();
 
     await deleteSupersededStreamMessages(
-      [{ messageId: "bot_native_1", channelId: "thread_1", isWebhook: false }, webhookRef("webhook_1")],
+      [{ messageId: "bot_native_1", channelId: "thread_1", webhookId: null }, webhookRef("webhook_1")],
       { channel, webhook },
     );
 

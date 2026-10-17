@@ -271,6 +271,10 @@ describe("Smithery Connect transport", () => {
     );
     const decrypt = spyOn(toolRepository, "decryptMcpAuthToken").mockResolvedValue(KEY);
     const snapshot = spyOn(toolRepository, "updateMcpToolNameSnapshot");
+    const record = spyOn(toolRepository, "recordMcpConnectFailure").mockResolvedValue({
+      status: "failing",
+      failingSince: new Date(0),
+    });
     const manager = getGuildMcpManager();
     const row = smitheryRow(921, "failed-smithery");
     try {
@@ -280,9 +284,11 @@ describe("Smithery Connect transport", () => {
       expect(seen.length).toBe(attempted);
       expect(snapshot).not.toHaveBeenCalled();
       expect(row.last_discovered_tool_names).toEqual(["prior_tool"]);
+      expect(record).toHaveBeenCalledTimes(1);
     } finally {
       await manager.disconnectGuildServer(42, row.name);
       fetchSpy.mockRestore();
+      record.mockRestore();
       snapshot.mockRestore();
       decrypt.mockRestore();
     }

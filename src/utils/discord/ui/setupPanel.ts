@@ -51,6 +51,58 @@ import { buildLegalDocUrl } from "@/utils/misc/docsUrl";
 import { orderPersonaPresetChoices } from "@/utils/persona/presetOrdering";
 import type { ComponentsV2MessagePayload } from "@/utils/discord/ui/componentsV2Limits";
 
+const SETUP_ENDPOINT_STYLE_KEYS: Record<
+  (typeof SETUP_ENDPOINT_API_STYLES)[number],
+  { label: string; description: string }
+> = {
+  "openai-compatible": {
+    label: "commands.setup.wizard.custom_endpoint_style_openai",
+    description: "commands.setup.wizard.custom_endpoint_style_openai_desc",
+  },
+  "ollama-native": {
+    label: "commands.setup.wizard.custom_endpoint_style_ollama",
+    description: "commands.setup.wizard.custom_endpoint_style_ollama_desc",
+  },
+};
+
+const SETUP_ENDPOINT_CAPABILITY_KEYS: Record<
+  (typeof SETUP_ENDPOINT_TEXT_CAPABILITIES)[number],
+  { label: string; description: string }
+> = {
+  tools: {
+    label: "commands.setup.wizard.custom_endpoint_cap_tools",
+    description: "commands.setup.wizard.custom_endpoint_cap_tools_desc",
+  },
+  vision: {
+    label: "commands.setup.wizard.custom_endpoint_cap_vision",
+    description: "commands.setup.wizard.custom_endpoint_cap_vision_desc",
+  },
+  structured_output: {
+    label: "commands.setup.wizard.custom_endpoint_cap_structured_output",
+    description: "commands.setup.wizard.custom_endpoint_cap_structured_output_desc",
+  },
+  json: {
+    label: "commands.setup.wizard.custom_endpoint_cap_json",
+    description: "commands.setup.wizard.custom_endpoint_cap_json_desc",
+  },
+  strict_role_alternation: {
+    label: "commands.setup.wizard.custom_endpoint_cap_strict_role_alternation",
+    description: "commands.setup.wizard.custom_endpoint_cap_strict_role_alternation_desc",
+  },
+  prefix_completion: {
+    label: "commands.setup.wizard.custom_endpoint_cap_prefix_completion",
+    description: "commands.setup.wizard.custom_endpoint_cap_prefix_completion_desc",
+  },
+  assistant_prefill: {
+    label: "commands.setup.wizard.custom_endpoint_cap_assistant_prefill",
+    description: "commands.setup.wizard.custom_endpoint_cap_assistant_prefill_desc",
+  },
+  verbatim_tool_calling: {
+    label: "commands.setup.wizard.custom_endpoint_cap_verbatim_tool_calling",
+    description: "commands.setup.wizard.custom_endpoint_cap_verbatim_tool_calling_desc",
+  },
+};
+
 export interface SetupWizardPayloadInput {
   draft: SetupDraftRecord;
   locale: string;
@@ -108,8 +160,24 @@ export function areSetupSettingsCatalogsRenderable(
   );
 }
 
-/** Humanizer degree to its locale key stem, indexed by the stored degree (0 through 3). */
-const HUMANIZER_KEYS = ["none", "light", "default", "heavy"] as const;
+const HUMANIZER_KEYS: Record<0 | 1 | 2 | 3, { label: string; description: string }> = {
+  0: {
+    label: "commands.setup.humanizer_option_none_label",
+    description: "commands.setup.humanizer_option_none_desc",
+  },
+  1: {
+    label: "commands.setup.humanizer_option_light_label",
+    description: "commands.setup.humanizer_option_light_desc",
+  },
+  2: {
+    label: "commands.setup.humanizer_option_default_label",
+    description: "commands.setup.humanizer_option_default_desc",
+  },
+  3: {
+    label: "commands.setup.humanizer_option_heavy_label",
+    description: "commands.setup.humanizer_option_heavy_desc",
+  },
+};
 
 /**
  * The rows a Starting Settings editor can offer, or null when either catalog could not be read.
@@ -189,7 +257,7 @@ function resolveProviderSummary(draft: SetupDraftRecord, locale: string): string
 }
 
 function resolveHumanizerLabel(humanizer: number, locale: string): string {
-  return localizer(locale, `commands.setup.humanizer_option_${HUMANIZER_KEYS[humanizer] ?? "default"}_label`);
+  return localizer(locale, (HUMANIZER_KEYS[humanizer as keyof typeof HUMANIZER_KEYS] ?? HUMANIZER_KEYS[2]).label);
 }
 
 /**
@@ -216,18 +284,23 @@ function resolveSettingsSummary(
 ): string {
   // A read that failed is not the same claim as a catalog that resolved without the row, so the two
   // get different wording: the first says the value could not be checked, the second says it is gone.
-  const unresolvedKey = catalogs === null ? "settings_catalog_unavailable" : "settings_persona_unknown";
-  const unresolvedPromptKey = catalogs === null ? "settings_catalog_unavailable" : "settings_prompt_unknown";
+  const unresolvedKey =
+    catalogs === null
+      ? "commands.setup.wizard.settings_catalog_unavailable"
+      : "commands.setup.wizard.settings_persona_unknown";
+  const unresolvedPromptKey =
+    catalogs === null
+      ? "commands.setup.wizard.settings_catalog_unavailable"
+      : "commands.setup.wizard.settings_prompt_unknown";
 
   const personaName =
-    catalogs?.personas.find((persona) => persona.id === settings.presetId)?.name ??
-    localizer(locale, `commands.setup.wizard.${unresolvedKey}`);
+    catalogs?.personas.find((persona) => persona.id === settings.presetId)?.name ?? localizer(locale, unresolvedKey);
   const { systemPrompt } = settings;
   const promptName =
     systemPrompt.kind === "built-in"
       ? localizer(locale, "commands.setup.wizard.settings_built_in_prompt_summary")
       : (catalogs?.prompts.find((prompt) => prompt.name === systemPrompt.presetName)?.name ??
-        localizer(locale, `commands.setup.wizard.${unresolvedPromptKey}`));
+        localizer(locale, unresolvedPromptKey));
 
   return [
     localizer(locale, "commands.setup.wizard.settings_summary_persona", {
@@ -328,11 +401,13 @@ export function buildSetupWizardPayload(
   const providerOptions: SelectMenuComponentOptionData[] = [
     {
       label: localizer(locale, "commands.setup.wizard.provider_option_catalog"),
+      description: localizer(locale, "commands.setup.wizard.provider_option_catalog_description"),
       value: "catalog",
       default: draft.providerAccess?.mode === "catalog",
     },
     {
       label: localizer(locale, "commands.setup.wizard.provider_option_custom"),
+      description: localizer(locale, "commands.setup.wizard.provider_option_custom_description"),
       value: "custom-endpoint",
       default: draft.providerAccess?.mode === "custom-endpoint",
     },
@@ -341,6 +416,7 @@ export function buildSetupWizardPayload(
   if (draft.context !== "dm") {
     providerOptions.push({
       label: localizer(locale, "commands.setup.wizard.provider_option_byok"),
+      description: localizer(locale, "commands.setup.wizard.provider_option_byok_description"),
       value: "user-byok",
       default: draft.providerAccess?.mode === "user-byok",
     });
@@ -444,7 +520,7 @@ export function buildSetupWizardPayload(
     components: [
       {
         type: ComponentType.Button,
-        style: isComplete ? ButtonStyle.Primary : ButtonStyle.Secondary,
+        style: ButtonStyle.Secondary,
         customId: buildSetupFinishRouteId({ locale, nonce }),
         label: localizer(locale, "commands.setup.wizard.finish_label"),
         disabled: !isComplete,
@@ -806,21 +882,9 @@ export function buildSetupEndpointConnectionModal(
           custom_id: buildSetupEndpointConnectionModalFieldId("api-style", nonce),
           required: true,
           options: SETUP_ENDPOINT_API_STYLES.map((style) => ({
-            label: safeSelectOptionText(
-              localizer(
-                locale,
-                `commands.setup.wizard.custom_endpoint_style_${style === "openai-compatible" ? "openai" : "ollama"}`,
-              ),
-              100,
-            ),
+            label: safeSelectOptionText(localizer(locale, SETUP_ENDPOINT_STYLE_KEYS[style].label), 100),
             value: style,
-            description: safeSelectOptionText(
-              localizer(
-                locale,
-                `commands.setup.wizard.custom_endpoint_style_${style === "openai-compatible" ? "openai" : "ollama"}_desc`,
-              ),
-              100,
-            ),
+            description: safeSelectOptionText(localizer(locale, SETUP_ENDPOINT_STYLE_KEYS[style].description), 100),
             default: existing?.apiStyle === style,
           })),
         },
@@ -969,11 +1033,8 @@ export function buildSetupEndpointModelModal(
           required: false,
           options: SETUP_ENDPOINT_TEXT_CAPABILITIES.map((cap) => ({
             value: cap,
-            label: safeSelectOptionText(localizer(locale, `commands.setup.wizard.custom_endpoint_cap_${cap}`), 100),
-            description: safeSelectOptionText(
-              localizer(locale, `commands.setup.wizard.custom_endpoint_cap_${cap}_desc`),
-              100,
-            ),
+            label: safeSelectOptionText(localizer(locale, SETUP_ENDPOINT_CAPABILITY_KEYS[cap].label), 100),
+            description: safeSelectOptionText(localizer(locale, SETUP_ENDPOINT_CAPABILITY_KEYS[cap].description), 100),
             default: existing?.capabilities.includes(cap) ?? false,
           })),
         },
@@ -1062,7 +1123,7 @@ export function parseSetupSystemPromptChoice(value: string | undefined): SetupDr
 export function parseSetupHumanizerChoice(value: string | undefined): number | null {
   if (value === undefined) return null;
   const parsed = Number.parseInt(value, 10);
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed >= HUMANIZER_KEYS.length) return null;
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed >= Object.keys(HUMANIZER_KEYS).length) return null;
   return parsed;
 }
 
@@ -1082,10 +1143,10 @@ export function buildSetupSettingsModal(
   catalogs: SetupSettingsCatalogs,
   existing?: SetupDraftStartingSettings | null,
 ): { custom_id: string; title: string; components: RawDiscordComponent[] } {
-  const humanizerOptions = HUMANIZER_KEYS.map((key, index) => ({
-    label: safeSelectOptionText(localizer(locale, `commands.setup.humanizer_option_${key}_label`), 100),
+  const humanizerOptions = Object.values(HUMANIZER_KEYS).map((keys, index) => ({
+    label: safeSelectOptionText(localizer(locale, keys.label), 100),
     value: String(index),
-    description: safeSelectOptionText(localizer(locale, `commands.setup.humanizer_option_${key}_desc`), 100),
+    description: safeSelectOptionText(localizer(locale, keys.description), 100),
     default: existing?.humanizer === index,
   }));
 

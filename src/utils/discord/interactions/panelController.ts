@@ -1,5 +1,6 @@
 import type { ResolvedRangeSelection } from "@/types/discord/panel";
 import { log } from "@/utils/misc/logger";
+import { DISCORD_SELECT_OPTIONS_MAX } from "@/utils/discord/ui/componentsV2Limits";
 
 export {
   ComponentsV2LimitError,
@@ -105,8 +106,10 @@ export async function performPanelAction<TResult, TState>(
 export function resolveRangeSelection<T>(
   items: readonly T[],
   requestedRange = 0,
-  rangeSize = MODERATION_PANEL_RANGE_SIZE,
+  range: number | { reservedOptions: number } = MODERATION_PANEL_RANGE_SIZE,
 ): ResolvedRangeSelection<T> {
+  const rangeSize = typeof range === "number" ? range : DISCORD_SELECT_OPTIONS_MAX - range.reservedOptions;
+  if (rangeSize < 1) throw new RangeError("Select actions leave no room for records");
   const rangeCount = Math.max(1, Math.ceil(items.length / rangeSize));
   const rangeIndex = Math.min(Math.max(requestedRange, 0), rangeCount - 1);
   const start = rangeIndex * rangeSize;

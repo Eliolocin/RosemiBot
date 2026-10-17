@@ -34,7 +34,10 @@ import {
   buildPaginationRow,
   withLinePrefix,
 } from "@/utils/discord/ui/panel";
-import { DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX } from "@/utils/discord/ui/componentsV2Limits";
+import {
+  DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX,
+  DISCORD_SELECT_OPTIONS_MAX,
+} from "@/utils/discord/ui/componentsV2Limits";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { measureFormattedPanelTextLength } from "@/utils/discord/ui/panelProse";
 import type { ImageEndpointSupports } from "@/utils/provider/customImageEndpointSupport";
@@ -52,8 +55,199 @@ import { providerRequiresAlternation, providerRequiresPrefixCompletion } from "@
 import { buildTextPreview, textPreviewFooterKey, textPreviewFooterVars } from "@/utils/text/textPreview";
 import { localizer } from "@/utils/text/localizer";
 
-export const PROVIDERS_ENTRIES_PER_SELECTOR_PAGE = 23;
-export const PROVIDERS_MODELS_PER_SELECTOR_PAGE = 18;
+const ENDPOINT_FIELD_KEYS: Record<
+  Exclude<AddEndpointModalField, "api-style">,
+  { label: string; description: string; placeholder: string }
+> = {
+  label: {
+    label: "commands.providers.endpoint_label_label",
+    description: "commands.providers.endpoint_label_description",
+    placeholder: "commands.providers.endpoint_label_placeholder",
+  },
+  url: {
+    label: "commands.providers.endpoint_url_label",
+    description: "commands.providers.endpoint_url_description",
+    placeholder: "commands.providers.endpoint_url_placeholder",
+  },
+  "auth-token": {
+    label: "commands.providers.endpoint_auth-token_label",
+    description: "commands.providers.endpoint_auth-token_description",
+    placeholder: "commands.providers.endpoint_auth-token_placeholder",
+  },
+};
+
+const CREDENTIAL_FIELD_KEYS: Record<
+  Exclude<EditProviderModalField, "delete-rotation">,
+  { label: string; description: string; placeholder: string }
+> = {
+  "api-key": {
+    label: "commands.providers.edit_api-key_label",
+    description: "commands.providers.edit_api-key_description",
+    placeholder: "commands.providers.edit_api-key_placeholder",
+  },
+  "rotation-key": {
+    label: "commands.providers.edit_rotation-key_label",
+    description: "commands.providers.edit_rotation-key_description",
+    placeholder: "commands.providers.edit_rotation-key_placeholder",
+  },
+};
+
+type EndpointApiStyle = Exclude<CustomEndpointApiStyle, "elevenlabs" | "elevenlabs-transcription">;
+
+const API_STYLE_KEYS: Record<EndpointApiStyle, { label: string; description: string }> = {
+  "openai-compatible": {
+    label: "commands.providers.api_styles.openai-compatible",
+    description: "commands.providers.api_style_descriptions.openai-compatible",
+  },
+  "ollama-native": {
+    label: "commands.providers.api_styles.ollama-native",
+    description: "commands.providers.api_style_descriptions.ollama-native",
+  },
+  comfyui: {
+    label: "commands.providers.api_styles.comfyui",
+    description: "commands.providers.api_style_descriptions.comfyui",
+  },
+  "tts-clone": {
+    label: "commands.providers.api_styles.tts-clone",
+    description: "commands.providers.api_style_descriptions.tts-clone",
+  },
+  "openai-compatible-transcription": {
+    label: "commands.providers.api_styles.openai-compatible-transcription",
+    description: "commands.providers.api_style_descriptions.openai-compatible-transcription",
+  },
+  "system-one": {
+    label: "commands.providers.api_styles.system-one",
+    description: "commands.providers.api_style_descriptions.system-one",
+  },
+  "openai-decisions": {
+    label: "commands.providers.api_styles.openai-decisions",
+    description: "commands.providers.api_style_descriptions.openai-decisions",
+  },
+};
+
+const CAPABILITY_KEYS: Record<ProviderPanelCapability, { label: string; placeholder: string }> = {
+  text: {
+    label: "commands.providers.capabilities.text",
+    placeholder: "commands.providers.model_code_placeholders.text",
+  },
+  image: {
+    label: "commands.providers.capabilities.image",
+    placeholder: "commands.providers.model_code_placeholders.image",
+  },
+  embedding: {
+    label: "commands.providers.capabilities.embedding",
+    placeholder: "commands.providers.model_code_placeholders.embedding",
+  },
+  video: {
+    label: "commands.providers.capabilities.video",
+    placeholder: "commands.providers.model_code_placeholders.video",
+  },
+  speech: {
+    label: "commands.providers.capabilities.speech",
+    placeholder: "commands.providers.model_code_placeholders.speech",
+  },
+  transcription: {
+    label: "commands.providers.capabilities.transcription",
+    placeholder: "commands.providers.model_code_placeholders.transcription",
+  },
+  decision: {
+    label: "commands.providers.capabilities.decision",
+    placeholder: "commands.providers.model_code_placeholders.decision",
+  },
+};
+
+const MODEL_FLAG_KEYS: Record<
+  (typeof TEXT_CAPABILITY_FLAGS)[number] | (typeof CHAT_COMPAT_FLAGS)[number],
+  { label: string; description: string }
+> = {
+  tools: {
+    label: "commands.providers.model_flags.tools",
+    description: "commands.providers.model_flag_descriptions.tools",
+  },
+  images: {
+    label: "commands.providers.model_flags.images",
+    description: "commands.providers.model_flag_descriptions.images",
+  },
+  structured: {
+    label: "commands.providers.model_flags.structured",
+    description: "commands.providers.model_flag_descriptions.structured",
+  },
+  "strict-roles": {
+    label: "commands.providers.model_flags.strict-roles",
+    description: "commands.providers.model_flag_descriptions.strict-roles",
+  },
+  prefix: {
+    label: "commands.providers.model_flags.prefix",
+    description: "commands.providers.model_flag_descriptions.prefix",
+  },
+  prefill: {
+    label: "commands.providers.model_flags.prefill",
+    description: "commands.providers.model_flag_descriptions.prefill",
+  },
+  "verbatim-tools": {
+    label: "commands.providers.model_flags.verbatim-tools",
+    description: "commands.providers.model_flag_descriptions.verbatim-tools",
+  },
+};
+
+const VOICE_MODE_KEYS: Record<(typeof SPEECH_VOICE_MODES)[number], { label: string; description: string }> = {
+  clone: {
+    label: "commands.providers.voice_modes.clone",
+    description: "commands.providers.voice_mode_descriptions.clone",
+  },
+  "voice-design": {
+    label: "commands.providers.voice_modes.voice-design",
+    description: "commands.providers.voice_mode_descriptions.voice-design",
+  },
+  auto: {
+    label: "commands.providers.voice_modes.auto",
+    description: "commands.providers.voice_mode_descriptions.auto",
+  },
+};
+
+const SCRIPT_MARKUP_KEYS: Record<(typeof SPEECH_SCRIPT_MARKUPS)[number], { label: string; description: string }> = {
+  plain: {
+    label: "commands.providers.script_markups.plain",
+    description: "commands.providers.script_markup_descriptions.plain",
+  },
+  "bracket-tags": {
+    label: "commands.providers.script_markups.bracket-tags",
+    description: "commands.providers.script_markup_descriptions.bracket-tags",
+  },
+  emoji: {
+    label: "commands.providers.script_markups.emoji",
+    description: "commands.providers.script_markup_descriptions.emoji",
+  },
+};
+
+const IMAGE_SUPPORT_KEYS: Record<keyof ImageEndpointSupports, string> = {
+  txt2img: "commands.providers.model_image_supports.txt2img",
+  img2img: "commands.providers.model_image_supports.img2img",
+  inpaint: "commands.providers.model_image_supports.inpaint",
+  negative_prompt: "commands.providers.model_image_supports.negative_prompt",
+};
+
+const SPEECH_CAPABILITY_KEYS: Record<"design" | "clone", string> = {
+  design: "commands.config.panel.capability_tts_design",
+  clone: "commands.config.panel.capability_tts_clone",
+};
+
+const ENTRY_KIND_KEYS: Record<ProviderPanelEntry["kind"], { label: string; impact: string }> = {
+  provider: {
+    label: "commands.providers.entry_kind_provider",
+    impact: "commands.providers.remove_impact_provider",
+  },
+  endpoint: {
+    label: "commands.providers.entry_kind_endpoint",
+    impact: "commands.providers.remove_impact_endpoint",
+  },
+  brave: {
+    label: "commands.providers.entry_kind_brave",
+    impact: "commands.providers.remove_impact_brave",
+  },
+};
+
+export const PROVIDERS_ENTRIES_PER_SELECTOR_PAGE = DISCORD_SELECT_OPTIONS_MAX - 2;
 export const PROVIDERS_ADD_PROVIDER_VALUE = "action:add-provider";
 export const PROVIDERS_ADD_ENDPOINT_VALUE = "action:add-endpoint";
 
@@ -136,7 +330,7 @@ export function buildAddProviderModal(
   };
 }
 
-export const ENDPOINT_API_STYLES: Readonly<Record<CustomEndpointCapability, readonly CustomEndpointApiStyle[]>> = {
+export const ENDPOINT_API_STYLES: Readonly<Record<CustomEndpointCapability, readonly EndpointApiStyle[]>> = {
   text: ["openai-compatible", "ollama-native"],
   embedding: ["openai-compatible", "ollama-native"],
   image: ["openai-compatible", "comfyui"],
@@ -145,6 +339,8 @@ export const ENDPOINT_API_STYLES: Readonly<Record<CustomEndpointCapability, read
   transcription: ["openai-compatible-transcription"],
   decision: ["system-one", "openai-decisions"],
 };
+
+export const PROVIDERS_MODELS_PER_SELECTOR_PAGE = DISCORD_SELECT_OPTIONS_MAX - Object.keys(ENDPOINT_API_STYLES).length;
 
 export type AddEndpointModalField = "label" | "url" | "api-style" | "auth-token";
 
@@ -160,13 +356,13 @@ function endpointTextInput(
 ): RawDiscordComponent {
   return {
     type: 18,
-    label: safeSelectOptionText(localizer(locale, `commands.providers.endpoint_${field}_label`), 45),
-    description: safeSelectOptionText(localizer(locale, `commands.providers.endpoint_${field}_description`), 100),
+    label: safeSelectOptionText(localizer(locale, ENDPOINT_FIELD_KEYS[field].label), 45),
+    description: safeSelectOptionText(localizer(locale, ENDPOINT_FIELD_KEYS[field].description), 100),
     component: {
       type: 4,
       custom_id: buildAddEndpointModalFieldId(field, nonce),
       style: field === "auth-token" ? TextInputStyle.Paragraph : TextInputStyle.Short,
-      placeholder: safeSelectOptionText(localizer(locale, `commands.providers.endpoint_${field}_placeholder`), 100),
+      placeholder: safeSelectOptionText(localizer(locale, ENDPOINT_FIELD_KEYS[field].placeholder), 100),
       max_length: field === "label" ? 40 : 500,
       required,
     },
@@ -194,8 +390,8 @@ export function buildAddEndpointModal(
           required: true,
           options: [...new Set(Object.values(ENDPOINT_API_STYLES).flat())].map((style, index) => ({
             value: style,
-            label: localizer(locale, `commands.providers.api_styles.${style}`),
-            description: localizer(locale, `commands.providers.api_style_descriptions.${style}`),
+            label: localizer(locale, API_STYLE_KEYS[style].label),
+            description: localizer(locale, API_STYLE_KEYS[style].description),
             default: index === 0,
           })),
         },
@@ -221,13 +417,13 @@ export function buildEditProviderModal(
 ): { custom_id: string; title: string; components: RawDiscordComponent[] } {
   const credentialField = (field: "api-key" | "rotation-key"): RawDiscordComponent => ({
     type: 18,
-    label: safeSelectOptionText(localizer(locale, `commands.providers.edit_${field}_label`), 45),
-    description: safeSelectOptionText(localizer(locale, `commands.providers.edit_${field}_description`), 100),
+    label: safeSelectOptionText(localizer(locale, CREDENTIAL_FIELD_KEYS[field].label), 45),
+    description: safeSelectOptionText(localizer(locale, CREDENTIAL_FIELD_KEYS[field].description), 100),
     component: {
       type: 4,
       custom_id: buildEditProviderModalFieldId(field, nonce),
       style: TextInputStyle.Paragraph,
-      placeholder: safeSelectOptionText(localizer(locale, `commands.providers.edit_${field}_placeholder`), 100),
+      placeholder: safeSelectOptionText(localizer(locale, CREDENTIAL_FIELD_KEYS[field].placeholder), 100),
       min_length: 10,
       max_length: 500,
       required: false,
@@ -527,10 +723,7 @@ export function buildProviderModelModal(
         type: 4,
         custom_id: buildProviderModelModalFieldId("code-name", nonce),
         style: TextInputStyle.Short,
-        placeholder: safeSelectOptionText(
-          localizer(locale, `commands.providers.model_code_placeholders.${capability}`),
-          100,
-        ),
+        placeholder: safeSelectOptionText(localizer(locale, CAPABILITY_KEYS[capability].placeholder), 100),
         min_length: 1,
         max_length: 200,
         required: true,
@@ -579,10 +772,10 @@ export function buildProviderModelModal(
       prefill: defaults?.text?.supportsAssistantPrefill,
       "verbatim-tools": defaults?.text?.verbatimToolCalling,
     };
-    const flagOption = (value: string) => ({
+    const flagOption = (value: keyof typeof MODEL_FLAG_KEYS) => ({
       value,
-      label: safeSelectOptionText(localizer(locale, `commands.providers.model_flags.${value}`), 100),
-      description: safeSelectOptionText(localizer(locale, `commands.providers.model_flag_descriptions.${value}`), 100),
+      label: safeSelectOptionText(localizer(locale, MODEL_FLAG_KEYS[value].label), 100),
+      description: safeSelectOptionText(localizer(locale, MODEL_FLAG_KEYS[value].description), 100),
       default: Boolean(storedFlags[value]),
     });
     components.push({
@@ -630,9 +823,7 @@ export function buildProviderModelModal(
       },
     });
   }
-  // A curated provider has no speech capability at all, so these only ever reach an endpoint. The
-  // clone/VoiceDesign/Auto split describes a `tts-clone` server, which is why the ElevenLabs preset
-  // gets script markup without it.
+  // ElevenLabs has no clone/design body shapes, so its preset exposes script markup without a voice-mode selector.
   if (capability === "speech" && defaults?.speech) {
     const speech = defaults.speech;
     if (speech.allowVoiceMode) {
@@ -646,11 +837,8 @@ export function buildProviderModelModal(
           required: true,
           options: SPEECH_VOICE_MODES.map((mode) => ({
             value: mode,
-            label: safeSelectOptionText(localizer(locale, `commands.providers.voice_modes.${mode}`), 100),
-            description: safeSelectOptionText(
-              localizer(locale, `commands.providers.voice_mode_descriptions.${mode}`),
-              100,
-            ),
+            label: safeSelectOptionText(localizer(locale, VOICE_MODE_KEYS[mode].label), 100),
+            description: safeSelectOptionText(localizer(locale, VOICE_MODE_KEYS[mode].description), 100),
             default: mode === speech.settings.voiceMode,
           })),
         },
@@ -666,11 +854,8 @@ export function buildProviderModelModal(
         required: true,
         options: SPEECH_SCRIPT_MARKUPS.map((markup) => ({
           value: markup,
-          label: safeSelectOptionText(localizer(locale, `commands.providers.script_markups.${markup}`), 100),
-          description: safeSelectOptionText(
-            localizer(locale, `commands.providers.script_markup_descriptions.${markup}`),
-            100,
-          ),
+          label: safeSelectOptionText(localizer(locale, SCRIPT_MARKUP_KEYS[markup].label), 100),
+          description: safeSelectOptionText(localizer(locale, SCRIPT_MARKUP_KEYS[markup].description), 100),
           default: markup === speech.settings.scriptMarkup,
         })),
       },
@@ -734,7 +919,7 @@ export function buildProviderModelModal(
         required: true,
         options: offered.map((field) => ({
           value: field,
-          label: localizer(locale, `commands.providers.model_image_supports.${field}`),
+          label: localizer(locale, IMAGE_SUPPORT_KEYS[field]),
           default: defaults.image?.supports[field] ?? false,
         })),
       },
@@ -849,7 +1034,35 @@ function buildCapabilitySection(
   section: ProviderPanelCapabilitySection,
   routeNamespace: ProvidersRouteNamespace,
 ): string {
-  const label = localizer(locale, `commands.providers.capabilities.${section.capability}`);
+  const label = localizer(locale, CAPABILITY_KEYS[section.capability].label);
+  if (section.capability === "speech") {
+    return (["design", "clone"] as const)
+      .flatMap((mode) => {
+        const eligible = section.models.filter(
+          (model) =>
+            model.speechSettings &&
+            (model.speechSettings.voiceMode === "auto" ||
+              model.speechSettings.voiceMode === (mode === "design" ? "voice-design" : "clone")),
+        );
+        if (eligible.length === 0) return [];
+        return [
+          [
+            `**${localizer(locale, SPEECH_CAPABILITY_KEYS[mode])}**`,
+            ...eligible.map((model) =>
+              buildModelLine(
+                locale,
+                {
+                  ...model,
+                  isWorkspaceActive: model.speechActiveModes?.includes(mode) ?? false,
+                },
+                routeNamespace,
+              ),
+            ),
+          ].join("\n"),
+        ];
+      })
+      .join("\n\n");
+  }
   return [
     `**${label}**`,
     localizer(locale, "commands.providers.capability_models_explanation"),
@@ -1004,7 +1217,7 @@ function buildEntryModelSelector(
         locale,
         capability === "decision" ? "commands.providers.add_decision_model" : "commands.providers.add_capability_model",
         {
-          capability: localizer(locale, `commands.providers.capabilities.${capability}`),
+          capability: localizer(locale, CAPABILITY_KEYS[capability].label),
         },
       ),
       100,
@@ -1017,7 +1230,7 @@ function buildEntryModelSelector(
       label: safeSelectOptionText(model.codeName, 100),
       value: buildModelSelectionValue("edit", capability, model),
       description: safeSelectOptionText(
-        `${localizer(locale, `commands.providers.capabilities.${capability}`)} · ${localizer(
+        `${localizer(locale, CAPABILITY_KEYS[capability].label)} · ${localizer(
           locale,
           "commands.providers.marker_custom_registration",
         )}`,
@@ -1097,12 +1310,7 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
   const selectedId = selectedEntryId(input);
   const selectedIndex = selectedId ? entries.findIndex((entry) => entry.id === selectedId) : -1;
   const implicitRangeIndex = selectedIndex < 0 ? 0 : Math.floor(selectedIndex / PROVIDERS_ENTRIES_PER_SELECTOR_PAGE);
-  const selection = resolveRangeSelection(
-    entries,
-    input.rangeIndex ?? implicitRangeIndex,
-    PROVIDERS_ENTRIES_PER_SELECTOR_PAGE,
-  );
-  const options: SelectMenuComponentOptionData[] = [
+  const actionOptions: SelectMenuComponentOptionData[] = [
     {
       label: localizer(locale, "commands.providers.select_add_provider"),
       value: PROVIDERS_ADD_PROVIDER_VALUE,
@@ -1114,10 +1322,16 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
       value: PROVIDERS_ADD_ENDPOINT_VALUE,
       description: localizer(locale, "commands.providers.select_add_endpoint_description"),
     },
+  ];
+  const selection = resolveRangeSelection(entries, input.rangeIndex ?? implicitRangeIndex, {
+    reservedOptions: actionOptions.length,
+  });
+  const options: SelectMenuComponentOptionData[] = [
+    ...actionOptions,
     ...selection.visibleItems.map((entry) => ({
       label: safeSelectOptionText(entry.displayName, 100),
       value: entry.id,
-      description: localizer(locale, `commands.providers.entry_kind_${entry.kind}`),
+      description: localizer(locale, ENTRY_KIND_KEYS[entry.kind].label),
       default: entry.id === selectedId,
     })),
   ];
@@ -1181,7 +1395,7 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
         {
           type: ComponentType.TextDisplay,
           content: `### ${localizer(locale, "commands.providers.remove_title")}
-${localizer(locale, `commands.providers.remove_impact_${entry.kind}`, {
+${localizer(locale, ENTRY_KIND_KEYS[entry.kind].impact, {
   name: renderProviderName(locale, entry.displayName),
 })}`,
         },

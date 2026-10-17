@@ -165,13 +165,13 @@ function receipt(
 ): ConfigRepaintOptions["receipt"] {
   return {
     tone,
-    heading: localizer(locale, `commands.config.panel.${headingKey}`),
-    detail: localizer(locale, `commands.config.panel.${detailKey}`),
+    heading: localizer(locale, headingKey),
+    detail: localizer(locale, detailKey),
   };
 }
 
 function invalid(locale: string, detailKey: string): ConfigRepaintOptions["receipt"] {
-  return receipt(locale, "error", "channels_invalid_input_heading", detailKey);
+  return receipt(locale, "error", "commands.config.panel.channels_invalid_input_heading", detailKey);
 }
 
 function externalReceipt(
@@ -548,7 +548,15 @@ async function runChannelRulesWrite(
   dependencies: ConfigRouteDependencies,
 ): Promise<ChannelWriteOutcome> {
   const state = stateFromScope(scope);
-  if (!state) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+  if (!state)
+    return {
+      receipt: receipt(
+        route.locale,
+        "error",
+        "commands.config.panel.write_failed_heading",
+        "commands.config.panel.write_failed_detail",
+      ),
+    };
 
   const collection = channelRulesCollection(route.action);
   const view = await dependencies.loadChannelsView(interaction);
@@ -573,7 +581,7 @@ async function runChannelRulesWrite(
     if (values === undefined) return { receipt: staleReceipt(route.locale) };
     for (const channelId of values) {
       if (!presentedIds.has(channelId)) {
-        return { receipt: invalid(route.locale, "channels_rules_invalid_channel_detail") };
+        return { receipt: invalid(route.locale, "commands.config.panel.channels_rules_invalid_channel_detail") };
       }
       checkedIds.add(channelId);
     }
@@ -588,7 +596,12 @@ async function runChannelRulesWrite(
   const removedIds = [...previousSelectedIds].filter((channelId) => !nextSelectedIds.has(channelId));
   if (addedIds.length === 0 && removedIds.length === 0) {
     return {
-      receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail"),
+      receipt: receipt(
+        route.locale,
+        "info",
+        "commands.config.panel.state_no_changes_heading",
+        "commands.config.panel.state_no_changes_detail",
+      ),
     };
   }
 
@@ -604,7 +617,15 @@ async function runChannelRulesWrite(
         : await configRepository.updateChannelScopeConfig(state.server_id, {
             crosschannel_blocklist_ids: [...nextSelectedIds],
           });
-  if (!updated) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+  if (!updated)
+    return {
+      receipt: receipt(
+        route.locale,
+        "error",
+        "commands.config.panel.write_failed_heading",
+        "commands.config.panel.write_failed_detail",
+      ),
+    };
 
   invalidateTomoriStateCache(scope.serverDiscId);
   return {
@@ -647,7 +668,8 @@ async function runAutoTriggerWrite(
       );
       if (values === undefined) return { receipt: staleReceipt(route.locale) };
       for (const channelId of values) {
-        if (!presentedIds.has(channelId)) return { receipt: invalid(route.locale, "channels_invalid_channel_detail") };
+        if (!presentedIds.has(channelId))
+          return { receipt: invalid(route.locale, "commands.config.panel.channels_invalid_channel_detail") };
         checkedIds.add(channelId);
       }
     }
@@ -667,7 +689,12 @@ async function runAutoTriggerWrite(
       areAutochatPersonaOverridesEqual(previousOverrides, nextOverrides)
     ) {
       return {
-        receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail"),
+        receipt: receipt(
+          route.locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
       };
     }
 
@@ -675,14 +702,22 @@ async function runAutoTriggerWrite(
       autoch_disc_ids: [...nextSelectedIds],
       autoch_persona_overrides: serializeAutochatPersonaOverrides(nextOverrides),
     });
-    if (!updated) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+    if (!updated)
+      return {
+        receipt: receipt(
+          route.locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
       receipt: receipt(
         route.locale,
         "success",
-        "channels_auto_trigger_updated_heading",
-        "channels_auto_trigger_updated_detail",
+        "commands.config.panel.channels_auto_trigger_updated_heading",
+        "commands.config.panel.channels_auto_trigger_updated_detail",
       ),
       telemetry: "server-config.workspace.auto-trigger-channels.set",
     };
@@ -702,17 +737,17 @@ async function runAutoTriggerWrite(
       buildConfigModalFieldId(CONFIG_CHANNEL_AUTO_TRIGGER_PERSONA_FIELD, route.nonce),
     );
     if (!channelId || !availableChannels.some((channel) => channel.id === channelId)) {
-      return { receipt: invalid(route.locale, "channels_invalid_channel_detail") };
+      return { receipt: invalid(route.locale, "commands.config.panel.channels_invalid_channel_detail") };
     }
     if (enabledValue !== "true" && enabledValue !== "false") {
-      return { receipt: invalid(route.locale, "channels_auto_trigger_enabled_required_detail") };
+      return { receipt: invalid(route.locale, "commands.config.panel.channels_auto_trigger_enabled_required_detail") };
     }
     const personaId = personaValue && /^\d+$/.test(personaValue) ? Number(personaValue) : Number.NaN;
     const desiredPersona = Number.isSafeInteger(personaId)
       ? scope.personas.find((persona) => persona.persona_id === personaId)
       : undefined;
     if (!desiredPersona || desiredPersona.persona_id === undefined) {
-      return { receipt: invalid(route.locale, "channels_auto_trigger_persona_invalid_detail") };
+      return { receipt: invalid(route.locale, "commands.config.panel.channels_auto_trigger_persona_invalid_detail") };
     }
 
     const previousSelectedIds = new Set(state.config.autoch_disc_ids ?? []);
@@ -734,7 +769,12 @@ async function runAutoTriggerWrite(
       areAutochatPersonaOverridesEqual(previousOverrides, nextOverrides)
     ) {
       return {
-        receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail"),
+        receipt: receipt(
+          route.locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
       };
     }
 
@@ -742,14 +782,22 @@ async function runAutoTriggerWrite(
       autoch_disc_ids: [...nextSelectedIds],
       autoch_persona_overrides: serializeAutochatPersonaOverrides(nextOverrides),
     });
-    if (!updated) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+    if (!updated)
+      return {
+        receipt: receipt(
+          route.locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
       receipt: receipt(
         route.locale,
         "success",
-        "channels_auto_trigger_configured_heading",
-        "channels_auto_trigger_configured_detail",
+        "commands.config.panel.channels_auto_trigger_configured_heading",
+        "commands.config.panel.channels_auto_trigger_configured_detail",
       ),
       telemetry: "server-config.workspace.auto-trigger-channels.configure",
     };
@@ -773,24 +821,36 @@ async function runAutoTriggerWrite(
     const maxThreshold = rawMax.trim() ? parseThresholdText(rawMax) : threshold;
     if (threshold === null || maxThreshold === null) {
       return {
-        receipt: invalid(route.locale, "channels_auto_trigger_threshold_invalid_detail"),
+        receipt: invalid(route.locale, "commands.config.panel.channels_auto_trigger_threshold_invalid_detail"),
       };
     }
     const validation = validateThresholdInput(threshold, maxThreshold);
     if (!validation.isValid) {
       return {
-        receipt: invalid(route.locale, "channels_auto_trigger_threshold_invalid_detail"),
+        receipt: invalid(route.locale, "commands.config.panel.channels_auto_trigger_threshold_invalid_detail"),
       };
     }
     const currentThreshold = state.config.autoch_threshold ?? 0;
     const currentMaxThreshold = state.config.autoch_threshold_max ?? currentThreshold;
     if (threshold === currentThreshold && maxThreshold === currentMaxThreshold) {
       return {
-        receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail"),
+        receipt: receipt(
+          route.locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
       };
     }
     if (state.persona_id === undefined) {
-      return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+      return {
+        receipt: receipt(
+          route.locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     }
     const nextTarget = validation.isAlwaysReplyMode ? 0 : rollAutochatTarget(threshold, maxThreshold);
     const updated = await configRepository.setAutoChatThreshold(
@@ -800,14 +860,22 @@ async function runAutoTriggerWrite(
       maxThreshold,
       nextTarget,
     );
-    if (!updated) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+    if (!updated)
+      return {
+        receipt: receipt(
+          route.locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
       receipt: receipt(
         route.locale,
         "success",
-        "channels_auto_trigger_threshold_updated_heading",
-        "channels_auto_trigger_threshold_updated_detail",
+        "commands.config.panel.channels_auto_trigger_threshold_updated_heading",
+        "commands.config.panel.channels_auto_trigger_threshold_updated_detail",
       ),
       telemetry: "server-config.workspace.auto-trigger-threshold.set",
     };
@@ -823,7 +891,15 @@ async function runChannelWrite(
   dependencies: ConfigRouteDependencies,
 ): Promise<ChannelWriteOutcome> {
   const state = stateFromScope(scope);
-  if (!state) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+  if (!state)
+    return {
+      receipt: receipt(
+        route.locale,
+        "error",
+        "commands.config.panel.write_failed_heading",
+        "commands.config.panel.write_failed_detail",
+      ),
+    };
 
   if (
     route.action === "channels-private-submit" ||
@@ -840,7 +916,12 @@ async function runChannelWrite(
   ) {
     return (
       (await runAutoTriggerWrite(interaction, route, scope, dependencies)) ?? {
-        receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail"),
+        receipt: receipt(
+          route.locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
       }
     );
   }
@@ -849,16 +930,36 @@ async function runChannelWrite(
     const currentChannelId = state.config.thought_log_channel_disc_id ?? null;
     if ((route.channelId ?? null) !== currentChannelId) return { receipt: staleReceipt(route.locale) };
     if (!currentChannelId) {
-      return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          route.locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     }
 
     const updated = await configRepository.updateChannelScopeConfig(state.server_id, {
       thought_log_channel_disc_id: null,
     });
-    if (!updated) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+    if (!updated)
+      return {
+        receipt: receipt(
+          route.locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(route.locale, "success", "channels_log_cleared_heading", "channels_log_cleared_detail"),
+      receipt: receipt(
+        route.locale,
+        "success",
+        "commands.config.panel.channels_log_cleared_heading",
+        "commands.config.panel.channels_log_cleared_detail",
+      ),
       telemetry: "server-config.workspace.thought-logs-channel.clear",
     };
   }
@@ -871,8 +972,8 @@ async function runChannelWrite(
         receipt: receipt(
           route.locale,
           "info",
-          "channels_welcome_not_configured_heading",
-          "channels_welcome_not_configured_detail",
+          "commands.config.panel.channels_welcome_not_configured_heading",
+          "commands.config.panel.channels_welcome_not_configured_detail",
         ),
       };
     }
@@ -882,10 +983,23 @@ async function runChannelWrite(
       welcome_prompt: null,
       welcome_persona_id: null,
     });
-    if (!updated) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+    if (!updated)
+      return {
+        receipt: receipt(
+          route.locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(route.locale, "success", "channels_welcome_cleared_heading", "channels_welcome_cleared_detail"),
+      receipt: receipt(
+        route.locale,
+        "success",
+        "commands.config.panel.channels_welcome_cleared_heading",
+        "commands.config.panel.channels_welcome_cleared_detail",
+      ),
       telemetry: "server-config.workspace.welcome-channel.clear",
     };
   }
@@ -897,27 +1011,54 @@ async function runChannelWrite(
       buildConfigModalFieldId(CONFIG_CHANNEL_LOG_FIELD, route.nonce),
     );
     if (!channelId || !(await channelIsAvailable(interaction, channelId, dependencies))) {
-      return { receipt: invalid(route.locale, "channels_invalid_channel_detail") };
+      return { receipt: invalid(route.locale, "commands.config.panel.channels_invalid_channel_detail") };
     }
 
     const currentChannelId = state.config.thought_log_channel_disc_id ?? null;
     if (currentChannelId === channelId) {
-      return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          route.locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     }
 
     const updated = await configRepository.updateChannelScopeConfig(state.server_id, {
       thought_log_channel_disc_id: channelId,
     });
-    if (!updated) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+    if (!updated)
+      return {
+        receipt: receipt(
+          route.locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(route.locale, "success", "channels_log_updated_heading", "channels_log_updated_detail"),
+      receipt: receipt(
+        route.locale,
+        "success",
+        "commands.config.panel.channels_log_updated_heading",
+        "commands.config.panel.channels_log_updated_detail",
+      ),
       telemetry: "server-config.workspace.thought-logs-channel.set",
     };
   }
 
   if (route.action !== "channels-welcome-submit") {
-    return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+    return {
+      receipt: receipt(
+        route.locale,
+        "error",
+        "commands.config.panel.write_failed_heading",
+        "commands.config.panel.write_failed_detail",
+      ),
+    };
   }
 
   const channelId = dependencies.takeChannelSelectValue(
@@ -933,11 +1074,13 @@ async function runChannelWrite(
     ? submitted.fields.getTextInputValue(promptFieldId).trim()
     : "";
 
-  if (!prompt) return { receipt: invalid(route.locale, "channels_welcome_prompt_required_detail") };
+  if (!prompt)
+    return { receipt: invalid(route.locale, "commands.config.panel.channels_welcome_prompt_required_detail") };
   if (!channelId || !(await channelIsAvailable(interaction, channelId, dependencies))) {
-    return { receipt: invalid(route.locale, "channels_invalid_channel_detail") };
+    return { receipt: invalid(route.locale, "commands.config.panel.channels_invalid_channel_detail") };
   }
-  if (!personaValue) return { receipt: invalid(route.locale, "channels_welcome_persona_required_detail") };
+  if (!personaValue)
+    return { receipt: invalid(route.locale, "commands.config.panel.channels_welcome_persona_required_detail") };
 
   let welcomePersonaId: number | null = null;
   if (personaValue !== "random") {
@@ -950,8 +1093,8 @@ async function runChannelWrite(
         receipt: receipt(
           route.locale,
           "error",
-          "channels_invalid_input_heading",
-          "channels_welcome_persona_invalid_detail",
+          "commands.config.panel.channels_invalid_input_heading",
+          "commands.config.panel.channels_welcome_persona_invalid_detail",
         ),
       };
     }
@@ -962,7 +1105,14 @@ async function runChannelWrite(
   const currentPrompt = state.config.welcome_prompt ?? null;
   const currentPersonaId = state.config.welcome_persona_id ?? null;
   if (currentChannelId === channelId && currentPrompt === prompt && currentPersonaId === welcomePersonaId) {
-    return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+    return {
+      receipt: receipt(
+        route.locale,
+        "info",
+        "commands.config.panel.state_no_changes_heading",
+        "commands.config.panel.state_no_changes_detail",
+      ),
+    };
   }
 
   const updated = await configRepository.updateWelcomeConfig(state.server_id, {
@@ -970,10 +1120,23 @@ async function runChannelWrite(
     welcome_prompt: prompt,
     welcome_persona_id: welcomePersonaId,
   });
-  if (!updated) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+  if (!updated)
+    return {
+      receipt: receipt(
+        route.locale,
+        "error",
+        "commands.config.panel.write_failed_heading",
+        "commands.config.panel.write_failed_detail",
+      ),
+    };
   invalidateTomoriStateCache(scope.serverDiscId);
   return {
-    receipt: receipt(route.locale, "success", "channels_welcome_updated_heading", "channels_welcome_updated_detail"),
+    receipt: receipt(
+      route.locale,
+      "success",
+      "commands.config.panel.channels_welcome_updated_heading",
+      "commands.config.panel.channels_welcome_updated_detail",
+    ),
     telemetry: "server-config.workspace.welcome-channel.set",
   };
 }
@@ -1026,27 +1189,51 @@ async function runChannelOverrideWrite(
   dependencies: ConfigRouteDependencies,
 ): Promise<ChannelWriteOutcome> {
   const state = stateFromScope(scope);
-  if (!state) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+  if (!state)
+    return {
+      receipt: receipt(
+        route.locale,
+        "error",
+        "commands.config.panel.write_failed_heading",
+        "commands.config.panel.write_failed_detail",
+      ),
+    };
 
   const view = await dependencies.loadChannelsView(interaction, route.channelId);
   const target = channelOverrideTarget(view, route.channelId, CHANNEL_OVERRIDE_TYPES);
-  if (!target) return { receipt: invalid(route.locale, "channels_overrides_invalid_channel_detail") };
+  if (!target)
+    return { receipt: invalid(route.locale, "commands.config.panel.channels_overrides_invalid_channel_detail") };
   if (channelOverridesFingerprint(state, route.channelId, view) !== route.fp) {
     return { receipt: staleReceipt(route.locale) };
   }
 
   if (route.action === "channels-overrides-prompt-clear") {
     if (!view.overrides.prompt) {
-      return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          route.locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     }
     const ok = await channelPromptRepo.deleteChannelPromptOverride(state.server_id, route.channelId);
-    if (!ok) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+    if (!ok)
+      return {
+        receipt: receipt(
+          route.locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     return {
       receipt: receipt(
         route.locale,
         "success",
-        "channels_overrides_prompt_cleared_heading",
-        "channels_overrides_prompt_cleared_detail",
+        "commands.config.panel.channels_overrides_prompt_cleared_heading",
+        "commands.config.panel.channels_overrides_prompt_cleared_detail",
       ),
       telemetry: "server-config.workspace.channel-prompt.clear",
     };
@@ -1065,36 +1252,67 @@ async function runChannelOverrideWrite(
       buildConfigModalFieldId(CONFIG_CHANNEL_OVERRIDE_MODE_FIELD, route.nonce),
     );
     const mode: ChannelPromptMode | null = modeValue === "append" || modeValue === "replace" ? modeValue : null;
-    if (!mode) return { receipt: invalid(route.locale, "channels_overrides_prompt_mode_invalid_detail") };
+    if (!mode)
+      return { receipt: invalid(route.locale, "commands.config.panel.channels_overrides_prompt_mode_invalid_detail") };
 
     if (!prompt) {
       if (!view.overrides.prompt) {
-        return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+        return {
+          receipt: receipt(
+            route.locale,
+            "info",
+            "commands.config.panel.state_no_changes_heading",
+            "commands.config.panel.state_no_changes_detail",
+          ),
+        };
       }
       const ok = await channelPromptRepo.deleteChannelPromptOverride(state.server_id, route.channelId);
-      if (!ok) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+      if (!ok)
+        return {
+          receipt: receipt(
+            route.locale,
+            "error",
+            "commands.config.panel.write_failed_heading",
+            "commands.config.panel.write_failed_detail",
+          ),
+        };
       return {
         receipt: receipt(
           route.locale,
           "success",
-          "channels_overrides_prompt_cleared_heading",
-          "channels_overrides_prompt_cleared_detail",
+          "commands.config.panel.channels_overrides_prompt_cleared_heading",
+          "commands.config.panel.channels_overrides_prompt_cleared_detail",
         ),
         telemetry: "server-config.workspace.channel-prompt.clear",
       };
     }
 
     if (view.overrides.prompt?.prompt === prompt && view.overrides.prompt.mode === mode) {
-      return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          route.locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     }
     const ok = await channelPromptRepo.setChannelPromptOverride(state.server_id, route.channelId, prompt, mode);
-    if (!ok) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+    if (!ok)
+      return {
+        receipt: receipt(
+          route.locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     return {
       receipt: receipt(
         route.locale,
         "success",
-        "channels_overrides_prompt_updated_heading",
-        "channels_overrides_prompt_updated_detail",
+        "commands.config.panel.channels_overrides_prompt_updated_heading",
+        "commands.config.panel.channels_overrides_prompt_updated_detail",
       ),
       telemetry: "server-config.workspace.channel-prompt.set",
     };
@@ -1112,37 +1330,67 @@ async function runChannelOverrideWrite(
     ).trim();
     const depth = /^\d+$/.test(rawDepth) ? Number(rawDepth) : Number.NaN;
     if (note.length > CONTEXT_NOTE_MAX_LENGTH || !Number.isSafeInteger(depth) || depth > CONTEXT_NOTE_DEPTH_MAX) {
-      return { receipt: invalid(route.locale, "channels_overrides_context_note_invalid_detail") };
+      return { receipt: invalid(route.locale, "commands.config.panel.channels_overrides_context_note_invalid_detail") };
     }
 
     if (!note) {
       if (!view.overrides.contextNote) {
-        return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+        return {
+          receipt: receipt(
+            route.locale,
+            "info",
+            "commands.config.panel.state_no_changes_heading",
+            "commands.config.panel.state_no_changes_detail",
+          ),
+        };
       }
       const ok = await channelContextNoteRepo.deleteChannelContextNote(state.server_id, route.channelId);
-      if (!ok) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+      if (!ok)
+        return {
+          receipt: receipt(
+            route.locale,
+            "error",
+            "commands.config.panel.write_failed_heading",
+            "commands.config.panel.write_failed_detail",
+          ),
+        };
       return {
         receipt: receipt(
           route.locale,
           "success",
-          "channels_overrides_context_note_cleared_heading",
-          "channels_overrides_context_note_cleared_detail",
+          "commands.config.panel.channels_overrides_context_note_cleared_heading",
+          "commands.config.panel.channels_overrides_context_note_cleared_detail",
         ),
         telemetry: "server-config.workspace.channel-context-note.clear",
       };
     }
 
     if (view.overrides.contextNote?.note === note && view.overrides.contextNote.depth === depth) {
-      return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          route.locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     }
     const ok = await channelContextNoteRepo.setChannelContextNote(state.server_id, route.channelId, note, depth);
-    if (!ok) return { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+    if (!ok)
+      return {
+        receipt: receipt(
+          route.locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
     return {
       receipt: receipt(
         route.locale,
         "success",
-        "channels_overrides_context_note_updated_heading",
-        "channels_overrides_context_note_updated_detail",
+        "commands.config.panel.channels_overrides_context_note_updated_heading",
+        "commands.config.panel.channels_overrides_context_note_updated_detail",
       ),
       telemetry: "server-config.workspace.channel-context-note.set",
     };
@@ -1151,7 +1399,14 @@ async function runChannelOverrideWrite(
   const textRoute = route;
   if (textRoute.action === "channels-overrides-text-clear") {
     if (!view.overrides.textModelOverride) {
-      return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          route.locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     }
     const result = await dependencies.operations.setTextModelOverride({
       scope: "channel",
@@ -1165,12 +1420,19 @@ async function runChannelOverrideWrite(
           receipt: receipt(
             route.locale,
             "success",
-            "channels_overrides_text_model_cleared_heading",
-            "channels_overrides_text_model_cleared_detail",
+            "commands.config.panel.channels_overrides_text_model_cleared_heading",
+            "commands.config.panel.channels_overrides_text_model_cleared_detail",
           ),
           telemetry: "server-config.workspace.channel-text-model.clear",
         }
-      : { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+      : {
+          receipt: receipt(
+            route.locale,
+            "error",
+            "commands.config.panel.write_failed_heading",
+            "commands.config.panel.write_failed_detail",
+          ),
+        };
   }
 
   const selectedCodename =
@@ -1190,13 +1452,20 @@ async function runChannelOverrideWrite(
       receipt: receipt(
         route.locale,
         "error",
-        "channels_overrides_text_model_invalid_heading",
-        "channels_overrides_text_model_invalid_detail",
+        "commands.config.panel.channels_overrides_text_model_invalid_heading",
+        "commands.config.panel.channels_overrides_text_model_invalid_detail",
       ),
     };
   }
   if (view.overrides.textModelOverride?.llm_id === selectedModel.llm_id) {
-    return { receipt: receipt(route.locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+    return {
+      receipt: receipt(
+        route.locale,
+        "info",
+        "commands.config.panel.state_no_changes_heading",
+        "commands.config.panel.state_no_changes_detail",
+      ),
+    };
   }
   const result = await dependencies.operations.setTextModelOverride({
     scope: "channel",
@@ -1210,12 +1479,19 @@ async function runChannelOverrideWrite(
         receipt: receipt(
           route.locale,
           "success",
-          "channels_overrides_text_model_updated_heading",
-          "channels_overrides_text_model_updated_detail",
+          "commands.config.panel.channels_overrides_text_model_updated_heading",
+          "commands.config.panel.channels_overrides_text_model_updated_detail",
         ),
         telemetry: "server-config.workspace.channel-text-model.set",
       }
-    : { receipt: receipt(route.locale, "error", "write_failed_heading", "write_failed_detail") };
+    : {
+        receipt: receipt(
+          route.locale,
+          "error",
+          "commands.config.panel.write_failed_heading",
+          "commands.config.panel.write_failed_detail",
+        ),
+      };
 }
 
 async function handleChannelTextNavigation(
@@ -1234,7 +1510,7 @@ async function handleChannelTextNavigation(
       scope,
       dependencies,
       null,
-      invalid(route.locale, "channels_overrides_invalid_channel_detail"),
+      invalid(route.locale, "commands.config.panel.channels_overrides_invalid_channel_detail"),
     );
     return;
   }
@@ -1308,7 +1584,7 @@ export async function handleConfigChannelModalOpen(
     const target = channelOverrideTarget(view, route.channelId, CHANNEL_OVERRIDE_TYPES);
     if (!target) {
       await interaction.reply({
-        content: overridesInvalidReply(route.locale, "channels_overrides_invalid_channel_detail"),
+        content: overridesInvalidReply(route.locale, "commands.config.panel.channels_overrides_invalid_channel_detail"),
         flags: MessageFlags.Ephemeral,
       });
       return true;
@@ -1420,7 +1696,7 @@ export async function handleConfigChannelModalOpen(
     const target = channelOverrideTarget(view, route.channelId, CHANNEL_OVERRIDE_TYPES);
     if (!target) {
       await interaction.reply({
-        content: overridesInvalidReply(route.locale, "channels_overrides_invalid_channel_detail"),
+        content: overridesInvalidReply(route.locale, "commands.config.panel.channels_overrides_invalid_channel_detail"),
         flags: MessageFlags.Ephemeral,
       });
       return true;

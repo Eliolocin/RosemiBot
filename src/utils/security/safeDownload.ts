@@ -222,7 +222,7 @@ export async function safeDownload(url: string, options: SafeDownloadOptions): P
       }
     }
 
-    const buffer = await readBoundedResponse(response, maxSizeBytes);
+    const buffer = await readBoundedResponse(response, maxSizeBytes, controller.signal);
 
     if (buffer.length > maxSizeBytes) {
       log.warn(`Downloaded file ${(buffer.length / (1024 * 1024)).toFixed(2)} MB exceeds limit of ${maxSizeMB} MB`, {

@@ -1,3 +1,4 @@
+import { localizedProse } from "../../helpers/localeCases";
 import { beforeAll, describe, expect, it } from "bun:test";
 import { ComponentType, type StringSelectMenuComponentData } from "discord.js";
 import type { UserRow, UserSavedProviderConfigRow } from "@/types/db/schema";
@@ -61,6 +62,8 @@ function makeModelDisplayInfo(fallbackCount = 2, providerCount = 1): PersonalCon
     storedModelName: "Claude 3.5 Sonnet",
   };
   const routingRows = {
+    speech_design: { capability: "speech_design", activeModelName: null, storedProvider: null, storedModelName: null },
+    speech_clone: { capability: "speech_clone", activeModelName: null, storedProvider: null, storedModelName: null },
     text: { ...routingRow, capability: "text" as const },
     vision: { ...routingRow, capability: "vision" as const, activeModelName: "GPT-4o" },
     embedding: { ...routingRow, capability: "embedding" as const, activeModelName: "text-embedding-3" },
@@ -81,6 +84,8 @@ function makeModelDisplayInfo(fallbackCount = 2, providerCount = 1): PersonalCon
     routingRows,
     availableCapabilities: ["text", "vision", "embedding", "image", "image_nai", "video"],
     eligibleProvidersForCapability: {
+      speech_design: [],
+      speech_clone: [],
       text: makeProviders("provider_text"),
       vision: makeProviders("provider_vision"),
       embedding: makeProviders("provider_embedding"),
@@ -329,10 +334,13 @@ describe("PersonalConfigPanel Limits & Boundary Sweeps", () => {
     expect(personaSelect).toBeDefined();
     expect(personaSelect?.options.length).toBe(25);
 
-    // Verify hidden count text display exists
-    const texts = collectTextDisplays(personaPayload);
-    const hasHiddenNotice = texts.some((content) => content.includes("1"));
-    expect(hasHiddenNotice).toBe(true);
+    expect(JSON.stringify(personaPayload)).toContain("personal-config:v2:persona-page:en-US:1000:1");
+
+    const secondPagePayload = buildPersonalConfigPanelPayload({ ...personaInput, personaRangeIndex: 1 });
+    const secondPageSelect = collectSelects(secondPagePayload.components).find((s) =>
+      s.customId?.includes("persona-select"),
+    );
+    expect(secondPageSelect?.options.map((option) => option.value)).toEqual(["1025"]);
   });
 
   it("conforms to Discord Components V2 protocol limits across provider count sweeps on Switch Models", () => {
@@ -384,7 +392,9 @@ describe("PersonalConfigPanel Limits & Boundary Sweeps", () => {
     const payload = buildPersonalConfigPanelPayload(input);
     const texts = collectTextDisplays(payload);
 
-    expect(texts).toContain("-# Server-wide TTS/STT: `/config` > Models > Switch Models.");
+    expect(texts.join("\n")).toMatch(
+      localizedProse("en-US", "commands.personal.config.speech_workspace_scope_direction"),
+    );
   });
 
   it("walks provider navigation options across windows reaching all 60 providers without looping infinitely", () => {

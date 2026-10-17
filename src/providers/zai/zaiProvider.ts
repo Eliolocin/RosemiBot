@@ -174,6 +174,9 @@ export class ZaiProvider
     }
 
     try {
+      if (streamingContext) {
+        streamingContext.speechToolState ??= { userId: streamingContext.triggererUserId };
+      }
       const toolStateForContext: ToolStateForContext = {
         server_id: tomoriState.server_id.toString(),
         activePersonaHasElevenlabsVoice: Boolean(
@@ -182,7 +185,11 @@ export class ZaiProvider
             tomoriState.speech_voice_id?.trim(),
         ),
         activePersonaVoiceDesignPrompt: tomoriState.speech_voice_design_prompt?.trim() || null,
-        activePersonaVoiceName: tomoriState.speech_voice_name,
+        activePersonaVoiceSampleId: tomoriState.speech_voice_sample_id,
+        activePersonaVoiceId: tomoriState.speech_voice_id,
+        activePersonaVoiceSourcePriority: tomoriState.voice_source_priority,
+        speechToolState: streamingContext?.speechToolState,
+
         diffusion_model_id: tomoriState.config.diffusion_model_id,
         nai_diffusion_model_id: tomoriState.config.nai_diffusion_model_id,
         video_model_id: tomoriState.config.video_model_id,
@@ -404,7 +411,10 @@ export class ZaiProvider
           request.tomoriState.speech_voice_id?.trim(),
       ),
       activePersonaVoiceDesignPrompt: request.tomoriState.speech_voice_design_prompt?.trim() || null,
-      activePersonaVoiceName: request.tomoriState.speech_voice_name,
+      activePersonaVoiceSampleId: request.tomoriState.speech_voice_sample_id,
+      activePersonaVoiceId: request.tomoriState.speech_voice_id,
+      activePersonaVoiceSourcePriority: request.tomoriState.voice_source_priority,
+
       diffusion_model_id: request.tomoriState.config.diffusion_model_id,
       nai_diffusion_model_id: request.tomoriState.config.nai_diffusion_model_id,
       video_model_id: request.tomoriState.config.video_model_id,

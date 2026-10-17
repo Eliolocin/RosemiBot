@@ -575,7 +575,7 @@ export class InteractWithRecentMessageTool extends BaseTool {
           replyDeliveryContext.identity.username ?? "",
           context.channel.lastMessageId,
         );
-        sentMessage = await sendWebhookReplyWithContext(
+        const delivery = await sendWebhookReplyWithContext(
           replyDeliveryContext.webhook,
           targetMessage,
           context.locale,
@@ -585,10 +585,17 @@ export class InteractWithRecentMessageTool extends BaseTool {
             threadId: replyDeliveryContext.threadId,
           },
         );
-        recordChannelDeliveredWebhookIdentity(context.channel.id, identity, sentMessage.id, {
-          personaId: context.activePersonaId ?? null,
-          kind: "appearance",
-        });
+        sentMessage = delivery.result;
+        recordChannelDeliveredWebhookIdentity(
+          context.channel.id,
+          delivery.identity,
+          sentMessage.id,
+          {
+            personaId: context.activePersonaId ?? null,
+            kind: "appearance",
+          },
+          delivery.webhookId,
+        );
 
         if (context.streamContext?.replyNoticeState) {
           context.streamContext.replyNoticeState.attempted = true;

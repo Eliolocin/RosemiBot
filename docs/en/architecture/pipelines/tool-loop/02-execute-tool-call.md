@@ -51,12 +51,21 @@ disabled, so successful identities are reused below.
 
 Pass dispatches that request once. Rejection returns `review_rejected` history with
 `actionExecuted: false`, correction eligibility and concise findings. It adds no failed-tool notice
-or execution statistic. Exact rejected identities remain blocked; each normalized name permits one
-changed correction, with two corrections and eight detailed tool reviews across the logical turn.
+or execution statistic. The author proposes one call per pass, so a request with several parts
+reaches the reviewer as several calls. The reviewer judges each as one part of the request and sees
+earlier calls of the turn with their actual outcomes, rejections included.
+
+Exact rejected identities remain blocked. A rejection opens one correction for its normalized name,
+spent by the next proposal of that name. A later, different proposal of the same tool is reviewed on
+its own, because one request often needs several calls of one tool; a changed retry that ignores the
+findings is the reviewer's to reject. Two corrections and eight detailed tool reviews bound the
+logical turn. A request blocked after the author was already told no correction remains ends the
+turn through the held-response path rather than spending author passes up to the iteration cap.
 These limits remain separate from response review and survive fallback.
 
 Successful identical requests reuse recorded outcomes, including after a response revision.
-Unavailability ends review for the turn but preserves prior rejections. New independent requests
+Unavailability ends review for the turn but preserves prior rejections, and changed forms of a
+rejected tool stay blocked because nothing can approve them. New independent requests
 after exhaustion use ordinary tool rules. Cancellation is checked after review and asynchronous
 discovery, and before MCP transport. Already-started tools retain their own cancellation support.
 The normalized adapter interface dispatches one call at a time; approval covers only that actual call.

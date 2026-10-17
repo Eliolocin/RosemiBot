@@ -143,6 +143,15 @@ export const CONFIG_BEHAVIOR_MODAL_SUBMIT_ACTIONS = new Set<ConfigPanelRoute["ac
   "behavior-cooldown-submit",
 ]);
 
+/** Actions that edit the server system prompt, which an active SillyTavern preset takes over. */
+const SYSTEM_PROMPT_ACTIONS = new Set<ConfigPanelRoute["action"]>([
+  "behavior-prompt-open",
+  "behavior-prompt-submit",
+  "behavior-preset-open",
+  "behavior-preset-submit",
+  "behavior-prompt-remove",
+]);
+
 const RANDOM_TRIGGER_MAX_PER_SERVER = Number.parseInt(process.env.RANDOM_TRIGGER_MAX_PER_SERVER ?? "10", 10);
 const RANDOM_PERSONA_VALUE = "random";
 const RANDOM_TRIGGER_PAGE_SIZE = CONFIG_RANDOM_TRIGGER_CHECKBOX_CAPACITY;
@@ -156,17 +165,22 @@ function receipt(
 ) {
   return {
     tone,
-    heading: localizer(locale, `commands.config.panel.${heading}`),
-    detail: localizer(locale, `commands.config.panel.${detail}`, vars),
+    heading: localizer(locale, heading),
+    detail: localizer(locale, detail, vars),
   } as const;
 }
 
 function writeFailed(locale: string) {
-  return receipt(locale, "error", "write_failed_heading", "write_failed_detail");
+  return receipt(
+    locale,
+    "error",
+    "commands.config.panel.write_failed_heading",
+    "commands.config.panel.write_failed_detail",
+  );
 }
 
 function invalid(locale: string, detail: string, vars: Record<string, string | number> = {}) {
-  return receipt(locale, "error", "invalid_input_heading", detail, vars);
+  return receipt(locale, "error", "commands.config.panel.invalid_input_heading", detail, vars);
 }
 
 function modal(interaction: GlobalRoutableInteraction): ModalSubmitInteraction {
@@ -347,6 +361,13 @@ export async function handleConfigBehaviorModalOpen(
     return true;
   }
   const view = await behaviorView(scope, dependencies);
+  if (SYSTEM_PROMPT_ACTIONS.has(route.action) && view?.general.activeStPresetName) {
+    await interaction.reply({
+      content: localizer(route.locale, "commands.config.panel.system_prompt_st_preset_locked_detail"),
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
   const nonce = dependencies.createNonce();
   if (route.action === "behavior-prompt-open") {
     await dependencies.showModal(
@@ -478,16 +499,29 @@ async function clearCustomSystemPrompt(
   locale: string,
 ): Promise<BehaviorWriteOutcome> {
   if (!state.config.system_prompt)
-    return { receipt: receipt(locale, "info", "system_prompt_no_custom_heading", "system_prompt_no_custom_detail") };
+    return {
+      receipt: receipt(
+        locale,
+        "info",
+        "commands.config.panel.system_prompt_no_custom_heading",
+        "commands.config.panel.system_prompt_no_custom_detail",
+      ),
+    };
   const updated = await (await import("@/utils/db/repositories")).configRepository.updateChatConfig(state.server_id, {
     system_prompt: null,
   });
   if (!updated) return { receipt: writeFailed(locale) };
   invalidateTomoriStateCache(scope.serverDiscId);
   return {
-    receipt: receipt(locale, "success", "system_prompt_cleared_heading", "system_prompt_cleared_detail", {
-      default: DEFAULT_SYSTEM_PROMPT.trim(),
-    }),
+    receipt: receipt(
+      locale,
+      "success",
+      "commands.config.panel.system_prompt_cleared_heading",
+      "commands.config.panel.system_prompt_cleared_detail",
+      {
+        default: DEFAULT_SYSTEM_PROMPT.trim(),
+      },
+    ),
     telemetry: "server-config.workspace.system-prompt.remove",
   };
 }
@@ -502,19 +536,37 @@ async function runGeneralWrite(
   if (!state) return null;
   const modalInteraction = route.action.endsWith("submit") ? modal(interaction) : null;
   const locale = route.locale;
+  if (
+    SYSTEM_PROMPT_ACTIONS.has(route.action) &&
+    (await behaviorView(scope, dependencies))?.general.activeStPresetName
+  ) {
+    return {
+      receipt: receipt(
+        locale,
+        "warning",
+        "commands.config.panel.system_prompt_locked_heading",
+        "commands.config.panel.system_prompt_st_preset_locked_detail",
+      ),
+    };
+  }
   if (route.action === "behavior-prompt-submit" && modalInteraction) {
     const prompt = combineModalPromptParts(
       CONFIG_PERSONA_PROMPT_PART_FIELDS.map((field) => getText(modalInteraction, field, route.nonce)),
       4000,
     );
-    if (!prompt.trim()) return { receipt: invalid(locale, "system_prompt_empty_detail") };
+    if (!prompt.trim()) return { receipt: invalid(locale, "commands.config.panel.system_prompt_empty_detail") };
     const updated = await (await import("@/utils/db/repositories")).configRepository.updateChatConfig(state.server_id, {
       system_prompt: prompt,
     });
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "system_prompt_updated_heading", "system_prompt_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.system_prompt_updated_heading",
+        "commands.config.panel.system_prompt_updated_detail",
+      ),
       telemetry: "server-config.workspace.system-prompt.set",
     };
   }
@@ -533,9 +585,15 @@ async function runGeneralWrite(
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "system_prompt_updated_heading", "system_prompt_preset_updated_detail", {
-        preset: selected.system_prompt_preset_name,
-      }),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.system_prompt_updated_heading",
+        "commands.config.panel.system_prompt_preset_updated_detail",
+        {
+          preset: selected.system_prompt_preset_name,
+        },
+      ),
       telemetry: "server-config.workspace.system-prompt.preset",
     };
   }
@@ -549,8 +607,8 @@ async function runGeneralWrite(
         receipt: receipt(
           locale,
           "error",
-          "response_prefill_unsupported_heading",
-          "response_prefill_unsupported_detail",
+          "commands.config.panel.response_prefill_unsupported_heading",
+          "commands.config.panel.response_prefill_unsupported_detail",
           {
             model: state.llm.llm_codename,
           },
@@ -564,8 +622,18 @@ async function runGeneralWrite(
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
       receipt: prefill
-        ? receipt(locale, "success", "response_prefill_updated_heading", "response_prefill_updated_detail")
-        : receipt(locale, "success", "response_prefill_cleared_heading", "response_prefill_cleared_detail"),
+        ? receipt(
+            locale,
+            "success",
+            "commands.config.panel.response_prefill_updated_heading",
+            "commands.config.panel.response_prefill_updated_detail",
+          )
+        : receipt(
+            locale,
+            "success",
+            "commands.config.panel.response_prefill_cleared_heading",
+            "commands.config.panel.response_prefill_cleared_detail",
+          ),
       telemetry: "server-config.workspace.response-prefill.set",
     };
   }
@@ -574,7 +642,12 @@ async function runGeneralWrite(
     const rawDepth = getText(modalInteraction, "context_note_depth", route.nonce).trim();
     const depth = parseInteger(rawDepth, 0, CONTEXT_NOTE_DEPTH_MAX);
     if (depth === null)
-      return { receipt: invalid(locale, "context_note_invalid_depth_detail", { min: 0, max: CONTEXT_NOTE_DEPTH_MAX }) };
+      return {
+        receipt: invalid(locale, "commands.config.panel.context_note_invalid_depth_detail", {
+          min: 0,
+          max: CONTEXT_NOTE_DEPTH_MAX,
+        }),
+      };
     const updated = await (await import("@/utils/db/repositories")).configRepository.updateChatConfig(state.server_id, {
       context_note: note || null,
       context_note_depth: note ? depth : 0,
@@ -585,8 +658,12 @@ async function runGeneralWrite(
       receipt: receipt(
         locale,
         "success",
-        note ? "context_note_updated_heading" : "context_note_cleared_heading",
-        note ? "context_note_updated_detail" : "context_note_cleared_detail",
+        note
+          ? "commands.config.panel.context_note_updated_heading"
+          : "commands.config.panel.context_note_cleared_heading",
+        note
+          ? "commands.config.panel.context_note_updated_detail"
+          : "commands.config.panel.context_note_cleared_detail",
         { depth },
       ),
       telemetry: "server-config.workspace.context-note.set",
@@ -603,13 +680,24 @@ async function runGeneralWrite(
     if (rawValue === undefined) return { receipt: staleReceipt(locale) };
     const value = parseInteger(rawValue, HUMANIZER_MIN, HUMANIZER_MAX);
     if (value === null)
-      return { receipt: invalid(locale, "humanizer_invalid_detail", { min: HUMANIZER_MIN, max: HUMANIZER_MAX }) };
+      return {
+        receipt: invalid(locale, "commands.config.panel.humanizer_invalid_detail", {
+          min: HUMANIZER_MIN,
+          max: HUMANIZER_MAX,
+        }),
+      };
     const current = (await behaviorView(scope, dependencies))?.general.humanizerDegree ?? HUMANIZER_DEFAULT;
     if (value === current)
       return {
-        receipt: receipt(locale, "info", "humanizer_no_changes_heading", "humanizer_no_changes_detail", {
-          value: getHumanizerLabel(locale, value),
-        }),
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.humanizer_no_changes_heading",
+          "commands.config.panel.humanizer_no_changes_detail",
+          {
+            value: getHumanizerLabel(locale, value),
+          },
+        ),
       };
     const updated = await (await import("@/utils/db/repositories")).configRepository.updateChatConfig(state.server_id, {
       humanizer_degree: value,
@@ -617,9 +705,15 @@ async function runGeneralWrite(
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "humanizer_updated_heading", "humanizer_updated_detail", {
-        value: getHumanizerLabel(locale, value),
-      }),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.humanizer_updated_heading",
+        "commands.config.panel.humanizer_updated_detail",
+        {
+          value: getHumanizerLabel(locale, value),
+        },
+      ),
       telemetry: "server-config.workspace.humanizer.set",
     };
   }
@@ -631,7 +725,7 @@ async function runGeneralWrite(
     );
     if (value === null)
       return {
-        receipt: invalid(locale, "fetch_limit_invalid_detail", {
+        receipt: invalid(locale, "commands.config.panel.fetch_limit_invalid_detail", {
           min: MIN_MESSAGE_FETCH_LIMIT,
           max: MAX_MESSAGE_FETCH_LIMIT,
         }),
@@ -639,7 +733,13 @@ async function runGeneralWrite(
     const current = (await behaviorView(scope, dependencies))?.general.messageFetchLimit ?? DEFAULT_MESSAGE_FETCH_LIMIT;
     if (value === current)
       return {
-        receipt: receipt(locale, "info", "fetch_limit_no_changes_heading", "fetch_limit_no_changes_detail", { value }),
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.fetch_limit_no_changes_heading",
+          "commands.config.panel.fetch_limit_no_changes_detail",
+          { value },
+        ),
       };
     const updated = await (await import("@/utils/db/repositories")).configRepository.updateChatConfig(state.server_id, {
       message_fetch_limit: value,
@@ -647,20 +747,37 @@ async function runGeneralWrite(
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "fetch_limit_updated_heading", "fetch_limit_updated_detail", { value }),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.fetch_limit_updated_heading",
+        "commands.config.panel.fetch_limit_updated_detail",
+        { value },
+      ),
       telemetry: "server-config.workspace.message-fetch-limit.set",
     };
   }
   if (route.action === "behavior-timezone-submit" && modalInteraction) {
     const value = Number(getText(modalInteraction, BEHAVIOR_TIMEZONE_FIELD, route.nonce).trim());
     if (!Number.isFinite(value) || value < UTC_OFFSET_MIN || value > UTC_OFFSET_MAX)
-      return { receipt: invalid(locale, "timezone_invalid_detail", { min: UTC_OFFSET_MIN, max: UTC_OFFSET_MAX }) };
+      return {
+        receipt: invalid(locale, "commands.config.panel.timezone_invalid_detail", {
+          min: UTC_OFFSET_MIN,
+          max: UTC_OFFSET_MAX,
+        }),
+      };
     const current = (await behaviorView(scope, dependencies))?.general.timezoneOffset ?? 0;
     if (value === current)
       return {
-        receipt: receipt(locale, "info", "timezone_no_changes_heading", "timezone_no_changes_detail", {
-          value: formatUTCOffset(value),
-        }),
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.timezone_no_changes_heading",
+          "commands.config.panel.timezone_no_changes_detail",
+          {
+            value: formatUTCOffset(value),
+          },
+        ),
       };
     const updated = await (await import("@/utils/db/repositories")).configRepository.updateChatConfig(state.server_id, {
       timezone_offset: value,
@@ -668,9 +785,15 @@ async function runGeneralWrite(
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "timezone_updated_heading", "timezone_updated_detail", {
-        value: formatUTCOffset(value),
-      }),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.timezone_updated_heading",
+        "commands.config.panel.timezone_updated_detail",
+        {
+          value: formatUTCOffset(value),
+        },
+      ),
       telemetry: "server-config.workspace.timezone.set",
     };
   }
@@ -693,7 +816,14 @@ async function runTriggerWrite(
         ? (state.config.deliberate_trigger_mode ?? false)
         : (state.config.always_reply_enabled ?? false);
     if (current === route.enabled)
-      return { receipt: receipt(locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     const patch =
       route.action === "behavior-dtm-set"
         ? { deliberate_trigger_mode: route.enabled }
@@ -702,7 +832,12 @@ async function runTriggerWrite(
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry:
         route.action === "behavior-dtm-set"
           ? "server-config.workspace.deliberate-trigger-mode.set"
@@ -713,12 +848,18 @@ async function runTriggerWrite(
     const submitted = modal(interaction);
     const cascade = parseInteger(getText(submitted, BEHAVIOR_CASCADE_LIMIT_FIELD, route.nonce), 0, 10);
     const match = parseInteger(getText(submitted, BEHAVIOR_MATCH_LIMIT_FIELD, route.nonce), 1, 10);
-    if (cascade === null || match === null) return { receipt: invalid(locale, "matching_limits_invalid_detail") };
+    if (cascade === null || match === null)
+      return { receipt: invalid(locale, "commands.config.panel.matching_limits_invalid_detail") };
     const currentCascade = state.config.cascade_limit ?? 3;
     const currentMatch = state.config.match_limit ?? 3;
     if (cascade === currentCascade && match === currentMatch)
       return {
-        receipt: receipt(locale, "info", "matching_limits_no_changes_heading", "matching_limits_no_changes_detail"),
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.matching_limits_no_changes_heading",
+          "commands.config.panel.matching_limits_no_changes_detail",
+        ),
       };
     const updated = await repositories.configRepository.updateChatConfig(state.server_id, {
       cascade_limit: cascade,
@@ -727,10 +868,16 @@ async function runTriggerWrite(
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "matching_limits_updated_heading", "matching_limits_updated_detail", {
-        cascade,
-        match,
-      }),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.matching_limits_updated_heading",
+        "commands.config.panel.matching_limits_updated_detail",
+        {
+          cascade,
+          match,
+        },
+      ),
       telemetry: "server-config.workspace.trigger-limits.set",
     };
   }
@@ -746,11 +893,18 @@ async function runTriggerWrite(
     const cooldownType = parseInteger(cooldownTypeRaw, 0, 3);
     const cooldownLength = parseInteger(getText(submitted, BEHAVIOR_COOLDOWN_LENGTH_FIELD, route.nonce), 1, 86400);
     if (cooldownType === null || cooldownLength === null)
-      return { receipt: invalid(locale, "cooldown_invalid_detail", { min: 1, max: 86400 }) };
+      return { receipt: invalid(locale, "commands.config.panel.cooldown_invalid_detail", { min: 1, max: 86400 }) };
     const currentType = state.config.cooldown_type ?? CooldownType.OFF;
     const currentLength = state.config.cooldown_length ?? 5;
     if (cooldownType === currentType && cooldownLength === currentLength)
-      return { receipt: receipt(locale, "info", "cooldown_no_changes_heading", "cooldown_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.cooldown_no_changes_heading",
+          "commands.config.panel.cooldown_no_changes_detail",
+        ),
+      };
     const updated = await repositories.configRepository.updateTriggerBehaviorConfig(state.server_id, {
       cooldown_type: cooldownType,
       cooldown_length: cooldownLength,
@@ -758,9 +912,15 @@ async function runTriggerWrite(
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "cooldown_updated_heading", "cooldown_updated_detail", {
-        length: cooldownLength,
-      }),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.cooldown_updated_heading",
+        "commands.config.panel.cooldown_updated_detail",
+        {
+          length: cooldownLength,
+        },
+      ),
       telemetry: "server-config.workspace.cooldown.set",
     };
   }
@@ -777,7 +937,7 @@ async function runTriggerWrite(
     const targetChannel = channelId && interaction.guild?.channels.cache.get(channelId);
     if (!targetChannel || targetChannel.type !== ChannelType.GuildText) return { receipt: staleReceipt(locale) };
     const settings = parseRandomSettings(getText(submitted, BEHAVIOR_RANDOM_SETTINGS_FIELD, route.nonce));
-    if (!settings) return { receipt: invalid(locale, "random_trigger_settings_invalid_detail") };
+    if (!settings) return { receipt: invalid(locale, "commands.config.panel.random_trigger_settings_invalid_detail") };
     const personaId =
       !personaValue || personaValue === RANDOM_PERSONA_VALUE
         ? null
@@ -799,7 +959,11 @@ async function runTriggerWrite(
     };
     const count = await repositories.serverScheduleRepository.getServerTriggerCount(state.server_id);
     if (count >= RANDOM_TRIGGER_MAX_PER_SERVER)
-      return { receipt: invalid(locale, "random_trigger_cap_detail", { max: RANDOM_TRIGGER_MAX_PER_SERVER }) };
+      return {
+        receipt: invalid(locale, "commands.config.panel.random_trigger_cap_detail", {
+          max: RANDOM_TRIGGER_MAX_PER_SERVER,
+        }),
+      };
     if (personaId !== null) {
       const existing = await repositories.serverScheduleRepository.getTriggerByPersonaAndChannel(
         state.server_id,
@@ -810,7 +974,12 @@ async function runTriggerWrite(
         const updated = await repositories.serverScheduleRepository.upsertTrigger(existing.trigger_id, data);
         if (!updated) return { receipt: writeFailed(locale) };
         return {
-          receipt: receipt(locale, "success", "random_trigger_updated_heading", "random_trigger_updated_detail"),
+          receipt: receipt(
+            locale,
+            "success",
+            "commands.config.panel.random_trigger_updated_heading",
+            "commands.config.panel.random_trigger_updated_detail",
+          ),
           telemetry: "server-config.workspace.random-trigger.update",
         };
       }
@@ -818,7 +987,12 @@ async function runTriggerWrite(
     const inserted = await repositories.serverScheduleRepository.insertTrigger(data);
     if (!inserted) return { receipt: writeFailed(locale) };
     return {
-      receipt: receipt(locale, "success", "random_trigger_added_heading", "random_trigger_added_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.random_trigger_added_heading",
+        "commands.config.panel.random_trigger_added_detail",
+      ),
       telemetry: "server-config.workspace.random-trigger.add",
     };
   }
@@ -846,16 +1020,27 @@ async function runTriggerWrite(
     const toRemove = presented.filter((trigger) => !checked.has(trigger.trigger_id));
     if (!toRemove.length)
       return {
-        receipt: receipt(locale, "info", "random_trigger_no_changes_heading", "random_trigger_no_changes_detail"),
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.random_trigger_no_changes_heading",
+          "commands.config.panel.random_trigger_no_changes_detail",
+        ),
       };
     const results = await Promise.all(
       toRemove.map((trigger) => repositories.serverScheduleRepository.deleteTrigger(trigger.trigger_id)),
     );
     if (results.some((result) => !result)) return { receipt: writeFailed(locale) };
     return {
-      receipt: receipt(locale, "success", "random_trigger_removed_heading", "random_trigger_removed_detail", {
-        count: toRemove.length,
-      }),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.random_trigger_removed_heading",
+        "commands.config.panel.random_trigger_removed_detail",
+        {
+          count: toRemove.length,
+        },
+      ),
       telemetry: "server-config.workspace.random-trigger.remove",
     };
   }
@@ -1181,27 +1366,51 @@ async function runD10Write(
   const locale = route.locale;
   if (route.action === "behavior-notice-verbosity-set") {
     if (state.config.tool_notice_verbosity === route.verbosity)
-      return { receipt: receipt(locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     const updated = await repositories.configRepository.updateNoticeEmbedsConfig(state.server_id, {
       tool_notice_verbosity: route.verbosity,
     });
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.notice-verbosity.set",
     };
   }
   if (route.action === "behavior-stm-enabled-set") {
     if ((state.config.short_term_memory_enabled ?? true) === route.enabled)
-      return { receipt: receipt(locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     const updated = await repositories.configRepository.updateCapabilitiesConfig(state.server_id, {
       short_term_memory_enabled: route.enabled,
     });
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.capabilities.set",
     };
   }
@@ -1217,7 +1426,14 @@ async function runD10Write(
           ? (state.config.self_debug_enabled ?? false)
           : (state.config.voice_transcript_chat_mode ?? true);
     if (current === route.enabled)
-      return { receipt: receipt(locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     const updated =
       route.action === "behavior-tool-mode-set"
         ? await repositories.configRepository.updateTriggerBehaviorConfig(state.server_id, {
@@ -1231,7 +1447,12 @@ async function runD10Write(
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry:
         route.action === "behavior-tool-mode-set"
           ? "server-config.workspace.deliberate-tool-mode.set"
@@ -1244,33 +1465,59 @@ async function runD10Write(
   const submitted = modal(interaction);
   if (route.action === "behavior-tool-context-submit") {
     const value = parseInteger(getText(submitted, BEHAVIOR_TOOL_CONTEXT_FIELD, route.nonce), 0, 10);
-    if (value === null) return { receipt: invalid(locale, "tool_context_invalid_detail", { min: 0, max: 10 }) };
+    if (value === null)
+      return { receipt: invalid(locale, "commands.config.panel.tool_context_invalid_detail", { min: 0, max: 10 }) };
     const current = resolveDeliberateToolContextTurns(state.config.deliberate_tool_context_turns);
     if (value === current && state.config.deliberate_tool_context_turns !== null)
-      return { receipt: receipt(locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     const updated = await repositories.configRepository.updateTriggerBehaviorConfig(state.server_id, {
       deliberate_tool_context_turns: value,
     });
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.deliberate-tool-context.set",
     };
   }
   if (route.action === "behavior-send-limit-submit") {
     const value = parseInteger(getText(submitted, BEHAVIOR_SEND_LIMIT_FIELD, route.nonce), 0, 40);
-    if (value === null) return { receipt: invalid(locale, "send_limit_invalid_detail", { min: 0, max: 40 }) };
+    if (value === null)
+      return { receipt: invalid(locale, "commands.config.panel.send_limit_invalid_detail", { min: 0, max: 40 }) };
     const current = state.config.send_message_limit ?? 0;
     if (value === current)
-      return { receipt: receipt(locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     const updated = await repositories.configRepository.updateChatConfig(state.server_id, {
       send_message_limit: value,
     });
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.send-limit.set",
     };
   }
@@ -1293,14 +1540,26 @@ async function runD10Write(
     const current = (state.config.tool_notice_hidden_keys ?? []).filter(isToolNoticeKey);
     const currentSet = new Set(current);
     if (hidden.length === currentSet.size && hidden.every((key) => currentSet.has(key)))
-      return { receipt: receipt(locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     const updated = await repositories.configRepository.updateNoticeEmbedsConfig(state.server_id, {
       tool_notice_hidden_keys: hidden,
     });
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.notice-visibility.set",
     };
   }
@@ -1316,14 +1575,21 @@ async function runD10Write(
       buildConfigModalFieldId(BEHAVIOR_CHANNEL_MEMORY_FIELD, route.nonce),
     );
     if ((memoryValue !== "true" && memoryValue !== "false") || (channelValue !== "true" && channelValue !== "false"))
-      return { receipt: invalid(locale, "memory_tagging_invalid_detail") };
+      return { receipt: invalid(locale, "commands.config.panel.memory_tagging_invalid_detail") };
     const memoryTaggingEnabled = memoryValue === "true";
     const channelMemoryEnabled = channelValue === "true";
     if (
       memoryTaggingEnabled === (state.config.memory_tagging_enabled ?? false) &&
       channelMemoryEnabled === (state.config.channel_memory_enabled ?? false)
     )
-      return { receipt: receipt(locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     const updated = await repositories.configRepository.updateMemoryConfig(state.server_id, {
       memory_tagging_enabled: memoryTaggingEnabled,
       channel_memory_enabled: channelMemoryEnabled,
@@ -1331,7 +1597,12 @@ async function runD10Write(
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.memory-tagging.set",
     };
   }
@@ -1340,7 +1611,7 @@ async function runD10Write(
       Object.entries(state.config.deliberate_tool_triggers ?? {}).map(([key, values]) => [key, [...values]]),
     );
     if (Object.keys(triggerMap).some((target) => getToolNamesForDeliberateTriggerTarget(target).length === 0))
-      return { receipt: invalid(locale, "tool_trigger_invalid_detail") };
+      return { receipt: invalid(locale, "commands.config.panel.tool_trigger_invalid_detail") };
     const parsed = parseToolTriggerInput(
       submitted,
       route,
@@ -1350,26 +1621,39 @@ async function runD10Write(
       ),
     );
     if (!parsed) {
-      return { receipt: invalid(locale, "tool_trigger_invalid_detail") };
+      return { receipt: invalid(locale, "commands.config.panel.tool_trigger_invalid_detail") };
     }
     if (getToolNamesForDeliberateTriggerTarget(parsed.target).length === 0)
-      return { receipt: invalid(locale, "tool_trigger_invalid_detail") };
+      return { receipt: invalid(locale, "commands.config.panel.tool_trigger_invalid_detail") };
     const current = triggerMap[parsed.target] ?? [];
     if (current.some((candidate) => triggerStoredKey(candidate) === triggerStoredKey(parsed.trigger)))
-      return { receipt: invalid(locale, "tool_trigger_duplicate_detail") };
-    if (current.length >= 16) return { receipt: invalid(locale, "tool_trigger_limit_detail", { max: 16 }) };
+      return { receipt: invalid(locale, "commands.config.panel.tool_trigger_duplicate_detail") };
+    if (current.length >= 16)
+      return { receipt: invalid(locale, "commands.config.panel.tool_trigger_limit_detail", { max: 16 }) };
     triggerMap[parsed.target] = [...current, parsed.trigger].sort((left, right) =>
       triggerStoredKey(left).localeCompare(triggerStoredKey(right)),
     );
     if (triggerMapFingerprint(triggerMap) === triggerMapFingerprint(state.config.deliberate_tool_triggers ?? {}))
-      return { receipt: receipt(locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     const updated = await repositories.configRepository.updateTriggerBehaviorConfig(state.server_id, {
       deliberate_tool_triggers: triggerMap,
     });
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.deliberate-tool-trigger.set",
     };
   }
@@ -1379,16 +1663,23 @@ async function runD10Write(
     );
     const existingEntries = triggerEntries(triggerMap);
     if (existingEntries.length === 0)
-      return { receipt: receipt(locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     if (existingEntries.length > MAX_TOOL_TRIGGER_ENTRIES)
       return {
-        receipt: invalid(locale, "tool_trigger_over_capacity_detail", {
+        receipt: invalid(locale, "commands.config.panel.tool_trigger_over_capacity_detail", {
           count: existingEntries.length,
           max: MAX_TOOL_TRIGGER_ENTRIES,
         }),
       };
     if (Object.keys(triggerMap).some((target) => getToolNamesForDeliberateTriggerTarget(target).length === 0))
-      return { receipt: invalid(locale, "tool_trigger_invalid_detail") };
+      return { receipt: invalid(locale, "commands.config.panel.tool_trigger_invalid_detail") };
     const checked = new Set<string>();
     for (let groupIndex = 0; groupIndex < Math.ceil(existingEntries.length / 10); groupIndex += 1) {
       const values = dependencies.takeCheckboxValues(
@@ -1400,7 +1691,14 @@ async function runD10Write(
     }
     const entriesToRemove = existingEntries.filter((entry) => !checked.has(entry.id));
     if (entriesToRemove.length === 0)
-      return { receipt: receipt(locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     for (const entry of entriesToRemove) {
       const next = (triggerMap[entry.target] ?? []).filter(
         (candidate) => triggerStoredKey(candidate) !== triggerStoredKey(entry.trigger),
@@ -1414,7 +1712,12 @@ async function runD10Write(
     if (!updated) return { receipt: writeFailed(locale) };
     invalidateTomoriStateCache(scope.serverDiscId);
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.deliberate-tool-trigger.set",
     };
   }
@@ -1438,7 +1741,7 @@ async function runD10Write(
       content === null ||
       (mode !== "supersede" && mode !== "crude_summary")
     )
-      return { receipt: invalid(locale, "stm_parameters_invalid_detail") };
+      return { receipt: invalid(locale, "commands.config.panel.stm_parameters_invalid_detail") };
     const updated = await shortTermMemoryRepository.upsertStmConfig(state.server_id, {
       refresh_cadence: cadence,
       render_mode: mode as ServerStmConfigRow["render_mode"],
@@ -1448,7 +1751,12 @@ async function runD10Write(
     });
     if (!updated) return { receipt: writeFailed(locale) };
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.stm-parameters.set",
     };
   }
@@ -1461,16 +1769,28 @@ async function runD10Write(
     });
     if (!updated) return { receipt: writeFailed(locale) };
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.stm-prompt.set",
     };
   }
   if (route.action === "behavior-stm-categories-submit") {
     const categories = parseStmCategoryInputs(submitted, route.nonce);
-    if (!categories) return { receipt: invalid(locale, "stm_categories_invalid_detail") };
+    if (!categories) return { receipt: invalid(locale, "commands.config.panel.stm_categories_invalid_detail") };
     const currentCategories = await shortTermMemoryRepository.getStmCategories(state.server_id);
     if (stmCategoryFingerprint(categories) === stmCategoryFingerprint(currentCategories))
-      return { receipt: receipt(locale, "info", "state_no_changes_heading", "state_no_changes_detail") };
+      return {
+        receipt: receipt(
+          locale,
+          "info",
+          "commands.config.panel.state_no_changes_heading",
+          "commands.config.panel.state_no_changes_detail",
+        ),
+      };
     const activeScopes = stmActiveScopes(scope.serverDiscId);
     const updated = await shortTermMemoryRepository.upsertStmCategories(state.server_id, categories);
     if (!updated) return { receipt: writeFailed(locale) };
@@ -1478,7 +1798,12 @@ async function runD10Write(
       shortTermMemoryRepository.clearForServerChannel(scope.serverDiscId, entry.channelId, entry.personaId);
     }
     return {
-      receipt: receipt(locale, "success", "state_updated_heading", "state_updated_detail"),
+      receipt: receipt(
+        locale,
+        "success",
+        "commands.config.panel.state_updated_heading",
+        "commands.config.panel.state_updated_detail",
+      ),
       telemetry: "server-config.workspace.stm-categories.set",
     };
   }

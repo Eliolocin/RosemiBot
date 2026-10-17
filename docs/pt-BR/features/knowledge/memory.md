@@ -58,6 +58,11 @@ As memórias persistem até que você as remova.
 
 Em servidores novos, o acesso de membros não gerentes para criar, editar ou remover memórias compartilhadas do servidor está desabilitado por padrão. Membros com permissão `Gerenciar Servidor` mantêm acesso o tempo todo, e gerentes podem habilitar o acesso para outros membros através de `/moderation` Acesso de Membros.
 
+### Identidades de Proxy de Mensagens
+
+Ao ativar um serviço de proxy de mensagens compatível, a TomoriBot pode manter memórias pessoais para cada identidade de proxy verificada de forma independente da conta do Discord que enviou a mensagem. A conta hospedeira continua controlando privacidade, bloqueios, tempos de recarga e autorização. A TomoriBot nunca adivinha uma identidade a partir do nome ou avatar de um webhook, e um webhook não verificado não recebe um perfil de memória separado.
+
+Atualmente, o PluralKit é o único serviço selecionável. Consulte [Suporte a Proxy de Mensagens](/pt-BR/features/integrations/message-proxy-support/) para ver detalhes de configuração e limitações.
 
 ### Como as Memórias São Salvas
 

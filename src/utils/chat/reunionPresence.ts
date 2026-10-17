@@ -1,8 +1,11 @@
 /**
  * Coordinates the one-shot reunion note and its successful presence commit.
- * Eligibility is global to a persona lineage and user, while the claim prevents
- * separate channel contexts in this process from injecting the same reunion.
+ * Eligibility is global to a persona lineage and speaker, while the claim prevents
+ * separate channel contexts in this process from injecting the same reunion. The
+ * speaker is the host account for an ordinary message and the proxied identity for a
+ * verified repost, so those two never share a reunion.
  */
+import { getCachedUserRow } from "@/utils/cache/userCache";
 import type { TomoriState } from "@/types/db/schema";
 import type { ChatTurn, GenerationTurnResult } from "@/utils/chat/types";
 import { statRepository } from "@/utils/db/repositories/StatRepository";
@@ -72,19 +75,36 @@ export interface ReunionPresenceStore {
   readonly isTrackingEnabled: boolean;
   getUserPersonaReunionInfo: typeof statRepository.getUserPersonaReunionInfo;
   recordPresenceSeen: typeof statRepository.recordPresenceSeen;
+  /** Resolves a proxied speaker's clock scope; its Discord id is not a snowflake. */
+  loadUserRow?: typeof getCachedUserRow;
 }
+
+/** Prototype getters and methods do not survive a spread, so bind them explicitly. */
+const defaultPresenceStore: ReunionPresenceStore = {
+  isTrackingEnabled: statRepository.isTrackingEnabled,
+  getUserPersonaReunionInfo: (userId, lineageId) => statRepository.getUserPersonaReunionInfo(userId, lineageId),
+  recordPresenceSeen: (presence) => statRepository.recordPresenceSeen(presence),
+  loadUserRow: getCachedUserRow,
+};
 
 /**
  * Resolves a one-shot reunion for the direct triggerer and reserves it before
  * another channel can build an equivalent context.
+ *
+ * The clock follows the speaker, not the host account. A verified repost ticks the
+ * proxied identity's own clock, so two members of one system meet Tomori and return to
+ * her independently while their sibling talks from the same account in between.
  */
 export async function resolveReunionNote(
   args: {
     turn: ChatTurn;
     effectivePersona: TomoriState;
     isUserImpersonation: boolean;
+    proxiedIdentityName?: string | null;
+    /** Set only for a verified stable proxied speaker; absent for ordinary host messages. */
+    proxiedIdentityUserDiscId?: string | null;
   },
-  presenceStore: ReunionPresenceStore = statRepository,
+  presenceStore: ReunionPresenceStore = defaultPresenceStore,
 ): Promise<{
   note: string | null;
   presence: ReunionPresenceScope | null;
@@ -92,7 +112,8 @@ export async function resolveReunionNote(
   const { turn, effectivePersona } = args;
   const lineageId = effectivePersona.persona_lineage_id;
   const serverId = effectivePersona.server_id;
-  const userId = turn.userRow.user_id;
+  const hostUserId = turn.userRow.user_id;
+  const proxiedIdentityUserDiscId = args.proxiedIdentityUserDiscId?.trim() || null;
 
   if (
     effectivePersona.config.time_awareness_enabled === false ||
@@ -103,9 +124,19 @@ export async function resolveReunionNote(
     lineageId < 0 ||
     typeof serverId !== "number" ||
     !Number.isInteger(serverId) ||
-    typeof userId !== "number" ||
-    !Number.isInteger(userId)
+    typeof hostUserId !== "number" ||
+    !Number.isInteger(hostUserId)
   ) {
+    return { note: null, presence: null };
+  }
+
+  const speakerUserRow = proxiedIdentityUserDiscId
+    ? ((await presenceStore.loadUserRow?.(proxiedIdentityUserDiscId)) ?? null)
+    : turn.userRow;
+  const userId = speakerUserRow?.user_id;
+  if (typeof userId !== "number" || !Number.isInteger(userId)) {
+    // A proxied identity without its synthetic users row cannot carry a clock, and
+    // recording against the host would give the member the host's first meeting.
     return { note: null, presence: null };
   }
 
@@ -123,11 +154,15 @@ export async function resolveReunionNote(
     return { note: null, presence: null };
   }
 
+  const proxiedIdentityName = args.proxiedIdentityName?.trim() || null;
   const note = buildReunionNote({
     ...reunionInfo,
-    personalOffset: turn.userRow.timezone_offset ?? null,
+    // The speaker's own offset, so a member's reunion day boundary is its own setting
+    // rather than the host's until the member sets one.
+    personalOffset: speakerUserRow?.timezone_offset ?? null,
     serverOffset: effectivePersona.config.timezone_offset,
-    displayName: turn.triggererName,
+    displayName: proxiedIdentityName ?? turn.triggererName,
+    isSharedAccount: proxiedIdentityName !== null,
   });
   if (!note) {
     reunionClaims.release(claim);
@@ -149,7 +184,7 @@ export async function resolveReunionNote(
 export async function recordReunionPresence(
   presence: ReunionPresenceScope | null,
   result: GenerationTurnResult,
-  presenceStore: ReunionPresenceStore = statRepository,
+  presenceStore: ReunionPresenceStore = defaultPresenceStore,
 ): Promise<void> {
   if (!presence) return;
 

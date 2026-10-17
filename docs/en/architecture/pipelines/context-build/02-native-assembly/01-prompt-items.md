@@ -12,7 +12,7 @@ The contributor `buildPromptContextItems` in `src/utils/text/context/templates.t
 1. **System prompt slot (`SYSTEM_HUMANIZER_RULES`)**:
    - In standard turns, this slot contains the server's configured `system_prompt` or the built-in `DEFAULT_SYSTEM_PROMPT`.
    - When the active channel has a prompt override configured in `replace` mode, the channel prompt replaces this slot's content.
-   - When a SillyTavern preset is active and the server has no configured `system_prompt`, `suppressDefaultSystemPrompt` suppresses this item so the preset's system blocks control the prompt.
+   - When a SillyTavern preset is active, `presetOwnsSystemPrompt` skips both the configured `system_prompt` and the default, so the preset's system blocks control the prompt. A `replace`-mode channel prompt still fills the slot.
    - During user impersonation, this slot instead holds `impersonatedUserPrompt`.
 2. **Channel prompt block (`SYSTEM_CHANNEL_PROMPT`)**:
    - When the active channel has a prompt override configured in `append` mode, the channel prompt is emitted as a distinct block immediately after the system prompt. Under SillyTavern preset reassembly, this block accompanies the `main` marker so it remains adjacent to the system prompt.

@@ -128,7 +128,6 @@ scopedMock.module("@/utils/discord/ui/interactionCore", () => ({
   promptWithUnacknowledgedConfirmation: async () => ({ confirmed: false }),
   replyPaginatedChoices: async () => ({ outcome: "timeout" }),
   replyPaginatedPersonaChoicesV2: async () => ({ outcome: "timeout", reason: "timeout" }),
-  replyPaginatedStatusPages: async () => undefined,
 }));
 
 /** Fake Tomori state returned by cache lookups: has the fields /nsfw jailbreaks reads. */

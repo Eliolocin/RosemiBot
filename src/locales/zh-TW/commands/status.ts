@@ -43,7 +43,6 @@ export default {
     persona_page5_title: `{persona_name}：提示詞與標籤`,
     persona_page5_description: `人格提示詞與生成標籤`,
     field_model: `AI 模型`,
-    field_speech_model: `語音模型`,
     field_transcription_model: `轉錄模型`,
     field_user_byok: `使用者 BYOK`,
     field_temperature: `Temperature`,

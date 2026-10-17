@@ -43,7 +43,6 @@ export default {
     persona_page5_title: `{persona_name}: Prompt và thẻ`,
     persona_page5_description: `Prompt của persona và thẻ tạo nội dung`,
     field_model: `Model AI`,
-    field_speech_model: `Model giọng nói`,
     field_transcription_model: `Model phiên âm`,
     field_user_byok: `BYOK người dùng`,
     field_temperature: `Temperature`,

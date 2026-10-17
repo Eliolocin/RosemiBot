@@ -1,5 +1,23 @@
 import { describe, expect, it } from "bun:test";
-import { parseIntegerEnvFlag } from "@/utils/misc/envFlags";
+import { parseIntegerEnvFlag, parsePositiveIntegerEnv } from "@/utils/misc/envFlags";
+
+describe("parsePositiveIntegerEnv", () => {
+  it("returns a positive integer as parsed", () => {
+    expect(parsePositiveIntegerEnv("30")).toBe(30);
+    expect(parsePositiveIntegerEnv(" 7 ")).toBe(7);
+  });
+
+  it("returns undefined for absent, blank, or non-numeric values", () => {
+    expect(parsePositiveIntegerEnv(undefined)).toBeUndefined();
+    expect(parsePositiveIntegerEnv("")).toBeUndefined();
+    expect(parsePositiveIntegerEnv("abc")).toBeUndefined();
+  });
+
+  it("rejects zero and negatives instead of clamping them", () => {
+    expect(parsePositiveIntegerEnv("0")).toBeUndefined();
+    expect(parsePositiveIntegerEnv("-5")).toBeUndefined();
+  });
+});
 
 describe("parseIntegerEnvFlag", () => {
   it("returns the parsed value when it is inside the allowed range", () => {

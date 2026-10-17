@@ -36,6 +36,7 @@ import { MEDIA_LIMITS } from "@/utils/security/rateLimiter";
 import { safeDownload } from "@/utils/security/safeDownload";
 import { isOpenRouterVideoCapabilityError } from "@/providers/openrouter/openrouterVideoRequest";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import { parsePositiveIntegerEnv } from "@/utils/misc/envFlags";
 
 const MODAL_CUSTOM_ID = "generate_video_modal";
 const PROMPT_INPUT_ID = "prompt_input";
@@ -47,20 +48,11 @@ const FPS_INPUT_ID = "fps_input";
 /** Discord file size limit for non-boosted servers (25 MB) */
 const DISCORD_FILE_SIZE_LIMIT = 25 * 1024 * 1024;
 
-/**
- * Falls back instead of throwing, because it runs at module load and a malformed operator value must
- * not stop `/generate video` from registering.
- */
-function parsePositiveIntEnv(name: string, fallback: number): number {
-  const parsed = Number.parseInt(process.env[name] ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
 // Duration/FPS bounds for the modal inputs. Kept env-configurable so operators can tune
 // limits without code changes; providers still normalize values to their own supported ranges.
-const DEFAULT_VIDEO_DURATION_SECONDS = parsePositiveIntEnv("VIDEO_GEN_DEFAULT_DURATION_SECONDS", 5);
-const MAX_VIDEO_DURATION_SECONDS = parsePositiveIntEnv("VIDEO_GEN_MAX_DURATION_SECONDS", 20);
-const MAX_VIDEO_FPS = parsePositiveIntEnv("VIDEO_GEN_MAX_FPS", 60);
+const DEFAULT_VIDEO_DURATION_SECONDS = parsePositiveIntegerEnv(process.env.VIDEO_GEN_DEFAULT_DURATION_SECONDS) ?? 5;
+const MAX_VIDEO_DURATION_SECONDS = parsePositiveIntegerEnv(process.env.VIDEO_GEN_MAX_DURATION_SECONDS) ?? 20;
+const MAX_VIDEO_FPS = parsePositiveIntegerEnv(process.env.VIDEO_GEN_MAX_FPS) ?? 60;
 
 /**
  * Parse and validate an integer entered into a modal text field.

@@ -59,7 +59,7 @@ Los bloques nativos se asignan directamente a los componentes del mensaje Tomori
 
 ### Regla del prompt del sistema
 
-Cuando un ajuste preestablecido importado está activo, se elimina el mensaje del sistema de respaldo incorporado. Sin embargo, si configura un mensaje del sistema personalizado en `/config` > `Comportamiento` > `Comportamiento general`, ese mensaje siempre se incluye.
+Cuando un preajuste importado está activo, este controla por completo el prompt del sistema. El prompt integrado de TomoriBot y cualquier prompt personalizado de `/config` > `Comportamiento` > `Comportamiento general` no se envían, y los botones del prompt del sistema allí quedan bloqueados. Tu prompt personalizado se conserva y vuelve a aplicarse cuando desactivas el preajuste en `/config` > `Plugins` > `Preajustes de SillyTavern`.
 
 ### Notas de compatibilidad
 

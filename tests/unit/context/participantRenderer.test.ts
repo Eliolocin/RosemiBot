@@ -1,13 +1,21 @@
 import { describe, expect, it } from "bun:test";
 import { createParticipantAlias } from "@/utils/text/participants/aliases";
-import type { HydratedParticipantProfile, ParticipantProfileField } from "@/utils/text/participants/hydration";
+import type {
+  HydratedParticipantProfile,
+  ParticipantProfileField,
+  MessageProxyNamespaceNote,
+} from "@/utils/text/participants/hydration";
 import { createBotKey, createDiscordUserKey, type ParticipantKey } from "@/utils/text/participants/identity";
 import { renderParticipantPrompt } from "@/utils/text/participants/renderer";
 
-function render(profiles: readonly HydratedParticipantProfile[]) {
+function render(
+  profiles: readonly HydratedParticipantProfile[],
+  messageProxyNamespaces: MessageProxyNamespaceNote[] = [],
+) {
   return renderParticipantPrompt({
     profiles,
     personaTaskLines: [],
+    messageProxyNamespaces,
     isUserImpersonation: false,
     botName: "Tomori",
     isDMChannel: false,
@@ -132,5 +140,49 @@ Current time: Aug 2, 2026, 02:00 PM (UTC+8), afternoon.
       "400000000000000001",
       "400000000000000002",
     ]);
+  });
+
+  it("renders a neutral service-owned namespace entry after participant entries", () => {
+    const profile = humanProfile("400000000000000001", "Mirri", "Mirri", ["- Verified relay identity"]);
+    const rendered = render(
+      [profile],
+      [
+        {
+          serviceId: "fixture_service",
+          namespaceKey: "namespace_1",
+          sectionHeading: "Verified relay profiles:",
+          entry: "- Lighthouse profile (relay source: Jordan, @jordan_h): Public relay notes.",
+        },
+      ],
+    );
+
+    expect(rendered.text).toContain(
+      "Verified relay profiles:\n- Lighthouse profile (relay source: Jordan, @jordan_h): Public relay notes.",
+    );
+    expect(rendered.text.indexOf("Mirri")).toBeLessThan(rendered.text.indexOf("Verified relay profiles"));
+    expect(rendered.text).not.toMatch(/shared account|\bmember\b|plural system/iu);
+  });
+
+  it("preserves a service entry that has no account relationship or description", () => {
+    const rendered = render(
+      [humanProfile("400000000000000001", "Mirri", "Mirri", ["- A fact"])],
+      [
+        {
+          serviceId: "fixture_service",
+          namespaceKey: "namespace_1",
+          sectionHeading: "Verified relay profiles:",
+          entry: "- Lighthouse profile",
+        },
+      ],
+    );
+
+    expect(rendered.text).toContain("Verified relay profiles:\n- Lighthouse profile\n");
+    expect(rendered.text).not.toContain("shared account");
+  });
+
+  it("renders no namespace section when no service provides one", () => {
+    const rendered = render([humanProfile("400000000000000001", "Mirri", "Mirri", ["- A fact"])]);
+
+    expect(rendered.text).not.toContain("Verified relay profiles:");
   });
 });

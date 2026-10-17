@@ -1,7 +1,29 @@
 import { describe, expect, it } from "bun:test";
-import { beginPanelInteraction, performPanelAction } from "@/utils/discord/interactions/panelController";
+import {
+  beginPanelInteraction,
+  performPanelAction,
+  resolveRangeSelection,
+} from "@/utils/discord/interactions/panelController";
+import { DISCORD_SELECT_OPTIONS_MAX } from "@/utils/discord/ui/componentsV2Limits";
 
 describe("panel controller lifecycle", () => {
+  it("reserves select slots for action options without overflowing or losing records between pages", () => {
+    for (const reservedOptions of [0, 1, 2, 7]) {
+      const capacity = DISCORD_SELECT_OPTIONS_MAX - reservedOptions;
+      for (const count of [0, capacity - 1, capacity, capacity + 1, capacity * 3 + 1]) {
+        const records = Array.from({ length: count }, (_, index) => index);
+        const first = resolveRangeSelection(records, 0, { reservedOptions });
+        const seen: number[] = [];
+        for (let page = 0; page < first.rangeCount; page++) {
+          const selection = resolveRangeSelection(records, page, { reservedOptions });
+          expect(selection.visibleItems.length + reservedOptions).toBeLessThanOrEqual(DISCORD_SELECT_OPTIONS_MAX);
+          seen.push(...selection.visibleItems);
+        }
+        expect(seen).toEqual(records);
+      }
+    }
+    expect(() => resolveRangeSelection([1], 0, { reservedOptions: DISCORD_SELECT_OPTIONS_MAX })).toThrow(RangeError);
+  });
   it("acknowledges before authorization and state loading", async () => {
     const calls: string[] = [];
     const interaction = {

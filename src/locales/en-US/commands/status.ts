@@ -43,7 +43,6 @@ export default {
     persona_page5_title: `{persona_name}: Prompt and Tags`,
     persona_page5_description: `Persona prompt and generation tags`,
     field_model: `AI Model`,
-    field_speech_model: `Speech Model`,
     field_transcription_model: `Transcription Model`,
     field_user_byok: `User BYOK`,
     field_temperature: `Temperature`,

@@ -15,6 +15,8 @@ import { parseInteractionRoute, type ParsedInteractionRoute } from "@/utils/disc
 import { buildConfigModelsBody } from "@/utils/discord/ui/configModelsPanel";
 import {
   buildConfigVoicesBody,
+  CONFIG_VOICE_SAMPLE_ADD_VALUE,
+  CONFIG_VOICE_SAMPLE_PAGE_SIZE,
   computeVoiceSampleFingerprint,
   decodeVoiceSampleOptionValue,
   encodeVoiceSampleOptionValue,
@@ -24,7 +26,7 @@ import {
 import { buildPanelContainer } from "@/utils/discord/ui/panel";
 import { validateComponentsV2MessageLimits } from "@/utils/discord/ui/componentsV2Limits";
 import { getDiscordTextLength } from "@/utils/text/discordTextLimits";
-import { localizedCopy, localizedProse } from "../../helpers/localeCases";
+import { localizedCopy } from "../../helpers/localeCases";
 
 function makeSample(index: number, overrides: Partial<VoiceSampleRow> = {}): VoiceSampleRow {
   return {
@@ -51,13 +53,13 @@ function buttonCustomId(button: ButtonComponentData): string {
 describe("configVoicesPanel", () => {
   beforeAll(async () => initializeLocalizer());
   it("renders non-empty body with all components in exact order through buildConfigModelsBody", () => {
-    const samples = Array.from({ length: 25 }, (_, i) => makeSample(i));
+    const samples = Array.from({ length: CONFIG_VOICE_SAMPLE_PAGE_SIZE }, (_, i) => makeSample(i));
     const view: ConfigVoicesView = {
       turboEnabled: false,
       cfgWeight: 0.5,
       exaggeration: 0.5,
       samples,
-      totalSampleCount: 50, // triggers pagination row (component 7)
+      totalSampleCount: CONFIG_VOICE_SAMPLE_PAGE_SIZE * 2, // triggers pagination row (component 7)
       start: 0,
       selectedIndex: 0,
     };
@@ -95,8 +97,9 @@ describe("configVoicesPanel", () => {
     expect(selectRow.components[0].type).toBe(ComponentType.StringSelect);
     const selectRoute = parseConfigPanelRoute(requireRoute(selectRow.components[0].customId ?? ""));
     expect(selectRoute?.action).toBe("voice-sample-select");
-    expect(selectRow.components[0].options.length).toBe(25);
-    expect(selectRow.components[0].options[0]).toMatchObject({ label: "Voice Sample 1", default: true });
+    expect(selectRow.components[0].options.length).toBe(CONFIG_VOICE_SAMPLE_PAGE_SIZE + 1);
+    expect(selectRow.components[0].options[0]?.value).toBe(CONFIG_VOICE_SAMPLE_ADD_VALUE);
+    expect(selectRow.components[0].options[1]).toMatchObject({ label: "Voice Sample 1", default: true });
 
     expect(components[5].type).toBe(ComponentType.TextDisplay);
     const libraryText = (components[5] as TextDisplayComponentData).content;
@@ -110,12 +113,10 @@ describe("configVoicesPanel", () => {
 
     expect(components[7].type).toBe(ComponentType.ActionRow);
     const actionRow = components[7] as ActionRowData<ButtonComponentData>;
-    expect(actionRow.components.length).toBe(2);
-    const addRoute = parseConfigPanelRoute(requireRoute(buttonCustomId(actionRow.components[0])));
-    expect(addRoute?.action).toBe("voice-sample-add-open");
-    const removeRoute = parseConfigPanelRoute(requireRoute(buttonCustomId(actionRow.components[1])));
+    expect(actionRow.components.length).toBe(1);
+    const removeRoute = parseConfigPanelRoute(requireRoute(buttonCustomId(actionRow.components[0])));
     expect(removeRoute?.action).toBe("voice-sample-remove-view");
-    expect(actionRow.components[1].disabled).toBe(false); // selectedIndex is 0 (valid)
+    expect(actionRow.components[0].disabled).toBe(false); // selectedIndex is 0 (valid)
   });
 
   it("keeps turbo controls in the parameter summary and uses the edit button for changes", () => {
@@ -131,14 +132,6 @@ describe("configVoicesPanel", () => {
     const body = buildConfigVoicesBody({ locale: "en-US", readStatus: "fresh", view: viewTurboOn });
     const paramsText = body[1] as TextDisplayComponentData;
     expect(paramsText.content).toContain("Chatterbox fast model: Enabled");
-    const hasTurboRoute = body.some(
-      (component) =>
-        component.type === ComponentType.ActionRow &&
-        (component as ActionRowData<ButtonComponentData>).components.some((button) =>
-          buttonCustomId(button).includes("tts-turbo-set"),
-        ),
-    );
-    expect(hasTurboRoute).toBe(false);
   });
 
   it("renders only the selected sample and its File component", () => {
@@ -177,14 +170,13 @@ describe("configVoicesPanel", () => {
     expect(libraryText.content).toContain("> *Reference transcript text for sample 1.*");
     expect(libraryText.content).not.toContain("Voice Sample 1");
     expect(libraryText.content).not.toContain("Other Sample");
-    expect(libraryText.content).not.toMatch(localizedProse("en-US", "commands.config.panel.voices.page.hidden_count"));
 
     const selectRow = components.find(
       (component) =>
         component.type === ComponentType.ActionRow &&
         (component as ActionRowData<StringSelectMenuComponentData>).components[0]?.type === ComponentType.StringSelect,
     ) as ActionRowData<StringSelectMenuComponentData>;
-    expect(selectRow.components[0]?.options[0]).toMatchObject({ label: "Voice Sample 1", default: true });
+    expect(selectRow.components[0]?.options[1]).toMatchObject({ label: "Voice Sample 1", default: true });
 
     const file = components.find((component) => component.type === ComponentType.File) as {
       type: ComponentType.File;
@@ -227,7 +219,7 @@ describe("configVoicesPanel", () => {
         component.type === ComponentType.ActionRow &&
         (component as ActionRowData<StringSelectMenuComponentData>).components[0]?.type === ComponentType.StringSelect,
     ) as ActionRowData<StringSelectMenuComponentData>;
-    expect(selectRow.components[0]?.options[0]).toMatchObject({ label: "Voice Sample 1", default: true });
+    expect(selectRow.components[0]?.options[1]).toMatchObject({ label: "Voice Sample 1", default: true });
     expect(text).not.toContain("Voice Sample 1");
     expect(text).toContain(localizedCopy("en-US", "commands.config.panel.voices.page.audio_preview_unavailable"));
     expect(components.some((component) => component.type === ComponentType.File)).toBe(false);
@@ -265,11 +257,12 @@ describe("configVoicesPanel", () => {
     ) as ActionRowData<StringSelectMenuComponentData>;
 
     expect(selectRow).toBeDefined();
-    const select = selectRow.components[0];
-    expect(select.options.length).toBe(3);
+    const [addOption, ...sampleOptions] = selectRow.components[0].options;
+    expect(addOption?.value).toBe(CONFIG_VOICE_SAMPLE_ADD_VALUE);
+    expect(sampleOptions.length).toBe(3);
 
-    for (let i = 0; i < select.options.length; i++) {
-      const option = select.options[i];
+    for (let i = 0; i < sampleOptions.length; i++) {
+      const option = sampleOptions[i];
       const decoded = decodeVoiceSampleOptionValue(option.value);
       if (!decoded) throw new Error(`Failed to decode voice sample option value: ${option.value}`);
       expect(decoded.index).toBe(i);
@@ -294,9 +287,9 @@ describe("configVoicesPanel", () => {
   // TEST 4: The pagination union covers every record: for a library several pages deep, walking every
   // page yields each sample exactly once, with none missing and none duplicated.
   it("pagination union covers every record across multiple pages with no gaps or duplicates", () => {
-    const totalCount = 68; // 3 pages: 25 + 25 + 18
+    const pageSize = CONFIG_VOICE_SAMPLE_PAGE_SIZE;
+    const totalCount = pageSize * 2 + 18;
     const allSamples = Array.from({ length: totalCount }, (_, i) => makeSample(i));
-    const pageSize = 25;
     const pageCount = Math.ceil(totalCount / pageSize);
 
     const visitedIndices = new Set<number>();
@@ -330,11 +323,12 @@ describe("configVoicesPanel", () => {
       ) as ActionRowData<StringSelectMenuComponentData>;
 
       expect(selectRow).toBeDefined();
-      const select = selectRow.components[0];
-      expect(select.options.length).toBe(pageSlice.length);
+      const [addOption, ...sampleOptions] = selectRow.components[0].options;
+      expect(addOption?.value).toBe(CONFIG_VOICE_SAMPLE_ADD_VALUE);
+      expect(sampleOptions.length).toBe(pageSlice.length);
 
-      for (let offset = 0; offset < select.options.length; offset++) {
-        const option = select.options[offset];
+      for (let offset = 0; offset < sampleOptions.length; offset++) {
+        const option = sampleOptions[offset];
         const decoded = decodeVoiceSampleOptionValue(option.value);
         expect(decoded).not.toBeNull();
         const expectedIndex = start + offset;
@@ -393,8 +387,7 @@ describe("configVoicesPanel", () => {
       }),
     ];
 
-    // Pad to a full 25-sample page of heavy content
-    while (extremeSamples.length < 25) {
+    while (extremeSamples.length < CONFIG_VOICE_SAMPLE_PAGE_SIZE) {
       const idx = extremeSamples.length;
       extremeSamples.push(
         makeSample(idx, {
@@ -470,7 +463,7 @@ describe("configVoicesPanel", () => {
     const confirmTextComp = components[3] as TextDisplayComponentData;
     expect(confirmTextComp.type).toBe(ComponentType.TextDisplay);
     expect(confirmTextComp.content).toContain(
-      localizedCopy("en-US", "commands.config.panel.voices.remove.confirm_title"),
+      localizedCopy("en-US", "commands.config.panel.voices.page.confirm_title"),
     );
     expect(confirmTextComp.content).toContain("3 persona(s)"); // Ref count is present
 

@@ -1,3 +1,4 @@
+import { TIMEFRAME_LABEL_KEYS } from "@/utils/discord/statsDashboardCatalog";
 import {
   AttachmentBuilder,
   MessageFlags,
@@ -41,7 +42,7 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
         .setRequired(false)
         .addChoices(
           ...statsDashboard.TIMEFRAME_VALUES.map((value) => ({
-            name: localizer("en-US", `commands.choices.${value}`),
+            name: localizer("en-US", TIMEFRAME_LABEL_KEYS[value]),
             value,
           })),
         ),

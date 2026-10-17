@@ -17,7 +17,7 @@ function makeParams(overrides: {
   systemPrompt?: string | null;
   channelPromptOverride?: { prompt: string; mode: "append" | "replace" } | null;
   personaPrompt?: string | null;
-  suppressDefaultSystemPrompt?: boolean;
+  presetOwnsSystemPrompt?: boolean;
 }) {
   return {
     client: {} as Client,
@@ -32,7 +32,7 @@ function makeParams(overrides: {
     personaPrompt: overrides.personaPrompt ?? null,
     isUserImpersonation: false,
     impersonatedIdentityName: null,
-    suppressDefaultSystemPrompt: overrides.suppressDefaultSystemPrompt ?? false,
+    presetOwnsSystemPrompt: overrides.presetOwnsSystemPrompt ?? false,
     toolPromptMacroResolver: { expand: async (text: string) => text },
     convertMentions: async (text: string) => text,
   };
@@ -97,11 +97,19 @@ describe("buildPromptContextItems — per-channel prompt override", () => {
     expect(items.some((i) => i.metadataTag === ContextItemTag.SYSTEM_CHANNEL_PROMPT)).toBe(false);
   });
 
-  test("replace survives even when the default would be suppressed (preset path)", async () => {
+  test("an active preset drops the stored server prompt and the default", async () => {
+    for (const systemPrompt of [SERVER_PROMPT, null]) {
+      const items = await buildPromptContextItems(makeParams({ systemPrompt, presetOwnsSystemPrompt: true }));
+
+      expect(items.some((i) => i.metadataTag === ContextItemTag.SYSTEM_HUMANIZER_RULES)).toBe(false);
+    }
+  });
+
+  test("replace survives even when the preset owns the system prompt", async () => {
     const items = await buildPromptContextItems(
       makeParams({
-        systemPrompt: null,
-        suppressDefaultSystemPrompt: true,
+        systemPrompt: SERVER_PROMPT,
+        presetOwnsSystemPrompt: true,
         channelPromptOverride: { prompt: CHANNEL_PROMPT, mode: "replace" },
       }),
     );

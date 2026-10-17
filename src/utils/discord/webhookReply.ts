@@ -1,9 +1,12 @@
-import { EmbedBuilder, type Message, type Webhook } from "discord.js";
+import { EmbedBuilder, type Message, type Webhook, type WebhookMessageCreateOptions } from "discord.js";
 import { stripBridgePrefix } from "@/utils/bridges";
 import { localizer } from "@/utils/text/localizer";
-import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/personaDispatch";
+import {
+  dispatchWebhookWithIdentity,
+  sendSelectedWebhookMessage,
+  type WebhookIdentityDelivery,
+} from "@/utils/discord/webhook/personaDispatch";
 import type { ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
-import type { WebhookIdentitySendOptions } from "@/utils/discord/webhook/webhookCore";
 import { verifyMessageWebhook, isManagedWebhookMessage } from "@/utils/chat/webhookIdentity";
 
 /**
@@ -68,49 +71,38 @@ export async function sendWebhookReplyWithContext(
   options?: {
     threadId?: string;
   },
-): Promise<Message> {
-  const replyNoticeMessage = await sendWebhookReplyNotice(webhook, targetMessage, locale, identity, options);
-
-  try {
-    return await sendWebhookMessageWithIdentity(
-      webhook,
-      {
+): Promise<WebhookIdentityDelivery<Message>> {
+  const noticePayload = await buildWebhookReplyNoticePayload(targetMessage, locale, options);
+  return await dispatchWebhookWithIdentity(webhook, identity, async (selected) => {
+    const replyNoticeMessage = await sendSelectedWebhookMessage(selected, noticePayload);
+    try {
+      return await sendSelectedWebhookMessage(selected, {
         content,
         allowedMentions: {
           parse: ["users", "roles"],
           repliedUser: false,
         },
         ...(options?.threadId ? { threadId: options.threadId } : {}),
-      },
-      identity,
-      options?.threadId ?? webhook.channelId ?? webhook.id,
-    );
-  } catch (error) {
-    await webhook.deleteMessage(replyNoticeMessage.id, options?.threadId).catch(() => undefined);
-    throw error;
-  }
+      });
+    } catch (error) {
+      await selected.webhook.deleteMessage(replyNoticeMessage.id, options?.threadId).catch(() => undefined);
+      throw error;
+    }
+  });
 }
 
-export async function sendWebhookReplyNotice(
-  webhook: Webhook,
+export async function buildWebhookReplyNoticePayload(
   targetMessage: Message,
   locale: string,
-  identity: ResolvedWebhookIdentity,
   options?: {
     threadId?: string;
     botUserId?: string;
     botName?: string;
-  } & WebhookIdentitySendOptions,
-): Promise<Message> {
+  },
+): Promise<WebhookMessageCreateOptions> {
   await verifyMessageWebhook(targetMessage);
-  return await sendWebhookMessageWithIdentity(
-    webhook,
-    {
-      embeds: [buildReplyContextEmbed(targetMessage, locale, options?.botUserId, options?.botName)],
-      ...(options?.threadId ? { threadId: options.threadId } : {}),
-    },
-    identity,
-    options?.threadId ?? webhook.channelId ?? webhook.id,
-    { deferAvatarEditOnRateLimit: options?.deferAvatarEditOnRateLimit },
-  );
+  return {
+    embeds: [buildReplyContextEmbed(targetMessage, locale, options?.botUserId, options?.botName)],
+    ...(options?.threadId ? { threadId: options.threadId } : {}),
+  };
 }

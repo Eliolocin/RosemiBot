@@ -13,7 +13,14 @@ describe("/personal registration", () => {
     if (!personal) return;
 
     // `nuke` is the erasure route the Privacy Policy names, so it must stay registered.
-    expect([...personal.keys()].sort()).toEqual(["config", "language", "memories", "nuke", "providers"]);
+    expect([...personal.keys()].sort()).toEqual([
+      "config",
+      "language",
+      "memories",
+      "message-proxy",
+      "nuke",
+      "providers",
+    ]);
   }, 30000);
 
   // `/memory` is dissolved outright: its transfer leaves moved to /export and /import, leaving no

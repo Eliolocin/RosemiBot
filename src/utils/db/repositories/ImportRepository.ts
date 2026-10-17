@@ -217,6 +217,10 @@ const WORKSPACE_SECTION_TABLES: Record<WorkspaceConfigSection, readonly SectionT
     {
       tableName: "server_speech_configs",
       fields: [
+        "speech_design_endpoint_id",
+        "speech_clone_endpoint_id",
+        "speech_design_model_id",
+        "speech_clone_model_id",
         "voice_transcript_chat_mode",
         "chatterbox_turbo_enabled",
         "chatterbox_cfg_weight",
@@ -244,7 +248,7 @@ const PERSONAL_SECTION_TABLES: Record<PersonalConfigSection, readonly SectionTab
     },
   ],
   privacy: [
-    { tableName: "users", fields: ["privacy_level"] },
+    { tableName: "users", fields: ["privacy_level", "message_proxy_service"] },
     { tableName: "user_personalization_configs", fields: ["shortterm_cache_crossserver_opt_in"] },
   ],
   appearance: [{ tableName: "user_personalization_configs", fields: ["physical_appearance_tags"] }],
@@ -719,16 +723,29 @@ class ImportRepository {
           INSERT INTO users (
             user_disc_id,
             language_pref,
-            privacy_level
+            privacy_level,
+            message_proxy_service,
+            message_proxy_instance_id
           ) VALUES (
             ${userDiscId},
             ${importData.language_pref},
-            ${importData.privacy_level ?? 0}
+            ${importData.privacy_level ?? 0},
+            ${importData.message_proxy_service ?? null},
+            ${importData.message_proxy_service === "pluralkit" || importData.message_proxy_service === "pluralbuddy" ? `${importData.message_proxy_service}:official` : null}
           )
           ON CONFLICT (user_disc_id) DO UPDATE
           SET
             language_pref = EXCLUDED.language_pref,
-            privacy_level = COALESCE(${importData.privacy_level ?? null}, users.privacy_level)
+            privacy_level = COALESCE(${importData.privacy_level ?? null}, users.privacy_level),
+            message_proxy_service = CASE
+              WHEN ${importData.message_proxy_service !== undefined} THEN ${importData.message_proxy_service ?? null}
+              ELSE users.message_proxy_service
+            END,
+            message_proxy_instance_id = CASE
+              WHEN ${importData.message_proxy_service !== undefined} THEN
+                ${importData.message_proxy_service === "pluralkit" || importData.message_proxy_service === "pluralbuddy" ? `${importData.message_proxy_service}:official` : null}
+              ELSE users.message_proxy_instance_id
+            END
           RETURNING user_id
         `;
 
@@ -826,6 +843,7 @@ class ImportRepository {
       if (importData.personal_deliberate_tool_mode !== undefined) fieldsCount++;
       if (importData.shortterm_cache_crossserver_opt_in !== undefined) fieldsCount++;
       if (importData.timezone_offset !== undefined) fieldsCount++;
+      if (importData.message_proxy_service !== undefined) fieldsCount++;
       if (importData.prefix_override !== undefined) fieldsCount++;
       if (importData.suffix_override !== undefined) fieldsCount++;
       if (importData.gender_identity !== undefined) fieldsCount++;
@@ -975,11 +993,27 @@ class ImportRepository {
             })
           : Promise.resolve(true),
 
+        config.speech_design_endpoint_id !== undefined ||
+        config.speech_clone_endpoint_id !== undefined ||
+        config.speech_design_model_id !== undefined ||
+        config.speech_clone_model_id !== undefined ||
         config.voice_transcript_chat_mode !== undefined ||
         config.chatterbox_turbo_enabled !== undefined ||
         config.chatterbox_cfg_weight !== undefined ||
         config.chatterbox_exaggeration !== undefined
           ? configRepository.updateSpeechConfig(serverId, {
+              ...(config.speech_design_endpoint_id !== undefined && {
+                speech_design_endpoint_id: config.speech_design_endpoint_id,
+              }),
+              ...(config.speech_clone_endpoint_id !== undefined && {
+                speech_clone_endpoint_id: config.speech_clone_endpoint_id,
+              }),
+              ...(config.speech_design_model_id !== undefined && {
+                speech_design_model_id: config.speech_design_model_id,
+              }),
+              ...(config.speech_clone_model_id !== undefined && {
+                speech_clone_model_id: config.speech_clone_model_id,
+              }),
               ...(config.voice_transcript_chat_mode !== undefined && {
                 voice_transcript_chat_mode: config.voice_transcript_chat_mode,
               }),

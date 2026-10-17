@@ -1,8 +1,6 @@
 export default {
   choices: {
     always: `Luôn luôn`,
-    enable: `Bật`,
-    disable: `Tắt`,
     enabled: `Đã bật`,
     disabled: `Đã tắt`,
     none: `Không có`,

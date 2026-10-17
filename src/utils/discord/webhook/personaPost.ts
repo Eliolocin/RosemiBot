@@ -4,7 +4,7 @@ import {
   resolveChannelPersonaPostIdentity,
 } from "@/utils/discord/stream/channelDeliveryContinuity";
 import type { ResolvedWebhookIdentity } from "@/utils/discord/webhook/identity";
-import { sendWebhookMessageWithIdentity } from "@/utils/discord/webhook/webhookCore";
+import { sendWebhookMessageWithIdentityDelivery } from "@/utils/discord/webhook/personaDispatch";
 
 /**
  * Persona webhook posts made outside the response stream: tool notices, generated media, voice
@@ -49,21 +49,28 @@ export function recordPersonaPostDelivery(
   identity: ResolvedWebhookIdentity,
   messageId: string,
   speaker: PersonaPostSpeaker,
+  webhookId: string,
 ): void {
-  recordChannelDeliveredWebhookIdentity(channel.id, identity, messageId, {
-    personaId: speaker.personaId ?? null,
-    kind: "appearance",
-  });
+  recordChannelDeliveredWebhookIdentity(
+    channel.id,
+    identity,
+    messageId,
+    {
+      personaId: speaker.personaId ?? null,
+      kind: "appearance",
+    },
+    webhookId,
+  );
 }
 
 export async function sendPersonaPostViaWebhook(
   webhook: Webhook,
-  payload: Parameters<typeof sendWebhookMessageWithIdentity>[1],
+  payload: Parameters<typeof sendWebhookMessageWithIdentityDelivery>[1],
   speaker: PersonaPostSpeaker,
   channel: PersonaPostChannel,
 ): Promise<Message> {
   const identity = resolvePersonaPostIdentity(channel, speaker);
-  const message = await sendWebhookMessageWithIdentity(webhook, payload, identity);
-  recordPersonaPostDelivery(channel, identity, message.id, speaker);
-  return message;
+  const delivery = await sendWebhookMessageWithIdentityDelivery(webhook, payload, identity);
+  recordPersonaPostDelivery(channel, delivery.identity, delivery.result.id, speaker, delivery.webhookId);
+  return delivery.result;
 }

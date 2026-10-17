@@ -13,6 +13,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom endpoint startup upgrade", () => {
 
   const migrationsDir = path.join(process.cwd(), "src", "db", "migrations");
   const downPaths = [
+    path.join(migrationsDir, "102_hosted_speech_models.down.sql"),
+    path.join(migrationsDir, "101_speech_source_selections.down.sql"),
     path.join(migrationsDir, "073_unify_custom_endpoint_group_urls.down.sql"),
     path.join(migrationsDir, "070_custom_endpoint_codename_and_keys.down.sql"),
     path.join(migrationsDir, "069_drop_custom_endpoint_display_name.down.sql"),
@@ -46,6 +48,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom endpoint startup upgrade", () => {
     await testSql`
       DELETE FROM schema_migrations
       WHERE name IN (
+        '102_hosted_speech_models',
+        '101_speech_source_selections',
         '068_custom_endpoint_connections',
         '069_drop_custom_endpoint_display_name',
         '070_custom_endpoint_codename_and_keys',

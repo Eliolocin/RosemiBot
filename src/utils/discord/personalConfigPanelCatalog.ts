@@ -42,15 +42,25 @@ export const DEFAULT_PAGE_FOR_CATEGORY: Record<PersonalConfigCategory, PersonalC
   advanced: "response-modes",
 };
 
-export type PersonalConfigManagedCapability = "text" | "vision" | "embedding" | "image" | "image_nai" | "video";
+export type PersonalConfigManagedCapability =
+  | "text"
+  | "vision"
+  | "embedding"
+  | "image"
+  | "image_nai"
+  | "video"
+  | "speech_design"
+  | "speech_clone";
 
-export const QUICK_TOGGLE_CAPABILITIES: readonly PersonalProviderCapability[] = [
+export const QUICK_TOGGLE_CAPABILITIES: readonly PersonalConfigManagedCapability[] = [
   "text",
   "vision",
   "embedding",
   "image",
   "image_nai",
   "video",
+  "speech_design",
+  "speech_clone",
 ] as const;
 
 /**
@@ -64,6 +74,8 @@ export const ROUTING_CAPABILITY_LOCALE_KEYS: Record<PersonalProviderCapability, 
   image: "commands.personal.config.routing_image_standard",
   image_nai: "commands.personal.config.routing_image_nai",
   video: "commands.personal.config.routing_video",
+  speech_design: "commands.config.panel.capability_tts_design",
+  speech_clone: "commands.config.panel.capability_tts_clone",
 };
 
 /**
@@ -80,7 +92,6 @@ export const SPOTLIGHT_REMOVE_PAGE_SIZE = 50;
  * absolute row offset and a reader that divides by a different size lands on another page.
  */
 export const PERSONAL_MODEL_PAGE_SIZE = 25;
-export const PERSONAL_PROVIDER_PAGE_SIZE = 25;
 export const PERSONAL_PROVIDER_DIRECT_LIMIT = 24;
 export const PERSONAL_PROVIDER_RANGE_VALUE = "__provider_range__";
 
@@ -217,6 +228,7 @@ export type PersonalConfigPanelRoute =
   | { action: "category"; locale: string; category: PersonalConfigCategory; page: PersonalConfigPage }
   | { action: "page"; locale: string; category: PersonalConfigCategory; page: PersonalConfigPage }
   | { action: "persona-select"; locale: string; lineageId: number }
+  | { action: "persona-page"; locale: string; lineageId: number; chooserPage: number }
   | { action: "language-open"; locale: string }
   | { action: "language-submit"; locale: string; nonce: string }
   // Submitted by the modal `/personal language` shows directly. The panel's own submit repaints a
@@ -245,46 +257,12 @@ export type PersonalConfigPanelRoute =
   | { action: "quick-toggle-submit"; locale: string; nonce: string }
   | { action: "model-provider-select"; locale: string; capability: PersonalConfigManagedCapability }
   | {
-      action: "model-provider-page";
-      locale: string;
-      capability: PersonalConfigManagedCapability;
-      provider: string;
-      start: number;
-    }
-  | {
-      action: "model-provider-range-open";
-      locale: string;
-      capability: PersonalConfigManagedCapability;
-      start: number;
-    }
-  | {
-      action: "model-provider-range-page";
-      locale: string;
-      capability: PersonalConfigManagedCapability;
-      chooserPage: number;
-    }
-  | {
-      action: "model-range-open";
-      locale: string;
-      capability: PersonalConfigManagedCapability;
-      provider: string;
-      start: number;
-    }
-  | {
-      action: "model-range-page";
-      locale: string;
-      capability: PersonalConfigManagedCapability;
-      provider: string;
-      chooserPage: number;
-    }
-  | {
       action: "model-modal-submit";
       locale: string;
       capability: PersonalConfigManagedCapability;
       provider: string;
       nonce: string;
     }
-  | { action: "model-act-cancel"; locale: string }
   // Models - Parameters
   | { action: "parameters-provider-select"; locale: string }
   | { action: "parameters-1-open"; locale: string; provider: string }
@@ -294,8 +272,6 @@ export type PersonalConfigPanelRoute =
   // Models - Fallbacks
   | { action: "fallbacks-provider-select"; locale: string }
   | { action: "fallbacks-page"; locale: string; provider: string; start: number }
-  | { action: "fallbacks-range-open"; locale: string; provider: string; start: number }
-  | { action: "fallbacks-range-page"; locale: string; provider: string; chooserPage: number }
   | { action: "fallbacks-submit"; locale: string; provider: string; nonce: string }
   | { action: "randomizer-toggle"; locale: string; provider: string }
   | { action: "randomizer-set"; locale: string; provider: string; enabled: boolean }
@@ -353,16 +329,6 @@ export type PersonalConfigPanelRoute =
       nonce: string;
     }
   | {
-      action: "spot-set-auto-range";
-      locale: string;
-      channelId: string;
-      hours: number;
-      blockIdx: number;
-      mask: string;
-      fp: string;
-      start: number;
-    }
-  | {
       action: "spot-set-auto-page";
       locale: string;
       channelId: string;
@@ -409,13 +375,12 @@ export type PersonalConfigPanelRoute =
       fp: string;
     }
   | { action: "spotlight-remove-open"; locale: string }
-  | { action: "spot-rem-range"; locale: string; start: number; fp: string }
   | { action: "spotlight-remove-page"; locale: string; chooserPage: number; fp: string }
   | { action: "spotlight-remove-select"; locale: string; fp: string }
   | { action: "spotlight-remove-submit"; locale: string; start: number; fp: string; nonce: string }
   | { action: "spotlight-remove-cancel"; locale: string }
   | {
-      action: "retry" | "refresh";
+      action: "retry";
       locale: string;
       category: PersonalConfigCategory;
       page: PersonalConfigPage;
@@ -454,7 +419,9 @@ function parseManagedCapability(value: string | undefined): PersonalConfigManage
     value === "embedding" ||
     value === "image" ||
     value === "image_nai" ||
-    value === "video"
+    value === "video" ||
+    value === "speech_design" ||
+    value === "speech_clone"
   ) {
     return value;
   }
@@ -610,6 +577,10 @@ export const PERSONAL_CONFIG_ROUTE_CODECS: PersonalConfigRouteCodecs = {
     wireToken: "persona-select",
     fields: [lineageIdField],
   },
+  "persona-page": {
+    wireToken: "persona-page",
+    fields: [lineageIdField, chooserPageField],
+  },
   "language-open": {
     wireToken: "language-open",
     fields: [],
@@ -706,33 +677,9 @@ export const PERSONAL_CONFIG_ROUTE_CODECS: PersonalConfigRouteCodecs = {
     wireToken: "model-provider-select",
     fields: [capabilityField],
   },
-  "model-provider-page": {
-    wireToken: "model-provider-page",
-    fields: [capabilityField, providerField, startField],
-  },
-  "model-provider-range-open": {
-    wireToken: "model-provider-range-open",
-    fields: [capabilityField, startField],
-  },
-  "model-provider-range-page": {
-    wireToken: "model-provider-range-page",
-    fields: [capabilityField, chooserPageField],
-  },
-  "model-range-open": {
-    wireToken: "model-range-open",
-    fields: [capabilityField, providerField, startField],
-  },
-  "model-range-page": {
-    wireToken: "model-range-page",
-    fields: [capabilityField, providerField, chooserPageField],
-  },
   "model-modal-submit": {
     wireToken: "model-modal-submit",
     fields: [capabilityField, providerField, nonceField],
-  },
-  "model-act-cancel": {
-    wireToken: "model-act-cancel",
-    fields: [],
   },
   "parameters-provider-select": {
     wireToken: "parameters-provider-select",
@@ -761,14 +708,6 @@ export const PERSONAL_CONFIG_ROUTE_CODECS: PersonalConfigRouteCodecs = {
   "fallbacks-page": {
     wireToken: "fallbacks-page",
     fields: [providerField, startField],
-  },
-  "fallbacks-range-open": {
-    wireToken: "fallbacks-range-open",
-    fields: [providerField, startField],
-  },
-  "fallbacks-range-page": {
-    wireToken: "fallbacks-range-page",
-    fields: [providerField, chooserPageField],
   },
   "fallbacks-submit": {
     wireToken: "fallbacks-submit",
@@ -842,10 +781,6 @@ export const PERSONAL_CONFIG_ROUTE_CODECS: PersonalConfigRouteCodecs = {
     wireToken: "s-auto",
     fields: [channelIdField, hoursField, blockIdxField, maskField, fpField, nonceField],
   },
-  "spot-set-auto-range": {
-    wireToken: "s-auto-r",
-    fields: [channelIdField, hoursField, blockIdxField, maskField, fpField, startField],
-  },
   "spot-set-auto-page": {
     wireToken: "s-auto-p",
     fields: [channelIdField, hoursField, blockIdxField, maskField, fpField, chooserPageField],
@@ -874,10 +809,6 @@ export const PERSONAL_CONFIG_ROUTE_CODECS: PersonalConfigRouteCodecs = {
     wireToken: "spotlight-remove-open",
     fields: [],
   },
-  "spot-rem-range": {
-    wireToken: "s-rem-r",
-    fields: [startField, fpField],
-  },
   "spotlight-remove-page": {
     wireToken: "s-rem-p",
     fields: [chooserPageField, fpField],
@@ -896,10 +827,6 @@ export const PERSONAL_CONFIG_ROUTE_CODECS: PersonalConfigRouteCodecs = {
   },
   retry: {
     wireToken: "retry",
-    fields: [categoryField, pageField, optionalLineageIdField],
-  },
-  refresh: {
-    wireToken: "refresh",
     fields: [categoryField, pageField, optionalLineageIdField],
   },
 };
