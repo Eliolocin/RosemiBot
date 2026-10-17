@@ -18,8 +18,6 @@ import { toGroupBreakName } from "@/utils/text/groupBreakName";
  * - **Last delivered webhook identity**: artifacts that follow text (expressions, the
  *    "Fallback Used" notice) should be posted as the identity that delivered that text, so
  *    they group with it instead of splitting off under a different name.
- * - **Last speaker**: the rate-limited avatar fallback may reuse the avatar last displayed only
- *    when the same persona, in an ordinary appearance, delivered it.
  *
  * Every webhook send that can sit next to a sprite must take part, including tool notices and media
  * sent outside the stream (`utils/discord/webhook/personaPost.ts`): an unrecorded send looks like a

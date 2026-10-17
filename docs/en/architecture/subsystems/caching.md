@@ -76,6 +76,13 @@ Application caches are partitioned by domain ownership, lifetime, and storage ba
 - **Webhook cache (`src/utils/discord/webhook/webhookCore.ts`)**: caches the primary Discord webhook by parent channel, managed slots by webhook ID, and legacy persona webhooks by channel and persona. Encrypted tokens restore managed slots after a restart. Primary lookup restores only the primary; local-avatar dispatch restores the other persisted slots for selection. Historic operations restore slots by exact webhook ID and leave the primary entry intact. A failed slot-list query allows the next lookup to retry immediately. Verified SHA-256 assignments hydrate the data-URI cache on an exact match, avoiding a redundant PATCH after restart. An uncertain PATCH clears the cached assignment. Successful sends update in-memory use order; persisted row order supplies the restart order. Parent-channel locks cover local-avatar selection and sending. Lifecycle lookup uses separate coordination, and restoration shares a per-webhook lock with avatar PATCHes. HTTPS overrides bypass avatar locks. Invalidation can remove one failed webhook or every webhook in a channel.
 - **Persona workflow avatar cache (`src/utils/discord/ui/personaWorkflow.ts`)**: transient `Map<number, AvatarCacheEntry>` scoped to an active persona picker interaction. Reuses resolved avatar buffers across pagination, validation failures, and retries. Discarded when the interaction workflow terminates.
 
+Managed webhook caches hold at most four slots per parent channel. Cache counts include pool slots,
+and clearing the cache leaves their database rows and Discord webhooks intact for restoration.
+Delivery continuity stores the actual webhook ID and delivered identity separately from avatar
+assignments. Reassigning a slot changes future sends; historic edits and deletes resolve the
+message's webhook ID even after the cache is cleared. Bot fallbacks clear the channel's webhook
+continuity, while failed sends leave the last successful delivery intact.
+
 ## Write invalidation contracts
 
 Caches derive their state from PostgreSQL. To prevent serving stale data, write operations must invalidate affected cache keys directly after a database transaction commits successfully.

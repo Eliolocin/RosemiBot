@@ -3,9 +3,12 @@ import { createHash } from "node:crypto";
 import {
   Collection,
   RateLimitError,
+  Webhook,
   type BaseGuildTextChannel,
   type Message,
-  type Webhook,
+  type Sticker,
+  type Client,
+  type ChatInputCommandInteraction,
   type WebhookMessageCreateOptions,
 } from "discord.js";
 import {
@@ -19,6 +22,7 @@ import {
   GENERIC_WEBHOOK_AVATAR_URL,
   getCachedManagedWebhookForChannel,
   getOrCreateWebhook,
+  getSingleAttemptWebhookRest,
   resolveManagedWebhookForChannel,
   runWithWebhookIdentity,
   sendWebhookMessageWithIdentity,
@@ -42,8 +46,22 @@ import { sendStandardEmbed } from "@/utils/discord/embedHelper";
 import { attachShowMarkdownCollector } from "@/utils/discord/markdownTableButton";
 import { sendFallbackModelUsageNotice } from "@/utils/discord/fallbackModelNotice";
 import { initializeLocalizer } from "@/utils/text/localizer";
-import { createLlmRow, createPersona } from "../../helpers/fixtures";
+import { createLlmRow, createPersona, createUserRow } from "../../helpers/fixtures";
 import { personaSpriteMessageRepository } from "@/utils/db/repositories/PersonaSpriteMessageRepository";
+import { deliverVoiceMessage, postVoiceTranscriptCaption } from "@/utils/discord/webhook/voiceMessageDelivery";
+import { createExpressionDeliveryState, deliverExpression } from "@/utils/chat/expressionDelivery";
+import type { ChatTurnContext } from "@/utils/chat/types";
+import { clearWebhookIdentityCache, verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
+import { sendTaskEmbedWithExpand } from "@/utils/discord/expandableEmbedNotice";
+import { ManageMessageTool } from "@/tools/functionCalls/manageMessageTool";
+import { execute as deleteTurn } from "@/commands/tool/delete/turn";
+import * as personaCache from "@/utils/cache/tomoriStateCache";
+import { makeFakeInteraction } from "../../helpers/fakeInteraction";
+import { handleMatrixEvent } from "@/utils/bridges/matrix/events";
+import * as matrixRooms from "@/utils/bridges/matrix/rooms";
+import * as matrixMedia from "@/utils/bridges/matrix/media";
+import * as matrixState from "@/utils/bridges/matrix/state";
+import type { Request as BridgeRequest, WeakEvent } from "matrix-appservice-bridge";
 
 const avatarA =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jG5kAAAAASUVORK5CYII=";
@@ -91,16 +109,19 @@ function makePool() {
   const channel = {
     id: channelId,
     guildId,
-    lastMessageId: null,
+    lastMessageId: null as string | null,
     isThread: () => false,
     send: mock(async () => ({ id: "_bot_message", webhookId: null, channelId }) as Message),
     messages: {
+      fetch: mock(async () => new Collection([...messages].reverse())),
       delete: mock(async () => {
         throw Object.assign(new Error(), { code: 50013 });
       }),
     },
     client: {
       user: { id: "_bot" },
+      options: {},
+      rest: { post: mock(async () => ({ id: "_bot_voice" })) },
       fetchWebhook: mock(async (id: string, token: string) => {
         expect(token).toBe("synthetic_token");
         const webhook = webhooks.get(id);
@@ -119,6 +140,7 @@ function makePool() {
       guildId,
       channelId,
       channel,
+      client: channel.client,
       token: "synthetic_token" as string | null,
       avatar: avatar ? fingerprint(avatar) : null,
       edit: mock(async ({ avatar: nextAvatar }: { avatar: string | null }) => {
@@ -137,6 +159,11 @@ function makePool() {
         const message = {
           id: `_message_${delivered.length}`,
           webhookId: id,
+          author: { id, username: payload.username ?? "TomoriBot", bot: true },
+          content: payload.content ?? "",
+          attachments: new Collection(),
+          stickers: new Collection(),
+          embeds: [],
           guildId,
           channelId: payload.threadId ?? channelId,
           channel: payload.threadId ? thread(payload.threadId) : channel,
@@ -174,6 +201,7 @@ function makePool() {
         webhooks.delete(id);
       }),
     };
+    Object.setPrototypeOf(webhook, Webhook.prototype);
     webhooks.set(id, webhook as unknown as Webhook);
     return webhook;
   }
@@ -266,6 +294,7 @@ describe("managed local avatar dispatch", () => {
   beforeEach(() => {
     clearWebhookCache();
     clearAllChannelDeliveryContinuity();
+    clearWebhookIdentityCache();
   });
   afterEach(() => {
     clearWebhookCache();
@@ -512,6 +541,43 @@ describe("managed local avatar dispatch", () => {
     expect(getCachedManagedWebhookForChannel(pool.channel.id, extra.id)).toBeNull();
     expect(getCachedManagedWebhookForChannel(pool.channel.id, primary.id)).toBe(primary as unknown as Webhook);
     expect(primary.send).not.toHaveBeenCalled();
+  });
+
+  it.each([10015, 50027])("prunes a slot rejected by PATCH with %d before later selection", async (code) => {
+    const pool = makePool();
+    const primary = await pool.primary(avatarA);
+    const extra = await pool.store("_deleted", "avatar_pool_1");
+    await sendWebhookMessageWithIdentity(
+      primary as unknown as Webhook,
+      {},
+      { username: "Mirri", avatarDataUri: avatarA },
+    );
+    pool.webhooks.delete(extra.id);
+    extra.edit.mockRejectedValue(Object.assign(new Error(), { code }));
+    pool.channel.client.fetchWebhook.mockClear();
+
+    await sendWebhookMessageWithIdentity(
+      primary as unknown as Webhook,
+      {},
+      { username: "Juno", avatarDataUri: avatarB },
+    );
+    expect(pool.rows.some((row) => row.webhook_disc_id === extra.id)).toBe(false);
+    expect(pool.rows.some((row) => row.webhook_disc_id === primary.id)).toBe(true);
+    expect(getCachedManagedWebhookForChannel(pool.channel.id, extra.id)).toBeNull();
+    expect(pool.delivered.at(-1)).toMatchObject({
+      webhookId: primary.id,
+      username: "Juno",
+      avatar: GENERIC_WEBHOOK_AVATAR_URL,
+    });
+
+    await sendWebhookMessageWithIdentity(
+      primary as unknown as Webhook,
+      {},
+      { username: "Mirri", avatarDataUri: avatarA },
+    );
+    expect(pool.channel.client.fetchWebhook).not.toHaveBeenCalled();
+    expect(pool.delivered.at(-1)?.avatar).toBe(avatarA);
+    expect(pool.channel.createWebhook).not.toHaveBeenCalled();
   });
 
   it("serializes two threads through the complete send even with different caller lock keys", async () => {
@@ -912,8 +978,8 @@ describe("managed local avatar dispatch", () => {
     }
   });
 
-  it("disables embed, table, and fallback buttons through the authoring pool webhook after cache restoration", async () => {
-    for (const artifact of ["embed", "table", "fallback"] as const) {
+  it("disables embed, expand, table, and fallback buttons through the authoring pool webhook after cache restoration", async () => {
+    for (const artifact of ["embed", "expand", "table", "fallback"] as const) {
       clearWebhookCache();
       clearAllChannelDeliveryContinuity();
       const pool = makePool();
@@ -932,6 +998,20 @@ describe("managed local avatar dispatch", () => {
             },
           },
           { webhook: primary as unknown as Webhook, personaUsername: "Juno", personaAvatarUrl: avatarB, personaId: 2 },
+        );
+      } else if (artifact === "expand") {
+        await sendTaskEmbedWithExpand(
+          {
+            channel,
+            webhook: primary,
+            personaUsername: "Juno",
+            personaAvatarUrl: avatarB,
+            personaId: 2,
+            tomoriState: createPersona({ is_alter: true, config: { tool_notice_verbosity: "verbose" } }),
+            locale: "en-US",
+          } as unknown as ToolContext,
+          { titleKey: "genai.fallback_used_title" },
+          "purpose ".repeat(40),
         );
       } else if (artifact === "table") {
         const message = await sendWebhookMessageWithIdentity(
@@ -971,6 +1051,316 @@ describe("managed local avatar dispatch", () => {
       expect(pool.messages.get("_message_1")?.edit).not.toHaveBeenCalled();
       mock.restore();
     }
+  });
+
+  it.each([
+    "reuse",
+    "create",
+    "generic",
+  ] as const)("routes native voice through %s and records its delivered identity", async (route) => {
+    const pool = makePool();
+    const primary = await pool.primary(avatarA);
+    if (route === "reuse") await pool.store("_voice", "avatar_pool_1", avatarB);
+    else {
+      primary.edit.mockImplementation(async () => {
+        throw deferredPatch();
+      });
+      if (route === "generic")
+        pool.channel.createWebhook.mockRejectedValue(Object.assign(new Error(), { code: 30007 }));
+    }
+    const channel = pool.thread("_voice_thread");
+    const target = {
+      channel: channel as unknown as BaseGuildTextChannel,
+      webhook: primary as unknown as Webhook,
+      threadId: channel.id,
+      personaUsername: "Juno",
+      personaAvatarUrl: avatarB,
+      personaId: 2,
+    };
+    const selectedId = route === "reuse" ? "_voice" : route === "create" ? "_created_1" : primary.id;
+    const fetchVoice = spyOn(globalThis, "fetch").mockImplementation(
+      Object.assign(
+        async (url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+          const address = new URL(String(url));
+          expect(address.pathname.split("/").at(-2)).toBe(selectedId);
+          expect(address.searchParams.get("thread_id")).toBe(channel.id);
+          expect(address.searchParams.get("wait")).toBe("true");
+          const form = init?.body as FormData;
+          const body = JSON.parse(String(form.get("payload_json")));
+          expect(body).toMatchObject({
+            username: "Juno",
+            flags: 8192,
+            allowed_mentions: { parse: [] },
+            attachments: [{ id: 0, filename: "voice.ogg", waveform: "AA==", duration_secs: 1 }],
+          });
+          expect(body.avatar_url).toBe(route === "generic" ? GENERIC_WEBHOOK_AVATAR_URL : undefined);
+          expect(form.get("files[0]")).toBeInstanceOf(Blob);
+          return Response.json({ id: "_native_voice", webhook_id: selectedId });
+        },
+        { preconnect: () => undefined },
+      ),
+    );
+    expect(
+      await deliverVoiceMessage({
+        target,
+        audioBuffer: Buffer.from("synthetic audio"),
+        mimeType: "audio/ogg",
+        filename: "voice.ogg",
+        voiceMeta: { waveform: "AA==", durationSecs: 1 },
+      }),
+    ).toBe("_native_voice");
+    expect(fetchVoice).toHaveBeenCalledTimes(1);
+    expect(pool.channel.client.rest.post).not.toHaveBeenCalled();
+    expect(getChannelLastDelivery(channel.id)).toMatchObject({
+      via: "webhook",
+      webhookId: selectedId,
+      identity: route === "generic" ? { avatarUrl: GENERIC_WEBHOOK_AVATAR_URL } : { avatarDataUri: avatarB },
+    });
+    channel.lastMessageId = "_native_voice";
+    await postVoiceTranscriptCaption(target, "caption");
+    expect(pool.delivered.at(-1)).toMatchObject({
+      username: "Juno",
+      threadId: channel.id,
+      avatar: route === "generic" ? GENERIC_WEBHOOK_AVATAR_URL : avatarB,
+    });
+  });
+
+  it("clears webhook continuity when native voice falls back to the bot", async () => {
+    const pool = makePool();
+    const primary = await pool.primary(avatarA);
+    const channel = pool.thread("_voice_thread");
+    recordChannelDeliveredWebhookIdentity(
+      channel.id,
+      { username: "Mirri", avatarDataUri: avatarA },
+      "_before",
+      null,
+      primary.id,
+    );
+    spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 400 }));
+    expect(
+      await deliverVoiceMessage({
+        target: {
+          channel: channel as unknown as BaseGuildTextChannel,
+          webhook: primary as unknown as Webhook,
+          personaUsername: "Mirri",
+          personaAvatarUrl: avatarA,
+        },
+        audioBuffer: Buffer.from("synthetic audio"),
+        mimeType: "audio/ogg",
+        filename: "voice.ogg",
+        voiceMeta: { waveform: "AA==", durationSecs: 1 },
+      }),
+    ).toBe("_bot_voice");
+    expect(getChannelLastDelivery(channel.id)?.via).toBe("bot");
+  });
+
+  it.each([
+    "reuse",
+    "create",
+    "generic",
+    "unconfirmed",
+  ] as const)("keeps expression %s routing on the single-attempt transport", async (route) => {
+    const pool = makePool();
+    const primary = await pool.primary(avatarA);
+    if (route === "reuse") await pool.store("_expression", "avatar_pool_1", avatarB);
+    else {
+      primary.edit.mockImplementation(async () => {
+        throw deferredPatch();
+      });
+      if (route === "generic")
+        pool.channel.createWebhook.mockRejectedValue(Object.assign(new Error(), { code: 50013 }));
+    }
+    const channel = pool.thread("_expression_thread");
+    const persona = createPersona({ persona_id: 2, persona_nickname: "Juno", is_alter: true });
+    const context = {
+      channel,
+      client: pool.channel.client,
+      guild: { id: pool.channel.guildId },
+      currentPersona: persona,
+      tomoriState: persona,
+      triggererUserId: null,
+      streamingContext: { deliveredMessageRefs: [] },
+      responseTarget: { webhook: primary, personaUsername: "Juno", personaAvatarUrl: avatarB },
+      expressionDelivery: createExpressionDeliveryState(),
+    } as unknown as ChatTurnContext;
+    const selectedId = route === "reuse" ? "_expression" : route === "generic" ? primary.id : "_created_1";
+    const posts = spyOn(getSingleAttemptWebhookRest(), "post").mockImplementation(async (path, options) => {
+      expect(path.split("/").at(-2)).toBe(selectedId);
+      expect(options?.body).toMatchObject({ username: "Juno", allowed_mentions: { parse: [] } });
+      expect((options?.body as { avatar_url?: string }).avatar_url).toBe(
+        route === "generic" ? GENERIC_WEBHOOK_AVATAR_URL : undefined,
+      );
+      expect(options?.query?.get("thread_id")).toBe(channel.id);
+      if (route === "unconfirmed") throw new Error("socket reset");
+      return { id: "_sent_expression", webhook_id: selectedId };
+    });
+    const selection = {
+      kind: "native" as const,
+      sticker: {
+        id: "_sticker",
+        name: "Wave",
+        guildId: pool.channel.guildId,
+        available: true,
+        url: "https://example.invalid/sticker.png",
+      } as Sticker,
+    };
+    const outcome = await deliverExpression(context, selection, "Wave", () => false);
+    expect(outcome.status).toBe(route === "unconfirmed" ? "unconfirmed" : "delivered");
+    expect((await deliverExpression(context, selection, "Wave", () => false)).status).toBe(
+      route === "unconfirmed" ? "unconfirmed" : "already_delivered",
+    );
+    expect(posts).toHaveBeenCalledTimes(1);
+    expect(pool.channel.send).not.toHaveBeenCalled();
+    if (route === "unconfirmed") expect(getChannelLastDelivery(channel.id)).toBeNull();
+    else
+      expect(getChannelLastDelivery(channel.id)).toMatchObject({
+        via: "webhook",
+        webhookId: selectedId,
+        identity: route === "generic" ? { avatarUrl: GENERIC_WEBHOOK_AVATAR_URL } : { avatarDataUri: avatarB },
+      });
+  });
+
+  it("trusts every persisted pool kind after restart and reassignment only in its guild and parent", async () => {
+    const pool = makePool();
+    const primary = await pool.primary(avatarA);
+    for (const kind of ["avatar_pool_1", "avatar_pool_2", "avatar_pool_3"] as const) {
+      const extra = await pool.store(`_${kind}`, kind, avatarB);
+      const sent = await sendWebhookMessageWithIdentity(
+        primary as unknown as Webhook,
+        { threadId: "_historic_thread" },
+        { username: "Juno", avatarDataUri: avatarB },
+      );
+      expect(sent.webhookId).toBe(extra.id);
+      await extra.edit({ avatar: avatarA });
+      clearWebhookCache();
+      clearWebhookIdentityCache();
+      pool.channel.client.fetchWebhook.mockClear();
+      pool.channel.fetchWebhooks.mockClear();
+      expect(await verifyMessageWebhook(sent)).toBe(true);
+      expect(await verifyMessageWebhook({ ...sent, guildId: "_other_guild" } as Message)).toBe(false);
+      expect(
+        await verifyMessageWebhook({
+          ...sent,
+          channel: { isThread: () => true, parentId: "_other_parent" },
+        } as Message),
+      ).toBe(false);
+      expect(await verifyMessageWebhook({ ...sent, webhookId: "_foreign" } as Message)).toBe(false);
+      expect(pool.channel.client.fetchWebhook).not.toHaveBeenCalled();
+      expect(pool.channel.fetchWebhooks).not.toHaveBeenCalled();
+      expect(pool.channel.createWebhook).not.toHaveBeenCalled();
+      expect((await getOrCreateWebhook(pool.channel as unknown as BaseGuildTextChannel)).webhook?.id).toBe(primary.id);
+    }
+  });
+
+  it.each([
+    "edit",
+    "delete",
+    "turn",
+  ] as const)("routes historic %s operations to the authoring slot after restart and avatar reassignment", async (action) => {
+    const pool = makePool();
+    const primary = await pool.primary(avatarA);
+    const extra = await pool.store("_historic", "avatar_pool_1", avatarB);
+    const channel = pool.thread("_historic_thread");
+    const sent = await sendWebhookMessageWithIdentity(
+      primary as unknown as Webhook,
+      { content: "before", threadId: channel.id },
+      { username: "Juno", avatarDataUri: avatarB },
+    );
+    pool.messages.delete(sent.id);
+    sent.id = "123456789012345678";
+    pool.messages.set(sent.id, sent);
+    await extra.edit({ avatar: avatarA });
+    clearWebhookCache();
+    const main = createPersona();
+    const alter = createPersona({ persona_id: 2, persona_nickname: "Juno", is_alter: true });
+    spyOn(personaCache, "getCachedMainPersona").mockResolvedValue(main);
+    spyOn(personaCache, "getCachedAllPersonas").mockResolvedValue([main, alter]);
+    if (action === "turn") {
+      const { interaction, calls } = makeFakeInteraction({
+        guild: { id: pool.channel.guildId, members: { me: null } },
+        guildId: pool.channel.guildId,
+        channel,
+        channelId: channel.id,
+        memberPermissions: { has: () => true },
+      });
+      await deleteTurn(
+        pool.channel.client as unknown as Client,
+        interaction as unknown as ChatInputCommandInteraction,
+        createUserRow(),
+        "en-US",
+      );
+      expect(calls[0].method).toBe("deferReply");
+    } else {
+      const result = await new ManageMessageTool().execute(
+        { action, message_id: sent.id, ...(action === "edit" ? { content: "after" } : {}) },
+        {
+          channel,
+          client: pool.channel.client,
+          guildId: pool.channel.guildId,
+          tomoriState: alter,
+          locale: "en-US",
+        } as unknown as ToolContext,
+      );
+      expect(result.success).toBe(true);
+    }
+    if (action === "edit")
+      expect(extra.editMessage).toHaveBeenCalledWith(
+        sent.id,
+        expect.objectContaining({ content: "after", threadId: channel.id }),
+      );
+    else expect(extra.deleteMessage).toHaveBeenCalledWith(sent.id, channel.id);
+    expect(primary.editMessage).not.toHaveBeenCalled();
+    expect(primary.deleteMessage).not.toHaveBeenCalled();
+    expect(pool.channel.messages.delete).not.toHaveBeenCalled();
+    expect(pool.channel.createWebhook).not.toHaveBeenCalled();
+    expect((await getOrCreateWebhook(pool.channel as unknown as BaseGuildTextChannel)).webhook?.id).toBe(primary.id);
+  });
+
+  it("gives Matrix text, media, and attachment notices a neutral avatar over a stored persona face", async () => {
+    const pool = makePool();
+    const primary = await pool.primary(avatarA);
+    Object.assign(pool.channel, { isTextBased: () => true, isDMBased: () => false });
+    spyOn(matrixRooms, "getDiscordChannelForRoom").mockResolvedValue(pool.channel.id);
+    spyOn(matrixRooms, "ensureRoomRelayable").mockResolvedValue(true);
+    spyOn(matrixState, "getMatrixSettings").mockReturnValue({
+      port: 9993,
+      bindHost: "127.0.0.1",
+      maxAttachmentBytes: 1024,
+      mediaTimeoutMs: 1000,
+    });
+    const media = spyOn(matrixMedia, "downloadMatrixMedia").mockResolvedValue({
+      buffer: Buffer.from("synthetic image"),
+      mimeType: "image/png",
+    });
+    for (const content of [
+      { msgtype: "m.text", body: "relay" },
+      { msgtype: "m.image", body: "image.png", url: "mxc://example.invalid/image" },
+      { msgtype: "m.file", body: "large.bin", info: { size: 2048 } },
+      { msgtype: "m.image", body: "missing.png", url: "mxc://example.invalid/missing" },
+    ]) {
+      if (content.body === "missing.png") media.mockResolvedValue(null);
+      await handleMatrixEvent(
+        {
+          getData: () => ({
+            type: "m.room.message",
+            room_id: "!relay:example.invalid",
+            sender: "@bau:example.invalid",
+            content,
+          }),
+        } as unknown as BridgeRequest<WeakEvent>,
+        { channels: { fetch: async () => pool.channel } } as unknown as Client,
+        "@tomoribot:example.invalid",
+      );
+      expect(pool.delivered.at(-1)).toMatchObject({
+        webhookId: primary.id,
+        avatar: GENERIC_WEBHOOK_AVATAR_URL,
+        username: expect.stringContaining("@bau:example.invalid"),
+      });
+      expect(primary.send.mock.calls.at(-1)?.[0].allowedMentions).toEqual({ parse: [] });
+    }
+    expect(primary.send).toHaveBeenCalledTimes(4);
+    expect(primary.edit).not.toHaveBeenCalled();
+    expect(pool.channel.createWebhook).not.toHaveBeenCalled();
   });
 
   it("lets HTTPS sends and lifecycle lookups proceed while a local-avatar operation holds the parent lock", async () => {

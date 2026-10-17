@@ -1023,6 +1023,7 @@ async function selectManagedWebhookIdentity(
         code: code ?? "unknown",
       });
       if (isInvalidWebhookError(error)) {
+        await serverRepository.deleteManagedWebhook(channel.id, oldest.webhook.id, oldest.kind);
         invalidateWebhookCache(channel.id, oldest.webhook.id);
         const remaining = slots.find((slot) => slot.webhook.id !== oldest.webhook.id);
         if (!remaining) throw error;
@@ -1226,49 +1227,43 @@ export async function sendWebhookMessageOnce(
   payload: WebhookMessageCreateOptions,
   identity: ResolvedWebhookIdentity | undefined,
   beforePost: () => void,
-): Promise<{ id: string; webhookId: string | null }> {
-  const token = webhook.token;
-  if (!token) throw new Error(`Webhook ${webhook.id} has no token.`);
-  try {
-    return await runWithWebhookIdentity(webhook, identity, async () => {
-      const finalPayload = buildIdentityPayload(payload, identity) as WebhookMessageCreateOptions;
-      // Only an incoming webhook has the token checked above, which is what execution requires.
-      const target = webhook as Webhook<WebhookType.Incoming>;
-      const { body, files } = await MessagePayload.create(target, finalPayload).resolveBody().resolveFiles();
-      const deadline = Date.now() + EXPRESSION_RATE_LIMIT_BUDGET_MS;
-      for (;;) {
+): Promise<{ id: string; webhookId: string; identity: ResolvedWebhookIdentity }> {
+  const delivery = await dispatchWebhookWithIdentity(webhook, identity, async (selected) => {
+    const token = selected.webhook.token;
+    if (!token) throw new Error(`Webhook ${selected.webhookId} has no token.`);
+    const finalPayload = buildIdentityPayload(payload, selected.identity) as WebhookMessageCreateOptions;
+    // Only an incoming webhook has the token checked above, which is what execution requires.
+    const target = selected.webhook as Webhook<WebhookType.Incoming>;
+    const { body, files } = await MessagePayload.create(target, finalPayload).resolveBody().resolveFiles();
+    const deadline = Date.now() + EXPRESSION_RATE_LIMIT_BUDGET_MS;
+    for (;;) {
+      beforePost();
+      if (Date.now() >= deadline) throw new WebhookExpressionRateLimitTimeoutError();
+      try {
+        const created = (await getSingleAttemptWebhookRest().post(Routes.webhook(selected.webhookId, token), {
+          body,
+          files: files ?? undefined,
+          query: makeURLSearchParams({ wait: true, thread_id: finalPayload.threadId }),
+          auth: false,
+        })) as APIMessage;
+        return created.id;
+      } catch (error) {
+        if (!(error instanceof RateLimitError)) throw error;
+        // A 429 reports the bucket reset in `timeToReset` and Discord's Retry-After in `retryAfter`.
         beforePost();
-        if (Date.now() >= deadline) throw new WebhookExpressionRateLimitTimeoutError();
-        try {
-          const created = (await getSingleAttemptWebhookRest().post(Routes.webhook(webhook.id, token), {
-            body,
-            files: files ?? undefined,
-            query: makeURLSearchParams({ wait: true, thread_id: finalPayload.threadId }),
-            auth: false,
-          })) as APIMessage;
-          return { id: created.id, webhookId: created.webhook_id ?? null };
-        } catch (error) {
-          if (!(error instanceof RateLimitError)) throw error;
-          // A 429 reports the bucket reset in `timeToReset` and Discord's Retry-After in `retryAfter`.
+        const retryAt = Date.now() + Math.max(error.timeToReset, error.retryAfter);
+        if (retryAt >= deadline) throw new WebhookExpressionRateLimitTimeoutError();
+        // The phase holds a watchdog exemption, so repeated refusals need their own deadline.
+        while (Date.now() < retryAt) {
           beforePost();
-          const retryAt = Date.now() + Math.max(error.timeToReset, error.retryAfter);
-          if (retryAt >= deadline) throw new WebhookExpressionRateLimitTimeoutError();
-          // The phase holds a watchdog exemption, so repeated refusals need their own deadline.
-          while (Date.now() < retryAt) {
-            beforePost();
-            await new Promise((resolve) =>
-              setTimeout(resolve, Math.min(EXPRESSION_STOP_CHECK_INTERVAL_MS, retryAt - Date.now())),
-            );
-          }
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.min(EXPRESSION_STOP_CHECK_INTERVAL_MS, retryAt - Date.now())),
+          );
         }
       }
-    });
-  } catch (error) {
-    if (isInvalidWebhookError(error) && webhook.channelId) {
-      invalidateWebhookCache(webhook.channelId, webhook.id);
     }
-    throw error;
-  }
+  });
+  return { id: delivery.result, webhookId: delivery.webhookId, identity: delivery.identity };
 }
 
 export async function sendWebhookMessagesWithIdentity(

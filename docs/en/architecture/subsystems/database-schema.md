@@ -60,6 +60,11 @@ their webhook names match the primary name. Local-avatar dispatch selects among 
 publishes a newly created slot to the cache only after its token and avatar assignment persist.
 Exact-match sends update only in-memory use order, so they do not write a row on every message.
 
+Rows remain after avatar reassignment or persona deletion because historic messages still need
+their authoring webhook's credentials. Message trust reads the managed row by parent channel and
+webhook ID and verifies the guild without creating a webhook or decrypting a token. Editing and
+deleting those messages restore that exact webhook independently of the primary channel cache.
+
 ## Core entities and relationships
 
 ### Multi-persona and server configuration

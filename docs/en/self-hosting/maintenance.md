@@ -27,6 +27,18 @@ Host `bun run backup` needs `pg_dump`, and host `bun run restore-backup` needs `
 
 The backup and restore commands hand your database password to `pg_dump` and `psql` through a short-lived password file in the system temporary folder, so other users on the machine cannot read it from the process list. That folder must be writable. The file is deleted when the command finishes.
 
+## Local persona avatars
+
+If your avatars are stored under `data/avatars/` without `AVATAR_PUBLIC_BASE_URL`, TomoriBot may
+create up to four managed webhooks per parent channel to reuse their images. Threads share their
+parent's webhooks. When Discord delays an avatar change and another webhook cannot be created,
+the message keeps the persona's name and shows Discord's generic default avatar. Later messages
+can show the intended image again. This requires no additional setup.
+
+You can see these webhooks under your channel's `Integrations` settings. Keep them even after
+removing a persona: TomoriBot uses them to edit or delete older messages. Deleting one removes
+that access, although the bot can still delete messages when it has `Manage Messages` permission.
+
 ## Database backups and recovery keys
 
 `bun run backup` and automatic startup backups produce `database.sql` and `bundle_info.json`. The manifest identifies a database-only bundle and lists encryption versions found in that dump. The version inventory describes which keys recovery needs; restore checks actual decryptability. Creating a dump does not require old keys to be present, so a missing historical key does not prevent preserving the rest of the database. It never copies `.env`. A database-only dump still contains private conversations and memories, so restrict access to the backup directory.

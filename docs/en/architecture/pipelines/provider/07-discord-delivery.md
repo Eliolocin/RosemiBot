@@ -67,8 +67,8 @@ the send operation; an uncertain POST failure propagates without another avatar-
 After each successful webhook send, `recordChannelDeliveredWebhookIdentity()` records the author identity
 in `src/utils/discord/stream/channelDeliveryContinuity.ts`. Subsequent artifacts in the turn, such
 as sticker expressions and fallback notices, read this record so their messages group under the same
-author. Persona webhook posts outside the stream (tool notices, generated media, voice messages)
-go through `src/utils/discord/webhook/personaPost.ts` and record themselves the same way. Directly
+author. Persona webhook posts outside the stream (tool notices, generated media, welcome and
+reminder posts) go through `src/utils/discord/webhook/personaPost.ts` and record themselves the same way. Directly
 after the same persona's line they reuse its identity; otherwise they show the base appearance and
 join the sprite alternation, so the next sprite cannot merge under the post's avatar. Lines where
 the persona speaks outside the stream (`/impersonate` and the reply tool) take the stream's own
@@ -79,6 +79,12 @@ reply-notice cleanup, and superseded-message deletion resolve that ID instead of
 webhook sent the message. Successful ordinary bot sends, including notice fallbacks after a
 webhook failure, call `recordChannelDeliveredBotMessage()` to clear the previous webhook identity.
 Failed sends leave the last successful delivery intact.
+
+Native voice uses the same persona-post identity resolution, then builds its multipart REST request
+from the pool's selected webhook. It records the delivered identity and webhook ID; a successful
+bot fallback clears webhook continuity. Expressions pass pool selection to their single-attempt
+REST transport and record the selected identity, including the generic avatar. Only a refused
+rate-limited POST can be retried; an uncertain outcome blocks another expression send that turn.
 
 ## Rendered markdown tables
 
