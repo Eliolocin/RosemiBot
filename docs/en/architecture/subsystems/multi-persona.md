@@ -109,7 +109,10 @@ Incoming Turn
 
 ### Webhook delivery
 
-Alters deliver through a shared channel webhook (`TomoriBot Multi-Persona`):
+Alters deliver through the primary channel webhook (`TomoriBot Multi-Persona`). The managed webhook
+lifecycle also restores persisted avatar slots by exact webhook ID for historic operations. Each
+restored slot must match its stored guild and parent channel; restoring it keeps the primary cache
+entry intact. Ordinary sends continue to use the primary webhook:
 
 - **Identity overrides**: Each send specifies `username` (persona nickname) and `avatarURL` (`webhook_avatar_url`).
 - **Historic identity resolution**: Admission, reply attribution, context assembly, history import, and queued persona routing use verified managed webhook identity. The bot's own direct messages retain the main persona identity. Matrix relay prefixes are trusted only on a managed webhook, and cached user impersonation only on a webhook registered in the relay cache for that guild and channel. Foreign webhooks keep a generic webhook identity in history and cannot start natural persona jobs or gain their quota/cooldown exemptions. Managed cascades keep their originating user's metering. `getReplyContextAuthorName()` strips bridge prefixes only on verified sources. Direct bot messages use the available member display name, so later nickname changes can affect reconstructed attribution.

@@ -44,6 +44,20 @@ persistence and schema initialization, use the shared SQL client directly.
 - **Transient retry handling**: hot-path reads retry transient connection drops and cached-plan errors through shared helpers in `src/utils/db/client.ts`. A cached-plan error resets the connection before retrying the query.
 - **Cache invalidation**: write owners invalidate derived cache entries after successful writes. Some workflows own this in the caller; live working-memory updates use a separate persistence path.
 
+## Managed Discord webhooks
+
+`discord_managed_webhooks` stores encrypted tokens for the primary `shared_channel` webhook and
+three fixed slot kinds (`avatar_pool_1`, `avatar_pool_2`, `avatar_pool_3`) per parent channel.
+The `(kind, channel_disc_id)` constraint reserves each slot, and webhook IDs remain globally unique.
+Nullable `avatar_fingerprint` and `discord_avatar_hash` fields record a local image's SHA-256 digest
+and Discord's observed avatar hash together with the token after creation or an avatar edit.
+Existing rows begin with an unknown assignment. Data URIs are never stored in this table.
+
+`ServerRepository` lists managed slots in row order and resolves an allowed slot by parent channel
+and exact webhook ID. Restoration checks the guild and parent channel, then clears the fingerprint
+if Discord's current avatar hash differs. Primary discovery excludes persisted pool IDs even when
+their webhook names match the primary name. Ordinary sends still use the primary webhook.
+
 ## Core entities and relationships
 
 ### Multi-persona and server configuration

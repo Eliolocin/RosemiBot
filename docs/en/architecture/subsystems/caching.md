@@ -66,7 +66,7 @@ Application caches are partitioned by domain ownership, lifetime, and storage ba
 
 ### Ephemeral workflow sessions
 
-- **Webhook cache (`src/utils/discord/webhook/cache.ts`)**: caches active Discord webhook clients by channel and persona. Webhook tokens are persisted encrypted in PostgreSQL, enabling cache rehydration after process restarts without recreating webhooks.
+- **Webhook cache (`src/utils/discord/webhook/webhookCore.ts`)**: caches the primary Discord webhook by parent channel, managed slots by webhook ID, and legacy persona webhooks by channel and persona. Encrypted tokens restore managed slots after a restart. Primary lookup fetches only the primary webhook from Discord; historic operations restore pool slots by exact webhook ID and leave the primary channel entry intact. A failed slot-list query allows the next lookup to retry immediately. Avatar assignments retain a SHA-256 fingerprint only while the fetched Discord avatar hash matches storage. Successful sends update in-memory use order; persisted row order supplies the restart order. Invalidation can remove one failed webhook or every webhook in a channel.
 - **Persona workflow avatar cache (`src/utils/discord/ui/personaWorkflow.ts`)**: transient `Map<number, AvatarCacheEntry>` scoped to an active persona picker interaction. Reuses resolved avatar buffers across pagination, validation failures, and retries. Discarded when the interaction workflow terminates.
 
 ## Write invalidation contracts

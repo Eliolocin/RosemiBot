@@ -66,6 +66,8 @@ describe("interact_with_recent_message reply delivery identity", () => {
       channel_disc_id: "channel-1",
       webhook_disc_id: "webhook-1",
       kind: "shared_channel",
+      avatar_fingerprint: null,
+      discord_avatar_hash: null,
       webhook_token: Buffer.from("fixture"),
       key_version: 1,
     });

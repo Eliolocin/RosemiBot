@@ -124,12 +124,17 @@ CREATE TABLE IF NOT EXISTS discord_managed_webhooks (
   channel_disc_id TEXT NOT NULL,
   webhook_disc_id TEXT NOT NULL,
   webhook_token BYTEA NOT NULL,
+  avatar_fingerprint TEXT,
+  discord_avatar_hash TEXT,
   key_version INTEGER DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (kind, channel_disc_id),
   UNIQUE (webhook_disc_id)
 );
+
+SELECT add_column_if_not_exists('discord_managed_webhooks', 'avatar_fingerprint', 'TEXT');
+SELECT add_column_if_not_exists('discord_managed_webhooks', 'discord_avatar_hash', 'TEXT');
 
 CREATE INDEX IF NOT EXISTS idx_discord_managed_webhooks_guild ON discord_managed_webhooks(guild_disc_id);
 CREATE INDEX IF NOT EXISTS idx_discord_managed_webhooks_channel ON discord_managed_webhooks(channel_disc_id);
