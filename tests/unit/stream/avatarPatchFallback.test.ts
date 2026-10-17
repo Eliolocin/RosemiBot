@@ -71,7 +71,7 @@ describe("resolveAvatarPatchFallback eligibility", () => {
 
   it("waits after a copied identity, even one whose avatar was a free https URL", () => {
     const previous = viaWebhook(copied(LOCKE), {
-      username: "Obonya (Locke)",
+      username: "Zallya (Locke)",
       avatarUrl: "https://cdn.discordapp.com/avatars/2/user.png",
     });
 

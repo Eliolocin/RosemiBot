@@ -64,7 +64,7 @@ Os blocos nativos são mapeados diretamente para os componentes do prompt Tomori
 
 ### Regra do Prompt de Sistema
 
-Quando uma predefinição importada está ativa, o prompt do sistema substituto integrado é removido. No entanto, se você configurar um prompt de sistema personalizado em `/config` > `Comportamento` > `Comportamento Geral`, esse prompt será sempre incluído.
+Quando uma predefinição importada está ativa, ela controla totalmente o prompt do sistema. O prompt integrado do TomoriBot e qualquer prompt personalizado de `/config` > `Comportamento` > `Comportamento Geral` não são enviados, e os botões do prompt do sistema nessa página ficam bloqueados. Seu prompt personalizado é mantido e volta a funcionar quando você desativa a predefinição em `/config` > `Plugins` > `Predefinições do SillyTavern`.
 
 ### Notas de Compatibilidade
 

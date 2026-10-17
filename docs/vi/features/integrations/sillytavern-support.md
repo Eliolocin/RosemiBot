@@ -59,7 +59,7 @@ Các khối gốc ánh xạ trực tiếp tới các thành phần nhắc nhở 
 
 ### Quy tắc prompt hệ thống
 
-Khi giá trị đặt trước đã nhập được kích hoạt, lời nhắc hệ thống dự phòng tích hợp sẽ bị xóa. Tuy nhiên, nếu bạn định cấu hình lời nhắc hệ thống tùy chỉnh trong `/config` > `Hành vi` > `Hành vi chung`, lời nhắc đó luôn được bao gồm.
+Khi một preset đã nhập đang hoạt động, nó sẽ kiểm soát hoàn toàn prompt hệ thống. Prompt tích hợp của TomoriBot và bất kỳ prompt tùy chỉnh nào từ `/config` > `Hành vi` > `Hành vi chung` đều không được gửi, và các nút prompt hệ thống ở đó sẽ bị khóa. Prompt tùy chỉnh của bạn vẫn được giữ lại và sẽ hoạt động trở lại khi bạn tắt preset trong `/config` > `Plugin` > `Preset SillyTavern`.
 
 ### Lưu ý về độ tương thích
 

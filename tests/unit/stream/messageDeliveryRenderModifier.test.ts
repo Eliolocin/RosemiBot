@@ -63,20 +63,20 @@ describe("StreamMessageDelivery copied-render options", () => {
       sentPayloads.push({ payload, textForState });
     });
 
-    // Copied identities flip the Discord display name ("Obonya (Ren)") while
+    // Copied identities flip the Discord display name ("Zallya (Ren)") while
     // the accumulated-text prefix stays source-persona-first for the model.
     await delivery.sendSegment("hi", "period", textConfig(), typingConfig, context, createDefaultStreamState(), {
       identityOverride: {
-        username: "Obonya (Ren)",
+        username: "Zallya (Ren)",
         avatarUrl: "https://example.com/avatar.png",
       },
-      accumulatedTextPrefix: "Ren (Obonya): ",
+      accumulatedTextPrefix: "Ren (Zallya): ",
     });
 
     expect(sentPayloads).toHaveLength(1);
-    expect(sentPayloads[0].payload.identityOverride?.username).toBe("Obonya (Ren)");
+    expect(sentPayloads[0].payload.identityOverride?.username).toBe("Zallya (Ren)");
     expect(sentPayloads[0].payload.identityOverride?.avatarUrl).toBe("https://example.com/avatar.png");
-    expect(sentPayloads[0].payload.accumulatedTextPrefix).toBe("Ren (Obonya): ");
+    expect(sentPayloads[0].payload.accumulatedTextPrefix).toBe("Ren (Zallya): ");
     expect(sentPayloads[0].textForState).toBe("hi");
   });
 
@@ -121,9 +121,9 @@ describe("StreamMessageDelivery copied-render options", () => {
       state,
       {
         identityOverride: {
-          username: "Obonya (Ren)",
+          username: "Zallya (Ren)",
         },
-        accumulatedTextPrefix: "Ren (Obonya): ",
+        accumulatedTextPrefix: "Ren (Zallya): ",
       },
     );
 
@@ -132,9 +132,9 @@ describe("StreamMessageDelivery copied-render options", () => {
     expect(sentPayloads[0].identityOverride).toBeUndefined();
     expect(sentPayloads[1]).toMatchObject({
       content: "copied text",
-      accumulatedTextPrefix: "Ren (Obonya): ",
+      accumulatedTextPrefix: "Ren (Zallya): ",
     });
-    expect(sentPayloads[1].identityOverride?.username).toBe("Obonya (Ren)");
+    expect(sentPayloads[1].identityOverride?.username).toBe("Zallya (Ren)");
   });
 
   it("marks message-length and heavy-humanizer splits at the delivery boundary", async () => {

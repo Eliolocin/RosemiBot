@@ -314,9 +314,9 @@ async function buildCopiedRenderTarget(
   const shownName = sprite
     ? formatRenderModifierWebhookName(candidate.displayName, sprite.sprite_name)
     : candidate.displayName;
-  // Discord shows the impersonated name first ("Obonya (Ren)") so the
+  // Discord shows the impersonated name first ("Zallya (Ren)") so the
   // disguise reads naturally in chat; the model-facing label keeps the source
-  // persona first ("Ren (Obonya)") so the LLM never confuses who is speaking.
+  // persona first ("Ren (Zallya)") so the LLM never confuses who is speaking.
   // resolveRenderModifierSourcePersona reconstructs the source persona from
   // either orientation when rebuilding context from webhook names.
   const username = formatRenderModifierWebhookName(shownName, sourceDisplayName);
