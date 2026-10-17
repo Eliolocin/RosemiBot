@@ -708,6 +708,7 @@ async function buildSimplifiedHistory(
     messages.push(turn.lockedTurn.admission.message);
   }
   const fetchedMessages = messages;
+  const fetchedMessagesById = new Map(fetchedMessages.map((message) => [message.id, message]));
   await Promise.all(messages.map(verifyMessageWebhook));
   messages = excludeMessagesAwaitingOwnTurn(
     messages,
@@ -868,6 +869,7 @@ async function buildSimplifiedHistory(
       reactionBudgetState,
       hiddenAuthorIds,
       minimalNoticeBodies,
+      fetchedMessagesById,
     );
     if (!result) continue;
     const { message: simplified, isDebug } = result;
@@ -1017,6 +1019,7 @@ async function simplifyMessage(
   reactionBudgetState: ReactionContextBudgetState,
   blockedContextUserIds: Set<string>,
   minimalNoticeBodies: ReadonlyMap<string, string>,
+  fetchedMessagesById: ReadonlyMap<string, Message>,
 ): Promise<{ message: SimplifiedMessageForContext; isDebug: boolean } | null> {
   const isJoin = msg.type === MessageType.UserJoin;
   const isWebhook = Boolean(msg.webhookId);
@@ -1038,6 +1041,7 @@ async function simplifyMessage(
     personaByName,
     blockedContextUserIds,
     messageProxyIdentitiesByMessageId,
+    fetchedMessagesById,
   );
   content = replyContext.content;
   content = await withReactionContext(turn, msg, content, reactionBudgetState);
@@ -1275,6 +1279,7 @@ async function withReplyContext(
   personaByNickname: Map<string, ChatTurn["persona"]>,
   blockedContextUserIds: Set<string>,
   messageProxyIdentitiesByMessageId: Map<string, MessageProxyHistoryIdentity>,
+  fetchedMessagesById: ReadonlyMap<string, Message>,
 ): Promise<{ content: string; referencedMessage?: Message }> {
   if (msg.reference?.type === MessageReferenceType.Forward || !("messages" in msg.channel)) {
     return { content };
@@ -1288,8 +1293,11 @@ async function withReplyContext(
     if (!referenceMessageId || (replyContextEmbedTarget && replyContextEmbedTarget.channelId !== msg.channel.id)) {
       return { content };
     }
+    // The fetched window comes first because the capped message cache evicts the newest messages of a large history fetch.
     const referenced =
-      msg.channel.messages.cache.get(referenceMessageId) ?? (await msg.channel.messages.fetch(referenceMessageId));
+      fetchedMessagesById.get(referenceMessageId) ??
+      msg.channel.messages.cache.get(referenceMessageId) ??
+      (await msg.channel.messages.fetch(referenceMessageId));
     // A reference can sit outside the fetched history window, so resolve its verified proxy
     // attribution through the same bounded index read the history loop used. This is what lets
     // the annotation name a proxied member instead of the webhook veneer, and it also brings an

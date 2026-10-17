@@ -152,7 +152,9 @@ async function resolveLiveDisplayName(context: ToolContext, targetDiscordId: str
       guild?.members.cache.get(targetDiscordId) ?? (await guild?.members.fetch(targetDiscordId).catch(() => null));
     if (member) return member.displayName;
   }
-  const user = context.client?.users.cache.get(targetDiscordId);
+  const user =
+    context.client?.users.cache.get(targetDiscordId) ??
+    (await context.client?.users.fetch(targetDiscordId).catch(() => null));
   return user?.globalName ?? user?.username ?? targetDiscordId;
 }
 

@@ -172,6 +172,7 @@ export interface RunnableChatAdmission extends ChatAdmissionBase {
   allPersonas?: TomoriState[];
   userRow?: UserRow | null;
   requestSnapshot?: RequestSnapshot;
+  referencedMessage: Message | null;
 }
 
 export interface NonRunnableChatAdmission extends ChatAdmissionBase {

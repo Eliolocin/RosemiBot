@@ -24,7 +24,7 @@ import {
   type TextQuotaTriggerState,
 } from "@/utils/chat/textQuotaState";
 import { getServerActiveMessageCount, getUserActiveMessageCount } from "@/utils/chat/channelActivity";
-import { resolveReferencedWebhookTarget, verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
+import { resolveReferencedWebhookTarget } from "@/utils/chat/webhookIdentity";
 import { normalizeRenderModifierName } from "@/utils/discord/renderModifierParser";
 
 export interface ChatAccessState {
@@ -448,6 +448,7 @@ function filterAllowedPersonaIdsByBlocks(
 export async function validateDirectChatTrigger(params: {
   client: Client;
   message: Message;
+  referencedMessage: Message | null;
   guild: Guild | null;
   allPersonas: TomoriState[];
   tomoriState: TomoriState | null | undefined;
@@ -469,30 +470,21 @@ export async function validateDirectChatTrigger(params: {
   let isUserImpersonation = false;
   let impersonatedUserId: string | undefined;
 
-  if (params.message.reference?.messageId) {
-    try {
-      const referenceMessage = await params.message.channel.messages.fetch(params.message.reference.messageId);
-      if (referenceMessage) {
-        if (referenceMessage.author.id === params.client.user?.id) {
-          isReplyToBot = true;
-        } else if (referenceMessage.webhookId && !isMessageProxyMessage(referenceMessage)) {
-          await verifyMessageWebhook(referenceMessage);
-          const webhookReplyTarget = resolveReferencedWebhookTarget(referenceMessage, personaByNickname, params.guild);
+  const referenceMessage = params.referencedMessage;
+  if (referenceMessage) {
+    if (referenceMessage.author.id === params.client.user?.id) {
+      isReplyToBot = true;
+    } else if (referenceMessage.webhookId && !isMessageProxyMessage(referenceMessage)) {
+      const webhookReplyTarget = resolveReferencedWebhookTarget(referenceMessage, personaByNickname, params.guild);
 
-          if (webhookReplyTarget.replyPersona) {
-            replyPersona = webhookReplyTarget.replyPersona;
-          } else if (webhookReplyTarget.impersonatedUserId) {
-            isReplyToBot = true;
-            isUserImpersonation = true;
-            impersonatedUserId = webhookReplyTarget.impersonatedUserId;
-            log.info(
-              `Reply ${params.message.id} matched user impersonation webhook. Target user: ${impersonatedUserId}`,
-            );
-          }
-        }
+      if (webhookReplyTarget.replyPersona) {
+        replyPersona = webhookReplyTarget.replyPersona;
+      } else if (webhookReplyTarget.impersonatedUserId) {
+        isReplyToBot = true;
+        isUserImpersonation = true;
+        impersonatedUserId = webhookReplyTarget.impersonatedUserId;
+        log.info(`Reply ${params.message.id} matched user impersonation webhook. Target user: ${impersonatedUserId}`);
       }
-    } catch (fetchError) {
-      log.warn("Could not fetch reference message for reply check", fetchError);
     }
   }
 

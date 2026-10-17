@@ -8,6 +8,7 @@ import {
   evaluateChatAdmission,
   evaluateMessageProxyOriginalSpeedbump,
   resolveAdmissionChannelScope,
+  resolveReferencedMessage,
   shouldBlockReplyToOtherBot,
 } from "@/utils/chat/admission";
 import {
@@ -73,7 +74,7 @@ function makeDmIncoming(args: { authorDiscId: string; recipientDiscId: string })
   } as unknown as ChatIncoming;
 }
 
-function makeReplyIncoming(cachedReference: Message, fetchedReference: Message) {
+function makeReplyIncoming(cachedReference: Message | undefined, fetchedReference: Message) {
   const fetch = mock(async () => fetchedReference);
   const incoming = {
     client: {
@@ -102,8 +103,22 @@ function makeReplyIncoming(cachedReference: Message, fetchedReference: Message) 
   return { fetch, incoming };
 }
 
-describe("shouldBlockReplyToOtherBot", () => {
-  it("hydrates an authorless partial reply target before checking its author", async () => {
+describe("resolveReferencedMessage", () => {
+  it("fetches a reply target the message cache no longer holds", async () => {
+    const tomoriReply = {
+      partial: false,
+      author: { id: "tomori", bot: true },
+      webhookId: null,
+    } as Message;
+    const { fetch, incoming } = makeReplyIncoming(undefined, tomoriReply);
+
+    const referencedMessage = await resolveReferencedMessage(incoming.message);
+
+    expect(fetch).toHaveBeenCalledWith("referenced-message");
+    expect(referencedMessage).toBe(tomoriReply);
+  });
+
+  it("hydrates an authorless partial reply target", async () => {
     const partialReference = {
       partial: true,
       author: null,
@@ -115,13 +130,29 @@ describe("shouldBlockReplyToOtherBot", () => {
     } as Message;
     const { fetch, incoming } = makeReplyIncoming(partialReference, fetchedReference);
 
+    const referencedMessage = await resolveReferencedMessage(incoming.message);
+
+    expect(fetch).toHaveBeenCalledWith("referenced-message");
+    expect(referencedMessage).toBe(fetchedReference);
+  });
+});
+
+describe("shouldBlockReplyToOtherBot", () => {
+  it("blocks an ordinary reply to another bot", async () => {
+    const otherBotReference = {
+      partial: false,
+      author: { id: "another-bot", bot: true },
+      webhookId: null,
+    } as Message;
+    const { incoming } = makeReplyIncoming(otherBotReference, otherBotReference);
+
     const reason = await shouldBlockReplyToOtherBot({
       incoming,
       earlyAllPersonas: [],
       isBotAuthor: false,
+      referencedMessage: otherBotReference,
     });
 
-    expect(fetch).toHaveBeenCalledWith("referenced-message");
     expect(reason).toBe("reply_to_other_bot");
   });
 
@@ -137,6 +168,7 @@ describe("shouldBlockReplyToOtherBot", () => {
       incoming,
       earlyAllPersonas: [],
       isBotAuthor: false,
+      referencedMessage: authorlessReference,
     });
 
     expect(reason).toBeNull();
@@ -158,6 +190,7 @@ describe("shouldBlockReplyToOtherBot", () => {
       incoming,
       earlyAllPersonas: [],
       isBotAuthor: false,
+      referencedMessage: otherBotReference,
     });
 
     expect(reason).toBe("reply_to_other_bot");

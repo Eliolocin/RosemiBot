@@ -27,12 +27,13 @@ type ShouldBotReplyOptions = {
   personalAutoTriggerPersonaId?: number | null;
   allowedPersonaIds?: ReadonlySet<number> | null;
   personalDtm?: "off" | "follow" | "on";
+  referencedMessage: Message | null;
 };
 export function shouldBotReply(
   message: Message,
   tomoriState: TomoriState,
   allPersonas: TomoriState[],
-  options: ShouldBotReplyOptions = {},
+  options: ShouldBotReplyOptions,
 ): boolean {
   const isSelfMessage = isSelfTriggerMessage(message, allPersonas);
   const isMatrixRelayMessage = isTrustedMatrixRelayMessage(message);
@@ -93,13 +94,13 @@ export function shouldBotReply(
     if (!nicknameKey || personaByNickname.has(nicknameKey)) continue;
     personaByNickname.set(nicknameKey, persona);
   }
-  if (message.reference?.messageId) {
-    const referenceMessage = message.channel.messages.cache.get(message.reference.messageId);
-    if (referenceMessage?.author.id === message.client.user?.id) {
+  const referenceMessage = options.referencedMessage;
+  if (referenceMessage) {
+    if (referenceMessage.author.id === message.client.user?.id) {
       isReplyToBot = true;
       isReplyToPersona = true;
       replyPersonaTarget = mainPersona ?? null;
-    } else if (referenceMessage?.webhookId && !isMessageProxyMessage(referenceMessage)) {
+    } else if (referenceMessage.webhookId && !isMessageProxyMessage(referenceMessage)) {
       const webhookReplyTarget = resolveReferencedWebhookTarget(referenceMessage, personaByNickname, message.guild);
       if (webhookReplyTarget.replyPersona) {
         isReplyToPersona = true;

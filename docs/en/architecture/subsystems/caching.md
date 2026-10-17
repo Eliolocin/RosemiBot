@@ -24,11 +24,18 @@ The codebase bounds memory consumption through three coordinated mechanisms:
 Discord gateway collections retain messages, guild members, users, and presences independently of
 application caches. Their memory footprint must be measured alongside application state.
 
-Scheduled sweepers in `src/init/discord.ts` prune client collections periodically:
+`src/init/discord.ts` caps each channel's message cache at 50 entries (the discord.js default is 200),
+evicting the oldest-inserted message first. A history fetch inserts newest first, so a fetch larger
+than the cap evicts its own newest messages. No chat path depends on an older message staying cached:
+admission resolves a reply target once through `resolveReferencedMessage()` (cache, then REST) and
+hands that instance to every later reader, history reads use `fetch`, and history reply annotations
+look up their target in the fetched window before the cache.
+
+Scheduled sweepers in the same file prune client collections periodically:
 
 - **Messages**: hourly sweep with a 30-minute lifetime.
 - **Guild members**: hourly sweep. Excludes the client's own member (required for synchronous permission checks) and any user currently in a voice channel (read synchronously by audio handlers).
-- **Users**: hourly sweep of every user with no cached member in any guild, except the client user. A cached member holds its own user reference, so only these orphans free memory; most arrive through presence updates. `historyFormatter` still resolves mentions synchronously because fetching a message caches the users it mentions.
+- **Users**: hourly sweep of every user with no cached member in any guild, except the client user. A cached member holds its own user reference, so only these orphans free memory; most arrive through presence updates. `historyFormatter` resolves mentions from each message's own mention list, so a swept user still renders by name.
 
 ## Active cache layers
 

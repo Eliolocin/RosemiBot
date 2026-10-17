@@ -278,11 +278,13 @@ describe("chat regression harness", () => {
         provider: fixture.provider,
         shouldReply: shouldBotReply(message, mainPersona, personas, {
           allowedPersonaIds,
+          referencedMessage: null,
         }),
         matchingPersonaNicknames: determineMatchingPersonas(
           message,
           personas,
           client,
+          null,
           fixture.triggerContext.isReplyToBot,
           replyPersona,
           fixture.triggerContext.isBotMentioned,
@@ -352,6 +354,7 @@ describe("chat regression harness", () => {
         message,
         isDMChannel: false,
         allPersonas: personas,
+        referencedMessage: null,
       }),
     ).toBe(false);
   });
@@ -390,6 +393,7 @@ describe("chat regression harness", () => {
         message,
         isDMChannel: false,
         allPersonas: personas,
+        referencedMessage: null,
       }),
     ).toBe(true);
   });
@@ -429,6 +433,7 @@ describe("chat regression harness", () => {
         message,
         isDMChannel: false,
         allPersonas: personas,
+        referencedMessage: null,
       }),
     ).toBe(false);
   });
@@ -493,6 +498,7 @@ describe("chat regression harness", () => {
         message,
         personas,
         client,
+        null,
         fixture.triggerContext.isReplyToBot,
         null,
         fixture.triggerContext.isBotMentioned,
@@ -505,7 +511,7 @@ describe("chat regression harness", () => {
         null,
       ).map((persona) => persona.persona_nickname),
     ).toEqual(["Quetz"]);
-    expect(shouldBotReply(message, mainPersona, personas)).toBe(true);
+    expect(shouldBotReply(message, mainPersona, personas, { referencedMessage: null })).toBe(true);
   });
 
   it("does not treat a diacritic letter as a word boundary around a trigger word", () => {
@@ -567,6 +573,7 @@ describe("chat regression harness", () => {
         message,
         personas,
         client,
+        null,
         fixture.triggerContext.isReplyToBot,
         null,
         fixture.triggerContext.isBotMentioned,
@@ -722,6 +729,7 @@ describe("chat regression harness", () => {
       cooldownUserDiscId: activeMessage.author.id,
       isActiveNaturalStopMessage: false,
       isNaturalStopMessage: false,
+      referencedMessage: null,
     });
 
     expect(disposition?.disposition).toBe("queued");
@@ -814,6 +822,7 @@ describe("chat regression harness", () => {
       cooldownUserDiscId: activeMessage.author.id,
       isActiveNaturalStopMessage: false,
       isNaturalStopMessage: false,
+      referencedMessage: null,
     });
 
     expect(disposition?.disposition).toBe("queued");
@@ -912,6 +921,7 @@ describe("chat regression harness", () => {
       cooldownUserDiscId: message.author.id,
       isActiveNaturalStopMessage: false,
       isNaturalStopMessage: false,
+      referencedMessage: null,
     });
 
     expect(disposition?.disposition).toBe("ignore");
@@ -1183,11 +1193,69 @@ describe("chat regression harness", () => {
       cooldownUserDiscId: message.author.id,
       isActiveNaturalStopMessage: false,
       isNaturalStopMessage: false,
+      referencedMessage: null,
     });
 
     expect(disposition?.disposition).toBe("ignore");
     expect(disposition?.reason).toBe("non_trigger_pre_lock");
     expect(channelLocks.get(channelId)?.isLocked).not.toBe(true);
+  });
+
+  it("admits a reply to Tomori whose target is no longer in the message cache", async () => {
+    const client = makeClient();
+    const fixture = conversations[0];
+    const stateFixture = {
+      ...fixture,
+      state: {
+        ...fixture.state,
+        alwaysReplyEnabled: false,
+        autochDiscIds: [],
+        autochCounter: 0,
+        autochNextTarget: 10,
+      },
+    };
+    const message = makeMessage(
+      {
+        ...stateFixture,
+        id: "reply_to_evicted_tomori_message",
+        message: { ...fixture.message, content: "what did you mean by that?", mentionedUserIds: [] },
+      },
+      client,
+    );
+    const tomoriReply = { id: "evicted_tomori_reply", author: { id: botUserId }, webhookId: null } as Message;
+    Object.assign(message, { reference: { messageId: tomoriReply.id } });
+    expect(message.channel.messages.cache.get(tomoriReply.id)).toBeUndefined();
+
+    const earlyTomoriState = makeTomoriState(stateFixture, {
+      id: 1001,
+      nickname: "Tomori",
+      isAlter: false,
+      triggers: ["tomori"],
+    });
+    earlyTomoriState.config.thought_log_channel_disc_id = null;
+
+    const disposition = await evaluateAdmissionQueueAndTriggerGate({
+      incoming: {
+        client,
+        message,
+        isFromQueue: false,
+        retryCount: 0,
+        skipLock: false,
+        isPersonaJob: false,
+        isUserImpersonation: false,
+        textQuotaSource: "user",
+      },
+      channelScope: { guild: null, serverDiscId: guildId, isDMChannel: false },
+      earlyTomoriState,
+      earlyAllPersonas: [earlyTomoriState],
+      userDiscId: message.author.id,
+      cooldownUserDiscId: message.author.id,
+      isActiveNaturalStopMessage: false,
+      isNaturalStopMessage: false,
+      referencedMessage: tomoriReply,
+    });
+
+    expect(disposition).toBeNull();
   });
 
   it("uses the attested original for a proxy repost trigger decision", async () => {
@@ -1255,6 +1323,7 @@ describe("chat regression harness", () => {
       cooldownUserDiscId: original.author.id,
       isActiveNaturalStopMessage: false,
       isNaturalStopMessage: false,
+      referencedMessage: null,
       messageProxyRecord: await confirmProxyRepost({ original, repost, hostDiscId: original.author.id }),
     });
 
@@ -1326,6 +1395,7 @@ describe("chat regression harness", () => {
       cooldownUserDiscId: original.author.id,
       isActiveNaturalStopMessage: false,
       isNaturalStopMessage: false,
+      referencedMessage: null,
       messageProxyRecord: await confirmProxyRepost({ original, repost, hostDiscId: original.author.id }),
     });
 
@@ -1422,6 +1492,7 @@ describe("chat regression harness", () => {
         cooldownUserDiscId: args.userDiscId,
         isActiveNaturalStopMessage: false,
         isNaturalStopMessage: false,
+        referencedMessage: null,
         messageProxyRecord: args.messageProxyRecord,
       });
     }
@@ -1598,6 +1669,6 @@ describe("chat regression harness", () => {
       throw new Error("Probe fixture is missing a main persona");
     }
 
-    expect(shouldBotReply(message, mainPersona, personas)).toBe(false);
+    expect(shouldBotReply(message, mainPersona, personas, { referencedMessage: null })).toBe(false);
   });
 });

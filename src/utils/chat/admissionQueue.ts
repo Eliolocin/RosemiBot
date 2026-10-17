@@ -52,6 +52,7 @@ type AdmissionQueueAndTriggerArgs = {
   isNaturalStopMessage: boolean;
   /** Confirmed repost record; its original, when attested, carries the trigger verdict. */
   messageProxyRecord?: MessageProxyMessageRecord | null;
+  referencedMessage: Message | null;
 };
 
 export async function evaluateAdmissionQueueAndTriggerGate(
@@ -100,6 +101,7 @@ async function evaluateLockedChannelAdmission(
     message,
     isDMChannel: channelScope.isDMChannel,
     allPersonas: earlyAllPersonas,
+    referencedMessage: args.referencedMessage,
   });
 
   const channelId = message.channel.id;
@@ -143,7 +145,7 @@ async function evaluateLockedChannelAdmission(
   // activePersonaId must be set (i.e. turn state is established) for this to apply.
   const hasCrossPersonaTrigger =
     lockEntry.activePersonaId !== undefined &&
-    hasExplicitCrossPersonaTrigger(triggerMessage, earlyAllPersonas, lockEntry.activePersonaId);
+    hasExplicitCrossPersonaTrigger(triggerMessage, earlyAllPersonas, lockEntry.activePersonaId, args.referencedMessage);
 
   if (
     !incoming.isStopResponse &&
@@ -209,6 +211,7 @@ async function evaluateLockedChannelAdmission(
     shouldBotReply(triggerMessage, stateForQueueCheck, earlyAllPersonas, {
       personalAutoTriggerPersonaId: accessState.personalSpotlightStatus?.autoTriggerPersonaId ?? null,
       allowedPersonaIds: accessState.allowedPersonaIds,
+      referencedMessage: args.referencedMessage,
     });
 
   if (!wouldReply) {
@@ -368,6 +371,7 @@ async function evaluatePreLockReplyGate(args: AdmissionQueueAndTriggerArgs): Pro
       personalAutoTriggerPersonaId: accessState.personalSpotlightStatus?.autoTriggerPersonaId ?? null,
       allowedPersonaIds: accessState.allowedPersonaIds,
       personalDtm: accessState.personalDtm,
+      referencedMessage: args.referencedMessage,
     })
   ) {
     return null;

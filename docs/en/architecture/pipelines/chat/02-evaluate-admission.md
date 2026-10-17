@@ -95,6 +95,11 @@ is currently busy:
   than message author protects DM state resolution during automated self-replies and reminders.
 - **In-place content mutation**: writing transcribed text into `message.content` lets downstream prompt
   and memory builders process audio identically to standard text messages.
+- **One reply-target resolution**: `resolveReferencedMessage()` loads the replied-to message once
+  (cache, then REST) and verifies its webhook. The trigger gate and turn planning read that instance
+  from the admission instead of the channel cache, because the capped message cache can evict the
+  target while a turn waits and webhook trust is recorded per message object. A queued message is
+  admitted again when it replays, so it resolves its target afresh.
 
 ## Source pointers
 

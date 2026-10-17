@@ -125,10 +125,8 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
   const { client, message } = incoming;
   const channel = message.channel;
   await verifyMessageWebhook(message);
-  const cachedReference = message.reference?.messageId
-    ? message.channel.messages.cache.get(message.reference.messageId)
-    : undefined;
-  if (cachedReference) await verifyMessageWebhook(cachedReference);
+  let referencedMessagePromise: Promise<Message | null> | undefined;
+  const getReferencedMessage = () => (referencedMessagePromise ??= resolveReferencedMessage(message));
   const isBotAuthor = message.author.bot;
   const isWebhookMessage = Boolean(message.webhookId);
   const isInteractionResponse = Boolean(message.interaction);
@@ -188,17 +186,7 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
   }
 
   if (!incoming.isManuallyTriggered && isLikelySelfMessage && message.reference?.messageId) {
-    let referencedMessage = message.channel.messages.cache.get(message.reference.messageId);
-
-    if (!referencedMessage && "messages" in channel) {
-      try {
-        referencedMessage = await channel.messages.fetch(message.reference.messageId);
-      } catch {
-        referencedMessage = undefined;
-      }
-    }
-
-    if (referencedMessage) await verifyMessageWebhook(referencedMessage);
+    const referencedMessage = await getReferencedMessage();
     if (
       referencedMessage &&
       (referencedMessage.author.id === client.user?.id || isManagedWebhookMessage(referencedMessage))
@@ -335,10 +323,12 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
 
   const { earlyTomoriState, earlyAllPersonas } = await loadEarlyTomoriState(channelScope.serverDiscId, channel.id);
 
+  const referencedMessage = await getReferencedMessage();
   const botReplyBlockReason = await shouldBlockReplyToOtherBot({
     incoming,
     earlyAllPersonas,
     isBotAuthor,
+    referencedMessage,
   });
   if (botReplyBlockReason) {
     updateSelfReplyChainState(channel.id, false);
@@ -365,6 +355,7 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
     isActiveNaturalStopMessage,
     isNaturalStopMessage: isNaturalStopMessage(message.content),
     messageProxyRecord,
+    referencedMessage,
   });
   if (queueDisposition) {
     return queueDisposition;
@@ -384,6 +375,7 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
     tomoriState: earlyTomoriState ?? undefined,
     allPersonas: earlyAllPersonas,
     cooldownUserDiscId,
+    referencedMessage,
   };
 }
 
@@ -812,33 +804,43 @@ async function loadEarlyTomoriState(
   }
 }
 
+/**
+ * Downstream reply-target readers must use this instance rather than the channel cache, because the
+ * capped cache can evict the target and webhook trust is recorded per message object.
+ *
+ * @internal Exported for focused admission regression tests.
+ */
+export async function resolveReferencedMessage(message: Message): Promise<Message | null> {
+  const referenceId = message.reference?.messageId;
+  if (!referenceId || !("messages" in message.channel)) {
+    return null;
+  }
+
+  let referencedMessage = message.channel.messages.cache.get(referenceId) ?? null;
+  // A cached partial has a null author, so it is fetched to hydrate it before any author check.
+  if (!referencedMessage || referencedMessage.partial) {
+    referencedMessage = await message.channel.messages.fetch(referenceId).catch(() => null);
+  }
+  if (referencedMessage) await verifyMessageWebhook(referencedMessage);
+  return referencedMessage;
+}
+
 /** @internal Exported for focused admission regression tests. */
 export async function shouldBlockReplyToOtherBot(args: {
   incoming: ChatIncoming;
   earlyAllPersonas: TomoriState[];
   isBotAuthor: boolean;
+  referencedMessage: Message | null;
 }): Promise<string | null> {
-  const { incoming, earlyAllPersonas, isBotAuthor } = args;
+  const { incoming, earlyAllPersonas, isBotAuthor, referencedMessage } = args;
   const { client, message } = incoming;
 
-  if (incoming.isManuallyTriggered || isBotAuthor || !message.reference?.messageId) {
+  if (incoming.isManuallyTriggered || isBotAuthor || !referencedMessage) {
     return null;
   }
 
-  let referencedMessage = message.channel.messages.cache.get(message.reference.messageId);
-
-  // Cached reply targets may be partial messages with a null author. Let
-  // MessageManager#fetch hydrate partials before making the bot-author check.
-  if ((!referencedMessage || referencedMessage.partial) && "messages" in message.channel) {
-    try {
-      referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
-    } catch {
-      referencedMessage = undefined;
-    }
-  }
-
-  const referencedAuthor = referencedMessage?.author;
-  if (!referencedAuthor?.bot || referencedAuthor.id === client.user?.id || referencedMessage?.webhookId) {
+  const referencedAuthor = referencedMessage.author;
+  if (!referencedAuthor?.bot || referencedAuthor.id === client.user?.id || referencedMessage.webhookId) {
     return null;
   }
 

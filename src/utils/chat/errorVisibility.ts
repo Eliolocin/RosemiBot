@@ -29,12 +29,11 @@ function hasPersonaTriggerMatch(message: Message, allPersonas: readonly TomoriSt
   );
 }
 
-function isCachedReplyToKnownPersona(message: Message, client: Client, allPersonas: readonly TomoriState[]): boolean {
-  if (!message.reference?.messageId || !("messages" in message.channel)) {
-    return false;
-  }
-
-  const referencedMessage = message.channel.messages.cache.get(message.reference.messageId);
+function isReplyToKnownPersona(
+  referencedMessage: Message | null,
+  client: Client,
+  allPersonas: readonly TomoriState[],
+): boolean {
   if (!referencedMessage) {
     return false;
   }
@@ -66,6 +65,7 @@ function hasDirectChatSignal(args: {
   client: Client;
   message: Message;
   allPersonas: readonly TomoriState[];
+  referencedMessage: Message | null;
   isReplyToBotOrPersona?: boolean;
   isBotMentioned?: boolean;
 }): boolean {
@@ -73,7 +73,7 @@ function hasDirectChatSignal(args: {
     return true;
   }
 
-  if (args.isReplyToBotOrPersona || isCachedReplyToKnownPersona(args.message, args.client, args.allPersonas)) {
+  if (args.isReplyToBotOrPersona || isReplyToKnownPersona(args.referencedMessage, args.client, args.allPersonas)) {
     return true;
   }
 
@@ -90,6 +90,7 @@ export function shouldSurfaceChatUserErrors(args: {
   message: Message;
   isDMChannel: boolean;
   allPersonas: readonly TomoriState[];
+  referencedMessage: Message | null;
   isReplyToBotOrPersona?: boolean;
   isBotMentioned?: boolean;
 }): boolean {

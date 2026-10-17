@@ -74,12 +74,14 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
       message,
       isDMChannel,
       allPersonas,
+      referencedMessage: admission.referencedMessage,
     });
     incoming.shouldSurfaceUserErrors = shouldSurfaceNoStateError;
     if (shouldSurfaceNoStateError) {
       await validateDirectChatTrigger({
         client,
         message,
+        referencedMessage: admission.referencedMessage,
         guild,
         allPersonas,
         tomoriState: null,
@@ -116,6 +118,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
   const directTrigger = await validateDirectChatTrigger({
     client,
     message,
+    referencedMessage: admission.referencedMessage,
     guild,
     allPersonas,
     tomoriState,
@@ -138,6 +141,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     message,
     isDMChannel,
     allPersonas,
+    referencedMessage: admission.referencedMessage,
     isReplyToBotOrPersona: directTrigger.isReplyToBot || Boolean(directTrigger.replyPersona),
     isBotMentioned: directTrigger.isBotMentioned,
   });
@@ -185,6 +189,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
       personalAutoTriggerPersonaId: accessState.personalSpotlightStatus?.autoTriggerPersonaId ?? null,
       allowedPersonaIds: accessState.allowedPersonaIds,
       personalDtm: (userRow.personal_dtm as "off" | "follow" | "on") ?? "follow",
+      referencedMessage: admission.referencedMessage,
     })
   ) {
     return { lockedTurn, turns: [] };
@@ -707,6 +712,7 @@ function selectPersonasForTurn(args: {
     args.lockedTurn.admission.message,
     args.allPersonas,
     args.lockedTurn.admission.client,
+    args.lockedTurn.admission.referencedMessage,
     args.directTrigger.isReplyToBot,
     args.directTrigger.replyPersona,
     args.directTrigger.isBotMentioned,

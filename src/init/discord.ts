@@ -1,4 +1,4 @@
-import { ApplicationFlags, Client, GatewayIntentBits, Partials, REST, Routes } from "discord.js";
+import { ApplicationFlags, Client, GatewayIntentBits, Options, Partials, REST, Routes } from "discord.js";
 import { log } from "@/utils/misc/logger";
 import { healthTracker } from "@/utils/misc/healthTracker";
 import type { AppEnvironment } from "@/types/config";
@@ -129,6 +129,8 @@ export function createDiscordClient(includePresences: boolean): Client {
     intents,
     partials: [Partials.Channel, Partials.Message],
     rest: { rejectOnRateLimit: shouldRejectWebhookRateLimit },
+    // Below the discord.js default of 200 per channel, because reply targets resolve through fetch and history reads go to REST.
+    makeCache: Options.cacheWithLimits({ ...Options.DefaultMakeCacheSettings, MessageManager: 50 }),
     sweepers: {
       messages: {
         interval: 3600, // Run sweep every 1 hour (in seconds)
