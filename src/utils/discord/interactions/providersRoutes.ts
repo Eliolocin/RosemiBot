@@ -232,6 +232,7 @@ function addReceipt(locale: string, result: AddServerProviderResult, scopeKind: 
     "invalid-key": "commands.providers.invalid_key",
     "unsupported-provider": "commands.providers.unsupported_provider",
     "validation-failed": "commands.providers.validation_failed",
+    "no-balance": "commands.providers.validation_no_balance",
     "missing-model": "commands.providers.missing_default_model",
     "write-failed": "commands.providers.write_failed",
   };

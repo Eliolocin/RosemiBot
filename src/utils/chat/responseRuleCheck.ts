@@ -108,6 +108,11 @@ export async function checkResponseRules(
               row.server_type === "prose_linter",
           )
         : undefined;
+    // Report "disabled" rather than "failed" because a disabled or removed linter is an operator choice, and "failed" would force review and log an error every turn.
+    if (registration?.status === "fresh" && !config) {
+      trace("unbound");
+      return { status: "disabled" };
+    }
     const tool = config ? await bounded(guild.getRegisteredTool(config, true)) : null;
     signal.throwIfAborted();
     if (

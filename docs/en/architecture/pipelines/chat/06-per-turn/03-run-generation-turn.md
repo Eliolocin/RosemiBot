@@ -128,7 +128,8 @@ input is a `text` string. Its output (structured content, JSON text or plain tex
 to the reviewer as `<prose_linter_report advisory="true">` and forces a detailed review. Raw output
 cannot reach author feedback, memory or logs. `getGuildMCPRouting` excludes `prose_linter`
 registrations, so the author never sees or dispatches their tools. Checker failure proceeds to review;
-an empty report cannot approve prose.
+an empty report cannot approve prose. A binding whose registration is disabled or removed acts as no
+checker: it logs no error and does not force review.
 
 Decision routing can skip detailed review only with validated calibration for the exact model and
 response or tool rubric. The registry is empty, so selections remain visibly inactive and make no

@@ -14,6 +14,7 @@ import { llmProviderRepo } from "@/utils/db/repositories/LlmProviderRepository";
 import { llmModelRepo } from "@/utils/db/repositories/LlmModelRepository";
 import { readCachedLlm, replaceCachedLlms } from "@/utils/cache/llmCacheStore";
 import * as crypto from "@/utils/security/crypto";
+import { normalizeOpenAICompatibleProviderError } from "@/providers/openaiCompatible/openaiCompatibleErrorFormatter";
 
 function state(): TomoriState {
   return { server_id: 7, config: {}, llm: { llm_provider: "google" } } as TomoriState;
@@ -123,6 +124,35 @@ describe("provider panel mutations", () => {
       updated: false,
     });
     expect(calls).toEqual(["store-optional", "refresh"]);
+  });
+
+  it("separates an unfunded account from a rejected key without saving either", async () => {
+    const cases = [
+      { response: "HTTP 402: Insufficient Balance", status: "no-balance" },
+      { response: "HTTP 401: Authentication Fails, Your api key: ****AbCd is invalid", status: "validation-failed" },
+    ] as const;
+
+    for (const { response, status } of cases) {
+      const calls: string[] = [];
+      const result = await addServerProvider(
+        { serverDiscId: "guild", state: state(), provider: "deepseek", apiKey: "sk-candidate-key" },
+        {
+          ...dependencies(calls),
+          getProvider: async () =>
+            ({
+              validateApiKey: async () => ({
+                valid: false,
+                error: normalizeOpenAICompatibleProviderError(new Error(response), {
+                  errorMessagePrefix: "DeepSeek API error",
+                }),
+              }),
+            }) as never,
+        },
+      );
+
+      expect(result).toEqual({ status });
+      expect(calls).toEqual([]);
+    }
   });
 
   it("rejects short keys before any validation or write", async () => {

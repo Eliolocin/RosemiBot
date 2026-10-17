@@ -69,6 +69,7 @@ import type { GlobalRoutableInteraction } from "@/utils/discord/interactions/rou
 import { commandRegistry } from "@/utils/discord/commandRegistry";
 import { initializeLocalizer, localizer } from "@/utils/text/localizer";
 import { ProviderFactory } from "@/utils/provider/providerFactory";
+import { normalizeOpenAICompatibleProviderError } from "@/providers/openaiCompatible/openaiCompatibleErrorFormatter";
 import * as cryptoModule from "@/utils/security/crypto";
 import * as customEndpointService from "@/utils/provider/customEndpointService";
 import * as modalModule from "@/utils/discord/ui/modals";
@@ -115,6 +116,8 @@ interface MockInteractionOptions {
    * read it, which is why the default stays absent.
    */
   guild?: unknown;
+  /** The bot's resolved permissions in the interaction's channel, which can chat by default. */
+  appPermissions?: bigint[];
 }
 
 function makeMockInteraction({
@@ -127,6 +130,11 @@ function makeMockInteraction({
   fields = {},
   interactionId,
   guild,
+  appPermissions = [
+    PermissionsBitField.Flags.ViewChannel,
+    PermissionsBitField.Flags.SendMessages,
+    PermissionsBitField.Flags.ReadMessageHistory,
+  ],
 }: MockInteractionOptions): GlobalRoutableInteraction & {
   replyCalls: unknown[];
   updateCalls: unknown[];
@@ -149,6 +157,7 @@ function makeMockInteraction({
       has: (perm: unknown) =>
         (perm === "ManageGuild" || perm === PermissionsBitField.Flags.ManageGuild) && canManageGuild,
     },
+    appPermissions: new PermissionsBitField(appPermissions),
     replied: false,
     deferred: false,
     isMessageComponent: () => kind === "button" || kind === "string",
@@ -1004,6 +1013,50 @@ describe("setupWizardRoutes", () => {
       if (check.status === "ok") {
         expect(check.draft.providerAccess).toBeNull();
       }
+    } finally {
+      providerSpy.mockRestore();
+      encryptSpy.mockRestore();
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("tells the actor to add credit when the provider reports an empty balance", async () => {
+    const nonce = "nonce-cat-submit-no-balance";
+    storeSetupDraft(nonce, makeDraft({ providerAccess: null }));
+
+    const mockProvider = {
+      validateApiKey: mock(async () => ({
+        valid: false,
+        error: normalizeOpenAICompatibleProviderError(new Error("HTTP 402: Insufficient Balance"), {
+          errorMessagePrefix: "DeepSeek API error",
+        }),
+      })),
+    };
+    const providerSpy = spyOn(ProviderFactory, "getProviderByName").mockResolvedValue(mockProvider as never);
+    const encryptSpy = spyOn(cryptoModule, "encryptApiKey");
+    const selectSpy = spyOn(modalModule, "takeRawModalSelectValue").mockReturnValue("deepseek");
+
+    try {
+      const customId = buildSetupProviderCatalogSubmitRouteId({ locale: "en-US", nonce });
+      const interaction = makeMockInteraction({
+        customId,
+        kind: "modal",
+        fields: {
+          [buildSetupCatalogModalFieldId("api-key", nonce)]: "sk-unfunded-key",
+        },
+      });
+
+      await dispatchGlobalInteraction({} as Client, interaction);
+
+      expect(interaction.editReplyCalls.length).toBe(1);
+      const payloadString = JSON.stringify(interaction.editReplyCalls[0]);
+      expect(payloadString).toContain(
+        serializedPanelProse(`> ${localizer("en-US", "commands.setup.wizard.provider_validation_no_balance")}`),
+      );
+      expect(payloadString).not.toContain(
+        serializedPanelProse(`> ${localizer("en-US", "commands.setup.wizard.provider_validation_failed")}`),
+      );
+      expect(encryptSpy).not.toHaveBeenCalled();
     } finally {
       providerSpy.mockRestore();
       encryptSpy.mockRestore();
@@ -2853,6 +2906,30 @@ describe("setupWizardFinish", () => {
 
       // Consumed, so nothing can replay the transaction through this nonce.
       expect(readSetupDraft(COMMIT_NONCE, "actor-1", "guild-1", "guild").status).toBe("missing");
+      expect(receipt).not.toContain(localizer("en-US", "commands.setup.channel_access_warning_field"));
+    } finally {
+      stubs.restore();
+    }
+  });
+
+  it("warns in the receipt when the bot cannot see the channel setup ran in", async () => {
+    const stubs = stubCommitDependencies();
+
+    try {
+      storeSetupDraft(COMMIT_NONCE, makeCompleteDraft());
+      const customId = buildSetupFinishRouteId({ locale: "en-US", nonce: COMMIT_NONCE });
+      const interaction = makeMockInteraction({
+        customId,
+        guild: COMMIT_GUILD,
+        appPermissions: [PermissionsBitField.Flags.SendMessages],
+      });
+
+      await dispatchGlobalInteraction({} as Client, interaction);
+
+      expect(stubs.setupSpy).toHaveBeenCalledTimes(1);
+      const receipt = JSON.stringify(interaction.editReplyCalls[0]);
+      expect(receipt).toContain(localizer("en-US", "commands.setup.wizard.receipt_title"));
+      expect(receipt).toContain(localizer("en-US", "commands.setup.channel_access_warning_field"));
     } finally {
       stubs.restore();
     }

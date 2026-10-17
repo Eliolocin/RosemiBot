@@ -55,6 +55,8 @@ import {
   curatedImageSupportsFromSubmittedValues,
   resolveCuratedImageSupports,
 } from "@/utils/provider/providerImageCapabilities";
+import type { ApiKeyValidationResult } from "@/types/provider/interfaces";
+import { isAccountBalanceExhaustedError } from "@/utils/provider/providerErrorClassification";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import { getStaticProviderInfo } from "@/utils/provider/providerInfoRegistry";
 import { ProviderFactory } from "@/utils/provider/providerFactory";
@@ -122,7 +124,13 @@ export interface ProviderPanelOperationsDependencies {
 export type AddServerProviderResult =
   | { status: "success"; entryId: string; displayName: string; modelName?: string; updated: boolean }
   | {
-      status: "invalid-key" | "unsupported-provider" | "validation-failed" | "missing-model" | "write-failed";
+      status:
+        | "invalid-key"
+        | "unsupported-provider"
+        | "validation-failed"
+        | "no-balance"
+        | "missing-model"
+        | "write-failed";
     };
 
 export interface AddServerProviderInput {
@@ -834,6 +842,10 @@ async function loadPersonalProviderPanelScope(
   };
 }
 
+function rejectedKeyStatus(validation: ApiKeyValidationResult): "validation-failed" | "no-balance" {
+  return validation.error && isAccountBalanceExhaustedError(validation.error) ? "no-balance" : "validation-failed";
+}
+
 async function addElevenLabsProvider(
   input: AddServerProviderInput,
   dependencies: AddServerProviderDependencies,
@@ -916,7 +928,7 @@ async function addCuratedProvider(
     return { status: "unsupported-provider" };
   }
   const validation = await providerInstance.validateApiKey(input.apiKey);
-  if (!validation.valid) return { status: "validation-failed" };
+  if (!validation.valid) return { status: rejectedKeyStatus(validation) };
 
   const existingConfig = await dependencies.loadSavedConfig(input.state.server_id, provider);
   const encryption = await dependencies.encrypt(input.apiKey);
@@ -1013,7 +1025,8 @@ async function addPersonalProvider(input: AddServerProviderInput): Promise<AddSe
     });
     return { status: "unsupported-provider" };
   }
-  if (!(await instance.validateApiKey(apiKey)).valid) return { status: "validation-failed" };
+  const validation = await instance.validateApiKey(apiKey);
+  if (!validation.valid) return { status: rejectedKeyStatus(validation) };
   const existingConfig = await llmProviderRepo.loadUserSavedProviderConfig(userId, provider);
   const encryption = await encryptApiKey(apiKey);
   const savedConfig = await buildUserSavedProviderConfigFromExistingOrDefaults({
