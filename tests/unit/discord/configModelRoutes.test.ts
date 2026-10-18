@@ -31,6 +31,7 @@ import {
   filterProvidersForCapability,
   isNaiPipelineProvider,
   configModelOperations,
+  loadConfigModelProviders,
   type ConfigModelOperations,
 } from "@/utils/discord/interactions/configModelOperations";
 import {
@@ -659,7 +660,7 @@ describe("config models switch page", () => {
     });
   });
 
-  it("renders all six capability slots and the Text-override rows", async () => {
+  it("renders every capability slot and the Text-override rows", async () => {
     const harness = makeHarness();
     await dispatch(
       harness,
@@ -1005,7 +1006,7 @@ describe("config models switch page", () => {
   it("offers a None entry only for the slots whose absorbed command can clear", async () => {
     // The clear entry only appears on a slot that has something to clear, so each capability is
     // given an assignment first.
-    for (const capability of ["vision", "image", "nai-image"] as ConfigModelCapability[]) {
+    for (const capability of ["vision", "decision", "image", "nai-image"] as ConfigModelCapability[]) {
       const harness = makeHarness({
         currentModels: { [capability]: "assigned-model" },
         currentProviders: { [capability]: "google" },
@@ -1387,6 +1388,46 @@ describe("config models capability writes", () => {
     providers.mockRestore();
     models.mockRestore();
     update.mockRestore();
+  });
+
+  it("writes and clears the Decision column only for an owned registration", async () => {
+    const providers = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([
+      makeSavedProvider("openrouter"),
+      makeSavedProvider("google"),
+    ]);
+    const decisions = spyOn(llmModelRepo, "loadDecisionModelOptions").mockResolvedValue([
+      { model: { decision_model_id: 4, provider: "openrouter", codename: "fixture-decision", descriptions: null } },
+    ] as never);
+    const update = spyOn(configRepository, "updateModelConfig").mockResolvedValue(true);
+    try {
+      expect((await loadConfigModelProviders(9, "decision")).map((row) => row.provider)).toEqual(["openrouter"]);
+      const pick = (modelId: number) =>
+        configModelOperations.setCapabilityModel({
+          tomoriState: makeState(),
+          serverDiscId: "guild-1",
+          capability: "decision",
+          provider: "openrouter",
+          modelId,
+        });
+      expect((await pick(5)).status).toBe("not-found");
+      expect(update).not.toHaveBeenCalled();
+      expect((await pick(4)).status).toBe("success");
+      expect(update).toHaveBeenLastCalledWith(9, { decision_model_id: 4 });
+
+      const selected = makeState();
+      selected.config.decision_model_id = 4;
+      const cleared = await configModelOperations.clearCapabilityModel({
+        tomoriState: selected,
+        serverDiscId: "guild-1",
+        capability: "decision",
+      });
+      expect(cleared.status).toBe("success");
+      expect(update).toHaveBeenLastCalledWith(9, { decision_model_id: null });
+    } finally {
+      providers.mockRestore();
+      decisions.mockRestore();
+      update.mockRestore();
+    }
   });
 
   it("sends a NovelAI image pick to the NovelAI column and a standard pick to the standard column", async () => {
@@ -2262,6 +2303,7 @@ describe("config models view loaders", () => {
     const channelOverrides = spyOn(llmOverrideRepo, "getAllChannelLlmOverridesForServer").mockResolvedValue([
       { channelDiscId: "111", llm: { llm_codename: "kayra-v1", llm_provider: "novelai" } },
     ] as never);
+    const decisions = spyOn(llmModelRepo, "loadDecisionModelOptions").mockResolvedValue([]);
     const personas = spyOn(tomoriStateCache, "getCachedAllPersonas").mockResolvedValue([
       {
         ...makeState(),
@@ -2273,11 +2315,10 @@ describe("config models view loaders", () => {
     ] as unknown as TomoriState[]);
 
     const view = await loadConfigSwitchModelsView(makeState(), "guild-1", undefined, undefined, async () => []);
-    expect(view.slots).toHaveLength(6);
     expect<readonly ConfigCatalogModelCapability[]>(view.slots.map((slot) => slot.capability)).toEqual(
       CATALOG_MODEL_CAPABILITIES,
     );
-    expect(providers).toHaveBeenCalledTimes(6);
+    expect(providers).toHaveBeenCalledTimes(CATALOG_MODEL_CAPABILITIES.length);
     // A persona without a resolved override is an ordinary default, not an override row.
     expect(view.channelOverrides).toEqual([{ target: "<#111>", model: "kayra-v1 (NovelAI)" }]);
     expect(view.personaOverrides).toEqual([{ target: "**Juno**", model: "claude-sonnet-4 (OpenRouter)" }]);
@@ -2305,6 +2346,7 @@ describe("config models view loaders", () => {
     expect(overrideBlock).toContain("> **Juno** · claude-sonnet-4 (OpenRouter)");
 
     providers.mockRestore();
+    decisions.mockRestore();
     channelOverrides.mockRestore();
     personas.mockRestore();
   });
@@ -2319,6 +2361,7 @@ describe("config models view loaders", () => {
         llm: { llm_codename: `model-${index}`, llm_provider: "google" },
       })) as never,
     );
+    const decisions = spyOn(llmModelRepo, "loadDecisionModelOptions").mockResolvedValue([]);
     const personas = spyOn(tomoriStateCache, "getCachedAllPersonas").mockResolvedValue([] as unknown as TomoriState[]);
 
     const view = await loadConfigSwitchModelsView(makeState(), "guild-1", undefined, undefined, async () => []);
@@ -2340,6 +2383,7 @@ describe("config models view loaders", () => {
     expectValidComponentsV2Payload(payload);
 
     providers.mockRestore();
+    decisions.mockRestore();
     channelOverrides.mockRestore();
     personas.mockRestore();
   });

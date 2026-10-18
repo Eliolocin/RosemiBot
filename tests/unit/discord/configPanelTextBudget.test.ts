@@ -1216,7 +1216,7 @@ describe("Switch Models capability notice budgeting", () => {
                 const videoHasUsableModel = slotState.isUsable("video");
                 const imageHealthy = flags.imageGenerationEnabled && imageHasUsableModel;
                 const videoHealthy = flags.videoGenerationEnabled && videoHasUsableModel;
-                const expectedComponentCount = (receipt ? 27 : 25) + (imageHealthy && videoHealthy ? 0 : 1);
+                const expectedComponentCount = receipt ? 30 : 28;
                 expect(countRenderedComponents(payload)).toBe(expectedComponentCount);
 
                 const renderedText = getTextDisplays(payload).join("\n");
@@ -1257,13 +1257,10 @@ describe("Switch Models capability notice budgeting", () => {
                     ),
                   );
                   expect(capabilityNotice).toBeUndefined();
-                } else {
-                  // The rows read as one titled list rather than as loose footnotes, so the heading
-                  // ships with the notice and disappears with it.
-                  expect(renderedText).toContain(
-                    `**${localizer(locale, "commands.config.panel.capability_notice_title")}**`,
-                  );
                 }
+                expect(renderedText).toContain(
+                  `**${localizer(locale, "commands.config.panel.capability_notice_title")}**`,
+                );
               },
             );
           }
@@ -1273,15 +1270,15 @@ describe("Switch Models capability notice budgeting", () => {
     cases.expectNoFailures();
   });
 
-  it("keeps the worst unhealthy receipt payload at the 28-component ceiling", () => {
+  it("keeps the worst unhealthy receipt payload at the 30-component ceiling", () => {
     const payload = buildSwitchModelsPayload("en-US", true, true, true, () => false);
-    expect(countRenderedComponents(payload)).toBe(28);
+    expect(countRenderedComponents(payload)).toBe(30);
 
     const payloadWithExtraTextDisplay = {
       ...payload,
       components: [...payload.components, { type: ComponentType.TextDisplay, content: "Reserve" }],
     };
-    expect(countRenderedComponents(payloadWithExtraTextDisplay)).toBeGreaterThan(28);
+    expect(countRenderedComponents(payloadWithExtraTextDisplay)).toBeGreaterThan(30);
   });
 
   it("budgets an explicit eight-slot matrix across flags, reads, and endpoint boundaries", () => {

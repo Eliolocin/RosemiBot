@@ -591,6 +591,7 @@ const SERVER_CONFIG_EXPORT_COVERAGE_TARGETS: ServerConfigExportCoverageTarget[] 
       "diffusion_model_id",
       "video_model_id",
       "vision_llm_id",
+      "decision_model_id",
       // Security-sensitive encrypted credential mirrors are never exported.
       "api_key",
       "key_version",
@@ -814,6 +815,7 @@ const CONFIG_COLUMN_EXCLUSION_REASONS: Record<string, string> = {
   "server_model_configs.diffusion_model_id": "The selected diffusion model is deployment-specific.",
   "server_model_configs.video_model_id": "The selected video model is deployment-specific.",
   "server_model_configs.vision_llm_id": "The selected vision model is deployment-specific.",
+  "server_model_configs.decision_model_id": "The selected Decision model is deployment-specific.",
   "server_model_configs.api_key": "Encrypted credentials are never portable.",
   "server_model_configs.key_version": "Credential metadata has no portable meaning.",
   "server_model_configs.custom_endpoint_url": "Custom endpoints are deployment-specific.",

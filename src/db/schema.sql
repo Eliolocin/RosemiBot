@@ -3023,6 +3023,7 @@ CREATE TABLE IF NOT EXISTS server_model_configs (
   diffusion_model_id                  INT         REFERENCES image_diffusion_models(diffusion_model_id) ON DELETE SET NULL,
   video_model_id                      INT         REFERENCES video_generation_models(video_model_id) ON DELETE SET NULL,
   vision_llm_id                       INT         REFERENCES llms(llm_id) ON DELETE SET NULL,
+  decision_model_id                   INT         REFERENCES decision_models(decision_model_id) ON DELETE SET NULL,
   -- DEPRECATED Phase 1.5: credential mirrors — drop in #14.5.
   api_key                             BYTEA,
   key_version                         INT         NOT NULL DEFAULT 1,
@@ -3043,6 +3044,8 @@ CREATE TABLE IF NOT EXISTS server_model_configs (
   created_at                          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+SELECT add_column_if_not_exists('server_model_configs', 'decision_model_id', 'INT REFERENCES decision_models(decision_model_id) ON DELETE SET NULL');
 
 DROP TRIGGER IF EXISTS update_server_model_configs_timestamp ON server_model_configs;
 CREATE TRIGGER update_server_model_configs_timestamp

@@ -6,6 +6,7 @@ import {
   LOG_REDACTION_PATHS,
   log,
   resolveLogLevel,
+  resolveMetricLevel,
   sanitizeLogPayload,
 } from "@/utils/misc/logger";
 import pino from "pino";
@@ -29,7 +30,7 @@ class MemorySink implements pino.DestinationStream {
 /**
  * Mirrors the production logger construction from logger.ts:
  * JSON mode (no transport), level "error", same custom levels, multistream output, and the
- * metric child logger that pins its own level.
+ * metric child logger whose level comes from `resolveMetricLevel`.
  */
 const createProductionLikeLogger = (streams: pino.StreamEntry[]) => {
   const logger = pino(
@@ -40,7 +41,7 @@ const createProductionLikeLogger = (streams: pino.StreamEntry[]) => {
     },
     pino.multistream(streams),
   );
-  return { logger, metricLogger: logger.child({}, { level: "metric" }) };
+  return { logger, metricLogger: logger.child({}, { level: resolveMetricLevel(false, logger.level) }) };
 };
 
 describe("buildLogStreams", () => {
@@ -264,6 +265,17 @@ describe("resolveLogLevel", () => {
   test("falls back to the default for an unknown value so a typo cannot silence errors", () => {
     expect(resolveLogLevel("verbose", true)).toBe("error");
     expect(resolveLogLevel("", false)).toBe("info");
+  });
+});
+
+describe("resolveMetricLevel", () => {
+  test("keeps metrics in JSON output at any base level", () => {
+    expect(resolveMetricLevel(false, "error")).toBe("metric");
+  });
+
+  test("follows the base level in the development console", () => {
+    expect(resolveMetricLevel(true, "info")).toBe("info");
+    expect(resolveMetricLevel(true, "debug")).toBe("debug");
   });
 });
 

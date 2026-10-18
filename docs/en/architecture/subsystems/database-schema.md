@@ -174,6 +174,9 @@ registration arc to five catalogs. Native scoped references require the exact ow
 custom entries reuse encrypted provider credentials and endpoint ownership. Only System One and
 OpenAI Decisions styles admit custom Decision registrations. Deleting parents removes owned
 references and orphaned custom catalog rows. Registration alone sends no Decision requests.
+The server's selection is `server_model_configs.decision_model_id`. Registration and provider
+deletion clear it in the same transaction, seeding clears deprecated selections, and configuration
+reset preserves it with the other model selections.
 
 Downgrade requires removing scoped registrations and Decision connections. Guards and DDL execute
 atomically and restore the four-catalog registration check. Unexpected dependency failures preserve

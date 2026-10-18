@@ -757,6 +757,7 @@ const serverModelConfigSchema = z.object({
   diffusion_model_id: z.number().int().nullable().optional(),
   video_model_id: z.number().int().nullable().optional(),
   vision_llm_id: z.number().int().nullable().optional(),
+  decision_model_id: z.number().int().positive().nullable().default(null),
   api_key: z.instanceof(Buffer).nullable().optional(),
   key_version: z.number().int().default(1),
   llm_temperature: z.number().min(0.0).max(2.0).default(1.0),

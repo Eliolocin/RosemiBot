@@ -562,5 +562,12 @@ export async function seedModelsFromCatalog(client: SQL): Promise<void> {
       RETURNING server_id
     ) SELECT servers.server_disc_id FROM cleared JOIN servers USING (server_id)
   `;
-  invalidateTomoriStateCaches(changed.map((row) => row.server_disc_id));
+  const clearedDecisions = await client<Array<{ server_disc_id: string }>>`
+    WITH cleared AS (
+      UPDATE server_model_configs SET decision_model_id = NULL
+      WHERE decision_model_id IN (SELECT decision_model_id FROM decision_models WHERE is_deprecated)
+      RETURNING server_id
+    ) SELECT servers.server_disc_id FROM cleared JOIN servers USING (server_id)
+  `;
+  invalidateTomoriStateCaches([...changed, ...clearedDecisions].map((row) => row.server_disc_id));
 }

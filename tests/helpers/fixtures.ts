@@ -29,6 +29,7 @@ const BASE_CONFIG: AssembledServerConfig = {
   response_review_items: ["persona", "examples", "history"],
   response_drafting_enabled: false,
   llm_id: 1,
+  decision_model_id: null,
   api_key: null,
   key_version: 1,
   llm_temperature: 1,

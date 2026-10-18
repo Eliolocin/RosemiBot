@@ -91,6 +91,7 @@ In `/config` > Models > Switch Models, you can assign models and endpoints acros
 - **Text**: the main chat model.
 - **Vision**: reads images when the chat model cannot.
 - **Embeddings**: powers the [document knowledge base](/features/knowledge/memory/#document-knowledge-base-rag).
+- **Decision**: a registered [Decision model](#decision-models). No feature uses it yet.
 - **Standard Image**: standard image generation (see [Image Generation](/features/capabilities/media-generation/image-generation/)).
 - **NovelAI Image**: NovelAI image generation.
 - **Video**: video generation.
@@ -98,7 +99,7 @@ In `/config` > Models > Switch Models, you can assign models and endpoints acros
 - **TTS (Voice Clone)**: speaks using a reference sample or provider voice.
 - **STT Endpoint**: speech-to-text audio transcription endpoint.
 
-The first six slots choose model catalog records. The TTS and STT slots choose workspace-scoped
+The first seven slots choose model catalog records. The TTS and STT slots choose workspace-scoped
 endpoints instead, activating the selected endpoint rather than writing a model column. Register
 and edit those endpoints in `/providers`. `/personal config` retains six personal model-routing
 slots and does not include personal TTS/STT endpoint selectors.
@@ -109,8 +110,8 @@ You can also manage backup keys for automatic failover and load balancing in `/p
 <!-- anchor: decision-models -->
 
 Decision Models are a separate category in `/providers` and `/personal providers`. They answer typed
-predicates with probabilities. Registration does not change the active chat model, and no feature
-uses a Decision model yet.
+predicates with probabilities. Registration does not change the active chat model. Pick the server's
+Decision model in `/config` > Models > Switch Models; no feature uses it yet.
 
 OpenRouter is the supported native provider. Save its key, open its model dropdown, and choose
 `+ Add new Decision Model`. Enter an ID from its verified Decision catalog. The global catalog

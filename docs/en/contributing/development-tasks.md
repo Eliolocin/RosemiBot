@@ -48,7 +48,9 @@ bun run vl > /tmp/vl.log 2>&1; echo "VL_EXIT=$?" >> /tmp/vl.log
     hoster sets `LOG_LEVEL=warn`.
   - `log.metric`: a sample to count or graph. Numbers and string fields from a fixed set (codes,
     reason keys) only; free text cannot be grouped, so it goes to `log.warn`. An expected refusal is
-    a metric plus a warn, never an error.
+    a metric plus a warn, never an error. The development console hides metric lines unless
+    `LOG_LEVEL=debug`, so do not remove a metric to quiet it. A sample Grafana should graph also goes
+    to `metricSampleRepository.recordSample`, which records in every environment.
 - Slash commands only. Every user-facing string goes through `localizer()`. Follow the interaction
   timing rules in [Command System](/architecture/subsystems/command-system/).
 - Query with Bun SQL template literals, and write idempotent migrations (`IF NOT EXISTS`, guarded

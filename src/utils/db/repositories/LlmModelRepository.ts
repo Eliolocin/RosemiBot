@@ -147,6 +147,11 @@ class LlmModelRepository {
     return decisionModelSchema.array().parse(rows);
   }
 
+  async loadDecisionModelById(decisionModelId: number): Promise<DecisionModelRow | null> {
+    const rows = await sql`SELECT * FROM decision_models WHERE decision_model_id = ${decisionModelId}`;
+    return rows.length ? decisionModelSchema.parse(rows[0]) : null;
+  }
+
   async loadDecisionModelByProviderAndCodename(provider: string, codename: string): Promise<DecisionModelRow | null> {
     const rows = await sql`SELECT * FROM decision_models WHERE provider = ${provider} AND codename = ${codename}`;
     return rows.length ? decisionModelSchema.parse(rows[0]) : null;

@@ -85,7 +85,7 @@ export function resolveNaiPresetTarget(state: TomoriState): "kayra" | "erato" | 
 }
 
 /** Capability slot to the saved-provider capability whose eligibility list backs it. */
-const SAVED_PROVIDER_CAPABILITY: Record<ConfigCatalogModelCapability, SavedProviderCapability> = {
+const SAVED_PROVIDER_CAPABILITY: Record<Exclude<ConfigCatalogModelCapability, "decision">, SavedProviderCapability> = {
   text: "text",
   vision: "vision",
   embedding: "embedding",
@@ -124,8 +124,16 @@ export async function loadConfigModelProviders(
     // Speech and transcription are custom endpoint activations, not saved model providers.
     return [];
   }
+  if (capability === "decision") return loadDecisionModelProviders(serverId);
   const providers = await loadSavedProvidersForCapability(serverId, SAVED_PROVIDER_CAPABILITY[capability]);
   return filterProvidersForCapability(capability, providers);
+}
+
+/** Decision models are not a saved-provider capability, so their providers come from owned registrations. */
+async function loadDecisionModelProviders(serverId: number): Promise<SavedProviderConfigRow[]> {
+  const options = await llmModelRepo.loadDecisionModelOptions({ kind: "server", ownerId: serverId });
+  const owned = new Set(options.map(({ model }) => model.provider));
+  return (await llmProviderRepo.loadSavedProviderConfigs(serverId)).filter((row) => owned.has(row.provider));
 }
 
 /** One selectable model in a capability slot, flattened so the renderer needs no per-slot branch. */
@@ -171,6 +179,14 @@ export async function loadConfigModelChoices(
           description: resolveDescription(model.descriptions, locale),
         }));
     }
+    case "decision":
+      return (await llmModelRepo.loadDecisionModelOptions(owner))
+        .filter(({ model }) => model.provider === provider)
+        .map(({ model }) => ({
+          id: model.decision_model_id,
+          name: model.codename,
+          description: resolveDescription(model.descriptions, locale),
+        }));
     case "image":
     case "nai-image": {
       const models = (await llmModelRepo.loadAvailableDiffusionModels(provider, false, owner)) ?? [];
@@ -378,6 +394,8 @@ export function currentModelIdForCapability(state: TomoriState, capability: Conf
       return state.config.vision_llm_id ?? null;
     case "embedding":
       return state.config.embedding_model_id ?? null;
+    case "decision":
+      return state.config.decision_model_id;
     case "image":
       return state.config.diffusion_model_id ?? null;
     case "nai-image":
@@ -588,9 +606,14 @@ export const configModelOperations: ConfigModelOperations = {
         ? await configRepository.updateNovelaiImagegenConfig(tomoriState.server_id, {
             nai_diffusion_model_id: choice.id,
           })
-        : capability === "image"
-          ? await configRepository.updateModelConfig(tomoriState.server_id, { diffusion_model_id: choice.id })
-          : await configRepository.updateModelConfig(tomoriState.server_id, { video_model_id: choice.id });
+        : await configRepository.updateModelConfig(
+            tomoriState.server_id,
+            capability === "image"
+              ? { diffusion_model_id: choice.id }
+              : capability === "decision"
+                ? { decision_model_id: choice.id }
+                : { video_model_id: choice.id },
+          );
     if (!updated) return { status: "write-failed" };
     invalidateTomoriStateCache(serverDiscId);
     return { status: "success", modelName: choice.name, reembedded: false };
@@ -615,13 +638,16 @@ export const configModelOperations: ConfigModelOperations = {
     if (currentModelIdForCapability(tomoriState, capability) === null) return { status: "already-clear" };
 
     const updated =
-      capability === "vision"
-        ? await configRepository.updateModelConfig(tomoriState.server_id, { vision_llm_id: null })
-        : capability === "image"
-          ? await configRepository.updateModelConfig(tomoriState.server_id, { diffusion_model_id: null })
-          : await configRepository.updateNovelaiImagegenConfig(tomoriState.server_id, {
-              nai_diffusion_model_id: null,
-            });
+      capability === "nai-image"
+        ? await configRepository.updateNovelaiImagegenConfig(tomoriState.server_id, { nai_diffusion_model_id: null })
+        : await configRepository.updateModelConfig(
+            tomoriState.server_id,
+            capability === "vision"
+              ? { vision_llm_id: null }
+              : capability === "image"
+                ? { diffusion_model_id: null }
+                : { decision_model_id: null },
+          );
     if (!updated) return { status: "write-failed" };
     invalidateTomoriStateCache(serverDiscId);
     return { status: "success" };

@@ -96,8 +96,18 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Decision model persistence", () => {
     expect(
       await llmProviderRepo.deleteOwnedDecisionRegistration({ kind: "personal", ownerId: userId }, "openrouter", id),
     ).toBe(false);
+    // A second owner keeps the shared row alive, so only the explicit clear can unset the server's slot.
+    await llmProviderRepo.upsertDecisionModelRegistration({ userId, decisionModelId: id });
+    await testSql`UPDATE server_model_configs SET decision_model_id = ${id} WHERE server_id = ${serverId}`;
     expect(
       await llmProviderRepo.deleteOwnedDecisionRegistration({ kind: "server", ownerId: serverId }, "openrouter", id),
+    ).toBe(true);
+    const [slot] = await testSql<Array<{ decision_model_id: number | null }>>`
+      SELECT decision_model_id FROM server_model_configs WHERE server_id = ${serverId}
+    `;
+    expect(slot?.decision_model_id).toBeNull();
+    expect(
+      await llmProviderRepo.deleteOwnedDecisionRegistration({ kind: "personal", ownerId: userId }, "openrouter", id),
     ).toBe(true);
     expect(await llmModelRepo.loadDecisionModelByProviderAndCodename("openrouter", "fixture-decision")).toBeNull();
     const seeds = personal.filter((model) => !model.is_scoped_registration);
@@ -175,7 +185,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Decision model persistence", () => {
     expect(await llmProviderRepo.loadUserSavedProviderConfig(userId, saved.provider)).toBeNull();
   });
 
-  it("preserves Decision registrations during reset and removes only the deleted native provider owner's references", async () => {
+  it("preserves Decision registrations and the server slot during reset and clears them with the owner's provider", async () => {
     const id = await llmModelRepo.upsertDecisionModel({
       provider: "openrouter",
       codename: "fixture-shared-owner",
@@ -184,13 +194,26 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Decision model persistence", () => {
     await llmProviderRepo.upsertDecisionModelRegistration({ serverId, decisionModelId: id });
     await llmProviderRepo.upsertDecisionModelRegistration({ userId, decisionModelId: id });
     await testSql`INSERT INTO saved_provider_configs (server_id, provider, api_key, key_version) VALUES (${serverId}, 'openrouter', ${Buffer.from("fixture")}, 1) ON CONFLICT (server_id, provider) DO NOTHING`;
+    const selectedDecision = async () =>
+      (
+        await testSql<Array<{ decision_model_id: number | null }>>`
+          SELECT decision_model_id FROM server_model_configs WHERE server_id = ${serverId}
+        `
+      )[0]?.decision_model_id;
+    await testSql`UPDATE server_model_configs SET decision_model_id = ${id} WHERE server_id = ${serverId}`;
     await resetRepository.resetServerConfiguration(serverId);
+    expect(await selectedDecision()).toBe(id);
     expect(
       (await llmModelRepo.loadDecisionModelOptions({ kind: "server", ownerId: serverId })).some(
         (option) => option.reference.modelId === id,
       ),
     ).toBe(true);
+    expect(await llmProviderRepo.deleteDecisionModelRegistration({ serverId, decisionModelId: id })).toBe(true);
+    expect(await selectedDecision()).toBeNull();
+    await llmProviderRepo.upsertDecisionModelRegistration({ serverId, decisionModelId: id });
+    await testSql`UPDATE server_model_configs SET decision_model_id = ${id} WHERE server_id = ${serverId}`;
     expect(await llmProviderRepo.deleteServerProviderRegistration(serverId, "openrouter")).toBe(true);
+    expect(await selectedDecision()).toBeNull();
     expect(
       (await llmModelRepo.loadAvailableDecisionModels("openrouter", false, { kind: "server", ownerId: serverId })).some(
         (model) => model.decision_model_id === id,

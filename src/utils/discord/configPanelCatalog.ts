@@ -288,6 +288,7 @@ export type ConfigModelCapability =
   | "text"
   | "vision"
   | "embedding"
+  | "decision"
   | "image"
   | "nai-image"
   | "video"
@@ -307,6 +308,7 @@ export const CONFIG_MODEL_CAPABILITY_ORDER: readonly ConfigModelCapability[] = [
   "text",
   "vision",
   "embedding",
+  "decision",
   "image",
   "nai-image",
   "video",
@@ -318,10 +320,12 @@ export const CONFIG_MODEL_CAPABILITY_ORDER: readonly ConfigModelCapability[] = [
 /**
  * Slots whose absorbed command offers a clear path. `/model vision` carries a clear sentinel and
  * `/model image` a clear option per column; `/model embedding`, `/model video`, and the Text
- * primary have none, so offering one there would broaden the command surface.
+ * primary have none, so offering one there would broaden the command surface. Decision has no
+ * command, and no Decision model is its default state.
  */
 export const CONFIG_CLEARABLE_MODEL_CAPABILITIES: ReadonlySet<ConfigModelCapability> = new Set([
   "vision",
+  "decision",
   "image",
   "nai-image",
 ]);

@@ -195,7 +195,7 @@ export function decodeConfigEndpointPageValue(value: string): number | null {
  * Resolves the display name of whatever currently occupies one slot.
  *
  * Each slot reads a different catalog, and only Text and Vision are joined into `TomoriState`
- * already, so the remaining four need a lookup by id rather than a field read.
+ * already, so the rest need a lookup by id rather than a field read.
  */
 async function resolveSlotAssignment(
   state: TomoriState,
@@ -213,6 +213,12 @@ async function resolveSlotAssignment(
       const id = state.config.embedding_model_id;
       if (!id) return { modelName: null, provider: null };
       const model = await llmModelRepo.loadEmbeddingModelById(id);
+      return { modelName: model?.codename ?? null, provider: model?.provider ?? null };
+    }
+    case "decision": {
+      const id = state.config.decision_model_id;
+      if (!id) return { modelName: null, provider: null };
+      const model = await llmModelRepo.loadDecisionModelById(id);
       return { modelName: model?.codename ?? null, provider: model?.provider ?? null };
     }
     case "image":
@@ -252,8 +258,8 @@ export async function loadConfigSwitchModelsView(
         resolveSlotAssignment(state, capability),
         loadConfigModelProviders(state.server_id, capability),
         // Only the expanded provider's catalog is measured: the renderer needs the count to decide
-        // how many page entries it contributes, and loading all six catalogs to fill a field five
-        // of them never read would put the whole model table behind every repaint.
+        // how many page entries it contributes, and loading every catalog to fill a field the
+        // collapsed slots never read would put the whole model table behind every repaint.
         expanded ? loadConfigModelChoices(state.server_id, capability, expanded).then((rows) => rows.length) : 0,
       ]);
       return {
@@ -392,7 +398,7 @@ export function decodeConfigProviderPageValue(value: string): { provider: string
 /**
  * Value the Switch Models provider select carries to scroll its own entry list.
  *
- * Six selectors share one page, so a prev/next row per capability costs eighteen components the
+ * Seven selectors share one page, so a prev/next row per capability costs twenty-one components the
  * forty-component budget does not have. Riding the select instead costs none, and the expanded
  * provider has to ride along or the next window rebuilds a shorter entry list and the offset it
  * was given now points outside it.

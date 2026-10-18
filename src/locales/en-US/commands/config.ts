@@ -912,6 +912,7 @@ export default {
       capability_text: `Text`,
       capability_vision: `Vision`,
       capability_embedding: `Embedding`,
+      capability_decision: `Decision`,
       capability_image: `Standard Image`,
       capability_nai_image: `NovelAI Image`,
       capability_video: `Video`,
@@ -919,6 +920,7 @@ export default {
       capability_tts_clone: `TTS (Voice Clone)`,
       capability_stt: `Speech to Text`,
       capability_notice_title: `Notes:`,
+      decision_inactive_note: "Decision models are experimental and don't do anything yet.",
       image_generation_disabled_direction:
         "Image generation is disabled. Enable it under Permissions > Bot Capabilities.",
       image_generation_missing_model: `No usable model is configured for Image generation.`,

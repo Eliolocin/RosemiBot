@@ -86,6 +86,7 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
       "diffusion_model_id",
       "video_model_id",
       "vision_llm_id",
+      "decision_model_id",
       "api_key",
       "key_version",
       "custom_endpoint_url",

@@ -79,6 +79,7 @@ export const CONFIG_MODEL_CAPABILITY_LOCALE_KEYS: Record<ConfigModelCapability, 
   text: "commands.config.panel.capability_text",
   vision: "commands.config.panel.capability_vision",
   embedding: "commands.config.panel.capability_embedding",
+  decision: "commands.config.panel.capability_decision",
   image: "commands.config.panel.capability_image",
   "nai-image": "commands.config.panel.capability_nai_image",
   video: "commands.config.panel.capability_video",
@@ -213,13 +214,13 @@ function hasUsableModel(slot: ConfigModelSlotView): boolean {
   );
 }
 
-function buildCapabilityNoticeLine(locale: string, view: ConfigSwitchModelsView): ComponentInContainerData | null {
+function buildCapabilityNoticeLine(locale: string, view: ConfigSwitchModelsView): ComponentInContainerData {
   // One Image flag enables either provider-specific image path, so one usable image slot is enough.
   const hasUsableImageModel = view.slots.some(
     (slot) => (slot.capability === "image" || slot.capability === "nai-image") && hasUsableModel(slot),
   );
   const hasUsableVideoModel = view.slots.some((slot) => slot.capability === "video" && hasUsableModel(slot));
-  const warnings: string[] = [];
+  const warnings: string[] = [localizer(locale, "commands.config.panel.decision_inactive_note")];
 
   if (!view.imageGenerationEnabled) {
     warnings.push(localizer(locale, "commands.config.panel.image_generation_disabled_direction"));
@@ -248,7 +249,6 @@ function buildCapabilityNoticeLine(locale: string, view: ConfigSwitchModelsView)
     }
   }
 
-  if (warnings.length === 0) return null;
   // Several independent capabilities can each need attention at once, so the list is titled and
   // marked with one bullet per item: a bare run of `-#` lines reads as unrelated footnotes.
   const rows = warnings.map((warning) => withLinePrefix("> ", `- ${warning}`)).join("\n");
@@ -464,11 +464,10 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
     content: `-# ${localizer(locale, "commands.config.panel.manage_providers_hint")}`,
   });
 
-  const capabilityNotice = buildCapabilityNoticeLine(locale, view);
-  if (capabilityNotice) components.push(capabilityNotice);
+  components.push(buildCapabilityNoticeLine(locale, view));
 
   // Only Text carries narrower scopes, so the summary names those two editors rather than implying
-  // that the six other slots support overrides at all.
+  // that the other slots support overrides at all.
   components.push({
     type: ComponentType.TextDisplay,
     content: [

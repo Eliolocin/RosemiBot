@@ -395,7 +395,7 @@ export async function handleConfigModelModalOpen(
     const capability = route.capability;
     const selected = interaction.isStringSelectMenu() ? (interaction.values[0] ?? null) : null;
 
-    // The advance entry rides the select too, because six selectors cannot each afford a
+    // The advance entry rides the select too, because seven selectors cannot each afford a
     // prev/next row under the forty-component budget.
     const range = selected ? decodeConfigProviderRangeValue(selected) : null;
     if (range) {
