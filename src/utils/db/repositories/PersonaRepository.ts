@@ -159,7 +159,6 @@ const TOMORI_POINTER_CONTENT_FIELDS = new Set<string>([
 /** Fields where SQL NULL carries semantic meaning ("not configured") and must not be coerced to undefined. */
 const MEANINGFULLY_NULLABLE_CONFIG_FIELDS = new Set([
   "response_reviewer_llm_id",
-  "response_decision_model_id",
   "response_reviewer_prompt",
   "response_rule_checker_ref",
   "llm_id",
@@ -1930,7 +1929,6 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         scc.match_limit, scc.cascade_limit, scc.timezone_offset, scc.self_debug_enabled,
         scc.model_randomizer_enabled,
         scc.response_reviewer_llm_id,
-        scc.response_decision_model_id,
         scc.response_reviewer_prompt,
         scc.response_rule_checker_ref,
         scc.response_review_items,
@@ -2043,7 +2041,6 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         scc.match_limit, scc.cascade_limit, scc.timezone_offset, scc.self_debug_enabled,
         scc.model_randomizer_enabled,
         scc.response_reviewer_llm_id,
-        scc.response_decision_model_id,
         scc.response_reviewer_prompt,
         scc.response_rule_checker_ref,
         scc.response_review_items,

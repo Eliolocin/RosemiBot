@@ -29,7 +29,6 @@ import { workspaceConfigExportSchema } from "@/types/db/dataExport";
 describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
   let refs: FixtureRefs;
   let reviewerId: number;
-  let decisionId: number;
   let otherServerId: number;
   beforeAll(async () => {
     await setupTestDb();
@@ -45,13 +44,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     });
     if (!reviewer) throw new Error("Missing reviewer fixture");
     reviewerId = reviewer;
-    decisionId = await llmModelRepo.upsertDecisionModel({
-      provider: "openrouter",
-      codename: "_rt_decision",
-      inputTokenLimit: 8192,
-    });
     await llmProviderRepo.upsertOpenRouterModelRegistration({ serverId: refs.serverId, llmId: reviewerId });
-    await llmProviderRepo.upsertDecisionModelRegistration({ serverId: refs.serverId, decisionModelId: decisionId });
     await testSql`INSERT INTO saved_provider_configs (server_id, provider, api_key, key_version) VALUES (${refs.serverId}, 'openrouter', ${Buffer.from("fixture")}, 1) ON CONFLICT (server_id, provider) DO NOTHING`;
     const [other] = await testSql`INSERT INTO servers (server_disc_id) VALUES ('_rt_draft_other') RETURNING server_id`;
     otherServerId = other.server_id;
@@ -69,7 +62,6 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     await testSql`DELETE FROM servers WHERE server_id = ${otherServerId}`;
     await cleanupFixtures(testSql);
     await testSql`DELETE FROM llms WHERE llm_codename = '_rt_reviewer'`;
-    await testSql`DELETE FROM decision_models WHERE codename = '_rt_decision'`;
   });
   const state = () => createPersona({ server_id: refs.serverId });
 
@@ -77,33 +69,13 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     const initial = await personaRepository.loadState(FIXTURE_IDS.serverDiscId);
     expect(initial?.config.response_drafting_enabled).toBe(false);
     expect(initial?.config.response_review_items).toEqual(["persona", "examples", "history"]);
-    for (const key of [
-      "response_reviewer_llm_id",
-      "response_decision_model_id",
-      "response_reviewer_prompt",
-      "response_rule_checker_ref",
-    ] as const)
+    for (const key of ["response_reviewer_llm_id", "response_reviewer_prompt", "response_rule_checker_ref"] as const)
       expect(initial?.config[key]).toBeNull();
     const [primary] =
       await testSql`SELECT llm_id, api_key FROM server_model_configs WHERE server_id = ${refs.serverId}`;
-    expect(
-      await responseDraftingOperations.setModel(
-        state(),
-        FIXTURE_IDS.serverDiscId,
-        "reviewer",
-        "openrouter",
-        reviewerId,
-      ),
-    ).toBe("success");
-    expect(
-      await responseDraftingOperations.setModel(
-        state(),
-        FIXTURE_IDS.serverDiscId,
-        "decision",
-        "openrouter",
-        decisionId,
-      ),
-    ).toBe("success");
+    expect(await responseDraftingOperations.setModel(state(), FIXTURE_IDS.serverDiscId, "openrouter", reviewerId)).toBe(
+      "success",
+    );
     const prompt = "🙂".repeat(4000);
     expect(await responseDraftingOperations.setPrompt(state(), FIXTURE_IDS.serverDiscId, prompt)).toBe("success");
     expect(await responseDraftingOperations.setEnabled(state(), FIXTURE_IDS.serverDiscId, true)).toBe("success");
@@ -116,7 +88,6 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     const expected = {
       response_drafting_enabled: true,
       response_reviewer_llm_id: reviewerId,
-      response_decision_model_id: decisionId,
       response_reviewer_prompt: prompt,
       response_rule_checker_ref: binding,
       response_review_items: ["tools", "context"],
@@ -142,31 +113,20 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
 
   it("rejects guessed, deleted and cross-owner models", async () => {
     const other = createPersona({ server_id: otherServerId });
-    expect(
-      await responseDraftingOperations.setModel(other, "_rt_draft_other", "reviewer", "openrouter", reviewerId),
-    ).toBe("stale");
-    expect(
-      await responseDraftingOperations.setModel(other, "_rt_draft_other", "decision", "openrouter", decisionId),
-    ).toBe("stale");
-    expect(
-      await responseDraftingOperations.setModel(state(), FIXTURE_IDS.serverDiscId, "reviewer", "google", reviewerId),
-    ).toBe("stale");
-    expect(
-      await responseDraftingOperations.setModel(
-        state(),
-        FIXTURE_IDS.serverDiscId,
-        "decision",
-        "openrouter",
-        2147483647,
-      ),
-    ).toBe("stale");
+    expect(await responseDraftingOperations.setModel(other, "_rt_draft_other", "openrouter", reviewerId)).toBe("stale");
+    expect(await responseDraftingOperations.setModel(state(), FIXTURE_IDS.serverDiscId, "google", reviewerId)).toBe(
+      "stale",
+    );
+    expect(await responseDraftingOperations.setModel(state(), FIXTURE_IDS.serverDiscId, "openrouter", 2147483647)).toBe(
+      "stale",
+    );
     expect(await responseDraftingOperations.setPrompt(state(), FIXTURE_IDS.serverDiscId, " ")).toBe("invalid");
     expect(await configRepository.updateChatConfig(-1, { response_reviewer_prompt: "fixture" })).toBe(false);
   });
 
   it("preserves cached and durable settings after a rejected write and reloads them in a fresh process", async () => {
     const [before] =
-      await testSql`SELECT response_reviewer_llm_id, response_decision_model_id, response_reviewer_prompt, response_rule_checker_ref FROM server_chat_configs WHERE server_id = ${refs.serverId}`;
+      await testSql`SELECT response_reviewer_llm_id, response_reviewer_prompt, response_rule_checker_ref FROM server_chat_configs WHERE server_id = ${refs.serverId}`;
     const cached = await personaRepository.loadState(FIXTURE_IDS.serverDiscId);
     if (!cached) throw new Error("Missing workspace fixture");
     cache.set(FIXTURE_IDS.serverDiscId, { personas: [cached], mainPersona: cached, cachedAt: Date.now() });
@@ -175,7 +135,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     );
     expect(cache.get(FIXTURE_IDS.serverDiscId)?.mainPersona).toBe(cached);
     const [after] =
-      await testSql`SELECT response_reviewer_llm_id, response_decision_model_id, response_reviewer_prompt, response_rule_checker_ref FROM server_chat_configs WHERE server_id = ${refs.serverId}`;
+      await testSql`SELECT response_reviewer_llm_id, response_reviewer_prompt, response_rule_checker_ref FROM server_chat_configs WHERE server_id = ${refs.serverId}`;
     expect(after).toEqual(before);
     // A new process has no persona cache and reads the committed config through the runtime repository.
     const script = `
@@ -206,7 +166,6 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     const exported = workspaceConfigExportSchema.parse(result.data);
     expect(exported.data.chat).toMatchObject({
       response_reviewer_llm_id: reviewerId,
-      response_decision_model_id: decisionId,
       response_review_items: ["tools", "context"],
     });
     expect(JSON.stringify(exported)).not.toContain("api_key");
@@ -230,7 +189,6 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
       response_drafting_enabled: false,
       response_review_items: ["persona", "examples", "history"],
       response_reviewer_llm_id: null,
-      response_decision_model_id: null,
       response_reviewer_prompt: null,
       response_rule_checker_ref: null,
     });
@@ -295,12 +253,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
 
   it("clears registration/provider references only for the deleted owner after commit", async () => {
     await llmProviderRepo.upsertOpenRouterModelRegistration({ serverId: otherServerId, llmId: reviewerId });
-    await llmProviderRepo.upsertDecisionModelRegistration({ serverId: otherServerId, decisionModelId: decisionId });
     for (const serverId of [refs.serverId, otherServerId])
-      await configRepository.updateChatConfig(serverId, {
-        response_reviewer_llm_id: reviewerId,
-        response_decision_model_id: decisionId,
-      });
+      await configRepository.updateChatConfig(serverId, { response_reviewer_llm_id: reviewerId });
     const cached = state();
     cache.set(FIXTURE_IDS.serverDiscId, { personas: [cached], mainPersona: cached, cachedAt: Date.now() });
     expect(await llmProviderRepo.deleteServerProviderRegistration(refs.serverId, "absent-provider")).toBe(false);
@@ -308,32 +262,19 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     expect(
       await llmProviderRepo.deleteOpenRouterModelRegistration({ serverId: refs.serverId, llmId: reviewerId }),
     ).toBe(true);
-    expect(
-      await llmProviderRepo.deleteDecisionModelRegistration({ serverId: refs.serverId, decisionModelId: decisionId }),
-    ).toBe(true);
     expect(cache.has(FIXTURE_IDS.serverDiscId)).toBe(false);
     const rows = await testSql<
-      Array<{ server_id: number; response_reviewer_llm_id: number | null; response_decision_model_id: number | null }>
-    >`SELECT server_id, response_reviewer_llm_id, response_decision_model_id FROM server_chat_configs WHERE server_id IN (${refs.serverId}, ${otherServerId})`;
-    expect(rows.find((row) => row.server_id === refs.serverId)).toMatchObject({
-      response_reviewer_llm_id: null,
-      response_decision_model_id: null,
-    });
-    expect(rows.find((row) => row.server_id === otherServerId)).toMatchObject({
-      response_reviewer_llm_id: reviewerId,
-      response_decision_model_id: decisionId,
-    });
+      Array<{ server_id: number; response_reviewer_llm_id: number | null }>
+    >`SELECT server_id, response_reviewer_llm_id FROM server_chat_configs WHERE server_id IN (${refs.serverId}, ${otherServerId})`;
+    expect(rows.find((row) => row.server_id === refs.serverId)?.response_reviewer_llm_id).toBeNull();
+    expect(rows.find((row) => row.server_id === otherServerId)?.response_reviewer_llm_id).toBe(reviewerId);
     await llmProviderRepo.upsertOpenRouterModelRegistration({ serverId: refs.serverId, llmId: reviewerId });
-    await llmProviderRepo.upsertDecisionModelRegistration({ serverId: refs.serverId, decisionModelId: decisionId });
-    await configRepository.updateChatConfig(refs.serverId, {
-      response_reviewer_llm_id: reviewerId,
-      response_decision_model_id: decisionId,
-    });
+    await configRepository.updateChatConfig(refs.serverId, { response_reviewer_llm_id: reviewerId });
     expect(await llmProviderRepo.deleteServerProviderRegistration(refs.serverId, "openrouter")).toBe(true);
     const [removed] =
-      await testSql`SELECT response_reviewer_llm_id, response_decision_model_id FROM server_chat_configs WHERE server_id = ${refs.serverId}`;
-    expect(removed).toMatchObject({ response_reviewer_llm_id: null, response_decision_model_id: null });
-    expect(await loadDraftingModelGroups(refs.serverId, "reviewer", "en-US")).toEqual([]);
+      await testSql`SELECT response_reviewer_llm_id FROM server_chat_configs WHERE server_id = ${refs.serverId}`;
+    expect(removed.response_reviewer_llm_id).toBeNull();
+    expect(await loadDraftingModelGroups(refs.serverId, "en-US")).toEqual([]);
   });
 
   it("clears auxiliary references when an owned custom connection group is removed", async () => {
@@ -347,33 +288,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
       modelName: "reviewer",
       supportsStructOutput: true,
     });
-    const decision = await registerCustomEndpoint({
-      scope,
-      label: "_rt_draft_decision",
-      capability: "decision",
-      apiStyle: "system-one",
-      endpointUrl: "https://example.invalid/decision/v1",
-      modelName: "decision",
-      numCtx: 8192,
-    });
-    if (!reviewer?.modelId || !decision?.modelId) throw new Error("Missing custom fixture");
+    if (!reviewer?.modelId) throw new Error("Missing custom fixture");
     expect(
-      await responseDraftingOperations.setModel(
-        state(),
-        FIXTURE_IDS.serverDiscId,
-        "reviewer",
-        reviewer.provider,
-        reviewer.modelId,
-      ),
-    ).toBe("success");
-    expect(
-      await responseDraftingOperations.setModel(
-        state(),
-        FIXTURE_IDS.serverDiscId,
-        "decision",
-        decision.provider,
-        decision.modelId,
-      ),
+      await responseDraftingOperations.setModel(state(), FIXTURE_IDS.serverDiscId, reviewer.provider, reviewer.modelId),
     ).toBe("success");
     expect(
       await llmProviderRepo.deleteServerCustomEndpointConnectionGroup(otherServerId, [
@@ -385,30 +302,24 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     expect(
       await llmProviderRepo.deleteServerCustomEndpointConnectionGroup(refs.serverId, [
         reviewer.customEndpoint.connection_id,
-        decision.customEndpoint.connection_id,
       ]),
     ).toBe(true);
     expect(cache.has(FIXTURE_IDS.serverDiscId)).toBe(false);
     const [cleared] =
-      await testSql`SELECT response_reviewer_llm_id, response_decision_model_id FROM server_chat_configs WHERE server_id = ${refs.serverId}`;
-    expect(cleared).toMatchObject({ response_reviewer_llm_id: null, response_decision_model_id: null });
+      await testSql`SELECT response_reviewer_llm_id FROM server_chat_configs WHERE server_id = ${refs.serverId}`;
+    expect(cleared.response_reviewer_llm_id).toBeNull();
   });
 
   it("clears retired catalog selections during seeding and restores inheritance on deletion", async () => {
     await testSql`UPDATE llms SET is_deprecated = true WHERE llm_id = ${reviewerId}`;
-    await testSql`UPDATE decision_models SET is_deprecated = true WHERE decision_model_id = ${decisionId}`;
     await seedModelsFromCatalog(testSql);
     const [retired] =
-      await testSql`SELECT response_reviewer_llm_id, response_decision_model_id FROM server_chat_configs WHERE server_id = ${otherServerId}`;
-    expect(retired).toMatchObject({ response_reviewer_llm_id: null, response_decision_model_id: null });
-    await configRepository.updateChatConfig(otherServerId, {
-      response_reviewer_llm_id: reviewerId,
-      response_decision_model_id: decisionId,
-    });
+      await testSql`SELECT response_reviewer_llm_id FROM server_chat_configs WHERE server_id = ${otherServerId}`;
+    expect(retired.response_reviewer_llm_id).toBeNull();
+    await configRepository.updateChatConfig(otherServerId, { response_reviewer_llm_id: reviewerId });
     await testSql`DELETE FROM llms WHERE llm_id = ${reviewerId}`;
-    await testSql`DELETE FROM decision_models WHERE decision_model_id = ${decisionId}`;
     const [deleted] =
-      await testSql`SELECT response_reviewer_llm_id, response_decision_model_id FROM server_chat_configs WHERE server_id = ${otherServerId}`;
-    expect(deleted).toMatchObject({ response_reviewer_llm_id: null, response_decision_model_id: null });
+      await testSql`SELECT response_reviewer_llm_id FROM server_chat_configs WHERE server_id = ${otherServerId}`;
+    expect(deleted.response_reviewer_llm_id).toBeNull();
   });
 });

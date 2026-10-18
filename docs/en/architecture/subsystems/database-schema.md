@@ -173,12 +173,11 @@ Decision catalogs remain independent of text assignments. Migration 098 extends 
 registration arc to five catalogs. Native scoped references require the exact owner and registration;
 custom entries reuse encrypted provider credentials and endpoint ownership. Only System One and
 OpenAI Decisions styles admit custom Decision registrations. Deleting parents removes owned
-references and orphaned custom catalog rows. Registration alone activates no endpoint or review gate.
+references and orphaned custom catalog rows. Registration alone sends no Decision requests.
 
-Downgrade requires clearing saved response Decision selections and removing scoped registrations
-and Decision connections. Guards and DDL execute atomically: an unused dependent selection column
-is removed before the catalog table, and the four-catalog registration check is restored. Unexpected
-dependency failures preserve the schema. Normal startup restores the selection column and foreign key.
+Downgrade requires removing scoped registrations and Decision connections. Guards and DDL execute
+atomically and restore the four-catalog registration check. Unexpected dependency failures preserve
+the schema.
 
 ### Operational state, counters, and admission limits
 
@@ -192,17 +191,18 @@ dependency failures preserve the schema. Normal startup restores the selection c
 ## Response Drafting workspace settings
 
 The capability toggle defaults Off. Nullable fields in `server_chat_configs` store the reviewer,
-Decision selection, prompt override and checker binding. A null reviewer inherits the actual response
-model; other nulls mean no Decision routing, default locale instructions and no checker.
+prompt override and checker binding. A null reviewer inherits the actual response model; other nulls
+mean default locale instructions and no checker.
 `response_review_items` stores the enabled context groups and tool-call review as a text array.
 It defaults to persona instructions, example dialogues and recent conversation; memories and other
 context, and tools, are opt-in. An empty array reviews the draft against only its trigger and reply
 target. Both assembled persona reads carry these fields from the idempotent schema into runtime snapshots.
 
-Reviewer and Decision foreign keys use `ON DELETE SET NULL`. Owned registration/provider deletion
-clears the workspace's dependent selections in its transaction, then invalidates snapshots. Checker
-removal leaves a saved binding unavailable. Exports contain settings without credentials; imports
-validate model/checker ownership before writing. Configuration reset restores these defaults while
+The reviewer foreign key uses `ON DELETE SET NULL`. Owned registration/provider deletion clears
+the workspace's reviewer selection in its transaction, then invalidates snapshots. Checker removal
+leaves a saved binding unavailable. Exports contain settings without credentials; imports validate
+model/checker ownership before writing and drop the retired `response_decision_model_id` that older
+v2 exports carry. Configuration reset restores these defaults while
 preserving registrations and credentials.
 
 ## Encryption at rest

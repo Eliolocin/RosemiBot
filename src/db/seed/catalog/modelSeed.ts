@@ -557,11 +557,8 @@ export async function seedModelsFromCatalog(client: SQL): Promise<void> {
   invalidateTomoriStateCaches(speechOwners.map((row) => row.server_disc_id));
   const changed = await client<Array<{ server_disc_id: string }>>`
     WITH cleared AS (
-      UPDATE server_chat_configs SET
-        response_reviewer_llm_id = CASE WHEN response_reviewer_llm_id IN (SELECT llm_id FROM llms WHERE is_deprecated) THEN NULL ELSE response_reviewer_llm_id END,
-        response_decision_model_id = CASE WHEN response_decision_model_id IN (SELECT decision_model_id FROM decision_models WHERE is_deprecated) THEN NULL ELSE response_decision_model_id END
+      UPDATE server_chat_configs SET response_reviewer_llm_id = NULL
       WHERE response_reviewer_llm_id IN (SELECT llm_id FROM llms WHERE is_deprecated)
-        OR response_decision_model_id IN (SELECT decision_model_id FROM decision_models WHERE is_deprecated)
       RETURNING server_id
     ) SELECT servers.server_disc_id FROM cleared JOIN servers USING (server_id)
   `;

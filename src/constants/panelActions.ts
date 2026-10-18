@@ -15,7 +15,6 @@ export const PANEL_ACTIONS = [
   "server-config.workspace.response-drafting.set",
   "server-config.workspace.response-review-items.set",
   "server-config.workspace.response-reviewer.set",
-  "server-config.workspace.response-decision.set",
   "server-config.workspace.response-checker.set",
   "server-config.workspace.response-prompt.set",
   "server-config.workspace.response-prompt.reset",

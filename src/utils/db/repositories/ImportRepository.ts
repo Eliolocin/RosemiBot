@@ -122,7 +122,6 @@ const WORKSPACE_SECTION_TABLES: Record<WorkspaceConfigSection, readonly SectionT
         "context_note_depth",
         "response_prefill",
         "response_reviewer_llm_id",
-        "response_decision_model_id",
         "response_reviewer_prompt",
         "response_rule_checker_ref",
         "response_review_items",
@@ -903,7 +902,6 @@ class ImportRepository {
         self_debug_enabled: config.self_debug_enabled,
         model_randomizer_enabled: config.model_randomizer_enabled,
         response_reviewer_llm_id: config.response_reviewer_llm_id,
-        response_decision_model_id: config.response_decision_model_id,
         response_reviewer_prompt: config.response_reviewer_prompt,
         response_rule_checker_ref: config.response_rule_checker_ref,
         ...(config.response_review_items !== undefined && {

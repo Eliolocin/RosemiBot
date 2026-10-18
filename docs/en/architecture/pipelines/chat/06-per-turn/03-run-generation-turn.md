@@ -93,14 +93,14 @@ preserving successful tools, rejections, correction budgets and reported usage.
 context and actual tool history, and renders it as a tagged transcript. Evidence fixed for the turn
 precedes the candidate, findings and tool outcomes, so a second review reuses the provider's prompt
 prefix cache. Pending prose is labeled separately from history. The reviewer reads as a blind model:
-admitted media and tool images become placeholders, and that coverage keeps Decision routing from
-skipping review. Available tools are a compact catalog of names, descriptions and parameter names.
+admitted media and tool images become placeholders. Available tools are a compact catalog of names,
+descriptions and parameter names.
 The workspace's `Content to Check` selection filters persona instructions, example dialogues, recent
 conversation, memories and other context, and tools before packet budgeting. The draft, triggering
 message and reply target remain required. Disabled persona instructions do not cause a missing-persona
 failure. With `Tool Calls` unchecked, response review omits tool definitions, completed tool outcomes,
 the correction count and the `tool_use` finding category, and skips proposed-call reviews. Coverage
-records the selection; intentionally omitted context cannot qualify for calibrated Decision skipping.
+records the selection.
 Incomplete required evidence, a candidate containing a credential-shaped string (`containsCredential`,
 not the log redactor's `key: value` heuristic, which matches ordinary prose), or tool arguments requiring
 credential or user-info redaction make review unavailable, and the trace category names the gap.
@@ -131,11 +131,8 @@ registrations, so the author never sees or dispatches their tools. Checker failu
 an empty report cannot approve prose. A binding whose registration is disabled or removed acts as no
 checker: it logs no error and does not force review.
 
-Decision routing can skip detailed review only with validated calibration for the exact model and
-response or tool rubric. The registry is empty, so selections remain visibly inactive and make no
-paid routing calls. Custom reviewer prompts disable skipping. Activation requires labeled hold-out
-evidence for character fit, false skips, coverage, latency and cost. INFO traces describe outcomes
-and budgets without private packets; operational failures have one sanitized ERROR owner.
+INFO traces describe outcomes and budgets without private packets; operational failures have one
+sanitized ERROR owner.
 
 ## Source pointers
 
@@ -145,4 +142,3 @@ and budgets without private packets; operational failures have one sanitized ERR
 - `src/utils/security/keyRotation.ts`: API key selection and rotation tracking.
 - `src/utils/chat/responseReview.ts`: shared state, admitted evidence and reviewer lifecycle.
 - `src/utils/chat/responseRuleCheck.ts`: internal checker validation and bounded evidence.
-- `src/utils/chat/responseDecisionRouting.ts`: independent rubrics and calibration eligibility.

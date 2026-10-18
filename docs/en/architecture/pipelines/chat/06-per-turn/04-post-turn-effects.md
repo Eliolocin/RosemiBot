@@ -73,12 +73,12 @@ ChatTurnContext & GenerationTurnResult
 
 ## Response review accounting
 
-With Response Drafting On, `GenerationTurnResult.usageEntries` carries actual author, reviewer and
-Decision usage across failed attempts, discarded drafts and cancellation. `recordUsageStats` drains
+With Response Drafting On, `GenerationTurnResult.usageEntries` carries actual author and reviewer
+usage across failed attempts, discarded drafts and cancellation. `recordUsageStats` drains
 that ledger before requiring delivered dialogue and retains a recorder for late usage. Late verdicts
 cannot authorize delivery. Missing usage stays unknown; discarded draft length supplies no estimate.
-Reviewer and Decision counters are subsets of total tokens, so cost attribution does not bill them
-twice. DMs retain their exclusion from persistent guild telemetry. Off keeps ordinary usage accounting.
+Reviewer counters are a subset of total tokens, so cost attribution does not bill them twice. DMs
+retain their exclusion from persistent guild telemetry. Off keeps ordinary usage accounting.
 
 Only Discord-accepted presentation populates `personaResponses` for memory and reply quotas.
 Superseded drafts and held narration consume neither. Expression receipts and tool telemetry still

@@ -109,8 +109,8 @@ You can also manage backup keys for automatic failover and load balancing in `/p
 <!-- anchor: decision-models -->
 
 Decision Models are a separate category in `/providers` and `/personal providers`. They answer typed
-predicates with probabilities. Registration does not change the active chat model, establish
-calibration, or enable response-review skipping. These panels do not yet select a Decision model.
+predicates with probabilities. Registration does not change the active chat model, and no feature
+uses a Decision model yet.
 
 OpenRouter is the supported native provider. Save its key, open its model dropdown, and choose
 `+ Add new Decision Model`. Enter an ID from its verified Decision catalog. The global catalog

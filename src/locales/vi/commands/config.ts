@@ -24,22 +24,16 @@ export default {
       review_context: "Bộ nhớ và ngữ cảnh khác",
       review_tools: "Lượt gọi công cụ",
       models_title: "Chuyển đổi model",
-      models_description:
-        "Chọn ai sẽ duyệt các bản nháp của mình và liệu model quyết định có kiểm tra bản nháp nào cần duyệt chi tiết hay không.",
+      models_description: "Chọn ai sẽ duyệt các bản nháp của mình.",
       reviewer_button: "Chọn model duyệt",
-      decision_button: "Chọn model quyết định",
       reviewer_label: "Người duyệt",
-      decision_label: "Quyết định",
       inherit: "Dùng model phản hồi hiện tại",
       reviewer_status: "Người duyệt: {model}",
       inherited_status: "Người duyệt: model phản hồi hiện tại, {model}",
-      decision_status: "Quyết định: {model}",
       none: "Không có",
       unavailable: "Không khả dụng",
       inherited_unavailable:
         "Model phản hồi hiện tại của mình không hỗ trợ đầu ra có cấu trúc, nên không thể duyệt bản nháp. Hãy chọn một người duyệt khác bên dưới.",
-      decision_note:
-        "Lựa chọn quyết định vẫn được lưu. Việc bỏ qua cần có các ngưỡng đã xác thực cho model này và từng tiêu chí duyệt; duyệt chi tiết vẫn hoạt động trong phạm vi ngân sách.",
       rules_title: "Kiểm tra quy tắc",
       rules_description:
         "Chọn một công cụ kiểm tra quy tắc văn bản tùy chọn. Chỉ người duyệt mới nhận được các phát hiện khuyến nghị của công cụ này. Phạm vi hồ sơ và ngôn ngữ chưa rõ trừ khi được xác minh riêng; phản hồi ngắn có thể không nhận được phân tích.",

@@ -23,22 +23,16 @@ export default {
       review_context: "記憶とその他のコンテキスト",
       review_tools: "ツール呼び出し",
       models_title: "モデルを切り替え",
-      models_description:
-        "私の下書きをレビューする担当者と、詳細なレビューが必要な下書きを判定モデルで確認するかどうかを選択します。",
+      models_description: "私の下書きをレビューする担当者を選択します。",
       reviewer_button: "レビューモデルを選択",
-      decision_button: "判定モデルを選択",
       reviewer_label: "レビュアー",
-      decision_label: "判定",
       inherit: "現在の応答モデルを使用",
       reviewer_status: "レビュー担当：{model}",
       inherited_status: "レビュー担当：現在の応答モデル、{model}",
-      decision_status: "判定：{model}",
       none: "なし",
       unavailable: "利用不可",
       inherited_unavailable:
         "現在の応答モデルは構造化出力に対応していないため、下書きをレビューできません。以下から別のレビュアーを選択してください。",
-      decision_note:
-        "判定モデルの選択は保存されます。スキップを行うにはこのモデルと各レビュールーブリックに対する検証済みしきい値が必要です。詳細レビューは予算内で有効のまま維持されます。",
       rules_title: "ルールチェック",
       rules_description:
         "任意のテキストルールチェッカーを選択します。助言となる結果はレビュアーのみに渡されます。個別の検証がない限りプロファイルと言語の対応範囲は不明であり、短い返答には分析が行われない場合があります。",

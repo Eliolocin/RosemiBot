@@ -70,7 +70,7 @@ after exhaustion use ordinary tool rules. Cancellation is checked after review a
 discovery, and before MCP transport. Already-started tools retain their own cancellation support.
 The normalized adapter interface dispatches one call at a time; approval covers only that actual call.
 
-Optional Decision routing and internal prose-checker ownership follow the
+Internal prose-checker ownership follows the
 [generation review lifecycle](../chat/06-per-turn/03-run-generation-turn.md#response-text-review).
 
 ## Expression delivery and side effects

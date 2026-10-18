@@ -24,22 +24,16 @@ export default {
       review_context: "Memórias e outros contextos",
       review_tools: "Chamadas de ferramentas",
       models_title: "Alternar Modelos",
-      models_description:
-        "Escolha quem revisa meus rascunhos e se um modelo de decisão verifica quais precisam de revisão detalhada.",
+      models_description: "Escolha quem revisa meus rascunhos.",
       reviewer_button: "Escolher Modelo Revisor",
-      decision_button: "Escolher Modelo de Decisões",
       reviewer_label: "Revisor",
-      decision_label: "Decisões",
       inherit: "Usar modelo de resposta atual",
       reviewer_status: "Revisor: {model}",
       inherited_status: "Revisor: modelo de resposta atual, {model}",
-      decision_status: "Decisões: {model}",
       none: "Nenhum",
       unavailable: "Indisponível",
       inherited_unavailable:
         "Meu modelo de resposta atual não suporta saídas estruturadas, por isso não pode revisar rascunhos. Escolha outro revisor abaixo.",
-      decision_note:
-        "A seleção de decisões permanece salva. A dispensa requer limites validados para este modelo e cada rubrica de revisão; a revisão detalhada permanece ativa dentro dos orçamentos.",
       rules_title: "Verificações de Regras",
       rules_description:
         "Escolha um verificador de regras de texto opcional. Apenas o revisor recebe suas conclusões consultivas. A cobertura de perfil e idioma é desconhecida a menos que verificada separadamente; respostas curtas podem não receber análise.",

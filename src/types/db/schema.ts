@@ -814,7 +814,6 @@ export const responseReviewerPromptSchema = z
 
 const serverChatConfigSchema = z.object({
   response_reviewer_llm_id: z.number().int().positive().nullable().default(null),
-  response_decision_model_id: z.number().int().positive().nullable().default(null),
   response_reviewer_prompt: responseReviewerPromptSchema.nullable().default(null),
   response_rule_checker_ref: responseRuleCheckerConfigSchema,
   response_review_items: responseReviewItemsSchema.default(() => [...DEFAULT_RESPONSE_REVIEW_ITEMS]),

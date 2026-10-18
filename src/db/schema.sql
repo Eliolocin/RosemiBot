@@ -2755,7 +2755,6 @@ SELECT add_column_if_not_exists('user_saved_provider_configs', 'model_randomizer
 
 CREATE TABLE IF NOT EXISTS server_chat_configs (
   response_reviewer_llm_id INT REFERENCES llms(llm_id) ON DELETE SET NULL,
-  response_decision_model_id INT REFERENCES decision_models(decision_model_id) ON DELETE SET NULL,
   response_reviewer_prompt TEXT CHECK (char_length(response_reviewer_prompt) BETWEEN 1 AND 4000),
   response_rule_checker_ref JSONB,
   response_review_items TEXT[] NOT NULL DEFAULT '{persona,examples,history}' CHECK (response_review_items <@ ARRAY['persona', 'examples', 'history', 'context', 'tools']::TEXT[]),
@@ -2788,7 +2787,6 @@ CREATE TABLE IF NOT EXISTS server_chat_configs (
 
 SELECT add_column_if_not_exists('server_chat_configs', 'response_prefill', 'TEXT');
 SELECT add_column_if_not_exists('server_chat_configs', 'response_reviewer_llm_id', 'INT REFERENCES llms(llm_id) ON DELETE SET NULL');
-SELECT add_column_if_not_exists('server_chat_configs', 'response_decision_model_id', 'INT REFERENCES decision_models(decision_model_id) ON DELETE SET NULL');
 SELECT add_column_if_not_exists('server_chat_configs', 'response_reviewer_prompt', 'TEXT CHECK (char_length(response_reviewer_prompt) BETWEEN 1 AND 4000)');
 SELECT add_column_if_not_exists('server_chat_configs', 'response_rule_checker_ref', 'JSONB');
 SELECT add_column_if_not_exists('server_chat_configs', 'response_review_items', 'TEXT[] CHECK (response_review_items <@ ARRAY[''persona'', ''examples'', ''history'', ''context'', ''tools'']::TEXT[])', '''{persona,examples,history}''', 'NOT NULL');

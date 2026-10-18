@@ -133,8 +133,6 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
           AND user_id IS NOT DISTINCT FROM ${userId}::int
       `;
       if (endpoints.count === 0 && registrations.count === 0) return false;
-      if (serverId !== null)
-        await tx`UPDATE server_chat_configs SET response_decision_model_id = NULL WHERE server_id = ${serverId} AND response_decision_model_id = ${modelId}`;
       await tx`
         DELETE FROM decision_models model WHERE decision_model_id = ${modelId}
           AND NOT EXISTS (SELECT 1 FROM scoped_model_registrations WHERE decision_model_id = ${modelId})
@@ -201,22 +199,17 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
     const { serverId = null, userId = null, decisionModelId } = params;
 
     try {
-      const deleted = await sql.begin(async (tx) => {
-        const result =
-          serverId !== null
-            ? await tx`
+      const result =
+        serverId !== null
+          ? await sql`
               DELETE FROM scoped_model_registrations
               WHERE server_id = ${serverId} AND user_id IS NULL AND decision_model_id = ${decisionModelId}
             `
-            : await tx`
+          : await sql`
               DELETE FROM scoped_model_registrations
               WHERE user_id = ${userId} AND server_id IS NULL AND decision_model_id = ${decisionModelId}
             `;
-        if (result.count === 0) return false;
-        if (serverId !== null)
-          await tx`UPDATE server_chat_configs SET response_decision_model_id = NULL WHERE server_id = ${serverId} AND response_decision_model_id = ${decisionModelId}`;
-        return true;
-      });
+      const deleted = result.count > 0;
       if (deleted && serverId !== null) this.invalidateWorkspace(serverId);
       return deleted;
     } catch (error) {
@@ -1606,8 +1599,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
             )
         `;
         await tx`UPDATE server_chat_configs SET
-          response_reviewer_llm_id = CASE WHEN response_reviewer_llm_id IN (SELECT llm_id FROM llms WHERE llm_provider = ${normalizedProvider}) THEN NULL ELSE response_reviewer_llm_id END,
-          response_decision_model_id = CASE WHEN response_decision_model_id IN (SELECT decision_model_id FROM decision_models WHERE provider = ${normalizedProvider}) THEN NULL ELSE response_decision_model_id END
+          response_reviewer_llm_id = CASE WHEN response_reviewer_llm_id IN (SELECT llm_id FROM llms WHERE llm_provider = ${normalizedProvider}) THEN NULL ELSE response_reviewer_llm_id END
           WHERE server_id = ${serverId}`;
         return true;
       });

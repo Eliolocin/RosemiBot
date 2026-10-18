@@ -26,8 +26,6 @@ import { NOTICE_VERBOSITY_LEVELS, type NoticeVerbosity } from "@/constants/toolN
 export const CONFIG_ROUTE_NAMESPACE = "config";
 export const CONFIG_ROUTE_VERSION = "v2";
 
-export type DraftModelSlot = "reviewer" | "decision";
-
 export type ConfigCategory = "persona" | "behavior" | "plugins" | "channels" | "models";
 
 type PersonaPage =
@@ -410,8 +408,8 @@ export type ConfigPanelRoute =
   | { action: "draft-prompt-open"; locale: string }
   | { action: "draft-default"; locale: string }
   | { action: "draft-prompt-submit"; locale: string; nonce: string }
-  | { action: "draft-provider"; locale: string; slot: DraftModelSlot }
-  | { action: "draft-model-submit"; locale: string; slot: DraftModelSlot; provider: string; nonce: string }
+  | { action: "draft-provider"; locale: string }
+  | { action: "draft-model-submit"; locale: string; provider: string; nonce: string }
   | { action: "draft-checker-select"; locale: string; start: number; fp: string }
   | { action: "category"; locale: string; category: ConfigCategory; page: ConfigPage }
   | { action: "page"; locale: string; category: ConfigCategory; page: ConfigPage }
@@ -900,12 +898,6 @@ const requiredChannelIdField: RouteFieldCodec<"channelId", string> = {
  * Authoritative codec table for every `/config` panel route, keyed by semantic action so a new
  * action is a compile error until it has a wire token.
  */
-const draftSlotField: RouteFieldCodec<"slot", DraftModelSlot> = {
-  key: "slot",
-  encode: (value) => String(value),
-  decode: (value) => (value === "reviewer" || value === "decision" ? value : null),
-};
-
 export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "draft-set": { wireToken: "draft-set", fields: [enabledField] },
   "draft-items-open": { wireToken: "draft-items-open", fields: [] },
@@ -913,8 +905,8 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "draft-prompt-open": { wireToken: "draft-prompt-open", fields: [] },
   "draft-default": { wireToken: "draft-default", fields: [] },
   "draft-prompt-submit": { wireToken: "draft-prompt-submit", fields: [nonceField] },
-  "draft-provider": { wireToken: "draft-provider", fields: [draftSlotField] },
-  "draft-model-submit": { wireToken: "draft-model-submit", fields: [draftSlotField, providerField, nonceField] },
+  "draft-provider": { wireToken: "draft-provider", fields: [] },
+  "draft-model-submit": { wireToken: "draft-model-submit", fields: [providerField, nonceField] },
   "draft-checker-select": { wireToken: "draft-checker-select", fields: [startField, fpField] },
   category: { wireToken: "category", fields: [categoryField, pageField] },
   page: { wireToken: "page", fields: [categoryField, pageField] },

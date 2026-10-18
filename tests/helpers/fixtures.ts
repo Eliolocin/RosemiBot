@@ -24,7 +24,6 @@ import { DEFAULT_IMAGE_NEGATIVE_TAGS, DEFAULT_IMAGE_POSITIVE_TAGS } from "@/util
  */
 const BASE_CONFIG: AssembledServerConfig = {
   response_reviewer_llm_id: null,
-  response_decision_model_id: null,
   response_reviewer_prompt: null,
   response_rule_checker_ref: null,
   response_review_items: ["persona", "examples", "history"],
