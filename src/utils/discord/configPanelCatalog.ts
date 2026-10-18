@@ -357,7 +357,7 @@ export function computeNaiPresetFingerprint(target: "kayra" | "erato", presetNam
 export const CONFIG_MODEL_PROVIDER_DIRECT_LIMIT = 25;
 
 /** Endpoint entries share Discord's 25-option ceiling with one navigation entry when paged. */
-export const CONFIG_ENDPOINT_PAGE_SIZE = 25;
+const CONFIG_ENDPOINT_PAGE_SIZE = 25;
 
 export function configEndpointWindowSize(capability: "tts-design" | "tts-clone" | "stt", count: number): number {
   const size = CONFIG_ENDPOINT_PAGE_SIZE - (capability === "stt" ? 0 : 1);

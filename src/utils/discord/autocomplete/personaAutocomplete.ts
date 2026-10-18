@@ -1,4 +1,5 @@
 import type { AutocompleteInteraction, Client } from "discord.js";
+import type { TomoriState } from "@/types/db/schema";
 import { userRepository } from "@/utils/db/repositories";
 import { getCachedWhitelistStatus } from "@/utils/cache/channelWhitelistCache";
 import { getCachedPersonalSpotlightStatus } from "@/utils/cache/personalSpotlightCache";
@@ -34,9 +35,14 @@ function rankPersonasByNickname<T extends { persona_nickname?: string | null }>(
   return [...exact, ...prefix, ...substring];
 }
 
-async function respondWithAllPersonas(
+/**
+ * Answers a persona autocomplete with every persona in the workspace that passes `include`, ranked
+ * by nickname match, ignoring channel whitelists and spotlights.
+ */
+export async function respondWithPersonaChoices(
   interaction: AutocompleteInteraction,
   serverDiscId: string | undefined,
+  include: (persona: TomoriState) => boolean = () => true,
 ): Promise<void> {
   let responded = false;
   try {
@@ -46,9 +52,9 @@ async function respondWithAllPersonas(
       return;
     }
 
-    const allPersonas = await getCachedAllPersonas(serverDiscId);
+    const personas = (await getCachedAllPersonas(serverDiscId)).filter(include);
     const focusedValue = (interaction.options.getFocused() || "").toLowerCase();
-    const filtered = rankPersonasByNickname(allPersonas, focusedValue);
+    const filtered = rankPersonasByNickname(personas, focusedValue);
 
     responded = true;
     await interaction.respond(
@@ -75,7 +81,7 @@ async function respondWithAllPersonas(
 export const handleServerPersonaAutocomplete: CommandAutocompleteFunction = async (
   _client: Client,
   interaction: AutocompleteInteraction,
-): Promise<void> => respondWithAllPersonas(interaction, interaction.guild?.id);
+): Promise<void> => respondWithPersonaChoices(interaction, interaction.guild?.id);
 
 /**
  * Like `handleServerPersonaAutocomplete`, but a DM resolves to the user's own workspace, for commands
@@ -84,7 +90,7 @@ export const handleServerPersonaAutocomplete: CommandAutocompleteFunction = asyn
 export const handleWorkspacePersonaAutocomplete: CommandAutocompleteFunction = async (
   _client: Client,
   interaction: AutocompleteInteraction,
-): Promise<void> => respondWithAllPersonas(interaction, interaction.guild?.id ?? interaction.user.id);
+): Promise<void> => respondWithPersonaChoices(interaction, interaction.guild?.id ?? interaction.user.id);
 
 /**
  * Shaped as `CommandAutocompleteFunction` so a module can export it directly. The client is unused

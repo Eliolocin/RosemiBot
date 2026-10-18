@@ -19,7 +19,7 @@ a `StreamConfig`, then delegates to `StreamOrchestrator.streamToDiscord()`.
 
 `SupportsDecisions` extends the optional capability map and resolver. `OpenrouterProvider` and
 `CustomProvider` own its implementations; other providers remain unsupported.
-`loadDecisionModelsForScope(scope)` in `providerFeatureExecutors.ts` returns `DecisionModelOption`
+`llmModelRepo.loadDecisionModelOptions(scope)` returns `DecisionModelOption`
 records. Consumers persist their `reference`: `provider`, `modelId`, nullable `registrationId`, and
 nullable `customEndpointId`. Global native entries have null registration IDs. Scoped native entries
 carry their exact scoped registration ID. Custom entries use `custom:<connection_id>` and the exact

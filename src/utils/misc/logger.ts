@@ -279,7 +279,7 @@ export function containsCredential(value: string): boolean {
   return CREDENTIAL_REDACTIONS.some(([pattern]) => value.search(pattern) !== -1);
 }
 
-export function redactCredentialString(value: string): string {
+function redactCredentialString(value: string): string {
   return CREDENTIAL_REDACTIONS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
 }
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { fetchOAuthJson, type OAuthFetch } from "@/utils/oauth/oauthFetch";
 
-export const oauthTokenSchema = z.object({
+const oauthTokenSchema = z.object({
   access_token: z.string().trim().min(1),
   refresh_token: z.string().trim().min(1).optional(),
   token_type: z

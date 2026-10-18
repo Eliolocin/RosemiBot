@@ -110,7 +110,7 @@ async function resolveActiveEndpointByCapability(
  * Resolves the active speech (TTS) endpoint and credentials for a server.
  * Returns null when no speech endpoint is registered.
  */
-export async function resolveActiveSpeechEndpoint(
+async function resolveActiveSpeechEndpoint(
   serverId: number,
   mode: VoiceSourceMode,
 ): Promise<SpeechEndpointResult | null> {

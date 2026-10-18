@@ -262,7 +262,7 @@ export function findMarkdownStrikethrough(
   };
 }
 
-export function findMentionHandle(
+function findMentionHandle(
   text: string,
   startIndex = 0,
 ): { start: number; end: number; content: string; type: "mention_handle" } | null {

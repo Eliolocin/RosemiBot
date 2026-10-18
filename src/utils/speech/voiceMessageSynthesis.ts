@@ -48,7 +48,7 @@ export type VoiceBackendKey =
   | "google-speech"
   | "vertex-speech";
 
-export type VoiceSynthesisErrorKind = TtsCloneErrorKind | ElevenLabsTtsErrorKind | HostedSpeechErrorKind;
+type VoiceSynthesisErrorKind = TtsCloneErrorKind | ElevenLabsTtsErrorKind | HostedSpeechErrorKind;
 
 /**
  * Which voice the caller wants this message synthesized from.
@@ -82,7 +82,7 @@ export interface VoiceMessageSynthesisResult {
   cleanupPending?: boolean;
 }
 
-export interface VoiceSynthesisAttempt {
+interface VoiceSynthesisAttempt {
   provider: string;
   model: string;
   owner: SpeechTargetResult["owner"];
