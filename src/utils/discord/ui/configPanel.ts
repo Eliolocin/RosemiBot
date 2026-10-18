@@ -112,7 +112,12 @@ import { escapeDiscordMarkdown } from "@/utils/text/discordMarkdown";
 import { localizer, resolveDescription } from "@/utils/text/localizer";
 import { normalizeTriggerWord } from "@/utils/text/triggerWords";
 import { buildSlugMap } from "@/utils/text/slugifyLabel";
-import { DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX, getDiscordTextLength } from "@/utils/discord/ui/componentsV2Limits";
+import {
+  DISCORD_BUTTON_LABEL_MAX,
+  DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX,
+  DISCORD_SELECT_PLACEHOLDER_MAX,
+  getDiscordTextLength,
+} from "@/utils/discord/ui/componentsV2Limits";
 import { measureFormattedPanelTextLength } from "@/utils/discord/ui/panelProse";
 import { neutralizeFenceRuns } from "@/utils/text/discordTextLimits";
 import { renderFencedPreview } from "@/utils/text/textPreview";
@@ -3361,7 +3366,7 @@ function buildPersonaRangeEntry(input: PersonaRangeEntryInput): ComponentInConta
       type: ComponentType.Button,
       style: ButtonStyle.Secondary,
       customId: input.buttonCustomId,
-      label: localizer(input.locale, input.buttonLabelKey),
+      label: safeSelectOptionText(localizer(input.locale, input.buttonLabelKey), DISCORD_BUTTON_LABEL_MAX),
       disabled: input.disabled,
     };
     return [
@@ -3380,7 +3385,10 @@ function buildPersonaRangeEntry(input: PersonaRangeEntryInput): ComponentInConta
         {
           type: ComponentType.StringSelect,
           customId: input.selectCustomId,
-          placeholder: localizer(input.locale, input.selectPlaceholderKey),
+          placeholder: safeSelectOptionText(
+            localizer(input.locale, input.selectPlaceholderKey),
+            DISCORD_SELECT_PLACEHOLDER_MAX,
+          ),
           options: buildRangeSelectOptions({
             totalCount: roster.length,
             pageSize: input.pageSize,

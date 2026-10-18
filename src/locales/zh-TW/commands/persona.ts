@@ -73,6 +73,8 @@ export default {
     name_conflict_title: `🔴 人格名稱衝突`,
     name_conflict_description: `這個伺服器已經有人格叫 **{name}**。同一個伺服器內的人格名稱必須唯一。`,
     export: {
+      persona_description: "要匯出的人格",
+      export_json_description: "匯出可匯入的JSON檔案，取代PNG（不含頭像）",
       description: `將目前的人格匯出成可分享的 PNG 檔`,
       success_title: `🟢 人格匯出成功`,
       success_description: `目前的人格 **{nickname}** 已經匯出！把這個 PNG 檔分享給別人，就能傳播這套人格設定。`,
@@ -178,6 +180,7 @@ export default {
       refresh_reminder: `執行 \`/refresh\` 即可在這個對話套用新的人格`,
     },
     remove: {
+      persona_description: "要移除的alter人格",
       description: `從伺服器移除 alter 人格`,
       no_permission_title: `🔴 權限不足`,
       no_permission_description: `移除 alter 人格需要 **管理伺服器** 權限。`,

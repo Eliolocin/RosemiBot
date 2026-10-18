@@ -13,6 +13,8 @@ import type { PanelReceipt } from "@/types/discord/panel";
 import { buildInteractionRouteId } from "@/utils/discord/interactions/routeRegistry";
 import { formatPanelComponentTree } from "@/utils/discord/ui/panelProse";
 import { ColorCode } from "@/utils/misc/logger";
+import { truncateDiscordText } from "@/utils/text/discordTextLimits";
+import { DISCORD_BUTTON_LABEL_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { localizer } from "@/utils/text/localizer";
 
 const PANEL_ACCENT_BY_TONE = {
@@ -129,7 +131,7 @@ export function buildCategoryButtonRow<TCategory extends string>(
       type: ComponentType.Button,
       style: cat.id === activeCategory ? ButtonStyle.Primary : ButtonStyle.Secondary,
       customId: cat.customId,
-      label: cat.label,
+      label: truncateDiscordText(cat.label, DISCORD_BUTTON_LABEL_MAX),
       disabled,
     })),
   };
@@ -156,7 +158,7 @@ export function buildStateControlRow<TValue>(
         type: ComponentType.Button,
         style: ButtonStyle.Secondary,
         customId: choice.customId,
-        label: choice.label,
+        label: truncateDiscordText(choice.label, DISCORD_BUTTON_LABEL_MAX),
         disabled: writesDisabled || isSelected || !isAvailable,
       };
     }),

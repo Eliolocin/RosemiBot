@@ -19,6 +19,7 @@ import {
 import { safeModalLocalizer, safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { formatStoredParameterValue } from "@/utils/discord/ui/personalConfigParameterControls";
 import { formatImageTagsForModalValue, TAGS_MODAL_MAX_LENGTH } from "@/utils/image/tagHelpers";
+import { DISCORD_SELECT_OPTION_LABEL_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import {
   getLocaleEndonym,
   getRegisterableLocales,
@@ -765,7 +766,10 @@ export function buildParameters2Modal(
           required: true,
           options: THINKING_LEVEL_VALUES.map((val) => ({
             value: val,
-            label: localizer(locale, THINKING_LEVEL_LOCALIZER_KEYS[val]),
+            label: safeSelectOptionText(
+              localizer(locale, THINKING_LEVEL_LOCALIZER_KEYS[val]),
+              DISCORD_SELECT_OPTION_LABEL_MAX,
+            ),
             default: currentThinking === val,
           })),
         },

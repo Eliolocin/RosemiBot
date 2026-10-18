@@ -43,6 +43,8 @@ import type {
   TopUserEntry,
 } from "@/utils/db/repositories/StatRepository";
 import { getCachedAllPersonas } from "@/utils/cache/tomoriStateCache";
+import { truncateDiscordText } from "@/utils/text/discordTextLimits";
+import { DISCORD_BUTTON_LABEL_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { formatLocaleInteger, localizer } from "@/utils/text/localizer";
 import { log, ColorCode } from "@/utils/misc/logger";
 import { buildDashboardPagePayload, type DashboardPage } from "@/utils/metrics/status/statusPageRenderer";
@@ -252,7 +254,7 @@ function buildTabButtonRows(
           type: ComponentType.Button,
           style: index === activeIndex ? ButtonStyle.Primary : ButtonStyle.Secondary,
           customId: buildStatsDashboardButtonId(context, tab.id),
-          label: localizer(locale, tab.labelKey),
+          label: truncateDiscordText(localizer(locale, tab.labelKey), DISCORD_BUTTON_LABEL_MAX),
           disabled: index === activeIndex,
         } satisfies ButtonComponentData;
       }),

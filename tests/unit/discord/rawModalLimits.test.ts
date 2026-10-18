@@ -24,6 +24,7 @@ import {
   RANDOM_TRIGGER_ADD_PERSONA_PAGE_SIZE,
 } from "@/utils/discord/ui/configBehaviorModals";
 import {
+  clampRawModalText,
   DISCORD_CHECKBOX_GROUP_OPTIONS_MAX,
   DISCORD_CHECKBOX_GROUP_OPTIONS_MIN,
   DISCORD_CUSTOM_ID_MAX,
@@ -646,5 +647,51 @@ describe("raw config modal limits", () => {
 
     expect(randomDefaulted(null)).toBe(true);
     expect(randomDefaulted(3)).toBe(false);
+  });
+});
+
+describe("clampRawModalText", () => {
+  it("brings every capped display string within Discord limits without touching values or custom IDs", () => {
+    const payload: RawModalPayload = {
+      title: "T".repeat(80),
+      custom_id: "modal_clamp",
+      components: [
+        {
+          type: LABEL,
+          label: "L".repeat(80),
+          description: "D".repeat(200),
+          component: {
+            type: RADIO_GROUP,
+            custom_id: "radio_clamp",
+            options: [
+              { label: "a".repeat(150), value: "first", description: "b".repeat(150) },
+              { label: "short", value: "second" },
+            ],
+          },
+        },
+        {
+          type: LABEL,
+          label: "Text",
+          component: { type: 4, custom_id: "text_clamp", placeholder: "p".repeat(200) },
+        },
+      ],
+    };
+
+    const { payload: clamped, truncatedPaths } = clampRawModalText(payload);
+
+    expect(validateRawModalLimits(payload).valid).toBe(false);
+    assertWithinDiscordLimits(clamped, "clamped");
+    expect(getDiscordTextLength(clamped.components[1]?.component?.placeholder ?? "")).toBe(100);
+    expect(clamped.components[0]?.component?.options?.map((option) => option.value)).toEqual(["first", "second"]);
+    expect(clamped.components[0]?.component?.options?.[1]).toEqual({ label: "short", value: "second" });
+    expect(clamped.components[1]?.component?.custom_id).toBe("text_clamp");
+    expect(truncatedPaths).toHaveLength(6);
+  });
+
+  it("returns an in-limit payload unchanged and reports nothing", () => {
+    const payload = buildBehaviorRandomAddModal("en-US", "nonce", makePersonas(3));
+    const { payload: clamped, truncatedPaths } = clampRawModalText(payload);
+    expect(clamped).toEqual(payload);
+    expect(truncatedPaths).toEqual([]);
   });
 });

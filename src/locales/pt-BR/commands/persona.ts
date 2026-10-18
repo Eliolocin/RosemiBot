@@ -73,6 +73,8 @@ export default {
     name_conflict_title: `🔴 Conflito de Nome de Persona`,
     name_conflict_description: `Uma persona chamada **{name}** já existe neste servidor. Nomes de persona devem ser únicos dentro de um servidor.`,
     export: {
+      persona_description: "Persona que você quer exportar",
+      export_json_description: "Exportar um arquivo JSON importável em vez de PNG (sem imagem de avatar)",
       description: `Exportar a personalidade atual como um arquivo PNG compartilhável`,
       success_title: `🟢 Persona Exportada com Sucesso`,
       success_description: `A persona atual **{nickname}** foi exportada! Compartilhe este arquivo PNG com outros para espalhar esta configuração de personalidade.`,
@@ -178,6 +180,7 @@ Por favor, edite o arquivo de importação para usar um nome diferente, ou remov
       refresh_reminder: `Execute \`/refresh\` para aplicar a atualização da persona neste chat`,
     },
     remove: {
+      persona_description: "Alter que você quer remover",
       description: `Remover um alter do servidor`,
       no_permission_title: `🔴 Permissão Negada`,
       no_permission_description: `Você precisa da permissão **Gerenciar Servidor** para remover alters.`,

@@ -32,6 +32,11 @@ import { SUPPORT_SERVER_URL, buildDocsUrl } from "@/utils/discord/docsLinks";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { buildPanelContainer } from "@/utils/discord/ui/panel";
 import { isHostedPolicyEnvironment } from "@/utils/misc/hostedPolicy";
+import {
+  DISCORD_BUTTON_LABEL_MAX,
+  DISCORD_SELECT_PLACEHOLDER_MAX,
+  DISCORD_SELECT_OPTION_LABEL_MAX,
+} from "@/utils/discord/ui/componentsV2Limits";
 import { localizer } from "@/utils/text/localizer";
 
 const TOMORI_TURQUOISE = 0x65c6c5;
@@ -92,7 +97,7 @@ function buildCategoryRow(locale: string, activeCategoryId: HelpCategoryId): Act
       type: ComponentType.Button,
       style: category.id === activeCategoryId ? ButtonStyle.Primary : ButtonStyle.Secondary,
       customId: buildHelpCustomId("category", locale, category.id),
-      label: localizer(locale, category.labelKey),
+      label: safeSelectOptionText(localizer(locale, category.labelKey), DISCORD_BUTTON_LABEL_MAX),
       disabled: category.id === activeCategoryId,
     })),
   };
@@ -113,7 +118,7 @@ function buildPageSelectRow(
         minValues: 1,
         maxValues: 1,
         options: category.pages.map((page) => ({
-          label: localizer(locale, page.labelKey),
+          label: safeSelectOptionText(localizer(locale, page.labelKey), DISCORD_SELECT_OPTION_LABEL_MAX),
           description: safeSelectOptionText(localizer(locale, page.pickerDescriptionKey)),
           value: page.id,
           default: page.id === activePageId,
@@ -177,13 +182,13 @@ function buildProviderSelectRow(
       {
         type: ComponentType.StringSelect,
         customId: buildHelpCustomId("provider", locale, pickerId),
-        placeholder: localizer(locale, placeholderKey),
+        placeholder: safeSelectOptionText(localizer(locale, placeholderKey), DISCORD_SELECT_PLACEHOLDER_MAX),
         minValues: 1,
         maxValues: 1,
         options: providerIds.map((providerId) => {
           const provider = getProviderGuide(providerId);
           return {
-            label: localizer(locale, provider.labelKey),
+            label: safeSelectOptionText(localizer(locale, provider.labelKey), DISCORD_SELECT_OPTION_LABEL_MAX),
             description: safeSelectOptionText(localizer(locale, provider.pickerDescriptionKey)),
             value: provider.id,
           };
@@ -213,7 +218,7 @@ function buildVariantSelectRow(
         minValues: 1,
         maxValues: 1,
         options: page.variants.map((variant) => ({
-          label: localizer(locale, variant.labelKey),
+          label: safeSelectOptionText(localizer(locale, variant.labelKey), DISCORD_SELECT_OPTION_LABEL_MAX),
           description: safeSelectOptionText(localizer(locale, variant.pickerDescriptionKey)),
           value: variant.id,
           default: variant.id === selectedVariantId,

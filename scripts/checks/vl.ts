@@ -764,15 +764,20 @@ async function main() {
           skippedReason: "No local DB configured",
         }),
     runLocalesCheck("Localization Keys (bun run check-locales)", ["bun", "run", "check-locales"]),
-    // Discord length limits are a hard blocker: modal placeholders/descriptions and command
-    // descriptions get silently truncated by Discord beyond their max length, so any
-    // violation here must block the PR gate (fatal: true); unlike the broader locale
-    // parity check above, which tolerates missing Japanese translations.
-    runCheck(
+    // An untruncated string over its Discord cap rejects the whole payload, so that blocks. A
+    // string the code already truncates only reads clipped, so it surfaces as a warning.
+    runWarningCheck(
       "Localization Discord Limits (bun run check-locale-lengths)",
       ["bun", "run", "check-locale-lengths"],
-      true,
-      true,
+      {
+        acceptsDetailFlag: true,
+        blocksOnFailure: true,
+        outputHasWarnings: (output) => /Truncation advisory: \d+/.test(output),
+        summarizeWarnings: (output) => {
+          const count = output.match(/Truncation advisory: (\d+)/)?.[1];
+          return count ? `(${count} locale strings truncated, re-run with --verbose to list)` : "";
+        },
+      },
     ),
     runCheck(
       "Config Breadcrumbs (bun run check-config-breadcrumbs)",
@@ -865,7 +870,7 @@ async function main() {
     "Localization Keys":
       "Missing keys (red/blocking) mean a source file references a key that exists in no locale; this must be fixed. Missing Japanese equivalents (orange/advisory) are safe to push — run `bun run prune-locales` to clean up orphaned keys, or add the missing `ja` entries.",
     "Localization Discord Limits":
-      "Discord truncates modal placeholders/descriptions and select-option labels/descriptions (>100 chars), modal titles/labels (>45), and command descriptions (>100). Shorten the listed locale strings — both `en-US` and `ja` sides must fit.",
+      "A failure is a traced locale string over its Discord cap with no truncation, which rejects the whole payload: shorten it or wrap the call in `safeSelectOptionText`. A warning is a traced string the code already truncates, so it ships clipped; shorten it in the listed locale. Dynamic keys and separately declared builder arguments can be missed, so zero warnings does not prove every label fits.",
     "Command Reference":
       "Run `bun run generate-command-reference` and commit the regenerated docs/*/features/command-reference.md files.",
     "Command Roots":

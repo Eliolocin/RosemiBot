@@ -223,7 +223,7 @@ O TomoriBot o tratará como um novo usuário a partir de sua próxima mensagem.`
       saved_assignment_none: `Nenhum`,
       quick_toggle_modal_title: `Alternar Capacidades Pessoais`,
       quick_toggle_group_label: `Capacidades`,
-      quick_toggle_group_description: `Capacidades marcadas são substituições pessoais em todos os servidores. As desmarcadas usam o padrão do servidor.`,
+      quick_toggle_group_description: `Capacidades marcadas são substituições pessoais globais. Desmarcadas usam o padrão do servidor.`,
       quick_toggle_provider_desc: `Provedor atribuído: {provider}`,
       quick_toggle_none_desc: `Padrão do servidor (nenhum modelo configurado)`,
       model_modal_title: `Selecione o Modelo de {capability}`,
@@ -392,7 +392,7 @@ O TomoriBot o tratará como um novo usuário a partir de sua próxima mensagem.`
       spotlight_auto_modal_title: `Escolher Persona de Acionamento Automático`,
       spotlight_auto_select_label: `Persona de Acionamento Automático`,
       spotlight_auto_select_desc:
-        "Escolha a persona em destaque para o acionamento automático de cada uma de suas mensagens neste canal.",
+        "Escolha a persona em destaque para acionamento automático a cada mensagem sua neste canal.",
       spotlight_auto_range_placeholder: `Escolha um bloco de acionamento automático...`,
       spotlight_auto_range_option: `Personas {start}-{end}`,
       spotlight_saved_heading: `Destaque Pessoal Salvo`,

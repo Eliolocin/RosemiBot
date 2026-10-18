@@ -49,7 +49,7 @@ export default {
       attributelist_desc: `Añadir/quitar atributos de personalidad`,
       sampledialogues_desc: `Añadir/quitar pares de diálogo de muestra`,
       promptsnapshot_desc: `Ver prompts completos desde /context y /tool prompt snapshot`,
-      select_placeholder: `Selecciona qué pueden hacer los miembros conmigo`,
+      select_placeholder: `Elige qué pueden hacer los miembros conmigo`,
       select_embed_title: `Permisos de miembros del servidor`,
       select_embed_description: `Selecciona qué cosas pueden hacer los miembros que no son administradores. Marcado = permitido.`,
     },

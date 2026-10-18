@@ -73,6 +73,8 @@ export default {
     name_conflict_title: `🔴 ペルソナ名の競合`,
     name_conflict_description: `**{name}** という名前のペルソナは既にこのサーバーに存在します。ペルソナ名はサーバー内で一意である必要があります。`,
     export: {
+      persona_description: "エクスポートするペルソナ",
+      export_json_description: "PNGの代わりにインポート可能なJSONファイルとしてエクスポートします（アバター画像なし）",
       description: `現在の人格を共有可能なPNGファイルとしてエクスポートする`,
       success_title: `🟢 ペルソナのエクスポートに成功しました`,
       success_description: `ペルソナ **{nickname}** がエクスポートされました！このPNGファイルを他の人と共有して、人格設定を広めましょう。`,
@@ -178,6 +180,7 @@ export default {
       refresh_reminder: `この会話で人格の更新を適用するには\`/refresh\`を実行してください`,
     },
     remove: {
+      persona_description: "削除するオルタペルソナ",
       description: `サーバーからオルタペルソナを削除する`,
       no_permission_title: `🔴 権限がありません`,
       no_permission_description: `オルタペルソナを削除するには**サーバー管理**権限が必要です。`,

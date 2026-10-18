@@ -79,6 +79,8 @@ export default {
     invalid_key: `請輸入至少 10 個字元的 API 金鑰。`,
     unsupported_provider: `不支援這個供應商。請重新開啟面板並選擇目前的選項。`,
     validation_failed: `供應商拒絕了這組 API 金鑰，或無法驗證它。沒有儲存任何內容。`,
+    validation_no_balance:
+      "供應商已識別這組API金鑰，但帳戶沒有餘額，暫時無法回覆訊息。請到供應商網站儲值，再重新提交同一組金鑰。沒有儲存任何內容。",
     missing_default_model: `憑證已儲存，但這個供應商沒有可啟用的預設文字模型。`,
     write_failed: `無法儲存或啟用這個供應商。請再試一次。`,
     add_endpoint_modal_title: `新增自訂端點`,

@@ -43,7 +43,9 @@ import type { PanelReceipt } from "@/types/discord/panel";
 import { resolveAlterPersonaAvatarAsset, type PersonaAvatarAsset } from "@/utils/discord/personaPanelAvatar";
 import { getLastDbError } from "@/utils/cache/tomoriStateCache";
 import {
+  clampRawModalText,
   ComponentsV2LimitError,
+  DISCORD_BUTTON_LABEL_MAX,
   truncateDiscordText,
   validateComponentsV2MessageLimits,
   type ComponentsV2MessagePayload,
@@ -425,11 +427,17 @@ export async function showRoutedRawModal(
   data: { custom_id: string; title: string; components: RawDiscordComponent[] },
 ): Promise<void> {
   setupWebSocketInterception(interaction.client);
+  // Discord rejects the whole modal when one string is over its cap, and a translation can grow
+  // past a limit the English copy fits, so every routed modal is clamped here rather than per builder.
+  const { payload, truncatedPaths } = clampRawModalText(data);
+  if (truncatedPaths.length > 0) {
+    log.warn("Raw modal text truncated to Discord limits", { customId: data.custom_id, truncatedPaths });
+  }
   const restEndpoint = `https://discord.com/api/v10/interactions/${interaction.id}/${interaction.token}/callback`;
   const response = await fetch(restEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type: InteractionResponseType.Modal, data }),
+    body: JSON.stringify({ type: InteractionResponseType.Modal, data: payload }),
   });
   if (!response.ok) {
     const errorText = await response.text();
@@ -615,12 +623,12 @@ export async function promptWithConfirmation(
 
   const continueButton = new ButtonBuilder()
     .setCustomId(continueCustomId)
-    .setLabel(localizer(locale, continueLabelKey))
+    .setLabel(safeSelectOptionText(localizer(locale, continueLabelKey), DISCORD_BUTTON_LABEL_MAX))
     .setStyle(continueStyle);
 
   const cancelButton = new ButtonBuilder()
     .setCustomId(cancelCustomId)
-    .setLabel(localizer(locale, cancelLabelKey))
+    .setLabel(safeSelectOptionText(localizer(locale, cancelLabelKey), DISCORD_BUTTON_LABEL_MAX))
     .setStyle(cancelStyle);
 
   const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton, cancelButton);
@@ -725,12 +733,12 @@ export async function promptWithUnacknowledgedConfirmation(
 
   const continueButton = new ButtonBuilder()
     .setCustomId(continueCustomId)
-    .setLabel(localizer(locale, continueLabelKey))
+    .setLabel(safeSelectOptionText(localizer(locale, continueLabelKey), DISCORD_BUTTON_LABEL_MAX))
     .setStyle(continueStyle);
 
   const cancelButton = new ButtonBuilder()
     .setCustomId(cancelCustomId)
-    .setLabel(localizer(locale, cancelLabelKey))
+    .setLabel(safeSelectOptionText(localizer(locale, cancelLabelKey), DISCORD_BUTTON_LABEL_MAX))
     .setStyle(cancelStyle);
 
   const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton, cancelButton);
@@ -1304,13 +1312,13 @@ function buildV2ConfirmationComponents(
         type: ComponentType.Button,
         style: continueStyle,
         customId: continueCustomId,
-        label: localizer(locale, continueLabelKey),
+        label: safeSelectOptionText(localizer(locale, continueLabelKey), DISCORD_BUTTON_LABEL_MAX),
       },
       {
         type: ComponentType.Button,
         style: cancelStyle,
         customId: cancelCustomId,
-        label: localizer(locale, cancelLabelKey),
+        label: safeSelectOptionText(localizer(locale, cancelLabelKey), DISCORD_BUTTON_LABEL_MAX),
       },
     ],
   };
@@ -1430,7 +1438,7 @@ export function buildNoticeContainer(options: NoticeContainerOptions): TopLevelC
       type: ComponentType.Button,
       style: options.button.style ?? ButtonStyle.Secondary,
       customId: options.button.customId,
-      label: localizer(locale, options.button.labelKey),
+      label: safeSelectOptionText(localizer(locale, options.button.labelKey), DISCORD_BUTTON_LABEL_MAX),
       disabled: options.button.disabled ?? false,
     };
 
@@ -1722,7 +1730,7 @@ export function buildPersonaResultContainer(options: PersonaResultContainerOptio
       type: ComponentType.Button,
       style: options.button.style ?? ButtonStyle.Secondary,
       customId: options.button.customId,
-      label: localizer(locale, options.button.labelKey),
+      label: safeSelectOptionText(localizer(locale, options.button.labelKey), DISCORD_BUTTON_LABEL_MAX),
       disabled: options.button.disabled ?? false,
       ...(options.button.emoji ? { emoji: { name: options.button.emoji } } : {}),
     };

@@ -13,6 +13,9 @@ export default {
     next_steps_title: `Próximos pasos recomendados`,
     learn_more_title: `Más información`,
     heads_up_title: `Algunas cosas a tener en cuenta`,
+    channel_access_warning_field: "Todavía no puedo conversar en este canal",
+    channel_access_warning_value:
+      "La configuración terminó, pero mi rol no puede ver este canal o enviar mensajes aquí, así que no responderé en él. En los permisos de este canal o su categoría, dale a mi rol **Ver canal**, **Enviar mensajes** y **Leer el historial de mensajes**.",
     novelai_expressions_warning_field: `Expresiones desactivadas`,
     novelai_expressions_warning_value:
       "El uso de emojis y stickers se desactivó automáticamente para mantener el contexto de NovelAI ligero y estable. Puedes reactivarlos cuando quieras con `/config` > Permisos.",
@@ -85,7 +88,7 @@ Prueba con {model_text_command} para asignar un modelo funcional, o con {provide
       settings_persona_description: `Elige la persona que usaré después de la configuración.`,
       settings_persona_placeholder: `Elige un preajuste de persona...`,
       settings_humanizer_label: `Grado de humanización`,
-      settings_humanizer_description: `¿Qué tan humano debo sonar al responder? Se basa en reglas, no lo decide la IA, así que nunca añade latencia ni costo de tokens.`,
+      settings_humanizer_description: `¿Qué tan humano debo sonar? Por reglas, no por IA: nunca añade latencia ni costo de tokens.`,
       settings_humanizer_placeholder: `Elige un estilo de respuesta...`,
       settings_timezone_label: `Desfase de zona horaria`,
       settings_timezone_description: `Para recordatorios y conciencia del tiempo. Déjalo en blanco para usar UTC.`,
@@ -151,6 +154,8 @@ Prueba con {model_text_command} para asignar un modelo funcional, o con {provide
       finish_incomplete: `Completa todos los requisitos antes de finalizar la configuración.`,
       provider_validation_failed_title: `Clave de API no guardada`,
       provider_validation_failed: `El proveedor rechazó esa clave de API o no pudo validarla. No se guardó nada.`,
+      provider_validation_no_balance:
+        "El proveedor reconoció esa clave de API, pero la cuenta no tiene saldo, así que aún no puede responder mensajes. Agrega crédito en el sitio web del proveedor y vuelve a enviar la misma clave. No se guardó nada.",
       provider_invalid: `Ese proveedor no es compatible. Vuelve a abrir el menú y elige una opción actual.`,
       catalog_modal_title: `Clave de API del proveedor`,
       catalog_provider_label: `Proveedor`,
@@ -194,7 +199,7 @@ Prueba con {model_text_command} para asignar un modelo funcional, o con {provide
       custom_endpoint_model_code_description: `El identificador de modelo que reconoce tu punto de conexión.`,
       custom_endpoint_model_code_placeholder: `p. ej. llama3, gpt-4o, mistral`,
       custom_endpoint_num_ctx_label: `Tamaño de contexto`,
-      custom_endpoint_num_ctx_description: `Ventana de contexto opcional en tokens (mínimo 512). En blanco usa el valor predeterminado del punto de conexión.`,
+      custom_endpoint_num_ctx_description: `Contexto opcional en tokens (mínimo 512). En blanco usa el valor predeterminado del endpoint.`,
       custom_endpoint_num_ctx_placeholder: `p. ej. 4096, 8192, 32768, o déjalo en blanco`,
       custom_endpoint_capabilities_label: `Capacidades`,
       custom_endpoint_capabilities_description: `Selecciona las funciones compatibles con este modelo.`,

@@ -924,6 +924,7 @@ export default {
       capability_text: `Texto`,
       capability_vision: `Visión`,
       capability_embedding: `Incrustación`,
+      capability_decision: "Decisión",
       capability_image: `Imagen estándar`,
       capability_nai_image: `Imagen de NovelAI`,
       capability_video: `Video`,
@@ -931,6 +932,7 @@ export default {
       capability_tts_clone: `TTS (Clon de voz)`,
       capability_stt: `Voz a texto`,
       capability_notice_title: `Notas`,
+      decision_inactive_note: "Los modelos de decisión son experimentales y todavía no hacen nada.",
       image_generation_disabled_direction:
         "La generación de imágenes está desactivada. Actívala bajo Permisos > Capacidades del bot.",
       image_generation_missing_model: `No hay un modelo utilizable configurado para generación de imágenes.`,

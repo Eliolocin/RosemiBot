@@ -73,6 +73,8 @@ export default {
     name_conflict_title: `🔴 人格名称冲突`,
     name_conflict_description: `这个服务器上已经有一个叫 **{name}** 的人格了。同一个服务器内人格名称不能重复。`,
     export: {
+      persona_description: "要导出的人格",
+      export_json_description: "导出可导入的JSON文件，代替PNG（不含头像）",
       description: `把当前人格导出成可分享的 PNG 文件`,
       success_title: `🟢 人格导出成功`,
       success_description: `当前人格 **{nickname}** 已导出！把这张 PNG 文件分享给别人，就能传播这份人格配置。`,
@@ -178,6 +180,7 @@ export default {
       refresh_reminder: `运行 \`/refresh\` 让这次人格更新在这个聊天里生效`,
     },
     remove: {
+      persona_description: "要移除的副人格",
       description: `从服务器移除一个副人格`,
       no_permission_title: `🔴 权限不足`,
       no_permission_description: `移除副人格需要**管理服务器**权限。`,

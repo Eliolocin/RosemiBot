@@ -22,7 +22,7 @@ import {
 import { buildCheckboxGroupComponent, buildConfigModalFieldId } from "@/utils/discord/ui/configModals";
 import { buildConfigModelSelectModal } from "@/utils/discord/ui/configModelModals";
 import type { RawModalPayload } from "@/utils/discord/ui/configModals";
-import { DISCORD_SELECT_OPTIONS_MAX } from "@/utils/discord/ui/componentsV2Limits";
+import { DISCORD_SELECT_OPTION_LABEL_MAX, DISCORD_SELECT_OPTIONS_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import { localizer } from "@/utils/text/localizer";
@@ -51,7 +51,7 @@ export function buildDraftReviewItemsModal(state: TomoriState, locale: string, n
           RESPONSE_REVIEW_ITEMS,
           (item) => ({
             value: item.value,
-            label: localizer(locale, item.labelKey),
+            label: safeSelectOptionText(localizer(locale, item.labelKey), DISCORD_SELECT_OPTION_LABEL_MAX),
             default: state.config.response_review_items.includes(item.value),
           }),
         ),

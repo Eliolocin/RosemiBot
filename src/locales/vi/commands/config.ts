@@ -912,6 +912,7 @@ export default {
       capability_text: `Văn bản`,
       capability_vision: `Thị giác`,
       capability_embedding: `Embedding`,
+      capability_decision: "Quyết định",
       capability_image: `Hình ảnh chuẩn`,
       capability_nai_image: `Hình ảnh NovelAI`,
       capability_video: `Video`,
@@ -919,6 +920,7 @@ export default {
       capability_tts_clone: `TTS (Sao chép giọng đọc)`,
       capability_stt: `Chuyển giọng nói thành văn bản`,
       capability_notice_title: `Lưu ý`,
+      decision_inactive_note: "Model quyết định đang thử nghiệm và chưa có tác dụng.",
       image_generation_disabled_direction:
         "Tính năng tạo hình ảnh đã bị tắt. Bật tính năng này trong Quyền hạn > Tính năng của bot.",
       image_generation_missing_model: `Chưa có model khả dụng nào được cấu hình cho việc tạo ảnh.`,
@@ -1158,7 +1160,7 @@ export default {
       voice_design: {
         modal_title: `Mô tả giọng đọc`,
         prompt_label: `Mô tả giọng nói`,
-        prompt_help: `Mô tả tuổi, tông giọng, chất giọng, ngữ điệu, tốc độ, cảm xúc và phong cách truyền đạt của người nói.`,
+        prompt_help: `Mô tả tuổi, tông giọng, chất giọng, ngữ điệu, tốc độ, cảm xúc và phong cách truyền đạt.`,
         prompt_placeholder: `Người dẫn chuyện trưởng thành ấm áp, nhịp điệu nhẹ nhàng, chất giọng êm dịu, truyền cảm điềm tĩnh.`,
         prompt_required_title: `Cần mô tả giọng đọc`,
         prompt_required_description: `Nhập mô tả giọng đọc.`,

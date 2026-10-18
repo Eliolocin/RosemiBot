@@ -73,6 +73,8 @@ export default {
     name_conflict_title: `🔴 Trùng tên persona`,
     name_conflict_description: `Persona có tên **{name}** đã tồn tại trên máy chủ này. Tên persona phải là duy nhất trong một máy chủ.`,
     export: {
+      persona_description: "Persona bạn muốn xuất",
+      export_json_description: "Xuất tệp JSON có thể nhập thay cho PNG (không có ảnh đại diện)",
       description: `Xuất persona hiện tại thành tệp PNG có thể chia sẻ`,
       success_title: `🟢 Xuất persona thành công`,
       success_description: `Persona hiện tại **{nickname}** đã được xuất! Hãy chia sẻ tệp PNG này với người khác để lan tỏa cấu hình persona này.`,
@@ -178,6 +180,7 @@ Vui lòng chỉnh sửa tệp nhập để dùng tên khác, hoặc xóa persona
       refresh_reminder: `Chạy \`/refresh\` để áp dụng cập nhật persona trong đoạn chat này`,
     },
     remove: {
+      persona_description: "Persona alter bạn muốn xóa",
       description: `Xóa một persona alter khỏi máy chủ`,
       no_permission_title: `🔴 Không có quyền`,
       no_permission_description: `Bạn cần có quyền **Quản lý máy chủ** để xóa persona alter.`,

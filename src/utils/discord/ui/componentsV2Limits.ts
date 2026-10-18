@@ -9,7 +9,7 @@
 import { ComponentType, MessageFlags } from "discord.js";
 import type { TopLevelComponentData } from "discord.js";
 import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
-import { getDiscordTextLength } from "@/utils/text/discordTextLimits";
+import { getDiscordTextLength, truncateDiscordText } from "@/utils/text/discordTextLimits";
 import type { RawModalPayload } from "./configModals";
 
 // Discord Component Limits
@@ -140,6 +140,9 @@ export const DISCORD_RADIO_GROUP_OPTIONS_MAX = 10;
 
 /** Maximum characters for a modal text input value or max_length. */
 export const DISCORD_TEXT_INPUT_MAX = 4000;
+
+/** Maximum characters for a modal text input placeholder. */
+export const DISCORD_TEXT_INPUT_PLACEHOLDER_MAX = 100;
 
 export { getDiscordTextLength, truncateDiscordText } from "@/utils/text/discordTextLimits";
 
@@ -1128,5 +1131,65 @@ export function validateRawModalLimits(payload: RawModalPayload): DiscordCompone
   return {
     valid: violations.length === 0,
     violations,
+  };
+}
+
+const MODAL_OPTION_COMPONENT_TYPES = new Set([3, 21, 22]);
+
+/**
+ * Truncates every length-capped display string in a raw modal to its Discord limit.
+ *
+ * Values and custom IDs are left alone because submit handlers match on them, so truncating
+ * either would silently break the round trip instead of the display.
+ */
+export function clampRawModalText(payload: RawModalPayload): { payload: RawModalPayload; truncatedPaths: string[] } {
+  const truncatedPaths: string[] = [];
+  const clamp = (text: string, limit: number, path: string): string => {
+    const clamped = truncateDiscordText(text, limit);
+    if (clamped !== text) truncatedPaths.push(path);
+    return clamped;
+  };
+
+  const clampComponent = (comp: RawDiscordComponent, path: string): RawDiscordComponent => {
+    const next: RawDiscordComponent = { ...comp };
+    if ((comp.type === 18 || comp.type === 4) && typeof comp.label === "string") {
+      next.label = clamp(comp.label, DISCORD_MODAL_FIELD_LABEL_MAX, `${path}.label`);
+    }
+    if (comp.type === 18 && typeof comp.description === "string") {
+      next.description = clamp(comp.description, DISCORD_MODAL_FIELD_DESCRIPTION_MAX, `${path}.description`);
+    }
+    if (typeof comp.placeholder === "string") {
+      const limit = comp.type === 4 ? DISCORD_TEXT_INPUT_PLACEHOLDER_MAX : DISCORD_SELECT_PLACEHOLDER_MAX;
+      next.placeholder = clamp(comp.placeholder, limit, `${path}.placeholder`);
+    }
+    if (MODAL_OPTION_COMPONENT_TYPES.has(comp.type) && comp.options) {
+      next.options = comp.options.map((option, index) => ({
+        ...option,
+        label: clamp(option.label, DISCORD_SELECT_OPTION_LABEL_MAX, `${path}.options[${index}].label`),
+        ...(typeof option.description === "string"
+          ? {
+              description: clamp(
+                option.description,
+                DISCORD_SELECT_OPTION_DESCRIPTION_MAX,
+                `${path}.options[${index}].description`,
+              ),
+            }
+          : {}),
+      }));
+    }
+    if (comp.component) next.component = clampComponent(comp.component, `${path}.component`);
+    if (comp.components) {
+      next.components = comp.components.map((child, index) => clampComponent(child, `${path}.components[${index}]`));
+    }
+    return next;
+  };
+
+  return {
+    payload: {
+      ...payload,
+      title: clamp(payload.title, DISCORD_MODAL_TITLE_MAX, "title"),
+      components: payload.components.map((component, index) => clampComponent(component, `components[${index}]`)),
+    },
+    truncatedPaths,
   };
 }

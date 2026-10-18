@@ -236,10 +236,16 @@ cd apps/docs && bun run build                      # if docs changed: hreflang a
 | Gate | Fails on | Exit |
 |---|---|---|
 | `check-locales` | A key missing everywhere, a missing placeholder, protocol key problems, a docs route or fragment that resolves nowhere | 1; a parity gap in one locale is advisory exit 2 |
-| `check-locale-lengths` | Text over the Discord caps | 1 |
+| `check-locale-lengths` | Traced text over a Discord cap that the code does not truncate | 1; traced text the code truncates is an advisory warning with exit 0 |
 | `find-stale-translations` | Values identical to English, English text in a non-Latin script, `drifted`, `unfollowed` | 0 with a report; 2 when history it needs is missing |
 | `check-intent-packs` | An empty pack, fewer than three requests per target, a request that misses its tools | 1 |
 | `check-seed-catalogs` | `i18n` shape, persona uniqueness, unpaired dialogues, sprite validity | 1 |
+
+The length advisory traces literal keys and SCREAMING_CASE key-map lookups passed directly to
+truncation helpers or inline to `buildCategoryButtonRow` and `buildStateControlRow`. It skips keys
+passed through parameters, catalog properties, ternaries, composed text, and separately declared
+builder arguments. Zero warnings does not prove that every label fits without clipping. Rendered
+payload tests verify Discord limits after truncation; they do not detect clipped copy.
 
 `check-locales` has no locale filter; the other review tools take `--locale=<code>`.
 

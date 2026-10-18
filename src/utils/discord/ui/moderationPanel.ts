@@ -54,6 +54,7 @@ import type {
 } from "@/utils/moderation/moderationOperations";
 import { escapeDiscordMarkdown } from "@/utils/text/discordMarkdown";
 import { buildTextPreview, textPreviewFooterKey, textPreviewFooterVars } from "@/utils/text/textPreview";
+import { DISCORD_BUTTON_LABEL_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { localizer } from "@/utils/text/localizer";
 
 export interface ModerationPanelRenderInput {
@@ -240,7 +241,7 @@ function buildRemoveButton(
     type: ComponentType.Button,
     style: ButtonStyle.Danger,
     customId: buildModerationRouteId({ action: REMOVAL_OPEN_ACTIONS[list], locale, rangeIndex }),
-    label: localizer(locale, labelKey),
+    label: safeSelectOptionText(localizer(locale, labelKey), DISCORD_BUTTON_LABEL_MAX),
     disabled: data.readStatus !== "fresh" || listModerationRemovalValues(data, list).length === 0,
   };
 }
@@ -952,7 +953,7 @@ export function buildModerationPanelPayload(input: ModerationPanelRenderInput): 
           type: ComponentType.Button,
           style: ButtonStyle.Secondary,
           customId: buildModerationRouteId({ action: "quota-edit-open", locale, quotaType: section.type }),
-          label: localizer(locale, section.buttonKey),
+          label: safeSelectOptionText(localizer(locale, section.buttonKey), DISCORD_BUTTON_LABEL_MAX),
           disabled: data.readStatus !== "fresh",
         }),
       ),
