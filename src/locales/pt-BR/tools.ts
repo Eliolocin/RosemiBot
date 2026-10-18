@@ -6,6 +6,7 @@ export default {
     generate_voice_message: {
       persona_missing: `A persona não está mais disponível.`,
       stale: `O modelo de fala, as credenciais ou a voz da persona mudaram durante este turno. Inicie um novo turno antes de gerar uma mensagem de voz.`,
+      script_too_long: `O roteiro é longo demais para este modelo de design de voz. Encurte o roteiro e tente novamente.`,
     },
     generate_image: {
       quota_exceeded_generic: `A cota de geração de imagens foi excedida.`,

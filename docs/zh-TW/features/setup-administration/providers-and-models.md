@@ -160,8 +160,12 @@ OpenCode Go (`https://opencode.ai/zen/go/v1`) 和OpenCode Zen (`https://opencode
 
 ### 語音與音訊
 
-| 供應商 | 文字轉語音 | 語音轉文本 |
+| 供應商 | 文字轉語音 | 語音轉文字 |
 |---|---|---|
 | ElevenLabs | ✅ | ✅ |
+| Google Gemini | 語音設計 | 否 |
+| Vertex AI（標準、全域） | 語音設計 | 否 |
+| OpenRouter Fish | 語音複製 | 否 |
+| OpenRouter Seed Audio | 語音設計 | 否 |
 
 本機語音引擎包含在[自架](/zh-TW/self-hosting/) 中。內建的網路搜尋和URL讀取，請參閱[工具和擴充功能](/zh-TW/features/capabilities/tools-and-extensions/#web-search--url-reading)。

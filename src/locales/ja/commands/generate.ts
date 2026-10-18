@@ -191,6 +191,8 @@ export default {
       stale_description: `このフォームを開いている間に、選択した声または音声の出力先が変更されました。もう一度コマンドを実行してください。`,
       synthesis_failed_title: `🔴 音声の生成に失敗しました`,
       synthesis_failed_description: `音声エンドポイントが音声を返しませんでした。エラー：{error}`,
+      script_too_long_title: `セリフが長すぎます`,
+      script_too_long_description: `この声はペルソナの説明と読み上げるセリフでプロンプトを共有しています。このメッセージのセリフを短くして、もう一度お試しください。`,
       delivery_failed_title: `🔴 送信に失敗しました`,
       delivery_failed_description: `音声は生成されましたが、Discord がボイスメッセージを受け付けませんでした。もう一度お試しください。`,
       success_title: `🟢 ボイスメッセージを送信しました`,

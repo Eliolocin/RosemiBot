@@ -160,8 +160,12 @@ Nếu bạn không có phần cứng để lưu trữ các model của riêng m�
 
 ### Giọng nói và âm thanh
 
-| nhà cung cấp | Chuyển văn bản thành giọng nói | Chuyển giọng nói thành văn bản |
+| Nhà cung cấp | Chuyển văn bản thành giọng nói | Chuyển giọng nói thành văn bản |
 |---|---|---|
 | ElevenLabs | ✅ | ✅ |
+| Google Gemini | Thiết kế giọng đọc | Không |
+| Vertex AI (tiêu chuẩn, toàn cầu) | Thiết kế giọng đọc | Không |
+| OpenRouter Fish | Sao chép giọng đọc | Không |
+| OpenRouter Seed Audio | Thiết kế giọng đọc | Không |
 
 Công cụ giọng nói cục bộ được đề cập trong [Tự lưu trữ](/vi/self-hosting/). Để biết tính năng tìm kiếm trên web và đọc URL tích hợp, hãy xem [Công cụ & tiện ích mở rộng](/vi/features/capabilities/tools-and-extensions/#web-search--url-reading).

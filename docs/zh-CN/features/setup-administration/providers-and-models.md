@@ -160,8 +160,12 @@ OpenCode Go (`https://opencode.ai/zen/go/v1`) 和OpenCode Zen (`https://opencode
 
 ### 语音与音频
 
-| 提供者 | 文字转语音 | 语音转文本 |
+| 提供方 | 文字转语音 | 语音转文本 |
 |---|---|---|
 | ElevenLabs | ✅ | ✅ |
+| Google Gemini | 语音设计 | 否 |
+| Vertex AI（标准、全局） | 语音设计 | 否 |
+| OpenRouter Fish | 语音克隆 | 否 |
+| OpenRouter Seed Audio | 语音设计 | 否 |
 
 本地语音引擎包含在[自部署](/zh-CN/self-hosting/) 中。对于内置的网络搜索和URL读取，请参阅[工具和扩展](/zh-CN/features/capabilities/tools-and-extensions/#web-search--url-reading)。

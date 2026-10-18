@@ -191,6 +191,8 @@ export default {
       stale_description: `這個表單開啟期間，選取的語音或語音目標已變更。請重新執行指令。`,
       synthesis_failed_title: `🔴 語音生成失敗`,
       synthesis_failed_description: `語音端點沒有回傳音訊。錯誤：{error}`,
+      script_too_long_title: `台詞過長`,
+      script_too_long_description: `此聲音的提示詞由人格描述與念出的台詞共用。請縮短此訊息的台詞後再試一次。`,
       delivery_failed_title: `🔴 傳送失敗`,
       delivery_failed_description: `音訊已生成，但 Discord 拒絕了這則語音訊息。請再試一次。`,
       success_title: `🟢 語音訊息已傳送`,

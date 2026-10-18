@@ -191,6 +191,8 @@ export default {
       stale_description: `这个表单打开期间，所选的声音或语音目标发生了变化。请重新运行命令。`,
       synthesis_failed_title: `🔴 语音生成失败`,
       synthesis_failed_description: `语音端点没有返回音频。错误：{error}`,
+      script_too_long_title: `文本过长`,
+      script_too_long_description: `这种声音的提示词由人格描述和念出的台词共用。请缩短这条消息的台词后再试。`,
       delivery_failed_title: `🔴 发送失败`,
       delivery_failed_description: `音频已经生成，但 Discord 拒绝了这条语音消息。请再试一次。`,
       success_title: `🟢 语音消息已发送`,

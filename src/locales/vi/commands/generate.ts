@@ -191,6 +191,8 @@ export default {
       stale_description: `Giọng đọc hoặc đích giọng nói đã chọn thay đổi trong lúc biểu mẫu này đang mở. Hãy chạy lại lệnh.`,
       synthesis_failed_title: `🔴 Tạo giọng đọc thất bại`,
       synthesis_failed_description: `Endpoint giọng nói không trả về âm thanh. Lỗi: {error}`,
+      script_too_long_title: `Kịch bản quá dài`,
+      script_too_long_description: `Giọng đọc này dùng chung prompt giữa phần mô tả persona và kịch bản đọc. Hãy rút ngắn kịch bản của tin nhắn này và thử lại.`,
       delivery_failed_title: `🔴 Gửi tin nhắn thất bại`,
       delivery_failed_description: `Âm thanh đã được tạo nhưng Discord từ chối tin nhắn thoại. Vui lòng thử lại.`,
       success_title: `🟢 Đã gửi tin nhắn thoại`,

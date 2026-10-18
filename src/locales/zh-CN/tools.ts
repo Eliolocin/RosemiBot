@@ -6,6 +6,7 @@ export default {
     generate_voice_message: {
       persona_missing: `这个人格已不可用。`,
       stale: `本轮期间，语音模型、凭据或人格声音发生了变化。请先开始新的一轮，再生成语音消息。`,
+      script_too_long: `这段台词超出了该语音设计模型的长度上限。请缩短台词后再试。`,
     },
     generate_image: {
       quota_exceeded_generic: `图像生成配额已经用完。`,

@@ -6,6 +6,7 @@ export default {
     generate_voice_message: {
       persona_missing: `Persona này không còn khả dụng.`,
       stale: `Model giọng nói, thông tin xác thực hoặc giọng của persona đã thay đổi trong lượt này. Hãy bắt đầu lượt mới trước khi tạo tin nhắn thoại.`,
+      script_too_long: `Kịch bản quá dài đối với model thiết kế giọng đọc này. Hãy rút ngắn kịch bản và thử lại.`,
     },
     generate_image: {
       quota_exceeded_generic: `Đã vượt quá hạn mức tạo ảnh.`,

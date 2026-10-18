@@ -160,8 +160,12 @@ Estos son los valores predeterminados desde los que parten los modelos de imáge
 
 ### Voz y audio
 
-| Proveedora | Texto a voz | Voz a texto |
+| Proveedor | Texto a voz | Voz a texto |
 |---|---|---|
 | ElevenLabs | ✅ | ✅ |
+| Google Gemini | Diseño de voz | No |
+| Vertex AI (estándar, global) | Diseño de voz | No |
+| OpenRouter Fish | Clon de voz | No |
+| OpenRouter Seed Audio | Diseño de voz | No |
 
 Los motores de voz locales están cubiertos en [Autoalojamiento](/es-419/self-hosting/). Para búsqueda web integrada y lectura de URL, consulte [Herramientas y extensiones](/es-419/features/capabilities/tools-and-extensions/#web-search--url-reading).

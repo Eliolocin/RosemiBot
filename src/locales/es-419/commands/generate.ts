@@ -191,6 +191,8 @@ export default {
       stale_description: `La voz o el destino de voz seleccionado cambió mientras este formulario estaba abierto. Ejecuta el comando de nuevo.`,
       synthesis_failed_title: `🔴 Falló la generación de voz`,
       synthesis_failed_description: `El punto de conexión de voz no devolvió audio. Error: {error}`,
+      script_too_long_title: `Guion demasiado largo`,
+      script_too_long_description: `Esta voz comparte su prompt entre la descripción de la persona y el guion hablado. Acorta el guion de este mensaje e inténtalo de nuevo.`,
       delivery_failed_title: `🔴 Falló la entrega`,
       delivery_failed_description: `El audio se generó, pero Discord rechazó el mensaje de voz. Inténtalo de nuevo.`,
       success_title: `🟢 Mensaje de voz enviado`,

@@ -163,5 +163,9 @@ Esses são os padrões a partir dos quais os modelos de imagem de um provedor co
 | Provedor | Conversão de texto para fala | Fala para texto |
 |---|---|---|
 | ElevenLabs | ✅ | ✅ |
+| Google Gemini | Design de voz | Não |
+| Vertex AI (padrão, global) | Design de voz | Não |
+| OpenRouter Fish | Clone de voz | Não |
+| OpenRouter Seed Audio | Design de voz | Não |
 
 Os mecanismos de voz locais são cobertos por [Auto-hospedagem](/pt-BR/self-hosting/). Para pesquisa na web integrada e leitura de URL, consulte [Ferramentas e extensões](/pt-BR/features/capabilities/tools-and-extensions/#web-search--url-reading).

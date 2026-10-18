@@ -191,6 +191,8 @@ export default {
       stale_description: `A voz ou o destino de fala selecionado mudou enquanto este formulário estava aberto. Execute o comando novamente.`,
       synthesis_failed_title: `🔴 Falha na Geração de Voz`,
       synthesis_failed_description: `O endpoint de voz não retornou o áudio. Erro: {error}`,
+      script_too_long_title: `Roteiro Muito Longo`,
+      script_too_long_description: `Esta voz compartilha o prompt entre a descrição da persona e o roteiro falado. Encurte o roteiro desta mensagem e tente novamente.`,
       delivery_failed_title: `🔴 Falha na Entrega`,
       delivery_failed_description: `O áudio foi gerado, mas o Discord rejeitou a mensagem de voz. Por favor, tente novamente.`,
       success_title: `🟢 Mensagem de Voz Enviada`,
