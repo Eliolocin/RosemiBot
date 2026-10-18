@@ -1,6 +1,7 @@
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { llmProviderRepo } from "@/utils/db/repositories";
+import { seedModelsFromCatalog } from "@/db/seed/catalog/modelSeed";
+import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import * as SpeechRepository from "@/utils/db/repositories/SpeechRepository";
 import { encryptApiKey } from "@/utils/security/crypto";
 import { DB_TESTS_AVAILABLE, executeTestSqlFile, setupTestDb, testSql } from "./setup/testDb";
@@ -506,11 +507,10 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom Endpoint connection and model split
       path.join(process.cwd(), "src", "db", "migrations", "084_custom_endpoint_connection_behavior.sql"),
     ];
 
-    await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.down.sql"));
-    await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.down.sql"));
-    await executeTestSqlFile(downPath);
-
     try {
+      await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.down.sql"));
+      await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.down.sql"));
+      await executeTestSqlFile(downPath);
       const [downRow] = await testSql<
         [
           {
@@ -534,14 +534,10 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom Endpoint connection and model split
       expect(downRow.api_style).toBe("openai-compatible");
       expect(downRow.endpoint_url).toBe("http://cycle.local:8000/v1");
       expect(downRow.requires_auth).toBe(true);
-    } finally {
       await executeTestSqlFile(upPath);
       for (const laterPath of laterConnectionMigrationPaths) {
         await executeTestSqlFile(laterPath);
       }
-    }
-
-    try {
       await executeTestSqlFile(upPath);
 
       const reloadedList = await llmProviderRepo.loadCustomEndpointsForServer(serverId);
@@ -554,8 +550,13 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom Endpoint connection and model split
     } finally {
       // Keep the shared disposable database at the current fresh-install
       // schema after exercising Migration A's legacy coexistence state.
+      await executeTestSqlFile(upPath);
+      for (const laterPath of laterConnectionMigrationPaths) {
+        await executeTestSqlFile(laterPath);
+      }
       await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.sql"));
       await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.sql"));
+      await seedModelsFromCatalog(testSql);
       await testSql`DROP INDEX IF EXISTS idx_custom_endpoint_connections_server_unique`;
       await testSql`DROP INDEX IF EXISTS idx_custom_endpoint_connections_user_unique`;
       await testSql`CREATE UNIQUE INDEX idx_custom_endpoint_connections_server_unique
@@ -564,6 +565,13 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom Endpoint connection and model split
       await testSql`CREATE UNIQUE INDEX idx_custom_endpoint_connections_user_unique
         ON custom_endpoint_connections(user_id, label, capability)
         WHERE server_id IS NULL`;
+    }
+    for (const provider of ["google", "openrouter", "vertex"]) {
+      const models = await llmModelRepo.loadAvailableSpeechModels(provider, { kind: "server", ownerId: serverId });
+      expect(
+        models.some((model) => model.is_default),
+        provider,
+      ).toBe(true);
     }
   });
 });
