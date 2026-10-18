@@ -17,7 +17,7 @@ export default {
     channel_access_warning_value:
       "設定は完了しましたが、私のロールはこのチャンネルを表示できないか、メッセージを送信できないため、ここでは応答しません。このチャンネルまたはカテゴリーの権限設定で、私のロールに**チャンネルを見る**、**メッセージを送信**、**メッセージ履歴を読む**を許可してください。",
     novelai_expressions_warning_field: `表現機能の無効化`,
-    novelai_expressions_warning_value: `NovelAIのコンテキストを安定させるため、絵文字とスタンプの使用が自動的に無効化されました。\`/config\` > 権限 でいつでも再有効化できます。`,
+    novelai_expressions_warning_value: `NovelAIのコンテキストを安定させるため、絵文字とスタンプの使用が自動的に無効化されました。\`/config\` > プラグイン でいつでも再有効化できます。`,
     zai_tos_warning_field: `Z.ai利用規約について`,
     zai_tos_warning_value: `Z.aiの利用規約が更新され、コーディング/エージェントのユースケースのみが許可されるようになりました。Z.aiを一般チャットに使用する場合は自己責任となり、規約に違反する可能性があります。`,
     byok_bootstrap_field: `ユーザーBYOK`,

@@ -18,7 +18,7 @@ export default {
       "Đã thiết lập xong, nhưng vai trò của mình không thể xem kênh này hoặc gửi tin nhắn ở đây, nên mình sẽ không trả lời trong kênh. Trong phần quyền của kênh hoặc danh mục chứa kênh, hãy cấp cho vai trò của mình quyền **Xem kênh**, **Gửi tin nhắn** và **Đọc lịch sử tin nhắn**.",
     novelai_expressions_warning_field: `Biểu cảm đã tắt`,
     novelai_expressions_warning_value:
-      "Emoji và sticker đã được tự động tắt để giữ ngữ cảnh NovelAI gọn gàng và ổn định. Bạn có thể bật lại bất kỳ lúc nào qua `/config` > Permissions.",
+      "Emoji và sticker đã được tự động tắt để giữ ngữ cảnh NovelAI gọn gàng và ổn định. Bạn có thể bật lại bất kỳ lúc nào qua `/config` > Plugin.",
     zai_tos_warning_field: `Điều khoản dịch vụ Z.ai`,
     zai_tos_warning_value:
       "Điều khoản của Z.ai chỉ cho phép tác vụ lập trình/agent. Dùng Z.ai để trò chuyện thông thường có thể vi phạm điều khoản và bạn phải tự chịu rủi ro.",

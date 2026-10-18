@@ -17,7 +17,7 @@ export default {
     channel_access_warning_value: `Setup is done, but my role can't see or post here, so I won't answer messages in this channel. In this channel's or its category's permission settings, give my role **View Channel**, **Send Messages**, and **Read Message History**.`,
     novelai_expressions_warning_field: `Expressions Disabled`,
     novelai_expressions_warning_value:
-      "Emoji and sticker usage have been automatically disabled to keep NovelAI's context lean and stable. You can re-enable them anytime with `/config` > Permissions.",
+      "Emoji and sticker usage have been automatically disabled to keep NovelAI's context lean and stable. You can re-enable them anytime with `/config` > Plugins.",
     zai_tos_warning_field: `Z.ai Terms of Service`,
     zai_tos_warning_value:
       "Z.ai's ToS have been updated to only permit coding/agent use cases. Using Z.ai for general chat is at your own risk and may violate their terms.",

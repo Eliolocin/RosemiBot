@@ -921,11 +921,9 @@ export default {
       capability_stt: `Speech to Text`,
       capability_notice_title: `Notes:`,
       decision_inactive_note: "Decision models are experimental and don't do anything yet.",
-      image_generation_disabled_direction:
-        "Image generation is disabled. Enable it under Permissions > Bot Capabilities.",
+      image_generation_disabled_direction: "Image generation is disabled. Enable it under Plugins > Available Tools.",
       image_generation_missing_model: `No usable model is configured for Image generation.`,
-      video_generation_disabled_direction:
-        "Video generation is disabled. Enable it under Permissions > Bot Capabilities.",
+      video_generation_disabled_direction: "Video generation is disabled. Enable it under Plugins > Available Tools.",
       video_generation_missing_model: `No usable model is configured for Video generation.`,
       no_endpoints_option: `No registered endpoint`,
       endpoint_activated_heading: `Endpoint Activated`,
@@ -933,7 +931,7 @@ export default {
       endpoint_already_active_detail: `**{endpoint}** is already active. Nothing changed.`,
       endpoint_source_changed_direction: `**{endpoint}** is now active. The speech source changed, so reassign voices if needed.`,
       speech_capability_disabled_direction:
-        "Speech messages are disabled. Enable them under Permissions > Bot Capabilities.",
+        "Speech messages are disabled. Enable them under Plugins > Available Tools.",
       speech_capability_missing_endpoint: `Speech messages are enabled, but no TTS model is selected.`,
       providers_endpoint_registration_hint: `Register a Speech or Transcription endpoint under /providers.`,
       manage_providers_hint: `Use \`/providers\` to add more model choices.`,

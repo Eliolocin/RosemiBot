@@ -179,7 +179,7 @@ export default {
     field_context_note_depth: `Profundidade da Nota`,
     field_context_note_not_set: `*(Não definido)*`,
     server_page8_title: `Status do Servidor: Capacidades`,
-    server_page8_description: `Gerencie em /config > Permissions.`,
+    server_page8_description: `Gerencie em /config > Plugins.`,
     field_nai_diffusion_model: `Modelo de Imagem NAI`,
     field_nai_preset: `Predefinição de Amostragem NAI`,
     field_image_default_positive_tags: `Tags Positivas Padrão de Imagem`,
