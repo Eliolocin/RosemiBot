@@ -852,16 +852,14 @@ export function createProvidersInteractionRoute(
           () =>
             dependencies.operations.addServerProvider({
               serverDiscId: interaction.guildId ?? interaction.user.id,
-              ownerId: scope.ownerId,
-              scopeKind: scope.scopeKind,
-              state: scope.state,
+              ...scope,
               provider: selectedProvider ?? "",
               apiKey: modal.fields.getTextInputValue(buildAddProviderModalFieldId("api-key", route.nonce)),
             }),
           () => dependencies.resolveScope(interaction, true),
         );
         const nextScope = action.state ?? unavailableScope(scope);
-        if (action.result.status === "success") {
+        if (action.result.status === "success" && scope.state) {
           dependencies.recordAction({
             action: resolveProviderPanelAction(scope.scopeKind, "provider.add"),
             serverId: scope.state.server_id,
@@ -909,15 +907,13 @@ export function createProvidersInteractionRoute(
           () =>
             dependencies.operations.removeServerProviderEntry({
               serverDiscId: interaction.guildId ?? interaction.user.id,
-              ownerId: scope.ownerId,
-              scopeKind: scope.scopeKind,
-              state: scope.state,
+              ...scope,
               entry,
             }),
           () => dependencies.resolveScope(interaction, true),
         );
         const nextScope = action.state ?? unavailableScope(scope);
-        if (action.result.status === "success") {
+        if (action.result.status === "success" && scope.state) {
           dependencies.recordAction({
             action: resolveProviderPanelAction(scope.scopeKind, "entry.remove"),
             serverId: scope.state.server_id,
@@ -943,9 +939,7 @@ export function createProvidersInteractionRoute(
           () =>
             dependencies.operations.addCustomEndpointConnection({
               serverDiscId: interaction.guildId ?? interaction.user.id,
-              ownerId: scope.ownerId,
-              scopeKind: scope.scopeKind,
-              state: scope.state,
+              ...scope,
               label: field("label"),
               endpointUrl: field("url"),
               apiStyle: selectedApiStyle as never,
@@ -954,7 +948,7 @@ export function createProvidersInteractionRoute(
           () => dependencies.resolveScope(interaction, true),
         );
         const nextScope = action.state ?? unavailableScope(scope);
-        if (action.result.status === "success") {
+        if (action.result.status === "success" && scope.state) {
           dependencies.recordAction({
             action: resolveProviderPanelAction(scope.scopeKind, "endpoint.add"),
             serverId: scope.state.server_id,
@@ -982,9 +976,7 @@ export function createProvidersInteractionRoute(
           () =>
             dependencies.operations.editServerProvider({
               serverDiscId: interaction.guildId ?? interaction.user.id,
-              ownerId: scope.ownerId,
-              scopeKind: scope.scopeKind,
-              state: scope.state,
+              ...scope,
               provider: route.provider,
               apiKey: modal.fields.getTextInputValue(buildEditProviderModalFieldId("api-key", route.nonce)),
               rotationKey:
@@ -996,7 +988,7 @@ export function createProvidersInteractionRoute(
           () => dependencies.resolveScope(interaction, true),
         );
         const nextScope = action.state ?? unavailableScope(scope);
-        if (action.result.status === "success") {
+        if (action.result.status === "success" && scope.state) {
           dependencies.recordAction({
             action: resolveProviderPanelAction(scope.scopeKind, "provider.edit"),
             serverId: scope.state.server_id,
@@ -1025,9 +1017,7 @@ export function createProvidersInteractionRoute(
           () =>
             dependencies.operations.editServerEndpoint({
               serverDiscId: interaction.guildId ?? interaction.user.id,
-              ownerId: scope.ownerId,
-              scopeKind: scope.scopeKind,
-              state: scope.state,
+              ...scope,
               entryId,
               label: entry.isPreset
                 ? entry.displayName
@@ -1046,7 +1036,7 @@ export function createProvidersInteractionRoute(
           () => dependencies.resolveScope(interaction, true),
         );
         const nextScope = action.state ?? unavailableScope(scope);
-        if (action.result.status === "success") {
+        if (action.result.status === "success" && scope.state) {
           dependencies.recordAction({
             action: resolveProviderPanelAction(scope.scopeKind, "endpoint.edit"),
             serverId: scope.state.server_id,
@@ -1103,9 +1093,7 @@ export function createProvidersInteractionRoute(
           () =>
             dependencies.operations.saveProviderModel({
               serverDiscId: interaction.guildId ?? interaction.user.id,
-              ownerId: scope.ownerId,
-              scopeKind: scope.scopeKind,
-              state: scope.state,
+              ...scope,
               entryId,
               capability: route.capability,
               codeName: modal.fields.getTextInputValue(buildProviderModelModalFieldId("code-name", route.nonce)).trim(),
@@ -1128,7 +1116,7 @@ export function createProvidersInteractionRoute(
           () => dependencies.resolveScope(interaction, true),
         );
         const nextScope = action.state ?? unavailableScope(scope);
-        if (action.result.status === "success") {
+        if (action.result.status === "success" && scope.state) {
           dependencies.recordAction({
             action: resolveProviderPanelAction(scope.scopeKind, "model.save"),
             serverId: scope.state.server_id,

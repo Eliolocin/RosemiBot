@@ -71,6 +71,10 @@ update your profile details when requested during conversation.
 Personal providers let your own requests use your own API keys and models instead of the
 server's defaults. This is bring-your-own-key (BYOK) at the individual user level.
 
+You can configure personal providers and account settings in any server or in DMs, including where
+TomoriBot has not been set up. Persona-specific settings and Personal Spotlight use the current
+server's configured personas.
+
 Two scopes are available:
 
 - **Server default**: shared credentials and models configured in `/providers` and `/model`

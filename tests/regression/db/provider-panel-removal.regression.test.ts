@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { llmProviderRepo } from "@/utils/db/repositories/LlmProviderRepository";
+import { providerPanelOperations } from "@/utils/provider/providerPanelOperations";
+import { invalidateUserCache } from "@/utils/cache/userCache";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
 
 const SERVER_DISC_ID = "_provider_panel_removal_server";
@@ -22,12 +24,64 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Provider panel durable removal", () => {
       INSERT INTO users (user_disc_id) VALUES (${USER_DISC_ID}) RETURNING user_id
     `;
     userId = Number(user.user_id);
+    invalidateUserCache(USER_DISC_ID);
   });
 
   afterAll(async () => {
     await testSql`DELETE FROM servers WHERE server_disc_id = ${SERVER_DISC_ID}`;
     await testSql`DELETE FROM users WHERE user_disc_id = ${USER_DISC_ID}`;
     await testSql`DELETE FROM llms WHERE llm_provider = ${SHARED_PROVIDER}`;
+  });
+
+  it("manages personal models from an unconfigured server without creating a workspace", async () => {
+    const workspace = "223456789012345678";
+    const scope = await providerPanelOperations.loadPersonalProviderPanelScope(USER_DISC_ID, workspace);
+    expect(scope?.scopeKind).toBe("personal");
+    if (!scope || scope.scopeKind !== "personal") throw new Error("Expected the personal provider scope");
+    expect(scope.state).toBeNull();
+    const connectionId = await llmProviderRepo.upsertCustomEndpointConnection({
+      userId,
+      label: "mirri-models",
+      capability: "text",
+      apiStyle: "openai-compatible",
+      endpointUrl: "https://models.example.invalid/v1",
+      requiresAuth: false,
+    });
+    if (!connectionId) throw new Error("Expected the personal endpoint connection");
+    const entryId = `endpoint:${connectionId}`;
+    const saved = await providerPanelOperations.saveProviderModel({
+      ...scope,
+      serverDiscId: workspace,
+      entryId,
+      capability: "text",
+      codeName: "mirri-chat",
+      numCtx: 8192,
+    });
+    expect(saved.status).toBe("success");
+    const loaded = await providerPanelOperations.loadPersonalProviderPanelScope(USER_DISC_ID, workspace);
+    const entry = loaded?.data.entries.find((entry) => entry.id === entryId);
+    expect(entry?.kind).toBe("endpoint");
+    if (!entry || entry.kind !== "endpoint") throw new Error("Expected the personal model entry");
+    expect(entry.capabilities.find((section) => section.capability === "text")?.models).toContainEqual(
+      expect.objectContaining({ codeName: "mirri-chat", isWorkspaceActive: true }),
+    );
+    const provider = `custom:${connectionId}`;
+    const snapshot = await llmProviderRepo.loadUserSavedProviderConfig(userId, provider);
+    expect(snapshot?.llm_temperature).toBeNull();
+    expect(snapshot?.enabled_capabilities).toContain("text");
+    expect(
+      (await providerPanelOperations.removeServerProviderEntry({ ...scope, serverDiscId: workspace, entry })).status,
+    ).toBe("active");
+    if (!snapshot) throw new Error("Expected the saved personal provider");
+    expect(await llmProviderRepo.upsertUserSavedProviderConfig(userId, { ...snapshot, enabled_capabilities: [] })).toBe(
+      true,
+    );
+    expect(
+      (await providerPanelOperations.removeServerProviderEntry({ ...scope, serverDiscId: workspace, entry })).status,
+    ).toBe("success");
+    const [server] = await testSql`SELECT COUNT(*)::int AS count FROM servers WHERE server_disc_id = ${workspace}`;
+    expect(server.count).toBe(0);
+    expect(await llmProviderRepo.loadUserSavedProviderConfig(userId, provider)).toBeNull();
   });
 
   it("removes one curated provider snapshot, rotation pool, and scoped registrations atomically", async () => {

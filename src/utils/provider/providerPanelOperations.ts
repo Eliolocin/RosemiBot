@@ -103,14 +103,15 @@ const CAPABILITIES: readonly ProviderPanelCapability[] = [
   "decision",
 ];
 
-export interface LoadedProviderPanelScope {
-  state: TomoriState;
-  scopeKind?: "server" | "personal";
-  ownerId?: number;
+type ProviderPanelOwner =
+  | { scopeKind: "personal"; ownerId: number; state: TomoriState | null }
+  | { scopeKind?: "server"; ownerId?: number; state: TomoriState };
+
+export type LoadedProviderPanelScope = ProviderPanelOwner & {
   routeNamespace?: ProvidersRouteNamespace;
   footerCommand?: { root: string; subcommandGroup?: string; subcommand?: string };
   data: ProviderPanelScopeData;
-}
+};
 
 export interface ProviderPanelOperationsDependencies {
   getState(discordId: string): Promise<TomoriState | null>;
@@ -133,14 +134,11 @@ export type AddServerProviderResult =
         | "write-failed";
     };
 
-export interface AddServerProviderInput {
+export type AddServerProviderInput = ProviderPanelOwner & {
   serverDiscId: string;
-  ownerId?: number;
-  scopeKind?: "server" | "personal";
-  state: TomoriState;
   provider: string;
   apiKey: string;
-}
+};
 
 export interface AddServerProviderDependencies {
   validateElevenLabs(key: string): ReturnType<typeof validateElevenLabsApiKey>;
@@ -166,16 +164,13 @@ export type AddCustomEndpointConnectionResult =
       status: "invalid-label" | "invalid-style" | "already-exists" | "label-url-conflict" | "write-failed";
     };
 
-export interface AddCustomEndpointConnectionInput {
+export type AddCustomEndpointConnectionInput = ProviderPanelOwner & {
   serverDiscId: string;
-  ownerId?: number;
-  scopeKind?: "server" | "personal";
-  state: TomoriState;
   label: string;
   endpointUrl: string;
   apiStyle: CustomEndpointApiStyle;
   authToken: string;
-}
+};
 
 export interface AddCustomEndpointConnectionDependencies {
   validateReachability: typeof validateCustomEndpointReachability;
@@ -198,11 +193,8 @@ export type SaveProviderModelResult =
   | { status: "success"; entryId: string; codeName: string; removed?: boolean }
   | { status: "invalid-model" | "unsupported-capability" | "not-found" | "already-available" | "write-failed" };
 
-export interface SaveProviderModelInput {
+export type SaveProviderModelInput = ProviderPanelOwner & {
   serverDiscId: string;
-  ownerId?: number;
-  scopeKind?: "server" | "personal";
-  state: TomoriState;
   entryId: string;
   capability: CustomEndpointCapability;
   codeName: string;
@@ -225,23 +217,20 @@ export interface SaveProviderModelInput {
   speechScriptMarkup?: string;
   speechInstructValues?: string[];
   workflow?: Record<string, unknown>;
-}
+};
 
 export type EditProviderResult =
   | { status: "success"; entryId: string; changed: string[] }
   | { status: "unchanged"; entryId: string }
   | { status: "invalid-key" | "invalid-combination" | "not-found" | "validation-failed" | "write-failed" };
 
-interface EditProviderInput {
+type EditProviderInput = ProviderPanelOwner & {
   serverDiscId: string;
-  ownerId?: number;
-  scopeKind?: "server" | "personal";
-  state: TomoriState;
   provider: string;
   apiKey: string;
   rotationKey: string;
   deleteRotationKeys: boolean;
-}
+};
 
 export type EditEndpointResult =
   | { status: "success"; entryId: string; label: string }
@@ -249,30 +238,24 @@ export type EditEndpointResult =
   | { status: "unreachable"; reason: string; credentialsWithheld: boolean }
   | { status: "invalid-label" | "not-found" | "write-failed" | "handoff-unsupported" };
 
-interface EditEndpointInput {
+type EditEndpointInput = ProviderPanelOwner & {
   serverDiscId: string;
-  ownerId?: number;
-  scopeKind?: "server" | "personal";
-  state: TomoriState;
   entryId: string;
   label: string;
   endpointUrl: string;
   authToken: string;
   /** Undefined when the modal did not offer the option, which leaves the stored value untouched. */
   unloadDuringComfyUi?: boolean;
-}
+};
 
 export type RemoveProviderEntryResult =
   | { status: "success"; entryId: string; displayName: string }
   | { status: "active" | "not-found" | "write-failed" };
 
-interface RemoveProviderEntryInput {
+type RemoveProviderEntryInput = ProviderPanelOwner & {
   serverDiscId: string;
-  ownerId?: number;
-  scopeKind?: "server" | "personal";
-  state: TomoriState;
   entry: ProviderPanelEntry;
-}
+};
 
 const defaultDependencies: ProviderPanelOperationsDependencies = {
   getState: (discordId) => getCachedTomoriState(discordId),
@@ -784,7 +767,7 @@ async function loadPersonalProviderPanelScope(
 ): Promise<LoadedProviderPanelScope | null> {
   const [state, user] = await Promise.all([getCachedTomoriState(contextDiscordId), getCachedUserRow(userDiscId)]);
   const userId = user?.user_id;
-  if (!state || !userId) return null;
+  if (!userId) return null;
 
   const [savedResult, endpointResult] = await Promise.all([
     llmProviderRepo.loadUserSavedProviderConfigsResult(userId),
@@ -847,7 +830,7 @@ function rejectedKeyStatus(validation: ApiKeyValidationResult): "validation-fail
 }
 
 async function addElevenLabsProvider(
-  input: AddServerProviderInput,
+  input: Extract<AddServerProviderInput, { scopeKind?: "server" }>,
   dependencies: AddServerProviderDependencies,
 ): Promise<AddServerProviderResult> {
   if (!(await dependencies.validateElevenLabs(input.apiKey)).success) {
@@ -857,7 +840,7 @@ async function addElevenLabsProvider(
   const scope = {
     kind: "server" as const,
     ownerId: input.state.server_id,
-    baseConfig: input.state.config,
+    baseConfig: input.state?.config,
     serverDiscId: input.serverDiscId,
   };
   const [speech, transcription] = await Promise.all([
@@ -897,7 +880,7 @@ async function addElevenLabsProvider(
 }
 
 async function addBraveProvider(
-  input: AddServerProviderInput,
+  input: Extract<AddServerProviderInput, { scopeKind?: "server" }>,
   dependencies: AddServerProviderDependencies,
 ): Promise<AddServerProviderResult> {
   if (!(await dependencies.validateBrave(input.apiKey))) return { status: "validation-failed" };
@@ -909,7 +892,7 @@ async function addBraveProvider(
 }
 
 async function addCuratedProvider(
-  input: AddServerProviderInput,
+  input: Extract<AddServerProviderInput, { scopeKind?: "server" }>,
   provider: string,
   dependencies: AddServerProviderDependencies,
 ): Promise<AddServerProviderResult> {
@@ -937,7 +920,7 @@ async function addCuratedProvider(
     provider,
     apiKey: encryption.encrypted,
     keyVersion: encryption.version,
-    baseConfig: input.state.config,
+    baseConfig: input.state?.config,
     existingConfig,
   });
   if (!(await dependencies.upsertSavedConfig(input.state.server_id, savedConfig))) {
@@ -964,20 +947,17 @@ async function addCuratedProvider(
   };
 }
 
-function personalOwnerId(input: { ownerId?: number; scopeKind?: "server" | "personal" }): number | null {
-  return input.scopeKind === "personal" && input.ownerId ? input.ownerId : null;
-}
-
-async function addPersonalProvider(input: AddServerProviderInput): Promise<AddServerProviderResult> {
-  const userId = personalOwnerId(input);
-  if (!userId) return { status: "write-failed" };
+async function addPersonalProvider(
+  input: Extract<AddServerProviderInput, { scopeKind: "personal" }>,
+): Promise<AddServerProviderResult> {
+  const userId = input.ownerId;
   const provider = input.provider.trim().toLowerCase();
   const apiKey = input.apiKey.trim();
   if (apiKey.length < 10) return { status: "invalid-key" };
   if (provider === "brave") return { status: "unsupported-provider" };
   if (provider === "elevenlabs") {
     if (!(await validateElevenLabsApiKey(apiKey)).success) return { status: "validation-failed" };
-    const scope = { kind: "personal" as const, ownerId: userId, baseConfig: input.state.config };
+    const scope = { kind: "personal" as const, ownerId: userId, baseConfig: input.state?.config };
     const [speech, transcription] = await Promise.all([
       registerCustomEndpoint({
         scope,
@@ -1034,7 +1014,7 @@ async function addPersonalProvider(input: AddServerProviderInput): Promise<AddSe
     provider,
     apiKey: encryption.encrypted,
     keyVersion: encryption.version,
-    baseConfig: input.state.config,
+    baseConfig: input.state?.config,
     existingConfig,
   });
   if (!(await llmProviderRepo.upsertUserSavedProviderConfig(userId, savedConfig))) {
@@ -1082,9 +1062,9 @@ export async function addCustomEndpointConnection(
   ] as readonly CustomEndpointCapability[] | undefined;
   if (!capabilities) return { status: "invalid-style" };
 
-  const userId = personalOwnerId(input);
-  const ownerId = userId ?? input.state.server_id;
-  const scopeKind = userId ? "personal" : "server";
+  const personal = input.scopeKind === "personal";
+  const ownerId = personal ? input.ownerId : input.state.server_id;
+  const scopeKind = personal ? "personal" : "server";
   const existingConnections = await dependencies.loadConnections(ownerId, scopeKind, label);
   if (existingConnections.some((row) => row.endpoint_url.replace(/\/+$/, "") !== endpointUrl)) {
     return { status: "label-url-conflict" };
@@ -1112,7 +1092,7 @@ export async function addCustomEndpointConnection(
     const encryption = authToken ? await dependencies.encrypt(authToken) : { encrypted: null, version: 1 };
     for (const capability of capabilities) {
       const connectionId = await dependencies.upsertConnection({
-        ...(userId ? { userId } : { serverId: input.state.server_id }),
+        ...(personal ? { userId: ownerId } : { serverId: input.state.server_id }),
         label,
         capability,
         apiStyle: input.apiStyle,
@@ -1123,23 +1103,23 @@ export async function addCustomEndpointConnection(
       createdConnectionIds.push(connectionId);
 
       const provider = buildCustomProviderName(connectionId);
-      const savedConfig = userId
+      const savedConfig = personal
         ? await buildUserSavedProviderConfigFromExistingOrDefaults({
-            userId,
+            userId: ownerId,
             provider,
             apiKey: encryption.encrypted,
             keyVersion: encryption.version,
-            baseConfig: input.state.config,
+            baseConfig: input.state?.config,
           })
         : await dependencies.buildSavedConfig({
             serverId: input.state.server_id,
             provider,
             apiKey: encryption.encrypted,
             keyVersion: encryption.version,
-            baseConfig: input.state.config,
+            baseConfig: input.state?.config,
           });
-      const upserted = userId
-        ? await llmProviderRepo.upsertUserSavedProviderConfig(userId, savedConfig as UserSavedProviderConfigUpsert)
+      const upserted = personal
+        ? await llmProviderRepo.upsertUserSavedProviderConfig(ownerId, savedConfig as UserSavedProviderConfigUpsert)
         : await dependencies.upsertSavedConfig(input.state.server_id, savedConfig as SavedProviderConfigUpsert);
       if (!upserted) throw new Error("Custom endpoint credential snapshot could not be saved");
     }
@@ -1162,7 +1142,7 @@ export async function addCustomEndpointConnection(
     }
     return { status: "write-failed" };
   }
-  if (!userId) await dependencies.refresh(input.serverDiscId);
+  if (!personal) await dependencies.refresh(input.serverDiscId);
   const representativeId = createdConnectionIds[0];
   return representativeId
     ? { status: "success", entryId: `endpoint:${representativeId}`, label }
@@ -1175,9 +1155,10 @@ async function activateSavedProviderModel(
   modelId: number,
 ): Promise<boolean> {
   if (input.capability === "decision") return true;
-  const userId = personalOwnerId(input);
-  const existing = userId
-    ? await llmProviderRepo.loadUserSavedProviderConfig(userId, provider)
+  const personal = input.scopeKind === "personal";
+  const ownerId = personal ? input.ownerId : input.state.server_id;
+  const existing = personal
+    ? await llmProviderRepo.loadUserSavedProviderConfig(ownerId, provider)
     : await llmProviderRepo.loadSavedProviderConfig(input.state.server_id, provider);
   if (!existing) return false;
   const next = {
@@ -1189,16 +1170,18 @@ async function activateSavedProviderModel(
       input.capability === "image" && provider === "novelai" ? modelId : existing.nai_diffusion_model_id,
     video_model_id: input.capability === "video" ? modelId : existing.video_model_id,
   };
-  const saved = userId
-    ? await llmProviderRepo.upsertUserSavedProviderConfig(userId, next as UserSavedProviderConfigUpsert)
+  const saved = personal
+    ? await llmProviderRepo.upsertUserSavedProviderConfig(ownerId, next as UserSavedProviderConfigUpsert)
     : await llmProviderRepo.upsertSavedProviderConfig(input.state.server_id, next as SavedProviderConfigUpsert);
   if (!saved) return false;
-  if (userId) {
+  if (personal) {
     if (input.capability === "text") {
-      return (await activatePersonalProviderTextModel({ userId, provider, llmId: modelId })).status === "activated";
+      return (
+        (await activatePersonalProviderTextModel({ userId: ownerId, provider, llmId: modelId })).status === "activated"
+      );
     }
     return await assignPersonalCapabilityToProvider(
-      userId,
+      ownerId,
       provider,
       input.capability as PersonalProviderCapability,
       (row) => ({
@@ -1242,9 +1225,10 @@ async function registerSharedProviderModel(
   provider: string,
 ): Promise<SaveProviderModelResult> {
   if (input.capability === "speech") {
-    const userId = personalOwnerId(input);
+    const personal = input.scopeKind === "personal";
+    const ownerId = personal ? input.ownerId : input.state.server_id;
     const result = await registerHostedSpeechModelForScope(
-      userId ? { kind: "personal", ownerId: userId } : { kind: "server", ownerId: input.state.server_id },
+      personal ? { kind: "personal", ownerId: ownerId } : { kind: "server", ownerId: input.state.server_id },
       provider,
       input.codeName,
       input.editingModelId,
@@ -1256,23 +1240,24 @@ async function registerSharedProviderModel(
   if (input.capability === "transcription") return { status: "unsupported-capability" };
   if (input.capability === "decision" && provider !== "openrouter") return { status: "unsupported-capability" };
   if (provider === "openrouter") {
-    const userId = personalOwnerId(input);
-    const saved = userId
-      ? await llmProviderRepo.loadUserSavedProviderConfig(userId, provider)
+    const personal = input.scopeKind === "personal";
+    const ownerId = personal ? input.ownerId : input.state.server_id;
+    const saved = personal
+      ? await llmProviderRepo.loadUserSavedProviderConfig(ownerId, provider)
       : await llmProviderRepo.loadSavedProviderConfig(input.state.server_id, provider);
     if (!saved) return { status: "not-found" };
     if (input.capability === "decision" && input.editingModelId) {
       const owned = await llmModelRepo.loadAvailableDecisionModels(
         provider,
         true,
-        userId ? { kind: "personal", ownerId: userId } : { kind: "server", ownerId: input.state.server_id },
+        personal ? { kind: "personal", ownerId: ownerId } : { kind: "server", ownerId: input.state.server_id },
       );
       if (!owned.some((model) => model.decision_model_id === input.editingModelId && model.is_scoped_registration)) {
         return { status: "not-found" };
       }
     }
     const result = await registerOpenRouterModelForScope(
-      userId ? { kind: "personal", ownerId: userId } : { kind: "server", ownerId: input.state.server_id },
+      personal ? { kind: "personal", ownerId: ownerId } : { kind: "server", ownerId: input.state.server_id },
       input.capability,
       input.codeName,
       input.imageSupportValues
@@ -1287,12 +1272,12 @@ async function registerSharedProviderModel(
     const activated = await activateSavedProviderModel(input, provider, result.model.modelId);
     if (activated && input.editingModelId && input.editingModelId !== result.model.modelId) {
       await removeScopedRegistration(
-        userId ? { userId } : { serverId: input.state.server_id },
+        personal ? { userId: ownerId } : { serverId: input.state.server_id },
         input.capability,
         input.editingModelId,
       );
     }
-    if (activated && input.capability === "decision" && !userId) invalidateTomoriStateCache(input.serverDiscId);
+    if (activated && input.capability === "decision" && !personal) invalidateTomoriStateCache(input.serverDiscId);
     return activated
       ? {
           status: "success",
@@ -1344,8 +1329,9 @@ async function registerSharedProviderModel(
           : await llmModelRepo.upsertScopedVideoModel(codeName, provider);
   if (!modelId) return { status: "write-failed" };
 
-  const userId = personalOwnerId(input);
-  const owner = userId ? { userId } : { serverId: input.state.server_id };
+  const personal = input.scopeKind === "personal";
+  const ownerId = personal ? input.ownerId : input.state.server_id;
+  const owner = personal ? { userId: ownerId } : { serverId: input.state.server_id };
   const registration =
     input.capability === "text"
       ? await llmProviderRepo.upsertOpenRouterModelRegistration({ ...owner, llmId: modelId })
@@ -1420,20 +1406,21 @@ async function removeScopedRegistration(
 }
 
 async function registerEndpointModel(input: SaveProviderModelInput): Promise<SaveProviderModelResult> {
-  const userId = personalOwnerId(input);
+  const personal = input.scopeKind === "personal";
+  const ownerId = personal ? input.ownerId : input.state.server_id;
   const representativeId = Number(input.entryId.slice("endpoint:".length));
   if (!Number.isSafeInteger(representativeId) || representativeId <= 0) return { status: "not-found" };
   const representative = await llmProviderRepo.loadCustomEndpointConnectionById(representativeId);
   if (
     !representative ||
-    (userId
-      ? representative.user_id !== userId || representative.server_id !== null
+    (personal
+      ? representative.user_id !== ownerId || representative.server_id !== null
       : representative.server_id !== input.state.server_id)
   ) {
     return { status: "not-found" };
   }
-  const read = userId
-    ? await llmProviderRepo.loadCustomEndpointConnectionsForUserResult(userId)
+  const read = personal
+    ? await llmProviderRepo.loadCustomEndpointConnectionsForUserResult(ownerId)
     : await llmProviderRepo.loadCustomEndpointConnectionsForServerResult(input.state.server_id);
   const connection = read.connections.find(
     (candidate) => candidate.label === representative.label && candidate.capability === input.capability,
@@ -1487,12 +1474,9 @@ async function registerEndpointModel(input: SaveProviderModelInput): Promise<Sav
         : workflowConfig;
 
   const registered = await registerCustomEndpoint({
-    scope: {
-      kind: userId ? "personal" : "server",
-      ownerId: userId ?? input.state.server_id,
-      baseConfig: input.state.config,
-      ...(userId ? {} : { serverDiscId: input.serverDiscId }),
-    },
+    scope: personal
+      ? { kind: "personal", ownerId: ownerId, baseConfig: input.state?.config }
+      : { kind: "server", ownerId: ownerId, baseConfig: input.state.config, serverDiscId: input.serverDiscId },
     label: connection.label,
     capability: input.capability,
     apiStyle: connection.api_style,
@@ -1521,17 +1505,21 @@ async function registerEndpointModel(input: SaveProviderModelInput): Promise<Sav
 export async function saveProviderModel(input: SaveProviderModelInput): Promise<SaveProviderModelResult> {
   if (input.capability === "decision" && input.removeDecisionModel) {
     if (!input.editingModelId) return { status: "not-found" };
-    const userId = personalOwnerId(input);
-    const scope = userId
-      ? { kind: "personal" as const, ownerId: userId }
+    const personal = input.scopeKind === "personal";
+    const ownerId = personal ? input.ownerId : input.state.server_id;
+    const scope = personal
+      ? { kind: "personal" as const, ownerId: ownerId }
       : { kind: "server" as const, ownerId: input.state.server_id };
     let provider = input.entryId === "provider:openrouter" ? "openrouter" : null;
     if (input.entryId.startsWith("endpoint:")) {
       const representative = await llmProviderRepo.loadCustomEndpointConnectionById(Number(input.entryId.slice(9)));
-      if (!representative || (userId ? representative.user_id !== userId : representative.server_id !== scope.ownerId))
+      if (
+        !representative ||
+        (personal ? representative.user_id !== ownerId : representative.server_id !== scope.ownerId)
+      )
         return { status: "not-found" };
-      const read = userId
-        ? await llmProviderRepo.loadCustomEndpointConnectionsForUserResult(userId)
+      const read = personal
+        ? await llmProviderRepo.loadCustomEndpointConnectionsForUserResult(ownerId)
         : await llmProviderRepo.loadCustomEndpointConnectionsForServerResult(scope.ownerId);
       const connection = read.connections.find(
         (row) => row.label === representative.label && row.capability === "decision",
@@ -1541,7 +1529,7 @@ export async function saveProviderModel(input: SaveProviderModelInput): Promise<
     if (!provider) return { status: "not-found" };
     const deleted = await llmProviderRepo.deleteOwnedDecisionRegistration(scope, provider, input.editingModelId);
     if (!deleted) return { status: "not-found" };
-    if (!userId) invalidateTomoriStateCache(input.serverDiscId);
+    if (!personal) invalidateTomoriStateCache(input.serverDiscId);
     log.info(
       `Decision registration ${JSON.stringify({
         provider: provider === "openrouter" ? "openrouter" : "custom",
@@ -1586,25 +1574,30 @@ async function editServerProvider(input: EditProviderInput): Promise<EditProvide
   const apiKey = input.apiKey.trim();
   const rotationKey = input.rotationKey.trim();
   const entryId = `provider:${provider}`;
-  const userId = personalOwnerId(input);
-  if (userId) {
+  const personal = input.scopeKind === "personal";
+  const ownerId = personal ? input.ownerId : input.state.server_id;
+  if (personal) {
     if (provider === "brave" || rotationKey || input.deleteRotationKeys) return { status: "invalid-combination" };
-    const existing = provider ? await llmProviderRepo.loadUserSavedProviderConfig(userId, provider) : null;
+    const existing = provider ? await llmProviderRepo.loadUserSavedProviderConfig(ownerId, provider) : null;
     if (!existing || parseCustomProvider(provider)) return { status: "not-found" };
     if (!apiKey) return { status: "unchanged", entryId };
     if (apiKey.length < 10) return { status: "invalid-key" };
     if (!(await validateProviderCredential(provider, apiKey))) return { status: "validation-failed" };
     const encryption = await encryptApiKey(apiKey);
     const nextConfig = { ...existing, api_key: encryption.encrypted, key_version: encryption.version };
-    if (!(await llmProviderRepo.upsertUserSavedProviderConfig(userId, nextConfig))) {
+    if (!(await llmProviderRepo.upsertUserSavedProviderConfig(ownerId, nextConfig))) {
       return { status: "write-failed" };
     }
     const active = getActivePersonalProviderForCapability(
-      await llmProviderRepo.loadUserSavedProviderConfigs(userId),
+      await llmProviderRepo.loadUserSavedProviderConfigs(ownerId),
       "text",
     );
     if (active?.provider.toLowerCase() === provider) {
-      const activated = await activatePersonalProviderTextModel({ userId, provider, llmId: nextConfig.llm_id });
+      const activated = await activatePersonalProviderTextModel({
+        userId: ownerId,
+        provider,
+        llmId: nextConfig.llm_id,
+      });
       if (activated.status !== "activated") return { status: "write-failed" };
     }
     return { status: "success", entryId, changed: ["api-key"] };
@@ -1665,11 +1658,12 @@ async function editServerProvider(input: EditProviderInput): Promise<EditProvide
 }
 
 async function editServerEndpoint(input: EditEndpointInput): Promise<EditEndpointResult> {
-  const userId = personalOwnerId(input);
+  const personal = input.scopeKind === "personal";
+  const ownerId = personal ? input.ownerId : input.state.server_id;
   const representativeId = Number(input.entryId.slice("endpoint:".length));
   if (!Number.isSafeInteger(representativeId) || representativeId <= 0) return { status: "not-found" };
-  const read = userId
-    ? await llmProviderRepo.loadCustomEndpointConnectionsForUserResult(userId)
+  const read = personal
+    ? await llmProviderRepo.loadCustomEndpointConnectionsForUserResult(ownerId)
     : await llmProviderRepo.loadCustomEndpointConnectionsForServerResult(input.state.server_id);
   if (read.status === "unavailable") return { status: "write-failed" };
   const representative = read.connections.find((connection) => connection.connection_id === representativeId);
@@ -1747,11 +1741,11 @@ async function editServerEndpoint(input: EditEndpointInput): Promise<EditEndpoin
     keyVersion: encryption?.version,
     vramHandoff,
   };
-  const updated = userId
-    ? await llmProviderRepo.updateUserCustomEndpointConnectionGroup({ userId, ...update })
+  const updated = personal
+    ? await llmProviderRepo.updateUserCustomEndpointConnectionGroup({ userId: ownerId, ...update })
     : await llmProviderRepo.updateServerCustomEndpointConnectionGroup({ serverId: input.state.server_id, ...update });
   if (!updated) return { status: "write-failed" };
-  if (!userId) invalidateTomoriStateCache(input.serverDiscId);
+  if (!personal) invalidateTomoriStateCache(input.serverDiscId);
   return { status: "success", entryId: input.entryId, label: nextLabel };
 }
 
@@ -1762,10 +1756,10 @@ export type ActivateWorkspaceEndpointResult =
   | { status: "write-failed" };
 
 interface ActivateWorkspaceEndpointInput {
-  serverDiscId: string;
   ownerId?: number;
   scopeKind?: "server" | "personal";
   state: TomoriState;
+  serverDiscId: string;
   capability: "speech" | "transcription";
   mode?: "design" | "clone";
   customEndpointId: number;
@@ -1795,7 +1789,7 @@ async function activateWorkspaceEndpoint(
   input: ActivateWorkspaceEndpointInput,
   dependencies: ActivateWorkspaceEndpointDependencies = defaultActivateEndpointDependencies,
 ): Promise<ActivateWorkspaceEndpointResult> {
-  if (personalOwnerId(input)) return { status: "not-found" };
+  if (input.scopeKind === "personal") return { status: "not-found" };
 
   const endpoints = (await dependencies.loadEndpoints(input.state.server_id)).filter(
     (endpoint) => endpoint.capability === input.capability && endpoint.custom_endpoint_id !== undefined,
@@ -1835,22 +1829,23 @@ async function activateWorkspaceEndpoint(
 }
 
 async function removeServerProviderEntry(input: RemoveProviderEntryInput): Promise<RemoveProviderEntryResult> {
-  const userId = personalOwnerId(input);
-  if (userId) {
+  const personal = input.scopeKind === "personal";
+  const ownerId = personal ? input.ownerId : input.state.server_id;
+  if (personal) {
     const activeProvider = getActivePersonalProviderForCapability(
-      await llmProviderRepo.loadUserSavedProviderConfigs(userId),
+      await llmProviderRepo.loadUserSavedProviderConfigs(ownerId),
       "text",
     )?.provider.toLowerCase();
     if (input.entry.kind === "brave") return { status: "not-found" };
     if (input.entry.kind === "provider") {
       if (activeProvider === input.entry.provider.toLowerCase()) return { status: "active" };
-      if (!(await llmProviderRepo.deleteUserProviderRegistration(userId, input.entry.provider))) {
+      if (!(await llmProviderRepo.deleteUserProviderRegistration(ownerId, input.entry.provider))) {
         return { status: "not-found" };
       }
     } else {
       const providerKeys = input.entry.connectionIds.map((connectionId) => buildCustomProviderName(connectionId));
       if (activeProvider && providerKeys.includes(activeProvider)) return { status: "active" };
-      if (!(await llmProviderRepo.deleteUserCustomEndpointConnectionGroup(userId, input.entry.connectionIds))) {
+      if (!(await llmProviderRepo.deleteUserCustomEndpointConnectionGroup(ownerId, input.entry.connectionIds))) {
         return { status: "not-found" };
       }
     }
