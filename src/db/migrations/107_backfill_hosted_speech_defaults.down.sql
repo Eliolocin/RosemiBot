@@ -1,0 +1,4 @@
+-- 107_backfill_hosted_speech_defaults.down.sql
+--
+-- Data repair migration. No rollback is possible: backfilled speech defaults are indistinguishable
+-- from selections made afterwards through the panels.

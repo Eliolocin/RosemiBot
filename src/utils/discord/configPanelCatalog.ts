@@ -274,15 +274,15 @@ export function computeConditioningRemoveFingerprint(
 }
 
 /**
- * The eight wire-facing model capabilities on Models > Switch Models.
+ * The wire-facing model capabilities on Models > Switch Models.
  *
  * `image` and `nai-image` are two slots over one absorbed command: `/model image` picks its target
  * column from the chosen provider's `featureSupport.imageGeneration`, so the panel has to carry the
  * slot on the wire instead of re-deriving it, or a custom provider picked in the NovelAI slot would
  * write the standard column.
  *
- * `tts` and `stt` are endpoint activations, not model-column assignments, so they are recognized by
- * the route codec without becoming model picker slots.
+ * TTS Design and Clone each list hosted models and registered speech connections as providers.
+ * `stt` is an endpoint activation rather than a model assignment, so it keeps its own endpoint select.
  */
 export type ConfigModelCapability =
   | "text"
@@ -296,12 +296,12 @@ export type ConfigModelCapability =
   | "tts-clone"
   | "stt";
 
-export type ConfigCatalogModelCapability = Exclude<ConfigModelCapability, "tts-design" | "tts-clone" | "stt">;
+export type ConfigCatalogModelCapability = Exclude<ConfigModelCapability, "stt">;
 
 export function isConfigCatalogModelCapability(
   capability: ConfigModelCapability,
 ): capability is ConfigCatalogModelCapability {
-  return capability !== "tts-design" && capability !== "tts-clone" && capability !== "stt";
+  return capability !== "stt";
 }
 
 export const CONFIG_MODEL_CAPABILITY_ORDER: readonly ConfigModelCapability[] = [
@@ -321,13 +321,15 @@ export const CONFIG_MODEL_CAPABILITY_ORDER: readonly ConfigModelCapability[] = [
  * Slots whose absorbed command offers a clear path. `/model vision` carries a clear sentinel and
  * `/model image` a clear option per column; `/model embedding`, `/model video`, and the Text
  * primary have none, so offering one there would broaden the command surface. Decision has no
- * command, and no Decision model is its default state.
+ * command, and no Decision model is its default state. A server may run without either speech mode.
  */
 export const CONFIG_CLEARABLE_MODEL_CAPABILITIES: ReadonlySet<ConfigModelCapability> = new Set([
   "vision",
   "decision",
   "image",
   "nai-image",
+  "tts-design",
+  "tts-clone",
 ]);
 
 /** Sentinel the model select carries for the clear path of a nullable slot. */
@@ -359,9 +361,8 @@ export const CONFIG_MODEL_PROVIDER_DIRECT_LIMIT = 25;
 /** Endpoint entries share Discord's 25-option ceiling with one navigation entry when paged. */
 const CONFIG_ENDPOINT_PAGE_SIZE = 25;
 
-export function configEndpointWindowSize(capability: "tts-design" | "tts-clone" | "stt", count: number): number {
-  const size = CONFIG_ENDPOINT_PAGE_SIZE - (capability === "stt" ? 0 : 1);
-  return count > size ? size - 1 : size;
+export function configEndpointWindowSize(count: number): number {
+  return count > CONFIG_ENDPOINT_PAGE_SIZE ? CONFIG_ENDPOINT_PAGE_SIZE - 1 : CONFIG_ENDPOINT_PAGE_SIZE;
 }
 
 /**

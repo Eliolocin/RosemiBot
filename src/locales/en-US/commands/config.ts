@@ -934,7 +934,7 @@ export default {
       endpoint_source_changed_direction: `**{endpoint}** is now active. The speech source changed, so reassign voices if needed.`,
       speech_capability_disabled_direction:
         "Speech messages are disabled. Enable them under Permissions > Bot Capabilities.",
-      speech_capability_missing_endpoint: `Speech messages are enabled, but no active Speech endpoint is configured.`,
+      speech_capability_missing_endpoint: `Speech messages are enabled, but no TTS model is selected.`,
       providers_endpoint_registration_hint: `Register a Speech or Transcription endpoint under /providers.`,
       manage_providers_hint: `Use \`/providers\` to add more model choices.`,
       no_providers_option: `No saved provider for this feature`,

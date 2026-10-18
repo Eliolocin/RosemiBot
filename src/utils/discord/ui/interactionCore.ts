@@ -1857,6 +1857,11 @@ export interface GuardedPanelDeliveryOptions {
    * cost the payload any of its Discord text budget or interfere with runtime panel formatting.
    */
   receipt?: PanelReceipt;
+  /**
+   * The panel this payload renders, logged on a limit violation because the interaction's custom ID
+   * names the pressed control (a page selector names the page being left, not the page that failed).
+   */
+  panel?: string;
 }
 
 /**
@@ -1894,7 +1899,7 @@ export function buildPanelFallbackPayload(locale = "en-US"): ComponentsV2Message
  * Production logs only structured limit metadata and returns the minimal fallback while retaining
  * attachment fields as empty arrays when the original payload included them.
  */
-export function validateAndFallbackPanelPayload<T>(payload: T, locale = "en-US"): T {
+export function validateAndFallbackPanelPayload<T>(payload: T, locale = "en-US", panel?: string): T {
   const validation = validateComponentsV2MessageLimits(payload as ComponentsV2MessagePayload);
   if (validation.valid) return payload;
 
@@ -1918,6 +1923,7 @@ export function validateAndFallbackPanelPayload<T>(payload: T, locale = "en-US")
 
   void log.error("Components V2 panel payload exceeded Discord limits", undefined, {
     metadata: {
+      ...(panel ? { panel } : {}),
       violations: sanitizedViolations,
     },
   });
@@ -2062,7 +2068,7 @@ export async function deliverGuardedPanel<T = unknown>(
   options?: GuardedPanelDeliveryOptions,
 ): Promise<T> {
   const locale = options?.locale ?? "en-US";
-  let deliveryPayload = validateAndFallbackPanelPayload(payload, locale) as Record<string, unknown>;
+  let deliveryPayload = validateAndFallbackPanelPayload(payload, locale, options?.panel) as Record<string, unknown>;
 
   reportPanelFailure(target, options);
 

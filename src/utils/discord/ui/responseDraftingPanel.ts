@@ -261,7 +261,8 @@ export function buildResponseDraftingBody(
             150,
           ),
           options: [
-            ...(binding ? [{ label: t("commands.config.panel.none_label"), value: DRAFT_CLEAR_VALUE }] : []),
+            // Unconditional because Discord rejects a select with no options, which is all an unbound server without checkers has.
+            { label: t("commands.config.panel.none_label"), value: DRAFT_CLEAR_VALUE },
             ...choices.slice(start, start + DRAFT_CHECKER_PAGE_SIZE).map((choice, index) => ({
               label: safeSelectOptionText(choice.label, 100),
               value: String(start + index),
@@ -273,7 +274,7 @@ export function buildResponseDraftingBody(
               ? [{ label: t("general.pagination.next"), value: `page|${start + DRAFT_CHECKER_PAGE_SIZE}` }]
               : []),
           ],
-          disabled,
+          disabled: disabled || (!binding && choices.length === 0),
         },
       ],
     });

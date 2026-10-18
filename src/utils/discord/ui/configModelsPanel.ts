@@ -237,12 +237,9 @@ function buildCapabilityNoticeLine(locale: string, view: ConfigSwitchModelsView)
   if (view.speechCapabilityEnabled === false) {
     warnings.push(localizer(locale, "commands.config.panel.speech_capability_disabled_direction"));
   } else if (view.speechCapabilityEnabled !== undefined) {
-    // Speech owns two endpoint slots above this notice, so announcing the enabled state would only
-    // restate a working setup on every repaint. Only the missing endpoint needs an action, and that
-    // sentence already names the enabled state, which keeps the healthy case as silent as the Image
-    // and Video notices.
-    const hasActiveSpeechEndpoint = view.endpointSlots?.some(
-      (slot) => slot.capability !== "stt" && slot.endpoints.some((endpoint) => endpoint.isActive && endpoint.id > 0),
+    // A working speech setup stays silent, so only a missing target earns a notice.
+    const hasActiveSpeechEndpoint = view.slots.some(
+      (slot) => (slot.capability === "tts-design" || slot.capability === "tts-clone") && slot.currentModelName !== null,
     );
     if (!hasActiveSpeechEndpoint) {
       warnings.push(localizer(locale, "commands.config.panel.speech_capability_missing_endpoint"));
@@ -279,7 +276,7 @@ const CONFIG_TEXT_OVERRIDE_ROW_LIMIT = 8;
  * server default and which model it uses rather than only how many targets do.
  *
  * The row limit exists because one scope can hold a full modal page of overrides, and every row
- * spends the same message-wide text budget the eight capability selectors already draw on. The
+ * spends the same message-wide text budget the capability selectors already draw on. The
  * label keeps the true total, so a collapsed list still reports how many are hidden.
  */
 function buildTextOverrideScopeLines(
@@ -379,18 +376,17 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
     );
   }
 
-  for (const capability of ["tts-design", "tts-clone", "stt"] as const) {
-    const slot = view.endpointSlots?.find((candidate) => candidate.capability === capability);
-    if (!slot) continue;
-    const capabilityLabel = localizer(locale, CONFIG_MODEL_CAPABILITY_LOCALE_KEYS[capability]);
-    const activeEndpoint = slot.endpoints.find((endpoint) => endpoint.isActive);
-    const windowSize = configEndpointWindowSize(capability, slot.endpoints.length);
-    const overflows = slot.endpoints.length > windowSize;
-    const rangeCount = Math.max(1, Math.ceil(slot.endpoints.length / windowSize));
-    const rangeIndex = Math.min(Math.max(0, Math.floor(slot.pageStart / windowSize)), rangeCount - 1);
+  const sttSlot = view.endpointSlots?.find((candidate) => candidate.capability === "stt");
+  if (sttSlot) {
+    const capabilityLabel = localizer(locale, CONFIG_MODEL_CAPABILITY_LOCALE_KEYS.stt);
+    const activeEndpoint = sttSlot.endpoints.find((endpoint) => endpoint.isActive);
+    const windowSize = configEndpointWindowSize(sttSlot.endpoints.length);
+    const overflows = sttSlot.endpoints.length > windowSize;
+    const rangeCount = Math.max(1, Math.ceil(sttSlot.endpoints.length / windowSize));
+    const rangeIndex = Math.min(Math.max(0, Math.floor(sttSlot.pageStart / windowSize)), rangeCount - 1);
     const visibleStart = rangeIndex * windowSize;
-    const fingerprint = computeConfigEndpointFingerprint(capability, slot.endpoints);
-    const options: SelectMenuComponentOptionData[] = slot.endpoints
+    const fingerprint = computeConfigEndpointFingerprint(sttSlot.endpoints);
+    const options: SelectMenuComponentOptionData[] = sttSlot.endpoints
       .slice(visibleStart, visibleStart + windowSize)
       .map((endpoint, offset) => {
         const displayName = formatModelSelectionLabel(endpoint.modelLabel, endpoint.label, "");
@@ -426,13 +422,6 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
         default: false,
       });
     }
-    if (capability !== "stt" && activeEndpoint) {
-      options.unshift({
-        value: `ep-clear|${fingerprint}`,
-        label: safeSelectOptionText(localizer(locale, "commands.config.panel.model_no_model_option"), 100),
-        default: false,
-      });
-    }
     if (options.length === 0) {
       options.push({
         value: "ep-none",
@@ -450,10 +439,10 @@ function buildSwitchModelsBody(input: ConfigModelsPageInput): ComponentInContain
       components: [
         {
           type: ComponentType.StringSelect,
-          customId: buildConfigRouteId({ action: "endpoint-select", locale, capability }),
+          customId: buildConfigRouteId({ action: "endpoint-select", locale, capability: "stt" }),
           placeholder: safeSelectOptionText(placeholder, 150),
           options,
-          disabled: writesDisabled || (capability === "stt" && slot.endpoints.length === 0),
+          disabled: writesDisabled || sttSlot.endpoints.length === 0,
         },
       ],
     });

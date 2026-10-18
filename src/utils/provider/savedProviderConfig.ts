@@ -12,6 +12,8 @@ import type {
 } from "@/types/db/schema";
 import { DEFAULT_THINKING_LEVEL } from "@/constants/thinkingLevels";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
+import type { OpenRouterModelScope } from "@/utils/db/repositories/LlmModelRepository";
+import { supportsSpeechMode } from "@/utils/speech/voiceSourceCapabilities";
 import {
   isCustomProvider,
   parseCustomProvider,
@@ -297,7 +299,7 @@ function mapSavedCapabilityToCustomEndpointCapability(
 async function hasRegisteredCustomEndpointCapability(
   provider: string,
   capability: SavedProviderCapability,
-  owner: { serverId?: number; userId?: number },
+  owner: OpenRouterModelScope,
 ): Promise<boolean> {
   const parsed = parseCustomProvider(provider);
   const endpointCapability = mapSavedCapabilityToCustomEndpointCapability(capability);
@@ -310,10 +312,7 @@ async function hasRegisteredCustomEndpointCapability(
   if (!connection || connection.capability !== endpointCapability) {
     return false;
   }
-  if (
-    (owner.serverId !== undefined && connection.server_id !== owner.serverId) ||
-    (owner.userId !== undefined && connection.user_id !== owner.userId)
-  ) {
+  if ((owner.kind === "server" ? connection.server_id : connection.user_id) !== owner.ownerId) {
     return false;
   }
   rememberCustomProviderLabel(provider, connection.label);
@@ -340,10 +339,6 @@ function savedProviderSelectionServesCapability(
 ): boolean {
   if (!isCustomProvider(provider)) {
     switch (capability) {
-      case "speech_design":
-        return provider === "google" || provider === "vertex";
-      case "speech_clone":
-        return provider === "openrouter";
       case "text":
         return true;
       case "embedding":
@@ -387,11 +382,26 @@ function savedProviderSelectionServesCapability(
  * @param savedConfigs - Rows loaded for the scope
  * @param owner - Scope a custom endpoint connection must belong to
  */
-async function filterSavedProvidersByCapability<T extends SavedProviderModelSelection & { provider: string }>(
-  savedConfigs: readonly T[],
-  capability: SavedProviderCapability,
-  owner: { serverId?: number; userId?: number },
-): Promise<T[]> {
+async function filterSavedProvidersByCapability<
+  T extends SavedProviderModelSelection & Pick<SavedProviderConfigRow, "provider" | "api_key">,
+>(savedConfigs: readonly T[], capability: SavedProviderCapability, owner: OpenRouterModelScope): Promise<T[]> {
+  if (capability === "speech_design" || capability === "speech_clone") {
+    // Speech is a hosted-model capability only: custom speech endpoints are activated per server,
+    // and a provider qualifies only while its key can reach a usable model for the mode.
+    const mode = capability === "speech_design" ? "design" : "clone";
+    const servesMode = await Promise.all(
+      savedConfigs.map(
+        async (config) =>
+          !isCustomProvider(config.provider) &&
+          config.api_key !== null &&
+          (await llmModelRepo.loadAvailableSpeechModels(config.provider, owner)).some((model) =>
+            supportsSpeechMode(model, mode),
+          ),
+      ),
+    );
+    return savedConfigs.filter((_config, index) => servesMode[index]);
+  }
+
   const registeredVisibility = await Promise.all(
     savedConfigs.map(async (config) => {
       if (!isCustomProvider(config.provider)) {
@@ -413,7 +423,7 @@ export async function loadSavedProvidersForCapability(
   capability: SavedProviderCapability,
 ): Promise<SavedProviderConfigRow[]> {
   const savedConfigs = await llmProviderRepo.loadSavedProviderConfigs(serverId);
-  return await filterSavedProvidersByCapability(savedConfigs, capability, { serverId });
+  return await filterSavedProvidersByCapability(savedConfigs, capability, { kind: "server", ownerId: serverId });
 }
 
 export async function loadUserSavedProvidersForCapability(
@@ -421,7 +431,7 @@ export async function loadUserSavedProvidersForCapability(
   capability: SavedProviderCapability,
 ): Promise<UserSavedProviderConfigRow[]> {
   const savedConfigs = await llmProviderRepo.loadUserSavedProviderConfigs(userId);
-  return await filterSavedProvidersByCapability(savedConfigs, capability, { userId });
+  return await filterSavedProvidersByCapability(savedConfigs, capability, { kind: "personal", ownerId: userId });
 }
 
 /**

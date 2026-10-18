@@ -164,6 +164,30 @@ it("renders the fullest panel, unavailable states and real modals within Discord
   failures.expectNoFailures();
 });
 
+it("renders the checker select for a workspace without compatible checkers", () => {
+  for (const binding of [null, { scope: "workspace" as const, registrationId: 5, toolName: "check_slop" }]) {
+    const payload = buildConfigPanelPayload({
+      locale: "en-US",
+      actor: { workspaceKind: "guild", isManager: true },
+      category: "plugins",
+      page: "response-drafting",
+      personas: [createPersona({ config: { response_rule_checker_ref: binding } })],
+      selectedPersonaId: null,
+      readStatus: "fresh",
+      responseDraftingView: { ...view, checkers: [] },
+    });
+    expectSafePanelPayload(payload, `binding=${binding !== null}`);
+    let checkerSelect: { disabled?: boolean; options?: Array<{ value: string }> } | undefined;
+    JSON.stringify(payload, (_key, value) => {
+      if (typeof value?.customId === "string" && value.customId.includes("draft-checker-select")) checkerSelect = value;
+      return value;
+    });
+    expect(checkerSelect?.options?.map((option) => option.value)).toEqual([DRAFT_CLEAR_VALUE]);
+    // Enabled for a stale binding because None is then the only way to clear it.
+    expect(checkerSelect?.disabled).toBe(binding === null);
+  }
+});
+
 it("disables Use Default only while the reviewer prompt is already the default", () => {
   const defaultButtonId = buildConfigRouteId({ action: "draft-default", locale: "en-US" });
   for (const prompt of [null, "Fixture prompt"]) {
@@ -474,7 +498,7 @@ it("preserves Unicode glyphs in existing configuration locale labels", () => {
   }
 });
 
-it("offers None for the rule checker only while one is bound, and pages the checker list without wrapping", () => {
+it("leads the rule checker list with None and pages it without wrapping", () => {
   const checkers = Array.from({ length: DRAFT_CHECKER_PAGE_SIZE + 1 }, (_, index) => ({
     reference: { scope: "workspace" as const, registrationId: index + 1, toolName: `check_${index}` },
     label: `Checker ${index}`,
@@ -500,10 +524,12 @@ it("offers None for the rule checker only while one is bound, and pages the chec
   const checkerValues = (binding: (typeof checkers)[number]["reference"] | null, start: number): string[] =>
     checkerOptions(binding, start).map((option) => option.value);
 
-  expect(checkerValues(null, 0)).not.toContain(DRAFT_CLEAR_VALUE);
-  expect(checkerValues(checkers[0]?.reference ?? null, 0)[0]).toBe(DRAFT_CLEAR_VALUE);
+  for (const binding of [null, checkers[0]?.reference ?? null]) {
+    expect(checkerValues(binding, 0)[0]).toBe(DRAFT_CLEAR_VALUE);
+  }
   expect(checkerValues(null, 0)).toContain(`page|${DRAFT_CHECKER_PAGE_SIZE}`);
   expect(checkerOptions(null, DRAFT_CHECKER_PAGE_SIZE)).toEqual([
+    { value: DRAFT_CLEAR_VALUE, label: localizedCopy("en-US", "commands.config.panel.none_label") },
     { value: String(DRAFT_CHECKER_PAGE_SIZE), label: `Checker ${DRAFT_CHECKER_PAGE_SIZE}` },
     { value: "page|0", label: localizedCopy("en-US", "general.pagination.previous") },
   ]);

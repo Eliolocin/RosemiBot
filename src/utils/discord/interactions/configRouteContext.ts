@@ -751,6 +751,6 @@ export async function repaint(
       }),
       [avatar, spriteAvatar, characterReference].filter((item): item is PersonaPanelAvatarData => item !== undefined),
     ),
-    { locale, receipt: options.receipt },
+    { locale, receipt: options.receipt, panel: `config:${category}:${page}` },
   );
 }

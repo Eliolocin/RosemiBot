@@ -82,7 +82,7 @@ export function checkerFingerprint(choices: readonly DraftCheckerChoice[]): stri
 export async function loadDraftingModelGroups(serverId: number, locale: string): Promise<DraftModelGroup[]> {
   const providers = await loadConfigModelProviders(serverId, "text");
   const groups = await Promise.all(
-    providers.map(async ({ provider }) => {
+    providers.map(async (provider) => {
       if (!isCustomProvider(provider) && !getStaticProviderInfo(provider)?.featureSupport.structuredOutput)
         return { provider, models: [] };
       const models = await loadConfigModelChoices(

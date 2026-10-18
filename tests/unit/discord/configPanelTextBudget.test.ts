@@ -28,11 +28,15 @@ import type {
 } from "@/utils/discord/interactions/configRouteContext";
 import type { ConfigPersonaVoiceView } from "@/utils/discord/interactions/configPersonaVoiceLoader";
 import {
+  CONFIG_FALLBACK_SLOT_COUNT,
   CONFIG_MODEL_CAPABILITY_ORDER,
   CONFIG_NAI_PRESET_PAGE_SIZE,
+  CONFIG_PAGES_BY_CATEGORY,
   isConfigCatalogModelCapability,
   type ConfigCatalogModelCapability,
+  type ConfigCategory,
 } from "@/utils/discord/configPanelCatalog";
+import type { ResponseDraftingView } from "@/utils/discord/interactions/responseDraftingOperations";
 import {
   computeVoiceSampleFingerprint,
   CONFIG_VOICE_SAMPLE_PAGE_SIZE,
@@ -300,6 +304,8 @@ function makeSwitchModelsView(
     personaOverrides: [],
     imageGenerationEnabled,
     videoGenerationEnabled,
+    speechCapabilityEnabled: true,
+    endpointSlots: [{ capability: "stt", endpoints: [], pageStart: 0 }],
   };
 }
 
@@ -320,7 +326,7 @@ function makeExplicitCatalogSlot(
   };
 }
 
-function makeExplicitEightSlotView(
+function makeExplicitSlotView(
   imageGenerationEnabled: boolean,
   videoGenerationEnabled: boolean,
   slotState: (capability: ConfigCatalogModelCapability) => boolean,
@@ -328,34 +334,29 @@ function makeExplicitEightSlotView(
   speechCapabilityEnabled: boolean,
   speechActiveIndex: number,
 ): ConfigSwitchModelsView {
-  const makeEndpoints = (capability: "tts-clone" | "stt"): ConfigCapabilityEndpoint[] =>
-    Array.from({ length: endpointCount }, (_unused, index) => ({
-      id: index + 1,
-      capability: capability === "tts-clone" ? "speech" : "transcription",
-      label: `${capability}-endpoint-${index + 1}`,
-      modelLabel: `${capability}-model-${index + 1}`,
-      apiStyle: capability === "tts-clone" ? "tts-clone" : "openai-compatible-transcription",
-      isActive: index === speechActiveIndex,
-    }));
+  const sttEndpoints: ConfigCapabilityEndpoint[] = Array.from({ length: endpointCount }, (_unused, index) => ({
+    id: index + 1,
+    capability: "transcription",
+    label: `stt-endpoint-${index + 1}`,
+    modelLabel: `stt-model-${index + 1}`,
+    apiStyle: "openai-compatible-transcription",
+    isActive: index === speechActiveIndex,
+  }));
+  const speechSlotState = () => speechActiveIndex >= 0;
 
   return {
-    slots: [
-      makeExplicitCatalogSlot("text", slotState),
-      makeExplicitCatalogSlot("vision", slotState),
-      makeExplicitCatalogSlot("embedding", slotState),
-      makeExplicitCatalogSlot("image", slotState),
-      makeExplicitCatalogSlot("nai-image", slotState),
-      makeExplicitCatalogSlot("video", slotState),
-    ],
+    slots: CONFIG_MODEL_CAPABILITY_ORDER.filter(isConfigCatalogModelCapability).map((capability) =>
+      makeExplicitCatalogSlot(
+        capability,
+        capability === "tts-design" || capability === "tts-clone" ? speechSlotState : slotState,
+      ),
+    ),
     channelOverrides: [],
     personaOverrides: [],
     imageGenerationEnabled,
     videoGenerationEnabled,
     speechCapabilityEnabled,
-    endpointSlots: [
-      { capability: "tts-clone", endpoints: makeEndpoints("tts-clone"), pageStart: 0 },
-      { capability: "stt", endpoints: makeEndpoints("stt"), pageStart: 0 },
-    ],
+    endpointSlots: [{ capability: "stt", endpoints: sttEndpoints, pageStart: 0 }],
   };
 }
 
@@ -1216,7 +1217,7 @@ describe("Switch Models capability notice budgeting", () => {
                 const videoHasUsableModel = slotState.isUsable("video");
                 const imageHealthy = flags.imageGenerationEnabled && imageHasUsableModel;
                 const videoHealthy = flags.videoGenerationEnabled && videoHasUsableModel;
-                const expectedComponentCount = receipt ? 30 : 28;
+                const expectedComponentCount = receipt ? 36 : 34;
                 expect(countRenderedComponents(payload)).toBe(expectedComponentCount);
 
                 const renderedText = getTextDisplays(payload).join("\n");
@@ -1270,20 +1271,20 @@ describe("Switch Models capability notice budgeting", () => {
     cases.expectNoFailures();
   });
 
-  it("keeps the worst unhealthy receipt payload at the 30-component ceiling", () => {
+  it("keeps the worst unhealthy receipt payload at the 36-component ceiling", () => {
     const payload = buildSwitchModelsPayload("en-US", true, true, true, () => false);
-    expect(countRenderedComponents(payload)).toBe(30);
+    expect(countRenderedComponents(payload)).toBe(36);
 
     const payloadWithExtraTextDisplay = {
       ...payload,
       components: [...payload.components, { type: ComponentType.TextDisplay, content: "Reserve" }],
     };
-    expect(countRenderedComponents(payloadWithExtraTextDisplay)).toBeGreaterThan(30);
+    expect(countRenderedComponents(payloadWithExtraTextDisplay)).toBeGreaterThan(36);
   });
 
-  it("budgets an explicit eight-slot matrix across flags, reads, and endpoint boundaries", () => {
-    const componentBudget = 32;
-    const componentReserve = 8;
+  it("budgets the explicit slot matrix across flags, reads, and endpoint boundaries", () => {
+    const componentBudget = 36;
+    const componentReserve = 4;
     const discordComponentLimit = 40;
     const endpointCounts = [0, 1, 24, 25, 26, 60];
     let maximumReceiptComponentCount = 0;
@@ -1301,7 +1302,7 @@ describe("Switch Models capability notice budgeting", () => {
                 personas: [makePersona({ persona_id: 55 })],
                 selectedPersonaId: 55,
                 readStatus,
-                switchModelsView: makeExplicitEightSlotView(
+                switchModelsView: makeExplicitSlotView(
                   flags.imageGenerationEnabled,
                   flags.videoGenerationEnabled,
                   slotState.isUsable,
@@ -1344,26 +1345,20 @@ describe("Switch Models capability notice budgeting", () => {
       personas: [makePersona({ persona_id: 55 })],
       selectedPersonaId: 55,
       readStatus: "fresh",
-      switchModelsView: makeExplicitEightSlotView(true, true, () => false, 1, true, 0),
+      switchModelsView: makeExplicitSlotView(true, true, () => false, 1, true, 0),
     });
     expect(getTextDisplays(endpointPayload)).toContain("-# Use `/providers` to add more model choices.");
     const endpointMenus = getStringSelectMenus(endpointPayload).filter((menu) => {
       const customId = menu.customId;
       return typeof customId === "string" && customId.includes("ep-select");
     });
-    expect(endpointMenus).toHaveLength(2);
-    for (const capability of ["tts-clone", "stt"] as const) {
-      const menu = endpointMenus.find((candidate) => {
-        const customId = candidate.customId;
-        return typeof customId === "string" && customId.includes(capability);
-      });
-      expect(menu).toBeDefined();
+    expect(endpointMenus).toHaveLength(1);
+    {
+      const menu = endpointMenus[0];
       const placeholder = menu?.placeholder;
       expect(typeof placeholder).toBe("string");
-      expect(placeholder).toContain(
-        localizer("en-US", `commands.config.panel.capability_${capability.replaceAll("-", "_")}`),
-      );
-      expect(placeholder).toContain(`${capability}-model-1 (${capability}-endpoint-1)`);
+      expect(placeholder).toContain(localizer("en-US", "commands.config.panel.capability_stt"));
+      expect(placeholder).toContain("stt-model-1 (stt-endpoint-1)");
       const options = menu?.options;
       expect(Array.isArray(options)).toBe(true);
       for (const option of (options ?? []) as Array<Record<string, unknown>>) {
@@ -1403,7 +1398,7 @@ describe("Switch Models capability notice budgeting", () => {
           personas: [makePersona({ persona_id: 55 })],
           selectedPersonaId: 55,
           readStatus: "fresh",
-          switchModelsView: makeExplicitEightSlotView(
+          switchModelsView: makeExplicitSlotView(
             true,
             true,
             () => false,
@@ -1432,10 +1427,10 @@ describe("Switch Models capability notice budgeting", () => {
       personas: [makePersona({ persona_id: 55 })],
       selectedPersonaId: 55,
       readStatus: "fresh",
-      switchModelsView: makeExplicitEightSlotView(true, true, () => false, 60, true, -1),
+      switchModelsView: makeExplicitSlotView(true, true, () => false, 60, true, -1),
       receipt: { tone: "success", heading: "Saved", detail: "Configuration was saved." },
     });
-    const ninthSlot = {
+    const extraSelectRow = {
       ...payload,
       components: [
         ...payload.components,
@@ -1444,15 +1439,15 @@ describe("Switch Models capability notice budgeting", () => {
           components: [
             {
               type: ComponentType.StringSelect,
-              customId: "ninth-slot",
-              placeholder: "Ninth slot",
+              customId: "extra-slot",
+              placeholder: "Extra slot",
               options: [{ value: "one", label: "One" }],
             },
           ],
         },
       ],
     };
-    expect(countRenderedComponents(ninthSlot)).toBeGreaterThan(componentBudget);
+    expect(countRenderedComponents(extraSelectRow)).toBeGreaterThan(componentBudget);
   }, 15_000);
 });
 
@@ -2564,5 +2559,142 @@ describe("channels collection bounds and truncation notices", () => {
     expect(promptDisplay).toMatch(/\n<!-- [^\n]+ -->\n```/);
     expect(noteDisplay).toBeDefined();
     expect(noteDisplay).toMatch(/\n<!-- [^\n]+ -->\n```/);
+  });
+});
+
+describe("config pages for a workspace with nothing configured", () => {
+  const actors: readonly ConfigActor[] = [
+    GUILD_MANAGER,
+    { workspaceKind: "guild", isManager: false },
+    { workspaceKind: "dm", isManager: true },
+  ];
+
+  /**
+   * Every page view as its loader returns it for a workspace with no catalogs, collections, or
+   * selections, which is the state a page-specific fixture tends to skip by supplying one entry.
+   */
+  function buildEmptyViews(actor: ConfigActor) {
+    const behaviorView: ConfigBehaviorView = {
+      general: {
+        systemPrompt: null,
+        responsePrefill: null,
+        prefillBlocker: null,
+        prefillModelName: "gemini-2.5-flash",
+        contextNote: null,
+        contextNoteDepth: 0,
+        humanizerDegree: HUMANIZER_DEFAULT,
+        messageFetchLimit: DEFAULT_MESSAGE_FETCH_LIMIT,
+        timezoneOffset: 0,
+      },
+      trigger: BEHAVIOR_TRIGGER_VIEW,
+      experimental: {
+        deliberateToolMode: false,
+        deliberateToolContextTurns: 0,
+        deliberateToolTriggers: {},
+        sendLimit: 0,
+        selfDebugEnabled: false,
+      },
+      notices: { hiddenNoticeKeys: [], verbosity: "minimal", speechTranscriptsEnabled: false },
+      memory: {
+        memoryTaggingEnabled: false,
+        channelMemoryEnabled: false,
+        stmEnabled: false,
+        toolUseEnabled: false,
+        stmConfig: null,
+        stmCategories: [],
+      },
+    };
+    const personaMemoryView: ConfigPersonaMemoryView = {
+      serverMemoryCount: 0,
+      personalMemoryCount: 0,
+      channelId: null,
+      stmCategories: [],
+      conditioningGroups: [],
+    };
+    const personaVoiceView: ConfigPersonaVoiceView = {
+      capability: { apiStyle: null, assignable: false, supportsVoiceDesign: false },
+      samples: [],
+    };
+    const responseDraftingView: ResponseDraftingView = {
+      reviewers: [],
+      checkers: [],
+      inheritedReviewerAvailable: false,
+    };
+    return {
+      behaviorView,
+      personaMemoryView,
+      personaVoiceView,
+      personaSprites: [],
+      responseDraftingView,
+      switchModelsView: makeExplicitSlotView(false, false, () => false, 0, false, -1),
+      modelParametersView: {
+        textProviders: [],
+        selectedProvider: null,
+        selectedConfig: null,
+        stopStrings: [],
+        speakerPatternEnabled: false,
+        logitBiasEntries: [],
+        logitBiasPageStart: 0,
+      },
+      modelFallbacksView: {
+        slots: Array.from({ length: CONFIG_FALLBACK_SLOT_COUNT }, () => ({ label: null })),
+        providerEntries: [],
+        expandedProvider: null,
+        entryStart: 0,
+        randomizerEnabled: false,
+        hasFallbacks: false,
+      },
+      imageGenerationView: {
+        positiveTags: [],
+        negativeTags: [],
+        sampler: "",
+        steps: "",
+        scale: "",
+        noiseSchedule: "",
+        cfgRescale: "",
+      },
+      voicesView: makeVoicesView([], 0, 0),
+      permissionsView: {
+        capabilities: { toolUseEnabled: false, includeElevenLabs: false, definitionStates: {} },
+        privacy: { stmPrivacyBypass: false },
+      },
+      channelsView: EMPTY_CHANNELS_VIEW,
+      mcpRead: { status: "fresh" as const, configs: [] },
+      stPresetsView: {
+        scope: actor.workspaceKind,
+        presets: [],
+        activePresetId: null,
+        readStatus: "fresh" as const,
+        page: { kind: "none" as const },
+      },
+    };
+  }
+
+  // One locale suffices: option counts do not vary by locale, and BUDGET_LOCALE renders the longest text.
+  it("renders every page within Discord limits for every actor and read status", () => {
+    const cases = collectCaseFailures();
+    for (const actor of actors) {
+      for (const readStatus of RENDERING_READ_STATUSES) {
+        for (const [category, pages] of Object.entries(CONFIG_PAGES_BY_CATEGORY)) {
+          for (const page of pages) {
+            cases.check(`${category}/${page} ${JSON.stringify(actor)} ${readStatus}`, () => {
+              const payload = buildConfigPanelPayload({
+                locale: BUDGET_LOCALE,
+                actor,
+                category: category as ConfigCategory,
+                page,
+                personas: [makePersona({ persona_id: 55 })],
+                selectedPersonaId: 55,
+                readStatus,
+                ...buildEmptyViews(actor),
+              });
+              const validation = validateComponentsV2MessageLimits(payload);
+              expect(validation.valid, JSON.stringify(validation.violations)).toBe(true);
+            });
+          }
+        }
+      }
+    }
+    cases.expectNoFailures();
   });
 });
