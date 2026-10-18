@@ -10,6 +10,7 @@ import type {
   UserSavedProviderConfigRow,
   UserSavedProviderConfigUpsert,
 } from "@/types/db/schema";
+import { DEFAULT_THINKING_LEVEL } from "@/constants/thinkingLevels";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import {
   isCustomProvider,
@@ -211,7 +212,7 @@ export async function buildUserSavedProviderConfigFromExistingOrDefaults(params:
   provider: string;
   apiKey: Buffer | null;
   keyVersion: number;
-  baseConfig: AssembledServerConfig;
+  baseConfig?: AssembledServerConfig;
   existingConfig?: UserSavedProviderConfigRow | null;
   llmId?: number | null;
   enabledCapabilities?: PersonalProviderCapability[];
@@ -257,15 +258,15 @@ export async function buildUserSavedProviderConfigFromExistingOrDefaults(params:
     speech_clone_model_id: existingConfig?.speech_clone_model_id ?? null,
     vision_llm_id: existingConfig?.vision_llm_id ?? null,
     nai_preset_name: existingConfig?.nai_preset_name ?? null,
-    llm_temperature: existingConfig?.llm_temperature ?? params.baseConfig.llm_temperature,
-    llm_top_p: existingConfig?.llm_top_p ?? params.baseConfig.llm_top_p,
-    llm_top_k: existingConfig?.llm_top_k ?? params.baseConfig.llm_top_k,
-    llm_frequency_penalty: existingConfig?.llm_frequency_penalty ?? params.baseConfig.llm_frequency_penalty,
-    llm_presence_penalty: existingConfig?.llm_presence_penalty ?? params.baseConfig.llm_presence_penalty,
-    llm_min_p: existingConfig?.llm_min_p ?? params.baseConfig.llm_min_p,
-    llm_disabled_params: existingConfig?.llm_disabled_params ?? params.baseConfig.llm_disabled_params ?? [],
-    llm_logit_biases: existingConfig?.llm_logit_biases ?? params.baseConfig.llm_logit_biases ?? [],
-    thinking_level: existingConfig?.thinking_level ?? params.baseConfig.thinking_level,
+    llm_temperature: existingConfig?.llm_temperature ?? params.baseConfig?.llm_temperature ?? null,
+    llm_top_p: existingConfig?.llm_top_p ?? params.baseConfig?.llm_top_p ?? null,
+    llm_top_k: existingConfig?.llm_top_k ?? params.baseConfig?.llm_top_k ?? null,
+    llm_frequency_penalty: existingConfig?.llm_frequency_penalty ?? params.baseConfig?.llm_frequency_penalty ?? null,
+    llm_presence_penalty: existingConfig?.llm_presence_penalty ?? params.baseConfig?.llm_presence_penalty ?? null,
+    llm_min_p: existingConfig?.llm_min_p ?? params.baseConfig?.llm_min_p ?? null,
+    llm_disabled_params: existingConfig?.llm_disabled_params ?? params.baseConfig?.llm_disabled_params ?? [],
+    llm_logit_biases: existingConfig?.llm_logit_biases ?? params.baseConfig?.llm_logit_biases ?? [],
+    thinking_level: existingConfig?.thinking_level ?? params.baseConfig?.thinking_level ?? DEFAULT_THINKING_LEVEL,
     model_randomizer_enabled: existingConfig?.model_randomizer_enabled ?? false,
     enabled_capabilities: enabledCapabilities,
     // Anything switched on here is owned here. Previously assigned capabilities are

@@ -74,6 +74,13 @@ Global dispatch mechanics:
 - Outdated route versions receive a localized stale-panel notice with instructions to re-invoke the command.
 - Deferred panel branches call `beginPanelInteraction()` in `src/utils/discord/interactions/panelController.ts`. This helper calls `deferUpdate()` before authorization or state loading, preventing asynchronous database reads from exceeding Discord's acknowledgement deadline. Branches that open modals remain outside `beginPanelInteraction()` because `showModal()` must serve as the primary acknowledgement.
 
+### Personal settings
+
+Personal provider panels load credentials and model registrations by user ID. The invoking
+workspace's persona state is optional for personal operations; server provider operations require
+it. Without a workspace, new personal snapshots keep sampler overrides unset and use the normal
+runtime defaults. Personal configuration keeps server-specific controls scoped to existing personas.
+
 ## Panel failure observability
 <!-- anchor: panel-failure-observability -->
 
