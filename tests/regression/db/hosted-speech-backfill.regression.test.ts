@@ -57,7 +57,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech default backfill", () => {
     }
     for (const provider of ["google", "openrouter", "vertex"]) {
       const models = await llmModelRepo.loadAvailableSpeechModels(provider, { kind: "server", ownerId: 0 });
-      defaults[provider] = models.find((model) => model.is_default)?.speech_model_id ?? 0;
+      const defaultModel = models.find((model) => model.is_default);
+      if (!defaultModel) throw new Error(`Missing seeded speech default for ${provider}`);
+      defaults[provider] = defaultModel.speech_model_id;
     }
   });
 

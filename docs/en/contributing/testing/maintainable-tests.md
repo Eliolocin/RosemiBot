@@ -25,6 +25,10 @@ unknown option keys, asserting copy by key) live next to the helpers in
 
 ## Shape
 
+- **Restore schema and catalogs after migration tests.** DB suites share one disposable database.
+  A down-and-forward test must restore the current schema and reseed dropped catalogs in `finally`.
+  Assert that the restored defaults are usable before leaving the test, so failures do not depend on
+  which suite runs next.
 - **Table a family of route cases.** Put build and parse round trips, arity, wire contracts, and rejections
   in one `it.each` table per family.
 - **Split long tests into named cases.** A test over about 100 lines usually covers several scenarios, and its

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { seedModelsFromCatalog } from "@/db/seed/catalog/modelSeed";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { splitSqlStatements } from "@/utils/db/sqlSplitter";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
@@ -196,22 +197,34 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Scoped model registrations (Migration D)",
       ON CONFLICT DO NOTHING
     `;
 
-    await executeMigration("102_hosted_speech_models.down.sql");
-    await executeMigration("071_generalize_scoped_model_registrations.down.sql");
-    const [legacy] = await testSql<[{ count: string }]>`
-      SELECT COUNT(*) AS count FROM openrouter_model_registrations
-      WHERE server_id = ${serverAId} AND llm_id = ${openRouterModel.llm_id}
-    `;
-    expect(Number(legacy.count)).toBe(1);
+    try {
+      await executeMigration("102_hosted_speech_models.down.sql");
+      await executeMigration("071_generalize_scoped_model_registrations.down.sql");
+      const [legacy] = await testSql<[{ count: string }]>`
+        SELECT COUNT(*) AS count FROM openrouter_model_registrations
+        WHERE server_id = ${serverAId} AND llm_id = ${openRouterModel.llm_id}
+      `;
+      expect(Number(legacy.count)).toBe(1);
 
-    await executeMigration("071_generalize_scoped_model_registrations.sql");
-    await executeMigration("071_generalize_scoped_model_registrations.sql");
-    const [restored] = await testSql<[{ count: string }]>`
-      SELECT COUNT(*) AS count FROM scoped_model_registrations
-      WHERE server_id = ${serverAId} AND llm_id = ${openRouterModel.llm_id}
-    `;
-    expect(Number(restored.count)).toBe(1);
-    await executeMigration("098_decision_models.sql");
-    await executeMigration("102_hosted_speech_models.sql");
+      await executeMigration("071_generalize_scoped_model_registrations.sql");
+      await executeMigration("071_generalize_scoped_model_registrations.sql");
+      const [restored] = await testSql<[{ count: string }]>`
+        SELECT COUNT(*) AS count FROM scoped_model_registrations
+        WHERE server_id = ${serverAId} AND llm_id = ${openRouterModel.llm_id}
+      `;
+      expect(Number(restored.count)).toBe(1);
+    } finally {
+      await executeMigration("071_generalize_scoped_model_registrations.sql");
+      await executeMigration("098_decision_models.sql");
+      await executeMigration("102_hosted_speech_models.sql");
+      await seedModelsFromCatalog(testSql);
+    }
+    for (const provider of ["google", "openrouter", "vertex"]) {
+      const models = await llmModelRepo.loadAvailableSpeechModels(provider, { kind: "server", ownerId: serverAId });
+      expect(
+        models.some((model) => model.is_default),
+        provider,
+      ).toBe(true);
+    }
   });
 });
