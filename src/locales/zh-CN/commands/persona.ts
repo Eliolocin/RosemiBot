@@ -74,14 +74,6 @@ export default {
     name_conflict_description: `这个服务器上已经有一个叫 **{name}** 的人格了。同一个服务器内人格名称不能重复。`,
     export: {
       description: `把当前人格导出成可分享的 PNG 文件`,
-      export_json_select_label: `导出 JSON`,
-      export_json_select_description: `可选：改而导出可导入的 JSON 文件（不含头像图片）`,
-      persona_modal_title: `选择人格`,
-      persona_select_label: `人格`,
-      persona_select_description: `选择要导出哪个人格。`,
-      persona_select_placeholder: `选择人格…`,
-      main_persona_description: `主人格`,
-      alter_persona_description: `副人格`,
       success_title: `🟢 人格导出成功`,
       success_description: `当前人格 **{nickname}** 已导出！把这张 PNG 文件分享给别人，就能传播这份人格配置。`,
       success_description_json: `当前人格 **{nickname}** 已导出为 JSON 文件。

@@ -74,14 +74,6 @@ export default {
     name_conflict_description: `Uma persona chamada **{name}** já existe neste servidor. Nomes de persona devem ser únicos dentro de um servidor.`,
     export: {
       description: `Exportar a personalidade atual como um arquivo PNG compartilhável`,
-      export_json_select_label: `Exportar JSON`,
-      export_json_select_description: `Opcional: exportar um arquivo JSON importável em vez disso (sem imagem de avatar)`,
-      persona_modal_title: `Selecionar Persona`,
-      persona_select_label: `Persona`,
-      persona_select_description: `Escolha qual persona exportar.`,
-      persona_select_placeholder: `Selecione uma persona...`,
-      main_persona_description: `Persona Principal`,
-      alter_persona_description: `Alter`,
       success_title: `🟢 Persona Exportada com Sucesso`,
       success_description: `A persona atual **{nickname}** foi exportada! Compartilhe este arquivo PNG com outros para espalhar esta configuração de personalidade.`,
       success_description_json: `A persona atual **{nickname}** foi exportada como um arquivo JSON.

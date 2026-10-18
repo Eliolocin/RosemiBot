@@ -8,44 +8,47 @@ import type { CommandAutocompleteFunction } from "@/utils/discord/commandLoader"
 
 import { getCachedTomoriState, getCachedAllPersonas } from "@/utils/cache/tomoriStateCache";
 
-/**
- * Suggests every persona on the server, ignoring channel whitelists and spotlights, for commands
- * that inspect a persona rather than trigger it (`/stats persona`, `/context`).
- */
-export const handleServerPersonaAutocomplete: CommandAutocompleteFunction = async (
-  _client: Client,
+function rankPersonasByNickname<T extends { persona_nickname?: string | null }>(
+  personas: readonly T[],
+  focusedValue: string,
+): readonly T[] {
+  if (!focusedValue) {
+    return personas;
+  }
+
+  const exact: T[] = [];
+  const prefix: T[] = [];
+  const substring: T[] = [];
+
+  for (const p of personas) {
+    const nickname = (p.persona_nickname ?? "").toLowerCase();
+    if (nickname === focusedValue) {
+      exact.push(p);
+    } else if (nickname.startsWith(focusedValue)) {
+      prefix.push(p);
+    } else if (nickname.includes(focusedValue)) {
+      substring.push(p);
+    }
+  }
+
+  return [...exact, ...prefix, ...substring];
+}
+
+async function respondWithAllPersonas(
   interaction: AutocompleteInteraction,
-): Promise<void> => {
+  serverDiscId: string | undefined,
+): Promise<void> {
   let responded = false;
   try {
-    if (!interaction.guild) {
+    if (!serverDiscId) {
       responded = true;
       await interaction.respond([]);
       return;
     }
 
-    const allPersonas = await getCachedAllPersonas(interaction.guild.id);
+    const allPersonas = await getCachedAllPersonas(serverDiscId);
     const focusedValue = (interaction.options.getFocused() || "").toLowerCase();
-
-    let filtered = allPersonas;
-    if (focusedValue) {
-      const exact: typeof allPersonas = [];
-      const prefix: typeof allPersonas = [];
-      const substring: typeof allPersonas = [];
-
-      for (const p of allPersonas) {
-        const nickname = (p.persona_nickname ?? "").toLowerCase();
-        if (nickname === focusedValue) {
-          exact.push(p);
-        } else if (nickname.startsWith(focusedValue)) {
-          prefix.push(p);
-        } else if (nickname.includes(focusedValue)) {
-          substring.push(p);
-        }
-      }
-
-      filtered = [...exact, ...prefix, ...substring];
-    }
+    const filtered = rankPersonasByNickname(allPersonas, focusedValue);
 
     responded = true;
     await interaction.respond(
@@ -63,7 +66,25 @@ export const handleServerPersonaAutocomplete: CommandAutocompleteFunction = asyn
       }
     }
   }
-};
+}
+
+/**
+ * Suggests every persona on the server, ignoring channel whitelists and spotlights, for commands
+ * that inspect a persona rather than trigger it (`/stats persona`, `/context`).
+ */
+export const handleServerPersonaAutocomplete: CommandAutocompleteFunction = async (
+  _client: Client,
+  interaction: AutocompleteInteraction,
+): Promise<void> => respondWithAllPersonas(interaction, interaction.guild?.id);
+
+/**
+ * Like `handleServerPersonaAutocomplete`, but a DM resolves to the user's own workspace, for commands
+ * that also run in DMs (`/persona export`).
+ */
+export const handleWorkspacePersonaAutocomplete: CommandAutocompleteFunction = async (
+  _client: Client,
+  interaction: AutocompleteInteraction,
+): Promise<void> => respondWithAllPersonas(interaction, interaction.guild?.id ?? interaction.user.id);
 
 /**
  * Shaped as `CommandAutocompleteFunction` so a module can export it directly. The client is unused
@@ -123,28 +144,8 @@ export const handlePersonaAutocomplete: CommandAutocompleteFunction = async (
       return;
     }
 
-    const focusedOption = interaction.options.getFocused();
-    const focusedValue = (focusedOption || "").toLowerCase();
-
-    let filtered = eligiblePersonas;
-    if (focusedValue) {
-      const exact: typeof eligiblePersonas = [];
-      const prefix: typeof eligiblePersonas = [];
-      const substring: typeof eligiblePersonas = [];
-
-      for (const p of eligiblePersonas) {
-        const nickname = (p.persona_nickname ?? "").toLowerCase();
-        if (nickname === focusedValue) {
-          exact.push(p);
-        } else if (nickname.startsWith(focusedValue)) {
-          prefix.push(p);
-        } else if (nickname.includes(focusedValue)) {
-          substring.push(p);
-        }
-      }
-
-      filtered = [...exact, ...prefix, ...substring];
-    }
+    const focusedValue = (interaction.options.getFocused() || "").toLowerCase();
+    const filtered = rankPersonasByNickname(eligiblePersonas, focusedValue);
 
     const limited = filtered.slice(0, 25);
 

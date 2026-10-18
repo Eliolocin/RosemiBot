@@ -74,14 +74,6 @@ export default {
     name_conflict_description: `Persona có tên **{name}** đã tồn tại trên máy chủ này. Tên persona phải là duy nhất trong một máy chủ.`,
     export: {
       description: `Xuất persona hiện tại thành tệp PNG có thể chia sẻ`,
-      export_json_select_label: `Xuất JSON`,
-      export_json_select_description: `Tùy chọn: xuất tệp JSON có thể nhập thay thế (không kèm avatar)`,
-      persona_modal_title: `Chọn persona`,
-      persona_select_label: `Persona`,
-      persona_select_description: `Chọn persona muốn xuất.`,
-      persona_select_placeholder: `Chọn một persona...`,
-      main_persona_description: `Persona chính`,
-      alter_persona_description: `Persona alter`,
       success_title: `🟢 Xuất persona thành công`,
       success_description: `Persona hiện tại **{nickname}** đã được xuất! Hãy chia sẻ tệp PNG này với người khác để lan tỏa cấu hình persona này.`,
       success_description_json: `Persona hiện tại **{nickname}** đã được xuất thành tệp JSON.

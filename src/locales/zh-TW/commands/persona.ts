@@ -74,14 +74,6 @@ export default {
     name_conflict_description: `這個伺服器已經有人格叫 **{name}**。同一個伺服器內的人格名稱必須唯一。`,
     export: {
       description: `將目前的人格匯出成可分享的 PNG 檔`,
-      export_json_select_label: `匯出 JSON`,
-      export_json_select_description: `選填：改為匯出可匯入的 JSON 檔（不含頭像圖片）`,
-      persona_modal_title: `選擇要匯出的人格`,
-      persona_select_label: `人格`,
-      persona_select_description: `選擇要匯出的人格。`,
-      persona_select_placeholder: `選擇一個人格...`,
-      main_persona_description: `主要人格`,
-      alter_persona_description: `alter 人格`,
       success_title: `🟢 人格匯出成功`,
       success_description: `目前的人格 **{nickname}** 已經匯出！把這個 PNG 檔分享給別人，就能傳播這套人格設定。`,
       success_description_json: `目前的人格 **{nickname}** 已經匯出成 JSON 檔。

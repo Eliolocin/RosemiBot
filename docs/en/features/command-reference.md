@@ -224,7 +224,7 @@ Manage personality presets
 |---|---|
 | `/persona create` | Create a simple personality preset manually |
 | `/persona default` | Apply a preset personality configuration |
-| `/persona export` | Export current personality as a shareable PNG file |
+| `/persona export` | Export a persona as a shareable PNG file, or as an importable JSON file with `export_json` |
 | `/persona generate` | AI-powered personality generation (requires a compatible provider) |
 | `/persona import` | Import a persona from a PNG, JSON, or CHARX file |
 | `/persona remove` | Remove an alter persona from the server |

@@ -74,14 +74,6 @@ export default {
     name_conflict_description: `**{name}** という名前のペルソナは既にこのサーバーに存在します。ペルソナ名はサーバー内で一意である必要があります。`,
     export: {
       description: `現在の人格を共有可能なPNGファイルとしてエクスポートする`,
-      export_json_select_label: `JSONをエクスポート`,
-      export_json_select_description: `任意：インポート可能なJSONファイルとしてエクスポート（アバター画像なし）`,
-      persona_modal_title: `ペルソナを選択`,
-      persona_select_label: `ペルソナ`,
-      persona_select_description: `エクスポートするペルソナを選択してください。`,
-      persona_select_placeholder: `ペルソナを選択...`,
-      main_persona_description: `メインペルソナ`,
-      alter_persona_description: `オルタペルソナ`,
       success_title: `🟢 ペルソナのエクスポートに成功しました`,
       success_description: `ペルソナ **{nickname}** がエクスポートされました！このPNGファイルを他の人と共有して、人格設定を広めましょう。`,
       success_description_json: `ペルソナ **{nickname}** がJSONファイルとしてエクスポートされました。
