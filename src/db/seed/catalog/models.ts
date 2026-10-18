@@ -4533,6 +4533,14 @@ export const speechSections: ModelSection<SpeechInput>[] = [
         desc: "Voice Design with Vertex Gemini Flash-Lite TTS.",
         i18n: { ja: "Vertex Gemini Flash-Lite TTS による音声デザイン。" },
       },
+      {
+        provider: "openrouter",
+        codename: "bytedance-seed/seed-audio-1-0",
+        voiceMode: "design",
+        isDefault: true,
+        desc: "Voice Design with Seed Audio 1.0. Best in English and Chinese. Two-minute limit.",
+        i18n: { ja: "Seed Audio 1.0 による音声デザイン。英語と中国語が最適。出力は2分まで。" },
+      },
     ],
   },
   {

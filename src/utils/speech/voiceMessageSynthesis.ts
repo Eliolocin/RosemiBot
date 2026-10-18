@@ -277,8 +277,25 @@ async function synthesizeHostedVoiceMessage(
       maxBytes <= 0
     )
       throw new HostedSpeechError("invalid_request");
+    const validDesign =
+      source.kind === "design" &&
+      !!source.designPrompt.trim() &&
+      source.designPrompt.length <= HOSTED_SPEECH_LIMITS.descriptionCharacters;
     let audio: Buffer;
-    if (target.model.provider === "openrouter") {
+    if (target.model.provider === "openrouter" && source.kind === "design") {
+      if (!validDesign) throw new HostedSpeechError("invalid_request");
+      audio = await synthesizeOpenRouterSpeech({
+        shape: "design",
+        model: target.model.codename,
+        apiKey: target.apiKey,
+        description: source.designPrompt,
+        script: request.script,
+        direction: request.voiceInstructions,
+        signal,
+        maxBytes,
+        operations: attempt.operations,
+      });
+    } else if (target.model.provider === "openrouter") {
       if (source.kind !== "clone" && source.kind !== "clone-buffer") throw new HostedSpeechError("invalid_request");
       const sample = source.kind === "clone" ? await loadVoiceSampleById(source.voiceSampleId) : null;
       const reference =
@@ -307,6 +324,7 @@ async function synthesizeHostedVoiceMessage(
       if (!format.duration || format.duration > SPEECH_SAMPLE_MAX_DURATION_SECS)
         throw new HostedSpeechError("invalid_request");
       audio = await synthesizeOpenRouterSpeech({
+        shape: "clone",
         model: target.model.codename,
         apiKey: target.apiKey,
         script: request.script,
@@ -318,12 +336,7 @@ async function synthesizeHostedVoiceMessage(
         operations: attempt.operations,
       });
     } else {
-      if (
-        source.kind !== "design" ||
-        !source.designPrompt.trim() ||
-        source.designPrompt.length > HOSTED_SPEECH_LIMITS.descriptionCharacters
-      )
-        throw new HostedSpeechError("invalid_request");
+      if (source.kind !== "design" || !validDesign) throw new HostedSpeechError("invalid_request");
       const transport = createGoogleSpeechTransport(target.model.provider, target.apiKey);
       cleanupPending = !(await cleanupPendingGoogleVoices(
         target.owner,

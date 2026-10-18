@@ -52,6 +52,8 @@ interface TableSpec<T extends RowLike> {
   onConflict: string;
   /** Whether this table has an is_smartest column (only `llms`). */
   hasSmartest: boolean;
+  /** Key whose rows share one is_default; defaults to the provider. */
+  defaultGroup?: (m: T) => string;
   sections: ModelSection<T>[];
 }
 
@@ -256,6 +258,7 @@ const speechSpec: TableSpec<SpeechInput> = {
     updated_at = CURRENT_TIMESTAMP
     WHERE COALESCE(speech_models.is_scoped_registration, false) = false`,
   hasSmartest: false,
+  defaultGroup: (m) => `${m.provider}/${m.voiceMode}`,
   sections: speechSections,
 };
 
@@ -294,11 +297,14 @@ function validateSpec<T extends RowLike>(spec: TableSpec<T>, errors: string[]): 
   for (const [provider, rows] of byProvider) {
     if (INVARIANT_EXEMPT.has(provider)) continue;
 
-    const defaults = rows.filter((r) => r.isDefault);
-    if (defaults.length !== 1) {
-      errors.push(`${spec.table}/${provider}: expected exactly one is_default, found ${defaults.length}`);
-    } else if (defaults[0].isDeprecated) {
-      errors.push(`${spec.table}/${provider}: default model ${defaults[0].codename} is deprecated`);
+    const groups = Map.groupBy(rows, (r) => spec.defaultGroup?.(r) ?? provider);
+    for (const [group, groupRows] of groups) {
+      const defaults = groupRows.filter((r) => r.isDefault);
+      if (defaults.length !== 1) {
+        errors.push(`${spec.table}/${group}: expected exactly one is_default, found ${defaults.length}`);
+      } else if (defaults[0].isDeprecated) {
+        errors.push(`${spec.table}/${group}: default model ${defaults[0].codename} is deprecated`);
+      }
     }
 
     if (spec.hasSmartest) {

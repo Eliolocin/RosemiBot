@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { findOpenRouterSpeechModel } from "@/providers/openrouter/openrouterSpeechModels";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import {
@@ -11,19 +12,58 @@ import {
   type SpeechOperation,
 } from "@/utils/speech/hostedSpeech";
 
-export async function synthesizeOpenRouterSpeech(request: {
+/**
+ * Seed interprets its single prompt instead of reading it aloud and ignores OpenRouter's
+ * `instructions` field, so the voice description and delivery direction both travel inside it.
+ */
+export function buildSeedDesignPrompt(description: string, script: string, direction?: string): string {
+  const delivery = direction?.trim();
+  // An inner double quote would end the spoken line early, so Seed would read the rest as direction.
+  const line = script.trim().replaceAll('"', "'");
+  return `Speaker (${description.trim()}) says${delivery ? `, ${delivery}` : ""}: "${line}"`;
+}
+
+type OpenRouterSpeechRequest = {
   model: string;
   apiKey: string;
-  script: string;
-  direction?: string;
-  reference: Buffer;
-  transcript: string | null;
   signal: AbortSignal;
   maxBytes: number;
   operations: SpeechOperation[];
-}): Promise<Buffer> {
-  if (!new Set(["fish-audio/s2.1-pro", "fish-audio/s2.1-pro-free:free"]).has(request.model)) {
-    throw new HostedSpeechError("invalid_request");
+} & (
+  | { shape: "clone"; script: string; direction?: string; reference: Buffer; transcript: string | null }
+  | { shape: "design"; description: string; script: string; direction?: string }
+);
+
+function buildSpeechBody(request: OpenRouterSpeechRequest): Record<string, unknown> {
+  if (request.shape === "design") {
+    return {
+      model: request.model,
+      input: buildSeedDesignPrompt(request.description, request.script, request.direction),
+      response_format: "mp3",
+    };
+  }
+  return {
+    model: request.model,
+    input: request.script,
+    instructions: request.direction,
+    response_format: "mp3",
+    input_references: [
+      { type: "input_audio", input_audio: { data: `data:audio/wav;base64,${request.reference.toString("base64")}` } },
+      ...(request.transcript ? [{ type: "text", text: request.transcript }] : []),
+    ],
+  };
+}
+
+export async function synthesizeOpenRouterSpeech(request: OpenRouterSpeechRequest): Promise<Buffer> {
+  const spec = findOpenRouterSpeechModel(request.model);
+  if (!spec || spec.shape !== request.shape) throw new HostedSpeechError("invalid_request");
+  if (
+    spec.shape === "design" &&
+    request.shape === "design" &&
+    (request.script.trim().length > spec.scriptCharacters ||
+      buildSeedDesignPrompt(request.description, request.script, request.direction).length > spec.promptCharacters)
+  ) {
+    throw new HostedSpeechError("script_too_long");
   }
   request.signal.throwIfAborted();
   const operation: SpeechOperation = { operation: "synthesize", success: false };
@@ -37,16 +77,7 @@ export async function synthesizeOpenRouterSpeech(request: {
     },
     redirect: "error",
     signal: request.signal,
-    body: JSON.stringify({
-      model: request.model,
-      input: request.script,
-      instructions: request.direction,
-      response_format: "mp3",
-      input_references: [
-        { type: "input_audio", input_audio: { data: `data:audio/wav;base64,${request.reference.toString("base64")}` } },
-        ...(request.transcript ? [{ type: "text", text: request.transcript }] : []),
-      ],
-    }),
+    body: JSON.stringify(buildSpeechBody(request)),
   });
   operation.status = response.status;
   const generationId = response.headers.get("X-Generation-Id");

@@ -199,7 +199,7 @@ export default {
       success_source_field: `Voz Usada`,
       backend_elevenlabs: `ElevenLabs`,
       backend_tts_clone: `Clone de voz local`,
-      backend_openrouter_speech: `Clone de voz OpenRouter`,
+      backend_openrouter_speech: `Voz OpenRouter`,
       backend_google_speech: `Design de voz Gemini`,
       backend_vertex_speech: `Design de voz Vertex`,
       backend_tts_voice_design: `Design de voz local`,

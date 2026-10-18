@@ -53,6 +53,7 @@ export interface SpeechOperation {
 
 export type HostedSpeechErrorKind =
   | "invalid_request"
+  | "script_too_long"
   | "authentication"
   | "quota"
   | "provider_error"

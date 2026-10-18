@@ -763,12 +763,22 @@ export async function execute(
   });
 
   if (!synthesisResult.success || !synthesisResult.audioBuffer) {
-    await replyInfoEmbed(modalInteraction, locale, {
-      titleKey: "commands.generate.voice-message.synthesis_failed_title",
-      descriptionKey: "commands.generate.voice-message.synthesis_failed_description",
-      descriptionVars: { error: synthesisResult.details ?? "unknown error" },
-      color: ColorCode.ERROR,
-    });
+    await replyInfoEmbed(
+      modalInteraction,
+      locale,
+      synthesisResult.errorKind === "script_too_long"
+        ? {
+            titleKey: "commands.generate.voice-message.script_too_long_title",
+            descriptionKey: "commands.generate.voice-message.script_too_long_description",
+            color: ColorCode.ERROR,
+          }
+        : {
+            titleKey: "commands.generate.voice-message.synthesis_failed_title",
+            descriptionKey: "commands.generate.voice-message.synthesis_failed_description",
+            descriptionVars: { error: synthesisResult.details ?? "unknown error" },
+            color: ColorCode.ERROR,
+          },
+    );
     return;
   }
 

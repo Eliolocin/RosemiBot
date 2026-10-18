@@ -199,7 +199,7 @@ export default {
       success_source_field: `使用的声音`,
       backend_elevenlabs: `ElevenLabs`,
       backend_tts_clone: `本地声音克隆`,
-      backend_openrouter_speech: `OpenRouter 声音克隆`,
+      backend_openrouter_speech: `OpenRouter 语音合成`,
       backend_google_speech: `Gemini 语音设计`,
       backend_vertex_speech: `Vertex 语音设计`,
       backend_tts_voice_design: `本地语音设计`,

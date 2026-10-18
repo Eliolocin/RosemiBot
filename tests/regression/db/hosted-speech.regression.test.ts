@@ -21,6 +21,7 @@ import { activateProviderSpeechDefaults } from "@/utils/provider/providerActivat
 import { registerHostedSpeechModelForScope } from "@/utils/provider/openrouterModelRegistry";
 import { saveProviderModel } from "@/utils/provider/providerPanelOperations";
 import { cache } from "@/utils/cache/tomoriStateCacheStore";
+import { seedModelsFromCatalog } from "@/db/seed/catalog/modelSeed";
 import { createPersona } from "../../helpers/fixtures";
 import { DB_TESTS_AVAILABLE, executeTestSqlFile, setupTestDb, testSql } from "./setup/testDb";
 import { insertFixtures, cleanupFixtures, FIXTURE_IDS, type FixtureRefs } from "./setup/fixtures";
@@ -29,6 +30,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
   let refs: FixtureRefs;
   let googleId: number;
   let fishId: number;
+  let seedId: number;
   let googleCredentialId: number;
   let personalCredentialId: number;
   let foreignServerId: number;
@@ -46,7 +48,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
     const google = await llmModelRepo.loadAvailableSpeechModels("google", scope());
     const fish = await llmModelRepo.loadAvailableSpeechModels("openrouter", scope());
     googleId = google.find((model) => model.is_default)?.speech_model_id ?? 0;
-    fishId = fish.find((model) => model.is_default)?.speech_model_id ?? 0;
+    fishId = fish.find((model) => model.is_default && model.voice_mode === "clone")?.speech_model_id ?? 0;
+    seedId = fish.find((model) => model.codename === "bytedance-seed/seed-audio-1-0")?.speech_model_id ?? 0;
     for (const provider of ["google", "openrouter"]) {
       const serverKey = await encryptApiKey(`test-server-${provider}-speech`);
       const personalKey = await encryptApiKey(`test-personal-${provider}-speech`);
@@ -78,7 +81,12 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
     const google = await llmModelRepo.loadAvailableSpeechModels("google", scope());
     const fish = await llmModelRepo.loadAvailableSpeechModels("openrouter", scope());
     expect(google.find((model) => model.is_default)?.codename).toBe("gemini-3.8-flash-tts");
-    expect(fish.find((model) => model.is_default)?.codename).toBe("fish-audio/s2.1-pro");
+    expect(fish.filter((model) => model.is_default).map(({ codename, voice_mode }) => [voice_mode, codename])).toEqual(
+      expect.arrayContaining([
+        ["clone", "fish-audio/s2.1-pro"],
+        ["design", "bytedance-seed/seed-audio-1-0"],
+      ]),
+    );
     expect(fish.some((model) => model.codename === "fish-audio/s2.1-pro-free:free" && !model.is_default)).toBe(true);
     expect(google.some((model) => model.codename === "gemini-3.8-flash-lite-tts" && !model.is_default)).toBe(true);
     await executeTestSqlFile(migration);
@@ -97,6 +105,106 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
           !row.enabled_capabilities.includes("speech_clone"),
       ),
     ).toBe(true);
+  });
+
+  it("relaxes the legacy provider and mode check before the seed inserts OpenRouter design rows", async () => {
+    const providerModeChecks = async () =>
+      (
+        await testSql`
+          SELECT conname FROM pg_constraint
+          WHERE conrelid = 'speech_models'::regclass AND contype = 'c'
+            AND pg_get_constraintdef(oid) LIKE '%provider%' AND pg_get_constraintdef(oid) LIKE '%voice_mode%'
+        `
+      ).map(({ conname }: { conname: string }) => conname);
+    await executeTestSqlFile(
+      path.join(process.cwd(), "src/db/migrations/109_openrouter_design_speech_models.down.sql"),
+    );
+    expect(await llmModelRepo.loadSpeechModelById(seedId)).toBeNull();
+    expect(await providerModeChecks()).not.toContain("speech_models_provider_mode");
+    await executeTestSqlFile(path.join(process.cwd(), "src/db/schema.sql"));
+    await seedModelsFromCatalog(testSql);
+    expect(await providerModeChecks()).toEqual(["speech_models_provider_mode"]);
+    const seeded = await llmModelRepo.loadAvailableSpeechModels("openrouter", scope());
+    seedId = seeded.find((model) => model.codename === "bytedance-seed/seed-audio-1-0")?.speech_model_id ?? 0;
+    expect(seeded.find((model) => model.speech_model_id === seedId)).toMatchObject({
+      voice_mode: "design",
+      is_default: true,
+    });
+    await expect(
+      testSql`INSERT INTO speech_models (provider, codename, voice_mode) VALUES ('openrouter', '_rt/auto', 'auto')`.execute(),
+    ).rejects.toThrow();
+  });
+
+  it("fills only the selected Seed or Fish slot and rejects each in the other mode", async () => {
+    expect(await setHostedSpeechSelection(scope(), fishId)).toBe(true);
+    expect(await setHostedSpeechSelection(scope(), seedId)).toBe(true);
+    let [row] = await testSql`SELECT * FROM server_speech_configs WHERE server_id = ${refs.serverId}`;
+    expect(row).toMatchObject({ speech_design_model_id: seedId, speech_clone_model_id: fishId });
+    expect(await setHostedSpeechSelection(scope(), googleId)).toBe(true);
+    expect(await setHostedSpeechSelection(scope(), fishId)).toBe(true);
+    [row] = await testSql`SELECT * FROM server_speech_configs WHERE server_id = ${refs.serverId}`;
+    expect(row).toMatchObject({ speech_design_model_id: googleId, speech_clone_model_id: fishId });
+    expect(await setHostedSpeechSelection(scope(), seedId, "clone")).toBe(false);
+    await testSql`UPDATE server_speech_configs SET speech_design_model_id = ${seedId} WHERE server_id = ${refs.serverId}`;
+    for (const update of [
+      testSql`UPDATE server_speech_configs SET speech_design_model_id = ${fishId} WHERE server_id = ${refs.serverId}`,
+      testSql`UPDATE server_speech_configs SET speech_clone_model_id = ${seedId} WHERE server_id = ${refs.serverId}`,
+    ])
+      await expect(update.execute()).rejects.toThrow();
+    expect(await setHostedSpeechSelection(scope(), googleId)).toBe(true);
+  });
+
+  it("activates OpenRouter defaults per mode and fills Design only when it is empty", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+      Object.assign(
+        async (input: Parameters<typeof fetch>[0]) =>
+          Response.json(
+            String(input).endsWith("/endpoints")
+              ? { data: { endpoints: [{ supports_voice_cloning: true }] } }
+              : { data: [{ id: "fish-audio/s2.1-pro" }, { id: "bytedance-seed/seed-audio-1-0" }] },
+          ),
+        { preconnect: () => undefined },
+      ),
+    );
+    const [server] =
+      await testSql`INSERT INTO servers (server_disc_id) VALUES ('_rt_speech_seed_defaults') RETURNING server_id`;
+    const [user] =
+      await testSql`INSERT INTO users (user_disc_id) VALUES ('_rt_speech_seed_defaults') RETURNING user_id`;
+    try {
+      const owners = [
+        { kind: "server" as const, ownerId: server.server_id as number },
+        { kind: "personal" as const, ownerId: user.user_id as number },
+      ];
+      for (const provider of ["google", "openrouter"]) {
+        const key = await encryptApiKey(`test-seed-defaults-${provider}`);
+        await testSql`
+          INSERT INTO saved_provider_configs (server_id, provider, api_key, key_version)
+          VALUES (${server.server_id}, ${provider}, ${key.encrypted}, ${key.version})
+        `;
+        await testSql`
+          INSERT INTO user_saved_provider_configs (user_id, provider, api_key, key_version)
+          VALUES (${user.user_id}, ${provider}, ${key.encrypted}, ${key.version})
+        `;
+      }
+      const selection = async (owner: (typeof owners)[number], mode: "design" | "clone") =>
+        (await loadHostedSpeechSelection(server.server_id, mode, owner.kind === "personal" ? owner.ownerId : undefined))
+          ?.model.speech_model_id;
+      for (const owner of owners) {
+        expect(await activateProviderSpeechDefaults(owner, "openrouter")).toBe(true);
+        expect(await selection(owner, "design")).toBe(seedId);
+        expect(await selection(owner, "clone")).toBe(fishId);
+        expect(await activateProviderSpeechDefaults(owner, "google")).toBe(true);
+        expect(await selection(owner, "design")).toBe(googleId);
+        expect(await setHostedSpeechSelection(owner, null, "clone")).toBe(true);
+        expect(await activateProviderSpeechDefaults(owner, "openrouter")).toBe(true);
+        expect(await selection(owner, "design")).toBe(googleId);
+        expect(await selection(owner, "clone")).toBe(fishId);
+      }
+    } finally {
+      fetchSpy.mockRestore();
+      await testSql`DELETE FROM servers WHERE server_id = ${server.server_id}`;
+      await testSql`DELETE FROM users WHERE user_id = ${user.user_id}`;
+    }
   });
 
   it("replaces all supported endpoint slots atomically and preserves the other mode", async () => {

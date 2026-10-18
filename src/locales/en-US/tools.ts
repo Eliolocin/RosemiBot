@@ -6,6 +6,7 @@ export default {
     generate_voice_message: {
       persona_missing: `The persona is no longer available.`,
       stale: `The speech model, credentials, or persona voice changed during this turn. Start a new turn before generating a voice message.`,
+      script_too_long: `The script is too long for this voice design model. Shorten the script and try again.`,
     },
     generate_image: {
       quota_exceeded_generic: `Image generation quota has been exceeded.`,

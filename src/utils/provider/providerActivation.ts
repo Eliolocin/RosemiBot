@@ -6,15 +6,25 @@ import { buildFallbackModelPersistence } from "@/utils/provider/fallbackModelIde
 import { assignPersonalCapabilityToProvider, withPersonalTextPrimary } from "@/utils/provider/personalProviderHelpers";
 import { resolveLogitBiasEntriesForLlm } from "@/utils/provider/logitBiasResolver";
 import type { OpenRouterModelScope } from "@/utils/db/repositories/LlmModelRepository";
-import { setHostedSpeechSelection } from "@/utils/db/repositories/SpeechRepository";
+import { hasSpeechDesignSelection, setHostedSpeechSelection } from "@/utils/db/repositories/SpeechRepository";
 import { validateOpenRouterSpeechModel } from "@/utils/cache/openrouterSpeechModelCache";
 
+/**
+ * Selects the provider's default model for each voice mode it seeds.
+ *
+ * OpenRouter's Design default only fills an empty Design slot, so adding or re-keying OpenRouter
+ * never replaces a Gemini or Vertex design the owner already chose.
+ */
 export async function activateProviderSpeechDefaults(scope: OpenRouterModelScope, provider: string): Promise<boolean> {
   const models = await llmModelRepo.loadAvailableSpeechModels(provider, scope);
-  const model = models.find((entry) => entry.is_default);
-  if (!model) return true;
-  if (provider === "openrouter" && !(await validateOpenRouterSpeechModel(model.codename))) return false;
-  return setHostedSpeechSelection(scope, model.speech_model_id);
+  for (const mode of ["clone", "design"] as const) {
+    const model = models.find((entry) => entry.is_default && entry.voice_mode === mode);
+    if (!model) continue;
+    if (provider === "openrouter" && mode === "design" && (await hasSpeechDesignSelection(scope))) continue;
+    if (provider === "openrouter" && !(await validateOpenRouterSpeechModel(model.codename, mode))) return false;
+    if (!(await setHostedSpeechSelection(scope, model.speech_model_id, mode))) return false;
+  }
+  return true;
 }
 
 type ActivationStatus = "activated" | "missing_model" | "missing_provider" | "update_failed";

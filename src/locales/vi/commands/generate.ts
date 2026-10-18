@@ -199,7 +199,7 @@ export default {
       success_source_field: `Giọng đọc đã dùng`,
       backend_elevenlabs: `ElevenLabs`,
       backend_tts_clone: `Sao chép giọng đọc cục bộ`,
-      backend_openrouter_speech: `Sao chép giọng đọc OpenRouter`,
+      backend_openrouter_speech: `Giọng đọc OpenRouter`,
       backend_google_speech: `Thiết kế giọng đọc Gemini`,
       backend_vertex_speech: `Thiết kế giọng đọc Vertex`,
       backend_tts_voice_design: `Thiết kế giọng đọc cục bộ`,

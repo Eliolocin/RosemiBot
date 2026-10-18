@@ -556,6 +556,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Custom Endpoint connection and model split
       }
       await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.sql"));
       await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.sql"));
+      await executeTestSqlFile(path.join(process.cwd(), "src/db/migrations/109_openrouter_design_speech_models.sql"));
       await seedModelsFromCatalog(testSql);
       await testSql`DROP INDEX IF EXISTS idx_custom_endpoint_connections_server_unique`;
       await testSql`DROP INDEX IF EXISTS idx_custom_endpoint_connections_user_unique`;
