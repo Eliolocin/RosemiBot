@@ -1,5 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type MessageActionRowComponentBuilder } from "discord.js";
 import { DOCS_BASE_URL, DOCS_ROUTES, buildLocalizedDocsPath } from "@/constants/docsLocales";
+import { truncateDiscordText } from "@/utils/text/discordTextLimits";
+import { DISCORD_BUTTON_LABEL_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { localizer } from "@/utils/text/localizer";
 
 export { DOCS_ROUTES as DOCS_PATHS };
@@ -30,7 +32,7 @@ export function buildDocsLinkRow(
   const button = new ButtonBuilder()
     .setStyle(ButtonStyle.Link)
     .setEmoji("✨")
-    .setLabel(localizer(locale, labelKey))
+    .setLabel(truncateDiscordText(localizer(locale, labelKey), DISCORD_BUTTON_LABEL_MAX))
     .setURL(buildDocsUrl(locale, path));
 
   return new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(button);

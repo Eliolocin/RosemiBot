@@ -7,7 +7,7 @@ import {
   type OAuthToken,
 } from "@/utils/oauth/tokenEndpoint";
 
-export interface OAuthRefreshConnection {
+interface OAuthRefreshConnection {
   accessToken: string | null;
   expiresAt: number | null;
   refreshToken: string;

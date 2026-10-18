@@ -78,8 +78,8 @@ In `/help`, choose `Features`, then `Speech`, for the interactive walkthrough in
 ### Local voice-cloning engines (self-hosted)
 
 On self-hosted instances, you can run a local voice-clone server. The workflow:
-start the server, register its connection and model in `/providers`, select it in
-`/providers`, upload a reference sample in `/config` > Models > TTS Parameters & Voices,
+start the server, register its connection and model in `/providers` (registration activates it,
+and `/config` > Models > Switch Models changes the selection later), upload a reference sample in `/config` > Models > TTS Parameters & Voices,
 then assign it in `/config` > Persona > Voice. Any audio format is accepted (automatically
 converted to mono WAV); 10 to 20 second clips without background music work best.
 

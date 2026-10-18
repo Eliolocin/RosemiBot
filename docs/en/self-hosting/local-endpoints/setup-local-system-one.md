@@ -8,7 +8,7 @@ aiGenerated: true
 Run a small Decision model on your own machine and register it in TomoriBot. A Decision model answers yes/no questions about a text with a probability. [Kev](https://github.com/jaredpalmer/kev) is an open one that speaks the System One protocol, the same one TypeSafe's hosted Jev uses.
 
 :::note[Registration only for now]
-In this release you can register a Decision model and select it under [Response Drafting](/features/chatting-personality/behavior-tweaking/#response-drafting), but TomoriBot sends it no requests and review skipping stays off. See [Decision Models](/features/setup-administration/providers-and-models/#decision-models) for the details. Registering now confirms that your server works with TomoriBot.
+In this release you can register and select a Decision model, but no feature sends it requests yet. See [Decision Models](/features/setup-administration/providers-and-models/#decision-models) for the details. Registering now confirms that your server works with TomoriBot.
 :::
 
 ## 1. Run Kev
@@ -77,7 +77,7 @@ Open the saved `kev` endpoint, choose `+ Add new Decision Model` from its model 
 
 ## 3. Select it
 
-Open `/config` > `Plugins` > `Response Drafting` > `Decisions` dropdown and pick `kev-latest`. Reopen the page to confirm it stays selected. `None` clears it without deleting the registration.
+Open `/config` > `Models` > `Switch Models` and pick `kev-latest` in the `Decision` slot. `- No Model` clears it without deleting the registration.
 
 ## Notes and gotchas
 

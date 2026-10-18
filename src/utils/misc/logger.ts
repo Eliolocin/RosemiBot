@@ -75,6 +75,14 @@ export function resolveLogLevel(raw: string | undefined, hideLogs: boolean): str
 }
 
 /**
+ * JSON output keeps metrics at any level because the host log copy is what incident queries read;
+ * the pretty console follows the base level, so metric lines appear only at `debug` or `trace`.
+ */
+export function resolveMetricLevel(prettyTransport: boolean, baseLevel: string): string {
+  return prettyTransport ? baseLevel : "metric";
+}
+
+/**
  * Optional JSONL log file for host-side ingestion (e.g. Azure Monitor Agent
  * tailing a bind-mounted file). Only used in JSON output mode: the
  * development pino-pretty transport ignores it. See `.env.optional.example`.
@@ -155,7 +163,7 @@ const pinoLogger = pino(
       success: 35, // Between info (30) and warn (40)
       section: 31, // Just above info (30)
       // Below info so a severity range query (`level >= 40`) never counts a sample as a problem.
-      // `metricLogger` pins its own level, which is what keeps metrics emitted at any LOG_LEVEL.
+      // `metricLogger` sets its own level through `resolveMetricLevel`, which decides where samples print.
       metric: 25,
       rateLimit: 55, // Between error (50) and fatal (60)
     },
@@ -194,7 +202,10 @@ interface CustomLevelLogger extends pino.Logger {
 // biome-ignore lint/suspicious/noExplicitAny: Pino adds the custom level methods at runtime
 const customLevels = pinoLogger as any as CustomLevelLogger;
 
-const metricLogger = customLevels.child({}, { level: "metric" }) as CustomLevelLogger;
+const metricLogger = customLevels.child(
+  {},
+  { level: resolveMetricLevel(usePrettyTransport, pinoLogger.level) },
+) as CustomLevelLogger;
 
 /**
  * ANSI color codes for terminal output
@@ -268,7 +279,7 @@ export function containsCredential(value: string): boolean {
   return CREDENTIAL_REDACTIONS.some(([pattern]) => value.search(pattern) !== -1);
 }
 
-export function redactCredentialString(value: string): string {
+function redactCredentialString(value: string): string {
   return CREDENTIAL_REDACTIONS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
 }
 
@@ -399,7 +410,8 @@ export const log = {
   },
 
   /**
-   * Logs a sample that statistics are extracted from, emitted at every log level.
+   * Logs a sample that statistics are extracted from. JSON output emits it at every log level; the
+   * development console shows it only at `LOG_LEVEL=debug` or `trace`.
    *
    * Fields are numbers and string dimensions drawn from a fixed set (codes, reason keys, provider
    * names), so a query can group and count on them. Free text such as an error message or a

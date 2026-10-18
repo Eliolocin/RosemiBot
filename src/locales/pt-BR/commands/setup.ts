@@ -13,6 +13,9 @@ export default {
     next_steps_title: `Próximos Passos Recomendados`,
     learn_more_title: `Saiba Mais`,
     heads_up_title: `Alguns Pontos a Observar`,
+    channel_access_warning_field: "Ainda não consigo conversar neste canal",
+    channel_access_warning_value:
+      "A configuração terminou, mas meu cargo não pode ver este canal ou enviar mensagens aqui, então não vou responder nele. Nas permissões deste canal ou da categoria, conceda ao meu cargo **Ver canal**, **Enviar mensagens** e **Ler histórico de mensagens**.",
     novelai_expressions_warning_field: `Expressões Desativadas`,
     novelai_expressions_warning_value:
       "O uso de emojis e figurinhas foi automaticamente desativado para manter o contexto do NovelAI enxuto e estável. Você pode reativá-los depois em `/config` > Permissions.",
@@ -151,6 +154,8 @@ Tente {model_text_command} para atribuir um modelo funcional, ou {provider_add_c
       finish_incomplete: `Complete todos os requisitos antes de concluir a configuração.`,
       provider_validation_failed_title: `Chave de API Não Salva`,
       provider_validation_failed: `O provedor rejeitou essa chave de API ou não pôde validá-la. Nada foi salvo.`,
+      provider_validation_no_balance:
+        "O provedor reconheceu essa chave de API, mas a conta está sem saldo, então ainda não pode responder a mensagens. Adicione créditos no site do provedor e envie a mesma chave novamente. Nada foi salvo.",
       provider_invalid: `Este provedor não é suportado. Reabra o menu e escolha uma opção atual.`,
       catalog_modal_title: `Chave de API do Provedor`,
       catalog_provider_label: `Provedor`,

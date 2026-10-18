@@ -79,6 +79,8 @@ export default {
     invalid_key: `请输入至少 10 个字符的 API 密钥。`,
     unsupported_provider: `不支持那个提供方。请重新打开面板并选择当前可用的选项。`,
     validation_failed: `提供方拒绝了这个 API 密钥，或无法验证它。没有保存任何内容。`,
+    validation_no_balance:
+      "提供方识别了这个API密钥，但账户没有余额，暂时无法回复消息。请在提供方网站充值，然后重新提交同一个密钥。没有保存任何内容。",
     missing_default_model: `凭据已保存，但这个提供方没有可启用的默认文本模型。`,
     write_failed: `提供方无法保存或启用。请再试一次。`,
     add_endpoint_modal_title: `添加自定义端点`,

@@ -31,6 +31,7 @@ import {
   filterProvidersForCapability,
   isNaiPipelineProvider,
   configModelOperations,
+  loadConfigModelProviders,
   type ConfigModelOperations,
 } from "@/utils/discord/interactions/configModelOperations";
 import {
@@ -59,7 +60,7 @@ import {
   type ComponentsV2MessagePayload,
 } from "@/utils/discord/ui/componentsV2Limits";
 import { initializeLocalizer } from "@/utils/text/localizer";
-import { localizedCopy, localizedProse } from "../../helpers/localeCases";
+import { localizedCopy } from "../../helpers/localeCases";
 import {
   createInteractionRecorder,
   createRouteInteraction,
@@ -167,18 +168,16 @@ function makeNaiPreset(name: string, target: "kayra" | "erato" = "kayra"): NaiPr
   };
 }
 
-function makeEndpointSlot(capability: "tts-clone" | "stt", count: number, activeIndex = -1): ConfigEndpointSlotView {
-  const serviceCapability = capability === "tts-clone" ? "speech" : "transcription";
-  const apiStyle = capability === "tts-clone" ? "tts-clone" : "openai-compatible-transcription";
+function makeEndpointSlot(count: number, activeIndex = -1): ConfigEndpointSlotView {
   const endpoints: ConfigCapabilityEndpoint[] = Array.from({ length: count }, (_unused, index) => ({
     id: index + 1,
-    capability: serviceCapability,
-    label: `${capability}-endpoint-${index + 1}`,
-    modelLabel: `${capability}-model-${index + 1}`,
-    apiStyle,
+    capability: "transcription",
+    label: `stt-endpoint-${index + 1}`,
+    modelLabel: `stt-model-${index + 1}`,
+    apiStyle: "openai-compatible-transcription",
     isActive: index === activeIndex,
   }));
-  return { capability, endpoints, pageStart: 0 };
+  return { capability: "stt", endpoints, pageStart: 0 };
 }
 
 interface HarnessOptions {
@@ -298,8 +297,7 @@ function makeHarness(options: HarnessOptions = {}): Harness {
           pageStart: endpointPage?.capability === slot.capability ? endpointPage.start : slot.pageStart,
         })),
       }),
-      loadCapabilityEndpoints: async (_state, capability) =>
-        options.endpointSlots?.find((slot) => slot.capability === capability)?.endpoints ?? [],
+      loadCapabilityEndpoints: async () => options.endpointSlots?.[0]?.endpoints ?? [],
       loadParametersView: async (_state, requestedProvider, _logitBiasPageStart, naiPresetPageStart = 0) => {
         const providers = options.parametersProviders ?? ["google"];
         const parameterState = options.state ?? makeState();
@@ -492,9 +490,9 @@ describe("config models provider eligibility", () => {
 describe("config models switch page", () => {
   it("keeps endpoint selectors bounded and reaches every endpoint window", async () => {
     for (const count of [0, 1, 24, 25, 26, 60]) {
-      const endpointSlots = [makeEndpointSlot("tts-clone", count), makeEndpointSlot("stt", 0)];
+      const endpointSlots = [makeEndpointSlot(count)];
       const harness = makeHarness({ endpointSlots });
-      const customId = buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "tts-clone" });
+      const customId = buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "stt" });
       const visited = new Set<number>();
       let values: string[] = [];
       for (let step = 0; step <= count + 1; step += 1) {
@@ -527,7 +525,7 @@ describe("config models switch page", () => {
       }
       expect(visited.size).toBe(count);
       if (count === 0) {
-        expect(findComponentByCustomId(harness.edits.at(-1), customId)?.disabled).toBe(false);
+        expect(findComponentByCustomId(harness.edits.at(-1), customId)?.disabled).toBe(true);
       }
     }
   });
@@ -539,59 +537,45 @@ describe("config models switch page", () => {
       for (const activationSpy of activationSpies.splice(0)) activationSpy.mockRestore();
     });
 
-    it("re-reads the endpoint list and delegates successful TTS and STT selections", async () => {
+    it("re-reads the endpoint list and delegates a successful STT selection", async () => {
       const activationSpy = spyOn(providerPanelOperations, "activateWorkspaceEndpoint").mockImplementation(
         async (input) => ({
           status: "success",
           identity: `${input.customEndpointId} (${input.capability})`,
-          sourceChanged: input.capability === "speech",
+          sourceChanged: false,
         }),
       );
       activationSpies.push(activationSpy);
-      for (const capability of ["tts-clone", "stt"] as const) {
-        const endpointSlots = [
-          makeEndpointSlot(capability, 1),
-          makeEndpointSlot(capability === "tts-clone" ? "stt" : "tts-clone", 0),
-        ];
-        const endpoints = endpointSlots[0].endpoints;
-        const harness = makeHarness({ endpointSlots });
-        const fingerprint = computeConfigEndpointFingerprint(capability, endpoints);
-        await dispatch(
+      const endpointSlots = [makeEndpointSlot(1)];
+      const harness = makeHarness({ endpointSlots });
+      const fingerprint = computeConfigEndpointFingerprint(endpointSlots[0].endpoints);
+      await dispatch(
+        harness,
+        makeInteraction({
+          customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "stt" }),
+          kind: "select",
+          values: [encodeConfigEndpointSelection(0, fingerprint)],
           harness,
-          makeInteraction({
-            customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability }),
-            kind: "select",
-            values: [encodeConfigEndpointSelection(0, fingerprint)],
-            harness,
-          }),
-        );
+        }),
+      );
 
-        expect(activationSpy).toHaveBeenCalledWith(
-          expect.objectContaining({
-            capability: capability === "tts-clone" ? "speech" : "transcription",
-            customEndpointId: 1,
-            scopeKind: "server",
-          }),
-        );
-        expect(harness.telemetry).toContain("server-config.workspace.model.endpoint-select");
-        if (capability === "tts-clone")
-          expect(JSON.stringify(harness.edits.at(-1))).toMatch(
-            localizedProse("en-US", "commands.config.panel.endpoint_source_changed_direction"),
-          );
-      }
+      expect(activationSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ capability: "transcription", customEndpointId: 1 }),
+      );
+      expect(harness.telemetry).toContain("server-config.workspace.model.endpoint-select");
     });
 
     it("rejects malformed, out-of-range, and changed-fingerprint selections without a write", async () => {
-      const endpointSlots = [makeEndpointSlot("tts-clone", 1), makeEndpointSlot("stt", 0)];
+      const endpointSlots = [makeEndpointSlot(1)];
       const harness = makeHarness({ endpointSlots });
       const activationSpy = spyOn(providerPanelOperations, "activateWorkspaceEndpoint");
       activationSpies.push(activationSpy);
-      const fingerprint = computeConfigEndpointFingerprint("tts-clone", endpointSlots[0].endpoints);
+      const fingerprint = computeConfigEndpointFingerprint(endpointSlots[0].endpoints);
       for (const value of ["not-an-endpoint", `ep|1|${fingerprint}`, encodeConfigEndpointSelection(0, "deadbeef")]) {
         await dispatch(
           harness,
           makeInteraction({
-            customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "tts-clone" }),
+            customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "stt" }),
             kind: "select",
             values: [value],
             harness,
@@ -605,15 +589,15 @@ describe("config models switch page", () => {
     });
 
     it("stops a non-manager at the real route authorization gate", async () => {
-      const endpointSlots = [makeEndpointSlot("tts-clone", 1), makeEndpointSlot("stt", 0)];
+      const endpointSlots = [makeEndpointSlot(1)];
       const harness = makeHarness({ endpointSlots, isManager: false });
       const repositoryWriteSpy = spyOn(llmProviderRepo, "setActiveCustomEndpoint");
       activationSpies.push(repositoryWriteSpy);
-      const fingerprint = computeConfigEndpointFingerprint("tts-clone", endpointSlots[0].endpoints);
+      const fingerprint = computeConfigEndpointFingerprint(endpointSlots[0].endpoints);
       await dispatch(
         harness,
         makeInteraction({
-          customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "tts-clone" }),
+          customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "stt" }),
           kind: "select",
           isManager: false,
           values: [encodeConfigEndpointSelection(0, fingerprint)],
@@ -633,14 +617,14 @@ describe("config models switch page", () => {
         }),
       );
       activationSpies.push(activationSpy);
-      const endpointSlots = [makeEndpointSlot("tts-clone", 1), makeEndpointSlot("stt", 0)];
+      const endpointSlots = [makeEndpointSlot(1)];
       const harness = makeHarness({ endpointSlots, inGuild: false });
-      const fingerprint = computeConfigEndpointFingerprint("tts-clone", endpointSlots[0].endpoints);
+      const fingerprint = computeConfigEndpointFingerprint(endpointSlots[0].endpoints);
 
       await dispatch(
         harness,
         makeInteraction({
-          customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "tts-clone" }),
+          customId: buildConfigRouteId({ action: "endpoint-select", locale: "en-US", capability: "stt" }),
           kind: "select",
           inGuild: false,
           values: [encodeConfigEndpointSelection(0, fingerprint)],
@@ -649,17 +633,13 @@ describe("config models switch page", () => {
       );
 
       expect(activationSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          serverDiscId: "user-1",
-          scopeKind: "server",
-          capability: "speech",
-          customEndpointId: 1,
-        }),
+        expect.objectContaining({ serverDiscId: "user-1", capability: "transcription", customEndpointId: 1 }),
       );
+      expect(activationSpy.mock.calls[0]?.[0].scopeKind).not.toBe("personal");
     });
   });
 
-  it("renders all six capability slots and the Text-override rows", async () => {
+  it("renders every capability slot and the Text-override rows", async () => {
     const harness = makeHarness();
     await dispatch(
       harness,
@@ -1005,7 +985,7 @@ describe("config models switch page", () => {
   it("offers a None entry only for the slots whose absorbed command can clear", async () => {
     // The clear entry only appears on a slot that has something to clear, so each capability is
     // given an assignment first.
-    for (const capability of ["vision", "image", "nai-image"] as ConfigModelCapability[]) {
+    for (const capability of ["vision", "decision", "image", "nai-image"] as ConfigModelCapability[]) {
       const harness = makeHarness({
         currentModels: { [capability]: "assigned-model" },
         currentProviders: { [capability]: "google" },
@@ -1068,7 +1048,7 @@ describe("config models switch page", () => {
   it("refuses an endpoint capability that reaches the provider select", async () => {
     const harness = makeHarness();
     const selection = makeInteraction({
-      customId: buildConfigRouteId({ action: "model-provider-select", locale: "en-US", capability: "tts-clone" }),
+      customId: buildConfigRouteId({ action: "model-provider-select", locale: "en-US", capability: "stt" }),
       kind: "select",
       values: ["google"],
       harness,
@@ -1335,23 +1315,21 @@ describe("config models capability writes", () => {
     const naiUpdate = spyOn(configRepository, "updateNovelaiImagegenConfig").mockResolvedValue(true);
     const invalidate = spyOn(tomoriStateCache, "invalidateTomoriStateCache").mockImplementation(() => undefined);
 
-    for (const capability of ["tts-clone", "stt"] as const) {
-      const setResult = await configModelOperations.setCapabilityModel({
-        tomoriState: makeState(),
-        serverDiscId: "guild-1",
-        capability,
-        provider: "custom:12",
-        modelId: 7,
-      });
-      const clearResult = await configModelOperations.clearCapabilityModel({
-        tomoriState: makeState(),
-        serverDiscId: "guild-1",
-        capability,
-      });
+    const setResult = await configModelOperations.setCapabilityModel({
+      tomoriState: makeState(),
+      serverDiscId: "guild-1",
+      capability: "stt",
+      provider: "custom:12",
+      modelId: 7,
+    });
+    const clearResult = await configModelOperations.clearCapabilityModel({
+      tomoriState: makeState(),
+      serverDiscId: "guild-1",
+      capability: "stt",
+    });
 
-      expect(setResult.status).toBe("not-found");
-      expect(clearResult.status).toBe(capability === "stt" ? "not-clearable" : "already-clear");
-    }
+    expect(setResult.status).toBe("not-found");
+    expect(clearResult.status).toBe("not-clearable");
 
     expect(providers).not.toHaveBeenCalled();
     expect(modelUpdate).not.toHaveBeenCalled();
@@ -1362,6 +1340,68 @@ describe("config models capability writes", () => {
     modelUpdate.mockRestore();
     naiUpdate.mockRestore();
     invalidate.mockRestore();
+  });
+
+  it("offers only providers with a model for the speech mode and activates a speech connection", async () => {
+    const saved = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([
+      makeSavedProvider("google"),
+      makeSavedProvider("openrouter"),
+    ]);
+    const endpoints = spyOn(llmProviderRepo, "loadCustomEndpointsForServer").mockResolvedValue([
+      {
+        custom_endpoint_id: 31,
+        connection_id: 12,
+        server_id: 9,
+        capability: "speech",
+        api_style: "elevenlabs",
+        label: "ElevenLabs",
+        model_name: null,
+        extra_config: {},
+      },
+      {
+        custom_endpoint_id: 32,
+        connection_id: 13,
+        server_id: 9,
+        capability: "speech",
+        api_style: "tts-clone",
+        label: "Mirri Voice",
+        model_name: null,
+        extra_config: { voice_mode: "voice-design" },
+      },
+    ] as never);
+    const speechModels = spyOn(llmModelRepo, "loadAvailableSpeechModels").mockImplementation(async (provider) =>
+      provider === "openrouter"
+        ? ([
+            { speech_model_id: 5, provider, codename: "fish-audio/s2.1-pro", voice_mode: "clone", descriptions: null },
+          ] as never)
+        : [],
+    );
+    const activation = spyOn(providerPanelOperations, "activateWorkspaceEndpoint").mockResolvedValue({
+      status: "success",
+      identity: "ElevenLabs (speech)",
+      sourceChanged: true,
+    });
+    try {
+      expect(await loadConfigModelProviders(9, "tts-clone")).toEqual(["openrouter", "custom:12"]);
+      expect(await loadConfigModelProviders(9, "tts-design")).toEqual(["custom:13"]);
+
+      const result = await configModelOperations.setCapabilityModel({
+        tomoriState: makeState(),
+        serverDiscId: "guild-1",
+        capability: "tts-clone",
+        provider: "custom:12",
+        modelId: 31,
+      });
+      expect(result).toMatchObject({ status: "success", sourceChanged: true });
+      expect(activation).toHaveBeenCalledWith(
+        expect.objectContaining({ capability: "speech", mode: "clone", customEndpointId: 31 }),
+      );
+    } finally {
+      saved.mockRestore();
+      endpoints.mockRestore();
+      speechModels.mockRestore();
+      activation.mockRestore();
+    }
   });
 
   it("writes the vision column and invalidates the workspace cache after success", async () => {
@@ -1387,6 +1427,46 @@ describe("config models capability writes", () => {
     providers.mockRestore();
     models.mockRestore();
     update.mockRestore();
+  });
+
+  it("writes and clears the Decision column only for an owned registration", async () => {
+    const providers = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([
+      makeSavedProvider("openrouter"),
+      makeSavedProvider("google"),
+    ]);
+    const decisions = spyOn(llmModelRepo, "loadDecisionModelOptions").mockResolvedValue([
+      { model: { decision_model_id: 4, provider: "openrouter", codename: "fixture-decision", descriptions: null } },
+    ] as never);
+    const update = spyOn(configRepository, "updateModelConfig").mockResolvedValue(true);
+    try {
+      expect(await loadConfigModelProviders(9, "decision")).toEqual(["openrouter"]);
+      const pick = (modelId: number) =>
+        configModelOperations.setCapabilityModel({
+          tomoriState: makeState(),
+          serverDiscId: "guild-1",
+          capability: "decision",
+          provider: "openrouter",
+          modelId,
+        });
+      expect((await pick(5)).status).toBe("not-found");
+      expect(update).not.toHaveBeenCalled();
+      expect((await pick(4)).status).toBe("success");
+      expect(update).toHaveBeenLastCalledWith(9, { decision_model_id: 4 });
+
+      const selected = makeState();
+      selected.config.decision_model_id = 4;
+      const cleared = await configModelOperations.clearCapabilityModel({
+        tomoriState: selected,
+        serverDiscId: "guild-1",
+        capability: "decision",
+      });
+      expect(cleared.status).toBe("success");
+      expect(update).toHaveBeenLastCalledWith(9, { decision_model_id: null });
+    } finally {
+      providers.mockRestore();
+      decisions.mockRestore();
+      update.mockRestore();
+    }
   });
 
   it("sends a NovelAI image pick to the NovelAI column and a standard pick to the standard column", async () => {
@@ -2262,6 +2342,9 @@ describe("config models view loaders", () => {
     const channelOverrides = spyOn(llmOverrideRepo, "getAllChannelLlmOverridesForServer").mockResolvedValue([
       { channelDiscId: "111", llm: { llm_codename: "kayra-v1", llm_provider: "novelai" } },
     ] as never);
+    const decisions = spyOn(llmModelRepo, "loadDecisionModelOptions").mockResolvedValue([]);
+    const speechEndpoints = spyOn(llmProviderRepo, "loadCustomEndpointsForServer").mockResolvedValue([]);
+    const speechModels = spyOn(llmModelRepo, "loadAvailableSpeechModels").mockResolvedValue([]);
     const personas = spyOn(tomoriStateCache, "getCachedAllPersonas").mockResolvedValue([
       {
         ...makeState(),
@@ -2273,11 +2356,10 @@ describe("config models view loaders", () => {
     ] as unknown as TomoriState[]);
 
     const view = await loadConfigSwitchModelsView(makeState(), "guild-1", undefined, undefined, async () => []);
-    expect(view.slots).toHaveLength(6);
     expect<readonly ConfigCatalogModelCapability[]>(view.slots.map((slot) => slot.capability)).toEqual(
       CATALOG_MODEL_CAPABILITIES,
     );
-    expect(providers).toHaveBeenCalledTimes(6);
+    expect(providers).toHaveBeenCalledTimes(CATALOG_MODEL_CAPABILITIES.length);
     // A persona without a resolved override is an ordinary default, not an override row.
     expect(view.channelOverrides).toEqual([{ target: "<#111>", model: "kayra-v1 (NovelAI)" }]);
     expect(view.personaOverrides).toEqual([{ target: "**Juno**", model: "claude-sonnet-4 (OpenRouter)" }]);
@@ -2305,6 +2387,9 @@ describe("config models view loaders", () => {
     expect(overrideBlock).toContain("> **Juno** · claude-sonnet-4 (OpenRouter)");
 
     providers.mockRestore();
+    decisions.mockRestore();
+    speechEndpoints.mockRestore();
+    speechModels.mockRestore();
     channelOverrides.mockRestore();
     personas.mockRestore();
   });
@@ -2319,6 +2404,9 @@ describe("config models view loaders", () => {
         llm: { llm_codename: `model-${index}`, llm_provider: "google" },
       })) as never,
     );
+    const decisions = spyOn(llmModelRepo, "loadDecisionModelOptions").mockResolvedValue([]);
+    const speechEndpoints = spyOn(llmProviderRepo, "loadCustomEndpointsForServer").mockResolvedValue([]);
+    const speechModels = spyOn(llmModelRepo, "loadAvailableSpeechModels").mockResolvedValue([]);
     const personas = spyOn(tomoriStateCache, "getCachedAllPersonas").mockResolvedValue([] as unknown as TomoriState[]);
 
     const view = await loadConfigSwitchModelsView(makeState(), "guild-1", undefined, undefined, async () => []);
@@ -2340,6 +2428,9 @@ describe("config models view loaders", () => {
     expectValidComponentsV2Payload(payload);
 
     providers.mockRestore();
+    decisions.mockRestore();
+    speechEndpoints.mockRestore();
+    speechModels.mockRestore();
     channelOverrides.mockRestore();
     personas.mockRestore();
   });

@@ -13,6 +13,9 @@ export default {
     next_steps_title: `建议的后续步骤`,
     learn_more_title: `了解更多`,
     heads_up_title: `几点需要注意`,
+    channel_access_warning_field: "我还无法在这个频道聊天",
+    channel_access_warning_value:
+      "设置已完成，但我的身份组无法查看这个频道或在这里发送消息，所以我不会在这里回复。请在这个频道或所属频道分类的权限设置中，给我的身份组授予**查看频道**、**发送消息**和**读取消息历史**权限。",
     novelai_expressions_warning_field: `表情与贴纸已关闭`,
     novelai_expressions_warning_value:
       "表情和贴纸已自动关闭，好让 NovelAI 的上下文保持精简稳定。你可以随时用 `/config` > 权限重新打开。",
@@ -149,6 +152,8 @@ export default {
       finish_incomplete: `请先完成所有要求，再结束设置。`,
       provider_validation_failed_title: `API 密钥没有保存`,
       provider_validation_failed: `提供方拒绝了这个 API 密钥，或无法验证它。没有保存任何内容。`,
+      provider_validation_no_balance:
+        "提供方识别了这个API密钥，但账户没有余额，暂时无法回复消息。请在提供方网站充值，然后重新提交同一个密钥。没有保存任何内容。",
       provider_invalid: `不支持那个提供方。请重新打开菜单并选择当前可用的选项。`,
       catalog_modal_title: `提供方 API 密钥`,
       catalog_provider_label: `提供方`,

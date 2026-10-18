@@ -1,5 +1,4 @@
 import type { DraftPicker } from "@/utils/discord/ui/responseDraftingPanel";
-import type { DraftModelSlot } from "@/utils/discord/configPanelCatalog";
 import type {
   ResponseDraftingView,
   ResponseDraftingOperations,
@@ -342,7 +341,7 @@ export interface ConfigRouteDependencies {
   loadModelProviders(state: TomoriState, capability: ConfigModelCapability): Promise<string[]>;
   createGuildIdentity(guildId: string, interaction: GlobalRoutableInteraction): GuildIdentityPort;
   loadResponseDraftingView(state: TomoriState, locale: string): Promise<ResponseDraftingView>;
-  loadDraftModels(serverId: number, slot: DraftModelSlot, locale: string): Promise<DraftModelGroup[]>;
+  loadDraftModels(serverId: number, locale: string): Promise<DraftModelGroup[]>;
   loadDraftCheckers(serverId: number): Promise<DraftCheckerChoice[]>;
   draftingOperations: ResponseDraftingOperations;
   recordAction(input: RecordPanelActionInput): void;
@@ -752,6 +751,6 @@ export async function repaint(
       }),
       [avatar, spriteAvatar, characterReference].filter((item): item is PersonaPanelAvatarData => item !== undefined),
     ),
-    { locale, receipt: options.receipt },
+    { locale, receipt: options.receipt, panel: `config:${category}:${page}` },
   );
 }

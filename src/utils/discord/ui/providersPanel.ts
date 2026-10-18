@@ -36,6 +36,8 @@ import {
 } from "@/utils/discord/ui/panel";
 import {
   DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX,
+  DISCORD_SELECT_OPTION_DESCRIPTION_MAX,
+  DISCORD_SELECT_OPTION_LABEL_MAX,
   DISCORD_SELECT_OPTIONS_MAX,
 } from "@/utils/discord/ui/componentsV2Limits";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
@@ -390,8 +392,14 @@ export function buildAddEndpointModal(
           required: true,
           options: [...new Set(Object.values(ENDPOINT_API_STYLES).flat())].map((style, index) => ({
             value: style,
-            label: localizer(locale, API_STYLE_KEYS[style].label),
-            description: localizer(locale, API_STYLE_KEYS[style].description),
+            label: safeSelectOptionText(
+              localizer(locale, API_STYLE_KEYS[style].label),
+              DISCORD_SELECT_OPTION_LABEL_MAX,
+            ),
+            description: safeSelectOptionText(
+              localizer(locale, API_STYLE_KEYS[style].description),
+              DISCORD_SELECT_OPTION_DESCRIPTION_MAX,
+            ),
             default: index === 0,
           })),
         },
@@ -919,7 +927,7 @@ export function buildProviderModelModal(
         required: true,
         options: offered.map((field) => ({
           value: field,
-          label: localizer(locale, IMAGE_SUPPORT_KEYS[field]),
+          label: safeSelectOptionText(localizer(locale, IMAGE_SUPPORT_KEYS[field]), DISCORD_SELECT_OPTION_LABEL_MAX),
           default: defaults.image?.supports[field] ?? false,
         })),
       },
@@ -1331,7 +1339,10 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
     ...selection.visibleItems.map((entry) => ({
       label: safeSelectOptionText(entry.displayName, 100),
       value: entry.id,
-      description: localizer(locale, ENTRY_KIND_KEYS[entry.kind].label),
+      description: safeSelectOptionText(
+        localizer(locale, ENTRY_KIND_KEYS[entry.kind].label),
+        DISCORD_SELECT_OPTION_DESCRIPTION_MAX,
+      ),
       default: entry.id === selectedId,
     })),
   ];

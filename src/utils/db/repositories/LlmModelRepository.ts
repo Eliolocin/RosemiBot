@@ -67,6 +67,11 @@ class LlmModelRepository {
     return speechModelSchema.array().parse(rows);
   }
 
+  async loadSpeechModelById(speechModelId: number): Promise<SpeechModelRow | null> {
+    const rows = await sql`SELECT * FROM speech_models WHERE speech_model_id = ${speechModelId}`;
+    return rows.length ? speechModelSchema.parse(rows[0]) : null;
+  }
+
   async loadDecisionModelOptions(scope: OpenRouterModelScope): Promise<DecisionModelOption[]> {
     const serverId = scope.kind === "server" ? scope.ownerId : null;
     const userId = scope.kind === "personal" ? scope.ownerId : null;
@@ -145,6 +150,11 @@ class LlmModelRepository {
       "load available decision models",
     );
     return decisionModelSchema.array().parse(rows);
+  }
+
+  async loadDecisionModelById(decisionModelId: number): Promise<DecisionModelRow | null> {
+    const rows = await sql`SELECT * FROM decision_models WHERE decision_model_id = ${decisionModelId}`;
+    return rows.length ? decisionModelSchema.parse(rows[0]) : null;
   }
 
   async loadDecisionModelByProviderAndCodename(provider: string, codename: string): Promise<DecisionModelRow | null> {

@@ -1,9 +1,6 @@
-import { readSpeechEndpointSettings } from "@/utils/provider/customSpeechEndpointSettings";
-import { supportsSpeechMode } from "@/utils/speech/voiceSourceCapabilities";
 import { createHash } from "node:crypto";
 import type {
   CustomEndpointApiStyle,
-  CustomEndpointCapability,
   CustomEndpointRow,
   FallbackEntry,
   FallbackModelRef,
@@ -39,128 +36,67 @@ import type {
 import { buildProviderPageEntries } from "@/utils/discord/ui/modelRoutingControls";
 import { resolveProviderEntryStart } from "@/utils/discord/ui/providerSelectWindow";
 import { resolveNaiImageParams } from "@/utils/image/naiImageParams";
-import { isCustomProvider, parseCustomProvider } from "@/utils/provider/customProviderUtils";
+import { buildCustomProviderName, isCustomProvider, parseCustomProvider } from "@/utils/provider/customProviderUtils";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import { loadSavedProvidersForCapability } from "@/utils/provider/savedProviderConfig";
 import { localizer, resolveDescription } from "@/utils/text/localizer";
 
-export type ConfigEndpointModelCapability = "tts-design" | "tts-clone" | "stt";
-export type ConfigEndpointServiceCapability = Extract<CustomEndpointCapability, "speech" | "transcription">;
+export type ConfigEndpointModelCapability = "stt";
 
 export interface ConfigCapabilityEndpoint {
   id: number;
-  targetKind?: "custom-endpoint" | "hosted-model";
-  capability: ConfigEndpointServiceCapability;
+  capability: "transcription";
   label: string;
   modelLabel: string;
   apiStyle: CustomEndpointApiStyle | null;
   isActive: boolean;
-  voiceMode?: "clone" | "voice-design" | "auto";
 }
 
 export type ConfigCapabilityEndpointInput = ConfigCapabilityEndpoint | CustomEndpointRow;
 
-export type LoadConfigCapabilityEndpoints = (
-  state: TomoriState,
-  capability: ConfigEndpointModelCapability,
-) => Promise<ConfigCapabilityEndpointInput[]>;
-
-export function endpointServiceCapability(capability: ConfigEndpointModelCapability): ConfigEndpointServiceCapability {
-  return capability === "tts-design" || capability === "tts-clone" ? "speech" : "transcription";
-}
+export type LoadConfigCapabilityEndpoints = (state: TomoriState) => Promise<ConfigCapabilityEndpointInput[]>;
 
 export function normalizeConfigCapabilityEndpoints(
   rows: readonly ConfigCapabilityEndpointInput[],
-  capability: ConfigEndpointModelCapability,
-  state?: TomoriState,
 ): ConfigCapabilityEndpoint[] {
-  const serviceCapability = endpointServiceCapability(capability);
   return rows.flatMap((endpoint) => {
     if ("id" in endpoint) {
-      return endpoint.capability === serviceCapability && Number.isSafeInteger(endpoint.id) && endpoint.id > 0
+      return endpoint.capability === "transcription" && Number.isSafeInteger(endpoint.id) && endpoint.id > 0
         ? [endpoint]
         : [];
     }
     const id = endpoint.custom_endpoint_id;
-    if (endpoint.capability !== serviceCapability || id === undefined || !Number.isSafeInteger(id) || id <= 0) {
+    if (endpoint.capability !== "transcription" || id === undefined || !Number.isSafeInteger(id) || id <= 0) {
       return [];
     }
-    if (capability !== "stt" && !supportsSpeechMode(endpoint, capability === "tts-design" ? "design" : "clone"))
-      return [];
     return [
       {
         id,
-        capability: serviceCapability,
+        capability: "transcription",
         label: endpoint.label,
         modelLabel: endpoint.model_name ?? endpoint.label,
         apiStyle: endpoint.api_style,
-        voiceMode: capability === "stt" ? undefined : readSpeechEndpointSettings(endpoint).voiceMode,
-        isActive:
-          capability === "stt"
-            ? endpoint.is_default
-            : id ===
-              (capability === "tts-design"
-                ? state?.config.speech_design_endpoint_id
-                : state?.config.speech_clone_endpoint_id),
+        isActive: endpoint.is_default,
       },
     ];
   });
 }
 
-export const loadConfigCapabilityEndpoints: LoadConfigCapabilityEndpoints = async (state, capability) => {
-  const rows = await llmProviderRepo.loadCustomEndpointsForServer(state.server_id);
-  const endpoints = normalizeConfigCapabilityEndpoints(rows, capability, state);
-  if (capability === "stt") return endpoints;
-  const mode = capability === "tts-design" ? "design" : "clone";
-  const providers = await llmProviderRepo.loadSavedProviderConfigs(state.server_id);
-  const hosted = (
-    await Promise.all(
-      providers
-        .filter((row) => row.api_key && !isCustomProvider(row.provider))
-        .map(async (row) => {
-          const models = await llmModelRepo.loadAvailableSpeechModels(row.provider, {
-            kind: "server",
-            ownerId: state.server_id,
-          });
-          return models
-            .filter((model) => supportsSpeechMode(model, mode))
-            .map(
-              (model): ConfigCapabilityEndpoint => ({
-                id: model.speech_model_id,
-                targetKind: "hosted-model",
-                capability: "speech",
-                label: getProviderDisplayName(model.provider),
-                modelLabel: model.codename,
-                apiStyle: null,
-                voiceMode: model.voice_mode === "design" ? "voice-design" : model.voice_mode,
-                isActive:
-                  model.speech_model_id ===
-                  (mode === "design" ? state.config.speech_design_model_id : state.config.speech_clone_model_id),
-              }),
-            );
-        }),
-    )
-  ).flat();
-  return [...endpoints, ...hosted];
-};
+export const loadConfigCapabilityEndpoints: LoadConfigCapabilityEndpoints = (state) =>
+  llmProviderRepo.loadCustomEndpointsForServer(state.server_id);
 
 /** Binds an endpoint choice to its ordered list and the identifying fields of every presented row. */
-export function computeConfigEndpointFingerprint(
-  capability: ConfigEndpointModelCapability,
-  endpoints: readonly ConfigCapabilityEndpoint[],
-): string {
+export function computeConfigEndpointFingerprint(endpoints: readonly ConfigCapabilityEndpoint[]): string {
   return createHash("sha256")
     .update(
-      `config-endpoints:${capability}:${JSON.stringify(
+      `config-endpoints:stt:${JSON.stringify(
         endpoints.map((endpoint) => ({
           id: endpoint.id,
-          targetKind: endpoint.targetKind ?? "custom-endpoint",
           capability: endpoint.capability,
           label: endpoint.label,
           modelLabel: endpoint.modelLabel,
           apiStyle: endpoint.apiStyle,
           isActive: endpoint.isActive,
-          voiceMode: endpoint.voiceMode,
         })),
       )}`,
     )
@@ -195,7 +131,7 @@ export function decodeConfigEndpointPageValue(value: string): number | null {
  * Resolves the display name of whatever currently occupies one slot.
  *
  * Each slot reads a different catalog, and only Text and Vision are joined into `TomoriState`
- * already, so the remaining four need a lookup by id rather than a field read.
+ * already, so the rest need a lookup by id rather than a field read.
  */
 async function resolveSlotAssignment(
   state: TomoriState,
@@ -215,6 +151,12 @@ async function resolveSlotAssignment(
       const model = await llmModelRepo.loadEmbeddingModelById(id);
       return { modelName: model?.codename ?? null, provider: model?.provider ?? null };
     }
+    case "decision": {
+      const id = state.config.decision_model_id;
+      if (!id) return { modelName: null, provider: null };
+      const model = await llmModelRepo.loadDecisionModelById(id);
+      return { modelName: model?.codename ?? null, provider: model?.provider ?? null };
+    }
     case "image":
     case "nai-image": {
       const id = capability === "image" ? state.config.diffusion_model_id : state.config.nai_diffusion_model_id;
@@ -226,6 +168,24 @@ async function resolveSlotAssignment(
       const id = state.config.video_model_id;
       if (!id) return { modelName: null, provider: null };
       const model = await llmModelRepo.loadVideoGenerationModelById(id);
+      return { modelName: model?.codename ?? null, provider: model?.provider ?? null };
+    }
+    case "tts-design":
+    case "tts-clone": {
+      const design = capability === "tts-design";
+      const endpointId = design ? state.config.speech_design_endpoint_id : state.config.speech_clone_endpoint_id;
+      if (endpointId) {
+        const [endpoint] = await llmProviderRepo.loadCustomEndpointsByIds([endpointId]);
+        return endpoint
+          ? {
+              modelName: endpoint.model_name ?? endpoint.label,
+              provider: buildCustomProviderName(endpoint.connection_id),
+            }
+          : { modelName: null, provider: null };
+      }
+      const id = design ? state.config.speech_design_model_id : state.config.speech_clone_model_id;
+      if (!id) return { modelName: null, provider: null };
+      const model = await llmModelRepo.loadSpeechModelById(id);
       return { modelName: model?.codename ?? null, provider: model?.provider ?? null };
     }
   }
@@ -252,15 +212,15 @@ export async function loadConfigSwitchModelsView(
         resolveSlotAssignment(state, capability),
         loadConfigModelProviders(state.server_id, capability),
         // Only the expanded provider's catalog is measured: the renderer needs the count to decide
-        // how many page entries it contributes, and loading all six catalogs to fill a field five
-        // of them never read would put the whole model table behind every repaint.
+        // how many page entries it contributes, and loading every catalog to fill a field the
+        // collapsed slots never read would put the whole model table behind every repaint.
         expanded ? loadConfigModelChoices(state.server_id, capability, expanded).then((rows) => rows.length) : 0,
       ]);
       return {
         capability,
         currentModelName: assignment.modelName,
         currentProvider: assignment.provider,
-        eligibleProviders: providers.map((row) => row.provider),
+        eligibleProviders: providers,
         providerPageStart: providerPage?.capability === capability ? providerPage.start : 0,
         expandedProvider: expanded,
         expandedOptionCount,
@@ -268,17 +228,13 @@ export async function loadConfigSwitchModelsView(
     }),
   );
 
-  const endpointSlots = await Promise.all(
-    (["tts-design", "tts-clone", "stt"] as const).map(async (capability) => ({
-      capability,
-      endpoints: normalizeConfigCapabilityEndpoints(
-        await loadCapabilityEndpoints(state, capability),
-        capability,
-        state,
-      ),
-      pageStart: endpointPage?.capability === capability ? endpointPage.start : 0,
-    })),
-  );
+  const endpointSlots = [
+    {
+      capability: "stt" as const,
+      endpoints: normalizeConfigCapabilityEndpoints(await loadCapabilityEndpoints(state)),
+      pageStart: endpointPage?.start ?? 0,
+    },
+  ];
 
   // The removal list and this summary read one loader, so a target named here is a target that
   // command can clear, and both surfaces print the same effective model for it.
@@ -392,8 +348,8 @@ export function decodeConfigProviderPageValue(value: string): { provider: string
 /**
  * Value the Switch Models provider select carries to scroll its own entry list.
  *
- * Six selectors share one page, so a prev/next row per capability costs eighteen components the
- * forty-component budget does not have. Riding the select instead costs none, and the expanded
+ * The provider selectors share one page, so a prev/next row per capability costs more components
+ * than the forty-component budget has. Riding the select instead costs none, and the expanded
  * provider has to ride along or the next window rebuilds a shorter entry list and the offset it
  * was given now points outside it.
  */

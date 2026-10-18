@@ -3,27 +3,47 @@
  * Removes an alter persona from the server
  */
 
-import type { ChatInputCommandInteraction, Client, SlashCommandSubcommandBuilder } from "discord.js";
+import type {
+  AutocompleteInteraction,
+  ChatInputCommandInteraction,
+  Client,
+  SlashCommandSubcommandBuilder,
+} from "discord.js";
 import { MessageFlags, EmbedBuilder } from "discord.js";
 import { localizer } from "../../utils/text/localizer";
 import { log, ColorCode } from "../../utils/misc/logger";
-import { replyInfoEmbed, promptWithPaginatedModal, safeSelectOptionText } from "../../utils/discord/interactionHelper";
+import { replyInfoEmbed } from "../../utils/discord/interactionHelper";
 import { invalidateTomoriStateCache } from "../../utils/cache/tomoriStateCache";
-import type { UserRow } from "../../types/db/schema";
-import type { SelectOption } from "../../types/discord/modal";
+import type { TomoriState, UserRow } from "../../types/db/schema";
 import { personaRepository } from "@/utils/db/repositories";
 import { deletePersonaAvatarFromStorage } from "../../utils/storage/avatarStorage";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
-
-const MODAL_CUSTOM_ID = "persona_remove_modal";
-const PERSONA_SELECT_ID = "persona_select";
+import { respondWithPersonaChoices } from "@/utils/discord/autocomplete/personaAutocomplete";
+import { resolveSelectedPersona } from "@/utils/persona/personaOptionValue";
 
 function isDuplicateTaggedName(name: string): boolean {
   return /\[dup-\d+\]\s*$/i.test(name.trim());
 }
 
+/** Duplicate-tagged rows from schema migration cleanup stay removable even when marked as main. */
+function isRemovablePersona(persona: Pick<TomoriState, "is_alter" | "persona_nickname">): boolean {
+  return persona.is_alter || isDuplicateTaggedName(persona.persona_nickname);
+}
+
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
-  subcommand.setName("remove").setDescription(localizer("en-US", "commands.persona.remove.description"));
+  subcommand
+    .setName("remove")
+    .setDescription(localizer("en-US", "commands.persona.remove.description"))
+    .addStringOption((option) =>
+      option
+        .setName("persona")
+        .setDescription(localizer("en-US", "commands.persona.remove.persona_description"))
+        .setRequired(true)
+        .setAutocomplete(true),
+    );
+
+export const autocomplete = async (_client: Client, interaction: AutocompleteInteraction): Promise<void> =>
+  respondWithPersonaChoices(interaction, interaction.guild?.id, isRemovablePersona);
 
 /**
  * Executes the 'remove' command
@@ -61,11 +81,7 @@ export async function execute(
     }
 
     const allPersonas = await personaRepository.loadAllForServer(interaction.guild.id);
-
-    // Filter to removable personas:
-    // - all alters
-    // - duplicate-tagged personas created by schema migration cleanup, even if marked as main
-    const removablePersonas = allPersonas.filter((p) => p.is_alter || isDuplicateTaggedName(p.persona_nickname));
+    const removablePersonas = allPersonas.filter(isRemovablePersona);
 
     if (removablePersonas.length === 0) {
       await replyInfoEmbed(interaction, locale, {
@@ -77,62 +93,25 @@ export async function execute(
       return;
     }
 
-    const alterSelectOptions: SelectOption[] = removablePersonas.map((persona, index) => ({
-      label: safeSelectOptionText(persona.persona_nickname),
-      value: index.toString(), // Use index to avoid truncation issues
-    }));
-
-    const modalResult = await promptWithPaginatedModal(interaction, locale, {
-      modalCustomId: MODAL_CUSTOM_ID,
-      modalTitleKey: "commands.persona.remove.modal_title",
-      pageSelectTitleKey: "general.pagination.select_persona_title",
-      pageSelectDescriptionKey: "general.pagination.select_persona_page_description",
-      components: [
-        {
-          customId: PERSONA_SELECT_ID,
-          labelKey: "commands.persona.remove.select_label",
-          placeholder: "commands.persona.remove.select_placeholder",
-          required: true,
-          options: alterSelectOptions,
-        },
-      ],
-    });
-
-    if (modalResult.outcome !== "submit") {
-      log.info(`Persona removal modal ${modalResult.outcome} for user ${interaction.user.id}`);
-      return;
-    }
-
-    // biome-ignore lint/style/noNonNullAssertion: Modal submission outcome "submit" guarantees these values exist
-    const modalSubmitInteraction = modalResult.interaction!;
-    if (!modalSubmitInteraction.deferred && !modalSubmitInteraction.replied) {
-      await modalSubmitInteraction.deferReply({
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-    const selectedIndex = Number.parseInt(
-      // biome-ignore lint/style/noNonNullAssertion: Modal submission outcome "submit" guarantees these values exist
-      modalResult.values![PERSONA_SELECT_ID],
-      10,
-    );
-    const personaToRemove = removablePersonas[selectedIndex];
+    const personaToRemove = resolveSelectedPersona(removablePersonas, interaction.options.getString("persona", true));
     if (!personaToRemove?.persona_id) {
-      await replyInfoEmbed(modalSubmitInteraction, locale, {
-        titleKey: "general.errors.unknown_error_title",
-        descriptionKey: "general.errors.unknown_error_description",
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "general.errors.invalid_option_title",
+        descriptionKey: "general.errors.invalid_option_description",
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
-      log.warn("Persona removal failed due to missing persona_id for selected alter.");
       return;
     }
     const personaId = personaToRemove.persona_id;
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     // For non-alter duplicate-tagged rows, ensure at least one main persona remains.
     if (!personaToRemove.is_alter) {
       const mainCount = await personaRepository.countMainPersonasForServer(personaToRemove.server_id);
       if (mainCount <= 1) {
-        await replyInfoEmbed(modalSubmitInteraction, locale, {
+        await replyInfoEmbed(interaction, locale, {
           titleKey: "general.errors.update_failed_title",
           descriptionKey: "general.errors.update_failed_description",
           color: ColorCode.ERROR,
@@ -144,7 +123,7 @@ export async function execute(
 
     const removed = await personaRepository.removePersona(personaId);
     if (!removed) {
-      await replyInfoEmbed(modalSubmitInteraction, locale, {
+      await replyInfoEmbed(interaction, locale, {
         titleKey: "general.errors.update_failed_title",
         descriptionKey: "general.errors.update_failed_description",
         color: ColorCode.ERROR,
@@ -160,7 +139,7 @@ export async function execute(
     // Invalidate cache
     invalidateTomoriStateCache(interaction.guild.id);
 
-    await replyInfoEmbed(modalSubmitInteraction, locale, {
+    await replyInfoEmbed(interaction, locale, {
       titleKey: "commands.persona.remove.success_title",
       description: localizer(locale, "commands.persona.remove.success_description", {
         nickname: personaToRemove.persona_nickname,

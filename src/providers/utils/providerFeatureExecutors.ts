@@ -43,7 +43,7 @@ export interface DecisionExecutionRequest extends DecisionInput {
   reference: DecisionModelReference | null;
 }
 
-export const loadDecisionModelsForScope = (scope: OpenRouterModelScope) => llmModelRepo.loadDecisionModelOptions(scope);
+const loadDecisionModelsForScope = (scope: OpenRouterModelScope) => llmModelRepo.loadDecisionModelOptions(scope);
 
 export async function callDecisionsForProvider(request: DecisionExecutionRequest): Promise<DecisionResult> {
   const correlationId = crypto.randomUUID();

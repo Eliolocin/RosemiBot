@@ -50,7 +50,8 @@ The `Reviewer` dropdown selects an eligible registered text model. `Use current 
 uses the model and credentials actually answering, including your personal provider or a fallback.
 A pinned reviewer uses the workspace's own registration and credentials. Text-only authors and
 authors with Tool Use disabled can still use an eligible reviewer. An unsupported inherited model
-shows `Unavailable`; choose a supported reviewer to enable detailed review.
+shows `Unavailable`; choose a supported reviewer to enable detailed review. Clearing the reviewer
+restores `Use current response model`, and turning Off keeps your choices.
 
 `Set Prompt` edits the review instructions, up to 4,000 characters. `Use Default` restores the
 persona-aware default. The `Rule checker` dropdown selects an already registered compatible MCP checker,
@@ -58,11 +59,6 @@ or `None`. Its findings go privately to the reviewer, which decides whether they
 character. The checker has no validated language/profile guarantee in this release. If you disable
 or remove the checker's MCP server, the dropdown shows `Unavailable` and drafting runs as if you chose
 `None`.
-
-The `Decisions` dropdown saves a Decision registration from `/providers`. Skipping detailed review
-is inactive until each model and review rubric has labeled quality evidence. A saved selection
-makes no paid Decision requests in this release. Custom prompts also keep skipping inactive.
-Clearing either model restores reviewer inheritance or `None`; turning Off keeps your choices.
 
 Review is optional quality checking. A refusal, unavailable model, timeout, incomplete evidence, or
 exhausted review budget lets an otherwise valid reply or independent tool request continue under

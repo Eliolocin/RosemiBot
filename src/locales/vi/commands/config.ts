@@ -24,22 +24,16 @@ export default {
       review_context: "Bộ nhớ và ngữ cảnh khác",
       review_tools: "Lượt gọi công cụ",
       models_title: "Chuyển đổi model",
-      models_description:
-        "Chọn ai sẽ duyệt các bản nháp của mình và liệu model quyết định có kiểm tra bản nháp nào cần duyệt chi tiết hay không.",
+      models_description: "Chọn ai sẽ duyệt các bản nháp của mình.",
       reviewer_button: "Chọn model duyệt",
-      decision_button: "Chọn model quyết định",
       reviewer_label: "Người duyệt",
-      decision_label: "Quyết định",
       inherit: "Dùng model phản hồi hiện tại",
       reviewer_status: "Người duyệt: {model}",
       inherited_status: "Người duyệt: model phản hồi hiện tại, {model}",
-      decision_status: "Quyết định: {model}",
       none: "Không có",
       unavailable: "Không khả dụng",
       inherited_unavailable:
         "Model phản hồi hiện tại của mình không hỗ trợ đầu ra có cấu trúc, nên không thể duyệt bản nháp. Hãy chọn một người duyệt khác bên dưới.",
-      decision_note:
-        "Lựa chọn quyết định vẫn được lưu. Việc bỏ qua cần có các ngưỡng đã xác thực cho model này và từng tiêu chí duyệt; duyệt chi tiết vẫn hoạt động trong phạm vi ngân sách.",
       rules_title: "Kiểm tra quy tắc",
       rules_description:
         "Chọn một công cụ kiểm tra quy tắc văn bản tùy chọn. Chỉ người duyệt mới nhận được các phát hiện khuyến nghị của công cụ này. Phạm vi hồ sơ và ngôn ngữ chưa rõ trừ khi được xác minh riêng; phản hồi ngắn có thể không nhận được phân tích.",
@@ -918,6 +912,7 @@ export default {
       capability_text: `Văn bản`,
       capability_vision: `Thị giác`,
       capability_embedding: `Embedding`,
+      capability_decision: "Quyết định",
       capability_image: `Hình ảnh chuẩn`,
       capability_nai_image: `Hình ảnh NovelAI`,
       capability_video: `Video`,
@@ -925,6 +920,7 @@ export default {
       capability_tts_clone: `TTS (Sao chép giọng đọc)`,
       capability_stt: `Chuyển giọng nói thành văn bản`,
       capability_notice_title: `Lưu ý`,
+      decision_inactive_note: "Model quyết định đang thử nghiệm và chưa có tác dụng.",
       image_generation_disabled_direction:
         "Tính năng tạo hình ảnh đã bị tắt. Bật tính năng này trong Quyền hạn > Tính năng của bot.",
       image_generation_missing_model: `Chưa có model khả dụng nào được cấu hình cho việc tạo ảnh.`,
@@ -1164,7 +1160,7 @@ export default {
       voice_design: {
         modal_title: `Mô tả giọng đọc`,
         prompt_label: `Mô tả giọng nói`,
-        prompt_help: `Mô tả tuổi, tông giọng, chất giọng, ngữ điệu, tốc độ, cảm xúc và phong cách truyền đạt của người nói.`,
+        prompt_help: `Mô tả tuổi, tông giọng, chất giọng, ngữ điệu, tốc độ, cảm xúc và phong cách truyền đạt.`,
         prompt_placeholder: `Người dẫn chuyện trưởng thành ấm áp, nhịp điệu nhẹ nhàng, chất giọng êm dịu, truyền cảm điềm tĩnh.`,
         prompt_required_title: `Cần mô tả giọng đọc`,
         prompt_required_description: `Nhập mô tả giọng đọc.`,

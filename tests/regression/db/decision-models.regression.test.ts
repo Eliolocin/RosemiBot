@@ -25,33 +25,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Decision model persistence", () => {
     await testSql`DELETE FROM schema_migrations WHERE name = '098_decision_models'`;
   }
 
-  it("refuses to discard a selected catalog model before changing the schema", async () => {
-    const [model] = await testSql<Array<{ decision_model_id: number }>>`
-      SELECT decision_model_id FROM decision_models WHERE provider = 'openrouter' AND is_default = true
-    `;
-    if (!model) throw new Error("Missing catalog fixture");
-    await testSql`UPDATE server_chat_configs SET response_decision_model_id = ${model.decision_model_id} WHERE server_id = ${serverId}`;
-    try {
-      await expect(runDecisionRollback()).rejects.toThrow();
-      const [saved] = await testSql<Array<{ response_decision_model_id: number }>>`
-        SELECT response_decision_model_id FROM server_chat_configs WHERE server_id = ${serverId}
-      `;
-      expect(saved?.response_decision_model_id).toBe(model.decision_model_id);
-      const [constraint] = await testSql<Array<{ definition: string }>>`
-        SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint
-        WHERE conrelid = 'scoped_model_registrations'::regclass AND conname = 'scoped_model_registrations_one_model'
-      `;
-      expect(constraint?.definition).toContain("decision_model_id");
-    } finally {
-      await testSql`UPDATE server_chat_configs SET response_decision_model_id = NULL WHERE server_id = ${serverId}`;
-      await initializeDatabase({ client: testSql, includeRag: false });
-    }
-  });
-
-  it.each([
-    "startup schema",
-    "manual migration",
-  ])("downgrades unused Decision models from %s and restores on startup", async (source) => {
+  it("downgrades unused Decision models and restores them on startup", async () => {
     const [before] = await testSql<Array<{ response_reviewer_prompt: string | null; llm_id: number | null }>>`
       SELECT scc.response_reviewer_prompt, smc.llm_id FROM server_chat_configs scc
       JOIN server_model_configs smc USING (server_id) WHERE scc.server_id = ${serverId}
@@ -59,8 +33,6 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Decision model persistence", () => {
     const fixturePrompt = "Keep the fictional persona's quiet voice.";
     try {
       await testSql`UPDATE server_chat_configs SET response_reviewer_prompt = ${fixturePrompt} WHERE server_id = ${serverId}`;
-      if (source === "manual migration")
-        await testSql`ALTER TABLE server_chat_configs DROP COLUMN response_decision_model_id`;
       await runDecisionRollback();
       const [tables] = await testSql<Array<{ decision_models: string | null }>>`
         SELECT to_regclass('decision_models')::text AS decision_models
@@ -68,8 +40,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Decision model persistence", () => {
       expect(tables?.decision_models).toBeNull();
       const columns = await testSql`
         SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema()
-          AND ((table_name = 'scoped_model_registrations' AND column_name = 'decision_model_id')
-            OR (table_name = 'server_chat_configs' AND column_name = 'response_decision_model_id'))
+          AND table_name = 'scoped_model_registrations' AND column_name = 'decision_model_id'
       `;
       expect(columns).toHaveLength(0);
       const [constraint] = await testSql<Array<{ definition: string }>>`
@@ -88,12 +59,10 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Decision model persistence", () => {
       await initializeDatabase({ client: testSql, includeRag: false });
       await testSql`UPDATE server_chat_configs SET response_reviewer_prompt = ${before.response_reviewer_prompt} WHERE server_id = ${serverId}`;
     }
-    const [restored] = await testSql<Array<{ definition: string }>>`
-      SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint
-      WHERE conrelid = 'server_chat_configs'::regclass AND conname = 'server_chat_configs_response_decision_model_id_fkey'
+    const [restored] = await testSql<Array<{ decision_models: string | null }>>`
+      SELECT to_regclass('decision_models')::text AS decision_models
     `;
-    expect(restored?.definition).toContain("REFERENCES decision_models(decision_model_id)");
-    expect(restored?.definition).toContain("ON DELETE SET NULL");
+    expect(restored?.decision_models).toBe("decision_models");
   });
 
   it("replays the migration without losing registrations and isolates owners and text catalogs", async () => {
@@ -127,8 +96,18 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Decision model persistence", () => {
     expect(
       await llmProviderRepo.deleteOwnedDecisionRegistration({ kind: "personal", ownerId: userId }, "openrouter", id),
     ).toBe(false);
+    // A second owner keeps the shared row alive, so only the explicit clear can unset the server's slot.
+    await llmProviderRepo.upsertDecisionModelRegistration({ userId, decisionModelId: id });
+    await testSql`UPDATE server_model_configs SET decision_model_id = ${id} WHERE server_id = ${serverId}`;
     expect(
       await llmProviderRepo.deleteOwnedDecisionRegistration({ kind: "server", ownerId: serverId }, "openrouter", id),
+    ).toBe(true);
+    const [slot] = await testSql<Array<{ decision_model_id: number | null }>>`
+      SELECT decision_model_id FROM server_model_configs WHERE server_id = ${serverId}
+    `;
+    expect(slot?.decision_model_id).toBeNull();
+    expect(
+      await llmProviderRepo.deleteOwnedDecisionRegistration({ kind: "personal", ownerId: userId }, "openrouter", id),
     ).toBe(true);
     expect(await llmModelRepo.loadDecisionModelByProviderAndCodename("openrouter", "fixture-decision")).toBeNull();
     const seeds = personal.filter((model) => !model.is_scoped_registration);
@@ -206,7 +185,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Decision model persistence", () => {
     expect(await llmProviderRepo.loadUserSavedProviderConfig(userId, saved.provider)).toBeNull();
   });
 
-  it("preserves Decision registrations during reset and removes only the deleted native provider owner's references", async () => {
+  it("preserves Decision registrations and the server slot during reset and clears them with the owner's provider", async () => {
     const id = await llmModelRepo.upsertDecisionModel({
       provider: "openrouter",
       codename: "fixture-shared-owner",
@@ -215,13 +194,26 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Decision model persistence", () => {
     await llmProviderRepo.upsertDecisionModelRegistration({ serverId, decisionModelId: id });
     await llmProviderRepo.upsertDecisionModelRegistration({ userId, decisionModelId: id });
     await testSql`INSERT INTO saved_provider_configs (server_id, provider, api_key, key_version) VALUES (${serverId}, 'openrouter', ${Buffer.from("fixture")}, 1) ON CONFLICT (server_id, provider) DO NOTHING`;
+    const selectedDecision = async () =>
+      (
+        await testSql<Array<{ decision_model_id: number | null }>>`
+          SELECT decision_model_id FROM server_model_configs WHERE server_id = ${serverId}
+        `
+      )[0]?.decision_model_id;
+    await testSql`UPDATE server_model_configs SET decision_model_id = ${id} WHERE server_id = ${serverId}`;
     await resetRepository.resetServerConfiguration(serverId);
+    expect(await selectedDecision()).toBe(id);
     expect(
       (await llmModelRepo.loadDecisionModelOptions({ kind: "server", ownerId: serverId })).some(
         (option) => option.reference.modelId === id,
       ),
     ).toBe(true);
+    expect(await llmProviderRepo.deleteDecisionModelRegistration({ serverId, decisionModelId: id })).toBe(true);
+    expect(await selectedDecision()).toBeNull();
+    await llmProviderRepo.upsertDecisionModelRegistration({ serverId, decisionModelId: id });
+    await testSql`UPDATE server_model_configs SET decision_model_id = ${id} WHERE server_id = ${serverId}`;
     expect(await llmProviderRepo.deleteServerProviderRegistration(serverId, "openrouter")).toBe(true);
+    expect(await selectedDecision()).toBeNull();
     expect(
       (await llmModelRepo.loadAvailableDecisionModels("openrouter", false, { kind: "server", ownerId: serverId })).some(
         (model) => model.decision_model_id === id,

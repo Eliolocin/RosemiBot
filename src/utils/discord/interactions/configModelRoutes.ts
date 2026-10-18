@@ -27,11 +27,9 @@ import {
   computeConfigEndpointFingerprint,
   decodeConfigEndpointPageValue,
   decodeConfigEndpointSelection,
-  endpointServiceCapability,
   normalizeConfigCapabilityEndpoints,
   decodeConfigProviderPageValue,
   decodeConfigProviderRangeValue,
-  type ConfigEndpointModelCapability,
 } from "@/utils/discord/interactions/configModelLoaders";
 import {
   currentModelIdForCapability,
@@ -171,12 +169,6 @@ function readOptionalNumber(modal: ModalSubmitInteraction, fieldId: string): num
   if (!modal.fields.fields.has(fieldId)) return undefined;
   const raw = modal.fields.getTextInputValue(fieldId).trim();
   return raw ? Number(raw) : null;
-}
-
-function isConfigEndpointModelCapability(
-  capability: ConfigModelCapability,
-): capability is ConfigEndpointModelCapability {
-  return capability === "tts-design" || capability === "tts-clone" || capability === "stt";
 }
 
 export interface ConfigModelRouteContext {
@@ -395,7 +387,7 @@ export async function handleConfigModelModalOpen(
     const capability = route.capability;
     const selected = interaction.isStringSelectMenu() ? (interaction.values[0] ?? null) : null;
 
-    // The advance entry rides the select too, because six selectors cannot each afford a
+    // The advance entry rides the select too, because the provider selectors cannot each afford a
     // prev/next row under the forty-component budget.
     const range = selected ? decodeConfigProviderRangeValue(selected) : null;
     if (range) {
@@ -494,14 +486,14 @@ export async function handleConfigModelModalOpen(
         provider,
         nonce,
         models.slice(sliceStart, sliceStart + CONFIG_MODEL_PAGE_SIZE),
-        currentModelIdForCapability(state, capability),
+        currentModelIdForCapability(state, capability, provider),
       ),
     );
     return true;
   }
 
   if (route.action === "endpoint-select") {
-    if (!isConfigEndpointModelCapability(route.capability)) {
+    if (route.capability !== "stt") {
       await interaction.reply({
         content: localizer(locale, "commands.config.panel.stale_detail"),
         flags: MessageFlags.Ephemeral,
@@ -518,7 +510,7 @@ export async function handleConfigModelModalOpen(
         category: "models",
         page: "switch",
         selectedPersonaId: null,
-        endpointPage: { capability: route.capability, start },
+        endpointPage: { capability: "stt", start },
         dependencies,
       });
       return true;
@@ -632,46 +624,28 @@ async function handleSwitchModels(context: ConfigModelRouteContext): Promise<boo
     return false;
   }
   if (route.action === "endpoint-select") {
-    if (!isConfigEndpointModelCapability(route.capability)) {
+    if (route.capability !== "stt") {
       await baseRepaint(context, "switch", { receipt: staleReceipt(locale) });
       return true;
     }
-    const endpointCapability = route.capability;
     const selected = context.selectedValue ? decodeConfigEndpointSelection(context.selectedValue) : null;
-    const endpoints = normalizeConfigCapabilityEndpoints(
-      await dependencies.loadCapabilityEndpoints(state, endpointCapability),
-      endpointCapability,
-    );
-    const fingerprint = computeConfigEndpointFingerprint(endpointCapability, endpoints);
-    if (endpointCapability !== "stt" && context.selectedValue === `ep-clear|${fingerprint}`) {
-      return clearSwitchModel(context, endpointCapability);
-    }
+    const endpoints = normalizeConfigCapabilityEndpoints(await dependencies.loadCapabilityEndpoints(state));
+    const fingerprint = computeConfigEndpointFingerprint(endpoints);
     const endpoint =
       selected && selected.fingerprint === fingerprint && selected.position < endpoints.length
         ? endpoints[selected.position]
         : undefined;
-    if (
-      !selected ||
-      !endpoint ||
-      endpoint.capability !== endpointServiceCapability(endpointCapability) ||
-      !Number.isSafeInteger(endpoint.id) ||
-      endpoint.id <= 0
-    ) {
+    if (!selected || !endpoint || !Number.isSafeInteger(endpoint.id) || endpoint.id <= 0) {
       await baseRepaint(context, "switch", { receipt: staleReceipt(locale) });
       return true;
     }
 
     const action = await performPanelAction(
       () =>
-        dependencies.modelOperations.activateWorkspaceEndpoint({
+        dependencies.modelOperations.activateTranscriptionEndpoint({
           tomoriState: state,
           serverDiscId: context.scope.serverDiscId,
-          ownerId: context.scope.userId,
-          // A DM still resolves `/config` to its recipient-backed server row, unlike `/personal config`.
-          scopeKind: "server",
-          capability: endpointCapability,
           customEndpointId: endpoint.id,
-          targetKind: endpoint.targetKind,
         }),
       () => dependencies.resolveScope(context.interaction, true),
     );
@@ -679,24 +653,16 @@ async function handleSwitchModels(context: ConfigModelRouteContext): Promise<boo
     const result = action.result;
     if (result.status === "success") recordModelAction(context, "server-config.workspace.model.endpoint-select");
 
-    const endpointPage = {
-      capability: endpointCapability,
-      start:
-        Math.floor(selected.position / configEndpointWindowSize(endpointCapability, endpoints.length)) *
-        configEndpointWindowSize(endpointCapability, endpoints.length),
-    } as const;
-    const speechSourceChanged = endpointCapability !== "stt" && result.status === "success" && result.sourceChanged;
+    const windowSize = configEndpointWindowSize(endpoints.length);
     await baseRepaint(context, "switch", {
-      endpointPage,
+      endpointPage: { capability: "stt", start: Math.floor(selected.position / windowSize) * windowSize },
       receipt:
         result.status === "success"
           ? receipt(
               locale,
-              speechSourceChanged ? "warning" : "success",
+              "success",
               "commands.config.panel.endpoint_activated_heading",
-              speechSourceChanged
-                ? "commands.config.panel.endpoint_source_changed_direction"
-                : "commands.config.panel.endpoint_activated_detail",
+              "commands.config.panel.endpoint_activated_detail",
               { endpoint: result.identity },
             )
           : result.status === "already-active"
@@ -753,15 +719,23 @@ async function handleSwitchModels(context: ConfigModelRouteContext): Promise<boo
   if (result.status === "success") {
     recordModelAction(context, "server-config.workspace.model.set");
     await baseRepaint(context, "switch", {
-      receipt: receipt(
-        locale,
-        "success",
-        "commands.config.panel.model_updated_heading",
-        result.reembedded
-          ? "commands.config.panel.model_updated_reembedded_detail"
-          : "commands.config.panel.model_updated_detail",
-        { model: result.modelName, provider: getProviderDisplayName(route.provider) },
-      ),
+      receipt: result.sourceChanged
+        ? receipt(
+            locale,
+            "warning",
+            "commands.config.panel.model_updated_heading",
+            "commands.config.panel.endpoint_source_changed_direction",
+            { endpoint: result.modelName },
+          )
+        : receipt(
+            locale,
+            "success",
+            "commands.config.panel.model_updated_heading",
+            result.reembedded
+              ? "commands.config.panel.model_updated_reembedded_detail"
+              : "commands.config.panel.model_updated_detail",
+            { model: result.modelName, provider: getProviderDisplayName(route.provider) },
+          ),
     });
     return true;
   }

@@ -17,6 +17,7 @@ import { resolveRangeSelection } from "@/utils/discord/interactions/panelControl
 import { MAX_MCP_SERVERS_PER_WORKSPACE, safeMcpEndpoint } from "@/utils/mcp/mcpConfigOperations";
 import { formatMcpToolNamesForDiscord } from "@/utils/mcp/mcpToolSnapshot";
 import { buildTextPreview, textPreviewFooterKey, textPreviewFooterVars } from "@/utils/text/textPreview";
+import { DISCORD_BUTTON_LABEL_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { localizer } from "@/utils/text/localizer";
 
 const FAILURE_REASON_KEYS: Record<
@@ -294,7 +295,10 @@ export function buildMcpsPanelComponents(input: McpsPanelRenderInput): Component
               entityId: rowId(row),
               enabled: !row.is_enabled,
             }),
-            label: localizer(input.locale, row.is_enabled ? "commands.mcps.disable" : "commands.mcps.enable"),
+            label: safeSelectOptionText(
+              localizer(input.locale, row.is_enabled ? "commands.mcps.disable" : "commands.mcps.enable"),
+              DISCORD_BUTTON_LABEL_MAX,
+            ),
             disabled: writesDisabled,
           },
           {

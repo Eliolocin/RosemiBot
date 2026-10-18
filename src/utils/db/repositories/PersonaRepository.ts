@@ -159,11 +159,11 @@ const TOMORI_POINTER_CONTENT_FIELDS = new Set<string>([
 /** Fields where SQL NULL carries semantic meaning ("not configured") and must not be coerced to undefined. */
 const MEANINGFULLY_NULLABLE_CONFIG_FIELDS = new Set([
   "response_reviewer_llm_id",
-  "response_decision_model_id",
   "response_reviewer_prompt",
   "response_rule_checker_ref",
   "llm_id",
   "embedding_model_id",
+  "decision_model_id",
   "diffusion_model_id",
   "video_model_id",
   "vision_llm_id",
@@ -1919,7 +1919,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         s.server_id,
         smc.created_at, smc.updated_at,
         -- 1. server_model_configs
-        smc.llm_id, smc.embedding_model_id, smc.diffusion_model_id, smc.video_model_id,
+        smc.llm_id, smc.embedding_model_id, smc.diffusion_model_id, smc.video_model_id, smc.decision_model_id,
         smc.vision_llm_id, smc.api_key, smc.key_version, smc.llm_temperature,
         smc.thinking_level, smc.llm_disabled_params, smc.custom_endpoint_url,
         smc.custom_model_name, smc.custom_num_ctx, smc.fallback_llm_ids,
@@ -1930,7 +1930,6 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         scc.match_limit, scc.cascade_limit, scc.timezone_offset, scc.self_debug_enabled,
         scc.model_randomizer_enabled,
         scc.response_reviewer_llm_id,
-        scc.response_decision_model_id,
         scc.response_reviewer_prompt,
         scc.response_rule_checker_ref,
         scc.response_review_items,
@@ -2032,7 +2031,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         s.server_id,
         smc.created_at, smc.updated_at,
         -- 1. server_model_configs
-        smc.llm_id, smc.embedding_model_id, smc.diffusion_model_id, smc.video_model_id,
+        smc.llm_id, smc.embedding_model_id, smc.diffusion_model_id, smc.video_model_id, smc.decision_model_id,
         smc.vision_llm_id, smc.api_key, smc.key_version, smc.llm_temperature,
         smc.thinking_level, smc.llm_disabled_params, smc.custom_endpoint_url,
         smc.custom_model_name, smc.custom_num_ctx, smc.fallback_llm_ids,
@@ -2043,7 +2042,6 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         scc.match_limit, scc.cascade_limit, scc.timezone_offset, scc.self_debug_enabled,
         scc.model_randomizer_enabled,
         scc.response_reviewer_llm_id,
-        scc.response_decision_model_id,
         scc.response_reviewer_prompt,
         scc.response_rule_checker_ref,
         scc.response_review_items,

@@ -311,7 +311,7 @@ export interface DecisionModelOption {
   reference: DecisionModelReference;
 }
 
-export interface DecisionPredicateQuestion {
+interface DecisionPredicateQuestion {
   type: "predicate";
   id: string;
   instructions: string;

@@ -45,7 +45,6 @@ interface WorkspaceConfigProjectionRow {
   context_note: string | null;
   context_note_depth: number;
   response_reviewer_llm_id: number | null;
-  response_decision_model_id: number | null;
   response_reviewer_prompt: string | null;
   response_rule_checker_ref: import("@/types/db/schema").ResponseRuleCheckerRef | null;
   response_review_items: import("@/constants/responseReview").ResponseReviewItem[];
@@ -347,7 +346,6 @@ export class ExportRepository {
           snec.tool_notice_verbosity                                AS tool_notice_verbosity,
           COALESCE(scc.self_debug_enabled, false)                   AS self_debug_enabled,
           scc.response_reviewer_llm_id AS response_reviewer_llm_id,
-          scc.response_decision_model_id AS response_decision_model_id,
           scc.response_reviewer_prompt AS response_reviewer_prompt,
           scc.response_rule_checker_ref AS response_rule_checker_ref,
           scc.response_review_items AS response_review_items,
@@ -538,7 +536,6 @@ export class ExportRepository {
             self_debug_enabled: configData.self_debug_enabled,
             model_randomizer_enabled: configData.model_randomizer_enabled,
             response_reviewer_llm_id: configData.response_reviewer_llm_id,
-            response_decision_model_id: configData.response_decision_model_id,
             response_reviewer_prompt: configData.response_reviewer_prompt,
             response_rule_checker_ref: configData.response_rule_checker_ref,
             response_review_items: configData.response_review_items,
@@ -738,7 +735,6 @@ export class ExportRepository {
           COALESCE(scc.context_note_depth, 0) AS context_note_depth,
           scc.response_prefill AS response_prefill,
           scc.response_reviewer_llm_id AS response_reviewer_llm_id,
-          scc.response_decision_model_id AS response_decision_model_id,
           scc.response_reviewer_prompt AS response_reviewer_prompt,
           scc.response_rule_checker_ref AS response_rule_checker_ref,
           scc.response_review_items AS response_review_items,
@@ -862,7 +858,6 @@ export class ExportRepository {
           context_note_depth: configData.context_note_depth,
           response_prefill: configData.response_prefill ?? null,
           response_reviewer_llm_id: configData.response_reviewer_llm_id,
-          response_decision_model_id: configData.response_decision_model_id,
           response_reviewer_prompt: configData.response_reviewer_prompt,
           response_rule_checker_ref: configData.response_rule_checker_ref,
           response_review_items: configData.response_review_items,

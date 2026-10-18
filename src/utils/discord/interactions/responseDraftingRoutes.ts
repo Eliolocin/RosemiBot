@@ -61,7 +61,7 @@ export async function handleDraftModalOpen(
     return true;
   }
   const slice = selected ? decodeConfigProviderPageValue(selected) : null;
-  const group = (await dependencies.loadDraftModels(state.server_id, route.slot, locale)).find(
+  const group = (await dependencies.loadDraftModels(state.server_id, locale)).find(
     (candidate) => candidate.provider === (slice?.provider ?? selected),
   );
   if (!group) {
@@ -76,7 +76,7 @@ export async function handleDraftModalOpen(
       category: "plugins",
       page: "response-drafting",
       selectedPersonaId: null,
-      draftPicker: { slot: route.slot, provider: group.provider, start: 0 },
+      draftPicker: { slot: "reviewer", provider: group.provider, start: 0 },
       dependencies,
       receipt: {
         tone: "info",
@@ -96,7 +96,7 @@ export async function handleDraftModalOpen(
   }
   await dependencies.showModal(
     interaction,
-    buildDraftModelModal(state, locale, dependencies.createNonce(), route.slot, group, start),
+    buildDraftModelModal(state, locale, dependencies.createNonce(), group, start),
   );
   return true;
 }
@@ -148,13 +148,11 @@ export async function handleDraftRoutes(context: ConfigModelRouteContext): Promi
   };
   if (route.action === "draft-provider") {
     const range = context.selectedValue ? decodeConfigProviderRangeValue(context.selectedValue) : null;
-    if (range) await paint({ slot: route.slot, provider: range.expandedProvider, start: range.start });
+    if (range) await paint({ slot: "reviewer", provider: range.expandedProvider, start: range.start });
     else if (context.selectedValue === DRAFT_CLEAR_VALUE)
       await write(
-        () => dependencies.draftingOperations.setModel(state, context.scope.serverDiscId, route.slot, "", null),
-        route.slot === "reviewer"
-          ? "server-config.workspace.response-reviewer.set"
-          : "server-config.workspace.response-decision.set",
+        () => dependencies.draftingOperations.setModel(state, context.scope.serverDiscId, "", null),
+        "server-config.workspace.response-reviewer.set",
       );
     else await paint(undefined, "stale");
   } else if (route.action === "draft-set") {
@@ -196,11 +194,8 @@ export async function handleDraftRoutes(context: ConfigModelRouteContext): Promi
     if (!Number.isSafeInteger(id) || id <= 0) await paint(undefined, "stale");
     else
       await write(
-        () =>
-          dependencies.draftingOperations.setModel(state, context.scope.serverDiscId, route.slot, route.provider, id),
-        route.slot === "reviewer"
-          ? "server-config.workspace.response-reviewer.set"
-          : "server-config.workspace.response-decision.set",
+        () => dependencies.draftingOperations.setModel(state, context.scope.serverDiscId, route.provider, id),
+        "server-config.workspace.response-reviewer.set",
       );
   } else if (route.action === "draft-checker-select") {
     const value = context.selectedValue;

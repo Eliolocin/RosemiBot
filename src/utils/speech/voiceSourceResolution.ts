@@ -15,7 +15,7 @@ export { resolveVoiceSourceCapabilities } from "@/utils/speech/voiceSourceCapabi
 export type VoiceSourceId = "upload" | "typed-design" | "persona-sample" | "persona-design" | "elevenlabs";
 
 /** Request shape the source produces. */
-export type VoiceSourceShape = "clone" | "design" | "elevenlabs";
+type VoiceSourceShape = "clone" | "design" | "elevenlabs";
 
 /** Longest option label or description Discord accepts, per field. */
 export const VOICE_SOURCE_OPTION_TEXT_LIMIT = 100;

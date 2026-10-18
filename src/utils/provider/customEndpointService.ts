@@ -43,7 +43,7 @@ type RegistrationScope =
   | {
       kind: "personal";
       ownerId: number;
-      baseConfig: AssembledServerConfig;
+      baseConfig?: AssembledServerConfig;
     };
 
 export interface CustomEndpointRegistrationInput {

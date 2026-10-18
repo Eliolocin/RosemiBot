@@ -12,6 +12,8 @@ import { buildInteractionRouteId } from "@/utils/discord/interactions/routeRegis
 import { buildPanelContainer } from "@/utils/discord/ui/panel";
 import { resolveModelPricing } from "@/utils/provider/modelPricing";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
+import { truncateDiscordText } from "@/utils/text/discordTextLimits";
+import { DISCORD_BUTTON_LABEL_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { localizer } from "@/utils/text/localizer";
 import type { PromptInspection } from "@/utils/text/promptInspection/assemble";
 import {
@@ -83,7 +85,7 @@ function buildSnapshotButtonRow(
       type: ComponentType.Button,
       style: ButtonStyle.Secondary,
       customId: buildContextSnapshotRouteId(personaId, format),
-      label: localizer(locale, SNAPSHOT_BUTTON_KEYS[format]),
+      label: truncateDiscordText(localizer(locale, SNAPSHOT_BUTTON_KEYS[format]), DISCORD_BUTTON_LABEL_MAX),
       disabled: !canViewText,
     })),
   };

@@ -12,18 +12,17 @@ import {
   type ServerChatConfigRow,
   type TomoriState,
 } from "@/types/db/schema";
-import { configRepository, llmModelRepo, mcpRepository } from "@/utils/db/repositories";
+import { configRepository, mcpRepository } from "@/utils/db/repositories";
 import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCacheStore";
 import {
   loadConfigModelProviders,
   loadConfigModelChoices,
   type ConfigModelChoice,
 } from "@/utils/discord/interactions/configModelOperations";
-import type { DraftModelSlot } from "@/utils/discord/configPanelCatalog";
 import { getStaticProviderInfo } from "@/utils/provider/providerInfoRegistry";
 import { isCustomProvider } from "@/utils/provider/customProviderUtils";
 import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
-import { localizer, resolveDescription } from "@/utils/text/localizer";
+import { localizer } from "@/utils/text/localizer";
 
 export interface DraftCheckerChoice {
   reference: ResponseRuleCheckerRef;
@@ -35,7 +34,6 @@ export interface DraftModelGroup {
 }
 export interface ResponseDraftingView {
   reviewers: DraftModelGroup[];
-  decisions: DraftModelGroup[];
   checkers: DraftCheckerChoice[];
   inheritedReviewerAvailable: boolean;
 }
@@ -81,28 +79,10 @@ export function checkerFingerprint(choices: readonly DraftCheckerChoice[]): stri
     .slice(0, 8);
 }
 
-export async function loadDraftingModelGroups(
-  serverId: number,
-  slot: DraftModelSlot,
-  locale: string,
-): Promise<DraftModelGroup[]> {
-  if (slot === "decision") {
-    const options = await llmModelRepo.loadDecisionModelOptions({ kind: "server", ownerId: serverId });
-    const groups = new Map<string, ConfigModelChoice[]>();
-    for (const { model } of options) {
-      const models = groups.get(model.provider) ?? [];
-      models.push({
-        id: model.decision_model_id,
-        name: model.codename,
-        description: resolveDescription(model.descriptions, locale),
-      });
-      groups.set(model.provider, models);
-    }
-    return [...groups].map(([provider, models]) => ({ provider, models }));
-  }
+export async function loadDraftingModelGroups(serverId: number, locale: string): Promise<DraftModelGroup[]> {
   const providers = await loadConfigModelProviders(serverId, "text");
   const groups = await Promise.all(
-    providers.map(async ({ provider }) => {
+    providers.map(async (provider) => {
       if (!isCustomProvider(provider) && !getStaticProviderInfo(provider)?.featureSupport.structuredOutput)
         return { provider, models: [] };
       const models = await loadConfigModelChoices(
@@ -137,14 +117,12 @@ export async function loadDraftCheckerChoices(serverId: number): Promise<DraftCh
 }
 
 export async function loadResponseDraftingView(state: TomoriState, locale: string): Promise<ResponseDraftingView> {
-  const [reviewers, decisions, checkers] = await Promise.all([
-    loadDraftingModelGroups(state.server_id, "reviewer", locale),
-    loadDraftingModelGroups(state.server_id, "decision", locale),
+  const [reviewers, checkers] = await Promise.all([
+    loadDraftingModelGroups(state.server_id, locale),
     loadDraftCheckerChoices(state.server_id),
   ]);
   return {
     reviewers,
-    decisions,
     checkers,
     inheritedReviewerAvailable: reviewers.some((group) => group.models.some((model) => model.id === state.llm.llm_id)),
   };
@@ -161,7 +139,6 @@ export interface ResponseDraftingOperations {
   setModel(
     state: TomoriState,
     workspaceId: string,
-    slot: DraftModelSlot,
     provider: string,
     modelId: number | null,
   ): Promise<DraftWriteResult>;
@@ -195,17 +172,13 @@ export const responseDraftingOperations: ResponseDraftingOperations = {
     if (!parsed.success) return Promise.resolve("invalid");
     return writeChat(state, workspaceId, { response_review_items: parsed.data });
   },
-  async setModel(state, workspaceId, slot, provider, modelId) {
+  async setModel(state, workspaceId, provider, modelId) {
     if (modelId !== null) {
-      const groups = await loadDraftingModelGroups(state.server_id, slot, "en-US");
+      const groups = await loadDraftingModelGroups(state.server_id, "en-US");
       if (!groups.some((group) => group.provider === provider && group.models.some((model) => model.id === modelId)))
         return "stale";
     }
-    return writeChat(
-      state,
-      workspaceId,
-      slot === "reviewer" ? { response_reviewer_llm_id: modelId } : { response_decision_model_id: modelId },
-    );
+    return writeChat(state, workspaceId, { response_reviewer_llm_id: modelId });
   },
   async setPrompt(state, workspaceId, prompt) {
     if (prompt !== null && !responseReviewerPromptSchema.safeParse(prompt).success) return "invalid";
@@ -228,13 +201,8 @@ export async function validateDraftingImportReferences(
   patch: Partial<ServerChatConfigRow>,
 ): Promise<boolean> {
   if (patch.response_reviewer_llm_id != null) {
-    const reviewers = await loadDraftingModelGroups(serverId, "reviewer", "en-US");
+    const reviewers = await loadDraftingModelGroups(serverId, "en-US");
     if (!reviewers.some((group) => group.models.some((model) => model.id === patch.response_reviewer_llm_id)))
-      return false;
-  }
-  if (patch.response_decision_model_id != null) {
-    const decisions = await loadDraftingModelGroups(serverId, "decision", "en-US");
-    if (!decisions.some((group) => group.models.some((model) => model.id === patch.response_decision_model_id)))
       return false;
   }
   if (patch.response_rule_checker_ref != null) {

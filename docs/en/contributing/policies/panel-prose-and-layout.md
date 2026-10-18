@@ -24,8 +24,9 @@ Discord exposes no viewport width.
 
 Wrapping is visual; length limits are separate and use two different tools:
 
-- **Select slots** (option labels, values, descriptions, placeholders, modal titles and labels) use
-  `safeSelectOptionText`, which fits one slot to that slot's own limit.
+- **Component text slots** (button labels, select option labels, values, descriptions, placeholders,
+  modal titles and labels) use `safeSelectOptionText` or `truncateDiscordText`, which fit one slot to
+  that slot's own limit.
 - **Body text** uses `buildTextPreview` against the page's measured budget, and then
   `validateComponentsV2MessageLimits` checks the whole message. Discord allows 4,000 code points
   across all `TextDisplay` components, so a body that fits alone can still overflow the message.
@@ -108,7 +109,7 @@ Keep the `/en/` segment, as every docs link in `src/locales/en-US/` does.
   `COMPONENT_OPTION_VALUE_DUPLICATED`, and no static gate catches it.
 - A select that assigns or browses items orders its options as `None`, then `+ Add ...`, then the items.
   `None` clears the assignment and appears only while something is assigned; `+ Add ...` appears only
-  where the panel can create an item. Clearing and adding are options, not buttons below the select.
+  where the panel can create an item. Put clearing and adding actions inside the select's options.
 - A select that lists models labels its clear entry `commands.config.panel.model_no_model_option`,
   because `None` beside provider rows does not say what is cleared.
 - A persona picker that chooses from a shared library offers no `+ Add ...`; its notice points to the

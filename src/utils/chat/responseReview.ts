@@ -24,7 +24,6 @@ import { localizer } from "@/utils/text/localizer";
 import { charsToTokensText, type TokenUsage } from "@/utils/text/tokenEstimate";
 import { redactToolParametersForStorage } from "@/utils/tools/toolParameterRedaction";
 import { checkResponseRules, type RuleCheckState } from "@/utils/chat/responseRuleCheck";
-import { routeResponseDecision, getDecisionCalibration } from "@/utils/chat/responseDecisionRouting";
 
 export const MAX_RESPONSE_REVISIONS = 1;
 // Every revision is reviewed again, after the original candidate's review.
@@ -89,20 +88,18 @@ function formatRetryNote(malformed: MalformedReply): string {
   return `Your previous answer did not match the schema:\n${issues}\n${ask}`;
 }
 
-export type TurnUsageEntry = {
+export interface TurnUsageEntry {
+  kind: "author" | "reviewer";
   model: string;
   usage: TokenUsage;
-} & ({ kind: "author" | "reviewer" } | { kind: "decision"; decisionModelId: number });
+}
 
 /** Shared by stream passes, key rotation and model fallback for one admitted persona turn. */
 export interface ResponseReviewState {
   reviewerId: number | null;
   prompt: string;
   customPrompt: boolean;
-  decisionModelId: number | null;
   reviewItems: ResponseReviewItem[];
-  decisionRequests: number;
-  decisionVerdict?: { identity: string; skip: boolean };
   rules: RuleCheckState;
   responseReviews: number;
   revisions: number;
@@ -154,9 +151,7 @@ export function createResponseReviewState(context: ChatTurnContext): ResponseRev
   return {
     reviewerId: context.currentPersona.config.response_reviewer_llm_id,
     customPrompt: context.currentPersona.config.response_reviewer_prompt !== null,
-    decisionModelId: context.currentPersona.config.response_decision_model_id,
     reviewItems: [...context.currentPersona.config.response_review_items],
-    decisionRequests: 0,
     rules: { calls: 0 },
     prompt:
       context.currentPersona.config.response_reviewer_prompt ??
@@ -372,7 +367,6 @@ export function buildReviewerPacket(
       samplesIncluded: 0,
       // Samples are user/model pairs and are admitted whole, so coverage counts pairs.
       samplesTotal: Math.ceil(items.filter((item) => item.metadataTag === ContextItemTag.DIALOGUE_SAMPLE).length / 2),
-      // Decision routing treats anything but "text_only" as insufficient evidence for skipping review.
       media:
         [trigger, ...(replyTarget ? [replyTarget] : []), ...selectedItems].some((item) =>
           item.parts.some((part) => part.type !== "text"),
@@ -718,31 +712,6 @@ async function reviewCandidate(
         );
     if (cancelled() || rules?.status === "cancelled") return { status: "cancelled" };
     if (timeout.aborted || !rules) return unavailable("timeout", true);
-    const forceReview = rules.status === "report" || rules.status === "failed";
-    const routing = forceReview
-      ? "review"
-      : await runUnderWatchdog(context.channel.id, () =>
-          wait(
-            routeResponseDecision(
-              context.currentPersona.server_id,
-              state,
-              packet,
-              signal,
-              state.decisionModelId === null ? undefined : getDecisionCalibration(state.decisionModelId, kind),
-            ),
-          ),
-        );
-    if (cancelled() || routing === "cancelled") return { status: "cancelled" };
-    if (timeout.aborted || !routing) return unavailable("timeout", true);
-    trace("routing", {
-      reason: forceReview ? `rule_${rules.status}` : "decision_policy",
-      route: routing,
-      ruleStatus: rules.status,
-    });
-    if (routing === "skip") {
-      trace("skipped");
-      return { status: "pass" };
-    }
     const ruleEvidence = "evidence" in rules ? rules.evidence : undefined;
     const userPrompt = renderReviewerPrompt(
       packet,
@@ -759,6 +728,7 @@ async function reviewCandidate(
       estimatedInputTokens: charsToTokensText(userPrompt.length),
       outputTokens,
       coverage: packet.coverage,
+      ruleStatus: rules.status,
     });
     // Info is hidden at the production default level, the same exposure as the author's request dump.
     log.info(

@@ -14,6 +14,7 @@ import {
   PROVIDERS_ENTRIES_PER_SELECTOR_PAGE,
   PROVIDERS_MODELS_PER_SELECTOR_PAGE,
 } from "@/utils/discord/ui/providersPanel";
+import { validateRawModalLimits } from "@/utils/discord/ui/componentsV2Limits";
 import { initializeLocalizer, hasLocaleKey } from "@/utils/text/localizer";
 import { RUNTIME_LOCALES, expectForEveryLocale, localizedCopy } from "../../helpers/localeCases";
 import { BACKTICK_RUNS, expectSafePanelPayload } from "../../helpers/panelLimits";
@@ -342,6 +343,7 @@ describe("Decision registration controls", () => {
   it("localizes eligible add actions and keeps modal radio options within ten", () => {
     expectForEveryLocale((locale) => {
       const modal = buildAddEndpointModal(locale, "fixture");
+      expect(validateRawModalLimits(modal).violations, locale).toEqual([]);
       const compatibility = modal.components.find(
         (component) => component.type === 18 && component.component?.type === 21,
       )?.component;

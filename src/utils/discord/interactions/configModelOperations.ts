@@ -1,6 +1,6 @@
 import { validateOpenRouterSpeechModel } from "@/utils/cache/openrouterSpeechModelCache";
-import { setHostedSpeechSelection } from "@/utils/db/repositories/SpeechRepository";
-import { setSpeechEndpointSelection } from "@/utils/db/repositories/SpeechRepository";
+import { setHostedSpeechSelection, setSpeechEndpointSelection } from "@/utils/db/repositories/SpeechRepository";
+import { supportsSpeechMode, type VoiceSourceMode } from "@/utils/speech/voiceSourceCapabilities";
 import type {
   CustomEndpointRow,
   EmbeddingModelRow,
@@ -47,7 +47,7 @@ import { NAI_IMAGE_NOISE_SCHEDULES, NAI_IMAGE_SAMPLERS } from "@/utils/image/nai
 import { getMemoryLimits } from "@/utils/misc/memoryLimits";
 import { log } from "@/utils/misc/logger";
 import { resolveCapabilityCredentials } from "@/utils/provider/credentialResolver";
-import { isCustomProvider, parseCustomProvider } from "@/utils/provider/customProviderUtils";
+import { buildCustomProviderName, isCustomProvider, parseCustomProvider } from "@/utils/provider/customProviderUtils";
 import { resolveDescription } from "@/utils/text/localizer";
 import {
   buildFallbackModelPersistence,
@@ -85,14 +85,35 @@ export function resolveNaiPresetTarget(state: TomoriState): "kayra" | "erato" | 
 }
 
 /** Capability slot to the saved-provider capability whose eligibility list backs it. */
-const SAVED_PROVIDER_CAPABILITY: Record<ConfigCatalogModelCapability, SavedProviderCapability> = {
+const SAVED_PROVIDER_CAPABILITY: Record<Exclude<ConfigCatalogModelCapability, "decision">, SavedProviderCapability> = {
   text: "text",
   vision: "vision",
   embedding: "embedding",
   image: "image",
   "nai-image": "image",
   video: "video",
+  "tts-design": "speech_design",
+  "tts-clone": "speech_clone",
 };
+
+type ConfigSpeechCapability = Extract<ConfigCatalogModelCapability, "tts-design" | "tts-clone">;
+
+function isConfigSpeechCapability(capability: ConfigModelCapability): capability is ConfigSpeechCapability {
+  return capability === "tts-design" || capability === "tts-clone";
+}
+
+function speechModeForCapability(capability: ConfigSpeechCapability): VoiceSourceMode {
+  return capability === "tts-design" ? "design" : "clone";
+}
+
+async function loadServerSpeechEndpoints(serverId: number, mode: VoiceSourceMode): Promise<CustomEndpointRow[]> {
+  return (await llmProviderRepo.loadCustomEndpointsForServer(serverId)).filter(
+    (endpoint) =>
+      endpoint.capability === "speech" &&
+      endpoint.custom_endpoint_id !== undefined &&
+      supportsSpeechMode(endpoint, mode),
+  );
+}
 
 /**
  * Splits the single `image` eligibility list across the panel's two image slots.
@@ -116,16 +137,37 @@ export function filterProvidersForCapability(
   return [...providers];
 }
 
-export async function loadConfigModelProviders(
+async function loadEligibleSavedProviders(
   serverId: number,
-  capability: ConfigModelCapability,
+  capability: Exclude<ConfigCatalogModelCapability, ConfigSpeechCapability>,
 ): Promise<SavedProviderConfigRow[]> {
-  if (!isConfigCatalogModelCapability(capability)) {
-    // Speech and transcription are custom endpoint activations, not saved model providers.
-    return [];
-  }
+  if (capability === "decision") return loadDecisionModelProviders(serverId);
   const providers = await loadSavedProvidersForCapability(serverId, SAVED_PROVIDER_CAPABILITY[capability]);
   return filterProvidersForCapability(capability, providers);
+}
+
+export async function loadConfigModelProviders(serverId: number, capability: ConfigModelCapability): Promise<string[]> {
+  if (!isConfigCatalogModelCapability(capability)) return [];
+  if (!isConfigSpeechCapability(capability)) {
+    return (await loadEligibleSavedProviders(serverId, capability)).map((row) => row.provider);
+  }
+  // Speech connections are read from their endpoints because only an endpoint records which voice
+  // modes its connection serves.
+  const [hosted, endpoints] = await Promise.all([
+    loadSavedProvidersForCapability(serverId, SAVED_PROVIDER_CAPABILITY[capability]),
+    loadServerSpeechEndpoints(serverId, speechModeForCapability(capability)),
+  ]);
+  return [
+    ...hosted.map((row) => row.provider),
+    ...new Set(endpoints.map((endpoint) => buildCustomProviderName(endpoint.connection_id))),
+  ];
+}
+
+/** Decision models are not a saved-provider capability, so their providers come from owned registrations. */
+async function loadDecisionModelProviders(serverId: number): Promise<SavedProviderConfigRow[]> {
+  const options = await llmModelRepo.loadDecisionModelOptions({ kind: "server", ownerId: serverId });
+  const owned = new Set(options.map(({ model }) => model.provider));
+  return (await llmProviderRepo.loadSavedProviderConfigs(serverId)).filter((row) => owned.has(row.provider));
 }
 
 /** One selectable model in a capability slot, flattened so the renderer needs no per-slot branch. */
@@ -171,6 +213,14 @@ export async function loadConfigModelChoices(
           description: resolveDescription(model.descriptions, locale),
         }));
     }
+    case "decision":
+      return (await llmModelRepo.loadDecisionModelOptions(owner))
+        .filter(({ model }) => model.provider === provider)
+        .map(({ model }) => ({
+          id: model.decision_model_id,
+          name: model.codename,
+          description: resolveDescription(model.descriptions, locale),
+        }));
     case "image":
     case "nai-image": {
       const models = (await llmModelRepo.loadAvailableDiffusionModels(provider, false, owner)) ?? [];
@@ -198,11 +248,35 @@ export async function loadConfigModelChoices(
           description: resolveDescription(model.descriptions, locale),
         }));
     }
+    case "tts-design":
+    case "tts-clone": {
+      const mode = speechModeForCapability(capability);
+      if (isCustomProvider(provider)) {
+        const connectionId = parseCustomProvider(provider)?.connectionId;
+        return (await loadServerSpeechEndpoints(serverId, mode))
+          .filter(
+            (endpoint): endpoint is CustomEndpointRow & { custom_endpoint_id: number } =>
+              endpoint.connection_id === connectionId && endpoint.custom_endpoint_id !== undefined,
+          )
+          .map((endpoint) => ({
+            id: endpoint.custom_endpoint_id,
+            name: endpoint.model_name ?? endpoint.label,
+            description: null,
+          }));
+      }
+      return (await llmModelRepo.loadAvailableSpeechModels(provider, owner))
+        .filter((model) => supportsSpeechMode(model, mode))
+        .map((model) => ({
+          id: model.speech_model_id,
+          name: model.codename,
+          description: resolveDescription(model.descriptions, locale),
+        }));
+    }
   }
 }
 
 type ConfigModelSetResult =
-  | { status: "success"; modelName: string; reembedded: boolean }
+  | { status: "success"; modelName: string; reembedded: boolean; sourceChanged?: boolean }
   | { status: "already-selected"; modelName: string }
   | { status: "openrouter-moved" }
   | { status: "not-found" | "no-models" | "write-failed" };
@@ -297,14 +371,10 @@ export interface ConfigModelOperations {
     serverDiscId: string;
     capability: ConfigModelCapability;
   }): Promise<ConfigModelClearResult>;
-  activateWorkspaceEndpoint(input: {
+  activateTranscriptionEndpoint(input: {
     tomoriState: TomoriState;
     serverDiscId: string;
-    ownerId?: number;
-    scopeKind?: "server" | "personal";
-    capability: "tts-design" | "tts-clone" | "stt";
     customEndpointId: number;
-    targetKind?: "custom-endpoint" | "hosted-model";
   }): Promise<ActivateWorkspaceEndpointResult>;
   setProviderParameters(input: {
     tomoriState: TomoriState;
@@ -370,7 +440,12 @@ export interface ConfigModelOperations {
   }): Promise<ConfigNaiParametersResult>;
 }
 
-export function currentModelIdForCapability(state: TomoriState, capability: ConfigModelCapability): number | null {
+/** Speech slots hold either a hosted model or a custom endpoint, so `provider` picks which id is meant. */
+export function currentModelIdForCapability(
+  state: TomoriState,
+  capability: ConfigModelCapability,
+  provider?: string,
+): number | null {
   switch (capability) {
     case "text":
       return state.config.llm_id ?? null;
@@ -378,6 +453,8 @@ export function currentModelIdForCapability(state: TomoriState, capability: Conf
       return state.config.vision_llm_id ?? null;
     case "embedding":
       return state.config.embedding_model_id ?? null;
+    case "decision":
+      return state.config.decision_model_id;
     case "image":
       return state.config.diffusion_model_id ?? null;
     case "nai-image":
@@ -385,11 +462,58 @@ export function currentModelIdForCapability(state: TomoriState, capability: Conf
     case "video":
       return state.config.video_model_id ?? null;
     case "tts-design":
+      return provider && isCustomProvider(provider)
+        ? state.config.speech_design_endpoint_id
+        : state.config.speech_design_model_id;
     case "tts-clone":
+      return provider && isCustomProvider(provider)
+        ? state.config.speech_clone_endpoint_id
+        : state.config.speech_clone_model_id;
     case "stt":
       // Endpoint activation identity lives in custom_endpoints, not in a model id column.
       return null;
   }
+}
+
+async function setServerSpeechTarget(
+  state: TomoriState,
+  serverDiscId: string,
+  capability: ConfigSpeechCapability,
+  provider: string,
+  targetId: number,
+): Promise<ConfigModelSetResult> {
+  const eligible = (await loadConfigModelProviders(state.server_id, capability)).find(
+    (candidate) => candidate.toLowerCase() === provider.toLowerCase(),
+  );
+  if (!eligible) return { status: "not-found" };
+  const choices = await loadConfigModelChoices(state.server_id, capability, eligible);
+  if (choices.length === 0) return { status: "no-models" };
+  const choice = choices.find((candidate) => candidate.id === targetId);
+  if (!choice) return { status: "not-found" };
+  const mode = speechModeForCapability(capability);
+
+  if (isCustomProvider(eligible)) {
+    const result = await providerPanelOperations.activateWorkspaceEndpoint({
+      serverDiscId,
+      state,
+      capability: "speech",
+      mode,
+      customEndpointId: choice.id,
+    });
+    if (result.status === "success") {
+      return { status: "success", modelName: choice.name, reembedded: false, sourceChanged: result.sourceChanged };
+    }
+    return result.status === "already-active" ? { status: "already-selected", modelName: choice.name } : result;
+  }
+
+  if (choice.id === currentModelIdForCapability(state, capability, eligible)) {
+    return { status: "already-selected", modelName: choice.name };
+  }
+  // The OpenRouter catalog can drop a seeded model, so the live listing is rechecked before the write.
+  if (eligible === "openrouter" && !(await validateOpenRouterSpeechModel(choice.name))) return { status: "not-found" };
+  return (await setHostedSpeechSelection({ kind: "server", ownerId: state.server_id }, choice.id, mode))
+    ? { status: "success", modelName: choice.name, reembedded: false }
+    : { status: "write-failed" };
 }
 
 /**
@@ -497,11 +621,11 @@ function parseBoundedFloat(raw: string, min: number, max: number): number | null
 
 export const configModelOperations: ConfigModelOperations = {
   async setCapabilityModel({ tomoriState, serverDiscId, capability, provider, modelId }) {
-    if (capability === "tts-design" || capability === "tts-clone" || capability === "stt") {
-      // Endpoint activations are not model-column writes and have no model catalog to query.
-      return { status: "not-found" };
+    if (capability === "stt") return { status: "not-found" };
+    if (isConfigSpeechCapability(capability)) {
+      return setServerSpeechTarget(tomoriState, serverDiscId, capability, provider, modelId);
     }
-    const eligible = await loadConfigModelProviders(tomoriState.server_id, capability);
+    const eligible = await loadEligibleSavedProviders(tomoriState.server_id, capability);
     const savedConfig = eligible.find((row) => row.provider.toLowerCase() === provider.toLowerCase()) ?? null;
     if (!savedConfig) return { status: "not-found" };
 
@@ -588,9 +712,14 @@ export const configModelOperations: ConfigModelOperations = {
         ? await configRepository.updateNovelaiImagegenConfig(tomoriState.server_id, {
             nai_diffusion_model_id: choice.id,
           })
-        : capability === "image"
-          ? await configRepository.updateModelConfig(tomoriState.server_id, { diffusion_model_id: choice.id })
-          : await configRepository.updateModelConfig(tomoriState.server_id, { video_model_id: choice.id });
+        : await configRepository.updateModelConfig(
+            tomoriState.server_id,
+            capability === "image"
+              ? { diffusion_model_id: choice.id }
+              : capability === "decision"
+                ? { decision_model_id: choice.id }
+                : { video_model_id: choice.id },
+          );
     if (!updated) return { status: "write-failed" };
     invalidateTomoriStateCache(serverDiscId);
     return { status: "success", modelName: choice.name, reembedded: false };
@@ -615,63 +744,26 @@ export const configModelOperations: ConfigModelOperations = {
     if (currentModelIdForCapability(tomoriState, capability) === null) return { status: "already-clear" };
 
     const updated =
-      capability === "vision"
-        ? await configRepository.updateModelConfig(tomoriState.server_id, { vision_llm_id: null })
-        : capability === "image"
-          ? await configRepository.updateModelConfig(tomoriState.server_id, { diffusion_model_id: null })
-          : await configRepository.updateNovelaiImagegenConfig(tomoriState.server_id, {
-              nai_diffusion_model_id: null,
-            });
+      capability === "nai-image"
+        ? await configRepository.updateNovelaiImagegenConfig(tomoriState.server_id, { nai_diffusion_model_id: null })
+        : await configRepository.updateModelConfig(
+            tomoriState.server_id,
+            capability === "vision"
+              ? { vision_llm_id: null }
+              : capability === "image"
+                ? { diffusion_model_id: null }
+                : { decision_model_id: null },
+          );
     if (!updated) return { status: "write-failed" };
     invalidateTomoriStateCache(serverDiscId);
     return { status: "success" };
   },
 
-  async activateWorkspaceEndpoint({
-    tomoriState,
-    serverDiscId,
-    ownerId,
-    scopeKind,
-    capability,
-    customEndpointId,
-    targetKind,
-  }) {
-    if (targetKind === "hosted-model") {
-      if (capability === "stt") return { status: "not-found" };
-      const mode = capability === "tts-design" ? "design" : "clone";
-      const providers = await llmProviderRepo.loadSavedProviderConfigs(tomoriState.server_id);
-      const choices = (
-        await Promise.all(
-          providers
-            .filter((row) => row.api_key)
-            .map((row) =>
-              llmModelRepo.loadAvailableSpeechModels(row.provider, { kind: "server", ownerId: tomoriState.server_id }),
-            ),
-        )
-      ).flat();
-      const target = choices.find(
-        (model) =>
-          model.speech_model_id === customEndpointId && (model.voice_mode === mode || model.voice_mode === "auto"),
-      );
-      if (!target) return { status: "not-found" };
-      if (target.provider === "openrouter" && !(await validateOpenRouterSpeechModel(target.codename)))
-        return { status: "not-found" };
-      const success = await setHostedSpeechSelection(
-        { kind: "server", ownerId: tomoriState.server_id },
-        customEndpointId,
-        mode,
-      );
-      return success
-        ? { status: "success", identity: target.codename, sourceChanged: false }
-        : { status: "write-failed" };
-    }
+  activateTranscriptionEndpoint({ tomoriState, serverDiscId, customEndpointId }) {
     return providerPanelOperations.activateWorkspaceEndpoint({
       serverDiscId,
-      ownerId,
-      scopeKind,
       state: tomoriState,
-      capability: capability === "stt" ? "transcription" : "speech",
-      mode: capability === "stt" ? undefined : capability === "tts-design" ? "design" : "clone",
+      capability: "transcription",
       customEndpointId,
     });
   },

@@ -13,6 +13,9 @@ export default {
     next_steps_title: `Các bước tiếp theo nên làm`,
     learn_more_title: `Tìm hiểu thêm`,
     heads_up_title: `Một số lưu ý quan trọng`,
+    channel_access_warning_field: "Mình chưa thể trò chuyện trong kênh này",
+    channel_access_warning_value:
+      "Đã thiết lập xong, nhưng vai trò của mình không thể xem kênh này hoặc gửi tin nhắn ở đây, nên mình sẽ không trả lời trong kênh. Trong phần quyền của kênh hoặc danh mục chứa kênh, hãy cấp cho vai trò của mình quyền **Xem kênh**, **Gửi tin nhắn** và **Đọc lịch sử tin nhắn**.",
     novelai_expressions_warning_field: `Biểu cảm đã tắt`,
     novelai_expressions_warning_value:
       "Emoji và sticker đã được tự động tắt để giữ ngữ cảnh NovelAI gọn gàng và ổn định. Bạn có thể bật lại bất kỳ lúc nào qua `/config` > Permissions.",
@@ -151,6 +154,8 @@ Hãy thử {model_text_command} để chỉ định model đang hoạt động, 
       finish_incomplete: `Vui lòng hoàn thành mọi yêu cầu trước khi kết thúc thiết lập.`,
       provider_validation_failed_title: `Chưa lưu API key`,
       provider_validation_failed: `Nhà cung cấp đã từ chối API key đó hoặc không thể xác thực. Chưa lưu thông tin nào.`,
+      provider_validation_no_balance:
+        "Nhà cung cấp đã nhận diện API key đó, nhưng tài khoản hết số dư nên chưa thể trả lời tin nhắn. Hãy nạp tiền trên trang web của nhà cung cấp rồi gửi lại cùng key đó. Chưa lưu thông tin nào.",
       provider_invalid: `Nhà cung cấp đó không được hỗ trợ. Hãy mở lại menu và chọn một tùy chọn khả dụng.`,
       catalog_modal_title: `API key của nhà cung cấp`,
       catalog_provider_label: `Nhà cung cấp`,

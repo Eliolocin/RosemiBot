@@ -13,6 +13,9 @@ export default {
     next_steps_title: `建議的後續步驟`,
     learn_more_title: `深入了解`,
     heads_up_title: `幾件需要注意的事`,
+    channel_access_warning_field: "我還無法在這個頻道聊天",
+    channel_access_warning_value:
+      "設定已完成，但我的身分組無法檢視這個頻道或在這裡傳送訊息，所以我不會在這裡回覆。請在這個頻道或所屬類別的權限設定中，授予我的身分組**檢視頻道**、**傳送訊息**和**讀取訊息歷史**權限。",
     novelai_expressions_warning_field: `表情符號已停用`,
     novelai_expressions_warning_value:
       "表情符號與貼圖的使用已自動停用， 以保持 NovelAI 的脈絡精簡穩定。你隨時可以 用 `/config` > 權限重新啟用。",
@@ -149,6 +152,8 @@ export default {
       finish_incomplete: `結束設定前請先完成所有必要項目。`,
       provider_validation_failed_title: `API 金鑰未儲存`,
       provider_validation_failed: `供應商拒絕了這組 API 金鑰，或無法驗證它。沒有儲存任何內容。`,
+      provider_validation_no_balance:
+        "供應商已識別這組API金鑰，但帳戶沒有餘額，暫時無法回覆訊息。請到供應商網站儲值，再重新提交同一組金鑰。沒有儲存任何內容。",
       provider_invalid: `不支援這個供應商。請重新開啟選單並選擇目前的選項。`,
       catalog_modal_title: `供應商 API 金鑰`,
       catalog_provider_label: `供應商`,

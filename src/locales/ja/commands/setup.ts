@@ -13,6 +13,9 @@ export default {
     next_steps_title: `おすすめの次のステップ`,
     learn_more_title: `もっと詳しく`,
     heads_up_title: `いくつかの注意点`,
+    channel_access_warning_field: "このチャンネルではまだ会話できません",
+    channel_access_warning_value:
+      "設定は完了しましたが、私のロールはこのチャンネルを表示できないか、メッセージを送信できないため、ここでは応答しません。このチャンネルまたはカテゴリーの権限設定で、私のロールに**チャンネルを見る**、**メッセージを送信**、**メッセージ履歴を読む**を許可してください。",
     novelai_expressions_warning_field: `表現機能の無効化`,
     novelai_expressions_warning_value: `NovelAIのコンテキストを安定させるため、絵文字とスタンプの使用が自動的に無効化されました。\`/config\` > 権限 でいつでも再有効化できます。`,
     zai_tos_warning_field: `Z.ai利用規約について`,
@@ -149,6 +152,8 @@ export default {
       finish_incomplete: `セットアップを終了する前に、すべての必須項目を完了してください。`,
       provider_validation_failed_title: `API キーは保存されませんでした`,
       provider_validation_failed: `プロバイダーがその API キーを拒否したか、検証できませんでした。何も保存されていません。`,
+      provider_validation_no_balance:
+        "プロバイダーはそのAPIキーを認識しましたが、アカウントの残高がないため、まだメッセージに応答できません。プロバイダーのウェブサイトで残高を追加してから、同じキーを再送信してください。何も保存されていません。",
       provider_invalid: `そのプロバイダーはサポートされていません。メニューを開き直して、現在の選択肢から選んでください。`,
       catalog_modal_title: `プロバイダーAPIキー`,
       catalog_provider_label: `プロバイダー`,

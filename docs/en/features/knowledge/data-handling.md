@@ -41,12 +41,10 @@ privacy policy. Avoid sharing sensitive personal credentials or confidential dat
 
 ### Response Drafting selections
 
-`/config` > `Plugins` > `Response Drafting` stores reviewer, Decision model, optional rule checker,
+`/config` > `Plugins` > `Response Drafting` stores reviewer, optional rule checker,
 prompt choices, and enabled review items for the workspace. When On, replies are reviewed before
 they are sent. Tool requests are reviewed before execution only with `Tool Calls` enabled. An optional checker receives pending reply text and sends advisory findings
-only to the reviewer. Decision skipping is inactive pending labeled validation, and saved Decision
-selections make no paid calls while calibration is missing. Off keeps ordinary replies and tools
-without review requests.
+only to the reviewer. Off keeps ordinary replies and tools without review requests.
 
 The selected reviewer always receives the pending response, triggering message, and reply target.
 `Content to Check` controls which additional context already admitted to the author it receives:
@@ -71,7 +69,7 @@ evidence, corrections, provider response bodies, or keys.
 Configuration exports include these settings without API keys or MCP authentication tokens. Imports
 preserve model and checker references only when they are available to the receiving workspace.
 Register a local equivalent or clear unavailable selections before importing. Server configuration
-reset restores Off, reviewer inheritance, no Decision model, the default prompt, and no checker.
+reset restores Off, reviewer inheritance, the default prompt, and no checker.
 
 ## Export Your Data
 

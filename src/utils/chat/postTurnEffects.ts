@@ -100,7 +100,6 @@ async function recordUsageStats(context: ChatTurnContext, result: GenerationTurn
     const serverId = context.tomoriState.server_id;
     const userId = context.triggererUserId;
     const recordEntry = (entry: TurnUsageEntry) => {
-      const metricKey = entry.kind === "decision" ? `decision:${entry.decisionModelId}` : entry.model;
       for (const [direction, delta] of [
         ["in", entry.usage.inputTokens],
         ["out", entry.usage.outputTokens],
@@ -111,23 +110,16 @@ async function recordUsageStats(context: ChatTurnContext, result: GenerationTurn
           userId,
           lineageId,
           metric: direction === "in" ? "tokens_in" : "tokens_out",
-          metricKey,
+          metricKey: entry.model,
           delta,
         });
-        if (entry.kind === "reviewer" || entry.kind === "decision")
+        if (entry.kind === "reviewer")
           statRepository.recordStat({
             serverId,
             userId,
             lineageId,
-            metric:
-              entry.kind === "reviewer"
-                ? direction === "in"
-                  ? "reviewer_tokens_in"
-                  : "reviewer_tokens_out"
-                : direction === "in"
-                  ? "decision_tokens_in"
-                  : "decision_tokens_out",
-            metricKey,
+            metric: direction === "in" ? "reviewer_tokens_in" : "reviewer_tokens_out",
+            metricKey: entry.model,
             delta,
           });
       }

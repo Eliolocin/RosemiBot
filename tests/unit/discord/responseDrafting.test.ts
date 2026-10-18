@@ -48,7 +48,6 @@ afterEach(() => {
 });
 const view: ResponseDraftingView = {
   reviewers: [{ provider: "google", models: [{ id: 1, name: "gemini-2.5-flash", description: null }] }],
-  decisions: [{ provider: "openrouter", models: [{ id: 2, name: "fixture-decision", description: null }] }],
   checkers: [
     { reference: { scope: "workspace", registrationId: 5, toolName: "check_slop" }, label: "Fixture checker" },
   ],
@@ -59,7 +58,6 @@ it("defaults to Off with inherited review and no auxiliary selections", () => {
   const input: Record<string, unknown> = { ...createServerConfig(), server_id: 1 };
   for (const key of [
     "response_reviewer_llm_id",
-    "response_decision_model_id",
     "response_reviewer_prompt",
     "response_rule_checker_ref",
     "response_drafting_enabled",
@@ -70,7 +68,6 @@ it("defaults to Off with inherited review and no auxiliary selections", () => {
   expect(config.response_drafting_enabled).toBe(false);
   expect(config.response_review_items).toEqual(["persona", "examples", "history"]);
   expect(config.response_reviewer_llm_id).toBeNull();
-  expect(config.response_decision_model_id).toBeNull();
   expect(config.response_reviewer_prompt).toBeNull();
   expect(config.response_rule_checker_ref).toBeNull();
   expect(responseRuleCheckerRefSchema.safeParse({ scope: "workspace", registrationId: 5, toolName: "" }).success).toBe(
@@ -83,12 +80,11 @@ it("renders the fullest panel, unavailable states and real modals within Discord
   for (const locale of RUNTIME_LOCALES)
     failures.check(locale, () => {
       for (const enabled of [false, true])
-        for (const slot of ["reviewer", "decision", "checker"] as const) {
+        for (const slot of ["reviewer", "checker"] as const) {
           const state = createPersona({
             config: {
               response_drafting_enabled: enabled,
               response_reviewer_prompt: `\`\`\`\n${"🙂".repeat(3996)}`,
-              response_decision_model_id: 2,
               response_rule_checker_ref: view.checkers[0]?.reference ?? null,
             },
           });
@@ -130,7 +126,6 @@ it("renders the fullest panel, unavailable states and real modals within Discord
       const state = createPersona({
         config: {
           response_reviewer_llm_id: 999,
-          response_decision_model_id: 999,
           response_rule_checker_ref: { scope: "workspace", registrationId: 999, toolName: "check_slop" },
         },
       });
@@ -160,14 +155,37 @@ it("renders the fullest panel, unavailable states and real modals within Discord
             createPersona(),
             locale,
             "nonce123",
-            "decision",
-            view.decisions[0] ?? { provider: "openrouter", models: [] },
+            view.reviewers[0] ?? { provider: "google", models: [] },
             0,
           ),
         ).valid,
       ).toBe(true);
     });
   failures.expectNoFailures();
+});
+
+it("renders the checker select for a workspace without compatible checkers", () => {
+  for (const binding of [null, { scope: "workspace" as const, registrationId: 5, toolName: "check_slop" }]) {
+    const payload = buildConfigPanelPayload({
+      locale: "en-US",
+      actor: { workspaceKind: "guild", isManager: true },
+      category: "plugins",
+      page: "response-drafting",
+      personas: [createPersona({ config: { response_rule_checker_ref: binding } })],
+      selectedPersonaId: null,
+      readStatus: "fresh",
+      responseDraftingView: { ...view, checkers: [] },
+    });
+    expectSafePanelPayload(payload, `binding=${binding !== null}`);
+    let checkerSelect: { disabled?: boolean; options?: Array<{ value: string }> } | undefined;
+    JSON.stringify(payload, (_key, value) => {
+      if (typeof value?.customId === "string" && value.customId.includes("draft-checker-select")) checkerSelect = value;
+      return value;
+    });
+    expect(checkerSelect?.options?.map((option) => option.value)).toEqual([DRAFT_CLEAR_VALUE]);
+    // Enabled for a stale binding because None is then the only way to clear it.
+    expect(checkerSelect?.disabled).toBe(binding === null);
+  }
 });
 
 it("disables Use Default only while the reviewer prompt is already the default", () => {
@@ -212,7 +230,7 @@ it("validates checker input contracts and Unicode prompt limits", () => {
 });
 
 it("invalidates only after successful writes and leaves model choices intact on prompt/default and Off actions", async () => {
-  const state = createPersona({ config: { response_decision_model_id: 2 } });
+  const state = createPersona({ config: { response_reviewer_llm_id: 1 } });
   const entry = { personas: [state], mainPersona: state, cachedAt: Date.now() };
   const chat = spyOn(configRepository, "updateChatConfig").mockResolvedValue(false);
   const caps = spyOn(configRepository, "updateCapabilitiesConfig").mockResolvedValue(false);
@@ -230,10 +248,8 @@ it("invalidates only after successful writes and leaves model choices intact on 
   expect(await responseDraftingOperations.setPrompt(state, "draft-fixture", null)).toBe("success");
   expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_reviewer_prompt: null });
   expect(cache.has("draft-fixture")).toBe(false);
-  expect(await responseDraftingOperations.setModel(state, "draft-fixture", "reviewer", "", null)).toBe("success");
+  expect(await responseDraftingOperations.setModel(state, "draft-fixture", "", null)).toBe("success");
   expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_reviewer_llm_id: null });
-  expect(await responseDraftingOperations.setModel(state, "draft-fixture", "decision", "", null)).toBe("success");
-  expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_decision_model_id: null });
   expect(await responseDraftingOperations.setChecker(state, "draft-fixture", null)).toBe("success");
   expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_rule_checker_ref: null });
   expect(await responseDraftingOperations.setReviewItems(state, "draft-fixture", ["tools"])).toBe("success");
@@ -263,7 +279,7 @@ function harness(isManager = true, dm = false, currentView: ResponseDraftingView
       return scope;
     },
     loadResponseDraftingView: async () => currentView,
-    loadDraftModels: async (_id, slot) => (slot === "reviewer" ? currentView.reviewers : currentView.decisions),
+    loadDraftModels: async () => currentView.reviewers,
     loadDraftCheckers: async () => currentView.checkers,
     showModal: async (interaction, payload) => {
       expect(interaction.deferred).toBe(false);
@@ -376,28 +392,19 @@ it("prefills review items and saves a complete checkbox selection after acknowle
 
 it("routes clearing, default, prompt, model selection and checker binding after acknowledgement", async () => {
   const h = harness();
-  for (const slot of ["reviewer", "decision"] as const) {
-    const clearing = await h.dispatch({ action: "draft-provider", locale: "en-US", slot }, "string-select", [
-      "__none__",
-    ]);
-    expect(clearing.calls[0]?.method).toBe("deferUpdate");
-    expect(h.writes.at(-1)?.slice(-3)).toEqual([slot, "", null]);
-  }
+  const clearing = await h.dispatch({ action: "draft-provider", locale: "en-US" }, "string-select", ["__none__"]);
+  expect(clearing.calls[0]?.method).toBe("deferUpdate");
+  expect(h.writes.at(-1)?.slice(-2)).toEqual(["", null]);
   await h.dispatch({ action: "draft-default", locale: "en-US" });
   expect(h.writes.at(-1)?.at(-1)).toBeNull();
   await h.dispatch({ action: "draft-prompt-submit", locale: "en-US", nonce: "nonce123" }, "modal", [], {
     [buildConfigModalFieldId("draft_prompt", "nonce123")]: "instructions",
   });
   expect(h.writes.at(-1)?.at(-1)).toBe("instructions");
-  const opened = await h.dispatch({ action: "draft-provider", locale: "en-US", slot: "decision" }, "string-select", [
-    "openrouter",
-  ]);
+  const opened = await h.dispatch({ action: "draft-provider", locale: "en-US" }, "string-select", ["google"]);
   expect(opened.calls[0]?.method).toBe("showModal");
-  await h.dispatch(
-    { action: "draft-model-submit", locale: "en-US", slot: "decision", provider: "openrouter", nonce: "nonce123" },
-    "modal",
-  );
-  expect(h.writes.at(-1)?.slice(-3)).toEqual(["decision", "openrouter", 2]);
+  await h.dispatch({ action: "draft-model-submit", locale: "en-US", provider: "google", nonce: "nonce123" }, "modal");
+  expect(h.writes.at(-1)?.slice(-2)).toEqual(["google", 2]);
   await h.dispatch(
     { action: "draft-checker-select", locale: "en-US", start: 0, fp: checkerFingerprint(view.checkers) },
     "string-select",
@@ -437,11 +444,9 @@ it("keeps all reviewer provider windows and model pages reachable without pre-de
     ],
   };
   const h = harness(true, false, large);
-  const initial = await h.dispatch({ action: "draft-provider", locale: "en-US", slot: "reviewer" }, "string-select", [
-    "google",
-  ]);
+  const initial = await h.dispatch({ action: "draft-provider", locale: "en-US" }, "string-select", ["google"]);
   expect(initial.calls[0]?.method).toBe("deferUpdate");
-  const opened = await h.dispatch({ action: "draft-provider", locale: "en-US", slot: "reviewer" }, "string-select", [
+  const opened = await h.dispatch({ action: "draft-provider", locale: "en-US" }, "string-select", [
     encodeConfigProviderPageValue("google", 50),
   ]);
   expect(opened.calls[0]?.method).toBe("showModal");
@@ -472,10 +477,7 @@ it("keeps all reviewer provider windows and model pages reachable without pre-de
       draftPicker: { slot: "reviewer", provider: null, start },
     });
     expectSafePanelPayload(payload, `provider-window-${page}`);
-    const choices = selectOptions(
-      payload,
-      buildConfigRouteId({ action: "draft-provider", locale: "en-US", slot: "reviewer" }),
-    );
+    const choices = selectOptions(payload, buildConfigRouteId({ action: "draft-provider", locale: "en-US" }));
     for (const option of choices) {
       const range = decodeConfigProviderRangeValue(option.value);
       if (range) start = range.start;
@@ -496,7 +498,7 @@ it("preserves Unicode glyphs in existing configuration locale labels", () => {
   }
 });
 
-it("offers None for the rule checker only while one is bound, and pages the checker list without wrapping", () => {
+it("leads the rule checker list with None and pages it without wrapping", () => {
   const checkers = Array.from({ length: DRAFT_CHECKER_PAGE_SIZE + 1 }, (_, index) => ({
     reference: { scope: "workspace" as const, registrationId: index + 1, toolName: `check_${index}` },
     label: `Checker ${index}`,
@@ -522,10 +524,12 @@ it("offers None for the rule checker only while one is bound, and pages the chec
   const checkerValues = (binding: (typeof checkers)[number]["reference"] | null, start: number): string[] =>
     checkerOptions(binding, start).map((option) => option.value);
 
-  expect(checkerValues(null, 0)).not.toContain(DRAFT_CLEAR_VALUE);
-  expect(checkerValues(checkers[0]?.reference ?? null, 0)[0]).toBe(DRAFT_CLEAR_VALUE);
+  for (const binding of [null, checkers[0]?.reference ?? null]) {
+    expect(checkerValues(binding, 0)[0]).toBe(DRAFT_CLEAR_VALUE);
+  }
   expect(checkerValues(null, 0)).toContain(`page|${DRAFT_CHECKER_PAGE_SIZE}`);
   expect(checkerOptions(null, DRAFT_CHECKER_PAGE_SIZE)).toEqual([
+    { value: DRAFT_CLEAR_VALUE, label: localizedCopy("en-US", "commands.config.panel.none_label") },
     { value: String(DRAFT_CHECKER_PAGE_SIZE), label: `Checker ${DRAFT_CHECKER_PAGE_SIZE}` },
     { value: "page|0", label: localizedCopy("en-US", "general.pagination.previous") },
   ]);

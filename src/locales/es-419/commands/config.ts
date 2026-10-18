@@ -24,22 +24,16 @@ export default {
       review_context: "Memorias y otro contexto",
       review_tools: "Llamadas de herramientas",
       models_title: "Cambiar modelos",
-      models_description:
-        "Elige quién revisa mis borradores y si un modelo de decisiones comprueba cuáles necesitan una revisión detallada.",
+      models_description: "Elige quién revisa mis borradores.",
       reviewer_button: "Elegir modelo revisor",
-      decision_button: "Elegir modelo de decisiones",
       reviewer_label: "Revisor",
-      decision_label: "Decisiones",
       inherit: "Usar el modelo de respuesta actual",
       reviewer_status: "Revisor: {model}",
       inherited_status: "Revisor: modelo de respuesta actual, {model}",
-      decision_status: "Decisiones: {model}",
       none: "Ninguno",
       unavailable: "No disponible",
       inherited_unavailable:
         "Mi modelo de respuesta actual no admite salidas estructuradas, por lo que no puede revisar borradores. Elige otro revisor abajo.",
-      decision_note:
-        "La selección de decisiones permanece guardada. La omisión requiere umbrales validados para este modelo y cada rúbrica de revisión; la revisión detallada permanece activa dentro de sus límites.",
       rules_title: "Comprobaciones de reglas",
       rules_description:
         "Elige un verificador de reglas de texto opcional. Solo el revisor recibe sus observaciones orientativas. La cobertura de perfiles e idiomas se desconoce a menos que se verifique por separado; las respuestas cortas pueden no recibir análisis.",
@@ -930,6 +924,7 @@ export default {
       capability_text: `Texto`,
       capability_vision: `Visión`,
       capability_embedding: `Incrustación`,
+      capability_decision: "Decisión",
       capability_image: `Imagen estándar`,
       capability_nai_image: `Imagen de NovelAI`,
       capability_video: `Video`,
@@ -937,6 +932,7 @@ export default {
       capability_tts_clone: `TTS (Clon de voz)`,
       capability_stt: `Voz a texto`,
       capability_notice_title: `Notas`,
+      decision_inactive_note: "Los modelos de decisión son experimentales y todavía no hacen nada.",
       image_generation_disabled_direction:
         "La generación de imágenes está desactivada. Actívala bajo Permisos > Capacidades del bot.",
       image_generation_missing_model: `No hay un modelo utilizable configurado para generación de imágenes.`,

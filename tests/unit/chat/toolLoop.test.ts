@@ -4,7 +4,6 @@ import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import * as capabilityResolver from "@/utils/provider/providerCapabilityResolver";
 import * as crypto from "@/utils/security/crypto";
 import * as ruleChecks from "@/utils/chat/responseRuleCheck";
-import * as decisionRouting from "@/utils/chat/responseDecisionRouting";
 import { savedProviderConfigSchema } from "@/types/db/schema";
 import { log } from "@/utils/misc/logger";
 import { requestFollowUp, deleteStopRequest } from "@/utils/discord/stream/stopRequests";
@@ -2020,7 +2019,6 @@ describe("runToolLoop — contract tests", () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
     const evidence = { score: 50, advice: ["PRIVATE_RULE_ADVICE"] };
     const rules = spyOn(ruleChecks, "checkResponseRules");
-    const decisions = spyOn(decisionRouting, "routeResponseDecision").mockResolvedValue("review");
     try {
       for (const status of ["report", "failed"] as const) {
         rules.mockResolvedValue(status === "report" ? { status, evidence } : { status });
@@ -2062,17 +2060,14 @@ describe("runToolLoop — contract tests", () => {
         expect(JSON.stringify(result.personaResponses)).not.toContain("PRIVATE_RULE_");
         expect(JSON.stringify(context.responseReview.functionHistory)).not.toContain("PRIVATE_RULE_");
       }
-      expect(decisions).not.toHaveBeenCalled();
     } finally {
       rules.mockRestore();
-      decisions.mockRestore();
     }
   });
 
   it("clean/disabled rules cannot approve prose and tool review never checks arbitrary argument JSON", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");
     const rules = spyOn(ruleChecks, "checkResponseRules");
-    const decisions = spyOn(decisionRouting, "routeResponseDecision").mockResolvedValue("review");
     try {
       for (const status of ["clean", "disabled"] as const) {
         const text = "A quiet character waits by the door while the rain falls outside.";
@@ -2098,10 +2093,9 @@ describe("runToolLoop — contract tests", () => {
       Object.assign(provider, { callStructuredJSON: async () => ({ success: true, data: { status: "pass" } }) });
       await runToolLoop(makeParams(context, provider));
       expect(rules).not.toHaveBeenCalled();
-      expect(decisions.mock.calls.some(([, , packet]) => packet.kind === "tool_call")).toBe(true);
+      expect(context.responseReview.toolReviews).toBeGreaterThan(0);
     } finally {
       rules.mockRestore();
-      decisions.mockRestore();
     }
   });
   const rejection = {

@@ -121,8 +121,10 @@ resolution inherits the server target for that mode. Personal local endpoints ar
 
 Adding Google or OpenRouter applies its default speech model to Design or Clone respectively, using
 matching saved credentials. The catalogue seeds Flash TTS for Design and paid Fish S2.1 Pro for Clone;
-Flash-Lite and free Fish require explicit selection. Schema upgrades preserve existing targets and
-do not activate hosted defaults.
+Flash-Lite and free Fish require explicit selection. Schema upgrades preserve existing targets.
+Credentials saved before hosted speech existed receive the same defaults once, for each server and
+user with no speech target, registered speech endpoint, or personal speech assignment; each mode
+takes the first eligible provider in the order Google, OpenRouter, Vertex.
 
 Activating a registration replaces every slot its mode supports in one transaction. Auto replaces
 both slots with the same endpoint. Clearing one slot preserves the other. Mode edits clear unsupported

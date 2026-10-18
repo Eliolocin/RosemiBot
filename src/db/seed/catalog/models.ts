@@ -4451,16 +4451,14 @@ export const decisionSections: ModelSection<DecisionInput>[] = [
         inputTokenLimit: 64000,
         inputPricePerMillion: 0.042,
         outputPricePerMillion: 0,
-        desc: "Text predicates through the Decisions API. Registration does not activate response-review skipping.",
+        desc: "Text predicates through the Decisions API.",
         i18n: {
-          ja: "Decisions APIでテキストの条件を判定します。登録だけでは応答レビューのスキップは有効になりません。",
-          "pt-BR":
-            "Avalia condições de texto pela API Decisions. O registro não ativa o salto da revisão de respostas.",
-          "es-419":
-            "Evalúa condiciones de texto mediante la API Decisions. El registro no activa la omisión de la revisión de respuestas.",
-          "zh-TW": "透過Decisions API判斷文字條件。註冊不會啟用略過回覆審查。",
-          "zh-CN": "通过Decisions API判断文本条件。注册不会启用跳过回复审查。",
-          vi: "Đánh giá điều kiện văn bản qua API Decisions. Việc đăng ký không bật tính năng bỏ qua bước kiểm tra phản hồi.",
+          ja: "Decisions APIでテキストの条件を判定します。",
+          "pt-BR": "Avalia condições de texto pela API Decisions.",
+          "es-419": "Evalúa condiciones de texto mediante la API Decisions.",
+          "zh-TW": "透過Decisions API判斷文字條件。",
+          "zh-CN": "通过Decisions API判断文本条件。",
+          vi: "Đánh giá điều kiện văn bản qua API Decisions.",
         },
       },
       {

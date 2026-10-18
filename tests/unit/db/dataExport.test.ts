@@ -465,6 +465,20 @@ describe("v2 memory bundles", () => {
     expect(result.detectedSections).toEqual(["core"]);
     expect(result.droppedFields).toEqual([]);
   });
+
+  it("imports an older v2 workspace file that still carries a retired chat field", () => {
+    const result = parseExportFile({
+      version: EXPORT_V2_VERSION,
+      type: "workspace_config",
+      exported_at: "2026-01-01T00:00:00.000Z",
+      data: { chat: { ...validChatSection(), response_decision_model_id: 7 } },
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.droppedFields).toEqual(["response_decision_model_id"]);
+    expect(result.payload).toEqual({ chat: expect.not.objectContaining({ response_decision_model_id: 7 }) });
+  });
 });
 
 describe("v2 schema exports", () => {

@@ -91,6 +91,7 @@ In `/config` > Models > Switch Models, you can assign models and endpoints acros
 - **Text**: the main chat model.
 - **Vision**: reads images when the chat model cannot.
 - **Embeddings**: powers the [document knowledge base](/features/knowledge/memory/#document-knowledge-base-rag).
+- **Decision**: a registered [Decision model](#decision-models). No feature uses it yet.
 - **Standard Image**: standard image generation (see [Image Generation](/features/capabilities/media-generation/image-generation/)).
 - **NovelAI Image**: NovelAI image generation.
 - **Video**: video generation.
@@ -98,10 +99,12 @@ In `/config` > Models > Switch Models, you can assign models and endpoints acros
 - **TTS (Voice Clone)**: speaks using a reference sample or provider voice.
 - **STT Endpoint**: speech-to-text audio transcription endpoint.
 
-The first six slots choose model catalog records. The TTS and STT slots choose workspace-scoped
-endpoints instead, activating the selected endpoint rather than writing a model column. Register
-and edit those endpoints in `/providers`. `/personal config` retains six personal model-routing
-slots and does not include personal TTS/STT endpoint selectors.
+Each model slot lists only the providers that have at least one model for it. Pick a provider to
+choose one of its models. The TTS slots list Google, Vertex, and OpenRouter when their key can reach
+a speech model for that mode, plus each registered speech connection such as ElevenLabs or a local
+TTS server. The STT slot picks a registered transcription endpoint directly. Register and edit
+endpoints in `/providers`. `/personal config` offers the same hosted TTS slots but has no STT slot
+and no local speech endpoints.
 
 You can also manage backup keys for automatic failover and load balancing in `/providers`.
 
@@ -109,8 +112,8 @@ You can also manage backup keys for automatic failover and load balancing in `/p
 <!-- anchor: decision-models -->
 
 Decision Models are a separate category in `/providers` and `/personal providers`. They answer typed
-predicates with probabilities. Registration does not change the active chat model, establish
-calibration, or enable response-review skipping. These panels do not yet select a Decision model.
+predicates with probabilities. Registration does not change the active chat model. Pick the server's
+Decision model in `/config` > Models > Switch Models; no feature uses it yet.
 
 OpenRouter is the supported native provider. Save its key, open its model dropdown, and choose
 `+ Add new Decision Model`. Enter an ID from its verified Decision catalog. The global catalog
@@ -169,8 +172,8 @@ To add a custom endpoint:
    declare their own capabilities in that form, and image models declare which request modes
    they support.
 
-For TTS and STT, register the endpoint and its models in `/providers`, then choose and activate the
-endpoint in `/config` > Models > Switch Models. TTS slots also accept admitted Google, standard Vertex, and OpenRouter speech models.
+For TTS and STT, register the endpoint and its models in `/providers`, then pick it in the matching
+`/config` > Models > Switch Models slot. TTS slots also accept admitted Google, standard Vertex, and OpenRouter speech models.
 
 API compatibility determines the request paths and payloads the service implements, so it also
 determines which capability slots the connection prepares. Registering exact models for those slots

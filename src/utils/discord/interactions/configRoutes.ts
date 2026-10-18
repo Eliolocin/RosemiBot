@@ -696,8 +696,7 @@ const defaultDependencies: ConfigRouteDependencies = {
   loadModelChoices: (state, capability, provider, locale) =>
     loadConfigModelChoices(state.server_id, capability, provider, locale),
   loadFallbackOptions: loadConfigFallbackOptions,
-  loadModelProviders: async (state, capability) =>
-    (await loadConfigModelProviders(state.server_id, capability)).map((row) => row.provider),
+  loadModelProviders: (state, capability) => loadConfigModelProviders(state.server_id, capability),
   createGuildIdentity: createGuildIdentityPort,
   loadPersonaPreset: (lineageId, language) => configRepository.loadPresetByReference(lineageId, language),
   loadPresetSprites: (personaId, lineageId, language) =>

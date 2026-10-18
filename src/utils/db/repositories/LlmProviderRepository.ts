@@ -134,7 +134,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
       `;
       if (endpoints.count === 0 && registrations.count === 0) return false;
       if (serverId !== null)
-        await tx`UPDATE server_chat_configs SET response_decision_model_id = NULL WHERE server_id = ${serverId} AND response_decision_model_id = ${modelId}`;
+        await tx`UPDATE server_model_configs SET decision_model_id = NULL WHERE server_id = ${serverId} AND decision_model_id = ${modelId}`;
       await tx`
         DELETE FROM decision_models model WHERE decision_model_id = ${modelId}
           AND NOT EXISTS (SELECT 1 FROM scoped_model_registrations WHERE decision_model_id = ${modelId})
@@ -214,7 +214,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
             `;
         if (result.count === 0) return false;
         if (serverId !== null)
-          await tx`UPDATE server_chat_configs SET response_decision_model_id = NULL WHERE server_id = ${serverId} AND response_decision_model_id = ${decisionModelId}`;
+          await tx`UPDATE server_model_configs SET decision_model_id = NULL WHERE server_id = ${serverId} AND decision_model_id = ${decisionModelId}`;
         return true;
       });
       if (deleted && serverId !== null) this.invalidateWorkspace(serverId);
@@ -1606,9 +1606,11 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
             )
         `;
         await tx`UPDATE server_chat_configs SET
-          response_reviewer_llm_id = CASE WHEN response_reviewer_llm_id IN (SELECT llm_id FROM llms WHERE llm_provider = ${normalizedProvider}) THEN NULL ELSE response_reviewer_llm_id END,
-          response_decision_model_id = CASE WHEN response_decision_model_id IN (SELECT decision_model_id FROM decision_models WHERE provider = ${normalizedProvider}) THEN NULL ELSE response_decision_model_id END
+          response_reviewer_llm_id = CASE WHEN response_reviewer_llm_id IN (SELECT llm_id FROM llms WHERE llm_provider = ${normalizedProvider}) THEN NULL ELSE response_reviewer_llm_id END
           WHERE server_id = ${serverId}`;
+        await tx`UPDATE server_model_configs SET decision_model_id = NULL
+          WHERE server_id = ${serverId}
+            AND decision_model_id IN (SELECT decision_model_id FROM decision_models WHERE provider = ${normalizedProvider})`;
         return true;
       });
       if (deleted) this.invalidateWorkspace(serverId);

@@ -176,7 +176,6 @@ const serverModelConfigExportSchema = z.object({
  */
 const serverChatConfigExportSchema = z.object({
   response_reviewer_llm_id: z.number().int().positive().nullable().optional(),
-  response_decision_model_id: z.number().int().positive().nullable().optional(),
   response_reviewer_prompt: responseReviewerPromptSchema.nullable().optional(),
   response_rule_checker_ref: z.preprocess(normalizeJsonColumn, responseRuleCheckerRefSchema.nullable()).optional(),
   response_review_items: responseReviewItemsSchema.optional(),
@@ -886,7 +885,33 @@ function addEnvelopeMetadata<TPayload extends ParsedExportPayload>(
   };
 }
 
-function parseV2Export(input: unknown): ExportParseResult {
+/** Sections are strict, so fields removed from the schema are stripped from older v2 files before validation. */
+const RETIRED_WORKSPACE_CONFIG_FIELDS = { chat: ["response_decision_model_id"] } as const;
+
+function stripRetiredWorkspaceConfigFields(input: Record<string, unknown>): {
+  input: Record<string, unknown>;
+  droppedFields: string[];
+} {
+  const data = getEnvelopeData(input);
+  if (input.type !== "workspace_config" || !data) return { input, droppedFields: [] };
+  const stripped: Record<string, unknown> = { ...data };
+  const droppedFields: string[] = [];
+  for (const [section, fields] of Object.entries(RETIRED_WORKSPACE_CONFIG_FIELDS)) {
+    const values = stripped[section];
+    if (!isRecord(values)) continue;
+    const kept = { ...values };
+    for (const field of fields) {
+      if (!Object.hasOwn(kept, field)) continue;
+      delete kept[field];
+      droppedFields.push(field);
+    }
+    stripped[section] = kept;
+  }
+  return { input: { ...input, data: stripped }, droppedFields };
+}
+
+function parseV2Export(source: Record<string, unknown>): ExportParseResult {
+  const { input, droppedFields } = stripRetiredWorkspaceConfigFields(source);
   const validated = getV2ExportSchema().safeParse(input);
   if (!validated.success) return { success: false, error: `Invalid v2 export: ${formatSchemaError(validated.error)}` };
 
@@ -898,7 +923,7 @@ function parseV2Export(input: unknown): ExportParseResult {
       sourceType: envelope.type,
       detectedSections: Object.keys(envelope.data),
       payload: envelope.data,
-      droppedFields: [],
+      droppedFields,
     };
   }
 
