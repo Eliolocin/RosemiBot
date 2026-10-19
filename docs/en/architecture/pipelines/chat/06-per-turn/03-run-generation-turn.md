@@ -45,6 +45,10 @@ Running such an attempt switches credential attribution to the server. Tools ret
 Each attempt prepares media for its capabilities, trims history to known context limits with an
 output reserve, and formats prefill as a model continuation or tail directive.
 
+Personal Text attempts apply the active provider's saved sampler settings before request construction
+and history truncation. An explicit personal output-token limit overrides the server limit for both;
+an unset personal limit inherits the server setting. Both paths clamp the limit to the model's ceiling.
+
 ### Superseded message cleanup
 
 After a partially delivered failure, `deleteSupersededStreamMessages()` removes tracked messages
