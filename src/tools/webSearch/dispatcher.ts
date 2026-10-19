@@ -5,7 +5,7 @@
  * For non-text categories, returns a friendly "category unavailable" message
  * when no engine in the chain supports/serves the request.
  *
- * Chain order: Brave → SearXNG → DuckDuckGo.
+ * Chain order: Brave → SearXNG → OpenRouter → DuckDuckGo.
  *   - Brave first (lowest latency, best quality when keyed).
  *   - SearXNG plugs in for self-hosted operators without a Brave key.
  *   - DuckDuckGo is the keyless text-only fallback.
@@ -17,12 +17,18 @@ import { localizer } from "@/utils/text/localizer";
 import { BraveEngine } from "./braveEngine";
 import { SearxngEngine } from "./searxngEngine";
 import { DuckDuckGoEngine } from "./duckduckgoEngine";
+import { OpenRouterEngine } from "@/tools/webSearch/openrouterEngine";
 import { getSearchCategoryLabel } from "./categoryMetadata";
 import type { SearchCategory, WebSearchEngine } from "./types";
 
 // Singleton chain : engines are stateless so a single instance is reusable
 //    across all tool invocations.
-const ENGINE_CHAIN: readonly WebSearchEngine[] = [new BraveEngine(), new SearxngEngine(), new DuckDuckGoEngine()];
+const ENGINE_CHAIN: readonly WebSearchEngine[] = [
+  new BraveEngine(),
+  new SearxngEngine(),
+  new OpenRouterEngine(),
+  new DuckDuckGoEngine(),
+];
 
 /**
  * Execute a web search, walking the chain until one engine returns a

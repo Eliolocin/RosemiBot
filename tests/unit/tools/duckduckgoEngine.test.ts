@@ -10,13 +10,16 @@ import {
   parseDuckDuckGoHtml,
 } from "@/tools/webSearch/duckduckgoEngine";
 import { SearxngEngine } from "@/tools/webSearch/searxngEngine";
+import { OpenRouterEngine } from "@/tools/webSearch/openrouterEngine";
 import { WebSearchTool } from "@/tools/webSearch/webSearchTool";
 import type { ToolContext } from "@/types/tool/interfaces";
 import * as embedHelper from "@/utils/discord/embedHelper";
 import * as toolProgressNotice from "@/utils/discord/toolProgressNotice";
 import * as remoteFetch from "@/utils/security/userRemoteFetch";
+import * as crypto from "@/utils/security/crypto";
+import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { initializeLocalizer } from "@/utils/text/localizer";
-import { createPersona } from "../../helpers/fixtures";
+import { createLlmRow, createPersona } from "../../helpers/fixtures";
 import { localizedCopy } from "../../helpers/localeCases";
 import { stubLogMembers } from "../../helpers/mockSurface";
 
@@ -82,6 +85,24 @@ const urlsFound = (result: { data?: unknown }) => (result.data as { urlsFound?: 
 
 const html = (body: string, status = 200) =>
   new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
+
+function openRouterContext(overrides: Partial<ToolContext> = {}): ToolContext {
+  return makeContext({
+    provider: "openrouter",
+    tomoriState: createPersona({
+      llm: createLlmRow({ llm_provider: "openrouter", llm_codename: "openai/gpt-4.1-nano" }),
+      config: { api_key: Buffer.from("encrypted-fixture"), key_version: 2 },
+    }),
+    ...overrides,
+  });
+}
+
+const citation = (url: string, title = "Fixture title", content = "Fixture excerpt") => ({
+  type: "url_citation",
+  url_citation: { url, title, content },
+});
+const searchResponse = (annotations: unknown[]) =>
+  Response.json({ choices: [{ message: { content: "", annotations }, finish_reason: "length" }] });
 
 beforeAll(async () => {
   await initializeLocalizer();
@@ -253,6 +274,176 @@ describe("DuckDuckGo engine requests", () => {
   });
 });
 
+describe("OpenRouter engine requests", () => {
+  const engine = new OpenRouterEngine();
+  let restore: Array<{ mockRestore(): void }> = [];
+
+  afterEach(() => {
+    for (const spy of restore) spy.mockRestore();
+    restore = [];
+  });
+
+  function stubOpenRouter(respond: (init?: RequestInit) => Response | Promise<Response>) {
+    const decrypt = spyOn(crypto, "decryptApiKey").mockResolvedValue("fixture-api-key");
+    const request = spyOn(globalThis, "fetch").mockImplementation(
+      Object.assign(async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => await respond(init), {
+        preconnect: () => undefined,
+      }),
+    );
+    restore.push(decrypt, request);
+    return { decrypt, request };
+  }
+
+  it("is available only on OpenRouter turns with a saved credential and supports text only", async () => {
+    expect(await engine.available(openRouterContext())).toBe(true);
+    expect(await engine.available(openRouterContext({ provider: "google" }))).toBe(false);
+    expect(await engine.available(openRouterContext({ tomoriState: createPersona() }))).toBe(false);
+    expect(engine.supportsCategory("text")).toBe(true);
+    expect(engine.supportsCategory("news")).toBe(false);
+  });
+
+  it("extracts bounded, unique citations into the summary even when the completion has no text", async () => {
+    const { decrypt, request } = stubOpenRouter(() =>
+      searchResponse([
+        citation("https://example.com/guide", "Guide", "Search excerpt"),
+        citation("https://example.com/guide", "Duplicate"),
+        citation("javascript:alert(1)", "Script"),
+        citation("https://user:secret@example.com/", "Credentials"),
+        citation("http://[", "Malformed"),
+        { type: "url_citation", url_citation: { url: "https://bad.example/", content: 7 } },
+        { type: "other" },
+        { type: "url_citation", url_citation: { url: "https://docs.example.org/" } },
+        citation("https://extra.example/", "Extra"),
+      ]),
+    );
+    const notice = spyOn(toolProgressNotice, "sendToolNotice").mockResolvedValue();
+    restore.push(notice);
+    const context = openRouterContext();
+
+    const result = await engine.search("q".repeat(600), "text", context, 2);
+
+    expect(result.success).toBe(true);
+    expect(decrypt).toHaveBeenCalledWith(context.tomoriState.config.api_key, 2);
+    expect(notice.mock.calls[0][2].titleKey).toBe("tools.search.category_search_title");
+    expect(request.mock.calls[0][0]).toBe("https://openrouter.ai/api/v1/chat/completions");
+    const init = request.mock.calls[0][1];
+    expect(init?.method).toBe("POST");
+    expect(init?.redirect).toBe("error");
+    expect(init?.headers).toMatchObject({
+      Authorization: "Bearer fixture-api-key",
+      ...buildOpenRouterAttributionHeaders(),
+    });
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    const body = JSON.parse(String(init?.body));
+    expect(body.model).toBe(context.tomoriState.llm.llm_codename);
+    expect(body.stream).toBe(false);
+    expect(body.plugins).toEqual([{ id: "web", engine: "exa", max_results: 2 }]);
+    expect(body.max_tokens).toBe(1);
+    expect(body.messages[0].content).toContain("q".repeat(500));
+    expect(body.messages[0].content).not.toContain("q".repeat(501));
+    expect(urlsFound(result)).toBe(2);
+    const summary = (result.data as { summary: string }).summary;
+    for (const expected of [
+      "https://example.com/guide",
+      "Guide",
+      "Search excerpt",
+      "https://docs.example.org/",
+      "fetch_url",
+    ]) {
+      expect(summary).toContain(expected);
+    }
+    for (const rejected of ["Duplicate", "javascript:", "secret", "https://bad.example/", "https://extra.example/"]) {
+      expect(summary).not.toContain(rejected);
+    }
+    expect(result.message).toBe(summary);
+  });
+
+  it("caps result counts and excerpt lengths", async () => {
+    const { request } = stubOpenRouter(() =>
+      searchResponse(
+        Array.from({ length: 25 }, (_, index) =>
+          citation(`https://site${index}.example/`, "t".repeat(500), "c".repeat(6000)),
+        ),
+      ),
+    );
+    const result = await engine.search("fixture", "text", openRouterContext(), 50);
+    expect(JSON.parse(String(request.mock.calls[0][1]?.body)).plugins[0].max_results).toBe(20);
+    expect(urlsFound(result)).toBe(20);
+    expect(result.message).not.toContain("t".repeat(301));
+    expect(result.message).not.toContain("c".repeat(4001));
+  });
+
+  it("fails safely on HTTP errors, missing citations, malformed JSON, and transport errors", async () => {
+    const { request } = stubOpenRouter(() => searchResponse([]));
+    const embed = spyOn(embedHelper, "sendStandardEmbed").mockResolvedValue();
+    restore.push(embed);
+    const responders = [
+      ...[402, 429, 503].map((status) => () => new Response("fixture-secret-upstream-body", { status })),
+      () => searchResponse([]),
+      () => Response.json({ choices: [{ message: { content: "Uncited synthesis" } }] }),
+      () => searchResponse([citation("ftp://example.com/file")]),
+      () => Response.json({ choices: [] }),
+      () => new Response("{bad json"),
+      () => {
+        throw new Error("fixture-secret-upstream-body");
+      },
+    ];
+    for (const respond of responders) {
+      request.mockImplementationOnce(Object.assign(async () => respond(), { preconnect: () => undefined }));
+      const result = await engine.search("fixture", "text", openRouterContext());
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(JSON.stringify(result)).not.toContain("fixture-secret-upstream-body");
+    }
+    expect(embed).not.toHaveBeenCalled();
+  });
+
+  it("cancels an oversized response instead of reading it indefinitely", async () => {
+    let cancelled = false;
+    stubOpenRouter(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.enqueue(new Uint8Array(64 * 1024));
+            },
+            cancel() {
+              cancelled = true;
+            },
+          }),
+        ),
+    );
+    expect((await engine.search("fixture", "text", openRouterContext())).success).toBe(false);
+    expect(cancelled).toBe(true);
+  });
+
+  it("stops on turn cancellation and on its request deadline", async () => {
+    const controller = new AbortController();
+    let requestSignal: AbortSignal | null | undefined;
+    const { request } = stubOpenRouter(
+      (init) =>
+        new Promise<Response>((_, reject) => {
+          requestSignal = init?.signal;
+          requestSignal?.addEventListener("abort", () => reject(requestSignal?.reason), { once: true });
+          controller.abort();
+        }),
+    );
+    expect(
+      (await engine.search("fixture", "text", openRouterContext({ abortSignal: controller.signal }))).success,
+    ).toBe(false);
+    expect(requestSignal?.aborted).toBe(true);
+
+    const timeout = spyOn(AbortSignal, "timeout").mockReturnValue(
+      AbortSignal.abort(new DOMException("", "TimeoutError")),
+    );
+    restore.push(timeout);
+    request.mockClear();
+    expect((await engine.search("fixture", "text", openRouterContext())).success).toBe(false);
+    expect(timeout.mock.calls[0][0]).toBeGreaterThanOrEqual(1000);
+    expect(request).not.toHaveBeenCalled();
+  });
+});
+
 describe("web_search engine chain", () => {
   let restore: Array<{ mockRestore(): void }> = [];
 
@@ -295,12 +486,74 @@ describe("web_search engine chain", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("tries Brave, SearXNG, OpenRouter, and DuckDuckGo in order until one succeeds", async () => {
+    configureBackends(true, true);
+    const attempts: string[] = [];
+    const brave = spyOn(BraveEngine.prototype, "search").mockImplementation(async () => {
+      attempts.push("brave");
+      return { success: false };
+    });
+    const searxng = spyOn(SearxngEngine.prototype, "search").mockImplementation(async () => {
+      attempts.push("searxng");
+      return { success: false };
+    });
+    const openrouter = spyOn(OpenRouterEngine.prototype, "search").mockImplementation(async () => {
+      attempts.push("openrouter");
+      return { success: true, message: "openrouter" };
+    });
+    const ddg = stubSearchFetch(() => {
+      attempts.push("duckduckgo");
+      return html(RESULTS_PAGE);
+    });
+    restore.push(brave, searxng, openrouter, ddg.spy);
+
+    expect((await new WebSearchTool().execute({ query: "fixture" }, openRouterContext())).message).toBe("openrouter");
+    expect(attempts).toEqual(["brave", "searxng", "openrouter"]);
+    attempts.length = 0;
+    openrouter.mockImplementation(async () => {
+      attempts.push("openrouter");
+      return { success: false };
+    });
+    expect((await new WebSearchTool().execute({ query: "fixture" }, openRouterContext())).success).toBe(true);
+    expect(attempts).toEqual(["brave", "searxng", "openrouter", "duckduckgo"]);
+  });
+
+  it("falls through to DuckDuckGo after an OpenRouter insufficient-credit response", async () => {
+    configureBackends(false, false);
+    const decrypt = spyOn(crypto, "decryptApiKey").mockResolvedValue("fixture-api-key");
+    const request = spyOn(globalThis, "fetch").mockResolvedValue(new Response("credits", { status: 402 }));
+    const ddg = stubSearchFetch(() => html(RESULTS_PAGE));
+    restore.push(decrypt, request, ddg.spy);
+    expect((await new WebSearchTool().execute({ query: "fixture" }, openRouterContext())).success).toBe(true);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(ddg.calls).toHaveLength(1);
+  });
+
+  it("advertises OpenRouter text search while preserving configured backend categories and priority", async () => {
+    configureBackends(false, false);
+    const context = openRouterContext();
+    const assembled = await new WebSearchTool().assembleForContext({
+      provider: context.provider,
+      state: { ...context.tomoriState, server_id: "1", activePersonaHasElevenlabsVoice: false },
+    });
+    expect(assembled?.description).toContain("OpenRouter Search");
+    expect(assembled?.parameters.properties.category.enum).toEqual(["text"]);
+    for (const backend of restore.splice(0)) backend.mockRestore();
+    configureBackends(true, false);
+    const brave = await resolveWebSearchToolCapabilities(1, "openrouter");
+    expect(brave.engineLabel).toBe("Brave Search");
+    expect(brave.categories).toContain("image");
+    for (const backend of restore.splice(0)) backend.mockRestore();
+    configureBackends(false, true);
+    expect((await resolveWebSearchToolCapabilities(1, "openrouter")).categories).toContain("papers");
+  });
+
   it("keeps non-text categories behind their configured providers", async () => {
     configureBackends(false, false);
     const { calls, spy } = stubSearchFetch(() => html(RESULTS_PAGE));
     restore.push(spy);
 
-    const result = await new WebSearchTool().execute({ query: "fixture", category: "papers" }, makeContext());
+    const result = await new WebSearchTool().execute({ query: "fixture", category: "papers" }, openRouterContext());
 
     expect(result.success).toBe(false);
     expect(result.message).toBe(

@@ -4,7 +4,7 @@
  * Replaces the previously-LLM-visible 4-tool Brave surface (`brave_web_search`,
  * `brave_image_search`, `brave_video_search`, `brave_news_search`) with one
  * tool that takes a `category` enum. The dispatcher routes to whichever
- * engine in the chain (Brave → SearXNG → DuckDuckGo) can serve the
+ * engine in the chain (Brave → SearXNG → OpenRouter → DuckDuckGo) can serve the
  * requested category.
  *
  * Saves ~400 tokens/turn from removed tool declarations and eliminates
@@ -101,7 +101,10 @@ export class WebSearchTool extends BaseTool {
 
   async assembleForContext(context: ToolAssemblyContext): Promise<Tool | null> {
     const serverId = Number.parseInt(context.state.server_id, 10);
-    const capabilities = await resolveWebSearchToolCapabilities(Number.isInteger(serverId) ? serverId : undefined);
+    const capabilities = await resolveWebSearchToolCapabilities(
+      Number.isInteger(serverId) ? serverId : undefined,
+      context.provider,
+    );
     return buildWebSearchToolVariant(this, capabilities);
   }
 

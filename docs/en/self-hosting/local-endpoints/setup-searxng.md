@@ -7,7 +7,7 @@ aiGenerated: true
 
 Add private, self-hosted web search to TomoriBot using [SearXNG](https://docs.searxng.org/).
 
-The `web_search` tool queries an engine fallback chain: Brave, SearXNG, and DuckDuckGo. Running a local SearXNG instance provides a self-hosted search source when an external provider hits rate limits or fails, and enables specialized search categories: `science`, `it`, `files`, and `music`.
+The `web_search` tool queries Brave, SearXNG, OpenRouter Search, and DuckDuckGo in that order. OpenRouter Search handles text searches only on OpenRouter turns with a saved key. Running a local SearXNG instance provides a self-hosted search source when an external provider hits rate limits or fails, and enables specialized search categories: `science`, `it`, `files`, and `music`.
 
 Choose a setup path:
 
@@ -69,9 +69,9 @@ Without `SEARXNG_SECRET` in the container environment, the image generates an ep
 
 ### Option C: No SearXNG
 
-Leave `SEARXNG_BASE_URL` unset. The chain falls back to `Brave → DuckDuckGo`.
+Leave `SEARXNG_BASE_URL` unset. The chain tries Brave, then OpenRouter Search on OpenRouter turns, then DuckDuckGo. OpenRouter Search uses the active model and OpenRouter credits, including with free chat models. Failed searches, including insufficient-credit errors, fall through to DuckDuckGo.
 
-When no SearXNG server is configured, the assembled `web_search` schema no longer advertises SearXNG-only categories. The common categories (`text`, `image`, `video`, `news`) still appear when Brave is configured, and text-only search appears when only the built-in DuckDuckGo fallback is available.
+When no SearXNG server is configured, the assembled `web_search` schema no longer advertises SearXNG-only categories. The common categories (`text`, `image`, `video`, `news`) still appear when Brave is configured. OpenRouter Search and DuckDuckGo expose text search only.
 
 ---
 
