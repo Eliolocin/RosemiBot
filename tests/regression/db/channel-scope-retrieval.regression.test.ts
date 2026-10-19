@@ -85,19 +85,23 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("document retrieval channel scope", () => {
 
   it("matches a scoped document in its channel and that channel's threads", async () => {
     if (!ragReady) return;
-    expect(await retrievedNames([SCOPED_CHANNEL])).toEqual(["_rt_scoped", "_rt_unscoped"]);
-    expect(await retrievedNames([THREAD_IN_SCOPED_CHANNEL, SCOPED_CHANNEL])).toEqual(["_rt_scoped", "_rt_unscoped"]);
+    expect(await retrievedNames([SCOPED_CHANNEL])).toEqual(["_rt_pending", "_rt_scoped", "_rt_unscoped"]);
+    expect(await retrievedNames([THREAD_IN_SCOPED_CHANNEL, SCOPED_CHANNEL])).toEqual([
+      "_rt_pending",
+      "_rt_scoped",
+      "_rt_unscoped",
+    ]);
   });
 
   it("keeps an unscoped document everywhere and a scoped one out of other channels", async () => {
     if (!ragReady) return;
-    expect(await retrievedNames([OTHER_CHANNEL])).toEqual(["_rt_unscoped"]);
+    expect(await retrievedNames([OTHER_CHANNEL])).toEqual(["_rt_pending", "_rt_unscoped"]);
   });
 
-  it("keeps a document with an unresolved legacy scope out of every channel", async () => {
+  it("treats a document with an unresolved legacy scope as active in every channel", async () => {
     if (!ragReady) return;
-    expect(await retrievedNames([SCOPED_CHANNEL])).not.toContain("_rt_pending");
-    expect(await retrievedNames([OTHER_CHANNEL])).not.toContain("_rt_pending");
+    expect(await retrievedNames([SCOPED_CHANNEL])).toContain("_rt_pending");
+    expect(await retrievedNames([OTHER_CHANNEL])).toContain("_rt_pending");
   });
 
   it("applies no scope when the caller passes no channel filter", async () => {

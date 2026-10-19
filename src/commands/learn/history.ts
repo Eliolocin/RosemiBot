@@ -178,7 +178,7 @@ async function loadInCharacterMemoryLines(
   const rows = await serverMemoryRepository.loadServerMemoryContentTags(serverId, personaLineageId);
 
   return rows
-    .filter((row) => channelScopeAdmits(row, filterChannelIds))
+    .filter((row) => channelScopeAdmits(row.channel_disc_ids, filterChannelIds))
     .map((row) => row.content.trim())
     .filter((content) => content.length > 0);
 }

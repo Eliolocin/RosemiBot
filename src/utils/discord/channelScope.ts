@@ -8,12 +8,8 @@ export function channelScopeCandidates(channelId: string, parentChannelId?: stri
 
 /**
  * Reports whether a stored channel scope admits any of the candidate channels. An empty scope admits
- * every channel; a pending legacy scope admits none until it is resolved.
+ * every channel.
  */
-export function channelScopeAdmits(
-  scope: { channel_disc_ids: readonly string[]; channel_scope_pending: boolean },
-  candidateIds: readonly string[],
-): boolean {
-  if (scope.channel_scope_pending) return false;
-  return scope.channel_disc_ids.length === 0 || scope.channel_disc_ids.some((id) => candidateIds.includes(id));
+export function channelScopeAdmits(scopeChannelIds: readonly string[], candidateIds: readonly string[]): boolean {
+  return scopeChannelIds.length === 0 || scopeChannelIds.some((id) => candidateIds.includes(id));
 }

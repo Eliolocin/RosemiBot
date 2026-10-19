@@ -251,9 +251,8 @@ export async function retrieveRelevantDocumentChunks(params: {
   minSimilarity: number;
   batchSize?: number;
   /**
-   * When set, excludes chunks whose document is scoped to channels outside this list or whose legacy
-   * scope is still unresolved. Pass the current channel and, inside a thread, its parent so a thread
-   * inherits its channel's scope.
+   * When set, excludes chunks whose document is scoped to channels outside this list. Pass the current
+   * channel and, inside a thread, its parent so a thread inherits its channel's scope.
    */
   channelIds?: readonly string[] | null;
 }): Promise<RetrievedDocumentChunk[]> {
@@ -284,11 +283,7 @@ export async function retrieveRelevantDocumentChunks(params: {
 
   const channelFilter =
     channelIds != null
-      ? sql`AND (cardinality(d.channel_disc_ids) = 0 OR d.channel_disc_ids && ${toPgTextArray([...channelIds])}::text[])
-            AND NOT EXISTS (
-              SELECT 1 FROM legacy_channel_scope_tags l
-              WHERE l.source_table = 'documents' AND l.row_id = d.document_id AND l.resolved_at IS NULL
-            )`
+      ? sql`AND (cardinality(d.channel_disc_ids) = 0 OR d.channel_disc_ids && ${toPgTextArray([...channelIds])}::text[])`
       : sql``;
 
   const personaFilter =

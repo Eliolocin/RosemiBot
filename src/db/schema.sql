@@ -1043,7 +1043,7 @@ SELECT add_column_if_not_exists('server_memories', 'tags', 'TEXT[]', 'ARRAY[]::T
 SELECT add_column_if_not_exists('server_memories', 'channel_disc_ids', 'TEXT[]', 'ARRAY[]::TEXT[]', 'NOT NULL');
 
 -- Legacy `#name` channel scopes migration 111 set aside; a row with resolved_at NULL keeps its document
--- or server memory inactive in every channel until the startup backfill or an admin resolves it.
+-- or server memory active in every channel until the startup backfill or an admin resolves it.
 CREATE TABLE IF NOT EXISTS legacy_channel_scope_tags (
   source_table TEXT NOT NULL CHECK (source_table IN ('documents', 'server_memories')),
   row_id INT NOT NULL,

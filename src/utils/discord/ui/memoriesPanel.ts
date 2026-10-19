@@ -635,6 +635,19 @@ export function buildMemoriesPanelPayload(input: MemoriesPanelRenderInput): Memo
     return buildPayload(components, receipt);
   }
 
+  const hasPendingLegacyScope =
+    category === "memories"
+      ? memories.some((memory) => memory.channel_scope_pending)
+      : category === "documents"
+        ? (input.documents ?? []).some((document) => document.channel_scope_pending)
+        : false;
+  if (hasPendingLegacyScope) {
+    components.push({
+      type: ComponentType.TextDisplay,
+      content: withLinePrefix("-# ", localizer(locale, "commands.memories.channel_scope_legacy_notice")),
+    });
+  }
+
   if (page.kind === "remove") {
     const targetMemory = memories.find((m) => m.server_memory_id === page.memoryId);
     if (targetMemory?.server_memory_id) {

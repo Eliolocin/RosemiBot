@@ -50,7 +50,7 @@ Os dados exportáveis são entregues aos seus DMs como um arquivo JSON:
 
 - `/export config`: valores de configuração do servidor (exclui chaves e credenciais API).
 - `/export personal config`: configurações de perfil pessoal (privacidade, tags de aparência, nomenclatura).
-- `/export memories`: memórias do servidor, com escopo para a persona principal, uma persona ou todas as personas.
+- `/export memories`: memórias do servidor, com escopo para a persona principal, uma persona ou todas as personas. Os limites de canal não são exportados, então as memórias importadas se aplicam em todos os canais até que você escolha os canais novamente.
 - `/export personal memories`: memórias pessoais, com escopo global ou individual.
 - `/persona export`: definições completas de personalidade.
 

@@ -845,6 +845,27 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
   }
 
   /**
+   * Drops holding rows whose memory or document no longer exists, so a deleted item cannot stay in
+   * the backfill's pending set. Runs once per boot.
+   */
+  async pruneOrphanedLegacyChannelScopes(): Promise<void> {
+    await sql`
+      DELETE FROM legacy_channel_scope_tags l
+      WHERE l.source_table = 'server_memories'
+        AND NOT EXISTS (SELECT 1 FROM server_memories sm WHERE sm.server_memory_id = l.row_id)
+    `;
+    const [documentsTable] = await sql<Array<{ name: string | null }>>`
+      SELECT to_regclass('public.documents')::text AS name
+    `;
+    if (!documentsTable?.name) return;
+    await sql`
+      DELETE FROM legacy_channel_scope_tags l
+      WHERE l.source_table = 'documents'
+        AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.document_id = l.row_id)
+    `;
+  }
+
+  /**
    * Writes resolved channel scopes for one server and marks their legacy rows resolved, in one
    * transaction. A row another instance already resolved is left untouched.
    */

@@ -70,10 +70,11 @@ describe("server memory channel scope", () => {
     expect(text).not.toContain("channel-only fact");
   });
 
-  it("keeps a memory with an unresolved legacy scope out of every channel", async () => {
+  it("treats a memory with an unresolved legacy scope as active in every channel", async () => {
     loadRows();
-    expect(await memoryTextIn(SCOPED_CHANNEL, null)).not.toContain("unresolved fact");
-    expect(await memoryTextIn(OTHER_CHANNEL, null)).not.toContain("unresolved fact");
+    expect(await memoryTextIn(SCOPED_CHANNEL, null)).toContain("unresolved fact");
+    expect(await memoryTextIn(OTHER_CHANNEL, null)).toContain("unresolved fact");
+    expect(await memoryTextIn(OTHER_CHANNEL, null, false)).toContain("unresolved fact");
   });
 
   it("ignores scopes when channel memory is disabled", async () => {

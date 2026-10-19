@@ -187,7 +187,7 @@ export async function buildServerMemoryContextItem(params: {
 
       // The channel scope and the content tags filter independently: a channel match does not
       // exempt a memory from the corpus check below.
-      if (params.channelMemoryEnabled && !channelScopeAdmits(row, channelCandidates)) {
+      if (params.channelMemoryEnabled && !channelScopeAdmits(row.channel_disc_ids, channelCandidates)) {
         return false;
       }
 

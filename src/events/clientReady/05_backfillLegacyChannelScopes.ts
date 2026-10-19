@@ -8,7 +8,7 @@ export default async (client: Client): Promise<void> => {
     const { scoped, unmatched, deferred } = await backfillLegacyChannelScopes((id) => client.guilds.cache.get(id));
     if (scoped + unmatched + deferred === 0) return;
     log.info(
-      `Legacy channel scope backfill: ${scoped} scoped, ${unmatched} unmatched (inactive until an admin picks channels), ${deferred} deferred`,
+      `Legacy channel scope backfill: ${scoped} scoped, ${unmatched} unmatched (active in every channel until an admin picks channels), ${deferred} deferred`,
     );
   } catch (error) {
     log.error("Legacy channel scope backfill failed; pending rows retry on the next boot", error as Error);

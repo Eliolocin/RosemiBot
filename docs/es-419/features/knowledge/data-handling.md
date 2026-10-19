@@ -50,7 +50,7 @@ Los datos exportables se envían a sus mensajes directos como un archivo JSON:
 
 - `/export config`: valores de configuración del servidor (excluye claves y credenciales de API).
 - `/export personal config`: configuración de perfil personal (privacidad, etiquetas de apariencia, nombres).
-- `/export memories`: memorias del servidor, con alcance para la persona principal, una persona o todas las personas.
+- `/export memories`: memorias del servidor, con alcance para la persona principal, una persona o todas las personas. Los límites de canales no se exportan, por lo que las memorias importadas se aplican en todos los canales hasta que vuelvas a elegir canales.
 - `/export personal memories`: recuerdos personales, de alcance global o por persona.
 - `/persona export`: definiciones completas de personas.
 

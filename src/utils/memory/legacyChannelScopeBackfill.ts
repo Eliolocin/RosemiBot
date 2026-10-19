@@ -29,8 +29,8 @@ function resolveLegacyChannelTags(channelTags: readonly string[], guild: Pick<Gu
 
 /**
  * Converts the `#name` channel scopes migration 111 moved aside into channel IDs. An unmatched row stays
- * pending (inactive everywhere, as an unmatched name filter was) and is re-read on every run, which stays
- * one small query because admin saves only shrink the pending set.
+ * pending, which readers treat as active in every channel. The unfiltered run first drops rows whose item
+ * was deleted, so a deletion cannot leave an unmatched count behind.
  *
  * @param findGuild - Looks up a cached guild by Discord ID; a guild it cannot return stays pending
  * @param serverDiscId - Limits the run to one server
@@ -39,6 +39,7 @@ export async function backfillLegacyChannelScopes(
   findGuild: (guildDiscId: string) => CachedGuild | undefined,
   serverDiscId?: string,
 ): Promise<{ scoped: number; unmatched: number; deferred: number }> {
+  if (serverDiscId === undefined) await serverMemoryRepository.pruneOrphanedLegacyChannelScopes();
   const pending = await serverMemoryRepository.loadPendingLegacyChannelScopes(serverDiscId);
   const rowsByServer = new Map<number, PendingLegacyChannelScope[]>();
   for (const row of pending) rowsByServer.set(row.server_id, [...(rowsByServer.get(row.server_id) ?? []), row]);

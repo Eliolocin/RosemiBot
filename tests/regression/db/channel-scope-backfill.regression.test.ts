@@ -1,7 +1,8 @@
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { ChannelType, Collection, type Client } from "discord.js";
+import { ChannelType, Collection, type Client, type Guild } from "discord.js";
 import backfillLegacyChannelScopes from "@/events/clientReady/05_backfillLegacyChannelScopes";
+import guildAvailableBackfill from "@/events/guildAvailable/01_backfillLegacyChannelScopes";
 import { serverMemoryRepository } from "@/utils/db/repositories";
 import { cleanupFixtures, FIXTURE_IDS, insertFixtures, type FixtureRefs } from "./setup/fixtures";
 import { DB_TESTS_AVAILABLE, executeTestSqlFile, setupTestDb, testSql } from "./setup/testDb";
@@ -11,16 +12,20 @@ const GENERAL_TWIN = "222222222222222222";
 const OFFLINE_GUILD_DISC_ID = "_rt_backfill_offline_guild";
 const DM_SERVER_DISC_ID = "_rt_backfill_dm";
 
-function clientWithGuild(guildDiscId: string): Client {
+function guildWithChannels(guildDiscId: string) {
   const channels = new Collection([
     [GENERAL, { id: GENERAL, name: "general", type: ChannelType.GuildText }],
     [GENERAL_TWIN, { id: GENERAL_TWIN, name: "General", type: ChannelType.GuildAnnouncement }],
   ]);
-  const guild = { id: guildDiscId, available: true, channels: { cache: channels } };
+  return { id: guildDiscId, available: true, channels: { cache: channels } };
+}
+
+function clientWithGuild(guildDiscId: string): Client {
+  const guild = guildWithChannels(guildDiscId);
   return { guilds: { cache: new Collection([[guildDiscId, guild]]) } } as unknown as Client;
 }
 
-describe.skipIf(!DB_TESTS_AVAILABLE)("startup backfill of legacy channel scopes", () => {
+describe.skipIf(!DB_TESTS_AVAILABLE)("legacy channel scope backfill", () => {
   let refs: FixtureRefs;
   const memoryIds: Record<string, number> = {};
 
@@ -78,7 +83,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("startup backfill of legacy channel scopes"
     });
   });
 
-  it("keeps a row whose names match nothing pending, and therefore inactive in every channel", async () => {
+  it("keeps a row whose names match nothing pending, so it applies in every channel", async () => {
     expect(await scopeOf("missing")).toMatchObject({ channel_disc_ids: [], resolved: false });
     const [loaded] = (
       await serverMemoryRepository.loadServerMemoriesScoped(refs.serverId, refs.personaLineageId)
@@ -94,5 +99,47 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("startup backfill of legacy channel scopes"
   it("settles a pending row when an admin saves the memory form", async () => {
     expect(await serverMemoryRepository.edit(memoryIds.missing ?? 0, "missing", [], [GENERAL])).toBe(true);
     expect(await scopeOf("missing")).toMatchObject({ channel_disc_ids: [GENERAL], resolved: true });
+  });
+
+  it("resolves a returning guild's pending row when dispatched as (client, guild)", async () => {
+    const [row] = await testSql`
+      INSERT INTO server_memories (server_id, persona_lineage_id, content)
+      VALUES (${refs.serverId}, ${refs.personaLineageId}, 'returning guild')
+      RETURNING server_memory_id
+    `;
+    memoryIds.guildAvailable = row.server_memory_id;
+    await testSql`
+      INSERT INTO legacy_channel_scope_tags (source_table, row_id, server_id, channel_tags)
+      VALUES ('server_memories', ${row.server_memory_id}, ${refs.serverId}, ARRAY['#general'])
+    `;
+
+    const guild = guildWithChannels(FIXTURE_IDS.serverDiscId);
+    await guildAvailableBackfill({} as Client, guild as unknown as Guild);
+
+    expect(await scopeOf("guildAvailable")).toMatchObject({
+      channel_disc_ids: [GENERAL, GENERAL_TWIN],
+      resolved: true,
+    });
+  });
+
+  it("prunes a pending row whose memory was deleted before it resolved", async () => {
+    const [row] = await testSql`
+      INSERT INTO server_memories (server_id, persona_lineage_id, content)
+      VALUES (${refs.serverId}, ${refs.personaLineageId}, 'deleted before resolution')
+      RETURNING server_memory_id
+    `;
+    await testSql`
+      INSERT INTO legacy_channel_scope_tags (source_table, row_id, server_id, channel_tags)
+      VALUES ('server_memories', ${row.server_memory_id}, ${refs.serverId}, ARRAY['#gone'])
+    `;
+    await testSql`DELETE FROM server_memories WHERE server_memory_id = ${row.server_memory_id}`;
+
+    await backfillLegacyChannelScopes(clientWithGuild(FIXTURE_IDS.serverDiscId));
+
+    const [held] = await testSql`
+      SELECT 1 FROM legacy_channel_scope_tags
+      WHERE source_table = 'server_memories' AND row_id = ${row.server_memory_id}
+    `;
+    expect(held).toBeUndefined();
   });
 });
