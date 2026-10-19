@@ -457,7 +457,7 @@ Setting the `SEARXNG_SECRET` repository secret is the entire switch. The deploy 
 `run-command-deploy.sh`, which on a non-empty value adds `searxng` to the services named on
 `docker compose up` (naming a profile-gated service activates its profile) and sets
 `SEARXNG_BASE_URL=http://searxng:8080/` for the bot. Leaving the secret unset keeps the sidecar off
-and the bot on its `Brave â†’ DDG â†’ Felo` chain.
+and the bot on its `Brave Ã¢â€ â€™ DDG Ã¢â€ â€™ Felo` chain.
 
 One value drives both because the alternatives are failure modes: SearXNG will not start without a
 secret, so a profile enabled separately would crash-loop, and a secret set without the profile would
@@ -506,6 +506,7 @@ ceiling were lower than what the app believes it has, the container would be OOM
 ever shed load.
 
 The VM is pinned to `Standard_B2als_v2` (2 vCPU, 4 GiB) while the student credit lasts.
+The guest reports 3856 MiB of usable RAM after kernel reservations.
 The 2048 MiB container limit reserves RAM for the host, Docker, SearXNG, and zram.
 Size the limit against usable RAM after reserving memory for the host and sidecars. A limit above
 physical memory is unreachable: RSS cannot climb to it, the guard never fires, and the kernel
