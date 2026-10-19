@@ -246,6 +246,14 @@ function resolveProxiedIdentity(message: Message): { name: string | null; userDi
   return { name: identity?.displayName ?? null, userDiscId: identity?.userDiscId ?? null };
 }
 
+/** A borrowed trigger's author is a bystander, so their personal override does not steer the turn. */
+export function resolveTurnDeliberateToolMode(turn: ChatTurn): boolean {
+  const personalMode = turn.lockedTurn.admission.incoming.borrowsTriggerMessage
+    ? "follow"
+    : (turn.userRow.personal_deliberate_tool_mode ?? "follow");
+  return resolveDeliberateToolMode(turn.persona.config.deliberate_tool_mode, personalMode);
+}
+
 export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnContext> {
   const incoming = turn.lockedTurn.admission.incoming;
   const { client, message } = incoming;
@@ -315,10 +323,7 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
   // Resolve deliberate tool mode + intent allowlist for this turn. MUST run before
   // buildContext() so any has_tools override flows into context synthesis
   // (has_tools gates the STM tool affordance text there).
-  const deliberateToolModeActive = resolveDeliberateToolMode(
-    turn.persona.config.deliberate_tool_mode,
-    turn.userRow.personal_deliberate_tool_mode ?? "follow",
-  );
+  const deliberateToolModeActive = resolveTurnDeliberateToolMode(turn);
   const reminderData = incoming.reminderData;
   const reminderRecipientID = incoming.reminderRecipientID;
   const deliberateToolIntentText =

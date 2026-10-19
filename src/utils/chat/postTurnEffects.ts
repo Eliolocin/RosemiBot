@@ -411,6 +411,7 @@ async function maybeScheduleEmptyResponseRetry(context: ChatTurnContext, result:
     manualStreamingContextOverrides: incoming.manualStreamingContextOverrides,
     sceneTurn: incoming.sceneTurn,
     naturalNudge: incoming.naturalNudge,
+    borrowsTriggerMessage: incoming.borrowsTriggerMessage,
     carriedExpressionDelivery: context.currentPersona.persona_id
       ? { personaId: context.currentPersona.persona_id, state: context.expressionDelivery }
       : undefined,

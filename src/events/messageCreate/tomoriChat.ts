@@ -156,6 +156,7 @@ async function runAdmittedChatTurn(incoming: ChatIncoming): Promise<ChatAdmissio
           forcedMentions: queued.forcedMentions,
           manualTriggerInvoker: queued.manualTriggerInvoker,
           systemTriggerIdentity: queued.systemTriggerIdentity,
+          borrowsTriggerMessage: queued.borrowsTriggerMessage,
           manualStreamingContextOverrides: queued.manualStreamingContextOverrides,
           sceneTurn: queued.sceneTurn,
           onGenerationResult: queued.onGenerationResult,

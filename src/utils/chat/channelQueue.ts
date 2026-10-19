@@ -54,6 +54,7 @@ export type QueuedMessage = {
   forcedMentions?: ForcedMention[];
   manualTriggerInvoker?: ManualTriggerInvoker;
   systemTriggerIdentity?: SystemTriggerIdentity;
+  borrowsTriggerMessage?: boolean;
   manualStreamingContextOverrides?: Pick<
     StreamingContext,
     "disableCrossChannelMessage" | "disableRecentMessageReplyTool" | "disableReminderTool"

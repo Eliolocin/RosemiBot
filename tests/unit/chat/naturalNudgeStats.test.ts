@@ -29,6 +29,7 @@ function makeContext(isNaturalNudge: boolean): ChatTurnContext {
     isUserImpersonation: false,
     textQuotaSource: isNaturalNudge ? "system" : "user",
     naturalNudge: isNaturalNudge ? NUDGE : undefined,
+    borrowsTriggerMessage: isNaturalNudge || undefined,
   } as unknown as ChatIncoming;
   const tomoriState = createPersona({
     server_id: 7,
@@ -115,6 +116,7 @@ describe("Natural Nudges turns stay out of engagement stats", () => {
       });
       expect(calls).toHaveLength(1);
       expect(calls[0]?.naturalNudge).toEqual(NUDGE);
+      expect(calls[0]?.borrowsTriggerMessage).toBe(true);
       expect(calls[0]?.skipLock).toBe(true);
     } finally {
       chatSpy.mockRestore();

@@ -287,6 +287,7 @@ async function evaluateLockedChannelAdmission(
       forcedMentions: incoming.forcedMentions,
       manualTriggerInvoker: incoming.manualTriggerInvoker,
       systemTriggerIdentity: incoming.systemTriggerIdentity,
+      borrowsTriggerMessage: incoming.borrowsTriggerMessage,
       reminderRecipientID: incoming.reminderRecipientID,
       reminderData: incoming.reminderData,
       onGenerationResult: incoming.onGenerationResult,

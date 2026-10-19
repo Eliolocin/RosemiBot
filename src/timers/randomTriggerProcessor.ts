@@ -194,6 +194,7 @@ export class RandomTriggerProcessor {
         textQuotaTriggerKey: `random:${triggerId}:${lastMessage.id}`,
         shouldSurfaceUserErrors: false,
         manualSystemPrompt: trigger.custom_prompt ?? undefined,
+        borrowsTriggerMessage: true,
       });
 
       log.success(`Random trigger ${triggerId} fired successfully for persona "${chosenPersona.persona_nickname}"`);

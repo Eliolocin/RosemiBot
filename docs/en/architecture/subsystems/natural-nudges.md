@@ -70,9 +70,11 @@ A restart only re-rolls them.
   turn planner routes the nudge turn's text credentials to the server too. Servers in
   `user_byok_mode` and DM workspaces never run episodes.
 - **The borrowed trigger lends no identity.** Phase C passes the channel's newest message to
-  `tomoriChat` as its trigger, but its author is a bystander. Nudge turns therefore follow the
-  reminder path: no blacklist, role-whitelist, spotlight, or user-block gate from that author
-  (only the persona channel whitelist applies), no reunion note or presence write, and no
+  `tomoriChat` as its trigger, but its author is a bystander. `borrowsTriggerMessage` (shared with
+  random triggers) puts the turn on the reminder path: server text key only, and no blacklist,
+  role-whitelist, spotlight, or user-block gate from that author (only the persona channel
+  whitelist applies). A guild turn uses the guild locale and the server's Deliberate Tool Mode,
+  ignoring that author's language and personal override. Their name still fills `{user}`. Nudge turns also skip the reunion note and presence write, and the
   "continue your last message" directive. Deliberate Tool Mode admits the episode's tools from
   `naturalNudge.toolNames`, because no human message carries their trigger words.
 - **The anchor is compared by order.** A deleted newest message stays in the gateway's

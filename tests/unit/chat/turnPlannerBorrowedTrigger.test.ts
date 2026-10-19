@@ -7,11 +7,11 @@ import * as admissionGuards from "@/utils/chat/admissionGuards";
 import * as errorVisibility from "@/utils/chat/errorVisibility";
 import { normalizeChatInvocation } from "@/utils/chat/admission";
 import { planChatTurns } from "@/utils/chat/turnPlanner";
-import type { LockedChatTurn, NaturalNudgeTurn } from "@/utils/chat/types";
+import type { LockedChatTurn } from "@/utils/chat/types";
 import * as credentialResolver from "@/utils/provider/credentialResolver";
 import { createPersona, createUserRow } from "../../helpers/fixtures";
 
-const BYSTANDER = createUserRow({ user_id: 77, user_disc_id: "fixture-juno" });
+const BYSTANDER = createUserRow({ user_id: 77, user_disc_id: "fixture-juno", language_pref: "ja" });
 
 const spies: Array<{ mockRestore: () => void }> = [];
 afterEach(() => {
@@ -19,13 +19,13 @@ afterEach(() => {
 });
 
 /**
- * Plans a manually triggered turn whose borrowed anchor belongs to a bystander, and reports the
- * user the text credentials were resolved for (resolution then fails, which ends planning there).
+ * Plans a manually triggered turn whose borrowed anchor belongs to a bystander, and reports the turn
+ * locale and the user the text credentials were resolved for (resolution then fails, ending planning).
  */
 async function planWithAnchorAuthor(options: {
-  naturalNudge?: NaturalNudgeTurn;
+  borrowsTriggerMessage?: boolean;
   rejectedByRoleWhitelist: boolean;
-}): Promise<Array<number | null | undefined>> {
+}): Promise<{ credentialUsers: Array<number | null | undefined>; locale: string | undefined }> {
   const persona = createPersona({ persona_id: 5, server_id: 7 });
   const channel = { id: "fixture-channel", isThread: () => false };
   const guild = { id: "fixture-guild", preferredLocale: "en-US" };
@@ -47,7 +47,7 @@ async function planWithAnchorAuthor(options: {
     isManuallyTriggered: true,
     selectedPersonaId: 5,
     shouldSurfaceUserErrors: false,
-    naturalNudge: options.naturalNudge,
+    borrowsTriggerMessage: options.borrowsTriggerMessage,
   });
   const lockedTurn = {
     channelId: channel.id,
@@ -90,21 +90,30 @@ async function planWithAnchorAuthor(options: {
     }),
   );
   await planChatTurns(lockedTurn);
-  return credentialUsers;
+  return { credentialUsers, locale: lockedTurn.admission.locale };
 }
 
-describe("Natural Nudges turn planning", () => {
+describe("borrowed-trigger turn planning (random triggers and Natural Nudges)", () => {
   it("resolves text credentials for the server, never the anchor message's author", async () => {
-    expect(await planWithAnchorAuthor({ rejectedByRoleWhitelist: false })).toEqual([BYSTANDER.user_id]);
-    expect(await planWithAnchorAuthor({ naturalNudge: { toolNames: [] }, rejectedByRoleWhitelist: false })).toEqual([
-      null,
+    expect((await planWithAnchorAuthor({ rejectedByRoleWhitelist: false })).credentialUsers).toEqual([
+      BYSTANDER.user_id,
     ]);
+    expect(
+      (await planWithAnchorAuthor({ borrowsTriggerMessage: true, rejectedByRoleWhitelist: false })).credentialUsers,
+    ).toEqual([null]);
+  });
+
+  it("speaks the guild's language rather than the anchor message author's", async () => {
+    expect((await planWithAnchorAuthor({ rejectedByRoleWhitelist: false })).locale).toBe("ja");
+    expect((await planWithAnchorAuthor({ borrowsTriggerMessage: true, rejectedByRoleWhitelist: false })).locale).toBe(
+      "en-US",
+    );
   });
 
   it("ignores a role whitelist that the anchor message's author fails", async () => {
-    expect(await planWithAnchorAuthor({ rejectedByRoleWhitelist: true })).toEqual([]);
-    expect(await planWithAnchorAuthor({ naturalNudge: { toolNames: [] }, rejectedByRoleWhitelist: true })).toEqual([
-      null,
-    ]);
+    expect((await planWithAnchorAuthor({ rejectedByRoleWhitelist: true })).credentialUsers).toEqual([]);
+    expect(
+      (await planWithAnchorAuthor({ borrowsTriggerMessage: true, rejectedByRoleWhitelist: true })).credentialUsers,
+    ).toEqual([null]);
   });
 });

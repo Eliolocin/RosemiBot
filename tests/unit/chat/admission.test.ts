@@ -275,6 +275,41 @@ describe("evaluateChatAdmission server blacklist", () => {
       invalidateUserCache(memberId);
     }
   });
+
+  it("does not let a blacklisted bystander block a turn that borrows their message", async () => {
+    const memberId = "100000000000000022";
+    invalidateUserCache(memberId);
+    const rowSpy = spyOn(userRepository, "loadByDiscordId").mockResolvedValue(null);
+    const privacySpy = spyOn(userRepository, "getPrivacyLevel").mockResolvedValue(PrivacyLevel.MINIMAL);
+    const blacklistSpy = spyOn(userRepository, "isBlacklisted").mockResolvedValue(true);
+
+    try {
+      const incoming = {
+        client: { user: { id: "tomori" } },
+        message: {
+          id: "borrowed-anchor",
+          content: "night all",
+          mentions: { users: new Map(), roles: new Map(), everyone: false },
+          webhookId: null,
+          interaction: null,
+          reference: null,
+          author: { id: memberId, bot: false, username: "member" },
+          guild: { id: "300000000000000032" },
+          channel: { id: "channel-1", type: ChannelType.GuildText },
+        },
+        isManuallyTriggered: true,
+        borrowsTriggerMessage: true,
+      } as unknown as ChatIncoming;
+
+      const admission = await evaluateChatAdmission(incoming);
+
+      expect(admission.disposition === "run" ? null : admission.reason).not.toBe("server_blacklisted_user");
+      expect(blacklistSpy).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of [rowSpy, privacySpy, blacklistSpy]) spy.mockRestore();
+      invalidateUserCache(memberId);
+    }
+  });
 });
 
 describe("evaluateMessageProxyOriginalSpeedbump guild presence", () => {

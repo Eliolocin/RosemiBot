@@ -1,6 +1,6 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import type { Message } from "discord.js";
-import { buildChatTurnContext } from "@/utils/chat/contextPipeline";
+import { buildChatTurnContext, resolveTurnDeliberateToolMode } from "@/utils/chat/contextPipeline";
 import { normalizeChatInvocation } from "@/utils/chat/admission";
 import type { ChatTurn, ChatTurnContext, NaturalNudgeTurn } from "@/utils/chat/types";
 import { PrivacyLevel } from "@/types/db/schema";
@@ -126,5 +126,18 @@ describe("Natural Nudges turn context", () => {
     const nudge = await buildTurnContext({ toolNames: [] });
     expect(nudge.reunionCalls).toBe(0);
     expect(JSON.stringify(nudge.context.contextItems)).not.toContain(CONTINUE_DIRECTIVE);
+  });
+});
+
+describe("borrowed-trigger Deliberate Tool Mode", () => {
+  it("follows the server setting, never the anchor message author's personal override", () => {
+    const turnFor = (borrowsTriggerMessage: boolean) =>
+      ({
+        persona: createPersona({ config: { deliberate_tool_mode: false } }),
+        userRow: createUserRow({ personal_deliberate_tool_mode: "on" }),
+        lockedTurn: { admission: { incoming: { borrowsTriggerMessage } } },
+      }) as unknown as ChatTurn;
+    expect(resolveTurnDeliberateToolMode(turnFor(false))).toBe(true);
+    expect(resolveTurnDeliberateToolMode(turnFor(true))).toBe(false);
   });
 });

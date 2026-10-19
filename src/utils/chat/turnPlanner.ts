@@ -97,7 +97,11 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
   }
 
   const userRow = await loadOrRegisterTriggerUser(message, guild, userDiscId, incoming.manualTriggerInvoker);
-  const locale = userRow.language_pref ?? incoming.manualTriggerInvoker?.locale ?? admission.locale;
+  // A borrowed trigger's author is a bystander, so a guild turn speaks the server's language, not theirs.
+  const locale =
+    incoming.borrowsTriggerMessage && guild
+      ? (guild.preferredLocale ?? "en-US")
+      : (userRow.language_pref ?? incoming.manualTriggerInvoker?.locale ?? admission.locale);
   admission.locale = locale;
   admission.userRow = userRow;
   admission.tomoriState = tomoriState;
@@ -201,7 +205,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     isPersonaJob: incoming.isPersonaJob,
     isManuallyTriggered: incoming.isManuallyTriggered,
     isUserImpersonation: incoming.isUserImpersonation,
-    isNaturalNudge: incoming.naturalNudge !== undefined,
+    borrowsTriggerMessage: incoming.borrowsTriggerMessage === true,
     userRow,
     channel,
     locale,
@@ -508,11 +512,13 @@ async function updateAutochatCounter(message: Message, tomoriState: TomoriState,
 }
 
 /**
- * Nudges count as system-initiated because the admin's channel allow-list authorized them, as
- * creation authorizes a reminder.
+ * A borrowed-trigger turn counts as system-initiated because an admin configured it (random trigger
+ * or Natural Nudges allow-list), as creation authorizes a reminder.
  */
 function isSystemInitiatedIncoming(incoming: ChatIncoming): boolean {
-  return Boolean(incoming.reminderRecipientID || incoming.reminderData?.self_reminder || incoming.naturalNudge);
+  return Boolean(
+    incoming.reminderRecipientID || incoming.reminderData?.self_reminder || incoming.borrowsTriggerMessage,
+  );
 }
 
 function isRealUserMessage(message: Message): boolean {
@@ -530,7 +536,7 @@ async function resolveTextCredentialPolicy(params: {
   isPersonaJob: boolean;
   isManuallyTriggered?: boolean;
   isUserImpersonation: boolean;
-  isNaturalNudge: boolean;
+  borrowsTriggerMessage: boolean;
   userRow: UserRow;
   channel: Message["channel"];
   locale: string;
@@ -541,9 +547,9 @@ async function resolveTextCredentialPolicy(params: {
   personalRoutingUserId: number | null;
   personalTextProvider: string | null;
 } | null> {
-  // A nudge's trigger author is whoever spoke last, so a personal key there would bill a bystander.
+  // A borrowed trigger's author is whoever spoke last, so a personal key there would bill a bystander.
   const personalRoutingUserId =
-    params.isNaturalNudge ||
+    params.borrowsTriggerMessage ||
     (params.isSelfMessage && !params.isPersonaJob && !params.isManuallyTriggered && !params.isUserImpersonation)
       ? null
       : (params.userRow.user_id ?? null);

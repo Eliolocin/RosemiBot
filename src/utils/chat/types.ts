@@ -112,6 +112,11 @@ export interface TomoriChatInput {
   sceneTurn?: SceneTurnMetadata;
   /** Unprompted Natural Nudges turn: never queues and never feeds engagement stats. */
   naturalNudge?: NaturalNudgeTurn;
+  /**
+   * System turn that borrows the channel's latest message as its trigger, so that message's author is
+   * a bystander: no personal key, and none of their access gates.
+   */
+  borrowsTriggerMessage?: boolean;
   carriedExpressionDelivery?: CarriedExpressionDelivery;
   onGenerationResult?: ChatGenerationResultHandler;
   onQueueDiscard?: QueuedMessageDiscardHandler;
@@ -151,6 +156,11 @@ export interface ChatIncoming {
   sceneTurn?: SceneTurnMetadata;
   /** Unprompted Natural Nudges turn: never queues and never feeds engagement stats. */
   naturalNudge?: NaturalNudgeTurn;
+  /**
+   * System turn that borrows the channel's latest message as its trigger, so that message's author is
+   * a bystander: no personal key, and none of their access gates.
+   */
+  borrowsTriggerMessage?: boolean;
   carriedExpressionDelivery?: CarriedExpressionDelivery;
   onGenerationResult?: ChatGenerationResultHandler;
   onQueueDiscard?: QueuedMessageDiscardHandler;

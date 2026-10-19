@@ -241,6 +241,7 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
     shouldSurfaceUserErrors: false,
     injectedContextItems: [buildOpenerContextItem(planned.plan, episodeTools)],
     naturalNudge: { toolNames: episodeTools },
+    borrowsTriggerMessage: true,
     onGenerationResult: settle,
   });
   if (outcome) return outcome;
