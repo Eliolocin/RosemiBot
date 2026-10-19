@@ -31,6 +31,16 @@ admission resolves a reply target once through `resolveReferencedMessage()` (cac
 hands that instance to every later reader, history reads use `fetch`, and history reply annotations
 look up their target in the fetched window before the cache.
 
+Presence caching admits only guild-user pairs with a successful chat turn in that guild. Startup
+loads these pairs from persisted `message_sent` and `presence_seen` counters before gateway login;
+successful text or tool-only turns admit new pairs immediately. The index is process-local and
+survives cache clearing, while PostgreSQL restores its history after a restart. Presence events
+still arrive for every member allowed by the intent, so this limits retained objects rather than
+gateway traffic. A first-time participant has unknown status until their next presence update;
+Discord has no REST endpoint for fetching that status. The existing offline presence sweeper stays
+in place. Command-only activity does not admit a participant. With stat tracking disabled, new
+pairs are remembered only until the process restarts.
+
 Scheduled sweepers in the same file prune client collections periodically:
 
 - **Messages**: hourly sweep with a 30-minute lifetime.

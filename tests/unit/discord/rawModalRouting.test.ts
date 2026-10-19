@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { GlobalDiscordState, RawDiscordWebSocketPacket, RawDiscordShard } from "@/types/discord/rawApiTypes";
 import {
   initializeRawModalInterception,
+  takeRawModalChannelSelectValues,
   takeRawModalCheckboxGroupValues,
   takeRawModalSelectValue,
 } from "@/utils/discord/ui/modals";
@@ -268,7 +269,7 @@ describe("routed raw modal gateway support", () => {
     }
   });
 
-  it("transforms a nonce-bounded Channel Select submission and consumes its intercepted value once", () => {
+  it("transforms a nonce-bounded Channel Select submission and consumes every intercepted value once", () => {
     const globalState = globalThis as GlobalDiscordState;
     const previousPatchState = globalState.__webSocketPatched;
     delete globalState.__webSocketPatched;
@@ -299,7 +300,7 @@ describe("routed raw modal gateway support", () => {
                   type: 8,
                   custom_id: "whitelist_channel_add_channel_chan1234",
                   channel_types: [0],
-                  values: ["987654321098765432"],
+                  values: ["987654321098765432", "123456789012345678"],
                 },
               },
               {
@@ -325,7 +326,7 @@ describe("routed raw modal gateway support", () => {
               type: 8,
               custom_id: "whitelist_channel_add_channel_chan1234",
               channel_types: [0],
-              values: ["987654321098765432"],
+              values: ["987654321098765432", "123456789012345678"],
             },
           ],
         },
@@ -340,15 +341,66 @@ describe("routed raw modal gateway support", () => {
           ],
         },
       ]);
-      expect(takeRawModalSelectValue("modal-submit-channel-select", "whitelist_channel_add_channel_chan1234")).toBe(
-        "987654321098765432",
-      );
       expect(
-        takeRawModalSelectValue("modal-submit-channel-select", "whitelist_channel_add_channel_chan1234"),
+        takeRawModalChannelSelectValues("modal-submit-channel-select", "whitelist_channel_add_channel_chan1234"),
+      ).toEqual(["987654321098765432", "123456789012345678"]);
+      expect(
+        takeRawModalChannelSelectValues("modal-submit-channel-select", "whitelist_channel_add_channel_chan1234"),
       ).toBeUndefined();
       expect(takeRawModalSelectValue("modal-submit-channel-select", "whitelist_channel_add_type_chan1234")).toBe("2");
       expect(
         takeRawModalSelectValue("modal-submit-channel-select", "whitelist_channel_add_type_chan1234"),
+      ).toBeUndefined();
+    } finally {
+      if (previousPatchState === undefined) delete globalState.__webSocketPatched;
+      else globalState.__webSocketPatched = previousPatchState;
+    }
+  });
+
+  it("keeps an empty Channel Select submission distinct from a missing one", () => {
+    const globalState = globalThis as GlobalDiscordState;
+    const previousPatchState = globalState.__webSocketPatched;
+    delete globalState.__webSocketPatched;
+
+    try {
+      const client = { ws: { handlePacket: (_packet: RawDiscordWebSocketPacket, _shard: RawDiscordShard) => {} } };
+      initializeRawModalInterception(client);
+      client.ws.handlePacket(
+        {
+          op: 0,
+          t: "INTERACTION_CREATE",
+          d: {
+            id: "modal-submit-empty-channel-select",
+            type: 5,
+            data: {
+              custom_id: "memories:v2:document-add-submit:en-US:empty1234",
+              components: [
+                {
+                  type: 18,
+                  component: { type: 8, custom_id: "document_channels_empty1234", values: [] },
+                },
+                {
+                  type: 18,
+                  component: { type: 8, custom_id: "memory_channels_empty1234" },
+                },
+              ],
+            },
+          },
+        },
+        { id: 0 },
+      );
+
+      expect(
+        takeRawModalChannelSelectValues("modal-submit-empty-channel-select", "document_channels_empty1234"),
+      ).toEqual([]);
+      expect(
+        takeRawModalChannelSelectValues("modal-submit-empty-channel-select", "document_channels_empty1234"),
+      ).toBeUndefined();
+      expect(takeRawModalChannelSelectValues("modal-submit-empty-channel-select", "memory_channels_empty1234")).toEqual(
+        [],
+      );
+      expect(
+        takeRawModalChannelSelectValues("modal-submit-never-captured", "document_channels_empty1234"),
       ).toBeUndefined();
     } finally {
       if (previousPatchState === undefined) delete globalState.__webSocketPatched;

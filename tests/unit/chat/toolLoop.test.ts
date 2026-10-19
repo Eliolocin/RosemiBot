@@ -2302,7 +2302,7 @@ describe("runToolLoop — contract tests", () => {
       expect(delivered).toEqual(["quiet"]);
     });
 
-    it(`${name}: Off executes ordinarily without review, preparation or replay suppression`, async () => {
+    it(`${name}: Off executes ordinarily without review or same-invocation replay suppression`, async () => {
       const { runToolLoop } = await import("@/utils/chat/toolLoop");
       const { provider } = makeProvider([
         makeFunctionCallResult(name, { target: "fixture" }),
@@ -2316,6 +2316,95 @@ describe("runToolLoop — contract tests", () => {
       expect(review).not.toHaveBeenCalled();
     });
   }
+
+  it("Off reuses a call an earlier invocation finished and tells the replacement model about it", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeContext();
+    const args = { target: "fixture" };
+    const first = makeProvider([makeFunctionCallResult("lookup", args), { status: "error" }]);
+    await runToolLoop(makeParams(context, first.provider));
+    const fallback = makeProvider([makeFunctionCallResult("lookup", args), { status: "completed" }]);
+    await runToolLoop(makeParams(context, fallback.provider));
+
+    expect(toolExecuteCalls).toEqual([{ name: "lookup", args }]);
+    const baseItems = (first.capturedContexts[0] as unknown[]).length;
+    expect(first.capturedContexts.map((items) => (items as unknown[]).length)).toEqual([baseItems, baseItems]);
+    expect((fallback.capturedContexts[0] as unknown[]).length).toBe(baseItems + 1);
+    expect(JSON.stringify(fallback.capturedContexts[0])).toContain("lookup");
+    expect(fallback.capturedHistories[1]).toHaveLength(1);
+  });
+
+  it("Off does not reuse a context-restart result, whose injected media a replacement attempt lacks", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeContext();
+    toolExecuteQueue.push({ success: true, data: { type: "context_restart_message_metadata" } });
+    const first = makeProvider([makeFunctionCallResult("reveal_tool", {}), { status: "error" }]);
+    await runToolLoop(makeParams(context, first.provider));
+    expect(context.completedToolCalls?.size).toBe(0);
+
+    const fallback = makeProvider([makeFunctionCallResult("reveal_tool", {}), { status: "completed" }]);
+    await runToolLoop(makeParams(context, fallback.provider));
+    expect(toolExecuteCalls).toHaveLength(2);
+  });
+
+  it("Off keeps a native prefill as the last item when it adds the earlier-calls notice", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeContext();
+    const prefill = "Mirri: Okay,";
+    context.streamingContext.outputPrefill = prefill;
+    context.contextItems.push({ role: "model", parts: [{ type: "text", text: prefill }] });
+    const first = makeProvider([makeFunctionCallResult("lookup", { target: "fixture" }), { status: "error" }]);
+    await runToolLoop(makeParams(context, first.provider));
+    const fallback = makeProvider([{ status: "completed" }]);
+    await runToolLoop(makeParams(context, fallback.provider));
+
+    const items = fallback.capturedContexts[0] as Array<{ role: string; parts: Array<{ text: string }> }>;
+    expect(items.at(-1)?.parts[0]?.text).toBe(prefill);
+    expect(items.at(-2)?.parts[0]?.text).toContain("lookup");
+  });
+
+  it("folds a native prefill into the tool-call turn when the narration notice is added", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const prefill = "Mirri: Okay,";
+    context.streamingContext.outputPrefill = prefill;
+    context.contextItems.push({ role: "model", parts: [{ type: "text", text: prefill }] });
+    const delivered: string[] = [];
+    const { provider, capturedContexts, capturedHistories } = makeProvider([
+      makeFunctionCallResult("lookup", { target: "fixture" }, "Handled that."),
+      held("quiet", delivered),
+    ]);
+    Object.assign(provider, { callStructuredJSON: async () => ({ success: true, data: { status: "pass" } }) });
+
+    await runToolLoop(makeParams(context, provider));
+
+    expect(JSON.stringify(capturedContexts[1])).toContain("has not been sent yet");
+    const secondHistory = capturedHistories[1] as Array<{ preToolCallTextParts?: Array<{ text?: string }> }>;
+    expect(secondHistory[0]?.preToolCallTextParts?.[0]?.text).toBe(prefill);
+  });
+
+  it("keeps a native prefill last when a revision instruction is added", async () => {
+    const { runToolLoop } = await import("@/utils/chat/toolLoop");
+    const context = makeReviewContext();
+    const prefill = "Mirri: Okay,";
+    context.streamingContext.outputPrefill = prefill;
+    context.contextItems.push({ role: "model", parts: [{ type: "text", text: prefill }] });
+    const delivered: string[] = [];
+    const { provider, capturedContexts } = makeProvider([held("first draft", delivered), held("quiet", delivered)]);
+    let textReviews = 0;
+    Object.assign(provider, {
+      callStructuredJSON: async (request: ProviderStructuredJsonRequest) => ({
+        success: true,
+        data: request.schemaName === "response_review" && ++textReviews === 1 ? rejection : { status: "pass" },
+      }),
+    });
+
+    await runToolLoop(makeParams(context, provider));
+
+    const second = capturedContexts[1] as Array<{ parts: Array<{ text?: string }> }>;
+    expect(second.at(-1)?.parts[0]?.text).toBe(prefill);
+    expect(second.at(-2)?.parts[0]?.text).toContain("Editor notes");
+  });
 
   it("applies the two turn-wide correction opportunities across independent chains and fallback", async () => {
     const { runToolLoop } = await import("@/utils/chat/toolLoop");

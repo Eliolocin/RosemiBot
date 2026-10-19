@@ -7,7 +7,7 @@ export default {
     },
     drafting: {
       import_unavailable:
-        "此工作區無法使用回覆審查設定。請在來源匯出的設定中清除該設定，或在匯入前註冊符合條件的本機模型或檢查器。",
+        "此處無法使用回覆審查設定。請在來源匯出的設定中清除該設定，或在匯入前註冊符合條件的本機模型或檢查器。",
       title: "回覆草稿",
       description: "在我傳送回覆或使用工具前審查我的草稿。",
       off: "關閉時：我不經過回覆草稿審查，直接傳送回覆與使用工具。",
@@ -560,7 +560,8 @@ export default {
       page_pending: `這個頁面尚未提供。`,
       page_read_only: `需要「管理伺服器」權限才能變更這些設定。`,
       unavailable: `無法載入設定。請按重試再試一次。`,
-      not_setup: `這個工作區還沒設定好。請先執行 /setup。`,
+      not_setup: `這個伺服器還沒設定好。請先執行 /setup。`,
+      not_setup_dm: `這個私訊還沒設定好。請先執行 /setup。`,
       no_personas: `這裡還沒有設定任何人格。`,
       retry: `重試`,
       cancel_button: `取消`,

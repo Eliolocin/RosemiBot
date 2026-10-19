@@ -505,8 +505,8 @@ Nhập \`{project_id}::{location}\` bằng {configSetup} hoặc {configApikeySet
       memory_tagging: {
         title: `Gắn thẻ bộ nhớ (nâng cao)`,
         description:
-          "Mặc định mọi bộ nhớ trong phạm vi đều được gửi kèm tin nhắn. Việc gắn thẻ giúp thu hẹp lại.\n> **Thẻ từ khóa**: bộ nhớ có thẻ chỉ thức dậy khi từ khóa xuất hiện trong hội thoại. Bộ nhớ không gắn thẻ sẽ luôn hoạt động.\n> **Thẻ kênh**: thẻ `#channel` giới hạn bộ nhớ trong kênh đó, và kết hợp được với thẻ từ khóa.\n\nBật cả hai trong {configAdvancedMemory}, rồi dùng {toolPromptSnapshot} để xem chính xác các bộ nhớ đang hoạt động lúc này.",
-        footer: "Tài liệu tải lên và lịch sử trích xuất cũng có thể gắn thẻ kênh.",
+          "Mặc định mọi bộ nhớ trong phạm vi đều được gửi kèm tin nhắn. Việc gắn thẻ giúp thu hẹp lại.\n> **Thẻ từ khóa**: bộ nhớ có thẻ chỉ thức dậy khi từ khóa xuất hiện trong hội thoại. Bộ nhớ không gắn thẻ sẽ luôn hoạt động.\n> **Kênh**: bộ nhớ máy chủ có thể giới hạn ở các kênh bạn chọn trong biểu mẫu (bao gồm các luồng trong đó), và bộ nhớ cá nhân qua thẻ `#channel`. Cả hai đều kết hợp được với thẻ từ khóa.\n\nBật cả hai trong {configAdvancedMemory}, rồi dùng {toolPromptSnapshot} để xem chính xác các bộ nhớ đang hoạt động lúc này.",
+        footer: "Tài liệu tải lên và lịch sử trích xuất cũng có thể được giới hạn theo kênh.",
       },
     },
     scheduled_tasks: {

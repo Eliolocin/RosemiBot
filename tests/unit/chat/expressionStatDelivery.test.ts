@@ -9,6 +9,7 @@ import { initializeLocalizer } from "@/utils/text/localizer";
 import { createPersona } from "../../helpers/fixtures";
 import { createResponseReviewState, recordResponseReviewUsage } from "@/utils/chat/responseReview";
 import { buildSceneTextQuotaTriggerKey } from "@/utils/chat/sceneTurn";
+import { discordPresenceRetention } from "@/utils/cache/discordPresenceRetention";
 
 const recorded: RecordStatInput[] = [];
 
@@ -86,6 +87,32 @@ function makeResult(overrides: Partial<GenerationTurnResult>): GenerationTurnRes
 describe("emoji stats count only what Discord accepted", () => {
   beforeAll(async () => {
     await initializeLocalizer();
+  });
+
+  it.each([
+    { kind: "text", isDMChannel: false, retained: true },
+    { kind: "tool", isDMChannel: false, retained: true },
+    { kind: "empty", isDMChannel: false, retained: false },
+    { kind: "text", isDMChannel: true, retained: false },
+  ])("retains guild presence after $kind delivery with DM=$isDMChannel", async ({ kind, isDMChannel, retained }) => {
+    const context = makeContext();
+    context.serverDiscId = "100000000000000001";
+    context.userDiscId = "200000000000000001";
+    context.isDMChannel = isDMChannel;
+    const retain = spyOn(discordPresenceRetention, "retain").mockImplementation(() => {});
+    try {
+      await runPostTurnEffects(
+        context,
+        makeResult({
+          ...(kind === "text" ? {} : { personaResponses: [] }),
+          toolResponseDelivered: kind === "tool",
+        }),
+      );
+      if (retained) expect(retain).toHaveBeenCalledWith(context.serverDiscId, context.userDiscId);
+      else expect(retain).not.toHaveBeenCalled();
+    } finally {
+      retain.mockRestore();
+    }
   });
 
   afterAll(() => {

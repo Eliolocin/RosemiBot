@@ -7,7 +7,7 @@ export default {
     },
     drafting: {
       import_unavailable:
-        "A Response Drafting selection is unavailable in this workspace. Clear it in the source export or register an eligible local model or checker before importing.",
+        "A Response Drafting selection is unavailable here. Clear it in the source export or register an eligible local model or checker before importing.",
       title: "Response Drafting",
       description:
         "My responses get reviewed then revised first before being sent. Can increase response time and cost.",
@@ -708,7 +708,8 @@ export default {
       page_pending: `This page is not available yet.`,
       page_read_only: `Manage Server is needed to change these.`,
       unavailable: `Configuration could not be loaded. Retry to try again.`,
-      not_setup: `This workspace is not set up yet. Run /setup first.`,
+      not_setup: `This server is not set up yet. Run /setup first.`,
+      not_setup_dm: `This DM is not set up yet. Run /setup first.`,
       no_personas: `No personas are set up here yet.`,
       retry: `Retry`,
       cancel_button: `Cancel`,

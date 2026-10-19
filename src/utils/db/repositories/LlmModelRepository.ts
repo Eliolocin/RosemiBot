@@ -54,21 +54,27 @@ function toPgNumericArrayLiteral(values: number[]): string {
  */
 class LlmModelRepository {
   async loadAvailableSpeechModels(provider: string, scope: OpenRouterModelScope): Promise<SpeechModelRow[]> {
-    const rows = await sql`
-      SELECT m.* FROM speech_models m
-      WHERE m.provider = ${provider} AND NOT m.is_deprecated AND (
-        NOT m.is_scoped_registration OR EXISTS (
-          SELECT 1 FROM scoped_model_registrations r WHERE r.speech_model_id = m.speech_model_id
-            AND ((${scope.kind} = 'server' AND r.server_id = ${scope.ownerId} AND r.user_id IS NULL)
-              OR (${scope.kind} = 'personal' AND r.user_id = ${scope.ownerId} AND r.server_id IS NULL))
-        )
-      ) ORDER BY m.is_default DESC, m.speech_model_id
-    `;
+    const rows = await withTransientDbRetry(
+      () => sql`
+        SELECT m.* FROM speech_models m
+        WHERE m.provider = ${provider} AND NOT m.is_deprecated AND (
+          NOT m.is_scoped_registration OR EXISTS (
+            SELECT 1 FROM scoped_model_registrations r WHERE r.speech_model_id = m.speech_model_id
+              AND ((${scope.kind} = 'server' AND r.server_id = ${scope.ownerId} AND r.user_id IS NULL)
+                OR (${scope.kind} = 'personal' AND r.user_id = ${scope.ownerId} AND r.server_id IS NULL))
+          )
+        ) ORDER BY m.is_default DESC, m.speech_model_id
+      `,
+      "load available speech models",
+    );
     return speechModelSchema.array().parse(rows);
   }
 
   async loadSpeechModelById(speechModelId: number): Promise<SpeechModelRow | null> {
-    const rows = await sql`SELECT * FROM speech_models WHERE speech_model_id = ${speechModelId}`;
+    const rows = await withTransientDbRetry(
+      () => sql`SELECT * FROM speech_models WHERE speech_model_id = ${speechModelId}`,
+      "load speech model by id",
+    );
     return rows.length ? speechModelSchema.parse(rows[0]) : null;
   }
 

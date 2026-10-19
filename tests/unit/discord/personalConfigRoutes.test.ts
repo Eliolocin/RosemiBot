@@ -5494,7 +5494,7 @@ describe("Persona reachability beyond one modal", () => {
       nonce,
     });
     const modalsModule = await import("@/utils/discord/ui/modals");
-    const takeSpy = spyOn(modalsModule, "takeRawModalSelectValue").mockReturnValue("123456789012345678");
+    const takeSpy = spyOn(modalsModule, "takeRawModalChannelSelectValues").mockReturnValue(["123456789012345678"]);
 
     const interaction = makePersonalInteraction({
       kind: "modal",

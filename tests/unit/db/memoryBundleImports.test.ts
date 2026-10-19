@@ -261,6 +261,27 @@ describe("memory bundle imports", () => {
     expect(committedInserts[0]?.content).toBe("new memory");
   });
 
+  it("strips legacy channel tags from workspace memories before deduping", async () => {
+    serverRows.set(10, [memory("existing memory", ["lore"])]);
+    const result = await importRepository.importWorkspaceMemoryBundle(
+      "server-7",
+      "importer-22",
+      [
+        {
+          bucketName: "bucket-10",
+          personaId: 1,
+          memories: [memory("existing memory", ['"#general"', "lore"]), memory("new memory", ["#bot-chat", "cats"])],
+        },
+      ],
+      "merge",
+    );
+
+    expect(result.itemsImported).toMatchObject({ memoriesInserted: 1, memoriesSkipped: 1 });
+    expect(committedInserts.map(({ content, tags }) => ({ content, tags }))).toEqual([
+      { content: "new memory", tags: ["cats"] },
+    ]);
+  });
+
   it("replaces only mapped scopes and clears an empty mapped scope", async () => {
     serverRows.set(10, [memory("old-10")]);
     serverRows.set(20, [memory("old-20")]);

@@ -2,7 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { AssembledServerConfig, LlmRow, TomoriState, UserSavedProviderConfigUpsert } from "@/types/db/schema";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
-import { buildUserSavedProviderConfigFromExistingOrDefaults } from "@/utils/provider/savedProviderConfig";
+import {
+  buildSavedProviderConfigFromExistingOrDefaults,
+  buildUserSavedProviderConfigFromExistingOrDefaults,
+} from "@/utils/provider/savedProviderConfig";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
 import { createPersona } from "../../helpers/fixtures";
 
@@ -82,6 +85,64 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Personal model randomizer data layer (migr
       config: makeBaseConfig({ model_randomizer_enabled: randomizerEnabled }),
     });
   }
+
+  it("preserves saved sampler settings when rebuilding personal and server provider snapshots", async () => {
+    const savedParameters = {
+      llm_temperature: 0.5,
+      llm_top_p: 0.75,
+      llm_top_k: 32,
+      llm_frequency_penalty: 0.25,
+      llm_presence_penalty: 0.5,
+      llm_min_p: 0.125,
+      llm_max_output_tokens: 1_024,
+      thinking_level: "low" as const,
+    };
+    const baseConfig = makeBaseConfig({ llm_max_output_tokens: 8_192 });
+    const personal = await buildUserSavedProviderConfigFromExistingOrDefaults({
+      userId: userAId,
+      provider: "google",
+      apiKey: null,
+      keyVersion: 1,
+      baseConfig,
+      llmId: sampleLlm.llm_id,
+    });
+    const server = await buildSavedProviderConfigFromExistingOrDefaults({
+      serverId,
+      provider: "google",
+      apiKey: null,
+      keyVersion: 1,
+      baseConfig,
+      llmId: sampleLlm.llm_id,
+    });
+    expect(personal.llm_max_output_tokens).toBe(baseConfig.llm_max_output_tokens);
+    expect(server.llm_max_output_tokens).toBe(baseConfig.llm_max_output_tokens);
+    expect(await llmProviderRepo.upsertUserSavedProviderConfig(userAId, { ...personal, ...savedParameters })).toBe(
+      true,
+    );
+    expect(await llmProviderRepo.upsertSavedProviderConfig(serverId, { ...server, ...savedParameters })).toBe(true);
+
+    const rebuiltPersonal = await buildUserSavedProviderConfigFromExistingOrDefaults({
+      userId: userAId,
+      provider: "google",
+      apiKey: null,
+      keyVersion: 1,
+      baseConfig,
+      existingConfig: await llmProviderRepo.loadUserSavedProviderConfig(userAId, "google"),
+    });
+    const rebuiltServer = await buildSavedProviderConfigFromExistingOrDefaults({
+      serverId,
+      provider: "google",
+      apiKey: null,
+      keyVersion: 1,
+      baseConfig,
+      existingConfig: await llmProviderRepo.loadSavedProviderConfig(serverId, "google"),
+    });
+    expect(await llmProviderRepo.upsertUserSavedProviderConfig(userAId, rebuiltPersonal)).toBe(true);
+    expect(await llmProviderRepo.upsertSavedProviderConfig(serverId, rebuiltServer)).toBe(true);
+
+    expect(await llmProviderRepo.loadUserSavedProviderConfig(userAId, "google")).toMatchObject(savedParameters);
+    expect(await llmProviderRepo.loadSavedProviderConfig(serverId, "google")).toMatchObject(savedParameters);
+  });
 
   it("overrides server true with personal false when an active personal text route has randomizer disabled", async () => {
     // Clear user provider rows before testing overlay.

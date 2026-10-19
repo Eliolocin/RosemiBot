@@ -20,6 +20,8 @@ export interface DocumentListRow {
   document_id: number;
   document_name: string;
   first_chunk: string | null;
+  channel_disc_ids: string[];
+  channel_scope_pending: boolean;
   isHistory: boolean;
 }
 
@@ -49,7 +51,7 @@ export interface AddDocumentInput {
   memteachingEnabled: boolean;
   documentName: string;
   attachment: APIAttachment | undefined;
-  channelTags: string[];
+  channelDiscIds: string[];
 }
 
 export interface VectorizeMemoryInput {
@@ -66,7 +68,7 @@ export interface VectorizeMemoryInput {
   memteachingEnabled: boolean;
   content: string;
   documentName: string;
-  channelTags: string[];
+  channelDiscIds: string[];
 }
 
 export type VectorizeMemoryResult =
@@ -187,7 +189,7 @@ export const serverDocumentsOperations = {
       embeddings,
       embeddingModelId: resolved.embeddingModelId,
       embeddingFamily: resolved.model.model_family,
-      channelTags: input.channelTags,
+      channelDiscIds: input.channelDiscIds,
     });
     invalidateTomoriStateCache(input.workspaceId);
     return { status: "success", documentId, documentName, chunkCount: chunks.length };
@@ -227,7 +229,7 @@ export const serverDocumentsOperations = {
     configuredEmbeddingModelId: number | null;
     canManage: boolean;
     content: string;
-    channelTags: string[];
+    channelDiscIds: string[];
   }): Promise<ChunkEditResult> {
     if (!input.canManage) return { status: "forbidden" };
     const meta = await serverMemoryRepository.loadDocumentMeta(input.documentId, input.serverId, input.personaId);
@@ -238,10 +240,11 @@ export const serverDocumentsOperations = {
     if (!content) return { status: "empty-content" };
     if (content.length > 4000) return { status: "content-too-long" };
     const contentChanged = content !== target.content;
-    const normalizedCurrentTags = [...meta.channel_tags].sort();
-    const normalizedNextTags = [...input.channelTags].sort();
-    const tagsChanged = normalizedCurrentTags.join("\u0000") !== normalizedNextTags.join("\u0000");
-    if (!contentChanged && !tagsChanged) return { status: "unchanged" };
+    const normalizedCurrentScope = [...meta.channel_disc_ids].sort();
+    const normalizedNextScope = [...input.channelDiscIds].sort();
+    const scopeChanged =
+      meta.channel_scope_pending || normalizedCurrentScope.join(",") !== normalizedNextScope.join(",");
+    if (!contentChanged && !scopeChanged) return { status: "unchanged" };
     if (contentChanged) {
       const resolved = await resolveEmbedding(input.serverId, input.userId, input.configuredEmbeddingModelId);
       if (resolved.status !== "success") return resolved;
@@ -261,11 +264,11 @@ export const serverDocumentsOperations = {
       await rebuildDocumentTextContent(input.documentId);
       invalidateTomoriStateCache(input.workspaceId);
     }
-    if (tagsChanged) {
-      const updated = await serverMemoryRepository.updateDocumentChannelTags(
+    if (scopeChanged) {
+      const updated = await serverMemoryRepository.updateDocumentChannelScope(
         input.documentId,
         input.serverId,
-        input.channelTags,
+        input.channelDiscIds,
         input.personaId,
       );
       if (!updated) return { status: "write-failed" };
@@ -361,7 +364,7 @@ async function vectorizeLoadedMemory(
     embeddingModelId: resolved.embeddingModelId,
     embeddingFamily: resolved.model.model_family,
     sourceType: "memory",
-    channelTags: input.channelTags,
+    channelDiscIds: input.channelDiscIds,
   });
   invalidateTomoriStateCache(input.workspaceId);
   if (!target.server_memory_id || !(await serverMemoryRepository.remove(target.server_memory_id))) {

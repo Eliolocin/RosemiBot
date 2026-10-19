@@ -724,10 +724,10 @@ async function runAutoTriggerWrite(
   }
 
   if (route.action === "channels-autoch-configure-submit") {
-    const channelId = dependencies.takeChannelSelectValue(
+    const channelId = dependencies.takeChannelSelectValues(
       submitted.id,
       buildConfigModalFieldId(CONFIG_CHANNEL_AUTO_TRIGGER_CHANNEL_FIELD, route.nonce),
-    );
+    )?.[0];
     const enabledValue = dependencies.takeSelectValue(
       submitted.id,
       buildConfigModalFieldId(CONFIG_CHANNEL_AUTO_TRIGGER_ENABLED_FIELD, route.nonce),
@@ -1006,10 +1006,10 @@ async function runChannelWrite(
 
   const submitted = modal(interaction);
   if (route.action === "channels-log-submit") {
-    const channelId = dependencies.takeChannelSelectValue(
+    const channelId = dependencies.takeChannelSelectValues(
       submitted.id,
       buildConfigModalFieldId(CONFIG_CHANNEL_LOG_FIELD, route.nonce),
-    );
+    )?.[0];
     if (!channelId || !(await channelIsAvailable(interaction, channelId, dependencies))) {
       return { receipt: invalid(route.locale, "commands.config.panel.channels_invalid_channel_detail") };
     }
@@ -1061,10 +1061,10 @@ async function runChannelWrite(
     };
   }
 
-  const channelId = dependencies.takeChannelSelectValue(
+  const channelId = dependencies.takeChannelSelectValues(
     submitted.id,
     buildConfigModalFieldId(CONFIG_CHANNEL_WELCOME_FIELD, route.nonce),
-  );
+  )?.[0];
   const personaValue = dependencies.takeSelectValue(
     submitted.id,
     buildConfigModalFieldId(CONFIG_CHANNEL_WELCOME_PERSONA_FIELD, route.nonce),

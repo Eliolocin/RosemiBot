@@ -655,7 +655,7 @@ describe("chat regression harness", () => {
       },
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setImmediate(resolve));
     expect(processedMessageIds).toEqual([queuedMessage.id]);
   });
 
@@ -754,7 +754,7 @@ describe("chat regression harness", () => {
       },
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setImmediate(resolve));
     expect(replayedTargets).toEqual([targetUserId]);
   });
 
@@ -1529,7 +1529,7 @@ describe("chat regression harness", () => {
           replayed.push(queued.message);
         },
       });
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => setImmediate(resolve));
 
       // Replay re-admits the webhook message itself, so the member keeps the conversational
       // identity while the confirmed record still resolves the speaker to the host account.

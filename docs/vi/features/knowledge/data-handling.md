@@ -50,7 +50,7 @@ Dữ liệu có thể xuất được gửi tới DM của bạn dưới dạng 
 
 - `/export config`: giá trị cấu hình máy chủ (không bao gồm khóa và thông tin xác thực API).
 - `/export personal config`: cài đặt hồ sơ cá nhân (quyền riêng tư, thẻ xuất hiện, đặt tên).
-- `/export memories`: bộ nhớ máy chủ, trong phạm vi persona chính, một persona hoặc tất cả các persona.
+- `/export memories`: bộ nhớ máy chủ, trong phạm vi persona chính, một persona hoặc tất cả các persona. Giới hạn kênh không được xuất, do đó bộ nhớ đã nhập sẽ áp dụng trong mọi kênh cho đến khi bạn chọn lại kênh.
 - `/export personal memories`: ký ức cá nhân, có phạm vi toàn cầu hoặc từng cá nhân.
 - `/persona export`: định nghĩa đầy đủ về tính cách.
 

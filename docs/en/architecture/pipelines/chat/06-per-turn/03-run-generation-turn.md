@@ -45,6 +45,10 @@ Running such an attempt switches credential attribution to the server. Tools ret
 Each attempt prepares media for its capabilities, trims history to known context limits with an
 output reserve, and formats prefill as a model continuation or tail directive.
 
+Personal Text attempts apply the active provider's saved sampler settings before request construction
+and history truncation. An explicit personal output-token limit overrides the server limit for both;
+an unset personal limit inherits the server setting. Both paths clamp the limit to the model's ceiling.
+
 ### Superseded message cleanup
 
 After a partially delivered failure, `deleteSupersededStreamMessages()` removes tracked messages
@@ -75,8 +79,11 @@ bypass server rotation queries and retries. Deferred server attempts use server 
 rotation only after server admission succeeds.
 
 - **Failover effects**: cleanup does not roll back tool writes, external requests, or independent tool
-  messages. Off starts a new tool history on replacement attempts. With Response Drafting On, shared
-  history and successful-request identities survive fallback, preventing identical effects from replaying.
+  messages. Off starts a new tool history on replacement attempts, but successful calls are recorded
+  by request identity in `ChatTurnContext.completedToolCalls`: a replacement attempt that repeats an
+  identical call gets the recorded result instead of running it again, and is told which tools already
+  ran. A call with different arguments still executes. With Response Drafting On, shared history also
+  survives fallback.
 - **Deferred server admission**: resolving server fallback routes only on personal failure prevents
   unnecessary database writes and server quota checks on successful member turns.
 - **Per-turn cleanup**: a `finally` block invokes sink cleanup after exceptions. Temporary webhook

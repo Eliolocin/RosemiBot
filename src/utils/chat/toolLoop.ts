@@ -39,7 +39,7 @@ import {
 } from "@/utils/chat/contextAnnotations";
 import { answersQueuedTriggerMessage } from "@/utils/chat/contextDirectives";
 import { takeEnhancedContextItem } from "@/utils/chat/pendingEnhancedContext";
-import { foldPrefillIntoToolHistory } from "@/utils/chat/assistantPrefill";
+import { foldPrefillIntoToolHistory, insertBeforeNativePrefill } from "@/utils/chat/assistantPrefill";
 import { buildExpressionToolResult, deliverExpression } from "@/utils/chat/expressionDelivery";
 import { recordChatDiagnostic, runWithChatDiagnosticStage } from "@/utils/chat/diagnosticTimeline";
 import { parseIntegerEnvFlag } from "@/utils/misc/envFlags";
@@ -95,6 +95,12 @@ export async function runToolLoop(params: ToolLoopParams): Promise<GenerationTur
   const streamResults: StreamResult[] = [];
   const review = params.context.responseReview;
   const functionHistory: ToolHistoryEntry[] = review?.functionHistory ?? [];
+  params.context.completedToolCalls ??= new Map();
+  const completedToolCalls = params.context.completedToolCalls;
+  // Off keeps ordinary same-invocation replays, so only calls an earlier invocation finished are
+  // reused, and the model is told about them because its own history starts empty.
+  const reusableToolCalls = review ? completedToolCalls : new Map(completedToolCalls);
+  const earlierToolNames = review ? [] : [...new Set([...reusableToolCalls.values()].map((e) => e.functionCall.name))];
   const accumulatedModelParts: Array<Record<string, unknown>> = [];
   let finalText = "";
   let detailsText = "";
@@ -214,7 +220,7 @@ export async function runToolLoop(params: ToolLoopParams): Promise<GenerationTur
     }
 
     const streamResult = await runWithChatDiagnosticStage({ toolIteration: iteration + 1 }, () =>
-      streamOnce(params, accumulatedModelParts, functionHistory),
+      streamOnce(params, accumulatedModelParts, functionHistory, earlierToolNames),
     );
     streamResults.push(streamResult);
     if (review) {
@@ -322,7 +328,7 @@ export async function runToolLoop(params: ToolLoopParams): Promise<GenerationTur
       case "function_call": {
         detailsText = mergeDetails(detailsText, streamResult.detailsContent);
         setChannelToolCallChainActive(channelLocks.get(params.context.turn.lockedTurn.channelId), true);
-        const toolOutcome = await executeToolCall(params, streamResult, iteration);
+        const toolOutcome = await executeToolCall(params, streamResult, iteration, reusableToolCalls);
         recordChatDiagnostic({
           kind: "tool_outcome",
           outcome: toolOutcome.kind,
@@ -526,6 +532,7 @@ async function streamOnce(
   params: ToolLoopParams,
   accumulatedModelParts: Array<Record<string, unknown>>,
   functionHistory: ToolHistoryEntry[],
+  earlierToolNames: string[],
 ): Promise<StreamResult> {
   const channelId = params.context.channel.id;
   const abortController = new AbortController();
@@ -575,17 +582,24 @@ async function streamOnce(
           ],
         }
       : undefined;
-  const request = foldPrefillIntoToolHistory(
-    pendingNarration || correction
-      ? [
-          ...params.context.contextItems,
-          ...(pendingNarration ? [pendingNarration] : []),
-          ...(correction ? [correction] : []),
-        ]
-      : params.context.contextItems,
-    params.context.streamingContext.outputPrefill,
-    functionHistory,
-  );
+  const earlierToolNotice =
+    earlierToolNames.length > 0
+      ? {
+          role: "user" as const,
+          parts: [
+            {
+              type: "text" as const,
+              text: `[System: An earlier attempt at this turn already completed these tool calls, so their effects have happened: ${earlierToolNames.join(", ")}. Do not repeat them; an identical call returns its recorded result.]`,
+            },
+          ],
+        }
+      : undefined;
+  const outputPrefill = params.context.streamingContext.outputPrefill;
+  let requestItems = params.context.contextItems;
+  for (const item of [earlierToolNotice, pendingNarration, correction]) {
+    if (item) requestItems = insertBeforeNativePrefill(requestItems, outputPrefill, item);
+  }
+  const request = foldPrefillIntoToolHistory(requestItems, outputPrefill, functionHistory);
   const streamPromise = params.provider.streamToDiscord(
     params.context.channel as Parameters<LLMProvider["streamToDiscord"]>[0],
     params.context.client,
@@ -706,6 +720,7 @@ async function executeToolCall(
   params: ToolLoopParams,
   streamResult: StreamResult,
   iteration: number,
+  reusableToolCalls: Map<string, ToolHistoryEntry>,
 ): Promise<
   | { kind: "restart" }
   | { kind: "abort"; status: GenerationTurnResult["status"] }
@@ -849,6 +864,32 @@ async function executeToolCall(
   let executionArgs = functionCall.args ?? {};
   let requestIdentity: string | undefined;
   const review = params.context.responseReview;
+  const reusedOutcome = (completed: ToolHistoryEntry) => ({
+    kind: "history" as const,
+    functionName,
+    success: true,
+    reviewStatus: "reused" as const,
+    endTurn: false,
+    responseDelivered: false,
+    historyEntry: {
+      ...completed,
+      functionCall,
+      functionResponse: {
+        functionResponse: {
+          ...(completed.functionResponse.functionResponse as Record<string, unknown>),
+          name: functionCall.name,
+        },
+      },
+      preToolCallTextParts: buildPreToolCallTextParts(streamResult),
+    },
+  });
+  if (!review && !isBlockedByDeliberateAllowlist) {
+    // Only the identity is taken: Off still executes the call as the model wrote it.
+    const prepared = await ToolRegistry.prepareToolRequest(functionName, executionArgs, toolContext);
+    requestIdentity = toolRequestIdentity(prepared);
+    const completed = reusableToolCalls.get(requestIdentity);
+    if (completed) return reusedOutcome(completed);
+  }
   if (review && !isBlockedByDeliberateAllowlist) {
     const prepared = await runUnderWatchdog(params.context.channel.id, () =>
       ToolRegistry.prepareToolRequest(functionName, executionArgs, toolContext),
@@ -858,27 +899,8 @@ async function executeToolCall(
     executionArgs = prepared.args;
     toolContext.preparedToolRequest = prepared;
     requestIdentity = toolRequestIdentity(prepared);
-    const completed = review.successfulTools.get(requestIdentity);
-    if (completed)
-      return {
-        kind: "history",
-        functionName,
-        success: true,
-        reviewStatus: "reused",
-        endTurn: false,
-        responseDelivered: false,
-        historyEntry: {
-          ...completed,
-          functionCall,
-          functionResponse: {
-            functionResponse: {
-              ...(completed.functionResponse.functionResponse as Record<string, unknown>),
-              name: functionCall.name,
-            },
-          },
-          preToolCallTextParts: buildPreToolCallTextParts(streamResult),
-        },
-      };
+    const completed = reusableToolCalls.get(requestIdentity);
+    if (completed) return reusedOutcome(completed);
     const tool = ToolRegistry.getTool(functionName);
     const available =
       !tool ||
@@ -1055,15 +1077,6 @@ async function executeToolCall(
     );
   }
 
-  if (review && requestIdentity && toolResult.success)
-    review.successfulTools.set(requestIdentity, {
-      functionCall,
-      functionResponse: {
-        functionResponse: { name: functionCall.name, response: { result: toolResult.data ?? { status: "completed" } } },
-      },
-      imageMetadata: toolResult.imageMetadata,
-    });
-
   if (toolResult.success && handleEnhancedContextRestart(params, toolResult.data)) {
     if (params.context.responseReview)
       params.context.responseReview.functionHistory.push({
@@ -1078,6 +1091,17 @@ async function executeToolCall(
       });
     return { kind: "restart" };
   }
+
+  // Recorded after the restart guard: a restart result only means something while its injected media
+  // is in context, and a replacement attempt rebuilds context without it.
+  if (requestIdentity && toolResult.success)
+    params.context.completedToolCalls?.set(requestIdentity, {
+      functionCall,
+      functionResponse: {
+        functionResponse: { name: functionCall.name, response: { result: toolResult.data ?? { status: "completed" } } },
+      },
+      imageMetadata: toolResult.imageMetadata,
+    });
 
   if (functionName === "update_short_term_memory" && toolResult.success) {
     params.context.streamingContext.disableShortTermMemoryUpdate = true;

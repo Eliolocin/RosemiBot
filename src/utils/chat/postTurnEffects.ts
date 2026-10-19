@@ -23,6 +23,7 @@ import { charsToTokensText, estimateContextItemsTokens, sumTurnUsage } from "@/u
 import type { ChatIncoming, ChatTurnContext, GenerationTurnResult } from "@/utils/chat/types";
 import type { TurnUsageEntry } from "@/utils/chat/responseReview";
 import { recordReunionPresence } from "@/utils/chat/reunionPresence";
+import { discordPresenceRetention } from "@/utils/cache/discordPresenceRetention";
 
 /**
  * Matches a fully-resolved Discord custom emoji tag (`<:name:id>` / `<a:name:id>`).
@@ -41,6 +42,9 @@ export async function runPostTurnEffects(context: ChatTurnContext, result: Gener
   // Empty-response retries rebuild context recursively, so release or commit the
   // claim before that retry tries to acquire it again.
   await recordReunionPresence(context.reunionPresence, result);
+  if (!context.isDMChannel && (result.personaResponses.length > 0 || result.toolResponseDelivered === true)) {
+    discordPresenceRetention.retain(context.serverDiscId, context.userDiscId);
+  }
   await maybeScheduleEmptyResponseRetry(context, result);
   await consumeTextQuota(context, result);
   updateSelfReplyBookkeeping(context, result);

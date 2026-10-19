@@ -82,6 +82,36 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("StatRepository — regression", () => {
     expect(await readCount("message_sent", "", lineageA, refs.userId)).toBe(1);
   });
 
+  it("restores unique guild participants from successful turns while excluding command-only activity and DMs", async () => {
+    for (const lineageId of [lineageA, lineageB]) {
+      statRepository.recordStat({ serverId: refs.serverId, userId: refs.userId, lineageId, metric: "message_sent" });
+    }
+    statRepository.recordStat({ serverId: refs.serverId, userId: altUserId, metric: "command_used" });
+    await statRepository.flush();
+
+    const participants = (await statRepository.getPresenceRetentionPairs()).filter(
+      (pair) => pair.server_disc_id === FIXTURE_IDS.serverDiscId,
+    );
+    expect(participants).toEqual([{ server_disc_id: FIXTURE_IDS.serverDiscId, user_disc_id: FIXTURE_IDS.userDiscId }]);
+
+    await statRepository.recordPresenceSeen({ serverId: refs.serverId, userId: altUserId, lineageId: lineageA });
+    expect(await statRepository.getPresenceRetentionPairs()).toContainEqual({
+      server_disc_id: FIXTURE_IDS.serverDiscId,
+      user_disc_id: FIXTURE_IDS.altUserDiscId,
+    });
+
+    await testSql`UPDATE servers SET is_dm_channel = TRUE WHERE server_id = ${refs.serverId}`;
+    try {
+      expect(
+        (await statRepository.getPresenceRetentionPairs()).some(
+          (pair) => pair.server_disc_id === FIXTURE_IDS.serverDiscId,
+        ),
+      ).toBe(false);
+    } finally {
+      await testSql`UPDATE servers SET is_dm_channel = FALSE WHERE server_id = ${refs.serverId}`;
+    }
+  });
+
   it("prices decision tokens separately from author tokens without double-counting subset metrics", async () => {
     const [model] = await testSql<{ decision_model_id: number }[]>`
       INSERT INTO decision_models (provider, codename, input_token_limit, input_price_per_million, output_price_per_million)

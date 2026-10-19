@@ -7,7 +7,7 @@ export default {
     },
     drafting: {
       import_unavailable:
-        "Una selección de Revisión de respuestas no está disponible en este espacio de trabajo. Bórrala en la exportación de origen o registra un modelo local o verificador elegible antes de importar.",
+        "Una selección de Revisión de respuestas no está disponible aquí. Bórrala en la exportación de origen o registra un modelo local o verificador elegible antes de importar.",
       title: "Revisión de respuestas",
       description: "Revisa mis borradores antes de enviar respuestas o usar herramientas.",
       off: "Desactivado: Envío respuestas y uso herramientas sin pasar por la Revisión de respuestas.",
@@ -576,7 +576,8 @@ export default {
       page_pending: `Esta página aún no está disponible.`,
       page_read_only: `Se necesita Gestionar servidor para cambiar esto.`,
       unavailable: `No se pudo cargar la configuración. Reintenta para volver a intentarlo.`,
-      not_setup: `Este espacio de trabajo aún no está configurado. Ejecuta /setup primero.`,
+      not_setup: `Este servidor aún no está configurado. Ejecuta /setup primero.`,
+      not_setup_dm: `Este mensaje directo aún no está configurado. Ejecuta /setup primero.`,
       no_personas: `Aún no hay personas configuradas aquí.`,
       retry: `Reintentar`,
       cancel_button: `Cancelar`,

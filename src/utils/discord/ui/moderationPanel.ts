@@ -54,7 +54,7 @@ import type {
 } from "@/utils/moderation/moderationOperations";
 import { escapeDiscordMarkdown } from "@/utils/text/discordMarkdown";
 import { buildTextPreview, textPreviewFooterKey, textPreviewFooterVars } from "@/utils/text/textPreview";
-import { DISCORD_BUTTON_LABEL_MAX } from "@/utils/discord/ui/componentsV2Limits";
+import { DISCORD_BUTTON_LABEL_MAX, DISCORD_SELECT_VALUES_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { localizer } from "@/utils/text/localizer";
 
 export interface ModerationPanelRenderInput {
@@ -1074,7 +1074,7 @@ export function buildWhitelistChannelAddModal(
           custom_id: buildWhitelistChannelAddModalFieldId(nonce, "channel"),
           channel_types: [ChannelType.GuildText],
           min_values: 1,
-          max_values: 1,
+          max_values: DISCORD_SELECT_VALUES_MAX,
           required: true,
         },
       },
@@ -1259,7 +1259,7 @@ export function buildPersonaChannelAddModal(
           custom_id: buildPersonaChannelAddModalFieldId(nonce, "channel"),
           channel_types: [ChannelType.GuildText],
           min_values: 1,
-          max_values: 1,
+          max_values: DISCORD_SELECT_VALUES_MAX,
           required: true,
         },
       },

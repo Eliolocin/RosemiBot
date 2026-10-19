@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS documents (
   mime_type TEXT,
   file_size_bytes INT,
   text_content TEXT NOT NULL,
+  channel_disc_ids TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[], -- Empty = retrievable in every channel
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (server_id) REFERENCES servers(server_id) ON DELETE CASCADE,
@@ -25,8 +26,8 @@ CREATE TABLE IF NOT EXISTS documents (
 -- Add persona_id column for existing databases
 SELECT add_column_if_not_exists('documents', 'persona_id', 'INTEGER');
 
--- Channel tag filtering for documents (May 2026)
-SELECT add_column_if_not_exists('documents', 'channel_tags', 'TEXT[]', 'ARRAY[]::TEXT[]');
+-- Channel scope for documents; migration 111 moves the legacy `#name` channel_tags aside
+SELECT add_column_if_not_exists('documents', 'channel_disc_ids', 'TEXT[]', 'ARRAY[]::TEXT[]', 'NOT NULL');
 
 -- Normalize stale persona references to serverwide scope (existing pre-scope rows are already NULL)
 UPDATE documents

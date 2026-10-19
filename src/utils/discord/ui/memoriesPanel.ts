@@ -1,5 +1,6 @@
 import {
   ButtonStyle,
+  ChannelType,
   ComponentType,
   MessageFlags,
   TextInputStyle,
@@ -33,7 +34,11 @@ import {
   buildStateControlRow,
   withLinePrefix,
 } from "@/utils/discord/ui/panel";
-import { DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX, DISCORD_TEXT_INPUT_MAX } from "@/utils/discord/ui/componentsV2Limits";
+import {
+  DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX,
+  DISCORD_SELECT_VALUES_MAX,
+  DISCORD_TEXT_INPUT_MAX,
+} from "@/utils/discord/ui/componentsV2Limits";
 import { measureFormattedPanelTextLength } from "@/utils/discord/ui/panelProse";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { getMemoryLimits } from "@/utils/misc/memoryLimits";
@@ -69,7 +74,7 @@ export function parseServerMemoryTags(rawTags: string): string[] {
   return [...new Set(parts)].slice(0, MAX_SERVER_MEMORY_TAGS);
 }
 
-export function buildServerMemoryModalFieldId(field: "content" | "tags" | "file", nonce: string): string {
+export function buildServerMemoryModalFieldId(field: "content" | "tags" | "file" | "channels", nonce: string): string {
   return `${field}_${nonce}`;
 }
 
@@ -81,10 +86,75 @@ export function buildStmCheckboxFieldId(groupIndex: number, nonce: string): stri
   return `stm_${groupIndex}_${nonce}`;
 }
 
+/**
+ * Optional Channel Select that limits a memory or document to the chosen channels.
+ *
+ * @param channelScope - Stored scope to preselect, or null outside a server, where the field is omitted
+ */
+function buildChannelScopeField(
+  locale: string,
+  customId: string,
+  labelKey: string,
+  descriptionKey: string,
+  channelScope: readonly string[] | null,
+): RawDiscordComponent[] {
+  if (!channelScope) return [];
+  const component: RawDiscordComponent = {
+    type: ComponentType.ChannelSelect,
+    custom_id: customId,
+    channel_types: [ChannelType.GuildText, ChannelType.GuildAnnouncement],
+    min_values: 0,
+    max_values: DISCORD_SELECT_VALUES_MAX,
+    required: false,
+  };
+  if (channelScope.length > 0) {
+    component.default_values = channelScope
+      .slice(0, DISCORD_SELECT_VALUES_MAX)
+      .map((id) => ({ id, type: "channel" as const }));
+  }
+  return [
+    {
+      type: ComponentType.Label,
+      label: safeSelectOptionText(localizer(locale, labelKey), 45),
+      description: safeSelectOptionText(localizer(locale, descriptionKey), 100),
+      component,
+    },
+  ];
+}
+
+function buildDocumentChannelScopeField(
+  locale: string,
+  nonce: string,
+  channelScope: readonly string[] | null,
+): RawDiscordComponent[] {
+  return buildChannelScopeField(
+    locale,
+    buildDocumentModalFieldId("channels", nonce),
+    "commands.memories.document_channels_label",
+    "commands.memories.document_channels_description",
+    channelScope,
+  );
+}
+
+function buildServerMemoryChannelScopeField(
+  locale: string,
+  nonce: string,
+  channelScope: readonly string[] | null,
+): RawDiscordComponent[] {
+  return buildChannelScopeField(
+    locale,
+    buildServerMemoryModalFieldId("channels", nonce),
+    "commands.memories.modal_channels_label",
+    "commands.memories.modal_channels_description",
+    channelScope,
+  );
+}
+
 export function buildAddDocumentModal(
   locale: string,
   personaId: number,
   nonce: string,
+  channelScope: readonly string[] | null,
 ): { custom_id: string; title: string; components: RawDiscordComponent[] } {
   const limits = getMemoryLimits();
   return {
@@ -117,31 +187,9 @@ export function buildAddDocumentModal(
           required: true,
         },
       },
-      {
-        type: ComponentType.Label,
-        label: safeSelectOptionText(localizer(locale, "commands.memories.document_channels_label"), 45),
-        description: safeSelectOptionText(localizer(locale, "commands.memories.document_channels_description"), 100),
-        component: {
-          type: ComponentType.TextInput,
-          custom_id: buildDocumentModalFieldId("channels", nonce),
-          style: TextInputStyle.Short,
-          max_length: 200,
-          required: false,
-        },
-      },
+      ...buildDocumentChannelScopeField(locale, nonce, channelScope),
     ],
   };
-}
-
-/**
- * Channel filters carried by a stored memory's tag list.
- *
- * Tags reach the database quoted from some writers, so the quotes come off before the `#` test;
- * otherwise a quoted channel tag reads as a plain tag and the filter silently disappears when a
- * memory is vectorized.
- */
-function channelTagsFromStoredTags(tags: string[]): string[] {
-  return tags.map((tag) => tag.replace(/^["']+|["']+$/g, "")).filter((tag) => tag.startsWith("#"));
 }
 
 export function buildVectorizeMemoryModal(
@@ -150,7 +198,7 @@ export function buildVectorizeMemoryModal(
   personaId: number,
   memoryId: number,
   content: string,
-  tags: string[],
+  channelScope: readonly string[] | null,
   nonce: string,
 ): { custom_id: string; title: string; components: RawDiscordComponent[] } {
   return {
@@ -187,18 +235,7 @@ export function buildVectorizeMemoryModal(
           required: true,
         },
       },
-      {
-        type: ComponentType.Label,
-        label: safeSelectOptionText(localizer(locale, "commands.memories.document_channels_label"), 45),
-        component: {
-          type: ComponentType.TextInput,
-          custom_id: buildDocumentModalFieldId("channels", nonce),
-          style: TextInputStyle.Short,
-          value: channelTagsFromStoredTags(tags).join(", "),
-          max_length: 200,
-          required: false,
-        },
-      },
+      ...buildDocumentChannelScopeField(locale, nonce, channelScope),
     ],
   };
 }
@@ -209,7 +246,7 @@ export function buildEditDocumentChunkModal(
   documentId: number,
   chunkIdx: number,
   content: string,
-  channelTags: string[],
+  channelScope: readonly string[] | null,
   nonce: string,
 ): { custom_id: string; title: string; components: RawDiscordComponent[] } {
   return {
@@ -235,19 +272,7 @@ export function buildEditDocumentChunkModal(
           required: true,
         },
       },
-      {
-        type: ComponentType.Label,
-        label: safeSelectOptionText(localizer(locale, "commands.memories.document_channels_label"), 45),
-        description: safeSelectOptionText(localizer(locale, "commands.memories.document_channels_description"), 100),
-        component: {
-          type: ComponentType.TextInput,
-          custom_id: buildDocumentModalFieldId("channels", nonce),
-          style: TextInputStyle.Short,
-          value: channelTags.join(", "),
-          max_length: 200,
-          required: false,
-        },
-      },
+      ...buildDocumentChannelScopeField(locale, nonce, channelScope),
     ],
   };
 }
@@ -317,6 +342,7 @@ export function buildAddServerMemoryModal(
   locale: string,
   lineageId: number,
   nonce: string,
+  channelScope: readonly string[] | null,
 ): { custom_id: string; title: string; components: RawDiscordComponent[] } {
   return {
     custom_id: buildMemoriesRouteId({ action: "add-submit", locale, lineageId, nonce }),
@@ -360,6 +386,7 @@ export function buildAddServerMemoryModal(
           required: false,
         },
       },
+      ...buildServerMemoryChannelScopeField(locale, nonce, channelScope),
     ],
   };
 }
@@ -370,6 +397,7 @@ export function buildEditServerMemoryModal(
   memoryId: number,
   content: string,
   tags: string[],
+  channelScope: readonly string[] | null,
   nonce: string,
 ): { custom_id: string; title: string; components: RawDiscordComponent[] } {
   return {
@@ -404,6 +432,7 @@ export function buildEditServerMemoryModal(
           required: false,
         },
       },
+      ...buildServerMemoryChannelScopeField(locale, nonce, channelScope),
     ],
   };
 }
@@ -514,6 +543,17 @@ function measureReceiptTextLength(receipt?: PanelReceipt): number {
   return measureFormattedPanelTextLength(buildPanelReceiptContainer(receipt));
 }
 
+/** Subtext naming the channels a memory or document is limited to, or null when it applies everywhere. */
+function renderChannelScopeLine(
+  locale: string,
+  scope: { channel_disc_ids: readonly string[]; channel_scope_pending: boolean },
+): string | null {
+  if (scope.channel_scope_pending) return `-# ${localizer(locale, "commands.memories.channel_scope_unresolved_line")}`;
+  if (scope.channel_disc_ids.length === 0) return null;
+  const channels = scope.channel_disc_ids.map((id) => `<#${id}>`).join(", ");
+  return `-# ${localizer(locale, "commands.memories.channel_scope_line", { channels })}`;
+}
+
 function measurePanelTextLength(content: string): number {
   return measureFormattedPanelTextLength({ type: ComponentType.TextDisplay, content });
 }
@@ -593,6 +633,19 @@ export function buildMemoriesPanelPayload(input: MemoriesPanelRenderInput): Memo
       buildRetryRow(locale, category, selectedLineageId),
     );
     return buildPayload(components, receipt);
+  }
+
+  const hasPendingLegacyScope =
+    category === "memories"
+      ? memories.some((memory) => memory.channel_scope_pending)
+      : category === "documents"
+        ? (input.documents ?? []).some((document) => document.channel_scope_pending)
+        : false;
+  if (hasPendingLegacyScope) {
+    components.push({
+      type: ComponentType.TextDisplay,
+      content: withLinePrefix("-# ", localizer(locale, "commands.memories.channel_scope_legacy_notice")),
+    });
   }
 
   if (page.kind === "remove") {
@@ -874,13 +927,18 @@ export function buildMemoriesPanelPayload(input: MemoriesPanelRenderInput): Memo
       }
 
       if (selectedMemory) {
-        const fixedTextLength = measureReceiptTextLength(receipt) + measureFormattedPanelTextLength(components);
+        const scopeLine = renderChannelScopeLine(locale, selectedMemory);
+        const fixedTextLength =
+          measureReceiptTextLength(receipt) +
+          measureFormattedPanelTextLength(components) +
+          (scopeLine ? measurePanelTextLength(scopeLine) : 0);
         const availableBudget = Math.max(0, DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX - fixedTextLength);
 
         components.push({
           type: ComponentType.TextDisplay,
           content: renderMemoryBlock(locale, selectedMemory.content, availableBudget),
         });
+        if (scopeLine) components.push({ type: ComponentType.TextDisplay, content: scopeLine });
       } else {
         components.push({
           type: ComponentType.TextDisplay,
@@ -1198,7 +1256,8 @@ ${localizer(locale, "commands.memories.documents_description")}`,
       const requestedPosition = chunks.findIndex((candidate) => candidate.chunk_index === documentPage.chunkIdx);
       const chunkIndex = requestedPosition >= 0 ? requestedPosition : 0;
       const chunk = chunks[chunkIndex];
-      const titleContent = `**${safeSelectOptionText(selectedDocument.document_name, 250)}**`;
+      const scopeLine = renderChannelScopeLine(locale, selectedDocument);
+      const titleContent = `**${safeSelectOptionText(selectedDocument.document_name, 250)}**${scopeLine ? `\n${scopeLine}` : ""}`;
       const removePromptComponent =
         page.kind === "document-chunk-remove" && chunk
           ? [

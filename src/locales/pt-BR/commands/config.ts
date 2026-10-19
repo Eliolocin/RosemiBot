@@ -7,7 +7,7 @@ export default {
     },
     drafting: {
       import_unavailable:
-        "Uma seleção de Revisão de respostas não está disponível neste espaço de trabalho. Limpe-a na exportação de origem ou registre um modelo local ou verificador qualificado antes de importar.",
+        "Uma seleção de Revisão de respostas não está disponível aqui. Limpe-a na exportação de origem ou registre um modelo local ou verificador qualificado antes de importar.",
       title: "Revisão de respostas",
       description: "Revise meus rascunhos antes de eu enviar respostas ou usar ferramentas.",
       off: "Desativado: Eu envio respostas e uso ferramentas sem a Revisão de respostas.",
@@ -569,7 +569,8 @@ export default {
       page_pending: `Esta página ainda não está disponível.`,
       page_read_only: `Gerenciar Servidor é necessário para alterar isso.`,
       unavailable: `Não foi possível carregar a configuração. Tente novamente.`,
-      not_setup: `Este workspace ainda não está configurado. Rode /setup primeiro.`,
+      not_setup: `Este servidor ainda não está configurado. Rode /setup primeiro.`,
+      not_setup_dm: `Esta DM ainda não está configurada. Rode /setup primeiro.`,
       no_personas: `Nenhuma persona foi configurada aqui ainda.`,
       retry: `Tentar Novamente`,
       cancel_button: `Cancelar`,

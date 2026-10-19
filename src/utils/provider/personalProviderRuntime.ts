@@ -109,6 +109,7 @@ export async function applyPersonalProviderSelectionsToTomoriState(
     nextConfig.llm_frequency_penalty = activeConfigs.text.llm_frequency_penalty ?? nextConfig.llm_frequency_penalty;
     nextConfig.llm_presence_penalty = activeConfigs.text.llm_presence_penalty ?? nextConfig.llm_presence_penalty;
     nextConfig.llm_min_p = activeConfigs.text.llm_min_p ?? nextConfig.llm_min_p;
+    nextConfig.llm_max_output_tokens = activeConfigs.text.llm_max_output_tokens ?? nextConfig.llm_max_output_tokens;
     nextConfig.llm_disabled_params = activeConfigs.text.llm_disabled_params ?? nextConfig.llm_disabled_params;
     nextConfig.llm_logit_biases = activeConfigs.text.llm_logit_biases ?? nextConfig.llm_logit_biases;
     nextConfig.thinking_level = activeConfigs.text.thinking_level ?? nextConfig.thinking_level;

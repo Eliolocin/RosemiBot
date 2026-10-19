@@ -13,12 +13,17 @@ function describeEngine(engineName: WebSearchEngineName): string {
       return "Brave Search";
     case "searxng":
       return "SearXNG";
+    case "openrouter":
+      return "OpenRouter Search";
     case "duckduckgo":
       return "DuckDuckGo";
   }
 }
 
-export async function resolveWebSearchToolCapabilities(serverId?: number): Promise<WebSearchToolCapabilities> {
+export async function resolveWebSearchToolCapabilities(
+  serverId?: number,
+  provider?: string,
+): Promise<WebSearchToolCapabilities> {
   const searxngAvailable = await isSearxngAvailable();
   const braveAvailable = await isBraveSearchAvailable(serverId);
 
@@ -40,6 +45,6 @@ export async function resolveWebSearchToolCapabilities(serverId?: number): Promi
 
   return {
     categories: ["text"],
-    engineLabel: describeEngine("duckduckgo"),
+    engineLabel: describeEngine(provider === "openrouter" ? "openrouter" : "duckduckgo"),
   };
 }

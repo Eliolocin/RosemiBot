@@ -45,6 +45,8 @@ export interface RawDiscordComponent {
   values?: string[];
   /** Allowed channel types (for channel select components, type 8) */
   channel_types?: number[];
+  /** Preselected entities (for user, role, mentionable, and channel selects) */
+  default_values?: Array<{ id: string; type: "user" | "role" | "channel" }>;
   /** Nested component (for type 18 wrappers) */
   component?: RawDiscordComponent;
   /** Child components array (for containers) */

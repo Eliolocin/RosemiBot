@@ -3,7 +3,7 @@ export default {
     title: `MCP Servers`,
     count: `Registered MCPs \`({count}/{max})\``,
     empty_guild: `This server has no MCPs yet.`,
-    empty_dm: `This DM workspace has no MCPs yet.`,
+    empty_dm: `This DM has no MCPs yet.`,
     unavailable: `MCP registrations could not be loaded. Retry to try again.`,
     stale_warning:
       "Saved data may be out of date because the read failed. Write actions are unavailable until a fresh read succeeds.",
@@ -59,7 +59,7 @@ export default {
     invalid_type: `Choose a supported MCP server type.`,
     family_in_use: `Another enabled MCP already replaces this family. Disable it before selecting this server.`,
     invalid_url: `The MCP server URL did not pass the remote URL security checks.`,
-    limit_reached: `This workspace has reached its configured MCP server limit.`,
+    limit_reached: `The configured MCP server limit has been reached.`,
     connection_failed: `TomoriBot could not connect to the MCP server.`,
     write_failed: `The registration changed or the database write failed. Retry the panel state and try again.`,
     added: `MCP server added`,

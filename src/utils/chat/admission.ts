@@ -585,7 +585,16 @@ async function evaluateAudioTranscriptionAdmission(args: {
   log.warn(
     `Audio transcription failed for message ${message.id}: ${transcriptionResult.failureReason ?? "unknown"}${transcriptionResult.failureDetails ? ` (${transcriptionResult.failureDetails})` : ""}`,
   );
-  if (message.content.trim().length === 0) {
+  const hasVisualMedia = message.attachments
+    ? [...message.attachments.values()].some((att) => {
+        const mime = att.contentType?.toLowerCase() ?? "";
+        if (mime.startsWith("video/") || mime.startsWith("image/")) {
+          return true;
+        }
+        return /\.(png|jpe?g|webp|gif|heic|heif|mp4|webm|mov|mpeg|avi)$/i.test(att.name ?? "");
+      })
+    : false;
+  if (message.content.trim().length === 0 && !hasVisualMedia) {
     const shouldSurfaceTranscriptionFailure =
       incoming.shouldSurfaceUserErrors ??
       (Boolean(incoming.manualTriggerInvoker || incoming.reminderRecipientID || incoming.reminderData?.self_reminder) ||

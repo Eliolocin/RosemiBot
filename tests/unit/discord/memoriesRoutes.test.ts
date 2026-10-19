@@ -64,6 +64,8 @@ function makeMemory(id: number, overrides: Partial<ServerMemoryRow> = {}): Serve
     user_id: 42,
     content: `Server memory content ${id}`,
     tags: ["general", "lore"],
+    channel_disc_ids: [],
+    channel_scope_pending: false,
     created_at: new Date(),
     updated_at: new Date(),
     ...overrides,
@@ -362,14 +364,22 @@ describe("memories panel route catalog", () => {
 
 describe("memories modals and tag parser", () => {
   it("pins raw modal component type 19 for file upload in add modal", () => {
-    const modal = buildAddServerMemoryModal("en-US", 1770, "nonce123");
+    const modal = buildAddServerMemoryModal("en-US", 1770, "nonce123", []);
     const fileContainer = modal.components.find((c) => c.component?.custom_id?.startsWith("file_"));
     expect(fileContainer).toBeDefined();
     expect(fileContainer?.component?.type).toBe(19);
   });
 
+  it("offers the channel scope select only inside a server", () => {
+    const hasChannelField = (modal: { components: Array<{ component?: { custom_id?: string } }> }) =>
+      modal.components.some((c) => c.component?.custom_id?.startsWith("channels_"));
+    expect(hasChannelField(buildAddServerMemoryModal("en-US", 1770, "nonce123", []))).toBe(true);
+    expect(hasChannelField(buildAddServerMemoryModal("en-US", 1770, "nonce123", null))).toBe(false);
+    expect(hasChannelField(buildAddDocumentModal("en-US", 0, "nonce123", null))).toBe(false);
+  });
+
   it("pins document uploads to type 19 and STM groups to type 22", () => {
-    const documentModal = buildAddDocumentModal("en-US", 0, "nonce123");
+    const documentModal = buildAddDocumentModal("en-US", 0, "nonce123", []);
     const file = documentModal.components.find((component) => component.component?.custom_id?.startsWith("file_"));
     expect(file?.component?.type).toBe(19);
 
@@ -389,10 +399,19 @@ describe("memories modals and tag parser", () => {
     expect(stmModal.components[0]?.component?.options).toHaveLength(1);
   });
 
-  it("prefills document channel filters when editing a chunk", () => {
-    const modal = buildEditDocumentChunkModal("en-US", 10, 77, 0, "Stored chunk", ["#general", "#lore"], "nonce123");
+  it("prefills the stored document channel scope as an optional Channel Select when editing a chunk", () => {
+    const scope = ["111111111111111111", "222222222222222222"];
+    const modal = buildEditDocumentChunkModal("en-US", 10, 77, 0, "Stored chunk", scope, "nonce123");
     const channels = modal.components.find((component) => component.component?.custom_id?.startsWith("channels_"));
-    expect(channels?.component?.value).toBe("#general, #lore");
+    expect(channels?.component).toMatchObject({ type: 8, min_values: 0, required: false });
+    expect(channels?.component?.default_values).toEqual(scope.map((id) => ({ id, type: "channel" })));
+  });
+
+  it("caps a prefilled channel scope at the select's maximum", () => {
+    const scope = Array.from({ length: 30 }, (_, index) => String(100000000000000000n + BigInt(index)));
+    const modal = buildEditDocumentChunkModal("en-US", 10, 77, 0, "Stored chunk", scope, "nonce123");
+    const channels = modal.components.find((component) => component.component?.custom_id?.startsWith("channels_"));
+    expect(channels?.component?.default_values?.length).toBe(channels?.component?.max_values);
   });
 
   it("builds field IDs with nonce suffix", () => {
@@ -414,12 +433,22 @@ describe("memories modals and tag parser", () => {
   });
 
   it("builds edit modal with prefilled values", () => {
-    const modal = buildEditServerMemoryModal("en-US", 1770, 42, "Existing content", ["tag1", "tag2"], "nonce123");
+    const modal = buildEditServerMemoryModal(
+      "en-US",
+      1770,
+      42,
+      "Existing content",
+      ["tag1", "tag2"],
+      ["111111111111111111"],
+      "nonce123",
+    );
     expect(modal.title).toBe(localizer("en-US", "commands.memories.edit_modal_title"));
     const contentField = modal.components.find((c) => c.component?.custom_id?.startsWith("content_"));
     expect(contentField?.component?.value).toBe("Existing content");
     const tagsField = modal.components.find((c) => c.component?.custom_id?.startsWith("tags_"));
     expect(tagsField?.component?.value).toBe("tag1, tag2");
+    const channelsField = modal.components.find((c) => c.component?.custom_id?.startsWith("channels_"));
+    expect(channelsField?.component?.default_values).toEqual([{ id: "111111111111111111", type: "channel" }]);
   });
 });
 
@@ -524,6 +553,7 @@ describe("memories permissions and scoping", () => {
         calls.push("showStmModal");
       },
       takeCheckboxValues: () => [],
+      takeChannelSelectValues: () => [],
       clearStm: () => {
         calls.push("clearStm");
       },
@@ -849,6 +879,8 @@ describe("memories permissions and scoping", () => {
         document_id: index + 1,
         document_name: `Document ${index + 1}`,
         first_chunk: null,
+        channel_disc_ids: [],
+        channel_scope_pending: false,
         isHistory: false,
       })),
       canManage: true,
@@ -879,6 +911,8 @@ describe("memories permissions and scoping", () => {
         document_id: index + 1,
         document_name: `Document ${index + 1}`,
         first_chunk: null,
+        channel_disc_ids: [],
+        channel_scope_pending: false,
         isHistory: false,
       })),
       canManage: true,
@@ -902,6 +936,8 @@ describe("memories permissions and scoping", () => {
       document_id: index + 1,
       document_name: `Document ${index + 1}`,
       first_chunk: null,
+      channel_disc_ids: [],
+      channel_scope_pending: false,
       isHistory: false,
     }));
     const isPaginationButton = (button: { label?: string }) =>
@@ -1045,6 +1081,8 @@ describe("memories permissions and scoping", () => {
       document_id: index + 1,
       document_name: `Document ${index + 1}`,
       first_chunk: null,
+      channel_disc_ids: [],
+      channel_scope_pending: false,
       isHistory: false,
     }));
     const { dependencies } = createTestDependencies({
@@ -1102,6 +1140,8 @@ describe("memories permissions and scoping", () => {
       document_id: index + 1,
       document_name: `Document ${index + 1}`,
       first_chunk: null,
+      channel_disc_ids: [],
+      channel_scope_pending: false,
       isHistory: false,
     }));
     const { dependencies } = createTestDependencies({
@@ -1382,6 +1422,77 @@ describe("memories permissions and scoping", () => {
     expect(acknowledged).toEqual([true, true, true, true, true]);
   });
 
+  it("writes the submitted channel scope and skips the write when the submission is missing", async () => {
+    const written: string[][] = [];
+    let submittedScope: string[] | undefined;
+    const { dependencies } = createTestDependencies({
+      takeChannelSelectValues: () => submittedScope,
+      operations: {
+        ...serverMemoriesOperations,
+        add: async (input) => {
+          written.push(input.channelDiscIds);
+          return { status: "success", row: makeMemory(1) };
+        },
+        edit: async (input) => {
+          written.push(input.channelDiscIds);
+          return { status: "success", row: makeMemory(1) };
+        },
+      },
+      documentOperations: {
+        ...serverDocumentsOperations,
+        add: async (input) => {
+          written.push(input.channelDiscIds);
+          return { status: "success" as const, documentId: 77, documentName: "Guide", chunkCount: 1 };
+        },
+        editChunk: async (input) => {
+          written.push(input.channelDiscIds);
+          return { status: "success" as const };
+        },
+        vectorize: async (input) => {
+          written.push(input.channelDiscIds);
+          return { status: "success" as const, documentId: 78, documentName: "Memory Guide", chunkCount: 1 };
+        },
+      },
+    });
+    const route = createMemoriesInteractionRoute(dependencies);
+    const customIds = [
+      "memories:v1:add-submit:en-US:1770:nonce123",
+      "memories:v1:edit-submit:en-US:1770:1:nonce123",
+      "memories:v1:document-add-submit:en-US:10:nonce123",
+      "memories:v1:document-chunk-edit-submit:en-US:10:77:0:nonce123",
+      "memories:v1:vectorize-submit:en-US:1770:10:1:nonce123",
+    ];
+    async function submitAll(): Promise<void> {
+      for (const customId of customIds) {
+        const interaction = {
+          id: `int-scope-${customId}`,
+          customId,
+          user: { id: "user-42", username: "user42" },
+          guildId: "guild-123",
+          memberPermissions: { has: () => true },
+          isButton: () => false,
+          isStringSelectMenu: () => false,
+          isModalSubmit: () => true,
+          deferUpdate: async () => {},
+          editReply: async () => {},
+          fields: {
+            getTextInputValue: (fieldId: string) =>
+              fieldId.startsWith("name_") ? "Guide" : fieldId.startsWith("content_") ? "Updated content" : "",
+          },
+        };
+        await route.execute({} as Client, interaction as unknown as ModalSubmitInteraction, requireRoute(customId));
+      }
+    }
+
+    submittedScope = undefined;
+    await submitAll();
+    expect(written).toEqual([]);
+
+    submittedScope = ["111111111111111111", "111111111111111111"];
+    await submitAll();
+    expect(written).toEqual(customIds.map(() => ["111111111111111111"]));
+  });
+
   it("opens add modal without deferUpdate on select action:add", async () => {
     let modalShown = false;
     let deferred = false;
@@ -1473,10 +1584,14 @@ describe("memories permissions and scoping", () => {
       reply: async () => {},
     };
     const { dependencies } = createTestDependencies({
-      loadDocumentMeta: async () => ({ document_name: "Guide", channel_tags: ["#general"] }),
+      loadDocumentMeta: async () => ({
+        document_name: "Guide",
+        channel_disc_ids: ["111111111111111111"],
+        channel_scope_pending: false,
+      }),
       loadDocumentChunks: async () => [{ document_chunk_id: 8, chunk_index: 0, content: "Stored chunk" }],
-      showEditChunkModal: async (_interaction, _locale, _personaId, _documentId, _chunk, channelTags) => {
-        modalTags = channelTags;
+      showEditChunkModal: async (_interaction, _locale, _personaId, _documentId, _chunk, channelDiscIds) => {
+        modalTags = channelDiscIds;
       },
     });
 
@@ -1486,14 +1601,28 @@ describe("memories permissions and scoping", () => {
       requireRoute(fakeInteraction.customId),
     );
 
-    expect<string[] | null>(modalTags).toEqual(["#general"]);
+    expect<string[] | null>(modalTags).toEqual(["111111111111111111"]);
   });
 
   it("keeps the chunk removal prompt on its own document and addresses chunks by chunk_index", async () => {
     let editedReply: unknown = null;
     const documents = [
-      { document_id: 70, document_name: "Alpha", first_chunk: "alpha text", isHistory: false },
-      { document_id: 77, document_name: "Beta", first_chunk: "beta text", isHistory: false },
+      {
+        document_id: 70,
+        document_name: "Alpha",
+        first_chunk: "alpha text",
+        channel_disc_ids: [],
+        channel_scope_pending: false,
+        isHistory: false,
+      },
+      {
+        document_id: 77,
+        document_name: "Beta",
+        first_chunk: "beta text",
+        channel_disc_ids: [],
+        channel_scope_pending: false,
+        isHistory: false,
+      },
     ];
     // chunk_index 1 is absent: deleteChunk never renumbers, so a real document develops gaps.
     const chunks = [
@@ -2049,6 +2178,7 @@ describe("memories permissions and scoping", () => {
         memteachingEnabled: false,
         content: "New edited content",
         tags: ["updated"],
+        channelDiscIds: [],
       });
       expect(editResult.status).toBe("success");
       expect<string | null>(invalidatedWorkspace).toBe("guild-123");
@@ -2081,6 +2211,7 @@ describe("memories permissions and scoping", () => {
         memteachingEnabled: true,
         contents: ["Batch memory 1", "Batch memory 2"],
         tags: [],
+        channelDiscIds: [],
       });
       expect(batchResult.status).toBe("success");
       expect<string | null>(invalidatedWorkspace).toBe("guild-123");
@@ -2163,7 +2294,12 @@ describe("memories teaching gate on edit and remove", () => {
         memteachingEnabled: false,
       };
 
-      const editResult = await serverMemoriesOperations.edit({ ...denied, content: "new", tags: [] });
+      const editResult = await serverMemoriesOperations.edit({
+        ...denied,
+        content: "new",
+        tags: [],
+        channelDiscIds: [],
+      });
       const removeResult = await serverMemoriesOperations.remove({ ...denied });
 
       expect(editResult.status).toBe("teaching-disabled");
@@ -2212,16 +2348,82 @@ describe("memories teaching gate on edit and remove", () => {
   });
 });
 
-describe("memories document operation ordering", () => {
-  it("updates document channel filters without regenerating an unchanged chunk embedding", async () => {
+describe("saving an item with an unresolved legacy channel scope", () => {
+  it("writes a memory whose content, tags, and channels are unchanged so the pending scope settles", async () => {
+    const loadSpy = spyOn(serverMemoryRepository, "loadServerMemoriesScoped").mockResolvedValue([
+      makeMemory(7, { content: "Same", tags: [], channel_scope_pending: true }),
+    ]);
+    const editSpy = spyOn(serverMemoryRepository, "edit").mockResolvedValue(true);
+    const invalidateSpy = spyOn(tomoriStateCache, "invalidateTomoriStateCache").mockImplementation(() => {});
+    try {
+      const result = await serverMemoriesOperations.edit({
+        serverId: 1,
+        personaLineageId: 1770,
+        taughtByUserId: 42,
+        memoryId: 7,
+        workspaceId: "guild-123",
+        isBlacklisted: false,
+        canManage: true,
+        memteachingEnabled: true,
+        content: "Same",
+        tags: [],
+        channelDiscIds: [],
+      });
+      expect(result.status).toBe("success");
+      expect(editSpy).toHaveBeenCalledWith(7, "Same", [], []);
+    } finally {
+      loadSpy.mockRestore();
+      editSpy.mockRestore();
+      invalidateSpy.mockRestore();
+    }
+  });
+
+  it("writes a document scope that matches the stored one so the pending scope settles", async () => {
     const metaSpy = spyOn(serverMemoryRepository, "loadDocumentMeta").mockResolvedValue({
       document_name: "Guide",
-      channel_tags: ["#old"],
+      channel_disc_ids: [],
+      channel_scope_pending: true,
     });
     const chunksSpy = spyOn(serverMemoryRepository, "loadDocumentChunks").mockResolvedValue([
       { document_chunk_id: 8, chunk_index: 0, content: "Stored chunk" },
     ]);
-    const tagsSpy = spyOn(serverMemoryRepository, "updateDocumentChannelTags").mockResolvedValue(true);
+    const scopeSpy = spyOn(serverMemoryRepository, "updateDocumentChannelScope").mockResolvedValue(true);
+    const invalidateSpy = spyOn(tomoriStateCache, "invalidateTomoriStateCache").mockImplementation(() => {});
+    try {
+      const result = await serverDocumentsOperations.editChunk({
+        serverId: 1,
+        personaId: 10,
+        documentId: 77,
+        chunkIdx: 0,
+        workspaceId: "guild-123",
+        userId: 42,
+        configuredEmbeddingModelId: null,
+        canManage: true,
+        content: "Stored chunk",
+        channelDiscIds: [],
+      });
+      expect(result.status).toBe("success");
+      expect(scopeSpy).toHaveBeenCalledWith(77, 1, [], 10);
+    } finally {
+      metaSpy.mockRestore();
+      chunksSpy.mockRestore();
+      scopeSpy.mockRestore();
+      invalidateSpy.mockRestore();
+    }
+  });
+});
+
+describe("memories document operation ordering", () => {
+  it("updates document channel filters without regenerating an unchanged chunk embedding", async () => {
+    const metaSpy = spyOn(serverMemoryRepository, "loadDocumentMeta").mockResolvedValue({
+      document_name: "Guide",
+      channel_disc_ids: ["111111111111111111"],
+      channel_scope_pending: false,
+    });
+    const chunksSpy = spyOn(serverMemoryRepository, "loadDocumentChunks").mockResolvedValue([
+      { document_chunk_id: 8, chunk_index: 0, content: "Stored chunk" },
+    ]);
+    const tagsSpy = spyOn(serverMemoryRepository, "updateDocumentChannelScope").mockResolvedValue(true);
     const embeddingSpy = spyOn(embeddingProvider, "generateEmbeddingsBatched");
     const invalidateSpy = spyOn(tomoriStateCache, "invalidateTomoriStateCache").mockImplementation(() => {});
 
@@ -2236,11 +2438,11 @@ describe("memories document operation ordering", () => {
         configuredEmbeddingModelId: null,
         canManage: true,
         content: "Stored chunk",
-        channelTags: ["#general"],
+        channelDiscIds: ["222222222222222222"],
       });
 
       expect(result.status).toBe("success");
-      expect(tagsSpy).toHaveBeenCalledWith(77, 1, ["#general"], 10);
+      expect(tagsSpy).toHaveBeenCalledWith(77, 1, ["222222222222222222"], 10);
       expect(embeddingSpy).not.toHaveBeenCalled();
       expect(invalidateSpy).toHaveBeenCalledTimes(1);
     } finally {
@@ -2301,11 +2503,18 @@ describe("memories document operation ordering", () => {
       documentCount: spyOn(serverMemoryRepository, "countDocumentsScoped").mockResolvedValue(0),
       chunkCount: spyOn(serverMemoryRepository, "countChunksScoped").mockResolvedValue(0),
       loadDocuments: spyOn(serverMemoryRepository, "loadDocuments").mockResolvedValue([
-        { document_id: 91, document_name: "Guide", first_chunk: "Document content" },
+        {
+          document_id: 91,
+          document_name: "Guide",
+          first_chunk: "Document content",
+          channel_disc_ids: [],
+          channel_scope_pending: false,
+        },
       ]),
       loadMeta: spyOn(serverMemoryRepository, "loadDocumentMeta").mockResolvedValue({
         document_name: "Guide",
-        channel_tags: [],
+        channel_disc_ids: [],
+        channel_scope_pending: false,
       }),
       loadChunks: spyOn(serverMemoryRepository, "loadDocumentChunks").mockResolvedValue([
         { document_chunk_id: 8, chunk_index: 0, content: "Document content" },
@@ -2353,7 +2562,7 @@ describe("memories document operation ordering", () => {
               proxy_url: "https://proxy.example.invalid/guide.txt",
               content_type: "text/plain",
             },
-            channelTags: [],
+            channelDiscIds: [],
           })
         ).status,
       ).toBe("success");
@@ -2379,7 +2588,7 @@ describe("memories document operation ordering", () => {
             configuredEmbeddingModelId: 5,
             canManage: true,
             content: "Updated content",
-            channelTags: [],
+            channelDiscIds: [],
           })
         ).status,
       ).toBe("success");
@@ -2502,7 +2711,7 @@ describe("memories document operation ordering", () => {
       memteachingEnabled: true,
       content: "Vectorized content",
       documentName: "Vectorized Guide",
-      channelTags: [],
+      channelDiscIds: [],
     };
 
     try {

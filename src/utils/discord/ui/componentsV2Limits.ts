@@ -78,6 +78,9 @@ export const DISCORD_SELECT_OPTIONS_MIN = 1;
 /** Maximum options in a String Select menu. */
 export const DISCORD_SELECT_OPTIONS_MAX = 25;
 
+/** Maximum `max_values` on any select menu, including channel selects. */
+export const DISCORD_SELECT_VALUES_MAX = 25;
+
 /** Maximum characters for a select option label. */
 export const DISCORD_SELECT_OPTION_LABEL_MAX = 100;
 

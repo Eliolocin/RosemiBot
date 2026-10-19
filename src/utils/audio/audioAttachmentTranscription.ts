@@ -5,7 +5,7 @@ import { transcribeViaElevenLabsAdapter } from "@/providers/custom/styles/transc
 import { transcribeViaOpenAIAdapter } from "@/providers/custom/styles/transcriptionOpenAIAdapter";
 import { resolveActiveTranscriptionEndpoint } from "@/utils/provider/speechEndpointResolver";
 
-const AUDIO_EXTENSION_REGEX = /\.(aac|flac|m4a|mp3|mp4|mpeg|mpga|oga|ogg|opus|wav|webm)$/i;
+const AUDIO_EXTENSION_REGEX = /\.(aac|flac|m4a|mp3|mpga|oga|ogg|opus|wav)$/i;
 
 type AudioAttachmentFailureReason =
   | "no_endpoint"
@@ -24,10 +24,13 @@ export interface AudioAttachmentTranscriptionResult {
 }
 
 /** Returns true if the attachment is an audio file by MIME type or extension. */
-export function isAudioAttachment(attachment: Attachment): boolean {
+export function isAudioAttachment(attachment: Pick<Attachment, "contentType" | "name">): boolean {
   const mimeType = attachment.contentType?.toLowerCase() ?? "";
   if (mimeType.startsWith("audio/")) {
     return true;
+  }
+  if (mimeType.startsWith("video/") || mimeType.startsWith("image/")) {
+    return false;
   }
 
   return AUDIO_EXTENSION_REGEX.test(attachment.name ?? "");

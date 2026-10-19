@@ -3,6 +3,7 @@ import { log } from "@/utils/misc/logger";
 import { healthTracker } from "@/utils/misc/healthTracker";
 import type { AppEnvironment } from "@/types/config";
 import { shouldRejectWebhookRateLimit } from "@/utils/discord/webhook/avatarEditRateLimit";
+import { discordPresenceRetention, type DiscordPresenceRetention } from "@/utils/cache/discordPresenceRetention";
 
 /**
  * Whether a Discord connection failure is one the bot can recover from on its own.
@@ -107,7 +108,10 @@ export async function resolvePresenceIntentEnabled(environment: AppEnvironment):
  * @param includePresences - Whether to request the privileged GuildPresences intent
  * @returns Configured Discord.js Client (not yet logged in)
  */
-export function createDiscordClient(includePresences: boolean): Client {
+export function createDiscordClient(
+  includePresences: boolean,
+  presenceRetention: DiscordPresenceRetention = discordPresenceRetention,
+): Client {
   const intents = [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
@@ -130,7 +134,15 @@ export function createDiscordClient(includePresences: boolean): Client {
     partials: [Partials.Channel, Partials.Message],
     rest: { rejectOnRateLimit: shouldRejectWebhookRateLimit },
     // 50 keeps recent reply targets cached in busy channels (each miss is a REST call for any reply the bot sees); any value is safe because readers fall back to fetch, so tune it from `discord_messages` samples.
-    makeCache: Options.cacheWithLimits({ ...Options.DefaultMakeCacheSettings, MessageManager: 50 }),
+    makeCache: Options.cacheWithLimits({
+      ...Options.DefaultMakeCacheSettings,
+      MessageManager: 50,
+      PresenceManager: {
+        maxSize: 0,
+        keepOverLimit: (presence) =>
+          presence.guild !== null && presenceRetention.has(presence.guild.id, presence.userId),
+      },
+    }),
     sweepers: {
       messages: {
         interval: 3600, // Run sweep every 1 hour (in seconds)

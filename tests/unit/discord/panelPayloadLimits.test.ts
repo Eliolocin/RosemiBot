@@ -156,6 +156,8 @@ const MAX_CONTENT_MEMORY: ServerMemoryRow = {
   user_id: 1,
   content: "M".repeat(10_000),
   tags: ["important", "guidelines"],
+  channel_disc_ids: [],
+  channel_scope_pending: false,
   created_at: new Date(),
   updated_at: new Date(),
 };
@@ -165,6 +167,8 @@ const MAX_CONTENT_DOCUMENT: DocumentListRow = {
   document_id: 1,
   document_name: "Document 1.pdf",
   first_chunk: "First chunk preview of document #1",
+  channel_disc_ids: [],
+  channel_scope_pending: false,
   isHistory: false,
 };
 

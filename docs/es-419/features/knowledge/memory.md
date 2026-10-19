@@ -131,7 +131,7 @@ de documentos y fragmentos, subidas, exploración de documentos y eliminación:
   consulten todas las personas.
 - `/learn history`: extrae el historial de un canal en conocimiento consultable.
 - Explora los documentos guardados fragmento por fragmento. Los administradores del servidor
-  pueden editar fragmentos individuales, actualizar las etiquetas de canal de un documento, o
+  pueden editar fragmentos individuales, cambiar a qué canales está limitado un documento, o
   eliminar un solo fragmento sin quitar el documento completo.
 - Elimina documentos guardados o fragmentos individuales directamente desde el panel.
 
@@ -194,12 +194,21 @@ STM.
   aparece en el contexto visible.
 - Usa `/tool prompt snapshot` para ver qué memorias están activas en ese momento.
 
-### Etiquetas de canal
+### Canales
 
-- Las memorias con una etiqueta `#channel` se activan solo en ese canal.
-- Las etiquetas de canal se combinan con las etiquetas de palabra clave.
-- Si usas la base de conocimiento de documentos (RAG), las etiquetas de canal también se aplican
-  a documentos e historiales extraídos.
+- Una memoria del servidor puede limitarse a los canales que elijas en su formulario de adición
+  o edición. Luego se activa solo en esos canales y en sus hilos. Deja el selector vacío para
+  todos los canales.
+- Una memoria personal usa en su lugar una etiqueta `#channel`, que la activa solo en ese canal.
+- Los límites de canales se combinan con las etiquetas de palabras clave. En las memorias del
+  servidor, una etiqueta que comience con `#` es una palabra clave normal.
+- Las memorias del servidor y los documentos que usaban etiquetas `#channel` anteriores se
+  convirtieron automáticamente a canales. Si una etiqueta antigua nombraba un canal que ya no
+  existe, el elemento permanece activo en todos los canales y `/memories` lo indicará; edítalo
+  y elige canales para limitarlo de nuevo.
+- Si usas la base de conocimiento de documentos (RAG), los documentos y los historiales extraídos
+  pueden limitarse a canales de la misma manera. La opción `channels` en `/learn history` acepta
+  nombres de canales o menciones.
 
 En `/help`, elige `Memoria` y luego `Etiquetado de memoria`, para ver el mismo resumen en
 Discord.

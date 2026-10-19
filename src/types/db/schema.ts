@@ -1330,6 +1330,10 @@ export const serverMemorySchema = z.object({
   user_id: z.number().nullable(), // Nullable - set to NULL if user deleted
   content: z.string(),
   tags: z.preprocess((v) => (Array.isArray(v) ? v : []), z.array(z.string().max(32)).max(5)),
+  /** Discord channel IDs the memory is limited to; empty means every channel. */
+  channel_disc_ids: z.preprocess((v) => (Array.isArray(v) ? v : []), z.array(z.string())),
+  /** True while the row's legacy `#name` scope from migration 111 is unresolved. */
+  channel_scope_pending: z.boolean().default(false),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });
