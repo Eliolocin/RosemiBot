@@ -61,6 +61,9 @@ happening:
 
 Activity status requires Discord's `Guild Presences` intent and respects user privacy
 (`/personal config`). Users who raise their privacy setting are not included in presence context.
+TomoriBot keeps activity status for people she has successfully replied to in that server.
+For someone chatting with her for the first time, status may remain unknown until Discord sends
+their next status or activity update.
 
 ## Auto-Trigger (Hands-Free Chatting)
 

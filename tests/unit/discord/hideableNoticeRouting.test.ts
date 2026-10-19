@@ -162,21 +162,24 @@ describe("hideable tool notices", () => {
     expect(thoughtLog.sent[0]).toContain(configHint());
   });
 
-  it("mirrors a Minimal progress notice to the thought log as a full verbose card with a source backlink", async () => {
+  it("deduplicates shared progress notices in conversation and thought log while preserving the full mirrored card", async () => {
     const conversation = fakeChannel("200");
     const thoughtLog = fakeChannel("900");
     const context = buildContext({ hidden: [], conversation, thoughtLog });
     context.showKillHint = true;
-    await sendToolNotice(
-      context,
-      "web_search",
-      {
-        titleKey: "tools.search.category_search_title",
-        titleVars: { category: "Web", query: "tea" },
-        description: "Looking around",
-      },
-      "test",
-    );
+    context.progressNoticeState = { attempted: false };
+    for (const label of ["first-engine", "fallback-engine"]) {
+      await sendToolNotice(
+        context,
+        "web_search",
+        {
+          titleKey: "tools.search.category_search_title",
+          titleVars: { category: "Web", query: "tea" },
+          description: "Looking around",
+        },
+        label,
+      );
+    }
 
     expect(conversation.sent).toHaveLength(1);
     expect(thoughtLog.sent).toHaveLength(1);

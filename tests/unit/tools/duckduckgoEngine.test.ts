@@ -1,8 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test";
+import { OpenrouterToolAdapter } from "@/providers/openrouter/openrouterToolAdapter";
 import * as braveService from "@/tools/restAPIs/brave/braveSearchService";
 import * as searxngService from "@/tools/restAPIs/searxng/searxngService";
 import { BraveEngine } from "@/tools/webSearch/braveEngine";
 import { resolveWebSearchToolCapabilities } from "@/tools/webSearch/capabilities";
+import { getSearchNoticeKey } from "@/tools/webSearch/categoryMetadata";
 import {
   DuckDuckGoEngine,
   formatDuckDuckGoResults,
@@ -10,13 +12,16 @@ import {
   parseDuckDuckGoHtml,
 } from "@/tools/webSearch/duckduckgoEngine";
 import { SearxngEngine } from "@/tools/webSearch/searxngEngine";
+import { OpenRouterEngine } from "@/tools/webSearch/openrouterEngine";
 import { WebSearchTool } from "@/tools/webSearch/webSearchTool";
 import type { ToolContext } from "@/types/tool/interfaces";
 import * as embedHelper from "@/utils/discord/embedHelper";
 import * as toolProgressNotice from "@/utils/discord/toolProgressNotice";
 import * as remoteFetch from "@/utils/security/userRemoteFetch";
+import * as crypto from "@/utils/security/crypto";
+import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { initializeLocalizer } from "@/utils/text/localizer";
-import { createPersona } from "../../helpers/fixtures";
+import { createLlmRow, createPersona } from "../../helpers/fixtures";
 import { localizedCopy } from "../../helpers/localeCases";
 import { stubLogMembers } from "../../helpers/mockSurface";
 
@@ -82,6 +87,24 @@ const urlsFound = (result: { data?: unknown }) => (result.data as { urlsFound?: 
 
 const html = (body: string, status = 200) =>
   new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
+
+function openRouterContext(overrides: Partial<ToolContext> = {}): ToolContext {
+  return makeContext({
+    provider: "openrouter",
+    tomoriState: createPersona({
+      llm: createLlmRow({ llm_provider: "openrouter", llm_codename: "openai/gpt-4.1-nano" }),
+      config: { api_key: Buffer.from("encrypted-fixture"), key_version: 2 },
+    }),
+    ...overrides,
+  });
+}
+
+const citation = (url: string, title = "Fixture title", content = "Fixture excerpt") => ({
+  type: "url_citation",
+  url_citation: { url, title, content },
+});
+const searchResponse = (annotations: unknown[]) =>
+  Response.json({ choices: [{ message: { content: "", annotations }, finish_reason: "length" }] });
 
 beforeAll(async () => {
   await initializeLocalizer();
@@ -253,6 +276,210 @@ describe("DuckDuckGo engine requests", () => {
   });
 });
 
+describe("OpenRouter engine requests", () => {
+  const engine = new OpenRouterEngine();
+  let restore: Array<{ mockRestore(): void }> = [];
+
+  afterEach(() => {
+    for (const spy of restore) spy.mockRestore();
+    restore = [];
+  });
+
+  function stubOpenRouter(respond: (init?: RequestInit) => Response | Promise<Response>) {
+    const decrypt = spyOn(crypto, "decryptApiKey").mockResolvedValue("fixture-api-key");
+    const request = spyOn(globalThis, "fetch").mockImplementation(
+      Object.assign(async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => await respond(init), {
+        preconnect: () => undefined,
+      }),
+    );
+    restore.push(decrypt, request);
+    return { decrypt, request };
+  }
+
+  it("is available only on OpenRouter turns with a saved credential and supports text-like categories", async () => {
+    expect(await engine.available(openRouterContext())).toBe(true);
+    expect(await engine.available(openRouterContext({ provider: "google" }))).toBe(false);
+    expect(await engine.available(openRouterContext({ tomoriState: createPersona() }))).toBe(false);
+    for (const category of ["text", "news", "papers", "code"] as const) {
+      expect(engine.supportsCategory(category)).toBe(true);
+    }
+    for (const category of ["image", "video", "files", "music"] as const) {
+      expect(engine.supportsCategory(category)).toBe(false);
+    }
+  });
+
+  it("extracts bounded, unique citations into the summary even when the completion has no text", async () => {
+    const { decrypt, request } = stubOpenRouter(() =>
+      searchResponse([
+        citation("https://example.com/guide", "Guide", "Search excerpt"),
+        citation("https://example.com/guide", "Duplicate"),
+        citation("javascript:alert(1)", "Script"),
+        citation("https://user:secret@example.com/", "Credentials"),
+        citation("http://[", "Malformed"),
+        { type: "url_citation", url_citation: { url: "https://bad.example/", content: 7 } },
+        { type: "other" },
+        { type: "url_citation", url_citation: { url: "https://docs.example.org/" } },
+        citation("https://extra.example/", "Extra"),
+      ]),
+    );
+    const notice = spyOn(toolProgressNotice, "sendToolNotice").mockResolvedValue();
+    restore.push(notice);
+    const context = openRouterContext();
+
+    const result = await engine.search("q".repeat(600), "text", context, 2);
+
+    expect(result.success).toBe(true);
+    expect(decrypt).toHaveBeenCalledWith(context.tomoriState.config.api_key, 2);
+    expect(notice.mock.calls[0][2].titleKey).toBe("tools.search.category_search_title");
+    expect(request.mock.calls[0][0]).toBe("https://openrouter.ai/api/v1/chat/completions");
+    const init = request.mock.calls[0][1];
+    expect(init?.method).toBe("POST");
+    expect(init?.redirect).toBe("error");
+    expect(init?.headers).toMatchObject({
+      Authorization: "Bearer fixture-api-key",
+      ...buildOpenRouterAttributionHeaders(),
+    });
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    const body = JSON.parse(String(init?.body));
+    expect(body.model).toBe(context.tomoriState.llm.llm_codename);
+    expect(body.stream).toBe(false);
+    expect(body.plugins).toEqual([{ id: "web", engine: "exa", max_results: 2 }]);
+    expect(body.max_tokens).toBe(1);
+    expect(body.messages[0].content).toContain("q".repeat(500));
+    expect(body.messages[0].content).not.toContain("q".repeat(501));
+    expect(urlsFound(result)).toBe(2);
+    const summary = (result.data as { summary: string }).summary;
+    for (const expected of [
+      "https://example.com/guide",
+      "Guide",
+      "Search excerpt",
+      "https://docs.example.org/",
+      "fetch_url",
+    ]) {
+      expect(summary).toContain(expected);
+    }
+    for (const rejected of ["Duplicate", "javascript:", "secret", "https://bad.example/", "https://extra.example/"]) {
+      expect(summary).not.toContain(rejected);
+    }
+    expect(result.message).toBe(summary);
+  });
+
+  it("caps result counts and excerpt lengths", async () => {
+    const { request } = stubOpenRouter(() =>
+      searchResponse(
+        Array.from({ length: 25 }, (_, index) =>
+          citation(`https://site${index}.example/`, "t".repeat(500), "c".repeat(6000)),
+        ),
+      ),
+    );
+    const result = await engine.search("fixture", "text", openRouterContext(), 50);
+    expect(JSON.parse(String(request.mock.calls[0][1]?.body)).plugins[0].max_results).toBe(20);
+    expect(urlsFound(result)).toBe(20);
+    expect(result.message).not.toContain("t".repeat(301));
+    expect(result.message).not.toContain("c".repeat(4001));
+  });
+
+  it("fails safely on HTTP errors, missing citations, malformed JSON, and transport errors", async () => {
+    const { request } = stubOpenRouter(() => searchResponse([]));
+    const embed = spyOn(embedHelper, "sendStandardEmbed").mockResolvedValue();
+    restore.push(embed);
+    const responders = [
+      ...[402, 429, 503].map((status) => () => new Response("fixture-secret-upstream-body", { status })),
+      () => searchResponse([]),
+      () => Response.json({ choices: [{ message: { content: "Uncited synthesis" } }] }),
+      () => searchResponse([citation("ftp://example.com/file")]),
+      () => Response.json({ choices: [] }),
+      () => new Response("{bad json"),
+      () => {
+        throw new Error("fixture-secret-upstream-body");
+      },
+    ];
+    for (const respond of responders) {
+      request.mockImplementationOnce(Object.assign(async () => respond(), { preconnect: () => undefined }));
+      const result = await engine.search("fixture", "text", openRouterContext());
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(JSON.stringify(result)).not.toContain("fixture-secret-upstream-body");
+    }
+    expect(embed).not.toHaveBeenCalled();
+  });
+
+  it("cancels an oversized response instead of reading it indefinitely", async () => {
+    let cancelled = false;
+    stubOpenRouter(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.enqueue(new Uint8Array(64 * 1024));
+            },
+            cancel() {
+              cancelled = true;
+            },
+          }),
+        ),
+    );
+    expect((await engine.search("fixture", "text", openRouterContext())).success).toBe(false);
+    expect(cancelled).toBe(true);
+  });
+
+  it("stops on turn cancellation and on its request deadline", async () => {
+    const controller = new AbortController();
+    let requestSignal: AbortSignal | null | undefined;
+    const { request } = stubOpenRouter(
+      (init) =>
+        new Promise<Response>((_, reject) => {
+          requestSignal = init?.signal;
+          requestSignal?.addEventListener("abort", () => reject(requestSignal?.reason), { once: true });
+          controller.abort();
+        }),
+    );
+    expect(
+      (await engine.search("fixture", "text", openRouterContext({ abortSignal: controller.signal }))).success,
+    ).toBe(false);
+    expect(requestSignal?.aborted).toBe(true);
+
+    const timeout = spyOn(AbortSignal, "timeout").mockReturnValue(
+      AbortSignal.abort(new DOMException("", "TimeoutError")),
+    );
+    restore.push(timeout);
+    request.mockClear();
+    expect((await engine.search("fixture", "text", openRouterContext())).success).toBe(false);
+    expect(timeout.mock.calls[0][0]).toBeGreaterThanOrEqual(1000);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("emits no progress notice for cancelled turns or failed credential decryption", async () => {
+    const { decrypt, request } = stubOpenRouter(() => searchResponse([citation("https://example.com/")]));
+    const notice = spyOn(toolProgressNotice, "sendToolNotice").mockResolvedValue();
+    restore.push(notice);
+    const context = openRouterContext({ suppressProgressNotices: false, abortSignal: AbortSignal.abort() });
+
+    expect((await engine.search("fixture", "text", context)).success).toBe(false);
+    expect(decrypt).not.toHaveBeenCalled();
+    decrypt.mockRejectedValueOnce(new Error("fixture-decryption-failure"));
+    expect(
+      (await engine.search("fixture", "text", openRouterContext({ suppressProgressNotices: false }))).success,
+    ).toBe(false);
+    const controller = new AbortController();
+    decrypt.mockImplementationOnce(async () => {
+      controller.abort();
+      return "fixture-api-key";
+    });
+    expect(
+      (
+        await engine.search(
+          "fixture",
+          "text",
+          openRouterContext({ suppressProgressNotices: false, abortSignal: controller.signal }),
+        )
+      ).success,
+    ).toBe(false);
+    expect(notice).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+  });
+});
+
 describe("web_search engine chain", () => {
   let restore: Array<{ mockRestore(): void }> = [];
 
@@ -295,19 +522,204 @@ describe("web_search engine chain", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("keeps non-text categories behind their configured providers", async () => {
+  it("tries Brave, SearXNG, OpenRouter, and DuckDuckGo in order until one succeeds", async () => {
+    configureBackends(true, true);
+    const attempts: string[] = [];
+    const brave = spyOn(BraveEngine.prototype, "search").mockImplementation(async () => {
+      attempts.push("brave");
+      return { success: false };
+    });
+    const searxng = spyOn(SearxngEngine.prototype, "search").mockImplementation(async () => {
+      attempts.push("searxng");
+      return { success: false };
+    });
+    const openrouter = spyOn(OpenRouterEngine.prototype, "search").mockImplementation(async () => {
+      attempts.push("openrouter");
+      return { success: true, message: "openrouter" };
+    });
+    const ddg = stubSearchFetch(() => {
+      attempts.push("duckduckgo");
+      return html(RESULTS_PAGE);
+    });
+    restore.push(brave, searxng, openrouter, ddg.spy);
+
+    expect((await new WebSearchTool().execute({ query: "fixture" }, openRouterContext())).message).toBe("openrouter");
+    expect(attempts).toEqual(["brave", "searxng", "openrouter"]);
+    attempts.length = 0;
+    openrouter.mockImplementation(async () => {
+      attempts.push("openrouter");
+      return { success: false };
+    });
+    expect((await new WebSearchTool().execute({ query: "fixture" }, openRouterContext())).success).toBe(true);
+    expect(attempts).toEqual(["brave", "searxng", "openrouter", "duckduckgo"]);
+  });
+
+  it("posts one progress notice per 402 fallback and preserves DuckDuckGo's challenge notice", async () => {
     configureBackends(false, false);
-    const { calls, spy } = stubSearchFetch(() => html(RESULTS_PAGE));
-    restore.push(spy);
+    const decrypt = spyOn(crypto, "decryptApiKey").mockResolvedValue("fixture-api-key");
+    const request = spyOn(globalThis, "fetch").mockResolvedValue(new Response("credits", { status: 402 }));
+    let challenged = false;
+    const ddg = stubSearchFetch(() => (challenged ? html(CHALLENGE_PAGE, 202) : html(RESULTS_PAGE)));
+    const embed = spyOn(embedHelper, "sendStandardEmbed").mockResolvedValue();
+    restore.push(decrypt, request, ddg.spy, embed);
+    const context = openRouterContext({ suppressProgressNotices: false });
+    context.tomoriState.config.tool_notice_verbosity = "verbose";
 
-    const result = await new WebSearchTool().execute({ query: "fixture", category: "papers" }, makeContext());
+    expect((await new WebSearchTool().execute({ query: "fixture" }, context)).success).toBe(true);
+    expect(embed).toHaveBeenCalledTimes(1);
+    challenged = true;
+    expect((await new WebSearchTool().execute({ query: "fixture" }, context)).success).toBe(false);
+    const titleKeys = embed.mock.calls.map((call) => call[2].titleKey);
+    expect(titleKeys.filter((key) => key === "tools.search.category_search_title")).toHaveLength(2);
+    expect(titleKeys.filter((key) => key === "general.errors.duckduckgo_rate_limit.title")).toHaveLength(1);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(ddg.calls).toHaveLength(2);
+  });
 
-    expect(result.success).toBe(false);
-    expect(result.message).toBe(
-      localizedCopy("en-US", "tools.search.category_unavailable_description", {
-        category: localizedCopy("en-US", "tools.search.category_labels.papers"),
-      }),
+  it("posts one progress notice while the real Brave, SearXNG, and OpenRouter engines fail over", async () => {
+    configureBackends(true, true);
+    const brave = spyOn(braveService, "braveWebSearch").mockResolvedValue({ success: false, error: "fixture" });
+    const searxng = spyOn(searxngService, "searxngSearch").mockResolvedValue({ success: false, error: "fixture" });
+    const decrypt = spyOn(crypto, "decryptApiKey").mockResolvedValue("fixture-api-key");
+    const request = spyOn(globalThis, "fetch").mockResolvedValue(new Response("credits", { status: 402 }));
+    const ddg = stubSearchFetch(() => html(RESULTS_PAGE));
+    const embed = spyOn(embedHelper, "sendStandardEmbed").mockResolvedValue();
+    restore.push(brave, searxng, decrypt, request, ddg.spy, embed);
+    const context = openRouterContext({ suppressProgressNotices: false });
+    context.tomoriState.config.tool_notice_verbosity = "verbose";
+
+    expect((await new WebSearchTool().execute({ query: "fixture" }, context)).success).toBe(true);
+    expect(brave).toHaveBeenCalledTimes(1);
+    expect(searxng).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(ddg.calls).toHaveLength(1);
+    expect(embed).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "entry",
+    "availability",
+    "request",
+  ] as const)("stops fallback when the turn is cancelled during %s", async (phase) => {
+    configureBackends(false, false);
+    const controller = new AbortController();
+    const available = spyOn(OpenRouterEngine.prototype, "available").mockImplementation(async () => {
+      if (phase === "availability") controller.abort();
+      return true;
+    });
+    const decrypt = spyOn(crypto, "decryptApiKey").mockResolvedValue("fixture-api-key");
+    const request = spyOn(globalThis, "fetch").mockImplementation(
+      Object.assign(
+        async () => {
+          controller.abort();
+          throw controller.signal.reason;
+        },
+        { preconnect: () => undefined },
+      ),
     );
+    const ddgSearch = spyOn(DuckDuckGoEngine.prototype, "search").mockResolvedValue({ success: true });
+    const embed = spyOn(embedHelper, "sendStandardEmbed").mockResolvedValue();
+    restore.push(available, decrypt, request, ddgSearch, embed);
+    const context = openRouterContext({ suppressProgressNotices: false, abortSignal: controller.signal });
+    context.tomoriState.config.tool_notice_verbosity = "verbose";
+    if (phase === "entry") controller.abort();
+
+    expect((await new WebSearchTool().execute({ query: "fixture" }, context)).success).toBe(false);
+    expect(ddgSearch).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledTimes(phase === "request" ? 1 : 0);
+    expect(embed).toHaveBeenCalledTimes(phase === "request" ? 1 : 0);
+    if (phase === "entry") expect(available).not.toHaveBeenCalled();
+  });
+
+  it("fulfills advertised text-like categories through OpenRouter after configured engines fail", async () => {
+    configureBackends(true, true);
+    const attempts: string[] = [];
+    const brave = spyOn(BraveEngine.prototype, "search").mockImplementation(async () => {
+      attempts.push("brave");
+      return { success: false };
+    });
+    const searxng = spyOn(SearxngEngine.prototype, "search").mockImplementation(async () => {
+      attempts.push("searxng");
+      return { success: false };
+    });
+    const decrypt = spyOn(crypto, "decryptApiKey").mockResolvedValue("fixture-api-key");
+    const request = spyOn(globalThis, "fetch").mockImplementation(
+      Object.assign(
+        async () => {
+          attempts.push("openrouter");
+          return searchResponse([citation("https://example.com/fallback")]);
+        },
+        { preconnect: () => undefined },
+      ),
+    );
+    const notice = spyOn(toolProgressNotice, "sendToolNotice").mockResolvedValue();
+    const ddg = stubSearchFetch(() => html(RESULTS_PAGE));
+    restore.push(brave, searxng, decrypt, request, notice, ddg.spy);
+    const query = "distributed storage";
+    const prompts: string[] = [];
+
+    for (const category of ["news", "papers", "code"] as const) {
+      attempts.length = 0;
+      const capabilities = await resolveWebSearchToolCapabilities(1, "openrouter");
+      expect(capabilities.categories).toContain(category);
+      const result = await new WebSearchTool().execute({ query, category }, openRouterContext());
+      expect(result.success).toBe(true);
+      expect(result.message).toContain("https://example.com/fallback");
+      expect(attempts).toEqual(category === "news" ? ["brave", "searxng", "openrouter"] : ["searxng", "openrouter"]);
+      const call = notice.mock.calls.at(-1);
+      expect(call?.[1]).toBe(getSearchNoticeKey(category));
+      expect(call?.[2].titleVars).toEqual({
+        category: localizedCopy("en-US", `tools.search.category_labels.${category}`),
+        query,
+      });
+      const prompt: string = JSON.parse(String(request.mock.calls.at(-1)?.[1]?.body)).messages[0].content;
+      expect(prompt).toContain(query);
+      prompts.push(prompt);
+    }
+    expect(new Set(prompts).size).toBe(prompts.length);
+    expect(ddg.calls).toHaveLength(0);
+  });
+
+  it("advertises OpenRouter text search while preserving configured backend categories and priority", async () => {
+    configureBackends(false, false);
+    const context = openRouterContext();
+    const assembled = await new WebSearchTool().assembleForContext({
+      provider: context.provider,
+      state: { ...context.tomoriState, server_id: "1", activePersonaHasElevenlabsVoice: false },
+    });
+    expect(assembled?.description).toContain("OpenRouter Search");
+    expect(assembled?.parameters.properties.category.enum).toEqual(["text"]);
+    for (const backend of restore.splice(0)) backend.mockRestore();
+    configureBackends(true, false);
+    const brave = await resolveWebSearchToolCapabilities(1, "openrouter");
+    expect(brave.engineLabel).toBe("Brave Search");
+    expect(brave.categories).toContain("image");
+    for (const backend of restore.splice(0)) backend.mockRestore();
+    configureBackends(false, true);
+    expect((await resolveWebSearchToolCapabilities(1, "openrouter")).categories).toContain("papers");
+  });
+
+  it("skips text fallbacks and returns the localized failure when media engines fail", async () => {
+    configureBackends(true, true);
+    const brave = spyOn(BraveEngine.prototype, "search").mockResolvedValue({ success: false });
+    const searxng = spyOn(SearxngEngine.prototype, "search").mockResolvedValue({ success: false });
+    const openrouter = spyOn(OpenRouterEngine.prototype, "search").mockResolvedValue({ success: true });
+    const { calls, spy } = stubSearchFetch(() => html(RESULTS_PAGE));
+    restore.push(brave, searxng, openrouter, spy);
+
+    for (const category of ["image", "video", "files", "music"] as const) {
+      const result = await new WebSearchTool().execute({ query: "fixture", category }, openRouterContext());
+
+      expect(result.success).toBe(false);
+      const description = localizedCopy("en-US", "tools.search.category_unavailable_description", {
+        category: localizedCopy("en-US", `tools.search.category_labels.${category}`),
+      });
+      expect(result.message).toBe(description);
+      expect(new OpenrouterToolAdapter().convertResult(result).content).toContain(description);
+    }
+    expect(brave).toHaveBeenCalled();
+    expect(searxng).toHaveBeenCalled();
+    expect(openrouter).not.toHaveBeenCalled();
     expect(calls).toHaveLength(0);
   });
 

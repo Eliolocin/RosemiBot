@@ -5,7 +5,7 @@
  * For non-text categories, returns a friendly "category unavailable" message
  * when no engine in the chain supports/serves the request.
  *
- * Chain order: Brave → SearXNG → DuckDuckGo.
+ * Chain order: Brave → SearXNG → OpenRouter → DuckDuckGo.
  *   - Brave first (lowest latency, best quality when keyed).
  *   - SearXNG plugs in for self-hosted operators without a Brave key.
  *   - DuckDuckGo is the keyless text-only fallback.
@@ -17,12 +17,18 @@ import { localizer } from "@/utils/text/localizer";
 import { BraveEngine } from "./braveEngine";
 import { SearxngEngine } from "./searxngEngine";
 import { DuckDuckGoEngine } from "./duckduckgoEngine";
+import { OpenRouterEngine } from "@/tools/webSearch/openrouterEngine";
 import { getSearchCategoryLabel } from "./categoryMetadata";
 import type { SearchCategory, WebSearchEngine } from "./types";
 
 // Singleton chain : engines are stateless so a single instance is reusable
 //    across all tool invocations.
-const ENGINE_CHAIN: readonly WebSearchEngine[] = [new BraveEngine(), new SearxngEngine(), new DuckDuckGoEngine()];
+const ENGINE_CHAIN: readonly WebSearchEngine[] = [
+  new BraveEngine(),
+  new SearxngEngine(),
+  new OpenRouterEngine(),
+  new DuckDuckGoEngine(),
+];
 
 /**
  * Execute a web search, walking the chain until one engine returns a
@@ -36,16 +42,20 @@ export async function executeWebSearchWithFallback(
   count?: number,
 ): Promise<ToolResult> {
   let lastError: string | undefined;
+  const searchContext: ToolContext = { ...context, progressNoticeState: { attempted: false } };
 
   for (const engine of ENGINE_CHAIN) {
+    if (context.abortSignal?.aborted) break;
     // Filter: must support the category and be available right now.
     if (!engine.supportsCategory(category)) continue;
     if (!(await engine.available(context))) continue;
+    if (context.abortSignal?.aborted) break;
 
     log.info(`web_search dispatch: trying engine "${engine.name}" for category="${category}"`);
 
     try {
-      const result = await engine.search(query, category, context, count);
+      const result = await engine.search(query, category, searchContext, count);
+      if (context.abortSignal?.aborted) break;
       if (result.success) {
         log.success(`web_search dispatch: engine "${engine.name}" succeeded`);
         return result;
@@ -56,6 +66,10 @@ export async function executeWebSearchWithFallback(
       lastError = (error as Error).message;
       log.warn(`web_search dispatch: engine "${engine.name}" threw: ${lastError}`);
     }
+  }
+
+  if (context.abortSignal?.aborted) {
+    return { success: false, error: "Web search was cancelled." };
   }
 
   // All engines exhausted , so return a localized "category unavailable" message.

@@ -11,6 +11,8 @@ import { initBridges } from "@/init/bridges";
 import { initTimers } from "@/init/timers";
 import { initMediaProcessing } from "@/init/media";
 import { log } from "@/utils/misc/logger";
+import { discordPresenceRetention } from "@/utils/cache/discordPresenceRetention";
+import { statRepository } from "@/utils/db/repositories/StatRepository";
 
 /**
  * Detects Discord's "privileged intent not approved" rejection.
@@ -56,6 +58,13 @@ const includePresences = await resolvePresenceIntentEnabled(environment);
 const client = createDiscordClient(includePresences);
 
 await initDatabase(environment);
+
+// GUILD_CREATE caches presences during login, so restore eligible pairs before connecting.
+if (includePresences) {
+  const presencePairs = await statRepository.getPresenceRetentionPairs();
+  for (const pair of presencePairs) discordPresenceRetention.retain(pair.server_disc_id, pair.user_disc_id);
+  log.info(`Discord presence retention initialized for ${presencePairs.length} guild-user pairs`);
+}
 
 await initLoaders(client);
 
