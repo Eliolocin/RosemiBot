@@ -274,11 +274,8 @@ export default {
       error_download_timeout: `アバターのダウンロードがタイムアウトしました。もう一度お試しください。`,
       error_download_failed: `アバター画像のダウンロードに失敗しました。`,
       processing_title: `人格を生成しています...`,
-      processing_description: `これには1～2分かかる場合があります。キャラクターを生成していますので、お待ちください...
-
-これは予期しない結果が生成される場合があります。必要に応じて再生成できます。`,
-      captioning_title: `画像を確認しています...`,
-      captioning_description: `プライマリモデルは画像を認識できないため、まずビジョンモデル（**{model_name}**）にアップロードされた画像を説明してもらいます。その説明をもとにプライマリモデルが人格を生成します。1〜2分ほどかかる場合があります。`,
+      processing_description: `これには1～2分かかる場合があります。キャラクターを生成していますので、お待ちください...`,
+      processing_footer: `予期しない結果になる場合があります。必要に応じて再生成できます。`,
       generation_failed_title: `🔴 生成に失敗しました`,
       generation_failed_description: `人格の生成に失敗しました：{error}
 

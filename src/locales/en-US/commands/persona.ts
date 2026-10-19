@@ -274,11 +274,8 @@ Use \`/config\` > Models > Switch Models to switch to a model that supports stru
       error_download_timeout: `Avatar download timed out. Please try again.`,
       error_download_failed: `Failed to download avatar image.`,
       processing_title: `Generating Personality...`,
-      processing_description: `This may take 1-2 minutes. Please wait while I generate the character...
-
-This may produce unexpected results. You can regenerate if needed.`,
-      captioning_title: `Describing Your Avatar...`,
-      captioning_description: `Your primary model cannot see images, so I am asking your vision model (**{model_name}**) to describe the uploaded avatar first. Your primary model then writes the personality from that description. This may take 1-2 minutes.`,
+      processing_description: `This may take 1-2 minutes. Please wait while I generate the character...`,
+      processing_footer: `This may produce unexpected results. You can regenerate if needed.`,
       generation_failed_title: `Generation Failed`,
       generation_failed_description: `Failed to generate personality: {error}
 
