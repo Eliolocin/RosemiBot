@@ -31,6 +31,63 @@ const bashFile = (filePath: string) =>
     : filePath;
 
 test.skipIf(process.platform === "win32" && !existsSync(bash))(
+  "deploy verification uses a fresh window only when Compose reuses the running container",
+  async () => {
+    const script = (await readFile(deployScriptPath, "utf8")).replaceAll("\r\n", "\n");
+    const start = script.indexOf("previous_container_id=$(");
+    const end = script.indexOf('if ! docker exec "$container_id" bun -e', start);
+    if (start < 0 || end < 0) throw new Error("Container identity block was not found");
+    const wrapper = `
+      set -euo pipefail
+      previous_id=${"a".repeat(64)}
+      current_id="$previous_id"
+      if [ "$CHECK_MODE" = replaced ]; then current_id=${"b".repeat(64)}; fi
+      compose_env=()
+      compose_services=(tomoribot)
+      tomoribotImage=test-image
+      env() { "$@"; }
+      date() { echo fresh-window; }
+      docker() {
+        case "$1" in
+          ps)
+            if [[ "$*" == *--no-trunc* ]]; then echo "$previous_id"; else printf '%.12s\\n' "$previous_id"; fi
+            ;;
+          compose)
+            if [ "$4" = ps ]; then echo "$current_id"; fi
+            ;;
+          inspect)
+            case "$*" in
+              *State.StartedAt*) echo container-start ;;
+              *RestartCount*) echo 0 ;;
+              *Config.User*) echo 1001:1001 ;;
+              *Image*) echo image-id ;;
+            esac
+            ;;
+          image) echo image-id ;;
+          exec) echo 1001 ;;
+        esac
+      }
+      ${script.slice(start, end)}
+      printf '%s' "$verification_since"
+    `;
+    for (const mode of ["reused", "replaced"]) {
+      const proc = Bun.spawn([bash, "-c", wrapper], {
+        env: { ...process.env, CHECK_MODE: mode },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      expect({ mode, exitCode, stderr }).toEqual({ mode, exitCode: 0, stderr: "" });
+      expect(stdout).toBe(mode === "reused" ? "fresh-window" : "container-start");
+    }
+  },
+);
+
+test.skipIf(process.platform === "win32" && !existsSync(bash))(
   "Burstable recovery point requires a usable restore window",
   async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "tomoribot-recovery-point-"));

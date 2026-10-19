@@ -122,7 +122,7 @@ compose_env=(
   "SEARXNG_BASE_URL=$searxng_base_url"
 )
 
-previous_container_id=$(docker ps -aq \
+previous_container_id=$(docker ps --no-trunc -aq \
   --filter label=com.docker.compose.project=tomoribot-azure \
   --filter label=com.docker.compose.service=tomoribot | head -1)
 previous_started_at=""
