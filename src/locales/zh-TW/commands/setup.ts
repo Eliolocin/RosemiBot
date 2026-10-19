@@ -18,7 +18,7 @@ export default {
       "設定已完成，但我的身分組無法檢視這個頻道或在這裡傳送訊息，所以我不會在這裡回覆。請在這個頻道或所屬類別的權限設定中，授予我的身分組**檢視頻道**、**傳送訊息**和**讀取訊息歷史**權限。",
     novelai_expressions_warning_field: `表情符號已停用`,
     novelai_expressions_warning_value:
-      "表情符號與貼圖的使用已自動停用， 以保持 NovelAI 的脈絡精簡穩定。你隨時可以 用 `/config` > 權限重新啟用。",
+      "表情符號與貼圖的使用已自動停用， 以保持 NovelAI 的脈絡精簡穩定。你隨時可以 用 `/config` > 外掛重新啟用。",
     zai_tos_warning_field: `Z.ai 服務條款`,
     zai_tos_warning_value:
       "Z.ai 的服務條款已更新，只允許 程式開發與代理用途。用 Z.ai 進行一般聊天 需自行承擔風險，且可能違反他們的條款。",

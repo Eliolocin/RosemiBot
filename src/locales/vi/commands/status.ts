@@ -179,7 +179,7 @@ export default {
     field_context_note_depth: `Độ sâu ghi chú`,
     field_context_note_not_set: `*(Chưa thiết lập)*`,
     server_page8_title: `Trạng thái máy chủ: Tính năng`,
-    server_page8_description: `Quản lý tại /config > Permissions.`,
+    server_page8_description: `Quản lý tại /config > Plugin.`,
     field_nai_diffusion_model: `Model ảnh NAI`,
     field_nai_preset: `Preset lấy mẫu NAI`,
     field_image_default_positive_tags: `Thẻ ảnh tích cực mặc định`,

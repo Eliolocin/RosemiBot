@@ -14,12 +14,16 @@ OpenRouter speech models. You can also run local voice models on your own hardwa
 ## Text-to-Speech
 <!-- anchor: text-to-speech -->
 
-### Google Voice Design and OpenRouter Voice Clone
+### Google and OpenRouter voices
 
 Adding Google selects Gemini Flash TTS for `TTS (Voice Design)`. Adding OpenRouter selects paid
-Fish S2.1 Pro for `TTS (Voice Clone)`. Each replaces only its matching selection, so both can stay
-active together. Flash-Lite and free Fish require explicit model selection; availability and
-provider quotas still apply. Use `/config` > Models > Switch Models to change or clear either slot.
+Fish S2.1 Pro for `TTS (Voice Clone)`, and fills `TTS (Voice Design)` with Seed Audio 1.0 only when
+that slot is empty. OpenRouter never replaces a Gemini or Vertex design you already chose, so both
+providers can stay active together. If you added OpenRouter before Seed was available, your Design
+slot stays empty until you pick Seed. Adding the OpenRouter key again also fills an empty Design slot
+with Seed, including one you cleared on purpose. Flash-Lite and free Fish require explicit model selection;
+availability and provider quotas still apply. Use `/config` > Models > Switch Models to change or
+clear either slot.
 Personal selections and their on/off controls are in `/personal config` > Models > Switch Models.
 Turning off one personal mode lets that mode use the server selection while the other stays active.
 
@@ -44,6 +48,16 @@ operators may need to remove voices in the provider console after a crash or amb
 Descriptions are included in exported PNG and JSON persona cards; remote voice identities and
 reference assignments are excluded. Google stores the designed identity in the API project.
 Gemini reference-audio cloning is deferred until the bot can collect consent recordings.
+
+Seed Audio works differently from Gemini. It builds the voice from the description every time it
+speaks, so the same description can sound a little different from one message to the next. If you
+need a voice that stays the same, use Gemini or a reference sample. Seed works best in English and
+Chinese and makes at most two minutes of audio per message, so its scripts stop at 1,100
+characters. The description, any delivery direction, and the script also share 2,048 characters, so
+a long description leaves less room for the script. A script that does not fit is refused before
+anything is sent, and the bot asks you to shorten it.
+OpenRouter bills Seed per second of audio, which costs roughly ten times more per minute than Fish.
+To switch to Gemini or clear the slot, use `/config` > Models > Switch Models.
 
 Personal speech failures follow the Server Model Fallback setting and server permissions. A
 successful fallback appears in the command receipt. Providers may bill failed or cancelled work;

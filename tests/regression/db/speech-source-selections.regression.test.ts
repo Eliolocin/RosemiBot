@@ -23,6 +23,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
   const downgrade = path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.down.sql");
   const hostedMigration = path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.sql");
   const hostedDowngrade = path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.down.sql");
+  const designMigration = path.join(process.cwd(), "src/db/migrations/109_openrouter_design_speech_models.sql");
   const decisionMigration = path.join(process.cwd(), "src/db/migrations/098_decision_models.sql");
 
   beforeAll(async () => {
@@ -288,6 +289,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
     } finally {
       await executeTestSqlFile(migration);
       await executeTestSqlFile(hostedMigration);
+      await executeTestSqlFile(designMigration);
       await seedModelsFromCatalog(testSql);
     }
     expect((await selections()).design?.custom_endpoint_id).toBe(auto.custom_endpoint_id);
@@ -316,7 +318,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
     await expect(
       testSql`
       UPDATE server_speech_configs SET speech_clone_model_id = (
-        SELECT speech_model_id FROM speech_models WHERE provider = 'openrouter' AND is_default
+        SELECT speech_model_id FROM speech_models WHERE provider = 'openrouter' AND voice_mode = 'clone' AND is_default
       ) WHERE server_id = ${serverId}
     `.execute(),
     ).rejects.toThrow();

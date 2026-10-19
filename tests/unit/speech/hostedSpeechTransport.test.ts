@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { createGoogleSpeechTransport } from "@/providers/google/googleSpeech";
-import { synthesizeOpenRouterSpeech } from "@/providers/openrouter/openrouterSpeech";
+import { buildSeedDesignPrompt, synthesizeOpenRouterSpeech } from "@/providers/openrouter/openrouterSpeech";
 import { createVertexClient } from "@/providers/vertex/vertexClient";
 import { HOSTED_SPEECH_LIMITS, validateSpeechAudio, type SpeechOperation } from "@/utils/speech/hostedSpeech";
 import { normalizeVoiceSampleToWav } from "@/utils/speech/voiceSampleAddOperation";
@@ -216,6 +216,7 @@ describe("hosted speech transports", () => {
       const operations: SpeechOperation[] = [];
       expect(
         await synthesizeOpenRouterSpeech({
+          shape: "clone",
           model: "fish-audio/s2.1-pro-free:free",
           apiKey: "synthetic-fish",
           script: "Hello",
@@ -252,6 +253,7 @@ describe("hosted speech transports", () => {
     process.env.OPENROUTER_APP_ATTRIBUTION_ENABLED = "false";
     stubFetch(async () => new Response(new Uint8Array(mp3), { headers: { "Content-Type": "audio/mpeg" } }));
     await synthesizeOpenRouterSpeech({
+      shape: "clone",
       model: "fish-audio/s2.1-pro",
       apiKey: "synthetic-fish",
       script: "Hello",
@@ -266,6 +268,80 @@ describe("hosted speech transports", () => {
     expect(headers.has("X-OpenRouter-Title")).toBe(false);
   });
 
+  it("sends Seed design as one composed prompt and rejects over-budget or mismatched requests before fetch", async () => {
+    const bodies: unknown[] = [];
+    stubFetch(async (_url, init) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return new Response(new Uint8Array(mp3), { headers: { "Content-Type": "audio/mpeg" } });
+    });
+    const target = {
+      kind: "hosted-model" as const,
+      endpoint: null,
+      owner: { kind: "server" as const, ownerId: 1 },
+      model: speechModelSchema.parse({
+        speech_model_id: 2,
+        provider: "openrouter",
+        codename: "bytedance-seed/seed-audio-1-0",
+        voice_mode: "design",
+      }),
+      apiKey: "synthetic",
+      credentialId: 1,
+      credentialRevision: 1,
+    };
+    const description = "x".repeat(HOSTED_SPEECH_LIMITS.descriptionCharacters);
+    const request = (script: string) => ({
+      target,
+      endpoint: null,
+      endpointApiKey: "",
+      elevenLabsApiKey: "",
+      script,
+      voiceInstructions: "sleepy and quiet",
+      source: { kind: "design" as const, designPrompt: description },
+    });
+    const fittingScript = "y".repeat(2_048 - buildSeedDesignPrompt(description, "", "sleepy and quiet").length);
+    const result = await synthesizeVoiceMessage(request(fittingScript));
+    expect(result).toMatchObject({ success: true, contentType: "audio/mpeg", extension: "mp3" });
+    expect(bodies).toEqual([
+      {
+        model: "bytedance-seed/seed-audio-1-0",
+        input: buildSeedDesignPrompt(description, fittingScript, "sleepy and quiet"),
+        response_format: "mp3",
+      },
+    ]);
+
+    fetchSpy?.mockClear();
+    expect((await synthesizeVoiceMessage(request(`${fittingScript}y`))).errorKind).toBe("script_too_long");
+    expect(
+      (
+        await synthesizeVoiceMessage({
+          ...request("z".repeat(1_101)),
+          source: { kind: "design" as const, designPrompt: "Warm" },
+        })
+      ).errorKind,
+    ).toBe("script_too_long");
+    for (const call of [
+      {
+        shape: "clone" as const,
+        model: "bytedance-seed/seed-audio-1-0",
+        script: "Hi",
+        reference: wav,
+        transcript: null,
+      },
+      { shape: "design" as const, model: "fish-audio/s2.1-pro", description: "Warm", script: "Hi" },
+    ]) {
+      await expect(
+        synthesizeOpenRouterSpeech({
+          ...call,
+          apiKey: "synthetic",
+          signal: signal(),
+          maxBytes: HOSTED_SPEECH_LIMITS.outputBytes,
+          operations: [],
+        }),
+      ).rejects.toMatchObject({ kind: "invalid_request" });
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("rejects wrong MIME, invalid MP3, byte overflow, and provider refusal without a cost request", async () => {
     for (const response of [
       new Response(new Uint8Array(mp3), { headers: { "Content-Type": "text/plain" } }),
@@ -276,6 +352,7 @@ describe("hosted speech transports", () => {
       stubFetch(async () => response);
       await expect(
         synthesizeOpenRouterSpeech({
+          shape: "clone",
           model: "fish-audio/s2.1-pro",
           apiKey: "synthetic",
           script: "Hello",

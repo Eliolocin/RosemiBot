@@ -19,9 +19,9 @@ stores an independent Voice Design target and Voice Clone target, each a custom 
 - `speech`: powers outbound voice message synthesis.
 
 Custom endpoints support local engines (such as `tts-clone` and `openai-compatible-transcription`)
-and ElevenLabs. Hosted synthesis adapters support OpenRouter Fish cloning, direct Gemini Voice
-Design, and standard Vertex Voice Design with a `global` location. Vertex Express has no admitted
-voice lifecycle transport.
+and ElevenLabs. Hosted synthesis adapters support OpenRouter Fish cloning, OpenRouter Seed Audio
+Voice Design, direct Gemini Voice Design, and standard Vertex Voice Design with a `global` location.
+Vertex Express has no admitted voice lifecycle transport.
 
 ```
 INBOUND (STT)
@@ -109,8 +109,9 @@ ElevenLabs endpoints accept neither shape, relying strictly on stored voice iden
 
 Server speech routing stores an independent Design target and Clone target in `server_speech_configs`.
 Each mode selects either a custom endpoint or a hosted `speech_models` row; database validation
-rejects selecting both. Design accepts local `voice-design` or `auto` endpoints and registered Gemini
-Design models. Clone accepts local `clone` or `auto` endpoints, ElevenLabs, and admitted Fish models.
+rejects selecting both. Design accepts local `voice-design` or `auto` endpoints, registered Gemini
+Design models, and admitted OpenRouter Design models. Clone accepts local `clone` or `auto` endpoints,
+ElevenLabs, and admitted Fish models. Hosted rows are never `auto`, so a hosted selection fills one slot.
 Transcription continues to use `is_default`.
 
 `speechEndpointResolver.ts` returns a discriminated hosted-model or custom-endpoint target with its
@@ -119,9 +120,15 @@ remain connection-bound. Personal `speech_design` and `speech_clone` assignments
 slots independently when enabled. Disabling one mode preserves its saved model and owner, while
 resolution inherits the server target for that mode. Personal local endpoints are unsupported.
 
-Adding Google or OpenRouter applies its default speech model to Design or Clone respectively, using
-matching saved credentials. The catalogue seeds Flash TTS for Design and paid Fish S2.1 Pro for Clone;
-Flash-Lite and free Fish require explicit selection. Schema upgrades preserve existing targets.
+The catalogue keeps one default per provider and voice mode: Flash TTS for Google and Vertex Design,
+Seed Audio 1.0 for OpenRouter Design, and paid Fish S2.1 Pro for OpenRouter Clone. Flash-Lite and free
+Fish require explicit selection. Adding a provider applies its default for each mode, using matching
+saved credentials. Google and Vertex replace the Design slot. OpenRouter's Design default is additive:
+it fills Design only when the owner has no Design target, so adding or re-keying OpenRouter never
+replaces a Gemini or Vertex design. Each mode is written in its own transaction, so a Design failure
+after a successful Clone leaves Clone set; retrying is idempotent. Schema upgrades preserve existing
+targets, so an existing OpenRouter owner's empty Design slot stays empty until they select Seed or
+add the OpenRouter key again, which reruns the defaults and fills it.
 Credentials saved before hosted speech existed receive the same defaults once, for each server and
 user with no speech target, registered speech endpoint, or personal speech assignment; each mode
 takes the first eligible provider in the order Google, OpenRouter, Vertex.
@@ -199,8 +206,18 @@ smaller destination attachment limit. Reference audio uses the existing sample d
 conversion owners, with byte limits checked again after conversion. Oversized references are rejected
 without trimming. These limits do not establish a monetary cap.
 
-OpenRouter requests inline reference bytes and MP3 output. Gemini and Vertex requests keep the voice
-description, spoken text, and direction separate and validate WAV output. Response reads are bounded
+OpenRouter Clone requests inline reference bytes and MP3 output. Seed interprets `input` instead of
+reading it aloud and ignores `instructions`, so an OpenRouter Design request sends one composed prompt,
+`Speaker (<description>) says, <direction>: "<script>"`, with inner double quotes turned into single
+quotes. `openrouterSpeechModels.ts` records each admitted model's request shape, Seed's
+2,048-character prompt ceiling (shared by the description, direction, and script), and a
+1,100-character script ceiling measured against OpenRouter's 120-second audio cap, which it enforces
+with a 400 before generating. Either overflow fails before any request as `script_too_long`, which shows a dedicated notice and does not start server
+fallback. Seed keeps no remote voice, so it samples the voice again for every message and never writes
+`speech_voice_bindings`. Selecting an OpenRouter model rechecks the live catalogue; Clone also requires
+an endpoint with `supports_voice_cloning`, while Design checks presence only because no endpoint flag
+describes text-prompted design. Gemini and Vertex requests keep the voice description, spoken text, and
+direction separate and validate WAV output. Response reads are bounded
 before JSON/base64 allocation; audio validation rejects empty, malformed, truncated, wrong-MIME, and
 oversized output. Hosted credentials use fixed provider origins with redirects disabled. Cancellation
 reaches creation, synthesis, response reads, reference downloads, and conversion. It cannot undo

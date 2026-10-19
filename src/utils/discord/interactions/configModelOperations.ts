@@ -510,7 +510,8 @@ async function setServerSpeechTarget(
     return { status: "already-selected", modelName: choice.name };
   }
   // The OpenRouter catalog can drop a seeded model, so the live listing is rechecked before the write.
-  if (eligible === "openrouter" && !(await validateOpenRouterSpeechModel(choice.name))) return { status: "not-found" };
+  if (eligible === "openrouter" && !(await validateOpenRouterSpeechModel(choice.name, mode)))
+    return { status: "not-found" };
   return (await setHostedSpeechSelection({ kind: "server", ownerId: state.server_id }, choice.id, mode))
     ? { status: "success", modelName: choice.name, reembedded: false }
     : { status: "write-failed" };

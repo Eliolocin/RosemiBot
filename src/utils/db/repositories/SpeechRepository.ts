@@ -182,6 +182,21 @@ export async function setHostedSpeechSelection(
   }
 }
 
+export async function hasSpeechDesignSelection(scope: OpenRouterModelScope): Promise<boolean> {
+  const rows =
+    scope.kind === "server"
+      ? await sql`
+          SELECT 1 FROM server_speech_configs WHERE server_id = ${scope.ownerId}
+            AND num_nonnulls(speech_design_model_id, speech_design_endpoint_id) > 0
+        `
+      : // Moving Design to another provider leaves the old row's model id behind, so ownership decides.
+        await sql`
+          SELECT 1 FROM user_saved_provider_configs WHERE user_id = ${scope.ownerId}
+            AND speech_design_model_id IS NOT NULL AND 'speech_design' = ANY(assigned_capabilities)
+        `;
+  return rows.length > 0;
+}
+
 export async function deleteSpeechModelRegistration(scope: OpenRouterModelScope, modelId: number): Promise<void> {
   await sql`
     DELETE FROM scoped_model_registrations WHERE speech_model_id = ${modelId}

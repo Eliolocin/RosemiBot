@@ -934,10 +934,10 @@ export default {
       capability_notice_title: `Notas`,
       decision_inactive_note: "Los modelos de decisión son experimentales y todavía no hacen nada.",
       image_generation_disabled_direction:
-        "La generación de imágenes está desactivada. Actívala bajo Permisos > Capacidades del bot.",
+        "La generación de imágenes está desactivada. Actívala bajo Plugins > Herramientas disponibles.",
       image_generation_missing_model: `No hay un modelo utilizable configurado para generación de imágenes.`,
       video_generation_disabled_direction:
-        "La generación de video está desactivada. Actívala bajo Permisos > Capacidades del bot.",
+        "La generación de video está desactivada. Actívala bajo Plugins > Herramientas disponibles.",
       video_generation_missing_model: `No hay un modelo utilizable configurado para generación de video.`,
       no_endpoints_option: `Sin endpoint registrado`,
       endpoint_activated_heading: `Endpoint activado`,
@@ -945,7 +945,7 @@ export default {
       endpoint_already_active_detail: `**{endpoint}** ya está activo. Nada cambió.`,
       endpoint_source_changed_direction: `**{endpoint}** ahora está activo. La fuente de voz cambió, reasigna voces si es necesario.`,
       speech_capability_disabled_direction:
-        "Los mensajes de voz están desactivados. Actívalos bajo Permisos > Capacidades del bot.",
+        "Los mensajes de voz están desactivados. Actívalos bajo Plugins > Herramientas disponibles.",
       speech_capability_missing_endpoint: `Los mensajes de voz están activados, pero no hay un endpoint de voz activo.`,
       providers_endpoint_registration_hint: `Registra un endpoint de Voz o Transcripción en /providers.`,
       manage_providers_hint: `Usa \`/providers\` para añadir más opciones de modelos.`,

@@ -104,6 +104,14 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server setup transaction regression", () =
     `;
     expect(byokConfig.user_byok_mode).toBe(false);
 
+    const [noticeConfig] = await testSql<Array<{ tool_notice_hidden_keys: string[] }>>`
+      SELECT nec.tool_notice_hidden_keys
+      FROM server_notice_embeds_configs nec
+      JOIN servers s ON s.server_id = nec.server_id
+      WHERE s.server_disc_id = ${CATALOG_SERVER_ID}
+    `;
+    expect(noticeConfig.tool_notice_hidden_keys).toEqual(["image_analysis"]);
+
     const [savedConfig] = await testSql<Array<{ provider: string; llm_id: number | null }>>`
       SELECT spc.provider, spc.llm_id
       FROM saved_provider_configs spc

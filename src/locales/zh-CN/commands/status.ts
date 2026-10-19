@@ -179,7 +179,7 @@ export default {
     field_context_note_depth: `提醒深度`,
     field_context_note_not_set: `*（未设置）*`,
     server_page8_title: `服务器状态：功能`,
-    server_page8_description: `在 \`/config\` > 权限 里管理这些。`,
+    server_page8_description: `在 \`/config\` > 插件 里管理这些。`,
     field_nai_diffusion_model: `NAI 图像模型`,
     field_nai_preset: `NAI 采样预设集`,
     field_image_default_positive_tags: `默认正面图像标签`,

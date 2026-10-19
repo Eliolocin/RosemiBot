@@ -163,5 +163,9 @@ OpenCode Go (`https://opencode.ai/zen/go/v1`) とOpenCode Zen (`https://opencode
 | プロバイダー | テキスト読み上げ | 音声からテキストへの変換 |
 |---|---|---|
 | ElevenLabs | ✅ | ✅ |
+| Google Gemini | ボイスデザイン | いいえ |
+| Vertex AI（標準、グローバル） | ボイスデザイン | いいえ |
+| OpenRouter Fish | ボイスクローン | いいえ |
+| OpenRouter Seed Audio | ボイスデザイン | いいえ |
 
 ローカル音声エンジンは、[セルフホスティング](/ja/self-hosting/) でカバーされています。組み込みのWeb検索とURL読み取りについては、[ツールと拡張機能](/ja/features/capabilities/tools-and-extensions/#web-search--url-reading) を参照してください。

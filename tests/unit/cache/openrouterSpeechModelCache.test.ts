@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("OpenRouter speech admission", () => {
-  it("admits only verified Fish codenames from the speech catalogue", () => {
+  it("admits only the verified Fish and Seed codenames from the speech catalogue", () => {
     const models = parseOpenRouterSpeechModelList({
       data: [
         { id: "fish-audio/s2.1-pro" },
@@ -23,7 +23,11 @@ describe("OpenRouter speech admission", () => {
         { id: "bytedance-seed/seed-audio-1-0" },
       ],
     });
-    expect(models.map((model) => model.id)).toEqual(["fish-audio/s2.1-pro", "fish-audio/s2.1-pro-free:free"]);
+    expect(models.map((model) => model.id)).toEqual([
+      "fish-audio/s2.1-pro",
+      "fish-audio/s2.1-pro-free:free",
+      "bytedance-seed/seed-audio-1-0",
+    ]);
   });
 
   it("requires current catalogue membership and a typed endpoint cloning flag", async () => {
@@ -62,5 +66,31 @@ describe("OpenRouter speech admission", () => {
     expect(await validateOpenRouterSpeechModel("fish-audio/s2.1-pro")).toBe(false);
     catalogue = { data: [] };
     expect(await validateOpenRouterSpeechModel("fish-audio/s2.1-pro")).toBe(false);
+  });
+
+  it("checks each slot against the model's shape and validates Seed design by catalogue presence", async () => {
+    const calls: string[] = [];
+    fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+      Object.assign(
+        async (input: Parameters<typeof fetch>[0]) => {
+          calls.push(String(input));
+          return Response.json(
+            String(input).endsWith("/endpoints")
+              ? { data: { endpoints: [{ supports_voice_cloning: true }] } }
+              : { data: [{ id: "fish-audio/s2.1-pro" }, { id: "bytedance-seed/seed-audio-1-0" }] },
+          );
+        },
+        { preconnect: () => undefined },
+      ),
+    );
+    expect(await validateOpenRouterSpeechModel("bytedance-seed/seed-audio-1-0", "clone")).toBe(false);
+    expect(await validateOpenRouterSpeechModel("fish-audio/s2.1-pro", "design")).toBe(false);
+    expect(calls).toEqual([]);
+    for (const mode of ["design", undefined] as const) {
+      expect(await validateOpenRouterSpeechModel("bytedance-seed/seed-audio-1-0", mode)).toBe(true);
+    }
+    expect(calls.some((url) => url.endsWith("/endpoints"))).toBe(false);
+    expect(await validateOpenRouterSpeechModel("fish-audio/s2.1-pro", "clone")).toBe(true);
+    expect(calls.some((url) => url.endsWith("/endpoints"))).toBe(true);
   });
 });

@@ -18,7 +18,7 @@ export default {
       "La configuración terminó, pero mi rol no puede ver este canal o enviar mensajes aquí, así que no responderé en él. En los permisos de este canal o su categoría, dale a mi rol **Ver canal**, **Enviar mensajes** y **Leer el historial de mensajes**.",
     novelai_expressions_warning_field: `Expresiones desactivadas`,
     novelai_expressions_warning_value:
-      "El uso de emojis y stickers se desactivó automáticamente para mantener el contexto de NovelAI ligero y estable. Puedes reactivarlos cuando quieras con `/config` > Permisos.",
+      "El uso de emojis y stickers se desactivó automáticamente para mantener el contexto de NovelAI ligero y estable. Puedes reactivarlos cuando quieras con `/config` > Plugins.",
     zai_tos_warning_field: `Términos de servicio de Z.ai`,
     zai_tos_warning_value:
       "Los términos de servicio de Z.ai se actualizaron para permitir únicamente casos de uso de código o agentes. Usar Z.ai para chat general corre por tu cuenta y podría violar sus términos.",

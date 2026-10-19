@@ -29,7 +29,7 @@ export default {
     server_page7_title: `サーバーステータス: 連携とアクセス`,
     server_page7_description: `秘匿情報を伏せた認証状態、外部連携、STプリセット状態`,
     server_page8_title: `サーバーステータス: 機能`,
-    server_page8_description: `これらは \`/config\` > 権限 で管理します。`,
+    server_page8_description: `これらは \`/config\` > プラグイン で管理します。`,
     server_page9_title: `サーバーステータス: 機能とモデレーション`,
     server_page9_description: `機能トグルとモデレーション設定`,
     server_page10_title: `サーバーステータス: クォータ`,

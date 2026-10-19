@@ -354,7 +354,8 @@ export const personalConfigOperations: PersonalConfigOperations = {
       const selected = availableModels.find((model) => model.id === modelId);
       if (
         provider.toLowerCase() === "openrouter" &&
-        (!selected || !(await validateOpenRouterSpeechModel(selected.name)))
+        (!selected ||
+          !(await validateOpenRouterSpeechModel(selected.name, capability === "speech_design" ? "design" : "clone")))
       )
         return { status: "write-failed" };
       return (await assignPersonalCapabilityToProvider(userId, provider, capability, (row) => ({

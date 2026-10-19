@@ -179,7 +179,7 @@ export default {
     field_context_note_depth: `備註深度`,
     field_context_note_not_set: `*（未設定）*`,
     server_page8_title: `伺服器狀態：功能`,
-    server_page8_description: `請在 /config > 權限底下管理這些設定。`,
+    server_page8_description: `請在 /config > 外掛底下管理這些設定。`,
     field_nai_diffusion_model: `NAI 圖片模型`,
     field_nai_preset: `NAI 取樣預設集`,
     field_image_default_positive_tags: `預設正向圖片標籤`,

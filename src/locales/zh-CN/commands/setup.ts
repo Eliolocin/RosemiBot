@@ -18,7 +18,7 @@ export default {
       "设置已完成，但我的身份组无法查看这个频道或在这里发送消息，所以我不会在这里回复。请在这个频道或所属频道分类的权限设置中，给我的身份组授予**查看频道**、**发送消息**和**读取消息历史**权限。",
     novelai_expressions_warning_field: `表情与贴纸已关闭`,
     novelai_expressions_warning_value:
-      "表情和贴纸已自动关闭，好让 NovelAI 的上下文保持精简稳定。你可以随时用 `/config` > 权限重新打开。",
+      "表情和贴纸已自动关闭，好让 NovelAI 的上下文保持精简稳定。你可以随时用 `/config` > 插件重新打开。",
     zai_tos_warning_field: `Z.ai 服务条款`,
     zai_tos_warning_value:
       "Z.ai 的服务条款已更新，现在只允许 编码和智能体用途。把 Z.ai 用于普通聊天 风险自负，而且可能违反他们的条款。",

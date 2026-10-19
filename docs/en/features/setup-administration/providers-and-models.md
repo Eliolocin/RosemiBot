@@ -252,6 +252,7 @@ unsupported modes will fail at generation time.
 | Google Gemini | Voice Design | No |
 | Vertex AI (standard, global) | Voice Design | No |
 | OpenRouter Fish | Voice Clone | No |
+| OpenRouter Seed Audio | Voice Design | No |
 
 Local voice engines are covered under [Self-Hosting](/self-hosting/). For built-in web search and
 URL reading, see [Tools & Extensions](/features/capabilities/tools-and-extensions/#web-search--url-reading).

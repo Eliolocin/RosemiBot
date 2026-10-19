@@ -18,7 +18,7 @@ export default {
       "A configuração terminou, mas meu cargo não pode ver este canal ou enviar mensagens aqui, então não vou responder nele. Nas permissões deste canal ou da categoria, conceda ao meu cargo **Ver canal**, **Enviar mensagens** e **Ler histórico de mensagens**.",
     novelai_expressions_warning_field: `Expressões Desativadas`,
     novelai_expressions_warning_value:
-      "O uso de emojis e figurinhas foi automaticamente desativado para manter o contexto do NovelAI enxuto e estável. Você pode reativá-los depois em `/config` > Permissions.",
+      "O uso de emojis e figurinhas foi automaticamente desativado para manter o contexto do NovelAI enxuto e estável. Você pode reativá-los depois em `/config` > Plugins.",
     zai_tos_warning_field: `Termos de Serviço do Z.ai`,
     zai_tos_warning_value:
       "Os ToS do Z.ai foram atualizados para permitir apenas casos de uso de código/agente. Usar Z.ai para chat geral é por sua conta e risco e pode violar os termos deles.",

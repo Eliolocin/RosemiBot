@@ -217,6 +217,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Scoped model registrations (Migration D)",
       await executeMigration("071_generalize_scoped_model_registrations.sql");
       await executeMigration("098_decision_models.sql");
       await executeMigration("102_hosted_speech_models.sql");
+      await executeMigration("109_openrouter_design_speech_models.sql");
       await seedModelsFromCatalog(testSql);
     }
     for (const provider of ["google", "openrouter", "vertex"]) {
