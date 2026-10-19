@@ -204,6 +204,8 @@ export interface ToolContext {
   isUserImpersonation?: boolean; // True when the active turn is a user impersonation session
   impersonatedUserId?: string; // Discord user ID currently being impersonated, if any
   suppressProgressNotices?: boolean; // Skip public "working..." embeds for fire-and-forget flows
+  /** Shared across search-engine attempts, so fallback notices are deduplicated without hiding error embeds. */
+  progressNoticeState?: { attempted: boolean };
   showKillHint?: boolean; // When true, tool notice footers include the /kill hint (set after SOFT_WARN_ITERATION_THRESHOLD)
   contextItems?: StructuredContextItem[]; // Current LLM context for tools that need hidden resolution metadata
 

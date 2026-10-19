@@ -53,25 +53,27 @@ export class OpenRouterEngine implements WebSearchEngine {
     const prefix = CATEGORY_QUERY_PREFIXES[category];
     const searchQuery = prefix ? `${prefix}: ${boundedQuery}` : boundedQuery;
 
-    await sendToolNotice(
-      context,
-      getSearchNoticeKey(category),
-      {
-        titleKey: "tools.search.category_search_title",
-        titleVars: getSearchNoticeTitleVars(context.locale, category, boundedQuery),
-        descriptionKey: "tools.search.disclaimer_description",
-      },
-      "OpenRouterEngine",
-    );
-
     const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     const signal = context.abortSignal ? AbortSignal.any([context.abortSignal, timeoutSignal]) : timeoutSignal;
 
     try {
+      signal.throwIfAborted();
       const { api_key: encryptedKey, key_version: keyVersion } = context.tomoriState.config;
       if (!encryptedKey) return this.fail("missing_key");
       const apiKey = await decryptApiKey(encryptedKey, keyVersion);
       if (!apiKey) return this.fail("missing_key");
+      signal.throwIfAborted();
+
+      await sendToolNotice(
+        context,
+        getSearchNoticeKey(category),
+        {
+          titleKey: "tools.search.category_search_title",
+          titleVars: getSearchNoticeTitleVars(context.locale, category, boundedQuery),
+          descriptionKey: "tools.search.disclaimer_description",
+        },
+        "OpenRouterEngine",
+      );
       signal.throwIfAborted();
 
       const model = context.tomoriState.llm.llm_codename;

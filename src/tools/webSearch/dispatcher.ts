@@ -42,16 +42,20 @@ export async function executeWebSearchWithFallback(
   count?: number,
 ): Promise<ToolResult> {
   let lastError: string | undefined;
+  const searchContext: ToolContext = { ...context, progressNoticeState: { attempted: false } };
 
   for (const engine of ENGINE_CHAIN) {
+    if (context.abortSignal?.aborted) break;
     // Filter: must support the category and be available right now.
     if (!engine.supportsCategory(category)) continue;
     if (!(await engine.available(context))) continue;
+    if (context.abortSignal?.aborted) break;
 
     log.info(`web_search dispatch: trying engine "${engine.name}" for category="${category}"`);
 
     try {
-      const result = await engine.search(query, category, context, count);
+      const result = await engine.search(query, category, searchContext, count);
+      if (context.abortSignal?.aborted) break;
       if (result.success) {
         log.success(`web_search dispatch: engine "${engine.name}" succeeded`);
         return result;
@@ -62,6 +66,10 @@ export async function executeWebSearchWithFallback(
       lastError = (error as Error).message;
       log.warn(`web_search dispatch: engine "${engine.name}" threw: ${lastError}`);
     }
+  }
+
+  if (context.abortSignal?.aborted) {
+    return { success: false, error: "Web search was cancelled." };
   }
 
   // All engines exhausted , so return a localized "category unavailable" message.

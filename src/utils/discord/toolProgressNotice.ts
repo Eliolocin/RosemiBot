@@ -326,7 +326,8 @@ export async function sendToolNotice(
   options: StandardEmbedOptions,
   logLabel: string,
 ): Promise<void> {
-  if (context.suppressProgressNotices) return;
+  if (context.suppressProgressNotices || context.progressNoticeState?.attempted) return;
+  if (context.progressNoticeState) context.progressNoticeState.attempted = true;
   try {
     const { config } = context.tomoriState;
     const isVisible = isToolNoticeVisible(config, noticeKey);
