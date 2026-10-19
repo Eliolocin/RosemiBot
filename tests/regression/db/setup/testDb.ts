@@ -56,6 +56,8 @@ export const testSql = new SQL({
   username: effectiveUser,
   password: effectivePassword ?? "dummy",
   database: effectiveDatabase,
+  idleTimeout: 180,
+  maxLifetime: 1800,
 });
 
 /** Executes a migration script on one reserved transaction connection. */

@@ -508,8 +508,8 @@ Ingresa \`{project_id}::{location}\` con {configSetup} o {configApikeySet}
       memory_tagging: {
         title: `Etiquetado de memoria (Avanzado)`,
         description:
-          "Por defecto toda memoria se envía con cada mensaje. El etiquetado limita eso.\n> **Etiquetas clave**: una memoria etiquetada despierta solo cuando su palabra clave aparece en la charla.\n> **Etiquetas de canal**: una etiqueta `#canal` limita una memoria a ese canal, y se combina con otras etiquetas.\n\nEnciende ambas en {configAdvancedMemory}, luego usa {toolPromptSnapshot} para ver qué memorias están activas.",
-        footer: "Los documentos subidos y el historial extraído pueden llevar etiquetas de canal también.",
+          "Por defecto toda memoria dentro del alcance se envía con cada mensaje. El etiquetado limita eso.\n> **Etiquetas clave**: una memoria etiquetada despierta solo cuando su palabra clave aparece en la conversación. Una memoria sin etiquetar siempre está activa.\n> **Canales**: una memoria del servidor puede limitarse a los canales que elijas en su formulario (sus hilos incluidos), y una memoria personal a una etiqueta `#canal`. Ambas se combinan con las etiquetas clave.\n\nEnciende ambas en {configAdvancedMemory}, luego usa {toolPromptSnapshot} para ver con exactitud qué memorias están activas ahora mismo.",
+        footer: "Los documentos subidos y el historial extraído también pueden limitarse a canales.",
       },
     },
     scheduled_tasks: {
