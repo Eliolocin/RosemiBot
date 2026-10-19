@@ -1,6 +1,7 @@
 import type { ButtonInteraction, ChatInputCommandInteraction, Client, Message, TextBasedChannel } from "discord.js";
 import {
   ActionRowBuilder,
+  ChannelType,
   ComponentType,
   EmbedBuilder,
   MessageFlags,
@@ -9,10 +10,16 @@ import {
   TextInputStyle,
 } from "discord.js";
 import type { UserRow } from "@/types/db/schema";
-import type { ModalInputField, ModalRadioGroupField, ModalSelectField } from "@/types/discord/modal";
+import type {
+  ModalChannelSelectField,
+  ModalInputField,
+  ModalRadioGroupField,
+  ModalSelectField,
+} from "@/types/discord/modal";
 import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
 import { isRagAvailable } from "@/utils/db/ragAvailability";
 import { llmModelRepo, personaRepository, ragRepository } from "@/utils/db/repositories";
+import { DISCORD_SELECT_VALUES_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { replyInfoEmbed } from "@/utils/discord/ui/embeds";
 import { promptWithRawModal, safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { generateEmbeddingsBatched, providerSupportsEmbeddingTaskType } from "@/utils/embeddings/embeddingProvider";
@@ -250,7 +257,7 @@ export async function executeCompactCommand(
         .edit({ embeds: [updatedEmbed], components: [buildAddToDocsButtonRow(locale)] })
         .catch(() => {});
       const serverDiscId = interaction.guild?.id ?? interaction.user.id;
-      setupAddToDocsCollector({ client, summaryMessage, buildEmbed: (text) => buildEmbed(text), locale, serverDiscId });
+      setupAddToDocsCollector({ summaryMessage, buildEmbed: (text) => buildEmbed(text), locale, serverDiscId });
     });
   } catch (error) {
     log.error("Compact summary command failed", error);
@@ -540,7 +547,7 @@ async function executeManualCompact(
         .edit({ embeds: [updatedEmbed], components: [buildAddToDocsButtonRow(locale)] })
         .catch(() => {});
       const serverDiscId = interaction.guild?.id ?? interaction.user.id;
-      setupAddToDocsCollector({ client, summaryMessage, buildEmbed: (text) => buildEmbed(text), locale, serverDiscId });
+      setupAddToDocsCollector({ summaryMessage, buildEmbed: (text) => buildEmbed(text), locale, serverDiscId });
     });
   } catch (error) {
     log.error("Manual compact command failed", error);
@@ -553,13 +560,12 @@ async function executeManualCompact(
 }
 
 function setupAddToDocsCollector(params: {
-  client: Client;
   summaryMessage: Message;
   buildEmbed: (text: string) => EmbedBuilder;
   locale: string;
   serverDiscId: string;
 }): void {
-  const { client, summaryMessage, buildEmbed, locale, serverDiscId } = params;
+  const { summaryMessage, buildEmbed, locale, serverDiscId } = params;
 
   const NAME_FIELD_ID = "compact_doc_name";
   const SCOPE_FIELD_ID = "compact_doc_scope";
@@ -631,11 +637,15 @@ function setupAddToDocsCollector(params: {
             ]
           : []),
         {
+          kind: "channelSelect",
           customId: CHANNELS_FIELD_ID,
           labelKey: "commands.compact.save_as_doc_channels_label",
           descriptionKey: "commands.compact.save_as_doc_channels_description",
+          channelTypes: [ChannelType.GuildText, ChannelType.GuildAnnouncement],
+          minValues: 0,
+          maxValues: DISCORD_SELECT_VALUES_MAX,
           required: false,
-        } as ModalInputField,
+        } as ModalChannelSelectField,
       ],
     });
 
@@ -647,23 +657,11 @@ function setupAddToDocsCollector(params: {
     const docName = (modalResult.values?.[NAME_FIELD_ID] ?? autoName).trim().slice(0, 64) || autoName;
     const scope = modalResult.values?.[SCOPE_FIELD_ID] === "persona" ? "persona" : "serverwide";
     const selectedPersonaIdStr = modalResult.values?.[PERSONA_FIELD_ID];
-    const channelsInput = modalResult.values?.[CHANNELS_FIELD_ID];
-
-    const channelTags: string[] = channelsInput
-      ? channelsInput
-          .split(",")
-          .map((raw) => {
-            const s = raw.trim();
-            const mention = s.match(/^<#(\d+)>$/);
-            if (mention) {
-              const resolved = client.channels.cache.get(mention[1]);
-              return "name" in (resolved ?? {}) ? (resolved as { name: string }).name.toLowerCase() : "";
-            }
-            return s.toLowerCase().replace(/^#+/, "");
-          })
-          .filter((c) => c.length > 0 && /^[\w-]+$/.test(c))
-          .map((c) => `#${c}`)
-      : [];
+    const channelDiscIds = [
+      ...new Set(
+        (modalResult.multiValues?.[CHANNELS_FIELD_ID] ?? []).filter((id) => DISCORD_SNOWFLAKE_PATTERN.test(id)),
+      ),
+    ];
 
     let targetPersonaId: number | null = null;
     if (scope === "persona") {
@@ -781,7 +779,7 @@ function setupAddToDocsCollector(params: {
         embeddingModelId: embeddingModel.embedding_model_id,
         embeddingFamily: embeddingModel.model_family,
         sourceType: "history",
-        channelTags,
+        channelDiscIds,
       });
 
       invalidateTomoriStateCache(serverDiscId);

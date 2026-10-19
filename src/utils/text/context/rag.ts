@@ -6,6 +6,7 @@ import { memoryGuard } from "@/utils/security/rateLimiter";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
 import type { TomoriState } from "@/types/db/schema";
 import type { SimplifiedMessageForContext } from "./types";
+import { channelScopeCandidates } from "@/utils/discord/channelScope";
 
 const DOCUMENT_QUERY_MAX_LENGTH = 1000;
 const DOCUMENT_QUERY_MIN_LENGTH = 3;
@@ -31,10 +32,11 @@ export async function buildServerDocumentContextItem(params: {
   tomoriState: TomoriState | null | undefined;
   simplifiedMessageHistory: SimplifiedMessageForContext[];
   triggererUserId?: number;
-  channelName?: string | null;
+  channelId: string;
+  parentChannelId?: string | null;
 }): Promise<StructuredContextItem | null> {
   try {
-    const { tomoriState, simplifiedMessageHistory, triggererUserId, channelName } = params;
+    const { tomoriState, simplifiedMessageHistory, triggererUserId, channelId, parentChannelId } = params;
     if (!isRagAvailable() || memoryGuard.getStatus() === "critical" || !tomoriState?.server_id) {
       return null;
     }
@@ -64,7 +66,9 @@ export async function buildServerDocumentContextItem(params: {
       return null;
     }
 
-    const channelFilter = tomoriState.config.channel_memory_enabled && channelName ? channelName : null;
+    const channelFilter = tomoriState.config.channel_memory_enabled
+      ? channelScopeCandidates(channelId, parentChannelId)
+      : null;
 
     const chunks = await ragRepository.retrieveRelevantChunks({
       serverId: tomoriState.server_id,
@@ -74,7 +78,7 @@ export async function buildServerDocumentContextItem(params: {
       apiKey: creds.apiKey,
       maxResults: DOCUMENT_MAX_RESULTS,
       minSimilarity: DOCUMENT_MIN_SIMILARITY,
-      channelName: channelFilter,
+      channelIds: channelFilter,
     });
 
     const documentContext = ragRepository.formatChunksForPrompt(chunks);

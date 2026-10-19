@@ -8,7 +8,11 @@ import {
   encodeSpotlightMask,
 } from "@/utils/discord/personalConfigPanelCatalog";
 import { buildPersonalConfigModalFieldId } from "@/utils/discord/ui/personalConfigModals";
-import { takeRawModalCheckboxGroupValues, takeRawModalSelectValue } from "@/utils/discord/ui/modals";
+import {
+  takeRawModalChannelSelectValues,
+  takeRawModalCheckboxGroupValues,
+  takeRawModalSelectValue,
+} from "@/utils/discord/ui/modals";
 import { localizer } from "@/utils/text/localizer";
 import {
   noChangesReceipt,
@@ -65,7 +69,10 @@ export async function handlePersonalConfigSpotlightRoutes(context: PersonalConfi
       chooserPage = route.chooserPage;
     } else {
       const modal = interaction as ModalSubmitInteraction;
-      const rawChannelId = takeRawModalSelectValue(modal.id, buildPersonalConfigModalFieldId("channel", route.nonce));
+      const rawChannelId = takeRawModalChannelSelectValues(
+        modal.id,
+        buildPersonalConfigModalFieldId("channel", route.nonce),
+      )?.[0];
       if (!rawChannelId || !/^\d{17,20}$/.test(rawChannelId)) {
         await repaint(interaction, {
           locale: route.locale,

@@ -926,10 +926,10 @@ async function runTriggerWrite(
   }
   if (route.action === "behavior-random-add-submit") {
     const submitted = modal(interaction);
-    const channelId = dependencies.takeSelectValue(
+    const channelId = dependencies.takeChannelSelectValues(
       submitted.id,
       buildConfigModalFieldId(BEHAVIOR_RANDOM_CHANNEL_FIELD, route.nonce),
-    );
+    )?.[0];
     const personaValue = dependencies.takeSelectValue(
       submitted.id,
       buildConfigModalFieldId(BEHAVIOR_RANDOM_PERSONA_FIELD, route.nonce),

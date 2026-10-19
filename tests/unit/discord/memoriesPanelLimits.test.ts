@@ -34,6 +34,8 @@ function makeMemory(id: number, overrides: Partial<ServerMemoryRow> = {}): Serve
     user_id: 1,
     content: `Server memory sample content #${id} with realistic length and context.`,
     tags: ["important", "guidelines"],
+    channel_disc_ids: [],
+    channel_scope_pending: false,
     created_at: new Date(),
     updated_at: new Date(),
     ...overrides,
@@ -45,6 +47,8 @@ function makeDocument(id: number, overrides: Partial<DocumentListRow> = {}): Doc
     document_id: id,
     document_name: `Document ${id}.pdf`,
     first_chunk: `First chunk preview of document #${id}`,
+    channel_disc_ids: [],
+    channel_scope_pending: false,
     isHistory: false,
     ...overrides,
   };

@@ -206,46 +206,26 @@ class WhitelistRepository {
   }
 
   /**
-   * Add or update a channel in the whitelist with optional cooldown override settings.
-   *
-   * @param cooldownType  - Cooldown type override, or null to inherit global
-   * @param cooldownLength - Cooldown length override in seconds, or null to inherit global
+   * Adds or updates whitelist channels with their cooldown overrides; a null type or length
+   * inherits the server global cooldown.
    */
-  async upsertChannelWhitelist(
+  async upsertChannelWhitelists(
     serverId: number,
-    channelDiscId: string,
-    cooldownType: CooldownType | null,
-    cooldownLength: number | null,
-  ): Promise<ChannelWhitelistRow> {
-    const [result] = await sql`
-      INSERT INTO channel_whitelist (server_id, channel_disc_id, cooldown_type, cooldown_length)
-      VALUES (${serverId}, ${channelDiscId}, ${cooldownType}, ${cooldownLength})
-      ON CONFLICT (server_id, channel_disc_id)
-      DO UPDATE SET
-        cooldown_type = EXCLUDED.cooldown_type,
-        cooldown_length = EXCLUDED.cooldown_length,
-        updated_at = CURRENT_TIMESTAMP
-      RETURNING *
-    `;
-
-    if (!result) throw new Error("Failed to upsert channel whitelist");
-    return result as ChannelWhitelistRow;
-  }
-
-  /**
-   * Returns one channel whitelist row for exact settings comparisons.
-   *
-   */
-  async getChannelWhitelist(serverId: number, channelDiscId: string): Promise<ChannelWhitelistRow | null> {
-    const [result] = await sql`
-      SELECT *
-      FROM channel_whitelist
-      WHERE server_id = ${serverId}
-        AND channel_disc_id = ${channelDiscId}
-      LIMIT 1
-    `;
-
-    return (result as ChannelWhitelistRow | undefined) ?? null;
+    writes: readonly { channelId: string; cooldownType: CooldownType | null; cooldownLength: number | null }[],
+  ): Promise<void> {
+    await sql.transaction(async (tx) => {
+      for (const write of writes) {
+        await tx`
+          INSERT INTO channel_whitelist (server_id, channel_disc_id, cooldown_type, cooldown_length)
+          VALUES (${serverId}, ${write.channelId}, ${write.cooldownType}, ${write.cooldownLength})
+          ON CONFLICT (server_id, channel_disc_id)
+          DO UPDATE SET
+            cooldown_type = EXCLUDED.cooldown_type,
+            cooldown_length = EXCLUDED.cooldown_length,
+            updated_at = CURRENT_TIMESTAMP
+        `;
+      }
+    });
   }
 
   /**

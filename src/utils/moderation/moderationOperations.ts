@@ -70,7 +70,7 @@ type ModerationWriteFailureOperation =
   | "removeUserFromBlacklist"
   | "removePersonaUserBlock"
   | "removeUserBlacklistBatch"
-  | "upsertWhitelistChannel"
+  | "upsertWhitelistChannels"
   | "removeWhitelistChannel"
   | "addWhitelistRole"
   | "removeWhitelistRole"
@@ -838,10 +838,10 @@ export async function removeUserBlacklistBatch(
   }
 }
 
-export interface UpsertWhitelistChannelInput {
+export interface UpsertWhitelistChannelsInput {
   guildId: string;
   serverId: number;
-  channelId: string;
+  channelIds: readonly string[];
   requestedCooldownType?: CooldownType | null;
   requestedCooldownLength?: number | null;
   serverConfig?: {
@@ -850,129 +850,101 @@ export interface UpsertWhitelistChannelInput {
   };
 }
 
-export type UpsertWhitelistChannelResult =
-  | {
-      status: "success";
-      channelId: string;
-      cooldownType: CooldownType | null;
-      cooldownLength: number | null;
-      isUpdate: boolean;
-    }
-  | {
-      status: "unchanged";
-      channelId: string;
-      cooldownType: CooldownType | null;
-      cooldownLength: number | null;
-    }
-  | {
-      status: "failure";
-      channelId: string;
-    };
+interface WhitelistChannelWrite {
+  channelId: string;
+  cooldownType: CooldownType | null;
+  cooldownLength: number | null;
+}
+
+export type UpsertWhitelistChannelsResult =
+  | { status: "success"; written: WhitelistChannelWrite[]; unchangedChannelIds: string[] }
+  | { status: "unchanged"; unchangedChannelIds: string[] }
+  | { status: "failure" };
 
 export interface WhitelistChannelOperationsDependencies {
-  getChannelWhitelist(serverId: number, channelId: string): Promise<ChannelWhitelistRow | null>;
-  upsertChannelWhitelist(
-    serverId: number,
-    channelId: string,
-    cooldownType: CooldownType | null,
-    cooldownLength: number | null,
-  ): Promise<ChannelWhitelistRow>;
+  getAllWhitelistChannels(serverId: number): Promise<ChannelWhitelistRow[]>;
+  upsertChannelWhitelists(serverId: number, writes: readonly WhitelistChannelWrite[]): Promise<void>;
   invalidateCache(guildId: string): void;
 }
 
 const defaultWhitelistChannelOperationsDependencies: WhitelistChannelOperationsDependencies = {
-  getChannelWhitelist: (serverId, channelId) => whitelistRepository.getChannelWhitelist(serverId, channelId),
-  upsertChannelWhitelist: (serverId, channelId, cooldownType, cooldownLength) =>
-    whitelistRepository.upsertChannelWhitelist(serverId, channelId, cooldownType, cooldownLength),
+  getAllWhitelistChannels: (serverId) => whitelistRepository.getAllWhitelistChannels(serverId),
+  upsertChannelWhitelists: (serverId, writes) => whitelistRepository.upsertChannelWhitelists(serverId, writes),
   invalidateCache: (guildId) => invalidateWhitelistCache(guildId),
 };
 
-export async function upsertWhitelistChannel(
-  input: UpsertWhitelistChannelInput,
+function planWhitelistChannelWrite(
+  input: UpsertWhitelistChannelsInput,
+  channelId: string,
+  existingEntry: ChannelWhitelistRow | undefined,
+): WhitelistChannelWrite | null {
+  const hasOverrideInput =
+    (input.requestedCooldownType !== undefined && input.requestedCooldownType !== null) ||
+    (input.requestedCooldownLength !== undefined && input.requestedCooldownLength !== null);
+
+  const hasCompleteOverride =
+    existingEntry?.cooldown_type !== null &&
+    existingEntry?.cooldown_type !== undefined &&
+    existingEntry?.cooldown_length !== null &&
+    existingEntry?.cooldown_length !== undefined;
+  const currentCooldownType = hasCompleteOverride ? (existingEntry.cooldown_type as CooldownType) : null;
+  const currentCooldownLength = hasCompleteOverride ? existingEntry.cooldown_length : null;
+
+  const plannedCooldownType = hasOverrideInput
+    ? ((input.requestedCooldownType ??
+        currentCooldownType ??
+        input.serverConfig?.cooldown_type ??
+        CooldownType.OFF) as CooldownType)
+    : null;
+  const plannedCooldownLength = hasOverrideInput
+    ? (input.requestedCooldownLength ?? currentCooldownLength ?? input.serverConfig?.cooldown_length ?? 5)
+    : null;
+
+  const storedCooldownType =
+    existingEntry?.cooldown_type !== null && existingEntry?.cooldown_type !== undefined
+      ? (existingEntry.cooldown_type as CooldownType)
+      : null;
+  const storedCooldownLength =
+    existingEntry?.cooldown_length !== null && existingEntry?.cooldown_length !== undefined
+      ? existingEntry.cooldown_length
+      : null;
+
+  if (existingEntry && storedCooldownType === plannedCooldownType && storedCooldownLength === plannedCooldownLength) {
+    return null;
+  }
+  return { channelId, cooldownType: plannedCooldownType, cooldownLength: plannedCooldownLength };
+}
+
+/**
+ * Applies one cooldown request to every selected channel, writing only the channels whose stored
+ * override differs, in a single transaction.
+ */
+export async function upsertWhitelistChannels(
+  input: UpsertWhitelistChannelsInput,
   deps: WhitelistChannelOperationsDependencies = defaultWhitelistChannelOperationsDependencies,
-): Promise<UpsertWhitelistChannelResult> {
+): Promise<UpsertWhitelistChannelsResult> {
   try {
-    const existingEntry = await deps.getChannelWhitelist(input.serverId, input.channelId);
-
-    const hasOverrideInput =
-      (input.requestedCooldownType !== undefined && input.requestedCooldownType !== null) ||
-      (input.requestedCooldownLength !== undefined && input.requestedCooldownLength !== null);
-
-    const currentCooldownType =
-      existingEntry?.cooldown_type !== null &&
-      existingEntry?.cooldown_type !== undefined &&
-      existingEntry?.cooldown_length !== null &&
-      existingEntry?.cooldown_length !== undefined
-        ? (existingEntry.cooldown_type as CooldownType)
-        : null;
-    const currentCooldownLength =
-      existingEntry?.cooldown_type !== null &&
-      existingEntry?.cooldown_type !== undefined &&
-      existingEntry?.cooldown_length !== null &&
-      existingEntry?.cooldown_length !== undefined
-        ? existingEntry.cooldown_length
-        : null;
-
-    const plannedCooldownType = hasOverrideInput
-      ? ((input.requestedCooldownType ??
-          currentCooldownType ??
-          input.serverConfig?.cooldown_type ??
-          CooldownType.OFF) as CooldownType)
-      : null;
-    const plannedCooldownLength = hasOverrideInput
-      ? (input.requestedCooldownLength ?? currentCooldownLength ?? input.serverConfig?.cooldown_length ?? 5)
-      : null;
-
-    const storedCooldownType =
-      existingEntry?.cooldown_type !== null && existingEntry?.cooldown_type !== undefined
-        ? (existingEntry.cooldown_type as CooldownType)
-        : null;
-    const storedCooldownLength =
-      existingEntry?.cooldown_length !== null && existingEntry?.cooldown_length !== undefined
-        ? existingEntry.cooldown_length
-        : null;
-
-    if (existingEntry && storedCooldownType === plannedCooldownType && storedCooldownLength === plannedCooldownLength) {
-      return {
-        status: "unchanged",
-        channelId: input.channelId,
-        cooldownType: plannedCooldownType,
-        cooldownLength: plannedCooldownLength,
-      };
+    const existingRows = await deps.getAllWhitelistChannels(input.serverId);
+    const existingByChannelId = new Map(existingRows.map((row) => [row.channel_disc_id, row]));
+    const written: WhitelistChannelWrite[] = [];
+    const unchangedChannelIds: string[] = [];
+    for (const channelId of new Set(input.channelIds)) {
+      const write = planWhitelistChannelWrite(input, channelId, existingByChannelId.get(channelId));
+      if (write) written.push(write);
+      else unchangedChannelIds.push(channelId);
     }
 
-    const row = await deps.upsertChannelWhitelist(
-      input.serverId,
-      input.channelId,
-      plannedCooldownType,
-      plannedCooldownLength,
-    );
+    if (written.length === 0) return { status: "unchanged", unchangedChannelIds };
 
-    if (!row) {
-      return {
-        status: "failure",
-        channelId: input.channelId,
-      };
-    }
-
+    await deps.upsertChannelWhitelists(input.serverId, written);
     deps.invalidateCache(input.guildId);
-
-    return {
-      status: "success",
-      channelId: input.channelId,
-      cooldownType: plannedCooldownType,
-      cooldownLength: plannedCooldownLength,
-      isUpdate: Boolean(existingEntry),
-    };
+    return { status: "success", written, unchangedChannelIds };
   } catch (error) {
-    logModerationWriteFailure("upsertWhitelistChannel", error, {
+    logModerationWriteFailure("upsertWhitelistChannels", error, {
       serverId: input.serverId,
-      channelId: input.channelId,
+      channelCount: input.channelIds.length,
     });
-    return {
-      status: "failure",
-      channelId: input.channelId,
-    };
+    return { status: "failure" };
   }
 }
 
@@ -1391,10 +1363,10 @@ export interface ModerationOperations {
     input: RemoveUserBlacklistBatchInput,
     deps?: RemoveUserBlacklistBatchOperationsDependencies,
   ): Promise<RemoveUserBlacklistBatchResult>;
-  upsertWhitelistChannel(
-    input: UpsertWhitelistChannelInput,
+  upsertWhitelistChannels(
+    input: UpsertWhitelistChannelsInput,
     deps?: WhitelistChannelOperationsDependencies,
-  ): Promise<UpsertWhitelistChannelResult>;
+  ): Promise<UpsertWhitelistChannelsResult>;
   removeWhitelistChannel(
     input: RemoveWhitelistChannelInput,
     deps?: RemoveWhitelistChannelOperationsDependencies,
@@ -1424,7 +1396,7 @@ export const moderationOperations: ModerationOperations = {
   removeUserFromBlacklist,
   removePersonaUserBlock,
   removeUserBlacklistBatch,
-  upsertWhitelistChannel,
+  upsertWhitelistChannels,
   removeWhitelistChannel,
   addWhitelistRole,
   removeWhitelistRole,

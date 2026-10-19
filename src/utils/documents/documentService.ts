@@ -66,16 +66,16 @@ export async function createDocumentRecord(params: {
   uploaderUserId: number | null;
   documentName: string;
   sourceType?: string;
-  channelTags?: string[];
+  channelDiscIds?: string[];
 }): Promise<number> {
-  const { serverId, personaId, uploaderUserId, documentName, sourceType = "upload", channelTags = [] } = params;
+  const { serverId, personaId, uploaderUserId, documentName, sourceType = "upload", channelDiscIds = [] } = params;
   const [row] = await sql`
     INSERT INTO documents (
       server_id, persona_id, uploader_user_id, document_name,
-      file_name, mime_type, file_size_bytes, text_content, source_type, channel_tags
+      file_name, mime_type, file_size_bytes, text_content, source_type, channel_disc_ids
     ) VALUES (
       ${serverId}, ${personaId}, ${uploaderUserId}, ${documentName},
-      NULL, NULL, NULL, '', ${sourceType}, ${toPgTextArray(channelTags)}::text[]
+      NULL, NULL, NULL, '', ${sourceType}, ${toPgTextArray(channelDiscIds)}::text[]
     )
     RETURNING document_id
   `;
@@ -156,8 +156,8 @@ export async function insertDocumentWithChunks(params: {
   embeddingFamily: string;
   /** Document origin: 'upload' (default) or 'history' */
   sourceType?: string;
-  /** Channel tags restricting retrieval to specific channels, e.g. ['#general', '#bot-chat'] */
-  channelTags?: string[];
+  /** Discord channel IDs restricting retrieval; empty means every channel. */
+  channelDiscIds?: string[];
 }): Promise<number> {
   const {
     serverId,
@@ -173,7 +173,7 @@ export async function insertDocumentWithChunks(params: {
     embeddingModelId,
     embeddingFamily,
     sourceType = "upload",
-    channelTags = [],
+    channelDiscIds = [],
   } = params;
 
   if (chunks.length !== embeddings.length) {
@@ -192,7 +192,7 @@ export async function insertDocumentWithChunks(params: {
 				file_size_bytes,
 				text_content,
 				source_type,
-				channel_tags
+				channel_disc_ids
 			) VALUES (
 				${serverId},
 				${personaId},
@@ -203,7 +203,7 @@ export async function insertDocumentWithChunks(params: {
 				${fileSizeBytes},
 				${textContent},
 				${sourceType},
-				${toPgTextArray(channelTags)}::text[]
+				${toPgTextArray(channelDiscIds)}::text[]
 			)
 			RETURNING document_id
 		`;
@@ -250,10 +250,14 @@ export async function retrieveRelevantDocumentChunks(params: {
   maxResults: number;
   minSimilarity: number;
   batchSize?: number;
-  /** When set, excludes chunks whose document has channel_tags that don't include this channel */
-  channelName?: string | null;
+  /**
+   * When set, excludes chunks whose document is scoped to channels outside this list or whose legacy
+   * scope is still unresolved. Pass the current channel and, inside a thread, its parent so a thread
+   * inherits its channel's scope.
+   */
+  channelIds?: readonly string[] | null;
 }): Promise<RetrievedDocumentChunk[]> {
-  const { serverId, personaId, query, embeddingModel, apiKey, maxResults, minSimilarity, batchSize, channelName } =
+  const { serverId, personaId, query, embeddingModel, apiKey, maxResults, minSimilarity, batchSize, channelIds } =
     params;
 
   if (!query.trim()) {
@@ -279,8 +283,12 @@ export async function retrieveRelevantDocumentChunks(params: {
   const candidateLimit = maxResults * 4;
 
   const channelFilter =
-    channelName != null
-      ? sql`AND (array_length(d.channel_tags, 1) IS NULL OR ${`#${channelName.toLowerCase()}`} = ANY(d.channel_tags))`
+    channelIds != null
+      ? sql`AND (cardinality(d.channel_disc_ids) = 0 OR d.channel_disc_ids && ${toPgTextArray([...channelIds])}::text[])
+            AND NOT EXISTS (
+              SELECT 1 FROM legacy_channel_scope_tags l
+              WHERE l.source_table = 'documents' AND l.row_id = d.document_id AND l.resolved_at IS NULL
+            )`
       : sql``;
 
   const personaFilter =

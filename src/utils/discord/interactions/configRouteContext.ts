@@ -351,7 +351,7 @@ export interface ConfigRouteDependencies {
   takeAvatarUpload(interactionId: string, nonce: string): APIAttachment | undefined;
   takeCheckboxValues(interactionId: string, fieldId: string): string[] | undefined;
   takeSelectValue(interactionId: string, fieldId: string): string | undefined;
-  takeChannelSelectValue(interactionId: string, fieldId: string): string | undefined;
+  takeChannelSelectValues(interactionId: string, fieldId: string): string[] | undefined;
 }
 
 export function asEphemeralComponentsV2FollowUp(

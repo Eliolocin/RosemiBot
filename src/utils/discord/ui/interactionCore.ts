@@ -64,6 +64,9 @@ const modalFileUploadValues = new Map<string, Record<string, string[]>>();
 // Storage for checkbox group selected values keyed by modal component custom ID
 const modalCheckboxGroupValues = new Map<string, Record<string, string[]>>();
 
+// Separate from the scalar store because a channel select submits several IDs and `[]` must stay distinct from a missing entry.
+const modalChannelSelectValues = new Map<string, Record<string, string[]>>();
+
 // Storage for resolved attachments from modal file uploads (Discord.js doesn't expose these)
 const modalResolvedAttachments = new Map<string, Record<string, APIAttachment>>();
 
@@ -234,6 +237,7 @@ function setupWebSocketInterception(client: unknown) {
               const selectValues: Record<string, string> = {};
               const fileUploadValues: Record<string, string[]> = {};
               const checkboxGroupValues: Record<string, string[]> = {};
+              const channelSelectValues: Record<string, string[]> = {};
 
               for (const comp of packet.d.data.components) {
                 if (comp.type !== 18 || !comp.component?.custom_id) continue;
@@ -241,12 +245,14 @@ function setupWebSocketInterception(client: unknown) {
                 // Narrowed above: custom_id is guaranteed to be a non-empty string
                 const customId = inner.custom_id as string;
 
-                // Native select fields share one store because these routed fields accept one value each.
-                if (
-                  (inner.type === 3 || inner.type === 5 || inner.type === 6 || inner.type === 8) &&
-                  inner.values?.[0]
-                ) {
+                // String, user, and role selects share the scalar store because their routed fields accept one value each.
+                if ((inner.type === 3 || inner.type === 5 || inner.type === 6) && inner.values?.[0]) {
                   selectValues[customId] = inner.values[0];
+                }
+
+                // A submitted select left empty may arrive without `values`, so it records as `[]`; only an uncaptured submission reads as missing.
+                if (inner.type === 8) {
+                  channelSelectValues[customId] = Array.isArray(inner.values) ? inner.values : [];
                 }
 
                 // File Upload (type 19): store all attachment IDs
@@ -283,6 +289,13 @@ function setupWebSocketInterception(client: unknown) {
                 modalCheckboxGroupValues.set(interactionId, checkboxGroupValues);
                 log.info(
                   `Stored ${Object.keys(checkboxGroupValues).length} checkbox group value set(s) for interaction`,
+                );
+              }
+
+              if (Object.keys(channelSelectValues).length > 0) {
+                modalChannelSelectValues.set(interactionId, channelSelectValues);
+                log.info(
+                  `Stored ${Object.keys(channelSelectValues).length} channel select value set(s) for interaction`,
                 );
               }
 
@@ -467,8 +480,19 @@ export function takeRawModalRoleSelectValue(interactionId: string, customId: str
   return takeRawModalSelectValue(interactionId, customId);
 }
 
-export function takeRawModalChannelSelectValue(interactionId: string, customId: string): string | undefined {
-  return takeRawModalSelectValue(interactionId, customId);
+/**
+ * Consumes the channel IDs submitted for one Channel Select.
+ * @returns `undefined` when the submission is missing or already consumed; `[]` when submitted empty.
+ */
+export function takeRawModalChannelSelectValues(interactionId: string, customId: string): string[] | undefined {
+  const storedValues = modalChannelSelectValues.get(interactionId);
+  if (!storedValues) return undefined;
+  const val = storedValues[customId];
+  delete storedValues[customId];
+  if (Object.keys(storedValues).length === 0) {
+    modalChannelSelectValues.delete(interactionId);
+  }
+  return val;
 }
 
 export function takeRawModalCheckboxGroupValues(interactionId: string, customId: string): string[] | undefined {
@@ -3437,12 +3461,14 @@ export async function promptWithRawModal(
         } else if (isModalChannelSelectField(component)) {
           try {
             const cs = component as ModalChannelSelectField;
-            const storedValues = modalSelectValues.get(submitted.id);
-            const channelValue = storedValues?.[nonceCustomId(cs.customId)];
-            if (channelValue !== undefined) {
-              values[cs.customId] = channelValue;
-            } else {
+            const storedValues = modalChannelSelectValues.get(submitted.id);
+            const channelValues = storedValues?.[nonceCustomId(cs.customId)];
+            if (channelValues === undefined) {
               log.warn(`Could not extract channel select value for ${cs.customId}`);
+            } else if ((cs.maxValues ?? 1) > 1) {
+              multiValues[cs.customId] = channelValues;
+            } else if (channelValues[0] !== undefined) {
+              values[cs.customId] = channelValues[0];
             }
           } catch (error) {
             log.warn(`Failed to get channel select value for component: ${error}`);
@@ -3508,6 +3534,7 @@ export async function promptWithRawModal(
       modalSelectValues.delete(submitted.id);
       modalFileUploadValues.delete(submitted.id);
       modalCheckboxGroupValues.delete(submitted.id);
+      modalChannelSelectValues.delete(submitted.id);
       modalResolvedAttachments.delete(submitted.id);
 
       // Auto-defer reply if requested to prevent 3-second interaction timeout
