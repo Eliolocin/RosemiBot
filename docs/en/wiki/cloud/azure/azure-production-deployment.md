@@ -493,22 +493,26 @@ succeeded by that point, and reclaiming disk must not fail it.
 
 ### Memory limits must track physical RAM
 
-`TOMORIBOT_MEMORY_LIMIT_MB` (default 512) sets both the Compose `mem_limit` and the
+`TOMORIBOT_MEMORY_LIMIT_MB` (default 2048) sets both the Compose `mem_limit` and the
 `CONTAINER_MEMORY_LIMIT_MB` the application reads. **These two must stay equal.** The application
 sheds media load at 75% of that value and enters emergency cache clearing at 85%; if the cgroup
 ceiling were lower than what the app believes it has, the container would be OOM-killed before it
 ever shed load.
 
+The VM is pinned to `Standard_B2als_v2` (2 vCPU, 4 GiB) while the student credit lasts.
+The 2048 MiB container limit reserves RAM for the host, Docker, SearXNG, and zram.
 Size the limit against usable RAM after reserving memory for the host and sidecars. A limit above
 physical memory is unreachable: RSS cannot climb to it, the guard never fires, and the kernel
 silently swaps the heap instead.
 
-`TOMORIBOT_MEMORY_SWAP_LIMIT_MB` (default 2048) sets Compose's `memswap_limit`, which is **total**
+`TOMORIBOT_MEMORY_SWAP_LIMIT_MB` (default 3584) sets Compose's `memswap_limit`, which is **total**
 memory plus swap, so the swap allowance is that figure minus `mem_limit`. It is declared explicitly
 rather than left to Docker's implicit 2x default for the reason given under
 [The container's swap ceiling](#the-containers-swap-ceiling-decides-whether-the-host-has-an-escape-route):
 an exhausted cgroup swap allowance blocks access to the host's disk swapfile even if it has space.
-Size both limits together, since either one alone changes the derived swap allowance.
+The defaults allow 3584 - 2048 = 1536 MiB of swap, enough to overflow the 1024 MiB zram
+device into the disk swapfile. Size both limits together, since either one alone changes the
+derived swap allowance. A downsize must lower both limits in the same deployment.
 
 Two related traps:
 

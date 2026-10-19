@@ -1,7 +1,6 @@
 /**
  * Variables for TomoriBot Azure infrastructure.
- * Defaults target the Azure for Students free-service footprint from the
- * Azure migration plan.
+ * PostgreSQL and OS disk defaults retain the Azure for Students free-service footprint.
  */
 
 variable "azure_subscription_id" {
@@ -71,13 +70,13 @@ variable "vm_admin_username" {
 }
 
 variable "vm_size" {
-  description = "Azure VM size. Pinned by the Azure migration locked design decisions."
+  description = "Azure VM size pinned to 4 GiB while the student credit lasts."
   type        = string
-  default     = "Standard_B2ats_v2"
+  default     = "Standard_B2als_v2"
 
   validation {
-    condition     = var.vm_size == "Standard_B2ats_v2"
-    error_message = "vm_size is pinned to Standard_B2ats_v2 by the Azure migration locked design decisions."
+    condition     = var.vm_size == "Standard_B2als_v2"
+    error_message = "vm_size is pinned to Standard_B2als_v2 for 4 GiB while the student credit lasts."
   }
 }
 

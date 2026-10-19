@@ -30,9 +30,8 @@
  *   1. VM Availability   - the host is down, so the bot is offline.
  *   2. Percentage CPU    - sustained high CPU on a burstable VM signals
  *                          burst-credit exhaustion / throttling.
- *   3. Available Memory  - OOM pressure; threshold tuned to ~100 MiB for the
- *                          1 GiB host (the bot's 1536 MB container cap leans on
- *                          swap, so low available memory is the real risk).
+ *   3. Available Memory  - OOM pressure below 256 MiB on the 4 GiB host,
+ *                          with the bot capped at 2048 MiB of resident memory.
  *
  * These reuse the existing VM Insights action group (email notifications),
  * referenced as a data source because it is not managed here.
@@ -120,14 +119,12 @@ resource "azurerm_monitor_metric_alert" "vm_cpu" {
   }
 }
 
-# 3. Memory pressure: available memory below ~100 MiB on the 1 GiB host signals
-#    OOM risk. Starting value; tune against observed steady-state in the
-#    Log Analytics workspace once a baseline is established.
+# Available memory below 256 MiB signals OOM risk on the 4 GiB host; tune after the first week of telemetry.
 resource "azurerm_monitor_metric_alert" "vm_memory" {
   name                = "Available Memory Bytes - tomoribot-vm"
   resource_group_name = azurerm_resource_group.main.name
   scopes              = [azurerm_linux_virtual_machine.tomoribot.id]
-  description         = "Available memory below ~100 MiB (OOM pressure on the 1 GiB host)."
+  description         = "Available memory below 256 MiB (OOM pressure on the 4 GiB host)."
   severity            = 3
   frequency           = "PT5M"
   window_size         = "PT5M"
@@ -137,7 +134,7 @@ resource "azurerm_monitor_metric_alert" "vm_memory" {
     metric_name      = "Available Memory Bytes"
     aggregation      = "Average"
     operator         = "LessThan"
-    threshold        = 104857600 # 100 MiB
+    threshold        = 268435456 # 256 MiB
   }
 
   action {

@@ -7,16 +7,15 @@ services:
     init: true
     restart: unless-stopped
     read_only: true
-    # Must stay at or below the VM's usable RAM (~842 MB): an unreachable limit means the app's
-    # RSS guard never trips and the kernel swaps the heap instead.
-    mem_limit: "${TOMORIBOT_MEMORY_LIMIT_MB:-512}m"
+    # Reserve RAM on the 4 GiB host for Docker, sidecars, and zram so the RSS guard remains reachable.
+    mem_limit: "${TOMORIBOT_MEMORY_LIMIT_MB:-2048}m"
     # Total memory+swap, so swap.max is this minus mem_limit. Must be set explicitly: Docker
     # otherwise derives it as 2x mem_limit, which capped swap at 512 MB and saturated it within
     # 8 minutes of every boot. A cgroup at memory.swap.max cannot swap to ANY tier, so the host's
     # 3 GB disk swapfile sat at 0B used while the container suffocated beside it, leaving the
     # kernel nothing to reclaim but program text, which is the read-storm livelock this host hit.
     # Keep above the zram device's 1 GB so the overflow actually reaches disk.
-    memswap_limit: "${TOMORIBOT_MEMORY_SWAP_LIMIT_MB:-2048}m"
+    memswap_limit: "${TOMORIBOT_MEMORY_SWAP_LIMIT_MB:-3584}m"
     pids_limit: ${TOMORIBOT_PIDS_LIMIT:-256}
     security_opt:
       - no-new-privileges:true
@@ -29,7 +28,7 @@ services:
       SECRET_FILE: /run/secrets/tomoribot.json
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-vertex-wif.json
       # Must track mem_limit above so the app sheds load before the cgroup OOM-kills it.
-      CONTAINER_MEMORY_LIMIT_MB: "${TOMORIBOT_MEMORY_LIMIT_MB:-512}"
+      CONTAINER_MEMORY_LIMIT_MB: "${TOMORIBOT_MEMORY_LIMIT_MB:-2048}"
       DATABASE_SCHEMA_MANAGEMENT_ENABLED: "false"
       FETCH_URL_ALLOW_PRIVATE_NETWORK: "false"
       SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-}

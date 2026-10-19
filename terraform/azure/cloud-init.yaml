@@ -59,10 +59,7 @@ write_files:
     owner: root:root
     permissions: "0644"
     content: |
-      # Compressed swap in RAM. This VM is memory-starved and CPU-idle (2 vCPU at ~5%
-      # load), so trading a little CPU for capacity is the favourable direction. zstd
-      # measures ~4:1 on the bot's heap, so this device holds roughly its full size in
-      # pages for about a quarter of that in real RAM.
+      # Keep the 1 GiB host's zram sizing until the 4 GiB readout shows whether it needs retuning.
       #
       # Priority outranks /swapfile, which stays as the overflow tier beneath it: a
       # disk-backed fallback must exist, because a full zram device has nowhere to spill.
@@ -79,16 +76,10 @@ write_files:
       # previous value of 20 was avoiding disk seeks that no longer dominate. Readahead
       # has no value without seeks, hence page-cluster 0.
       #
-      # Do not lower swappiness to "preserve swap headroom". zram measures 3.87:1
-      # effective here, holding 688 MiB of anonymous pages in 178 MiB of RAM, against a
-      # 908 MiB anonymous working set on an 843 MiB host. Pages migrated back out of
-      # zram expand at that ratio, so a lower value costs more RAM than it frees.
+      # Keep swappiness tuned on the 1 GiB host until the 4 GiB readout measures whether expanded pages still need zram.
       vm.swappiness=180
       vm.page-cluster=0
-      # The default 10 leaves kswapd under 1 MiB of runway at this memory size, so
-      # allocations enter synchronous direct reclaim almost immediately: 9,911
-      # allocstalls in 7.7 h of uptime. A wider gap lets kswapd reclaim ahead of demand
-      # instead, at the cost of holding roughly 8 MiB further from allocation.
+      # Keep the reclaim margin tuned on the 1 GiB host until the 4 GiB readout measures allocation stalls.
       vm.watermark_scale_factor=100
   - path: /etc/docker/daemon.json
     owner: root:root
