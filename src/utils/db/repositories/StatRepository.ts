@@ -500,6 +500,16 @@ class StatRepository implements IRepository<null> {
     return STAT_TRACKING_ENABLED;
   }
 
+  async getPresenceRetentionPairs(): Promise<{ server_disc_id: string; user_disc_id: string }[]> {
+    return await sql<{ server_disc_id: string; user_disc_id: string }[]>`
+      SELECT DISTINCT s.server_disc_id, u.user_disc_id
+      FROM stat_counters sc
+      JOIN servers s ON s.server_id = sc.server_id
+      JOIN users u ON u.user_id = sc.user_id
+      WHERE sc.metric IN ('message_sent', 'presence_seen') AND s.is_dm_channel = FALSE
+    `;
+  }
+
   /**
    * Persists the behavioral presence clock immediately so a context being built
    * in another channel observes the successful turn. Buffered telemetry cannot
