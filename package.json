@@ -53,7 +53,7 @@
     "audit-sql": "bun run scripts/checks/audit_sql.ts",
     "rotate-keys": "bun run scripts/devtools/rotateAllKeys.ts",
     "setup:tokenizers": "bun run scripts/devtools/downloadTokenizers.ts",
-    "//audit": "audit:clean runs bun audit --audit-level=high â€” only high/critical advisories block the pipeline",
+    "//audit": "audit:clean runs bun audit --audit-level=high — only high/critical advisories block the pipeline",
     "audit:clean": "bun run scripts/checks/auditClean.ts",
     "db:lifecycle": "bun scripts/checks/validateLifecycle.ts",
     "knip": "bunx --bun knip --config scripts/knip.json",
