@@ -285,7 +285,8 @@ export const SERVER_COLLECTION_RESET_TABLES = [
  * The two singleton rows a personal reset restores.
  *
  * `registration_locale` is preserved because it records the locale the account was created under
- * and is account history rather than a setting the owner edits.
+ * and is account history rather than a setting the owner edits. `natural_nudge_opt_out` is preserved
+ * because a reset must never silently make someone pingable again.
  */
 export const PERSONAL_SINGLETON_RESET_TABLES: readonly SingletonResetClassification[] = [
   {
@@ -311,7 +312,7 @@ export const PERSONAL_SINGLETON_RESET_TABLES: readonly SingletonResetClassificat
       "pronouns",
       "addressing_style",
     ],
-    preserved: [],
+    preserved: ["natural_nudge_opt_out"],
   },
 ];
 

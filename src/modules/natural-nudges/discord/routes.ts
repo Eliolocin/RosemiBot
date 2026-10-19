@@ -36,6 +36,7 @@ import {
   NUDGE_INTEREST_DESCRIPTION_FIELD,
   NUDGE_INTEREST_LABEL_FIELD,
   NUDGE_NEW_TOPIC_WEIGHT_FIELD,
+  NUDGE_REACH_OUT_WEIGHT_FIELD,
   NUDGE_REVIVE_WEIGHT_FIELD,
 } from "@/modules/natural-nudges/discord/panel";
 
@@ -357,6 +358,7 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
       const result = await write(
         () =>
           ops.setLimits(serverId, {
+            reach_out_weight: number(NUDGE_REACH_OUT_WEIGHT_FIELD),
             revive_weight: number(NUDGE_REVIVE_WEIGHT_FIELD),
             new_topic_weight: number(NUDGE_NEW_TOPIC_WEIGHT_FIELD),
             daily_episode_cap: number(NUDGE_DAILY_CAP_FIELD),

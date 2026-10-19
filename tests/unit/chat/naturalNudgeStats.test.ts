@@ -2,6 +2,7 @@ import * as tomoriChatModule from "@/events/messageCreate/tomoriChat";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import type { RecordStatInput } from "@/utils/db/repositories/StatRepository";
 import type { ChatIncoming, ChatTurnContext, GenerationTurnResult, TomoriChatInput } from "@/utils/chat/types";
+import * as shortTermMemoryCache from "@/utils/cache/shortTermMemoryCache";
 import { statRepository } from "@/utils/db/repositories";
 import { runPostTurnEffects } from "@/utils/chat/postTurnEffects";
 import { initializeLocalizer } from "@/utils/text/localizer";
@@ -118,6 +119,30 @@ describe("Natural Nudges turns stay out of engagement stats", () => {
     expect(recorded.filter((entry) => entry.metric === "channel_turn").map((entry) => entry.metricKey)).toEqual([
       "1400000000000000001",
     ]);
+  });
+
+  it("stores short-term memory for an ordinary turn but never for a nudge's bystander", async () => {
+    const stored: string[] = [];
+    const storeSpy = spyOn(shortTermMemoryCache, "storeShortTermMemory").mockImplementation(((userDiscId: string) => {
+      stored.push(userDiscId);
+    }) as typeof shortTermMemoryCache.storeShortTermMemory);
+    const withHistory = (isNaturalNudge: boolean) => {
+      const context = makeContext(isNaturalNudge);
+      Object.assign(context, {
+        userDiscId: "fixture-juno",
+        simplifiedMessages: [{ authorType: "user", authorName: "Juno", content: "bye" }],
+      });
+      Object.assign(context.turn, { requestSnapshot: { triggererPrivacyLevel: 0 } });
+      return context;
+    };
+    try {
+      await runPostTurnEffects(withHistory(false), completed);
+      await runPostTurnEffects(withHistory(true), completed);
+      await Bun.sleep(0);
+      expect(stored).toEqual(["fixture-juno"]);
+    } finally {
+      storeSpy.mockRestore();
+    }
   });
 
   it("keeps the nudge marker on the empty-response retry", async () => {

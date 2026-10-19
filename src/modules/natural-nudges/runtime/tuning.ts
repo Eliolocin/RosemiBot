@@ -10,12 +10,13 @@ export const HEAT_WINDOW_DAYS = 30;
 /** Episodes start only at heat 1 or more: about one message to Tomori a day. */
 export const MIN_EPISODE_HEAT = 1;
 
-/** Heat divided by this gives episodes per day, per frequency level (§30). */
+/** Heat divided by this gives episodes per day, per frequency level. */
 export const EPISODE_HEAT_DIVISORS: Record<EpisodeFrequencyLevel, number> = { 0: 30, 1: 15, 2: 10, 3: 6 };
 
 /**
  * Automatic channel eligibility follows heat's horizon: 14 quiet days decay a server's heat to about
- * 4%, so a channel with no turn in that span could not be what keeps the server nudging.
+ * 4%, so a channel with no turn in that span could not be what keeps the server nudging. A Reach-out
+ * target must have triggered a turn inside the same window.
  */
 export const AUTOMATIC_CHANNEL_DAYS = 14;
 
@@ -70,3 +71,23 @@ export const HANGING_MIN_HUMAN_MESSAGES = 2;
 
 export const FIRE_RETENTION_MS = 30 * DAY_MS;
 export const AGENDA_RETENTION_MS = 90 * DAY_MS;
+
+/** Long-term memories qualify a target only when written or edited this recently, because they never expire. */
+export const REACH_OUT_MEMORY_DAYS = 30;
+
+/**
+ * Reach-out lottery points. The caps make counts qualify by sufficiency rather than rank by
+ * volume, so one heavy user cannot win every draw.
+ */
+export const REACH_OUT_POINTS_PER_MEMORY = 3;
+export const REACH_OUT_MEMORY_CAP = 10;
+export const REACH_OUT_POINTS_PER_STM_CHANNEL = 5;
+export const REACH_OUT_STM_CHANNEL_CAP = 5;
+export const REACH_OUT_ACTIVITY_POINTS = 10;
+/** Penalties for a target pinged inside the episode rest window, by this persona or by any. */
+export const REACH_OUT_SAME_PERSONA_PENALTY = 10;
+export const REACH_OUT_ANY_PERSONA_PENALTY = 5;
+/** An eligible target whose penalties cancel its points keeps this many tickets, so it is rare but possible. */
+export const REACH_OUT_MIN_TICKETS = 1;
+
+export const REACH_OUT_PLANNER_MEMORIES = 5;

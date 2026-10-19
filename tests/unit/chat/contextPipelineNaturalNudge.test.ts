@@ -127,6 +127,17 @@ describe("Natural Nudges turn context", () => {
     expect(nudge.reunionCalls).toBe(0);
     expect(JSON.stringify(nudge.context.contextItems)).not.toContain(CONTINUE_DIRECTIVE);
   });
+
+  it("lets a Reach-out ping only its target, and leaves other nudges unrestricted", async () => {
+    const reachOut = await buildTurnContext({ toolNames: [], targetUserDiscId: "fixture-mirri" });
+    expect(reachOut.context.streamingContext.mentionableUserIds).toEqual(["fixture-mirri"]);
+    expect(reachOut.context.streamingContext.forcedMentions?.map((mention) => mention.userId)).toContain(
+      "fixture-mirri",
+    );
+
+    const newTopic = await buildTurnContext({ toolNames: [] });
+    expect(newTopic.context.streamingContext.mentionableUserIds).toBeUndefined();
+  });
 });
 
 describe("borrowed-trigger Deliberate Tool Mode", () => {

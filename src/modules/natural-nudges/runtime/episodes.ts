@@ -2,6 +2,7 @@ import type { CustomEpisodeRow, NaturalNudgeCategory } from "@/modules/natural-n
 
 /** Categories with a working runner; the rest stay ineligible until their slice lands. */
 export const ACTIVE_NATURAL_NUDGE_CATEGORIES = [
+  "reach_out",
   "revive",
   "new_topic",
 ] as const satisfies readonly NaturalNudgeCategory[];
@@ -33,11 +34,17 @@ export type NudgeToolName = (typeof NUDGE_TOOL_NAMES)[number];
 
 const IMAGE_TOOL_NAMES = ["generate_image", "generate_image_nai"] as const;
 
-export const HANGING_CONVERSATION_PREREQUISITE = "hanging_conversation";
+const HANGING_CONVERSATION_PREREQUISITE = "hanging_conversation";
+const RELATIONSHIP_USER_PREREQUISITE = "relationship_user";
+const RECENT_MEMORY_PREREQUISITE = "recent_memory";
+const PRESENCE_ACTIVITY_PREREQUISITE = "presence_activity";
 const TOOL_PREREQUISITE_PREFIX = "tool:";
 
 export const NUDGE_PREREQUISITE_IDS: readonly string[] = [
   HANGING_CONVERSATION_PREREQUISITE,
+  RELATIONSHIP_USER_PREREQUISITE,
+  RECENT_MEMORY_PREREQUISITE,
+  PRESENCE_ACTIVITY_PREREQUISITE,
   ...NUDGE_TOOL_NAMES.map((tool) => `${TOOL_PREREQUISITE_PREFIX}${tool}`),
 ];
 
@@ -71,6 +78,78 @@ export interface EpisodeDefinition {
 
 /** Briefs are planner instructions, so they stay in English like every other model-facing prompt. */
 export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
+  {
+    key: "reach_out.check_in",
+    category: "reach_out",
+    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_check_in",
+    brief:
+      "Have {persona} casually check on {target}, the way a friend would after not talking for a while. Keep it to one or two lines.",
+    agendaHint: "Get {target} to commit to a time to hang out; if they decline, sulk a little, then drop it",
+    prerequisites: [RELATIONSHIP_USER_PREREQUISITE],
+    recommendedTools: ["select_sticker_for_response"],
+    builtIn: true,
+  },
+  {
+    key: "reach_out.memory_callback",
+    category: "reach_out",
+    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_memory_callback",
+    brief:
+      "Pick one recent memory about {target} that has a natural follow-up (an exam, a trip, a project) and have {persona} ask how it went.",
+    agendaHint: "Find out how the thing went, and remember the answer by updating the old memory",
+    prerequisites: [RELATIONSHIP_USER_PREREQUISITE, RECENT_MEMORY_PREREQUISITE],
+    recommendedTools: ["update_long_term_memory"],
+    builtIn: true,
+  },
+  {
+    key: "reach_out.saw_this",
+    category: "reach_out",
+    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_saw_this",
+    brief: "Find something new related to {target}'s interests and have {persona} share it with them.",
+    agendaHint: "Find out whether {target} had already heard about it",
+    prerequisites: [RELATIONSHIP_USER_PREREQUISITE, "tool:web_search"],
+    recommendedTools: ["web_search", "fetch_url"],
+    builtIn: true,
+  },
+  {
+    key: "reach_out.presence_poke",
+    category: "reach_out",
+    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_presence_poke",
+    brief: "{target} is doing something right now: {presence}. Have {persona} notice and tease or cheer them about it.",
+    agendaHint: "Get {target} to share how it is going",
+    prerequisites: [RELATIONSHIP_USER_PREREQUISITE, PRESENCE_ACTIVITY_PREREQUISITE],
+    recommendedTools: ["select_sticker_for_response"],
+    builtIn: true,
+  },
+  {
+    key: "reach_out.favor_ask",
+    category: "reach_out",
+    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_favor_ask",
+    brief: "Have {persona} ask {target} for their opinion on a small decision that fits {persona}'s character.",
+    agendaHint: "Get {target} to settle the decision",
+    prerequisites: [RELATIONSHIP_USER_PREREQUISITE],
+    recommendedTools: [],
+    builtIn: true,
+  },
+  {
+    key: "reach_out.new_look",
+    category: "reach_out",
+    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_new_look",
+    brief: "Have {persona} look at {target}'s profile picture and comment on it in character.",
+    agendaHint: "Get {target} to explain the picture",
+    prerequisites: [RELATIONSHIP_USER_PREREQUISITE, "tool:peek_profile_picture"],
+    recommendedTools: ["peek_profile_picture"],
+    builtIn: true,
+  },
+  {
+    key: "reach_out.remind_you",
+    category: "reach_out",
+    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_remind_you",
+    brief: "{persona} remembers something {target} has coming up and offers to remind them.",
+    agendaHint: "Get {target} to accept a reminder, then set it",
+    prerequisites: [RELATIONSHIP_USER_PREREQUISITE, "tool:create_task"],
+    recommendedTools: ["create_task"],
+    builtIn: true,
+  },
   {
     key: "revive.pick_up_thread",
     category: "revive",
@@ -193,12 +272,32 @@ export function listRunnableEpisodes(
 export interface PrerequisiteFacts {
   hasHangingConversation: boolean;
   availableTools: ReadonlySet<string>;
+  /** The persona's drawn Reach-out target, or null when nobody passed the gate. */
+  target: { hasRecentMemories: boolean; isActive: boolean } | null;
+}
+
+const TARGET_PREREQUISITES: readonly string[] = [
+  RELATIONSHIP_USER_PREREQUISITE,
+  RECENT_MEMORY_PREREQUISITE,
+  PRESENCE_ACTIVITY_PREREQUISITE,
+];
+
+/**
+ * A Reach-out always pings someone, so a custom one that forgot `relationship_user` still needs a
+ * target, and so does any episode that asks about a target's memories or activity.
+ */
+export function episodeNeedsTarget(episode: EpisodeDefinition): boolean {
+  return episode.category === "reach_out" || episode.prerequisites.some((id) => TARGET_PREREQUISITES.includes(id));
 }
 
 /** An unknown prerequisite (the registry shrank since the episode was saved) makes the episode ineligible. */
 export function isEpisodeEligible(episode: EpisodeDefinition, facts: PrerequisiteFacts): boolean {
+  if (episodeNeedsTarget(episode) && !facts.target) return false;
   return episode.prerequisites.every((id) => {
     if (id === HANGING_CONVERSATION_PREREQUISITE) return facts.hasHangingConversation;
+    if (id === RELATIONSHIP_USER_PREREQUISITE) return facts.target !== null;
+    if (id === RECENT_MEMORY_PREREQUISITE) return facts.target?.hasRecentMemories ?? false;
+    if (id === PRESENCE_ACTIVITY_PREREQUISITE) return facts.target?.isActive ?? false;
     const tool = prerequisiteTool(id);
     if (!tool) return false;
     if (tool === "image") return IMAGE_TOOL_NAMES.some((name) => facts.availableTools.has(name));

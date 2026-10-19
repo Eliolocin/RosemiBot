@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { CustomEpisodeRow } from "@/modules/natural-nudges/db/types";
 import {
   BUILTIN_EPISODES,
+  episodeNeedsTarget,
   isEpisodeEligible,
   listRunnableEpisodes,
   NUDGE_TOOL_NAMES,
@@ -25,10 +26,10 @@ function custom(overrides: Partial<CustomEpisodeRow>): CustomEpisodeRow {
   };
 }
 
-function episode(prerequisites: string[]): EpisodeDefinition {
+function episode(prerequisites: string[], category: EpisodeDefinition["category"] = "new_topic"): EpisodeDefinition {
   return {
     key: "custom:9",
-    category: "new_topic",
+    category,
     brief: "brief",
     agendaHint: null,
     prerequisites,
@@ -38,14 +39,38 @@ function episode(prerequisites: string[]): EpisodeDefinition {
 }
 
 describe("episode eligibility", () => {
-  const noFacts = { hasHangingConversation: false, availableTools: new Set<string>() };
+  const noFacts = { hasHangingConversation: false, availableTools: new Set<string>(), target: null };
+  const quietTarget = { ...noFacts, target: { hasRecentMemories: false, isActive: false } };
 
   it("treats a prerequisite the registry no longer knows as unmet", () => {
-    expect(isEpisodeEligible(episode(["recent_memory"]), noFacts)).toBe(false);
+    expect(isEpisodeEligible(episode(["birthday_today"]), noFacts)).toBe(false);
+  });
+
+  it("needs a drawn target for every Reach-out, even a custom one that omits relationship_user", () => {
+    expect(isEpisodeEligible(episode([], "reach_out"), noFacts)).toBe(false);
+    expect(isEpisodeEligible(episode([], "reach_out"), quietTarget)).toBe(true);
+    expect(isEpisodeEligible(episode(["relationship_user"]), noFacts)).toBe(false);
+  });
+
+  it("draws a target for any episode that asks about one, whatever its category", () => {
+    expect(episodeNeedsTarget(episode(["presence_activity"]))).toBe(true);
+    expect(episodeNeedsTarget(episode(["recent_memory"], "revive"))).toBe(true);
+    expect(episodeNeedsTarget(episode(["tool:web_search"]))).toBe(false);
+  });
+
+  it("reads recent_memory and presence_activity from the drawn target", () => {
+    const callback = BUILTIN_EPISODES.find((candidate) => candidate.key === "reach_out.memory_callback");
+    const poke = BUILTIN_EPISODES.find((candidate) => candidate.key === "reach_out.presence_poke");
+    if (!callback || !poke) throw new Error("Reach-out built-ins missing");
+    expect(isEpisodeEligible(callback, quietTarget)).toBe(false);
+    expect(isEpisodeEligible(poke, quietTarget)).toBe(false);
+    const busyTarget = { ...noFacts, target: { hasRecentMemories: true, isActive: true } };
+    expect(isEpisodeEligible(callback, busyTarget)).toBe(true);
+    expect(isEpisodeEligible(poke, busyTarget)).toBe(true);
   });
 
   it("accepts either image generator for the image prerequisite", () => {
-    const facts = { hasHangingConversation: false, availableTools: new Set(["generate_image_nai"]) };
+    const facts = { hasHangingConversation: false, availableTools: new Set(["generate_image_nai"]), target: null };
     expect(isEpisodeEligible(episode(["tool:image"]), facts)).toBe(true);
     expect(isEpisodeEligible(episode(["tool:image"]), noFacts)).toBe(false);
   });
@@ -64,7 +89,7 @@ describe("runnable episodes", () => {
       [
         custom({ episode_id: 1 }),
         custom({ episode_id: 2, enabled: false }),
-        custom({ episode_id: 3, category: "reach_out" }),
+        custom({ episode_id: 3, category: "alter_talk" }),
       ],
     ).map((candidate) => candidate.key);
     expect(runnable).not.toContain("new_topic.voice_note");

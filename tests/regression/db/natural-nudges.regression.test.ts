@@ -13,6 +13,8 @@ import { presetRepository } from "@/utils/db/repositories/PresetRepository";
 import type { PresetExportData } from "@/types/preset/presetExport";
 import { resetRepository } from "@/utils/db/repositories/ResetRepository";
 import { cache } from "@/utils/cache/tomoriStateCacheStore";
+import { getShortTermMemoriesForUser } from "@/utils/cache/shortTermMemoryCache";
+import { shortTermMemoryRepository } from "@/utils/db/repositories/ShortTermMemoryRepository";
 import { cleanupFixtures, FIXTURE_IDS, insertFixtures, type FixtureRefs } from "./setup/fixtures";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
 
@@ -162,6 +164,131 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     });
   });
 
+  describe("Reach-out candidates", () => {
+    const PREFIX = "_rt_reach_";
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const daysAgo = (days: number) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    const userIds = new Map<string, number>();
+
+    async function insertUser(name: string, options: { privacy?: number; optOut?: boolean; spokeOn?: string }) {
+      const discId = `${PREFIX}${name}`;
+      const [row] = await testSql`
+        INSERT INTO users (user_disc_id, privacy_level) VALUES (${discId}, ${options.privacy ?? 0}) RETURNING user_id
+      `;
+      userIds.set(name, row.user_id);
+      await testSql`
+        INSERT INTO user_personalization_configs (user_id, natural_nudge_opt_out)
+        VALUES (${row.user_id}, ${options.optOut ?? false})
+      `;
+      await testSql`
+        INSERT INTO stat_counters (server_id, user_id, persona_lineage_id, metric, metric_key, bucket, count)
+        VALUES (${refs.serverId}, ${row.user_id}, 0, 'message_sent', '', ${options.spokeOn ?? today}::date, 1)
+      `;
+      return { discId, userId: row.user_id as number };
+    }
+
+    beforeAll(async () => {
+      await testSql`DELETE FROM users WHERE user_disc_id LIKE ${`${PREFIX}%`}`;
+      const mirri = await insertUser("mirri", {});
+      await testSql`
+        INSERT INTO personal_memories (user_id, persona_lineage_id, content, created_at, updated_at)
+        VALUES
+          (${mirri.userId}, ${refs.personaLineageId}, 'Has an exam on Friday', ${daysAgo(2)}, ${daysAgo(2)}),
+          (${mirri.userId}, 0, 'Plays the cello', ${daysAgo(60)}, ${daysAgo(60)}),
+          (${mirri.userId}, 991, 'Another lineage only', ${daysAgo(1)}, ${daysAgo(1)})
+      `;
+      await insertUser("stale", { spokeOn: daysAgo(20).toISOString().slice(0, 10) });
+      await insertUser("optout", { optOut: true });
+      await insertUser("hidden", { privacy: 2 });
+      const banned = await insertUser("banned", {});
+      await testSql`
+        INSERT INTO personalization_blacklist (server_id, user_disc_id) VALUES (${refs.serverId}, ${banned.discId})
+      `;
+      const blocked = await insertUser("blocked", {});
+      const unblocked = await insertUser("unblocked", {});
+      await testSql`
+        INSERT INTO persona_user_blocks (server_id, persona_id, user_disc_id, block_type, reason, expires_at)
+        VALUES
+          (${refs.serverId}, ${refs.personaId}, ${blocked.discId}, 'block', 'rude', NOW() + INTERVAL '1 day'),
+          (${refs.serverId}, ${refs.personaId}, ${unblocked.discId}, 'mute', 'rude', NOW() - INTERVAL '1 day')
+      `;
+    });
+
+    afterAll(async () => {
+      await testSql`DELETE FROM personalization_blacklist WHERE user_disc_id LIKE ${`${PREFIX}%`}`;
+      await testSql`DELETE FROM persona_user_blocks WHERE user_disc_id LIKE ${`${PREFIX}%`}`;
+      await testSql`DELETE FROM short_term_memories WHERE user_disc_id LIKE ${`${PREFIX}%`}`;
+      await testSql`DELETE FROM users WHERE user_disc_id LIKE ${`${PREFIX}%`}`;
+    });
+
+    const list = (onlyUserId?: number) =>
+      naturalNudgeRepository.listReachOutCandidates({
+        serverId: refs.serverId,
+        personaId: refs.personaId,
+        personaLineageId: refs.personaLineageId,
+        interactedSince: daysAgo(14),
+        memorySince: daysAgo(30),
+        onlyUserId,
+      });
+
+    it("keeps only recent speakers who pass every hard exclusion, with this lineage's memory counts", async () => {
+      const ours = (await list()).filter((candidate) => candidate.user_disc_id.startsWith(PREFIX));
+      expect(ours.map((candidate) => candidate.user_disc_id).sort()).toEqual([`${PREFIX}mirri`, `${PREFIX}unblocked`]);
+      expect(ours.find((candidate) => candidate.user_disc_id === `${PREFIX}mirri`)).toMatchObject({
+        ltm_total: 2,
+        ltm_recent: 1,
+      });
+    });
+
+    it("re-checks one drawn target, and drops them once they opt out", async () => {
+      const mirriId = userIds.get("mirri") as number;
+      expect((await list(mirriId)).map((candidate) => candidate.user_id)).toEqual([mirriId]);
+      await testSql`UPDATE user_personalization_configs SET natural_nudge_opt_out = true WHERE user_id = ${mirriId}`;
+      expect(await list(mirriId)).toEqual([]);
+    });
+
+    it("finds a stored short-term memory for a candidate after a restart left the cache empty", async () => {
+      const discId = `${PREFIX}unblocked`;
+      await testSql`
+        INSERT INTO short_term_memories
+          (server_disc_id, user_disc_id, channel_disc_id, persona_id, persona_lineage_id, scope_kind, summary)
+        VALUES
+          (${FIXTURE_IDS.serverDiscId}, ${discId}, '1200000000000000005', ${refs.personaId},
+            ${refs.personaLineageId}, 'user', 'Talked about the cello recital')
+      `;
+      expect(getShortTermMemoriesForUser(discId, undefined, refs.personaLineageId)).toEqual([]);
+      await shortTermMemoryRepository.preWarmUsers([discId]);
+      expect(
+        getShortTermMemoriesForUser(discId, undefined, refs.personaLineageId).map((entry) => entry.channelId),
+      ).toEqual(["1200000000000000005"]);
+    });
+
+    it("records who a Reach-out pinged on the fire and its agenda", async () => {
+      const mirriId = userIds.get("mirri") as number;
+      const openerId = "1300000000000000077";
+      expect(
+        await naturalNudgeRepository.recordEpisodeFire(
+          {
+            serverId: refs.serverId,
+            channelDiscId: "1200000000000000001",
+            personaId: refs.personaId,
+            category: "reach_out",
+            episodeKey: "reach_out.memory_callback",
+            targetUserId: mirriId,
+            openerMessageDiscId: openerId,
+          },
+          "Find out how the exam went.",
+        ),
+      ).toBe(true);
+      const history = await naturalNudgeRepository.loadFireHistory(refs.serverId, new Date(0), 5);
+      expect(history.recent.find((fire) => fire.opener_message_disc_id === openerId)?.target_user_id).toBe(mirriId);
+      const [agenda] =
+        await testSql`SELECT target_user_id FROM natural_nudge_agendas WHERE message_disc_id = ${openerId}`;
+      expect(agenda?.target_user_id).toBe(mirriId);
+    });
+  });
+
   it("re-points an imported card only when its Nudges settings match the preset", async () => {
     const [preset] = await testSql`SELECT * FROM persona_presets WHERE persona_preset_name = ${PRESET_NAME}`;
     const card = (nudges: Partial<PresetExportData>) =>
@@ -203,6 +330,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
           personaId: refs.personaId,
           category: "new_topic",
           episodeKey: "new_topic.interest_musing",
+          targetUserId: null,
           openerMessageDiscId: openerId,
         },
         "Find out who else likes mecha.",

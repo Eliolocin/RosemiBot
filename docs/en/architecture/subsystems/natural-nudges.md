@@ -33,7 +33,7 @@ reconcile tick
        ├─ heat → episodes per day → due time, daily cap, waking hours
        ├─ lull: effective channels quiet for 1-3 hours (gateway lastMessageId)
        ├─ planner model: llm_id, else the chat model; no_model abort and backoff unless it resolves
-       ├─ persona raffle → category raffle → episode raffle
+       ├─ persona raffle → Reach-out target lottery → category raffle → episode raffle
        └─ detached: planEpisode → recheckBeforeSend → tomoriChat({ naturalNudge })
                                                        └─ fire row + agenda row
 ```
@@ -50,7 +50,8 @@ the unanswered streak. Heat and waking hours come from `stat_counters`:
 
 Nudge turns must never feed either input. `naturalNudge` on the chat input makes
 `postTurnEffects` skip `message_sent` and `active_hour`, and the empty-response retry carries the
-marker. Without that, each nudge would raise its own heat and drag waking hours toward its fire
+marker. It also skips the short-term memory write: a nudge answers nobody, and storing it would give
+whoever spoke last a short-term memory, which the Reach-out gate counts as a relationship. Without that, each nudge would raise its own heat and drag waking hours toward its fire
 times. Token and model stats still record.
 
 ## Channels and model
@@ -91,7 +92,8 @@ A restart only re-rolls them.
   random triggers) puts the turn on the reminder path: server text key only, and no blacklist,
   role-whitelist, spotlight, or user-block gate from that author (only the persona channel
   whitelist applies). A guild turn uses the guild locale and the server's Deliberate Tool Mode,
-  ignoring that author's language and personal override. Their name still fills `{user}`. Nudge turns also skip the reunion note and presence write, and the
+  ignoring that author's language and personal override. Their name still fills `{user}`, except
+  in a Reach-out (below). Nudge turns also skip the reunion note and presence write, and the
   "continue your last message" directive. Deliberate Tool Mode admits the episode's tools from
   `naturalNudge.toolNames`, because no human message carries their trigger words.
 - **The anchor is compared by order.** A deleted newest message stays in the gateway's
@@ -106,12 +108,55 @@ A restart only re-rolls them.
   carried from the stream state. When a tool delivered the opener, the runner looks for the first
   bot or managed-webhook message after the anchor instead.
 
+## Reach-out targets
+
+`drawReachOutTarget` (`runtime/targets.ts`) runs once per attempt, after the persona raffle and before
+the category raffle, because three prerequisites read the drawn target. It is skipped when no runnable
+episode with a non-zero category weight needs a target. One query,
+`listReachOutCandidates`, applies every hard exclusion in SQL and is read fresh rather than through
+`userCache`, so the before-send re-check (`onlyUserId`) sees an opt-out made a moment earlier.
+
+| Stage | Rule |
+|---|---|
+| Interaction gate | Own `message_sent` in the server within 14 days. A memory alone never qualifies, because memories can come from talk around Tomori rather than to her |
+| Hard exclusions | `natural_nudge_opt_out`, `PrivacyLevel.FULL`, `personalization_blacklist`, an active `persona_user_blocks` row for this persona; bots, external bridge IDs, members who left, and members who can view none of the persona's quiet channels are dropped when drawn |
+| Relationship gate | A memory with this lineage (or lineage 0) touched in the last 30 days, or a live short-term memory with it in this server (candidates' short-term memory is warmed from the database in one query first, because the cache starts empty after a restart). Memories count only when the persona has `personal_memories_enabled` |
+| Lottery | Tickets from capped memory and short-term memory counts, current activity, and penalties for a ping inside the episode rest window (`reachOutTickets`); never below 1 |
+
+Prompt exposure follows a normal turn's privacy rules: the planner sees the target's recent memories
+only at `PrivacyLevel.MINIMAL` with `personal_memories_enabled`, and their activity only at minimal
+privacy with the GuildPresences intent. `recent_memory` and `presence_activity` pass only when that
+exposure exists, so an episode never plans around data the planner cannot see.
+
+The planner plans only among channels the target can view, and the before-send re-check confirms that
+view permission again. Member-written text (the target's name, activity, and memories) appears only inside the
+`<target>` block, escaped so it cannot close the block; briefs and the opener instruction refer to the
+target rather than quoting their name, so a crafted nickname or activity cannot become an instruction.
+
+The Phase C turn carries `naturalNudge.targetUserDiscId`, which changes these things and nothing else:
+
+- **Naming.** `resolveNamingSubject` (`turnPlanner.ts`) fills `{user}` and the triggerer name from the
+  target's row, live name, and per-persona naming. Credentials, quotas, and stats stay with the
+  borrowed trigger's author.
+- **Short-term memory and tools.** The opener reads the target's short-term memory
+  (`shortTermMemoryUserId`), and tool calls act for the target (`toolLoop.ts`), so a reminder or memory
+  the opener creates defaults to them rather than to a bystander.
+- **Mentions.** The target's handles join the forced mentions, and `mentionableUserIds` makes the
+  stream send `allowedMentions` with only that user and no `parse`, so the opener cannot ping roles,
+  `@everyone`, or another member. `interact_with_recent_message` honors the same list. After delivery,
+  `ensureDiscordUserMention` posts a bare mention if the opener omitted it, through the persona's
+  webhook for an alter (`sendAlterPersonaMention`).
+- **Records.** `target_user_id` is written on the fire row (the lottery penalty reads it) and on the
+  agenda row, so erasing the user deletes both through the foreign key.
+
 ## Episodes as data
 
 Built-in episodes (`BUILTIN_EPISODES` in `runtime/episodes.ts`) and custom episodes share one shape:
 category, planner brief, agenda hint, prerequisites, and recommended tools. Prerequisites come from a
-fixed registry: `hanging_conversation` and `tool:<name>`, where tool availability is what the
-persona's turn would be offered. An unknown prerequisite makes an episode ineligible rather than
+fixed registry: `hanging_conversation`, the three target facts (`relationship_user`, `recent_memory`,
+`presence_activity`), and `tool:<name>`, where tool availability is what the persona's turn would be
+offered. Every Reach-out needs a drawn target, even a custom one that omits `relationship_user`, and so
+does any episode listing one of the three target facts; such an episode pings its target too. An unknown prerequisite makes an episode ineligible rather than
 silently dropping the check. Only categories with a runner (`ACTIVE_NATURAL_NUDGE_CATEGORIES`) take
 part in the raffle.
 
@@ -127,8 +172,9 @@ re-pointing a persona at a preset deletes the row so it reads the preset again.
 - `src/modules/natural-nudges/runtime/processor.ts`: Phase A.
 - `src/modules/natural-nudges/runtime/runner.ts`: Phases B and C, re-checks, fire recording.
 - `src/modules/natural-nudges/runtime/meters.ts`: heat, due time, waking hours, raffles.
+- `src/modules/natural-nudges/runtime/targets.ts`: Reach-out gates, lottery, and re-check.
 - `src/modules/natural-nudges/runtime/tuning.ts`: every pacing and selection constant (heat, lull,
-  waking hours, rest windows, stops, retention). Schema and Discord limits stay with their owners.
+  waking hours, rest windows, stops, retention, Reach-out windows and points). Schema and Discord limits stay with their owners.
 - `src/modules/natural-nudges/db/repositories.ts`: every Natural Nudges query.
 - Related: [Database Schema](/architecture/subsystems/database-schema/),
   [Prompt Snapshot](/architecture/subsystems/prompt-snapshot/),

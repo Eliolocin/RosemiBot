@@ -138,7 +138,7 @@ matching credential revision, including after the persona is removed.
 ### User identity, privacy, and personalization
 
 - **`users`**: stores account snowflakes (`user_disc_id`), language preferences, registration locales, and `privacy_level` (0 = minimal, 1 = partial, 2 = full).
-- **`user_personalization_configs`**: stores personal nicknames, numeric timezone offsets, deliberate tool modes, cross-server short-term memory opt-ins, physical appearance tags, NovelAI character reference URLs, impersonation prompts, and personal fallback routing toggles.
+- **`user_personalization_configs`**: stores personal nicknames, numeric timezone offsets, deliberate tool modes, cross-server short-term memory opt-ins, physical appearance tags, NovelAI character reference URLs, impersonation prompts, personal fallback routing toggles, and the Natural Nudges Reach-out opt-out (`natural_nudge_opt_out`).
 - **`user_persona_naming_preferences`**: stores nullable nickname, prefix, and suffix overrides per `(user_id, persona_lineage_id)`. Survives persona deletion and re-import because it has no foreign key to local persona IDs.
 - **`personalization_blacklist`**: server-scoped table keyed by `(server_id, user_disc_id)`. Excludes the user from personalization enrichments in that guild without deleting their account.
 - **`persona_user_blocks`**: stores persona-scoped moderation records keyed by `(server_id, persona_id, user_disc_id)`. Supports `mute` (stops triggering persona) and `block` (also hides user messages from dialogue history).
@@ -209,7 +209,7 @@ Natural Nudges stores events and derives its meters on read
 - **`persona_natural_nudge_configs`**: talkativeness and interests per persona. Pointer personas
   without a row read `persona_presets.natural_nudge_interests` and `natural_nudge_talkativeness`.
 - **`server_natural_nudge_runtime_state`**: episode jitter and the failure stop. Excluded from export.
-- **`natural_nudge_fires`**: the fire log every meter reads. Pruned after 30 days.
+- **`natural_nudge_fires`**: the fire log every meter reads, with `target_user_id` for a Reach-out. Pruned after 30 days.
 - **`natural_nudge_agendas`**: hidden agendas keyed by `(message_disc_id, persona_id)`. Pruned after
   90 days; `target_user_id` cascades so erasing a user removes agendas built from their data.
 
@@ -258,7 +258,7 @@ The reset subsystem in `src/utils/db/repositories/ResetRepository.ts` categorize
 - **Preserved server configuration**: active model foreign keys, credentials, custom endpoint parameters, and the cached Other-model identity/capabilities in `server_model_configs`, plus active NovelAI diffusion model identity (`nai_diffusion_model_id`). `SERVER_SINGLETON_RESET_TABLES` owns the exact preserved columns.
 - **Cleared server collections (12 tables)**: `server_auto_trigger_persona_overrides`, `stm_categories`, `random_triggers`, `channel_llm_overrides`, `channel_prompt_overrides`, `channel_context_notes`, `personalization_blacklist`, `persona_user_blocks`, `channel_whitelist`, `role_whitelist`, `channel_persona_whitelist`, `server_natural_nudge_episodes`.
 - **Preserved server domains**: personas and persona settings, server memories, short-term memories, expressions (emojis, stickers, and custom expressions), recorded quota consumption, saved provider configurations, and external integrations (Matrix, MCP, and message-proxy instances).
-- **Personal reset**: restores `users.language_pref` ('en-US') and `users.privacy_level` (0), restores all configuration columns in `user_personalization_configs` to schema defaults, deletes `user_persona_naming_preferences`, and removes all `personal_spotlights` (cascading to `personal_spotlight_personas`). Preserves user account identity, message-proxy selection and host links, personal memories, saved provider credentials, custom endpoints, and scheduled reminders.
+- **Personal reset**: restores `users.language_pref` ('en-US') and `users.privacy_level` (0), restores every configuration column in `user_personalization_configs` to its schema default except `natural_nudge_opt_out`, which a reset must never silently turn back on, deletes `user_persona_naming_preferences`, and removes all `personal_spotlights` (cascading to `personal_spotlight_personas`). Preserves user account identity, message-proxy selection and host links, personal memories, saved provider credentials, custom endpoints, and scheduled reminders.
 
 Message-proxy tables link service instances, external identities, namespaces, authorized host accounts, and immutable message attribution. PluralBuddy OAuth credentials are encrypted with separate version tags for each field. See [message-proxy persistence](/architecture/integrations/message-proxy/#persistence) for table ownership.
 

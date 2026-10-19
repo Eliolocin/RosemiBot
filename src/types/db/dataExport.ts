@@ -102,6 +102,7 @@ export const personalSettingsExportDataSchema = z.object({
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).optional(),
   personal_server_fallback_enabled: z.boolean().optional(),
   shortterm_cache_crossserver_opt_in: z.boolean().optional(),
+  natural_nudge_opt_out: z.boolean().optional(),
   timezone_offset: z.number().int().min(-12).max(14).nullable().optional(),
   message_proxy_service: z.string().nullable().optional(),
   prefix_override: z.string().max(100).nullable().optional(),
@@ -435,7 +436,12 @@ const personalProfileConfigSectionSchema = personalSettingsExportDataSchema
   .strict();
 
 const personalPrivacyConfigSectionSchema = personalSettingsExportDataSchema
-  .pick({ privacy_level: true, shortterm_cache_crossserver_opt_in: true, message_proxy_service: true })
+  .pick({
+    privacy_level: true,
+    shortterm_cache_crossserver_opt_in: true,
+    natural_nudge_opt_out: true,
+    message_proxy_service: true,
+  })
   .strict();
 
 const personalAppearanceConfigSectionSchema = personalSettingsExportDataSchema
@@ -543,6 +549,7 @@ export const V1_CONFIG_FIELD_SECTION_OVERRIDES = {
     personal_deliberate_tool_mode: "response_modes",
     personal_server_fallback_enabled: null,
     shortterm_cache_crossserver_opt_in: "privacy",
+    natural_nudge_opt_out: "privacy",
     message_proxy_service: "privacy",
     timezone_offset: "profile",
     prefix_override: "profile",

@@ -35,6 +35,7 @@ function fire(overrides: Partial<NaturalNudgeFireRow>): NaturalNudgeFireRow {
     mode: "episode",
     category: "new_topic",
     episode_key: "new_topic.interest_musing",
+    target_user_id: null,
     opener_message_disc_id: "200000000000000001",
     answered: false,
     fired_at: new Date(NOW.getTime() - DAY),

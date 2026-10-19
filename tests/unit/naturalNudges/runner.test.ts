@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { Collection, type Client, type GuildTextBasedChannel, type Message } from "discord.js";
 import * as tomoriChatModule from "@/events/messageCreate/tomoriChat";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
-import { BUILTIN_EPISODES } from "@/modules/natural-nudges/runtime/episodes";
+import { BUILTIN_EPISODES, type EpisodeDefinition } from "@/modules/natural-nudges/runtime/episodes";
 import * as planner from "@/modules/natural-nudges/runtime/planner";
 import * as plannerModel from "@/modules/natural-nudges/runtime/model";
 import { runEpisodeAttempt, type EpisodeAttempt } from "@/modules/natural-nudges/runtime/runner";
@@ -84,10 +84,11 @@ function attemptWithHistory(latest: () => Promise<Message[]>): { attempt: Episod
     awake: Array.from({ length: 24 }, () => true),
     persona: createPersona({ persona_id: PERSONA_ID, server_id: SERVER_ID }),
     interests: [],
-    episode: BUILTIN_EPISODES[0],
+    episode: BUILTIN_EPISODES.find((candidate) => candidate.category === "new_topic") as EpisodeDefinition,
     plannerLlmId: 1,
     availableTools: new Set(),
     plannerChannels: [{ channel, lastMessageId: RECORDED_ID, quietSinceMs: 0, transcript: "" }],
+    target: null,
   };
   return { attempt, sent };
 }

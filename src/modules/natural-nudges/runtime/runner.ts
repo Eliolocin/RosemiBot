@@ -12,12 +12,14 @@ import {
 import { resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { isWithinWakingHours, serverDayStart } from "@/modules/natural-nudges/runtime/meters";
 import { planEpisode, type EpisodePlan } from "@/modules/natural-nudges/runtime/planner";
+import { isTargetStillReachable, type ReachOutTarget } from "@/modules/natural-nudges/runtime/targets";
 import { recordEpisodeSample, type EpisodeSample } from "@/modules/natural-nudges/runtime/telemetry";
 import { isChannelProcessingLocked, suppressNextSelfReply, tomoriChat } from "@/events/messageCreate/tomoriChat";
 import type { GenerationTurnResult } from "@/utils/chat/types";
 import { verifyMessageWebhook, isManagedWebhookMessage } from "@/utils/chat/webhookIdentity";
 import { personaRepository } from "@/utils/db/repositories/PersonaRepository";
 import { whitelistRepository } from "@/utils/db/repositories/WhitelistRepository";
+import { ensureDiscordUserMention, sendAlterPersonaMention } from "@/utils/discord/mentionHelper";
 import { log } from "@/utils/misc/logger";
 
 /** Messages scanned after the anchor when a tool delivered the opener and no stream reported its ID. */
@@ -37,6 +39,8 @@ export interface EpisodeAttempt {
   plannerLlmId: number;
   availableTools: ReadonlySet<string>;
   plannerChannels: Array<NudgeChannel & { transcript: string }>;
+  /** Set exactly when the episode pings someone. */
+  target: ReachOutTarget | null;
 }
 
 export type AttemptResult = "fired" | "aborted" | "failed";
@@ -76,6 +80,23 @@ async function recheckBeforeSend(attempt: EpisodeAttempt, target: NudgeChannel, 
   if (!personaConfig || personaConfig.talkativeness === 0) return "persona_silenced";
   const whitelist = await whitelistRepository.checkChannelWhitelist(attempt.serverDiscId, target.channel.id);
   if (!whitelistRepository.isPersonaAllowedByWhitelistStatus(whitelist, personaId)) return "persona_not_allowed";
+  if (attempt.target) {
+    const guild = attempt.client.guilds.cache.get(attempt.serverDiscId);
+    const persona = { ...attempt.persona, persona_id: personaId };
+    if (
+      !guild ||
+      !(await isTargetStillReachable({
+        guild,
+        serverId: attempt.serverId,
+        persona,
+        target: attempt.target,
+        channel: target.channel,
+        now,
+      }))
+    ) {
+      return "target_unavailable";
+    }
+  }
 
   if (hasActivitySince(target.channel, target.lastMessageId)) return "channel_activity";
   if (!isWithinWakingHours(attempt.awake, now, attempt.serverId)) return "waking_hours_ended";
@@ -83,9 +104,14 @@ async function recheckBeforeSend(attempt: EpisodeAttempt, target: NudgeChannel, 
   return null;
 }
 
-function buildOpenerContextItem(plan: EpisodePlan, tools: readonly string[]): StructuredContextItem {
+function buildOpenerContextItem(
+  plan: EpisodePlan,
+  tools: readonly string[],
+  target: ReachOutTarget | null,
+): StructuredContextItem {
   const sentences = [
     "You decided to speak up on your own; nobody asked you to.",
+    target ? `You are reaching out to one member; mention them as @{${target.userDiscId}}.` : "",
     plan.openerDirection,
     `Your private goal, which nobody else can see: ${plan.agenda}`,
     "Write it as one natural, short message for this channel, in your own voice.",
@@ -155,6 +181,7 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
       transcript: channel.transcript,
     })),
     plannerLlmId: attempt.plannerLlmId,
+    target: attempt.target,
   });
   const usage =
     "usage" in planned && planned.usage
@@ -217,6 +244,7 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
         personaId,
         category: attempt.episode.category,
         episodeKey: attempt.episode.key,
+        targetUserId: attempt.target?.userId ?? null,
         openerMessageDiscId: openerId ?? anchor.id,
       },
       openerId ? planned.plan.agenda : null,
@@ -232,6 +260,7 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
   };
 
   suppressNextSelfReply(target.channel.id);
+  const triggerStartTime = Date.now();
   const disposition = await tomoriChat({
     client: attempt.client,
     message: anchor,
@@ -245,11 +274,24 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
     textQuotaSource: "system",
     textQuotaTriggerKey: `nudge:${attempt.serverId}:${anchor.id}`,
     shouldSurfaceUserErrors: false,
-    injectedContextItems: [buildOpenerContextItem(planned.plan, episodeTools)],
-    naturalNudge: { toolNames: episodeTools },
+    injectedContextItems: [buildOpenerContextItem(planned.plan, episodeTools, attempt.target)],
+    naturalNudge: { toolNames: episodeTools, targetUserDiscId: attempt.target?.userDiscId },
     borrowsTriggerMessage: true,
     onGenerationResult: settle,
   });
+  const reachOutTarget = attempt.target;
+  if (outcome === "fired" && reachOutTarget) {
+    await ensureDiscordUserMention({
+      client: attempt.client,
+      channel: target.channel,
+      targetUserId: reachOutTarget.userDiscId,
+      afterMessageId: anchor.id,
+      triggerStartTime,
+      contextLabel: `Reach-out in server ${attempt.serverId}`,
+      fallbackSender: (content) =>
+        sendAlterPersonaMention(target.channel, attempt.persona, reachOutTarget.userDiscId, content),
+    });
+  }
   if (outcome) return outcome;
   log.info(`Natural Nudges: episode not delivered for server ${attempt.serverId} (disposition ${disposition})`);
   sample(attempt, { outcome: "aborted", phase: "c", reason: `admission_${disposition}`, plannerModel, ...usage });

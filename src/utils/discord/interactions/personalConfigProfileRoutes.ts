@@ -728,6 +728,74 @@ export async function handlePersonalConfigProfileWrites(context: PersonalConfigP
     return true;
   }
 
+  if (route.action === "reach-out-set") {
+    const repaintPrivacy = (panelReceipt: Parameters<typeof repaint>[1]["panelReceipt"]) =>
+      repaint(interaction, {
+        locale: route.locale,
+        scope: context.scope,
+        category: "privacy",
+        page: "controls",
+        panelReceipt,
+        dependencies,
+      });
+    if (context.scope.readStatus !== "fresh") {
+      await repaintPrivacy({
+        tone: "error",
+        heading: localizer(route.locale, "commands.personal.config.unavailable"),
+        detail: localizer(route.locale, "commands.personal.config.stale_warning"),
+      });
+      return true;
+    }
+    const action = await performPanelAction(
+      () =>
+        dependencies.operations.setNaturalNudgeOptOut({
+          userId: context.scope.userId,
+          userDiscId: context.scope.userDiscId,
+          current: context.scope.user.natural_nudge_opt_out,
+          optedOut: !route.enabled,
+        }),
+      () => dependencies.resolveScope(interaction, true),
+    );
+    const result = action.result;
+    context.scope = action.state ?? context.scope;
+
+    if (result.status === "no-changes") {
+      await repaintPrivacy(noChangesReceipt(route.locale));
+      return true;
+    }
+    if (result.status === "success") {
+      if (context.scope.internalServerId) {
+        dependencies.recordAction({
+          action: "personal-config.personal.reach-out.set",
+          serverId: context.scope.internalServerId,
+          userDiscId: interaction.user.id,
+        });
+      }
+      await repaintPrivacy({
+        tone: "success",
+        heading: localizer(
+          route.locale,
+          result.optedOut
+            ? "commands.personal.config.reach_out_disabled_heading"
+            : "commands.personal.config.reach_out_enabled_heading",
+        ),
+        detail: localizer(
+          route.locale,
+          result.optedOut
+            ? "commands.personal.config.reach_out_disabled_detail"
+            : "commands.personal.config.reach_out_enabled_detail",
+        ),
+      });
+      return true;
+    }
+    await repaintPrivacy({
+      tone: "error",
+      heading: localizer(route.locale, "commands.personal.config.write_failed_heading"),
+      detail: localizer(route.locale, "commands.personal.config.write_failed_detail"),
+    });
+    return true;
+  }
+
   if (route.action === "crossserver-toggle") {
     const action = await performPanelAction(
       () =>

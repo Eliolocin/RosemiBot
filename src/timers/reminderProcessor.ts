@@ -1,5 +1,4 @@
 import type { Client, Message, TextBasedChannel, TextChannel } from "discord.js";
-import { ChannelType } from "discord.js";
 import { log, ColorCode } from "../utils/misc/logger";
 import { serverScheduleRepository } from "@/utils/db/repositories";
 
@@ -9,9 +8,7 @@ import { tomoriChat, suppressNextSelfReply } from "../events/messageCreate/tomor
 import { createStandardEmbed, truncateForEmbedDescription } from "../utils/discord/embedHelper";
 import { getCachedAllPersonas } from "../utils/cache/tomoriStateCache";
 import { getCachedUserRow } from "../utils/cache/userCache";
-import { getOrCreateWebhook, resolvePersonaWebhookIdentity } from "../utils/discord/webhookManager";
-import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
-import { ensureDiscordUserMention } from "../utils/discord/mentionHelper";
+import { ensureDiscordUserMention, sendAlterPersonaMention } from "../utils/discord/mentionHelper";
 import { isBridgeUserId } from "../utils/bridges";
 import { sendMatrixReminderMention } from "../utils/bridges/matrix";
 import type { GenerationTurnResult, QueuedMessageDiscardReason } from "@/utils/chat/types";
@@ -389,55 +386,9 @@ export class ReminderProcessor {
     reminder: ReminderRow,
     content: string,
   ): Promise<boolean> {
-    if (!reminder.persona_id) return false;
-    if (!("guild" in channel) || !channel.guild) return false;
-
-    const supportsWebhooks =
-      channel.type === ChannelType.GuildText ||
-      channel.type === ChannelType.PublicThread ||
-      channel.type === ChannelType.PrivateThread ||
-      channel.type === ChannelType.AnnouncementThread;
-    if (!supportsWebhooks) return false;
-
-    try {
-      const personas = await getCachedAllPersonas(channel.guild.id);
-      const persona = personas.find((p) => p.persona_id === reminder.persona_id);
-      if (!persona?.is_alter) return false;
-
-      const isThread = "isThread" in channel && typeof channel.isThread === "function" && channel.isThread();
-      if (isThread && !channel.parent) {
-        return false;
-      }
-      const webhookChannel = isThread && channel.parent ? channel.parent : channel;
-
-      const webhookResult = await getOrCreateWebhook(webhookChannel as TextChannel);
-      const webhook = webhookResult.webhook;
-      if (!webhook) return false;
-
-      const identity = await resolvePersonaWebhookIdentity(persona, channel.guild);
-      await sendPersonaPostViaWebhook(
-        webhook,
-        {
-          content,
-          allowedMentions: {
-            users: [reminder.user_discord_id],
-            roles: [],
-            parse: [],
-          },
-          ...(isThread ? { threadId: channel.id } : {}),
-        },
-        {
-          username: identity.username ?? persona.persona_nickname,
-          avatarUrl: identity.avatarDataUri ?? identity.avatarUrl,
-          personaId: persona.persona_id,
-        },
-        channel,
-      );
-      return true;
-    } catch (error) {
-      log.warn(`Failed to send persona fallback mention for reminder ${reminder.reminder_id}:`, error);
-      return false;
-    }
+    if (!reminder.persona_id || !("guild" in channel) || !channel.guild) return false;
+    const persona = (await getCachedAllPersonas(channel.guild.id)).find((p) => p.persona_id === reminder.persona_id);
+    return persona ? sendAlterPersonaMention(channel, persona, reminder.user_discord_id, content) : false;
   }
 
   /**

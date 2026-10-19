@@ -278,6 +278,9 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
     triggererUserId: turn.userRow.user_id,
     triggererDiscId: turn.userRow.user_disc_id,
     forcedMentions: await resolveForcedMentions(turn),
+    ...(incoming.naturalNudge?.targetUserDiscId && {
+      mentionableUserIds: [incoming.naturalNudge.targetUserDiscId],
+    }),
   };
 
   if (incoming.manualStreamingContextOverrides) {
@@ -563,6 +566,7 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
     preloadedCustomExpressions: assets.loadedCustomExpressions,
     isUserImpersonation: incoming.isUserImpersonation,
     impersonatedUserId: incoming.impersonatedUserId,
+    shortTermMemoryUserId: incoming.naturalNudge?.targetUserDiscId,
     impersonatedUserNickname,
     impersonatedUserPrompt,
     explicitLongTermMemoryIntent: streamingContext.explicitLongTermMemoryIntent,
@@ -660,8 +664,12 @@ async function resolveForcedMentions(turn: ChatTurn): Promise<ForcedMention[] | 
   if (incoming.reminderRecipientID && !incoming.reminderData?.self_reminder) {
     reminderMentions = await buildForcedMentionsForUser(incoming.reminderRecipientID, incoming.client, turn.guild);
   }
+  const nudgeTargetId = incoming.naturalNudge?.targetUserDiscId;
+  const nudgeTargetMentions = nudgeTargetId
+    ? await buildForcedMentionsForUser(nudgeTargetId, incoming.client, turn.guild)
+    : undefined;
 
-  const mentions = mergeForcedMentions(turn.forcedMentions, reminderMentions);
+  const mentions = mergeForcedMentions(mergeForcedMentions(turn.forcedMentions, reminderMentions), nudgeTargetMentions);
   if (mentions.length === 0) return undefined;
   return mentions;
 }

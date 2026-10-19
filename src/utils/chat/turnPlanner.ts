@@ -1,4 +1,4 @@
-import type { Guild, Message } from "discord.js";
+import type { Guild, GuildMember, Message } from "discord.js";
 import type { TomoriState, UserRow } from "@/types/db/schema";
 import { PrivacyLevel } from "@/types/db/schema";
 import { DatabaseUnavailableError } from "@/types/errors";
@@ -354,26 +354,29 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     triggererPrivacyLevel: await getCachedPrivacyLevel(userDiscId),
     preloadedMember: !isDMChannel && guild ? await guild.members.fetch(userDiscId).catch(() => null) : null,
   };
-  const displayName = resolvePreferredDiscordDisplayName({
-    memberDisplayName:
-      incoming.manualTriggerInvoker?.member?.displayName ??
-      requestSnapshot.preloadedMember?.displayName ??
-      message.member?.displayName,
-    user: incoming.manualTriggerInvoker ? { username: incoming.manualTriggerInvoker.username } : message.author,
-    fallback: incoming.manualTriggerInvoker?.username ?? message.author.username,
+  const naming = await resolveNamingSubject({
+    incoming,
+    message,
+    guild,
+    serverDiscId,
+    userRow,
+    preloadedMember: requestSnapshot.preloadedMember,
+    isTriggererBlacklisted: requestSnapshot.isTriggererBlacklisted,
   });
+  if (!naming) {
+    log.warn(`Dropping Reach-out turn for message ${message.id}: its target's user row could not be read.`);
+    return { lockedTurn, turns: [] };
+  }
+  const { displayName, row: namingRow } = naming;
   let triggererName =
-    requestSnapshot.isTriggererBlacklisted ||
-    tomoriState.config.personal_memories_enabled === false ||
-    !userRow.user_nickname
+    naming.blacklisted || tomoriState.config.personal_memories_enabled === false || !namingRow.user_nickname
       ? displayName
-      : userRow.user_nickname;
-  const canUsePersonalizedNaming =
-    !requestSnapshot.isTriggererBlacklisted && tomoriState.config.personal_memories_enabled !== false;
-  const namingPreferences = userRow.user_id
+      : namingRow.user_nickname;
+  const canUsePersonalizedNaming = !naming.blacklisted && tomoriState.config.personal_memories_enabled !== false;
+  const namingPreferences = namingRow.user_id
     ? await userNamingRepository.loadPreferences(
         personasToRespond.map((persona) => ({
-          userId: userRow.user_id as number,
+          userId: namingRow.user_id as number,
           personaLineageId: persona.persona_lineage_id,
         })),
       )
@@ -393,15 +396,15 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
 
   const turns: ChatTurn[] = personasToRespond.map((persona, personaIndex) => {
     const isPersonaSceneTarget = Boolean(incoming.sceneTurn && incoming.sceneTurn.turnIndex > 0);
-    const preference = userRow.user_id
-      ? namingPreferences.get(userPersonaNamingPairKey(userRow.user_id, persona.persona_lineage_id))
+    const preference = namingRow.user_id
+      ? namingPreferences.get(userPersonaNamingPairKey(namingRow.user_id, persona.persona_lineage_id))
       : undefined;
     const effectiveNaming = resolveEffectiveUserNaming({
       global: {
-        userNickname: canUsePersonalizedNaming ? userRow.user_nickname : null,
-        prefixOverride: canUsePersonalizedNaming ? (userRow.prefix_override ?? null) : null,
-        suffixOverride: canUsePersonalizedNaming ? (userRow.suffix_override ?? null) : null,
-        addressingStyle: canUsePersonalizedNaming ? (userRow.addressing_style ?? null) : null,
+        userNickname: canUsePersonalizedNaming ? namingRow.user_nickname : null,
+        prefixOverride: canUsePersonalizedNaming ? (namingRow.prefix_override ?? null) : null,
+        suffixOverride: canUsePersonalizedNaming ? (namingRow.suffix_override ?? null) : null,
+        addressingStyle: canUsePersonalizedNaming ? (namingRow.addressing_style ?? null) : null,
       },
       liveDisplayName: displayName,
       persona: canUsePersonalizedNaming ? persona.naming_config : undefined,
@@ -457,6 +460,49 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
       .join(", ")}`,
   );
   return { lockedTurn, turns };
+}
+
+/**
+ * The user whose name `{user}` and the triggerer name carry. A Reach-out speaks to its target, not to
+ * whoever posted the message it borrowed as a trigger, so only naming moves to the target: credentials,
+ * quotas, and stats stay with the trigger message's author. Null when the target's row is unreadable.
+ */
+async function resolveNamingSubject(params: {
+  incoming: ChatIncoming;
+  message: Message;
+  guild: Guild | null;
+  serverDiscId: string;
+  userRow: UserRow;
+  preloadedMember: GuildMember | null;
+  isTriggererBlacklisted: boolean;
+}): Promise<{ row: UserRow; displayName: string; blacklisted: boolean } | null> {
+  const { incoming, message } = params;
+  const targetId = incoming.naturalNudge?.targetUserDiscId;
+  if (!targetId) {
+    return {
+      row: params.userRow,
+      blacklisted: params.isTriggererBlacklisted,
+      displayName: resolvePreferredDiscordDisplayName({
+        memberDisplayName:
+          incoming.manualTriggerInvoker?.member?.displayName ??
+          params.preloadedMember?.displayName ??
+          message.member?.displayName,
+        user: incoming.manualTriggerInvoker ? { username: incoming.manualTriggerInvoker.username } : message.author,
+        fallback: incoming.manualTriggerInvoker?.username ?? message.author.username,
+      }),
+    };
+  }
+  const [row, member, blacklisted] = await Promise.all([
+    getCachedUserRow(targetId),
+    params.guild ? params.guild.members.fetch(targetId).catch(() => null) : Promise.resolve(null),
+    getCachedBlacklistStatus(params.serverDiscId, targetId),
+  ]);
+  if (!row) return null;
+  return {
+    row,
+    blacklisted,
+    displayName: resolvePreferredDiscordDisplayName({ memberDisplayName: member?.displayName, user: member?.user }),
+  };
 }
 
 async function loadOrRegisterTriggerUser(

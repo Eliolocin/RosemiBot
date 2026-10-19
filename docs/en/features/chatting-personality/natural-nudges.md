@@ -7,8 +7,8 @@ aiGenerated: true
 ---
 
 Natural Nudges lets TomoriBot speak without being mentioned. When a channel has gone
-quiet, one of your personas picks something to do, such as picking a conversation back up or
-raising a new topic, and posts it in its own voice. Each of these is an **episode**.
+quiet, one of your personas picks something to do, such as checking in on someone, picking a
+conversation back up, or raising a new topic, and posts it in its own voice. Each of these is an **episode**.
 
 Nudges are meant to feel like a friend checking in, not a bot posting on a timer:
 
@@ -61,6 +61,7 @@ Each episode belongs to a category:
 
 | Category | What happens |
 |---|---|
+| **Reach-out** | A persona pings one member it knows: a check-in, a follow-up on something they mentioned, a link they might like, a tease about the game they are playing, or an offer to remind them of something. |
 | **Revive** | A persona picks up a conversation that was left hanging: an unanswered question, a second opinion, or something it looked up. |
 | **New Topic** | A persona raises something new, usually from its own interests: a thought, a hot take, a "would you rather", a news item, a picture, or a voice note. |
 
@@ -68,11 +69,30 @@ Each episode belongs to a category:
 and you can add up to 25 of your own:
 
 - **Name** and **Category**.
-- **Planner brief**: what the persona sets out to do. Write `{persona}` where its name goes.
+- **Planner brief**: what the persona sets out to do. Write `{persona}` where its name goes and,
+  for a Reach-out, `{target}` where the pinged member's name goes.
 - **Example agenda** (optional): the kind of small goal the persona keeps after its opener.
 - **Needs**: what must be true before the episode can run, such as a hanging conversation or an
   available tool.
 - **Recommended tools**: tools the persona is encouraged to use, offered only when available.
+
+### Reach-out
+<!-- anchor: reach-out -->
+
+A Reach-out pings one member by name, so it only picks people the persona actually knows:
+
+- **They talked to TomoriBot recently.** Only members who started a conversation with her in this
+  server in the last 14 days can be picked. Being mentioned or talked about does not count.
+- **The persona knows them.** The member has a memory with this persona from the last 30 days, or a
+  recent short-term memory with it.
+- **They have not opted out.** Anyone can turn Reach-outs off for themselves in `/personal config` >
+  Privacy. Members with Full privacy, members on the server's personalization blacklist, and members
+  the persona has blocked are never picked.
+
+Among those members, closer ones are picked more often: each memory and each recent conversation
+adds to their chance, and someone a persona pinged in the last three days is less likely to be
+picked again. The ping goes to that one member only; a Reach-out never pings roles, `@everyone`,
+or anyone else. Any reply in the channel counts as an answer.
 
 ### Hidden agendas
 
@@ -97,7 +117,9 @@ interests for new characters, and persona exports carry them.
 ## What Gets Stored
 
 Natural Nudges keeps your settings, custom episodes, and persona interests with your other server
-configuration. It also remembers which episodes ran recently and whether anyone answered, for 30
-days, and each hidden agenda for up to 90 days. `/reset` restores the settings and removes custom
+configuration. It also remembers which episodes ran recently, whether anyone answered, and who a
+Reach-out pinged, for 30 days, and each hidden agenda for up to 90 days. `/reset` restores the settings and removes custom
 episodes. `/export config` and `/import config` carry settings and custom episodes, but not a chosen
-channel list, which belongs to one server.
+channel list, which belongs to one server. Your own Reach-out choice is part of your personal
+settings: `/reset personal config` keeps it, `/export personal config` carries it, and `/personal nuke`
+erases it with the rest of your data.

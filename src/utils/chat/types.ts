@@ -76,6 +76,8 @@ interface CarriedExpressionDelivery {
 export interface NaturalNudgeTurn {
   /** Episode tools that Deliberate Tool Mode admits, since no human message carries their trigger words. */
   toolNames: readonly string[];
+  /** The one user a Reach-out may ping; `{user}` and the triggerer name resolve to them. */
+  targetUserDiscId?: string;
 }
 
 export interface TomoriChatInput {

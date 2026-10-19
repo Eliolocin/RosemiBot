@@ -132,6 +132,7 @@ export const fireRowSchema = z.object({
   mode: z.enum(["chime_in", "episode"]),
   category: z.enum(NATURAL_NUDGE_CATEGORIES).nullable(),
   episode_key: z.string().nullable(),
+  target_user_id: z.number().int().nullable(),
   opener_message_disc_id: z.string(),
   answered: z.boolean().nullable(),
   fired_at: z.date(),
@@ -144,8 +145,18 @@ export interface NewFireRow {
   personaId: number;
   category: NaturalNudgeCategory;
   episodeKey: string;
+  targetUserId: number | null;
   openerMessageDiscId: string;
 }
+
+export const reachOutCandidateSchema = z.object({
+  user_id: z.number().int(),
+  user_disc_id: z.string(),
+  privacy_level: z.number().int(),
+  ltm_total: z.coerce.number().int(),
+  ltm_recent: z.coerce.number().int(),
+});
+export type ReachOutCandidate = z.infer<typeof reachOutCandidateSchema>;
 
 /** Agenda length the DB CHECK allows; the planner schema enforces the same bound. */
 export const NATURAL_NUDGE_AGENDA_MAX = 500;

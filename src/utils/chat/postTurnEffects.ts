@@ -477,7 +477,10 @@ function updateSelfReplyBookkeeping(context: ChatTurnContext, result: Generation
 }
 
 async function writeShortTermMemory(context: ChatTurnContext, result: GenerationTurnResult): Promise<void> {
+  // A nudge answers nobody, so storing it would hand whoever spoke last a short-term memory, which
+  // Reach-out counts as a relationship.
   if (
+    context.turn.lockedTurn.admission.incoming.naturalNudge ||
     context.isStopResponse ||
     context.simplifiedMessages.length === 0 ||
     context.turn.requestSnapshot.triggererPrivacyLevel === PrivacyLevel.FULL ||

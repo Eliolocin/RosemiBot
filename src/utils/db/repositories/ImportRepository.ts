@@ -262,7 +262,10 @@ const PERSONAL_SECTION_TABLES: Record<PersonalConfigSection, readonly SectionTab
   ],
   privacy: [
     { tableName: "users", fields: ["privacy_level", "message_proxy_service"] },
-    { tableName: "user_personalization_configs", fields: ["shortterm_cache_crossserver_opt_in"] },
+    {
+      tableName: "user_personalization_configs",
+      fields: ["shortterm_cache_crossserver_opt_in", "natural_nudge_opt_out"],
+    },
   ],
   appearance: [{ tableName: "user_personalization_configs", fields: ["physical_appearance_tags"] }],
   response_modes: [
@@ -811,6 +814,7 @@ class ImportRepository {
             user_id,
             user_nickname,
             shortterm_cache_crossserver_opt_in,
+            natural_nudge_opt_out,
             physical_appearance_tags,
             nai_char_ref_url,
             impersonation_prompt,
@@ -826,6 +830,7 @@ class ImportRepository {
             ${userId},
             ${importData.user_nickname},
             ${importData.shortterm_cache_crossserver_opt_in ?? false},
+            ${importData.natural_nudge_opt_out ?? false},
             ${sql.array(physicalAppearanceTags, "TEXT")},
             ${naiCharRefUrl},
             ${impersonationPrompt},
@@ -841,6 +846,7 @@ class ImportRepository {
           ON CONFLICT (user_id) DO UPDATE SET
             user_nickname = EXCLUDED.user_nickname,
             shortterm_cache_crossserver_opt_in = COALESCE(${importData.shortterm_cache_crossserver_opt_in ?? null}, user_personalization_configs.shortterm_cache_crossserver_opt_in),
+            natural_nudge_opt_out = COALESCE(${importData.natural_nudge_opt_out ?? null}, user_personalization_configs.natural_nudge_opt_out),
             physical_appearance_tags = EXCLUDED.physical_appearance_tags,
             nai_char_ref_url = EXCLUDED.nai_char_ref_url,
             impersonation_prompt = EXCLUDED.impersonation_prompt,
@@ -894,6 +900,7 @@ class ImportRepository {
       if (importData.personal_dtm !== undefined) fieldsCount++;
       if (importData.personal_deliberate_tool_mode !== undefined) fieldsCount++;
       if (importData.shortterm_cache_crossserver_opt_in !== undefined) fieldsCount++;
+      if (importData.natural_nudge_opt_out !== undefined) fieldsCount++;
       if (importData.timezone_offset !== undefined) fieldsCount++;
       if (importData.message_proxy_service !== undefined) fieldsCount++;
       if (importData.prefix_override !== undefined) fieldsCount++;

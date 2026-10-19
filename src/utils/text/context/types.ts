@@ -124,6 +124,8 @@ export interface BuildContextParams {
   preloadedCustomExpressions?: CustomExpressionRow[] | null;
   isUserImpersonation?: boolean;
   impersonatedUserId?: string;
+  /** Whose short-term memory to read when it is not the trigger message's author, such as a Reach-out target. */
+  shortTermMemoryUserId?: string;
   impersonatedUserNickname?: string;
   impersonatedUserPrompt?: string | null;
   /** Active persona-scoped user mutes/blocks for the responding persona. */

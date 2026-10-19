@@ -154,6 +154,7 @@ const MAX_ALLOWED_CHANNELS = 25;
 const SNOWFLAKE_RE = /^\d{17,20}$/;
 
 interface NudgeLimitsInput {
+  reach_out_weight: number;
   revive_weight: number;
   new_topic_weight: number;
   daily_episode_cap: number;
@@ -217,6 +218,7 @@ const naturalNudgeOperations = {
 
   setLimits(serverId: number, limits: NudgeLimitsInput): Promise<NudgeWriteResult> {
     if (
+      !isWeight(limits.reach_out_weight) ||
       !isWeight(limits.revive_weight) ||
       !isWeight(limits.new_topic_weight) ||
       !Number.isInteger(limits.daily_episode_cap) ||

@@ -1,5 +1,6 @@
 import type { SQL } from "bun";
 import type { z } from "zod";
+import { PrivacyLevel } from "@/types/db/schema";
 import { sql } from "@/utils/db/client";
 import { log } from "@/utils/misc/logger";
 import { NATURAL_NUDGE_FAILURE_STOP_THRESHOLD } from "@/modules/natural-nudges/runtime/tuning";
@@ -10,6 +11,7 @@ import {
   enabledEpisodeServerSchema,
   fireRowSchema,
   personaNaturalNudgeConfigSchema,
+  reachOutCandidateSchema,
   runtimeStateSchema,
   serverNaturalNudgeConfigSchema,
   type CustomEpisodeInput,
@@ -20,6 +22,7 @@ import {
   type NaturalNudgeRuntimeState,
   type NewFireRow,
   type PersonaNaturalNudgeConfig,
+  type ReachOutCandidate,
   type ServerNaturalNudgeConfig,
   type ServerNaturalNudgeConfigPatch,
 } from "@/modules/natural-nudges/db/types";
@@ -336,14 +339,14 @@ class NaturalNudgeRepository {
   ): Promise<{ recent: NaturalNudgeFireRow[]; latestEpisodes: NaturalNudgeFireRow[] }> {
     const [recentRows, latestRows] = await Promise.all([
       sql`
-        SELECT fire_id, server_id, channel_disc_id, persona_id, mode, category, episode_key,
+        SELECT fire_id, server_id, channel_disc_id, persona_id, mode, category, episode_key, target_user_id,
           opener_message_disc_id, answered, fired_at
         FROM natural_nudge_fires
         WHERE server_id = ${serverId} AND fired_at >= ${since}
         ORDER BY fired_at DESC
       `,
       sql`
-        SELECT fire_id, server_id, channel_disc_id, persona_id, mode, category, episode_key,
+        SELECT fire_id, server_id, channel_disc_id, persona_id, mode, category, episode_key, target_user_id,
           opener_message_disc_id, answered, fired_at
         FROM natural_nudge_fires
         WHERE server_id = ${serverId} AND mode = 'episode'
@@ -367,15 +370,17 @@ class NaturalNudgeRepository {
       await sql.transaction(async (tx) => {
         await tx`
           INSERT INTO natural_nudge_fires
-            (server_id, channel_disc_id, persona_id, mode, category, episode_key, opener_message_disc_id)
+            (server_id, channel_disc_id, persona_id, mode, category, episode_key, target_user_id,
+              opener_message_disc_id)
           VALUES (${fire.serverId}, ${fire.channelDiscId}, ${fire.personaId}, 'episode', ${fire.category},
-            ${fire.episodeKey}, ${fire.openerMessageDiscId})
+            ${fire.episodeKey}, ${fire.targetUserId}, ${fire.openerMessageDiscId})
         `;
         if (agenda) {
           await tx`
-            INSERT INTO natural_nudge_agendas (message_disc_id, persona_id, agenda)
-            VALUES (${fire.openerMessageDiscId}, ${fire.personaId}, ${agenda})
-            ON CONFLICT (message_disc_id, persona_id) DO UPDATE SET agenda = EXCLUDED.agenda
+            INSERT INTO natural_nudge_agendas (message_disc_id, persona_id, agenda, target_user_id)
+            VALUES (${fire.openerMessageDiscId}, ${fire.personaId}, ${agenda}, ${fire.targetUserId})
+            ON CONFLICT (message_disc_id, persona_id) DO UPDATE
+            SET agenda = EXCLUDED.agenda, target_user_id = EXCLUDED.target_user_id
           `;
         }
         await tx`
@@ -391,6 +396,48 @@ class NaturalNudgeRepository {
       });
       return false;
     }
+  }
+
+  /** Read fresh, never through `userCache`, so an opt-out made a moment ago already excludes the user. */
+  async listReachOutCandidates(args: {
+    serverId: number;
+    personaId: number;
+    personaLineageId: number;
+    interactedSince: Date;
+    memorySince: Date;
+    onlyUserId?: number;
+  }): Promise<ReachOutCandidate[]> {
+    const rows = await sql`
+      SELECT u.user_id, u.user_disc_id, COALESCE(u.privacy_level, 0) AS privacy_level,
+        COALESCE(memory.total, 0) AS ltm_total, COALESCE(memory.recent, 0) AS ltm_recent
+      FROM users u
+      LEFT JOIN user_personalization_configs upc ON upc.user_id = u.user_id
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE GREATEST(pm.created_at, pm.updated_at) >= ${args.memorySince}) AS recent
+        FROM personal_memories pm
+        WHERE pm.user_id = u.user_id AND pm.persona_lineage_id IN (${args.personaLineageId}, 0)
+      ) memory ON true
+      WHERE u.user_id IN (
+          SELECT sc.user_id FROM stat_counters sc
+          WHERE sc.server_id = ${args.serverId}
+            AND sc.metric = 'message_sent'
+            AND sc.bucket >= ${args.interactedSince.toISOString().slice(0, 10)}::date
+        )
+        ${args.onlyUserId === undefined ? sql`` : sql`AND u.user_id = ${args.onlyUserId}`}
+        AND NOT COALESCE(upc.natural_nudge_opt_out, false)
+        AND COALESCE(u.privacy_level, 0) <> ${PrivacyLevel.FULL}
+        AND NOT EXISTS (
+          SELECT 1 FROM personalization_blacklist pb
+          WHERE pb.server_id = ${args.serverId} AND pb.user_disc_id = u.user_disc_id
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM persona_user_blocks pub
+          WHERE pub.server_id = ${args.serverId} AND pub.persona_id = ${args.personaId}
+            AND pub.user_disc_id = u.user_disc_id AND pub.expires_at > NOW()
+        )
+    `;
+    return parseRows(reachOutCandidateSchema, rows, "Reach-out candidate");
   }
 
   /** Agendas owned by one persona among the given messages, keyed by message ID. */

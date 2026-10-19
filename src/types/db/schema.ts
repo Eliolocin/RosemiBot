@@ -65,6 +65,7 @@ export const userSchema = z.object({
   personal_dtm: z.enum(["off", "follow", "on"]).default("follow"), // Added April 2026 - User-scoped DTM tri-state: 'off' (always disabled), 'follow' (server setting), 'on' (always enabled)
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).default("follow"), // Added May 2026 - User-scoped deliberate tool mode tri-state
   personal_server_fallback_enabled: z.boolean().default(true), // Whether a failed personal text route may fall back to the server's model
+  natural_nudge_opt_out: z.boolean().default(false),
   timezone_offset: z.number().int().min(-12).max(14).nullable().optional(), // Added June 2026 - Personal UTC offset; NULL = not set / opt-out
   message_proxy_service: z.string().nullable().default(null),
   message_proxy_instance_id: z.string().nullable().default(null),
@@ -744,6 +745,7 @@ const userPersonalizationConfigsSchema = z.object({
   personal_dtm: z.enum(["off", "follow", "on"]).default("follow"),
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).default("follow"),
   personal_server_fallback_enabled: z.boolean().default(true),
+  natural_nudge_opt_out: z.boolean().default(false),
   timezone_offset: z.number().int().min(-12).max(14).nullable().optional(),
   prefix_override: z.string().nullable().optional(),
   suffix_override: z.string().nullable().optional(),

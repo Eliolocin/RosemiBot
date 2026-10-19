@@ -9,9 +9,11 @@ import { normalizeChatInvocation } from "@/utils/chat/admission";
 import { planChatTurns } from "@/utils/chat/turnPlanner";
 import type { LockedChatTurn } from "@/utils/chat/types";
 import * as credentialResolver from "@/utils/provider/credentialResolver";
+import { userNamingRepository } from "@/utils/db/repositories/UserNamingRepository";
 import { createPersona, createUserRow } from "../../helpers/fixtures";
 
 const BYSTANDER = createUserRow({ user_id: 77, user_disc_id: "fixture-juno", language_pref: "ja" });
+const REACH_OUT_TARGET = createUserRow({ user_id: 78, user_disc_id: "fixture-mirri", user_nickname: "Mirri" });
 
 const spies: Array<{ mockRestore: () => void }> = [];
 afterEach(() => {
@@ -25,10 +27,23 @@ afterEach(() => {
 async function planWithAnchorAuthor(options: {
   borrowsTriggerMessage?: boolean;
   rejectedByRoleWhitelist: boolean;
-}): Promise<{ credentialUsers: Array<number | null | undefined>; locale: string | undefined }> {
+  reachOutTargetId?: string;
+  completePlanning?: boolean;
+}): Promise<{
+  credentialUsers: Array<number | null | undefined>;
+  locale: string | undefined;
+  triggererNames: string[];
+}> {
   const persona = createPersona({ persona_id: 5, server_id: 7 });
   const channel = { id: "fixture-channel", isThread: () => false };
-  const guild = { id: "fixture-guild", preferredLocale: "en-US" };
+  const guild = {
+    id: "fixture-guild",
+    preferredLocale: "en-US",
+    members: {
+      fetch: async (id: string) =>
+        id === REACH_OUT_TARGET.user_disc_id ? { displayName: "Mirri (server)", user: { username: "mirri" } } : null,
+    },
+  };
   const client = { user: { id: "fixture-bot" } };
   const message = {
     id: "anchor",
@@ -48,6 +63,7 @@ async function planWithAnchorAuthor(options: {
     selectedPersonaId: 5,
     shouldSurfaceUserErrors: false,
     borrowsTriggerMessage: options.borrowsTriggerMessage,
+    naturalNudge: options.reachOutTargetId ? { toolNames: [], targetUserDiscId: options.reachOutTargetId } : undefined,
   });
   const lockedTurn = {
     channelId: channel.id,
@@ -69,7 +85,15 @@ async function planWithAnchorAuthor(options: {
   const credentialUsers: Array<number | null | undefined> = [];
   spies.push(
     spyOn(tomoriStateCache, "getCachedAllPersonas").mockResolvedValue([persona]),
-    spyOn(userCache, "getCachedUserRow").mockResolvedValue(BYSTANDER),
+    spyOn(userCache, "getCachedUserRow").mockImplementation(async (id) =>
+      id === REACH_OUT_TARGET.user_disc_id ? REACH_OUT_TARGET : BYSTANDER,
+    ),
+    spyOn(userCache, "getCachedBlacklistStatus").mockResolvedValue(false),
+    spyOn(userCache, "getCachedPrivacyLevel").mockResolvedValue(0),
+    spyOn(userNamingRepository, "loadPreferences").mockResolvedValue(new Map()),
+    spyOn(admissionGuards, "enforceGlobalRateLimit").mockResolvedValue(true),
+    spyOn(admissionGuards, "enforceServerTriggerCooldownForAdmission").mockResolvedValue(true),
+    spyOn(admissionGuards, "checkTextQuotaForAdmission").mockResolvedValue({ allowed: true, state: null } as never),
     spyOn(errorVisibility, "shouldSurfaceChatUserErrors").mockReturnValue(false),
     spyOn(admissionGuards, "validateDirectChatTrigger").mockResolvedValue({
       shouldContinue: true,
@@ -86,11 +110,16 @@ async function planWithAnchorAuthor(options: {
     } as never),
     spyOn(credentialResolver, "resolveCapabilityCredentials").mockImplementation(async (_serverId, _kind, scope) => {
       credentialUsers.push(scope?.userId);
+      if (options.completePlanning) return { source: "server", provider: "google" } as never;
       throw new DatabaseUnavailableError("stop planning here");
     }),
   );
-  await planChatTurns(lockedTurn);
-  return { credentialUsers, locale: lockedTurn.admission.locale };
+  const plan = await planChatTurns(lockedTurn);
+  return {
+    credentialUsers,
+    locale: lockedTurn.admission.locale,
+    triggererNames: plan.turns.map((turn) => turn.triggererName),
+  };
 }
 
 describe("borrowed-trigger turn planning (random triggers and Natural Nudges)", () => {
@@ -108,6 +137,24 @@ describe("borrowed-trigger turn planning (random triggers and Natural Nudges)", 
     expect((await planWithAnchorAuthor({ borrowsTriggerMessage: true, rejectedByRoleWhitelist: false })).locale).toBe(
       "en-US",
     );
+  });
+
+  it("names a Reach-out's target as the triggerer while the server key still pays", async () => {
+    const reachOut = await planWithAnchorAuthor({
+      borrowsTriggerMessage: true,
+      rejectedByRoleWhitelist: false,
+      reachOutTargetId: REACH_OUT_TARGET.user_disc_id,
+      completePlanning: true,
+    });
+    expect(reachOut.triggererNames).toEqual(["Mirri"]);
+    expect(reachOut.credentialUsers).toEqual([null]);
+
+    const otherNudge = await planWithAnchorAuthor({
+      borrowsTriggerMessage: true,
+      rejectedByRoleWhitelist: false,
+      completePlanning: true,
+    });
+    expect(otherNudge.triggererNames).toEqual(["Juno"]);
   });
 
   it("ignores a role whitelist that the anchor message's author fails", async () => {

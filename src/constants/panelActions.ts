@@ -107,6 +107,7 @@ export const PANEL_ACTIONS = [
   "personal-config.personal.appearance.set",
   "personal-config.personal.privacy.set",
   "personal-config.personal.crossserver-stm.set",
+  "personal-config.personal.reach-out.set",
   "personal-config.personal.model.set",
   "personal-config.personal.model-routing.set",
   "personal-config.personal.parameters.set",

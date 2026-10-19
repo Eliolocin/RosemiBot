@@ -30,7 +30,6 @@ import {
   NUDGE_PREREQUISITE_IDS,
   NUDGE_TOOL_NAMES,
   prerequisiteTool,
-  HANGING_CONVERSATION_PREREQUISITE,
 } from "@/modules/natural-nudges/runtime/episodes";
 import {
   computeInterestFingerprint,
@@ -62,6 +61,7 @@ export const NUDGE_ADD_VALUE = "add";
 export const NUDGE_CLEAR_MODEL_VALUE = "__none__";
 export const NUDGE_INTEREST_LABEL_FIELD = "nudge_interest_label";
 export const NUDGE_INTEREST_DESCRIPTION_FIELD = "nudge_interest_description";
+export const NUDGE_REACH_OUT_WEIGHT_FIELD = "nudge_reach_out_weight";
 export const NUDGE_REVIVE_WEIGHT_FIELD = "nudge_revive_weight";
 export const NUDGE_NEW_TOPIC_WEIGHT_FIELD = "nudge_new_topic_weight";
 export const NUDGE_DAILY_CAP_FIELD = "nudge_daily_cap";
@@ -103,6 +103,13 @@ const CATEGORY_LOCALE_KEYS: Record<NaturalNudgeCategory, string> = {
   alter_talk: "commands.config.natural_nudges.category_alter_talk",
 };
 
+const PREREQUISITE_LOCALE_KEYS = {
+  hanging_conversation: "commands.config.natural_nudges.prerequisite_hanging_conversation",
+  relationship_user: "commands.config.natural_nudges.prerequisite_relationship_user",
+  recent_memory: "commands.config.natural_nudges.prerequisite_recent_memory",
+  presence_activity: "commands.config.natural_nudges.prerequisite_presence_activity",
+} as const;
+
 const TOOL_LOCALE_KEYS: Record<(typeof NUDGE_TOOL_NAMES)[number], string> = {
   web_search: "commands.config.natural_nudges.tool_web_search",
   fetch_url: "commands.config.natural_nudges.tool_fetch_url",
@@ -141,8 +148,8 @@ function button(
 }
 
 function prerequisiteLabel(locale: string, id: string): string {
-  if (id === HANGING_CONVERSATION_PREREQUISITE)
-    return localizer(locale, "commands.config.natural_nudges.prerequisite_hanging_conversation");
+  if (id in PREREQUISITE_LOCALE_KEYS)
+    return localizer(locale, PREREQUISITE_LOCALE_KEYS[id as keyof typeof PREREQUISITE_LOCALE_KEYS]);
   const tool = prerequisiteTool(id);
   return tool
     ? localizer(locale, "commands.config.natural_nudges.prerequisite_tool", {
@@ -513,6 +520,7 @@ export function buildNaturalNudgesSettingsBody(
       `### ${t("commands.config.natural_nudges.limits_title")}\n${t("commands.config.natural_nudges.limits_description")}\n${withLinePrefix(
         "> ",
         [
+          t("commands.config.natural_nudges.limits_reach_out", { weight: config.reach_out_weight }),
           t("commands.config.natural_nudges.limits_revive", { weight: config.revive_weight }),
           t("commands.config.natural_nudges.limits_new_topic", { weight: config.new_topic_weight }),
           t("commands.config.natural_nudges.limits_daily_cap", { cap: config.daily_episode_cap }),
@@ -585,6 +593,14 @@ export function buildLimitsModal(locale: string, nonce: string, view: NaturalNud
     custom_id: buildConfigRouteId({ action: "nudge-limits-submit", locale, nonce }),
     title: safeSelectOptionText(localizer(locale, "commands.config.natural_nudges.limits_title"), MODAL_TEXT_MAX),
     components: [
+      numberInput(
+        locale,
+        nonce,
+        NUDGE_REACH_OUT_WEIGHT_FIELD,
+        "commands.config.natural_nudges.category_reach_out",
+        "commands.config.natural_nudges.weight_input_description",
+        view.config.reach_out_weight,
+      ),
       numberInput(
         locale,
         nonce,

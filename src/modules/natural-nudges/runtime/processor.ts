@@ -7,8 +7,10 @@ import type {
   NaturalNudgeFireRow,
   PersonaNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
+import { drawReachOutTarget } from "@/modules/natural-nudges/runtime/targets";
 import {
   ACTIVE_NATURAL_NUDGE_CATEGORIES,
+  episodeNeedsTarget,
   isEpisodeEligible,
   listRunnableEpisodes,
   type EpisodeDefinition,
@@ -399,15 +401,33 @@ export class NaturalNudgeProcessor {
     const hanging = personaChannels.filter((channel) =>
       isHangingConversation(histories.get(channel.channel.id) ?? [], personas, this.client.user?.id, now),
     );
+    const runnable = listRunnableEpisodes(
+      server.config.disabled_builtin_episodes,
+      await naturalNudgeRepository.listCustomEpisodes(server.server_id),
+    );
+    const guild = this.client.guilds.cache.get(server.server_disc_id);
+    if (!guild) return "guild_unavailable";
+    // The draw reads memories and fetches members, so it waits until some runnable episode could ping.
+    const target = runnable.some(
+      (episode) => episodeNeedsTarget(episode) && categoryWeight(server.config, episode.category) > 0,
+    )
+      ? await drawReachOutTarget({
+          client: this.client,
+          guild,
+          serverId: server.server_id,
+          persona,
+          channels: personaChannels,
+          recentFires,
+          now,
+        })
+      : null;
     const facts: PrerequisiteFacts = {
       hasHangingConversation: hanging.length > 0,
       availableTools: await loadAvailableToolNames(persona),
+      target: target && { hasRecentMemories: target.recentMemories.length > 0, isActive: target.activity !== null },
     };
 
-    const episodes = listRunnableEpisodes(
-      server.config.disabled_builtin_episodes,
-      await naturalNudgeRepository.listCustomEpisodes(server.server_id),
-    ).filter((episode) => isEpisodeEligible(episode, facts));
+    const episodes = runnable.filter((episode) => isEpisodeEligible(episode, facts));
     const categoryFiredAt = lastFireBy(recentFires, (fire) => fire.category);
     const category = drawRaffle(
       ACTIVE_NATURAL_NUDGE_CATEGORIES.map((candidate) => ({
@@ -430,8 +450,13 @@ export class NaturalNudgeProcessor {
     );
     if (!episode) return "no_eligible_episode";
 
+    const episodeTarget = episodeNeedsTarget(episode) ? target : null;
     const plannerChannels = await this.choosePlannerChannels(
-      category === "revive" ? hanging : personaChannels,
+      episodeTarget
+        ? personaChannels.filter((channel) => episodeTarget.channelIds.includes(channel.channel.id))
+        : category === "revive"
+          ? hanging
+          : personaChannels,
       persona,
       histories,
       server.server_disc_id,
@@ -452,6 +477,7 @@ export class NaturalNudgeProcessor {
       plannerLlmId,
       availableTools: facts.availableTools,
       plannerChannels,
+      target: episodeTarget,
     };
   }
 

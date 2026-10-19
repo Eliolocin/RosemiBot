@@ -70,6 +70,7 @@ export async function sendWebhookReplyWithContext(
   identity: ResolvedWebhookIdentity,
   options?: {
     threadId?: string;
+    mentionableUserIds?: readonly string[];
   },
 ): Promise<WebhookIdentityDelivery<Message>> {
   const noticePayload = await buildWebhookReplyNoticePayload(targetMessage, locale, options);
@@ -78,10 +79,9 @@ export async function sendWebhookReplyWithContext(
     try {
       return await sendSelectedWebhookMessage(selected, {
         content,
-        allowedMentions: {
-          parse: ["users", "roles"],
-          repliedUser: false,
-        },
+        allowedMentions: options?.mentionableUserIds
+          ? { users: [...options.mentionableUserIds], parse: [], repliedUser: false }
+          : { parse: ["users", "roles"], repliedUser: false },
         ...(options?.threadId ? { threadId: options.threadId } : {}),
       });
     } catch (error) {

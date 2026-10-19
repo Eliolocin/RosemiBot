@@ -45,6 +45,7 @@ export type StreamSendPayload = {
   /** The persona's base appearance under an identity override, which is not a copied identity. */
   isNeutralAppearance?: boolean;
   allowedMentions?: {
+    users?: string[];
     parse?: Array<"users" | "roles" | "everyone">;
     repliedUser?: boolean;
   };
@@ -257,13 +258,18 @@ export class StreamUiUpdater {
     const strictUserImpersonation = isUserImpersonationStreamContext(context);
     let replyNoticeMessage: Message | null = null;
     const threadId = resolveWebhookThreadId(context.channel);
-    const webhookAllowedMentions = payload.allowedMentions ?? {
-      parse: ["users", "roles"] as Array<"users" | "roles">,
-      repliedUser: false,
-    };
-    const regularAllowedMentions = payload.allowedMentions ?? {
-      repliedUser: false,
-    };
+    const restrictedMentions = context.mentionableUserIds
+      ? { users: [...context.mentionableUserIds], parse: [], repliedUser: false }
+      : null;
+    const webhookAllowedMentions = payload.allowedMentions ??
+      restrictedMentions ?? {
+        parse: ["users", "roles"] as Array<"users" | "roles">,
+        repliedUser: false,
+      };
+    const regularAllowedMentions = payload.allowedMentions ??
+      restrictedMentions ?? {
+        repliedUser: false,
+      };
 
     if (context.abortSignal?.aborted || this.deps.hasStopRequest(context.channel.id)) {
       log.info("Stream Send: Stop request detected before Discord API call, skipping message send");

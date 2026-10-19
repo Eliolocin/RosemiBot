@@ -272,6 +272,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("User personalization config cutover", () =
       gender_identity: "nonbinary",
       pronouns: "they/them",
       addressing_style: "neutral",
+      natural_nudge_opt_out: true,
     });
     expect(updated?.physical_appearance_tags).toEqual(["blue hair", "round glasses"]);
     const savedPreference = await userNamingRepository.savePreference(source.user_id, refs.personaLineageId, {
@@ -289,6 +290,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("User personalization config cutover", () =
     if (!beforeExport.data || beforeExport.data.type !== "personal_settings") {
       throw new Error("Expected personal_settings export data");
     }
+    expect(beforeExport.data.data.natural_nudge_opt_out).toBe(true);
 
     const importResult = await importRepository.importPersonalSettings(targetUserDiscId, beforeExport.data.data);
     expect(importResult.success).toBe(true);

@@ -3190,6 +3190,7 @@ CREATE TABLE IF NOT EXISTS user_personalization_configs (
   personal_dtm                       TEXT    NOT NULL DEFAULT 'follow',
   personal_deliberate_tool_mode      TEXT    NOT NULL DEFAULT 'follow',
   personal_server_fallback_enabled   BOOLEAN NOT NULL DEFAULT true,
+  natural_nudge_opt_out              BOOLEAN NOT NULL DEFAULT false,
   timezone_offset                    SMALLINT CHECK (timezone_offset IS NULL OR timezone_offset BETWEEN -12 AND 14),
   prefix_override                    TEXT,
   suffix_override                    TEXT,

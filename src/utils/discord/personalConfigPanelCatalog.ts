@@ -252,6 +252,7 @@ export type PersonalConfigPanelRoute =
   | { action: "privacy-level-submit"; locale: string; nonce: string }
   | { action: "crossserver-toggle"; locale: string }
   | { action: "crossserver-set"; locale: string; enabled: boolean }
+  | { action: "reach-out-set"; locale: string; enabled: boolean }
   // Models - Switch Models
   | { action: "quick-toggle-open"; locale: string }
   | { action: "quick-toggle-submit"; locale: string; nonce: string }
@@ -663,6 +664,10 @@ export const PERSONAL_CONFIG_ROUTE_CODECS: PersonalConfigRouteCodecs = {
   },
   "crossserver-set": {
     wireToken: "crossserver-set",
+    fields: [enabledField],
+  },
+  "reach-out-set": {
+    wireToken: "reach-out-set",
     fields: [enabledField],
   },
   "quick-toggle-open": {

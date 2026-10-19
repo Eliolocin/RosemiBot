@@ -1222,6 +1222,38 @@ ${localizer(locale, "commands.personal.config.stm_count_label", { count: stmCoun
             : localizer(locale, "commands.personal.config.crossserver_stm_off"),
         ),
       },
+      {
+        type: ComponentType.TextDisplay,
+        content: `**${localizer(locale, "commands.personal.config.reach_out_section_title")}**`,
+      },
+      buildStateControlRow(
+        [
+          {
+            value: false,
+            label: localizer(locale, "commands.personal.config.mode_off"),
+            customId: buildPersonalConfigRouteId({ action: "reach-out-set", locale, enabled: false }),
+          },
+          {
+            value: true,
+            label: localizer(locale, "commands.personal.config.mode_on"),
+            customId: buildPersonalConfigRouteId({ action: "reach-out-set", locale, enabled: true }),
+          },
+        ],
+        !user.natural_nudge_opt_out,
+        writesDisabled,
+      ),
+      {
+        type: ComponentType.TextDisplay,
+        content: withLinePrefix(
+          "> ",
+          localizer(
+            locale,
+            user.natural_nudge_opt_out
+              ? "commands.personal.config.reach_out_off"
+              : "commands.personal.config.reach_out_on",
+          ),
+        ),
+      },
     );
   } else if (category === "models") {
     if (page === "switch") {
