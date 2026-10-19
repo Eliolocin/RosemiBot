@@ -457,12 +457,18 @@ Setting the `SEARXNG_SECRET` repository secret is the entire switch. The deploy 
 `run-command-deploy.sh`, which on a non-empty value adds `searxng` to the services named on
 `docker compose up` (naming a profile-gated service activates its profile) and sets
 `SEARXNG_BASE_URL=http://searxng:8080/` for the bot. Leaving the secret unset keeps the sidecar off
-and the bot on its `Brave → DDG → Felo` chain.
+and the bot on its `Brave â†’ DDG â†’ Felo` chain.
 
 One value drives both because the alternatives are failure modes: SearXNG will not start without a
 secret, so a profile enabled separately would crash-loop, and a secret set without the profile would
-do nothing. The deploy rejects a secret shorter than 32 characters. `SEARXNG_UWSGI_WORKERS` defaults
-to `1` rather than uWSGI's one-per-CPU, since this VM is memory-constrained rather than CPU-bound.
+do nothing. The deploy rejects a secret shorter than 32 characters. The image runs one Granian
+WSGI worker with two request threads (`SEARXNG_BLOCKING_THREADS`), so a health probe can run
+alongside one search. Each search queries its engines in parallel within the request.
+
+The worker recycles at 300 MiB RSS (`SEARXNG_WORKER_MAX_RSS_MB`) inside a 384 MiB container
+(`SEARXNG_MEMORY_LIMIT_MB`), leaving room for the master process and interpreter.
+`servers/searxng/settings.yml` caps upstream search time at 3.5 seconds, including engine-specific
+overrides, to leave queueing and response time within the bot's five-second request deadline.
 
 The secret does **not** belong in `TOMORI_SECRETS_JSON`. That bundle is the application's runtime
 secrets, forwarded field by field to `process.env` by `src/init/secrets.ts`, which does not forward
@@ -526,7 +532,7 @@ Two related traps:
   than trusting RSS. See [Azure Production Data Inspection](/wiki/azure-production-inspection/)
   for the Run Command pattern.
 
-`SEARXNG_MEMORY_LIMIT_MB` (default 256) is sized so the optional sidecar and the bot together stay
+`SEARXNG_MEMORY_LIMIT_MB` (default 384) is sized so the optional sidecar and the bot together stay
 inside physical RAM. Enable the sidecar only after confirming the host has real headroom; the
 `web_search` chain degrades to `Brave -> DuckDuckGo -> IAsk` without it.
 
