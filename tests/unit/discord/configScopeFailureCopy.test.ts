@@ -116,6 +116,15 @@ describe("config scope failure copy", () => {
     expect(key).toBe("commands.config.panel.not_setup");
   });
 
+  it("names the DM setup gap when the workspace read found nothing in a DM context", () => {
+    const key = missingScopeMessageKey(
+      { guildId: null, user: { id: USER_ID } },
+      { getLastDbError: NO_RECORDED_FAILURE },
+    );
+
+    expect(key).toBe("commands.config.panel.not_setup_dm");
+  });
+
   it("reports a transient read instead of a setup gap when a failure was recorded", () => {
     const key = missingScopeMessageKey(
       { guildId: GUILD_ID, user: { id: USER_ID } },

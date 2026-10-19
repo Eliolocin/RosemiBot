@@ -7,7 +7,7 @@ export default {
     },
     drafting: {
       import_unavailable:
-        "此工作区中不可使用回复审核选择。请在源导出的配置中清除该选择，或在导入前注册符合条件的本地模型或检查器。",
+        "此处不可使用回复审核选择。请在源导出的配置中清除该选择，或在导入前注册符合条件的本地模型或检查器。",
       title: "回复起草",
       description: "在我发送回复或使用工具前审核我的草稿。",
       off: "关闭时：我不经过回复起草审核，直接发送回复和使用工具。",
@@ -559,7 +559,8 @@ export default {
       page_pending: `这个页面还不可用。`,
       page_read_only: `修改这些需要管理服务器权限。`,
       unavailable: `无法加载配置。请点「重试」再试一次。`,
-      not_setup: `这个工作区还没有设置好。请先运行 /setup。`,
+      not_setup: `这个服务器还没有设置好。请先运行 /setup。`,
+      not_setup_dm: `这个私信还没有设置好。请先运行 /setup。`,
       no_personas: `这里还没有设置任何人格。`,
       retry: `重试`,
       cancel_button: `取消`,

@@ -7,7 +7,7 @@ export default {
     },
     drafting: {
       import_unavailable:
-        "Tùy chọn Duyệt bản nháp phản hồi không khả dụng trong không gian làm việc này. Hãy xóa tùy chọn đó trong tệp xuất nguồn hoặc đăng ký một model hoặc công cụ kiểm tra cục bộ đủ điều kiện trước khi nhập.",
+        "Tùy chọn Duyệt bản nháp phản hồi không khả dụng ở đây. Hãy xóa tùy chọn đó trong tệp xuất nguồn hoặc đăng ký một model hoặc công cụ kiểm tra cục bộ đủ điều kiện trước khi nhập.",
       title: "Duyệt bản nháp phản hồi",
       description: "Duyệt các bản nháp của mình trước khi mình gửi phản hồi hoặc dùng công cụ.",
       off: "Khi Tắt: Mình gửi phản hồi và dùng công cụ mà không qua Duyệt bản nháp phản hồi.",
@@ -565,7 +565,8 @@ export default {
       page_pending: `Trang này chưa khả dụng.`,
       page_read_only: `Cần quyền Quản lý máy chủ để thay đổi các mục này.`,
       unavailable: `Không thể tải cấu hình. Hãy thử lại.`,
-      not_setup: `Không gian làm việc này chưa được thiết lập. Hãy chạy /setup trước.`,
+      not_setup: `Máy chủ này chưa được thiết lập. Hãy chạy /setup trước.`,
+      not_setup_dm: `DM này chưa được thiết lập. Hãy chạy /setup trước.`,
       no_personas: `Chưa có persona nào được thiết lập ở đây.`,
       retry: `Thử lại`,
       cancel_button: `Hủy`,

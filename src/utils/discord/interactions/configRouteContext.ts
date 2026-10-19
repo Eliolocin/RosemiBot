@@ -385,7 +385,10 @@ export function terminalPayload(
   );
 }
 
-export type ConfigMissingScopeKey = "commands.config.panel.not_setup" | "commands.config.panel.unavailable";
+export type ConfigMissingScopeKey =
+  | "commands.config.panel.not_setup"
+  | "commands.config.panel.not_setup_dm"
+  | "commands.config.panel.unavailable";
 
 /** The command a panel that has fallen behind the workspace is re-run with. */
 const CONFIG_PANEL_COMMAND = "/config";
@@ -408,9 +411,10 @@ export function missingScopeMessageKey(
   dependencies: Pick<ConfigRouteDependencies, "getLastDbError"> = {},
 ): ConfigMissingScopeKey {
   const lookup = dependencies.getLastDbError ?? getLastDbError;
-  return lookup(interaction.guildId ?? interaction.user.id)
-    ? "commands.config.panel.unavailable"
-    : "commands.config.panel.not_setup";
+  if (lookup(interaction.guildId ?? interaction.user.id)) {
+    return "commands.config.panel.unavailable";
+  }
+  return interaction.guildId ? "commands.config.panel.not_setup" : "commands.config.panel.not_setup_dm";
 }
 
 /**

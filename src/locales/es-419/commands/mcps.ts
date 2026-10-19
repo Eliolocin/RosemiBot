@@ -3,7 +3,7 @@ export default {
     title: `Servidores MCP`,
     count: `MCP registrados \`({count}/{max})\``,
     empty_guild: `Este servidor aún no tiene MCP registrados.`,
-    empty_dm: `Este espacio de mensajes directos aún no tiene MCP registrados.`,
+    empty_dm: `Este mensaje directo aún no tiene MCP registrados.`,
     unavailable: `No se pudieron cargar los registros de MCP. Reintenta.`,
     stale_warning:
       "Los datos pueden estar desactualizados: la lectura falló. No podrás escribir hasta que una lectura nueva sea exitosa.",
@@ -59,7 +59,7 @@ export default {
     invalid_type: `Elige un tipo de servidor MCP compatible.`,
     family_in_use: `Otro MCP habilitado ya reemplaza esta familia. Deshabilítalo antes de seleccionar este servidor.`,
     invalid_url: `La URL del servidor MCP no pasó las verificaciones de seguridad de URL remota.`,
-    limit_reached: `Este espacio de trabajo alcanzó su límite configurado de servidores MCP.`,
+    limit_reached: `Se alcanzó el límite configurado de servidores MCP.`,
     connection_failed: `TomoriBot no pudo conectarse al servidor MCP.`,
     write_failed: `El registro cambió o la escritura en la base de datos falló. Actualiza el estado del panel e intenta de nuevo.`,
     added: `Servidor MCP agregado`,
