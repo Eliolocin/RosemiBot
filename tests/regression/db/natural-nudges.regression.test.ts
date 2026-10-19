@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { naturalNudgeRepository, NATURAL_NUDGE_FAILURE_STOP_THRESHOLD } from "@/modules/natural-nudges/db/repositories";
+import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
+import { NATURAL_NUDGE_FAILURE_STOP_THRESHOLD } from "@/modules/natural-nudges/runtime/tuning";
 import { loadPersonaAgendas } from "@/modules/natural-nudges/runtime/agendas";
 import { defaultServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
 import { resolveEffectiveChannelIds } from "@/modules/natural-nudges/runtime/channels";

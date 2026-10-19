@@ -2,6 +2,7 @@ import type { SQL } from "bun";
 import type { z } from "zod";
 import { sql } from "@/utils/db/client";
 import { log } from "@/utils/misc/logger";
+import { NATURAL_NUDGE_FAILURE_STOP_THRESHOLD } from "@/modules/natural-nudges/runtime/tuning";
 import {
   customEpisodeRowSchema,
   defaultServerNaturalNudgeConfig,
@@ -22,9 +23,6 @@ import {
   type ServerNaturalNudgeConfig,
   type ServerNaturalNudgeConfigPatch,
 } from "@/modules/natural-nudges/db/types";
-
-/** Consecutive generation or planner failures that stop a server's nudges until a turn succeeds. */
-export const NATURAL_NUDGE_FAILURE_STOP_THRESHOLD = 3;
 
 function parseRows<T>(schema: z.ZodType<T>, rows: unknown[], label: string): T[] {
   const parsed: T[] = [];

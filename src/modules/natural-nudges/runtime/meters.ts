@@ -1,60 +1,27 @@
 import { createHash } from "node:crypto";
 import type { EpisodeFrequencyLevel, NaturalNudgeFireRow } from "@/modules/natural-nudges/db/types";
-
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-
-/** Each day's messages count half as much every 3 days, so about two idle weeks leave no heat. */
-const HEAT_HALF_LIFE_DAYS = 3;
-const HEAT_WINDOW_DAYS = 30;
-
-/**
- * Automatic channel eligibility follows heat's horizon: 14 quiet days decay a server's heat to about
- * 4%, so a channel with no turn in that span could not be what keeps the server nudging.
- */
-const AUTOMATIC_CHANNEL_DAYS = 14;
-
-/** Episodes start only at heat 1 or more: about one message to Tomori a day. */
-const MIN_EPISODE_HEAT = 1;
-
-/** Heat divided by this gives episodes per day, per frequency level (§30). */
-const EPISODE_HEAT_DIVISORS: Record<EpisodeFrequencyLevel, number> = { 0: 30, 1: 15, 2: 10, 3: 6 };
-
-/** The waking day an episode budget is spread over, before jitter. */
-const AWAKE_HOURS_PER_DAY = 16;
-
-const EPISODE_JITTER_MIN = 0.5;
-const EPISODE_JITTER_MAX = 1.5;
-
-const LULL_MIN_HOURS = 1;
-const LULL_MAX_HOURS = 3;
-
-/** An episode waits this long for any human message in its channel before it counts as unanswered. */
-export const PENDING_WINDOW_MS = 12 * HOUR_MS;
-
-/** Unanswered inviting episodes in a row that stop episodes until the server talks to Tomori again. */
-export const UNANSWERED_STOP_STREAK = 3;
-/** Each unanswered episode in the current streak multiplies the next interval by this. */
-const UNANSWERED_INTERVAL_FACTOR = 3;
-
-/** Below this many turns in the waking-hours window the histogram is noise, so fixed night hours apply. */
-const WAKING_HOURS_MIN_TURNS = 50;
-export const WAKING_HOURS_WINDOW_DAYS = 30;
-/** An hour counts as awake when its smoothed activity reaches this share of the busiest hour. */
-const WAKING_HOUR_SHARE = 0.25;
-/** Fallback night in the server's local time: 01:00 up to 08:00. */
-const FALLBACK_SLEEP_START_HOUR = 1;
-const FALLBACK_SLEEP_END_HOUR = 8;
-const WAKE_DELAY_MAX_MINUTES = 90;
-
-/** Rested share starts here right after a fire and climbs in a straight line to 1. */
-const RESTED_FLOOR = 0.1;
-export const PERSONA_REST_MS = 24 * HOUR_MS;
-export const CATEGORY_REST_MS = 12 * HOUR_MS;
-export const EPISODE_REST_MS = 3 * DAY_MS;
-
-/** Raffle tickets per talkativeness level 0-4. */
-export const TALKATIVENESS_TICKETS = [0, 5, 10, 15, 20] as const;
+import {
+  HOUR_MS,
+  DAY_MS,
+  HEAT_HALF_LIFE_DAYS,
+  HEAT_WINDOW_DAYS,
+  AUTOMATIC_CHANNEL_DAYS,
+  MIN_EPISODE_HEAT,
+  EPISODE_HEAT_DIVISORS,
+  AWAKE_HOURS_PER_DAY,
+  EPISODE_JITTER_MIN,
+  EPISODE_JITTER_MAX,
+  LULL_MIN_HOURS,
+  LULL_MAX_HOURS,
+  UNANSWERED_STOP_STREAK,
+  UNANSWERED_INTERVAL_FACTOR,
+  WAKING_HOURS_MIN_TURNS,
+  WAKING_HOUR_SHARE,
+  FALLBACK_SLEEP_START_HOUR,
+  FALLBACK_SLEEP_END_HOUR,
+  WAKE_DELAY_MAX_MINUTES,
+  RESTED_FLOOR,
+} from "@/modules/natural-nudges/runtime/tuning";
 
 const INVITING_CATEGORIES = new Set(["reach_out", "revive", "new_topic"]);
 

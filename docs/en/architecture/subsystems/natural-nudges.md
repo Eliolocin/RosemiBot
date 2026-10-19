@@ -127,6 +127,8 @@ re-pointing a persona at a preset deletes the row so it reads the preset again.
 - `src/modules/natural-nudges/runtime/processor.ts`: Phase A.
 - `src/modules/natural-nudges/runtime/runner.ts`: Phases B and C, re-checks, fire recording.
 - `src/modules/natural-nudges/runtime/meters.ts`: heat, due time, waking hours, raffles.
+- `src/modules/natural-nudges/runtime/tuning.ts`: every pacing and selection constant (heat, lull,
+  waking hours, rest windows, stops, retention). Schema and Discord limits stay with their owners.
 - `src/modules/natural-nudges/db/repositories.ts`: every Natural Nudges query.
 - Related: [Database Schema](/architecture/subsystems/database-schema/),
   [Prompt Snapshot](/architecture/subsystems/prompt-snapshot/),

@@ -1,0 +1,72 @@
+import type { EpisodeFrequencyLevel } from "@/modules/natural-nudges/db/types";
+
+export const HOUR_MS = 60 * 60 * 1000;
+export const DAY_MS = 24 * HOUR_MS;
+
+/** Each day's messages count half as much every 3 days, so about two idle weeks leave no heat. */
+export const HEAT_HALF_LIFE_DAYS = 3;
+export const HEAT_WINDOW_DAYS = 30;
+
+/** Episodes start only at heat 1 or more: about one message to Tomori a day. */
+export const MIN_EPISODE_HEAT = 1;
+
+/** Heat divided by this gives episodes per day, per frequency level (§30). */
+export const EPISODE_HEAT_DIVISORS: Record<EpisodeFrequencyLevel, number> = { 0: 30, 1: 15, 2: 10, 3: 6 };
+
+/**
+ * Automatic channel eligibility follows heat's horizon: 14 quiet days decay a server's heat to about
+ * 4%, so a channel with no turn in that span could not be what keeps the server nudging.
+ */
+export const AUTOMATIC_CHANNEL_DAYS = 14;
+
+/** The waking day an episode budget is spread over, before jitter. */
+export const AWAKE_HOURS_PER_DAY = 16;
+
+export const EPISODE_JITTER_MIN = 0.5;
+export const EPISODE_JITTER_MAX = 1.5;
+
+export const LULL_MIN_HOURS = 1;
+export const LULL_MAX_HOURS = 3;
+
+/** Below this many turns in the waking-hours window the histogram is noise, so fixed night hours apply. */
+export const WAKING_HOURS_MIN_TURNS = 50;
+export const WAKING_HOURS_WINDOW_DAYS = 30;
+/** An hour counts as awake when its smoothed activity reaches this share of the busiest hour. */
+export const WAKING_HOUR_SHARE = 0.25;
+/** Fallback night in the server's local time: 01:00 up to 08:00. */
+export const FALLBACK_SLEEP_START_HOUR = 1;
+export const FALLBACK_SLEEP_END_HOUR = 8;
+export const WAKE_DELAY_MAX_MINUTES = 90;
+
+/** An episode waits this long for any human message in its channel before it counts as unanswered. */
+export const PENDING_WINDOW_MS = 12 * HOUR_MS;
+
+/** Unanswered inviting episodes in a row that stop episodes until the server talks to Tomori again. */
+export const UNANSWERED_STOP_STREAK = 3;
+/** Each unanswered episode in the current streak multiplies the next interval by this. */
+export const UNANSWERED_INTERVAL_FACTOR = 3;
+
+/** Consecutive generation or planner failures that stop a server's nudges until a turn succeeds. */
+export const NATURAL_NUDGE_FAILURE_STOP_THRESHOLD = 3;
+
+/** Rested share starts here right after a fire and climbs in a straight line to 1. */
+export const RESTED_FLOOR = 0.1;
+export const PERSONA_REST_MS = 24 * HOUR_MS;
+export const CATEGORY_REST_MS = 12 * HOUR_MS;
+export const EPISODE_REST_MS = 3 * DAY_MS;
+
+/** Raffle tickets per talkativeness level 0-4. */
+export const TALKATIVENESS_TICKETS = [0, 5, 10, 15, 20] as const;
+
+/** Messages per channel read for hanging detection and handed to the planner. */
+export const PLANNER_HISTORY_MESSAGES = 15;
+/** Lull channels read for hanging detection; the planner then sees at most three of them. */
+export const MAX_SCANNED_CHANNELS = 6;
+export const MAX_PLANNER_CHANNELS = 3;
+/** A conversation older than this is history, not something to pick back up. */
+export const HANGING_MAX_AGE_MS = 48 * HOUR_MS;
+/** Fewer human messages than this is not a conversation that could be left hanging. */
+export const HANGING_MIN_HUMAN_MESSAGES = 2;
+
+export const FIRE_RETENTION_MS = 30 * DAY_MS;
+export const AGENDA_RETENTION_MS = 90 * DAY_MS;

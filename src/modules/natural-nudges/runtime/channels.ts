@@ -8,13 +8,8 @@ import { log } from "@/utils/misc/logger";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import type { ServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
 import { automaticChannelWindowStart } from "@/modules/natural-nudges/runtime/meters";
+import { HANGING_MAX_AGE_MS, HANGING_MIN_HUMAN_MESSAGES } from "@/modules/natural-nudges/runtime/tuning";
 
-/** Messages per channel read for hanging detection and handed to the planner. */
-export const PLANNER_HISTORY_MESSAGES = 15;
-/** A conversation older than this is history, not something to pick back up. */
-const HANGING_MAX_AGE_MS = 48 * 60 * 60 * 1000;
-/** Fewer human messages than this is not a conversation that could be left hanging. */
-const HANGING_MIN_HUMAN_MESSAGES = 2;
 const TRANSCRIPT_MESSAGE_MAX_CHARS = 300;
 
 export interface NudgeChannel {

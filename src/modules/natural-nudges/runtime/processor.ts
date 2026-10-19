@@ -19,32 +19,40 @@ import {
   fetchRecentMessages,
   hasHumanReplyAfter,
   isHangingConversation,
-  PLANNER_HISTORY_MESSAGES,
   resolveAllowedChannels,
   resolveEffectiveChannelIds,
   type NudgeChannel,
 } from "@/modules/natural-nudges/runtime/channels";
 import {
-  CATEGORY_REST_MS,
   computeEpisodeDueAt,
   computeHeat,
   countUnansweredStreak,
   drawRaffle,
-  EPISODE_REST_MS,
   episodesPerDay,
   heatWindowStart,
   isWithinWakingHours,
-  PENDING_WINDOW_MS,
-  PERSONA_REST_MS,
   resolveWakingHours,
   restedShare,
   rollEpisodeJitter,
   rollLullHours,
   serverDayStart,
+} from "@/modules/natural-nudges/runtime/meters";
+import {
+  AGENDA_RETENTION_MS,
+  CATEGORY_REST_MS,
+  DAY_MS,
+  EPISODE_REST_MS,
+  FIRE_RETENTION_MS,
+  HOUR_MS,
+  MAX_PLANNER_CHANNELS,
+  MAX_SCANNED_CHANNELS,
+  PENDING_WINDOW_MS,
+  PERSONA_REST_MS,
+  PLANNER_HISTORY_MESSAGES,
   TALKATIVENESS_TICKETS,
   UNANSWERED_STOP_STREAK,
   WAKING_HOURS_WINDOW_DAYS,
-} from "@/modules/natural-nudges/runtime/meters";
+} from "@/modules/natural-nudges/runtime/tuning";
 import { resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { runEpisodeAttempt, type EpisodeAttempt } from "@/modules/natural-nudges/runtime/runner";
 import { recordEpisodeSample } from "@/modules/natural-nudges/runtime/telemetry";
@@ -57,21 +65,13 @@ import { runWithErrorContext } from "@/utils/misc/errorContextStore";
 import { normalizeProviderName } from "@/utils/provider/providerInfoRegistry";
 import type { WhitelistCheckResult } from "@/types/misc/channelWhitelist";
 
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-
 /** Heat and waking hours move over days, so re-reading them every minute would only cost queries. */
 const METER_CACHE_TTL_MS = 15 * 60 * 1000;
 /** A pending verdict needs a Discord read, so it is checked at most this often per server. */
 const VERDICT_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const PRUNE_INTERVAL_MS = HOUR_MS;
-const FIRE_RETENTION_MS = 30 * DAY_MS;
-const AGENDA_RETENTION_MS = 90 * DAY_MS;
 /** Episode rows kept in view beyond the rest window: enough for the unanswered streak and the pending row. */
 const LATEST_EPISODE_ROWS = UNANSWERED_STOP_STREAK + 2;
-/** Lull channels read for hanging detection; the planner then sees at most three of them. */
-const MAX_SCANNED_CHANNELS = 6;
-const MAX_PLANNER_CHANNELS = 3;
 
 interface ServerMeters {
   expiresAt: number;
