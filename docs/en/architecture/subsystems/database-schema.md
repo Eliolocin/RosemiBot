@@ -191,6 +191,29 @@ the schema.
 - **`api_key_rotation` and `api_key_rotation_runtime_state`**: provider key rotation pool and error cooldown tracking per server. Excluded from export.
 - **`persona_autoch_runtime_state`**: high-frequency autochat counter per persona. Excluded from export.
 
+## Natural Nudges
+<!-- anchor: natural-nudges -->
+
+Natural Nudges stores events and derives its meters on read
+(see [Natural Nudges](/architecture/subsystems/natural-nudges/)):
+
+- **`server_natural_nudge_configs`**: per-server settings, read fresh by the runtime rather than
+  through `tomoriState`. A missing row means the column defaults. Reset restores it; the workspace
+  export carries it without `channel_disc_ids`, and import checks `llm_id` against the target
+  workspace's structured-output models.
+- **`server_natural_nudge_episodes`**: custom episodes, at most 25 per server. Prerequisite IDs are
+  checked against the code registry on write and import, not by a CHECK. Reset deletes them.
+- **`persona_natural_nudge_configs`**: talkativeness and interests per persona. Pointer personas
+  without a row read `persona_presets.natural_nudge_interests` and `natural_nudge_talkativeness`.
+- **`server_natural_nudge_runtime_state`**: episode jitter and the failure stop. Excluded from export.
+- **`natural_nudge_fires`**: the fire log every meter reads. Pruned after 30 days.
+- **`natural_nudge_agendas`**: hidden agendas keyed by `(message_disc_id, persona_id)`. Pruned after
+  90 days; `target_user_id` cascades so erasing a user removes agendas built from their data.
+
+Deleting the owning model clears `server_natural_nudge_configs.llm_id` through the same paths
+that clear `response_reviewer_llm_id`: deprecated catalog models, provider removal, and
+registration removal.
+
 ## Response Drafting workspace settings
 
 The capability toggle defaults Off. Nullable fields in `server_chat_configs` store the reviewer,
@@ -228,9 +251,9 @@ Sensitive provider credentials are encrypted using PostgreSQL `pgcrypto` (`pgp_s
 
 The reset subsystem in `src/utils/db/repositories/ResetRepository.ts` categorizes tables into distinct reset scopes:
 
-- **Server singletons restored to DDL defaults (18 tables)**: `server_chat_configs`, `server_model_configs`, `server_member_permissions_configs`, `server_capabilities_configs`, `server_notice_embeds_configs`, `server_nsfw_configs`, `server_speech_configs`, `server_auto_trigger_configs`, `server_channel_scope_configs`, `server_trigger_behavior_configs`, `server_novelai_imagegen_configs`, `server_byok_configs`, `server_memory_configs`, `server_stm_configs`, `server_welcome_configs`, `image_quota_configs`, `text_quota_configs`, `video_quota_configs`.
+- **Server singletons restored to DDL defaults (19 tables)**: `server_chat_configs`, `server_model_configs`, `server_member_permissions_configs`, `server_capabilities_configs`, `server_notice_embeds_configs`, `server_nsfw_configs`, `server_speech_configs`, `server_auto_trigger_configs`, `server_channel_scope_configs`, `server_trigger_behavior_configs`, `server_novelai_imagegen_configs`, `server_byok_configs`, `server_memory_configs`, `server_stm_configs`, `server_welcome_configs`, `image_quota_configs`, `text_quota_configs`, `video_quota_configs`, `server_natural_nudge_configs`.
 - **Preserved server configuration**: active model foreign keys, credentials, custom endpoint parameters, and the cached Other-model identity/capabilities in `server_model_configs`, plus active NovelAI diffusion model identity (`nai_diffusion_model_id`). `SERVER_SINGLETON_RESET_TABLES` owns the exact preserved columns.
-- **Cleared server collections (11 tables)**: `server_auto_trigger_persona_overrides`, `stm_categories`, `random_triggers`, `channel_llm_overrides`, `channel_prompt_overrides`, `channel_context_notes`, `personalization_blacklist`, `persona_user_blocks`, `channel_whitelist`, `role_whitelist`, `channel_persona_whitelist`.
+- **Cleared server collections (12 tables)**: `server_auto_trigger_persona_overrides`, `stm_categories`, `random_triggers`, `channel_llm_overrides`, `channel_prompt_overrides`, `channel_context_notes`, `personalization_blacklist`, `persona_user_blocks`, `channel_whitelist`, `role_whitelist`, `channel_persona_whitelist`, `server_natural_nudge_episodes`.
 - **Preserved server domains**: personas and persona settings, server memories, short-term memories, expressions (emojis, stickers, and custom expressions), recorded quota consumption, saved provider configurations, and external integrations (Matrix, MCP, and message-proxy instances).
 - **Personal reset**: restores `users.language_pref` ('en-US') and `users.privacy_level` (0), restores all configuration columns in `user_personalization_configs` to schema defaults, deletes `user_persona_naming_preferences`, and removes all `personal_spotlights` (cascading to `personal_spotlight_personas`). Preserves user account identity, message-proxy selection and host links, personal memories, saved provider credentials, custom endpoints, and scheduled reminders.
 

@@ -37,10 +37,13 @@ type PersonaPage =
   | "advanced"
   | "overrides"
   | "voice"
-  | "naming";
+  | "naming"
+  | "nudges";
 type BehaviorPage = "general" | "trigger" | "experimental" | "notices" | "memory";
 type PluginsPage =
   | "response-drafting"
+  | "natural-nudges"
+  | "nudge-episodes"
   | "available-tools"
   | "context-additions"
   | "mcp-servers"
@@ -57,12 +60,25 @@ export type ConfigPage = PersonaPage | BehaviorPage | PluginsPage | ChannelsPage
  * custom ID, which is why the category field must stay ahead of the page field in every codec.
  */
 export const CONFIG_PAGES_BY_CATEGORY: Record<ConfigCategory, readonly ConfigPage[]> = {
-  persona: ["general", "triggers", "memories", "naming", "sprites", "appearance", "voice", "overrides", "advanced"],
+  persona: [
+    "general",
+    "triggers",
+    "memories",
+    "naming",
+    "sprites",
+    "appearance",
+    "voice",
+    "nudges",
+    "overrides",
+    "advanced",
+  ],
   behavior: ["general", "trigger", "notices", "experimental", "memory"],
   plugins: [
     "available-tools",
     "context-additions",
     "response-drafting",
+    "natural-nudges",
+    "nudge-episodes",
     "mcp-servers",
     "sillytavern-presets",
     "nsfw-jailbreaks",
@@ -407,6 +423,37 @@ export function computeLogitBiasFingerprint(serverId: number, entryIds: readonly
 }
 
 export type ConfigPanelRoute =
+  | { action: "nudge-talk-select"; locale: string; personaId: number }
+  | { action: "nudge-interest-select"; locale: string; personaId: number }
+  | { action: "nudge-interest-add-submit"; locale: string; personaId: number; nonce: string }
+  | { action: "nudge-interest-edit-open"; locale: string; personaId: number; index: number; fp: string }
+  | {
+      action: "nudge-interest-edit-submit";
+      locale: string;
+      personaId: number;
+      index: number;
+      fp: string;
+      nonce: string;
+    }
+  | { action: "nudge-interest-remove"; locale: string; personaId: number; index: number; fp: string }
+  | { action: "nudge-episodes-set"; locale: string; enabled: boolean }
+  | { action: "nudge-channels-select"; locale: string }
+  | { action: "nudge-provider"; locale: string }
+  | { action: "nudge-model-submit"; locale: string; provider: string; nonce: string }
+  | { action: "nudge-frequency-select"; locale: string }
+  | { action: "nudge-limits-open"; locale: string }
+  | { action: "nudge-limits-submit"; locale: string; nonce: string }
+  | { action: "nudge-episode-select"; locale: string; start: number; fp: string }
+  | { action: "nudge-episode-page"; locale: string; start: number }
+  | { action: "nudge-episode-add-submit"; locale: string; nonce: string }
+  | { action: "nudge-episode-toggle"; locale: string; index: number; fp: string; enabled: boolean }
+  | { action: "nudge-episode-edit-open"; locale: string; index: number; fp: string }
+  | { action: "nudge-episode-edit-submit"; locale: string; index: number; fp: string; nonce: string }
+  | { action: "nudge-episode-prereqs-select"; locale: string; index: number; fp: string }
+  | { action: "nudge-episode-tools-select"; locale: string; index: number; fp: string }
+  | { action: "nudge-episode-remove-view"; locale: string; index: number; fp: string }
+  | { action: "nudge-episode-remove-confirm"; locale: string; index: number; fp: string; nonce: string }
+  | { action: "nudge-episode-remove-cancel"; locale: string; index: number }
   | { action: "draft-set"; locale: string; enabled: boolean }
   | { action: "draft-items-open"; locale: string }
   | { action: "draft-items-submit"; locale: string; nonce: string }
@@ -904,6 +951,33 @@ const requiredChannelIdField: RouteFieldCodec<"channelId", string> = {
  * action is a compile error until it has a wire token.
  */
 export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
+  "nudge-talk-select": { wireToken: "nn-talk", fields: [personaIdField] },
+  "nudge-interest-select": { wireToken: "nn-int-select", fields: [personaIdField] },
+  "nudge-interest-add-submit": { wireToken: "nn-int-add", fields: [personaIdField, nonceField] },
+  "nudge-interest-edit-open": { wireToken: "nn-int-edit-open", fields: [personaIdField, indexField, fpField] },
+  "nudge-interest-edit-submit": {
+    wireToken: "nn-int-edit",
+    fields: [personaIdField, indexField, fpField, nonceField],
+  },
+  "nudge-interest-remove": { wireToken: "nn-int-rem", fields: [personaIdField, indexField, fpField] },
+  "nudge-episodes-set": { wireToken: "nn-set", fields: [enabledField] },
+  "nudge-channels-select": { wireToken: "nn-channels", fields: [] },
+  "nudge-provider": { wireToken: "nn-provider", fields: [] },
+  "nudge-model-submit": { wireToken: "nn-model", fields: [providerField, nonceField] },
+  "nudge-frequency-select": { wireToken: "nn-frequency", fields: [] },
+  "nudge-limits-open": { wireToken: "nn-limits-open", fields: [] },
+  "nudge-limits-submit": { wireToken: "nn-limits", fields: [nonceField] },
+  "nudge-episode-select": { wireToken: "nn-ep-select", fields: [startField, fpField] },
+  "nudge-episode-page": { wireToken: "nn-ep-page", fields: [startField] },
+  "nudge-episode-add-submit": { wireToken: "nn-ep-add", fields: [nonceField] },
+  "nudge-episode-toggle": { wireToken: "nn-ep-toggle", fields: [indexField, fpField, enabledField] },
+  "nudge-episode-edit-open": { wireToken: "nn-ep-edit-open", fields: [indexField, fpField] },
+  "nudge-episode-edit-submit": { wireToken: "nn-ep-edit", fields: [indexField, fpField, nonceField] },
+  "nudge-episode-prereqs-select": { wireToken: "nn-ep-prereqs", fields: [indexField, fpField] },
+  "nudge-episode-tools-select": { wireToken: "nn-ep-tools", fields: [indexField, fpField] },
+  "nudge-episode-remove-view": { wireToken: "nn-ep-rem-view", fields: [indexField, fpField] },
+  "nudge-episode-remove-confirm": { wireToken: "nn-ep-rem", fields: [indexField, fpField, nonceField] },
+  "nudge-episode-remove-cancel": { wireToken: "nn-ep-rem-cancel", fields: [indexField] },
   "draft-set": { wireToken: "draft-set", fields: [enabledField] },
   "draft-items-open": { wireToken: "draft-items-open", fields: [] },
   "draft-items-submit": { wireToken: "draft-items-submit", fields: [nonceField] },

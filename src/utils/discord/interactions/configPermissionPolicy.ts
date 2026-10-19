@@ -135,7 +135,9 @@ export function resolveConfigPageState(
   if (resolveConfigCategoryState(category, actor) !== "enabled") return "omitted";
 
   if (actor.workspaceKind === "dm") {
-    if (category === "persona" && page === "triggers") return "omitted";
+    // Natural Nudges pages are omitted in DMs because every DM message already gets a reply.
+    if (category === "persona" && (page === "triggers" || page === "nudges")) return "omitted";
+    if (category === "plugins" && (page === "natural-nudges" || page === "nudge-episodes")) return "omitted";
     if (category === "behavior") return page === "trigger" || page === "memory" ? "omitted" : "enabled";
     if (category === "models") return page === "image" ? "omitted" : "enabled";
     return "enabled";
@@ -491,6 +493,36 @@ export const PLUGINS_CONTEXT_ADDITIONS_ACTION_BY_ROUTE: Partial<
   "behavior-self-debug-set": "self-debug",
 };
 
+/** Every Natural Nudges route resolves to the page that owns it; the page state is its gate. */
+export const NATURAL_NUDGE_PAGE_BY_ROUTE: Partial<
+  Record<ConfigPanelRoute["action"], { category: ConfigCategory; page: ConfigPage }>
+> = {
+  "nudge-talk-select": { category: "persona", page: "nudges" },
+  "nudge-interest-select": { category: "persona", page: "nudges" },
+  "nudge-interest-add-submit": { category: "persona", page: "nudges" },
+  "nudge-interest-edit-open": { category: "persona", page: "nudges" },
+  "nudge-interest-edit-submit": { category: "persona", page: "nudges" },
+  "nudge-interest-remove": { category: "persona", page: "nudges" },
+  "nudge-episodes-set": { category: "plugins", page: "natural-nudges" },
+  "nudge-channels-select": { category: "plugins", page: "natural-nudges" },
+  "nudge-provider": { category: "plugins", page: "natural-nudges" },
+  "nudge-model-submit": { category: "plugins", page: "natural-nudges" },
+  "nudge-frequency-select": { category: "plugins", page: "natural-nudges" },
+  "nudge-limits-open": { category: "plugins", page: "natural-nudges" },
+  "nudge-limits-submit": { category: "plugins", page: "natural-nudges" },
+  "nudge-episode-select": { category: "plugins", page: "nudge-episodes" },
+  "nudge-episode-page": { category: "plugins", page: "nudge-episodes" },
+  "nudge-episode-add-submit": { category: "plugins", page: "nudge-episodes" },
+  "nudge-episode-toggle": { category: "plugins", page: "nudge-episodes" },
+  "nudge-episode-edit-open": { category: "plugins", page: "nudge-episodes" },
+  "nudge-episode-edit-submit": { category: "plugins", page: "nudge-episodes" },
+  "nudge-episode-prereqs-select": { category: "plugins", page: "nudge-episodes" },
+  "nudge-episode-tools-select": { category: "plugins", page: "nudge-episodes" },
+  "nudge-episode-remove-view": { category: "plugins", page: "nudge-episodes" },
+  "nudge-episode-remove-confirm": { category: "plugins", page: "nudge-episodes" },
+  "nudge-episode-remove-cancel": { category: "plugins", page: "nudge-episodes" },
+};
+
 export const MCP_ACTION_BY_ROUTE: Partial<Record<ConfigPanelRoute["action"], ConfigMcpAction>> = {
   "mcp-range": "range",
   "mcp-retry": "retry",
@@ -742,6 +774,10 @@ export const MODELS_PAGE_BY_ROUTE: Partial<Record<ConfigPanelRoute["action"], Co
 export function isConfigRouteAuthorized(route: ConfigPanelRoute, actor: ConfigActor): boolean {
   if (route.action.startsWith("draft-")) {
     return resolveConfigPageState("plugins", "response-drafting", actor) === "enabled";
+  }
+  const naturalNudgePage = NATURAL_NUDGE_PAGE_BY_ROUTE[route.action];
+  if (naturalNudgePage) {
+    return resolveConfigPageState(naturalNudgePage.category, naturalNudgePage.page, actor) === "enabled";
   }
   const personaAction = PERSONA_GENERAL_ACTION_BY_ROUTE[route.action];
   if (personaAction) {

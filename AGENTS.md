@@ -158,6 +158,7 @@ accepted findings. Full rubric: `docs/en/contributing/development-tasks.md` (Pro
 - `src/events/` - event handlers
 - `src/providers/` - LLM providers/adapters
 - `src/tools/` - built-in tools, REST API tools, MCP integration
+- `src/modules/` - self-contained features that own their SQL, runtime, and panels (`natural-nudges/`)
 - `src/utils/` - cache, Discord, DB, provider, security, text helpers
 - `src/types/` - shared type definitions
 - `scripts/` - local tooling and database scripts

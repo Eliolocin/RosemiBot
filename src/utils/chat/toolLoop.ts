@@ -1399,6 +1399,7 @@ function buildResult(
           ]
         : [],
     toolResponseDelivered: toolResponseDelivered || undefined,
+    firstDeliveredMessageId: streamResults.find((result) => result.firstMessageId)?.firstMessageId,
     thoughtLog,
     thoughtLogOwner: thoughtLog ? resolveThoughtLogOwner(context) : undefined,
   };

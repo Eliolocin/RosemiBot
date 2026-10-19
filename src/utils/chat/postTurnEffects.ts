@@ -151,7 +151,18 @@ async function recordUsageStats(context: ChatTurnContext, result: GenerationTurn
       metric: "model_used",
       metricKey: modelCodename,
     });
-    statRepository.recordStat({ serverId, userId, lineageId: primaryLineage, metric: "active_hour", metricKey: hour });
+    // A nudge borrows the latest channel message as its trigger, so counting it would let each nudge
+    // raise heat and pull the learned waking hours toward its own fire times.
+    const isNaturalNudge = context.turn.lockedTurn.admission.incoming.naturalNudge !== undefined;
+    if (!isNaturalNudge) {
+      statRepository.recordStat({
+        serverId,
+        userId,
+        lineageId: primaryLineage,
+        metric: "active_hour",
+        metricKey: hour,
+      });
+    }
 
     // Per responding persona: one message exchanged (drives favorite-persona
     //    affinity), plus that persona's output-token volume: both persona-scoped,
@@ -165,8 +176,10 @@ async function recordUsageStats(context: ChatTurnContext, result: GenerationTurn
       //     only as the fallback when the provider reported no real usage (5).
       if (response.text) estimatedOutputTokens += charsToTokensText(response.text.length);
     }
-    for (const lineageId of lineages) {
-      statRepository.recordStat({ serverId, userId, lineageId, metric: "message_sent" });
+    if (!isNaturalNudge) {
+      for (const lineageId of lineages) {
+        statRepository.recordStat({ serverId, userId, lineageId, metric: "message_sent" });
+      }
     }
 
     // Custom-emoji uses that actually reached Discord, one increment per occurrence,
@@ -397,6 +410,7 @@ async function maybeScheduleEmptyResponseRetry(context: ChatTurnContext, result:
     manualTriggerInvoker: incoming.manualTriggerInvoker,
     manualStreamingContextOverrides: incoming.manualStreamingContextOverrides,
     sceneTurn: incoming.sceneTurn,
+    naturalNudge: incoming.naturalNudge,
     carriedExpressionDelivery: context.currentPersona.persona_id
       ? { personaId: context.currentPersona.persona_id, state: context.expressionDelivery }
       : undefined,

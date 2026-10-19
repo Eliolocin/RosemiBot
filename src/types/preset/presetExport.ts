@@ -6,6 +6,11 @@
 import { z } from "zod";
 import { MAX_VOICE_DESIGN_PROMPT_LENGTH } from "@/constants/speech";
 import {
+  naturalNudgeInterestsSchema,
+  naturalNudgeTalkativenessSchema,
+  type NaturalNudgeInterest,
+} from "@/modules/natural-nudges/db/types";
+import {
   EMPTY_PERSONA_NAMING_CONFIG,
   personaNamingConfigSchema,
   type PersonaNamingConfig,
@@ -83,6 +88,9 @@ export interface PresetExportData {
   nai_attg_stars?: number | null;
   /** Absent in exports that predate the flag, which were all SFW. */
   is_nsfw?: boolean;
+  /** Natural Nudges topics; absent in exports that predate Natural Nudges. */
+  natural_nudge_interests?: NaturalNudgeInterest[];
+  natural_nudge_talkativeness?: number;
 }
 
 /**
@@ -173,6 +181,8 @@ export const presetExportDataSchema = z.object({
   nai_attg_genre: z.string().max(PRESET_MAX_STRING_LENGTH).nullable().optional(),
   nai_attg_stars: z.number().int().min(1).max(5).nullable().optional(),
   is_nsfw: z.boolean().optional(),
+  natural_nudge_interests: naturalNudgeInterestsSchema.optional(),
+  natural_nudge_talkativeness: naturalNudgeTalkativenessSchema.optional(),
 });
 
 /**

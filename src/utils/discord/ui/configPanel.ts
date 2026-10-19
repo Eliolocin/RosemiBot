@@ -134,6 +134,12 @@ import {
 } from "@/utils/discord/ui/configVoicePanel";
 import { buildMcpsPanelComponents, type McpsPanelPage } from "@/utils/discord/ui/mcpsPanel";
 import { buildStPresetsPanelComponents, type StPresetsPanelRenderInput } from "@/utils/discord/ui/stPresetsPanel";
+import type { NaturalNudgesPanelState } from "@/modules/natural-nudges/discord/operations";
+import {
+  buildNaturalNudgesSettingsBody,
+  buildNudgeEpisodesBody,
+  buildPersonaNudgesBody,
+} from "@/modules/natural-nudges/discord/panel";
 
 const RANDOM_TRIGGER_PAGE_SIZE = CONFIG_RANDOM_TRIGGER_CHECKBOX_CAPACITY;
 
@@ -196,6 +202,7 @@ export const PAGE_LOCALE_KEYS: Record<ConfigCategory, Record<string, string>> = 
     naming: "commands.config.panel.page_persona_naming",
     sprites: "commands.config.panel.page_persona_sprites",
     voice: "commands.config.panel.page_persona_voice",
+    nudges: "commands.config.panel.page_persona_nudges",
   },
   behavior: {
     general: "commands.config.panel.page_behavior_general",
@@ -212,6 +219,8 @@ export const PAGE_LOCALE_KEYS: Record<ConfigCategory, Record<string, string>> = 
   },
   plugins: {
     "response-drafting": "commands.config.panel.page_plugins_response_drafting",
+    "natural-nudges": "commands.config.panel.page_plugins_natural_nudges",
+    "nudge-episodes": "commands.config.panel.page_plugins_nudge_episodes",
     "available-tools": "commands.config.panel.page_plugins_available_tools",
     "context-additions": "commands.config.panel.page_plugins_context_additions",
     "mcp-servers": "commands.mcps.title",
@@ -278,6 +287,7 @@ export interface ConfigPanelRenderInput {
   personaVoicePageStart?: number;
   responseDraftingView?: ResponseDraftingView;
   draftPicker?: DraftPicker;
+  naturalNudges?: NaturalNudgesPanelState;
   switchModelsView?: ConfigSwitchModelsView;
   modelParametersView?: ConfigParametersView;
   modelFallbacksView?: ConfigFallbacksView;
@@ -918,6 +928,7 @@ interface PersonaResyncDiff {
   promptChanged: boolean;
   customAvatar: boolean;
   addedSprites: number;
+  nudgesChanged: boolean;
 }
 
 function buildPersonaGeneralBody(input: ConfigPanelRenderInput): ComponentInContainerData[] {
@@ -984,15 +995,16 @@ ${localizer(locale, "commands.config.panel.general_description")}`,
   }
 
   if (persona.preset_lineage_id && resyncState !== "omitted") {
+    const isSynced = persona.is_pointer === true && input.naturalNudges?.personaConfig?.has_override !== true;
     identityButtons.push({
       type: ComponentType.Button,
       style: ButtonStyle.Secondary,
       customId: buildConfigRouteId({ action: "resync-view", locale, personaId: persona.persona_id as number }),
       label: localizer(
         locale,
-        persona.is_pointer ? "commands.config.panel.resync_synced_button" : "commands.config.panel.resync_button",
+        isSynced ? "commands.config.panel.resync_synced_button" : "commands.config.panel.resync_button",
       ),
-      disabled: writesDisabled || resyncState === "disabled" || persona.is_pointer === true,
+      disabled: writesDisabled || resyncState === "disabled" || isSynced,
     });
   }
 
@@ -2136,13 +2148,15 @@ function buildResyncConfirmBody(
   if (diff.dialogues.changed || diff.dialogues.added || diff.dialogues.removed) {
     lines.push(localizer(locale, "commands.config.panel.resync_dialogues_diff", diff.dialogues));
   }
-  if (persona && !persona.is_alter) {
+  // A pointer resync only clears its Nudges override, so no avatar is reapplied.
+  if (persona && !persona.is_alter && !persona.is_pointer) {
     lines.push(localizer(locale, "commands.config.panel.resync_main_avatar_detail"));
   } else if (diff.customAvatar) {
     lines.push(localizer(locale, "commands.config.panel.resync_avatar_diff"));
   }
   if (diff.addedSprites)
     lines.push(localizer(locale, "commands.config.panel.resync_sprites_diff", { count: diff.addedSprites }));
+  if (diff.nudgesChanged) lines.push(localizer(locale, "commands.config.panel.resync_nudges_diff"));
   lines.push(localizer(locale, "commands.config.panel.resync_kept_detail"));
   lines.push(localizer(locale, "commands.config.panel.resync_irreversible_detail"));
   return [
@@ -4378,6 +4392,26 @@ export function buildConfigPanelPayload(input: ConfigPanelRenderInput): ConfigPa
     return buildPayload(components, receipt);
   }
 
+  if (category === "persona" && page === "nudges") {
+    const pageState = resolveConfigPageState(category, page, actor);
+    if (pageState !== "omitted") {
+      const persona = input.personas.find((candidate) => candidate.persona_id === input.selectedPersonaId) ?? null;
+      components.push(
+        ...(persona
+          ? buildPersonaNudgesBody({
+              locale,
+              persona,
+              config: input.naturalNudges?.personaConfig ?? undefined,
+              selectedInterestIndex: input.naturalNudges?.selectedInterestIndex,
+              writesDisabled: writesDisabled || pageState !== "enabled",
+            })
+          : [{ type: ComponentType.TextDisplay, content: localizer(locale, "commands.config.panel.no_personas") }]),
+      );
+    }
+    appendPersonaCreateHint(components, locale);
+    return buildPayload(components, receipt);
+  }
+
   if (category === "persona" && page === "voice") {
     if (resolveConfigPageState(category, page, actor) !== "omitted") {
       const selectedPersona = input.personas.find((persona) => persona.persona_id === input.selectedPersonaId) ?? null;
@@ -4447,6 +4481,30 @@ export function buildConfigPanelPayload(input: ConfigPanelRenderInput): ConfigPa
     if (state && resolveConfigPageState(category, page, actor) === "enabled") {
       components.push(
         ...buildResponseDraftingBody(state, locale, input.responseDraftingView, input.draftPicker, writesDisabled),
+      );
+    }
+    return buildPayload(components, receipt);
+  }
+
+  if (category === "plugins" && (page === "natural-nudges" || page === "nudge-episodes")) {
+    const state = input.personas[0];
+    const pageState = resolveConfigPageState(category, page, actor);
+    const settings = input.naturalNudges?.settings;
+    const episodes = input.naturalNudges?.episodes;
+    if (state && pageState === "enabled" && page === "natural-nudges" && settings) {
+      components.push(
+        ...buildNaturalNudgesSettingsBody(locale, settings, state.config.user_byok_mode === true, writesDisabled),
+      );
+    } else if (state && pageState === "enabled" && page === "nudge-episodes" && episodes) {
+      components.push(
+        ...buildNudgeEpisodesBody({
+          locale,
+          view: episodes,
+          start: input.naturalNudges?.episodeStart ?? 0,
+          selectedIndex: input.naturalNudges?.selectedEpisodeIndex,
+          removeConfirmNonce: input.naturalNudges?.removeConfirmNonce,
+          writesDisabled,
+        }),
       );
     }
     return buildPayload(components, receipt);

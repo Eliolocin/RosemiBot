@@ -324,6 +324,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         : undefined,
       stopReason,
       accumulatedText: state.accumulatedText,
+      firstMessageId: state.firstMessageId,
       detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
       thoughtLog: buildThoughtLogPayload(state, Date.now() - metrics.startTime),
       spritesShown: state.spritesShown.length > 0 ? [...state.spritesShown] : undefined,
@@ -358,6 +359,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
             data: chunk.functionCall,
             pendingResponse: this.collectPendingResponse(state, textConfig, context, typingConfig),
             accumulatedText: state.accumulatedText,
+            firstMessageId: state.firstMessageId,
             detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
             thoughtLog: buildThoughtLogPayload(state, Date.now() - metrics.startTime),
             spritesShown: state.spritesShown.length > 0 ? [...state.spritesShown] : undefined,
@@ -455,6 +457,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       messageSentCount: state.messageSentCount,
 
       accumulatedText: state.accumulatedText,
+      firstMessageId: state.firstMessageId,
       detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
       thoughtLog: buildThoughtLogPayload(state, metrics.endTime - metrics.startTime),
       data: terminalDoneMetadata,
@@ -519,6 +522,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
           status,
           stopReason,
           accumulatedText: state.accumulatedText,
+          firstMessageId: state.firstMessageId,
           spritesShown: state.spritesShown.length ? state.spritesShown : undefined,
         };
       },

@@ -16,7 +16,7 @@ one of eight archetypes, and each has a reference command to copy. Wiring is in
 |---|---|---|
 | Categorized Control Panel | A root owns several related settings areas that users revisit and compare | `/moderation`; also `/config`, `/personal config`, `/memories`, `/personal memories` |
 | Collection Panel | The pages are saved entities the user created, plus a way to add one | `/providers`, `/personal providers`; inside `/config`, the MCP servers and SillyTavern presets pages |
-| Entity Workspace | The user needs two axes at once: which entity, and which aspect of it | `/config` Persona category (persona selector plus nine pages) |
+| Entity Workspace | The user needs two axes at once: which entity, and which aspect of it | `/config` Persona category (persona selector plus ten pages) |
 | Paginated Reference | Read-only information users browse repeatedly, rebuilt from definitions or stored data | `/help`, `/status`, `/stats` |
 | Guided Wizard | Ordered choices, later steps depend on earlier ones, nothing is saved until the end | `/setup` |
 | Direct Command Family | The user knows the operation, and slash options can name the target safely | `/impersonate`; also `/persona`, `/generate`, `/export`, `/import`, `/tool` |

@@ -178,6 +178,38 @@ export interface ConfigModelChoice {
   description: string | null;
 }
 
+/** Text models one provider offers that can answer with structured output, grouped by provider. */
+export interface StructuredOutputModelGroup {
+  provider: string;
+  models: ConfigModelChoice[];
+}
+
+/**
+ * Server text models able to return structured output: the provider must support it (every
+ * provider but NovelAI) and so must the model. Out-of-turn structured calls choose from these.
+ */
+export async function loadStructuredOutputModelGroups(
+  serverId: number,
+  locale: string,
+): Promise<StructuredOutputModelGroup[]> {
+  const providers = await loadConfigModelProviders(serverId, "text");
+  const groups = await Promise.all(
+    providers.map(async (provider) => {
+      if (!isCustomProvider(provider) && !getStaticProviderInfo(provider)?.featureSupport.structuredOutput)
+        return { provider, models: [] };
+      const models = await loadConfigModelChoices(
+        serverId,
+        "text",
+        provider,
+        locale,
+        (model) => model.supports_structoutput,
+      );
+      return { provider, models };
+    }),
+  );
+  return groups.filter((group) => group.models.length > 0);
+}
+
 export async function loadConfigModelChoices(
   serverId: number,
   capability: ConfigCatalogModelCapability,

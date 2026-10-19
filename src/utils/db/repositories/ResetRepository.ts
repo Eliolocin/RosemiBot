@@ -33,7 +33,7 @@ export interface SingletonResetClassification {
 }
 
 /**
- * The 18 singleton configuration rows a server reset restores.
+ * The 19 singleton configuration rows a server reset restores.
  *
  * Enumerated rather than derived. The natural derivation ("the in-scope `server_*` tables, less the
  * junction, plus the quota configuration tables") is arithmetic, and arithmetic that drops a table
@@ -242,10 +242,26 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
     reset: ["daily_user_quota", "serverwide_quota", "serverwide_quota_resets_in", "enabled"],
     preserved: [],
   },
+  {
+    table: "server_natural_nudge_configs",
+    reset: [
+      "episodes_enabled",
+      "channel_disc_ids",
+      "llm_id",
+      "reach_out_weight",
+      "revive_weight",
+      "new_topic_weight",
+      "alter_talk_weight",
+      "daily_episode_cap",
+      "episode_frequency",
+      "disabled_builtin_episodes",
+    ],
+    preserved: [],
+  },
 ];
 
 /**
- * The 11 collection tables a server reset empties for the server.
+ * The 12 collection tables a server reset empties for the server.
  *
  * `server_auto_trigger_persona_overrides` belongs here rather than among the singletons: it is the
  * junction the auto-trigger row's channel ids point through, so it is cleared by delete.
@@ -262,6 +278,7 @@ export const SERVER_COLLECTION_RESET_TABLES = [
   "channel_whitelist",
   "role_whitelist",
   "channel_persona_whitelist",
+  "server_natural_nudge_episodes",
 ] as const;
 
 /**
@@ -542,6 +559,22 @@ class ResetRepository {
           updated_at = NOW()
       `;
 
+      await tx`
+        INSERT INTO server_natural_nudge_configs (server_id) VALUES (${serverId})
+        ON CONFLICT (server_id) DO UPDATE SET
+          episodes_enabled = DEFAULT,
+          channel_disc_ids = DEFAULT,
+          llm_id = DEFAULT,
+          reach_out_weight = DEFAULT,
+          revive_weight = DEFAULT,
+          new_topic_weight = DEFAULT,
+          alter_talk_weight = DEFAULT,
+          daily_episode_cap = DEFAULT,
+          episode_frequency = DEFAULT,
+          disabled_builtin_episodes = DEFAULT,
+          updated_at = NOW()
+      `;
+
       await tx`DELETE FROM server_auto_trigger_persona_overrides WHERE server_id = ${serverId}`;
       // Deletes the category definitions only. Persisted short_term_memories carry their own
       // categories payload and render from it, so STM data survives a configuration reset.
@@ -555,6 +588,7 @@ class ResetRepository {
       await tx`DELETE FROM channel_whitelist WHERE server_id = ${serverId}`;
       await tx`DELETE FROM role_whitelist WHERE server_id = ${serverId}`;
       await tx`DELETE FROM channel_persona_whitelist WHERE server_id = ${serverId}`;
+      await tx`DELETE FROM server_natural_nudge_episodes WHERE server_id = ${serverId}`;
     });
   }
 

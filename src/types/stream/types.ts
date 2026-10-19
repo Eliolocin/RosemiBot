@@ -118,6 +118,7 @@ export interface StreamState {
   /** OpenRouter-only: upstream serving provider/endpoint (e.g. "minimax-cn") for thought logs. */
   servingProvider?: string;
   firstReplyUrl?: string;
+  firstMessageId?: string;
   /**
    * Holds orphan punctuation segments (e.g. a lone "..." flushed on its own line)
    * across flush boundaries so they can be prepended to the next non-empty segment
@@ -226,6 +227,7 @@ export function createDefaultStreamState(): StreamState {
     thoughtSummarySegments: [],
     thoughtRawSegments: [],
     firstReplyUrl: undefined,
+    firstMessageId: undefined,
     pendingOrphanPunctuation: undefined,
     pendingAggregatedText: "",
     pendingAggregateJoinNextWithBlankLine: false,

@@ -4,6 +4,11 @@ import {
   responseReviewerPromptSchema,
 } from "@/types/db/schema";
 import { z } from "zod";
+import {
+  CUSTOM_EPISODE_LIMIT,
+  customEpisodeInputSchema,
+  serverNaturalNudgeConfigSchema,
+} from "@/modules/natural-nudges/db/types";
 import { SUPPORTED_PARAM_VALUES } from "@/constants/supportedParams";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_VALUES } from "@/constants/thinkingLevels";
 import { NOTICE_VERBOSITY_LEVELS } from "@/constants/toolNotices";
@@ -403,6 +408,19 @@ const workspaceSpeechConfigSectionSchema = serverSpeechConfigExportSchema.strict
 
 const workspaceAccessConfigSectionSchema = serverByokConfigExportSchema.strict();
 
+/**
+ * Natural Nudges settings and custom episodes. Allowed channels are server-specific and stay
+ * behind; the planner model travels by ID and is checked against the target workspace on import.
+ */
+const workspaceNudgesConfigSectionSchema = serverNaturalNudgeConfigSchema
+  .omit({ server_id: true, channel_disc_ids: true })
+  .partial()
+  .extend({
+    llm_id: z.number().int().positive().nullable().optional(),
+    custom_episodes: z.array(customEpisodeInputSchema.strict()).max(CUSTOM_EPISODE_LIMIT).optional(),
+  })
+  .strict();
+
 const personalProfileConfigSectionSchema = personalSettingsExportDataSchema
   .pick({
     user_nickname: true,
@@ -438,6 +456,7 @@ export const workspaceConfigExportDataSchema = z
     media: workspaceMediaConfigSectionSchema.optional(),
     speech: workspaceSpeechConfigSectionSchema.optional(),
     access: workspaceAccessConfigSectionSchema.optional(),
+    nudges: workspaceNudgesConfigSectionSchema.optional(),
   })
   .strict();
 
@@ -573,6 +592,7 @@ export const V2_CONFIG_SECTION_SCHEMAS = {
   media: workspaceMediaConfigSectionSchema,
   speech: workspaceSpeechConfigSectionSchema,
   access: workspaceAccessConfigSectionSchema,
+  nudges: workspaceNudgesConfigSectionSchema,
   profile: personalProfileConfigSectionSchema,
   privacy: personalPrivacyConfigSectionSchema,
   appearance: personalAppearanceConfigSectionSchema,

@@ -19,6 +19,11 @@ import {
 } from "@/types/personaNaming";
 import { DEFAULT_IMAGE_NEGATIVE_TAGS, DEFAULT_IMAGE_POSITIVE_TAGS } from "@/utils/image/tagDefaults";
 import { logitBiasEntrySchema, normalizeLogitBiasEntries } from "@/types/provider/logitBias";
+import {
+  DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
+  naturalNudgeInterestsSchema,
+  naturalNudgeTalkativenessSchema,
+} from "@/modules/natural-nudges/db/types";
 
 export enum HumanizerDegree {
   NONE = 0,
@@ -1194,6 +1199,8 @@ const tomoriPresetSchema = z.object({
     }
   }, personaNamingConfigSchema.default(EMPTY_PERSONA_NAMING_CONFIG)),
   is_nsfw: z.boolean().default(false),
+  natural_nudge_interests: naturalNudgeInterestsSchema.default([]),
+  natural_nudge_talkativeness: naturalNudgeTalkativenessSchema.default(DEFAULT_NATURAL_NUDGE_TALKATIVENESS),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });

@@ -32,6 +32,8 @@
  *   - sticker_used      → sticker name/id
  *   - custom_expression_used → stable custom UUID (one per accepted delivery)
  *   - active_hour       → hour-of-day "0".."23"
+ *   Natural Nudges turns record neither message_sent nor active_hour: both drive nudge heat and
+ *   learned waking hours, so a nudge counting itself would feed its own frequency.
  *   - text_generated    → "" (one per completed chat turn)
  *   - user_impersonation_triggered → impersonated Discord user id (one per
  *                                    completed user-impersonation chat turn)

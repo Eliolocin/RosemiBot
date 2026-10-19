@@ -561,6 +561,9 @@ export class StreamUiUpdater {
     if (!state.firstReplyUrl && sentMessage?.url) {
       state.firstReplyUrl = sentMessage.url;
     }
+    if (!state.firstMessageId && sentMessage) {
+      state.firstMessageId = sentMessage.id;
+    }
 
     // Remember what Discord will group against, so artifacts that follow (expressions, the
     // "Fallback Used" notice) can reuse the same author instead of splitting off under a

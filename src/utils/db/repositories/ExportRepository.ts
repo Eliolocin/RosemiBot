@@ -20,6 +20,7 @@ import {
   type MemoryItem,
 } from "@/types/db/dataExport";
 import { shortTermMemoryRepository } from "./ShortTermMemoryRepository";
+import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 
 interface WorkspaceConfigProjectionRow {
   server_id: number;
@@ -944,6 +945,7 @@ export class ExportRepository {
         access: {
           user_byok_mode: configData.user_byok_mode,
         },
+        nudges: await this.loadNudgesSection(configData.server_id),
       };
 
       const exportCandidate = {
@@ -963,6 +965,18 @@ export class ExportRepository {
       log.error(`Error exporting workspace config for server ${serverDiscId}:`, error);
       return { success: false, error: "commands.data.export.error_export_failed" };
     }
+  }
+
+  private async loadNudgesSection(serverId: number) {
+    const [config, customEpisodes] = await Promise.all([
+      naturalNudgeRepository.loadServerConfig(serverId, this.database),
+      naturalNudgeRepository.listCustomEpisodes(serverId, this.database),
+    ]);
+    const { server_id: _serverId, channel_disc_ids: _channels, ...portable } = config;
+    return {
+      ...portable,
+      custom_episodes: customEpisodes.map(({ episode_id: _episodeId, server_id: _owner, ...episode }) => episode),
+    };
   }
 
   /**

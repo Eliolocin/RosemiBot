@@ -2,7 +2,6 @@ import type { DraftPicker } from "@/utils/discord/ui/responseDraftingPanel";
 import type {
   ResponseDraftingView,
   ResponseDraftingOperations,
-  DraftModelGroup,
   DraftCheckerChoice,
 } from "@/utils/discord/interactions/responseDraftingOperations";
 import {
@@ -55,7 +54,10 @@ import {
 } from "@/utils/discord/interactions/configPermissionPolicy";
 import type { ConfigPersonaOperations, GuildIdentityPort } from "@/utils/discord/interactions/configPersonaOperations";
 import type { ConfigSpriteOperations } from "@/utils/discord/interactions/configSpriteOperations";
-import type { ConfigModelOperations } from "@/utils/discord/interactions/configModelOperations";
+import type {
+  ConfigModelOperations,
+  StructuredOutputModelGroup,
+} from "@/utils/discord/interactions/configModelOperations";
 import type {
   VoiceSampleAddDependencies,
   VoiceSampleAddInput,
@@ -92,6 +94,10 @@ import type { StPresetsPanelRenderInput } from "@/utils/discord/ui/stPresetsPane
 import { HUMANIZER_DEFAULT } from "@/utils/discord/humanizerOptions";
 import { DEFAULT_MESSAGE_FETCH_LIMIT } from "@/utils/discord/messageFetchLimit";
 import type { McpConfigOperations } from "@/utils/mcp/mcpConfigOperations";
+import type {
+  NaturalNudgePanelDependencies,
+  NaturalNudgesPanelState,
+} from "@/modules/natural-nudges/discord/operations";
 
 export interface ConfigScope {
   /** Guild snowflake in a guild, DM recipient snowflake otherwise: the workspace key every absorbed command already uses. */
@@ -341,9 +347,10 @@ export interface ConfigRouteDependencies {
   loadModelProviders(state: TomoriState, capability: ConfigModelCapability): Promise<string[]>;
   createGuildIdentity(guildId: string, interaction: GlobalRoutableInteraction): GuildIdentityPort;
   loadResponseDraftingView(state: TomoriState, locale: string): Promise<ResponseDraftingView>;
-  loadDraftModels(serverId: number, locale: string): Promise<DraftModelGroup[]>;
+  loadDraftModels(serverId: number, locale: string): Promise<StructuredOutputModelGroup[]>;
   loadDraftCheckers(serverId: number): Promise<DraftCheckerChoice[]>;
   draftingOperations: ResponseDraftingOperations;
+  naturalNudges: NaturalNudgePanelDependencies;
   recordAction(input: RecordPanelActionInput): void;
   createNonce(): string;
   showModal(interaction: GlobalRoutableInteraction, payload: RawModalPayload): Promise<void>;
@@ -458,6 +465,7 @@ export function resolveSelectedPersona(
 }
 
 export interface ConfigRepaintOptions {
+  naturalNudges?: NaturalNudgesPanelState;
   draftPicker?: DraftPicker;
   responseDraftingView?: ResponseDraftingView;
   locale: string;
@@ -610,6 +618,34 @@ export async function repaint(
     }
   }
 
+  let naturalNudges = options.naturalNudges;
+  const nudgeServerId = scope.personas[0]?.server_id;
+  const nudgePersona = scope.personas.find((candidate) => candidate.persona_id === selectedPersonaId);
+  // On General only an unforked pointer needs the override, because it is what makes Resync available there.
+  const needsNudgeConfig = page === "nudges" || (page === "general" && nudgePersona?.is_pointer === true);
+  if (
+    category === "persona" &&
+    needsNudgeConfig &&
+    naturalNudges?.personaConfig === undefined &&
+    nudgePersona?.persona_id !== undefined
+  ) {
+    const loading = dependencies.naturalNudges.loadPersonaConfig(nudgePersona.persona_id);
+    naturalNudges = {
+      ...naturalNudges,
+      // A failed read on the landing page only leaves Resync off instead of failing the whole panel.
+      personaConfig: page === "general" ? await loading.catch(() => null) : await loading,
+    };
+  }
+  if (category === "plugins" && page === "natural-nudges" && !naturalNudges?.settings && nudgeServerId) {
+    naturalNudges = {
+      ...naturalNudges,
+      settings: await dependencies.naturalNudges.loadSettings(nudgeServerId, locale),
+    };
+  }
+  if (category === "plugins" && page === "nudge-episodes" && !naturalNudges?.episodes && nudgeServerId) {
+    naturalNudges = { ...naturalNudges, episodes: await dependencies.naturalNudges.loadEpisodes(nudgeServerId) };
+  }
+
   let responseDraftingView = options.responseDraftingView;
   if (category === "plugins" && page === "response-drafting" && !responseDraftingView) {
     const state = scope.personas[0];
@@ -730,6 +766,7 @@ export async function repaint(
         view: options.view,
         responseDraftingView,
         draftPicker: options.draftPicker,
+        naturalNudges,
         switchModelsView,
         modelParametersView,
         modelFallbacksView,

@@ -102,6 +102,8 @@ export interface StreamResult {
   data?: unknown | Error; // Function call data or error details
   pendingResponse?: import("@/types/stream/pendingResponse").PendingStreamResponse;
   accumulatedText?: string; // Text sent to Discord (for short-term memory storage)
+  /** Discord ID of the first message this segment delivered. */
+  firstMessageId?: string;
   /** Extracted <details> block body text (with <summary> stripped), for routing to STM. */
   detailsContent?: string;
   stopReason?: StreamStopReason; // Specific stop source for debugging/logging

@@ -88,6 +88,12 @@ import { getCachedImpersonatedUserIdForWebhook } from "@/utils/chat/webhookIdent
 import { normalizeRenderModifierName, resolveRenderModifierSourcePersona } from "@/utils/discord/renderModifierParser";
 import { primePersonaSpriteMessageRecords } from "@/utils/cache/personaSpriteMessageCache";
 import { resolveMinimalNoticeBodies } from "@/utils/discord/minimalNoticeBodies";
+import {
+  AGENDA_NOTICE_AUTHOR_ID,
+  agendaNoticeId,
+  formatAgendaNotice,
+  loadPersonaAgendas,
+} from "@/modules/natural-nudges/runtime/agendas";
 import { getCachedPersonaSprites } from "@/utils/cache/personaSpriteCache";
 import { resolveSpriteMessageDisplayName } from "@/utils/discord/spriteMessageLabel";
 import type { StreamingContext } from "@/types/tool/interfaces";
@@ -405,6 +411,13 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
     }
   }
 
+  if (deliberateToolModeActive && incoming.naturalNudge) {
+    for (const toolName of incoming.naturalNudge.toolNames) {
+      deliberateToolAllowedNames.push(toolName);
+      deliberateToolTriggerMatches.push({ toolName, trigger: "natural nudge episode", source: "built-in" });
+    }
+  }
+
   const deliberateToolTriggerMatchByToolName = new Map<string, DeliberateToolIntentMatch>();
   for (const match of deliberateToolTriggerMatches) {
     if (
@@ -500,13 +513,16 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
   const proxiedSpeakerName = proxiedIdentity.userDiscId
     ? (await getCachedUserRow(proxiedIdentity.userDiscId))?.user_nickname?.trim() || proxiedIdentity.name
     : null;
-  const { note: reunionNote, presence: reunionPresence } = await resolveReunionNote({
-    turn,
-    effectivePersona,
-    isUserImpersonation: incoming.isUserImpersonation,
-    proxiedIdentityName: proxiedIdentity.name,
-    proxiedIdentityUserDiscId: proxiedIdentity.userDiscId,
-  });
+  // A nudge borrows an absent author's message as its trigger, so it must neither greet nor clock them.
+  const { note: reunionNote, presence: reunionPresence } = incoming.naturalNudge
+    ? { note: null, presence: null }
+    : await resolveReunionNote({
+        turn,
+        effectivePersona,
+        isUserImpersonation: incoming.isUserImpersonation,
+        proxiedIdentityName: proxiedIdentity.name,
+        proxiedIdentityUserDiscId: proxiedIdentity.userDiscId,
+      });
 
   const contextBuild = await buildContext({
     guildId: turn.serverDiscId,
@@ -797,6 +813,10 @@ async function buildSimplifiedHistory(
   // "Name (sprite):" label lookups inside simplifyMessage() are cache hits.
   await primePersonaSpriteMessageRecords(visibleRawMessages.filter((msg) => msg.webhookId).map((msg) => msg.id));
   const minimalNoticeBodies = await resolveMinimalNoticeBodies(visibleRawMessages);
+  const agendasByMessageId = await loadPersonaAgendas(
+    turn.persona.persona_id,
+    visibleRawMessages.map((msg) => msg.id),
+  );
 
   const simplifiedMessages: SimplifiedMessageForContext[] = [];
   const userIds = new Set<string>();
@@ -875,6 +895,22 @@ async function buildSimplifiedHistory(
     const { message: simplified, isDebug } = result;
     previousBlockNoticeAuthorId = null;
     userIds.add(simplified.authorId);
+
+    const agenda = agendasByMessageId.get(msg.id);
+    if (agenda) {
+      simplifiedMessages.push({
+        id: agendaNoticeId(msg.id),
+        authorId: AGENDA_NOTICE_AUTHOR_ID,
+        authorName: "System",
+        authorType: "user",
+        personaName: null,
+        content: formatAgendaNotice(turn.persona.persona_nickname, agenda),
+        createdAt: msg.createdTimestamp,
+        imageAttachments: [],
+        videoAttachments: [],
+      });
+      previousEntryWasDebug = false;
+    }
 
     // Decide whether this message collapses into the previous turn.
     //    Consecutive messages from the same effective author merge into one turn,
@@ -1452,6 +1488,7 @@ function appendTailDirectives(args: {
     !incoming.reasoningQuery &&
     !incoming.reminderRecipientID &&
     !incoming.reminderData?.self_reminder &&
+    !incoming.naturalNudge &&
     args.simplifiedMessages.length > 0
   ) {
     const lastMsg = args.simplifiedMessages[args.simplifiedMessages.length - 1];

@@ -73,6 +73,11 @@ interface CarriedExpressionDelivery {
 }
 
 /** Public input to tomoriChat(): optional fields apply defaults in normalizeChatInvocation. */
+export interface NaturalNudgeTurn {
+  /** Episode tools that Deliberate Tool Mode admits, since no human message carries their trigger words. */
+  toolNames: readonly string[];
+}
+
 export interface TomoriChatInput {
   client: Client;
   message: Message;
@@ -105,6 +110,8 @@ export interface TomoriChatInput {
   systemTriggerIdentity?: SystemTriggerIdentity;
   manualStreamingContextOverrides?: Partial<StreamingContext>;
   sceneTurn?: SceneTurnMetadata;
+  /** Unprompted Natural Nudges turn: never queues and never feeds engagement stats. */
+  naturalNudge?: NaturalNudgeTurn;
   carriedExpressionDelivery?: CarriedExpressionDelivery;
   onGenerationResult?: ChatGenerationResultHandler;
   onQueueDiscard?: QueuedMessageDiscardHandler;
@@ -142,6 +149,8 @@ export interface ChatIncoming {
   systemTriggerIdentity?: SystemTriggerIdentity;
   manualStreamingContextOverrides?: Partial<StreamingContext>;
   sceneTurn?: SceneTurnMetadata;
+  /** Unprompted Natural Nudges turn: never queues and never feeds engagement stats. */
+  naturalNudge?: NaturalNudgeTurn;
   carriedExpressionDelivery?: CarriedExpressionDelivery;
   onGenerationResult?: ChatGenerationResultHandler;
   onQueueDiscard?: QueuedMessageDiscardHandler;
@@ -336,6 +345,8 @@ export interface GenerationTurnResult {
   personaResponses: ChatPersonaResponse[];
   /** A tool delivered the response directly even though no streamed text was captured. */
   toolResponseDelivered?: boolean;
+  /** Discord ID of the turn's first delivered text message, the anchor for message-keyed rows. */
+  firstDeliveredMessageId?: string;
   thoughtLog?: ThoughtLogPayload;
   thoughtLogOwner?: ThoughtLogOwner;
 }

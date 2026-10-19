@@ -44,7 +44,7 @@ import {
 } from "@/utils/chat/triggerProcessor";
 import { getLastRespondedPersonaId, getSelfReplyChainState } from "@/utils/chat/selfReplyState";
 import type { TextQuotaTriggerState } from "@/utils/chat/textQuotaState";
-import type { ChatTurn, ChatTurnPlan, LockedChatTurn } from "@/utils/chat/types";
+import type { ChatIncoming, ChatTurn, ChatTurnPlan, LockedChatTurn } from "@/utils/chat/types";
 import { userNamingRepository, userPersonaNamingPairKey } from "@/utils/db/repositories/UserNamingRepository";
 import { resolveEffectiveUserNaming } from "@/utils/text/userNaming";
 const DEFAULT_CASCADE_LIMIT = 3;
@@ -178,8 +178,8 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
   // users triggering Tomori, but reminders were authorized at creation time. The channel
   // whitelist (is this channel allowed at all?) still applies via whitelistStatus.isTriggerAllowed,
   // but role-based rejection that derives from the last message author is skipped.
-  const isReminderTurn = !!(incoming.reminderRecipientID || incoming.reminderData?.self_reminder);
-  if (accessState.rejectedByWhitelist && !isReminderTurn) {
+  const isSystemInitiatedTurn = isSystemInitiatedIncoming(incoming);
+  if (accessState.rejectedByWhitelist && !isSystemInitiatedTurn) {
     return { lockedTurn, turns: [] };
   }
 
@@ -201,6 +201,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     isPersonaJob: incoming.isPersonaJob,
     isManuallyTriggered: incoming.isManuallyTriggered,
     isUserImpersonation: incoming.isUserImpersonation,
+    isNaturalNudge: incoming.naturalNudge !== undefined,
     userRow,
     channel,
     locale,
@@ -506,6 +507,14 @@ async function updateAutochatCounter(message: Message, tomoriState: TomoriState,
   }
 }
 
+/**
+ * Nudges count as system-initiated because the admin's channel allow-list authorized them, as
+ * creation authorizes a reminder.
+ */
+function isSystemInitiatedIncoming(incoming: ChatIncoming): boolean {
+  return Boolean(incoming.reminderRecipientID || incoming.reminderData?.self_reminder || incoming.naturalNudge);
+}
+
 function isRealUserMessage(message: Message): boolean {
   return (!message.author.bot && !message.webhookId) || isMatrixRelayMessage(message) || isMessageProxyMessage(message);
 }
@@ -521,6 +530,7 @@ async function resolveTextCredentialPolicy(params: {
   isPersonaJob: boolean;
   isManuallyTriggered?: boolean;
   isUserImpersonation: boolean;
+  isNaturalNudge: boolean;
   userRow: UserRow;
   channel: Message["channel"];
   locale: string;
@@ -531,8 +541,10 @@ async function resolveTextCredentialPolicy(params: {
   personalRoutingUserId: number | null;
   personalTextProvider: string | null;
 } | null> {
+  // A nudge's trigger author is whoever spoke last, so a personal key there would bill a bystander.
   const personalRoutingUserId =
-    params.isSelfMessage && !params.isPersonaJob && !params.isManuallyTriggered && !params.isUserImpersonation
+    params.isNaturalNudge ||
+    (params.isSelfMessage && !params.isPersonaJob && !params.isManuallyTriggered && !params.isUserImpersonation)
       ? null
       : (params.userRow.user_id ?? null);
 
@@ -656,10 +668,10 @@ function selectPersonasForTurn(args: {
           (typeof persona.persona_id === "number" && args.allowedPersonaIds.has(persona.persona_id))),
     );
 
-  // Reminder turns are system-initiated: bypass personal spotlight (a user preference
-  // that governs which persona responds *to them*, not system-triggered events). Only
-  // the persona-channel whitelist is still enforced so channel admins can restrict personas.
-  if (incoming.reminderRecipientID || incoming.reminderData?.self_reminder) {
+  // Reminder and Natural Nudges turns are system-initiated: bypass personal spotlight and user
+  // blocks (preferences that govern which persona responds *to that user*, not system-triggered
+  // events). Only the persona-channel whitelist is still enforced so channel admins can restrict personas.
+  if (isSystemInitiatedIncoming(incoming)) {
     return selectedPersona &&
       whitelistRepository.isPersonaAllowedByWhitelistStatus(args.whitelistStatus, selectedPersona.persona_id)
       ? [selectedPersona]

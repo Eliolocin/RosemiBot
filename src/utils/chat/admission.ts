@@ -105,6 +105,7 @@ export function normalizeChatInvocation(input: TomoriChatInput): ChatIncoming {
     systemTriggerIdentity: input.systemTriggerIdentity,
     manualStreamingContextOverrides: input.manualStreamingContextOverrides,
     sceneTurn: input.sceneTurn,
+    naturalNudge: input.naturalNudge,
     carriedExpressionDelivery: input.carriedExpressionDelivery,
     onGenerationResult: input.onGenerationResult,
     onQueueDiscard: input.onQueueDiscard,
@@ -279,6 +280,7 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
   if (
     !channelScope.isDMChannel &&
     !incoming.isStopResponse &&
+    !incoming.naturalNudge &&
     (await getCachedBlacklistStatus(channelScope.serverDiscId, userDiscId))
   ) {
     return blocked("server_blacklisted_user");

@@ -22,6 +22,7 @@ When a server adopts an official preset via `/setup` or `/persona default`, the 
 
 - **Live content resolution**: Runtime state loading resolves prompt text, attributes, public attribute flags, and sample dialogues directly from `persona_presets`.
 - **Trigger deduplication**: Trigger words normally resolve live from `persona_presets` and pass through `applyTriggerWordOwnership()` to prevent collisions on shared keywords (see [Multi-Persona System](/architecture/subsystems/multi-persona/)). Resynced pointers keep their local trigger words and naming habits through `persona_configs.preserve_preset_identity`.
+- **Natural Nudges defaults**: Talkativeness and interests resolve live from `persona_presets` until the persona has its own `persona_natural_nudge_configs` row. Editing them on the Nudges page writes that row without forking the pointer, which makes `Resync with Preset` available to delete just that row. Materializing copies the preset values into the row, and re-pointing deletes it.
 - **Lineage separation**: `preset_lineage_id` identifies the official preset row, while `persona_lineage_id` scopes server memories, personal memories, and conditioning history. Applying a preset stamps `persona_lineage_id` with the preset lineage, but memory updates never fork the pointer.
 
 ## Shared assets and reconciliation

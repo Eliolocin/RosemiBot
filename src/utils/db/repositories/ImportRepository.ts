@@ -1,4 +1,7 @@
 import { validateDraftingImportReferences } from "@/utils/discord/interactions/responseDraftingOperations";
+import { loadStructuredOutputModelGroups } from "@/utils/discord/interactions/configModelOperations";
+import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
+import { isKnownPrerequisite, isNudgeToolName } from "@/modules/natural-nudges/runtime/episodes";
 import { sql } from "@/utils/db/client";
 import type { SQL } from "bun";
 import { log } from "@/utils/misc/logger";
@@ -90,6 +93,7 @@ interface SectionTableDefinition {
 interface PreparedConfigImport {
   tablePatches: ConfigTablePatch[];
   stmCategories?: Array<{ position: number; label: string; description: string }>;
+  nudges?: NonNullable<WorkspaceConfigExportData["nudges"]>;
   configFieldsCount: number;
 }
 
@@ -228,6 +232,8 @@ const WORKSPACE_SECTION_TABLES: Record<WorkspaceConfigSection, readonly SectionT
     },
   ],
   access: [{ tableName: "server_byok_configs", fields: ["user_byok_mode"] }],
+  // Written by its own upsert, because a server that never opened the page has no row to update.
+  nudges: [],
 };
 
 const PERSONAL_SECTION_TABLES: Record<PersonalConfigSection, readonly SectionTableDefinition[]> = {
@@ -323,6 +329,35 @@ function getStmCategories(value: unknown): Array<{ position: number; label: stri
   });
 }
 
+/** The planner model must be offered to this workspace and every custom episode must name known checks. */
+async function validateNudgesImport(
+  serverId: number,
+  nudges: NonNullable<WorkspaceConfigExportData["nudges"]>,
+): Promise<boolean> {
+  const episodes = nudges.custom_episodes ?? [];
+  if (
+    !episodes.every(
+      (episode) => episode.prerequisites.every(isKnownPrerequisite) && episode.recommended_tools.every(isNudgeToolName),
+    )
+  )
+    return false;
+  if (nudges.llm_id == null) return true;
+  const groups = await loadStructuredOutputModelGroups(serverId, "en-US");
+  return groups.some((group) => group.models.some((model) => model.id === nudges.llm_id));
+}
+
+async function importNudgesSection(
+  tx: SQL,
+  serverId: number,
+  nudges: NonNullable<WorkspaceConfigExportData["nudges"]>,
+): Promise<void> {
+  const { custom_episodes: customEpisodes, ...settings } = nudges;
+  if (!(await naturalNudgeRepository.saveServerConfig(serverId, settings, tx))) {
+    throw new Error("Natural Nudges settings import failed");
+  }
+  if (customEpisodes !== undefined) await naturalNudgeRepository.replaceCustomEpisodes(serverId, customEpisodes, tx);
+}
+
 /**
  * ImportRepository: owns all data import operations.
  *
@@ -357,6 +392,7 @@ class ImportRepository {
 
     const tablePatches: ConfigTablePatch[] = [];
     let stmCategories: PreparedConfigImport["stmCategories"];
+    let nudges: PreparedConfigImport["nudges"];
     let configFieldsCount = 0;
 
     for (const section of presentSections) {
@@ -376,6 +412,11 @@ class ImportRepository {
         0,
       );
 
+      if (section === "nudges" && isRecord(sectionValidation.data)) {
+        nudges = sectionValidation.data as PreparedConfigImport["nudges"];
+        configFieldsCount += Object.keys(sectionValidation.data).length;
+      }
+
       if (section === "memory" && isRecord(sectionValidation.data)) {
         const categories = getStmCategories(sectionValidation.data);
         if (categories !== undefined) {
@@ -385,7 +426,7 @@ class ImportRepository {
       }
     }
 
-    return { success: true, prepared: { tablePatches, stmCategories, configFieldsCount } };
+    return { success: true, prepared: { tablePatches, stmCategories, nudges, configFieldsCount } };
   }
 
   private preparePersonalConfig(
@@ -533,7 +574,7 @@ class ImportRepository {
       const preparedResult = this.prepareWorkspaceConfig(input, selectedSections);
       if (!preparedResult.success) return preparedResult;
       const { prepared } = preparedResult;
-      if (prepared.tablePatches.length === 0 && prepared.stmCategories === undefined) {
+      if (prepared.tablePatches.length === 0 && prepared.stmCategories === undefined && prepared.nudges === undefined) {
         return { success: true, itemsImported: { configFieldsCount: 0 } };
       }
 
@@ -552,10 +593,14 @@ class ImportRepository {
           return { success: false, error: "commands.config.drafting.import_unavailable" };
         }
       }
+      if (prepared.nudges && !(await validateNudgesImport(serverId, prepared.nudges))) {
+        return { success: false, error: "commands.config.natural_nudges.import_unavailable" };
+      }
       const tablePatches = prepared.tablePatches.map((tablePatch) => ({ ...tablePatch, id: serverId }));
       await sql.begin(async (tx: SQL) => {
         for (const tablePatch of tablePatches) await this.updateConfigRow(tx, tablePatch);
         if (prepared.stmCategories !== undefined) await this.updateStmCategories(tx, serverId, prepared.stmCategories);
+        if (prepared.nudges) await importNudgesSection(tx, serverId, prepared.nudges);
       });
 
       invalidateTomoriStateCache(serverDiscId);

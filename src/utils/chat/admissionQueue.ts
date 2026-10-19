@@ -118,6 +118,11 @@ async function evaluateLockedChannelAdmission(
     reason,
   });
 
+  // A queued nudge would speak after the turn that made the channel busy, so it is dropped instead.
+  if (incoming.naturalNudge) {
+    return ignored("locked_natural_nudge");
+  }
+
   if (StreamOrchestrator.hasStopRequest(channelId) && !StreamOrchestrator.isFollowUpRequest(channelId)) {
     return ignored("locked_stop_requested");
   }

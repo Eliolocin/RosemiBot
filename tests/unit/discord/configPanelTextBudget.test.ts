@@ -54,6 +54,27 @@ import {
   validateComponentsV2MessageLimits,
 } from "@/utils/discord/ui/componentsV2Limits";
 import { buildConfigPanelPayload } from "@/utils/discord/ui/configPanel";
+import {
+  CUSTOM_EPISODE_AGENDA_HINT_MAX,
+  CUSTOM_EPISODE_BRIEF_MAX,
+  CUSTOM_EPISODE_LIMIT,
+  CUSTOM_EPISODE_TITLE_MAX,
+  defaultServerNaturalNudgeConfig,
+  NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX,
+  NATURAL_NUDGE_INTEREST_LABEL_MAX,
+  NATURAL_NUDGE_INTEREST_LIMIT,
+} from "@/modules/natural-nudges/db/types";
+import {
+  BUILTIN_EPISODES,
+  customEpisodeDefinition,
+  NUDGE_PREREQUISITE_IDS,
+  NUDGE_TOOL_NAMES,
+} from "@/modules/natural-nudges/runtime/episodes";
+import {
+  computeEpisodeListFingerprint,
+  type NaturalNudgesSettingsView,
+  type NudgeEpisodesView,
+} from "@/modules/natural-nudges/discord/operations";
 import { FENCED_PREVIEW_MAX_CHARS } from "@/utils/text/textPreview";
 import { formatPanelProse } from "@/utils/discord/ui/panelProse";
 import { getCapabilitiesManagePermissionDefinitions } from "@/utils/discord/manageConfigMapping";
@@ -79,6 +100,53 @@ const RENDERING_READ_STATUSES: readonly PanelReadStatus[] = ["fresh", "unavailab
 beforeAll(async () => initializeLocalizer());
 
 const GUILD_MANAGER: ConfigActor = { workspaceKind: "guild", isManager: true };
+
+const MAX_NUDGE_INTERESTS = Array.from({ length: NATURAL_NUDGE_INTEREST_LIMIT }, (_, index) => ({
+  label: `${index}`.padEnd(NATURAL_NUDGE_INTEREST_LABEL_MAX, "L"),
+  description: "`D*"
+    .repeat(Math.ceil(NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX / 3))
+    .slice(0, NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX),
+}));
+
+const MAX_NUDGE_SETTINGS: NaturalNudgesSettingsView = {
+  config: {
+    ...defaultServerNaturalNudgeConfig(1),
+    episodes_enabled: true,
+    channel_disc_ids: Array.from({ length: 25 }, (_, index) => `1${String(index).padStart(17, "0")}`),
+    llm_id: 7,
+  },
+  runtime: { server_id: 1, episode_jitter: 1, consecutive_failures: 3, stopped_at: new Date(0) },
+  plannerModels: Array.from({ length: 30 }, (_, index) => ({
+    provider: `custom:provider-${index}`,
+    models: Array.from({ length: index === 0 ? 60 : 1 }, (_, model) => ({
+      id: index * 100 + model + 1,
+      name: `model-${index}-${model}`.padEnd(90, "m"),
+      description: null,
+    })),
+  })),
+  trackingEnabled: false,
+  heat: 1234.5,
+  perDay: 3,
+};
+
+const MAX_NUDGE_EPISODES: NudgeEpisodesView = (() => {
+  const custom = Array.from({ length: CUSTOM_EPISODE_LIMIT }, (_, index) => ({
+    episode_id: index + 1,
+    server_id: 1,
+    category: "new_topic" as const,
+    title: `${index}`.padEnd(CUSTOM_EPISODE_TITLE_MAX, "T"),
+    brief: "`B*".repeat(CUSTOM_EPISODE_BRIEF_MAX).slice(0, CUSTOM_EPISODE_BRIEF_MAX),
+    agenda_hint: "A".repeat(CUSTOM_EPISODE_AGENDA_HINT_MAX),
+    prerequisites: [...NUDGE_PREREQUISITE_IDS],
+    recommended_tools: [...NUDGE_TOOL_NAMES],
+    enabled: index % 2 === 0,
+  }));
+  const entries = [
+    ...BUILTIN_EPISODES.map((definition) => ({ definition, enabled: true })),
+    ...custom.map((row) => ({ definition: customEpisodeDefinition(row), enabled: row.enabled, custom: row })),
+  ];
+  return { config: defaultServerNaturalNudgeConfig(1), entries, fingerprint: computeEpisodeListFingerprint(entries) };
+})();
 
 /** Server 9 and the id-derived nickname are this suite's defaults, so both stay off the factory. */
 function makePersona(overrides: Partial<TomoriState> & { persona_id: number }): TomoriState {
@@ -709,6 +777,62 @@ describe("config page text budgeting at stored maxima", () => {
           receipt: receipt ? { tone: "success", heading: "Saved", detail: "Configuration was saved." } : undefined,
         });
       },
+    },
+    {
+      name: "Persona Nudges",
+      maxTolerance: PREVIEW_TIGHTNESS_TOLERANCE,
+      buildPayload: (locale: string, receipt: boolean) =>
+        buildConfigPanelPayload({
+          locale,
+          actor: GUILD_MANAGER,
+          category: "persona",
+          page: "nudges",
+          personas: [makePersona({ persona_id: 55, is_pointer: true })],
+          selectedPersonaId: 55,
+          readStatus: "fresh",
+          naturalNudges: {
+            personaConfig: { persona_id: 55, talkativeness: 4, interests: MAX_NUDGE_INTERESTS, has_override: false },
+            selectedInterestIndex: 7,
+          },
+          receipt: receipt ? { tone: "success", heading: "Saved", detail: "Configuration was saved." } : undefined,
+        }),
+    },
+    {
+      name: "Plugins Natural Nudges",
+      maxTolerance: PREVIEW_TIGHTNESS_TOLERANCE,
+      buildPayload: (locale: string, receipt: boolean) =>
+        buildConfigPanelPayload({
+          locale,
+          actor: GUILD_MANAGER,
+          category: "plugins",
+          page: "natural-nudges",
+          personas: [
+            makePersona({
+              persona_id: 55,
+              config: { ...makePersona({ persona_id: 55 }).config, user_byok_mode: true },
+            }),
+          ],
+          selectedPersonaId: null,
+          readStatus: "fresh",
+          naturalNudges: { settings: MAX_NUDGE_SETTINGS },
+          receipt: receipt ? { tone: "success", heading: "Saved", detail: "Configuration was saved." } : undefined,
+        }),
+    },
+    {
+      name: "Plugins Nudge Episodes",
+      maxTolerance: PREVIEW_TIGHTNESS_TOLERANCE,
+      buildPayload: (locale: string, receipt: boolean) =>
+        buildConfigPanelPayload({
+          locale,
+          actor: GUILD_MANAGER,
+          category: "plugins",
+          page: "nudge-episodes",
+          personas: [makePersona({ persona_id: 55 })],
+          selectedPersonaId: null,
+          readStatus: "fresh",
+          naturalNudges: { episodes: MAX_NUDGE_EPISODES, episodeStart: 24, selectedEpisodeIndex: 33 },
+          receipt: receipt ? { tone: "success", heading: "Saved", detail: "Configuration was saved." } : undefined,
+        }),
     },
     {
       name: "Channels Overrides",

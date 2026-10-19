@@ -15,10 +15,14 @@ const EXPECTED_PLUGIN_PAGES = [
   "available-tools",
   "context-additions",
   "response-drafting",
+  "natural-nudges",
+  "nudge-episodes",
   "mcp-servers",
   "sillytavern-presets",
   "nsfw-jailbreaks",
 ] as const;
+
+const GUILD_ONLY_PLUGIN_PAGES: readonly string[] = ["natural-nudges", "nudge-episodes"];
 
 const EXPECTED_CAPABILITY_PAGE_BY_VALUE = {
   selfteaching: "available-tools",
@@ -57,14 +61,14 @@ describe("W6-18 Config Plugins structure", () => {
     expect(actual).toEqual(EXPECTED_CAPABILITY_PAGE_BY_VALUE);
   });
 
-  it("keeps every Plugins page visible to the owner of a DM workspace", () => {
+  it("keeps every Plugins page except the guild-only ones visible to the owner of a DM workspace", () => {
     const pluginPages = (CONFIG_PAGES_BY_CATEGORY as Record<string, readonly string[]>).plugins;
     expect<readonly string[]>(
       visibleConfigPages("plugins" as ConfigCategory, {
         workspaceKind: "dm",
         isManager: true,
       }),
-    ).toEqual(pluginPages);
+    ).toEqual(pluginPages.filter((page) => !GUILD_ONLY_PLUGIN_PAGES.includes(page)));
   });
 
   it("dissolves both absorbed roots once Plugins owns their pages", async () => {

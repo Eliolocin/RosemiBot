@@ -35,6 +35,8 @@ import { personaRepository } from "@/utils/db/repositories/PersonaRepository";
 import { getBaseTriggerWords } from "@/utils/text/localizer";
 import { EMPTY_PERSONA_NAMING_CONFIG } from "@/types/personaNaming";
 import { userNamingRepository } from "@/utils/db/repositories/UserNamingRepository";
+import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
+import { DEFAULT_NATURAL_NUDGE_TALKATIVENESS, sameNaturalNudgeInterests } from "@/modules/natural-nudges/db/types";
 
 export type StPresetsReadResult = { status: "fresh"; presets: StPresetRow[] } | { status: "unavailable"; presets: [] };
 
@@ -471,7 +473,12 @@ class PresetRepository {
           arraysEqual(preset.preset_sample_dialogues_out, data.sample_dialogues_out) &&
           arraysEqual(resolveOfficialPresetTriggerWords(preset), expectedTriggers) &&
           resolveOfficialPresetPrompt(preset) === expectedPrompt &&
-          JSON.stringify(preset.preset_naming_config) === JSON.stringify(expectedNamingConfig)
+          JSON.stringify(preset.preset_naming_config) === JSON.stringify(expectedNamingConfig) &&
+          // Cards from before Natural Nudges carry neither field, so their absence still matches.
+          (data.natural_nudge_talkativeness === undefined ||
+            data.natural_nudge_talkativeness === preset.natural_nudge_talkativeness) &&
+          (data.natural_nudge_interests === undefined ||
+            sameNaturalNudgeInterests(data.natural_nudge_interests, preset.natural_nudge_interests))
         );
       }) ?? null
     );
@@ -915,6 +922,9 @@ class PresetRepository {
 
       const presetData = personaRows[0];
       const pointerPreset = await this.loadPointerPresetForPersonaRow(presetData as Record<string, unknown>);
+      const nudgeConfig = (await naturalNudgeRepository.loadPersonaConfigs([presetData.persona_id as number])).get(
+        presetData.persona_id as number,
+      );
       if (typeof targetPersonaId !== "number") {
         const mainCountRows = await sql`
           SELECT COUNT(*)::int AS count
@@ -1017,6 +1027,12 @@ class PresetRepository {
           nai_attg_genre: presetData.nai_attg_genre ?? null,
           nai_attg_stars: presetData.nai_attg_stars ?? null,
           is_nsfw: pointerPreset ? pointerPreset.is_nsfw : presetData.is_nsfw === true,
+          ...(nudgeConfig
+            ? {
+                natural_nudge_interests: nudgeConfig.interests,
+                natural_nudge_talkativeness: nudgeConfig.talkativeness,
+              }
+            : {}),
         },
       };
 
@@ -1250,6 +1266,13 @@ class PresetRepository {
         mainTomoriId,
         validatedImportData.naming_config ?? EMPTY_PERSONA_NAMING_CONFIG,
       );
+      if (
+        !(await naturalNudgeRepository.savePersonaConfig(mainTomoriId, {
+          talkativeness: validatedImportData.natural_nudge_talkativeness ?? DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
+          interests: validatedImportData.natural_nudge_interests ?? [],
+        }))
+      )
+        return { success: false, error: "commands.persona.import.error_import_failed" };
 
       if (
         !(await personaRepository.setVoiceConfig(mainTomoriId, {

@@ -15,12 +15,9 @@ import {
 import { configRepository, mcpRepository } from "@/utils/db/repositories";
 import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCacheStore";
 import {
-  loadConfigModelProviders,
-  loadConfigModelChoices,
-  type ConfigModelChoice,
+  loadStructuredOutputModelGroups,
+  type StructuredOutputModelGroup,
 } from "@/utils/discord/interactions/configModelOperations";
-import { getStaticProviderInfo } from "@/utils/provider/providerInfoRegistry";
-import { isCustomProvider } from "@/utils/provider/customProviderUtils";
 import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
 import { localizer } from "@/utils/text/localizer";
 
@@ -28,12 +25,8 @@ export interface DraftCheckerChoice {
   reference: ResponseRuleCheckerRef;
   label: string;
 }
-export interface DraftModelGroup {
-  provider: string;
-  models: ConfigModelChoice[];
-}
 export interface ResponseDraftingView {
-  reviewers: DraftModelGroup[];
+  reviewers: StructuredOutputModelGroup[];
   checkers: DraftCheckerChoice[];
   inheritedReviewerAvailable: boolean;
 }
@@ -79,25 +72,6 @@ export function checkerFingerprint(choices: readonly DraftCheckerChoice[]): stri
     .slice(0, 8);
 }
 
-export async function loadDraftingModelGroups(serverId: number, locale: string): Promise<DraftModelGroup[]> {
-  const providers = await loadConfigModelProviders(serverId, "text");
-  const groups = await Promise.all(
-    providers.map(async (provider) => {
-      if (!isCustomProvider(provider) && !getStaticProviderInfo(provider)?.featureSupport.structuredOutput)
-        return { provider, models: [] };
-      const models = await loadConfigModelChoices(
-        serverId,
-        "text",
-        provider,
-        locale,
-        (model) => model.supports_structoutput,
-      );
-      return { provider, models };
-    }),
-  );
-  return groups.filter((group) => group.models.length > 0);
-}
-
 export async function loadDraftCheckerChoices(serverId: number): Promise<DraftCheckerChoice[]> {
   const choices: DraftCheckerChoice[] = [];
   const read = await mcpRepository.loadGuildMcpConfigsResult(serverId);
@@ -118,7 +92,7 @@ export async function loadDraftCheckerChoices(serverId: number): Promise<DraftCh
 
 export async function loadResponseDraftingView(state: TomoriState, locale: string): Promise<ResponseDraftingView> {
   const [reviewers, checkers] = await Promise.all([
-    loadDraftingModelGroups(state.server_id, locale),
+    loadStructuredOutputModelGroups(state.server_id, locale),
     loadDraftCheckerChoices(state.server_id),
   ]);
   return {
@@ -174,7 +148,7 @@ export const responseDraftingOperations: ResponseDraftingOperations = {
   },
   async setModel(state, workspaceId, provider, modelId) {
     if (modelId !== null) {
-      const groups = await loadDraftingModelGroups(state.server_id, "en-US");
+      const groups = await loadStructuredOutputModelGroups(state.server_id, "en-US");
       if (!groups.some((group) => group.provider === provider && group.models.some((model) => model.id === modelId)))
         return "stale";
     }
@@ -201,7 +175,7 @@ export async function validateDraftingImportReferences(
   patch: Partial<ServerChatConfigRow>,
 ): Promise<boolean> {
   if (patch.response_reviewer_llm_id != null) {
-    const reviewers = await loadDraftingModelGroups(serverId, "en-US");
+    const reviewers = await loadStructuredOutputModelGroups(serverId, "en-US");
     if (!reviewers.some((group) => group.models.some((model) => model.id === patch.response_reviewer_llm_id)))
       return false;
   }
