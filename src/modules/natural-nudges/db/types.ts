@@ -79,7 +79,7 @@ export type ServerNaturalNudgeConfig = z.infer<typeof serverNaturalNudgeConfigSc
 export function defaultServerNaturalNudgeConfig(serverId: number): ServerNaturalNudgeConfig {
   return {
     server_id: serverId,
-    episodes_enabled: false,
+    episodes_enabled: true,
     channel_disc_ids: [],
     llm_id: null,
     reach_out_weight: 35,

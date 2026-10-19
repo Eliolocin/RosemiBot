@@ -16,12 +16,14 @@ calls never delay reminders.
 | Phase | Owner | Work |
 |---|---|---|
 | A, decide | `NaturalNudgeProcessor` (`runtime/processor.ts`), the third processor in `ScheduledWorkCoordinator` | Plain code, no model call: due time, waking hours, lull, then the persona, category, and episode raffles |
-| B, plan | `planEpisode` (`runtime/planner.ts`) | One structured-output call to the server's planner model: channel, opener direction, agenda, or `proceed: false` |
+| B, plan | `planEpisode` (`runtime/planner.ts`) | One structured-output call to the planner model (`resolvePlannerModel`): channel, opener direction, agenda, or `proceed: false` |
 | C, speak | `runEpisodeAttempt` (`runtime/runner.ts`) | Fresh re-checks, then a normal `tomoriChat` turn on the channel's latest message, run like reminders |
 
 Phase A runs every 60 seconds on the coordinator's reconcile tick, because no due-time column
-exists to wake on. It reads servers with episodes on and at least one allowed channel, and skips
-any server that has an attempt in flight.
+exists to wake on. Natural Nudges is on by default, so `listEnabledEpisodeServers` starts from guild
+servers with `message_sent` inside the heat window, not from config rows: a server that never opened
+the page runs on the column defaults, and a server with no recent activity is never read. A server
+that turned episodes off is skipped, as is any server with an attempt in flight.
 
 ```
 reconcile tick
@@ -29,7 +31,8 @@ reconcile tick
        ├─ pending opener?  → resolve its verdict, stop
        ├─ failure or unanswered stop? → stop
        ├─ heat → episodes per day → due time, daily cap, waking hours
-       ├─ lull: allowed channels quiet for 1-3 hours (gateway lastMessageId)
+       ├─ lull: effective channels quiet for 1-3 hours (gateway lastMessageId)
+       ├─ planner model: llm_id, else the chat model; no_model abort and backoff unless it resolves
        ├─ persona raffle → category raffle → episode raffle
        └─ detached: planEpisode → recheckBeforeSend → tomoriChat({ naturalNudge })
                                                        └─ fire row + agenda row
@@ -49,6 +52,20 @@ Nudge turns must never feed either input. `naturalNudge` on the chat input makes
 `postTurnEffects` skip `message_sent` and `active_hour`, and the empty-response retry carries the
 marker. Without that, each nudge would raise its own heat and drag waking hours toward its fire
 times. Token and model stats still record.
+
+## Channels and model
+
+- **Effective channels** (`resolveEffectiveChannelIds` in `runtime/channels.ts`): a non-empty
+  `channel_disc_ids` is used exactly. An empty list means automatic: the distinct `channel_turn`
+  keys of the last 14 days, minus Channel Rules `rp_channel_ids`. `channel_turn` is recorded beside
+  `active_hour` with the channel ID (a thread's parent), and turns that borrow a trigger skip it, so
+  only human-triggered turns make a channel eligible. 14 days is heat's horizon; with stat tracking
+  off, the automatic set stays empty along with heat. Fire-time admission still enforces send
+  permission, the channel whitelist, and persona access.
+- **Planner model** (`resolvePlannerModel` in `runtime/model.ts`): `llm_id` when pinned, else the
+  server's chat model (`tomoriState.llm`, never a persona override). Either must pass
+  `resolveServerStructuredModel`; a failed pin does not fall back. Without a usable model the
+  server stays idle and the plugin page says why. Telemetry records the model that planned.
 
 Phase A also keeps a few values in memory, by the "what breaks on restart?" test: the in-flight
 lock, the rolled lull, the retry-after-abort time, and a 15-minute cache of heat and waking hours.

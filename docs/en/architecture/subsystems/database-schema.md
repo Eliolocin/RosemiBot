@@ -198,7 +198,10 @@ Natural Nudges stores events and derives its meters on read
 (see [Natural Nudges](/architecture/subsystems/natural-nudges/)):
 
 - **`server_natural_nudge_configs`**: per-server settings, read fresh by the runtime rather than
-  through `tomoriState`. A missing row means the column defaults. Reset restores it; the workspace
+  through `tomoriState`. A missing row means the column defaults, and `episodes_enabled` defaults
+  to true, so the timer enumerates servers from recent `stat_counters` activity instead of from
+  these rows. An empty `channel_disc_ids` means automatic channels, and a null `llm_id` means the
+  server's chat model. Reset restores it; the workspace
   export carries it without `channel_disc_ids`, and import checks `llm_id` against the target
   workspace's structured-output models.
 - **`server_natural_nudge_episodes`**: custom episodes, at most 25 per server. Prerequisite IDs are

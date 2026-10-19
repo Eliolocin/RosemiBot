@@ -124,7 +124,7 @@ export async function handleNudgeModalOpen(
     return true;
   }
   if (route.action === "nudge-provider") {
-    const settings = await nudges.loadSettings(serverId, locale);
+    const settings = await nudges.loadSettings(serverId, locale, null);
     const slice = value ? decodeConfigProviderPageValue(value) : null;
     const group = settings.plannerModels.find((candidate) => candidate.provider === (slice?.provider ?? value));
     const start = slice?.start ?? 0;
@@ -141,7 +141,7 @@ export async function handleNudgeModalOpen(
   if (route.action === "nudge-limits-open") {
     await dependencies.showModal(
       interaction,
-      buildLimitsModal(locale, nonce, await nudges.loadSettings(serverId, locale)),
+      buildLimitsModal(locale, nonce, await nudges.loadSettings(serverId, locale, null)),
     );
     return true;
   }

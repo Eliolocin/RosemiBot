@@ -4,7 +4,12 @@ import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import type { NaturalNudgeInterest } from "@/modules/natural-nudges/db/types";
 import { availableEpisodeTools, type EpisodeDefinition } from "@/modules/natural-nudges/runtime/episodes";
-import { hasActivitySince, type NudgeChannel } from "@/modules/natural-nudges/runtime/channels";
+import {
+  hasActivitySince,
+  resolveEffectiveChannelIds,
+  type NudgeChannel,
+} from "@/modules/natural-nudges/runtime/channels";
+import { resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { isWithinWakingHours, serverDayStart } from "@/modules/natural-nudges/runtime/meters";
 import { planEpisode, type EpisodePlan } from "@/modules/natural-nudges/runtime/planner";
 import { recordEpisodeSample, type EpisodeSample } from "@/modules/natural-nudges/runtime/telemetry";
@@ -53,8 +58,8 @@ function sample(attempt: EpisodeAttempt, extra: Omit<EpisodeSample, "serverId">)
 async function recheckBeforeSend(attempt: EpisodeAttempt, target: NudgeChannel, now: Date): Promise<string | null> {
   const config = await naturalNudgeRepository.loadServerConfig(attempt.serverId);
   if (!config.episodes_enabled) return "disabled";
-  if (!config.channel_disc_ids.includes(target.channel.id)) return "channel_removed";
-  if (config.llm_id === null) return "model_cleared";
+  const channelIds = await resolveEffectiveChannelIds(attempt.serverId, config, now);
+  if (!channelIds.includes(target.channel.id)) return "channel_removed";
   if ((await naturalNudgeRepository.loadRuntimeState(attempt.serverId)).stopped_at) return "stopped";
 
   const dayStart = serverDayStart(now, attempt.timezoneOffset);
@@ -66,6 +71,7 @@ async function recheckBeforeSend(attempt: EpisodeAttempt, target: NudgeChannel, 
   if (typeof personaId !== "number") return "persona_removed";
   const personas = await personaRepository.loadAllForServer(attempt.serverDiscId);
   if (!personas.some((persona) => persona.persona_id === personaId)) return "persona_removed";
+  if ((await resolvePlannerModel(personas[0], config.llm_id)).kind !== "ready") return "no_model";
   const personaConfig = (await naturalNudgeRepository.loadPersonaConfigs([personaId])).get(personaId);
   if (!personaConfig || personaConfig.talkativeness === 0) return "persona_silenced";
   const whitelist = await whitelistRepository.checkChannelWhitelist(attempt.serverDiscId, target.channel.id);

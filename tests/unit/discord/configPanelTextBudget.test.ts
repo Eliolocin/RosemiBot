@@ -108,12 +108,14 @@ const MAX_NUDGE_INTERESTS = Array.from({ length: NATURAL_NUDGE_INTEREST_LIMIT },
     .slice(0, NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX),
 }));
 
+const MAX_NUDGE_CHANNELS = Array.from({ length: 25 }, (_, index) => `1${String(index).padStart(17, "0")}`);
+
 const MAX_NUDGE_SETTINGS: NaturalNudgesSettingsView = {
   config: {
     ...defaultServerNaturalNudgeConfig(1),
     episodes_enabled: true,
-    channel_disc_ids: Array.from({ length: 25 }, (_, index) => `1${String(index).padStart(17, "0")}`),
-    llm_id: 7,
+    channel_disc_ids: MAX_NUDGE_CHANNELS,
+    llm_id: null,
   },
   runtime: { server_id: 1, episode_jitter: 1, consecutive_failures: 3, stopped_at: new Date(0) },
   plannerModels: Array.from({ length: 30 }, (_, index) => ({
@@ -127,6 +129,11 @@ const MAX_NUDGE_SETTINGS: NaturalNudgesSettingsView = {
   trackingEnabled: false,
   heat: 1234.5,
   perDay: 3,
+  status: {
+    effectiveChannelIds: MAX_NUDGE_CHANNELS,
+    plannerModel: { kind: "unusable", llmId: 7, source: "chat", reason: "unavailable" },
+    chatModel: { codename: "chat-model".padEnd(90, "c"), provider: "custom:provider-chat" },
+  },
 };
 
 const MAX_NUDGE_EPISODES: NudgeEpisodesView = (() => {

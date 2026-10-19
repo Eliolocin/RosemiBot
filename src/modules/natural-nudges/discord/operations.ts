@@ -28,8 +28,18 @@ import {
   type StructuredOutputModelGroup,
 } from "@/utils/discord/interactions/configModelOperations";
 import { statRepository } from "@/utils/db/repositories";
+import type { TomoriState } from "@/types/db/schema";
+import { resolveEffectiveChannelIds } from "@/modules/natural-nudges/runtime/channels";
+import { resolvePlannerModel, type PlannerModelStatus } from "@/modules/natural-nudges/runtime/model";
 
 export type NudgeWriteResult = "success" | "stale" | "invalid" | "limit" | "write-failed";
+
+/** What the timer would use right now, which the page shows next to the saved settings. */
+interface NaturalNudgesStatus {
+  effectiveChannelIds: string[];
+  plannerModel: PlannerModelStatus;
+  chatModel: { codename: string; provider: string } | null;
+}
 
 export interface NaturalNudgesSettingsView {
   config: ServerNaturalNudgeConfig;
@@ -38,6 +48,8 @@ export interface NaturalNudgesSettingsView {
   trackingEnabled: boolean;
   heat: number;
   perDay: number;
+  /** Null on modal paths, which must acknowledge within 3 seconds and never render it. */
+  status: NaturalNudgesStatus | null;
 }
 
 export interface NudgeEpisodeEntry {
@@ -69,7 +81,25 @@ export function computeInterestFingerprint(personaId: number, index: number, int
     .slice(0, 8);
 }
 
-async function loadSettingsView(serverId: number, locale: string): Promise<NaturalNudgesSettingsView> {
+async function loadSettingsStatus(
+  state: TomoriState,
+  config: ServerNaturalNudgeConfig,
+  now: Date,
+): Promise<NaturalNudgesStatus> {
+  const [effectiveChannelIds, plannerModel] = await Promise.all([
+    resolveEffectiveChannelIds(state.server_id, config, now),
+    resolvePlannerModel(state, config.llm_id),
+  ]);
+  const chatModel =
+    (state.llm.llm_id ?? 0) > 0 ? { codename: state.llm.llm_codename, provider: state.llm.llm_provider } : null;
+  return { effectiveChannelIds, plannerModel, chatModel };
+}
+
+async function loadSettingsView(
+  serverId: number,
+  locale: string,
+  chatState: TomoriState | null,
+): Promise<NaturalNudgesSettingsView> {
   const now = new Date();
   const [config, runtime, plannerModels, dailyCounts] = await Promise.all([
     naturalNudgeRepository.loadServerConfig(serverId),
@@ -85,6 +115,7 @@ async function loadSettingsView(serverId: number, locale: string): Promise<Natur
     trackingEnabled: statRepository.isTrackingEnabled,
     heat,
     perDay: episodesPerDay(heat, config.episode_frequency, config.daily_episode_cap),
+    status: chatState ? await loadSettingsStatus(chatState, config, now) : null,
   };
 }
 
@@ -330,7 +361,7 @@ export interface NaturalNudgesPanelState {
 }
 
 export interface NaturalNudgePanelDependencies {
-  loadSettings(serverId: number, locale: string): Promise<NaturalNudgesSettingsView>;
+  loadSettings(serverId: number, locale: string, chatState: TomoriState | null): Promise<NaturalNudgesSettingsView>;
   loadEpisodes(serverId: number): Promise<NudgeEpisodesView>;
   loadPersonaConfig(personaId: number): Promise<PersonaNaturalNudgeConfig | null>;
   operations: NaturalNudgeOperations;

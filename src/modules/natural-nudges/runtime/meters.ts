@@ -8,6 +8,12 @@ const DAY_MS = 24 * HOUR_MS;
 const HEAT_HALF_LIFE_DAYS = 3;
 const HEAT_WINDOW_DAYS = 30;
 
+/**
+ * Automatic channel eligibility follows heat's horizon: 14 quiet days decay a server's heat to about
+ * 4%, so a channel with no turn in that span could not be what keeps the server nudging.
+ */
+const AUTOMATIC_CHANNEL_DAYS = 14;
+
 /** Episodes start only at heat 1 or more: about one message to Tomori a day. */
 const MIN_EPISODE_HEAT = 1;
 
@@ -79,6 +85,10 @@ export function computeHeat(dailyCounts: ReadonlyMap<string, number>, now: Date)
 
 export function heatWindowStart(now: Date): Date {
   return new Date(utcDayStart(now) - (HEAT_WINDOW_DAYS - 1) * DAY_MS);
+}
+
+export function automaticChannelWindowStart(now: Date): Date {
+  return new Date(utcDayStart(now) - (AUTOMATIC_CHANNEL_DAYS - 1) * DAY_MS);
 }
 
 export function episodesPerDay(heat: number, level: EpisodeFrequencyLevel, dailyCap: number): number {

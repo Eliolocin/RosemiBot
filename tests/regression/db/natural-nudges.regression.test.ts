@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { naturalNudgeRepository, NATURAL_NUDGE_FAILURE_STOP_THRESHOLD } from "@/modules/natural-nudges/db/repositories";
 import { loadPersonaAgendas } from "@/modules/natural-nudges/runtime/agendas";
+import { defaultServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
+import { resolveEffectiveChannelIds } from "@/modules/natural-nudges/runtime/channels";
+import { heatWindowStart } from "@/modules/natural-nudges/runtime/meters";
 import { workspaceConfigExportSchema } from "@/types/db/dataExport";
 import { exportRepository } from "@/utils/db/repositories/ExportRepository";
 import { importRepository } from "@/utils/db/repositories/ImportRepository";
@@ -93,6 +96,71 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     expect(copied).toMatchObject({ talkativeness: 3, interests: PRESET_INTERESTS });
   });
 
+  describe("on by default", () => {
+    const now = new Date();
+    const daysAgo = (days: number) =>
+      new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days)).toISOString().slice(0, 10);
+    const serverIds: number[] = [];
+
+    async function insertServer(discId: string, isDm = false): Promise<number> {
+      await testSql`DELETE FROM servers WHERE server_disc_id = ${discId}`;
+      const [row] = await testSql`
+        INSERT INTO servers (server_disc_id, is_dm_channel) VALUES (${discId}, ${isDm}) RETURNING server_id
+      `;
+      serverIds.push(row.server_id);
+      return row.server_id;
+    }
+
+    async function recordStat(serverId: number, metric: string, metricKey: string, bucket: string): Promise<void> {
+      await testSql`
+        INSERT INTO stat_counters (server_id, user_id, persona_lineage_id, metric, metric_key, bucket, count)
+        VALUES (${serverId}, ${refs.userId}, 0, ${metric}, ${metricKey}, ${bucket}::date, 1)
+      `;
+    }
+
+    afterAll(async () => {
+      await testSql`DELETE FROM servers WHERE server_id = ANY(${testSql.array(serverIds, "INT")})`;
+    });
+
+    it("lists a heated server with no settings row on defaults, and skips cold, DM, and turned-off ones", async () => {
+      const heated = await insertServer("_rt_nudge_heated");
+      const cold = await insertServer("_rt_nudge_cold");
+      const dm = await insertServer("_rt_nudge_dm", true);
+      const off = await insertServer("_rt_nudge_off");
+      await recordStat(heated, "message_sent", "", daysAgo(0));
+      await recordStat(cold, "message_sent", "", daysAgo(45));
+      await recordStat(dm, "message_sent", "", daysAgo(0));
+      await recordStat(off, "message_sent", "", daysAgo(0));
+      expect(await naturalNudgeRepository.saveServerConfig(off, { episodes_enabled: false })).toBe(true);
+
+      const listed = await naturalNudgeRepository.listEnabledEpisodeServers(heatWindowStart(now));
+      const ours = listed.filter((server) => serverIds.includes(server.server_id));
+      expect(ours.map((server) => server.server_id)).toEqual([heated]);
+      expect(ours[0]?.config).toEqual(defaultServerNaturalNudgeConfig(heated));
+      expect(ours[0]?.config.episodes_enabled).toBe(true);
+    });
+
+    it("picks automatic channels from 14 days of turns minus roleplay channels, unless a list overrides them", async () => {
+      const serverId = await insertServer("_rt_nudge_channels");
+      await recordStat(serverId, "channel_turn", "1400000000000000001", daysAgo(0));
+      await recordStat(serverId, "channel_turn", "1400000000000000002", daysAgo(13));
+      await recordStat(serverId, "channel_turn", "1400000000000000003", daysAgo(14));
+      await recordStat(serverId, "channel_turn", "1400000000000000004", daysAgo(0));
+      await testSql`
+        INSERT INTO server_channel_scope_configs (server_id, rp_channel_ids)
+        VALUES (${serverId}, ARRAY['1400000000000000004'])
+      `;
+
+      expect(await resolveEffectiveChannelIds(serverId, { channel_disc_ids: [] }, now)).toEqual([
+        "1400000000000000001",
+        "1400000000000000002",
+      ]);
+      expect(await resolveEffectiveChannelIds(serverId, { channel_disc_ids: ["1400000000000000009"] }, now)).toEqual([
+        "1400000000000000009",
+      ]);
+    });
+  });
+
   it("re-points an imported card only when its Nudges settings match the preset", async () => {
     const [preset] = await testSql`SELECT * FROM persona_presets WHERE persona_preset_name = ${PRESET_NAME}`;
     const card = (nudges: Partial<PresetExportData>) =>
@@ -180,7 +248,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
 
   it("exports settings and custom episodes without channels, imports them, and resets them", async () => {
     await naturalNudgeRepository.saveServerConfig(refs.serverId, {
-      episodes_enabled: true,
+      episodes_enabled: false,
       channel_disc_ids: ["1200000000000000001"],
       revive_weight: 40,
       disabled_builtin_episodes: ["new_topic.voice_note"],
@@ -188,14 +256,14 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     const result = await exportRepository.exportWorkspaceConfig(FIXTURE_IDS.serverDiscId);
     expect(result.success).toBe(true);
     const exported = workspaceConfigExportSchema.parse(result.data);
-    expect(exported.data.nudges).toMatchObject({ episodes_enabled: true, revive_weight: 40 });
+    expect(exported.data.nudges).toMatchObject({ episodes_enabled: false, revive_weight: 40 });
     expect(exported.data.nudges?.custom_episodes).toHaveLength(1);
     expect(JSON.stringify(exported.data.nudges)).not.toContain("1200000000000000001");
 
     expect((await importRepository.importWorkspaceConfig(OTHER_SERVER, exported, ["nudges"])).success).toBe(true);
     const imported = await naturalNudgeRepository.loadServerConfig(otherServerId);
     expect(imported).toMatchObject({
-      episodes_enabled: true,
+      episodes_enabled: false,
       revive_weight: 40,
       channel_disc_ids: [],
       disabled_builtin_episodes: ["new_topic.voice_note"],
@@ -204,7 +272,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
 
     await resetRepository.resetServerConfiguration(refs.serverId);
     expect(await naturalNudgeRepository.loadServerConfig(refs.serverId)).toMatchObject({
-      episodes_enabled: false,
+      episodes_enabled: true,
       channel_disc_ids: [],
       revive_weight: 25,
     });

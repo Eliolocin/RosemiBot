@@ -163,6 +163,16 @@ async function recordUsageStats(context: ChatTurnContext, result: GenerationTurn
         metricKey: hour,
       });
     }
+    // Automatic Natural Nudges channels come from human-triggered turns, so a random trigger cannot
+    // keep its own channel eligible.
+    if (!isNaturalNudge && !context.turn.lockedTurn.admission.incoming.borrowsTriggerMessage) {
+      statRepository.recordStat({
+        serverId,
+        userId,
+        metric: "channel_turn",
+        metricKey: context.channel.isThread() ? (context.channel.parentId ?? context.channel.id) : context.channel.id,
+      });
+    }
 
     // Per responding persona: one message exchanged (drives favorite-persona
     //    affinity), plus that persona's output-token volume: both persona-scoped,

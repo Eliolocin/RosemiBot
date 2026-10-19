@@ -39,6 +39,10 @@ function parseRows<T>(schema: z.ZodType<T>, rows: unknown[], label: string): T[]
   return parsed;
 }
 
+const episodeServerRowSchema = enabledEpisodeServerSchema.extend({
+  config: serverNaturalNudgeConfigSchema.nullable(),
+});
+
 class NaturalNudgeRepository {
   async loadServerConfig(serverId: number, client: SQL = sql): Promise<ServerNaturalNudgeConfig> {
     const rows = await client`
@@ -83,26 +87,53 @@ class NaturalNudgeRepository {
     }
   }
 
-  /** Guild servers whose episodes are on with at least one allowed channel; DM workspaces never nudge. */
-  async listEnabledEpisodeServers(): Promise<EnabledEpisodeServer[]> {
+  /**
+   * Guild servers with `message_sent` since `since` whose episodes are not turned off. Starting from
+   * heat rather than config rows is what makes the on-by-default rule reach servers that never saved
+   * settings; those get the column defaults.
+   */
+  async listEnabledEpisodeServers(since: Date): Promise<EnabledEpisodeServer[]> {
     const rows = await sql`
       SELECT s.server_id, s.server_disc_id, scc.timezone_offset,
-        json_build_object(
+        CASE WHEN c.server_id IS NULL THEN NULL ELSE json_build_object(
           'server_id', c.server_id, 'episodes_enabled', c.episodes_enabled,
           'channel_disc_ids', c.channel_disc_ids, 'llm_id', c.llm_id,
           'reach_out_weight', c.reach_out_weight, 'revive_weight', c.revive_weight,
           'new_topic_weight', c.new_topic_weight, 'alter_talk_weight', c.alter_talk_weight,
           'daily_episode_cap', c.daily_episode_cap, 'episode_frequency', c.episode_frequency,
           'disabled_builtin_episodes', c.disabled_builtin_episodes
-        ) AS config
-      FROM server_natural_nudge_configs c
-      JOIN servers s ON s.server_id = c.server_id
-      LEFT JOIN server_chat_configs scc ON scc.server_id = c.server_id
-      WHERE c.episodes_enabled = true
-        AND cardinality(c.channel_disc_ids) > 0
-        AND COALESCE(s.is_dm_channel, false) = false
+        ) END AS config
+      FROM servers s
+      LEFT JOIN server_natural_nudge_configs c ON c.server_id = s.server_id
+      LEFT JOIN server_chat_configs scc ON scc.server_id = s.server_id
+      WHERE COALESCE(s.is_dm_channel, false) = false
+        AND COALESCE(c.episodes_enabled, true)
+        AND EXISTS (
+          SELECT 1 FROM stat_counters sc
+          WHERE sc.server_id = s.server_id
+            AND sc.metric = 'message_sent'
+            AND sc.bucket >= ${since.toISOString().slice(0, 10)}::date
+        )
     `;
-    return parseRows(enabledEpisodeServerSchema, rows, "enabled server");
+    return parseRows(episodeServerRowSchema, rows, "enabled server").map((row) => ({
+      ...row,
+      config: row.config ?? defaultServerNaturalNudgeConfig(row.server_id),
+    }));
+  }
+
+  /** Channels with a turn since `since`, minus roleplay channels, where in-character talk is not a lull to fill. */
+  async loadAutomaticChannelIds(serverId: number, since: Date): Promise<string[]> {
+    const rows = await sql<{ metric_key: string }[]>`
+      SELECT DISTINCT sc.metric_key
+      FROM stat_counters sc
+      LEFT JOIN server_channel_scope_configs scope ON scope.server_id = sc.server_id
+      WHERE sc.server_id = ${serverId}
+        AND sc.metric = 'channel_turn'
+        AND sc.bucket >= ${since.toISOString().slice(0, 10)}::date
+        AND NOT (sc.metric_key = ANY(COALESCE(scope.rp_channel_ids, '{}')))
+      ORDER BY sc.metric_key
+    `;
+    return rows.map((row) => row.metric_key);
   }
 
   async listCustomEpisodes(serverId: number, client: SQL = sql): Promise<CustomEpisodeRow[]> {

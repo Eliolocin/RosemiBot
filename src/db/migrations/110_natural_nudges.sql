@@ -7,7 +7,7 @@
 
 CREATE TABLE IF NOT EXISTS server_natural_nudge_configs (
   server_id                 INT      PRIMARY KEY REFERENCES servers(server_id) ON DELETE CASCADE,
-  episodes_enabled          BOOLEAN  NOT NULL DEFAULT false,
+  episodes_enabled          BOOLEAN  NOT NULL DEFAULT true,
   channel_disc_ids          TEXT[]   NOT NULL DEFAULT '{}',
   llm_id                    INT      REFERENCES llms(llm_id) ON DELETE SET NULL,
   reach_out_weight          SMALLINT NOT NULL DEFAULT 35 CHECK (reach_out_weight BETWEEN 0 AND 100),

@@ -21,6 +21,7 @@ import {
   isHangingConversation,
   PLANNER_HISTORY_MESSAGES,
   resolveAllowedChannels,
+  resolveEffectiveChannelIds,
   type NudgeChannel,
 } from "@/modules/natural-nudges/runtime/channels";
 import {
@@ -44,6 +45,7 @@ import {
   UNANSWERED_STOP_STREAK,
   WAKING_HOURS_WINDOW_DAYS,
 } from "@/modules/natural-nudges/runtime/meters";
+import { resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { runEpisodeAttempt, type EpisodeAttempt } from "@/modules/natural-nudges/runtime/runner";
 import { recordEpisodeSample } from "@/modules/natural-nudges/runtime/telemetry";
 import { getAvailableToolsWithMCP, type ToolStateForContext } from "@/tools/toolRegistry";
@@ -181,7 +183,7 @@ export class NaturalNudgeProcessor {
     await this.pruneIfDue();
     let servers: EnabledEpisodeServer[];
     try {
-      servers = await naturalNudgeRepository.listEnabledEpisodeServers();
+      servers = await naturalNudgeRepository.listEnabledEpisodeServers(heatWindowStart(new Date()));
     } catch (error) {
       log.error("Natural Nudges: failed to list enabled servers", error);
       return;
@@ -269,7 +271,6 @@ export class NaturalNudgeProcessor {
     const serverId = server.server_id;
     const { config } = server;
     if ((this.retryNotBefore.get(serverId) ?? 0) > now.getTime()) return;
-    if (config.llm_id === null) return;
 
     const history = await naturalNudgeRepository.loadFireHistory(
       serverId,
@@ -314,12 +315,19 @@ export class NaturalNudgeProcessor {
       this.lullHours.set(serverId, lull);
     }
     const lullMs = lull * HOUR_MS;
-    const quiet = (await resolveAllowedChannels(this.client, config.channel_disc_ids)).filter(
+    const channelIds = await resolveEffectiveChannelIds(serverId, config, now);
+    const quiet = (await resolveAllowedChannels(this.client, channelIds)).filter(
       (channel) => channel.quietSinceMs === null || now.getTime() - channel.quietSinceMs >= lullMs,
     );
     if (quiet.length === 0) return;
+    // Resolving decrypts the server key in Postgres, so it waits for a quiet channel and backs off on failure.
+    const plannerModel = await resolvePlannerModel(personas[0], config.llm_id);
+    if (plannerModel.kind !== "ready") {
+      this.abortInPhaseA(server, now, "no_model", meters.heat);
+      return;
+    }
 
-    const attempt = await this.drawAttempt(server, personas, quiet, history.recent, meters, now);
+    const attempt = await this.drawAttempt(server, personas, quiet, history.recent, meters, plannerModel.llmId, now);
     if (typeof attempt === "string") {
       this.abortInPhaseA(server, now, attempt, meters.heat);
       return;
@@ -349,6 +357,7 @@ export class NaturalNudgeProcessor {
     quiet: NudgeChannel[],
     recentFires: readonly NaturalNudgeFireRow[],
     meters: ServerMeters,
+    plannerLlmId: number,
     now: Date,
   ): Promise<EpisodeAttempt | string> {
     const scanned = shuffled(quiet).slice(0, MAX_SCANNED_CHANNELS);
@@ -440,7 +449,7 @@ export class NaturalNudgeProcessor {
       persona,
       interests: personaConfig.interests,
       episode,
-      plannerLlmId: server.config.llm_id as number,
+      plannerLlmId,
       availableTools: facts.availableTools,
       plannerChannels,
     };

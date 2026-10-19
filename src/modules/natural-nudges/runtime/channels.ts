@@ -5,6 +5,9 @@ import { PrivacyLevel } from "@/types/db/schema";
 import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import { findLastPersonaTurnBlock } from "@/utils/discord/personaTurnDetection";
 import { log } from "@/utils/misc/logger";
+import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
+import type { ServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
+import { automaticChannelWindowStart } from "@/modules/natural-nudges/runtime/meters";
 
 /** Messages per channel read for hanging detection and handed to the planner. */
 export const PLANNER_HISTORY_MESSAGES = 15;
@@ -19,6 +22,16 @@ export interface NudgeChannel {
   /** Newest message ID when the lull was measured; any later message aborts the nudge. */
   lastMessageId: string | null;
   quietSinceMs: number | null;
+}
+
+/** The admin's list when it has any channel, otherwise the automatic set from recent turns. */
+export async function resolveEffectiveChannelIds(
+  serverId: number,
+  config: Pick<ServerNaturalNudgeConfig, "channel_disc_ids">,
+  now: Date,
+): Promise<string[]> {
+  if (config.channel_disc_ids.length > 0) return config.channel_disc_ids;
+  return naturalNudgeRepository.loadAutomaticChannelIds(serverId, automaticChannelWindowStart(now));
 }
 
 /** Listed guild text channels the bot can still see, with their last activity from the gateway cache. */

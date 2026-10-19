@@ -349,9 +349,27 @@ function plannerProviderOptions(locale: string, groups: readonly StructuredOutpu
   });
 }
 
+function chatFallbackLabel(locale: string, status: NaturalNudgesSettingsView["status"]): string {
+  const none = localizer(locale, "commands.config.panel.none_label");
+  if (!status?.chatModel) return localizer(locale, "commands.config.natural_nudges.model_chat_none");
+  const model = formatModelSelectionLabel(
+    status.chatModel.codename,
+    getProviderDisplayName(status.chatModel.provider),
+    none,
+  );
+  if (status.plannerModel.kind === "ready") {
+    return localizer(locale, "commands.config.natural_nudges.model_same_as_chat", { model });
+  }
+  const key =
+    status.plannerModel.kind === "unusable" && status.plannerModel.reason === "no_structured_output"
+      ? "commands.config.natural_nudges.model_chat_no_structured"
+      : "commands.config.natural_nudges.model_chat_unavailable";
+  return localizer(locale, key, { model });
+}
+
 function plannerModelLabel(locale: string, view: NaturalNudgesSettingsView): string {
   const none = localizer(locale, "commands.config.panel.none_label");
-  if (view.config.llm_id === null) return none;
+  if (view.config.llm_id === null) return chatFallbackLabel(locale, view.status);
   for (const group of view.plannerModels) {
     const model = group.models.find((candidate) => candidate.id === view.config.llm_id);
     if (model) return formatModelSelectionLabel(model.name, getProviderDisplayName(group.provider), none);
@@ -366,7 +384,9 @@ export function buildNaturalNudgesSettingsBody(
   writesDisabled: boolean,
 ): ComponentInContainerData[] {
   const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
-  const { config } = view;
+  const { config, status } = view;
+  const hasEligibleChannel = (status?.effectiveChannelIds ?? config.channel_disc_ids).length > 0;
+  const hasUsableModel = status ? status.plannerModel.kind === "ready" : config.llm_id !== null;
   const notices = [
     !view.trackingEnabled ? t("commands.config.natural_nudges.notice_tracking_disabled") : "",
     byokMode ? t("commands.config.natural_nudges.notice_byok") : "",
@@ -401,9 +421,9 @@ export function buildNaturalNudgesSettingsBody(
       `> ${t(
         !config.episodes_enabled
           ? "commands.config.natural_nudges.episodes_off"
-          : config.channel_disc_ids.length === 0
+          : !hasEligibleChannel
             ? "commands.config.natural_nudges.episodes_on_no_channels"
-            : config.llm_id === null
+            : !hasUsableModel
               ? "commands.config.natural_nudges.episodes_on_no_model"
               : "commands.config.natural_nudges.episodes_on",
       )}`,
@@ -436,7 +456,7 @@ export function buildNaturalNudgesSettingsBody(
   const providerOptions = plannerProviderOptions(locale, view.plannerModels);
   const modelOptions = [
     ...(config.llm_id !== null
-      ? [{ label: t("commands.config.panel.model_no_model_option"), value: NUDGE_CLEAR_MODEL_VALUE }]
+      ? [{ label: t("commands.config.natural_nudges.model_same_as_chat_option"), value: NUDGE_CLEAR_MODEL_VALUE }]
       : []),
     ...providerOptions,
   ].slice(0, DISCORD_SELECT_OPTIONS_MAX);

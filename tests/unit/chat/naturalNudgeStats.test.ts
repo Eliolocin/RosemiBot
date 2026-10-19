@@ -15,8 +15,12 @@ const recordStatSpy = spyOn(statRepository, "recordStat").mockImplementation((in
 const LINEAGE_ID = 5;
 const NUDGE = { toolNames: ["web_search"] };
 
-function makeContext(isNaturalNudge: boolean): ChatTurnContext {
-  const channel = { id: `channel_${Math.random().toString(36).slice(2)}`, isThread: () => false };
+function makeContext(isNaturalNudge: boolean, threadParentId?: string): ChatTurnContext {
+  const channel = {
+    id: `channel_${Math.random().toString(36).slice(2)}`,
+    isThread: () => threadParentId !== undefined,
+    parentId: threadParentId ?? null,
+  };
   const message = { id: "message_1", channel, createdTimestamp: Date.now() };
   const incoming = {
     client: { channels: { fetch: async () => null } },
@@ -90,16 +94,30 @@ describe("Natural Nudges turns stay out of engagement stats", () => {
 
     expect(metrics()).not.toContain("message_sent");
     expect(metrics()).not.toContain("active_hour");
+    expect(metrics()).not.toContain("channel_turn");
     expect(metrics()).toContain("model_used");
     expect(metrics()).toContain("text_generated");
   });
 
-  it("records both for an ordinary turn", async () => {
-    await runPostTurnEffects(makeContext(false), completed);
+  it("records all three for an ordinary turn", async () => {
+    const context = makeContext(false);
+    await runPostTurnEffects(context, completed);
     await Bun.sleep(0);
 
     expect(metrics()).toContain("message_sent");
     expect(metrics()).toContain("active_hour");
+    expect(recorded.filter((entry) => entry.metric === "channel_turn").map((entry) => entry.metricKey)).toEqual([
+      context.channel.id,
+    ]);
+  });
+
+  it("records a thread turn under its parent channel", async () => {
+    await runPostTurnEffects(makeContext(false, "1400000000000000001"), completed);
+    await Bun.sleep(0);
+
+    expect(recorded.filter((entry) => entry.metric === "channel_turn").map((entry) => entry.metricKey)).toEqual([
+      "1400000000000000001",
+    ]);
   });
 
   it("keeps the nudge marker on the empty-response retry", async () => {

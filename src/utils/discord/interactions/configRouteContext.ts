@@ -639,7 +639,7 @@ export async function repaint(
   if (category === "plugins" && page === "natural-nudges" && !naturalNudges?.settings && nudgeServerId) {
     naturalNudges = {
       ...naturalNudges,
-      settings: await dependencies.naturalNudges.loadSettings(nudgeServerId, locale),
+      settings: await dependencies.naturalNudges.loadSettings(nudgeServerId, locale, scope.personas[0] ?? null),
     };
   }
   if (category === "plugins" && page === "nudge-episodes" && !naturalNudges?.episodes && nudgeServerId) {

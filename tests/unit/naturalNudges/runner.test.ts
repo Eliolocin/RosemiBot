@@ -4,6 +4,7 @@ import * as tomoriChatModule from "@/events/messageCreate/tomoriChat";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import { BUILTIN_EPISODES } from "@/modules/natural-nudges/runtime/episodes";
 import * as planner from "@/modules/natural-nudges/runtime/planner";
+import * as plannerModel from "@/modules/natural-nudges/runtime/model";
 import { runEpisodeAttempt, type EpisodeAttempt } from "@/modules/natural-nudges/runtime/runner";
 import { metricSampleRepository } from "@/utils/db/repositories/MetricSampleRepository";
 import { personaRepository } from "@/utils/db/repositories/PersonaRepository";
@@ -45,6 +46,7 @@ beforeEach(() => {
     spyOn(whitelistRepository, "checkChannelWhitelist").mockResolvedValue(undefined as never),
     spyOn(whitelistRepository, "isPersonaAllowedByWhitelistStatus").mockReturnValue(true),
     spyOn(metricSampleRepository, "recordSample").mockResolvedValue(undefined),
+    spyOn(plannerModel, "resolvePlannerModel").mockResolvedValue({ kind: "ready", llmId: 1, source: "pinned" }),
     spyOn(tomoriChatModule, "isChannelProcessingLocked").mockReturnValue(false),
     spyOn(tomoriChatModule, "suppressNextSelfReply").mockImplementation(() => undefined),
     spyOn(tomoriChatModule, "tomoriChat").mockImplementation(async (input) => {

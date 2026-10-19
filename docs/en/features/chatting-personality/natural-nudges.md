@@ -6,7 +6,7 @@ sidebar:
 aiGenerated: true
 ---
 
-Natural Nudges lets TomoriBot speak without being mentioned. When an allowed channel has gone
+Natural Nudges lets TomoriBot speak without being mentioned. When a channel has gone
 quiet, one of your personas picks something to do, such as picking a conversation back up or
 raising a new topic, and posts it in its own voice. Each of these is an **episode**.
 
@@ -23,22 +23,27 @@ Nudges are meant to feel like a friend checking in, not a bot posting on a timer
 
 Natural Nudges works in servers only, never in DMs.
 
-## Turning It On
+## Settings
 
-Open `/config` > Plugins > Natural Nudges (you need Manage Server):
+Natural Nudges is on by default, and nothing needs setting up. Once people in a server talk to
+TomoriBot regularly, episodes start in the channels where they talk to her.
 
-1. Turn **Episodes** on.
-2. Choose the **Allowed Channels** where personas may start conversations. A channel where other
-   bots post often never goes quiet, so it is left alone.
-3. Choose a **Planner Model**. Before a persona speaks, this model decides what to bring up and
-   which channel suits it. It needs structured output and runs on the server's own key.
+To change how it works, open `/config` > Plugins > Natural Nudges (you need Manage Server):
+
+- **Episodes** turns it on or off.
+- **Channels** is automatic: the channels where people talked to TomoriBot in the last 14 days,
+  except roleplay channels. Pick channels to choose them yourself, or clear the list to go back to
+  automatic. A channel where other bots post often never goes quiet, so it is left alone.
+- **Planner Model** decides what to bring up and which channel suits it. By default it is the
+  server's chat model. It needs structured output and the server's own key; if the chat model can't
+  do that, the page says so and you can pick another model.
 
 The page shows how active the server is and how many episodes to expect each week.
 
 Episodes need two things from the server:
 
-- **Stat tracking.** The pace comes from how many messages people send TomoriBot, so a host that
-  turned stat tracking off never gets episodes.
+- **Stat tracking.** The pace and the automatic channels come from how people talk to TomoriBot, so
+  a host that turned stat tracking off never gets episodes.
 - **A server key.** A server set to bill each member's own key has nobody to pay for a message no
   one asked for, so Natural Nudges stays off there.
 
@@ -94,5 +99,5 @@ interests for new characters, and persona exports carry them.
 Natural Nudges keeps your settings, custom episodes, and persona interests with your other server
 configuration. It also remembers which episodes ran recently and whether anyone answered, for 30
 days, and each hidden agenda for up to 90 days. `/reset` restores the settings and removes custom
-episodes. `/export config` and `/import config` carry settings and custom episodes, but not the allowed channels, which
-belong to one server.
+episodes. `/export config` and `/import config` carry settings and custom episodes, but not a chosen
+channel list, which belongs to one server.
