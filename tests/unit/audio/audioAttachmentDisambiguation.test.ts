@@ -2,12 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:te
 import { ChannelType, Collection, type Attachment, type Message } from "discord.js";
 import { PrivacyLevel } from "@/types/db/schema";
 import { isAudioAttachment } from "@/utils/audio/audioAttachmentTranscription";
+import { invalidateWhitelistCache } from "@/utils/cache/channelWhitelistCache";
+import { invalidateAllPersonaUserBlockCacheForServer } from "@/utils/cache/personaUserBlockCache";
+import { invalidatePersonalSpotlightCache } from "@/utils/cache/personalSpotlightCache";
+import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
 import { isSupportedVideoAttachmentContentType } from "@/utils/chat/contextMedia";
 import { evaluateChatAdmission } from "@/utils/chat/admission";
 import type { ChatIncoming } from "@/utils/chat/types";
-import { personaRepository, serverRepository } from "@/utils/db/repositories";
+import { personaRepository, personaUserBlockRepository, serverRepository } from "@/utils/db/repositories";
 import { userRepository } from "@/utils/db/repositories/UserRepository";
+import { whitelistRepository } from "@/utils/db/repositories/WhitelistRepository";
 import { invalidateUserCache } from "@/utils/cache/userCache";
+import * as speechEndpointResolver from "@/utils/provider/speechEndpointResolver";
 import { createPersona, createUserRow } from "../../helpers/fixtures";
 
 describe("audioAttachmentDisambiguation", () => {
@@ -15,6 +21,7 @@ describe("audioAttachmentDisambiguation", () => {
     it("returns true for audio MIME types and pure audio extensions", () => {
       expect(isAudioAttachment({ name: "voice.ogg", contentType: "audio/ogg" })).toBe(true);
       expect(isAudioAttachment({ name: "song.mp3", contentType: "audio/mpeg" })).toBe(true);
+      expect(isAudioAttachment({ name: "voice.mp4", contentType: "audio/mp4" })).toBe(true);
       expect(isAudioAttachment({ name: "voice.opus", contentType: null })).toBe(true);
       expect(isAudioAttachment({ name: "sample.wav", contentType: null })).toBe(true);
       expect(isAudioAttachment({ name: "audio.m4a", contentType: null })).toBe(true);
@@ -22,7 +29,10 @@ describe("audioAttachmentDisambiguation", () => {
 
     it("returns false for video and image attachments", () => {
       expect(isAudioAttachment({ name: "clip.mp4", contentType: "video/mp4" })).toBe(false);
+      expect(isAudioAttachment({ name: "clip.mp4", contentType: null })).toBe(false);
       expect(isAudioAttachment({ name: "recording.webm", contentType: "video/webm" })).toBe(false);
+      expect(isAudioAttachment({ name: "recording.webm", contentType: null })).toBe(false);
+      expect(isAudioAttachment({ name: "clip.mpeg", contentType: null })).toBe(false);
       expect(isAudioAttachment({ name: "video.mov", contentType: "video/quicktime" })).toBe(false);
       expect(isAudioAttachment({ name: "photo.png", contentType: "image/png" })).toBe(false);
       expect(isAudioAttachment({ name: "photo.jpg", contentType: "image/jpeg" })).toBe(false);
@@ -45,10 +55,18 @@ describe("audioAttachmentDisambiguation", () => {
     let userRowSpy: ReturnType<typeof spyOn>;
     let privacySpy: ReturnType<typeof spyOn>;
     let blacklistSpy: ReturnType<typeof spyOn>;
+    let spotlightSpy: ReturnType<typeof spyOn>;
+    let whitelistSpy: ReturnType<typeof spyOn>;
+    let personaBlockSpy: ReturnType<typeof spyOn>;
     let webhookSpy: ReturnType<typeof spyOn>;
+    let transcriptionEndpointSpy: ReturnType<typeof spyOn>;
 
     beforeEach(() => {
       invalidateUserCache(memberId);
+      invalidateTomoriStateCache(guildId);
+      invalidateWhitelistCache(guildId);
+      invalidatePersonalSpotlightCache(1);
+      invalidateAllPersonaUserBlockCacheForServer(1);
       personaSpy = spyOn(personaRepository, "loadAllForServer").mockResolvedValue([
         createPersona({ persona_nickname: "Mirri" }),
       ]);
@@ -57,6 +75,18 @@ describe("audioAttachmentDisambiguation", () => {
       );
       privacySpy = spyOn(userRepository, "getPrivacyLevel").mockResolvedValue(PrivacyLevel.MINIMAL);
       blacklistSpy = spyOn(userRepository, "isBlacklisted").mockResolvedValue(false);
+      spotlightSpy = spyOn(userRepository, "serverHasPersonalSpotlights").mockResolvedValue(false);
+      whitelistSpy = spyOn(whitelistRepository, "checkChannelWhitelist").mockResolvedValue({
+        hasActiveWhitelist: false,
+        hasActiveChannelWhitelist: false,
+        isChannelWhitelisted: false,
+        hasActiveRoleWhitelist: false,
+        isRoleWhitelisted: false,
+        hasActivePersonaWhitelist: false,
+        isTriggerAllowed: true,
+        hasChannelCooldownOverride: false,
+      });
+      personaBlockSpy = spyOn(personaUserBlockRepository, "loadActiveBlocksForUser").mockResolvedValue([]);
       webhookSpy = spyOn(serverRepository, "loadManagedWebhookByChannelAndWebhookId").mockImplementation(
         async (targetChannelId, targetWebhookId) => ({
           managed_webhook_id: 1,
@@ -71,13 +101,30 @@ describe("audioAttachmentDisambiguation", () => {
           created_at: new Date(),
         }),
       );
+      transcriptionEndpointSpy = spyOn(speechEndpointResolver, "resolveActiveTranscriptionEndpoint").mockResolvedValue(
+        null,
+      );
     });
 
     afterEach(() => {
-      for (const spy of [personaSpy, userRowSpy, privacySpy, blacklistSpy, webhookSpy]) {
+      for (const spy of [
+        personaSpy,
+        userRowSpy,
+        privacySpy,
+        blacklistSpy,
+        spotlightSpy,
+        whitelistSpy,
+        personaBlockSpy,
+        webhookSpy,
+        transcriptionEndpointSpy,
+      ]) {
         spy.mockRestore();
       }
       invalidateUserCache(memberId);
+      invalidateTomoriStateCache(guildId);
+      invalidateWhitelistCache(guildId);
+      invalidatePersonalSpotlightCache(1);
+      invalidateAllPersonaUserBlockCacheForServer(1);
     });
 
     it("admits a pure video reply referencing a persona webhook", async () => {

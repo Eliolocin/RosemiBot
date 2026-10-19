@@ -47,7 +47,9 @@ aliases, message identities and MCP defaults before the private reviewer sees th
 that execution will receive. Built-in availability and permission checks precede paid review;
 dispatch retains its own checks. Review itself runs only with `Tool Calls` checked in `Content to Check`
 (`ResponseReviewState.reviewItems` contains `tools`). Requests are prepared even when review is
-disabled, so successful identities are reused below.
+disabled, so successful identities are reused below. Off computes the identity only and executes the
+call as written; it reuses just the calls an earlier invocation of the turn completed (fallback or key
+rotation), not repeats within one invocation.
 
 Pass dispatches that request once. Rejection returns `review_rejected` history with
 `actionExecuted: false`, correction eligibility and concise findings. It adds no failed-tool notice

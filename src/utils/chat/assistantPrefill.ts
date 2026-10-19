@@ -168,6 +168,27 @@ export async function applyAssistantPrefill(args: {
   return { contextItems: directive ? [...args.contextItems, directive] : args.contextItems, outputPrefill };
 }
 
+function endsWithNativePrefill(contextItems: StructuredContextItem[], outputPrefill: string | undefined): boolean {
+  const trailing = contextItems.at(-1);
+  const trailingText =
+    trailing?.parts.length === 1 && trailing.parts[0].type === "text" ? trailing.parts[0].text : null;
+  return Boolean(outputPrefill) && trailing?.role === "model" && trailingText === outputPrefill;
+}
+
+/**
+ * Adds a request-only item ahead of a native prefill, which must stay the last item so strict
+ * backends still treat it as a continuation and `foldPrefillIntoToolHistory` still recognizes it.
+ */
+export function insertBeforeNativePrefill(
+  contextItems: StructuredContextItem[],
+  outputPrefill: string | undefined,
+  item: StructuredContextItem,
+): StructuredContextItem[] {
+  return endsWithNativePrefill(contextItems, outputPrefill)
+    ? [...contextItems.slice(0, -1), item, ...contextItems.slice(-1)]
+    : [...contextItems, item];
+}
+
 /**
  * Moves a native prefill out of the trailing assistant turn and into the first tool call's
  * assistant turn once a tool continuation begins. Left trailing, the prefill would precede the
@@ -182,10 +203,7 @@ export function foldPrefillIntoToolHistory(
   functionHistory: ToolHistoryEntry[],
 ): { contextItems: StructuredContextItem[]; functionHistory: ToolHistoryEntry[] } {
   const [first, ...rest] = functionHistory;
-  const trailing = contextItems.at(-1);
-  const trailingText =
-    trailing?.parts.length === 1 && trailing.parts[0].type === "text" ? trailing.parts[0].text : null;
-  if (!first || !outputPrefill || trailing?.role !== "model" || trailingText !== outputPrefill) {
+  if (!first || !outputPrefill || !endsWithNativePrefill(contextItems, outputPrefill)) {
     return { contextItems, functionHistory };
   }
 

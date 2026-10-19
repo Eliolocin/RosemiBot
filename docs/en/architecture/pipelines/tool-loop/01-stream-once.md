@@ -15,7 +15,8 @@ cancellation:
 
 1. **Context and prefill preparation:**
    `foldPrefillIntoToolHistory` merges any assistant output prefill into `functionHistory` so the model
-   receives required formatting or continuation tokens. For queued messages, `replyToMessage` is set to
+   receives required formatting or continuation tokens. Request-only notices, such as the one naming
+   tool calls an earlier attempt completed, go before a native prefill so it stays the last item. For queued messages, `replyToMessage` is set to
    the trigger message, except for scene turns (`incoming.sceneTurn`). In multi-persona scene turns,
    every persona turn shares the same trigger message; suppressing `replyToMessage` allows scene dialogue
    to render as free-standing back-and-forth messages.

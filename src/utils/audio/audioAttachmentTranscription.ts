@@ -5,8 +5,7 @@ import { transcribeViaElevenLabsAdapter } from "@/providers/custom/styles/transc
 import { transcribeViaOpenAIAdapter } from "@/providers/custom/styles/transcriptionOpenAIAdapter";
 import { resolveActiveTranscriptionEndpoint } from "@/utils/provider/speechEndpointResolver";
 
-const PURE_AUDIO_EXTENSION_REGEX = /\.(aac|flac|m4a|mp3|mpga|oga|ogg|opus|wav)$/i;
-const CONTAINER_AUDIO_EXTENSION_REGEX = /\.(mp4|mpeg|webm)$/i;
+const AUDIO_EXTENSION_REGEX = /\.(aac|flac|m4a|mp3|mpga|oga|ogg|opus|wav)$/i;
 
 type AudioAttachmentFailureReason =
   | "no_endpoint"
@@ -34,11 +33,7 @@ export function isAudioAttachment(attachment: Pick<Attachment, "contentType" | "
     return false;
   }
 
-  if (PURE_AUDIO_EXTENSION_REGEX.test(attachment.name ?? "")) {
-    return true;
-  }
-
-  return !mimeType && CONTAINER_AUDIO_EXTENSION_REGEX.test(attachment.name ?? "");
+  return AUDIO_EXTENSION_REGEX.test(attachment.name ?? "");
 }
 
 function getFirstAudioAttachment(message: Message): Attachment | null {

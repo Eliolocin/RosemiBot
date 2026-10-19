@@ -107,7 +107,6 @@ export interface ResponseReviewState {
   toolCorrections: number;
   toolRejections: Map<string, Extract<DraftReviewResult, { status: "revise" }>>;
   rejectedChains: Map<string, { correctionOpen: boolean; verdict: Extract<DraftReviewResult, { status: "revise" }> }>;
-  successfulTools: Map<string, ToolHistoryEntry>;
   unavailable: boolean;
   feedback?: Extract<DraftReviewResult, { status: "revise" }>;
   revisionDraft?: string;
@@ -162,7 +161,6 @@ export function createResponseReviewState(context: ChatTurnContext): ResponseRev
     toolCorrections: 0,
     toolRejections: new Map(),
     rejectedChains: new Map(),
-    successfulTools: new Map(),
     unavailable: false,
     functionHistory: [],
     pending: [],
