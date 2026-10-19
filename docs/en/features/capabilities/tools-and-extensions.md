@@ -109,8 +109,9 @@ Brave → SearXNG → OpenRouter Search → DuckDuckGo
   `/providers`); it adds image, video, and news search. ⚠️ Set a $5 usage limit
   in the Brave dashboard to avoid surprise charges.
 - OpenRouter Search handles text searches on OpenRouter turns using the active model and saved
-  OpenRouter key. It runs after Brave and SearXNG. Search uses OpenRouter credits even with a free
-  chat model; insufficient credits or a search failure falls through to DuckDuckGo.
+  OpenRouter key. It also covers news, papers, and code searches if Brave or SearXNG fails during
+  the turn. Search uses OpenRouter credits even with a free chat model; a failed text search,
+  including insufficient credits, falls through to DuckDuckGo.
 - DuckDuckGo provides text search when the earlier engines are unavailable or fail. When DuckDuckGo
   rate-limits the bot or shows it a bot check, the search fails and she posts a notice suggesting
   Brave.

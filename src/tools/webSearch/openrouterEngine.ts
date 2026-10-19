@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { addFetchCapabilityReminder } from "@/tools/restAPIs/brave/braveSearchService";
-import { getSearchNoticeTitleVars } from "@/tools/webSearch/categoryMetadata";
+import { getSearchNoticeKey, getSearchNoticeTitleVars } from "@/tools/webSearch/categoryMetadata";
 import type { SearchCategory, WebSearchEngine } from "@/tools/webSearch/types";
 import type { ToolContext, ToolResult } from "@/types/tool/interfaces";
 import { sendToolNotice } from "@/utils/discord/toolProgressNotice";
@@ -17,6 +17,11 @@ const MAX_RESULT_COUNT = 20;
 const MAX_QUERY_CHARS = 500;
 const MAX_TITLE_CHARS = 300;
 const MAX_CONTENT_CHARS = 4000;
+const CATEGORY_QUERY_PREFIXES: Partial<Record<SearchCategory, string>> = {
+  news: "News",
+  papers: "Research papers",
+  code: "Source code and programming documentation",
+};
 
 const responseSchema = z.object({
   choices: z.array(z.object({ message: z.object({ annotations: z.array(z.unknown()) }) })).min(1),
@@ -38,20 +43,22 @@ export class OpenRouterEngine implements WebSearchEngine {
   }
 
   supportsCategory(category: SearchCategory): boolean {
-    return category === "text";
+    return category === "text" || category === "news" || category === "papers" || category === "code";
   }
 
-  async search(query: string, _category: SearchCategory, context: ToolContext, count?: number): Promise<ToolResult> {
+  async search(query: string, category: SearchCategory, context: ToolContext, count?: number): Promise<ToolResult> {
     const startTime = Date.now();
     const boundedQuery = Array.from(query.trim()).slice(0, MAX_QUERY_CHARS).join("");
     const boundedCount = Math.max(1, Math.min(Math.floor(count ?? DEFAULT_RESULT_COUNT), MAX_RESULT_COUNT));
+    const prefix = CATEGORY_QUERY_PREFIXES[category];
+    const searchQuery = prefix ? `${prefix}: ${boundedQuery}` : boundedQuery;
 
     await sendToolNotice(
       context,
-      "web_search",
+      getSearchNoticeKey(category),
       {
         titleKey: "tools.search.category_search_title",
-        titleVars: getSearchNoticeTitleVars(context.locale, "text", boundedQuery),
+        titleVars: getSearchNoticeTitleVars(context.locale, category, boundedQuery),
         descriptionKey: "tools.search.disclaimer_description",
       },
       "OpenRouterEngine",
@@ -82,7 +89,7 @@ export class OpenRouterEngine implements WebSearchEngine {
           // The plugin attaches excerpts independently of completion length, so one token avoids paying for synthesis.
           plugins: [{ id: "web", engine: "exa", max_results: boundedCount }],
           max_tokens: 1,
-          messages: [{ role: "user", content: `List search results for: ${boundedQuery}` }],
+          messages: [{ role: "user", content: `List search results for: ${searchQuery}` }],
         }),
         signal,
       });

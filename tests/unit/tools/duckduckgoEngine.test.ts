@@ -1,8 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test";
+import { OpenrouterToolAdapter } from "@/providers/openrouter/openrouterToolAdapter";
 import * as braveService from "@/tools/restAPIs/brave/braveSearchService";
 import * as searxngService from "@/tools/restAPIs/searxng/searxngService";
 import { BraveEngine } from "@/tools/webSearch/braveEngine";
 import { resolveWebSearchToolCapabilities } from "@/tools/webSearch/capabilities";
+import { getSearchNoticeKey } from "@/tools/webSearch/categoryMetadata";
 import {
   DuckDuckGoEngine,
   formatDuckDuckGoResults,
@@ -294,12 +296,16 @@ describe("OpenRouter engine requests", () => {
     return { decrypt, request };
   }
 
-  it("is available only on OpenRouter turns with a saved credential and supports text only", async () => {
+  it("is available only on OpenRouter turns with a saved credential and supports text-like categories", async () => {
     expect(await engine.available(openRouterContext())).toBe(true);
     expect(await engine.available(openRouterContext({ provider: "google" }))).toBe(false);
     expect(await engine.available(openRouterContext({ tomoriState: createPersona() }))).toBe(false);
-    expect(engine.supportsCategory("text")).toBe(true);
-    expect(engine.supportsCategory("news")).toBe(false);
+    for (const category of ["text", "news", "papers", "code"] as const) {
+      expect(engine.supportsCategory(category)).toBe(true);
+    }
+    for (const category of ["image", "video", "files", "music"] as const) {
+      expect(engine.supportsCategory(category)).toBe(false);
+    }
   });
 
   it("extracts bounded, unique citations into the summary even when the completion has no text", async () => {
@@ -529,6 +535,55 @@ describe("web_search engine chain", () => {
     expect(ddg.calls).toHaveLength(1);
   });
 
+  it("fulfills advertised text-like categories through OpenRouter after configured engines fail", async () => {
+    configureBackends(true, true);
+    const attempts: string[] = [];
+    const brave = spyOn(BraveEngine.prototype, "search").mockImplementation(async () => {
+      attempts.push("brave");
+      return { success: false };
+    });
+    const searxng = spyOn(SearxngEngine.prototype, "search").mockImplementation(async () => {
+      attempts.push("searxng");
+      return { success: false };
+    });
+    const decrypt = spyOn(crypto, "decryptApiKey").mockResolvedValue("fixture-api-key");
+    const request = spyOn(globalThis, "fetch").mockImplementation(
+      Object.assign(
+        async () => {
+          attempts.push("openrouter");
+          return searchResponse([citation("https://example.com/fallback")]);
+        },
+        { preconnect: () => undefined },
+      ),
+    );
+    const notice = spyOn(toolProgressNotice, "sendToolNotice").mockResolvedValue();
+    const ddg = stubSearchFetch(() => html(RESULTS_PAGE));
+    restore.push(brave, searxng, decrypt, request, notice, ddg.spy);
+    const query = "distributed storage";
+    const prompts: string[] = [];
+
+    for (const category of ["news", "papers", "code"] as const) {
+      attempts.length = 0;
+      const capabilities = await resolveWebSearchToolCapabilities(1, "openrouter");
+      expect(capabilities.categories).toContain(category);
+      const result = await new WebSearchTool().execute({ query, category }, openRouterContext());
+      expect(result.success).toBe(true);
+      expect(result.message).toContain("https://example.com/fallback");
+      expect(attempts).toEqual(category === "news" ? ["brave", "searxng", "openrouter"] : ["searxng", "openrouter"]);
+      const call = notice.mock.calls.at(-1);
+      expect(call?.[1]).toBe(getSearchNoticeKey(category));
+      expect(call?.[2].titleVars).toEqual({
+        category: localizedCopy("en-US", `tools.search.category_labels.${category}`),
+        query,
+      });
+      const prompt: string = JSON.parse(String(request.mock.calls.at(-1)?.[1]?.body)).messages[0].content;
+      expect(prompt).toContain(query);
+      prompts.push(prompt);
+    }
+    expect(new Set(prompts).size).toBe(prompts.length);
+    expect(ddg.calls).toHaveLength(0);
+  });
+
   it("advertises OpenRouter text search while preserving configured backend categories and priority", async () => {
     configureBackends(false, false);
     const context = openRouterContext();
@@ -548,19 +603,27 @@ describe("web_search engine chain", () => {
     expect((await resolveWebSearchToolCapabilities(1, "openrouter")).categories).toContain("papers");
   });
 
-  it("keeps non-text categories behind their configured providers", async () => {
-    configureBackends(false, false);
+  it("skips text fallbacks and returns the localized failure when media engines fail", async () => {
+    configureBackends(true, true);
+    const brave = spyOn(BraveEngine.prototype, "search").mockResolvedValue({ success: false });
+    const searxng = spyOn(SearxngEngine.prototype, "search").mockResolvedValue({ success: false });
+    const openrouter = spyOn(OpenRouterEngine.prototype, "search").mockResolvedValue({ success: true });
     const { calls, spy } = stubSearchFetch(() => html(RESULTS_PAGE));
-    restore.push(spy);
+    restore.push(brave, searxng, openrouter, spy);
 
-    const result = await new WebSearchTool().execute({ query: "fixture", category: "papers" }, openRouterContext());
+    for (const category of ["image", "video", "files", "music"] as const) {
+      const result = await new WebSearchTool().execute({ query: "fixture", category }, openRouterContext());
 
-    expect(result.success).toBe(false);
-    expect(result.message).toBe(
-      localizedCopy("en-US", "tools.search.category_unavailable_description", {
-        category: localizedCopy("en-US", "tools.search.category_labels.papers"),
-      }),
-    );
+      expect(result.success).toBe(false);
+      const description = localizedCopy("en-US", "tools.search.category_unavailable_description", {
+        category: localizedCopy("en-US", `tools.search.category_labels.${category}`),
+      });
+      expect(result.message).toBe(description);
+      expect(new OpenrouterToolAdapter().convertResult(result).content).toContain(description);
+    }
+    expect(brave).toHaveBeenCalled();
+    expect(searxng).toHaveBeenCalled();
+    expect(openrouter).not.toHaveBeenCalled();
     expect(calls).toHaveLength(0);
   });
 
