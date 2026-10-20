@@ -14,6 +14,7 @@ import {
   CUSTOM_EPISODE_BRIEF_MAX,
   CUSTOM_EPISODE_LIMIT,
   CUSTOM_EPISODE_TITLE_MAX,
+  DAILY_CHIME_IN_CAP_MAX,
   DAILY_EPISODE_CAP_MAX,
   EPISODE_FREQUENCY_LEVELS,
   NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX,
@@ -381,6 +382,90 @@ function plannerModelLabel(locale: string, view: NaturalNudgesSettingsView): str
   return localizer(locale, "commands.config.natural_nudges.model_unavailable");
 }
 
+function chimeInEffect(locale: string, view: NaturalNudgesSettingsView, hasEligibleChannel: boolean): string {
+  const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
+  const { config, status } = view;
+  if (!config.chime_in_enabled) return t("commands.config.natural_nudges.chime_ins_off");
+  if (!hasEligibleChannel) return t("commands.config.natural_nudges.chime_ins_on_no_channels");
+  // Modal paths render without status, so the matcher is only judged when it was resolved.
+  if (status && !status.matcher) return t("commands.config.natural_nudges.chime_ins_on_no_matcher");
+  if (!view.chimeInRange) return t("commands.config.natural_nudges.chime_ins_on_cold");
+  const matcher =
+    status?.matcher?.kind === "decision"
+      ? t("commands.config.natural_nudges.chime_ins_matcher_decision", { model: status.matcher.model })
+      : t("commands.config.natural_nudges.chime_ins_matcher_llm");
+  return t("commands.config.natural_nudges.chime_ins_on", {
+    min: view.chimeInRange.min,
+    max: view.chimeInRange.max,
+    matcher,
+  });
+}
+
+function buildChimeInSection(
+  locale: string,
+  view: NaturalNudgesSettingsView,
+  hasEligibleChannel: boolean,
+  writesDisabled: boolean,
+): ComponentInContainerData[] {
+  const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
+  const { config } = view;
+  return [
+    text(
+      `### ${t("commands.config.natural_nudges.chime_ins_title")}\n${t("commands.config.natural_nudges.chime_ins_description")}`,
+    ),
+    buildStateControlRow(
+      [
+        {
+          value: false,
+          label: t("commands.config.panel.off_button"),
+          customId: buildConfigRouteId({ action: "nudge-chime-in-set", locale, enabled: false }),
+        },
+        {
+          value: true,
+          label: t("commands.config.panel.on_button"),
+          customId: buildConfigRouteId({ action: "nudge-chime-in-set", locale, enabled: true }),
+        },
+      ],
+      config.chime_in_enabled,
+      writesDisabled,
+    ),
+    text(`> ${chimeInEffect(locale, view, hasEligibleChannel)}`),
+    {
+      type: ComponentType.ActionRow,
+      components: [
+        {
+          type: ComponentType.StringSelect,
+          customId: buildConfigRouteId({ action: "nudge-chime-in-frequency-select", locale }),
+          options: EPISODE_FREQUENCY_LEVELS.map((level) => ({
+            label: safeSelectOptionText(
+              t("commands.config.natural_nudges.chime_in_frequency_option", { level: t(FREQUENCY_LOCALE_KEYS[level]) }),
+              100,
+            ),
+            value: String(level),
+            default: level === config.chime_in_frequency,
+          })),
+          disabled: writesDisabled,
+        },
+      ],
+    },
+    {
+      type: ComponentType.ActionRow,
+      components: [
+        {
+          type: ComponentType.StringSelect,
+          customId: buildConfigRouteId({ action: "nudge-chime-in-cap-select", locale }),
+          options: Array.from({ length: DAILY_CHIME_IN_CAP_MAX }, (_, index) => index + 1).map((cap) => ({
+            label: safeSelectOptionText(t("commands.config.natural_nudges.chime_in_cap_option", { cap }), 100),
+            value: String(cap),
+            default: cap === config.daily_chime_in_cap,
+          })),
+          disabled: writesDisabled,
+        },
+      ],
+    },
+  ];
+}
+
 export function buildNaturalNudgesSettingsBody(
   locale: string,
   view: NaturalNudgesSettingsView,
@@ -432,6 +517,7 @@ export function buildNaturalNudgesSettingsBody(
               : "commands.config.natural_nudges.episodes_on",
       )}`,
     ),
+    ...buildChimeInSection(locale, view, hasEligibleChannel, writesDisabled),
     text(
       `### ${t("commands.config.natural_nudges.channels_title")}\n${t("commands.config.natural_nudges.channels_description")}`,
     ),

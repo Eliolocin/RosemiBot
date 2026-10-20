@@ -181,7 +181,7 @@ class LlmModelRepository {
       codename: params.codename,
       input_token_limit: params.inputTokenLimit,
       sees_images: params.seesImages ?? false,
-      supported_primitives: ["predicate"],
+      supported_primitives: ["predicate", "choice"],
       input_price_per_million: params.inputPricePerMillion,
       output_price_per_million: params.outputPricePerMillion,
     });

@@ -88,9 +88,15 @@ Application caches are partitioned by domain ownership, lifetime, and storage ba
 
 - **Natural Nudges meters (`src/modules/natural-nudges/runtime/processor.ts`)**: per-server heat, waking
   hours, and last `message_sent` time, kept for 15 minutes because they move over days. The same
-  processor holds the in-flight lock and the rolled lull in memory. Natural Nudges settings and
-  persona interests are not cached: every read, including the re-check before sending, goes to the
-  database, so their writes invalidate nothing.
+  processor holds the rolled lull in memory, and `runtime/inFlight.ts` holds the one-nudge-per-server
+  lock that episodes and Chime-ins share.
+- **Chime-in gate (`src/modules/natural-nudges/runtime/configCache.ts`)**: per guild, the server ID,
+  settings, effective channels, and heat the Chime-in counter checks on every message, kept for 5
+  minutes. A miss is shared by every message that arrives while it loads, and a failed read is not
+  cached. `invalidateNaturalNudgeConfigCache` runs after a successful settings write on the plugin
+  page, a workspace import with a `nudges` section, and a server reset. Phase A and the re-check
+  before sending still read settings and persona interests fresh. The Chime-in counters, rests, and
+  per-channel watches live in `runtime/chimeIns.ts` and start over after a restart.
 
 Managed webhook caches hold at most four slots per parent channel. Cache counts include pool slots,
 and clearing the cache leaves their database rows and Discord webhooks intact for restoration.

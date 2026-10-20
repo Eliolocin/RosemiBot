@@ -399,7 +399,10 @@ export const decisionModelSchema = z.object({
   is_deprecated: z.boolean().default(false),
   input_token_limit: z.number().int().min(512).max(10_000_000),
   sees_images: z.boolean().default(false),
-  supported_primitives: z.array(z.literal("predicate")).length(1),
+  supported_primitives: z.union([
+    z.tuple([z.literal("predicate")]),
+    z.tuple([z.literal("predicate"), z.literal("choice")]),
+  ]),
   input_price_per_million: z.coerce.number().finite().nonnegative().nullable().optional(),
   output_price_per_million: z.coerce.number().finite().nonnegative().nullable().optional(),
 });

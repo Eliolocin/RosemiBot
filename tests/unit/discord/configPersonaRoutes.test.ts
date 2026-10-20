@@ -1068,6 +1068,9 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
   ],
   ["config:v2:nn-frequency:en-US", { action: "nudge-frequency-select", locale: "en-US" }],
   ["config:v2:nn-limits-open:en-US", { action: "nudge-limits-open", locale: "en-US" }],
+  ["config:v2:nn-chime-set:en-US:0", { action: "nudge-chime-in-set", locale: "en-US", enabled: false }],
+  ["config:v2:nn-chime-frequency:en-US", { action: "nudge-chime-in-frequency-select", locale: "en-US" }],
+  ["config:v2:nn-chime-cap:en-US", { action: "nudge-chime-in-cap-select", locale: "en-US" }],
   ["config:v2:nn-limits:en-US:nonce1234567", { action: "nudge-limits-submit", locale: "en-US", nonce: "nonce1234567" }],
   [
     "config:v2:nn-ep-select:en-US:25:abcd1234",

@@ -129,10 +129,12 @@ const MAX_NUDGE_SETTINGS: NaturalNudgesSettingsView = {
   trackingEnabled: false,
   heat: 1234.5,
   perDay: 3,
+  chimeInRange: { min: 160, max: 320 },
   status: {
     effectiveChannelIds: MAX_NUDGE_CHANNELS,
     plannerModel: { kind: "unusable", llmId: 7, source: "chat", reason: "unavailable" },
     chatModel: { codename: "chat-model".padEnd(90, "c"), provider: "custom:provider-chat" },
+    matcher: { kind: "decision", model: "decision-model".padEnd(200, "d") },
   },
 };
 

@@ -913,7 +913,6 @@ export default {
       capability_tts_clone: `TTS（語音複製）`,
       capability_stt: `語音轉文字`,
       capability_notice_title: `注意`,
-      decision_inactive_note: "決策模型仍在實驗階段，目前還沒有實際作用。",
       image_generation_disabled_direction: "圖片生成已停用。 請在外掛 > 可用工具底下啟用。",
       image_generation_missing_model: `圖片生成沒有設定可用的模型。`,
       video_generation_disabled_direction: "影片生成已停用。 請在外掛 > 可用工具底下啟用。",

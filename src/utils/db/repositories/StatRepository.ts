@@ -1401,6 +1401,25 @@ class StatRepository implements IRepository<null> {
     return counts;
   }
 
+  /** `message_sent` totals per persona lineage in one server since `from`. */
+  async getServerPersonaMessageCounts(args: { serverId: number; from: Date }): Promise<Map<number, number>> {
+    const counts = new Map<number, number>();
+    try {
+      const rows = await sql<{ persona_lineage_id: number | string; total: number | string }[]>`
+        SELECT persona_lineage_id, SUM(count) AS total
+        FROM stat_counters
+        WHERE metric = 'message_sent'
+          AND server_id = ${args.serverId}
+          AND bucket >= ${windowFloor(args.from)}::date
+        GROUP BY persona_lineage_id
+      `;
+      for (const row of rows) counts.set(Number(row.persona_lineage_id), Number(row.total));
+    } catch (error) {
+      log.error(`StatRepository.getServerPersonaMessageCounts: failed for server ${args.serverId}`, error);
+    }
+    return counts;
+  }
+
   /** UTC hour-of-day totals of completed turns in one server since `from`, indexed 0-23. */
   async getServerActiveHourHistogram(args: { serverId: number; from: Date }): Promise<number[]> {
     const histogram = Array.from({ length: 24 }, () => 0);

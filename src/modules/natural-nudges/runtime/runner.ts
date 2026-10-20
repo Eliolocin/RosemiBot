@@ -242,7 +242,7 @@ async function findOpenerAfter(
   return null;
 }
 
-function isGenerationFailure(result: GenerationTurnResult): boolean {
+export function isGenerationFailure(result: GenerationTurnResult): boolean {
   return result.status === "error" || result.status === "timeout" || result.status === "empty_response";
 }
 

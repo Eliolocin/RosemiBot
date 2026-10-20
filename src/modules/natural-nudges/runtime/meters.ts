@@ -21,6 +21,14 @@ import {
   FALLBACK_SLEEP_END_HOUR,
   WAKE_DELAY_MAX_MINUTES,
   RESTED_FLOOR,
+  MIN_CHIME_IN_HEAT,
+  CHIME_IN_HEAT_SCALE_MAX,
+  CHIME_IN_HEAT_SCALE_MIN,
+  CHIME_IN_LEVEL_MULTIPLIERS,
+  CHIME_IN_REFERENCE_HEAT,
+  CHIME_IN_TRIP_MAX,
+  CHIME_IN_TRIP_MIN,
+  CHIME_IN_UNDERDOG_MAX_BOOST,
 } from "@/modules/natural-nudges/runtime/tuning";
 
 const INVITING_CATEGORIES = new Set(["reach_out", "revive", "new_topic"]);
@@ -157,6 +165,27 @@ export function drawRaffle<T>(entries: readonly RaffleEntry<T>[], random: () => 
     if (ticket < 0) return entry.item;
   }
   return live[live.length - 1]?.item ?? null;
+}
+
+/** Human messages between Chime-in checks: busier servers check sooner, and nothing runs below the heat floor. */
+export function chimeInTripRange(heat: number, level: EpisodeFrequencyLevel): { min: number; max: number } | null {
+  if (heat < MIN_CHIME_IN_HEAT) return null;
+  const heatScale = Math.min(
+    CHIME_IN_HEAT_SCALE_MAX,
+    Math.max(CHIME_IN_HEAT_SCALE_MIN, CHIME_IN_REFERENCE_HEAT / heat),
+  );
+  const scale = heatScale * CHIME_IN_LEVEL_MULTIPLIERS[level];
+  return {
+    min: Math.max(1, Math.round(CHIME_IN_TRIP_MIN * scale)),
+    max: Math.max(1, Math.round(CHIME_IN_TRIP_MAX * scale)),
+  };
+}
+
+/** Detour ticket multiplier: 1 for the most-talked-to persona, rising toward the maximum as its share falls. */
+export function underdogBoost(count: number, topCount: number): number {
+  if (topCount <= 0) return CHIME_IN_UNDERDOG_MAX_BOOST;
+  const share = Math.min(1, Math.max(0, count / topCount));
+  return 1 + (CHIME_IN_UNDERDOG_MAX_BOOST - 1) * (1 - share);
 }
 
 export function serverDayStart(now: Date, timezoneOffset: number): Date {

@@ -59,10 +59,12 @@ export type EpisodeFrequencyLevel = (typeof EPISODE_FREQUENCY_LEVELS)[number];
 const frequencyLevelSchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
 
 export const DAILY_EPISODE_CAP_MAX = 10;
+export const DAILY_CHIME_IN_CAP_MAX = 20;
 
 export const serverNaturalNudgeConfigSchema = z.object({
   server_id: z.number().int(),
   episodes_enabled: z.boolean(),
+  chime_in_enabled: z.boolean(),
   channel_disc_ids: z.array(z.string()),
   llm_id: z.number().int().nullable(),
   reach_out_weight: z.number().int().min(0).max(100),
@@ -70,16 +72,19 @@ export const serverNaturalNudgeConfigSchema = z.object({
   new_topic_weight: z.number().int().min(0).max(100),
   alter_talk_weight: z.number().int().min(0).max(100),
   daily_episode_cap: z.number().int().min(1).max(DAILY_EPISODE_CAP_MAX),
+  daily_chime_in_cap: z.number().int().min(1).max(DAILY_CHIME_IN_CAP_MAX),
   episode_frequency: frequencyLevelSchema,
+  chime_in_frequency: frequencyLevelSchema,
   disabled_builtin_episodes: z.array(z.string()),
 });
 export type ServerNaturalNudgeConfig = z.infer<typeof serverNaturalNudgeConfigSchema>;
 
-/** Column defaults from migration 110, used when a server has never saved Natural Nudges settings. */
+/** Column defaults from migrations 110 and 114, used when a server has never saved Natural Nudges settings. */
 export function defaultServerNaturalNudgeConfig(serverId: number): ServerNaturalNudgeConfig {
   return {
     server_id: serverId,
     episodes_enabled: true,
+    chime_in_enabled: true,
     channel_disc_ids: [],
     llm_id: null,
     reach_out_weight: 35,
@@ -87,7 +92,9 @@ export function defaultServerNaturalNudgeConfig(serverId: number): ServerNatural
     new_topic_weight: 25,
     alter_talk_weight: 15,
     daily_episode_cap: 3,
+    daily_chime_in_cap: 3,
     episode_frequency: 1,
+    chime_in_frequency: 1,
     disabled_builtin_episodes: [],
   };
 }
@@ -147,6 +154,14 @@ export interface NewFireRow {
   episodeKey: string;
   targetUserId: number | null;
   openerMessageDiscId: string;
+}
+
+export interface NewChimeInFireRow {
+  serverId: number;
+  channelDiscId: string;
+  personaId: number;
+  openerMessageDiscId: string;
+  detour: boolean;
 }
 
 export const reachOutCandidateSchema = z.object({

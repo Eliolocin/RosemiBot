@@ -3,6 +3,7 @@ import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories
 import {
   CUSTOM_EPISODE_LIMIT,
   customEpisodeInputSchema,
+  DAILY_CHIME_IN_CAP_MAX,
   DAILY_EPISODE_CAP_MAX,
   NATURAL_NUDGE_INTEREST_LIMIT,
   naturalNudgeInterestSchema,
@@ -21,7 +22,12 @@ import {
   isNudgeToolName,
   type EpisodeDefinition,
 } from "@/modules/natural-nudges/runtime/episodes";
-import { computeHeat, episodesPerDay, heatWindowStart } from "@/modules/natural-nudges/runtime/meters";
+import {
+  chimeInTripRange,
+  computeHeat,
+  episodesPerDay,
+  heatWindowStart,
+} from "@/modules/natural-nudges/runtime/meters";
 import {
   loadStructuredOutputModelGroups,
   type StructuredOutputModelGroup,
@@ -29,6 +35,8 @@ import {
 import { statRepository } from "@/utils/db/repositories";
 import type { TomoriState } from "@/types/db/schema";
 import { resolveEffectiveChannelIds } from "@/modules/natural-nudges/runtime/channels";
+import { invalidateNaturalNudgeConfigCache } from "@/modules/natural-nudges/runtime/configCache";
+import { resolveMatcherBackend } from "@/modules/natural-nudges/runtime/matcher";
 import { resolvePlannerModel, type PlannerModelStatus } from "@/modules/natural-nudges/runtime/model";
 
 export type NudgeWriteResult = "success" | "stale" | "invalid" | "limit" | "write-failed";
@@ -38,6 +46,8 @@ interface NaturalNudgesStatus {
   effectiveChannelIds: string[];
   plannerModel: PlannerModelStatus;
   chatModel: { codename: string; provider: string } | null;
+  /** Which model would match Chime-ins right now, or null when none can. */
+  matcher: { kind: "decision"; model: string } | { kind: "llm" } | null;
 }
 
 export interface NaturalNudgesSettingsView {
@@ -47,6 +57,8 @@ export interface NaturalNudgesSettingsView {
   trackingEnabled: boolean;
   heat: number;
   perDay: number;
+  /** Human messages between Chime-in checks at the current heat and level; null below the heat floor. */
+  chimeInRange: { min: number; max: number } | null;
   /** Null on modal paths, which must acknowledge within 3 seconds and never render it. */
   status: NaturalNudgesStatus | null;
 }
@@ -85,13 +97,19 @@ async function loadSettingsStatus(
   config: ServerNaturalNudgeConfig,
   now: Date,
 ): Promise<NaturalNudgesStatus> {
-  const [effectiveChannelIds, plannerModel] = await Promise.all([
+  const [effectiveChannelIds, plannerModel, backend] = await Promise.all([
     resolveEffectiveChannelIds(state.server_id, config, now),
     resolvePlannerModel(state, config.llm_id),
+    resolveMatcherBackend(state, config.llm_id),
   ]);
   const chatModel =
     (state.llm.llm_id ?? 0) > 0 ? { codename: state.llm.llm_codename, provider: state.llm.llm_provider } : null;
-  return { effectiveChannelIds, plannerModel, chatModel };
+  const matcher = !backend
+    ? null
+    : backend.kind === "decision"
+      ? { kind: "decision" as const, model: backend.model }
+      : { kind: "llm" as const };
+  return { effectiveChannelIds, plannerModel, chatModel, matcher };
 }
 
 async function loadSettingsView(
@@ -114,6 +132,7 @@ async function loadSettingsView(
     trackingEnabled: statRepository.isTrackingEnabled,
     heat,
     perDay: episodesPerDay(heat, config.episode_frequency, config.daily_episode_cap),
+    chimeInRange: chimeInTripRange(heat, config.chime_in_frequency),
     status: chatState ? await loadSettingsStatus(chatState, config, now) : null,
   };
 }
@@ -145,7 +164,9 @@ async function patchConfig(
   serverId: number,
   patch: Parameters<typeof naturalNudgeRepository.saveServerConfig>[1],
 ): Promise<NudgeWriteResult> {
-  return (await naturalNudgeRepository.saveServerConfig(serverId, patch)) ? "success" : "write-failed";
+  if (!(await naturalNudgeRepository.saveServerConfig(serverId, patch))) return "write-failed";
+  invalidateNaturalNudgeConfigCache(serverId);
+  return "success";
 }
 
 /** Discord's channel select returns at most 25 IDs, so a longer list cannot come from the panel. */
@@ -213,6 +234,19 @@ const naturalNudgeOperations = {
 
   setFrequency(serverId: number, level: EpisodeFrequencyLevel): Promise<NudgeWriteResult> {
     return patchConfig(serverId, { episode_frequency: level });
+  },
+
+  setChimeInEnabled(serverId: number, enabled: boolean): Promise<NudgeWriteResult> {
+    return patchConfig(serverId, { chime_in_enabled: enabled });
+  },
+
+  setChimeInFrequency(serverId: number, level: EpisodeFrequencyLevel): Promise<NudgeWriteResult> {
+    return patchConfig(serverId, { chime_in_frequency: level });
+  },
+
+  setChimeInCap(serverId: number, cap: number): Promise<NudgeWriteResult> {
+    if (!Number.isInteger(cap) || cap < 1 || cap > DAILY_CHIME_IN_CAP_MAX) return Promise.resolve("invalid");
+    return patchConfig(serverId, { daily_chime_in_cap: cap });
   },
 
   setLimits(serverId: number, limits: NudgeLimitsInput): Promise<NudgeWriteResult> {

@@ -1,13 +1,11 @@
 import { z } from "zod";
 import type { TomoriState } from "@/types/db/schema";
 import { NATURAL_NUDGE_AGENDA_MAX, type NaturalNudgeInterest } from "@/modules/natural-nudges/db/types";
+import { escapeDataText } from "@/modules/natural-nudges/runtime/channels";
 import type { EpisodeDefinition } from "@/modules/natural-nudges/runtime/episodes";
 import type { ReachOutTarget } from "@/modules/natural-nudges/runtime/targets";
+import { resolveStructuredCallTarget } from "@/modules/natural-nudges/runtime/model";
 import { ALTER_TALK_MAX_TURNS, ALTER_TALK_MIN_TURNS } from "@/modules/natural-nudges/runtime/tuning";
-import { resolveCustomTextEndpointTarget } from "@/utils/provider/customEndpointService";
-import { resolveChatMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
-import { resolveModelLimits } from "@/utils/provider/modelLimits";
-import { normalizeProviderName } from "@/utils/provider/providerInfoRegistry";
 import { formatStructuredRetryNote, resolveServerStructuredModel } from "@/utils/provider/serverStructuredOutput";
 import { log } from "@/utils/misc/logger";
 import type { TokenUsage } from "@/utils/text/tokenEstimate";
@@ -182,11 +180,6 @@ function buildSystemPrompt(input: PlannerInput): string {
     .join("\n\n");
 }
 
-/** Member-written text must not close the data block it sits in or open a tag of its own. */
-function escapeDataText(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
 function buildTargetBlock(target: ReachOutTarget): string {
   const lines = [
     `<target name="${escapeDataText(target.displayName)}">`,
@@ -243,16 +236,7 @@ export async function planEpisode(input: PlannerInput): Promise<PlannerOutcome> 
   if (!resolved) return { status: "unavailable", reason: "model_unavailable" };
   if ("errorLogged" in resolved) return { status: "unavailable", reason: "credentials" };
 
-  const provider = resolved.state.llm.llm_provider;
-  const model = resolved.state.llm.llm_codename;
-  const target = provider.startsWith("custom:") ? await resolveCustomTextEndpointTarget(resolved.state) : null;
-  const limits = await resolveModelLimits(resolved.state);
-  const maxOutputTokens = resolveChatMaxOutputTokens({
-    provider: normalizeProviderName(provider),
-    configured: resolved.state.config.llm_max_output_tokens,
-    modelMaxOutputTokens: limits.maxOutputTokens,
-    contextWindow: limits.contextWindow,
-  });
+  const { model, endpointUrl, maxOutputTokens } = await resolveStructuredCallTarget(resolved);
   const systemPrompt = buildSystemPrompt(input);
   const userPrompt = buildUserPrompt(input);
   const jsonSchema = buildPlannerJsonSchema(input.partners.length);
@@ -263,7 +247,7 @@ export async function planEpisode(input: PlannerInput): Promise<PlannerOutcome> 
       {
         apiKey: resolved.apiKey,
         model,
-        endpointUrl: target?.endpointUrl ?? undefined,
+        endpointUrl,
         systemPrompt,
         userPrompt: prompt,
         temperature: resolved.state.config.llm_temperature,

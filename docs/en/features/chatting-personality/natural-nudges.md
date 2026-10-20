@@ -1,50 +1,56 @@
 ---
 title: "Natural Nudges"
-description: "Let your TomoriBot personas start conversations on their own when a Discord channel goes quiet, at a pace that follows how active your server is."
+description: "Let your TomoriBot personas start conversations when a Discord channel goes quiet and join ones that match their interests, at a pace that follows how active your server is."
 sidebar:
   order: 4
 aiGenerated: true
 ---
 
-Natural Nudges lets TomoriBot speak without being mentioned. When a channel has gone
-quiet, one of your personas picks something to do, such as checking in on someone, picking a
-conversation back up, raising a new topic, or starting a short scene with another persona, and posts
-it in its own voice. Each of these is an **episode**.
+Natural Nudges lets TomoriBot speak without being mentioned, in two ways:
+
+- **Episodes.** When a channel has gone quiet, one of your personas picks something to do, such as
+  checking in on someone, picking a conversation back up, raising a new topic, or starting a short
+  scene with another persona, and posts it in its own voice.
+- **Chime-ins.** When members are talking about something a persona likes, that persona joins in.
 
 Nudges are meant to feel like a friend checking in, not a bot posting on a timer:
 
 - **The pace follows your server.** Servers that talk to TomoriBot every day get about one episode a
-  day; servers that rarely talk to her get none.
+  day; servers that rarely talk to her get none, and no Chime-ins either.
 - **She waits for a natural gap.** An episode only starts in a channel that has been quiet for one
   to three hours, during the hours your server is usually awake.
 - **She goes quiet when nobody answers.** Each unanswered episode makes the next one wait longer,
   and after three in a row she stops until someone talks to her again.
-- **When in doubt, she says nothing.** If someone posts first, the channel gets busy, or the
-  planner finds nothing that fits, the episode is dropped.
+- **When in doubt, she says nothing.** If someone posts first, the channel gets busy, or nothing
+  fits, the nudge is dropped.
 
 Natural Nudges works in servers only, never in DMs.
 
 ## Settings
 
 Natural Nudges is on by default, and nothing needs setting up. Once people in a server talk to
-TomoriBot regularly, episodes start in the channels where they talk to her.
+TomoriBot regularly, episodes and Chime-ins start in the channels where they talk to her.
 
 To change how it works, open `/config` > Plugins > Natural Nudges (you need Manage Server):
 
-- **Episodes** turns it on or off.
+- **Episodes** turns episodes on or off.
+- **Chime-ins** turns Chime-ins on or off, and sets how often she checks and how many Chime-ins a day
+  she may post (3 by default).
 - **Channels** is automatic: the channels where people talked to TomoriBot in the last 14 days,
   except roleplay channels. Pick channels to choose them yourself, or clear the list to go back to
   automatic. A channel where other bots post often never goes quiet, so it is left alone.
-- **Planner Model** decides what to bring up and which channel suits it. By default it is the
-  server's chat model. It needs structured output and the server's own key; if the chat model can't
-  do that, the page says so and you can pick another model.
+- **Natural Nudges Model** plans episodes: what to bring up and which channel suits it. Unless a
+  Decision model is selected in `/config` > Models, it also decides when a conversation matches an
+  interest. By default it is the server's chat model. It needs structured output and the server's
+  own key; if the chat model can't do that, the page says so and you can pick another model.
 
-The page shows how active the server is and how many episodes to expect each week.
+The page shows how active the server is, how many episodes to expect each week, and how often she
+checks for Chime-ins.
 
-Episodes need two things from the server:
+Natural Nudges needs two things from the server:
 
 - **Stat tracking.** The pace and the automatic channels come from how people talk to TomoriBot, so
-  a host that turned stat tracking off never gets episodes.
+  a host that turned stat tracking off never gets nudges.
 - **A server key.** A server set to bill each member's own key has nobody to pay for a message no
   one asked for, so Natural Nudges stays off there.
 
@@ -54,6 +60,28 @@ Episodes need two things from the server:
   stays quiet in a server that rarely talks to TomoriBot.
 - **Weights** decide which kind of episode comes up more often. A weight of 0 turns that kind off.
 - **Daily cap** limits episodes per day, 3 by default.
+
+## Chime-ins
+<!-- anchor: chime-ins -->
+
+While members talk in an eligible channel, TomoriBot counts their messages. Every so often (sooner in
+busier servers and at higher Chime-in frequencies) she looks at the last five messages and asks
+whether the conversation is really about one of your personas' interests. A passing mention does not
+count.
+
+- **The persona who likes the topic answers.** It replies as itself, the same way it would if someone
+  had talked to it. Now and then another persona takes the turn instead, more often one the server
+  rarely talks to.
+- **She waits a moment.** The reply comes 15-45 seconds later. If a persona speaks first, members move
+  on, or the channel gets busy, she says nothing.
+- **Limits.** At most one Chime-in per channel per hour, and the daily limit for the whole server.
+- **No interests, no Chime-ins.** A persona needs interests on its Nudges page, and Silent personas
+  never chime in.
+
+To tell whether a conversation matches, TomoriBot uses the server's Decision model (`/config` >
+Models) when one is selected, or the Natural Nudges model otherwise. If neither is usable, the page
+says so. Free Google models fall under Google's unpaid terms, which let Google use the conversations
+sent to them.
 
 ## Episodes
 <!-- anchor: episodes -->
@@ -124,9 +152,9 @@ outside the chat. Members allowed to use the prompt snapshot can see them.
 Each persona has its own **Nudges** page under `/config` > Persona:
 
 - **Talkativeness**: how often this persona is the one who speaks up. Silent personas never start
-  episodes; shy ones speak up less, chatty ones more.
-- **Interests**: up to 8 topics the persona likes to bring up, each with a short description and
-  examples (for example **mecha anime**: Fiction about giant piloted robots, such as Gundam).
+  episodes or chime in; shy ones speak up less, chatty ones more.
+- **Interests**: up to 8 topics the persona likes to bring up and chimes in on, each with a short
+  description and examples (for example **mecha anime**: Fiction about giant piloted robots, such as Gundam).
 
 Official presets come with their own interests and talkativeness. `/persona generate` suggests
 interests for new characters, and persona exports carry them.
@@ -134,8 +162,8 @@ interests for new characters, and persona exports carry them.
 ## What Gets Stored
 
 Natural Nudges keeps your settings, custom episodes, and persona interests with your other server
-configuration. It also remembers which episodes ran recently, whether anyone answered, and who a
-Reach-out pinged, for 30 days, and each hidden agenda for up to 90 days. `/reset` restores the settings and removes custom
+configuration. It also remembers which episodes and Chime-ins ran recently, whether anyone answered,
+and who a Reach-out pinged, for 30 days, and each hidden agenda for up to 90 days. `/reset` restores the settings and removes custom
 episodes. `/export config` and `/import config` carry settings and custom episodes, but not a chosen
 channel list, which belongs to one server. Your own Reach-out choice is part of your personal
 settings: `/reset personal config` keeps it, `/export personal config` carries it, and `/personal nuke`

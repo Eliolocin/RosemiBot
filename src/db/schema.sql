@@ -519,8 +519,8 @@ CREATE TABLE IF NOT EXISTS decision_models (
   is_deprecated BOOLEAN NOT NULL DEFAULT false,
   input_token_limit INT NOT NULL CHECK (input_token_limit BETWEEN 512 AND 10000000),
   sees_images BOOLEAN NOT NULL DEFAULT false,
-  supported_primitives JSONB NOT NULL DEFAULT '["predicate"]'::jsonb
-    CHECK (supported_primitives = '["predicate"]'::jsonb),
+  supported_primitives JSONB NOT NULL DEFAULT '["predicate", "choice"]'::jsonb
+    CHECK (supported_primitives IN ('["predicate"]'::jsonb, '["predicate", "choice"]'::jsonb)),
   input_price_per_million NUMERIC CHECK (input_price_per_million >= 0),
   output_price_per_million NUMERIC CHECK (output_price_per_million >= 0),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -3393,11 +3393,12 @@ CREATE INDEX IF NOT EXISTS idx_stat_counters_user_metric_bucket
 CREATE INDEX IF NOT EXISTS idx_stat_counters_user_lineage_metric
   ON stat_counters(user_id, persona_lineage_id, metric);
 
--- Natural Nudges (migration 110). Meters derive from the fire log instead of being stored, and
+-- Natural Nudges (migrations 110 and 114). Meters derive from the fire log instead of being stored, and
 -- agendas key by the opener message so they leave the context window with it.
 CREATE TABLE IF NOT EXISTS server_natural_nudge_configs (
   server_id                 INT      PRIMARY KEY REFERENCES servers(server_id) ON DELETE CASCADE,
   episodes_enabled          BOOLEAN  NOT NULL DEFAULT true,
+  chime_in_enabled          BOOLEAN  NOT NULL DEFAULT true,
   channel_disc_ids          TEXT[]   NOT NULL DEFAULT '{}',
   llm_id                    INT      REFERENCES llms(llm_id) ON DELETE SET NULL,
   reach_out_weight          SMALLINT NOT NULL DEFAULT 35 CHECK (reach_out_weight BETWEEN 0 AND 100),
@@ -3405,7 +3406,9 @@ CREATE TABLE IF NOT EXISTS server_natural_nudge_configs (
   new_topic_weight          SMALLINT NOT NULL DEFAULT 25 CHECK (new_topic_weight BETWEEN 0 AND 100),
   alter_talk_weight         SMALLINT NOT NULL DEFAULT 15 CHECK (alter_talk_weight BETWEEN 0 AND 100),
   daily_episode_cap         SMALLINT NOT NULL DEFAULT 3 CHECK (daily_episode_cap BETWEEN 1 AND 10),
+  daily_chime_in_cap        SMALLINT NOT NULL DEFAULT 3 CHECK (daily_chime_in_cap BETWEEN 1 AND 20),
   episode_frequency         SMALLINT NOT NULL DEFAULT 1 CHECK (episode_frequency BETWEEN 0 AND 3),
+  chime_in_frequency        SMALLINT NOT NULL DEFAULT 1 CHECK (chime_in_frequency BETWEEN 0 AND 3),
   disabled_builtin_episodes TEXT[]   NOT NULL DEFAULT '{}',
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()

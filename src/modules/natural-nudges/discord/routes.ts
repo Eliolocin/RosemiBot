@@ -48,6 +48,8 @@ export const NUDGE_STRING_SELECT_ACTIONS: ReadonlySet<ConfigAction> = new Set<Co
   "nudge-interest-select",
   "nudge-provider",
   "nudge-frequency-select",
+  "nudge-chime-in-frequency-select",
+  "nudge-chime-in-cap-select",
   "nudge-episode-select",
   "nudge-episode-prereqs-select",
   "nudge-episode-tools-select",
@@ -347,6 +349,38 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
           : await write(
               () => ops.setFrequency(serverId, level as EpisodeFrequencyLevel),
               "server-config.workspace.natural-nudge-frequency.set",
+            );
+      await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
+      return true;
+    }
+    case "nudge-chime-in-set": {
+      const result = await write(
+        () => ops.setChimeInEnabled(serverId, route.enabled),
+        "server-config.workspace.natural-nudge-chime-ins.set",
+      );
+      await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
+      return true;
+    }
+    case "nudge-chime-in-frequency-select": {
+      const level = parseIndex(values[0]);
+      const result =
+        level === null || level > 3
+          ? "stale"
+          : await write(
+              () => ops.setChimeInFrequency(serverId, level as EpisodeFrequencyLevel),
+              "server-config.workspace.natural-nudge-chime-in-frequency.set",
+            );
+      await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
+      return true;
+    }
+    case "nudge-chime-in-cap-select": {
+      const cap = parseIndex(values[0]);
+      const result =
+        cap === null
+          ? "stale"
+          : await write(
+              () => ops.setChimeInCap(serverId, cap),
+              "server-config.workspace.natural-nudge-chime-in-cap.set",
             );
       await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
       return true;

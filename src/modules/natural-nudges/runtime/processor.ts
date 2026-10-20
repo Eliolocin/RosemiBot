@@ -56,6 +56,7 @@ import {
   UNANSWERED_STOP_STREAK,
   WAKING_HOURS_WINDOW_DAYS,
 } from "@/modules/natural-nudges/runtime/tuning";
+import { claimNudgeServer, isNudgeServerBusy, releaseNudgeServer } from "@/modules/natural-nudges/runtime/inFlight";
 import { resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { runEpisodeAttempt, type EpisodeAttempt } from "@/modules/natural-nudges/runtime/runner";
 import { recordEpisodeSample } from "@/modules/natural-nudges/runtime/telemetry";
@@ -170,8 +171,6 @@ async function loadAvailableToolNames(persona: TomoriState): Promise<Set<string>
  */
 export class NaturalNudgeProcessor {
   private readonly client: Client;
-  /** One in-flight nudge per server stops two attempts from racing for the same lull. */
-  private readonly inFlight = new Set<number>();
   /** After an abort the episode waits a fresh lull before trying again, so it cannot loop every cycle. */
   private readonly retryNotBefore = new Map<number, number>();
   private readonly lullHours = new Map<number, number>();
@@ -194,7 +193,7 @@ export class NaturalNudgeProcessor {
       return;
     }
     for (const server of servers) {
-      if (this.inFlight.has(server.server_id)) continue;
+      if (isNudgeServerBusy(server.server_id)) continue;
       try {
         await runWithErrorContext({ source: "natural_nudge", serverId: server.server_id }, () =>
           this.evaluateServer(server),
@@ -338,7 +337,7 @@ export class NaturalNudgeProcessor {
       return;
     }
 
-    this.inFlight.add(serverId);
+    if (!claimNudgeServer(serverId)) return;
     void runEpisodeAttempt(attempt)
       .then((result) => {
         if (result === "fired") {
@@ -352,7 +351,7 @@ export class NaturalNudgeProcessor {
         this.deferRetry(serverId, new Date());
         await log.error("Natural Nudges: episode attempt failed", error, { serverId });
       })
-      .finally(() => this.inFlight.delete(serverId));
+      .finally(() => releaseNudgeServer(serverId));
   }
 
   /** Persona first, then category and episode for that persona, so identity never depends on opportunity. */

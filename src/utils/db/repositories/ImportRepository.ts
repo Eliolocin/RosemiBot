@@ -1,6 +1,7 @@
 import { validateDraftingImportReferences } from "@/utils/discord/interactions/responseDraftingOperations";
 import { loadStructuredOutputModelGroups } from "@/utils/discord/interactions/configModelOperations";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
+import { invalidateNaturalNudgeConfigCache } from "@/modules/natural-nudges/runtime/configCache";
 import { isKnownPrerequisite, isNudgeToolName } from "@/modules/natural-nudges/runtime/episodes";
 import { sql } from "@/utils/db/client";
 import type { SQL } from "bun";
@@ -615,6 +616,7 @@ class ImportRepository {
       });
 
       invalidateTomoriStateCache(serverDiscId);
+      if (prepared.nudges) invalidateNaturalNudgeConfigCache(serverId);
       return { success: true, itemsImported: { configFieldsCount: prepared.configFieldsCount } };
     } catch (error) {
       log.error(`Error importing workspace config for server ${serverDiscId}:`, error);

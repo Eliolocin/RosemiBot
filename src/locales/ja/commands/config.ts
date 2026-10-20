@@ -1062,7 +1062,6 @@ Exaggeration: **{exaggeration}**`,
       capability_tts_clone: `TTS（ボイスクローン）`,
       capability_stt: `音声認識`,
       capability_notice_title: `注意`,
-      decision_inactive_note: "判断モデルは実験段階で、まだ何も実行しません。",
       image_generation_disabled_direction:
         "画像生成は無効になっています。プラグイン > 利用可能なツール で有効にしてください。",
       image_generation_missing_model: `画像生成に使用できるモデルが設定されていません。`,

@@ -246,6 +246,7 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
     table: "server_natural_nudge_configs",
     reset: [
       "episodes_enabled",
+      "chime_in_enabled",
       "channel_disc_ids",
       "llm_id",
       "reach_out_weight",
@@ -253,7 +254,9 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
       "new_topic_weight",
       "alter_talk_weight",
       "daily_episode_cap",
+      "daily_chime_in_cap",
       "episode_frequency",
+      "chime_in_frequency",
       "disabled_builtin_episodes",
     ],
     preserved: [],
@@ -564,6 +567,7 @@ class ResetRepository {
         INSERT INTO server_natural_nudge_configs (server_id) VALUES (${serverId})
         ON CONFLICT (server_id) DO UPDATE SET
           episodes_enabled = DEFAULT,
+          chime_in_enabled = DEFAULT,
           channel_disc_ids = DEFAULT,
           llm_id = DEFAULT,
           reach_out_weight = DEFAULT,
@@ -571,7 +575,9 @@ class ResetRepository {
           new_topic_weight = DEFAULT,
           alter_talk_weight = DEFAULT,
           daily_episode_cap = DEFAULT,
+          daily_chime_in_cap = DEFAULT,
           episode_frequency = DEFAULT,
+          chime_in_frequency = DEFAULT,
           disabled_builtin_episodes = DEFAULT,
           updated_at = NOW()
       `;

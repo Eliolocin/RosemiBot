@@ -913,7 +913,6 @@ export default {
       capability_tts_clone: `TTS（声音克隆）`,
       capability_stt: `语音识别`,
       capability_notice_title: `注意`,
-      decision_inactive_note: "决策模型仍处于实验阶段，暂时没有实际作用。",
       image_generation_disabled_direction: "图像生成已关闭。 请在插件 > 可用工具 里启用。",
       image_generation_missing_model: `图像生成还没有配置可用的模型。`,
       video_generation_disabled_direction: "视频生成已关闭。 请在插件 > 可用工具 里启用。",

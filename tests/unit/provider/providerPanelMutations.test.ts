@@ -14,6 +14,8 @@ import { llmProviderRepo } from "@/utils/db/repositories/LlmProviderRepository";
 import { llmModelRepo } from "@/utils/db/repositories/LlmModelRepository";
 import { readCachedLlm, replaceCachedLlms } from "@/utils/cache/llmCacheStore";
 import * as crypto from "@/utils/security/crypto";
+import * as openrouterModelRegistry from "@/utils/provider/openrouterModelRegistry";
+import { configRepository } from "@/utils/db/repositories/ConfigRepository";
 import { normalizeOpenAICompatibleProviderError } from "@/providers/openaiCompatible/openaiCompatibleErrorFormatter";
 
 function state(): TomoriState {
@@ -509,6 +511,44 @@ describe("provider panel mutations", () => {
 
     upsert.mockRestore();
     load.mockRestore();
+  });
+
+  it("moves the server's Decision slot to an edited registration's replacement before removing the old one", async () => {
+    const calls: string[] = [];
+    const spies = [
+      spyOn(llmProviderRepo, "loadSavedProviderConfig").mockResolvedValue({ provider: "openrouter" } as never),
+      spyOn(llmModelRepo, "loadAvailableDecisionModels").mockResolvedValue([
+        { decision_model_id: 91, is_scoped_registration: true },
+      ] as never),
+      spyOn(openrouterModelRegistry, "registerOpenRouterModelForScope").mockResolvedValue({
+        status: "registered",
+        model: { modelId: 92, codename: "fixture/decider-v2", description: null },
+      } as never),
+      spyOn(configRepository, "updateModelConfig").mockImplementation(async (_serverId, patch) => {
+        calls.push(`select:${patch.decision_model_id}`);
+        return true;
+      }),
+      spyOn(llmProviderRepo, "deleteDecisionModelRegistration").mockImplementation(async ({ decisionModelId }) => {
+        calls.push(`remove:${decisionModelId}`);
+        return true;
+      }),
+      spyOn(llmModelRepo, "deleteOrphanedDecisionModel").mockResolvedValue(undefined),
+    ];
+    try {
+      const selected = { ...state(), config: { decision_model_id: 91 } } as TomoriState;
+      const result = await saveProviderModel({
+        serverDiscId: "guild",
+        state: selected,
+        entryId: "provider:openrouter",
+        capability: "decision",
+        codeName: "fixture/decider-v2",
+        editingModelId: 91,
+      });
+      expect(result.status).toBe("success");
+      expect(calls).toEqual(["select:92", "remove:91"]);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
   });
 
   it("refuses to remove the entry supplying the active text model", async () => {

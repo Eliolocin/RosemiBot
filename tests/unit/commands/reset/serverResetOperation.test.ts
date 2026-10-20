@@ -69,6 +69,10 @@ function buildDependencies(events: string[]): ServerResetOperationDependencies {
       expect(serverId).toBe(SERVER_ID);
       events.push("persona-user-block");
     },
+    invalidateNaturalNudgeConfigCache: (serverId) => {
+      expect(serverId).toBe(SERVER_ID);
+      events.push("natural-nudges");
+    },
     emitScheduledWorkNudge: (reason) => {
       expect(reason).toBe(`server-config-reset:${SERVER_ID}`);
       events.push("scheduler-nudge");
@@ -91,6 +95,7 @@ describe("server reset post-commit operation", () => {
       "whitelist",
       "personalization-blacklist",
       "persona-user-block",
+      "natural-nudges",
       "scheduler-nudge",
     ]);
   });

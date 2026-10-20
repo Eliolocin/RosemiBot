@@ -5,10 +5,10 @@ sidebar:
 aiGenerated: true
 ---
 
-Run a small Decision model on your own machine and register it in TomoriBot. A Decision model answers yes/no questions about a text with a probability. [Kev](https://github.com/jaredpalmer/kev) is an open one that speaks the System One protocol, the same one TypeSafe's hosted Jev uses.
+Run a small Decision model on your own machine and register it in TomoriBot. A Decision model answers questions about a text, such as yes or no or which of several topics fits, with probabilities. [Kev](https://github.com/jaredpalmer/kev) is an open one that speaks the System One protocol, the same one TypeSafe's hosted Jev uses.
 
-:::note[Registration only for now]
-In this release you can register and select a Decision model, but no feature sends it requests yet. See [Decision Models](/features/setup-administration/providers-and-models/#decision-models) for the details. Registering now confirms that your server works with TomoriBot.
+:::note[What uses it]
+Once selected in `/config` > Models, the Decision model decides when [Natural Nudges](/features/chatting-personality/natural-nudges/#chime-ins) chimes in, asking it to pick one topic out of several. See [Decision Models](/features/setup-administration/providers-and-models/#decision-models) for the details.
 :::
 
 ## 1. Run Kev

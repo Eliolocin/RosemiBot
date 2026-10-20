@@ -92,6 +92,36 @@ export const REACH_OUT_MIN_TICKETS = 1;
 
 export const REACH_OUT_PLANNER_MEMORIES = 5;
 
+/** Chime-in checks need the same heat as episodes, because a server that never talks to Tomori is where an uninvited reply intrudes most. */
+export const MIN_CHIME_IN_HEAT = 1;
+/** Human messages between checks at the reference heat, before the frequency level scales them. */
+export const CHIME_IN_TRIP_MIN = 15;
+export const CHIME_IN_TRIP_MAX = 40;
+export const CHIME_IN_REFERENCE_HEAT = 15;
+/** Heat scales the trip range by reference heat over heat, held inside these bounds. */
+export const CHIME_IN_HEAT_SCALE_MIN = 0.5;
+export const CHIME_IN_HEAT_SCALE_MAX = 4;
+/** Trip range multiplier per frequency level, so higher levels check sooner. */
+export const CHIME_IN_LEVEL_MULTIPLIERS: Record<EpisodeFrequencyLevel, number> = { 0: 2, 1: 1, 2: 0.6, 3: 0.35 };
+/** After a check that found nothing, the channel rests before counting again. */
+export const CHIME_IN_EMPTY_REST_MS = 10 * 60 * 1000;
+/** The matcher's evidence window; longer windows let an earlier topic win after the talk moved on. */
+export const CHIME_IN_WINDOW_MESSAGES = 5;
+/** One check offers at most this many interests plus `none`, because some Decision models reject more than 26 options. */
+export const CHIME_IN_OPTION_BUDGET = 25;
+/** A live conversation goes stale quickly, so the reply waits only long enough not to read as instant. */
+export const CHIME_IN_DELAY_MIN_MS = 15_000;
+export const CHIME_IN_DELAY_MAX_MS = 45_000;
+/** Human messages after the check that mean the matcher's window is gone. */
+export const CHIME_IN_STALE_HUMAN_MESSAGES = 5;
+/** Share of Chime-ins another persona steals from the winner. */
+export const CHIME_IN_DETOUR_CHANCE = 0.1;
+/** A detour persona must have had a turn this recently, so a forgotten persona does not reappear. */
+export const CHIME_IN_DETOUR_WARM_DAYS = 60;
+export const CHIME_IN_UNDERDOG_DAYS = 30;
+/** The least-talked-to eligible persona gets this many times the tickets of the most-talked-to one. */
+export const CHIME_IN_UNDERDOG_MAX_BOOST = 4;
+
 /** An Alter Talk scene draws one partner, and a second this often when one is available. */
 export const ALTER_TALK_SECOND_PARTNER_CHANCE = 0.3;
 /** Scene length, opener included: long enough for an exchange, short enough to stay a moment. */

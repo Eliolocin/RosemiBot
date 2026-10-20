@@ -162,6 +162,7 @@ including link expressions. Existing rows remain editable when the limit is reac
 
 - **`llms`, `image_diffusion_models`, `video_generation_models`, `embedding_models`, `decision_models`, `speech_models`**: global model catalogs seeded from typed code definitions.
 - **Pricing storage**: first-party models record token prices directly in `llms.input_price_per_million` and `output_price_per_million`. OpenRouter pricing uses the live API cache first, falling back to database column values.
+- **Decision primitives**: `decision_models.supported_primitives` lists the question types a model answers. Every Decision API style the bot calls accepts `predicate` and `choice`, so new rows default to both; the Natural Nudges Chime-in matcher needs `choice`.
 - **Token limits**: `context_window` and `max_output_tokens` record model ceilings. Runtime code queries them through `resolveModelLimits()`, where live provider responses take precedence.
 - **`custom_endpoint_connections`**: logical connection metadata scoped to either `server_id` or `user_id`, grouped by `(owner, label, capability)`.
 - **`custom_endpoints`**: model registrations under a connection, linking to synthetic catalog rows through `model_ref_id`.
@@ -200,8 +201,9 @@ Natural Nudges stores events and derives its meters on read
 - **`server_natural_nudge_configs`**: per-server settings, read fresh by the runtime rather than
   through `tomoriState`. A missing row means the column defaults, and `episodes_enabled` defaults
   to true, so the timer enumerates servers from recent `stat_counters` activity instead of from
-  these rows. An empty `channel_disc_ids` means automatic channels, and a null `llm_id` means the
-  server's chat model. Reset restores it; the workspace
+  these rows. `chime_in_enabled` defaults to true as well, with `daily_chime_in_cap` (1-20) and
+  `chime_in_frequency` (0-3) beside the episode caps. An empty `channel_disc_ids` means automatic
+  channels, and a null `llm_id` means the server's chat model. Reset restores it; the workspace
   export carries it without `channel_disc_ids`, and import checks `llm_id` against the target
   workspace's structured-output models.
 - **`server_natural_nudge_episodes`**: custom episodes, at most 25 per server. Prerequisite IDs are
@@ -209,7 +211,9 @@ Natural Nudges stores events and derives its meters on read
 - **`persona_natural_nudge_configs`**: talkativeness and interests per persona. Pointer personas
   without a row read `persona_presets.natural_nudge_interests` and `natural_nudge_talkativeness`.
 - **`server_natural_nudge_runtime_state`**: episode jitter and the failure stop. Excluded from export.
-- **`natural_nudge_fires`**: the fire log every meter reads, with `target_user_id` for a Reach-out. Pruned after 30 days.
+- **`natural_nudge_fires`**: the fire log every meter reads, with `target_user_id` for a Reach-out. Chime-in
+  rows (`mode = 'chime_in'`) have no category or verdict and set `detour` when another persona took the
+  turn. Pruned after 30 days.
 - **`natural_nudge_agendas`**: hidden agendas keyed by `(message_disc_id, persona_id)`. Pruned after
   90 days; `target_user_id` cascades so erasing a user removes agendas built from their data.
 

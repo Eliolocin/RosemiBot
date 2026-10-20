@@ -933,7 +933,6 @@ export default {
       capability_tts_clone: `TTS (Clon de voz)`,
       capability_stt: `Voz a texto`,
       capability_notice_title: `Notas`,
-      decision_inactive_note: "Los modelos de decisión son experimentales y todavía no hacen nada.",
       image_generation_disabled_direction:
         "La generación de imágenes está desactivada. Actívala bajo Plugins > Herramientas disponibles.",
       image_generation_missing_model: `No hay un modelo utilizable configurado para generación de imágenes.`,

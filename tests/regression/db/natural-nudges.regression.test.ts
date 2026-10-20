@@ -381,14 +381,23 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
   it("exports settings and custom episodes without channels, imports them, and resets them", async () => {
     await naturalNudgeRepository.saveServerConfig(refs.serverId, {
       episodes_enabled: false,
+      chime_in_enabled: false,
       channel_disc_ids: ["1200000000000000001"],
       revive_weight: 40,
+      daily_chime_in_cap: 12,
+      chime_in_frequency: 3,
       disabled_builtin_episodes: ["new_topic.voice_note"],
     });
     const result = await exportRepository.exportWorkspaceConfig(FIXTURE_IDS.serverDiscId);
     expect(result.success).toBe(true);
     const exported = workspaceConfigExportSchema.parse(result.data);
-    expect(exported.data.nudges).toMatchObject({ episodes_enabled: false, revive_weight: 40 });
+    expect(exported.data.nudges).toMatchObject({
+      episodes_enabled: false,
+      chime_in_enabled: false,
+      revive_weight: 40,
+      daily_chime_in_cap: 12,
+      chime_in_frequency: 3,
+    });
     expect(exported.data.nudges?.custom_episodes).toHaveLength(1);
     expect(JSON.stringify(exported.data.nudges)).not.toContain("1200000000000000001");
 
@@ -396,18 +405,42 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     const imported = await naturalNudgeRepository.loadServerConfig(otherServerId);
     expect(imported).toMatchObject({
       episodes_enabled: false,
+      chime_in_enabled: false,
       revive_weight: 40,
+      daily_chime_in_cap: 12,
+      chime_in_frequency: 3,
       channel_disc_ids: [],
       disabled_builtin_episodes: ["new_topic.voice_note"],
     });
     expect(await naturalNudgeRepository.listCustomEpisodes(otherServerId)).toHaveLength(1);
 
     await resetRepository.resetServerConfiguration(refs.serverId);
-    expect(await naturalNudgeRepository.loadServerConfig(refs.serverId)).toMatchObject({
-      episodes_enabled: true,
-      channel_disc_ids: [],
-      revive_weight: 25,
-    });
+    // The code defaults stand in for a missing row, so they must equal what the columns reset to.
+    expect(await naturalNudgeRepository.loadServerConfig(refs.serverId)).toEqual(
+      defaultServerNaturalNudgeConfig(refs.serverId),
+    );
     expect(await naturalNudgeRepository.listCustomEpisodes(refs.serverId)).toHaveLength(0);
+  });
+
+  it("records a Chime-in fire that counts toward caps but never as a pending episode", async () => {
+    await naturalNudgeRepository.recordFailure(refs.serverId);
+    expect(
+      await naturalNudgeRepository.recordChimeInFire({
+        serverId: refs.serverId,
+        channelDiscId: "1200000000000000009",
+        personaId: refs.personaId,
+        openerMessageDiscId: "1300000000000000909",
+        detour: true,
+      }),
+    ).toBe(true);
+    const history = await naturalNudgeRepository.loadFireHistory(refs.serverId, new Date(Date.now() - 60_000), 5);
+    expect(history.recent.filter((fire) => fire.mode === "chime_in")).toHaveLength(1);
+    expect(history.latestEpisodes.some((fire) => fire.mode === "chime_in")).toBe(false);
+    const [row] = await testSql`
+      SELECT detour, category, answered FROM natural_nudge_fires
+      WHERE server_id = ${refs.serverId} AND mode = 'chime_in'
+    `;
+    expect(row).toEqual({ detour: true, category: null, answered: null });
+    expect((await naturalNudgeRepository.loadRuntimeState(refs.serverId)).consecutive_failures).toBe(0);
   });
 });

@@ -220,7 +220,7 @@ function buildCapabilityNoticeLine(locale: string, view: ConfigSwitchModelsView)
     (slot) => (slot.capability === "image" || slot.capability === "nai-image") && hasUsableModel(slot),
   );
   const hasUsableVideoModel = view.slots.some((slot) => slot.capability === "video" && hasUsableModel(slot));
-  const warnings: string[] = [localizer(locale, "commands.config.panel.decision_inactive_note")];
+  const warnings: string[] = [localizer(locale, "commands.config.panel.decision_matcher_note")];
 
   if (!view.imageGenerationEnabled) {
     warnings.push(localizer(locale, "commands.config.panel.image_generation_disabled_direction"));

@@ -63,7 +63,7 @@ export async function fetchRecentMessages(channel: GuildTextBasedChannel, limit:
 }
 
 /** PluralKit-style proxied messages arrive as webhooks, so they read as non-human here; accepted. */
-function isHumanMessage(message: Message): boolean {
+export function isHumanMessage(message: Message): boolean {
   return !message.author.bot && !message.webhookId && !message.system;
 }
 
@@ -97,6 +97,11 @@ export async function hasHumanReplyAfter(channel: GuildTextBasedChannel, openerM
   }
 }
 
+/** Member-written text must not close the data block it sits in or open a tag of its own. */
+export function escapeDataText(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function relativeAge(createdTimestamp: number, now: Date): string {
   const minutes = Math.max(0, Math.round((now.getTime() - createdTimestamp) / 60_000));
   if (minutes < 60) return `${minutes}m ago`;
@@ -104,16 +109,18 @@ function relativeAge(createdTimestamp: number, now: Date): string {
   return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
 }
 
+interface TranscriptEntry {
+  message: Message;
+  author: string;
+  text: string;
+}
+
 /**
- * Plain transcript for the planner. Fully private and server-blacklisted authors are dropped, as the
- * main context does, so the planner never reads what the persona could not.
+ * Messages a model outside the turn may read. Fully private and server-blacklisted authors are
+ * dropped, as the main context does, so it never reads what the persona could not.
  */
-export async function buildPlannerTranscript(
-  messages: readonly Message[],
-  guildId: string,
-  now: Date,
-): Promise<string> {
-  const lines: string[] = [];
+async function readableEntries(messages: readonly Message[], guildId: string): Promise<TranscriptEntry[]> {
+  const entries: TranscriptEntry[] = [];
   for (const message of messages) {
     if (!message.webhookId && !message.author.bot) {
       if ((await getCachedPrivacyLevel(message.author.id)) === PrivacyLevel.FULL) continue;
@@ -123,7 +130,22 @@ export async function buildPlannerTranscript(
     const attachments = message.attachments.size > 0 ? ` [${message.attachments.size} attachment(s)]` : "";
     if (!content && !attachments) continue;
     const author = message.member?.displayName ?? message.author.displayName ?? message.author.username;
-    lines.push(`[${relativeAge(message.createdTimestamp, now)}] ${author}: ${content}${attachments}`);
+    entries.push({ message, author, text: `${content}${attachments}` });
   }
-  return lines.join("\n");
+  return entries;
+}
+
+export async function buildPlannerTranscript(
+  messages: readonly Message[],
+  guildId: string,
+  now: Date,
+): Promise<string> {
+  return (await readableEntries(messages, guildId))
+    .map((entry) => `[${relativeAge(entry.message.createdTimestamp, now)}] ${entry.author}: ${entry.text}`)
+    .join("\n");
+}
+
+/** `Name: text` lines, the shape the Chime-in matcher was evaluated on. */
+export async function buildMatcherEvidence(messages: readonly Message[], guildId: string): Promise<string> {
+  return (await readableEntries(messages, guildId)).map((entry) => `${entry.author}: ${entry.text}`).join("\n");
 }

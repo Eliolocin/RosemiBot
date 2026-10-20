@@ -1,6 +1,30 @@
 import type { TomoriState } from "@/types/db/schema";
 import { llmModelRepo } from "@/utils/db/repositories";
-import { resolveServerStructuredModel } from "@/utils/provider/serverStructuredOutput";
+import { resolveCustomTextEndpointTarget } from "@/utils/provider/customEndpointService";
+import { resolveChatMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
+import { resolveModelLimits } from "@/utils/provider/modelLimits";
+import { normalizeProviderName } from "@/utils/provider/providerInfoRegistry";
+import {
+  resolveServerStructuredModel,
+  type ResolvedServerStructuredModel,
+} from "@/utils/provider/serverStructuredOutput";
+
+/** Where one out-of-turn structured call goes and how long its answer may be. */
+export async function resolveStructuredCallTarget(resolved: ResolvedServerStructuredModel) {
+  const provider = resolved.state.llm.llm_provider;
+  const target = provider.startsWith("custom:") ? await resolveCustomTextEndpointTarget(resolved.state) : null;
+  const limits = await resolveModelLimits(resolved.state);
+  return {
+    model: resolved.state.llm.llm_codename,
+    endpointUrl: target?.endpointUrl ?? undefined,
+    maxOutputTokens: resolveChatMaxOutputTokens({
+      provider: normalizeProviderName(provider),
+      configured: resolved.state.config.llm_max_output_tokens,
+      modelMaxOutputTokens: limits.maxOutputTokens,
+      contextWindow: limits.contextWindow,
+    }),
+  };
+}
 
 export type PlannerModelSource = "pinned" | "chat";
 

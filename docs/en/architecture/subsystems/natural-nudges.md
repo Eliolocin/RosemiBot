@@ -5,8 +5,9 @@ aiGenerated: true
 
 Natural Nudges lets personas speak without being triggered. The code lives in
 `src/modules/natural-nudges/`: SQL in `db/repositories.ts`, the runtime in `runtime/`, and the
-`/config` pages in `discord/`. This page covers episodes, the silence-driven nudges; user-facing
-behavior is on the [feature page](/features/chatting-personality/natural-nudges/).
+`/config` pages in `discord/`. This page covers both modes: episodes, which start something in a
+quiet channel, and [Chime-ins](#chime-ins), which join a live conversation. User-facing behavior is
+on the [feature page](/features/chatting-personality/natural-nudges/).
 
 ## Flow and ownership
 
@@ -70,8 +71,8 @@ times. Token and model stats still record.
   server stays idle and the plugin page says why. Telemetry records the model that planned.
 
 Phase A also keeps a few values in memory, by the "what breaks on restart?" test: the in-flight
-lock, the rolled lull, the retry-after-abort time, and a 15-minute cache of heat and waking hours.
-A restart only re-rolls them.
+lock (`runtime/inFlight.ts`, one nudge per server across both modes), the rolled lull, the
+retry-after-abort time, and a 15-minute cache of heat and waking hours. A restart only re-rolls them.
 
 ## Constraints
 
@@ -186,6 +187,64 @@ An Alter Talk episode reuses the `/generate scene` machinery: the runner passes 
 - **Re-check.** `recheckBeforeSend` also confirms each partner still exists and is allowed in the
   chosen channel.
 
+## Chime-ins
+<!-- anchor: chime-ins -->
+
+A Chime-in has no planner. A message counter decides when to look, one matcher call decides whether
+the conversation matches a persona's interest, and the winner gets a plain turn.
+
+```
+messageCreate (chimeIn.ts, not awaited)
+  └─ observeChimeInMessage
+       ├─ persona message → counter starts over; an open check's watch notes it
+       ├─ human message in an effective channel (a thread counts through its parent's listing)
+       │    └─ count reaches its roll (chimeInTripRange) → claim the server → detached check
+       └─ runChimeInCheck
+            ├─ Phase A, fresh reads: settings, stop, daily cap, 1 per channel per hour, matcher
+            ├─ options: interests of personas with talkativeness above 0 allowed in the channel
+            ├─ matchChimeIn over the last 5 messages → interest or none
+            ├─ winner: an owner of that interest who did not speak in the window; 10% detour
+            ├─ wait 15-45 s → recheckBeforeSend
+            └─ tomoriChat({ naturalNudge, borrowsTriggerMessage }) → fire row (mode chime_in)
+```
+
+- **Counter in memory.** `ChimeInCounter` keeps one count per conversation channel, a thread separate
+  from its parent. The trip range starts at 15-40 human messages at heat 15, scales by 15 over heat
+  (held to ½-4), then by the frequency level, and nothing counts below heat 1. Any check that does
+  not fire rests the channel for 10 minutes before a new roll. A restart only resets the counts.
+- **Gate cache.** The counter reads settings, effective channels, and heat through a 5-minute
+  [cache](/architecture/subsystems/caching/) instead of the database, because it runs on every guild
+  message. Everything after the trip reads fresh.
+- **Matcher, one boundary, two backends** (`runtime/matcher.ts`). With a Decision model in the
+  server's `decision_model_id`, it asks one `choice` question; the selected model must list `choice`
+  in `supported_primitives`, and a selected model that cannot answer does not fall back. Without one,
+  it asks the Natural Nudges model (`resolvePlannerModel`) for a structured enum of the option IDs at
+  temperature 0, with one format retry. Both use the wording the false-fire evaluation measured, up
+  to 25 interests plus `none` (some Decision models reject more than 26 options; personas whose new
+  labels would overflow sit the check out), and argmax. A refused, blocked, or unparseable answer
+  reads as `none`, and so does a choice that is not its own most likely option. A transport failure
+  is recorded but never counts toward the failure stop, so a broken matcher cannot stop episodes.
+- **Member text stays data.** The evidence is `Name: text` lines read through the same privacy filter
+  as planner transcripts. The Natural Nudges model sees it inside an escaped `<<< >>>` block; the
+  Decision API receives it as its separate evidence field.
+- **Winner rule.** Shared labels become one option with every owner, under the first owner's
+  description. Owners who spoke in the window are dropped, since without probabilities there is no
+  runner-up; if none remain, nothing fires.
+- **Detours.** 10% of the time another persona allowed in the channel, with talkativeness above 0, a
+  `message_sent` in the last 60 days, and no message in the window, takes the turn. Its tickets are talkativeness times rested
+  share times an underdog boost of 1-4 from its share of the top persona's 30-day count. The fire row
+  records `detour`.
+- **Send permission.** Phase A and the re-check skip a channel where the bot cannot send, so a
+  read-only listed channel never costs a matcher call.
+- **Re-check.** After the delay, `recheckBeforeSend` repeats the Phase A reads and the speaker's
+  persona checks, then aborts when a persona spoke in the channel, five members posted (the window is
+  gone), or the channel is locked.
+- **Plain turn.** The turn carries `naturalNudge` with no tools and `borrowsTriggerMessage`, and no
+  brief, agenda, or injected context, so it skips the same stats and memory writes as an episode.
+  Chime-ins have no pending or unanswered rules; they count toward the shared failure stop.
+- **Telemetry.** One `natural_nudge_chime_in` row per check: outcome, phase, reason, heat, matcher
+  kind and model, option count, the Decision margin over `none`, detour, and matcher tokens.
+
 ## Episodes as data
 
 Built-in episodes (`BUILTIN_EPISODES` in `runtime/episodes.ts`) and custom episodes share one shape:
@@ -211,9 +270,11 @@ re-pointing a persona at a preset deletes the row so it reads the preset again.
 - `src/modules/natural-nudges/runtime/meters.ts`: heat, due time, waking hours, raffles.
 - `src/modules/natural-nudges/runtime/targets.ts`: Reach-out gates, lottery, and re-check.
 - `src/modules/natural-nudges/runtime/partners.ts`: Alter Talk partner draw.
+- `src/modules/natural-nudges/runtime/chimeIns.ts`: Chime-in counter, check, re-check, and turn.
+- `src/modules/natural-nudges/runtime/matcher.ts`: the Chime-in matcher and its two backends.
 - `src/modules/natural-nudges/runtime/tuning.ts`: every pacing and selection constant (heat, lull,
   waking hours, rest windows, stops, retention, Reach-out windows and points, scene length and
-  partner count). Schema and Discord limits stay with their owners.
+  partner count, Chime-in trip range, window, delay, and detours). Schema and Discord limits stay with their owners.
 - `src/modules/natural-nudges/db/repositories.ts`: every Natural Nudges query.
 - Related: [Database Schema](/architecture/subsystems/database-schema/),
   [Prompt Snapshot](/architecture/subsystems/prompt-snapshot/),

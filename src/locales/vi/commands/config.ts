@@ -921,7 +921,6 @@ export default {
       capability_tts_clone: `TTS (Sao chép giọng đọc)`,
       capability_stt: `Chuyển giọng nói thành văn bản`,
       capability_notice_title: `Lưu ý`,
-      decision_inactive_note: "Model quyết định đang thử nghiệm và chưa có tác dụng.",
       image_generation_disabled_direction:
         "Tính năng tạo hình ảnh đã bị tắt. Bật tính năng này trong Plugin > Công cụ khả dụng.",
       image_generation_missing_model: `Chưa có model khả dụng nào được cấu hình cho việc tạo ảnh.`,
