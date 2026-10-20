@@ -75,6 +75,7 @@ count.
 - **She waits a moment.** The reply comes 15-45 seconds later. If a persona speaks first, members move
   on, or the channel gets busy, she says nothing.
 - **Limits.** At most one Chime-in per channel per hour, and the daily limit for the whole server.
+  Threads count as part of their channel, both for counting messages and for this limit.
 - **No interests, no Chime-ins.** A persona needs interests on its Nudges page, and Silent personas
   never chime in.
 

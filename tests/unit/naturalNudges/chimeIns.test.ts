@@ -29,7 +29,7 @@ const CLIENT_USER_ID = "1300000000000000001";
 const ANCHOR_ID = "1300000000000000500";
 const MAIN_ID = 5;
 const ALTER_ID = 6;
-const client = { user: { id: CLIENT_USER_ID } } as unknown as Client;
+const client = { user: { id: CLIENT_USER_ID }, channels: { cache: new Map() } } as unknown as Client;
 const main = createPersona({
   persona_id: MAIN_ID,
   persona_lineage_id: 105,
@@ -86,7 +86,7 @@ describe("Chime-in counter", () => {
       spyOn(configCache, "readChimeInGate").mockResolvedValue({
         serverId: SERVER_ID,
         config: defaultServerNaturalNudgeConfig(SERVER_ID),
-        channelIds: new Set(["listed-parent"]),
+        channelIds: new Set(["listed-parent", "trip-parent", "reset-parent", "quiet-parent"]),
         heat: 15,
       }),
       spyOn(autoTrigger, "rollAutochatTarget").mockReturnValue(3),
@@ -97,14 +97,18 @@ describe("Chime-in counter", () => {
     );
   });
 
-  it("trips once per rolled count, counting a thread toward its listed parent", async () => {
-    const thread = fakeChannel("counter-thread", "listed-parent");
-    for (let index = 0; index < 4; index++) await observeChimeInMessage(client, member(thread));
+  it("trips once per rolled count, with a parent and its threads sharing one count", async () => {
+    const parent = fakeChannel("trip-parent");
+    const thread = fakeChannel("trip-thread", "trip-parent");
+    await observeChimeInMessage(client, member(parent));
+    await observeChimeInMessage(client, member(thread));
+    expect(claims).toBe(0);
+    await observeChimeInMessage(client, member(thread));
     expect(claims).toBe(1);
   });
 
   it("counts neither bots nor members in channels off the list", async () => {
-    const listed = fakeChannel("listed-parent");
+    const listed = fakeChannel("quiet-parent");
     const other = fakeChannel("counter-unlisted");
     for (let index = 0; index < 5; index++) {
       await observeChimeInMessage(client, fakeMessage(listed, { id: "1300000000000000003", bot: true }));
@@ -113,15 +117,16 @@ describe("Chime-in counter", () => {
     expect(claims).toBe(0);
   });
 
-  it("starts over when a persona speaks", async () => {
-    const thread = fakeChannel("counter-reset", "listed-parent");
-    await observeChimeInMessage(client, member(thread));
-    await observeChimeInMessage(client, member(thread));
+  it("starts over when a persona speaks in the parent or any of its threads", async () => {
+    const parent = fakeChannel("reset-parent");
+    const thread = fakeChannel("reset-thread", "reset-parent");
+    await observeChimeInMessage(client, member(parent));
+    await observeChimeInMessage(client, member(parent));
     await observeChimeInMessage(client, self(thread));
-    await observeChimeInMessage(client, member(thread));
+    await observeChimeInMessage(client, member(parent));
     await observeChimeInMessage(client, member(thread));
     expect(claims).toBe(0);
-    await observeChimeInMessage(client, member(thread));
+    await observeChimeInMessage(client, member(parent));
     expect(claims).toBe(1);
   });
 });
@@ -260,6 +265,37 @@ describe("Chime-in check", () => {
     window = [member(channel), self(channel)];
     expect(await runChimeInCheck(check, { sleep: async () => {}, random: () => 0.05 })).toBe("fired");
     expect(chatInputs.map((input) => input.selectedPersonaId)).toEqual([ALTER_ID]);
+  });
+
+  it("holds the hourly cap for a parent after a Chime-in in one of its threads", async () => {
+    const cache = (client as unknown as { channels: { cache: Map<string, unknown> } }).channels.cache;
+    cache.set("cap-thread", { isThread: () => true, parentId: "listed-parent" });
+    spies.push(
+      spyOn(naturalNudgeRepository, "loadFireHistory").mockResolvedValue({
+        recent: [
+          {
+            fire_id: 1,
+            server_id: SERVER_ID,
+            channel_disc_id: "cap-thread",
+            persona_id: MAIN_ID,
+            mode: "chime_in",
+            category: null,
+            episode_key: null,
+            target_user_id: null,
+            opener_message_disc_id: ANCHOR_ID,
+            answered: null,
+            fired_at: new Date(Date.now() - 10 * 60_000),
+          },
+        ],
+        latestEpisodes: [],
+      }),
+    );
+    try {
+      expect(await runChimeInCheck(check, options())).toBe("aborted");
+      expect(samples.at(-1)).toMatchObject({ reason: "channel_cap", phase: "a" });
+    } finally {
+      cache.delete("cap-thread");
+    }
   });
 
   it("skips a channel where the bot cannot send, before any matcher call", async () => {

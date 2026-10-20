@@ -68,8 +68,9 @@ interface ChannelCounter {
 }
 
 /**
- * Human messages per conversation channel since a persona last spoke there. Kept in memory, because
- * a restart only resets the counts to 0, which delays the next check slightly.
+ * Human messages per listed channel since a persona last spoke there, a thread counting toward its
+ * parent. Kept in memory, because a restart only resets the counts to 0, which delays the next check
+ * slightly.
  */
 class ChimeInCounter {
   private readonly channels = new Map<string, ChannelCounter>();
@@ -138,12 +139,15 @@ export interface ChimeInCheck {
  */
 export async function observeChimeInMessage(client: Client, message: Message): Promise<void> {
   if (!message.inGuild() || message.system) return;
-  const channelId = message.channelId;
+  const channel = message.channel;
+  const channelId = channel.id;
+  const listedChannelId = channel.isThread() ? channel.parentId : channelId;
+  if (!listedChannelId) return;
   if (!isHumanMessage(message)) {
     // Only a channel already counting or watched has anything to reset, so other bot traffic costs nothing.
-    if (!counter.isTracking(channelId) && !watches.has(channelId)) return;
+    if (!counter.isTracking(listedChannelId) && !watches.has(channelId)) return;
     if (!(await isPersonaMessage(client, message))) return;
-    counter.reset(channelId, Date.now());
+    counter.reset(listedChannelId, Date.now());
     const watch = watches.get(channelId);
     if (watch) watch.personaSpoke = true;
     return;
@@ -152,12 +156,9 @@ export async function observeChimeInMessage(client: Client, message: Message): P
   if (watch) watch.humans++;
 
   const gate = await readChimeInGate(message.guildId);
-  if (!gate?.config.chime_in_enabled) return;
-  const channel = message.channel;
-  const listedChannelId = channel.isThread() ? channel.parentId : channel.id;
-  if (!listedChannelId || !gate.channelIds.has(listedChannelId)) return;
+  if (!gate?.config.chime_in_enabled || !gate.channelIds.has(listedChannelId)) return;
   const range = chimeInTripRange(gate.heat, gate.config.chime_in_frequency);
-  if (!range || !counter.recordHuman(channelId, range, Date.now())) return;
+  if (!range || !counter.recordHuman(listedChannelId, range, Date.now())) return;
   if (!claimNudgeServer(gate.serverId)) return;
 
   const check: ChimeInCheck = {
@@ -170,10 +171,10 @@ export async function observeChimeInMessage(client: Client, message: Message): P
   };
   void runWithErrorContext({ source: "natural_nudge", serverId: gate.serverId }, () => runChimeInCheck(check))
     .then((result) => {
-      if (result !== "fired") counter.rest(channelId, Date.now());
+      if (result !== "fired") counter.rest(listedChannelId, Date.now());
     })
     .catch(async (error) => {
-      counter.rest(channelId, Date.now());
+      counter.rest(listedChannelId, Date.now());
       await log.error("Natural Nudges: Chime-in check failed", error, { serverId: gate.serverId });
     })
     .finally(() => releaseNudgeServer(gate.serverId));
@@ -237,6 +238,15 @@ function spokeInWindow(
   return spoke;
 }
 
+/**
+ * A fire row stores where it spoke, so a thread fire is mapped back to its parent. A thread that left
+ * the cache counts on its own; one that fired within the hour is almost always still cached.
+ */
+function listedChannelOf(client: Client, channelId: string): string {
+  const channel = client.channels.cache.get(channelId);
+  return channel?.isThread() ? (channel.parentId ?? channelId) : channelId;
+}
+
 interface CheckSettings {
   backend: MatcherBackend;
   recentFires: NaturalNudgeFireRow[];
@@ -269,7 +279,9 @@ async function checkSettingsAndCaps(
   if (chimeIns.filter((fire) => fire.fired_at >= dayStart).length >= config.daily_chime_in_cap) return "cap_reached";
   if (
     chimeIns.some(
-      (fire) => fire.channel_disc_id === check.channel.id && now.getTime() - fire.fired_at.getTime() < HOUR_MS,
+      (fire) =>
+        listedChannelOf(check.client, fire.channel_disc_id) === check.listedChannelId &&
+        now.getTime() - fire.fired_at.getTime() < HOUR_MS,
     )
   )
     return "channel_cap";

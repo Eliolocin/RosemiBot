@@ -197,7 +197,7 @@ the conversation matches a persona's interest, and the winner gets a plain turn.
 messageCreate (chimeIn.ts, not awaited)
   └─ observeChimeInMessage
        ├─ persona message → counter starts over; an open check's watch notes it
-       ├─ human message in an effective channel (a thread counts through its parent's listing)
+       ├─ human message in an effective channel (a thread counts toward its parent)
        │    └─ count reaches its roll (chimeInTripRange) → claim the server → detached check
        └─ runChimeInCheck
             ├─ Phase A, fresh reads: settings, stop, daily cap, 1 per channel per hour, matcher
@@ -208,8 +208,10 @@ messageCreate (chimeIn.ts, not awaited)
             └─ tomoriChat({ naturalNudge, borrowsTriggerMessage }) → fire row (mode chime_in)
 ```
 
-- **Counter in memory.** `ChimeInCounter` keeps one count per conversation channel, a thread separate
-  from its parent. The trip range starts at 15-40 human messages at heat 15, scales by 15 over heat
+- **Counter in memory.** `ChimeInCounter` keeps one count per listed channel, shared with its threads,
+  so a conversation that moves into a thread keeps its count. The check reads and speaks in the
+  channel or thread whose message tripped it, and the hourly cap covers a parent and its threads
+  together (a fire row stores the thread; `listedChannelOf` maps it back through the channel cache). The trip range starts at 15-40 human messages at heat 15, scales by 15 over heat
   (held to ½-4), then by the frequency level, and nothing counts below heat 1. Any check that does
   not fire rests the channel for 10 minutes before a new roll. A restart only resets the counts.
 - **Gate cache.** The counter reads settings, effective channels, and heat through a 5-minute
