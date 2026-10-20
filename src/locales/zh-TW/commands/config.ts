@@ -528,7 +528,7 @@ export default {
       fetch_limit_no_changes_detail: `訊息讀取上限已經是 {value}。`,
       fetch_limit_updated_heading: `讀取上限已更新`,
       fetch_limit_updated_detail: `訊息讀取上限現在是 {value}。`,
-      timezone_invalid_detail: `時區必須介於 {min} 到 {max}。`,
+      timezone_invalid_detail: `時區必須介於 {min} 到 {max} 小時之間，支援整小時、半小時或一刻鐘，例如 9、5:30 或 5.75。`,
       timezone_no_changes_heading: `時區未變更`,
       timezone_no_changes_detail: `時區已經是 {value}。`,
       timezone_updated_heading: `時區已更新`,

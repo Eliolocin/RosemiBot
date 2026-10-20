@@ -1,6 +1,6 @@
 import type { Attachment, Message } from "discord.js";
 import { safeDownload } from "@/utils/security/safeDownload";
-import { getElevenLabsSttConfig } from "@/utils/audio/elevenLabsShared";
+import { getElevenLabsSttConfig, reportElevenLabsFailure } from "@/utils/audio/elevenLabsShared";
 import { transcribeViaElevenLabsAdapter } from "@/providers/custom/styles/transcriptionElevenLabsAdapter";
 import { transcribeViaOpenAIAdapter } from "@/providers/custom/styles/transcriptionOpenAIAdapter";
 import { resolveActiveTranscriptionEndpoint } from "@/utils/provider/speechEndpointResolver";
@@ -124,6 +124,10 @@ export async function transcribeMessageAudioAttachment(
           mimeType: attachment.contentType ?? undefined,
         });
   if (!transcriptionResult.success) {
+    // An unreachable user-run OpenAI-compatible endpoint is an expected refusal, so only hosted ElevenLabs is reported.
+    if (endpointApiStyle !== "openai-compatible-transcription") {
+      await reportElevenLabsFailure("transcription", transcriptionResult, { serverId });
+    }
     return {
       hasAudio: true,
       transcriptText: null,

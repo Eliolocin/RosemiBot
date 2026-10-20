@@ -1,7 +1,7 @@
 export default {
   server: {
     timezone: {
-      value_description: `UTC offset hours (default: 0). Examples: 8, -5, 0, 9.`,
+      value_description: `UTC offset hours (default: 0). Examples: 8, -5, 0, 5:30.`,
     },
     stm: {
       parameters: {

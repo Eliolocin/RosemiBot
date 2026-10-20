@@ -95,6 +95,7 @@ import { lazySyncGuildEmojis } from "@/utils/cache/emojiLazySync";
 import { lazySyncGuildStickers } from "@/utils/cache/stickerLazySync";
 import { commandRegistry } from "@/utils/discord/commandRegistry";
 import { localizer, getDefaultBotName } from "@/utils/text/localizer";
+import { UTC_OFFSET_MAX, UTC_OFFSET_MIN } from "@/constants/utcOffset";
 import { escapeDiscordMarkdown } from "@/utils/text/discordMarkdown";
 import { recordPanelActionStat } from "@/utils/stats/panelActionMetrics";
 import { log, ColorCode } from "@/utils/misc/logger";
@@ -231,9 +232,8 @@ export function buildSetupFinishRouteId(input: { locale: string; nonce: string }
  */
 function describeSetupSettingsRejection(rawTimezone: string | undefined, timezoneOffset: number | null): string {
   if (timezoneOffset === null) {
-    const typed = rawTimezone?.trim() ?? "";
-    // Blank is UTC rather than an error, so a rejection here is either unparseable or out of range.
-    const isOutOfRange = typed !== "" && !Number.isNaN(Number.parseFloat(typed));
+    const typedHours = Number.parseFloat(rawTimezone?.trim() ?? "");
+    const isOutOfRange = typedHours < UTC_OFFSET_MIN || typedHours > UTC_OFFSET_MAX;
     return isOutOfRange
       ? "commands.setup.wizard.settings_timezone_out_of_range"
       : "commands.setup.wizard.settings_timezone_invalid";

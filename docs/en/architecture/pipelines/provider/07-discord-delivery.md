@@ -73,10 +73,10 @@ after the same persona's line they reuse its identity; otherwise they show the b
 join the sprite alternation, so the next sprite cannot merge under the post's avatar. Lines where
 the persona speaks outside the stream (`/impersonate` and the reply tool) take the stream's own
 alternation for their sprite or base appearance and record themselves too. The payload's reference
-is recorded in `context.deliveredMessageRefs` so the chat pipeline can delete partial output if a
-generation attempt is superseded. Each reference carries the authoring webhook ID; button expiry,
-reply-notice cleanup, and superseded-message deletion resolve that ID instead of assuming the primary
-webhook sent the message. Successful ordinary bot sends, including notice fallbacks after a
+is recorded in `context.deliveredMessageRefs`, which spans every attempt of the turn because a
+fallback continues the text a failed attempt posted. Each reference carries the authoring webhook ID;
+button expiry and reply-notice cleanup resolve that ID instead of assuming the primary webhook sent
+the message. Successful ordinary bot sends, including notice fallbacks after a
 webhook failure, call `recordChannelDeliveredBotMessage()` to clear the previous webhook identity.
 Failed sends leave the last successful delivery intact.
 

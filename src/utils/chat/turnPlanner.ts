@@ -8,6 +8,7 @@ import { configRepository, userRepository, whitelistRepository } from "@/utils/d
 import { isPersonaAllowedForTrigger } from "@/utils/persona/personaAccess";
 import { resolvePreferredDiscordDisplayName } from "@/utils/discord/displayName";
 import { sendStandardEmbed } from "@/utils/discord/embedHelper";
+import { TOMORIBOT_ERROR_FOOTER_KEY } from "@/utils/discord/stream/errorUi";
 import { ColorCode, log } from "@/utils/misc/logger";
 import {
   CredentialUnavailableError,
@@ -619,6 +620,7 @@ async function resolveTextCredentialPolicy(params: {
           color: ColorCode.ERROR,
           titleKey: "general.errors.database_unavailable_title",
           descriptionKey: "general.errors.database_unavailable_description",
+          footerKey: TOMORIBOT_ERROR_FOOTER_KEY,
         });
       } else {
         log.warn("Suppressing database-unavailable embed for non-deliberate chat turn.", error);

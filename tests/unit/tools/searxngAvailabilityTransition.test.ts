@@ -10,13 +10,14 @@ const originalFetch = globalThis.fetch;
 const errorTypes: string[] = [];
 
 let healthy = true;
+let errorSpy: ReturnType<typeof spyOn<typeof log, "error">>;
 
 useEnvSandbox([BASE_URL_ENV]);
 
 beforeAll(() => {
   process.env[BASE_URL_ENV] = "http://searxng:8080/";
 
-  spyOn(log, "error").mockImplementation(async (_msg, _err, context) => {
+  errorSpy = spyOn(log, "error").mockImplementation(async (_msg, _err, context) => {
     errorTypes.push((context?.errorType as string) ?? "");
   });
   // Only /healthz is probed here, so the stub can ignore the request entirely.
@@ -25,6 +26,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  errorSpy.mockRestore();
   globalThis.fetch = originalFetch;
 });
 

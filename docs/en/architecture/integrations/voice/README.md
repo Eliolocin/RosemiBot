@@ -238,6 +238,16 @@ Discord delivery. The command and tool own delivery and `audio_generated` metric
 custom and hosted paths. Command receipts and tool results report the final source and target label,
 including server fallback: a custom endpoint's label or a hosted model's codename.
 
+The dispatcher reports every failed hosted or ElevenLabs attempt through `reportProviderFailure`, so a
+failed personal attempt and its server fallback each produce a record. Provider 400 and 422 responses,
+5xx responses, malformed responses, and network failures become `log.error` records carrying the
+provider status and response body, with the request's own key removed. Cancellation, timeouts, local
+input checks, and authentication, quota, or rate-limit refusals become a `provider_failure` metric and a
+warning. A provider `invalid_request` is told apart from a local one by the status it carries. The
+command's failure notice offers that same detail behind **Show Full Error**, gated like the chat error
+modal: Manage Server for a server credential, and only the requester for a personal one. The voice tool
+keeps the detail out of its result because the model reads tool results.
+
 ## Native Discord delivery constraints
 
 Discord voice messages must comply with strict gateway and REST requirements handled by

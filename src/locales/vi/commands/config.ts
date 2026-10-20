@@ -533,7 +533,7 @@ export default {
       fetch_limit_no_changes_detail: `Giới hạn lấy tin nhắn đã là {value} rồi.`,
       fetch_limit_updated_heading: `Đã cập nhật giới hạn lấy tin`,
       fetch_limit_updated_detail: `Giới hạn lấy tin nhắn hiện là {value}.`,
-      timezone_invalid_detail: `Múi giờ phải nằm trong khoảng {min} đến {max}.`,
+      timezone_invalid_detail: `Múi giờ phải nằm trong khoảng từ {min} đến {max} giờ, theo giờ chẵn, nửa giờ hoặc 15 phút như 9, 5:30 hoặc 5.75.`,
       timezone_no_changes_heading: `Múi giờ không đổi`,
       timezone_no_changes_detail: `Múi giờ đã là {value} rồi.`,
       timezone_updated_heading: `Đã cập nhật múi giờ`,

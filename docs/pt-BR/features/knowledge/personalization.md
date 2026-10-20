@@ -25,7 +25,7 @@ Em `/personal config` > `Perfil` > Preferências Gerais, a seção **Sobre você
 
 TomoriBot nunca infere um campo de outro. Os campos em branco são limpos e omitidos do contexto de prompt. Os campos de perfil bruto são expostos à IA somente quando seu nível de privacidade está definido como `Nenhum`.
 
-A seção **Interface** permite definir o deslocamento numérico UTC (-12 a +14) ou corresponder ao padrão do servidor. TomoriBot armazena apenas esse deslocamento numérico, nunca uma localização geográfica ou fuso horário da IANA.
+A seção **Interface** permite definir o deslocamento numérico UTC (-12 a +14) ou corresponder ao padrão do servidor. Frações de meia hora e quarto de hora também funcionam: digite `5:30` ou `5.5` para a Índia, `5:45` para o Nepal. O TomoriBot armazena apenas esse deslocamento numérico, nunca uma localização geográfica ou fuso horário da IANA, portanto não acompanha mudanças de horário de verão por conta própria.
 
 ### Herança de nomenclatura
 

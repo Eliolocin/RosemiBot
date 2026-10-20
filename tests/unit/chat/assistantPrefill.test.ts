@@ -165,6 +165,57 @@ describe("applyAssistantPrefill", () => {
     expect(JSON.stringify(result.contextItems.at(-1)?.parts)).toContain("Mirri: Sure, here");
   });
 
+  it("continues delivered text natively when the model can and as an instruction when it cannot", async () => {
+    const prefill = { text: "Apples, pears,", source: "continuation" as const };
+    const continued = await applyAssistantPrefill({
+      contextItems: [userTurn],
+      prefill,
+      tomoriState: createPersona({
+        llm: createLlmRow({
+          llm_provider: "anthropic",
+          llm_codename: "claude-haiku-4-5",
+          supports_assistant_prefill: true,
+        }),
+      }),
+    });
+    const instructed = await applyAssistantPrefill({
+      contextItems: [userTurn],
+      prefill,
+      tomoriState: createPersona({
+        llm: createLlmRow({ llm_provider: "anthropic", llm_codename: "claude-sonnet-4-6" }),
+      }),
+    });
+
+    expect(continued.contextItems.at(-1)).toMatchObject({
+      role: "model",
+      parts: [{ type: "text", text: "Mirri: Apples, pears," }],
+    });
+    expect(instructed.outputPrefill).toBe("Mirri: Apples, pears,");
+    expect(instructed.contextItems.some((item) => item.role === "model")).toBe(false);
+    expect(JSON.stringify(instructed.contextItems.at(-1)?.parts)).toContain("Mirri: Apples, pears,");
+  });
+
+  it("leaves tool macros in delivered text unexpanded", async () => {
+    const tomoriState = createPersona({
+      llm: createLlmRow({
+        llm_provider: "anthropic",
+        llm_codename: "claude-haiku-4-5",
+        supports_assistant_prefill: true,
+      }),
+    });
+    const prefillFor = async (source: "manual" | "continuation") =>
+      (
+        await applyAssistantPrefill({
+          contextItems: [userTurn],
+          prefill: { text: "I could call {memory_tool}", source },
+          tomoriState,
+        })
+      ).outputPrefill;
+
+    expect(await prefillFor("continuation")).toBe("Mirri: I could call {memory_tool}");
+    expect(await prefillFor("manual")).not.toContain("{memory_tool}");
+  });
+
   it("drops a server prefill for a model that rejects one and leaves nothing to strip", async () => {
     const tomoriState = createPersona({
       llm: createLlmRow({ llm_provider: "anthropic", llm_codename: "claude-sonnet-4-6" }),

@@ -47,6 +47,7 @@ import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
 import { ColorCode } from "@/utils/misc/logger";
 import { commandRegistry } from "@/utils/discord/commandRegistry";
 import { localizer, resolveDescription } from "@/utils/text/localizer";
+import { formatUTCOffset, formatUtcOffsetInput, parseUtcOffsetInput } from "@/utils/text/timezoneHelper";
 import { buildLegalDocUrl } from "@/utils/misc/docsUrl";
 import { orderPersonaPresetChoices } from "@/utils/persona/presetOrdering";
 import type { ComponentsV2MessagePayload } from "@/utils/discord/ui/componentsV2Limits";
@@ -260,23 +261,6 @@ function resolveHumanizerLabel(humanizer: number, locale: string): string {
   return localizer(locale, (HUMANIZER_KEYS[humanizer as keyof typeof HUMANIZER_KEYS] ?? HUMANIZER_KEYS[2]).label);
 }
 
-/**
- * The stored timezone as the dashboard shows it, spelled out so a UTC offset never reads as an
- * unfinished field.
- *
- * This is a display form and must not be fed back into {@link parseSetupTimezoneOffset}: the `UTC`
- * prefix is prose, and the modal's re-parse of a pre-filled value rejects it. The editor pre-fills
- * with {@link formatTimezoneOffsetInput} for that reason.
- */
-function formatTimezoneOffsetDisplay(timezoneOffset: number): string {
-  return timezoneOffset >= 0 ? `UTC+${timezoneOffset}` : `UTC${timezoneOffset}`;
-}
-
-/** The stored timezone as the editor's own input value, so reopening a saved step parses cleanly. */
-function formatTimezoneOffsetInput(timezoneOffset: number): string {
-  return String(timezoneOffset);
-}
-
 function resolveSettingsSummary(
   settings: SetupDraftStartingSettings,
   locale: string,
@@ -310,7 +294,7 @@ function resolveSettingsSummary(
       style: resolveHumanizerLabel(settings.humanizer, locale),
     }),
     localizer(locale, "commands.setup.wizard.settings_summary_timezone", {
-      tz: formatTimezoneOffsetDisplay(settings.timezoneOffset),
+      tz: formatUTCOffset(settings.timezoneOffset),
     }),
     localizer(locale, "commands.setup.wizard.settings_summary_system_prompt", {
       prompt: promptName,
@@ -1131,10 +1115,7 @@ export function parseSetupHumanizerChoice(value: string | undefined): number | n
 export function parseSetupTimezoneOffset(value: string | undefined): number | null {
   const trimmed = value?.trim() ?? "";
   if (!trimmed) return 0;
-
-  const parsed = Number.parseFloat(trimmed);
-  if (Number.isNaN(parsed) || parsed < -12 || parsed > 14) return null;
-  return Math.round(parsed);
+  return parseUtcOffsetInput(trimmed);
 }
 
 export function buildSetupSettingsModal(
@@ -1153,7 +1134,7 @@ export function buildSetupSettingsModal(
   // The plan's contract for this modal is that its selects reopen on their placeholders, so the
   // `default` flags below are a best-effort hint the client is free to ignore rather than a
   // pre-fill. Only the text input is expected to come back carrying its stored value.
-  const timezoneValue = existing ? formatTimezoneOffsetInput(existing.timezoneOffset) : undefined;
+  const timezoneValue = existing ? formatUtcOffsetInput(existing.timezoneOffset) : undefined;
   const storedPrompt = existing?.systemPrompt;
 
   return {

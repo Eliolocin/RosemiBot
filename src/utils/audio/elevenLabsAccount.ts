@@ -2,6 +2,7 @@ import {
   ELEVENLABS_API_BASE_URL,
   ELEVENLABS_SERVICE_NAME,
   getElevenLabsTtsConfig,
+  reportElevenLabsFailure,
 } from "@/utils/audio/elevenLabsShared";
 
 export { ELEVENLABS_SERVICE_NAME };
@@ -84,10 +85,12 @@ export async function validateElevenLabsApiKey(apiKey: string): Promise<ElevenLa
       };
     }
 
-    return {
+    const failure = {
       success: false,
       errorKind: "request_failed",
       details: error instanceof Error ? error.message : String(error),
-    };
+    } as const;
+    await reportElevenLabsFailure("key-validation", failure);
+    return failure;
   }
 }

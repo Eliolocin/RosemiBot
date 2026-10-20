@@ -34,6 +34,7 @@ import {
 } from "@/utils/provider/personalProviderHelpers";
 import { getFallbackModelRefKey } from "@/utils/provider/fallbackModelIdentity";
 import { THINKING_LEVEL_LOCALIZER_KEYS, THINKING_LEVEL_VALUES } from "@/constants/thinkingLevels";
+import { formatUtcOffsetInput } from "@/utils/text/timezoneHelper";
 
 export function buildPersonalConfigModalFieldId(field: string, nonce: string): string {
   return `${field}_${nonce}`;
@@ -105,7 +106,7 @@ export function buildTimezoneModal(
           ),
           max_length: 10,
           required: true,
-          value: currentOffset !== null ? String(currentOffset) : "",
+          value: currentOffset !== null ? formatUtcOffsetInput(currentOffset) : "",
         },
       },
     ],

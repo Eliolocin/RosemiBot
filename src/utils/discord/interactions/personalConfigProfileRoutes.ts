@@ -4,7 +4,7 @@ import { performPanelAction } from "@/utils/discord/interactions/panelController
 import { buildPersonalConfigModalFieldId } from "@/utils/discord/ui/personalConfigModals";
 import { takeRawModalFileUpload, takeRawModalSelectValue } from "@/utils/discord/ui/modals";
 import { MAX_TAG_LENGTH, MAX_TAGS } from "@/utils/image/tagHelpers";
-import { formatUTCOffset } from "@/utils/text/timezoneHelper";
+import { formatUTCOffset, parseUtcOffsetInput } from "@/utils/text/timezoneHelper";
 import { escapeDiscordMarkdown } from "@/utils/text/discordMarkdown";
 import { getLocaleEndonym, localizer } from "@/utils/text/localizer";
 import {
@@ -79,10 +79,9 @@ export async function handlePersonalConfigProfileWrites(context: PersonalConfigP
   if (route.action === "timezone-submit") {
     const modal = interaction as ModalSubmitInteraction;
     const fieldId = buildPersonalConfigModalFieldId("timezone", route.nonce);
-    const rawOffset = modal.fields.getTextInputValue(fieldId).trim();
-    const parsedOffset = Number(rawOffset);
+    const parsedOffset = parseUtcOffsetInput(modal.fields.getTextInputValue(fieldId));
 
-    if (Number.isNaN(parsedOffset) || parsedOffset < -12 || parsedOffset > 14) {
+    if (parsedOffset === null) {
       await repaint(interaction, {
         locale: route.locale,
         scope: context.scope,

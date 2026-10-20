@@ -79,7 +79,7 @@ import * as emojiLazySync from "@/utils/cache/emojiLazySync";
 import * as stickerLazySync from "@/utils/cache/stickerLazySync";
 import * as panelActionMetrics from "@/utils/stats/panelActionMetrics";
 import { createRouteInteraction } from "../../helpers/routeInteraction";
-import { localizedCopy } from "../../helpers/localeCases";
+import { localizedCopy, localizedProse } from "../../helpers/localeCases";
 import { useEnvSandbox } from "../../helpers/env";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 import { ColorCode } from "@/utils/misc/logger";
@@ -2354,6 +2354,7 @@ describe("setupWizardRoutes", () => {
   const SETTINGS_REJECTIONS: ReadonlyArray<readonly [string, string, string, string, string, string, string]> = [
     ["an out-of-range timezone", "out-of-range", "1770", "1", "Tomori Default", "99", "settings_timezone_out_of_range"],
     ["a non-numeric timezone", "not-a-number", "1770", "1", "Tomori Default", "abc", "settings_timezone_invalid"],
+    ["an off-quarter timezone", "off-quarter", "1770", "1", "Tomori Default", "5:20", "settings_timezone_invalid"],
     ["a persona that left the catalog", "forged-persona", "9999", "1", "Tomori Default", "0", "settings_persona_stale"],
     ["an off-enum humanizer", "off-enum-humanizer", "1770", "7", "Tomori Default", "0", "settings_persona_stale"],
     ["a prompt that left the catalog", "removed-prompt", "1770", "1", "Removed Prompt", "0", "settings_persona_stale"],
@@ -2395,7 +2396,7 @@ describe("setupWizardRoutes", () => {
         components: Array<{ accentColor?: number; components?: Array<{ content?: string }> }>;
       };
       const repainted = JSON.stringify(payload);
-      expect(repainted).toContain(localizedCopy("en-US", `commands.setup.wizard.${notice}`));
+      expect(repainted).toMatch(localizedProse("en-US", `commands.setup.wizard.${notice}`));
       expect(repainted).toContain(localizedCopy("en-US", "commands.setup.wizard.settings_pending"));
       expect(payload.components).toHaveLength(2);
       expect(payload.components[1]?.accentColor).toBe(0xed4245);
@@ -2409,8 +2410,16 @@ describe("setupWizardRoutes", () => {
   });
 
   it("keeps the timezone editable by re-parsing the exact value the editor pre-fills", async () => {
-    for (const saved of [0, 8, -5, 14]) {
-      const nonce = `roundtrip-${saved < 0 ? "neg" : ""}${Math.abs(saved)}`;
+    const cases: Array<[typed: string, saved: number, prefill: string]> = [
+      ["0", 0, "0"],
+      ["8", 8, "8"],
+      ["-5", -5, "-5"],
+      ["14", 14, "14"],
+      ["5.5", 5.5, "5:30"],
+      ["-3:30", -3.5, "-3:30"],
+    ];
+    for (const [index, [typed, saved, expectedPrefill]] of cases.entries()) {
+      const nonce = `roundtrip-${index}`;
       resetSetupDrafts();
       storeSetupDraft(nonce, makeSettingsDraft());
 
@@ -2440,7 +2449,7 @@ describe("setupWizardRoutes", () => {
           makeMockInteraction({
             customId: submitId,
             kind: "modal",
-            fields: { [buildSetupSettingsModalFieldId("timezone", nonce)]: String(saved) },
+            fields: { [buildSetupSettingsModalFieldId("timezone", nonce)]: typed },
           }),
         );
 
@@ -2459,7 +2468,7 @@ describe("setupWizardRoutes", () => {
           | undefined;
         const prefilled = secondModal?.components.find((row) => row.component?.type === 4)?.component?.value;
 
-        expect(prefilled).toBe(String(saved));
+        expect(prefilled).toBe(expectedPrefill);
         expect(firstTimezoneRow?.component?.value).toBeUndefined();
 
         // And resubmitting that pre-filled value unchanged must save rather than reject.

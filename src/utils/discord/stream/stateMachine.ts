@@ -153,7 +153,11 @@ export class StreamOrchestrator implements IStreamOrchestrator {
 
         if (context.abortSignal?.aborted) {
           log.warn(`Stream loop breaking due to external abort signal for channel ${context.channel.id}.`);
-          return { status: "error", data: new Error("Stream aborted by SDK call timeout"), usage: state.usage };
+          return {
+            status: "error",
+            data: new Error("Stream aborted by SDK call timeout"),
+            ...this.collectDeliveredOutput(state),
+          };
         }
 
         this.notifyStreamProgress(context);
@@ -229,7 +233,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         log.warn("Stream: Suppressing stream error embed due to retryable failure", lastError);
       }
 
-      return { status: "error", data: lastError, usage: state.usage };
+      return { status: "error", data: lastError, ...this.collectDeliveredOutput(state) };
     }
   }
 
@@ -407,7 +411,9 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       return { status: "continue" };
     }
 
-    if (state.buffer.length > 0 || this.delivery.hasPendingAggregatedText(state)) {
+    // A suppressed error may be retried by an attempt that continues the delivered text, so flushing
+    // an unfinished clause here would post a fragment the continuation then repeats.
+    if (!context.suppressUserErrors && (state.buffer.length > 0 || this.delivery.hasPendingAggregatedText(state))) {
       log.info(
         `Stream: Flushing ${state.buffer.length} chars of buffered text before error handling` +
           `${this.delivery.hasPendingAggregatedText(state) ? ` (queued aggregate: ${state.pendingAggregatedText.length})` : ""}`,
@@ -426,7 +432,19 @@ export class StreamOrchestrator implements IStreamOrchestrator {
     } else {
       log.warn("Stream: Suppressing provider error embed due to retryable failure", chunk.error);
     }
-    return { status: "error", data: chunk.error, usage: state.usage };
+    return { status: "error", data: chunk.error, ...this.collectDeliveredOutput(state) };
+  }
+
+  /** What a failed stream already posted, which the next attempt continues instead of regenerating. */
+  private collectDeliveredOutput(
+    state: StreamState,
+  ): Pick<StreamResult, "accumulatedText" | "detailsContent" | "spritesShown" | "usage"> {
+    return {
+      accumulatedText: state.accumulatedText,
+      detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
+      spritesShown: state.spritesShown.length > 0 ? [...state.spritesShown] : undefined,
+      usage: state.usage,
+    };
   }
 
   private async completeStreamAfterProviderEnd(

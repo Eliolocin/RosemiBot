@@ -467,15 +467,11 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
     }
   });
 
-  it("reports cleanup failure without exposing prompts, scripts, direction, credentials, or provider bodies", async () => {
+  it("logs provider bodies for operators without the credential, and keeps request text out of metadata and user output", async () => {
     const input = await request(false, true);
-    const privateValues = [
-      "private-script-marker",
-      "private-description-marker",
-      "private-direction-marker",
-      input.target?.apiKey ?? "",
-    ];
-    upstreamError = privateValues.join(" ");
+    const apiKey = input.target?.apiKey ?? "";
+    const requestText = ["private-script-marker", "private-description-marker", "private-direction-marker"];
+    upstreamError = [...requestText, apiKey].join(" ");
     deleteFails = true;
     synthesisStatuses = [500];
     const errorSpy = spyOn(log, "error").mockResolvedValue(undefined);
@@ -483,9 +479,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
     try {
       const result = await synthesizeVoiceMessage({
         ...input,
-        script: privateValues[0],
-        source: { kind: "design", designPrompt: privateValues[1] },
-        voiceInstructions: privateValues[2],
+        script: requestText[0],
+        source: { kind: "design", designPrompt: requestText[1] },
+        voiceInstructions: requestText[2],
       });
       expect(result.success).toBe(false);
       expect(result.cleanupPending).toBe(true);
@@ -494,11 +490,22 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
         { operation: "synthesize", success: false },
         { operation: "delete", success: false },
       ]);
-      expect(errorSpy).toHaveBeenCalledTimes(1);
-      const diagnostics = JSON.stringify({ result, errors: errorSpy.mock.calls, warnings: warnSpy.mock.calls });
-      for (const value of privateValues) {
-        expect(value.length).toBeGreaterThan(0);
-        expect(diagnostics).not.toContain(value);
+      expect(errorSpy.mock.calls.map(([, , context]) => context?.errorType).sort()).toEqual([
+        "SpeechOperationFailed",
+        "SpeechVoiceCleanupFailed",
+      ]);
+      const synthesisLog = errorSpy.mock.calls.find(([, , context]) => context?.errorType === "SpeechOperationFailed");
+      expect(result.providerDetail).toStartWith("HTTP 500: ");
+      expect(synthesisLog?.[0]).toContain(result.providerDetail ?? "missing");
+      expect(apiKey.length).toBeGreaterThan(0);
+      expect(JSON.stringify({ result, errors: errorSpy.mock.calls, warnings: warnSpy.mock.calls })).not.toContain(
+        apiKey,
+      );
+      const metadata = JSON.stringify(errorSpy.mock.calls.map(([, , context]) => context?.metadata));
+      const userOutput = JSON.stringify({ details: result.details, attempts: result.attempts });
+      for (const value of requestText) {
+        expect(metadata).not.toContain(value);
+        expect(userOutput).not.toContain(value);
       }
       expect(await testSql`SELECT * FROM speech_voice_bindings WHERE pending_delete`).toHaveLength(1);
     } finally {
@@ -507,7 +514,61 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
     }
   });
 
-  it("reports the custom endpoint label after personal fallback regardless of its model metadata", async () => {
+  it("logs a provider 400 with its body and keeps local refusals, cancellation, and key refusals out of error logs", async () => {
+    upstreamError = "synthetic voice prompt rejected";
+    synthesisStatuses = [400];
+    const errorSpy = spyOn(log, "error").mockResolvedValue(undefined);
+    const warnSpy = spyOn(log, "warn").mockImplementation(() => undefined);
+    try {
+      const rejected = await synthesizeVoiceMessage(await request());
+      expect(rejected.errorKind).toBe("invalid_request");
+      expect(rejected.providerDetail).toContain(upstreamError);
+      expect(rejected.details).not.toContain(upstreamError);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const [message, , context] = errorSpy.mock.calls[0];
+      expect(message).toContain(rejected.providerDetail ?? "missing");
+      expect(context?.serverId).toBe(refs.serverId);
+      expect(context?.metadata).toMatchObject({
+        origin: "provider",
+        providerStatus: 400,
+        errorKind: "invalid_request",
+      });
+
+      for (const condition of ["local", "cancelled", "authentication"] as const) {
+        errorSpy.mockClear();
+        synthesisStatuses = condition === "authentication" ? [401] : [];
+        const result = await synthesizeVoiceMessage({
+          ...(await request()),
+          ...(condition === "local" ? { script: "x".repeat(2001) } : {}),
+          ...(condition === "cancelled" ? { abortSignal: AbortSignal.abort() } : {}),
+        });
+        expect(result.success).toBe(false);
+        expect(errorSpy).not.toHaveBeenCalled();
+      }
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("logs each failed attempt when personal synthesis and its server fallback both fail", async () => {
+    synthesisStatuses = [500, 500];
+    const errorSpy = spyOn(log, "error").mockResolvedValue(undefined);
+    try {
+      const result = await synthesizeVoiceMessage({ ...(await request(true)), routing: routing() });
+      expect(result.success).toBe(false);
+      expect(result.usedServerFallback).toBe(true);
+      expect(
+        errorSpy.mock.calls
+          .filter(([, , context]) => context?.errorType === "SpeechOperationFailed")
+          .map(([, , context]) => context?.metadata?.owner),
+      ).toEqual(["personal", "server"]);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  async function useElevenLabsServerFallback() {
     const endpoint = await llmProviderRepo.upsertCustomEndpoint({
       serverId: refs.serverId,
       label: "Fallback ElevenLabs",
@@ -525,6 +586,37 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
     });
     expect(await setHostedSpeechSelection(serverScope(), null, "design")).toBe(true);
     expect(await setSpeechEndpointSelection(refs.serverId, endpoint.custom_endpoint_id)).toBe(true);
+    return { ...endpoint, custom_endpoint_id: endpoint.custom_endpoint_id };
+  }
+
+  it("logs an ElevenLabs outage with its body and keeps its rate limit out of error logs", async () => {
+    await useElevenLabsServerFallback();
+    upstreamError = "synthetic elevenlabs outage";
+    const errorSpy = spyOn(log, "error").mockResolvedValue(undefined);
+    const warnSpy = spyOn(log, "warn").mockImplementation(() => undefined);
+    try {
+      for (const status of [500, 429]) {
+        errorSpy.mockClear();
+        synthesisStatuses = [429, status];
+        const result = await synthesizeVoiceMessage({ ...(await request(true)), routing: routing() });
+        expect(result.success).toBe(false);
+        expect(result.backendKey).toBe("elevenlabs");
+        expect(result.details).not.toContain(upstreamError);
+        expect(result.providerDetail).toContain(upstreamError);
+        const logged = errorSpy.mock.calls.filter(
+          ([, , context]) => context?.errorType === "ElevenLabsOperationFailed",
+        );
+        expect(logged).toHaveLength(status === 500 ? 1 : 0);
+        if (status === 500) expect(logged[0][0]).toContain(result.providerDetail ?? "missing");
+      }
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("reports the custom endpoint label after personal fallback regardless of its model metadata", async () => {
+    const endpoint = await useElevenLabsServerFallback();
     for (const modelName of [null, "", "   ", "custom-model"]) {
       await testSql`UPDATE custom_endpoints SET model_name = ${modelName} WHERE custom_endpoint_id = ${endpoint.custom_endpoint_id}`;
       synthesisStatuses = [429];

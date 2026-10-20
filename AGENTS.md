@@ -111,6 +111,11 @@ proposed follow-up's premise in source before suggesting it.
 9. Use safe DB and error patterns.
    - Use Bun SQL template literals for queries.
    - Use structured logging via `log` with metadata.
+   - A catch that turns a failure into a result object, a reply, or a tool error reports it first
+     (`reportProviderFailure`), with the provider status and its body minus the request's key.
+     Expected refusals (bad input, cancellation, auth or quota on a user's own key) are a metric plus a
+     warn, never an error. Provider text stays out of public replies and tool results; offer it only
+     behind the gated **Show Full Error** modal.
 10. Test in proportion, and pass the quality gates before finishing.
     - Test behavior, regression risk, or an interface other code depends on (an exported API, a
       stored data shape, a Discord limit). A bug fix gets the regression test that would have caught

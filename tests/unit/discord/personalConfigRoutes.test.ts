@@ -1568,6 +1568,50 @@ describe("personalConfigRoutes interaction handling and telemetry", () => {
   });
 });
 
+describe("timezone modal fractional offsets", () => {
+  it.each([
+    ["5.5", 5.5],
+    ["+5:45", 5.75],
+    ["UTC-3:30", -3.5],
+  ])("saves %s as %p hours", async (typed, expected) => {
+    const calls: string[] = [];
+    const { dependencies } = makeDependencies(calls);
+    const route = createPersonalConfigInteractionRoute(dependencies);
+    const customId = buildPersonalConfigRouteId({ action: "timezone-submit", locale: "en-US", nonce: "nonce123456" });
+
+    await route.execute(
+      {} as Client,
+      makePersonalInteraction({
+        kind: "modal",
+        customId,
+        fields: { [buildPersonalConfigModalFieldId("timezone", "nonce123456")]: typed },
+      }),
+      requireRoute(customId),
+    );
+
+    expect(calls).toContain(`setTimezone:${expected}`);
+  });
+
+  it("rejects an offset off the quarter hour without writing", async () => {
+    const calls: string[] = [];
+    const { dependencies } = makeDependencies(calls);
+    const route = createPersonalConfigInteractionRoute(dependencies);
+    const customId = buildPersonalConfigRouteId({ action: "timezone-submit", locale: "en-US", nonce: "nonce123456" });
+
+    await route.execute(
+      {} as Client,
+      makePersonalInteraction({
+        kind: "modal",
+        customId,
+        fields: { [buildPersonalConfigModalFieldId("timezone", "nonce123456")]: "5.3" },
+      }),
+      requireRoute(customId),
+    );
+
+    expect(calls.some((call) => call.startsWith("setTimezone:"))).toBe(false);
+  });
+});
+
 // The route converts each empty modal field to null before the operation sees it, and null is what
 // `applyUserInfoBatch` turns into "inherit". Storing "" instead would be a distinct, non-null value
 // that permanently defeats the live-Discord-name fallback, and the operations-level tests cannot

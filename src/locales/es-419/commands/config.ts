@@ -544,7 +544,7 @@ export default {
       fetch_limit_no_changes_detail: `El límite de obtención de mensajes ya es {value}.`,
       fetch_limit_updated_heading: `Límite de Obtención Actualizado`,
       fetch_limit_updated_detail: `El límite de obtención de mensajes ahora es {value}.`,
-      timezone_invalid_detail: `La zona horaria debe estar entre {min} y {max}.`,
+      timezone_invalid_detail: `La zona horaria debe estar entre {min} y {max} horas, en horas enteras, medias horas o cuartos de hora como 9, 5:30 o 5.75.`,
       timezone_no_changes_heading: `Zona Horaria Sin Cambios`,
       timezone_no_changes_detail: `La zona horaria ya es {value}.`,
       timezone_updated_heading: `Zona Horaria Actualizada`,
