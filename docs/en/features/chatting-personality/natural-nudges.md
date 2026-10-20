@@ -26,63 +26,25 @@ Nudges are meant to feel like a friend checking in, not a bot posting on a timer
 
 Natural Nudges works in servers only, never in DMs.
 
-## Settings
-
-Natural Nudges is on by default, and nothing needs setting up. Once people in a server talk to
-TomoriBot regularly, episodes and Chime-ins start in the channels where they talk to her.
-
-To change how it works, open `/config` > Plugins > Natural Nudges (you need Manage Server):
-
-- **Episodes** turns episodes on or off.
-- **Chime-ins** turns Chime-ins on or off, and sets how often she checks and how many Chime-ins a day
-  she may post (3 by default).
-- **Channels** is automatic: the channels where people talked to TomoriBot in the last 14 days,
-  except roleplay channels. Pick channels to choose them yourself, or clear the list to go back to
-  automatic. A channel where other bots post often never goes quiet, so it is left alone.
-- **Natural Nudges Model** plans episodes: what to bring up and which channel suits it. Unless a
-  Decision model is selected in `/config` > Models, it also decides when a conversation matches an
-  interest. By default it is the server's chat model. It needs structured output and the server's
-  own key; if the chat model can't do that, the page says so and you can pick another model.
-
-The page shows how active the server is, how many episodes to expect each week, and how often she
-checks for Chime-ins.
-
-Natural Nudges needs two things from the server:
-
-- **Stat tracking.** The pace and the automatic channels come from how people talk to TomoriBot, so
-  a host that turned stat tracking off never gets nudges.
-- **A server key.** A server set to bill each member's own key has nobody to pay for a message no
-  one asked for, so Natural Nudges stays off there.
-
-### Frequency, weights, and the daily cap
-
-- **Frequency** sets the overall pace: Rare, Gentle (the default), Normal, or Lively. Even Lively
-  stays quiet in a server that rarely talks to TomoriBot.
-- **Weights** decide which kind of episode comes up more often. A weight of 0 turns that kind off.
-- **Daily cap** limits episodes per day, 3 by default.
-
 ## Chime-ins
 <!-- anchor: chime-ins -->
 
-While members talk in an eligible channel, TomoriBot counts their messages. Every so often (sooner in
-busier servers and at higher Chime-in frequencies) she looks at the last five messages and asks
-whether the conversation is really about one of your personas' interests. A passing mention does not
-count.
+A Chime-in is a persona joining a conversation that is already going, because it is about something
+that persona likes. Here is how one happens:
 
-- **The persona who likes the topic answers.** It replies as itself, the same way it would if someone
-  had talked to it. Now and then another persona takes the turn instead, more often one the server
-  rarely talks to.
-- **She waits a moment.** The reply comes 15-45 seconds later. If a persona speaks first, members move
-  on, or the channel gets busy, she says nothing.
-- **Limits.** At most one Chime-in per channel per hour, and the daily limit for the whole server.
-  Threads count as part of their channel, both for counting messages and for this limit.
-- **No interests, no Chime-ins.** A persona needs interests on its Nudges page, and Silent personas
-  never chime in.
+1. While members talk in an eligible channel, TomoriBot counts their messages. Threads count as
+   part of their channel, and the count starts over whenever a persona speaks.
+2. Every so often (sooner in busier servers and at a higher Chime-in frequency), she reads the last
+   five messages and asks whether the conversation is really about one of your personas' interests.
+   A passing mention does not count.
+3. The persona with that interest replies. If several personas share it, the one who has been
+   quieter lately usually goes, and a persona that just spoke sits it out. Now and then another
+   persona takes the turn instead, more often one the server rarely talks to.
+4. The reply comes 15-45 seconds later, as the persona's normal self. If a persona speaks first,
+   members move on, or the channel gets busy, she says nothing.
 
-To tell whether a conversation matches, TomoriBot uses the server's Decision model (`/config` >
-Models) when one is selected, or the Natural Nudges model otherwise. If neither is usable, the page
-says so. Free Google models fall under Google's unpaid terms, which let Google use the conversations
-sent to them.
+There is at most one Chime-in per channel (threads included) per hour, plus a daily limit for the
+whole server. A persona needs interests on its Nudges page to chime in, and Silent personas never do.
 
 ## Episodes
 <!-- anchor: episodes -->
@@ -147,6 +109,40 @@ so it keeps pursuing the goal in later replies. In an Alter Talk scene each pers
 goal, which the others never see. Once the opener scrolls out of the conversation
 the persona keeps, the goal is gone. Agendas never ask for personal details, money, or anything
 outside the chat. Members allowed to use the prompt snapshot can see them.
+
+## Settings
+
+Natural Nudges is on by default, and nothing needs setting up. Once people in a server talk to
+TomoriBot regularly, episodes and Chime-ins start in the channels where they talk to her.
+
+To change how it works, open `/config` > Plugins > Natural Nudges (you need Manage Server):
+
+- **Episodes** and **Chime-ins** turn each one on or off.
+- **Channels** is automatic: the channels where people talked to TomoriBot in the last 14 days,
+  except roleplay channels. Pick channels to choose them yourself, or clear the list to go back to
+  automatic. A channel where other bots post often never goes quiet, so it is left alone.
+- **Natural Nudges Model** is the AI model that plans episodes. By default it is the server's chat
+  model. It also decides when a conversation matches an interest, unless you pick a Decision model
+  (a small model made for quick pick-one questions) in `/config` > Models. Not every model can do
+  this job; if yours can't, the page says so and lets you pick another. Free Google models fall under
+  Google's terms for free use, which let Google use the conversations sent to them.
+
+The page shows how active the server is, how many episodes to expect each week, and how often she
+checks for Chime-ins.
+
+### How often
+
+- **Frequency** sets the pace, separately for episodes and for Chime-ins: Rare, Gentle (the
+  default), Normal, or Lively. Even Lively stays quiet in a server that rarely talks to TomoriBot.
+- **Daily limits** are 3 episodes and 3 Chime-ins a day by default.
+- **Weights** decide which kind of episode comes up more often. A weight of 0 turns that kind off.
+
+### When it stays off
+
+- **Usage stats are off.** TomoriBot judges how active a server is from its usage stats, so if
+  whoever hosts your bot turned them off, nudges never start.
+- **Members pay with their own keys.** If your server has each member use their own AI key, nobody's
+  key covers a message no one asked for, so Natural Nudges stays off.
 
 ## Persona Settings
 
