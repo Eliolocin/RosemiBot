@@ -1,17 +1,5 @@
 import type { CustomEpisodeRow, NaturalNudgeCategory } from "@/modules/natural-nudges/db/types";
 
-/** Categories with a working runner; the rest stay ineligible until their slice lands. */
-export const ACTIVE_NATURAL_NUDGE_CATEGORIES = [
-  "reach_out",
-  "revive",
-  "new_topic",
-] as const satisfies readonly NaturalNudgeCategory[];
-export type ActiveNaturalNudgeCategory = (typeof ACTIVE_NATURAL_NUDGE_CATEGORIES)[number];
-
-export function isActiveCategory(category: NaturalNudgeCategory): category is ActiveNaturalNudgeCategory {
-  return (ACTIVE_NATURAL_NUDGE_CATEGORIES as readonly string[]).includes(category);
-}
-
 /** Tools an episode may require or recommend; `image` stands for either image generator. */
 export const NUDGE_TOOL_NAMES = [
   "web_search",
@@ -38,6 +26,7 @@ const HANGING_CONVERSATION_PREREQUISITE = "hanging_conversation";
 const RELATIONSHIP_USER_PREREQUISITE = "relationship_user";
 const RECENT_MEMORY_PREREQUISITE = "recent_memory";
 const PRESENCE_ACTIVITY_PREREQUISITE = "presence_activity";
+const TWO_PERSONAS_PREREQUISITE = "two_personas";
 const TOOL_PREREQUISITE_PREFIX = "tool:";
 
 export const NUDGE_PREREQUISITE_IDS: readonly string[] = [
@@ -45,6 +34,7 @@ export const NUDGE_PREREQUISITE_IDS: readonly string[] = [
   RELATIONSHIP_USER_PREREQUISITE,
   RECENT_MEMORY_PREREQUISITE,
   PRESENCE_ACTIVITY_PREREQUISITE,
+  TWO_PERSONAS_PREREQUISITE,
   ...NUDGE_TOOL_NAMES.map((tool) => `${TOOL_PREREQUISITE_PREFIX}${tool}`),
 ];
 
@@ -240,6 +230,47 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     recommendedTools: ["generate_voice_message"],
     builtIn: true,
   },
+  {
+    key: "alter_talk.banter",
+    category: "alter_talk",
+    titleKey: "commands.config.natural_nudges.episode_titles.alter_talk_banter",
+    brief: "Start a short, playful disagreement between {persona} and {partner} about something both have opinions on.",
+    agendaHint: "Win the argument; get a human to take its side",
+    prerequisites: [TWO_PERSONAS_PREREQUISITE],
+    recommendedTools: ["select_sticker_for_response"],
+    builtIn: true,
+  },
+  {
+    key: "alter_talk.scheming",
+    category: "alter_talk",
+    titleKey: "commands.config.natural_nudges.episode_titles.alter_talk_scheming",
+    brief:
+      "Have {persona} and {partner} plan a harmless surprise for {target}, whispering loudly enough that everyone can see.",
+    agendaHint: "Pull off the surprise at the planned time",
+    prerequisites: [TWO_PERSONAS_PREREQUISITE, RELATIONSHIP_USER_PREREQUISITE],
+    recommendedTools: ["create_task"],
+    builtIn: true,
+  },
+  {
+    key: "alter_talk.asking_for_advice",
+    category: "alter_talk",
+    titleKey: "commands.config.natural_nudges.episode_titles.alter_talk_asking_for_advice",
+    brief: "Have {persona} ask {partner} for advice about something in its life.",
+    agendaHint: "Get {partner} to reveal something about itself",
+    prerequisites: [TWO_PERSONAS_PREREQUISITE],
+    recommendedTools: [],
+    builtIn: true,
+  },
+  {
+    key: "alter_talk.show_off",
+    category: "alter_talk",
+    titleKey: "commands.config.natural_nudges.episode_titles.alter_talk_show_off",
+    brief: "Have {persona} show {partner} a picture it made and ask what it thinks.",
+    agendaHint: "Get {partner} and a human to react",
+    prerequisites: [TWO_PERSONAS_PREREQUISITE, "tool:image"],
+    recommendedTools: ["image"],
+    builtIn: true,
+  },
 ];
 
 const CUSTOM_EPISODE_KEY_PREFIX = "custom:";
@@ -257,7 +288,7 @@ export function customEpisodeDefinition(row: CustomEpisodeRow): EpisodeDefinitio
   };
 }
 
-/** Enabled built-ins and custom episodes in the active categories, in panel order. */
+/** Enabled built-ins and custom episodes, in panel order. */
 export function listRunnableEpisodes(
   disabledBuiltIns: readonly string[],
   customEpisodes: readonly CustomEpisodeRow[],
@@ -265,12 +296,14 @@ export function listRunnableEpisodes(
   return [
     ...BUILTIN_EPISODES.filter((episode) => !disabledBuiltIns.includes(episode.key)),
     ...customEpisodes.filter((episode) => episode.enabled).map(customEpisodeDefinition),
-  ].filter((episode) => isActiveCategory(episode.category));
+  ];
 }
 
 /** What the prerequisite checks know about one persona at one moment. */
 export interface PrerequisiteFacts {
   hasHangingConversation: boolean;
+  /** Another persona that could join a scene shares a channel with this one. */
+  hasScenePartner: boolean;
   availableTools: ReadonlySet<string>;
   /** The persona's drawn Reach-out target, or null when nobody passed the gate. */
   target: { hasRecentMemories: boolean; isActive: boolean } | null;
@@ -293,11 +326,14 @@ export function episodeNeedsTarget(episode: EpisodeDefinition): boolean {
 /** An unknown prerequisite (the registry shrank since the episode was saved) makes the episode ineligible. */
 export function isEpisodeEligible(episode: EpisodeDefinition, facts: PrerequisiteFacts): boolean {
   if (episodeNeedsTarget(episode) && !facts.target) return false;
+  // Alter Talk is always a scene, so a custom one that forgot `two_personas` still needs a partner.
+  if (episode.category === "alter_talk" && !facts.hasScenePartner) return false;
   return episode.prerequisites.every((id) => {
     if (id === HANGING_CONVERSATION_PREREQUISITE) return facts.hasHangingConversation;
     if (id === RELATIONSHIP_USER_PREREQUISITE) return facts.target !== null;
     if (id === RECENT_MEMORY_PREREQUISITE) return facts.target?.hasRecentMemories ?? false;
     if (id === PRESENCE_ACTIVITY_PREREQUISITE) return facts.target?.isActive ?? false;
+    if (id === TWO_PERSONAS_PREREQUISITE) return facts.hasScenePartner;
     const tool = prerequisiteTool(id);
     if (!tool) return false;
     if (tool === "image") return IMAGE_TOOL_NAMES.some((name) => facts.availableTools.has(name));

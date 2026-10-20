@@ -91,3 +91,9 @@ export const REACH_OUT_ANY_PERSONA_PENALTY = 5;
 export const REACH_OUT_MIN_TICKETS = 1;
 
 export const REACH_OUT_PLANNER_MEMORIES = 5;
+
+/** An Alter Talk scene draws one partner, and a second this often when one is available. */
+export const ALTER_TALK_SECOND_PARTNER_CHANCE = 0.3;
+/** Scene length, opener included: long enough for an exchange, short enough to stay a moment. */
+export const ALTER_TALK_MIN_TURNS = 2;
+export const ALTER_TALK_MAX_TURNS = 4;

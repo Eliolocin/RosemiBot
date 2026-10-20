@@ -20,7 +20,11 @@ import {
 } from "@/utils/chat/triggerProcessor";
 import { getCachedImpersonatedUserIdForWebhook } from "@/utils/chat/webhookIdentity";
 import { escapeRegExp, isUnspacedScriptText, wrapWithWordBoundary } from "@/utils/text/processors/regexUtils";
-import { isActiveNaturalStopTurn, selfReplySuppressionUntil } from "@/utils/chat/channelQueue";
+import {
+  clearQueuedNudgeSceneWork,
+  isActiveNaturalStopTurn,
+  selfReplySuppressionUntil,
+} from "@/utils/chat/channelQueue";
 import { cleanupTextQuotaTriggerStates } from "@/utils/chat/textQuotaState";
 import { evaluateAdmissionQueueAndTriggerGate } from "@/utils/chat/admissionQueue";
 import {
@@ -200,6 +204,10 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
 
   if (isRealUserMessage && !isActiveNaturalStopMessage && !incoming.isPersonaJob) {
     updateSelfReplyChainState(channel.id, false);
+    // Before every gate below, so a member the trigger checks would ignore still ends the scene.
+    if (!incoming.isManuallyTriggered && !incoming.isFromQueue) {
+      clearQueuedNudgeSceneWork(channel.id);
+    }
   }
 
   if (channel.type === ChannelType.DM && isBotAuthor && !incoming.isManuallyTriggered) {

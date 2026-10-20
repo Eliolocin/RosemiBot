@@ -444,6 +444,11 @@ export function shouldRetryEmptyResponse(incoming: ChatIncoming, result: Generat
   return result.status === "empty_response" && incoming.retryCount < MAX_EMPTY_RESPONSE_RETRIES;
 }
 
+/** A tool can post the reply on its own, so a turn with no persona response may still have spoken. */
+export function isDeliveredTurnResult(result: GenerationTurnResult): boolean {
+  return result.status === "completed" && (result.personaResponses.length > 0 || result.toolResponseDelivered === true);
+}
+
 async function consumeTextQuota(context: ChatTurnContext, result: GenerationTurnResult): Promise<void> {
   if (
     !context.shouldApplyTextQuota ||

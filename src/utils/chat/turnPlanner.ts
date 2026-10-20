@@ -286,7 +286,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     incoming.retryCount === 0 &&
     lockEntry
   ) {
-    const rootSceneTurn = incoming.sceneTurn;
+    const { turnContextItems, ...rootSceneTurn } = incoming.sceneTurn;
     const remainingSceneJobs = rootSceneTurn.sequence.slice(1).map((speaker, offset) => {
       const sceneTurn = {
         ...rootSceneTurn,
@@ -299,6 +299,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
         sceneTurn,
         manualSystemPrompt: buildSceneTurnDirective(sceneTurn),
         textQuotaTriggerKey: buildSceneTextQuotaTriggerKey(sceneTurn),
+        injectedContextItems: turnContextItems ? turnContextItems[offset + 1] : incoming.injectedContextItems,
       };
     });
 
@@ -314,10 +315,11 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
         textQuotaSource: incoming.textQuotaSource,
         textQuotaUserDiscId: incoming.textQuotaUserDiscId ?? cooldownUserDiscId,
         shouldSurfaceUserErrors,
-        injectedContextItems: incoming.injectedContextItems,
         forcedMentions: incoming.forcedMentions,
         manualTriggerInvoker: incoming.manualTriggerInvoker,
         manualStreamingContextOverrides: incoming.manualStreamingContextOverrides,
+        naturalNudge: incoming.naturalNudge,
+        borrowsTriggerMessage: incoming.borrowsTriggerMessage,
       });
     }
   }

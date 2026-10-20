@@ -2,6 +2,7 @@ import { MessageType, type Client, type Message } from "discord.js";
 import { evaluateChatAdmission, handleChatDisposition, normalizeChatInvocation } from "@/utils/chat/admission";
 import {
   clearChannelProcessingQueue,
+  clearQueuedNudgeSceneWork,
   isChannelProcessingLocked,
   type QueuedMessage,
   runWithChannelLock,
@@ -17,7 +18,7 @@ import { runGenerationTurn } from "@/utils/chat/generationTurn";
 import type { ChatAdmissionDisposition, ChatIncoming, TomoriChatInput } from "@/utils/chat/types";
 import { installUserImpersonationCompletion } from "@/utils/chat/userImpersonationCompletion";
 import { enrichErrorContext, runWithErrorContext } from "@/utils/misc/errorContextStore";
-import { runPostTurnEffects, shouldRetryEmptyResponse } from "@/utils/chat/postTurnEffects";
+import { isDeliveredTurnResult, runPostTurnEffects, shouldRetryEmptyResponse } from "@/utils/chat/postTurnEffects";
 import { createChatResponseSink, handleStopResponse } from "@/utils/chat/responseEmitter";
 import { shouldBotReply } from "@/utils/chat/replyDecision";
 import { planChatTurns } from "@/utils/chat/turnPlanner";
@@ -65,7 +66,10 @@ async function runAdmittedChatTurn(incoming: ChatIncoming): Promise<ChatAdmissio
   const admission = await evaluateChatAdmission(incoming);
   recordChatDiagnostic({ kind: "admission", disposition: admission.disposition });
 
+  const isNudgeScene = Boolean(incoming.sceneTurn && incoming.naturalNudge);
   if (admission.disposition !== "run") {
+    // The queue only advances when a lock is released, so a rejected scene turn would strand the rest.
+    if (isNudgeScene) clearQueuedNudgeSceneWork(incoming.message.channel.id);
     await handleChatDisposition(admission);
     // A queued turn is still live work: its callbacks are copied into QueuedMessage and fire when
     // that turn eventually runs (or is genuinely discarded). Treating "queued" as a discard here
@@ -92,6 +96,7 @@ async function runAdmittedChatTurn(incoming: ChatIncoming): Promise<ChatAdmissio
       const turnPlan = await planChatTurns(lockedTurn);
       recordChatDiagnostic({ kind: "turns_planned", count: turnPlan.turns.length });
       let generationResultCount = 0;
+      let sceneContinues = false;
 
       if (turnPlan.turns.length > 0) {
         await startTyping();
@@ -112,11 +117,18 @@ async function runAdmittedChatTurn(incoming: ChatIncoming): Promise<ChatAdmissio
 
           await runPostTurnEffects(context, result);
           generationResultCount++;
+          // A pending retry decides for itself, because clearing here would drop a scene the retry could still save.
+          sceneContinues ||= willRetryEmptyResponse || isDeliveredTurnResult(result);
 
           if (!willRetryEmptyResponse) {
             await incoming.onGenerationResult?.(result);
           }
         }
+      }
+
+      // Before the lock releases, so the next speaker never answers a turn that posted nothing.
+      if (isNudgeScene && !sceneContinues) {
+        clearQueuedNudgeSceneWork(lockedTurn.channelId);
       }
 
       if (generationResultCount === 0) {
@@ -159,6 +171,7 @@ async function runAdmittedChatTurn(incoming: ChatIncoming): Promise<ChatAdmissio
           borrowsTriggerMessage: queued.borrowsTriggerMessage,
           manualStreamingContextOverrides: queued.manualStreamingContextOverrides,
           sceneTurn: queued.sceneTurn,
+          naturalNudge: queued.naturalNudge,
           onGenerationResult: queued.onGenerationResult,
           onQueueDiscard: queued.onQueueDiscard,
         }).then(() => {}),

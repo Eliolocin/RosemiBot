@@ -278,7 +278,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
             targetUserId: mirriId,
             openerMessageDiscId: openerId,
           },
-          "Find out how the exam went.",
+          [{ personaId: refs.personaId, agenda: "Find out how the exam went." }],
         ),
       ).toBe(true);
       const history = await naturalNudgeRepository.loadFireHistory(refs.serverId, new Date(0), 5);
@@ -320,7 +320,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     ).toBeNull();
   });
 
-  it("anchors the fire row and the agenda together, and only the owner reads the agenda", async () => {
+  it("anchors every scene speaker's agenda to the opener, and each speaker reads only its own", async () => {
     const openerId = "1300000000000000001";
     expect(
       await naturalNudgeRepository.recordEpisodeFire(
@@ -328,17 +328,20 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
           serverId: refs.serverId,
           channelDiscId: "1200000000000000001",
           personaId: refs.personaId,
-          category: "new_topic",
-          episodeKey: "new_topic.interest_musing",
+          category: "alter_talk",
+          episodeKey: "alter_talk.banter",
           targetUserId: null,
           openerMessageDiscId: openerId,
         },
-        "Find out who else likes mecha.",
+        [
+          { personaId: refs.personaId, agenda: "Win the mecha argument." },
+          { personaId: otherPersonaId, agenda: "Get a human to take your side." },
+        ],
       ),
     ).toBe(true);
 
-    expect((await loadPersonaAgendas(refs.personaId, [openerId])).get(openerId)).toBe("Find out who else likes mecha.");
-    expect((await loadPersonaAgendas(otherPersonaId, [openerId])).size).toBe(0);
+    expect((await loadPersonaAgendas(refs.personaId, [openerId])).get(openerId)).toBe("Win the mecha argument.");
+    expect((await loadPersonaAgendas(otherPersonaId, [openerId])).get(openerId)).toBe("Get a human to take your side.");
 
     const history = await naturalNudgeRepository.loadFireHistory(refs.serverId, new Date(0), 5);
     expect(history.latestEpisodes[0]).toMatchObject({ opener_message_disc_id: openerId, answered: null });

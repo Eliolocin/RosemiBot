@@ -34,8 +34,9 @@ reconcile tick
        ├─ lull: effective channels quiet for 1-3 hours (gateway lastMessageId)
        ├─ planner model: llm_id, else the chat model; no_model abort and backoff unless it resolves
        ├─ persona raffle → Reach-out target lottery → category raffle → episode raffle
-       └─ detached: planEpisode → recheckBeforeSend → tomoriChat({ naturalNudge })
-                                                       └─ fire row + agenda row
+       │    └─ Alter Talk: scene partner draw
+       └─ detached: planEpisode → recheckBeforeSend → tomoriChat({ naturalNudge, sceneTurn? })
+                                                       └─ fire row + one agenda row per speaker
 ```
 
 ## State: events, not meters
@@ -76,7 +77,8 @@ A restart only re-rolls them.
 
 - **Abort on any doubt; never queue.** An abort posts nothing and writes no fire row. A nudge
   that meets a busy channel is dropped in `admissionQueue.ts` rather than queued behind the turn.
-  After an abort the episode stays due and waits a fresh lull, so it cannot retry every cycle.
+  After an abort the episode stays due and waits a fresh lull, so it cannot retry every cycle. The
+  one exception is an Alter Talk scene's later turns, which turn 0 queues itself (below).
 - **Re-check right before sending.** `recheckBeforeSend` reads settings, caps, the persona, the
   persona channel whitelist, and the channel's last message fresh. Any message after the lull was
   measured cancels the nudge.
@@ -147,18 +149,53 @@ The Phase C turn carries `naturalNudge.targetUserDiscId`, which changes these th
   `ensureDiscordUserMention` posts a bare mention if the opener omitted it, through the persona's
   webhook for an alter (`sendAlterPersonaMention`).
 - **Records.** `target_user_id` is written on the fire row (the lottery penalty reads it) and on the
-  agenda row, so erasing the user deletes both through the foreign key.
+  agenda rows, so erasing the user deletes both through the foreign key.
+
+## Alter Talk scenes
+
+An Alter Talk episode reuses the `/generate scene` machinery: the runner passes a `sceneTurn`, and
+`turnPlanner.ts` queues the remaining turns at the front of the channel queue under turn 0's lock
+(`queueScenePersonaJobsAtFront`).
+
+- **Partners.** `drawScenePartners` (`runtime/partners.ts`) draws one partner, and a second at
+  `ALTER_TALK_SECOND_PARTNER_CHANCE`, by the lead's own ticket formula (talkativeness times rested
+  share) among personas whose channel whitelist shares a channel with every speaker so far. The
+  planner channels narrow to that shared set, and `two_personas` passes when such a partner exists.
+  Every Alter Talk episode needs one, even a custom one that omits `two_personas`.
+- **Script.** The planner returns `script` (speaker numbers, 2-4 turns, lead first, no speaker twice
+  in a row, everyone at least once) and one `partner_agendas` entry per partner. `sceneScriptIssues`
+  checks every one of these rules, the lengths included, because Anthropic's output grammar rejects
+  `minItems` above 1; a violation gets the one format retry.
+- **Private goals per speaker.** `SceneTurnMetadata.turnContextItems` replaces turn 0's injected
+  context for each queued turn, so a partner's first turn carries only its own agenda and never the
+  lead's. The fire row and every speaker's agenda row anchor to turn 0's opener, written when turn 0
+  settles.
+- **Queued turns stay nudge turns.** The queued jobs carry `naturalNudge` and `borrowsTriggerMessage`,
+  so they skip stats and the short-term memory write and keep the borrowed author's gates off.
+- **Members interrupt.** Any real member message, before any admission gate can drop it, calls
+  `clearQueuedNudgeSceneWork` (`channelQueue.ts`), which discards the queued turns that carry both
+  `sceneTurn` and `naturalNudge` with the `scene_interrupted` reason. `/generate scene` turns carry no
+  nudge marker and keep running. The opener and its agendas stay.
+- **A failed turn ends the scene.** The channel queue only advances when a lock is released, so
+  `tomoriChat` itself drops the remaining turns whenever a nudge scene turn (the opener included) is
+  rejected at admission or delivers nothing. An empty reply that is being retried does not count,
+  because the retry decides for itself. A scene never plays without its opener or with a speaker
+  missing, and its turns never wait in the queue for an unrelated turn to release them.
+- **Targets are not pinged.** Scheming draws a target like a Reach-out, so naming, short-term memory,
+  tools, and the mention allow-list follow it, but the opener is not forced to ping them.
+- **Re-check.** `recheckBeforeSend` also confirms each partner still exists and is allowed in the
+  chosen channel.
 
 ## Episodes as data
 
 Built-in episodes (`BUILTIN_EPISODES` in `runtime/episodes.ts`) and custom episodes share one shape:
 category, planner brief, agenda hint, prerequisites, and recommended tools. Prerequisites come from a
 fixed registry: `hanging_conversation`, the three target facts (`relationship_user`, `recent_memory`,
-`presence_activity`), and `tool:<name>`, where tool availability is what the persona's turn would be
-offered. Every Reach-out needs a drawn target, even a custom one that omits `relationship_user`, and so
-does any episode listing one of the three target facts; such an episode pings its target too. An unknown prerequisite makes an episode ineligible rather than
-silently dropping the check. Only categories with a runner (`ACTIVE_NATURAL_NUDGE_CATEGORIES`) take
-part in the raffle.
+`presence_activity`), `two_personas`, and `tool:<name>`, where tool availability is what the persona's
+turn would be offered. Every Reach-out needs a drawn target, even a custom one that omits
+`relationship_user`, and so does any episode listing one of the three target facts; outside a scene,
+such an episode pings its target too. An unknown prerequisite makes an episode ineligible rather than
+silently dropping the check.
 
 ## Pointer personas
 
@@ -173,8 +210,10 @@ re-pointing a persona at a preset deletes the row so it reads the preset again.
 - `src/modules/natural-nudges/runtime/runner.ts`: Phases B and C, re-checks, fire recording.
 - `src/modules/natural-nudges/runtime/meters.ts`: heat, due time, waking hours, raffles.
 - `src/modules/natural-nudges/runtime/targets.ts`: Reach-out gates, lottery, and re-check.
+- `src/modules/natural-nudges/runtime/partners.ts`: Alter Talk partner draw.
 - `src/modules/natural-nudges/runtime/tuning.ts`: every pacing and selection constant (heat, lull,
-  waking hours, rest windows, stops, retention, Reach-out windows and points). Schema and Discord limits stay with their owners.
+  waking hours, rest windows, stops, retention, Reach-out windows and points, scene length and
+  partner count). Schema and Discord limits stay with their owners.
 - `src/modules/natural-nudges/db/repositories.ts`: every Natural Nudges query.
 - Related: [Database Schema](/architecture/subsystems/database-schema/),
   [Prompt Snapshot](/architecture/subsystems/prompt-snapshot/),

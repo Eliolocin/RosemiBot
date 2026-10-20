@@ -14,6 +14,7 @@ import type { TomoriChatInput } from "@/utils/chat/types";
 
 const SERVER_ID = 7;
 const PERSONA_ID = 5;
+const PARTNER_ID = 6;
 const RECORDED_ID = "1300000000000000200";
 const OLDER_ID = "1300000000000000100";
 const NEWER_ID = "1300000000000000300";
@@ -29,7 +30,13 @@ beforeEach(() => {
       status: "planned",
       model: "fixture-planner",
       usage: null,
-      plan: { channelIndex: 0, topic: "trains", openerDirection: "Ask about trains.", agenda: "Learn a route." },
+      plan: {
+        channelIndex: 0,
+        topic: "trains",
+        openerDirection: "Ask about trains.",
+        agenda: "Learn a route.",
+        scene: null,
+      },
     }),
     spyOn(naturalNudgeRepository, "loadServerConfig").mockResolvedValue({
       episodes_enabled: true,
@@ -42,7 +49,10 @@ beforeEach(() => {
     spyOn(naturalNudgeRepository, "loadPersonaConfigs").mockResolvedValue(
       new Map([[PERSONA_ID, { persona_id: PERSONA_ID, talkativeness: 2, interests: [], has_override: true }]]),
     ),
-    spyOn(personaRepository, "loadAllForServer").mockResolvedValue([{ persona_id: PERSONA_ID }] as never),
+    spyOn(personaRepository, "loadAllForServer").mockResolvedValue([
+      { persona_id: PERSONA_ID },
+      { persona_id: PARTNER_ID },
+    ] as never),
     spyOn(whitelistRepository, "checkChannelWhitelist").mockResolvedValue(undefined as never),
     spyOn(whitelistRepository, "isPersonaAllowedByWhitelistStatus").mockReturnValue(true),
     spyOn(metricSampleRepository, "recordSample").mockResolvedValue(undefined),
@@ -89,6 +99,7 @@ function attemptWithHistory(latest: () => Promise<Message[]>): { attempt: Episod
     availableTools: new Set(),
     plannerChannels: [{ channel, lastMessageId: RECORDED_ID, quietSinceMs: 0, transcript: "" }],
     target: null,
+    partners: [],
   };
   return { attempt, sent };
 }
@@ -122,5 +133,69 @@ describe("episode anchor", () => {
       expect(sent).toEqual([]);
     }
     expect(chatInputs).toEqual([]);
+  });
+});
+
+describe("Alter Talk scene", () => {
+  const OPENER_ID = "1300000000000000500";
+  const LEAD_AGENDA = "Win the argument.";
+  const PARTNER_AGENDA = "Reveal a secret hobby.";
+  const contextText = (items: TomoriChatInput["injectedContextItems"]) =>
+    JSON.stringify(items?.flatMap((item) => item.parts) ?? []);
+
+  it("gives each partner only its own goal on its first turn and anchors every agenda to the opener", async () => {
+    spies.push(
+      spyOn(planner, "planEpisode").mockResolvedValue({
+        status: "planned",
+        model: "fixture-planner",
+        usage: null,
+        plan: {
+          channelIndex: 0,
+          topic: "mecha",
+          openerDirection: "Claim the best mecha show.",
+          agenda: LEAD_AGENDA,
+          scene: { script: [1, 2, 1, 2], partnerAgendas: [PARTNER_AGENDA] },
+        },
+      }),
+    );
+    const recordFire = spyOn(naturalNudgeRepository, "recordEpisodeFire").mockResolvedValue(true);
+    spies.push(recordFire);
+    const { attempt } = attemptWithHistory(async () => [messageWithId(OLDER_ID)]);
+    attempt.episode = BUILTIN_EPISODES.find((candidate) => candidate.key === "alter_talk.banter") as EpisodeDefinition;
+    attempt.partners = [
+      {
+        persona: createPersona({ persona_id: PARTNER_ID, persona_nickname: "Juno", server_id: SERVER_ID }),
+        interests: [],
+      },
+    ];
+
+    await runEpisodeAttempt(attempt);
+    const [input] = chatInputs;
+    const scene = input.sceneTurn;
+    expect(scene?.sequence.map((speaker) => speaker.personaId)).toEqual([
+      PERSONA_ID,
+      PARTNER_ID,
+      PERSONA_ID,
+      PARTNER_ID,
+    ]);
+    expect(contextText(input.injectedContextItems)).toContain(LEAD_AGENDA);
+    expect(contextText(input.injectedContextItems)).not.toContain(PARTNER_AGENDA);
+    expect(contextText(scene?.turnContextItems?.[1])).toContain(PARTNER_AGENDA);
+    expect(contextText(scene?.turnContextItems?.[1])).not.toContain(LEAD_AGENDA);
+    expect(scene?.turnContextItems?.[3]).toEqual([]);
+
+    await input.onGenerationResult?.({
+      status: "completed",
+      streamResults: [],
+      personaResponses: [{}],
+      firstDeliveredMessageId: OPENER_ID,
+    } as never);
+    expect(recordFire).toHaveBeenCalledTimes(1);
+    const [fire, agendas] = recordFire.mock.calls[0];
+    expect(fire.openerMessageDiscId).toBe(OPENER_ID);
+    expect(agendas).toEqual([
+      { personaId: PERSONA_ID, agenda: LEAD_AGENDA },
+      { personaId: PARTNER_ID, agenda: PARTNER_AGENDA },
+    ]);
   });
 });

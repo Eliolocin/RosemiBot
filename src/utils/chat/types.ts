@@ -32,7 +32,8 @@ export type QueuedMessageDiscardReason =
   | "queued_processing_failed"
   | "stale_lock_release"
   | "superseded_follow_up"
-  | "self_reply_work_cleared";
+  | "self_reply_work_cleared"
+  | "scene_interrupted";
 
 export type ChatGenerationResultHandler = (result: GenerationTurnResult) => void | Promise<void>;
 export type QueuedMessageDiscardHandler = (reason: QueuedMessageDiscardReason) => void | Promise<void>;
@@ -60,6 +61,11 @@ export interface SceneTurnMetadata {
   turnIndex: number;
   totalTurns: number;
   additionalInstructions?: string;
+  /**
+   * Context for each queued turn by index, given instead of turn 0's injected items so one speaker
+   * never sees another's private goal. Turn 0 takes its context from the invocation.
+   */
+  turnContextItems?: StructuredContextItem[][];
 }
 
 /**

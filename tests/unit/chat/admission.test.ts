@@ -312,6 +312,65 @@ describe("evaluateChatAdmission server blacklist", () => {
   });
 });
 
+describe("evaluateChatAdmission Natural Nudges scene interrupt", () => {
+  it("drops only nudge scene turns, and only for a member's own message, even one the gates then block", async () => {
+    const memberId = "100000000000000023";
+    const channelId = "scene-channel";
+    invalidateUserCache(memberId);
+    const rowSpy = spyOn(userRepository, "loadByDiscordId").mockResolvedValue(null);
+    const privacySpy = spyOn(userRepository, "getPrivacyLevel").mockResolvedValue(PrivacyLevel.MINIMAL);
+    const blacklistSpy = spyOn(userRepository, "isBlacklisted").mockResolvedValue(true);
+    const sceneTurn = { commandId: "scene", sequence: [], turnIndex: 1, totalTurns: 2 };
+    const anchor = { id: "anchor" } as Message;
+    const commandSceneJob: QueuedMessage = { message: anchor, sceneTurn };
+    const admit = async (overrides: { bot?: boolean; isManuallyTriggered?: boolean; isFromQueue?: boolean }) => {
+      const discarded: string[] = [];
+      const nudgeJob: QueuedMessage = {
+        message: anchor,
+        sceneTurn,
+        naturalNudge: { toolNames: [] },
+        onQueueDiscard: (reason) => {
+          discarded.push(reason);
+        },
+      };
+      const lockEntry = getOrCreateChannelLockEntry(channelId, "300000000000000033");
+      lockEntry.messageQueue = [nudgeJob, commandSceneJob];
+      await evaluateChatAdmission({
+        client: { user: { id: "tomori" } },
+        message: {
+          id: "member-message",
+          content: "wait what",
+          mentions: { users: new Map(), roles: new Map(), everyone: false },
+          webhookId: null,
+          interaction: null,
+          reference: null,
+          author: { id: memberId, bot: overrides.bot ?? false, username: "member" },
+          guild: { id: "300000000000000033" },
+          channel: { id: channelId, type: ChannelType.GuildText },
+        },
+        isManuallyTriggered: overrides.isManuallyTriggered ?? false,
+        isFromQueue: overrides.isFromQueue ?? false,
+      } as unknown as ChatIncoming);
+      return { queue: lockEntry.messageQueue, discarded };
+    };
+
+    try {
+      const member = await admit({});
+      expect(member.queue).toEqual([commandSceneJob]);
+      expect(member.discarded).toEqual(["scene_interrupted"]);
+
+      for (const overrides of [{ bot: true }, { isManuallyTriggered: true }, { isFromQueue: true }]) {
+        const kept = await admit(overrides);
+        expect({ overrides, queued: kept.queue.length }).toEqual({ overrides, queued: 2 });
+      }
+    } finally {
+      for (const spy of [rowSpy, privacySpy, blacklistSpy]) spy.mockRestore();
+      invalidateUserCache(memberId);
+      channelLocks.delete(channelId);
+    }
+  });
+});
+
 describe("evaluateMessageProxyOriginalSpeedbump guild presence", () => {
   const userDiscId = "100000000000000035";
   const channelId = "proxy-original-presence";

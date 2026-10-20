@@ -8,8 +8,9 @@ import type {
   PersonaNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
 import { drawReachOutTarget } from "@/modules/natural-nudges/runtime/targets";
+import { drawScenePartners, hasScenePartner, type PartnerCandidate } from "@/modules/natural-nudges/runtime/partners";
+import { NATURAL_NUDGE_CATEGORIES } from "@/modules/natural-nudges/db/types";
 import {
-  ACTIVE_NATURAL_NUDGE_CATEGORIES,
   episodeNeedsTarget,
   isEpisodeEligible,
   listRunnableEpisodes,
@@ -74,6 +75,8 @@ const VERDICT_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const PRUNE_INTERVAL_MS = HOUR_MS;
 /** Episode rows kept in view beyond the rest window: enough for the unanswered streak and the pending row. */
 const LATEST_EPISODE_ROWS = UNANSWERED_STOP_STREAK + 2;
+
+type NudgePersona = TomoriState & { persona_id: number };
 
 interface ServerMeters {
   expiresAt: number;
@@ -306,7 +309,7 @@ export class NaturalNudgeProcessor {
     if (!isWithinWakingHours(meters.awake, now, serverId)) return;
 
     const personas = (await getCachedAllPersonas(server.server_disc_id)).filter(
-      (persona): persona is TomoriState & { persona_id: number } => typeof persona.persona_id === "number",
+      (persona): persona is NudgePersona => typeof persona.persona_id === "number",
     );
     // Skipped under user BYOK because no server key exists to pay for a turn nobody requested.
     if (personas.length === 0 || personas[0].config.user_byok_mode) return;
@@ -355,7 +358,7 @@ export class NaturalNudgeProcessor {
   /** Persona first, then category and episode for that persona, so identity never depends on opportunity. */
   private async drawAttempt(
     server: EnabledEpisodeServer,
-    personas: Array<TomoriState & { persona_id: number }>,
+    personas: NudgePersona[],
     quiet: NudgeChannel[],
     recentFires: readonly NaturalNudgeFireRow[],
     meters: ServerMeters,
@@ -377,23 +380,26 @@ export class NaturalNudgeProcessor {
 
     const personaConfigs = await naturalNudgeRepository.loadPersonaConfigs(personas.map((p) => p.persona_id));
     const personaFiredAt = lastFireBy(recentFires, (fire) => String(fire.persona_id));
+    const personaTickets = (candidate: NudgePersona) =>
+      (TALKATIVENESS_TICKETS[personaConfigs.get(candidate.persona_id)?.talkativeness ?? 0] ?? 0) *
+      restedShare(personaFiredAt.get(String(candidate.persona_id)), now, PERSONA_REST_MS);
     const persona = drawRaffle(
-      personas.map((candidate) => {
-        const talkativeness = personaConfigs.get(candidate.persona_id)?.talkativeness ?? 0;
-        const reachable = channelsFor(candidate.persona_id).length > 0;
-        return {
-          item: candidate,
-          tickets: reachable
-            ? (TALKATIVENESS_TICKETS[talkativeness] ?? 0) *
-              restedShare(personaFiredAt.get(String(candidate.persona_id)), now, PERSONA_REST_MS)
-            : 0,
-        };
-      }),
+      personas.map((candidate) => ({
+        item: candidate,
+        tickets: channelsFor(candidate.persona_id).length > 0 ? personaTickets(candidate) : 0,
+      })),
     );
     if (!persona) return "no_eligible_persona";
     const personaConfig = personaConfigs.get(persona.persona_id) as PersonaNaturalNudgeConfig;
 
     const personaChannels = channelsFor(persona.persona_id);
+    const partnerCandidates: PartnerCandidate<NudgePersona>[] = personas
+      .filter((candidate) => candidate.persona_id !== persona.persona_id)
+      .map((candidate) => ({
+        persona: candidate,
+        tickets: personaTickets(candidate),
+        channelIds: new Set(channelsFor(candidate.persona_id).map((channel) => channel.channel.id)),
+      }));
     const histories = new Map<string, Message[]>();
     for (const channel of personaChannels) {
       histories.set(channel.channel.id, await fetchRecentMessages(channel.channel, PLANNER_HISTORY_MESSAGES));
@@ -423,6 +429,10 @@ export class NaturalNudgeProcessor {
       : null;
     const facts: PrerequisiteFacts = {
       hasHangingConversation: hanging.length > 0,
+      hasScenePartner: hasScenePartner(
+        partnerCandidates,
+        personaChannels.map((channel) => channel.channel.id),
+      ),
       availableTools: await loadAvailableToolNames(persona),
       target: target && { hasRecentMemories: target.recentMemories.length > 0, isActive: target.activity !== null },
     };
@@ -430,7 +440,7 @@ export class NaturalNudgeProcessor {
     const episodes = runnable.filter((episode) => isEpisodeEligible(episode, facts));
     const categoryFiredAt = lastFireBy(recentFires, (fire) => fire.category);
     const category = drawRaffle(
-      ACTIVE_NATURAL_NUDGE_CATEGORIES.map((candidate) => ({
+      NATURAL_NUDGE_CATEGORIES.map((candidate) => ({
         item: candidate,
         tickets: episodes.some((episode) => episode.category === candidate)
           ? categoryWeight(server.config, candidate) *
@@ -451,17 +461,22 @@ export class NaturalNudgeProcessor {
     if (!episode) return "no_eligible_episode";
 
     const episodeTarget = episodeNeedsTarget(episode) ? target : null;
-    const plannerChannels = await this.choosePlannerChannels(
-      episodeTarget
-        ? personaChannels.filter((channel) => episodeTarget.channelIds.includes(channel.channel.id))
-        : category === "revive"
-          ? hanging
-          : personaChannels,
-      persona,
-      histories,
-      server.server_disc_id,
-      now,
-    );
+    let pool = episodeTarget
+      ? personaChannels.filter((channel) => episodeTarget.channelIds.includes(channel.channel.id))
+      : category === "revive"
+        ? hanging
+        : personaChannels;
+    let partners: NudgePersona[] = [];
+    if (category === "alter_talk") {
+      const scene = drawScenePartners(
+        partnerCandidates,
+        pool.map((channel) => channel.channel.id),
+      );
+      if (!scene) return "no_scene_partner";
+      partners = scene.partners;
+      pool = pool.filter((channel) => scene.channelIds.includes(channel.channel.id));
+    }
+    const plannerChannels = await this.choosePlannerChannels(pool, persona, histories, server.server_disc_id, now);
     if (plannerChannels.length === 0) return "no_planner_channel";
 
     return {
@@ -478,6 +493,10 @@ export class NaturalNudgeProcessor {
       availableTools: facts.availableTools,
       plannerChannels,
       target: episodeTarget,
+      partners: partners.map((partner) => ({
+        persona: partner,
+        interests: personaConfigs.get(partner.persona_id)?.interests ?? [],
+      })),
     };
   }
 

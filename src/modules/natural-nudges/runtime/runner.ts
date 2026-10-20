@@ -11,11 +11,13 @@ import {
 } from "@/modules/natural-nudges/runtime/channels";
 import { resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { isWithinWakingHours, serverDayStart } from "@/modules/natural-nudges/runtime/meters";
-import { planEpisode, type EpisodePlan } from "@/modules/natural-nudges/runtime/planner";
+import { planEpisode, type EpisodePlan, type ScenePartner } from "@/modules/natural-nudges/runtime/planner";
 import { isTargetStillReachable, type ReachOutTarget } from "@/modules/natural-nudges/runtime/targets";
 import { recordEpisodeSample, type EpisodeSample } from "@/modules/natural-nudges/runtime/telemetry";
 import { isChannelProcessingLocked, suppressNextSelfReply, tomoriChat } from "@/events/messageCreate/tomoriChat";
-import type { GenerationTurnResult } from "@/utils/chat/types";
+import { isDeliveredTurnResult } from "@/utils/chat/postTurnEffects";
+import { buildSceneTurnDirective } from "@/utils/chat/sceneTurn";
+import type { GenerationTurnResult, SceneTurnMetadata } from "@/utils/chat/types";
 import { verifyMessageWebhook, isManagedWebhookMessage } from "@/utils/chat/webhookIdentity";
 import { personaRepository } from "@/utils/db/repositories/PersonaRepository";
 import { whitelistRepository } from "@/utils/db/repositories/WhitelistRepository";
@@ -39,8 +41,10 @@ export interface EpisodeAttempt {
   plannerLlmId: number;
   availableTools: ReadonlySet<string>;
   plannerChannels: Array<NudgeChannel & { transcript: string }>;
-  /** Set exactly when the episode pings someone. */
+  /** The member the episode is about. Outside a scene, the opener pings them. */
   target: ReachOutTarget | null;
+  /** Alter Talk partners; empty for every other category. */
+  partners: ScenePartner[];
 }
 
 export type AttemptResult = "fired" | "aborted" | "failed";
@@ -80,6 +84,14 @@ async function recheckBeforeSend(attempt: EpisodeAttempt, target: NudgeChannel, 
   if (!personaConfig || personaConfig.talkativeness === 0) return "persona_silenced";
   const whitelist = await whitelistRepository.checkChannelWhitelist(attempt.serverDiscId, target.channel.id);
   if (!whitelistRepository.isPersonaAllowedByWhitelistStatus(whitelist, personaId)) return "persona_not_allowed";
+  for (const { persona: partner } of attempt.partners) {
+    if (!personas.some((persona) => persona.persona_id === partner.persona_id)) return "partner_removed";
+    if (
+      typeof partner.persona_id !== "number" ||
+      !whitelistRepository.isPersonaAllowedByWhitelistStatus(whitelist, partner.persona_id)
+    )
+      return "partner_not_allowed";
+  }
   if (attempt.target) {
     const guild = attempt.client.guilds.cache.get(attempt.serverDiscId);
     const persona = { ...attempt.persona, persona_id: personaId };
@@ -104,24 +116,91 @@ async function recheckBeforeSend(attempt: EpisodeAttempt, target: NudgeChannel, 
   return null;
 }
 
+function systemContextItem(sentences: readonly string[]): StructuredContextItem {
+  return {
+    role: "user",
+    metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+    parts: [{ type: "text", text: `[System: ${sentences.filter(Boolean).join(" ")}]` }],
+  };
+}
+
+function targetSentence(target: ReachOutTarget | null, isScene: boolean): string {
+  if (!target) return "";
+  if (isScene) return `The scene is about the member @{${target.userDiscId}}.`;
+  return `You are reaching out to one member; mention them as @{${target.userDiscId}}.`;
+}
+
 function buildOpenerContextItem(
+  attempt: EpisodeAttempt,
   plan: EpisodePlan,
   tools: readonly string[],
-  target: ReachOutTarget | null,
 ): StructuredContextItem {
-  const sentences = [
+  const partnerNames = attempt.partners.map((partner) => partner.persona.persona_nickname).join(" and ");
+  return systemContextItem([
     "You decided to speak up on your own; nobody asked you to.",
-    target ? `You are reaching out to one member; mention them as @{${target.userDiscId}}.` : "",
+    plan.scene ? `You are opening a short scene with ${partnerNames}, who will answer you next.` : "",
+    targetSentence(attempt.target, plan.scene !== null),
     plan.openerDirection,
     `Your private goal, which nobody else can see: ${plan.agenda}`,
     "Write it as one natural, short message for this channel, in your own voice.",
     tools.length > 0 ? `If it fits, you may use: ${tools.join(", ")}.` : "",
-  ].filter(Boolean);
+  ]);
+}
+
+function buildPartnerContextItem(
+  attempt: EpisodeAttempt,
+  agenda: string,
+  tools: readonly string[],
+): StructuredContextItem {
+  return systemContextItem([
+    `${attempt.persona.persona_nickname} just started a short scene with you; nobody asked either of you to speak.`,
+    targetSentence(attempt.target, true),
+    `Your private goal, which nobody else can see: ${agenda}`,
+    "Answer as one natural, short message, in your own voice.",
+    tools.length > 0 ? `If it fits, you may use: ${tools.join(", ")}.` : "",
+  ]);
+}
+
+/**
+ * The scripted scene for an Alter Talk plan. Each partner's goal also rides on its first turn, so the
+ * partner still has it when the opener's agenda rows could not be written or anchored.
+ */
+function buildNudgeScene(
+  attempt: EpisodeAttempt,
+  plan: EpisodePlan,
+  anchorId: string,
+  tools: readonly string[],
+): SceneTurnMetadata | undefined {
+  if (!plan.scene) return undefined;
+  const { script, partnerAgendas } = plan.scene;
+  const speakers = [attempt.persona, ...attempt.partners.map((partner) => partner.persona)];
+  const sequence = script.map((speaker) => ({
+    personaId: speakers[speaker - 1].persona_id as number,
+    personaName: speakers[speaker - 1].persona_nickname,
+  }));
   return {
-    role: "user",
-    metadataTag: ContextItemTag.DIALOGUE_HISTORY,
-    parts: [{ type: "text", text: `[System: ${sentences.join(" ")}]` }],
+    commandId: `nudge:${attempt.serverId}:${anchorId}`,
+    sequence,
+    turnIndex: 0,
+    totalTurns: sequence.length,
+    turnContextItems: script.map((speaker, index) =>
+      speaker > 1 && script.indexOf(speaker) === index
+        ? [buildPartnerContextItem(attempt, partnerAgendas[speaker - 2], tools)]
+        : [],
+    ),
   };
+}
+
+/** One agenda row per speaker, all anchored to the opener. */
+function episodeAgendas(attempt: EpisodeAttempt, plan: EpisodePlan): Array<{ personaId: number; agenda: string }> {
+  const partnerAgendas = plan.scene?.partnerAgendas ?? [];
+  return [
+    { personaId: attempt.persona.persona_id as number, agenda: plan.agenda },
+    ...attempt.partners.map((partner, index) => ({
+      personaId: partner.persona.persona_id as number,
+      agenda: partnerAgendas[index],
+    })),
+  ];
 }
 
 /**
@@ -182,6 +261,7 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
     })),
     plannerLlmId: attempt.plannerLlmId,
     target: attempt.target,
+    partners: attempt.partners,
   });
   const usage =
     "usage" in planned && planned.usage
@@ -223,9 +303,7 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
   const personaId = attempt.persona.persona_id as number;
   let outcome: AttemptResult | null = null;
   const settle = async (result: GenerationTurnResult): Promise<void> => {
-    const delivered =
-      result.status === "completed" && (result.personaResponses.length > 0 || result.toolResponseDelivered === true);
-    if (!delivered) {
+    if (!isDeliveredTurnResult(result)) {
       if (isGenerationFailure(result)) {
         await naturalNudgeRepository.recordFailure(attempt.serverId);
         outcome = "failed";
@@ -247,7 +325,7 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
         targetUserId: attempt.target?.userId ?? null,
         openerMessageDiscId: openerId ?? anchor.id,
       },
-      openerId ? planned.plan.agenda : null,
+      openerId ? episodeAgendas(attempt, planned.plan) : [],
     );
     outcome = "fired";
     sample(attempt, {
@@ -259,6 +337,7 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
     });
   };
 
+  const scene = buildNudgeScene(attempt, planned.plan, anchor.id, episodeTools);
   suppressNextSelfReply(target.channel.id);
   const triggerStartTime = Date.now();
   const disposition = await tomoriChat({
@@ -269,17 +348,21 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
     forceReason: false,
     isStopResponse: false,
     selectedPersonaId: personaId,
+    triggeredPersonaIds: scene?.sequence.map((speaker) => speaker.personaId),
     isPersonaJob: false,
     isUserImpersonation: false,
     textQuotaSource: "system",
     textQuotaTriggerKey: `nudge:${attempt.serverId}:${anchor.id}`,
     shouldSurfaceUserErrors: false,
-    injectedContextItems: [buildOpenerContextItem(planned.plan, episodeTools, attempt.target)],
+    injectedContextItems: [buildOpenerContextItem(attempt, planned.plan, episodeTools)],
+    manualSystemPrompt: scene && buildSceneTurnDirective(scene),
+    sceneTurn: scene,
     naturalNudge: { toolNames: episodeTools, targetUserDiscId: attempt.target?.userDiscId },
     borrowsTriggerMessage: true,
     onGenerationResult: settle,
   });
-  const reachOutTarget = attempt.target;
+  // A scene only talks about its target, so only a lone opener must ping them.
+  const reachOutTarget = scene ? null : attempt.target;
   if (outcome === "fired" && reachOutTarget) {
     await ensureDiscordUserMention({
       client: attempt.client,

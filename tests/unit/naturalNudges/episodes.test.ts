@@ -39,7 +39,12 @@ function episode(prerequisites: string[], category: EpisodeDefinition["category"
 }
 
 describe("episode eligibility", () => {
-  const noFacts = { hasHangingConversation: false, availableTools: new Set<string>(), target: null };
+  const noFacts = {
+    hasHangingConversation: false,
+    hasScenePartner: false,
+    availableTools: new Set<string>(),
+    target: null,
+  };
   const quietTarget = { ...noFacts, target: { hasRecentMemories: false, isActive: false } };
 
   it("treats a prerequisite the registry no longer knows as unmet", () => {
@@ -70,7 +75,7 @@ describe("episode eligibility", () => {
   });
 
   it("accepts either image generator for the image prerequisite", () => {
-    const facts = { hasHangingConversation: false, availableTools: new Set(["generate_image_nai"]), target: null };
+    const facts = { ...noFacts, availableTools: new Set(["generate_image_nai"]) };
     expect(isEpisodeEligible(episode(["tool:image"]), facts)).toBe(true);
     expect(isEpisodeEligible(episode(["tool:image"]), noFacts)).toBe(false);
   });
@@ -80,22 +85,25 @@ describe("episode eligibility", () => {
     expect(revive.length).toBeGreaterThan(0);
     for (const candidate of revive) expect(isEpisodeEligible(candidate, noFacts)).toBe(false);
   });
+
+  it("needs a scene partner for every Alter Talk, even a custom one that omits two_personas", () => {
+    const partnered = { ...noFacts, hasScenePartner: true };
+    expect(isEpisodeEligible(episode([], "alter_talk"), noFacts)).toBe(false);
+    expect(isEpisodeEligible(episode([], "alter_talk"), partnered)).toBe(true);
+    expect(isEpisodeEligible(episode(["two_personas"]), noFacts)).toBe(false);
+    expect(isEpisodeEligible(episode(["two_personas"]), partnered)).toBe(true);
+  });
 });
 
 describe("runnable episodes", () => {
-  it("drops disabled built-ins, disabled custom episodes, and categories without a runner", () => {
+  it("drops disabled built-ins and disabled custom episodes", () => {
     const runnable = listRunnableEpisodes(
       ["new_topic.voice_note"],
-      [
-        custom({ episode_id: 1 }),
-        custom({ episode_id: 2, enabled: false }),
-        custom({ episode_id: 3, category: "alter_talk" }),
-      ],
+      [custom({ episode_id: 1 }), custom({ episode_id: 2, enabled: false })],
     ).map((candidate) => candidate.key);
     expect(runnable).not.toContain("new_topic.voice_note");
     expect(runnable).toContain("custom:1");
     expect(runnable).not.toContain("custom:2");
-    expect(runnable).not.toContain("custom:3");
   });
 });
 

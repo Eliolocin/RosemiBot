@@ -12,6 +12,7 @@ import type {
   ChatReminderData,
   LockedChatTurn,
   ManualTriggerInvoker,
+  NaturalNudgeTurn,
   QueuedMessageDiscardHandler,
   QueuedMessageDiscardReason,
   RunnableChatAdmission,
@@ -60,6 +61,7 @@ export type QueuedMessage = {
     "disableCrossChannelMessage" | "disableRecentMessageReplyTool" | "disableReminderTool"
   >;
   sceneTurn?: SceneTurnMetadata;
+  naturalNudge?: NaturalNudgeTurn;
   reminderRecipientID?: string;
   reminderData?: ChatReminderData;
   onGenerationResult?: ChatGenerationResultHandler;
@@ -404,6 +406,7 @@ export function queueScenePersonaJobsAtFront(args: {
     sceneTurn: SceneTurnMetadata;
     manualSystemPrompt: string;
     textQuotaTriggerKey: string;
+    injectedContextItems?: StructuredContextItem[];
   }>;
   triggeredPersonaIds: number[];
   forceReason?: boolean;
@@ -412,10 +415,11 @@ export function queueScenePersonaJobsAtFront(args: {
   textQuotaSource: TextQuotaSource;
   textQuotaUserDiscId: string;
   shouldSurfaceUserErrors?: boolean;
-  injectedContextItems?: StructuredContextItem[];
   forcedMentions?: ForcedMention[];
   manualTriggerInvoker?: ManualTriggerInvoker;
   manualStreamingContextOverrides?: QueuedMessage["manualStreamingContextOverrides"];
+  naturalNudge?: NaturalNudgeTurn;
+  borrowsTriggerMessage?: boolean;
 }): void {
   for (let i = args.sceneJobs.length - 1; i >= 0; i--) {
     const queuedSceneJob = args.sceneJobs[i];
@@ -433,11 +437,13 @@ export function queueScenePersonaJobsAtFront(args: {
       textQuotaUserDiscId: args.textQuotaUserDiscId,
       manualSystemPrompt: queuedSceneJob.manualSystemPrompt,
       shouldSurfaceUserErrors: args.shouldSurfaceUserErrors,
-      injectedContextItems: args.injectedContextItems,
+      injectedContextItems: queuedSceneJob.injectedContextItems,
       forcedMentions: args.forcedMentions,
       manualTriggerInvoker: args.manualTriggerInvoker,
       manualStreamingContextOverrides: args.manualStreamingContextOverrides,
       sceneTurn: queuedSceneJob.sceneTurn,
+      naturalNudge: args.naturalNudge,
+      borrowsTriggerMessage: args.borrowsTriggerMessage,
     });
   }
 
@@ -885,6 +891,32 @@ export function clearQueuedSelfReplyWork(
     clearedPersonaJobCount,
     clearedSelfTriggerCount,
   };
+}
+
+/**
+ * Drops the queued turns of a Natural Nudges scene, so a member who speaks up mid-scene is answered
+ * next instead of waiting out the script. `/generate scene` turns carry no nudge marker and stay.
+ */
+export function clearQueuedNudgeSceneWork(channelId: string): number {
+  const lockEntry = channelLocks.get(channelId);
+  if (!lockEntry || lockEntry.messageQueue.length === 0) {
+    return 0;
+  }
+
+  const removedMessages: QueuedMessage[] = [];
+  lockEntry.messageQueue = lockEntry.messageQueue.filter((queuedMsg) => {
+    if (!queuedMsg.sceneTurn || !queuedMsg.naturalNudge) {
+      return true;
+    }
+    removedMessages.push(queuedMsg);
+    return false;
+  });
+
+  if (removedMessages.length > 0) {
+    log.info(`Dropped ${removedMessages.length} queued Natural Nudges scene turn(s) in channel ${channelId}.`);
+    discardQueuedMessages(removedMessages, "scene_interrupted");
+  }
+  return removedMessages.length;
 }
 
 function discardQueuedMessages(messages: QueuedMessage[], reason: QueuedMessageDiscardReason): void {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const NATURAL_NUDGE_CATEGORIES = ["reach_out", "revive", "new_topic", "alter_talk"] as const;
+export const NATURAL_NUDGE_CATEGORIES = ["reach_out", "revive", "new_topic", "alter_talk"] as const;
 export type NaturalNudgeCategory = (typeof NATURAL_NUDGE_CATEGORIES)[number];
 
 export const NATURAL_NUDGE_INTEREST_LIMIT = 8;

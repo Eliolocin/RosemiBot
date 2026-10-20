@@ -17,7 +17,6 @@ import {
 import {
   BUILTIN_EPISODES,
   customEpisodeDefinition,
-  isActiveCategory,
   isKnownPrerequisite,
   isNudgeToolName,
   type EpisodeDefinition,
@@ -157,6 +156,7 @@ interface NudgeLimitsInput {
   reach_out_weight: number;
   revive_weight: number;
   new_topic_weight: number;
+  alter_talk_weight: number;
   daily_episode_cap: number;
 }
 
@@ -182,8 +182,7 @@ function parseEpisodeText(input: CustomEpisodeTextInput, existing?: CustomEpisod
     recommended_tools: existing?.recommended_tools ?? [],
     enabled: existing?.enabled ?? true,
   });
-  if (!parsed.success || !isActiveCategory(parsed.data.category)) return null;
-  return parsed.data;
+  return parsed.success ? parsed.data : null;
 }
 
 function findCustom(view: NudgeEpisodesView, index: number, fp: string): CustomEpisodeRow | "stale" {
@@ -221,6 +220,7 @@ const naturalNudgeOperations = {
       !isWeight(limits.reach_out_weight) ||
       !isWeight(limits.revive_weight) ||
       !isWeight(limits.new_topic_weight) ||
+      !isWeight(limits.alter_talk_weight) ||
       !Number.isInteger(limits.daily_episode_cap) ||
       limits.daily_episode_cap < 1 ||
       limits.daily_episode_cap > DAILY_EPISODE_CAP_MAX

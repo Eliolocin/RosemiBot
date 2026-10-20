@@ -8,7 +8,8 @@ aiGenerated: true
 
 Natural Nudges lets TomoriBot speak without being mentioned. When a channel has gone
 quiet, one of your personas picks something to do, such as checking in on someone, picking a
-conversation back up, or raising a new topic, and posts it in its own voice. Each of these is an **episode**.
+conversation back up, raising a new topic, or starting a short scene with another persona, and posts
+it in its own voice. Each of these is an **episode**.
 
 Nudges are meant to feel like a friend checking in, not a bot posting on a timer:
 
@@ -64,13 +65,15 @@ Each episode belongs to a category:
 | **Reach-out** | A persona pings one member it knows: a check-in, a follow-up on something they mentioned, a link they might like, a tease about the game they are playing, or an offer to remind them of something. |
 | **Revive** | A persona picks up a conversation that was left hanging: an unanswered question, a second opinion, or something it looked up. |
 | **New Topic** | A persona raises something new, usually from its own interests: a thought, a hot take, a "would you rather", a news item, a picture, or a voice note. |
+| **Alter Talk** | Two or three personas talk to each other in a short scene: a playful argument, a loud "secret" plan for a member, asking each other for advice, or showing off a picture. |
 
 `/config` > Plugins > Nudge Episodes lists every episode. Built-in episodes can be turned off,
 and you can add up to 25 of your own:
 
 - **Name** and **Category**.
-- **Planner brief**: what the persona sets out to do. Write `{persona}` where its name goes and,
-  for a Reach-out, `{target}` where the pinged member's name goes.
+- **Planner brief**: what the persona sets out to do. Write `{persona}` where its name goes,
+  `{partner}` where the other persona in an Alter Talk scene goes, and `{target}` where the member
+  it is about goes.
 - **Example agenda** (optional): the kind of small goal the persona keeps after its opener.
 - **Needs**: what must be true before the episode can run, such as a hanging conversation or an
   available tool.
@@ -94,11 +97,25 @@ adds to their chance, and someone a persona pinged in the last three days is les
 picked again. The ping goes to that one member only; a Reach-out never pings roles, `@everyone`,
 or anyone else. Any reply in the channel counts as an answer.
 
+### Alter Talk
+<!-- anchor: alter-talk -->
+
+An Alter Talk episode is a short scene between personas, two to four messages long. The persona that
+speaks up opens it and picks one partner, sometimes two, from the other personas allowed in that
+channel. Talkative personas join more often, and Silent ones never do.
+
+- **Members come first.** When anyone posts in the channel during the scene, the remaining scene
+  messages are dropped and TomoriBot answers that member as usual.
+- **Scheming is about a member, not to them.** The personas plan a harmless surprise for someone
+  they know, but the scene does not ping that member.
+- The **Alter Talk** weight under Weights and Limits sets how often scenes come up.
+
 ### Hidden agendas
 
 Along with its opener, each episode gives the persona a small private goal, such as "find out who
 else likes this anime". The goal stays attached above the opener and only that persona sees it,
-so it keeps pursuing the goal in later replies. Once the opener scrolls out of the conversation
+so it keeps pursuing the goal in later replies. In an Alter Talk scene each persona gets its own
+goal, which the others never see. Once the opener scrolls out of the conversation
 the persona keeps, the goal is gone. Agendas never ask for personal details, money, or anything
 outside the chat. Members allowed to use the prompt snapshot can see them.
 

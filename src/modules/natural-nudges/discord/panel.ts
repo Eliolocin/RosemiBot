@@ -18,19 +18,14 @@ import {
   EPISODE_FREQUENCY_LEVELS,
   NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX,
   NATURAL_NUDGE_INTEREST_LABEL_MAX,
+  NATURAL_NUDGE_CATEGORIES,
   NATURAL_NUDGE_INTEREST_LIMIT,
   NATURAL_NUDGE_TALKATIVENESS_LEVELS,
   type NaturalNudgeCategory,
   type NaturalNudgeInterest,
   type PersonaNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
-import {
-  ACTIVE_NATURAL_NUDGE_CATEGORIES,
-  isActiveCategory,
-  NUDGE_PREREQUISITE_IDS,
-  NUDGE_TOOL_NAMES,
-  prerequisiteTool,
-} from "@/modules/natural-nudges/runtime/episodes";
+import { NUDGE_PREREQUISITE_IDS, NUDGE_TOOL_NAMES, prerequisiteTool } from "@/modules/natural-nudges/runtime/episodes";
 import {
   computeInterestFingerprint,
   type NaturalNudgesSettingsView,
@@ -64,6 +59,7 @@ export const NUDGE_INTEREST_DESCRIPTION_FIELD = "nudge_interest_description";
 export const NUDGE_REACH_OUT_WEIGHT_FIELD = "nudge_reach_out_weight";
 export const NUDGE_REVIVE_WEIGHT_FIELD = "nudge_revive_weight";
 export const NUDGE_NEW_TOPIC_WEIGHT_FIELD = "nudge_new_topic_weight";
+export const NUDGE_ALTER_TALK_WEIGHT_FIELD = "nudge_alter_talk_weight";
 export const NUDGE_DAILY_CAP_FIELD = "nudge_daily_cap";
 export const NUDGE_EPISODE_TITLE_FIELD = "nudge_episode_title";
 export const NUDGE_EPISODE_CATEGORY_FIELD = "nudge_episode_category";
@@ -108,6 +104,7 @@ const PREREQUISITE_LOCALE_KEYS = {
   relationship_user: "commands.config.natural_nudges.prerequisite_relationship_user",
   recent_memory: "commands.config.natural_nudges.prerequisite_recent_memory",
   presence_activity: "commands.config.natural_nudges.prerequisite_presence_activity",
+  two_personas: "commands.config.natural_nudges.prerequisite_two_personas",
 } as const;
 
 const TOOL_LOCALE_KEYS: Record<(typeof NUDGE_TOOL_NAMES)[number], string> = {
@@ -523,6 +520,7 @@ export function buildNaturalNudgesSettingsBody(
           t("commands.config.natural_nudges.limits_reach_out", { weight: config.reach_out_weight }),
           t("commands.config.natural_nudges.limits_revive", { weight: config.revive_weight }),
           t("commands.config.natural_nudges.limits_new_topic", { weight: config.new_topic_weight }),
+          t("commands.config.natural_nudges.limits_alter_talk", { weight: config.alter_talk_weight }),
           t("commands.config.natural_nudges.limits_daily_cap", { cap: config.daily_episode_cap }),
         ].join("\n"),
       )}`,
@@ -616,6 +614,14 @@ export function buildLimitsModal(locale: string, nonce: string, view: NaturalNud
         "commands.config.natural_nudges.category_new_topic",
         "commands.config.natural_nudges.weight_input_description",
         view.config.new_topic_weight,
+      ),
+      numberInput(
+        locale,
+        nonce,
+        NUDGE_ALTER_TALK_WEIGHT_FIELD,
+        "commands.config.natural_nudges.category_alter_talk",
+        "commands.config.natural_nudges.weight_input_description",
+        view.config.alter_talk_weight,
       ),
       {
         ...numberInput(
@@ -757,9 +763,6 @@ export function buildNudgeEpisodesBody(input: NudgeEpisodesRenderInput): Compone
               ? "commands.config.natural_nudges.episode_custom"
               : "commands.config.natural_nudges.episode_builtin",
           ),
-          ...(isActiveCategory(definition.category)
-            ? []
-            : [t("commands.config.natural_nudges.episode_inactive_category")]),
         ].join("\n"),
       )}`,
     ),
@@ -898,7 +901,7 @@ export function buildEpisodeModal(
           required: true,
           min_values: 1,
           max_values: 1,
-          options: ACTIVE_NATURAL_NUDGE_CATEGORIES.map((category) => ({
+          options: NATURAL_NUDGE_CATEGORIES.map((category) => ({
             label: safeSelectOptionText(t(CATEGORY_LOCALE_KEYS[category]), 100),
             value: category,
           })),

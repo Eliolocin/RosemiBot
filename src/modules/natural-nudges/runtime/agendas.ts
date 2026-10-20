@@ -19,7 +19,7 @@ export async function loadPersonaAgendas(
 }
 
 export function formatAgendaNotice(personaName: string, agenda: string): string {
-  return `[System: ${personaName} started the next message with a private goal that nobody else can see: ${agenda}]`;
+  return `[System: From the next message on, ${personaName} has a private goal that nobody else can see: ${agenda}]`;
 }
 
 export function agendaNoticeId(messageId: string): string {

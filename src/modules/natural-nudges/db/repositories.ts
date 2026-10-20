@@ -364,8 +364,14 @@ class NaturalNudgeRepository {
     await sql`UPDATE natural_nudge_fires SET answered = ${answered} WHERE fire_id = ${fireId} AND answered IS NULL`;
   }
 
-  /** The fire row and its agenda land together, so a persona never pursues an agenda that has no fire. */
-  async recordEpisodeFire(fire: NewFireRow, agenda: string | null): Promise<boolean> {
+  /**
+   * The fire row and its agendas land together, so a persona never pursues an agenda that has no fire.
+   * An Alter Talk scene passes one agenda per speaker, all anchored to the opener.
+   */
+  async recordEpisodeFire(
+    fire: NewFireRow,
+    agendas: ReadonlyArray<{ personaId: number; agenda: string }>,
+  ): Promise<boolean> {
     try {
       await sql.transaction(async (tx) => {
         await tx`
@@ -375,10 +381,10 @@ class NaturalNudgeRepository {
           VALUES (${fire.serverId}, ${fire.channelDiscId}, ${fire.personaId}, 'episode', ${fire.category},
             ${fire.episodeKey}, ${fire.targetUserId}, ${fire.openerMessageDiscId})
         `;
-        if (agenda) {
+        for (const { personaId, agenda } of agendas) {
           await tx`
             INSERT INTO natural_nudge_agendas (message_disc_id, persona_id, agenda, target_user_id)
-            VALUES (${fire.openerMessageDiscId}, ${fire.personaId}, ${agenda}, ${fire.targetUserId})
+            VALUES (${fire.openerMessageDiscId}, ${personaId}, ${agenda}, ${fire.targetUserId})
             ON CONFLICT (message_disc_id, persona_id) DO UPDATE
             SET agenda = EXCLUDED.agenda, target_user_id = EXCLUDED.target_user_id
           `;
