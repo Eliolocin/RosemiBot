@@ -30,8 +30,8 @@ When a capability is turned off, she cannot perform that action regardless of us
 <!-- anchor: response-drafting -->
 
 Open `/config` > `Plugins` > `Response Drafting` to turn review On. It starts Off and applies to
-every persona in that workspace, including queued replies and generated scenes. Guild managers
-change guild settings; your DM workspace has its own settings.
+every persona in that server, including queued replies and generated scenes. Server managers
+change server settings; your DMs have their own.
 
 When On, Tomori holds her reply while a reviewer checks its character voice and scene fit. The
 reviewer can ask for one complete revision. `Content to Check` lists the review items with green
@@ -48,10 +48,10 @@ and token cost, especially with more items enabled.
 
 The `Reviewer` dropdown selects an eligible registered text model. `Use current response model`
 uses the model and credentials actually answering, including your personal provider or a fallback.
-A pinned reviewer uses the workspace's own registration and credentials. Text-only authors and
-authors with Tool Use disabled can still use an eligible reviewer. An unsupported inherited model
-shows `Unavailable`; choose a supported reviewer to enable detailed review. Clearing the reviewer
-restores `Use current response model`, and turning Off keeps your choices.
+A pinned reviewer uses the registration and credentials saved for that server or DM. Text-only
+authors and authors with Tool Use disabled can still use an eligible reviewer. An unsupported
+inherited model shows `Unavailable`; choose a supported reviewer to enable detailed review.
+Clearing the reviewer restores `Use current response model`, and turning Off keeps your choices.
 
 `Set Prompt` edits the review instructions, up to 4,000 characters. `Use Default` restores the
 persona-aware default. The `Rule checker` dropdown selects an already registered compatible MCP checker,

@@ -23,11 +23,11 @@ collects:
 |---|---|
 | AI Provider (Recommended) | A provider from the catalog plus its API key, validated and encrypted as a draft. |
 | Custom Endpoint | The endpoint connection and one text model, registered inside the wizard. See [Custom Endpoints](#custom-endpoints). |
-| User BYOK (guilds only) | Nothing: the workspace keeps no provider of its own, so members must supply personal ones. |
+| User BYOK (servers only) | Nothing: the server keeps no provider of its own, so members must supply personal ones. |
 
 Nothing is written to the database until you press `Finish Setup`. An abandoned or expired
-wizard leaves the workspace's existing provider rows untouched. To replace an existing key, use
-`/providers`, because `/setup` will not run on an already configured workspace.
+wizard leaves the server's existing provider rows untouched. To replace an existing key, use
+`/providers`, because `/setup` will not run on an already configured server.
 
 Replacing a provider key preserves its saved sampler settings, including the output-token limit.
 
@@ -154,7 +154,7 @@ Configuration reset preserves saved registrations; parent deletion explicitly cl
 Custom endpoints let you register self-hosted or proxy-backed services (Ollama, LM Studio,
 LiteLLM, vLLM, ComfyUI, local TTS/STT) as labeled provider bundles.
 
-- **Server scope**: open `/providers` for workspace endpoint registration and editing.
+- **Server scope**: open `/providers` to register and edit server endpoints.
 - **Personal scope**: open `/personal providers` for personal model catalogs (see
   [Personalization](/features/knowledge/personalization/#your-own-providers)). Personal hosted speech models are selected independently under Voice Design and Voice Clone
   in `/personal config`; personal local speech endpoints are unsupported.

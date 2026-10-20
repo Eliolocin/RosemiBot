@@ -263,9 +263,9 @@ Cualquiera puede ejecutar `/config` > Persona > Memorias, `/personal config` y
 
 ### Configuración de la STM
 
-Los administradores del espacio de trabajo pueden ajustar la memoria a corto plazo desde
+Los administradores del servidor pueden ajustar la memoria a corto plazo desde
 `/config` → `Comportamiento` → Memoria y STM. Estos ajustes se aplican a los registros
-activos de STM del espacio de trabajo:
+activos de STM del servidor:
 
 - Cadencia de actualización controla cuántos turnos del bot pasan entre empujones de
   actualización. El rango permitido es de 1 a 100.

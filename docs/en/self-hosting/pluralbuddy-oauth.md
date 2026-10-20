@@ -66,7 +66,7 @@ or token requests.
    ```
 
    For PluralKit, use `pluralkit` as the service. The bot user ID lets TomoriBot skip the
-   message-proxy wait in guilds where that instance's bot is not installed. Registration checks
+   message-proxy wait in servers where that instance's bot is not installed. Registration checks
    discovery but does not prove that the bot writes lookup records.
 2. For PluralBuddy, register a separate OAuth application on that instance with the same loopback
    callback pattern as above. Authorize it using the instance ID returned by registration:
