@@ -1102,12 +1102,10 @@ describe("config Behavior routes", () => {
       [buildConfigModalFieldId(BEHAVIOR_RANDOM_SETTINGS_FIELD, nonce)]: "6,35,2,4,3",
       [buildConfigModalFieldId(BEHAVIOR_RANDOM_PROMPT_FIELD, nonce)]: "Start a topic.",
     };
+    harness.dependencies.takeChannelSelectValues = (_interactionId, fieldId) =>
+      fieldId === buildConfigModalFieldId(BEHAVIOR_RANDOM_CHANNEL_FIELD, nonce) ? ["channel-1"] : undefined;
     harness.dependencies.takeSelectValue = (_interactionId, fieldId) =>
-      fieldId === buildConfigModalFieldId(BEHAVIOR_RANDOM_CHANNEL_FIELD, nonce)
-        ? "channel-1"
-        : fieldId === buildConfigModalFieldId(BEHAVIOR_RANDOM_PERSONA_FIELD, nonce)
-          ? "55"
-          : undefined;
+      fieldId === buildConfigModalFieldId(BEHAVIOR_RANDOM_PERSONA_FIELD, nonce) ? "55" : undefined;
     harness.dependencies.takeCheckboxValues = () => ["yes"];
     const existing = makeRandomTrigger();
     const count = spyOn(serverScheduleRepository, "getServerTriggerCount").mockResolvedValue(1);
@@ -1141,8 +1139,8 @@ describe("config Behavior routes", () => {
   it("refuses a blank Timing and Chance field instead of writing the retired 1,100,,, default", async () => {
     const harness = makeHarness(true);
     const nonce = "nonce1234567";
-    harness.dependencies.takeSelectValue = (_interactionId, fieldId) =>
-      fieldId === buildConfigModalFieldId(BEHAVIOR_RANDOM_CHANNEL_FIELD, nonce) ? "channel-1" : undefined;
+    harness.dependencies.takeChannelSelectValues = (_interactionId, fieldId) =>
+      fieldId === buildConfigModalFieldId(BEHAVIOR_RANDOM_CHANNEL_FIELD, nonce) ? ["channel-1"] : undefined;
     harness.dependencies.takeCheckboxValues = () => [];
     const insert = spyOn(serverScheduleRepository, "insertTrigger").mockResolvedValue(makeRandomTrigger());
     const upsert = spyOn(serverScheduleRepository, "upsertTrigger").mockResolvedValue(makeRandomTrigger());

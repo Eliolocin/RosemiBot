@@ -7,6 +7,7 @@ import {
   HOSTED_SPEECH_LIMITS,
   HostedSpeechError,
   readSpeechJson,
+  speechErrorBody,
   speechUsageSchema,
   validateSpeechAudio,
   type SpeechOperation,
@@ -83,8 +84,11 @@ export async function synthesizeOpenRouterSpeech(request: OpenRouterSpeechReques
   const generationId = response.headers.get("X-Generation-Id");
   if (generationId && /^[a-zA-Z0-9_-]{1,200}$/.test(generationId)) operation.generationId = generationId;
   if (!response.ok) {
-    await response.body?.cancel();
-    checkSpeechStatus(response);
+    const body = await readBoundedResponse(response, HOSTED_SPEECH_LIMITS.metadataBytes, request.signal).then(
+      (buffer) => speechErrorBody(buffer.toString("utf8"), request.apiKey),
+      () => undefined,
+    );
+    checkSpeechStatus(response, body);
   }
   if (response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "audio/mpeg") {
     await response.body?.cancel();

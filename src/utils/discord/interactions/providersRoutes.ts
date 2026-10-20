@@ -162,6 +162,12 @@ function terminalPayload(locale: string, key: string): InteractionEditReplyOptio
   );
 }
 
+function providersNotSetupKey(interaction: {
+  guildId: string | null;
+}): "commands.providers.not_setup" | "commands.providers.not_setup_dm" {
+  return interaction.guildId ? "commands.providers.not_setup" : "commands.providers.not_setup_dm";
+}
+
 async function defaultResolveScope(
   interaction: GlobalRoutableInteraction | ChatInputCommandInteraction,
   forceRefresh = false,
@@ -820,7 +826,7 @@ export function createProvidersInteractionRoute(
               route.action === "edit-endpoint-submit" ||
               route.action === "remove-confirm",
           ),
-        onMissing: () => interaction.editReply(terminalPayload(route.locale, "commands.providers.not_setup")),
+        onMissing: () => interaction.editReply(terminalPayload(route.locale, providersNotSetupKey(interaction))),
       });
       if (!scope) return;
 
@@ -1220,7 +1226,7 @@ export async function buildInitialProvidersPanel(
     return terminalPayload(locale, "general.errors.permission_denied_description");
   }
   const scope = await resolveScope(interaction, false);
-  if (!scope) return terminalPayload(locale, "commands.providers.not_setup");
+  if (!scope) return terminalPayload(locale, providersNotSetupKey(interaction));
   return buildProvidersPanelPayload({
     locale,
     entries: scope.data.entries,
@@ -1239,7 +1245,7 @@ export async function buildInitialPersonalProvidersPanel(
   resolveScope: ProvidersRouteDependencies["resolveScope"] = defaultResolvePersonalScope,
 ): Promise<InteractionEditReplyOptions> {
   const scope = await resolveScope(interaction, false);
-  if (!scope) return terminalPayload(locale, "commands.providers.not_setup");
+  if (!scope) return terminalPayload(locale, providersNotSetupKey(interaction));
   return buildProvidersPanelPayload({
     locale,
     entries: scope.data.entries,

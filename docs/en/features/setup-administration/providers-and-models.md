@@ -29,6 +29,8 @@ Nothing is written to the database until you press `Finish Setup`. An abandoned 
 wizard leaves the workspace's existing provider rows untouched. To replace an existing key, use
 `/providers`, because `/setup` will not run on an already configured workspace.
 
+Replacing a provider key preserves its saved sampler settings, including the output-token limit.
+
 Each provider has its own key-generation steps. In `/help`, choose `Setup`, then
 `Get an API Key`, and pick your provider for a step-by-step walkthrough, or use these starting points:
 

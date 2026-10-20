@@ -64,6 +64,14 @@ interface ImportValidationResult {
 
 type MemoryRow = { content: string; tags: string[] | null };
 
+/**
+ * Drops `#channel` tags from an incoming server memory: older exports carry them as channel filters,
+ * and with scopes stored as channel IDs they would otherwise read as keyword tags.
+ */
+function withoutLegacyChannelTags(memory: MemoryItem): MemoryItem {
+  return { ...memory, tags: memory.tags.filter((tag) => !tag.replace(/^["']+|["']+$/g, "").startsWith("#")) };
+}
+
 function memoryKey(memory: MemoryItem): string {
   const normalized = normalizeMemoryItem(memory);
   return `${normalized.content}\u0000${normalized.tags.join("\u0000")}`;
@@ -1123,9 +1131,10 @@ class ImportRepository {
 
   private async sqlImportServerMemories(
     serverDiscId: string,
-    memories: MemoryItem[],
+    incomingMemories: MemoryItem[],
     target: { mode: "persona"; personaId?: number } | { mode: "global" },
   ): Promise<ImportResult> {
+    const memories = incomingMemories.map(withoutLegacyChannelTags);
     try {
       const serverId = await this.resolveServerId(serverDiscId);
       if (!serverId) {
@@ -1330,7 +1339,8 @@ class ImportRepository {
         }
         destinations.add(personaLineageId);
 
-        for (const memory of mapping.memories) {
+        const mappingMemories = mapping.memories.map(withoutLegacyChannelTags);
+        for (const memory of mappingMemories) {
           const validation = validateMemoryContent(memory.content);
           if (!validation.isValid) {
             return {
@@ -1340,7 +1350,7 @@ class ImportRepository {
           }
         }
 
-        let memoriesToInsert = mapping.memories;
+        let memoriesToInsert = mappingMemories;
         let existingRows: MemoryRow[] = [];
         if (strategy === "merge") {
           existingRows = await sql<MemoryRow[]>`
@@ -1353,13 +1363,13 @@ class ImportRepository {
             existingRows.map((row) => memoryKey({ content: row.content, tags: row.tags ?? [] })),
           );
           const incomingMemories = new Set<string>();
-          memoriesToInsert = mapping.memories.filter((memory) => {
+          memoriesToInsert = mappingMemories.filter((memory) => {
             const key = memoryKey(memory);
             if (existingMemories.has(key) || incomingMemories.has(key)) return false;
             incomingMemories.add(key);
             return true;
           });
-          memoriesSkipped += mapping.memories.length - memoriesToInsert.length;
+          memoriesSkipped += mappingMemories.length - memoriesToInsert.length;
         }
 
         if (

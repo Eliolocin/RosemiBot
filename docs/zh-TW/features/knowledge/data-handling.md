@@ -50,7 +50,7 @@ aiGenerated: true
 
 - `/export config`：伺服器設定值（不包括API金鑰和憑證）。
 - `/export personal config`：個人資料設定（隱私、外觀標籤、命名）。
-- `/export memories`：伺服器內存，範圍為主要人格、一個人格或所有人格。
+- `/export memories`：伺服器記憶，範圍為主要人格、一個人格或所有人格。頻道限制不會被匯出，因此匯入的記憶會在所有頻道生效，直到你再次挑選頻道為止。
 - `/export personal memories`：個人記憶，範圍全域或每個人格。
 - `/persona export`：完整的人格定義。
 

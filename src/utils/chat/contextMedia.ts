@@ -14,6 +14,7 @@ const SUPPORTED_VIDEO_MIME_TYPES = [
   "video/mp4",
   "video/mpeg",
   "video/mov",
+  "video/quicktime",
   "video/avi",
   "video/x-flv",
   "video/mpg",
@@ -84,7 +85,7 @@ function inferMimeTypeFromFilename(filename: string | null | undefined): string 
   if (lower.endsWith(".heif")) return "image/heif";
   if (lower.endsWith(".mp4")) return "video/mp4";
   if (lower.endsWith(".webm")) return "video/webm";
-  if (lower.endsWith(".mov")) return "video/mov";
+  if (lower.endsWith(".mov")) return "video/quicktime";
   return null;
 }
 
@@ -499,13 +500,6 @@ export function appendDirectMediaFromMessage(args: {
   if (args.voiceTranscriptChatMode) return;
   for (const attachment of args.message.attachments.values()) {
     if (!isAudioAttachment(attachment)) continue;
-    const effectiveContentType = getEffectiveAttachmentContentType(attachment);
-    if (
-      isSupportedImageAttachmentContentType(effectiveContentType) ||
-      isSupportedVideoAttachmentContentType(effectiveContentType)
-    ) {
-      continue;
-    }
     const cached = getCachedVoiceTranscript(args.message.id);
     args.appendTextHint(
       cached?.source === "user_stt"

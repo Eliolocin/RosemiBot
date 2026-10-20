@@ -101,5 +101,5 @@ or `"personal"`) governs the troubleshooting tips displayed in error embeds:
 - `src/providers/utils/toolCallArguments.ts`: `parseAccumulatedToolArguments` and truncation flags.
 - `src/utils/text/jsonRepair.ts`: `tryRepairIncompleteJson`.
 - `src/utils/provider/providerErrorClassification.ts`: error classification helpers.
-- `src/utils/discord/stream/errorUi.ts`: error embed presentation and credential-scoped tips.
+- `src/utils/discord/stream/errorUi.ts`: error embed presentation, credential-scoped tips, and the footer naming whether the provider or TomoriBot failed.
 - `src/providers/custom/customStreamAdapter.ts`: verbatim tool parsing integration.

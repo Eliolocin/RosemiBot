@@ -147,6 +147,8 @@ function buildGenerateStatusComponents(options: {
   color: string | number;
   descriptionVars?: Record<string, string | number | boolean>;
   details?: string;
+  footerKey?: string;
+  footerVars?: Record<string, string | number | boolean>;
   showInputAttachment?: boolean;
 }): TopLevelComponentData[] {
   const components: ComponentInContainerData[] = [
@@ -164,6 +166,13 @@ function buildGenerateStatusComponents(options: {
     components.push({
       type: ComponentType.TextDisplay,
       content: options.details,
+    });
+  }
+
+  if (options.footerKey) {
+    components.push({
+      type: ComponentType.TextDisplay,
+      content: `-# ${localizer(options.locale, options.footerKey, options.footerVars)}`,
     });
   }
 
@@ -203,6 +212,8 @@ async function editGenerateStatusReply(
     color: string | number;
     descriptionVars?: Record<string, string | number | boolean>;
     details?: string;
+    footerKey?: string;
+    footerVars?: Record<string, string | number | boolean>;
     inputAttachment?: AttachmentBuilder;
   },
 ): Promise<void> {
@@ -216,6 +227,8 @@ async function editGenerateStatusReply(
           color: options.color,
           descriptionVars: options.descriptionVars,
           details: options.details,
+          footerKey: options.footerKey,
+          footerVars: options.footerVars,
           showInputAttachment: Boolean(options.inputAttachment),
         }),
         ...(options.inputAttachment ? { files: [options.inputAttachment] } : {}),
@@ -802,15 +815,9 @@ export async function execute(
 
     await editGenerateStatusReply(modalSubmitInteraction, {
       locale,
-      // The caption is a second model call the user is waiting on, so the status names it
-      // rather than reporting generation while a different model is still reading the image.
-      titleKey: visionCaptionPending
-        ? "commands.persona.generate.captioning_title"
-        : "commands.persona.generate.processing_title",
-      descriptionKey: visionCaptionPending
-        ? "commands.persona.generate.captioning_description"
-        : "commands.persona.generate.processing_description",
-      descriptionVars: visionCaptionPending ? { model_name: tomoriState.vision_llm?.llm_codename ?? "" } : undefined,
+      titleKey: "commands.persona.generate.processing_title",
+      descriptionKey: "commands.persona.generate.processing_description",
+      footerKey: "commands.persona.generate.processing_footer",
       color: ColorCode.INFO,
     });
     replyUsesComponentsV2 = true;

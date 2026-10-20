@@ -512,8 +512,8 @@ Digite \`{project_id}::{location}\` usando {configSetup} ou {configApikeySet}
       memory_tagging: {
         title: `Marcação de Memória (Avançado)`,
         description:
-          "Por padrão, toda memória no escopo é enviada com toda mensagem. A marcação restringe isso.\n> **Tags de palavras-chave**: uma memória marcada só desperta quando a palavra-chave aparece. Uma memória sem tag está sempre ativa.\n> **Tags de canal**: uma tag `#canal` limita a memória àquele canal, e pode ser combinada com tags de palavra-chave.\n\nAtive ambas em {configAdvancedMemory}, depois use {toolPromptSnapshot} para ver exatamente quais memórias estão ativas no momento.",
-        footer: "Documentos recebidos e histórico extraído também podem carregar tags de canal.",
+          "Por padrão, toda memória no escopo é enviada com toda mensagem. A marcação restringe isso.\n> **Tags de palavras-chave**: uma memória marcada só desperta quando a palavra-chave aparece na conversa. Uma memória sem tag está sempre ativa.\n> **Canais**: uma memória do servidor pode ser limitada aos canais escolhidos no formulário (suas threads incluídas), e uma memória pessoal a uma tag `#canal`. Ambas combinam com tags de palavras-chave.\n\nAtive ambas em {configAdvancedMemory}, depois use {toolPromptSnapshot} para ver exatamente quais memórias estão ativas no momento.",
+        footer: "Documentos enviados e histórico extraído também podem ser limitados a canais.",
       },
     },
     scheduled_tasks: {

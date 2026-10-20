@@ -207,7 +207,10 @@ function makeHarness(options: HarnessOptions) {
     recordAction: options.recordAction ?? (() => undefined),
     operations: options.operations ?? configPersonaOperations,
     showModal: async (interaction, payload) => options.showModal?.(interaction, payload),
-    takeChannelSelectValue: (_interactionId, fieldId) => options.channelValues?.[fieldId],
+    takeChannelSelectValues: (_interactionId, fieldId) => {
+      const channelId = options.channelValues?.[fieldId];
+      return channelId === undefined ? undefined : [channelId];
+    },
     takeSelectValue: (_interactionId, fieldId) => options.selectValues?.[fieldId],
     takeCheckboxValues: (_interactionId, fieldId) => options.checkboxValues?.[fieldId],
   };

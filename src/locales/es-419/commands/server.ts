@@ -1,7 +1,7 @@
 export default {
   server: {
     timezone: {
-      value_description: `Horas de desfase UTC (predeterminado: 0). Ejemplos: 8, -5, 0, 9.`,
+      value_description: `Horas de desfase UTC (predeterminado: 0). Ejemplos: 8, -5, 0, 5:30.`,
     },
     stm: {
       parameters: {

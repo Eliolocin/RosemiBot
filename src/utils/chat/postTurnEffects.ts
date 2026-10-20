@@ -3,6 +3,7 @@ import { ContextItemTag } from "@/types/misc/context";
 import { recordLastReplyUsage } from "@/utils/cache/lastReplyUsageCache";
 import { incrementStmTurnCounter, storeShortTermMemory } from "@/utils/cache/shortTermMemoryCache";
 import { sendStandardEmbed } from "@/utils/discord/embedHelper";
+import { resolveProviderErrorFooter } from "@/utils/discord/stream/errorUi";
 import { hasThoughtLogContent, sendAttributionOnlyEmbed, sendThoughtLogEmbed } from "@/utils/discord/thoughtLog";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
@@ -335,6 +336,11 @@ async function maybeScheduleEmptyResponseRetry(context: ChatTurnContext, result:
         descriptionKey: "genai.empty_response_description",
         color: ColorCode.WARN,
         tipKeys,
+        ...resolveProviderErrorFooter({
+          providerName: context.tomoriState.llm.llm_provider,
+          textCredentialSource: context.textCredentialSource,
+          isDM: context.isDMChannel,
+        }),
       },
       {
         webhook: context.responseTarget?.webhook,

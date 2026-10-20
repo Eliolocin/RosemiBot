@@ -2,6 +2,7 @@ import { parseBuffer } from "music-metadata";
 import { MAX_VOICE_DESIGN_PROMPT_LENGTH } from "@/constants/speech";
 import { z } from "zod";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
+import { redactLogString } from "@/utils/misc/logger";
 
 export const HOSTED_SPEECH_LIMITS = {
   scriptCharacters: 2_000,
@@ -63,12 +64,32 @@ export type HostedSpeechErrorKind =
   | "timeout";
 
 export class HostedSpeechError extends Error {
-  constructor(readonly kind: HostedSpeechErrorKind) {
+  /**
+   * @param providerStatus - Set only when the provider answered, which separates a provider 400 from
+   *   the local checks that also throw `invalid_request`.
+   */
+  constructor(
+    readonly kind: HostedSpeechErrorKind,
+    readonly providerStatus?: number,
+    readonly providerBody?: string,
+  ) {
     super(`Hosted speech failed: ${kind}`);
+  }
+
+  /** The provider's status and body as logged and shown behind "Show Full Error". */
+  get providerDetail(): string | undefined {
+    if (this.providerStatus === undefined) return undefined;
+    return this.providerBody ? `HTTP ${this.providerStatus}: ${this.providerBody}` : `HTTP ${this.providerStatus}`;
   }
 }
 
-export function checkSpeechStatus(response: Response): void {
+/** Provider error bodies can echo the request's credential in a form pattern redaction misses. */
+export function speechErrorBody(body: unknown, apiKey: string): string {
+  const text = typeof body === "string" ? body : JSON.stringify(body);
+  return redactLogString(apiKey ? text.replaceAll(apiKey, "[REDACTED]") : text);
+}
+
+export function checkSpeechStatus(response: Response, body?: string): void {
   if (response.ok) return;
   const kind =
     response.status === 401 || response.status === 403
@@ -78,7 +99,7 @@ export function checkSpeechStatus(response: Response): void {
         : response.status === 400 || response.status === 422
           ? "invalid_request"
           : "provider_error";
-  throw new HostedSpeechError(kind);
+  throw new HostedSpeechError(kind, response.status, body);
 }
 
 export async function readSpeechJson(

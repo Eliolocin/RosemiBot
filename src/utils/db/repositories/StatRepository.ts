@@ -923,8 +923,8 @@ class StatRepository implements IRepository<null> {
         GROUP BY dow, hour
       `;
 
-      // Normalize the offset into whole hours (0 when unset / server scope).
-      const offset = Math.trunc(args.offsetHours ?? 0);
+      // Counters are bucketed by UTC hour, so a half-hour offset can only land in its nearest hour cell.
+      const offset = Math.round(args.offsetHours ?? 0);
 
       for (const r of rows) {
         const dow = Number(r.dow);

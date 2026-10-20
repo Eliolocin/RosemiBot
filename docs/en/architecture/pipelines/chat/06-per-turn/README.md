@@ -35,7 +35,7 @@ for (const turn of turnPlan.turns) {
 |---|---|---|---|
 | 01 | `buildChatTurnContext` | [06.1: Build Context](/architecture/pipelines/chat/06-per-turn/01-build-context/) | Fetches message history, applies annotations, and builds prompt items. |
 | 02 | `createChatResponseSink` | [06.2: Response Sink](/architecture/pipelines/chat/06-per-turn/02-create-response-sink/) | Resolves webhook or channel delivery targets and lifecycle callbacks. |
-| 03 | `runGenerationTurn` | [06.3: Generation Turn](/architecture/pipelines/chat/06-per-turn/03-run-generation-turn/) | Drives model fallback attempts, key rotation, and superseded message deletion. |
+| 03 | `runGenerationTurn` | [06.3: Generation Turn](/architecture/pipelines/chat/06-per-turn/03-run-generation-turn/) | Drives model fallback attempts, key rotation, and fallback text continuation. |
 | 04 | `runPostTurnEffects` | [06.4: Post-Turn Effects](/architecture/pipelines/chat/06-per-turn/04-post-turn-effects/) | Dispatches empty retries, quota deduction, STM caching, thought logs, and boomerangs. |
 
 ## Cross-references

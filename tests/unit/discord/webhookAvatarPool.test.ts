@@ -23,6 +23,7 @@ import {
   getCachedManagedWebhookForChannel,
   getOrCreateWebhook,
   getSingleAttemptWebhookRest,
+  resolveAuthoringWebhook,
   resolveManagedWebhookForChannel,
   runWithWebhookIdentity,
   sendWebhookMessageWithIdentity,
@@ -41,7 +42,6 @@ import {
 } from "@/utils/discord/stream/channelDeliveryContinuity";
 import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
 import { sendWebhookReplyWithContext } from "@/utils/discord/webhookReply";
-import { deleteSupersededStreamMessages } from "@/utils/discord/stream/supersededMessageCleanup";
 import { sendStandardEmbed } from "@/utils/discord/embedHelper";
 import { attachShowMarkdownCollector } from "@/utils/discord/markdownTableButton";
 import { sendFallbackModelUsageNotice } from "@/utils/discord/fallbackModelNotice";
@@ -837,7 +837,7 @@ describe("managed local avatar dispatch", () => {
     }
   });
 
-  it("records the selected stream webhook and deletes its messages after reassignment and cache restoration without Manage Messages", async () => {
+  it("records the selected stream webhook and resolves it again after reassignment and cache restoration", async () => {
     const pool = makePool();
     const primary = await pool.primary(avatarA);
     const extra = await pool.store("_extra", "avatar_pool_1", avatarB);
@@ -856,13 +856,8 @@ describe("managed local avatar dispatch", () => {
     expect(getChannelLastDelivery(stream.channel.id)).toMatchObject({ webhookId: extra.id });
     await runWithWebhookIdentity(extra as unknown as Webhook, { avatarDataUri: avatarA }, async () => undefined);
     clearWebhookCache();
-    await deleteSupersededStreamMessages(stream.context.deliveredMessageRefs ?? [], {
-      channel: stream.channel as unknown as Message["channel"],
-      webhook: primary as unknown as Webhook,
-    });
-    expect(extra.deleteMessage).toHaveBeenCalledWith(sent?.id, stream.channel.id);
-    expect(primary.deleteMessage).not.toHaveBeenCalled();
-    expect(pool.channel.messages.delete).not.toHaveBeenCalled();
+    const author = await resolveAuthoringWebhook(stream.channel, sent.webhookId, primary as unknown as Webhook);
+    expect(author?.id).toBe(extra.id);
     expect(pool.rows.some((row) => row.webhook_disc_id === extra.id)).toBe(true);
   });
 

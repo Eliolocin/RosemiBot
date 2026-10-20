@@ -274,11 +274,8 @@ Use \`/config\` > Modelos > Mudar Modelos para mudar para um modelo que suporte 
       error_download_timeout: `O download do avatar atingiu o tempo limite. Por favor, tente novamente.`,
       error_download_failed: `Falha ao baixar a imagem do avatar.`,
       processing_title: `Gerando Personalidade...`,
-      processing_description: `Isso pode levar de 1 a 2 minutos. Por favor, aguarde enquanto o personagem é gerado...
-
-Isso pode produzir resultados inesperados. Você pode gerar novamente se necessário.`,
-      captioning_title: `Descrevendo seu avatar...`,
-      captioning_description: `Seu modelo principal não consegue ver imagens, então primeiro peço ao seu modelo de visão (**{model_name}**) que descreva o avatar enviado. Depois, seu modelo principal escreve a personalidade a partir dessa descrição. Isso pode levar 1-2 minutos.`,
+      processing_description: `Isso pode levar de 1 a 2 minutos. Por favor, aguarde enquanto o personagem é gerado...`,
+      processing_footer: `Isso pode produzir resultados inesperados. Você pode gerar novamente se necessário.`,
       generation_failed_title: `🔴 Falha na Geração`,
       generation_failed_description: `Falha ao gerar personalidade: {error}
 

@@ -227,7 +227,7 @@ import {
 } from "@/utils/discord/ui/configModals";
 import {
   showRoutedRawModal,
-  takeRawModalChannelSelectValue,
+  takeRawModalChannelSelectValues,
   takeRawModalCheckboxGroupValues,
   takeRawModalFileUpload,
   takeRawModalSelectValue,
@@ -714,7 +714,7 @@ const defaultDependencies: ConfigRouteDependencies = {
   takeFileUpload: takeRawModalFileUpload,
   takeCheckboxValues: takeRawModalCheckboxGroupValues,
   takeSelectValue: takeRawModalSelectValue,
-  takeChannelSelectValue: takeRawModalChannelSelectValue,
+  takeChannelSelectValues: takeRawModalChannelSelectValues,
 };
 
 /**

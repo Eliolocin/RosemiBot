@@ -10,7 +10,7 @@ export {
   takeRawModalSelectValue,
   takeRawModalUserSelectValue,
   takeRawModalRoleSelectValue,
-  takeRawModalChannelSelectValue,
+  takeRawModalChannelSelectValues,
   takeRawModalFileUpload,
   takeRawModalFileUploads,
 } from "./interactionCore";

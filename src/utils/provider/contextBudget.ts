@@ -75,6 +75,7 @@ export async function applyProviderContextTruncation(
   contextItems: StructuredContextItem[],
   tomoriState: TomoriState,
   serverDiscId: string,
+  reservedTailItems: StructuredContextItem[] = [],
 ): Promise<StructuredContextItem[]> {
   const budget = await resolveContextBudget(tomoriState, serverDiscId);
   if (!budget) return contextItems;
@@ -83,6 +84,7 @@ export async function applyProviderContextTruncation(
     contextItems,
     budget.contextLength,
     budget.outputReserve,
+    reservedTailItems,
   );
   if (totalDropped === 0) return contextItems;
 

@@ -11,11 +11,21 @@ import { decryptApiKey } from "@/utils/security/crypto";
 import { log } from "@/utils/misc/logger";
 import { HOSTED_SPEECH_LIMITS, HostedSpeechError, type SpeechOperation } from "@/utils/speech/hostedSpeech";
 
-function reportCleanupFailure(credentialId: number, scope: OpenRouterModelScope["kind"]): void {
+function reportCleanupFailure(credentialId: number, scope: OpenRouterModelScope["kind"], error: unknown): void {
+  const providerDetail = error instanceof HostedSpeechError ? error.providerDetail : undefined;
   log.error(
-    "Speech voice cleanup failed; remove unused voices in the provider console before removing or replacing credentials.",
-    undefined,
-    { metadata: { credentialId, scope } },
+    `Speech voice cleanup failed; remove unused voices in the provider console before removing or replacing credentials.${providerDetail ? ` ${providerDetail}` : ""}`,
+    error,
+    {
+      errorType: "SpeechVoiceCleanupFailed",
+      metadata: {
+        credentialId,
+        scope,
+        ...(error instanceof HostedSpeechError && error.providerStatus !== undefined
+          ? { providerStatus: error.providerStatus }
+          : {}),
+      },
+    },
   );
 }
 
@@ -30,10 +40,11 @@ async function deleteBinding(
     await transport.delete(binding.voice_id, signal, operations);
     await speechRepo.deleteSpeechVoiceBinding(binding.speech_voice_binding_id);
     return true;
-  } catch {
+  } catch (error) {
     reportCleanupFailure(
       binding.saved_config_id ?? binding.user_saved_config_id ?? 0,
       binding.saved_config_id ? "server" : "personal",
+      error,
     );
     return false;
   }
@@ -59,8 +70,8 @@ export async function cleanupPendingGoogleVoices(
         break;
       }
       success = (await deleteBinding(binding, transport, operations, signal)) && success;
-    } catch {
-      reportCleanupFailure(credentialId, owner.kind);
+    } catch (error) {
+      reportCleanupFailure(credentialId, owner.kind, error);
       success = false;
     }
   }
@@ -79,8 +90,8 @@ export async function cleanupSpeechCredentialBeforeChange(
     await speechRepo.retireSpeechCredentialBindings(credential.credentialId, owner.kind);
     const apiKey = await decryptApiKey(credential.apiKey, credential.keyVersion);
     await cleanupPendingGoogleVoices(owner, credential.credentialId, credential.credentialRevision, apiKey, []);
-  } catch {
-    reportCleanupFailure(owner.ownerId, owner.kind);
+  } catch (error) {
+    reportCleanupFailure(owner.ownerId, owner.kind, error);
   }
 }
 
@@ -117,8 +128,8 @@ export async function synthesizeGoogleVoice(request: {
     let pending: SpeechVoiceBindingRow | null = null;
     try {
       pending = await speechRepo.savePendingSpeechVoiceDeletion(identity, voiceId);
-    } catch {
-      reportCleanupFailure(request.credentialId, request.owner.kind);
+    } catch (error) {
+      reportCleanupFailure(request.credentialId, request.owner.kind, error);
     }
     if (pending) {
       cleanupPending = !(await deleteBinding(pending, transport, operations)) || cleanupPending;
@@ -126,9 +137,9 @@ export async function synthesizeGoogleVoice(request: {
     }
     try {
       await transport.delete(voiceId, AbortSignal.timeout(HOSTED_SPEECH_LIMITS.cleanupTimeoutMs), operations);
-    } catch {
+    } catch (error) {
       cleanupPending = true;
-      reportCleanupFailure(request.credentialId, request.owner.kind);
+      reportCleanupFailure(request.credentialId, request.owner.kind, error);
     }
   }
 

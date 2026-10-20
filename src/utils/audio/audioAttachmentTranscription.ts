@@ -1,11 +1,11 @@
 import type { Attachment, Message } from "discord.js";
 import { safeDownload } from "@/utils/security/safeDownload";
-import { getElevenLabsSttConfig } from "@/utils/audio/elevenLabsShared";
+import { getElevenLabsSttConfig, reportElevenLabsFailure } from "@/utils/audio/elevenLabsShared";
 import { transcribeViaElevenLabsAdapter } from "@/providers/custom/styles/transcriptionElevenLabsAdapter";
 import { transcribeViaOpenAIAdapter } from "@/providers/custom/styles/transcriptionOpenAIAdapter";
 import { resolveActiveTranscriptionEndpoint } from "@/utils/provider/speechEndpointResolver";
 
-const AUDIO_EXTENSION_REGEX = /\.(aac|flac|m4a|mp3|mp4|mpeg|mpga|oga|ogg|opus|wav|webm)$/i;
+const AUDIO_EXTENSION_REGEX = /\.(aac|flac|m4a|mp3|mpga|oga|ogg|opus|wav)$/i;
 
 type AudioAttachmentFailureReason =
   | "no_endpoint"
@@ -24,10 +24,13 @@ export interface AudioAttachmentTranscriptionResult {
 }
 
 /** Returns true if the attachment is an audio file by MIME type or extension. */
-export function isAudioAttachment(attachment: Attachment): boolean {
+export function isAudioAttachment(attachment: Pick<Attachment, "contentType" | "name">): boolean {
   const mimeType = attachment.contentType?.toLowerCase() ?? "";
   if (mimeType.startsWith("audio/")) {
     return true;
+  }
+  if (mimeType.startsWith("video/") || mimeType.startsWith("image/")) {
+    return false;
   }
 
   return AUDIO_EXTENSION_REGEX.test(attachment.name ?? "");
@@ -121,6 +124,10 @@ export async function transcribeMessageAudioAttachment(
           mimeType: attachment.contentType ?? undefined,
         });
   if (!transcriptionResult.success) {
+    // An unreachable user-run OpenAI-compatible endpoint is an expected refusal, so only hosted ElevenLabs is reported.
+    if (endpointApiStyle !== "openai-compatible-transcription") {
+      await reportElevenLabsFailure("transcription", transcriptionResult, { serverId });
+    }
     return {
       hasAudio: true,
       transcriptText: null,

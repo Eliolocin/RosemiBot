@@ -50,7 +50,7 @@ aiGenerated: true
 
 - `/export config`：服务器配置值（不包括API密钥和凭据）。
 - `/export personal config`：个人资料设置（隐私、外观标签、命名）。
-- `/export memories`：服务器内存，范围为主要人格、一个人格或所有人格。
+- `/export memories`：服务器记忆，范围为主人格、一个人格或所有人格。频道限制不会被导出，因此导入的记忆会在所有频道生效，直到你重新选取频道。
 - `/export personal memories`：个人记忆，范围全局或每个人格。
 - `/persona export`：完整的人格定义。
 

@@ -7,7 +7,7 @@ export default {
     },
     drafting: {
       import_unavailable:
-        "Uma seleção de Revisão de respostas não está disponível neste espaço de trabalho. Limpe-a na exportação de origem ou registre um modelo local ou verificador qualificado antes de importar.",
+        "Uma seleção de Revisão de respostas não está disponível aqui. Limpe-a na exportação de origem ou registre um modelo local ou verificador qualificado antes de importar.",
       title: "Revisão de respostas",
       description: "Revise meus rascunhos antes de eu enviar respostas ou usar ferramentas.",
       off: "Desativado: Eu envio respostas e uso ferramentas sem a Revisão de respostas.",
@@ -537,7 +537,7 @@ export default {
       fetch_limit_no_changes_detail: `O limite de busca já é {value}.`,
       fetch_limit_updated_heading: `Limite de Busca Atualizado`,
       fetch_limit_updated_detail: `O limite de busca agora é {value}.`,
-      timezone_invalid_detail: `O fuso horário deve estar entre {min} e {max}.`,
+      timezone_invalid_detail: `O fuso horário deve estar entre {min} e {max} horas, em horas inteiras, meias horas ou quartos de hora, como 9, 5:30 ou 5.75.`,
       timezone_no_changes_heading: `Fuso Horário Inalterado`,
       timezone_no_changes_detail: `O fuso horário já é {value}.`,
       timezone_updated_heading: `Fuso Horário Atualizado`,
@@ -569,7 +569,8 @@ export default {
       page_pending: `Esta página ainda não está disponível.`,
       page_read_only: `Gerenciar Servidor é necessário para alterar isso.`,
       unavailable: `Não foi possível carregar a configuração. Tente novamente.`,
-      not_setup: `Este workspace ainda não está configurado. Rode /setup primeiro.`,
+      not_setup: `Este servidor ainda não está configurado. Rode /setup primeiro.`,
+      not_setup_dm: `Esta DM ainda não está configurada. Rode /setup primeiro.`,
       no_personas: `Nenhuma persona foi configurada aqui ainda.`,
       retry: `Tentar Novamente`,
       cancel_button: `Cancelar`,

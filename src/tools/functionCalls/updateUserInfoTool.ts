@@ -5,7 +5,7 @@ import {
   USER_IDENTITY_FIELD_MAX_LENGTH,
   USER_NICKNAME_MAX_LENGTH,
 } from "@/types/personaNaming";
-import { PrivacyLevel, type UserRow } from "@/types/db/schema";
+import { PrivacyLevel, type UserRow, utcOffsetSchema } from "@/types/db/schema";
 import { invalidateUserCache } from "@/utils/cache/userCache";
 import { resolveUserTarget } from "@/utils/discord/targetResolver";
 import { sendToolNoticeContainer } from "@/utils/discord/expandableEmbedNotice";
@@ -61,7 +61,7 @@ const updateUserInfoInputSchema = z
     gender_identity: z.string().max(USER_IDENTITY_FIELD_MAX_LENGTH).optional(),
     pronouns: z.string().max(USER_IDENTITY_FIELD_MAX_LENGTH).optional(),
     addressing_style: z.enum(["masculine", "feminine", "neutral"]).optional(),
-    timezone_offset: z.number().int().min(-12).max(14).optional(),
+    timezone_offset: utcOffsetSchema.optional(),
     clear: z.array(z.enum(ALL_FIELDS)).max(ALL_FIELDS.length).optional(),
   })
   .strict();
@@ -435,7 +435,8 @@ export class UpdateUserInfoTool extends BaseTool {
       },
       timezone_offset: {
         type: "number",
-        description: "Their UTC offset in whole hours, from -12 through +14.",
+        description:
+          "Their UTC offset in hours, from -12 through +14, in quarter-hour steps (5.5 for UTC+5:30, 5.75 for UTC+5:45).",
       },
       clear: {
         type: "array",

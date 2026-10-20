@@ -4,9 +4,11 @@ import type { ChatIncoming, ChatTurn, ChatTurnContext, GenerationTurnResult } fr
 import { runPostTurnEffects, shouldRetryEmptyResponse } from "@/utils/chat/postTurnEffects";
 import { recordReunionPresence, resolveReunionNote, type ReunionPresenceStore } from "@/utils/chat/reunionPresence";
 import { initializeLocalizer } from "@/utils/text/localizer";
+import { createLlmRow } from "../../helpers/fixtures";
 import { localizedCopy } from "../../helpers/localeCases";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 import { ColorCode } from "@/utils/misc/logger";
+import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 
 const emptyResponseResult: GenerationTurnResult = {
   status: "empty_response",
@@ -54,6 +56,7 @@ function makeContext(options: {
     textQuotaSource: "user",
   } as unknown as ChatIncoming;
   const tomoriState = {
+    llm: createLlmRow(),
     config: {
       thought_log_channel_disc_id: null,
       private_channel_ids: [],
@@ -118,7 +121,11 @@ describe("empty-response post-turn handling", () => {
     expect(payload?.embeds?.[0]?.toJSON().title).toBe(
       localizedStatusTitle("en-US", "genai.empty_response_title", ColorCode.WARN),
     );
-    expect(payload?.embeds?.[0]?.toJSON().footer).toBeUndefined();
+    expect(payload?.embeds?.[0]?.toJSON().footer?.text).toBe(
+      localizedCopy("en-US", "genai.stream.error_footer_server_provider", {
+        provider: getProviderDisplayName(context.tomoriState.llm.llm_provider),
+      }),
+    );
     expect(payload?.components?.length).toBeGreaterThan(0);
     expect(payload?.components?.[0]?.components?.[0]?.data?.label).toBe(localizedCopy("en-US", "genai.tips.button"));
   });

@@ -1,7 +1,7 @@
 export default {
   server: {
     timezone: {
-      value_description: `Chênh lệch múi giờ UTC theo giờ (mặc định: 0). Ví dụ: 8, -5, 0, 9.`,
+      value_description: `Chênh lệch múi giờ UTC theo giờ (mặc định: 0). Ví dụ: 8, -5, 0, 5:30.`,
     },
     stm: {
       parameters: {

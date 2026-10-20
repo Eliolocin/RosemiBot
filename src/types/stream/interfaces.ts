@@ -146,7 +146,7 @@ export interface StreamContext {
   triggererDiscId?: string;
 
   // Shared sink (reference threaded from StreamingContext) that the orchestrator appends to on
-  // every successful send, so runGenerationTurn can delete a superseded attempt's partial output.
+  // every successful send, so sends from an abandoned timed-out stream still reach the turn.
   deliveredMessageRefs?: DeliveredStreamMessage[];
 }
 

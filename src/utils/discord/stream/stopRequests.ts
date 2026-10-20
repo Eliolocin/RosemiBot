@@ -100,6 +100,7 @@ export function requestStop(channelId: string, requesterId?: string, stopContext
     type: "stop",
     stopContext,
   });
+  log.metric("stream_stop_requested", { channelId, type: "stop", reason: stopReason });
 
   for (const observer of stopObservers.get(channelId) ?? []) observer();
   return true;
@@ -157,6 +158,7 @@ export function requestFollowUp(channelId: string, requesterId: string): boolean
   });
 
   log.info(`Follow-up interrupt request registered for channel ${channelId} by user ${requesterId}.`);
+  log.metric("stream_stop_requested", { channelId, type: "follow_up", reason: "follow_up" });
   for (const observer of stopObservers.get(channelId) ?? []) observer();
   return true;
 }

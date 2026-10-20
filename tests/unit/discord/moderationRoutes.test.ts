@@ -2337,7 +2337,7 @@ describe("moderation interaction routes", () => {
       let upsertArgs: unknown = null;
       const route = createModerationInteractionRoute({
         resolveScope: async () => createScopeData(),
-        takeChannelSelectValue: () => "111222333444555666",
+        takeChannelSelectValues: () => ["111222333444555666"],
         takeCooldownTypeSelectValue: () => "1",
         resolveChannel: async (_i, id) => ({ id, name: "bot-lounge", type: ChannelType.GuildText }),
         resolveWhitelistChannelAdd: async () => ({
@@ -2364,14 +2364,16 @@ describe("moderation interaction routes", () => {
               expires_at: new Date(),
             },
           }),
-          upsertWhitelistChannel: async (args) => {
+          upsertWhitelistChannels: async (args) => {
             upsertArgs = args;
             return {
               status: "success",
-              channelId: args.channelId,
-              cooldownType: args.requestedCooldownType ?? null,
-              cooldownLength: args.requestedCooldownLength ?? null,
-              isUpdate: false,
+              written: args.channelIds.map((channelId) => ({
+                channelId,
+                cooldownType: args.requestedCooldownType ?? null,
+                cooldownLength: args.requestedCooldownLength ?? null,
+              })),
+              unchangedChannelIds: [],
             };
           },
           removeWhitelistChannel: async () => ({ status: "success", channelId: "c" }),
@@ -2388,7 +2390,7 @@ describe("moderation interaction routes", () => {
       expect(upsertArgs).toEqual({
         guildId: "guild-1",
         serverId: 1,
-        channelId: "111222333444555666",
+        channelIds: ["111222333444555666"],
         requestedCooldownType: CooldownType.PER_USER,
         requestedCooldownLength: 25,
         serverConfig: { cooldown_type: null, cooldown_length: null },
@@ -2422,7 +2424,7 @@ describe("moderation interaction routes", () => {
 
       const route = createModerationInteractionRoute({
         resolveScope: async () => createScopeData(),
-        takeChannelSelectValue: () => "111222333444555666",
+        takeChannelSelectValues: () => ["111222333444555666"],
         takeCooldownTypeSelectValue: () => undefined,
         resolveChannel: async (_i, id) => ({ id, name: "general-voice", type: ChannelType.GuildVoice }),
         resolveWhitelistChannelAdd: async () => null,
@@ -2440,6 +2442,58 @@ describe("moderation interaction routes", () => {
         serializedPanelProse(
           "> The selected channel could not be found, is not a text channel, or is no longer in this server.",
         ),
+      );
+    });
+
+    it("rejects the whole batch when any selected channel is not a text channel", async () => {
+      const editReplies: unknown[] = [];
+      let upsertCalled = 0;
+      const mockModal = {
+        id: "modal-1",
+        isButton: () => false,
+        isStringSelectMenu: () => false,
+        isModalSubmit: () => true,
+        customId: "moderation:v2:whitelist-channel-add-submit:en-US:testnonce789",
+        guildId: "guild-1",
+        memberPermissions: {
+          has: () => true,
+        },
+        deferUpdate: async () => {},
+        editReply: async (payload: unknown) => {
+          editReplies.push(payload);
+        },
+        fields: {
+          getTextInputValue: () => "",
+        },
+      } as unknown as ModalSubmitInteraction;
+
+      const route = createModerationInteractionRoute({
+        resolveScope: async () => createScopeData(),
+        takeChannelSelectValues: () => ["111222333444555666", "111222333444555777"],
+        takeCooldownTypeSelectValue: () => undefined,
+        resolveChannel: async (_i, id) => ({
+          id,
+          name: "lounge",
+          type: id === "111222333444555777" ? ChannelType.GuildVoice : ChannelType.GuildText,
+        }),
+        operations: {
+          ...moderationOperations,
+          upsertWhitelistChannels: async () => {
+            upsertCalled++;
+            return { status: "success", written: [], unchangedChannelIds: [] };
+          },
+        },
+      });
+
+      await route.execute({} as Client, mockModal, {
+        namespace: "moderation",
+        version: "v2",
+        segments: ["whitelist-channel-add-submit", "en-US", "testnonce789"],
+      });
+
+      expect(upsertCalled).toBe(0);
+      expect(JSON.stringify(editReplies[0])).toMatch(
+        localizedProse("en-US", "commands.moderation.whitelist_channel_add_invalid_channel"),
       );
     });
 
@@ -2466,7 +2520,7 @@ describe("moderation interaction routes", () => {
 
       const route = createModerationInteractionRoute({
         resolveScope: async () => createScopeData(),
-        takeChannelSelectValue: () => "111222333444555666",
+        takeChannelSelectValues: () => ["111222333444555666"],
         takeCooldownTypeSelectValue: () => undefined,
         resolveChannel: async (_i, id) => ({ id, name: "bot-lounge", type: ChannelType.GuildText }),
         resolveWhitelistChannelAdd: async () => ({
@@ -2493,11 +2547,9 @@ describe("moderation interaction routes", () => {
               expires_at: new Date(),
             },
           }),
-          upsertWhitelistChannel: async (args) => ({
+          upsertWhitelistChannels: async (args) => ({
             status: "unchanged",
-            channelId: args.channelId,
-            cooldownType: null,
-            cooldownLength: null,
+            unchangedChannelIds: [...args.channelIds],
           }),
           removeWhitelistChannel: async () => ({ status: "success", channelId: "c" }),
         },
@@ -2543,7 +2595,7 @@ describe("moderation interaction routes", () => {
 
       const nullRoute = createModerationInteractionRoute({
         resolveScope: async () => createScopeData(),
-        takeChannelSelectValue: () => "111222333444555666",
+        takeChannelSelectValues: () => ["111222333444555666"],
         takeCooldownTypeSelectValue: () => "1",
         resolveChannel: async (_i, id) => ({ id, name: "bot-lounge", type: ChannelType.GuildText }),
         resolveWhitelistChannelAdd: async () => null,
@@ -2565,9 +2617,9 @@ describe("moderation interaction routes", () => {
               expires_at: new Date(),
             },
           }),
-          upsertWhitelistChannel: async () => {
+          upsertWhitelistChannels: async () => {
             upsertCalled++;
-            return { status: "success", channelId: "c", cooldownType: null, cooldownLength: null, isUpdate: false };
+            return { status: "success", written: [], unchangedChannelIds: [] };
           },
           removeWhitelistChannel: async () => ({ status: "success", channelId: "c" }),
         },
@@ -2584,7 +2636,7 @@ describe("moderation interaction routes", () => {
 
       const staleRoute = createModerationInteractionRoute({
         resolveScope: async () => createScopeData(),
-        takeChannelSelectValue: () => "111222333444555666",
+        takeChannelSelectValues: () => ["111222333444555666"],
         takeCooldownTypeSelectValue: () => "1",
         resolveChannel: async (_i, id) => ({ id, name: "bot-lounge", type: ChannelType.GuildText }),
         resolveWhitelistChannelAdd: async () => ({
@@ -2611,9 +2663,9 @@ describe("moderation interaction routes", () => {
               expires_at: new Date(),
             },
           }),
-          upsertWhitelistChannel: async () => {
+          upsertWhitelistChannels: async () => {
             upsertCalled++;
-            return { status: "success", channelId: "c", cooldownType: null, cooldownLength: null, isUpdate: false };
+            return { status: "success", written: [], unchangedChannelIds: [] };
           },
           removeWhitelistChannel: async () => ({ status: "success", channelId: "c" }),
         },
@@ -2653,7 +2705,7 @@ describe("moderation interaction routes", () => {
 
       const mismatchedRoute = createModerationInteractionRoute({
         resolveScope: async () => createScopeData(),
-        takeChannelSelectValue: () => "111222333444555666",
+        takeChannelSelectValues: () => ["111222333444555666"],
         takeCooldownTypeSelectValue: () => "1",
         resolveChannel: async (_i, id) => ({ id, name: "bot-lounge", type: ChannelType.GuildText }),
         resolveWhitelistChannelAdd: async () => ({
@@ -2680,9 +2732,9 @@ describe("moderation interaction routes", () => {
               expires_at: new Date(),
             },
           }),
-          upsertWhitelistChannel: async () => {
+          upsertWhitelistChannels: async () => {
             upsertCalled++;
-            return { status: "success", channelId: "c", cooldownType: null, cooldownLength: null, isUpdate: false };
+            return { status: "success", written: [], unchangedChannelIds: [] };
           },
           removeWhitelistChannel: async () => ({ status: "success", channelId: "c" }),
         },
@@ -2945,13 +2997,7 @@ describe("moderation interaction routes", () => {
               expires_at: new Date(),
             },
           }),
-          upsertWhitelistChannel: async () => ({
-            status: "success",
-            channelId: "c",
-            cooldownType: null,
-            cooldownLength: null,
-            isUpdate: false,
-          }),
+          upsertWhitelistChannels: async () => ({ status: "success", written: [], unchangedChannelIds: [] }),
           removeWhitelistChannel: async (args) => {
             removeArgs = args;
             return { status: "success", channelId: args.channelId };
@@ -3032,13 +3078,7 @@ describe("moderation interaction routes", () => {
               expires_at: new Date(),
             },
           }),
-          upsertWhitelistChannel: async () => ({
-            status: "success",
-            channelId: "c",
-            cooldownType: null,
-            cooldownLength: null,
-            isUpdate: false,
-          }),
+          upsertWhitelistChannels: async () => ({ status: "success", written: [], unchangedChannelIds: [] }),
           removeWhitelistChannel: async () => {
             removeCalled++;
             return { status: "success", channelId: "111222333444555666" };
@@ -3114,13 +3154,7 @@ describe("moderation interaction routes", () => {
               expires_at: new Date(),
             },
           }),
-          upsertWhitelistChannel: async () => ({
-            status: "success",
-            channelId: "c",
-            cooldownType: null,
-            cooldownLength: null,
-            isUpdate: false,
-          }),
+          upsertWhitelistChannels: async () => ({ status: "success", written: [], unchangedChannelIds: [] }),
           removeWhitelistChannel: async () => {
             removeCalled++;
             return { status: "success", channelId: "111222333444555666" };
@@ -3192,13 +3226,7 @@ describe("moderation interaction routes", () => {
               expires_at: new Date(),
             },
           }),
-          upsertWhitelistChannel: async () => ({
-            status: "success",
-            channelId: "c",
-            cooldownType: null,
-            cooldownLength: null,
-            isUpdate: false,
-          }),
+          upsertWhitelistChannels: async () => ({ status: "success", written: [], unchangedChannelIds: [] }),
           removeWhitelistChannel: async () => ({ status: "success", channelId: "c" }),
         },
       });
@@ -3264,7 +3292,7 @@ describe("moderation interaction routes", () => {
 
       const route = createModerationInteractionRoute({
         resolveScope: async () => createScopeData(),
-        takeChannelSelectValue: () => "111222333444555666",
+        takeChannelSelectValues: () => ["111222333444555666"],
         takeCooldownTypeSelectValue: () => undefined,
         resolveWhitelistChannelAdd: async () => ({
           guildId: "guild-1",
@@ -3290,9 +3318,9 @@ describe("moderation interaction routes", () => {
               expires_at: new Date(),
             },
           }),
-          upsertWhitelistChannel: async () => {
+          upsertWhitelistChannels: async () => {
             upsertCalled++;
-            return { status: "success", channelId: "c", cooldownType: null, cooldownLength: null, isUpdate: false };
+            return { status: "success", written: [], unchangedChannelIds: [] };
           },
           removeWhitelistChannel: async () => ({ status: "success", channelId: "c" }),
         },

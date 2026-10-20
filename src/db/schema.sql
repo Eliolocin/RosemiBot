@@ -1026,6 +1026,7 @@ CREATE TABLE IF NOT EXISTS server_memories (
   user_id INT, -- Creator of this server memory (nullable - set to NULL if user deleted)
   content TEXT NOT NULL,
   tags TEXT[] DEFAULT '{}',
+  channel_disc_ids TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[], -- Empty = active in every channel
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL,
@@ -1038,6 +1039,19 @@ SELECT add_column_if_not_exists('server_memories', 'persona_id', 'INTEGER');
 SELECT add_column_if_not_exists('server_memories', 'persona_lineage_id', 'BIGINT');
 -- Add tags column for existing databases
 SELECT add_column_if_not_exists('server_memories', 'tags', 'TEXT[]', 'ARRAY[]::TEXT[]');
+-- Add channel scope column for existing databases
+SELECT add_column_if_not_exists('server_memories', 'channel_disc_ids', 'TEXT[]', 'ARRAY[]::TEXT[]', 'NOT NULL');
+
+-- Legacy `#name` channel scopes migration 111 set aside; a row with resolved_at NULL keeps its document
+-- or server memory active in every channel until the startup backfill or an admin resolves it.
+CREATE TABLE IF NOT EXISTS legacy_channel_scope_tags (
+  source_table TEXT NOT NULL CHECK (source_table IN ('documents', 'server_memories')),
+  row_id INT NOT NULL,
+  server_id INT NOT NULL,
+  channel_tags TEXT[] NOT NULL,
+  resolved_at TIMESTAMPTZ,
+  PRIMARY KEY (source_table, row_id)
+);
 
 -- Backfill server memories to the current main persona for each server
 DO $$
@@ -2786,7 +2800,7 @@ CREATE TABLE IF NOT EXISTS server_chat_configs (
   send_message_limit               INT         NOT NULL DEFAULT 0,
   match_limit                      INT         NOT NULL DEFAULT 3,
   cascade_limit                    INT         NOT NULL DEFAULT 3,
-  timezone_offset                  INT         NOT NULL DEFAULT 0,
+  timezone_offset                  REAL        NOT NULL DEFAULT 0,
   self_debug_enabled               BOOLEAN     NOT NULL DEFAULT false,
   model_randomizer_enabled         BOOLEAN     NOT NULL DEFAULT false,
   system_prompt                    TEXT,
@@ -3173,7 +3187,7 @@ CREATE TABLE IF NOT EXISTS user_personalization_configs (
   personal_dtm                       TEXT    NOT NULL DEFAULT 'follow',
   personal_deliberate_tool_mode      TEXT    NOT NULL DEFAULT 'follow',
   personal_server_fallback_enabled   BOOLEAN NOT NULL DEFAULT true,
-  timezone_offset                    SMALLINT CHECK (timezone_offset IS NULL OR timezone_offset BETWEEN -12 AND 14),
+  timezone_offset                    REAL    CHECK (timezone_offset IS NULL OR (timezone_offset BETWEEN -12 AND 14 AND timezone_offset * 4 = round(timezone_offset * 4))),
   prefix_override                    TEXT,
   suffix_override                    TEXT,
   gender_identity                    TEXT,

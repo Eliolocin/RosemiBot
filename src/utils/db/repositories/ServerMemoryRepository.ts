@@ -32,6 +32,37 @@ type ServerMemoryExportShape = {
   memories: Array<{ content: string; tags: string[] }>;
 };
 
+type LegacyChannelScopeSource = "documents" | "server_memories";
+
+export type PendingLegacyChannelScope = {
+  source_table: LegacyChannelScopeSource;
+  row_id: number;
+  server_id: number;
+  server_disc_id: string;
+  channel_tags: string[];
+};
+
+type DocumentListDbRow = {
+  document_id: number;
+  document_name: string;
+  first_chunk: string | null;
+  channel_disc_ids: string[];
+  channel_scope_pending: boolean;
+};
+
+type DocumentMeta = { document_name: string; channel_disc_ids: string[]; channel_scope_pending: boolean };
+
+/**
+ * True while a document's legacy `#name` scope is unresolved; readers keep such a document out of
+ * every channel, as an unmatched name filter always did.
+ */
+function documentScopePending() {
+  return sql`EXISTS (
+    SELECT 1 FROM legacy_channel_scope_tags l
+    WHERE l.source_table = 'documents' AND l.row_id = d.document_id AND l.resolved_at IS NULL
+  )`;
+}
+
 class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
   /**
    * Returns the count of documents in the documents table for a server.
@@ -61,7 +92,13 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
     try {
       if (userId !== undefined) {
         return await sql<ServerMemoryRow[]>`
-          SELECT server_memory_id, server_id, persona_id, persona_lineage_id, user_id, content, tags, created_at, updated_at
+          SELECT server_memory_id, server_id, persona_id, persona_lineage_id, user_id, content, tags, channel_disc_ids,
+                 EXISTS (
+                   SELECT 1 FROM legacy_channel_scope_tags l
+                   WHERE l.source_table = 'server_memories'
+                     AND l.row_id = server_memories.server_memory_id
+                     AND l.resolved_at IS NULL
+                 ) AS channel_scope_pending, created_at, updated_at
           FROM server_memories
           WHERE server_id = ${serverId}
             AND persona_lineage_id = ${personaLineageId}
@@ -70,7 +107,13 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
         `;
       }
       return await sql<ServerMemoryRow[]>`
-        SELECT server_memory_id, server_id, persona_id, persona_lineage_id, user_id, content, tags, created_at, updated_at
+        SELECT server_memory_id, server_id, persona_id, persona_lineage_id, user_id, content, tags, channel_disc_ids,
+               EXISTS (
+                   SELECT 1 FROM legacy_channel_scope_tags l
+                   WHERE l.source_table = 'server_memories'
+                     AND l.row_id = server_memories.server_memory_id
+                     AND l.resolved_at IS NULL
+                 ) AS channel_scope_pending, created_at, updated_at
         FROM server_memories
         WHERE server_id = ${serverId}
           AND persona_lineage_id = ${personaLineageId}
@@ -168,18 +211,27 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
   }
 
   /**
-   * Returns memory content and tags for in-character history extraction context.
-   * The caller owns any channel-tag filtering because it has the import channel set.
+   * Returns memory content, tags, and channel scope for in-character history extraction context.
+   * The caller owns any channel filtering because it has the import channel set.
    *
-   * @returns Newest-first rows containing content and optional tags
+   * @returns Newest-first rows
    */
   async loadServerMemoryContentTags(
     serverId: number,
     personaLineageId: number,
-  ): Promise<Array<{ content: string; tags: string[] | null }>> {
+  ): Promise<
+    Array<{ content: string; tags: string[] | null; channel_disc_ids: string[]; channel_scope_pending: boolean }>
+  > {
     try {
-      return await sql<Array<{ content: string; tags: string[] | null }>>`
-        SELECT content, tags
+      return await sql<
+        Array<{ content: string; tags: string[] | null; channel_disc_ids: string[]; channel_scope_pending: boolean }>
+      >`
+        SELECT content, tags, channel_disc_ids, EXISTS (
+                   SELECT 1 FROM legacy_channel_scope_tags l
+                   WHERE l.source_table = 'server_memories'
+                     AND l.row_id = server_memories.server_memory_id
+                     AND l.resolved_at IS NULL
+                 ) AS channel_scope_pending
         FROM server_memories
         WHERE server_id = ${serverId}
           AND persona_lineage_id = ${personaLineageId}
@@ -308,15 +360,26 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
     }
   }
 
-  async edit(serverMemoryId: number, content: string, tags: string[] = []): Promise<boolean> {
+  /** Saving the form is the admin's channel choice, so it also settles a pending legacy scope. */
+  async edit(serverMemoryId: number, content: string, tags: string[], channelDiscIds: string[]): Promise<boolean> {
     try {
-      const [updated] = await sql`
-        UPDATE server_memories
-        SET content = ${content}, tags = ${sql.array(tags, "TEXT")}, updated_at = NOW()
-        WHERE server_memory_id = ${serverMemoryId}
-        RETURNING server_memory_id
-      `;
-      return !!updated;
+      return await sql.transaction(async (tx) => {
+        const [updated] = await tx`
+          UPDATE server_memories
+          SET content = ${content},
+              tags = ${sql.array(tags, "TEXT")},
+              channel_disc_ids = ${sql.array(channelDiscIds, "TEXT")},
+              updated_at = NOW()
+          WHERE server_memory_id = ${serverMemoryId}
+          RETURNING server_memory_id
+        `;
+        if (!updated) return false;
+        await tx`
+          UPDATE legacy_channel_scope_tags SET resolved_at = NOW()
+          WHERE source_table = 'server_memories' AND row_id = ${serverMemoryId} AND resolved_at IS NULL
+        `;
+        return true;
+      });
     } catch (error) {
       log.error(`Error editing server memory ${serverMemoryId}:`, error);
       return false;
@@ -339,12 +402,13 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
 
   /**
    * Batch-inserts multiple server memories in a single transaction.
-   * All rows share the same serverId, personaId, personaLineageId, userId, and tags.
+   * All rows share the same serverId, personaId, personaLineageId, userId, tags, and channel scope.
    * Rolls back all inserts if any row fails (atomicity guarantee).
    * Cache invalidation is the caller's responsibility after a successful return.
    *
    * @param personaLineageId - Persona lineage scope for all memories
    * @param tags             - Optional classification tags applied to all memories
+   * @param channelDiscIds   - Channels the memories are limited to; empty means every channel
    * @returns true on full success, false if the transaction was rolled back
    */
   async addBatch(
@@ -354,6 +418,7 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
     taughtByUserId: number,
     memories: string[],
     tags: string[] = [],
+    channelDiscIds: string[] = [],
   ): Promise<boolean> {
     if (memories.length === 0) return true;
 
@@ -361,8 +426,11 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
       await sql.transaction(async (tx) => {
         for (const memory of memories) {
           await tx`
-            INSERT INTO server_memories (server_id, persona_id, persona_lineage_id, user_id, content, tags)
-            VALUES (${serverId}, ${personaId}, ${personaLineageId}, ${taughtByUserId}, ${memory}, ${sql.array(tags, "TEXT")})
+            INSERT INTO server_memories (server_id, persona_id, persona_lineage_id, user_id, content, tags, channel_disc_ids)
+            VALUES (
+              ${serverId}, ${personaId}, ${personaLineageId}, ${taughtByUserId}, ${memory},
+              ${sql.array(tags, "TEXT")}, ${sql.array(channelDiscIds, "TEXT")}
+            )
           `;
         }
       });
@@ -393,6 +461,7 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
    * Invalidates the tomori state cache so the next context build reads the new memory.
    *
    * @param serverDiscId    - Discord server snowflake (required for cache invalidation)
+   * @param channelDiscIds  - Channels the memory is limited to; empty means every channel
    * @returns Inserted ServerMemoryRow or null on failure
    */
   async add(
@@ -403,6 +472,7 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
     content: string,
     tags: string[] = [],
     serverDiscId?: string,
+    channelDiscIds: string[] = [],
   ): Promise<ServerMemoryRow | null> {
     log.info(
       `Attempting to learn a server memory for server ID ${serverId}, tomori ID ${personaId}, lineage ${personaLineageId} (triggered by user ID ${taughtByUserId}): "${content.substring(0, 50)}..."`,
@@ -422,7 +492,15 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
       return null;
     }
 
-    const row = await this.addServerMemoryRow(serverId, personaId, personaLineageId, taughtByUserId, content, tags);
+    const row = await this.addServerMemoryRow(
+      serverId,
+      personaId,
+      personaLineageId,
+      taughtByUserId,
+      content,
+      tags,
+      channelDiscIds,
+    );
     if (row && serverDiscId) invalidateTomoriStateCache(serverDiscId);
     return row;
   }
@@ -539,13 +617,11 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
    *
    * @param personaId - Null = server-wide (shared) scope; non-null = per-persona scope
    */
-  async loadDocuments(
-    serverId: number,
-    personaId: number | null,
-  ): Promise<Array<{ document_id: number; document_name: string; first_chunk: string | null }>> {
+  async loadDocuments(serverId: number, personaId: number | null): Promise<DocumentListDbRow[]> {
     if (personaId === null) {
-      return await sql<Array<{ document_id: number; document_name: string; first_chunk: string | null }>>`
-        SELECT d.document_id, d.document_name, dc.content AS first_chunk
+      return await sql<DocumentListDbRow[]>`
+        SELECT d.document_id, d.document_name, dc.content AS first_chunk, d.channel_disc_ids,
+               ${documentScopePending()} AS channel_scope_pending
         FROM documents d
         LEFT JOIN document_chunks dc
           ON dc.document_id = d.document_id
@@ -555,8 +631,9 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
         ORDER BY d.created_at DESC
       `;
     }
-    return await sql<Array<{ document_id: number; document_name: string; first_chunk: string | null }>>`
-      SELECT d.document_id, d.document_name, dc.content AS first_chunk
+    return await sql<DocumentListDbRow[]>`
+      SELECT d.document_id, d.document_name, dc.content AS first_chunk, d.channel_disc_ids,
+             ${documentScopePending()} AS channel_scope_pending
       FROM documents d
       LEFT JOIN document_chunks dc
         ON dc.document_id = d.document_id
@@ -682,69 +759,141 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
   }
 
   /**
-   * Loads document metadata needed by the view/edit flow (name + channel_tags).
+   * Loads document metadata needed by the view/edit flow (name + channel scope).
    * Returns null if the document doesn't exist or belongs to a different server.
    */
-  async loadDocumentMeta(
-    documentId: number,
-    serverId: number,
-    personaId: number | null,
-  ): Promise<{ document_name: string; channel_tags: string[] } | null> {
+  async loadDocumentMeta(documentId: number, serverId: number, personaId: number | null): Promise<DocumentMeta | null> {
     const [row] =
       personaId === null
-        ? await sql<Array<{ document_name: string; channel_tags: string[] | null }>>`
-            SELECT document_name, channel_tags
-            FROM documents
-            WHERE document_id = ${documentId}
-              AND server_id = ${serverId}
-              AND persona_id IS NULL
+        ? await sql<DocumentMeta[]>`
+            SELECT d.document_name, d.channel_disc_ids, ${documentScopePending()} AS channel_scope_pending
+            FROM documents d
+            WHERE d.document_id = ${documentId}
+              AND d.server_id = ${serverId}
+              AND d.persona_id IS NULL
             LIMIT 1
           `
-        : await sql<Array<{ document_name: string; channel_tags: string[] | null }>>`
-            SELECT document_name, channel_tags
-            FROM documents
-            WHERE document_id = ${documentId}
-              AND server_id = ${serverId}
-              AND persona_id = ${personaId}
+        : await sql<DocumentMeta[]>`
+            SELECT d.document_name, d.channel_disc_ids, ${documentScopePending()} AS channel_scope_pending
+            FROM documents d
+            WHERE d.document_id = ${documentId}
+              AND d.server_id = ${serverId}
+              AND d.persona_id = ${personaId}
             LIMIT 1
           `;
-    if (!row) return null;
-    return { document_name: row.document_name, channel_tags: row.channel_tags ?? [] };
+    return row ?? null;
   }
 
   /**
-   * Replaces a document's channel_tags array. Empty array = available in all channels.
+   * Replaces a document's channel scope and settles any pending legacy scope, because saving the
+   * form is the admin's channel choice. Empty array = available in all channels.
    */
-  async updateDocumentChannelTags(
+  async updateDocumentChannelScope(
     documentId: number,
     serverId: number,
-    channelTags: string[],
+    channelDiscIds: string[],
     personaId: number | null,
   ): Promise<boolean> {
     try {
-      const [updated] =
-        personaId === null
-          ? await sql`
-              UPDATE documents
-              SET channel_tags = ${sql.array(channelTags, "TEXT")}
-              WHERE document_id = ${documentId}
-                AND server_id = ${serverId}
-                AND persona_id IS NULL
-              RETURNING document_id
-            `
-          : await sql`
-              UPDATE documents
-              SET channel_tags = ${sql.array(channelTags, "TEXT")}
-              WHERE document_id = ${documentId}
-                AND server_id = ${serverId}
-                AND persona_id = ${personaId}
-              RETURNING document_id
-            `;
-      return !!updated;
+      return await sql.transaction(async (tx) => {
+        const [updated] =
+          personaId === null
+            ? await tx`
+                UPDATE documents
+                SET channel_disc_ids = ${sql.array(channelDiscIds, "TEXT")}
+                WHERE document_id = ${documentId}
+                  AND server_id = ${serverId}
+                  AND persona_id IS NULL
+                RETURNING document_id
+              `
+            : await tx`
+                UPDATE documents
+                SET channel_disc_ids = ${sql.array(channelDiscIds, "TEXT")}
+                WHERE document_id = ${documentId}
+                  AND server_id = ${serverId}
+                  AND persona_id = ${personaId}
+                RETURNING document_id
+              `;
+        if (!updated) return false;
+        await tx`
+          UPDATE legacy_channel_scope_tags SET resolved_at = NOW()
+          WHERE source_table = 'documents' AND row_id = ${documentId} AND resolved_at IS NULL
+        `;
+        return true;
+      });
     } catch (error) {
-      log.error(`Error updating channel_tags for document ${documentId}:`, error);
+      log.error(`Error updating channel scope for document ${documentId}:`, error);
       return false;
     }
+  }
+
+  /**
+   * Loads the `#name` scopes migration 111 moved aside that nothing has resolved yet.
+   *
+   * @param serverDiscId - Limits the load to one server; omitted, every server is loaded
+   */
+  async loadPendingLegacyChannelScopes(serverDiscId?: string): Promise<PendingLegacyChannelScope[]> {
+    const serverFilter = serverDiscId === undefined ? sql`` : sql`AND s.server_disc_id = ${serverDiscId}`;
+    return await sql<PendingLegacyChannelScope[]>`
+      SELECT l.source_table, l.row_id, l.server_id, s.server_disc_id, l.channel_tags
+      FROM legacy_channel_scope_tags l
+      JOIN servers s ON s.server_id = l.server_id
+      WHERE l.resolved_at IS NULL
+        ${serverFilter}
+      ORDER BY l.server_id, l.source_table, l.row_id
+    `;
+  }
+
+  /**
+   * Drops holding rows whose memory or document no longer exists, so a deleted item cannot stay in
+   * the backfill's pending set. Runs once per boot.
+   */
+  async pruneOrphanedLegacyChannelScopes(): Promise<void> {
+    await sql`
+      DELETE FROM legacy_channel_scope_tags l
+      WHERE l.source_table = 'server_memories'
+        AND NOT EXISTS (SELECT 1 FROM server_memories sm WHERE sm.server_memory_id = l.row_id)
+    `;
+    const [documentsTable] = await sql<Array<{ name: string | null }>>`
+      SELECT to_regclass('public.documents')::text AS name
+    `;
+    if (!documentsTable?.name) return;
+    await sql`
+      DELETE FROM legacy_channel_scope_tags l
+      WHERE l.source_table = 'documents'
+        AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.document_id = l.row_id)
+    `;
+  }
+
+  /**
+   * Writes resolved channel scopes for one server and marks their legacy rows resolved, in one
+   * transaction. A row another instance already resolved is left untouched.
+   */
+  async applyLegacyChannelScopes(
+    serverId: number,
+    resolutions: ReadonlyArray<{ sourceTable: LegacyChannelScopeSource; rowId: number; channelDiscIds: string[] }>,
+  ): Promise<void> {
+    await sql.transaction(async (tx) => {
+      for (const { sourceTable, rowId, channelDiscIds } of resolutions) {
+        const [claimed] = await tx`
+          UPDATE legacy_channel_scope_tags SET resolved_at = NOW()
+          WHERE source_table = ${sourceTable} AND row_id = ${rowId} AND resolved_at IS NULL
+          RETURNING row_id
+        `;
+        if (!claimed) continue;
+        if (sourceTable === "documents") {
+          await tx`
+            UPDATE documents SET channel_disc_ids = ${sql.array(channelDiscIds, "TEXT")}
+            WHERE document_id = ${rowId} AND server_id = ${serverId}
+          `;
+        } else {
+          await tx`
+            UPDATE server_memories SET channel_disc_ids = ${sql.array(channelDiscIds, "TEXT")}
+            WHERE server_memory_id = ${rowId} AND server_id = ${serverId}
+          `;
+        }
+      }
+    });
   }
 
   async removeDocument(documentId: number, serverId: number, personaId: number | null): Promise<string | null> {
@@ -915,11 +1064,15 @@ class ServerMemoryRepository implements IRepository<ServerMemoryExportShape> {
     taughtByUserId: number,
     content: string,
     tags: string[],
+    channelDiscIds: string[],
   ): Promise<ServerMemoryRow | null> {
     try {
       const [newMemory] = await sql`
-        INSERT INTO server_memories (server_id, persona_id, persona_lineage_id, user_id, content, tags)
-        VALUES (${serverId}, ${personaId}, ${personaLineageId}, ${taughtByUserId}, ${content}, ${sql.array(tags, "TEXT")})
+        INSERT INTO server_memories (server_id, persona_id, persona_lineage_id, user_id, content, tags, channel_disc_ids)
+        VALUES (
+          ${serverId}, ${personaId}, ${personaLineageId}, ${taughtByUserId}, ${content},
+          ${sql.array(tags, "TEXT")}, ${sql.array(channelDiscIds, "TEXT")}
+        )
         RETURNING *
       `;
 

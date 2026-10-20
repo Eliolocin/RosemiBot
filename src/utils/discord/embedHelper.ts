@@ -248,16 +248,8 @@ export async function sendStandardEmbed(
   webhookContext?: WebhookEmbedContext,
 ): Promise<void> {
   const embed = createStandardEmbed(locale, options);
-  const tipText = options.tipKeys?.length ? createTipText(locale, options.tipKeys, options.tipVars) : null;
-  const { restrictedDetail } = options;
-  const modalButtons = [
-    ...(tipText ? [{ customId: TIP_DETAILS_BUTTON_ID, label: localizer(locale, "genai.tips.button") }] : []),
-    ...(restrictedDetail
-      ? [{ customId: ERROR_DETAIL_BUTTON_ID, label: localizer(locale, "genai.error_detail.button") }]
-      : []),
-  ];
-  const disabledModalRow = modalButtons.length > 0 ? buildTextDisplayModalRow(modalButtons, true) : undefined;
-  const components = modalButtons.length > 0 ? [buildTextDisplayModalRow(modalButtons)] : [];
+  const modalButtons = prepareEmbedModalButtons(locale, options, "Error");
+  const { disabledRow: disabledModalRow, components } = modalButtons;
   let sentMessage: Message;
   let sentViaWebhook = false;
   let threadId: string | undefined;
@@ -304,30 +296,62 @@ export async function sendStandardEmbed(
     await sentMessage.edit({ embeds: [embed], components: [disabledModalRow] });
   };
 
-  if (tipText) {
-    attachTextDisplayModalCollector({
-      message: sentMessage,
-      customId: TIP_DETAILS_BUTTON_ID,
-      title: localizer(locale, "genai.tips.title"),
-      content: tipText,
-      timeoutMs: TIP_BUTTON_TIMEOUT_MS,
-      logLabel: "Error tips",
-      onExpire: disableButtons,
-    });
-  }
-  if (restrictedDetail) {
-    // Both collectors share one timeout, so only one of them disables the shared row.
-    attachTextDisplayModalCollector({
-      message: sentMessage,
-      customId: ERROR_DETAIL_BUTTON_ID,
-      title: localizer(locale, "genai.error_detail.title"),
-      content: restrictedDetail.content,
-      timeoutMs: TIP_BUTTON_TIMEOUT_MS,
-      logLabel: "Error detail",
-      access: restrictedDetail.access,
-      onExpire: tipText ? undefined : disableButtons,
-    });
-  }
+  modalButtons.attach(sentMessage, disableButtons);
+}
+
+/**
+ * Builds the tip and full-error buttons an embed offers, plus the collectors that open them once the
+ * message is sent.
+ * @param logLabel - Prefix for the collectors' failure logs.
+ */
+export function prepareEmbedModalButtons(
+  locale: string,
+  options: Pick<StandardEmbedOptions, "tipKeys" | "tipVars" | "restrictedDetail">,
+  logLabel: string,
+): {
+  components: ActionRowBuilder<ButtonBuilder>[];
+  disabledRow?: ActionRowBuilder<ButtonBuilder>;
+  attach(message: Message, disableButtons: () => Promise<void>): void;
+} {
+  const tipText = options.tipKeys?.length ? createTipText(locale, options.tipKeys, options.tipVars) : null;
+  const { restrictedDetail } = options;
+  const buttons = [
+    ...(tipText ? [{ customId: TIP_DETAILS_BUTTON_ID, label: localizer(locale, "genai.tips.button") }] : []),
+    ...(restrictedDetail
+      ? [{ customId: ERROR_DETAIL_BUTTON_ID, label: localizer(locale, "genai.error_detail.button") }]
+      : []),
+  ];
+  if (buttons.length === 0) return { components: [], attach: () => undefined };
+  return {
+    components: [buildTextDisplayModalRow(buttons)],
+    disabledRow: buildTextDisplayModalRow(buttons, true),
+    attach(message, disableButtons) {
+      if (tipText) {
+        attachTextDisplayModalCollector({
+          message,
+          customId: TIP_DETAILS_BUTTON_ID,
+          title: localizer(locale, "genai.tips.title"),
+          content: tipText,
+          timeoutMs: TIP_BUTTON_TIMEOUT_MS,
+          logLabel: `${logLabel} tips`,
+          onExpire: disableButtons,
+        });
+      }
+      if (restrictedDetail) {
+        // Both collectors share one timeout, so only one of them disables the shared row.
+        attachTextDisplayModalCollector({
+          message,
+          customId: ERROR_DETAIL_BUTTON_ID,
+          title: localizer(locale, "genai.error_detail.title"),
+          content: restrictedDetail.content,
+          timeoutMs: TIP_BUTTON_TIMEOUT_MS,
+          logLabel: `${logLabel} detail`,
+          access: restrictedDetail.access,
+          onExpire: tipText ? undefined : disableButtons,
+        });
+      }
+    },
+  };
 }
 
 const TRANSLATION_TIMEOUT = 90000;

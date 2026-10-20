@@ -234,6 +234,8 @@ export interface ChatTurn {
 
 export interface ChatTurnContext {
   responseReview?: import("@/utils/chat/responseReview").ResponseReviewState;
+  /** Successful tool calls by request identity, kept across key rotation and model fallback. */
+  completedToolCalls?: Map<string, ToolHistoryEntry>;
   turn: ChatTurn;
   client: Client;
   message: Message;

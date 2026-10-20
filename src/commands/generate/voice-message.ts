@@ -93,6 +93,7 @@ import { CooldownType, type TomoriState, type UserRow } from "@/types/db/schema"
 import type { WhitelistCheckResult } from "@/types/misc/channelWhitelist";
 import type { PersonalSpotlightStatus } from "@/utils/db/repositories/UserRepository";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import { buildRestrictedErrorDetail } from "@/utils/discord/stream/errorUi";
 
 const BACKEND_LABEL_KEYS: Record<VoiceBackendKey, string> = {
   elevenlabs: "commands.generate.voice-message.backend_elevenlabs",
@@ -777,6 +778,14 @@ export async function execute(
             descriptionKey: "commands.generate.voice-message.synthesis_failed_description",
             descriptionVars: { error: synthesisResult.details ?? "unknown error" },
             color: ColorCode.ERROR,
+            ...(synthesisResult.providerDetail
+              ? {
+                  restrictedDetail: buildRestrictedErrorDetail(synthesisResult.providerDetail, {
+                    textCredentialSource: synthesisResult.attempts?.at(-1)?.owner.kind ?? "server",
+                    triggererDiscId: modalInteraction.user.id,
+                  }),
+                }
+              : {}),
           },
     );
     return;

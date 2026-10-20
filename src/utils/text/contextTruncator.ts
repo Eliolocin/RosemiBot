@@ -48,14 +48,17 @@ type TruncationResult = {
  * @param contextItems - Full list of structured context items to truncate
  * @param contextLength - Total context window size (input + output tokens)
  * @param maxCompletionTokens - Maximum output tokens reserved for the model's reply
+ * @param reservedTailItems - Items the caller appends after truncation, which must fit the same budget
  * @returns TruncationResult containing the truncated list and drop counts
  */
 export function truncateDialogueHistory(
   contextItems: StructuredContextItem[],
   contextLength: number,
   maxCompletionTokens: number,
+  reservedTailItems: StructuredContextItem[] = [],
 ): TruncationResult {
-  const safeInputBudget = computeSafeInputBudget(contextLength, maxCompletionTokens);
+  const safeInputBudget =
+    computeSafeInputBudget(contextLength, maxCompletionTokens) - estimateInputTokens(reservedTailItems);
 
   const items = [...contextItems];
   let historyPairsDropped = 0;

@@ -7,7 +7,7 @@ export default {
     },
     drafting: {
       import_unavailable:
-        "Una selección de Revisión de respuestas no está disponible en este espacio de trabajo. Bórrala en la exportación de origen o registra un modelo local o verificador elegible antes de importar.",
+        "Una selección de Revisión de respuestas no está disponible aquí. Bórrala en la exportación de origen o registra un modelo local o verificador elegible antes de importar.",
       title: "Revisión de respuestas",
       description: "Revisa mis borradores antes de enviar respuestas o usar herramientas.",
       off: "Desactivado: Envío respuestas y uso herramientas sin pasar por la Revisión de respuestas.",
@@ -544,7 +544,7 @@ export default {
       fetch_limit_no_changes_detail: `El límite de obtención de mensajes ya es {value}.`,
       fetch_limit_updated_heading: `Límite de Obtención Actualizado`,
       fetch_limit_updated_detail: `El límite de obtención de mensajes ahora es {value}.`,
-      timezone_invalid_detail: `La zona horaria debe estar entre {min} y {max}.`,
+      timezone_invalid_detail: `La zona horaria debe estar entre {min} y {max} horas, en horas enteras, medias horas o cuartos de hora como 9, 5:30 o 5.75.`,
       timezone_no_changes_heading: `Zona Horaria Sin Cambios`,
       timezone_no_changes_detail: `La zona horaria ya es {value}.`,
       timezone_updated_heading: `Zona Horaria Actualizada`,
@@ -576,7 +576,8 @@ export default {
       page_pending: `Esta página aún no está disponible.`,
       page_read_only: `Se necesita Gestionar servidor para cambiar esto.`,
       unavailable: `No se pudo cargar la configuración. Reintenta para volver a intentarlo.`,
-      not_setup: `Este espacio de trabajo aún no está configurado. Ejecuta /setup primero.`,
+      not_setup: `Este servidor aún no está configurado. Ejecuta /setup primero.`,
+      not_setup_dm: `Este mensaje directo aún no está configurado. Ejecuta /setup primero.`,
       no_personas: `Aún no hay personas configuradas aquí.`,
       retry: `Reintentar`,
       cancel_button: `Cancelar`,

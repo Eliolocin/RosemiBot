@@ -3,14 +3,13 @@
  * Handles UTC offset-based timezone conversions for TomoriBot
  */
 
+import { UTC_OFFSET_MAX, UTC_OFFSET_MIN, UTC_OFFSET_STEP_HOURS } from "@/constants/utcOffset";
 import { resolveSupportedLocale } from "@/utils/text/localizer";
 
-/**
- * Valid UTC offset bounds (UTC-12 through UTC+14, matching real-world timezones
- * and the /server timezone and /personal config command ranges)
- */
-export const UTC_OFFSET_MIN = -12;
-export const UTC_OFFSET_MAX = 14;
+const UTC_OFFSET_PREFIX_PATTERN = /^(?:utc|gmt)\s*/i;
+const UTC_OFFSET_DECIMAL_PATTERN = /^[+-]?\d{1,2}(?:\.\d+)?$/;
+/** Sign, hours, then minutes, as in "+5:30" or "-3:30". */
+const UTC_OFFSET_CLOCK_PATTERN = /^([+-]?)(\d{1,2}):([0-5]\d)$/;
 
 const MONTH_NAMES = [
   "January",
@@ -32,43 +31,94 @@ const MILLISECONDS_PER_DAY = 86_400_000;
 
 /**
  * Validates that a value is a usable UTC offset in hours
- * @param value - The value to validate (accepts fractional offsets like 5.5 for UTC+5:30)
- * @returns True if the value is a finite number within [UTC_OFFSET_MIN, UTC_OFFSET_MAX]
+ * @param value - The value to validate (accepts quarter-hour offsets like 5.5 for UTC+5:30)
+ * @returns True if the value is a quarter-hour multiple within [UTC_OFFSET_MIN, UTC_OFFSET_MAX]
  *
  * @example
  * ```ts
  * isValidUtcOffset(8)     // true
- * isValidUtcOffset(5.5)   // true (UTC+5:30)
+ * isValidUtcOffset(5.75)  // true (UTC+5:45)
+ * isValidUtcOffset(5.3)   // false (not on a quarter hour)
  * isValidUtcOffset(20)    // false (out of range)
  * isValidUtcOffset("8")   // false (not a number)
  * ```
  */
 export function isValidUtcOffset(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= UTC_OFFSET_MIN && value <= UTC_OFFSET_MAX;
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value / UTC_OFFSET_STEP_HOURS) &&
+    value >= UTC_OFFSET_MIN &&
+    value <= UTC_OFFSET_MAX
+  );
+}
+
+/**
+ * Parses a typed UTC offset in decimal hours ("5.5") or clock form ("+5:30"), with an optional
+ * "UTC" or "GMT" prefix so a pasted display value round-trips.
+ * @returns The offset in hours, or null when the text is not a valid offset
+ *
+ * @example
+ * ```ts
+ * parseUtcOffsetInput("5.5")       // 5.5
+ * parseUtcOffsetInput("UTC+5:45")  // 5.75
+ * parseUtcOffsetInput("-3:30")     // -3.5
+ * parseUtcOffsetInput("5:20")      // null (not on a quarter hour)
+ * ```
+ */
+export function parseUtcOffsetInput(raw: string): number | null {
+  const text = raw.trim().replace(UTC_OFFSET_PREFIX_PATTERN, "").replaceAll(" ", "");
+  let offset: number | null = null;
+
+  if (UTC_OFFSET_DECIMAL_PATTERN.test(text)) {
+    offset = Number(text);
+  } else {
+    const clock = text.match(UTC_OFFSET_CLOCK_PATTERN);
+    if (clock) {
+      const [, sign, hours, minutes] = clock;
+      offset = (sign === "-" ? -1 : 1) * (Number(hours) + Number(minutes) / 60);
+    }
+  }
+
+  return isValidUtcOffset(offset) ? offset : null;
+}
+
+/** Splits an offset into its sign and whole hours/minutes so formatters never print "5.5". */
+function splitUtcOffset(offset: number): { sign: "+" | "-"; hours: number; minutes: number } {
+  const totalMinutes = Math.round(Math.abs(offset) * 60);
+  return { sign: offset < 0 ? "-" : "+", hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 };
 }
 
 /**
  * Formats a UTC offset number into a display string
- * @param offset - The UTC offset in hours (e.g., 8, -5, 0)
- * @returns Formatted string (e.g., "UTC+8", "UTC-5", "UTC+0")
+ * @param offset - The UTC offset in hours (e.g., 8, -5, 5.5)
  *
  * @example
  * ```ts
- * formatUTCOffset(8)   // "UTC+8"
- * formatUTCOffset(-5)  // "UTC-5"
- * formatUTCOffset(0)   // "UTC+0"
+ * formatUTCOffset(8)     // "UTC+8"
+ * formatUTCOffset(-5)    // "UTC-5"
+ * formatUTCOffset(5.5)   // "UTC+5:30"
+ * formatUTCOffset(0)     // "UTC+0"
  * ```
  */
 export function formatUTCOffset(offset: number): string {
-  if (offset === 0) {
-    return "UTC+0";
-  }
+  return `UTC${formatUtcOffsetInput(offset, true)}`;
+}
 
-  if (offset > 0) {
-    return `UTC+${offset}`;
-  }
-
-  return `UTC${offset}`;
+/**
+ * Formats an offset as a modal pre-fill that {@link parseUtcOffsetInput} reads back unchanged.
+ * @param forceSign - Prefix "+" on non-negative offsets, as display labels do
+ *
+ * @example
+ * ```ts
+ * formatUtcOffsetInput(8)     // "8"
+ * formatUtcOffsetInput(-3.5)  // "-3:30"
+ * ```
+ */
+export function formatUtcOffsetInput(offset: number, forceSign = false): string {
+  const { sign, hours, minutes } = splitUtcOffset(offset);
+  const prefix = sign === "-" ? "-" : forceSign ? "+" : "";
+  const minuteSuffix = minutes === 0 ? "" : `:${String(minutes).padStart(2, "0")}`;
+  return `${prefix}${hours}${minuteSuffix}`;
 }
 
 /**

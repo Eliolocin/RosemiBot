@@ -12,7 +12,7 @@ import { log } from "@/utils/misc/logger";
 import { ResponseSizeError, readBoundedResponse } from "@/utils/security/boundedResponse";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
 import { getSearchNoticeTitleVars } from "./categoryMetadata";
-import type { SearchCategory, WebSearchEngine } from "./types";
+import type { SearchCategory, WebSearchEngine, WebSearchEngineFailure } from "./types";
 
 const DDG_HTML_ENDPOINT = "https://html.duckduckgo.com/html/";
 const REQUEST_TIMEOUT_MS = Math.max(1000, Number.parseInt(process.env.WEB_SEARCH_TIMEOUT_MS ?? "5000", 10) || 5000);
@@ -295,6 +295,7 @@ export class DuckDuckGoEngine implements WebSearchEngine {
     return {
       success: false,
       error: `DuckDuckGo search failed: ${failure} (HTTP ${status})`,
+      data: { failure, status } satisfies WebSearchEngineFailure,
     };
   }
 }

@@ -87,12 +87,10 @@ function createDatabaseClient(): SQL {
     });
   }
 
+  const poolOptions = resolveProductionPoolOptions();
+
   // Production: verified TLS for TCP connections; no TLS for unix sockets (Cloud SQL Auth Proxy)
   if (isProduction) {
-    // Connection-pool hygiene applied to every production connection so a stale
-    // pooled socket can't black-hole a subsequent query (see helper docs).
-    const poolOptions = resolveProductionPoolOptions();
-
     // Unix socket path (e.g. /cloudsql/<connection-name>): Cloud SQL Auth Proxy handles TLS
     // internally; the client connects via a local socket and must not add a second TLS layer.
     if (host.startsWith("/")) {
@@ -128,6 +126,7 @@ function createDatabaseClient(): SQL {
     username: user,
     password: password,
     database: database,
+    ...poolOptions,
   });
 }
 

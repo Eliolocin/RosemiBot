@@ -1,7 +1,7 @@
 export default {
   server: {
     timezone: {
-      value_description: `UTC 位移時數（預設：0）。範例：8、-5、0、9。`,
+      value_description: `UTC 位移時數（預設：0）。範例：8、-5、0、5:30。`,
     },
     stm: {
       parameters: {

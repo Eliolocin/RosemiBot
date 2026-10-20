@@ -707,11 +707,8 @@ export async function startDiscordTypingKeepalive(
   stopDiscordTypingKeepalive(channel.id, lockEntry, "restart");
   await refreshDiscordTypingIndicator(channel, "lock_scope_start");
   lockEntry.typingKeepaliveTimer = setInterval(() => {
-    if (
-      !lockEntry.isLocked ||
-      lockEntry.currentMessageId !== messageId ||
-      StreamOrchestrator.hasStopRequest(channel.id)
-    ) {
+    // Not gated on stop requests: internal and follow-up stops are cleared while the turn keeps the lock.
+    if (!lockEntry.isLocked || lockEntry.currentMessageId !== messageId) {
       stopDiscordTypingKeepalive(channel.id, lockEntry, "lock_scope_end");
       return;
     }

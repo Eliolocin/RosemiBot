@@ -33,6 +33,7 @@ function makeContext(send: ReturnType<typeof mock>, suppressUserErrors: boolean)
     client: {} as Client,
     tomoriState: {
       server_id: 1,
+      llm: { llm_provider: "fake" },
       persona_nickname: "Tomori",
       trigger_words: [],
       config: {},

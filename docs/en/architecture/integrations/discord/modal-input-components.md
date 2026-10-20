@@ -14,12 +14,13 @@ TomoriBot handles these components through raw REST transmission and WebSocket i
 - **Raw REST transmission:** `showRoutedRawModal` in `src/utils/discord/ui/interactionCore.ts` sends raw JSON payloads to Discord's interaction callback REST endpoint (`InteractionResponseType.Modal`, type 9). It first passes the payload through `clampRawModalText`, which truncates titles, labels, descriptions, placeholders, and option text to their caps, because Discord rejects the whole modal when one translated string is too long. It marks the interaction in the `rawModalAcknowledged` `WeakMap` so internal flow logic recognizes that the interaction has been answered, even though discord.js properties (`replied`, `deferred`) remain false.
 - **WebSocket packet interception:** `setupWebSocketInterception` in `src/utils/discord/ui/interactionCore.ts` hooks into the Discord client WebSocket packet handler (`client.ws.handlePacket`). When an `INTERACTION_CREATE` gateway packet arrives with type 5 (Modal Submit) containing Type 18 Label components:
   - **Structured value extraction:** The interceptor extracts submitted values from nested components into session memory maps keyed by interaction ID:
-    - `modalSelectValues`: String selects, user selects, role selects, channel selects, radio group values, and checkbox booleans.
+    - `modalSelectValues`: The first value of string, user, and role selects, plus radio group values and checkbox booleans.
+    - `modalChannelSelectValues`: Every submitted channel ID per Channel Select, recorded as `[]` when submitted empty whether or not Discord sends `values`, so an optional select left empty stays distinct from an uncaptured or already consumed entry.
     - `modalCheckboxGroupValues`: Checkbox group selection string arrays.
     - `modalFileUploadValues`: File upload attachment ID arrays.
     - `modalResolvedAttachments`: Discord API attachment objects from `packet.d.data.resolved.attachments`.
   - **Packet transformation:** `transformModalSubmissionPacket` rewrites Type 18 Label components into standard Type 1 Action Rows containing the nested inputs. This allows discord.js native modal parsing to process the submission without throwing unhandled component type errors.
-- **Consume-once value extraction:** Route handlers and modal helpers read stored values using `takeRawModalSelectValue`, `takeRawModalCheckboxGroupValues`, and `takeRawModalFileUpload`. Each call deletes the retrieved entry from memory, reclaiming memory immediately after submission.
+- **Consume-once value extraction:** Route handlers and modal helpers read stored values using `takeRawModalSelectValue`, `takeRawModalChannelSelectValues`, `takeRawModalCheckboxGroupValues`, and `takeRawModalFileUpload`. Each call deletes the retrieved entry from memory, reclaiming memory immediately after submission. `takeRawModalChannelSelectValues` returns `undefined` for a missing entry and `[]` for an empty submission; single-select readers take the first ID. In `promptWithRawModal`, a Channel Select with `maxValues` above 1 lands in `multiValues`.
 
 ## Modal limits and wire constraints
 

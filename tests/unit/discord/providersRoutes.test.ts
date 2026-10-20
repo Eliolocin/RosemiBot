@@ -5,7 +5,11 @@ import type { TomoriState } from "@/types/db/schema";
 import type { ProviderPanelEntry } from "@/types/discord/providerPanel";
 import { providerPanelOperations, type LoadedProviderPanelScope } from "@/utils/provider/providerPanelOperations";
 import { executeProvidersCommand } from "@/commands/providers";
-import { createProvidersInteractionRoute } from "@/utils/discord/interactions/providersRoutes";
+import {
+  buildInitialPersonalProvidersPanel,
+  buildInitialProvidersPanel,
+  createProvidersInteractionRoute,
+} from "@/utils/discord/interactions/providersRoutes";
 import { parseInteractionRoute } from "@/utils/discord/interactions/routeRegistry";
 import {
   buildProvidersRouteId,
@@ -2061,5 +2065,84 @@ describe("Decision registration routes", () => {
     await route.execute({} as Client, interaction as never, parsed(customId));
     expect(wrote).toBe(true);
     expect(JSON.stringify(interaction.edits)).toContain(localizedCopy("en-US", "commands.providers.decision_removed"));
+  });
+
+  it("delivers server or DM copy when initial providers panel resolution has no scope", async () => {
+    const serverInteraction = {
+      guildId: "123",
+      user: { id: "456" },
+      memberPermissions: { has: () => true },
+    } as unknown as ChatInputCommandInteraction;
+
+    const dmInteraction = {
+      guildId: null,
+      user: { id: "456" },
+      memberPermissions: { has: () => true },
+    } as unknown as ChatInputCommandInteraction;
+
+    const serverPayload = await buildInitialProvidersPanel(serverInteraction, "en-US", async () => null);
+    expect(JSON.stringify(serverPayload)).toContain(localizedCopy("en-US", "commands.providers.not_setup"));
+
+    const dmPayload = await buildInitialProvidersPanel(dmInteraction, "en-US", async () => null);
+    expect(JSON.stringify(dmPayload)).toContain(localizedCopy("en-US", "commands.providers.not_setup_dm"));
+
+    const serverPersonalPayload = await buildInitialPersonalProvidersPanel(
+      serverInteraction,
+      "en-US",
+      async () => null,
+    );
+    expect(JSON.stringify(serverPersonalPayload)).toContain(localizedCopy("en-US", "commands.providers.not_setup"));
+
+    const dmPersonalPayload = await buildInitialPersonalProvidersPanel(dmInteraction, "en-US", async () => null);
+    expect(JSON.stringify(dmPersonalPayload)).toContain(localizedCopy("en-US", "commands.providers.not_setup_dm"));
+  });
+
+  it("routes missing scope in component interactions to server or DM copy", async () => {
+    const customId = buildProvidersRouteId(PROVIDERS_ROUTE_NAMESPACE, {
+      action: "retry",
+      locale: "en-US",
+    });
+
+    const serverEdits: unknown[] = [];
+    const serverInteraction = {
+      customId,
+      guildId: "123",
+      user: { id: "456" },
+      memberPermissions: { has: () => true },
+      isStringSelectMenu: () => false,
+      isModalSubmit: () => false,
+      isButton: () => true,
+      deferUpdate: async () => {},
+      editReply: async (payload: unknown) => {
+        serverEdits.push(payload);
+      },
+    };
+
+    const serverRoute = createProvidersInteractionRoute({
+      resolveScope: async () => null,
+    });
+    await serverRoute.execute({} as Client, serverInteraction as never, parsed(customId));
+    expect(JSON.stringify(serverEdits)).toContain(localizedCopy("en-US", "commands.providers.not_setup"));
+
+    const dmEdits: unknown[] = [];
+    const dmInteraction = {
+      customId,
+      guildId: null,
+      user: { id: "456" },
+      memberPermissions: { has: () => true },
+      isStringSelectMenu: () => false,
+      isModalSubmit: () => false,
+      isButton: () => true,
+      deferUpdate: async () => {},
+      editReply: async (payload: unknown) => {
+        dmEdits.push(payload);
+      },
+    };
+
+    const dmRoute = createProvidersInteractionRoute({
+      resolveScope: async () => null,
+    });
+    await dmRoute.execute({} as Client, dmInteraction as never, parsed(customId));
+    expect(JSON.stringify(dmEdits)).toContain(localizedCopy("en-US", "commands.providers.not_setup_dm"));
   });
 });
