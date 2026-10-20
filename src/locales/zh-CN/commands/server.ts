@@ -1,7 +1,7 @@
 export default {
   server: {
     timezone: {
-      value_description: `UTC 偏移小时数（默认：0）。例如：8、-5、0、9。`,
+      value_description: `UTC 偏移小时数（默认：0）。例如：8、-5、0、5:30。`,
     },
     stm: {
       parameters: {

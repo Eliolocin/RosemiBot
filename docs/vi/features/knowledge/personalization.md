@@ -25,7 +25,7 @@ Trong `/personal config` > `Hồ sơ` > Tùy chọn chung, phần **Giới thi�
 
 TomoriBot không bao giờ suy ra trường này từ trường khác. Các trường trống sẽ bị xóa và bỏ qua khỏi ngữ cảnh được nhắc. Các trường hồ sơ thô chỉ được hiển thị với AI khi mức độ riêng tư của bạn được đặt thành `Không có`.
 
-Phần **Giao diện** cho phép bạn đặt độ lệch UTC bằng số (-12 đến +14) hoặc khớp với giá trị mặc định của máy chủ. TomoriBot chỉ lưu trữ phần bù số này, không bao giờ lưu trữ vị trí địa lý hoặc múi giờ IANA.
+Phần **Giao diện** cho phép bạn đặt độ lệch UTC bằng số (-12 đến +14) hoặc khớp với giá trị mặc định của máy chủ. Các khoảng nửa giờ và 15 phút cũng hoạt động: nhập `5:30` hoặc `5.5` cho Ấn Độ, `5:45` cho Nepal. TomoriBot chỉ lưu trữ độ lệch số này, không bao giờ lưu trữ vị trí địa lý hoặc múi giờ IANA, vì vậy bot sẽ không tự động điều chỉnh theo giờ mùa hè.
 
 ### Đặt tên kế thừa
 
