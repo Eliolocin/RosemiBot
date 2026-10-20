@@ -172,6 +172,20 @@ write_files:
         if [ -r "$f" ]; then echo $(( $(cat "$f") / 1048576 )); else echo "?"; fi
       }
 
+      # Anonymous memory plus swap, because RSS reads low exactly when pages have been swapped
+      # out, which is the growth this gate exists to catch.
+      footprint_mb() {
+        local d="/sys/fs/cgroup/system.slice/docker-$1.scope" anon="" swap=""
+        anon="$(awk '/^anon / { print $2 }' "$d/memory.stat" 2>/dev/null)" || true
+        swap="$(cat "$d/memory.swap.current" 2>/dev/null)" || true
+        if [ -z "$anon" ] || [ -z "$swap" ]; then echo "?"; return; fi
+        echo $(( (anon + swap) / 1048576 ))
+      }
+
+      # The largest day of growth measured on the 4 GiB host was about 660 MB from a cold start,
+      # so a container skipped below this still sits under its 2048 MB limit at the next run.
+      RECYCLE_FOOTPRINT_MB=1200
+
       # A deploy recreates the container, which already resets the swap depth this exists to
       # bound. Restarting a young container spends an outage and buys nothing. The co-tenants
       # above are recycled regardless, since their growth tracks host uptime rather than this
@@ -184,8 +198,17 @@ write_files:
         exit "$DEGRADED"
       fi
 
+      # Skipping a healthy container keeps long uptimes observable, which is how a leak is told
+      # apart from warmup. An unreadable footprint restarts, since the gate cannot vouch for it.
+      FOOTPRINT="$(footprint_mb "$CID")"
+      if [ "$FOOTPRINT" != "?" ] && [ "$FOOTPRINT" -lt "$RECYCLE_FOOTPRINT_MB" ]; then
+        echo "footprint $FOOTPRINT MB under $RECYCLE_FOOTPRINT_MB MB (age=$AGE seconds); skipping bot restart"
+        echo "host_swap_after=$(host_swap_mb)MB"
+        exit "$DEGRADED"
+      fi
+
       T0=$(date +%s)
-      echo "restarting: age=$AGE seconds cg_swap=$(swap_mb "$CID")MB"
+      echo "restarting: age=$AGE seconds footprint=$FOOTPRINT MB cg_swap=$(swap_mb "$CID")MB"
 
       # Docker's 10s default stop grace is short enough to SIGKILL the bot partway through
       # its own shutdown.
@@ -228,16 +251,16 @@ write_files:
     permissions: "0644"
     content: |
       [Unit]
-      Description=Recycle TomoriBot every 12 hours at its lowest-traffic pair of hours
+      Description=Check TomoriBot daily and recycle it when its memory footprint warrants
 
       [Timer]
-      # Twice daily because the host began starving roughly 18 hours after a recycle once
-      # traffic grew, so a daily cadence no longer bounds swap depth. 00:00 and 12:00 are the
-      # lowest-traffic 12-hour pair in this deployment's active_hour histogram, so the brief
-      # outage interrupts the fewest turns. Derive both from your own traffic before reusing
-      # them. The explicit UTC suffix keeps the schedule correct if the host timezone is ever
-      # changed away from Etc/UTC.
-      OnCalendar=*-*-* 00,12:00:00 UTC
+      # Daily since the 4 GiB resize left about 2 GB of host headroom; the script's footprint
+      # gate decides whether the bot actually restarts. 00:00 sits in the low half of this
+      # deployment's flat active_hour histogram and aligns each cycle with a UTC day, which the
+      # inspection runbook's per-day queries assume. Derive the hour from your own traffic before
+      # reusing it. The explicit UTC suffix keeps the schedule correct if the host timezone is
+      # ever changed away from Etc/UTC.
+      OnCalendar=*-*-* 00:00:00 UTC
       AccuracySec=1min
       # A missed run must not fire at boot: booting already produced a fresh container,
       # so catching up would restart a process that has nothing accumulated yet.

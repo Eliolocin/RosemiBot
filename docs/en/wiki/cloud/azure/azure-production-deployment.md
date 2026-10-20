@@ -686,13 +686,17 @@ cat /sys/fs/cgroup/system.slice/docker-$C.scope/memory.swap.current
 
 If that value climbs monotonically across days while resident memory stays flat, and the *daily
 minimum* climbs too, the growth is accumulation rather than load. A scheduled restart bounds it.
-`cloud-init.yaml` installs `tomoribot-restart.timer` for that, and three details matter more than the
+`cloud-init.yaml` installs `tomoribot-restart.timer` for that, and four details matter more than the
 schedule itself:
 
 - **Resolve the container by its compose label,** so renaming the compose
   project cannot silently turn the timer into a no-op.
 - **Skip a container that is already young.** A deploy recreates it and resets the same depth, so
   restarting one that started recently spends an outage for nothing.
+- **Skip a container whose footprint is healthy.** Measure anonymous memory plus swap from the
+  container's cgroup, not RSS, because RSS falls as pages are swapped out. Restarting only above a
+  threshold keeps long uptimes observable, and an unreadable footprint should restart rather than
+  skip.
 - **Use `Persistent=false`.** Catching up a missed run at boot would restart a container that booting
   had just created.
 

@@ -555,16 +555,18 @@ silently returns `null`, which looks identical to a dead agent.
 
 ### Scheduled restarts are routine
 
-`tomoribot-restart.timer` recycles the container at 00:00 and 12:00 UTC to bound that growth, so
-**a container whose uptime resets on one of those boundaries is the timer working, not an incident**.
-Check what it did with `journalctl -u tomoribot-restart.service`; it logs swap depth before and after
-each run, and it skips containers younger than six hours.
+`tomoribot-restart.timer` fires at 00:00 UTC to bound that growth, so **a container whose uptime
+resets at midnight UTC is the timer working, not an incident**. Check what it did with
+`journalctl -u tomoribot-restart.service`; it logs swap depth before and after each run. It skips
+containers younger than six hours, and it skips any container whose anonymous memory plus swap is
+under 1200 MB, logging `footprint ... skipping bot restart`. A healthy bot can therefore run for
+days, which is what lets the `cache_sizes` floor show whether growth levels off.
 
-**It also recycles searxng and the Azure Monitor agent, and those are not subject to the six-hour
-gate.** They grow with host uptime rather than container age, so a run that logs
-`skipping bot restart` has still done useful work. Expect `recycled searxng` and
-`recycled azuremonitoragent` on every firing, with `host_swap_before` / `host_swap_after` bracketing
-the whole unit.
+**It also recycles searxng and the Azure Monitor agent, and those are not subject to either gate.**
+They grow with host uptime rather than container age, so a run that logs `skipping bot restart` has
+still done useful work. Expect `recycled searxng` on every firing (plus `recycled azuremonitoragent`
+where the agent is still installed), with `host_swap_before` / `host_swap_after` bracketing the
+whole unit.
 
 The bot is deliberately restarted last, so its cold start (the most allocation-heavy moment in the
 cycle) runs with the co-tenants' memory already reclaimed.
