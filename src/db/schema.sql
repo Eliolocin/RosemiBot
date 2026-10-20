@@ -1659,6 +1659,7 @@ SELECT add_column_if_not_exists('reminders', 'self_reminder', 'BOOLEAN', 'false'
 -- Delivery retries must not replace reminder_time because recurring schedules use it as their cadence anchor.
 SELECT add_column_if_not_exists('reminders', 'next_attempt_at', 'TIMESTAMP WITH TIME ZONE');
 SELECT add_column_if_not_exists('reminders', 'delivery_retry_count', 'INTEGER', '0', 'NOT NULL');
+SELECT add_column_if_not_exists('reminders', 'failed_occurrence_count', 'INTEGER', '0', 'NOT NULL');
 DO $$
 BEGIN
     IF NOT EXISTS (

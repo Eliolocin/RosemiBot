@@ -61,6 +61,13 @@ is not missed, while failed self-tasks send no ping. One-time schedules are then
 while recurring schedules remain active for the next occurrence and can be managed with
 `/scheduled-task edit` or `/scheduled-task remove`.
 
+After three failed occurrences in a row, a recurring schedule stops retrying and goes
+straight to the warning, so a broken AI provider is not called again and again. One
+delivered occurrence returns it to normal. If the warning also cannot be posted, for
+example because TomoriBot lost access to the channel, the schedule is removed once it
+has failed at least three times over at least a day, and TomoriBot tells the target
+by DM when it can.
+
 ---
 
 For more capabilities, see [Tools & Extensions](/features/capabilities/tools-and-extensions/).
