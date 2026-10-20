@@ -19,6 +19,8 @@ import {
   extractPresetGenerationFields,
   buildToolErrorResult,
   stripAnthropicUnsupportedConstraints,
+  PRESET_ATTRIBUTE_COUNT,
+  PRESET_DIALOGUE_PAIR_COUNT,
   PRESET_SCHEMA_MISS_CODES,
   presetGenerationFailureErrorType,
   presetGenerationFailureMessage,
@@ -59,7 +61,28 @@ export async function generatePresetFromPromptOpenrouter(
   const toolContext = options.toolContext;
   const toolsEnabled = tools.length > 0 && toolContext;
 
-  const rawPresetSchema = buildPresetResponseSchema();
+  const sharedPresetSchema = buildPresetResponseSchema();
+  const rawPresetSchema = {
+    ...sharedPresetSchema,
+    additionalProperties: false,
+    properties: {
+      attribute_list: {
+        ...sharedPresetSchema.properties.attribute_list,
+        minItems: PRESET_ATTRIBUTE_COUNT,
+        maxItems: PRESET_ATTRIBUTE_COUNT,
+      },
+      sample_dialogues_in: {
+        ...sharedPresetSchema.properties.sample_dialogues_in,
+        minItems: PRESET_DIALOGUE_PAIR_COUNT,
+        maxItems: PRESET_DIALOGUE_PAIR_COUNT,
+      },
+      sample_dialogues_out: {
+        ...sharedPresetSchema.properties.sample_dialogues_out,
+        minItems: PRESET_DIALOGUE_PAIR_COUNT,
+        maxItems: PRESET_DIALOGUE_PAIR_COUNT,
+      },
+    },
+  };
   const presetSchema = options.model.startsWith("anthropic/")
     ? stripAnthropicUnsupportedConstraints(rawPresetSchema)
     : rawPresetSchema;
@@ -69,6 +92,7 @@ export async function generatePresetFromPromptOpenrouter(
     json_schema: {
       name: "preset_export_data",
       description: "Structured persona preset data",
+      strict: true,
       schema: presetSchema,
     },
   };
@@ -108,14 +132,11 @@ export async function generatePresetFromPromptOpenrouter(
       response_format: responseFormat,
       plugins: [{ id: "response-healing" }],
       stream: false,
+      provider: buildOpenrouterProviderRouting({ requiresParameterSupport: true }),
     };
 
     if (toolsEnabled) {
       body.tools = tools;
-      const providerRouting = buildOpenrouterProviderRouting({ requiresParameterSupport: true });
-      if (providerRouting) {
-        body.provider = providerRouting;
-      }
 
       // OpenRouter defaults tool_choice to automatic selection when omitted.
       // Only send it when the model explicitly advertises support.
@@ -253,7 +274,10 @@ export async function generatePresetFromPromptOpenrouter(
       log.error("OpenRouter preset generation response could not be parsed", parseError),
     );
     if (!decoded.ok) {
-      log.error(`OpenRouter preset generation rejected: ${decoded.failure.code}`);
+      log.error("OpenRouter preset generation rejected", undefined, {
+        errorType: "OpenrouterPresetValidationError",
+        metadata: { reason: decoded.failure.code, received: decoded.failure.received },
+      });
       return {
         error: PRESET_SCHEMA_MISS_CODES.includes(decoded.failure.code)
           ? presetGenerationFailureMessage(decoded.failure)

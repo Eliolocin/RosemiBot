@@ -933,13 +933,19 @@ export async function execute(
     });
 
     if (genResult.error || !genResult.preset) {
+      const invalidGeneratedData = genResult.errorType === "VALIDATION_ERROR";
       await editGenerateStatusReply(modalSubmitInteraction, {
         locale,
-        titleKey: "commands.persona.generate.generation_failed_title",
-        descriptionKey: "commands.persona.generate.generation_failed_description",
+        titleKey: invalidGeneratedData
+          ? "commands.persona.generate.validation_failed_title"
+          : "commands.persona.generate.generation_failed_title",
+        descriptionKey: invalidGeneratedData
+          ? "commands.persona.generate.validation_failed_description"
+          : "commands.persona.generate.generation_failed_description",
         descriptionVars: {
           error: genResult.error || "Unknown error",
         },
+        details: invalidGeneratedData ? genResult.error : undefined,
         color: ColorCode.ERROR,
         inputAttachment: getInputAttachment(),
       });
