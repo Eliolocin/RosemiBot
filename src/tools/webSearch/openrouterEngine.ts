@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { addFetchCapabilityReminder } from "@/tools/restAPIs/brave/braveSearchService";
 import { getSearchNoticeKey, getSearchNoticeTitleVars } from "@/tools/webSearch/categoryMetadata";
-import type { SearchCategory, WebSearchEngine } from "@/tools/webSearch/types";
+import type { SearchCategory, WebSearchEngine, WebSearchEngineFailure } from "@/tools/webSearch/types";
 import type { ToolContext, ToolResult } from "@/types/tool/interfaces";
 import { sendToolNotice } from "@/utils/discord/toolProgressNotice";
 import { log } from "@/utils/misc/logger";
@@ -137,13 +137,17 @@ export class OpenRouterEngine implements WebSearchEngine {
           status: "completed",
         },
       };
-    } catch {
-      return this.fail(signal.aborted ? "aborted" : "request_failed");
+    } catch (error) {
+      return this.fail(signal.aborted ? "aborted" : "request_failed", undefined, error);
     }
   }
 
-  private fail(failure: string, status?: number): ToolResult {
-    log.warn("OpenRouter search failed", { errorType: "OpenRouterSearchFailed", metadata: { failure, status } });
-    return { success: false, error: `OpenRouter search failed: ${failure}${status ? ` (HTTP ${status})` : ""}` };
+  private fail(failure: string, status?: number, error?: unknown): ToolResult {
+    log.warn("OpenRouter search failed", error, { errorType: "OpenRouterSearchFailed", metadata: { failure, status } });
+    return {
+      success: false,
+      error: `OpenRouter search failed: ${failure}${status ? ` (HTTP ${status})` : ""}`,
+      data: { failure, status } satisfies WebSearchEngineFailure,
+    };
   }
 }

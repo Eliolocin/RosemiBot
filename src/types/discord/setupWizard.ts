@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { customEndpointApiStyleSchema, setupCustomEndpointCapabilitySchema } from "@/types/db/schema";
+import { customEndpointApiStyleSchema, setupCustomEndpointCapabilitySchema, utcOffsetSchema } from "@/types/db/schema";
 
 export const SETUP_DRAFT_SCHEMA_VERSION = 1;
 
@@ -82,7 +82,7 @@ export const setupDraftStartingSettingsSchema = z
   .object({
     presetId: z.number().int(),
     humanizer: z.number().int().min(0).max(3),
-    timezoneOffset: z.number().int().min(-12).max(14),
+    timezoneOffset: utcOffsetSchema,
     systemPrompt: setupDraftSystemPromptSchema,
   })
   .strict();

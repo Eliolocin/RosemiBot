@@ -17,6 +17,7 @@ import { ToolRegistry } from "@/tools/toolRegistry";
 import { statRepository } from "@/utils/db/repositories";
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
 import { sendStandardEmbed } from "@/utils/discord/embedHelper";
+import { isDirectMessageChannel, resolveProviderErrorFooter } from "@/utils/discord/stream/errorUi";
 import { routeHiddenToolNotice } from "@/utils/discord/toolProgressNotice";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { providerUsesApiFamily } from "@/utils/provider/providerInfoRegistry";
@@ -521,6 +522,11 @@ export async function sendStreamTimeoutNotice(params: {
               : "genai.tips.nvidia_register_free_model",
           ]
         : undefined,
+    ...resolveProviderErrorFooter({
+      providerName: params.providerName,
+      textCredentialSource: params.textCredentialSource,
+      isDM: isDirectMessageChannel(params.channel),
+    }),
   }).catch((embedError) => {
     log.warn(
       "Failed to send SDK call timeout embed",

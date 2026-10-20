@@ -9,6 +9,8 @@ import { log } from "@/utils/misc/logger";
 import { pollForCompletion } from "@/utils/async/pollForCompletion";
 import { safeDownload } from "@/utils/security/safeDownload";
 import { PROVIDER_VIDEO_DOWNLOAD_MAX_MB } from "@/providers/utils/providerVideoDownload";
+import { ProviderVideoFilteredError } from "@/providers/utils/providerVideoErrors";
+import { reportProviderFailure } from "@/utils/provider/providerErrorMetrics";
 
 /** Polling interval for Google Veo operations (10 seconds, per Google docs) */
 const POLL_INTERVAL_MS = 10_000;
@@ -116,6 +118,22 @@ export async function generateGoogleNativeVideo(
 
   const generatedVideos = completedOp?.response?.generatedVideos;
   if (!generatedVideos || generatedVideos.length === 0) {
+    if (completedOp?.error) {
+      throw new Error(`Google video operation failed: ${JSON.stringify(completedOp.error)}`);
+    }
+    const filteredReasons = completedOp?.response?.raiMediaFilteredReasons ?? [];
+    const filteredCount = completedOp?.response?.raiMediaFilteredCount ?? 0;
+    if (filteredCount > 0 || filteredReasons.length > 0) {
+      await reportProviderFailure({
+        summary: "Google video was filtered",
+        errorType: "VideoContentFiltered",
+        error: undefined,
+        expected: true,
+        detail: filteredReasons.join("; "),
+        dimensions: { operation: "video-generation", provider: "google", model: request.model, filteredCount },
+      });
+      throw new ProviderVideoFilteredError("Google");
+    }
     log.warn(`Google video generation completed but returned no videos (model: ${request.model})`);
     return { videoData: null, mimeType: null };
   }

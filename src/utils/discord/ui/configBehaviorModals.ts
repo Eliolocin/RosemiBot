@@ -29,6 +29,7 @@ import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { ASSISTANT_PREFILL_MAX_LENGTH } from "@/utils/chat/assistantPrefill";
 import { selectablePersonas, SELECT_OPTION_LIMIT } from "@/utils/discord/ui/configChannelModals";
 import { localizer, resolveDescription } from "@/utils/text/localizer";
+import { formatUtcOffsetInput } from "@/utils/text/timezoneHelper";
 import { splitPromptIntoModalParts } from "@/utils/text/modalPromptParts";
 import { promptPartDescription, promptPartLabel } from "@/utils/discord/ui/modalPromptPartLabels";
 
@@ -806,8 +807,8 @@ export function buildBehaviorTimezoneModal(locale: string, nonce: string, curren
         "commands.server.timezone.value_description",
         TextInputStyle.Short,
         true,
-        6,
-        String(current),
+        9,
+        formatUtcOffsetInput(current),
       ),
     ],
   };

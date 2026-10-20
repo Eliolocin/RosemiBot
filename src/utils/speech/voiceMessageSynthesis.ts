@@ -35,9 +35,14 @@ import {
 } from "@/utils/speech/voiceSampleAddOperation";
 import { parseBuffer } from "music-metadata";
 import { resolveVoiceSourceCandidates, type VoiceSourcePersona } from "@/utils/speech/voiceSourceResolution";
-import { stripElevenLabsExpressionTags } from "@/utils/audio/elevenLabsShared";
+import {
+  elevenLabsFailureDetail,
+  reportElevenLabsFailure,
+  stripElevenLabsExpressionTags,
+} from "@/utils/audio/elevenLabsShared";
 import { ZodError } from "zod";
 import { ResponseSizeError } from "@/utils/security/boundedResponse";
+import { reportProviderFailure } from "@/utils/provider/providerErrorMetrics";
 
 /** Metric key recorded against the `audio_generated` stat. */
 export type VoiceBackendKey =
@@ -73,6 +78,11 @@ export interface VoiceMessageSynthesisResult {
   cleanedCaptionText?: string;
   errorKind?: VoiceSynthesisErrorKind;
   details?: string;
+  /**
+   * The provider's status and response body exactly as logged. It stays off `attempts` because the
+   * voice tool returns those to the model.
+   */
+  providerDetail?: string;
   /** The backend that produced the audio, already resolved for `audio_generated`. */
   backendKey: VoiceBackendKey;
   attempts?: VoiceSynthesisAttempt[];
@@ -120,6 +130,30 @@ export interface VoiceMessageSynthesisRequest {
   elevenLabsVoiceSettings?: Record<string, unknown>;
   /** Turn-level cancellation from /kill, forwarded to whichever backend runs. */
   abortSignal?: AbortSignal;
+}
+
+const EXPECTED_HOSTED_SPEECH_KINDS: ReadonlySet<HostedSpeechErrorKind> = new Set([
+  "cancelled",
+  "timeout",
+  "script_too_long",
+  "authentication",
+  "quota",
+]);
+
+function speechFailureOwner(
+  request: VoiceMessageSynthesisRequest,
+  owner: SpeechTargetResult["owner"],
+): { serverId: number | null; userId: number | null } {
+  return {
+    serverId: request.routing?.serverId ?? (owner.kind === "server" ? owner.ownerId : null),
+    userId: request.routing?.userId ?? (owner.kind === "personal" ? owner.ownerId : null),
+  };
+}
+
+function hostedFailureDetail(error: unknown, aborted: boolean): string | undefined {
+  if (error instanceof HostedSpeechError) return error.providerDetail;
+  if (aborted) return undefined;
+  return error instanceof Error ? error.message : String(error);
 }
 
 function failure(
@@ -240,6 +274,14 @@ async function synthesizeLocalVoiceMessage(
     ...(abortSignal ? { abortSignal } : {}),
   });
 
+  if (!result.success) {
+    await reportElevenLabsFailure("voice-synthesis", result, {
+      serverId: request.routing?.serverId ?? request.target?.owner.ownerId ?? null,
+      userId: request.routing?.userId ?? null,
+      cancelled: !!abortSignal?.aborted,
+    });
+  }
+
   return {
     success: result.success,
     audioBuffer: result.audioBuffer,
@@ -248,6 +290,7 @@ async function synthesizeLocalVoiceMessage(
     cleanedCaptionText: result.cleanedCaptionText,
     errorKind: result.errorKind,
     details: result.details || "Failed to generate the ElevenLabs voice message.",
+    providerDetail: result.success ? undefined : elevenLabsFailureDetail(result),
     backendKey: "elevenlabs",
   };
 }
@@ -267,6 +310,7 @@ async function synthesizeHostedVoiceMessage(
     request.maxOutputBytes ?? HOSTED_SPEECH_LIMITS.outputBytes,
     HOSTED_SPEECH_LIMITS.outputBytes,
   );
+  const startedAt = Date.now();
   let cleanupPending = false;
   try {
     signal.throwIfAborted();
@@ -386,11 +430,38 @@ async function synthesizeHostedVoiceMessage(
               ? "malformed_response"
               : "provider_error";
     attempt.errorKind = errorKind;
+    const providerStatus = error instanceof HostedSpeechError ? error.providerStatus : undefined;
+    const providerDetail = hostedFailureDetail(error, signal.aborted);
+    await reportProviderFailure({
+      summary: "Hosted speech failed",
+      errorType: "SpeechOperationFailed",
+      error,
+      expected:
+        EXPECTED_HOSTED_SPEECH_KINDS.has(errorKind) ||
+        (errorKind === "invalid_request" && providerStatus === undefined),
+      detail: providerDetail,
+      ...speechFailureOwner(request, target.owner),
+      dimensions: {
+        operation: "voice-synthesis",
+        provider: target.model.provider,
+        model: target.model.codename,
+        owner: target.owner.kind,
+        errorKind,
+        origin: providerStatus === undefined ? "local" : "provider",
+        ...(providerStatus !== undefined ? { providerStatus } : {}),
+      },
+      metadata: {
+        sourceKind: source.kind,
+        operations: attempt.operations.map(({ operation, status, success }) => ({ operation, status, success })),
+        elapsedMs: Date.now() - startedAt,
+      },
+    });
     return {
       success: false,
       backendKey,
       errorKind,
       details: `Hosted speech failed: ${errorKind}.`,
+      providerDetail,
       cleanupPending:
         cleanupPending ||
         attempt.operations.some((operation) => operation.operation === "delete" && !operation.success),

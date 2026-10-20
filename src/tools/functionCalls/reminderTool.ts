@@ -12,9 +12,8 @@ import {
   formatUTCOffset,
   formatTimeWithOffset,
   isValidUtcOffset,
-  UTC_OFFSET_MIN,
-  UTC_OFFSET_MAX,
 } from "../../utils/text/timezoneHelper";
+import { UTC_OFFSET_MAX, UTC_OFFSET_MIN } from "@/constants/utcOffset";
 import { localizer } from "@/utils/text/localizer";
 import { isMatrixRelayMessage } from "@/utils/chat/triggerProcessor";
 import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";

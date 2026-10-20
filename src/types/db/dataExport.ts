@@ -2,6 +2,7 @@ import {
   responseReviewItemsSchema,
   responseRuleCheckerRefSchema,
   responseReviewerPromptSchema,
+  utcOffsetSchema,
 } from "@/types/db/schema";
 import { z } from "zod";
 import { SUPPORTED_PARAM_VALUES } from "@/constants/supportedParams";
@@ -97,7 +98,7 @@ export const personalSettingsExportDataSchema = z.object({
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).optional(),
   personal_server_fallback_enabled: z.boolean().optional(),
   shortterm_cache_crossserver_opt_in: z.boolean().optional(),
-  timezone_offset: z.number().int().min(-12).max(14).nullable().optional(),
+  timezone_offset: utcOffsetSchema.nullable().optional(),
   message_proxy_service: z.string().nullable().optional(),
   prefix_override: z.string().max(100).nullable().optional(),
   suffix_override: z.string().max(100).nullable().optional(),
@@ -189,7 +190,7 @@ const serverChatConfigExportSchema = z.object({
   llm_stop_strings: z.array(z.string()).default([]),
   llm_stop_speaker_pattern_enabled: z.boolean().default(false),
   humanizer_degree: z.number().int().min(0).max(3),
-  timezone_offset: z.number().int().min(-12).max(14),
+  timezone_offset: utcOffsetSchema,
   message_fetch_limit: z.number().int().min(20).max(100).default(80),
   system_prompt: z.string().nullable().default(null),
   cascade_limit: z.number().int().min(0).max(10).optional(),

@@ -122,13 +122,13 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server setup transaction regression", () =
     expect(savedConfig.llm_id).toBe(modelConfig.llm_id);
   });
 
-  it("sets up a workspace in user-byok mode without creating server provider rows", async () => {
+  it("sets up a user-byok workspace with a quarter-hour timezone and no server provider rows", async () => {
     await serverRepository.setup(null, {
       serverId: BYOK_SERVER_ID,
       presetId,
       humanizer: 1,
       tomoriName: "TomoriByok",
-      timezoneOffset: 0,
+      timezoneOffset: 5.75,
       locale: "en-US",
       registrationLocale: "en-US",
       providerAccess: {
@@ -137,13 +137,15 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server setup transaction regression", () =
       systemPrompt: null,
     });
 
-    const [byokConfig] = await testSql<Array<{ user_byok_mode: boolean }>>`
-      SELECT bc.user_byok_mode
+    const [byokConfig] = await testSql<Array<{ user_byok_mode: boolean; timezone_offset: number }>>`
+      SELECT bc.user_byok_mode, cc.timezone_offset
       FROM server_byok_configs bc
       JOIN servers s ON s.server_id = bc.server_id
+      JOIN server_chat_configs cc ON cc.server_id = s.server_id
       WHERE s.server_disc_id = ${BYOK_SERVER_ID}
     `;
     expect(byokConfig.user_byok_mode).toBe(true);
+    expect(byokConfig.timezone_offset).toBe(5.75);
 
     const [modelConfig] = await testSql<Array<{ llm_id: number | null; api_key: Buffer | null }>>`
       SELECT mc.llm_id, mc.api_key

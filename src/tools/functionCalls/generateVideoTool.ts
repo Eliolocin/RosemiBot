@@ -29,6 +29,7 @@ import { resolveCredentialsWithMediaQuota } from "@/utils/quota/mediaQuotaGate";
 import { llmModelRepo } from "@/utils/db/repositories/LlmModelRepository";
 import { MessageIdMap } from "@/utils/text/messageIdMap";
 import { isOpenRouterVideoCapabilityError } from "@/providers/openrouter/openrouterVideoRequest";
+import { ProviderVideoFilteredError } from "@/providers/utils/providerVideoErrors";
 import { resolveMessageImageUrls } from "@/utils/image/imageExtractor";
 import { beginTextModelHandoffBeforeComfyUi } from "@/utils/provider/textModelComfyUiHandoff";
 
@@ -686,7 +687,7 @@ export class GenerateVideoTool extends BaseTool {
         return { success: false, error: "Video generation was cancelled." };
       }
       const errorMessage = error instanceof Error ? error.message : String(error);
-      log.error("Video generation failed:", error as Error);
+      if (!(error instanceof ProviderVideoFilteredError)) log.error("Video generation failed:", error as Error);
 
       if (isOpenRouterVideoCapabilityError(error)) {
         const localizedMessage = localizer(

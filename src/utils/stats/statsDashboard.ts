@@ -179,9 +179,13 @@ async function resolvePersonaNames(guildId: string): Promise<Map<number, string>
 /** Shifted by a personal UTC offset when provided. */
 function formatPeakHour(locale: string, hour: number | null, offsetHours?: number | null): string {
   if (hour === null) return localizer(locale, "commands.stats.empty");
-  const shifted = offsetHours ? (((hour + offsetHours) % 24) + 24) % 24 : hour;
+  const minutesPerDay = 24 * 60;
+  const shiftedMinutes =
+    ((Math.round((hour + (offsetHours ?? 0)) * 60) % minutesPerDay) + minutesPerDay) % minutesPerDay;
   const suffix = offsetHours ? localizer(locale, "commands.stats.local_suffix") : "UTC";
-  return `${String(shifted).padStart(2, "0")}:00 ${suffix}`;
+  const hh = String(Math.floor(shiftedMinutes / 60)).padStart(2, "0");
+  const mm = String(shiftedMinutes % 60).padStart(2, "0");
+  return `${hh}:${mm} ${suffix}`;
 }
 
 /** Formats the peak weekday from the histogram using localized short day names. */

@@ -360,15 +360,8 @@ import {
   isModalRoleSelectField,
   isModalChannelSelectField,
 } from "../../../types/discord/modal";
-import {
-  createStandardEmbed,
-  createSummaryEmbed,
-  createTipText,
-  TIP_BUTTON_TIMEOUT_MS,
-  TIP_DETAILS_BUTTON_ID,
-} from "../embedHelper";
+import { createStandardEmbed, createSummaryEmbed, prepareEmbedModalButtons } from "../embedHelper";
 import { buildDocsLinkRow } from "@/utils/discord/docsLinks";
-import { attachTextDisplayModalCollector, buildTextDisplayModalButton } from "@/utils/discord/textDisplayModal";
 
 const PROMPT_TIMEOUT = 60000; // 60 seconds
 const MODAL_DESCRIPTION_MAX_LENGTH = 99; // Discord modal description limit
@@ -1006,30 +999,15 @@ export async function replyInfoEmbed(
   }
 
   const embed = createStandardEmbed(locale, finalOptions);
-  const tipText = finalOptions.tipKeys?.length
-    ? createTipText(locale, finalOptions.tipKeys, finalOptions.tipVars)
-    : null;
-  const activeTipRow = tipText
-    ? buildTextDisplayModalButton(TIP_DETAILS_BUTTON_ID, localizer(locale, "genai.tips.button"))
-    : undefined;
-  const disabledTipRow = tipText
-    ? buildTextDisplayModalButton(TIP_DETAILS_BUTTON_ID, localizer(locale, "genai.tips.button"), true)
-    : undefined;
-  const components = activeTipRow ? [activeTipRow] : [];
+  const modalButtons = prepareEmbedModalButtons(locale, finalOptions, "Interaction error");
+  const { components } = modalButtons;
   const embeds = [embed];
 
-  const attachTipCollector = (message: Message): void => {
-    if (!tipText || !disabledTipRow) return;
-    attachTextDisplayModalCollector({
-      message,
-      customId: TIP_DETAILS_BUTTON_ID,
-      title: localizer(locale, "genai.tips.title"),
-      content: tipText,
-      timeoutMs: TIP_BUTTON_TIMEOUT_MS,
-      logLabel: "Interaction error tips",
-      onExpire: async () => {
-        await interaction.webhook.editMessage(message.id, { embeds, components: [disabledTipRow] });
-      },
+  const attachModalCollectors = (message: Message): void => {
+    const { disabledRow } = modalButtons;
+    if (!disabledRow) return;
+    modalButtons.attach(message, async () => {
+      await interaction.webhook.editMessage(message.id, { embeds, components: [disabledRow] });
     });
   };
 
@@ -1058,7 +1036,7 @@ export async function replyInfoEmbed(
         files: finalOptions.files,
         flags: flags || MessageFlags.Ephemeral,
       });
-      attachTipCollector(message);
+      attachModalCollectors(message);
       return;
     } catch (webhookError) {
       log.error("webhook.send failed for raw-modal-acknowledged interaction:", webhookError);
@@ -1068,10 +1046,10 @@ export async function replyInfoEmbed(
   try {
     if (interaction.deferred || interaction.replied) {
       const message = await interaction.editReply({ embeds, components, files: finalOptions.files });
-      attachTipCollector(message);
+      attachModalCollectors(message);
     } else {
       await interaction.reply({ embeds, components, files: finalOptions.files, flags });
-      attachTipCollector(await interaction.fetchReply());
+      attachModalCollectors(await interaction.fetchReply());
     }
   } catch (error) {
     log.warn("Failed to show info embed via primary method:", error);
@@ -1090,7 +1068,7 @@ export async function replyInfoEmbed(
           files: finalOptions.files,
           flags: flags || MessageFlags.Ephemeral,
         });
-        attachTipCollector(message);
+        attachModalCollectors(message);
       } else if (errorMessage.includes("not been sent or deferred")) {
         // Interaction wasn't properly acknowledged - try reply without flags first
         log.info("Attempting basic reply due to no prior acknowledgment");
@@ -1100,7 +1078,7 @@ export async function replyInfoEmbed(
           files: finalOptions.files,
           flags: MessageFlags.Ephemeral,
         });
-        attachTipCollector(await interaction.fetchReply());
+        attachModalCollectors(await interaction.fetchReply());
       } else {
         // Other error - try webhook.send as last resort (avoids followUp guard)
         log.info("Attempting webhook.send as last resort fallback");
@@ -1110,7 +1088,7 @@ export async function replyInfoEmbed(
           files: finalOptions.files,
           flags: flags || MessageFlags.Ephemeral,
         });
-        attachTipCollector(message);
+        attachModalCollectors(message);
       }
     } catch (fallbackError) {
       await log.error("All interaction methods failed for replyInfoEmbed:", error, {

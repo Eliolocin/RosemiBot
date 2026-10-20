@@ -533,7 +533,7 @@ export default {
       fetch_limit_no_changes_detail: `Message fetch limit is already {value}.`,
       fetch_limit_updated_heading: `Fetch Limit Updated`,
       fetch_limit_updated_detail: `Message fetch limit is now {value}.`,
-      timezone_invalid_detail: `Timezone must be between {min} and {max}.`,
+      timezone_invalid_detail: `Timezone must be between {min} and {max} hours, in whole, half, or quarter hours such as 9, 5:30, or 5.75.`,
       timezone_no_changes_heading: `Timezone Unchanged`,
       timezone_no_changes_detail: `Timezone is already {value}.`,
       timezone_updated_heading: `Timezone Updated`,

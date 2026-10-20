@@ -3,6 +3,7 @@ import { ChannelType } from "discord.js";
 import type { WebhookCreateErrorReason } from "@/utils/discord/webhook/fallback";
 import { getOrCreateWebhook, resolvePersonaWebhookIdentity } from "@/utils/discord/webhookManager";
 import { sendStandardEmbed } from "@/utils/discord/embedHelper";
+import { TOMORIBOT_ERROR_FOOTER_KEY } from "@/utils/discord/stream/errorUi";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { channelLocks, setActiveChannelTurnState, setChannelToolCallChainActive } from "@/utils/chat/channelQueue";
 import { cacheUserImpersonationWebhook, resolveImpersonatedIdentity } from "@/utils/chat/webhookIdentity";
@@ -231,6 +232,7 @@ async function emitGenerationError(context: ChatTurnContext, error: unknown): Pr
       titleKey: "genai.generic_error_title",
       descriptionKey: "genai.stream.streaming_failed_description",
       tipKeys: ["genai.tips.refresh_context"],
+      footerKey: TOMORIBOT_ERROR_FOOTER_KEY,
     },
     {
       webhook: context.responseTarget?.webhook,

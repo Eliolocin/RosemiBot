@@ -35,8 +35,9 @@ prompt context. Raw profile fields are exposed to the AI only when your privacy 
 `None`.
 
 The **Interface** section lets you set your numeric UTC offset (-12 through
-+14) or match the server default. TomoriBot stores only this numeric offset, never a geographic
-location or IANA timezone.
++14) or match the server default. Half and quarter hours work too: type `5:30` or `5.5` for India,
+`5:45` for Nepal. TomoriBot stores only this numeric offset, never a geographic location or IANA
+timezone, so it does not follow daylight saving time changes on its own.
 
 ### Naming inheritance
 

@@ -19,6 +19,10 @@ import {
 } from "@/types/personaNaming";
 import { DEFAULT_IMAGE_NEGATIVE_TAGS, DEFAULT_IMAGE_POSITIVE_TAGS } from "@/utils/image/tagDefaults";
 import { logitBiasEntrySchema, normalizeLogitBiasEntries } from "@/types/provider/logitBias";
+import { UTC_OFFSET_MAX, UTC_OFFSET_MIN, UTC_OFFSET_STEP_HOURS } from "@/constants/utcOffset";
+
+/** A UTC offset in hours on a quarter-hour mark, such as 5.5 for UTC+5:30. */
+export const utcOffsetSchema = z.number().min(UTC_OFFSET_MIN).max(UTC_OFFSET_MAX).multipleOf(UTC_OFFSET_STEP_HOURS);
 
 export enum HumanizerDegree {
   NONE = 0,
@@ -60,7 +64,7 @@ export const userSchema = z.object({
   personal_dtm: z.enum(["off", "follow", "on"]).default("follow"), // Added April 2026 - User-scoped DTM tri-state: 'off' (always disabled), 'follow' (server setting), 'on' (always enabled)
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).default("follow"), // Added May 2026 - User-scoped deliberate tool mode tri-state
   personal_server_fallback_enabled: z.boolean().default(true), // Whether a failed personal text route may fall back to the server's model
-  timezone_offset: z.number().int().min(-12).max(14).nullable().optional(), // Added June 2026 - Personal UTC offset; NULL = not set / opt-out
+  timezone_offset: utcOffsetSchema.nullable().optional(), // Added June 2026 - Personal UTC offset; NULL = not set / opt-out
   message_proxy_service: z.string().nullable().default(null),
   message_proxy_instance_id: z.string().nullable().default(null),
   prefix_override: z.string().nullable().optional(),
@@ -739,7 +743,7 @@ const userPersonalizationConfigsSchema = z.object({
   personal_dtm: z.enum(["off", "follow", "on"]).default("follow"),
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).default("follow"),
   personal_server_fallback_enabled: z.boolean().default(true),
-  timezone_offset: z.number().int().min(-12).max(14).nullable().optional(),
+  timezone_offset: utcOffsetSchema.nullable().optional(),
   prefix_override: z.string().nullable().optional(),
   suffix_override: z.string().nullable().optional(),
   gender_identity: z.string().nullable().optional(),
@@ -824,7 +828,7 @@ const serverChatConfigSchema = z.object({
   send_message_limit: z.number().int().default(0),
   match_limit: z.number().int().default(3),
   cascade_limit: z.number().int().default(3),
-  timezone_offset: z.number().int().default(0),
+  timezone_offset: z.number().default(0),
   self_debug_enabled: z.boolean().default(false),
   model_randomizer_enabled: z.boolean().default(false),
   system_prompt: z.string().nullable().optional(),
@@ -1796,7 +1800,7 @@ export const setupConfigSchema = z
     presetId: z.number(),
     humanizer: z.number().default(1),
     tomoriName: z.string(),
-    timezoneOffset: z.number().int().min(-12).max(14).default(0), // Timezone offset in hours
+    timezoneOffset: utcOffsetSchema.default(0),
     locale: z.string(),
     registrationLocale: z.string().nullable(), // Analytics-only locale captured at setup; not used for functionality
     // The sole provider-selection field, and the only place a credential and its key version live.

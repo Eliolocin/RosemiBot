@@ -35,6 +35,7 @@ import { formatCustomModelDisplay } from "@/utils/provider/customProviderUtils";
 import { MEDIA_LIMITS } from "@/utils/security/rateLimiter";
 import { safeDownload } from "@/utils/security/safeDownload";
 import { isOpenRouterVideoCapabilityError } from "@/providers/openrouter/openrouterVideoRequest";
+import { ProviderVideoFilteredError } from "@/providers/utils/providerVideoErrors";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 import { parsePositiveIntegerEnv } from "@/utils/misc/envFlags";
 
@@ -615,7 +616,7 @@ export async function execute(
     }
     log.success(`Video generated in ${elapsedSec}s via ${displayModelName}`);
   } catch (error) {
-    log.error("Video generation command failed:", error as Error);
+    if (!(error instanceof ProviderVideoFilteredError)) log.error("Video generation command failed:", error as Error);
 
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorEmbed = new EmbedBuilder()

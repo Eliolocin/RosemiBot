@@ -11,6 +11,7 @@ import { DEFAULT_SYSTEM_PROMPT } from "@/utils/text/contextBuilder";
 import { formatBooleanLocalized } from "@/utils/text/processors/formatters";
 import { ColorCode } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
+import { formatUTCOffset } from "@/utils/text/timezoneHelper";
 import { formatMcpServers } from "@/utils/metrics/mcpStatus";
 import { formatSavedProviderConfigs } from "@/utils/metrics/providerStats";
 import { formatMatrixLinks, type MatrixLinkStatusRow } from "@/utils/metrics/status/channelFormatters";
@@ -59,10 +60,7 @@ export async function buildServerConfigPages(
   const activeStPresetNodes =
     activeStPreset?.preset_id != null ? await presetRepository.loadToggleableNodes(activeStPreset.preset_id) : [];
 
-  const timezoneOffset = config.timezone_offset;
-  const timezoneSign = timezoneOffset >= 0 ? "+" : "-";
-  const timezoneHours = Math.abs(timezoneOffset).toString().padStart(2, "0");
-  const timezoneValue = `UTC${timezoneSign}${timezoneHours}:00`;
+  const timezoneValue = formatUTCOffset(config.timezone_offset);
   const cooldownType = config.cooldown_type ?? CooldownType.OFF;
   const cooldownTypeLabel = getCooldownTypeLabel(locale, cooldownType);
   const cooldownLengthValue =
