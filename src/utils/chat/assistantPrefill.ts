@@ -15,7 +15,8 @@ import { resolveToolsEnabled } from "@/utils/tools/toolUseGate";
 /** Shared by the `/respond` prefill field and the server prefill modal. */
 export const ASSISTANT_PREFILL_MAX_LENGTH = 2000;
 
-export type PrefillSource = "manual" | "server";
+/** `continuation` is text a failed attempt of this turn already posted, so it is model output, not a template. */
+export type PrefillSource = "manual" | "server" | "continuation";
 export type PrefillMode = "native" | "instruction" | "skip";
 
 /**
@@ -102,10 +103,13 @@ export function resolvePrefillBlocker(state: PrefillCapabilityState, forceReason
   return null;
 }
 
-/** A blocked `/respond` prefill degrades to a written instruction; a blocked server prefill is dropped. */
+/**
+ * A blocked `/respond` prefill or continuation degrades to a written instruction; a blocked server
+ * prefill is dropped.
+ */
 export function resolvePrefillMode(source: PrefillSource, blocker: PrefillBlocker | null): PrefillMode {
   if (!blocker) return "native";
-  return source === "manual" ? "instruction" : "skip";
+  return source === "server" ? "skip" : "instruction";
 }
 
 /**
@@ -141,7 +145,10 @@ export async function applyAssistantPrefill(args: {
     import("@/utils/tools/toolPromptMacros"),
     import("@/utils/chat/contextAnnotations"),
   ]);
-  const text = (await createToolPromptMacroResolverForState(args.tomoriState).expand(args.prefill.text)).trim();
+  const text =
+    args.prefill.source === "continuation"
+      ? args.prefill.text.trim()
+      : (await createToolPromptMacroResolverForState(args.tomoriState).expand(args.prefill.text)).trim();
   if (!text) return { contextItems: args.contextItems, outputPrefill: undefined };
 
   const botName = args.tomoriState.persona_nickname || process.env.DEFAULT_BOTNAME || "Tomori";

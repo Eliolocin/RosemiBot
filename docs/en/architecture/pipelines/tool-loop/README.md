@@ -22,9 +22,8 @@ Generation control is split into two distinct tiers:
 1. **Outer attempt control (`runGenerationTurn`):**
    `runGenerationTurn` manages the fallback chain and API key rotation. When a generation attempt
    fails with a retryable status (`error` or `timeout`), it selects the next available key or advances
-   to the next model in the fallback chain. Before starting a replacement attempt, it attempts to delete
-   tracked partial messages from Discord. Failed deletions and sends that
-   outlive the settling window can leave partial output visible.
+   to the next model in the fallback chain. Messages the failed attempt posted stay in Discord, and the
+   replacement attempt continues the reply from that text instead of regenerating it.
    It also owns server-route fallback admission and model failure notice delivery.
 
 2. **Inner generation and tool dispatch (`runToolLoop`):**

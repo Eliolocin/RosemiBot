@@ -45,8 +45,9 @@ The assembled `GenerationTurnResult` passes back up the chat pipeline:
 
 1. **Attempt evaluation (`runGenerationTurn`):**
    `runGenerationTurn` inspects `result.status`. If the attempt ended in a retryable status (`error` or
-   `timeout`) and fallback options remain, it deletes any partial Discord messages sent by this attempt
-   via `purgeSupersededDeliveries` and retries with the next key or model.
+   `timeout`) and fallback options remain, it keeps the messages this attempt posted and retries with
+   the next key or model, which continues the reply from the posted text. An `error` or `timeout`
+   result joins the text every iteration posted, so a terminal failure still reaches short-term memory.
 2. **Delivery finalization (`responseSink.finalize`):**
    Once an attempt succeeds or fallbacks are exhausted, `runGenerationTurn` sends fallback model notices
    if applicable and invokes `responseSink.finalize(result)` to conclude Discord message streaming.

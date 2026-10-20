@@ -63,8 +63,8 @@ const STREAM_FIRST_TOKEN_TIMEOUT_MS = Math.max(
 // After the SDK-call watchdog aborts a stalled stream, how long to wait for the abandoned
 // `streamToDiscord` promise to actually settle before returning. `Promise.race` does not cancel the
 // loser and `abort()` only tears down the HTTP request, so a Discord send it already dispatched can
-// still be in flight; waiting for it guarantees that send is recorded in `deliveredMessageRefs`
-// before the fallback path's superseded-message cleanup runs, so it cannot leak past cleanup.
+// still be in flight; waiting for it lands that send in the settled `accumulatedText` before the
+// fallback attempt builds its continuation prefill and starts sending its own messages.
 const STREAM_ABANDONED_SETTLE_TIMEOUT_MS = 5000;
 const TOOL_EXECUTION_TIMEOUT_MS = parseIntegerEnvFlag(process.env.TOOL_EXECUTION_TIMEOUT_MS, 300000, 10000);
 const TOOLS_SUPPRESS_FOLLOWUP_AFTER_PRETOOL_TEXT = new Set(["update_short_term_memory"]);
@@ -253,12 +253,13 @@ export async function runToolLoop(params: ToolLoopParams): Promise<GenerationTur
       case "error":
       case "timeout":
         resetChannelFollowUpCount(params.context.channel.id);
+        // Partial text stays in the channel for a fallback to continue, so short-term memory keeps it.
         return buildResult(
           streamResult.status,
           params.context,
           streamResults,
-          finalText,
-          detailsText,
+          joinDeliveredText(streamResults),
+          mergeDetails(detailsText, streamResult.detailsContent),
           thoughtLog,
           toolResponseDelivered,
         );
@@ -639,8 +640,8 @@ async function streamOnce(
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("SDK_CALL_TIMEOUT:")) {
       // A pending stop request (e.g. /kill) makes this a terminal stop; no fallback runs, so
-      // no superseded-message cleanup will consume in-flight sends. Return immediately; settling
-      // here would just make the kill wait out the abandoned stream for no benefit.
+      // nothing continues from in-flight sends. Return immediately; settling here would just make
+      // the kill wait out the abandoned stream for no benefit.
       if (StreamOrchestrator.hasStopRequest(channelId)) {
         const settled = params.context.responseReview ? await settleAbandonedStream(streamPromise) : undefined;
         return { status: "stopped_by_user", usage: settled?.usage };
@@ -653,11 +654,8 @@ async function streamOnce(
         `Stream SDK call timed out (${providerName}, ${phase}): ${error.message.slice("SDK_CALL_TIMEOUT:".length).trim()}`,
       );
 
-      // Genuine timeout → the fallback path may run. The stream was aborted, not cancelled: wait
-      // (bounded) for it to actually settle so any Discord send it had already dispatched is recorded
-      // in `deliveredMessageRefs` BEFORE the fallback path's superseded-message cleanup runs. Without
-      // this, a late straggler would land after cleanup and be misattributed to the surviving
-      // fallback attempt; leaving the exact orphaned partial message this feature exists to remove.
+      // Genuine timeout, so a fallback may continue this stream's text: wait (bounded) for the
+      // aborted stream to settle so a send it already dispatched is in the `accumulatedText` it reads.
       const settled = await settleAbandonedStream(streamPromise);
 
       if (!params.context.streamingContext.suppressUserErrors) {
@@ -673,7 +671,14 @@ async function streamOnce(
         // still answer, and only the caller knows whether one did.
         params.context.streamingContext.deferredTimeoutNotice = { providerName, sawStreamProgress };
       }
-      return { status: "timeout", data: error, usage: settled?.usage };
+      return {
+        status: "timeout",
+        data: error,
+        accumulatedText: settled?.accumulatedText,
+        detailsContent: settled?.detailsContent,
+        spritesShown: settled?.spritesShown,
+        usage: settled?.usage,
+      };
     }
     if (params.context.responseReview && StreamOrchestrator.hasStopRequest(channelId)) {
       const settled = await settleAbandonedStream(streamPromise);
@@ -692,8 +697,8 @@ async function streamOnce(
  * {@link STREAM_ABANDONED_SETTLE_TIMEOUT_MS} so a genuinely hung send cannot block the fallback path
  * indefinitely. After `abortController.abort()` the provider generator throws promptly, so in the
  * common (stalled-provider) case this resolves almost immediately; the wait only matters when a
- * Discord send was mid-flight when the watchdog fired, and it exists solely so that send is recorded
- * before the caller proceeds. Reported usage survives a timed-out or cancelled attempt.
+ * Discord send was mid-flight when the watchdog fired, and it exists so that send is part of the
+ * delivered text a fallback continues from. Reported usage survives a timed-out or cancelled attempt.
  */
 async function settleAbandonedStream(streamPromise: Promise<StreamResult>): Promise<StreamResult | undefined> {
   if (STREAM_ABANDONED_SETTLE_TIMEOUT_MS <= 0) {
@@ -1394,6 +1399,9 @@ function queueStopResponseIfPresent(context: ChatTurnContext): void {
   });
 }
 
+/** `prependDeliveredOutput` splits a composed response on this exact string. */
+const SCENE_METADATA_SEPARATOR = "\n\n[Scene Metadata]\n";
+
 function buildResult(
   status: GenerationTurnResult["status"],
   context: ChatTurnContext,
@@ -1403,28 +1411,89 @@ function buildResult(
   thoughtLog: GenerationTurnResult["thoughtLog"],
   toolResponseDelivered = false,
 ): GenerationTurnResult {
-  const text =
-    detailsText.trim() && (!context.responseReview || responseText.trim())
-      ? `${responseText.trim()}\n\n[Scene Metadata]\n${detailsText.trim()}`
-      : responseText.trim();
   return {
     status,
     streamResults,
     usageEntries: context.responseReview?.usage,
-    personaResponses:
-      text.length > 0
-        ? [
-            {
-              personaName: context.currentPersona.persona_nickname,
-              text,
-              personaId: context.currentPersona.persona_id,
-              personaLineageId: context.currentPersona.persona_lineage_id,
-            },
-          ]
-        : [],
+    personaResponses: buildPersonaResponses(context, composeResponseText(context, responseText, detailsText)),
     toolResponseDelivered: toolResponseDelivered || undefined,
     thoughtLog,
     thoughtLogOwner: thoughtLog ? resolveThoughtLogOwner(context) : undefined,
+  };
+}
+
+function composeResponseText(context: ChatTurnContext, responseText: string, detailsText: string): string {
+  return detailsText.trim() && (!context.responseReview || responseText.trim())
+    ? `${responseText.trim()}${SCENE_METADATA_SEPARATOR}${detailsText.trim()}`
+    : responseText.trim();
+}
+
+function buildPersonaResponses(context: ChatTurnContext, text: string): GenerationTurnResult["personaResponses"] {
+  return text.length > 0
+    ? [
+        {
+          personaName: context.currentPersona.persona_nickname,
+          text,
+          personaId: context.currentPersona.persona_id,
+          personaLineageId: context.currentPersona.persona_lineage_id,
+        },
+      ]
+    : [];
+}
+
+/** Output failed attempts of this turn left in the channel, which the next attempt continues. */
+export interface DeliveredTurnOutput {
+  text: string;
+  details: string;
+  streamResults: StreamResult[];
+}
+
+/** Every iteration's delivered text, including text sent before a tool call. */
+function joinDeliveredText(streamResults: StreamResult[]): string {
+  return streamResults
+    .map((result) => result.accumulatedText?.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Adds a superseded invocation's delivered output to the turn's carried output. Its stream results
+ * ride along so post-turn stats count emoji and sprites from the messages that stayed; their usage
+ * is dropped because post-turn stats attribute all usage to the model that finished the turn.
+ */
+export function carryDeliveredOutput(carried: DeliveredTurnOutput, superseded: GenerationTurnResult): void {
+  const text = joinDeliveredText(superseded.streamResults);
+  if (!text) return;
+  carried.text = carried.text ? `${carried.text}\n${text}` : text;
+  for (const result of superseded.streamResults) {
+    carried.details = mergeDetails(carried.details, result.detailsContent);
+    if (result.accumulatedText?.trim() || result.spritesShown?.length) {
+      carried.streamResults.push({ ...result, usage: undefined });
+    }
+  }
+}
+
+/** Prefixes the attempt that continued the carried output with it, so the result holds the whole visible reply. */
+export function prependDeliveredOutput(
+  result: GenerationTurnResult,
+  context: ChatTurnContext,
+  carried: DeliveredTurnOutput,
+): GenerationTurnResult {
+  if (!carried.text) return result;
+  const [current, ...otherResponses] = result.personaResponses;
+  const currentText = current?.text ?? "";
+  const separatorAt = currentText.indexOf(SCENE_METADATA_SEPARATOR);
+  const body = separatorAt >= 0 ? currentText.slice(0, separatorAt) : currentText;
+  const details = separatorAt >= 0 ? currentText.slice(separatorAt + SCENE_METADATA_SEPARATOR.length) : "";
+  const text = composeResponseText(
+    context,
+    body.trim() ? `${carried.text}\n${body.trim()}` : carried.text,
+    mergeDetails(carried.details, details),
+  );
+  return {
+    ...result,
+    streamResults: [...carried.streamResults, ...result.streamResults],
+    personaResponses: [...buildPersonaResponses(context, text), ...otherResponses],
   };
 }
 

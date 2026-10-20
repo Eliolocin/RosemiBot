@@ -36,6 +36,8 @@ import * as realKeyRotation from "@/utils/security/keyRotation";
 import * as realToolRegistry from "@/tools/toolRegistry";
 import { createScopedModuleMocker, overrideMembers, stubLogMembers } from "../../helpers/mockSurface";
 import { VERBATIM_TOOL_CALLING_NUDGE } from "@/utils/tools/verbatimToolCalling";
+import { computeSafeInputBudget } from "@/utils/text/contextTruncator";
+import { sumTurnUsage } from "@/utils/text/tokenEstimate";
 
 const queuedResults: GenerationTurnResult[] = [];
 // Parallel to queuedResults: the delivered-message refs each runToolLoop call should push into the
@@ -387,8 +389,7 @@ async function runToolLoopMock(params: ToolLoopParams): Promise<GenerationTurnRe
       apiKey: params.providerConfig.apiKey,
       credentialSource: params.context.textCredentialSource,
     });
-    // Simulate this attempt committing messages to the channel before it resolves, so the
-    // supersede-cleanup path in runGenerationTurn has refs to act on.
+    // Simulate this attempt committing messages to the channel before it resolves.
     const deliveries = queuedDeliveries.shift();
     if (deliveries) {
       if (!params.context.streamingContext.deliveredMessageRefs) {
@@ -693,6 +694,24 @@ function personalRouteFailure(): GenerationTurnResult {
     status: "error",
     streamResults: [{ status: "error", data: { type: "rate_limit", code: "429", message: "rate limited" } }],
     personaResponses: [],
+  };
+}
+
+/** An attempt that posted `text` to Discord before failing, as the tool loop reports it. */
+function partialFailure(status: "error" | "timeout", text: string): GenerationTurnResult {
+  return {
+    status,
+    streamResults: [
+      {
+        status,
+        data:
+          status === "timeout"
+            ? new Error("SDK_CALL_TIMEOUT: provider streamToDiscord call timed out.")
+            : { type: "rate_limit", code: "429", message: "rate limited" },
+        accumulatedText: text,
+      },
+    ],
+    personaResponses: [{ personaName: "Tomori", text, personaId: 10, personaLineageId: 100 }],
   };
 }
 
@@ -1510,55 +1529,23 @@ describe("runGenerationTurn fallback behavior", () => {
     expect(fallbackNoticeCalls).toHaveLength(0);
   });
 
-  it("deletes the timed-out primary's partial message when a fallback succeeds", async () => {
+  it("continues the timed-out primary's posted text on the fallback model instead of deleting it", async () => {
     const primaryModel = makeLlm(1, "primary-model");
-    const fallbackModel = makeLlm(2, "fallback-model");
+    const fallbackModel = {
+      ...makeLlm(2, "claude-haiku-4-5", "anthropic"),
+      supports_assistant_prefill: true,
+    } as LlmRow;
     const context = makeContext(primaryModel, fallbackModel);
-
-    const deletedWebhookMessageIds: string[] = [];
+    const deleteMessage = mock(async () => undefined);
     (context as unknown as { responseTarget?: unknown }).responseTarget = {
-      webhook: {
-        id: "webhook_1",
-        token: "synthetic_token",
-        deleteMessage: async (messageId: string) => {
-          deletedWebhookMessageIds.push(messageId);
-        },
-      },
+      webhook: { id: "webhook_1", token: "synthetic_token", deleteMessage },
     };
-
-    const finalizedResults: GenerationTurnResult[] = [];
-    const sink: ChatResponseSink = {
-      emitStreamResult: async () => undefined,
-      emitError: async () => undefined,
-      finalize: async (result) => {
-        finalizedResults.push(result);
-      },
-    };
-
-    const fallbackSuccess: GenerationTurnResult = {
-      status: "completed",
-      streamResults: [{ status: "completed", accumulatedText: "ok" }],
-      personaResponses: [
-        {
-          personaName: "Tomori",
-          text: "ok",
-          personaId: 10,
-          personaLineageId: 100,
-        },
-      ],
-    };
-    // Primary times out after flushing one partial webhook message; the fallback completes with its
-    // own message. Only the fallback's message should remain in the channel (and the sink).
-    queuedResults.push(
-      {
-        status: "timeout",
-        streamResults: [
-          { status: "timeout", data: new Error("SDK_CALL_TIMEOUT: provider streamToDiscord call timed out.") },
-        ],
-        personaResponses: [],
-      },
-      fallbackSuccess,
-    );
+    const sink = collectingSink();
+    const primaryFailure = partialFailure("timeout", "First half.");
+    primaryFailure.streamResults[0].usage = { inputTokens: 900, outputTokens: 30 };
+    const fallbackReply = successfulReply("second half.");
+    fallbackReply.streamResults[0].usage = { inputTokens: 950, outputTokens: 20 };
+    queuedResults.push(primaryFailure, fallbackReply);
     queuedDeliveries.push(
       [{ messageId: "partial_1", channelId: "channel_1", webhookId: "webhook_1" }],
       [{ messageId: "fallback_1", channelId: "channel_1", webhookId: "webhook_1" }],
@@ -1567,10 +1554,99 @@ describe("runGenerationTurn fallback behavior", () => {
     const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
     const result = await runGenerationTurn(context, sink);
 
-    expect(result).toBe(fallbackSuccess);
-    expect(finalizedResults).toEqual([fallbackSuccess]);
-    expect(deletedWebhookMessageIds).toEqual(["partial_1"]);
-    expect(context.streamingContext.deliveredMessageRefs?.map((ref) => ref.messageId)).toEqual(["fallback_1"]);
+    expect(toolLoopCalls[0]?.contextItems.some((item) => item.role === "model")).toBe(false);
+    expect(toolLoopCalls[1]?.contextItems.at(-1)).toMatchObject({
+      role: "model",
+      parts: [{ type: "text", text: "Tomori: First half." }],
+    });
+    expect(deleteMessage).not.toHaveBeenCalled();
+    expect(context.streamingContext.deliveredMessageRefs?.map((ref) => ref.messageId)).toEqual([
+      "partial_1",
+      "fallback_1",
+    ]);
+    expect(sink.finalizedResults).toEqual([result]);
+    expect(result.status).toBe("completed");
+    expect(result.personaResponses[0]?.text).toBe("First half.\nsecond half.");
+    expect(result.streamResults.map((stream) => stream.accumulatedText)).toEqual(["First half.", "second half."]);
+    // Post-turn stats record every usage entry under the final model, so the primary's must not ride along.
+    expect(sumTurnUsage(result.streamResults)).toEqual({ inputTokens: 950, outputTokens: 20 });
+  });
+
+  it("trims history so the fallback request still fits its budget with the continuation added", async () => {
+    const limitedModel = (id: number, codename: string) =>
+      ({
+        ...makeLlm(id, codename, "anthropic"),
+        supports_assistant_prefill: true,
+        context_window: 2000,
+      }) as LlmRow;
+    const context = makeContext(limitedModel(1, "claude-haiku-4-5"), limitedModel(2, "claude-haiku-4-5-fallback"));
+    context.currentPersona.config.llm_max_output_tokens = 200;
+    const historyLine = "Juno: ".padEnd(400, "a");
+    context.contextItems = Array.from({ length: 20 }, (_, index) => ({
+      role: index % 2 === 0 ? ("user" as const) : ("model" as const),
+      parts: [{ type: "text" as const, text: `${index} ${historyLine}` }],
+      metadataTag: ContextItemTag.DIALOGUE_HISTORY,
+    }));
+    const trigger = { role: "user" as const, parts: [{ type: "text" as const, text: "Juno: keep going" }] };
+    context.contextItems.push({ ...trigger, metadataTag: ContextItemTag.DIALOGUE_HISTORY });
+    queuedResults.push(partialFailure("timeout", "b".repeat(2400)), successfulReply("done."));
+
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    await runGenerationTurn(context, collectingSink());
+
+    const fallbackRequest = toolLoopCalls[1]?.contextItems ?? [];
+    const estimatedTokens = Math.floor(
+      fallbackRequest
+        .flatMap((item) => item.parts)
+        .reduce((chars, part) => chars + (part.type === "text" ? part.text.length : 0), 0) / 4,
+    );
+    expect(estimatedTokens).toBeLessThanOrEqual(computeSafeInputBudget(2000, 200));
+    expect(fallbackRequest.at(-2)).toMatchObject(trigger);
+    expect(fallbackRequest.at(-1)?.role).toBe("model");
+  });
+
+  it("continues a failed key's posted text on the rotated key, as an instruction when the model blocks prefill", async () => {
+    rotationEnabled = true;
+    const primaryModel = makeLlm(1, "claude-sonnet-4-6", "anthropic");
+    const context = makeContext(primaryModel, makeLlm(2, "unused-fallback"));
+    const sink = collectingSink();
+    queuedResults.push(partialFailure("error", "First half."), successfulReply("second half."));
+
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    const result = await runGenerationTurn(context, sink);
+
+    expect(toolLoopCalls.map((call) => ({ model: call.model, apiKey: call.apiKey }))).toEqual([
+      { model: "claude-sonnet-4-6", apiKey: "server-pool-41" },
+      { model: "claude-sonnet-4-6", apiKey: "server-pool-42" },
+    ]);
+    const retryContext = toolLoopCalls[1]?.contextItems ?? [];
+    expect(retryContext.some((item) => item.role === "model")).toBe(false);
+    expect(JSON.stringify(retryContext.at(-1)?.parts)).toContain("Tomori: First half.");
+    expect(context.streamingContext.outputPrefill).toBe("Tomori: First half.");
+    expect(sink.emittedErrors).toHaveLength(0);
+    expect(result.personaResponses[0]?.text).toBe("First half.\nsecond half.");
+  });
+
+  it("completes with the posted text when the continuation has nothing to add", async () => {
+    for (const [data, status] of [
+      [undefined, "completed"],
+      [{ finishReason: "length" }, "empty_response"],
+    ] as const) {
+      toolLoopCalls.length = 0;
+      const context = makeContext(makeLlm(1, "primary-model"), makeLlm(2, "fallback-model"));
+      queuedResults.push(partialFailure("timeout", "Only half."), {
+        status: "empty_response",
+        streamResults: [{ status: "empty_response", data }],
+        personaResponses: [],
+      });
+
+      const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+      const result = await runGenerationTurn(context, collectingSink());
+
+      expect(toolLoopCalls).toHaveLength(2);
+      expect(result.status).toBe(status);
+      expect(result.personaResponses[0]?.text).toBe("Only half.");
+    }
   });
 
   it("does not post fallback notice when fallback is interrupted by a follow-up", async () => {
