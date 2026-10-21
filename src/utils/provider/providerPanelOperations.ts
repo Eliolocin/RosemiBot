@@ -380,7 +380,11 @@ function serverModelContext(state: TomoriState): PanelModelContext {
   };
 }
 
-function personalModelContext(userId: number, configs: UserSavedProviderConfigRow[]): PanelModelContext {
+function personalModelContext(
+  userId: number,
+  configs: UserSavedProviderConfigRow[],
+  fallbacks: readonly FallbackModelRef[],
+): PanelModelContext {
   const text = getActivePersonalProviderForCapability(configs, "text");
   return {
     scope: { kind: "personal", ownerId: userId },
@@ -398,7 +402,7 @@ function personalModelContext(userId: number, configs: UserSavedProviderConfigRo
       getActivePersonalProviderForCapability(configs, "speech_design")?.speech_design_model_id ?? null,
     activeSpeechCloneModelId:
       getActivePersonalProviderForCapability(configs, "speech_clone")?.speech_clone_model_id ?? null,
-    scopeFallbacks: text?.fallback_model_refs ?? [],
+    scopeFallbacks: text ? fallbacks : [],
   };
 }
 
@@ -416,7 +420,7 @@ async function buildCuratedCapabilities(
     llmModelRepo.loadAvailableSpeechModels(provider, context.scope),
   ]);
   const workspaceFallbacks = context.scopeFallbacks;
-  const providerFallbacks = savedConfig.fallback_model_refs ?? [];
+  const providerFallbacks = "fallback_model_refs" in savedConfig ? (savedConfig.fallback_model_refs ?? []) : [];
 
   const modelsByCapability: Record<
     "text" | "image" | "embedding" | "video" | "decision" | "speech",
@@ -549,7 +553,9 @@ function buildEndpointCapabilities(
       .filter((endpoint) => connectionIds.has(endpoint.connection_id) && endpoint.capability === capability)
       .flatMap((endpoint) => {
         if (endpoint.custom_endpoint_id === undefined) return [];
-        const providerFallbacks = savedConfigs.get(`custom:${endpoint.connection_id}`)?.fallback_model_refs ?? [];
+        const savedConfig = savedConfigs.get(`custom:${endpoint.connection_id}`);
+        const providerFallbacks =
+          savedConfig && "fallback_model_refs" in savedConfig ? (savedConfig.fallback_model_refs ?? []) : [];
         const activeId =
           capability === "text"
             ? context.activeTextId
@@ -769,11 +775,12 @@ async function loadPersonalProviderPanelScope(
   const userId = user?.user_id;
   if (!userId) return null;
 
-  const [savedResult, endpointResult] = await Promise.all([
+  const [savedResult, endpointResult, fallbackSettings] = await Promise.all([
     llmProviderRepo.loadUserSavedProviderConfigsResult(userId),
     llmProviderRepo.loadCustomEndpointConnectionsForUserResult(userId),
+    llmProviderRepo.loadPersonalFallbackSettings(userId).catch(() => null),
   ]);
-  if (savedResult.status === "unavailable" || endpointResult.status === "unavailable") {
+  if (savedResult.status === "unavailable" || endpointResult.status === "unavailable" || !fallbackSettings) {
     return {
       state,
       scopeKind: "personal",
@@ -784,7 +791,7 @@ async function loadPersonalProviderPanelScope(
     };
   }
 
-  const modelContext = personalModelContext(userId, savedResult.configs);
+  const modelContext = personalModelContext(userId, savedResult.configs, fallbackSettings.fallback_model_refs);
   const savedConfigMap = new Map(savedResult.configs.map((config) => [config.provider.toLowerCase(), config]));
   const curatedEntries = await Promise.all(
     savedResult.configs

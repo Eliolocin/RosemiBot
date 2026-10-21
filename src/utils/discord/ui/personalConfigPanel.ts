@@ -126,8 +126,8 @@ export interface PersonalConfigModelDisplayInfo {
   parametersProviders: string[];
   selectedParametersConfig?: UserSavedProviderConfigRow | null;
   fallbacksProviders: string[];
-  selectedFallbacksConfig?: UserSavedProviderConfigRow | null;
-  primaryModelName?: string | null;
+  /** The provider whose models the Fallbacks select expands; the slots themselves span providers. */
+  fallbacksProvider: string | null;
   fallbackSlots: PersonalConfigFallbackDisplaySlot[];
   randomizerEnabled: boolean;
   canEnableRandomizer: boolean;
@@ -160,7 +160,6 @@ export interface PersonalConfigPanelRenderInput {
   savedProviders?: UserSavedProviderConfigRow[];
   selectedCapability?: PersonalConfigManagedCapability;
   selectedParametersProvider?: string;
-  selectedFallbacksProvider?: string;
   selectedModelProvider?: string;
   providerStart?: number;
   modelTotalCount?: number;
@@ -1407,10 +1406,9 @@ ${localizer(locale, "commands.personal.config.parameters_description")}`,
         );
       }
     } else if (page === "fallbacks") {
-      const selectedProvider = input.selectedFallbacksProvider ?? input.modelDisplayInfo?.fallbacksProviders[0] ?? "";
-      const config = input.modelDisplayInfo?.selectedFallbacksConfig;
+      const selectedProvider = input.modelDisplayInfo?.fallbacksProvider ?? "";
 
-      if (!selectedProvider || !config) {
+      if (!selectedProvider || (input.modelDisplayInfo?.fallbacksProviders.length ?? 0) === 0) {
         components.push({
           type: ComponentType.TextDisplay,
           content: `### ${localizer(locale, "commands.personal.config.fallbacks_title")}

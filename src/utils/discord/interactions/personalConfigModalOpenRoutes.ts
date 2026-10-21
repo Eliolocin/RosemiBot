@@ -294,10 +294,8 @@ export async function handlePersonalConfigModalOpen(
       return "handled";
     }
 
-    const rows = await dependencies.loadUserSavedProviders(cachedScope.userId);
-    const config = rows.find((r) => r.provider.toLowerCase() === chosenProvider.toLowerCase()) ?? null;
     const eligibleProviders = await loadUserSavedProvidersForCapability(cachedScope.userId, "text");
-    if (!config || !eligibleProviders.some((row) => row.provider.toLowerCase() === chosenProvider.toLowerCase())) {
+    if (!eligibleProviders.some((row) => row.provider.toLowerCase() === chosenProvider.toLowerCase())) {
       await repaint(interaction, {
         locale: route.locale,
         scope: cachedScope,
@@ -362,6 +360,7 @@ export async function handlePersonalConfigModalOpen(
       return "handled";
     }
 
+    const { fallback_model_refs: currentRefs } = await dependencies.loadPersonalFallbackSettings(cachedScope.userId);
     const nonce = dependencies.createNonce();
     await dependencies.showFallbacksModal(
       selectMenu,
@@ -369,7 +368,7 @@ export async function handlePersonalConfigModalOpen(
       nonce,
       chosenProvider,
       availableOptions.slice(optionStart, optionStart + PERSONAL_FALLBACK_PAGE_SIZE),
-      config?.fallback_model_refs ?? [],
+      currentRefs,
     );
     return "handled";
   }

@@ -449,23 +449,11 @@ export async function loadPersonalModelDisplayInfo(
     (p) => p.provider.toLowerCase() === activeParamsProvider?.toLowerCase(),
   );
 
-  const activeFallbacksProvider =
-    selectedFallbacksProvider ?? textActive?.provider ?? textStored?.provider ?? textProviderNames[0];
-  const selectedFallbacksConfig = savedProviders.find(
-    (p) => p.provider.toLowerCase() === activeFallbacksProvider?.toLowerCase(),
-  );
+  const fallbacksProvider =
+    selectedFallbacksProvider ?? textActive?.provider ?? textStored?.provider ?? textProviderNames[0] ?? null;
 
-  let primaryModelName: string | null = null;
-  if (selectedFallbacksConfig?.llm_id) {
-    try {
-      const primary = await llmModelRepo.loadById(selectedFallbacksConfig.llm_id);
-      primaryModelName = primary?.llm_codename ?? null;
-    } catch {
-      primaryModelName = null;
-    }
-  }
-
-  const fallbackRefs = selectedFallbacksConfig?.fallback_model_refs ?? [];
+  const { fallback_model_refs: fallbackRefs, model_randomizer_enabled: randomizerEnabled } =
+    await llmProviderRepo.loadPersonalFallbackSettings(userId);
   const fallbackSlots: PersonalConfigFallbackDisplaySlot[] = [];
 
   for (let slot = 1; slot <= 5; slot++) {
@@ -487,7 +475,6 @@ export async function loadPersonalModelDisplayInfo(
     fallbackSlots.push({ slot, modelName });
   }
 
-  const randomizerEnabled = Boolean(selectedFallbacksConfig?.model_randomizer_enabled);
   const canEnableRandomizer = fallbackRefs.length > 0;
 
   return {
@@ -506,8 +493,7 @@ export async function loadPersonalModelDisplayInfo(
     parametersProviders: textProviderNames,
     selectedParametersConfig,
     fallbacksProviders: textProviderNames,
-    selectedFallbacksConfig,
-    primaryModelName,
+    fallbacksProvider,
     fallbackSlots,
     randomizerEnabled,
     canEnableRandomizer,

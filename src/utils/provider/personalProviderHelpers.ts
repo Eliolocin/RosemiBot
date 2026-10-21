@@ -80,23 +80,37 @@ export function getStoredPersonalProviderForCapability(
   );
 }
 
+type FallbackIdentityEndpoint = Pick<CustomEndpointRow, "custom_endpoint_id" | "model_ref_id">;
+
 /**
- * Builds the upsert payload that promotes a text model to personal primary.
+ * Removes every entry that resolves to `primaryLlmId` from the user's personal fallback chain.
  *
- * The promoted model is pruned from the saved fallback chain: a fallback identical to the primary
- * can never run, and leaving it there makes personal fallback configuration reject every later edit,
- * since untouched slots resubmit the stale ref.
+ * A fallback identical to the primary can never run, and leaving it there makes personal fallback
+ * configuration reject every later edit, since untouched slots resubmit the stale ref.
  */
-export function withPersonalTextPrimary(
-  row: UserSavedProviderConfigRow,
-  llmId: number | null,
-  endpoints: Iterable<Pick<CustomEndpointRow, "custom_endpoint_id" | "model_ref_id">> = [],
-): UserSavedProviderConfigUpsert {
-  return {
+export async function prunePersonalFallbackChain(
+  userId: number,
+  primaryLlmId: number | null,
+  endpoints: Iterable<FallbackIdentityEndpoint> = [],
+): Promise<boolean> {
+  const { fallback_model_refs: refs } = await llmProviderRepo.loadPersonalFallbackSettings(userId);
+  const pruned = prunePrimaryFallbackRefs(refs, primaryLlmId, endpoints);
+  if (pruned.length === refs.length) return true;
+  return await llmProviderRepo.updatePersonalFallbackModelRefs(userId, pruned);
+}
+
+/** Makes `llmId` the personal text primary on `provider`, then prunes it from the fallback chain. */
+export async function setPersonalTextPrimary(
+  userId: number,
+  provider: string,
+  llmId: number,
+  endpoints: Iterable<FallbackIdentityEndpoint> = [],
+): Promise<boolean> {
+  const assigned = await assignPersonalCapabilityToProvider(userId, provider, "text", (row) => ({
     ...row,
     llm_id: llmId,
-    fallback_model_refs: prunePrimaryFallbackRefs(row.fallback_model_refs, llmId, endpoints),
-  };
+  }));
+  return assigned && (await prunePersonalFallbackChain(userId, llmId, endpoints));
 }
 
 /**

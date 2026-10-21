@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import type { PersonalProviderCapability, UserSavedProviderConfigRow } from "@/types/db/schema";
+import type { FallbackModelRef, PersonalProviderCapability, UserSavedProviderConfigRow } from "@/types/db/schema";
 import { llmProviderRepo } from "@/utils/db/repositories";
 import {
   assignPersonalCapabilityToProvider,
@@ -7,6 +7,7 @@ import {
   getAssignedPersonalProviderForCapability,
   getStoredPersonalProviderForCapability,
   setPersonalCapabilityEnabled,
+  setPersonalTextPrimary,
   withCapabilityEnabled,
   withCapabilityUnassigned,
 } from "@/utils/provider/personalProviderHelpers";
@@ -22,7 +23,6 @@ function makeRow(overrides: Partial<UserSavedProviderConfigRow> & { provider: st
     nai_diffusion_model_id: null,
     video_model_id: null,
     vision_llm_id: null,
-    fallback_model_refs: [],
     ...overrides,
   } as unknown as UserSavedProviderConfigRow;
 }
@@ -71,6 +71,8 @@ const providerOf = (rows: UserSavedProviderConfigRow[], capability: PersonalProv
 afterEach(() => {
   spyOn(llmProviderRepo, "loadUserSavedProviderConfigs").mockRestore();
   spyOn(llmProviderRepo, "upsertUserSavedProviderConfig").mockRestore();
+  spyOn(llmProviderRepo, "loadPersonalFallbackSettings").mockRestore();
+  spyOn(llmProviderRepo, "updatePersonalFallbackModelRefs").mockRestore();
 });
 
 describe("withCapabilityEnabled", () => {
@@ -273,5 +275,29 @@ describe("assignPersonalCapabilityToProvider", () => {
     await assignPersonalCapabilityToProvider(1, "google", "text", (row) => ({ ...row, llm_id: 999 }));
 
     expect(providerOf(state.rows, "text")).toEqual({ active: "google", assigned: "google" });
+  });
+});
+
+describe("setPersonalTextPrimary", () => {
+  it("keeps the user-level chain across a provider switch and prunes only the new primary", async () => {
+    const state = stubRepo(makeAccount());
+    const chain: FallbackModelRef[] = [
+      { type: "llm", id: 200 },
+      { type: "llm", id: 300 },
+      { type: "custom_endpoint", id: 7 },
+    ];
+    spyOn(llmProviderRepo, "loadPersonalFallbackSettings").mockImplementation(async () => ({
+      fallback_model_refs: chain,
+      model_randomizer_enabled: true,
+    }));
+    const chainWrite = spyOn(llmProviderRepo, "updatePersonalFallbackModelRefs").mockImplementation(async () => true);
+
+    expect(await setPersonalTextPrimary(1, "google", 300)).toBe(true);
+
+    expect(providerOf(state.rows, "text")).toEqual({ active: "google", assigned: "google" });
+    expect(chainWrite).toHaveBeenCalledWith(1, [
+      { type: "llm", id: 200 },
+      { type: "custom_endpoint", id: 7 },
+    ]);
   });
 });

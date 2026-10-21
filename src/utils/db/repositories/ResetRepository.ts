@@ -294,7 +294,9 @@ export const PERSONAL_SINGLETON_RESET_TABLES: readonly SingletonResetClassificat
       "pronouns",
       "addressing_style",
     ],
-    preserved: [],
+    // The fallback chain names models on the user's saved personal providers, which a personal
+    // reset keeps, so the chain and its randomizer survive with them.
+    preserved: ["fallback_model_refs", "model_randomizer_enabled"],
   },
 ];
 

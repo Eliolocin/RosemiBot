@@ -2723,7 +2723,7 @@ SELECT add_column_if_not_exists('user_saved_provider_configs', 'llm_disabled_par
 SELECT add_column_if_not_exists('user_saved_provider_configs', 'thinking_level', 'TEXT', '''auto''');
 SELECT add_column_if_not_exists('user_saved_provider_configs', 'enabled_capabilities', 'TEXT[]', 'ARRAY[]::TEXT[]');
 SELECT add_column_if_not_exists('user_saved_provider_configs', 'assigned_capabilities', 'TEXT[]', 'ARRAY[]::TEXT[]');
-SELECT add_column_if_not_exists('user_saved_provider_configs', 'fallback_model_refs', 'JSONB', '''[]''::JSONB');
+-- fallback_model_refs, model_randomizer_enabled: moved to user_personalization_configs by migration 116
 
 DROP TRIGGER IF EXISTS update_user_saved_provider_configs_timestamp ON user_saved_provider_configs;
 CREATE TRIGGER update_user_saved_provider_configs_timestamp
@@ -2782,7 +2782,6 @@ CREATE INDEX IF NOT EXISTS idx_voice_samples_server ON voice_samples(server_id);
 -- User-configurable generation length cap per saved provider. NULL = use provider default (8192 or hardcoded fallback).
 SELECT add_column_if_not_exists('saved_provider_configs', 'llm_max_output_tokens', 'INTEGER', 'NULL');
 SELECT add_column_if_not_exists('user_saved_provider_configs', 'llm_max_output_tokens', 'INTEGER', 'NULL');
-SELECT add_column_if_not_exists('user_saved_provider_configs', 'model_randomizer_enabled', 'BOOLEAN', 'false', 'NOT NULL');
 
 -- ============================================================
 -- Server Config Split Tables (migration 002)
@@ -3194,6 +3193,8 @@ CREATE TABLE IF NOT EXISTS user_personalization_configs (
   gender_identity                    TEXT,
   pronouns                           TEXT,
   addressing_style                   TEXT CHECK (addressing_style IS NULL OR addressing_style IN ('masculine', 'feminine', 'neutral')),
+  fallback_model_refs                JSONB   NOT NULL DEFAULT '[]'::JSONB,
+  model_randomizer_enabled           BOOLEAN NOT NULL DEFAULT false,
   created_at                         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
