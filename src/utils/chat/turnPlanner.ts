@@ -195,6 +195,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
       allowedPersonaIds: accessState.allowedPersonaIds,
       personalDtm: (userRow.personal_dtm as "off" | "follow" | "on") ?? "follow",
       referencedMessage: admission.referencedMessage,
+      nudgeSceneCatcherPersonaId: incoming.nudgeSceneCatcherPersonaId,
     })
   ) {
     return { lockedTurn, turns: [] };
@@ -801,6 +802,18 @@ function selectPersonasForTurn(args: {
     const lastRespondedId = getLastRespondedPersonaId(args.channelId);
     if (lastRespondedId !== null) {
       personasToRespond = personasToRespond.filter((persona) => persona.persona_id !== lastRespondedId);
+    }
+  }
+
+  // The catch only stands in for a missing trigger, because a member who named a persona must get that persona.
+  if (personasToRespond.length === 0 && incoming.nudgeSceneCatcherPersonaId !== undefined) {
+    const catcher = args.allPersonas.find((persona) => persona.persona_id === incoming.nudgeSceneCatcherPersonaId);
+    if (
+      catcher &&
+      isPersonaAllowedForTrigger(args.whitelistStatus, args.personalSpotlightStatus, catcher.persona_id) &&
+      isAllowedByAccessState(catcher)
+    ) {
+      return [catcher];
     }
   }
 

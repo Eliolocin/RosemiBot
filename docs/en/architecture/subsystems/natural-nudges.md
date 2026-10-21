@@ -85,7 +85,9 @@ retry-after-abort time, and a 15-minute cache of heat and waking hours. A restar
   measured cancels the nudge.
 - **Failure stop.** Planner failures after their one format retry, and generation errors, count
   toward `server_natural_nudge_runtime_state.consecutive_failures`; three stop the server until a
-  normal turn succeeds there (`text_generated` newer than `stopped_at`). Aborts never count.
+  normal turn succeeds there (`text_generated` newer than `stopped_at`). Aborts never count. Episodes
+  and Chime-ins each lift the stop when they read it (`runtime/failureStop.ts`), because a server
+  with episodes off is never evaluated by the episode timer.
 - **Server keys only.** The planner resolves through `resolveServerStructuredModel`
   (`src/utils/provider/serverStructuredOutput.ts`), which never uses a personal key, and the
   turn planner routes the nudge turn's text credentials to the server too. Servers in
@@ -121,10 +123,10 @@ episode with a non-zero category weight needs a target. One query,
 
 | Stage | Rule |
 |---|---|
-| Interaction gate | Own `message_sent` in the server within 14 days. A memory alone never qualifies, because memories can come from talk around Tomori rather than to her |
+| Interaction gate | Own `message_sent` with this persona's lineage in the server within 14 days. A memory alone never qualifies: memories can come from talk around Tomori rather than to her, and they carry no server, so a pointer persona would otherwise reach people it only knows from another server |
 | Hard exclusions | `natural_nudge_opt_out`, `PrivacyLevel.FULL`, `personalization_blacklist`, an active `persona_user_blocks` row for this persona; bots, external bridge IDs, members who left, and members who can view none of the persona's quiet channels are dropped when drawn |
 | Relationship gate | A memory with this lineage (or lineage 0) touched in the last 30 days, or a live short-term memory with it in this server (candidates' short-term memory is warmed from the database in one query first, because the cache starts empty after a restart). Memories count only when the persona has `personal_memories_enabled` |
-| Lottery | Tickets from capped memory and short-term memory counts, current activity, and penalties for a ping inside the episode rest window (`reachOutTickets`); never below 1 |
+| Lottery | Tickets from capped counts of the member's turns with this lineage in this server and short-term memory channels, current activity, and penalties for a ping inside the episode rest window (`reachOutTickets`); never below 1. Memories only gate eligibility and feed the planner, because they carry no server |
 
 Prompt exposure follows a normal turn's privacy rules: the planner sees the target's recent memories
 only at `PrivacyLevel.MINIMAL` with `personal_memories_enabled`, and their activity only at minimal
@@ -174,9 +176,18 @@ An Alter Talk episode reuses the `/generate scene` machinery: the runner passes 
 - **Queued turns stay nudge turns.** The queued jobs carry `naturalNudge` and `borrowsTriggerMessage`,
   so they skip stats and the short-term memory write and keep the borrowed author's gates off.
 - **Members interrupt.** Any real member message, before any admission gate can drop it, calls
-  `clearQueuedNudgeSceneWork` (`channelQueue.ts`), which discards the queued turns that carry both
+  `interruptNudgeScene` (`channelQueue.ts`), which discards the queued turns that carry both
   `sceneTurn` and `naturalNudge` with the `scene_interrupted` reason. `/generate scene` turns carry no
   nudge marker and keep running. The opener and its agendas stay.
+- **The next speaker catches the member.** `interruptNudgeScene` returns the first dropped turn's
+  persona, or the scene persona speaking now when nothing was queued, as
+  `nudgeSceneCatcherPersonaId`. A message that triggers on its own (a name, a mention, a reply) keeps
+  normal persona selection; any other message is queued anyway and answered by the catcher, subject to
+  the member's own whitelist, spotlight, and access gates. It is a normal member turn.
+- **The scene's own lines start nothing.** While a nudge turn holds the channel lock, while nudge turns
+  wait in its queue, and for five seconds after the last one releases, admission ignores persona
+  messages there (`nudge_output`). Otherwise a line naming another persona would queue an ordinary
+  persona reply after the scene, credited to the last member as engagement.
 - **A failed turn ends the scene.** The channel queue only advances when a lock is released, so
   `tomoriChat` itself drops the remaining turns whenever a nudge scene turn (the opener included) is
   rejected at admission or delivers nothing. An empty reply that is being retried does not count,

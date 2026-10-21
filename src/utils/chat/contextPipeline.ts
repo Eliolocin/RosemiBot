@@ -730,8 +730,10 @@ async function buildSimplifiedHistory(
     "messages" in channel
       ? Array.from((await channel.messages.fetch({ limit: fetchLimit })).values()).reverse()
       : [turn.lockedTurn.admission.message];
+  // A borrowed trigger is only an anchor, and a seeded one is deleted once the opener has run.
   if (
     turn.lockedTurn.admission.incoming.isFromQueue &&
+    !turn.lockedTurn.admission.incoming.borrowsTriggerMessage &&
     !messages.some((message) => message.id === turn.lockedTurn.admission.message.id)
   ) {
     messages.push(turn.lockedTurn.admission.message);

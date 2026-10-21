@@ -171,7 +171,10 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     const daysAgo = (days: number) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     const userIds = new Map<string, number>();
 
-    async function insertUser(name: string, options: { privacy?: number; optOut?: boolean; spokeOn?: string }) {
+    async function insertUser(
+      name: string,
+      options: { privacy?: number; optOut?: boolean; spokeOn?: string; spokeToLineage?: number },
+    ) {
       const discId = `${PREFIX}${name}`;
       const [row] = await testSql`
         INSERT INTO users (user_disc_id, privacy_level) VALUES (${discId}, ${options.privacy ?? 0}) RETURNING user_id
@@ -183,7 +186,10 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
       `;
       await testSql`
         INSERT INTO stat_counters (server_id, user_id, persona_lineage_id, metric, metric_key, bucket, count)
-        VALUES (${refs.serverId}, ${row.user_id}, 0, 'message_sent', '', ${options.spokeOn ?? today}::date, 1)
+        VALUES (
+          ${refs.serverId}, ${row.user_id}, ${options.spokeToLineage ?? refs.personaLineageId},
+          'message_sent', '', ${options.spokeOn ?? today}::date, 1
+        )
       `;
       return { discId, userId: row.user_id as number };
     }
@@ -199,6 +205,11 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
           (${mirri.userId}, 991, 'Another lineage only', ${daysAgo(1)}, ${daysAgo(1)})
       `;
       await insertUser("stale", { spokeOn: daysAgo(20).toISOString().slice(0, 10) });
+      const elsewhere = await insertUser("elsewhere", { spokeToLineage: 991 });
+      await testSql`
+        INSERT INTO personal_memories (user_id, persona_lineage_id, content, created_at, updated_at)
+        VALUES (${elsewhere.userId}, ${refs.personaLineageId}, 'Close to this persona in another server', ${daysAgo(1)}, ${daysAgo(1)})
+      `;
       await insertUser("optout", { optOut: true });
       await insertUser("hidden", { privacy: 2 });
       const banned = await insertUser("banned", {});
@@ -232,11 +243,11 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
         onlyUserId,
       });
 
-    it("keeps only recent speakers who pass every hard exclusion, with this lineage's memory counts", async () => {
+    it("keeps only members who talked to this persona here and pass every hard exclusion, with their local turns", async () => {
       const ours = (await list()).filter((candidate) => candidate.user_disc_id.startsWith(PREFIX));
       expect(ours.map((candidate) => candidate.user_disc_id).sort()).toEqual([`${PREFIX}mirri`, `${PREFIX}unblocked`]);
       expect(ours.find((candidate) => candidate.user_disc_id === `${PREFIX}mirri`)).toMatchObject({
-        ltm_total: 2,
+        local_turns: 1,
         ltm_recent: 1,
       });
     });

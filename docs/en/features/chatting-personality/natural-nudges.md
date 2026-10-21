@@ -75,18 +75,20 @@ and you can add up to 25 of your own:
 
 A Reach-out pings one member by name, so it only picks people the persona actually knows:
 
-- **They talked to TomoriBot recently.** Only members who started a conversation with her in this
-  server in the last 14 days can be picked. Being mentioned or talked about does not count.
+- **They talked to this persona recently.** Only members who started a conversation with that
+  persona in this server in the last 14 days can be picked. Being mentioned or talked about does not
+  count, and neither does being close to the same persona in another server.
 - **The persona knows them.** The member has a memory with this persona from the last 30 days, or a
   recent short-term memory with it.
 - **They have not opted out.** Anyone can turn Reach-outs off for themselves in `/personal config` >
   Privacy. Members with Full privacy, members on the server's personalization blacklist, and members
   the persona has blocked are never picked.
 
-Among those members, closer ones are picked more often: each memory and each recent conversation
-adds to their chance, and someone a persona pinged in the last three days is less likely to be
-picked again. The ping goes to that one member only; a Reach-out never pings roles, `@everyone`,
-or anyone else. Any reply in the channel counts as an answer.
+Among those members, closer ones are picked more often: each message to that persona in this server
+in the last 14 days, and each channel it recently talked with them in, adds to their chance.
+Someone a persona pinged in the last three days is less likely to be picked again. The ping goes to
+that one member only; a Reach-out never pings roles, `@everyone`, or anyone else. Any reply in the
+channel counts as an answer.
 
 ### Alter Talk
 <!-- anchor: alter-talk -->
@@ -96,7 +98,8 @@ speaks up opens it and picks one partner, sometimes two, from the other personas
 channel. Talkative personas join more often, and Silent ones never do.
 
 - **Members come first.** When anyone posts in the channel during the scene, the remaining scene
-  messages are dropped and TomoriBot answers that member as usual.
+  messages are dropped and the persona who was about to speak answers them, as in a conversation
+  someone joins. If they named or mentioned a persona, that persona answers instead.
 - **Scheming is about a member, not to them.** The personas plan a harmless surprise for someone
   they know, but the scene does not ping that member.
 - The **Alter Talk** weight under Weights and Limits sets how often scenes come up.

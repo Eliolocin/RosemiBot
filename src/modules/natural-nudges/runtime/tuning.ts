@@ -77,10 +77,11 @@ export const REACH_OUT_MEMORY_DAYS = 30;
 
 /**
  * Reach-out lottery points. The caps make counts qualify by sufficiency rather than rank by
- * volume, so one heavy user cannot win every draw.
+ * volume, so one heavy user cannot win every draw. The turn cap is reached at about two turns a day
+ * over the interaction window.
  */
-export const REACH_OUT_POINTS_PER_MEMORY = 3;
-export const REACH_OUT_MEMORY_CAP = 10;
+export const REACH_OUT_POINTS_PER_TURN = 1;
+export const REACH_OUT_TURN_CAP = 30;
 export const REACH_OUT_POINTS_PER_STM_CHANNEL = 5;
 export const REACH_OUT_STM_CHANNEL_CAP = 5;
 export const REACH_OUT_ACTIVITY_POINTS = 10;

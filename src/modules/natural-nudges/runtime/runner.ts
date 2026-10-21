@@ -14,14 +14,15 @@ import { isWithinWakingHours, serverDayStart } from "@/modules/natural-nudges/ru
 import { planEpisode, type EpisodePlan, type ScenePartner } from "@/modules/natural-nudges/runtime/planner";
 import { isTargetStillReachable, type ReachOutTarget } from "@/modules/natural-nudges/runtime/targets";
 import { recordEpisodeSample, type EpisodeSample } from "@/modules/natural-nudges/runtime/telemetry";
-import { isChannelProcessingLocked, suppressNextSelfReply, tomoriChat } from "@/events/messageCreate/tomoriChat";
+import { isChannelProcessingLocked, tomoriChat } from "@/events/messageCreate/tomoriChat";
 import { isDeliveredTurnResult } from "@/utils/chat/postTurnEffects";
 import { buildSceneTurnDirective } from "@/utils/chat/sceneTurn";
-import type { GenerationTurnResult, SceneTurnMetadata } from "@/utils/chat/types";
+import type { ChatAdmissionDisposition, GenerationTurnResult, SceneTurnMetadata } from "@/utils/chat/types";
 import { verifyMessageWebhook, isManagedWebhookMessage } from "@/utils/chat/webhookIdentity";
 import { personaRepository } from "@/utils/db/repositories/PersonaRepository";
 import { whitelistRepository } from "@/utils/db/repositories/WhitelistRepository";
 import { ensureDiscordUserMention, sendAlterPersonaMention } from "@/utils/discord/mentionHelper";
+import { removeSeededTurnAnchor, seedTurnAnchor } from "@/utils/discord/turnAnchor";
 import { log } from "@/utils/misc/logger";
 
 /** Messages scanned after the anchor when a tool delivered the opener and no stream reported its ID. */
@@ -217,7 +218,7 @@ async function resolveAnchorMessage(
     return null;
   }
   if (latest) return { message: latest, seeded: false };
-  const placeholder = await channel.send({ content: "⠀" }).catch(() => null);
+  const placeholder = await seedTurnAnchor(channel, "a Natural Nudges episode");
   return placeholder ? { message: placeholder, seeded: true } : null;
 }
 
@@ -338,42 +339,46 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
   };
 
   const scene = buildNudgeScene(attempt, planned.plan, anchor.id, episodeTools);
-  suppressNextSelfReply(target.channel.id);
   const triggerStartTime = Date.now();
-  const disposition = await tomoriChat({
-    client: attempt.client,
-    message: anchor,
-    isFromQueue: false,
-    isManuallyTriggered: true,
-    forceReason: false,
-    isStopResponse: false,
-    selectedPersonaId: personaId,
-    triggeredPersonaIds: scene?.sequence.map((speaker) => speaker.personaId),
-    isPersonaJob: false,
-    isUserImpersonation: false,
-    textQuotaSource: "system",
-    textQuotaTriggerKey: `nudge:${attempt.serverId}:${anchor.id}`,
-    shouldSurfaceUserErrors: false,
-    injectedContextItems: [buildOpenerContextItem(attempt, planned.plan, episodeTools)],
-    manualSystemPrompt: scene && buildSceneTurnDirective(scene),
-    sceneTurn: scene,
-    naturalNudge: { toolNames: episodeTools, targetUserDiscId: attempt.target?.userDiscId },
-    borrowsTriggerMessage: true,
-    onGenerationResult: settle,
-  });
-  // A scene only talks about its target, so only a lone opener must ping them.
-  const reachOutTarget = scene ? null : attempt.target;
-  if (outcome === "fired" && reachOutTarget) {
-    await ensureDiscordUserMention({
+  let disposition: ChatAdmissionDisposition;
+  try {
+    disposition = await tomoriChat({
       client: attempt.client,
-      channel: target.channel,
-      targetUserId: reachOutTarget.userDiscId,
-      afterMessageId: anchor.id,
-      triggerStartTime,
-      contextLabel: `Reach-out in server ${attempt.serverId}`,
-      fallbackSender: (content) =>
-        sendAlterPersonaMention(target.channel, attempt.persona, reachOutTarget.userDiscId, content),
+      message: anchor,
+      isFromQueue: false,
+      isManuallyTriggered: true,
+      forceReason: false,
+      isStopResponse: false,
+      selectedPersonaId: personaId,
+      triggeredPersonaIds: scene?.sequence.map((speaker) => speaker.personaId),
+      isPersonaJob: false,
+      isUserImpersonation: false,
+      textQuotaSource: "system",
+      textQuotaTriggerKey: `nudge:${attempt.serverId}:${anchor.id}`,
+      shouldSurfaceUserErrors: false,
+      injectedContextItems: [buildOpenerContextItem(attempt, planned.plan, episodeTools)],
+      manualSystemPrompt: scene && buildSceneTurnDirective(scene),
+      sceneTurn: scene,
+      naturalNudge: { toolNames: episodeTools, targetUserDiscId: attempt.target?.userDiscId },
+      borrowsTriggerMessage: true,
+      onGenerationResult: settle,
     });
+    // A scene only talks about its target, so only a lone opener must ping them.
+    const reachOutTarget = scene ? null : attempt.target;
+    if (outcome === "fired" && reachOutTarget) {
+      await ensureDiscordUserMention({
+        client: attempt.client,
+        channel: target.channel,
+        targetUserId: reachOutTarget.userDiscId,
+        afterMessageId: anchor.id,
+        triggerStartTime,
+        contextLabel: `Reach-out in server ${attempt.serverId}`,
+        fallbackSender: (content) =>
+          sendAlterPersonaMention(target.channel, attempt.persona, reachOutTarget.userDiscId, content),
+      });
+    }
+  } finally {
+    if (resolvedAnchor.seeded) await removeSeededTurnAnchor(anchor);
   }
   if (outcome) return outcome;
   log.info(`Natural Nudges: episode not delivered for server ${attempt.serverId} (disposition ${disposition})`);

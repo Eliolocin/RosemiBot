@@ -168,7 +168,7 @@ export const reachOutCandidateSchema = z.object({
   user_id: z.number().int(),
   user_disc_id: z.string(),
   privacy_level: z.number().int(),
-  ltm_total: z.coerce.number().int(),
+  local_turns: z.coerce.number().int(),
   ltm_recent: z.coerce.number().int(),
 });
 export type ReachOutCandidate = z.infer<typeof reachOutCandidateSchema>;

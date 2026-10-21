@@ -9,6 +9,7 @@ import { createStandardEmbed, truncateForEmbedDescription } from "../utils/disco
 import { getCachedAllPersonas } from "../utils/cache/tomoriStateCache";
 import { getCachedUserRow } from "../utils/cache/userCache";
 import { ensureDiscordUserMention, sendAlterPersonaMention } from "../utils/discord/mentionHelper";
+import { removeSeededTurnAnchor, seedTurnAnchor } from "@/utils/discord/turnAnchor";
 import { isBridgeUserId } from "../utils/bridges";
 import { sendMatrixReminderMention } from "../utils/bridges/matrix";
 import type { GenerationTurnResult, QueuedMessageDiscardReason } from "@/utils/chat/types";
@@ -96,6 +97,7 @@ export class ReminderProcessor {
   }
 
   private async executeReminderInContext(reminder: ReminderRow): Promise<void> {
+    let seededAnchor: Message | null = null;
     try {
       if (reminder.reminder_id && this.activeReminderIds.has(reminder.reminder_id)) {
         log.info(`Reminder ${reminder.reminder_id} is already queued or executing; skipping duplicate delivery.`);
@@ -131,20 +133,9 @@ export class ReminderProcessor {
         );
       }
 
-      if (!lastMessage && "send" in channel) {
-        try {
-          lastMessage = await channel.send({
-            content: "\u2800",
-          });
-          log.info(
-            `Seeded placeholder message in channel ${reminder.channel_disc_id} for reminder ${reminder.reminder_id}`,
-          );
-        } catch (sendError) {
-          log.warn(
-            `Failed to seed placeholder message in channel ${reminder.channel_disc_id} for reminder ${reminder.reminder_id}:`,
-            sendError,
-          );
-        }
+      if (!lastMessage && channel.isSendable()) {
+        seededAnchor = await seedTurnAnchor(channel, `reminder ${reminder.reminder_id}`);
+        lastMessage = seededAnchor ?? undefined;
       }
 
       if (!lastMessage) {
@@ -228,6 +219,8 @@ export class ReminderProcessor {
       log.error(`Error executing reminder ${reminder.reminder_id}:`, error);
       await this.handleReminderExecutionFailure(reminder, error instanceof Error ? error.message : "Unknown error");
       this.releaseReminderDelivery(reminder);
+    } finally {
+      if (seededAnchor) await removeSeededTurnAnchor(seededAnchor);
     }
   }
 

@@ -56,6 +56,7 @@ import {
   UNANSWERED_STOP_STREAK,
   WAKING_HOURS_WINDOW_DAYS,
 } from "@/modules/natural-nudges/runtime/tuning";
+import { isFailureStopped } from "@/modules/natural-nudges/runtime/failureStop";
 import { claimNudgeServer, isNudgeServerBusy, releaseNudgeServer } from "@/modules/natural-nudges/runtime/inFlight";
 import { resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { runEpisodeAttempt, type EpisodeAttempt } from "@/modules/natural-nudges/runtime/runner";
@@ -262,14 +263,6 @@ export class NaturalNudgeProcessor {
       await naturalNudgeRepository.setFireAnswered(fire.fire_id, false);
   }
 
-  /** A failure stop lifts once any normal turn succeeds in the server, proving the provider works again. */
-  private async liftFailureStop(serverId: number, stoppedAt: Date): Promise<boolean> {
-    const lastTurnAt = await statRepository.getServerMetricLastAt({ serverId, metric: "text_generated" });
-    if (!lastTurnAt || lastTurnAt <= stoppedAt) return false;
-    await naturalNudgeRepository.clearFailures(serverId);
-    return true;
-  }
-
   private async evaluateServer(server: EnabledEpisodeServer): Promise<void> {
     const now = new Date();
     const serverId = server.server_id;
@@ -288,7 +281,7 @@ export class NaturalNudgeProcessor {
     }
 
     const runtime = await naturalNudgeRepository.loadRuntimeState(serverId);
-    if (runtime.stopped_at && !(await this.liftFailureStop(serverId, runtime.stopped_at))) return;
+    if (await isFailureStopped(serverId, runtime.stopped_at)) return;
 
     const timezoneOffset = server.timezone_offset ?? 0;
     const meters = await this.loadMeters(serverId, timezoneOffset, now);

@@ -120,6 +120,8 @@ export interface TomoriChatInput {
   sceneTurn?: SceneTurnMetadata;
   /** Unprompted Natural Nudges turn: never queues and never feeds engagement stats. */
   naturalNudge?: NaturalNudgeTurn;
+  /** A member's message that interrupted a Natural Nudges scene, answered by the persona about to speak. */
+  nudgeSceneCatcherPersonaId?: number;
   /**
    * System turn that borrows the channel's latest message as its trigger, so that message's author is
    * a bystander: no personal key, and none of their access gates.
@@ -164,6 +166,8 @@ export interface ChatIncoming {
   sceneTurn?: SceneTurnMetadata;
   /** Unprompted Natural Nudges turn: never queues and never feeds engagement stats. */
   naturalNudge?: NaturalNudgeTurn;
+  /** A member's message that interrupted a Natural Nudges scene, answered by the persona about to speak. */
+  nudgeSceneCatcherPersonaId?: number;
   /**
    * System turn that borrows the channel's latest message as its trigger, so that message's author is
    * a bystander: no personal key, and none of their access gates.

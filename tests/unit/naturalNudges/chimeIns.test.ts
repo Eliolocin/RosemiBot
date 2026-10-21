@@ -213,7 +213,6 @@ describe("Chime-in check", () => {
         samples.push(fields);
       }),
       spyOn(tomoriChatModule, "isChannelProcessingLocked").mockImplementation(() => locked),
-      spyOn(tomoriChatModule, "suppressNextSelfReply").mockImplementation(() => undefined),
       spyOn(tomoriChatModule, "tomoriChat").mockImplementation(async (input) => {
         chatInputs.push(input);
         await input.onGenerationResult?.({
@@ -296,6 +295,30 @@ describe("Chime-in check", () => {
     } finally {
       cache.delete("cap-thread");
     }
+  });
+
+  it("lifts a failure stop itself once a turn has succeeded since, so episodes being off cannot strand it", async () => {
+    const stoppedAt = new Date("2026-10-21T16:06:23Z");
+    const clear = spyOn(naturalNudgeRepository, "clearFailures").mockResolvedValue(undefined);
+    const lastTurn = spyOn(statRepository, "getServerMetricLastAt").mockResolvedValue(new Date("2026-10-21T16:05:00Z"));
+    spies.push(
+      clear,
+      lastTurn,
+      recordFire(),
+      spyOn(naturalNudgeRepository, "loadRuntimeState").mockResolvedValue({
+        server_id: SERVER_ID,
+        episode_jitter: 1,
+        consecutive_failures: 3,
+        stopped_at: stoppedAt,
+      }),
+    );
+    expect(await runChimeInCheck(check, options())).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ reason: "stopped" });
+    expect(clear).not.toHaveBeenCalled();
+
+    lastTurn.mockResolvedValue(new Date("2026-10-21T16:07:18Z"));
+    expect(await runChimeInCheck(check, options())).toBe("fired");
+    expect(clear).toHaveBeenCalledWith(SERVER_ID);
   });
 
   it("skips a channel where the bot cannot send, before any matcher call", async () => {

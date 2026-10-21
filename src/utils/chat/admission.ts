@@ -21,8 +21,9 @@ import {
 import { getCachedImpersonatedUserIdForWebhook } from "@/utils/chat/webhookIdentity";
 import { escapeRegExp, isUnspacedScriptText, wrapWithWordBoundary } from "@/utils/text/processors/regexUtils";
 import {
-  clearQueuedNudgeSceneWork,
+  interruptNudgeScene,
   isActiveNaturalStopTurn,
+  isNudgeOutputActive,
   selfReplySuppressionUntil,
 } from "@/utils/chat/channelQueue";
 import { cleanupTextQuotaTriggerStates } from "@/utils/chat/textQuotaState";
@@ -110,6 +111,7 @@ export function normalizeChatInvocation(input: TomoriChatInput): ChatIncoming {
     manualStreamingContextOverrides: input.manualStreamingContextOverrides,
     sceneTurn: input.sceneTurn,
     naturalNudge: input.naturalNudge,
+    nudgeSceneCatcherPersonaId: input.nudgeSceneCatcherPersonaId,
     borrowsTriggerMessage: input.borrowsTriggerMessage,
     carriedExpressionDelivery: input.carriedExpressionDelivery,
     onGenerationResult: input.onGenerationResult,
@@ -191,6 +193,11 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
     return ignored("self_reply_suppressed");
   }
 
+  if (!incoming.isManuallyTriggered && isLikelySelfMessage && isNudgeOutputActive(channel.id)) {
+    updateSelfReplyChainState(channel.id, false);
+    return ignored("nudge_output");
+  }
+
   if (!incoming.isManuallyTriggered && isLikelySelfMessage && message.reference?.messageId) {
     const referencedMessage = await getReferencedMessage();
     if (
@@ -206,7 +213,7 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
     updateSelfReplyChainState(channel.id, false);
     // Before every gate below, so a member the trigger checks would ignore still ends the scene.
     if (!incoming.isManuallyTriggered && !incoming.isFromQueue) {
-      clearQueuedNudgeSceneWork(channel.id);
+      incoming.nudgeSceneCatcherPersonaId = interruptNudgeScene(channel.id);
     }
   }
 

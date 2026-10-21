@@ -3,7 +3,7 @@ import type { Client, Message } from "discord.js";
 import { tomoriChat } from "@/events/messageCreate/tomoriChat";
 import * as admission from "@/utils/chat/admission";
 import * as channelQueue from "@/utils/chat/channelQueue";
-import { channelLocks } from "@/utils/chat/channelQueue";
+import { channelLocks, type QueuedMessage } from "@/utils/chat/channelQueue";
 import * as contextPipelineIntent from "@/utils/chat/contextPipelineIntent";
 import * as generationTurn from "@/utils/chat/generationTurn";
 import * as postTurnEffects from "@/utils/chat/postTurnEffects";
@@ -22,7 +22,7 @@ const SCENE_TURN = { commandId: "nudge:7:anchor", sequence: [], turnIndex: 1, to
 const NUDGE: NaturalNudgeTurn = { toolNames: [] };
 
 const spies: Array<{ mockRestore: () => void }> = [];
-let clearSpy: Mock<(channelId: string) => number>;
+let clearSpy: Mock<(channelId: string) => QueuedMessage[]>;
 let admissionDisposition: ChatAdmission["disposition"];
 let generationResult: GenerationTurnResult;
 
@@ -36,7 +36,7 @@ const message = {
 
 beforeEach(() => {
   admissionDisposition = "run";
-  clearSpy = spyOn(channelQueue, "clearQueuedNudgeSceneWork").mockReturnValue(0);
+  clearSpy = spyOn(channelQueue, "clearQueuedNudgeSceneWork").mockReturnValue([]);
   spies.push(
     clearSpy,
     spyOn(admission, "evaluateChatAdmission").mockImplementation(

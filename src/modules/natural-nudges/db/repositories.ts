@@ -445,22 +445,27 @@ class NaturalNudgeRepository {
     onlyUserId?: number;
   }): Promise<ReachOutCandidate[]> {
     const rows = await sql`
+      WITH turns_here AS (
+        SELECT sc.user_id, SUM(sc.count) AS turns
+        FROM stat_counters sc
+        WHERE sc.server_id = ${args.serverId}
+          AND sc.metric = 'message_sent'
+          AND sc.persona_lineage_id = ${args.personaLineageId}
+          AND sc.bucket >= ${args.interactedSince.toISOString().slice(0, 10)}::date
+        GROUP BY sc.user_id
+      )
       SELECT u.user_id, u.user_disc_id, COALESCE(u.privacy_level, 0) AS privacy_level,
-        COALESCE(memory.total, 0) AS ltm_total, COALESCE(memory.recent, 0) AS ltm_recent
-      FROM users u
+        turns_here.turns AS local_turns, COALESCE(memory.recent, 0) AS ltm_recent
+      FROM turns_here
+      JOIN users u ON u.user_id = turns_here.user_id
       LEFT JOIN user_personalization_configs upc ON upc.user_id = u.user_id
       LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS total,
-          COUNT(*) FILTER (WHERE GREATEST(pm.created_at, pm.updated_at) >= ${args.memorySince}) AS recent
+        SELECT COUNT(*) AS recent
         FROM personal_memories pm
         WHERE pm.user_id = u.user_id AND pm.persona_lineage_id IN (${args.personaLineageId}, 0)
+          AND GREATEST(pm.created_at, pm.updated_at) >= ${args.memorySince}
       ) memory ON true
-      WHERE u.user_id IN (
-          SELECT sc.user_id FROM stat_counters sc
-          WHERE sc.server_id = ${args.serverId}
-            AND sc.metric = 'message_sent'
-            AND sc.bucket >= ${args.interactedSince.toISOString().slice(0, 10)}::date
-        )
+      WHERE turns_here.turns > 0
         ${args.onlyUserId === undefined ? sql`` : sql`AND u.user_id = ${args.onlyUserId}`}
         AND NOT COALESCE(upc.natural_nudge_opt_out, false)
         AND COALESCE(u.privacy_level, 0) <> ${PrivacyLevel.FULL}

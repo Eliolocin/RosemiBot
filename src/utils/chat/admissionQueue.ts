@@ -216,7 +216,9 @@ async function evaluateLockedChannelAdmission(
     shouldBotReply(triggerMessage, stateForQueueCheck, earlyAllPersonas, {
       personalAutoTriggerPersonaId: accessState.personalSpotlightStatus?.autoTriggerPersonaId ?? null,
       allowedPersonaIds: accessState.allowedPersonaIds,
+      personalDtm: accessState.personalDtm,
       referencedMessage: args.referencedMessage,
+      nudgeSceneCatcherPersonaId: incoming.nudgeSceneCatcherPersonaId,
     });
 
   if (!wouldReply) {
@@ -293,6 +295,7 @@ async function evaluateLockedChannelAdmission(
       onGenerationResult: incoming.onGenerationResult,
       onQueueDiscard: incoming.onQueueDiscard,
       sceneTurn: incoming.sceneTurn,
+      nudgeSceneCatcherPersonaId: incoming.nudgeSceneCatcherPersonaId,
       manualStreamingContextOverrides: incoming.manualStreamingContextOverrides
         ? {
             ...(incoming.manualStreamingContextOverrides.disableCrossChannelMessage
@@ -378,6 +381,7 @@ async function evaluatePreLockReplyGate(args: AdmissionQueueAndTriggerArgs): Pro
       allowedPersonaIds: accessState.allowedPersonaIds,
       personalDtm: accessState.personalDtm,
       referencedMessage: args.referencedMessage,
+      nudgeSceneCatcherPersonaId: incoming.nudgeSceneCatcherPersonaId,
     })
   ) {
     return null;

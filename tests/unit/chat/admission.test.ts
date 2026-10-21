@@ -15,7 +15,10 @@ import {
   acquireChannelLockForTurn,
   channelLocks,
   getOrCreateChannelLockEntry,
+  interruptNudgeScene,
+  isNudgeOutputActive,
   releaseChannelLockAndReplayQueue,
+  runWithChannelLock,
   setActiveChannelTurnState,
   type QueuedMessage,
 } from "@/utils/chat/channelQueue";
@@ -40,7 +43,7 @@ import {
   clearMessageProxyRouteMetricsForTests,
   getMessageProxyRouteMetricsSnapshot,
 } from "@/utils/messageProxy/router";
-import type { ChatIncoming } from "@/utils/chat/types";
+import type { ChatIncoming, RunnableChatAdmission } from "@/utils/chat/types";
 import { stallUntilAborted, stubGlobalFetch } from "../../helpers/fetchStub";
 import { createUserRow } from "../../helpers/fixtures";
 
@@ -366,6 +369,100 @@ describe("evaluateChatAdmission Natural Nudges scene interrupt", () => {
     } finally {
       for (const spy of [rowSpy, privacySpy, blacklistSpy]) spy.mockRestore();
       invalidateUserCache(memberId);
+      channelLocks.delete(channelId);
+    }
+  });
+
+  it("hands the interrupting member to the next scripted speaker, else to the scene persona speaking now", () => {
+    const channelId = "scene-catch-channel";
+    const anchor = { id: "anchor" } as Message;
+    const sceneTurn = { commandId: "nudge:scene", sequence: [], turnIndex: 1, totalTurns: 3 };
+    const sceneJob = (selectedPersonaId: number): QueuedMessage => ({
+      message: anchor,
+      sceneTurn,
+      naturalNudge: { toolNames: [] },
+      selectedPersonaId,
+    });
+    const lockEntry = getOrCreateChannelLockEntry(channelId, "300000000000000034");
+    const lockFor = (naturalNudge: "single" | "scene") =>
+      acquireChannelLockForTurn(lockEntry, {
+        messageId: "anchor",
+        userDiscId: "100000000000000024",
+        isPersonaJob: false,
+        selectedPersonaId: 5,
+        isCommandTriggered: true,
+        naturalNudge,
+      });
+
+    try {
+      lockFor("scene");
+      lockEntry.messageQueue = [sceneJob(7), sceneJob(8)];
+      expect(interruptNudgeScene(channelId)).toBe(7);
+      expect(lockEntry.messageQueue).toEqual([]);
+      expect(interruptNudgeScene(channelId)).toBe(5);
+
+      lockFor("single");
+      expect(interruptNudgeScene(channelId)).toBeUndefined();
+    } finally {
+      channelLocks.delete(channelId);
+    }
+  });
+
+  it("ignores a persona's own message while nudge work holds the channel and just after, so it starts no replies", async () => {
+    const channelId = "scene-output-channel";
+    const admitPersonaMessage = async () =>
+      evaluateChatAdmission({
+        client: { user: { id: "tomori" } },
+        message: {
+          id: "persona-message",
+          content: "ティモリ、ことね。こっち来て",
+          mentions: { users: new Map(), roles: new Map(), everyone: false },
+          embeds: [],
+          attachments: new Map(),
+          webhookId: null,
+          interaction: null,
+          reference: null,
+          author: { id: "tomori", bot: true, username: "Tomori" },
+          guild: { id: "300000000000000035" },
+          channel: { id: channelId, type: ChannelType.GuildText },
+        },
+        isManuallyTriggered: false,
+        isFromQueue: false,
+      } as unknown as ChatIncoming);
+    const lockEntry = getOrCreateChannelLockEntry(channelId, "300000000000000035");
+
+    try {
+      acquireChannelLockForTurn(lockEntry, {
+        messageId: "anchor",
+        userDiscId: "100000000000000025",
+        isPersonaJob: false,
+        selectedPersonaId: 5,
+        isCommandTriggered: true,
+        naturalNudge: "scene",
+      });
+      expect(await admitPersonaMessage()).toMatchObject({ disposition: "ignore", reason: "nudge_output" });
+
+      releaseChannelLockAndReplayQueue({
+        channelId,
+        lockEntry,
+        completedMessageId: "anchor",
+        handleStopResponse: async () => undefined,
+        processQueuedMessage: async () => undefined,
+      });
+      expect(await admitPersonaMessage()).toMatchObject({ disposition: "ignore", reason: "nudge_output" });
+
+      const activeDuringNormalTurn = await runWithChannelLock(
+        {
+          incoming: { isPersonaJob: false, isManuallyTriggered: false },
+          message: { id: "member-message", channel: { id: channelId } },
+          serverDiscId: "300000000000000035",
+          userDiscId: "100000000000000025",
+        } as unknown as RunnableChatAdmission,
+        async () => isNudgeOutputActive(channelId),
+        { handleStopResponse: async () => undefined, processQueuedMessage: async () => undefined },
+      );
+      expect(activeDuringNormalTurn).toBe(false);
+    } finally {
       channelLocks.delete(channelId);
     }
   });

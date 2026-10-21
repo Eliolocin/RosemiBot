@@ -9,6 +9,7 @@ import {
   resolveEffectiveChannelIds,
 } from "@/modules/natural-nudges/runtime/channels";
 import { readChimeInGate } from "@/modules/natural-nudges/runtime/configCache";
+import { isFailureStopped } from "@/modules/natural-nudges/runtime/failureStop";
 import { claimNudgeServer, releaseNudgeServer } from "@/modules/natural-nudges/runtime/inFlight";
 import {
   matchChimeIn,
@@ -42,7 +43,7 @@ import {
   PERSONA_REST_MS,
   TALKATIVENESS_TICKETS,
 } from "@/modules/natural-nudges/runtime/tuning";
-import { isChannelProcessingLocked, suppressNextSelfReply, tomoriChat } from "@/events/messageCreate/tomoriChat";
+import { isChannelProcessingLocked, tomoriChat } from "@/events/messageCreate/tomoriChat";
 import { getCachedAllPersonas } from "@/utils/cache/tomoriStateCache";
 import { isDeliveredTurnResult } from "@/utils/chat/postTurnEffects";
 import type { GenerationTurnResult } from "@/utils/chat/types";
@@ -262,7 +263,8 @@ async function checkSettingsAndCaps(
   if (!config.chime_in_enabled) return "disabled";
   if (!(await resolveEffectiveChannelIds(check.serverId, config, now)).includes(check.listedChannelId))
     return "channel_removed";
-  if ((await naturalNudgeRepository.loadRuntimeState(check.serverId)).stopped_at) return "stopped";
+  const { stopped_at: stoppedAt } = await naturalNudgeRepository.loadRuntimeState(check.serverId);
+  if (await isFailureStopped(check.serverId, stoppedAt)) return "stopped";
   if (personas.length === 0 || personas[0].config.user_byok_mode) return "no_server_key";
   const me = check.channel.guild.members.me;
   const sendPermission = check.channel.isThread()
@@ -446,7 +448,14 @@ export async function runChimeInCheck(check: ChimeInCheck, options: ChimeInCheck
     const speaker = detour ?? winner;
     telemetry.detour = detour !== null;
 
-    await sleep(CHIME_IN_DELAY_MIN_MS + random() * (CHIME_IN_DELAY_MAX_MS - CHIME_IN_DELAY_MIN_MS));
+    const delayMs = CHIME_IN_DELAY_MIN_MS + random() * (CHIME_IN_DELAY_MAX_MS - CHIME_IN_DELAY_MIN_MS);
+    const interest = matcherOptions.find((option) => option.id === matched.choice)?.text ?? matched.choice;
+    log.info(
+      `Natural Nudges: Chime-in queued for ${speaker.persona_nickname} in channel ${check.channel.id} ` +
+        `(interest "${interest}"${detour ? `, detour from ${winner.persona_nickname}` : ""}, ` +
+        `speaking in ${Math.round(delayMs / 1000)} s unless the moment passes)`,
+    );
+    await sleep(delayMs);
 
     const blocked = await recheckBeforeSend(check, speaker, watch);
     if (blocked) return finish("aborted", "c", blocked);
@@ -506,7 +515,6 @@ async function speak(
     outcome = finish("fired", "c", recorded ? "delivered" : "fire_row_failed");
   };
 
-  suppressNextSelfReply(check.channel.id);
   const disposition = await tomoriChat({
     client: check.client,
     message: anchor,

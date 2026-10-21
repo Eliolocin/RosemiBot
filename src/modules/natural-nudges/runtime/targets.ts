@@ -17,14 +17,14 @@ import {
   REACH_OUT_ACTIVITY_POINTS,
   REACH_OUT_ANY_PERSONA_PENALTY,
   AUTOMATIC_CHANNEL_DAYS,
-  REACH_OUT_MEMORY_CAP,
   REACH_OUT_MEMORY_DAYS,
   REACH_OUT_MIN_TICKETS,
   REACH_OUT_PLANNER_MEMORIES,
-  REACH_OUT_POINTS_PER_MEMORY,
   REACH_OUT_POINTS_PER_STM_CHANNEL,
+  REACH_OUT_POINTS_PER_TURN,
   REACH_OUT_SAME_PERSONA_PENALTY,
   REACH_OUT_STM_CHANNEL_CAP,
+  REACH_OUT_TURN_CAP,
 } from "@/modules/natural-nudges/runtime/tuning";
 import { getShortTermMemoriesForUser } from "@/utils/cache/shortTermMemoryCache";
 import { personalMemoryRepository } from "@/utils/db/repositories";
@@ -51,17 +51,21 @@ export function isRelationshipEligible(recentMemories: number, stmChannels: numb
 }
 
 export interface ReachOutScoreInput {
-  memories: number;
+  /** This member's turns with this persona in this server inside the interaction window. */
+  localTurns: number;
   stmChannels: number;
   active: boolean;
   firedBySamePersona: boolean;
   firedByAnyPersona: boolean;
 }
 
-/** Full memory history counts here, unlike the eligibility gate, so a close user keeps weight from old memories. */
+/**
+ * Closeness is scored only from this server, because memories carry no server and a pointer persona
+ * shares them across every server that installed its preset.
+ */
 export function reachOutTickets(input: ReachOutScoreInput): number {
   const score =
-    REACH_OUT_POINTS_PER_MEMORY * Math.min(input.memories, REACH_OUT_MEMORY_CAP) +
+    REACH_OUT_POINTS_PER_TURN * Math.min(input.localTurns, REACH_OUT_TURN_CAP) +
     REACH_OUT_POINTS_PER_STM_CHANNEL * Math.min(input.stmChannels, REACH_OUT_STM_CHANNEL_CAP) +
     (input.active ? REACH_OUT_ACTIVITY_POINTS : 0) -
     (input.firedBySamePersona ? REACH_OUT_SAME_PERSONA_PENALTY : 0) -
@@ -161,7 +165,7 @@ export async function drawReachOutTarget(args: {
       {
         item: { candidate, activity },
         tickets: reachOutTickets({
-          memories: memoriesUsable ? candidate.ltm_total : 0,
+          localTurns: candidate.local_turns,
           stmChannels,
           active: activity !== null,
           firedBySamePersona: pingers?.has(persona.persona_id) ?? false,

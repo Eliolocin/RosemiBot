@@ -172,6 +172,7 @@ async function runAdmittedChatTurn(incoming: ChatIncoming): Promise<ChatAdmissio
           manualStreamingContextOverrides: queued.manualStreamingContextOverrides,
           sceneTurn: queued.sceneTurn,
           naturalNudge: queued.naturalNudge,
+          nudgeSceneCatcherPersonaId: queued.nudgeSceneCatcherPersonaId,
           onGenerationResult: queued.onGenerationResult,
           onQueueDiscard: queued.onQueueDiscard,
         }).then(() => {}),

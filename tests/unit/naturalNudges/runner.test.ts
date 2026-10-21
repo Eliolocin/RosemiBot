@@ -58,7 +58,6 @@ beforeEach(() => {
     spyOn(metricSampleRepository, "recordSample").mockResolvedValue(undefined),
     spyOn(plannerModel, "resolvePlannerModel").mockResolvedValue({ kind: "ready", llmId: 1, source: "pinned" }),
     spyOn(tomoriChatModule, "isChannelProcessingLocked").mockReturnValue(false),
-    spyOn(tomoriChatModule, "suppressNextSelfReply").mockImplementation(() => undefined),
     spyOn(tomoriChatModule, "tomoriChat").mockImplementation(async (input) => {
       chatInputs.push(input);
       return "run";
@@ -71,8 +70,13 @@ afterEach(() => {
 });
 
 /** The gateway still reports `RECORDED_ID` as the newest message, as it does after that message is deleted. */
-function attemptWithHistory(latest: () => Promise<Message[]>): { attempt: EpisodeAttempt; sent: string[] } {
+function attemptWithHistory(latest: () => Promise<Message[]>): {
+  attempt: EpisodeAttempt;
+  sent: string[];
+  deleted: string[];
+} {
   const sent: string[] = [];
+  const deleted: string[] = [];
   const channel = {
     id: "fixture-channel",
     name: "general",
@@ -82,7 +86,13 @@ function attemptWithHistory(latest: () => Promise<Message[]>): { attempt: Episod
     },
     send: async ({ content }: { content: string }) => {
       sent.push(content);
-      return { id: PLACEHOLDER_ID } as Message;
+      return {
+        id: PLACEHOLDER_ID,
+        channelId: "fixture-channel",
+        delete: async () => {
+          deleted.push(PLACEHOLDER_ID);
+        },
+      } as unknown as Message;
     },
   } as unknown as GuildTextBasedChannel;
   const attempt: EpisodeAttempt = {
@@ -101,7 +111,7 @@ function attemptWithHistory(latest: () => Promise<Message[]>): { attempt: Episod
     target: null,
     partners: [],
   };
-  return { attempt, sent };
+  return { attempt, sent, deleted };
 }
 
 const messageWithId = (id: string) => ({ id }) as Message;
@@ -114,11 +124,12 @@ describe("episode anchor", () => {
     expect(sent).toEqual([]);
   });
 
-  it("seeds the placeholder and speaks when the channel was emptied", async () => {
-    const { attempt, sent } = attemptWithHistory(async () => []);
+  it("speaks on a placeholder in an empty channel and removes it once the turn has run", async () => {
+    const { attempt, sent, deleted } = attemptWithHistory(async () => []);
     await runEpisodeAttempt(attempt);
     expect(sent).toHaveLength(1);
     expect(chatInputs.map((input) => input.message.id)).toEqual([PLACEHOLDER_ID]);
+    expect(deleted).toEqual([PLACEHOLDER_ID]);
   });
 
   it("aborts without posting when a newer message arrived or the history read fails", async () => {
