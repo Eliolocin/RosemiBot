@@ -59,7 +59,7 @@ export async function loadSubscriptionAllowance(
     allowance: key.applied_allowance,
     used: Math.max(0, key.applied_allowance - remaining),
     remaining: Math.max(0, Math.min(key.applied_allowance, remaining)),
-    start: entitlement.period_start,
-    end: entitlement.period_end,
+    start: key.funded_period_start ?? entitlement.period_start,
+    end: key.funded_period_end ?? entitlement.period_end,
   };
 }

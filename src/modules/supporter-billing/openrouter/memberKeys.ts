@@ -20,10 +20,11 @@ import {
   MICROS_PER_DOLLAR,
   normalizeMemberKeyLimit,
 } from "@/modules/supporter-billing/openrouter/management";
+import { log } from "@/utils/misc/logger";
 import { supporterSpendGuard } from "@/modules/supporter-billing/runtime/spendGuard";
 
 async function observedUsage(row: MemberKeyRow, repository: MemberKeyRepository, usage: number): Promise<number> {
-  if (!row.key_hash || !row.key_created_at || row.supporter_identity_id === null) throw new MemberKeyError();
+  if (!row.key_hash || !row.key_created_at) throw new MemberKeyError();
   return Math.max(usage, await repository.loggedSpend(row), supporterSpendGuard.observedSpend(row.key_hash));
 }
 
@@ -37,6 +38,43 @@ async function removeRemoteKey(provider: MemberKeyProvider, hash: string): Promi
   await provider.delete(hash);
 }
 
+async function captureRemainingAllowance(
+  row: MemberKeyRow,
+  repository: MemberKeyRepository,
+  provider: MemberKeyProvider,
+): Promise<MemberKeyRow> {
+  if (!row.key_hash) return row;
+  const remote = await provider.get(row.key_hash);
+  if (!remote || remote.limit === null || row.applied_limit === null) throw new MemberKeyError();
+  const usage = await observedUsage(row, repository, remote.usage);
+  const remaining = normalizeMemberKeyLimit(
+    Math.max(
+      0,
+      Math.min(remote.limit, row.applied_limit) -
+        usage -
+        supporterSpendGuard.pendingSpend(row.supporter_identity_id ?? 0),
+    ),
+  );
+  return repository.captureAllowance(row, remaining, usage);
+}
+
+export async function prepareMemberKeyDetachLocked(
+  client: SQL,
+  provider: MemberKeyProvider,
+  identityId: number,
+): Promise<void> {
+  const repository = new MemberKeyRepository(client);
+  let row = await repository.loadByIdentityId(identityId);
+  if (!row) return;
+  row = await repository.save({ ...row, disabled: true });
+  row = await drain(row, repository, provider, false);
+  if (row.key_hash) {
+    await provider.update(row.key_hash, { disabled: true });
+    await captureRemainingAllowance(row, repository, provider);
+    if (supporterSpendGuard.pendingSpend(identityId) > 0) throw new MemberKeyError();
+  }
+}
+
 async function drain(
   row: MemberKeyRow,
   repository: MemberKeyRepository,
@@ -45,7 +83,17 @@ async function drain(
   now = new Date(),
 ): Promise<MemberKeyRow> {
   if (row.pending_action === "delete") {
-    if (row.key_hash) await removeRemoteKey(provider, row.key_hash);
+    if (row.key_hash) {
+      const keyHash = row.key_hash;
+      const remote = await provider.get(keyHash);
+      if (remote) {
+        await provider.update(row.key_hash, { disabled: true });
+        row = await captureRemainingAllowance(row, repository, provider);
+      }
+      if (row.carried_allowance === null && row.applied_allowance !== null) throw new MemberKeyError();
+      if (supporterSpendGuard.pendingSpend(row.supporter_identity_id ?? 0) > 0) throw new MemberKeyError();
+      await provider.delete(keyHash);
+    }
     if (row.operation_id) {
       for (const key of await provider.findByName(operationName(row))) await removeRemoteKey(provider, key.hash);
     }
@@ -63,10 +111,7 @@ async function drain(
       pending_action: null,
       operation_id: null,
       retired_hash: null,
-      applied_charge_at: null,
-      renewal_due_at: null,
       applied_limit: null,
-      applied_allowance: null,
       key_created_at: null,
       target_limit: null,
       target_allowance: null,
@@ -120,6 +165,7 @@ async function drain(
       renewal_due_at: row.target_period_end,
       applied_limit: row.target_limit,
       applied_allowance: row.target_allowance,
+      carried_allowance: null,
     });
   }
   if (row.retired_hash) {
@@ -154,21 +200,37 @@ export async function syncMemberKeyLocked(options: {
   }
   row = await drain(row, repository, provider);
   const allowance = config.tiers[entitlement.tier_key].monthlyBudgetMicros / MICROS_PER_DOLLAR;
+  const charge = entitlement.last_successful_charge_at;
+  const hasNewCharge = charge && (!row.applied_charge_at || charge > row.applied_charge_at);
+  const isRenewal = hasNewCharge && row.renewal_due_at && charge >= row.renewal_due_at;
+  const upgrade =
+    hasNewCharge &&
+    row.applied_charge_at &&
+    row.renewal_due_at &&
+    charge < row.renewal_due_at &&
+    entitlement.period_end?.getTime() === row.renewal_due_at.getTime() &&
+    row.applied_allowance !== null &&
+    allowance > row.applied_allowance;
   if (!row.key_hash) {
+    const initial = row.applied_allowance === null && row.applied_charge_at === null && row.carried_allowance === null;
+    if (!initial && row.carried_allowance === null) throw new MemberKeyError();
     row = await repository.save({
       ...row,
       disabled: true,
       pending_action: "create",
       operation_id: randomUUID(),
-      target_limit: allowance,
-      target_allowance: allowance,
-      target_charge_at: entitlement.last_successful_charge_at,
-      target_period_end: entitlement.next_charge_at,
+      funded_period_start: initial || isRenewal ? entitlement.period_start : row.funded_period_start,
+      funded_period_end: initial || isRenewal ? entitlement.period_end : row.funded_period_end,
+      target_limit: normalizeMemberKeyLimit(
+        initial || isRenewal
+          ? allowance
+          : (row.carried_allowance ?? 0) + (upgrade ? allowance - (row.applied_allowance ?? 0) : 0),
+      ),
+      target_allowance: initial || isRenewal || upgrade ? allowance : row.applied_allowance,
+      target_charge_at: initial || isRenewal || upgrade ? charge : row.applied_charge_at,
+      target_period_end: initial || isRenewal ? entitlement.next_charge_at : row.renewal_due_at,
     });
   } else {
-    const charge = entitlement.last_successful_charge_at;
-    const hasNewCharge = charge && (!row.applied_charge_at || charge > row.applied_charge_at);
-    const isRenewal = hasNewCharge && row.renewal_due_at && charge >= row.renewal_due_at;
     if (isRenewal) {
       const remote = await provider.get(row.key_hash);
       if (!remote) throw new MemberKeyError();
@@ -176,21 +238,14 @@ export async function syncMemberKeyLocked(options: {
         ...row,
         disabled: true,
         pending_action: "renew",
+        funded_period_start: entitlement.period_start,
+        funded_period_end: entitlement.period_end,
         target_limit: normalizeMemberKeyLimit((await observedUsage(row, repository, remote.usage)) + allowance),
         target_allowance: allowance,
         target_charge_at: charge,
         target_period_end: entitlement.next_charge_at,
       });
-    } else if (
-      hasNewCharge &&
-      row.applied_charge_at &&
-      row.renewal_due_at &&
-      charge < row.renewal_due_at &&
-      entitlement.period_end?.getTime() === row.renewal_due_at.getTime() &&
-      row.applied_limit !== null &&
-      row.applied_allowance !== null &&
-      allowance > row.applied_allowance
-    ) {
+    } else if (upgrade && row.applied_limit !== null && row.applied_allowance !== null) {
       row = await repository.save({
         ...row,
         disabled: true,
@@ -232,10 +287,11 @@ export async function cleanupDetachedMemberKeysLocked(
   client: SQL,
   provider: MemberKeyProvider,
   now = new Date(),
+  memberId?: string,
 ): Promise<void> {
   const repository = new MemberKeyRepository(client);
   let failed = false;
-  for (const row of await repository.listDetachedForCleanup()) {
+  for (const row of await repository.listDetachedForCleanup(memberId)) {
     try {
       await drain(
         await repository.save({ ...row, disabled: true, pending_action: "delete" }),
@@ -245,6 +301,7 @@ export async function cleanupDetachedMemberKeysLocked(
         now,
       );
     } catch {
+      log.warn("Supporter detached member-key cleanup failed", { metadata: { memberKeyId: row.member_key_id } });
       failed = true;
     }
   }
@@ -270,6 +327,9 @@ export async function reconcileMemberKeys(options: MemberKeyLifecycleOptions): P
           supporterIdentityId: identity.supporter_identity_id,
         });
       } catch {
+        log.warn("Supporter member-key synchronization failed", {
+          metadata: { identityId: identity.supporter_identity_id },
+        });
         failed = true;
       }
     }
@@ -282,12 +342,13 @@ export async function unlinkSupporterIdentity(
 ): Promise<void> {
   await withMemberKeyLock(options.client ?? defaultSql, async (client) => {
     const identity = await new SupporterIdentityRepository(client).loadByDiscordUserId(options.discordUserId);
-    if (identity)
-      await client.begin(async (tx: SQL) =>
-        new MemberKeyRepository(tx).detach(identity.supporter_identity_id, options.now ?? new Date()),
-      );
+    if (!identity) return;
     const provider = options.provider ?? createMemberKeyProvider(options.env);
-    await cleanupDetachedMemberKeysLocked(client, provider, options.now ?? new Date());
+    await prepareMemberKeyDetachLocked(client, provider, identity.supporter_identity_id);
+    await client.begin(async (tx: SQL) =>
+      new MemberKeyRepository(tx).detach(identity.supporter_identity_id, options.now ?? new Date()),
+    );
+    await cleanupDetachedMemberKeysLocked(client, provider, options.now ?? new Date(), identity.patreon_member_id);
   });
 }
 

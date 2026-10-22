@@ -52,7 +52,8 @@ export interface RefreshPatreonEntitlementForIdentityOptions {
   identity: SupporterIdentityRow;
   env?: EnvRecord;
   now?: Date;
-  fetchCampaignMembers?: () => Promise<unknown[]>;
+  fetchMember?: () => Promise<unknown | null>;
+  source?: "reconcile" | "webhook";
   persistMemberState?: (options: PersistPatreonMemberStateOptions) => Promise<PersistPatreonMemberStateResult>;
 }
 
@@ -104,8 +105,8 @@ const patreonCampaignMembersPageSchema = z
   })
   .passthrough();
 
-function buildCampaignMembersUrl(config: SupporterBillingConfig): URL {
-  const url = new URL(`campaigns/${encodeURIComponent(config.patreon.campaignId)}/members`, `${PATREON_API_BASE_URL}/`);
+function buildMemberUrl(path: string): URL {
+  const url = new URL(path, `${PATREON_API_BASE_URL}/`);
   url.searchParams.set("include", "campaign,user,currently_entitled_tiers");
   url.searchParams.set(
     "fields[member]",
@@ -114,7 +115,6 @@ function buildCampaignMembersUrl(config: SupporterBillingConfig): URL {
   url.searchParams.set("fields[tier]", "title");
   url.searchParams.set("fields[campaign]", "creation_name");
   url.searchParams.set("fields[user]", "full_name");
-  url.searchParams.set("page[count]", "1000");
   return url;
 }
 
@@ -134,7 +134,7 @@ function nextMembersPageUrl(currentUrl: URL, page: z.infer<typeof patreonCampaig
     if (nextUrl) {
       return nextUrl;
     }
-    log.warn("Ignoring Patreon members pagination link outside the Patreon API origin");
+    throw new PatreonApiError("Patreon members pagination link was invalid");
   }
 
   const nextCursor = page.meta?.pagination?.cursors?.next;
@@ -173,7 +173,10 @@ export async function fetchPatreonCampaignMemberPayloads(options: {
   const timeoutMs = options.timeoutMs ?? getPatreonHttpTimeoutMs(env);
   const maxPages = options.maxPages ?? getPatreonReconcileMaxPages(env);
   const memberPayloads: unknown[] = [];
-  let nextUrl: URL | null = buildCampaignMembersUrl(options.config);
+  let nextUrl: URL | null = buildMemberUrl(
+    `campaigns/${encodeURIComponent(options.config.patreon.campaignId)}/members`,
+  );
+  nextUrl.searchParams.set("page[count]", "1000");
   let pageCount = 0;
 
   while (nextUrl && pageCount < maxPages) {
@@ -209,6 +212,7 @@ export async function fetchPatreonCampaignMemberPayloads(options: {
     nextUrl = nextMembersPageUrl(nextUrl, parsedPage.data);
   }
 
+  if (nextUrl) throw new PatreonApiError("Patreon campaign member pagination limit exceeded");
   return memberPayloads;
 }
 
@@ -244,7 +248,8 @@ function mapCampaignMemberPayloadsToStates(params: {
       fallbackHours: getPatreonUsagePeriodFallbackHours(params.env),
     });
 
-    return mapped.valid ? [mapped.snapshot] : [];
+    if (!mapped.valid) throw new PatreonApiError("Patreon campaign member response was invalid");
+    return [mapped.snapshot];
   });
 }
 
@@ -263,18 +268,6 @@ function indexMemberStates(states: readonly PatreonMemberStateSnapshot[]): {
   return { byMemberId, byUserId };
 }
 
-function findMemberStateForIdentity(
-  states: readonly PatreonMemberStateSnapshot[],
-  identity: SupporterIdentityRow,
-): PatreonMemberStateSnapshot | null {
-  const indexedStates = indexMemberStates(states);
-  return (
-    indexedStates.byMemberId.get(identity.patreon_member_id) ??
-    indexedStates.byUserId.get(identity.patreon_user_id) ??
-    null
-  );
-}
-
 async function loadCampaignMemberPayloads(params: {
   config: SupporterBillingConfig;
   env: EnvRecord;
@@ -290,39 +283,105 @@ async function loadCampaignMemberPayloads(params: {
   )();
 }
 
+const authoritativeMemberSchema = z.object({
+  data: z.object({
+    id: z.string().min(1),
+    type: z.literal("member"),
+    attributes: z.object({
+      patron_status: z.enum(["active_patron", "former_patron", "declined_patron"]).nullable(),
+      last_charge_status: z.string().min(1).nullable(),
+      last_charge_date: z.iso.datetime({ offset: true }).nullable(),
+      next_charge_date: z.iso.datetime({ offset: true }).nullable(),
+      pledge_relationship_start: z.iso.datetime({ offset: true }).nullable(),
+      will_pay_amount_cents: z.number().int().nonnegative().nullable(),
+    }),
+    relationships: z.object({
+      campaign: z.object({ data: z.object({ id: z.string().min(1), type: z.literal("campaign") }) }),
+      user: z.object({ data: z.object({ id: z.string().min(1), type: z.literal("user") }) }),
+      currently_entitled_tiers: z.object({
+        data: z.array(z.object({ id: z.string().min(1), type: z.literal("tier") })),
+      }),
+    }),
+  }),
+});
+
+export async function fetchPatreonMemberPayload(options: {
+  config: SupporterBillingConfig;
+  memberId: string;
+  env?: EnvRecord;
+  fetchImpl?: FetchLike;
+  accessToken?: string;
+}): Promise<unknown | null> {
+  const env = options.env ?? process.env;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  let token = options.accessToken ?? (await getPatreonCreatorAccessToken({ ...options, env }));
+  const url = buildMemberUrl(`members/${encodeURIComponent(options.memberId)}`);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await fetchImpl(url.toString(), {
+      redirect: "manual",
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "User-Agent": PATREON_USER_AGENT },
+      signal: AbortSignal.timeout(getPatreonHttpTimeoutMs(env)),
+    });
+    if (response.status === 401 && !options.accessToken && attempt === 0) {
+      await response.body?.cancel();
+      await rejectPatreonCreatorAccessToken(options.config, token, env);
+      token = await getPatreonCreatorAccessToken({ ...options, env });
+      continue;
+    }
+    if (response.status === 404 || response.status === 410) return null;
+    if (!response.ok) throw new PatreonApiError("Patreon member fetch failed", response.status);
+    const payload: unknown = await response.json();
+    if (!authoritativeMemberSchema.safeParse(payload).success)
+      throw new PatreonApiError("Patreon member response was invalid");
+    return payload;
+  }
+  throw new PatreonApiError("Patreon member fetch failed");
+}
+
 export async function refreshPatreonEntitlementForIdentity(
   options: RefreshPatreonEntitlementForIdentityOptions,
 ): Promise<PatreonIdentityRefreshResult> {
   const env = options.env ?? process.env;
   const now = options.now ?? new Date();
-  const memberPayloads = await loadCampaignMemberPayloads({
-    config: options.config,
-    env,
-    fetchCampaignMembers: options.fetchCampaignMembers,
-  });
-  const memberStates = mapCampaignMemberPayloadsToStates({
-    config: options.config,
-    memberPayloads,
-    now,
-    env,
-  });
-  const matchedMemberState = findMemberStateForIdentity(memberStates, options.identity);
-  const snapshot = matchedMemberState ?? makeMissingMemberInactiveSnapshot(options.identity);
+  const payload = await (
+    options.fetchMember ??
+    (() =>
+      fetchPatreonMemberPayload({
+        config: options.config,
+        memberId: options.identity.patreon_member_id,
+        env,
+      }))
+  )();
+  let snapshot: PatreonMemberStateSnapshot;
+  if (payload === null) {
+    snapshot = makeMissingMemberInactiveSnapshot(options.identity);
+  } else {
+    if (!authoritativeMemberSchema.safeParse(payload).success)
+      throw new PatreonApiError("Patreon member response was invalid");
+    const mapped = mapPatreonMemberPayloadToSupporterState({
+      config: options.config,
+      memberResponse: payload,
+      now,
+      fallbackHours: getPatreonUsagePeriodFallbackHours(env),
+    });
+    if (
+      !mapped.valid ||
+      mapped.snapshot.patreonMemberId !== options.identity.patreon_member_id ||
+      mapped.snapshot.patreonUserId !== options.identity.patreon_user_id ||
+      mapped.snapshot.patreonCampaignId !== options.identity.patreon_campaign_id
+    )
+      throw new PatreonApiError("Patreon member response did not match linked membership");
+    snapshot = mapped.snapshot;
+  }
   const persistResult = await (options.persistMemberState ?? persistPatreonMemberState)({
     config: options.config,
     identity: options.identity,
     snapshot,
-    source: "reconcile",
+    source: options.source ?? "reconcile",
     verifiedAt: now,
     env,
   });
-
-  return {
-    fetchedMembers: memberPayloads.length,
-    matchedMember: matchedMemberState !== null,
-    snapshot,
-    persistResult,
-  };
+  return { fetchedMembers: payload === null ? 0 : 1, matchedMember: payload !== null, snapshot, persistResult };
 }
 
 export async function runPatreonEntitlementReconcile(
@@ -392,8 +451,11 @@ export function startPatreonReconcileJob(options: {
   const runMaintenanceHook = options.runMaintenance ?? runSupporterBillingMaintenance;
   const runEntitlementReconcileHook = options.runEntitlementReconcile ?? runPatreonEntitlementReconcile;
   const runMemberKeyReconcileHook = options.runMemberKeyReconcile ?? reconcileMemberKeys;
+  let running = false;
   const runTick = (): void => {
-    void runEntitlementReconcileHook({
+    if (running) return;
+    running = true;
+    const reconcile = runEntitlementReconcileHook({
       config: options.config,
       env: options.env,
     })
@@ -415,7 +477,7 @@ export function startPatreonReconcileJob(options: {
         }
       });
 
-    void runMaintenanceHook({ env: options.env })
+    const maintenance = runMaintenanceHook()
       .then((maintenance) => {
         if (maintenance.purgedOAuthStates > 0 || maintenance.purgedWebhookEvents > 0) {
           log.info(
@@ -426,6 +488,9 @@ export function startPatreonReconcileJob(options: {
       .catch((error) => {
         void log.error("Supporter billing periodic maintenance failed", error);
       });
+    void Promise.allSettled([reconcile, maintenance]).finally(() => {
+      running = false;
+    });
   };
   const timer = setInterval(runTick, intervalMs);
   timer.unref();

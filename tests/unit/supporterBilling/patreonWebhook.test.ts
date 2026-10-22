@@ -14,8 +14,10 @@ import type { PatreonMemberStateSnapshot } from "@/modules/supporter-billing/pat
 import { mapPatreonMemberPayloadToSupporterState } from "@/modules/supporter-billing/patreon/mapping";
 import { persistPatreonMemberState } from "@/modules/supporter-billing/patreon/persistence";
 import {
-  runPatreonEntitlementReconcile,
+  fetchPatreonCampaignMemberPayloads,
+  fetchPatreonMemberPayload,
   refreshPatreonEntitlementForIdentity,
+  runPatreonEntitlementReconcile,
   startPatreonReconcileJob,
   type PatreonReconcileResult,
 } from "@/modules/supporter-billing/patreon/reconcile";
@@ -94,8 +96,9 @@ function makeMemberPayload(
       id: overrides.memberId ?? "member_test",
       type: "member",
       attributes: {
-        last_charge_status: overrides.lastChargeStatus,
-        will_pay_amount_cents: overrides.willPayAmountCents,
+        last_charge_status: overrides.lastChargeStatus === undefined ? "Paid" : overrides.lastChargeStatus,
+        pledge_relationship_start: "2026-01-01T00:00:00.000Z",
+        will_pay_amount_cents: overrides.willPayAmountCents === undefined ? 100 : overrides.willPayAmountCents,
         patron_status: overrides.patronStatus === undefined ? "active_patron" : overrides.patronStatus,
         last_charge_date:
           overrides.lastChargeDate === undefined ? "2026-01-01T00:00:00.000Z" : overrides.lastChargeDate,
@@ -274,60 +277,28 @@ class MemoryPatreonMemberStatePersistenceRepositories {
 }
 
 describe("Patreon webhook signature verification", () => {
-  it("verifies Patreon HMAC-MD5 signatures over the raw body", () => {
+  it("verifies the body signature without trusting unsigned timestamp metadata", () => {
     const rawBody = encodeJsonPayload(makeMemberPayload());
-    const signature = computePatreonWebhookSignature(rawBody, webhookSecret);
-
+    for (const timestamp of ["invalid", "1", now.toISOString()]) {
+      expect(
+        verifyPatreonWebhookSignature({
+          rawBody,
+          webhookSecret,
+          headers: signedHeaders(rawBody, "members:update", { "x-patreon-timestamp": timestamp }),
+        }),
+      ).toEqual({ valid: true });
+    }
     expect(
-      verifyPatreonWebhookSignature({
-        rawBody,
-        headers: { "x-patreon-signature": signature },
-        webhookSecret,
-        now,
-        timestampToleranceSeconds: 300,
-      }),
-    ).toEqual({ valid: true, timestamp: null });
-    expect(
-      verifyPatreonWebhookSignature({
-        rawBody,
-        headers: { "x-patreon-signature": "0".repeat(32) },
-        webhookSecret,
-        now,
-        timestampToleranceSeconds: 300,
-      }),
+      verifyPatreonWebhookSignature({ rawBody, webhookSecret, headers: { "x-patreon-signature": "0".repeat(32) } }),
     ).toEqual({ valid: false, reason: "invalid_signature" });
-  });
-
-  it("enforces freshness when Patreon supplies a timestamp header", () => {
-    const rawBody = encodeJsonPayload(makeMemberPayload());
-    const signature = computePatreonWebhookSignature(rawBody, webhookSecret);
-
-    expect(
-      verifyPatreonWebhookSignature({
-        rawBody,
-        headers: {
-          "x-patreon-signature": signature,
-          "x-patreon-timestamp": String(Math.floor(now.getTime() / 1000) - 301),
-        },
-        webhookSecret,
-        now,
-        timestampToleranceSeconds: 300,
-      }),
-    ).toEqual({ valid: false, reason: "stale_timestamp" });
   });
 });
 
 describe("Patreon webhook handling", () => {
-  it("refreshes current membership when a fallback payload repeats after intervening changes", async () => {
-    const canceledPayload = makeMemberPayload({ willPayAmountCents: 0 });
-    const activePayload = makeMemberPayload({ willPayAmountCents: 100 });
-    let currentPayload = canceledPayload;
-    const rawBody = encodeJsonPayload(canceledPayload);
-    const webhookRepository = new MemoryWebhookEventRepository();
+  function setup() {
     const memory = new MemoryPatreonMemberStatePersistenceRepositories();
-    const persist = (options: Parameters<typeof persistPatreonMemberState>[0]) =>
-      persistPatreonMemberState({ ...options, repositories: memory.repositories });
-    const options = {
+    const webhookRepository = new MemoryWebhookEventRepository();
+    const options: HandlePatreonWebhookOptions = {
       config: validSupporterConfig,
       env: enabledEnv,
       now,
@@ -335,199 +306,208 @@ describe("Patreon webhook handling", () => {
         identityRepository: new MemoryIdentityLookupRepository([makeIdentity()]),
         webhookEventRepository: webhookRepository,
       },
-      persistMemberState: persist,
-      fetchCampaignMembers: async () => [currentPayload],
+      persistMemberState: (options) => persistPatreonMemberState({ ...options, repositories: memory.repositories }),
+      fetchMember: async () => makeMemberPayload(),
     };
-    const deliver = (overrides: Partial<HandlePatreonWebhookOptions> = {}) =>
-      handlePatreonWebhookRawBody(rawBody, signedHeaders(rawBody, "members:pledge:delete"), {
-        ...options,
-        ...overrides,
-      });
-    const refreshCurrent = () => refreshPatreonEntitlementForIdentity({ ...options, identity: makeIdentity() });
+    let observation = 0;
+    const handle = (body: Uint8Array, headers: PatreonWebhookHeaders) => {
+      options.now = new Date(now.getTime() + observation++);
+      return handlePatreonWebhookRawBody(body, headers, options);
+    };
+    return { memory, webhookRepository, options, handle };
+  }
 
-    expect((await deliver()).status).toBe("processed");
+  it("uses current member state on first, duplicate, and failed retries despite mutable headers", async () => {
+    const { memory, webhookRepository, options, handle } = setup();
+    const rawBody = encodeJsonPayload(makeMemberPayload());
+    let current: unknown = makeMemberPayload({ willPayAmountCents: 0 });
+    let fail = false;
+    let fetched = 0;
+    options.fetchMember = async () => {
+      fetched += 1;
+      if (fail) throw new Error("synthetic-provider-outage");
+      return current;
+    };
+    const deliver = (event: string, id: string) =>
+      handle(rawBody, signedHeaders(rawBody, event, { "x-patreon-event-id": id, "x-patreon-timestamp": "1" }));
+    expect((await deliver("members:delete", "first")).status).toBe("processed");
+    expect(memory.entitlement?.is_active).toBe(true);
     expect(memory.entitlement?.cancel_at_period_end).toBe(true);
-    currentPayload = activePayload;
-    await refreshCurrent();
+    current = makeMemberPayload();
+    expect((await deliver("posts:publish", "changed")).status).toBe("duplicate");
     expect(memory.entitlement?.cancel_at_period_end).toBe(false);
-
-    currentPayload = canceledPayload;
-    const failed = await deliver({
-      fetchCampaignMembers: async () => {
-        throw new Error("provider failure");
-      },
-    });
-    expect(failed.statusCode).toBe(500);
-    expect(memory.entitlement?.cancel_at_period_end).toBe(false);
-    expect(Array.from(webhookRepository.rows.values())[0].status).toBe("processed");
-    expect((await deliver()).status).toBe("duplicate");
-    expect(memory.entitlement?.cancel_at_period_end).toBe(true);
-
-    currentPayload = activePayload;
-    await refreshCurrent();
-    expect((await deliver()).status).toBe("duplicate");
-    expect(memory.entitlement?.cancel_at_period_end).toBe(false);
-    expect(memory.entitlement?.period_end).toEqual(new Date("2026-02-01T00:00:00.000Z"));
+    fail = true;
+    expect((await deliver("members:update", "retry")).statusCode).toBe(500);
+    expect(memory.entitlement?.is_active).toBe(true);
+    fail = false;
+    current = makeMemberPayload({ patronStatus: "declined_patron", lastChargeStatus: "Declined" });
+    expect((await deliver("members:create", "retry-again")).status).toBe("duplicate");
+    expect(memory.entitlement?.is_active).toBe(false);
+    expect(fetched).toBe(4);
     expect(webhookRepository.rows.size).toBe(1);
+    expect([...webhookRepository.rows.values()][0].patreon_event_id).toBeNull();
   });
 
-  it("processes distinct event types with identical payloads while rejecting same-event retries", async () => {
-    const rawBody = encodeJsonPayload(makeMemberPayload());
-    const webhookRepository = new MemoryWebhookEventRepository();
-    const memory = new MemoryPatreonMemberStatePersistenceRepositories();
-    const statuses: string[] = [];
-    for (const eventType of ["members:create", "members:pledge:create", "members:pledge:create"]) {
-      const response = await handlePatreonWebhookRawBody(rawBody, signedHeaders(rawBody, eventType), {
-        config: validSupporterConfig,
-        env: enabledEnv,
-        now,
-        repositories: {
-          identityRepository: new MemoryIdentityLookupRepository([makeIdentity()]),
-          webhookEventRepository: webhookRepository,
-        },
-        fetchCampaignMembers: async () => [makeMemberPayload()],
-        persistMemberState: async (options) => {
-          return await persistPatreonMemberState({ ...options, repositories: memory.repositories });
-        },
-      });
-      statuses.push(response.status);
-    }
-    expect(statuses).toEqual(["processed", "processed", "duplicate"]);
-    expect(Array.from(webhookRepository.rows.values()).map((row) => row.event_type)).toEqual([
-      "members:create",
-      "members:pledge:create",
-    ]);
-  });
-
-  it("records provider event IDs before side effects and ignores duplicate deliveries", async () => {
-    const rawBody = encodeJsonPayload(makeMemberPayload());
-    const webhookRepository = new MemoryWebhookEventRepository();
-    const identityRepository = new MemoryIdentityLookupRepository([makeIdentity()]);
-    let persistedCount = 0;
-
-    const headers = signedHeaders(rawBody, "members:update", { "x-patreon-event-id": "event_test" });
-    const firstResponse = await handlePatreonWebhookRawBody(rawBody, headers, {
-      config: validSupporterConfig,
-      env: enabledEnv,
-      now,
-      repositories: {
-        identityRepository,
-        webhookEventRepository: webhookRepository,
-      },
-      persistMemberState: async () => {
-        persistedCount += 1;
-        return {
-          identity: makeIdentity(),
-          entitlement: { supporter_entitlement_id: 20 } as SupporterEntitlementRow,
-        };
-      },
-    });
-    const secondResponse = await handlePatreonWebhookRawBody(rawBody, headers, {
-      config: validSupporterConfig,
-      env: enabledEnv,
-      now,
-      repositories: {
-        identityRepository,
-        webhookEventRepository: webhookRepository,
-      },
-      persistMemberState: async () => {
-        persistedCount += 1;
-        throw new Error("duplicate should not persist");
-      },
-    });
-
-    expect(firstResponse.status).toBe("processed");
-    expect(secondResponse.status).toBe("duplicate");
-    expect(persistedCount).toBe(1);
-    expect(Array.from(webhookRepository.rows.values())[0].idempotency_key).toBe("event:event_test");
-  });
-
-  it("rejects invalid signatures before storing webhook rows", async () => {
-    const rawBody = encodeJsonPayload(makeMemberPayload());
-    const webhookRepository = new MemoryWebhookEventRepository();
-
-    const response = await handlePatreonWebhookRawBody(
-      rawBody,
-      { "x-patreon-event": "members:update", "x-patreon-signature": "0".repeat(32) },
-      {
-        config: validSupporterConfig,
-        env: enabledEnv,
-        now,
-        repositories: {
-          identityRepository: new MemoryIdentityLookupRepository([makeIdentity()]),
-          webhookEventRepository: webhookRepository,
-        },
-      },
-    );
-
-    expect(response.status).toBe("invalid_signature");
-    expect(webhookRepository.rows.size).toBe(0);
-  });
-
-  it("does not grant access for malformed, wrong-campaign, or unsupported events", async () => {
-    const webhookRepository = new MemoryWebhookEventRepository();
-    const identityRepository = new MemoryIdentityLookupRepository([makeIdentity()]);
-    let persistedCount = 0;
-    const persistMemberState = async () => {
-      persistedCount += 1;
-      throw new Error("rejected events should not persist");
+  it("does not revive a failed old receipt after newer authoritative state deactivates membership", async () => {
+    const { memory, options, handle } = setup();
+    const old = encodeJsonPayload(makeMemberPayload());
+    options.fetchMember = async () => {
+      throw new Error("synthetic-outage");
     };
-    const malformedBody = Buffer.from("{not-json", "utf8");
+    expect((await handle(old, signedHeaders(old, "members:update"))).statusCode).toBe(500);
+    const current = makeMemberPayload({ patronStatus: "declined_patron", lastChargeStatus: "Declined" });
+    options.fetchMember = async () => current;
+    const newer = encodeJsonPayload(current);
+    expect((await handle(newer, signedHeaders(newer, "members:update"))).statusCode).toBe(200);
+    expect((await handle(old, signedHeaders(old, "members:update"))).statusCode).toBe(200);
+    expect(memory.entitlement?.is_active).toBe(false);
+  });
 
-    const malformedResponse = await handlePatreonWebhookRawBody(
-      malformedBody,
-      signedHeaders(malformedBody, "members:update"),
-      {
-        config: validSupporterConfig,
-        env: enabledEnv,
-        now,
-        repositories: {
-          identityRepository,
-          webhookEventRepository: webhookRepository,
-        },
-        persistMemberState,
-      },
-    );
-    const wrongCampaignBody = encodeJsonPayload(makeMemberPayload({ campaignId: "campaign_other" }));
-    const wrongCampaignResponse = await handlePatreonWebhookRawBody(
-      wrongCampaignBody,
-      signedHeaders(wrongCampaignBody, "members:update"),
-      {
-        config: validSupporterConfig,
-        env: enabledEnv,
-        now,
-        repositories: {
-          identityRepository,
-          webhookEventRepository: webhookRepository,
-        },
-        persistMemberState,
-      },
-    );
-    const unsupportedBody = encodeJsonPayload(makeMemberPayload());
-    const unsupportedResponse = await handlePatreonWebhookRawBody(
-      unsupportedBody,
-      signedHeaders(unsupportedBody, "posts:publish"),
-      {
-        config: validSupporterConfig,
-        env: enabledEnv,
-        now,
-        repositories: {
-          identityRepository,
-          webhookEventRepository: webhookRepository,
-        },
-        persistMemberState,
-      },
-    );
+  it("rejects invalid signatures and malformed or unrelated signed bodies before remote work", async () => {
+    const { options, webhookRepository, handle } = setup();
+    let fetched = 0;
+    options.fetchMember = async () => {
+      fetched += 1;
+      return makeMemberPayload();
+    };
+    const rawBody = encodeJsonPayload(makeMemberPayload());
+    expect((await handle(rawBody, { "x-patreon-signature": "0".repeat(32) })).statusCode).toBe(401);
+    expect(webhookRepository.rows.size).toBe(0);
+    for (const body of [
+      Buffer.from("{invalid"),
+      encodeJsonPayload({ data: {} }),
+      encodeJsonPayload(makeMemberPayload({ campaignId: "other" })),
+      encodeJsonPayload(makeMemberPayload({ memberId: "other", userId: "other" })),
+    ]) {
+      expect((await handle(body, signedHeaders(body, "members:update"))).statusCode).toBeGreaterThanOrEqual(200);
+    }
+    expect(fetched).toBe(0);
+  });
 
-    expect(malformedResponse.status).toBe("malformed");
-    expect(wrongCampaignResponse.status).toBe("ignored");
-    expect(unsupportedResponse.status).toBe("ignored");
-    expect(persistedCount).toBe(0);
+  it("leaves benefits untouched and returns retryable failure for malformed and wrong-owner API responses", async () => {
+    const { options, memory, handle } = setup();
+    const rawBody = encodeJsonPayload(makeMemberPayload());
+    const deliver = () => handle(rawBody, signedHeaders(rawBody, "members:update"));
+    await deliver();
+    for (const invalid of [
+      { data: {} },
+      makeMemberPayload({ memberId: "other" }),
+      makeMemberPayload({ userId: "other" }),
+      makeMemberPayload({ campaignId: "other" }),
+    ]) {
+      options.fetchMember = async () => invalid;
+      expect((await deliver()).statusCode).toBe(500);
+      expect(memory.entitlement?.is_active).toBe(true);
+    }
+    options.fetchMember = async () => null;
+    expect((await deliver()).statusCode).toBe(200);
+    expect(memory.entitlement?.is_active).toBe(false);
+  });
+});
+
+describe("Patreon authoritative member fetch", () => {
+  it("requests a single member with explicit fields and creator authorization", async () => {
+    const requests: URL[] = [];
+    const payload = await fetchPatreonMemberPayload({
+      config: validSupporterConfig,
+      memberId: "member_test",
+      accessToken: "synthetic-token",
+      fetchImpl: async (input, init) => {
+        requests.push(new URL(String(input)));
+        expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer synthetic-token");
+        expect(init?.redirect).toBe("manual");
+        return Response.json(makeMemberPayload());
+      },
+    });
+    expect(payload).toEqual(makeMemberPayload());
+    expect(requests[0].pathname).toBe("/api/oauth2/v2/members/member_test");
+    expect(requests[0].searchParams.get("include")?.split(",")).toContain("user");
+    expect(requests[0].searchParams.get("fields[member]")?.split(",")).toContain("last_charge_status");
+  });
+
+  it("distinguishes confirmed missing members from API outages and malformed responses", async () => {
+    for (const status of [404, 410]) {
+      expect(
+        await fetchPatreonMemberPayload({
+          config: validSupporterConfig,
+          memberId: "member_test",
+          accessToken: "synthetic-token",
+          fetchImpl: async () => new Response(null, { status }),
+        }),
+      ).toBeNull();
+    }
+    for (const response of [
+      new Response(null, { status: 503 }),
+      new Response(null, { status: 403 }),
+      Response.json({ data: {} }),
+    ]) {
+      await expect(
+        fetchPatreonMemberPayload({
+          config: validSupporterConfig,
+          memberId: "member_test",
+          accessToken: "synthetic-token",
+          fetchImpl: async () => response,
+        }),
+      ).rejects.toThrow();
+    }
+  });
+
+  it("rejects incomplete campaign scans before entitlement persistence", async () => {
+    let persisted = 0;
+    for (const page of [
+      { data: [], meta: { pagination: { cursors: { next: "more" } } } },
+      { data: [], links: { next: "https://untrusted.example/members" } },
+    ]) {
+      await expect(
+        runPatreonEntitlementReconcile({
+          config: validSupporterConfig,
+          repositories: { identityRepository: { listIdentitiesForPatreonReconcile: async () => [makeIdentity()] } },
+          fetchCampaignMembers: () =>
+            fetchPatreonCampaignMemberPayloads({
+              config: validSupporterConfig,
+              accessToken: "synthetic-token",
+              maxPages: 1,
+              fetchImpl: async () => Response.json(page),
+            }),
+          persistMemberState: async () => {
+            persisted += 1;
+            throw new Error("unreachable");
+          },
+        }),
+      ).rejects.toThrow();
+    }
+    expect(persisted).toBe(0);
   });
 });
 
 describe("Patreon entitlement member-state persistence", () => {
+  it("keeps a newer authoritative result when a concurrent old response finishes last at the same timestamp", async () => {
+    const memory = new MemoryPatreonMemberStatePersistenceRepositories();
+    const older = Promise.withResolvers<unknown>();
+    const persist = (options: Parameters<typeof persistPatreonMemberState>[0]) =>
+      persistPatreonMemberState({ ...options, repositories: memory.repositories });
+    const pending = refreshPatreonEntitlementForIdentity({
+      config: validSupporterConfig,
+      identity: memory.identity,
+      now,
+      fetchMember: () => older.promise,
+      persistMemberState: persist,
+    });
+    await refreshPatreonEntitlementForIdentity({
+      config: validSupporterConfig,
+      identity: memory.identity,
+      now,
+      fetchMember: async () => makeMemberPayload({ patronStatus: "declined_patron", lastChargeStatus: "Declined" }),
+      persistMemberState: persist,
+    });
+    older.resolve(makeMemberPayload());
+    await pending;
+    expect(memory.entitlement?.is_active).toBe(false);
+    expect(memory.entitlement?.patron_status).toBe("declined_patron");
+  });
+
   it("preserves canceled paid access without tier metadata, refuses unverified extensions, and honors payment failures", async () => {
+    let observation = 0;
     const map = (overrides: Parameters<typeof makeMemberPayload>[0], deleted = false) => {
       const result = mapPatreonMemberPayloadToSupporterState({
         config: validSupporterConfig,
@@ -555,7 +535,7 @@ describe("Patreon entitlement member-state persistence", () => {
           identity: memory.identity,
           snapshot,
           source: "reconcile",
-          verifiedAt: now,
+          verifiedAt: new Date(now.getTime() + observation++),
           repositories: memory.repositories,
         });
       if (initialPaidPeriod) await save(paid);
@@ -583,6 +563,7 @@ describe("Patreon entitlement member-state persistence", () => {
   });
 
   it("activates, renews, and deactivates entitlement and membership dates", async () => {
+    let observation = 0;
     const memory = new MemoryPatreonMemberStatePersistenceRepositories();
     const activeSnapshot: PatreonMemberStateSnapshot = {
       patreonUserId: "patreon_user_test",
@@ -605,7 +586,7 @@ describe("Patreon entitlement member-state persistence", () => {
       identity: memory.identity,
       snapshot: activeSnapshot,
       source: "webhook",
-      verifiedAt: now,
+      verifiedAt: new Date(now.getTime() + observation++),
       repositories: memory.repositories,
     });
     const renewal = await persistPatreonMemberState({
@@ -617,7 +598,7 @@ describe("Patreon entitlement member-state persistence", () => {
         periodEnd: new Date("2026-03-01T00:00:00.000Z"),
       },
       source: "webhook",
-      verifiedAt: now,
+      verifiedAt: new Date(now.getTime() + observation++),
       repositories: memory.repositories,
     });
     const deactivation = await persistPatreonMemberState({
@@ -633,7 +614,7 @@ describe("Patreon entitlement member-state persistence", () => {
         inactiveReason: "inactive",
       },
       source: "webhook",
-      verifiedAt: now,
+      verifiedAt: new Date(now.getTime() + observation++),
       repositories: memory.repositories,
     });
 
@@ -697,6 +678,65 @@ describe("Patreon entitlement reconcile", () => {
         info.mockRestore();
         error.mockRestore();
       }
+    }
+  });
+
+  it("skips overlapping ticks through entitlement work, key cleanup, and maintenance, then clears failure guards", async () => {
+    let tick: (() => void) | undefined;
+    const createTimer = globalThis.setInterval;
+    const timers: { setInterval: (callback: () => void, delay: number) => ReturnType<typeof globalThis.setInterval> } =
+      globalThis;
+    const timer = spyOn(timers, "setInterval").mockImplementation((callback) => {
+      tick = callback;
+      return createTimer(() => {}, 300_000);
+    });
+    const maintenance = Promise.withResolvers<void>();
+    const keys = Promise.withResolvers<void>();
+    let entitlementCalls = 0;
+    let keyCalls = 0;
+    let maintenanceCalls = 0;
+    const error = spyOn(log, "error").mockImplementation(async () => {});
+    const job = startPatreonReconcileJob({
+      config: validSupporterConfig,
+      runEntitlementReconcile: async () => {
+        entitlementCalls += 1;
+        throw new Error("synthetic-outage");
+      },
+      runMemberKeyReconcile: async () => {
+        keyCalls += 1;
+        await keys.promise;
+      },
+      runMaintenance: async () => {
+        maintenanceCalls += 1;
+        await maintenance.promise;
+        throw new Error("synthetic-maintenance-outage");
+      },
+    });
+    const flush = async () => {
+      for (let count = 0; count < 20; count++) await Promise.resolve();
+    };
+    try {
+      if (!tick) throw new Error("Missing reconcile timer");
+      tick();
+      tick();
+      await flush();
+      expect([entitlementCalls, keyCalls, maintenanceCalls]).toEqual([1, 1, 1]);
+      keys.resolve();
+      await flush();
+      tick();
+      expect(entitlementCalls).toBe(1);
+      maintenance.resolve();
+      await flush();
+      tick();
+      await flush();
+      expect([entitlementCalls, keyCalls, maintenanceCalls]).toEqual([2, 2, 2]);
+    } finally {
+      keys.resolve();
+      maintenance.resolve();
+      await flush();
+      job.stop();
+      timer.mockRestore();
+      error.mockRestore();
     }
   });
 

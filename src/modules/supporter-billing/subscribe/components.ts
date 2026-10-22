@@ -110,25 +110,53 @@ function receipt(
   };
 }
 
+const refreshAttempts = new Map<string, { expiresAt: number; inFlight: boolean }>();
+const MAX_REFRESH_ATTEMPTS = 10_000;
+
 export async function refreshSubscriptionMembership(
   discordUserId: string,
   locale: string,
 ): Promise<PanelReceipt | undefined> {
   const config = parseSupporterBillingConfigForCommands();
-  const identity = await supporterIdentityRepository.loadByDiscordUserId(discordUserId);
-  if (!identity) return undefined;
-  const entitlement = await supporterEntitlementRepository.loadByIdentityId(identity.supporter_identity_id);
-  const next =
-    entitlement && new Date(entitlement.last_verified_at.getTime() + config.jobs.manualRefreshCooldownSeconds * 1000);
-  if (next && next > new Date())
-    return receipt(locale, "commands.subscription.cooldown", false, {
-      time: `<t:${Math.floor(next.getTime() / 1000)}:R>`,
+  const now = Date.now();
+  for (const [id, attempt] of refreshAttempts)
+    if (!attempt.inFlight && attempt.expiresAt <= now) refreshAttempts.delete(id);
+  const cooldownMs = config.jobs.manualRefreshCooldownSeconds * 1000;
+  const attempt = refreshAttempts.get(discordUserId);
+  const cooldownReceipt = (expires: number) =>
+    receipt(locale, "commands.subscription.cooldown", false, {
+      time: `<t:${Math.floor(expires / 1000)}:R>`,
     });
+  if (attempt) return cooldownReceipt(Math.max(attempt.expiresAt, now + (attempt.inFlight ? cooldownMs : 0)));
+  if (refreshAttempts.size >= MAX_REFRESH_ATTEMPTS) return cooldownReceipt(now + cooldownMs);
+  const currentAttempt = { expiresAt: now + cooldownMs, inFlight: true };
+  refreshAttempts.set(discordUserId, currentAttempt);
+  let attemptedRemote = false;
   try {
+    const identity = await supporterIdentityRepository.loadByDiscordUserId(discordUserId);
+    if (!identity) {
+      refreshAttempts.delete(discordUserId);
+      return undefined;
+    }
+    const entitlement = await supporterEntitlementRepository.loadByIdentityId(identity.supporter_identity_id);
+    if (!entitlement) {
+      refreshAttempts.delete(discordUserId);
+      return undefined;
+    }
+    const next = entitlement.last_verified_at.getTime() + cooldownMs;
+    if (next > now) {
+      currentAttempt.expiresAt = next;
+      return cooldownReceipt(next);
+    }
+    attemptedRemote = true;
     await refreshPatreonEntitlementForIdentity({ config, identity, env: process.env, now: new Date() });
     return receipt(locale, "commands.subscription.checked");
   } catch {
+    log.warn("Subscription membership refresh failed");
     return receipt(locale, "commands.subscription.refresh_failed", true);
+  } finally {
+    currentAttempt.inFlight = false;
+    if (attemptedRemote) currentAttempt.expiresAt = Date.now() + cooldownMs;
   }
 }
 

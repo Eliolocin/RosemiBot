@@ -1,6 +1,8 @@
 import { createMemberKeyMetadata as metadata } from "../../helpers/memberKeyMetadata";
 import { describe, expect, it, spyOn } from "bun:test";
 import { createMemberKeyProvider, MemberKeyError } from "@/modules/supporter-billing/openrouter/management";
+import { SQL } from "bun";
+import { withMemberKeyLock } from "@/modules/supporter-billing/db/repositories/memberKeys";
 import { useEnvSandbox } from "../../helpers/env";
 
 const env = { TOMORI_SUPPORTER_OPENROUTER_MANAGEMENT_KEY: "synthetic-management-secret" };
@@ -127,6 +129,39 @@ describe("member-key management transport", () => {
           expect(String(error)).not.toContain("synthetic-member-secret");
         }
       }
+    }
+  });
+});
+
+describe("member-key lifecycle serialization", () => {
+  it("queues same-process contenders before they reserve pool connections and releases the queue after failure", async () => {
+    const client = new SQL({ hostname: "127.0.0.1", password: "synthetic-unused", database: "synthetic-unused" });
+    const gate = Promise.withResolvers<void>();
+    let reservations = 0;
+    let called = 0;
+    const reserve = spyOn(client, "reserve").mockImplementation(async () => {
+      reservations += 1;
+      await gate.promise;
+      throw new Error("synthetic-reserve-failure");
+    });
+    try {
+      const work = Array.from({ length: 8 }, () =>
+        withMemberKeyLock(client, async () => {
+          called += 1;
+        }),
+      );
+      const results = Promise.allSettled(work);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(reservations).toBe(1);
+      gate.resolve();
+      expect((await results).every((result) => result.status === "rejected")).toBe(true);
+      expect(reservations).toBe(8);
+      expect(called).toBe(0);
+    } finally {
+      gate.resolve();
+      reserve.mockRestore();
+      await client.close();
     }
   });
 });

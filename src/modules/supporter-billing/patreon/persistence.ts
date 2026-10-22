@@ -17,6 +17,7 @@ import { MemberKeyRepository, withMemberKeyLock } from "@/modules/supporter-bill
 import {
   cleanupDetachedMemberKeysLocked,
   syncMemberKeyLocked,
+  prepareMemberKeyDetachLocked,
 } from "@/modules/supporter-billing/openrouter/memberKeys";
 import {
   createMemberKeyProvider,
@@ -138,6 +139,7 @@ async function persistWithRepositories(
     lastOauthAt: verifiedAt,
   });
   const previous = await repositories.entitlementRepository.loadByIdentityId(identity.supporter_identity_id);
+  if (previous && previous.last_verified_at >= verifiedAt) return { identity, entitlement: previous };
   const entitlement = await repositories.entitlementRepository.upsertSnapshot(
     entitlementSnapshot(
       { ...options.snapshot, isActive: true, inactiveReason: null },
@@ -159,26 +161,70 @@ export async function persistEligiblePatreonSupporter(
 
   const client = options.client ?? defaultSql;
   return await withMemberKeyLock(client, async (connection) => {
+    const identities = new SupporterIdentityRepository(connection);
+    const keys = new MemberKeyRepository(connection);
+    const provider = options.memberKeyProvider ?? createMemberKeyProvider(options.env);
+    await keys.assertOwner({
+      patreon_user_id: options.snapshot.patreonUserId,
+      patreon_campaign_id: options.snapshot.patreonCampaignId,
+      patreon_member_id: options.snapshot.patreonMemberId,
+    });
+    const retained = await keys.load(options.snapshot.patreonMemberId);
+    const charge = options.snapshot.lastSuccessfulChargeAt;
+    const renewal =
+      charge &&
+      retained?.renewal_due_at &&
+      retained.applied_charge_at &&
+      charge > retained.applied_charge_at &&
+      charge >= retained.renewal_due_at;
+    const persistenceOptions =
+      retained?.funded_period_start && retained.funded_period_end && !renewal
+        ? {
+            ...options,
+            snapshot: {
+              ...options.snapshot,
+              periodStart: retained.funded_period_start,
+              periodEnd: retained.funded_period_end,
+            },
+          }
+        : options;
+    const candidates = [
+      await identities.loadByDiscordUserId(options.snapshot.discordUserId),
+      await identities.loadByPatreonMemberId(options.snapshot.patreonMemberId),
+      await identities.loadByPatreonUserIdAndCampaignId(
+        options.snapshot.patreonUserId,
+        options.snapshot.patreonCampaignId,
+      ),
+    ];
+    const detach = new Map(
+      candidates.flatMap((identity) =>
+        identity &&
+        (identity.discord_user_id !== options.snapshot.discordUserId ||
+          identity.patreon_member_id !== options.snapshot.patreonMemberId)
+          ? [[identity.supporter_identity_id, identity] as const]
+          : [],
+      ),
+    );
+    for (const identity of detach.values()) {
+      await prepareMemberKeyDetachLocked(connection, provider, identity.supporter_identity_id);
+    }
     const result = await connection.begin(async (tx: SQL) => {
-      const identities = new SupporterIdentityRepository(tx);
-      const byDiscord = await identities.loadByDiscordUserId(options.snapshot.discordUserId);
-      const byMember = await identities.loadByPatreonMemberId(options.snapshot.patreonMemberId);
-      for (const identity of [byDiscord, byMember]) {
-        if (
-          identity &&
-          (identity.discord_user_id !== options.snapshot.discordUserId ||
-            identity.patreon_member_id !== options.snapshot.patreonMemberId)
-        ) {
-          await new MemberKeyRepository(tx).detach(identity.supporter_identity_id, options.verifiedAt ?? new Date());
-        }
+      for (const identity of detach.values()) {
+        await new MemberKeyRepository(tx).detach(identity.supporter_identity_id, options.verifiedAt ?? new Date());
       }
-      return await persistWithRepositories(options, {
-        identityRepository: identities,
+      return await persistWithRepositories(persistenceOptions, {
+        identityRepository: new SupporterIdentityRepository(tx),
         entitlementRepository: new SupporterEntitlementRepository(tx),
       });
     });
-    const provider = options.memberKeyProvider ?? createMemberKeyProvider(options.env);
-    await cleanupDetachedMemberKeysLocked(connection, provider, options.verifiedAt ?? new Date());
+    for (const identity of detach.values()) {
+      await cleanupDetachedMemberKeysLocked(
+        connection,
+        provider,
+        options.verifiedAt ?? new Date(),
+        identity.patreon_member_id,
+      );
+    }
     await syncMemberKeyLocked({
       config: options.config,
       client: connection,
@@ -195,6 +241,8 @@ async function persistMemberStateWithRepositories(
   repositories: PatreonMemberStatePersistenceRepositories,
 ): Promise<PersistPatreonMemberStateResult> {
   const verifiedAt = options.verifiedAt ?? new Date();
+  const previous = await repositories.entitlementRepository.loadByIdentityId(options.identity.supporter_identity_id);
+  if (previous && previous.last_verified_at >= verifiedAt) return { identity: options.identity, entitlement: previous };
   const identity = await repositories.identityRepository.updatePatreonSnapshot({
     supporterIdentityId: options.identity.supporter_identity_id,
     patreonUserId: options.snapshot.patreonUserId,
@@ -202,7 +250,6 @@ async function persistMemberStateWithRepositories(
     patreonCampaignId: options.snapshot.patreonCampaignId,
   });
 
-  const previous = await repositories.entitlementRepository.loadByIdentityId(identity.supporter_identity_id);
   const next = entitlementSnapshot(
     options.snapshot,
     previous,

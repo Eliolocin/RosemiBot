@@ -157,6 +157,18 @@ const SUPPORTER_BILLING_SCHEMA_STATEMENTS = [
     CHECK ((api_key IS NULL) = (key_version IS NULL)),
     CHECK ((api_key IS NULL) = (key_hash IS NULL))
   )`,
+  "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS patreon_user_id TEXT",
+  "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS patreon_campaign_id TEXT",
+  "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS carried_allowance DOUBLE PRECISION CHECK (carried_allowance >= 0 AND carried_allowance < 'Infinity'::float8)",
+  "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS funded_period_start TIMESTAMPTZ",
+  "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS funded_period_end TIMESTAMPTZ",
+  `UPDATE supporter_member_keys keys SET funded_period_start = entitlement.period_start,
+    funded_period_end = entitlement.period_end FROM supporter_entitlements entitlement
+    WHERE keys.supporter_identity_id = entitlement.supporter_identity_id AND keys.funded_period_start IS NULL`,
+  `UPDATE supporter_member_keys keys SET patreon_user_id = identity.patreon_user_id,
+    patreon_campaign_id = identity.patreon_campaign_id FROM supporter_identities identity
+    WHERE keys.supporter_identity_id = identity.supporter_identity_id AND keys.patreon_user_id IS NULL`,
+  "CREATE UNIQUE INDEX IF NOT EXISTS supporter_member_keys_owner_idx ON supporter_member_keys (patreon_user_id, patreon_campaign_id)",
   "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS applied_limit DOUBLE PRECISION CHECK (applied_limit >= 0 AND applied_limit < 'Infinity'::float8)",
   "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS key_created_at TIMESTAMPTZ",
   "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS retained_cost DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (retained_cost >= 0 AND retained_cost < 'Infinity'::float8)",
@@ -299,7 +311,7 @@ export async function validateSupporterBillingSchema(
   await client`
     SELECT e.last_successful_charge_at, e.next_charge_at, e.cancel_at_period_end,
       k.applied_limit, k.key_created_at, k.retained_cost, k.applied_allowance, k.target_allowance,
-      k.detached_retention_started_at, k.retention_hold,
+      k.detached_retention_started_at, k.retention_hold, k.carried_allowance, k.patreon_user_id, k.patreon_campaign_id, k.funded_period_start, k.funded_period_end,
       u.input_tokens, u.output_tokens, w.idempotency_key
     FROM supporter_entitlements e, supporter_member_keys k,
       supporter_usage_statistics u, supporter_webhook_events w, oauth_states o

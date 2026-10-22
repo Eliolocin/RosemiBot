@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { SQL } from "bun";
 import type { SupporterBillingConfig } from "@/modules/supporter-billing/config";
 import { initializeSupporterBillingSchema } from "@/modules/supporter-billing/db/schema";
-import { MemberKeyRepository } from "@/modules/supporter-billing/db/repositories/memberKeys";
+import { MemberKeyRepository, withMemberKeyLock } from "@/modules/supporter-billing/db/repositories/memberKeys";
 import {
   SupporterEntitlementRepository,
   SupporterIdentityRepository,
@@ -23,6 +23,7 @@ import {
 } from "@/modules/supporter-billing/patreon/mapping";
 import {
   reconcileMemberKeys,
+  syncMemberKeyLocked,
   cleanupDetachedMemberKeysLocked,
   rotateSupporterMemberKey,
   unlinkSupporterIdentity,
@@ -230,11 +231,18 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     });
   }
 
+  const observationTimes = new Map<string, number>();
+  function observedAt(value: EligiblePatreonSupporterSnapshot, at: Date): Date {
+    const time = Math.max(at.getTime(), (observationTimes.get(value.patreonMemberId) ?? 0) + 1);
+    observationTimes.set(value.patreonMemberId, time);
+    return new Date(time);
+  }
+
   async function link(value: EligiblePatreonSupporterSnapshot, provider: Provider, at = now) {
     return await persistEligiblePatreonSupporter({
       config,
       client: testSql,
-      verifiedAt: at,
+      verifiedAt: observedAt(value, at),
       snapshot: value,
       memberKeyProvider: provider,
     });
@@ -245,7 +253,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     return await persistPatreonMemberState({
       config,
       client: testSql,
-      verifiedAt: at,
+      verifiedAt: observedAt(value, at),
       identity,
       snapshot: { ...value, isActive: active, inactiveReason: active ? null : "inactive" },
       source: "webhook",
@@ -299,13 +307,43 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     await link(value, provider);
     const row = await repository.load(value.patreonMemberId);
     if (!row) throw new Error("Missing key row");
-    await repository.save({ ...row, applied_limit: null, key_created_at: null });
+    await repository.save({
+      ...row,
+      applied_limit: null,
+      key_created_at: null,
+      patreon_user_id: null,
+      patreon_campaign_id: null,
+      funded_period_start: null,
+      funded_period_end: null,
+    });
     await initializeSupporterBillingSchema(testSql);
     await initializeSupporterBillingSchema(testSql);
     const migrated = await repository.load(value.patreonMemberId);
     expect(migrated?.applied_limit).toBe(10);
     expect(migrated?.key_created_at).toEqual(new Date(0));
     expect(migrated?.key_hash).toBe(row.key_hash);
+    expect(migrated).toMatchObject({
+      patreon_user_id: value.patreonUserId,
+      patreon_campaign_id: value.patreonCampaignId,
+      funded_period_start: value.periodStart,
+      funded_period_end: value.periodEnd,
+    });
+  });
+
+  it("preserves purged lifetime spend when a lifecycle write saves an older key snapshot", async () => {
+    const value = snapshot("retained_lifecycle_race");
+    const provider = new Provider();
+    const linked = await link(value, provider);
+    const stale = await repository.load(value.patreonMemberId);
+    if (!stale) throw new Error("Missing key row");
+    await record(linked.identity.supporter_identity_id, 7);
+    (await remote(value, provider)).usage = 2;
+    await statistics.purgeAgedStatistics(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    await repository.save({ ...stale, disabled: true });
+    expect(await repository.loggedSpend(stale)).toBe(7);
+    await unlinkSupporterIdentity({ ...options, provider, discordUserId: value.discordUserId });
+    await link(value, provider);
+    expect((await remote(value, provider)).limit).toBe(3);
   });
 
   it("upgrades interrupted renewal and rotation without losing the key's cost window", async () => {
@@ -1399,10 +1437,11 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
         id: value.patreonMemberId,
         attributes: {
           patron_status: "active_patron",
+          pledge_relationship_start: value.periodStart.toISOString(),
+          will_pay_amount_cents: 0,
           last_charge_status: "Paid",
           last_charge_date: value.lastSuccessfulChargeAt?.toISOString(),
           next_charge_date: null,
-          will_pay_amount_cents: 0,
         },
         relationships: {
           campaign: { data: { type: "campaign", id: config.patreon.campaignId } },
@@ -1413,6 +1452,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     };
     const rawBody = Buffer.from(JSON.stringify(payload));
     const secret = "synthetic-cancellation-secret";
+    let delivery = 1;
     const deliver = () =>
       handlePatreonWebhookRawBody(
         rawBody,
@@ -1423,8 +1463,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
         },
         {
           config,
-          now,
+          now: new Date(now.getTime() + delivery++),
           env: { WEBHOOK_SECRET: secret },
+          fetchMember: async () => payload,
           repositories: {
             identityRepository: identities,
             webhookEventRepository: new SupporterWebhookEventRepository(testSql),
@@ -1440,7 +1481,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
         config,
         identity: linked.identity,
         now: at,
-        fetchCampaignMembers: async () => [payload],
+        fetchMember: async () => payload,
         persistMemberState: (options) =>
           persistPatreonMemberState({ ...options, client: testSql, memberKeyProvider: provider }),
       });
@@ -1459,7 +1500,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
       config,
       identity: linked.identity,
       now,
-      fetchCampaignMembers: async () => [],
+      fetchMember: async () => null,
       persistMemberState: (options) =>
         persistPatreonMemberState({ ...options, client: testSql, memberKeyProvider: provider }),
     });
@@ -1468,12 +1509,12 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
       cancel_at_period_end: true,
       period_end: renewal,
     });
-    await change({ ...value, cancelAtPeriodEnd: false }, provider);
+    await change({ ...value, cancelAtPeriodEnd: false }, provider, true, new Date("2026-01-31T00:00:01Z"));
     expect(
       (await new SupporterEntitlementRepository(testSql).loadByIdentityId(linked.identity.supporter_identity_id))
         ?.cancel_at_period_end,
     ).toBe(false);
-    await refresh(now);
+    await refresh(new Date("2026-01-31T00:00:02Z"));
     expect(await repository.loadCredential(linked.identity.supporter_identity_id, renewal)).toBeNull();
     const expired = await refresh(renewal);
     expect(expired.persistResult.entitlement).toMatchObject({
@@ -1501,6 +1542,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
         id: value.patreonMemberId,
         attributes: {
           patron_status: "active_patron",
+          pledge_relationship_start: value.periodStart.toISOString(),
+          will_pay_amount_cents: 100,
           last_charge_status: "Paid",
           last_charge_date: renewal.toISOString(),
           next_charge_date: nextRenewal.toISOString(),
@@ -1512,6 +1555,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
         },
       },
     };
+    let delivery = 1;
     async function deliver(eventId: string, body = payload) {
       const rawBody = Buffer.from(JSON.stringify(body));
       return await handlePatreonWebhookRawBody(
@@ -1523,8 +1567,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
         },
         {
           config,
-          now: renewal,
+          now: new Date(renewal.getTime() + delivery++),
           env: { WEBHOOK_SECRET: secret },
+          fetchMember: async () => body,
           repositories: {
             identityRepository: identities,
             webhookEventRepository: new SupporterWebhookEventRepository(testSql),
@@ -1538,9 +1583,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     expect((await deliver("_member_keys_renewal")).statusCode).toBe(500);
     expect(key.limit).toBe(12);
     key.usage = 4;
-    expect((await deliver("_member_keys_renewal")).status).toBe("processed");
     expect((await deliver("_member_keys_renewal")).status).toBe("duplicate");
-    expect((await deliver("_member_keys_renewal_duplicate_payload")).status).toBe("processed");
+    expect((await deliver("_member_keys_renewal")).status).toBe("duplicate");
+    expect((await deliver("_member_keys_renewal_duplicate_payload")).status).toBe("duplicate");
     expect(key.limit).toBe(12);
     payload.data.attributes.last_charge_status = "Refunded";
     expect((await deliver("_member_keys_refund")).status).toBe("processed");
@@ -1554,26 +1599,28 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     const key = await remote(value, provider);
     key.usage = 4;
     const secret = "synthetic-webhook-secret";
+    let delivery = 1;
     async function deliver(eventId: string, at: Date, chargeAt: Date, nextChargeAt: Date) {
-      const rawBody = Buffer.from(
-        JSON.stringify({
-          data: {
-            type: "member",
-            id: value.patreonMemberId,
-            attributes: {
-              patron_status: "active_patron",
-              last_charge_status: "Paid",
-              last_charge_date: chargeAt.toISOString(),
-              next_charge_date: nextChargeAt.toISOString(),
-            },
-            relationships: {
-              campaign: { data: { type: "campaign", id: config.patreon.campaignId } },
-              user: { data: { type: "user", id: value.patreonUserId } },
-              currently_entitled_tiers: { data: [{ type: "tier", id: "tier-dango" }] },
-            },
+      const body = {
+        data: {
+          type: "member",
+          id: value.patreonMemberId,
+          attributes: {
+            patron_status: "active_patron",
+            pledge_relationship_start: value.periodStart.toISOString(),
+            will_pay_amount_cents: 100,
+            last_charge_status: "Paid",
+            last_charge_date: chargeAt.toISOString(),
+            next_charge_date: nextChargeAt.toISOString(),
           },
-        }),
-      );
+          relationships: {
+            campaign: { data: { type: "campaign", id: config.patreon.campaignId } },
+            user: { data: { type: "user", id: value.patreonUserId } },
+            currently_entitled_tiers: { data: [{ type: "tier", id: "tier-dango" }] },
+          },
+        },
+      };
+      const rawBody = Buffer.from(JSON.stringify(body));
       return await handlePatreonWebhookRawBody(
         rawBody,
         {
@@ -1583,8 +1630,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
         },
         {
           config,
-          now: at,
+          now: new Date(at.getTime() + delivery++),
           env: { WEBHOOK_SECRET: secret },
+          fetchMember: async () => body,
           repositories: {
             identityRepository: identities,
             webhookEventRepository: new SupporterWebhookEventRepository(testSql),
@@ -1598,15 +1646,15 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     const upgradeCharge = new Date("2026-01-15");
     provider.lostUpdate = true;
     expect((await deliver("_member_keys_tier_edit", editedAt, upgradeCharge, renewal)).statusCode).toBe(500);
-    expect((await deliver("_member_keys_tier_edit", editedAt, upgradeCharge, renewal)).status).toBe("processed");
     expect((await deliver("_member_keys_tier_edit", editedAt, upgradeCharge, renewal)).status).toBe("duplicate");
-    expect((await deliver("_member_keys_tier_edit_retry", editedAt, upgradeCharge, renewal)).status).toBe("processed");
+    expect((await deliver("_member_keys_tier_edit", editedAt, upgradeCharge, renewal)).status).toBe("duplicate");
+    expect((await deliver("_member_keys_tier_edit_retry", editedAt, upgradeCharge, renewal)).status).toBe("duplicate");
     expect(key.limit).toBe(20);
     key.usage = 6;
     expect((await deliver("_member_keys_tier_renewal", renewal, renewal, nextRenewal)).status).toBe("processed");
     expect(key.limit).toBe(26);
     key.usage = 9;
-    expect((await deliver("_member_keys_tier_renewal_retry", renewal, renewal, nextRenewal)).status).toBe("processed");
+    expect((await deliver("_member_keys_tier_renewal_retry", renewal, renewal, nextRenewal)).status).toBe("duplicate");
     expect(key.limit).toBe(26);
   });
 
@@ -1659,6 +1707,182 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     expect(provider.created).toHaveLength(1);
   });
 
+  it("preserves remaining spend and highest funded tier across unlink, transfer, and tier cycling", async () => {
+    const value = snapshot("durable_allowance");
+    const provider = new Provider();
+    const first = await link(value, provider);
+    const initial = await remote(value, provider);
+    initial.usage = 5;
+    await record(first.identity.supporter_identity_id, 7);
+    await unlinkSupporterIdentity({ ...options, provider, discordUserId: value.discordUserId });
+    expect((await repository.load(value.patreonMemberId))?.carried_allowance).toBe(3);
+    await link(value, provider);
+    expect((await remote(value, provider)).limit).toBe(3);
+    const upgradeAt = new Date("2026-01-15");
+    const upgraded = { ...value, tierKey: "dango", patreonTierId: "tier-dango", lastSuccessfulChargeAt: upgradeAt };
+    await change(upgraded, provider, true, upgradeAt);
+    expect((await remote(value, provider)).limit).toBe(13);
+    let owner = upgraded;
+    for (const suffix of ["same", "transfer", "again"]) {
+      await unlinkSupporterIdentity({ ...options, now: upgradeAt, provider, discordUserId: owner.discordUserId });
+      owner = {
+        ...upgraded,
+        discordUserId: suffix === "same" ? value.discordUserId : `_member_keys_transfer_${suffix}`,
+      };
+      const downgraded = { ...owner, tierKey: "mochi", patreonTierId: "tier-mochi" };
+      const linked = await link(downgraded, provider, upgradeAt);
+      expect((await remote(value, provider)).limit).toBe(13);
+      const allowance = await loadSubscriptionAllowance(linked.identity, linked.entitlement, {
+        memberKeys: repository,
+        statistics,
+        provider: () => provider,
+        observedSpend: () => 0,
+      });
+      expect(allowance).toMatchObject({
+        allowance: 20,
+        used: 7,
+        remaining: 13,
+        start: value.periodStart,
+        end: renewal,
+      });
+      await change(owner, provider, true, upgradeAt);
+      expect((await remote(value, provider)).limit).toBe(13);
+    }
+    await unlinkSupporterIdentity({ ...options, provider, discordUserId: owner.discordUserId });
+    const renewed = {
+      ...owner,
+      periodStart: renewal,
+      periodEnd: nextRenewal,
+      nextChargeAt: nextRenewal,
+      lastSuccessfulChargeAt: renewal,
+    };
+    await link(renewed, provider, renewal);
+    expect((await remote(value, provider)).limit).toBe(20);
+  });
+
+  it("never refills from elapsed renewal dates and refuses member-ID changes for the stable Patreon owner", async () => {
+    const value = snapshot("stable_owner");
+    const provider = new Provider();
+    await link(value, provider);
+    (await remote(value, provider)).usage = 7;
+    await unlinkSupporterIdentity({ ...options, provider, discordUserId: value.discordUserId });
+    await expect(
+      link({ ...value, patreonMemberId: `${value.patreonMemberId}_changed` }, provider),
+    ).rejects.toBeInstanceOf(MemberKeyError);
+    const elapsed = { ...value, periodStart: renewal, periodEnd: nextRenewal, nextChargeAt: nextRenewal };
+    await link(elapsed, provider, renewal);
+    expect(
+      await repository.loadCredential(
+        (await identities.loadByDiscordUserId(value.discordUserId))?.supporter_identity_id ?? 0,
+        renewal,
+      ),
+    ).toBeNull();
+    expect((await repository.load(value.patreonMemberId))?.carried_allowance).toBe(3);
+    expect((await repository.load(value.patreonMemberId))?.renewal_due_at).toEqual(renewal);
+  });
+
+  it("keeps one durable balance through failed deletion, repository reconstruction, and lost completion writes", async () => {
+    for (const failure of ["provider", "completion"]) {
+      const value = snapshot(`carry_retry_${failure}`);
+      const provider = new Provider();
+      const linked = await link(value, provider);
+      const key = await remote(value, provider);
+      key.usage = 7;
+      await record(linked.identity.supporter_identity_id, 6);
+      const save = MemberKeyRepository.prototype.save;
+      let failed = false;
+      const write = spyOn(MemberKeyRepository.prototype, "save").mockImplementation(async function (
+        this: MemberKeyRepository,
+        row,
+      ) {
+        if (failure === "completion" && !failed && row.supporter_identity_id === null && row.key_hash === null) {
+          failed = true;
+          throw new Error("synthetic-completion-write-failure");
+        }
+        return save.call(this, row);
+      });
+      provider.failDelete = failure === "provider";
+      try {
+        await expect(
+          unlinkSupporterIdentity({ ...options, provider, discordUserId: value.discordUserId }),
+        ).rejects.toBeInstanceOf(MemberKeyError);
+      } finally {
+        write.mockRestore();
+      }
+      const retained = await new MemberKeyRepository(testSql).load(value.patreonMemberId);
+      expect(retained?.carried_allowance).toBe(3);
+      expect(retained?.applied_allowance).toBe(10);
+      expect(retained?.renewal_due_at).toEqual(renewal);
+      provider.failDelete = false;
+      await link(value, provider);
+      expect((await remote(value, provider)).limit).toBe(3);
+      expect(provider.keys.has(key.hash)).toBe(false);
+      await link(value, provider);
+      expect((await remote(value, provider)).limit).toBe(3);
+    }
+  });
+
+  it("refreshes carry after a failed detach resumes and receives a confirmed renewal", async () => {
+    const value = snapshot("carry_resume");
+    const provider = new Provider();
+    const linked = await link(value, provider);
+    const key = await remote(value, provider);
+    key.usage = 7;
+    const pending = spyOn(supporterSpendGuard, "pendingSpend").mockReturnValue(1);
+    try {
+      await expect(
+        unlinkSupporterIdentity({ ...options, provider, discordUserId: value.discordUserId }),
+      ).rejects.toBeInstanceOf(MemberKeyError);
+      expect((await repository.load(value.patreonMemberId))?.carried_allowance).toBe(2);
+      expect(await identities.loadById(linked.identity.supporter_identity_id)).not.toBeNull();
+    } finally {
+      pending.mockRestore();
+    }
+    await withMemberKeyLock(testSql, (client) =>
+      syncMemberKeyLocked({ ...options, client, provider, supporterIdentityId: linked.identity.supporter_identity_id }),
+    );
+    expect((await repository.load(value.patreonMemberId))?.carried_allowance).toBeNull();
+    const renewed = {
+      ...value,
+      periodStart: renewal,
+      periodEnd: nextRenewal,
+      nextChargeAt: nextRenewal,
+      lastSuccessfulChargeAt: renewal,
+    };
+    await change(renewed, provider, true, renewal);
+    expect(key.limit).toBe(17);
+    key.usage = 9;
+    await unlinkSupporterIdentity({ ...options, now: renewal, provider, discordUserId: value.discordUserId });
+    await link(renewed, provider, renewal);
+    expect((await remote(value, provider)).limit).toBe(8);
+  });
+
+  it("isolates unrelated detached cleanup failures from linking and unlinking another membership", async () => {
+    const orphan = snapshot("unrelated_orphan");
+    const value = snapshot("unrelated_link");
+    const provider = new Provider();
+    await link(orphan, provider);
+    provider.failDelete = true;
+    await expect(
+      unlinkSupporterIdentity({ ...options, provider, discordUserId: orphan.discordUserId }),
+    ).rejects.toBeInstanceOf(MemberKeyError);
+    await link(value, provider);
+    expect((await remote(value, provider)).disabled).toBe(false);
+    const orphanHash = (await repository.load(orphan.patreonMemberId))?.key_hash;
+    const remove = spyOn(provider, "delete").mockImplementation(async (hash) => {
+      if (hash === orphanHash) throw new Error("synthetic-orphan-failure");
+      provider.keys.delete(hash);
+    });
+    try {
+      await unlinkSupporterIdentity({ ...options, provider, discordUserId: value.discordUserId });
+      expect(await identities.loadByDiscordUserId(value.discordUserId)).toBeNull();
+    } finally {
+      remove.mockRestore();
+    }
+    provider.failDelete = false;
+    await cleanupDetachedMemberKeysLocked(testSql, provider, now);
+  });
+
   it("persists unlink cleanup across a provider failure and creates a fresh key on a later link", async () => {
     const value = snapshot("unlink");
     const provider = new Provider();
@@ -1673,6 +1897,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     expect(await repository.loadCredential(linked.identity.supporter_identity_id, now)).toBeNull();
     provider.failDelete = false;
     await unlinkSupporterIdentity({ ...options, provider, discordUserId: value.discordUserId });
+    await cleanupDetachedMemberKeysLocked(testSql, provider, now);
     expect(provider.keys.has(key.hash)).toBe(false);
     await link(value, provider);
     expect((await remote(value, provider)).hash).not.toBe(key.hash);
@@ -1693,6 +1918,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     provider.failDelete = false;
     await Promise.all([link(replacement, provider), link(replacement, provider)]);
     expect(provider.keys.has(oldKey.hash)).toBe(false);
+    expect(otherKey.disabled).toBe(true);
+    await cleanupDetachedMemberKeysLocked(testSql, provider, now);
     expect(provider.keys.has(otherKey.hash)).toBe(false);
     expect(await identities.loadByDiscordUserId(value.discordUserId)).toBeNull();
     await expect(

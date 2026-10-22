@@ -3,6 +3,7 @@ import { ButtonStyle, ComponentType, type Client } from "discord.js";
 import {
   SponsorshipConflictError,
   supporterIdentityRepository,
+  supporterEntitlementRepository,
   supporterSponsorshipRepository,
   type SupporterIdentityRow,
   type SupporterEntitlementRow,
@@ -19,6 +20,7 @@ import {
   type SubscriptionRoute,
 } from "@/modules/supporter-billing/subscribe/catalog";
 import {
+  refreshSubscriptionMembership,
   createSubscriptionInteractionRoute,
   showSubscriptionSurface,
   SubscriptionActivationError,
@@ -34,6 +36,7 @@ import { createPatreonOAuthUrlForDiscordUser } from "@/modules/supporter-billing
 import { escapeDiscordMarkdown } from "@/utils/text/discordMarkdown";
 import * as userCache from "@/utils/cache/userCache";
 import * as tomoriStateCache from "@/utils/cache/tomoriStateCache";
+import * as patreonReconcile from "@/modules/supporter-billing/patreon/reconcile";
 import * as sponsorship from "@/modules/supporter-billing/discord/sponsorship";
 import { createUserRow } from "../../helpers/fixtures";
 import { useEnvSandbox } from "../../helpers/env";
@@ -910,5 +913,90 @@ describe("subscription panels", () => {
     expect(collectTextDisplays(failed.edits).join("\n")).toMatch(
       localizedProse("en-US", "commands.subscription.action_failed"),
     );
+  });
+});
+
+describe("subscription membership refresh admission", () => {
+  it("gates concurrent and failed attempts through the whole request and cooldown", async () => {
+    process.env.TOMORI_SUPPORTER_CONFIG_JSON = JSON.stringify(config);
+    let currentTime = new Date("2026-01-15T00:00:00Z").getTime();
+    const clock = spyOn(Date, "now").mockImplementation(() => currentTime);
+    const identity = spyOn(supporterIdentityRepository, "loadByDiscordUserId").mockResolvedValue(makeIdentity());
+    const entitlement = spyOn(supporterEntitlementRepository, "loadByIdentityId").mockResolvedValue(makeEntitlement());
+    const gate = Promise.withResolvers<void>();
+    const refresh = spyOn(patreonReconcile, "refreshPatreonEntitlementForIdentity").mockImplementation(async () => {
+      await gate.promise;
+      throw new Error("synthetic-patreon-outage");
+    });
+    const user = "123456789012345671";
+    try {
+      const first = refreshSubscriptionMembership(user, "en-US");
+      for (let count = 0; count < 5; count++) await Promise.resolve();
+      expect(refresh).toHaveBeenCalledTimes(1);
+      currentTime += 31_000;
+      expect((await refreshSubscriptionMembership(user, "en-US"))?.detail).toContain("<t:");
+      expect(refresh).toHaveBeenCalledTimes(1);
+      gate.resolve();
+      expect((await first)?.detail).toBe(localizedCopy("en-US", "commands.subscription.refresh_failed"));
+      await refreshSubscriptionMembership(user, "en-US");
+      expect(refresh).toHaveBeenCalledTimes(1);
+      currentTime += 30_000;
+      await refreshSubscriptionMembership(user, "en-US");
+      expect(refresh).toHaveBeenCalledTimes(2);
+    } finally {
+      gate.resolve();
+      clock.mockRestore();
+      identity.mockRestore();
+      entitlement.mockRestore();
+      refresh.mockRestore();
+    }
+  });
+
+  it("keeps the existing successful-verification retry time and performs no remote work for missing linkage", async () => {
+    process.env.TOMORI_SUPPORTER_CONFIG_JSON = JSON.stringify(config);
+    let currentTime = new Date("2026-01-15T00:00:00Z").getTime();
+    const clock = spyOn(Date, "now").mockImplementation(() => currentTime);
+    const identity = spyOn(supporterIdentityRepository, "loadByDiscordUserId").mockResolvedValue(makeIdentity());
+    const entitlement = spyOn(supporterEntitlementRepository, "loadByIdentityId").mockResolvedValue(
+      makeEntitlement({
+        last_verified_at: new Date(currentTime - 25_000),
+      }),
+    );
+    const refresh = spyOn(patreonReconcile, "refreshPatreonEntitlementForIdentity").mockRejectedValue(
+      new Error("synthetic-outage"),
+    );
+    const user = "123456789012345672";
+    try {
+      const result = await refreshSubscriptionMembership(user, "en-US");
+      expect(result?.detail).toBe(
+        localizedCopy("en-US", "commands.subscription.cooldown", {
+          time: `<t:${Math.floor((currentTime + 5000) / 1000)}:R>`,
+        }),
+      );
+      expect(refresh).not.toHaveBeenCalled();
+      currentTime += 5000;
+      await refreshSubscriptionMembership(user, "en-US");
+      expect(refresh).toHaveBeenCalledTimes(1);
+      identity.mockResolvedValue(null);
+      expect(await refreshSubscriptionMembership("123456789012345673", "en-US")).toBeUndefined();
+      identity.mockResolvedValue(makeIdentity());
+      entitlement.mockResolvedValue(null);
+      expect(await refreshSubscriptionMembership("123456789012345674", "en-US")).toBeUndefined();
+      expect(refresh).toHaveBeenCalledTimes(1);
+      identity.mockRejectedValue(new Error("synthetic-database-outage"));
+      expect((await refreshSubscriptionMembership("123456789012345675", "en-US"))?.detail).toBe(
+        localizedCopy("en-US", "commands.subscription.refresh_failed"),
+      );
+      currentTime += 30_000;
+      identity.mockResolvedValue(makeIdentity());
+      entitlement.mockResolvedValue(makeEntitlement());
+      await refreshSubscriptionMembership("123456789012345675", "en-US");
+      expect(refresh).toHaveBeenCalledTimes(2);
+    } finally {
+      clock.mockRestore();
+      identity.mockRestore();
+      entitlement.mockRestore();
+      refresh.mockRestore();
+    }
   });
 });

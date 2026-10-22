@@ -50,10 +50,29 @@ The supporter-billing module owns its schema in `src/modules/supporter-billing/d
 Privileged initialization applies its additive upgrades; runtime startup checks the required columns
 without changing the schema.
 
-Unlinking removes the identity and queues managed provider-key deletion. Detached accounting stays
-for 90 days after the latest of unlinking, the recorded paid-period end, and successful key deletion.
+Managed-key accounting belongs to the stable Patreon user and campaign. It keeps the highest funded
+allowance and paid-period dates across unlinking, Discord-account transfers, and key replacement.
+A paid upgrade adds only the difference above that period's highest funded tier. Only a confirmed
+paid charge in a new period refills the allowance; a renewal date passing does not grant funds.
+
+Before unlinking removes an identity and its usage rows, lifecycle work disables its provider key
+and persists the remaining balance from the highest observed usage and reserved spend.
+Outstanding spend holds prevent identity deletion until they settle. Deletion retries preserve the
+captured balance, and replacement keys receive that balance without mixing it with lifetime key
+costs. Relinks that change a known member ID for the same Patreon user and campaign fail closed.
+
+Detached accounting stays for 90 days after the latest of unlinking, the recorded paid-period end,
+and successful key deletion. This retention clock does not expire spend or refill an allowance.
 Periodic billing maintenance deletes eligible rows under the same advisory lock used for key
 lifecycle work. Relinking clears the retention clock; pending provider cleanup prevents deletion.
+
+Webhook receipts use the signed body hash for duplicate detection. Every linked member signal,
+including retries, fetches current member state with creator authorization through Patreon's
+[single-member endpoint](https://docs.patreon.com/#get-api-oauth2-v2-members-member_id).
+Unsigned event headers do not select benefit changes. Invalid responses and API outages leave
+benefits unchanged for retry; confirmed missing members lose access unless a previously verified
+cancellation still has paid time remaining. Equal or older verification timestamps cannot overwrite
+an applied snapshot. Full campaign reconciliation applies no snapshots from an incomplete scan.
 
 An operator can set `supporter_member_keys.retention_hold` for a specific unresolved dispute or legal
 obligation. Record the reason and review date privately, and clear the hold when that need ends so

@@ -13,16 +13,8 @@ export const PATREON_USER_AGENT = "TomoriBot Supporter Billing";
 const DEFAULT_OAUTH_STATE_TTL_SECONDS = 600;
 const DEFAULT_PATREON_HTTP_TIMEOUT_MS = 10000;
 const DEFAULT_USAGE_PERIOD_FALLBACK_HOURS = 24;
-const DEFAULT_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
 const DEFAULT_WEBHOOK_MAX_BYTES = 1024 * 1024;
 const DEFAULT_RECONCILE_MAX_PAGES = 20;
-// OAuth states are single-use and short-lived; once expired or consumed they are useless. A small
-// grace window keeps very recently finished rows briefly before the periodic purge removes them.
-const DEFAULT_OAUTH_STATE_RETENTION_SECONDS = 3600;
-// Webhook event rows ARE the idempotency receipts (duplicate detection keys on idempotency_key), so
-// they must outlive any realistic Patreon retry/replay window before purge. Default well above it.
-const DEFAULT_WEBHOOK_EVENT_RETENTION_DAYS = 30;
-
 type EnvRecord = Readonly<Record<string, string | undefined>>;
 
 function readPositiveIntegerEnv(env: EnvRecord, name: string, defaultValue: number): number {
@@ -47,36 +39,12 @@ export function getPatreonUsagePeriodFallbackHours(env: EnvRecord = process.env)
   return readPositiveIntegerEnv(env, "TOMORI_SUPPORTER_PERIOD_FALLBACK_HOURS", DEFAULT_USAGE_PERIOD_FALLBACK_HOURS);
 }
 
-export function getPatreonWebhookTimestampToleranceSeconds(env: EnvRecord = process.env): number {
-  return readPositiveIntegerEnv(
-    env,
-    "TOMORI_SUPPORTER_PATREON_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS",
-    DEFAULT_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
-  );
-}
-
 export function getPatreonWebhookMaxBytes(env: EnvRecord = process.env): number {
   return readPositiveIntegerEnv(env, "TOMORI_SUPPORTER_PATREON_WEBHOOK_MAX_BYTES", DEFAULT_WEBHOOK_MAX_BYTES);
 }
 
 export function getPatreonReconcileMaxPages(env: EnvRecord = process.env): number {
   return readPositiveIntegerEnv(env, "TOMORI_SUPPORTER_RECONCILE_MAX_PAGES", DEFAULT_RECONCILE_MAX_PAGES);
-}
-
-export function getSupporterOAuthStateRetentionSeconds(env: EnvRecord = process.env): number {
-  return readPositiveIntegerEnv(
-    env,
-    "TOMORI_SUPPORTER_OAUTH_STATE_RETENTION_SECONDS",
-    DEFAULT_OAUTH_STATE_RETENTION_SECONDS,
-  );
-}
-
-export function getSupporterWebhookEventRetentionDays(env: EnvRecord = process.env): number {
-  return readPositiveIntegerEnv(
-    env,
-    "TOMORI_SUPPORTER_WEBHOOK_EVENT_RETENTION_DAYS",
-    DEFAULT_WEBHOOK_EVENT_RETENTION_DAYS,
-  );
 }
 
 export function getPatreonOAuthCredentials(
