@@ -16,6 +16,9 @@ import { resolveChannelTarget } from "@/utils/discord/targetResolver";
 import { resolveContextAuthorLabel } from "@/utils/discord/contextAuthorLabel";
 import { normalizeMessageFetchLimit } from "@/utils/discord/messageFetchLimit";
 import { convertMentions } from "@/utils/text/contextBuilder";
+import { PrivacyLevel } from "@/types/db/schema";
+import { getCachedPrivacyLevel } from "@/utils/cache/userCache";
+import { resolveMessageProxyMessageIdentitiesForHistory } from "@/utils/messageProxy/historyAttribution";
 
 // Stores pending boomerang data keyed by source channel ID.
 // After tomoriChat() completes in the target channel, the source channel
@@ -57,6 +60,40 @@ export interface PendingBoomerang {
 }
 
 const pendingBoomerangs = new Map<string, PendingBoomerang>();
+
+async function formatVisibleHistory(
+  messages: Message[],
+  context: ToolContext,
+): Promise<PendingBoomerang["targetChannelMessages"]> {
+  const proxyIdentities = await resolveMessageProxyMessageIdentitiesForHistory(messages);
+  const visibleMessages: Message[] = [];
+  for (const message of messages) {
+    const authorId = proxyIdentities.get(message.id)?.senderDiscId ?? message.author.id;
+    if ((await getCachedPrivacyLevel(authorId)) !== PrivacyLevel.FULL) {
+      visibleMessages.push(message);
+    }
+  }
+
+  return Promise.all(
+    visibleMessages.map(async (message) => ({
+      author: await resolveContextAuthorLabel(message, {
+        guildId: context.guildId,
+        personalMemoriesEnabled: context.tomoriState.config.personal_memories_enabled,
+      }),
+      content: message.content
+        ? await convertMentions(
+            message.content,
+            context.client,
+            context.guildId ?? "",
+            undefined,
+            context.tomoriState.persona_nickname,
+            context.tomoriState.config.personal_memories_enabled,
+          )
+        : "(no text content)",
+      timestamp: message.createdAt.toISOString(),
+    })),
+  );
+}
 
 /**
  * Exposed so other tools (e.g. create_thread) can register boomerangs
@@ -450,25 +487,7 @@ export class CrossChannelMessageTool extends BaseTool {
         `Cross-channel tool: Peek hit refresh embed at ${targetChannel.name}`,
       );
 
-      const formattedMessages = await Promise.all(
-        filteredMessages.map(async (m) => ({
-          author: await resolveContextAuthorLabel(m, {
-            guildId: context.guildId,
-            personalMemoriesEnabled: context.tomoriState.config.personal_memories_enabled,
-          }),
-          content: m.content
-            ? await convertMentions(
-                m.content,
-                context.client,
-                context.guildId ?? "",
-                undefined,
-                context.tomoriState.persona_nickname,
-                context.tomoriState.config.personal_memories_enabled,
-              )
-            : "(no text content)",
-          timestamp: m.createdAt.toISOString(),
-        })),
-      );
+      const formattedMessages = await formatVisibleHistory(filteredMessages, context);
 
       log.info(
         `Cross-channel tool: Peek complete for #${targetChannel.name} — ${formattedMessages.length} messages fetched`,
@@ -585,25 +604,7 @@ export class CrossChannelMessageTool extends BaseTool {
             [...recentMessages.values()],
             "Cross-channel tool: Boomerang message fetch hit refresh embed at",
           );
-          targetMessages = await Promise.all(
-            filteredMessages.map(async (m) => ({
-              author: await resolveContextAuthorLabel(m, {
-                guildId: context.guildId,
-                personalMemoriesEnabled: context.tomoriState.config.personal_memories_enabled,
-              }),
-              content: m.content
-                ? await convertMentions(
-                    m.content,
-                    context.client,
-                    context.guildId ?? "",
-                    undefined,
-                    context.tomoriState.persona_nickname,
-                    context.tomoriState.config.personal_memories_enabled,
-                  )
-                : "(no text content)",
-              timestamp: m.createdAt.toISOString(),
-            })),
-          );
+          targetMessages = await formatVisibleHistory(filteredMessages, context);
         } catch (msgFetchError) {
           log.warn(`Cross-channel tool: Failed to fetch target channel messages for boomerang:`, msgFetchError);
         }
