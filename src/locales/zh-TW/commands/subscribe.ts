@@ -1,5 +1,6 @@
 export default {
   subscribe: {
+    conversion_nudge: "使用 `/subscribe` 訂閱TomoriBot以獲得更穩定的服務。",
     request: {
       title: `訂閱存取`,
       allowance_title: `配額不足`,
@@ -30,9 +31,9 @@ export default {
     },
     tiers: {
       unknown: `訂閱`,
-      mochi: `Mochi`,
-      dango: `Dango`,
-      taiyaki: `Taiyaki`,
+      mochi: `Mochi（$7/月）`,
+      dango: `Dango（$12/月）`,
+      taiyaki: `Taiyaki（$20/月）`,
     },
     description: `訂閱或連結你的Patreon會員資格以取得TomoriBot AI存取權限。`,
     sponsorship: {
@@ -52,11 +53,11 @@ export default {
     callback: {
       success: {
         title: `Patreon連結完成`,
-        message: `你的贊助者帳號已連結。返回Discord並在設定或訂閱面板中選擇「繼續」以查看更新後的狀態。`,
+        message: `你的Patreon會員資格已連結。請返回Discord並在設定或訂閱面板中選擇「驗證會員資格」。`,
       },
       authorization_denied: {
         title: `Patreon連結已取消`,
-        message: `Patreon未授權本次連結。如果你想重試，請返回Discord並在設定或訂閱面板中選擇「繼續」。`,
+        message: `Patreon未授權本次連結。請返回Discord並在設定或訂閱面板中選擇「連結Patreon會員資格」以重試。`,
       },
       missing_code: {
         title: `Patreon連結失敗`,
@@ -80,7 +81,7 @@ export default {
       },
       unlinked_membership: {
         title: `沒有符合資格的Patreon會員資格`,
-        message: `此Patreon帳號未連結到符合資格的會員資格。請返回Discord並在設定或訂閱面板中選擇「繼續」。`,
+        message: `此Patreon帳號沒有符合資格的會員資格。請在Patreon上選擇一個會員方案，然後返回Discord並選擇「驗證會員資格」。`,
       },
       wrong_campaign: {
         title: `錯誤的Patreon創作者專案`,

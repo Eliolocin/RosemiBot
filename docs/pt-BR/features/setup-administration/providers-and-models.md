@@ -22,6 +22,8 @@ Adicione uma chave de provedor durante a configuração inicial com `/setup` ou 
 
 Nada é gravado no banco de dados até que você pressione `Concluir Configuração`. Um assistente abandonado ou expirado deixa as linhas de provedor existentes do servidor intactas. Para substituir uma chave existente, use `/providers`, porque `/setup` não será executado em um servidor já configurado.
 
+Substituir uma chave de provedor preserva suas configurações de amostragem salvas, incluindo o limite de tokens de saída.
+
 Cada provedor tem suas próprias etapas de geração de chaves. Em `/help`, escolha `Configuração`, depois `Obter uma Chave de API` e escolha seu provedor para obter uma explicação passo a passo ou use estes pontos de partida:
 
 | Provedor | Notas | Obtenha uma chave |

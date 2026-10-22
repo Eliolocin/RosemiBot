@@ -1,5 +1,6 @@
 export default {
   subscribe: {
+    conversion_nudge: "Đăng ký TomoriBot bằng `/subscribe` để có dịch vụ ổn định hơn.",
     request: {
       title: `Quyền truy cập gói đăng ký`,
       allowance_title: `Hạn mức không đủ`,
@@ -30,9 +31,9 @@ export default {
     },
     tiers: {
       unknown: `Gói đăng ký`,
-      mochi: `Mochi`,
-      dango: `Dango`,
-      taiyaki: `Taiyaki`,
+      mochi: `Mochi ($7/tháng)`,
+      dango: `Dango ($12/tháng)`,
+      taiyaki: `Taiyaki ($20/tháng)`,
     },
     description: `Đăng ký hoặc liên kết tư cách thành viên Patreon để truy cập AI của TomoriBot.`,
     sponsorship: {
@@ -52,11 +53,11 @@ export default {
     callback: {
       success: {
         title: `Liên kết Patreon hoàn tất`,
-        message: `Tài khoản người ủng hộ của bạn đã được liên kết. Hãy quay lại Discord và chọn Tiếp tục trong bảng thiết lập hoặc đăng ký để xem trạng thái cập nhật.`,
+        message: `Tư cách thành viên Patreon của bạn đã được liên kết. Hãy quay lại Discord và chọn Xác minh tư cách thành viên trong bảng thiết lập hoặc đăng ký.`,
       },
       authorization_denied: {
         title: `Đã hủy liên kết Patreon`,
-        message: `Patreon không ủy quyền cho liên kết này. Hãy quay lại Discord và chọn Tiếp tục trong bảng thiết lập hoặc đăng ký nếu bạn muốn thử lại.`,
+        message: `Patreon không ủy quyền cho liên kết này. Hãy quay lại Discord và chọn Liên kết tư cách thành viên Patreon trong bảng thiết lập hoặc đăng ký để thử lại.`,
       },
       missing_code: {
         title: `Liên kết Patreon thất bại`,
@@ -80,7 +81,7 @@ export default {
       },
       unlinked_membership: {
         title: `Không có tư cách thành viên Patreon hợp lệ`,
-        message: `Tài khoản Patreon này không được liên kết với tư cách thành viên hợp lệ. Hãy quay lại Discord và chọn Tiếp tục trong bảng thiết lập hoặc đăng ký.`,
+        message: `Tài khoản Patreon này không có tư cách thành viên hợp lệ. Hãy chọn một gói thành viên trên Patreon, sau đó quay lại Discord và chọn Xác minh tư cách thành viên.`,
       },
       wrong_campaign: {
         title: `Sai chiến dịch Patreon`,

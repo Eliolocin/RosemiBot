@@ -9,6 +9,7 @@ export default {
     remove_sponsorship: `Remover Patrocínio`,
     sponsorship_by: `Patrocínio de {name}`,
     unknown_sponsor: `um assinante`,
+    subscription_model_description: `Usa sua cota de assinatura compartilhada`,
     subscription_label: `Assinatura do TomoriBot`,
     manage_subscription: `Gerenciar Assinatura`,
     remove_impact_subscription: `Deixar de usar {name} para acesso pessoal à IA. Sua assinatura do Patreon continuará vinculada e ativa.`,

@@ -34,9 +34,9 @@ export default {
     },
     tiers: {
       unknown: `サブスクリプション`,
-      mochi: `もち`,
-      dango: `だんご`,
-      taiyaki: `たい焼き`,
+      mochi: `もち（$7/月）`,
+      dango: `だんご（$12/月）`,
+      taiyaki: `たい焼き（$20/月）`,
     },
     description: `TomoriBotのAI利用のためにPatreonメンバーシップを契約または連携します。`,
     sponsorship: {
@@ -50,17 +50,17 @@ export default {
         exhausted: `現在のサポーター利用枠はこの期間ですでに使い切られています。`,
         missing_sponsorship: `このサーバーには現在アクティブなサポータースポンサーがありません。`,
         model_not_allowed: `このモデルはサブスクリプションでは利用できません。プロバイダー設定で別のモデルを選んでください。`,
-        exhausted_generation: `このサーバーのサポーター利用枠は、今期分を使い切りました。{period_end} 頃に枠が更新されると、サポーター提供のチャットが再開します。スポンサーは /subscribe で状況確認や更新ができます。サーバー管理者は /provider で別のプロバイダーに切り替えできます。`,
+        exhausted_generation: `このサーバーのサブスクリプション利用枠は使い切られました。{period_end}頃に更新されます。スポンサーは /subscribe からアップグレードできます。更新を待つ間は別のAIプロバイダーを利用できます：サーバープロバイダーは /providers、個人プロバイダーは /personal providers で管理してください。`,
       },
     },
     callback: {
       success: {
         title: `Patreonリンクが完了しました`,
-        message: `サポーターアカウントをリンクしました。Discordに戻り、セットアップまたはサブスクリプションパネルで「続行」を選択すると最新状態を確認できます。`,
+        message: `Patreonメンバーシップを連携しました。Discordに戻り、セットアップまたはサブスクリプションパネルで「メンバーシップを確認」を選択してください。`,
       },
       authorization_denied: {
         title: `Patreonリンクをキャンセルしました`,
-        message: `Patreonでリンクが承認されませんでした。再試行する場合はDiscordに戻り、セットアップまたはサブスクリプションパネルで「続行」を選択してください。`,
+        message: `Patreonでリンクが承認されませんでした。Discordに戻り、セットアップまたはサブスクリプションパネルで「Patreonメンバーシップを連携」を選択してもう一度お試しください。`,
       },
       missing_code: {
         title: `Patreonリンクに失敗しました`,
@@ -84,7 +84,7 @@ export default {
       },
       unlinked_membership: {
         title: `対象のPatreonメンバーシップがありません`,
-        message: `このPatreonアカウントには対象メンバーシップがリンクされていません。Discordに戻り、セットアップまたはサブスクリプションパネルで「続行」を選択してください。`,
+        message: `このPatreonアカウントには対象メンバーシップがありません。Patreonでメンバーシップを選択してからDiscordに戻り、「メンバーシップを確認」を選択してください。`,
       },
       wrong_campaign: {
         title: `Patreonキャンペーンが違います`,

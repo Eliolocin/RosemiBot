@@ -22,6 +22,8 @@ Agrega una clave de proveedor durante la configuración inicial con `/setup`, o 
 
 No se escribe nada en la base de datos hasta que presione `Finalizar configuración`. Un asistente abandonado o caducado deja intactas las filas de proveedores existentes del servidor. Para reemplazar una clave existente, use `/providers`, porque `/setup` no se ejecutará en un servidor ya configurado.
 
+Reemplazar la clave de un proveedor conserva sus configuraciones de muestreo guardadas, incluido el límite de tokens de salida.
+
 Cada proveedor tiene sus propios pasos de generación de claves. En `/help`, elija `Configuración`, luego `Obtener una clave de API` y elija su proveedor para un tutorial paso a paso, o utilice estos puntos de partida:
 
 | Proveedora | Notas | obtener una clave |

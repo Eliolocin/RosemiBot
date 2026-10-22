@@ -22,6 +22,8 @@ Thêm khóa nhà cung cấp trong lần thiết lập đầu tiên với `/setup
 
 Không có gì được ghi vào cơ sở dữ liệu cho đến khi bạn nhấn `Hoàn tất thiết lập`. Trình hướng dẫn bị bỏ rơi hoặc đã hết hạn sẽ giữ nguyên các hàng nhà cung cấp hiện có của máy chủ. Để thay thế khóa hiện có, hãy sử dụng `/providers`, vì `/setup` sẽ không chạy trên máy chủ đã được định cấu hình.
 
+Việc thay thế API key của nhà cung cấp vẫn giữ nguyên các cài đặt bộ lấy mẫu đã lưu, bao gồm cả giới hạn token đầu ra.
+
 Mỗi nhà cung cấp có các bước tạo khóa riêng. Trong `/help`, chọn `Thiết lập`, sau đó là `Lấy API key` và chọn nhà cung cấp của bạn để xem hướng dẫn từng bước hoặc sử dụng các điểm bắt đầu sau:
 
 | nhà cung cấp | Ghi chú | Nhận chìa khóa |

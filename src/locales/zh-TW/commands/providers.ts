@@ -9,6 +9,7 @@ export default {
     remove_sponsorship: `移除贊助`,
     sponsorship_by: `由{name}贊助`,
     unknown_sponsor: `一位訂閱者`,
+    subscription_model_description: `使用你的共享訂閱配額`,
     subscription_label: `TomoriBot訂閱`,
     manage_subscription: `管理訂閱`,
     remove_impact_subscription: `停止使用{name}的個人AI存取權限。你的Patreon會員資格仍將保持連結與有效狀態。`,

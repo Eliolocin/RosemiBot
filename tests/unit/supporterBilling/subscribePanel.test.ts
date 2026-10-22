@@ -25,7 +25,7 @@ import {
   type SubscriptionRouteDependencies,
 } from "@/modules/supporter-billing/subscribe/components";
 import { parseInteractionRoute, type GlobalRoutableInteraction } from "@/utils/discord/interactions/routeRegistry";
-import { hasLocaleKey, initializeLocalizer } from "@/utils/text/localizer";
+import { initializeLocalizer } from "@/utils/text/localizer";
 import { createRouteInteraction } from "../../helpers/routeInteraction";
 import { collectTextDisplays, expectSafePanelPayload } from "../../helpers/panelLimits";
 import { expectForEveryLocale, localizedCopy, localizedProse, RUNTIME_LOCALES } from "../../helpers/localeCases";
@@ -228,13 +228,20 @@ describe("subscription panels", () => {
         fixture.state.entitlement.cancel_at_period_end = true;
         fixture.allowance.remaining = remaining;
         const body = collectTextDisplays(buildSubscribePanel(fixture)).join("\n");
-        const time = `<t:${Math.floor(fixture.allowance.end.getTime() / 1000)}:R> (<t:${Math.floor(fixture.allowance.end.getTime() / 1000)}:D>)`;
-        const endLocale = hasLocaleKey(locale, "commands.subscription.access_ends") ? locale : "en-US";
-        expect(body).toMatch(localizedProse(endLocale, "commands.subscription.access_ends", { time }));
-        expect(body).not.toMatch(localizedProse(locale, "commands.subscription.renews", { time }));
+        const relative = `<t:${Math.floor(fixture.allowance.end.getTime() / 1000)}:R>`;
+        const date = `<t:${Math.floor(fixture.allowance.end.getTime() / 1000)}:D>`;
+        const time = `${relative} (${date})`;
+        const prose = body.replace(/(?:^|\n)(?:#{1,3}|-#|>) /gu, "").replace(/\s/gu, "");
+        expect(body).toContain(relative);
+        expect(body).toContain(date);
+        expect(prose).toContain(
+          localizedCopy(locale, "commands.subscription.access_ends", { time }).replace(/\s/gu, ""),
+        );
+        expect(prose).not.toContain(
+          localizedCopy(locale, "commands.subscription.renews", { time }).replace(/\s/gu, ""),
+        );
         if (remaining === 0) {
-          const exhaustedLocale = hasLocaleKey(locale, "commands.subscription.exhausted_ending") ? locale : "en-US";
-          expect(body).toMatch(localizedProse(exhaustedLocale, "commands.subscription.exhausted_ending"));
+          expect(prose).toContain(localizedCopy(locale, "commands.subscription.exhausted_ending").replace(/\s/gu, ""));
         }
         expectSafePanelPayload(buildSubscribePanel(fixture) as ComponentsV2MessagePayload, locale);
       }
@@ -779,13 +786,14 @@ describe("subscription panels", () => {
       const panel = buildSubscribePanel(fixture);
       expectSafePanelPayload(panel as ComponentsV2MessagePayload, `manager removal ${locale}`);
       const body = collectTextDisplays(panel).join("\n");
-      expect(body).toMatch(
-        localizedProse("en-US", "commands.subscription.remove_title", {
+      const prose = body.replace(/(?:^|\n)(?:#{1,3}|-#|>) /gu, "").replace(/\s/gu, "");
+      expect(prose).toContain(
+        localizedCopy(locale, "commands.subscription.remove_title", {
           server: escapeDiscordMarkdown("Mirri's Workshop"),
-        }),
+        }).replace(/\s/gu, ""),
       );
-      expect(body).toMatch(localizedProse("en-US", "commands.subscription.remove_impact"));
-      expect(body).not.toMatch(localizedProse(locale, "commands.subscription.stop_impact"));
+      expect(prose).toContain(localizedCopy(locale, "commands.subscription.remove_impact").replace(/\s/gu, ""));
+      expect(prose).not.toContain(localizedCopy(locale, "commands.subscription.stop_impact").replace(/\s/gu, ""));
       const buttons = flatten(panel).filter((component) => component.type === ComponentType.Button);
       const cancel = buttons.find(
         (component) => component.label === localizedCopy(locale, "commands.subscription.cancel"),

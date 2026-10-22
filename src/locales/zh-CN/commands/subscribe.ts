@@ -1,5 +1,6 @@
 export default {
   subscribe: {
+    conversion_nudge: "使用 `/subscribe` 订阅TomoriBot以获得更稳定的服务。",
     request: {
       title: `订阅访问`,
       allowance_title: `配额不足`,
@@ -30,9 +31,9 @@ export default {
     },
     tiers: {
       unknown: `订阅`,
-      mochi: `Mochi`,
-      dango: `Dango`,
-      taiyaki: `Taiyaki`,
+      mochi: `Mochi（$7/月）`,
+      dango: `Dango（$12/月）`,
+      taiyaki: `Taiyaki（$20/月）`,
     },
     description: `订阅或关联你的Patreon会员资格以获取TomoriBot AI访问权限。`,
     sponsorship: {
@@ -52,11 +53,11 @@ export default {
     callback: {
       success: {
         title: `Patreon关联完成`,
-        message: `你的赞助者账号已关联。返回Discord并在设置或订阅面板中选择「继续」以查看更新后的状态。`,
+        message: `你的Patreon会员资格已关联。请返回Discord并在设置或订阅面板中选择「验证会员资格」。`,
       },
       authorization_denied: {
         title: `Patreon关联已取消`,
-        message: `Patreon未授权本次关联。如果你想重试，请返回Discord并在设置或订阅面板中选择「继续」。`,
+        message: `Patreon未授权本次关联。请返回Discord并在设置或订阅面板中选择「关联Patreon会员资格」以重试。`,
       },
       missing_code: {
         title: `Patreon关联失败`,
@@ -80,7 +81,7 @@ export default {
       },
       unlinked_membership: {
         title: `没有符合资格的Patreon会员资格`,
-        message: `此Patreon账号未关联到符合资格的会员资格。请返回Discord并在设置或订阅面板中选择「继续」。`,
+        message: `此Patreon账号没有符合资格的会员资格。请在Patreon上选择一个会员等级，然后返回Discord并选择「验证会员资格」。`,
       },
       wrong_campaign: {
         title: `错误的Patreon创作者项目`,

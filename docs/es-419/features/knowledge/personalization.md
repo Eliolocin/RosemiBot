@@ -70,6 +70,8 @@ Los registros de pensamiento le atribuyen turnos utilizando su clave personal. P
 
 Si una solicitud falla mientras usa su proveedor personal, los consejos de error lo dirigen a sus comandos personales (`/personal providers`, `/personal config`) en lugar de a la configuración del servidor.
 
+En `/personal config` > `Modelos` > Alternativas puedes enumerar hasta cinco modelos alternativos. Pueden provenir de cualquiera de tus proveedores guardados y se prueban en orden cuando tu modelo de texto personal falla. Al cambiar tu modelo de texto personal se conserva la lista, pero se elimina el nuevo modelo de ella si ya estaba allí.
+
 Cuando todos los modelos de su ruta de texto personal fallan, TomoriBot puede recurrir al modelo de texto predeterminado del servidor en lugar de fallar silenciosamente. Las reservas del servidor se ejecutan en las credenciales del servidor, cuentan con la cuota de texto del servidor y muestran un botón `Respaldo utilizado` con detalles.
 
 Puede deshabilitar el respaldo del servidor en `/personal config` > `Modelos` > Respaldos en `Respaldo al modelo del servidor`. La configuración es para toda la cuenta y está habilitada de forma predeterminada.

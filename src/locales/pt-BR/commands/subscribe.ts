@@ -1,5 +1,6 @@
 export default {
   subscribe: {
+    conversion_nudge: "Assine o TomoriBot usando `/subscribe` para um serviço mais confiável.",
     request: {
       title: `Acesso por Assinatura`,
       allowance_title: `Cota insuficiente`,
@@ -30,9 +31,9 @@ export default {
     },
     tiers: {
       unknown: `Assinatura`,
-      mochi: `Mochi`,
-      dango: `Dango`,
-      taiyaki: `Taiyaki`,
+      mochi: `Mochi ($7/mês)`,
+      dango: `Dango ($12/mês)`,
+      taiyaki: `Taiyaki ($20/mês)`,
     },
     description: `Assine ou vincule sua assinatura do Patreon para acesso à IA do TomoriBot.`,
     sponsorship: {
@@ -52,11 +53,11 @@ export default {
     callback: {
       success: {
         title: `Vinculação do Patreon concluída`,
-        message: `Sua conta de apoiador foi vinculada. Retorne ao Discord e selecione Continuar no painel de configuração ou assinatura para ver o status atualizado.`,
+        message: `Sua assinatura do Patreon foi vinculada. Retorne ao Discord e selecione Verificar Assinatura no painel de configuração ou assinatura.`,
       },
       authorization_denied: {
         title: `Vinculação do Patreon cancelada`,
-        message: `O Patreon não autorizou a vinculação. Retorne ao Discord e selecione Continuar no painel de configuração ou assinatura se quiser tentar novamente.`,
+        message: `O Patreon não autorizou a vinculação. Retorne ao Discord e selecione Vincular Assinatura do Patreon no painel de configuração ou assinatura para tentar novamente.`,
       },
       missing_code: {
         title: `Falha na vinculação do Patreon`,
@@ -80,7 +81,7 @@ export default {
       },
       unlinked_membership: {
         title: `Nenhuma assinatura elegível do Patreon`,
-        message: `Esta conta do Patreon não está vinculada a uma assinatura elegível. Retorne ao Discord e selecione Continuar no painel de configuração ou assinatura.`,
+        message: `Esta conta do Patreon não possui uma assinatura elegível. Escolha uma assinatura no Patreon, depois retorne ao Discord e selecione Verificar Assinatura.`,
       },
       wrong_campaign: {
         title: `Campanha do Patreon incorreta`,

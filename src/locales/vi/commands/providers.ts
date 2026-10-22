@@ -9,6 +9,7 @@ export default {
     remove_sponsorship: `Hủy tài trợ`,
     sponsorship_by: `Được tài trợ bởi {name}`,
     unknown_sponsor: `một người đăng ký`,
+    subscription_model_description: `Sử dụng hạn mức gói đăng ký dùng chung của bạn`,
     subscription_label: `Gói đăng ký TomoriBot`,
     manage_subscription: `Quản lý gói đăng ký`,
     remove_impact_subscription: `Dừng dùng {name} cho quyền truy cập AI cá nhân. Tư cách thành viên Patreon của bạn vẫn được liên kết và hoạt động bình thường.`,

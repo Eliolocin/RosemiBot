@@ -9,6 +9,7 @@ export default {
     remove_sponsorship: `スポンサーを解除`,
     sponsorship_by: `{name}によるスポンサー`,
     unknown_sponsor: `あるサポーター`,
+    subscription_model_description: `共有のサブスクリプション利用枠を使用します`,
     subscription_label: `TomoriBotサブスクリプション`,
     manage_subscription: `サブスクリプションを管理`,
     remove_impact_subscription: `個人のAIで{name}を使わないようにします。Patreonメンバーシップの連携と有効状態は変わりません。`,

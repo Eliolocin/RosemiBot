@@ -1,5 +1,6 @@
 export default {
   subscribe: {
+    conversion_nudge: "Suscríbete a TomoriBot usando `/subscribe` para un servicio más confiable.",
     request: {
       title: `Acceso por suscripción`,
       allowance_title: `Cuota insuficiente`,
@@ -30,9 +31,9 @@ export default {
     },
     tiers: {
       unknown: `Suscripción`,
-      mochi: `Mochi`,
-      dango: `Dango`,
-      taiyaki: `Taiyaki`,
+      mochi: `Mochi ($7/mes)`,
+      dango: `Dango ($12/mes)`,
+      taiyaki: `Taiyaki ($20/mes)`,
     },
     description: `Suscríbete o vincula tu membresía de Patreon para acceder a la IA de TomoriBot.`,
     sponsorship: {
@@ -52,11 +53,11 @@ export default {
     callback: {
       success: {
         title: `Vinculación con Patreon completa`,
-        message: `Tu cuenta de patrocinador se vinculó. Vuelve a Discord y elige Continuar en tu panel de configuración o suscripción para ver tu estado actualizado.`,
+        message: `Tu membresía de Patreon se vinculó. Vuelve a Discord y elige Verificar membresía en tu panel de configuración o suscripción.`,
       },
       authorization_denied: {
         title: `Vinculación con Patreon cancelada`,
-        message: `Patreon no autorizó la vinculación. Vuelve a Discord y elige Continuar en tu panel de configuración o suscripción si deseas intentarlo de nuevo.`,
+        message: `Patreon no autorizó la vinculación. Vuelve a Discord y elige Vincular membresía de Patreon en tu panel de configuración o suscripción para intentarlo de nuevo.`,
       },
       missing_code: {
         title: `Error al vincular con Patreon`,
@@ -80,7 +81,7 @@ export default {
       },
       unlinked_membership: {
         title: `Sin membresía válida de Patreon`,
-        message: `Esta cuenta de Patreon no está vinculada a una membresía válida. Vuelve a Discord y elige Continuar en tu panel de configuración o suscripción.`,
+        message: `Esta cuenta de Patreon no tiene una membresía válida. Elige una membresía en Patreon, luego vuelve a Discord y elige Verificar membresía.`,
       },
       wrong_campaign: {
         title: `Campaña de Patreon incorrecta`,
