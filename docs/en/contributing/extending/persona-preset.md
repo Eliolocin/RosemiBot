@@ -20,9 +20,8 @@ covered in [Adding a Locale](/contributing/localization/new-locale/).
      `avatarPath`, `triggerWords`.
    - Do not author `preset_attribute_public_flags`. `personaSeed.ts` derives it: the first attribute
      is public and the rest are private.
-   - Add the lineage to `OFFICIAL_LINEAGE_IDS` and the `preset_lineage_id IN (...)` list in
-     `personaSeed.ts`, to `PRESET_LINEAGE_BY_AVATAR` in `src/commands/persona/default.ts`, and to the
-     naming snapshot in `tests/unit/db/personaNamingCatalog.test.ts`.
+   - Add the lineage to `OFFICIAL_LINEAGE_IDS` in `personaSeed.ts` and to the naming snapshot in
+     `tests/unit/db/personaNamingCatalog.test.ts`.
    - Optional `isNsfw: true` hides the preset from `/persona default` and `/setup`; the
      age-restricted `/nsfw persona default` lists only NSFW presets. Personas created from it copy the flag, and only
      `/nsfw persona import` accepts a file that carries it.
