@@ -498,6 +498,44 @@ describe("Chime-in check", () => {
     expect(chatInputs).toEqual([]);
   });
 
+  it("aborts when a persona speaks or the channel locks during the second matcher call", async () => {
+    const cases: Array<[string, () => Promise<void>]> = [
+      ["persona_spoke", () => observeChimeInMessage(client, self(channel))],
+      [
+        "channel_busy",
+        async () => {
+          locked = true;
+        },
+      ],
+    ];
+    for (const [reason, duringMatch] of cases) {
+      locked = false;
+      match.mockClear();
+      matches = [defaultMatch, defaultMatch];
+      let calls = 0;
+      match.mockImplementation(async () => {
+        calls++;
+        const result = matches.shift() ?? defaultMatch;
+        if (calls === 2) await duringMatch();
+        return result;
+      });
+      expect(
+        await runChimeInCheck(
+          check,
+          options(() => postHumans(CHIME_IN_STALE_HUMAN_MESSAGES)),
+        ),
+      ).toBe("aborted");
+      expect(match).toHaveBeenCalledTimes(2);
+      expect(samples.at(-1)).toMatchObject({
+        outcome: "aborted",
+        phase: "c",
+        reason,
+        rematched: 1,
+      });
+      expect(chatInputs).toEqual([]);
+    }
+  });
+
   it("aborts when the re-match window shows the chosen speaker already spoke", async () => {
     const duringDelay = async () => {
       await postHumans(CHIME_IN_STALE_HUMAN_MESSAGES);

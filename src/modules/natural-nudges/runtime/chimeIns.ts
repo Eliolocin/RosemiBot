@@ -528,6 +528,9 @@ async function recheckBeforeSend(
   // Like the first call, a failure here must not count toward the failure stop.
   if (rematched.reason === "failed") return { reason: "matcher_failed", rematch: rematched };
   if (rematched.choice !== plan.choice) return { reason: "window_gone", rematch: rematched };
+  // The second call takes seconds, so the moment must still hold on return, not only before it starts.
+  if (watch.personaSpoke) return { reason: "persona_spoke", rematch: rematched };
+  if (isChannelProcessingLocked(check.channel.id)) return { reason: "channel_busy", rematch: rematched };
   return { reason: null, rematch: rematched };
 }
 
