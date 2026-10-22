@@ -1,13 +1,13 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import {
-  EPISODE_FREQUENCY_LEVELS,
+  IDLE_NUDGE_FREQUENCY_LEVELS,
   NATURAL_NUDGE_CATEGORIES,
   defaultServerNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
 import type { NaturalNudgesSettingsView } from "@/modules/natural-nudges/discord/operations";
 import {
-  NUDGE_EPISODE_CATEGORY_FIELD,
-  buildEpisodeModal,
+  NUDGE_IDLE_NUDGE_CATEGORY_FIELD,
+  buildIdleNudgeModal,
   buildNaturalNudgesSettingsBody,
 } from "@/modules/natural-nudges/discord/panel";
 import { buildConfigRouteId } from "@/utils/discord/configPanelCatalog";
@@ -26,8 +26,8 @@ const t = (key: string, variables: Record<string, string | number> = {}): string
 
 const ROUTE_IDS = {
   channels: buildConfigRouteId({ action: "nudge-channels-select", locale: LOCALE }),
-  idleFrequency: buildConfigRouteId({ action: "nudge-frequency-select", locale: LOCALE }),
-  activeFrequency: buildConfigRouteId({ action: "nudge-chime-in-frequency-select", locale: LOCALE }),
+  idleFrequency: buildConfigRouteId({ action: "nudge-idle-nudges-frequency-select", locale: LOCALE }),
+  activeFrequency: buildConfigRouteId({ action: "nudge-active-nudges-frequency-select", locale: LOCALE }),
   provider: buildConfigRouteId({ action: "nudge-provider", locale: LOCALE }),
 };
 
@@ -39,10 +39,10 @@ const FREQUENCY_KEYS: Record<number, string> = {
 };
 
 const CATEGORY_KEYS = {
-  reach_out: "commands.config.natural_nudges.category_reach_out",
-  revive: "commands.config.natural_nudges.category_revive",
-  new_topic: "commands.config.natural_nudges.category_new_topic",
-  alter_talk: "commands.config.natural_nudges.category_alter_talk",
+  ping_user: "commands.config.natural_nudges.category_ping_user",
+  revive_topic: "commands.config.natural_nudges.category_revive_topic",
+  start_topic: "commands.config.natural_nudges.category_start_topic",
+  play_scene: "commands.config.natural_nudges.category_play_scene",
 } as const;
 
 interface Observed {
@@ -95,12 +95,12 @@ function walk(value: unknown): Observed[] {
 function makeView(overrides: Partial<NaturalNudgesSettingsView> = {}): NaturalNudgesSettingsView {
   return {
     config: { ...defaultServerNaturalNudgeConfig(1), channel_disc_ids: [CHANNEL_ID] },
-    runtime: { server_id: 1, episode_jitter: 1, consecutive_failures: 0, stopped_at: null },
+    runtime: { server_id: 1, idle_nudge_jitter: 1, consecutive_failures: 0, stopped_at: null },
     plannerModels: [{ provider: "openrouter", models: [{ id: 7, name: "planner-model", description: null }] }],
     trackingEnabled: true,
     heat: 120,
     perDay: 2,
-    chimeInRange: { min: 40, max: 80 },
+    activeNudgeRange: { min: 40, max: 80 },
     status: {
       effectiveChannelIds: [CHANNEL_ID],
       plannerModel: { kind: "ready", llmId: 7, source: "chat" },
@@ -128,9 +128,9 @@ describe("Natural Nudges settings panel", () => {
       seen.findIndex((component) => component.content?.startsWith(`## ${t("commands.config.natural_nudges.title")}`)),
       headingAt("commands.config.natural_nudges.channels_title"),
       seen.findIndex((component) => component.customId === ROUTE_IDS.channels),
-      headingAt("commands.config.natural_nudges.episodes_title"),
+      headingAt("commands.config.natural_nudges.idle_nudges_title"),
       seen.findIndex((component) => component.customId === ROUTE_IDS.idleFrequency),
-      headingAt("commands.config.natural_nudges.chime_ins_title"),
+      headingAt("commands.config.natural_nudges.active_nudges_title"),
       seen.findIndex((component) => component.customId === ROUTE_IDS.activeFrequency),
       headingAt("commands.config.natural_nudges.model_title"),
     ];
@@ -143,8 +143,8 @@ describe("Natural Nudges settings panel", () => {
   it("labels both frequency selects through the same key", () => {
     const body = buildNaturalNudgesSettingsBody(LOCALE, makeView(), false, false);
     const seen = walk(body);
-    const expected = EPISODE_FREQUENCY_LEVELS.map((level) =>
-      t("commands.config.natural_nudges.chime_in_frequency_option", { level: t(FREQUENCY_KEYS[level]) }),
+    const expected = IDLE_NUDGE_FREQUENCY_LEVELS.map((level) =>
+      t("commands.config.natural_nudges.active_nudge_frequency_option", { level: t(FREQUENCY_KEYS[level]) }),
     );
 
     for (const customId of [ROUTE_IDS.idleFrequency, ROUTE_IDS.activeFrequency]) {
@@ -205,19 +205,19 @@ describe("Natural Nudges settings panel", () => {
     ]);
   });
 
-  it("labels the custom episode category choices by category key", () => {
-    const modal = buildEpisodeModal(LOCALE, NONCE, null);
+  it("labels the custom idle nudge category choices by category key", () => {
+    const modal = buildIdleNudgeModal(LOCALE, NONCE, null);
     const seen = walk(modal);
     const categoryField = seen.find(
       (component) =>
         component.type === MODAL_LABEL_TYPE &&
-        component.label === t("commands.config.natural_nudges.episode_category_label"),
+        component.label === t("commands.config.natural_nudges.idle_nudge_category_label"),
     );
     const categorySelect = seen.find(
-      (component) => component.customId === buildConfigModalFieldId(NUDGE_EPISODE_CATEGORY_FIELD, NONCE),
+      (component) => component.customId === buildConfigModalFieldId(NUDGE_IDLE_NUDGE_CATEGORY_FIELD, NONCE),
     );
 
-    expect(categoryField?.description).toBe(t("commands.config.natural_nudges.episode_category_description"));
+    expect(categoryField?.description).toBe(t("commands.config.natural_nudges.idle_nudge_category_description"));
     expect(categorySelect?.options?.map((option) => option.label)).toEqual(
       NATURAL_NUDGE_CATEGORIES.map((category) => t(CATEGORY_KEYS[category])),
     );

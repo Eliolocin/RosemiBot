@@ -2,10 +2,10 @@ import { z } from "zod";
 import type { TomoriState } from "@/types/db/schema";
 import { NATURAL_NUDGE_AGENDA_MAX, type NaturalNudgeInterest } from "@/modules/natural-nudges/db/types";
 import { escapeDataText } from "@/modules/natural-nudges/runtime/channels";
-import type { EpisodeDefinition } from "@/modules/natural-nudges/runtime/episodes";
-import type { ReachOutTarget } from "@/modules/natural-nudges/runtime/targets";
+import type { IdleNudgeDefinition } from "@/modules/natural-nudges/runtime/idleNudges";
+import type { PingUserTarget } from "@/modules/natural-nudges/runtime/targets";
 import { resolveStructuredCallTarget } from "@/modules/natural-nudges/runtime/model";
-import { ALTER_TALK_MAX_TURNS, ALTER_TALK_MIN_TURNS } from "@/modules/natural-nudges/runtime/tuning";
+import { PLAY_SCENE_MAX_TURNS, PLAY_SCENE_MIN_TURNS } from "@/modules/natural-nudges/runtime/tuning";
 import { formatStructuredRetryNote, resolveServerStructuredModel } from "@/utils/provider/serverStructuredOutput";
 import { log } from "@/utils/misc/logger";
 import type { TokenUsage } from "@/utils/text/tokenEstimate";
@@ -21,7 +21,7 @@ interface PlannerChannel {
   transcript: string;
 }
 
-/** Another persona in an Alter Talk scene; speaker numbers follow this order after the lead. */
+/** Another persona in a Play Scene; speaker numbers follow this order after the lead. */
 export interface ScenePartner {
   persona: TomoriState;
   interests: readonly NaturalNudgeInterest[];
@@ -30,10 +30,10 @@ export interface ScenePartner {
 export interface PlannerInput {
   persona: TomoriState;
   interests: readonly NaturalNudgeInterest[];
-  episode: EpisodeDefinition;
+  idleNudge: IdleNudgeDefinition;
   channels: readonly PlannerChannel[];
   plannerLlmId: number;
-  target: ReachOutTarget | null;
+  target: PingUserTarget | null;
   partners: readonly ScenePartner[];
 }
 
@@ -71,8 +71,8 @@ export function buildPlannerJsonSchema(partners: number) {
 export function sceneScriptIssues(script: readonly number[], partnerAgendas: number, partners: number): string[] {
   const speakers = partners + 1;
   const issues: string[] = [];
-  if (script.length < ALTER_TALK_MIN_TURNS || script.length > ALTER_TALK_MAX_TURNS)
-    issues.push(`script must have ${ALTER_TALK_MIN_TURNS}-${ALTER_TALK_MAX_TURNS} turns`);
+  if (script.length < PLAY_SCENE_MIN_TURNS || script.length > PLAY_SCENE_MAX_TURNS)
+    issues.push(`script must have ${PLAY_SCENE_MIN_TURNS}-${PLAY_SCENE_MAX_TURNS} turns`);
   if (partnerAgendas !== partners)
     issues.push(`partner_agendas must hold exactly ${partners} goal(s), one per partner in number order`);
   if (script[0] !== 1) issues.push("script must start with character 1, who opens the scene");
@@ -105,17 +105,17 @@ export function buildAcceptedResult(partners: number) {
   );
 }
 
-export interface EpisodePlan {
+export interface IdleNudgePlan {
   channelIndex: number;
   topic: string;
   openerDirection: string;
   agenda: string;
-  /** Alter Talk only: speaker numbers in turn order (1 is the lead), and each partner's goal. */
+  /** Play Scene only: speaker numbers in turn order (1 is the lead), and each partner's goal. */
   scene: { script: number[]; partnerAgendas: string[] } | null;
 }
 
 export type PlannerOutcome =
-  | { status: "planned"; plan: EpisodePlan; usage: TokenUsage | null; model: string }
+  | { status: "planned"; plan: IdleNudgePlan; usage: TokenUsage | null; model: string }
   | { status: "declined"; usage: TokenUsage | null; model: string }
   | { status: "unavailable"; reason: "model_unavailable" | "credentials" }
   | {
@@ -149,15 +149,15 @@ function buildTargetLine(input: PlannerInput, name: string): string {
 
 function buildSystemPrompt(input: PlannerInput): string {
   const name = input.persona.persona_nickname;
-  const { episode } = input;
+  const { idleNudge } = input;
   const isScene = input.partners.length > 0;
   return [
     `You plan one unprompted Discord message for the character ${name}. Nobody asked ${name} to speak, so the opener must feel natural for the channel, short, and in character.`,
     isScene
       ? `It opens a short scene: ${partnerNames(input)} answer${input.partners.length === 1 ? "s" : ""} in turn. The numbered <character> blocks describe everyone in it.`
       : "",
-    `Episode brief: ${fillPlaceholders(episode.brief, input)}`,
-    episode.agendaHint ? `Example of a fitting agenda: ${fillPlaceholders(episode.agendaHint, input)}` : "",
+    `Idle nudge brief: ${fillPlaceholders(idleNudge.brief, input)}`,
+    idleNudge.agendaHint ? `Example of a fitting agenda: ${fillPlaceholders(idleNudge.agendaHint, input)}` : "",
     buildTargetLine(input, name),
     [
       "Rules:",
@@ -165,7 +165,7 @@ function buildSystemPrompt(input: PlannerInput): string {
       `- opener_direction tells ${name} what to say in one or two sentences. Do not write the message itself.`,
       `- agenda is one small conversational goal ${name} keeps pursuing in later replies. An agenda never seeks personal data, money, or any action outside the chat.`,
       isScene
-        ? `- script lists who speaks, in order, by character number: ${ALTER_TALK_MIN_TURNS}-${ALTER_TALK_MAX_TURNS} turns, starting with 1, never the same character twice in a row, and every character at least once.`
+        ? `- script lists who speaks, in order, by character number: ${PLAY_SCENE_MIN_TURNS}-${PLAY_SCENE_MAX_TURNS} turns, starting with 1, never the same character twice in a row, and every character at least once.`
         : "",
       isScene
         ? "- partner_agendas holds one goal for each other character, in number order, under the same limits as agenda."
@@ -180,7 +180,7 @@ function buildSystemPrompt(input: PlannerInput): string {
     .join("\n\n");
 }
 
-function buildTargetBlock(target: ReachOutTarget): string {
+function buildTargetBlock(target: PingUserTarget): string {
   const lines = [
     `<target name="${escapeDataText(target.displayName)}">`,
     target.activity ? `Doing right now: ${escapeDataText(target.activity)}` : "",
@@ -230,7 +230,7 @@ function buildUserPrompt(input: PlannerInput): string {
  * Phase B: one structured call to the server's Natural Nudges model, with a single format retry
  * when the reply is malformed. Transport errors, refusals, and timeouts are not retried.
  */
-export async function planEpisode(input: PlannerInput): Promise<PlannerOutcome> {
+export async function planIdleNudge(input: PlannerInput): Promise<PlannerOutcome> {
   const failureContext = { serverId: input.persona.server_id, personaId: input.persona.persona_id };
   const resolved = await resolveServerStructuredModel(input.persona, input.plannerLlmId, failureContext);
   if (!resolved) return { status: "unavailable", reason: "model_unavailable" };

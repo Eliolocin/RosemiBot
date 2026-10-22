@@ -6,14 +6,14 @@ import { defaultServerNaturalNudgeConfig, type NaturalNudgeFireRow } from "@/mod
 import * as channels from "@/modules/natural-nudges/runtime/channels";
 import {
   buildMatcherOptions,
-  observeChimeInMessage,
-  runChimeInCheck,
-  type ChimeInCheck,
-} from "@/modules/natural-nudges/runtime/chimeIns";
+  observeActiveNudgeMessage,
+  runActiveNudgeCheck,
+  type ActiveNudgeCheck,
+} from "@/modules/natural-nudges/runtime/activeNudges";
 import * as configCache from "@/modules/natural-nudges/runtime/configCache";
 import * as inFlight from "@/modules/natural-nudges/runtime/inFlight";
 import * as matcher from "@/modules/natural-nudges/runtime/matcher";
-import { CHIME_IN_OPTION_BUDGET, CHIME_IN_STALE_HUMAN_MESSAGES } from "@/modules/natural-nudges/runtime/tuning";
+import { ACTIVE_NUDGE_OPTION_BUDGET, ACTIVE_NUDGE_STALE_HUMAN_MESSAGES } from "@/modules/natural-nudges/runtime/tuning";
 import * as tomoriStateCache from "@/utils/cache/tomoriStateCache";
 import type { TomoriChatInput } from "@/utils/chat/types";
 import { statRepository } from "@/utils/db/repositories";
@@ -80,12 +80,12 @@ function fakeMessage(channel: GuildTextBasedChannel, author: { id: string; bot: 
 const member = (channel: GuildTextBasedChannel) => fakeMessage(channel, { id: "1300000000000000002", bot: false });
 const self = (channel: GuildTextBasedChannel) => fakeMessage(channel, { id: CLIENT_USER_ID, bot: true });
 
-describe("Chime-in counter", () => {
+describe("Active Nudge counter", () => {
   let claims: number;
   beforeEach(() => {
     claims = 0;
     spies.push(
-      spyOn(configCache, "readChimeInGate").mockResolvedValue({
+      spyOn(configCache, "readActiveNudgeGate").mockResolvedValue({
         serverId: SERVER_ID,
         config: defaultServerNaturalNudgeConfig(SERVER_ID),
         channelIds: new Set(["listed-parent", "trip-parent", "reset-parent", "quiet-parent"]),
@@ -102,10 +102,10 @@ describe("Chime-in counter", () => {
   it("trips once per rolled count, with a parent and its threads sharing one count", async () => {
     const parent = fakeChannel("trip-parent");
     const thread = fakeChannel("trip-thread", "trip-parent");
-    await observeChimeInMessage(client, member(parent));
-    await observeChimeInMessage(client, member(thread));
+    await observeActiveNudgeMessage(client, member(parent));
+    await observeActiveNudgeMessage(client, member(thread));
     expect(claims).toBe(0);
-    await observeChimeInMessage(client, member(thread));
+    await observeActiveNudgeMessage(client, member(thread));
     expect(claims).toBe(1);
   });
 
@@ -113,8 +113,8 @@ describe("Chime-in counter", () => {
     const listed = fakeChannel("quiet-parent");
     const other = fakeChannel("counter-unlisted");
     for (let index = 0; index < 5; index++) {
-      await observeChimeInMessage(client, fakeMessage(listed, { id: "1300000000000000003", bot: true }));
-      await observeChimeInMessage(client, member(other));
+      await observeActiveNudgeMessage(client, fakeMessage(listed, { id: "1300000000000000003", bot: true }));
+      await observeActiveNudgeMessage(client, member(other));
     }
     expect(claims).toBe(0);
   });
@@ -122,20 +122,20 @@ describe("Chime-in counter", () => {
   it("starts over when a persona speaks in the parent or any of its threads", async () => {
     const parent = fakeChannel("reset-parent");
     const thread = fakeChannel("reset-thread", "reset-parent");
-    await observeChimeInMessage(client, member(parent));
-    await observeChimeInMessage(client, member(parent));
-    await observeChimeInMessage(client, self(thread));
-    await observeChimeInMessage(client, member(parent));
-    await observeChimeInMessage(client, member(thread));
+    await observeActiveNudgeMessage(client, member(parent));
+    await observeActiveNudgeMessage(client, member(parent));
+    await observeActiveNudgeMessage(client, self(thread));
+    await observeActiveNudgeMessage(client, member(parent));
+    await observeActiveNudgeMessage(client, member(thread));
     expect(claims).toBe(0);
-    await observeChimeInMessage(client, member(parent));
+    await observeActiveNudgeMessage(client, member(parent));
     expect(claims).toBe(1);
   });
 });
 
 describe("matcher options", () => {
   it("merges a shared label into one option and never exceeds the option budget", () => {
-    const many = Array.from({ length: CHIME_IN_OPTION_BUDGET }, (_, index) => ({
+    const many = Array.from({ length: ACTIVE_NUDGE_OPTION_BUDGET }, (_, index) => ({
       label: `topic ${index}`,
       description: "Filler.",
     }));
@@ -157,11 +157,11 @@ describe("matcher options", () => {
 
     configs.set(ALTER_ID, { persona_id: ALTER_ID, talkativeness: 2, interests: many, has_override: true });
     const budgeted = buildMatcherOptions([main, alter], configs);
-    expect(budgeted.options.length).toBeLessThanOrEqual(CHIME_IN_OPTION_BUDGET);
+    expect(budgeted.options.length).toBeLessThanOrEqual(ACTIVE_NUDGE_OPTION_BUDGET);
   });
 });
 
-describe("Chime-in check", () => {
+describe("Active Nudge check", () => {
   let chatInputs: TomoriChatInput[];
   let samples: Array<Record<string, unknown>>;
   let locked: boolean;
@@ -169,9 +169,9 @@ describe("Chime-in check", () => {
   let configSpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadServerConfig">>;
   let historySpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadFireHistory">>;
   let matches: matcher.MatcherResult[];
-  let match: Mock<typeof matcher.matchChimeIn>;
+  let match: Mock<typeof matcher.matchActiveNudge>;
   const channel = fakeChannel("listed-parent");
-  const check: ChimeInCheck = {
+  const check: ActiveNudgeCheck = {
     client,
     channel,
     listedChannelId: "listed-parent",
@@ -179,7 +179,7 @@ describe("Chime-in check", () => {
     serverId: SERVER_ID,
     heat: 15,
   };
-  const recordFire = () => spyOn(naturalNudgeRepository, "recordChimeInFire").mockResolvedValue(true);
+  const recordFire = () => spyOn(naturalNudgeRepository, "recordActiveNudgeFire").mockResolvedValue(true);
 
   beforeEach(() => {
     chatInputs = [];
@@ -189,9 +189,9 @@ describe("Chime-in check", () => {
     configSpy = spyOn(naturalNudgeRepository, "loadServerConfig");
     configSpy.mockResolvedValue(defaultServerNaturalNudgeConfig(SERVER_ID));
     historySpy = spyOn(naturalNudgeRepository, "loadFireHistory");
-    historySpy.mockResolvedValue({ recent: [], latestEpisodes: [] });
+    historySpy.mockResolvedValue({ recent: [], latestIdleNudges: [] });
     matches = [];
-    match = spyOn(matcher, "matchChimeIn").mockImplementation(async () => matches.shift() ?? defaultMatch);
+    match = spyOn(matcher, "matchActiveNudge").mockImplementation(async () => matches.shift() ?? defaultMatch);
     spies.push(
       match,
       spyOn(tomoriStateCache, "getCachedAllPersonas").mockResolvedValue([main, alter]),
@@ -199,7 +199,7 @@ describe("Chime-in check", () => {
       configSpy,
       spyOn(naturalNudgeRepository, "loadRuntimeState").mockResolvedValue({
         server_id: SERVER_ID,
-        episode_jitter: 1,
+        idle_nudge_jitter: 1,
         consecutive_failures: 0,
         stopped_at: null,
       }),
@@ -213,7 +213,7 @@ describe("Chime-in check", () => {
       spyOn(channels, "resolveEffectiveChannelIds").mockResolvedValue(["listed-parent"]),
       spyOn(channels, "fetchRecentMessages").mockImplementation(async () => window),
       spyOn(channels, "buildMatcherEvidence").mockResolvedValue("Juno: the new Gundam is out"),
-      spyOn(configCache, "readChimeInGate").mockResolvedValue({
+      spyOn(configCache, "readActiveNudgeGate").mockResolvedValue({
         serverId: SERVER_ID,
         config: defaultServerNaturalNudgeConfig(SERVER_ID),
         channelIds: new Set(),
@@ -244,13 +244,13 @@ describe("Chime-in check", () => {
 
   const postHumans = async (count: number) => {
     window = Array.from({ length: count }, () => member(channel));
-    for (let index = 0; index < count; index++) await observeChimeInMessage(client, member(channel));
+    for (let index = 0; index < count; index++) await observeActiveNudgeMessage(client, member(channel));
   };
 
   it("speaks a plain turn as the interest's owner and records the fire", async () => {
     const fire = recordFire();
     spies.push(fire);
-    expect(await runChimeInCheck(check, options())).toBe("fired");
+    expect(await runActiveNudgeCheck(check, options())).toBe("fired");
     const [input] = chatInputs;
     expect(input).toMatchObject({
       selectedPersonaId: MAIN_ID,
@@ -280,11 +280,11 @@ describe("Chime-in check", () => {
       ),
     );
     window = [member(channel), self(channel)];
-    expect(await runChimeInCheck(check, { sleep: async () => {}, random: () => 0.05 })).toBe("fired");
+    expect(await runActiveNudgeCheck(check, { sleep: async () => {}, random: () => 0.05 })).toBe("fired");
     expect(chatInputs.map((input) => input.selectedPersonaId)).toEqual([ALTER_ID]);
   });
 
-  it("holds the hourly cap for a parent after a Chime-in in one of its threads", async () => {
+  it("holds the hourly cap for a parent after an Active Nudge in one of its threads", async () => {
     const cache = (client as unknown as { channels: { cache: Map<string, unknown> } }).channels.cache;
     cache.set("cap-thread", { isThread: () => true, parentId: "listed-parent" });
     historySpy.mockResolvedValue({
@@ -294,26 +294,26 @@ describe("Chime-in check", () => {
           server_id: SERVER_ID,
           channel_disc_id: "cap-thread",
           persona_id: MAIN_ID,
-          mode: "chime_in",
+          mode: "active",
           category: null,
-          episode_key: null,
+          idle_nudge_key: null,
           target_user_id: null,
           opener_message_disc_id: ANCHOR_ID,
           answered: null,
           fired_at: new Date(Date.now() - 10 * 60_000),
         },
       ],
-      latestEpisodes: [],
+      latestIdleNudges: [],
     });
     try {
-      expect(await runChimeInCheck(check, options())).toBe("aborted");
+      expect(await runActiveNudgeCheck(check, options())).toBe("aborted");
       expect(samples.at(-1)).toMatchObject({ reason: "channel_cap", phase: "a" });
     } finally {
       cache.delete("cap-thread");
     }
   });
 
-  it("counts today's Chime-ins against the level's cap", async () => {
+  it("counts today's Active Nudges against the level's cap", async () => {
     spies.push(recordFire());
     const CAP_BY_LEVEL = [
       [0, 1],
@@ -321,14 +321,14 @@ describe("Chime-in check", () => {
       [2, 6],
       [3, 10],
     ] as const;
-    const chimeInFire = (fireId: number): NaturalNudgeFireRow => ({
+    const activeNudgeFire = (fireId: number): NaturalNudgeFireRow => ({
       fire_id: fireId,
       server_id: SERVER_ID,
       channel_disc_id: "cap-other-channel",
       persona_id: MAIN_ID,
-      mode: "chime_in",
+      mode: "active",
       category: null,
-      episode_key: null,
+      idle_nudge_key: null,
       target_user_id: null,
       opener_message_disc_id: ANCHOR_ID,
       answered: null,
@@ -336,19 +336,19 @@ describe("Chime-in check", () => {
     });
 
     for (const [level, cap] of CAP_BY_LEVEL) {
-      configSpy.mockResolvedValue({ ...defaultServerNaturalNudgeConfig(SERVER_ID), chime_in_frequency: level });
-      const fired = Array.from({ length: cap }, (_, index) => chimeInFire(index + 1));
+      configSpy.mockResolvedValue({ ...defaultServerNaturalNudgeConfig(SERVER_ID), active_nudge_frequency: level });
+      const fired = Array.from({ length: cap }, (_, index) => activeNudgeFire(index + 1));
 
-      historySpy.mockResolvedValue({ recent: fired, latestEpisodes: [] });
-      expect(await runChimeInCheck(check, options())).toBe("aborted");
+      historySpy.mockResolvedValue({ recent: fired, latestIdleNudges: [] });
+      expect(await runActiveNudgeCheck(check, options())).toBe("aborted");
       expect(samples.at(-1)).toMatchObject({ reason: "cap_reached", phase: "a" });
 
-      historySpy.mockResolvedValue({ recent: fired.slice(1), latestEpisodes: [] });
-      expect(await runChimeInCheck(check, options())).toBe("fired");
+      historySpy.mockResolvedValue({ recent: fired.slice(1), latestIdleNudges: [] });
+      expect(await runActiveNudgeCheck(check, options())).toBe("fired");
     }
   });
 
-  it("lifts a failure stop itself once a turn has succeeded since, so episodes being off cannot strand it", async () => {
+  it("lifts a failure stop itself once a turn has succeeded since, so idle nudges being off cannot strand it", async () => {
     const stoppedAt = new Date("2026-10-21T16:06:23Z");
     const clear = spyOn(naturalNudgeRepository, "clearFailures").mockResolvedValue(undefined);
     const lastTurn = spyOn(statRepository, "getServerMetricLastAt").mockResolvedValue(new Date("2026-10-21T16:05:00Z"));
@@ -358,30 +358,30 @@ describe("Chime-in check", () => {
       recordFire(),
       spyOn(naturalNudgeRepository, "loadRuntimeState").mockResolvedValue({
         server_id: SERVER_ID,
-        episode_jitter: 1,
+        idle_nudge_jitter: 1,
         consecutive_failures: 3,
         stopped_at: stoppedAt,
       }),
     );
-    expect(await runChimeInCheck(check, options())).toBe("aborted");
+    expect(await runActiveNudgeCheck(check, options())).toBe("aborted");
     expect(samples.at(-1)).toMatchObject({ reason: "stopped" });
     expect(clear).not.toHaveBeenCalled();
 
     lastTurn.mockResolvedValue(new Date("2026-10-21T16:07:18Z"));
-    expect(await runChimeInCheck(check, options())).toBe("fired");
+    expect(await runActiveNudgeCheck(check, options())).toBe("fired");
     expect(clear).toHaveBeenCalledWith(SERVER_ID);
   });
 
   it("skips a channel where the bot cannot send, before any matcher call", async () => {
     canSend = false;
-    expect(await runChimeInCheck(check, options())).toBe("aborted");
+    expect(await runActiveNudgeCheck(check, options())).toBe("aborted");
     expect(samples.at(-1)).toMatchObject({ reason: "no_send_permission", phase: "a" });
-    expect(matcher.matchChimeIn).not.toHaveBeenCalled();
+    expect(matcher.matchActiveNudge).not.toHaveBeenCalled();
   });
 
   it("stays quiet when the winner already spoke in the matcher's window", async () => {
     window = [member(channel), self(channel)];
-    expect(await runChimeInCheck(check, options())).toBe("aborted");
+    expect(await runActiveNudgeCheck(check, options())).toBe("aborted");
     expect(chatInputs).toEqual([]);
     expect(samples.at(-1)).toMatchObject({ reason: "winner_spoke", phase: "a" });
   });
@@ -391,14 +391,14 @@ describe("Chime-in check", () => {
       [
         "persona_spoke",
         async () => {
-          await postHumans(CHIME_IN_STALE_HUMAN_MESSAGES);
-          await observeChimeInMessage(client, self(channel));
+          await postHumans(ACTIVE_NUDGE_STALE_HUMAN_MESSAGES);
+          await observeActiveNudgeMessage(client, self(channel));
         },
       ],
       [
         "channel_busy",
         async () => {
-          await postHumans(CHIME_IN_STALE_HUMAN_MESSAGES);
+          await postHumans(ACTIVE_NUDGE_STALE_HUMAN_MESSAGES);
           locked = true;
         },
       ],
@@ -406,7 +406,7 @@ describe("Chime-in check", () => {
     for (const [reason, duringDelay] of cases) {
       locked = false;
       match.mockClear();
-      expect(await runChimeInCheck(check, options(duringDelay))).toBe("aborted");
+      expect(await runActiveNudgeCheck(check, options(duringDelay))).toBe("aborted");
       expect(samples.at(-1)).toMatchObject({ reason, phase: "c" });
       expect(match).toHaveBeenCalledTimes(1);
     }
@@ -420,9 +420,9 @@ describe("Chime-in check", () => {
       { choice: "i01", reason: "matched", kind: "llm", model: "fixture", usage: { inputTokens: 40, outputTokens: 5 } },
     ];
     expect(
-      await runChimeInCheck(
+      await runActiveNudgeCheck(
         check,
-        options(() => postHumans(CHIME_IN_STALE_HUMAN_MESSAGES)),
+        options(() => postHumans(ACTIVE_NUDGE_STALE_HUMAN_MESSAGES)),
       ),
     ).toBe("fired");
     expect(match).toHaveBeenCalledTimes(2);
@@ -449,9 +449,9 @@ describe("Chime-in check", () => {
       window = [member(channel)];
       matches = [defaultMatch, second];
       expect(
-        await runChimeInCheck(
+        await runActiveNudgeCheck(
           check,
-          options(() => postHumans(CHIME_IN_STALE_HUMAN_MESSAGES)),
+          options(() => postHumans(ACTIVE_NUDGE_STALE_HUMAN_MESSAGES)),
         ),
       ).toBe("aborted");
       expect(match).toHaveBeenCalledTimes(2);
@@ -468,9 +468,9 @@ describe("Chime-in check", () => {
   it("makes no second matcher call below the stale threshold", async () => {
     spies.push(recordFire());
     expect(
-      await runChimeInCheck(
+      await runActiveNudgeCheck(
         check,
-        options(() => postHumans(CHIME_IN_STALE_HUMAN_MESSAGES - 1)),
+        options(() => postHumans(ACTIVE_NUDGE_STALE_HUMAN_MESSAGES - 1)),
       ),
     ).toBe("fired");
     expect(match).toHaveBeenCalledTimes(1);
@@ -482,9 +482,9 @@ describe("Chime-in check", () => {
     spies.push(failure);
     matches = [defaultMatch, { choice: null, reason: "failed", kind: "llm", model: "fixture" }];
     expect(
-      await runChimeInCheck(
+      await runActiveNudgeCheck(
         check,
-        options(() => postHumans(CHIME_IN_STALE_HUMAN_MESSAGES)),
+        options(() => postHumans(ACTIVE_NUDGE_STALE_HUMAN_MESSAGES)),
       ),
     ).toBe("aborted");
     expect(match).toHaveBeenCalledTimes(2);
@@ -500,7 +500,7 @@ describe("Chime-in check", () => {
 
   it("aborts when a persona speaks or the channel locks during the second matcher call", async () => {
     const cases: Array<[string, () => Promise<void>]> = [
-      ["persona_spoke", () => observeChimeInMessage(client, self(channel))],
+      ["persona_spoke", () => observeActiveNudgeMessage(client, self(channel))],
       [
         "channel_busy",
         async () => {
@@ -520,9 +520,9 @@ describe("Chime-in check", () => {
         return result;
       });
       expect(
-        await runChimeInCheck(
+        await runActiveNudgeCheck(
           check,
-          options(() => postHumans(CHIME_IN_STALE_HUMAN_MESSAGES)),
+          options(() => postHumans(ACTIVE_NUDGE_STALE_HUMAN_MESSAGES)),
         ),
       ).toBe("aborted");
       expect(match).toHaveBeenCalledTimes(2);
@@ -538,10 +538,10 @@ describe("Chime-in check", () => {
 
   it("aborts when the re-match window shows the chosen speaker already spoke", async () => {
     const duringDelay = async () => {
-      await postHumans(CHIME_IN_STALE_HUMAN_MESSAGES);
+      await postHumans(ACTIVE_NUDGE_STALE_HUMAN_MESSAGES);
       window = [...window.slice(1), self(channel)];
     };
-    expect(await runChimeInCheck(check, options(duringDelay))).toBe("aborted");
+    expect(await runActiveNudgeCheck(check, options(duringDelay))).toBe("aborted");
     expect(match).toHaveBeenCalledTimes(1);
     expect(samples.at(-1)).toMatchObject({ outcome: "aborted", phase: "c", reason: "persona_spoke" });
     expect(chatInputs).toEqual([]);
@@ -549,7 +549,7 @@ describe("Chime-in check", () => {
 
   it("reads an untrusted matcher answer as no fire", async () => {
     match.mockResolvedValue({ choice: null, reason: "refused", kind: "llm", model: "fixture" });
-    expect(await runChimeInCheck(check, options())).toBe("aborted");
+    expect(await runActiveNudgeCheck(check, options())).toBe("aborted");
     expect(samples.at(-1)).toMatchObject({ reason: "matcher_refused" });
     expect(chatInputs).toEqual([]);
   });

@@ -1,6 +1,6 @@
-import type { CustomEpisodeRow, NaturalNudgeCategory } from "@/modules/natural-nudges/db/types";
+import type { CustomIdleNudgeRow, NaturalNudgeCategory } from "@/modules/natural-nudges/db/types";
 
-/** Tools an episode may require or recommend; `image` stands for either image generator. */
+/** Tools an idle nudge may require or recommend; `image` stands for either image generator. */
 export const NUDGE_TOOL_NAMES = [
   "web_search",
   "fetch_url",
@@ -52,11 +52,11 @@ export function isNudgeToolName(name: string): name is NudgeToolName {
   return (NUDGE_TOOL_NAMES as readonly string[]).includes(name);
 }
 
-/** Built-in episodes share the custom shape, so one path runs both. */
-export interface EpisodeDefinition {
+/** Built-in idle nudges share the custom shape, so one path runs both. */
+export interface IdleNudgeDefinition {
   key: string;
   category: NaturalNudgeCategory;
-  /** Locale key for built-ins; custom episodes carry their own title. */
+  /** Locale key for built-ins; custom idle nudges carry their own title. */
   titleKey?: string;
   title?: string;
   brief: string;
@@ -67,11 +67,11 @@ export interface EpisodeDefinition {
 }
 
 /** Briefs are planner instructions, so they stay in English like every other model-facing prompt. */
-export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
+export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
-    key: "reach_out.check_in",
-    category: "reach_out",
-    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_check_in",
+    key: "ping_user.check_in",
+    category: "ping_user",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_check_in",
     brief:
       "Have {persona} casually check on {target}, the way a friend would after not talking for a while. Keep it to one or two lines.",
     agendaHint: "Get {target} to commit to a time to hang out; if they decline, sulk a little, then drop it",
@@ -80,9 +80,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "reach_out.memory_callback",
-    category: "reach_out",
-    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_memory_callback",
+    key: "ping_user.memory_callback",
+    category: "ping_user",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_memory_callback",
     brief:
       "Pick one recent memory about {target} that has a natural follow-up (an exam, a trip, a project) and have {persona} ask how it went.",
     agendaHint: "Find out how the thing went, and remember the answer by updating the old memory",
@@ -91,9 +91,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "reach_out.saw_this",
-    category: "reach_out",
-    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_saw_this",
+    key: "ping_user.saw_this",
+    category: "ping_user",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_saw_this",
     brief: "Find something new related to {target}'s interests and have {persona} share it with them.",
     agendaHint: "Find out whether {target} had already heard about it",
     prerequisites: [RELATIONSHIP_USER_PREREQUISITE, "tool:web_search"],
@@ -101,9 +101,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "reach_out.presence_poke",
-    category: "reach_out",
-    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_presence_poke",
+    key: "ping_user.presence_poke",
+    category: "ping_user",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_presence_poke",
     brief: "{target} is doing something right now: {presence}. Have {persona} notice and tease or cheer them about it.",
     agendaHint: "Get {target} to share how it is going",
     prerequisites: [RELATIONSHIP_USER_PREREQUISITE, PRESENCE_ACTIVITY_PREREQUISITE],
@@ -111,9 +111,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "reach_out.favor_ask",
-    category: "reach_out",
-    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_favor_ask",
+    key: "ping_user.favor_ask",
+    category: "ping_user",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_favor_ask",
     brief: "Have {persona} ask {target} for their opinion on a small decision that fits {persona}'s character.",
     agendaHint: "Get {target} to settle the decision",
     prerequisites: [RELATIONSHIP_USER_PREREQUISITE],
@@ -121,9 +121,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "reach_out.new_look",
-    category: "reach_out",
-    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_new_look",
+    key: "ping_user.new_look",
+    category: "ping_user",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_new_look",
     brief: "Have {persona} look at {target}'s profile picture and comment on it in character.",
     agendaHint: "Get {target} to explain the picture",
     prerequisites: [RELATIONSHIP_USER_PREREQUISITE, "tool:peek_profile_picture"],
@@ -131,9 +131,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "reach_out.remind_you",
-    category: "reach_out",
-    titleKey: "commands.config.natural_nudges.episode_titles.reach_out_remind_you",
+    key: "ping_user.remind_you",
+    category: "ping_user",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_remind_you",
     brief: "{persona} remembers something {target} has coming up and offers to remind them.",
     agendaHint: "Get {target} to accept a reminder, then set it",
     prerequisites: [RELATIONSHIP_USER_PREREQUISITE, "tool:create_task"],
@@ -141,9 +141,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "revive.pick_up_thread",
-    category: "revive",
-    titleKey: "commands.config.natural_nudges.episode_titles.revive_pick_up_thread",
+    key: "revive_topic.pick_up_thread",
+    category: "revive_topic",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.revive_topic_pick_up_thread",
     brief: "Find the question or topic that was left unanswered and have {persona} bring it back up naturally.",
     agendaHint: "Get the open question resolved",
     prerequisites: [HANGING_CONVERSATION_PREREQUISITE],
@@ -151,9 +151,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "revive.second_thoughts",
-    category: "revive",
-    titleKey: "commands.config.natural_nudges.episode_titles.revive_second_thoughts",
+    key: "revive_topic.second_thoughts",
+    category: "revive_topic",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.revive_topic_second_thoughts",
     brief: "Have {persona} come back having thought more about what was said, with a changed or stronger opinion.",
     agendaHint: "Change someone's stance from earlier",
     prerequisites: [HANGING_CONVERSATION_PREREQUISITE],
@@ -161,9 +161,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "revive.looked_it_up",
-    category: "revive",
-    titleKey: "commands.config.natural_nudges.episode_titles.revive_looked_it_up",
+    key: "revive_topic.looked_it_up",
+    category: "revive_topic",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.revive_topic_looked_it_up",
     brief: "Something in the hanging conversation was uncertain. Have {persona} look it up and report back.",
     agendaHint: "Settle who was right",
     prerequisites: [HANGING_CONVERSATION_PREREQUISITE, "tool:web_search"],
@@ -171,9 +171,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "new_topic.interest_musing",
-    category: "new_topic",
-    titleKey: "commands.config.natural_nudges.episode_titles.new_topic_interest_musing",
+    key: "start_topic.interest_musing",
+    category: "start_topic",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.start_topic_interest_musing",
     brief: "Have {persona} bring up one of its interests with a specific, concrete thought or question.",
     agendaHint: "Find out who else likes the topic",
     prerequisites: [],
@@ -181,9 +181,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "new_topic.hot_take",
-    category: "new_topic",
-    titleKey: "commands.config.natural_nudges.episode_titles.new_topic_hot_take",
+    key: "start_topic.hot_take",
+    category: "start_topic",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.start_topic_hot_take",
     brief: "Have {persona} share a mildly controversial opinion or a quick either/or poll that fits its character.",
     agendaHint: "Get at least two people to pick a side",
     prerequisites: [],
@@ -191,9 +191,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "new_topic.would_you_rather",
-    category: "new_topic",
-    titleKey: "commands.config.natural_nudges.episode_titles.new_topic_would_you_rather",
+    key: "start_topic.would_you_rather",
+    category: "start_topic",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.start_topic_would_you_rather",
     brief: 'Have {persona} pose a playful "would you rather" built around its interests.',
     agendaHint: "Get everyone present to answer",
     prerequisites: [],
@@ -201,9 +201,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "new_topic.current_event",
-    category: "new_topic",
-    titleKey: "commands.config.natural_nudges.episode_titles.new_topic_current_event",
+    key: "start_topic.current_event",
+    category: "start_topic",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.start_topic_current_event",
     brief: "Find a recent, light news item related to {persona}'s interests and have it react.",
     agendaHint: "Hear what people think about it",
     prerequisites: ["tool:web_search"],
@@ -211,9 +211,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "new_topic.show_and_tell",
-    category: "new_topic",
-    titleKey: "commands.config.natural_nudges.episode_titles.new_topic_show_and_tell",
+    key: "start_topic.show_and_tell",
+    category: "start_topic",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.start_topic_show_and_tell",
     brief: "Have {persona} share a picture of what it is doing or something it made, in character.",
     agendaHint: "Get a compliment, or get someone to guess where it is",
     prerequisites: ["tool:image"],
@@ -221,9 +221,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "new_topic.voice_note",
-    category: "new_topic",
-    titleKey: "commands.config.natural_nudges.episode_titles.new_topic_voice_note",
+    key: "start_topic.voice_note",
+    category: "start_topic",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.start_topic_voice_note",
     brief: "Have {persona} send a short, casual voice message instead of text.",
     agendaHint: "Get someone to answer with a voice message",
     prerequisites: ["tool:generate_voice_message"],
@@ -231,9 +231,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "alter_talk.banter",
-    category: "alter_talk",
-    titleKey: "commands.config.natural_nudges.episode_titles.alter_talk_banter",
+    key: "play_scene.banter",
+    category: "play_scene",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.play_scene_banter",
     brief: "Start a short, playful disagreement between {persona} and {partner} about something both have opinions on.",
     agendaHint: "Win the argument; get a human to take its side",
     prerequisites: [TWO_PERSONAS_PREREQUISITE],
@@ -241,9 +241,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "alter_talk.scheming",
-    category: "alter_talk",
-    titleKey: "commands.config.natural_nudges.episode_titles.alter_talk_scheming",
+    key: "play_scene.scheming",
+    category: "play_scene",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.play_scene_scheming",
     brief:
       "Have {persona} and {partner} plan a harmless surprise for {target}, whispering loudly enough that everyone can see.",
     agendaHint: "Pull off the surprise at the planned time",
@@ -252,9 +252,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "alter_talk.asking_for_advice",
-    category: "alter_talk",
-    titleKey: "commands.config.natural_nudges.episode_titles.alter_talk_asking_for_advice",
+    key: "play_scene.asking_for_advice",
+    category: "play_scene",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.play_scene_asking_for_advice",
     brief: "Have {persona} ask {partner} for advice about something in its life.",
     agendaHint: "Get {partner} to reveal something about itself",
     prerequisites: [TWO_PERSONAS_PREREQUISITE],
@@ -262,9 +262,9 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
     builtIn: true,
   },
   {
-    key: "alter_talk.show_off",
-    category: "alter_talk",
-    titleKey: "commands.config.natural_nudges.episode_titles.alter_talk_show_off",
+    key: "play_scene.show_off",
+    category: "play_scene",
+    titleKey: "commands.config.natural_nudges.idle_nudge_titles.play_scene_show_off",
     brief: "Have {persona} show {partner} a picture it made and ask what it thinks.",
     agendaHint: "Get {partner} and a human to react",
     prerequisites: [TWO_PERSONAS_PREREQUISITE, "tool:image"],
@@ -273,11 +273,11 @@ export const BUILTIN_EPISODES: readonly EpisodeDefinition[] = [
   },
 ];
 
-const CUSTOM_EPISODE_KEY_PREFIX = "custom:";
+const CUSTOM_IDLE_NUDGE_KEY_PREFIX = "custom:";
 
-export function customEpisodeDefinition(row: CustomEpisodeRow): EpisodeDefinition {
+export function customIdleNudgeDefinition(row: CustomIdleNudgeRow): IdleNudgeDefinition {
   return {
-    key: `${CUSTOM_EPISODE_KEY_PREFIX}${row.episode_id}`,
+    key: `${CUSTOM_IDLE_NUDGE_KEY_PREFIX}${row.custom_idle_nudge_id}`,
     category: row.category,
     title: row.title,
     brief: row.brief,
@@ -288,14 +288,14 @@ export function customEpisodeDefinition(row: CustomEpisodeRow): EpisodeDefinitio
   };
 }
 
-/** Enabled built-ins and custom episodes, in panel order. */
-export function listRunnableEpisodes(
+/** Enabled built-ins and custom idle nudges, in panel order. */
+export function listRunnableIdleNudges(
   disabledBuiltIns: readonly string[],
-  customEpisodes: readonly CustomEpisodeRow[],
-): EpisodeDefinition[] {
+  customIdleNudges: readonly CustomIdleNudgeRow[],
+): IdleNudgeDefinition[] {
   return [
-    ...BUILTIN_EPISODES.filter((episode) => !disabledBuiltIns.includes(episode.key)),
-    ...customEpisodes.filter((episode) => episode.enabled).map(customEpisodeDefinition),
+    ...BUILTIN_IDLE_NUDGES.filter((idleNudge) => !disabledBuiltIns.includes(idleNudge.key)),
+    ...customIdleNudges.filter((idleNudge) => idleNudge.enabled).map(customIdleNudgeDefinition),
   ];
 }
 
@@ -305,7 +305,7 @@ export interface PrerequisiteFacts {
   /** Another persona that could join a scene shares a channel with this one. */
   hasScenePartner: boolean;
   availableTools: ReadonlySet<string>;
-  /** The persona's drawn Reach-out target, or null when nobody passed the gate. */
+  /** The persona's drawn Ping User nudge target, or null when nobody passed the gate. */
   target: { hasRecentMemories: boolean; isActive: boolean } | null;
 }
 
@@ -316,19 +316,19 @@ const TARGET_PREREQUISITES: readonly string[] = [
 ];
 
 /**
- * A Reach-out always pings someone, so a custom one that forgot `relationship_user` still needs a
- * target, and so does any episode that asks about a target's memories or activity.
+ * A Ping User nudge always pings someone, so a custom one that forgot `relationship_user` still needs a
+ * target, and so does any idle nudge that asks about a target's memories or activity.
  */
-export function episodeNeedsTarget(episode: EpisodeDefinition): boolean {
-  return episode.category === "reach_out" || episode.prerequisites.some((id) => TARGET_PREREQUISITES.includes(id));
+export function idleNudgeNeedsTarget(idleNudge: IdleNudgeDefinition): boolean {
+  return idleNudge.category === "ping_user" || idleNudge.prerequisites.some((id) => TARGET_PREREQUISITES.includes(id));
 }
 
-/** An unknown prerequisite (the registry shrank since the episode was saved) makes the episode ineligible. */
-export function isEpisodeEligible(episode: EpisodeDefinition, facts: PrerequisiteFacts): boolean {
-  if (episodeNeedsTarget(episode) && !facts.target) return false;
-  // Alter Talk is always a scene, so a custom one that forgot `two_personas` still needs a partner.
-  if (episode.category === "alter_talk" && !facts.hasScenePartner) return false;
-  return episode.prerequisites.every((id) => {
+/** An unknown prerequisite (the registry shrank since the idle nudge was saved) makes the idle nudge ineligible. */
+export function isIdleNudgeEligible(idleNudge: IdleNudgeDefinition, facts: PrerequisiteFacts): boolean {
+  if (idleNudgeNeedsTarget(idleNudge) && !facts.target) return false;
+  // Play Scene is always a scene, so a custom one that forgot `two_personas` still needs a partner.
+  if (idleNudge.category === "play_scene" && !facts.hasScenePartner) return false;
+  return idleNudge.prerequisites.every((id) => {
     if (id === HANGING_CONVERSATION_PREREQUISITE) return facts.hasHangingConversation;
     if (id === RELATIONSHIP_USER_PREREQUISITE) return facts.target !== null;
     if (id === RECENT_MEMORY_PREREQUISITE) return facts.target?.hasRecentMemories ?? false;
@@ -345,8 +345,8 @@ export function isEpisodeEligible(episode: EpisodeDefinition, facts: Prerequisit
  * Recommended and prerequisite tools that are available; `image` expands to every concrete
  * generator, since the catalogue names the capability rather than a provider.
  */
-export function availableEpisodeTools(episode: EpisodeDefinition, availableTools: ReadonlySet<string>): string[] {
-  const named = [...episode.recommendedTools, ...episode.prerequisites.flatMap((id) => prerequisiteTool(id) ?? [])];
+export function availableIdleNudgeTools(idleNudge: IdleNudgeDefinition, availableTools: ReadonlySet<string>): string[] {
+  const named = [...idleNudge.recommendedTools, ...idleNudge.prerequisites.flatMap((id) => prerequisiteTool(id) ?? [])];
   const expanded = named.flatMap((tool) => (tool === "image" ? [...IMAGE_TOOL_NAMES] : [tool]));
   return [...new Set(expanded)].filter((tool) => availableTools.has(tool));
 }

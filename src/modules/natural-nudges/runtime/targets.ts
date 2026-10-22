@@ -9,22 +9,22 @@ import {
 } from "discord.js";
 import { PrivacyLevel, type TomoriState } from "@/types/db/schema";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
-import type { NaturalNudgeFireRow, ReachOutCandidate } from "@/modules/natural-nudges/db/types";
+import type { NaturalNudgeFireRow, PingUserCandidate } from "@/modules/natural-nudges/db/types";
 import type { NudgeChannel } from "@/modules/natural-nudges/runtime/channels";
 import { drawRaffle } from "@/modules/natural-nudges/runtime/meters";
 import {
   DAY_MS,
-  REACH_OUT_ACTIVITY_POINTS,
-  REACH_OUT_ANY_PERSONA_PENALTY,
+  PING_USER_ACTIVITY_POINTS,
+  PING_USER_ANY_PERSONA_PENALTY,
   AUTOMATIC_CHANNEL_DAYS,
-  REACH_OUT_MEMORY_DAYS,
-  REACH_OUT_MIN_TICKETS,
-  REACH_OUT_PLANNER_MEMORIES,
-  REACH_OUT_POINTS_PER_STM_CHANNEL,
-  REACH_OUT_POINTS_PER_TURN,
-  REACH_OUT_SAME_PERSONA_PENALTY,
-  REACH_OUT_STM_CHANNEL_CAP,
-  REACH_OUT_TURN_CAP,
+  PING_USER_MEMORY_DAYS,
+  PING_USER_MIN_TICKETS,
+  PING_USER_PLANNER_MEMORIES,
+  PING_USER_POINTS_PER_STM_CHANNEL,
+  PING_USER_POINTS_PER_TURN,
+  PING_USER_SAME_PERSONA_PENALTY,
+  PING_USER_STM_CHANNEL_CAP,
+  PING_USER_TURN_CAP,
 } from "@/modules/natural-nudges/runtime/tuning";
 import { getShortTermMemoriesForUser } from "@/utils/cache/shortTermMemoryCache";
 import { personalMemoryRepository } from "@/utils/db/repositories";
@@ -33,7 +33,7 @@ import { resolvePreferredDiscordDisplayName } from "@/utils/discord/displayName"
 import { isExternalUserId } from "@/utils/externalIdentityUserId";
 import { formatPresenceActivity } from "@/utils/text/context/history";
 
-export interface ReachOutTarget {
+export interface PingUserTarget {
   userId: number;
   userDiscId: string;
   displayName: string;
@@ -50,7 +50,7 @@ export function isRelationshipEligible(recentMemories: number, stmChannels: numb
   return recentMemories > 0 || stmChannels > 0;
 }
 
-export interface ReachOutScoreInput {
+export interface PingUserScoreInput {
   /** This member's turns with this persona in this server inside the interaction window. */
   localTurns: number;
   stmChannels: number;
@@ -63,18 +63,18 @@ export interface ReachOutScoreInput {
  * Closeness is scored only from this server, because memories carry no server and a pointer persona
  * shares them across every server that installed its preset.
  */
-export function reachOutTickets(input: ReachOutScoreInput): number {
+export function pingUserTickets(input: PingUserScoreInput): number {
   const score =
-    REACH_OUT_POINTS_PER_TURN * Math.min(input.localTurns, REACH_OUT_TURN_CAP) +
-    REACH_OUT_POINTS_PER_STM_CHANNEL * Math.min(input.stmChannels, REACH_OUT_STM_CHANNEL_CAP) +
-    (input.active ? REACH_OUT_ACTIVITY_POINTS : 0) -
-    (input.firedBySamePersona ? REACH_OUT_SAME_PERSONA_PENALTY : 0) -
-    (input.firedByAnyPersona ? REACH_OUT_ANY_PERSONA_PENALTY : 0);
-  return Math.max(score, REACH_OUT_MIN_TICKETS);
+    PING_USER_POINTS_PER_TURN * Math.min(input.localTurns, PING_USER_TURN_CAP) +
+    PING_USER_POINTS_PER_STM_CHANNEL * Math.min(input.stmChannels, PING_USER_STM_CHANNEL_CAP) +
+    (input.active ? PING_USER_ACTIVITY_POINTS : 0) -
+    (input.firedBySamePersona ? PING_USER_SAME_PERSONA_PENALTY : 0) -
+    (input.firedByAnyPersona ? PING_USER_ANY_PERSONA_PENALTY : 0);
+  return Math.max(score, PING_USER_MIN_TICKETS);
 }
 
 /** Presence reaches prompts only at minimal privacy, matching what a normal turn shows about the user. */
-function currentActivity(client: Client, guild: Guild, candidate: ReachOutCandidate): string | null {
+function currentActivity(client: Client, guild: Guild, candidate: PingUserCandidate): string | null {
   if (candidate.privacy_level !== PrivacyLevel.MINIMAL) return null;
   if (!client.options.intents.has(GatewayIntentBits.GuildPresences)) return null;
   const activity = guild.presences.cache
@@ -83,7 +83,7 @@ function currentActivity(client: Client, guild: Guild, candidate: ReachOutCandid
   return activity ? formatPresenceActivity(activity) : null;
 }
 
-function countStmChannels(candidate: ReachOutCandidate, guildId: string, lineageId: number): number {
+function countStmChannels(candidate: PingUserCandidate, guildId: string, lineageId: number): number {
   const channels = new Set(
     getShortTermMemoriesForUser(candidate.user_disc_id, undefined, lineageId)
       .filter((entry) => entry.serverId === guildId)
@@ -93,7 +93,7 @@ function countStmChannels(candidate: ReachOutCandidate, guildId: string, lineage
 }
 
 async function loadRecentMemories(
-  candidate: ReachOutCandidate,
+  candidate: PingUserCandidate,
   persona: TomoriState,
   memorySince: Date,
 ): Promise<string[]> {
@@ -107,12 +107,12 @@ async function loadRecentMemories(
   return rows
     .filter((row) => touchedAt(row) >= memorySince.getTime())
     .sort((left, right) => touchedAt(right) - touchedAt(left))
-    .slice(0, REACH_OUT_PLANNER_MEMORIES)
+    .slice(0, PING_USER_PLANNER_MEMORIES)
     .map((row) => row.content);
 }
 
 function memorySinceFor(now: Date): Date {
-  return new Date(now.getTime() - REACH_OUT_MEMORY_DAYS * DAY_MS);
+  return new Date(now.getTime() - PING_USER_MEMORY_DAYS * DAY_MS);
 }
 
 function canView(member: GuildMember, channel: GuildTextBasedChannel): boolean {
@@ -124,7 +124,7 @@ function canView(member: GuildMember, channel: GuildTextBasedChannel): boolean {
  * A winner who left, is a bot, or can read none of the channels is dropped and the lottery redrawn,
  * because the stats that nominated them cannot tell any of that.
  */
-export async function drawReachOutTarget(args: {
+export async function drawPingUserTarget(args: {
   client: Client;
   guild: Guild;
   serverId: number;
@@ -132,12 +132,12 @@ export async function drawReachOutTarget(args: {
   channels: readonly NudgeChannel[];
   recentFires: readonly NaturalNudgeFireRow[];
   now: Date;
-}): Promise<ReachOutTarget | null> {
+}): Promise<PingUserTarget | null> {
   const { client, guild, persona, now } = args;
   // A persona told not to use personal memories must not pick people by them either.
   const memoriesUsable = persona.config.personal_memories_enabled !== false;
   const memorySince = memorySinceFor(now);
-  const candidates = await naturalNudgeRepository.listReachOutCandidates({
+  const candidates = await naturalNudgeRepository.listPingUserCandidates({
     serverId: args.serverId,
     personaId: persona.persona_id,
     personaLineageId: persona.persona_lineage_id,
@@ -164,7 +164,7 @@ export async function drawReachOutTarget(args: {
     return [
       {
         item: { candidate, activity },
-        tickets: reachOutTickets({
+        tickets: pingUserTickets({
           localTurns: candidate.local_turns,
           stmChannels,
           active: activity !== null,
@@ -201,11 +201,11 @@ export async function isTargetStillReachable(args: {
   guild: Guild;
   serverId: number;
   persona: TomoriState & { persona_id: number };
-  target: ReachOutTarget;
+  target: PingUserTarget;
   channel: GuildTextBasedChannel;
   now: Date;
 }): Promise<boolean> {
-  const [candidate] = await naturalNudgeRepository.listReachOutCandidates({
+  const [candidate] = await naturalNudgeRepository.listPingUserCandidates({
     serverId: args.serverId,
     personaId: args.persona.persona_id,
     personaLineageId: args.persona.persona_lineage_id,

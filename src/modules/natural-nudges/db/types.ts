@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const NATURAL_NUDGE_CATEGORIES = ["reach_out", "revive", "new_topic", "alter_talk"] as const;
+export const NATURAL_NUDGE_CATEGORIES = ["ping_user", "revive_topic", "start_topic", "play_scene"] as const;
 export type NaturalNudgeCategory = (typeof NATURAL_NUDGE_CATEGORIES)[number];
 
 export const NATURAL_NUDGE_INTEREST_LIMIT = 8;
@@ -54,19 +54,19 @@ export const personaNaturalNudgeConfigSchema = z.object({
 });
 export type PersonaNaturalNudgeConfig = z.infer<typeof personaNaturalNudgeConfigSchema>;
 
-export const EPISODE_FREQUENCY_LEVELS = [0, 1, 2, 3] as const;
-export type EpisodeFrequencyLevel = (typeof EPISODE_FREQUENCY_LEVELS)[number];
+export const IDLE_NUDGE_FREQUENCY_LEVELS = [0, 1, 2, 3] as const;
+export type IdleNudgeFrequencyLevel = (typeof IDLE_NUDGE_FREQUENCY_LEVELS)[number];
 const frequencyLevelSchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
 
 export const serverNaturalNudgeConfigSchema = z.object({
   server_id: z.number().int(),
-  episodes_enabled: z.boolean(),
-  chime_in_enabled: z.boolean(),
+  idle_nudges_enabled: z.boolean(),
+  active_nudges_enabled: z.boolean(),
   channel_disc_ids: z.array(z.string()),
   llm_id: z.number().int().nullable(),
-  episode_frequency: frequencyLevelSchema,
-  chime_in_frequency: frequencyLevelSchema,
-  disabled_builtin_episodes: z.array(z.string()),
+  idle_nudge_frequency: frequencyLevelSchema,
+  active_nudge_frequency: frequencyLevelSchema,
+  disabled_builtin_idle_nudges: z.array(z.string()),
 });
 export type ServerNaturalNudgeConfig = z.infer<typeof serverNaturalNudgeConfigSchema>;
 
@@ -74,43 +74,43 @@ export type ServerNaturalNudgeConfig = z.infer<typeof serverNaturalNudgeConfigSc
 export function defaultServerNaturalNudgeConfig(serverId: number): ServerNaturalNudgeConfig {
   return {
     server_id: serverId,
-    episodes_enabled: true,
-    chime_in_enabled: true,
+    idle_nudges_enabled: true,
+    active_nudges_enabled: true,
     channel_disc_ids: [],
     llm_id: null,
-    episode_frequency: 1,
-    chime_in_frequency: 1,
-    disabled_builtin_episodes: [],
+    idle_nudge_frequency: 1,
+    active_nudge_frequency: 1,
+    disabled_builtin_idle_nudges: [],
   };
 }
 
 export type ServerNaturalNudgeConfigPatch = Partial<Omit<ServerNaturalNudgeConfig, "server_id">>;
 
-export const CUSTOM_EPISODE_LIMIT = 25;
-export const CUSTOM_EPISODE_TITLE_MAX = 80;
-export const CUSTOM_EPISODE_BRIEF_MAX = 1000;
-export const CUSTOM_EPISODE_AGENDA_HINT_MAX = 500;
+export const CUSTOM_IDLE_NUDGE_LIMIT = 25;
+export const CUSTOM_IDLE_NUDGE_TITLE_MAX = 80;
+export const CUSTOM_IDLE_NUDGE_BRIEF_MAX = 1000;
+export const CUSTOM_IDLE_NUDGE_AGENDA_HINT_MAX = 500;
 
-export const customEpisodeInputSchema = z.object({
+export const customIdleNudgeInputSchema = z.object({
   category: z.enum(NATURAL_NUDGE_CATEGORIES),
-  title: trimmedText(CUSTOM_EPISODE_TITLE_MAX),
-  brief: trimmedText(CUSTOM_EPISODE_BRIEF_MAX),
-  agenda_hint: z.string().trim().max(CUSTOM_EPISODE_AGENDA_HINT_MAX).nullable(),
+  title: trimmedText(CUSTOM_IDLE_NUDGE_TITLE_MAX),
+  brief: trimmedText(CUSTOM_IDLE_NUDGE_BRIEF_MAX),
+  agenda_hint: z.string().trim().max(CUSTOM_IDLE_NUDGE_AGENDA_HINT_MAX).nullable(),
   prerequisites: z.array(z.string().min(1).max(64)).max(8),
   recommended_tools: z.array(z.string().min(1).max(64)).max(8),
   enabled: z.boolean(),
 });
-export type CustomEpisodeInput = z.infer<typeof customEpisodeInputSchema>;
+export type CustomIdleNudgeInput = z.infer<typeof customIdleNudgeInputSchema>;
 
-export const customEpisodeRowSchema = customEpisodeInputSchema.extend({
-  episode_id: z.number().int(),
+export const customIdleNudgeRowSchema = customIdleNudgeInputSchema.extend({
+  custom_idle_nudge_id: z.number().int(),
   server_id: z.number().int(),
 });
-export type CustomEpisodeRow = z.infer<typeof customEpisodeRowSchema>;
+export type CustomIdleNudgeRow = z.infer<typeof customIdleNudgeRowSchema>;
 
 export const runtimeStateSchema = z.object({
   server_id: z.number().int(),
-  episode_jitter: z.number(),
+  idle_nudge_jitter: z.number(),
   consecutive_failures: z.number().int(),
   stopped_at: z.date().nullable(),
 });
@@ -121,9 +121,9 @@ export const fireRowSchema = z.object({
   server_id: z.number().int(),
   channel_disc_id: z.string(),
   persona_id: z.number().int(),
-  mode: z.enum(["chime_in", "episode"]),
+  mode: z.enum(["active", "idle"]),
   category: z.enum(NATURAL_NUDGE_CATEGORIES).nullable(),
-  episode_key: z.string().nullable(),
+  idle_nudge_key: z.string().nullable(),
   target_user_id: z.number().int().nullable(),
   opener_message_disc_id: z.string(),
   answered: z.boolean().nullable(),
@@ -136,12 +136,12 @@ export interface NewFireRow {
   channelDiscId: string;
   personaId: number;
   category: NaturalNudgeCategory;
-  episodeKey: string;
+  idleNudgeKey: string;
   targetUserId: number | null;
   openerMessageDiscId: string;
 }
 
-export interface NewChimeInFireRow {
+export interface NewActiveNudgeFireRow {
   serverId: number;
   channelDiscId: string;
   personaId: number;
@@ -149,22 +149,22 @@ export interface NewChimeInFireRow {
   detour: boolean;
 }
 
-export const reachOutCandidateSchema = z.object({
+export const pingUserCandidateSchema = z.object({
   user_id: z.number().int(),
   user_disc_id: z.string(),
   privacy_level: z.number().int(),
   local_turns: z.coerce.number().int(),
   ltm_recent: z.coerce.number().int(),
 });
-export type ReachOutCandidate = z.infer<typeof reachOutCandidateSchema>;
+export type PingUserCandidate = z.infer<typeof pingUserCandidateSchema>;
 
 /** Agenda length the DB CHECK allows; the planner schema enforces the same bound. */
 export const NATURAL_NUDGE_AGENDA_MAX = 500;
 
-export const enabledEpisodeServerSchema = z.object({
+export const enabledIdleNudgeServerSchema = z.object({
   server_id: z.number().int(),
   server_disc_id: z.string(),
   timezone_offset: z.number().nullable(),
   config: serverNaturalNudgeConfigSchema,
 });
-export type EnabledEpisodeServer = z.infer<typeof enabledEpisodeServerSchema>;
+export type EnabledIdleNudgeServer = z.infer<typeof enabledIdleNudgeServerSchema>;

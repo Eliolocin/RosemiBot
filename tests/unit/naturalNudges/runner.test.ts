@@ -3,10 +3,10 @@ import { Collection, type Client, type GuildTextBasedChannel, type Message } fro
 import * as tomoriChatModule from "@/events/messageCreate/tomoriChat";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import type { NaturalNudgeFireRow } from "@/modules/natural-nudges/db/types";
-import { BUILTIN_EPISODES, type EpisodeDefinition } from "@/modules/natural-nudges/runtime/episodes";
+import { BUILTIN_IDLE_NUDGES, type IdleNudgeDefinition } from "@/modules/natural-nudges/runtime/idleNudges";
 import * as planner from "@/modules/natural-nudges/runtime/planner";
 import * as plannerModel from "@/modules/natural-nudges/runtime/model";
-import { runEpisodeAttempt, type EpisodeAttempt } from "@/modules/natural-nudges/runtime/runner";
+import { runIdleNudgeAttempt, type IdleNudgeAttempt } from "@/modules/natural-nudges/runtime/runner";
 import { metricSampleRepository } from "@/utils/db/repositories/MetricSampleRepository";
 import { personaRepository } from "@/utils/db/repositories/PersonaRepository";
 import { whitelistRepository } from "@/utils/db/repositories/WhitelistRepository";
@@ -35,15 +35,15 @@ beforeEach(() => {
   samples = [];
   configSpy = spyOn(naturalNudgeRepository, "loadServerConfig");
   configSpy.mockResolvedValue({
-    episodes_enabled: true,
+    idle_nudges_enabled: true,
     channel_disc_ids: ["fixture-channel"],
     llm_id: 1,
-    episode_frequency: 1,
+    idle_nudge_frequency: 1,
   } as never);
   historySpy = spyOn(naturalNudgeRepository, "loadFireHistory");
-  historySpy.mockResolvedValue({ latestEpisodes: [], recent: [] });
+  historySpy.mockResolvedValue({ latestIdleNudges: [], recent: [] });
   spies.push(
-    spyOn(planner, "planEpisode").mockResolvedValue({
+    spyOn(planner, "planIdleNudge").mockResolvedValue({
       status: "planned",
       model: "fixture-planner",
       usage: null,
@@ -86,7 +86,7 @@ afterEach(() => {
 
 /** The gateway still reports `RECORDED_ID` as the newest message, as it does after that message is deleted. */
 function attemptWithHistory(latest: () => Promise<Message[]>): {
-  attempt: EpisodeAttempt;
+  attempt: IdleNudgeAttempt;
   sent: string[];
   deleted: string[];
 } {
@@ -110,7 +110,7 @@ function attemptWithHistory(latest: () => Promise<Message[]>): {
       } as unknown as Message;
     },
   } as unknown as GuildTextBasedChannel;
-  const attempt: EpisodeAttempt = {
+  const attempt: IdleNudgeAttempt = {
     client: {} as Client,
     serverId: SERVER_ID,
     serverDiscId: "fixture-guild",
@@ -119,7 +119,7 @@ function attemptWithHistory(latest: () => Promise<Message[]>): {
     awake: Array.from({ length: 24 }, () => true),
     persona: createPersona({ persona_id: PERSONA_ID, server_id: SERVER_ID }),
     interests: [],
-    episode: BUILTIN_EPISODES.find((candidate) => candidate.category === "new_topic") as EpisodeDefinition,
+    idleNudge: BUILTIN_IDLE_NUDGES.find((candidate) => candidate.category === "start_topic") as IdleNudgeDefinition,
     plannerLlmId: 1,
     availableTools: new Set(),
     plannerChannels: [{ channel, lastMessageId: RECORDED_ID, quietSinceMs: 0, transcript: "" }],
@@ -131,15 +131,15 @@ function attemptWithHistory(latest: () => Promise<Message[]>): {
 
 const messageWithId = (id: string) => ({ id }) as Message;
 
-function episodeFire(fireId: number): NaturalNudgeFireRow {
+function idleNudgeFire(fireId: number): NaturalNudgeFireRow {
   return {
     fire_id: fireId,
     server_id: SERVER_ID,
     channel_disc_id: "fixture-channel",
     persona_id: PERSONA_ID,
-    mode: "episode",
-    category: "new_topic",
-    episode_key: "new_topic.interest_musing",
+    mode: "idle",
+    category: "start_topic",
+    idle_nudge_key: "start_topic.interest_musing",
     target_user_id: null,
     opener_message_disc_id: RECORDED_ID,
     answered: true,
@@ -147,10 +147,10 @@ function episodeFire(fireId: number): NaturalNudgeFireRow {
   };
 }
 
-describe("episode anchor", () => {
+describe("idle nudge anchor", () => {
   it("borrows the newest surviving message when the recorded newest one was deleted", async () => {
     const { attempt, sent } = attemptWithHistory(async () => [messageWithId(OLDER_ID)]);
-    await runEpisodeAttempt(attempt);
+    await runIdleNudgeAttempt(attempt);
     expect(chatInputs.map((input) => input.message.id)).toEqual([OLDER_ID]);
     expect(sent).toEqual([]);
   });
@@ -162,7 +162,7 @@ describe("episode anchor", () => {
       deletedAtGeneration = [...deleted];
     };
 
-    await runEpisodeAttempt(attempt);
+    await runIdleNudgeAttempt(attempt);
 
     expect(sent).toHaveLength(1);
     expect(chatInputs.map((input) => input.message.id)).toEqual([PLACEHOLDER_ID]);
@@ -178,14 +178,14 @@ describe("episode anchor", () => {
       },
     ]) {
       const { attempt, sent } = attemptWithHistory(latest);
-      expect(await runEpisodeAttempt(attempt)).toBe("aborted");
+      expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
       expect(sent).toEqual([]);
     }
     expect(chatInputs).toEqual([]);
   });
 });
 
-describe("daily episode cap", () => {
+describe("daily idle nudge cap", () => {
   const CAP_BY_LEVEL = [
     [0, 1],
     [1, 3],
@@ -193,30 +193,30 @@ describe("daily episode cap", () => {
     [3, 8],
   ] as const;
 
-  it("counts the episodes already fired today against the level's cap", async () => {
+  it("counts the idle nudges already fired today against the level's cap", async () => {
     for (const [level, cap] of CAP_BY_LEVEL) {
       configSpy.mockResolvedValue({
-        episodes_enabled: true,
+        idle_nudges_enabled: true,
         channel_disc_ids: ["fixture-channel"],
         llm_id: 1,
-        episode_frequency: level,
+        idle_nudge_frequency: level,
       } as never);
-      const fired = Array.from({ length: cap }, (_, index) => episodeFire(index + 1));
+      const fired = Array.from({ length: cap }, (_, index) => idleNudgeFire(index + 1));
 
-      historySpy.mockResolvedValue({ latestEpisodes: [], recent: fired });
+      historySpy.mockResolvedValue({ latestIdleNudges: [], recent: fired });
       const { attempt } = attemptWithHistory(async () => [messageWithId(OLDER_ID)]);
-      expect(await runEpisodeAttempt(attempt)).toBe("aborted");
+      expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
       expect(samples.at(-1)).toMatchObject({ reason: "cap_reached", phase: "c" });
 
-      historySpy.mockResolvedValue({ latestEpisodes: [], recent: fired.slice(1) });
+      historySpy.mockResolvedValue({ latestIdleNudges: [], recent: fired.slice(1) });
       const { attempt: allowed } = attemptWithHistory(async () => [messageWithId(OLDER_ID)]);
-      await runEpisodeAttempt(allowed);
+      await runIdleNudgeAttempt(allowed);
       expect(samples.at(-1)).toMatchObject({ reason: "admission_run", phase: "c" });
     }
   });
 });
 
-describe("Alter Talk scene", () => {
+describe("Play Scene", () => {
   const OPENER_ID = "1300000000000000500";
   const LEAD_AGENDA = "Win the argument.";
   const PARTNER_AGENDA = "Reveal a secret hobby.";
@@ -225,7 +225,7 @@ describe("Alter Talk scene", () => {
 
   it("gives each partner only its own goal on its first turn and anchors every agenda to the opener", async () => {
     spies.push(
-      spyOn(planner, "planEpisode").mockResolvedValue({
+      spyOn(planner, "planIdleNudge").mockResolvedValue({
         status: "planned",
         model: "fixture-planner",
         usage: null,
@@ -238,10 +238,12 @@ describe("Alter Talk scene", () => {
         },
       }),
     );
-    const recordFire = spyOn(naturalNudgeRepository, "recordEpisodeFire").mockResolvedValue(true);
+    const recordFire = spyOn(naturalNudgeRepository, "recordIdleNudgeFire").mockResolvedValue(true);
     spies.push(recordFire);
     const { attempt } = attemptWithHistory(async () => [messageWithId(OLDER_ID)]);
-    attempt.episode = BUILTIN_EPISODES.find((candidate) => candidate.key === "alter_talk.banter") as EpisodeDefinition;
+    attempt.idleNudge = BUILTIN_IDLE_NUDGES.find(
+      (candidate) => candidate.key === "play_scene.banter",
+    ) as IdleNudgeDefinition;
     attempt.partners = [
       {
         persona: createPersona({ persona_id: PARTNER_ID, persona_nickname: "Juno", server_id: SERVER_ID }),
@@ -249,7 +251,7 @@ describe("Alter Talk scene", () => {
       },
     ];
 
-    await runEpisodeAttempt(attempt);
+    await runIdleNudgeAttempt(attempt);
     const [input] = chatInputs;
     const scene = input.sceneTurn;
     expect(scene?.sequence.map((speaker) => speaker.personaId)).toEqual([

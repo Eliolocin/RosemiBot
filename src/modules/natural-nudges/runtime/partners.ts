@@ -1,5 +1,5 @@
 import { drawRaffle } from "@/modules/natural-nudges/runtime/meters";
-import { ALTER_TALK_SECOND_PARTNER_CHANCE } from "@/modules/natural-nudges/runtime/tuning";
+import { PLAY_SCENE_SECOND_PARTNER_CHANCE } from "@/modules/natural-nudges/runtime/tuning";
 
 export interface PartnerCandidate<T> {
   persona: T;
@@ -13,7 +13,7 @@ export function hasScenePartner<T>(candidates: readonly PartnerCandidate<T>[], c
 }
 
 /**
- * Draws one Alter Talk partner, sometimes two, each by tickets among personas allowed in a channel
+ * Draws one Play Scene partner, sometimes two, each by tickets among personas allowed in a channel
  * every speaker so far shares. Null when nobody can join.
  */
 export function drawScenePartners<T>(
@@ -21,7 +21,7 @@ export function drawScenePartners<T>(
   channelIds: readonly string[],
   random: () => number = Math.random,
 ): { partners: T[]; channelIds: string[] } | null {
-  const wanted = random() < ALTER_TALK_SECOND_PARTNER_CHANCE ? 2 : 1;
+  const wanted = random() < PLAY_SCENE_SECOND_PARTNER_CHANCE ? 2 : 1;
   const remaining = [...candidates];
   const partners: T[] = [];
   let shared = [...channelIds];

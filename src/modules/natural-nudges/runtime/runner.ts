@@ -3,7 +3,7 @@ import type { TomoriState } from "@/types/db/schema";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import type { NaturalNudgeInterest } from "@/modules/natural-nudges/db/types";
-import { availableEpisodeTools, type EpisodeDefinition } from "@/modules/natural-nudges/runtime/episodes";
+import { availableIdleNudgeTools, type IdleNudgeDefinition } from "@/modules/natural-nudges/runtime/idleNudges";
 import {
   hasActivitySince,
   resolveEffectiveChannelIds,
@@ -11,10 +11,10 @@ import {
 } from "@/modules/natural-nudges/runtime/channels";
 import { resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { isWithinWakingHours, serverDayStart } from "@/modules/natural-nudges/runtime/meters";
-import { EPISODE_DAILY_CAPS } from "@/modules/natural-nudges/runtime/tuning";
-import { planEpisode, type EpisodePlan, type ScenePartner } from "@/modules/natural-nudges/runtime/planner";
-import { isTargetStillReachable, type ReachOutTarget } from "@/modules/natural-nudges/runtime/targets";
-import { recordEpisodeSample, type EpisodeSample } from "@/modules/natural-nudges/runtime/telemetry";
+import { IDLE_NUDGE_DAILY_CAPS } from "@/modules/natural-nudges/runtime/tuning";
+import { planIdleNudge, type IdleNudgePlan, type ScenePartner } from "@/modules/natural-nudges/runtime/planner";
+import { isTargetStillReachable, type PingUserTarget } from "@/modules/natural-nudges/runtime/targets";
+import { recordIdleNudgeSample, type IdleNudgeSample } from "@/modules/natural-nudges/runtime/telemetry";
 import { isChannelProcessingLocked, tomoriChat } from "@/events/messageCreate/tomoriChat";
 import { isDeliveredTurnResult } from "@/utils/chat/postTurnEffects";
 import { buildSceneTurnDirective } from "@/utils/chat/sceneTurn";
@@ -28,9 +28,9 @@ import { log } from "@/utils/misc/logger";
 
 /** Messages scanned after the anchor when a tool delivered the opener and no stream reported its ID. */
 const OPENER_LOOKUP_LIMIT = 10;
-const LATEST_EPISODE_ROWS = 1;
+const LATEST_IDLE_NUDGE_ROWS = 1;
 
-export interface EpisodeAttempt {
+export interface IdleNudgeAttempt {
   client: Client;
   serverId: number;
   serverDiscId: string;
@@ -39,24 +39,24 @@ export interface EpisodeAttempt {
   awake: readonly boolean[];
   persona: TomoriState;
   interests: readonly NaturalNudgeInterest[];
-  episode: EpisodeDefinition;
+  idleNudge: IdleNudgeDefinition;
   plannerLlmId: number;
   availableTools: ReadonlySet<string>;
   plannerChannels: Array<NudgeChannel & { transcript: string }>;
-  /** The member the episode is about. Outside a scene, the opener pings them. */
-  target: ReachOutTarget | null;
-  /** Alter Talk partners; empty for every other category. */
+  /** The member the idle nudge is about. Outside a scene, the opener pings them. */
+  target: PingUserTarget | null;
+  /** Play Scene partners; empty for every other category. */
   partners: ScenePartner[];
 }
 
 export type AttemptResult = "fired" | "aborted" | "failed";
 
-function sample(attempt: EpisodeAttempt, extra: Omit<EpisodeSample, "serverId">): void {
-  recordEpisodeSample({
+function sample(attempt: IdleNudgeAttempt, extra: Omit<IdleNudgeSample, "serverId">): void {
+  recordIdleNudgeSample({
     serverId: attempt.serverId,
     heat: attempt.heat,
-    category: attempt.episode.category,
-    episodeKey: attempt.episode.key,
+    category: attempt.idleNudge.category,
+    idleNudgeKey: attempt.idleNudge.key,
     ...extra,
   });
 }
@@ -65,17 +65,19 @@ function sample(attempt: EpisodeAttempt, extra: Omit<EpisodeSample, "serverId">)
  * The cheap checks again, read fresh, right before sending. Any doubt resolves to saying nothing,
  * so each failing check names the reason and the caller aborts.
  */
-async function recheckBeforeSend(attempt: EpisodeAttempt, target: NudgeChannel, now: Date): Promise<string | null> {
+async function recheckBeforeSend(attempt: IdleNudgeAttempt, target: NudgeChannel, now: Date): Promise<string | null> {
   const config = await naturalNudgeRepository.loadServerConfig(attempt.serverId);
-  if (!config.episodes_enabled) return "disabled";
+  if (!config.idle_nudges_enabled) return "disabled";
   const channelIds = await resolveEffectiveChannelIds(attempt.serverId, config, now);
   if (!channelIds.includes(target.channel.id)) return "channel_removed";
   if ((await naturalNudgeRepository.loadRuntimeState(attempt.serverId)).stopped_at) return "stopped";
 
   const dayStart = serverDayStart(now, attempt.timezoneOffset);
-  const history = await naturalNudgeRepository.loadFireHistory(attempt.serverId, dayStart, LATEST_EPISODE_ROWS);
-  if (history.latestEpisodes.some((fire) => fire.answered === null)) return "pending";
-  if (history.recent.filter((fire) => fire.mode === "episode").length >= EPISODE_DAILY_CAPS[config.episode_frequency])
+  const history = await naturalNudgeRepository.loadFireHistory(attempt.serverId, dayStart, LATEST_IDLE_NUDGE_ROWS);
+  if (history.latestIdleNudges.some((fire) => fire.answered === null)) return "pending";
+  if (
+    history.recent.filter((fire) => fire.mode === "idle").length >= IDLE_NUDGE_DAILY_CAPS[config.idle_nudge_frequency]
+  )
     return "cap_reached";
 
   const personaId = attempt.persona.persona_id;
@@ -127,15 +129,15 @@ function systemContextItem(sentences: readonly string[]): StructuredContextItem 
   };
 }
 
-function targetSentence(target: ReachOutTarget | null, isScene: boolean): string {
+function targetSentence(target: PingUserTarget | null, isScene: boolean): string {
   if (!target) return "";
   if (isScene) return `The scene is about the member @{${target.userDiscId}}.`;
   return `You are reaching out to one member; mention them as @{${target.userDiscId}}.`;
 }
 
 function buildOpenerContextItem(
-  attempt: EpisodeAttempt,
-  plan: EpisodePlan,
+  attempt: IdleNudgeAttempt,
+  plan: IdleNudgePlan,
   tools: readonly string[],
 ): StructuredContextItem {
   const partnerNames = attempt.partners.map((partner) => partner.persona.persona_nickname).join(" and ");
@@ -151,7 +153,7 @@ function buildOpenerContextItem(
 }
 
 function buildPartnerContextItem(
-  attempt: EpisodeAttempt,
+  attempt: IdleNudgeAttempt,
   agenda: string,
   tools: readonly string[],
 ): StructuredContextItem {
@@ -165,12 +167,12 @@ function buildPartnerContextItem(
 }
 
 /**
- * The scripted scene for an Alter Talk plan. Each partner's goal also rides on its first turn, so the
+ * The scripted scene for a Play Scene plan. Each partner's goal also rides on its first turn, so the
  * partner still has it when the opener's agenda rows could not be written or anchored.
  */
 function buildNudgeScene(
-  attempt: EpisodeAttempt,
-  plan: EpisodePlan,
+  attempt: IdleNudgeAttempt,
+  plan: IdleNudgePlan,
   anchorId: string,
   tools: readonly string[],
 ): SceneTurnMetadata | undefined {
@@ -195,7 +197,10 @@ function buildNudgeScene(
 }
 
 /** One agenda row per speaker, all anchored to the opener. */
-function episodeAgendas(attempt: EpisodeAttempt, plan: EpisodePlan): Array<{ personaId: number; agenda: string }> {
+function idleNudgeAgendas(
+  attempt: IdleNudgeAttempt,
+  plan: IdleNudgePlan,
+): Array<{ personaId: number; agenda: string }> {
   const partnerAgendas = plan.scene?.partnerAgendas ?? [];
   return [
     { personaId: attempt.persona.persona_id as number, agenda: plan.agenda },
@@ -220,7 +225,7 @@ async function resolveAnchorMessage(
     return null;
   }
   if (latest) return { message: latest, seeded: false };
-  const placeholder = await seedTurnAnchor(channel, "a Natural Nudges episode");
+  const placeholder = await seedTurnAnchor(channel, "a Natural Nudges idle nudge");
   return placeholder ? { message: placeholder, seeded: true } : null;
 }
 
@@ -251,13 +256,13 @@ export function isGenerationFailure(result: GenerationTurnResult): boolean {
 
 /**
  * Phases B and C for one attempt. Runs detached from the coordinator cycle so model calls never
- * delay reminders; a restart mid-flight loses only this attempt, and the episode stays due.
+ * delay reminders; a restart mid-flight loses only this attempt, and the idle nudge stays due.
  */
-export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<AttemptResult> {
-  const planned = await planEpisode({
+export async function runIdleNudgeAttempt(attempt: IdleNudgeAttempt): Promise<AttemptResult> {
+  const planned = await planIdleNudge({
     persona: attempt.persona,
     interests: attempt.interests,
-    episode: attempt.episode,
+    idleNudge: attempt.idleNudge,
     channels: attempt.plannerChannels.map((channel) => ({
       name: channel.channel.name,
       transcript: channel.transcript,
@@ -302,7 +307,7 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
   }
 
   const anchor = resolvedAnchor.message;
-  const episodeTools = availableEpisodeTools(attempt.episode, attempt.availableTools);
+  const idleNudgeTools = availableIdleNudgeTools(attempt.idleNudge, attempt.availableTools);
   const personaId = attempt.persona.persona_id as number;
   let outcome: AttemptResult | null = null;
   const settle = async (result: GenerationTurnResult): Promise<void> => {
@@ -318,17 +323,17 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
     }
     const openerId =
       result.firstDeliveredMessageId ?? (await findOpenerAfter(attempt.client, target.channel, anchor.id));
-    const recorded = await naturalNudgeRepository.recordEpisodeFire(
+    const recorded = await naturalNudgeRepository.recordIdleNudgeFire(
       {
         serverId: attempt.serverId,
         channelDiscId: target.channel.id,
         personaId,
-        category: attempt.episode.category,
-        episodeKey: attempt.episode.key,
+        category: attempt.idleNudge.category,
+        idleNudgeKey: attempt.idleNudge.key,
         targetUserId: attempt.target?.userId ?? null,
         openerMessageDiscId: openerId ?? anchor.id,
       },
-      openerId ? episodeAgendas(attempt, planned.plan) : [],
+      openerId ? idleNudgeAgendas(attempt, planned.plan) : [],
     );
     outcome = "fired";
     sample(attempt, {
@@ -340,7 +345,7 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
     });
   };
 
-  const scene = buildNudgeScene(attempt, planned.plan, anchor.id, episodeTools);
+  const scene = buildNudgeScene(attempt, planned.plan, anchor.id, idleNudgeTools);
   const triggerStartTime = Date.now();
   const disposition: ChatAdmissionDisposition = await tomoriChat({
     client: attempt.client,
@@ -356,29 +361,29 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
     textQuotaSource: "system",
     textQuotaTriggerKey: `nudge:${attempt.serverId}:${anchor.id}`,
     shouldSurfaceUserErrors: false,
-    injectedContextItems: [buildOpenerContextItem(attempt, planned.plan, episodeTools)],
+    injectedContextItems: [buildOpenerContextItem(attempt, planned.plan, idleNudgeTools)],
     manualSystemPrompt: scene && buildSceneTurnDirective(scene),
     sceneTurn: scene,
-    naturalNudge: { toolNames: episodeTools, targetUserDiscId: attempt.target?.userDiscId },
+    naturalNudge: { toolNames: idleNudgeTools, targetUserDiscId: attempt.target?.userDiscId },
     borrowsTriggerMessage: true,
     onGenerationResult: settle,
   });
   // A scene only talks about its target, so only a lone opener must ping them.
-  const reachOutTarget = scene ? null : attempt.target;
-  if (outcome === "fired" && reachOutTarget) {
+  const pingUserTarget = scene ? null : attempt.target;
+  if (outcome === "fired" && pingUserTarget) {
     await ensureDiscordUserMention({
       client: attempt.client,
       channel: target.channel,
-      targetUserId: reachOutTarget.userDiscId,
+      targetUserId: pingUserTarget.userDiscId,
       afterMessageId: anchor.id,
       triggerStartTime,
-      contextLabel: `Reach-out in server ${attempt.serverId}`,
+      contextLabel: `Ping User nudge in server ${attempt.serverId}`,
       fallbackSender: (content) =>
-        sendAlterPersonaMention(target.channel, attempt.persona, reachOutTarget.userDiscId, content),
+        sendAlterPersonaMention(target.channel, attempt.persona, pingUserTarget.userDiscId, content),
     });
   }
   if (outcome) return outcome;
-  log.info(`Natural Nudges: episode not delivered for server ${attempt.serverId} (disposition ${disposition})`);
+  log.info(`Natural Nudges: idle nudge not delivered for server ${attempt.serverId} (disposition ${disposition})`);
   sample(attempt, { outcome: "aborted", phase: "c", reason: `admission_${disposition}`, plannerModel, ...usage });
   return "aborted";
 }

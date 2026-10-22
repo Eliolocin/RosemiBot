@@ -145,7 +145,7 @@ export async function buildPlannerTranscript(
     .join("\n");
 }
 
-/** `Name: text` lines, the shape the Chime-in matcher was evaluated on. */
+/** `Name: text` lines, the shape the Active Nudge matcher was evaluated on. */
 export async function buildMatcherEvidence(messages: readonly Message[], guildId: string): Promise<string> {
   return (await readableEntries(messages, guildId)).map((entry) => `${entry.author}: ${entry.text}`).join("\n");
 }

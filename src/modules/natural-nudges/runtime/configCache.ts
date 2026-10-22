@@ -9,8 +9,8 @@ import { log } from "@/utils/misc/logger";
 /** Heat and automatic channels move over days, so five minutes stale costs a few counted messages at most. */
 const GATE_TTL_MS = 5 * 60 * 1000;
 
-/** What the Chime-in counter needs on every message, so the hot path never queries the database. */
-export interface ChimeInGate {
+/** What the Active Nudge counter needs on every message, so the hot path never queries the database. */
+export interface ActiveNudgeGate {
   serverId: number;
   config: ServerNaturalNudgeConfig;
   channelIds: ReadonlySet<string>;
@@ -20,18 +20,18 @@ export interface ChimeInGate {
 interface GateEntry {
   expiresAt: number;
   /** Shared by every message that arrives while the first read is still loading. */
-  gate: Promise<ChimeInGate | null>;
+  gate: Promise<ActiveNudgeGate | null>;
   serverId: number | null;
 }
 
 const entries = new Map<string, GateEntry>();
 
-async function loadGate(guildId: string, now: Date): Promise<ChimeInGate | null> {
+async function loadGate(guildId: string, now: Date): Promise<ActiveNudgeGate | null> {
   const personas = await getCachedAllPersonas(guildId);
   const serverId = personas[0]?.server_id;
   if (serverId === undefined) return null;
   const config = await naturalNudgeRepository.loadServerConfig(serverId);
-  if (!config.chime_in_enabled) return { serverId, config, channelIds: new Set(), heat: 0 };
+  if (!config.active_nudges_enabled) return { serverId, config, channelIds: new Set(), heat: 0 };
   const [channelIds, dailyCounts] = await Promise.all([
     resolveEffectiveChannelIds(serverId, config, now),
     statRepository.getServerDailyMessageCounts({ serverId, from: heatWindowStart(now) }),
@@ -40,7 +40,7 @@ async function loadGate(guildId: string, now: Date): Promise<ChimeInGate | null>
 }
 
 /** Null for a guild with no workspace; a failed read is not cached, so the next message retries. */
-export function readChimeInGate(guildId: string): Promise<ChimeInGate | null> {
+export function readActiveNudgeGate(guildId: string): Promise<ActiveNudgeGate | null> {
   const now = new Date();
   const cached = entries.get(guildId);
   if (cached && cached.expiresAt > now.getTime()) return cached.gate;
@@ -52,7 +52,7 @@ export function readChimeInGate(guildId: string): Promise<ChimeInGate | null> {
     },
     (error) => {
       if (entries.get(guildId) === entry) entries.delete(guildId);
-      log.warn("Natural Nudges: could not read Chime-in settings", error, { metadata: { guildId } });
+      log.warn("Natural Nudges: could not read Active Nudge settings", error, { metadata: { guildId } });
       return null;
     },
   );

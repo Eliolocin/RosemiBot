@@ -646,8 +646,8 @@ export async function repaint(
       settings: await dependencies.naturalNudges.loadSettings(nudgeServerId, locale, scope.personas[0] ?? null),
     };
   }
-  if (category === "plugins" && page === "nudge-episodes" && !naturalNudges?.episodes && nudgeServerId) {
-    naturalNudges = { ...naturalNudges, episodes: await dependencies.naturalNudges.loadEpisodes(nudgeServerId) };
+  if (category === "plugins" && page === "idle-nudges" && !naturalNudges?.idleNudges && nudgeServerId) {
+    naturalNudges = { ...naturalNudges, idleNudges: await dependencies.naturalNudges.loadIdleNudges(nudgeServerId) };
   }
 
   let responseDraftingView = options.responseDraftingView;

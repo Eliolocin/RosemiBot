@@ -10,11 +10,11 @@ import {
 } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import {
-  CUSTOM_EPISODE_AGENDA_HINT_MAX,
-  CUSTOM_EPISODE_BRIEF_MAX,
-  CUSTOM_EPISODE_LIMIT,
-  CUSTOM_EPISODE_TITLE_MAX,
-  EPISODE_FREQUENCY_LEVELS,
+  CUSTOM_IDLE_NUDGE_AGENDA_HINT_MAX,
+  CUSTOM_IDLE_NUDGE_BRIEF_MAX,
+  CUSTOM_IDLE_NUDGE_LIMIT,
+  CUSTOM_IDLE_NUDGE_TITLE_MAX,
+  IDLE_NUDGE_FREQUENCY_LEVELS,
   NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX,
   NATURAL_NUDGE_INTEREST_LABEL_MAX,
   NATURAL_NUDGE_CATEGORIES,
@@ -24,12 +24,16 @@ import {
   type NaturalNudgeInterest,
   type PersonaNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
-import { NUDGE_PREREQUISITE_IDS, NUDGE_TOOL_NAMES, prerequisiteTool } from "@/modules/natural-nudges/runtime/episodes";
+import {
+  NUDGE_PREREQUISITE_IDS,
+  NUDGE_TOOL_NAMES,
+  prerequisiteTool,
+} from "@/modules/natural-nudges/runtime/idleNudges";
 import {
   computeInterestFingerprint,
   type NaturalNudgesSettingsView,
-  type NudgeEpisodeEntry,
-  type NudgeEpisodesView,
+  type IdleNudgeEntry,
+  type IdleNudgesView,
 } from "@/modules/natural-nudges/discord/operations";
 import {
   buildConfigRouteId,
@@ -55,10 +59,10 @@ export const NUDGE_ADD_VALUE = "add";
 export const NUDGE_CLEAR_MODEL_VALUE = "__none__";
 export const NUDGE_INTEREST_LABEL_FIELD = "nudge_interest_label";
 export const NUDGE_INTEREST_DESCRIPTION_FIELD = "nudge_interest_description";
-export const NUDGE_EPISODE_TITLE_FIELD = "nudge_episode_title";
-export const NUDGE_EPISODE_CATEGORY_FIELD = "nudge_episode_category";
-export const NUDGE_EPISODE_BRIEF_FIELD = "nudge_episode_brief";
-export const NUDGE_EPISODE_AGENDA_FIELD = "nudge_episode_agenda";
+export const NUDGE_IDLE_NUDGE_TITLE_FIELD = "nudge_idle_nudge_title";
+export const NUDGE_IDLE_NUDGE_CATEGORY_FIELD = "nudge_idle_nudge_category";
+export const NUDGE_IDLE_NUDGE_BRIEF_FIELD = "nudge_idle_nudge_brief";
+export const NUDGE_IDLE_NUDGE_AGENDA_FIELD = "nudge_idle_nudge_agenda";
 
 const MODAL_TEXT_MAX = 45;
 const MODAL_DESCRIPTION_MAX = 100;
@@ -87,10 +91,10 @@ const FREQUENCY_LOCALE_KEYS: Record<number, string> = {
 };
 
 const CATEGORY_LOCALE_KEYS: Record<NaturalNudgeCategory, string> = {
-  reach_out: "commands.config.natural_nudges.category_reach_out",
-  revive: "commands.config.natural_nudges.category_revive",
-  new_topic: "commands.config.natural_nudges.category_new_topic",
-  alter_talk: "commands.config.natural_nudges.category_alter_talk",
+  ping_user: "commands.config.natural_nudges.category_ping_user",
+  revive_topic: "commands.config.natural_nudges.category_revive_topic",
+  start_topic: "commands.config.natural_nudges.category_start_topic",
+  play_scene: "commands.config.natural_nudges.category_play_scene",
 };
 
 const PREREQUISITE_LOCALE_KEYS = {
@@ -153,7 +157,7 @@ function toolLabel(locale: string, tool: string): string {
   return tool in TOOL_LOCALE_KEYS ? localizer(locale, TOOL_LOCALE_KEYS[tool as keyof typeof TOOL_LOCALE_KEYS]) : tool;
 }
 
-function episodeTitle(locale: string, entry: NudgeEpisodeEntry): string {
+function idleNudgeTitle(locale: string, entry: IdleNudgeEntry): string {
   return entry.definition.titleKey ? localizer(locale, entry.definition.titleKey) : (entry.definition.title ?? "");
 }
 
@@ -392,7 +396,7 @@ function plannerDefaultNotice(locale: string, view: NaturalNudgesSettingsView): 
   return t(key, { model });
 }
 
-function episodeEffect(
+function idleNudgeEffect(
   locale: string,
   view: NaturalNudgesSettingsView,
   hasEligibleChannel: boolean,
@@ -400,36 +404,36 @@ function episodeEffect(
 ): string {
   const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
   const { config } = view;
-  if (!config.episodes_enabled) return t("commands.config.natural_nudges.episodes_off");
-  if (!hasEligibleChannel) return t("commands.config.natural_nudges.episodes_on_no_channels");
-  if (!hasUsableModel) return t("commands.config.natural_nudges.episodes_on_no_model");
+  if (!config.idle_nudges_enabled) return t("commands.config.natural_nudges.idle_nudges_off");
+  if (!hasEligibleChannel) return t("commands.config.natural_nudges.idle_nudges_on_no_channels");
+  if (!hasUsableModel) return t("commands.config.natural_nudges.idle_nudges_on_no_model");
   if (view.perDay <= 0) return t("commands.config.natural_nudges.frequency_effect_none");
-  return `${t("commands.config.natural_nudges.episodes_on")} ${t("commands.config.natural_nudges.frequency_effect", {
+  return `${t("commands.config.natural_nudges.idle_nudges_on")} ${t("commands.config.natural_nudges.frequency_effect", {
     heat: Math.round(view.heat),
     per_week: Math.round(view.perDay * 7 * 10) / 10,
   })}`;
 }
 
-function chimeInEffect(locale: string, view: NaturalNudgesSettingsView, hasEligibleChannel: boolean): string {
+function activeNudgeEffect(locale: string, view: NaturalNudgesSettingsView, hasEligibleChannel: boolean): string {
   const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
   const { config, status } = view;
-  if (!config.chime_in_enabled) return t("commands.config.natural_nudges.chime_ins_off");
-  if (!hasEligibleChannel) return t("commands.config.natural_nudges.chime_ins_on_no_channels");
+  if (!config.active_nudges_enabled) return t("commands.config.natural_nudges.active_nudges_off");
+  if (!hasEligibleChannel) return t("commands.config.natural_nudges.active_nudges_on_no_channels");
   // Modal paths render without status, so the matcher is only judged when it was resolved.
-  if (status && !status.matcher) return t("commands.config.natural_nudges.chime_ins_on_no_matcher");
-  if (!view.chimeInRange) return t("commands.config.natural_nudges.chime_ins_on_cold");
+  if (status && !status.matcher) return t("commands.config.natural_nudges.active_nudges_on_no_matcher");
+  if (!view.activeNudgeRange) return t("commands.config.natural_nudges.active_nudges_on_cold");
   const matcher =
     status?.matcher?.kind === "decision"
-      ? t("commands.config.natural_nudges.chime_ins_matcher_decision", { model: status.matcher.model })
-      : t("commands.config.natural_nudges.chime_ins_matcher_llm");
-  return t("commands.config.natural_nudges.chime_ins_on", {
-    min: view.chimeInRange.min,
-    max: view.chimeInRange.max,
+      ? t("commands.config.natural_nudges.active_nudges_matcher_decision", { model: status.matcher.model })
+      : t("commands.config.natural_nudges.active_nudges_matcher_llm");
+  return t("commands.config.natural_nudges.active_nudges_on", {
+    min: view.activeNudgeRange.min,
+    max: view.activeNudgeRange.max,
     matcher,
   });
 }
 
-function buildChimeInSection(
+function buildActiveNudgeSection(
   locale: string,
   view: NaturalNudgesSettingsView,
   hasEligibleChannel: boolean,
@@ -439,38 +443,40 @@ function buildChimeInSection(
   const { config } = view;
   return [
     text(
-      `### ${t("commands.config.natural_nudges.chime_ins_title")}\n${t("commands.config.natural_nudges.chime_ins_description")}`,
+      `### ${t("commands.config.natural_nudges.active_nudges_title")}\n${t("commands.config.natural_nudges.active_nudges_description")}`,
     ),
     buildStateControlRow(
       [
         {
           value: false,
           label: t("commands.config.panel.off_button"),
-          customId: buildConfigRouteId({ action: "nudge-chime-in-set", locale, enabled: false }),
+          customId: buildConfigRouteId({ action: "nudge-active-nudges-set", locale, enabled: false }),
         },
         {
           value: true,
           label: t("commands.config.panel.on_button"),
-          customId: buildConfigRouteId({ action: "nudge-chime-in-set", locale, enabled: true }),
+          customId: buildConfigRouteId({ action: "nudge-active-nudges-set", locale, enabled: true }),
         },
       ],
-      config.chime_in_enabled,
+      config.active_nudges_enabled,
       writesDisabled,
     ),
-    text(`> ${chimeInEffect(locale, view, hasEligibleChannel)}`),
+    text(`> ${activeNudgeEffect(locale, view, hasEligibleChannel)}`),
     {
       type: ComponentType.ActionRow,
       components: [
         {
           type: ComponentType.StringSelect,
-          customId: buildConfigRouteId({ action: "nudge-chime-in-frequency-select", locale }),
-          options: EPISODE_FREQUENCY_LEVELS.map((level) => ({
+          customId: buildConfigRouteId({ action: "nudge-active-nudges-frequency-select", locale }),
+          options: IDLE_NUDGE_FREQUENCY_LEVELS.map((level) => ({
             label: safeSelectOptionText(
-              t("commands.config.natural_nudges.chime_in_frequency_option", { level: t(FREQUENCY_LOCALE_KEYS[level]) }),
+              t("commands.config.natural_nudges.active_nudge_frequency_option", {
+                level: t(FREQUENCY_LOCALE_KEYS[level]),
+              }),
               100,
             ),
             value: String(level),
-            default: level === config.chime_in_frequency,
+            default: level === config.active_nudge_frequency,
           })),
           disabled: writesDisabled,
         },
@@ -521,44 +527,46 @@ export function buildNaturalNudgesSettingsBody(
       ],
     },
     text(
-      `### ${t("commands.config.natural_nudges.episodes_title")}\n${t("commands.config.natural_nudges.episodes_description")}`,
+      `### ${t("commands.config.natural_nudges.idle_nudges_title")}\n${t("commands.config.natural_nudges.idle_nudges_description")}`,
     ),
     buildStateControlRow(
       [
         {
           value: false,
           label: t("commands.config.panel.off_button"),
-          customId: buildConfigRouteId({ action: "nudge-episodes-set", locale, enabled: false }),
+          customId: buildConfigRouteId({ action: "nudge-idle-nudges-set", locale, enabled: false }),
         },
         {
           value: true,
           label: t("commands.config.panel.on_button"),
-          customId: buildConfigRouteId({ action: "nudge-episodes-set", locale, enabled: true }),
+          customId: buildConfigRouteId({ action: "nudge-idle-nudges-set", locale, enabled: true }),
         },
       ],
-      config.episodes_enabled,
+      config.idle_nudges_enabled,
       writesDisabled,
     ),
-    text(`> ${episodeEffect(locale, view, hasEligibleChannel, hasUsableModel)}`),
+    text(`> ${idleNudgeEffect(locale, view, hasEligibleChannel, hasUsableModel)}`),
     {
       type: ComponentType.ActionRow,
       components: [
         {
           type: ComponentType.StringSelect,
-          customId: buildConfigRouteId({ action: "nudge-frequency-select", locale }),
-          options: EPISODE_FREQUENCY_LEVELS.map((level) => ({
+          customId: buildConfigRouteId({ action: "nudge-idle-nudges-frequency-select", locale }),
+          options: IDLE_NUDGE_FREQUENCY_LEVELS.map((level) => ({
             label: safeSelectOptionText(
-              t("commands.config.natural_nudges.chime_in_frequency_option", { level: t(FREQUENCY_LOCALE_KEYS[level]) }),
+              t("commands.config.natural_nudges.active_nudge_frequency_option", {
+                level: t(FREQUENCY_LOCALE_KEYS[level]),
+              }),
               100,
             ),
             value: String(level),
-            default: level === config.episode_frequency,
+            default: level === config.idle_nudge_frequency,
           })),
           disabled: writesDisabled,
         },
       ],
     },
-    ...buildChimeInSection(locale, view, hasEligibleChannel, writesDisabled),
+    ...buildActiveNudgeSection(locale, view, hasEligibleChannel, writesDisabled),
     text(
       `### ${t("commands.config.natural_nudges.model_title")}\n${t("commands.config.natural_nudges.model_description")}`,
     ),
@@ -619,9 +627,9 @@ export function buildPlannerModelModal(
   return payload;
 }
 
-export interface NudgeEpisodesRenderInput {
+export interface IdleNudgesRenderInput {
   locale: string;
-  view: NudgeEpisodesView;
+  view: IdleNudgesView;
   start: number;
   selectedIndex?: number;
   removeConfirmNonce?: string;
@@ -629,40 +637,40 @@ export interface NudgeEpisodesRenderInput {
 }
 
 /** One option is kept for the add entry, so every page can keep it first. */
-const EPISODE_PAGE_SIZE = CONFIG_PERSONA_COLLECTION_PAGE_SIZE;
+const IDLE_NUDGE_PAGE_SIZE = CONFIG_PERSONA_COLLECTION_PAGE_SIZE;
 
-export function buildNudgeEpisodesBody(input: NudgeEpisodesRenderInput): ComponentInContainerData[] {
+export function buildIdleNudgesBody(input: IdleNudgesRenderInput): ComponentInContainerData[] {
   const { locale, view, writesDisabled } = input;
   const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
   const customCount = view.entries.filter((entry) => entry.custom).length;
   const start = Math.min(
-    Math.floor(input.start / EPISODE_PAGE_SIZE) * EPISODE_PAGE_SIZE,
-    Math.max(0, Math.floor((view.entries.length - 1) / EPISODE_PAGE_SIZE) * EPISODE_PAGE_SIZE),
+    Math.floor(input.start / IDLE_NUDGE_PAGE_SIZE) * IDLE_NUDGE_PAGE_SIZE,
+    Math.max(0, Math.floor((view.entries.length - 1) / IDLE_NUDGE_PAGE_SIZE) * IDLE_NUDGE_PAGE_SIZE),
   );
   const components: ComponentInContainerData[] = [
     text(
-      `## ${t("commands.config.natural_nudges.episodes_page_title")}\n${t("commands.config.natural_nudges.episodes_page_description")}\n${t("commands.config.natural_nudges.episode_select_intro")}`,
+      `## ${t("commands.config.natural_nudges.idle_nudges_page_title")}\n${t("commands.config.natural_nudges.idle_nudges_page_description")}\n${t("commands.config.natural_nudges.idle_nudge_select_intro")}`,
     ),
   ];
-  const canAdd = customCount < CUSTOM_EPISODE_LIMIT;
+  const canAdd = customCount < CUSTOM_IDLE_NUDGE_LIMIT;
   components.push({
     type: ComponentType.ActionRow,
     components: [
       {
         type: ComponentType.StringSelect,
-        customId: buildConfigRouteId({ action: "nudge-episode-select", locale, start, fp: view.fingerprint }),
-        placeholder: safeSelectOptionText(t("commands.config.natural_nudges.episode_select_placeholder"), 150),
+        customId: buildConfigRouteId({ action: "nudge-idle-select", locale, start, fp: view.fingerprint }),
+        placeholder: safeSelectOptionText(t("commands.config.natural_nudges.idle_nudge_select_placeholder"), 150),
         options: [
           ...(canAdd
-            ? [{ label: t("commands.config.natural_nudges.episode_add_option"), value: NUDGE_ADD_VALUE }]
+            ? [{ label: t("commands.config.natural_nudges.idle_nudge_add_option"), value: NUDGE_ADD_VALUE }]
             : []),
-          ...view.entries.slice(start, start + EPISODE_PAGE_SIZE).map((entry, offset) => ({
-            label: safeSelectOptionText(episodeTitle(locale, entry), 100),
+          ...view.entries.slice(start, start + IDLE_NUDGE_PAGE_SIZE).map((entry, offset) => ({
+            label: safeSelectOptionText(idleNudgeTitle(locale, entry), 100),
             description: safeSelectOptionText(
               t(
                 entry.enabled
-                  ? "commands.config.natural_nudges.episode_option_on"
-                  : "commands.config.natural_nudges.episode_option_off",
+                  ? "commands.config.natural_nudges.idle_nudge_option_on"
+                  : "commands.config.natural_nudges.idle_nudge_option_off",
                 { category: t(CATEGORY_LOCALE_KEYS[entry.definition.category]) },
               ),
               100,
@@ -677,13 +685,13 @@ export function buildNudgeEpisodesBody(input: NudgeEpisodesRenderInput): Compone
   });
   const paginationRow = buildPaginationRow({
     locale,
-    rangeIndex: start / EPISODE_PAGE_SIZE,
-    rangeCount: Math.max(1, Math.ceil(view.entries.length / EPISODE_PAGE_SIZE)),
+    rangeIndex: start / IDLE_NUDGE_PAGE_SIZE,
+    rangeCount: Math.max(1, Math.ceil(view.entries.length / IDLE_NUDGE_PAGE_SIZE)),
     namespace: CONFIG_ROUTE_NAMESPACE,
     version: CONFIG_ROUTE_VERSION,
     buildSegments: {
       page: (rangeIndex) =>
-        buildConfigRouteSegments({ action: "nudge-episode-page", locale, start: rangeIndex * EPISODE_PAGE_SIZE }),
+        buildConfigRouteSegments({ action: "nudge-idle-page", locale, start: rangeIndex * IDLE_NUDGE_PAGE_SIZE }),
     },
     disabled: writesDisabled,
   });
@@ -697,21 +705,17 @@ export function buildNudgeEpisodesBody(input: NudgeEpisodesRenderInput): Compone
 
   if (input.removeConfirmNonce) {
     components.push(
-      text(t("commands.config.natural_nudges.episode_remove_confirm", { title: episodeTitle(locale, entry) })),
+      text(t("commands.config.natural_nudges.idle_nudge_remove_confirm", { title: idleNudgeTitle(locale, entry) })),
       {
         type: ComponentType.ActionRow,
         components: [
           button(
-            t("commands.config.natural_nudges.episode_remove_button"),
-            { action: "nudge-episode-remove-confirm", locale, index, fp, nonce: input.removeConfirmNonce },
+            t("commands.config.natural_nudges.idle_nudge_remove_button"),
+            { action: "nudge-idle-remove-confirm", locale, index, fp, nonce: input.removeConfirmNonce },
             writesDisabled,
             true,
           ),
-          button(
-            t("general.pagination.cancel"),
-            { action: "nudge-episode-remove-cancel", locale, index },
-            writesDisabled,
-          ),
+          button(t("general.pagination.cancel"), { action: "nudge-idle-remove-cancel", locale, index }, writesDisabled),
         ],
       },
     );
@@ -728,39 +732,43 @@ export function buildNudgeEpisodesBody(input: NudgeEpisodesRenderInput): Compone
       : t("commands.config.natural_nudges.none");
   components.push(
     text(
-      `### ${episodeTitle(locale, entry)}\n${withLinePrefix(
+      `### ${idleNudgeTitle(locale, entry)}\n${withLinePrefix(
         "> ",
         [
-          t("commands.config.natural_nudges.episode_category_line", {
+          t("commands.config.natural_nudges.idle_nudge_category_line", {
             category: t(CATEGORY_LOCALE_KEYS[definition.category]),
           }),
           t(
             entry.custom
-              ? "commands.config.natural_nudges.episode_custom"
-              : "commands.config.natural_nudges.episode_builtin",
+              ? "commands.config.natural_nudges.idle_nudge_custom"
+              : "commands.config.natural_nudges.idle_nudge_builtin",
           ),
         ].join("\n"),
       )}`,
     ),
     text(
-      `**${t("commands.config.natural_nudges.episode_brief_title")}**\n${renderFencedPreview(locale, definition.brief, {
-        actionLabel: entry.custom ? t("commands.config.natural_nudges.episode_edit_button") : undefined,
-      })}`,
+      `**${t("commands.config.natural_nudges.idle_nudge_brief_title")}**\n${renderFencedPreview(
+        locale,
+        definition.brief,
+        {
+          actionLabel: entry.custom ? t("commands.config.natural_nudges.idle_nudge_edit_button") : undefined,
+        },
+      )}`,
     ),
     text(
-      `**${t("commands.config.natural_nudges.episode_agenda_title")}**\n> ${definition.agendaHint ?? t("commands.config.natural_nudges.none")}\n**${t("commands.config.natural_nudges.episode_prerequisites_title")}**\n> ${prerequisites}\n**${t("commands.config.natural_nudges.episode_tools_title")}**\n> ${tools}`,
+      `**${t("commands.config.natural_nudges.idle_nudge_agenda_title")}**\n> ${definition.agendaHint ?? t("commands.config.natural_nudges.none")}\n**${t("commands.config.natural_nudges.idle_nudge_prerequisites_title")}**\n> ${prerequisites}\n**${t("commands.config.natural_nudges.idle_nudge_tools_title")}**\n> ${tools}`,
     ),
     buildStateControlRow(
       [
         {
           value: false,
           label: t("commands.config.panel.off_button"),
-          customId: buildConfigRouteId({ action: "nudge-episode-toggle", locale, index, fp, enabled: false }),
+          customId: buildConfigRouteId({ action: "nudge-idle-toggle", locale, index, fp, enabled: false }),
         },
         {
           value: true,
           label: t("commands.config.panel.on_button"),
-          customId: buildConfigRouteId({ action: "nudge-episode-toggle", locale, index, fp, enabled: true }),
+          customId: buildConfigRouteId({ action: "nudge-idle-toggle", locale, index, fp, enabled: true }),
         },
       ],
       entry.enabled,
@@ -770,15 +778,15 @@ export function buildNudgeEpisodesBody(input: NudgeEpisodesRenderInput): Compone
 
   if (entry.custom) {
     components.push(
-      text(t("commands.config.natural_nudges.episode_prerequisites_select_intro")),
+      text(t("commands.config.natural_nudges.idle_nudge_prerequisites_select_intro")),
       {
         type: ComponentType.ActionRow,
         components: [
           {
             type: ComponentType.StringSelect,
-            customId: buildConfigRouteId({ action: "nudge-episode-prereqs-select", locale, index, fp }),
+            customId: buildConfigRouteId({ action: "nudge-idle-prereqs-select", locale, index, fp }),
             placeholder: safeSelectOptionText(
-              t("commands.config.natural_nudges.episode_prerequisites_placeholder"),
+              t("commands.config.natural_nudges.idle_nudge_prerequisites_placeholder"),
               150,
             ),
             minValues: 0,
@@ -797,8 +805,8 @@ export function buildNudgeEpisodesBody(input: NudgeEpisodesRenderInput): Compone
         components: [
           {
             type: ComponentType.StringSelect,
-            customId: buildConfigRouteId({ action: "nudge-episode-tools-select", locale, index, fp }),
-            placeholder: safeSelectOptionText(t("commands.config.natural_nudges.episode_tools_placeholder"), 150),
+            customId: buildConfigRouteId({ action: "nudge-idle-tools-select", locale, index, fp }),
+            placeholder: safeSelectOptionText(t("commands.config.natural_nudges.idle_nudge_tools_placeholder"), 150),
             minValues: 0,
             maxValues: NUDGE_TOOL_NAMES.length,
             options: NUDGE_TOOL_NAMES.map((tool) => ({
@@ -814,13 +822,13 @@ export function buildNudgeEpisodesBody(input: NudgeEpisodesRenderInput): Compone
         type: ComponentType.ActionRow,
         components: [
           button(
-            t("commands.config.natural_nudges.episode_edit_button"),
-            { action: "nudge-episode-edit-open", locale, index, fp },
+            t("commands.config.natural_nudges.idle_nudge_edit_button"),
+            { action: "nudge-idle-edit-open", locale, index, fp },
             writesDisabled,
           ),
           button(
-            t("commands.config.natural_nudges.episode_remove_button"),
-            { action: "nudge-episode-remove-view", locale, index, fp },
+            t("commands.config.natural_nudges.idle_nudge_remove_button"),
+            { action: "nudge-idle-remove-view", locale, index, fp },
             writesDisabled,
             true,
           ),
@@ -831,11 +839,11 @@ export function buildNudgeEpisodesBody(input: NudgeEpisodesRenderInput): Compone
   return components;
 }
 
-export function buildEpisodeModal(
+export function buildIdleNudgeModal(
   locale: string,
   nonce: string,
   target: { index: number; fp: string } | null,
-  current?: NudgeEpisodeEntry,
+  current?: IdleNudgeEntry,
 ): RawModalPayload {
   const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
   const label = (key: string) => safeSelectOptionText(t(key), MODAL_TEXT_MAX);
@@ -843,37 +851,37 @@ export function buildEpisodeModal(
     safeSelectOptionText(t(key, vars), MODAL_DESCRIPTION_MAX);
   return {
     custom_id: target
-      ? buildConfigRouteId({ action: "nudge-episode-edit-submit", locale, index: target.index, fp: target.fp, nonce })
-      : buildConfigRouteId({ action: "nudge-episode-add-submit", locale, nonce }),
+      ? buildConfigRouteId({ action: "nudge-idle-edit-submit", locale, index: target.index, fp: target.fp, nonce })
+      : buildConfigRouteId({ action: "nudge-idle-add-submit", locale, nonce }),
     title: label(
       target
-        ? "commands.config.natural_nudges.episode_edit_button"
-        : "commands.config.natural_nudges.episode_add_title",
+        ? "commands.config.natural_nudges.idle_nudge_edit_button"
+        : "commands.config.natural_nudges.idle_nudge_add_title",
     ),
     components: [
       {
         type: 18,
-        label: label("commands.config.natural_nudges.episode_title_label"),
-        description: description("commands.config.natural_nudges.episode_title_description", {
-          max: CUSTOM_EPISODE_TITLE_MAX,
+        label: label("commands.config.natural_nudges.idle_nudge_title_label"),
+        description: description("commands.config.natural_nudges.idle_nudge_title_description", {
+          max: CUSTOM_IDLE_NUDGE_TITLE_MAX,
         }),
         component: {
           type: 4,
-          custom_id: buildConfigModalFieldId(NUDGE_EPISODE_TITLE_FIELD, nonce),
+          custom_id: buildConfigModalFieldId(NUDGE_IDLE_NUDGE_TITLE_FIELD, nonce),
           style: TextInputStyle.Short,
           required: true,
           min_length: 1,
-          max_length: CUSTOM_EPISODE_TITLE_MAX,
+          max_length: CUSTOM_IDLE_NUDGE_TITLE_MAX,
           ...(current?.custom ? { value: current.custom.title } : {}),
         },
       },
       {
         type: 18,
-        label: label("commands.config.natural_nudges.episode_category_label"),
-        description: description("commands.config.natural_nudges.episode_category_description"),
+        label: label("commands.config.natural_nudges.idle_nudge_category_label"),
+        description: description("commands.config.natural_nudges.idle_nudge_category_description"),
         component: {
           type: 3,
-          custom_id: buildConfigModalFieldId(NUDGE_EPISODE_CATEGORY_FIELD, nonce),
+          custom_id: buildConfigModalFieldId(NUDGE_IDLE_NUDGE_CATEGORY_FIELD, nonce),
           required: true,
           min_values: 1,
           max_values: 1,
@@ -885,32 +893,32 @@ export function buildEpisodeModal(
       },
       {
         type: 18,
-        label: label("commands.config.natural_nudges.episode_brief_label"),
-        description: description("commands.config.natural_nudges.episode_brief_description", {
-          max: CUSTOM_EPISODE_BRIEF_MAX,
+        label: label("commands.config.natural_nudges.idle_nudge_brief_label"),
+        description: description("commands.config.natural_nudges.idle_nudge_brief_description", {
+          max: CUSTOM_IDLE_NUDGE_BRIEF_MAX,
         }),
         component: {
           type: 4,
-          custom_id: buildConfigModalFieldId(NUDGE_EPISODE_BRIEF_FIELD, nonce),
+          custom_id: buildConfigModalFieldId(NUDGE_IDLE_NUDGE_BRIEF_FIELD, nonce),
           style: TextInputStyle.Paragraph,
           required: true,
           min_length: 1,
-          max_length: CUSTOM_EPISODE_BRIEF_MAX,
+          max_length: CUSTOM_IDLE_NUDGE_BRIEF_MAX,
           ...(current?.custom ? { value: current.custom.brief } : {}),
         },
       },
       {
         type: 18,
-        label: label("commands.config.natural_nudges.episode_agenda_label"),
-        description: description("commands.config.natural_nudges.episode_agenda_description", {
-          max: CUSTOM_EPISODE_AGENDA_HINT_MAX,
+        label: label("commands.config.natural_nudges.idle_nudge_agenda_label"),
+        description: description("commands.config.natural_nudges.idle_nudge_agenda_description", {
+          max: CUSTOM_IDLE_NUDGE_AGENDA_HINT_MAX,
         }),
         component: {
           type: 4,
-          custom_id: buildConfigModalFieldId(NUDGE_EPISODE_AGENDA_FIELD, nonce),
+          custom_id: buildConfigModalFieldId(NUDGE_IDLE_NUDGE_AGENDA_FIELD, nonce),
           style: TextInputStyle.Paragraph,
           required: false,
-          max_length: CUSTOM_EPISODE_AGENDA_HINT_MAX,
+          max_length: CUSTOM_IDLE_NUDGE_AGENDA_HINT_MAX,
           ...(current?.custom?.agenda_hint ? { value: current.custom.agenda_hint } : {}),
         },
       },

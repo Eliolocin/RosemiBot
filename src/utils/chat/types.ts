@@ -80,9 +80,9 @@ interface CarriedExpressionDelivery {
 
 /** Public input to tomoriChat(): optional fields apply defaults in normalizeChatInvocation. */
 export interface NaturalNudgeTurn {
-  /** Episode tools that Deliberate Tool Mode admits, since no human message carries their trigger words. */
+  /** Idle nudge tools that Deliberate Tool Mode admits, since no human message carries their trigger words. */
   toolNames: readonly string[];
-  /** The one user a Reach-out may ping; `{user}` and the triggerer name resolve to them. */
+  /** The one user a Ping User may ping; `{user}` and the triggerer name resolve to them. */
   targetUserDiscId?: string;
 }
 

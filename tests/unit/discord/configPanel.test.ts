@@ -338,7 +338,7 @@ describe("config panel shell", () => {
       "context-additions",
       "response-drafting",
       "natural-nudges",
-      "nudge-episodes",
+      "idle-nudges",
       "mcp-servers",
       "sillytavern-presets",
       "nsfw-jailbreaks",

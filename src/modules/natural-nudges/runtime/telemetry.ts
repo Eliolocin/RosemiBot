@@ -1,31 +1,31 @@
 import { metricSampleRepository } from "@/utils/db/repositories/MetricSampleRepository";
 
-const NATURAL_NUDGE_EPISODE_METRIC = "natural_nudge_episode";
-const NATURAL_NUDGE_CHIME_IN_METRIC = "natural_nudge_chime_in";
+const NATURAL_NUDGE_IDLE_METRIC = "natural_nudge_idle";
+const NATURAL_NUDGE_ACTIVE_METRIC = "natural_nudge_active";
 
-type EpisodeOutcome = "fired" | "aborted" | "failed";
-type EpisodePhase = "a" | "b" | "c";
+type IdleNudgeOutcome = "fired" | "aborted" | "failed";
+type IdleNudgePhase = "a" | "b" | "c";
 
-export interface EpisodeSample {
+export interface IdleNudgeSample {
   serverId: number;
-  outcome: EpisodeOutcome;
-  phase: EpisodePhase;
+  outcome: IdleNudgeOutcome;
+  phase: IdleNudgePhase;
   /** Fixed-set reason key such as `planner_declined` or `channel_busy`. */
   reason: string;
   heat?: number;
   category?: string;
   /** Built-in key, or `custom` so free-text titles never reach telemetry. */
-  episodeKey?: string;
+  idleNudgeKey?: string;
   plannerModel?: string;
   plannerInputTokens?: number;
   plannerOutputTokens?: number;
 }
 
 /**
- * One row per episode attempt. Fields are fixed-set strings and numbers only, never message text,
+ * One row per idle nudge attempt. Fields are fixed-set strings and numbers only, never message text,
  * persona prose, or names; `recordSample` never throws, so telemetry cannot delay a nudge.
  */
-export function recordEpisodeSample(sample: EpisodeSample): void {
+export function recordIdleNudgeSample(sample: IdleNudgeSample): void {
   const fields: Record<string, number | string> = {
     server_id: sample.serverId,
     outcome: sample.outcome,
@@ -34,16 +34,17 @@ export function recordEpisodeSample(sample: EpisodeSample): void {
   };
   if (sample.heat !== undefined) fields.heat = Math.round(sample.heat * 10) / 10;
   if (sample.category) fields.category = sample.category;
-  if (sample.episodeKey) fields.episode_key = sample.episodeKey.startsWith("custom:") ? "custom" : sample.episodeKey;
+  if (sample.idleNudgeKey)
+    fields.idle_nudge_key = sample.idleNudgeKey.startsWith("custom:") ? "custom" : sample.idleNudgeKey;
   if (sample.plannerModel) fields.planner_model = sample.plannerModel;
   if (sample.plannerInputTokens !== undefined) fields.planner_tokens_in = sample.plannerInputTokens;
   if (sample.plannerOutputTokens !== undefined) fields.planner_tokens_out = sample.plannerOutputTokens;
-  void metricSampleRepository.recordSample(NATURAL_NUDGE_EPISODE_METRIC, fields);
+  void metricSampleRepository.recordSample(NATURAL_NUDGE_IDLE_METRIC, fields);
 }
 
-export interface ChimeInSample {
+export interface ActiveNudgeSample {
   serverId: number;
-  outcome: EpisodeOutcome;
+  outcome: IdleNudgeOutcome;
   /** `a` before the matcher answers, `c` after the delay. */
   phase: "a" | "c";
   /** Fixed-set reason key such as `matcher_none` or `winner_spoke`. */
@@ -62,8 +63,8 @@ export interface ChimeInSample {
   rematchOutputTokens?: number;
 }
 
-/** One row per Chime-in check, under the same rules as episode rows: no text, prose, or names. */
-export function recordChimeInSample(sample: ChimeInSample): void {
+/** One row per Active Nudge check, under the same rules as idle nudge rows: no text, prose, or names. */
+export function recordActiveNudgeSample(sample: ActiveNudgeSample): void {
   const fields: Record<string, number | string> = {
     server_id: sample.serverId,
     outcome: sample.outcome,
@@ -81,5 +82,5 @@ export function recordChimeInSample(sample: ChimeInSample): void {
   if (sample.matcherOutputTokens !== undefined) fields.matcher_tokens_out = sample.matcherOutputTokens;
   if (sample.rematchInputTokens !== undefined) fields.rematch_tokens_in = sample.rematchInputTokens;
   if (sample.rematchOutputTokens !== undefined) fields.rematch_tokens_out = sample.rematchOutputTokens;
-  void metricSampleRepository.recordSample(NATURAL_NUDGE_CHIME_IN_METRIC, fields);
+  void metricSampleRepository.recordSample(NATURAL_NUDGE_ACTIVE_METRIC, fields);
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import * as executors from "@/providers/utils/providerFeatureExecutors";
-import { matchChimeIn, MATCHER_NONE_ID, type MatcherBackend } from "@/modules/natural-nudges/runtime/matcher";
+import { matchActiveNudge, MATCHER_NONE_ID, type MatcherBackend } from "@/modules/natural-nudges/runtime/matcher";
 import * as model from "@/modules/natural-nudges/runtime/model";
 import type { DecisionResult, StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import * as serverStructuredOutput from "@/utils/provider/serverStructuredOutput";
@@ -33,7 +33,7 @@ describe("Decision matcher", () => {
       completed("i01", { i01: 0.7, none: 0.3 }),
     );
     spies.push(call);
-    const result = await matchChimeIn({ state, backend: decision, options, evidence: "Juno: Gundam!" });
+    const result = await matchActiveNudge({ state, backend: decision, options, evidence: "Juno: Gundam!" });
     expect(result).toMatchObject({ choice: "i01", reason: "matched", kind: "decision" });
     expect(result.margin).toBeCloseTo(0.4);
     const [question] = call.mock.calls[0][0].questions;
@@ -52,7 +52,7 @@ describe("Decision matcher", () => {
     ];
     for (const [answer, reason] of cases) {
       spies.push(spyOn(executors, "callDecisionsForProvider").mockResolvedValue(answer));
-      expect(await matchChimeIn({ state, backend: decision, options, evidence: "x" })).toMatchObject({
+      expect(await matchActiveNudge({ state, backend: decision, options, evidence: "x" })).toMatchObject({
         choice: null,
         reason,
       });
@@ -86,7 +86,7 @@ describe("Natural Nudges model matcher", () => {
 
   it("keeps member text inside the escaped evidence block and answers at temperature 0", async () => {
     const call = stubModel([{ success: true, data: { topic: "i01" } }]);
-    const result = await matchChimeIn({
+    const result = await matchActiveNudge({
       state,
       backend: llm,
       options,
@@ -101,14 +101,14 @@ describe("Natural Nudges model matcher", () => {
 
   it("retries one malformed answer, then reads junk or a refusal as no fire", async () => {
     const twice = stubModel([malformed, malformed]);
-    expect(await matchChimeIn({ state, backend: llm, options, evidence: "x" })).toMatchObject({
+    expect(await matchActiveNudge({ state, backend: llm, options, evidence: "x" })).toMatchObject({
       choice: null,
       reason: "malformed",
     });
     expect(twice).toHaveBeenCalledTimes(2);
 
     const refused = stubModel([{ success: false, error: "blocked", failure: "refusal" }]);
-    expect(await matchChimeIn({ state, backend: llm, options, evidence: "x" })).toMatchObject({
+    expect(await matchActiveNudge({ state, backend: llm, options, evidence: "x" })).toMatchObject({
       choice: null,
       reason: "refused",
     });

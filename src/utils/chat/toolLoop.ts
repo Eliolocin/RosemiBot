@@ -776,7 +776,7 @@ async function executeToolCall(
     channel: params.context.channel as ToolContext["channel"],
     client: params.context.client,
     message: params.context.message,
-    // A Reach-out's tools act for the member it addresses, so a reminder or memory defaults to them.
+    // A Ping User's tools act for the member it addresses, so a reminder or memory defaults to them.
     userId:
       params.context.turn.lockedTurn.admission.incoming.naturalNudge?.targetUserDiscId ?? params.context.userDiscId,
     internalUserId: params.context.personalRoutingUserId ?? undefined,

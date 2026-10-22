@@ -5,25 +5,25 @@ import { sql } from "@/utils/db/client";
 import { log } from "@/utils/misc/logger";
 import { NATURAL_NUDGE_FAILURE_STOP_THRESHOLD } from "@/modules/natural-nudges/runtime/tuning";
 import {
-  customEpisodeRowSchema,
+  customIdleNudgeRowSchema,
   defaultServerNaturalNudgeConfig,
   DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
-  enabledEpisodeServerSchema,
+  enabledIdleNudgeServerSchema,
   fireRowSchema,
   personaNaturalNudgeConfigSchema,
-  reachOutCandidateSchema,
+  pingUserCandidateSchema,
   runtimeStateSchema,
   serverNaturalNudgeConfigSchema,
-  type CustomEpisodeInput,
-  type CustomEpisodeRow,
-  type EnabledEpisodeServer,
+  type CustomIdleNudgeInput,
+  type CustomIdleNudgeRow,
+  type EnabledIdleNudgeServer,
   type NaturalNudgeFireRow,
   type NaturalNudgeInterest,
   type NaturalNudgeRuntimeState,
-  type NewChimeInFireRow,
+  type NewActiveNudgeFireRow,
   type NewFireRow,
   type PersonaNaturalNudgeConfig,
-  type ReachOutCandidate,
+  type PingUserCandidate,
   type ServerNaturalNudgeConfig,
   type ServerNaturalNudgeConfigPatch,
 } from "@/modules/natural-nudges/db/types";
@@ -41,15 +41,15 @@ function parseRows<T>(schema: z.ZodType<T>, rows: unknown[], label: string): T[]
   return parsed;
 }
 
-const episodeServerRowSchema = enabledEpisodeServerSchema.extend({
+const idleNudgeServerRowSchema = enabledIdleNudgeServerSchema.extend({
   config: serverNaturalNudgeConfigSchema.nullable(),
 });
 
 class NaturalNudgeRepository {
   async loadServerConfig(serverId: number, client: SQL = sql): Promise<ServerNaturalNudgeConfig> {
     const rows = await client`
-      SELECT server_id, episodes_enabled, chime_in_enabled, channel_disc_ids, llm_id,
-        episode_frequency, chime_in_frequency, disabled_builtin_episodes
+      SELECT server_id, idle_nudges_enabled, active_nudges_enabled, channel_disc_ids, llm_id,
+        idle_nudge_frequency, active_nudge_frequency, disabled_builtin_idle_nudges
       FROM server_natural_nudge_configs WHERE server_id = ${serverId}
     `;
     const [row] = parseRows(serverNaturalNudgeConfigSchema, rows, "server config");
@@ -61,21 +61,21 @@ class NaturalNudgeRepository {
     try {
       await client`
         INSERT INTO server_natural_nudge_configs (
-          server_id, episodes_enabled, chime_in_enabled, channel_disc_ids, llm_id,
-          episode_frequency, chime_in_frequency, disabled_builtin_episodes
+          server_id, idle_nudges_enabled, active_nudges_enabled, channel_disc_ids, llm_id,
+          idle_nudge_frequency, active_nudge_frequency, disabled_builtin_idle_nudges
         ) VALUES (
-          ${serverId}, ${next.episodes_enabled}, ${next.chime_in_enabled}, ${sql.array(next.channel_disc_ids, "TEXT")},
-          ${next.llm_id}, ${next.episode_frequency}, ${next.chime_in_frequency},
-          ${sql.array(next.disabled_builtin_episodes, "TEXT")}
+          ${serverId}, ${next.idle_nudges_enabled}, ${next.active_nudges_enabled}, ${sql.array(next.channel_disc_ids, "TEXT")},
+          ${next.llm_id}, ${next.idle_nudge_frequency}, ${next.active_nudge_frequency},
+          ${sql.array(next.disabled_builtin_idle_nudges, "TEXT")}
         )
         ON CONFLICT (server_id) DO UPDATE SET
-          episodes_enabled = EXCLUDED.episodes_enabled,
-          chime_in_enabled = EXCLUDED.chime_in_enabled,
+          idle_nudges_enabled = EXCLUDED.idle_nudges_enabled,
+          active_nudges_enabled = EXCLUDED.active_nudges_enabled,
           channel_disc_ids = EXCLUDED.channel_disc_ids,
           llm_id = EXCLUDED.llm_id,
-          episode_frequency = EXCLUDED.episode_frequency,
-          chime_in_frequency = EXCLUDED.chime_in_frequency,
-          disabled_builtin_episodes = EXCLUDED.disabled_builtin_episodes
+          idle_nudge_frequency = EXCLUDED.idle_nudge_frequency,
+          active_nudge_frequency = EXCLUDED.active_nudge_frequency,
+          disabled_builtin_idle_nudges = EXCLUDED.disabled_builtin_idle_nudges
       `;
       return true;
     } catch (error) {
@@ -85,25 +85,25 @@ class NaturalNudgeRepository {
   }
 
   /**
-   * Guild servers with `message_sent` since `since` whose episodes are not turned off. Starting from
+   * Guild servers with `message_sent` since `since` whose idle nudges are not turned off. Starting from
    * heat rather than config rows is what makes the on-by-default rule reach servers that never saved
    * settings; those get the column defaults.
    */
-  async listEnabledEpisodeServers(since: Date): Promise<EnabledEpisodeServer[]> {
+  async listEnabledIdleNudgeServers(since: Date): Promise<EnabledIdleNudgeServer[]> {
     const rows = await sql`
       SELECT s.server_id, s.server_disc_id, scc.timezone_offset,
         CASE WHEN c.server_id IS NULL THEN NULL ELSE json_build_object(
-          'server_id', c.server_id, 'episodes_enabled', c.episodes_enabled,
-          'chime_in_enabled', c.chime_in_enabled,
+          'server_id', c.server_id, 'idle_nudges_enabled', c.idle_nudges_enabled,
+          'active_nudges_enabled', c.active_nudges_enabled,
           'channel_disc_ids', c.channel_disc_ids, 'llm_id', c.llm_id,
-          'episode_frequency', c.episode_frequency, 'chime_in_frequency', c.chime_in_frequency,
-          'disabled_builtin_episodes', c.disabled_builtin_episodes
+          'idle_nudge_frequency', c.idle_nudge_frequency, 'active_nudge_frequency', c.active_nudge_frequency,
+          'disabled_builtin_idle_nudges', c.disabled_builtin_idle_nudges
         ) END AS config
       FROM servers s
       LEFT JOIN server_natural_nudge_configs c ON c.server_id = s.server_id
       LEFT JOIN server_chat_configs scc ON scc.server_id = s.server_id
       WHERE COALESCE(s.is_dm_channel, false) = false
-        AND COALESCE(c.episodes_enabled, true)
+        AND COALESCE(c.idle_nudges_enabled, true)
         AND EXISTS (
           SELECT 1 FROM stat_counters sc
           WHERE sc.server_id = s.server_id
@@ -111,7 +111,7 @@ class NaturalNudgeRepository {
             AND sc.bucket >= ${since.toISOString().slice(0, 10)}::date
         )
     `;
-    return parseRows(episodeServerRowSchema, rows, "enabled server").map((row) => ({
+    return parseRows(idleNudgeServerRowSchema, rows, "enabled server").map((row) => ({
       ...row,
       config: row.config ?? defaultServerNaturalNudgeConfig(row.server_id),
     }));
@@ -132,79 +132,79 @@ class NaturalNudgeRepository {
     return rows.map((row) => row.metric_key);
   }
 
-  async listCustomEpisodes(serverId: number, client: SQL = sql): Promise<CustomEpisodeRow[]> {
+  async listCustomIdleNudges(serverId: number, client: SQL = sql): Promise<CustomIdleNudgeRow[]> {
     const rows = await client`
-      SELECT episode_id, server_id, category, title, brief, agenda_hint, prerequisites, recommended_tools, enabled
-      FROM server_natural_nudge_episodes
+      SELECT custom_idle_nudge_id, server_id, category, title, brief, agenda_hint, prerequisites, recommended_tools, enabled
+      FROM server_natural_nudge_custom_idle_nudges
       WHERE server_id = ${serverId}
-      ORDER BY episode_id
+      ORDER BY custom_idle_nudge_id
     `;
-    return parseRows(customEpisodeRowSchema, rows, "custom episode");
+    return parseRows(customIdleNudgeRowSchema, rows, "custom idle nudge");
   }
 
-  /** Returns null when the server already holds the maximum number of custom episodes. */
-  async insertCustomEpisode(serverId: number, input: CustomEpisodeInput, limit: number): Promise<number | null> {
+  /** Returns null when the server already holds the maximum number of custom idle nudges. */
+  async insertCustomIdleNudge(serverId: number, input: CustomIdleNudgeInput, limit: number): Promise<number | null> {
     try {
-      const [row] = await sql<Array<{ episode_id: number }>>`
-        INSERT INTO server_natural_nudge_episodes
+      const [row] = await sql<Array<{ custom_idle_nudge_id: number }>>`
+        INSERT INTO server_natural_nudge_custom_idle_nudges
           (server_id, category, title, brief, agenda_hint, prerequisites, recommended_tools, enabled)
         SELECT ${serverId}, ${input.category}, ${input.title}, ${input.brief}, ${input.agenda_hint},
           ${sql.array(input.prerequisites, "TEXT")}, ${sql.array(input.recommended_tools, "TEXT")}, ${input.enabled}
-        WHERE (SELECT COUNT(*) FROM server_natural_nudge_episodes WHERE server_id = ${serverId}) < ${limit}
-        RETURNING episode_id
+        WHERE (SELECT COUNT(*) FROM server_natural_nudge_custom_idle_nudges WHERE server_id = ${serverId}) < ${limit}
+        RETURNING custom_idle_nudge_id
       `;
-      return row?.episode_id ?? null;
+      return row?.custom_idle_nudge_id ?? null;
     } catch (error) {
-      await log.error("Natural Nudges: failed to add a custom episode", error, { metadata: { serverId } });
+      await log.error("Natural Nudges: failed to add a custom idle nudge", error, { metadata: { serverId } });
       return null;
     }
   }
 
-  async updateCustomEpisode(serverId: number, episodeId: number, input: CustomEpisodeInput): Promise<boolean> {
+  async updateCustomIdleNudge(serverId: number, idleNudgeId: number, input: CustomIdleNudgeInput): Promise<boolean> {
     try {
       const rows = await sql`
-        UPDATE server_natural_nudge_episodes SET
+        UPDATE server_natural_nudge_custom_idle_nudges SET
           category = ${input.category}, title = ${input.title}, brief = ${input.brief},
           agenda_hint = ${input.agenda_hint}, prerequisites = ${sql.array(input.prerequisites, "TEXT")},
           recommended_tools = ${sql.array(input.recommended_tools, "TEXT")}, enabled = ${input.enabled}
-        WHERE server_id = ${serverId} AND episode_id = ${episodeId}
-        RETURNING episode_id
+        WHERE server_id = ${serverId} AND custom_idle_nudge_id = ${idleNudgeId}
+        RETURNING custom_idle_nudge_id
       `;
       return rows.length > 0;
     } catch (error) {
-      await log.error("Natural Nudges: failed to update a custom episode", error, {
-        metadata: { serverId, episodeId },
+      await log.error("Natural Nudges: failed to update a custom idle nudge", error, {
+        metadata: { serverId, idleNudgeId },
       });
       return false;
     }
   }
 
-  async deleteCustomEpisode(serverId: number, episodeId: number): Promise<boolean> {
+  async deleteCustomIdleNudge(serverId: number, idleNudgeId: number): Promise<boolean> {
     try {
       const rows = await sql`
-        DELETE FROM server_natural_nudge_episodes
-        WHERE server_id = ${serverId} AND episode_id = ${episodeId}
-        RETURNING episode_id
+        DELETE FROM server_natural_nudge_custom_idle_nudges
+        WHERE server_id = ${serverId} AND custom_idle_nudge_id = ${idleNudgeId}
+        RETURNING custom_idle_nudge_id
       `;
       return rows.length > 0;
     } catch (error) {
-      await log.error("Natural Nudges: failed to remove a custom episode", error, {
-        metadata: { serverId, episodeId },
+      await log.error("Natural Nudges: failed to remove a custom idle nudge", error, {
+        metadata: { serverId, idleNudgeId },
       });
       return false;
     }
   }
 
   /** Workspace import replaces the whole collection inside the caller's transaction. */
-  async replaceCustomEpisodes(serverId: number, episodes: CustomEpisodeInput[], client: SQL): Promise<void> {
-    await client`DELETE FROM server_natural_nudge_episodes WHERE server_id = ${serverId}`;
-    for (const episode of episodes) {
+  async replaceCustomIdleNudges(serverId: number, idleNudges: CustomIdleNudgeInput[], client: SQL): Promise<void> {
+    await client`DELETE FROM server_natural_nudge_custom_idle_nudges WHERE server_id = ${serverId}`;
+    for (const idleNudge of idleNudges) {
       await client`
-        INSERT INTO server_natural_nudge_episodes
+        INSERT INTO server_natural_nudge_custom_idle_nudges
           (server_id, category, title, brief, agenda_hint, prerequisites, recommended_tools, enabled)
-        VALUES (${serverId}, ${episode.category}, ${episode.title}, ${episode.brief}, ${episode.agenda_hint},
-          ${sql.array(episode.prerequisites, "TEXT")}, ${sql.array(episode.recommended_tools, "TEXT")},
-          ${episode.enabled})
+        VALUES (${serverId}, ${idleNudge.category}, ${idleNudge.title}, ${idleNudge.brief}, ${idleNudge.agenda_hint},
+          ${sql.array(idleNudge.prerequisites, "TEXT")}, ${sql.array(idleNudge.recommended_tools, "TEXT")},
+          ${idleNudge.enabled})
       `;
     }
   }
@@ -285,18 +285,18 @@ class NaturalNudgeRepository {
 
   async loadRuntimeState(serverId: number): Promise<NaturalNudgeRuntimeState> {
     const rows = await sql`
-      SELECT server_id, episode_jitter, consecutive_failures, stopped_at
+      SELECT server_id, idle_nudge_jitter, consecutive_failures, stopped_at
       FROM server_natural_nudge_runtime_state WHERE server_id = ${serverId}
     `;
     const [row] = parseRows(runtimeStateSchema, rows, "runtime state");
-    return row ?? { server_id: serverId, episode_jitter: 1, consecutive_failures: 0, stopped_at: null };
+    return row ?? { server_id: serverId, idle_nudge_jitter: 1, consecutive_failures: 0, stopped_at: null };
   }
 
-  async setEpisodeJitter(serverId: number, jitter: number): Promise<void> {
+  async setIdleNudgeJitter(serverId: number, jitter: number): Promise<void> {
     await sql`
-      INSERT INTO server_natural_nudge_runtime_state (server_id, episode_jitter)
+      INSERT INTO server_natural_nudge_runtime_state (server_id, idle_nudge_jitter)
       VALUES (${serverId}, ${jitter})
-      ON CONFLICT (server_id) DO UPDATE SET episode_jitter = EXCLUDED.episode_jitter, updated_at = NOW()
+      ON CONFLICT (server_id) DO UPDATE SET idle_nudge_jitter = EXCLUDED.idle_nudge_jitter, updated_at = NOW()
     `;
   }
 
@@ -313,7 +313,7 @@ class NaturalNudgeRepository {
           ELSE server_natural_nudge_runtime_state.stopped_at
         END,
         updated_at = NOW()
-      RETURNING server_id, episode_jitter, consecutive_failures, stopped_at
+      RETURNING server_id, idle_nudge_jitter, consecutive_failures, stopped_at
     `;
     return parseRows(runtimeStateSchema, rows, "runtime state")[0] ?? null;
   }
@@ -326,32 +326,32 @@ class NaturalNudgeRepository {
     `;
   }
 
-  /** Fires inside the lookback window plus the newest episodes beyond it, enough for every derived meter. */
+  /** Fires inside the lookback window plus the newest idle nudges beyond it, enough for every derived meter. */
   async loadFireHistory(
     serverId: number,
     since: Date,
-    latestEpisodeCount: number,
-  ): Promise<{ recent: NaturalNudgeFireRow[]; latestEpisodes: NaturalNudgeFireRow[] }> {
+    latestIdleNudgeCount: number,
+  ): Promise<{ recent: NaturalNudgeFireRow[]; latestIdleNudges: NaturalNudgeFireRow[] }> {
     const [recentRows, latestRows] = await Promise.all([
       sql`
-        SELECT fire_id, server_id, channel_disc_id, persona_id, mode, category, episode_key, target_user_id,
+        SELECT fire_id, server_id, channel_disc_id, persona_id, mode, category, idle_nudge_key, target_user_id,
           opener_message_disc_id, answered, fired_at
         FROM natural_nudge_fires
         WHERE server_id = ${serverId} AND fired_at >= ${since}
         ORDER BY fired_at DESC
       `,
       sql`
-        SELECT fire_id, server_id, channel_disc_id, persona_id, mode, category, episode_key, target_user_id,
+        SELECT fire_id, server_id, channel_disc_id, persona_id, mode, category, idle_nudge_key, target_user_id,
           opener_message_disc_id, answered, fired_at
         FROM natural_nudge_fires
-        WHERE server_id = ${serverId} AND mode = 'episode'
+        WHERE server_id = ${serverId} AND mode = 'idle'
         ORDER BY fired_at DESC
-        LIMIT ${latestEpisodeCount}
+        LIMIT ${latestIdleNudgeCount}
       `,
     ]);
     return {
       recent: parseRows(fireRowSchema, recentRows, "fire"),
-      latestEpisodes: parseRows(fireRowSchema, latestRows, "fire"),
+      latestIdleNudges: parseRows(fireRowSchema, latestRows, "fire"),
     };
   }
 
@@ -361,9 +361,9 @@ class NaturalNudgeRepository {
 
   /**
    * The fire row and its agendas land together, so a persona never pursues an agenda that has no fire.
-   * An Alter Talk scene passes one agenda per speaker, all anchored to the opener.
+   * A Play Scene passes one agenda per speaker, all anchored to the opener.
    */
-  async recordEpisodeFire(
+  async recordIdleNudgeFire(
     fire: NewFireRow,
     agendas: ReadonlyArray<{ personaId: number; agenda: string }>,
   ): Promise<boolean> {
@@ -371,10 +371,10 @@ class NaturalNudgeRepository {
       await sql.transaction(async (tx) => {
         await tx`
           INSERT INTO natural_nudge_fires
-            (server_id, channel_disc_id, persona_id, mode, category, episode_key, target_user_id,
+            (server_id, channel_disc_id, persona_id, mode, category, idle_nudge_key, target_user_id,
               opener_message_disc_id)
-          VALUES (${fire.serverId}, ${fire.channelDiscId}, ${fire.personaId}, 'episode', ${fire.category},
-            ${fire.episodeKey}, ${fire.targetUserId}, ${fire.openerMessageDiscId})
+          VALUES (${fire.serverId}, ${fire.channelDiscId}, ${fire.personaId}, 'idle', ${fire.category},
+            ${fire.idleNudgeKey}, ${fire.targetUserId}, ${fire.openerMessageDiscId})
         `;
         for (const { personaId, agenda } of agendas) {
           await tx`
@@ -392,20 +392,20 @@ class NaturalNudgeRepository {
       });
       return true;
     } catch (error) {
-      await log.error("Natural Nudges: failed to record an episode fire", error, {
+      await log.error("Natural Nudges: failed to record an idle nudge fire", error, {
         metadata: { serverId: fire.serverId, personaId: fire.personaId },
       });
       return false;
     }
   }
 
-  async recordChimeInFire(fire: NewChimeInFireRow): Promise<boolean> {
+  async recordActiveNudgeFire(fire: NewActiveNudgeFireRow): Promise<boolean> {
     try {
       await sql.transaction(async (tx) => {
         await tx`
           INSERT INTO natural_nudge_fires
             (server_id, channel_disc_id, persona_id, mode, opener_message_disc_id, detour)
-          VALUES (${fire.serverId}, ${fire.channelDiscId}, ${fire.personaId}, 'chime_in',
+          VALUES (${fire.serverId}, ${fire.channelDiscId}, ${fire.personaId}, 'active',
             ${fire.openerMessageDiscId}, ${fire.detour})
         `;
         await tx`
@@ -416,7 +416,7 @@ class NaturalNudgeRepository {
       });
       return true;
     } catch (error) {
-      await log.error("Natural Nudges: failed to record a Chime-in fire", error, {
+      await log.error("Natural Nudges: failed to record an Active Nudge fire", error, {
         metadata: { serverId: fire.serverId, personaId: fire.personaId },
       });
       return false;
@@ -424,14 +424,14 @@ class NaturalNudgeRepository {
   }
 
   /** Read fresh, never through `userCache`, so an opt-out made a moment ago already excludes the user. */
-  async listReachOutCandidates(args: {
+  async listPingUserCandidates(args: {
     serverId: number;
     personaId: number;
     personaLineageId: number;
     interactedSince: Date;
     memorySince: Date;
     onlyUserId?: number;
-  }): Promise<ReachOutCandidate[]> {
+  }): Promise<PingUserCandidate[]> {
     const rows = await sql`
       WITH turns_here AS (
         SELECT sc.user_id, SUM(sc.count) AS turns
@@ -467,7 +467,7 @@ class NaturalNudgeRepository {
             AND pub.user_disc_id = u.user_disc_id AND pub.expires_at > NOW()
         )
     `;
-    return parseRows(reachOutCandidateSchema, rows, "Reach-out candidate");
+    return parseRows(pingUserCandidateSchema, rows, "Ping User nudge candidate");
   }
 
   /** Agendas owned by one persona among the given messages, keyed by message ID. */

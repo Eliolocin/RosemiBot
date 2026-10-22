@@ -30,7 +30,7 @@ Server managers accept the Terms of Service during `/setup` and confirm there th
 
 ### 2.1) About You
 - **Identity and preferences:** your Discord user ID, language preference, and privacy opt-out status.
-- **Personalization settings:** the nickname you choose, pronouns, gender identity, forms of address, physical appearance tags, an impersonation prompt, a character reference image URL, timezone offset, message prefix/suffix overrides, and whether personas may ping you to start a conversation (Reach-outs).
+- **Personalization settings:** the nickname you choose, pronouns, gender identity, forms of address, physical appearance tags, an impersonation prompt, a character reference image URL, timezone offset, message prefix/suffix overrides, and whether personas may ping you to start a conversation (Pings from Personas).
 - **Naming preferences:** what each persona should call you.
 - **Personal memories:** facts you teach TomoriBot about yourself, or that it saves about you when personal memories are enabled.
 - **Spotlights:** the personal spotlight configuration you set per server.
@@ -43,7 +43,7 @@ Server managers accept the Terms of Service during `/setup` and confirm there th
 - **Emoji and sticker metadata:** Discord IDs, names, descriptions, and format flags. Image files themselves are not stored.
 - **Reminders:** the reminder text, the target user's Discord ID and nickname, the channel, the schedule, and any recurrence setting.
 - **Short-term memory summaries:** when short-term memory is enabled, TomoriBot writes short summaries derived from recent conversation into the database so it can stay contextual between Triggers. These are deleted after a period of inactivity (90 days by default).
-- **Natural Nudges records:** when a persona starts a conversation on its own, which persona spoke, in which channel, and whether anyone answered, plus the member it pinged for a Reach-out. Each record is kept for 30 days. The private goal given to the persona for that conversation, which can mention the member it pinged, is kept for up to 90 days.
+- **Natural Nudges records:** when a persona starts a conversation on its own, which persona spoke, in which channel, and whether anyone answered, plus the member it pinged. Each record is kept for 30 days. The private goal given to the persona for that conversation, which can mention the member it pinged, is kept for up to 90 days.
 - **Integration links:** Matrix room and channel links, and the URLs, discovered tool names, and encrypted authentication tokens for any MCP servers a manager connects.
 
 ### 2.3) Credentials
@@ -74,7 +74,7 @@ The following is read while TomoriBot is preparing a response and is not written
 
 ## 4) What We Send to Third Parties
 
-- **AI providers:** your prompt, the recent context described above, persona data, and any attachments are sent to the Provider configured for that Server or for you, such as Google, OpenRouter, NovelAI, or a custom endpoint. This covers text, vision, embedding, image, video, speech, and transcription requests. Before a persona pings someone for a Reach-out, the Server's model also receives that member's name, current activity, and recent personal memories, unless their privacy level hides those. Their terms, privacy policies, safety filters, and retention rules apply to that content, and we do not control them.
+- **AI providers:** your prompt, the recent context described above, persona data, and any attachments are sent to the Provider configured for that Server or for you, such as Google, OpenRouter, NovelAI, or a custom endpoint. This covers text, vision, embedding, image, video, speech, and transcription requests. Before a persona pings someone, the Server's model also receives that member's name, current activity, and recent personal memories, unless their privacy level hides those. Their terms, privacy policies, safety filters, and retention rules apply to that content, and we do not control them.
 - **Search providers:** if web search is enabled, search queries and relevant context go to the configured search provider.
 - **Matrix:** if a Matrix bridge is configured for a channel, messages cross between Discord and the linked Matrix room.
 
@@ -98,7 +98,7 @@ When TomoriBot is removed from a Server, that Server's data is kept so the confi
 | What you want | Command |
 |---|---|
 | Stop TomoriBot saving personal memories about you | `/personal config` |
-| Stop personas pinging you to start a conversation | `/personal config` > Privacy > Reach-outs |
+| Stop personas pinging you to start a conversation | `/personal config` > Privacy > Pings from Personas |
 | Review or remove individual personal memories | `/personal memories` |
 | Review or remove Server memories and documents | `/memories` |
 | Take a copy of your personal data | `/export personal config`, `/export personal memories` |
@@ -112,7 +112,7 @@ When TomoriBot is removed from a Server, that Server's data is kept so the confi
 - Persona conditioning you contributed through `/reward` and `/punish` shapes how a persona behaves for everyone in that Server, so removing it changes shared behavior.
 - Server memories you taught and documents you uploaded belong to the Server and are kept, with your authorship removed. If one of them describes you, ask a manager to remove it with `/memories`.
 
-Your opt-out settings deliberately survive erasure, so erasing your data does not quietly re-enable collection about you. Your Reach-out choice is a personalization setting rather than a collection opt-out, so `/personal nuke` erases it too; turn Reach-outs off again afterwards if you still want them off.
+Your opt-out settings deliberately survive erasure, so erasing your data does not quietly re-enable collection about you. Your Pings from Personas choice is a personalization setting rather than a collection opt-out, so `/personal nuke` erases it too; turn Pings from Personas off again afterwards if you still want them off.
 
 For anything these commands cannot reach, contact us using Section 9 and we will handle it manually.
 

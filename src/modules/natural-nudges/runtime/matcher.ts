@@ -138,7 +138,7 @@ async function matchWithLlm(
         temperature: 0,
         maxOutputTokens,
         thinkingLevel: "none",
-        schemaName: "natural_nudge_chime_in_match",
+        schemaName: "natural_nudge_active_match",
         privateOutput: true,
         abortSignal,
         onUsage: (reported) => {
@@ -172,7 +172,7 @@ async function matchWithLlm(
  * One matcher call over the channel's recent window. Both backends are argmax over the interests plus
  * `none`; any answer that cannot be trusted reads as `none`, so doubt never fires.
  */
-export async function matchChimeIn(args: {
+export async function matchActiveNudge(args: {
   state: TomoriState;
   backend: MatcherBackend;
   options: readonly MatcherOption[];

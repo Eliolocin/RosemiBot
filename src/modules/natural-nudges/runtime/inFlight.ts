@@ -1,4 +1,4 @@
-/** One nudge in flight per server across episodes and Chime-ins, so two never race for the same moment. */
+/** One nudge in flight per server across idle nudges and Active Nudges, so two never race for the same moment. */
 const busyServers = new Set<number>();
 
 export function isNudgeServerBusy(serverId: number): boolean {

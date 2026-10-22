@@ -15,22 +15,22 @@ import type { GlobalRoutableInteraction } from "@/utils/discord/interactions/rou
 import { buildConfigModalFieldId } from "@/utils/discord/ui/configModals";
 import { CONFIG_MODEL_SELECT_FIELD } from "@/utils/discord/ui/configModelModals";
 import { localizer } from "@/utils/text/localizer";
-import type { EpisodeFrequencyLevel } from "@/modules/natural-nudges/db/types";
+import type { IdleNudgeFrequencyLevel } from "@/modules/natural-nudges/db/types";
 import {
   computeInterestFingerprint,
   type NaturalNudgesPanelState,
   type NudgeWriteResult,
 } from "@/modules/natural-nudges/discord/operations";
 import {
-  buildEpisodeModal,
+  buildIdleNudgeModal,
   buildInterestModal,
   buildPlannerModelModal,
   NUDGE_ADD_VALUE,
   NUDGE_CLEAR_MODEL_VALUE,
-  NUDGE_EPISODE_AGENDA_FIELD,
-  NUDGE_EPISODE_BRIEF_FIELD,
-  NUDGE_EPISODE_CATEGORY_FIELD,
-  NUDGE_EPISODE_TITLE_FIELD,
+  NUDGE_IDLE_NUDGE_AGENDA_FIELD,
+  NUDGE_IDLE_NUDGE_BRIEF_FIELD,
+  NUDGE_IDLE_NUDGE_CATEGORY_FIELD,
+  NUDGE_IDLE_NUDGE_TITLE_FIELD,
   NUDGE_INTEREST_DESCRIPTION_FIELD,
   NUDGE_INTEREST_LABEL_FIELD,
 } from "@/modules/natural-nudges/discord/panel";
@@ -41,11 +41,11 @@ export const NUDGE_STRING_SELECT_ACTIONS: ReadonlySet<ConfigAction> = new Set<Co
   "nudge-talk-select",
   "nudge-interest-select",
   "nudge-provider",
-  "nudge-frequency-select",
-  "nudge-chime-in-frequency-select",
-  "nudge-episode-select",
-  "nudge-episode-prereqs-select",
-  "nudge-episode-tools-select",
+  "nudge-idle-nudges-frequency-select",
+  "nudge-active-nudges-frequency-select",
+  "nudge-idle-select",
+  "nudge-idle-prereqs-select",
+  "nudge-idle-tools-select",
 ]);
 
 export const NUDGE_CHANNEL_SELECT_ACTIONS: ReadonlySet<ConfigAction> = new Set<ConfigAction>(["nudge-channels-select"]);
@@ -54,8 +54,8 @@ export const NUDGE_MODAL_SUBMIT_ACTIONS: ReadonlySet<ConfigAction> = new Set<Con
   "nudge-interest-add-submit",
   "nudge-interest-edit-submit",
   "nudge-model-submit",
-  "nudge-episode-add-submit",
-  "nudge-episode-edit-submit",
+  "nudge-idle-add-submit",
+  "nudge-idle-edit-submit",
 ]);
 
 function selectedValues(interaction: GlobalRoutableInteraction): string[] {
@@ -81,8 +81,8 @@ export async function handleNudgeModalOpen(
     (route.action === "nudge-interest-select" && value === NUDGE_ADD_VALUE) ||
     route.action === "nudge-interest-edit-open" ||
     (route.action === "nudge-provider" && value !== undefined && value !== NUDGE_CLEAR_MODEL_VALUE) ||
-    (route.action === "nudge-episode-select" && value === NUDGE_ADD_VALUE) ||
-    route.action === "nudge-episode-edit-open";
+    (route.action === "nudge-idle-select" && value === NUDGE_ADD_VALUE) ||
+    route.action === "nudge-idle-edit-open";
   if (!opensModal) return false;
 
   const locale = route.locale;
@@ -133,12 +133,12 @@ export async function handleNudgeModalOpen(
     );
     return true;
   }
-  if (route.action === "nudge-episode-select") {
-    await dependencies.showModal(interaction, buildEpisodeModal(locale, nonce, null));
+  if (route.action === "nudge-idle-select") {
+    await dependencies.showModal(interaction, buildIdleNudgeModal(locale, nonce, null));
     return true;
   }
-  if (route.action === "nudge-episode-edit-open") {
-    const view = await nudges.loadEpisodes(serverId);
+  if (route.action === "nudge-idle-edit-open") {
+    const view = await nudges.loadIdleNudges(serverId);
     const entry = view.entries[route.index];
     if (view.fingerprint !== route.fp || !entry?.custom) {
       await deny("commands.config.panel.stale_detail");
@@ -146,7 +146,7 @@ export async function handleNudgeModalOpen(
     }
     await dependencies.showModal(
       interaction,
-      buildEpisodeModal(locale, nonce, { index: route.index, fp: route.fp }, entry),
+      buildIdleNudgeModal(locale, nonce, { index: route.index, fp: route.fp }, entry),
     );
     return true;
   }
@@ -208,7 +208,7 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
       dependencies,
     });
   const paintPlugins = (
-    page: "natural-nudges" | "nudge-episodes",
+    page: "natural-nudges" | "idle-nudges",
     state: NaturalNudgesPanelState = {},
     receipt?: PanelReceipt,
   ) =>
@@ -284,10 +284,10 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
       await paintPersona(route.personaId, {}, writeReceipt(locale, result));
       return true;
     }
-    case "nudge-episodes-set": {
+    case "nudge-idle-nudges-set": {
       const result = await write(
-        () => ops.setEpisodesEnabled(serverId, route.enabled),
-        "server-config.workspace.natural-nudges.set",
+        () => ops.setIdleNudgesEnabled(serverId, route.enabled),
+        "server-config.workspace.natural-nudge-idle-nudges.set",
       );
       await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
       return true;
@@ -325,152 +325,156 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
       await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
       return true;
     }
-    case "nudge-frequency-select": {
+    case "nudge-idle-nudges-frequency-select": {
       const level = parseIndex(values[0]);
       const result =
         level === null || level > 3
           ? "stale"
           : await write(
-              () => ops.setFrequency(serverId, level as EpisodeFrequencyLevel),
-              "server-config.workspace.natural-nudge-frequency.set",
+              () => ops.setFrequency(serverId, level as IdleNudgeFrequencyLevel),
+              "server-config.workspace.natural-nudge-idle-nudges-frequency.set",
             );
       await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
       return true;
     }
-    case "nudge-chime-in-set": {
+    case "nudge-active-nudges-set": {
       const result = await write(
-        () => ops.setChimeInEnabled(serverId, route.enabled),
-        "server-config.workspace.natural-nudge-chime-ins.set",
+        () => ops.setActiveNudgesEnabled(serverId, route.enabled),
+        "server-config.workspace.natural-nudge-active-nudges.set",
       );
       await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
       return true;
     }
-    case "nudge-chime-in-frequency-select": {
+    case "nudge-active-nudges-frequency-select": {
       const level = parseIndex(values[0]);
       const result =
         level === null || level > 3
           ? "stale"
           : await write(
-              () => ops.setChimeInFrequency(serverId, level as EpisodeFrequencyLevel),
-              "server-config.workspace.natural-nudge-chime-in-frequency.set",
+              () => ops.setActiveNudgesFrequency(serverId, level as IdleNudgeFrequencyLevel),
+              "server-config.workspace.natural-nudge-active-nudges-frequency.set",
             );
       await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
       return true;
     }
-    case "nudge-episode-select": {
+    case "nudge-idle-select": {
       const index = parseIndex(values[0]);
-      const view = await dependencies.naturalNudges.loadEpisodes(serverId);
+      const view = await dependencies.naturalNudges.loadIdleNudges(serverId);
       if (index === null || view.fingerprint !== route.fp || !view.entries[index]) {
-        await paintPlugins("nudge-episodes", { episodes: view, episodeStart: route.start }, staleReceipt(locale));
+        await paintPlugins("idle-nudges", { idleNudges: view, idleNudgeStart: route.start }, staleReceipt(locale));
         return true;
       }
-      await paintPlugins("nudge-episodes", { episodes: view, episodeStart: route.start, selectedEpisodeIndex: index });
+      await paintPlugins("idle-nudges", {
+        idleNudges: view,
+        idleNudgeStart: route.start,
+        selectedIdleNudgeIndex: index,
+      });
       return true;
     }
-    case "nudge-episode-page": {
-      await paintPlugins("nudge-episodes", { episodeStart: route.start });
+    case "nudge-idle-page": {
+      await paintPlugins("idle-nudges", { idleNudgeStart: route.start });
       return true;
     }
-    case "nudge-episode-add-submit": {
+    case "nudge-idle-add-submit": {
       const category = dependencies.takeSelectValue(
         interaction.id,
-        buildConfigModalFieldId(NUDGE_EPISODE_CATEGORY_FIELD, route.nonce),
+        buildConfigModalFieldId(NUDGE_IDLE_NUDGE_CATEGORY_FIELD, route.nonce),
       );
       const result = await write(
         () =>
-          ops.addCustomEpisode(serverId, {
+          ops.addCustomIdleNudge(serverId, {
             category: category ?? "",
-            title: field(NUDGE_EPISODE_TITLE_FIELD),
-            brief: field(NUDGE_EPISODE_BRIEF_FIELD),
-            agendaHint: field(NUDGE_EPISODE_AGENDA_FIELD),
+            title: field(NUDGE_IDLE_NUDGE_TITLE_FIELD),
+            brief: field(NUDGE_IDLE_NUDGE_BRIEF_FIELD),
+            agendaHint: field(NUDGE_IDLE_NUDGE_AGENDA_FIELD),
           }),
-        "server-config.workspace.nudge-episode.add",
+        "server-config.workspace.nudge-idle-nudge.add",
       );
-      const view = await dependencies.naturalNudges.loadEpisodes(serverId);
+      const view = await dependencies.naturalNudges.loadIdleNudges(serverId);
       const added = result === "success" ? view.entries.length - 1 : undefined;
       await paintPlugins(
-        "nudge-episodes",
-        { episodes: view, episodeStart: added ?? 0, selectedEpisodeIndex: added },
+        "idle-nudges",
+        { idleNudges: view, idleNudgeStart: added ?? 0, selectedIdleNudgeIndex: added },
         writeReceipt(locale, result),
       );
       return true;
     }
-    case "nudge-episode-toggle": {
+    case "nudge-idle-toggle": {
       const result = await write(
-        () => ops.setEpisodeEnabled(serverId, route.index, route.fp, route.enabled),
-        "server-config.workspace.nudge-episode.set",
+        () => ops.setIdleNudgeEnabled(serverId, route.index, route.fp, route.enabled),
+        "server-config.workspace.nudge-idle-nudge.set",
       );
       await paintPlugins(
-        "nudge-episodes",
-        { episodeStart: route.index, selectedEpisodeIndex: result === "stale" ? undefined : route.index },
+        "idle-nudges",
+        { idleNudgeStart: route.index, selectedIdleNudgeIndex: result === "stale" ? undefined : route.index },
         writeReceipt(locale, result),
       );
       return true;
     }
-    case "nudge-episode-edit-submit": {
+    case "nudge-idle-edit-submit": {
       const category = dependencies.takeSelectValue(
         interaction.id,
-        buildConfigModalFieldId(NUDGE_EPISODE_CATEGORY_FIELD, route.nonce),
+        buildConfigModalFieldId(NUDGE_IDLE_NUDGE_CATEGORY_FIELD, route.nonce),
       );
       const result = await write(
         () =>
-          ops.updateCustomEpisodeText(serverId, route.index, route.fp, {
+          ops.updateCustomIdleNudgeText(serverId, route.index, route.fp, {
             category: category ?? "",
-            title: field(NUDGE_EPISODE_TITLE_FIELD),
-            brief: field(NUDGE_EPISODE_BRIEF_FIELD),
-            agendaHint: field(NUDGE_EPISODE_AGENDA_FIELD),
+            title: field(NUDGE_IDLE_NUDGE_TITLE_FIELD),
+            brief: field(NUDGE_IDLE_NUDGE_BRIEF_FIELD),
+            agendaHint: field(NUDGE_IDLE_NUDGE_AGENDA_FIELD),
           }),
-        "server-config.workspace.nudge-episode.edit",
+        "server-config.workspace.nudge-idle-nudge.edit",
       );
       await paintPlugins(
-        "nudge-episodes",
-        { episodeStart: route.index, selectedEpisodeIndex: result === "stale" ? undefined : route.index },
+        "idle-nudges",
+        { idleNudgeStart: route.index, selectedIdleNudgeIndex: result === "stale" ? undefined : route.index },
         writeReceipt(locale, result),
       );
       return true;
     }
-    case "nudge-episode-prereqs-select":
-    case "nudge-episode-tools-select": {
+    case "nudge-idle-prereqs-select":
+    case "nudge-idle-tools-select": {
       const patch =
-        route.action === "nudge-episode-prereqs-select" ? { prerequisites: values } : { recommendedTools: values };
+        route.action === "nudge-idle-prereqs-select" ? { prerequisites: values } : { recommendedTools: values };
       const result = await write(
-        () => ops.setCustomEpisodeLists(serverId, route.index, route.fp, patch),
-        "server-config.workspace.nudge-episode.edit",
+        () => ops.setCustomIdleNudgeLists(serverId, route.index, route.fp, patch),
+        "server-config.workspace.nudge-idle-nudge.edit",
       );
       await paintPlugins(
-        "nudge-episodes",
-        { episodeStart: route.index, selectedEpisodeIndex: result === "stale" ? undefined : route.index },
+        "idle-nudges",
+        { idleNudgeStart: route.index, selectedIdleNudgeIndex: result === "stale" ? undefined : route.index },
         writeReceipt(locale, result),
       );
       return true;
     }
-    case "nudge-episode-remove-view": {
-      const view = await dependencies.naturalNudges.loadEpisodes(serverId);
+    case "nudge-idle-remove-view": {
+      const view = await dependencies.naturalNudges.loadIdleNudges(serverId);
       const valid = view.fingerprint === route.fp && Boolean(view.entries[route.index]?.custom);
       await paintPlugins(
-        "nudge-episodes",
+        "idle-nudges",
         valid
           ? {
-              episodes: view,
-              episodeStart: route.index,
-              selectedEpisodeIndex: route.index,
+              idleNudges: view,
+              idleNudgeStart: route.index,
+              selectedIdleNudgeIndex: route.index,
               removeConfirmNonce: dependencies.createNonce(),
             }
-          : { episodes: view },
+          : { idleNudges: view },
         valid ? undefined : staleReceipt(locale),
       );
       return true;
     }
-    case "nudge-episode-remove-confirm": {
+    case "nudge-idle-remove-confirm": {
       const result = await write(
-        () => ops.removeCustomEpisode(serverId, route.index, route.fp),
-        "server-config.workspace.nudge-episode.remove",
+        () => ops.removeCustomIdleNudge(serverId, route.index, route.fp),
+        "server-config.workspace.nudge-idle-nudge.remove",
       );
-      await paintPlugins("nudge-episodes", {}, writeReceipt(locale, result));
+      await paintPlugins("idle-nudges", {}, writeReceipt(locale, result));
       return true;
     }
-    case "nudge-episode-remove-cancel": {
-      await paintPlugins("nudge-episodes", { episodeStart: route.index, selectedEpisodeIndex: route.index });
+    case "nudge-idle-remove-cancel": {
+      await paintPlugins("idle-nudges", { idleNudgeStart: route.index, selectedIdleNudgeIndex: route.index });
       return true;
     }
     default:

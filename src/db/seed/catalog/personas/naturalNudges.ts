@@ -6,7 +6,7 @@ export interface PresetNaturalNudgeDefaults {
 }
 
 /**
- * Keyed by lineage so every language row shares one set; Chime-in Decision accuracy was measured
+ * Keyed by lineage so every language row shares one set; Active Nudge Decision accuracy was measured
  * against this interest wording.
  */
 export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNaturalNudgeDefaults>> = {

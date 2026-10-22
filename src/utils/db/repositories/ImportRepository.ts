@@ -2,7 +2,7 @@ import { validateDraftingImportReferences } from "@/utils/discord/interactions/r
 import { loadStructuredOutputModelGroups } from "@/utils/discord/interactions/configModelOperations";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import { invalidateNaturalNudgeConfigCache } from "@/modules/natural-nudges/runtime/configCache";
-import { isKnownPrerequisite, isNudgeToolName } from "@/modules/natural-nudges/runtime/episodes";
+import { isKnownPrerequisite, isNudgeToolName } from "@/modules/natural-nudges/runtime/idleNudges";
 import { sql } from "@/utils/db/client";
 import type { SQL } from "bun";
 import { log } from "@/utils/misc/logger";
@@ -341,15 +341,16 @@ function getStmCategories(value: unknown): Array<{ position: number; label: stri
   });
 }
 
-/** The planner model must be offered to this workspace and every custom episode must name known checks. */
+/** The planner model must be offered to this workspace and every custom idle nudge must name known checks. */
 async function validateNudgesImport(
   serverId: number,
   nudges: NonNullable<WorkspaceConfigExportData["nudges"]>,
 ): Promise<boolean> {
-  const episodes = nudges.custom_episodes ?? [];
+  const idleNudges = nudges.custom_idle_nudges ?? [];
   if (
-    !episodes.every(
-      (episode) => episode.prerequisites.every(isKnownPrerequisite) && episode.recommended_tools.every(isNudgeToolName),
+    !idleNudges.every(
+      (idleNudge) =>
+        idleNudge.prerequisites.every(isKnownPrerequisite) && idleNudge.recommended_tools.every(isNudgeToolName),
     )
   )
     return false;
@@ -363,11 +364,12 @@ async function importNudgesSection(
   serverId: number,
   nudges: NonNullable<WorkspaceConfigExportData["nudges"]>,
 ): Promise<void> {
-  const { custom_episodes: customEpisodes, ...settings } = nudges;
+  const { custom_idle_nudges: customIdleNudges, ...settings } = nudges;
   if (!(await naturalNudgeRepository.saveServerConfig(serverId, settings, tx))) {
     throw new Error("Natural Nudges settings import failed");
   }
-  if (customEpisodes !== undefined) await naturalNudgeRepository.replaceCustomEpisodes(serverId, customEpisodes, tx);
+  if (customIdleNudges !== undefined)
+    await naturalNudgeRepository.replaceCustomIdleNudges(serverId, customIdleNudges, tx);
 }
 
 /**

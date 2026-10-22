@@ -971,14 +971,16 @@ export class ExportRepository {
   }
 
   private async loadNudgesSection(serverId: number) {
-    const [config, customEpisodes] = await Promise.all([
+    const [config, customIdleNudges] = await Promise.all([
       naturalNudgeRepository.loadServerConfig(serverId, this.database),
-      naturalNudgeRepository.listCustomEpisodes(serverId, this.database),
+      naturalNudgeRepository.listCustomIdleNudges(serverId, this.database),
     ]);
     const { server_id: _serverId, channel_disc_ids: _channels, ...portable } = config;
     return {
       ...portable,
-      custom_episodes: customEpisodes.map(({ episode_id: _episodeId, server_id: _owner, ...episode }) => episode),
+      custom_idle_nudges: customIdleNudges.map(
+        ({ custom_idle_nudge_id: _idleNudgeId, server_id: _owner, ...idleNudge }) => idleNudge,
+      ),
     };
   }
 

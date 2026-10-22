@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import type { NaturalNudgeFireRow } from "@/modules/natural-nudges/db/types";
 import {
-  computeEpisodeDueAt,
+  computeIdleNudgeDueAt,
   computeHeat,
   countUnansweredStreak,
   drawRaffle,
-  episodesPerDay,
+  idleNudgesPerDay,
   isWithinWakingHours,
   resolveWakingHours,
   restedShare,
@@ -32,9 +32,9 @@ function fire(overrides: Partial<NaturalNudgeFireRow>): NaturalNudgeFireRow {
     server_id: 1,
     channel_disc_id: "100000000000000001",
     persona_id: 1,
-    mode: "episode",
-    category: "new_topic",
-    episode_key: "new_topic.interest_musing",
+    mode: "idle",
+    category: "start_topic",
+    idle_nudge_key: "start_topic.interest_musing",
     target_user_id: null,
     opener_message_disc_id: "200000000000000001",
     answered: false,
@@ -65,7 +65,7 @@ describe("heat", () => {
     expect(threeDaysOld / today).toBeCloseTo(0.5, 5);
   });
 
-  it("falls below the episode floor after a daily server goes quiet for two weeks", () => {
+  it("falls below the idle nudge floor after a daily server goes quiet for two weeks", () => {
     expect(
       computeHeat(
         dailyCounts((age) => (age >= 14 ? 20 : 0)),
@@ -75,18 +75,18 @@ describe("heat", () => {
   });
 });
 
-describe("episodes per day", () => {
+describe("idle nudges per day", () => {
   it("matches the launch examples at the Gentle level", () => {
-    expect(episodesPerDay(20, 1)).toBeCloseTo(1.33, 2);
-    expect(episodesPerDay(6, 1) * 7).toBeCloseTo(2.8, 1);
-    expect(episodesPerDay(0.5, 1)).toBe(0);
+    expect(idleNudgesPerDay(20, 1)).toBeCloseTo(1.33, 2);
+    expect(idleNudgesPerDay(6, 1) * 7).toBeCloseTo(2.8, 1);
+    expect(idleNudgesPerDay(0.5, 1)).toBe(0);
   });
 
   it("scales with the level and stops at the level's daily cap", () => {
-    expect(episodesPerDay(20, 0)).toBeCloseTo(0.67, 2);
-    expect(episodesPerDay(20, 2)).toBe(2);
-    expect(episodesPerDay(20, 3)).toBeCloseTo(3.33, 2);
-    expect(episodesPerDay(60, 1)).toBe(3);
+    expect(idleNudgesPerDay(20, 0)).toBeCloseTo(0.67, 2);
+    expect(idleNudgesPerDay(20, 2)).toBe(2);
+    expect(idleNudgesPerDay(20, 3)).toBeCloseTo(3.33, 2);
+    expect(idleNudgesPerDay(60, 1)).toBe(3);
   });
 
   it("caps each level at its own daily ceiling", () => {
@@ -96,33 +96,35 @@ describe("episodes per day", () => {
       [2, 5],
       [3, 8],
     ] as const;
-    for (const [level, cap] of caps) expect(episodesPerDay(1_000, level)).toBe(cap);
+    for (const [level, cap] of caps) expect(idleNudgesPerDay(1_000, level)).toBe(cap);
   });
 });
 
 describe("due time", () => {
   const last = new Date("2026-03-10T00:00:00.000Z");
 
-  it("spreads the episode budget over sixteen waking hours", () => {
-    const dueAt = computeEpisodeDueAt({ lastEpisodeAt: last, perDay: 2, jitter: 1, unansweredStreak: 0 });
+  it("spreads the idle nudge budget over sixteen waking hours", () => {
+    const dueAt = computeIdleNudgeDueAt({ lastIdleNudgeAt: last, perDay: 2, jitter: 1, unansweredStreak: 0 });
     expect(dueAt?.getTime()).toBe(last.getTime() + 8 * HOUR);
   });
 
-  it("triples the interval for each unanswered episode in the streak", () => {
-    const one = computeEpisodeDueAt({ lastEpisodeAt: last, perDay: 2, jitter: 1, unansweredStreak: 1 });
-    const two = computeEpisodeDueAt({ lastEpisodeAt: last, perDay: 2, jitter: 1, unansweredStreak: 2 });
+  it("triples the interval for each unanswered idle nudge in the streak", () => {
+    const one = computeIdleNudgeDueAt({ lastIdleNudgeAt: last, perDay: 2, jitter: 1, unansweredStreak: 1 });
+    const two = computeIdleNudgeDueAt({ lastIdleNudgeAt: last, perDay: 2, jitter: 1, unansweredStreak: 2 });
     expect(one?.getTime()).toBe(last.getTime() + 24 * HOUR);
     expect(two?.getTime()).toBe(last.getTime() + 72 * HOUR);
   });
 
-  it("is due at once for a first episode and never without a budget", () => {
-    expect(computeEpisodeDueAt({ lastEpisodeAt: null, perDay: 1, jitter: 1, unansweredStreak: 0 })?.getTime()).toBe(0);
-    expect(computeEpisodeDueAt({ lastEpisodeAt: last, perDay: 0, jitter: 1, unansweredStreak: 0 })).toBeNull();
+  it("is due at once for a first idle nudge and never without a budget", () => {
+    expect(computeIdleNudgeDueAt({ lastIdleNudgeAt: null, perDay: 1, jitter: 1, unansweredStreak: 0 })?.getTime()).toBe(
+      0,
+    );
+    expect(computeIdleNudgeDueAt({ lastIdleNudgeAt: last, perDay: 0, jitter: 1, unansweredStreak: 0 })).toBeNull();
   });
 });
 
 describe("unanswered streak", () => {
-  it("counts consecutive unanswered inviting episodes until an answered one", () => {
+  it("counts consecutive unanswered inviting idle nudges until an answered one", () => {
     const fires = [
       fire({ fire_id: 3, fired_at: new Date(NOW.getTime() - 1 * DAY) }),
       fire({ fire_id: 2, fired_at: new Date(NOW.getTime() - 2 * DAY) }),
@@ -131,7 +133,7 @@ describe("unanswered streak", () => {
     expect(countUnansweredStreak(fires, null)).toBe(2);
   });
 
-  it("restarts once the server talks to Tomori after an episode", () => {
+  it("restarts once the server talks to Tomori after an idle nudge", () => {
     const fires = [
       fire({ fire_id: 2, fired_at: new Date(NOW.getTime() - 1 * DAY) }),
       fire({ fire_id: 1, fired_at: new Date(NOW.getTime() - 3 * DAY) }),
@@ -139,8 +141,8 @@ describe("unanswered streak", () => {
     expect(countUnansweredStreak(fires, new Date(NOW.getTime() - 2 * DAY))).toBe(1);
   });
 
-  it("skips Alter Talk, which never invites an answer", () => {
-    const fires = [fire({ fire_id: 2, category: "alter_talk" }), fire({ fire_id: 1 })];
+  it("skips Play Scene, which never invites an answer", () => {
+    const fires = [fire({ fire_id: 2, category: "play_scene" }), fire({ fire_id: 1 })];
     expect(countUnansweredStreak(fires, null)).toBe(1);
   });
 });

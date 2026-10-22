@@ -124,7 +124,7 @@ export interface BuildContextParams {
   preloadedCustomExpressions?: CustomExpressionRow[] | null;
   isUserImpersonation?: boolean;
   impersonatedUserId?: string;
-  /** Whose short-term memory to read when it is not the trigger message's author, such as a Reach-out target. */
+  /** Whose short-term memory to read when it is not the trigger message's author, such as a Ping User target. */
   shortTermMemoryUserId?: string;
   impersonatedUserNickname?: string;
   impersonatedUserPrompt?: string | null;

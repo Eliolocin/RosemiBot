@@ -72,7 +72,7 @@ Auto-trigger lets TomoriBot join conversations without being directly mentioned:
 - `/config` > Channels > Auto-Trigger (or `/server autotrigger channels`): choose channels where
   she responds autonomously.
 - `/config` > Channels > Auto-Trigger (or `/server autotrigger threshold`): set how many messages
-  must accumulate before she chimes in.
+  must accumulate before she joins in.
 - `/config` > Behavior > Trigger Behavior: configure timer-based random triggers for a channel.
 
 Use auto-trigger in dedicated casual channels where you want the bot to participate naturally.

@@ -423,7 +423,7 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
   if (deliberateToolModeActive && incoming.naturalNudge) {
     for (const toolName of incoming.naturalNudge.toolNames) {
       deliberateToolAllowedNames.push(toolName);
-      deliberateToolTriggerMatches.push({ toolName, trigger: "natural nudge episode", source: "built-in" });
+      deliberateToolTriggerMatches.push({ toolName, trigger: "natural idle nudge", source: "built-in" });
     }
   }
 

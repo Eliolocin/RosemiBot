@@ -13,7 +13,7 @@ import { userNamingRepository } from "@/utils/db/repositories/UserNamingReposito
 import { createPersona, createUserRow } from "../../helpers/fixtures";
 
 const BYSTANDER = createUserRow({ user_id: 77, user_disc_id: "fixture-juno", language_pref: "ja" });
-const REACH_OUT_TARGET = createUserRow({ user_id: 78, user_disc_id: "fixture-mirri", user_nickname: "Mirri" });
+const PING_USER_TARGET = createUserRow({ user_id: 78, user_disc_id: "fixture-mirri", user_nickname: "Mirri" });
 
 const spies: Array<{ mockRestore: () => void }> = [];
 afterEach(() => {
@@ -27,7 +27,7 @@ afterEach(() => {
 async function planWithAnchorAuthor(options: {
   borrowsTriggerMessage?: boolean;
   rejectedByRoleWhitelist: boolean;
-  reachOutTargetId?: string;
+  pingUserTargetId?: string;
   completePlanning?: boolean;
 }): Promise<{
   credentialUsers: Array<number | null | undefined>;
@@ -41,7 +41,7 @@ async function planWithAnchorAuthor(options: {
     preferredLocale: "en-US",
     members: {
       fetch: async (id: string) =>
-        id === REACH_OUT_TARGET.user_disc_id ? { displayName: "Mirri (server)", user: { username: "mirri" } } : null,
+        id === PING_USER_TARGET.user_disc_id ? { displayName: "Mirri (server)", user: { username: "mirri" } } : null,
     },
   };
   const client = { user: { id: "fixture-bot" } };
@@ -63,7 +63,7 @@ async function planWithAnchorAuthor(options: {
     selectedPersonaId: 5,
     shouldSurfaceUserErrors: false,
     borrowsTriggerMessage: options.borrowsTriggerMessage,
-    naturalNudge: options.reachOutTargetId ? { toolNames: [], targetUserDiscId: options.reachOutTargetId } : undefined,
+    naturalNudge: options.pingUserTargetId ? { toolNames: [], targetUserDiscId: options.pingUserTargetId } : undefined,
   });
   const lockedTurn = {
     channelId: channel.id,
@@ -86,7 +86,7 @@ async function planWithAnchorAuthor(options: {
   spies.push(
     spyOn(tomoriStateCache, "getCachedAllPersonas").mockResolvedValue([persona]),
     spyOn(userCache, "getCachedUserRow").mockImplementation(async (id) =>
-      id === REACH_OUT_TARGET.user_disc_id ? REACH_OUT_TARGET : BYSTANDER,
+      id === PING_USER_TARGET.user_disc_id ? PING_USER_TARGET : BYSTANDER,
     ),
     spyOn(userCache, "getCachedBlacklistStatus").mockResolvedValue(false),
     spyOn(userCache, "getCachedPrivacyLevel").mockResolvedValue(0),
@@ -139,15 +139,15 @@ describe("borrowed-trigger turn planning (random triggers and Natural Nudges)", 
     );
   });
 
-  it("names a Reach-out's target as the triggerer while the server key still pays", async () => {
-    const reachOut = await planWithAnchorAuthor({
+  it("names a Ping User nudge's target as the triggerer while the server key still pays", async () => {
+    const pingUser = await planWithAnchorAuthor({
       borrowsTriggerMessage: true,
       rejectedByRoleWhitelist: false,
-      reachOutTargetId: REACH_OUT_TARGET.user_disc_id,
+      pingUserTargetId: PING_USER_TARGET.user_disc_id,
       completePlanning: true,
     });
-    expect(reachOut.triggererNames).toEqual(["Mirri"]);
-    expect(reachOut.credentialUsers).toEqual([null]);
+    expect(pingUser.triggererNames).toEqual(["Mirri"]);
+    expect(pingUser.credentialUsers).toEqual([null]);
 
     const otherNudge = await planWithAnchorAuthor({
       borrowsTriggerMessage: true,

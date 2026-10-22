@@ -1224,19 +1224,19 @@ ${localizer(locale, "commands.personal.config.stm_count_label", { count: stmCoun
       },
       {
         type: ComponentType.TextDisplay,
-        content: `**${localizer(locale, "commands.personal.config.reach_out_section_title")}**`,
+        content: `**${localizer(locale, "commands.personal.config.ping_user_section_title")}**`,
       },
       buildStateControlRow(
         [
           {
             value: false,
             label: localizer(locale, "commands.personal.config.mode_off"),
-            customId: buildPersonalConfigRouteId({ action: "reach-out-set", locale, enabled: false }),
+            customId: buildPersonalConfigRouteId({ action: "ping-user-set", locale, enabled: false }),
           },
           {
             value: true,
             label: localizer(locale, "commands.personal.config.mode_on"),
-            customId: buildPersonalConfigRouteId({ action: "reach-out-set", locale, enabled: true }),
+            customId: buildPersonalConfigRouteId({ action: "ping-user-set", locale, enabled: true }),
           },
         ],
         !user.natural_nudge_opt_out,
@@ -1249,8 +1249,8 @@ ${localizer(locale, "commands.personal.config.stm_count_label", { count: stmCoun
           localizer(
             locale,
             user.natural_nudge_opt_out
-              ? "commands.personal.config.reach_out_off"
-              : "commands.personal.config.reach_out_on",
+              ? "commands.personal.config.ping_user_off"
+              : "commands.personal.config.ping_user_on",
           ),
         ),
       },

@@ -53,7 +53,7 @@ export default {
     section_access_label: "Access",
     section_access_description: "Server access and permission settings.",
     section_nudges_label: "Natural Nudges",
-    section_nudges_description: "Natural Nudges settings and custom episodes, without allowed channels.",
+    section_nudges_description: "Natural Nudges settings and custom idle nudges, without allowed channels.",
     section_profile_label: "Profile",
     section_profile_description: "Personal profile settings.",
     section_privacy_label: "Privacy",

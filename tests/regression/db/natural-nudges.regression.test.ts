@@ -4,7 +4,7 @@ import { NATURAL_NUDGE_FAILURE_STOP_THRESHOLD } from "@/modules/natural-nudges/r
 import { loadPersonaAgendas } from "@/modules/natural-nudges/runtime/agendas";
 import { defaultServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
 import { resolveEffectiveChannelIds } from "@/modules/natural-nudges/runtime/channels";
-import { episodesPerDay, heatWindowStart } from "@/modules/natural-nudges/runtime/meters";
+import { idleNudgesPerDay, heatWindowStart } from "@/modules/natural-nudges/runtime/meters";
 import { workspaceConfigExportSchema } from "@/types/db/dataExport";
 import { exportRepository } from "@/utils/db/repositories/ExportRepository";
 import { importRepository } from "@/utils/db/repositories/ImportRepository";
@@ -134,14 +134,14 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
       await recordStat(cold, "message_sent", "", daysAgo(45));
       await recordStat(dm, "message_sent", "", daysAgo(0));
       await recordStat(off, "message_sent", "", daysAgo(0));
-      expect(await naturalNudgeRepository.saveServerConfig(off, { episodes_enabled: false })).toBe(true);
+      expect(await naturalNudgeRepository.saveServerConfig(off, { idle_nudges_enabled: false })).toBe(true);
 
-      const listed = await naturalNudgeRepository.listEnabledEpisodeServers(heatWindowStart(now));
+      const listed = await naturalNudgeRepository.listEnabledIdleNudgeServers(heatWindowStart(now));
       const ours = listed.filter((server) => serverIds.includes(server.server_id));
       expect(ours.map((server) => server.server_id)).toEqual([heated]);
       expect(ours[0]?.config).toEqual(defaultServerNaturalNudgeConfig(heated));
-      expect(ours[0]?.config.episodes_enabled).toBe(true);
-      expect(episodesPerDay(1_000, ours[0]?.config.episode_frequency ?? 0)).toBe(3);
+      expect(ours[0]?.config.idle_nudges_enabled).toBe(true);
+      expect(idleNudgesPerDay(1_000, ours[0]?.config.idle_nudge_frequency ?? 0)).toBe(3);
     });
 
     it("picks automatic channels from 14 days of turns minus roleplay channels, unless a list overrides them", async () => {
@@ -165,7 +165,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     });
   });
 
-  describe("Reach-out candidates", () => {
+  describe("Ping User nudge candidates", () => {
     const PREFIX = "_rt_reach_";
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
@@ -235,7 +235,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     });
 
     const list = (onlyUserId?: number) =>
-      naturalNudgeRepository.listReachOutCandidates({
+      naturalNudgeRepository.listPingUserCandidates({
         serverId: refs.serverId,
         personaId: refs.personaId,
         personaLineageId: refs.personaLineageId,
@@ -276,17 +276,17 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
       ).toEqual(["1200000000000000005"]);
     });
 
-    it("records who a Reach-out pinged on the fire and its agenda", async () => {
+    it("records who a Ping User nudge pinged on the fire and its agenda", async () => {
       const mirriId = userIds.get("mirri") as number;
       const openerId = "1300000000000000077";
       expect(
-        await naturalNudgeRepository.recordEpisodeFire(
+        await naturalNudgeRepository.recordIdleNudgeFire(
           {
             serverId: refs.serverId,
             channelDiscId: "1200000000000000001",
             personaId: refs.personaId,
-            category: "reach_out",
-            episodeKey: "reach_out.memory_callback",
+            category: "ping_user",
+            idleNudgeKey: "ping_user.memory_callback",
             targetUserId: mirriId,
             openerMessageDiscId: openerId,
           },
@@ -335,13 +335,13 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
   it("anchors every scene speaker's agenda to the opener, and each speaker reads only its own", async () => {
     const openerId = "1300000000000000001";
     expect(
-      await naturalNudgeRepository.recordEpisodeFire(
+      await naturalNudgeRepository.recordIdleNudgeFire(
         {
           serverId: refs.serverId,
           channelDiscId: "1200000000000000001",
           personaId: refs.personaId,
-          category: "alter_talk",
-          episodeKey: "alter_talk.banter",
+          category: "play_scene",
+          idleNudgeKey: "play_scene.banter",
           targetUserId: null,
           openerMessageDiscId: openerId,
         },
@@ -356,10 +356,10 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     expect((await loadPersonaAgendas(otherPersonaId, [openerId])).get(openerId)).toBe("Get a human to take your side.");
 
     const history = await naturalNudgeRepository.loadFireHistory(refs.serverId, new Date(0), 5);
-    expect(history.latestEpisodes[0]).toMatchObject({ opener_message_disc_id: openerId, answered: null });
-    await naturalNudgeRepository.setFireAnswered(history.latestEpisodes[0].fire_id, true);
+    expect(history.latestIdleNudges[0]).toMatchObject({ opener_message_disc_id: openerId, answered: null });
+    await naturalNudgeRepository.setFireAnswered(history.latestIdleNudges[0].fire_id, true);
     const answered = await naturalNudgeRepository.loadFireHistory(refs.serverId, new Date(0), 5);
-    expect(answered.latestEpisodes[0]?.answered).toBe(true);
+    expect(answered.latestIdleNudges[0]?.answered).toBe(true);
   });
 
   it("stops a server after repeated failures and lifts the stop when cleared", async () => {
@@ -376,9 +376,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     });
   });
 
-  it("refuses a custom episode past the cap", async () => {
-    const episode = {
-      category: "new_topic" as const,
+  it("refuses a custom idle nudge past the cap", async () => {
+    const idleNudge = {
+      category: "start_topic" as const,
       title: "Riddle",
       brief: "Have {persona} pose a riddle.",
       agenda_hint: null,
@@ -386,55 +386,55 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
       recommended_tools: [],
       enabled: true,
     };
-    expect(await naturalNudgeRepository.insertCustomEpisode(refs.serverId, episode, 1)).not.toBeNull();
-    expect(await naturalNudgeRepository.insertCustomEpisode(refs.serverId, episode, 1)).toBeNull();
+    expect(await naturalNudgeRepository.insertCustomIdleNudge(refs.serverId, idleNudge, 1)).not.toBeNull();
+    expect(await naturalNudgeRepository.insertCustomIdleNudge(refs.serverId, idleNudge, 1)).toBeNull();
   });
 
-  it("exports settings and custom episodes without channels, imports them, and resets them", async () => {
+  it("exports settings and custom idle nudges without channels, imports them, and resets them", async () => {
     await naturalNudgeRepository.saveServerConfig(refs.serverId, {
-      episodes_enabled: false,
-      chime_in_enabled: false,
+      idle_nudges_enabled: false,
+      active_nudges_enabled: false,
       channel_disc_ids: ["1200000000000000001"],
-      episode_frequency: 2,
-      chime_in_frequency: 3,
-      disabled_builtin_episodes: ["new_topic.voice_note"],
+      idle_nudge_frequency: 2,
+      active_nudge_frequency: 3,
+      disabled_builtin_idle_nudges: ["start_topic.voice_note"],
     });
     const result = await exportRepository.exportWorkspaceConfig(FIXTURE_IDS.serverDiscId);
     expect(result.success).toBe(true);
     const exported = workspaceConfigExportSchema.parse(result.data);
     expect(exported.data.nudges).toMatchObject({
-      episodes_enabled: false,
-      chime_in_enabled: false,
-      episode_frequency: 2,
-      chime_in_frequency: 3,
+      idle_nudges_enabled: false,
+      active_nudges_enabled: false,
+      idle_nudge_frequency: 2,
+      active_nudge_frequency: 3,
     });
-    expect(exported.data.nudges?.custom_episodes).toHaveLength(1);
+    expect(exported.data.nudges?.custom_idle_nudges).toHaveLength(1);
     expect(JSON.stringify(exported.data.nudges)).not.toContain("1200000000000000001");
 
     expect((await importRepository.importWorkspaceConfig(OTHER_SERVER, exported, ["nudges"])).success).toBe(true);
     const imported = await naturalNudgeRepository.loadServerConfig(otherServerId);
     expect(imported).toMatchObject({
-      episodes_enabled: false,
-      chime_in_enabled: false,
-      episode_frequency: 2,
-      chime_in_frequency: 3,
+      idle_nudges_enabled: false,
+      active_nudges_enabled: false,
+      idle_nudge_frequency: 2,
+      active_nudge_frequency: 3,
       channel_disc_ids: [],
-      disabled_builtin_episodes: ["new_topic.voice_note"],
+      disabled_builtin_idle_nudges: ["start_topic.voice_note"],
     });
-    expect(await naturalNudgeRepository.listCustomEpisodes(otherServerId)).toHaveLength(1);
+    expect(await naturalNudgeRepository.listCustomIdleNudges(otherServerId)).toHaveLength(1);
 
     await resetRepository.resetServerConfiguration(refs.serverId);
     // The code defaults stand in for a missing row, so they must equal what the columns reset to.
     expect(await naturalNudgeRepository.loadServerConfig(refs.serverId)).toEqual(
       defaultServerNaturalNudgeConfig(refs.serverId),
     );
-    expect(await naturalNudgeRepository.listCustomEpisodes(refs.serverId)).toHaveLength(0);
+    expect(await naturalNudgeRepository.listCustomIdleNudges(refs.serverId)).toHaveLength(0);
   });
 
-  it("records a Chime-in fire that counts toward caps but never as a pending episode", async () => {
+  it("records an Active Nudge fire that counts toward caps but never as a pending idle nudge", async () => {
     await naturalNudgeRepository.recordFailure(refs.serverId);
     expect(
-      await naturalNudgeRepository.recordChimeInFire({
+      await naturalNudgeRepository.recordActiveNudgeFire({
         serverId: refs.serverId,
         channelDiscId: "1200000000000000009",
         personaId: refs.personaId,
@@ -443,11 +443,11 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
       }),
     ).toBe(true);
     const history = await naturalNudgeRepository.loadFireHistory(refs.serverId, new Date(Date.now() - 60_000), 5);
-    expect(history.recent.filter((fire) => fire.mode === "chime_in")).toHaveLength(1);
-    expect(history.latestEpisodes.some((fire) => fire.mode === "chime_in")).toBe(false);
+    expect(history.recent.filter((fire) => fire.mode === "active")).toHaveLength(1);
+    expect(history.latestIdleNudges.some((fire) => fire.mode === "active")).toBe(false);
     const [row] = await testSql`
       SELECT detour, category, answered FROM natural_nudge_fires
-      WHERE server_id = ${refs.serverId} AND mode = 'chime_in'
+      WHERE server_id = ${refs.serverId} AND mode = 'active'
     `;
     expect(row).toEqual({ detour: true, category: null, answered: null });
     expect((await naturalNudgeRepository.loadRuntimeState(refs.serverId)).consecutive_failures).toBe(0);

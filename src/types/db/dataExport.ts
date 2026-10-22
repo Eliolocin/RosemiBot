@@ -6,8 +6,8 @@ import {
 } from "@/types/db/schema";
 import { z } from "zod";
 import {
-  CUSTOM_EPISODE_LIMIT,
-  customEpisodeInputSchema,
+  CUSTOM_IDLE_NUDGE_LIMIT,
+  customIdleNudgeInputSchema,
   serverNaturalNudgeConfigSchema,
 } from "@/modules/natural-nudges/db/types";
 import { SUPPORTED_PARAM_VALUES } from "@/constants/supportedParams";
@@ -411,7 +411,7 @@ const workspaceSpeechConfigSectionSchema = serverSpeechConfigExportSchema.strict
 const workspaceAccessConfigSectionSchema = serverByokConfigExportSchema.strict();
 
 /**
- * Natural Nudges settings and custom episodes. Allowed channels are server-specific and stay
+ * Natural Nudges settings and custom idle nudges. Allowed channels are server-specific and stay
  * behind; the planner model travels by ID and is checked against the target workspace on import.
  */
 const workspaceNudgesConfigSectionSchema = serverNaturalNudgeConfigSchema
@@ -419,7 +419,7 @@ const workspaceNudgesConfigSectionSchema = serverNaturalNudgeConfigSchema
   .partial()
   .extend({
     llm_id: z.number().int().positive().nullable().optional(),
-    custom_episodes: z.array(customEpisodeInputSchema.strict()).max(CUSTOM_EPISODE_LIMIT).optional(),
+    custom_idle_nudges: z.array(customIdleNudgeInputSchema.strict()).max(CUSTOM_IDLE_NUDGE_LIMIT).optional(),
   })
   .strict();
 

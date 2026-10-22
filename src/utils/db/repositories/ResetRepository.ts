@@ -245,13 +245,13 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
   {
     table: "server_natural_nudge_configs",
     reset: [
-      "episodes_enabled",
-      "chime_in_enabled",
+      "idle_nudges_enabled",
+      "active_nudges_enabled",
       "channel_disc_ids",
       "llm_id",
-      "episode_frequency",
-      "chime_in_frequency",
-      "disabled_builtin_episodes",
+      "idle_nudge_frequency",
+      "active_nudge_frequency",
+      "disabled_builtin_idle_nudges",
     ],
     preserved: [],
   },
@@ -275,7 +275,7 @@ export const SERVER_COLLECTION_RESET_TABLES = [
   "channel_whitelist",
   "role_whitelist",
   "channel_persona_whitelist",
-  "server_natural_nudge_episodes",
+  "server_natural_nudge_custom_idle_nudges",
 ] as const;
 
 /**
@@ -560,13 +560,13 @@ class ResetRepository {
       await tx`
         INSERT INTO server_natural_nudge_configs (server_id) VALUES (${serverId})
         ON CONFLICT (server_id) DO UPDATE SET
-          episodes_enabled = DEFAULT,
-          chime_in_enabled = DEFAULT,
+          idle_nudges_enabled = DEFAULT,
+          active_nudges_enabled = DEFAULT,
           channel_disc_ids = DEFAULT,
           llm_id = DEFAULT,
-          episode_frequency = DEFAULT,
-          chime_in_frequency = DEFAULT,
-          disabled_builtin_episodes = DEFAULT,
+          idle_nudge_frequency = DEFAULT,
+          active_nudge_frequency = DEFAULT,
+          disabled_builtin_idle_nudges = DEFAULT,
           updated_at = NOW()
       `;
 
@@ -583,7 +583,7 @@ class ResetRepository {
       await tx`DELETE FROM channel_whitelist WHERE server_id = ${serverId}`;
       await tx`DELETE FROM role_whitelist WHERE server_id = ${serverId}`;
       await tx`DELETE FROM channel_persona_whitelist WHERE server_id = ${serverId}`;
-      await tx`DELETE FROM server_natural_nudge_episodes WHERE server_id = ${serverId}`;
+      await tx`DELETE FROM server_natural_nudge_custom_idle_nudges WHERE server_id = ${serverId}`;
     });
   }
 

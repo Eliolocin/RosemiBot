@@ -3397,13 +3397,13 @@ CREATE INDEX IF NOT EXISTS idx_stat_counters_user_lineage_metric
 -- agendas key by the opener message so they leave the context window with it.
 CREATE TABLE IF NOT EXISTS server_natural_nudge_configs (
   server_id                 INT      PRIMARY KEY REFERENCES servers(server_id) ON DELETE CASCADE,
-  episodes_enabled          BOOLEAN  NOT NULL DEFAULT true,
-  chime_in_enabled          BOOLEAN  NOT NULL DEFAULT true,
+  idle_nudges_enabled          BOOLEAN  NOT NULL DEFAULT true,
+  active_nudges_enabled          BOOLEAN  NOT NULL DEFAULT true,
   channel_disc_ids          TEXT[]   NOT NULL DEFAULT '{}',
   llm_id                    INT      REFERENCES llms(llm_id) ON DELETE SET NULL,
-  episode_frequency         SMALLINT NOT NULL DEFAULT 1 CHECK (episode_frequency BETWEEN 0 AND 3),
-  chime_in_frequency        SMALLINT NOT NULL DEFAULT 1 CHECK (chime_in_frequency BETWEEN 0 AND 3),
-  disabled_builtin_episodes TEXT[]   NOT NULL DEFAULT '{}',
+  idle_nudge_frequency         SMALLINT NOT NULL DEFAULT 1 CHECK (idle_nudge_frequency BETWEEN 0 AND 3),
+  active_nudge_frequency        SMALLINT NOT NULL DEFAULT 1 CHECK (active_nudge_frequency BETWEEN 0 AND 3),
+  disabled_builtin_idle_nudges TEXT[]   NOT NULL DEFAULT '{}',
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -3413,10 +3413,10 @@ CREATE TRIGGER update_server_natural_nudge_configs_timestamp
   BEFORE UPDATE ON server_natural_nudge_configs
   FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
-CREATE TABLE IF NOT EXISTS server_natural_nudge_episodes (
-  episode_id        SERIAL   PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS server_natural_nudge_custom_idle_nudges (
+  custom_idle_nudge_id        SERIAL   PRIMARY KEY,
   server_id         INT      NOT NULL REFERENCES servers(server_id) ON DELETE CASCADE,
-  category          TEXT     NOT NULL CHECK (category IN ('reach_out', 'revive', 'new_topic', 'alter_talk')),
+  category          TEXT     NOT NULL CHECK (category IN ('ping_user', 'revive_topic', 'start_topic', 'play_scene')),
   title             TEXT     NOT NULL CHECK (char_length(btrim(title)) BETWEEN 1 AND 80),
   brief             TEXT     NOT NULL CHECK (char_length(btrim(brief)) BETWEEN 1 AND 1000),
   agenda_hint       TEXT     CHECK (agenda_hint IS NULL OR char_length(agenda_hint) <= 500),
@@ -3427,11 +3427,11 @@ CREATE TABLE IF NOT EXISTS server_natural_nudge_episodes (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_natural_nudge_episodes_server ON server_natural_nudge_episodes(server_id);
+CREATE INDEX IF NOT EXISTS idx_natural_nudge_custom_idle_nudges_server ON server_natural_nudge_custom_idle_nudges(server_id);
 
-DROP TRIGGER IF EXISTS update_server_natural_nudge_episodes_timestamp ON server_natural_nudge_episodes;
-CREATE TRIGGER update_server_natural_nudge_episodes_timestamp
-  BEFORE UPDATE ON server_natural_nudge_episodes
+DROP TRIGGER IF EXISTS update_server_natural_nudge_custom_idle_nudges_timestamp ON server_natural_nudge_custom_idle_nudges;
+CREATE TRIGGER update_server_natural_nudge_custom_idle_nudges_timestamp
+  BEFORE UPDATE ON server_natural_nudge_custom_idle_nudges
   FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
 CREATE TABLE IF NOT EXISTS persona_natural_nudge_configs (
@@ -3450,7 +3450,7 @@ CREATE TRIGGER update_persona_natural_nudge_configs_timestamp
 
 CREATE TABLE IF NOT EXISTS server_natural_nudge_runtime_state (
   server_id            INT      PRIMARY KEY REFERENCES servers(server_id) ON DELETE CASCADE,
-  episode_jitter       REAL     NOT NULL DEFAULT 1,
+  idle_nudge_jitter       REAL     NOT NULL DEFAULT 1,
   consecutive_failures SMALLINT NOT NULL DEFAULT 0,
   stopped_at           TIMESTAMPTZ,
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -3461,9 +3461,9 @@ CREATE TABLE IF NOT EXISTS natural_nudge_fires (
   server_id              INT  NOT NULL REFERENCES servers(server_id) ON DELETE CASCADE,
   channel_disc_id        TEXT NOT NULL,
   persona_id             INT  NOT NULL REFERENCES personas(persona_id) ON DELETE CASCADE,
-  mode                   TEXT NOT NULL CHECK (mode IN ('chime_in', 'episode')),
-  category               TEXT CHECK (category IN ('reach_out', 'revive', 'new_topic', 'alter_talk')),
-  episode_key            TEXT,
+  mode                   TEXT NOT NULL CHECK (mode IN ('active', 'idle')),
+  category               TEXT CHECK (category IN ('ping_user', 'revive_topic', 'start_topic', 'play_scene')),
+  idle_nudge_key            TEXT,
   target_user_id         INT  REFERENCES users(user_id) ON DELETE CASCADE,
   opener_message_disc_id TEXT NOT NULL,
   answered               BOOLEAN,

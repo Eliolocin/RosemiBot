@@ -148,7 +148,7 @@ export class ScheduledWorkCoordinator {
         await this.reminderProcessor.processDueReminders();
         await this.randomTriggerProcessor.processDueRandomTriggers();
         // Natural Nudges has no due-time column to wake on, so the 60 s reconcile is its only clock.
-        await this.naturalNudgeProcessor.processDueEpisodes();
+        await this.naturalNudgeProcessor.processDueIdleNudges();
         this.lastRunAt = new Date();
         reason = "rerun";
       } while (this.rerunRequested && this.isRunning);

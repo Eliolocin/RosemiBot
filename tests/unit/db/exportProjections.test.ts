@@ -211,7 +211,7 @@ describe("v2 config export projections", () => {
     expect(queryLog.join("\n")).toContain("LEFT JOIN server_stm_configs");
     expect(queryLog.join("\n")).toContain("FROM stm_categories");
     expect(queryLog.join("\n")).toContain("FROM server_natural_nudge_configs");
-    expect(queryLog.join("\n")).toContain("FROM server_natural_nudge_episodes");
+    expect(queryLog.join("\n")).toContain("FROM server_natural_nudge_custom_idle_nudges");
   });
 
   it("tolerates jsonb columns that hold a JSON string instead of the value", async () => {

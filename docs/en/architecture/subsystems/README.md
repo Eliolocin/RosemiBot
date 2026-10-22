@@ -41,7 +41,7 @@ order.
   lineage scoping, webhook identity masking, and keyword trigger routing.
 - [Persona Presets](/architecture/subsystems/persona-presets/): Seed catalog definitions,
   copy-on-write pointers, asset storage reconciliation, and guild avatar updates.
-- [Natural Nudges](/architecture/subsystems/natural-nudges/): Unprompted episodes, the decide, plan,
+- [Natural Nudges](/architecture/subsystems/natural-nudges/): Unprompted idle nudges, the decide, plan,
   and speak phases, fire-log meters, and per-persona hidden agendas.
 - [Prompt Snapshot](/architecture/subsystems/prompt-snapshot/): Point-in-time capture and export of
   assembled prompt blocks for inspection and debugging.

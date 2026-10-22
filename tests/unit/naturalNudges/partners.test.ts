@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { drawScenePartners, hasScenePartner, type PartnerCandidate } from "@/modules/natural-nudges/runtime/partners";
-import { ALTER_TALK_SECOND_PARTNER_CHANCE } from "@/modules/natural-nudges/runtime/tuning";
+import { PLAY_SCENE_SECOND_PARTNER_CHANCE } from "@/modules/natural-nudges/runtime/tuning";
 
 function candidate(name: string, tickets: number, channelIds: string[]): PartnerCandidate<string> {
   return { persona: name, tickets, channelIds: new Set(channelIds) };
@@ -9,7 +9,7 @@ function candidate(name: string, tickets: number, channelIds: string[]): Partner
 /** Zero draws the first live entry of every raffle; the first call also decides whether a second partner joins. */
 function wantsOne(): () => number {
   let calls = 0;
-  return () => (calls++ === 0 ? ALTER_TALK_SECOND_PARTNER_CHANCE : 0);
+  return () => (calls++ === 0 ? PLAY_SCENE_SECOND_PARTNER_CHANCE : 0);
 }
 
 describe("scene partner draw", () => {

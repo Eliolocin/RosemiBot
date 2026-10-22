@@ -1,29 +1,29 @@
 import { createHash } from "node:crypto";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import {
-  CUSTOM_EPISODE_LIMIT,
-  customEpisodeInputSchema,
+  CUSTOM_IDLE_NUDGE_LIMIT,
+  customIdleNudgeInputSchema,
   NATURAL_NUDGE_INTEREST_LIMIT,
   naturalNudgeInterestSchema,
-  type CustomEpisodeInput,
-  type CustomEpisodeRow,
-  type EpisodeFrequencyLevel,
+  type CustomIdleNudgeInput,
+  type CustomIdleNudgeRow,
+  type IdleNudgeFrequencyLevel,
   type NaturalNudgeInterest,
   type NaturalNudgeRuntimeState,
   type PersonaNaturalNudgeConfig,
   type ServerNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
 import {
-  BUILTIN_EPISODES,
-  customEpisodeDefinition,
+  BUILTIN_IDLE_NUDGES,
+  customIdleNudgeDefinition,
   isKnownPrerequisite,
   isNudgeToolName,
-  type EpisodeDefinition,
-} from "@/modules/natural-nudges/runtime/episodes";
+  type IdleNudgeDefinition,
+} from "@/modules/natural-nudges/runtime/idleNudges";
 import {
-  chimeInTripRange,
+  activeNudgeTripRange,
   computeHeat,
-  episodesPerDay,
+  idleNudgesPerDay,
   heatWindowStart,
 } from "@/modules/natural-nudges/runtime/meters";
 import {
@@ -44,7 +44,7 @@ interface NaturalNudgesStatus {
   effectiveChannelIds: string[];
   plannerModel: PlannerModelStatus;
   chatModel: { codename: string; provider: string } | null;
-  /** Which model would match Chime-ins right now, or null when none can. */
+  /** Which model would match Active Nudges right now, or null when none can. */
   matcher: { kind: "decision"; model: string } | { kind: "llm" } | null;
 }
 
@@ -55,29 +55,29 @@ export interface NaturalNudgesSettingsView {
   trackingEnabled: boolean;
   heat: number;
   perDay: number;
-  /** Human messages between Chime-in checks at the current heat and level; null below the heat floor. */
-  chimeInRange: { min: number; max: number } | null;
+  /** Human messages between Active Nudge checks at the current heat and level; null below the heat floor. */
+  activeNudgeRange: { min: number; max: number } | null;
   /** Null on modal paths, which must acknowledge within 3 seconds and never render it. */
   status: NaturalNudgesStatus | null;
 }
 
-export interface NudgeEpisodeEntry {
-  definition: EpisodeDefinition;
+export interface IdleNudgeEntry {
+  definition: IdleNudgeDefinition;
   enabled: boolean;
-  /** Present for custom episodes, whose rows the edit routes address. */
-  custom?: CustomEpisodeRow;
+  /** Present for custom idle nudges, whose rows the edit routes address. */
+  custom?: CustomIdleNudgeRow;
 }
 
-export interface NudgeEpisodesView {
+export interface IdleNudgesView {
   config: ServerNaturalNudgeConfig;
-  entries: NudgeEpisodeEntry[];
+  entries: IdleNudgeEntry[];
   fingerprint: string;
 }
 
-/** Binds an index-addressed episode write to the exact list the control rendered. */
-export function computeEpisodeListFingerprint(entries: readonly NudgeEpisodeEntry[]): string {
+/** Binds an index-addressed idle nudge write to the exact list the control rendered. */
+export function computeIdleNudgeListFingerprint(entries: readonly IdleNudgeEntry[]): string {
   return createHash("sha256")
-    .update(`nudge-episodes:${entries.map((entry) => entry.definition.key).join("\u0000")}`)
+    .update(`idle-nudges:${entries.map((entry) => entry.definition.key).join("\u0000")}`)
     .digest("base64url")
     .slice(0, 8);
 }
@@ -129,29 +129,29 @@ async function loadSettingsView(
     plannerModels,
     trackingEnabled: statRepository.isTrackingEnabled,
     heat,
-    perDay: episodesPerDay(heat, config.episode_frequency),
-    chimeInRange: chimeInTripRange(heat, config.chime_in_frequency),
+    perDay: idleNudgesPerDay(heat, config.idle_nudge_frequency),
+    activeNudgeRange: activeNudgeTripRange(heat, config.active_nudge_frequency),
     status: chatState ? await loadSettingsStatus(chatState, config, now) : null,
   };
 }
 
-async function loadEpisodesView(serverId: number): Promise<NudgeEpisodesView> {
-  const [config, customEpisodes] = await Promise.all([
+async function loadIdleNudgesView(serverId: number): Promise<IdleNudgesView> {
+  const [config, customIdleNudges] = await Promise.all([
     naturalNudgeRepository.loadServerConfig(serverId),
-    naturalNudgeRepository.listCustomEpisodes(serverId),
+    naturalNudgeRepository.listCustomIdleNudges(serverId),
   ]);
-  const entries: NudgeEpisodeEntry[] = [
-    ...BUILTIN_EPISODES.map((definition) => ({
+  const entries: IdleNudgeEntry[] = [
+    ...BUILTIN_IDLE_NUDGES.map((definition) => ({
       definition,
-      enabled: !config.disabled_builtin_episodes.includes(definition.key),
+      enabled: !config.disabled_builtin_idle_nudges.includes(definition.key),
     })),
-    ...customEpisodes.map((custom) => ({
-      definition: customEpisodeDefinition(custom),
+    ...customIdleNudges.map((custom) => ({
+      definition: customIdleNudgeDefinition(custom),
       enabled: custom.enabled,
       custom,
     })),
   ];
-  return { config, entries, fingerprint: computeEpisodeListFingerprint(entries) };
+  return { config, entries, fingerprint: computeIdleNudgeListFingerprint(entries) };
 }
 
 async function loadPersonaNudgeConfig(personaId: number): Promise<PersonaNaturalNudgeConfig | null> {
@@ -171,16 +171,19 @@ async function patchConfig(
 const MAX_ALLOWED_CHANNELS = 25;
 const SNOWFLAKE_RE = /^\d{17,20}$/;
 
-/** Text fields for a custom episode; prerequisites and tools are edited on the detail view. */
-interface CustomEpisodeTextInput {
+/** Text fields for a custom idle nudge; prerequisites and tools are edited on the detail view. */
+interface CustomIdleNudgeTextInput {
   category: string;
   title: string;
   brief: string;
   agendaHint: string;
 }
 
-function parseEpisodeText(input: CustomEpisodeTextInput, existing?: CustomEpisodeRow): CustomEpisodeInput | null {
-  const parsed = customEpisodeInputSchema.safeParse({
+function parseIdleNudgeText(
+  input: CustomIdleNudgeTextInput,
+  existing?: CustomIdleNudgeRow,
+): CustomIdleNudgeInput | null {
+  const parsed = customIdleNudgeInputSchema.safeParse({
     category: input.category,
     title: input.title,
     brief: input.brief,
@@ -192,14 +195,14 @@ function parseEpisodeText(input: CustomEpisodeTextInput, existing?: CustomEpisod
   return parsed.success ? parsed.data : null;
 }
 
-function findCustom(view: NudgeEpisodesView, index: number, fp: string): CustomEpisodeRow | "stale" {
+function findCustom(view: IdleNudgesView, index: number, fp: string): CustomIdleNudgeRow | "stale" {
   if (view.fingerprint !== fp) return "stale";
   return view.entries[index]?.custom ?? "stale";
 }
 
 const naturalNudgeOperations = {
-  setEpisodesEnabled(serverId: number, enabled: boolean): Promise<NudgeWriteResult> {
-    return patchConfig(serverId, { episodes_enabled: enabled });
+  setIdleNudgesEnabled(serverId: number, enabled: boolean): Promise<NudgeWriteResult> {
+    return patchConfig(serverId, { idle_nudges_enabled: enabled });
   },
 
   setChannels(serverId: number, channelIds: readonly string[]): Promise<NudgeWriteResult> {
@@ -218,84 +221,86 @@ const naturalNudgeOperations = {
     return patchConfig(serverId, { llm_id: llmId });
   },
 
-  setFrequency(serverId: number, level: EpisodeFrequencyLevel): Promise<NudgeWriteResult> {
-    return patchConfig(serverId, { episode_frequency: level });
+  setFrequency(serverId: number, level: IdleNudgeFrequencyLevel): Promise<NudgeWriteResult> {
+    return patchConfig(serverId, { idle_nudge_frequency: level });
   },
 
-  setChimeInEnabled(serverId: number, enabled: boolean): Promise<NudgeWriteResult> {
-    return patchConfig(serverId, { chime_in_enabled: enabled });
+  setActiveNudgesEnabled(serverId: number, enabled: boolean): Promise<NudgeWriteResult> {
+    return patchConfig(serverId, { active_nudges_enabled: enabled });
   },
 
-  setChimeInFrequency(serverId: number, level: EpisodeFrequencyLevel): Promise<NudgeWriteResult> {
-    return patchConfig(serverId, { chime_in_frequency: level });
+  setActiveNudgesFrequency(serverId: number, level: IdleNudgeFrequencyLevel): Promise<NudgeWriteResult> {
+    return patchConfig(serverId, { active_nudge_frequency: level });
   },
 
-  async setEpisodeEnabled(serverId: number, index: number, fp: string, enabled: boolean): Promise<NudgeWriteResult> {
-    const view = await loadEpisodesView(serverId);
+  async setIdleNudgeEnabled(serverId: number, index: number, fp: string, enabled: boolean): Promise<NudgeWriteResult> {
+    const view = await loadIdleNudgesView(serverId);
     if (view.fingerprint !== fp) return "stale";
     const entry = view.entries[index];
     if (!entry) return "stale";
     if (entry.custom) {
-      const ok = await naturalNudgeRepository.updateCustomEpisode(serverId, entry.custom.episode_id, {
+      const ok = await naturalNudgeRepository.updateCustomIdleNudge(serverId, entry.custom.custom_idle_nudge_id, {
         ...entry.custom,
         enabled,
       });
       return ok ? "success" : "write-failed";
     }
-    const disabled = new Set(view.config.disabled_builtin_episodes);
+    const disabled = new Set(view.config.disabled_builtin_idle_nudges);
     if (enabled) disabled.delete(entry.definition.key);
     else disabled.add(entry.definition.key);
-    return patchConfig(serverId, { disabled_builtin_episodes: [...disabled] });
+    return patchConfig(serverId, { disabled_builtin_idle_nudges: [...disabled] });
   },
 
-  async addCustomEpisode(serverId: number, input: CustomEpisodeTextInput): Promise<NudgeWriteResult> {
-    const parsed = parseEpisodeText(input);
+  async addCustomIdleNudge(serverId: number, input: CustomIdleNudgeTextInput): Promise<NudgeWriteResult> {
+    const parsed = parseIdleNudgeText(input);
     if (!parsed) return "invalid";
-    const id = await naturalNudgeRepository.insertCustomEpisode(serverId, parsed, CUSTOM_EPISODE_LIMIT);
+    const id = await naturalNudgeRepository.insertCustomIdleNudge(serverId, parsed, CUSTOM_IDLE_NUDGE_LIMIT);
     return id === null ? "limit" : "success";
   },
 
-  async updateCustomEpisodeText(
+  async updateCustomIdleNudgeText(
     serverId: number,
     index: number,
     fp: string,
-    input: CustomEpisodeTextInput,
+    input: CustomIdleNudgeTextInput,
   ): Promise<NudgeWriteResult> {
-    const custom = findCustom(await loadEpisodesView(serverId), index, fp);
+    const custom = findCustom(await loadIdleNudgesView(serverId), index, fp);
     if (custom === "stale") return "stale";
-    const parsed = parseEpisodeText(input, custom);
+    const parsed = parseIdleNudgeText(input, custom);
     if (!parsed) return "invalid";
-    return (await naturalNudgeRepository.updateCustomEpisode(serverId, custom.episode_id, parsed))
+    return (await naturalNudgeRepository.updateCustomIdleNudge(serverId, custom.custom_idle_nudge_id, parsed))
       ? "success"
       : "write-failed";
   },
 
-  async setCustomEpisodeLists(
+  async setCustomIdleNudgeLists(
     serverId: number,
     index: number,
     fp: string,
     patch: { prerequisites?: readonly string[]; recommendedTools?: readonly string[] },
   ): Promise<NudgeWriteResult> {
-    const custom = findCustom(await loadEpisodesView(serverId), index, fp);
+    const custom = findCustom(await loadIdleNudgesView(serverId), index, fp);
     if (custom === "stale") return "stale";
     const prerequisites = patch.prerequisites ? [...new Set(patch.prerequisites)] : custom.prerequisites;
     const recommendedTools = patch.recommendedTools ? [...new Set(patch.recommendedTools)] : custom.recommended_tools;
     if (!prerequisites.every(isKnownPrerequisite) || !recommendedTools.every(isNudgeToolName)) return "invalid";
-    const parsed = customEpisodeInputSchema.safeParse({
+    const parsed = customIdleNudgeInputSchema.safeParse({
       ...custom,
       prerequisites,
       recommended_tools: recommendedTools,
     });
     if (!parsed.success) return "invalid";
-    return (await naturalNudgeRepository.updateCustomEpisode(serverId, custom.episode_id, parsed.data))
+    return (await naturalNudgeRepository.updateCustomIdleNudge(serverId, custom.custom_idle_nudge_id, parsed.data))
       ? "success"
       : "write-failed";
   },
 
-  async removeCustomEpisode(serverId: number, index: number, fp: string): Promise<NudgeWriteResult> {
-    const custom = findCustom(await loadEpisodesView(serverId), index, fp);
+  async removeCustomIdleNudge(serverId: number, index: number, fp: string): Promise<NudgeWriteResult> {
+    const custom = findCustom(await loadIdleNudgesView(serverId), index, fp);
     if (custom === "stale") return "stale";
-    return (await naturalNudgeRepository.deleteCustomEpisode(serverId, custom.episode_id)) ? "success" : "stale";
+    return (await naturalNudgeRepository.deleteCustomIdleNudge(serverId, custom.custom_idle_nudge_id))
+      ? "success"
+      : "stale";
   },
 
   /** Resync of a preset pointer: dropping the row makes it read the preset's defaults live again. */
@@ -356,23 +361,23 @@ type NaturalNudgeOperations = typeof naturalNudgeOperations;
 export interface NaturalNudgesPanelState {
   personaConfig?: PersonaNaturalNudgeConfig | null;
   settings?: NaturalNudgesSettingsView;
-  episodes?: NudgeEpisodesView;
+  idleNudges?: IdleNudgesView;
   selectedInterestIndex?: number;
-  episodeStart?: number;
-  selectedEpisodeIndex?: number;
+  idleNudgeStart?: number;
+  selectedIdleNudgeIndex?: number;
   removeConfirmNonce?: string;
 }
 
 export interface NaturalNudgePanelDependencies {
   loadSettings(serverId: number, locale: string, chatState: TomoriState | null): Promise<NaturalNudgesSettingsView>;
-  loadEpisodes(serverId: number): Promise<NudgeEpisodesView>;
+  loadIdleNudges(serverId: number): Promise<IdleNudgesView>;
   loadPersonaConfig(personaId: number): Promise<PersonaNaturalNudgeConfig | null>;
   operations: NaturalNudgeOperations;
 }
 
 export const naturalNudgePanelDependencies: NaturalNudgePanelDependencies = {
   loadSettings: loadSettingsView,
-  loadEpisodes: loadEpisodesView,
+  loadIdleNudges: loadIdleNudgesView,
   loadPersonaConfig: loadPersonaNudgeConfig,
   operations: naturalNudgeOperations,
 };

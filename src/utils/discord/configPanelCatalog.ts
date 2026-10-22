@@ -43,7 +43,7 @@ type BehaviorPage = "general" | "trigger" | "experimental" | "notices" | "memory
 type PluginsPage =
   | "response-drafting"
   | "natural-nudges"
-  | "nudge-episodes"
+  | "idle-nudges"
   | "available-tools"
   | "context-additions"
   | "mcp-servers"
@@ -78,7 +78,7 @@ export const CONFIG_PAGES_BY_CATEGORY: Record<ConfigCategory, readonly ConfigPag
     "context-additions",
     "response-drafting",
     "natural-nudges",
-    "nudge-episodes",
+    "idle-nudges",
     "mcp-servers",
     "sillytavern-presets",
     "nsfw-jailbreaks",
@@ -436,24 +436,24 @@ export type ConfigPanelRoute =
       nonce: string;
     }
   | { action: "nudge-interest-remove"; locale: string; personaId: number; index: number; fp: string }
-  | { action: "nudge-episodes-set"; locale: string; enabled: boolean }
+  | { action: "nudge-idle-nudges-set"; locale: string; enabled: boolean }
   | { action: "nudge-channels-select"; locale: string }
   | { action: "nudge-provider"; locale: string }
   | { action: "nudge-model-submit"; locale: string; provider: string; nonce: string }
-  | { action: "nudge-frequency-select"; locale: string }
-  | { action: "nudge-chime-in-set"; locale: string; enabled: boolean }
-  | { action: "nudge-chime-in-frequency-select"; locale: string }
-  | { action: "nudge-episode-select"; locale: string; start: number; fp: string }
-  | { action: "nudge-episode-page"; locale: string; start: number }
-  | { action: "nudge-episode-add-submit"; locale: string; nonce: string }
-  | { action: "nudge-episode-toggle"; locale: string; index: number; fp: string; enabled: boolean }
-  | { action: "nudge-episode-edit-open"; locale: string; index: number; fp: string }
-  | { action: "nudge-episode-edit-submit"; locale: string; index: number; fp: string; nonce: string }
-  | { action: "nudge-episode-prereqs-select"; locale: string; index: number; fp: string }
-  | { action: "nudge-episode-tools-select"; locale: string; index: number; fp: string }
-  | { action: "nudge-episode-remove-view"; locale: string; index: number; fp: string }
-  | { action: "nudge-episode-remove-confirm"; locale: string; index: number; fp: string; nonce: string }
-  | { action: "nudge-episode-remove-cancel"; locale: string; index: number }
+  | { action: "nudge-idle-nudges-frequency-select"; locale: string }
+  | { action: "nudge-active-nudges-set"; locale: string; enabled: boolean }
+  | { action: "nudge-active-nudges-frequency-select"; locale: string }
+  | { action: "nudge-idle-select"; locale: string; start: number; fp: string }
+  | { action: "nudge-idle-page"; locale: string; start: number }
+  | { action: "nudge-idle-add-submit"; locale: string; nonce: string }
+  | { action: "nudge-idle-toggle"; locale: string; index: number; fp: string; enabled: boolean }
+  | { action: "nudge-idle-edit-open"; locale: string; index: number; fp: string }
+  | { action: "nudge-idle-edit-submit"; locale: string; index: number; fp: string; nonce: string }
+  | { action: "nudge-idle-prereqs-select"; locale: string; index: number; fp: string }
+  | { action: "nudge-idle-tools-select"; locale: string; index: number; fp: string }
+  | { action: "nudge-idle-remove-view"; locale: string; index: number; fp: string }
+  | { action: "nudge-idle-remove-confirm"; locale: string; index: number; fp: string; nonce: string }
+  | { action: "nudge-idle-remove-cancel"; locale: string; index: number }
   | { action: "draft-set"; locale: string; enabled: boolean }
   | { action: "draft-items-open"; locale: string }
   | { action: "draft-items-submit"; locale: string; nonce: string }
@@ -960,24 +960,24 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
     fields: [personaIdField, indexField, fpField, nonceField],
   },
   "nudge-interest-remove": { wireToken: "nn-int-rem", fields: [personaIdField, indexField, fpField] },
-  "nudge-episodes-set": { wireToken: "nn-set", fields: [enabledField] },
+  "nudge-idle-nudges-set": { wireToken: "nn-idle-set", fields: [enabledField] },
   "nudge-channels-select": { wireToken: "nn-channels", fields: [] },
   "nudge-provider": { wireToken: "nn-provider", fields: [] },
   "nudge-model-submit": { wireToken: "nn-model", fields: [providerField, nonceField] },
-  "nudge-frequency-select": { wireToken: "nn-frequency", fields: [] },
-  "nudge-chime-in-set": { wireToken: "nn-chime-set", fields: [enabledField] },
-  "nudge-chime-in-frequency-select": { wireToken: "nn-chime-frequency", fields: [] },
-  "nudge-episode-select": { wireToken: "nn-ep-select", fields: [startField, fpField] },
-  "nudge-episode-page": { wireToken: "nn-ep-page", fields: [startField] },
-  "nudge-episode-add-submit": { wireToken: "nn-ep-add", fields: [nonceField] },
-  "nudge-episode-toggle": { wireToken: "nn-ep-toggle", fields: [indexField, fpField, enabledField] },
-  "nudge-episode-edit-open": { wireToken: "nn-ep-edit-open", fields: [indexField, fpField] },
-  "nudge-episode-edit-submit": { wireToken: "nn-ep-edit", fields: [indexField, fpField, nonceField] },
-  "nudge-episode-prereqs-select": { wireToken: "nn-ep-prereqs", fields: [indexField, fpField] },
-  "nudge-episode-tools-select": { wireToken: "nn-ep-tools", fields: [indexField, fpField] },
-  "nudge-episode-remove-view": { wireToken: "nn-ep-rem-view", fields: [indexField, fpField] },
-  "nudge-episode-remove-confirm": { wireToken: "nn-ep-rem", fields: [indexField, fpField, nonceField] },
-  "nudge-episode-remove-cancel": { wireToken: "nn-ep-rem-cancel", fields: [indexField] },
+  "nudge-idle-nudges-frequency-select": { wireToken: "nn-idle-frequency", fields: [] },
+  "nudge-active-nudges-set": { wireToken: "nn-active-set", fields: [enabledField] },
+  "nudge-active-nudges-frequency-select": { wireToken: "nn-active-frequency", fields: [] },
+  "nudge-idle-select": { wireToken: "nn-idle-select", fields: [startField, fpField] },
+  "nudge-idle-page": { wireToken: "nn-idle-page", fields: [startField] },
+  "nudge-idle-add-submit": { wireToken: "nn-idle-add", fields: [nonceField] },
+  "nudge-idle-toggle": { wireToken: "nn-idle-toggle", fields: [indexField, fpField, enabledField] },
+  "nudge-idle-edit-open": { wireToken: "nn-idle-edit-open", fields: [indexField, fpField] },
+  "nudge-idle-edit-submit": { wireToken: "nn-idle-edit", fields: [indexField, fpField, nonceField] },
+  "nudge-idle-prereqs-select": { wireToken: "nn-idle-prereqs", fields: [indexField, fpField] },
+  "nudge-idle-tools-select": { wireToken: "nn-idle-tools", fields: [indexField, fpField] },
+  "nudge-idle-remove-view": { wireToken: "nn-idle-rem-view", fields: [indexField, fpField] },
+  "nudge-idle-remove-confirm": { wireToken: "nn-idle-rem", fields: [indexField, fpField, nonceField] },
+  "nudge-idle-remove-cancel": { wireToken: "nn-idle-rem-cancel", fields: [indexField] },
   "draft-set": { wireToken: "draft-set", fields: [enabledField] },
   "draft-items-open": { wireToken: "draft-items-open", fields: [] },
   "draft-items-submit": { wireToken: "draft-items-submit", fields: [nonceField] },

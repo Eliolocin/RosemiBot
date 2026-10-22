@@ -2,20 +2,20 @@ import type { Client, Message } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import type {
-  EnabledEpisodeServer,
+  EnabledIdleNudgeServer,
   NaturalNudgeFireRow,
   PersonaNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
-import { drawReachOutTarget } from "@/modules/natural-nudges/runtime/targets";
+import { drawPingUserTarget } from "@/modules/natural-nudges/runtime/targets";
 import { drawScenePartners, hasScenePartner, type PartnerCandidate } from "@/modules/natural-nudges/runtime/partners";
 import { NATURAL_NUDGE_CATEGORIES } from "@/modules/natural-nudges/db/types";
 import {
-  episodeNeedsTarget,
-  isEpisodeEligible,
-  listRunnableEpisodes,
-  type EpisodeDefinition,
+  idleNudgeNeedsTarget,
+  isIdleNudgeEligible,
+  listRunnableIdleNudges,
+  type IdleNudgeDefinition,
   type PrerequisiteFacts,
-} from "@/modules/natural-nudges/runtime/episodes";
+} from "@/modules/natural-nudges/runtime/idleNudges";
 import {
   buildPlannerTranscript,
   fetchRecentMessages,
@@ -26,16 +26,16 @@ import {
   type NudgeChannel,
 } from "@/modules/natural-nudges/runtime/channels";
 import {
-  computeEpisodeDueAt,
+  computeIdleNudgeDueAt,
   computeHeat,
   countUnansweredStreak,
   drawRaffle,
-  episodesPerDay,
+  idleNudgesPerDay,
   heatWindowStart,
   isWithinWakingHours,
   resolveWakingHours,
   restedShare,
-  rollEpisodeJitter,
+  rollIdleNudgeJitter,
   rollLullHours,
   serverDayStart,
 } from "@/modules/natural-nudges/runtime/meters";
@@ -43,9 +43,9 @@ import {
   AGENDA_RETENTION_MS,
   CATEGORY_REST_MS,
   DAY_MS,
-  EPISODE_CATEGORY_WEIGHTS,
-  EPISODE_DAILY_CAPS,
-  EPISODE_REST_MS,
+  IDLE_NUDGE_CATEGORY_WEIGHTS,
+  IDLE_NUDGE_DAILY_CAPS,
+  IDLE_NUDGE_REST_MS,
   FIRE_RETENTION_MS,
   HOUR_MS,
   MAX_PLANNER_CHANNELS,
@@ -60,8 +60,8 @@ import {
 import { isFailureStopped } from "@/modules/natural-nudges/runtime/failureStop";
 import { claimNudgeServer, isNudgeServerBusy, releaseNudgeServer } from "@/modules/natural-nudges/runtime/inFlight";
 import { resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
-import { runEpisodeAttempt, type EpisodeAttempt } from "@/modules/natural-nudges/runtime/runner";
-import { recordEpisodeSample } from "@/modules/natural-nudges/runtime/telemetry";
+import { runIdleNudgeAttempt, type IdleNudgeAttempt } from "@/modules/natural-nudges/runtime/runner";
+import { recordIdleNudgeSample } from "@/modules/natural-nudges/runtime/telemetry";
 import { getAvailableToolsWithMCP, type ToolStateForContext } from "@/tools/toolRegistry";
 import { getCachedAllPersonas } from "@/utils/cache/tomoriStateCache";
 import { statRepository } from "@/utils/db/repositories";
@@ -76,8 +76,8 @@ const METER_CACHE_TTL_MS = 15 * 60 * 1000;
 /** A pending verdict needs a Discord read, so it is checked at most this often per server. */
 const VERDICT_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const PRUNE_INTERVAL_MS = HOUR_MS;
-/** Episode rows kept in view beyond the rest window: enough for the unanswered streak and the pending row. */
-const LATEST_EPISODE_ROWS = UNANSWERED_STOP_STREAK + 2;
+/** Idle nudge rows kept in view beyond the rest window: enough for the unanswered streak and the pending row. */
+const LATEST_IDLE_NUDGE_ROWS = UNANSWERED_STOP_STREAK + 2;
 
 type NudgePersona = TomoriState & { persona_id: number };
 
@@ -154,13 +154,13 @@ async function loadAvailableToolNames(persona: TomoriState): Promise<Set<string>
 }
 
 /**
- * Phase A of Natural Nudges episodes: plain code with no model call. It decides whether a server is
- * due, finds a quiet channel, and draws the persona, category, and episode, then hands the attempt
+ * Phase A of Natural Nudges idle nudges: plain code with no model call. It decides whether a server is
+ * due, finds a quiet channel, and draws the persona, category, and idle nudge, then hands the attempt
  * to the detached runner.
  */
 export class NaturalNudgeProcessor {
   private readonly client: Client;
-  /** After an abort the episode waits a fresh lull before trying again, so it cannot loop every cycle. */
+  /** After an abort the idle nudge waits a fresh lull before trying again, so it cannot loop every cycle. */
   private readonly retryNotBefore = new Map<number, number>();
   private readonly lullHours = new Map<number, number>();
   private readonly verdictCheckedAt = new Map<number, number>();
@@ -171,12 +171,12 @@ export class NaturalNudgeProcessor {
     this.client = client;
   }
 
-  public async processDueEpisodes(): Promise<void> {
+  public async processDueIdleNudges(): Promise<void> {
     if (!this.client.isReady()) return;
     await this.pruneIfDue();
-    let servers: EnabledEpisodeServer[];
+    let servers: EnabledIdleNudgeServer[];
     try {
-      servers = await naturalNudgeRepository.listEnabledEpisodeServers(heatWindowStart(new Date()));
+      servers = await naturalNudgeRepository.listEnabledIdleNudgeServers(heatWindowStart(new Date()));
     } catch (error) {
       log.error("Natural Nudges: failed to list enabled servers", error);
       return;
@@ -188,7 +188,7 @@ export class NaturalNudgeProcessor {
           this.evaluateServer(server),
         );
       } catch (error) {
-        await log.error("Natural Nudges: episode evaluation failed", error, { serverId: server.server_id });
+        await log.error("Natural Nudges: idle nudge evaluation failed", error, { serverId: server.server_id });
       }
     }
   }
@@ -225,15 +225,15 @@ export class NaturalNudgeProcessor {
     return meters;
   }
 
-  /** An abort leaves the episode due; the next try waits a fresh lull roll from now. */
+  /** An abort leaves the idle nudge due; the next try waits a fresh lull roll from now. */
   private deferRetry(serverId: number, now: Date): void {
     const hours = rollLullHours();
     this.lullHours.set(serverId, hours);
     this.retryNotBefore.set(serverId, now.getTime() + hours * HOUR_MS);
   }
 
-  private abortInPhaseA(server: EnabledEpisodeServer, now: Date, reason: string, heat: number): void {
-    recordEpisodeSample({ serverId: server.server_id, outcome: "aborted", phase: "a", reason, heat });
+  private abortInPhaseA(server: EnabledIdleNudgeServer, now: Date, reason: string, heat: number): void {
+    recordIdleNudgeSample({ serverId: server.server_id, outcome: "aborted", phase: "a", reason, heat });
     this.deferRetry(server.server_id, now);
   }
 
@@ -251,7 +251,7 @@ export class NaturalNudgeProcessor {
       await naturalNudgeRepository.setFireAnswered(fire.fire_id, false);
   }
 
-  private async evaluateServer(server: EnabledEpisodeServer): Promise<void> {
+  private async evaluateServer(server: EnabledIdleNudgeServer): Promise<void> {
     const now = new Date();
     const serverId = server.server_id;
     const { config } = server;
@@ -259,10 +259,10 @@ export class NaturalNudgeProcessor {
 
     const history = await naturalNudgeRepository.loadFireHistory(
       serverId,
-      new Date(now.getTime() - EPISODE_REST_MS),
-      LATEST_EPISODE_ROWS,
+      new Date(now.getTime() - IDLE_NUDGE_REST_MS),
+      LATEST_IDLE_NUDGE_ROWS,
     );
-    const pending = history.latestEpisodes.find((fire) => fire.answered === null);
+    const pending = history.latestIdleNudges.find((fire) => fire.answered === null);
     if (pending) {
       await this.resolvePending(pending, now);
       return;
@@ -273,19 +273,19 @@ export class NaturalNudgeProcessor {
 
     const timezoneOffset = server.timezone_offset ?? 0;
     const meters = await this.loadMeters(serverId, timezoneOffset, now);
-    const streak = countUnansweredStreak(history.latestEpisodes, meters.lastMessageSentAt);
+    const streak = countUnansweredStreak(history.latestIdleNudges, meters.lastMessageSentAt);
     if (streak >= UNANSWERED_STOP_STREAK) return;
-    const perDay = episodesPerDay(meters.heat, config.episode_frequency);
-    const dueAt = computeEpisodeDueAt({
-      lastEpisodeAt: history.latestEpisodes[0]?.fired_at ?? null,
+    const perDay = idleNudgesPerDay(meters.heat, config.idle_nudge_frequency);
+    const dueAt = computeIdleNudgeDueAt({
+      lastIdleNudgeAt: history.latestIdleNudges[0]?.fired_at ?? null,
       perDay,
-      jitter: runtime.episode_jitter,
+      jitter: runtime.idle_nudge_jitter,
       unansweredStreak: streak,
     });
     if (!dueAt || now < dueAt) return;
     const dayStart = serverDayStart(now, timezoneOffset);
-    const firedToday = history.recent.filter((fire) => fire.mode === "episode" && fire.fired_at >= dayStart).length;
-    if (firedToday >= EPISODE_DAILY_CAPS[config.episode_frequency]) return;
+    const firedToday = history.recent.filter((fire) => fire.mode === "idle" && fire.fired_at >= dayStart).length;
+    if (firedToday >= IDLE_NUDGE_DAILY_CAPS[config.idle_nudge_frequency]) return;
     if (!isWithinWakingHours(meters.awake, now, serverId)) return;
 
     const personas = (await getCachedAllPersonas(server.server_disc_id)).filter(
@@ -319,32 +319,32 @@ export class NaturalNudgeProcessor {
     }
 
     if (!claimNudgeServer(serverId)) return;
-    void runEpisodeAttempt(attempt)
+    void runIdleNudgeAttempt(attempt)
       .then((result) => {
         if (result === "fired") {
           this.lullHours.delete(serverId);
           this.retryNotBefore.delete(serverId);
-          return naturalNudgeRepository.setEpisodeJitter(serverId, rollEpisodeJitter());
+          return naturalNudgeRepository.setIdleNudgeJitter(serverId, rollIdleNudgeJitter());
         }
         this.deferRetry(serverId, new Date());
       })
       .catch(async (error) => {
         this.deferRetry(serverId, new Date());
-        await log.error("Natural Nudges: episode attempt failed", error, { serverId });
+        await log.error("Natural Nudges: idle nudge attempt failed", error, { serverId });
       })
       .finally(() => releaseNudgeServer(serverId));
   }
 
-  /** Persona first, then category and episode for that persona, so identity never depends on opportunity. */
+  /** Persona first, then category and idle nudge for that persona, so identity never depends on opportunity. */
   private async drawAttempt(
-    server: EnabledEpisodeServer,
+    server: EnabledIdleNudgeServer,
     personas: NudgePersona[],
     quiet: NudgeChannel[],
     recentFires: readonly NaturalNudgeFireRow[],
     meters: ServerMeters,
     plannerLlmId: number,
     now: Date,
-  ): Promise<EpisodeAttempt | string> {
+  ): Promise<IdleNudgeAttempt | string> {
     const scanned = shuffled(quiet).slice(0, MAX_SCANNED_CHANNELS);
     const whitelists = new Map<string, WhitelistCheckResult>();
     for (const channel of scanned) {
@@ -387,15 +387,15 @@ export class NaturalNudgeProcessor {
     const hanging = personaChannels.filter((channel) =>
       isHangingConversation(histories.get(channel.channel.id) ?? [], personas, this.client.user?.id, now),
     );
-    const runnable = listRunnableEpisodes(
-      server.config.disabled_builtin_episodes,
-      await naturalNudgeRepository.listCustomEpisodes(server.server_id),
+    const runnable = listRunnableIdleNudges(
+      server.config.disabled_builtin_idle_nudges,
+      await naturalNudgeRepository.listCustomIdleNudges(server.server_id),
     );
     const guild = this.client.guilds.cache.get(server.server_disc_id);
     if (!guild) return "guild_unavailable";
-    // The draw reads memories and fetches members, so it waits until some runnable episode could ping.
-    const target = runnable.some(episodeNeedsTarget)
-      ? await drawReachOutTarget({
+    // The draw reads memories and fetches members, so it waits until some runnable idle nudge could ping.
+    const target = runnable.some(idleNudgeNeedsTarget)
+      ? await drawPingUserTarget({
           client: this.client,
           guild,
           serverId: server.server_id,
@@ -415,36 +415,36 @@ export class NaturalNudgeProcessor {
       target: target && { hasRecentMemories: target.recentMemories.length > 0, isActive: target.activity !== null },
     };
 
-    const episodes = runnable.filter((episode) => isEpisodeEligible(episode, facts));
+    const idleNudges = runnable.filter((idleNudge) => isIdleNudgeEligible(idleNudge, facts));
     const categoryFiredAt = lastFireBy(recentFires, (fire) => fire.category);
     const category = drawRaffle(
       NATURAL_NUDGE_CATEGORIES.map((candidate) => ({
         item: candidate,
-        tickets: episodes.some((episode) => episode.category === candidate)
-          ? EPISODE_CATEGORY_WEIGHTS[candidate] * restedShare(categoryFiredAt.get(candidate), now, CATEGORY_REST_MS)
+        tickets: idleNudges.some((idleNudge) => idleNudge.category === candidate)
+          ? IDLE_NUDGE_CATEGORY_WEIGHTS[candidate] * restedShare(categoryFiredAt.get(candidate), now, CATEGORY_REST_MS)
           : 0,
       })),
     );
-    if (!category) return "no_eligible_episode";
-    const episodeFiredAt = lastFireBy(recentFires, (fire) => fire.episode_key);
-    const episode = drawRaffle<EpisodeDefinition>(
-      episodes
+    if (!category) return "no_eligible_idle_nudge";
+    const idleNudgeFiredAt = lastFireBy(recentFires, (fire) => fire.idle_nudge_key);
+    const idleNudge = drawRaffle<IdleNudgeDefinition>(
+      idleNudges
         .filter((candidate) => candidate.category === category)
         .map((candidate) => ({
           item: candidate,
-          tickets: restedShare(episodeFiredAt.get(candidate.key), now, EPISODE_REST_MS),
+          tickets: restedShare(idleNudgeFiredAt.get(candidate.key), now, IDLE_NUDGE_REST_MS),
         })),
     );
-    if (!episode) return "no_eligible_episode";
+    if (!idleNudge) return "no_eligible_idle_nudge";
 
-    const episodeTarget = episodeNeedsTarget(episode) ? target : null;
-    let pool = episodeTarget
-      ? personaChannels.filter((channel) => episodeTarget.channelIds.includes(channel.channel.id))
-      : category === "revive"
+    const idleNudgeTarget = idleNudgeNeedsTarget(idleNudge) ? target : null;
+    let pool = idleNudgeTarget
+      ? personaChannels.filter((channel) => idleNudgeTarget.channelIds.includes(channel.channel.id))
+      : category === "revive_topic"
         ? hanging
         : personaChannels;
     let partners: NudgePersona[] = [];
-    if (category === "alter_talk") {
+    if (category === "play_scene") {
       const scene = drawScenePartners(
         partnerCandidates,
         pool.map((channel) => channel.channel.id),
@@ -465,11 +465,11 @@ export class NaturalNudgeProcessor {
       awake: meters.awake,
       persona,
       interests: personaConfig.interests,
-      episode,
+      idleNudge,
       plannerLlmId,
       availableTools: facts.availableTools,
       plannerChannels,
-      target: episodeTarget,
+      target: idleNudgeTarget,
       partners: partners.map((partner) => ({
         persona: partner,
         interests: personaConfigs.get(partner.persona_id)?.interests ?? [],

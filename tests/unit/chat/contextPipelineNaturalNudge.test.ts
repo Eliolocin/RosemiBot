@@ -112,7 +112,7 @@ async function buildTurnContext(naturalNudge: NaturalNudgeTurn | undefined): Pro
 const CONTINUE_DIRECTIVE = "Continue your last message without repeating it";
 
 describe("Natural Nudges turn context", () => {
-  it("admits the episode's tools under Deliberate Tool Mode", async () => {
+  it("admits the idle nudge's tools under Deliberate Tool Mode", async () => {
     const { context } = await buildTurnContext({ toolNames: ["web_search"] });
     expect(context.streamingContext.disableAllTools).not.toBe(true);
     expect(context.streamingContext.deliberateToolAllowedNames).toContain("web_search");
@@ -128,15 +128,15 @@ describe("Natural Nudges turn context", () => {
     expect(JSON.stringify(nudge.context.contextItems)).not.toContain(CONTINUE_DIRECTIVE);
   });
 
-  it("lets a Reach-out ping only its target, and leaves other nudges unrestricted", async () => {
-    const reachOut = await buildTurnContext({ toolNames: [], targetUserDiscId: "fixture-mirri" });
-    expect(reachOut.context.streamingContext.mentionableUserIds).toEqual(["fixture-mirri"]);
-    expect(reachOut.context.streamingContext.forcedMentions?.map((mention) => mention.userId)).toContain(
+  it("lets a Ping User nudge ping only its target, and leaves other nudges unrestricted", async () => {
+    const pingUser = await buildTurnContext({ toolNames: [], targetUserDiscId: "fixture-mirri" });
+    expect(pingUser.context.streamingContext.mentionableUserIds).toEqual(["fixture-mirri"]);
+    expect(pingUser.context.streamingContext.forcedMentions?.map((mention) => mention.userId)).toContain(
       "fixture-mirri",
     );
 
-    const newTopic = await buildTurnContext({ toolNames: [] });
-    expect(newTopic.context.streamingContext.mentionableUserIds).toBeUndefined();
+    const plainNudge = await buildTurnContext({ toolNames: [] });
+    expect(plainNudge.context.streamingContext.mentionableUserIds).toBeUndefined();
   });
 });
 

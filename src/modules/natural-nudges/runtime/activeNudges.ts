@@ -8,11 +8,11 @@ import {
   isHumanMessage,
   resolveEffectiveChannelIds,
 } from "@/modules/natural-nudges/runtime/channels";
-import { readChimeInGate } from "@/modules/natural-nudges/runtime/configCache";
+import { readActiveNudgeGate } from "@/modules/natural-nudges/runtime/configCache";
 import { isFailureStopped } from "@/modules/natural-nudges/runtime/failureStop";
 import { claimNudgeServer, releaseNudgeServer } from "@/modules/natural-nudges/runtime/inFlight";
 import {
-  matchChimeIn,
+  matchActiveNudge,
   matcherOptionId,
   resolveMatcherBackend,
   type MatcherBackend,
@@ -20,25 +20,25 @@ import {
   type MatcherResult,
 } from "@/modules/natural-nudges/runtime/matcher";
 import {
-  chimeInTripRange,
+  activeNudgeTripRange,
   drawRaffle,
   restedShare,
   serverDayStart,
   underdogBoost,
 } from "@/modules/natural-nudges/runtime/meters";
 import { isGenerationFailure, type AttemptResult } from "@/modules/natural-nudges/runtime/runner";
-import { recordChimeInSample, type ChimeInSample } from "@/modules/natural-nudges/runtime/telemetry";
+import { recordActiveNudgeSample, type ActiveNudgeSample } from "@/modules/natural-nudges/runtime/telemetry";
 import {
-  CHIME_IN_DAILY_CAPS,
-  CHIME_IN_DELAY_MAX_MS,
-  CHIME_IN_DELAY_MIN_MS,
-  CHIME_IN_DETOUR_CHANCE,
-  CHIME_IN_DETOUR_WARM_DAYS,
-  CHIME_IN_EMPTY_REST_MS,
-  CHIME_IN_OPTION_BUDGET,
-  CHIME_IN_STALE_HUMAN_MESSAGES,
-  CHIME_IN_UNDERDOG_DAYS,
-  CHIME_IN_WINDOW_MESSAGES,
+  ACTIVE_NUDGE_DAILY_CAPS,
+  ACTIVE_NUDGE_DELAY_MAX_MS,
+  ACTIVE_NUDGE_DELAY_MIN_MS,
+  ACTIVE_NUDGE_DETOUR_CHANCE,
+  ACTIVE_NUDGE_DETOUR_WARM_DAYS,
+  ACTIVE_NUDGE_EMPTY_REST_MS,
+  ACTIVE_NUDGE_OPTION_BUDGET,
+  ACTIVE_NUDGE_STALE_HUMAN_MESSAGES,
+  ACTIVE_NUDGE_UNDERDOG_DAYS,
+  ACTIVE_NUDGE_WINDOW_MESSAGES,
   DAY_MS,
   HOUR_MS,
   PERSONA_REST_MS,
@@ -74,7 +74,7 @@ interface ChannelCounter {
  * parent. Kept in memory, because a restart only resets the counts to 0, which delays the next check
  * slightly.
  */
-class ChimeInCounter {
+class ActiveNudgeCounter {
   private readonly channels = new Map<string, ChannelCounter>();
 
   isTracking(channelId: string): boolean {
@@ -107,7 +107,7 @@ class ChimeInCounter {
   }
 
   rest(channelId: string, now: number): void {
-    this.channels.set(channelId, { count: 0, target: 0, restUntil: now + CHIME_IN_EMPTY_REST_MS });
+    this.channels.set(channelId, { count: 0, target: 0, restUntil: now + ACTIVE_NUDGE_EMPTY_REST_MS });
   }
 }
 
@@ -117,7 +117,7 @@ interface ChannelWatch {
   personaSpoke: boolean;
 }
 
-const counter = new ChimeInCounter();
+const counter = new ActiveNudgeCounter();
 const watches = new Map<string, ChannelWatch>();
 
 async function isPersonaMessage(client: Client, message: Message): Promise<boolean> {
@@ -125,7 +125,7 @@ async function isPersonaMessage(client: Client, message: Message): Promise<boole
   return (await verifyMessageWebhook(message)) && !getCachedImpersonatedUserIdForWebhook(message.webhookId);
 }
 
-export interface ChimeInCheck {
+export interface ActiveNudgeCheck {
   client: Client;
   channel: GuildTextBasedChannel;
   /** The allow-listed channel: the channel itself, or a thread's parent. */
@@ -136,10 +136,10 @@ export interface ChimeInCheck {
 }
 
 /**
- * The cheap part of Chime-ins, run on every guild message: count human messages in allowed channels,
+ * The cheap part of Active Nudges, run on every guild message: count human messages in allowed channels,
  * reset on persona messages, and start one check when the rolled count trips.
  */
-export async function observeChimeInMessage(client: Client, message: Message): Promise<void> {
+export async function observeActiveNudgeMessage(client: Client, message: Message): Promise<void> {
   if (!message.inGuild() || message.system) return;
   const channel = message.channel;
   const channelId = channel.id;
@@ -157,13 +157,13 @@ export async function observeChimeInMessage(client: Client, message: Message): P
   const watch = watches.get(channelId);
   if (watch) watch.humans++;
 
-  const gate = await readChimeInGate(message.guildId);
-  if (!gate?.config.chime_in_enabled || !gate.channelIds.has(listedChannelId)) return;
-  const range = chimeInTripRange(gate.heat, gate.config.chime_in_frequency);
+  const gate = await readActiveNudgeGate(message.guildId);
+  if (!gate?.config.active_nudges_enabled || !gate.channelIds.has(listedChannelId)) return;
+  const range = activeNudgeTripRange(gate.heat, gate.config.active_nudge_frequency);
   if (!range || !counter.recordHuman(listedChannelId, range, Date.now())) return;
   if (!claimNudgeServer(gate.serverId)) return;
 
-  const check: ChimeInCheck = {
+  const check: ActiveNudgeCheck = {
     client,
     channel,
     listedChannelId,
@@ -171,13 +171,13 @@ export async function observeChimeInMessage(client: Client, message: Message): P
     serverId: gate.serverId,
     heat: gate.heat,
   };
-  void runWithErrorContext({ source: "natural_nudge", serverId: gate.serverId }, () => runChimeInCheck(check))
+  void runWithErrorContext({ source: "natural_nudge", serverId: gate.serverId }, () => runActiveNudgeCheck(check))
     .then((result) => {
       if (result !== "fired") counter.rest(listedChannelId, Date.now());
     })
     .catch(async (error) => {
       counter.rest(listedChannelId, Date.now());
-      await log.error("Natural Nudges: Chime-in check failed", error, { serverId: gate.serverId });
+      await log.error("Natural Nudges: Active Nudge check failed", error, { serverId: gate.serverId });
     })
     .finally(() => releaseNudgeServer(gate.serverId));
 }
@@ -205,7 +205,7 @@ export function buildMatcherOptions(
   for (const persona of shuffled(personas, random)) {
     const interests = configs.get(persona.persona_id)?.interests ?? [];
     const added = new Set(interests.map((interest) => labelKey(interest.label)).filter((key) => !byLabel.has(key)));
-    if (byLabel.size + added.size > CHIME_IN_OPTION_BUDGET) continue;
+    if (byLabel.size + added.size > ACTIVE_NUDGE_OPTION_BUDGET) continue;
     for (const interest of interests) {
       const key = labelKey(interest.label);
       let entry = byLabel.get(key);
@@ -256,12 +256,12 @@ interface CheckSettings {
 
 /** The fresh-read checks Phase A and the re-check share; a string names the abort reason. */
 async function checkSettingsAndCaps(
-  check: ChimeInCheck,
+  check: ActiveNudgeCheck,
   personas: readonly NudgePersona[],
   now: Date,
 ): Promise<CheckSettings | string> {
   const config = await naturalNudgeRepository.loadServerConfig(check.serverId);
-  if (!config.chime_in_enabled) return "disabled";
+  if (!config.active_nudges_enabled) return "disabled";
   if (!(await resolveEffectiveChannelIds(check.serverId, config, now)).includes(check.listedChannelId))
     return "channel_removed";
   const { stopped_at: stoppedAt } = await naturalNudgeRepository.loadRuntimeState(check.serverId);
@@ -277,12 +277,15 @@ async function checkSettingsAndCaps(
     new Date(now.getTime() - PERSONA_REST_MS),
     1,
   );
-  const chimeIns = history.recent.filter((fire) => fire.mode === "chime_in");
+  const activeNudges = history.recent.filter((fire) => fire.mode === "active");
   const dayStart = serverDayStart(now, personas[0].config.timezone_offset ?? 0);
-  if (chimeIns.filter((fire) => fire.fired_at >= dayStart).length >= CHIME_IN_DAILY_CAPS[config.chime_in_frequency])
+  if (
+    activeNudges.filter((fire) => fire.fired_at >= dayStart).length >=
+    ACTIVE_NUDGE_DAILY_CAPS[config.active_nudge_frequency]
+  )
     return "cap_reached";
   if (
-    chimeIns.some(
+    activeNudges.some(
       (fire) =>
         listedChannelOf(check.client, fire.channel_disc_id) === check.listedChannelId &&
         now.getTime() - fire.fired_at.getTime() < HOUR_MS,
@@ -296,7 +299,7 @@ async function checkSettingsAndCaps(
 
 /** Personas that may speak here: talkativeness above 0 and allowed in the channel. */
 async function loadSpeakers(
-  check: ChimeInCheck,
+  check: ActiveNudgeCheck,
   personas: readonly NudgePersona[],
 ): Promise<{ speakers: NudgePersona[]; configs: Map<number, PersonaNaturalNudgeConfig> }> {
   const parentId = check.channel.isThread() ? (check.channel.parentId ?? undefined) : undefined;
@@ -335,7 +338,7 @@ function personaTickets(
  * detour raise their count, so the boost corrects itself.
  */
 async function drawDetour(
-  check: ChimeInCheck,
+  check: ActiveNudgeCheck,
   excluded: ReadonlySet<number>,
   speakers: readonly NudgePersona[],
   configs: ReadonlyMap<number, PersonaNaturalNudgeConfig>,
@@ -348,11 +351,11 @@ async function drawDetour(
   const [warm, month] = await Promise.all([
     statRepository.getServerPersonaMessageCounts({
       serverId: check.serverId,
-      from: new Date(now.getTime() - CHIME_IN_DETOUR_WARM_DAYS * DAY_MS),
+      from: new Date(now.getTime() - ACTIVE_NUDGE_DETOUR_WARM_DAYS * DAY_MS),
     }),
     statRepository.getServerPersonaMessageCounts({
       serverId: check.serverId,
-      from: new Date(now.getTime() - CHIME_IN_UNDERDOG_DAYS * DAY_MS),
+      from: new Date(now.getTime() - ACTIVE_NUDGE_UNDERDOG_DAYS * DAY_MS),
     }),
   ]);
   const topCount = Math.max(0, ...month.values());
@@ -369,7 +372,7 @@ async function drawDetour(
   );
 }
 
-export interface ChimeInCheckOptions {
+export interface ActiveNudgeCheckOptions {
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
 }
@@ -377,20 +380,23 @@ export interface ChimeInCheckOptions {
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
- * One Chime-in check: Phase A reads fresh settings and caps, one matcher call picks an interest or
+ * One Active Nudge check: Phase A reads fresh settings and caps, one matcher call picks an interest or
  * `none`, and after a short delay the re-check confirms the moment before a plain turn. Any doubt
  * resolves to saying nothing.
  */
-export async function runChimeInCheck(check: ChimeInCheck, options: ChimeInCheckOptions = {}): Promise<AttemptResult> {
+export async function runActiveNudgeCheck(
+  check: ActiveNudgeCheck,
+  options: ActiveNudgeCheckOptions = {},
+): Promise<AttemptResult> {
   const sleep = options.sleep ?? defaultSleep;
   const random = options.random ?? Math.random;
-  const telemetry: Omit<ChimeInSample, "outcome" | "phase" | "reason"> = {
+  const telemetry: Omit<ActiveNudgeSample, "outcome" | "phase" | "reason"> = {
     serverId: check.serverId,
     heat: check.heat,
     rematched: false,
   };
   const finish = (outcome: AttemptResult, phase: "a" | "c", reason: string): AttemptResult => {
-    recordChimeInSample({ ...telemetry, outcome, phase, reason });
+    recordActiveNudgeSample({ ...telemetry, outcome, phase, reason });
     return outcome;
   };
 
@@ -407,11 +413,11 @@ export async function runChimeInCheck(check: ChimeInCheck, options: ChimeInCheck
     const { speakers, configs } = await loadSpeakers(check, personas);
     const { options: matcherOptions, owners } = buildMatcherOptions(speakers, configs, random);
     if (matcherOptions.length === 0) return finish("aborted", "a", "no_interests");
-    const window = await fetchRecentMessages(check.channel, CHIME_IN_WINDOW_MESSAGES);
+    const window = await fetchRecentMessages(check.channel, ACTIVE_NUDGE_WINDOW_MESSAGES);
     const evidence = await buildMatcherEvidence(window, check.guildId);
     if (!evidence) return finish("aborted", "a", "no_evidence");
 
-    const matched: MatcherResult = await matchChimeIn({
+    const matched: MatcherResult = await matchActiveNudge({
       state: personas[0],
       backend: settings.backend,
       options: matcherOptions,
@@ -425,7 +431,7 @@ export async function runChimeInCheck(check: ChimeInCheck, options: ChimeInCheck
       matcherInputTokens: matched.usage?.inputTokens,
       matcherOutputTokens: matched.usage?.outputTokens,
     });
-    // Not counted toward the failure stop, so a broken matcher cannot also stop the server's episodes.
+    // Not counted toward the failure stop, so a broken matcher cannot also stop the server's idle nudges.
     if (matched.reason === "failed") return finish("failed", "a", "matcher_failed");
     if (!matched.choice) return finish("aborted", "a", `matcher_${matched.reason}`);
     const spoke = spokeInWindow(window, personas, check.client.user?.id);
@@ -440,7 +446,7 @@ export async function runChimeInCheck(check: ChimeInCheck, options: ChimeInCheck
         random,
       ) ?? winners[0];
     const detour =
-      random() < CHIME_IN_DETOUR_CHANCE
+      random() < ACTIVE_NUDGE_DETOUR_CHANCE
         ? await drawDetour(
             check,
             new Set([...spoke, winner.persona_id]),
@@ -454,10 +460,10 @@ export async function runChimeInCheck(check: ChimeInCheck, options: ChimeInCheck
     const speaker = detour ?? winner;
     telemetry.detour = detour !== null;
 
-    const delayMs = CHIME_IN_DELAY_MIN_MS + random() * (CHIME_IN_DELAY_MAX_MS - CHIME_IN_DELAY_MIN_MS);
+    const delayMs = ACTIVE_NUDGE_DELAY_MIN_MS + random() * (ACTIVE_NUDGE_DELAY_MAX_MS - ACTIVE_NUDGE_DELAY_MIN_MS);
     const interest = matcherOptions.find((option) => option.id === matched.choice)?.text ?? matched.choice;
     log.info(
-      `Natural Nudges: Chime-in queued for ${speaker.persona_nickname} in channel ${check.channel.id} ` +
+      `Natural Nudges: Active Nudge queued for ${speaker.persona_nickname} in channel ${check.channel.id} ` +
         `(interest "${interest}"${detour ? `, detour from ${winner.persona_nickname}` : ""}, ` +
         `speaking in ${Math.round(delayMs / 1000)} s unless the moment passes)`,
     );
@@ -497,7 +503,7 @@ interface RecheckOutcome {
  * window, the matcher runs once more and only the same interest may speak.
  */
 async function recheckBeforeSend(
-  check: ChimeInCheck,
+  check: ActiveNudgeCheck,
   speaker: NudgePersona,
   watch: ChannelWatch,
   plan: RematchPlan,
@@ -512,14 +518,14 @@ async function recheckBeforeSend(
   if (!speakers.some((persona) => persona.persona_id === speaker.persona_id)) return { reason: "persona_silenced" };
   if (watch.personaSpoke) return { reason: "persona_spoke" };
   if (isChannelProcessingLocked(check.channel.id)) return { reason: "channel_busy" };
-  if (watch.humans < CHIME_IN_STALE_HUMAN_MESSAGES) return { reason: null };
+  if (watch.humans < ACTIVE_NUDGE_STALE_HUMAN_MESSAGES) return { reason: null };
 
-  const window = await fetchRecentMessages(check.channel, CHIME_IN_WINDOW_MESSAGES);
+  const window = await fetchRecentMessages(check.channel, ACTIVE_NUDGE_WINDOW_MESSAGES);
   const evidence = await buildMatcherEvidence(window, check.guildId);
   if (!evidence) return { reason: "window_gone" };
   if (spokeInWindow(window, personas, check.client.user?.id).has(speaker.persona_id))
     return { reason: "persona_spoke" };
-  const rematched = await matchChimeIn({
+  const rematched = await matchActiveNudge({
     state: personas[0],
     backend: settings.backend,
     options: plan.options,
@@ -536,7 +542,7 @@ async function recheckBeforeSend(
 
 /** A plain turn on the newest message, with no brief or agenda: the persona reacts as itself. */
 async function speak(
-  check: ChimeInCheck,
+  check: ActiveNudgeCheck,
   speaker: NudgePersona,
   detour: boolean,
   finish: (outcome: AttemptResult, phase: "a" | "c", reason: string) => AttemptResult,
@@ -554,7 +560,7 @@ async function speak(
       outcome = finish(isGenerationFailure(result) ? "failed" : "aborted", "c", `generation_${result.status}`);
       return;
     }
-    const recorded = await naturalNudgeRepository.recordChimeInFire({
+    const recorded = await naturalNudgeRepository.recordActiveNudgeFire({
       serverId: check.serverId,
       channelDiscId: check.channel.id,
       personaId: speaker.persona_id,
@@ -575,13 +581,13 @@ async function speak(
     isPersonaJob: false,
     isUserImpersonation: false,
     textQuotaSource: "system",
-    textQuotaTriggerKey: `chime-in:${check.serverId}:${anchor.id}`,
+    textQuotaTriggerKey: `active-nudge:${check.serverId}:${anchor.id}`,
     shouldSurfaceUserErrors: false,
     naturalNudge: { toolNames: [] },
     borrowsTriggerMessage: true,
     onGenerationResult: settle,
   });
   if (outcome) return outcome;
-  log.info(`Natural Nudges: Chime-in not delivered for server ${check.serverId} (disposition ${disposition})`);
+  log.info(`Natural Nudges: Active Nudge not delivered for server ${check.serverId} (disposition ${disposition})`);
   return finish("aborted", "c", `admission_${disposition}`);
 }

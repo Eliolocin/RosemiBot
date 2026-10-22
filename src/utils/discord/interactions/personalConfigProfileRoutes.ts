@@ -727,7 +727,7 @@ export async function handlePersonalConfigProfileWrites(context: PersonalConfigP
     return true;
   }
 
-  if (route.action === "reach-out-set") {
+  if (route.action === "ping-user-set") {
     const repaintPrivacy = (panelReceipt: Parameters<typeof repaint>[1]["panelReceipt"]) =>
       repaint(interaction, {
         locale: route.locale,
@@ -765,7 +765,7 @@ export async function handlePersonalConfigProfileWrites(context: PersonalConfigP
     if (result.status === "success") {
       if (context.scope.internalServerId) {
         dependencies.recordAction({
-          action: "personal-config.personal.reach-out.set",
+          action: "personal-config.personal.ping-user.set",
           serverId: context.scope.internalServerId,
           userDiscId: interaction.user.id,
         });
@@ -775,14 +775,14 @@ export async function handlePersonalConfigProfileWrites(context: PersonalConfigP
         heading: localizer(
           route.locale,
           result.optedOut
-            ? "commands.personal.config.reach_out_disabled_heading"
-            : "commands.personal.config.reach_out_enabled_heading",
+            ? "commands.personal.config.ping_user_disabled_heading"
+            : "commands.personal.config.ping_user_enabled_heading",
         ),
         detail: localizer(
           route.locale,
           result.optedOut
-            ? "commands.personal.config.reach_out_disabled_detail"
-            : "commands.personal.config.reach_out_enabled_detail",
+            ? "commands.personal.config.ping_user_disabled_detail"
+            : "commands.personal.config.ping_user_enabled_detail",
         ),
       });
       return true;

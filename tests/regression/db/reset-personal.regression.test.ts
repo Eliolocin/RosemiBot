@@ -3,7 +3,7 @@
  *
  * Covers resetRepository.resetPersonalConfiguration:
  * - Resets language_pref to 'en-US' and privacy_level to 0 in users table.
- * - Preserves registration_locale and the Reach-out opt-out.
+ * - Preserves registration_locale and the Ping User nudge opt-out.
  * - Resets all 13 columns in user_personalization_configs to DDL defaults.
  * - Deletes user_persona_naming_preferences for the user.
  * - Deletes all personal_spotlights for the user across workspaces, cascading to personal_spotlight_personas.

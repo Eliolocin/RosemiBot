@@ -788,7 +788,7 @@ describe("personalConfigPanelCatalog", () => {
     ["personal-config:v2:privacy-level-open:en-US", { action: "privacy-level-open", locale: "en-US" }],
     ["personal-config:v2:crossserver-toggle:en-US", { action: "crossserver-toggle", locale: "en-US" }],
     ["personal-config:v2:crossserver-set:en-US:on", { action: "crossserver-set", locale: "en-US", enabled: true }],
-    ["personal-config:v2:reach-out-set:en-US:off", { action: "reach-out-set", locale: "en-US", enabled: false }],
+    ["personal-config:v2:ping-user-set:en-US:off", { action: "ping-user-set", locale: "en-US", enabled: false }],
     ["personal-config:v2:quick-toggle-open:en-US", { action: "quick-toggle-open", locale: "en-US" }],
     ["personal-config:v2:parameters-provider-select:en-US", { action: "parameters-provider-select", locale: "en-US" }],
     ["personal-config:v2:fallbacks-provider-select:en-US", { action: "fallbacks-provider-select", locale: "en-US" }],
@@ -1178,7 +1178,7 @@ describe("personalConfigPanelCatalog", () => {
       case "tool-mode-set":
         return [{ action, locale, mode }];
       case "crossserver-set":
-      case "reach-out-set":
+      case "ping-user-set":
         return [{ action, locale, enabled: !isWorstCase }];
       case "server-fallback-set":
         return [{ action, locale, enabled: !isWorstCase }];
@@ -1544,15 +1544,15 @@ describe("personalConfigRoutes interaction handling and telemetry", () => {
     expect(telemetry).toContain("personal-config.personal.crossserver-stm.set");
   });
 
-  it("turning Reach-outs off stores the opt-out", async () => {
+  it("turning Ping User nudges off stores the opt-out", async () => {
     const calls: string[] = [];
     const { dependencies, telemetry } = makeDependencies(calls);
     const route = createPersonalConfigInteractionRoute(dependencies);
-    const customId = buildPersonalConfigRouteId({ action: "reach-out-set", locale: "en-US", enabled: false });
+    const customId = buildPersonalConfigRouteId({ action: "ping-user-set", locale: "en-US", enabled: false });
 
     await route.execute({} as Client, makePersonalInteraction({ customId }), requireRoute(customId));
     expect(calls).toContain("setNaturalNudgeOptOut:false:true");
-    expect(telemetry).toContain("personal-config.personal.reach-out.set");
+    expect(telemetry).toContain("personal-config.personal.ping-user.set");
   });
 
   it("handles outdated panel version in router", async () => {

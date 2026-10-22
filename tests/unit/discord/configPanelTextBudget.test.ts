@@ -55,25 +55,25 @@ import {
 } from "@/utils/discord/ui/componentsV2Limits";
 import { buildConfigPanelPayload } from "@/utils/discord/ui/configPanel";
 import {
-  CUSTOM_EPISODE_AGENDA_HINT_MAX,
-  CUSTOM_EPISODE_BRIEF_MAX,
-  CUSTOM_EPISODE_LIMIT,
-  CUSTOM_EPISODE_TITLE_MAX,
+  CUSTOM_IDLE_NUDGE_AGENDA_HINT_MAX,
+  CUSTOM_IDLE_NUDGE_BRIEF_MAX,
+  CUSTOM_IDLE_NUDGE_LIMIT,
+  CUSTOM_IDLE_NUDGE_TITLE_MAX,
   defaultServerNaturalNudgeConfig,
   NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX,
   NATURAL_NUDGE_INTEREST_LABEL_MAX,
   NATURAL_NUDGE_INTEREST_LIMIT,
 } from "@/modules/natural-nudges/db/types";
 import {
-  BUILTIN_EPISODES,
-  customEpisodeDefinition,
+  BUILTIN_IDLE_NUDGES,
+  customIdleNudgeDefinition,
   NUDGE_PREREQUISITE_IDS,
   NUDGE_TOOL_NAMES,
-} from "@/modules/natural-nudges/runtime/episodes";
+} from "@/modules/natural-nudges/runtime/idleNudges";
 import {
-  computeEpisodeListFingerprint,
+  computeIdleNudgeListFingerprint,
   type NaturalNudgesSettingsView,
-  type NudgeEpisodesView,
+  type IdleNudgesView,
 } from "@/modules/natural-nudges/discord/operations";
 import { FENCED_PREVIEW_MAX_CHARS } from "@/utils/text/textPreview";
 import { formatPanelProse } from "@/utils/discord/ui/panelProse";
@@ -113,11 +113,11 @@ const MAX_NUDGE_CHANNELS = Array.from({ length: 25 }, (_, index) => `1${String(i
 const MAX_NUDGE_SETTINGS: NaturalNudgesSettingsView = {
   config: {
     ...defaultServerNaturalNudgeConfig(1),
-    episodes_enabled: true,
+    idle_nudges_enabled: true,
     channel_disc_ids: MAX_NUDGE_CHANNELS,
     llm_id: null,
   },
-  runtime: { server_id: 1, episode_jitter: 1, consecutive_failures: 3, stopped_at: new Date(0) },
+  runtime: { server_id: 1, idle_nudge_jitter: 1, consecutive_failures: 3, stopped_at: new Date(0) },
   plannerModels: Array.from({ length: 30 }, (_, index) => ({
     provider: `custom:provider-${index}`,
     models: Array.from({ length: index === 0 ? 60 : 1 }, (_, model) => ({
@@ -129,7 +129,7 @@ const MAX_NUDGE_SETTINGS: NaturalNudgesSettingsView = {
   trackingEnabled: false,
   heat: 1234.5,
   perDay: 3,
-  chimeInRange: { min: 160, max: 320 },
+  activeNudgeRange: { min: 160, max: 320 },
   status: {
     effectiveChannelIds: MAX_NUDGE_CHANNELS,
     plannerModel: { kind: "unusable", llmId: 7, source: "chat", reason: "unavailable" },
@@ -138,23 +138,23 @@ const MAX_NUDGE_SETTINGS: NaturalNudgesSettingsView = {
   },
 };
 
-const MAX_NUDGE_EPISODES: NudgeEpisodesView = (() => {
-  const custom = Array.from({ length: CUSTOM_EPISODE_LIMIT }, (_, index) => ({
-    episode_id: index + 1,
+const MAX_NUDGE_IDLE_NUDGES: IdleNudgesView = (() => {
+  const custom = Array.from({ length: CUSTOM_IDLE_NUDGE_LIMIT }, (_, index) => ({
+    custom_idle_nudge_id: index + 1,
     server_id: 1,
-    category: "new_topic" as const,
-    title: `${index}`.padEnd(CUSTOM_EPISODE_TITLE_MAX, "T"),
-    brief: "`B*".repeat(CUSTOM_EPISODE_BRIEF_MAX).slice(0, CUSTOM_EPISODE_BRIEF_MAX),
-    agenda_hint: "A".repeat(CUSTOM_EPISODE_AGENDA_HINT_MAX),
+    category: "start_topic" as const,
+    title: `${index}`.padEnd(CUSTOM_IDLE_NUDGE_TITLE_MAX, "T"),
+    brief: "`B*".repeat(CUSTOM_IDLE_NUDGE_BRIEF_MAX).slice(0, CUSTOM_IDLE_NUDGE_BRIEF_MAX),
+    agenda_hint: "A".repeat(CUSTOM_IDLE_NUDGE_AGENDA_HINT_MAX),
     prerequisites: [...NUDGE_PREREQUISITE_IDS],
     recommended_tools: [...NUDGE_TOOL_NAMES],
     enabled: index % 2 === 0,
   }));
   const entries = [
-    ...BUILTIN_EPISODES.map((definition) => ({ definition, enabled: true })),
-    ...custom.map((row) => ({ definition: customEpisodeDefinition(row), enabled: row.enabled, custom: row })),
+    ...BUILTIN_IDLE_NUDGES.map((definition) => ({ definition, enabled: true })),
+    ...custom.map((row) => ({ definition: customIdleNudgeDefinition(row), enabled: row.enabled, custom: row })),
   ];
-  return { config: defaultServerNaturalNudgeConfig(1), entries, fingerprint: computeEpisodeListFingerprint(entries) };
+  return { config: defaultServerNaturalNudgeConfig(1), entries, fingerprint: computeIdleNudgeListFingerprint(entries) };
 })();
 
 /** Server 9 and the id-derived nickname are this suite's defaults, so both stay off the factory. */
@@ -828,18 +828,18 @@ describe("config page text budgeting at stored maxima", () => {
         }),
     },
     {
-      name: "Plugins Nudge Episodes",
+      name: "Plugins Nudge Idle Nudges",
       maxTolerance: PREVIEW_TIGHTNESS_TOLERANCE,
       buildPayload: (locale: string, receipt: boolean) =>
         buildConfigPanelPayload({
           locale,
           actor: GUILD_MANAGER,
           category: "plugins",
-          page: "nudge-episodes",
+          page: "idle-nudges",
           personas: [makePersona({ persona_id: 55 })],
           selectedPersonaId: null,
           readStatus: "fresh",
-          naturalNudges: { episodes: MAX_NUDGE_EPISODES, episodeStart: 24, selectedEpisodeIndex: 33 },
+          naturalNudges: { idleNudges: MAX_NUDGE_IDLE_NUDGES, idleNudgeStart: 24, selectedIdleNudgeIndex: 33 },
           receipt: receipt ? { tone: "success", heading: "Saved", detail: "Configuration was saved." } : undefined,
         }),
     },

@@ -137,7 +137,7 @@ import { buildStPresetsPanelComponents, type StPresetsPanelRenderInput } from "@
 import type { NaturalNudgesPanelState } from "@/modules/natural-nudges/discord/operations";
 import {
   buildNaturalNudgesSettingsBody,
-  buildNudgeEpisodesBody,
+  buildIdleNudgesBody,
   buildPersonaNudgesBody,
 } from "@/modules/natural-nudges/discord/panel";
 
@@ -220,7 +220,7 @@ export const PAGE_LOCALE_KEYS: Record<ConfigCategory, Record<string, string>> = 
   plugins: {
     "response-drafting": "commands.config.panel.page_plugins_response_drafting",
     "natural-nudges": "commands.config.panel.page_plugins_natural_nudges",
-    "nudge-episodes": "commands.config.panel.page_plugins_nudge_episodes",
+    "idle-nudges": "commands.config.panel.page_plugins_idle_nudges",
     "available-tools": "commands.config.panel.page_plugins_available_tools",
     "context-additions": "commands.config.panel.page_plugins_context_additions",
     "mcp-servers": "commands.mcps.title",
@@ -4486,22 +4486,22 @@ export function buildConfigPanelPayload(input: ConfigPanelRenderInput): ConfigPa
     return buildPayload(components, receipt);
   }
 
-  if (category === "plugins" && (page === "natural-nudges" || page === "nudge-episodes")) {
+  if (category === "plugins" && (page === "natural-nudges" || page === "idle-nudges")) {
     const state = input.personas[0];
     const pageState = resolveConfigPageState(category, page, actor);
     const settings = input.naturalNudges?.settings;
-    const episodes = input.naturalNudges?.episodes;
+    const idleNudges = input.naturalNudges?.idleNudges;
     if (state && pageState === "enabled" && page === "natural-nudges" && settings) {
       components.push(
         ...buildNaturalNudgesSettingsBody(locale, settings, state.config.user_byok_mode === true, writesDisabled),
       );
-    } else if (state && pageState === "enabled" && page === "nudge-episodes" && episodes) {
+    } else if (state && pageState === "enabled" && page === "idle-nudges" && idleNudges) {
       components.push(
-        ...buildNudgeEpisodesBody({
+        ...buildIdleNudgesBody({
           locale,
-          view: episodes,
-          start: input.naturalNudges?.episodeStart ?? 0,
-          selectedIndex: input.naturalNudges?.selectedEpisodeIndex,
+          view: idleNudges,
+          start: input.naturalNudges?.idleNudgeStart ?? 0,
+          selectedIndex: input.naturalNudges?.selectedIdleNudgeIndex,
           removeConfirmNonce: input.naturalNudges?.removeConfirmNonce,
           writesDisabled,
         }),

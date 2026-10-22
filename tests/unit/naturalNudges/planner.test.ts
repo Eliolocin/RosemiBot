@@ -13,7 +13,7 @@ function maxMinItems(node: unknown): number {
   return Math.max(own, ...Object.values(node).map(maxMinItems));
 }
 
-describe("Alter Talk script rules", () => {
+describe("Play Scene script rules", () => {
   it("accepts a script the lead opens, that alternates, and that gives every speaker a turn", () => {
     expect(sceneScriptIssues([1, 2], 1, 1)).toEqual([]);
     expect(sceneScriptIssues([1, 2, 3, 1], 2, 2)).toEqual([]);

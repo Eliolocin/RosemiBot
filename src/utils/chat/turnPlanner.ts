@@ -368,7 +368,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     isTriggererBlacklisted: requestSnapshot.isTriggererBlacklisted,
   });
   if (!naming) {
-    log.warn(`Dropping Reach-out turn for message ${message.id}: its target's user row could not be read.`);
+    log.warn(`Dropping Ping User turn for message ${message.id}: its target's user row could not be read.`);
     return { lockedTurn, turns: [] };
   }
   const { displayName, row: namingRow } = naming;
@@ -467,7 +467,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
 }
 
 /**
- * The user whose name `{user}` and the triggerer name carry. A Reach-out speaks to its target, not to
+ * The user whose name `{user}` and the triggerer name carry. A Ping User speaks to its target, not to
  * whoever posted the message it borrowed as a trigger, so only naming moves to the target: credentials,
  * quotas, and stats stay with the trigger message's author. Null when the target's row is unreadable.
  */

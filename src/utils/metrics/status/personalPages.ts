@@ -133,7 +133,7 @@ export async function buildPersonalStatusPages(
         inline: true,
       },
       {
-        nameKey: "commands.status.field_reach_outs",
+        nameKey: "commands.status.field_ping_users",
         value: formatBooleanLocalized(!userData.natural_nudge_opt_out, locale),
         inline: true,
       },
