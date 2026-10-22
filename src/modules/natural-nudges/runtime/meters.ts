@@ -8,6 +8,7 @@ import {
   AUTOMATIC_CHANNEL_DAYS,
   MIN_EPISODE_HEAT,
   EPISODE_HEAT_DIVISORS,
+  EPISODE_DAILY_CAPS,
   AWAKE_HOURS_PER_DAY,
   EPISODE_JITTER_MIN,
   EPISODE_JITTER_MAX,
@@ -66,9 +67,9 @@ export function automaticChannelWindowStart(now: Date): Date {
   return new Date(utcDayStart(now) - (AUTOMATIC_CHANNEL_DAYS - 1) * DAY_MS);
 }
 
-export function episodesPerDay(heat: number, level: EpisodeFrequencyLevel, dailyCap: number): number {
+export function episodesPerDay(heat: number, level: EpisodeFrequencyLevel): number {
   if (heat < MIN_EPISODE_HEAT) return 0;
-  return Math.min(heat / EPISODE_HEAT_DIVISORS[level], dailyCap);
+  return Math.min(heat / EPISODE_HEAT_DIVISORS[level], EPISODE_DAILY_CAPS[level]);
 }
 
 export function rollEpisodeJitter(random: () => number = Math.random): number {

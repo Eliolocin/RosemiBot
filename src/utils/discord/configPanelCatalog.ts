@@ -441,11 +441,8 @@ export type ConfigPanelRoute =
   | { action: "nudge-provider"; locale: string }
   | { action: "nudge-model-submit"; locale: string; provider: string; nonce: string }
   | { action: "nudge-frequency-select"; locale: string }
-  | { action: "nudge-limits-open"; locale: string }
   | { action: "nudge-chime-in-set"; locale: string; enabled: boolean }
   | { action: "nudge-chime-in-frequency-select"; locale: string }
-  | { action: "nudge-chime-in-cap-select"; locale: string }
-  | { action: "nudge-limits-submit"; locale: string; nonce: string }
   | { action: "nudge-episode-select"; locale: string; start: number; fp: string }
   | { action: "nudge-episode-page"; locale: string; start: number }
   | { action: "nudge-episode-add-submit"; locale: string; nonce: string }
@@ -968,11 +965,8 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "nudge-provider": { wireToken: "nn-provider", fields: [] },
   "nudge-model-submit": { wireToken: "nn-model", fields: [providerField, nonceField] },
   "nudge-frequency-select": { wireToken: "nn-frequency", fields: [] },
-  "nudge-limits-open": { wireToken: "nn-limits-open", fields: [] },
   "nudge-chime-in-set": { wireToken: "nn-chime-set", fields: [enabledField] },
   "nudge-chime-in-frequency-select": { wireToken: "nn-chime-frequency", fields: [] },
-  "nudge-chime-in-cap-select": { wireToken: "nn-chime-cap", fields: [] },
-  "nudge-limits-submit": { wireToken: "nn-limits", fields: [nonceField] },
   "nudge-episode-select": { wireToken: "nn-ep-select", fields: [startField, fpField] },
   "nudge-episode-page": { wireToken: "nn-ep-page", fields: [startField] },
   "nudge-episode-add-submit": { wireToken: "nn-ep-add", fields: [nonceField] },

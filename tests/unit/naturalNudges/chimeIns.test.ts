@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { Collection, type Client, type GuildTextBasedChannel, type Message } from "discord.js";
 import * as tomoriChatModule from "@/events/messageCreate/tomoriChat";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
-import { defaultServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
+import { defaultServerNaturalNudgeConfig, type NaturalNudgeFireRow } from "@/modules/natural-nudges/db/types";
 import * as channels from "@/modules/natural-nudges/runtime/channels";
 import {
   buildMatcherOptions,
@@ -164,6 +164,8 @@ describe("Chime-in check", () => {
   let samples: Array<Record<string, unknown>>;
   let locked: boolean;
   let window: Message[];
+  let configSpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadServerConfig">>;
+  let historySpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadFireHistory">>;
   const channel = fakeChannel("listed-parent");
   const check: ChimeInCheck = {
     client,
@@ -180,17 +182,21 @@ describe("Chime-in check", () => {
     samples = [];
     locked = false;
     window = [member(channel)];
+    configSpy = spyOn(naturalNudgeRepository, "loadServerConfig");
+    configSpy.mockResolvedValue(defaultServerNaturalNudgeConfig(SERVER_ID));
+    historySpy = spyOn(naturalNudgeRepository, "loadFireHistory");
+    historySpy.mockResolvedValue({ recent: [], latestEpisodes: [] });
     spies.push(
       spyOn(tomoriStateCache, "getCachedAllPersonas").mockResolvedValue([main, alter]),
       spyOn(personaRepository, "loadAllForServer").mockResolvedValue([main, alter]),
-      spyOn(naturalNudgeRepository, "loadServerConfig").mockResolvedValue(defaultServerNaturalNudgeConfig(SERVER_ID)),
+      configSpy,
       spyOn(naturalNudgeRepository, "loadRuntimeState").mockResolvedValue({
         server_id: SERVER_ID,
         episode_jitter: 1,
         consecutive_failures: 0,
         stopped_at: null,
       }),
-      spyOn(naturalNudgeRepository, "loadFireHistory").mockResolvedValue({ recent: [], latestEpisodes: [] }),
+      historySpy,
       spyOn(naturalNudgeRepository, "loadPersonaConfigs").mockResolvedValue(
         new Map([
           [MAIN_ID, { persona_id: MAIN_ID, talkativeness: 2, interests: [MECHA], has_override: true }],
@@ -269,31 +275,64 @@ describe("Chime-in check", () => {
   it("holds the hourly cap for a parent after a Chime-in in one of its threads", async () => {
     const cache = (client as unknown as { channels: { cache: Map<string, unknown> } }).channels.cache;
     cache.set("cap-thread", { isThread: () => true, parentId: "listed-parent" });
-    spies.push(
-      spyOn(naturalNudgeRepository, "loadFireHistory").mockResolvedValue({
-        recent: [
-          {
-            fire_id: 1,
-            server_id: SERVER_ID,
-            channel_disc_id: "cap-thread",
-            persona_id: MAIN_ID,
-            mode: "chime_in",
-            category: null,
-            episode_key: null,
-            target_user_id: null,
-            opener_message_disc_id: ANCHOR_ID,
-            answered: null,
-            fired_at: new Date(Date.now() - 10 * 60_000),
-          },
-        ],
-        latestEpisodes: [],
-      }),
-    );
+    historySpy.mockResolvedValue({
+      recent: [
+        {
+          fire_id: 1,
+          server_id: SERVER_ID,
+          channel_disc_id: "cap-thread",
+          persona_id: MAIN_ID,
+          mode: "chime_in",
+          category: null,
+          episode_key: null,
+          target_user_id: null,
+          opener_message_disc_id: ANCHOR_ID,
+          answered: null,
+          fired_at: new Date(Date.now() - 10 * 60_000),
+        },
+      ],
+      latestEpisodes: [],
+    });
     try {
       expect(await runChimeInCheck(check, options())).toBe("aborted");
       expect(samples.at(-1)).toMatchObject({ reason: "channel_cap", phase: "a" });
     } finally {
       cache.delete("cap-thread");
+    }
+  });
+
+  it("counts today's Chime-ins against the level's cap", async () => {
+    spies.push(recordFire());
+    const CAP_BY_LEVEL = [
+      [0, 1],
+      [1, 3],
+      [2, 6],
+      [3, 10],
+    ] as const;
+    const chimeInFire = (fireId: number): NaturalNudgeFireRow => ({
+      fire_id: fireId,
+      server_id: SERVER_ID,
+      channel_disc_id: "cap-other-channel",
+      persona_id: MAIN_ID,
+      mode: "chime_in",
+      category: null,
+      episode_key: null,
+      target_user_id: null,
+      opener_message_disc_id: ANCHOR_ID,
+      answered: null,
+      fired_at: new Date(),
+    });
+
+    for (const [level, cap] of CAP_BY_LEVEL) {
+      configSpy.mockResolvedValue({ ...defaultServerNaturalNudgeConfig(SERVER_ID), chime_in_frequency: level });
+      const fired = Array.from({ length: cap }, (_, index) => chimeInFire(index + 1));
+
+      historySpy.mockResolvedValue({ recent: fired, latestEpisodes: [] });
+      expect(await runChimeInCheck(check, options())).toBe("aborted");
+      expect(samples.at(-1)).toMatchObject({ reason: "cap_reached", phase: "a" });
+
+      historySpy.mockResolvedValue({ recent: fired.slice(1), latestEpisodes: [] });
+      expect(await runChimeInCheck(check, options())).toBe("fired");
     }
   });
 

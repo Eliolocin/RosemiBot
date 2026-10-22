@@ -4,7 +4,7 @@ import { NATURAL_NUDGE_FAILURE_STOP_THRESHOLD } from "@/modules/natural-nudges/r
 import { loadPersonaAgendas } from "@/modules/natural-nudges/runtime/agendas";
 import { defaultServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
 import { resolveEffectiveChannelIds } from "@/modules/natural-nudges/runtime/channels";
-import { heatWindowStart } from "@/modules/natural-nudges/runtime/meters";
+import { episodesPerDay, heatWindowStart } from "@/modules/natural-nudges/runtime/meters";
 import { workspaceConfigExportSchema } from "@/types/db/dataExport";
 import { exportRepository } from "@/utils/db/repositories/ExportRepository";
 import { importRepository } from "@/utils/db/repositories/ImportRepository";
@@ -141,6 +141,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
       expect(ours.map((server) => server.server_id)).toEqual([heated]);
       expect(ours[0]?.config).toEqual(defaultServerNaturalNudgeConfig(heated));
       expect(ours[0]?.config.episodes_enabled).toBe(true);
+      expect(episodesPerDay(1_000, ours[0]?.config.episode_frequency ?? 0)).toBe(3);
     });
 
     it("picks automatic channels from 14 days of turns minus roleplay channels, unless a list overrides them", async () => {
@@ -394,8 +395,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
       episodes_enabled: false,
       chime_in_enabled: false,
       channel_disc_ids: ["1200000000000000001"],
-      revive_weight: 40,
-      daily_chime_in_cap: 12,
+      episode_frequency: 2,
       chime_in_frequency: 3,
       disabled_builtin_episodes: ["new_topic.voice_note"],
     });
@@ -405,8 +405,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     expect(exported.data.nudges).toMatchObject({
       episodes_enabled: false,
       chime_in_enabled: false,
-      revive_weight: 40,
-      daily_chime_in_cap: 12,
+      episode_frequency: 2,
       chime_in_frequency: 3,
     });
     expect(exported.data.nudges?.custom_episodes).toHaveLength(1);
@@ -417,8 +416,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     expect(imported).toMatchObject({
       episodes_enabled: false,
       chime_in_enabled: false,
-      revive_weight: 40,
-      daily_chime_in_cap: 12,
+      episode_frequency: 2,
       chime_in_frequency: 3,
       channel_disc_ids: [],
       disabled_builtin_episodes: ["new_topic.voice_note"],

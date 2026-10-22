@@ -31,7 +31,7 @@ reconcile tick
   └─ NaturalNudgeProcessor.processDueEpisodes
        ├─ pending opener?  → resolve its verdict, stop
        ├─ failure or unanswered stop? → stop
-       ├─ heat → episodes per day → due time, daily cap, waking hours
+       ├─ heat → episodes per day → due time, level's daily cap, waking hours
        ├─ lull: effective channels quiet for 1-3 hours (gateway lastMessageId)
        ├─ planner model: llm_id, else the chat model; no_model abort and backoff unless it resolves
        ├─ persona raffle → Reach-out target lottery → category raffle → episode raffle
@@ -43,8 +43,8 @@ reconcile tick
 ## State: events, not meters
 
 Nothing decays on a job. Every meter is an elapsed-time read over the fire log
-(`natural_nudge_fires`): persona, category, and episode rest; the daily cap; the pending opener; and
-the unanswered streak. Heat and waking hours come from `stat_counters`:
+(`natural_nudge_fires`): persona, category, and episode rest; the level's daily cap; the pending
+opener; and the unanswered streak. Heat and waking hours come from `stat_counters`:
 
 - **Heat** is the server's `message_sent` per day, each day halved every three days
   (`computeHeat` in `runtime/meters.ts`).
@@ -83,6 +83,11 @@ retry-after-abort time, and a 15-minute cache of heat and waking hours. A restar
 - **Re-check right before sending.** `recheckBeforeSend` reads settings, caps, the persona, the
   persona channel whitelist, and the channel's last message fresh. Any message after the lull was
   measured cancels the nudge.
+- **Caps follow the frequency level.** `EPISODE_DAILY_CAPS` and `CHIME_IN_DAILY_CAPS` in
+  `runtime/tuning.ts` map each level to its daily ceiling (Rare through Lively: 1, 3, 5, or 8
+  episodes and 1, 3, 6, or 10 Chime-ins), so the panel estimate, the episode re-check, and the
+  Chime-in check read one source. Episode category tickets are fixed there too
+  (`EPISODE_CATEGORY_WEIGHTS`), since the mix is operator tuning rather than a server setting.
 - **Failure stop.** Planner failures after their one format retry, and generation errors, count
   toward `server_natural_nudge_runtime_state.consecutive_failures`; three stop the server until a
   normal turn succeeds there (`text_generated` newer than `stopped_at`). Aborts never count. Episodes
@@ -117,7 +122,7 @@ retry-after-abort time, and a 15-minute cache of heat and waking hours. A restar
 
 `drawReachOutTarget` (`runtime/targets.ts`) runs once per attempt, after the persona raffle and before
 the category raffle, because three prerequisites read the drawn target. It is skipped when no runnable
-episode with a non-zero category weight needs a target. One query,
+episode needs a target. One query,
 `listReachOutCandidates`, applies every hard exclusion in SQL and is read fresh rather than through
 `userCache`, so the before-send re-check (`onlyUserId`) sees an opt-out made a moment earlier.
 
@@ -287,7 +292,8 @@ re-pointing a persona at a preset deletes the row so it reads the preset again.
 - `src/modules/natural-nudges/runtime/matcher.ts`: the Chime-in matcher and its two backends.
 - `src/modules/natural-nudges/runtime/tuning.ts`: every pacing and selection constant (heat, lull,
   waking hours, rest windows, stops, retention, Reach-out windows and points, scene length and
-  partner count, Chime-in trip range, window, delay, and detours). Schema and Discord limits stay with their owners.
+  partner count, episode category weights and daily caps, Chime-in trip range, daily cap, window,
+  delay, and detours). Schema and Discord limits stay with their owners.
 - `src/modules/natural-nudges/db/repositories.ts`: every Natural Nudges query.
 - Related: [Database Schema](/architecture/subsystems/database-schema/),
   [Prompt Snapshot](/architecture/subsystems/prompt-snapshot/),

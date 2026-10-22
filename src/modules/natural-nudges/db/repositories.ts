@@ -49,8 +49,7 @@ class NaturalNudgeRepository {
   async loadServerConfig(serverId: number, client: SQL = sql): Promise<ServerNaturalNudgeConfig> {
     const rows = await client`
       SELECT server_id, episodes_enabled, chime_in_enabled, channel_disc_ids, llm_id,
-        reach_out_weight, revive_weight, new_topic_weight, alter_talk_weight,
-        daily_episode_cap, daily_chime_in_cap, episode_frequency, chime_in_frequency, disabled_builtin_episodes
+        episode_frequency, chime_in_frequency, disabled_builtin_episodes
       FROM server_natural_nudge_configs WHERE server_id = ${serverId}
     `;
     const [row] = parseRows(serverNaturalNudgeConfigSchema, rows, "server config");
@@ -63,25 +62,17 @@ class NaturalNudgeRepository {
       await client`
         INSERT INTO server_natural_nudge_configs (
           server_id, episodes_enabled, chime_in_enabled, channel_disc_ids, llm_id,
-          reach_out_weight, revive_weight, new_topic_weight, alter_talk_weight,
-          daily_episode_cap, daily_chime_in_cap, episode_frequency, chime_in_frequency, disabled_builtin_episodes
+          episode_frequency, chime_in_frequency, disabled_builtin_episodes
         ) VALUES (
           ${serverId}, ${next.episodes_enabled}, ${next.chime_in_enabled}, ${sql.array(next.channel_disc_ids, "TEXT")},
-          ${next.llm_id}, ${next.reach_out_weight}, ${next.revive_weight}, ${next.new_topic_weight},
-          ${next.alter_talk_weight}, ${next.daily_episode_cap}, ${next.daily_chime_in_cap}, ${next.episode_frequency},
-          ${next.chime_in_frequency}, ${sql.array(next.disabled_builtin_episodes, "TEXT")}
+          ${next.llm_id}, ${next.episode_frequency}, ${next.chime_in_frequency},
+          ${sql.array(next.disabled_builtin_episodes, "TEXT")}
         )
         ON CONFLICT (server_id) DO UPDATE SET
           episodes_enabled = EXCLUDED.episodes_enabled,
           chime_in_enabled = EXCLUDED.chime_in_enabled,
           channel_disc_ids = EXCLUDED.channel_disc_ids,
           llm_id = EXCLUDED.llm_id,
-          reach_out_weight = EXCLUDED.reach_out_weight,
-          revive_weight = EXCLUDED.revive_weight,
-          new_topic_weight = EXCLUDED.new_topic_weight,
-          alter_talk_weight = EXCLUDED.alter_talk_weight,
-          daily_episode_cap = EXCLUDED.daily_episode_cap,
-          daily_chime_in_cap = EXCLUDED.daily_chime_in_cap,
           episode_frequency = EXCLUDED.episode_frequency,
           chime_in_frequency = EXCLUDED.chime_in_frequency,
           disabled_builtin_episodes = EXCLUDED.disabled_builtin_episodes
@@ -105,9 +96,6 @@ class NaturalNudgeRepository {
           'server_id', c.server_id, 'episodes_enabled', c.episodes_enabled,
           'chime_in_enabled', c.chime_in_enabled,
           'channel_disc_ids', c.channel_disc_ids, 'llm_id', c.llm_id,
-          'reach_out_weight', c.reach_out_weight, 'revive_weight', c.revive_weight,
-          'new_topic_weight', c.new_topic_weight, 'alter_talk_weight', c.alter_talk_weight,
-          'daily_episode_cap', c.daily_episode_cap, 'daily_chime_in_cap', c.daily_chime_in_cap,
           'episode_frequency', c.episode_frequency, 'chime_in_frequency', c.chime_in_frequency,
           'disabled_builtin_episodes', c.disabled_builtin_episodes
         ) END AS config

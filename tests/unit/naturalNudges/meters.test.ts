@@ -77,16 +77,26 @@ describe("heat", () => {
 
 describe("episodes per day", () => {
   it("matches the launch examples at the Gentle level", () => {
-    expect(episodesPerDay(20, 1, 3)).toBeCloseTo(1.33, 2);
-    expect(episodesPerDay(6, 1, 3) * 7).toBeCloseTo(2.8, 1);
-    expect(episodesPerDay(0.5, 1, 3)).toBe(0);
+    expect(episodesPerDay(20, 1)).toBeCloseTo(1.33, 2);
+    expect(episodesPerDay(6, 1) * 7).toBeCloseTo(2.8, 1);
+    expect(episodesPerDay(0.5, 1)).toBe(0);
   });
 
-  it("scales with the level and stops at the daily cap", () => {
-    expect(episodesPerDay(20, 0, 3)).toBeCloseTo(0.67, 2);
-    expect(episodesPerDay(20, 2, 3)).toBe(2);
-    expect(episodesPerDay(20, 3, 3)).toBe(3);
-    expect(episodesPerDay(60, 1, 3)).toBe(3);
+  it("scales with the level and stops at the level's daily cap", () => {
+    expect(episodesPerDay(20, 0)).toBeCloseTo(0.67, 2);
+    expect(episodesPerDay(20, 2)).toBe(2);
+    expect(episodesPerDay(20, 3)).toBeCloseTo(3.33, 2);
+    expect(episodesPerDay(60, 1)).toBe(3);
+  });
+
+  it("caps each level at its own daily ceiling", () => {
+    const caps = [
+      [0, 1],
+      [1, 3],
+      [2, 5],
+      [3, 8],
+    ] as const;
+    for (const [level, cap] of caps) expect(episodesPerDay(1_000, level)).toBe(cap);
   });
 });
 

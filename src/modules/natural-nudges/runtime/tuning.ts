@@ -1,4 +1,4 @@
-import type { EpisodeFrequencyLevel } from "@/modules/natural-nudges/db/types";
+import type { EpisodeFrequencyLevel, NaturalNudgeCategory } from "@/modules/natural-nudges/db/types";
 
 export const HOUR_MS = 60 * 60 * 1000;
 export const DAY_MS = 24 * HOUR_MS;
@@ -10,8 +10,19 @@ export const HEAT_WINDOW_DAYS = 30;
 /** Episodes start only at heat 1 or more: about one message to Tomori a day. */
 export const MIN_EPISODE_HEAT = 1;
 
+/** Tickets per episode category, fixed for every server because the mix is operator tuning. */
+export const EPISODE_CATEGORY_WEIGHTS: Record<NaturalNudgeCategory, number> = {
+  reach_out: 35,
+  revive: 25,
+  new_topic: 25,
+  alter_talk: 15,
+};
+
 /** Heat divided by this gives episodes per day, per frequency level. */
 export const EPISODE_HEAT_DIVISORS: Record<EpisodeFrequencyLevel, number> = { 0: 30, 1: 15, 2: 10, 3: 6 };
+
+/** Daily episode ceiling per frequency level, so a livelier setting allows more; Gentle keeps the former default cap of 3. */
+export const EPISODE_DAILY_CAPS: Record<EpisodeFrequencyLevel, number> = { 0: 1, 1: 3, 2: 5, 3: 8 };
 
 /**
  * Automatic channel eligibility follows heat's horizon: 14 quiet days decay a server's heat to about
@@ -104,6 +115,8 @@ export const CHIME_IN_HEAT_SCALE_MIN = 0.5;
 export const CHIME_IN_HEAT_SCALE_MAX = 4;
 /** Trip range multiplier per frequency level, so higher levels check sooner. */
 export const CHIME_IN_LEVEL_MULTIPLIERS: Record<EpisodeFrequencyLevel, number> = { 0: 2, 1: 1, 2: 0.6, 3: 0.35 };
+/** Daily Chime-in ceiling per frequency level, matching the episode cap at Gentle. */
+export const CHIME_IN_DAILY_CAPS: Record<EpisodeFrequencyLevel, number> = { 0: 1, 1: 3, 2: 6, 3: 10 };
 /** After a check that found nothing, the channel rests before counting again. */
 export const CHIME_IN_EMPTY_REST_MS = 10 * 60 * 1000;
 /** The matcher's evidence window; longer windows let an earlier topic win after the talk moved on. */

@@ -4,7 +4,6 @@
 -- defaults, so a server that turned Chime-ins off has them on again.
 
 ALTER TABLE server_natural_nudge_configs DROP COLUMN IF EXISTS chime_in_frequency;
-ALTER TABLE server_natural_nudge_configs DROP COLUMN IF EXISTS daily_chime_in_cap;
 ALTER TABLE server_natural_nudge_configs DROP COLUMN IF EXISTS chime_in_enabled;
 
 ALTER TABLE decision_models DROP CONSTRAINT IF EXISTS decision_models_supported_primitives_check;

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { Collection, type Client, type GuildTextBasedChannel, type Message } from "discord.js";
 import * as tomoriChatModule from "@/events/messageCreate/tomoriChat";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
+import type { NaturalNudgeFireRow } from "@/modules/natural-nudges/db/types";
 import { BUILTIN_EPISODES, type EpisodeDefinition } from "@/modules/natural-nudges/runtime/episodes";
 import * as planner from "@/modules/natural-nudges/runtime/planner";
 import * as plannerModel from "@/modules/natural-nudges/runtime/model";
@@ -22,9 +23,22 @@ const PLACEHOLDER_ID = "1300000000000000400";
 
 const spies: Array<{ mockRestore: () => void }> = [];
 let chatInputs: TomoriChatInput[] = [];
+let samples: Array<Record<string, unknown>> = [];
+let configSpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadServerConfig">>;
+let historySpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadFireHistory">>;
 
 beforeEach(() => {
   chatInputs = [];
+  samples = [];
+  configSpy = spyOn(naturalNudgeRepository, "loadServerConfig");
+  configSpy.mockResolvedValue({
+    episodes_enabled: true,
+    channel_disc_ids: ["fixture-channel"],
+    llm_id: 1,
+    episode_frequency: 1,
+  } as never);
+  historySpy = spyOn(naturalNudgeRepository, "loadFireHistory");
+  historySpy.mockResolvedValue({ latestEpisodes: [], recent: [] });
   spies.push(
     spyOn(planner, "planEpisode").mockResolvedValue({
       status: "planned",
@@ -38,14 +52,9 @@ beforeEach(() => {
         scene: null,
       },
     }),
-    spyOn(naturalNudgeRepository, "loadServerConfig").mockResolvedValue({
-      episodes_enabled: true,
-      channel_disc_ids: ["fixture-channel"],
-      llm_id: 1,
-      daily_episode_cap: 3,
-    } as never),
+    configSpy,
     spyOn(naturalNudgeRepository, "loadRuntimeState").mockResolvedValue({ stopped_at: null } as never),
-    spyOn(naturalNudgeRepository, "loadFireHistory").mockResolvedValue({ latestEpisodes: [], recent: [] }),
+    historySpy,
     spyOn(naturalNudgeRepository, "loadPersonaConfigs").mockResolvedValue(
       new Map([[PERSONA_ID, { persona_id: PERSONA_ID, talkativeness: 2, interests: [], has_override: true }]]),
     ),
@@ -55,7 +64,9 @@ beforeEach(() => {
     ] as never),
     spyOn(whitelistRepository, "checkChannelWhitelist").mockResolvedValue(undefined as never),
     spyOn(whitelistRepository, "isPersonaAllowedByWhitelistStatus").mockReturnValue(true),
-    spyOn(metricSampleRepository, "recordSample").mockResolvedValue(undefined),
+    spyOn(metricSampleRepository, "recordSample").mockImplementation(async (_name, fields) => {
+      samples.push(fields);
+    }),
     spyOn(plannerModel, "resolvePlannerModel").mockResolvedValue({ kind: "ready", llmId: 1, source: "pinned" }),
     spyOn(tomoriChatModule, "isChannelProcessingLocked").mockReturnValue(false),
     spyOn(tomoriChatModule, "tomoriChat").mockImplementation(async (input) => {
@@ -116,6 +127,22 @@ function attemptWithHistory(latest: () => Promise<Message[]>): {
 
 const messageWithId = (id: string) => ({ id }) as Message;
 
+function episodeFire(fireId: number): NaturalNudgeFireRow {
+  return {
+    fire_id: fireId,
+    server_id: SERVER_ID,
+    channel_disc_id: "fixture-channel",
+    persona_id: PERSONA_ID,
+    mode: "episode",
+    category: "new_topic",
+    episode_key: "new_topic.interest_musing",
+    target_user_id: null,
+    opener_message_disc_id: RECORDED_ID,
+    answered: true,
+    fired_at: new Date(),
+  };
+}
+
 describe("episode anchor", () => {
   it("borrows the newest surviving message when the recorded newest one was deleted", async () => {
     const { attempt, sent } = attemptWithHistory(async () => [messageWithId(OLDER_ID)]);
@@ -144,6 +171,37 @@ describe("episode anchor", () => {
       expect(sent).toEqual([]);
     }
     expect(chatInputs).toEqual([]);
+  });
+});
+
+describe("daily episode cap", () => {
+  const CAP_BY_LEVEL = [
+    [0, 1],
+    [1, 3],
+    [2, 5],
+    [3, 8],
+  ] as const;
+
+  it("counts the episodes already fired today against the level's cap", async () => {
+    for (const [level, cap] of CAP_BY_LEVEL) {
+      configSpy.mockResolvedValue({
+        episodes_enabled: true,
+        channel_disc_ids: ["fixture-channel"],
+        llm_id: 1,
+        episode_frequency: level,
+      } as never);
+      const fired = Array.from({ length: cap }, (_, index) => episodeFire(index + 1));
+
+      historySpy.mockResolvedValue({ latestEpisodes: [], recent: fired });
+      const { attempt } = attemptWithHistory(async () => [messageWithId(OLDER_ID)]);
+      expect(await runEpisodeAttempt(attempt)).toBe("aborted");
+      expect(samples.at(-1)).toMatchObject({ reason: "cap_reached", phase: "c" });
+
+      historySpy.mockResolvedValue({ latestEpisodes: [], recent: fired.slice(1) });
+      const { attempt: allowed } = attemptWithHistory(async () => [messageWithId(OLDER_ID)]);
+      await runEpisodeAttempt(allowed);
+      expect(samples.at(-1)).toMatchObject({ reason: "admission_run", phase: "c" });
+    }
   });
 });
 

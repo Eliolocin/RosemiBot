@@ -102,7 +102,6 @@ channel. Talkative personas join more often, and Silent ones never do.
   someone joins. If they named or mentioned a persona, that persona answers instead.
 - **Scheming is about a member, not to them.** The personas plan a harmless surprise for someone
   they know, but the scene does not ping that member.
-- The **Alter Talk** weight under Weights and Limits sets how often scenes come up.
 
 ### Hidden agendas
 
@@ -137,8 +136,8 @@ checks for Chime-ins.
 
 - **Frequency** sets the pace, separately for episodes and for Chime-ins: Rare, Gentle (the
   default), Normal, or Lively. Even Lively stays quiet in a server that rarely talks to TomoriBot.
-- **Daily limits** are 3 episodes and 3 Chime-ins a day by default.
-- **Weights** decide which kind of episode comes up more often. A weight of 0 turns that kind off.
+- **Daily limits** follow the frequency level: Rare allows 1 episode and 1 Chime-in a day, Gentle 3
+  of each, Normal 5 episodes and 6 Chime-ins, and Lively 8 episodes and 10 Chime-ins.
 
 ### When it stays off
 

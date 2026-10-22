@@ -11,6 +11,7 @@ import {
 } from "@/modules/natural-nudges/runtime/channels";
 import { resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { isWithinWakingHours, serverDayStart } from "@/modules/natural-nudges/runtime/meters";
+import { EPISODE_DAILY_CAPS } from "@/modules/natural-nudges/runtime/tuning";
 import { planEpisode, type EpisodePlan, type ScenePartner } from "@/modules/natural-nudges/runtime/planner";
 import { isTargetStillReachable, type ReachOutTarget } from "@/modules/natural-nudges/runtime/targets";
 import { recordEpisodeSample, type EpisodeSample } from "@/modules/natural-nudges/runtime/telemetry";
@@ -74,7 +75,8 @@ async function recheckBeforeSend(attempt: EpisodeAttempt, target: NudgeChannel, 
   const dayStart = serverDayStart(now, attempt.timezoneOffset);
   const history = await naturalNudgeRepository.loadFireHistory(attempt.serverId, dayStart, LATEST_EPISODE_ROWS);
   if (history.latestEpisodes.some((fire) => fire.answered === null)) return "pending";
-  if (history.recent.filter((fire) => fire.mode === "episode").length >= config.daily_episode_cap) return "cap_reached";
+  if (history.recent.filter((fire) => fire.mode === "episode").length >= EPISODE_DAILY_CAPS[config.episode_frequency])
+    return "cap_reached";
 
   const personaId = attempt.persona.persona_id;
   if (typeof personaId !== "number") return "persona_removed";

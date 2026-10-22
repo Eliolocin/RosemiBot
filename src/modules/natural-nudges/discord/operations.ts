@@ -3,8 +3,6 @@ import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories
 import {
   CUSTOM_EPISODE_LIMIT,
   customEpisodeInputSchema,
-  DAILY_CHIME_IN_CAP_MAX,
-  DAILY_EPISODE_CAP_MAX,
   NATURAL_NUDGE_INTEREST_LIMIT,
   naturalNudgeInterestSchema,
   type CustomEpisodeInput,
@@ -131,7 +129,7 @@ async function loadSettingsView(
     plannerModels,
     trackingEnabled: statRepository.isTrackingEnabled,
     heat,
-    perDay: episodesPerDay(heat, config.episode_frequency, config.daily_episode_cap),
+    perDay: episodesPerDay(heat, config.episode_frequency),
     chimeInRange: chimeInTripRange(heat, config.chime_in_frequency),
     status: chatState ? await loadSettingsStatus(chatState, config, now) : null,
   };
@@ -172,18 +170,6 @@ async function patchConfig(
 /** Discord's channel select returns at most 25 IDs, so a longer list cannot come from the panel. */
 const MAX_ALLOWED_CHANNELS = 25;
 const SNOWFLAKE_RE = /^\d{17,20}$/;
-
-interface NudgeLimitsInput {
-  reach_out_weight: number;
-  revive_weight: number;
-  new_topic_weight: number;
-  alter_talk_weight: number;
-  daily_episode_cap: number;
-}
-
-function isWeight(value: number): boolean {
-  return Number.isInteger(value) && value >= 0 && value <= 100;
-}
 
 /** Text fields for a custom episode; prerequisites and tools are edited on the detail view. */
 interface CustomEpisodeTextInput {
@@ -242,25 +228,6 @@ const naturalNudgeOperations = {
 
   setChimeInFrequency(serverId: number, level: EpisodeFrequencyLevel): Promise<NudgeWriteResult> {
     return patchConfig(serverId, { chime_in_frequency: level });
-  },
-
-  setChimeInCap(serverId: number, cap: number): Promise<NudgeWriteResult> {
-    if (!Number.isInteger(cap) || cap < 1 || cap > DAILY_CHIME_IN_CAP_MAX) return Promise.resolve("invalid");
-    return patchConfig(serverId, { daily_chime_in_cap: cap });
-  },
-
-  setLimits(serverId: number, limits: NudgeLimitsInput): Promise<NudgeWriteResult> {
-    if (
-      !isWeight(limits.reach_out_weight) ||
-      !isWeight(limits.revive_weight) ||
-      !isWeight(limits.new_topic_weight) ||
-      !isWeight(limits.alter_talk_weight) ||
-      !Number.isInteger(limits.daily_episode_cap) ||
-      limits.daily_episode_cap < 1 ||
-      limits.daily_episode_cap > DAILY_EPISODE_CAP_MAX
-    )
-      return Promise.resolve("invalid");
-    return patchConfig(serverId, limits);
   },
 
   async setEpisodeEnabled(serverId: number, index: number, fp: string, enabled: boolean): Promise<NudgeWriteResult> {

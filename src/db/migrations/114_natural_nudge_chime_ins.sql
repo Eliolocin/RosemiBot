@@ -7,10 +7,6 @@
 
 SELECT add_column_if_not_exists('server_natural_nudge_configs', 'chime_in_enabled', 'BOOLEAN', 'true', 'NOT NULL');
 SELECT add_column_if_not_exists(
-  'server_natural_nudge_configs', 'daily_chime_in_cap', 'SMALLINT', '3',
-  'NOT NULL CHECK (daily_chime_in_cap BETWEEN 1 AND 20)'
-);
-SELECT add_column_if_not_exists(
   'server_natural_nudge_configs', 'chime_in_frequency', 'SMALLINT', '1',
   'NOT NULL CHECK (chime_in_frequency BETWEEN 0 AND 3)'
 );

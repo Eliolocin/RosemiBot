@@ -14,8 +14,6 @@ import {
   CUSTOM_EPISODE_BRIEF_MAX,
   CUSTOM_EPISODE_LIMIT,
   CUSTOM_EPISODE_TITLE_MAX,
-  DAILY_CHIME_IN_CAP_MAX,
-  DAILY_EPISODE_CAP_MAX,
   EPISODE_FREQUENCY_LEVELS,
   NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX,
   NATURAL_NUDGE_INTEREST_LABEL_MAX,
@@ -57,11 +55,6 @@ export const NUDGE_ADD_VALUE = "add";
 export const NUDGE_CLEAR_MODEL_VALUE = "__none__";
 export const NUDGE_INTEREST_LABEL_FIELD = "nudge_interest_label";
 export const NUDGE_INTEREST_DESCRIPTION_FIELD = "nudge_interest_description";
-export const NUDGE_REACH_OUT_WEIGHT_FIELD = "nudge_reach_out_weight";
-export const NUDGE_REVIVE_WEIGHT_FIELD = "nudge_revive_weight";
-export const NUDGE_NEW_TOPIC_WEIGHT_FIELD = "nudge_new_topic_weight";
-export const NUDGE_ALTER_TALK_WEIGHT_FIELD = "nudge_alter_talk_weight";
-export const NUDGE_DAILY_CAP_FIELD = "nudge_daily_cap";
 export const NUDGE_EPISODE_TITLE_FIELD = "nudge_episode_title";
 export const NUDGE_EPISODE_CATEGORY_FIELD = "nudge_episode_category";
 export const NUDGE_EPISODE_BRIEF_FIELD = "nudge_episode_brief";
@@ -448,21 +441,6 @@ function buildChimeInSection(
         },
       ],
     },
-    {
-      type: ComponentType.ActionRow,
-      components: [
-        {
-          type: ComponentType.StringSelect,
-          customId: buildConfigRouteId({ action: "nudge-chime-in-cap-select", locale }),
-          options: Array.from({ length: DAILY_CHIME_IN_CAP_MAX }, (_, index) => index + 1).map((cap) => ({
-            label: safeSelectOptionText(t("commands.config.natural_nudges.chime_in_cap_option", { cap }), 100),
-            value: String(cap),
-            default: cap === config.daily_chime_in_cap,
-          })),
-          disabled: writesDisabled,
-        },
-      ],
-    },
   ];
 }
 
@@ -599,28 +577,6 @@ export function buildNaturalNudgesSettingsBody(
           : t("commands.config.natural_nudges.frequency_effect_none")
       }`,
     ),
-    text(
-      `### ${t("commands.config.natural_nudges.limits_title")}\n${t("commands.config.natural_nudges.limits_description")}\n${withLinePrefix(
-        "> ",
-        [
-          t("commands.config.natural_nudges.limits_reach_out", { weight: config.reach_out_weight }),
-          t("commands.config.natural_nudges.limits_revive", { weight: config.revive_weight }),
-          t("commands.config.natural_nudges.limits_new_topic", { weight: config.new_topic_weight }),
-          t("commands.config.natural_nudges.limits_alter_talk", { weight: config.alter_talk_weight }),
-          t("commands.config.natural_nudges.limits_daily_cap", { cap: config.daily_episode_cap }),
-        ].join("\n"),
-      )}`,
-    ),
-    {
-      type: ComponentType.ActionRow,
-      components: [
-        button(
-          t("commands.config.natural_nudges.limits_button"),
-          { action: "nudge-limits-open", locale },
-          writesDisabled,
-        ),
-      ],
-    },
   );
   return components;
 }
@@ -646,87 +602,6 @@ export function buildPlannerModelModal(
     MODAL_TEXT_MAX,
   );
   return payload;
-}
-
-function numberInput(
-  locale: string,
-  nonce: string,
-  field: string,
-  labelKey: string,
-  descriptionKey: string,
-  value: number,
-) {
-  return {
-    type: 18,
-    label: safeSelectOptionText(localizer(locale, labelKey), MODAL_TEXT_MAX),
-    description: safeSelectOptionText(localizer(locale, descriptionKey), MODAL_DESCRIPTION_MAX),
-    component: {
-      type: 4,
-      custom_id: buildConfigModalFieldId(field, nonce),
-      style: TextInputStyle.Short,
-      required: true,
-      min_length: 1,
-      max_length: 3,
-      value: String(value),
-    },
-  };
-}
-
-export function buildLimitsModal(locale: string, nonce: string, view: NaturalNudgesSettingsView): RawModalPayload {
-  return {
-    custom_id: buildConfigRouteId({ action: "nudge-limits-submit", locale, nonce }),
-    title: safeSelectOptionText(localizer(locale, "commands.config.natural_nudges.limits_title"), MODAL_TEXT_MAX),
-    components: [
-      numberInput(
-        locale,
-        nonce,
-        NUDGE_REACH_OUT_WEIGHT_FIELD,
-        "commands.config.natural_nudges.category_reach_out",
-        "commands.config.natural_nudges.weight_input_description",
-        view.config.reach_out_weight,
-      ),
-      numberInput(
-        locale,
-        nonce,
-        NUDGE_REVIVE_WEIGHT_FIELD,
-        "commands.config.natural_nudges.category_revive",
-        "commands.config.natural_nudges.weight_input_description",
-        view.config.revive_weight,
-      ),
-      numberInput(
-        locale,
-        nonce,
-        NUDGE_NEW_TOPIC_WEIGHT_FIELD,
-        "commands.config.natural_nudges.category_new_topic",
-        "commands.config.natural_nudges.weight_input_description",
-        view.config.new_topic_weight,
-      ),
-      numberInput(
-        locale,
-        nonce,
-        NUDGE_ALTER_TALK_WEIGHT_FIELD,
-        "commands.config.natural_nudges.category_alter_talk",
-        "commands.config.natural_nudges.weight_input_description",
-        view.config.alter_talk_weight,
-      ),
-      {
-        ...numberInput(
-          locale,
-          nonce,
-          NUDGE_DAILY_CAP_FIELD,
-          "commands.config.natural_nudges.daily_cap_label",
-          "commands.config.natural_nudges.daily_cap_input_description",
-          view.config.daily_episode_cap,
-        ),
-        description: safeSelectOptionText(
-          localizer(locale, "commands.config.natural_nudges.daily_cap_input_description", {
-            max: DAILY_EPISODE_CAP_MAX,
-          }),
-          MODAL_DESCRIPTION_MAX,
-        ),
-      },
-    ],
-  };
 }
 
 export interface NudgeEpisodesRenderInput {

@@ -29,6 +29,7 @@ import {
 import { isGenerationFailure, type AttemptResult } from "@/modules/natural-nudges/runtime/runner";
 import { recordChimeInSample, type ChimeInSample } from "@/modules/natural-nudges/runtime/telemetry";
 import {
+  CHIME_IN_DAILY_CAPS,
   CHIME_IN_DELAY_MAX_MS,
   CHIME_IN_DELAY_MIN_MS,
   CHIME_IN_DETOUR_CHANCE,
@@ -278,7 +279,8 @@ async function checkSettingsAndCaps(
   );
   const chimeIns = history.recent.filter((fire) => fire.mode === "chime_in");
   const dayStart = serverDayStart(now, personas[0].config.timezone_offset ?? 0);
-  if (chimeIns.filter((fire) => fire.fired_at >= dayStart).length >= config.daily_chime_in_cap) return "cap_reached";
+  if (chimeIns.filter((fire) => fire.fired_at >= dayStart).length >= CHIME_IN_DAILY_CAPS[config.chime_in_frequency])
+    return "cap_reached";
   if (
     chimeIns.some(
       (fire) =>

@@ -3,7 +3,6 @@ import type { TomoriState } from "@/types/db/schema";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import type {
   EnabledEpisodeServer,
-  NaturalNudgeCategory,
   NaturalNudgeFireRow,
   PersonaNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
@@ -44,6 +43,8 @@ import {
   AGENDA_RETENTION_MS,
   CATEGORY_REST_MS,
   DAY_MS,
+  EPISODE_CATEGORY_WEIGHTS,
+  EPISODE_DAILY_CAPS,
   EPISODE_REST_MS,
   FIRE_RETENTION_MS,
   HOUR_MS,
@@ -105,19 +106,6 @@ function lastFireBy(fires: readonly NaturalNudgeFireRow[], key: (fire: NaturalNu
     if (!seen || seen < fire.fired_at) latest.set(value, fire.fired_at);
   }
   return latest;
-}
-
-function categoryWeight(config: EnabledEpisodeServer["config"], category: NaturalNudgeCategory): number {
-  switch (category) {
-    case "reach_out":
-      return config.reach_out_weight;
-    case "revive":
-      return config.revive_weight;
-    case "new_topic":
-      return config.new_topic_weight;
-    case "alter_talk":
-      return config.alter_talk_weight;
-  }
 }
 
 /** Built-in tools this persona's turn would be offered, which is what tool prerequisites test. */
@@ -287,7 +275,7 @@ export class NaturalNudgeProcessor {
     const meters = await this.loadMeters(serverId, timezoneOffset, now);
     const streak = countUnansweredStreak(history.latestEpisodes, meters.lastMessageSentAt);
     if (streak >= UNANSWERED_STOP_STREAK) return;
-    const perDay = episodesPerDay(meters.heat, config.episode_frequency, config.daily_episode_cap);
+    const perDay = episodesPerDay(meters.heat, config.episode_frequency);
     const dueAt = computeEpisodeDueAt({
       lastEpisodeAt: history.latestEpisodes[0]?.fired_at ?? null,
       perDay,
@@ -297,7 +285,7 @@ export class NaturalNudgeProcessor {
     if (!dueAt || now < dueAt) return;
     const dayStart = serverDayStart(now, timezoneOffset);
     const firedToday = history.recent.filter((fire) => fire.mode === "episode" && fire.fired_at >= dayStart).length;
-    if (firedToday >= config.daily_episode_cap) return;
+    if (firedToday >= EPISODE_DAILY_CAPS[config.episode_frequency]) return;
     if (!isWithinWakingHours(meters.awake, now, serverId)) return;
 
     const personas = (await getCachedAllPersonas(server.server_disc_id)).filter(
@@ -406,9 +394,7 @@ export class NaturalNudgeProcessor {
     const guild = this.client.guilds.cache.get(server.server_disc_id);
     if (!guild) return "guild_unavailable";
     // The draw reads memories and fetches members, so it waits until some runnable episode could ping.
-    const target = runnable.some(
-      (episode) => episodeNeedsTarget(episode) && categoryWeight(server.config, episode.category) > 0,
-    )
+    const target = runnable.some(episodeNeedsTarget)
       ? await drawReachOutTarget({
           client: this.client,
           guild,
@@ -435,8 +421,7 @@ export class NaturalNudgeProcessor {
       NATURAL_NUDGE_CATEGORIES.map((candidate) => ({
         item: candidate,
         tickets: episodes.some((episode) => episode.category === candidate)
-          ? categoryWeight(server.config, candidate) *
-            restedShare(categoryFiredAt.get(candidate), now, CATEGORY_REST_MS)
+          ? EPISODE_CATEGORY_WEIGHTS[candidate] * restedShare(categoryFiredAt.get(candidate), now, CATEGORY_REST_MS)
           : 0,
       })),
     );

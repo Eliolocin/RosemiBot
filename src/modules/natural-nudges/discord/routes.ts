@@ -24,21 +24,15 @@ import {
 import {
   buildEpisodeModal,
   buildInterestModal,
-  buildLimitsModal,
   buildPlannerModelModal,
   NUDGE_ADD_VALUE,
-  NUDGE_ALTER_TALK_WEIGHT_FIELD,
   NUDGE_CLEAR_MODEL_VALUE,
-  NUDGE_DAILY_CAP_FIELD,
   NUDGE_EPISODE_AGENDA_FIELD,
   NUDGE_EPISODE_BRIEF_FIELD,
   NUDGE_EPISODE_CATEGORY_FIELD,
   NUDGE_EPISODE_TITLE_FIELD,
   NUDGE_INTEREST_DESCRIPTION_FIELD,
   NUDGE_INTEREST_LABEL_FIELD,
-  NUDGE_NEW_TOPIC_WEIGHT_FIELD,
-  NUDGE_REACH_OUT_WEIGHT_FIELD,
-  NUDGE_REVIVE_WEIGHT_FIELD,
 } from "@/modules/natural-nudges/discord/panel";
 
 type ConfigAction = ConfigPanelRoute["action"];
@@ -49,7 +43,6 @@ export const NUDGE_STRING_SELECT_ACTIONS: ReadonlySet<ConfigAction> = new Set<Co
   "nudge-provider",
   "nudge-frequency-select",
   "nudge-chime-in-frequency-select",
-  "nudge-chime-in-cap-select",
   "nudge-episode-select",
   "nudge-episode-prereqs-select",
   "nudge-episode-tools-select",
@@ -61,7 +54,6 @@ export const NUDGE_MODAL_SUBMIT_ACTIONS: ReadonlySet<ConfigAction> = new Set<Con
   "nudge-interest-add-submit",
   "nudge-interest-edit-submit",
   "nudge-model-submit",
-  "nudge-limits-submit",
   "nudge-episode-add-submit",
   "nudge-episode-edit-submit",
 ]);
@@ -89,7 +81,6 @@ export async function handleNudgeModalOpen(
     (route.action === "nudge-interest-select" && value === NUDGE_ADD_VALUE) ||
     route.action === "nudge-interest-edit-open" ||
     (route.action === "nudge-provider" && value !== undefined && value !== NUDGE_CLEAR_MODEL_VALUE) ||
-    route.action === "nudge-limits-open" ||
     (route.action === "nudge-episode-select" && value === NUDGE_ADD_VALUE) ||
     route.action === "nudge-episode-edit-open";
   if (!opensModal) return false;
@@ -139,13 +130,6 @@ export async function handleNudgeModalOpen(
     await dependencies.showModal(
       interaction,
       buildPlannerModelModal(locale, nonce, group, start, settings.config.llm_id),
-    );
-    return true;
-  }
-  if (route.action === "nudge-limits-open") {
-    await dependencies.showModal(
-      interaction,
-      buildLimitsModal(locale, nonce, await nudges.loadSettings(serverId, locale, null)),
     );
     return true;
   }
@@ -370,37 +354,6 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
               () => ops.setChimeInFrequency(serverId, level as EpisodeFrequencyLevel),
               "server-config.workspace.natural-nudge-chime-in-frequency.set",
             );
-      await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
-      return true;
-    }
-    case "nudge-chime-in-cap-select": {
-      const cap = parseIndex(values[0]);
-      const result =
-        cap === null
-          ? "stale"
-          : await write(
-              () => ops.setChimeInCap(serverId, cap),
-              "server-config.workspace.natural-nudge-chime-in-cap.set",
-            );
-      await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
-      return true;
-    }
-    case "nudge-limits-submit": {
-      const number = (name: string) => {
-        const raw = field(name).trim();
-        return /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
-      };
-      const result = await write(
-        () =>
-          ops.setLimits(serverId, {
-            reach_out_weight: number(NUDGE_REACH_OUT_WEIGHT_FIELD),
-            revive_weight: number(NUDGE_REVIVE_WEIGHT_FIELD),
-            new_topic_weight: number(NUDGE_NEW_TOPIC_WEIGHT_FIELD),
-            alter_talk_weight: number(NUDGE_ALTER_TALK_WEIGHT_FIELD),
-            daily_episode_cap: number(NUDGE_DAILY_CAP_FIELD),
-          }),
-        "server-config.workspace.natural-nudge-limits.set",
-      );
       await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
       return true;
     }

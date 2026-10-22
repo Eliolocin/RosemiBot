@@ -201,11 +201,12 @@ Natural Nudges stores events and derives its meters on read
 - **`server_natural_nudge_configs`**: per-server settings, read fresh by the runtime rather than
   through `tomoriState`. A missing row means the column defaults, and `episodes_enabled` defaults
   to true, so the timer enumerates servers from recent `stat_counters` activity instead of from
-  these rows. `chime_in_enabled` defaults to true as well, with `daily_chime_in_cap` (1-20) and
-  `chime_in_frequency` (0-3) beside the episode caps. An empty `channel_disc_ids` means automatic
-  channels, and a null `llm_id` means the server's chat model. Reset restores it; the workspace
-  export carries it without `channel_disc_ids`, and import checks `llm_id` against the target
-  workspace's structured-output models.
+  these rows. `chime_in_enabled` defaults to true as well, and each mode's `episode_frequency` or
+  `chime_in_frequency` (0-3) selects that mode's daily cap from constants in `runtime/tuning.ts`;
+  the episode category weights are constants there too, not columns. An empty `channel_disc_ids`
+  means automatic channels, and a null `llm_id` means the server's chat model. Reset restores it;
+  the workspace export carries it without `channel_disc_ids`, and import checks `llm_id` against
+  the target workspace's structured-output models.
 - **`server_natural_nudge_episodes`**: custom episodes, at most 25 per server. Prerequisite IDs are
   checked against the code registry on write and import, not by a CHECK. Reset deletes them.
 - **`persona_natural_nudge_configs`**: talkativeness and interests per persona. Pointer personas
