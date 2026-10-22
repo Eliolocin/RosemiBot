@@ -59,7 +59,7 @@ Try {model_text_command} to assign a working model, or {provider_add_command} to
       policies_modal_choice_label: `Confirm all three to continue`,
       policies_choice_terms: `I accept TomoriBot's Terms of Service`,
       policies_choice_privacy: `I have read TomoriBot's Privacy Policy`,
-      policies_choice_members: `I'll tell my members TomoriBot is an AI that reads recent messages to reply`,
+      policies_choice_members: `I'll inform members about TomoriBot's data use and help enforce its age and usage rules.`,
       policies_required: `Confirm all three items to continue.`,
       policies_denied: `Policy acceptance is not part of this setup.`,
       provider_name: `AI Provider`,

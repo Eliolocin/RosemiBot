@@ -60,7 +60,7 @@ Prueba con {model_text_command} para asignar un modelo funcional, o con {provide
       policies_modal_choice_label: `Confirma las tres para continuar`,
       policies_choice_terms: `Acepto los Términos de servicio de TomoriBot`,
       policies_choice_privacy: `He leído la Política de privacidad de TomoriBot`,
-      policies_choice_members: `Les diré a mis miembros que TomoriBot es una IA que lee mensajes recientes para responder`,
+      policies_choice_members: `Informaré a los miembros del uso de datos de TomoriBot y ayudaré a aplicar sus reglas de edad y uso.`,
       policies_required: `Confirma los tres elementos para continuar.`,
       policies_denied: `La aceptación de políticas no forma parte de esta configuración.`,
       provider_name: `Proveedor de IA`,

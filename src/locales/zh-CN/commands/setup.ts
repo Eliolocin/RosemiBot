@@ -60,7 +60,7 @@ export default {
       policies_modal_choice_label: `三项都确认后才能继续`,
       policies_choice_terms: `我接受 TomoriBot 的服务条款`,
       policies_choice_privacy: `我已阅读 TomoriBot 的隐私政策`,
-      policies_choice_members: `我会告诉成员 TomoriBot 是会读取最近消息来回复的 AI`,
+      policies_choice_members: `我会告知成员TomoriBot如何使用数据，并协助落实年龄与使用规则。`,
       policies_required: `三项都确认后才能继续。`,
       policies_denied: `政策接受不属于这次设置的范围。`,
       provider_name: `AI 提供方`,
