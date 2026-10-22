@@ -166,7 +166,8 @@ describe("optional response rule evidence", () => {
     const decrypt = spyOn(toolRepository, "decryptMcpAuthToken").mockRejectedValue(
       new Error("PRIVATE_CREDENTIAL_FAILURE"),
     );
-    const failureStreak = spyOn(toolRepository, "recordMcpConnectFailure").mockResolvedValue({
+    // Stubbed because the unit lane's database may lack guild_mcp_servers, which adds a second error log.
+    const recordFailure = spyOn(toolRepository, "recordMcpConnectFailure").mockResolvedValue({
       status: "failing",
       failingSince: new Date(),
     });
@@ -178,7 +179,7 @@ describe("optional response rule evidence", () => {
       expect(JSON.stringify([errors.mock.calls, info.mock.calls])).not.toContain("PRIVATE_");
     } finally {
       decrypt.mockRestore();
-      failureStreak.mockRestore();
+      recordFailure.mockRestore();
     }
   });
 

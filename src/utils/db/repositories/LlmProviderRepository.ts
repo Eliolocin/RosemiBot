@@ -1561,6 +1561,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
   /** Deletes a server provider snapshot, its rotation pool, and its scope-local model registrations atomically. */
   async deleteServerProviderRegistration(serverId: number, provider: string): Promise<boolean> {
     const normalizedProvider = provider.toLowerCase();
+    const modelProvider = normalizedProvider === "supporter" ? "openrouter" : normalizedProvider;
     try {
       await cleanupSpeechCredentialBeforeChange({ kind: "server", ownerId: serverId }, normalizedProvider);
       const deleted = await sql.begin(async (tx) => {
@@ -1574,46 +1575,53 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
           DELETE FROM api_key_rotation
           WHERE server_id = ${serverId} AND provider = ${normalizedProvider}
         `;
+        if (normalizedProvider === "openrouter" || normalizedProvider === "supporter") {
+          const counterpart = normalizedProvider === "openrouter" ? "supporter" : "openrouter";
+          const [remaining] = await tx`SELECT 1 FROM saved_provider_configs
+            WHERE server_id = ${serverId} AND provider = ${counterpart}`;
+          if (remaining) return true;
+        }
+
         await tx`
           DELETE FROM scoped_model_registrations registration
           WHERE registration.server_id = ${serverId}
             AND (
               EXISTS (
                 SELECT 1 FROM llms model
-                WHERE model.llm_id = registration.llm_id AND model.llm_provider = ${normalizedProvider}
+                WHERE model.llm_id = registration.llm_id AND model.llm_provider = ${modelProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM embedding_models model
                 WHERE model.embedding_model_id = registration.embedding_model_id
-                  AND model.provider = ${normalizedProvider}
+                  AND model.provider = ${modelProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM image_diffusion_models model
                 WHERE model.diffusion_model_id = registration.diffusion_model_id
-                  AND model.provider = ${normalizedProvider}
+                  AND model.provider = ${modelProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM speech_models model
-                WHERE model.speech_model_id = registration.speech_model_id AND model.provider = ${normalizedProvider}
+                WHERE model.speech_model_id = registration.speech_model_id AND model.provider = ${modelProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM decision_models model
                 WHERE model.decision_model_id = registration.decision_model_id
-                  AND model.provider = ${normalizedProvider}
+                  AND model.provider = ${modelProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM video_generation_models model
                 WHERE model.video_model_id = registration.video_model_id
-                  AND model.provider = ${normalizedProvider}
+                  AND model.provider = ${modelProvider}
               )
             )
         `;
         await tx`UPDATE server_chat_configs SET
-          response_reviewer_llm_id = CASE WHEN response_reviewer_llm_id IN (SELECT llm_id FROM llms WHERE llm_provider = ${normalizedProvider}) THEN NULL ELSE response_reviewer_llm_id END
+          response_reviewer_llm_id = CASE WHEN response_reviewer_llm_id IN (SELECT llm_id FROM llms WHERE llm_provider = ${modelProvider}) THEN NULL ELSE response_reviewer_llm_id END
           WHERE server_id = ${serverId}`;
         await tx`UPDATE server_model_configs SET decision_model_id = NULL
           WHERE server_id = ${serverId}
-            AND decision_model_id IN (SELECT decision_model_id FROM decision_models WHERE provider = ${normalizedProvider})`;
+            AND decision_model_id IN (SELECT decision_model_id FROM decision_models WHERE provider = ${modelProvider})`;
         return true;
       });
       if (deleted) this.invalidateWorkspace(serverId);
@@ -1627,6 +1635,7 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
   /** Deletes a personal provider snapshot and its scope-local model registrations atomically. */
   async deleteUserProviderRegistration(userId: number, provider: string): Promise<boolean> {
     const normalizedProvider = provider.toLowerCase();
+    const modelProvider = normalizedProvider === "supporter" ? "openrouter" : normalizedProvider;
     try {
       await cleanupSpeechCredentialBeforeChange({ kind: "personal", ownerId: userId }, normalizedProvider);
       return await sql.begin(async (tx) => {
@@ -1636,37 +1645,44 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
         `;
         if (deleted.count === 0) return false;
 
+        if (normalizedProvider === "openrouter" || normalizedProvider === "supporter") {
+          const counterpart = normalizedProvider === "openrouter" ? "supporter" : "openrouter";
+          const [remaining] = await tx`SELECT 1 FROM user_saved_provider_configs
+            WHERE user_id = ${userId} AND provider = ${counterpart}`;
+          if (remaining) return true;
+        }
+
         await tx`
           DELETE FROM scoped_model_registrations registration
           WHERE registration.user_id = ${userId}
             AND (
               EXISTS (
                 SELECT 1 FROM llms model
-                WHERE model.llm_id = registration.llm_id AND model.llm_provider = ${normalizedProvider}
+                WHERE model.llm_id = registration.llm_id AND model.llm_provider = ${modelProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM embedding_models model
                 WHERE model.embedding_model_id = registration.embedding_model_id
-                  AND model.provider = ${normalizedProvider}
+                  AND model.provider = ${modelProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM image_diffusion_models model
                 WHERE model.diffusion_model_id = registration.diffusion_model_id
-                  AND model.provider = ${normalizedProvider}
+                  AND model.provider = ${modelProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM speech_models model
-                WHERE model.speech_model_id = registration.speech_model_id AND model.provider = ${normalizedProvider}
+                WHERE model.speech_model_id = registration.speech_model_id AND model.provider = ${modelProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM decision_models model
                 WHERE model.decision_model_id = registration.decision_model_id
-                  AND model.provider = ${normalizedProvider}
+                  AND model.provider = ${modelProvider}
               )
               OR EXISTS (
                 SELECT 1 FROM video_generation_models model
                 WHERE model.video_model_id = registration.video_model_id
-                  AND model.provider = ${normalizedProvider}
+                  AND model.provider = ${modelProvider}
               )
             )
         `;

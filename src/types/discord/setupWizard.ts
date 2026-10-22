@@ -56,6 +56,7 @@ export const setupDraftProviderAccessSchema = z.discriminatedUnion("mode", [
   setupDraftCatalogAccessSchema,
   setupDraftCustomEndpointAccessSchema,
   setupDraftUserByokAccessSchema,
+  z.object({ mode: z.literal("supporter") }).strict(),
 ]);
 export type SetupDraftProviderAccess = z.infer<typeof setupDraftProviderAccessSchema>;
 
@@ -108,7 +109,7 @@ export type SetupDraftRecord = z.infer<typeof setupDraftRecordSchema>;
 
 export function isSetupDraftProviderAccessComplete(access: SetupDraftProviderAccess | null | undefined): boolean {
   if (!access) return false;
-  if (access.mode === "catalog" || access.mode === "user-byok") {
+  if (access.mode === "catalog" || access.mode === "user-byok" || access.mode === "supporter") {
     return true;
   }
   // A connection-only custom endpoint must never count as complete, because committing it would produce a

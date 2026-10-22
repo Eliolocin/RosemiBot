@@ -12,6 +12,7 @@ export interface OpenRouterVideoModelCapabilities {
   supportedFrameImages: OpenRouterFrameType[];
   generateAudio: boolean | null;
   allowedPassthroughParameters: string[];
+  pricing?: unknown;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -53,6 +54,7 @@ export function parseOpenRouterVideoModelList(payload: unknown): OpenRouterVideo
       supportedFrameImages: readFrameTypes(entry.supported_frame_images),
       generateAudio: typeof entry.generate_audio === "boolean" ? entry.generate_audio : null,
       allowedPassthroughParameters: readStringArray(entry.allowed_passthrough_parameters),
+      ...(entry.pricing_skus === undefined ? {} : { pricing: entry.pricing_skus }),
     });
   }
 

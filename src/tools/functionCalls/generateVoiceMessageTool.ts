@@ -32,6 +32,7 @@ import { resolveVoiceSourceCapabilities } from "@/utils/speech/voiceSourceCapabi
 import { synthesizeVoiceMessage, type ResolvedVoiceSource } from "@/utils/speech/voiceMessageSynthesis";
 import { statRepository } from "@/utils/db/repositories";
 import { log } from "@/utils/misc/logger";
+import { notifySupporterToolFailure } from "@/modules/supporter-billing/discord/requestFailure";
 
 /**
  * Per-endpoint description variants for the voice message tool.
@@ -305,10 +306,12 @@ export class GenerateVoiceMessageTool extends BaseTool {
     if (!synthesisResult.success || !synthesisResult.audioBuffer) {
       return {
         success: false,
-        error:
-          synthesisResult.errorKind === "script_too_long"
+        error: synthesisResult.supporterFailure
+          ? await notifySupporterToolFailure(context, synthesisResult.supporterFailure)
+          : synthesisResult.errorKind === "script_too_long"
             ? localizer(context.locale, "tools.generate_voice_message.script_too_long")
             : synthesisResult.details || "Failed to generate the voice message.",
+
         data: { attempts: synthesisResult.attempts, cleanupPending: synthesisResult.cleanupPending },
       };
     }

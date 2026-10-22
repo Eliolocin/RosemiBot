@@ -8,7 +8,11 @@ const oauthTokenSchema = z.object({
     .string()
     .transform((value) => value.toLowerCase())
     .pipe(z.literal("bearer")),
-  expires_in: z.number().finite().positive().max(315_360_000),
+  expires_in: z
+    .number()
+    .finite()
+    .positive()
+    .refine((seconds) => Number.isFinite(new Date(Date.now() + seconds * 1000).getTime())),
   scope: z.string().optional(),
 });
 

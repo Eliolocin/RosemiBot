@@ -63,6 +63,7 @@ export async function activateServerTextModelFromSavedConfig(params: {
     params.tomoriState.config.fallback_model_refs ?? [],
     promotedLlmId,
     customEndpoints,
+    normalizedProvider,
   );
   const resolvedLogitBiases = resolveLogitBiasEntriesForLlm(
     params.savedConfig.llm_logit_biases ?? params.tomoriState.config.llm_logit_biases ?? [],

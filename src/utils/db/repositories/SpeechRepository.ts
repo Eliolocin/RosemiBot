@@ -24,27 +24,31 @@ export interface HostedSpeechSelection {
   owner: OpenRouterModelScope;
   credentialId: number;
   credentialRevision: number;
-  apiKey: Buffer;
+  apiKey: Buffer | null;
   keyVersion: number;
+  subscription?: boolean;
 }
 
 export async function loadHostedSpeechSelection(
   serverId: number,
   mode: VoiceSourceMode,
   userId?: number,
+  includeSubscription = false,
 ): Promise<HostedSpeechSelection | null> {
   const capability = mode === "design" ? "speech_design" : "speech_clone";
   if (userId !== undefined) {
     const [row] = await sql`
-      SELECT m.*, c.user_saved_config_id AS credential_id, c.credential_revision, c.api_key, c.key_version
+      SELECT m.*, c.user_saved_config_id AS credential_id, c.credential_revision, c.api_key, c.key_version,
+        c.provider = 'supporter' AS subscription
       FROM user_saved_provider_configs c JOIN speech_models m
         ON m.speech_model_id = CASE WHEN ${mode} = 'design' THEN c.speech_design_model_id ELSE c.speech_clone_model_id END
-        AND m.provider = c.provider
+        AND (m.provider = c.provider OR (m.provider = 'openrouter' AND c.provider = 'supporter'))
       WHERE c.user_id = ${userId} AND ${capability} = ANY(c.enabled_capabilities)
         AND ${capability} = ANY(c.assigned_capabilities)
+        AND (c.provider <> 'supporter' OR ${includeSubscription})
     `;
     if (row) {
-      if (!row.api_key) return null;
+      if (!row.api_key && !row.subscription) return null;
       return {
         model: speechModelSchema.parse(row),
         owner: { kind: "personal", ownerId: userId },
@@ -52,17 +56,23 @@ export async function loadHostedSpeechSelection(
         credentialRevision: row.credential_revision,
         apiKey: row.api_key,
         keyVersion: row.key_version,
+        subscription: row.subscription,
       };
     }
   }
   const [row] = await sql`
-    SELECT m.*, c.saved_config_id AS credential_id, c.credential_revision, c.api_key, c.key_version
+    SELECT m.*, COALESCE(c.saved_config_id, subscription.saved_config_id) AS credential_id,
+      COALESCE(c.credential_revision, subscription.credential_revision) AS credential_revision,
+      c.api_key, COALESCE(c.key_version, subscription.key_version) AS key_version,
+      c.api_key IS NULL AND subscription.saved_config_id IS NOT NULL AS subscription
     FROM server_speech_configs s JOIN speech_models m
       ON m.speech_model_id = CASE WHEN ${mode} = 'design' THEN s.speech_design_model_id ELSE s.speech_clone_model_id END
-    JOIN saved_provider_configs c ON c.server_id = s.server_id AND c.provider = m.provider
+    LEFT JOIN saved_provider_configs c ON c.server_id = s.server_id AND c.provider = m.provider
+    LEFT JOIN saved_provider_configs subscription ON subscription.server_id = s.server_id
+      AND subscription.provider = 'supporter' AND m.provider = 'openrouter' AND ${includeSubscription}
     WHERE s.server_id = ${serverId}
   `;
-  if (!row?.api_key) return null;
+  if (!row || (!row.api_key && !row.subscription)) return null;
   return {
     model: speechModelSchema.parse(row),
     owner: { kind: "server", ownerId: serverId },
@@ -70,6 +80,7 @@ export async function loadHostedSpeechSelection(
     credentialRevision: row.credential_revision,
     apiKey: row.api_key,
     keyVersion: row.key_version,
+    subscription: row.subscription,
   };
 }
 
@@ -79,6 +90,7 @@ export async function setHostedSpeechSelection(
   mode?: VoiceSourceMode,
   register = false,
   replacedModelId?: number,
+  credentialProvider?: string,
 ): Promise<boolean> {
   try {
     const discordId = await sql.begin(async (tx) => {
@@ -90,6 +102,14 @@ export async function setHostedSpeechSelection(
       const [row] =
         modelId === null ? [] : await tx`SELECT * FROM speech_models WHERE speech_model_id = ${modelId} FOR UPDATE`;
       const model = row ? speechModelSchema.parse(row) : null;
+      const provider = credentialProvider ?? model?.provider;
+      if (
+        credentialProvider &&
+        credentialProvider !== model?.provider &&
+        !(credentialProvider === "supporter" && model?.provider === "openrouter")
+      ) {
+        throw new Error("Mismatched speech credential provider");
+      }
       if (
         modelId !== null &&
         (!model || model.is_deprecated || (mode && model.voice_mode !== mode && model.voice_mode !== "auto"))
@@ -152,7 +172,8 @@ export async function setHostedSpeechSelection(
         if (model) {
           const [credential] = await tx`
             SELECT user_saved_config_id FROM user_saved_provider_configs
-            WHERE user_id = ${scope.ownerId} AND provider = ${model.provider} AND api_key IS NOT NULL FOR UPDATE
+            WHERE user_id = ${scope.ownerId} AND provider = ${provider}
+              AND (api_key IS NOT NULL OR provider = 'supporter') FOR UPDATE
           `;
           if (!credential) throw new Error("Matching speech credentials missing");
           await tx`

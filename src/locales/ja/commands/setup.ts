@@ -41,6 +41,10 @@ export default {
 
 				プロバイダーを変更したい場合は、\`/providers\`で新しいデフォルトのテキストプロバイダーを登録して有効化してください。`,
     wizard: {
+      provider_option_supporter: `TomoriBotサブスクリプション（推奨）`,
+      provider_option_supporter_description: `全機能（テキスト・画像・音声生成など）に対応。Patreon決済でAPIキーは不要です。`,
+      provider_supporter_summary: `セットアップを終了すると、サブスクリプションの利用枠をこのサーバーと共有し、含まれるモデルを設定します。`,
+      receipt_desc_supporter: `このサーバーは{persona}として設定され、あなたの月間サポーター利用枠を使用します。サーバーメンバーはこの利用枠を消費できます。`,
       title: `TomoriBotをセットアップ`,
       intro: `以下の項目をすべて完了してから、セットアップを終了してください。`,
       intro_ready: `必要な項目はすべて準備できています。内容を確認してから、セットアップを終了してください。`,

@@ -264,8 +264,6 @@ Dùng \`/config\` > Models > Switch Models để chuyển sang model hỗ trợ 
 **Các bước tiếp theo:**
 1. Dùng \`/config\` > Models > Switch Models để đổi sang model hỗ trợ công cụ, HOẶC
 2. Tạo lại mà không dùng tìm kiếm web (chọn "Không" khi được hỏi)`,
-      api_key_decrypt_failed_title: `🔴 Lỗi khóa API`,
-      api_key_decrypt_failed_description: `Không thể giải mã thông tin nhà cung cấp đang hoạt động. Hãy cấu hình lại bằng \`/providers\`.`,
       vision_credentials_unavailable_title: `🔴 Không dùng được thông tin xác thực của model thị giác`,
       vision_credentials_unavailable_description: `Model thị giác của bạn (**{vision_model_name}**) chạy trên nhà cung cấp **{vision_provider}**, nhưng không thể dùng khóa API đã lưu của nó để mô tả hình ảnh. Hãy cấu hình lại thông tin xác thực của nhà cung cấp đó bằng \`/providers\`, hoặc kiểm tra \`/config\` > Models.`,
       invalid_image_title: `🔴 Ảnh không hợp lệ`,

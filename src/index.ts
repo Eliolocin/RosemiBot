@@ -1,4 +1,5 @@
 import { config } from "dotenv";
+import { initializeOAuthCallbackRoute } from "@/utils/oauth/callbackRoute";
 import { resolveEnvironment } from "@/types/config";
 import { startHealthServer } from "@/init/healthServer";
 import { registerHeapSnapshotHandler } from "@/init/heapSnapshot";
@@ -6,6 +7,7 @@ import { loadSecrets } from "@/init/secrets";
 import { initStartupBackup } from "@/init/backup";
 import { createDiscordClient, isTransientGatewayError, resolvePresenceIntentEnabled } from "@/init/discord";
 import { initDatabase } from "@/init/database";
+import { initSupporterBilling } from "@/init/supporterBilling";
 import { initLoaders } from "@/init/loaders";
 import { initBridges } from "@/init/bridges";
 import { initTimers } from "@/init/timers";
@@ -39,6 +41,7 @@ const environment = resolveEnvironment();
 // Bind to PORT immediately so Cloud Run's startup probe passes before the rest of init runs
 if (environment === "production") {
   const healthPort = Number.parseInt(process.env.PORT ?? "8080", 10);
+  initializeOAuthCallbackRoute();
   startHealthServer(healthPort);
 }
 
@@ -59,6 +62,7 @@ const client = createDiscordClient(includePresences);
 
 await initDatabase(environment);
 
+await initSupporterBilling(environment);
 // GUILD_CREATE caches presences during login, so restore eligible pairs before connecting.
 if (includePresences) {
   const presencePairs = await statRepository.getPresenceRetentionPairs();

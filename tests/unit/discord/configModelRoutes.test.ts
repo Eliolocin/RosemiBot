@@ -1,3 +1,6 @@
+import { useEnvSandbox } from "../../helpers/env";
+import { createPersona, createLlmRow } from "../../helpers/fixtures";
+import { supporterSponsorshipRepository, supporterServerSponsorshipSchema } from "@/modules/supporter-billing/db";
 /**
  * Route coverage for the `/config` Models surface.
  *
@@ -1309,6 +1312,55 @@ describe("config models switch page", () => {
 });
 
 describe("config models capability writes", () => {
+  useEnvSandbox(["RUN_ENV", "TOMORI_SUPPORTER_BILLING_ENABLED"]);
+
+  it("saves subscription text and vision choices from the scoped OpenRouter catalog", async () => {
+    process.env.RUN_ENV = "production";
+    process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
+    const model = createLlmRow({
+      llm_id: 7,
+      llm_provider: "openrouter",
+      llm_codename: "synthetic/vision-model",
+      sees_images: true,
+    });
+    const state = createPersona({ server_id: 9 });
+    const providers = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([
+      makeSavedProvider("supporter", { api_key: null }),
+      makeSavedProvider("openrouter", { api_key: "synthetic-byok-key" }),
+    ]);
+    const models = spyOn(llmModelRepo, "loadAvailableModelsForProvider").mockImplementation(async (provider) =>
+      provider === "openrouter" ? [model] : [],
+    );
+    const update = spyOn(configRepository, "updateModelConfig").mockResolvedValue(true);
+    const chatUpdate = spyOn(configRepository, "updateChatConfig").mockResolvedValue(true);
+    const invalidate = spyOn(tomoriStateCache, "invalidateTomoriStateCache").mockImplementation(() => undefined);
+    try {
+      for (const capability of ["text", "vision"] as const) {
+        update.mockClear();
+        chatUpdate.mockClear();
+        invalidate.mockClear();
+        const result = await configModelOperations.setCapabilityModel({
+          tomoriState: state,
+          serverDiscId: "synthetic-server",
+          capability,
+          provider: "supporter",
+          modelId: 7,
+        });
+
+        expect(result).toMatchObject({ status: "success", modelName: model.llm_codename });
+        expect(models).toHaveBeenLastCalledWith("openrouter", false, { kind: "server", ownerId: 9 });
+        expect(update).toHaveBeenCalledWith(
+          9,
+          capability === "text" ? expect.objectContaining({ llm_id: 7, api_key: null }) : { vision_llm_id: 7 },
+        );
+        expect(invalidate).toHaveBeenCalledWith("synthetic-server");
+        if (capability === "vision") expect(chatUpdate).not.toHaveBeenCalled();
+      }
+    } finally {
+      for (const spy of [providers, models, update, chatUpdate, invalidate]) spy.mockRestore();
+    }
+  });
+
   it("rejects endpoint capabilities without model repository or cache writes", async () => {
     const providers = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([]);
     const modelUpdate = spyOn(configRepository, "updateModelConfig").mockResolvedValue(true);
@@ -2058,6 +2110,64 @@ describe("config models logit bias", () => {
 });
 
 describe("config models fallbacks and randomizer", () => {
+  useEnvSandbox(["RUN_ENV", "TOMORI_SUPPORTER_BILLING_ENABLED"]);
+  it("persists the chosen server OpenRouter credential source and permits a BYOK copy of the sponsored primary", async () => {
+    process.env.RUN_ENV = "production";
+    process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
+    const model = createLlmRow({ llm_id: 101, llm_provider: "openrouter", llm_codename: "synthetic/shared-model" });
+    const state = createPersona({ llm: model, config: { llm_id: 101 } });
+    const rows = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([
+      makeSavedProvider("openrouter"),
+      makeSavedProvider("supporter", { api_key: null }),
+    ]);
+    const endpoints = spyOn(llmProviderRepo, "loadCustomEndpointsForServer").mockResolvedValue([]);
+    const models = spyOn(llmModelRepo, "loadAvailableModelsForProvider").mockResolvedValue([model]);
+    const write = spyOn(llmOverrideRepo, "setFallbackModelRefs").mockResolvedValue(true);
+    const sponsorship = spyOn(supporterSponsorshipRepository, "loadActiveSponsorshipForServer").mockResolvedValue(
+      supporterServerSponsorshipSchema.parse({
+        sponsorship_id: 1,
+        server_id: state.server_id,
+        server_disc_id: "synthetic-server",
+        sponsor_identity_id: 2,
+        status: "active",
+        created_by_disc_id: "synthetic-user",
+        created_at: new Date(),
+        updated_at: new Date(),
+        revoked_at: null,
+      }),
+    );
+    try {
+      expect(
+        await configModelOperations.setFallbackChain({
+          tomoriState: state,
+          serverDiscId: "synthetic-server",
+          provider: "openrouter",
+          slotValues: [model.llm_codename],
+        }),
+      ).toMatchObject({ status: "success", refs: [{ type: "llm", id: 101 }] });
+      const otherPrimary = createPersona({ llm: createLlmRow({ llm_id: 102 }), config: { llm_id: 102 } });
+      expect(
+        await configModelOperations.setFallbackChain({
+          tomoriState: otherPrimary,
+          serverDiscId: "synthetic-server",
+          provider: "supporter",
+          slotValues: [model.llm_codename],
+        }),
+      ).toMatchObject({ status: "success", refs: [{ type: "llm", id: 101, credentialProvider: "supporter" }] });
+      expect(models.mock.calls.every((call) => call[0] === "openrouter")).toBe(true);
+      expect(
+        await configModelOperations.setFallbackChain({
+          tomoriState: state,
+          serverDiscId: "synthetic-server",
+          provider: "supporter",
+          slotValues: [model.llm_codename],
+        }),
+      ).toMatchObject({ status: "primary-conflict" });
+    } finally {
+      for (const spy of [rows, endpoints, models, write, sponsorship]) spy.mockRestore();
+    }
+  });
+
   it("keeps an untouched slot and clears only the slot that asked to be cleared", async () => {
     const providers = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([
       makeSavedProvider("google"),

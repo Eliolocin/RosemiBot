@@ -264,8 +264,6 @@ export default {
 **接下來可以這樣做：**
 1. 用 \`/config\` > 模型 > 切換模型切換到支援工具的模型，或
 2. 不要網路搜尋，重新生成一次（被問到時選「否」）`,
-      api_key_decrypt_failed_title: `🔴 API 金鑰錯誤`,
-      api_key_decrypt_failed_description: `無法解密使用中供應商的憑證。請用 \`/providers\` 重新設定。`,
       vision_credentials_unavailable_title: `🔴 視覺模型的憑證不可用`,
       vision_credentials_unavailable_description: `你的視覺模型（**{vision_model_name}**）在供應商 **{vision_provider}** 上執行，但無法用它的 API 金鑰描述圖片。請用 \`/providers\` 重新設定該供應商的憑證，或到 \`/config\` > 模型 檢查一下。`,
       invalid_image_title: `🔴 圖片無效`,

@@ -1595,7 +1595,7 @@ ${localizer(locale, "commands.config.panel.text_override_description")}
             customId: buildConfigRouteId({ action: "text-override-provider-select", locale, personaId }),
             placeholder: localizer(locale, "commands.config.panel.text_override_provider_placeholder"),
             options: input.view.providers.map((provider) => ({
-              label: safeSelectOptionText(getProviderDisplayName(provider), 100),
+              label: safeSelectOptionText(getProviderDisplayName(provider, locale), 100),
               value: provider,
             })),
             disabled: writesDisabled || textState === "disabled",
@@ -3895,7 +3895,7 @@ ${localizer(locale, "commands.config.panel.channels_rules_description")}`,
 function modelLabel(locale: string, model: Pick<LlmRow, "llm_provider" | "llm_codename"> | null | undefined): string {
   return formatModelSelectionLabel(
     model?.llm_codename ?? null,
-    model ? getProviderDisplayName(model.llm_provider) : null,
+    model ? getProviderDisplayName(model.llm_provider, locale) : null,
     localizer(locale, "commands.config.panel.none_label"),
   );
 }
@@ -4114,7 +4114,7 @@ ${localizer(locale, "commands.config.panel.channels_overrides_text_model_descrip
             }),
             placeholder: localizer(locale, "commands.config.panel.text_override_provider_placeholder"),
             options: textView.providers.map((provider) => ({
-              label: safeSelectOptionText(getProviderDisplayName(provider), 100),
+              label: safeSelectOptionText(getProviderDisplayName(provider, locale), 100),
               value: provider,
             })),
             disabled: actionDisabled,
@@ -4131,7 +4131,7 @@ ${localizer(locale, "commands.config.panel.channels_overrides_text_model_descrip
         return {
           label: safeSelectOptionText(
             localizer(locale, "commands.config.panel.provider_page_label", {
-              provider: getProviderDisplayName(textView.provider),
+              provider: getProviderDisplayName(textView.provider, locale),
               page: pageIndex + 1,
             }),
             100,

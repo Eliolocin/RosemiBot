@@ -264,8 +264,6 @@ export default {
 **次のステップ:**
 1. \`/config\` > モデル > モデルの切り替えを使用してツール対応モデルに切り替える、または
 2. ウェブ検索なしで再生成する（質問されたら「いいえ」を選択）`,
-      api_key_decrypt_failed_title: `🔴 APIキーエラー`,
-      api_key_decrypt_failed_description: `有効なプロバイダー認証情報の復号化に失敗しました。\`/providers\`で再設定してください。`,
       vision_credentials_unavailable_title: `🔴 ビジョンモデルの認証情報を利用できません`,
       vision_credentials_unavailable_description: `ビジョンモデル（**{vision_model_name}**）はプロバイダー **{vision_provider}** で動作していますが、保存されたAPIキーを画像の説明に使用できませんでした。\`/providers\`でそのプロバイダーの認証情報を再設定するか、\`/config\` > モデルを確認してください。`,
       invalid_image_title: `🔴 無効な画像`,

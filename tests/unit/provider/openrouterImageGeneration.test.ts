@@ -121,6 +121,35 @@ describe("OpenRouter image generation routing", () => {
     }
   });
 
+  it("requests Nano Banana 2.1 at 1K while preserving reference images", async () => {
+    const captured: CapturedCall[] = [];
+    restore.push(
+      stubFetch(
+        { choices: [{ message: { images: [{ image_url: { url: "data:image/png;base64,QUJD" } }] } }] },
+        captured,
+      ),
+    );
+    await generateOpenRouterImage({
+      apiKey: "fixture-key",
+      modelCodename: "google/gemini-nano-banana-2.1",
+      prompt: "Draw a moon",
+      aspectRatio: "1:1",
+      referenceImages: [{ mimeType: "image/png", data: "QUJD" }],
+    });
+    expect(captured[0]?.body).toMatchObject({
+      image_config: { aspect_ratio: "1:1", image_size: "1K" },
+    });
+    expect(captured[0]?.body.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Draw a moon" },
+          { type: "image_url", image_url: { url: "data:image/png;base64,QUJD" } },
+        ],
+      },
+    ]);
+  });
+
   it("rejects malformed provider image fields before media delivery", async () => {
     for (const [modelCodename, payload] of [
       ["test/image-model", { data: [{ b64_json: { private: true } }] }],

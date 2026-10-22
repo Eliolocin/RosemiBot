@@ -43,6 +43,10 @@ export default {
 
 				如果你要變更我的供應商，請用 \`/providers\` 註冊並啟用新的預設文字供應商。`,
     wizard: {
+      provider_option_supporter: `TomoriBot訂閱（推薦）`,
+      provider_option_supporter_description: `包含所有功能（文字/圖像/語音生成等）。透過Patreon付費，無需API金鑰。`,
+      provider_supporter_summary: `「完成設定」會與本伺服器共享你的訂閱配額，並設定包含的模型。`,
+      receipt_desc_supporter: `此伺服器已設定為{persona}，並使用你的每月贊助者配額。此處的成員可以消耗該配額。`,
       title: `設定 TomoriBot`,
       intro: `完成下方每個項目，然後結束設定。`,
       intro_ready: `所有必要項目都已經就緒。確認無誤後就能結束設定。`,

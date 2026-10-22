@@ -34,6 +34,8 @@ import model from "./commands/model";
 import mcps from "./commands/mcps";
 import capabilities from "./commands/capabilities";
 import provider from "./commands/provider";
+import subscribe from "./commands/subscribe";
+import subscription from "./commands/subscription";
 import update from "./commands/update";
 import stats from "./commands/stats";
 import ping from "./commands/ping";
@@ -100,6 +102,8 @@ export default {
     ...mcps,
     ...capabilities,
     ...provider,
+    ...subscribe,
+    ...subscription,
     ...update,
     ...stats,
     ...ping,

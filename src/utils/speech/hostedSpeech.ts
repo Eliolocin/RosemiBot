@@ -72,8 +72,9 @@ export class HostedSpeechError extends Error {
     readonly kind: HostedSpeechErrorKind,
     readonly providerStatus?: number,
     readonly providerBody?: string,
+    options?: ErrorOptions,
   ) {
-    super(`Hosted speech failed: ${kind}`);
+    super(`Hosted speech failed: ${kind}`, options);
   }
 
   /** The provider's status and body as logged and shown behind "Show Full Error". */

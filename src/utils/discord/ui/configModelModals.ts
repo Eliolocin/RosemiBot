@@ -17,6 +17,7 @@ import {
 } from "@/utils/discord/interactions/configModelOperations";
 import { CONFIG_MODEL_CAPABILITY_LOCALE_KEYS } from "@/utils/discord/ui/configModelsPanel";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
+import { SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
 import {
   buildCheckboxGroupComponent,
   buildConfigModalFieldId,
@@ -450,7 +451,7 @@ export function buildConfigModelSelectModal(
         ),
         description: safeSelectOptionText(
           localizer(locale, "commands.config.panel.model_modal_select_description", {
-            provider: getProviderDisplayName(provider),
+            provider: getProviderDisplayName(provider, locale),
           }),
           MODAL_DESCRIPTION_MAX_LENGTH,
         ),
@@ -463,7 +464,11 @@ export function buildConfigModelSelectModal(
           options: models.slice(0, CONFIG_MODEL_PAGE_SIZE).map((model) => ({
             value: String(model.id),
             label: safeSelectOptionText(model.name, 100),
-            description: model.description ? safeSelectOptionText(model.description, 100) : undefined,
+            description: model.description
+              ? safeSelectOptionText(model.description, 100)
+              : provider === SUPPORTER_PROVIDER_VALUE
+                ? safeSelectOptionText(localizer(locale, "commands.providers.subscription_model_description"), 100)
+                : undefined,
             default: model.id === currentModelId,
           })),
         },

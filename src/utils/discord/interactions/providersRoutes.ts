@@ -1,3 +1,7 @@
+import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
+import { showSubscriptionSurface } from "@/modules/supporter-billing/subscribe";
+import { resolveSupporterNudgeKey } from "@/modules/supporter-billing/discord/conversionNudge";
 import {
   ComponentType,
   MessageFlags,
@@ -33,6 +37,7 @@ import {
 import {
   PROVIDERS_ADD_ENDPOINT_VALUE,
   PROVIDERS_ADD_PROVIDER_VALUE,
+  PROVIDERS_SUBSCRIBE_VALUE,
   buildAddProviderModal,
   buildAddProviderModalFieldId,
   buildAddEndpointModal,
@@ -514,6 +519,49 @@ function rangeForEntry(scope: LoadedProviderPanelScope, entryId: string | undefi
   return index < 0 ? 0 : Math.floor(index / PROVIDERS_ENTRIES_PER_SELECTOR_PAGE);
 }
 
+function subscriptionRenderFields(
+  interaction: GlobalRoutableInteraction | ChatInputCommandInteraction,
+  scope: LoadedProviderPanelScope,
+) {
+  return {
+    subscriptionAvailable:
+      scope.data.subscriptionAvailable && (scope.scopeKind === "personal" || !!interaction.guildId),
+    viewerId: interaction.user.id,
+    canManageServer: interaction.memberPermissions?.has("ManageGuild") ?? false,
+    sponsorLabels: Object.fromEntries(
+      scope.data.entries.flatMap((entry) =>
+        entry.kind === "provider" && entry.sponsorDiscId
+          ? [
+              [
+                entry.sponsorDiscId,
+                interaction.guild?.members.cache.get(entry.sponsorDiscId)?.displayName ??
+                  interaction.client.users.cache.get(entry.sponsorDiscId)?.displayName ??
+                  entry.sponsorDiscId,
+              ],
+            ]
+          : [],
+      ),
+    ),
+  };
+}
+
+async function addCompletionNudge(
+  receipt: PanelReceipt,
+  interaction: GlobalRoutableInteraction,
+  locale: string,
+  scope: LoadedProviderPanelScope,
+  eligible: boolean,
+): Promise<PanelReceipt> {
+  if (!eligible) return receipt;
+  const nudgeKey = await resolveSupporterNudgeKey({
+    event: "completion",
+    userDiscId: interaction.user.id,
+    serverId: scope.state?.server_id,
+    credentialSource: scope.scopeKind === "personal" ? "personal" : "server",
+  });
+  return nudgeKey ? { ...receipt, detail: `${receipt.detail}\n${localizer(locale, nudgeKey)}` } : receipt;
+}
+
 function repaint(
   interaction: GlobalRoutableInteraction,
   locale: string,
@@ -535,6 +583,7 @@ function repaint(
       enabledActions: actionsForNamespace(scope.routeNamespace),
       routeNamespace: scope.routeNamespace,
       footerCommand: scope.footerCommand,
+      ...subscriptionRenderFields(interaction, scope),
     }),
     { locale, receipt },
   );
@@ -680,12 +729,43 @@ export function createProvidersInteractionRoute(
         }
       }
 
+      if (
+        route.action === "select" &&
+        (interaction as StringSelectMenuInteraction).values[0] === PROVIDERS_SUBSCRIBE_VALUE
+      ) {
+        if (!configuration.authorize(interaction)) {
+          await interaction.reply({
+            content: localizer(route.locale, "general.errors.permission_denied_description"),
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await showSubscriptionSurface(interaction.client, interaction, route.locale, {
+          origin: configuration.namespace === PERSONAL_PROVIDERS_ROUTE_NAMESPACE ? "personal" : "sponsor",
+        });
+        return;
+      }
+
       if (route.action === "edit-provider-open") {
         if (!configuration.authorize(interaction)) {
           await interaction.reply({
             content: localizer(route.locale, "general.errors.permission_denied_description"),
             flags: MessageFlags.Ephemeral,
           });
+          return;
+        }
+        if (route.provider === "supporter") {
+          if (!isSupporterBillingEnabled(resolveEnvironment())) {
+            await interaction.reply({
+              content: localizer(route.locale, "commands.providers.unavailable"),
+              flags: MessageFlags.Ephemeral,
+            });
+          } else {
+            await showSubscriptionSurface(interaction.client, interaction, route.locale, {
+              account: true,
+              origin: configuration.namespace === PERSONAL_PROVIDERS_ROUTE_NAMESPACE ? "personal" : "server",
+            });
+          }
           return;
         }
         const nonce = dependencies.createNonce();
@@ -771,6 +851,9 @@ export function createProvidersInteractionRoute(
           selection.editingModelId,
           nonce,
           {
+            ...(route.entryKind === "endpoint" && (selection.capability === "image" || selection.capability === "video")
+              ? { apiStyle: section.apiStyle }
+              : {}),
             codeName: editing?.codeName,
             text: editing?.textSettings,
             decision: editing?.decisionSettings,
@@ -860,7 +943,9 @@ export function createProvidersInteractionRoute(
               serverDiscId: interaction.guildId ?? interaction.user.id,
               ...scope,
               provider: selectedProvider ?? "",
-              apiKey: modal.fields.getTextInputValue(buildAddProviderModalFieldId("api-key", route.nonce)),
+              apiKey: modal.fields.fields.has(buildAddProviderModalFieldId("api-key", route.nonce))
+                ? modal.fields.getTextInputValue(buildAddProviderModalFieldId("api-key", route.nonce))
+                : "",
             }),
           () => dependencies.resolveScope(interaction, true),
         );
@@ -878,7 +963,13 @@ export function createProvidersInteractionRoute(
           nextScope,
           action.result.status === "success" ? { kind: "entry", entryId: action.result.entryId } : { kind: "entry" },
           action.result.status === "success" ? rangeForEntry(nextScope, action.result.entryId) : 0,
-          addReceipt(route.locale, action.result, scope.scopeKind),
+          await addCompletionNudge(
+            addReceipt(route.locale, action.result, scope.scopeKind),
+            interaction,
+            route.locale,
+            scope,
+            action.result.status === "success" && selectedProvider !== "brave",
+          ),
         );
         return;
       }
@@ -886,7 +977,7 @@ export function createProvidersInteractionRoute(
       if (route.action === "remove-prompt" || route.action === "remove-cancel" || route.action === "remove-confirm") {
         const entryId = removalEntryId(route);
         const entry = scope.data.entries.find((candidate) => candidate.id === entryId);
-        if (!entry) {
+        if (!entry || (entry.kind === "provider" && entry.provider === "supporter")) {
           await repaint(interaction, route.locale, scope, { kind: "entry" }, 0, changedReceipt(route.locale));
           return;
         }
@@ -1135,7 +1226,13 @@ export function createProvidersInteractionRoute(
           nextScope,
           { kind: "entry", entryId },
           rangeForEntry(nextScope, entryId),
-          modelReceipt(route.locale, action.result, scope.scopeKind),
+          await addCompletionNudge(
+            modelReceipt(route.locale, action.result, scope.scopeKind),
+            interaction,
+            route.locale,
+            scope,
+            action.result.status === "success" && !action.result.removed && route.entryKey !== "supporter",
+          ),
         );
         return;
       }
@@ -1217,10 +1314,15 @@ export const personalProvidersInteractionRoute = createProvidersInteractionRoute
   },
 );
 
+export interface InitialProvidersPanelOptions {
+  resolveScope?: ProvidersRouteDependencies["resolveScope"];
+  receipt?: PanelReceipt;
+}
+
 export async function buildInitialProvidersPanel(
-  interaction: ChatInputCommandInteraction,
+  interaction: ChatInputCommandInteraction | GlobalRoutableInteraction,
   locale: string,
-  resolveScope: ProvidersRouteDependencies["resolveScope"] = defaultResolveScope,
+  { resolveScope = defaultResolveScope, receipt }: InitialProvidersPanelOptions = {},
 ): Promise<InteractionEditReplyOptions> {
   if (!isAuthorized(interaction)) {
     return terminalPayload(locale, "general.errors.permission_denied_description");
@@ -1233,16 +1335,18 @@ export async function buildInitialProvidersPanel(
     initialEntryId: scope.data.initialEntryId,
     readStatus: scope.data.readStatus,
     page: { kind: "entry" },
+    receipt,
     enabledActions: actionsForNamespace(scope.routeNamespace),
     routeNamespace: scope.routeNamespace,
     footerCommand: scope.footerCommand,
+    ...subscriptionRenderFields(interaction, scope),
   });
 }
 
 export async function buildInitialPersonalProvidersPanel(
-  interaction: ChatInputCommandInteraction,
+  interaction: ChatInputCommandInteraction | GlobalRoutableInteraction,
   locale: string,
-  resolveScope: ProvidersRouteDependencies["resolveScope"] = defaultResolvePersonalScope,
+  { resolveScope = defaultResolvePersonalScope, receipt }: InitialProvidersPanelOptions = {},
 ): Promise<InteractionEditReplyOptions> {
   const scope = await resolveScope(interaction, false);
   if (!scope) return terminalPayload(locale, providersNotSetupKey(interaction));
@@ -1252,8 +1356,10 @@ export async function buildInitialPersonalProvidersPanel(
     initialEntryId: scope.data.initialEntryId,
     readStatus: scope.data.readStatus,
     page: { kind: "entry" },
+    receipt,
     enabledActions: enabledPersonalProviderActions,
     routeNamespace: PERSONAL_PROVIDERS_ROUTE_NAMESPACE,
     footerCommand: scope.footerCommand,
+    ...subscriptionRenderFields(interaction, scope),
   });
 }

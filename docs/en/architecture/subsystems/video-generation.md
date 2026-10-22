@@ -36,6 +36,9 @@ OpenRouter video generation submits jobs to `POST /api/v1/videos`. The adapter p
 
 To protect credentials, relative polling URLs are resolved against `https://openrouter.ai`, and authenticated polling is restricted to that origin. A dedicated video model cache (`src/utils/cache/openrouterVideoModelCache.ts`) queries `GET /api/v1/videos/models` to validate supported durations, resolutions, aspect ratios, and frame capabilities before submitting jobs.
 
+The command and tool default Grok Imagine Video 1.5 Lite to `480p`. The tool preserves an explicit
+resolution choice; `openrouterVideoRequest.ts` normalizes it against the model's supported values.
+
 Image-to-video requests pass reference images via `frame_images` with `frame_type: "first_frame"`. Setting loop mode supplies the same image as `last_frame` when the model supports it. If a model lacks first-frame or last-frame capabilities, the request fails before submitting a paid job.
 
 ## Transport bypass for OpenRouter

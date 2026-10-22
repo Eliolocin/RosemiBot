@@ -454,12 +454,23 @@ export async function registerHostedSpeechModelForScope(
   modelName: string,
   replacedModelId?: number,
 ): Promise<RegisterOpenRouterModelResult> {
+  const credentialProvider = provider;
+  if (provider === "supporter") provider = "openrouter";
   const codename = normalizeModelCodename(modelName);
   if (provider === "openrouter" && !(await validateOpenRouterSpeechModel(codename))) return { status: "invalid_model" };
   const models = await llmModelRepo.loadAvailableSpeechModels(provider, scope);
   const model = models.find((entry) => entry.codename === codename);
   if (!model) return { status: "invalid_model" };
-  if (!(await setHostedSpeechSelection(scope, model.speech_model_id, undefined, true, replacedModelId))) {
+  if (
+    !(await setHostedSpeechSelection(
+      scope,
+      model.speech_model_id,
+      undefined,
+      true,
+      replacedModelId,
+      credentialProvider,
+    ))
+  ) {
     return { status: "write_failed" };
   }
   return {

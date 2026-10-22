@@ -1,5 +1,17 @@
 export default {
   providers: {
+    subscribe: `订阅TomoriBot`,
+    subscribe_personal_description: `通过Patreon订阅以使用AI功能，无需API密钥`,
+    sponsor_server_description: `使用你的TomoriBot订阅为本服务器提供AI功能`,
+    subscription_personal_description: `使用你的TomoriBot订阅获取个人AI访问权限`,
+    subscription_owned_description: `你目前正在赞助此服务器`,
+    subscription_server_description: `此服务器由TomoriBot订阅提供支持`,
+    remove_sponsorship: `移除赞助`,
+    sponsorship_by: `由{name}赞助`,
+    unknown_sponsor: `一位订阅者`,
+    subscription_label: `TomoriBot订阅`,
+    manage_subscription: `管理订阅`,
+    remove_impact_subscription: `停止使用{name}的个人AI访问权限。你的Patreon会员资格仍将保持关联与有效状态。`,
     description: `添加、查看、编辑和移除提供方凭据、端点和模型目录。`,
     title: `服务器提供方`,
     personal_title: `个人提供方`,

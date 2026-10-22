@@ -8,6 +8,8 @@ import type {
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { hasConfiguredPersonalModel } from "@/utils/provider/personalProviderHelpers";
 import { log } from "@/utils/misc/logger";
+import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
 
 export interface PersonalProviderOverlayResult {
   tomoriState: TomoriState;
@@ -32,9 +34,9 @@ function collectActiveConfigs(
     // The model check keeps this in step with what the commands call active. Without
     // it an enabled row whose model pointer went NULL would swap its credential in
     // under the server's model, while the UI still reported the server default.
-    const matches = rows.filter(
-      (row) => row.enabled_capabilities.includes(capability) && hasConfiguredPersonalModel(row, capability),
-    );
+    const matches = rows
+      .filter((row) => row.provider !== SUPPORTER_PROVIDER_VALUE || isSupporterBillingEnabled(resolveEnvironment()))
+      .filter((row) => row.enabled_capabilities.includes(capability) && hasConfiguredPersonalModel(row, capability));
     if (matches.length === 0) {
       continue;
     }
@@ -69,7 +71,9 @@ async function resolvePersonalFallbackChain(refs: FallbackModelRef[], userId: nu
   return refs.flatMap((ref): FallbackEntry[] => {
     if (ref.type === "llm") {
       const model = llmMap.get(ref.id);
-      return model ? [{ kind: "llm", model }] : [];
+      return model
+        ? [{ kind: "llm", model, ...(ref.credentialProvider ? { credentialProvider: ref.credentialProvider } : {}) }]
+        : [];
     }
 
     const endpoint = endpointMap.get(ref.id);

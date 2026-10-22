@@ -2,6 +2,7 @@ import { sql } from "@/utils/db/client";
 import { log } from "@/utils/misc/logger";
 import { generateEmbeddingsBatched, providerSupportsEmbeddingTaskType } from "@/utils/embeddings/embeddingProvider";
 import type { EmbeddingModelRow } from "@/types/db/schema";
+import type { EmbeddingRequest } from "@/types/provider/featureInterfaces";
 
 export interface RetrievedDocumentChunk {
   document_id: number;
@@ -247,6 +248,7 @@ export async function retrieveRelevantDocumentChunks(params: {
   query: string;
   embeddingModel: EmbeddingModelRow;
   apiKey: string;
+  onUsage?: EmbeddingRequest["onUsage"];
   maxResults: number;
   minSimilarity: number;
   batchSize?: number;
@@ -256,8 +258,18 @@ export async function retrieveRelevantDocumentChunks(params: {
    */
   channelIds?: readonly string[] | null;
 }): Promise<RetrievedDocumentChunk[]> {
-  const { serverId, personaId, query, embeddingModel, apiKey, maxResults, minSimilarity, batchSize, channelIds } =
-    params;
+  const {
+    serverId,
+    personaId,
+    query,
+    embeddingModel,
+    apiKey,
+    onUsage,
+    maxResults,
+    minSimilarity,
+    batchSize,
+    channelIds,
+  } = params;
 
   if (!query.trim()) {
     return [];
@@ -271,6 +283,7 @@ export async function retrieveRelevantDocumentChunks(params: {
     inputs: [query],
     taskType: (await providerSupportsEmbeddingTaskType(embeddingModel.provider)) ? "RETRIEVAL_QUERY" : undefined,
     batchSize,
+    onUsage,
   });
 
   if (queryEmbeddings.length === 0) {
@@ -408,10 +421,11 @@ export async function reembedServerDocuments(params: {
   serverId: number;
   embeddingModel: EmbeddingModelRow;
   apiKey: string;
+  onUsage?: EmbeddingRequest["onUsage"];
   chunkSize: number;
   chunkOverlap: number;
 }): Promise<void> {
-  const { serverId, embeddingModel, apiKey, chunkSize, chunkOverlap } = params;
+  const { serverId, embeddingModel, apiKey, onUsage, chunkSize, chunkOverlap } = params;
 
   if (!embeddingModel.embedding_model_id) {
     throw new Error("Embedding model ID is missing for re-embedding");
@@ -446,6 +460,7 @@ export async function reembedServerDocuments(params: {
       inputs: chunks,
       taskType: (await providerSupportsEmbeddingTaskType(embeddingModel.provider)) ? "RETRIEVAL_DOCUMENT" : undefined,
       batchSize: 16,
+      onUsage,
     });
 
     await sql.transaction(async (tx) => {

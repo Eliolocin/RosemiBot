@@ -314,7 +314,7 @@ export async function handlePersonalConfigModalOpen(
 
     let availableOptions: Array<{ refKey: string; label: string }> = [];
     try {
-      availableOptions = await loadFallbackSelectionOptions(cachedScope.userId, chosenProvider);
+      availableOptions = await loadFallbackSelectionOptions(cachedScope.userId, chosenProvider, route.locale);
     } catch (error) {
       log.warn("Failed to load available models for fallbacks modal", { provider: chosenProvider, error });
     }

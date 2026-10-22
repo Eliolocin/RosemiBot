@@ -19,7 +19,10 @@ import {
   QUICK_TOGGLE_CAPABILITIES,
   type PersonalConfigManagedCapability,
 } from "@/utils/discord/personalConfigPanelCatalog";
-import { loadAvailableModelsForCapability } from "@/utils/discord/interactions/personalConfigLoaders";
+import {
+  loadAvailableModelsForCapability,
+  loadFallbackSelectionOptions,
+} from "@/utils/discord/interactions/personalConfigLoaders";
 import { parseAndValidateImageTags } from "@/utils/image/tagHelpers";
 import { log } from "@/utils/misc/logger";
 import { isCustomProvider, parseCustomProvider } from "@/utils/provider/customProviderUtils";
@@ -348,7 +351,7 @@ export const personalConfigOperations: PersonalConfigOperations = {
     if (capability === "speech_design" || capability === "speech_clone") {
       const selected = availableModels.find((model) => model.id === modelId);
       if (
-        provider.toLowerCase() === "openrouter" &&
+        (provider.toLowerCase() === "openrouter" || provider === SUPPORTER_PROVIDER_VALUE) &&
         (!selected ||
           !(await validateOpenRouterSpeechModel(selected.name, capability === "speech_design" ? "design" : "clone")))
       )
@@ -563,16 +566,24 @@ export const personalConfigOperations: PersonalConfigOperations = {
     const customProvider = parseCustomProvider(provider);
     const availableModels = isCustomProvider(provider)
       ? []
-      : ((await llmModelRepo.loadAvailableModelsForProvider(provider, false, {
-          kind: "personal",
-          ownerId: userId,
-        })) ?? []);
+      : ((await llmModelRepo.loadAvailableModelsForProvider(
+          provider === SUPPORTER_PROVIDER_VALUE ? "openrouter" : provider,
+          false,
+          {
+            kind: "personal",
+            ownerId: userId,
+          },
+        )) ?? []);
     const selectableEndpoints = customProvider
       ? endpoints.filter(
           (endpoint) => endpoint.connection_id === customProvider.connectionId && endpoint.capability === "text",
         )
       : [];
-    const primaryKeys = getPrimaryFallbackRefKeys(primaryLlmId, endpoints);
+    const options = await loadFallbackSelectionOptions(userId, provider);
+    const primaryProvider = (
+      getActivePersonalProviderForCapability(rows, "text") ?? getStoredPersonalProviderForCapability(rows, "text")
+    )?.provider;
+    const primaryKeys = getPrimaryFallbackRefKeys(primaryLlmId, endpoints, primaryProvider);
 
     const existingRefs = fallbackSettings.fallback_model_refs;
     const submittedKeys = new Set<string>();
@@ -591,16 +602,30 @@ export const personalConfigOperations: PersonalConfigOperations = {
         mergedRefs.push({ type: "custom_endpoint", id });
         submittedKeys.add(`custom_endpoint:${id}`);
       } else if (val.startsWith("llm:") || /^\d+$/.test(val)) {
-        const id = val.startsWith("llm:") ? Number(val.slice("llm:".length)) : Number(val);
+        const match = /^(?:llm:)?(\d+)(:supporter)?$/.exec(val);
+        if (!match) return { status: "write-failed" };
+        const id = Number(match[1]);
         const m = availableModels.find((model) => model.llm_id === id);
         if (!m || m.llm_id === undefined || m.llm_codename === "other-model") return { status: "write-failed" };
-        mergedRefs.push({ type: "llm", id: m.llm_id });
-        submittedKeys.add(`llm:${m.llm_id}`);
+        const ref: FallbackModelRef = {
+          type: "llm",
+          id: m.llm_id,
+          ...(match[2] ? { credentialProvider: "supporter" } : {}),
+        };
+        if (!options.some((option) => option.refKey === getFallbackModelRefKey(ref))) return { status: "write-failed" };
+        mergedRefs.push(ref);
+        submittedKeys.add(getFallbackModelRefKey(ref));
       } else {
         const m = availableModels.find((model) => model.llm_codename === val);
         if (!m || m.llm_id === undefined || m.llm_codename === "other-model") return { status: "write-failed" };
-        mergedRefs.push({ type: "llm", id: m.llm_id });
-        submittedKeys.add(`llm:${m.llm_id}`);
+        const ref: FallbackModelRef = {
+          type: "llm",
+          id: m.llm_id,
+          ...(provider === SUPPORTER_PROVIDER_VALUE ? { credentialProvider: "supporter" } : {}),
+        };
+        if (!options.some((option) => option.refKey === getFallbackModelRefKey(ref))) return { status: "write-failed" };
+        mergedRefs.push(ref);
+        submittedKeys.add(getFallbackModelRefKey(ref));
       }
     }
 
@@ -756,3 +781,4 @@ export const personalConfigOperations: PersonalConfigOperations = {
     return { status: "write-failed" };
   },
 };
+import { SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";

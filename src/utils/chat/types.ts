@@ -17,8 +17,10 @@ import type { SimplifiedMessageForContext } from "@/utils/text/contextBuilder";
 import type { TextQuotaTriggerState } from "@/utils/chat/textQuotaState";
 import type { TurnPrefill } from "@/utils/chat/assistantPrefill";
 import type { ExpressionDeliveryState } from "@/utils/chat/expressionDelivery";
+import type { SupporterFundingContext, SupporterProviderFailure } from "@/modules/supporter-billing/runtime";
 
 export type TextQuotaSource = "user" | "system";
+export type TextCredentialSource = "server" | "personal" | "supporter";
 
 export interface ChatReminderData {
   reminder_purpose: string;
@@ -219,9 +221,10 @@ export interface ChatTurn {
   channelDescription: string | null;
   serverName: string;
   serverDescription: string | null;
-  textCredentialSource: "server" | "personal";
+  textCredentialSource: TextCredentialSource;
   personalRoutingUserId: number | null;
   personalTextProvider: string | null;
+  supporterFunding: SupporterFundingContext | null;
   shouldApplyTextQuota: boolean;
   textQuotaTriggerKey: string;
   textQuotaState: TextQuotaTriggerState | null;
@@ -280,9 +283,11 @@ export interface ChatTurnContext {
   triggererName: string;
   triggererFormattedName: string;
   triggererAddressTerm: string;
-  textCredentialSource: "server" | "personal";
+  textCredentialSource: TextCredentialSource;
   personalRoutingUserId: number | null;
   personalTextProvider: string | null;
+  supporterFunding: SupporterFundingContext | null;
+  supporterProviderFailure?: SupporterProviderFailure;
   shouldApplyTextQuota: boolean;
   textQuotaTriggerKey: string;
   textQuotaState: TextQuotaTriggerState | null;

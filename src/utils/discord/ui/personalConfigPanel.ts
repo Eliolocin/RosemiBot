@@ -1269,6 +1269,7 @@ ${localizer(locale, "commands.personal.config.models_description")}`,
 
         components.push(
           buildModelRoutingControl({
+            locale,
             capabilityLabel,
             activeModelName: row?.activeModelName ?? null,
             activeProvider: row?.storedProvider ?? null,
@@ -1358,7 +1359,7 @@ ${localizer(locale, "commands.personal.config.parameters_description")}`,
           ...buildProviderParameterBlock({
             providerOptions: parameterProviders.map((provider) => ({
               value: encodeProviderParam(provider),
-              label: getProviderDisplayName(provider),
+              label: getProviderDisplayName(provider, locale),
               default: provider.toLowerCase() === selectedProvider.toLowerCase(),
             })),
             copy: {
@@ -1378,7 +1379,7 @@ ${localizer(locale, "commands.personal.config.parameters_description")}`,
               editGenerationLabel: localizer(locale, "commands.personal.config.edit_params_2_button"),
             },
             values: {
-              providerDisplayName: getProviderDisplayName(selectedProvider),
+              providerDisplayName: getProviderDisplayName(selectedProvider, locale),
               temperature: tempStr,
               minP: minPStr,
               topP: topPStr,
@@ -1479,7 +1480,7 @@ ${localizer(locale, "commands.personal.config.fallbacks_description")}`,
                 placeholder: safeSelectOptionText(
                   fallbackPageCount > 0
                     ? localizer(locale, "commands.personal.config.fallbacks_page_placeholder", {
-                        provider: getProviderDisplayName(selectedProvider),
+                        provider: getProviderDisplayName(selectedProvider, locale),
                       })
                     : localizer(locale, "commands.personal.config.fallbacks_provider_select_placeholder"),
                   100,

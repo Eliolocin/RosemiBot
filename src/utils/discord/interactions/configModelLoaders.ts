@@ -1,3 +1,6 @@
+import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
+import { resolveSupporterFunding } from "@/modules/supporter-billing/runtime/funding";
+import { resolveEnvironment } from "@/types/config";
 import { createHash } from "node:crypto";
 import type {
   CustomEndpointApiStyle,
@@ -205,6 +208,9 @@ export async function loadConfigSwitchModelsView(
   endpointPage: ConfigEndpointPage | undefined = undefined,
   loadCapabilityEndpoints: LoadConfigCapabilityEndpoints = loadConfigCapabilityEndpoints,
 ): Promise<ConfigSwitchModelsView> {
+  const funding = isSupporterBillingEnabled(resolveEnvironment())
+    ? await resolveSupporterFunding({ scope: { kind: "server", serverId: state.server_id }, capability: "text" })
+    : null;
   const slots = await Promise.all(
     CONFIG_MODEL_CAPABILITY_ORDER.filter(isConfigCatalogModelCapability).map(async (capability) => {
       const expanded = providerPage?.capability === capability ? (providerPage.provider ?? null) : null;
@@ -216,10 +222,22 @@ export async function loadConfigSwitchModelsView(
         // collapsed slots never read would put the whole model table behind every repaint.
         expanded ? loadConfigModelChoices(state.server_id, capability, expanded).then((rows) => rows.length) : 0,
       ]);
+      const fundingCapability =
+        capability === "tts-design" || capability === "tts-clone"
+          ? "voice"
+          : capability === "nai-image"
+            ? null
+            : capability;
       return {
         capability,
         currentModelName: assignment.modelName,
-        currentProvider: assignment.provider,
+        currentProvider:
+          assignment.provider === "openrouter" &&
+          funding?.ok &&
+          fundingCapability &&
+          funding.tier.defaultModelByCapability[fundingCapability]
+            ? SUPPORTER_PROVIDER_VALUE
+            : assignment.provider,
         eligibleProviders: providers,
         providerPageStart: providerPage?.capability === capability ? providerPage.start : 0,
         expandedProvider: expanded,
@@ -317,7 +335,7 @@ function describeFallbackEntry(
     return `${localizer(locale, "general.unknown")} (#${rawRef.id})`;
   }
   if (entry.kind === "llm") {
-    return `${entry.model.llm_codename} (${getProviderDisplayName(entry.model.llm_provider)})`;
+    return `${entry.model.llm_codename} (${entry.credentialProvider === "supporter" ? localizer(locale, "commands.providers.subscription_label") : getProviderDisplayName(entry.model.llm_provider)})`;
   }
   return `${entry.endpoint.label}:${entry.endpoint.model_name ?? entry.endpoint.label} (${localizer(
     locale,
@@ -427,10 +445,14 @@ export async function loadConfigFallbackOptions(
   }
 
   const models =
-    (await llmModelRepo.loadAvailableModelsForProvider(provider, false, {
-      kind: "server",
-      ownerId: state.server_id,
-    })) ?? [];
+    (await llmModelRepo.loadAvailableModelsForProvider(
+      provider === SUPPORTER_PROVIDER_VALUE ? "openrouter" : provider,
+      false,
+      {
+        kind: "server",
+        ownerId: state.server_id,
+      },
+    )) ?? [];
   // `other-model` is a migration placeholder rather than a routable model, so it never becomes a
   // fallback the chain would try to call.
   return models

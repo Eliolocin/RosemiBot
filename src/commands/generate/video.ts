@@ -24,6 +24,9 @@ import type { UserRow } from "../../types/db/schema";
 import { checkVideoQuota, incrementVideoQuota } from "../../utils/quota/videoQuotaManager";
 import { resolveProviderFeatureImplementation } from "@/utils/provider/providerInfoRegistry";
 import { generateCustomVideoViaEndpoint } from "@/providers/custom/customEndpointDispatcher";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
+import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
 import {
   CredentialUnavailableError,
   PersonalProviderRequiredError,
@@ -183,6 +186,15 @@ export async function execute(
       userId: userData.user_id ?? null,
     });
   } catch (error) {
+    const denied = findSupporterRequestDeniedError(error);
+    if (denied) {
+      await replyInfoEmbed(interaction, locale, {
+        ...getSupporterRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     if (error instanceof PersonalProviderRequiredError) {
       log.warn(`[Generate Video] Personal provider required for video generation`, error, {
         userId: userData.user_id,
@@ -511,6 +523,11 @@ export async function execute(
         fps,
         referenceImages,
       });
+      recordSupporterUsage(videoCreds.supporterFunding, {
+        modelCodename,
+        costUsd: result.costUsd,
+        providerRequestId: result.providerRequestId,
+      });
       videoData = result.videoData;
       videoFilename = result.filename ?? videoFilename;
     } else if (videoImplementation === "zai") {
@@ -616,8 +633,17 @@ export async function execute(
     }
     log.success(`Video generated in ${elapsedSec}s via ${displayModelName}`);
   } catch (error) {
-    if (!(error instanceof ProviderVideoFilteredError)) log.error("Video generation command failed:", error as Error);
-
+    const denied = findSupporterRequestDeniedError(error, videoCreds?.supporterFunding);
+    if (!denied && !(error instanceof ProviderVideoFilteredError))
+      log.error("Video generation command failed:", error as Error);
+    if (denied) {
+      await replyInfoEmbed(modalSubmitInteraction ?? interaction, locale, {
+        ...getSupporterRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorEmbed = new EmbedBuilder()
       .setTitle(localizedStatusTitle(locale, "commands.generate.video.error_title", ColorCode.ERROR))

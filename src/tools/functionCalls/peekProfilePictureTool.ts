@@ -23,6 +23,11 @@ import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAt
 import { MEDIA_LIMITS } from "@/utils/security/rateLimiter";
 import { safeDownload } from "@/utils/security/safeDownload";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
+import { notifySupporterToolFailure } from "@/modules/supporter-billing/discord/requestFailure";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+import { normalizeProviderUsage, type TokenUsage } from "@/utils/text/tokenEstimate";
 
 /**
  * Provider-to-chat-completions-URL mapping for OpenAI-compatible providers.
@@ -273,6 +278,8 @@ export class PeekProfilePictureTool extends BaseTool {
         },
       };
     } catch (error) {
+      const denied = findSupporterRequestDeniedError(error);
+      if (denied) return { success: false, error: await notifySupporterToolFailure(context, denied) };
       log.error(`Profile picture processing failed for identity: ${targetIdentity}`, error as Error);
 
       let errorMessage = "Failed to process the user's profile picture.";
@@ -380,13 +387,18 @@ export class PeekProfilePictureTool extends BaseTool {
       analysisResult = await this.callGoogleVisionWithBase64(apiKey, apiModelName, images, prompt);
     } else {
       const endpointUrl = this.getVisionEndpointUrl(provider, context, creds.customEndpoint?.endpoint_url ?? null);
-      analysisResult = await this.callOpenAICompatibleVisionWithBase64(
-        apiKey,
-        apiModelName,
-        endpointUrl,
-        images,
-        prompt,
-      );
+      try {
+        analysisResult = await this.callOpenAICompatibleVisionWithBase64(
+          apiKey,
+          apiModelName,
+          endpointUrl,
+          images,
+          prompt,
+          createSupporterUsageRecorder(creds.supporterFunding, apiModelName),
+        );
+      } catch (error) {
+        throw findSupporterRequestDeniedError(error, creds.supporterFunding) ?? error;
+      }
     }
 
     log.success(`PeekProfilePictureTool: Vision model analysis completed for ${targetTypeLabel}: ${userDisplayText}`);
@@ -470,6 +482,7 @@ export class PeekProfilePictureTool extends BaseTool {
     endpointUrl: string,
     images: PreparedProfileImage[],
     prompt: string,
+    onUsage?: (usage: TokenUsage) => void,
   ): Promise<string> {
     const requestContent: Array<
       | { type: "text"; text: string }
@@ -514,14 +527,19 @@ export class PeekProfilePictureTool extends BaseTool {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "Unknown error");
-      throw new Error(`Vision API returned ${response.status}: ${errorText}`);
+      throw new Error(`Vision API returned ${response.status}: ${errorText}`, {
+        cause: readOpenRouterLimitError(response.status, response.headers, errorText) ?? undefined,
+      });
     }
 
     const data = (await response.json()) as {
       choices?: Array<{
         message?: { content?: string };
       }>;
+      usage?: unknown;
     };
+    const usage = normalizeProviderUsage(data.usage);
+    if (usage) onUsage?.(usage);
 
     const responseContent = data.choices?.[0]?.message?.content;
     if (!responseContent) {

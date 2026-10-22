@@ -1,3 +1,4 @@
+import { ensureSupporterEntry } from "@/modules/supporter-billing/discord/sponsorship";
 import { registerHostedSpeechModelForScope } from "@/utils/provider/openrouterModelRegistry";
 import { supportsSpeechMode } from "@/utils/speech/voiceSourceCapabilities";
 import type {
@@ -92,6 +93,17 @@ import {
   assignPersonalCapabilityToProvider,
   getActivePersonalProviderForCapability,
 } from "@/utils/provider/personalProviderHelpers";
+import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
+import { validateSupporterModelRegistration } from "@/modules/supporter-billing/runtime/managedProvider";
+import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import {
+  supporterSponsorshipRepository,
+  supporterIdentityRepository,
+  supporterEntitlementRepository,
+  isSupporterEntitlementActive,
+} from "@/modules/supporter-billing/db";
+import { savedProviderConfigSchema, userSavedProviderConfigSchema } from "@/types/db/schema";
 
 const CAPABILITIES: readonly ProviderPanelCapability[] = [
   "text",
@@ -411,6 +423,23 @@ async function buildCuratedCapabilities(
   savedConfig: PanelSavedConfig,
   context: PanelModelContext,
 ): Promise<ProviderPanelCapabilitySection[]> {
+  const subscription = provider === SUPPORTER_PROVIDER_VALUE;
+  if (subscription) provider = "openrouter";
+  if (context.scope.kind === "personal" && "enabled_capabilities" in savedConfig) {
+    context = {
+      ...context,
+      activeTextId: savedConfig.enabled_capabilities.includes("text") ? context.activeTextId : null,
+      activeImageId: savedConfig.enabled_capabilities.includes("image") ? context.activeImageId : null,
+      activeEmbeddingId: savedConfig.enabled_capabilities.includes("embedding") ? context.activeEmbeddingId : null,
+      activeVideoId: savedConfig.enabled_capabilities.includes("video") ? context.activeVideoId : null,
+      activeSpeechDesignModelId: savedConfig.enabled_capabilities.includes("speech_design")
+        ? context.activeSpeechDesignModelId
+        : null,
+      activeSpeechCloneModelId: savedConfig.enabled_capabilities.includes("speech_clone")
+        ? context.activeSpeechCloneModelId
+        : null,
+    };
+  }
   const [textRows, imageRows, embeddingRows, videoRows, decisionRows, speechRows] = await Promise.all([
     llmModelRepo.loadAvailableModelsForProvider(provider, false, context.scope),
     llmModelRepo.loadAvailableDiffusionModels(provider, false, context.scope),
@@ -419,8 +448,13 @@ async function buildCuratedCapabilities(
     llmModelRepo.loadAvailableDecisionModels(provider, false, context.scope),
     llmModelRepo.loadAvailableSpeechModels(provider, context.scope),
   ]);
-  const workspaceFallbacks = context.scopeFallbacks;
-  const providerFallbacks = "fallback_model_refs" in savedConfig ? (savedConfig.fallback_model_refs ?? []) : [];
+  const matchesCredentialProvider = (ref: FallbackModelRef) =>
+    ref.type !== "llm" ||
+    (ref.credentialProvider === "supporter") === (savedConfig.provider === SUPPORTER_PROVIDER_VALUE);
+  const workspaceFallbacks = context.scopeFallbacks.filter(matchesCredentialProvider);
+  const providerFallbacks = (
+    "fallback_model_refs" in savedConfig ? (savedConfig.fallback_model_refs ?? []) : []
+  ).filter(matchesCredentialProvider);
 
   const modelsByCapability: Record<
     "text" | "image" | "embedding" | "video" | "decision" | "speech",
@@ -706,9 +740,32 @@ export async function loadServerProviderPanelScope(
   }
 
   const savedConfigMap = new Map(savedResult.configs.map((config) => [config.provider.toLowerCase(), config]));
+  const subscriptionAvailable = isSupporterBillingEnabled(resolveEnvironment());
+  const sponsorship = subscriptionAvailable
+    ? await supporterSponsorshipRepository.loadActiveSponsorshipForServer(state.server_id)
+    : null;
+  const sponsor = sponsorship ? await supporterIdentityRepository.loadById(sponsorship.sponsor_identity_id) : null;
+  const configs = savedResult.configs.filter((config) => config.provider !== SUPPORTER_PROVIDER_VALUE || sponsorship);
+  if (sponsorship && !configs.some((config) => config.provider === SUPPORTER_PROVIDER_VALUE)) {
+    configs.push(
+      savedProviderConfigSchema.parse({
+        ...(await buildSavedProviderConfigFromExistingOrDefaults({
+          serverId: state.server_id,
+          provider: "openrouter",
+          apiKey: null,
+          keyVersion: 1,
+          baseConfig: state.config,
+        })),
+        provider: SUPPORTER_PROVIDER_VALUE,
+      }),
+    );
+  }
   const modelContext = serverModelContext(state);
   const curatedEntries = await Promise.all(
-    savedResult.configs
+    configs
+      .filter(
+        (config) => config.provider !== SUPPORTER_PROVIDER_VALUE || isSupporterBillingEnabled(resolveEnvironment()),
+      )
       .filter((config) => !parseCustomProvider(config.provider))
       .map(async (config): Promise<ProviderPanelEntry> => {
         const provider = config.provider.toLowerCase();
@@ -724,6 +781,9 @@ export async function loadServerProviderPanelScope(
           displayName: getProviderDisplayName(provider),
           savedAt: config.updated_at ?? config.saved_at ?? null,
           capabilities,
+          ...(provider === SUPPORTER_PROVIDER_VALUE && sponsorship
+            ? { sponsorshipId: sponsorship.sponsorship_id, sponsorDiscId: sponsor?.discord_user_id }
+            : {}),
         };
       }),
   );
@@ -748,6 +808,7 @@ export async function loadServerProviderPanelScope(
       readStatus: dependencies.getRecordedDbError(discordId) ? "stale" : "fresh",
       entries,
       initialEntryId: resolveInitialEntryId(entries, state),
+      subscriptionAvailable,
     },
   };
 }
@@ -791,10 +852,35 @@ async function loadPersonalProviderPanelScope(
     };
   }
 
-  const modelContext = personalModelContext(userId, savedResult.configs, fallbackSettings.fallback_model_refs);
-  const savedConfigMap = new Map(savedResult.configs.map((config) => [config.provider.toLowerCase(), config]));
+  const subscriptionAvailable = isSupporterBillingEnabled(resolveEnvironment());
+  const identity = subscriptionAvailable ? await supporterIdentityRepository.loadByDiscordUserId(userDiscId) : null;
+  const entitlement = identity
+    ? await supporterEntitlementRepository.loadByIdentityId(identity.supporter_identity_id)
+    : null;
+  const active = entitlement && isSupporterEntitlementActive(entitlement);
+  const configs = savedResult.configs.filter((config) => config.provider !== SUPPORTER_PROVIDER_VALUE || active);
+  if (active && !configs.some((config) => config.provider === SUPPORTER_PROVIDER_VALUE)) {
+    configs.push(
+      userSavedProviderConfigSchema.parse({
+        ...(await buildUserSavedProviderConfigFromExistingOrDefaults({
+          userId,
+          provider: "openrouter",
+          apiKey: null,
+          keyVersion: 1,
+          baseConfig: state?.config,
+          enabledCapabilities: [],
+        })),
+        provider: SUPPORTER_PROVIDER_VALUE,
+      }),
+    );
+  }
+  const modelContext = personalModelContext(userId, configs, fallbackSettings.fallback_model_refs);
+  const savedConfigMap = new Map(configs.map((config) => [config.provider.toLowerCase(), config]));
   const curatedEntries = await Promise.all(
-    savedResult.configs
+    configs
+      .filter(
+        (config) => config.provider !== SUPPORTER_PROVIDER_VALUE || isSupporterBillingEnabled(resolveEnvironment()),
+      )
       .filter((config) => !parseCustomProvider(config.provider))
       .map(async (config): Promise<ProviderPanelEntry> => {
         const provider = config.provider.toLowerCase();
@@ -827,7 +913,8 @@ async function loadPersonalProviderPanelScope(
     data: {
       readStatus: "fresh",
       entries,
-      initialEntryId: resolvePersonalInitialEntryId(entries, savedResult.configs),
+      initialEntryId: resolvePersonalInitialEntryId(entries, configs),
+      subscriptionAvailable,
     },
   };
 }
@@ -1231,6 +1318,38 @@ async function registerSharedProviderModel(
   input: SaveProviderModelInput,
   provider: string,
 ): Promise<SaveProviderModelResult> {
+  const subscription = provider === SUPPORTER_PROVIDER_VALUE;
+  if (subscription) {
+    if (
+      input.capability !== "text" &&
+      input.capability !== "embedding" &&
+      input.capability !== "image" &&
+      input.capability !== "decision" &&
+      input.capability !== "video" &&
+      input.capability !== "speech"
+    )
+      return { status: "unsupported-capability" };
+    try {
+      const personal = input.scopeKind === "personal";
+      const ownerId = personal ? input.ownerId : input.state.server_id;
+      await validateSupporterModelRegistration({
+        scope: personal ? { kind: "personal", userId: ownerId } : { kind: "server", serverId: input.state.server_id },
+        capability: input.capability === "speech" ? "voice" : input.capability,
+        modelCodename: input.codeName,
+      });
+      if (
+        !(await ensureSupporterEntry(
+          personal
+            ? { kind: "personal", userId: ownerId, serverDiscId: input.serverDiscId, state: input.state }
+            : { kind: "server", serverId: input.state.server_id, serverDiscId: input.serverDiscId, state: input.state },
+        ))
+      )
+        return { status: "write-failed" };
+    } catch (error) {
+      if (error instanceof SupporterRequestDeniedError) return { status: "invalid-model" };
+      throw error;
+    }
+  }
   if (input.capability === "speech") {
     const personal = input.scopeKind === "personal";
     const ownerId = personal ? input.ownerId : input.state.server_id;
@@ -1245,17 +1364,18 @@ async function registerSharedProviderModel(
     return { status: "success", entryId: input.entryId, codeName: result.model.codename };
   }
   if (input.capability === "transcription") return { status: "unsupported-capability" };
-  if (input.capability === "decision" && provider !== "openrouter") return { status: "unsupported-capability" };
-  if (provider === "openrouter") {
+  if (input.capability === "decision" && provider !== "openrouter" && !subscription)
+    return { status: "unsupported-capability" };
+  if (provider === "openrouter" || subscription) {
     const personal = input.scopeKind === "personal";
     const ownerId = personal ? input.ownerId : input.state.server_id;
     const saved = personal
       ? await llmProviderRepo.loadUserSavedProviderConfig(ownerId, provider)
       : await llmProviderRepo.loadSavedProviderConfig(input.state.server_id, provider);
-    if (!saved) return { status: "not-found" };
+    if (!saved || (!subscription && !saved.api_key)) return { status: "not-found" };
     if (input.capability === "decision" && input.editingModelId) {
       const owned = await llmModelRepo.loadAvailableDecisionModels(
-        provider,
+        subscription ? "openrouter" : provider,
         true,
         personal ? { kind: "personal", ownerId: ownerId } : { kind: "server", ownerId: input.state.server_id },
       );
@@ -1268,12 +1388,12 @@ async function registerSharedProviderModel(
       input.capability,
       input.codeName,
       input.imageSupportValues
-        ? (curatedImageSupportsFromSubmittedValues(input.imageSupportValues, provider) ?? undefined)
+        ? (curatedImageSupportsFromSubmittedValues(input.imageSupportValues, "openrouter") ?? undefined)
         : undefined,
     );
     if (result.status === "invalid_model") return { status: "invalid-model" };
     if (result.status === "write_failed") return { status: "write-failed" };
-    if (result.status === "already_available") {
+    if (result.status === "already_available" && !subscription) {
       return { status: "already-available" };
     }
     const activated = await activateSavedProviderModel(input, provider, result.model.modelId);
@@ -1482,8 +1602,8 @@ async function registerEndpointModel(input: SaveProviderModelInput): Promise<Sav
 
   const registered = await registerCustomEndpoint({
     scope: personal
-      ? { kind: "personal", ownerId: ownerId, baseConfig: input.state?.config }
-      : { kind: "server", ownerId: ownerId, baseConfig: input.state.config, serverDiscId: input.serverDiscId },
+      ? { kind: "personal", ownerId, baseConfig: input.state?.config }
+      : { kind: "server", ownerId, baseConfig: input.state.config, serverDiscId: input.serverDiscId },
     label: connection.label,
     capability: input.capability,
     apiStyle: connection.api_style,
@@ -1517,7 +1637,11 @@ export async function saveProviderModel(input: SaveProviderModelInput): Promise<
     const scope = personal
       ? { kind: "personal" as const, ownerId: ownerId }
       : { kind: "server" as const, ownerId: input.state.server_id };
-    let provider = input.entryId === "provider:openrouter" ? "openrouter" : null;
+    let provider =
+      input.entryId === "provider:openrouter" ||
+      (input.entryId === `provider:${SUPPORTER_PROVIDER_VALUE}` && isSupporterBillingEnabled(resolveEnvironment()))
+        ? "openrouter"
+        : null;
     if (input.entryId.startsWith("endpoint:")) {
       const representative = await llmProviderRepo.loadCustomEndpointConnectionById(Number(input.entryId.slice(9)));
       if (
@@ -1578,6 +1702,7 @@ async function validateProviderCredential(provider: string, apiKey: string): Pro
 
 async function editServerProvider(input: EditProviderInput): Promise<EditProviderResult> {
   const provider = input.provider.trim().toLowerCase();
+  if (provider === SUPPORTER_PROVIDER_VALUE) return { status: "not-found" };
   const apiKey = input.apiKey.trim();
   const rotationKey = input.rotationKey.trim();
   const entryId = `provider:${provider}`;

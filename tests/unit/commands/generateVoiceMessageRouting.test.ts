@@ -289,6 +289,7 @@ describe("Voice message command routing", () => {
     const replacements: realTargets.SpeechTargetResult[] = [
       { ...initial, model: { ...initial.model, codename: "gemini-3.8-flash-lite-tts", speech_model_id: 3 } },
       { ...initial, credentialRevision: 2 },
+      { ...initial, apiKey: "synthetic-rotated-member-key" },
       { ...initial, owner: { kind: "personal", ownerId: 1 } },
       customTarget(design),
     ];

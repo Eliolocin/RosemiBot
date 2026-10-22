@@ -5,6 +5,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { createMemberKeyMetadata } from "../../helpers/memberKeyMetadata";
+import { GetKeyData$inboundSchema } from "@openrouter/sdk/models/operations";
 import { PrivacyLevel, assembledServerConfigSchema, tomoriStateSchema, userSchema } from "@/types/db/schema";
 import {
   createLlmRow,
@@ -32,6 +34,18 @@ function schemaConfigDefaults() {
 }
 
 describe("shared fixture factories", () => {
+  it("builds valid raw member-key responses with typed overrides and rejects unknown options", () => {
+    const response = createMemberKeyMetadata({ label: "Juno key", usage: 0.25, limit: 2, limit_remaining: 1.75 });
+    expect(GetKeyData$inboundSchema.parse(response)).toMatchObject({
+      label: "Juno key",
+      usage: 0.25,
+      limit: 2,
+      limitRemaining: 1.75,
+      usageDaily: 0,
+    });
+    const invalid = { usage: 1, unknown_override: true };
+    expect(() => createMemberKeyMetadata(invalid)).toThrow();
+  });
   it("keeps custom expression overrides scoped and validates the stored media shape", () => {
     expect(createCustomExpression({ restricted: true, persona_ids: [3] })).toMatchObject({
       restricted: true,

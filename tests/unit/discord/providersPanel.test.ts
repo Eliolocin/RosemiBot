@@ -3,6 +3,7 @@ import { ComponentType } from "discord.js";
 import type { ProviderPanelEntry } from "@/types/discord/providerPanel";
 import { parseProvidersPanelRoute, PERSONAL_PROVIDERS_ROUTE_NAMESPACE } from "@/utils/discord/providersPanelCatalog";
 import { parseInteractionRoute } from "@/utils/discord/interactions/routeRegistry";
+import { parseSubscriptionRoute } from "@/modules/supporter-billing/subscribe/catalog";
 import {
   buildAddEndpointModal,
   buildAddProviderModal,
@@ -17,10 +18,13 @@ import {
   PROVIDERS_MODELS_PER_SELECTOR_PAGE,
 } from "@/utils/discord/ui/providersPanel";
 import { DISCORD_SELECT_OPTIONS_MAX, validateRawModalLimits } from "@/utils/discord/ui/componentsV2Limits";
-import { initializeLocalizer } from "@/utils/text/localizer";
-import { localizedCopy, localizedProse } from "../../helpers/localeCases";
+import { initializeLocalizer, hasLocaleKey } from "@/utils/text/localizer";
+import { localizedCopy, localizedProse, expectForEveryLocale } from "../../helpers/localeCases";
 
 beforeAll(async () => initializeLocalizer());
+
+const SUBSCRIBER = "123456789012345678";
+const OTHER_MEMBER = "223456789012345678";
 
 function collectComponents(value: unknown): Array<Record<string, unknown>> {
   if (!value || typeof value !== "object") return [];
@@ -73,6 +77,151 @@ function providerEntry(id: string, name = "Google"): ProviderPanelEntry {
 }
 
 describe("providers panel rendering", () => {
+  it("offers the same subscription onboarding action for unsponsored server and personal panels", () => {
+    expectForEveryLocale((locale) => {
+      for (const personal of [true, false]) {
+        for (const available of [true, false]) {
+          const panel = buildProvidersPanelPayload({
+            locale,
+            entries: [],
+            initialEntryId: null,
+            readStatus: "fresh",
+            page: { kind: "entry" },
+            routeNamespace: personal ? PERSONAL_PROVIDERS_ROUTE_NAMESPACE : undefined,
+            subscriptionAvailable: available,
+          });
+          const options = collectComponents(panel)
+            .filter((component) => component.type === ComponentType.StringSelect)
+            .flatMap((component) => component.options as Array<{ value: string; label: string; description: string }>);
+          const action = options.find((option) => option.value === "action:subscribe");
+          if (!available) {
+            expect(action).toBeUndefined();
+            continue;
+          }
+          expect(action?.label).toBe(localizedCopy(locale, "commands.providers.subscribe"));
+          expect(action?.description).toBe(
+            localizedCopy(
+              locale,
+              personal
+                ? "commands.providers.subscribe_personal_description"
+                : "commands.providers.sponsor_server_description",
+            ),
+          );
+        }
+      }
+    });
+  });
+
+  it("keeps one subscription selector entry and leaves activation to the model controls", () => {
+    expectForEveryLocale((locale) => {
+      for (const personal of [true, false]) {
+        for (const active of [true, false]) {
+          const entry = providerEntry("provider:supporter", "supporter");
+          if (entry.kind !== "provider") throw new Error("Expected a provider entry");
+          if (!personal) Object.assign(entry, { sponsorshipId: 40, sponsorDiscId: SUBSCRIBER });
+          for (const section of entry.capabilities)
+            for (const model of section.models) model.isWorkspaceActive = active;
+          const panel = buildProvidersPanelPayload({
+            locale,
+            entries: [entry],
+            initialEntryId: entry.id,
+            readStatus: "fresh",
+            page: { kind: "entry" },
+            routeNamespace: personal ? PERSONAL_PROVIDERS_ROUTE_NAMESPACE : undefined,
+            subscriptionAvailable: true,
+            viewerId: SUBSCRIBER,
+          });
+          const components = collectComponents(panel);
+          const selectors = components.filter((component) => component.type === ComponentType.StringSelect);
+          const options = selectors.flatMap(
+            (component) => component.options as Array<{ value: string; label: string }>,
+          );
+          expect(options.filter((option) => option.value === "provider:supporter")).toHaveLength(1);
+          expect(options.some((option) => option.value === "action:subscribe")).toBe(false);
+          const subscriptionActions = components
+            .filter((component) => component.type === ComponentType.Button && typeof component.customId === "string")
+            .map((component) => parseInteractionRoute(String(component.customId)))
+            .flatMap((parsed) => {
+              const route = parsed && parseSubscriptionRoute(parsed);
+              return route ? [route.action] : [];
+            });
+          expect(subscriptionActions).toEqual(personal ? ["overview"] : ["overview", "remove"]);
+        }
+      }
+    });
+  });
+
+  it("keeps personal subscription model controls and opens private management instead of editing a key", () => {
+    expectForEveryLocale((locale) => {
+      const panel = buildProvidersPanelPayload({
+        locale,
+        entries: [providerEntry("provider:supporter", "supporter")],
+        initialEntryId: "provider:supporter",
+        readStatus: "fresh",
+        page: { kind: "entry" },
+        enabledActions: new Set(["model", "edit", "remove"]),
+        routeNamespace: PERSONAL_PROVIDERS_ROUTE_NAMESPACE,
+        viewerId: SUBSCRIBER,
+      });
+      const components = collectComponents(panel);
+      const labels = components.map((component) => component.label);
+      const manageKey = "commands.providers.manage_subscription";
+      const manage = components.find(
+        (component) => component.label === localizedCopy(hasLocaleKey(locale, manageKey) ? locale : "en-US", manageKey),
+      );
+      expect(typeof manage?.customId === "string" && manage.customId.startsWith("subscription:v1:overview:")).toBe(
+        true,
+      );
+      for (const key of [
+        "commands.providers.edit_provider",
+        "commands.providers.remove_provider",
+        "commands.providers.remove_sponsorship",
+      ]) {
+        expect(labels).not.toContain(localizedCopy(hasLocaleKey(locale, key) ? locale : "en-US", key));
+      }
+      expect(
+        components.some(
+          (component) => component.customId === `personal-providers:v1:model-select:${locale}:provider:supporter`,
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("enables server sponsorship removal only for the sponsor or a server manager", () => {
+    const entry = { ...providerEntry("provider:supporter", "supporter"), sponsorshipId: 40, sponsorDiscId: SUBSCRIBER };
+    for (const [viewerId, canManageServer, enabled] of [
+      [SUBSCRIBER, false, true],
+      [OTHER_MEMBER, true, true],
+      [OTHER_MEMBER, false, false],
+    ] as const) {
+      const components = collectComponents(
+        buildProvidersPanelPayload({
+          locale: "en-US",
+          entries: [entry],
+          initialEntryId: "provider:supporter",
+          readStatus: "fresh",
+          page: { kind: "entry" },
+          enabledActions: new Set(["model", "edit", "remove"]),
+          viewerId,
+          canManageServer,
+          sponsorLabels: { [SUBSCRIBER]: "Mirri" },
+        }),
+      );
+      const removal = components.find(
+        (component) => component.label === localizedCopy("en-US", "commands.providers.remove_sponsorship"),
+      );
+      expect(removal?.disabled).toBe(!enabled);
+      expect(
+        components.some(
+          (component) => component.label === localizedCopy("en-US", "commands.providers.manage_subscription"),
+        ),
+      ).toBe(viewerId === SUBSCRIBER);
+      const parsed = typeof removal?.customId === "string" ? parseInteractionRoute(removal.customId) : null;
+      expect(parsed?.segments[0]).toBe("remove");
+      expect(parsed?.segments[4]).toBe("40");
+    }
+  });
+
   it("builds one provider modal for curated providers, ElevenLabs, and Brave", () => {
     const modal = buildAddProviderModal("en-US", "abcdefgh");
     const serialized = JSON.stringify(modal);
@@ -588,10 +737,21 @@ describe("providers panel rendering", () => {
     expect(panelOptions.find((option) => option.default)?.value).toBe(entry.id);
   });
 
+  it("omits ComfyUI workflows from curated and subscription image and video registration", () => {
+    for (const provider of ["supporter", "openrouter", "google"]) {
+      for (const capability of ["image", "video"] as const) {
+        const modal = buildProviderModelModal("en-US", "provider", provider, capability, null, "abcdefgh");
+        expect(collectComponents(modal).some((component) => component.custom_id === "workflow_abcdefgh")).toBe(false);
+      }
+    }
+  });
+
   it("uses placeholders for create codenames and capability-specific modal fields", () => {
     const textModal = buildProviderModelModal("en-US", "provider", "google", "text", null, "abcdefgh");
     const endpointTextModal = buildProviderModelModal("en-US", "endpoint", "73", "text", null, "abcdefgh");
-    const imageModal = buildProviderModelModal("en-US", "endpoint", "73", "image", null, "abcdefgh");
+    const imageModal = buildProviderModelModal("en-US", "endpoint", "73", "image", null, "abcdefgh", {
+      apiStyle: "comfyui",
+    });
     const codeInput = textModal.components[0]?.component;
 
     expect(codeInput?.placeholder).toBe("anthropic/claude-4-sonnet");
@@ -602,6 +762,17 @@ describe("providers panel rendering", () => {
     expect(JSON.stringify(endpointTextModal)).toContain("num-ctx_abcdefgh");
     expect(JSON.stringify(imageModal)).toContain("workflow_abcdefgh");
     expect(imageModal.custom_id).toBe("providers:v1:model-submit:en-US:endpoint:73:image:0:abcdefgh");
+  });
+
+  it("offers workflows only for ComfyUI image and video endpoints", () => {
+    for (const capability of ["image", "video"] as const) {
+      for (const apiStyle of ["comfyui", "openai-compatible"] as const) {
+        const modal = buildProviderModelModal("en-US", "endpoint", "73", capability, null, "abcdefgh", { apiStyle });
+        expect(collectComponents(modal).some((component) => component.custom_id === "workflow_abcdefgh")).toBe(
+          apiStyle === "comfyui",
+        );
+      }
+    }
   });
 
   it("offers image capability checkboxes and gates inpainting on ComfyUI", () => {

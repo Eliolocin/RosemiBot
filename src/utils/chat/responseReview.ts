@@ -24,6 +24,16 @@ import { localizer } from "@/utils/text/localizer";
 import { charsToTokensText, type TokenUsage } from "@/utils/text/tokenEstimate";
 import { redactToolParametersForStorage } from "@/utils/tools/toolParameterRedaction";
 import { checkResponseRules, type RuleCheckState } from "@/utils/chat/responseRuleCheck";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
+import { supporterSponsorshipRepository } from "@/modules/supporter-billing/db";
+import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
+import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
+import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
+import { sendStandardEmbed } from "@/utils/discord/embedHelper";
+import { ColorCode } from "@/utils/misc/logger";
 
 export const MAX_RESPONSE_REVISIONS = 1;
 // Every revision is reviewed again, after the original candidate's review.
@@ -134,7 +144,6 @@ export function remainingPendingResponseLimit(state: ResponseReviewState): Pendi
   };
 }
 
-/** Late auxiliary usage still reaches accounting after post-turn effects drain the ledger. */
 export function recordResponseReviewUsage(state: ResponseReviewState, entry: TurnUsageEntry): void {
   state.usage.push(entry);
   state.usageRecorder?.(entry);
@@ -488,7 +497,14 @@ async function resolveReviewer(
   config: ProviderConfig,
   failureContext: ErrorContext,
 ): Promise<
-  { capability: SupportsStructuredOutput; state: TomoriState; apiKey: string } | { errorLogged: true } | null
+  | {
+      capability: SupportsStructuredOutput;
+      state: TomoriState;
+      apiKey: string;
+      funding: SupporterFundingContext | null;
+    }
+  | { errorLogged: true }
+  | null
 > {
   const review = context.responseReview;
   if (!review) return null;
@@ -502,24 +518,48 @@ async function resolveReviewer(
       capability: author as LLMProvider & SupportsStructuredOutput,
       state: context.tomoriState,
       apiKey: config.apiKey,
+      funding: context.textCredentialSource === "supporter" ? context.supporterFunding : null,
     };
   }
   const model = await llmModelRepo.loadById(review.reviewerId);
-  if (!model || model.is_deprecated || !model.supports_structoutput) return null;
+  if (!model?.llm_id || model.is_deprecated || !model.supports_structoutput) return null;
   const available = await llmModelRepo.loadAvailableModelsForProvider(model.llm_provider, false, {
     kind: "server",
     ownerId: context.currentPersona.server_id,
   });
   if (!available?.some((entry) => entry.llm_id === model.llm_id)) return null;
-  const saved = await llmProviderRepo.loadSavedProviderConfig(context.currentPersona.server_id, model.llm_provider);
-  if (!saved?.api_key) return null;
+  const subscription =
+    model.llm_provider === "openrouter" &&
+    isSupporterBillingEnabled(resolveEnvironment()) &&
+    (await supporterSponsorshipRepository.loadActiveSponsorshipForServer(context.currentPersona.server_id));
+  const saved =
+    (await llmProviderRepo.loadSavedProviderConfig(context.currentPersona.server_id, model.llm_provider)) ??
+    (subscription
+      ? await llmProviderRepo.loadSavedProviderConfig(context.currentPersona.server_id, "supporter")
+      : null);
   const capability = await resolveStructuredOutputCapability(model.llm_provider);
   if (!capability) return null;
-  const state = withSavedProviderConfig({ ...context.currentPersona, llm: model }, saved);
+  const state = saved
+    ? withSavedProviderConfig({ ...context.currentPersona, llm: model }, saved)
+    : { ...context.currentPersona, llm: model, config: { ...context.currentPersona.config } };
   // A pinned model must resolve its own endpoint rather than the author's mirrored endpoint.
   state.config = { ...state.config, custom_endpoint_url: null, custom_num_ctx: null };
+  if (subscription) {
+    const credentials = await resolveSupporterCapabilityCredentials({
+      scope: { kind: "server", serverId: context.currentPersona.server_id },
+      capability: "text",
+      modelId: model.llm_id,
+    });
+    return { capability, state, apiKey: credentials.apiKey, funding: credentials.funding };
+  }
+  if (!saved?.api_key) return null;
   try {
-    return { capability, state, apiKey: await decryptApiKey(saved.api_key, saved.key_version ?? 1, failureContext) };
+    return {
+      capability,
+      state,
+      apiKey: await decryptApiKey(saved.api_key, saved.key_version ?? 1, failureContext),
+      funding: null,
+    };
   } catch {
     return { errorLogged: true };
   }
@@ -754,6 +794,12 @@ async function reviewCandidate(
               onUsage: (reported) => {
                 usage = reported;
                 recordResponseReviewUsage(state, { kind: "reviewer", model: model ?? "", usage: reported });
+                recordSupporterUsage(resolved.funding, {
+                  modelCodename: model ?? "",
+                  costUsd: reported.costUsd,
+                  inputTokens: reported.inputTokens,
+                  outputTokens: reported.outputTokens,
+                });
               },
             },
             jsonSchema,
@@ -785,6 +831,10 @@ ${section("format_retry", formatRetryNote(result.malformed))}`,
       }
       if (!result || timeout.aborted) return unavailable("timeout", true);
     }
+    if (!result.success) {
+      const denied = findSupporterRequestDeniedError(result.cause, resolved.funding);
+      if (denied) throw denied;
+    }
     if (!result.success)
       return unavailable(
         result.failure ?? "transport",
@@ -798,10 +848,20 @@ ${section("format_retry", formatRetryNote(result.malformed))}`,
     trace(validated.data.status, { usage });
     if (validated.data.status === "unavailable") state.unavailable = true;
     return validated.data;
-  } catch {
+  } catch (error) {
     if (cancelled()) {
       trace("cancelled");
       return { status: "cancelled" };
+    }
+    const denied = findSupporterRequestDeniedError(error);
+    if (denied) {
+      if (context.shouldSurfaceUserErrors && context.channel.isSendable() && !context.channel.partial) {
+        await sendStandardEmbed(context.channel, context.locale, {
+          ...getSupporterRequestFailureCopy(denied, context.locale),
+          color: ColorCode.ERROR,
+        }).catch((sendError) => log.warn("Failed to send reviewer subscription notice", sendError));
+      }
+      return unavailable("subscription");
     }
     return unavailable("operation", true);
   } finally {

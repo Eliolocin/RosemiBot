@@ -251,12 +251,17 @@ describe("GenerateVoiceMessageTool source ladder", () => {
       expect(resolvedOwners).toEqual([1, 1]);
       const target = hostedTargets[mode];
       if (target?.kind !== "hosted-model") throw new Error("Missing hosted fixture");
-      hostedTargets[mode] = { ...target, credentialRevision: 2 };
-      synthesisRequests.length = 0;
-      const stale = await tool.execute({ title: "test", script: "Hello" }, context);
-      expect(stale.success).toBe(false);
-      expect(stale.error).toBe(localizedCopy("en-US", "tools.generate_voice_message.stale"));
-      expect(synthesisRequests).toHaveLength(0);
+      for (const changed of [
+        { ...target, credentialRevision: 2 },
+        { ...target, apiKey: "synthetic-rotated-member-key" },
+      ]) {
+        hostedTargets[mode] = changed;
+        synthesisRequests.length = 0;
+        const stale = await tool.execute({ title: "test", script: "Hello" }, context);
+        expect(stale.success).toBe(false);
+        expect(stale.error).toBe(localizedCopy("en-US", "tools.generate_voice_message.stale"));
+        expect(synthesisRequests).toHaveLength(0);
+      }
     }
     hostedTargets = null;
   });

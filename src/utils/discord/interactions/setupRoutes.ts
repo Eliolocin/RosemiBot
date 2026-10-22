@@ -1,6 +1,23 @@
+import { loadSubscribePanelState } from "@/modules/supporter-billing/subscribe/state";
+import { resolveSupporterNudgeKey } from "@/modules/supporter-billing/discord/conversionNudge";
+import {
+  getSubscriptionAllowanceBlockKey,
+  loadSubscriptionAllowance,
+} from "@/modules/supporter-billing/subscribe/usage";
+import { refreshSubscriptionMembership } from "@/modules/supporter-billing/subscribe/components";
+import { parseSupporterBillingConfigForCommands } from "@/modules/supporter-billing/discord/sponsorship";
+import { createPatreonOAuthUrlForDiscordUser } from "@/modules/supporter-billing/patreon/oauth";
+import { getSubscriptionTierName } from "@/modules/supporter-billing/subscribe/panel";
+import {
+  isSupporterSponsorshipChoiceEnabled,
+  persistSupporterSponsorship,
+  replySupporterSponsorshipValidationFailure,
+  validateSupporterSponsorshipRequest,
+} from "@/modules/supporter-billing/discord/sponsorship";
 import {
   MessageFlags,
   PermissionsBitField,
+  type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Client,
   type Guild,
@@ -128,6 +145,8 @@ export type SetupWizardAction =
   | "endpoint-connection-submit"
   | "endpoint-model"
   | "endpoint-model-submit"
+  | "supporter-link"
+  | "supporter-continue"
   | "finish";
 
 const SETUP_WIZARD_ACTIONS = new Set<SetupWizardAction>([
@@ -143,6 +162,8 @@ const SETUP_WIZARD_ACTIONS = new Set<SetupWizardAction>([
   "endpoint-connection-submit",
   "endpoint-model",
   "endpoint-model-submit",
+  "supporter-link",
+  "supporter-continue",
   "finish",
 ]);
 
@@ -222,6 +243,14 @@ export function buildSetupEndpointModelSubmitRouteId(input: { locale: string; no
   return buildSetupRouteId({ action: "endpoint-model-submit", locale: input.locale, nonce: input.nonce });
 }
 
+export function buildSetupSubscriptionRouteId(input: {
+  locale: string;
+  nonce: string;
+  action: "supporter-link" | "supporter-continue";
+}): string {
+  return buildSetupRouteId(input);
+}
+
 export function buildSetupFinishRouteId(input: { locale: string; nonce: string }): string {
   return buildSetupRouteId({ action: "finish", locale: input.locale, nonce: input.nonce });
 }
@@ -268,7 +297,7 @@ async function readSetupHealth(workspaceKey: string): Promise<SetupHealthStatus>
  * commands that change it than by a sentence saying no.
  */
 async function replyWorkspaceAlreadySetup(
-  interaction: ChatInputCommandInteraction,
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
   locale: string,
   workspaceKey: string,
 ): Promise<void> {
@@ -327,7 +356,10 @@ async function replyWorkspaceAlreadySetup(
  * Setup deliberately does not clear this state, because the alters on the workspace may be healthy
  * and only the config row or the model it points at is gone.
  */
-async function replyWorkspaceBroken(interaction: ChatInputCommandInteraction, locale: string): Promise<void> {
+async function replyWorkspaceBroken(
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
+  locale: string,
+): Promise<void> {
   log.warn("[Setup] Workspace has a main persona row but state validation failed, surfacing repair guidance");
   await replyInfoEmbed(interaction, locale, {
     titleKey: "commands.setup.broken_state_title",
@@ -381,8 +413,39 @@ async function deliverSetupWizard(
     notice?: string;
     receipt?: PanelReceipt;
     settingsCatalogs: SetupSettingsCatalogs | null | undefined;
+    oauthUrl?: string;
   },
 ): Promise<void> {
+  let subscription: Parameters<typeof buildSetupWizardPayload>[0]["subscription"];
+  let method = options.method;
+  if (draft.providerAccess?.mode === "supporter") {
+    // Defers first because the allowance read calls OpenRouter's management API, which can outlast Discord's 3-second acknowledgement window.
+    const deferrable = interaction.isMessageComponent() || (interaction.isModalSubmit() && interaction.isFromMessage());
+    if (method === "update" && deferrable && !interaction.deferred && !interaction.replied) {
+      await interaction.deferUpdate();
+      method = "editReply";
+    }
+    try {
+      const config = parseSupporterBillingConfigForCommands();
+      const state = await loadSubscribePanelState(draft.actorDiscId);
+      const tier = state.kind === "active" ? config.tiers[state.entitlement.tier_key] : undefined;
+      const allowance =
+        state.kind === "active" ? await loadSubscriptionAllowance(state.identity, state.entitlement) : null;
+      const ready = !!tier && !!allowance?.remaining;
+      subscription = {
+        ready,
+        tier: tier ? getSubscriptionTierName(locale, tier) : "",
+        model: tier?.defaultModelByCapability.text,
+        manageUrl: config.patreon.manageUrl,
+        oauthUrl:
+          options.oauthUrl ??
+          (!ready ? await createPatreonOAuthUrlForDiscordUser(draft.actorDiscId, { config, locale }) : undefined),
+        fundingServer: interaction.guild?.name ?? draft.workspaceKey,
+      };
+    } catch {
+      subscription = undefined;
+    }
+  }
   const payload = buildSetupWizardPayload({
     draft,
     locale,
@@ -391,8 +454,9 @@ async function deliverSetupWizard(
     notice: options.notice,
     receipt: options.receipt,
     settingsCatalogs: options.settingsCatalogs,
+    subscription,
   });
-  await deliverGuardedPanel(interaction, payload, { locale, method: options.method, receipt: options.receipt });
+  await deliverGuardedPanel(interaction, payload, { locale, method, receipt: options.receipt });
 }
 
 /**
@@ -583,6 +647,12 @@ async function revalidateSetupCommit(draft: SetupDraftRecord, locale: string): P
   if (access.mode === "user-byok" && draft.context === "dm") {
     return { notice: localizer(locale, "commands.setup.wizard.provider_byok_guild_only"), scope: "provider" };
   }
+  if (
+    access.mode === "supporter" &&
+    !isSupporterSponsorshipChoiceEnabled({ isGuildContext: draft.context === "guild" })
+  ) {
+    return { notice: localizer(locale, "commands.setup.wizard.provider_invalid"), scope: "provider" };
+  }
   if (access.mode === "catalog") {
     if (!isCatalogProviderCurrent(access)) {
       return { notice: localizer(locale, "commands.setup.wizard.provider_invalid"), scope: "provider" };
@@ -619,8 +689,8 @@ function toSetupProviderAccess(access: SetupDraftProviderAccess): SetupProviderA
       keyVersion: access.keyVersion,
     };
   }
-  if (access.mode === "user-byok") {
-    return { mode: "user-byok" };
+  if (access.mode === "user-byok" || access.mode === "supporter") {
+    return { mode: access.mode };
   }
   // A complete custom-endpoint draft always carries both halves: a connection-only draft never
   // passes the completeness gate that guards this path.
@@ -830,6 +900,15 @@ async function runSetupPostCommitEffects(input: {
       : avatarUpdateFailed
         ? "commands.setup.wizard.receipt_footer_avatar_failed"
         : undefined;
+  const nudgeKey =
+    access.mode === "catalog" || access.mode === "custom-endpoint"
+      ? await resolveSupporterNudgeKey({
+          event: "completion",
+          userDiscId: input.interaction.user.id,
+          serverId: input.serverInternalId,
+          credentialSource: "server",
+        })
+      : null;
 
   const payload = buildSetupSuccessPayload({
     locale,
@@ -842,7 +921,7 @@ async function runSetupPostCommitEffects(input: {
     learnMore: localizer(locale, "commands.setup.wizard.receipt_learn_more", {
       help: commandRegistry.getCommandMention("help"),
     }),
-    footerKey,
+    footerKeys: [footerKey, nudgeKey].filter((key): key is string => !!key),
   });
 
   try {
@@ -894,8 +973,7 @@ async function finishSetupWizardDraft(
   nonce: string,
 ): Promise<SetupCommitOutcome> {
   const { actorDiscId, workspaceKey, context } = draft;
-  const acknowledged = "deferUpdate" in interaction && !interaction.replied && !interaction.deferred;
-  if (acknowledged) {
+  if ("deferUpdate" in interaction && !interaction.replied && !interaction.deferred) {
     await interaction.deferUpdate();
   }
 
@@ -1045,6 +1123,39 @@ async function finishSetupWizardDraft(
           ? (access.connection?.label ?? "")
           : "";
 
+    let supporterValidation: Extract<
+      Awaited<ReturnType<typeof validateSupporterSponsorshipRequest>>,
+      { ok: true }
+    > | null = null;
+    if (access.mode === "supporter") {
+      if (!interaction.isButton()) throw new Error("Supporter setup requires a finish button");
+      const validation = await validateSupporterSponsorshipRequest({
+        discordUserId: actorDiscId,
+        serverId: null,
+        serverDiscId: workspaceKey,
+      });
+      if (!validation.ok) {
+        await replySupporterSponsorshipValidationFailure(interaction, locale, validation);
+        return { status: "failed" };
+      }
+      const blockKey = getSubscriptionAllowanceBlockKey(
+        await loadSubscriptionAllowance(validation.identity, validation.entitlement).catch((error: unknown) => {
+          log.warn("[Setup] Subscription allowance unavailable at finish", error);
+          return null;
+        }),
+      );
+      if (blockKey) {
+        preserved = true;
+        await deliverSetupWizard(interaction, claimedDraft, locale, nonce, {
+          method: "editReply",
+          receipt: setupFailureReceipt(locale, localizer(locale, blockKey)),
+          settingsCatalogs: catalogs,
+        });
+        return { status: "failed" };
+      }
+      supporterValidation = validation;
+    }
+
     const setupConfig: SetupConfig = {
       serverId: workspaceKey,
       presetId: presetRow.persona_preset_id,
@@ -1071,6 +1182,16 @@ async function finishSetupWizardDraft(
     }
 
     committed = true;
+    if (supporterValidation) {
+      const serverId = setupResult.server.server_id;
+      if (!serverId) throw new Error("Supporter setup did not return a server ID");
+      await persistSupporterSponsorship({
+        serverId,
+        serverDiscId: workspaceKey,
+        sponsorIdentityId: supporterValidation.identity.supporter_identity_id,
+        createdByDiscId: actorDiscId,
+      });
+    }
     // Only now, with the rows committed: every reader below this line must see the new workspace.
     invalidateTomoriStateCache(workspaceKey);
 
@@ -1146,7 +1267,7 @@ async function finishSetupWizardDraft(
 }
 
 export interface SetupWizardDependencies {
-  isSetupAuthorized: (interaction: ChatInputCommandInteraction) => boolean;
+  isSetupAuthorized: (interaction: ChatInputCommandInteraction | ButtonInteraction) => boolean;
   checkExistingSetup: (workspaceKey: string) => Promise<SetupHealthStatus>;
   createNonce: () => string;
   isHostedPolicyEnvironment: () => boolean;
@@ -1156,7 +1277,7 @@ export interface SetupWizardDependencies {
 }
 
 export async function startSetupWizard(
-  interaction: ChatInputCommandInteraction,
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
   dependencies: Partial<SetupWizardDependencies> = {},
 ): Promise<void> {
   const locale = dependencies.locale ?? interaction.locale ?? interaction.guildLocale ?? "en-US";
@@ -1165,7 +1286,7 @@ export async function startSetupWizard(
 
   // Acknowledged before the existing-setup lookup, not after it: Discord drops an interaction that is not
   // acknowledged within three seconds, and that lookup can miss its cache and reach the database.
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!interaction.replied && !interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const isAuthorized = dependencies.isSetupAuthorized
     ? dependencies.isSetupAuthorized(interaction)
@@ -1462,11 +1583,54 @@ export const setupInteractionRoute: GlobalInteractionRoute = {
         return;
       }
 
+      case "supporter-link":
+      case "supporter-continue": {
+        if (!interaction.isButton() || draft.providerAccess?.mode !== "supporter") return;
+        await interaction.deferUpdate();
+        if (!isSupporterSponsorshipChoiceEnabled({ isGuildContext: context === "guild" })) return;
+        let oauthUrl: string | undefined;
+        let receipt: PanelReceipt | undefined;
+        try {
+          if (action === "supporter-link")
+            oauthUrl = await createPatreonOAuthUrlForDiscordUser(actorDiscId, {
+              config: parseSupporterBillingConfigForCommands(),
+              locale,
+            });
+          else receipt = await refreshSubscriptionMembership(actorDiscId, locale);
+        } catch {
+          receipt = setupFailureReceipt(locale, localizer(locale, "commands.subscription.action_failed"));
+        }
+        await deliverSetupWizard(interaction, draft, locale, nonce, {
+          method: "editReply",
+          oauthUrl,
+          receipt,
+          settingsCatalogs: await loadSetupSettingsCatalogs(locale),
+        });
+        return;
+      }
+
       case "provider-mode": {
         if (!interaction.isStringSelectMenu()) {
           return;
         }
         const selectedMode = interaction.values[0];
+        if (selectedMode === "supporter") {
+          if (!isSupporterSponsorshipChoiceEnabled({ isGuildContext: context === "guild" })) {
+            await interaction.reply({
+              content: localizer(locale, "commands.setup.wizard.provider_invalid"),
+              flags: MessageFlags.Ephemeral,
+            });
+            return;
+          }
+          await applySetupDraftWrite(
+            interaction,
+            updateSetupDraft(nonce, actorDiscId, workspaceKey, context, { providerAccess: { mode: "supporter" } }),
+            locale,
+            nonce,
+            "update",
+          );
+          return;
+        }
         if (selectedMode === "catalog") {
           const cleared = updateSetupDraft(nonce, actorDiscId, workspaceKey, context, { providerAccess: null });
           if (cleared.status !== "ok") {

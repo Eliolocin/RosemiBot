@@ -264,8 +264,6 @@ Use \`/config\` > Models > Switch Models to switch to a model that supports stru
 **Next steps:**
 1. Use \`/config\` > Models > Switch Models to switch to a tool-enabled model, OR
 2. Regenerate without web search (choose "No" when asked)`,
-      api_key_decrypt_failed_title: `API Key Error`,
-      api_key_decrypt_failed_description: `Failed to decrypt the active provider credentials. Please reconfigure them using \`/providers\`.`,
       vision_credentials_unavailable_title: `Vision Model Credentials Unavailable`,
       vision_credentials_unavailable_description: `Your vision model (**{vision_model_name}**) runs on provider **{vision_provider}**, but its saved API key could not be used to describe the image. Reconfigure that provider's credentials with \`/providers\`, or check \`/config\` > Models.`,
       invalid_image_title: `Invalid Image`,

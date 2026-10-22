@@ -227,6 +227,7 @@ text over appending; do not narrate implementation branches.
    command, and setting. Contributor guides are recipes: files to touch, types and limits to satisfy,
    commands to run.
 4. Cloud architecture and runbooks go under `docs/en/wiki/cloud/<provider>/` on `release`.
+   Keep private integration architecture and operator procedures in gitignored `plans/[playbooks-&-guides]/`.
    `docs/en/self-hosting/` is for provider-agnostic hosting on the user's own machines.
 5. All tracked docs are public, including `wiki/` and `release`; `hidden` and `noindex` do not restrict
    access. Use placeholders for production names, IDs (including workspace IDs), and IPs. Never copy

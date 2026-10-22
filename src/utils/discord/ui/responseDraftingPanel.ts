@@ -205,6 +205,7 @@ export function buildResponseDraftingBody(
     });
     components.push(
       buildModelRoutingControl({
+        locale,
         capabilityLabel,
         activeModelName: null,
         activeProvider: null,

@@ -9,6 +9,11 @@
 import { log } from "@/utils/misc/logger";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { z } from "zod";
+
+export const openRouterPriceSchema = z
+  .union([z.string().trim().min(1).transform(Number), z.number()])
+  .pipe(z.number().finite().nonnegative());
 
 const DEFAULT_MIN_REFRESH_INTERVAL_MS = 60 * 1000;
 const DEFAULT_TTL_MS = 6 * 60 * 60 * 1000;
@@ -97,7 +102,11 @@ export function createOpenRouterCatalog<TEntry>(source: OpenRouterCatalogSource<
   let stage: "transport" | "response" = "transport";
 
   async function fetchCatalog(): Promise<Map<string, TEntry>> {
-    const bounded = source.label === "decision" || source.label === "video" || source.label === "speech";
+    const bounded =
+      source.label === "decision" ||
+      source.label === "video" ||
+      source.label === "speech" ||
+      source.label === "image pricing";
     const response = await fetch(source.url, {
       ...(bounded ? { signal: AbortSignal.timeout(30_000) } : {}),
       headers: {
@@ -274,6 +283,7 @@ export interface OpenRouterCatalogModelEntry {
   id: string;
   name: string | null;
   description: string | null;
+  pricing?: unknown;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -299,6 +309,7 @@ export function parseOpenRouterCatalogModelList(label: string, payload: unknown)
       id: normalizeOpenRouterCodename(entry.id),
       name: readOptionalString(entry.name),
       description: readOptionalString(entry.description),
+      ...(entry.pricing === undefined ? {} : { pricing: entry.pricing }),
     });
   }
 

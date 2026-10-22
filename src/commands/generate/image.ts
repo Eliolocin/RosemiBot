@@ -43,6 +43,9 @@ import { executeAutoImageCommand } from "@/utils/image/autoImageCommand";
 import { prepareGeneratedImage } from "@/utils/image/generatedImageMetadata";
 import { buildImageGenerationInputAttachment } from "@/utils/image/imageGenerationInput";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
+import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
 
 const MODAL_CUSTOM_ID = "generate_image_modal";
 const PROMPT_INPUT_ID = "prompt_input";
@@ -196,6 +199,15 @@ export async function execute(
       userId: userData.user_id ?? null,
     });
   } catch (error) {
+    const denied = findSupporterRequestDeniedError(error);
+    if (denied) {
+      await replyInfoEmbed(interaction, locale, {
+        ...getSupporterRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     if (error instanceof PersonalProviderRequiredError) {
       log.warn(`[Generate Image] Personal provider required for image generation`, error, {
         userId: userData.user_id,
@@ -526,6 +538,7 @@ export async function execute(
         aspectRatio,
         ...(referenceImages.length > 0 ? { referenceImages } : {}),
       });
+      recordSupporterUsage(imageCreds.supporterFunding, { modelCodename, costUsd: result.costUsd });
       generatedImageData = result.imageData;
     } else if (imageRoute.kind === "google") {
       const ai = new GoogleGenAI({ apiKey });
@@ -669,6 +682,16 @@ export async function execute(
 
     log.success(`Successfully generated and sent image (${generationTimeSeconds}s)`);
   } catch (error) {
+    const denied = findSupporterRequestDeniedError(error, imageCreds?.supporterFunding);
+    if (denied) {
+      await replyInfoEmbed(modalSubmitInteraction ?? interaction, locale, {
+        ...getSupporterRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+        flags: MessageFlags.Ephemeral,
+        ...recoveryOptions(),
+      });
+      return;
+    }
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     log.error("Image generation failed:", error as Error);

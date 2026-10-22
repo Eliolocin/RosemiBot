@@ -23,7 +23,9 @@ import { attachImportNowCollector, importNowButton } from "@/utils/persona/impor
 import { validateAndFallbackPanelPayload } from "@/utils/discord/ui/interactionCore";
 import type { UserRow } from "../../types/db/schema";
 import { personaRepository } from "@/utils/db/repositories";
-import { decryptApiKey } from "../../utils/security/crypto";
+import { getCapabilityCredentialFailureCopy, resolveCapabilityCredentials } from "@/utils/provider/credentialResolver";
+import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
 import { memoryGuard, PERSONA_LIMITS, reservePersonaQuota } from "../../utils/security/rateLimiter";
 import { safeDownload } from "../../utils/security/safeDownload";
 import type { GeneratePresetParams } from "../../providers/google/presetGenerator";
@@ -47,6 +49,10 @@ import type { PresetExport } from "../../types/preset/presetExport";
 import type { ModalComponent } from "../../types/discord/modal";
 import type { ToolContext } from "../../types/tool/interfaces";
 import { generatePresetForProvider } from "@/providers/utils/providerFeatureExecutors";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
+import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterRequestFailureMessage } from "@/modules/supporter-billing/discord/requestFailure";
 import { analyzeImageWithVisionModel } from "@/utils/provider/visionCaption";
 import { resolvePresetGenerationMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
 import { resolveModelLimits } from "@/utils/provider/modelLimits";
@@ -344,7 +350,7 @@ export async function execute(
     //    /generate image, /memories) and ensures generation uses the
     //    user's personal text provider when configured, instead of always falling
     //    back to the server's configured model.
-    const { tomoriState } = await applyPersonalProviderSelectionsToTomoriState(
+    const { tomoriState, activeConfigs } = await applyPersonalProviderSelectionsToTomoriState(
       baseTomoriState,
       userData.user_id ?? null,
     );
@@ -404,44 +410,19 @@ export async function execute(
       return;
     }
 
-    if (!tomoriState.config.api_key) {
-      log.warn(`[Generate Persona] API key missing for provider "${tomoriState.llm.llm_provider}"`, undefined, {
-        userId: userData.user_id,
-        serverId: tomoriState.server_id,
-        personaId: tomoriState.persona_id,
-        metadata: {
-          command: "persona generate",
-          provider: tomoriState.llm.llm_provider,
-        },
-      });
+    if (tomoriState.config.user_byok_mode && !activeConfigs.text) {
       await replyInfoEmbed(interaction, locale, {
-        titleKey: "commands.persona.generate.no_api_key_title",
-        descriptionKey: "commands.persona.generate.no_api_key_description",
+        titleKey: "general.errors.personal_provider_required_title",
+        descriptionKey: "general.errors.personal_provider_required_description",
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
-
-    const keyVersion = tomoriState.config.key_version || 1; // Default to V1 for backward compatibility
-    const decryptedApiKey = await decryptApiKey(tomoriState.config.api_key, keyVersion);
-    if (!decryptedApiKey) {
-      log.warn(
-        `[Generate Persona] Failed to decrypt API key for provider "${tomoriState.llm.llm_provider}"`,
-        undefined,
-        {
-          userId: userData.user_id,
-          serverId: tomoriState.server_id,
-          personaId: tomoriState.persona_id,
-          metadata: {
-            command: "persona generate",
-            provider: tomoriState.llm.llm_provider,
-          },
-        },
-      );
+    if (!tomoriState.config.api_key && !isSupporterBillingEnabled(resolveEnvironment())) {
       await replyInfoEmbed(interaction, locale, {
-        titleKey: "commands.persona.generate.api_key_decrypt_failed_title",
-        descriptionKey: "commands.persona.generate.api_key_decrypt_failed_description",
+        titleKey: "commands.persona.generate.no_api_key_title",
+        descriptionKey: "commands.persona.generate.no_api_key_description",
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
@@ -557,6 +538,25 @@ export async function execute(
         imageMimeType: imageMimeType ?? imageAttachment?.content_type,
       });
 
+    let decryptedApiKey: string;
+    let supporterFunding: SupporterFundingContext | undefined;
+    try {
+      ({ apiKey: decryptedApiKey, supporterFunding } = await resolveCapabilityCredentials(
+        tomoriState.server_id,
+        "text",
+        { userId: userData.user_id },
+      ));
+    } catch (error) {
+      const failure = getCapabilityCredentialFailureCopy(error, locale);
+      if (!failure) throw error;
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        ...failure,
+        color: ColorCode.ERROR,
+        files: [getInputAttachment()],
+      });
+      return;
+    }
+
     // Reserve persona operation quota (atomic check+increment for DDoS protection)
     const quotaReserve = reservePersonaQuota(interaction.user.id);
     if (!quotaReserve.allowed) {
@@ -584,8 +584,6 @@ export async function execute(
     const characterDesc = characterInfo;
     const speechExamples = characterInfo; // AI will extract speech patterns from context
 
-    // The primary model always performs generation, so these stay the primary model's own
-    // resolved provider and key. A vision model only ever contributes a text description.
     const generationTomoriState = tomoriState;
     const generationProviderName = providerName;
     const generationApiKey = decryptedApiKey;
@@ -847,6 +845,15 @@ export async function execute(
         userId: userData.user_id ?? null,
       });
 
+      if (captionResult.supporterFailure) {
+        await editGenerateStatusReply(modalSubmitInteraction, {
+          locale,
+          ...getSupporterRequestFailureMessage(captionResult.supporterFailure, locale),
+          color: ColorCode.ERROR,
+          inputAttachment: getInputAttachment(),
+        });
+        return;
+      }
       if (!captionResult.ok) {
         const reason = captionResult.failure?.reason ?? "request_failed";
         log.warn(
@@ -913,6 +920,7 @@ export async function execute(
         tomoriState: generationTomoriState,
         locale,
         provider: generationProviderName,
+        supporterFunding,
         userId: interaction.user.id,
         guildId: interaction.guild?.id,
         suppressProgressNotices: true, // Search runs in background during generation; don't leak tool embeds into chat
@@ -930,7 +938,19 @@ export async function execute(
       params: genParams,
       locale,
       toolContext: presetToolContext,
+      onUsage: createSupporterUsageRecorder(supporterFunding, generationTomoriState.llm.llm_codename),
     });
+
+    const deniedGeneration = findSupporterRequestDeniedError(genResult.cause, supporterFunding);
+    if (deniedGeneration) {
+      await editGenerateStatusReply(modalSubmitInteraction, {
+        locale,
+        ...getSupporterRequestFailureMessage(deniedGeneration, locale),
+        color: ColorCode.ERROR,
+        inputAttachment: getInputAttachment(),
+      });
+      return;
+    }
 
     if (genResult.error || !genResult.preset) {
       const invalidGeneratedData = genResult.errorType === "VALIDATION_ERROR";

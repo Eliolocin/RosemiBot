@@ -2683,7 +2683,13 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
           .map((ref: FallbackModelRef) => {
             if (ref.type === "llm") {
               const model = llmMap.get(ref.id);
-              return model ? ({ kind: "llm", model } as FallbackEntry) : null;
+              return model
+                ? ({
+                    kind: "llm",
+                    model,
+                    ...(ref.credentialProvider ? { credentialProvider: ref.credentialProvider } : {}),
+                  } as FallbackEntry)
+                : null;
             }
             const endpoint = epMap.get(ref.id);
             return endpoint ? ({ kind: "custom_endpoint", endpoint } as FallbackEntry) : null;
@@ -2873,7 +2879,13 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
             .map((ref: FallbackModelRef) => {
               if (ref.type === "llm") {
                 const model = llmMap.get(ref.id);
-                return model ? ({ kind: "llm", model } as FallbackEntry) : null;
+                return model
+                  ? ({
+                      kind: "llm",
+                      model,
+                      ...(ref.credentialProvider ? { credentialProvider: ref.credentialProvider } : {}),
+                    } as FallbackEntry)
+                  : null;
               }
               const endpoint = epMap.get(ref.id);
               return endpoint ? ({ kind: "custom_endpoint", endpoint } as FallbackEntry) : null;

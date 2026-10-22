@@ -31,6 +31,11 @@ personal Text, so the chain can mix providers the way the server chain does. Per
 only the user's saved providers and omit entries without a key; server credentials become available
 only through the deferred server route.
 
+Fallback identity includes the selected provider entry's credential source. Two entries can use the
+same catalog model with different credentials, including when they share a transport provider.
+Promoting a primary removes only fallbacks with the same model and credential source. Stored entries
+without an explicit source use the model's native provider credentials.
+
 Custom endpoint fallbacks must belong to the route's user or server before generation loads a saved
 key. Server persona loaders resolve stored endpoint IDs without enforcing ownership, so generation
 checks both owner fields: personal endpoints have that user and no server; server endpoints have

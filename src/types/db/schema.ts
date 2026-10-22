@@ -580,12 +580,13 @@ function normalizeFallbackLlmIds(value: unknown): number[] {
 const fallbackModelRefSchema = z.object({
   type: z.enum(["llm", "custom_endpoint"]),
   id: z.number().int(),
+  credentialProvider: z.enum(["openrouter", "supporter"]).optional(),
 });
 export type FallbackModelRef = z.infer<typeof fallbackModelRefSchema>;
 
 /** Resolved fallback entry : either a known LLM row or a custom endpoint row. */
 export type FallbackEntry =
-  | { kind: "llm"; model: z.infer<typeof llmSchema> }
+  | { kind: "llm"; model: z.infer<typeof llmSchema>; credentialProvider?: "openrouter" | "supporter" }
   | { kind: "custom_endpoint"; endpoint: z.infer<typeof customEndpointSchema> };
 
 function normalizeFallbackModelRefs(value: unknown): FallbackModelRef[] {
@@ -1730,7 +1731,11 @@ export const tomoriStateSchema = tomoriSchema.merge(personaScopedConfigStateSche
   fallback_chain: z
     .array(
       z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("llm"), model: llmSchema }),
+        z.object({
+          kind: z.literal("llm"),
+          model: llmSchema,
+          credentialProvider: z.enum(["openrouter", "supporter"]).optional(),
+        }),
         z.object({ kind: z.literal("custom_endpoint"), endpoint: customEndpointSchema }),
       ]),
     )
@@ -1801,6 +1806,7 @@ const setupProviderAccessSchema = z.discriminatedUnion("mode", [
   setupProviderAccessCatalogSchema,
   setupProviderAccessCustomEndpointSchema,
   setupProviderAccessUserByokSchema,
+  z.object({ mode: z.literal("supporter") }).strict(),
 ]);
 export type SetupProviderAccess = z.infer<typeof setupProviderAccessSchema>;
 

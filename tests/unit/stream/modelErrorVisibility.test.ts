@@ -6,6 +6,7 @@ import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
 import { log } from "@/utils/misc/logger";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { localizedCopy } from "../../helpers/localeCases";
+import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 
 function makeConfig(): StreamConfig {
   return {
@@ -117,6 +118,22 @@ describe("StreamOrchestrator model-error visibility", () => {
 
     expect(result.status).toBe("error");
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("defers subscription budget notices to generation so the final fallback outcome is known", async () => {
+    const send = mock(async () => undefined);
+    const provider = makeProvider();
+    const denied = new SupporterRequestDeniedError("allowance_exhausted");
+    provider.processChunk = () => ({
+      type: "error",
+      error: { type: "unknown", message: denied.message, retryable: false, originalError: denied },
+    });
+    const context = makeContext(send, false);
+    context.textCredentialSource = "supporter";
+    const result = await new StreamOrchestrator().streamToDiscord(provider, makeConfig(), context);
+    expect(result.status).toBe("error");
+    expect(send).not.toHaveBeenCalled();
+    expect(result.data).toMatchObject({ originalError: denied });
   });
 
   it("keeps echoed credentials and injected mentions in the operator log, out of the embed", async () => {

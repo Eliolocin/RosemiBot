@@ -48,6 +48,8 @@ interface CuratedProviderPanelEntry extends ProviderPanelEntryBase {
   provider: string;
   rotationKeyCount: number;
   capabilities: ProviderPanelCapabilitySection[];
+  sponsorshipId?: number;
+  sponsorDiscId?: string;
 }
 
 export interface EndpointProviderPanelEntry extends ProviderPanelEntryBase {
@@ -74,4 +76,5 @@ export interface ProviderPanelScopeData {
   readStatus: PanelReadStatus;
   entries: ProviderPanelEntry[];
   initialEntryId: string | null;
+  subscriptionAvailable?: boolean;
 }

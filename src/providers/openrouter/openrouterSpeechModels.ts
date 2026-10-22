@@ -8,7 +8,7 @@ import { normalizeOpenRouterCodename } from "@/utils/cache/openrouterCatalog";
  */
 export type OpenRouterSpeechModelSpec =
   | { shape: "clone" }
-  | { shape: "design"; promptCharacters: number; scriptCharacters: number };
+  | { shape: "design"; promptCharacters: number; scriptCharacters: number; maxDurationSeconds: number };
 
 const OPENROUTER_SPEECH_MODELS: ReadonlyMap<string, OpenRouterSpeechModelSpec> = new Map<
   string,
@@ -18,7 +18,10 @@ const OPENROUTER_SPEECH_MODELS: ReadonlyMap<string, OpenRouterSpeechModelSpec> =
   ["fish-audio/s2.1-pro-free:free", { shape: "clone" }],
   // OpenRouter's guide allows 3,000 input characters, but Seed's own guide caps the prompt at 2,048;
   // a measured 1,000-character script ran 103 seconds against the 120-second cap, so scripts stop at 1,100.
-  ["bytedance-seed/seed-audio-1-0", { shape: "design", promptCharacters: 2_048, scriptCharacters: 1_100 }],
+  [
+    "bytedance-seed/seed-audio-1-0",
+    { shape: "design", promptCharacters: 2_048, scriptCharacters: 1_100, maxDurationSeconds: 120 },
+  ],
 ]);
 
 export function findOpenRouterSpeechModel(codename: string): OpenRouterSpeechModelSpec | null {

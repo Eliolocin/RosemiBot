@@ -1,10 +1,12 @@
-import { beforeAll, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import type { Client, ModalBuilder, TextChannel } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import type { ProviderError, StreamContext, StreamProvider } from "@/types/stream/interfaces";
 import { StreamErrorUi } from "@/utils/discord/stream/errorUi";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { localizedCopy } from "../../helpers/localeCases";
+import { useEnvSandbox } from "../../helpers/env";
+import { supporterIdentityRepository, supporterSponsorshipRepository } from "@/modules/supporter-billing/db";
 
 type SendMock = ReturnType<typeof mock>;
 
@@ -59,7 +61,7 @@ function makeProvider(name = "openrouter"): StreamProvider {
 async function renderTips(
   error: ProviderError,
   textCredentialSource: StreamContext["textCredentialSource"],
-  options: { providerName?: string; fallbackChain?: unknown[] } = {},
+  options: { providerName?: string; fallbackChain?: unknown[]; userDiscId?: string; locale?: string } = {},
 ): Promise<string> {
   let modal: ReturnType<ModalBuilder["toJSON"]> | undefined;
   const tipClick = {
@@ -82,18 +84,20 @@ async function renderTips(
     createMessageComponentCollector: (options: { filter: (interaction: typeof tipClick) => boolean }) =>
       makeCollector(options.filter),
   }));
-  await new StreamErrorUi().handleProviderError(
-    error,
-    makeProvider(options.providerName),
-    makeContext(send, textCredentialSource, options.fallbackChain ?? []),
-  );
+  await new StreamErrorUi().handleProviderError(error, makeProvider(options.providerName), {
+    ...makeContext(send, textCredentialSource, options.fallbackChain ?? []),
+    triggererDiscId: options.userDiscId,
+    locale: options.locale ?? "en-US",
+  });
   await Promise.resolve();
   const payload = send.mock.calls[0]?.[0] as {
     embeds?: unknown[];
     components?: Array<{ toJSON(): { components: Array<{ label?: string }> } }>;
   };
   expect(payload.embeds).toHaveLength(1);
-  expect(payload.components?.[0]?.toJSON().components[0]?.label).toBe(localizedCopy("en-US", "genai.tips.button"));
+  expect(payload.components?.[0]?.toJSON().components[0]?.label).toBe(
+    localizedCopy(options.locale ?? "en-US", "genai.tips.button"),
+  );
   return (
     modal?.components
       ?.map((component) => ("content" in component ? component.content : ""))
@@ -179,6 +183,53 @@ describe("provider error tips resolve against the credential source", () => {
 
     expect(tips).toContain("/config");
     expect(tips).not.toContain("/personal");
+  });
+});
+
+describe("provider error subscription guidance", () => {
+  useEnvSandbox(["RUN_ENV", "TOMORI_SUPPORTER_BILLING_ENABLED"]);
+  const spies: Array<{ mockRestore(): void }> = [];
+  beforeEach(() => {
+    process.env.RUN_ENV = "production";
+    process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
+    spies.push(
+      spyOn(supporterIdentityRepository, "loadByDiscordUserId").mockResolvedValue(null),
+      spyOn(supporterSponsorshipRepository, "loadActiveSponsorshipForServer").mockResolvedValue(null),
+    );
+  });
+  afterEach(() => {
+    for (const spy of spies.splice(0)) spy.mockRestore();
+  });
+
+  it("adds localized guidance to BYOK reliability tips while retaining existing recovery actions", async () => {
+    for (const locale of ["en-US", "ja"]) {
+      for (const credentialSource of ["personal", "server"] as const) {
+        const tips = await renderTips(RATE_LIMIT_ERROR, credentialSource, {
+          userDiscId: "123456789012345678",
+          locale,
+        });
+        expect(tips).toContain(localizedCopy(locale, "commands.subscribe.conversion_nudge"));
+        expect(tips).toContain(
+          localizedCopy(
+            locale,
+            credentialSource === "personal" ? "genai.tips.model_fallback_personal" : "genai.tips.model_fallback",
+          ),
+        );
+      }
+    }
+  });
+
+  it("does not promote subscriptions for the same OpenRouter transport when the member key paid", async () => {
+    const tips = await renderTips(RATE_LIMIT_ERROR, "supporter", { userDiscId: "123456789012345678" });
+    expect(tips).not.toContain(localizedCopy("en-US", "commands.subscribe.conversion_nudge"));
+  });
+
+  it("keeps subscription guidance and recovery actions in repeated error modals", async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const tips = await renderTips(RATE_LIMIT_ERROR, "server", { userDiscId: "123456789012345678" });
+      expect(tips).toContain(localizedCopy("en-US", "commands.subscribe.conversion_nudge"));
+      expect(tips).toContain(localizedCopy("en-US", "genai.tips.model_fallback"));
+    }
   });
 });
 

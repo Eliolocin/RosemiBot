@@ -75,6 +75,7 @@ export interface PersonalConfigRouteDependencies {
     selectedCap: PersonalConfigManagedCapability,
     selectedParamsProvider?: string,
     selectedFallbacksProvider?: string,
+    locale?: string,
   ): Promise<PersonalConfigModelDisplayInfo>;
   loadAvailableModelsForCapability(
     userId: number,
@@ -316,6 +317,7 @@ export async function repaint(
       selectedCapability ?? "text",
       selectedParametersProvider,
       selectedFallbacksProvider,
+      locale,
     );
   }
 
@@ -324,7 +326,7 @@ export async function repaint(
     const activeFallbacksProvider = modelDisplayInfo?.fallbacksProvider;
     if (activeFallbacksProvider) {
       try {
-        const fallbackOptions = await loadFallbackSelectionOptions(scope.userId, activeFallbacksProvider);
+        const fallbackOptions = await loadFallbackSelectionOptions(scope.userId, activeFallbacksProvider, locale);
         fallbackOptionCount = fallbackOptions.length;
       } catch {
         fallbackOptionCount = 0;

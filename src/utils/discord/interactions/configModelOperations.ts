@@ -1,4 +1,5 @@
 import { validateOpenRouterSpeechModel } from "@/utils/cache/openrouterSpeechModelCache";
+import { loadDecisionModelsForScope } from "@/providers/utils/providerFeatureExecutors";
 import { setHostedSpeechSelection, setSpeechEndpointSelection } from "@/utils/db/repositories/SpeechRepository";
 import { supportsSpeechMode, type VoiceSourceMode } from "@/utils/speech/voiceSourceCapabilities";
 import type {
@@ -14,6 +15,9 @@ import type {
   VideoGenerationModelRow,
 } from "@/types/db/schema";
 import { DEFAULT_THINKING_LEVEL, isThinkingLevelValue, type ThinkingLevelValue } from "@/constants/thinkingLevels";
+import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
+import { supporterSponsorshipRepository } from "@/modules/supporter-billing/db";
 import {
   LOGIT_BIAS_MAX,
   LOGIT_BIAS_MIN,
@@ -67,6 +71,11 @@ import {
   mergeConfiguredStopStrings,
   parseCommaSeparatedStopStrings,
 } from "@/utils/provider/stopStringConfig";
+import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
+import {
+  findSupporterRequestDeniedError,
+  type SupporterRequestDeniedError,
+} from "@/modules/supporter-billing/runtime/funding";
 
 /** Sentinel a fallback slot select carries to empty that slot. */
 export const CONFIG_FALLBACK_CLEAR_VALUE = "__none__";
@@ -165,9 +174,11 @@ export async function loadConfigModelProviders(serverId: number, capability: Con
 
 /** Decision models are not a saved-provider capability, so their providers come from owned registrations. */
 async function loadDecisionModelProviders(serverId: number): Promise<SavedProviderConfigRow[]> {
-  const options = await llmModelRepo.loadDecisionModelOptions({ kind: "server", ownerId: serverId });
+  const options = await loadDecisionModelsForScope({ kind: "server", ownerId: serverId });
   const owned = new Set(options.map(({ model }) => model.provider));
-  return (await llmProviderRepo.loadSavedProviderConfigs(serverId)).filter((row) => owned.has(row.provider));
+  return (await llmProviderRepo.loadSavedProviderConfigs(serverId)).filter((row) =>
+    owned.has(row.provider === SUPPORTER_PROVIDER_VALUE ? "openrouter" : row.provider),
+  );
 }
 
 /** One selectable model in a capability slot, flattened so the renderer needs no per-slot branch. */
@@ -185,6 +196,21 @@ export async function loadConfigModelChoices(
   locale = "en-US",
   textModelFilter?: (model: LlmRow) => boolean,
 ): Promise<ConfigModelChoice[]> {
+  if (provider === SUPPORTER_PROVIDER_VALUE) {
+    if (
+      !isSupporterBillingEnabled(resolveEnvironment()) ||
+      (capability !== "text" &&
+        capability !== "vision" &&
+        capability !== "embedding" &&
+        capability !== "image" &&
+        capability !== "decision" &&
+        capability !== "video" &&
+        capability !== "tts-design" &&
+        capability !== "tts-clone")
+    )
+      return [];
+    provider = "openrouter";
+  }
   const owner = { kind: "server", ownerId: serverId } as const;
   switch (capability) {
     case "text":
@@ -214,7 +240,7 @@ export async function loadConfigModelChoices(
         }));
     }
     case "decision":
-      return (await llmModelRepo.loadDecisionModelOptions(owner))
+      return (await loadDecisionModelsForScope(owner))
         .filter(({ model }) => model.provider === provider)
         .map(({ model }) => ({
           id: model.decision_model_id,
@@ -279,6 +305,7 @@ type ConfigModelSetResult =
   | { status: "success"; modelName: string; reembedded: boolean; sourceChanged?: boolean }
   | { status: "already-selected"; modelName: string }
   | { status: "openrouter-moved" }
+  | { status: "subscription"; denied: SupporterRequestDeniedError }
   | { status: "not-found" | "no-models" | "write-failed" };
 
 type ConfigModelClearResult =
@@ -510,7 +537,10 @@ async function setServerSpeechTarget(
     return { status: "already-selected", modelName: choice.name };
   }
   // The OpenRouter catalog can drop a seeded model, so the live listing is rechecked before the write.
-  if (eligible === "openrouter" && !(await validateOpenRouterSpeechModel(choice.name, mode)))
+  if (
+    (eligible === "openrouter" || eligible === SUPPORTER_PROVIDER_VALUE) &&
+    !(await validateOpenRouterSpeechModel(choice.name, mode))
+  )
     return { status: "not-found" };
   return (await setHostedSpeechSelection({ kind: "server", ownerId: state.server_id }, choice.id, mode))
     ? { status: "success", modelName: choice.name, reembedded: false }
@@ -543,6 +573,7 @@ async function promoteTextModel(
     tomoriState.config.fallback_model_refs ?? [],
     model.llm_id,
     customEndpoints,
+    provider,
   );
 
   const [updatedModel, updatedChat] = await Promise.all([
@@ -631,8 +662,9 @@ export const configModelOperations: ConfigModelOperations = {
     if (!savedConfig) return { status: "not-found" };
 
     if (capability === "text" || capability === "vision") {
+      const catalogProvider = savedConfig.provider === SUPPORTER_PROVIDER_VALUE ? "openrouter" : savedConfig.provider;
       const models =
-        (await llmModelRepo.loadAvailableModelsForProvider(savedConfig.provider, false, {
+        (await llmModelRepo.loadAvailableModelsForProvider(catalogProvider, false, {
           kind: "server",
           ownerId: tomoriState.server_id,
         })) ?? [];
@@ -695,13 +727,20 @@ export const configModelOperations: ConfigModelOperations = {
         if (documentCount > 0) {
           const credentials = await resolveCapabilityCredentials(tomoriState.server_id, "embedding");
           const limits = getMemoryLimits();
-          await ragRepository.reembedServerDocuments({
-            serverId: tomoriState.server_id,
-            embeddingModel: chosenModel,
-            apiKey: credentials.apiKey,
-            chunkSize: limits.documentChunkSize,
-            chunkOverlap: limits.documentChunkOverlap,
-          });
+          try {
+            await ragRepository.reembedServerDocuments({
+              serverId: tomoriState.server_id,
+              embeddingModel: chosenModel,
+              apiKey: credentials.apiKey,
+              onUsage: createSupporterUsageRecorder(credentials.supporterFunding, chosenModel.codename),
+              chunkSize: limits.documentChunkSize,
+              chunkOverlap: limits.documentChunkOverlap,
+            });
+          } catch (error) {
+            const denied = findSupporterRequestDeniedError(error, credentials.supporterFunding);
+            if (denied) return { status: "subscription", denied };
+            throw error;
+          }
           reembedded = true;
         }
       }
@@ -997,10 +1036,14 @@ export const configModelOperations: ConfigModelOperations = {
       : [];
     const availableModels = customProvider
       ? []
-      : ((await llmModelRepo.loadAvailableModelsForProvider(resolvedProvider, false, {
-          kind: "server",
-          ownerId: tomoriState.server_id,
-        })) ?? []);
+      : ((await llmModelRepo.loadAvailableModelsForProvider(
+          resolvedProvider === SUPPORTER_PROVIDER_VALUE ? "openrouter" : resolvedProvider,
+          false,
+          {
+            kind: "server",
+            ownerId: tomoriState.server_id,
+          },
+        )) ?? []);
 
     const existingRefs = tomoriState.config.fallback_model_refs ?? [];
     const mergedRefs: FallbackModelRef[] = [];
@@ -1029,8 +1072,13 @@ export const configModelOperations: ConfigModelOperations = {
       if (resolvedProvider === "openrouter" && raw === "other-model") return { status: "openrouter-moved" };
       const model = availableModels.find((candidate) => candidate.llm_codename === raw);
       if (model?.llm_id === undefined) continue;
-      mergedRefs.push({ type: "llm", id: model.llm_id });
-      submittedKeys.add(`llm:${model.llm_id}`);
+      const ref: FallbackModelRef = {
+        type: "llm",
+        id: model.llm_id,
+        ...(resolvedProvider === SUPPORTER_PROVIDER_VALUE ? { credentialProvider: "supporter" } : {}),
+      };
+      mergedRefs.push(ref);
+      submittedKeys.add(getFallbackModelRefKey(ref));
     }
 
     const seen = new Set<string>();
@@ -1044,7 +1092,15 @@ export const configModelOperations: ConfigModelOperations = {
     // A fallback equal to the primary never survives the write. Only a pick made in this submission
     // is worth an error; an inherited duplicate is dropped silently, or every submission would be
     // rejected until the user found and cleared an untouched slot.
-    const primaryKeys = getPrimaryFallbackRefKeys(tomoriState.config.llm_id, allEndpoints);
+    const subscriptionPrimary =
+      tomoriState.llm.llm_provider === "openrouter" &&
+      isSupporterBillingEnabled(resolveEnvironment()) &&
+      (await supporterSponsorshipRepository.loadActiveSponsorshipForServer(tomoriState.server_id));
+    const primaryKeys = getPrimaryFallbackRefKeys(
+      tomoriState.config.llm_id,
+      allEndpoints,
+      subscriptionPrimary ? SUPPORTER_PROVIDER_VALUE : undefined,
+    );
     if ([...submittedKeys].some((key) => primaryKeys.has(key))) {
       return { status: "primary-conflict", primaryModelName: tomoriState.llm.llm_codename };
     }

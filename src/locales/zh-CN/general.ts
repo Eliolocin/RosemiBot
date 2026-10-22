@@ -1,5 +1,9 @@
 export default {
   general: {
+    oauth: {
+      invalid_callback: `此登录链接无效或已过期。请从TomoriBot重新发起登录。`,
+      server_error: `由于服务错误，TomoriBot无法完成登录。请稍后重试。`,
+    },
     language_name: `简体中文`,
     yes: `是`,
     confirm: `确认`,

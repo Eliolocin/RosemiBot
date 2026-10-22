@@ -20,6 +20,7 @@ import {
   type ConfigModelChoice,
 } from "@/utils/discord/interactions/configModelOperations";
 import { getStaticProviderInfo } from "@/utils/provider/providerInfoRegistry";
+import { SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
 import { isCustomProvider } from "@/utils/provider/customProviderUtils";
 import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
 import { localizer } from "@/utils/text/localizer";
@@ -83,7 +84,8 @@ export async function loadDraftingModelGroups(serverId: number, locale: string):
   const providers = await loadConfigModelProviders(serverId, "text");
   const groups = await Promise.all(
     providers.map(async (provider) => {
-      if (!isCustomProvider(provider) && !getStaticProviderInfo(provider)?.featureSupport.structuredOutput)
+      const catalogProvider = provider === SUPPORTER_PROVIDER_VALUE ? "openrouter" : provider;
+      if (!isCustomProvider(provider) && !getStaticProviderInfo(catalogProvider)?.featureSupport.structuredOutput)
         return { provider, models: [] };
       const models = await loadConfigModelChoices(
         serverId,

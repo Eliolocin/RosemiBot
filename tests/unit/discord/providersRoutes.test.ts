@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { readFileSync } from "node:fs";
 import type { ChatInputCommandInteraction, Client } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
@@ -33,10 +33,74 @@ import {
 } from "@/utils/discord/ui/providersPanel";
 import { createPersona } from "../../helpers/fixtures";
 import { createRouteInteraction } from "../../helpers/routeInteraction";
-import { localizedCopy } from "../../helpers/localeCases";
+import { localizedCopy, localizedProse } from "../../helpers/localeCases";
 import { initializeLocalizer, localizer } from "@/utils/text/localizer";
+import { useEnvSandbox } from "../../helpers/env";
+import { supporterIdentityRepository, supporterSponsorshipRepository } from "@/modules/supporter-billing/db";
 
 beforeAll(async () => initializeLocalizer());
+
+describe("BYOK provider completion guidance", () => {
+  useEnvSandbox(["RUN_ENV", "TOMORI_SUPPORTER_BILLING_ENABLED"]);
+
+  it("adds guidance after a successful server or personal provider save, after acknowledgement", async () => {
+    process.env.RUN_ENV = "production";
+    process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
+    const identitySpy = spyOn(supporterIdentityRepository, "loadByDiscordUserId").mockResolvedValue(null);
+    const sponsorshipSpy = spyOn(supporterSponsorshipRepository, "loadActiveSponsorshipForServer").mockResolvedValue(
+      null,
+    );
+    try {
+      for (const personal of [true, false]) {
+        const namespace = personal ? PERSONAL_PROVIDERS_ROUTE_NAMESPACE : PROVIDERS_ROUTE_NAMESPACE;
+        const customId = buildProvidersRouteId(namespace, {
+          action: "add-submit",
+          locale: "en-US",
+          nonce: "abcdefgh",
+        });
+        const interaction = createRouteInteraction({
+          customId,
+          kind: "modal",
+          fields: { "api-key_abcdefgh": "test-provider-key" },
+        });
+        const localScope: LoadedProviderPanelScope = {
+          ...scope,
+          state: createPersona({ server_id: 42 }),
+          ...(personal ? { scopeKind: "personal" as const, ownerId: 1 } : { scopeKind: "server" as const }),
+          routeNamespace: namespace,
+        };
+        const route = createProvidersInteractionRoute(
+          {
+            takeProvider: () => "google",
+            recordAction: () => {},
+            resolveScope: async () => localScope,
+            operations: {
+              ...providerPanelOperations,
+              addServerProvider: async () => {
+                expect(interaction.deferred).toBe(true);
+                return {
+                  status: "success",
+                  entryId: "provider:google",
+                  displayName: "Google Gemini",
+                  modelName: "test-model",
+                  updated: false,
+                };
+              },
+            },
+          },
+          { namespace, authorize: () => true, includeBrave: !personal, allowRotation: !personal },
+        );
+        await route.execute({} as Client, interaction as never, parsed(customId));
+        expect(JSON.stringify(interaction.edits)).toMatch(
+          localizedProse("en-US", "commands.subscribe.conversion_nudge"),
+        );
+      }
+    } finally {
+      identitySpy.mockRestore();
+      sponsorshipSpy.mockRestore();
+    }
+  });
+});
 
 const WIRE_CONTRACT_V1: ReadonlyArray<readonly [string, ProvidersPanelRoute]> = [
   ["providers:v1:select:en-US", { action: "select", locale: "en-US" }],
@@ -804,7 +868,7 @@ describe("providers routes", () => {
       guildId: "123",
       user: { id: "456" },
       memberPermissions: { has: () => true },
-      fields: { getTextInputValue: () => "valid-api-key" },
+      fields: { fields: new Map([["api-key_abcdefgh", true]]), getTextInputValue: () => "valid-api-key" },
       isStringSelectMenu: () => false,
       isModalSubmit: () => true,
       isButton: () => false,
@@ -1042,6 +1106,7 @@ describe("providers routes", () => {
 
     expect(calls).toEqual(["show:image:42"]);
     expect(openedWith).toEqual({
+      apiStyle: "comfyui",
       codeName: "anima-v1",
       text: undefined,
       image: {
@@ -1819,7 +1884,7 @@ describe("providers routes", () => {
       guildId: "123",
       user: { id: "user-456" },
       memberPermissions: { has: () => true },
-      fields: { getTextInputValue: () => "api-key" },
+      fields: { fields: new Map([["api-key_nonce-12345678", true]]), getTextInputValue: () => "api-key" },
       isStringSelectMenu: () => false,
       isModalSubmit: () => true,
       isButton: () => false,
@@ -2080,20 +2145,22 @@ describe("Decision registration routes", () => {
       memberPermissions: { has: () => true },
     } as unknown as ChatInputCommandInteraction;
 
-    const serverPayload = await buildInitialProvidersPanel(serverInteraction, "en-US", async () => null);
+    const serverPayload = await buildInitialProvidersPanel(serverInteraction, "en-US", {
+      resolveScope: async () => null,
+    });
     expect(JSON.stringify(serverPayload)).toContain(localizedCopy("en-US", "commands.providers.not_setup"));
 
-    const dmPayload = await buildInitialProvidersPanel(dmInteraction, "en-US", async () => null);
+    const dmPayload = await buildInitialProvidersPanel(dmInteraction, "en-US", { resolveScope: async () => null });
     expect(JSON.stringify(dmPayload)).toContain(localizedCopy("en-US", "commands.providers.not_setup_dm"));
 
-    const serverPersonalPayload = await buildInitialPersonalProvidersPanel(
-      serverInteraction,
-      "en-US",
-      async () => null,
-    );
+    const serverPersonalPayload = await buildInitialPersonalProvidersPanel(serverInteraction, "en-US", {
+      resolveScope: async () => null,
+    });
     expect(JSON.stringify(serverPersonalPayload)).toContain(localizedCopy("en-US", "commands.providers.not_setup"));
 
-    const dmPersonalPayload = await buildInitialPersonalProvidersPanel(dmInteraction, "en-US", async () => null);
+    const dmPersonalPayload = await buildInitialPersonalProvidersPanel(dmInteraction, "en-US", {
+      resolveScope: async () => null,
+    });
     expect(JSON.stringify(dmPersonalPayload)).toContain(localizedCopy("en-US", "commands.providers.not_setup_dm"));
   });
 

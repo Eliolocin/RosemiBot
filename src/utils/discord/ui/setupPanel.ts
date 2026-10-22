@@ -1,3 +1,5 @@
+import { buildSubscriptionOnboarding } from "@/modules/supporter-billing/subscribe/panel";
+import { isSupporterSponsorshipChoiceEnabled } from "@/modules/supporter-billing/discord/sponsorship";
 import {
   ButtonStyle,
   ComponentType,
@@ -25,6 +27,7 @@ import {
   buildSetupEndpointModelRouteId,
   buildSetupEndpointModelSubmitRouteId,
   buildSetupFinishRouteId,
+  buildSetupSubscriptionRouteId,
   buildSetupPoliciesRouteId,
   buildSetupPoliciesSubmitRouteId,
   buildSetupProviderByokSubmitRouteId,
@@ -120,6 +123,14 @@ export interface SetupWizardPayloadInput {
    * selection nothing could confirm. An object is the resolved catalog set.
    */
   settingsCatalogs?: SetupSettingsCatalogs | null;
+  subscription?: {
+    ready: boolean;
+    tier: string;
+    model?: string;
+    manageUrl: string;
+    oauthUrl?: string;
+    fundingServer: string;
+  };
 }
 
 /** Values a Starting Settings editor can offer, derived from the live catalogs on every open. */
@@ -244,6 +255,10 @@ function resolveProviderSummary(draft: SetupDraftRecord, locale: string): string
     return `> ${localizer(locale, "commands.setup.wizard.provider_byok_summary")}`;
   }
 
+  if (access.mode === "supporter") {
+    return `> ${localizer(locale, "commands.setup.wizard.provider_supporter_summary")}`;
+  }
+
   if (access.connection && access.textModel) {
     return withLinePrefix(
       "> ",
@@ -317,7 +332,9 @@ export function buildSetupWizardPayload(
     });
   }
 
-  const providerComplete = isSetupDraftProviderAccessComplete(draft.providerAccess);
+  const providerComplete =
+    isSetupDraftProviderAccessComplete(draft.providerAccess) &&
+    (draft.providerAccess?.mode !== "supporter" || input.subscription?.ready === true);
   // The stored identities are resolved against the live catalogs, so a persona or prompt row removed
   // since the save re-pends the step here rather than only at the final commit. A catalog read that
   // failed re-pends it too: the alternative is claiming a selection is complete when nothing could
@@ -331,7 +348,7 @@ export function buildSetupWizardPayload(
   // The catalog-aware verdict governs the whole ready state, not only the step rows. Gating the
   // finish action on the catalog-blind draft predicate instead would leave it enabled and Primary
   // beside a step the same panel had just re-pended.
-  const isComplete = isSetupDraftComplete(draft) && settingsComplete;
+  const isComplete = isSetupDraftComplete(draft) && settingsComplete && providerComplete;
 
   const total = isHosted ? 3 : 2;
   const done = (isHosted && policiesComplete ? 1 : 0) + (providerComplete ? 1 : 0) + (settingsComplete ? 1 : 0);
@@ -382,6 +399,7 @@ export function buildSetupWizardPayload(
     content: `### ${providerStatus} ${localizer(locale, "commands.setup.wizard.provider_name")}\n${localizer(locale, "commands.setup.wizard.provider_description")}\n${providerSummary}\n-# ${providerHint}`,
   });
 
+  const supporterEnabled = isSupporterSponsorshipChoiceEnabled({ isGuildContext: draft.context === "guild" });
   const providerOptions: SelectMenuComponentOptionData[] = [
     {
       label: localizer(locale, "commands.setup.wizard.provider_option_catalog"),
@@ -406,6 +424,15 @@ export function buildSetupWizardPayload(
     });
   }
 
+  if (supporterEnabled) {
+    providerOptions.unshift({
+      label: localizer(locale, "commands.setup.wizard.provider_option_supporter"),
+      description: localizer(locale, "commands.setup.wizard.provider_option_supporter_description"),
+      value: "supporter",
+      default: draft.providerAccess?.mode === "supporter",
+    });
+  }
+
   components.push({
     type: ComponentType.ActionRow,
     components: [
@@ -419,6 +446,23 @@ export function buildSetupWizardPayload(
       },
     ],
   });
+
+  if (draft.providerAccess?.mode === "supporter") {
+    if (input.subscription)
+      components.push(
+        ...buildSubscriptionOnboarding({
+          ...input.subscription,
+          locale,
+          linkId: buildSetupSubscriptionRouteId({ locale, nonce, action: "supporter-link" }),
+          continueId: buildSetupSubscriptionRouteId({ locale, nonce, action: "supporter-continue" }),
+        }),
+      );
+    else
+      components.push({
+        type: ComponentType.TextDisplay,
+        content: localizer(locale, "commands.subscription.unavailable"),
+      });
+  }
 
   if (draft.providerAccess?.mode === "custom-endpoint") {
     const access = draft.providerAccess;
@@ -649,14 +693,16 @@ interface SetupReceiptInput {
   notes: readonly SetupReceiptNote[];
   /** Pre-composed body for the Learn More field, built by the caller from its live command mentions. */
   learnMore: string;
-  /** Footer locale key for the skipped or failed avatar update, when one applies. */
-  footerKey?: string;
+  footerKeys?: readonly string[];
 }
 
 function resolveReceiptDescriptionKey(input: SetupReceiptInput): string {
   const isDm = input.context === "dm";
   const { providerAccess } = input;
 
+  if (providerAccess.mode === "supporter") {
+    return "commands.setup.wizard.receipt_desc_supporter";
+  }
   if (providerAccess.mode === "user-byok") {
     return isDm ? "commands.setup.wizard.receipt_desc_byok_dm" : "commands.setup.wizard.receipt_desc_byok";
   }
@@ -732,11 +778,11 @@ export function buildSetupSuccessPayload(
     });
   }
 
-  if (input.footerKey) {
+  if (input.footerKeys?.length) {
     components.push({ type: ComponentType.Separator, divider: true, spacing: 1 });
     components.push({
       type: ComponentType.TextDisplay,
-      content: withLinePrefix("-# ", localizer(locale, input.footerKey)),
+      content: withLinePrefix("-# ", input.footerKeys.map((key) => localizer(locale, key)).join("\n")),
     });
   }
 

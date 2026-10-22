@@ -11,6 +11,8 @@ import { log } from "@/utils/misc/logger";
 import { parseIntegerEnvFlag } from "@/utils/misc/envFlags";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import { RemoteUrlPolicyError } from "@/utils/security/userRemoteFetch";
+import { readOpenRouterLimitResponse } from "@/providers/openrouter/openrouterLimit";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 
 const DECISION_TIMEOUT_MS = parseIntegerEnvFlag(process.env.STREAM_SDK_CALL_TIMEOUT_MS, 120_000, 10_000);
 const MAX_DECISION_RESPONSE_BYTES = 1024 * 1024;
@@ -160,6 +162,7 @@ export async function reportDecisionFailure(
   stage: "resolution" | "transport" | "response" | "validation" | "execution",
   startedAt: number,
   httpStatus?: number,
+  cause?: Error,
 ): Promise<DecisionResult> {
   await log.error("Decision operation failed", new Error(`Decision ${stage} failed (${category})`), {
     errorType: "DecisionOperationFailed",
@@ -177,7 +180,7 @@ export async function reportDecisionFailure(
       elapsedMs: Date.now() - startedAt,
     },
   });
-  return { status: "failed", category, correlationId: request.correlationId, errorLogged: true };
+  return { status: "failed", category, correlationId: request.correlationId, errorLogged: true, cause };
 }
 
 export async function executeDecisionTransport(
@@ -222,13 +225,14 @@ export async function executeDecisionTransport(
       return cancelled();
     }
     if (!response.ok) {
-      await response.body?.cancel();
+      const limit = await readOpenRouterLimitResponse(response);
       return await reportDecisionFailure(
         request,
-        [401, 403].includes(response.status) ? "authentication" : "http",
+        [401, 403].includes(response.status) && !limit ? "authentication" : "http",
         stage,
         startedAt,
         httpStatus,
+        limit ?? undefined,
       );
     }
     stage = "response";
@@ -257,6 +261,8 @@ export async function executeDecisionTransport(
     decisionTrace(request, outcome, { questionCount: answers.length, elapsedMs: Date.now() - startedAt, usage });
     return { status: outcome, answers, usage, correlationId, providerRequestId, actualModel: envelope.model };
   } catch (error) {
+    const denied = findSupporterRequestDeniedError(error);
+    if (denied) return { status: "denied", error: denied, correlationId, errorLogged: false };
     if (request.abortSignal?.aborted) return cancelled();
     if (error instanceof RemoteUrlPolicyError) return { status: "invalid-input", correlationId, errorLogged: false };
     return await reportDecisionFailure(

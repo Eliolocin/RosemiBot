@@ -623,6 +623,7 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
     textCredentialSource: turn.textCredentialSource,
     personalRoutingUserId: turn.personalRoutingUserId,
     personalTextProvider: turn.personalTextProvider,
+    supporterFunding: turn.supporterFunding,
     shouldApplyTextQuota: turn.shouldApplyTextQuota,
     textQuotaTriggerKey: turn.textQuotaTriggerKey,
     textQuotaState: turn.textQuotaState,

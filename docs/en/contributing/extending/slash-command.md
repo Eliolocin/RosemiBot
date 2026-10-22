@@ -31,9 +31,7 @@ To register a command only in some environments, export a gate. The loader still
 keep production-only side effects out of module scope:
 
 ```ts
-export const isCommandEnabled = () =>
-  process.env.RUN_ENV === "production" &&
-  process.env.TOMORI_SUPPORTER_BILLING_ENABLED === "true";
+export const isCommandEnabled = () => process.env.RUN_ENV === "development";
 ```
 
 Before building, pick the command's archetype (panel, wizard, direct family, immediate or destructive

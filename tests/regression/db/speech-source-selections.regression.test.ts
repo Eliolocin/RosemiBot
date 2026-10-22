@@ -22,6 +22,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
   const migration = path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.sql");
   const downgrade = path.join(process.cwd(), "src/db/migrations/101_speech_source_selections.down.sql");
   const hostedMigration = path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.sql");
+  const subscriptionMigration = path.join(process.cwd(), "src/db/migrations/103_subscription_speech_selections.sql");
   const hostedDowngrade = path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.down.sql");
   const designMigration = path.join(process.cwd(), "src/db/migrations/109_openrouter_design_speech_models.sql");
   const decisionMigration = path.join(process.cwd(), "src/db/migrations/098_decision_models.sql");
@@ -289,6 +290,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Server speech source selections", () => {
     } finally {
       await executeTestSqlFile(migration);
       await executeTestSqlFile(hostedMigration);
+      await executeTestSqlFile(subscriptionMigration);
       await executeTestSqlFile(designMigration);
       await seedModelsFromCatalog(testSql);
     }

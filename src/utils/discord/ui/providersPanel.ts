@@ -1,3 +1,5 @@
+import { buildSubscriptionRouteId } from "@/modules/supporter-billing/subscribe/catalog";
+import { SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
 import {
   ButtonStyle,
   ComponentType,
@@ -25,6 +27,7 @@ import {
   buildProvidersRouteId,
   buildProvidersRouteSegments,
   PROVIDERS_ROUTE_NAMESPACE,
+  PERSONAL_PROVIDERS_ROUTE_NAMESPACE,
   PROVIDERS_ROUTE_VERSION,
   type ProvidersRouteNamespace,
 } from "@/utils/discord/providersPanelCatalog";
@@ -252,6 +255,7 @@ const ENTRY_KIND_KEYS: Record<ProviderPanelEntry["kind"], { label: string; impac
 export const PROVIDERS_ENTRIES_PER_SELECTOR_PAGE = DISCORD_SELECT_OPTIONS_MAX - 2;
 export const PROVIDERS_ADD_PROVIDER_VALUE = "action:add-provider";
 export const PROVIDERS_ADD_ENDPOINT_VALUE = "action:add-endpoint";
+export const PROVIDERS_SUBSCRIBE_VALUE = "action:subscribe";
 
 export type AddProviderModalField = "provider" | "api-key";
 
@@ -657,6 +661,7 @@ const IMAGE_SUPPORT_FIELDS: ReadonlyArray<keyof ImageEndpointSupports> = [
 ];
 
 export interface ProviderModelModalDefaults {
+  apiStyle?: CustomEndpointApiStyle;
   codeName?: string;
   text?: ProviderPanelModel["textSettings"];
   decision?: ProviderPanelModel["decisionSettings"];
@@ -897,7 +902,11 @@ export function buildProviderModelModal(
       });
     }
   }
-  if (capability === "image" || capability === "video") {
+  if (
+    entryKind === "endpoint" &&
+    defaults?.apiStyle === "comfyui" &&
+    (capability === "image" || capability === "video")
+  ) {
     components.push({
       type: 18,
       label: safeSelectOptionText(localizer(locale, "commands.providers.model_workflow_label"), 45),
@@ -970,6 +979,10 @@ export interface ProvidersPanelRenderInput {
   enabledActions?: ReadonlySet<"add-provider" | "add-endpoint" | "model" | "edit" | "remove">;
   routeNamespace?: ProvidersRouteNamespace;
   footerCommand?: { root: string; subcommandGroup?: string; subcommand?: string };
+  subscriptionAvailable?: boolean;
+  viewerId?: string;
+  canManageServer?: boolean;
+  sponsorLabels?: Record<string, string>;
 }
 
 function buildRetryRow(locale: string, routeNamespace: ProvidersRouteNamespace): ActionRowData<ButtonComponentData> {
@@ -1030,6 +1043,7 @@ const PROVIDER_NAME_PREVIEW_BUDGET = 600;
 const ENTRY_FIT_ATTEMPTS = 3;
 
 function renderProviderName(locale: string, value: string): string {
+  if (value === SUPPORTER_PROVIDER_VALUE) value = localizer(locale, "commands.providers.subscription_label");
   const preview = buildTextPreview(value, PROVIDER_NAME_PREVIEW_BUDGET);
   const rendered = escapeDiscordMarkdown(preview.text);
   const footerKey = textPreviewFooterKey(preview);
@@ -1143,8 +1157,42 @@ function buildEntryActions(
   readStatus: PanelReadStatus,
   enabledActions: ProvidersPanelRenderInput["enabledActions"],
   routeNamespace: ProvidersRouteNamespace,
+  input: ProvidersPanelRenderInput,
 ): ActionRowData<ButtonComponentData> {
   const unavailable = readStatus !== "fresh";
+  if (entry.kind === "provider" && entry.provider === SUPPORTER_PROVIDER_VALUE) {
+    const personal = routeNamespace === PERSONAL_PROVIDERS_ROUTE_NAMESPACE;
+    const origin = personal ? "personal" : "server";
+    const route = {
+      locale,
+      owner: input.viewerId ?? "0",
+      origin,
+      selection: entry.sponsorshipId ?? 0,
+      page: 0,
+    } as const;
+    const buttons: ButtonComponentData[] = [];
+    if (personal || (input.viewerId && entry.sponsorDiscId === input.viewerId))
+      buttons.push({
+        type: ComponentType.Button,
+        style: ButtonStyle.Secondary,
+        customId: buildSubscriptionRouteId({ ...route, action: "overview" }),
+        label: localizer(locale, "commands.providers.manage_subscription"),
+        disabled: !input.viewerId,
+      });
+    if (!personal)
+      buttons.push({
+        type: ComponentType.Button,
+        style: ButtonStyle.Danger,
+        customId: buildSubscriptionRouteId({ ...route, action: "remove" }),
+        label: localizer(locale, "commands.providers.remove_sponsorship"),
+        disabled:
+          unavailable ||
+          !entry.sponsorshipId ||
+          !input.viewerId ||
+          !(input.canManageServer || entry.sponsorDiscId === input.viewerId),
+      });
+    return { type: ComponentType.ActionRow, components: buttons };
+  }
   const buttons: ButtonComponentData[] = [];
   buttons.push(
     {
@@ -1331,16 +1379,48 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
       description: localizer(locale, "commands.providers.select_add_endpoint_description"),
     },
   ];
-  const selection = resolveRangeSelection(entries, input.rangeIndex ?? implicitRangeIndex, {
+  if (
+    input.subscriptionAvailable &&
+    !entries.some((entry) => entry.kind === "provider" && entry.provider === SUPPORTER_PROVIDER_VALUE)
+  ) {
+    const personal = routeNamespace === PERSONAL_PROVIDERS_ROUTE_NAMESPACE;
+    actionOptions.unshift({
+      label: localizer(locale, "commands.providers.subscribe"),
+      value: PROVIDERS_SUBSCRIBE_VALUE,
+      description: localizer(
+        locale,
+        personal
+          ? "commands.providers.subscribe_personal_description"
+          : "commands.providers.sponsor_server_description",
+      ),
+    });
+  }
+  const entryPageSize = DISCORD_SELECT_OPTIONS_MAX - actionOptions.length;
+  const effectiveImplicitRange = selectedIndex < 0 ? implicitRangeIndex : Math.floor(selectedIndex / entryPageSize);
+  const selection = resolveRangeSelection(entries, input.rangeIndex ?? effectiveImplicitRange, {
     reservedOptions: actionOptions.length,
   });
   const options: SelectMenuComponentOptionData[] = [
     ...actionOptions,
     ...selection.visibleItems.map((entry) => ({
-      label: safeSelectOptionText(entry.displayName, 100),
+      label: safeSelectOptionText(
+        entry.kind === "provider" && entry.provider === SUPPORTER_PROVIDER_VALUE
+          ? localizer(locale, "commands.providers.subscription_label")
+          : entry.displayName,
+        100,
+      ),
       value: entry.id,
       description: safeSelectOptionText(
-        localizer(locale, ENTRY_KIND_KEYS[entry.kind].label),
+        localizer(
+          locale,
+          entry.kind === "provider" && entry.provider === SUPPORTER_PROVIDER_VALUE
+            ? routeNamespace === PERSONAL_PROVIDERS_ROUTE_NAMESPACE
+              ? "commands.providers.subscription_personal_description"
+              : entry.sponsorDiscId === input.viewerId
+                ? "commands.providers.subscription_owned_description"
+                : "commands.providers.subscription_server_description"
+            : ENTRY_KIND_KEYS[entry.kind].label,
+        ),
         DISCORD_SELECT_OPTION_DESCRIPTION_MAX,
       ),
       default: entry.id === selectedId,
@@ -1406,9 +1486,15 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
         {
           type: ComponentType.TextDisplay,
           content: `### ${localizer(locale, "commands.providers.remove_title")}
-${localizer(locale, ENTRY_KIND_KEYS[entry.kind].impact, {
-  name: renderProviderName(locale, entry.displayName),
-})}`,
+${localizer(
+  locale,
+  entry.kind === "provider" && entry.provider === SUPPORTER_PROVIDER_VALUE
+    ? "commands.providers.remove_impact_subscription"
+    : ENTRY_KIND_KEYS[entry.kind].impact,
+  {
+    name: renderProviderName(locale, entry.displayName),
+  },
+)}`,
         },
         {
           type: ComponentType.ActionRow,
@@ -1479,7 +1565,17 @@ ${localizer(locale, ENTRY_KIND_KEYS[entry.kind].impact, {
           ),
         },
         ...modelSelector,
-        buildEntryActions(locale, entry, readStatus, input.enabledActions, routeNamespace),
+        ...(entry.kind === "provider" &&
+        entry.provider === SUPPORTER_PROVIDER_VALUE &&
+        routeNamespace === PROVIDERS_ROUTE_NAMESPACE
+          ? [
+              {
+                type: ComponentType.TextDisplay as const,
+                content: `> ${localizer(locale, "commands.providers.sponsorship_by", { name: escapeDiscordMarkdown(entry.sponsorDiscId ? (input.sponsorLabels?.[entry.sponsorDiscId] ?? localizer(locale, "commands.providers.unknown_sponsor")) : localizer(locale, "commands.providers.unknown_sponsor")) })}`,
+              },
+            ]
+          : []),
+        buildEntryActions(locale, entry, readStatus, input.enabledActions, routeNamespace, input),
       );
     } else {
       components.push({

@@ -45,7 +45,27 @@ import * as credentialResolver from "@/utils/provider/credentialResolver";
 import * as rateLimiter from "@/utils/security/rateLimiter";
 import * as safeDownloadModule from "@/utils/security/safeDownload";
 import { initializeLocalizer, localizer } from "@/utils/text/localizer";
+import { localizedCopy } from "../../helpers/localeCases";
 import { createPersona } from "../../helpers/fixtures";
+import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+
+const MEMBER_FUNDING: SupporterFundingContext = {
+  credentialSource: "supporter",
+  provider: "openrouter",
+  capability: "embedding",
+  modelCodename: "embedding-model",
+  tierKey: "test_tier",
+  sponsorIdentityId: 3,
+  sponsorDiscordUserId: "sponsor-3",
+  entitlementId: 4,
+  renewalAt: null,
+  fundingScope: "server",
+  sponsorshipId: 5,
+  serverId: 1,
+  personalUserId: null,
+};
 
 beforeAll(async () => initializeLocalizer());
 
@@ -1422,6 +1442,43 @@ describe("memories permissions and scoping", () => {
     expect(acknowledged).toEqual([true, true, true, true, true]);
   });
 
+  it("renders a subscription refusal from a document write as its own receipt", async () => {
+    const edits: unknown[] = [];
+    const denied = new SupporterRequestDeniedError("allowance_exhausted", undefined, "embedding", "server");
+    const { dependencies } = createTestDependencies({
+      documentOperations: {
+        ...serverDocumentsOperations,
+        add: async () => ({ status: "subscription" as const, denied }),
+      },
+    });
+    const route = createMemoriesInteractionRoute(dependencies);
+    const customId = "memories:v1:document-add-submit:en-US:10:nonce123";
+    const interaction = {
+      id: "int-subscription",
+      customId,
+      user: { id: "user-42", username: "user42" },
+      guildId: "guild-123",
+      memberPermissions: { has: () => true },
+      deferred: false,
+      replied: false,
+      isButton: () => false,
+      isStringSelectMenu: () => false,
+      isModalSubmit: () => true,
+      deferUpdate: async function (this: { deferred: boolean }) {
+        this.deferred = true;
+      },
+      editReply: async function (this: { replied: boolean }, payload: unknown) {
+        this.replied = true;
+        edits.push(payload);
+      },
+      fields: { getTextInputValue: (fieldId: string) => (fieldId.startsWith("name_") ? "Guide" : "") },
+    };
+    await route.execute({} as Client, interaction as unknown as ModalSubmitInteraction, requireRoute(customId));
+    const rendered = JSON.stringify(edits.at(-1));
+    expect(rendered).toContain(localizedCopy("en-US", "commands.subscribe.request.allowance_title"));
+    expect(rendered).not.toContain(localizer("en-US", "commands.memories.write_failed_heading"));
+  });
+
   it("writes the submitted channel scope and skips the write when the submission is missing", async () => {
     const written: string[][] = [];
     let submittedScope: string[] | undefined;
@@ -2729,6 +2786,31 @@ describe("memories document operation ordering", () => {
       order.length = 0;
       embeddingSpy.mockRejectedValueOnce(new Error("embedding failed"));
       await expect(serverDocumentsOperations.vectorize(input)).rejects.toThrow("embedding failed");
+      expect(order).toEqual([]);
+
+      credentialSpy.mockResolvedValueOnce({
+        provider: "openrouter",
+        apiKey: "synthetic-member-key",
+        keyVersion: 1,
+        savedConfig: null,
+        source: "server",
+        modelId: 5,
+        supporterFunding: MEMBER_FUNDING,
+      });
+      embeddingSpy.mockRejectedValueOnce(
+        new Error("OpenRouter embedding request failed: HTTP 402", {
+          cause:
+            readOpenRouterLimitError(
+              402,
+              new Headers(),
+              JSON.stringify({ error: { code: 402, metadata: { limit_source: "openrouter_key_limit" } } }),
+            ) ?? undefined,
+        }),
+      );
+      expect(await serverDocumentsOperations.vectorize(input)).toMatchObject({
+        status: "subscription",
+        denied: { reason: "allowance_exhausted", capability: "embedding", fundingScope: "server" },
+      });
       expect(order).toEqual([]);
     } finally {
       ragSpy.mockRestore();

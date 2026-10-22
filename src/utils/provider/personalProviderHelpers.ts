@@ -92,9 +92,10 @@ export async function prunePersonalFallbackChain(
   userId: number,
   primaryLlmId: number | null,
   endpoints: Iterable<FallbackIdentityEndpoint> = [],
+  credentialProvider?: string,
 ): Promise<boolean> {
   const { fallback_model_refs: refs } = await llmProviderRepo.loadPersonalFallbackSettings(userId);
-  const pruned = prunePrimaryFallbackRefs(refs, primaryLlmId, endpoints);
+  const pruned = prunePrimaryFallbackRefs(refs, primaryLlmId, endpoints, credentialProvider);
   if (pruned.length === refs.length) return true;
   return await llmProviderRepo.updatePersonalFallbackModelRefs(userId, pruned);
 }
@@ -110,7 +111,7 @@ export async function setPersonalTextPrimary(
     ...row,
     llm_id: llmId,
   }));
-  return assigned && (await prunePersonalFallbackChain(userId, llmId, endpoints));
+  return assigned && (await prunePersonalFallbackChain(userId, llmId, endpoints, provider));
 }
 
 /**
@@ -195,7 +196,10 @@ export async function assignPersonalCapabilityToProvider(
     const next = updater(row);
     const mode = capability === "speech_design" ? "design" : "clone";
     const modelId = mode === "design" ? next.speech_design_model_id : next.speech_clone_model_id;
-    return modelId != null && setHostedSpeechSelection({ kind: "personal", ownerId: userId }, modelId, mode);
+    return (
+      modelId != null &&
+      setHostedSpeechSelection({ kind: "personal", ownerId: userId }, modelId, mode, false, undefined, provider)
+    );
   }
 
   let updated = false;

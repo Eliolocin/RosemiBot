@@ -2,6 +2,7 @@ import type {
   ProviderNativeVideoGenerationRequest,
   ProviderNativeVideoGenerationResult,
 } from "@/types/provider/featureInterfaces";
+import { beginSupporterRequest, type SupporterSpendHold } from "@/modules/supporter-billing/runtime/spendGuard";
 import type { Subprocess } from "bun";
 import { log, redactLogString } from "@/utils/misc/logger";
 import { z } from "zod";
@@ -11,6 +12,7 @@ import { PROVIDER_VIDEO_DOWNLOAD_MAX_MB } from "@/providers/utils/providerVideoD
 import { pollForCompletion } from "@/utils/async/pollForCompletion";
 import { getOrFetchOpenRouterVideoModelCapabilities } from "@/utils/cache/openrouterVideoModelCache";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import {
   buildOpenRouterVideoRequestBody,
   normalizeOpenRouterVideoOptions,
@@ -370,17 +372,26 @@ export async function fetchOpenRouterVideoApi(url: string, init: RequestInit): P
   )
     throw new Error("Invalid OpenRouter video API request");
   const headers = Object.fromEntries(new Headers(init.headers).entries());
-  const raw = await externalHttpRequest(
-    url,
-    init.method,
-    headers,
-    { maxBodyBytes: MAX_API_RESPONSE_BYTES, abortSignal: init.signal ?? undefined },
-    init.body ?? undefined,
-  );
-  return new Response([204, 205, 304].includes(raw.status) ? null : new Uint8Array(raw.bodyBuffer), {
-    status: raw.status,
-    headers: raw.headers,
-  });
+  try {
+    const raw = await externalHttpRequest(
+      url,
+      init.method,
+      headers,
+      { maxBodyBytes: MAX_API_RESPONSE_BYTES, abortSignal: init.signal ?? undefined },
+      init.body ?? undefined,
+    );
+    return new Response([204, 205, 304].includes(raw.status) ? null : new Uint8Array(raw.bodyBuffer), {
+      status: raw.status,
+      headers: raw.headers,
+    });
+  } catch (error) {
+    throw new Error(
+      safeVideoErrorText(
+        error instanceof Error ? error.message : "Video API transport failed",
+        new Headers(init.headers).get("Authorization")?.replace(/^Bearer\s+/i, "") ?? "",
+      ),
+    );
+  }
 }
 
 /** Polling interval for OpenRouter video jobs (30 seconds, per OpenRouter docs) */
@@ -421,6 +432,32 @@ type OpenRouterVideoPollResponse = z.infer<typeof openRouterVideoJobSchema>;
 export async function generateOpenRouterNativeVideo(
   request: ProviderNativeVideoGenerationRequest,
 ): Promise<ProviderNativeVideoGenerationResult> {
+  request.abortSignal?.throwIfAborted();
+  const capabilities = await getOrFetchOpenRouterVideoModelCapabilities(request.model);
+  const options = normalizeOpenRouterVideoOptions(request, capabilities);
+  const hold = await beginSupporterRequest(
+    request.apiKey,
+    "/videos",
+    buildOpenRouterVideoRequestBody(request, options, capabilities),
+  );
+  let completed = false;
+  try {
+    if (request.abortSignal?.aborted) {
+      hold?.reportCost(0);
+      request.abortSignal.throwIfAborted();
+    }
+    const result = await generateVideo(request, hold);
+    completed = true;
+    return result;
+  } finally {
+    hold?.release(completed);
+  }
+}
+
+async function generateVideo(
+  request: ProviderNativeVideoGenerationRequest,
+  hold?: SupporterSpendHold,
+): Promise<ProviderNativeVideoGenerationResult> {
   const modelCapabilities = await getOrFetchOpenRouterVideoModelCapabilities(request.model);
   const normalizedOptions = normalizeOpenRouterVideoOptions(request, modelCapabilities);
   request.abortSignal?.throwIfAborted();
@@ -457,12 +494,14 @@ export async function generateOpenRouterNativeVideo(
   const submitBodyText = submitRaw.bodyBuffer.toString("utf8");
 
   if (submitRaw.status < 200 || submitRaw.status >= 300) {
+    hold?.reportCost(0);
     log.error(
       `OpenRouter video generation request failed (model: ${request.model}, status: ${submitRaw.status})`,
       new Error(videoApiErrorSummary(submitBodyText, request.apiKey)),
     );
     throw new Error(
       `OpenRouter video generation failed: ${submitRaw.status}: ${videoApiErrorSummary(submitBodyText, request.apiKey)}`,
+      { cause: readOpenRouterLimitError(submitRaw.status, submitResponse.headers, submitBodyText) ?? undefined },
     );
   }
 
@@ -478,6 +517,7 @@ export async function generateOpenRouterNativeVideo(
   }
 
   const jobId = submitResult.id;
+  hold?.reportCost(submitResult.usage?.cost);
   const rawPollingUrl = submitResult.polling_url;
 
   if (!jobId || !rawPollingUrl) {
@@ -535,6 +575,7 @@ export async function generateOpenRouterNativeVideo(
         return { done: false };
       }
 
+      hold?.reportCost(pollResult.usage?.cost);
       switch (pollResult.status) {
         case "completed":
           return { done: true, result: pollResult };
@@ -561,9 +602,10 @@ export async function generateOpenRouterNativeVideo(
   //    Use unsigned_urls if available, otherwise use the content endpoint.
   //    The video file may not be immediately available after the poll returns "completed"
   //    due to eventual consistency in OpenRouter's storage, so retry a few times on 404.
+  const billing = { costUsd: completedJob.usage?.cost ?? undefined, providerRequestId: jobId };
+  hold?.reportCost(billing.costUsd);
   const rawVideoUrl = completedJob.unsigned_urls?.[0] ?? `${OPENROUTER_VIDEO_URL}/${jobId}/content?index=0`;
   const videoUrl = new URL(rawVideoUrl, OPENROUTER_ORIGIN).href;
-
   log.info(`OpenRouter video generation: downloading video (jobId: ${jobId}, url: ${videoUrl.slice(0, 80)})`);
 
   const maxDownloadAttempts = 4;
@@ -580,7 +622,7 @@ export async function generateOpenRouterNativeVideo(
 
   if (!download.videoData) {
     log.error(`Failed to download OpenRouter video (jobId: ${jobId})`, new Error(download.reason));
-    return { videoData: null, mimeType: null };
+    return { videoData: null, mimeType: null, ...billing };
   }
 
   const videoData = download.videoData;
@@ -591,6 +633,7 @@ export async function generateOpenRouterNativeVideo(
     videoData,
     mimeType: "video/mp4",
     durationSeconds: normalizedOptions.duration,
+    ...billing,
   };
 }
 

@@ -264,8 +264,6 @@ Use \`/config\` > Modelos > Mudar Modelos para mudar para um modelo que suporte 
 **Próximos passos:**
 1. Use \`/config\` > Modelos > Mudar Modelos para mudar para um modelo com ferramentas habilitadas, OU
 2. Gere novamente sem a pesquisa na web (escolha "Não" quando perguntado)`,
-      api_key_decrypt_failed_title: `🔴 Erro na Chave de API`,
-      api_key_decrypt_failed_description: `Falha ao descriptografar as credenciais do provedor ativo. Por favor, reconfigure-as usando \`/providers\`.`,
       vision_credentials_unavailable_title: `🔴 Credenciais do Modelo de Visão Indisponíveis`,
       vision_credentials_unavailable_description: `Seu modelo de visão (**{vision_model_name}**) roda no provedor **{vision_provider}**, mas sua chave de API salva não pôde ser usada para descrever a imagem. Reconfigure as credenciais desse provedor com \`/providers\`, ou verifique \`/config\` > Modelos.`,
       invalid_image_title: `🔴 Imagem Inválida`,

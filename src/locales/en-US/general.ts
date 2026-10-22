@@ -1,5 +1,9 @@
 export default {
   general: {
+    oauth: {
+      invalid_callback: `This sign-in link is invalid or expired. Start sign-in again from TomoriBot.`,
+      server_error: `TomoriBot could not complete sign-in because of a service error. Please try again later.`,
+    },
     language_name: `English`,
     yes: `Yes`,
     confirm: `Confirm`,

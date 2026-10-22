@@ -76,7 +76,6 @@ describe("Decision transports", () => {
     for (const secret of [request.evidence, request.questions[0].instructions, request.apiKey])
       expect(JSON.stringify(info.mock.calls)).not.toContain(String(secret));
   });
-
   it("translates ordered OpenAI predicates and normalizes valid refusals", async () => {
     let body: unknown;
     const result = await callCustomDecisions(

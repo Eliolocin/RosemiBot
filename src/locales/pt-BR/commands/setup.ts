@@ -43,6 +43,10 @@ Tente {model_text_command} para atribuir um modelo funcional, ou {provider_add_c
 
 				Se você deseja mudar meu provedor, use \`/providers\` para registrar e ativar um novo provedor de texto padrão.`,
     wizard: {
+      provider_option_supporter: `Assinatura do TomoriBot (Recomendado)`,
+      provider_option_supporter_description: `Todos os recursos (texto, imagem, voz, etc.). Pago pelo Patreon; sem precisar de chave de API.`,
+      provider_supporter_summary: `Concluir Configuração compartilha sua cota de assinatura com este servidor e configura os modelos inclusos.`,
+      receipt_desc_supporter: `Este servidor está configurado como {persona} e usa sua cota mensal de apoiador. Membros daqui podem consumir essa cota.`,
       title: `Configurar o TomoriBot`,
       intro: `Complete todos os itens abaixo e então finalize a configuração.`,
       intro_ready: `Tudo o que é necessário está pronto. Revise e finalize.`,

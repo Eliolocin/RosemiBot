@@ -19,6 +19,7 @@ import {
   providersInteractionRoute,
 } from "@/utils/discord/interactions/providersRoutes";
 import { setupInteractionRoute } from "@/utils/discord/interactions/setupRoutes";
+import { subscriptionInteractionRoute } from "@/modules/supporter-billing/subscribe/components";
 import { statusInteractionRoute } from "@/utils/discord/interactions/statusRoutes";
 import { statsInteractionRoute } from "@/utils/discord/interactions/statsRoutes";
 import { modelOverrideInteractionRoute } from "@/utils/discord/interactions/modelOverrideRoutes";
@@ -43,6 +44,7 @@ const registry = new InteractionRouteRegistry([
   personalProvidersInteractionRoute,
   providersInteractionRoute,
   setupInteractionRoute,
+  subscriptionInteractionRoute,
   statusInteractionRoute,
   statsInteractionRoute,
   transferInteractionRoute,

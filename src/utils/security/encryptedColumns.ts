@@ -11,9 +11,16 @@ export const ENCRYPTED_COLUMNS = [
   { table: "guild_mcp_servers", id: "guild_mcp_id", column: "auth_token" },
   { table: "discord_managed_webhooks", id: "managed_webhook_id", column: "webhook_token" },
   { table: "server_model_configs", id: "server_id", column: "api_key" },
+  { table: "supporter_member_keys", id: "member_key_id", column: "api_key" },
   ...(["client_secret", "refresh_token", "access_token"] as const).map((column) => ({
     table: "pluralbuddy_oauth_connections" as const,
     id: "instance_id" as const,
+    column,
+    keyVersion: `${column}_key_version`,
+  })),
+  ...(["refresh_token", "access_token"] as const).map((column) => ({
+    table: "supporter_patreon_creator_tokens" as const,
+    id: "creator_token_id" as const,
     column,
     keyVersion: `${column}_key_version`,
   })),
@@ -42,6 +49,12 @@ export async function* scanEncryptedRows(client: SQL): AsyncGenerator<{
 }> {
   for (const target of ENCRYPTED_COLUMNS) {
     try {
+      if (target.table === "supporter_patreon_creator_tokens" || target.table === "supporter_member_keys") {
+        const [row] = await client<
+          { exists: boolean }[]
+        >`SELECT to_regclass(${`public.${target.table}`}) IS NOT NULL AS exists`;
+        if (!row?.exists) continue;
+      }
       if (target.table === "server_model_configs") {
         const columns = await client`
           SELECT 1 FROM pg_attribute

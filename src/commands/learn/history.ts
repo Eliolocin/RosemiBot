@@ -72,6 +72,14 @@ import {
 } from "@/utils/provider/credentialResolver";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
+import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import {
+  findSupporterRequestDeniedError,
+  type SupporterRequestDeniedError,
+} from "@/modules/supporter-billing/runtime/funding";
+import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
+import type { TokenUsage } from "@/utils/text/tokenEstimate";
 
 /** Maximum document name length */
 const MAX_DOCUMENT_NAME_LENGTH = 64;
@@ -295,6 +303,15 @@ async function showExtractionFailureTerminal(
     await showExtractionFailedEmbed(statusTarget, locale, footer, failure);
     return;
   }
+  if (failure.reason === "subscription") {
+    const copy = getSupporterRequestFailureCopy(failure.denied, locale);
+    await replaceHistoryImportStatus(statusTarget, locale, {
+      titleKey: copy.titleKey,
+      description: `${copy.description}\n\n${footer}`,
+      color: ColorCode.ERROR,
+    });
+    return;
+  }
   await showNoFactsExtractedEmbed(statusTarget, locale, footer);
 }
 
@@ -458,6 +475,7 @@ async function extractWindow(
   apiKey: string,
   systemPrompt: string,
   endpointUrl?: string,
+  onUsage?: (usage: TokenUsage) => void,
 ): Promise<HistoryExtractionOutcome> {
   const userPrompt = buildExtractionUserPrompt(windowText, previousRestatements);
   return await extractHistoryWindowForProvider({
@@ -469,6 +487,7 @@ async function extractWindow(
     userPrompt,
     temperature: 0.3,
     maxOutputTokens: 8192,
+    onUsage,
   });
 }
 
@@ -644,7 +663,8 @@ async function createDocumentForImport(params: {
 type IncrementalExtractionResult =
   | { ok: true; totalFactCount: number; allChunkText: string }
   | { ok: false; reason: "no-facts" }
-  | { ok: false; reason: "extraction-failed"; error: string; failedWindows: number; totalWindows: number };
+  | { ok: false; reason: "extraction-failed"; error: string; failedWindows: number; totalWindows: number }
+  | { ok: false; reason: "subscription"; denied: SupporterRequestDeniedError };
 
 /**
  * Runs incremental LLM extraction over message windows, embedding and persisting each
@@ -669,6 +689,8 @@ async function runIncrementalExtraction(params: {
   embeddingProvider: string;
   embeddingCodename: string;
   embeddingApiKey: string;
+  embeddingFunding?: SupporterFundingContext;
+  textFunding?: SupporterFundingContext;
 }): Promise<IncrementalExtractionResult> {
   const {
     formattedResult,
@@ -685,6 +707,8 @@ async function runIncrementalExtraction(params: {
     embeddingProvider,
     embeddingCodename,
     embeddingApiKey,
+    embeddingFunding,
+    textFunding,
   } = params;
 
   const memoryLimits = getMemoryLimits();
@@ -727,7 +751,13 @@ async function runIncrementalExtraction(params: {
       apiKey,
       composedSystemPrompt,
       endpointUrl,
+      createSupporterUsageRecorder(textFunding, model),
     );
+
+    const deniedExtraction = windowOutcome.ok
+      ? null
+      : findSupporterRequestDeniedError(windowOutcome.cause, textFunding);
+    if (deniedExtraction) return { ok: false, reason: "subscription", denied: deniedExtraction };
 
     // A failed window is recorded and skipped rather than treated as "found nothing",
     //    so the run can still report the real cause if no window ever succeeds.
@@ -754,15 +784,23 @@ async function runIncrementalExtraction(params: {
 
       allChunks.push(...windowChunks);
 
-      const embeddings = await generateEmbeddingsBatched({
-        provider: embeddingProvider,
-        apiKey: embeddingApiKey,
-        model: embeddingCodename,
-        modelId: embeddingModelId,
-        inputs: windowChunks,
-        taskType: (await providerSupportsEmbeddingTaskType(embeddingProvider)) ? "RETRIEVAL_DOCUMENT" : undefined,
-        batchSize: 16,
-      });
+      let embeddings: number[][];
+      try {
+        embeddings = await generateEmbeddingsBatched({
+          provider: embeddingProvider,
+          apiKey: embeddingApiKey,
+          model: embeddingCodename,
+          modelId: embeddingModelId,
+          inputs: windowChunks,
+          taskType: (await providerSupportsEmbeddingTaskType(embeddingProvider)) ? "RETRIEVAL_DOCUMENT" : undefined,
+          batchSize: 16,
+          onUsage: createSupporterUsageRecorder(embeddingFunding, embeddingCodename),
+        });
+      } catch (error) {
+        const deniedEmbedding = findSupporterRequestDeniedError(error, embeddingFunding);
+        if (deniedEmbedding) return { ok: false, reason: "subscription", denied: deniedEmbedding };
+        throw error;
+      }
 
       for (const target of writeTargets) {
         const startIdx = chunkStartIndex.get(target.documentId) ?? 0;
@@ -834,6 +872,7 @@ interface HistoryImportRuntime {
     embeddingProvider: string;
     embeddingCodename: string;
     embeddingApiKey: string;
+    embeddingFunding?: SupporterFundingContext;
   };
   provider: string;
   model: string;
@@ -949,10 +988,13 @@ async function resolveHistoryImportRuntime(
         embeddingProvider: embeddingModel.provider as string,
         embeddingCodename: embeddingModel.codename,
         embeddingApiKey: embeddingCreds.apiKey,
+        embeddingFunding: embeddingCreds.supporterFunding,
       },
-      provider: tomoriState.llm.llm_provider.toLowerCase(),
-      model: getEffectiveLlmModelName(tomoriState.llm, tomoriState.config.custom_model_name),
-      endpointUrl: tomoriState.config.custom_endpoint_url ?? undefined,
+      provider: textCreds.supporterFunding?.provider ?? tomoriState.llm.llm_provider.toLowerCase(),
+      model:
+        textCreds.supporterFunding?.modelCodename ??
+        getEffectiveLlmModelName(tomoriState.llm, tomoriState.config.custom_model_name),
+      endpointUrl: textCreds.supporterFunding ? undefined : (tomoriState.config.custom_endpoint_url ?? undefined),
     },
   };
 }
@@ -1345,6 +1387,7 @@ export async function execute(
             provider,
             model,
             apiKey: textCreds.apiKey,
+            textFunding: textCreds.supporterFunding,
             endpointUrl,
             composeSystemPrompt,
             replyInteraction: work.message,
@@ -1473,6 +1516,7 @@ export async function execute(
         provider,
         model,
         apiKey: textCreds.apiKey,
+        textFunding: textCreds.supporterFunding,
         endpointUrl,
         composeSystemPrompt: async () => globalSystemPrompt,
         replyInteraction: modalSubmitInteraction,
@@ -1599,6 +1643,7 @@ export async function execute(
         provider,
         model,
         apiKey: textCreds.apiKey,
+        textFunding: textCreds.supporterFunding,
         endpointUrl,
         composeSystemPrompt: async () => autoSystemPrompt,
         replyInteraction: modalSubmitInteraction,
@@ -1693,6 +1738,7 @@ export async function execute(
       provider,
       model,
       apiKey: textCreds.apiKey,
+      textFunding: textCreds.supporterFunding,
       endpointUrl,
       composeSystemPrompt: async () => autoSystemPrompt,
       replyInteraction: modalSubmitInteraction,

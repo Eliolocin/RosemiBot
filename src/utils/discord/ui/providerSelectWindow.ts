@@ -72,7 +72,7 @@ export function buildProviderSelectWindow(input: ProviderSelectWindowInput): Pro
     input.expandedPageCount > 0 && input.expandedProvider
       ? localizer(input.locale, input.pagePlaceholderKey, {
           capability: input.capabilityLabel,
-          provider: getProviderDisplayName(input.expandedProvider),
+          provider: getProviderDisplayName(input.expandedProvider, input.locale),
         })
       : undefined;
 

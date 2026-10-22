@@ -12,6 +12,8 @@ import type {
 } from "@/types/db/schema";
 import { DEFAULT_THINKING_LEVEL } from "@/constants/thinkingLevels";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
+import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
 import type { OpenRouterModelScope } from "@/utils/db/repositories/LlmModelRepository";
 import { supportsSpeechMode } from "@/utils/speech/voiceSourceCapabilities";
 import {
@@ -337,6 +339,16 @@ function savedProviderSelectionServesCapability(
   capability: SavedProviderCapability,
   config: SavedProviderModelSelection,
 ): boolean {
+  if (provider === SUPPORTER_PROVIDER_VALUE)
+    return (
+      isSupporterBillingEnabled(resolveEnvironment()) &&
+      (capability === "text" ||
+        capability === "vision" ||
+        capability === "embedding" ||
+        capability === "image" ||
+        capability === "video" ||
+        capability === "speech_clone")
+    );
   if (!isCustomProvider(provider)) {
     switch (capability) {
       case "text":
@@ -393,10 +405,14 @@ async function filterSavedProvidersByCapability<
       savedConfigs.map(
         async (config) =>
           !isCustomProvider(config.provider) &&
-          config.api_key !== null &&
-          (await llmModelRepo.loadAvailableSpeechModels(config.provider, owner)).some((model) =>
-            supportsSpeechMode(model, mode),
-          ),
+          (config.api_key !== null ||
+            (config.provider === SUPPORTER_PROVIDER_VALUE && isSupporterBillingEnabled(resolveEnvironment()))) &&
+          (
+            await llmModelRepo.loadAvailableSpeechModels(
+              config.provider === SUPPORTER_PROVIDER_VALUE ? "openrouter" : config.provider,
+              owner,
+            )
+          ).some((model) => supportsSpeechMode(model, mode)),
       ),
     );
     return savedConfigs.filter((_config, index) => servesMode[index]);

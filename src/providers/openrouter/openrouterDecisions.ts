@@ -1,3 +1,4 @@
+import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
 import type { ProviderDecisionRequest } from "@/types/provider/featureInterfaces";
 import {
   encodeNamedDecisionQuestions,
@@ -14,7 +15,8 @@ export async function callOpenRouterDecisions(
     url: "https://openrouter.ai/api/alpha/decisions",
     body: { model: request.model, state: request.evidence, questions: encodeNamedDecisionQuestions(request) },
     headers: buildOpenRouterAttributionHeaders(),
-    fetch: fetchImpl,
+    fetch: (url, init) =>
+      fetchWithSupporterSpend(url, init, (input, options) => fetchImpl(String(input), options ?? {})),
     parseAnswers: (payload) => parseNamedDecisionAnswers(payload, request),
   });
 }

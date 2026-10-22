@@ -53,6 +53,10 @@ import type { CustomEndpointRow } from "@/types/db/schema";
 import { readImageEndpointSupports } from "@/utils/provider/customImageEndpointSupport";
 import { extractImagesFromMessage } from "@/utils/image/imageExtractor";
 import { beginTextModelHandoffBeforeComfyUi } from "@/utils/provider/textModelComfyUiHandoff";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { notifySupporterToolFailure } from "@/modules/supporter-billing/discord/requestFailure";
+import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
+import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
 
 const IMAGE_REFERENCE_MAX_COUNT = Number.parseInt(process.env.IMAGE_REFERENCE_MAX_COUNT ?? "3", 10);
 const IMAGE_REFERENCE_MAX_TOTAL_BYTES = Number.parseInt(process.env.IMAGE_REFERENCE_MAX_TOTAL_BYTES ?? "6291456", 10);
@@ -917,6 +921,7 @@ export class GenerateImageTool extends BaseTool {
 
     // Default to allowed; overwritten below for server-credential users
     let quotaCheck: QuotaCheckResult = { allowed: true };
+    let supporterFunding: SupporterFundingContext | undefined;
 
     try {
       const { credentials: creds, quotaCheck: serverQuotaCheck } = await resolveCredentialsWithMediaQuota(
@@ -986,6 +991,7 @@ export class GenerateImageTool extends BaseTool {
       log.info(`Using diffusion model: ${modelCodename} for image generation`);
 
       const apiKey = creds.apiKey;
+      supporterFunding = creds.supporterFunding;
       const executionProvider = creds.provider;
       const appliedNegativePrompt = this.customEndpointSupportsNegativePrompt(creds.customEndpoint)
         ? effectiveNegativePrompt
@@ -1313,6 +1319,7 @@ export class GenerateImageTool extends BaseTool {
           ...(providerReferenceImages.length > 0 ? { referenceImages: providerReferenceImages } : {}),
           ...(context.abortSignal ? { abortSignal: context.abortSignal } : {}),
         });
+        recordSupporterUsage(supporterFunding, { modelCodename, costUsd: result.costUsd });
         generatedImageData = result.imageData;
       } else if (imageGenerationImplementation === "google") {
         // Use Google Gemini API
@@ -1458,6 +1465,8 @@ export class GenerateImageTool extends BaseTool {
         endTurn: context.streamContext?.endTurnAfterTools?.includes(this.name) ?? false,
       };
     } catch (error) {
+      const denied = findSupporterRequestDeniedError(error, supporterFunding);
+      if (denied) return { success: false, error: await notifySupporterToolFailure(context, denied) };
       if (context.abortSignal?.aborted) {
         return { success: false, error: "Image generation was cancelled." };
       }

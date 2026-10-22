@@ -82,6 +82,7 @@ export interface ToolLoopParams {
   context: ChatTurnContext;
   provider: LLMProvider;
   providerConfig: ProviderConfig;
+  supporterFunding?: ToolContext["supporterFunding"];
   tomoriState: ChatTurnContext["tomoriState"];
 }
 
@@ -505,7 +506,7 @@ export async function sendStreamTimeoutNotice(params: {
   channel: Parameters<typeof sendStandardEmbed>[0];
   locale: string;
   providerName: string;
-  textCredentialSource: "server" | "personal" | undefined;
+  textCredentialSource: "server" | "personal" | "supporter" | undefined;
   sawStreamProgress: boolean;
 }): Promise<void> {
   await sendStandardEmbed(params.channel, params.locale, {
@@ -782,6 +783,7 @@ async function executeToolCall(
     tomoriState: params.tomoriState,
     locale: params.context.locale,
     provider: params.provider.getInfo().name,
+    supporterFunding: params.supporterFunding,
     streamContext: params.context.streamingContext,
     webhook: params.context.responseTarget?.webhook,
     personaUsername: params.context.responseTarget?.personaUsername,

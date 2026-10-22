@@ -264,8 +264,6 @@ export default {
 **接下来可以这样做：**
 1. 到 \`/config\` > 模型 > 切换模型，换成支持工具的模型，或者
 2. 去掉网络搜索重新生成（被问到时选「否」）`,
-      api_key_decrypt_failed_title: `🔴 API 密钥错误`,
-      api_key_decrypt_failed_description: `无法解密当前提供方的凭据。请用 \`/providers\` 重新配置。`,
       vision_credentials_unavailable_title: `🔴 视觉模型的凭据不可用`,
       vision_credentials_unavailable_description: `你的视觉模型（**{vision_model_name}**）运行在提供方 **{vision_provider}** 上，但无法用它的 API 密钥描述图片。请用 \`/providers\` 重新配置那个提供方的凭据，或到 \`/config\` > 模型 检查一下。`,
       invalid_image_title: `🔴 图像无效`,

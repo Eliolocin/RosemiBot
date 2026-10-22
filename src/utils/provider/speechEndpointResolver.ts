@@ -5,6 +5,12 @@ import { loadHostedSpeechSelection, type HostedSpeechSelection } from "@/utils/d
 import { log } from "@/utils/misc/logger";
 import { buildCustomProviderName } from "@/utils/provider/customProviderUtils";
 import { decryptApiKey } from "@/utils/security/crypto";
+import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
+import { supporterSponsorshipRepository } from "@/modules/supporter-billing/db";
+import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
+import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 import {
   loadActiveEndpoint,
   loadEndpointCredentials,
@@ -19,7 +25,12 @@ export interface SpeechEndpointResult {
 
 export type SpeechTargetResult =
   | (SpeechEndpointResult & { kind: "custom-endpoint"; owner: { kind: "server"; ownerId: number } })
-  | (Omit<HostedSpeechSelection, "apiKey" | "keyVersion"> & { kind: "hosted-model"; endpoint: null; apiKey: string });
+  | (Omit<HostedSpeechSelection, "apiKey" | "keyVersion"> & {
+      kind: "hosted-model";
+      endpoint: null;
+      apiKey: string;
+      supporterFunding?: SupporterFundingContext;
+    });
 
 export function speechTargetSource(target: SpeechTargetResult | null | undefined) {
   return target?.kind === "hosted-model" ? target.model : (target?.endpoint ?? null);
@@ -40,6 +51,8 @@ export function speechTargetFingerprint(target: SpeechTargetResult | null | unde
               target.owner,
               target.credentialId,
               target.credentialRevision,
+              target.supporterFunding,
+              target.apiKey,
             ]
           : [
               target.kind,
@@ -130,10 +143,49 @@ export async function resolveSpeechTargets(
   userId?: number,
 ): Promise<{ design: SpeechTargetResult | null; clone: SpeechTargetResult | null }> {
   const serverAllowed = userId === undefined || (await loadSpeechRoutingPolicy(serverId, userId)).serverAllowed;
+  const billingEnabled = isSupporterBillingEnabled(resolveEnvironment());
   async function resolve(mode: VoiceSourceMode): Promise<SpeechTargetResult | null> {
-    const hosted = await loadHostedSpeechSelection(serverId, mode, userId);
+    const hosted = await loadHostedSpeechSelection(serverId, mode, userId, billingEnabled);
     if (hosted) {
       if (hosted.owner.kind === "server" && !serverAllowed) return null;
+      if (
+        hosted.model.provider === "openrouter" &&
+        billingEnabled &&
+        (hosted.subscription ||
+          (hosted.owner.kind === "server" &&
+            (await supporterSponsorshipRepository.loadActiveSponsorshipForServer(serverId))))
+      ) {
+        try {
+          const credentials = await resolveSupporterCapabilityCredentials({
+            scope:
+              hosted.owner.kind === "personal"
+                ? { kind: "personal", userId: hosted.owner.ownerId }
+                : { kind: "server", serverId },
+            capability: "voice",
+            modelId: hosted.model.speech_model_id,
+          });
+          return {
+            ...hosted,
+            kind: "hosted-model",
+            endpoint: null,
+            apiKey: credentials.apiKey,
+            supporterFunding: credentials.funding,
+          };
+        } catch (error) {
+          if (
+            !(
+              error instanceof SupporterRequestDeniedError &&
+              error.reason === "model_not_allowed" &&
+              hosted.owner.kind === "server" &&
+              !hosted.subscription
+            )
+          ) {
+            log.warn("SpeechResolver: subscription credential unavailable", { serverId, mode, owner: hosted.owner });
+            return null;
+          }
+        }
+      }
+      if (!hosted.apiKey) return null;
       try {
         const apiKey = await decryptApiKey(hosted.apiKey, hosted.keyVersion);
         return apiKey ? { ...hosted, kind: "hosted-model", endpoint: null, apiKey } : null;

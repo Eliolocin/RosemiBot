@@ -3595,6 +3595,17 @@ CREATE TABLE IF NOT EXISTS command_catalog (
   last_synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS oauth_states (
+  oauth_state_id SERIAL PRIMARY KEY,
+  nonce_hash TEXT NOT NULL UNIQUE,
+  flow TEXT NOT NULL CHECK (flow ~ '^[a-z][a-z0-9_-]{0,63}$'),
+  subject TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (expires_at > created_at)
+);
+CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states(expires_at);
 CREATE OR REPLACE FUNCTION validate_speech_endpoint_selections() RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.speech_design_endpoint_id IS NOT NULL
@@ -3703,8 +3714,8 @@ BEGIN
     FOR selected IN SELECT * FROM (VALUES (NEW.speech_design_model_id, 'design'), (NEW.speech_clone_model_id, 'clone')) AS slots(id, mode)
     LOOP
       IF selected.id IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM speech_models m JOIN saved_provider_configs c ON c.provider = m.provider
-        WHERE m.speech_model_id = selected.id AND c.server_id = NEW.server_id AND c.api_key IS NOT NULL
+        SELECT 1 FROM speech_models m JOIN saved_provider_configs c ON (c.provider = m.provider OR (c.provider = 'supporter' AND m.provider = 'openrouter'))
+        WHERE m.speech_model_id = selected.id AND c.server_id = NEW.server_id AND (c.api_key IS NOT NULL OR c.provider = 'supporter')
           AND m.voice_mode IN (selected.mode, 'auto') AND NOT m.is_deprecated
           AND (NOT m.is_scoped_registration OR EXISTS (
             SELECT 1 FROM scoped_model_registrations r WHERE r.speech_model_id = m.speech_model_id
@@ -3715,8 +3726,8 @@ BEGIN
     FOR selected IN SELECT * FROM (VALUES (NEW.speech_design_model_id, 'design'), (NEW.speech_clone_model_id, 'clone')) AS slots(id, mode)
     LOOP
       IF selected.id IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM speech_models m WHERE m.speech_model_id = selected.id AND m.provider = NEW.provider
-          AND NEW.api_key IS NOT NULL AND m.voice_mode IN (selected.mode, 'auto') AND NOT m.is_deprecated
+        SELECT 1 FROM speech_models m WHERE m.speech_model_id = selected.id AND (m.provider = NEW.provider OR (NEW.provider = 'supporter' AND m.provider = 'openrouter'))
+          AND (NEW.api_key IS NOT NULL OR NEW.provider = 'supporter') AND m.voice_mode IN (selected.mode, 'auto') AND NOT m.is_deprecated
           AND (NOT m.is_scoped_registration OR EXISTS (
             SELECT 1 FROM scoped_model_registrations r WHERE r.speech_model_id = m.speech_model_id
               AND r.user_id = NEW.user_id AND r.server_id IS NULL))
@@ -3769,7 +3780,9 @@ BEGIN
     NEW.credential_revision = OLD.credential_revision + 1;
     IF TG_TABLE_NAME = 'saved_provider_configs' THEN
       UPDATE speech_voice_bindings SET pending_delete = true WHERE saved_config_id = OLD.saved_config_id;
-      IF NEW.api_key IS NULL THEN
+      IF NEW.api_key IS NULL AND NOT (OLD.provider = 'openrouter' AND EXISTS (
+        SELECT 1 FROM saved_provider_configs WHERE server_id = OLD.server_id AND provider = 'supporter'
+      )) THEN
         UPDATE server_speech_configs SET
           speech_design_model_id = CASE WHEN speech_design_model_id IN (SELECT speech_model_id FROM speech_models WHERE provider = OLD.provider) THEN NULL ELSE speech_design_model_id END,
           speech_clone_model_id = CASE WHEN speech_clone_model_id IN (SELECT speech_model_id FROM speech_models WHERE provider = OLD.provider) THEN NULL ELSE speech_clone_model_id END
@@ -3859,11 +3872,17 @@ CREATE TRIGGER validate_speech_voice_binding BEFORE INSERT OR UPDATE ON speech_v
   FOR EACH ROW EXECUTE FUNCTION validate_speech_voice_binding();
 
 CREATE OR REPLACE FUNCTION clear_removed_speech_credentials() RETURNS TRIGGER AS $$
+DECLARE removed_provider TEXT := CASE WHEN OLD.provider = 'supporter' THEN 'openrouter' ELSE OLD.provider END;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM servers WHERE server_id = OLD.server_id) THEN RETURN OLD; END IF;
+  IF OLD.provider = 'openrouter' AND EXISTS (
+    SELECT 1 FROM saved_provider_configs WHERE server_id = OLD.server_id AND provider = 'supporter'
+  ) OR (OLD.provider = 'supporter' AND EXISTS (
+    SELECT 1 FROM saved_provider_configs WHERE server_id = OLD.server_id AND provider = 'openrouter' AND api_key IS NOT NULL
+  )) THEN RETURN OLD; END IF;
   UPDATE server_speech_configs SET
-    speech_design_model_id = CASE WHEN speech_design_model_id IN (SELECT speech_model_id FROM speech_models WHERE provider = OLD.provider) THEN NULL ELSE speech_design_model_id END,
-    speech_clone_model_id = CASE WHEN speech_clone_model_id IN (SELECT speech_model_id FROM speech_models WHERE provider = OLD.provider) THEN NULL ELSE speech_clone_model_id END
+    speech_design_model_id = CASE WHEN speech_design_model_id IN (SELECT speech_model_id FROM speech_models WHERE provider = removed_provider) THEN NULL ELSE speech_design_model_id END,
+    speech_clone_model_id = CASE WHEN speech_clone_model_id IN (SELECT speech_model_id FROM speech_models WHERE provider = removed_provider) THEN NULL ELSE speech_clone_model_id END
   WHERE server_id = OLD.server_id;
   RETURN OLD;
 END;

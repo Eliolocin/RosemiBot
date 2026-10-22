@@ -13,6 +13,17 @@ import { decryptApiKey } from "@/utils/security/crypto";
 import { CUSTOM_ENDPOINT_PLACEHOLDER_KEY } from "@/utils/provider/legacyCustomProvider";
 import { isCustomProvider } from "@/utils/provider/customProviderUtils";
 import { getStaticProviderInfo } from "@/utils/provider/providerInfoRegistry";
+import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
+import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
+import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { supporterSponsorshipRepository } from "@/modules/supporter-billing/db";
+import {
+  SupporterRequestDeniedError,
+  findSupporterRequestDeniedError,
+} from "@/modules/supporter-billing/runtime/funding";
+import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
+import { localizer } from "@/utils/text/localizer";
 
 export type Capability = "text" | "embedding" | "image-standard" | "image-nai" | "video" | "vision";
 
@@ -20,10 +31,12 @@ export interface ResolvedCredentials {
   provider: string;
   apiKey: string;
   keyVersion: number;
-  savedConfig: SavedProviderConfigRow | UserSavedProviderConfigRow;
+  savedConfig: SavedProviderConfigRow | UserSavedProviderConfigRow | null;
   source: "server" | "personal";
   customEndpoint?: CustomEndpointRow;
   apiStyle?: string;
+  supporterFunding?: SupporterFundingContext;
+  modelId?: number;
 }
 
 interface ResolverOptions {
@@ -58,6 +71,37 @@ export class PersonalProviderRequiredError extends Error {
     super(`A personal provider is required for ${capability}`);
     this.name = "PersonalProviderRequiredError";
   }
+}
+
+export function getCapabilityCredentialFailureCopy(
+  error: unknown,
+  locale: string,
+): { titleKey: string; description: string } | null {
+  const denied = findSupporterRequestDeniedError(error);
+  if (denied) return getSupporterRequestFailureCopy(denied, locale);
+  const keys =
+    error instanceof PersonalProviderRequiredError
+      ? {
+          titleKey: "general.errors.personal_provider_required_title",
+          descriptionKey: "general.errors.personal_provider_required_description",
+        }
+      : error instanceof CredentialUnavailableError
+        ? error.source === "personal"
+          ? {
+              titleKey: "general.errors.personal_provider_credentials_error_title",
+              descriptionKey: "general.errors.personal_provider_credentials_error_description",
+            }
+          : error.reason === "decryption_failed"
+            ? {
+                titleKey: "general.errors.api_key_error_title",
+                descriptionKey: "general.errors.api_key_error_description",
+              }
+            : {
+                titleKey: "general.errors.api_key_missing_title",
+                descriptionKey: "general.errors.api_key_missing_description",
+              }
+        : null;
+  return keys ? { titleKey: keys.titleKey, description: localizer(locale, keys.descriptionKey) } : null;
 }
 
 function mapCapabilityToPersonalCapability(capability: Capability): PersonalProviderCapability {
@@ -124,10 +168,11 @@ function capabilityModelIdFromColumns(config: CapabilityConfigColumns | null, ca
 }
 
 export function getResolvedCapabilityModelId(
-  resolved: Pick<ResolvedCredentials, "savedConfig" | "source">,
+  resolved: Pick<ResolvedCredentials, "savedConfig" | "source" | "modelId">,
   capability: Capability,
 ): number | null {
-  if (resolved.source === "server") {
+  if (resolved.modelId !== undefined) return resolved.modelId;
+  if (resolved.source === "server" || !resolved.savedConfig) {
     return null;
   }
   return getCapabilityModelId(resolved.savedConfig, capability);
@@ -240,6 +285,29 @@ async function decryptResolvedApiKey(
   contextLabel: string,
   activeModelId?: number | null,
 ): Promise<ResolvedCredentials> {
+  if (provider === SUPPORTER_PROVIDER_VALUE) {
+    const modelId = getCapabilityModelId(savedConfig, capability);
+    if (!modelId || capability === "image-nai" || !isSupporterBillingEnabled(resolveEnvironment())) {
+      throw new CredentialUnavailableError(provider, capability, "no_saved_config", source);
+    }
+    const credentials = await resolveSupporterCapabilityCredentials({
+      scope:
+        "user_id" in savedConfig
+          ? { kind: "personal", userId: savedConfig.user_id }
+          : { kind: "server", serverId: savedConfig.server_id },
+      capability: capability === "image-standard" ? "image" : capability,
+      modelId,
+    });
+    return {
+      provider: "openrouter",
+      apiKey: credentials.apiKey,
+      keyVersion: 1,
+      savedConfig,
+      source,
+      supporterFunding: credentials.funding,
+      modelId,
+    };
+  }
   const customEndpointCapability =
     capability === "image-standard"
       ? "image"
@@ -298,6 +366,7 @@ async function resolvePersonalCredentials(userId: number, capability: Capability
   personalProviderCapabilitySchema.parse(personalCapability);
 
   const qualifyingRows = (await llmProviderRepo.loadUserSavedProviderConfigs(userId))
+    .filter((row) => row.provider !== SUPPORTER_PROVIDER_VALUE || isSupporterBillingEnabled(resolveEnvironment()))
     .filter((row) => row.enabled_capabilities.includes(personalCapability))
     .filter((row) => getCapabilityModelId(row, capability) !== null)
     .filter((row) => providerSupportsCapability(row.provider.toLowerCase(), capability))
@@ -324,6 +393,13 @@ async function resolvePersonalCredentials(userId: number, capability: Capability
   );
 }
 
+export async function resolvePersonalCapabilityCredentials(
+  userId: number,
+  capability: Capability,
+): Promise<ResolvedCredentials | null> {
+  return await resolvePersonalCredentials(userId, capability);
+}
+
 export async function resolveCapabilityCredentials(
   serverId: number,
   capability: Capability,
@@ -344,6 +420,37 @@ export async function resolveCapabilityCredentials(
   }
 
   const provider = await resolveProviderForCapability(serverId, capability);
+  if (
+    provider === "openrouter" &&
+    (capability === "text" ||
+      capability === "vision" ||
+      capability === "embedding" ||
+      capability === "image-standard" ||
+      capability === "video") &&
+    isSupporterBillingEnabled(resolveEnvironment()) &&
+    (await supporterSponsorshipRepository.loadActiveSponsorshipForServer(serverId))
+  ) {
+    const modelId = capabilityModelIdFromColumns(capabilityConfig, capability);
+    if (!modelId) throw new CredentialUnavailableError(provider, capability, "missing_model_id");
+    const credentials = await resolveSupporterCapabilityCredentials({
+      scope: { kind: "server", serverId },
+      capability: capability === "image-standard" ? "image" : capability,
+      modelId,
+    }).catch((error: unknown) => {
+      if (error instanceof SupporterRequestDeniedError && error.reason === "model_not_allowed") return null;
+      throw error;
+    });
+    if (credentials)
+      return {
+        provider,
+        apiKey: credentials.apiKey,
+        keyVersion: 1,
+        savedConfig: null,
+        source: "server",
+        modelId,
+        supporterFunding: credentials.funding,
+      };
+  }
   const savedConfig = await llmProviderRepo.loadSavedProviderConfig(serverId, provider);
 
   if (!savedConfig) {

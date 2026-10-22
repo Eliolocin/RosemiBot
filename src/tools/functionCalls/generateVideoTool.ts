@@ -26,9 +26,16 @@ import { formatCustomModelDisplay } from "@/utils/provider/customProviderUtils";
 import type { ProviderNativeVideoResolution } from "@/types/provider/featureInterfaces";
 import { getResolvedCapabilityModelId } from "@/utils/provider/credentialResolver";
 import { resolveCredentialsWithMediaQuota } from "@/utils/quota/mediaQuotaGate";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { notifySupporterToolFailure } from "@/modules/supporter-billing/discord/requestFailure";
+import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
+import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
 import { llmModelRepo } from "@/utils/db/repositories/LlmModelRepository";
 import { MessageIdMap } from "@/utils/text/messageIdMap";
-import { isOpenRouterVideoCapabilityError } from "@/providers/openrouter/openrouterVideoRequest";
+import {
+  getDefaultOpenRouterVideoResolution,
+  isOpenRouterVideoCapabilityError,
+} from "@/providers/openrouter/openrouterVideoRequest";
 import { ProviderVideoFilteredError } from "@/providers/utils/providerVideoErrors";
 import { resolveMessageImageUrls } from "@/utils/image/imageExtractor";
 import { beginTextModelHandoffBeforeComfyUi } from "@/utils/provider/textModelComfyUiHandoff";
@@ -37,7 +44,6 @@ import { beginTextModelHandoffBeforeComfyUi } from "@/utils/provider/textModelCo
 const DISCORD_FILE_SIZE_LIMIT = 25 * 1024 * 1024;
 const DEFAULT_VIDEO_DURATION_SECONDS = 5;
 const MAX_VIDEO_DURATION_SECONDS = 20;
-const DEFAULT_VIDEO_RESOLUTION: ProviderNativeVideoResolution = "720p";
 
 /**
  * Tool for generating videos using the active provider's native video API.
@@ -77,7 +83,7 @@ export class GenerateVideoTool extends BaseTool {
       resolution: {
         type: "string",
         description:
-          "Optional: Target video resolution. Defaults to '720p'. Supported values are '480p' (SD), '720p' (HD), and '1080p' (FHD). Providers may fall back to the nearest supported resolution.",
+          "Optional: Target video resolution. Defaults to '480p' for Grok Imagine Video 1.5 Lite and '720p' otherwise. Supported values are '480p' (SD), '720p' (HD), and '1080p' (FHD). Providers may fall back to the nearest supported resolution.",
         enum: ["480p", "720p", "1080p"],
       },
       generate_audio: {
@@ -112,12 +118,12 @@ export class GenerateVideoTool extends BaseTool {
     return Math.min(normalized, MAX_VIDEO_DURATION_SECONDS);
   }
 
-  private normalizeResolution(rawResolution: unknown): ProviderNativeVideoResolution {
+  private normalizeResolution(rawResolution: unknown, model: string): ProviderNativeVideoResolution {
     if (rawResolution === "480p" || rawResolution === "720p" || rawResolution === "1080p") {
       return rawResolution;
     }
 
-    return DEFAULT_VIDEO_RESOLUTION;
+    return getDefaultOpenRouterVideoResolution(model);
   }
 
   private resolveMediaId(rawMediaId: string | undefined, context: ToolContext): string | undefined {
@@ -379,7 +385,6 @@ export class GenerateVideoTool extends BaseTool {
     const messageId = this.resolveMediaId(rawMediaId, context);
     const aspectRatio = (args.aspect_ratio as string) || "16:9";
     const durationSeconds = this.normalizeDuration(args.duration);
-    const resolution = this.normalizeResolution(args.resolution);
     const generateAudio = args.generate_audio === true;
     const audioPrompt =
       typeof args.audio_prompt === "string" && args.audio_prompt.trim() ? args.audio_prompt.trim() : undefined;
@@ -405,6 +410,7 @@ export class GenerateVideoTool extends BaseTool {
 
     // Default to allowed; overwritten below for server-credential users
     let quotaCheck: VideoQuotaCheckResult = { allowed: true };
+    let supporterFunding: SupporterFundingContext | undefined;
 
     try {
       const { credentials: creds, quotaCheck: serverQuotaCheck } = await resolveCredentialsWithMediaQuota(
@@ -467,10 +473,12 @@ export class GenerateVideoTool extends BaseTool {
       }
 
       const modelCodename = await this.getVideoModelCodename(videoModelId);
+      const resolution = this.normalizeResolution(args.resolution, modelCodename);
       const displayModelName = creds.customEndpoint ? formatCustomModelDisplay(creds.customEndpoint) : modelCodename;
       log.info(`Using video model: ${modelCodename} for video generation`);
 
       const apiKey = creds.apiKey;
+      supporterFunding = creds.supporterFunding;
       const executionProvider = creds.provider;
 
       // Send progress notice, so video generation takes 1-3 minutes
@@ -590,6 +598,11 @@ export class GenerateVideoTool extends BaseTool {
           loop,
           abortSignal: context.abortSignal,
         });
+        recordSupporterUsage(supporterFunding, {
+          modelCodename,
+          costUsd: result.costUsd,
+          providerRequestId: result.providerRequestId,
+        });
         videoData = result.videoData;
         videoFilename = result.filename ?? videoFilename;
       } else if (videoImplementation === "zai") {
@@ -686,6 +699,8 @@ export class GenerateVideoTool extends BaseTool {
       if (context.abortSignal?.aborted) {
         return { success: false, error: "Video generation was cancelled." };
       }
+      const denied = findSupporterRequestDeniedError(error, supporterFunding);
+      if (denied) return { success: false, error: await notifySupporterToolFailure(context, denied) };
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (!(error instanceof ProviderVideoFilteredError)) log.error("Video generation failed:", error as Error);
 

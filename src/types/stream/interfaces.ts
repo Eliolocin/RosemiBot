@@ -103,7 +103,7 @@ export interface StreamContext {
   locale: string;
   suppressUserErrors?: boolean; // Suppress user-facing error embeds during retries or non-deliberate chat turns
   /** Whose credentials answered this turn; selects server- or personal-scoped provider error tips. */
-  textCredentialSource?: "server" | "personal";
+  textCredentialSource?: "server" | "personal" | "supporter";
   rotationKeyRetriesUsed?: boolean; // True if one or more rotation-key retries were attempted
   replyNoticeState?: { attempted: boolean; sent: boolean }; // Tracks the standalone alter reply notice across tool-call stream retries
 

@@ -1,3 +1,9 @@
+import { resolveSupporterMemberKey } from "@/modules/supporter-billing/runtime/managedProvider";
+import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
+import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
+import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
 import { z } from "zod";
 import { addFetchCapabilityReminder } from "@/tools/restAPIs/brave/braveSearchService";
 import { getSearchNoticeKey, getSearchNoticeTitleVars } from "@/tools/webSearch/categoryMetadata";
@@ -39,7 +45,10 @@ export class OpenRouterEngine implements WebSearchEngine {
   readonly name = "openrouter" as const;
 
   async available(context: ToolContext): Promise<boolean> {
-    return context.provider === "openrouter" && context.tomoriState.config.api_key !== null;
+    return (
+      context.provider === "openrouter" &&
+      (Boolean(context.supporterFunding) || context.tomoriState.config.api_key !== null)
+    );
   }
 
   supportsCategory(category: SearchCategory): boolean {
@@ -59,8 +68,11 @@ export class OpenRouterEngine implements WebSearchEngine {
     try {
       signal.throwIfAborted();
       const { api_key: encryptedKey, key_version: keyVersion } = context.tomoriState.config;
-      if (!encryptedKey) return this.fail("missing_key");
-      const apiKey = await decryptApiKey(encryptedKey, keyVersion);
+      const apiKey = context.supporterFunding
+        ? await resolveSupporterMemberKey(context.supporterFunding)
+        : encryptedKey
+          ? await decryptApiKey(encryptedKey, keyVersion)
+          : null;
       if (!apiKey) return this.fail("missing_key");
       signal.throwIfAborted();
 
@@ -77,7 +89,7 @@ export class OpenRouterEngine implements WebSearchEngine {
       signal.throwIfAborted();
 
       const model = context.tomoriState.llm.llm_codename;
-      const response = await fetch(SEARCH_ENDPOINT, {
+      const response = await fetchWithSupporterSpend(SEARCH_ENDPOINT, {
         method: "POST",
         redirect: "error",
         headers: {
@@ -102,7 +114,17 @@ export class OpenRouterEngine implements WebSearchEngine {
       }
 
       const body = await readBoundedResponse(response, MAX_RESPONSE_BYTES, signal);
-      const parsed = responseSchema.safeParse(JSON.parse(body.toString("utf8")));
+      const payload: unknown = JSON.parse(body.toString("utf8"));
+      const metadata = z.object({ usage: z.unknown().optional(), id: z.string().optional() }).safeParse(payload);
+      const usage = metadata.success ? normalizeProviderUsage(metadata.data.usage) : null;
+      if (usage)
+        recordSupporterUsage(context.supporterFunding, {
+          modelCodename: model,
+          ...usage,
+          costUsd: usage.costUsd,
+          providerRequestId: metadata.success ? metadata.data.id : undefined,
+        });
+      const parsed = responseSchema.safeParse(payload);
       if (!parsed.success) return this.fail("malformed");
 
       const results: string[] = [];
@@ -138,6 +160,8 @@ export class OpenRouterEngine implements WebSearchEngine {
         },
       };
     } catch (error) {
+      const denied = findSupporterRequestDeniedError(error, context.supporterFunding);
+      if (denied) return { success: false, error: getSupporterRequestFailureCopy(denied, context.locale).description };
       return this.fail(signal.aborted ? "aborted" : "request_failed", undefined, error);
     }
   }

@@ -42,6 +42,12 @@ import {
 } from "@/utils/audio/elevenLabsShared";
 import { ZodError } from "zod";
 import { ResponseSizeError } from "@/utils/security/boundedResponse";
+import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
+import {
+  findSupporterRequestDeniedError,
+  type SupporterRequestDeniedError,
+} from "@/modules/supporter-billing/runtime/funding";
+import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
 import { reportProviderFailure } from "@/utils/provider/providerErrorMetrics";
 
 /** Metric key recorded against the `audio_generated` stat. */
@@ -90,6 +96,7 @@ export interface VoiceMessageSynthesisResult {
   targetLabel?: string;
   usedServerFallback?: boolean;
   cleanupPending?: boolean;
+  supporterFailure?: SupporterRequestDeniedError;
 }
 
 interface VoiceSynthesisAttempt {
@@ -326,6 +333,21 @@ async function synthesizeHostedVoiceMessage(
       !!source.designPrompt.trim() &&
       source.designPrompt.length <= HOSTED_SPEECH_LIMITS.descriptionCharacters;
     let audio: Buffer;
+    if (target.model.provider === "openrouter" && target.supporterFunding) {
+      const credentials = await resolveSupporterCapabilityCredentials({
+        scope:
+          target.owner.kind === "personal"
+            ? { kind: "personal", userId: target.owner.ownerId }
+            : { kind: "server", serverId: target.owner.ownerId },
+        capability: "voice",
+        modelId: target.model.speech_model_id,
+      });
+      if (
+        credentials.funding.sponsorIdentityId !== target.supporterFunding.sponsorIdentityId ||
+        credentials.apiKey !== target.apiKey
+      )
+        throw new HostedSpeechError("invalid_request");
+    }
     if (target.model.provider === "openrouter" && source.kind === "design") {
       if (!validDesign) throw new HostedSpeechError("invalid_request");
       audio = await synthesizeOpenRouterSpeech({
@@ -408,6 +430,14 @@ async function synthesizeHostedVoiceMessage(
     }
     request.abortSignal?.throwIfAborted();
     attempt.synthesisSuccess = true;
+    if (target.model.provider === "openrouter") {
+      const synthesis = attempt.operations.find((operation) => operation.operation === "synthesize");
+      recordSupporterUsage(target.supporterFunding, {
+        modelCodename: target.model.codename,
+        costUsd: attempt.operations.find((operation) => operation.operation === "cost")?.actualCost,
+        providerRequestId: synthesis?.generationId,
+      });
+    }
     return {
       success: true,
       audioBuffer: audio,
@@ -461,6 +491,7 @@ async function synthesizeHostedVoiceMessage(
       backendKey,
       errorKind,
       details: `Hosted speech failed: ${errorKind}.`,
+      supporterFailure: findSupporterRequestDeniedError(error, target.supporterFunding) ?? undefined,
       providerDetail,
       cleanupPending:
         cleanupPending ||
@@ -577,5 +608,10 @@ export async function synthesizeVoiceMessage(
   )
     return result;
   const fallback = await run({ ...request, target, source });
-  return { ...fallback, usedServerFallback: true, cleanupPending: result.cleanupPending || fallback.cleanupPending };
+  return {
+    ...fallback,
+    usedServerFallback: true,
+    supporterFailure: fallback.supporterFailure ?? result.supporterFailure,
+    cleanupPending: result.cleanupPending || fallback.cleanupPending,
+  };
 }

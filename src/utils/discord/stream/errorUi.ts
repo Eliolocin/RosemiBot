@@ -14,6 +14,9 @@ import {
   isProviderModelError,
 } from "@/utils/provider/providerErrorClassification";
 import { localizer } from "@/utils/text/localizer";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
+import { resolveSupporterNudgeKey } from "@/modules/supporter-billing/discord/conversionNudge";
 
 const PERSONAL_TIP_KEYS = {
   "genai.tips.adjust_parameters": "genai.tips.adjust_parameters_personal",
@@ -38,7 +41,7 @@ export const TOMORIBOT_ERROR_FOOTER_KEY = "genai.stream.error_footer_tomoribot";
  */
 export function resolveProviderErrorFooter(args: {
   providerName: string;
-  textCredentialSource?: "server" | "personal";
+  textCredentialSource?: "server" | "personal" | "supporter";
   isDM?: boolean;
 }): { footerKey: string; footerVars: { provider: string } } {
   const footerVars = { provider: getProviderDisplayName(args.providerName) };
@@ -63,17 +66,20 @@ export class StreamErrorUi {
   public async handleProviderError(error: unknown, provider: StreamProvider, context: StreamContext): Promise<void> {
     const providerError = error as ProviderError;
     const locale = context.locale;
+    const subscriptionError = findSupporterRequestDeniedError(error);
+    const subscriptionCopy = subscriptionError ? getSupporterRequestFailureCopy(subscriptionError, locale) : null;
     const isModelError = isProviderModelError(providerError);
-    const providerDescription = this.resolveProviderDescription(providerError, provider, locale, isModelError);
+    const providerDescription =
+      subscriptionCopy?.description ?? this.resolveProviderDescription(providerError, provider, locale, isModelError);
     const errorMessage =
       providerDescription ||
       localizer(locale, "genai.stream.provider_error_interaction", {
         reason: providerError.type || "unknown",
       });
 
-    const providerDetail = getProviderErrorDetail(providerError);
+    const providerDetail = subscriptionError ? null : getProviderErrorDetail(providerError);
     const operatorDetail = boundOperatorDetail(providerDetail);
-    if (isOperatorActionableProviderError(providerError)) {
+    if (!subscriptionError && isOperatorActionableProviderError(providerError)) {
       const providerName = provider.getProviderInfo().name;
       // Not awaited: an unacknowledged initialInteraction is replied to below. The raw provider
       // error is the payload because errorMessage is localized for the guild, not the operator.
@@ -119,13 +125,24 @@ export class StreamErrorUi {
     });
 
     if (providerDescription) {
-      const { titleKey, tipKeys, color } = this.resolveProviderErrorPresentation(providerError, provider, context);
+      const { titleKey, tipKeys, color } = subscriptionCopy
+        ? { titleKey: subscriptionCopy.titleKey, tipKeys: [], color: ColorCode.ERROR }
+        : this.resolveProviderErrorPresentation(providerError, provider, context);
+      const nudgeKey = subscriptionError
+        ? null
+        : await resolveSupporterNudgeKey({
+            event: "provider-error",
+            error: providerError,
+            userDiscId: context.triggererDiscId,
+            serverId: context.tomoriState.server_id,
+            credentialSource: context.textCredentialSource,
+          });
 
       await sendStandardEmbed(context.channel, locale, {
         titleKey,
         description: providerDescription,
         color,
-        tipKeys,
+        tipKeys: nudgeKey ? [...tipKeys, nudgeKey] : tipKeys,
         restrictedDetail,
         ...sourceFooter,
       }).catch((e) => log.warn("Stream: Failed to send provider error embed to channel", e));

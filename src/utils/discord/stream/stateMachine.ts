@@ -41,6 +41,8 @@ import { createStreamTextProcessingConfig } from "@/utils/discord/stream/textCon
 import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
 import { appendChunkThoughts, buildThoughtLogPayload, wasEmptyStreamResponse } from "@/utils/discord/stream/thoughtLog";
 import { log } from "@/utils/misc/logger";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { findOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 
 /**
  * Coordinates provider streaming as a state machine while delegating buffer, stop, UI, and error responsibilities.
@@ -425,7 +427,11 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       }
     }
 
-    if (!context.suppressUserErrors && !isUserImpersonationStreamContext(context)) {
+    const deferredSupporterNotice =
+      context.textCredentialSource === "supporter" &&
+      (findSupporterRequestDeniedError(chunk.error)?.reason === "allowance_exhausted" ||
+        findOpenRouterLimitError(chunk.error) !== null);
+    if (!context.suppressUserErrors && !deferredSupporterNotice && !isUserImpersonationStreamContext(context)) {
       await this.errorUi.handleProviderError(chunk.error, provider, context);
     } else {
       log.warn("Stream: Suppressing provider error embed due to retryable failure", chunk.error);

@@ -52,6 +52,8 @@ const EMITTED_ACTIONS: SetupWizardAction[] = [
   "provider-mode",
   "settings",
   "settings-submit",
+  "supporter-continue",
+  "supporter-link",
 ];
 
 /** Members of the `SetupWizardAction` union, read from the declaration that defines the codec. */
@@ -63,7 +65,7 @@ function declaredActions(): SetupWizardAction[] {
 
 /** Actions the dispatcher's switch handles, read from its own case labels. */
 function dispatchedActions(): string[] {
-  return [...SETUP_ROUTES_SOURCE.matchAll(/case "([a-z-]+)": \{/g)].map((match) => match[1]);
+  return [...SETUP_ROUTES_SOURCE.matchAll(/case "([a-z-]+)":(?= \{|\s+case )/g)].map((match) => match[1]);
 }
 
 function collectRouteIds(node: unknown, found = new Set<string>()): Set<string> {
@@ -111,8 +113,19 @@ const CATALOGS: SetupSettingsCatalogs = {
 
 /** Every control-bearing payload the wizard can render, in the states that expose each control. */
 function renderedPayloads(): Array<[string, unknown]> {
-  const wizard = (draft: SetupDraftRecord, isHosted: boolean) =>
-    buildSetupWizardPayload({ draft, locale: LOCALE, isHosted, nonce: NONCE, settingsCatalogs: CATALOGS });
+  const wizard = (
+    draft: SetupDraftRecord,
+    isHosted: boolean,
+    subscription?: Parameters<typeof buildSetupWizardPayload>[0]["subscription"],
+  ) =>
+    buildSetupWizardPayload({
+      draft,
+      locale: LOCALE,
+      isHosted,
+      nonce: NONCE,
+      settingsCatalogs: CATALOGS,
+      subscription,
+    });
 
   return [
     ["pending hosted", wizard(createDraft({ requiresPolicies: true }), true)],
@@ -126,6 +139,15 @@ function renderedPayloads(): Array<[string, unknown]> {
         }),
         false,
       ),
+    ],
+    [
+      "subscription onboarding",
+      wizard(createDraft({ providerAccess: { mode: "supporter" } }), true, {
+        ready: false,
+        tier: "",
+        manageUrl: "https://www.patreon.com/example",
+        fundingServer: "Juno Lounge",
+      }),
     ],
     [
       "ready hosted",

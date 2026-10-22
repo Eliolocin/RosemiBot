@@ -5,15 +5,17 @@ import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAt
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import type { VoiceSourceMode } from "@/utils/speech/voiceSourceCapabilities";
 
-const modelListSchema = z.object({ data: z.array(z.object({ id: z.string().min(1) })) });
+const modelListSchema = z.object({
+  data: z.array(z.object({ id: z.string().min(1), pricing: z.unknown().optional() })),
+});
 const endpointsSchema = z.object({
   data: z.object({ endpoints: z.array(z.object({ supports_voice_cloning: z.boolean().optional() })) }),
 });
 
-export function parseOpenRouterSpeechModelList(payload: unknown): { id: string }[] {
+export function parseOpenRouterSpeechModelList(payload: unknown): { id: string; pricing?: unknown }[] {
   return modelListSchema
     .parse(payload)
-    .data.map(({ id }) => ({ id: normalizeOpenRouterCodename(id) }))
+    .data.map(({ id, ...metadata }) => ({ id: normalizeOpenRouterCodename(id), ...metadata }))
     .filter(({ id }) => findOpenRouterSpeechModel(id) !== null);
 }
 
@@ -30,11 +32,8 @@ const speechCatalog = createOpenRouterCatalog({
   keyOf: (entry) => entry.id,
 });
 
-/**
- * Rechecks an admitted model against the live catalogue before a selection is written.
- *
- * @param mode - The slot being filled; omitted, the model's own shape decides what is checked.
- */
+export const getOrFetchOpenRouterSpeechModel = speechCatalog.getOrFetch;
+
 export async function validateOpenRouterSpeechModel(codename: string, mode?: VoiceSourceMode): Promise<boolean> {
   const normalized = normalizeOpenRouterCodename(codename);
   const spec = findOpenRouterSpeechModel(normalized);

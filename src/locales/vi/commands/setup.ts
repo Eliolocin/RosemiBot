@@ -43,6 +43,10 @@ Hãy thử {model_text_command} để chỉ định model đang hoạt động, 
 
 				Nếu bạn muốn đổi nhà cung cấp của mình, hãy dùng \`/providers\` để đăng ký và kích hoạt nhà cung cấp văn bản mặc định mới.`,
     wizard: {
+      provider_option_supporter: `Gói đăng ký TomoriBot (Khuyên dùng)`,
+      provider_option_supporter_description: `Đầy đủ tính năng (văn bản, hình ảnh, giọng nói). Thanh toán qua Patreon, không cần API key.`,
+      provider_supporter_summary: `Hoàn tất thiết lập sẽ chia sẻ hạn mức đăng ký của bạn với máy chủ này và cấu hình các model đi kèm.`,
+      receipt_desc_supporter: `Máy chủ này được thiết lập là {persona} và dùng hạn mức người ủng hộ hàng tháng của bạn. Thành viên tại đây có thể sử dụng hạn mức đó.`,
       title: `Thiết lập TomoriBot`,
       intro: `Hoàn thành từng mục bên dưới rồi kết thúc thiết lập.`,
       intro_ready: `Mọi mục bắt buộc đã sẵn sàng. Hãy xem lại rồi kết thúc thiết lập.`,

@@ -18,11 +18,15 @@ import type { UserRow, ErrorContext } from "@/types/db/schema";
 import { getAllEmotionKeys } from "@/types/misc/emotions";
 import { type ExpressionBatchResult, ExpressionBatchResultSchema } from "@/providers/utils/structuredOutput";
 import type { StructuredOutputResult } from "@/types/provider/featureInterfaces";
-import { decryptApiKey } from "@/utils/security/crypto";
+import { getCapabilityCredentialFailureCopy, resolveCapabilityCredentials } from "@/utils/provider/credentialResolver";
 import { invalidateEmojiStickerCache } from "@/utils/cache/emojiStickerCache";
 import { lazySyncGuildEmojis } from "@/utils/cache/emojiLazySync";
 import { lazySyncGuildStickers } from "@/utils/cache/stickerLazySync";
 import { callExpressionInitializationForProvider } from "@/providers/utils/providerFeatureExecutors";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
+import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
 import { providerSupportsFeature } from "@/utils/provider/providerInfoRegistry";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
 import { resolveStructuredOutputCapability } from "@/utils/provider/providerCapabilityResolver";
@@ -284,33 +288,20 @@ export async function execute(
     const structuredOutputCapability = await resolveStructuredOutputCapability(provider);
     const expressionBatchSize = structuredOutputCapability?.getExpressionInitializationBatchSize?.() ?? null;
 
-    // Verify an API key exists, then decrypt it once for reuse across all batches
-    if (!tomoriState.config.api_key) {
-      log.warn(`[Initialize Expressions] API key missing for provider "${effectiveLlm.llm_provider}"`, undefined, {
-        userId: userData.user_id,
-        serverId: tomoriState.server_id,
-        personaId: tomoriState.persona_id,
-        metadata: {
-          command: "server expressions initialize",
-          guildId: interaction.guild.id,
-          provider: effectiveLlm.llm_provider,
-        },
-      });
-
-      await interaction.editReply({
-        embeds: [
-          {
-            title: localizer(locale, "general.errors.api_key_missing_title"),
-            description: localizer(locale, "general.errors.api_key_missing_description"),
-            color: hexToNumber(ColorCode.ERROR),
-          },
-        ],
-      });
+    let decryptedApiKey: string;
+    let supporterFunding: SupporterFundingContext | undefined;
+    try {
+      ({ apiKey: decryptedApiKey, supporterFunding } = await resolveCapabilityCredentials(
+        tomoriState.server_id,
+        effectiveLlm === llm ? "text" : "vision",
+        { userId: userData.user_id },
+      ));
+    } catch (error) {
+      const failure = getCapabilityCredentialFailureCopy(error, locale);
+      if (!failure) throw error;
+      await replyInfoEmbed(interaction, locale, { ...failure, color: ColorCode.ERROR });
       return;
     }
-
-    const keyVersion = tomoriState.config.key_version || 1;
-    const decryptedApiKey = await decryptApiKey(tomoriState.config.api_key, keyVersion);
 
     // Overwrite never clears up front: a provider outage mid-run must leave the old
     // classifications intact, so rows are replaced only as each batch succeeds.
@@ -449,9 +440,25 @@ export async function execute(
         userPrompt,
         images,
         temperature,
+        onUsage: createSupporterUsageRecorder(supporterFunding, effectiveModelName),
       });
 
       log.info(`LLM structured output response (batch ${batchNumber}): ${JSON.stringify(result, null, 2)}`);
+
+      const denied = result.success ? null : findSupporterRequestDeniedError(result.cause, supporterFunding);
+      if (denied) {
+        const copy = getSupporterRequestFailureCopy(denied, locale);
+        await interaction.editReply({
+          embeds: [
+            {
+              title: localizer(locale, copy.titleKey),
+              description: copy.description,
+              color: hexToNumber(ColorCode.ERROR),
+            },
+          ],
+        });
+        return;
+      }
 
       // On a provider error, log and let the loop retry this chunk (capped by maxChunkRetries)
       if (!result.success) {

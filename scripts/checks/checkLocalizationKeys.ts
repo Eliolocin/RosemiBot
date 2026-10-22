@@ -1688,6 +1688,9 @@ const DYNAMIC_EXACT_KEYS = new Set([
   "general.duration.under_a_minute",
   "general.defaults.base_trigger_words",
   "commands.legal.license-only.description",
+  "commands.subscribe.tiers.mochi",
+  "commands.subscribe.tiers.dango",
+  "commands.subscribe.tiers.taiyaki",
 ]);
 
 function isRuntimeDerivedKey(key: string): boolean {

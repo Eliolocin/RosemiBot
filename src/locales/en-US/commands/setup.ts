@@ -42,6 +42,10 @@ Try {model_text_command} to assign a working model, or {provider_add_command} to
 
 				If you wish to change my provider, use \`/providers\` to register and activate a new default text provider.`,
     wizard: {
+      provider_option_supporter: `TomoriBot Subscription (Recommended)`,
+      provider_option_supporter_description: `All features (text/image/voice generation, etc.). Paid through Patreon; no API key needed.`,
+      provider_supporter_summary: `Finish Setup shares your subscription allowance with this server and configures the included models.`,
+      receipt_desc_supporter: `This server is set up as {persona} and uses your monthly supporter allowance. Members here can consume that allowance.`,
       title: `Set Up TomoriBot`,
       intro: `Complete every item below, then finish setup.`,
       intro_ready: `Everything required is ready. Review it, then finish setup.`,

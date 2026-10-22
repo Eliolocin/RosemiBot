@@ -1,3 +1,4 @@
+import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
 /**
  * Generic tool interface for provider-agnostic function calling
  * This abstracts tools away from specific LLM provider formats
@@ -101,7 +102,7 @@ export interface StreamingContext {
    * from the provider or model name because both scopes can run the same provider. Optional
    * only for non-chat provider calls that have no user-scoped routing decision to report.
    */
-  textCredentialSource?: "server" | "personal";
+  textCredentialSource?: "server" | "personal" | "supporter";
   forceModelFallback?: boolean; // Force suppress errors regardless of key availability (model fallback retries)
   /**
    * Timeout notice an attempt held back because a model fallback might still answer. The
@@ -181,6 +182,7 @@ export interface StreamingContext {
  * Contains all necessary Discord and Tomori state information
  */
 export interface ToolContext {
+  supporterFunding?: SupporterFundingContext;
   channel: BaseGuildTextChannel | BaseGuildVoiceChannel | DMChannel | NewsChannel | TextChannel | AnyThreadChannel;
   client: Client;
   message?: Message;
