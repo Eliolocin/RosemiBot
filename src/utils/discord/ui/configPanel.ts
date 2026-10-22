@@ -135,11 +135,7 @@ import {
 import { buildMcpsPanelComponents, type McpsPanelPage } from "@/utils/discord/ui/mcpsPanel";
 import { buildStPresetsPanelComponents, type StPresetsPanelRenderInput } from "@/utils/discord/ui/stPresetsPanel";
 import type { NaturalNudgesPanelState } from "@/modules/natural-nudges/discord/operations";
-import {
-  buildNaturalNudgesSettingsBody,
-  buildIdleNudgesBody,
-  buildPersonaNudgesBody,
-} from "@/modules/natural-nudges/discord/panel";
+import { buildNaturalNudgesSettingsBody, buildPersonaNudgesBody } from "@/modules/natural-nudges/discord/panel";
 
 const RANDOM_TRIGGER_PAGE_SIZE = CONFIG_RANDOM_TRIGGER_CHECKBOX_CAPACITY;
 
@@ -220,7 +216,6 @@ export const PAGE_LOCALE_KEYS: Record<ConfigCategory, Record<string, string>> = 
   plugins: {
     "response-drafting": "commands.config.panel.page_plugins_response_drafting",
     "natural-nudges": "commands.config.panel.page_plugins_natural_nudges",
-    "idle-nudges": "commands.config.panel.page_plugins_idle_nudges",
     "available-tools": "commands.config.panel.page_plugins_available_tools",
     "context-additions": "commands.config.panel.page_plugins_context_additions",
     "mcp-servers": "commands.mcps.title",
@@ -4486,25 +4481,12 @@ export function buildConfigPanelPayload(input: ConfigPanelRenderInput): ConfigPa
     return buildPayload(components, receipt);
   }
 
-  if (category === "plugins" && (page === "natural-nudges" || page === "idle-nudges")) {
+  if (category === "plugins" && page === "natural-nudges") {
     const state = input.personas[0];
-    const pageState = resolveConfigPageState(category, page, actor);
     const settings = input.naturalNudges?.settings;
-    const idleNudges = input.naturalNudges?.idleNudges;
-    if (state && pageState === "enabled" && page === "natural-nudges" && settings) {
+    if (state && resolveConfigPageState(category, page, actor) === "enabled" && settings) {
       components.push(
         ...buildNaturalNudgesSettingsBody(locale, settings, state.config.user_byok_mode === true, writesDisabled),
-      );
-    } else if (state && pageState === "enabled" && page === "idle-nudges" && idleNudges) {
-      components.push(
-        ...buildIdleNudgesBody({
-          locale,
-          view: idleNudges,
-          start: input.naturalNudges?.idleNudgeStart ?? 0,
-          selectedIndex: input.naturalNudges?.selectedIdleNudgeIndex,
-          removeConfirmNonce: input.naturalNudges?.removeConfirmNonce,
-          writesDisabled,
-        }),
       );
     }
     return buildPayload(components, receipt);

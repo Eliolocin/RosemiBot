@@ -1069,44 +1069,6 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
   ["config:v2:nn-idle-frequency:en-US", { action: "nudge-idle-nudges-frequency-select", locale: "en-US" }],
   ["config:v2:nn-active-set:en-US:0", { action: "nudge-active-nudges-set", locale: "en-US", enabled: false }],
   ["config:v2:nn-active-frequency:en-US", { action: "nudge-active-nudges-frequency-select", locale: "en-US" }],
-  [
-    "config:v2:nn-idle-select:en-US:25:abcd1234",
-    { action: "nudge-idle-select", locale: "en-US", start: 25, fp: "abcd1234" },
-  ],
-  ["config:v2:nn-idle-page:en-US:25", { action: "nudge-idle-page", locale: "en-US", start: 25 }],
-  [
-    "config:v2:nn-idle-add:en-US:nonce1234567",
-    { action: "nudge-idle-add-submit", locale: "en-US", nonce: "nonce1234567" },
-  ],
-  [
-    "config:v2:nn-idle-toggle:en-US:3:abcd1234:0",
-    { action: "nudge-idle-toggle", locale: "en-US", index: 3, fp: "abcd1234", enabled: false },
-  ],
-  [
-    "config:v2:nn-idle-edit-open:en-US:3:abcd1234",
-    { action: "nudge-idle-edit-open", locale: "en-US", index: 3, fp: "abcd1234" },
-  ],
-  [
-    "config:v2:nn-idle-edit:en-US:3:abcd1234:nonce1234567",
-    { action: "nudge-idle-edit-submit", locale: "en-US", index: 3, fp: "abcd1234", nonce: "nonce1234567" },
-  ],
-  [
-    "config:v2:nn-idle-prereqs:en-US:3:abcd1234",
-    { action: "nudge-idle-prereqs-select", locale: "en-US", index: 3, fp: "abcd1234" },
-  ],
-  [
-    "config:v2:nn-idle-tools:en-US:3:abcd1234",
-    { action: "nudge-idle-tools-select", locale: "en-US", index: 3, fp: "abcd1234" },
-  ],
-  [
-    "config:v2:nn-idle-rem-view:en-US:3:abcd1234",
-    { action: "nudge-idle-remove-view", locale: "en-US", index: 3, fp: "abcd1234" },
-  ],
-  [
-    "config:v2:nn-idle-rem:en-US:3:abcd1234:nonce1234567",
-    { action: "nudge-idle-remove-confirm", locale: "en-US", index: 3, fp: "abcd1234", nonce: "nonce1234567" },
-  ],
-  ["config:v2:nn-idle-rem-cancel:en-US:3", { action: "nudge-idle-remove-cancel", locale: "en-US", index: 3 }],
 ];
 
 describe("config route wire contract", () => {

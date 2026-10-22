@@ -16,11 +16,12 @@ TomoriBot handles these components through raw REST transmission and WebSocket i
   - **Structured value extraction:** The interceptor extracts submitted values from nested components into session memory maps keyed by interaction ID:
     - `modalSelectValues`: The first value of string, user, and role selects, plus radio group values and checkbox booleans.
     - `modalChannelSelectValues`: Every submitted channel ID per Channel Select, recorded as `[]` when submitted empty whether or not Discord sends `values`, so an optional select left empty stays distinct from an uncaptured or already consumed entry.
+    - `modalStringSelectValues`: Every submitted value per String Select, recorded the same way, for multi-pick fields. The scalar store keeps only the first value, and taking a select from either store consumes it from both.
     - `modalCheckboxGroupValues`: Checkbox group selection string arrays.
     - `modalFileUploadValues`: File upload attachment ID arrays.
     - `modalResolvedAttachments`: Discord API attachment objects from `packet.d.data.resolved.attachments`.
   - **Packet transformation:** `transformModalSubmissionPacket` rewrites Type 18 Label components into standard Type 1 Action Rows containing the nested inputs. This allows discord.js native modal parsing to process the submission without throwing unhandled component type errors.
-- **Consume-once value extraction:** Route handlers and modal helpers read stored values using `takeRawModalSelectValue`, `takeRawModalChannelSelectValues`, `takeRawModalCheckboxGroupValues`, and `takeRawModalFileUpload`. Each call deletes the retrieved entry from memory, reclaiming memory immediately after submission. `takeRawModalChannelSelectValues` returns `undefined` for a missing entry and `[]` for an empty submission; single-select readers take the first ID. In `promptWithRawModal`, a Channel Select with `maxValues` above 1 lands in `multiValues`.
+- **Consume-once value extraction:** Route handlers and modal helpers read stored values using `takeRawModalSelectValue`, `takeRawModalStringSelectValues`, `takeRawModalChannelSelectValues`, `takeRawModalCheckboxGroupValues`, and `takeRawModalFileUpload`. Each call deletes the retrieved entry from memory, reclaiming memory immediately after submission. `takeRawModalStringSelectValues` and `takeRawModalChannelSelectValues` return `undefined` for a missing entry and `[]` for an empty submission; single-select readers take the first ID. In `promptWithRawModal`, a Channel Select with `maxValues` above 1 lands in `multiValues`.
 
 ## Modal limits and wire constraints
 

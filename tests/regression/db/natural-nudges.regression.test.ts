@@ -425,8 +425,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
       recommended_tools: [],
       enabled: true,
     };
-    expect(await naturalNudgeRepository.insertCustomIdleNudge(refs.serverId, idleNudge, 1)).not.toBeNull();
-    expect(await naturalNudgeRepository.insertCustomIdleNudge(refs.serverId, idleNudge, 1)).toBeNull();
+    expect(typeof (await naturalNudgeRepository.insertCustomIdleNudge(refs.serverId, idleNudge, 1))).toBe("number");
+    expect(await naturalNudgeRepository.insertCustomIdleNudge(refs.serverId, idleNudge, 1)).toBe("limit");
   });
 
   it("exports settings and custom idle nudges without channels, imports them, and resets them", async () => {
@@ -468,6 +468,48 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
       defaultServerNaturalNudgeConfig(refs.serverId),
     );
     expect(await naturalNudgeRepository.listCustomIdleNudges(refs.serverId)).toHaveLength(0);
+  });
+
+  it("saves built-in and custom availability together, and removes only the named custom idle nudges", async () => {
+    const idleNudge = {
+      category: "ping_user" as const,
+      title: "Snack check",
+      brief: "Have {persona} ask {target} about snacks.",
+      agenda_hint: null,
+      prerequisites: [],
+      recommended_tools: [],
+      enabled: true,
+    };
+    const first = await naturalNudgeRepository.insertCustomIdleNudge(refs.serverId, idleNudge, 25);
+    const second = await naturalNudgeRepository.insertCustomIdleNudge(refs.serverId, idleNudge, 25);
+    if (typeof first !== "number" || typeof second !== "number")
+      throw new Error("Custom idle nudge fixtures were not inserted");
+
+    expect(
+      await naturalNudgeRepository.saveIdleNudgeAvailability(
+        refs.serverId,
+        ["ping_user.check_in"],
+        new Map([[first, false]]),
+      ),
+    ).toBe(true);
+    expect((await naturalNudgeRepository.loadServerConfig(refs.serverId)).disabled_builtin_idle_nudges).toEqual([
+      "ping_user.check_in",
+    ]);
+    const enabled = (await naturalNudgeRepository.listCustomIdleNudges(refs.serverId)).map((row) => [
+      row.custom_idle_nudge_id,
+      row.enabled,
+    ]);
+    expect(enabled).toEqual([
+      [first, false],
+      [second, true],
+    ]);
+
+    expect(await naturalNudgeRepository.deleteCustomIdleNudges(refs.serverId, [first, 999_999])).toBe(1);
+    expect(
+      (await naturalNudgeRepository.listCustomIdleNudges(refs.serverId)).map((row) => row.custom_idle_nudge_id),
+    ).toEqual([second]);
+    await naturalNudgeRepository.deleteCustomIdleNudges(refs.serverId, [second]);
+    await naturalNudgeRepository.saveServerConfig(refs.serverId, { disabled_builtin_idle_nudges: [] });
   });
 
   it("records an Active Nudge fire that counts toward caps but never as a pending idle nudge", async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import type { CustomIdleNudgeRow } from "@/modules/natural-nudges/db/types";
 import {
   BUILTIN_IDLE_NUDGES,
+  findIdleNudgeBlocker,
   idleNudgeNeedsTarget,
   isIdleNudgeEligible,
   listRunnableIdleNudges,
@@ -10,21 +10,7 @@ import {
 } from "@/modules/natural-nudges/runtime/idleNudges";
 import { getTool } from "@/tools/toolRegistry";
 import { initializeTools } from "@/tools/toolInitializer";
-
-function custom(overrides: Partial<CustomIdleNudgeRow>): CustomIdleNudgeRow {
-  return {
-    custom_idle_nudge_id: 1,
-    server_id: 1,
-    category: "start_topic",
-    title: "Mirri's riddle",
-    brief: "Have {persona} pose a riddle.",
-    agenda_hint: null,
-    prerequisites: [],
-    recommended_tools: [],
-    enabled: true,
-    ...overrides,
-  };
-}
+import { createCustomIdleNudge } from "../../helpers/fixtures";
 
 function idleNudge(
   prerequisites: string[],
@@ -83,10 +69,10 @@ describe("idle nudge eligibility", () => {
     expect(isIdleNudgeEligible(idleNudge(["tool:image"]), noFacts)).toBe(false);
   });
 
-  it("requires a hanging conversation for Revive Topic", () => {
-    const reviveTopic = BUILTIN_IDLE_NUDGES.filter((candidate) => candidate.category === "revive_topic");
-    expect(reviveTopic.length).toBeGreaterThan(0);
-    for (const candidate of reviveTopic) expect(isIdleNudgeEligible(candidate, noFacts)).toBe(false);
+  it("needs a hanging conversation for every Revive Topic, even a custom one that omits hanging_conversation", () => {
+    const hanging = { ...noFacts, hasHangingConversation: true };
+    expect(isIdleNudgeEligible(idleNudge([], "revive_topic"), noFacts)).toBe(false);
+    expect(isIdleNudgeEligible(idleNudge([], "revive_topic"), hanging)).toBe(true);
   });
 
   it("needs a scene partner for every Play Scene, even a custom one that omits two_personas", () => {
@@ -98,11 +84,50 @@ describe("idle nudge eligibility", () => {
   });
 });
 
+describe("idle nudge blockers", () => {
+  const tools = (...names: string[]) => new Set(names);
+
+  it("blocks a scene until two personas can nudge", () => {
+    expect(findIdleNudgeBlocker(idleNudge([], "play_scene"), { personaTools: [tools()] })).toEqual({
+      kind: "two_personas",
+    });
+    expect(findIdleNudgeBlocker(idleNudge(["two_personas"]), { personaTools: [tools()] })).toEqual({
+      kind: "two_personas",
+    });
+    expect(findIdleNudgeBlocker(idleNudge([], "play_scene"), { personaTools: [tools(), tools()] })).toBeNull();
+  });
+
+  it("needs one persona holding every tool the idle nudge names", () => {
+    const both = idleNudge(["tool:web_search", "tool:image"]);
+    const split = { personaTools: [tools("web_search"), tools("generate_image")] };
+    expect(findIdleNudgeBlocker(both, split)).toEqual({ kind: "tool", tool: "web_search" });
+    expect(findIdleNudgeBlocker(both, { personaTools: [tools("web_search", "generate_image_nai")] })).toBeNull();
+  });
+
+  it("names the tool no persona has", () => {
+    const both = idleNudge(["tool:web_search", "tool:create_task"]);
+    expect(findIdleNudgeBlocker(both, { personaTools: [tools("web_search")] })).toEqual({
+      kind: "tool",
+      tool: "create_task",
+    });
+  });
+
+  it("never blocks on facts that change minute to minute", () => {
+    const pickUp = BUILTIN_IDLE_NUDGES.find((candidate) => candidate.key === "revive_topic.pick_up_thread");
+    if (!pickUp) throw new Error("Revive Topic built-in missing");
+    expect(findIdleNudgeBlocker(pickUp, { personaTools: [tools()] })).toBeNull();
+    expect(findIdleNudgeBlocker(idleNudge(["presence_activity"], "ping_user"), { personaTools: [tools()] })).toBeNull();
+  });
+});
+
 describe("runnable idle nudges", () => {
   it("drops disabled built-ins and disabled custom idle nudges", () => {
     const runnable = listRunnableIdleNudges(
       ["start_topic.voice_note"],
-      [custom({ custom_idle_nudge_id: 1 }), custom({ custom_idle_nudge_id: 2, enabled: false })],
+      [
+        createCustomIdleNudge({ custom_idle_nudge_id: 1 }),
+        createCustomIdleNudge({ custom_idle_nudge_id: 2, enabled: false }),
+      ],
     ).map((candidate) => candidate.key);
     expect(runnable).not.toContain("start_topic.voice_note");
     expect(runnable).toContain("custom:1");

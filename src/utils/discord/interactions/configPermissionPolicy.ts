@@ -137,7 +137,7 @@ export function resolveConfigPageState(
   if (actor.workspaceKind === "dm") {
     // Natural Nudges pages are omitted in DMs because every DM message already gets a reply.
     if (category === "persona" && (page === "triggers" || page === "nudges")) return "omitted";
-    if (category === "plugins" && (page === "natural-nudges" || page === "idle-nudges")) return "omitted";
+    if (category === "plugins" && page === "natural-nudges") return "omitted";
     if (category === "behavior") return page === "trigger" || page === "memory" ? "omitted" : "enabled";
     if (category === "models") return page === "image" ? "omitted" : "enabled";
     return "enabled";
@@ -510,17 +510,6 @@ export const NATURAL_NUDGE_PAGE_BY_ROUTE: Partial<
   "nudge-idle-nudges-frequency-select": { category: "plugins", page: "natural-nudges" },
   "nudge-active-nudges-set": { category: "plugins", page: "natural-nudges" },
   "nudge-active-nudges-frequency-select": { category: "plugins", page: "natural-nudges" },
-  "nudge-idle-select": { category: "plugins", page: "idle-nudges" },
-  "nudge-idle-page": { category: "plugins", page: "idle-nudges" },
-  "nudge-idle-add-submit": { category: "plugins", page: "idle-nudges" },
-  "nudge-idle-toggle": { category: "plugins", page: "idle-nudges" },
-  "nudge-idle-edit-open": { category: "plugins", page: "idle-nudges" },
-  "nudge-idle-edit-submit": { category: "plugins", page: "idle-nudges" },
-  "nudge-idle-prereqs-select": { category: "plugins", page: "idle-nudges" },
-  "nudge-idle-tools-select": { category: "plugins", page: "idle-nudges" },
-  "nudge-idle-remove-view": { category: "plugins", page: "idle-nudges" },
-  "nudge-idle-remove-confirm": { category: "plugins", page: "idle-nudges" },
-  "nudge-idle-remove-cancel": { category: "plugins", page: "idle-nudges" },
 };
 
 export const MCP_ACTION_BY_ROUTE: Partial<Record<ConfigPanelRoute["action"], ConfigMcpAction>> = {

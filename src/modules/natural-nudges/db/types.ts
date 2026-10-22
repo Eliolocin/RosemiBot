@@ -90,14 +90,15 @@ export const CUSTOM_IDLE_NUDGE_LIMIT = 25;
 export const CUSTOM_IDLE_NUDGE_TITLE_MAX = 80;
 export const CUSTOM_IDLE_NUDGE_BRIEF_MAX = 1000;
 export const CUSTOM_IDLE_NUDGE_AGENDA_HINT_MAX = 500;
+export const CUSTOM_IDLE_NUDGE_LIST_MAX = 8;
 
 export const customIdleNudgeInputSchema = z.object({
   category: z.enum(NATURAL_NUDGE_CATEGORIES),
   title: trimmedText(CUSTOM_IDLE_NUDGE_TITLE_MAX),
   brief: trimmedText(CUSTOM_IDLE_NUDGE_BRIEF_MAX),
   agenda_hint: z.string().trim().max(CUSTOM_IDLE_NUDGE_AGENDA_HINT_MAX).nullable(),
-  prerequisites: z.array(z.string().min(1).max(64)).max(8),
-  recommended_tools: z.array(z.string().min(1).max(64)).max(8),
+  prerequisites: z.array(z.string().min(1).max(64)).max(CUSTOM_IDLE_NUDGE_LIST_MAX),
+  recommended_tools: z.array(z.string().min(1).max(64)).max(CUSTOM_IDLE_NUDGE_LIST_MAX),
   enabled: z.boolean(),
 });
 export type CustomIdleNudgeInput = z.infer<typeof customIdleNudgeInputSchema>;

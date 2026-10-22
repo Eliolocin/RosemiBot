@@ -22,15 +22,10 @@ import {
   type NudgeWriteResult,
 } from "@/modules/natural-nudges/discord/operations";
 import {
-  buildIdleNudgeModal,
   buildInterestModal,
   buildPlannerModelModal,
   NUDGE_ADD_VALUE,
   NUDGE_CLEAR_MODEL_VALUE,
-  NUDGE_IDLE_NUDGE_AGENDA_FIELD,
-  NUDGE_IDLE_NUDGE_BRIEF_FIELD,
-  NUDGE_IDLE_NUDGE_CATEGORY_FIELD,
-  NUDGE_IDLE_NUDGE_TITLE_FIELD,
   NUDGE_INTEREST_DESCRIPTION_FIELD,
   NUDGE_INTEREST_LABEL_FIELD,
 } from "@/modules/natural-nudges/discord/panel";
@@ -43,9 +38,6 @@ export const NUDGE_STRING_SELECT_ACTIONS: ReadonlySet<ConfigAction> = new Set<Co
   "nudge-provider",
   "nudge-idle-nudges-frequency-select",
   "nudge-active-nudges-frequency-select",
-  "nudge-idle-select",
-  "nudge-idle-prereqs-select",
-  "nudge-idle-tools-select",
 ]);
 
 export const NUDGE_CHANNEL_SELECT_ACTIONS: ReadonlySet<ConfigAction> = new Set<ConfigAction>(["nudge-channels-select"]);
@@ -54,8 +46,6 @@ export const NUDGE_MODAL_SUBMIT_ACTIONS: ReadonlySet<ConfigAction> = new Set<Con
   "nudge-interest-add-submit",
   "nudge-interest-edit-submit",
   "nudge-model-submit",
-  "nudge-idle-add-submit",
-  "nudge-idle-edit-submit",
 ]);
 
 function selectedValues(interaction: GlobalRoutableInteraction): string[] {
@@ -80,9 +70,7 @@ export async function handleNudgeModalOpen(
   const opensModal =
     (route.action === "nudge-interest-select" && value === NUDGE_ADD_VALUE) ||
     route.action === "nudge-interest-edit-open" ||
-    (route.action === "nudge-provider" && value !== undefined && value !== NUDGE_CLEAR_MODEL_VALUE) ||
-    (route.action === "nudge-idle-select" && value === NUDGE_ADD_VALUE) ||
-    route.action === "nudge-idle-edit-open";
+    (route.action === "nudge-provider" && value !== undefined && value !== NUDGE_CLEAR_MODEL_VALUE);
   if (!opensModal) return false;
 
   const locale = route.locale;
@@ -130,23 +118,6 @@ export async function handleNudgeModalOpen(
     await dependencies.showModal(
       interaction,
       buildPlannerModelModal(locale, nonce, group, start, settings.config.llm_id),
-    );
-    return true;
-  }
-  if (route.action === "nudge-idle-select") {
-    await dependencies.showModal(interaction, buildIdleNudgeModal(locale, nonce, null));
-    return true;
-  }
-  if (route.action === "nudge-idle-edit-open") {
-    const view = await nudges.loadIdleNudges(serverId);
-    const entry = view.entries[route.index];
-    if (view.fingerprint !== route.fp || !entry?.custom) {
-      await deny("commands.config.panel.stale_detail");
-      return true;
-    }
-    await dependencies.showModal(
-      interaction,
-      buildIdleNudgeModal(locale, nonce, { index: route.index, fp: route.fp }, entry),
     );
     return true;
   }
@@ -207,18 +178,13 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
       receipt,
       dependencies,
     });
-  const paintPlugins = (
-    page: "natural-nudges" | "idle-nudges",
-    state: NaturalNudgesPanelState = {},
-    receipt?: PanelReceipt,
-  ) =>
+  const paintPlugins = (receipt: PanelReceipt) =>
     repaint(interaction, {
       locale,
       scope: context.scope,
       category: "plugins",
-      page,
+      page: "natural-nudges",
       selectedPersonaId: null,
-      naturalNudges: state,
       receipt,
       dependencies,
     });
@@ -289,7 +255,7 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
         () => ops.setIdleNudgesEnabled(serverId, route.enabled),
         "server-config.workspace.natural-nudge-idle-nudges.set",
       );
-      await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
+      await paintPlugins(writeReceipt(locale, result));
       return true;
     }
     case "nudge-channels-select": {
@@ -297,7 +263,7 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
         () => ops.setChannels(serverId, values),
         "server-config.workspace.natural-nudge-channels.set",
       );
-      await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
+      await paintPlugins(writeReceipt(locale, result));
       return true;
     }
     case "nudge-provider": {
@@ -308,7 +274,7 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
               "server-config.workspace.natural-nudge-model.set",
             )
           : "stale";
-      await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
+      await paintPlugins(writeReceipt(locale, result));
       return true;
     }
     case "nudge-model-submit": {
@@ -322,7 +288,7 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
               () => ops.setPlannerModel(serverId, route.provider, id),
               "server-config.workspace.natural-nudge-model.set",
             );
-      await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
+      await paintPlugins(writeReceipt(locale, result));
       return true;
     }
     case "nudge-idle-nudges-frequency-select": {
@@ -334,7 +300,7 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
               () => ops.setFrequency(serverId, level as IdleNudgeFrequencyLevel),
               "server-config.workspace.natural-nudge-idle-nudges-frequency.set",
             );
-      await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
+      await paintPlugins(writeReceipt(locale, result));
       return true;
     }
     case "nudge-active-nudges-set": {
@@ -342,7 +308,7 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
         () => ops.setActiveNudgesEnabled(serverId, route.enabled),
         "server-config.workspace.natural-nudge-active-nudges.set",
       );
-      await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
+      await paintPlugins(writeReceipt(locale, result));
       return true;
     }
     case "nudge-active-nudges-frequency-select": {
@@ -354,127 +320,7 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
               () => ops.setActiveNudgesFrequency(serverId, level as IdleNudgeFrequencyLevel),
               "server-config.workspace.natural-nudge-active-nudges-frequency.set",
             );
-      await paintPlugins("natural-nudges", {}, writeReceipt(locale, result));
-      return true;
-    }
-    case "nudge-idle-select": {
-      const index = parseIndex(values[0]);
-      const view = await dependencies.naturalNudges.loadIdleNudges(serverId);
-      if (index === null || view.fingerprint !== route.fp || !view.entries[index]) {
-        await paintPlugins("idle-nudges", { idleNudges: view, idleNudgeStart: route.start }, staleReceipt(locale));
-        return true;
-      }
-      await paintPlugins("idle-nudges", {
-        idleNudges: view,
-        idleNudgeStart: route.start,
-        selectedIdleNudgeIndex: index,
-      });
-      return true;
-    }
-    case "nudge-idle-page": {
-      await paintPlugins("idle-nudges", { idleNudgeStart: route.start });
-      return true;
-    }
-    case "nudge-idle-add-submit": {
-      const category = dependencies.takeSelectValue(
-        interaction.id,
-        buildConfigModalFieldId(NUDGE_IDLE_NUDGE_CATEGORY_FIELD, route.nonce),
-      );
-      const result = await write(
-        () =>
-          ops.addCustomIdleNudge(serverId, {
-            category: category ?? "",
-            title: field(NUDGE_IDLE_NUDGE_TITLE_FIELD),
-            brief: field(NUDGE_IDLE_NUDGE_BRIEF_FIELD),
-            agendaHint: field(NUDGE_IDLE_NUDGE_AGENDA_FIELD),
-          }),
-        "server-config.workspace.nudge-idle-nudge.add",
-      );
-      const view = await dependencies.naturalNudges.loadIdleNudges(serverId);
-      const added = result === "success" ? view.entries.length - 1 : undefined;
-      await paintPlugins(
-        "idle-nudges",
-        { idleNudges: view, idleNudgeStart: added ?? 0, selectedIdleNudgeIndex: added },
-        writeReceipt(locale, result),
-      );
-      return true;
-    }
-    case "nudge-idle-toggle": {
-      const result = await write(
-        () => ops.setIdleNudgeEnabled(serverId, route.index, route.fp, route.enabled),
-        "server-config.workspace.nudge-idle-nudge.set",
-      );
-      await paintPlugins(
-        "idle-nudges",
-        { idleNudgeStart: route.index, selectedIdleNudgeIndex: result === "stale" ? undefined : route.index },
-        writeReceipt(locale, result),
-      );
-      return true;
-    }
-    case "nudge-idle-edit-submit": {
-      const category = dependencies.takeSelectValue(
-        interaction.id,
-        buildConfigModalFieldId(NUDGE_IDLE_NUDGE_CATEGORY_FIELD, route.nonce),
-      );
-      const result = await write(
-        () =>
-          ops.updateCustomIdleNudgeText(serverId, route.index, route.fp, {
-            category: category ?? "",
-            title: field(NUDGE_IDLE_NUDGE_TITLE_FIELD),
-            brief: field(NUDGE_IDLE_NUDGE_BRIEF_FIELD),
-            agendaHint: field(NUDGE_IDLE_NUDGE_AGENDA_FIELD),
-          }),
-        "server-config.workspace.nudge-idle-nudge.edit",
-      );
-      await paintPlugins(
-        "idle-nudges",
-        { idleNudgeStart: route.index, selectedIdleNudgeIndex: result === "stale" ? undefined : route.index },
-        writeReceipt(locale, result),
-      );
-      return true;
-    }
-    case "nudge-idle-prereqs-select":
-    case "nudge-idle-tools-select": {
-      const patch =
-        route.action === "nudge-idle-prereqs-select" ? { prerequisites: values } : { recommendedTools: values };
-      const result = await write(
-        () => ops.setCustomIdleNudgeLists(serverId, route.index, route.fp, patch),
-        "server-config.workspace.nudge-idle-nudge.edit",
-      );
-      await paintPlugins(
-        "idle-nudges",
-        { idleNudgeStart: route.index, selectedIdleNudgeIndex: result === "stale" ? undefined : route.index },
-        writeReceipt(locale, result),
-      );
-      return true;
-    }
-    case "nudge-idle-remove-view": {
-      const view = await dependencies.naturalNudges.loadIdleNudges(serverId);
-      const valid = view.fingerprint === route.fp && Boolean(view.entries[route.index]?.custom);
-      await paintPlugins(
-        "idle-nudges",
-        valid
-          ? {
-              idleNudges: view,
-              idleNudgeStart: route.index,
-              selectedIdleNudgeIndex: route.index,
-              removeConfirmNonce: dependencies.createNonce(),
-            }
-          : { idleNudges: view },
-        valid ? undefined : staleReceipt(locale),
-      );
-      return true;
-    }
-    case "nudge-idle-remove-confirm": {
-      const result = await write(
-        () => ops.removeCustomIdleNudge(serverId, route.index, route.fp),
-        "server-config.workspace.nudge-idle-nudge.remove",
-      );
-      await paintPlugins("idle-nudges", {}, writeReceipt(locale, result));
-      return true;
-    }
-    case "nudge-idle-remove-cancel": {
-      await paintPlugins("idle-nudges", { idleNudgeStart: route.index, selectedIdleNudgeIndex: route.index });
+      await paintPlugins(writeReceipt(locale, result));
       return true;
     }
     default:

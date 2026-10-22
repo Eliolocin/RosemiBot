@@ -43,7 +43,6 @@ type BehaviorPage = "general" | "trigger" | "experimental" | "notices" | "memory
 type PluginsPage =
   | "response-drafting"
   | "natural-nudges"
-  | "idle-nudges"
   | "available-tools"
   | "context-additions"
   | "mcp-servers"
@@ -78,7 +77,6 @@ export const CONFIG_PAGES_BY_CATEGORY: Record<ConfigCategory, readonly ConfigPag
     "context-additions",
     "response-drafting",
     "natural-nudges",
-    "idle-nudges",
     "mcp-servers",
     "sillytavern-presets",
     "nsfw-jailbreaks",
@@ -443,17 +441,6 @@ export type ConfigPanelRoute =
   | { action: "nudge-idle-nudges-frequency-select"; locale: string }
   | { action: "nudge-active-nudges-set"; locale: string; enabled: boolean }
   | { action: "nudge-active-nudges-frequency-select"; locale: string }
-  | { action: "nudge-idle-select"; locale: string; start: number; fp: string }
-  | { action: "nudge-idle-page"; locale: string; start: number }
-  | { action: "nudge-idle-add-submit"; locale: string; nonce: string }
-  | { action: "nudge-idle-toggle"; locale: string; index: number; fp: string; enabled: boolean }
-  | { action: "nudge-idle-edit-open"; locale: string; index: number; fp: string }
-  | { action: "nudge-idle-edit-submit"; locale: string; index: number; fp: string; nonce: string }
-  | { action: "nudge-idle-prereqs-select"; locale: string; index: number; fp: string }
-  | { action: "nudge-idle-tools-select"; locale: string; index: number; fp: string }
-  | { action: "nudge-idle-remove-view"; locale: string; index: number; fp: string }
-  | { action: "nudge-idle-remove-confirm"; locale: string; index: number; fp: string; nonce: string }
-  | { action: "nudge-idle-remove-cancel"; locale: string; index: number }
   | { action: "draft-set"; locale: string; enabled: boolean }
   | { action: "draft-items-open"; locale: string }
   | { action: "draft-items-submit"; locale: string; nonce: string }
@@ -967,17 +954,6 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "nudge-idle-nudges-frequency-select": { wireToken: "nn-idle-frequency", fields: [] },
   "nudge-active-nudges-set": { wireToken: "nn-active-set", fields: [enabledField] },
   "nudge-active-nudges-frequency-select": { wireToken: "nn-active-frequency", fields: [] },
-  "nudge-idle-select": { wireToken: "nn-idle-select", fields: [startField, fpField] },
-  "nudge-idle-page": { wireToken: "nn-idle-page", fields: [startField] },
-  "nudge-idle-add-submit": { wireToken: "nn-idle-add", fields: [nonceField] },
-  "nudge-idle-toggle": { wireToken: "nn-idle-toggle", fields: [indexField, fpField, enabledField] },
-  "nudge-idle-edit-open": { wireToken: "nn-idle-edit-open", fields: [indexField, fpField] },
-  "nudge-idle-edit-submit": { wireToken: "nn-idle-edit", fields: [indexField, fpField, nonceField] },
-  "nudge-idle-prereqs-select": { wireToken: "nn-idle-prereqs", fields: [indexField, fpField] },
-  "nudge-idle-tools-select": { wireToken: "nn-idle-tools", fields: [indexField, fpField] },
-  "nudge-idle-remove-view": { wireToken: "nn-idle-rem-view", fields: [indexField, fpField] },
-  "nudge-idle-remove-confirm": { wireToken: "nn-idle-rem", fields: [indexField, fpField, nonceField] },
-  "nudge-idle-remove-cancel": { wireToken: "nn-idle-rem-cancel", fields: [indexField] },
   "draft-set": { wireToken: "draft-set", fields: [enabledField] },
   "draft-items-open": { wireToken: "draft-items-open", fields: [] },
   "draft-items-submit": { wireToken: "draft-items-submit", fields: [nonceField] },

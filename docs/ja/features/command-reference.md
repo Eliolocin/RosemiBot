@@ -11,7 +11,7 @@ sidebar:
 
 TomoriBotに現在登録されているすべてのスラッシュコマンドです。Discordへの登録に使われるものと同じコマンド定義と日本語の説明文から生成しています（未翻訳の説明は英語で表示されます）。
 
-トップレベルのコマンドグループ：**41**。実行できるスラッシュコマンド：**86**。
+トップレベルのコマンドグループ：**42**。実行できるスラッシュコマンド：**87**。
 
 ## `/comment`
 
@@ -207,6 +207,14 @@ Discordチャンネルを双方向リレーでMatrixルームにリンクしま�
 | `/nsfw jailbreaks` | このサーバーでの任意のjailbreak機能を管理します。 |
 | `/nsfw persona default` | NSFWの人格設定プリセットを適用します |
 | `/nsfw persona import` | NSFWペルソナを含め、PNG、JSON、またはCHARXファイルからペルソナをインポートする |
+
+## `/nudge-studio`
+
+Choose which idle nudges I use in this server, and write your own.
+
+| コマンド | 概要 |
+|---|---|
+| `/nudge-studio` | Choose which idle nudges I use in this server, and write your own. |
 
 ## `/nuke`
 

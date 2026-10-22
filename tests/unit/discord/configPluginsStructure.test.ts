@@ -16,13 +16,12 @@ const EXPECTED_PLUGIN_PAGES = [
   "context-additions",
   "response-drafting",
   "natural-nudges",
-  "idle-nudges",
   "mcp-servers",
   "sillytavern-presets",
   "nsfw-jailbreaks",
 ] as const;
 
-const GUILD_ONLY_PLUGIN_PAGES: readonly string[] = ["natural-nudges", "idle-nudges"];
+const GUILD_ONLY_PLUGIN_PAGES: readonly string[] = ["natural-nudges"];
 
 const EXPECTED_CAPABILITY_PAGE_BY_VALUE = {
   selfteaching: "available-tools",

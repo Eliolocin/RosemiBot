@@ -55,26 +55,12 @@ import {
 } from "@/utils/discord/ui/componentsV2Limits";
 import { buildConfigPanelPayload } from "@/utils/discord/ui/configPanel";
 import {
-  CUSTOM_IDLE_NUDGE_AGENDA_HINT_MAX,
-  CUSTOM_IDLE_NUDGE_BRIEF_MAX,
-  CUSTOM_IDLE_NUDGE_LIMIT,
-  CUSTOM_IDLE_NUDGE_TITLE_MAX,
   defaultServerNaturalNudgeConfig,
   NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX,
   NATURAL_NUDGE_INTEREST_LABEL_MAX,
   NATURAL_NUDGE_INTEREST_LIMIT,
 } from "@/modules/natural-nudges/db/types";
-import {
-  BUILTIN_IDLE_NUDGES,
-  customIdleNudgeDefinition,
-  NUDGE_PREREQUISITE_IDS,
-  NUDGE_TOOL_NAMES,
-} from "@/modules/natural-nudges/runtime/idleNudges";
-import {
-  computeIdleNudgeListFingerprint,
-  type NaturalNudgesSettingsView,
-  type IdleNudgesView,
-} from "@/modules/natural-nudges/discord/operations";
+import type { NaturalNudgesSettingsView } from "@/modules/natural-nudges/discord/operations";
 import { FENCED_PREVIEW_MAX_CHARS } from "@/utils/text/textPreview";
 import { formatPanelProse } from "@/utils/discord/ui/panelProse";
 import { getCapabilitiesManagePermissionDefinitions } from "@/utils/discord/manageConfigMapping";
@@ -137,25 +123,6 @@ const MAX_NUDGE_SETTINGS: NaturalNudgesSettingsView = {
     matcher: { kind: "decision", model: "decision-model".padEnd(200, "d") },
   },
 };
-
-const MAX_NUDGE_IDLE_NUDGES: IdleNudgesView = (() => {
-  const custom = Array.from({ length: CUSTOM_IDLE_NUDGE_LIMIT }, (_, index) => ({
-    custom_idle_nudge_id: index + 1,
-    server_id: 1,
-    category: "start_topic" as const,
-    title: `${index}`.padEnd(CUSTOM_IDLE_NUDGE_TITLE_MAX, "T"),
-    brief: "`B*".repeat(CUSTOM_IDLE_NUDGE_BRIEF_MAX).slice(0, CUSTOM_IDLE_NUDGE_BRIEF_MAX),
-    agenda_hint: "A".repeat(CUSTOM_IDLE_NUDGE_AGENDA_HINT_MAX),
-    prerequisites: [...NUDGE_PREREQUISITE_IDS],
-    recommended_tools: [...NUDGE_TOOL_NAMES],
-    enabled: index % 2 === 0,
-  }));
-  const entries = [
-    ...BUILTIN_IDLE_NUDGES.map((definition) => ({ definition, enabled: true })),
-    ...custom.map((row) => ({ definition: customIdleNudgeDefinition(row), enabled: row.enabled, custom: row })),
-  ];
-  return { config: defaultServerNaturalNudgeConfig(1), entries, fingerprint: computeIdleNudgeListFingerprint(entries) };
-})();
 
 /** Server 9 and the id-derived nickname are this suite's defaults, so both stay off the factory. */
 function makePersona(overrides: Partial<TomoriState> & { persona_id: number }): TomoriState {
@@ -824,22 +791,6 @@ describe("config page text budgeting at stored maxima", () => {
           selectedPersonaId: null,
           readStatus: "fresh",
           naturalNudges: { settings: MAX_NUDGE_SETTINGS },
-          receipt: receipt ? { tone: "success", heading: "Saved", detail: "Configuration was saved." } : undefined,
-        }),
-    },
-    {
-      name: "Plugins Nudge Idle Nudges",
-      maxTolerance: PREVIEW_TIGHTNESS_TOLERANCE,
-      buildPayload: (locale: string, receipt: boolean) =>
-        buildConfigPanelPayload({
-          locale,
-          actor: GUILD_MANAGER,
-          category: "plugins",
-          page: "idle-nudges",
-          personas: [makePersona({ persona_id: 55 })],
-          selectedPersonaId: null,
-          readStatus: "fresh",
-          naturalNudges: { idleNudges: MAX_NUDGE_IDLE_NUDGES, idleNudgeStart: 24, selectedIdleNudgeIndex: 33 },
           receipt: receipt ? { tone: "success", heading: "Saved", detail: "Configuration was saved." } : undefined,
         }),
     },

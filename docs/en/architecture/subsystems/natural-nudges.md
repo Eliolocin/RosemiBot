@@ -282,10 +282,17 @@ Built-in idle nudges (`BUILTIN_IDLE_NUDGES` in `runtime/idleNudges.ts`) and cust
 category, planner brief, agenda hint, prerequisites, and recommended tools. Prerequisites come from a
 fixed registry: `hanging_conversation`, the three target facts (`relationship_user`, `recent_memory`,
 `presence_activity`), `two_personas`, and `tool:<name>`, where tool availability is what the persona's
-turn would be offered. Every Ping User nudge needs a drawn target, even a custom one that omits
-`relationship_user`, and so does any idle nudge listing one of the three target facts; outside a scene,
-such an idle nudge pings its target too. An unknown prerequisite makes an idle nudge ineligible rather than
-silently dropping the check.
+turn would be offered. Each category implies one prerequisite (`CATEGORY_IMPLIED_PREREQUISITES`): Ping
+User needs a drawn target, Revive Topic a hanging conversation, and Play Scene a partner, even for a
+custom idle nudge that omits it, and `/nudge-studio` neither offers nor stores that prerequisite. Any
+idle nudge listing one of the three target facts needs a target too; outside a scene, such an idle
+nudge pings its target. An unknown prerequisite makes an idle nudge ineligible rather than silently
+dropping the check.
+
+`/nudge-studio` (`discord/studio*.ts`) marks an enabled idle nudge as blocked through
+`findIdleNudgeBlocker`, which judges only facts that hold for days: whether one nudging persona holds
+every tool the idle nudge needs, and whether a Play Scene has a second nudging persona. Hanging
+conversations, targets, and presence change between draws, so they never mark one blocked.
 
 ## Pointer personas
 
@@ -308,6 +315,8 @@ re-pointing a persona at a preset deletes the row so it reads the preset again.
   partner count, idle nudge category weights and daily caps, Active Nudge trip range, daily cap, window,
   delay, and detours). Schema and Discord limits stay with their owners.
 - `src/modules/natural-nudges/db/repositories.ts`: every Natural Nudges query.
+- `src/modules/natural-nudges/discord/studioPanel.ts`: the `/nudge-studio` panel and its modal builders.
+- `src/modules/natural-nudges/discord/studioRoutes.ts`: `/nudge-studio` routing, authorization, and checklist writes.
 - Related: [Database Schema](/architecture/subsystems/database-schema/),
   [Prompt Snapshot](/architecture/subsystems/prompt-snapshot/),
   [Persona Presets](/architecture/subsystems/persona-presets/).

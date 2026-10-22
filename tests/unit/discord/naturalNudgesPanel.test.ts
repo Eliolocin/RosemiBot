@@ -1,22 +1,12 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import {
-  IDLE_NUDGE_FREQUENCY_LEVELS,
-  NATURAL_NUDGE_CATEGORIES,
-  defaultServerNaturalNudgeConfig,
-} from "@/modules/natural-nudges/db/types";
+import { IDLE_NUDGE_FREQUENCY_LEVELS, defaultServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
 import type { NaturalNudgesSettingsView } from "@/modules/natural-nudges/discord/operations";
-import {
-  NUDGE_IDLE_NUDGE_CATEGORY_FIELD,
-  buildIdleNudgeModal,
-  buildNaturalNudgesSettingsBody,
-} from "@/modules/natural-nudges/discord/panel";
+import { buildNaturalNudgesSettingsBody } from "@/modules/natural-nudges/discord/panel";
 import { buildConfigRouteId } from "@/utils/discord/configPanelCatalog";
-import { buildConfigModalFieldId } from "@/utils/discord/ui/configModals";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { localizedCopy } from "../../helpers/localeCases";
 
 const LOCALE = "en-US";
-const NONCE = "nonce1234567";
 const CHANNEL_ID = "111111111111111111";
 const CHAT_MODEL_LABEL = "chat-model (OpenRouter)";
 const PLANNER_MODEL_LABEL = "planner-model (OpenRouter)";
@@ -38,13 +28,6 @@ const FREQUENCY_KEYS: Record<number, string> = {
   3: "commands.config.natural_nudges.frequency_3",
 };
 
-const CATEGORY_KEYS = {
-  ping_user: "commands.config.natural_nudges.category_ping_user",
-  revive_topic: "commands.config.natural_nudges.category_revive_topic",
-  start_topic: "commands.config.natural_nudges.category_start_topic",
-  play_scene: "commands.config.natural_nudges.category_play_scene",
-} as const;
-
 interface Observed {
   type: number;
   customId?: string;
@@ -54,9 +37,6 @@ interface Observed {
   description?: string;
   options?: Array<{ label?: string; value?: string }>;
 }
-
-/** Modal field labels carry their description; the select they wrap carries the options. */
-const MODAL_LABEL_TYPE = 18;
 
 function walk(value: unknown): Observed[] {
   if (Array.isArray(value)) return value.flatMap(walk);
@@ -111,6 +91,10 @@ function makeView(overrides: Partial<NaturalNudgesSettingsView> = {}): NaturalNu
   };
 }
 
+/** The Idle Nudges section always ends with a pointer to /nudge-studio, so model footnotes are the other `-#` lines. */
+const isModelFootnote = (component: Observed): boolean =>
+  Boolean(component.content?.startsWith("-# ")) && !component.content?.includes("/nudge-studio");
+
 const modelSectionText = (): string =>
   `### ${t("commands.config.natural_nudges.model_title")}\n${t("commands.config.natural_nudges.model_description")}`;
 
@@ -162,7 +146,7 @@ describe("Natural Nudges settings panel", () => {
       t("commands.config.natural_nudges.model_same_as_chat", { model: CHAT_MODEL_LABEL }),
     );
     expect(defaultSeen.some((component) => component.content === modelSectionText())).toBe(true);
-    expect(defaultSeen.some((component) => component.content?.startsWith("-# "))).toBe(false);
+    expect(defaultSeen.some(isModelFootnote)).toBe(false);
 
     const pinnedBody = buildNaturalNudgesSettingsBody(
       LOCALE,
@@ -191,7 +175,7 @@ describe("Natural Nudges settings panel", () => {
       false,
       false,
     );
-    expect(walk(unusableDefault).filter((component) => component.content?.startsWith("-# "))).toEqual([
+    expect(walk(unusableDefault).filter(isModelFootnote)).toEqual([
       expect.objectContaining({
         content: `-# ${t("commands.config.natural_nudges.model_chat_no_structured", { model: CHAT_MODEL_LABEL })}`,
       }),
@@ -200,27 +184,8 @@ describe("Natural Nudges settings panel", () => {
     const noStructuredModels = buildNaturalNudgesSettingsBody(LOCALE, makeView({ plannerModels: [] }), false, false);
     const noStructuredSeen = walk(noStructuredModels);
     expect(noStructuredSeen.some((component) => component.customId === ROUTE_IDS.provider)).toBe(false);
-    expect(noStructuredSeen.filter((component) => component.content?.startsWith("-# "))).toEqual([
+    expect(noStructuredSeen.filter(isModelFootnote)).toEqual([
       expect.objectContaining({ content: `-# ${t("commands.config.natural_nudges.model_none_available")}` }),
     ]);
-  });
-
-  it("labels the custom idle nudge category choices by category key", () => {
-    const modal = buildIdleNudgeModal(LOCALE, NONCE, null);
-    const seen = walk(modal);
-    const categoryField = seen.find(
-      (component) =>
-        component.type === MODAL_LABEL_TYPE &&
-        component.label === t("commands.config.natural_nudges.idle_nudge_category_label"),
-    );
-    const categorySelect = seen.find(
-      (component) => component.customId === buildConfigModalFieldId(NUDGE_IDLE_NUDGE_CATEGORY_FIELD, NONCE),
-    );
-
-    expect(categoryField?.description).toBe(t("commands.config.natural_nudges.idle_nudge_category_description"));
-    expect(categorySelect?.options?.map((option) => option.label)).toEqual(
-      NATURAL_NUDGE_CATEGORIES.map((category) => t(CATEGORY_KEYS[category])),
-    );
-    expect(categorySelect?.options?.map((option) => option.value)).toEqual([...NATURAL_NUDGE_CATEGORIES]);
   });
 });

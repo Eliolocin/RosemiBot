@@ -908,17 +908,6 @@ describe("isConfigRouteAuthorized", () => {
     { action: "nudge-idle-nudges-frequency-select", locale: "en-US" },
     { action: "nudge-active-nudges-set", locale: "en-US", enabled: true },
     { action: "nudge-active-nudges-frequency-select", locale: "en-US" },
-    { action: "nudge-idle-select", locale: "en-US", start: 0, fp: "abcdefgh" },
-    { action: "nudge-idle-page", locale: "en-US", start: 24 },
-    { action: "nudge-idle-add-submit", locale: "en-US", nonce: "nonce123" },
-    { action: "nudge-idle-toggle", locale: "en-US", index: 0, fp: "abcdefgh", enabled: false },
-    { action: "nudge-idle-edit-open", locale: "en-US", index: 0, fp: "abcdefgh" },
-    { action: "nudge-idle-edit-submit", locale: "en-US", index: 0, fp: "abcdefgh", nonce: "nonce123" },
-    { action: "nudge-idle-prereqs-select", locale: "en-US", index: 0, fp: "abcdefgh" },
-    { action: "nudge-idle-tools-select", locale: "en-US", index: 0, fp: "abcdefgh" },
-    { action: "nudge-idle-remove-view", locale: "en-US", index: 0, fp: "abcdefgh" },
-    { action: "nudge-idle-remove-confirm", locale: "en-US", index: 0, fp: "abcdefgh", nonce: "nonce123" },
-    { action: "nudge-idle-remove-cancel", locale: "en-US", index: 0 },
   ];
   it("keeps Natural Nudges routes for guild managers only, since nudges never run in DMs", () => {
     for (const route of nudgeRoutes) {

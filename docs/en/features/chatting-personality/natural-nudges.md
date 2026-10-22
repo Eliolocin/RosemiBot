@@ -58,16 +58,26 @@ Each idle nudge belongs to a category:
 | **Start Topic** | A persona raises something new, usually from its own interests: a thought, a hot take, a "would you rather", a news item, a picture, or a voice note. |
 | **Play Scene** | Two or three personas talk to each other in a short scene: a playful argument, a loud "secret" plan for a member, asking each other for advice, or showing off a picture. |
 
-`/config` > Plugins > Idle Nudges lists every idle nudge. Built-in idle nudges can be turned off, and
-you can add up to 25 of your own:
+`/nudge-studio` (you need Manage Server) has a tab for each category. Each tab lists that category's idle
+nudges with a colored dot:
 
-- **Name** and **Category**.
-- **Planner brief**: what the persona sets out to do. Write `{persona}` where its name goes,
+- 🟢 **On**: it can be picked.
+- 🟡 **On, but it can't run here yet**: no persona has a tool it needs, or a Play Scene has no second
+  persona. The row says what is missing.
+- 🔴 **Off**.
+
+**Toggle Availability** turns idle nudges on or off. Below the list you can add up to 25 of your own
+for the whole server. Choosing one opens it for editing; **Remove Nudges** lists your own idle nudges,
+and unchecking one removes it. Each one has:
+
+- **Name**.
+- **Brief**: what the persona sets out to do. Write `{persona}` where its name goes,
   `{partner}` where the other persona in a Play Scene goes, and `{target}` where the member it is
   about goes.
-- **Example agenda** (optional): the kind of small goal the persona keeps after its opener.
-- **Needs**: what must be true before the idle nudge can run, such as a hanging conversation or an
-  available tool.
+- **Agenda** (optional): the kind of small goal the persona keeps after its opener.
+- **Needs**: what must be true before the idle nudge can run, such as a recent memory or an
+  available tool. Each category already brings its own: a member to ping, a hanging conversation, or
+  a second persona.
 - **Recommended tools**: tools the persona is encouraged to use, offered only when available.
 
 ### Ping User

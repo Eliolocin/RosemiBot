@@ -131,8 +131,9 @@ Keep the `/en/` segment, as every docs link in `src/locales/en-US/` does.
   an add option writes nothing until the modal is submitted, so it is not a navigation write.
 - Show user entries as the server display name followed by the username in parentheses when they differ:
   `Mika (mika_draws)`.
-- A modal holds five top-level components. Text inputs reopen with the stored value; selects and checkbox
-  groups cannot be prefilled and reopen empty.
+- A modal holds five top-level components. Text inputs reopen with the stored value, and selects and
+  checkbox groups reopen with their stored choices marked `default`. A multi-pick String Select is read
+  with `takeRawModalStringSelectValues`, because `takeRawModalSelectValue` keeps only the first value.
 - When a modal's selects are submitted together, every slot keeps its clear entry, even an empty one,
   because the modal cannot be repainted per slot.
 

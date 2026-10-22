@@ -38,6 +38,14 @@ export const NUDGE_PREREQUISITE_IDS: readonly string[] = [
   ...NUDGE_TOOL_NAMES.map((tool) => `${TOOL_PREREQUISITE_PREFIX}${tool}`),
 ];
 
+/** The prerequisite each category already enforces in `isIdleNudgeEligible`, so authors never need to pick it. */
+export const CATEGORY_IMPLIED_PREREQUISITES: Record<NaturalNudgeCategory, string | null> = {
+  ping_user: RELATIONSHIP_USER_PREREQUISITE,
+  revive_topic: HANGING_CONVERSATION_PREREQUISITE,
+  start_topic: null,
+  play_scene: TWO_PERSONAS_PREREQUISITE,
+};
+
 export function isKnownPrerequisite(id: string): boolean {
   return NUDGE_PREREQUISITE_IDS.includes(id);
 }
@@ -71,7 +79,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "ping_user.check_in",
     category: "ping_user",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_check_in",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.ping_user_check_in",
     brief:
       "Have {persona} casually check on {target}, the way a friend would after not talking for a while. Keep it to one or two lines.",
     agendaHint: "Get {target} to commit to a time to hang out; if they decline, sulk a little, then drop it",
@@ -82,7 +90,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "ping_user.memory_callback",
     category: "ping_user",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_memory_callback",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.ping_user_memory_callback",
     brief:
       "Pick one recent memory about {target} that has a natural follow-up (an exam, a trip, a project) and have {persona} ask how it went.",
     agendaHint: "Find out how the thing went, and remember the answer by updating the old memory",
@@ -93,7 +101,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "ping_user.saw_this",
     category: "ping_user",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_saw_this",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.ping_user_saw_this",
     brief: "Find something new related to {target}'s interests and have {persona} share it with them.",
     agendaHint: "Find out whether {target} had already heard about it",
     prerequisites: [RELATIONSHIP_USER_PREREQUISITE, "tool:web_search"],
@@ -103,7 +111,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "ping_user.presence_poke",
     category: "ping_user",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_presence_poke",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.ping_user_presence_poke",
     brief: "{target} is doing something right now: {presence}. Have {persona} notice and tease or cheer them about it.",
     agendaHint: "Get {target} to share how it is going",
     prerequisites: [RELATIONSHIP_USER_PREREQUISITE, PRESENCE_ACTIVITY_PREREQUISITE],
@@ -113,7 +121,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "ping_user.favor_ask",
     category: "ping_user",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_favor_ask",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.ping_user_favor_ask",
     brief: "Have {persona} ask {target} for their opinion on a small decision that fits {persona}'s character.",
     agendaHint: "Get {target} to settle the decision",
     prerequisites: [RELATIONSHIP_USER_PREREQUISITE],
@@ -123,7 +131,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "ping_user.new_look",
     category: "ping_user",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_new_look",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.ping_user_new_look",
     brief:
       "Have {persona} look at {target}'s profile picture and comment on it in character; decline if {target}'s recent memories already describe their profile picture.",
     agendaHint: "Get {target} to explain the picture, then save a memory of what their profile picture is",
@@ -134,7 +142,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "ping_user.remind_you",
     category: "ping_user",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_remind_you",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.ping_user_remind_you",
     brief: "{persona} remembers something {target} has coming up and offers to remind them.",
     agendaHint: "Get {target} to accept a reminder, then set it",
     prerequisites: [RELATIONSHIP_USER_PREREQUISITE, "tool:create_task"],
@@ -144,7 +152,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "revive_topic.pick_up_thread",
     category: "revive_topic",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.revive_topic_pick_up_thread",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.revive_topic_pick_up_thread",
     brief: "Find the question or topic that was left unanswered and have {persona} bring it back up naturally.",
     agendaHint: "Get the open question resolved",
     prerequisites: [HANGING_CONVERSATION_PREREQUISITE],
@@ -154,7 +162,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "revive_topic.second_thoughts",
     category: "revive_topic",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.revive_topic_second_thoughts",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.revive_topic_second_thoughts",
     brief: "Have {persona} come back having thought more about what was said, with a changed or stronger opinion.",
     agendaHint: "Change someone's stance from earlier",
     prerequisites: [HANGING_CONVERSATION_PREREQUISITE],
@@ -164,7 +172,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "revive_topic.looked_it_up",
     category: "revive_topic",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.revive_topic_looked_it_up",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.revive_topic_looked_it_up",
     brief: "Something in the hanging conversation was uncertain. Have {persona} look it up and report back.",
     agendaHint: "Settle who was right",
     prerequisites: [HANGING_CONVERSATION_PREREQUISITE, "tool:web_search"],
@@ -174,7 +182,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "start_topic.interest_musing",
     category: "start_topic",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.start_topic_interest_musing",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.start_topic_interest_musing",
     brief: "Have {persona} bring up one of its interests with a specific, concrete thought or question.",
     agendaHint: "Find out who else likes the topic",
     prerequisites: [],
@@ -184,7 +192,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "start_topic.hot_take",
     category: "start_topic",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.start_topic_hot_take",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.start_topic_hot_take",
     brief: "Have {persona} share a mildly controversial opinion or a quick either/or poll that fits its character.",
     agendaHint: "Get at least two people to pick a side",
     prerequisites: [],
@@ -194,7 +202,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "start_topic.would_you_rather",
     category: "start_topic",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.start_topic_would_you_rather",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.start_topic_would_you_rather",
     brief: 'Have {persona} pose a playful "would you rather" built around its interests.',
     agendaHint: "Get everyone present to answer",
     prerequisites: [],
@@ -204,7 +212,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "start_topic.current_event",
     category: "start_topic",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.start_topic_current_event",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.start_topic_current_event",
     brief: "Find a recent, light news item related to {persona}'s interests and have it react.",
     agendaHint: "Hear what people think about it",
     prerequisites: ["tool:web_search"],
@@ -214,7 +222,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "start_topic.show_and_tell",
     category: "start_topic",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.start_topic_show_and_tell",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.start_topic_show_and_tell",
     brief: "Have {persona} share a picture of what it is doing or something it made, in character.",
     agendaHint: "Get a compliment, or get someone to guess where it is",
     prerequisites: ["tool:image"],
@@ -224,7 +232,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "start_topic.voice_note",
     category: "start_topic",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.start_topic_voice_note",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.start_topic_voice_note",
     brief: "Have {persona} send a short, casual voice message instead of text.",
     agendaHint: "Get someone to answer with a voice message",
     prerequisites: ["tool:generate_voice_message"],
@@ -234,7 +242,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "play_scene.banter",
     category: "play_scene",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.play_scene_banter",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.play_scene_banter",
     brief: "Start a short, playful disagreement between {persona} and {partner} about something both have opinions on.",
     agendaHint: "Win the argument; get a human to take its side",
     prerequisites: [TWO_PERSONAS_PREREQUISITE],
@@ -244,7 +252,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "play_scene.scheming",
     category: "play_scene",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.play_scene_scheming",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.play_scene_scheming",
     brief:
       "Have {persona} and {partner} plan a harmless surprise for {target}, whispering loudly enough that everyone can see.",
     agendaHint: "Pull off the surprise at the planned time",
@@ -255,7 +263,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "play_scene.asking_for_advice",
     category: "play_scene",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.play_scene_asking_for_advice",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.play_scene_asking_for_advice",
     brief: "Have {persona} ask {partner} for advice about something in its life.",
     agendaHint: "Get {partner} to reveal something about itself",
     prerequisites: [TWO_PERSONAS_PREREQUISITE],
@@ -265,7 +273,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   {
     key: "play_scene.show_off",
     category: "play_scene",
-    titleKey: "commands.config.natural_nudges.idle_nudge_titles.play_scene_show_off",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.play_scene_show_off",
     brief: "Have {persona} show {partner} a picture it made and ask what it thinks.",
     agendaHint: "Get {partner} and a human to react",
     prerequisites: [TWO_PERSONAS_PREREQUISITE, "tool:image"],
@@ -327,8 +335,9 @@ export function idleNudgeNeedsTarget(idleNudge: IdleNudgeDefinition): boolean {
 /** An unknown prerequisite (the registry shrank since the idle nudge was saved) makes the idle nudge ineligible. */
 export function isIdleNudgeEligible(idleNudge: IdleNudgeDefinition, facts: PrerequisiteFacts): boolean {
   if (idleNudgeNeedsTarget(idleNudge) && !facts.target) return false;
-  // Play Scene is always a scene, so a custom one that forgot `two_personas` still needs a partner.
+  // A category implies its scenario, so a custom idle nudge that omits the matching prerequisite still needs it.
   if (idleNudge.category === "play_scene" && !facts.hasScenePartner) return false;
+  if (idleNudge.category === "revive_topic" && !facts.hasHangingConversation) return false;
   return idleNudge.prerequisites.every((id) => {
     if (id === HANGING_CONVERSATION_PREREQUISITE) return facts.hasHangingConversation;
     if (id === RELATIONSHIP_USER_PREREQUISITE) return facts.target !== null;
@@ -336,10 +345,49 @@ export function isIdleNudgeEligible(idleNudge: IdleNudgeDefinition, facts: Prere
     if (id === PRESENCE_ACTIVITY_PREREQUISITE) return facts.target?.isActive ?? false;
     if (id === TWO_PERSONAS_PREREQUISITE) return facts.hasScenePartner;
     const tool = prerequisiteTool(id);
-    if (!tool) return false;
-    if (tool === "image") return IMAGE_TOOL_NAMES.some((name) => facts.availableTools.has(name));
-    return facts.availableTools.has(tool);
+    return tool !== null && hasNudgeTool(tool, facts.availableTools);
   });
+}
+
+function needsScenePartner(idleNudge: IdleNudgeDefinition): boolean {
+  return idleNudge.category === "play_scene" || idleNudge.prerequisites.includes(TWO_PERSONAS_PREREQUISITE);
+}
+
+function prerequisiteTools(idleNudge: IdleNudgeDefinition): NudgeToolName[] {
+  return idleNudge.prerequisites.flatMap((id) => prerequisiteTool(id) ?? []);
+}
+
+/** Whether `findIdleNudgeBlocker` could block it, so callers skip resolving tools when nothing could. */
+export function canIdleNudgeBeBlocked(idleNudge: IdleNudgeDefinition): boolean {
+  return needsScenePartner(idleNudge) || prerequisiteTools(idleNudge).length > 0;
+}
+
+function hasNudgeTool(tool: NudgeToolName, availableTools: ReadonlySet<string>): boolean {
+  return tool === "image" ? IMAGE_TOOL_NAMES.some((name) => availableTools.has(name)) : availableTools.has(tool);
+}
+
+/** What keeps an enabled idle nudge from ever running on a server, judged only on facts that hold for days. */
+export type IdleNudgeBlocker = { kind: "tool"; tool: NudgeToolName } | { kind: "two_personas" };
+
+export interface ServerCapabilityFacts {
+  /** One set per persona that can nudge at all. */
+  personaTools: readonly ReadonlySet<string>[];
+}
+
+/**
+ * Hanging conversations, targets, and presence change minute to minute, so only tools and a second
+ * nudging persona can block; a tool nudge needs one persona holding every tool it names.
+ */
+export function findIdleNudgeBlocker(
+  idleNudge: IdleNudgeDefinition,
+  facts: ServerCapabilityFacts,
+): IdleNudgeBlocker | null {
+  if (needsScenePartner(idleNudge) && facts.personaTools.length < 2) return { kind: "two_personas" };
+  const tools = prerequisiteTools(idleNudge);
+  if (tools.length === 0) return null;
+  if (facts.personaTools.some((available) => tools.every((tool) => hasNudgeTool(tool, available)))) return null;
+  const missing = tools.find((tool) => !facts.personaTools.some((available) => hasNudgeTool(tool, available)));
+  return { kind: "tool", tool: missing ?? tools[0] };
 }
 
 /**

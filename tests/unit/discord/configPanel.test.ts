@@ -338,7 +338,6 @@ describe("config panel shell", () => {
       "context-additions",
       "response-drafting",
       "natural-nudges",
-      "idle-nudges",
       "mcp-servers",
       "sillytavern-presets",
       "nsfw-jailbreaks",

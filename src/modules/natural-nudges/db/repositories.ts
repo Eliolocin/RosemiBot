@@ -57,31 +57,39 @@ class NaturalNudgeRepository {
   }
 
   async saveServerConfig(serverId: number, patch: ServerNaturalNudgeConfigPatch, client: SQL = sql): Promise<boolean> {
-    const next = { ...(await this.loadServerConfig(serverId, client)), ...patch, server_id: serverId };
     try {
-      await client`
-        INSERT INTO server_natural_nudge_configs (
-          server_id, idle_nudges_enabled, active_nudges_enabled, channel_disc_ids, llm_id,
-          idle_nudge_frequency, active_nudge_frequency, disabled_builtin_idle_nudges
-        ) VALUES (
-          ${serverId}, ${next.idle_nudges_enabled}, ${next.active_nudges_enabled}, ${sql.array(next.channel_disc_ids, "TEXT")},
-          ${next.llm_id}, ${next.idle_nudge_frequency}, ${next.active_nudge_frequency},
-          ${sql.array(next.disabled_builtin_idle_nudges, "TEXT")}
-        )
-        ON CONFLICT (server_id) DO UPDATE SET
-          idle_nudges_enabled = EXCLUDED.idle_nudges_enabled,
-          active_nudges_enabled = EXCLUDED.active_nudges_enabled,
-          channel_disc_ids = EXCLUDED.channel_disc_ids,
-          llm_id = EXCLUDED.llm_id,
-          idle_nudge_frequency = EXCLUDED.idle_nudge_frequency,
-          active_nudge_frequency = EXCLUDED.active_nudge_frequency,
-          disabled_builtin_idle_nudges = EXCLUDED.disabled_builtin_idle_nudges
-      `;
+      await this.saveServerConfigOrThrow(serverId, patch, client);
       return true;
     } catch (error) {
       await log.error("Natural Nudges: failed to save server config", error, { metadata: { serverId } });
       return false;
     }
+  }
+
+  private async saveServerConfigOrThrow(
+    serverId: number,
+    patch: ServerNaturalNudgeConfigPatch,
+    client: SQL,
+  ): Promise<void> {
+    const next = { ...(await this.loadServerConfig(serverId, client)), ...patch, server_id: serverId };
+    await client`
+      INSERT INTO server_natural_nudge_configs (
+        server_id, idle_nudges_enabled, active_nudges_enabled, channel_disc_ids, llm_id,
+        idle_nudge_frequency, active_nudge_frequency, disabled_builtin_idle_nudges
+      ) VALUES (
+        ${serverId}, ${next.idle_nudges_enabled}, ${next.active_nudges_enabled}, ${sql.array(next.channel_disc_ids, "TEXT")},
+        ${next.llm_id}, ${next.idle_nudge_frequency}, ${next.active_nudge_frequency},
+        ${sql.array(next.disabled_builtin_idle_nudges, "TEXT")}
+      )
+      ON CONFLICT (server_id) DO UPDATE SET
+        idle_nudges_enabled = EXCLUDED.idle_nudges_enabled,
+        active_nudges_enabled = EXCLUDED.active_nudges_enabled,
+        channel_disc_ids = EXCLUDED.channel_disc_ids,
+        llm_id = EXCLUDED.llm_id,
+        idle_nudge_frequency = EXCLUDED.idle_nudge_frequency,
+        active_nudge_frequency = EXCLUDED.active_nudge_frequency,
+        disabled_builtin_idle_nudges = EXCLUDED.disabled_builtin_idle_nudges
+    `;
   }
 
   /**
@@ -142,8 +150,12 @@ class NaturalNudgeRepository {
     return parseRows(customIdleNudgeRowSchema, rows, "custom idle nudge");
   }
 
-  /** Returns null when the server already holds the maximum number of custom idle nudges. */
-  async insertCustomIdleNudge(serverId: number, input: CustomIdleNudgeInput, limit: number): Promise<number | null> {
+  /** Returns the new row's ID, `"limit"` when the server already holds `limit` rows, or `"failed"` on a database error. */
+  async insertCustomIdleNudge(
+    serverId: number,
+    input: CustomIdleNudgeInput,
+    limit: number,
+  ): Promise<number | "limit" | "failed"> {
     try {
       const [row] = await sql<Array<{ custom_idle_nudge_id: number }>>`
         INSERT INTO server_natural_nudge_custom_idle_nudges
@@ -153,10 +165,10 @@ class NaturalNudgeRepository {
         WHERE (SELECT COUNT(*) FROM server_natural_nudge_custom_idle_nudges WHERE server_id = ${serverId}) < ${limit}
         RETURNING custom_idle_nudge_id
       `;
-      return row?.custom_idle_nudge_id ?? null;
+      return row?.custom_idle_nudge_id ?? "limit";
     } catch (error) {
       await log.error("Natural Nudges: failed to add a custom idle nudge", error, { metadata: { serverId } });
-      return null;
+      return "failed";
     }
   }
 
@@ -179,18 +191,42 @@ class NaturalNudgeRepository {
     }
   }
 
-  async deleteCustomIdleNudge(serverId: number, idleNudgeId: number): Promise<boolean> {
+  /** Returns how many rows were removed, or null when the delete failed. */
+  async deleteCustomIdleNudges(serverId: number, idleNudgeIds: readonly number[]): Promise<number | null> {
     try {
       const rows = await sql`
         DELETE FROM server_natural_nudge_custom_idle_nudges
-        WHERE server_id = ${serverId} AND custom_idle_nudge_id = ${idleNudgeId}
+        WHERE server_id = ${serverId} AND custom_idle_nudge_id = ANY(${sql.array([...idleNudgeIds], "INT")})
         RETURNING custom_idle_nudge_id
       `;
-      return rows.length > 0;
+      return rows.length;
     } catch (error) {
-      await log.error("Natural Nudges: failed to remove a custom idle nudge", error, {
-        metadata: { serverId, idleNudgeId },
+      await log.error("Natural Nudges: failed to remove custom idle nudges", error, {
+        metadata: { serverId, idleNudgeIds },
       });
+      return null;
+    }
+  }
+
+  /** Built-in and custom availability change together, so one modal submit cannot half-apply. */
+  async saveIdleNudgeAvailability(
+    serverId: number,
+    disabledBuiltIns: readonly string[],
+    customEnabled: ReadonlyMap<number, boolean>,
+  ): Promise<boolean> {
+    try {
+      await sql.transaction(async (tx) => {
+        await this.saveServerConfigOrThrow(serverId, { disabled_builtin_idle_nudges: [...disabledBuiltIns] }, tx);
+        for (const [idleNudgeId, enabled] of customEnabled) {
+          await tx`
+            UPDATE server_natural_nudge_custom_idle_nudges SET enabled = ${enabled}
+            WHERE server_id = ${serverId} AND custom_idle_nudge_id = ${idleNudgeId}
+          `;
+        }
+      });
+      return true;
+    } catch (error) {
+      await log.error("Natural Nudges: failed to save idle nudge availability", error, { metadata: { serverId } });
       return false;
     }
   }
