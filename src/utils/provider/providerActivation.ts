@@ -95,11 +95,10 @@ export async function activateServerTextModelFromSavedConfig(params: {
     }),
   ]);
 
+  if (updatedModel || updatedChat) invalidateTomoriStateCache(params.serverDiscId);
   if (!updatedModel || !updatedChat) {
     return { status: "update_failed" };
   }
-
-  invalidateTomoriStateCache(params.serverDiscId);
   return { status: "activated", modelName: selectedModel.llm_codename };
 }
 
