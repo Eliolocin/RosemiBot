@@ -83,7 +83,15 @@ function entitlementSnapshot(
       (previous.last_successful_charge_at && snapshot.lastSuccessfulChargeAt <= previous.last_successful_charge_at));
   const preservePeriod = (cancelAtPeriodEnd || previous?.cancel_at_period_end) && sameCharge;
   const unverifiedCancellation = cancelAtPeriodEnd && snapshot.periodDateSource === "fallback";
-  const periodStart = preservePeriod ? previous.period_start : unverifiedCancellation ? null : snapshot.periodStart;
+  const sameBillingPeriod =
+    previous?.period_start &&
+    previous.period_end &&
+    snapshot.nextChargeAt?.getTime() === previous.period_end.getTime() &&
+    snapshot.lastSuccessfulChargeAt &&
+    snapshot.lastSuccessfulChargeAt >= previous.period_start &&
+    snapshot.lastSuccessfulChargeAt < previous.period_end;
+  const periodStart =
+    preservePeriod || sameBillingPeriod ? previous.period_start : unverifiedCancellation ? null : snapshot.periodStart;
   const periodEnd = preservePeriod ? previous.period_end : unverifiedCancellation ? null : snapshot.periodEnd;
   const boundedCancellation =
     preservePeriod || (snapshot.periodDateSource !== "fallback" && snapshot.periodDateSource !== "none");

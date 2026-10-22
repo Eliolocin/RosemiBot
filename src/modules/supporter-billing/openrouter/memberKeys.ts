@@ -162,11 +162,8 @@ export async function syncMemberKeyLocked(options: {
     });
   } else {
     const charge = entitlement.last_successful_charge_at;
-    const isRenewal =
-      charge &&
-      (!row.applied_charge_at || charge > row.applied_charge_at) &&
-      row.renewal_due_at &&
-      charge >= row.renewal_due_at;
+    const hasNewCharge = charge && (!row.applied_charge_at || charge > row.applied_charge_at);
+    const isRenewal = hasNewCharge && row.renewal_due_at && charge >= row.renewal_due_at;
     if (isRenewal) {
       const remote = await provider.get(row.key_hash);
       if (!remote) throw new MemberKeyError();
@@ -178,6 +175,25 @@ export async function syncMemberKeyLocked(options: {
         target_allowance: allowance,
         target_charge_at: charge,
         target_period_end: entitlement.next_charge_at,
+      });
+    } else if (
+      hasNewCharge &&
+      row.applied_charge_at &&
+      row.renewal_due_at &&
+      charge < row.renewal_due_at &&
+      entitlement.period_end?.getTime() === row.renewal_due_at.getTime() &&
+      row.applied_limit !== null &&
+      row.applied_allowance !== null &&
+      allowance > row.applied_allowance
+    ) {
+      row = await repository.save({
+        ...row,
+        disabled: true,
+        pending_action: "activate",
+        target_limit: normalizeMemberKeyLimit(row.applied_limit + allowance - row.applied_allowance),
+        target_allowance: allowance,
+        target_charge_at: charge,
+        target_period_end: row.renewal_due_at,
       });
     } else if (row.disabled) {
       const remote = await provider.get(row.key_hash);

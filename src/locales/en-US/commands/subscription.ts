@@ -17,7 +17,7 @@ export default {
     remaining: `Monthly Allowance Remaining`,
     renews: `Renews {time}`,
     access_ends: `Access ends {time}. Your membership will not renew. You can use your remaining allowance until then.`,
-    shared_allowance: `Personal access and sponsored servers share this allowance. Usage readings are approximate and may take time to update.`,
+    shared_allowance: `Personal access and sponsored servers share this allowance. A confirmed paid upgrade adds only the allowance increase for this period; spending and your renewal date stay unchanged. Usage readings are approximate and may take time to update.`,
     exhausted: `Your TomoriBot subscription usage is used up. Wait until {time} or upgrade your subscription to a higher tier on Patreon. You can also use a different AI provider while you wait.`,
     exhausted_ending: `Your subscription allowance is used up. Choose another AI provider to continue. Resuming membership in the same paid period does not reset your allowance.`,
     subscribe_patreon: `Subscribe on Patreon`,

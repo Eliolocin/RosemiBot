@@ -54,6 +54,7 @@ import type { StreamContext, StreamConfig } from "@/types/stream/interfaces";
 import { getOrFetchOpenRouterImageEndpoints } from "@/utils/cache/openrouterImageModelCache";
 import { scanEncryptedRows, verifyCiphertext } from "@/utils/security/encryptedColumns";
 import { useFullEnvSandbox } from "../../helpers/env";
+import { loadSubscriptionAllowance } from "@/modules/supporter-billing/subscribe/usage";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
 
 const config: SupporterBillingConfig = {
@@ -77,6 +78,12 @@ const config: SupporterBillingConfig = {
       displayNameKey: "supporter.tiers.dango",
       patreonTierIds: ["tier-dango"],
       monthlyBudgetMicros: 20_000_000,
+      defaultModelByCapability: { text: "example/text" },
+    },
+    taiyaki: {
+      displayNameKey: "supporter.tiers.taiyaki",
+      patreonTierIds: ["tier-taiyaki"],
+      monthlyBudgetMicros: 30_000_000,
       defaultModelByCapability: { text: "example/text" },
     },
   },
@@ -1032,22 +1039,55 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     }
   });
 
-  it("keeps the current cap on tier edits and mid-period upgrade charges, then renews once using the new allowance", async () => {
+  it("adds only the paid upgrade difference, preserving spend, usage dates and retry targets before the next renewal", async () => {
     const value = snapshot("renewal");
     const provider = new Provider();
     await link(value, provider);
     const key = await remote(value, provider);
+    const original = await repository.load(value.patreonMemberId);
     key.usage = 4;
     const edited = {
       ...value,
       tierKey: "dango",
       patreonTierId: "tier-dango",
+    };
+    for (const lastSuccessfulChargeAt of [null, value.lastSuccessfulChargeAt]) {
+      await change({ ...edited, lastSuccessfulChargeAt }, provider, true, new Date("2026-01-16"));
+      expect(key.limit).toBe(10);
+    }
+    const upgraded = {
+      ...edited,
+      periodStart: new Date("2026-01-15"),
       lastSuccessfulChargeAt: new Date("2026-01-15"),
     };
-    await change(edited, provider, true, new Date("2026-01-16"));
-    expect(key.limit).toBe(10);
+    provider.lostUpdate = true;
+    await expect(change(upgraded, provider, true, new Date("2026-01-16"))).rejects.toBeInstanceOf(MemberKeyError);
+    expect(key.limit).toBe(20);
+    expect((await repository.load(value.patreonMemberId))?.applied_allowance).toBe(10);
+    key.usage = 6;
+    await Promise.all(Array.from({ length: 3 }, () => change(upgraded, provider, true, new Date("2026-01-16"))));
+    await link(upgraded, provider, new Date("2026-01-16"));
+    expect(key.limit).toBe(20);
+    const row = await repository.load(value.patreonMemberId);
+    expect(row?.key_created_at).toEqual(original?.key_created_at);
+    expect(row?.applied_allowance).toBe(20);
+    expect(row?.renewal_due_at).toEqual(renewal);
+    const identity = await identities.loadByDiscordUserId(value.discordUserId);
+    if (!identity) throw new Error("Missing upgrade identity");
+    const entitlement = await new SupporterEntitlementRepository(testSql).loadByIdentityId(
+      identity.supporter_identity_id,
+    );
+    if (!entitlement) throw new Error("Missing upgrade entitlement");
+    expect(
+      await loadSubscriptionAllowance(identity, entitlement, {
+        memberKeys: repository,
+        statistics,
+        provider: () => provider,
+        observedSpend: () => 0,
+      }),
+    ).toEqual({ allowance: 20, used: 6, remaining: 14, start: value.periodStart, end: renewal });
     const renewed = {
-      ...edited,
+      ...upgraded,
       periodStart: renewal,
       periodEnd: nextRenewal,
       nextChargeAt: nextRenewal,
@@ -1055,10 +1095,10 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     };
     provider.lostUpdate = true;
     await expect(change(renewed, provider, true, renewal)).rejects.toBeInstanceOf(MemberKeyError);
-    expect(key.limit).toBe(24);
-    key.usage = 6;
+    expect(key.limit).toBe(26);
+    key.usage = 8;
     await Promise.all(Array.from({ length: 3 }, () => change(renewed, provider, true, renewal)));
-    expect(key.limit).toBe(24);
+    expect(key.limit).toBe(26);
     expect((await repository.load(value.patreonMemberId))?.applied_charge_at).toEqual(renewal);
     const withoutReceipt = {
       ...mappedSnapshot("renewal", nextRenewal, null),
@@ -1067,7 +1107,81 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
       lastSuccessfulChargeAt: null,
     };
     await change(withoutReceipt, provider, true, nextRenewal);
-    expect(key.limit).toBe(24);
+    expect(key.limit).toBe(26);
+  });
+
+  it("preserves exhausted usage and the highest paid allowance through tier cycling and key rotation", async () => {
+    const value = snapshot("upgrade_cycle");
+    const provider = new Provider();
+    const linked = await link(value, provider);
+    const key = await remote(value, provider);
+    key.usage = 10;
+    const guard = new SupporterSpendGuard(repository, statistics, () => provider);
+    guard.registerCredential(key.key, funding(linked.identity.supporter_identity_id), key.hash);
+    await expect(guard.begin(key.key, async () => 0.1)).rejects.toMatchObject({ reason: "allowance_exhausted" });
+    const upgraded = {
+      ...value,
+      tierKey: "dango",
+      patreonTierId: "tier-dango",
+      lastSuccessfulChargeAt: new Date("2026-01-15"),
+    };
+    await change(upgraded, provider, true, new Date("2026-01-16"));
+    expect(key.limit).toBe(20);
+    expect(key.usage).toBe(10);
+    const hold = await guard.begin(key.key, async () => 0.1);
+    expect(hold).toBeDefined();
+    hold?.release();
+    await change(
+      { ...upgraded, tierKey: "mochi", patreonTierId: "tier-mochi" },
+      provider,
+      true,
+      new Date("2026-01-16"),
+    );
+    await change(upgraded, provider, true, new Date("2026-01-17"));
+    expect(key.limit).toBe(20);
+    expect((await repository.load(value.patreonMemberId))?.applied_allowance).toBe(20);
+
+    await rotateSupporterMemberKey({
+      ...options,
+      now: new Date("2026-01-17"),
+      provider,
+      supporterIdentityId: linked.identity.supporter_identity_id,
+      requestId: randomUUID(),
+    });
+    const replacement = await remote(value, provider);
+    expect(replacement.limit).toBe(10);
+    await change(upgraded, provider, true, new Date("2026-01-17"));
+    expect(replacement.limit).toBe(10);
+    await change(
+      {
+        ...upgraded,
+        tierKey: "taiyaki",
+        patreonTierId: "tier-taiyaki",
+        lastSuccessfulChargeAt: new Date("2026-01-18"),
+      },
+      provider,
+      true,
+      new Date("2026-01-19"),
+    );
+    expect(replacement.limit).toBe(20);
+    await change(upgraded, provider, true, new Date("2026-01-19"));
+    expect(replacement.limit).toBe(20);
+
+    replacement.usage = 2;
+    await change(
+      {
+        ...value,
+        periodStart: renewal,
+        periodEnd: nextRenewal,
+        nextChargeAt: nextRenewal,
+        lastSuccessfulChargeAt: renewal,
+      },
+      provider,
+      true,
+      renewal,
+    );
+    expect(replacement.limit).toBe(12);
+    expect((await repository.load(value.patreonMemberId))?.applied_allowance).toBe(10);
   });
 
   it("disables lapses, denies lookups while provider recovery is pending, and resumes without a refill", async () => {
@@ -1342,7 +1456,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     expect(key.disabled).toBe(true);
   });
 
-  it("keeps the cap through repeated signed tier-edit deliveries and renews once despite lagging usage", async () => {
+  it("applies a signed paid upgrade once through provider failure and duplicate deliveries, then renews normally", async () => {
     const value = snapshot("signed_tier_edit");
     const provider = new Provider();
     await link(value, provider);
@@ -1391,10 +1505,12 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     }
     const editedAt = new Date("2026-01-16");
     const upgradeCharge = new Date("2026-01-15");
+    provider.lostUpdate = true;
+    expect((await deliver("_member_keys_tier_edit", editedAt, upgradeCharge, renewal)).statusCode).toBe(500);
     expect((await deliver("_member_keys_tier_edit", editedAt, upgradeCharge, renewal)).status).toBe("processed");
     expect((await deliver("_member_keys_tier_edit", editedAt, upgradeCharge, renewal)).status).toBe("duplicate");
     expect((await deliver("_member_keys_tier_edit_retry", editedAt, upgradeCharge, renewal)).status).toBe("processed");
-    expect(key.limit).toBe(10);
+    expect(key.limit).toBe(20);
     key.usage = 6;
     expect((await deliver("_member_keys_tier_renewal", renewal, renewal, nextRenewal)).status).toBe("processed");
     expect(key.limit).toBe(26);
