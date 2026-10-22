@@ -123,6 +123,7 @@
     "postcss": ">=8.5.18",
     "nanoid": ">=3.3.17 <4",
     "svgo": "^4.1.0",
+    "vite": ">=8.1.6 <9",
     "sharp": "$sharp",
     "@modelcontextprotocol/sdk": "$@modelcontextprotocol/sdk",
     "proxy-addr": ">=2.0.8",

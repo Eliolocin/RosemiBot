@@ -254,3 +254,50 @@ export async function checkSupporterBillingTablesExist(
 
   return Object.fromEntries(existsEntries) as Record<SupporterBillingTableName, boolean>;
 }
+
+export async function validateSupporterBillingSchema(
+  client: SQL = defaultSql,
+): Promise<SupporterBillingSchemaInitializationResult> {
+  const presence = await checkSupporterBillingTablesExist(client);
+  const missing = SUPPORTER_BILLING_TABLE_NAMES.filter((name) => !presence[name]);
+  if (missing.length > 0) {
+    throw new Error(`Supporter billing requires privileged schema initialization: ${missing.join(", ")}`);
+  }
+
+  const denied = await client<Array<{ table_name: string }>>`
+    SELECT c.relname AS table_name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname = ANY(${client.array([...SUPPORTER_BILLING_TABLE_NAMES, "oauth_states"], "TEXT")})
+      AND (
+        NOT has_table_privilege(c.oid, 'SELECT')
+        OR NOT has_table_privilege(c.oid, 'INSERT')
+        OR NOT has_table_privilege(c.oid, 'UPDATE')
+        OR NOT has_table_privilege(c.oid, 'DELETE')
+        OR NOT has_function_privilege('public.update_timestamp()', 'EXECUTE')
+        OR EXISTS (
+          SELECT 1 FROM pg_attribute a
+          WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+            AND pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname) IS NOT NULL
+            AND NOT has_sequence_privilege(
+              pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname), 'USAGE'
+            )
+        )
+      )
+  `;
+  if (denied.length > 0) {
+    throw new Error(`Supporter billing requires runtime grants: ${denied.map((row) => row.table_name).join(", ")}`);
+  }
+
+  await client`
+    SELECT e.last_successful_charge_at, e.next_charge_at, e.cancel_at_period_end,
+      k.applied_limit, k.key_created_at, k.retained_cost, k.applied_allowance, k.target_allowance,
+      u.input_tokens, u.output_tokens, w.idempotency_key
+    FROM supporter_entitlements e, supporter_member_keys k,
+      supporter_usage_statistics u, supporter_webhook_events w, oauth_states o
+    LIMIT 0
+  `;
+
+  return { initializedTables: SUPPORTER_BILLING_TABLE_NAMES };
+}

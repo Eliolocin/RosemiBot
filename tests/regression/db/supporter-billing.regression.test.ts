@@ -1,5 +1,6 @@
 import { loadConfigSwitchModelsView } from "@/utils/discord/interactions/configModelLoaders";
-import { createHash } from "node:crypto";
+import type { SQL } from "bun";
+import { createHash, randomUUID } from "node:crypto";
 import { createMemberKeyMetadata } from "../../helpers/memberKeyMetadata";
 import { MemberKeyRepository } from "@/modules/supporter-billing/db/repositories/memberKeys";
 import { OAuthStateRepository } from "@/utils/db/repositories/OAuthStateRepository";
@@ -282,6 +283,93 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter billing — gated DB schema", ()
     `;
     expect(retired).toEqual({ archive: null, periods: null, reservations: null, events: null });
   });
+  it("starts billing with runtime DML grants after privileged initialization and refuses incomplete grants or schema", async () => {
+    const role = `billing_runtime_${randomUUID().replaceAll("-", "")}`;
+    const rollback = new Error("rollback permission rehearsal");
+    await dropSupporterBillingTables();
+    try {
+      await expect(
+        testSql.begin(async (tx) => {
+          await tx.unsafe(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
+          await tx`REVOKE CREATE ON SCHEMA public FROM PUBLIC`;
+          await tx.unsafe(`GRANT USAGE ON SCHEMA public TO ${role}`);
+          await tx.unsafe(
+            `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${role}`,
+          );
+          await tx.unsafe(
+            `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO ${role}`,
+          );
+          await tx.unsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON oauth_states TO ${role}`);
+          await tx.unsafe(`GRANT USAGE, SELECT, UPDATE ON SEQUENCE oauth_states_oauth_state_id_seq TO ${role}`);
+          await tx.unsafe(`GRANT EXECUTE ON FUNCTION update_timestamp() TO ${role}`);
+          await initializeSupporterBillingSchema(tx);
+          await initializeSupporterBillingSchema(tx);
+
+          const start = (client: SQL, routes: () => void = () => undefined) =>
+            initializeSupporterBilling({
+              environment: "production",
+              env: createEnabledEnv({ DATABASE_SCHEMA_MANAGEMENT_ENABLED: "false" }),
+              billingClient: client,
+              initializePatreonRoutes: routes,
+              startPatreonReconcileJob: () => ({ stop: () => undefined }),
+            });
+
+          await tx.savepoint(async (runtime) => {
+            await runtime.unsafe(`SET LOCAL ROLE ${role}`);
+            const [permissions] = await runtime`
+              SELECT has_schema_privilege(current_user, 'public', 'CREATE') AS can_create,
+                current_user = (SELECT pg_get_userbyid(relowner) FROM pg_class
+                  WHERE oid = 'supporter_identities'::regclass) AS owns_tables
+            `;
+            expect(permissions).toEqual({ can_create: false, owns_tables: false });
+            expect((await start(runtime)).enabled).toBe(true);
+            const identities = new SupporterIdentityRepository(runtime);
+            const params = {
+              discordUserId: "_rt_supporter_runtime",
+              patreonUserId: "_rt_patreon_runtime",
+              patreonMemberId: "_rt_member_runtime",
+              patreonCampaignId: "campaign_test",
+            };
+            const identity = await identities.upsertIdentity(params);
+            const updated = await identities.upsertIdentity({ ...params, patreonMemberId: "_rt_member_updated" });
+            expect(updated.supporter_identity_id).toBe(identity.supporter_identity_id);
+            expect((await identities.loadById(identity.supporter_identity_id))?.patreon_member_id).toBe(
+              "_rt_member_updated",
+            );
+            const deleted = await runtime`
+              DELETE FROM supporter_identities WHERE supporter_identity_id = ${identity.supporter_identity_id}
+              RETURNING supporter_identity_id
+            `;
+            expect(deleted).toHaveLength(1);
+            await runtime`RESET ROLE`;
+          });
+
+          for (const change of [
+            `REVOKE INSERT ON supporter_webhook_events FROM ${role}`,
+            `REVOKE USAGE ON SEQUENCE supporter_identities_supporter_identity_id_seq FROM ${role}`,
+            "ALTER TABLE supporter_usage_statistics DROP COLUMN input_tokens",
+            "DROP TABLE supporter_webhook_events",
+          ]) {
+            let routesOpened = false;
+            await expect(
+              tx.savepoint(async (runtime) => {
+                await runtime.unsafe(change);
+                await runtime.unsafe(`SET LOCAL ROLE ${role}`);
+                await start(runtime, () => {
+                  routesOpened = true;
+                });
+              }),
+            ).rejects.toBeInstanceOf(Error);
+            expect(routesOpened).toBe(false);
+          }
+          throw rollback;
+        }),
+      ).rejects.toBe(rollback);
+    } finally {
+      await initializeSupporterBillingSchema(testSql);
+    }
+  });
+
   it("archives legacy accounting rows, relationships and sequences without reopening runtime tables", async () => {
     const identity = await createSupporterFixture("accounting_retirement");
     for (const statement of LEGACY_ACCOUNTING_SCHEMA_STATEMENTS) await testSql.unsafe(statement);

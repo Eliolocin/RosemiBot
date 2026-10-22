@@ -925,6 +925,7 @@ jobs:
               "dockerHubTokenB64=$DOCKERHUB_TOKEN_B64" \
               "tomoribotImage=$TOMORIBOT_IMAGE" \
               "allowMigrationDowntime=$ALLOW_MIGRATION_DOWNTIME" \
+              "supporterBillingEnabled=$(jq -r '(.TOMORI_SUPPORTER_BILLING_ENABLED // "false" | tostring | gsub("^\\s+|\\s+$"; "")) == "true"' <<<"$TOMORI_SECRETS_JSON")" \
             --query 'value[0].message' \
             --output tsv \
             --only-show-errors)

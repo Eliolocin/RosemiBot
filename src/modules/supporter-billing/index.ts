@@ -1,5 +1,6 @@
 import type { SQL } from "bun";
 import type { AppEnvironment } from "@/types/config";
+import { isDatabaseSchemaManagementEnabled } from "@/init/database";
 import { sql as defaultSql } from "@/utils/db/client";
 import {
   isSupporterBillingEnabled,
@@ -8,6 +9,7 @@ import {
 } from "@/modules/supporter-billing/config";
 import {
   initializeSupporterBillingSchema,
+  validateSupporterBillingSchema,
   type SupporterBillingSchemaInitializationResult,
 } from "@/modules/supporter-billing/db";
 import {
@@ -58,7 +60,11 @@ export async function initializeSupporterBilling(
     validateReferencedSecrets: true,
   });
   const billingClient = options.billingClient ?? defaultSql;
-  const initializeBillingSchema = options.initializeBillingSchema ?? initializeSupporterBillingSchema;
+  const initializeBillingSchema =
+    options.initializeBillingSchema ??
+    (isDatabaseSchemaManagementEnabled(env.DATABASE_SCHEMA_MANAGEMENT_ENABLED)
+      ? initializeSupporterBillingSchema
+      : validateSupporterBillingSchema);
   const initializePatreonRouteHook = options.initializePatreonRoutes ?? initializePatreonRoutes;
   const startPatreonReconcileJobHook = options.startPatreonReconcileJob ?? startPatreonReconcileJob;
 
