@@ -138,6 +138,8 @@ const SUPPORTER_BILLING_SCHEMA_STATEMENTS = [
     member_key_id SERIAL PRIMARY KEY,
     patreon_member_id TEXT NOT NULL UNIQUE,
     supporter_identity_id INTEGER UNIQUE REFERENCES supporter_identities(supporter_identity_id) ON DELETE SET NULL,
+    detached_retention_started_at TIMESTAMPTZ,
+    retention_hold BOOLEAN NOT NULL DEFAULT false,
     key_hash TEXT UNIQUE,
     api_key BYTEA,
     key_version INTEGER CHECK (key_version > 0),
@@ -160,6 +162,10 @@ const SUPPORTER_BILLING_SCHEMA_STATEMENTS = [
   "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS retained_cost DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (retained_cost >= 0 AND retained_cost < 'Infinity'::float8)",
   "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS applied_allowance DOUBLE PRECISION",
   "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS target_allowance DOUBLE PRECISION",
+  "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS detached_retention_started_at TIMESTAMPTZ",
+  "ALTER TABLE supporter_member_keys ADD COLUMN IF NOT EXISTS retention_hold BOOLEAN NOT NULL DEFAULT false",
+  `UPDATE supporter_member_keys SET detached_retention_started_at = GREATEST(NOW(), renewal_due_at, target_period_end)
+    WHERE supporter_identity_id IS NULL AND detached_retention_started_at IS NULL`,
   // Existing keys lack a creation timestamp, so count all retained statistics until their next rotation.
   `UPDATE supporter_member_keys SET key_created_at = 'epoch'
     WHERE key_hash IS NOT NULL AND key_created_at IS NULL`,
@@ -293,6 +299,7 @@ export async function validateSupporterBillingSchema(
   await client`
     SELECT e.last_successful_charge_at, e.next_charge_at, e.cancel_at_period_end,
       k.applied_limit, k.key_created_at, k.retained_cost, k.applied_allowance, k.target_allowance,
+      k.detached_retention_started_at, k.retention_hold,
       u.input_tokens, u.output_tokens, w.idempotency_key
     FROM supporter_entitlements e, supporter_member_keys k,
       supporter_usage_statistics u, supporter_webhook_events w, oauth_states o

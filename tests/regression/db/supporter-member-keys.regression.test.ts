@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { randomUUID } from "node:crypto";
+import type { SQL } from "bun";
 import type { SupporterBillingConfig } from "@/modules/supporter-billing/config";
 import { initializeSupporterBillingSchema } from "@/modules/supporter-billing/db/schema";
 import { MemberKeyRepository } from "@/modules/supporter-billing/db/repositories/memberKeys";
@@ -55,6 +56,7 @@ import { getOrFetchOpenRouterImageEndpoints } from "@/utils/cache/openrouterImag
 import { scanEncryptedRows, verifyCiphertext } from "@/utils/security/encryptedColumns";
 import { useFullEnvSandbox } from "../../helpers/env";
 import { loadSubscriptionAllowance } from "@/modules/supporter-billing/subscribe/usage";
+import { runSupporterBillingMaintenance } from "@/modules/supporter-billing/runtime/maintenance";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
 
 const config: SupporterBillingConfig = {
@@ -1275,6 +1277,95 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
       requestId: randomUUID(),
     });
     expect((await remote(value, provider)).limit).toBe(2.72);
+  });
+
+  it("purges detached accounting after 90 days from the paid-period end without deleting linked accounts", async () => {
+    const active = snapshot("retention_active");
+    const provider = new Provider();
+    await link(active, provider);
+    for (const unlinkAt of [now, new Date("2026-04-01")]) {
+      const value = snapshot(`retention_boundary_${unlinkAt.getTime()}`);
+      await link(value, provider);
+      await unlinkSupporterIdentity({ ...options, now: unlinkAt, provider, discordUserId: value.discordUserId });
+      const cutoff = new Date(Math.max(unlinkAt.getTime(), renewal.getTime()) + 90 * 24 * 60 * 60 * 1000);
+      await runSupporterBillingMaintenance({ client: testSql, now: new Date(cutoff.getTime() - 1) });
+      expect(await repository.load(value.patreonMemberId)).not.toBeNull();
+      await runSupporterBillingMaintenance({ client: testSql, now: cutoff });
+      expect(await repository.load(value.patreonMemberId)).toBeNull();
+      expect((await repository.load(active.patreonMemberId))?.supporter_identity_id).toBeNumber();
+    }
+  });
+
+  it("waits for successful provider deletion before starting detached retention", async () => {
+    const value = snapshot("retention_retry");
+    const provider = new Provider();
+    await link(value, provider);
+    provider.failDelete = true;
+    await expect(
+      unlinkSupporterIdentity({ ...options, provider, discordUserId: value.discordUserId }),
+    ).rejects.toBeInstanceOf(MemberKeyError);
+    const recoveredAt = new Date("2026-08-01");
+    await runSupporterBillingMaintenance({ client: testSql, now: recoveredAt });
+    expect((await repository.load(value.patreonMemberId))?.pending_action).toBe("delete");
+    provider.failDelete = false;
+    await cleanupDetachedMemberKeysLocked(testSql, provider, recoveredAt);
+    const cutoff = new Date(recoveredAt.getTime() + 90 * 24 * 60 * 60 * 1000);
+    await cleanupDetachedMemberKeysLocked(testSql, provider, new Date(cutoff.getTime() - 1));
+    await runSupporterBillingMaintenance({ client: testSql, now: new Date(cutoff.getTime() - 1) });
+    expect(await repository.load(value.patreonMemberId)).not.toBeNull();
+    await runSupporterBillingMaintenance({ client: testSql, now: cutoff });
+    expect(await repository.load(value.patreonMemberId)).toBeNull();
+  });
+
+  it("preserves accounting under an explicit hold and clears the retention clock on relinking", async () => {
+    const provider = new Provider();
+    const held = snapshot("retention_hold");
+    const relinked = snapshot("retention_relink");
+    for (const value of [held, relinked]) {
+      await link(value, provider);
+      await unlinkSupporterIdentity({ ...options, provider, discordUserId: value.discordUserId });
+    }
+    await testSql`UPDATE supporter_member_keys SET retention_hold = true
+      WHERE patreon_member_id = ${held.patreonMemberId}`;
+    await link(relinked, provider);
+    expect((await repository.load(relinked.patreonMemberId))?.detached_retention_started_at).toBeNull();
+    const cutoff = new Date("2027-01-01");
+    await runSupporterBillingMaintenance({ client: testSql, now: cutoff });
+    expect(await repository.load(held.patreonMemberId)).not.toBeNull();
+    expect((await repository.load(relinked.patreonMemberId))?.supporter_identity_id).toBeNumber();
+    await testSql`UPDATE supporter_member_keys SET retention_hold = false
+      WHERE patreon_member_id = ${held.patreonMemberId}`;
+    await runSupporterBillingMaintenance({ client: testSql, now: cutoff });
+    expect(await repository.load(held.patreonMemberId)).toBeNull();
+  });
+
+  it("upgrades detached records once without restarting their retention clock on schema initialization", async () => {
+    const provider = new Provider();
+    const value = snapshot("retention_upgrade");
+    const active = snapshot("retention_upgrade_active");
+    await link(value, provider);
+    await link(active, provider);
+    await unlinkSupporterIdentity({ ...options, provider, discordUserId: value.discordUserId });
+    const rollback = new Error("synthetic-retention-upgrade-rollback");
+    await expect(
+      testSql.begin(async (tx: SQL) => {
+        await tx`ALTER TABLE supporter_member_keys DROP COLUMN detached_retention_started_at`;
+        await tx`ALTER TABLE supporter_member_keys DROP COLUMN retention_hold`;
+        await initializeSupporterBillingSchema(tx);
+        const [row] = await tx`SELECT detached_retention_started_at, retention_hold
+          FROM supporter_member_keys WHERE patreon_member_id = ${value.patreonMemberId}`;
+        expect(row?.detached_retention_started_at).toBeInstanceOf(Date);
+        expect(row?.retention_hold).toBe(false);
+        await initializeSupporterBillingSchema(tx);
+        const [repeated] = await tx`SELECT detached_retention_started_at
+          FROM supporter_member_keys WHERE patreon_member_id = ${value.patreonMemberId}`;
+        expect(repeated?.detached_retention_started_at).toEqual(row?.detached_retention_started_at);
+        const [linked] = await tx`SELECT detached_retention_started_at
+          FROM supporter_member_keys WHERE patreon_member_id = ${active.patreonMemberId}`;
+        expect(linked?.detached_retention_started_at).toBeNull();
+        throw rollback;
+      }),
+    ).rejects.toBe(rollback);
   });
 
   it("performs no writes or provider work for completed detached cleanup", async () => {

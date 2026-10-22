@@ -44,6 +44,21 @@ persistence and schema initialization, use the shared SQL client directly.
 - **Transient retry handling**: hot-path reads retry transient connection drops and cached-plan errors through shared helpers in `src/utils/db/client.ts`. A cached-plan error resets the connection before retrying the query.
 - **Cache invalidation**: write owners invalidate derived cache entries after successful writes. Some workflows own this in the caller; live working-memory updates use a separate persistence path.
 
+## Hosted subscription accounting
+
+The supporter-billing module owns its schema in `src/modules/supporter-billing/db/schema.ts`.
+Privileged initialization applies its additive upgrades; runtime startup checks the required columns
+without changing the schema.
+
+Unlinking removes the identity and queues managed provider-key deletion. Detached accounting stays
+for 90 days after the latest of unlinking, the recorded paid-period end, and successful key deletion.
+Periodic billing maintenance deletes eligible rows under the same advisory lock used for key
+lifecycle work. Relinking clears the retention clock; pending provider cleanup prevents deletion.
+
+An operator can set `supporter_member_keys.retention_hold` for a specific unresolved dispute or legal
+obligation. Record the reason and review date privately, and clear the hold when that need ends so
+scheduled cleanup can resume.
+
 ## Managed Discord webhooks
 
 `discord_managed_webhooks` stores encrypted tokens for the primary `shared_channel` webhook and

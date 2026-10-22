@@ -42,6 +42,7 @@ async function drain(
   repository: MemberKeyRepository,
   provider: MemberKeyProvider,
   enable = true,
+  now = new Date(),
 ): Promise<MemberKeyRow> {
   if (row.pending_action === "delete") {
     if (row.key_hash) await removeRemoteKey(provider, row.key_hash);
@@ -51,6 +52,10 @@ async function drain(
     if (row.retired_hash) await removeRemoteKey(provider, row.retired_hash);
     return await repository.save({
       ...row,
+      detached_retention_started_at:
+        row.supporter_identity_id === null
+          ? new Date(Math.max(now.getTime(), row.detached_retention_started_at?.getTime() ?? 0))
+          : null,
       key_hash: null,
       api_key: null,
       key_version: null,
@@ -138,7 +143,7 @@ export async function syncMemberKeyLocked(options: {
   const entitlement = await new SupporterEntitlementRepository(client).loadByIdentityId(identity.supporter_identity_id);
   let row = await repository.load(identity.patreon_member_id);
   if (row && row.supporter_identity_id === null) {
-    row = await drain({ ...row, pending_action: "delete" }, repository, provider);
+    row = await drain({ ...row, pending_action: "delete" }, repository, provider, true, now);
     await repository.reattach(identity);
   }
   row = await repository.initialize(identity);
@@ -223,12 +228,22 @@ export interface MemberKeyLifecycleOptions {
   now?: Date;
 }
 
-export async function cleanupDetachedMemberKeysLocked(client: SQL, provider: MemberKeyProvider): Promise<void> {
+export async function cleanupDetachedMemberKeysLocked(
+  client: SQL,
+  provider: MemberKeyProvider,
+  now = new Date(),
+): Promise<void> {
   const repository = new MemberKeyRepository(client);
   let failed = false;
   for (const row of await repository.listDetachedForCleanup()) {
     try {
-      await drain(await repository.save({ ...row, disabled: true, pending_action: "delete" }), repository, provider);
+      await drain(
+        await repository.save({ ...row, disabled: true, pending_action: "delete" }),
+        repository,
+        provider,
+        true,
+        now,
+      );
     } catch {
       failed = true;
     }
@@ -241,7 +256,7 @@ export async function reconcileMemberKeys(options: MemberKeyLifecycleOptions): P
     const provider = options.provider ?? createMemberKeyProvider(options.env);
     let failed = false;
     try {
-      await cleanupDetachedMemberKeysLocked(client, provider);
+      await cleanupDetachedMemberKeysLocked(client, provider, options.now ?? new Date());
     } catch {
       failed = true;
     }
@@ -268,9 +283,11 @@ export async function unlinkSupporterIdentity(
   await withMemberKeyLock(options.client ?? defaultSql, async (client) => {
     const identity = await new SupporterIdentityRepository(client).loadByDiscordUserId(options.discordUserId);
     if (identity)
-      await client.begin(async (tx: SQL) => new MemberKeyRepository(tx).detach(identity.supporter_identity_id));
+      await client.begin(async (tx: SQL) =>
+        new MemberKeyRepository(tx).detach(identity.supporter_identity_id, options.now ?? new Date()),
+      );
     const provider = options.provider ?? createMemberKeyProvider(options.env);
-    await cleanupDetachedMemberKeysLocked(client, provider);
+    await cleanupDetachedMemberKeysLocked(client, provider, options.now ?? new Date());
   });
 }
 

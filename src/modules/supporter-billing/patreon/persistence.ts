@@ -169,7 +169,7 @@ export async function persistEligiblePatreonSupporter(
           (identity.discord_user_id !== options.snapshot.discordUserId ||
             identity.patreon_member_id !== options.snapshot.patreonMemberId)
         ) {
-          await new MemberKeyRepository(tx).detach(identity.supporter_identity_id);
+          await new MemberKeyRepository(tx).detach(identity.supporter_identity_id, options.verifiedAt ?? new Date());
         }
       }
       return await persistWithRepositories(options, {
@@ -178,7 +178,7 @@ export async function persistEligiblePatreonSupporter(
       });
     });
     const provider = options.memberKeyProvider ?? createMemberKeyProvider(options.env);
-    await cleanupDetachedMemberKeysLocked(connection, provider);
+    await cleanupDetachedMemberKeysLocked(connection, provider, options.verifiedAt ?? new Date());
     await syncMemberKeyLocked({
       config: options.config,
       client: connection,
