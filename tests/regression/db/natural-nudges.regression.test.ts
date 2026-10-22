@@ -299,6 +299,45 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
         await testSql`SELECT target_user_id FROM natural_nudge_agendas WHERE message_disc_id = ${openerId}`;
       expect(agenda?.target_user_id).toBe(mirriId);
     });
+
+    it("loads the latest fire of each idle nudge for one persona and target, and nothing else", async () => {
+      const mirriId = userIds.get("mirri") as number;
+      const unblockedId = userIds.get("unblocked") as number;
+      await testSql`DELETE FROM natural_nudge_fires WHERE server_id = ${refs.serverId}`;
+      const fires = [
+        { personaId: refs.personaId, targetId: mirriId, key: "ping_user.new_look", firedAt: daysAgo(10) },
+        { personaId: refs.personaId, targetId: mirriId, key: "ping_user.new_look", firedAt: daysAgo(2) },
+        { personaId: refs.personaId, targetId: mirriId, key: "ping_user.favor_ask", firedAt: daysAgo(20) },
+        { personaId: otherPersonaId, targetId: mirriId, key: "ping_user.check_in", firedAt: daysAgo(1) },
+        { personaId: refs.personaId, targetId: unblockedId, key: "ping_user.remind_you", firedAt: daysAgo(1) },
+      ];
+      for (const [index, fire] of fires.entries()) {
+        await testSql`
+          INSERT INTO natural_nudge_fires
+            (server_id, channel_disc_id, persona_id, mode, category, idle_nudge_key, target_user_id,
+              opener_message_disc_id, fired_at)
+          VALUES (${refs.serverId}, '1200000000000000001', ${fire.personaId}, 'idle', 'ping_user', ${fire.key},
+            ${fire.targetId}, ${`13000000000000010${index}`}, ${fire.firedAt})
+        `;
+      }
+      await naturalNudgeRepository.recordActiveNudgeFire({
+        serverId: refs.serverId,
+        channelDiscId: "1200000000000000001",
+        personaId: refs.personaId,
+        openerMessageDiscId: "1300000000000000199",
+        detour: false,
+      });
+
+      const latest = await naturalNudgeRepository.loadTargetIdleNudgeFires(
+        refs.serverId,
+        refs.personaId,
+        mirriId,
+        daysAgo(14),
+      );
+      expect([...latest.keys()]).toEqual(["ping_user.new_look"]);
+      expect(latest.get("ping_user.new_look")?.getTime()).toBe(fires[1].firedAt.getTime());
+      await testSql`DELETE FROM natural_nudge_fires WHERE server_id = ${refs.serverId}`;
+    });
   });
 
   it("re-points an imported card only when its Nudges settings match the preset", async () => {

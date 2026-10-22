@@ -31,6 +31,7 @@ import {
   countUnansweredStreak,
   drawRaffle,
   idleNudgesPerDay,
+  idleNudgeTickets,
   heatWindowStart,
   isWithinWakingHours,
   resolveWakingHours,
@@ -52,6 +53,7 @@ import {
   MAX_SCANNED_CHANNELS,
   PENDING_WINDOW_MS,
   PERSONA_REST_MS,
+  PING_USER_REPEAT_REST_MS,
   PLANNER_HISTORY_MESSAGES,
   TALKATIVENESS_TICKETS,
   UNANSWERED_STOP_STREAK,
@@ -426,14 +428,27 @@ export class NaturalNudgeProcessor {
       })),
     );
     if (!category) return "no_eligible_idle_nudge";
+    const categoryIdleNudges = idleNudges.filter((candidate) => candidate.category === category);
     const idleNudgeFiredAt = lastFireBy(recentFires, (fire) => fire.idle_nudge_key);
+    const targetFiredAt =
+      target && categoryIdleNudges.some(idleNudgeNeedsTarget)
+        ? await naturalNudgeRepository.loadTargetIdleNudgeFires(
+            server.server_id,
+            persona.persona_id,
+            target.userId,
+            new Date(now.getTime() - PING_USER_REPEAT_REST_MS),
+          )
+        : new Map<string, Date>();
     const idleNudge = drawRaffle<IdleNudgeDefinition>(
-      idleNudges
-        .filter((candidate) => candidate.category === category)
-        .map((candidate) => ({
-          item: candidate,
-          tickets: restedShare(idleNudgeFiredAt.get(candidate.key), now, IDLE_NUDGE_REST_MS),
-        })),
+      categoryIdleNudges.map((candidate) => ({
+        item: candidate,
+        tickets: idleNudgeTickets(
+          candidate,
+          idleNudgeFiredAt.get(candidate.key),
+          targetFiredAt.get(candidate.key),
+          now,
+        ),
+      })),
     );
     if (!idleNudge) return "no_eligible_idle_nudge";
 

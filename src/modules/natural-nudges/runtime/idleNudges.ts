@@ -124,10 +124,11 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
     key: "ping_user.new_look",
     category: "ping_user",
     titleKey: "commands.config.natural_nudges.idle_nudge_titles.ping_user_new_look",
-    brief: "Have {persona} look at {target}'s profile picture and comment on it in character.",
-    agendaHint: "Get {target} to explain the picture",
+    brief:
+      "Have {persona} look at {target}'s profile picture and comment on it in character; decline if {target}'s recent memories already describe their profile picture.",
+    agendaHint: "Get {target} to explain the picture, then save a memory of what their profile picture is",
     prerequisites: [RELATIONSHIP_USER_PREREQUISITE, "tool:peek_profile_picture"],
-    recommendedTools: ["peek_profile_picture"],
+    recommendedTools: ["peek_profile_picture", "create_long_term_memory"],
     builtIn: true,
   },
   {

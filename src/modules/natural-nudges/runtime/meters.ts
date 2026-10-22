@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { IdleNudgeFrequencyLevel, NaturalNudgeFireRow } from "@/modules/natural-nudges/db/types";
+import { idleNudgeNeedsTarget, type IdleNudgeDefinition } from "@/modules/natural-nudges/runtime/idleNudges";
 import {
   HOUR_MS,
   DAY_MS,
@@ -30,6 +31,8 @@ import {
   ACTIVE_NUDGE_TRIP_MAX,
   ACTIVE_NUDGE_TRIP_MIN,
   ACTIVE_NUDGE_UNDERDOG_MAX_BOOST,
+  IDLE_NUDGE_REST_MS,
+  PING_USER_REPEAT_REST_MS,
 } from "@/modules/natural-nudges/runtime/tuning";
 
 const INVITING_CATEGORIES = new Set(["ping_user", "revive_topic", "start_topic"]);
@@ -118,6 +121,18 @@ export function restedShare(lastFiredAt: Date | undefined, now: Date, restMs: nu
   if (!lastFiredAt) return 1;
   const elapsed = Math.max(0, now.getTime() - lastFiredAt.getTime());
   return RESTED_FLOOR + (1 - RESTED_FLOOR) * Math.min(1, elapsed / restMs);
+}
+
+/** A targeted idle nudge multiplies in its rest on this persona and target, so the drawn member rarely sees a repeat. */
+export function idleNudgeTickets(
+  idleNudge: IdleNudgeDefinition,
+  lastFiredAt: Date | undefined,
+  lastFiredOnTargetAt: Date | undefined,
+  now: Date,
+): number {
+  const serverRest = restedShare(lastFiredAt, now, IDLE_NUDGE_REST_MS);
+  if (!idleNudgeNeedsTarget(idleNudge)) return serverRest;
+  return serverRest * restedShare(lastFiredOnTargetAt, now, PING_USER_REPEAT_REST_MS);
 }
 
 /** UTC hours (index 0-23) in which idle nudges may start. */

@@ -1,11 +1,17 @@
 import { describe, expect, it } from "bun:test";
 import type { NaturalNudgeFireRow } from "@/modules/natural-nudges/db/types";
 import {
+  BUILTIN_IDLE_NUDGES,
+  idleNudgeNeedsTarget,
+  type IdleNudgeDefinition,
+} from "@/modules/natural-nudges/runtime/idleNudges";
+import {
   computeIdleNudgeDueAt,
   computeHeat,
   countUnansweredStreak,
   drawRaffle,
   idleNudgesPerDay,
+  idleNudgeTickets,
   isWithinWakingHours,
   resolveWakingHours,
   restedShare,
@@ -153,6 +159,25 @@ describe("rested share", () => {
     expect(restedShare(NOW, NOW, DAY)).toBeCloseTo(0.1, 5);
     expect(restedShare(new Date(NOW.getTime() - DAY / 2), NOW, DAY)).toBeCloseTo(0.55, 5);
     expect(restedShare(new Date(NOW.getTime() - 2 * DAY), NOW, DAY)).toBe(1);
+  });
+});
+
+describe("idle nudge tickets", () => {
+  const newLook = BUILTIN_IDLE_NUDGES.find(
+    (candidate) => candidate.key === "ping_user.new_look",
+  ) as IdleNudgeDefinition;
+  const weekAgo = new Date(NOW.getTime() - 7 * DAY);
+
+  it("rests a targeted idle nudge on its target for two weeks on top of the server-wide rest", () => {
+    expect(idleNudgeTickets(newLook, NOW, NOW, NOW)).toBeCloseTo(0.01, 5);
+    expect(idleNudgeTickets(newLook, weekAgo, weekAgo, NOW)).toBeCloseTo(0.55, 5);
+    expect(idleNudgeTickets(newLook, NOW, undefined, NOW)).toBeCloseTo(0.1, 5);
+    expect(idleNudgeTickets(newLook, undefined, undefined, NOW)).toBe(1);
+  });
+
+  it("ignores the target rest for an idle nudge without a target", () => {
+    const untargeted = BUILTIN_IDLE_NUDGES.find((candidate) => !idleNudgeNeedsTarget(candidate)) as IdleNudgeDefinition;
+    expect(idleNudgeTickets(untargeted, weekAgo, NOW, NOW)).toBe(1);
   });
 });
 

@@ -355,6 +355,26 @@ class NaturalNudgeRepository {
     };
   }
 
+  /**
+   * Latest fire of each idle nudge this persona ran on one target since `since`. Kept apart from
+   * `loadFireHistory` so its longer window loads one target's rows rather than the whole server's.
+   */
+  async loadTargetIdleNudgeFires(
+    serverId: number,
+    personaId: number,
+    targetUserId: number,
+    since: Date,
+  ): Promise<Map<string, Date>> {
+    const rows = await sql<Array<{ idle_nudge_key: string; fired_at: Date }>>`
+      SELECT idle_nudge_key, MAX(fired_at) AS fired_at
+      FROM natural_nudge_fires
+      WHERE server_id = ${serverId} AND persona_id = ${personaId} AND target_user_id = ${targetUserId}
+        AND mode = 'idle' AND fired_at >= ${since}
+      GROUP BY idle_nudge_key
+    `;
+    return new Map(rows.map((row) => [row.idle_nudge_key, row.fired_at]));
+  }
+
   async setFireAnswered(fireId: number, answered: boolean): Promise<void> {
     await sql`UPDATE natural_nudge_fires SET answered = ${answered} WHERE fire_id = ${fireId} AND answered IS NULL`;
   }

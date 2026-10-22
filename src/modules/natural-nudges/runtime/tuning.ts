@@ -66,6 +66,11 @@ export const RESTED_FLOOR = 0.1;
 export const PERSONA_REST_MS = 24 * HOUR_MS;
 export const CATEGORY_REST_MS = 12 * HOUR_MS;
 export const IDLE_NUDGE_REST_MS = 3 * DAY_MS;
+/**
+ * A targeted idle nudge also rests per persona and target, because the member notices a repeat. Keep it
+ * at or below `FIRE_RETENTION_MS`, since pruned fires can no longer rest anything.
+ */
+export const PING_USER_REPEAT_REST_MS = 14 * DAY_MS;
 
 /** Raffle tickets per talkativeness level 0-4. */
 export const TALKATIVENESS_TICKETS = [0, 5, 10, 15, 20] as const;

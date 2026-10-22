@@ -136,6 +136,13 @@ idle nudge needs a target. One query,
 | Relationship gate | A memory with this lineage (or lineage 0) touched in the last 30 days, or a live short-term memory with it in this server (candidates' short-term memory is warmed from the database in one query first, because the cache starts empty after a restart). Memories count only when the persona has `personal_memories_enabled` |
 | Lottery | Tickets from capped counts of the member's turns with this lineage in this server and short-term memory channels, current activity, and penalties for a ping inside the idle nudge rest window (`pingUserTickets`); never below 1. Memories only gate eligibility and feed the planner, because they carry no server |
 
+The lottery decides who; the idle nudge raffle then avoids repeating what. When the drawn category holds
+an idle nudge that needs a target, `loadTargetIdleNudgeFires` reads this persona's idle nudges on that
+member over the last 14 days (`PING_USER_REPEAT_REST_MS`), and `idleNudgeTickets` multiplies each one's
+server-wide rest by its rest on that pair. A repeat is rare but never excluded, so a member with only
+one eligible idle nudge still gets it. The window is keyed on `persona_id`, so a re-created persona
+starts fresh.
+
 Prompt exposure follows a normal turn's privacy rules: the planner sees the target's recent memories
 only at `PrivacyLevel.MINIMAL` with `personal_memories_enabled`, and their activity only at minimal
 privacy with the GuildPresences intent. `recent_memory` and `presence_activity` pass only when that
