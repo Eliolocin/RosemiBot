@@ -7,6 +7,7 @@ import {
 } from "@/modules/supporter-billing/patreon/settings";
 import { sql as defaultSql } from "@/utils/db/client";
 import { log } from "@/utils/misc/logger";
+import { MemberKeyRepository, withMemberKeyLock } from "@/modules/supporter-billing/db/repositories/memberKeys";
 
 type EnvRecord = Readonly<Record<string, string | undefined>>;
 
@@ -74,6 +75,15 @@ export async function runSupporterBillingMaintenance(
     );
   } catch (error) {
     log.error("Supporter periodic usage-statistics purge failed", error);
+  }
+
+  try {
+    const purged = await withMemberKeyLock(client, (connection) =>
+      new MemberKeyRepository(connection).purgeDetachedAccounting(now),
+    );
+    log.metric("supporter_detached_accounting_purge", { purgedRecords: purged });
+  } catch (error) {
+    log.error("Supporter periodic detached-accounting purge failed", error);
   }
 
   return result;

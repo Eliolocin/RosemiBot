@@ -348,6 +348,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter billing — gated DB schema", ()
             `REVOKE INSERT ON supporter_webhook_events FROM ${role}`,
             `REVOKE USAGE ON SEQUENCE supporter_identities_supporter_identity_id_seq FROM ${role}`,
             "ALTER TABLE supporter_usage_statistics DROP COLUMN input_tokens",
+            "ALTER TABLE supporter_member_keys DROP COLUMN detached_retention_started_at",
+            "ALTER TABLE supporter_member_keys DROP COLUMN retention_hold",
             "DROP TABLE supporter_webhook_events",
           ]) {
             let routesOpened = false;

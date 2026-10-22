@@ -9,11 +9,14 @@ import { SupporterUsageStatisticsRepository } from "@/modules/supporter-billing/
 
 // One lock serializes lifecycle work because relinks span members; use per-member locks if administrative volume delays reconciliation.
 const MEMBER_KEY_LOCK_ID = 1_176_514_635;
+const DETACHED_ACCOUNTING_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 const dateSchema = z.coerce.date().nullable();
 export const memberKeySchema = z.object({
   member_key_id: z.number().int().positive(),
   patreon_member_id: z.string().min(1),
   supporter_identity_id: z.number().int().positive().nullable(),
+  detached_retention_started_at: dateSchema,
+  retention_hold: z.boolean(),
   key_hash: z.string().min(1).nullable(),
   api_key: z.instanceof(Buffer).nullable(),
   key_version: z.number().int().positive().nullable(),
@@ -95,9 +98,11 @@ export class MemberKeyRepository {
     return memberKeySchema.parse(saved);
   }
 
-  async detach(identityId: number): Promise<void> {
+  async detach(identityId: number, now: Date): Promise<void> {
     await this.client`UPDATE supporter_member_keys SET supporter_identity_id = NULL, disabled = true,
-      pending_action = 'delete' WHERE supporter_identity_id = ${identityId}`;
+      pending_action = 'delete', detached_retention_started_at = GREATEST(${now}, renewal_due_at, target_period_end,
+        (SELECT period_end FROM supporter_entitlements WHERE supporter_identity_id = ${identityId}))
+      WHERE supporter_identity_id = ${identityId}`;
     await this.client`DELETE FROM supporter_identities WHERE supporter_identity_id = ${identityId}`;
   }
 
@@ -109,9 +114,21 @@ export class MemberKeyRepository {
   }
 
   async reattach(identity: SupporterIdentityRow): Promise<void> {
-    await this.client`UPDATE supporter_member_keys SET supporter_identity_id = ${identity.supporter_identity_id}
+    await this.client`UPDATE supporter_member_keys SET supporter_identity_id = ${identity.supporter_identity_id},
+      detached_retention_started_at = NULL
       WHERE patreon_member_id = ${identity.patreon_member_id} AND supporter_identity_id IS NULL
         AND key_hash IS NULL AND pending_action IS NULL AND retired_hash IS NULL`;
+  }
+
+  async purgeDetachedAccounting(now: Date): Promise<number> {
+    const cutoff = new Date(now.getTime() - DETACHED_ACCOUNTING_RETENTION_MS);
+    const rows = await this.client`DELETE FROM supporter_member_keys
+      WHERE supporter_identity_id IS NULL AND disabled AND NOT retention_hold
+        AND detached_retention_started_at <= ${cutoff}
+        AND key_hash IS NULL AND api_key IS NULL AND key_version IS NULL
+        AND pending_action IS NULL AND operation_id IS NULL AND retired_hash IS NULL
+      RETURNING member_key_id`;
+    return rows.length;
   }
 
   async loadCredential(identityId: number, at: Date, onLoad?: (keyHash: string) => void): Promise<string | null> {
