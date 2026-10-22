@@ -154,7 +154,7 @@ export default {
       episode_title_label: `Name`,
       episode_title_description: `Shown in this list, up to {max} characters.`,
       episode_category_label: `Category`,
-      episode_category_description: `Ping User pings someone; Revive Topic resumes a talk; Start Topic opens one; Play Scene plays one.`,
+      episode_category_description: `Ping someone, revive a hanging talk, start a new topic, or act out a scene between personas.`,
       episode_brief_label: `Planner brief`,
       episode_brief_description: `What to do. Write {persona} for its name, {partner} for a scene partner, {target} for a member.`,
       episode_agenda_label: `Example agenda`,
