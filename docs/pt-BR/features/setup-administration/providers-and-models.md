@@ -18,9 +18,9 @@ Adicione uma chave de provedor durante a configuração inicial com `/setup` ou 
 |---|---|
 | Provedor de IA (recomendado) | Um provedor do catálogo mais sua chave API, validada e criptografada como rascunho. |
 | Endpoint Personalizado | A conexão do endpoint e um modelo de texto, registrado dentro do assistente. Consulte [Endpoints personalizados](#custom-endpoints). |
-| Usuário BYOK (somente guildas) | Nada: o espaço de trabalho não mantém provedor próprio, portanto os membros devem fornecer provedores pessoais. |
+| Usuário BYOK (somente guildas) | Nada: o servidor não mantém provedor próprio, portanto os membros devem fornecer provedores pessoais. |
 
-Nada é gravado no banco de dados até que você pressione `Concluir Configuração`. Um assistente abandonado ou expirado deixa as linhas de provedor existentes do espaço de trabalho intactas. Para substituir uma chave existente, use `/providers`, porque `/setup` não será executado em um espaço de trabalho já configurado.
+Nada é gravado no banco de dados até que você pressione `Concluir Configuração`. Um assistente abandonado ou expirado deixa as linhas de provedor existentes do servidor intactas. Para substituir uma chave existente, use `/providers`, porque `/setup` não será executado em um servidor já configurado.
 
 Cada provedor tem suas próprias etapas de geração de chaves. Em `/help`, escolha `Configuração`, depois `Obter uma Chave de API` e escolha seu provedor para obter uma explicação passo a passo ou use estes pontos de partida:
 
@@ -68,7 +68,7 @@ Em `/config` > `Modelos` > Switch Models, você pode atribuir modelos e endpoint
 - **Ponto final TTS**: ponto final de voz de conversão de texto em fala.
 - **Ponto final STT**: ponto final de transcrição de áudio de fala para texto.
 
-Os primeiros seis slots escolhem registros de catálogo de modelos. Os slots TTS e STT escolhem terminais com escopo de espaço de trabalho, ativando o terminal selecionado em vez de gravar uma coluna de modelo. Registre e edite esses endpoints em `/providers`. `/personal config` mantém seis slots de roteamento de modelo pessoal e não inclui seletores de endpoint TTS/STT pessoais.
+Os primeiros seis slots escolhem registros de catálogo de modelos. Os slots TTS e STT escolhem terminais com escopo de servidor, ativando o terminal selecionado em vez de gravar uma coluna de modelo. Registre e edite esses endpoints em `/providers`. `/personal config` mantém seis slots de roteamento de modelo pessoal e não inclui seletores de endpoint TTS/STT pessoais.
 
 Você também pode gerenciar chaves de backup para failover automático e balanceamento de carga em `/providers`.
 
@@ -92,7 +92,7 @@ Registros e credenciais de provedores permanecem fora das exportações e import
 
 Endpoints personalizados permitem registrar serviços auto-hospedados ou apoiados por proxy (Ollama, LM Studio, LiteLLM, vLLM, ComfyUI, TTS/STT local) como pacotes de provedores rotulados.
 
-- **Escopo do servidor**: abra `/providers` para registro e edição do endpoint do espaço de trabalho.
+- **Escopo do servidor**: abra `/providers` para registrar e editar os endpoints do servidor.
 - **Escopo pessoal**: abra `/personal providers` para catálogos de modelos pessoais (consulte [Personalização](/pt-BR/features/knowledge/personalization/#your-own-providers)). Os pontos finais de fala pessoal não são selecionados em `/personal config`.
 
 Um rótulo é o nome do menu voltado para o usuário e agrupa recursos em um pacote quando eles compartilham um URL de terminal. Nunca é enviado para o serviço remoto. Os recursos atendidos por URLs diferentes precisam de rótulos distintos.

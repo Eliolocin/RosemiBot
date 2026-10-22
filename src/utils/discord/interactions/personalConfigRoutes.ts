@@ -2,7 +2,7 @@ import { MessageFlags, type ChatInputCommandInteraction, type InteractionEditRep
 import type { TomoriState } from "@/types/db/schema";
 import { localizer } from "@/utils/text/localizer";
 import { getCachedAllPersonas, getCachedTomoriState } from "@/utils/cache/tomoriStateCache";
-import { userRepository } from "@/utils/db/repositories";
+import { llmProviderRepo, userRepository } from "@/utils/db/repositories";
 import type { GlobalInteractionRoute } from "@/utils/discord/interactions/routeRegistry";
 import { beginPanelInteraction } from "@/utils/discord/interactions/panelController";
 import {
@@ -75,6 +75,7 @@ const defaultDependencies: PersonalConfigRouteDependencies = {
   getMemoryCount,
   getStmCount,
   loadUserSavedProviders,
+  loadPersonalFallbackSettings: (userId) => llmProviderRepo.loadPersonalFallbackSettings(userId),
   loadPersonalModelDisplayInfo,
   loadAvailableModelsForCapability,
   loadActiveSpotlights: (serverId, userId) => userRepository.getActivePersonalSpotlightsForUser(serverId, userId),

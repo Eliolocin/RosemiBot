@@ -52,7 +52,7 @@ aiGenerated: true
 | 生成语音消息 | `{voice_message_tool}` | ElevenLabs键+人格语音+`voice_message_enabled` | 发送语音Discord语音回复。|
 
 :::note[For prompt authors]
-自定义系统提示或人格指令时，请通过上表中的**提示宏**来引用工具，而不是硬编码工具名称，因为宏会在上下文组装时扩展为正确的名称，并在工具不可用时优雅地降级。`{pin_tool}`和`{timestamp_refresh_tool}`仍然用作`{manage_message_tool}`和`{message_metadata_tool}`的兼容性别名。下面的网络搜索和URL工具也有宏：`{web_search_tool}`、`{image_search_tool}`、`{video_search_tool}`、`{news_search_tool}`、`{url_fetch_tool}`和`{url_metadata_tool}`。这些动态解析为最佳可用引擎，包括公会MCP替代品。
+自定义系统提示或人格指令时，请通过上表中的**提示宏**来引用工具，而不是硬编码工具名称，因为宏会在上下文组装时扩展为正确的名称，并在工具不可用时优雅地降级。`{pin_tool}`和`{timestamp_refresh_tool}`仍然用作`{manage_message_tool}`和`{message_metadata_tool}`的兼容性别名。下面的网络搜索和URL工具也有宏：`{web_search_tool}`、`{image_search_tool}`、`{video_search_tool}`、`{news_search_tool}`、`{url_fetch_tool}`和`{url_metadata_tool}`。这些动态解析为最佳可用引擎，包括服务器MCP替代品。
 :::
 
 ### 条件提示词区块
@@ -67,7 +67,7 @@ Do not promise to save long-term memories.
 {{/if}}
 ```
 
-对于启用的TomoriBot设置使用`capability:<name>`，或者当仅当该确切工具可用于活动提供者和模型时才应显示文本时，使用`tool:<function_name>`。当捆绑URL阅读器或公会MCP替代品可用时，请使用`tool_family:url_fetch`。在条件前面加上`!`可将其反转。块可以嵌套，并且可以包含一个`{{else}}`； 不支持一般的`and`/`or`表达式。
+对于启用的TomoriBot设置使用`capability:<name>`，或者当仅当该确切工具可用于活动提供者和模型时才应显示文本时，使用`tool:<function_name>`。当捆绑URL阅读器或服务器MCP替代品可用时，请使用`tool_family:url_fetch`。在条件前面加上`!`可将其反转。块可以嵌套，并且可以包含一个`{{else}}`； 不支持一般的`and`/`or`表达式。
 
 支持的功能名称为`tool_use`、`self_teaching`、`personal_memories`、`emoji_usage`、`sticker_usage`、`web_search`、`manage_message`、`thread_creation`、`image_generation`、`video_generation`、`voice_message`、`user_blocking`、`short_term_memory`和`time_awareness`。
 

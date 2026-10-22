@@ -18,9 +18,9 @@ Thêm khóa nhà cung cấp trong lần thiết lập đầu tiên với `/setup
 |---|---|
 | Nhà cung cấp AI (Được khuyến nghị) | Một nhà cung cấp từ danh mục cộng với khóa API của nó, được xác thực và mã hóa dưới dạng bản nháp. |
 | Endpoint tùy chỉnh | Kết nối điểm cuối và một model văn bản, được đăng ký bên trong trình hướng dẫn. Xem [Điểm cuối tùy chỉnh](#custom-endpoints). |
-| Người dùng BYOK (chỉ dành cho bang hội) | Không có gì: không gian làm việc không có nhà cung cấp riêng, vì vậy các thành viên phải cung cấp nhà cung cấp cá nhân. |
+| Người dùng BYOK (chỉ dành cho máy chủ) | Không có gì: máy chủ không có nhà cung cấp riêng, vì vậy các thành viên phải cung cấp nhà cung cấp cá nhân. |
 
-Không có gì được ghi vào cơ sở dữ liệu cho đến khi bạn nhấn `Hoàn tất thiết lập`. Trình hướng dẫn bị bỏ rơi hoặc đã hết hạn sẽ giữ nguyên các hàng nhà cung cấp hiện có của không gian làm việc. Để thay thế khóa hiện có, hãy sử dụng `/providers`, vì `/setup` sẽ không chạy trên không gian làm việc đã được định cấu hình.
+Không có gì được ghi vào cơ sở dữ liệu cho đến khi bạn nhấn `Hoàn tất thiết lập`. Trình hướng dẫn bị bỏ rơi hoặc đã hết hạn sẽ giữ nguyên các hàng nhà cung cấp hiện có của máy chủ. Để thay thế khóa hiện có, hãy sử dụng `/providers`, vì `/setup` sẽ không chạy trên máy chủ đã được định cấu hình.
 
 Mỗi nhà cung cấp có các bước tạo khóa riêng. Trong `/help`, chọn `Thiết lập`, sau đó là `Lấy API key` và chọn nhà cung cấp của bạn để xem hướng dẫn từng bước hoặc sử dụng các điểm bắt đầu sau:
 
@@ -68,7 +68,7 @@ Trong `/config` > `Model` > `Chuyển đổi model`, bạn có thể chỉ đị
 - **Điểm cuối TTS**: điểm cuối chuyển văn bản thành giọng nói.
 - **Điểm cuối STT**: điểm cuối chuyển âm thanh từ giọng nói thành văn bản.
 
-Sáu vị trí đầu tiên chọn bản ghi danh mục model. Thay vào đó, các khe TTS và STT chọn điểm cuối trong phạm vi không gian làm việc, kích hoạt điểm cuối đã chọn thay vì ghi cột model. Đăng ký và chỉnh sửa các điểm cuối đó trong `/providers`. `/personal config` giữ lại sáu khe định tuyến model cá nhân và không bao gồm bộ chọn điểm cuối TTS/STT cá nhân.
+Sáu vị trí đầu tiên chọn bản ghi danh mục model. Thay vào đó, các khe TTS và STT chọn điểm cuối trong phạm vi máy chủ, kích hoạt điểm cuối đã chọn thay vì ghi cột model. Đăng ký và chỉnh sửa các điểm cuối đó trong `/providers`. `/personal config` giữ lại sáu khe định tuyến model cá nhân và không bao gồm bộ chọn điểm cuối TTS/STT cá nhân.
 
 Bạn cũng có thể quản lý các khóa dự phòng để tự động chuyển đổi dự phòng và cân bằng tải trong `/providers`.
 
@@ -92,7 +92,7 @@ Mở đăng ký Quyết định đã lưu để chỉnh sửa. Các chỉnh sử
 
 Điểm cuối tùy chỉnh cho phép bạn đăng ký các dịch vụ self-hosting hoặc hỗ trợ proxy (Ollama, LM Studio, LiteLLM, vLLM, ComfyUI, TTS/STT cục bộ) dưới dạng gói nhà cung cấp được gắn nhãn.
 
-- **Phạm vi máy chủ**: mở `/providers` để đăng ký và chỉnh sửa điểm cuối không gian làm việc.
+- **Phạm vi máy chủ**: mở `/providers` để đăng ký và chỉnh sửa các điểm cuối máy chủ.
 - **Phạm vi cá nhân**: mở `/personal providers` để xem danh mục mẫu cá nhân (xem [Cá nhân hóa](/vi/features/knowledge/personalization/#your-own-providers)). Điểm cuối lời nói cá nhân không được chọn từ `/personal config`.
 
 Nhãn là tên menu giao diện người dùng và nhóm các khả năng trong một gói khi chúng chia sẻ một URL điểm cuối. Nó không bao giờ được gửi đến dịch vụ từ xa. Khả năng được phân phát từ các URL khác nhau cần có nhãn riêng biệt.

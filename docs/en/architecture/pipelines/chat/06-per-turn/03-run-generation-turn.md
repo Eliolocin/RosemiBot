@@ -25,9 +25,11 @@ Prepare sink and generation plan
 
 `buildGenerationPlan()` orders the primary and configured fallback models. An enabled randomizer can
 promote a pool member to lead; key rotation tries available credentials before advancing models.
-Cross-provider fallbacks use saved credentials from the turn's scope. Personal turns look up only
-the user's saved providers and omit entries without a key; server credentials become available only
-through the deferred server route.
+Cross-provider fallbacks use saved credentials from the turn's scope. A personal turn runs the user's
+single fallback chain and randomizer (`user_personalization_configs`), whichever saved provider owns
+personal Text, so the chain can mix providers the way the server chain does. Personal turns look up
+only the user's saved providers and omit entries without a key; server credentials become available
+only through the deferred server route.
 
 Custom endpoint fallbacks must belong to the route's user or server before generation loads a saved
 key. Server persona loaders resolve stored endpoint IDs without enforcing ownership, so generation

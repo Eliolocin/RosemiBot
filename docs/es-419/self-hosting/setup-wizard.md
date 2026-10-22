@@ -79,25 +79,24 @@ bun run dev                          # solo el bot
 bun run launch --searxng --crawl4ai  # bot + servidores locales (ver bun run launch --help)
 ```
 
-Cuando el bot esté en línea, ejecuta `/setup` en Discord para conectar un proveedor de IA. Un espacio de
-trabajo que no tiene su propio proveedor no puede responder, salvo que funcione en modo BYOK de usuario,
-en el que el proveedor personal de cada miembro responde en su lugar, así que este es el último paso de
-cada ruta de instalación.
+Cuando el bot esté en línea, ejecuta `/setup` en Discord para conectar un proveedor de IA. Un servidor
+que no tiene su propio proveedor no puede responder, salvo que funcione en modo BYOK de usuario, en el que
+el proveedor personal de cada miembro responde en su lugar, así que este es el último paso de cada ruta
+de instalación.
 
 ## El comando `/setup`
 <!-- anchor: the-setup-command -->
 
 `/setup` abre un panel de lista de verificación efímero que solo puede operar la persona que lo ejecutó.
-En un servidor requiere Administrar servidor; en un mensaje directo está disponible para el espacio
-de trabajo de esa misma persona. Cada fila del panel es un valor en borrador: `Finalizar configuración`
-es el único control que escribe algo, así que abrir, editar, cancelar o reiniciar deja intacta cada fila
-de la base de datos.
+En un servidor requiere Administrar servidor; en un mensaje directo está disponible para esa misma
+persona. Cada fila del panel es un valor en borrador: `Finalizar configuración` es el único control que
+escribe algo, así que abrir, editar, cancelar o reiniciar deja intacta cada fila de la base de datos.
 
 | Paso | Aparece | Qué recopila |
 |---|---|---|
 | Políticas | Solo con `RUN_ENV=production` | Aceptación de los Términos de servicio y la Política de privacidad, ambos en un solo modal. |
 | Proveedor de IA | En todos los entornos | Cómo llegan las respuestas a un modelo. Uno de los tres modos de acceso siguientes. |
-| Ajustes iniciales | En todos los entornos | Persona inicial, estilo de respuesta, zona horaria y el prompt de sistema predeterminado del espacio de trabajo. |
+| Ajustes iniciales | En todos los entornos | Persona inicial, estilo de respuesta, zona horaria y el prompt de sistema predeterminado del servidor. |
 
 Cualquier otro valor de `RUN_ENV` muestra el diseño de dos pasos y ningún texto de políticas. Una
 implementación que se ejecuta con `RUN_ENV=production` registra `/legal terms-of-service` y
@@ -116,7 +115,7 @@ implementación que se ejecuta con `RUN_ENV=production` registra `/legal terms-o
   hasta que una conexión se valide. Guardar la conexión de nuevo borra la declaración del modelo, porque
   las declaraciones dependen de la compatibilidad de API elegida. Este es el mismo registro que realiza
   `/providers`, hecho dentro del asistente, y no crea ninguna fila antes de `Finalizar configuración`.
-- BYOK de usuario (solo servidores, nunca en un mensaje directo): el espacio de trabajo no conserva
+- BYOK de usuario (solo servidores, nunca en un mensaje directo): el servidor no conserva
   ningún proveedor propio y cada respuesta activada por un miembro resuelve en su lugar un proveedor
   personal. Confírmalo en el modal y luego haz que los miembros registren el suyo con
   `/personal providers`. Consulta
@@ -126,16 +125,15 @@ implementación que se ejecuta con `RUN_ENV=production` registra `/legal terms-o
 
 Un modal de cuatro filas recopila la persona, el estilo de respuesta, el desfase de zona horaria y el
 prompt de sistema predeterminado. La zona horaria es opcional y por defecto es UTC. El prompt de sistema
-ofrece `Predeterminado incorporado (recomendado)` más cada preajuste del catálogo del espacio de
-trabajo: la opción incorporada no almacena ningún texto de prompt, así que sigue el predeterminado
-distribuido con el bot, y una opción de preajuste almacena el texto de ese preajuste tal como se lee en
-el momento del guardado. Eliminar una persona o un prompt almacenado del catálogo vuelve a abrir el paso
+ofrece `Predeterminado incorporado (recomendado)` más cada preajuste del catálogo del servidor: la opción
+incorporada no almacena ningún texto de prompt, así que sigue el predeterminado distribuido con el bot,
+y una opción de preajuste almacena el texto de ese preajuste tal como se lee en el momento del guardado. Eliminar una persona o un prompt almacenado del catálogo vuelve a abrir el paso
 hasta que se elija otro.
 
 ### Finalizar y cancelar
 
 Finalizar configuración permanece deshabilitado hasta que cada paso mostrado esté completo. Revalida
-los catálogos y el estado del espacio de trabajo, confirma todo el borrador en una sola transacción y
+los catálogos y el estado del servidor, confirma todo el borrador en una sola transacción y
 reemplaza el panel con el comprobante. `Cancelar` descarta el borrador y hace expirar cada control del
 panel.
 

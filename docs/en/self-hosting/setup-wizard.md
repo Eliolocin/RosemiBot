@@ -83,7 +83,7 @@ bun run dev                          # bot only
 bun run launch --searxng --crawl4ai  # bot + local servers (see bun run launch --help)
 ```
 
-When the bot is online, run `/setup` in Discord to connect an AI provider. A workspace that holds no
+When the bot is online, run `/setup` in Discord to connect an AI provider. A server that holds no
 provider of its own cannot reply, unless it runs in User BYOK mode where each member's personal
 provider answers instead, so this is the last step of every install path.
 
@@ -103,7 +103,7 @@ The dummy token cannot log in to Discord, so this check cannot verify `bun run d
 <!-- anchor: the-setup-command -->
 
 `/setup` opens an ephemeral checklist panel that only the person who ran it can operate. In a server
-it requires `Manage Server`; in a DM it is available to that person's own workspace. Every row on
+it requires `Manage Server`; in a DM it is available to that person. Every row on
 the panel is a draft value: `Finish Setup` is the only control that writes anything, so opening,
 editing, cancelling, or restarting leaves every database row untouched.
 
@@ -111,7 +111,7 @@ editing, cancelling, or restarting leaves every database row untouched.
 |---|---|---|
 | Policies | `RUN_ENV=production` only | Acceptance of the Terms of Service and Privacy Policy, both in one modal. |
 | AI Provider | Every environment | How replies reach a model. One of the three access modes below. |
-| Starting Settings | Every environment | Starting persona, reply style, timezone, and the workspace default system prompt. |
+| Starting Settings | Every environment | Starting persona, reply style, timezone, and the server default system prompt. |
 
 Every other `RUN_ENV` value renders the two-step layout and no policy copy at all. A deployment
 running with `RUN_ENV=production` registers `/legal terms-of-service` and `/legal privacy-policy`
@@ -130,7 +130,7 @@ beside `/legal license`; every other value registers only `/legal license`.
   Saving the connection again clears the model declaration, because the declarations depend on the
   chosen API compatibility. This is the same registration `/providers` performs, done inside the
   wizard, and it creates no rows before `Finish Setup`.
-- **User BYOK** (guilds only, never in a DM): the workspace keeps no provider of its own and every
+- **User BYOK** (servers only, never in a DM): the server keeps no provider of its own and every
   member-triggered reply resolves a personal provider instead. Confirm it in the modal, then have
   members register theirs with `/personal providers`. See
   [Server Moderation](/features/setup-administration/server-moderation/#user-byok-bring-your-own-key).
@@ -139,7 +139,7 @@ beside `/legal license`; every other value registers only `/legal license`.
 
 One four-row modal collects the persona, the reply style, the timezone offset, and the default system
 prompt. The timezone is optional and defaults to UTC. The system prompt offers
-`Built-in Default (Recommended)` plus every preset in the workspace catalog: the built-in choice
+`Built-in Default (Recommended)` plus every preset in the server catalog: the built-in choice
 stores no prompt text at all, so it keeps tracking the shipped default, and a preset choice stores
 that preset's text as it reads at commit time. Deleting a stored persona or prompt from the catalog
 re-opens the step until another is chosen.
@@ -147,7 +147,7 @@ re-opens the step until another is chosen.
 ### Finishing and cancelling
 
 `Finish Setup` stays disabled until every rendered step is complete. It revalidates the catalogs and
-the workspace state, commits the whole draft in one transaction, and replaces the panel with the
+the server state, commits the whole draft in one transaction, and replaces the panel with the
 receipt. `Cancel` discards the draft and expires every control on the panel.
 
 A draft lives in the bot process, so a restart discards it. Cancellation or completion also ends

@@ -749,10 +749,22 @@ const userPersonalizationConfigsSchema = z.object({
   gender_identity: z.string().nullable().optional(),
   pronouns: z.string().nullable().optional(),
   addressing_style: addressingStyleSchema.nullable().optional(),
+  fallback_model_refs: z.preprocess(
+    (value) => normalizeFallbackModelRefs(value),
+    fallbackModelRefSchema.array().default([]),
+  ),
+  model_randomizer_enabled: z.boolean().default(false),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });
 export type UserPersonalizationConfigsRow = z.infer<typeof userPersonalizationConfigsSchema>;
+
+/** The personal text fallback chain and its randomizer, shared by every saved personal provider. */
+export const personalFallbackSettingsSchema = userPersonalizationConfigsSchema.pick({
+  fallback_model_refs: true,
+  model_randomizer_enabled: true,
+});
+export type PersonalFallbackSettings = z.infer<typeof personalFallbackSettingsSchema>;
 
 const serverModelConfigSchema = z.object({
   server_id: z.number().int(),
@@ -1455,6 +1467,7 @@ export const reminderSchema = z.object({
   reminder_time: z.date(), // When to trigger the reminder (TIMESTAMP WITH TIME ZONE)
   next_attempt_at: z.date().nullable().optional(), // Retry lease; canonical cadence stays in reminder_time
   delivery_retry_count: z.number().int().nonnegative().default(0),
+  failed_occurrence_count: z.number().int().nonnegative().default(0),
   repetition_interval_hours: z.number().int().nullable().optional(), // Optional: repeat interval in hours
   self_reminder: z.boolean().nullable().optional(), // Optional: reminder targets the bot itself
   created_by_user_id: z.number().nullable(), // Who requested the reminder (nullable - set to NULL if user deleted)
@@ -1947,7 +1960,6 @@ export const userSavedProviderConfigSchema = z.object({
     z.array(logitBiasEntrySchema).default([]),
   ),
   thinking_level: z.enum(THINKING_LEVEL_VALUES).default(DEFAULT_THINKING_LEVEL),
-  model_randomizer_enabled: z.boolean().default(false),
   // Which of this row's assigned capabilities are currently switched on.
   // Always a subset of assigned_capabilities; see migration 060 for why the two are separate.
   enabled_capabilities: z.preprocess(
@@ -1959,10 +1971,6 @@ export const userSavedProviderConfigSchema = z.object({
   assigned_capabilities: z.preprocess(
     (value) => normalizeEnabledCapabilities(value),
     z.array(personalProviderCapabilitySchema).default([]),
-  ),
-  fallback_model_refs: z.preprocess(
-    (value) => normalizeFallbackModelRefs(value),
-    fallbackModelRefSchema.array().default([]),
   ),
   saved_at: z.coerce.date().optional(),
   updated_at: z.coerce.date().optional(),

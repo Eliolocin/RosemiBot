@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import type { CustomEndpointRow, LlmRow, TomoriState, UserSavedProviderConfigRow } from "@/types/db/schema";
+import type {
+  CustomEndpointRow,
+  LlmRow,
+  PersonalFallbackSettings,
+  TomoriState,
+  UserSavedProviderConfigRow,
+} from "@/types/db/schema";
 import { userSavedProviderConfigSchema } from "@/types/db/schema";
 import * as realRepositories from "@/utils/db/repositories";
 import { resolveContextBudget } from "@/utils/provider/contextBudget";
@@ -28,6 +34,7 @@ const endpoint = {
 } as CustomEndpointRow;
 
 let rows: UserSavedProviderConfigRow[] = [];
+let fallbackSettings: PersonalFallbackSettings = { fallback_model_refs: [], model_randomizer_enabled: false };
 
 const scopedMock = createScopedModuleMocker(mock, {
   "@/utils/db/repositories": realRepositories,
@@ -41,6 +48,7 @@ scopedMock.module("@/utils/db/repositories", () => ({
   }),
   llmProviderRepo: overrideMembers(realRepositories.llmProviderRepo, {
     loadUserSavedProviderConfigs: async () => rows,
+    loadPersonalFallbackSettings: async () => fallbackSettings,
     loadCustomEndpointsByIds: async (ids: number[]) =>
       ids.includes(endpoint.custom_endpoint_id as number) ? [endpoint] : [],
   }),
@@ -59,28 +67,35 @@ function makeState(): TomoriState {
 
 function makePersonalRow(
   enabledCapabilities: UserSavedProviderConfigRow["enabled_capabilities"],
-  modelRandomizerEnabled = false,
 ): UserSavedProviderConfigRow {
   return {
     user_id: 4,
     provider: "custom:u4:local",
     enabled_capabilities: enabledCapabilities,
-    model_randomizer_enabled: modelRandomizerEnabled,
     llm_id: 11,
+  } as UserSavedProviderConfigRow;
+}
+
+/** A user-level chain that mixes a custom endpoint with a Google catalog model. */
+function makeMixedProviderChain(modelRandomizerEnabled = false): PersonalFallbackSettings {
+  return {
     fallback_model_refs: [
       { type: "custom_endpoint", id: 5 },
       { type: "llm", id: 12 },
     ],
-  } as UserSavedProviderConfigRow;
+    model_randomizer_enabled: modelRandomizerEnabled,
+  };
 }
 
 describe("personal provider fallback overlay", () => {
   beforeEach(() => {
     rows = [];
+    fallbackSettings = { fallback_model_refs: [], model_randomizer_enabled: false };
   });
 
-  it("materializes user custom endpoints and preserves the configured fallback order", async () => {
+  it("materializes a chain that mixes providers and preserves its configured order", async () => {
     rows = [makePersonalRow(["text"])];
+    fallbackSettings = makeMixedProviderChain();
 
     const { applyPersonalProviderSelectionsToTomoriState } = await import("@/utils/provider/personalProviderRuntime");
     const result = await applyPersonalProviderSelectionsToTomoriState(makeState(), 4);
@@ -93,8 +108,27 @@ describe("personal provider fallback overlay", () => {
     expect(result.tomoriState.fallback_llms).toEqual([fallback]);
   });
 
+  it("runs the same user-level chain whichever provider owns personal text", async () => {
+    rows = [
+      makePersonalRow([]),
+      { user_id: 4, provider: "deepseek", enabled_capabilities: ["text"], llm_id: 14 } as UserSavedProviderConfigRow,
+    ];
+    fallbackSettings = makeMixedProviderChain(true);
+
+    const { applyPersonalProviderSelectionsToTomoriState } = await import("@/utils/provider/personalProviderRuntime");
+    const result = await applyPersonalProviderSelectionsToTomoriState(makeState(), 4);
+
+    expect(result.activeConfigs.text?.provider).toBe("deepseek");
+    expect(result.tomoriState.fallback_chain).toEqual([
+      { kind: "custom_endpoint", endpoint },
+      { kind: "llm", model: fallback },
+    ]);
+    expect(result.tomoriState.config.model_randomizer_enabled).toBe(true);
+  });
+
   it("keeps the server fallback chain when no personal text provider is active", async () => {
     rows = [makePersonalRow(["embedding"])];
+    fallbackSettings = makeMixedProviderChain();
     const state = makeState();
 
     const { applyPersonalProviderSelectionsToTomoriState } = await import("@/utils/provider/personalProviderRuntime");
@@ -105,7 +139,8 @@ describe("personal provider fallback overlay", () => {
   });
 
   it("overlays personal model randomizer state when personal text is active", async () => {
-    rows = [makePersonalRow(["text"], true)];
+    rows = [makePersonalRow(["text"])];
+    fallbackSettings = makeMixedProviderChain(true);
     const state = { ...makeState(), config: { ...makeState().config, model_randomizer_enabled: false } };
 
     const { applyPersonalProviderSelectionsToTomoriState } = await import("@/utils/provider/personalProviderRuntime");
@@ -134,7 +169,6 @@ describe("personal provider fallback overlay", () => {
         llm_max_output_tokens: personalLimit,
         llm_disabled_params: [],
         llm_logit_biases: [],
-        fallback_model_refs: [],
         assigned_capabilities: ["text"],
         enabled_capabilities: enabled ? ["text"] : [],
       }),

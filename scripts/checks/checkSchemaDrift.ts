@@ -805,6 +805,7 @@ const CONFIG_PROJECTION_TARGETS: ConfigProjectionCoverageTarget[] = [
     rowSchemaName: "userPersonalizationConfigsSchema",
     exportSchemaName: "personalSettingsExportDataSchema",
     supplementalSourceKeys: ["language_pref", "privacy_level"],
+    excludedKeys: ["fallback_model_refs"],
   },
 ];
 
@@ -892,6 +893,7 @@ const CONFIG_COLUMN_EXCLUSION_REASONS: Record<string, string> = {
   "stm_categories.server_id": "The database key identifies the source workspace.",
   "user_personalization_configs.user_id": "The database key identifies the source user.",
   "user_personalization_configs.nai_char_ref_url": "The reference URL depends on the source deployment.",
+  "user_personalization_configs.fallback_model_refs": "Fallback model references are deployment-specific.",
   "user_personalization_configs.created_at": "Creation timestamps are runtime metadata.",
   "user_personalization_configs.updated_at": "Update timestamps are runtime metadata.",
 };

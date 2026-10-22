@@ -78,13 +78,13 @@ bun run dev                          # apenas o bot
 bun run launch --searxng --crawl4ai  # bot + servidores locais (veja bun run launch --help)
 ```
 
-Quando o bot estiver online, execute `/setup` no Discord para conectar um provedor de IA. Um espaço de trabalho (workspace) que não contém um provedor próprio não pode responder, a menos que ele rode no modo BYOK de Usuário (BYOK de Usuário) onde o provedor pessoal de cada membro responde em seu lugar, então este é o último passo de todos os caminhos de instalação.
+Quando o bot estiver online, execute `/setup` no Discord para conectar um provedor de IA. Um servidor que não tem um provedor próprio não pode responder, a menos que ele rode no modo BYOK de Usuário (BYOK de Usuário) onde o provedor pessoal de cada membro responde em seu lugar, então este é o último passo de todos os caminhos de instalação.
 
 ## O comando `/setup`
 <!-- anchor: the-setup-command -->
 
 O `/setup` abre um painel de checklist efêmero que apenas a pessoa que o executou pode operar. Em um servidor
-isso exige Gerenciar Servidor (Gerenciar Servidor); em uma DM (Mensagem Direta) ele está disponível para o próprio espaço de trabalho da pessoa. Cada linha no
+isso exige Gerenciar Servidor (Gerenciar Servidor); em uma DM (Mensagem Direta) ele está disponível para essa pessoa. Cada linha no
 painel é um valor em rascunho: `Concluir Configuração` é o único controle que escreve alguma coisa, então abrir,
 editar, cancelar ou reiniciar deixa todas as linhas do banco de dados intactas.
 
@@ -92,7 +92,7 @@ editar, cancelar ou reiniciar deixa todas as linhas do banco de dados intactas.
 |---|---|---|
 | Políticas | Apenas `RUN_ENV=production` | Aceitação dos Termos de Serviço e da Política de Privacidade, ambos em um modal. |
 | Provedor de IA | Todos os ambientes | Como as respostas chegam a um modelo. Um dos três modos de acesso abaixo. |
-| Configurações Iniciais | Todos os ambientes | Persona inicial, estilo de resposta, fuso horário e a predefinição (preset) de prompt de sistema padrão do espaço de trabalho. |
+| Configurações Iniciais | Todos os ambientes | Persona inicial, estilo de resposta, fuso horário e a predefinição (preset) de prompt de sistema padrão do servidor. |
 
 Todo outro valor de `RUN_ENV` renderiza o layout de dois passos e nenhum texto de política. Uma implantação
 rodando com `RUN_ENV=production` registra `/legal terms-of-service` e `/legal privacy-policy`
@@ -111,7 +111,7 @@ ao lado de `/legal license`; todo outro valor registra apenas `/legal license`.
   Salvar a conexão novamente limpa a declaração do modelo, porque as declarações dependem da
   compatibilidade da API escolhida. Este é o mesmo registro que `/providers` realiza, feito dentro do
   assistente, e ele não cria nenhuma linha antes de `Concluir Configuração`.
-- BYOK de Usuário (apenas servidores, nunca em uma DM): o espaço de trabalho não mantém nenhum provedor próprio e todas as
+- BYOK de Usuário (apenas servidores, nunca em uma DM): o servidor não mantém nenhum provedor próprio e todas as
   respostas ativadas por membros resolvem um provedor pessoal em seu lugar. Confirme isso no modal e, em seguida, peça para
   os membros registrarem os seus com `/personal providers`. Veja
   [Server Moderation](/pt-BR/features/setup-administration/server-moderation/#user-byok-bring-your-own-key).
@@ -119,7 +119,7 @@ ao lado de `/legal license`; todo outro valor registra apenas `/legal license`.
 ### Configurações iniciais
 
 Um modal de quatro linhas coleta a persona, o estilo de resposta, o deslocamento do fuso horário (timezone) e o prompt de sistema padrão. O fuso horário é opcional e o padrão é UTC. O prompt de sistema oferece
-Padrão Integrado (Recomendado) além de toda predefinição (preset) no catálogo do espaço de trabalho: a escolha embutida
+Padrão Integrado (Recomendado) além de toda predefinição (preset) no catálogo do servidor: a escolha embutida
 não armazena nenhum texto de prompt, então ela continua rastreando o padrão enviado de fábrica, e uma escolha de predefinição armazena
 o texto daquela predefinição conforme ele é lido no momento do commit. Excluir uma persona ou prompt armazenado do catálogo
 reabre o passo até que outro seja escolhido.
@@ -127,7 +127,7 @@ reabre o passo até que outro seja escolhido.
 ### Finalizando e cancelando
 
 Concluir Configuração permanece desabilitado até que cada passo renderizado esteja completo. Ele revalida os catálogos e
-o estado do espaço de trabalho, faz o commit de todo o rascunho em uma única transação, e substitui o painel com o
+o estado do servidor, faz o commit de todo o rascunho em uma única transação, e substitui o painel com o
 recibo. `Cancelar` descarta o rascunho e expira todo controle no painel.
 
 Um rascunho vive no processo do bot, não no banco de dados, então ele termina apenas quando é cancelado,

@@ -18,9 +18,9 @@ Agrega una clave de proveedor durante la configuración inicial con `/setup`, o 
 |---|---|
 | Proveedor de IA (recomendado) | Un proveedor del catálogo más su clave API, validada y cifrada como borrador. |
 | Punto de conexión personalizado | La conexión del punto final y un modelo de texto, registrados dentro del asistente. Consulta [Puntos finales personalizados](#custom-endpoints). |
-| Usuario BYOK (solo gremios) | Nada: el espacio de trabajo no cuenta con ningún proveedor propio, por lo que los miembros deberán suministrar uno personal. |
+| Usuario BYOK (solo gremios) | Nada: el servidor no cuenta con ningún proveedor propio, por lo que los miembros deberán suministrar uno personal. |
 
-No se escribe nada en la base de datos hasta que presione `Finalizar configuración`. Un asistente abandonado o caducado deja intactas las filas de proveedores existentes del espacio de trabajo. Para reemplazar una clave existente, use `/providers`, porque `/setup` no se ejecutará en un espacio de trabajo ya configurado.
+No se escribe nada en la base de datos hasta que presione `Finalizar configuración`. Un asistente abandonado o caducado deja intactas las filas de proveedores existentes del servidor. Para reemplazar una clave existente, use `/providers`, porque `/setup` no se ejecutará en un servidor ya configurado.
 
 Cada proveedor tiene sus propios pasos de generación de claves. En `/help`, elija `Configuración`, luego `Obtener una clave de API` y elija su proveedor para un tutorial paso a paso, o utilice estos puntos de partida:
 
@@ -68,7 +68,7 @@ En `/config` > `Modelos` > Modelos de conmutador, puede asignar modelos y puntos
 - **Punto final TTS**: punto final de voz de texto a voz.
 - **Punto final STT**: punto final de transcripción de audio de voz a texto.
 
-Los primeros seis espacios eligen registros del catálogo de modelos. En su lugar, las ranuras TTS y STT eligen puntos finales con ámbito de espacio de trabajo, activando el punto final seleccionado en lugar de escribir una columna de modelo. Registre y edite esos puntos finales en `/providers`. `/personal config` conserva seis ranuras de enrutamiento de modelos personales y no incluye selectores de puntos finales personales TTS/STT.
+Los primeros seis espacios eligen registros del catálogo de modelos. En su lugar, las ranuras TTS y STT eligen puntos finales con ámbito de servidor, activando el punto final seleccionado en lugar de escribir una columna de modelo. Registre y edite esos puntos finales en `/providers`. `/personal config` conserva seis ranuras de enrutamiento de modelos personales y no incluye selectores de puntos finales personales TTS/STT.
 
 También puede administrar claves de respaldo para conmutación por error automática y equilibrio de carga en `/providers`.
 
@@ -92,7 +92,7 @@ Los registros y credenciales del proveedor permanecen fuera de las exportaciones
 
 Los puntos finales personalizados le permiten registrar servicios autohospedados o respaldados por proxy (Ollama, LM Studio, LiteLLM, vLLM, ComfyUI, TTS/STT local) como paquetes de proveedores etiquetados.
 
-- **Alcance del servidor**: abra `/providers` para registrar y editar el punto final del espacio de trabajo.
+- **Alcance del servidor**: abra `/providers` para registrar y editar los puntos finales del servidor.
 - **Ámbito personal**: abra `/personal providers` para catálogos de modelos personales (consulte [Personalización](/es-419/features/knowledge/personalization/#your-own-providers)). Los puntos finales de voz personal no se seleccionan de `/personal config`.
 
 Una etiqueta es el nombre del menú de cara al usuario y las capacidades de los grupos en un paquete cuando comparten una URL de punto final. Nunca se envía al servicio remoto. Las capacidades ofrecidas desde diferentes URL necesitan etiquetas distintas.

@@ -245,8 +245,8 @@ Anyone can run `/config` > Persona > Memories, `/personal config`, and `/persona
 
 ### STM Configuration
 
-Workspace managers can tune short-term memory from `/config` → `Behavior` → `Memory & STM`.
-These settings apply to the workspace's active STM records:
+Server managers can tune short-term memory from `/config` → `Behavior` → `Memory & STM`.
+These settings apply to the server's active STM records:
 
 - **Refresh cadence** controls how many bot turns pass between refresh nudges. The allowed range is 1-100.
 - **Render mode** chooses whether category values supersede recent turns or appear as a crude summary.

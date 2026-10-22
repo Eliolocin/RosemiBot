@@ -40,6 +40,8 @@ bun run vl > /tmp/vl.log 2>&1; echo "VL_EXIT=$?" >> /tmp/vl.log
 - `camelCase` file names, `@/*` imports for `src/*`, and `node:` imports for Node built-ins.
 - Comments follow the [comment policy](/contributing/policies/comments/). JSDoc on exported functions
   only where behavior is not obvious from the name and types.
+- **Workspace**: in code and contributor docs, a workspace is a Discord server or a DM scope.
+  User-facing text says "server", or "your DMs" where the DM case matters.
 - Log with `log` from `src/utils/misc/logger.ts`, with context such as `errorType` and IDs. Handle
   startup-critical failures differently from recoverable ones. Pick the level by reader:
   - `log.error`: a failure the hoster must act on. It reaches production and `error_logs`, so keep
