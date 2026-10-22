@@ -64,7 +64,7 @@ export default {
       policies_modal_choice_label: `三項都確認才能繼續`,
       policies_choice_terms: `我接受 TomoriBot 的服務條款`,
       policies_choice_privacy: `我已閱讀 TomoriBot 的隱私權政策`,
-      policies_choice_members: `我會告訴成員 TomoriBot 是會讀取最近訊息來回覆的 AI`,
+      policies_choice_members: `我會告知成員TomoriBot如何使用資料，並協助落實年齡與使用規則。`,
       policies_required: `三項都確認才能繼續。`,
       policies_denied: `這個設定流程不需要同意政策。`,
       provider_name: `AI 供應商`,

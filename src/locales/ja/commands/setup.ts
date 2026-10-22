@@ -62,7 +62,7 @@ export default {
       policies_modal_choice_label: `3項目すべてに同意して続行`,
       policies_choice_terms: `TomoriBotの利用規約に同意します`,
       policies_choice_privacy: `TomoriBotのプライバシーポリシーを読みました`,
-      policies_choice_members: `TomoriBotが直近のメッセージを読んで返信するAIであることをメンバーに伝えます`,
+      policies_choice_members: `TomoriBotのデータ利用をメンバーに伝え、年齢要件と利用ルールの遵守に協力します。`,
       policies_required: `続行するには3項目すべてに同意してください。`,
       policies_denied: `ポリシーへの同意はこのセットアップの対象外です。`,
       provider_name: `AIプロバイダー`,
