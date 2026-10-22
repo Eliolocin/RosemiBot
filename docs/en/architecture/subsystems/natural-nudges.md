@@ -7,7 +7,9 @@ Natural Nudges lets personas speak without being triggered. The code lives in
 `src/modules/natural-nudges/`: SQL in `db/repositories.ts`, the runtime in `runtime/`, and the
 `/config` pages in `discord/`. This page covers both modes: episodes, which start something in a
 quiet channel, and [Chime-ins](#chime-ins), which join a live conversation. User-facing behavior is
-on the [feature page](/features/chatting-personality/natural-nudges/).
+on the [feature page](/features/chatting-personality/natural-nudges/). The panel calls an episode an
+idle nudge and a Chime-in an active nudge, and labels the `reach_out`, `revive`, `new_topic`, and
+`alter_talk` categories Ping User, Revive Topic, Start Topic, and Play Scene.
 
 ## Flow and ownership
 
@@ -84,9 +86,8 @@ retry-after-abort time, and a 15-minute cache of heat and waking hours. A restar
   persona channel whitelist, and the channel's last message fresh. Any message after the lull was
   measured cancels the nudge.
 - **Caps follow the frequency level.** `EPISODE_DAILY_CAPS` and `CHIME_IN_DAILY_CAPS` in
-  `runtime/tuning.ts` map each level to its daily ceiling (Rare through Lively: 1, 3, 5, or 8
-  episodes and 1, 3, 6, or 10 Chime-ins), so the panel estimate, the episode re-check, and the
-  Chime-in check read one source. Episode category tickets are fixed there too
+  `runtime/tuning.ts` map each level to its daily ceiling, so the panel estimate, the episode
+  re-check, and the Chime-in check read one source. Episode category tickets are fixed there too
   (`EPISODE_CATEGORY_WEIGHTS`), since the mix is operator tuning rather than a server setting.
 - **Failure stop.** Planner failures after their one format retry, and generation errors, count
   toward `server_natural_nudge_runtime_state.consecutive_failures`; three stop the server until a

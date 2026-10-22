@@ -347,32 +347,67 @@ function plannerProviderOptions(locale: string, groups: readonly StructuredOutpu
   });
 }
 
-function chatFallbackLabel(locale: string, status: NaturalNudgesSettingsView["status"]): string {
-  const none = localizer(locale, "commands.config.panel.none_label");
-  if (!status?.chatModel) return localizer(locale, "commands.config.natural_nudges.model_chat_none");
-  const model = formatModelSelectionLabel(
-    status.chatModel.codename,
-    getProviderDisplayName(status.chatModel.provider),
-    none,
+function formatChatModel(locale: string, chatModel: { codename: string; provider: string }): string {
+  return formatModelSelectionLabel(
+    chatModel.codename,
+    getProviderDisplayName(chatModel.provider),
+    localizer(locale, "commands.config.panel.none_label"),
   );
-  if (status.plannerModel.kind === "ready") {
-    return localizer(locale, "commands.config.natural_nudges.model_same_as_chat", { model });
+}
+
+/** The placeholder is the only place the select can name the model it will actually use. */
+function plannerModelPlaceholder(locale: string, view: NaturalNudgesSettingsView): string {
+  const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
+  const chat = view.status?.chatModel;
+  if (view.config.llm_id === null) {
+    return chat
+      ? t("commands.config.natural_nudges.model_same_as_chat", { model: formatChatModel(locale, chat) })
+      : t("commands.config.natural_nudges.model_placeholder");
   }
+  const none = localizer(locale, "commands.config.panel.none_label");
+  for (const group of view.plannerModels) {
+    const model = group.models.find((candidate) => candidate.id === view.config.llm_id);
+    if (model) {
+      return t("commands.config.natural_nudges.model_placeholder_selected", {
+        model: formatModelSelectionLabel(model.name, getProviderDisplayName(group.provider), none),
+      });
+    }
+  }
+  return t("commands.config.natural_nudges.model_placeholder_selected", {
+    model: t("commands.config.natural_nudges.model_unavailable"),
+  });
+}
+
+/** A placeholder cannot say why the default cannot plan nudges, so that reason gets its own line. */
+function plannerDefaultNotice(locale: string, view: NaturalNudgesSettingsView): string | null {
+  const { status } = view;
+  if (view.config.llm_id !== null || !status || status.plannerModel.kind === "ready") return null;
+  const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
+  if (!status.chatModel) return t("commands.config.natural_nudges.model_chat_none");
+  const model = formatChatModel(locale, status.chatModel);
   const key =
     status.plannerModel.kind === "unusable" && status.plannerModel.reason === "no_structured_output"
       ? "commands.config.natural_nudges.model_chat_no_structured"
       : "commands.config.natural_nudges.model_chat_unavailable";
-  return localizer(locale, key, { model });
+  return t(key, { model });
 }
 
-function plannerModelLabel(locale: string, view: NaturalNudgesSettingsView): string {
-  const none = localizer(locale, "commands.config.panel.none_label");
-  if (view.config.llm_id === null) return chatFallbackLabel(locale, view.status);
-  for (const group of view.plannerModels) {
-    const model = group.models.find((candidate) => candidate.id === view.config.llm_id);
-    if (model) return formatModelSelectionLabel(model.name, getProviderDisplayName(group.provider), none);
-  }
-  return localizer(locale, "commands.config.natural_nudges.model_unavailable");
+function episodeEffect(
+  locale: string,
+  view: NaturalNudgesSettingsView,
+  hasEligibleChannel: boolean,
+  hasUsableModel: boolean,
+): string {
+  const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
+  const { config } = view;
+  if (!config.episodes_enabled) return t("commands.config.natural_nudges.episodes_off");
+  if (!hasEligibleChannel) return t("commands.config.natural_nudges.episodes_on_no_channels");
+  if (!hasUsableModel) return t("commands.config.natural_nudges.episodes_on_no_model");
+  if (view.perDay <= 0) return t("commands.config.natural_nudges.frequency_effect_none");
+  return `${t("commands.config.natural_nudges.episodes_on")} ${t("commands.config.natural_nudges.frequency_effect", {
+    heat: Math.round(view.heat),
+    per_week: Math.round(view.perDay * 7 * 10) / 10,
+  })}`;
 }
 
 function chimeInEffect(locale: string, view: NaturalNudgesSettingsView, hasEligibleChannel: boolean): string {
@@ -466,37 +501,6 @@ export function buildNaturalNudgesSettingsBody(
       }`,
     ),
     text(
-      `### ${t("commands.config.natural_nudges.episodes_title")}\n${t("commands.config.natural_nudges.episodes_description")}`,
-    ),
-    buildStateControlRow(
-      [
-        {
-          value: false,
-          label: t("commands.config.panel.off_button"),
-          customId: buildConfigRouteId({ action: "nudge-episodes-set", locale, enabled: false }),
-        },
-        {
-          value: true,
-          label: t("commands.config.panel.on_button"),
-          customId: buildConfigRouteId({ action: "nudge-episodes-set", locale, enabled: true }),
-        },
-      ],
-      config.episodes_enabled,
-      writesDisabled,
-    ),
-    text(
-      `> ${t(
-        !config.episodes_enabled
-          ? "commands.config.natural_nudges.episodes_off"
-          : !hasEligibleChannel
-            ? "commands.config.natural_nudges.episodes_on_no_channels"
-            : !hasUsableModel
-              ? "commands.config.natural_nudges.episodes_on_no_model"
-              : "commands.config.natural_nudges.episodes_on",
-      )}`,
-    ),
-    ...buildChimeInSection(locale, view, hasEligibleChannel, writesDisabled),
-    text(
       `### ${t("commands.config.natural_nudges.channels_title")}\n${t("commands.config.natural_nudges.channels_description")}`,
     ),
     {
@@ -517,7 +521,46 @@ export function buildNaturalNudgesSettingsBody(
       ],
     },
     text(
-      `### ${t("commands.config.natural_nudges.model_title")}\n${t("commands.config.natural_nudges.model_description")}\n> ${plannerModelLabel(locale, view)}`,
+      `### ${t("commands.config.natural_nudges.episodes_title")}\n${t("commands.config.natural_nudges.episodes_description")}`,
+    ),
+    buildStateControlRow(
+      [
+        {
+          value: false,
+          label: t("commands.config.panel.off_button"),
+          customId: buildConfigRouteId({ action: "nudge-episodes-set", locale, enabled: false }),
+        },
+        {
+          value: true,
+          label: t("commands.config.panel.on_button"),
+          customId: buildConfigRouteId({ action: "nudge-episodes-set", locale, enabled: true }),
+        },
+      ],
+      config.episodes_enabled,
+      writesDisabled,
+    ),
+    text(`> ${episodeEffect(locale, view, hasEligibleChannel, hasUsableModel)}`),
+    {
+      type: ComponentType.ActionRow,
+      components: [
+        {
+          type: ComponentType.StringSelect,
+          customId: buildConfigRouteId({ action: "nudge-frequency-select", locale }),
+          options: EPISODE_FREQUENCY_LEVELS.map((level) => ({
+            label: safeSelectOptionText(
+              t("commands.config.natural_nudges.chime_in_frequency_option", { level: t(FREQUENCY_LOCALE_KEYS[level]) }),
+              100,
+            ),
+            value: String(level),
+            default: level === config.episode_frequency,
+          })),
+          disabled: writesDisabled,
+        },
+      ],
+    },
+    ...buildChimeInSection(locale, view, hasEligibleChannel, writesDisabled),
+    text(
+      `### ${t("commands.config.natural_nudges.model_title")}\n${t("commands.config.natural_nudges.model_description")}`,
     ),
   ];
 
@@ -535,7 +578,7 @@ export function buildNaturalNudgesSettingsBody(
         {
           type: ComponentType.StringSelect,
           customId: buildConfigRouteId({ action: "nudge-provider", locale }),
-          placeholder: safeSelectOptionText(t("commands.config.natural_nudges.model_placeholder"), 150),
+          placeholder: safeSelectOptionText(plannerModelPlaceholder(locale, view), 150),
           options: modelOptions.map((option) => ({
             label: safeSelectOptionText(option.label, 100),
             value: option.value,
@@ -544,40 +587,12 @@ export function buildNaturalNudgesSettingsBody(
         },
       ],
     });
-  } else {
-    components.push(text(`-# ${t("commands.config.natural_nudges.model_none_available")}`));
   }
-
-  components.push(
-    text(
-      `### ${t("commands.config.natural_nudges.frequency_title")}\n${t("commands.config.natural_nudges.frequency_description")}`,
-    ),
-    {
-      type: ComponentType.ActionRow,
-      components: [
-        {
-          type: ComponentType.StringSelect,
-          customId: buildConfigRouteId({ action: "nudge-frequency-select", locale }),
-          options: EPISODE_FREQUENCY_LEVELS.map((level) => ({
-            label: safeSelectOptionText(t(FREQUENCY_LOCALE_KEYS[level]), 100),
-            value: String(level),
-            default: level === config.episode_frequency,
-          })),
-          disabled: writesDisabled,
-        },
-      ],
-    },
-    text(
-      `> ${
-        view.perDay > 0
-          ? t("commands.config.natural_nudges.frequency_effect", {
-              heat: Math.round(view.heat),
-              per_week: Math.round(view.perDay * 7 * 10) / 10,
-            })
-          : t("commands.config.natural_nudges.frequency_effect_none")
-      }`,
-    ),
-  );
+  const modelNotice =
+    providerOptions.length === 0
+      ? t("commands.config.natural_nudges.model_none_available")
+      : plannerDefaultNotice(locale, view);
+  if (modelNotice) components.push(text(`-# ${modelNotice}`));
   return components;
 }
 

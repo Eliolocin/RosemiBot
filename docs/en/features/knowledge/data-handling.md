@@ -122,8 +122,8 @@ For exact database tables and preserved column lists, see the
 ## Opting Out
 
 - `/personal config`: control your visibility, up to full invisibility (opting out of memory context),
-  and turn off [Reach-outs](/features/chatting-personality/natural-nudges/#reach-out), the episodes where
-  a persona pings you to start a conversation.
+  and turn off [Pings from Personas](/features/chatting-personality/natural-nudges/#ping-user), the
+  idle nudges where a persona pings you to start a conversation.
 - `/config` > Permissions: server managers can toggle self-learning and memory features off.
 
 See [Memory](/features/knowledge/memory/) for day-to-day memory management.
