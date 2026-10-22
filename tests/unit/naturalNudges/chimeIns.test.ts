@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn, type Mock } from "bun:test";
 import { Collection, type Client, type GuildTextBasedChannel, type Message } from "discord.js";
 import * as tomoriChatModule from "@/events/messageCreate/tomoriChat";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
@@ -13,7 +13,7 @@ import {
 import * as configCache from "@/modules/natural-nudges/runtime/configCache";
 import * as inFlight from "@/modules/natural-nudges/runtime/inFlight";
 import * as matcher from "@/modules/natural-nudges/runtime/matcher";
-import { CHIME_IN_OPTION_BUDGET } from "@/modules/natural-nudges/runtime/tuning";
+import { CHIME_IN_OPTION_BUDGET, CHIME_IN_STALE_HUMAN_MESSAGES } from "@/modules/natural-nudges/runtime/tuning";
 import * as tomoriStateCache from "@/utils/cache/tomoriStateCache";
 import type { TomoriChatInput } from "@/utils/chat/types";
 import { statRepository } from "@/utils/db/repositories";
@@ -44,6 +44,8 @@ const alter = createPersona({
   is_alter: true,
 }) as typeof main;
 const MECHA = { label: "mecha anime", description: "Giant piloted robots." };
+const BAKING = { label: "baking", description: "Bread and pastry." };
+const defaultMatch: matcher.MatcherResult = { choice: "i01", reason: "matched", kind: "llm", model: "fixture" };
 
 const spies: Array<{ mockRestore: () => void }> = [];
 afterEach(() => {
@@ -166,6 +168,8 @@ describe("Chime-in check", () => {
   let window: Message[];
   let configSpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadServerConfig">>;
   let historySpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadFireHistory">>;
+  let matches: matcher.MatcherResult[];
+  let match: Mock<typeof matcher.matchChimeIn>;
   const channel = fakeChannel("listed-parent");
   const check: ChimeInCheck = {
     client,
@@ -186,7 +190,10 @@ describe("Chime-in check", () => {
     configSpy.mockResolvedValue(defaultServerNaturalNudgeConfig(SERVER_ID));
     historySpy = spyOn(naturalNudgeRepository, "loadFireHistory");
     historySpy.mockResolvedValue({ recent: [], latestEpisodes: [] });
+    matches = [];
+    match = spyOn(matcher, "matchChimeIn").mockImplementation(async () => matches.shift() ?? defaultMatch);
     spies.push(
+      match,
       spyOn(tomoriStateCache, "getCachedAllPersonas").mockResolvedValue([main, alter]),
       spyOn(personaRepository, "loadAllForServer").mockResolvedValue([main, alter]),
       configSpy,
@@ -200,21 +207,21 @@ describe("Chime-in check", () => {
       spyOn(naturalNudgeRepository, "loadPersonaConfigs").mockResolvedValue(
         new Map([
           [MAIN_ID, { persona_id: MAIN_ID, talkativeness: 2, interests: [MECHA], has_override: true }],
-          [ALTER_ID, { persona_id: ALTER_ID, talkativeness: 0, interests: [], has_override: true }],
+          [ALTER_ID, { persona_id: ALTER_ID, talkativeness: 2, interests: [BAKING], has_override: true }],
         ]),
       ),
       spyOn(channels, "resolveEffectiveChannelIds").mockResolvedValue(["listed-parent"]),
       spyOn(channels, "fetchRecentMessages").mockImplementation(async () => window),
       spyOn(channels, "buildMatcherEvidence").mockResolvedValue("Juno: the new Gundam is out"),
+      spyOn(configCache, "readChimeInGate").mockResolvedValue({
+        serverId: SERVER_ID,
+        config: defaultServerNaturalNudgeConfig(SERVER_ID),
+        channelIds: new Set(),
+        heat: 15,
+      }),
       spyOn(whitelistRepository, "checkChannelWhitelist").mockResolvedValue(undefined as never),
       spyOn(whitelistRepository, "isPersonaAllowedByWhitelistStatus").mockReturnValue(true),
       spyOn(matcher, "resolveMatcherBackend").mockResolvedValue({ kind: "llm", llmId: 1 }),
-      spyOn(matcher, "matchChimeIn").mockResolvedValue({
-        choice: "i01",
-        reason: "matched",
-        kind: "llm",
-        model: "fixture",
-      }),
       spyOn(metricSampleRepository, "recordSample").mockImplementation(async (_name, fields) => {
         samples.push(fields);
       }),
@@ -234,6 +241,11 @@ describe("Chime-in check", () => {
   });
 
   const options = (sleep: () => Promise<void> = async () => {}) => ({ sleep, random: () => 0.5 });
+
+  const postHumans = async (count: number) => {
+    window = Array.from({ length: count }, () => member(channel));
+    for (let index = 0; index < count; index++) await observeChimeInMessage(client, member(channel));
+  };
 
   it("speaks a plain turn as the interest's owner and records the fire", async () => {
     const fire = recordFire();
@@ -374,33 +386,131 @@ describe("Chime-in check", () => {
     expect(samples.at(-1)).toMatchObject({ reason: "winner_spoke", phase: "a" });
   });
 
-  it("aborts after the delay when a persona spoke or the channel became busy", async () => {
+  it("aborts after the delay when a persona spoke or the channel became busy, before any re-match", async () => {
     const cases: Array<[string, () => Promise<void>]> = [
-      ["persona_spoke", () => observeChimeInMessage(client, self(channel))],
+      [
+        "persona_spoke",
+        async () => {
+          await postHumans(CHIME_IN_STALE_HUMAN_MESSAGES);
+          await observeChimeInMessage(client, self(channel));
+        },
+      ],
       [
         "channel_busy",
         async () => {
+          await postHumans(CHIME_IN_STALE_HUMAN_MESSAGES);
           locked = true;
         },
       ],
     ];
     for (const [reason, duringDelay] of cases) {
       locked = false;
+      match.mockClear();
       expect(await runChimeInCheck(check, options(duringDelay))).toBe("aborted");
       expect(samples.at(-1)).toMatchObject({ reason, phase: "c" });
+      expect(match).toHaveBeenCalledTimes(1);
     }
     expect(chatInputs).toEqual([]);
   });
 
+  it("re-matches a filled window and speaks when the same interest wins again", async () => {
+    spies.push(recordFire());
+    matches = [
+      defaultMatch,
+      { choice: "i01", reason: "matched", kind: "llm", model: "fixture", usage: { inputTokens: 40, outputTokens: 5 } },
+    ];
+    expect(
+      await runChimeInCheck(
+        check,
+        options(() => postHumans(CHIME_IN_STALE_HUMAN_MESSAGES)),
+      ),
+    ).toBe("fired");
+    expect(match).toHaveBeenCalledTimes(2);
+    expect(match.mock.calls[1][0].options).toEqual(match.mock.calls[0][0].options);
+    expect(channels.buildMatcherEvidence).toHaveBeenLastCalledWith(window, GUILD_ID);
+    expect(chatInputs.map((input) => input.selectedPersonaId)).toEqual([MAIN_ID]);
+    expect(samples.at(-1)).toMatchObject({
+      outcome: "fired",
+      phase: "c",
+      reason: "delivered",
+      rematched: 1,
+      rematch_tokens_in: 40,
+      rematch_tokens_out: 5,
+    });
+  });
+
+  it("aborts with window_gone when the re-match picks another interest or none", async () => {
+    const seconds: matcher.MatcherResult[] = [
+      { choice: "i02", reason: "matched", kind: "llm", model: "fixture" },
+      { choice: null, reason: "none", kind: "llm", model: "fixture" },
+    ];
+    for (const second of seconds) {
+      match.mockClear();
+      window = [member(channel)];
+      matches = [defaultMatch, second];
+      expect(
+        await runChimeInCheck(
+          check,
+          options(() => postHumans(CHIME_IN_STALE_HUMAN_MESSAGES)),
+        ),
+      ).toBe("aborted");
+      expect(match).toHaveBeenCalledTimes(2);
+      expect(samples.at(-1)).toMatchObject({
+        outcome: "aborted",
+        phase: "c",
+        reason: "window_gone",
+        rematched: 1,
+      });
+      expect(chatInputs).toEqual([]);
+    }
+  });
+
+  it("makes no second matcher call below the stale threshold", async () => {
+    spies.push(recordFire());
+    expect(
+      await runChimeInCheck(
+        check,
+        options(() => postHumans(CHIME_IN_STALE_HUMAN_MESSAGES - 1)),
+      ),
+    ).toBe("fired");
+    expect(match).toHaveBeenCalledTimes(1);
+    expect(samples.at(-1)).toMatchObject({ outcome: "fired", phase: "c", rematched: 0 });
+  });
+
+  it("aborts quietly when the second matcher call fails", async () => {
+    const failure = spyOn(naturalNudgeRepository, "recordFailure").mockResolvedValue(null);
+    spies.push(failure);
+    matches = [defaultMatch, { choice: null, reason: "failed", kind: "llm", model: "fixture" }];
+    expect(
+      await runChimeInCheck(
+        check,
+        options(() => postHumans(CHIME_IN_STALE_HUMAN_MESSAGES)),
+      ),
+    ).toBe("aborted");
+    expect(match).toHaveBeenCalledTimes(2);
+    expect(samples.at(-1)).toMatchObject({
+      outcome: "aborted",
+      phase: "c",
+      reason: "matcher_failed",
+      rematched: 1,
+    });
+    expect(failure).not.toHaveBeenCalled();
+    expect(chatInputs).toEqual([]);
+  });
+
+  it("aborts when the re-match window shows the chosen speaker already spoke", async () => {
+    const duringDelay = async () => {
+      await postHumans(CHIME_IN_STALE_HUMAN_MESSAGES);
+      window = [...window.slice(1), self(channel)];
+    };
+    expect(await runChimeInCheck(check, options(duringDelay))).toBe("aborted");
+    expect(match).toHaveBeenCalledTimes(1);
+    expect(samples.at(-1)).toMatchObject({ outcome: "aborted", phase: "c", reason: "persona_spoke" });
+    expect(chatInputs).toEqual([]);
+  });
+
   it("reads an untrusted matcher answer as no fire", async () => {
-    spies.push(
-      spyOn(matcher, "matchChimeIn").mockResolvedValue({
-        choice: null,
-        reason: "refused",
-        kind: "llm",
-        model: "fixture",
-      }),
-    );
+    match.mockResolvedValue({ choice: null, reason: "refused", kind: "llm", model: "fixture" });
     expect(await runChimeInCheck(check, options())).toBe("aborted");
     expect(samples.at(-1)).toMatchObject({ reason: "matcher_refused" });
     expect(chatInputs).toEqual([]);

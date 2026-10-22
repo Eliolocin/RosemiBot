@@ -220,7 +220,7 @@ messageCreate (chimeIn.ts, not awaited)
             ├─ options: interests of personas with talkativeness above 0 allowed in the channel
             ├─ matchChimeIn over the last 5 messages → interest or none
             ├─ winner: an owner of that interest who did not speak in the window; 10% detour
-            ├─ wait 15-45 s → recheckBeforeSend
+            ├─ wait 15-45 s → recheckBeforeSend, one re-match when 5 posted
             └─ tomoriChat({ naturalNudge, borrowsTriggerMessage }) → fire row (mode chime_in)
 ```
 
@@ -255,13 +255,16 @@ messageCreate (chimeIn.ts, not awaited)
 - **Send permission.** Phase A and the re-check skip a channel where the bot cannot send, so a
   read-only listed channel never costs a matcher call.
 - **Re-check.** After the delay, `recheckBeforeSend` repeats the Phase A reads and the speaker's
-  persona checks, then aborts when a persona spoke in the channel, five members posted (the window is
-  gone), or the channel is locked.
+  persona checks, then aborts when a persona spoke in the channel or the channel is locked. When five
+  members posted, it runs the matcher once more on the newest five messages with the same options;
+  the reply speaks only if the same interest wins again and the speaker is not in that window,
+  otherwise it aborts as `window_gone`.
 - **Plain turn.** The turn carries `naturalNudge` with no tools and `borrowsTriggerMessage`, and no
   brief, agenda, or injected context, so it skips the same stats and memory writes as an episode.
   Chime-ins have no pending or unanswered rules; they count toward the shared failure stop.
 - **Telemetry.** One `natural_nudge_chime_in` row per check: outcome, phase, reason, heat, matcher
-  kind and model, option count, the Decision margin over `none`, detour, and matcher tokens.
+  kind and model, option count, the Decision margin over `none`, detour, matcher tokens, and whether
+  a second call ran with its own tokens.
 
 ## Episodes as data
 

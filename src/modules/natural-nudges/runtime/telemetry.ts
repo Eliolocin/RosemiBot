@@ -54,8 +54,12 @@ export interface ChimeInSample {
   optionCount?: number;
   margin?: number;
   detour?: boolean;
+  /** True when human messages after the delay forced a second matcher call. */
+  rematched: boolean;
   matcherInputTokens?: number;
   matcherOutputTokens?: number;
+  rematchInputTokens?: number;
+  rematchOutputTokens?: number;
 }
 
 /** One row per Chime-in check, under the same rules as episode rows: no text, prose, or names. */
@@ -72,7 +76,10 @@ export function recordChimeInSample(sample: ChimeInSample): void {
   if (sample.optionCount !== undefined) fields.option_count = sample.optionCount;
   if (sample.margin !== undefined) fields.margin = Math.round(sample.margin * 1000) / 1000;
   if (sample.detour !== undefined) fields.detour = sample.detour ? 1 : 0;
+  fields.rematched = sample.rematched ? 1 : 0;
   if (sample.matcherInputTokens !== undefined) fields.matcher_tokens_in = sample.matcherInputTokens;
   if (sample.matcherOutputTokens !== undefined) fields.matcher_tokens_out = sample.matcherOutputTokens;
+  if (sample.rematchInputTokens !== undefined) fields.rematch_tokens_in = sample.rematchInputTokens;
+  if (sample.rematchOutputTokens !== undefined) fields.rematch_tokens_out = sample.rematchOutputTokens;
   void metricSampleRepository.recordSample(NATURAL_NUDGE_CHIME_IN_METRIC, fields);
 }

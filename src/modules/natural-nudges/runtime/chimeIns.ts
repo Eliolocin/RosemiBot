@@ -384,7 +384,11 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
 export async function runChimeInCheck(check: ChimeInCheck, options: ChimeInCheckOptions = {}): Promise<AttemptResult> {
   const sleep = options.sleep ?? defaultSleep;
   const random = options.random ?? Math.random;
-  const telemetry: Omit<ChimeInSample, "outcome" | "phase" | "reason"> = { serverId: check.serverId, heat: check.heat };
+  const telemetry: Omit<ChimeInSample, "outcome" | "phase" | "reason"> = {
+    serverId: check.serverId,
+    heat: check.heat,
+    rematched: false,
+  };
   const finish = (outcome: AttemptResult, phase: "a" | "c", reason: string): AttemptResult => {
     recordChimeInSample({ ...telemetry, outcome, phase, reason });
     return outcome;
@@ -459,32 +463,72 @@ export async function runChimeInCheck(check: ChimeInCheck, options: ChimeInCheck
     );
     await sleep(delayMs);
 
-    const blocked = await recheckBeforeSend(check, speaker, watch);
-    if (blocked) return finish("aborted", "c", blocked);
+    const recheck = await recheckBeforeSend(check, speaker, watch, {
+      options: matcherOptions,
+      choice: matched.choice,
+    });
+    if (recheck.rematch) {
+      telemetry.rematched = true;
+      telemetry.rematchInputTokens = recheck.rematch.usage?.inputTokens;
+      telemetry.rematchOutputTokens = recheck.rematch.usage?.outputTokens;
+    }
+    if (recheck.reason) return finish("aborted", "c", recheck.reason);
     return await speak(check, speaker, detour !== null, finish);
   } finally {
     if (watches.get(check.channel.id) === watch) watches.delete(check.channel.id);
   }
 }
 
-/** The cheap checks again, read fresh, after the delay; the moment counts as gone on any change. */
+/** The Phase A matcher inputs the re-check repeats, so the second call's interest ID means the same interest. */
+interface RematchPlan {
+  options: readonly MatcherOption[];
+  choice: string;
+}
+
+interface RecheckOutcome {
+  /** Abort reason, or null when the moment is still there. */
+  reason: string | null;
+  /** The one extra matcher call made when the delay filled the Phase A evidence window. */
+  rematch?: MatcherResult;
+}
+
+/**
+ * The cheap checks again, read fresh, after the delay; when new human messages filled the evidence
+ * window, the matcher runs once more and only the same interest may speak.
+ */
 async function recheckBeforeSend(
   check: ChimeInCheck,
   speaker: NudgePersona,
   watch: ChannelWatch,
-): Promise<string | null> {
+  plan: RematchPlan,
+): Promise<RecheckOutcome> {
   const personas = (await personaRepository.loadAllForServer(check.guildId)).filter(
     (persona): persona is NudgePersona => typeof persona.persona_id === "number",
   );
   const settings = await checkSettingsAndCaps(check, personas, new Date());
-  if (typeof settings === "string") return settings;
-  if (!personas.some((persona) => persona.persona_id === speaker.persona_id)) return "persona_removed";
+  if (typeof settings === "string") return { reason: settings };
+  if (!personas.some((persona) => persona.persona_id === speaker.persona_id)) return { reason: "persona_removed" };
   const { speakers } = await loadSpeakers(check, personas);
-  if (!speakers.some((persona) => persona.persona_id === speaker.persona_id)) return "persona_silenced";
-  if (watch.personaSpoke) return "persona_spoke";
-  if (watch.humans >= CHIME_IN_STALE_HUMAN_MESSAGES) return "window_gone";
-  if (isChannelProcessingLocked(check.channel.id)) return "channel_busy";
-  return null;
+  if (!speakers.some((persona) => persona.persona_id === speaker.persona_id)) return { reason: "persona_silenced" };
+  if (watch.personaSpoke) return { reason: "persona_spoke" };
+  if (isChannelProcessingLocked(check.channel.id)) return { reason: "channel_busy" };
+  if (watch.humans < CHIME_IN_STALE_HUMAN_MESSAGES) return { reason: null };
+
+  const window = await fetchRecentMessages(check.channel, CHIME_IN_WINDOW_MESSAGES);
+  const evidence = await buildMatcherEvidence(window, check.guildId);
+  if (!evidence) return { reason: "window_gone" };
+  if (spokeInWindow(window, personas, check.client.user?.id).has(speaker.persona_id))
+    return { reason: "persona_spoke" };
+  const rematched = await matchChimeIn({
+    state: personas[0],
+    backend: settings.backend,
+    options: plan.options,
+    evidence,
+  });
+  // Like the first call, a failure here must not count toward the failure stop.
+  if (rematched.reason === "failed") return { reason: "matcher_failed", rematch: rematched };
+  if (rematched.choice !== plan.choice) return { reason: "window_gone", rematch: rematched };
+  return { reason: null, rematch: rematched };
 }
 
 /** A plain turn on the newest message, with no brief or agenda: the persona reacts as itself. */
