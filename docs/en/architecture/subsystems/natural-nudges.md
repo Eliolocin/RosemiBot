@@ -108,7 +108,9 @@ retry-after-abort time, and a 15-minute cache of heat and waking hours. A restar
   `naturalNudge.toolNames`, because no human message carries their trigger words.
 - **The anchor is compared by order.** A deleted newest message stays in the gateway's
   `lastMessageId`, so the runner aborts only when the fetched anchor is newer than the recorded ID.
-  The placeholder is sent only when the history read succeeds and comes back empty.
+  The placeholder is sent only when the history read succeeds and comes back empty, and it is deleted
+  again before the turn starts, so the turn borrows a message object whose blank line is already gone
+  from the channel.
 - **Private channels plan alone.** A private channel is offered to the planner by itself, so its
   history never shapes a nudge in another channel.
 - **Agendas belong to one persona.** `natural_nudge_agendas` rows key by `(message_disc_id,

@@ -23,7 +23,7 @@ import { verifyMessageWebhook, isManagedWebhookMessage } from "@/utils/chat/webh
 import { personaRepository } from "@/utils/db/repositories/PersonaRepository";
 import { whitelistRepository } from "@/utils/db/repositories/WhitelistRepository";
 import { ensureDiscordUserMention, sendAlterPersonaMention } from "@/utils/discord/mentionHelper";
-import { removeSeededTurnAnchor, seedTurnAnchor } from "@/utils/discord/turnAnchor";
+import { seedTurnAnchor } from "@/utils/discord/turnAnchor";
 import { log } from "@/utils/misc/logger";
 
 /** Messages scanned after the anchor when a tool delivered the opener and no stream reported its ID. */
@@ -342,45 +342,40 @@ export async function runEpisodeAttempt(attempt: EpisodeAttempt): Promise<Attemp
 
   const scene = buildNudgeScene(attempt, planned.plan, anchor.id, episodeTools);
   const triggerStartTime = Date.now();
-  let disposition: ChatAdmissionDisposition;
-  try {
-    disposition = await tomoriChat({
+  const disposition: ChatAdmissionDisposition = await tomoriChat({
+    client: attempt.client,
+    message: anchor,
+    isFromQueue: false,
+    isManuallyTriggered: true,
+    forceReason: false,
+    isStopResponse: false,
+    selectedPersonaId: personaId,
+    triggeredPersonaIds: scene?.sequence.map((speaker) => speaker.personaId),
+    isPersonaJob: false,
+    isUserImpersonation: false,
+    textQuotaSource: "system",
+    textQuotaTriggerKey: `nudge:${attempt.serverId}:${anchor.id}`,
+    shouldSurfaceUserErrors: false,
+    injectedContextItems: [buildOpenerContextItem(attempt, planned.plan, episodeTools)],
+    manualSystemPrompt: scene && buildSceneTurnDirective(scene),
+    sceneTurn: scene,
+    naturalNudge: { toolNames: episodeTools, targetUserDiscId: attempt.target?.userDiscId },
+    borrowsTriggerMessage: true,
+    onGenerationResult: settle,
+  });
+  // A scene only talks about its target, so only a lone opener must ping them.
+  const reachOutTarget = scene ? null : attempt.target;
+  if (outcome === "fired" && reachOutTarget) {
+    await ensureDiscordUserMention({
       client: attempt.client,
-      message: anchor,
-      isFromQueue: false,
-      isManuallyTriggered: true,
-      forceReason: false,
-      isStopResponse: false,
-      selectedPersonaId: personaId,
-      triggeredPersonaIds: scene?.sequence.map((speaker) => speaker.personaId),
-      isPersonaJob: false,
-      isUserImpersonation: false,
-      textQuotaSource: "system",
-      textQuotaTriggerKey: `nudge:${attempt.serverId}:${anchor.id}`,
-      shouldSurfaceUserErrors: false,
-      injectedContextItems: [buildOpenerContextItem(attempt, planned.plan, episodeTools)],
-      manualSystemPrompt: scene && buildSceneTurnDirective(scene),
-      sceneTurn: scene,
-      naturalNudge: { toolNames: episodeTools, targetUserDiscId: attempt.target?.userDiscId },
-      borrowsTriggerMessage: true,
-      onGenerationResult: settle,
+      channel: target.channel,
+      targetUserId: reachOutTarget.userDiscId,
+      afterMessageId: anchor.id,
+      triggerStartTime,
+      contextLabel: `Reach-out in server ${attempt.serverId}`,
+      fallbackSender: (content) =>
+        sendAlterPersonaMention(target.channel, attempt.persona, reachOutTarget.userDiscId, content),
     });
-    // A scene only talks about its target, so only a lone opener must ping them.
-    const reachOutTarget = scene ? null : attempt.target;
-    if (outcome === "fired" && reachOutTarget) {
-      await ensureDiscordUserMention({
-        client: attempt.client,
-        channel: target.channel,
-        targetUserId: reachOutTarget.userDiscId,
-        afterMessageId: anchor.id,
-        triggerStartTime,
-        contextLabel: `Reach-out in server ${attempt.serverId}`,
-        fallbackSender: (content) =>
-          sendAlterPersonaMention(target.channel, attempt.persona, reachOutTarget.userDiscId, content),
-      });
-    }
-  } finally {
-    if (resolvedAnchor.seeded) await removeSeededTurnAnchor(anchor);
   }
   if (outcome) return outcome;
   log.info(`Natural Nudges: episode not delivered for server ${attempt.serverId} (disposition ${disposition})`);

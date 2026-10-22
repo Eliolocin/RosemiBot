@@ -88,6 +88,7 @@ import { getCachedImpersonatedUserIdForWebhook } from "@/utils/chat/webhookIdent
 import { normalizeRenderModifierName, resolveRenderModifierSourcePersona } from "@/utils/discord/renderModifierParser";
 import { primePersonaSpriteMessageRecords } from "@/utils/cache/personaSpriteMessageCache";
 import { resolveMinimalNoticeBodies } from "@/utils/discord/minimalNoticeBodies";
+import { isSeededTurnAnchor } from "@/utils/discord/turnAnchor";
 import {
   AGENDA_NOTICE_AUTHOR_ID,
   agendaNoticeId,
@@ -730,10 +731,12 @@ async function buildSimplifiedHistory(
     "messages" in channel
       ? Array.from((await channel.messages.fetch({ limit: fetchLimit })).values()).reverse()
       : [turn.lockedTurn.admission.message];
-  // A borrowed trigger is only an anchor, and a seeded one is deleted once the opener has run.
+  // A borrowed trigger is only an anchor and a seeded placeholder is never history, so only a queued
+  // turn's own real message is added back when the fetch missed it.
   if (
     turn.lockedTurn.admission.incoming.isFromQueue &&
     !turn.lockedTurn.admission.incoming.borrowsTriggerMessage &&
+    !isSeededTurnAnchor(turn.lockedTurn.admission.message) &&
     !messages.some((message) => message.id === turn.lockedTurn.admission.message.id)
   ) {
     messages.push(turn.lockedTurn.admission.message);

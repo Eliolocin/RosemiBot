@@ -9,7 +9,7 @@ import { tomoriChat, suppressNextSelfReply } from "../events/messageCreate/tomor
 import { getCachedAllPersonas } from "../utils/cache/tomoriStateCache";
 import { resolvePersonaForMessage } from "@/utils/chat/webhookIdentity";
 import { runWithErrorContext } from "@/utils/misc/errorContextStore";
-import { removeSeededTurnAnchor, seedTurnAnchor } from "@/utils/discord/turnAnchor";
+import { seedTurnAnchor } from "@/utils/discord/turnAnchor";
 
 export class RandomTriggerProcessor {
   private readonly client: Client;
@@ -51,7 +51,6 @@ export class RandomTriggerProcessor {
   private async executeTriggerInContext(trigger: RandomTriggerRow): Promise<void> {
     const triggerId = trigger.trigger_id ?? 0;
     let consecutiveFailures = trigger.consecutive_failures ?? 0;
-    let seededAnchor: Message | null = null;
 
     try {
       const failureThreshold = trigger.failure_threshold ?? null;
@@ -157,8 +156,7 @@ export class RandomTriggerProcessor {
       }
 
       if (!lastMessage && rawChannel.isSendable()) {
-        seededAnchor = await seedTurnAnchor(rawChannel, `random trigger ${triggerId}`);
-        lastMessage = seededAnchor ?? undefined;
+        lastMessage = (await seedTurnAnchor(rawChannel, `random trigger ${triggerId}`)) ?? undefined;
       }
 
       if (!lastMessage) {
@@ -194,7 +192,6 @@ export class RandomTriggerProcessor {
     } catch (error) {
       log.error(`Error executing random trigger ${triggerId}:`, error);
     } finally {
-      if (seededAnchor) await removeSeededTurnAnchor(seededAnchor);
       await this.rescheduleTrigger(
         triggerId,
         trigger.timer_hours,

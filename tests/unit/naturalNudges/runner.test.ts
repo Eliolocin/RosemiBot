@@ -27,8 +27,11 @@ let samples: Array<Record<string, unknown>> = [];
 let configSpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadServerConfig">>;
 let historySpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadFireHistory">>;
 
+let onChatCall: (() => void) | null = null;
+
 beforeEach(() => {
   chatInputs = [];
+  onChatCall = null;
   samples = [];
   configSpy = spyOn(naturalNudgeRepository, "loadServerConfig");
   configSpy.mockResolvedValue({
@@ -71,6 +74,7 @@ beforeEach(() => {
     spyOn(tomoriChatModule, "isChannelProcessingLocked").mockReturnValue(false),
     spyOn(tomoriChatModule, "tomoriChat").mockImplementation(async (input) => {
       chatInputs.push(input);
+      onChatCall?.();
       return "run";
     }),
   );
@@ -151,11 +155,18 @@ describe("episode anchor", () => {
     expect(sent).toEqual([]);
   });
 
-  it("speaks on a placeholder in an empty channel and removes it once the turn has run", async () => {
+  it("deletes the placeholder before generation, so the blank line never waits in the channel", async () => {
     const { attempt, sent, deleted } = attemptWithHistory(async () => []);
+    let deletedAtGeneration: string[] = [];
+    onChatCall = () => {
+      deletedAtGeneration = [...deleted];
+    };
+
     await runEpisodeAttempt(attempt);
+
     expect(sent).toHaveLength(1);
     expect(chatInputs.map((input) => input.message.id)).toEqual([PLACEHOLDER_ID]);
+    expect(deletedAtGeneration).toEqual([PLACEHOLDER_ID]);
     expect(deleted).toEqual([PLACEHOLDER_ID]);
   });
 
