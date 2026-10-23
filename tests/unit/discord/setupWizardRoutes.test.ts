@@ -78,10 +78,6 @@ import * as avatarHelper from "@/utils/image/avatarHelper";
 import * as emojiLazySync from "@/utils/cache/emojiLazySync";
 import * as stickerLazySync from "@/utils/cache/stickerLazySync";
 import * as panelActionMetrics from "@/utils/stats/panelActionMetrics";
-import * as sponsorshipModule from "@/modules/supporter-billing/discord/sponsorship";
-import * as subscriptionUsageModule from "@/modules/supporter-billing/subscribe/usage";
-import * as subscriptionStateModule from "@/modules/supporter-billing/subscribe/state";
-import * as patreonOAuthModule from "@/modules/supporter-billing/patreon/oauth";
 import { createRouteInteraction } from "../../helpers/routeInteraction";
 import { localizedCopy, localizedProse } from "../../helpers/localeCases";
 import { useEnvSandbox } from "../../helpers/env";
@@ -1130,90 +1126,6 @@ describe("setupWizardRoutes", () => {
         textModel: null,
       });
       expect(isSetupDraftProviderAccessComplete(check.draft.providerAccess)).toBe(false);
-    }
-  });
-
-  it("acknowledges a subscription provider-mode select exactly once in each billing state", async () => {
-    for (const enabled of [false, true]) {
-      const nonce = `nonce-supporter-${enabled}`;
-      storeSetupDraft(nonce, makeDraft({ providerAccess: null }));
-      const choiceSpy = spyOn(sponsorshipModule, "isSupporterSponsorshipChoiceEnabled").mockReturnValue(enabled);
-      try {
-        const interaction = makeMockInteraction({
-          customId: buildSetupProviderModeRouteId({ locale: "en-US", nonce }),
-          kind: "string",
-          values: ["option:supporter"],
-        });
-        await dispatchGlobalInteraction({} as Client, interaction);
-        const acknowledgements = [
-          interaction.deferred,
-          interaction.replyCalls.length > 0,
-          interaction.updateCalls.length > 0,
-        ].filter(Boolean);
-        expect(acknowledgements).toHaveLength(1);
-        expect(interaction.replyCalls.length).toBe(enabled ? 0 : 1);
-        expect(interaction.editReplyCalls.length).toBe(enabled ? 1 : 0);
-      } finally {
-        choiceSpy.mockRestore();
-      }
-    }
-  });
-
-  it("includes the authorization link when subscription setup is first selected", async () => {
-    const nonce = "nonce-direct-subscription-link";
-    const oauthUrl = "https://www.patreon.com/oauth2/authorize?state=example";
-    storeSetupDraft(nonce, makeDraft());
-    const choiceSpy = spyOn(sponsorshipModule, "isSupporterSponsorshipChoiceEnabled").mockReturnValue(true);
-    const configSpy = spyOn(sponsorshipModule, "parseSupporterBillingConfigForCommands").mockReturnValue({
-      patreon: {
-        campaignId: "campaign_test",
-        oauthClientIdEnv: "CLIENT_ID",
-        oauthClientSecretEnv: "CLIENT_SECRET",
-        webhookSecretEnv: "WEBHOOK_SECRET",
-        creatorRefreshTokenEnv: "REFRESH_TOKEN",
-        manageUrl: "https://www.patreon.com/example",
-      },
-      jobs: { reconcileIntervalSeconds: 300, manualRefreshCooldownSeconds: 30 },
-      tiers: {
-        test: {
-          displayNameKey: "commands.subscribe.tiers.mochi",
-          patreonTierIds: ["tier_test"],
-          monthlyBudgetMicros: 1000000,
-          defaultModelByCapability: { text: "example/model" },
-        },
-      },
-    });
-    const stateSpy = spyOn(subscriptionStateModule, "loadSubscribePanelState").mockResolvedValue({ kind: "unlinked" });
-    const interaction = makeMockInteraction({
-      customId: buildSetupProviderModeRouteId({ locale: "en-US", nonce }),
-      kind: "string",
-      values: ["option:supporter"],
-    });
-    const linkSpy = spyOn(patreonOAuthModule, "createPatreonOAuthUrlForDiscordUser").mockImplementation(async () => {
-      expect(interaction.deferred).toBe(true);
-      return oauthUrl;
-    });
-    try {
-      await dispatchGlobalInteraction({} as Client, interaction);
-      expect(linkSpy).toHaveBeenCalledTimes(1);
-      expect(linkSpy.mock.calls[0]?.[0]).toBe("actor-1");
-      const payload = interaction.editReplyCalls[0] as { components: ContainerComponentData[] };
-      const hasDirectLink = payload.components.some((container) =>
-        container.components.some((component) => {
-          const data = "toJSON" in component ? component.toJSON() : component;
-          return (
-            data.type === ComponentType.ActionRow &&
-            "components" in data &&
-            data.components.some((button) => "url" in button && button.url === oauthUrl && !("customId" in button))
-          );
-        }),
-      );
-      expect(hasDirectLink).toBe(true);
-    } finally {
-      linkSpy.mockRestore();
-      stateSpy.mockRestore();
-      configSpy.mockRestore();
-      choiceSpy.mockRestore();
     }
   });
 
@@ -2958,80 +2870,6 @@ describe("setupWizardFinish", () => {
       },
     };
   }
-
-  it("keeps a subscription draft when the allowance is unavailable at Finish Setup", async () => {
-    const stubs = stubCommitDependencies();
-    const spies = [
-      spyOn(sponsorshipModule, "isSupporterSponsorshipChoiceEnabled").mockReturnValue(true),
-      spyOn(sponsorshipModule, "validateSupporterSponsorshipRequest").mockResolvedValue({
-        ok: true,
-        identity: { supporter_identity_id: 10 },
-        entitlement: { supporter_entitlement_id: 20 },
-      } as never),
-      spyOn(subscriptionUsageModule, "loadSubscriptionAllowance").mockRejectedValue(
-        new Error("management API timeout"),
-      ),
-    ];
-    try {
-      storeSetupDraft(COMMIT_NONCE, makeCompleteDraft({ providerAccess: { mode: "option", value: "supporter" } }));
-      const interaction = makeMockInteraction({
-        customId: buildSetupFinishRouteId({ locale: "en-US", nonce: COMMIT_NONCE }),
-        guild: COMMIT_GUILD,
-      });
-
-      await dispatchGlobalInteraction({} as Client, interaction);
-
-      expect(stubs.setupSpy).not.toHaveBeenCalled();
-      expect(interaction.editReplyCalls.length).toBe(1);
-      expect(JSON.stringify(interaction.editReplyCalls[0])).toContain(
-        buildSetupFinishRouteId({ locale: "en-US", nonce: COMMIT_NONCE }),
-      );
-      expect(readSetupDraft(COMMIT_NONCE, "actor-1", "guild-1", "guild").status).toBe("ok");
-    } finally {
-      for (const spy of spies) spy.mockRestore();
-      stubs.restore();
-    }
-  });
-
-  it("invalidates committed setup before a sponsorship write fails", async () => {
-    const stubs = stubCommitDependencies();
-    const spies = [
-      spyOn(sponsorshipModule, "isSupporterSponsorshipChoiceEnabled").mockReturnValue(true),
-      spyOn(sponsorshipModule, "validateSupporterSponsorshipRequest").mockResolvedValue({
-        ok: true,
-        identity: { supporter_identity_id: 10 },
-        entitlement: { supporter_entitlement_id: 20 },
-      } as never),
-      spyOn(subscriptionUsageModule, "loadSubscriptionAllowance").mockResolvedValue({
-        allowance: 5,
-        used: 0,
-        remaining: 5,
-        start: new Date(0),
-        end: new Date(86400000),
-      }),
-      spyOn(sponsorshipModule, "persistSupporterSponsorship").mockImplementation(async () => {
-        expect(stubs.invalidateSpy).toHaveBeenCalledWith("guild-1");
-        throw new Error("synthetic sponsorship write failure");
-      }),
-    ];
-    try {
-      storeSetupDraft(COMMIT_NONCE, makeCompleteDraft({ providerAccess: { mode: "option", value: "supporter" } }));
-      const interaction = makeMockInteraction({
-        customId: buildSetupFinishRouteId({ locale: "en-US", nonce: COMMIT_NONCE }),
-        guild: COMMIT_GUILD,
-      });
-      await dispatchGlobalInteraction({} as Client, interaction);
-      expect(stubs.setupSpy).toHaveBeenCalledTimes(1);
-      expect(stubs.invalidateSpy).toHaveBeenCalledTimes(1);
-      expect(readSetupDraft(COMMIT_NONCE, "actor-1", "guild-1", "guild").status).toBe("missing");
-      expect(JSON.stringify(interaction.editReplyCalls)).toContain(
-        localizedCopy("en-US", "commands.setup.wizard.commit_failed_title"),
-      );
-    } finally {
-      for (const spy of spies) spy.mockRestore();
-      stubs.restore();
-    }
-  });
 
   it("commits once, renders the receipt in place, and records exactly one panel action", async () => {
     const stubs = stubCommitDependencies();

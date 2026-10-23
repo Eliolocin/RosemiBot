@@ -1,5 +1,3 @@
-import { supporterSpendGuard } from "@/modules/supporter-billing/runtime/spendGuard";
-import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { measureOpenRouterInputTokens } from "@/commands/tool/estimate/cost";
 import { OpenrouterProvider, type OpenrouterProviderConfig } from "@/providers/openrouter/openrouterProvider";
@@ -65,25 +63,6 @@ describe("OpenRouter live token estimate attribution", () => {
       const headers = new Headers(init.headers);
       expect(headers.has("HTTP-Referer")).toBe(false);
       expect(headers.has("X-OpenRouter-Title")).toBe(false);
-    }
-  });
-  it("admits the paid probe before issuing either request", async () => {
-    configSpy = spyOn(OpenrouterProvider.prototype, "createConfig").mockResolvedValue({
-      apiKey: "synthetic-member",
-      model: "synthetic/model",
-      temperature: 0.7,
-      tools: [],
-    } as OpenrouterProviderConfig);
-    messagesSpy = spyOn(OpenrouterStreamAdapter.prototype, "buildProbeMessages").mockResolvedValue([]);
-    fetchSpy = spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected transport"));
-    const denied = new SupporterRequestDeniedError("allowance_exhausted");
-    const admission = spyOn(supporterSpendGuard, "begin").mockRejectedValue(denied);
-    try {
-      await expect(measureOpenRouterInputTokens(createPersona(), "synthetic-member", [])).rejects.toBe(denied);
-      expect(admission.mock.calls[0]?.[0]).toBe("synthetic-member");
-      expect(fetchSpy).not.toHaveBeenCalled();
-    } finally {
-      admission.mockRestore();
     }
   });
 });

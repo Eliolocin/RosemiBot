@@ -1,3 +1,4 @@
+import { GetKeyData$inboundSchema } from "@openrouter/sdk/models/operations";
 import { createMemberKeyMetadata as metadata } from "../../helpers/memberKeyMetadata";
 import { describe, expect, it, spyOn } from "bun:test";
 import { createMemberKeyProvider, MemberKeyError } from "@/modules/supporter-billing/openrouter/management";
@@ -163,5 +164,20 @@ describe("member-key lifecycle serialization", () => {
       reserve.mockRestore();
       await client.close();
     }
+  });
+});
+
+describe("member key metadata fixture", () => {
+  it("builds valid raw member-key responses with typed overrides and rejects unknown options", () => {
+    const response = metadata({ label: "Juno key", usage: 0.25, limit: 2, limit_remaining: 1.75 });
+    expect(GetKeyData$inboundSchema.parse(response)).toMatchObject({
+      label: "Juno key",
+      usage: 0.25,
+      limit: 2,
+      limitRemaining: 1.75,
+      usageDaily: 0,
+    });
+    const invalid = { usage: 1, unknown_override: true };
+    expect(() => metadata(invalid)).toThrow();
   });
 });

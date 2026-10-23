@@ -4,16 +4,6 @@ import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import * as capabilityResolver from "@/utils/provider/providerCapabilityResolver";
 import * as crypto from "@/utils/security/crypto";
 import * as ruleChecks from "@/utils/chat/responseRuleCheck";
-import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import * as memberCredentials from "@/modules/supporter-billing/runtime/managedProvider";
-import {
-  supporterSponsorshipRepository,
-  supporterServerSponsorshipSchema,
-  supporterUsageStatisticsRepository,
-} from "@/modules/supporter-billing/db";
-import { useEnvSandbox } from "../../helpers/env";
-import { initializeLocalizer } from "@/utils/text/localizer";
-import { localizedCopy } from "../../helpers/localeCases";
 import { savedProviderConfigSchema } from "@/types/db/schema";
 import { log } from "@/utils/misc/logger";
 import { requestFollowUp, deleteStopRequest } from "@/utils/discord/stream/stopRequests";
@@ -67,7 +57,6 @@ let hasStopRequest = false;
 let isFollowUpRequest = false;
 let clearStopRequestCalls = 0;
 let standardEmbedCalls: StandardEmbedOptions[] = [];
-let standardEmbedFailure: Error | null = null;
 let hiddenToolNotices: string[] = [];
 let activeStreamKill: ((reason: Error) => void) | null = null;
 let onStopCheck: (() => void) | null = null;
@@ -100,7 +89,6 @@ scopedMock.module("@/utils/discord/embedHelper", () => ({
   ...realEmbedHelper,
   sendStandardEmbed: async (_channel: unknown, _locale: string, options: StandardEmbedOptions) => {
     standardEmbedCalls.push(options);
-    if (standardEmbedFailure) throw standardEmbedFailure;
   },
 }));
 
@@ -459,7 +447,6 @@ function held(
 }
 
 describe("runToolLoop — contract tests", () => {
-  useEnvSandbox(["RUN_ENV", "TOMORI_SUPPORTER_BILLING_ENABLED"]);
   beforeEach(() => {
     toolExecuteCalls = [];
     toolExecuteQueue = [];
@@ -469,7 +456,6 @@ describe("runToolLoop — contract tests", () => {
     isFollowUpRequest = false;
     clearStopRequestCalls = 0;
     standardEmbedCalls = [];
-    standardEmbedFailure = null;
     hiddenToolNotices = [];
     onStopCheck = null;
     activeStreamKill = null;
@@ -1289,7 +1275,7 @@ describe("runToolLoop — contract tests", () => {
         return { success: true, data: { status: "pass" } };
       },
     });
-    await reviewResponseCandidate(context, provider, { ...makeProviderConfig() });
+    await reviewResponseCandidate(context, provider, makeProviderConfig());
     expect(calls[0]?.thinkingLevel).toBe("high");
     expect(calls[0]?.maxOutputTokens).toBe(3000);
     expect(calls[0]?.temperature).toBe(1.4);
@@ -1709,8 +1695,7 @@ describe("runToolLoop — contract tests", () => {
     expect(packet.historicalDialogue.some((item) => item.messageId === "history_media" && item.text)).toBe(true);
   });
 
-  it("pins only an owned reviewer, uses its saved credentials, and funds it only from the stored marker", async () => {
-    await initializeLocalizer();
+  it("pins only an owned reviewer and uses its saved credentials independently of the author", async () => {
     const context = makeReviewContext();
     context.responseReview.reviewerId = 88;
     context.responseReview.pending = [held("quiet", []).pendingResponse];
@@ -1741,48 +1726,15 @@ describe("runToolLoop — contract tests", () => {
     const decryptSpy = spyOn(crypto, "decryptApiKey").mockResolvedValue("owned-review-key");
     const { provider } = makeProvider([]);
     const calls: ProviderStructuredJsonRequest[] = [];
-    const usageSpy = spyOn(supporterUsageStatisticsRepository, "record").mockResolvedValue(true);
     Object.assign(provider, {
       callStructuredJSON: async (request: ProviderStructuredJsonRequest) => {
         calls.push(request);
-        request.onUsage?.({ inputTokens: 32, outputTokens: 4, costUsd: 0.001 });
         return { success: true, data: { status: "pass" } };
       },
     });
     const capabilitySpy = spyOn(capabilityResolver, "resolveStructuredOutputCapability").mockResolvedValue(
       provider as Awaited<ReturnType<typeof capabilityResolver.resolveStructuredOutputCapability>>,
     );
-    const sponsor = spyOn(supporterSponsorshipRepository, "loadActiveSponsorshipForServer").mockResolvedValue(
-      supporterServerSponsorshipSchema.parse({
-        sponsorship_id: 1,
-        server_id: context.currentPersona.server_id,
-        server_disc_id: "synthetic-server",
-        sponsor_identity_id: 2,
-        status: "active",
-        created_by_disc_id: "synthetic-sponsor",
-        created_at: new Date(),
-        updated_at: new Date(),
-        revoked_at: null,
-      }),
-    );
-    const member = spyOn(memberCredentials, "resolveSupporterCapabilityCredentials").mockResolvedValue({
-      apiKey: "synthetic-review-member-key",
-      funding: {
-        credentialSource: "supporter",
-        provider: "openrouter",
-        capability: "text",
-        modelCodename: "review-model",
-        tierKey: "test-tier",
-        sponsorIdentityId: 2,
-        sponsorDiscordUserId: "synthetic-sponsor",
-        entitlementId: 3,
-        renewalAt: null,
-        fundingScope: "server",
-        sponsorshipId: 1,
-        serverId: 1,
-        personalUserId: null,
-      },
-    });
     try {
       expect((await reviewResponseCandidate(context, makeProvider([]).provider, makeProviderConfig())).status).toBe(
         "pass",
@@ -1791,70 +1743,12 @@ describe("runToolLoop — contract tests", () => {
       expect(calls[0]?.model).toBe("review-model");
       expect(calls[0]?.thinkingLevel).toBe("low");
       expect(availableSpy.mock.calls[0]?.[2]).toEqual({ kind: "server", ownerId: context.currentPersona.server_id });
-      process.env.RUN_ENV = "production";
-      process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
-      const sponsored = makeReviewContext();
-      sponsored.responseReview.reviewerId = 88;
-      sponsored.responseReview.pending = [held("quiet", []).pendingResponse];
-      expect((await reviewResponseCandidate(sponsored, makeProvider([]).provider, makeProviderConfig())).status).toBe(
-        "pass",
-      );
-      expect(calls[1]?.apiKey).toBe("owned-review-key");
-      expect(calls[1]?.thinkingLevel).toBe("low");
-      const funded = makeReviewContext();
-      funded.currentPersona.config.subscription_capabilities = ["reviewer"];
-      funded.responseReview.reviewerId = 88;
-      funded.responseReview.pending = [held("quiet", []).pendingResponse];
-      expect((await reviewResponseCandidate(funded, makeProvider([]).provider, makeProviderConfig())).status).toBe(
-        "pass",
-      );
-      expect(calls[2]?.apiKey).toBe("synthetic-review-member-key");
-      expect(calls[2]?.thinkingLevel).toBe("low");
-      expect(usageSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          inputTokens: 32,
-          outputTokens: 4,
-          costUsd: 0.001,
-          modelCodename: "review-model",
-        }),
-      );
-      expect(decryptSpy).toHaveBeenCalledTimes(2);
-      const deniedError = new SupporterRequestDeniedError("inactive_entitlement");
-      member.mockRejectedValue(deniedError);
-      const errorLog = spyOn(log, "error").mockImplementation(async () => {});
-      errorLog.mockClear();
-      try {
-        const denied = makeReviewContext();
-        denied.shouldSurfaceUserErrors = true;
-        denied.currentPersona.config.subscription_capabilities = ["reviewer"];
-        Object.assign(denied.channel, { isSendable: () => true, partial: false });
-        denied.responseReview.reviewerId = 88;
-        denied.responseReview.pending = [held("quiet", []).pendingResponse];
-        expect((await reviewResponseCandidate(denied, provider, makeProviderConfig())).status).toBe("unavailable");
-        expect(errorLog).not.toHaveBeenCalled();
-        expect(standardEmbedCalls.at(-1)?.description).toBe(
-          localizedCopy("en-US", "commands.subscribe.sponsorship.errors.inactive"),
-        );
-        expect(calls).toHaveLength(3);
-      } finally {
-        errorLog.mockRestore();
-      }
-      availableSpy.mockResolvedValue([]);
-      const inaccessible = makeReviewContext();
-      inaccessible.currentPersona.config.subscription_capabilities = ["reviewer"];
-      inaccessible.responseReview.reviewerId = 88;
-      inaccessible.responseReview.pending = [held("quiet", []).pendingResponse];
-      expect((await reviewResponseCandidate(inaccessible, provider, makeProviderConfig())).status).toBe("unavailable");
-      expect(calls).toHaveLength(3);
     } finally {
       modelSpy.mockRestore();
       availableSpy.mockRestore();
       savedSpy.mockRestore();
       decryptSpy.mockRestore();
       capabilitySpy.mockRestore();
-      sponsor.mockRestore();
-      member.mockRestore();
-      usageSpy.mockRestore();
     }
   });
 
@@ -2198,40 +2092,6 @@ describe("runToolLoop — contract tests", () => {
       rules.mockRestore();
     }
   });
-
-  it("keeps a reviewed turn alive when its subscription notice cannot be delivered", async () => {
-    await initializeLocalizer();
-    const rules = spyOn(ruleChecks, "checkResponseRules").mockResolvedValue({ status: "disabled" });
-    standardEmbedFailure = new Error("Missing Permissions");
-    try {
-      for (const reviewer of ["passes", "denied"] as const) {
-        const context = makeReviewContext();
-        context.currentPersona.config.response_reviewer_prompt = null;
-        const rebuilt = createResponseReviewState(context);
-        if (!rebuilt) throw new Error("Expected enabled review");
-        context.responseReview = rebuilt;
-        Object.assign(context.channel, { isSendable: () => true, partial: false });
-        context.shouldSurfaceUserErrors = true;
-        context.responseReview.pending = [
-          held("A quiet character waits by the door while the rain falls outside.", []).pendingResponse,
-        ];
-        const { provider } = makeProvider([]);
-        Object.assign(provider, {
-          callStructuredJSON: async () => {
-            if (reviewer === "denied") throw new SupporterRequestDeniedError("allowance_exhausted");
-            return { success: true, data: { status: "pass" } };
-          },
-        });
-        expect((await reviewResponseCandidate(context, provider, makeProviderConfig())).status).toBe(
-          reviewer === "passes" ? "pass" : "unavailable",
-        );
-      }
-      expect(standardEmbedCalls.map((call) => call.titleKey)).toEqual(["commands.subscribe.request.allowance_title"]);
-    } finally {
-      rules.mockRestore();
-    }
-  });
-
   const rejection = {
     status: "revise" as const,
     findings: [

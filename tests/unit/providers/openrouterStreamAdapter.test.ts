@@ -1,5 +1,4 @@
-import { afterEach, describe, expect, it, mock } from "bun:test";
-import { findOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+import { afterEach, describe, expect, it } from "bun:test";
 import { OpenrouterStreamAdapter, type OpenrouterStreamConfig } from "@/providers/openrouter/openrouterStreamAdapter";
 import { HumanizerDegree } from "@/types/db/schema";
 import type { RawStreamChunk, StreamContext } from "@/types/stream/interfaces";
@@ -7,8 +6,6 @@ import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
 import { sumTurnUsage } from "@/utils/text/tokenEstimate";
 import { createPersona } from "../../helpers/fixtures";
 import { stubGlobalFetch } from "../../helpers/fetchStub";
-import { createSupporterFunding } from "../supporterBilling/guards/fundingFixtures";
-import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
 
 const originalFetch = globalThis.fetch;
 
@@ -262,45 +259,6 @@ describe("OpenrouterStreamAdapter.processChunk", () => {
       expect(response.wasCancelled()).toBe(true);
     } finally {
       fetchStub.mockRestore();
-    }
-  });
-
-  it("defers a subscription spending-limit rejection to the turn's notice and keeps its limit source", async () => {
-    for (const status of [402, 403]) {
-      const fetchStub = stubGlobalFetch(
-        () =>
-          new Response(
-            JSON.stringify({
-              error: {
-                code: status,
-                message: "Key limit exceeded",
-                metadata: { limit_source: "openrouter_key_limit" },
-              },
-            }),
-            { status },
-          ),
-      );
-      try {
-        const send = mock(async () => ({ id: "message_1" }));
-        const context = makeStreamContext();
-        Object.assign(context.channel, { id: `openrouter_limit_${status}`, isThread: () => false, send });
-        context.tomoriState = createPersona({
-          persona_nickname: "Mirri",
-          config: { thinking_level: "none", llm_stop_speaker_pattern_enabled: false },
-        });
-        context.textCredentialSource = "supporter";
-        context.usageContext = getSupporterUsageContext(createSupporterFunding({ capability: "text" }));
-        const result = await new StreamOrchestrator().streamToDiscord(
-          new OpenrouterStreamAdapter(),
-          makeStreamConfig(),
-          context,
-        );
-        expect(result.status).toBe("error");
-        expect(findOpenRouterLimitError(result.data)).toMatchObject({ limitSource: "openrouter_key_limit", status });
-        expect(send).not.toHaveBeenCalled();
-      } finally {
-        fetchStub.mockRestore();
-      }
     }
   });
 

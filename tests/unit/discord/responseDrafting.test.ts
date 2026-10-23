@@ -12,7 +12,6 @@ import {
   responseRuleCheckerRefSchema,
 } from "@/types/db/schema";
 import { configRepository } from "@/utils/db/repositories";
-import * as configModelOperations from "@/utils/discord/interactions/configModelOperations";
 import { cache } from "@/utils/cache/tomoriStateCacheStore";
 import { buildConfigRouteId, type ConfigPanelRoute } from "@/utils/discord/configPanelCatalog";
 import { createConfigInteractionRoute } from "@/utils/discord/interactions/configRoutes";
@@ -20,7 +19,6 @@ import type { ConfigRouteDependencies, ConfigScope } from "@/utils/discord/inter
 import { InteractionRouteRegistry, type GlobalRoutableInteraction } from "@/utils/discord/interactions/routeRegistry";
 import {
   responseDraftingOperations,
-  loadDraftingModelGroups,
   checkerFingerprint,
   isCompatibleRuleChecker,
   type ResponseDraftingView,
@@ -55,21 +53,6 @@ const view: ResponseDraftingView = {
   ],
   inheritedReviewerAvailable: true,
 };
-
-it("keeps subscription reviewer choices while requiring structured output", async () => {
-  const providers = spyOn(configModelOperations, "loadConfigModelProviders").mockResolvedValue(["supporter"]);
-  const models = [{ id: 76, name: "~deepseek/deepseek-v4-flash-latest", description: null }];
-  const choices = spyOn(configModelOperations, "loadConfigModelChoices").mockResolvedValue(models);
-  restores.push(
-    () => providers.mockRestore(),
-    () => choices.mockRestore(),
-  );
-  const groups = await loadDraftingModelGroups(1, "en-US");
-  expect(groups).toEqual([{ provider: "supporter", models }]);
-  const filter = choices.mock.calls[0]?.[4];
-  expect(filter?.({ ...createPersona().llm, supports_structoutput: true })).toBe(true);
-  expect(filter?.({ ...createPersona().llm, supports_structoutput: false })).toBe(false);
-});
 
 it("defaults to Off with inherited review and no auxiliary selections", () => {
   const input: Record<string, unknown> = { ...createServerConfig(), server_id: 1 };

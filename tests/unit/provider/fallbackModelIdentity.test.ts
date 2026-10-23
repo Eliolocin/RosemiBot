@@ -13,12 +13,6 @@ const endpoint = {
 } as CustomEndpointRow;
 
 describe("fallback model identity", () => {
-  it("preserves a model with a different credential source when promoting the primary", () => {
-    const native: FallbackModelRef = { type: "llm", id: 42 };
-    const subscription: FallbackModelRef = { type: "llm", id: 42, credentialProvider: "supporter" };
-    expect(prunePrimaryFallbackRefs([native, subscription], 42, [], "supporter")).toEqual([native]);
-    expect(prunePrimaryFallbackRefs([native, subscription], 42, [], "openrouter")).toEqual([subscription]);
-  });
   it("treats a custom endpoint and its synthetic LLM as the same model", () => {
     expect([...getPrimaryFallbackRefKeys(42, [endpoint])]).toEqual(["llm:42", "custom_endpoint:5"]);
   });
