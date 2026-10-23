@@ -106,7 +106,7 @@ export function buildSubscriptionOnboarding(input: {
   model?: string;
   manageUrl: string;
   oauthUrl?: string;
-  linkId: string;
+  linkId?: string;
   continueId: string;
   fundingServer?: string;
 }): ComponentInContainerData[] {
@@ -137,16 +137,18 @@ export function buildSubscriptionOnboarding(input: {
     ),
     actions(external(locale, "commands.subscription.subscribe_patreon", input.manageUrl)),
     text(`2. **${localizer(locale, "commands.subscription.link_discord")}**`),
-    actions(
-      input.oauthUrl
-        ? external(locale, "commands.subscription.link", input.oauthUrl)
-        : {
-            type: ComponentType.Button,
-            style: ButtonStyle.Secondary,
-            customId: input.linkId,
-            label: localizer(locale, "commands.subscription.link"),
-          },
-    ),
+    ...(input.oauthUrl
+      ? [actions(external(locale, "commands.subscription.link", input.oauthUrl))]
+      : input.linkId
+        ? [
+            actions({
+              type: ComponentType.Button,
+              style: ButtonStyle.Secondary,
+              customId: input.linkId,
+              label: localizer(locale, "commands.subscription.link"),
+            }),
+          ]
+        : []),
     text(`3. **${localizer(locale, "commands.subscription.continue")}**`),
     actions({
       type: ComponentType.Button,

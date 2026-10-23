@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseInteractionRoute } from "@/utils/discord/interactions/routeRegistry";
 import {
+  buildSetupOptionActionRouteId,
   parseSetupRoute,
   SETUP_ROUTE_NAMESPACE,
   SETUP_ROUTE_VERSION,
@@ -24,6 +25,7 @@ import {
 } from "@/utils/discord/ui/setupPanel";
 import { SETUP_DRAFT_SCHEMA_VERSION, type SetupDraftRecord } from "@/types/discord/setupWizard";
 import { initializeLocalizer } from "@/utils/text/localizer";
+import { buildSubscriptionOnboarding } from "@/modules/supporter-billing/subscribe/panel";
 
 // `parseSetupRoute` resolves its locale segment against the loaded locale set, so a codec round trip
 // reads as forged until the localizer is initialized.
@@ -52,8 +54,7 @@ const EMITTED_ACTIONS: SetupWizardAction[] = [
   "provider-mode",
   "settings",
   "settings-submit",
-  "supporter-continue",
-  "supporter-link",
+  "option-action",
 ];
 
 /** Members of the `SetupWizardAction` union, read from the declaration that defines the codec. */
@@ -116,7 +117,7 @@ function renderedPayloads(): Array<[string, unknown]> {
   const wizard = (
     draft: SetupDraftRecord,
     isHosted: boolean,
-    subscription?: Parameters<typeof buildSetupWizardPayload>[0]["subscription"],
+    optionComponents?: Parameters<typeof buildSetupWizardPayload>[0]["optionComponents"],
   ) =>
     buildSetupWizardPayload({
       draft,
@@ -124,7 +125,7 @@ function renderedPayloads(): Array<[string, unknown]> {
       isHosted,
       nonce: NONCE,
       settingsCatalogs: CATALOGS,
-      subscription,
+      optionComponents,
     });
 
   return [
@@ -142,12 +143,19 @@ function renderedPayloads(): Array<[string, unknown]> {
     ],
     [
       "subscription onboarding",
-      wizard(createDraft({ providerAccess: { mode: "supporter" } }), true, {
-        ready: false,
-        tier: "",
-        manageUrl: "https://www.patreon.com/example",
-        fundingServer: "Juno Lounge",
-      }),
+      wizard(
+        createDraft({ providerAccess: { mode: "option", value: "supporter" } }),
+        true,
+        buildSubscriptionOnboarding({
+          locale: LOCALE,
+          ready: false,
+          tier: "",
+          manageUrl: "https://www.patreon.com/example",
+          oauthUrl: "https://www.patreon.com/oauth2/authorize?state=example",
+          continueId: buildSetupOptionActionRouteId({ locale: LOCALE, nonce: NONCE }),
+          fundingServer: "Juno Lounge",
+        }),
+      ),
     ],
     [
       "ready hosted",

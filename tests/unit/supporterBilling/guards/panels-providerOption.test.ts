@@ -5,12 +5,15 @@ import {
   supporterServerSponsorshipSchema,
   supporterSponsorshipRepository,
 } from "@/modules/supporter-billing/db";
+import type { SupporterProviderOptionData } from "@/modules/supporter-billing/discord/providerOption";
 import * as subscribeState from "@/modules/supporter-billing/subscribe/state";
 import { readSetupDraft, storeSetupDraft } from "@/utils/discord/interactions/setupDraftStore";
 import { buildSetupProviderModeRouteId, setupInteractionRoute } from "@/utils/discord/interactions/setupRoutes";
 import { savedProviderConfigSchema, type SavedProviderConfigRow } from "@/types/db/schema";
 import type { ProviderPanelEntry } from "@/types/discord/providerPanel";
 import { SETUP_DRAFT_SCHEMA_VERSION, type SetupDraftContext, type SetupDraftRecord } from "@/types/discord/setupWizard";
+import { isHostedPolicyEnvironment } from "@/utils/misc/hostedPolicy";
+import { findProviderOption } from "@/utils/provider/providerOptionRegistry";
 import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
 import {
   configRepository,
@@ -33,7 +36,6 @@ import {
 } from "@/utils/discord/providersPanelCatalog";
 import { buildConfigPanelPayload } from "@/utils/discord/ui/configPanel";
 import { buildProvidersPanelPayload } from "@/utils/discord/ui/providersPanel";
-import { buildSetupWizardPayload } from "@/utils/discord/ui/setupPanel";
 import {
   loadServerProviderPanelScope,
   type ProviderPanelOperationsDependencies,
@@ -42,7 +44,7 @@ import * as keyRotation from "@/utils/security/keyRotation";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { useEnvSandbox } from "../../../helpers/env";
 import { createLlmRow, createPersona } from "../../../helpers/fixtures";
-import { expectForEveryLocale, localizedCopy } from "../../../helpers/localeCases";
+import { expectForEveryLocale, localizedCopy, RUNTIME_LOCALES } from "../../../helpers/localeCases";
 import { createRouteInteraction } from "../../../helpers/routeInteraction";
 
 beforeAll(async () => await initializeLocalizer());
@@ -68,16 +70,21 @@ function selectOptions(value: unknown): SelectOption[] {
 }
 
 function supporterEntry(sponsorshipId?: number): ProviderPanelEntry {
+  const option = findProviderOption("supporter");
+  if (!option) throw new Error("Expected the registered Subscription option");
   const entry = {
     id: "provider:supporter",
     kind: "provider" as const,
     provider: "supporter",
     displayName: "supporter",
+    copyKey: option.copy.labelKey,
     savedAt: null,
     rotationKeyCount: 0,
     capabilities: [],
   };
-  return sponsorshipId === undefined ? entry : { ...entry, sponsorshipId };
+  return sponsorshipId === undefined
+    ? entry
+    : { ...entry, optionData: { sponsorshipId } satisfies SupporterProviderOptionData };
 }
 
 function savedProviderConfig(provider: string): SavedProviderConfigRow {
@@ -123,7 +130,6 @@ describe("providers panel subscription entry", () => {
             readStatus: "fresh",
             page: { kind: "entry", entryId: entry.id },
             routeNamespace: personal ? PERSONAL_PROVIDERS_ROUTE_NAMESPACE : undefined,
-            subscriptionAvailable: true,
             viewerId: "viewer_1",
           }),
         );
@@ -246,25 +252,42 @@ describe("server provider panel subscription gating", () => {
 describe("setup wizard subscription provider choice", () => {
   useEnvSandbox(["RUN_ENV", "TOMORI_SUPPORTER_BILLING_ENABLED"]);
 
-  it("offers the subscription provider choice in a guild only while billing is enabled", () => {
+  async function renderWizardThroughRoute(context: SetupDraftContext, locale: string, nonce: string) {
+    const interaction = createRouteInteraction({
+      customId: buildSetupProviderModeRouteId({ locale, nonce }),
+      kind: "string-select",
+      values: ["custom-endpoint"],
+      guildId: context === "guild" ? "guild_1" : null,
+    });
+    Object.assign(interaction, { isMessageComponent: () => true });
+    storeSetupDraft(nonce, {
+      ...setupDraft(context),
+      actorDiscId: interaction.user.id,
+      workspaceKey: interaction.guildId ?? interaction.user.id,
+      requiresPolicies: isHostedPolicyEnvironment(),
+    });
+    const route = parseInteractionRoute(interaction.customId);
+    if (!route) throw new Error("Expected setup selection route");
+    await setupInteractionRoute.execute({} as Client, interaction as never, route);
+    return interaction.calls.find((call) => call.method === "update")?.payload;
+  }
+
+  it("offers the subscription provider choice in a guild only while billing is enabled", async () => {
     const cases = [
       { environment: "production", enabled: "true", context: "guild", offered: true },
       { environment: "production", enabled: "false", context: "guild", offered: false },
       { environment: "development", enabled: "true", context: "guild", offered: false },
       { environment: "production", enabled: "true", context: "dm", offered: false },
     ] as const;
-    for (const testCase of cases) {
+    for (const [caseIndex, testCase] of cases.entries()) {
       process.env.RUN_ENV = testCase.environment;
       process.env.TOMORI_SUPPORTER_BILLING_ENABLED = testCase.enabled;
+      const payloads = new Map<string, unknown>();
+      for (const locale of RUNTIME_LOCALES) {
+        payloads.set(locale, await renderWizardThroughRoute(testCase.context, locale, `wizard-${caseIndex}-${locale}`));
+      }
       expectForEveryLocale((locale) => {
-        const options = selectOptions(
-          buildSetupWizardPayload({
-            draft: setupDraft(testCase.context),
-            locale,
-            isHosted: false,
-            nonce: "provider-option",
-          }),
-        );
+        const options = selectOptions(payloads.get(locale));
         const option = options.find(
           (candidate) => candidate.label === localizedCopy(locale, "commands.setup.wizard.provider_option_supporter"),
         );
@@ -295,7 +318,7 @@ describe("setup provider selection persistence", () => {
         const interaction = createRouteInteraction({
           customId: buildSetupProviderModeRouteId({ locale: "en-US", nonce }),
           kind: "string-select",
-          values: ["supporter"],
+          values: ["option:supporter"],
         });
         Object.assign(interaction, { isMessageComponent: () => true });
         const draft = {

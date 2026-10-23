@@ -1,8 +1,13 @@
-import { initializeSupporterBilling, isSupporterBillingEnabled } from "@/modules/supporter-billing";
+import {
+  initializeSupporterBilling,
+  isSupporterBillingEnabled,
+  registerSupporterProviderExtensions,
+} from "@/modules/supporter-billing";
 import type { AppEnvironment } from "@/types/config";
 import { log } from "@/utils/misc/logger";
 
 export async function initSupporterBilling(environment: AppEnvironment): Promise<void> {
+  registerSupporterProviderExtensions();
   if (!isSupporterBillingEnabled(environment)) {
     return;
   }

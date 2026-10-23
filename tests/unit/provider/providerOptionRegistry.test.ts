@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeAll, describe, expect, it, mock, spyOn } from "bun:test";
 import { ButtonStyle, ComponentType, type Client } from "discord.js";
 import {
   savedProviderConfigSchema,
@@ -20,7 +20,11 @@ import { buildConfigModelsBody } from "@/utils/discord/ui/configModelsPanel";
 import { buildResponseDraftingBody } from "@/utils/discord/ui/responseDraftingPanel";
 import { buildProvidersPanelPayload, providersEntriesPerPage } from "@/utils/discord/ui/providersPanel";
 import { buildSetupWizardPayload } from "@/utils/discord/ui/setupPanel";
-import { buildSetupFinishRouteId, buildSetupProviderModeRouteId } from "@/utils/discord/interactions/setupRoutes";
+import {
+  buildSetupFinishRouteId,
+  buildSetupOptionActionRouteId,
+  buildSetupProviderModeRouteId,
+} from "@/utils/discord/interactions/setupRoutes";
 import { readSetupDraft, resetSetupDrafts, storeSetupDraft } from "@/utils/discord/interactions/setupDraftStore";
 import { dispatchGlobalInteraction } from "@/utils/discord/interactions/router";
 import { filterProvidersForCapability } from "@/utils/discord/interactions/configModelOperations";
@@ -341,15 +345,16 @@ function optionPanelEntry(): ProviderPanelEntry {
 
 describe("provider option registry", () => {
   it("removes a registered option from every surface when its disposer runs", async () => {
+    const deploymentOptions = getProviderOptions();
     const { option } = registerTestOption();
     expect(findProviderOption(TEST_VALUE)).toBe(option);
-    expect(getProviderOptions()).toHaveLength(1);
+    expect(getProviderOptions()).toEqual([...deploymentOptions, option]);
 
     for (const dispose of disposers) dispose();
     disposers = [];
 
     expect(findProviderOption(TEST_VALUE)).toBeUndefined();
-    expect(getProviderOptions()).toHaveLength(0);
+    expect(getProviderOptions()).toEqual(deploymentOptions);
     expect(findProviderOption(TEST_VALUE)?.availability(SERVER_SCOPE)).toBeUndefined();
   });
 
@@ -676,6 +681,62 @@ describe("provider option registry", () => {
 
     expect(result.status).toBe("success");
     expect(optionState.removed).toBe(1);
+  });
+
+  it("keeps the catalog provider removable while an option pays for text", async () => {
+    const { state: optionState } = registerTestOption();
+    const { llmProviderRepo } = await import("@/utils/db/repositories");
+    const deletion = spyOn(llmProviderRepo, "deleteServerProviderRegistration").mockResolvedValue(true);
+    const removeCatalogEntry = () =>
+      providerPanelOperations.removeServerProviderEntry({
+        scopeKind: "server",
+        serverDiscId: "guild-1",
+        state: state(),
+        entry: {
+          id: "provider:openrouter",
+          kind: "provider",
+          provider: "openrouter",
+          displayName: "OpenRouter",
+          savedAt: null,
+          rotationKeyCount: 0,
+          capabilities: [],
+        },
+      });
+    try {
+      expect((await removeCatalogEntry()).status).toBe("active");
+      optionState.owned = ["text"];
+      expect((await removeCatalogEntry()).status).toBe("success");
+      expect(deletion).toHaveBeenCalledTimes(1);
+    } finally {
+      deletion.mockRestore();
+    }
+  });
+
+  it("acknowledges the option's setup control before its handler and repaints with the returned receipt", async () => {
+    const { option } = registerTestOption();
+    if (!option.setup) throw new Error("setup unavailable");
+    const nonce = "nonce-option-action";
+    const actionRouteId = buildSetupOptionActionRouteId({ locale: LOCALE, nonce });
+    storeSetupDraft(nonce, setupDraft());
+    const interaction = createRouteInteraction({ customId: actionRouteId });
+    let acknowledgedAtAction = false;
+    option.setup.components = async (context) => [
+      { type: ComponentType.TextDisplay, content: `control ${context.actionRouteId}` },
+    ];
+    option.setup.handleAction = async () => {
+      acknowledgedAtAction = interaction.deferred;
+      return { tone: "info", heading: "Juno", detail: "fixture receipt" };
+    };
+
+    await dispatchGlobalInteraction({} as Client, interaction as never);
+
+    expect(acknowledgedAtAction).toBe(true);
+    expect(interaction.calls.filter((call) => ["reply", "update", "deferUpdate"].includes(call.method))).toHaveLength(
+      1,
+    );
+    expect(JSON.stringify(interaction.edits.at(-1))).toContain("fixture receipt");
+    expect(JSON.stringify(interaction.edits.at(-1))).toContain(`control ${actionRouteId}`);
+    resetSetupDrafts();
   });
 
   it("stores the option picked in setup and repaints its onboarding", async () => {

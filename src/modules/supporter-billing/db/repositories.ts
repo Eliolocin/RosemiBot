@@ -4,6 +4,7 @@ import { keyManager } from "@/utils/security/keyManager";
 import type { OAuthTokenStore } from "@/utils/oauth/refreshCoordinator";
 import type { SQL } from "bun";
 import { sql as defaultSql } from "@/utils/db/client";
+import type { SubscriptionCapability } from "@/types/db/schema";
 import {
   supporterEntitlementSchema,
   supporterIdentitySchema,
@@ -878,11 +879,33 @@ export class SupporterUsageStatisticsRepository {
   }
 }
 
+export class SupporterCapabilityMarkerRepository {
+  public constructor(private readonly client: SQL = defaultSql) {}
+
+  /** @returns The server's Discord ID, or null when the server has no model configuration row. */
+  async setServerCapabilityFunded(
+    serverId: number,
+    capability: SubscriptionCapability,
+    funded: boolean,
+  ): Promise<string | null> {
+    const [row] = await this.client`
+      UPDATE server_model_configs model SET subscription_capabilities =
+        array_remove(model.subscription_capabilities, ${capability}::text)
+        || ${this.client.array(funded ? [capability] : [], "text")}
+      FROM servers server
+      WHERE model.server_id = ${serverId} AND server.server_id = model.server_id
+      RETURNING server.server_disc_id
+    `;
+    return row ? String(row.server_disc_id) : null;
+  }
+}
+
 export const supporterIdentityRepository = new SupporterIdentityRepository();
 export const supporterEntitlementRepository = new SupporterEntitlementRepository();
 export const supporterSponsorshipRepository = new SupporterSponsorshipRepository();
 export const supporterWebhookEventRepository = new SupporterWebhookEventRepository();
 export const supporterUsageStatisticsRepository = new SupporterUsageStatisticsRepository();
+export const supporterCapabilityMarkerRepository = new SupporterCapabilityMarkerRepository();
 
 interface CreatorTokenRow {
   client_id: string;

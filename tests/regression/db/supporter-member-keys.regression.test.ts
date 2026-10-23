@@ -34,11 +34,8 @@ import {
   type MemberKeyProvider,
 } from "@/modules/supporter-billing/openrouter/management";
 import { keyManager } from "@/utils/security/keyManager";
-import {
-  SupporterSpendGuard,
-  supporterSpendGuard,
-  fetchWithSupporterSpend,
-} from "@/modules/supporter-billing/runtime/spendGuard";
+import { SupporterSpendGuard, supporterSpendGuard } from "@/modules/supporter-billing/runtime/spendGuard";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
 import { resetOpenRouterCapabilityCache } from "@/utils/cache/openrouterCapabilityCache";
@@ -547,7 +544,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     });
     try {
       let sent = false;
-      const request = fetchWithSupporterSpend("https://openrouter.ai/api/v1/chat/completions", init, async () => {
+      const request = fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", init, async () => {
         sent = true;
         return new Response(responseBody);
       });
@@ -558,7 +555,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
       expect(guard.pendingSpend(id)).toBe(0);
       expect(guard.observedSpend(key.hash)).toBe(0.32);
       await record(id, 0.32);
-      await fetchWithSupporterSpend(
+      await fetchWithProviderRequest(
         "https://openrouter.ai/api/v1/chat/completions",
         init,
         async () => new Response("rejected", { status: 403 }),
@@ -567,7 +564,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
       await record(id, 9.68);
       let sentAfterExhaustion = false;
       await expect(
-        fetchWithSupporterSpend("https://openrouter.ai/api/v1/chat/completions", init, async () => {
+        fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", init, async () => {
           sentAfterExhaustion = true;
           return Response.json({});
         }),
@@ -609,7 +606,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     };
     try {
       await expect(
-        fetchWithSupporterSpend("https://openrouter.ai/api/v1/chat/completions", init, async () => {
+        fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", init, async () => {
           throw new TypeError("Network unavailable");
         }),
       ).rejects.toBeInstanceOf(TypeError);
@@ -619,18 +616,18 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
         Response.json({ error: { message: "Rejected" } }),
         new Response("invalid JSON"),
       ]) {
-        await fetchWithSupporterSpend("https://openrouter.ai/api/v1/chat/completions", init, async () => response);
+        await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", init, async () => response);
         expect(guard.pendingSpend(id)).toBe(0);
         expect(guard.observedSpend(key.hash)).toBe(0);
       }
-      await fetchWithSupporterSpend("https://openrouter.ai/api/v1/chat/completions", init, async () =>
+      await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", init, async () =>
         Response.json({ choices: [] }),
       );
       expect(guard.observedSpend(key.hash)).toBe(0.08);
       let sent = false;
       for (const method of ["POST", "post", "PoSt"]) {
         await expect(
-          fetchWithSupporterSpend("https://openrouter.ai/api/v1/chat/completions", { ...init, method }, async () => {
+          fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", { ...init, method }, async () => {
             sent = true;
             return Response.json({});
           }),
@@ -1048,7 +1045,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
       }
       const controller = new AbortController();
       let sent = false;
-      const waiting = fetchWithSupporterSpend(
+      const waiting = fetchWithProviderRequest(
         "https://openrouter.ai/api/v1/chat/completions",
         {
           method: "POST",

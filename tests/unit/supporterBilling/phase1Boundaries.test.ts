@@ -1,11 +1,16 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import type { Client } from "discord.js";
 
 import { SETUP_DRAFT_SCHEMA_VERSION, type SetupDraftRecord } from "@/types/discord/setupWizard";
-import { buildSetupWizardPayload } from "@/utils/discord/ui/setupPanel";
+import { storeSetupDraft } from "@/utils/discord/interactions/setupDraftStore";
+import { buildSetupProviderModeRouteId, setupInteractionRoute } from "@/utils/discord/interactions/setupRoutes";
+import { parseInteractionRoute } from "@/utils/discord/interactions/routeRegistry";
+import { isHostedPolicyEnvironment } from "@/utils/misc/hostedPolicy";
 import { buildAddProviderModal } from "@/utils/discord/ui/providersPanel";
 import { PERSONAL_PROVIDERS_ROUTE_NAMESPACE, PROVIDERS_ROUTE_NAMESPACE } from "@/utils/discord/providersPanelCatalog";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { useEnvSandbox } from "../../helpers/env";
+import { createRouteInteraction } from "../../helpers/routeInteraction";
 
 describe("supporter billing Phase 1 boundaries", () => {
   it("keeps the subscribe command behind the supporter billing gate", async () => {
@@ -51,7 +56,27 @@ describe("supporter choices in current panels", () => {
   useEnvSandbox(["RUN_ENV", "TOMORI_SUPPORTER_BILLING_ENABLED"]);
   beforeAll(async () => initializeLocalizer());
 
-  it("gates server sponsorship and personal subscription choices on production billing", () => {
+  async function renderSetupThroughRoute(draft: SetupDraftRecord, nonce: string): Promise<unknown> {
+    const interaction = createRouteInteraction({
+      customId: buildSetupProviderModeRouteId({ locale: "en-US", nonce }),
+      kind: "string-select",
+      values: ["custom-endpoint"],
+      guildId: draft.context === "guild" ? draft.workspaceKey : null,
+    });
+    Object.assign(interaction, { isMessageComponent: () => true });
+    storeSetupDraft(nonce, {
+      ...draft,
+      actorDiscId: interaction.user.id,
+      workspaceKey: interaction.guildId ?? interaction.user.id,
+      requiresPolicies: isHostedPolicyEnvironment(),
+    });
+    const route = parseInteractionRoute(interaction.customId);
+    if (!route) throw new Error("Expected setup selection route");
+    await setupInteractionRoute.execute({} as Client, interaction as never, route);
+    return interaction.calls.find((call) => call.method === "update")?.payload;
+  }
+
+  it("gates server sponsorship and personal subscription choices on production billing", async () => {
     for (const [environment, enabled, expected] of [
       ["development", "true", false],
       ["production", "false", false],
@@ -70,10 +95,10 @@ describe("supporter choices in current panels", () => {
           policiesAccepted: false,
           requiresPolicies: false,
         };
-        const setup = buildSetupWizardPayload({ draft, locale: "en-US", nonce: "supporter-gate", isHosted: false });
+        const setup = await renderSetupThroughRoute(draft, `gate-${environment}-${enabled}-${context}`);
         const providers = buildAddProviderModal("en-US", "supporter-gate", PROVIDERS_ROUTE_NAMESPACE, true);
         const offered = expected && context === "guild";
-        expect(JSON.stringify(setup).includes('"value":"supporter"')).toBe(offered);
+        expect(JSON.stringify(setup).includes('"value":"option:supporter"')).toBe(offered);
         expect(JSON.stringify(providers).includes('"value":"supporter"')).toBe(false);
         const apiKey = providers.components[1]?.component;
         expect(apiKey?.required).toBe(true);

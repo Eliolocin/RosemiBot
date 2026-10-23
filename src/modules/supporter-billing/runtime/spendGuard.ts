@@ -8,10 +8,13 @@ import {
   MICROS_PER_DOLLAR,
 } from "@/modules/supporter-billing/openrouter/management";
 import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import {
+  getSupporterFundingFromUsageContext,
+  type SupporterFundingContext,
+} from "@/modules/supporter-billing/runtime/types";
+import { currentProviderUsageContext } from "@/utils/provider/providerUsage";
 import { estimateSupporterRequestCost } from "@/modules/supporter-billing/runtime/spendEstimates";
-import { readBoundedResponse } from "@/utils/security/boundedResponse";
-import { z } from "zod";
+import { type ProviderRequestHold, registerProviderRequestHook } from "@/utils/provider/providerRequestHook";
 
 const USAGE_CACHE_MS = 5_000;
 
@@ -20,11 +23,6 @@ interface KeySpend {
   completed: number;
   usage: number;
   usageReadAt: number;
-}
-
-export interface SupporterSpendHold {
-  reportCost(cost: number | null | undefined): void;
-  release(retainEstimate?: boolean): void;
 }
 
 function credentialDigest(apiKey: string): string {
@@ -57,10 +55,13 @@ export class SupporterSpendGuard {
     return this.pending.get(identityId) ?? 0;
   }
 
-  async begin(apiKey: string, estimate: () => Promise<number>): Promise<SupporterSpendHold | undefined> {
+  async begin(apiKey: string, estimate: () => Promise<number>): Promise<ProviderRequestHold | undefined> {
     const credential = this.credentials.get(credentialDigest(apiKey));
     if (!credential) return undefined;
-    const { funding } = credential;
+    const funding = getSupporterFundingFromUsageContext(currentProviderUsageContext()) ?? credential.funding;
+    if (funding.sponsorIdentityId !== credential.funding.sponsorIdentityId) {
+      throw this.denied(funding, "billing_unavailable");
+    }
     const identityId = funding.sponsorIdentityId;
     const previous = this.admissions.get(identityId) ?? Promise.resolve();
     const admission = previous
@@ -143,6 +144,7 @@ export class SupporterSpendGuard {
       funding.renewalAt ? { periodEnd: funding.renewalAt } : undefined,
       funding.capability,
       funding.fundingScope,
+      funding,
     );
   }
 }
@@ -153,56 +155,6 @@ export async function beginSupporterRequest(apiKey: string, path: string, body: 
   return supporterSpendGuard.begin(apiKey, () => estimateSupporterRequestCost(path, body));
 }
 
-const JSON_RESPONSE_MAX_BYTES = 64 * 1024 * 1024;
-const reportedCostSchema = z.object({
-  usage: z.object({ cost: z.number().finite().nonnegative().nullish() }).nullish(),
-  error: z.unknown().optional(),
-});
-
-export async function fetchWithSupporterSpend(
-  input: string | URL | Request,
-  init?: RequestInit,
-  fetchImpl: (input: string | URL | Request, init?: RequestInit) => Promise<Response> = fetch,
-): Promise<Response> {
-  const request = input instanceof Request ? input : null;
-  const send = () => (init === undefined ? fetchImpl(input) : fetchImpl(input, init));
-  const authorization = new Headers(init?.headers ?? request?.headers).get("Authorization");
-  const apiKey = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
-  if ((init?.method ?? request?.method)?.toUpperCase() !== "POST") return send();
-  const signal = init?.signal ?? request?.signal;
-  signal?.throwIfAborted();
-  const hold = await supporterSpendGuard.begin(apiKey, async () => {
-    const body = typeof init?.body === "string" ? init.body : await request?.clone().text();
-    return estimateSupporterRequestCost(
-      request?.url ?? String(input),
-      JSON.parse(body ?? "") as Record<string, unknown>,
-    );
-  });
-  if (!hold) return send();
-  let retainEstimate = false;
-  try {
-    if (signal?.aborted) {
-      hold.reportCost(0);
-      signal.throwIfAborted();
-    }
-    const response = await send();
-    if (!response.ok) hold.reportCost(0);
-    const body = await readBoundedResponse(response, JSON_RESPONSE_MAX_BYTES, signal ?? undefined);
-    if (response.ok) {
-      try {
-        const parsed = reportedCostSchema.safeParse(JSON.parse(body.toString("utf8")));
-        if (parsed.success) {
-          hold.reportCost(parsed.data.usage?.cost);
-          retainEstimate = parsed.data.error === undefined;
-        }
-      } catch {}
-    }
-    return new Response(new Uint8Array(body), {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
-  } finally {
-    hold.release(retainEstimate);
-  }
+export function registerSupporterRequestHook(): () => void {
+  return registerProviderRequestHook(({ apiKey, path, body }) => beginSupporterRequest(apiKey, path, body));
 }

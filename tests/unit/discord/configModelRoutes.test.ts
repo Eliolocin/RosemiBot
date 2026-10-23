@@ -1,6 +1,10 @@
 import { useEnvSandbox } from "../../helpers/env";
 import { createPersona, createLlmRow } from "../../helpers/fixtures";
-import { supporterSponsorshipRepository, supporterServerSponsorshipSchema } from "@/modules/supporter-billing/db";
+import {
+  supporterCapabilityMarkerRepository,
+  supporterSponsorshipRepository,
+  supporterServerSponsorshipSchema,
+} from "@/modules/supporter-billing/db";
 import * as supporterFunding from "@/modules/supporter-billing/runtime/funding";
 /**
  * Route coverage for the `/config` Models surface.
@@ -81,7 +85,7 @@ type ConfigInteraction = Parameters<ReturnType<typeof createConfigInteractionRou
 const CATALOG_MODEL_CAPABILITIES: readonly ConfigCatalogModelCapability[] =
   CONFIG_MODEL_CAPABILITY_ORDER.filter(isConfigCatalogModelCapability);
 
-function makeState(overrides: Record<string, unknown> = {}): TomoriState {
+function makeState({ config, ...overrides }: Record<string, unknown> = {}): TomoriState {
   return {
     server_id: 9,
     persona_id: 55,
@@ -129,7 +133,7 @@ function makeState(overrides: Record<string, unknown> = {}): TomoriState {
       nai_scale: null,
       nai_noise_schedule: null,
       nai_cfg_rescale: null,
-      ...((overrides.config as Record<string, unknown>) ?? {}),
+      ...((config as Record<string, unknown>) ?? {}),
     },
     ...overrides,
   } as unknown as TomoriState;
@@ -1338,6 +1342,9 @@ describe("config models capability writes", () => {
     const update = spyOn(configRepository, "updateModelConfig").mockResolvedValue(true);
     const chatUpdate = spyOn(configRepository, "updateChatConfig").mockResolvedValue(true);
     const invalidate = spyOn(tomoriStateCache, "invalidateTomoriStateCache").mockImplementation(() => undefined);
+    const marker = spyOn(supporterCapabilityMarkerRepository, "setServerCapabilityFunded").mockResolvedValue(
+      "synthetic-server",
+    );
     try {
       for (const capability of ["text", "vision"] as const) {
         update.mockClear();
@@ -1356,13 +1363,14 @@ describe("config models capability writes", () => {
         expect(update).toHaveBeenCalledWith(
           9,
           capability === "text" ? expect.objectContaining({ llm_id: 7, api_key: null }) : { vision_llm_id: 7 },
-          "supporter",
+          ...(capability === "text" ? ["supporter"] : []),
         );
+        if (capability === "vision") expect(marker).toHaveBeenCalledWith(9, "vision", true);
         expect(invalidate).toHaveBeenCalledWith("synthetic-server");
         if (capability === "vision") expect(chatUpdate).not.toHaveBeenCalled();
       }
     } finally {
-      for (const spy of [providers, models, update, chatUpdate, invalidate]) spy.mockRestore();
+      for (const spy of [providers, models, update, chatUpdate, invalidate, marker]) spy.mockRestore();
     }
   });
 
@@ -1527,14 +1535,7 @@ describe("config models capability writes", () => {
         expect(write).toHaveBeenCalledTimes(1);
 
         expect(await select(withPayer([marker], modelId), "openrouter")).toMatchObject({ status: "success" });
-        expect(write).toHaveBeenLastCalledWith(
-          { kind: "server", ownerId: 9 },
-          modelId,
-          mode,
-          false,
-          undefined,
-          "openrouter",
-        );
+        expect(write).toHaveBeenLastCalledWith({ kind: "server", ownerId: 9 }, modelId, mode);
 
         expect(await select(withPayer([], modelId), "supporter")).toMatchObject({ status: "success" });
         expect(write).toHaveBeenLastCalledWith(

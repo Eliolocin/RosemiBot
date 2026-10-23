@@ -1,3 +1,5 @@
+export {};
+
 /**
  * Pins the run environment for every test process.
  *
@@ -11,3 +13,7 @@
  * only moves the baseline they capture.
  */
 process.env.RUN_ENV = "development";
+
+// Imported after the pin above, and registered here because the release guard suites assert registered behavior.
+const { registerSupporterProviderExtensions } = await import("@/modules/supporter-billing/registration");
+registerSupporterProviderExtensions();

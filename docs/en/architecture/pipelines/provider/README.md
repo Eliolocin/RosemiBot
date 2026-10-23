@@ -77,6 +77,9 @@ Protocol references: [OpenRouter Decisions](https://openrouter.ai/docs/api/api-r
 and stream contexts. `ProviderUsageContext` is a branded interface that deployment modules augment
 through TypeScript declaration merging. Keep the same context object through a request: denial
 matching uses object identity, so a nested request cannot claim another request's refusal.
+`withProviderUsageContext` binds that owner for the duration of provider work, including awaited
+adapter calls. The release spend guard reads this context at admission, so concurrent scopes sharing
+one member key cannot replace each other's request owner; a nested operation binds its own context.
 
 Callers report provider usage once per completed provider response, or pass
 `createProviderUsageRecorder(context, model)` as the provider's `onUsage` callback. Reports preserve
@@ -154,6 +157,9 @@ An option's panel `handleAction` owns interaction acknowledgement. It may show a
 or acknowledge before awaiting its lazy `loadSelection()` callback, which loads the scope and edit
 entry. Returning false repaints an acknowledged interaction or sends a refusal on an unacknowledged
 one. Setup acknowledges option selection before awaiting readiness and component rendering.
+Setup rendering passes `actionRouteId`, which an option's components can use for one control. The
+setup route acknowledges that press, awaits `setup.handleAction`, and repaints the wizard with the
+receipt it returns.
 
 Surfaces resolve an option through `findProviderOption` before treating a provider value as a
 built-in one. `getProviderDisplayName` resolves the option's `copy.labelKey`, and
@@ -162,7 +168,9 @@ the option only while its `owns` answers for that capability, so the same model 
 provider and under the option stay distinct.
 `claimProviderModelSelection` records ownership after a successful selection write, and
 `clearProviderModelSelection` releases it when a slot is emptied. Built-in selections release the
-previous option's marker even when the new model comes from another catalog. The model-write
+previous option's marker even when the new model comes from another catalog. Removing a built-in
+server provider checks text ownership the same way, so a catalog provider whose models an option
+pays for is not reported as the active payer. The model-write
 wrapper runs `onWritten` after every successful model write, including failed or throwing ownership
 updates, so callers can invalidate cached state.
 
@@ -184,6 +192,7 @@ Deployment behavior maps onto these fields:
 | Panel entry buttons and extra components | `panel.entryActions`, `panel.entryComponents`, `panel.entryOwned` |
 | Model option description | `copy.modelDescriptionKey` |
 | Setup option, summary, receipt, onboarding, and commit | `setup.optionLabelKey`, `setup.optionDescriptionKey`, `setup.summaryKey`, `setup.receiptDescriptionKey`, `setup.available`, `setup.ready`, `setup.components`, `setup.committed` |
+| Setup onboarding control | `setup.handleAction` |
 
 One deployment-managed behavior stays outside the registry because main has no field for it: a
 fallback ref's payer tag. A deployment that needs it keeps that tag on its own branch, where

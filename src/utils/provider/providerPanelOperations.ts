@@ -2032,7 +2032,13 @@ async function removeServerProviderEntry(input: RemoveProviderEntryInput): Promi
     }
     return { status: "success", entryId: input.entry.id, displayName: input.entry.displayName };
   }
-  const activeProvider = input.state.llm.llm_provider.toLowerCase();
+  const textProvider = input.state.llm.llm_provider.toLowerCase();
+  const activeProvider =
+    findProviderOptionByActiveProvider(
+      textProvider,
+      { kind: "server", ownerId: input.state.server_id, state: input.state },
+      "text",
+    )?.value ?? textProvider;
   if (input.entry.kind === "brave") {
     if (!(await deleteOptApiKey(input.state.server_id, "brave-search"))) return { status: "write-failed" };
   } else if (input.entry.kind === "provider") {

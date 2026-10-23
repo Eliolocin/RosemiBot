@@ -83,3 +83,4 @@ export async function initializeSupporterBilling(
 export * from "@/modules/supporter-billing/config";
 export * from "@/modules/supporter-billing/db";
 export * from "@/modules/supporter-billing/runtime";
+export { registerSupporterProviderExtensions } from "@/modules/supporter-billing/registration";

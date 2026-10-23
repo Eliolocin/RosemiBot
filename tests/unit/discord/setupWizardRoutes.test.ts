@@ -1142,7 +1142,7 @@ describe("setupWizardRoutes", () => {
         const interaction = makeMockInteraction({
           customId: buildSetupProviderModeRouteId({ locale: "en-US", nonce }),
           kind: "string",
-          values: ["supporter"],
+          values: ["option:supporter"],
         });
         await dispatchGlobalInteraction({} as Client, interaction);
         const acknowledgements = [
@@ -1187,7 +1187,7 @@ describe("setupWizardRoutes", () => {
     const interaction = makeMockInteraction({
       customId: buildSetupProviderModeRouteId({ locale: "en-US", nonce }),
       kind: "string",
-      values: ["supporter"],
+      values: ["option:supporter"],
     });
     const linkSpy = spyOn(patreonOAuthModule, "createPatreonOAuthUrlForDiscordUser").mockImplementation(async () => {
       expect(interaction.deferred).toBe(true);
@@ -2973,7 +2973,7 @@ describe("setupWizardFinish", () => {
       ),
     ];
     try {
-      storeSetupDraft(COMMIT_NONCE, makeCompleteDraft({ providerAccess: { mode: "supporter" } }));
+      storeSetupDraft(COMMIT_NONCE, makeCompleteDraft({ providerAccess: { mode: "option", value: "supporter" } }));
       const interaction = makeMockInteraction({
         customId: buildSetupFinishRouteId({ locale: "en-US", nonce: COMMIT_NONCE }),
         guild: COMMIT_GUILD,
@@ -3015,7 +3015,7 @@ describe("setupWizardFinish", () => {
       }),
     ];
     try {
-      storeSetupDraft(COMMIT_NONCE, makeCompleteDraft({ providerAccess: { mode: "supporter" } }));
+      storeSetupDraft(COMMIT_NONCE, makeCompleteDraft({ providerAccess: { mode: "option", value: "supporter" } }));
       const interaction = makeMockInteraction({
         customId: buildSetupFinishRouteId({ locale: "en-US", nonce: COMMIT_NONCE }),
         guild: COMMIT_GUILD,

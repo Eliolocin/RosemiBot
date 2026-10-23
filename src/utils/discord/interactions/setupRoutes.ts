@@ -137,6 +137,7 @@ export type SetupWizardAction =
   | "endpoint-connection-submit"
   | "endpoint-model"
   | "endpoint-model-submit"
+  | "option-action"
   | "finish";
 
 const SETUP_WIZARD_ACTIONS = new Set<SetupWizardAction>([
@@ -152,6 +153,7 @@ const SETUP_WIZARD_ACTIONS = new Set<SetupWizardAction>([
   "endpoint-connection-submit",
   "endpoint-model",
   "endpoint-model-submit",
+  "option-action",
   "finish",
 ]);
 
@@ -229,6 +231,10 @@ export function buildSetupEndpointModelRouteId(input: { locale: string; nonce: s
 
 export function buildSetupEndpointModelSubmitRouteId(input: { locale: string; nonce: string }): string {
   return buildSetupRouteId({ action: "endpoint-model-submit", locale: input.locale, nonce: input.nonce });
+}
+
+export function buildSetupOptionActionRouteId(input: { locale: string; nonce: string }): string {
+  return buildSetupRouteId({ action: "option-action", locale: input.locale, nonce: input.nonce });
 }
 
 export function buildSetupFinishRouteId(input: { locale: string; nonce: string }): string {
@@ -395,7 +401,7 @@ async function deliverSetupWizard(
     settingsCatalogs: SetupSettingsCatalogs | null | undefined;
   },
 ): Promise<void> {
-  const optionRender = await resolveSetupProviderOptionRender(interaction, draft, locale);
+  const optionRender = await resolveSetupProviderOptionRender(interaction, draft, locale, nonce);
   const payload = buildSetupWizardPayload({
     draft,
     locale,
@@ -421,6 +427,7 @@ async function resolveSetupProviderOptionRender(
   interaction: ChatInputCommandInteraction | GlobalRoutableInteraction,
   draft: SetupDraftRecord,
   locale: string,
+  nonce: string,
 ): Promise<SetupProviderOptionRender> {
   const render: SetupProviderOptionRender = { options: [], components: [], ready: false };
   const selected = draft.providerAccess?.mode === "option" ? findProviderOption(draft.providerAccess.value) : undefined;
@@ -434,7 +441,7 @@ async function resolveSetupProviderOptionRender(
       summaryKey: setup.summaryKey,
     });
     if (option !== selected) continue;
-    const context = { locale, draft, interaction };
+    const context = { locale, draft, interaction, actionRouteId: buildSetupOptionActionRouteId({ locale, nonce }) };
     render.ready = setup.ready ? (await setup.ready(context)).ready : true;
     render.components = (await setup.components?.(context)) ?? [];
   }
@@ -1623,6 +1630,17 @@ export const setupInteractionRoute: GlobalInteractionRoute = {
           });
         }
         break;
+      }
+
+      case "option-action": {
+        if (!interaction.isButton()) return;
+        await interaction.deferUpdate();
+        const access = draft.providerAccess;
+        const setup = access?.mode === "option" ? findProviderOption(access.value)?.setup : undefined;
+        if (!setup?.handleAction || (setup.available && !setup.available({ context }))) return;
+        const receipt = await setup.handleAction({ locale, draft, interaction });
+        await repaintSetupWizard(interaction, draft, locale, nonce, { method: "editReply", receipt });
+        return;
       }
 
       case "provider-catalog-submit": {

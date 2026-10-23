@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { ComponentType } from "discord.js";
-import type { ProviderPanelEntry } from "@/types/discord/providerPanel";
+import type { ProviderPanelEntry, ProviderPanelOptionAction } from "@/types/discord/providerPanel";
+import type { SupporterProviderOptionData } from "@/modules/supporter-billing/discord/providerOption";
+import { findProviderOption, providerOptionActionValue } from "@/utils/provider/providerOptionRegistry";
 import { parseProvidersPanelRoute, PERSONAL_PROVIDERS_ROUTE_NAMESPACE } from "@/utils/discord/providersPanelCatalog";
 import { parseInteractionRoute } from "@/utils/discord/interactions/routeRegistry";
 import { parseSubscriptionRoute } from "@/modules/supporter-billing/subscribe/catalog";
@@ -76,6 +78,22 @@ function providerEntry(id: string, name = "Google"): ProviderPanelEntry {
   };
 }
 
+function subscriptionOptionValue(): string {
+  const option = findProviderOption("supporter");
+  if (!option) throw new Error("Expected the registered Subscription option");
+  return providerOptionActionValue(option);
+}
+
+function subscriptionOptionAction(personal: boolean): ProviderPanelOptionAction {
+  const option = findProviderOption("supporter");
+  if (!option) throw new Error("Expected the registered Subscription option");
+  return {
+    value: providerOptionActionValue(option),
+    labelKey: option.copy.addActionLabelKey,
+    descriptionKey: option.copy.addActionDescriptionKeys[personal ? "personal" : "server"],
+  };
+}
+
 describe("providers panel rendering", () => {
   it("offers the same subscription onboarding action for unsponsored server and personal panels", () => {
     expectForEveryLocale((locale) => {
@@ -88,12 +106,12 @@ describe("providers panel rendering", () => {
             readStatus: "fresh",
             page: { kind: "entry" },
             routeNamespace: personal ? PERSONAL_PROVIDERS_ROUTE_NAMESPACE : undefined,
-            subscriptionAvailable: available,
+            optionActions: available ? [subscriptionOptionAction(personal)] : [],
           });
           const options = collectComponents(panel)
             .filter((component) => component.type === ComponentType.StringSelect)
             .flatMap((component) => component.options as Array<{ value: string; label: string; description: string }>);
-          const action = options.find((option) => option.value === "action:subscribe");
+          const action = options.find((option) => option.value === subscriptionOptionValue());
           if (!available) {
             expect(action).toBeUndefined();
             continue;
@@ -118,7 +136,8 @@ describe("providers panel rendering", () => {
         for (const active of [true, false]) {
           const entry = providerEntry("provider:supporter", "supporter");
           if (entry.kind !== "provider") throw new Error("Expected a provider entry");
-          if (!personal) Object.assign(entry, { sponsorshipId: 40, sponsorDiscId: SUBSCRIBER });
+          if (!personal)
+            entry.optionData = { sponsorshipId: 40, sponsorDiscId: SUBSCRIBER } satisfies SupporterProviderOptionData;
           for (const section of entry.capabilities)
             for (const model of section.models) model.isWorkspaceActive = active;
           const panel = buildProvidersPanelPayload({
@@ -128,7 +147,6 @@ describe("providers panel rendering", () => {
             readStatus: "fresh",
             page: { kind: "entry" },
             routeNamespace: personal ? PERSONAL_PROVIDERS_ROUTE_NAMESPACE : undefined,
-            subscriptionAvailable: true,
             viewerId: SUBSCRIBER,
           });
           const components = collectComponents(panel);
@@ -137,7 +155,7 @@ describe("providers panel rendering", () => {
             (component) => component.options as Array<{ value: string; label: string }>,
           );
           expect(options.filter((option) => option.value === "provider:supporter")).toHaveLength(1);
-          expect(options.some((option) => option.value === "action:subscribe")).toBe(false);
+          expect(options.some((option) => option.value === subscriptionOptionValue())).toBe(false);
           const subscriptionActions = components
             .filter((component) => component.type === ComponentType.Button && typeof component.customId === "string")
             .map((component) => parseInteractionRoute(String(component.customId)))
@@ -188,7 +206,14 @@ describe("providers panel rendering", () => {
   });
 
   it("enables server sponsorship removal only for the sponsor or a server manager", () => {
-    const entry = { ...providerEntry("provider:supporter", "supporter"), sponsorshipId: 40, sponsorDiscId: SUBSCRIBER };
+    const entry: ProviderPanelEntry = {
+      ...providerEntry("provider:supporter", "supporter"),
+      optionData: {
+        sponsorshipId: 40,
+        sponsorDiscId: SUBSCRIBER,
+        sponsorLabel: "Mirri",
+      } satisfies SupporterProviderOptionData,
+    };
     for (const [viewerId, canManageServer, enabled] of [
       [SUBSCRIBER, false, true],
       [OTHER_MEMBER, true, true],
@@ -204,7 +229,6 @@ describe("providers panel rendering", () => {
           enabledActions: new Set(["model", "edit", "remove"]),
           viewerId,
           canManageServer,
-          sponsorLabels: { [SUBSCRIBER]: "Mirri" },
         }),
       );
       const removal = components.find(
