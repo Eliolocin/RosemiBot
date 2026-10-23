@@ -6,6 +6,9 @@ export default {
     request: {
       title: `Subscription Access`,
       allowance_title: `Not Enough Allowance`,
+      minimum_balance_title: `Model Balance Requirement`,
+      minimum_balance: `This model requires at least $\{minimum_balance} of allowance remaining before it can generate an image or video. This is a provider requirement, not the generation price. Choose another model in {config} to use your remaining allowance. {fallback}`,
+      minimum_balance_reason: `This model requires at least $\{minimum_balance} of allowance remaining for image or video generation. Choose another model in {config} to use your remaining allowance.`,
       scope: {
         personal: `Your subscription`,
         server: `This server's subscription`,

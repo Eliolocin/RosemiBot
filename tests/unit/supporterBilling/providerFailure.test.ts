@@ -128,6 +128,19 @@ describe("subscription provider failures", () => {
   });
 
   it("keeps BYOK and unlabelled 402 failures out of subscription handling", () => {
+    const minimum = findSupporterRequestDeniedError(
+      transportFailure(
+        402,
+        JSON.stringify({
+          error: {
+            message: "This request requires at least $1.00 in balance for image or video output",
+            metadata: { limit_source: "openrouter_key_limit" },
+          },
+        }),
+      ),
+      funding(),
+    );
+    expect(minimum).toMatchObject({ reason: "allowance_exhausted", details: { minimumBalanceUsd: 1 } });
     expect(findSupporterRequestDeniedError(transportFailure(402, limitBody("openrouter_key_limit")))).toBeNull();
     expect(findSupporterRequestDeniedError(transportFailure(402, "{}"), funding())).toBeNull();
   });

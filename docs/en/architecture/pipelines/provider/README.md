@@ -98,6 +98,12 @@ explicit undefined context matches only an unscoped denial.
 Check for denials before credential-specific and generic handling. `deferNotice` lets the stream
 state machine leave a notice to the retry owner rather than posting it before fallback completes.
 
+OpenRouter limit classification uses `error.metadata.limit_source`. A member-key rejection can also
+include a minimum balance for image or video output, even when the generation price fits the remaining
+allowance. The Subscription translator preserves that numeric minimum for the notice, which directs
+the user to choose another model. Provider prose stays out of the notice; allowance caps and fallback
+ownership still apply.
+
 Commands and streams render `getProviderRequestFailureCopy`. Tools use
 `notifyProviderToolFailure`, which returns the description and posts the same notice to the channel.
 User impersonation returns the description without posting. Channel-send failures preserve the

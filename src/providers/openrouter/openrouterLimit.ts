@@ -1,9 +1,16 @@
 import { parseRetryAfterMs } from "@/utils/messageProxy/lookupRetry";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
+import { z } from "zod";
 
 const OPENROUTER_LIMIT_ERROR_MAX_BYTES = 64 * 1024;
 
 const OPENROUTER_LIMIT_SOURCES = ["openrouter_key_limit", "openrouter_in_flight_budget", "openrouter_credits"] as const;
+const limitResponseSchema = z.object({
+  error: z.object({
+    message: z.string().optional().catch(undefined),
+    metadata: z.object({ limit_source: z.enum(OPENROUTER_LIMIT_SOURCES) }),
+  }),
+});
 
 export type OpenRouterLimitSource = (typeof OPENROUTER_LIMIT_SOURCES)[number];
 
@@ -17,6 +24,7 @@ export class OpenRouterLimitError extends Error {
     public readonly limitSource: OpenRouterLimitSource,
     public readonly status: number,
     public readonly retryAfterMs: number | null,
+    public readonly minimumBalanceUsd?: number,
   ) {
     super(`OpenRouter rejected the request at its ${limitSource} limit (HTTP ${status}).`);
     this.name = "OpenRouterLimitError";
@@ -29,20 +37,28 @@ export function readOpenRouterLimitError(
   body: string,
 ): OpenRouterLimitError | null {
   if (status !== 402 && status !== 403) return null;
-  let limitSource: unknown;
   try {
-    limitSource = (JSON.parse(body) as { error?: { metadata?: { limit_source?: unknown } } })?.error?.metadata
-      ?.limit_source;
+    const parsed = limitResponseSchema.safeParse(JSON.parse(body));
+    if (!parsed.success) return null;
+    const limitSource = parsed.data.error.metadata.limit_source;
+    // OpenRouter exposes the media minimum only in this message, so metadata still owns the limit classification.
+    const minimum = parsed.data.error.message?.match(
+      /^This request requires at least \$(\d+(?:\.\d+)?) in balance for image or video output$/,
+    );
+    const amount = minimum ? Number(minimum[1]) : undefined;
+    const minimumBalanceUsd =
+      amount !== undefined && Number.isFinite(amount) && amount > 0 && amount <= Number.MAX_SAFE_INTEGER
+        ? amount
+        : undefined;
+    return new OpenRouterLimitError(
+      limitSource,
+      status,
+      parseRetryAfterMs(headers.get("Retry-After")),
+      minimumBalanceUsd,
+    );
   } catch {
     return null;
   }
-  return OPENROUTER_LIMIT_SOURCES.includes(limitSource as OpenRouterLimitSource)
-    ? new OpenRouterLimitError(
-        limitSource as OpenRouterLimitSource,
-        status,
-        parseRetryAfterMs(headers.get("Retry-After")),
-      )
-    : null;
 }
 
 export async function readOpenRouterLimitResponse(response: Response): Promise<OpenRouterLimitError | null> {

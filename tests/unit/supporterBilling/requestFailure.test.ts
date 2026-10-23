@@ -5,11 +5,52 @@ import {
   findSupporterRequestDeniedError,
 } from "@/modules/supporter-billing/runtime/funding";
 import { SUPPORTER_CAPABILITIES } from "@/modules/supporter-billing/config";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import { hasLocaleKey, initializeLocalizer } from "@/utils/text/localizer";
 import { expectForEveryLocale, localizedCopy, localizedProse } from "../../helpers/localeCases";
 
 describe("subscription request failures", () => {
   beforeAll(async () => initializeLocalizer());
+  it("explains provider media minimums without suggesting the allowance is exhausted", () => {
+    const providerError = readOpenRouterLimitError(
+      402,
+      new Headers(),
+      JSON.stringify({
+        error: {
+          message: "This request requires at least $1.00 in balance for image or video output",
+          metadata: { limit_source: "openrouter_key_limit" },
+        },
+      }),
+    );
+    expect(providerError?.minimumBalanceUsd).toBe(1);
+    expectForEveryLocale((locale) => {
+      for (const scope of ["personal", "server"] as const) {
+        for (const forFallback of [false, true]) {
+          const copy = getSupporterRequestFailureCopy(
+            new SupporterRequestDeniedError(
+              "allowance_exhausted",
+              { minimumBalanceUsd: providerError?.minimumBalanceUsd },
+              "image",
+              scope,
+            ),
+            locale,
+            forFallback,
+          );
+          expect(copy.titleKey).toBe("commands.subscribe.request.minimum_balance_title");
+          const key = forFallback ? "minimum_balance_reason" : "minimum_balance";
+          const copyLocale = hasLocaleKey(locale, `commands.subscribe.request.${key}`) ? locale : "en-US";
+          expect(copy.description).toBe(
+            localizedCopy(copyLocale, `commands.subscribe.request.${key}`, {
+              minimum_balance: "1.00",
+              config: scope === "personal" ? "`/personal config`" : "`/config`",
+              fallback: localizedCopy(locale, "commands.subscribe.request.fallback_failed"),
+            }),
+          );
+          expect(copy.description).not.toMatch(/\{\w+\}/);
+        }
+      }
+    });
+  });
   it("renders terminal guidance and concise fallback reasons in every locale", () => {
     expectForEveryLocale((locale) => {
       const copyLocale = hasLocaleKey(locale, "commands.subscribe.request.exhausted") ? locale : "en-US";

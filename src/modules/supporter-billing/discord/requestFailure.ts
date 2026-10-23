@@ -64,6 +64,7 @@ export function getSupporterRequestFailureMessage(
   forFallback = false,
 ): { titleKey: string; descriptionKey: string; descriptionVars: Record<string, string> } {
   const subscription = commandRegistry.getCommandMention("subscribe", undefined, undefined, true);
+  const minimumBalance = error.reason === "allowance_exhausted" ? error.details?.minimumBalanceUsd : undefined;
   const vars = {
     ...getFailureDescriptionVars(error.details),
     scope: localizer(locale, SCOPE_KEYS[error.fundingScope]),
@@ -78,6 +79,11 @@ export function getSupporterRequestFailureMessage(
       : localizer(locale, "commands.subscribe.request.retry_later"),
     fallback: localizer(locale, "commands.subscribe.request.fallback_failed"),
     subscription,
+    minimum_balance: minimumBalance?.toFixed(2) ?? "",
+    config:
+      error.fundingScope === "personal"
+        ? commandRegistry.getCommandMention("personal", "config", undefined, true)
+        : commandRegistry.getCommandMention("config", undefined, undefined, true),
     providers:
       error.fundingScope === "personal"
         ? commandRegistry.getCommandMention("personal", "providers", undefined, true)
@@ -100,10 +106,17 @@ export function getSupporterRequestFailureMessage(
   } else if (forFallback && error.reason === "capacity_unavailable") {
     descriptionKey = "commands.subscribe.request.capacity_reason";
   }
+  if (minimumBalance !== undefined) {
+    descriptionKey = forFallback
+      ? "commands.subscribe.request.minimum_balance_reason"
+      : "commands.subscribe.request.minimum_balance";
+  }
   const titleKey =
-    error.reason === "allowance_exhausted"
-      ? "commands.subscribe.request.allowance_title"
-      : "commands.subscribe.request.title";
+    minimumBalance !== undefined
+      ? "commands.subscribe.request.minimum_balance_title"
+      : error.reason === "allowance_exhausted"
+        ? "commands.subscribe.request.allowance_title"
+        : "commands.subscribe.request.title";
   return { titleKey, descriptionKey, descriptionVars: vars };
 }
 

@@ -169,7 +169,7 @@ export function findSupporterRequestDeniedError(
   if (limit.limitSource === "openrouter_key_limit") {
     return new SupporterRequestDeniedError(
       "allowance_exhausted",
-      funding.renewalAt ? { periodEnd: funding.renewalAt } : undefined,
+      { periodEnd: funding.renewalAt ?? undefined, minimumBalanceUsd: limit.minimumBalanceUsd },
       funding.capability,
       funding.fundingScope,
       funding,
