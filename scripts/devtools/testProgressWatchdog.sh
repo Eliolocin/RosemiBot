@@ -36,10 +36,12 @@ STATE="$WORK/state"
 sed -e "s#^CONF=/etc/tomoribot/watchdog.conf#CONF=$CONF#"     -e "s#^STATE=/run/tomoribot-watchdog.state#STATE=$STATE#"     "$WORK/wd-src.sh" > "$WORK/wd.sh"
 chmod +x "$WORK/wd.sh"
 
-# curl stub: STALENESS unset means the probe fails; NOBODY=1 means a body without the field.
+# curl stub: STALENESS unset means the probe fails; NOBODY=1 means a body without the field;
+# HANG=1 outlasts the caller's kill timeout, standing in for a run systemd terminates.
 cat > "$WORK/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 for a in "$@"; do [ "$a" = "-o" ] && QUIET=1; done
+if [ "${HANG:-0}" = "1" ]; then sleep 3; fi
 if [ "${PROBE_FAIL:-0}" = "1" ]; then exit 7; fi
 if [ "${NOBODY:-0}" = "1" ]; then echo '{"status":"healthy"}'; exit 0; fi
 echo "{\"status\":\"healthy\",\"eventLoop\":{\"running\":true,\"stalenessMs\":${STALENESS:-300},\"lastLagMs\":2}}"
@@ -80,9 +82,9 @@ echo "1. healthy stays silent and resets the counter"
 reset
 out=$(STALENESS=300 runs 3)
 check "no action" "" "$(echo "$out" | grep -c OBSERVE-ONLY | sed 's/^0$//')"
-check "counter zero" "FAILURES=0" "$(grep FAILURES "$STATE")"
+check "history clean" "HISTORY=..." "$(grep HISTORY "$STATE")"
 
-echo "2. a stall needs five consecutive checks, not one"
+echo "2. a stall needs five stalled checks, not one"
 reset
 out=$(STALENESS=60000 runs 4)
 check "silent at 4" "0" "$(echo "$out" | grep -c OBSERVE-ONLY)"
@@ -90,12 +92,27 @@ out=$(STALENESS=60000 runs 1)
 check "fires at 5" "1" "$(echo "$out" | grep -c OBSERVE-ONLY)"
 check "disarmed: nothing restarted" "0" "$(wc -l < "$RESTART_LOG" | tr -d ' ')"
 
-echo "3. one healthy check resets the streak"
+echo "3. one healthy check does not hide a flapping stall"
 reset
 STALENESS=60000 runs 4 > /dev/null
 STALENESS=300 runs 1 > /dev/null
-out=$(STALENESS=60000 runs 4)
-check "streak restarted" "0" "$(echo "$out" | grep -c OBSERVE-ONLY)"
+out=$(STALENESS=60000 runs 1)
+check "fires at 5 of the last 6" "1" "$(echo "$out" | grep -c OBSERVE-ONLY)"
+
+echo "3b. failures sparser than five in eight stay silent"
+reset
+out=""
+for _ in 1 2 3 4; do
+  out="$out$(STALENESS=60000 runs 1)$(STALENESS=300 runs 2)"
+done
+check "never fires" "0" "$(echo "$out" | grep -c OBSERVE-ONLY)"
+
+echo "3c. a run killed before finishing counts as a stall"
+reset
+{ for _ in 1 2 3; do HANG=1 STALENESS=300 timeout -s KILL 1 "$WORK/wd.sh" > /dev/null 2>&1; done; } 2> /dev/null
+check "killed runs recorded" "HISTORY=xxx" "$(grep HISTORY "$STATE")"
+out=$(STALENESS=60000 runs 2)
+check "fires on the fifth" "1" "$(echo "$out" | grep -c OBSERVE-ONLY)"
 
 echo "4. an unreachable probe counts as no progress"
 reset
@@ -107,7 +124,7 @@ echo "5. a build without the field is not a stall"
 reset
 out=$(NOBODY=1 runs 6)
 check "skips" "1" "$(echo "$out" | grep -c 'predates the event-loop monitor')"
-check "never accumulates" "FAILURES=0" "$(grep FAILURES "$STATE")"
+check "never accumulates" "HISTORY=" "$(grep HISTORY "$STATE")"
 
 echo "6. startup grace blocks action on a young container"
 reset

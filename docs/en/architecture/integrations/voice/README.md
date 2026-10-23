@@ -159,7 +159,7 @@ chooses between the reference library and ElevenLabs catalogue, including when n
 selected. The quote below the selector identifies its contents and points to reference management.
 Clear actions name and remove only their own source, even if the provider changes before the click.
 The priority effect names the effective source and target and explains why a secondary source is used.
-Missing or incompatible targets produce a quote notice linking to `/providers` while authoring stays
+Missing or incompatible targets produce a quote notice linking to `/config` > Models while authoring stays
 available. Generation retains the legacy optional ElevenLabs credential path; the persona selector shows an
 ElevenLabs catalogue only when ElevenLabs is the active Clone target. A saved ElevenLabs ID has a separate
 clear action beside the reference library when another Clone target or no Clone target is selected.

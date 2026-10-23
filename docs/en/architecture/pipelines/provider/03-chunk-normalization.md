@@ -24,6 +24,10 @@ The returned `ProcessedChunk` carries one of four primary types:
 Any chunk variant may attach `thoughts` (`ThoughtLogEntry[]`) for chain-of-thought capture and
 `servingProvider` to track upstream backends on routed endpoints.
 
+Token usage can arrive in a trailing chunk with empty `choices`. OpenRouter preserves its metadata
+on an empty text chunk, so the orchestrator carries the counts into `StreamResult.usage` for
+statistics and quotas. Reported `usage.cost` is preserved alongside the token counts.
+
 ## Reasoning extraction and spill guards
 
 Reasoning content travels through dedicated fields or in-band tags:

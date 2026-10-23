@@ -25,6 +25,11 @@ before handing the call to the tool loop. Adapters also remove overlapping text 
 guard is enabled, hold back text that could begin another speaker's turn. Guard state belongs to one
 stream and resets when a new stream starts.
 
+OpenRouter can send usage after its tool-call finish signal. Its adapter holds that signal until
+the trailing usage arrives or the stream ends, because the orchestrator returns control to
+the tool loop as soon as it receives a completed tool call. The call retains its reported cost and
+tokens; a response without usage still proceeds at the SSE end marker or when the body closes.
+
 ## Shared parameter degradation
 <!-- anchor: shared-parameter-degradation -->
 
