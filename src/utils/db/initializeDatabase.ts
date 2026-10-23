@@ -324,6 +324,11 @@ export async function initializeDatabase(options: InitializeDatabaseOptions = {}
       await runPreSchemaPersonaRenameBridge(client, personaRenameMigrationPath);
 
       await executeSqlFile(client, schemaPath);
+      // Baseline DDL replaces these functions on every boot, so restore speech ownership before catalog updates fire their triggers.
+      await executeSqlFile(
+        client,
+        path.join(path.dirname(schemaPath), "migrations/901_subscription_speech_selections.sql"),
+      );
       log.success("PostgreSQL database schema verified");
 
       if (ragAvailable) {

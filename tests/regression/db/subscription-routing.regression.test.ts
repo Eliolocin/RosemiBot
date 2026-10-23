@@ -419,11 +419,12 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("subscription capability ownership", () => 
   });
 
   it("restores ownership storage after rollback and backfills only unambiguous subscription selections", async () => {
-    const migration = path.join(process.cwd(), "src/db/migrations/117_subscription_capability_ownership.sql");
-    const down = path.join(process.cwd(), "src/db/migrations/117_subscription_capability_ownership.down.sql");
+    const migration = path.join(process.cwd(), "src/db/migrations/902_subscription_capability_ownership.sql");
+    const down = path.join(process.cwd(), "src/db/migrations/902_subscription_capability_ownership.down.sql");
     const key = await encryptApiKey("synthetic-server-byok");
     try {
       await executeTestSqlFile(down);
+      await testSql`DELETE FROM schema_migrations WHERE name = '902_subscription_capability_ownership'`;
       const [absent] = await testSql`SELECT COUNT(*)::INT AS count FROM information_schema.columns
         WHERE table_name = 'server_model_configs' AND column_name = 'subscription_capabilities'`;
       expect(absent.count).toBe(0);

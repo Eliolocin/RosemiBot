@@ -23,6 +23,7 @@ Startup schema execution is coordinated by `src/utils/db/initializeDatabase.ts`:
 
 1. **Legacy rename bridges**: detects legacy table names and runs targeted renames before static schema execution. This prevents baseline DDL from creating empty target tables ahead of the rename.
 2. **Baseline DDL application**: executes `schema.sql`, `schema_rag.sql`, and `schema_stpreset.sql` using idempotent statements (`CREATE TABLE IF NOT EXISTS`, guarded helper blocks).
+   The release initializer restores the three Subscription speech functions from migration 901 after baseline DDL, before catalog updates can fire their validation triggers; it never replays migration 902's ownership backfill during this restoration.
 3. **Privileged catalog seeding**: synchronizes typed catalog data (`seedModelsFromCatalog`, `seedPersonasFromCatalog`, `seedSystemPromptsFromCatalog`, `seedNaiPresetsFromCatalog`) using idempotent upserts.
 4. **Migration execution**: compares applied records in `schema_migrations` against available numbered migrations in `src/db/migrations/NNN_*.sql`. Migrations are applied in total order sorted by version integer and file stem. On clean installations, migrations below version 900 are recorded in `schema_migrations` without replaying obsolete backfill scripts. Migrations at version 900 and above run after the base schema because `schema.sql` does not contain them.
 5. **Storage-backed seeders**: runs post-readiness asset seeders (`seedPersonaSpritesFromCatalog`, `seedPersonaAvatarsFromCatalog`) after the Discord gateway connects, uploading shared preset art to object storage and recording reference URLs in PostgreSQL.
@@ -33,6 +34,7 @@ Startup schema execution is coordinated by `src/utils/db/initializeDatabase.ts`:
 - `bun run check-migrations` verifies migration naming and rollback pairing during continuous integration.
 - Deterministic apply ordering uses integer versions first, with file stem code-point comparison breaking ties. Sibling migrations sharing a number must be mutually order-independent.
 - Versions 900 and above are reserved for deployment-specific migrations. A clean installation executes that band after the base schema instead of recording it as applied, so `schema.sql` stays free of deployment-specific DDL.
+- A deployment-band migration can replace a stored function created by a baseline migration. Because an applied band migration is never replayed, a later baseline migration that redefines that function needs a new band migration that restores the deployment body.
 
 ## Data access boundary
 
@@ -154,8 +156,9 @@ independently of the target. Configuration exports include both mode selections;
 the receiving workspace's ownership and credential checks. Downgrades refuse selections or bindings
 that the older schema cannot preserve.
 
-Model and credential-source selections update atomically. Speech and reviewer writes update their
-own table and the ownership marker in one transaction. Migration 117 backfills subscription ownership
+Speech selections and their ownership marker update in one transaction. Other model-panel writes
+claim ownership after the model write and invalidate caches even if the ownership update fails.
+Migration 902 backfills subscription ownership
 only with matching OpenRouter model evidence; ambiguous historical selections keep BYOK ownership.
 Configuration imports resolve the payer of each imported reviewer or speech selection from the
 receiving server's saved credentials, and keep the current marker when the imported selection
