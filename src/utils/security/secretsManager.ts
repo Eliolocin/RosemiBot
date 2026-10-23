@@ -57,23 +57,7 @@ export interface TomoriSecrets {
   MATRIX_APPSERVICE_PUBLIC_URL?: string; // Optional callback URL used in appservice registration for remote homeservers
   TOPGG_TOKEN?: string; // Optional: Top.gg API token for posting server stats
   CONTAINER_MEMORY_LIMIT_MB?: string; // Optional: Container memory limit in MB (default: 1024)
-  // Supporter billing (production-only, disabled unless explicitly enabled)
   TOMORI_PUBLIC_BASE_URL?: string;
-  TOMORI_SUPPORTER_BILLING_ENABLED?: string;
-  TOMORI_SUPPORTER_CONFIG_JSON?: string;
-  TOMORI_SUPPORTER_OPENROUTER_MANAGEMENT_KEY?: string;
-  TOMORI_SUPPORTER_PATREON_CLIENT_ID?: string;
-  TOMORI_SUPPORTER_PATREON_CLIENT_SECRET?: string;
-  TOMORI_SUPPORTER_PATREON_WEBHOOK_SECRET?: string;
-  TOMORI_SUPPORTER_PATREON_CREATOR_REFRESH_TOKEN?: string;
-  TOMORI_SUPPORTER_OAUTH_STATE_TTL_SECONDS?: string;
-  TOMORI_SUPPORTER_PATREON_HTTP_TIMEOUT_MS?: string;
-  TOMORI_SUPPORTER_PERIOD_FALLBACK_HOURS?: string;
-  TOMORI_SUPPORTER_PATREON_WEBHOOK_MAX_BYTES?: string;
-  TOMORI_SUPPORTER_RECONCILE_MAX_PAGES?: string;
-  TOMORI_SUPPORTER_SUBSCRIBE_COMPONENT_TIMEOUT_MS?: string;
-  TOMORI_SUPPORTER_REVOKE_SELECT_TIMEOUT_MS?: string;
-  TOMORI_SUPPORTER_REVOKE_CONFIRM_TIMEOUT_MS?: string;
   [key: string]: string | undefined; // Allow dynamic CRYPTO_SECRET_V* keys
 }
 

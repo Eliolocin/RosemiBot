@@ -1,4 +1,3 @@
-import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
 import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 /**
  * Generic tool interface for provider-agnostic function calling
@@ -184,7 +183,6 @@ export interface StreamingContext {
  * Contains all necessary Discord and Tomori state information
  */
 export interface ToolContext {
-  supporterFunding?: SupporterFundingContext;
   usageContext?: ProviderUsageContext;
   channel: BaseGuildTextChannel | BaseGuildVoiceChannel | DMChannel | NewsChannel | TextChannel | AnyThreadChannel;
   client: Client;

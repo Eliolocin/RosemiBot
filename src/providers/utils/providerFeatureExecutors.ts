@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import type {
   DecisionInput,
   DecisionModelReference,
@@ -46,7 +47,7 @@ import {
   findSupporterRequestDeniedError,
   SupporterRequestDeniedError,
 } from "@/modules/supporter-billing/runtime/funding";
-import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterUsageContext, type SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
 import { supporterSponsorshipRepository } from "@/modules/supporter-billing/db";
 
 export interface DecisionExecutionRequest extends DecisionInput {
@@ -184,25 +185,29 @@ export async function callDecisionsForProvider(request: DecisionExecutionRequest
     }
     const capability = await resolveDecisionsCapability(custom ? "custom" : reference.provider);
     if (!capability) return { status: "unavailable", reason: "unsupported", correlationId, errorLogged: false };
-    const result = await capability.callDecisions({
-      ...request,
-      reference,
-      correlationId,
-      model: selected.model.codename,
-      inputTokenLimit: selected.model.input_token_limit,
-      apiStyle,
-      apiKey,
-      endpointUrl: connection?.endpoint_url,
-      onUsage: (usage) => {
-        request.onUsage?.(usage);
-        recordSupporterUsage(memberFunding, {
-          modelCodename: selected.model.codename,
-          costUsd: usage.costUsd,
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-        });
-      },
-    });
+    const result = await withProviderUsageContext(
+      memberFunding ? getSupporterUsageContext(memberFunding) : undefined,
+      async () =>
+        capability.callDecisions({
+          ...request,
+          reference,
+          correlationId,
+          model: selected.model.codename,
+          inputTokenLimit: selected.model.input_token_limit,
+          apiStyle,
+          apiKey,
+          endpointUrl: connection?.endpoint_url,
+          onUsage: (usage) => {
+            request.onUsage?.(usage);
+            recordSupporterUsage(memberFunding, {
+              modelCodename: selected.model.codename,
+              costUsd: usage.costUsd,
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+            });
+          },
+        }),
+    );
     const denied =
       result.status === "failed"
         ? findSupporterRequestDeniedError(result.cause, memberFunding)

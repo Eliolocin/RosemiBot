@@ -1,8 +1,12 @@
 import { SUPPORTER_SECRET_ENV_KEYS } from "@/modules/supporter-billing/config/secretEnvKeys";
 import { log } from "@/utils/misc/logger";
-import { getAppSecrets } from "@/utils/security/secretsManager";
+import { getAppSecrets, registerSecretEnvKeys } from "@/utils/security/secretsManager";
 import { keyManager } from "@/utils/security/keyManager";
 import type { AppEnvironment } from "@/types/config";
+
+// Registration is an import-time side effect because getAppSecrets() only loads names known before
+// it runs, and a name registered late would silently stay out of the loaded secret object.
+registerSecretEnvKeys([...SUPPORTER_SECRET_ENV_KEYS, "TOMORI_PUBLIC_BASE_URL"]);
 
 /**
  * Loads the selected secret source before consumers initialize database connections or keys.

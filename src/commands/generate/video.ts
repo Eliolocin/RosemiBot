@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import {
   findProviderRequestDeniedError,
   reportProviderUsage,
@@ -516,15 +517,17 @@ export async function execute(
       videoFilename = result.filename ?? videoFilename;
     } else if (videoImplementation === "openrouter") {
       const { generateOpenRouterNativeVideo } = await import("@/providers/openrouter/openrouterVideoGeneration");
-      const result = await generateOpenRouterNativeVideo({
-        apiKey,
-        model: modelCodename,
-        prompt,
-        aspectRatio,
-        durationSeconds,
-        fps,
-        referenceImages,
-      });
+      const result = await withProviderUsageContext(videoCreds.usageContext, async () =>
+        generateOpenRouterNativeVideo({
+          apiKey,
+          model: modelCodename,
+          prompt,
+          aspectRatio,
+          durationSeconds,
+          fps,
+          referenceImages,
+        }),
+      );
       reportProviderUsage(videoCreds.usageContext, {
         modelCodename,
         costUsd: result.costUsd,

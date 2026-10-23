@@ -1,4 +1,5 @@
 import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
+import { findProviderRequestDeniedError, getProviderRequestFailureCopy } from "@/utils/provider/providerUsage";
 import type {
   LlmRow,
   SubscriptionCapability,
@@ -21,11 +22,8 @@ import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/s
 import { resolveEnvironment } from "@/types/config";
 import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
 import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
-import {
-  SupporterRequestDeniedError,
-  findSupporterRequestDeniedError,
-} from "@/modules/supporter-billing/runtime/funding";
-import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
+import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
+import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 import { localizer } from "@/utils/text/localizer";
 
 export type Capability = "text" | "embedding" | "image-standard" | "image-nai" | "video" | "vision";
@@ -83,8 +81,8 @@ export function getCapabilityCredentialFailureCopy(
   error: unknown,
   locale: string,
 ): { titleKey: string; description: string } | null {
-  const denied = findSupporterRequestDeniedError(error);
-  if (denied) return getSupporterRequestFailureCopy(denied, locale);
+  const denied = findProviderRequestDeniedError(error);
+  if (denied) return getProviderRequestFailureCopy(denied, locale);
   const keys =
     error instanceof PersonalProviderRequiredError
       ? {
@@ -311,6 +309,7 @@ async function decryptResolvedApiKey(
       savedConfig,
       source,
       supporterFunding: credentials.funding,
+      usageContext: getSupporterUsageContext(credentials.funding),
       modelId,
     };
   }

@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import { validateOpenRouterSpeechModel } from "@/utils/cache/openrouterSpeechModelCache";
 import { loadDecisionModelsForScope } from "@/providers/utils/providerFeatureExecutors";
 import { setHostedSpeechSelection, setSpeechEndpointSelection } from "@/utils/db/repositories/SpeechRepository";
@@ -812,14 +813,16 @@ export const configModelOperations: ConfigModelOperations = {
           const credentials = await resolveCapabilityCredentials(tomoriState.server_id, "embedding");
           const limits = getMemoryLimits();
           try {
-            await ragRepository.reembedServerDocuments({
-              serverId: tomoriState.server_id,
-              embeddingModel: chosenModel,
-              apiKey: credentials.apiKey,
-              onUsage: createSupporterUsageRecorder(credentials.supporterFunding, chosenModel.codename),
-              chunkSize: limits.documentChunkSize,
-              chunkOverlap: limits.documentChunkOverlap,
-            });
+            await withProviderUsageContext(credentials.usageContext, async () =>
+              ragRepository.reembedServerDocuments({
+                serverId: tomoriState.server_id,
+                embeddingModel: chosenModel,
+                apiKey: credentials.apiKey,
+                onUsage: createSupporterUsageRecorder(credentials.supporterFunding, chosenModel.codename),
+                chunkSize: limits.documentChunkSize,
+                chunkOverlap: limits.documentChunkOverlap,
+              }),
+            );
           } catch (error) {
             const denied = findSupporterRequestDeniedError(error, credentials.supporterFunding);
             if (denied) return { status: "subscription", denied };

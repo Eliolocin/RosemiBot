@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import {
   createProviderUsageRecorder,
   findProviderRequestDeniedError,
@@ -189,15 +190,8 @@ export async function analyzeImageWithVisionModel(input: {
   const model = resolveVisionApiModelName(provider, visionLlm.llm_codename, creds.customEndpoint?.model_name);
 
   try {
-    const text = await dispatchVisionRequest(
-      provider,
-      creds.provider,
-      creds.apiKey,
-      model,
-      input.image,
-      input.prompt,
-      signal,
-      creds,
+    const text = await withProviderUsageContext(creds.usageContext, async () =>
+      dispatchVisionRequest(provider, creds.provider, creds.apiKey, model, input.image, input.prompt, signal, creds),
     );
     if (!text.trim()) {
       return { ok: false, provider, model, failure: { reason: "empty_response" } };

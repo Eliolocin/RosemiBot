@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import { reportProviderUsage } from "@/utils/provider/providerUsage";
 /**
  * Hidden Image Agent Turn
@@ -305,7 +306,7 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
 
   const streamingContext: StreamingContext = {
     usageContext,
-    textCredentialSource: credentials.supporterFunding ? "supporter" : credentials.source,
+    textCredentialSource: usageContext ? "supporter" : credentials.source,
     disableYouTubeProcessing: true,
     disableProfilePictureProcessing: true,
     disableGifProcessing: true,
@@ -365,7 +366,6 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
     provider: provider.getInfo().name,
     streamContext: streamingContext,
     usageContext,
-    supporterFunding: credentials.supporterFunding,
     suppressProgressNotices: true, // Keep the hidden turn quiet
     // Persona identity for webhook-based image posting (set by /generate image Auto mode).
     // When absent, the image tool falls back to a direct bot message.
@@ -388,19 +388,21 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
     // Protection against infinite loops comes from BOT_GENERATE_IMAGE_AGENT_MAX_ITERATIONS.
     let streamResult: Awaited<ReturnType<typeof provider.streamToDiscord>>;
     try {
-      streamResult = await provider.streamToDiscord(
-        channel,
-        client,
-        tomoriState,
-        providerConfig,
-        contextItems,
-        [], // currentTurnModelParts: empty for first iteration, accumulate on retries
-        undefined, // emojiStrings
-        functionInteractionHistory.length > 0 ? functionInteractionHistory : undefined,
-        undefined, // initialInteraction
-        undefined, // replyToMessage
-        streamingContext,
-        locale,
+      streamResult = await withProviderUsageContext(usageContext, async () =>
+        provider.streamToDiscord(
+          channel,
+          client,
+          tomoriState,
+          providerConfig,
+          contextItems,
+          [], // currentTurnModelParts: empty for first iteration, accumulate on retries
+          undefined, // emojiStrings
+          functionInteractionHistory.length > 0 ? functionInteractionHistory : undefined,
+          undefined, // initialInteraction
+          undefined, // replyToMessage
+          streamingContext,
+          locale,
+        ),
       );
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);

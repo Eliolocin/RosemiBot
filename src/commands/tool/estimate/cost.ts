@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import {
   findProviderRequestDeniedError,
   createProviderUsageRecorder,
@@ -1776,11 +1777,13 @@ export async function execute(
     const sampleOutputTokens = resolveSampleOutputTokens(tomoriState, personaReplyCharLengths);
 
     try {
-      const measurement = await liveTokenCounters[provider](
-        tomoriState,
-        decryptedApiKey,
-        contextItems,
-        createProviderUsageRecorder(usageContext, tomoriState.llm.llm_codename),
+      const measurement = await withProviderUsageContext(usageContext, async () =>
+        liveTokenCounters[provider](
+          tomoriState,
+          decryptedApiKey,
+          contextItems,
+          createProviderUsageRecorder(usageContext, tomoriState.llm.llm_codename),
+        ),
       );
       await sendLiveEstimateEmbed(interaction, locale, measurement, sampleOutputTokens);
     } catch (countError) {

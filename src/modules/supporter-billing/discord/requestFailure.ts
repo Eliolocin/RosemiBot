@@ -1,8 +1,10 @@
 import type { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import {
-  getSupporterFundingFailureDescriptionKey,
-  getSupporterFundingFailureDescriptionVars,
-} from "@/modules/supporter-billing/runtime/funding";
+import type {
+  SupporterFundingFailureDetails,
+  SupporterFundingFailureReason,
+  SupporterRequestDenialFacts,
+} from "@/modules/supporter-billing/runtime/types";
+import type { ProviderRequestFailureCopy } from "@/utils/provider/providerUsage";
 import { commandRegistry } from "@/utils/discord/commandRegistry";
 import { localizer } from "@/utils/text/localizer";
 import type { ToolContext } from "@/types/tool/interfaces";
@@ -12,7 +14,7 @@ import { ColorCode, log } from "@/utils/misc/logger";
 const SCOPE_KEYS = {
   personal: "commands.subscribe.request.scope.personal",
   server: "commands.subscribe.request.scope.server",
-} satisfies Record<SupporterRequestDeniedError["fundingScope"], string>;
+} satisfies Record<SupporterRequestDenialFacts["fundingScope"], string>;
 
 const CAPABILITY_KEYS = {
   text: "commands.subscribe.request.capabilities.text",
@@ -22,24 +24,52 @@ const CAPABILITY_KEYS = {
   voice: "commands.subscribe.request.capabilities.voice",
   decision: "commands.subscribe.request.capabilities.decision",
   embedding: "commands.subscribe.request.capabilities.embedding",
-} satisfies Record<SupporterRequestDeniedError["capability"], string>;
+} satisfies Record<SupporterRequestDenialFacts["capability"], string>;
+
+const FAILURE_DESCRIPTION_KEYS: Record<SupporterFundingFailureReason, string> = {
+  billing_unavailable: "commands.subscribe.sponsorship.errors.billing_unavailable",
+  missing_sponsorship: "commands.subscribe.sponsorship.errors.missing_sponsorship",
+  missing_subscription: "commands.subscribe.sponsorship.errors.unlinked",
+  inconsistent: "commands.subscribe.sponsorship.errors.inconsistent",
+  inactive_entitlement: "commands.subscribe.sponsorship.errors.inactive",
+  unconfigured_tier: "commands.subscribe.sponsorship.errors.unconfigured_tier",
+  allowance_exhausted: "commands.subscribe.sponsorship.errors.exhausted",
+  model_not_allowed: "commands.subscribe.sponsorship.errors.model_not_allowed",
+};
+
+function formatDiscordTimestamp(date: Date): string {
+  return `<t:${Math.floor(date.getTime() / 1000)}:D>`;
+}
+
+function getFailureDescriptionKey(
+  reason: SupporterFundingFailureReason,
+  details?: SupporterFundingFailureDetails,
+): string {
+  if (details?.periodEnd && reason === "allowance_exhausted") {
+    return "commands.subscribe.sponsorship.errors.exhausted_generation";
+  }
+
+  return FAILURE_DESCRIPTION_KEYS[reason];
+}
+
+function getFailureDescriptionVars(details?: SupporterFundingFailureDetails): Record<string, string> {
+  return {
+    period_end: details?.periodEnd ? formatDiscordTimestamp(details.periodEnd) : "",
+  };
+}
 
 export function getSupporterRequestFailureMessage(
-  error: SupporterRequestDeniedError,
+  error: SupporterRequestDenialFacts,
   locale: string,
   forFallback = false,
 ): { titleKey: string; descriptionKey: string; descriptionVars: Record<string, string> } {
   const subscription = commandRegistry.getCommandMention("subscribe", undefined, undefined, true);
   const vars = {
-    ...getSupporterFundingFailureDescriptionVars(error.details),
+    ...getFailureDescriptionVars(error.details),
     scope: localizer(locale, SCOPE_KEYS[error.fundingScope]),
     capability: localizer(locale, CAPABILITY_KEYS[error.capability]),
     renewal: error.details?.periodEnd
-      ? localizer(
-          locale,
-          "commands.subscribe.request.renewal",
-          getSupporterFundingFailureDescriptionVars(error.details),
-        )
+      ? localizer(locale, "commands.subscribe.request.renewal", getFailureDescriptionVars(error.details))
       : localizer(locale, "commands.subscribe.request.renewal_unknown", { subscription }),
     retry: error.details?.retryAt
       ? localizer(locale, "commands.subscribe.request.retry_at", {
@@ -64,7 +94,7 @@ export function getSupporterRequestFailureMessage(
             error.reason === "model_unavailable" ||
             error.reason === "unsupported_capability"
           ? "commands.subscribe.request.unsupported"
-          : getSupporterFundingFailureDescriptionKey(error.reason, error.details);
+          : getFailureDescriptionKey(error.reason, error.details);
   if (forFallback && error.reason === "allowance_exhausted") {
     descriptionKey = "commands.subscribe.request.allowance_reason";
   } else if (forFallback && error.reason === "capacity_unavailable") {
@@ -78,10 +108,10 @@ export function getSupporterRequestFailureMessage(
 }
 
 export function getSupporterRequestFailureCopy(
-  error: SupporterRequestDeniedError,
+  error: SupporterRequestDenialFacts,
   locale: string,
   forFallback = false,
-): { titleKey: string; description: string } {
+): ProviderRequestFailureCopy {
   const message = getSupporterRequestFailureMessage(error, locale, forFallback);
   return {
     titleKey: message.titleKey,

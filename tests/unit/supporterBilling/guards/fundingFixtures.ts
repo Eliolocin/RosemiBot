@@ -5,6 +5,7 @@ import type {
   SupporterFundingContext,
   SupporterFundingFailureDetails,
 } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
 import type { VoiceMessageSynthesisResult } from "@/utils/speech/voiceMessageSynthesis";
 import type { VisionCallResult } from "@/utils/provider/visionCaption";
 import type { ToolContext } from "@/types/tool/interfaces";
@@ -31,7 +32,7 @@ type FundingOverrides = Partial<
     | { fundingScope: "personal"; sponsorshipId?: null; serverId?: null; personalUserId?: number }
   );
 
-type CredentialOverrides = Partial<Omit<ResolvedCredentials, "supporterFunding">>;
+type CredentialOverrides = Partial<Omit<ResolvedCredentials, "supporterFunding" | "usageContext">>;
 
 export function createSupporterFunding(overrides: FundingOverrides = {}): SupporterFundingContext {
   if (overrides.fundingScope === "personal") {
@@ -65,6 +66,7 @@ export function createSupporterCredentials({
     source: funding.fundingScope,
     modelId: 12,
     supporterFunding: funding,
+    usageContext: getSupporterUsageContext(funding),
     ...overrides,
   };
 }
@@ -82,12 +84,12 @@ export function createUnfundedCredentials(overrides: CredentialOverrides = {}): 
 }
 
 export function withSupporterFunding(context: ToolContext, funding: SupporterFundingContext): ToolContext {
-  return { ...context, supporterFunding: funding };
+  return { ...context, usageContext: getSupporterUsageContext(funding) };
 }
 
 export function withResolvedSupporterFunding(context: ToolContext, credentials: ResolvedCredentials): ToolContext {
-  if (!credentials.supporterFunding) throw new Error("Expected funded credentials from the resolver");
-  return withSupporterFunding(context, credentials.supporterFunding);
+  if (!credentials.usageContext) throw new Error("Expected funded credentials from the resolver");
+  return { ...context, usageContext: credentials.usageContext };
 }
 
 export function createSupporterDenial(
@@ -104,6 +106,7 @@ export function createSupporterDenial(
     overrides.details,
     overrides.funding?.capability ?? overrides.capability ?? "text",
     overrides.funding?.fundingScope ?? overrides.fundingScope ?? "server",
+    overrides.funding,
   );
 }
 
@@ -112,7 +115,7 @@ export function createVisionSupporterFailure(
 ): VisionCallResult {
   return {
     ok: false,
-    supporterFailure: createSupporterDenial({ capability: "vision", fundingScope: "server", ...overrides }),
+    requestDenied: createSupporterDenial({ capability: "vision", fundingScope: "server", ...overrides }),
     failure: { reason: "request_failed" },
   };
 }
@@ -123,7 +126,7 @@ export function createVoiceSupporterFailure(
   return {
     success: false,
     backendKey: "tts-clone",
-    supporterFailure: createSupporterDenial({ capability: "voice", fundingScope: "server", ...overrides }),
+    requestDenied: createSupporterDenial({ capability: "voice", fundingScope: "server", ...overrides }),
   };
 }
 

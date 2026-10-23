@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import { createResponseReviewState } from "@/utils/chat/responseReview";
 import type { FallbackEntry, LlmRow, TomoriState } from "@/types/db/schema";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
@@ -21,6 +22,7 @@ import { decryptApiKey } from "@/utils/security/crypto";
 import {
   buildSupporterFallbackTomoriState,
   buildSupporterPrimaryTomoriState,
+  getSupporterUsageContext,
   resolveSupporterFunding,
   recordSupporterUsage,
   resolveSupporterManagedProviderConfig,
@@ -176,6 +178,8 @@ async function runGenerationAttempts(
       if (!attempt) continue;
       context.textCredentialSource = attempt.credentialSource;
       context.streamingContext.textCredentialSource = attempt.credentialSource;
+      context.usageContext = attempt.funding ? getSupporterUsageContext(attempt.funding) : undefined;
+      context.streamingContext.usageContext = context.usageContext;
       recordChatAttemptStarted(
         index + 1,
         context.textCredentialSource,
@@ -250,13 +254,15 @@ async function runGenerationAttempts(
           ),
         );
         result = await runWithChatDiagnosticStage({ attempt: index + 1, keyAttempt: keyAttemptCount }, () =>
-          runToolLoop({
-            context,
-            provider: attempt.provider,
-            providerConfig: attempt.providerConfig,
-            supporterFunding: attempt.funding ?? undefined,
-            tomoriState: attempt.tomoriState,
-          }),
+          withProviderUsageContext(context.usageContext, async () =>
+            runToolLoop({
+              context,
+              provider: attempt.provider,
+              providerConfig: attempt.providerConfig,
+              supporterFunding: attempt.funding ?? undefined,
+              tomoriState: attempt.tomoriState,
+            }),
+          ),
         );
         supersededResult = result;
         if (carried.text && result.status === "empty_response" && !isRetryableEmptyResponse(result)) {
@@ -480,6 +486,7 @@ async function sendSupporterFailureNotice(
           failure.details,
           failure.funding.capability,
           failure.funding.fundingScope,
+          failure.funding,
         )
       : null);
   if (!error) return;

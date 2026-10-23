@@ -12,6 +12,7 @@ import { OpenrouterProvider } from "@/providers/openrouter/openrouterProvider";
 import { ToolRegistry } from "@/tools/toolRegistry";
 import { createLlmRow, createPersona } from "../../helpers/fixtures";
 import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
 
 describe("hidden image planning credentials", () => {
   it("runs keyless text planning with resolved subscription credentials and passes funding to image tools", async () => {
@@ -42,6 +43,7 @@ describe("hidden image planning credentials", () => {
       source: "personal",
       savedConfig: null,
       supporterFunding: funding,
+      usageContext: getSupporterUsageContext(funding),
     });
     const config = spyOn(provider, "createConfig").mockImplementation(async (_state, apiKey) => ({
       apiKey,
@@ -130,7 +132,7 @@ describe("hidden image planning credentials", () => {
       expect(result.success).toBe(true);
       expect(resolve).toHaveBeenCalledWith(state.server_id, "text", { userId: 1 });
       expect(config.mock.calls[0]?.[1]).toBe("synthetic-member");
-      expect(execute.mock.calls[0]?.[2]?.supporterFunding).toBe(funding);
+      expect(execute.mock.calls[0]?.[2]?.usageContext).toBe(getSupporterUsageContext(funding));
       expect(stream.mock.calls[0]?.[10]?.textCredentialSource).toBe("supporter");
     } finally {
       for (const spy of spies) spy.mockRestore();

@@ -9,9 +9,9 @@ import * as rateLimiter from "@/utils/security/rateLimiter";
 import * as modelLimits from "@/utils/provider/modelLimits";
 import * as features from "@/providers/utils/providerFeatureExecutors";
 import * as managedProvider from "@/modules/supporter-billing/runtime/managedProvider";
-import * as spendGuard from "@/modules/supporter-billing/runtime/spendGuard";
 import * as usageStatistics from "@/modules/supporter-billing/runtime/usageStatistics";
 import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
 import { OpenRouterEngine } from "@/tools/webSearch/openrouterEngine";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { createLlmRow, createPersona, createUserRow } from "../../helpers/fixtures";
@@ -128,20 +128,24 @@ test("persona web search uses the selected subscription's key and records its se
     maxOutputTokens: 4096,
   });
   const memberKey = spyOn(managedProvider, "resolveSupporterMemberKey").mockResolvedValue("fixture-member-key");
-  const fetch = spyOn(spendGuard, "fetchWithSupporterSpend").mockImplementation(async () =>
-    Response.json({
-      id: "fixture-search",
-      choices: [
-        {
-          message: {
-            annotations: [
-              { type: "url_citation", url_citation: { url: "https://example.com/explorer", title: "Explorer" } },
-            ],
-          },
-        },
-      ],
-      usage: { cost: 0.007, prompt_tokens: 10, completion_tokens: 1 },
-    }),
+  const fetch = spyOn(globalThis, "fetch").mockImplementation(
+    Object.assign(
+      async () =>
+        Response.json({
+          id: "fixture-search",
+          choices: [
+            {
+              message: {
+                annotations: [
+                  { type: "url_citation", url_citation: { url: "https://example.com/explorer", title: "Explorer" } },
+                ],
+              },
+            },
+          ],
+          usage: { cost: 0.007, prompt_tokens: 10, completion_tokens: 1 },
+        }),
+      { preconnect: () => undefined },
+    ),
   );
   const usage = spyOn(usageStatistics, "recordSupporterUsage").mockImplementation(() => {});
   let searchSucceeded = false;
@@ -161,6 +165,7 @@ test("persona web search uses the selected subscription's key and records its se
       savedConfig: null,
       source: funding.fundingScope,
       supporterFunding: funding,
+      usageContext: getSupporterUsageContext(funding),
     });
     searchSucceeded = false;
     await execute(

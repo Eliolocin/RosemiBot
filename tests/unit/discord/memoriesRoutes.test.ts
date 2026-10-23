@@ -49,6 +49,7 @@ import { localizedCopy } from "../../helpers/localeCases";
 import { createPersona } from "../../helpers/fixtures";
 import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 
 const MEMBER_FUNDING: SupporterFundingContext = {
@@ -1448,7 +1449,7 @@ describe("memories permissions and scoping", () => {
     const { dependencies } = createTestDependencies({
       documentOperations: {
         ...serverDocumentsOperations,
-        add: async () => ({ status: "subscription" as const, denied }),
+        add: async () => ({ status: "provider-denied" as const, denied }),
       },
     });
     const route = createMemoriesInteractionRoute(dependencies);
@@ -2796,6 +2797,7 @@ describe("memories document operation ordering", () => {
         source: "server",
         modelId: 5,
         supporterFunding: MEMBER_FUNDING,
+        usageContext: getSupporterUsageContext(MEMBER_FUNDING),
       });
       embeddingSpy.mockRejectedValueOnce(
         new Error("OpenRouter embedding request failed: HTTP 402", {
@@ -2808,7 +2810,7 @@ describe("memories document operation ordering", () => {
         }),
       );
       expect(await serverDocumentsOperations.vectorize(input)).toMatchObject({
-        status: "subscription",
+        status: "provider-denied",
         denied: { reason: "allowance_exhausted", capability: "embedding", fundingScope: "server" },
       });
       expect(order).toEqual([]);

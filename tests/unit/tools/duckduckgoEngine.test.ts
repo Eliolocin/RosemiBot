@@ -2,6 +2,7 @@ import * as managedProvider from "@/modules/supporter-billing/runtime/managedPro
 import * as usageStatistics from "@/modules/supporter-billing/runtime/usageStatistics";
 import { supporterSpendGuard } from "@/modules/supporter-billing/runtime/spendGuard";
 import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
 import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 import { afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { OpenrouterToolAdapter } from "@/providers/openrouter/openrouterToolAdapter";
@@ -401,7 +402,7 @@ describe("OpenRouter engine requests", () => {
           ? { fundingScope: "personal", personalUserId: 1, serverId: null, sponsorshipId: null }
           : { fundingScope: "server", personalUserId: null, serverId: 1, sponsorshipId: 1 }),
       };
-      const context = openRouterContext({ supporterFunding });
+      const context = openRouterContext({ usageContext: getSupporterUsageContext(supporterFunding) });
       context.tomoriState.config.api_key = null;
       expect(await engine.available(context)).toBe(true);
       expect((await engine.search("fixture", "text", context)).success).toBe(false);
@@ -417,7 +418,9 @@ describe("OpenRouter engine requests", () => {
       expect(new Headers(request.mock.calls.at(-1)?.[1]?.headers).get("Authorization")).toBe(
         "Bearer synthetic-member-key",
       );
-      begin.mockRejectedValueOnce(new SupporterRequestDeniedError("allowance_exhausted", undefined, "text", scope));
+      begin.mockRejectedValueOnce(
+        new SupporterRequestDeniedError("allowance_exhausted", undefined, "text", scope, supporterFunding),
+      );
       const sent = request.mock.calls.length;
       expect((await engine.search("fixture", "text", context)).success).toBe(false);
       expect(request.mock.calls).toHaveLength(sent);
@@ -426,8 +429,8 @@ describe("OpenRouter engine requests", () => {
     const writes = record.mock.calls.length;
     await engine.search("fixture", "text", openRouterContext());
     expect(new Headers(request.mock.calls.at(-1)?.[1]?.headers).get("Authorization")).toBe("Bearer synthetic-byok-key");
-    expect(record.mock.calls).toHaveLength(writes + 1);
-    expect(record.mock.calls.at(-1)?.[0]).toBeUndefined();
+    expect(record.mock.calls).toHaveLength(writes);
+    expect(record.mock.calls.every(([funding]) => funding !== undefined)).toBe(true);
   });
 
   it("caps result counts and excerpt lengths", async () => {

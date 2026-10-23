@@ -7,6 +7,8 @@ import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
 import { sumTurnUsage } from "@/utils/text/tokenEstimate";
 import { createPersona } from "../../helpers/fixtures";
 import { stubGlobalFetch } from "../../helpers/fetchStub";
+import { createSupporterFunding } from "../supporterBilling/guards/fundingFixtures";
+import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
 
 const originalFetch = globalThis.fetch;
 
@@ -287,6 +289,7 @@ describe("OpenrouterStreamAdapter.processChunk", () => {
           config: { thinking_level: "none", llm_stop_speaker_pattern_enabled: false },
         });
         context.textCredentialSource = "supporter";
+        context.usageContext = getSupporterUsageContext(createSupporterFunding({ capability: "text" }));
         const result = await new StreamOrchestrator().streamToDiscord(
           new OpenrouterStreamAdapter(),
           makeStreamConfig(),

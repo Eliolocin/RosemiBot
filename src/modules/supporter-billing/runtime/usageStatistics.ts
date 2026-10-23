@@ -4,6 +4,7 @@ import {
 } from "@/modules/supporter-billing/db";
 import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
 import { log } from "@/utils/misc/logger";
+import type { ProviderUsageReport } from "@/utils/provider/providerUsage";
 import type { TokenUsage } from "@/utils/text/tokenEstimate";
 
 export function createSupporterUsageRecorder(
@@ -15,14 +16,7 @@ export function createSupporterUsageRecorder(
     : undefined;
 }
 
-export interface SupporterUsageReport {
-  modelCodename: string;
-  costUsd: number | null | undefined;
-  inputTokens?: number | null;
-  outputTokens?: number | null;
-  /** Identifies one billed provider request, so repeated polling of the same job records it once. */
-  providerRequestId?: string | null;
-}
+export type SupporterUsageReport = ProviderUsageReport;
 
 /**
  * Records a member-funded response's reported cost without awaiting storage, because statistics must

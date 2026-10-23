@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import {
   findProviderRequestDeniedError,
   reportProviderUsage,
@@ -533,13 +534,15 @@ export async function execute(
       });
       generatedImageData = result.imageData;
     } else if (imageRoute.kind === "openrouter") {
-      const result = await generateOpenRouterImage({
-        apiKey,
-        modelCodename,
-        prompt,
-        aspectRatio,
-        ...(referenceImages.length > 0 ? { referenceImages } : {}),
-      });
+      const result = await withProviderUsageContext(imageCreds.usageContext, async () =>
+        generateOpenRouterImage({
+          apiKey,
+          modelCodename,
+          prompt,
+          aspectRatio,
+          ...(referenceImages.length > 0 ? { referenceImages } : {}),
+        }),
+      );
       reportProviderUsage(imageCreds.usageContext, { modelCodename, costUsd: result.costUsd });
       generatedImageData = result.imageData;
     } else if (imageRoute.kind === "google") {

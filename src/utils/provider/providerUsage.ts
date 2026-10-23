@@ -1,5 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { ToolContext } from "@/types/tool/interfaces";
-import { sendStandardEmbed } from "@/utils/discord/embedHelper";
 import { ColorCode, log } from "@/utils/misc/logger";
 import type { TokenUsage } from "@/utils/text/tokenEstimate";
 
@@ -9,11 +9,22 @@ export interface ProviderUsageContext {
   readonly [providerUsageContextBrand]?: never;
 }
 
+const requestUsageContext = new AsyncLocalStorage<ProviderUsageContext | undefined>();
+
+export function withProviderUsageContext<T>(context: ProviderUsageContext | undefined, execute: () => T): T {
+  return requestUsageContext.run(context, execute);
+}
+
+export function currentProviderUsageContext(): ProviderUsageContext | undefined {
+  return requestUsageContext.getStore();
+}
+
 export interface ProviderUsageReport {
   modelCodename: string;
   costUsd: number | null | undefined;
   inputTokens?: number | null;
   outputTokens?: number | null;
+  /** Identifies one billed provider request, so repeated polling of the same job records it once. */
   providerRequestId?: string | null;
 }
 
@@ -127,6 +138,8 @@ export async function notifyProviderToolFailure(
 ): Promise<string> {
   const copy = getProviderRequestFailureCopy(error, context.locale);
   if (!context.isUserImpersonation) {
+    // Lazy because the embed helper's import graph reaches provider consumers that import this module.
+    const { sendStandardEmbed } = await import("@/utils/discord/embedHelper");
     await sendStandardEmbed(context.channel, context.locale, { ...copy, color: ColorCode.ERROR }).catch((sendError) =>
       log.warn("Failed to send provider request denial notice", sendError),
     );

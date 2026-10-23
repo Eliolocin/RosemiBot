@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import {
   createProviderUsageRecorder,
   findProviderRequestDeniedError,
@@ -124,16 +125,18 @@ async function embedChunks(
   chunks: string[],
   resolved: Extract<Awaited<ReturnType<typeof resolveEmbedding>>, { status: "success" }>,
 ): Promise<number[][] | { status: "provider-denied"; denied: ProviderRequestDeniedError }> {
-  return generateEmbeddingsBatched({
-    provider: resolved.model.provider,
-    apiKey: resolved.credentials.apiKey,
-    model: resolved.model.codename,
-    modelId: resolved.model.embedding_model_id,
-    inputs: chunks,
-    taskType: (await providerSupportsEmbeddingTaskType(resolved.model.provider)) ? "RETRIEVAL_DOCUMENT" : undefined,
-    batchSize: 16,
-    onUsage: createProviderUsageRecorder(resolved.credentials.usageContext, resolved.model.codename),
-  }).catch((error: unknown) => {
+  return withProviderUsageContext(resolved.credentials.usageContext, async () =>
+    generateEmbeddingsBatched({
+      provider: resolved.model.provider,
+      apiKey: resolved.credentials.apiKey,
+      model: resolved.model.codename,
+      modelId: resolved.model.embedding_model_id,
+      inputs: chunks,
+      taskType: (await providerSupportsEmbeddingTaskType(resolved.model.provider)) ? "RETRIEVAL_DOCUMENT" : undefined,
+      batchSize: 16,
+      onUsage: createProviderUsageRecorder(resolved.credentials.usageContext, resolved.model.codename),
+    }),
+  ).catch((error: unknown) => {
     const denied = findProviderRequestDeniedError(error, resolved.credentials.usageContext);
     if (denied) return { status: "provider-denied" as const, denied };
     throw error;

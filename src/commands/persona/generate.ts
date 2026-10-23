@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import {
   findProviderRequestDeniedError,
   createProviderUsageRecorder,
@@ -937,15 +938,17 @@ export async function execute(
 
     log.info(`Generating preset data with ${generationTomoriState.llm.llm_provider}...`);
 
-    const genResult = await generatePresetForProvider({
-      providerName: generationProviderName,
-      apiKey: generationApiKey,
-      tomoriState: generationTomoriState,
-      params: genParams,
-      locale,
-      toolContext: presetToolContext,
-      onUsage: createProviderUsageRecorder(usageContext, generationTomoriState.llm.llm_codename),
-    });
+    const genResult = await withProviderUsageContext(usageContext, async () =>
+      generatePresetForProvider({
+        providerName: generationProviderName,
+        apiKey: generationApiKey,
+        tomoriState: generationTomoriState,
+        params: genParams,
+        locale,
+        toolContext: presetToolContext,
+        onUsage: createProviderUsageRecorder(usageContext, generationTomoriState.llm.llm_codename),
+      }),
+    );
 
     const deniedGeneration = findProviderRequestDeniedError(genResult.cause, usageContext);
     if (deniedGeneration) {

@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import {
   findProviderRequestDeniedError,
   createProviderUsageRecorder,
@@ -434,17 +435,21 @@ export async function execute(
         )}`,
       );
 
-      const result: StructuredOutputResult<ExpressionBatchResult> = await callExpressionInitializationForProvider({
-        providerName: provider,
-        apiKey: decryptedApiKey,
-        model: effectiveModelName,
-        endpointUrl: tomoriState.config.custom_endpoint_url ?? undefined,
-        systemPrompt,
-        userPrompt,
-        images,
-        temperature,
-        onUsage: createProviderUsageRecorder(usageContext, effectiveModelName),
-      });
+      const result: StructuredOutputResult<ExpressionBatchResult> = await withProviderUsageContext(
+        usageContext,
+        async () =>
+          callExpressionInitializationForProvider({
+            providerName: provider,
+            apiKey: decryptedApiKey,
+            model: effectiveModelName,
+            endpointUrl: tomoriState.config.custom_endpoint_url ?? undefined,
+            systemPrompt,
+            userPrompt,
+            images,
+            temperature,
+            onUsage: createProviderUsageRecorder(usageContext, effectiveModelName),
+          }),
+      );
 
       log.info(`LLM structured output response (batch ${batchNumber}): ${JSON.stringify(result, null, 2)}`);
 

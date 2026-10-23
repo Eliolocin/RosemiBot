@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import { isRagAvailable } from "@/utils/db/ragAvailability";
 import { llmModelRepo, ragRepository, serverMemoryRepository } from "@/utils/db/repositories";
 import { log } from "@/utils/misc/logger";
@@ -71,17 +72,19 @@ export async function buildServerDocumentContextItem(params: {
       ? channelScopeCandidates(channelId, parentChannelId)
       : null;
 
-    const chunks = await ragRepository.retrieveRelevantChunks({
-      serverId: tomoriState.server_id,
-      personaId: tomoriState.persona_id ?? null,
-      query: queryText,
-      embeddingModel,
-      apiKey: creds.apiKey,
-      onUsage: createSupporterUsageRecorder(creds.supporterFunding, embeddingModel.codename),
-      maxResults: DOCUMENT_MAX_RESULTS,
-      minSimilarity: DOCUMENT_MIN_SIMILARITY,
-      channelIds: channelFilter,
-    });
+    const chunks = await withProviderUsageContext(creds.usageContext, async () =>
+      ragRepository.retrieveRelevantChunks({
+        serverId: tomoriState.server_id,
+        personaId: tomoriState.persona_id ?? null,
+        query: queryText,
+        embeddingModel,
+        apiKey: creds.apiKey,
+        onUsage: createSupporterUsageRecorder(creds.supporterFunding, embeddingModel.codename),
+        maxResults: DOCUMENT_MAX_RESULTS,
+        minSimilarity: DOCUMENT_MIN_SIMILARITY,
+        channelIds: channelFilter,
+      }),
+    );
 
     const documentContext = ragRepository.formatChunksForPrompt(chunks);
     if (!documentContext) {

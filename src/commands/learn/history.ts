@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import {
   createProviderUsageRecorder,
   type ProviderUsageContext,
@@ -743,15 +744,17 @@ async function runIncrementalExtraction(params: {
     });
 
     const composedSystemPrompt = await composeSystemPrompt(windows[i], i);
-    const windowOutcome = await extractWindow(
-      windows[i],
-      previousRestatements,
-      provider,
-      model,
-      apiKey,
-      composedSystemPrompt,
-      endpointUrl,
-      createProviderUsageRecorder(textUsageContext, model),
+    const windowOutcome = await withProviderUsageContext(textUsageContext, async () =>
+      extractWindow(
+        windows[i],
+        previousRestatements,
+        provider,
+        model,
+        apiKey,
+        composedSystemPrompt,
+        endpointUrl,
+        createProviderUsageRecorder(textUsageContext, model),
+      ),
     );
 
     const deniedExtraction = windowOutcome.ok
@@ -786,16 +789,18 @@ async function runIncrementalExtraction(params: {
 
       let embeddings: number[][];
       try {
-        embeddings = await generateEmbeddingsBatched({
-          provider: embeddingProvider,
-          apiKey: embeddingApiKey,
-          model: embeddingCodename,
-          modelId: embeddingModelId,
-          inputs: windowChunks,
-          taskType: (await providerSupportsEmbeddingTaskType(embeddingProvider)) ? "RETRIEVAL_DOCUMENT" : undefined,
-          batchSize: 16,
-          onUsage: createProviderUsageRecorder(embeddingUsageContext, embeddingCodename),
-        });
+        embeddings = await withProviderUsageContext(embeddingUsageContext, async () =>
+          generateEmbeddingsBatched({
+            provider: embeddingProvider,
+            apiKey: embeddingApiKey,
+            model: embeddingCodename,
+            modelId: embeddingModelId,
+            inputs: windowChunks,
+            taskType: (await providerSupportsEmbeddingTaskType(embeddingProvider)) ? "RETRIEVAL_DOCUMENT" : undefined,
+            batchSize: 16,
+            onUsage: createProviderUsageRecorder(embeddingUsageContext, embeddingCodename),
+          }),
+        );
       } catch (error) {
         const deniedEmbedding = findProviderRequestDeniedError(error, embeddingUsageContext);
         if (deniedEmbedding) return { ok: false, reason: "provider-denied", denied: deniedEmbedding };

@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import { readOpenRouterLimitResponse } from "@/providers/openrouter/openrouterLimit";
 import {
   reportProviderUsage,
@@ -5,6 +6,7 @@ import {
   notifyProviderToolFailure,
 } from "@/utils/provider/providerUsage";
 import { resolveSupporterMemberKey } from "@/modules/supporter-billing/runtime/managedProvider";
+import { getSupporterFundingFromUsageContext } from "@/modules/supporter-billing/runtime/types";
 import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
 import { z } from "zod";
 import { addFetchCapabilityReminder } from "@/tools/restAPIs/brave/braveSearchService";
@@ -50,7 +52,8 @@ export class OpenRouterEngine implements WebSearchEngine {
   async available(context: ToolContext): Promise<boolean> {
     return (
       context.provider === "openrouter" &&
-      (Boolean(context.supporterFunding) || context.tomoriState.config.api_key !== null)
+      (Boolean(getSupporterFundingFromUsageContext(context.usageContext)) ||
+        context.tomoriState.config.api_key !== null)
     );
   }
 
@@ -71,8 +74,9 @@ export class OpenRouterEngine implements WebSearchEngine {
     try {
       signal.throwIfAborted();
       const { api_key: encryptedKey, key_version: keyVersion } = context.tomoriState.config;
-      const apiKey = context.supporterFunding
-        ? await resolveSupporterMemberKey(context.supporterFunding)
+      const funding = getSupporterFundingFromUsageContext(context.usageContext);
+      const apiKey = funding
+        ? await resolveSupporterMemberKey(funding)
         : encryptedKey
           ? await decryptApiKey(encryptedKey, keyVersion)
           : null;
@@ -92,24 +96,26 @@ export class OpenRouterEngine implements WebSearchEngine {
       signal.throwIfAborted();
 
       const model = context.tomoriState.llm.llm_codename;
-      const response = await fetchWithProviderRequest(SEARCH_ENDPOINT, {
-        method: "POST",
-        redirect: "error",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          ...buildOpenRouterAttributionHeaders(),
-        },
-        body: JSON.stringify({
-          ...(model !== "other-model" ? { model } : {}),
-          stream: false,
-          // The plugin attaches excerpts independently of completion length, so one token avoids paying for synthesis.
-          plugins: [{ id: "web", engine: "exa", max_results: boundedCount }],
-          max_tokens: 1,
-          messages: [{ role: "user", content: `List search results for: ${searchQuery}` }],
+      const response = await withProviderUsageContext(context.usageContext, async () =>
+        fetchWithProviderRequest(SEARCH_ENDPOINT, {
+          method: "POST",
+          redirect: "error",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            ...buildOpenRouterAttributionHeaders(),
+          },
+          body: JSON.stringify({
+            ...(model !== "other-model" ? { model } : {}),
+            stream: false,
+            // The plugin attaches excerpts independently of completion length, so one token avoids paying for synthesis.
+            plugins: [{ id: "web", engine: "exa", max_results: boundedCount }],
+            max_tokens: 1,
+            messages: [{ role: "user", content: `List search results for: ${searchQuery}` }],
+          }),
+          signal,
         }),
-        signal,
-      });
+      );
 
       if (!response.ok) {
         const limit = await readOpenRouterLimitResponse(response);

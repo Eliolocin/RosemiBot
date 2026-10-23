@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import type { ResolvedCredentials } from "@/utils/provider/credentialResolver";
 import {
   createProviderUsageRecorder,
@@ -188,18 +189,20 @@ export async function executeCompactCommand(
       userIds: context.userIds,
       includePersonas: true,
     });
-    const result = await generateCompactSummary({
-      summaryType: modalSelection.summaryType,
-      providerName,
-      apiKey,
-      model: effectiveModelName,
-      endpointUrl: tomoriState.config.custom_endpoint_url ?? undefined,
-      context,
-      supplementaryContext,
-      systemPrompt: modalSelection.systemPrompt,
-      analyzeImages: modalSelection.analyzeImages,
-      onUsage: createProviderUsageRecorder(usageContext, effectiveModelName),
-    });
+    const result = await withProviderUsageContext(usageContext, async () =>
+      generateCompactSummary({
+        summaryType: modalSelection.summaryType,
+        providerName,
+        apiKey,
+        model: effectiveModelName,
+        endpointUrl: tomoriState.config.custom_endpoint_url ?? undefined,
+        context,
+        supplementaryContext,
+        systemPrompt: modalSelection.systemPrompt,
+        analyzeImages: modalSelection.analyzeImages,
+        onUsage: createProviderUsageRecorder(usageContext, effectiveModelName),
+      }),
+    );
 
     const denied = findProviderRequestDeniedError(result.cause, usageContext);
     if (denied) {
@@ -772,16 +775,20 @@ function setupAddToDocsCollector(params: {
         return;
       }
 
-      const embeddings = await generateEmbeddingsBatched({
-        provider: embeddingModel.provider,
-        apiKey: embeddingCreds.apiKey,
-        model: embeddingModel.codename,
-        modelId: embeddingModel.embedding_model_id,
-        inputs: chunks,
-        taskType: (await providerSupportsEmbeddingTaskType(embeddingModel.provider)) ? "RETRIEVAL_DOCUMENT" : undefined,
-        batchSize: 16,
-        onUsage: createProviderUsageRecorder(embeddingCreds.usageContext, embeddingModel.codename),
-      });
+      const embeddings = await withProviderUsageContext(embeddingCreds.usageContext, async () =>
+        generateEmbeddingsBatched({
+          provider: embeddingModel.provider,
+          apiKey: embeddingCreds.apiKey,
+          model: embeddingModel.codename,
+          modelId: embeddingModel.embedding_model_id,
+          inputs: chunks,
+          taskType: (await providerSupportsEmbeddingTaskType(embeddingModel.provider))
+            ? "RETRIEVAL_DOCUMENT"
+            : undefined,
+          batchSize: 16,
+          onUsage: createProviderUsageRecorder(embeddingCreds.usageContext, embeddingModel.codename),
+        }),
+      );
 
       await ragRepository.insertWithChunks({
         serverId: tomoriState.server_id,

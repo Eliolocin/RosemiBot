@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import {
   findProviderRequestDeniedError,
   createProviderUsageRecorder,
@@ -402,13 +403,15 @@ export class PeekProfilePictureTool extends BaseTool {
     } else {
       const endpointUrl = this.getVisionEndpointUrl(provider, context, creds.customEndpoint?.endpoint_url ?? null);
       try {
-        analysisResult = await this.callOpenAICompatibleVisionWithBase64(
-          apiKey,
-          apiModelName,
-          endpointUrl,
-          images,
-          prompt,
-          createProviderUsageRecorder(creds.usageContext, apiModelName),
+        analysisResult = await withProviderUsageContext(creds.usageContext, async () =>
+          this.callOpenAICompatibleVisionWithBase64(
+            apiKey,
+            apiModelName,
+            endpointUrl,
+            images,
+            prompt,
+            createProviderUsageRecorder(creds.usageContext, apiModelName),
+          ),
         );
       } catch (error) {
         throw findProviderRequestDeniedError(error, creds.usageContext) ?? error;

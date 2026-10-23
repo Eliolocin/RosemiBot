@@ -1,3 +1,6 @@
+// Every funded inference path resolves its credentials here, so this import registers the generic
+// usage reporter and denial translator before the first provider request can need them.
+import "@/modules/supporter-billing/runtime/providerUsageRegistration";
 import type { SupporterCapability } from "@/modules/supporter-billing/config";
 import { MemberKeyRepository } from "@/modules/supporter-billing/db/repositories/memberKeys";
 import { supporterSponsorshipRepository, supporterIdentityRepository } from "@/modules/supporter-billing/db";
@@ -33,7 +36,13 @@ export async function resolveSupporterMemberKey(
     const identityId =
       owner && ("sponsor_identity_id" in owner ? owner.sponsor_identity_id : owner.supporter_identity_id);
     if (identityId !== funding.sponsorIdentityId) {
-      throw new SupporterRequestDeniedError("inconsistent", undefined, funding.capability, funding.fundingScope);
+      throw new SupporterRequestDeniedError(
+        "inconsistent",
+        undefined,
+        funding.capability,
+        funding.fundingScope,
+        funding,
+      );
     }
     let keyHash: string | undefined;
     const apiKey = await (repositories.memberKeys ?? new MemberKeyRepository()).loadCredential(
@@ -50,15 +59,28 @@ export async function resolveSupporterMemberKey(
           undefined,
           funding.capability,
           funding.fundingScope,
+          funding,
         );
       supporterSpendGuard.registerCredential(apiKey, funding, keyHash);
       return apiKey;
     }
   } catch (error) {
     if (error instanceof SupporterRequestDeniedError) throw error;
-    throw new SupporterRequestDeniedError("billing_unavailable", undefined, funding.capability, funding.fundingScope);
+    throw new SupporterRequestDeniedError(
+      "billing_unavailable",
+      undefined,
+      funding.capability,
+      funding.fundingScope,
+      funding,
+    );
   }
-  throw new SupporterRequestDeniedError("inactive_entitlement", undefined, funding.capability, funding.fundingScope);
+  throw new SupporterRequestDeniedError(
+    "inactive_entitlement",
+    undefined,
+    funding.capability,
+    funding.fundingScope,
+    funding,
+  );
 }
 
 export async function resolveSupporterCapabilityCredentials(params: {

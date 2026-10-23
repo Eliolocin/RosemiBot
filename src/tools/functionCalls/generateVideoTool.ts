@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import {
   findProviderRequestDeniedError,
   notifyProviderToolFailure,
@@ -587,19 +588,21 @@ export class GenerateVideoTool extends BaseTool {
         videoFilename = result.filename ?? videoFilename;
       } else if (videoImplementation === "openrouter") {
         const { generateOpenRouterNativeVideo } = await import("@/providers/openrouter/openrouterVideoGeneration");
-        const result = await generateOpenRouterNativeVideo({
-          apiKey,
-          model: modelCodename,
-          prompt,
-          aspectRatio,
-          durationSeconds,
-          resolution,
-          referenceImages,
-          generateAudio,
-          audioPrompt,
-          loop,
-          abortSignal: context.abortSignal,
-        });
+        const result = await withProviderUsageContext(usageContext, async () =>
+          generateOpenRouterNativeVideo({
+            apiKey,
+            model: modelCodename,
+            prompt,
+            aspectRatio,
+            durationSeconds,
+            resolution,
+            referenceImages,
+            generateAudio,
+            audioPrompt,
+            loop,
+            abortSignal: context.abortSignal,
+          }),
+        );
         reportProviderUsage(usageContext, {
           modelCodename,
           costUsd: result.costUsd,

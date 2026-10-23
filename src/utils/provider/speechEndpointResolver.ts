@@ -9,7 +9,7 @@ import { decryptApiKey } from "@/utils/security/crypto";
 import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
 import { resolveEnvironment } from "@/types/config";
 import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
-import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
 import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 import {
   loadActiveEndpoint,
@@ -29,7 +29,6 @@ export type SpeechTargetResult =
       kind: "hosted-model";
       endpoint: null;
       apiKey: string;
-      supporterFunding?: SupporterFundingContext;
       usageContext?: ProviderUsageContext;
     });
 
@@ -52,7 +51,7 @@ export function speechTargetFingerprint(target: SpeechTargetResult | null | unde
               target.owner,
               target.credentialId,
               target.credentialRevision,
-              target.supporterFunding,
+              target.usageContext,
               target.apiKey,
             ]
           : [
@@ -168,7 +167,7 @@ export async function resolveSpeechTargets(
             kind: "hosted-model",
             endpoint: null,
             apiKey: credentials.apiKey,
-            supporterFunding: credentials.funding,
+            usageContext: getSupporterUsageContext(credentials.funding),
           };
         } catch (error) {
           if (

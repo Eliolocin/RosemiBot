@@ -1,11 +1,6 @@
 /**
- * Environment-variable keys that carry Supporter Billing secrets/config from the secret store into
- * `process.env`.
- *
- * Kept as a standalone leaf constant with NO zod/parser imports so early-startup code (e.g.
- * `init/secrets.ts`) can propagate these without pulling the billing config parser into the default
- * bundle. This is the module-owned source of truth for the Supporter env surface: keep it in sync
- * with `TomoriSecrets` (secret loader) and `.env.optional.example`.
+ * The Supporter env surface: `src/init/secrets.ts` registers these names with the secret loader and
+ * `.env.optional.example` documents them, so keep it free of parser imports for early startup.
  */
 export const SUPPORTER_SECRET_ENV_KEYS = [
   "TOMORI_SUPPORTER_BILLING_ENABLED",

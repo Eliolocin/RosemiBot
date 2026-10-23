@@ -19,6 +19,7 @@ import {
 } from "@/modules/supporter-billing/db/repositories";
 import { supporterSpendGuard } from "@/modules/supporter-billing/runtime/spendGuard";
 import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
 import type { ResolvedCredentials } from "@/utils/provider/credentialResolver";
 import type { MemberKeyMetadata } from "@/modules/supporter-billing/openrouter/management";
 
@@ -79,7 +80,7 @@ export function createResolvedCredentials(
     keyVersion: 1,
     savedConfig: null,
     source: funding?.fundingScope === "personal" ? "personal" : "server",
-    ...(funding ? { supporterFunding: funding } : {}),
+    ...(funding ? { supporterFunding: funding, usageContext: getSupporterUsageContext(funding) } : {}),
     ...overrides,
   };
 }
@@ -192,7 +193,7 @@ export function installSpendHarness(): SpendHarness {
 }
 
 export function fundingContext(funding: SupporterFundingContext | null) {
-  return { supporterFunding: funding ?? undefined };
+  return { usageContext: funding ? getSupporterUsageContext(funding) : undefined };
 }
 
 export const embeddingModel = embeddingModelSchema.parse({

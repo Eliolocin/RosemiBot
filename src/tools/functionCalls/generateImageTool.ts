@@ -1,3 +1,4 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import {
   findProviderRequestDeniedError,
   notifyProviderToolFailure,
@@ -1313,14 +1314,16 @@ export class GenerateImageTool extends BaseTool {
         generatedImageData = result.imageData;
       } else if (imageGenerationImplementation === "openrouter") {
         // Use OpenRouter API
-        const result = await generateOpenRouterImage({
-          apiKey,
-          modelCodename,
-          prompt: effectivePrompt,
-          aspectRatio,
-          ...(providerReferenceImages.length > 0 ? { referenceImages: providerReferenceImages } : {}),
-          ...(context.abortSignal ? { abortSignal: context.abortSignal } : {}),
-        });
+        const result = await withProviderUsageContext(usageContext, async () =>
+          generateOpenRouterImage({
+            apiKey,
+            modelCodename,
+            prompt: effectivePrompt,
+            aspectRatio,
+            ...(providerReferenceImages.length > 0 ? { referenceImages: providerReferenceImages } : {}),
+            ...(context.abortSignal ? { abortSignal: context.abortSignal } : {}),
+          }),
+        );
         reportProviderUsage(usageContext, { modelCodename, costUsd: result.costUsd });
         generatedImageData = result.imageData;
       } else if (imageGenerationImplementation === "google") {

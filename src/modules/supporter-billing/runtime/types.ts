@@ -8,6 +8,14 @@ import type {
   SupporterBillingTierConfig,
   SupporterCapability,
 } from "@/modules/supporter-billing/config";
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
+
+declare module "@/utils/provider/providerUsage" {
+  interface ProviderUsageContext {
+    /** Request ownership for a member-funded provider call; absent on server-key calls. */
+    readonly supporterFunding?: SupporterFundingContext;
+  }
+}
 
 export type SupporterFundingFailureReason =
   | "billing_unavailable"
@@ -70,3 +78,34 @@ export type SupporterFundingResult =
       ok: false;
       reason: Exclude<SupporterFundingFailureReason, "allowance_exhausted">;
     };
+
+export interface SupporterRequestDenialFacts {
+  reason: SupporterFundingFailureReason | "unsupported_capability" | "model_unavailable" | "capacity_unavailable";
+  details?: SupporterFundingFailureDetails;
+  capability: SupporterCapability;
+  fundingScope: "personal" | "server";
+}
+
+export interface SupporterUsageContext extends ProviderUsageContext {
+  readonly supporterFunding: SupporterFundingContext;
+}
+
+const usageContexts = new WeakMap<SupporterFundingContext, SupporterUsageContext>();
+
+/**
+ * One canonical context per funding object, because request ownership is compared by identity
+ * between credentials, spend refusals, the denial translator and stream presentation.
+ */
+export function getSupporterUsageContext(funding: SupporterFundingContext): SupporterUsageContext {
+  const existing = usageContexts.get(funding);
+  if (existing) return existing;
+  const context: SupporterUsageContext = { supporterFunding: funding };
+  usageContexts.set(funding, context);
+  return context;
+}
+
+export function getSupporterFundingFromUsageContext(
+  context: ProviderUsageContext | null | undefined,
+): SupporterFundingContext | null {
+  return context?.supporterFunding ?? null;
+}

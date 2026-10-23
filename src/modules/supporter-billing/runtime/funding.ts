@@ -16,12 +16,15 @@ import {
   type SupporterSponsorshipRepository,
 } from "@/modules/supporter-billing/db";
 import type {
-  SupporterFundingFailureDetails,
-  SupporterFundingFailureReason,
   SupporterFundingContext,
+  SupporterFundingFailureDetails,
   SupporterFundingResult,
   SupporterFundingScope,
+  SupporterRequestDenialFacts,
 } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
+import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
+import { ProviderRequestDeniedError } from "@/utils/provider/providerUsage";
 import { log } from "@/utils/misc/logger";
 import { findOpenRouterLimitError, type OpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 
@@ -31,40 +34,6 @@ export interface SupporterFundingRepositories {
   identityRepository?: Pick<SupporterIdentityRepository, "loadById" | "loadByUserId">;
   entitlementRepository?: Pick<SupporterEntitlementRepository, "loadByIdentityId">;
   sponsorshipRepository?: Pick<SupporterSponsorshipRepository, "loadActiveSponsorshipForServer">;
-}
-
-const SUPPORTER_TEXT_FAILURE_DESCRIPTION_KEYS: Record<SupporterFundingFailureReason, string> = {
-  billing_unavailable: "commands.subscribe.sponsorship.errors.billing_unavailable",
-  missing_sponsorship: "commands.subscribe.sponsorship.errors.missing_sponsorship",
-  missing_subscription: "commands.subscribe.sponsorship.errors.unlinked",
-  inconsistent: "commands.subscribe.sponsorship.errors.inconsistent",
-  inactive_entitlement: "commands.subscribe.sponsorship.errors.inactive",
-  unconfigured_tier: "commands.subscribe.sponsorship.errors.unconfigured_tier",
-  allowance_exhausted: "commands.subscribe.sponsorship.errors.exhausted",
-  model_not_allowed: "commands.subscribe.sponsorship.errors.model_not_allowed",
-};
-
-function formatDiscordTimestamp(date: Date): string {
-  return `<t:${Math.floor(date.getTime() / 1000)}:D>`;
-}
-
-export function getSupporterFundingFailureDescriptionKey(
-  reason: SupporterFundingFailureReason,
-  details?: SupporterFundingFailureDetails,
-): string {
-  if (details?.periodEnd && reason === "allowance_exhausted") {
-    return "commands.subscribe.sponsorship.errors.exhausted_generation";
-  }
-
-  return SUPPORTER_TEXT_FAILURE_DESCRIPTION_KEYS[reason];
-}
-
-export function getSupporterFundingFailureDescriptionVars(
-  details?: SupporterFundingFailureDetails,
-): Record<string, string> {
-  return {
-    period_end: details?.periodEnd ? formatDiscordTimestamp(details.periodEnd) : "",
-  };
 }
 
 export async function resolveSupporterFunding(params: {
@@ -147,18 +116,20 @@ export async function resolveSupporterFunding(params: {
   }
 }
 
-export class SupporterRequestDeniedError extends Error {
+export class SupporterRequestDeniedError extends ProviderRequestDeniedError {
   constructor(
-    public readonly reason:
-      | "unsupported_capability"
-      | "model_unavailable"
-      | "capacity_unavailable"
-      | SupporterFundingFailureReason,
+    public readonly reason: SupporterRequestDenialFacts["reason"],
     public readonly details?: SupporterFundingFailureDetails,
     public readonly capability: SupporterCapability = "text",
     public readonly fundingScope: "personal" | "server" = "server",
+    funding?: SupporterFundingContext,
   ) {
-    super(`Supporter request denied: ${reason}`);
+    const facts: SupporterRequestDenialFacts = { reason, details, capability, fundingScope };
+    super(
+      funding ? getSupporterUsageContext(funding) : undefined,
+      (locale, forFallback) => getSupporterRequestFailureCopy(facts, locale, forFallback),
+      { deferNotice: reason === "allowance_exhausted" || reason === "capacity_unavailable" },
+    );
     this.name = "SupporterRequestDeniedError";
   }
 }
@@ -174,19 +145,22 @@ export function findSupporterRequestDeniedError(
   error: unknown,
   funding?: SupporterFundingContext | null,
 ): SupporterRequestDeniedError | null {
+  const usageContext = funding ? getSupporterUsageContext(funding) : undefined;
   let current = error;
   for (let depth = 0; depth < 5 && current && typeof current === "object"; depth++) {
     if (current instanceof SupporterRequestDeniedError) {
-      return funding
-        ? new SupporterRequestDeniedError(
-            current.reason,
-            current.reason === "allowance_exhausted"
-              ? { ...current.details, periodEnd: funding.renewalAt ?? current.details?.periodEnd }
-              : current.details,
-            funding.capability,
-            funding.fundingScope,
-          )
-        : current;
+      if (!funding) return current;
+      // A denial another request already owns must not be reattributed to this one.
+      if (current.usageContext && current.usageContext !== usageContext) return null;
+      return new SupporterRequestDeniedError(
+        current.reason,
+        current.reason === "allowance_exhausted"
+          ? { ...current.details, periodEnd: funding.renewalAt ?? current.details?.periodEnd }
+          : current.details,
+        funding.capability,
+        funding.fundingScope,
+        funding,
+      );
     }
     current = "originalError" in current ? current.originalError : "cause" in current ? current.cause : null;
   }
@@ -198,6 +172,7 @@ export function findSupporterRequestDeniedError(
       funding.renewalAt ? { periodEnd: funding.renewalAt } : undefined,
       funding.capability,
       funding.fundingScope,
+      funding,
     );
   }
   if (!alertedCapacityFailures.has(limit)) {
@@ -222,5 +197,6 @@ export function findSupporterRequestDeniedError(
         : { retryable: true, retryAt: new Date(Date.now() + limit.retryAfterMs) },
     funding.capability,
     funding.fundingScope,
+    funding,
   );
 }
