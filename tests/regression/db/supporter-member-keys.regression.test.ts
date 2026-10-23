@@ -346,6 +346,41 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter member-key lifecycle", () => {
     expect((await remote(value, provider)).limit).toBe(3);
   });
 
+  it("waits for the member-key lock before purging aged usage statistics", async () => {
+    const value = snapshot("statistics_purge_lock");
+    const provider = new Provider();
+    const linked = await link(value, provider);
+    await record(linked.identity.supporter_identity_id, 7);
+    await testSql`UPDATE supporter_usage_statistics SET recorded_at = ${new Date(Date.now() - 120 * 24 * 60 * 60 * 1000)}
+      WHERE supporter_identity_id = ${linked.identity.supporter_identity_id}`;
+    const remaining = async () =>
+      (
+        await testSql<Array<{ count: number }>>`SELECT COUNT(*)::int AS count FROM supporter_usage_statistics
+          WHERE supporter_identity_id = ${linked.identity.supporter_identity_id}`
+      )[0]?.count ?? 0;
+    const holding = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const held = withMemberKeyLock(testSql, async () => {
+      holding.resolve();
+      await release.promise;
+    });
+    await holding.promise;
+    const maintenance = runSupporterBillingMaintenance({ client: testSql, now: new Date() });
+    try {
+      let purgedWhileLocked = false;
+      for (let attempt = 0; attempt < 50 && !purgedWhileLocked; attempt++) {
+        purgedWhileLocked = (await remaining()) === 0;
+        if (!purgedWhileLocked) await Bun.sleep(10);
+      }
+      expect(purgedWhileLocked).toBe(false);
+    } finally {
+      release.resolve();
+      await held;
+    }
+    expect((await maintenance).purgedUsageStatistics).toBeGreaterThanOrEqual(1);
+    expect(await remaining()).toBe(0);
+  });
+
   it("upgrades interrupted renewal and rotation without losing the key's cost window", async () => {
     for (const action of ["renew", "rotate"] as const) {
       const suffix = `guard_upgrade_${action}`;

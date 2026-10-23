@@ -62,9 +62,10 @@ export async function runSupporterBillingMaintenance(
   }
 
   try {
-    const statistics = options.usageStatisticsRepository ?? new SupporterUsageStatisticsRepository(client);
-    result.purgedUsageStatistics = await statistics.purgeAgedStatistics(
-      new Date(now.getTime() - USAGE_STATISTICS_RETENTION_DAYS * MILLISECONDS_PER_DAY),
+    result.purgedUsageStatistics = await withMemberKeyLock(client, (connection) =>
+      (options.usageStatisticsRepository ?? new SupporterUsageStatisticsRepository(connection)).purgeAgedStatistics(
+        new Date(now.getTime() - USAGE_STATISTICS_RETENTION_DAYS * MILLISECONDS_PER_DAY),
+      ),
     );
   } catch (error) {
     log.error("Supporter periodic usage-statistics purge failed", error);

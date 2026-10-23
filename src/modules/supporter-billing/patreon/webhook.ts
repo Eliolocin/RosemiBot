@@ -91,6 +91,9 @@ export async function handlePatreonWebhookRawBody(
   if (!verification.valid) return makeWebhookResponse("invalid_signature", 401);
 
   const payloadHash = hashWebhookPayload(rawBody);
+  const eventType = "member_change";
+  // The schema upgrade rewrites the unscoped payload:<hash> form as legacy, so the receipt key must scope by event type.
+  const idempotencyKey = `payload:${eventType}:${payloadHash}`;
   let payload: unknown;
   try {
     payload = JSON.parse(Buffer.from(rawBody).toString("utf8"));
@@ -99,11 +102,10 @@ export async function handlePatreonWebhookRawBody(
       identityRepository: supporterIdentityRepository,
       webhookEventRepository: supporterWebhookEventRepository,
     };
-    const eventType = "member_change";
     const receipt = await repositories.webhookEventRepository.recordReceiptForProcessing({
       patreonEventId: null,
       eventType,
-      idempotencyKey: `payload:${payloadHash}`,
+      idempotencyKey,
       payloadHash,
       receivedAt: now,
     });
@@ -125,8 +127,8 @@ export async function handlePatreonWebhookRawBody(
   };
   const receipt = await repositories.webhookEventRepository.recordReceiptForProcessing({
     patreonEventId: null,
-    eventType: "member_change",
-    idempotencyKey: `payload:${payloadHash}`,
+    eventType,
+    idempotencyKey,
     payloadHash,
     receivedAt: now,
   });

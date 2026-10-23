@@ -56,7 +56,12 @@ import {
   SupporterWebhookEventRepository,
 } from "@/modules/supporter-billing";
 import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
-import { persistEligiblePatreonSupporter } from "@/modules/supporter-billing/patreon/persistence";
+import {
+  persistEligiblePatreonSupporter,
+  persistPatreonMemberState,
+} from "@/modules/supporter-billing/patreon/persistence";
+import { handlePatreonWebhookRawBody } from "@/modules/supporter-billing/patreon/webhook";
+import { computePatreonWebhookSignature } from "@/modules/supporter-billing/patreon/webhookVerifier";
 import { FIXTURE_IDS, cleanupFixtures, insertFixtures, type FixtureRefs } from "./setup/fixtures";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
 import { callDecisionsForProvider, loadDecisionModelsForScope } from "@/providers/utils/providerFeatureExecutors";
@@ -1020,13 +1025,17 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter billing — gated DB schema", ()
           (${refs.serverId}, NULL, NULL, NULL, ${personalModels.video_model_id})
         ON CONFLICT DO NOTHING`;
       expect(
-        await configRepository.updateModelConfig(refs.serverId, {
-          llm_id: personalModels.llm_id,
-          vision_llm_id: personalModels.llm_id,
-          embedding_model_id: personalModels.embedding_model_id,
-          diffusion_model_id: personalModels.diffusion_model_id,
-          video_model_id: personalModels.video_model_id,
-        }),
+        await configRepository.updateModelConfig(
+          refs.serverId,
+          {
+            llm_id: personalModels.llm_id,
+            vision_llm_id: personalModels.llm_id,
+            embedding_model_id: personalModels.embedding_model_id,
+            diffusion_model_id: personalModels.diffusion_model_id,
+            video_model_id: personalModels.video_model_id,
+          },
+          "supporter",
+        ),
       ).toBe(true);
       for (const capability of ["text", "vision", "embedding", "image-standard", "video"] as const) {
         const personal = await resolveCapabilityCredentials(refs.serverId, capability, { userId: refs.userId });
@@ -1610,6 +1619,76 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter billing — gated DB schema", ()
     const retried = await repository.recordReceiptForProcessing({ ...params, idempotencyKey: scopedKey });
     expect(retried.status).toBe("duplicate");
     expect(retried.event.webhook_event_id).toBe(legacy.event.webhook_event_id);
+  });
+
+  it("deduplicates a handler-written webhook receipt across repeated privileged schema initialization", async () => {
+    await initializeSupporterBillingSchema(testSql);
+    const identity = await createSupporterFixture(`webhook_redelivery_${Date.now()}`);
+    const secret = "synthetic-redelivery-webhook-secret";
+    const now = new Date("2026-01-15T00:00:00.000Z");
+    const payload = {
+      data: {
+        type: "member",
+        id: identity.patreon_member_id,
+        attributes: {
+          patron_status: "active_patron",
+          last_charge_status: "Paid",
+          last_charge_date: "2026-01-01T00:00:00.000Z",
+          next_charge_date: "2026-02-01T00:00:00.000Z",
+          pledge_relationship_start: "2026-01-01T00:00:00.000Z",
+          will_pay_amount_cents: 100,
+        },
+        relationships: {
+          campaign: { data: { type: "campaign", id: validSupporterConfig.patreon.campaignId } },
+          user: { data: { type: "user", id: identity.patreon_user_id } },
+          currently_entitled_tiers: { data: [{ type: "tier", id: "tier_test" }] },
+        },
+      },
+    };
+    const rawBody = Buffer.from(JSON.stringify(payload));
+    const deliver = () =>
+      handlePatreonWebhookRawBody(
+        rawBody,
+        {
+          "x-patreon-event": "members:update",
+          "x-patreon-signature": computePatreonWebhookSignature(rawBody, secret),
+        },
+        {
+          config: validSupporterConfig,
+          env: createEnabledEnv({ TOMORI_SUPPORTER_PATREON_WEBHOOK_SECRET: secret }),
+          now,
+          repositories: {
+            identityRepository: new SupporterIdentityRepository(testSql),
+            webhookEventRepository: new SupporterWebhookEventRepository(testSql),
+          },
+          fetchMember: async () => payload,
+          persistMemberState: (options) =>
+            persistPatreonMemberState({
+              ...options,
+              repositories: {
+                identityRepository: new SupporterIdentityRepository(testSql),
+                entitlementRepository: new SupporterEntitlementRepository(testSql),
+              },
+            }),
+        },
+      );
+    const payloadHash = createHash("sha256").update(rawBody).digest("hex");
+
+    try {
+      expect((await deliver()).status).toBe("processed");
+      await initializeSupporterBillingSchema(testSql);
+      await initializeSupporterBillingSchema(testSql);
+      const redelivery = await deliver();
+      await initializeSupporterBillingSchema(testSql);
+
+      expect(redelivery.status).toBe("duplicate");
+      const receipts = await testSql<
+        Array<{ idempotency_key: string }>
+      >`SELECT idempotency_key FROM supporter_webhook_events WHERE payload_hash = ${payloadHash}`;
+      expect(receipts).toHaveLength(1);
+    } finally {
+      await testSql`DELETE FROM supporter_webhook_events WHERE payload_hash = ${payloadHash}`;
+    }
   });
 
   it("stores webhook idempotency rows and rejects duplicate fallback payload deliveries", async () => {

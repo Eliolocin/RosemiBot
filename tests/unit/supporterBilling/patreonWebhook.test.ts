@@ -348,6 +348,18 @@ describe("Patreon webhook handling", () => {
     expect([...webhookRepository.rows.values()][0].patreon_event_id).toBeNull();
   });
 
+  it("keys both receipt paths by event type and payload hash so schema upgrades keep deduplicating", async () => {
+    const { webhookRepository, handle } = setup();
+    const rawBody = encodeJsonPayload(makeMemberPayload());
+    expect((await handle(rawBody, signedHeaders(rawBody, "members:update"))).status).toBe("processed");
+    const malformed = Buffer.from("{invalid");
+    expect((await handle(malformed, signedHeaders(malformed, "members:update"))).statusCode).toBe(400);
+    const receipts = [...webhookRepository.rows.values()];
+    expect([...webhookRepository.rows.keys()]).toEqual(
+      receipts.map((receipt) => `payload:${receipt.event_type}:${receipt.payload_hash}`),
+    );
+  });
+
   it("does not revive a failed old receipt after newer authoritative state deactivates membership", async () => {
     const { memory, options, handle } = setup();
     const old = encodeJsonPayload(makeMemberPayload());
