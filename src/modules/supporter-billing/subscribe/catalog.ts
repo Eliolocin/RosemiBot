@@ -4,6 +4,7 @@ import { parseLocale } from "@/utils/discord/panelRouteTokens";
 
 export const SUBSCRIPTION_NAMESPACE = "subscription";
 export const SUBSCRIPTION_VERSION = "v1";
+export const SPONSOR_CURRENT_SERVER_VALUE = "sponsor-current";
 const subscriptionOriginSchema = z.enum(["account", "server", "sponsor", "personal", "setup"]);
 export type SubscriptionOrigin = z.infer<typeof subscriptionOriginSchema>;
 const actionSchema = z.enum([

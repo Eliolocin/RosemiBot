@@ -16,6 +16,7 @@ import type { SubscribePanelState } from "@/modules/supporter-billing/subscribe/
 import type { SubscriptionAllowance } from "@/modules/supporter-billing/subscribe/usage";
 import {
   buildSubscriptionRouteId,
+  SPONSOR_CURRENT_SERVER_VALUE,
   type SubscriptionAction,
   type SubscriptionRoute,
 } from "@/modules/supporter-billing/subscribe/catalog";
@@ -55,6 +56,7 @@ export interface SubscriptionPanelInput {
   receipt?: PanelReceipt;
   resolveServerLabel?: (id: string) => string | undefined;
   removal?: { serverLabel: string; ownedByViewer: boolean };
+  currentServerSponsored?: boolean;
 }
 
 function text(content: string): ComponentInContainerData {
@@ -78,6 +80,23 @@ function button(
 
 function actions(...buttons: ButtonComponentData[]): ComponentInContainerData {
   return { type: ComponentType.ActionRow, components: buttons };
+}
+
+function serverSponsorshipAction(input: SubscriptionPanelInput): ComponentInContainerData[] {
+  if (input.currentServerSponsored === undefined || input.state.kind === "error") return [];
+  return [
+    actions({
+      ...button(
+        input,
+        input.state.kind === "active" ? "activate" : "onboard",
+        input.currentServerSponsored
+          ? "commands.subscription.server_already_sponsored"
+          : "commands.subscription.sponsor_this_server",
+        { origin: "sponsor" },
+      ),
+      disabled: input.currentServerSponsored,
+    }),
+  ];
 }
 
 function external(locale: string, key: string, url: string): ButtonComponentData {
@@ -200,6 +219,7 @@ function onboarding(input: SubscriptionPanelInput): ComponentInContainerData[] {
     } else {
       components.push(actions(button(input, "overview", "commands.subscription.view"), upgrade));
     }
+    components.push(...serverSponsorshipAction(input));
   }
   return components;
 }
@@ -270,6 +290,7 @@ function overview(input: SubscriptionPanelInput): ComponentInContainerData[] {
         external(locale, "commands.subscription.manage_patreon", input.config.patreon.manageUrl),
       ),
     );
+  components.push(...serverSponsorshipAction(input));
   return components;
 }
 
@@ -277,18 +298,22 @@ function servers(input: SubscriptionPanelInput): ComponentInContainerData[] {
   const { route, state } = input;
   const locale = route.locale;
   if (state.kind === "error" || state.kind === "unlinked") return overview(input);
-  if (state.sponsoredServers.length === 0)
+  const canSponsorCurrent = input.currentServerSponsored === false;
+  if (state.sponsoredServers.length === 0 && !canSponsorCurrent)
     return [
       text(
         `### ${localizer(locale, "commands.subscription.servers")}\n${localizer(locale, "commands.subscription.no_servers")}`,
       ),
+      ...serverSponsorshipAction(input),
     ];
   const selected =
     state.sponsoredServers.find((server) => server.sponsorshipId === route.selection) ?? state.sponsoredServers[0];
-  const selection = resolveRangeSelection(state.sponsoredServers, route.page, 25);
+  const selection = resolveRangeSelection(state.sponsoredServers, route.page, {
+    reservedOptions: canSponsorCurrent ? 1 : 0,
+  });
   const components: ComponentInContainerData[] = [
     text(
-      `### ${localizer(locale, "commands.subscription.servers")}\n${localizer(locale, "commands.subscription.servers_description")}`,
+      `### ${localizer(locale, "commands.subscription.servers")}\n${localizer(locale, state.sponsoredServers.length === 0 ? "commands.subscription.no_servers" : "commands.subscription.servers_description")}`,
     ),
     {
       type: ComponentType.ActionRow,
@@ -297,11 +322,22 @@ function servers(input: SubscriptionPanelInput): ComponentInContainerData[] {
           type: ComponentType.StringSelect,
           customId: buildSubscriptionRouteId({ ...route, action: "server-select" }),
           placeholder: localizer(locale, "commands.subscription.server_placeholder"),
-          options: selection.visibleItems.map((server) => ({
-            label: safeSelectOptionText(server.label, 100),
-            value: String(server.sponsorshipId),
-            default: server.sponsorshipId === selected?.sponsorshipId,
-          })),
+          options: [
+            ...(canSponsorCurrent
+              ? [
+                  {
+                    label: localizer(locale, "commands.subscription.sponsor_current_server"),
+                    value: SPONSOR_CURRENT_SERVER_VALUE,
+                    default: false,
+                  },
+                ]
+              : []),
+            ...selection.visibleItems.map((server) => ({
+              label: safeSelectOptionText(server.label, 100),
+              value: String(server.sponsorshipId),
+              default: server.sponsorshipId === selected?.sponsorshipId,
+            })),
+          ],
         },
       ],
     },

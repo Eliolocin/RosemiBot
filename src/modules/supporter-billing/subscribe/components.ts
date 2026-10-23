@@ -25,6 +25,7 @@ import { buildSubscribePanel, type SubscriptionPanelInput } from "@/modules/supp
 import {
   SUBSCRIPTION_NAMESPACE,
   SUBSCRIPTION_VERSION,
+  SPONSOR_CURRENT_SERVER_VALUE,
   parseSubscriptionRoute,
   type SubscriptionRoute,
   type SubscriptionOrigin,
@@ -65,6 +66,18 @@ async function loadSubscriptionPanelInput(
     avatarUrl: interaction.user.displayAvatarURL(),
     resolveServerLabel: (id) => interaction.client.guilds.cache.get(id)?.name,
   };
+  if (
+    ["overview", "servers", "onboard", "continue"].includes(route.action) &&
+    (route.origin === "account" || route.origin === "server") &&
+    managesServer(interaction) &&
+    interaction.guildId
+  ) {
+    const server = await getCachedTomoriState(interaction.guildId);
+    if (server)
+      input.currentServerSponsored = !!(await supporterSponsorshipRepository.loadActiveSponsorshipForServer(
+        server.server_id,
+      ));
+  }
   if (route.action === "remove" || route.action === "confirm") {
     const sponsorship = await supporterSponsorshipRepository.loadActiveSponsorshipById(route.selection);
     if (sponsorship) {
@@ -311,6 +324,7 @@ function resolveRequestedView(route: SubscriptionRoute, interaction: GlobalRouta
   if (interaction.isStringSelectMenu()) {
     const [value] = interaction.values;
     if (route.action === "server-select") {
+      if (value === SPONSOR_CURRENT_SERVER_VALUE) return { ...route, action: "onboard", origin: "sponsor" };
       const selection = Number(value);
       if (!Number.isSafeInteger(selection) || selection <= 0) throw new Error("Invalid sponsorship selection");
       return { ...route, action: "servers", selection };
@@ -369,6 +383,7 @@ export function createSubscriptionInteractionRoute(
           await dependencies.activatePersonal(interaction);
         if (
           route.action === "activate" ||
+          (route.action === "onboard" && route.origin === "sponsor" && refreshed.state.kind === "active") ||
           (route.action === "continue" && route.origin === "sponsor" && refreshed.state.kind === "active")
         ) {
           await dependencies.activateServer(interaction);

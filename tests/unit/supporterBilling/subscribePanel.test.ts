@@ -16,6 +16,7 @@ import { loadSubscribePanelState } from "@/modules/supporter-billing/subscribe/s
 import type { SubscribePanelDependencies } from "@/modules/supporter-billing/subscribe/types";
 import {
   buildSubscriptionRouteId,
+  SPONSOR_CURRENT_SERVER_VALUE,
   parseSubscriptionRoute,
   type SubscriptionRoute,
 } from "@/modules/supporter-billing/subscribe/catalog";
@@ -27,7 +28,7 @@ import {
   type SubscriptionRouteDependencies,
 } from "@/modules/supporter-billing/subscribe/components";
 import { parseInteractionRoute, type GlobalRoutableInteraction } from "@/utils/discord/interactions/routeRegistry";
-import { initializeLocalizer } from "@/utils/text/localizer";
+import { hasLocaleKey, initializeLocalizer } from "@/utils/text/localizer";
 import { createRouteInteraction } from "../../helpers/routeInteraction";
 import { collectTextDisplays, expectSafePanelPayload } from "../../helpers/panelLimits";
 import { expectForEveryLocale, localizedCopy, localizedProse, RUNTIME_LOCALES } from "../../helpers/localeCases";
@@ -222,6 +223,60 @@ async function dispatch(
 beforeAll(initializeLocalizer);
 
 describe("subscription panels", () => {
+  it("offers current-server sponsorship only in eligible views and keeps dropdowns within Discord limits", () => {
+    expectForEveryLocale((locale) => {
+      for (const sponsored of [undefined, false, true]) {
+        const fixture = input();
+        fixture.route.locale = locale;
+        fixture.currentServerSponsored = sponsored;
+        const key = sponsored ? "server_already_sponsored" : "sponsor_this_server";
+        const copyLocale = hasLocaleKey(locale, `commands.subscription.${key}`) ? locale : "en-US";
+        const label = localizedCopy(copyLocale, `commands.subscription.${key}`);
+        const control = flatten(buildSubscribePanel(fixture)).find((part) => part.label === label);
+        expect(Boolean(control)).toBe(sponsored !== undefined);
+        if (control) expect(control.disabled).toBe(sponsored);
+        for (const count of [0, 24, 25]) {
+          const servers = input("servers", count);
+          servers.route.locale = locale;
+          servers.currentServerSponsored = sponsored;
+          const payload = buildSubscribePanel(servers);
+          const parts = flatten(payload);
+          expect(parts.some((part) => part.value === SPONSOR_CURRENT_SERVER_VALUE)).toBe(sponsored === false);
+          for (const part of parts)
+            if (Array.isArray(part.options)) expect(part.options.length).toBeLessThanOrEqual(25);
+          expectSafePanelPayload(payload as ComponentsV2MessagePayload, locale);
+        }
+      }
+    });
+  });
+
+  it("uses the existing sponsorship activation and onboarding from the current-server dropdown option", async () => {
+    let activations = 0;
+    let returned = 0;
+    for (const active of [true, false]) {
+      await dispatch(
+        input("server-select").route,
+        {
+          load: async (_interaction, route) => ({
+            ...input(),
+            route,
+            ...(active ? {} : { state: { kind: "unlinked" as const } }),
+          }),
+          activateServer: async () => {
+            activations++;
+          },
+          back: async () => {
+            returned++;
+          },
+          link: async () => "https://www.patreon.com/oauth2/authorize?state=example",
+        },
+        { values: [SPONSOR_CURRENT_SERVER_VALUE] },
+      );
+      expect(activations).toBe(1);
+      expect(returned).toBe(1);
+    }
+  });
+
   it("shows the paid-through date instead of renewal after cancellation in every locale", () => {
     expectForEveryLocale((locale) => {
       for (const remaining of [0.68, 0]) {

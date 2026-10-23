@@ -7,6 +7,10 @@ export default {
     request: {
       title: `サブスクリプションの利用`,
       allowance_title: `利用枠が不足しています`,
+      minimum_balance_title: `モデルの利用枠要件`,
+      model_unknown: `このモデル`,
+      minimum_balance: `{model}で画像や動画の生成を開始するには、より多くの利用枠が残っている必要があります。別のモデルでは残りの利用枠を使用できます。{config}でモデルを変更してください。{fallback}`,
+      minimum_balance_reason: `{model}で画像や動画の生成を開始するには、より多くの利用枠が残っている必要があります。{config}で別のモデルを選択すると、残りの利用枠を使用できます。`,
       scope: {
         personal: `あなたのサブスクリプション`,
         server: `このサーバーのサブスクリプション`,
