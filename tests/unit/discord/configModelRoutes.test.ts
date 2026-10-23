@@ -1,6 +1,7 @@
 import { useEnvSandbox } from "../../helpers/env";
 import { createPersona, createLlmRow } from "../../helpers/fixtures";
 import { supporterSponsorshipRepository, supporterServerSponsorshipSchema } from "@/modules/supporter-billing/db";
+import * as supporterFunding from "@/modules/supporter-billing/runtime/funding";
 /**
  * Route coverage for the `/config` Models surface.
  *
@@ -14,7 +15,9 @@ import type { Client } from "discord.js";
 import type { SavedProviderConfigRow, TomoriState } from "@/types/db/schema";
 import type { PanelReadStatus } from "@/types/discord/panel";
 import * as tomoriStateCache from "@/utils/cache/tomoriStateCache";
+import * as openrouterSpeechModelCache from "@/utils/cache/openrouterSpeechModelCache";
 import { configRepository, llmModelRepo, llmOverrideRepo, llmProviderRepo } from "@/utils/db/repositories";
+import * as speechRepository from "@/utils/db/repositories/SpeechRepository";
 import * as ragAvailability from "@/utils/db/ragAvailability";
 import { ragRepository, serverMemoryRepository } from "@/utils/db/repositories";
 import * as credentialResolver from "@/utils/provider/credentialResolver";
@@ -93,6 +96,7 @@ function makeState(overrides: Record<string, unknown> = {}): TomoriState {
     vision_llm: null,
     fallback_chain: [],
     config: {
+      subscription_capabilities: [],
       speech_design_endpoint_id: null,
       speech_clone_endpoint_id: null,
       speech_design_model_id: null,
@@ -1457,6 +1461,100 @@ describe("config models capability writes", () => {
     }
   });
 
+  it("stores the selected speech payer and treats a payer change on the same model as a new selection", async () => {
+    process.env.RUN_ENV = "production";
+    process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
+    const saved = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([
+      makeSavedProvider("supporter", { api_key: null }),
+      makeSavedProvider("openrouter", { api_key: "synthetic-byok-key" }),
+    ]);
+    const endpoints = spyOn(llmProviderRepo, "loadCustomEndpointsForServer").mockResolvedValue([]);
+    const speechModels = spyOn(llmModelRepo, "loadAvailableSpeechModels").mockResolvedValue([
+      {
+        speech_model_id: 5,
+        provider: "openrouter",
+        codename: "fish-audio/s2.1-pro",
+        voice_mode: "clone",
+        descriptions: null,
+      },
+      {
+        speech_model_id: 6,
+        provider: "openrouter",
+        codename: "bytedance-seed/seed-audio-1-0",
+        voice_mode: "design",
+        descriptions: null,
+      },
+    ] as never);
+    const catalog = spyOn(openrouterSpeechModelCache, "validateOpenRouterSpeechModel").mockResolvedValue(true);
+    const write = spyOn(speechRepository, "setHostedSpeechSelection").mockResolvedValue(true);
+    try {
+      const modes = [
+        { capability: "tts-clone" as const, mode: "clone" as const, marker: "speech_clone" as const, modelId: 5 },
+        { capability: "tts-design" as const, mode: "design" as const, marker: "speech_design" as const, modelId: 6 },
+      ];
+      for (const { capability, mode, marker, modelId } of modes) {
+        write.mockClear();
+        const withPayer = (
+          capabilities: TomoriState["config"]["subscription_capabilities"],
+          selectedId: number | null,
+        ) =>
+          makeState({
+            config: {
+              subscription_capabilities: capabilities,
+              ...(mode === "design" ? { speech_design_model_id: selectedId } : { speech_clone_model_id: selectedId }),
+            },
+          });
+        const select = (state: TomoriState, provider: string) =>
+          configModelOperations.setCapabilityModel({
+            tomoriState: state,
+            serverDiscId: "guild-1",
+            capability,
+            provider,
+            modelId,
+          });
+
+        expect(await select(withPayer([], null), "supporter")).toMatchObject({ status: "success" });
+        expect(write).toHaveBeenLastCalledWith(
+          { kind: "server", ownerId: 9 },
+          modelId,
+          mode,
+          false,
+          undefined,
+          "supporter",
+        );
+
+        expect(await select(withPayer([marker], modelId), "supporter")).toMatchObject({ status: "already-selected" });
+        expect(write).toHaveBeenCalledTimes(1);
+
+        expect(await select(withPayer([marker], modelId), "openrouter")).toMatchObject({ status: "success" });
+        expect(write).toHaveBeenLastCalledWith(
+          { kind: "server", ownerId: 9 },
+          modelId,
+          mode,
+          false,
+          undefined,
+          "openrouter",
+        );
+
+        expect(await select(withPayer([], modelId), "supporter")).toMatchObject({ status: "success" });
+        expect(write).toHaveBeenLastCalledWith(
+          { kind: "server", ownerId: 9 },
+          modelId,
+          mode,
+          false,
+          undefined,
+          "supporter",
+        );
+      }
+    } finally {
+      saved.mockRestore();
+      endpoints.mockRestore();
+      speechModels.mockRestore();
+      catalog.mockRestore();
+      write.mockRestore();
+    }
+  });
+
   it("writes the vision column and invalidates the workspace cache after success", async () => {
     const providers = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([
       makeSavedProvider("google"),
@@ -2116,7 +2214,7 @@ describe("config models fallbacks and randomizer", () => {
     process.env.RUN_ENV = "production";
     process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
     const model = createLlmRow({ llm_id: 101, llm_provider: "openrouter", llm_codename: "synthetic/shared-model" });
-    const state = createPersona({ llm: model, config: { llm_id: 101 } });
+    const state = createPersona({ llm: model, config: { llm_id: 101, subscription_capabilities: ["text"] } });
     const rows = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([
       makeSavedProvider("openrouter"),
       makeSavedProvider("supporter", { api_key: null }),
@@ -2164,6 +2262,62 @@ describe("config models fallbacks and randomizer", () => {
           slotValues: [model.llm_codename],
         }),
       ).toMatchObject({ status: "primary-conflict" });
+      expect(sponsorship).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of [rows, endpoints, models, write, sponsorship]) spy.mockRestore();
+    }
+  });
+
+  it("keeps a subscription fallback of a BYOK primary and does not consult the sponsorship", async () => {
+    process.env.RUN_ENV = "production";
+    process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
+    const model = createLlmRow({ llm_id: 101, llm_provider: "openrouter", llm_codename: "synthetic/shared-model" });
+    const state = createPersona({ llm: model, config: { llm_id: 101 } });
+    const subscriptionFallback = { type: "llm" as const, id: 101, credentialProvider: "supporter" as const };
+    const editedState = createPersona({
+      llm: model,
+      config: { llm_id: 101, fallback_model_refs: [subscriptionFallback] },
+    });
+    const rows = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([
+      makeSavedProvider("openrouter"),
+      makeSavedProvider("supporter", { api_key: null }),
+    ]);
+    const endpoints = spyOn(llmProviderRepo, "loadCustomEndpointsForServer").mockResolvedValue([]);
+    const models = spyOn(llmModelRepo, "loadAvailableModelsForProvider").mockResolvedValue([model]);
+    const write = spyOn(llmOverrideRepo, "setFallbackModelRefs").mockResolvedValue(true);
+    const sponsorship = spyOn(supporterSponsorshipRepository, "loadActiveSponsorshipForServer").mockResolvedValue(
+      supporterServerSponsorshipSchema.parse({
+        sponsorship_id: 1,
+        server_id: state.server_id,
+        server_disc_id: "synthetic-server",
+        sponsor_identity_id: 2,
+        status: "active",
+        created_by_disc_id: "synthetic-user",
+        created_at: new Date(),
+        updated_at: new Date(),
+        revoked_at: null,
+      }),
+    );
+    try {
+      expect(
+        await configModelOperations.setFallbackChain({
+          tomoriState: editedState,
+          serverDiscId: "synthetic-server",
+          provider: "openrouter",
+          slotValues: ["", "", "", "", ""],
+        }),
+      ).toMatchObject({ status: "no-changes" });
+      expect(write).not.toHaveBeenCalled();
+
+      expect(
+        await configModelOperations.setFallbackChain({
+          tomoriState: state,
+          serverDiscId: "synthetic-server",
+          provider: "supporter",
+          slotValues: [model.llm_codename],
+        }),
+      ).toMatchObject({ status: "success", refs: [subscriptionFallback] });
+      expect(sponsorship).not.toHaveBeenCalled();
     } finally {
       for (const spy of [rows, endpoints, models, write, sponsorship]) spy.mockRestore();
     }
@@ -2446,6 +2600,54 @@ describe("config models image generation", () => {
 });
 
 describe("config models view loaders", () => {
+  useEnvSandbox(["RUN_ENV", "TOMORI_SUPPORTER_BILLING_ENABLED"]);
+
+  it("labels an OpenRouter assignment Subscription only when the stored marker names that capability", async () => {
+    process.env.RUN_ENV = "production";
+    process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
+    const providers = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([
+      makeSavedProvider("openrouter"),
+      makeSavedProvider("supporter", { api_key: null }),
+    ]);
+    const decisions = spyOn(llmModelRepo, "loadDecisionModelOptions").mockResolvedValue([]);
+    const speechEndpoints = spyOn(llmProviderRepo, "loadCustomEndpointsForServer").mockResolvedValue([]);
+    const speechModels = spyOn(llmModelRepo, "loadAvailableSpeechModels").mockResolvedValue([]);
+    const channelOverrides = spyOn(llmOverrideRepo, "getAllChannelLlmOverridesForServer").mockResolvedValue([]);
+    const personas = spyOn(tomoriStateCache, "getCachedAllPersonas").mockResolvedValue([] as unknown as TomoriState[]);
+    const funding = spyOn(supporterFunding, "resolveSupporterFunding").mockResolvedValue({
+      ok: true,
+      tier: { defaultModelByCapability: { text: "synthetic/shared-model" } },
+    } as never);
+    try {
+      const llm = createLlmRow({
+        llm_id: 101,
+        llm_provider: "openrouter",
+        llm_codename: "synthetic/shared-model",
+        sees_images: false,
+      });
+      const byokView = await loadConfigSwitchModelsView(
+        makeState({ llm }),
+        "guild-1",
+        undefined,
+        undefined,
+        async () => [],
+      );
+      expect(byokView.slots.find((slot) => slot.capability === "text")?.currentProvider).toBe("openrouter");
+
+      const subscribedView = await loadConfigSwitchModelsView(
+        makeState({ llm, config: { subscription_capabilities: ["text"] } }),
+        "guild-1",
+        undefined,
+        undefined,
+        async () => [],
+      );
+      expect(subscribedView.slots.find((slot) => slot.capability === "text")?.currentProvider).toBe("supporter");
+    } finally {
+      for (const spy of [providers, decisions, speechEndpoints, speechModels, channelOverrides, personas, funding])
+        spy.mockRestore();
+    }
+  });
+
   it("reports the eligible provider list and every Text override for the Switch page", async () => {
     const providers = spyOn(llmProviderRepo, "loadSavedProviderConfigs").mockResolvedValue([
       makeSavedProvider("google"),

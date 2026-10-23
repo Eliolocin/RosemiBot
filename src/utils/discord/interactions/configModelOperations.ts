@@ -17,7 +17,6 @@ import type {
 import { DEFAULT_THINKING_LEVEL, isThinkingLevelValue, type ThinkingLevelValue } from "@/constants/thinkingLevels";
 import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
 import { resolveEnvironment } from "@/types/config";
-import { supporterSponsorshipRepository } from "@/modules/supporter-billing/db";
 import {
   LOGIT_BIAS_MAX,
   LOGIT_BIAS_MIN,
@@ -533,7 +532,11 @@ async function setServerSpeechTarget(
     return result.status === "already-active" ? { status: "already-selected", modelName: choice.name } : result;
   }
 
-  if (choice.id === currentModelIdForCapability(state, capability, eligible)) {
+  if (
+    choice.id === currentModelIdForCapability(state, capability, eligible) &&
+    state.config.subscription_capabilities.includes(mode === "design" ? "speech_design" : "speech_clone") ===
+      (eligible === SUPPORTER_PROVIDER_VALUE)
+  ) {
     return { status: "already-selected", modelName: choice.name };
   }
   // The OpenRouter catalog can drop a seeded model, so the live listing is rechecked before the write.
@@ -542,7 +545,14 @@ async function setServerSpeechTarget(
     !(await validateOpenRouterSpeechModel(choice.name, mode))
   )
     return { status: "not-found" };
-  return (await setHostedSpeechSelection({ kind: "server", ownerId: state.server_id }, choice.id, mode))
+  return (await setHostedSpeechSelection(
+    { kind: "server", ownerId: state.server_id },
+    choice.id,
+    mode,
+    false,
+    undefined,
+    eligible,
+  ))
     ? { status: "success", modelName: choice.name, reembedded: false }
     : { status: "write-failed" };
 }
@@ -1116,9 +1126,7 @@ export const configModelOperations: ConfigModelOperations = {
     // is worth an error; an inherited duplicate is dropped silently, or every submission would be
     // rejected until the user found and cleared an untouched slot.
     const subscriptionPrimary =
-      tomoriState.llm.llm_provider === "openrouter" &&
-      isSupporterBillingEnabled(resolveEnvironment()) &&
-      (await supporterSponsorshipRepository.loadActiveSponsorshipForServer(tomoriState.server_id));
+      tomoriState.llm.llm_provider === "openrouter" && tomoriState.config.subscription_capabilities.includes("text");
     const primaryKeys = getPrimaryFallbackRefKeys(
       tomoriState.config.llm_id,
       allEndpoints,

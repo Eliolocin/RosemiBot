@@ -1,6 +1,4 @@
-import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
-import { resolveSupporterFunding } from "@/modules/supporter-billing/runtime/funding";
-import { resolveEnvironment } from "@/types/config";
+import { SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
 import { createHash } from "node:crypto";
 import type {
   CustomEndpointApiStyle,
@@ -8,6 +6,7 @@ import type {
   FallbackEntry,
   FallbackModelRef,
   NaiPresetRow,
+  SubscriptionCapability,
   TomoriState,
 } from "@/types/db/schema";
 import { configRepository, llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
@@ -194,6 +193,20 @@ async function resolveSlotAssignment(
   }
 }
 
+function subscriptionCapabilityForSlot(capability: ConfigCatalogModelCapability): SubscriptionCapability | null {
+  switch (capability) {
+    case "tts-design":
+      return "speech_design";
+    case "tts-clone":
+      return "speech_clone";
+    case "nai-image":
+    case "decision":
+      return null;
+    default:
+      return capability;
+  }
+}
+
 /**
  * Builds the Switch page view for one workspace.
  *
@@ -208,9 +221,6 @@ export async function loadConfigSwitchModelsView(
   endpointPage: ConfigEndpointPage | undefined = undefined,
   loadCapabilityEndpoints: LoadConfigCapabilityEndpoints = loadConfigCapabilityEndpoints,
 ): Promise<ConfigSwitchModelsView> {
-  const funding = isSupporterBillingEnabled(resolveEnvironment())
-    ? await resolveSupporterFunding({ scope: { kind: "server", serverId: state.server_id }, capability: "text" })
-    : null;
   const slots = await Promise.all(
     CONFIG_MODEL_CAPABILITY_ORDER.filter(isConfigCatalogModelCapability).map(async (capability) => {
       const expanded = providerPage?.capability === capability ? (providerPage.provider ?? null) : null;
@@ -222,20 +232,14 @@ export async function loadConfigSwitchModelsView(
         // collapsed slots never read would put the whole model table behind every repaint.
         expanded ? loadConfigModelChoices(state.server_id, capability, expanded).then((rows) => rows.length) : 0,
       ]);
-      const fundingCapability =
-        capability === "tts-design" || capability === "tts-clone"
-          ? "voice"
-          : capability === "nai-image"
-            ? null
-            : capability;
+      const subscriptionCapability = subscriptionCapabilityForSlot(capability);
       return {
         capability,
         currentModelName: assignment.modelName,
         currentProvider:
           assignment.provider === "openrouter" &&
-          funding?.ok &&
-          fundingCapability &&
-          funding.tier.defaultModelByCapability[fundingCapability]
+          subscriptionCapability !== null &&
+          state.config.subscription_capabilities.includes(subscriptionCapability)
             ? SUPPORTER_PROVIDER_VALUE
             : assignment.provider,
         eligibleProviders: providers,
