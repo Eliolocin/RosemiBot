@@ -7,6 +7,7 @@ import {
   type SelectMenuComponentOptionData,
   type TopLevelComponentData,
 } from "discord.js";
+import type { TomoriState } from "@/types/db/schema";
 import type { PanelReceipt } from "@/types/discord/panel";
 import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
 import {
@@ -27,13 +28,25 @@ import {
   type IdleNudgeBlocker,
   type NudgeToolName,
 } from "@/modules/natural-nudges/runtime/idleNudges";
-import { buildNudgeStudioRouteId, nudgeStudioFieldId } from "@/modules/natural-nudges/discord/studioCatalog";
+import {
+  buildNudgeStudioRouteId,
+  buildNudgeStudioRouteSegments,
+  NUDGE_STUDIO_ROUTE_NAMESPACE,
+  NUDGE_STUDIO_ROUTE_VERSION,
+  nudgeStudioFieldId,
+} from "@/modules/natural-nudges/discord/studioCatalog";
 import type { NudgeStudioView, StudioEntry } from "@/modules/natural-nudges/discord/studioOperations";
+import { resolveRangeSelection } from "@/utils/discord/interactions/panelController";
 import type { RawModalPayload } from "@/utils/discord/ui/configModals";
-import { DISCORD_CHECKBOX_GROUP_OPTIONS_MAX } from "@/utils/discord/ui/componentsV2Limits";
+import {
+  DISCORD_CHECKBOX_GROUP_OPTIONS_MAX,
+  DISCORD_MODAL_COMPONENTS_MAX,
+  DISCORD_SELECT_OPTIONS_MAX,
+} from "@/utils/discord/ui/componentsV2Limits";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import {
   buildCategoryButtonRow,
+  buildPaginationRow,
   buildPanelContainer,
   buildPanelReceiptContainer,
   withLinePrefix,
@@ -52,6 +65,8 @@ const OPTION_TEXT_MAX = 100;
 const LIST_TITLE_MAX = 40;
 /** Leaves room for the headings, tips, and footer inside Discord's 4,000-character message budget. */
 const LIST_TEXT_BUDGET = 2400;
+/** A row lists this many scoped personas before folding the rest into a count, so one row stays one line. */
+const SCOPE_NAMES_SHOWN = 3;
 
 type CategoryKeys = Record<NaturalNudgeCategory, string>;
 
@@ -160,30 +175,52 @@ function prerequisiteLabel(locale: string, id: string): string {
 }
 
 function blockerLabel(locale: string, blocker: IdleNudgeBlocker): string {
-  return blocker.kind === "two_personas"
-    ? localizer(locale, "commands.nudge-studio.blocker_two_personas")
-    : localizer(locale, "commands.nudge-studio.blocker_tool", { tool: localizer(locale, TOOL_KEYS[blocker.tool]) });
+  if (blocker.kind === "tool")
+    return localizer(locale, "commands.nudge-studio.blocker_tool", {
+      tool: localizer(locale, TOOL_KEYS[blocker.tool]),
+    });
+  return localizer(
+    locale,
+    blocker.kind === "two_personas"
+      ? "commands.nudge-studio.blocker_two_personas"
+      : "commands.nudge-studio.blocker_no_persona",
+  );
 }
 
 function studioEntryTitle(locale: string, entry: StudioEntry): string {
   return entry.definition.titleKey ? localizer(locale, entry.definition.titleKey) : (entry.definition.title ?? "");
 }
 
-function entryRow(locale: string, entry: StudioEntry): string {
+/** Deleted personas stay in a stored scope, so they are skipped here and a scope with none left reads as null. */
+function scopeNames(
+  locale: string,
+  scope: readonly number[] | undefined,
+  personaNames: ReadonlyMap<number, string>,
+): string | null {
+  const names = (scope ?? []).flatMap((personaId) => personaNames.get(personaId) ?? []);
+  if (names.length === 0) return null;
+  const shown = names.slice(0, SCOPE_NAMES_SHOWN);
+  const hidden = names.length - shown.length;
+  const more = hidden > 0 ? [localizer(locale, "commands.nudge-studio.note_scope_more", { count: hidden })] : [];
+  return new Intl.ListFormat(locale, { type: "conjunction" }).format([...shown, ...more]);
+}
+
+function entryRow(locale: string, entry: StudioEntry, personaNames: ReadonlyMap<number, string>): string {
   const circle = !entry.enabled ? "🔴" : entry.blocker ? "🟡" : "🟢";
-  const base = entry.custom
+  const title = entry.custom
     ? `*${escapeDiscordMarkdown(truncateDiscordText(studioEntryTitle(locale, entry), LIST_TITLE_MAX))}*`
     : escapeDiscordMarkdown(studioEntryTitle(locale, entry));
-  const reason = entry.blocker ? blockerLabel(locale, entry.blocker) : null;
-  const title =
-    entry.custom && reason
-      ? localizer(locale, "commands.nudge-studio.row_custom_blocked", { title: base, reason })
-      : entry.custom
-        ? localizer(locale, "commands.nudge-studio.row_custom", { title: base })
-        : reason
-          ? localizer(locale, "commands.nudge-studio.row_blocked", { title: base, reason })
-          : base;
-  return `${circle} ${title}`;
+  const personas = scopeNames(locale, entry.scope, personaNames);
+  const notes = [
+    entry.custom ? localizer(locale, "commands.nudge-studio.note_custom") : null,
+    personas
+      ? localizer(locale, "commands.nudge-studio.note_scope", { personas: escapeDiscordMarkdown(personas) })
+      : null,
+    entry.blocker ? blockerLabel(locale, entry.blocker) : null,
+  ].filter((note): note is string => note !== null);
+  if (notes.length === 0) return `${circle} ${title}`;
+  const joined = new Intl.ListFormat(locale, { type: "unit", style: "short" }).format(notes);
+  return `${circle} ${localizer(locale, "commands.nudge-studio.row_notes", { title, notes: joined })}`;
 }
 
 function text(content: string): ComponentInContainerData {
@@ -193,7 +230,56 @@ function text(content: string): ComponentInContainerData {
 export interface NudgeStudioRenderInput {
   locale: string;
   view: NudgeStudioView;
+  /** Page of the Toggle Availability menu, clamped to the pages the category has. */
+  page?: number;
   receipt?: PanelReceipt;
+}
+
+function availabilityDescription(locale: string, entry: StudioEntry, personaNames: ReadonlyMap<number, string>) {
+  if (!entry.enabled) return localizer(locale, "commands.nudge-studio.toggle_off");
+  if (!entry.scope) return localizer(locale, "commands.nudge-studio.toggle_all_personas");
+  return scopeNames(locale, entry.scope, personaNames) ?? localizer(locale, "commands.nudge-studio.blocker_no_persona");
+}
+
+function buildAvailabilityControls(
+  locale: string,
+  view: NudgeStudioView,
+  requestedPage: number,
+): ComponentInContainerData[] {
+  const { category } = view;
+  const selection = resolveRangeSelection(view.entries, requestedPage, DISCORD_SELECT_OPTIONS_MAX);
+  const pagination = buildPaginationRow({
+    locale,
+    rangeIndex: selection.rangeIndex,
+    rangeCount: selection.rangeCount,
+    namespace: NUDGE_STUDIO_ROUTE_NAMESPACE,
+    version: NUDGE_STUDIO_ROUTE_VERSION,
+    buildSegments: { page: (page) => buildNudgeStudioRouteSegments({ action: "view", locale, category, page }) },
+  });
+  return [
+    {
+      type: ComponentType.ActionRow,
+      components: [
+        {
+          type: ComponentType.StringSelect,
+          customId: buildNudgeStudioRouteId({ action: "toggle-open", locale, category, page: selection.rangeIndex }),
+          placeholder: safeSelectOptionText(
+            localizer(locale, "commands.nudge-studio.toggle_placeholder"),
+            SELECT_PLACEHOLDER_MAX,
+          ),
+          options: selection.visibleItems.map((entry) => ({
+            label: safeSelectOptionText(studioEntryTitle(locale, entry), OPTION_TEXT_MAX),
+            description: safeSelectOptionText(
+              availabilityDescription(locale, entry, view.personaNames),
+              OPTION_TEXT_MAX,
+            ),
+            value: entry.definition.key,
+          })),
+        },
+      ],
+    },
+    ...(pagination ? [pagination] : []),
+  ];
 }
 
 export function buildNudgeStudioPayload(input: NudgeStudioRenderInput): {
@@ -204,7 +290,10 @@ export function buildNudgeStudioPayload(input: NudgeStudioRenderInput): {
   const { category } = view;
   const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
   const customs = view.entries.flatMap((entry) => (entry.custom ? [entry.custom] : []));
-  const list = buildTextPreview(view.entries.map((entry) => entryRow(locale, entry)).join("\n"), LIST_TEXT_BUDGET);
+  const list = buildTextPreview(
+    view.entries.map((entry) => entryRow(locale, entry, view.personaNames)).join("\n"),
+    LIST_TEXT_BUDGET,
+  );
   const listFooter = textPreviewFooterKey(list);
 
   const components: ComponentInContainerData[] = [
@@ -221,17 +310,7 @@ export function buildNudgeStudioPayload(input: NudgeStudioRenderInput): {
     text(
       `${withLinePrefix("> ", list.text)}${listFooter ? `\n-# ${t(listFooter, textPreviewFooterVars(list, locale))}` : ""}`,
     ),
-    {
-      type: ComponentType.ActionRow,
-      components: [
-        {
-          type: ComponentType.Button,
-          style: ButtonStyle.Secondary,
-          label: t("commands.nudge-studio.toggle_button"),
-          customId: buildNudgeStudioRouteId({ action: "toggle-open", locale, category }),
-        },
-      ],
-    },
+    ...buildAvailabilityControls(locale, view, input.page ?? 0),
     text(
       `### ${t(CUSTOM_TITLE_KEYS[category])}\n${t("commands.nudge-studio.custom_intro", {
         category: t(CATEGORY_KEYS[category]),
@@ -469,27 +548,35 @@ function buildChecklistModal(
   };
 }
 
-/** Checkbox options for Toggle Availability: every idle nudge in the category, checked when enabled. */
-export function availabilityOptions(locale: string, view: NudgeStudioView): ChecklistOption[] {
-  return view.entries.map((entry) => ({
-    value: entry.definition.key,
-    label: studioEntryTitle(locale, entry),
-    description: entry.definition.brief,
-    checked: entry.enabled,
-  }));
+/**
+ * Checkbox options for Toggle Availability: every persona, checked when it may use the idle nudge, so an
+ * idle nudge that is off opens with nothing checked. Personas past what one modal holds are left out, and
+ * the submit leaves unpresented personas as they are.
+ */
+export function availabilityOptions(personas: readonly TomoriState[], entry: StudioEntry): ChecklistOption[] {
+  return personas
+    .flatMap((persona) => (persona.persona_id ? [{ id: persona.persona_id, name: persona.persona_nickname }] : []))
+    .slice(0, DISCORD_MODAL_COMPONENTS_MAX * DISCORD_CHECKBOX_GROUP_OPTIONS_MAX)
+    .map(({ id, name }) => ({
+      value: String(id),
+      label: name,
+      checked: entry.enabled && (entry.scope?.includes(id) ?? true),
+    }));
 }
 
 export function buildAvailabilityModal(
   locale: string,
   category: NaturalNudgeCategory,
+  entry: StudioEntry,
+  page: number,
   nonce: string,
   options: readonly ChecklistOption[],
 ): RawModalPayload {
   return buildChecklistModal(
     locale,
-    buildNudgeStudioRouteId({ action: "toggle-submit", locale, category, nonce }),
+    buildNudgeStudioRouteId({ action: "toggle-submit", locale, category, key: entry.definition.key, page, nonce }),
     "commands.nudge-studio.toggle_modal_title",
-    localizer(locale, TITLE_KEYS[category]),
+    studioEntryTitle(locale, entry),
     "commands.nudge-studio.toggle_group_description",
     nonce,
     options,

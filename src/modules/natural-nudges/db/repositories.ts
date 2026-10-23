@@ -5,18 +5,23 @@ import { sql } from "@/utils/db/client";
 import { log } from "@/utils/misc/logger";
 import { NATURAL_NUDGE_FAILURE_STOP_THRESHOLD } from "@/modules/natural-nudges/runtime/tuning";
 import {
+  CUSTOM_IDLE_NUDGE_KEY_PREFIX,
+  customIdleNudgeKey,
   customIdleNudgeRowSchema,
   defaultServerNaturalNudgeConfig,
   DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
   enabledIdleNudgeServerSchema,
   fireRowSchema,
   personaNaturalNudgeConfigSchema,
+  personaScopeRowSchema,
   pingUserCandidateSchema,
   runtimeStateSchema,
   serverNaturalNudgeConfigSchema,
   type CustomIdleNudgeInput,
   type CustomIdleNudgeRow,
   type EnabledIdleNudgeServer,
+  type IdleNudgeAvailability,
+  type IdleNudgePersonaScopes,
   type NaturalNudgeFireRow,
   type NaturalNudgeInterest,
   type NaturalNudgeRuntimeState,
@@ -194,12 +199,18 @@ class NaturalNudgeRepository {
   /** Returns how many rows were removed, or null when the delete failed. */
   async deleteCustomIdleNudges(serverId: number, idleNudgeIds: readonly number[]): Promise<number | null> {
     try {
-      const rows = await sql`
-        DELETE FROM server_natural_nudge_custom_idle_nudges
-        WHERE server_id = ${serverId} AND custom_idle_nudge_id = ANY(${sql.array([...idleNudgeIds], "INT")})
-        RETURNING custom_idle_nudge_id
-      `;
-      return rows.length;
+      return await sql.transaction(async (tx) => {
+        const rows = await tx`
+          DELETE FROM server_natural_nudge_custom_idle_nudges
+          WHERE server_id = ${serverId} AND custom_idle_nudge_id = ANY(${sql.array([...idleNudgeIds], "INT")})
+          RETURNING custom_idle_nudge_id
+        `;
+        await tx`
+          DELETE FROM server_natural_nudge_persona_scopes
+          WHERE server_id = ${serverId} AND idle_nudge_key = ANY(${sql.array(idleNudgeIds.map(customIdleNudgeKey), "TEXT")})
+        `;
+        return rows.length;
+      });
     } catch (error) {
       await log.error("Natural Nudges: failed to remove custom idle nudges", error, {
         metadata: { serverId, idleNudgeIds },
@@ -208,32 +219,70 @@ class NaturalNudgeRepository {
     }
   }
 
-  /** Built-in and custom availability change together, so one modal submit cannot half-apply. */
+  /**
+   * The on/off switch and the persona scope change together, so one modal submit cannot half-apply.
+   * Turning an idle nudge off also drops its scope, so turning it back on starts from the personas checked then.
+   */
   async saveIdleNudgeAvailability(
     serverId: number,
-    disabledBuiltIns: readonly string[],
-    customEnabled: ReadonlyMap<number, boolean>,
+    idleNudgeKey: string,
+    customIdleNudgeId: number | null,
+    availability: IdleNudgeAvailability,
   ): Promise<boolean> {
     try {
       await sql.transaction(async (tx) => {
-        await this.saveServerConfigOrThrow(serverId, { disabled_builtin_idle_nudges: [...disabledBuiltIns] }, tx);
-        for (const [idleNudgeId, enabled] of customEnabled) {
+        if (customIdleNudgeId === null) {
+          const disabled = new Set((await this.loadServerConfig(serverId, tx)).disabled_builtin_idle_nudges);
+          if (availability.enabled) disabled.delete(idleNudgeKey);
+          else disabled.add(idleNudgeKey);
+          await this.saveServerConfigOrThrow(serverId, { disabled_builtin_idle_nudges: [...disabled] }, tx);
+        } else {
           await tx`
-            UPDATE server_natural_nudge_custom_idle_nudges SET enabled = ${enabled}
-            WHERE server_id = ${serverId} AND custom_idle_nudge_id = ${idleNudgeId}
+            UPDATE server_natural_nudge_custom_idle_nudges SET enabled = ${availability.enabled}
+            WHERE server_id = ${serverId} AND custom_idle_nudge_id = ${customIdleNudgeId}
+          `;
+        }
+        if (availability.enabled && availability.scope) {
+          await tx`
+            INSERT INTO server_natural_nudge_persona_scopes (server_id, idle_nudge_key, persona_ids)
+            VALUES (${serverId}, ${idleNudgeKey}, ${[...availability.scope]}::jsonb)
+            ON CONFLICT (server_id, idle_nudge_key) DO UPDATE SET persona_ids = EXCLUDED.persona_ids
+          `;
+        } else {
+          await tx`
+            DELETE FROM server_natural_nudge_persona_scopes
+            WHERE server_id = ${serverId} AND idle_nudge_key = ${idleNudgeKey}
           `;
         }
       });
       return true;
     } catch (error) {
-      await log.error("Natural Nudges: failed to save idle nudge availability", error, { metadata: { serverId } });
+      await log.error("Natural Nudges: failed to save idle nudge availability", error, {
+        metadata: { serverId, idleNudgeKey },
+      });
       return false;
     }
   }
 
-  /** Workspace import replaces the whole collection inside the caller's transaction. */
+  async loadPersonaScopes(serverId: number): Promise<IdleNudgePersonaScopes> {
+    const rows = await sql`
+      SELECT idle_nudge_key, persona_ids FROM server_natural_nudge_persona_scopes WHERE server_id = ${serverId}
+    `;
+    return new Map(
+      parseRows(personaScopeRowSchema, rows, "persona scope").map((row) => [row.idle_nudge_key, row.persona_ids]),
+    );
+  }
+
+  /**
+   * Workspace import replaces the whole collection inside the caller's transaction. The new rows get new
+   * IDs, so every custom scope is dropped rather than left pointing at a different idle nudge later.
+   */
   async replaceCustomIdleNudges(serverId: number, idleNudges: CustomIdleNudgeInput[], client: SQL): Promise<void> {
     await client`DELETE FROM server_natural_nudge_custom_idle_nudges WHERE server_id = ${serverId}`;
+    await client`
+      DELETE FROM server_natural_nudge_persona_scopes
+      WHERE server_id = ${serverId} AND starts_with(idle_nudge_key, ${CUSTOM_IDLE_NUDGE_KEY_PREFIX})
+    `;
     for (const idleNudge of idleNudges) {
       await client`
         INSERT INTO server_natural_nudge_custom_idle_nudges

@@ -12,6 +12,7 @@ import { NATURAL_NUDGE_CATEGORIES } from "@/modules/natural-nudges/db/types";
 import {
   idleNudgeNeedsTarget,
   isIdleNudgeEligible,
+  isInPersonaScope,
   listRunnableIdleNudges,
   type IdleNudgeDefinition,
   type PrerequisiteFacts,
@@ -343,9 +344,12 @@ export class NaturalNudgeProcessor {
     const hanging = personaChannels.filter((channel) =>
       isHangingConversation(histories.get(channel.channel.id) ?? [], personas, this.client.user?.id, now),
     );
-    const runnable = listRunnableIdleNudges(
-      server.config.disabled_builtin_idle_nudges,
-      await naturalNudgeRepository.listCustomIdleNudges(server.server_id),
+    const [customs, scopes] = await Promise.all([
+      naturalNudgeRepository.listCustomIdleNudges(server.server_id),
+      naturalNudgeRepository.loadPersonaScopes(server.server_id),
+    ]);
+    const runnable = listRunnableIdleNudges(server.config.disabled_builtin_idle_nudges, customs).filter((idleNudge) =>
+      isInPersonaScope(idleNudge.key, persona.persona_id, scopes),
     );
     const guild = this.client.guilds.cache.get(server.server_disc_id);
     if (!guild) return "guild_unavailable";

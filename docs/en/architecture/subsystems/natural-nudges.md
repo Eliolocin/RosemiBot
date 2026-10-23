@@ -36,7 +36,7 @@ reconcile tick
        ├─ heat → idle nudges per day → due time, level's daily cap, waking hours
        ├─ lull: effective channels quiet for 1-3 hours (gateway lastMessageId)
        ├─ planner model: llm_id, else the chat model; no_model abort and backoff unless it resolves
-       ├─ persona raffle → Ping User target lottery → category raffle → idle nudge raffle
+       ├─ persona raffle → persona scope filter → Ping User target lottery → category raffle → idle nudge raffle
        │    └─ Play Scene: scene partner draw
        └─ detached: planIdleNudge → recheckBeforeSend → tomoriChat({ naturalNudge, sceneTurn? })
                                                        └─ fire row + one agenda row per speaker
@@ -289,10 +289,23 @@ idle nudge listing one of the three target facts needs a target too; outside a s
 nudge pings its target. An unknown prerequisite makes an idle nudge ineligible rather than silently
 dropping the check.
 
+An idle nudge can be limited to chosen personas (`server_natural_nudge_persona_scopes`, keyed by the idle
+nudge key; no row means every persona). After the persona raffle, Phase A drops every runnable idle nudge
+whose scope excludes the drawn persona, before the target draw. Scope binds only the lead: a Play Scene
+partner may be any persona. The scope is an allow-list, so a persona created later stays out until
+checked. The Studio's Toggle Availability modal writes the on/off switch and the scope together
+(`saveIdleNudgeAvailability`): checking every live persona deletes the row, and checking none turns the
+idle nudge off and deletes it too. Persona IDs are stored as JSONB rather than
+foreign-keyed rows: a cascade would empty a scope whose personas were all deleted, and an empty scope
+reads as open to everyone. Readers filter out deleted IDs instead. Deleting or importing custom idle
+nudges drops their scopes (import assigns new IDs), the workspace export omits scopes because persona IDs
+do not port, and a server reset clears them.
+
 `/nudge-studio` (`discord/studio*.ts`) marks an enabled idle nudge as blocked through
-`findIdleNudgeBlocker`, which judges only facts that hold for days: whether one nudging persona holds
-every tool the idle nudge needs, and whether a Play Scene has a second nudging persona. Hanging
-conversations, targets, and presence change between draws, so they never mark one blocked.
+`findIdleNudgeBlocker`, which judges only facts that hold for days: whether a nudging persona in scope
+exists, whether one of them holds every tool the idle nudge needs, and whether a Play Scene has a second
+nudging persona. Hanging conversations, targets, and presence change between draws, so they never mark
+one blocked.
 
 ## Pointer personas
 

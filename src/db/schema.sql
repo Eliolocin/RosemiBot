@@ -3395,8 +3395,8 @@ CREATE INDEX IF NOT EXISTS idx_stat_counters_user_metric_bucket
 CREATE INDEX IF NOT EXISTS idx_stat_counters_user_lineage_metric
   ON stat_counters(user_id, persona_lineage_id, metric);
 
--- Natural Nudges (migrations 110 and 114). Meters derive from the fire log instead of being stored, and
--- agendas key by the opener message so they leave the context window with it.
+-- Natural Nudges (migrations 110, 114, and 118). Meters derive from the fire log instead of being stored,
+-- and agendas key by the opener message so they leave the context window with it.
 CREATE TABLE IF NOT EXISTS server_natural_nudge_configs (
   server_id                 INT      PRIMARY KEY REFERENCES servers(server_id) ON DELETE CASCADE,
   idle_nudges_enabled          BOOLEAN  NOT NULL DEFAULT true,
@@ -3434,6 +3434,23 @@ CREATE INDEX IF NOT EXISTS idx_natural_nudge_custom_idle_nudges_server ON server
 DROP TRIGGER IF EXISTS update_server_natural_nudge_custom_idle_nudges_timestamp ON server_natural_nudge_custom_idle_nudges;
 CREATE TRIGGER update_server_natural_nudge_custom_idle_nudges_timestamp
   BEFORE UPDATE ON server_natural_nudge_custom_idle_nudges
+  FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+-- Persona IDs are a JSONB array, not foreign-keyed rows, so deleting every scoped persona cannot cascade a
+-- scope to empty (which would read as open to everyone).
+CREATE TABLE IF NOT EXISTS server_natural_nudge_persona_scopes (
+  server_id      INT   NOT NULL REFERENCES servers(server_id) ON DELETE CASCADE,
+  idle_nudge_key TEXT  NOT NULL,
+  persona_ids    JSONB NOT NULL
+                 CHECK (jsonb_typeof(persona_ids) = 'array' AND jsonb_array_length(persona_ids) > 0),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (server_id, idle_nudge_key)
+);
+
+DROP TRIGGER IF EXISTS update_server_natural_nudge_persona_scopes_timestamp ON server_natural_nudge_persona_scopes;
+CREATE TRIGGER update_server_natural_nudge_persona_scopes_timestamp
+  BEFORE UPDATE ON server_natural_nudge_persona_scopes
   FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
 CREATE TABLE IF NOT EXISTS persona_natural_nudge_configs (

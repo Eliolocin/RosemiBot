@@ -489,7 +489,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     expect(await naturalNudgeRepository.listCustomIdleNudges(refs.serverId)).toHaveLength(0);
   });
 
-  it("saves built-in and custom availability together, and removes only the named custom idle nudges", async () => {
+  it("saves built-in and custom availability, and removes only the named custom idle nudges", async () => {
     const idleNudge = {
       category: "ping_user" as const,
       title: "Snack check",
@@ -504,13 +504,13 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     if (typeof first !== "number" || typeof second !== "number")
       throw new Error("Custom idle nudge fixtures were not inserted");
 
-    expect(
-      await naturalNudgeRepository.saveIdleNudgeAvailability(
-        refs.serverId,
-        ["ping_user.check_in"],
-        new Map([[first, false]]),
-      ),
-    ).toBe(true);
+    const off = { enabled: false } as const;
+    expect(await naturalNudgeRepository.saveIdleNudgeAvailability(refs.serverId, "ping_user.check_in", null, off)).toBe(
+      true,
+    );
+    expect(await naturalNudgeRepository.saveIdleNudgeAvailability(refs.serverId, `custom:${first}`, first, off)).toBe(
+      true,
+    );
     expect((await naturalNudgeRepository.loadServerConfig(refs.serverId)).disabled_builtin_idle_nudges).toEqual([
       "ping_user.check_in",
     ]);
@@ -529,6 +529,74 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     ).toEqual([second]);
     await naturalNudgeRepository.deleteCustomIdleNudges(refs.serverId, [second]);
     await naturalNudgeRepository.saveServerConfig(refs.serverId, { disabled_builtin_idle_nudges: [] });
+  });
+
+  it("drops a custom idle nudge's persona scope with it, on import, and on reset, but keeps built-in scopes until reset", async () => {
+    const idleNudge = {
+      category: "start_topic" as const,
+      title: "Song swap",
+      brief: "Have {persona} share a song.",
+      agenda_hint: null,
+      prerequisites: [],
+      recommended_tools: [],
+      enabled: true,
+    };
+    const scoped = (...scope: number[]) => ({ enabled: true, scope }) as const;
+    const insertScoped = async () => {
+      const id = await naturalNudgeRepository.insertCustomIdleNudge(refs.serverId, idleNudge, 25);
+      if (typeof id !== "number") throw new Error("Custom idle nudge fixture was not inserted");
+      expect(
+        await naturalNudgeRepository.saveIdleNudgeAvailability(
+          refs.serverId,
+          `custom:${id}`,
+          id,
+          scoped(refs.personaId),
+        ),
+      ).toBe(true);
+      return id;
+    };
+    const scopedKeys = async () => [...(await naturalNudgeRepository.loadPersonaScopes(refs.serverId)).keys()].sort();
+
+    expect(
+      await naturalNudgeRepository.saveIdleNudgeAvailability(
+        refs.serverId,
+        "start_topic.hot_take",
+        null,
+        scoped(refs.personaId, otherPersonaId),
+      ),
+    ).toBe(true);
+    expect((await naturalNudgeRepository.loadPersonaScopes(refs.serverId)).get("start_topic.hot_take")).toEqual([
+      refs.personaId,
+      otherPersonaId,
+    ]);
+    const removed = await insertScoped();
+    expect(await scopedKeys()).toEqual([`custom:${removed}`, "start_topic.hot_take"]);
+    await naturalNudgeRepository.deleteCustomIdleNudges(refs.serverId, [removed]);
+    expect(await scopedKeys()).toEqual(["start_topic.hot_take"]);
+
+    await insertScoped();
+    await testSql.transaction((tx) => naturalNudgeRepository.replaceCustomIdleNudges(refs.serverId, [idleNudge], tx));
+    expect(await scopedKeys()).toEqual(["start_topic.hot_take"]);
+
+    await resetRepository.resetServerConfiguration(refs.serverId);
+    expect(await scopedKeys()).toEqual([]);
+  });
+
+  it("drops a scope when its idle nudge opens to everyone or turns off, and turning off disables it", async () => {
+    const key = "ping_user.remind_you";
+    const save = (availability: Parameters<typeof naturalNudgeRepository.saveIdleNudgeAvailability>[3]) =>
+      naturalNudgeRepository.saveIdleNudgeAvailability(refs.serverId, key, null, availability);
+    const hasScope = async () => (await naturalNudgeRepository.loadPersonaScopes(refs.serverId)).has(key);
+
+    await save({ enabled: true, scope: [refs.personaId] });
+    expect(await save({ enabled: true, scope: null })).toBe(true);
+    expect(await hasScope()).toBe(false);
+
+    await save({ enabled: true, scope: [refs.personaId] });
+    expect(await save({ enabled: false })).toBe(true);
+    expect(await hasScope()).toBe(false);
+    expect((await naturalNudgeRepository.loadServerConfig(refs.serverId)).disabled_builtin_idle_nudges).toContain(key);
+    await save({ enabled: true, scope: null });
   });
 
   it("records an Active Nudge fire that counts toward caps but never as a pending idle nudge", async () => {

@@ -21,15 +21,20 @@ export const naturalNudgeInterestSchema = z
   .strict();
 export type NaturalNudgeInterest = z.infer<typeof naturalNudgeInterestSchema>;
 
-/** Bun returns JSONB as text from some query shapes, so stored interests are parsed before validation. */
-export const naturalNudgeInterestsSchema = z.preprocess((value) => {
+/** Bun returns JSONB as text from some query shapes, so stored arrays are parsed before validation. */
+function parseJsonbText(value: unknown): unknown {
   if (typeof value !== "string") return value;
   try {
     return JSON.parse(value);
   } catch {
     return value;
   }
-}, z.array(naturalNudgeInterestSchema).max(NATURAL_NUDGE_INTEREST_LIMIT));
+}
+
+export const naturalNudgeInterestsSchema = z.preprocess(
+  parseJsonbText,
+  z.array(naturalNudgeInterestSchema).max(NATURAL_NUDGE_INTEREST_LIMIT),
+);
 
 /**
  * Compares by position, because JSONB reorders object keys while Zod emits them in schema order. A
@@ -108,6 +113,24 @@ export const customIdleNudgeRowSchema = customIdleNudgeInputSchema.extend({
   server_id: z.number().int(),
 });
 export type CustomIdleNudgeRow = z.infer<typeof customIdleNudgeRowSchema>;
+
+export const CUSTOM_IDLE_NUDGE_KEY_PREFIX = "custom:";
+
+/** Fire rows and persona scopes store this key, so it must stay stable for a custom idle nudge's lifetime. */
+export function customIdleNudgeKey(customIdleNudgeId: number): string {
+  return `${CUSTOM_IDLE_NUDGE_KEY_PREFIX}${customIdleNudgeId}`;
+}
+
+export const personaScopeRowSchema = z.object({
+  idle_nudge_key: z.string(),
+  persona_ids: z.preprocess(parseJsonbText, z.array(z.number().int()).min(1)),
+});
+
+/** Persona IDs each scoped idle nudge is limited to; a key without an entry is open to every persona. */
+export type IdleNudgePersonaScopes = ReadonlyMap<string, readonly number[]>;
+
+/** A `null` scope opens the idle nudge to every persona, including ones created later. */
+export type IdleNudgeAvailability = { enabled: false } | { enabled: true; scope: readonly number[] | null };
 
 export const runtimeStateSchema = z.object({
   server_id: z.number().int(),

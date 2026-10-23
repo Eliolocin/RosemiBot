@@ -26,9 +26,14 @@ import {
   NUDGE_TOOL_NAMES,
 } from "@/modules/natural-nudges/runtime/idleNudges";
 import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
-import { DISCORD_MODAL_COMPONENTS_MAX, validateRawModalLimits } from "@/utils/discord/ui/componentsV2Limits";
+import {
+  DISCORD_CHECKBOX_GROUP_OPTIONS_MAX,
+  DISCORD_MODAL_COMPONENTS_MAX,
+  DISCORD_SELECT_OPTIONS_MAX,
+  validateRawModalLimits,
+} from "@/utils/discord/ui/componentsV2Limits";
 import { initializeLocalizer } from "@/utils/text/localizer";
-import { createCustomIdleNudge } from "../../helpers/fixtures";
+import { createCustomIdleNudge, createPersona } from "../../helpers/fixtures";
 import { expectForEveryLocale, localizedCopy } from "../../helpers/localeCases";
 import { collectTextDisplays, expectSafePanelPayload } from "../../helpers/panelLimits";
 
@@ -66,7 +71,23 @@ function fullestView(category: NaturalNudgeCategory, customs = CUSTOM_IDLE_NUDGE
       blocker: custom.enabled ? { kind: "tool" as const, tool: "peek_profile_picture" as const } : undefined,
     })),
   ];
-  return { category, entries, customCount: customs };
+  return { category, entries, customCount: customs, personaNames: new Map() };
+}
+
+/** More personas than one checklist modal can present, with nicknames at Discord's display-name length. */
+function manyPersonas(count = DISCORD_MODAL_COMPONENTS_MAX * DISCORD_CHECKBOX_GROUP_OPTIONS_MAX + 5) {
+  return Array.from({ length: count }, (_, index) =>
+    createPersona({ persona_id: index + 1, persona_nickname: `*Juno_${index}`.padEnd(32, "*") }),
+  );
+}
+
+function selectOptions(payload: ReturnType<typeof buildNudgeStudioPayload>, routeAction: string) {
+  const rows = JSON.parse(JSON.stringify(payload.components[0])).components as Array<{
+    components?: Array<{ type: number; customId?: string; options?: Array<{ value: string; description?: string }> }>;
+  }>;
+  return rows
+    .flatMap((row) => row.components ?? [])
+    .find((component) => component.type === STRING_SELECT && component.customId?.includes(`:${routeAction}:`))?.options;
 }
 
 function modalSelect(modal: { components: RawDiscordComponent[] }, customId: string) {
@@ -108,6 +129,7 @@ describe("Nudge Studio panel", () => {
         { definition: customIdleNudgeDefinition(custom), enabled: false, custom },
       ],
       customCount: 1,
+      personaNames: new Map(),
     };
     const displays = collectTextDisplays(buildNudgeStudioPayload({ locale: "en-US", view }));
     const rows = displays.flatMap((content) => content.split("\n")).filter((line) => /^> [🟢🟡🔴]/u.test(line));
@@ -146,16 +168,54 @@ describe("Nudge Studio panel", () => {
   it("keeps the add option only below the server-wide custom limit", () => {
     const optionValues = (customs: number): string[] => {
       const payload = buildNudgeStudioPayload({ locale: "en-US", view: fullestView("ping_user", customs) });
-      const rows = JSON.parse(JSON.stringify(payload.components[0])).components as Array<{
-        components?: Array<{ type: number; options?: Array<{ value: string }> }>;
-      }>;
-      const select = rows.flatMap((row) => row.components ?? []).find((component) => component.type === STRING_SELECT);
-      return select?.options?.map((option) => option.value) ?? [];
+      return selectOptions(payload, "select")?.map((option) => option.value) ?? [];
     };
 
     expect(optionValues(CUSTOM_IDLE_NUDGE_LIMIT - 1)).toHaveLength(CUSTOM_IDLE_NUDGE_LIMIT);
     expect(optionValues(CUSTOM_IDLE_NUDGE_LIMIT - 1)[0]).toBe("add");
     expect(optionValues(CUSTOM_IDLE_NUDGE_LIMIT)).not.toContain("add");
+  });
+
+  it("names a scope's live personas on its row and in the Toggle Availability menu, and marks off ones", () => {
+    const view: NudgeStudioView = {
+      category: "ping_user",
+      entries: [
+        { definition: BUILTIN_IDLE_NUDGES[0], enabled: true, scope: [1, 99] },
+        { definition: BUILTIN_IDLE_NUDGES[1], enabled: true },
+        { definition: BUILTIN_IDLE_NUDGES[2], enabled: false },
+        { definition: BUILTIN_IDLE_NUDGES[3], enabled: true, scope: [99] },
+      ],
+      customCount: 0,
+      personaNames: new Map([[1, "Mirri"]]),
+    };
+    const payload = buildNudgeStudioPayload({ locale: "en-US", view });
+    const rows = collectTextDisplays(payload)
+      .flatMap((content) => content.split("\n"))
+      .filter((line) => /^> [🟢🟡🔴]/u.test(line));
+    const note = localizedCopy("en-US", "commands.nudge-studio.note_scope", { personas: "Mirri" });
+
+    expect(rows[0]).toContain(note);
+    expect(rows[1]).not.toContain(note);
+    expect(selectOptions(payload, "toggle-open")?.map((option) => option.description)).toEqual([
+      "Mirri",
+      localizedCopy("en-US", "commands.nudge-studio.toggle_all_personas"),
+      localizedCopy("en-US", "commands.nudge-studio.toggle_off"),
+      localizedCopy("en-US", "commands.nudge-studio.blocker_no_persona"),
+    ]);
+  });
+
+  it("pages the Toggle Availability menu so every idle nudge in a full category stays reachable", () => {
+    const view = fullestView("ping_user");
+    const pages = [0, 1].map((page) => buildNudgeStudioPayload({ locale: "en-US", view, page }));
+    const reached = pages.flatMap(
+      (payload) => selectOptions(payload, "toggle-open")?.map((option) => option.value) ?? [],
+    );
+
+    expect(selectOptions(pages[0], "toggle-open")).toHaveLength(DISCORD_SELECT_OPTIONS_MAX);
+    expect(reached).toEqual(view.entries.map((entry) => entry.definition.key));
+    expect(selectOptions(buildNudgeStudioPayload({ locale: "en-US", view, page: 9 }), "toggle-open")).toEqual(
+      selectOptions(pages[1], "toggle-open"),
+    );
   });
 });
 
@@ -167,8 +227,15 @@ describe("Nudge Studio modals", () => {
         const modals = [
           buildIdleNudgeFormModal(locale, category, NONCE),
           buildIdleNudgeFormModal(locale, category, NONCE, customRow(category, 1)),
-          buildAvailabilityModal(locale, category, NONCE, availabilityOptions(locale, view)),
           buildRemovalModal(locale, category, NONCE, removalOptions(view)),
+          buildAvailabilityModal(
+            locale,
+            category,
+            view.entries[0],
+            1,
+            NONCE,
+            availabilityOptions(manyPersonas(), view.entries[0]),
+          ),
         ];
         for (const modal of modals) {
           expect(modal.components.length).toBeLessThanOrEqual(DISCORD_MODAL_COMPONENTS_MAX);
@@ -206,12 +273,18 @@ describe("Nudge Studio modals", () => {
     }
   });
 
-  it("presents removal with every custom idle nudge checked and availability checked by state", () => {
+  it("presents removal with every custom idle nudge checked", () => {
     const view = fullestView("start_topic", 12);
     expect(removalOptions(view).every((option) => option.checked)).toBe(true);
     expect(removalOptions(view)).toHaveLength(12);
-    expect(availabilityOptions("en-US", view).map((option) => option.checked)).toEqual(
-      view.entries.map((entry) => entry.enabled),
-    );
+  });
+
+  it("presents personas checked by scope: all when open to everyone, none when off", () => {
+    const personas = manyPersonas(3);
+    const definition = BUILTIN_IDLE_NUDGES[0];
+    const checked = (entry: StudioEntry) => availabilityOptions(personas, entry).map((option) => option.checked);
+    expect(checked({ definition, enabled: true })).toEqual([true, true, true]);
+    expect(checked({ definition, enabled: true, scope: [2] })).toEqual([false, true, false]);
+    expect(checked({ definition, enabled: false })).toEqual([false, false, false]);
   });
 });

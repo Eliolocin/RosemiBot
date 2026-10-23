@@ -258,7 +258,7 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
 ];
 
 /**
- * The 12 collection tables a server reset empties for the server.
+ * The 13 collection tables a server reset empties for the server.
  *
  * `server_auto_trigger_persona_overrides` belongs here rather than among the singletons: it is the
  * junction the auto-trigger row's channel ids point through, so it is cleared by delete.
@@ -276,6 +276,7 @@ export const SERVER_COLLECTION_RESET_TABLES = [
   "role_whitelist",
   "channel_persona_whitelist",
   "server_natural_nudge_custom_idle_nudges",
+  "server_natural_nudge_persona_scopes",
 ] as const;
 
 /**
@@ -585,6 +586,7 @@ class ResetRepository {
       await tx`DELETE FROM role_whitelist WHERE server_id = ${serverId}`;
       await tx`DELETE FROM channel_persona_whitelist WHERE server_id = ${serverId}`;
       await tx`DELETE FROM server_natural_nudge_custom_idle_nudges WHERE server_id = ${serverId}`;
+      await tx`DELETE FROM server_natural_nudge_persona_scopes WHERE server_id = ${serverId}`;
     });
   }
 

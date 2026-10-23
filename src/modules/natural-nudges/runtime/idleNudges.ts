@@ -1,4 +1,9 @@
-import type { CustomIdleNudgeRow, NaturalNudgeCategory } from "@/modules/natural-nudges/db/types";
+import {
+  customIdleNudgeKey,
+  type CustomIdleNudgeRow,
+  type IdleNudgePersonaScopes,
+  type NaturalNudgeCategory,
+} from "@/modules/natural-nudges/db/types";
 
 /** Tools an idle nudge may require or recommend; `image` stands for either image generator. */
 export const NUDGE_TOOL_NAMES = [
@@ -282,11 +287,9 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
   },
 ];
 
-const CUSTOM_IDLE_NUDGE_KEY_PREFIX = "custom:";
-
 export function customIdleNudgeDefinition(row: CustomIdleNudgeRow): IdleNudgeDefinition {
   return {
-    key: `${CUSTOM_IDLE_NUDGE_KEY_PREFIX}${row.custom_idle_nudge_id}`,
+    key: customIdleNudgeKey(row.custom_idle_nudge_id),
     category: row.category,
     title: row.title,
     brief: row.brief,
@@ -295,6 +298,10 @@ export function customIdleNudgeDefinition(row: CustomIdleNudgeRow): IdleNudgeDef
     recommendedTools: row.recommended_tools,
     builtIn: false,
   };
+}
+
+export function isInPersonaScope(key: string, personaId: number, scopes: IdleNudgePersonaScopes): boolean {
+  return scopes.get(key)?.includes(personaId) ?? true;
 }
 
 /** Enabled built-ins and custom idle nudges, in panel order. */
@@ -367,26 +374,35 @@ function hasNudgeTool(tool: NudgeToolName, availableTools: ReadonlySet<string>):
 }
 
 /** What keeps an enabled idle nudge from ever running on a server, judged only on facts that hold for days. */
-export type IdleNudgeBlocker = { kind: "tool"; tool: NudgeToolName } | { kind: "two_personas" };
+export type IdleNudgeBlocker =
+  | { kind: "tool"; tool: NudgeToolName }
+  | { kind: "two_personas" }
+  | { kind: "no_persona" };
 
 export interface ServerCapabilityFacts {
-  /** One set per persona that can nudge at all. */
-  personaTools: readonly ReadonlySet<string>[];
+  /** Available tools of each persona that can nudge at all, by persona ID. */
+  personaTools: ReadonlyMap<number, ReadonlySet<string>>;
 }
 
 /**
- * Hanging conversations, targets, and presence change minute to minute, so only tools and a second
- * nudging persona can block; a tool nudge needs one persona holding every tool it names.
+ * Hanging conversations, targets, and presence change minute to minute, so only scope, tools, and a
+ * second nudging persona can block. A tool nudge needs one persona in `scope` holding every tool it
+ * names; a scene partner may be any nudging persona, because scope limits only the lead.
  */
 export function findIdleNudgeBlocker(
   idleNudge: IdleNudgeDefinition,
   facts: ServerCapabilityFacts,
+  scope?: readonly number[],
 ): IdleNudgeBlocker | null {
-  if (needsScenePartner(idleNudge) && facts.personaTools.length < 2) return { kind: "two_personas" };
+  const leads = [...facts.personaTools]
+    .filter(([personaId]) => !scope || scope.includes(personaId))
+    .map(([, available]) => available);
+  if (leads.length === 0) return { kind: "no_persona" };
+  if (needsScenePartner(idleNudge) && facts.personaTools.size < 2) return { kind: "two_personas" };
   const tools = prerequisiteTools(idleNudge);
   if (tools.length === 0) return null;
-  if (facts.personaTools.some((available) => tools.every((tool) => hasNudgeTool(tool, available)))) return null;
-  const missing = tools.find((tool) => !facts.personaTools.some((available) => hasNudgeTool(tool, available)));
+  if (leads.some((available) => tools.every((tool) => hasNudgeTool(tool, available)))) return null;
+  const missing = tools.find((tool) => !leads.some((available) => hasNudgeTool(tool, available)));
   return { kind: "tool", tool: missing ?? tools[0] };
 }
 

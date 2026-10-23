@@ -4,6 +4,7 @@ import {
   findIdleNudgeBlocker,
   idleNudgeNeedsTarget,
   isIdleNudgeEligible,
+  isInPersonaScope,
   listRunnableIdleNudges,
   NUDGE_TOOL_NAMES,
   type IdleNudgeDefinition,
@@ -86,37 +87,60 @@ describe("idle nudge eligibility", () => {
 
 describe("idle nudge blockers", () => {
   const tools = (...names: string[]) => new Set(names);
+  /** Persona IDs follow argument order, starting at 1. */
+  const facts = (...personaTools: Set<string>[]) => ({
+    personaTools: new Map(personaTools.map((available, index) => [index + 1, available])),
+  });
 
   it("blocks a scene until two personas can nudge", () => {
-    expect(findIdleNudgeBlocker(idleNudge([], "play_scene"), { personaTools: [tools()] })).toEqual({
-      kind: "two_personas",
-    });
-    expect(findIdleNudgeBlocker(idleNudge(["two_personas"]), { personaTools: [tools()] })).toEqual({
-      kind: "two_personas",
-    });
-    expect(findIdleNudgeBlocker(idleNudge([], "play_scene"), { personaTools: [tools(), tools()] })).toBeNull();
+    expect(findIdleNudgeBlocker(idleNudge([], "play_scene"), facts(tools()))).toEqual({ kind: "two_personas" });
+    expect(findIdleNudgeBlocker(idleNudge(["two_personas"]), facts(tools()))).toEqual({ kind: "two_personas" });
+    expect(findIdleNudgeBlocker(idleNudge([], "play_scene"), facts(tools(), tools()))).toBeNull();
   });
 
   it("needs one persona holding every tool the idle nudge names", () => {
     const both = idleNudge(["tool:web_search", "tool:image"]);
-    const split = { personaTools: [tools("web_search"), tools("generate_image")] };
-    expect(findIdleNudgeBlocker(both, split)).toEqual({ kind: "tool", tool: "web_search" });
-    expect(findIdleNudgeBlocker(both, { personaTools: [tools("web_search", "generate_image_nai")] })).toBeNull();
+    expect(findIdleNudgeBlocker(both, facts(tools("web_search"), tools("generate_image")))).toEqual({
+      kind: "tool",
+      tool: "web_search",
+    });
+    expect(findIdleNudgeBlocker(both, facts(tools("web_search", "generate_image_nai")))).toBeNull();
   });
 
   it("names the tool no persona has", () => {
     const both = idleNudge(["tool:web_search", "tool:create_task"]);
-    expect(findIdleNudgeBlocker(both, { personaTools: [tools("web_search")] })).toEqual({
-      kind: "tool",
-      tool: "create_task",
-    });
+    expect(findIdleNudgeBlocker(both, facts(tools("web_search")))).toEqual({ kind: "tool", tool: "create_task" });
   });
 
   it("never blocks on facts that change minute to minute", () => {
     const pickUp = BUILTIN_IDLE_NUDGES.find((candidate) => candidate.key === "revive_topic.pick_up_thread");
     if (!pickUp) throw new Error("Revive Topic built-in missing");
-    expect(findIdleNudgeBlocker(pickUp, { personaTools: [tools()] })).toBeNull();
-    expect(findIdleNudgeBlocker(idleNudge(["presence_activity"], "ping_user"), { personaTools: [tools()] })).toBeNull();
+    expect(findIdleNudgeBlocker(pickUp, facts(tools()))).toBeNull();
+    expect(findIdleNudgeBlocker(idleNudge(["presence_activity"], "ping_user"), facts(tools()))).toBeNull();
+  });
+
+  it("judges tools only on the personas a scope allows", () => {
+    const search = idleNudge(["tool:web_search"]);
+    const server = facts(tools("web_search"), tools());
+    expect(findIdleNudgeBlocker(search, server, [1])).toBeNull();
+    expect(findIdleNudgeBlocker(search, server, [2])).toEqual({ kind: "tool", tool: "web_search" });
+  });
+
+  it("blocks a scope whose personas were all deleted or silenced instead of opening it to everyone", () => {
+    expect(findIdleNudgeBlocker(idleNudge([]), facts(tools()), [99])).toEqual({ kind: "no_persona" });
+  });
+
+  it("lets any nudging persona partner a scoped scene lead", () => {
+    expect(findIdleNudgeBlocker(idleNudge([], "play_scene"), facts(tools(), tools()), [1])).toBeNull();
+  });
+});
+
+describe("persona scope", () => {
+  it("opens an unscoped idle nudge to every persona and a scoped one only to its personas", () => {
+    const scopes = new Map([["custom:9", [1, 2]]]);
+    expect(isInPersonaScope("custom:9", 2, scopes)).toBe(true);
+    expect(isInPersonaScope("custom:9", 3, scopes)).toBe(false);
+    expect(isInPersonaScope("start_topic.hot_take", 3, scopes)).toBe(true);
   });
 });
 

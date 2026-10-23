@@ -5,6 +5,7 @@ import {
   customIdleNudgeInputSchema,
   type CustomIdleNudgeInput,
   type CustomIdleNudgeRow,
+  type IdleNudgeAvailability,
   type NaturalNudgeCategory,
 } from "@/modules/natural-nudges/db/types";
 import { invalidateNaturalNudgeConfigCache } from "@/modules/natural-nudges/runtime/configCache";
@@ -28,6 +29,8 @@ export interface StudioEntry {
   definition: IdleNudgeDefinition;
   enabled: boolean;
   custom?: CustomIdleNudgeRow;
+  /** Stored persona IDs, deleted personas included; absent when every persona may use it. */
+  scope?: readonly number[];
   /** Present only on an enabled idle nudge that nothing on this server can run. */
   blocker?: IdleNudgeBlocker;
 }
@@ -37,6 +40,8 @@ export interface NudgeStudioView {
   entries: StudioEntry[];
   /** Across every category, because the custom idle nudge limit is per server. */
   customCount: number;
+  /** Live persona nicknames by ID, empty on modal paths that never render rows. */
+  personaNames: ReadonlyMap<number, string>;
 }
 
 /** Text and list fields one custom idle nudge modal submits. */
@@ -48,11 +53,44 @@ export interface IdleNudgeForm {
   recommendedTools: readonly string[];
 }
 
-async function personaToolSets(personas: readonly TomoriState[]): Promise<Set<string>[]> {
+async function personaToolSets(personas: readonly TomoriState[]): Promise<Map<number, Set<string>>> {
   const ids = personas.flatMap((persona) => (persona.persona_id ? [persona.persona_id] : []));
   const configs = await naturalNudgeRepository.loadPersonaConfigs(ids);
   const nudging = personas.filter((persona) => (configs.get(persona.persona_id ?? 0)?.talkativeness ?? 0) > 0);
-  return Promise.all(nudging.map(loadAvailableToolNames));
+  const tools = await Promise.all(nudging.map(loadAvailableToolNames));
+  return new Map(nudging.map((persona, index) => [persona.persona_id ?? 0, tools[index]]));
+}
+
+/**
+ * What a Toggle Availability submit produces: no live persona left turns the idle nudge off, and every
+ * live persona opens it to everyone. Only presented personas change, so one created while the modal was
+ * open keeps its current access, and IDs of deleted personas are dropped.
+ */
+export function nextAvailability(
+  current: IdleNudgeAvailability,
+  livePersonaIds: readonly number[],
+  presented: readonly number[],
+  checked: ReadonlySet<number>,
+): IdleNudgeAvailability {
+  const allowed = new Set(current.enabled ? (current.scope ?? livePersonaIds) : []);
+  for (const personaId of presented) {
+    if (checked.has(personaId)) allowed.add(personaId);
+    else allowed.delete(personaId);
+  }
+  const next = livePersonaIds.filter((personaId) => allowed.has(personaId));
+  if (next.length === 0) return { enabled: false };
+  return { enabled: true, scope: next.length === livePersonaIds.length ? null : next };
+}
+
+function sameAvailability(a: IdleNudgeAvailability, b: IdleNudgeAvailability): boolean {
+  if (!a.enabled || !b.enabled) return a.enabled === b.enabled;
+  if (!a.scope || !b.scope) return !a.scope && !b.scope;
+  const other = b.scope;
+  return a.scope.length === other.length && a.scope.every((personaId) => other.includes(personaId));
+}
+
+export function entryAvailability(entry: StudioEntry): IdleNudgeAvailability {
+  return entry.enabled ? { enabled: true, scope: entry.scope ?? null } : { enabled: false };
 }
 
 /**
@@ -64,28 +102,39 @@ export async function loadNudgeStudioView(
   category: NaturalNudgeCategory,
   personas: readonly TomoriState[] | null,
 ): Promise<NudgeStudioView> {
-  const [config, customs] = await Promise.all([
+  const [config, customs, scopes] = await Promise.all([
     naturalNudgeRepository.loadServerConfig(serverId),
     naturalNudgeRepository.listCustomIdleNudges(serverId),
+    naturalNudgeRepository.loadPersonaScopes(serverId),
   ]);
+  const withScope = (entry: StudioEntry): StudioEntry => {
+    const scope = scopes.get(entry.definition.key);
+    return scope ? { ...entry, scope } : entry;
+  };
   const entries: StudioEntry[] = [
-    ...BUILTIN_IDLE_NUDGES.filter((definition) => definition.category === category).map((definition) => ({
-      definition,
-      enabled: !config.disabled_builtin_idle_nudges.includes(definition.key),
-    })),
+    ...BUILTIN_IDLE_NUDGES.filter((definition) => definition.category === category).map((definition) =>
+      withScope({ definition, enabled: !config.disabled_builtin_idle_nudges.includes(definition.key) }),
+    ),
     ...customs
       .filter((custom) => custom.category === category)
-      .map((custom) => ({ definition: customIdleNudgeDefinition(custom), enabled: custom.enabled, custom })),
+      .map((custom) => withScope({ definition: customIdleNudgeDefinition(custom), enabled: custom.enabled, custom })),
   ];
-  const judged = entries.filter((entry) => entry.enabled && canIdleNudgeBeBlocked(entry.definition));
+  const judged = entries.filter(
+    (entry) => entry.enabled && (entry.scope !== undefined || canIdleNudgeBeBlocked(entry.definition)),
+  );
   if (personas && judged.length > 0) {
     const personaTools = await personaToolSets(personas);
     // Skipped when no persona can nudge, because every entry would then read as blocked for the same server-wide reason.
-    if (personaTools.length > 0) {
-      for (const entry of judged) entry.blocker = findIdleNudgeBlocker(entry.definition, { personaTools }) ?? undefined;
+    if (personaTools.size > 0) {
+      for (const entry of judged)
+        entry.blocker = findIdleNudgeBlocker(entry.definition, { personaTools }, entry.scope) ?? undefined;
     }
   }
-  return { category, entries, customCount: customs.length };
+  const personaNames = new Map<number, string>();
+  for (const persona of personas ?? []) {
+    if (persona.persona_id) personaNames.set(persona.persona_id, persona.persona_nickname);
+  }
+  return { category, entries, customCount: customs.length, personaNames };
 }
 
 /**
@@ -144,36 +193,26 @@ export const nudgeStudioOperations = {
     return (await naturalNudgeRepository.updateCustomIdleNudge(serverId, id, parsed)) ? "success" : "write-failed";
   },
 
-  /** Changes only the presented keys: checked ones turn on, the rest off, and entries added since stay as they are. */
   async setIdleNudgeAvailability(
     serverId: number,
     category: NaturalNudgeCategory,
-    presented: readonly string[],
-    checked: ReadonlySet<string>,
+    idleNudgeKey: string,
+    livePersonaIds: readonly number[],
+    presented: readonly number[],
+    checked: ReadonlySet<number>,
   ): Promise<StudioWriteResult> {
-    const [config, customs] = await Promise.all([
-      naturalNudgeRepository.loadServerConfig(serverId),
-      naturalNudgeRepository.listCustomIdleNudges(serverId),
-    ]);
-    const disabled = new Set(config.disabled_builtin_idle_nudges);
-    const customEnabled = new Map<number, boolean>();
-    for (const key of presented) {
-      const enabled = checked.has(key);
-      if (BUILTIN_IDLE_NUDGES.some((definition) => definition.key === key && definition.category === category)) {
-        if (enabled) disabled.delete(key);
-        else disabled.add(key);
-        continue;
-      }
-      const custom = customs.find(
-        (row) => customIdleNudgeDefinition(row).key === key && row.category === category && row.enabled !== enabled,
-      );
-      if (custom) customEnabled.set(custom.custom_idle_nudge_id, enabled);
-    }
-    const builtInsChanged =
-      disabled.size !== config.disabled_builtin_idle_nudges.length ||
-      config.disabled_builtin_idle_nudges.some((key) => !disabled.has(key));
-    if (!builtInsChanged && customEnabled.size === 0) return "unchanged";
-    if (!(await naturalNudgeRepository.saveIdleNudgeAvailability(serverId, [...disabled], customEnabled)))
+    const view = await loadNudgeStudioView(serverId, category, null);
+    const entry = view.entries.find((candidate) => candidate.definition.key === idleNudgeKey);
+    if (!entry) return "stale";
+    const current = entryAvailability(entry);
+    const next = nextAvailability(current, livePersonaIds, presented, checked);
+    const liveCurrent: IdleNudgeAvailability =
+      current.enabled && current.scope
+        ? { enabled: true, scope: current.scope.filter((personaId) => livePersonaIds.includes(personaId)) }
+        : current;
+    if (sameAvailability(liveCurrent, next)) return "unchanged";
+    const customId = entry.custom?.custom_idle_nudge_id ?? null;
+    if (!(await naturalNudgeRepository.saveIdleNudgeAvailability(serverId, idleNudgeKey, customId, next)))
       return "write-failed";
     invalidateNaturalNudgeConfigCache(serverId);
     return "success";

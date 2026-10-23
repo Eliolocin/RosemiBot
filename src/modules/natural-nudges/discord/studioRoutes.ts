@@ -94,6 +94,13 @@ const WRITE_ACTIONS: Partial<Record<NudgeStudioRoute["action"], PanelAction>> = 
   "remove-submit": "nudge-studio.workspace.idle-nudge.remove",
 };
 
+/** The Toggle Availability page a route was on, so a repaint keeps the admin where they were. */
+function routePage(route: NudgeStudioRoute): number {
+  return route.action === "view" || route.action === "toggle-open" || route.action === "toggle-submit"
+    ? (route.page ?? 0)
+    : 0;
+}
+
 function writeReceipt(locale: string, action: NudgeStudioRoute["action"], result: StudioWriteResult): PanelReceipt {
   const t = (key: string) => localizer(locale, key);
   if (result === "success")
@@ -182,7 +189,7 @@ async function openModal(
   // No modal opened, so the click can still repaint the panel to show why.
   const refuse = async (receipt: PanelReceipt) => {
     await interaction.deferUpdate();
-    await repaint(interaction, locale, category, scope, deps, receipt);
+    await repaint(interaction, locale, category, scope, deps, routePage(route), receipt);
   };
 
   if (route.action === "select") {
@@ -196,12 +203,18 @@ async function openModal(
     return deps.showModal(modalInteraction, buildIdleNudgeFormModal(locale, category, nonce, custom));
   }
   if (route.action === "toggle-open") {
-    const options = availabilityOptions(locale, view);
+    const key = interaction.isStringSelectMenu() ? interaction.values[0] : undefined;
+    const entry = view.entries.find((candidate) => candidate.definition.key === key);
+    if (!entry) return refuse(writeReceipt(locale, route.action, "stale"));
+    const options = availabilityOptions(scope.personas, entry);
     deps.storeSnapshot(
       nonce,
       options.map((option) => option.value),
     );
-    return deps.showModal(modalInteraction, buildAvailabilityModal(locale, category, nonce, options));
+    return deps.showModal(
+      modalInteraction,
+      buildAvailabilityModal(locale, category, entry, route.page, nonce, options),
+    );
   }
   const options = removalOptions(view);
   if (options.length === 0) return refuse(writeReceipt(locale, route.action, "stale"));
@@ -215,7 +228,7 @@ async function openModal(
 async function runWrite(
   interaction: ModalSubmitInteraction,
   route: NudgeStudioRoute,
-  serverId: number,
+  { serverId, personas }: StudioScope,
   deps: NudgeStudioRouteDependencies,
 ): Promise<StudioWriteResult> {
   const { category } = route;
@@ -239,7 +252,14 @@ async function runWrite(
   const checked = checklistValues(deps, interaction.id, route.nonce, presented.length);
   if (!checked) return "stale";
   if (route.action === "toggle-submit")
-    return deps.operations.setIdleNudgeAvailability(serverId, category, presented, checked);
+    return deps.operations.setIdleNudgeAvailability(
+      serverId,
+      category,
+      route.key,
+      personas.flatMap((persona) => (persona.persona_id ? [persona.persona_id] : [])),
+      presented.map(Number),
+      new Set([...checked].map(Number)),
+    );
   return deps.operations.removeCustomIdleNudges(
     serverId,
     category,
@@ -254,6 +274,7 @@ async function repaint(
   category: NaturalNudgeCategory,
   scope: StudioScope,
   deps: NudgeStudioRouteDependencies,
+  page: number,
   receipt?: PanelReceipt,
 ): Promise<void> {
   let view: NudgeStudioView;
@@ -267,7 +288,7 @@ async function repaint(
     );
     return;
   }
-  await deliverGuardedPanel(interaction, buildNudgeStudioPayload({ locale, view, receipt }), {
+  await deliverGuardedPanel(interaction, buildNudgeStudioPayload({ locale, view, page, receipt }), {
     method: "editReply",
     locale,
     receipt,
@@ -282,6 +303,7 @@ function terminal(interaction: StudioInteraction, locale: string, key: string): 
 }
 
 const MODAL_ACTIONS = new Set<NudgeStudioRoute["action"]>(["select", "toggle-open", "remove-open"]);
+const SELECT_ACTIONS = new Set<NudgeStudioRoute["action"]>(["select", "toggle-open"]);
 const SUBMIT_ACTIONS = new Set<NudgeStudioRoute["action"]>([
   "add-submit",
   "edit-submit",
@@ -301,7 +323,7 @@ export function createNudgeStudioInteractionRoute(
       if (!route) throw new Error("Malformed Nudge Studio route");
       const typeMatches = SUBMIT_ACTIONS.has(route.action)
         ? interaction.isModalSubmit()
-        : route.action === "select"
+        : SELECT_ACTIONS.has(route.action)
           ? interaction.isStringSelectMenu()
           : interaction.isButton();
       if (!typeMatches) throw new Error("Nudge Studio route interaction type mismatch");
@@ -315,8 +337,8 @@ export function createNudgeStudioInteractionRoute(
       });
       if (!scope) return;
       const writeAction = WRITE_ACTIONS[route.action];
-      if (!writeAction) return repaint(interaction, route.locale, route.category, scope, deps);
-      const result = await runWrite(interaction as ModalSubmitInteraction, route, scope.serverId, deps);
+      if (!writeAction) return repaint(interaction, route.locale, route.category, scope, deps, routePage(route));
+      const result = await runWrite(interaction as ModalSubmitInteraction, route, scope, deps);
       if (result === "success")
         void deps.recordAction({ action: writeAction, serverId: scope.serverId, userDiscId: interaction.user.id });
       await repaint(
@@ -325,6 +347,7 @@ export function createNudgeStudioInteractionRoute(
         route.category,
         scope,
         deps,
+        routePage(route),
         writeReceipt(route.locale, route.action, result),
       );
     },
@@ -347,5 +370,5 @@ export async function executeNudgeStudioCommand(
     await terminal(interaction, locale, "general.errors.tomori_not_setup_description");
     return;
   }
-  await repaint(interaction, locale, "ping_user", scope, defaults);
+  await repaint(interaction, locale, "ping_user", scope, defaults, 0);
 }

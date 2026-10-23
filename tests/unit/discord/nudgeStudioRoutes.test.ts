@@ -4,9 +4,14 @@ import { CUSTOM_IDLE_NUDGE_LIMIT } from "@/modules/natural-nudges/db/types";
 import {
   buildNudgeStudioRouteId,
   nudgeStudioFieldId,
+  parseNudgeStudioRoute,
   type NudgeStudioRoute,
 } from "@/modules/natural-nudges/discord/studioCatalog";
-import type { NudgeStudioView, StudioWriteResult } from "@/modules/natural-nudges/discord/studioOperations";
+import {
+  nextAvailability,
+  type NudgeStudioView,
+  type StudioWriteResult,
+} from "@/modules/natural-nudges/discord/studioOperations";
 import {
   createNudgeStudioInteractionRoute,
   type NudgeStudioRouteDependencies,
@@ -32,9 +37,10 @@ function view(customCount = 1): NudgeStudioView {
         definition,
         enabled: true,
       })),
-      { definition: customIdleNudgeDefinition(custom), enabled: true, custom },
+      { definition: customIdleNudgeDefinition(custom), enabled: true, custom, scope: [2] },
     ],
     customCount,
+    personaNames: new Map(),
   };
 }
 
@@ -53,7 +59,10 @@ function harness(overrides: Partial<NudgeStudioRouteDependencies> = {}) {
   const checkboxValues = new Map<string, string[]>();
   const selectValues = new Map<string, string[]>();
   const route = createNudgeStudioInteractionRoute({
-    resolveScope: async () => ({ serverId: 1, personas: [createPersona()] }),
+    resolveScope: async () => ({
+      serverId: 1,
+      personas: [createPersona(), createPersona({ persona_id: 2, persona_nickname: "Juno" })],
+    }),
     loadView: async () => studioView.current,
     operations,
     showModal,
@@ -89,7 +98,7 @@ const base = { locale: "en-US", category: "ping_user" } as const;
 describe("Nudge Studio routes", () => {
   it("answers a member without Manage Server before opening any modal", async () => {
     const h = harness();
-    const interaction = await h.dispatch({ ...base, action: "toggle-open" }, "button", { isManager: false });
+    const interaction = await h.dispatch({ ...base, action: "remove-open" }, "button", { isManager: false });
     expect(h.showModal).not.toHaveBeenCalled();
     expect(JSON.stringify(interaction.replies)).toContain(
       localizedCopy("en-US", "general.errors.permission_denied_description"),
@@ -127,21 +136,44 @@ describe("Nudge Studio routes", () => {
     );
   });
 
-  it("writes availability for exactly the presented idle nudges", async () => {
+  it("opens Toggle Availability for the picked idle nudge and writes only the presented personas", async () => {
     const h = harness();
-    await h.dispatch({ ...base, action: "toggle-open" }, "button");
-    const presented = h.snapshots.get(NONCE);
-    expect(presented).toEqual(view().entries.map((entry) => entry.definition.key));
+    await h.dispatch({ ...base, action: "toggle-open", page: 1 }, "string-select", { values: ["custom:7"] });
+    expect(h.showModal.mock.calls[0]?.[1].custom_id).toBe(
+      buildNudgeStudioRouteId({ ...base, action: "toggle-submit", key: "custom:7", page: 1, nonce: NONCE }),
+    );
+    expect(h.snapshots.get(NONCE)).toEqual(["1", "2"]);
 
-    h.checkboxValues.set(nudgeStudioFieldId("checklist", NONCE, 0), ["ping_user.check_in", "custom:7"]);
-    await h.dispatch({ ...base, action: "toggle-submit", nonce: NONCE }, "modal");
+    h.checkboxValues.set(nudgeStudioFieldId("checklist", NONCE, 0), ["1"]);
+    await h.dispatch({ ...base, action: "toggle-submit", key: "custom:7", page: 1, nonce: NONCE }, "modal");
     expect(h.operations.setIdleNudgeAvailability).toHaveBeenCalledWith(
       1,
       "ping_user",
-      presented,
-      new Set(["ping_user.check_in", "custom:7"]),
+      "custom:7",
+      [1, 2],
+      [1, 2],
+      new Set([1]),
     );
     expect(h.recordAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("repaints instead of opening Toggle Availability for an idle nudge that vanished", async () => {
+    const h = harness();
+    const stale = await h.dispatch({ ...base, action: "toggle-open", page: 0 }, "string-select", {
+      values: ["custom:99"],
+    });
+    expect(h.showModal).not.toHaveBeenCalled();
+    expect(collectTextDisplays(stale.edits.at(-1)).join(" ")).toMatch(
+      localizedProse("en-US", "commands.nudge-studio.stale_detail"),
+    );
+  });
+
+  it("round-trips built-in and custom keys and the page through the toggle route", () => {
+    for (const key of ["custom:7", "ping_user.remind_you"]) {
+      const route = { ...base, action: "toggle-submit", key, page: 1, nonce: NONCE } as const;
+      const parsed = parseInteractionRoute(buildNudgeStudioRouteId(route));
+      expect(parsed && parseNudgeStudioRoute(parsed)).toEqual(route);
+    }
   });
 
   it("refuses a checklist submit whose snapshot is gone, so a repeated submit writes nothing", async () => {
@@ -159,13 +191,19 @@ describe("Nudge Studio routes", () => {
   });
 
   it("writes nothing when a checklist submit carries no checkbox data at all", async () => {
-    for (const [open, submit] of [
-      ["remove-open", "remove-submit"],
-      ["toggle-open", "toggle-submit"],
-    ] as const) {
+    const cases = [
+      async (h: ReturnType<typeof harness>) => {
+        await h.dispatch({ ...base, action: "remove-open" }, "button");
+        return h.dispatch({ ...base, action: "remove-submit", nonce: NONCE }, "modal");
+      },
+      async (h: ReturnType<typeof harness>) => {
+        await h.dispatch({ ...base, action: "toggle-open", page: 0 }, "string-select", { values: ["custom:7"] });
+        return h.dispatch({ ...base, action: "toggle-submit", key: "custom:7", page: 0, nonce: NONCE }, "modal");
+      },
+    ];
+    for (const run of cases) {
       const h = harness();
-      await h.dispatch({ ...base, action: open }, "button");
-      const interaction = await h.dispatch({ ...base, action: submit, nonce: NONCE }, "modal");
+      const interaction = await run(h);
 
       expect(h.operations.removeCustomIdleNudges).not.toHaveBeenCalled();
       expect(h.operations.setIdleNudgeAvailability).not.toHaveBeenCalled();
@@ -208,5 +246,32 @@ describe("Nudge Studio routes", () => {
     expect(collectTextDisplays(interaction.edits.at(-1)).join(" ")).toMatch(
       localizedProse("en-US", "commands.nudge-studio.invalid_detail"),
     );
+  });
+});
+
+describe("Toggle Availability submit", () => {
+  const live = [1, 2, 3];
+  const open = { enabled: true, scope: null } as const;
+  const scoped = (...scope: number[]) => ({ enabled: true, scope }) as const;
+  const off = { enabled: false } as const;
+
+  it("opens an idle nudge to everyone, future personas included, once every live persona is checked", () => {
+    expect(nextAvailability(scoped(1), live, live, new Set(live))).toEqual(open);
+    expect(nextAvailability(off, live, live, new Set(live))).toEqual(open);
+  });
+
+  it("turns an idle nudge off when no live persona is left checked", () => {
+    expect(nextAvailability(open, live, live, new Set())).toEqual(off);
+    expect(nextAvailability(scoped(9), live, [], new Set())).toEqual(off);
+  });
+
+  it("turns an idle nudge that was off back on for only the checked personas", () => {
+    expect(nextAvailability(off, live, live, new Set([2]))).toEqual(scoped(2));
+  });
+
+  it("keeps an unpresented persona's access and drops deleted personas", () => {
+    expect(nextAvailability(open, live, [1, 2], new Set([1]))).toEqual(scoped(1, 3));
+    expect(nextAvailability(scoped(3, 9), live, [1, 2], new Set([1]))).toEqual(scoped(1, 3));
+    expect(nextAvailability(off, live, [1, 2], new Set([1, 2]))).toEqual(scoped(1, 2));
   });
 });

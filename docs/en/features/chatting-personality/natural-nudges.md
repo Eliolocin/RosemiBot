@@ -62,13 +62,20 @@ Each idle nudge belongs to a category:
 nudges with a colored dot:
 
 - 🟢 **On**: it can be picked.
-- 🟡 **On, but it can't run here yet**: no persona has a tool it needs, or a Play Scene has no second
-  persona. The row says what is missing.
+- 🟡 **On, but it can't run here yet**: no persona has a tool it needs, a Play Scene has no second
+  persona, or none of the personas it is limited to can nudge. The row says what is missing.
 - 🔴 **Off**.
 
-**Toggle Availability** turns idle nudges on or off. Below the list you can add up to 25 of your own
-for the whole server. Choosing one opens it for editing; **Remove Custom Nudges** lists your own idle nudges,
-and unchecking one removes it. Each one has:
+**Toggle Availability** opens one idle nudge with a box for each persona:
+
+- **Every box checked**: every persona can use it, including personas you add later.
+- **Some checked**: only those personas, and its row names them, like "Remind you? (Mirri and Juno
+  only)". A persona you add later stays out until you check it.
+- **Nothing checked**: the idle nudge is off.
+
+Below the list you can add up to 25 of your own for the whole server. Choosing one opens it for
+editing; **Remove Custom Nudges** lists your own idle nudges, and unchecking one removes it. Each one
+has:
 
 - **Name**.
 - **Brief**: what the persona sets out to do. Write `{persona}` where its name goes,
