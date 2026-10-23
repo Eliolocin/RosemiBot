@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import {
-  PRESET_LINEAGE_BY_AVATAR,
   resolveAlterPersonaName,
   resolveAvailablePersonaName,
   resolvePresetLineageId,
@@ -90,47 +89,13 @@ describe("persona default — name resolution helpers", () => {
       expect(resolvePresetLineageId(makePreset({ preset_lineage_id: 42 }))).toBe(42);
     });
 
-    it("falls back to avatar filename lookup when lineage id is null", () => {
-      const preset = makePreset({ preset_lineage_id: null, preset_avatar_path: "default.png" });
-      expect(resolvePresetLineageId(preset)).toBe(PRESET_LINEAGE_BY_AVATAR["default.png"]);
-    });
-
-    it("avatar path lookup is case-insensitive to directory separators", () => {
-      const preset = makePreset({ preset_lineage_id: null, preset_avatar_path: "avatars/bratty.png" });
-      expect(resolvePresetLineageId(preset)).toBe(PRESET_LINEAGE_BY_AVATAR["bratty.png"]);
-    });
-
-    it("falls back to name-based heuristic when avatar path is unrecognized", () => {
+    it("returns null for a row without a lineage id, whatever its avatar or name", () => {
       const preset = makePreset({
         preset_lineage_id: null,
-        preset_avatar_path: "custom.png",
-        persona_preset_name: "The Gloomy One",
-      });
-      expect(resolvePresetLineageId(preset)).toBe(1770);
-
-      const lockePreset = makePreset({
-        preset_lineage_id: null,
-        preset_avatar_path: "custom.png",
+        preset_avatar_path: "bratty.png",
         persona_preset_name: "Locke",
       });
-      expect(resolvePresetLineageId(lockePreset)).toBe(666);
-    });
-
-    it("returns null when no lineage can be resolved", () => {
-      const preset = makePreset({
-        preset_lineage_id: null,
-        preset_avatar_path: "",
-        persona_preset_name: "UnknownPersona",
-      });
       expect(resolvePresetLineageId(preset)).toBeNull();
-    });
-
-    it("all PRESET_LINEAGE_BY_AVATAR keys map to known lineage ids", () => {
-      const knownIds = new Set([4, 716, 1770, 3585, 50, 666]);
-      for (const [filename, lineageId] of Object.entries(PRESET_LINEAGE_BY_AVATAR)) {
-        expect(knownIds.has(lineageId)).toBe(true);
-        expect(filename.endsWith(".png")).toBe(true);
-      }
     });
   });
 

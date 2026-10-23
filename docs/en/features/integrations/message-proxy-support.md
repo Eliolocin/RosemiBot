@@ -42,8 +42,8 @@ proxying but not a public authoritative message-attestation API that TomoriBot c
 
 ## Small message delay
 
-When a service is selected and its proxy bot is present in the guild, Tomori briefly waits before
-processing each ordinary guild message from your account. This gives the service time to delete and
+When a service is selected and its proxy bot is present in the server, Tomori briefly waits before
+processing each ordinary server message from your account. This gives the service time to delete and
 repost it. If the selected proxy bot is not installed, Tomori skips the wait. Unproxied messages
 continue after the wait. PluralKit reposts inherit the original trigger decision and reply target. PluralBuddy uses
 the verified repost content and best-effort recent-message match.

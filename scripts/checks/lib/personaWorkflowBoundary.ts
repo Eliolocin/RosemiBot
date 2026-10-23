@@ -195,75 +195,8 @@ function collectImportedAliases(sourceFile: ts.SourceFile, importedName: string)
  * Calls that acknowledge an interaction outright, as opposed to the in-place update and
  * defer-update the workflow performs on the anchor message. A selection callback that makes one
  * of these claims an interaction the anchor already owns, and Discord answers it as a failure.
- *
- * `deferReply` is only ever an interaction acknowledgement, so it is forbidden whatever it is
- * called on. `reply` is not: the workflow hands the callback a `beginSeparatePublicReply()` phase
- * whose whole purpose is to post a second message, so that call is legitimate and is identified by
- * the phase type in `isPublicReplyPhaseReceiver` rather than by its method name.
  */
-const SELF_ACKNOWLEDGEMENT_CALLS = new Set(["deferReply"]);
-const PUBLIC_REPLY_METHOD = "reply";
-
-/** Calls returning the workflow's separate-public-message phase rather than an acknowledgement. */
-const PUBLIC_REPLY_PHASE_FACTORIES = new Set(["beginSeparatePublicReply"]);
-
-/** Type names carrying a `reply` that posts the workflow's separate public message. */
-const PUBLIC_REPLY_PHASE_TYPES = new Set(["PersonaWorkflowPublicReplyPhase"]);
-
-/**
- * Names the type behind a receiver by resolving its declaration in the same body. Both the annotated
- * `const phase: T = ...` and the inferred `const phase = selection.beginSeparatePublicReply(...)`
- * shapes resolve, because the workflow documents the second and commands use it. A receiver that
- * resolves to nothing stays subject to the rule rather than being excused by an unresolvable name.
- *
- * Resolution is by name within the nearest enclosing function: the receiver is a sibling reference to
- * the declaration, not a descendant of it, so walking ancestors alone never reaches it.
- */
-function resolvedTypeName(receiver: ts.Expression): string | null {
-  const unwrapped = unwrapExpression(receiver);
-  if (!ts.isIdentifier(unwrapped)) return null;
-  const name = unwrapped.text;
-
-  let scope: ts.Node | undefined = unwrapped;
-  while (scope && !ts.isSourceFile(scope)) {
-    if (ts.isFunctionLike(scope)) break;
-    scope = scope.parent;
-  }
-  if (!scope) return null;
-
-  let found: string | null = null;
-  const search = (node: ts.Node): void => {
-    if (found !== null) return;
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name) {
-      const type = node.type;
-      if (type && ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
-        found = type.typeName.text;
-        return;
-      }
-      // Awaited here rather than in the shared `unwrapExpression`, whose other callers reason about
-      // empty functions and boolean literals where an awaited value is not the same expression.
-      let initializer = node.initializer;
-      while (initializer && ts.isAwaitExpression(initializer)) initializer = initializer.expression;
-      if (initializer) {
-        const call = unwrapExpression(initializer);
-        if (ts.isCallExpression(call)) {
-          const callee = unwrapExpression(call.expression);
-          if (ts.isPropertyAccessExpression(callee)) found = callee.name.text;
-          else if (ts.isIdentifier(callee)) found = callee.text;
-        }
-      }
-      return;
-    }
-    ts.forEachChild(node, search);
-  };
-  search(scope);
-  return found;
-}
-
-function isPublicReplyPhaseReceiver(receiver: ts.Expression): boolean {
-  const typeName = resolvedTypeName(receiver);
-  return typeName !== null && (PUBLIC_REPLY_PHASE_TYPES.has(typeName) || PUBLIC_REPLY_PHASE_FACTORIES.has(typeName));
-}
+const SELF_ACKNOWLEDGEMENT_CALLS = new Set(["deferReply", "reply"]);
 
 /** The callback whose body must not acknowledge, named as the workflow's options declare it. */
 const WORKFLOW_ON_SELECTED = "onSelected";
@@ -339,10 +272,7 @@ export function scanPersonaWorkflowSource(
       const callee = unwrapExpression(node.expression);
       if (ts.isPropertyAccessExpression(callee)) {
         const method = callee.name.text;
-        const isAcknowledgement =
-          SELF_ACKNOWLEDGEMENT_CALLS.has(method) ||
-          (method === PUBLIC_REPLY_METHOD && !isPublicReplyPhaseReceiver(callee.expression));
-        if (isAcknowledgement) {
+        if (SELF_ACKNOWLEDGEMENT_CALLS.has(method)) {
           addViolation(
             callee.name,
             "self-acknowledging-on-selected",

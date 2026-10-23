@@ -15,7 +15,6 @@ export default {
       no_personas_description: `Máy chủ này chưa có persona nào để hiển thị thống kê.`,
       not_found_title: `Không tìm thấy persona`,
       not_found_description: `Không tìm thấy persona đã chọn trên máy chủ này.`,
-      chosen_title: `Đã chọn {name}`,
     },
     server: {
       description: `Xem thống kê sử dụng trên toàn máy chủ.`,
@@ -146,18 +145,24 @@ export default {
 
     generate: {
       description: `Tạo thẻ ảnh thống kê có thể chia sẻ.`,
-      type_description: `Loại thẻ cần tạo.`,
-      timeframe_description: `Khoảng thời gian cần tổng hợp.`,
-      scope_description: `Chỉ tính máy chủ này hoặc mọi máy chủ. Chỉ áp dụng cho cá nhân.`,
-      personal_option: `Tổng kết cá nhân`,
-      persona_option: `Độ thân thiết persona`,
-      server_option: `Bảng xếp hạng máy chủ`,
-      privacy_title: `Thống kê không khả dụng`,
-      privacy_description: `Thẻ thống kê cá nhân không hỗ trợ người dùng hoàn toàn riêng tư.`,
-      picker_title: `Chọn persona`,
-      picker_description: `Chọn persona để tạo thẻ thống kê.`,
-      no_personas_title: `Không có persona`,
-      no_personas_description: `Máy chủ này chưa có persona nào để tạo thẻ thống kê.`,
+      personal: {
+        description: `Tạo thẻ Tổng kết cá nhân của bạn.`,
+        timeframe_description: `Khoảng thời gian cần tổng hợp.`,
+        scope_description: `Tính hoạt động trên máy chủ này hoặc trên mọi máy chủ.`,
+        privacy_title: `Thống kê không khả dụng`,
+        privacy_description: `Thẻ thống kê cá nhân không hỗ trợ người dùng hoàn toàn riêng tư.`,
+      },
+      persona: {
+        description: `Tạo thẻ Độ thân thiết persona với một persona.`,
+        persona_description: `Persona cần tạo thẻ.`,
+        timeframe_description: `Khoảng thời gian cần tổng hợp.`,
+        no_personas_title: `Không có persona`,
+        no_personas_description: `Máy chủ này chưa có persona nào để tạo thẻ thống kê.`,
+      },
+      server: {
+        description: `Tạo thẻ Bảng xếp hạng máy chủ của máy chủ này.`,
+        timeframe_description: `Khoảng thời gian cần tổng hợp.`,
+      },
     },
   },
 };

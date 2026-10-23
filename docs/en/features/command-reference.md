@@ -11,7 +11,7 @@ sidebar:
 
 Every slash command currently registered by TomoriBot, generated from the same command builders and English locale descriptions used for Discord registration.
 
-Top-level command groups: **42**. Runnable slash commands: **87**.
+Top-level command groups: **42**. Runnable slash commands: **89**.
 
 ## `/comment`
 
@@ -347,7 +347,9 @@ View usage statistics
 
 | Command | Summary |
 |---|---|
-| `/stats generate` | Generate a shareable stats image card. |
+| `/stats generate persona` | Generate your Persona Affinity card with one persona. |
+| `/stats generate personal` | Generate your Personal Wrapped card. |
+| `/stats generate server` | Generate this server's Server Leaderboard card. |
 | `/stats persona` | View a persona's usage statistics on this server. |
 | `/stats personal` | View your own usage statistics. |
 | `/stats server` | View server-wide usage statistics. |

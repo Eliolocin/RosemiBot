@@ -11,7 +11,7 @@ sidebar:
 
 TomoriBot 当前注册的全部斜杠指令，由与 Discord 注册所用的同一批指令构建器和简体中文描述生成（尚未翻译的描述以英文显示）。
 
-顶层指令组：**42**。可执行的斜杠指令：**87**。
+顶层指令组：**42**。可执行的斜杠指令：**89**。
 
 ## `/comment`
 
@@ -347,7 +347,9 @@ Choose which idle nudges I use in this server, and write your own.
 
 | 指令 | 摘要 |
 |---|---|
-| `/stats generate` | 生成一张可分享的统计图像卡片。 |
+| `/stats generate persona` | 生成你与某个人格的人格亲和度卡片。 |
+| `/stats generate personal` | 生成你的个人年度回顾卡片。 |
+| `/stats generate server` | 生成这个服务器的服务器排行榜卡片。 |
 | `/stats persona` | 查看某个人格在这个服务器上的用量统计。 |
 | `/stats personal` | 查看你自己的用量统计。 |
 | `/stats server` | 查看全服务器的用量统计。 |

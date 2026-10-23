@@ -27,11 +27,11 @@ Los recuentos de tokens reflejan el uso informado por el proveedor cuando están
 
 ## Tarjetas de infografía para compartir
 
-Ejecuta `/stats generate` para generar una tarjeta de imagen resumida pulida que puede compartir directamente en el chat:
+Ejecuta uno de los comandos `/stats generate` para generar una tarjeta de imagen resumida que puedes compartir directamente en el chat:
 
-- **Envoltura personal**: resume tu actividad personal y tus personajes favoritos.
-- **Afinidad de persona**: destaca las estadísticas de una persona específica y los principales socios de conversación en este servidor.
-- **Tabla de clasificación del servidor**: muestra la actividad en todo el servidor y la clasificación de los miembros.
+- **`/stats generate personal`** (Resumen Personal): resume tu actividad personal y tus personas favoritas.
+- **`/stats generate persona`** (Afinidad de Persona): elige una persona de la lista para destacar sus estadísticas y los principales compañeros de conversación en este servidor.
+- **`/stats generate server`** (Clasificación del Servidor): muestra la actividad de todo el servidor y la clasificación de los miembros.
 
 Los usuarios con su nivel de privacidad establecido en `Completo` en `/personal config` no pueden generar tarjetas de estadísticas personales.
 

@@ -104,6 +104,9 @@ function readProtectedSpan(value: string, start: number): ProtectedSpan | null {
   const mention = remaining.match(/^<(?:@!?|@&|#)\d+>/)?.[0];
   if (mention) return { raw: mention, visible: "●", visibleIsMarkdown: false };
 
+  const timestamp = remaining.match(/^<t:-?\d+(?::[tTdDfFR])?>/)?.[0];
+  if (timestamp) return { raw: timestamp, visible: timestamp, visibleIsMarkdown: false };
+
   const commandMention = remaining.match(/^<\/([^:>\n]+):\d+>/);
   if (commandMention) return { raw: commandMention[0], visible: `/${commandMention[1]}`, visibleIsMarkdown: false };
 

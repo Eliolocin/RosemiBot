@@ -11,7 +11,7 @@ sidebar:
 
 Todos los comandos de barra que TomoriBot tiene registrados actualmente, generados a partir de los mismos constructores de comandos y descripciones en español que se usan para el registro en Discord (las descripciones sin traducir aparecen en inglés).
 
-Grupos de comandos de nivel superior: **42**. Comandos de barra ejecutables: **87**.
+Grupos de comandos de nivel superior: **42**. Comandos de barra ejecutables: **89**.
 
 ## `/comment`
 
@@ -347,7 +347,9 @@ Ve las estadísticas de uso
 
 | Comando | Resumen |
 |---|---|
-| `/stats generate` | Genera una tarjeta de estadísticas compartible. |
+| `/stats generate persona` | Genera tu tarjeta de Afinidad de Persona con una persona. |
+| `/stats generate personal` | Genera tu tarjeta de Resumen Personal. |
+| `/stats generate server` | Genera la tarjeta de Clasificación del Servidor de este servidor. |
 | `/stats persona` | Ve las estadísticas de uso de una persona en este servidor. |
 | `/stats personal` | Ve tus propias estadísticas de uso. |
 | `/stats server` | Ve las estadísticas de uso de todo el servidor. |

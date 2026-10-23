@@ -28,7 +28,13 @@ import {
   parseCustomProvider,
 } from "@/utils/provider/customProviderUtils";
 import { buildFallbackModelPersistence, prunePrimaryFallbackRefs } from "@/utils/provider/fallbackModelIdentity";
-import { assignPersonalCapabilityToProvider, withPersonalTextPrimary } from "@/utils/provider/personalProviderHelpers";
+import {
+  assignPersonalCapabilityToProvider,
+  getActivePersonalProviderForCapability,
+  getStoredPersonalProviderForCapability,
+  prunePersonalFallbackChain,
+  setPersonalTextPrimary,
+} from "@/utils/provider/personalProviderHelpers";
 import { resolveLogitBiasEntriesForLlm } from "@/utils/provider/logitBiasResolver";
 import { decryptApiKey, encryptApiKey } from "@/utils/security/crypto";
 import { fetchUserRemoteUrl, RemoteUrlPolicyError } from "@/utils/security/userRemoteFetch";
@@ -389,16 +395,19 @@ async function activatePersonalCustomEndpointForCapability(params: {
     return false;
   }
 
+  if (params.capability === "text") {
+    return await setPersonalTextPrimary(params.userId, params.provider, params.modelId, [params.endpoint]);
+  }
+
   const updated = await assignPersonalCapabilityToProvider(params.userId, params.provider, capability, (row) => {
     switch (params.capability) {
-      case "text":
-        return withPersonalTextPrimary(row, params.modelId, [params.endpoint]);
       case "embedding":
         return { ...row, embedding_model_id: params.modelId };
       case "image":
         return { ...row, diffusion_model_id: params.modelId };
       case "video":
         return { ...row, video_model_id: params.modelId };
+      case "text":
       case "speech":
       case "transcription":
       case "decision":
@@ -594,10 +603,13 @@ export async function registerCustomEndpoint(
     embedding_model_id: input.capability === "embedding" ? activeId : savedConfig.embedding_model_id,
     diffusion_model_id: input.capability === "image" ? activeId : savedConfig.diffusion_model_id,
     video_model_id: input.capability === "video" ? activeId : savedConfig.video_model_id,
-    fallback_model_refs:
-      input.capability === "text"
-        ? prunePrimaryFallbackRefs(savedConfig.fallback_model_refs ?? [], activeId, [customEndpoint])
-        : savedConfig.fallback_model_refs,
+    ...("fallback_model_refs" in savedConfig && input.capability === "text"
+      ? {
+          fallback_model_refs: prunePrimaryFallbackRefs(savedConfig.fallback_model_refs ?? [], activeId, [
+            customEndpoint,
+          ]),
+        }
+      : {}),
   };
 
   const writeOk = serverScope
@@ -615,6 +627,20 @@ export async function registerCustomEndpoint(
 
   if (!writeOk) {
     return null;
+  }
+
+  // The chain is user-wide, so an edit prunes only when this row owns personal Text: pruning against
+  // another provider's active model would drop a valid fallback entry.
+  if (!serverScope && input.capability === "text" && !shouldActivateNewRegistration) {
+    const rows = await llmProviderRepo.loadUserSavedProviderConfigs(input.scope.ownerId);
+    const textOwner =
+      getActivePersonalProviderForCapability(rows, "text") ?? getStoredPersonalProviderForCapability(rows, "text");
+    if (
+      textOwner?.provider === provider &&
+      !(await prunePersonalFallbackChain(input.scope.ownerId, textOwner.llm_id, [...otherSiblings, customEndpoint]))
+    ) {
+      return null;
+    }
   }
 
   if (input.capability === "decision") {

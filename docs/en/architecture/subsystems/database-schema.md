@@ -138,7 +138,7 @@ matching credential revision, including after the persona is removed.
 ### User identity, privacy, and personalization
 
 - **`users`**: stores account snowflakes (`user_disc_id`), language preferences, registration locales, and `privacy_level` (0 = minimal, 1 = partial, 2 = full).
-- **`user_personalization_configs`**: stores personal nicknames, numeric timezone offsets, deliberate tool modes, cross-server short-term memory opt-ins, physical appearance tags, NovelAI character reference URLs, impersonation prompts, personal fallback routing toggles, and the Pings from Personas opt-out (`natural_nudge_opt_out`).
+- **`user_personalization_configs`**: stores personal nicknames, numeric timezone offsets, deliberate tool modes, cross-server short-term memory opt-ins, physical appearance tags, NovelAI character reference URLs, impersonation prompts, personal fallback routing toggles, the Pings from Personas opt-out (`natural_nudge_opt_out`), and the personal text fallback chain (`fallback_model_refs`) with its `model_randomizer_enabled` flag. The chain is one per user and may mix providers; sampler parameters stay per provider on `user_saved_provider_configs`.
 - **`user_persona_naming_preferences`**: stores nullable nickname, prefix, and suffix overrides per `(user_id, persona_lineage_id)`. Survives persona deletion and re-import because it has no foreign key to local persona IDs.
 - **`personalization_blacklist`**: server-scoped table keyed by `(server_id, user_disc_id)`. Excludes the user from personalization enrichments in that guild without deleting their account.
 - **`persona_user_blocks`**: stores persona-scoped moderation records keyed by `(server_id, persona_id, user_disc_id)`. Supports `mute` (stops triggering persona) and `block` (also hides user messages from dialogue history).
@@ -186,7 +186,7 @@ the schema.
 ### Operational state, counters, and admission limits
 
 - **`cooldowns`**: unlogged PostgreSQL table storing command category and message trigger cooldowns.
-- **`reminders`**: scheduled reminders and recurring jobs. Uses `next_attempt_at` leases and `delivery_retry_count` budgets to handle transient delivery failures without shifting recurring cadences.
+- **`reminders`**: scheduled reminders and recurring jobs. Uses `next_attempt_at` leases and `delivery_retry_count` budgets to handle transient delivery failures without shifting recurring cadences; `failed_occurrence_count` tracks consecutive failed occurrences so a persistently failing recurring reminder skips retries and is removed once it reaches nobody.
 - **`stat_counters`**: pre-aggregated counter table storing usage telemetry across `(server_id, user_id, persona_lineage_id, metric, metric_key, bucket)`. `StatRepository` accumulates counts in memory and flushes them as multi-row additive upserts on interval or shutdown. Excluded from export.
 - **`command_catalog`**: dimension table recording all registered slash commands. Synced at boot by `StatRepository.syncCommandCatalog()`, enabling telemetry joins to identify unused commands.
 - **`api_key_rotation` and `api_key_rotation_runtime_state`**: provider key rotation pool and error cooldown tracking per server. Excluded from export.

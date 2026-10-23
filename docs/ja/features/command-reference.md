@@ -11,7 +11,7 @@ sidebar:
 
 TomoriBotに現在登録されているすべてのスラッシュコマンドです。Discordへの登録に使われるものと同じコマンド定義と日本語の説明文から生成しています（未翻訳の説明は英語で表示されます）。
 
-トップレベルのコマンドグループ：**42**。実行できるスラッシュコマンド：**87**。
+トップレベルのコマンドグループ：**42**。実行できるスラッシュコマンド：**89**。
 
 ## `/comment`
 
@@ -347,7 +347,9 @@ Choose which idle nudges I use in this server, and write your own.
 
 | コマンド | 概要 |
 |---|---|
-| `/stats generate` | シェアできる統計画像カードを生成します。 |
+| `/stats generate persona` | 1つのペルソナとの親和度カードを生成します。 |
+| `/stats generate personal` | あなたの個人まとめカードを生成します。 |
+| `/stats generate server` | このサーバーのランキングカードを生成します。 |
 | `/stats persona` | このサーバーでのペルソナの使用統計を表示します。 |
 | `/stats personal` | 自分の使用統計を表示します。 |
 | `/stats server` | サーバー全体の使用統計を表示します。 |

@@ -11,10 +11,19 @@ import {
   type InteractionButtonComponentData,
   type TextDisplayComponentData,
 } from "discord.js";
-import { PrivacyLevel, type UserRow, type TomoriState, type UserSavedProviderConfigRow } from "@/types/db/schema";
+import {
+  PrivacyLevel,
+  type FallbackModelRef,
+  type LlmRow,
+  type PersonalFallbackSettings,
+  type UserRow,
+  type TomoriState,
+  type UserSavedProviderConfigRow,
+} from "@/types/db/schema";
 import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
 import type { PersonalSpotlightStatus } from "@/utils/db/repositories/UserRepository";
 import { createPersonalConfigInteractionRoute } from "@/utils/discord/interactions/personalConfigRoutes";
+import { loadPersonalModelDisplayInfo } from "@/utils/discord/interactions/personalConfigLoaders";
 import type { PersonalConfigRouteDependencies } from "@/utils/discord/interactions/personalConfigRouteContext";
 import {
   personalConfigOperations,
@@ -273,6 +282,7 @@ function makeModelDisplayInfo(
     eligibleProvidersForCapability: { ...EMPTY_CAPABILITY_PROVIDERS, ...eligibleProvidersForCapability },
     parametersProviders: [],
     fallbacksProviders: [],
+    fallbacksProvider: null,
     fallbackSlots: [],
     randomizerEnabled: false,
     canEnableRandomizer: false,
@@ -288,10 +298,15 @@ function makeDependencies(
   user: UserRow;
   personaPrefs: Map<string, UserPersonaNamingPreference>;
   telemetry: string[];
+  fallbackSettings: PersonalFallbackSettings;
 } {
   const user = makeUser();
   const personaPrefs = new Map<string, UserPersonaNamingPreference>();
   const telemetry: string[] = [];
+  const fallbackSettings: PersonalFallbackSettings = {
+    fallback_model_refs: [{ type: "llm", id: 103 }],
+    model_randomizer_enabled: false,
+  };
 
   const operations: PersonalConfigOperations = {
     setLanguage: async (input) => {
@@ -378,7 +393,8 @@ function makeDependencies(
       return { status: "success", fallbacks: [] };
     },
     setRandomizer: async (input) => {
-      calls.push(`setRandomizer:${input.provider}:${input.enabled}`);
+      calls.push(`setRandomizer:${input.enabled}`);
+      fallbackSettings.model_randomizer_enabled = input.enabled;
       return { status: "success", enabled: input.enabled };
     },
     setTriggerMode: async (input) => {
@@ -456,12 +472,11 @@ function makeDependencies(
         llm_disabled_params: [],
         llm_logit_biases: [],
         thinking_level: "auto",
-        model_randomizer_enabled: false,
         enabled_capabilities: ["text", "vision", "embedding", "image", "video"],
         assigned_capabilities: ["text", "vision", "embedding", "image", "video"],
-        fallback_model_refs: [{ type: "llm", id: 103 }],
       } as unknown as UserSavedProviderConfigRow,
     ],
+    loadPersonalFallbackSettings: async () => fallbackSettings,
     loadPersonalModelDisplayInfo: async () => ({
       routingRows: {
         speech_design: {
@@ -548,41 +563,11 @@ function makeDependencies(
         llm_disabled_params: [],
         llm_logit_biases: [],
         thinking_level: "auto",
-        model_randomizer_enabled: false,
         enabled_capabilities: ["text"],
         assigned_capabilities: ["text"],
-        fallback_model_refs: [{ type: "llm", id: 103 }],
       } as unknown as UserSavedProviderConfigRow,
       fallbacksProviders: ["openrouter"],
-      selectedFallbacksConfig: {
-        user_saved_config_id: 1,
-        user_id: 1,
-        provider: "openrouter",
-        key_version: 1,
-        api_key: null,
-        llm_id: 101,
-        diffusion_model_id: 201,
-        embedding_model_id: 301,
-        nai_diffusion_model_id: null,
-        video_model_id: null,
-        vision_llm_id: null,
-        nai_preset_name: null,
-        llm_temperature: 0.7,
-        llm_top_p: 0.95,
-        llm_top_k: 0,
-        llm_frequency_penalty: 0,
-        llm_presence_penalty: 0,
-        llm_min_p: 0.05,
-        llm_max_output_tokens: 4096,
-        llm_disabled_params: [],
-        llm_logit_biases: [],
-        thinking_level: "auto",
-        model_randomizer_enabled: false,
-        enabled_capabilities: ["text"],
-        assigned_capabilities: ["text"],
-        fallback_model_refs: [{ type: "llm", id: 103 }],
-      } as unknown as UserSavedProviderConfigRow,
-      primaryModelName: "Claude 3.5 Sonnet",
+      fallbacksProvider: "openrouter",
       fallbackSlots: [
         { slot: 1, modelName: "Claude 3 Haiku" },
         { slot: 2, modelName: null },
@@ -633,7 +618,7 @@ function makeDependencies(
   // overrides are applied to the completed object, which keeps each key's declared type.
   Object.assign(dependencies, overrides);
 
-  return { dependencies, user, personaPrefs, telemetry };
+  return { dependencies, user, personaPrefs, telemetry, fallbackSettings };
 }
 
 describe("personalConfigPanelCatalog", () => {
@@ -1730,10 +1715,8 @@ describe("personalConfigOperations Models invariants", () => {
         llm_disabled_params: [],
         llm_logit_biases: [],
         thinking_level: "auto",
-        model_randomizer_enabled: false,
         enabled_capabilities: [],
         assigned_capabilities: ["text"],
-        fallback_model_refs: [],
       } as unknown as UserSavedProviderConfigRow,
     ]);
 
@@ -1863,10 +1846,8 @@ describe("personalConfigOperations Models invariants", () => {
           llm_disabled_params: [],
           llm_logit_biases: [],
           thinking_level: "auto",
-          model_randomizer_enabled: false,
           enabled_capabilities: ["text"],
           assigned_capabilities: ["text"],
-          fallback_model_refs: [],
         }) as unknown as UserSavedProviderConfigRow,
     );
 
@@ -1899,56 +1880,22 @@ describe("personalConfigOperations Models invariants", () => {
   });
 
   it("setRandomizer requires at least one fallback model when enabling", async () => {
-    const loadConfigsSpy = spyOn(llmProviderRepo, "loadUserSavedProviderConfigs").mockImplementation(async () => [
-      {
-        provider: "openrouter",
-        llm_id: 101,
-        enabled_capabilities: ["text"],
-        assigned_capabilities: ["text"],
-      } as unknown as UserSavedProviderConfigRow,
-    ]);
-    const loadSpy = spyOn(llmProviderRepo, "loadUserSavedProviderConfig").mockImplementation(
-      async () =>
-        ({
-          user_saved_config_id: 1,
-          user_id: 1,
-          provider: "openrouter",
-          key_version: 1,
-          api_key: null,
-          llm_id: 101,
-          diffusion_model_id: null,
-          embedding_model_id: null,
-          nai_diffusion_model_id: null,
-          video_model_id: null,
-          vision_llm_id: null,
-          nai_preset_name: null,
-          llm_temperature: 0.7,
-          llm_top_p: 0.95,
-          llm_top_k: 0,
-          llm_frequency_penalty: 0,
-          llm_presence_penalty: 0,
-          llm_min_p: 0.05,
-          llm_max_output_tokens: 4096,
-          llm_disabled_params: [],
-          llm_logit_biases: [],
-          thinking_level: "auto",
-          model_randomizer_enabled: false,
-          enabled_capabilities: ["text"],
-          assigned_capabilities: ["text"],
-          fallback_model_refs: [],
-        }) as unknown as UserSavedProviderConfigRow,
-    );
+    const loadSpy = spyOn(llmProviderRepo, "loadPersonalFallbackSettings").mockImplementation(async () => ({
+      fallback_model_refs: [],
+      model_randomizer_enabled: false,
+    }));
+    const writeSpy = spyOn(llmProviderRepo, "updatePersonalModelRandomizer").mockImplementation(async () => true);
 
     const result = await personalConfigOperations.setRandomizer({
       userId: 1,
       userDiscId: "user-123",
-      provider: "openrouter",
       enabled: true,
     });
 
     expect(result).toEqual({ status: "requires-fallbacks" });
+    expect(writeSpy).not.toHaveBeenCalled();
     loadSpy.mockRestore();
-    loadConfigsSpy.mockRestore();
+    writeSpy.mockRestore();
   });
 });
 
@@ -2001,7 +1948,7 @@ describe("Models interaction routing and telemetry", () => {
 
     await route.execute({} as Client, interaction, requireRoute(customId));
 
-    expect(calls).toContain("setRandomizer:openrouter:true");
+    expect(calls).toContain("setRandomizer:true");
     expect(telemetry).toContain("personal-config.personal.randomizer.set");
   });
 
@@ -2319,8 +2266,7 @@ describe("Models panel rendering", () => {
         parametersProviders: ["openrouter"],
         selectedParametersConfig: null,
         fallbacksProviders: ["openrouter"],
-        selectedFallbacksConfig: null,
-        primaryModelName: null,
+        fallbacksProvider: "openrouter",
         fallbackSlots: [],
         randomizerEnabled: false,
         canEnableRandomizer: false,
@@ -2430,14 +2376,11 @@ describe("Models panel rendering", () => {
           llm_disabled_params: [],
           llm_logit_biases: [],
           thinking_level: "auto",
-          model_randomizer_enabled: false,
           enabled_capabilities: ["text"],
           assigned_capabilities: ["text"],
-          fallback_model_refs: [],
         } as unknown as UserSavedProviderConfigRow,
         fallbacksProviders: ["openrouter"],
-        selectedFallbacksConfig: null,
-        primaryModelName: null,
+        fallbacksProvider: "openrouter",
         fallbackSlots: [],
         randomizerEnabled: false,
         canEnableRandomizer: false,
@@ -2534,6 +2477,66 @@ describe("Models panel rendering", () => {
     expect(JSON.stringify(build(["openrouter"], "stale"))).toContain("Max output");
   });
 
+  it("opens Fallbacks on the active text provider with the user's chain when that provider is not listed first", async () => {
+    const rows = [
+      {
+        user_id: 1,
+        provider: "anthropic",
+        api_key: null,
+        llm_id: 100,
+        enabled_capabilities: [],
+        assigned_capabilities: [],
+      },
+      {
+        user_id: 1,
+        provider: "deepseek",
+        api_key: null,
+        llm_id: 200,
+        enabled_capabilities: ["text"],
+        assigned_capabilities: ["text"],
+      },
+    ] as unknown as UserSavedProviderConfigRow[];
+    const spies = [
+      spyOn(llmProviderRepo, "loadUserSavedProviderConfigs").mockImplementation(async () => rows),
+      spyOn(llmProviderRepo, "loadPersonalFallbackSettings").mockImplementation(async () => ({
+        fallback_model_refs: [{ type: "llm", id: 300 }],
+        model_randomizer_enabled: false,
+      })),
+      spyOn(llmModelRepo, "loadById").mockImplementation(
+        async (id) => ({ llm_id: id, llm_codename: `model-${id}` }) as unknown as LlmRow,
+      ),
+    ];
+
+    try {
+      const modelDisplayInfo = await loadPersonalModelDisplayInfo(1, rows);
+      expect(modelDisplayInfo.fallbacksProviders).toEqual(["anthropic", "deepseek"]);
+      expect(modelDisplayInfo.fallbacksProvider).toBe("deepseek");
+      expect(modelDisplayInfo.fallbackSlots[0]).toEqual({ slot: 1, modelName: "model-300" });
+
+      const payload = buildPersonalConfigPanelPayload({
+        locale: "en-US",
+        category: "models",
+        page: "fallbacks",
+        user: makeUser(),
+        resolvedNickname: "Tester",
+        personas: [],
+        guildId: "guild-123",
+        memoryCount: 0,
+        stmCount: 0,
+        readStatus: "fresh",
+        fallbackOptionCount: 1,
+        modelDisplayInfo,
+      });
+      const providerSelect = collectComponents(payload).find((component) =>
+        component.customId?.includes(":fallbacks-provider-select:"),
+      );
+      expect(providerSelect?.options?.find((option) => option.default)?.value).toBe("deepseek");
+      expect(JSON.stringify(payload)).toContain("model-300");
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
   it("renders Fallbacks page with primary model, 5 ordered slots, and Randomizer toggle button", () => {
     const user = makeUser();
     const payload = buildPersonalConfigPanelPayload({
@@ -2571,35 +2574,7 @@ describe("Models panel rendering", () => {
         parametersProviders: ["openrouter"],
         selectedParametersConfig: null,
         fallbacksProviders: ["openrouter"],
-        selectedFallbacksConfig: {
-          user_saved_config_id: 1,
-          user_id: 1,
-          provider: "openrouter",
-          key_version: 1,
-          api_key: null,
-          llm_id: 101,
-          diffusion_model_id: null,
-          embedding_model_id: null,
-          nai_diffusion_model_id: null,
-          video_model_id: null,
-          vision_llm_id: null,
-          nai_preset_name: null,
-          llm_temperature: 0.7,
-          llm_top_p: 0.95,
-          llm_top_k: 0,
-          llm_frequency_penalty: 0,
-          llm_presence_penalty: 0,
-          llm_min_p: 0.05,
-          llm_max_output_tokens: 4096,
-          llm_disabled_params: [],
-          llm_logit_biases: [],
-          thinking_level: "auto",
-          model_randomizer_enabled: false,
-          enabled_capabilities: ["text"],
-          assigned_capabilities: ["text"],
-          fallback_model_refs: [{ type: "llm", id: 102 }],
-        } as unknown as UserSavedProviderConfigRow,
-        primaryModelName: "Claude 3.5 Sonnet",
+        fallbacksProvider: "openrouter",
         fallbackSlots: [
           { slot: 1, modelName: "Claude 3 Haiku" },
           { slot: 2, modelName: null },
@@ -3289,6 +3264,13 @@ describe("Models-page cache invalidation invariants", () => {
     const invalidateSpy = spyOn(userCacheModule, "invalidateUserCache").mockImplementation(() => {});
     const upsertSpy = spyOn(llmProviderRepo, "upsertUserSavedProviderConfig").mockImplementation(async () => true);
     const randomizerSpy = spyOn(llmProviderRepo, "updatePersonalModelRandomizer").mockImplementation(async () => true);
+    const fallbackSettingsSpy = spyOn(llmProviderRepo, "loadPersonalFallbackSettings").mockImplementation(async () => ({
+      fallback_model_refs: [{ type: "llm", id: 102 }],
+      model_randomizer_enabled: false,
+    }));
+    const fallbackWriteSpy = spyOn(llmProviderRepo, "updatePersonalFallbackModelRefs").mockImplementation(
+      async () => true,
+    );
 
     const dummyConfig: UserSavedProviderConfigRow = {
       user_saved_config_id: 1,
@@ -3313,10 +3295,8 @@ describe("Models-page cache invalidation invariants", () => {
       llm_disabled_params: [],
       llm_logit_biases: [],
       thinking_level: "auto",
-      model_randomizer_enabled: false,
       enabled_capabilities: ["text"],
       assigned_capabilities: ["text"],
-      fallback_model_refs: [{ type: "llm", id: 102 }],
     } as unknown as UserSavedProviderConfigRow;
 
     const loadConfigSpy = spyOn(llmProviderRepo, "loadUserSavedProviderConfig").mockImplementation(
@@ -3363,7 +3343,6 @@ describe("Models-page cache invalidation invariants", () => {
     await personalConfigOperations.setRandomizer({
       userId: 1,
       userDiscId: "user-123",
-      provider: "openrouter",
       enabled: true,
     });
     expect(invalidateSpy).not.toHaveBeenCalled();
@@ -3371,6 +3350,8 @@ describe("Models-page cache invalidation invariants", () => {
     invalidateSpy.mockRestore();
     upsertSpy.mockRestore();
     randomizerSpy.mockRestore();
+    fallbackSettingsSpy.mockRestore();
+    fallbackWriteSpy.mockRestore();
     loadConfigSpy.mockRestore();
     loadConfigsSpy.mockRestore();
     loadEndpointsSpy.mockRestore();
@@ -3418,122 +3399,150 @@ describe("Models-page cache invalidation invariants", () => {
 });
 
 describe("Fallbacks submission re-resolution and invariants", () => {
-  it("keeps blank slots, clears none slots, deduplicates, and rejects primary conflict", async () => {
-    let savedConfigUpsert: unknown = null;
-    const loadConfigsSpy = spyOn(llmProviderRepo, "loadUserSavedProviderConfigs").mockImplementation(async () => [
-      {
-        provider: "openrouter",
-        llm_id: 101,
-        enabled_capabilities: ["text"],
-        assigned_capabilities: ["text"],
-      } as unknown as UserSavedProviderConfigRow,
-    ]);
-    const loadSpy = spyOn(llmProviderRepo, "loadUserSavedProviderConfig").mockImplementation(
-      async () =>
-        ({
-          user_saved_config_id: 1,
-          user_id: 1,
-          provider: "openrouter",
-          llm_id: 101,
-          fallback_model_refs: [
-            { type: "llm", id: 102 },
-            { type: "llm", id: 103 },
-          ],
-        }) as unknown as UserSavedProviderConfigRow,
-    );
-    const availableSpy = spyOn(llmModelRepo, "loadAvailableModelsForProvider").mockImplementation(
-      async () =>
-        [
-          { llm_id: 101, llm_codename: "claude-3-5-sonnet" },
-          { llm_id: 102, llm_codename: "claude-3-opus" },
-          { llm_id: 103, llm_codename: "gpt-4o" },
-          { llm_id: 104, llm_codename: "gemini-pro" },
-        ] as unknown as ReturnType<typeof llmModelRepo.loadAvailableModelsForProvider> extends Promise<infer T>
-          ? T
-          : never,
-    );
-    const endpointsSpy = spyOn(llmProviderRepo, "loadCustomEndpointsForUser").mockImplementation(async () => []);
-    const upsertSpy = spyOn(llmProviderRepo, "upsertUserSavedProviderConfig").mockImplementation(
-      async (_userId, cfg) => {
-        savedConfigUpsert = cfg;
+  type AvailableModels =
+    ReturnType<typeof llmModelRepo.loadAvailableModelsForProvider> extends Promise<infer T> ? T : never;
+
+  /** Stubs the reads `setFallbacks` makes and captures the user-level chain it writes. */
+  function stubFallbackSubmission(options: {
+    rows: UserSavedProviderConfigRow[];
+    chain: FallbackModelRef[];
+    models: Array<{ llm_id: number; llm_codename: string }>;
+    endpoints?: unknown[];
+  }) {
+    const written: FallbackModelRef[][] = [];
+    const spies = [
+      spyOn(llmProviderRepo, "loadUserSavedProviderConfigs").mockImplementation(async () => options.rows),
+      spyOn(llmProviderRepo, "loadPersonalFallbackSettings").mockImplementation(async () => ({
+        fallback_model_refs: options.chain,
+        model_randomizer_enabled: false,
+      })),
+      spyOn(llmModelRepo, "loadAvailableModelsForProvider").mockImplementation(
+        async () => options.models as unknown as AvailableModels,
+      ),
+      spyOn(llmProviderRepo, "loadCustomEndpointsForUser").mockImplementation(
+        async () =>
+          (options.endpoints ?? []) as unknown as ReturnType<
+            typeof llmProviderRepo.loadCustomEndpointsForUser
+          > extends Promise<infer T>
+            ? T
+            : never,
+      ),
+      spyOn(llmProviderRepo, "updatePersonalFallbackModelRefs").mockImplementation(async (_userId, refs) => {
+        written.push(refs);
         return true;
+      }),
+    ];
+    return {
+      written,
+      restore: () => {
+        for (const spy of spies) spy.mockRestore();
       },
-    );
+    };
+  }
 
-    const conflictResult = await personalConfigOperations.setFallbacks({
-      userId: 1,
-      userDiscId: "user-123",
-      provider: "openrouter",
-      slotValues: ["llm:101", "", "", "", ""],
+  const openRouterTextRow = {
+    provider: "openrouter",
+    llm_id: 101,
+    enabled_capabilities: ["text"],
+    assigned_capabilities: ["text"],
+  } as unknown as UserSavedProviderConfigRow;
+
+  it("keeps blank slots, clears none slots, deduplicates, and rejects primary conflict", async () => {
+    const stub = stubFallbackSubmission({
+      rows: [openRouterTextRow],
+      chain: [
+        { type: "llm", id: 102 },
+        { type: "llm", id: 103 },
+      ],
+      models: [
+        { llm_id: 101, llm_codename: "claude-3-5-sonnet" },
+        { llm_id: 102, llm_codename: "claude-3-opus" },
+        { llm_id: 103, llm_codename: "gpt-4o" },
+        { llm_id: 104, llm_codename: "gemini-pro" },
+      ],
     });
-    expect(conflictResult.status).toBe("primary-conflict");
 
-    const validResult = await personalConfigOperations.setFallbacks({
-      userId: 1,
-      userDiscId: "user-123",
-      provider: "openrouter",
-      slotValues: ["", "__none__", "llm:104", "llm:104", ""],
-    });
-    expect(validResult.status).toBe("success");
-    expect((savedConfigUpsert as { fallback_model_refs: unknown[] }).fallback_model_refs).toEqual([
-      { type: "llm", id: 102 },
-      { type: "llm", id: 104 },
-    ]);
+    try {
+      const conflictResult = await personalConfigOperations.setFallbacks({
+        userId: 1,
+        userDiscId: "user-123",
+        provider: "openrouter",
+        slotValues: ["llm:101", "", "", "", ""],
+      });
+      expect(conflictResult.status).toBe("primary-conflict");
 
-    loadSpy.mockRestore();
-    loadConfigsSpy.mockRestore();
-    availableSpy.mockRestore();
-    endpointsSpy.mockRestore();
-    upsertSpy.mockRestore();
+      const validResult = await personalConfigOperations.setFallbacks({
+        userId: 1,
+        userDiscId: "user-123",
+        provider: "openrouter",
+        slotValues: ["", "__none__", "llm:104", "llm:104", ""],
+      });
+      expect(validResult.status).toBe("success");
+      expect(stub.written.at(-1)).toEqual([
+        { type: "llm", id: 102 },
+        { type: "llm", id: 104 },
+      ]);
+    } finally {
+      stub.restore();
+    }
   });
 
-  it("rejects a custom endpoint submitted for a standard provider", async () => {
-    const savedRow = {
-      provider: "openrouter",
-      llm_id: 101,
-      fallback_model_refs: [],
+  it("adds a model from the selected provider without dropping slots that hold another provider's models", async () => {
+    // Google owns personal text while the models come from OpenRouter, so the Google entry already in
+    // the chain must survive a submit that never offered it.
+    const googleTextRow = {
+      provider: "google",
+      llm_id: 201,
       enabled_capabilities: ["text"],
       assigned_capabilities: ["text"],
     } as unknown as UserSavedProviderConfigRow;
-    const loadConfigsSpy = spyOn(llmProviderRepo, "loadUserSavedProviderConfigs").mockImplementation(async () => [
-      savedRow,
-    ]);
-    const loadConfigSpy = spyOn(llmProviderRepo, "loadUserSavedProviderConfig").mockImplementation(
-      async () => savedRow,
-    );
-    const availableSpy = spyOn(llmModelRepo, "loadAvailableModelsForProvider").mockImplementation(async () => []);
-    const endpointsSpy = spyOn(llmProviderRepo, "loadCustomEndpointsForUser").mockImplementation(
-      async () =>
-        [
-          {
-            custom_endpoint_id: 55,
-            connection_id: 9,
-            capability: "text",
-            label: "owned-endpoint",
-          },
-        ] as unknown as ReturnType<typeof llmProviderRepo.loadCustomEndpointsForUser> extends Promise<infer T>
-          ? T
-          : never,
-    );
-    const upsertSpy = spyOn(llmProviderRepo, "upsertUserSavedProviderConfig").mockImplementation(async () => true);
-
-    const result = await personalConfigOperations.setFallbacks({
-      userId: 1,
-      userDiscId: "user-123",
-      provider: "openrouter",
-      slotValues: ["custom_endpoint:55", "", "", "", ""],
+    const stub = stubFallbackSubmission({
+      rows: [googleTextRow, { ...openRouterTextRow, enabled_capabilities: [], assigned_capabilities: [] }],
+      chain: [{ type: "llm", id: 202 }],
+      models: [{ llm_id: 104, llm_codename: "gemini-pro-via-openrouter" }],
     });
 
-    expect(result).toEqual({ status: "write-failed" });
-    expect(upsertSpy).not.toHaveBeenCalled();
-    loadConfigsSpy.mockRestore();
-    loadConfigSpy.mockRestore();
-    availableSpy.mockRestore();
-    endpointsSpy.mockRestore();
-    upsertSpy.mockRestore();
+    try {
+      const result = await personalConfigOperations.setFallbacks({
+        userId: 1,
+        userDiscId: "user-123",
+        provider: "openrouter",
+        slotValues: ["", "llm:104", "", "", ""],
+      });
+
+      expect(result.status).toBe("success");
+      expect(stub.written.at(-1)).toEqual([
+        { type: "llm", id: 202 },
+        { type: "llm", id: 104 },
+      ]);
+    } finally {
+      stub.restore();
+    }
+  });
+
+  it("rejects a custom endpoint submitted for a standard provider", async () => {
+    const stub = stubFallbackSubmission({
+      rows: [openRouterTextRow],
+      chain: [],
+      models: [],
+      endpoints: [{ custom_endpoint_id: 55, connection_id: 9, capability: "text", label: "owned-endpoint" }],
+    });
+
+    try {
+      const result = await personalConfigOperations.setFallbacks({
+        userId: 1,
+        userDiscId: "user-123",
+        provider: "openrouter",
+        slotValues: ["custom_endpoint:55", "", "", "", ""],
+      });
+
+      expect(result).toEqual({ status: "write-failed" });
+      expect(stub.written).toHaveLength(0);
+    } finally {
+      stub.restore();
+    }
   });
 });
-
 describe("Quick-Toggle modal structure and routing copy", () => {
   it("renders all routing capabilities within the checkbox limit", () => {
     const { buildQuickToggleModal } = require("@/utils/discord/ui/personalConfigModals");
@@ -4464,7 +4473,7 @@ describe("personalConfigRoutes Advanced interactions and telemetry", () => {
         },
         parametersProviders: [],
         fallbacksProviders: [],
-        primaryModelName: "Claude 3.5 Sonnet",
+        fallbacksProvider: null,
         fallbackSlots: [],
         randomizerEnabled: false,
         canEnableRandomizer: false,
@@ -6486,10 +6495,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
           readStatus: "fresh",
           modelDisplayInfo: makeModelDisplayInfo({
             fallbacksProviders: ["openrouter"],
-            selectedFallbacksConfig: {
-              provider: "openrouter",
-              model_randomizer_enabled: false,
-            } as unknown as UserSavedProviderConfigRow,
+            fallbacksProvider: "openrouter",
             fallbackSlots: [{ slot: 1, modelName: "Claude 3 Haiku" }],
             randomizerEnabled: false,
             canEnableRandomizer: true,
@@ -6559,10 +6565,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
           readStatus: "fresh",
           modelDisplayInfo: makeModelDisplayInfo({
             fallbacksProviders: ["openrouter"],
-            selectedFallbacksConfig: {
-              provider: "openrouter",
-              model_randomizer_enabled: true,
-            } as unknown as UserSavedProviderConfigRow,
+            fallbacksProvider: "openrouter",
             fallbackSlots: [{ slot: 1, modelName: "Claude 3 Haiku" }],
             randomizerEnabled: true,
             canEnableRandomizer: true,
@@ -6613,10 +6616,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
           readStatus: "fresh",
           modelDisplayInfo: makeModelDisplayInfo({
             fallbacksProviders: ["openrouter"],
-            selectedFallbacksConfig: {
-              provider: "openrouter",
-              model_randomizer_enabled: false,
-            } as unknown as UserSavedProviderConfigRow,
+            fallbacksProvider: "openrouter",
             fallbackSlots: [],
             randomizerEnabled: false,
             canEnableRandomizer: false,
@@ -6679,10 +6679,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
           readStatus: "fresh",
           modelDisplayInfo: makeModelDisplayInfo({
             fallbacksProviders: ["openrouter"],
-            selectedFallbacksConfig: {
-              provider: "openrouter",
-              model_randomizer_enabled: true,
-            } as unknown as UserSavedProviderConfigRow,
+            fallbacksProvider: "openrouter",
             fallbackSlots: [],
             randomizerEnabled: true,
             canEnableRandomizer: false,
@@ -6954,22 +6951,12 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
       it("acknowledges interaction before database write and sets randomizer to on", async () => {
         const calls: string[] = [];
         let acknowledgedDuringWrite = false;
-        const savedConfig = {
-          user_saved_config_id: 1,
-          user_id: 1,
-          provider: "openrouter",
-          model_randomizer_enabled: false,
-          fallback_model_refs: [{ type: "llm", id: 103 }],
-        } as unknown as UserSavedProviderConfigRow;
-
-        const { dependencies, telemetry } = makeDependencies(calls, {
-          loadUserSavedProviders: async () => [savedConfig],
-        });
+        const { dependencies, telemetry, fallbackSettings } = makeDependencies(calls);
 
         dependencies.operations.setRandomizer = async (input) => {
           acknowledgedDuringWrite = interaction.deferred || interaction.replied;
-          calls.push(`setRandomizer:${input.provider}:${input.enabled}`);
-          savedConfig.model_randomizer_enabled = input.enabled;
+          calls.push(`setRandomizer:${input.enabled}`);
+          fallbackSettings.model_randomizer_enabled = input.enabled;
           return { status: "success", enabled: input.enabled };
         };
 
@@ -6988,7 +6975,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
         await route.execute({} as Client, interaction, requireRoute(customId));
 
         expect(acknowledgedDuringWrite).toBe(true);
-        expect(calls).toContain("setRandomizer:openrouter:true");
+        expect(calls).toContain("setRandomizer:true");
         expect(telemetry).toContain("personal-config.personal.randomizer.set");
         const capturedPayload = interaction.edits.at(-1);
         expect(capturedPayload).not.toBeNull();
@@ -6998,17 +6985,8 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
 
       it("performs no write when setting randomizer to already stored value", async () => {
         const calls: string[] = [];
-        const savedConfig = {
-          user_saved_config_id: 1,
-          user_id: 1,
-          provider: "openrouter",
-          model_randomizer_enabled: true,
-          fallback_model_refs: [{ type: "llm", id: 103 }],
-        } as unknown as UserSavedProviderConfigRow;
-
-        const { dependencies } = makeDependencies(calls, {
-          loadUserSavedProviders: async () => [savedConfig],
-        });
+        const { dependencies, fallbackSettings } = makeDependencies(calls);
+        fallbackSettings.model_randomizer_enabled = true;
 
         dependencies.operations.setRandomizer = async (_input) => {
           return { status: "no-changes" };
@@ -7036,17 +7014,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
 
       it("legacy randomizer-toggle action remains routable and flips the stored state", async () => {
         const calls: string[] = [];
-        const savedConfig = {
-          user_saved_config_id: 1,
-          user_id: 1,
-          provider: "openrouter",
-          model_randomizer_enabled: false,
-          fallback_model_refs: [{ type: "llm", id: 103 }],
-        } as unknown as UserSavedProviderConfigRow;
-
-        const { dependencies, telemetry } = makeDependencies(calls, {
-          loadUserSavedProviders: async () => [savedConfig],
-        });
+        const { dependencies, telemetry } = makeDependencies(calls);
 
         const route = createPersonalConfigInteractionRoute(dependencies);
         const customId = "personal-config:v2:randomizer-toggle:en-US:openrouter";
@@ -7057,7 +7025,7 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
 
         await route.execute({} as Client, interaction, requireRoute(customId));
 
-        expect(calls).toContain("setRandomizer:openrouter:true");
+        expect(calls).toContain("setRandomizer:true");
         expect(telemetry).toContain("personal-config.personal.randomizer.set");
         const capturedPayload = interaction.edits.at(-1);
         expect(capturedPayload).not.toBeNull();
@@ -7065,7 +7033,6 @@ describe("Pre-defer dispatch, fall-throughs, and acknowledgement timing", () => 
         expect(renderedText).toContain(localizedCopy("en-US", "commands.personal.config.randomizer_enabled_heading"));
       });
     });
-
     describe("Execution of server-fallback-set", () => {
       it("acknowledges the interaction before the write and reports the account opt-out", async () => {
         const calls: string[] = [];

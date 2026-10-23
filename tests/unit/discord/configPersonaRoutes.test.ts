@@ -362,7 +362,15 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     { action: "persona-page-select", locale: "en-US", category: "persona", page: "general", personaId: 55 },
   ],
   ["config:v2:persona-select:en-US:55", { action: "persona-select", locale: "en-US", personaId: 55 }],
+  [
+    "config:v2:persona-select:en-US:55:sprites",
+    { action: "persona-select", locale: "en-US", personaId: 55, page: "sprites" },
+  ],
   ["config:v2:persona-page:en-US:55:25", { action: "persona-page", locale: "en-US", personaId: 55, start: 25 }],
+  [
+    "config:v2:persona-page:en-US:55:25:memories",
+    { action: "persona-page", locale: "en-US", personaId: 55, start: 25, page: "memories" },
+  ],
   ["config:v2:voice-select:en-US:55", { action: "voice-select", locale: "en-US", personaId: 55 }],
   ["config:v2:voice-page:en-US:55:25", { action: "voice-page", locale: "en-US", personaId: 55, start: 25 }],
   ["config:v2:voice-choose-cancel:en-US:55", { action: "voice-chooser-cancel", locale: "en-US", personaId: 55 }],
@@ -1104,6 +1112,7 @@ describe("config route wire contract", () => {
     ["config:v2:persona-select:en-US:abc", "a non-numeric persona id"],
     ["config:v2:page:en-US:models:general", "`general` is a Behavior page, so it must decode against its own category"],
     ["config:v2:persona-page-select:en-US:models:switch:55", "a persona page paired with the models category"],
+    ["config:v2:persona-select:en-US:55:switch", "a carried page outside the persona category"],
     ["config:v2:naming-open:en-US:55:androgynous", "a naming style outside the accepted set"],
     ["config:v2:not-a-token:en-US:55", "an action that no codec declares"],
   ];
@@ -1485,6 +1494,47 @@ describe("config route write behavior", () => {
     expect(memories).toContain(buildConfigRouteId({ action: "server-memory-open", locale: "en-US", personaId: 56 }));
     expect(memories).not.toContain(
       buildConfigRouteId({ action: "server-memory-open", locale: "en-US", personaId: 55 }),
+    );
+  });
+
+  it("keeps the current Persona page when switching or paging personas", async () => {
+    const personas = [
+      MAIN,
+      ...Array.from({ length: 25 }, (_, index) =>
+        makePersona({ persona_id: 100 + index, persona_nickname: `Alter ${index + 1}`, is_alter: true }),
+      ),
+    ];
+    const harness = makeHarness({ personas });
+
+    await dispatch(
+      harness,
+      makeInteraction({
+        customId: buildConfigRouteId({ action: "persona-select", locale: "en-US", personaId: 55, page: "sprites" }),
+        kind: "select",
+        values: ["101"],
+        harness,
+      }),
+    );
+    expect(JSON.stringify(harness.edits.at(-1))).toContain(
+      buildConfigRouteId({ action: "sprite-select", locale: "en-US", personaId: 101 }),
+    );
+
+    await dispatch(
+      harness,
+      makeInteraction({
+        customId: buildConfigRouteId({
+          action: "persona-page",
+          locale: "en-US",
+          personaId: 101,
+          start: 25,
+          page: "memories",
+        }),
+        kind: "button",
+        harness,
+      }),
+    );
+    expect(JSON.stringify(harness.edits.at(-1))).toContain(
+      buildConfigRouteId({ action: "server-memory-open", locale: "en-US", personaId: 101 }),
     );
   });
 

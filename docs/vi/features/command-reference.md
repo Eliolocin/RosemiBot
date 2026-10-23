@@ -11,7 +11,7 @@ sidebar:
 
 Tất cả các lệnh slash hiện được TomoriBot đăng ký, được tạo từ cùng trình xây dựng lệnh và mô tả tiếng Việt dùng để đăng ký trên Discord (mô tả chưa được dịch sẽ hiển thị bằng tiếng Anh).
 
-Các nhóm lệnh cấp cao nhất: **42**. Các lệnh slash có thể thực thi: **87**.
+Các nhóm lệnh cấp cao nhất: **42**. Các lệnh slash có thể thực thi: **89**.
 
 ## `/comment`
 
@@ -347,7 +347,9 @@ Xem thống kê sử dụng
 
 | Lệnh | Tóm tắt |
 |---|---|
-| `/stats generate` | Tạo thẻ ảnh thống kê có thể chia sẻ. |
+| `/stats generate persona` | Tạo thẻ Độ thân thiết persona với một persona. |
+| `/stats generate personal` | Tạo thẻ Tổng kết cá nhân của bạn. |
+| `/stats generate server` | Tạo thẻ Bảng xếp hạng máy chủ của máy chủ này. |
 | `/stats persona` | Xem thống kê sử dụng của persona trên máy chủ này. |
 | `/stats personal` | Xem thống kê sử dụng của bạn. |
 | `/stats server` | Xem thống kê sử dụng trên toàn máy chủ. |

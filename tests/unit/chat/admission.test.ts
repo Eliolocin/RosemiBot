@@ -242,6 +242,21 @@ describe("resolveAdmissionChannelScope DM server key", () => {
   });
 });
 
+describe("evaluateChatAdmission unavailable channel", () => {
+  it("ignores a retried message whose channel no longer resolves", async () => {
+    const incoming = {
+      client: { user: { id: "tomori-bot" } },
+      message: { channel: null, guild: null, author: { id: "user-1", bot: false }, content: "hello" },
+      isManuallyTriggered: true,
+      retryCount: 1,
+    } as unknown as ChatIncoming;
+
+    const admission = await evaluateChatAdmission(incoming);
+
+    expect(admission.disposition).toBe("ignore");
+  });
+});
+
 describe("evaluateChatAdmission server blacklist", () => {
   it("blocks a blacklisted member before audio transcription can run", async () => {
     const memberId = "100000000000000021";

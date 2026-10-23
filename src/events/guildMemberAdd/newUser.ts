@@ -22,6 +22,7 @@ import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAt
 import { ZAI_CODING_CHAT_COMPLETIONS_URL, ZAI_GENERAL_CHAT_COMPLETIONS_URL } from "@/providers/zai/zaiShared";
 import { waitForWelcomeGate } from "@/events/guildMemberAdd/helpers/welcomeGate";
 import { type WelcomeMembershipCheck, checkWelcomeMembership } from "@/events/guildMemberAdd/helpers/welcomeMembership";
+import { type WelcomeHandoff, openWelcomeHandoff } from "@/utils/chat/welcomeHandoff";
 
 /**
  * Provider-to-chat-completions-URL mapping for vision model routing.
@@ -269,6 +270,40 @@ async function triggerWelcomeMessage(client: Client, member: GuildMember): Promi
   }
 
   const welcomeChannel = rawChannel as TextChannel;
+  const handoff = openWelcomeHandoff(
+    welcomeChannel.id,
+    member.id,
+    await buildWelcomeContextItem({
+      member: greetedMember,
+      additionalPrompt: currentAdditionalPrompt,
+      includeAvatarContext: false,
+    }),
+  );
+  try {
+    await sendWelcome({
+      client,
+      member,
+      greetedMember,
+      welcomeChannel,
+      tomoriState,
+      additionalPrompt: currentAdditionalPrompt,
+      handoff,
+    });
+  } finally {
+    handoff.release();
+  }
+}
+
+async function sendWelcome(params: {
+  client: Client;
+  member: GuildMember;
+  greetedMember: GuildMember;
+  welcomeChannel: TextChannel;
+  tomoriState: TomoriState;
+  additionalPrompt: string;
+  handoff: WelcomeHandoff;
+}): Promise<void> {
+  const { client, member, greetedMember, welcomeChannel, tomoriState, additionalPrompt, handoff } = params;
   const allPersonas = await getCachedAllPersonas(member.guild.id);
   const availablePersonas = allPersonas.length > 0 ? allPersonas : [tomoriState];
   const selectedWelcomePersonaId = tomoriState.config.welcome_persona_id;
@@ -301,7 +336,7 @@ async function triggerWelcomeMessage(client: Client, member: GuildMember): Promi
     }
   }
 
-  if (!lastMessage) return;
+  if (!lastMessage || handoff.isTakenByMember()) return;
 
   const includeAvatarContext = chosenPersona.llm.sees_images;
   let avatarDescription: string | undefined;
@@ -317,7 +352,7 @@ async function triggerWelcomeMessage(client: Client, member: GuildMember): Promi
 
   const welcomeContextItem = await buildWelcomeContextItem({
     member: greetedMember,
-    additionalPrompt: currentAdditionalPrompt,
+    additionalPrompt,
     includeAvatarContext,
     avatarDescription,
   });
@@ -326,6 +361,11 @@ async function triggerWelcomeMessage(client: Client, member: GuildMember): Promi
   const generationMembership = await checkWelcomeMembership(member);
   if (generationMembership.status !== "active") {
     logSkippedWelcome(member, generationMembership, "before welcome generation");
+    return;
+  }
+
+  if (!handoff.claimForWelcome(lastMessage.id)) {
+    log.info(`Skipping welcome for ${member.user.tag}: their own message turn is carrying the greeting`);
     return;
   }
 

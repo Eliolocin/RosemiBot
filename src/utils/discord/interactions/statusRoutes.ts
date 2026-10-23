@@ -115,8 +115,13 @@ export function createStatusInteractionRoute(overrides: Partial<StatusRouteDepen
         return;
       }
 
-      const selectedPage = route.action === "page" ? parseStatusPageSelection(pageValues[0]) : 0;
-      if (route.action === "page" && selectedPage === null) {
+      const activePage =
+        route.action === "page"
+          ? parseStatusPageSelection(pageValues[0])
+          : route.action === "persona-select" || route.action === "persona-page"
+            ? (route.page ?? 0)
+            : 0;
+      if (route.action === "page" && activePage === null) {
         await interaction.editReply(invalidStatusPayload(route.locale));
         return;
       }
@@ -200,7 +205,6 @@ export function createStatusInteractionRoute(overrides: Partial<StatusRouteDepen
       }
 
       const category = categories.find((candidate) => candidate.id === activeCategory);
-      const activePage = route.action === "persona-page" ? 0 : selectedPage;
       if (!category || category.pages.length === 0 || activePage === null || activePage >= category.pages.length) {
         await interaction.editReply(invalidStatusPayload(route.locale));
         return;

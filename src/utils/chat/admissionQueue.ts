@@ -25,6 +25,7 @@ import {
   type ChatAccessState,
 } from "@/utils/chat/admissionGuards";
 import { shouldBotReply } from "@/utils/chat/replyDecision";
+import { applyWelcomeHandoff } from "@/utils/chat/welcomeHandoff";
 import { shouldSurfaceChatUserErrors } from "@/utils/chat/errorVisibility";
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
 import type { ChatIncoming, NonRunnableChatAdmission } from "@/utils/chat/types";
@@ -262,6 +263,10 @@ async function evaluateLockedChannelAdmission(
       log.info(`Message ${message.id} rejected before queuing due to cooldown.`);
       return ignored("locked_cooldown");
     }
+  }
+
+  if (!applyWelcomeHandoff(incoming, userDiscId)) {
+    return ignored("answered_by_welcome");
   }
 
   enqueueBusyChannelMessage({

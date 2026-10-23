@@ -1,7 +1,6 @@
 import type { ModalSubmitInteraction } from "discord.js";
 import { performPanelAction } from "@/utils/discord/interactions/panelController";
 import { buildPersonalConfigModalFieldId } from "@/utils/discord/ui/personalConfigModals";
-import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import { localizer } from "@/utils/text/localizer";
 import {
   noChangesReceipt,
@@ -44,7 +43,6 @@ export async function handlePersonalConfigResponseRoutes(context: PersonalConfig
         dependencies.operations.setRandomizer({
           userId: context.scope.userId,
           userDiscId: context.scope.userDiscId,
-          provider: route.provider,
           enabled: route.enabled,
         }),
       () => dependencies.resolveScope(interaction, true),
@@ -90,9 +88,8 @@ export async function handlePersonalConfigResponseRoutes(context: PersonalConfig
           detail: localizer(
             route.locale,
             isEnabled
-              ? "commands.personal.config.randomizer_enabled_detail"
-              : "commands.personal.config.randomizer_disabled_detail",
-            { provider: getProviderDisplayName(route.provider) },
+              ? "commands.config.panel.randomizer_enabled_detail"
+              : "commands.config.panel.randomizer_disabled_detail",
           ),
         },
         dependencies,
@@ -127,16 +124,15 @@ export async function handlePersonalConfigResponseRoutes(context: PersonalConfig
   }
 
   if (route.action === "randomizer-toggle") {
-    const rows = await dependencies.loadUserSavedProviders(context.scope.userId);
-    const config = rows.find((r) => r.provider.toLowerCase() === route.provider.toLowerCase());
-    const currentEnabled = Boolean(config?.model_randomizer_enabled);
+    const { model_randomizer_enabled: currentEnabled } = await dependencies.loadPersonalFallbackSettings(
+      context.scope.userId,
+    );
 
     const action = await performPanelAction(
       () =>
         dependencies.operations.setRandomizer({
           userId: context.scope.userId,
           userDiscId: context.scope.userDiscId,
-          provider: route.provider,
           enabled: !currentEnabled,
         }),
       () => dependencies.resolveScope(interaction, true),
@@ -182,9 +178,8 @@ export async function handlePersonalConfigResponseRoutes(context: PersonalConfig
           detail: localizer(
             route.locale,
             isEnabled
-              ? "commands.personal.config.randomizer_enabled_detail"
-              : "commands.personal.config.randomizer_disabled_detail",
-            { provider: getProviderDisplayName(route.provider) },
+              ? "commands.config.panel.randomizer_enabled_detail"
+              : "commands.config.panel.randomizer_disabled_detail",
           ),
         },
         dependencies,

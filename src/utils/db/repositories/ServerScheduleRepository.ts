@@ -178,9 +178,14 @@ class ServerScheduleRepository implements IRepository<ServerScheduleExportShape>
    * Reschedules an existing reminder to a new time.
    *
    * @param nextReminderTime - New fire time
+   * @param failedOccurrenceCount - Consecutive failed occurrences to carry forward; 0 after a delivered one
    */
-  async rescheduleReminder(reminderId: number, nextReminderTime: Date): Promise<ReminderRow | null> {
-    return this.sqlRescheduleReminder(reminderId, nextReminderTime);
+  async rescheduleReminder(
+    reminderId: number,
+    nextReminderTime: Date,
+    failedOccurrenceCount = 0,
+  ): Promise<ReminderRow | null> {
+    return this.sqlRescheduleReminder(reminderId, nextReminderTime, failedOccurrenceCount);
   }
 
   /** Defers delivery without changing the reminder's canonical occurrence time. */
@@ -692,13 +697,18 @@ class ServerScheduleRepository implements IRepository<ServerScheduleExportShape>
     }
   }
 
-  private async sqlRescheduleReminder(reminderId: number, nextReminderTime: Date): Promise<ReminderRow | null> {
+  private async sqlRescheduleReminder(
+    reminderId: number,
+    nextReminderTime: Date,
+    failedOccurrenceCount: number,
+  ): Promise<ReminderRow | null> {
     try {
       const [updatedReminder] = await sql`
         UPDATE reminders
         SET reminder_time = ${nextReminderTime},
             next_attempt_at = NULL,
             delivery_retry_count = 0,
+            failed_occurrence_count = ${failedOccurrenceCount},
             updated_at = CURRENT_TIMESTAMP
         WHERE reminder_id = ${reminderId}
         RETURNING *
@@ -816,6 +826,7 @@ class ServerScheduleRepository implements IRepository<ServerScheduleExportShape>
           reminder_time = ${reminderData.reminder_time},
           next_attempt_at = NULL,
           delivery_retry_count = 0,
+          failed_occurrence_count = 0,
           repetition_interval_hours = ${reminderData.repetition_interval_hours},
           self_reminder = ${reminderData.self_reminder},
           user_discord_id = ${reminderData.user_discord_id},
@@ -906,6 +917,7 @@ class ServerScheduleRepository implements IRepository<ServerScheduleExportShape>
           reminder_time = ${reminderData.reminder_time},
           next_attempt_at = NULL,
           delivery_retry_count = 0,
+          failed_occurrence_count = 0,
           repetition_interval_hours = ${reminderData.repetition_interval_hours},
           updated_at = CURRENT_TIMESTAMP
         WHERE reminder_id = ${reminderData.reminder_id}

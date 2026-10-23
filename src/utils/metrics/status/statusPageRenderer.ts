@@ -215,6 +215,7 @@ function personaSelectorRows(
   personas: readonly TomoriState[],
   selectedPersonaId: number | null | undefined,
   requestedStart: number | undefined,
+  activePage: number,
   disabled: boolean,
 ): ActionRowData<StringSelectMenuComponentData>[] {
   const selectablePersonas = personas.filter(personaWithId);
@@ -246,7 +247,7 @@ function personaSelectorRows(
       components: [
         {
           type: ComponentType.StringSelect,
-          customId: buildStatusPersonaSelectorId(locale, effectiveSelectedId),
+          customId: buildStatusPersonaSelectorId(locale, effectiveSelectedId, activePage),
           placeholder,
           disabled,
           options,
@@ -261,6 +262,7 @@ function personaRangeRow(
   personas: readonly TomoriState[],
   selectedPersonaId: number | null | undefined,
   requestedStart: number | undefined,
+  activePage: number,
   disabled: boolean,
 ): ActionRowData<ButtonComponentData>[] {
   const selectablePersonas = personas.filter(personaWithId);
@@ -287,6 +289,7 @@ function personaRangeRow(
           locale,
           effectiveSelectedId,
           targetRangeIndex * STATUS_PERSONA_SELECT_PAGE_SIZE,
+          activePage,
         ),
     },
   });
@@ -309,6 +312,7 @@ function pageControlRows(
         identity.personas,
         identity.selectedPersonaId,
         identity.personaSelectStart,
+        activePage,
         disabled,
       ),
     );
@@ -349,7 +353,8 @@ export function dashboardPayload(
   identity: StatusDashboardIdentity = {},
 ) {
   const category = categories.find((candidate) => candidate.id === activeCategory) ?? categories[0];
-  const page = category.pages[Math.min(activePage, category.pages.length - 1)];
+  const pageIndex = Math.min(activePage, category.pages.length - 1);
+  const page = category.pages[pageIndex];
   return buildDashboardPagePayload({
     locale,
     page,
@@ -362,9 +367,16 @@ export function dashboardPayload(
       identity.selectedPersonaId,
     ),
     controlRows: [
-      ...pageControlRows(interactionId, locale, category, activePage, disabled, identity),
+      ...pageControlRows(interactionId, locale, category, pageIndex, disabled, identity),
       ...(category.id === "persona" && identity.personas
-        ? personaRangeRow(locale, identity.personas, identity.selectedPersonaId, identity.personaSelectStart, disabled)
+        ? personaRangeRow(
+            locale,
+            identity.personas,
+            identity.selectedPersonaId,
+            identity.personaSelectStart,
+            pageIndex,
+            disabled,
+          )
         : []),
     ],
     disabled,

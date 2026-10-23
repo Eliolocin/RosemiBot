@@ -98,8 +98,9 @@ export async function applyPersonalProviderSelectionsToTomoriState(
 
   const activeConfigs = collectActiveConfigs(rows);
   const nextConfig = { ...tomoriState.config };
+  const fallbackSettings = activeConfigs.text ? await llmProviderRepo.loadPersonalFallbackSettings(userId) : null;
 
-  if (activeConfigs.text) {
+  if (activeConfigs.text && fallbackSettings) {
     nextConfig.llm_id = activeConfigs.text.llm_id ?? nextConfig.llm_id;
     nextConfig.api_key = activeConfigs.text.api_key;
     nextConfig.key_version = activeConfigs.text.key_version ?? nextConfig.key_version;
@@ -113,10 +114,8 @@ export async function applyPersonalProviderSelectionsToTomoriState(
     nextConfig.llm_disabled_params = activeConfigs.text.llm_disabled_params ?? nextConfig.llm_disabled_params;
     nextConfig.llm_logit_biases = activeConfigs.text.llm_logit_biases ?? nextConfig.llm_logit_biases;
     nextConfig.thinking_level = activeConfigs.text.thinking_level ?? nextConfig.thinking_level;
-    nextConfig.model_randomizer_enabled = activeConfigs.text.model_randomizer_enabled;
-    const personalFallbackIds = (activeConfigs.text.fallback_model_refs ?? [])
-      .filter((r) => r.type === "llm")
-      .map((r) => r.id);
+    nextConfig.model_randomizer_enabled = fallbackSettings.model_randomizer_enabled;
+    const personalFallbackIds = fallbackSettings.fallback_model_refs.filter((r) => r.type === "llm").map((r) => r.id);
     nextConfig.fallback_llm_ids = personalFallbackIds;
     // custom_endpoint_url/name/ctx are no longer on user saved configs; resolved from custom_endpoints at runtime
   }
@@ -162,8 +161,8 @@ export async function applyPersonalProviderSelectionsToTomoriState(
     }
   }
 
-  const personalFallbackChain = activeConfigs.text
-    ? await resolvePersonalFallbackChain(activeConfigs.text.fallback_model_refs ?? [], userId)
+  const personalFallbackChain = fallbackSettings
+    ? await resolvePersonalFallbackChain(fallbackSettings.fallback_model_refs, userId)
     : null;
   const nextFallbackChain = activeConfigs.text
     ? personalFallbackChain && personalFallbackChain.length > 0

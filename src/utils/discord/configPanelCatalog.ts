@@ -453,8 +453,8 @@ export type ConfigPanelRoute =
   | { action: "category"; locale: string; category: ConfigCategory; page: ConfigPage }
   | { action: "page"; locale: string; category: ConfigCategory; page: ConfigPage }
   | { action: "persona-page-select"; locale: string; category: "persona"; page: ConfigPage; personaId: number }
-  | { action: "persona-select"; locale: string; personaId: number }
-  | { action: "persona-page"; locale: string; personaId: number; start: number }
+  | { action: "persona-select"; locale: string; personaId: number; page?: ConfigPage }
+  | { action: "persona-page"; locale: string; personaId: number; start: number; page?: ConfigPage }
   | { action: "voice-select"; locale: string; personaId: number }
   | { action: "voice-page"; locale: string; personaId: number; start: number }
   | { action: "voice-chooser-cancel"; locale: string; personaId: number }
@@ -786,6 +786,14 @@ const pageField: RouteFieldCodec<"page", ConfigPage> = {
   decode: (v, r) => (r.category ? parseConfigPage(r.category as ConfigCategory, v) : null),
 };
 
+/** Optional because selectors rendered before it existed are still open in clients and mean the first page. */
+const optionalPersonaPageField: RouteFieldCodec<"page", ConfigPage> = {
+  key: "page",
+  optional: true,
+  encode: (v) => String(v),
+  decode: (v) => parseConfigPage("persona", v),
+};
+
 const pluginsPageField: RouteFieldCodec<"page", "available-tools" | "context-additions"> = {
   key: "page",
   encode: (v) => String(v),
@@ -969,8 +977,8 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
     wireToken: "persona-page-select",
     fields: [personaCategoryField, pageField, personaIdField],
   },
-  "persona-select": { wireToken: "persona-select", fields: [personaIdField] },
-  "persona-page": { wireToken: "persona-page", fields: [personaIdField, startField] },
+  "persona-select": { wireToken: "persona-select", fields: [personaIdField, optionalPersonaPageField] },
+  "persona-page": { wireToken: "persona-page", fields: [personaIdField, startField, optionalPersonaPageField] },
   "voice-select": { wireToken: "voice-select", fields: [personaIdField] },
   "voice-page": { wireToken: "voice-page", fields: [personaIdField, startField] },
   "voice-chooser-cancel": { wireToken: "voice-choose-cancel", fields: [personaIdField] },

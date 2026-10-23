@@ -1,6 +1,13 @@
 import * as dbClient from "@/utils/db/client";
 import { describe, expect, it, spyOn } from "bun:test";
-import type { LlmRow, SavedProviderConfigUpsert, TomoriState } from "@/types/db/schema";
+import type {
+  LlmRow,
+  SavedProviderConfigUpsert,
+  TomoriState,
+  UserSavedProviderConfigRow,
+  UserSavedProviderConfigUpsert,
+} from "@/types/db/schema";
+import * as savedProviderConfig from "@/utils/provider/savedProviderConfig";
 import {
   addCustomEndpointConnection,
   addServerProvider,
@@ -739,6 +746,76 @@ describe("provider panel mutations", () => {
       } finally {
         for (const spy of spyList) spy.mockRestore();
         replaceCachedLlms([]);
+      }
+    });
+
+    it.each([
+      { owner: "google", ownerLlmId: 300, expectedChain: null },
+      { owner: "custom:73", ownerLlmId: 900, expectedChain: [{ type: "llm", id: 300 }] },
+    ])("prunes the personal fallback chain on edit only when $owner owns personal Text", async ({
+      owner,
+      ownerLlmId,
+      expectedChain,
+    }) => {
+      const row = { ...editingEndpointRow(), server_id: null, user_id: 4 };
+      const customRow = {
+        user_id: 4,
+        provider: "custom:73",
+        api_key: Buffer.from("stored"),
+        key_version: 1,
+        llm_id: 900,
+        enabled_capabilities: [],
+        assigned_capabilities: [],
+      } as unknown as UserSavedProviderConfigRow;
+      const textOwner = {
+        user_id: 4,
+        provider: owner,
+        llm_id: ownerLlmId,
+        enabled_capabilities: ["text"],
+        assigned_capabilities: ["text"],
+      } as unknown as UserSavedProviderConfigRow;
+      const chainWrite = spyOn(llmProviderRepo, "updatePersonalFallbackModelRefs").mockResolvedValue(true);
+      const spyList = [
+        chainWrite,
+        spyOn(llmProviderRepo, "loadCustomEndpointsByIds").mockResolvedValue([row] as never),
+        spyOn(llmProviderRepo, "loadCustomEndpointsByConnectionId").mockResolvedValue([row] as never),
+        spyOn(llmProviderRepo, "loadUserSavedProviderConfig").mockResolvedValue(customRow),
+        spyOn(llmProviderRepo, "upsertCustomEndpoint").mockResolvedValue(row as never),
+        spyOn(llmProviderRepo, "upsertUserSavedProviderConfig").mockResolvedValue(true),
+        spyOn(llmProviderRepo, "loadUserSavedProviderConfigs").mockResolvedValue(
+          owner === "custom:73" ? [{ ...customRow, ...textOwner }] : [customRow, textOwner],
+        ),
+        spyOn(llmProviderRepo, "loadPersonalFallbackSettings").mockResolvedValue({
+          fallback_model_refs: [
+            { type: "custom_endpoint", id: 501 },
+            { type: "llm", id: 300 },
+          ],
+          model_randomizer_enabled: false,
+        }),
+        spyOn(savedProviderConfig, "buildUserSavedProviderConfigFromExistingOrDefaults").mockResolvedValue(
+          customRow as UserSavedProviderConfigUpsert,
+        ),
+        spyOn(llmModelRepo, "updateSyntheticCustomCapabilityModelById").mockResolvedValue(undefined as never),
+      ];
+      try {
+        const result = await registerCustomEndpoint({
+          scope: { kind: "personal", ownerId: 4, baseConfig: { fallback_model_refs: [] } as never },
+          label: "juno",
+          capability: "text",
+          apiStyle: "openai-compatible",
+          endpointUrl: "https://models.example.com/v1",
+          modelName: "mirri-local",
+          editingEndpointId: 501,
+        });
+
+        expect(result?.modelId).toBe(900);
+        if (expectedChain) {
+          expect(chainWrite).toHaveBeenCalledWith(4, expectedChain);
+        } else {
+          expect(chainWrite).not.toHaveBeenCalled();
+        }
+      } finally {
+        for (const spy of spyList) spy.mockRestore();
       }
     });
   });

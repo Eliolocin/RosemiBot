@@ -106,6 +106,7 @@ function createReminder(id: number, selfReminder: boolean): ReminderRow {
     repetition_interval_hours: null,
     self_reminder: selfReminder,
     delivery_retry_count: 0,
+    failed_occurrence_count: 0,
     created_by_user_id: 41,
     persona_id: 7,
   };

@@ -28,6 +28,7 @@ import {
 } from "@/utils/chat/channelQueue";
 import { cleanupTextQuotaTriggerStates } from "@/utils/chat/textQuotaState";
 import { evaluateAdmissionQueueAndTriggerGate } from "@/utils/chat/admissionQueue";
+import { applyWelcomeHandoff } from "@/utils/chat/welcomeHandoff";
 import {
   applyMessageProxyReference,
   cancelPendingMessageProxyExpectation,
@@ -132,6 +133,11 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
 
   const { client, message } = incoming;
   const channel = message.channel;
+  // discord.js resolves message.channel from the cache on every access, so a delayed retry or queue replay
+  // sees null once the channel is deleted or no longer visible, despite the non-null typing.
+  if (!channel) {
+    return { incoming, disposition: "ignore", locale: "en-US", reason: "channel_unavailable" };
+  }
   await verifyMessageWebhook(message);
   let referencedMessagePromise: Promise<Message | null> | undefined;
   const getReferencedMessage = () => (referencedMessagePromise ??= resolveReferencedMessage(message));
@@ -377,6 +383,10 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
   });
   if (queueDisposition) {
     return queueDisposition;
+  }
+
+  if (!applyWelcomeHandoff(incoming, userDiscId)) {
+    return ignored("answered_by_welcome");
   }
 
   return {

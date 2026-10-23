@@ -1517,8 +1517,8 @@ class LlmModelRepository {
 
   /**
    * Returns true when any config row (server_model_configs, persona_configs,
-   * channel_llm_overrides, saved_provider_configs, user_saved_provider_configs)
-   * still references the given LLM ID.
+   * channel_llm_overrides, saved_provider_configs, user_saved_provider_configs,
+   * user_personalization_configs) still references the given LLM ID.
    *
    * @param llmId - Internal LLM ID
    */
@@ -1559,10 +1559,12 @@ class LlmModelRepository {
         SELECT 1 FROM user_saved_provider_configs
         WHERE llm_id = ${llmId}
            OR vision_llm_id = ${llmId}
-           OR EXISTS (
+        UNION ALL
+        SELECT 1 FROM user_personalization_configs
+        WHERE EXISTS (
               SELECT 1 FROM jsonb_array_elements(
-                CASE WHEN jsonb_typeof(COALESCE(user_saved_provider_configs.fallback_model_refs, '[]'::JSONB)) = 'array'
-                  THEN COALESCE(user_saved_provider_configs.fallback_model_refs, '[]'::JSONB)
+                CASE WHEN jsonb_typeof(user_personalization_configs.fallback_model_refs) = 'array'
+                  THEN user_personalization_configs.fallback_model_refs
                   ELSE '[]'::JSONB END
               ) AS ref
               WHERE ref ->> 'type' = 'llm' AND ref ->> 'id' = ${String(llmId)}

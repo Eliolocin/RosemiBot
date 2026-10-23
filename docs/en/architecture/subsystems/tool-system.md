@@ -90,6 +90,8 @@ Participant-aware tools resolve user and persona targets through `ParticipantTar
 
 For image analysis, `analyze_image` resolves attachments from the target Discord message. When that message is a text-only reply, it checks the directly referenced message. The tool enforces the `VISION_ANALYSIS_TIMEOUT_MS` deadline (default 60 seconds) across media downloads and vision provider inference.
 
+`cross_channel_message` excludes full-privacy authors from peek results and boomerang history before formatting their messages. Verified proxy messages use the sender account's privacy setting, matching ordinary conversation history. Both paths stop at the most recent refresh marker.
+
 ## Persona user blocking
 
 The `block_user` and `unblock_user` tools allow personas to manage interpersonal boundaries, gated by the `user_blocking_enabled` permission in `/config`:

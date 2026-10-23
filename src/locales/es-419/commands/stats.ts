@@ -15,7 +15,6 @@ export default {
       no_personas_description: `Este servidor aún no tiene personas para mostrar estadísticas.`,
       not_found_title: `Persona No Encontrada`,
       not_found_description: `No se pudo encontrar la persona seleccionada en este servidor.`,
-      chosen_title: `{name} ha sido seleccionada`,
     },
     server: {
       description: `Ve las estadísticas de uso de todo el servidor.`,
@@ -146,18 +145,24 @@ export default {
 
     generate: {
       description: `Genera una tarjeta de estadísticas compartible.`,
-      type_description: `El tipo de tarjeta a generar.`,
-      timeframe_description: `La ventana de tiempo a resumir.`,
-      scope_description: `Cuenta solo este servidor, o en todos los servidores. Solo aplica a Personal.`,
-      personal_option: `Resumen Personal`,
-      persona_option: `Afinidad de Persona`,
-      server_option: `Clasificación del Servidor`,
-      privacy_title: `Estadísticas No Disponibles`,
-      privacy_description: `Las tarjetas de estadísticas personales no están disponibles para usuarios totalmente privados.`,
-      picker_title: `Elige una Persona`,
-      picker_description: `Selecciona una persona para generar una tarjeta de estadísticas.`,
-      no_personas_title: `Sin Personas`,
-      no_personas_description: `Este servidor aún no tiene personas para generar una tarjeta de estadísticas.`,
+      personal: {
+        description: `Genera tu tarjeta de Resumen Personal.`,
+        timeframe_description: `La ventana de tiempo a resumir.`,
+        scope_description: `Cuenta la actividad solo en este servidor, o en todos los servidores.`,
+        privacy_title: `Estadísticas No Disponibles`,
+        privacy_description: `Las tarjetas de estadísticas personales no están disponibles para usuarios totalmente privados.`,
+      },
+      persona: {
+        description: `Genera tu tarjeta de Afinidad de Persona con una persona.`,
+        persona_description: `La persona para la que generar una tarjeta.`,
+        timeframe_description: `La ventana de tiempo a resumir.`,
+        no_personas_title: `Sin Personas`,
+        no_personas_description: `Este servidor aún no tiene personas para generar una tarjeta de estadísticas.`,
+      },
+      server: {
+        description: `Genera la tarjeta de Clasificación del Servidor de este servidor.`,
+        timeframe_description: `La ventana de tiempo a resumir.`,
+      },
     },
   },
 };

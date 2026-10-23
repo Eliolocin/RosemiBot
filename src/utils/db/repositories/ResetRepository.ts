@@ -309,7 +309,8 @@ export const PERSONAL_SINGLETON_RESET_TABLES: readonly SingletonResetClassificat
       "pronouns",
       "addressing_style",
     ],
-    preserved: ["natural_nudge_opt_out"],
+    // The fallback chain and randomizer survive with the saved personal providers they reference.
+    preserved: ["natural_nudge_opt_out", "fallback_model_refs", "model_randomizer_enabled"],
   },
 ];
 
