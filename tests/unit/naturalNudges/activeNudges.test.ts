@@ -27,7 +27,11 @@ import { metricSampleRepository } from "@/utils/db/repositories/MetricSampleRepo
 import { personaRepository } from "@/utils/db/repositories/PersonaRepository";
 import { whitelistRepository } from "@/utils/db/repositories/WhitelistRepository";
 import * as autoTrigger from "@/utils/discord/autoTriggerThreshold";
+import { ProviderRequestDeniedError } from "@/utils/provider/providerUsage";
+import * as serverStructuredOutput from "@/utils/provider/serverStructuredOutput";
 import { createPersona } from "../../helpers/fixtures";
+
+const realResolveMatcherBackend = matcher.resolveMatcherBackend;
 
 const SERVER_ID = 7;
 const GUILD_ID = "fixture-guild";
@@ -228,7 +232,7 @@ describe("Active Nudge check", () => {
       spyOn(whitelistRepository, "checkChannelWhitelist").mockResolvedValue(undefined as never),
       spyOn(whitelistRepository, "isPersonaAllowedByWhitelistStatus").mockReturnValue(true),
       spyOn(matcher, "resolveMatcherBackend").mockResolvedValue({
-        backend: { kind: "llm", llmId: 1, model: "fixture" },
+        backend: { kind: "llm", llmId: 1, slot: "nudge-checker", model: "fixture" },
         source: "recommended",
       }),
       spyOn(metricSampleRepository, "recordSample").mockImplementation(async (_name, fields) => {
@@ -593,5 +597,22 @@ describe("Active Nudge check", () => {
     expect(await runActiveNudgeCheck(check, options(undefined, budget))).toBe("failed");
     expect(budget.isPaused(SERVER_ID, Date.now())).toBe(true);
     expect(budget.isPaused(SERVER_ID, Date.now() + ACTIVE_NUDGE_QUOTA_PAUSE_MS)).toBe(false);
+  });
+
+  it("pauses the server when the pinned checker's paying option refuses before any check", async () => {
+    const budget = new ActiveNudgeCheckBudget();
+    configSpy.mockResolvedValue({ ...defaultServerNaturalNudgeConfig(SERVER_ID), checker_llm_id: 9 });
+    (matcher.resolveMatcherBackend as Mock<typeof matcher.resolveMatcherBackend>).mockImplementation(
+      realResolveMatcherBackend,
+    );
+    spies.push(
+      spyOn(serverStructuredOutput, "resolveServerStructuredModel").mockRejectedValue(
+        new ProviderRequestDeniedError(undefined, () => ({ titleKey: "fixture", description: "fixture" })),
+      ),
+    );
+    expect(await runActiveNudgeCheck(check, options(undefined, budget))).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ phase: "a", reason: "matcher_denied" });
+    expect(budget.isPaused(SERVER_ID, Date.now())).toBe(true);
+    expect(match).not.toHaveBeenCalled();
   });
 });

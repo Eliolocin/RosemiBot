@@ -70,7 +70,12 @@ beforeEach(() => {
     spyOn(metricSampleRepository, "recordSample").mockImplementation(async (_name, fields) => {
       samples.push(fields);
     }),
-    spyOn(plannerModel, "resolvePlannerModel").mockResolvedValue({ kind: "ready", llmId: 1, source: "pinned" }),
+    spyOn(plannerModel, "resolvePlannerModel").mockResolvedValue({
+      kind: "ready",
+      llmId: 1,
+      slot: "nudge-planner",
+      source: "pinned",
+    }),
     spyOn(tomoriChatModule, "isChannelProcessingLocked").mockReturnValue(false),
     spyOn(tomoriChatModule, "tomoriChat").mockImplementation(async (input) => {
       chatInputs.push(input);
@@ -120,7 +125,7 @@ function attemptWithHistory(latest: () => Promise<Message[]>): {
     persona: createPersona({ persona_id: PERSONA_ID, server_id: SERVER_ID }),
     interests: [],
     idleNudge: BUILTIN_IDLE_NUDGES.find((candidate) => candidate.category === "start_topic") as IdleNudgeDefinition,
-    plannerLlmId: 1,
+    plannerModel: { llmId: 1, slot: "nudge-planner" },
     availableTools: new Set(),
     plannerChannels: [{ channel, lastMessageId: RECORDED_ID, quietSinceMs: 0, transcript: "" }],
     target: null,

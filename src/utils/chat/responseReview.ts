@@ -485,7 +485,7 @@ async function resolveReviewer(
   author: LLMProvider,
   config: ProviderConfig,
   failureContext: ErrorContext,
-): Promise<(ResolvedServerStructuredModel & { usageContext?: ProviderUsageContext }) | { errorLogged: true } | null> {
+): Promise<ResolvedServerStructuredModel | { errorLogged: true } | null> {
   const review = context.responseReview;
   if (!review) return null;
   if (review.reviewerId === null) {
@@ -501,7 +501,7 @@ async function resolveReviewer(
       usageContext: context.usageContext,
     };
   }
-  return resolveServerStructuredModel(context.currentPersona, review.reviewerId, failureContext);
+  return resolveServerStructuredModel(context.currentPersona, review.reviewerId, failureContext, "reviewer");
 }
 
 export function responseReviewCancelled(context: ChatTurnContext): boolean {

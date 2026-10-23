@@ -6,9 +6,14 @@ import {
   NATURAL_NUDGE_INTEREST_LIMIT,
   type NaturalNudgeInterest,
 } from "@/modules/natural-nudges/db/types";
-import { resolveStructuredCallTarget } from "@/modules/natural-nudges/runtime/model";
+import {
+  isNudgeCallDenied,
+  type NudgeModelRef,
+  recordNudgeUsage,
+  resolveNudgeModel,
+  resolveStructuredCallTarget,
+} from "@/modules/natural-nudges/runtime/model";
 import { acceptGeneratedInterests } from "@/providers/utils/presetCommon";
-import { resolveServerStructuredModel } from "@/utils/provider/serverStructuredOutput";
 import { log } from "@/utils/misc/logger";
 
 /** Matches what `/persona generate` asks for, so one press leaves room for a few hand-written interests. */
@@ -79,13 +84,14 @@ function buildUserPrompt(persona: TomoriState, existing: readonly NaturalNudgeIn
 /** One structured call to the Idle Nudge Planner model; validity and duplicates are the caller's merge. */
 export async function generatePersonaInterests(
   persona: TomoriState,
-  llmId: number,
+  plannerModel: NudgeModelRef,
   existing: readonly NaturalNudgeInterest[],
   count: number,
 ): Promise<InterestGenerationOutcome> {
   const failureContext = { serverId: persona.server_id, personaId: persona.persona_id };
-  const resolved = await resolveServerStructuredModel(persona, llmId, failureContext);
-  if (!resolved || "errorLogged" in resolved) return { status: "unavailable" };
+  const resolution = await resolveNudgeModel(persona, plannerModel, failureContext);
+  if (resolution.kind === "unavailable") return { status: "unavailable" };
+  const { resolved } = resolution;
 
   const { model, endpointUrl, maxOutputTokens } = await resolveStructuredCallTarget(resolved);
   const result = await resolved.capability.callStructuredJSON(
@@ -101,10 +107,21 @@ export async function generatePersonaInterests(
       schemaName: "persona_interests",
       privateOutput: true,
       abortSignal: AbortSignal.timeout(INTEREST_GENERATION_TIMEOUT_MS),
+      onUsage: (reported) => {
+        recordNudgeUsage(resolved, model, null, reported);
+      },
     },
     z.toJSONSchema(responseSchema, { target: "openapi-3.0" }),
     acceptedSchema,
   );
+  if (!result.success && isNudgeCallDenied(resolved, result.cause)) {
+    log.warn(
+      `Natural Nudges interest generation refused by its provider option on ${model}`,
+      undefined,
+      failureContext,
+    );
+    return { status: "unavailable" };
+  }
   if (!result.success) {
     log.warn(
       `Natural Nudges interest generation failed (${result.failure ?? "transport"}) on ${model}`,

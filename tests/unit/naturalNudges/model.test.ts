@@ -15,18 +15,20 @@ afterEach(() => {
 });
 
 /** Every model but the one without structured output resolves on the server's key. */
-function stubModels(): number[] {
-  const resolvedIds: number[] = [];
+function stubModels(): Array<[number, string]> {
+  const resolved: Array<[number, string]> = [];
   spies.push(
-    spyOn(serverStructuredOutput, "resolveServerStructuredModel").mockImplementation(async (state, llmId) => {
-      resolvedIds.push(llmId);
-      return llmId === NO_STRUCTURED_MODEL_ID ? null : ({ state, apiKey: "key" } as never);
-    }),
+    spyOn(serverStructuredOutput, "resolveServerStructuredModel").mockImplementation(
+      async (state, llmId, _failureContext, slot) => {
+        resolved.push([llmId, slot]);
+        return llmId === NO_STRUCTURED_MODEL_ID ? null : ({ state, apiKey: "key" } as never);
+      },
+    ),
     spyOn(llmModelRepo, "loadById").mockImplementation(
       async (llmId: number) => ({ llm_id: llmId, supports_structoutput: llmId !== NO_STRUCTURED_MODEL_ID }) as LlmRow,
     ),
   );
-  return resolvedIds;
+  return resolved;
 }
 
 function stateWithChatModel(llmId: number) {
@@ -36,22 +38,25 @@ function stateWithChatModel(llmId: number) {
 
 describe("Natural Nudges planner model", () => {
   it("uses the pinned model over the chat model", async () => {
-    const resolvedIds = stubModels();
+    const resolved = stubModels();
     expect(await resolvePlannerModel(stateWithChatModel(CHAT_MODEL_ID), PINNED_MODEL_ID)).toEqual({
       kind: "ready",
       llmId: PINNED_MODEL_ID,
+      slot: "nudge-planner",
       source: "pinned",
     });
-    expect(resolvedIds).toEqual([PINNED_MODEL_ID]);
+    expect(resolved).toEqual([[PINNED_MODEL_ID, "nudge-planner"]]);
   });
 
-  it("falls back to the server's chat model when none is pinned", async () => {
-    stubModels();
+  it("falls back to the server's chat model, billed as chat, when none is pinned", async () => {
+    const resolved = stubModels();
     expect(await resolvePlannerModel(stateWithChatModel(CHAT_MODEL_ID), null)).toEqual({
       kind: "ready",
       llmId: CHAT_MODEL_ID,
+      slot: "text",
       source: "chat",
     });
+    expect(resolved).toEqual([[CHAT_MODEL_ID, "text"]]);
   });
 
   it("leaves the server idle when the chat model cannot plan, and never falls back from a failed pin", async () => {

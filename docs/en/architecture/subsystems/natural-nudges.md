@@ -94,10 +94,19 @@ retry-after-abort time, and a 15-minute cache of heat and waking hours. A restar
   normal turn succeeds there (`text_generated` newer than `stopped_at`). Aborts never count. Idle Nudges
   and Active Nudges each lift the stop when they read it (`runtime/failureStop.ts`), because a server
   with idle nudges off is never evaluated by the idle nudge timer.
-- **Server keys only.** The planner resolves through `resolveServerStructuredModel`
-  (`src/utils/provider/serverStructuredOutput.ts`), which never uses a personal key, and the
-  turn planner routes the nudge turn's text credentials to the server too. Servers in
-  `user_byok_mode` and DM workspaces never run idle nudges.
+- **Server keys only.** The planner, checker, and interest generation resolve through
+  `resolveNudgeModel` (`runtime/model.ts`), which wraps `resolveServerStructuredModel`
+  (`src/utils/provider/serverStructuredOutput.ts`) and never uses a personal key. The turn planner
+  routes the nudge turn's text credentials to the server too. Servers in `user_byok_mode` and DM
+  workspaces never run idle nudges.
+- **Each model bills its own slot.** A pinned planner bills `nudge-planner` and a pinned or
+  recommended text checker bills `nudge-checker`; the chat model, when no planner is pinned, bills
+  `text`. Pinning or clearing a model claims or releases its slot, so a provider option that owns the
+  slot pays and reports usage through the call's usage context (see
+  [Provider options](/architecture/pipelines/provider/#provider-options)). Checker Decision models
+  come from `loadDecisionModelsForScope`, the same list `callDecisionsForProvider` accepts. A
+  refusal from the paying option is an abort with reason `denied`, logged as a warning; on the checker
+  it also pauses the server's checks like an HTTP 429.
 - **The borrowed trigger lends no identity.** Phase C passes the channel's newest message to
   `tomoriChat` as its trigger, but its author is a bystander. `borrowsTriggerMessage` (shared with
   random triggers) puts the turn on the reminder path: server text key only, and no blacklist,

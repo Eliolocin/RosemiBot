@@ -62,7 +62,7 @@ import {
 } from "@/modules/natural-nudges/runtime/tuning";
 import { isFailureStopped } from "@/modules/natural-nudges/runtime/failureStop";
 import { claimNudgeServer, isNudgeServerBusy, releaseNudgeServer } from "@/modules/natural-nudges/runtime/inFlight";
-import { resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
+import { type NudgeModelRef, resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { runIdleNudgeAttempt, type IdleNudgeAttempt } from "@/modules/natural-nudges/runtime/runner";
 import { recordIdleNudgeSample } from "@/modules/natural-nudges/runtime/telemetry";
 import { loadAvailableToolNames } from "@/modules/natural-nudges/runtime/tools";
@@ -269,7 +269,7 @@ export class NaturalNudgeProcessor {
       return;
     }
 
-    const attempt = await this.drawAttempt(server, personas, quiet, history.recent, meters, plannerModel.llmId, now);
+    const attempt = await this.drawAttempt(server, personas, quiet, history.recent, meters, plannerModel, now);
     if (typeof attempt === "string") {
       this.abortInPhaseA(server, now, attempt, meters.heat);
       return;
@@ -299,7 +299,7 @@ export class NaturalNudgeProcessor {
     quiet: NudgeChannel[],
     recentFires: readonly NaturalNudgeFireRow[],
     meters: ServerMeters,
-    plannerLlmId: number,
+    plannerModel: NudgeModelRef,
     now: Date,
   ): Promise<IdleNudgeAttempt | string> {
     const scanned = shuffled(quiet).slice(0, MAX_SCANNED_CHANNELS);
@@ -439,7 +439,7 @@ export class NaturalNudgeProcessor {
       persona,
       interests: personaConfig.interests,
       idleNudge,
-      plannerLlmId,
+      plannerModel,
       availableTools: facts.availableTools,
       plannerChannels,
       target: idleNudgeTarget,

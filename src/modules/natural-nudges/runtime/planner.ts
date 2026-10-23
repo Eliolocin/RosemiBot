@@ -4,9 +4,15 @@ import { NATURAL_NUDGE_AGENDA_MAX, type NaturalNudgeInterest } from "@/modules/n
 import { escapeDataText } from "@/modules/natural-nudges/runtime/channels";
 import type { IdleNudgeDefinition } from "@/modules/natural-nudges/runtime/idleNudges";
 import type { PingUserTarget } from "@/modules/natural-nudges/runtime/targets";
-import { resolveStructuredCallTarget } from "@/modules/natural-nudges/runtime/model";
+import {
+  isNudgeCallDenied,
+  type NudgeModelRef,
+  recordNudgeUsage,
+  resolveNudgeModel,
+  resolveStructuredCallTarget,
+} from "@/modules/natural-nudges/runtime/model";
 import { PLAY_SCENE_MAX_TURNS, PLAY_SCENE_MIN_TURNS } from "@/modules/natural-nudges/runtime/tuning";
-import { formatStructuredRetryNote, resolveServerStructuredModel } from "@/utils/provider/serverStructuredOutput";
+import { formatStructuredRetryNote } from "@/utils/provider/serverStructuredOutput";
 import { log } from "@/utils/misc/logger";
 import type { TokenUsage } from "@/utils/text/tokenEstimate";
 
@@ -30,7 +36,7 @@ export interface PlannerInput {
   interests: readonly NaturalNudgeInterest[];
   idleNudge: IdleNudgeDefinition;
   channels: readonly PlannerChannel[];
-  plannerLlmId: number;
+  plannerModel: NudgeModelRef;
   target: PingUserTarget | null;
   partners: readonly ScenePartner[];
 }
@@ -115,7 +121,7 @@ export interface IdleNudgePlan {
 export type PlannerOutcome =
   | { status: "planned"; plan: IdleNudgePlan; usage: TokenUsage | null; model: string }
   | { status: "declined"; usage: TokenUsage | null; model: string }
-  | { status: "unavailable"; reason: "model_unavailable" | "credentials" }
+  | { status: "unavailable"; reason: "model_unavailable" | "credentials" | "denied" }
   | {
       status: "failed";
       reason: "transport" | "malformed" | "refusal" | "timeout";
@@ -228,9 +234,9 @@ function buildUserPrompt(input: PlannerInput): string {
  */
 export async function planIdleNudge(input: PlannerInput): Promise<PlannerOutcome> {
   const failureContext = { serverId: input.persona.server_id, personaId: input.persona.persona_id };
-  const resolved = await resolveServerStructuredModel(input.persona, input.plannerLlmId, failureContext);
-  if (!resolved) return { status: "unavailable", reason: "model_unavailable" };
-  if ("errorLogged" in resolved) return { status: "unavailable", reason: "credentials" };
+  const resolution = await resolveNudgeModel(input.persona, input.plannerModel, failureContext);
+  if (resolution.kind === "unavailable") return { status: "unavailable", reason: resolution.reason };
+  const { resolved } = resolution;
 
   const { model, endpointUrl, maxOutputTokens } = await resolveStructuredCallTarget(resolved);
   const systemPrompt = buildSystemPrompt(input);
@@ -253,10 +259,7 @@ export async function planIdleNudge(input: PlannerInput): Promise<PlannerOutcome
         privateOutput: true,
         abortSignal,
         onUsage: (reported) => {
-          usage = {
-            inputTokens: (usage?.inputTokens ?? 0) + reported.inputTokens,
-            outputTokens: (usage?.outputTokens ?? 0) + reported.outputTokens,
-          };
+          usage = recordNudgeUsage(resolved, model, usage, reported);
         },
       },
       jsonSchema,
@@ -269,6 +272,10 @@ export async function planIdleNudge(input: PlannerInput): Promise<PlannerOutcome
     result = await ask(`${userPrompt}\n\n${formatStructuredRetryNote(result.malformed)}`, "none");
   }
   if (abortSignal.aborted) return { status: "failed", reason: "timeout", model, usage };
+  if (!result.success && isNudgeCallDenied(resolved, result.cause)) {
+    log.warn(`Natural Nudges planner refused by its provider option on ${model}`, undefined, failureContext);
+    return { status: "unavailable", reason: "denied" };
+  }
   if (!result.success) {
     log.warn(`Natural Nudges planner failed (${result.failure ?? "transport"}) on ${model}`, undefined, failureContext);
     const reason = result.failure === "malformed" || result.failure === "refusal" ? result.failure : "transport";

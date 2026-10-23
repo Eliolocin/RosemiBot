@@ -3,9 +3,11 @@ import * as executors from "@/providers/utils/providerFeatureExecutors";
 import {
   matchActiveNudge,
   MATCHER_NONE_ID,
+  pausesActiveNudgeChecks,
   resolveMatcherBackend,
   type MatcherBackend,
 } from "@/modules/natural-nudges/runtime/matcher";
+import { ProviderRequestDeniedError } from "@/utils/provider/providerUsage";
 import * as model from "@/modules/natural-nudges/runtime/model";
 import type { DecisionModelOption, DecisionResult, StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import { llmModelRepo } from "@/utils/db/repositories";
@@ -19,7 +21,7 @@ const decision: MatcherBackend = {
   reference: { provider: "openrouter", modelId: 3, registrationId: null, customEndpointId: null },
   model: "openai/gpt-6-luna-decisions",
 };
-const llm: MatcherBackend = { kind: "llm", llmId: 1, model: "fixture-llm" };
+const llm: MatcherBackend = { kind: "llm", llmId: 1, slot: "nudge-checker", model: "fixture-llm" };
 
 const spies: Array<{ mockRestore: () => void }> = [];
 afterEach(() => {
@@ -120,6 +122,14 @@ describe("Natural Nudges model matcher", () => {
     });
     expect(refused).toHaveBeenCalledTimes(1);
   });
+
+  it("reads a paying option's refusal as denied, which pauses further checks", async () => {
+    const denial = new ProviderRequestDeniedError(undefined, () => ({ titleKey: "fixture", description: "fixture" }));
+    stubModel([{ success: false, error: denial.message, failure: "transport", cause: denial }]);
+    const result = await matchActiveNudge({ state, backend: llm, options, evidence: "x" });
+    expect(result).toMatchObject({ choice: null, reason: "denied" });
+    expect(pausesActiveNudgeChecks(result)).toBe(true);
+  });
 });
 
 describe("Active Nudge Checker resolution", () => {
@@ -167,13 +177,13 @@ describe("Active Nudge Checker resolution", () => {
     for (const spy of spies.splice(0)) spy.mockRestore();
     stubCatalog([decisionOption(4, "upstage/solar-decide-flash", false)], { [GEMMA_ID]: "gemma-4-31b-it" });
     expect(await resolveMatcherBackend(withServerDecision(null), unpinned)).toMatchObject({
-      backend: { kind: "llm", llmId: GEMMA_ID },
+      backend: { kind: "llm", llmId: GEMMA_ID, slot: "nudge-checker" },
     });
 
     for (const spy of spies.splice(0)) spy.mockRestore();
     stubCatalog([], { [PLANNER_ID]: "chat" });
     expect(await resolveMatcherBackend(withServerDecision(null), unpinned)).toMatchObject({
-      backend: { kind: "llm", llmId: PLANNER_ID, model: "chat" },
+      backend: { kind: "llm", llmId: PLANNER_ID, slot: "nudge-planner", model: "chat" },
     });
   });
 

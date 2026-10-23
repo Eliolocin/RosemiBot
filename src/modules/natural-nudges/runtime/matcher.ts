@@ -1,12 +1,20 @@
 import { z } from "zod";
 import type { TomoriState } from "@/types/db/schema";
 import type { DecisionModelOption, DecisionModelReference, DecisionResult } from "@/types/provider/featureInterfaces";
-import { callDecisionsForProvider } from "@/providers/utils/providerFeatureExecutors";
+import { callDecisionsForProvider, loadDecisionModelsForScope } from "@/providers/utils/providerFeatureExecutors";
 import { supportsCheckerChoice, type ServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
 import { escapeDataText } from "@/modules/natural-nudges/runtime/channels";
-import { resolveStructuredCallTarget } from "@/modules/natural-nudges/runtime/model";
+import {
+  isNudgeCallDenied,
+  type NudgeModelRef,
+  plannerModelRef,
+  recordNudgeUsage,
+  resolveNudgeModel,
+  resolveStructuredCallTarget,
+} from "@/modules/natural-nudges/runtime/model";
 import { llmModelRepo } from "@/utils/db/repositories";
-import { formatStructuredRetryNote, resolveServerStructuredModel } from "@/utils/provider/serverStructuredOutput";
+import { log } from "@/utils/misc/logger";
+import { formatStructuredRetryNote } from "@/utils/provider/serverStructuredOutput";
 import type { TokenUsage } from "@/utils/text/tokenEstimate";
 
 /** A matcher that answers after the conversation moved on has nothing left to match. */
@@ -26,12 +34,14 @@ export interface MatcherOption {
 
 export type MatcherBackend =
   | { kind: "decision"; reference: DecisionModelReference; model: string }
-  | { kind: "llm"; llmId: number; model: string };
+  | ({ kind: "llm"; model: string } & NudgeModelRef);
 
 /** `pinned` is the admin's Active Nudge Checker choice; `recommended` is resolved from the server's keys. */
 export interface ResolvedChecker {
   backend: MatcherBackend | null;
   source: "pinned" | "recommended";
+  /** The provider option paying for the text checker refused it, so checks pause instead of retrying per message. */
+  denied?: true;
 }
 
 /**
@@ -40,7 +50,7 @@ export interface ResolvedChecker {
  */
 const RECOMMENDED_CHECKER_LLMS = [{ provider: "google", codename: "gemma-4-31b-it" }] as const;
 
-type MatcherReason = "matched" | "none" | "refused" | "malformed" | "unavailable" | "failed";
+type MatcherReason = "matched" | "none" | "refused" | "malformed" | "unavailable" | "denied" | "failed";
 
 export interface MatcherResult {
   /** An option ID, or null for `none` and for every answer that cannot be trusted. */
@@ -55,6 +65,11 @@ export interface MatcherResult {
   rateLimited?: boolean;
 }
 
+/** Further checks would hit the same limit, so the server's checks pause like a provider quota. */
+export function pausesActiveNudgeChecks(result: MatcherResult): boolean {
+  return result.rateLimited === true || result.reason === "denied";
+}
+
 /** Option IDs in the `i01` shape the matcher was evaluated with; labels stay in the option text. */
 export function matcherOptionId(index: number): string {
   return `i${String(index + 1).padStart(2, "0")}`;
@@ -65,12 +80,16 @@ function decisionBackend(option: DecisionModelOption | undefined): MatcherBacken
   return { kind: "decision", reference: option.reference, model: option.model.codename };
 }
 
-async function llmBackend(state: TomoriState, llmId: number): Promise<MatcherBackend | null> {
+async function llmBackend(
+  state: TomoriState,
+  ref: NudgeModelRef,
+): Promise<Pick<ResolvedChecker, "backend" | "denied">> {
   // llm_id 0 is the unconfigured-model sentinel (`getUnconfiguredLlm`), not a real row.
-  if (llmId <= 0) return null;
-  const resolved = await resolveServerStructuredModel(state, llmId, { serverId: state.server_id });
-  if (!resolved || "errorLogged" in resolved) return null;
-  return { kind: "llm", llmId, model: resolved.state.llm.llm_codename };
+  if (ref.llmId <= 0) return { backend: null };
+  const resolution = await resolveNudgeModel(state, ref, { serverId: state.server_id });
+  if (resolution.kind === "unavailable")
+    return resolution.reason === "denied" ? { backend: null, denied: true } : { backend: null };
+  return { backend: { kind: "llm", ...ref, model: resolution.resolved.state.llm.llm_codename } };
 }
 
 /** A pinned checker never falls back to the recommended one, because the admin chose it. */
@@ -80,14 +99,14 @@ export async function resolveMatcherBackend(
 ): Promise<ResolvedChecker> {
   const scope = { kind: "server", ownerId: state.server_id } as const;
   if (config.checker_decision_model_id !== null) {
-    const options = await llmModelRepo.loadDecisionModelOptions(scope);
+    const options = await loadDecisionModelsForScope(scope);
     const selected = options.find((option) => option.model.decision_model_id === config.checker_decision_model_id);
     return { backend: decisionBackend(selected), source: "pinned" };
   }
   if (config.checker_llm_id !== null)
-    return { backend: await llmBackend(state, config.checker_llm_id), source: "pinned" };
+    return { ...(await llmBackend(state, { llmId: config.checker_llm_id, slot: "nudge-checker" })), source: "pinned" };
 
-  const options = await llmModelRepo.loadDecisionModelOptions(scope);
+  const options = await loadDecisionModelsForScope(scope);
   const serverDecisionModelId = state.config.decision_model_id;
   // A Decision model the admin selected in Models predates the checker setting, so it does not fall back either.
   if (serverDecisionModelId !== null) {
@@ -100,10 +119,10 @@ export async function resolveMatcherBackend(
   if (openRouterDefault) return { backend: openRouterDefault, source: "recommended" };
   for (const recommended of RECOMMENDED_CHECKER_LLMS) {
     const model = await llmModelRepo.loadByProviderAndCodename(recommended.provider, recommended.codename);
-    const backend = model?.llm_id ? await llmBackend(state, model.llm_id) : null;
-    if (backend) return { backend, source: "recommended" };
+    const resolved = model?.llm_id ? await llmBackend(state, { llmId: model.llm_id, slot: "nudge-checker" }) : null;
+    if (resolved?.backend) return { backend: resolved.backend, source: "recommended" };
   }
-  return { backend: await llmBackend(state, config.llm_id ?? state.llm.llm_id ?? 0), source: "recommended" };
+  return { ...(await llmBackend(state, plannerModelRef(state, config.llm_id))), source: "recommended" };
 }
 
 function decisionOutcome(result: DecisionResult, model: string, optionIds: readonly string[]): MatcherResult {
@@ -156,12 +175,15 @@ async function matchWithDecision(
 
 async function matchWithLlm(
   state: TomoriState,
-  llmId: number,
+  ref: NudgeModelRef,
   options: readonly MatcherOption[],
   evidence: string,
 ): Promise<MatcherResult> {
-  const resolved = await resolveServerStructuredModel(state, llmId, { serverId: state.server_id });
-  if (!resolved || "errorLogged" in resolved) return { kind: "llm", model: "", choice: null, reason: "unavailable" };
+  const failureContext = { serverId: state.server_id };
+  const resolution = await resolveNudgeModel(state, ref, failureContext);
+  if (resolution.kind === "unavailable")
+    return { kind: "llm", model: "", choice: null, reason: resolution.reason === "denied" ? "denied" : "unavailable" };
+  const { resolved } = resolution;
   const { model, endpointUrl, maxOutputTokens } = await resolveStructuredCallTarget(resolved);
   const ids: [string, ...string[]] = [MATCHER_NONE_ID, ...options.map((option) => option.id)];
   const answerSchema = z.object({ topic: z.enum(ids) }).strict();
@@ -187,10 +209,7 @@ async function matchWithLlm(
         privateOutput: true,
         abortSignal,
         onUsage: (reported) => {
-          usage = {
-            inputTokens: (usage?.inputTokens ?? 0) + reported.inputTokens,
-            outputTokens: (usage?.outputTokens ?? 0) + reported.outputTokens,
-          };
+          usage = recordNudgeUsage(resolved, model, usage, reported);
         },
       },
       z.toJSONSchema(answerSchema, { target: "openapi-3.0" }),
@@ -206,6 +225,10 @@ async function matchWithLlm(
     return result.data.topic === MATCHER_NONE_ID
       ? { ...base, choice: null, reason: "none" }
       : { ...base, choice: result.data.topic, reason: "matched" };
+  }
+  if (isNudgeCallDenied(resolved, result.cause)) {
+    log.warn(`Natural Nudges checker refused by its provider option on ${model}`, undefined, failureContext);
+    return { ...base, choice: null, reason: "denied" };
   }
   if (result.failure === "refusal") return { ...base, choice: null, reason: "refused" };
   if (result.failure === "malformed") return { ...base, choice: null, reason: "malformed" };
@@ -224,5 +247,5 @@ export async function matchActiveNudge(args: {
   evidence: string;
 }): Promise<MatcherResult> {
   if (args.backend.kind === "decision") return matchWithDecision(args.state, args.backend, args.options, args.evidence);
-  return matchWithLlm(args.state, args.backend.llmId, args.options, args.evidence);
+  return matchWithLlm(args.state, args.backend, args.options, args.evidence);
 }

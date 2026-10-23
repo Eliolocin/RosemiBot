@@ -5,7 +5,7 @@ import { supportsCheckerChoice } from "@/modules/natural-nudges/db/types";
 import { invalidateNaturalNudgeConfigCache } from "@/modules/natural-nudges/runtime/configCache";
 import { isKnownPrerequisite, isNudgeToolName } from "@/modules/natural-nudges/runtime/idleNudges";
 import { sql } from "@/utils/db/client";
-import { llmModelRepo } from "@/utils/db/repositories/LlmModelRepository";
+import { loadDecisionModelsForScope } from "@/providers/utils/providerFeatureExecutors";
 import type { SQL } from "bun";
 import { log } from "@/utils/misc/logger";
 import {
@@ -367,7 +367,7 @@ async function validateNudgesImport(
     if (!textModelIds.every((id) => offered.has(id))) return false;
   }
   if (nudges.checker_decision_model_id == null) return true;
-  return (await llmModelRepo.loadDecisionModelOptions({ kind: "server", ownerId: serverId })).some(
+  return (await loadDecisionModelsForScope({ kind: "server", ownerId: serverId })).some(
     ({ model }) => model.decision_model_id === nudges.checker_decision_model_id && supportsCheckerChoice(model),
   );
 }

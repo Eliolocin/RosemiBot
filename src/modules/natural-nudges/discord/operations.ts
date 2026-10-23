@@ -21,7 +21,7 @@ import {
   type ConfigModelChoice,
   type StructuredOutputModelGroup,
 } from "@/utils/discord/interactions/configModelOperations";
-import { llmModelRepo, statRepository } from "@/utils/db/repositories";
+import { statRepository } from "@/utils/db/repositories";
 import { resolveDescription } from "@/utils/text/localizer";
 import type { TomoriState } from "@/types/db/schema";
 import { resolveEffectiveChannelIds } from "@/modules/natural-nudges/runtime/channels";
@@ -32,7 +32,13 @@ import {
   generatePersonaInterests,
   mergeGeneratedInterests,
 } from "@/modules/natural-nudges/runtime/interests";
-import { resolvePlannerModel, type PlannerModelStatus } from "@/modules/natural-nudges/runtime/model";
+import {
+  type NudgeModelSlot,
+  resolvePlannerModel,
+  type PlannerModelStatus,
+} from "@/modules/natural-nudges/runtime/model";
+import { loadDecisionModelsForScope } from "@/providers/utils/providerFeatureExecutors";
+import { claimProviderModelSelection, clearProviderModelSelection } from "@/utils/provider/providerOptionRegistry";
 
 export type NudgeWriteResult =
   | "success"
@@ -114,7 +120,7 @@ async function loadSettingsStatus(
 }
 
 async function loadCheckerDecisionModels(serverId: number, locale: string): Promise<CheckerDecisionModelGroup[]> {
-  const options = await llmModelRepo.loadDecisionModelOptions({ kind: "server", ownerId: serverId });
+  const options = await loadDecisionModelsForScope({ kind: "server", ownerId: serverId });
   const groups = new Map<string, ConfigModelChoice[]>();
   for (const { model } of options) {
     if (!supportsCheckerChoice(model)) continue;
@@ -169,6 +175,23 @@ async function patchConfig(
   return "success";
 }
 
+/**
+ * Gives a pinned slot to the provider its model was picked under, or releases it when unpinned, so the
+ * same catalog model bills whichever provider the admin chose.
+ */
+async function settleSlotOwner(
+  state: TomoriState,
+  slot: Extract<NudgeModelSlot, "nudge-planner" | "nudge-checker">,
+  provider: string | null,
+): Promise<NudgeWriteResult> {
+  const scope = { kind: "server" as const, ownerId: state.server_id, state };
+  const settled =
+    provider === null
+      ? await clearProviderModelSelection({ scope, capability: slot })
+      : await claimProviderModelSelection({ scope, provider, capability: slot });
+  return settled ? "success" : "write-failed";
+}
+
 /** Discord's channel select returns at most 25 IDs, so a longer list cannot come from the panel. */
 const MAX_ALLOWED_CHANNELS = 25;
 const SNOWFLAKE_RE = /^\d{17,20}$/;
@@ -185,37 +208,46 @@ const naturalNudgeOperations = {
     return patchConfig(serverId, { channel_disc_ids: unique });
   },
 
-  async setPlannerModel(serverId: number, provider: string, llmId: number | null): Promise<NudgeWriteResult> {
+  async setPlannerModel(state: TomoriState, provider: string, llmId: number | null): Promise<NudgeWriteResult> {
+    const serverId = state.server_id;
     if (llmId !== null) {
       const groups = await loadStructuredOutputModelGroups(serverId, "en-US");
       if (!groups.some((group) => group.provider === provider && group.models.some((model) => model.id === llmId)))
         return "stale";
     }
-    return patchConfig(serverId, { llm_id: llmId });
+    const written = await patchConfig(serverId, { llm_id: llmId });
+    if (written !== "success") return written;
+    return settleSlotOwner(state, "nudge-planner", llmId === null ? null : provider);
   },
 
   /** Pins a text or Decision model as the Active Nudge Checker; null returns to the recommended checker. */
   async setCheckerModel(
-    serverId: number,
+    state: TomoriState,
     choice: { kind: "llm" | "decision"; provider: string; id: number } | null,
   ): Promise<NudgeWriteResult> {
-    if (choice === null) return patchConfig(serverId, { checker_llm_id: null, checker_decision_model_id: null });
-    const groups =
-      choice.kind === "llm"
-        ? await loadStructuredOutputModelGroups(serverId, "en-US")
-        : await loadCheckerDecisionModels(serverId, "en-US");
-    if (
-      !groups.some(
-        (group) => group.provider === choice.provider && group.models.some((model) => model.id === choice.id),
+    const serverId = state.server_id;
+    if (choice !== null) {
+      const groups =
+        choice.kind === "llm"
+          ? await loadStructuredOutputModelGroups(serverId, "en-US")
+          : await loadCheckerDecisionModels(serverId, "en-US");
+      if (
+        !groups.some(
+          (group) => group.provider === choice.provider && group.models.some((model) => model.id === choice.id),
+        )
       )
-    )
-      return "stale";
-    return patchConfig(
+        return "stale";
+    }
+    const written = await patchConfig(
       serverId,
-      choice.kind === "llm"
-        ? { checker_llm_id: choice.id, checker_decision_model_id: null }
-        : { checker_llm_id: null, checker_decision_model_id: choice.id },
+      choice === null
+        ? { checker_llm_id: null, checker_decision_model_id: null }
+        : choice.kind === "llm"
+          ? { checker_llm_id: choice.id, checker_decision_model_id: null }
+          : { checker_llm_id: null, checker_decision_model_id: choice.id },
     );
+    if (written !== "success") return written;
+    return settleSlotOwner(state, "nudge-checker", choice?.kind === "llm" ? choice.provider : null);
   },
 
   setFrequency(serverId: number, level: IdleNudgeFrequencyLevel): Promise<NudgeWriteResult> {
@@ -270,7 +302,7 @@ const naturalNudgeOperations = {
     const serverConfig = await naturalNudgeRepository.loadServerConfig(persona.server_id);
     const model = await resolvePlannerModel(persona, serverConfig.llm_id);
     if (model.kind !== "ready") return "no-model";
-    const outcome = await generatePersonaInterests(persona, model.llmId, current.interests, room);
+    const outcome = await generatePersonaInterests(persona, model, current.interests, room);
     if (outcome.status === "unavailable") return "no-model";
     if (outcome.status === "failed") return "generate-failed";
     // The call takes seconds, so merge onto a fresh read rather than overwrite an edit made meanwhile.

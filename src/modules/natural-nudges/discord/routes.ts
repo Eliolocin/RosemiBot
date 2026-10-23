@@ -214,8 +214,9 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
   const { interaction, route, dependencies } = context;
   if (!route.action.startsWith("nudge-")) return false;
   const locale = route.locale;
-  const serverId = context.scope.personas[0]?.server_id;
-  if (serverId === undefined) return true;
+  const serverState = context.scope.personas[0];
+  if (!serverState) return true;
+  const serverId = serverState.server_id;
   const ops = dependencies.naturalNudges.operations;
   const values = selectedValues(interaction);
   const field = (name: string) =>
@@ -338,7 +339,7 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
       const result =
         values[0] === NUDGE_CLEAR_MODEL_VALUE
           ? await write(
-              () => ops.setPlannerModel(serverId, "", null),
+              () => ops.setPlannerModel(serverState, "", null),
               "server-config.workspace.natural-nudge-model.set",
             )
           : "stale";
@@ -353,7 +354,7 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
         id === null || id <= 0
           ? "stale"
           : await write(
-              () => ops.setPlannerModel(serverId, route.provider, id),
+              () => ops.setPlannerModel(serverState, route.provider, id),
               "server-config.workspace.natural-nudge-model.set",
             );
       await paintPlugins(writeReceipt(locale, result));
@@ -362,7 +363,10 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
     case "nudge-checker-provider": {
       const result =
         values[0] === NUDGE_CLEAR_MODEL_VALUE
-          ? await write(() => ops.setCheckerModel(serverId, null), "server-config.workspace.natural-nudge-checker.set")
+          ? await write(
+              () => ops.setCheckerModel(serverState, null),
+              "server-config.workspace.natural-nudge-checker.set",
+            )
           : "stale";
       await paintPlugins(writeReceipt(locale, result));
       return true;
@@ -377,7 +381,7 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
         id === null || id <= 0
           ? "stale"
           : await write(
-              () => ops.setCheckerModel(serverId, { kind, provider: route.provider, id }),
+              () => ops.setCheckerModel(serverState, { kind, provider: route.provider, id }),
               "server-config.workspace.natural-nudge-checker.set",
             );
       await paintPlugins(writeReceipt(locale, result));

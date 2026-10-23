@@ -91,7 +91,7 @@ function makeView(overrides: Partial<NaturalNudgesSettingsView> = {}): NaturalNu
     activeNudgeRange: { min: 40, max: 80 },
     status: {
       effectiveChannelIds: [CHANNEL_ID],
-      plannerModel: { kind: "ready", llmId: 7, source: "chat" },
+      plannerModel: { kind: "ready", slot: "text", llmId: 7, source: "chat" },
       chatModel: { codename: "chat-model", provider: "openrouter" },
       checker: { source: "recommended", model: "decision-model" },
     },
@@ -193,7 +193,7 @@ describe("Natural Nudges settings panel", () => {
         config: { ...defaultServerNaturalNudgeConfig(1), checker_decision_model_id: 3, channel_disc_ids: [CHANNEL_ID] },
         status: {
           effectiveChannelIds: [CHANNEL_ID],
-          plannerModel: { kind: "ready", llmId: 7, source: "chat" },
+          plannerModel: { kind: "ready", slot: "text", llmId: 7, source: "chat" },
           chatModel: { codename: "chat-model", provider: "openrouter" },
           checker: { source: "pinned", model: null },
         },

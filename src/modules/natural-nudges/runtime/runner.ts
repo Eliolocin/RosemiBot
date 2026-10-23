@@ -9,7 +9,7 @@ import {
   resolveEffectiveChannelIds,
   type NudgeChannel,
 } from "@/modules/natural-nudges/runtime/channels";
-import { resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
+import { type NudgeModelRef, resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { isWithinWakingHours, serverDayStart } from "@/modules/natural-nudges/runtime/meters";
 import { IDLE_NUDGE_DAILY_CAPS } from "@/modules/natural-nudges/runtime/tuning";
 import { planIdleNudge, type IdleNudgePlan, type ScenePartner } from "@/modules/natural-nudges/runtime/planner";
@@ -40,7 +40,7 @@ export interface IdleNudgeAttempt {
   persona: TomoriState;
   interests: readonly NaturalNudgeInterest[];
   idleNudge: IdleNudgeDefinition;
-  plannerLlmId: number;
+  plannerModel: NudgeModelRef;
   availableTools: ReadonlySet<string>;
   plannerChannels: Array<NudgeChannel & { transcript: string }>;
   /** The member the idle nudge is about. Outside a scene, the opener pings them. */
@@ -283,7 +283,7 @@ export async function runIdleNudgeAttempt(attempt: IdleNudgeAttempt): Promise<At
       name: channel.channel.name,
       transcript: channel.transcript,
     })),
-    plannerLlmId: attempt.plannerLlmId,
+    plannerModel: attempt.plannerModel,
     target: attempt.target,
     partners: attempt.partners,
   });

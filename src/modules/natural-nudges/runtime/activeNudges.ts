@@ -14,6 +14,7 @@ import { claimNudgeServer, releaseNudgeServer } from "@/modules/natural-nudges/r
 import {
   matchActiveNudge,
   matcherOptionId,
+  pausesActiveNudgeChecks,
   resolveMatcherBackend,
   type MatcherBackend,
   type MatcherOption,
@@ -307,6 +308,7 @@ interface CheckSettings {
 async function checkSettingsAndCaps(
   check: ActiveNudgeCheck,
   personas: readonly NudgePersona[],
+  budget: ActiveNudgeCheckBudget,
   now: Date,
 ): Promise<CheckSettings | string> {
   const config = await naturalNudgeRepository.loadServerConfig(check.serverId);
@@ -341,7 +343,11 @@ async function checkSettingsAndCaps(
     )
   )
     return "channel_cap";
-  const { backend } = await resolveMatcherBackend(personas[0], config);
+  const { backend, denied } = await resolveMatcherBackend(personas[0], config);
+  if (denied) {
+    budget.pause(check.serverId, Date.now());
+    return "matcher_denied";
+  }
   if (!backend) return "no_matcher";
   return {
     backend,
@@ -464,7 +470,7 @@ export async function runActiveNudgeCheck(
     const personas = (await getCachedAllPersonas(check.guildId)).filter(
       (persona): persona is NudgePersona => typeof persona.persona_id === "number",
     );
-    const settings = await checkSettingsAndCaps(check, personas, now);
+    const settings = await checkSettingsAndCaps(check, personas, budget, now);
     if (typeof settings === "string") return finish("aborted", "a", settings);
     const { speakers, configs } = await loadSpeakers(check, personas);
     const { options: matcherOptions, owners } = buildMatcherOptions(speakers, configs, random);
@@ -489,7 +495,7 @@ export async function runActiveNudgeCheck(
       matcherInputTokens: matched.usage?.inputTokens,
       matcherOutputTokens: matched.usage?.outputTokens,
     });
-    if (matched.rateLimited) budget.pause(check.serverId, Date.now());
+    if (pausesActiveNudgeChecks(matched)) budget.pause(check.serverId, Date.now());
     // Not counted toward the failure stop, so a broken matcher cannot also stop the server's idle nudges.
     if (matched.reason === "failed") return finish("failed", "a", "matcher_failed");
     if (!matched.choice) return finish("aborted", "a", `matcher_${matched.reason}`);
@@ -571,7 +577,7 @@ async function recheckBeforeSend(
   const personas = (await personaRepository.loadAllForServer(check.guildId)).filter(
     (persona): persona is NudgePersona => typeof persona.persona_id === "number",
   );
-  const settings = await checkSettingsAndCaps(check, personas, new Date());
+  const settings = await checkSettingsAndCaps(check, personas, budget, new Date());
   if (typeof settings === "string") return { reason: settings };
   if (!personas.some((persona) => persona.persona_id === speaker.persona_id)) return { reason: "persona_removed" };
   const { speakers } = await loadSpeakers(check, personas);
@@ -592,7 +598,7 @@ async function recheckBeforeSend(
     options: plan.options,
     evidence,
   });
-  if (rematched.rateLimited) budget.pause(check.serverId, Date.now());
+  if (pausesActiveNudgeChecks(rematched)) budget.pause(check.serverId, Date.now());
   // Like the first call, a failure here must not count toward the failure stop.
   if (rematched.reason === "failed") return { reason: "matcher_failed", rematch: rematched };
   if (rematched.choice !== plan.choice) return { reason: "window_gone", rematch: rematched };
