@@ -172,6 +172,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
       await testSql`INSERT INTO servers (server_disc_id) VALUES ('_rt_speech_seed_defaults') RETURNING server_id`;
     const [user] =
       await testSql`INSERT INTO users (user_disc_id) VALUES ('_rt_speech_seed_defaults') RETURNING user_id`;
+    await testSql`INSERT INTO server_model_configs (server_id) VALUES (${server.server_id})`;
     try {
       const owners = [
         { kind: "server" as const, ownerId: server.server_id as number },

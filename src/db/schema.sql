@@ -3053,6 +3053,7 @@ CREATE TRIGGER update_server_memory_configs_timestamp
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS server_model_configs (
+  subscription_capabilities TEXT[] NOT NULL DEFAULT '{}',
   server_id                           INT         PRIMARY KEY REFERENCES servers(server_id) ON DELETE CASCADE,
   llm_id                              INT         REFERENCES llms(llm_id) ON DELETE SET NULL,
   embedding_model_id                  INT         REFERENCES embedding_models(embedding_model_id) ON DELETE SET NULL,
@@ -3081,6 +3082,7 @@ CREATE TABLE IF NOT EXISTS server_model_configs (
   updated_at                          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+SELECT add_column_if_not_exists('server_model_configs', 'subscription_capabilities', 'TEXT[]', '''{}''', 'NOT NULL');
 SELECT add_column_if_not_exists('server_model_configs', 'decision_model_id', 'INT REFERENCES decision_models(decision_model_id) ON DELETE SET NULL');
 
 DROP TRIGGER IF EXISTS update_server_model_configs_timestamp ON server_model_configs;

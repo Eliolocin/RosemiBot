@@ -24,6 +24,7 @@ import { normalizeProviderName } from "@/utils/provider/providerInfoRegistry";
 import { toDeepseekApiModelName } from "@/providers/deepseek/deepseekShared";
 import { resolveVisionCaptionMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
 import {
   toZaiApiModelName,
@@ -377,28 +378,32 @@ export async function callOpenAiCompatibleVision(
   signal: AbortSignal,
   onUsage?: (usage: TokenUsage) => void,
 ): Promise<string> {
-  const response = await fetchUserRemoteUrl(endpointUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      ...(endpointUrl === PROVIDER_CHAT_COMPLETIONS_URLS.openrouter && buildOpenRouterAttributionHeaders()),
+  const response = await fetchWithSupporterSpend(
+    endpointUrl,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        ...(endpointUrl === PROVIDER_CHAT_COMPLETIONS_URLS.openrouter && buildOpenRouterAttributionHeaders()),
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } },
+            ],
+          },
+        ],
+        max_tokens: resolveVisionCaptionMaxOutputTokens(),
+      }),
+      signal,
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } },
-          ],
-        },
-      ],
-      max_tokens: resolveVisionCaptionMaxOutputTokens(),
-    }),
-    signal,
-  });
+    fetchUserRemoteUrl,
+  );
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unknown error");

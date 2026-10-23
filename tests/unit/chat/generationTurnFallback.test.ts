@@ -1,3 +1,4 @@
+import { createLlmRow, createPersona } from "../../helpers/fixtures";
 import * as memberCredentials from "@/modules/supporter-billing/runtime/managedProvider";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { customEndpointSchema } from "@/types/db/schema";
@@ -100,6 +101,8 @@ let cooldownAdmissionResult = true;
 const timeoutNotices: Array<{ providerName: string; sawStreamProgress: boolean }> = [];
 const testStopRequests = new Map<string, { type: "stop" | "follow_up"; stopContext?: TestStopContext }>();
 const modelCatalog = new Map<string, LlmRow>();
+let channelModel: LlmRow | null = null;
+const fundingRequests: Array<Parameters<typeof realSupporterRuntime.resolveSupporterFunding>[0]> = [];
 let savedProviderConfigLoadCount = 0;
 let decryptApiKeyCount = 0;
 let selectApiKeyCount = 0;
@@ -147,7 +150,7 @@ stubLogMembers({
 
 scopedMock.module("@/utils/cache/channelLlmCache", () => ({
   ...realChannelLlmCache,
-  getCachedChannelLlm: async () => null,
+  getCachedChannelLlm: async () => channelModel,
 }));
 
 scopedMock.module("@/utils/cache/novelaiCapabilityCache", () => ({
@@ -190,7 +193,7 @@ scopedMock.module("@/utils/db/repositories", () => ({
     },
     loadUserSavedProviderConfig: async (userId: number, provider: string) => {
       personalSavedConfigLoads.push({ userId, provider });
-      return personalKeyAvailable ? { api_key: Buffer.from("encrypted-key"), key_version: 1 } : null;
+      return personalKeyAvailable ? { api_key: Buffer.from("personal-encrypted-key"), key_version: 1 } : null;
     },
   }),
   llmModelRepo: overrideMembers(realRepositories.llmModelRepo, {
@@ -251,8 +254,9 @@ scopedMock.module("@/modules/supporter-billing/runtime", () => ({
       ...report,
     });
   },
-  resolveSupporterFunding: async () =>
-    serverSupporterFunding
+  resolveSupporterFunding: async (params: Parameters<typeof realSupporterRuntime.resolveSupporterFunding>[0]) => {
+    fundingRequests.push(params);
+    return serverSupporterFunding
       ? {
           ok: true as const,
           context: serverSupporterFunding,
@@ -260,7 +264,8 @@ scopedMock.module("@/modules/supporter-billing/runtime", () => ({
           config: {} as never,
           tier: {} as never,
         }
-      : { ok: false as const, reason: "missing_sponsorship" as const },
+      : { ok: false as const, reason: "missing_sponsorship" as const };
+  },
 }));
 
 // The admission itself reads quota usage from the database and notifies the user through Discord;
@@ -651,7 +656,7 @@ const fakeProvider = {
 };
 
 function makeLlm(id: number, codename: string, provider = "google"): LlmRow {
-  return {
+  return createLlmRow({
     llm_id: id,
     llm_codename: codename,
     llm_provider: provider,
@@ -659,7 +664,7 @@ function makeLlm(id: number, codename: string, provider = "google"): LlmRow {
     sees_images: false,
     sees_videos: false,
     supports_structoutput: false,
-  } as unknown as LlmRow;
+  });
 }
 
 function makeOpenRouterLlm(id: number, codename: string): LlmRow {
@@ -674,7 +679,7 @@ function makeContext(primaryModel: LlmRow, fallbackModel: LlmRow): ChatTurnConte
     id: "channel_1",
     isThread: () => false,
   };
-  const state = {
+  const state = createPersona({
     server_id: 1,
     persona_id: 10,
     persona_lineage_id: 100,
@@ -683,14 +688,14 @@ function makeContext(primaryModel: LlmRow, fallbackModel: LlmRow): ChatTurnConte
     llm: primaryModel,
     fallback_chain: [{ kind: "llm", model: fallbackModel }],
     config: {
-      api_key: "encrypted-key",
+      api_key: Buffer.from("encrypted-key"),
       key_version: 1,
       llm_temperature: 0.7,
       private_channel_ids: [],
       tool_notice_hidden_keys: [],
       user_byok_mode: false,
     },
-  } as unknown as TomoriState;
+  });
 
   return {
     channel,
@@ -1003,6 +1008,8 @@ describe("runGenerationTurn fallback behavior", () => {
     personalOverlayState = null;
     serverSupporterFunding = null;
     modelCatalog.clear();
+    channelModel = null;
+    fundingRequests.length = 0;
     savedProviderConfigLoadCount = 0;
     decryptApiKeyCount = 0;
     selectApiKeyCount = 0;
@@ -2546,7 +2553,7 @@ describe("runGenerationTurn fallback behavior", () => {
       expect(toolLoopCalls.slice(before).map(({ apiKey, credentialSource }) => ({ apiKey, credentialSource }))).toEqual(
         [
           { apiKey: "synthetic-member-key", credentialSource: "supporter" },
-          { apiKey: "server-key", credentialSource: personal ? "personal" : "server" },
+          { apiKey: personal ? "personal-key" : "server-key", credentialSource: personal ? "personal" : "server" },
         ],
       );
       if (personal) expect(personalSavedConfigLoads.at(-1)).toEqual({ userId: 91, provider: "openrouter" });
@@ -2613,6 +2620,95 @@ describe("runGenerationTurn fallback behavior", () => {
     expect(savedProviderConfigLoadCount).toBe(0);
   });
 
+  it("funds the effective persona or channel override through its own model admission", async () => {
+    setSupporterEnv();
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    const primary = makeOpenRouterLlm(101, "openrouter/allowed-primary");
+    const channelOverride = makeOpenRouterLlm(102, "openrouter/channel-model");
+    const personaOverride = makeOpenRouterLlm(103, "openrouter/persona-model");
+    for (const personaWins of [true, false]) {
+      toolLoopCalls.length = 0;
+      fundingRequests.length = 0;
+      channelModel = channelOverride;
+      const selected = personaWins ? personaOverride : channelOverride;
+      const context = makeContext(primary, primary);
+      context.currentPersona.fallback_chain = undefined;
+      context.currentPersona.persona_llm = personaWins ? personaOverride : undefined;
+      context.currentPersona.config.subscription_capabilities = ["text"];
+      context.textCredentialSource = "supporter";
+      context.supporterFunding = makeSupporterFunding();
+      serverSupporterFunding = makeSupporterFunding({ modelCodename: selected.llm_codename });
+      queuedResults.push(successfulReply());
+      expect((await runGenerationTurn(context, collectingSink())).status).toBe("completed");
+      expect(toolLoopCalls.map((call) => [call.model, call.apiKey])).toEqual([
+        [selected.llm_codename, "synthetic-member-key"],
+      ]);
+      expect(fundingRequests.map((request) => request.requestedModelCodename)).toEqual([selected.llm_codename]);
+    }
+  });
+
+  it("uses a cross-provider persona override on server BYOK instead of sponsor funding", async () => {
+    setSupporterEnv();
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    const primary = makeOpenRouterLlm(101, "openrouter/allowed-primary");
+    const override = makeLlm(102, "native-persona");
+    const context = makeContext(primary, primary);
+    context.currentPersona.fallback_chain = undefined;
+    context.currentPersona.persona_llm = override;
+    context.currentPersona.config.subscription_capabilities = ["text"];
+    context.textCredentialSource = "supporter";
+    context.supporterFunding = makeSupporterFunding();
+    queuedResults.push(successfulReply());
+    expect((await runGenerationTurn(context, collectingSink())).status).toBe("completed");
+    expect(toolLoopCalls.map((call) => [call.model, call.apiKey, call.credentialSource])).toEqual([
+      ["native-persona", "server-key", "server"],
+    ]);
+    expect(fundingRequests).toHaveLength(0);
+  });
+
+  it("allows personal BYOK fallback only to the same user's own DM workspace", async () => {
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    const primary = makeLlm(101, "personal-primary");
+    const fallback = makeLlm(102, "workspace-fallback");
+    const context = makeContext(fallback, fallback);
+    context.textCredentialSource = "personal";
+    context.personalRoutingUserId = 4;
+    context.personalTextProvider = "google";
+    context.isDMChannel = true;
+    context.serverDiscId = context.userDiscId;
+    personalOverlayState = { ...context.currentPersona, llm: primary, fallback_chain: undefined };
+    queuedResults.push(personalRouteFailure(), successfulReply());
+    expect((await runGenerationTurn(context, collectingSink())).status).toBe("completed");
+    expect(toolLoopCalls.map((call) => [call.model, call.credentialSource])).toEqual([
+      ["personal-primary", "personal"],
+      ["workspace-fallback", "server"],
+    ]);
+  });
+
+  it("tries configured personal BYOK fallback before a server route when the subscription is unavailable", async () => {
+    setSupporterEnv();
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    const primary = makeOpenRouterLlm(101, "openrouter/unavailable");
+    const fallback = makeOpenRouterLlm(102, "openrouter/personal-fallback");
+    const context = makeContext(makeLlm(103, "server-primary"), fallback);
+    context.textCredentialSource = "personal";
+    context.personalRoutingUserId = 4;
+    context.personalTextProvider = "supporter";
+    context.currentPersona.config.user_byok_mode = true;
+    personalOverlayState = {
+      ...context.currentPersona,
+      llm: primary,
+      config: { ...context.currentPersona.config, api_key: null },
+      fallback_chain: [{ kind: "llm", model: fallback, credentialProvider: "openrouter" }],
+    };
+    queuedResults.push(successfulReply());
+    expect((await runGenerationTurn(context, collectingSink())).status).toBe("completed");
+    expect(toolLoopCalls.map((call) => [call.model, call.apiKey, call.credentialSource])).toEqual([
+      ["openrouter/personal-fallback", "personal-key", "personal"],
+    ]);
+    expect(textQuotaAdmissions).toHaveLength(0);
+  });
+
   it("reports failed personal exhaustion fallback without borrowing server credentials in a DM", async () => {
     setSupporterEnv();
     const primary = makeOpenRouterLlm(101, "openrouter/allowed-primary");
@@ -2661,6 +2757,7 @@ describe("runGenerationTurn fallback behavior", () => {
       toolLoopCalls.length = 0;
       subscriptionNotices.length = 0;
       const context = makeContext(serverPrimary, byokFallback);
+      context.currentPersona.config.subscription_capabilities = ["text"];
       context.textCredentialSource = "supporter";
       context.personalRoutingUserId = 4;
       context.supporterFunding = {

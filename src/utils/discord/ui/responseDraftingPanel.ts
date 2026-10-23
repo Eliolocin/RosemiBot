@@ -96,7 +96,9 @@ export function buildDraftModelModal(
     group.provider,
     nonce,
     group.models.slice(start, start + CONFIG_MODEL_PAGE_SIZE),
-    state.config.response_reviewer_llm_id,
+    state.config.subscription_capabilities.includes("reviewer") === (group.provider === "supporter")
+      ? state.config.response_reviewer_llm_id
+      : null,
   );
   payload.custom_id = buildConfigRouteId({ action: "draft-model-submit", locale, nonce, provider: group.provider });
   payload.title = localizer(locale, "commands.config.drafting.reviewer_button");
@@ -134,6 +136,7 @@ export function buildResponseDraftingBody(
         : `${inherited}: ${t("commands.config.drafting.unavailable")}`;
     }
     for (const group of view?.reviewers ?? []) {
+      if (state.config.subscription_capabilities.includes("reviewer") !== (group.provider === "supporter")) continue;
       const model = group.models.find((candidate) => candidate.id === id);
       if (model) return safeSelectOptionText(formatModel(model.name, group.provider), 180);
     }

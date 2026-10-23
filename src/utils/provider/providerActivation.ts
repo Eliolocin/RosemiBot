@@ -71,18 +71,22 @@ export async function activateServerTextModelFromSavedConfig(params: {
   );
 
   const [updatedModel, updatedChat] = await Promise.all([
-    configRepository.updateModelConfig(params.tomoriState.server_id, {
-      llm_id: selectedModel.llm_id,
-      api_key: params.savedConfig.api_key,
-      key_version: params.savedConfig.key_version ?? 1,
-      thinking_level: params.savedConfig.thinking_level ?? "auto",
-      fallback_llm_ids: fallbackLlmIds,
-      llm_temperature: params.savedConfig.llm_temperature ?? params.tomoriState.config.llm_temperature ?? 1.0,
-      llm_disabled_params: params.savedConfig.llm_disabled_params ?? [],
-      custom_model_name: null,
-      custom_endpoint_url: null,
-      custom_num_ctx: null,
-    }),
+    configRepository.updateModelConfig(
+      params.tomoriState.server_id,
+      {
+        llm_id: selectedModel.llm_id,
+        api_key: params.savedConfig.api_key,
+        key_version: params.savedConfig.key_version ?? 1,
+        thinking_level: params.savedConfig.thinking_level ?? "auto",
+        fallback_llm_ids: fallbackLlmIds,
+        llm_temperature: params.savedConfig.llm_temperature ?? params.tomoriState.config.llm_temperature ?? 1.0,
+        llm_disabled_params: params.savedConfig.llm_disabled_params ?? [],
+        custom_model_name: null,
+        custom_endpoint_url: null,
+        custom_num_ctx: null,
+      },
+      normalizedProvider,
+    ),
     configRepository.updateChatConfig(params.tomoriState.server_id, {
       llm_top_p: params.savedConfig.llm_top_p ?? params.tomoriState.config.llm_top_p ?? 0.95,
       llm_top_k: params.savedConfig.llm_top_k ?? params.tomoriState.config.llm_top_k ?? 0,

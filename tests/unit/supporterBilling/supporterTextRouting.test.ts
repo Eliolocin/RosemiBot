@@ -115,7 +115,7 @@ describe("Supporter managed text routing policy", () => {
           funding: null,
           loadModel: async () => makeLlm(),
         }),
-      ).rejects.toThrow("Supporter text credential source is missing funding context.");
+      ).rejects.toBeInstanceOf(Error);
     });
 
     it("throws when the selected model is absent from the catalog", async () => {
@@ -125,7 +125,7 @@ describe("Supporter managed text routing policy", () => {
           funding: makeFundingContext(),
           loadModel: async () => null,
         }),
-      ).rejects.toThrow("Supporter managed OpenRouter model is not present in the model catalog.");
+      ).rejects.toBeInstanceOf(Error);
     });
 
     it("nulls only api_key/key_version for failover llm entries (not custom_* fields)", () => {

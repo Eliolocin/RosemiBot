@@ -267,7 +267,11 @@ async function selectSupporterVisionDefault(
   return (
     !!saved &&
     (await llmProviderRepo.upsertSavedProviderConfig(target.serverId, { ...saved, vision_llm_id: visionLlmId })) &&
-    (await configRepository.updateModelConfig(target.serverId, { vision_llm_id: visionLlmId }))
+    (await configRepository.updateModelConfig(
+      target.serverId,
+      { vision_llm_id: visionLlmId },
+      SUPPORTER_PROVIDER_VALUE,
+    ))
   );
 }
 

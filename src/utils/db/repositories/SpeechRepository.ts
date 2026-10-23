@@ -61,15 +61,16 @@ export async function loadHostedSpeechSelection(
     }
   }
   const [row] = await sql`
-    SELECT m.*, COALESCE(c.saved_config_id, subscription.saved_config_id) AS credential_id,
-      COALESCE(c.credential_revision, subscription.credential_revision) AS credential_revision,
-      c.api_key, COALESCE(c.key_version, subscription.key_version) AS key_version,
-      c.api_key IS NULL AND subscription.saved_config_id IS NOT NULL AS subscription
+    SELECT m.*, c.saved_config_id AS credential_id,
+      c.credential_revision, c.api_key, c.key_version,
+      ${capability} = ANY(selection.subscription_capabilities) AS subscription
     FROM server_speech_configs s JOIN speech_models m
       ON m.speech_model_id = CASE WHEN ${mode} = 'design' THEN s.speech_design_model_id ELSE s.speech_clone_model_id END
-    LEFT JOIN saved_provider_configs c ON c.server_id = s.server_id AND c.provider = m.provider
-    LEFT JOIN saved_provider_configs subscription ON subscription.server_id = s.server_id
-      AND subscription.provider = 'supporter' AND m.provider = 'openrouter' AND ${includeSubscription}
+    JOIN server_model_configs selection ON selection.server_id = s.server_id
+    JOIN saved_provider_configs c ON c.server_id = s.server_id
+      AND c.provider = CASE WHEN ${capability} = ANY(selection.subscription_capabilities)
+        THEN 'supporter' ELSE m.provider END
+      AND (c.provider <> 'supporter' OR ${includeSubscription})
     WHERE s.server_id = ${serverId}
   `;
   if (!row || (!row.api_key && !row.subscription)) return null;
@@ -151,6 +152,14 @@ export async function setHostedSpeechSelection(
       }
       if (scope.kind === "server") {
         await tx`INSERT INTO server_speech_configs (server_id) VALUES (${scope.ownerId}) ON CONFLICT DO NOTHING`;
+        const capabilities = [...(design ? ["speech_design"] : []), ...(clone ? ["speech_clone"] : [])];
+        const ownership = await tx`
+          UPDATE server_model_configs SET subscription_capabilities =
+            ARRAY(SELECT unnest(subscription_capabilities) EXCEPT SELECT unnest(${sql.array(capabilities, "text")}))
+            || ${sql.array(provider === "supporter" && model ? capabilities : [], "text")}
+          WHERE server_id = ${scope.ownerId} RETURNING server_id
+        `;
+        if (ownership.length === 0) throw new Error("Speech credential ownership row missing");
         await tx`
           UPDATE server_speech_configs SET
             speech_design_model_id = CASE WHEN ${design} THEN ${modelId} ELSE speech_design_model_id END,
@@ -463,6 +472,10 @@ export async function setSpeechEndpointSelection(
       await tx`
         INSERT INTO server_speech_configs (server_id) VALUES (${serverId}) ON CONFLICT DO NOTHING
       `;
+      const capabilities = [...(design ? ["speech_design"] : []), ...(clone ? ["speech_clone"] : [])];
+      await tx`UPDATE server_model_configs SET subscription_capabilities =
+        ARRAY(SELECT unnest(subscription_capabilities) EXCEPT SELECT unnest(${sql.array(capabilities, "text")}))
+        WHERE server_id = ${serverId}`;
       await tx`
         UPDATE server_speech_configs
         SET speech_design_endpoint_id = CASE WHEN ${design} THEN ${endpointId} ELSE speech_design_endpoint_id END,

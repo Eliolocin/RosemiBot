@@ -27,7 +27,6 @@ import { checkResponseRules, type RuleCheckState } from "@/utils/chat/responseRu
 import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
 import { resolveEnvironment } from "@/types/config";
-import { supporterSponsorshipRepository } from "@/modules/supporter-billing/db";
 import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
 import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
 import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
@@ -529,14 +528,12 @@ async function resolveReviewer(
   });
   if (!available?.some((entry) => entry.llm_id === model.llm_id)) return null;
   const subscription =
-    model.llm_provider === "openrouter" &&
-    isSupporterBillingEnabled(resolveEnvironment()) &&
-    (await supporterSponsorshipRepository.loadActiveSponsorshipForServer(context.currentPersona.server_id));
-  const saved =
-    (await llmProviderRepo.loadSavedProviderConfig(context.currentPersona.server_id, model.llm_provider)) ??
-    (subscription
-      ? await llmProviderRepo.loadSavedProviderConfig(context.currentPersona.server_id, "supporter")
-      : null);
+    model.llm_provider === "openrouter" && context.currentPersona.config.subscription_capabilities.includes("reviewer");
+  if (subscription && !isSupporterBillingEnabled(resolveEnvironment())) return null;
+  const saved = await llmProviderRepo.loadSavedProviderConfig(
+    context.currentPersona.server_id,
+    subscription ? "supporter" : model.llm_provider,
+  );
   const capability = await resolveStructuredOutputCapability(model.llm_provider);
   if (!capability) return null;
   const state = saved

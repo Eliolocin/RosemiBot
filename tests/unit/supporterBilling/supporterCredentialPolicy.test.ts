@@ -1,12 +1,9 @@
+import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 import { createLlmRow, createPersona, createUserRow } from "../../helpers/fixtures";
 import { describe, expect, it } from "bun:test";
 import type { Message } from "discord.js";
 import type { TomoriState, UserRow } from "@/types/db/schema";
-import {
-  CredentialUnavailableError,
-  PersonalProviderRequiredError,
-  type ResolvedCredentials,
-} from "@/utils/provider/credentialResolver";
+import { PersonalProviderRequiredError, type ResolvedCredentials } from "@/utils/provider/credentialResolver";
 import { resolveTextCredentialPolicy, type TextCredentialPolicyDependencies } from "@/utils/chat/turnPlanner";
 import type { SupporterFundingContext } from "@/modules/supporter-billing";
 
@@ -87,10 +84,8 @@ function makeBaseParams(dependencies: Partial<TextCredentialPolicyDependencies>)
     isDMChannel: false,
     shouldSurfaceUserErrors: true,
     retryCount: 0,
-    // Tests run outside production, so the real default gate would skip the
-    // Supporter path entirely; force it open unless a test overrides it.
     dependencies: {
-      isSupporterFundingEnabled: () => true,
+      resolveServerTextModel: async (state: TomoriState) => state.persona_llm ?? state.llm,
       ...dependencies,
     },
   };
@@ -116,12 +111,11 @@ describe("supporter-aware text credential policy", () => {
       resolveCapabilityCredentials: async () => {
         throw new Error("Unexpected server credential resolution");
       },
-      isSupporterFundingEnabled: () => true,
     });
     const result = await resolveTextCredentialPolicy({ ...params, isDMChannel: true });
     expect(result?.source).toBe("supporter");
     expect(result?.supporterFunding?.fundingScope).toBe("personal");
-    expect(scope).toEqual({ kind: "personal", userId: 70 });
+    expect(scope).toBeUndefined();
   });
   it("uses valid personal text credentials before Supporter admission", async () => {
     let supporterCalled = false;
@@ -148,27 +142,6 @@ describe("supporter-aware text credential policy", () => {
     });
     expect(supporterCalled).toBe(false);
     expect(serverCalled).toBe(false);
-  });
-  it("never invokes Supporter admission when billing is disabled for the environment", async () => {
-    let supporterCalled = false;
-
-    const result = await resolveTextCredentialPolicy(
-      makeBaseParams({
-        resolvePersonalCapabilityCredentials: async () => null,
-        resolveSupporterFunding: async () => {
-          supporterCalled = true;
-          return { ok: false, reason: "billing_unavailable" };
-        },
-        resolveCapabilityCredentials: async () => makeResolvedCredentials("server"),
-        isSupporterFundingEnabled: () => false,
-      }),
-    );
-
-    expect(result).toMatchObject({
-      source: "server",
-      supporterFunding: null,
-    });
-    expect(supporterCalled).toBe(false);
   });
 
   it("falls back to the existing server credential path when no sponsorship applies", async () => {
@@ -202,7 +175,7 @@ describe("supporter-aware text credential policy", () => {
     expect(result).toBeNull();
   });
 
-  it("selects Supporter before server credentials when an active sponsorship admits", async () => {
+  it("uses subscription funding only when credential resolution selects that entry", async () => {
     let serverCalled = false;
     const supporterContext = makeSupporterContext();
 
@@ -215,7 +188,7 @@ describe("supporter-aware text credential policy", () => {
         }),
         resolveCapabilityCredentials: async () => {
           serverCalled = true;
-          return makeResolvedCredentials("server");
+          return { ...makeResolvedCredentials("server"), supporterFunding: supporterContext };
         },
       }),
     );
@@ -224,10 +197,10 @@ describe("supporter-aware text credential policy", () => {
       source: "supporter",
       supporterFunding: supporterContext,
     });
-    expect(serverCalled).toBe(false);
+    expect(serverCalled).toBe(true);
   });
 
-  it("blocks and surfaces localized Supporter failures instead of falling through to server credentials", async () => {
+  it("surfaces an unavailable selected server subscription without borrowing BYOK credentials", async () => {
     let embedCount = 0;
     let serverCalled = false;
 
@@ -237,7 +210,7 @@ describe("supporter-aware text credential policy", () => {
         resolveSupporterFunding: async () => ({ ok: false, reason: "inactive_entitlement" }),
         resolveCapabilityCredentials: async () => {
           serverCalled = true;
-          throw new CredentialUnavailableError("google", "text", "no_saved_config", "server");
+          throw new SupporterRequestDeniedError("inactive_entitlement");
         },
         sendStandardEmbed: async () => {
           embedCount++;
@@ -247,6 +220,43 @@ describe("supporter-aware text credential policy", () => {
 
     expect(result).toBeNull();
     expect(embedCount).toBe(1);
+    expect(serverCalled).toBe(true);
+  });
+  it("keeps an inactive personal subscription route for its personal fallback pool", async () => {
+    let serverCalled = false;
+    const result = await resolveTextCredentialPolicy(
+      makeBaseParams({
+        resolvePersonalCapabilityCredentials: async () => {
+          throw new SupporterRequestDeniedError("inactive_entitlement", undefined, "text", "personal");
+        },
+        resolveCapabilityCredentials: async () => {
+          serverCalled = true;
+          return makeResolvedCredentials("server");
+        },
+      }),
+    );
+    expect(result).toMatchObject({ source: "personal", personalTextProvider: "supporter", personalRoutingUserId: 70 });
     expect(serverCalled).toBe(false);
+  });
+
+  it("passes the effective persona model to credential admission without sponsorship substitution", async () => {
+    const model = createLlmRow({ llm_id: 2, llm_provider: "google", llm_codename: "synthetic-override" });
+    let admittedModel: unknown;
+    let supporterCalled = false;
+    const params = makeBaseParams({
+      resolvePersonalCapabilityCredentials: async () => null,
+      resolveServerTextModel: async () => model,
+      resolveCapabilityCredentials: async (_serverId, _capability, options) => {
+        admittedModel = options?.textModel;
+        return makeResolvedCredentials("server");
+      },
+      resolveSupporterFunding: async () => {
+        supporterCalled = true;
+        return { ok: true, context: makeSupporterContext() };
+      },
+    });
+    expect((await resolveTextCredentialPolicy(params))?.source).toBe("server");
+    expect(admittedModel).toBe(model);
+    expect(supporterCalled).toBe(false);
   });
 });

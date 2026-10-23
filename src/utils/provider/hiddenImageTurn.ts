@@ -26,7 +26,8 @@ import type { TomoriState } from "@/types/db/schema";
 import type { ToolContext } from "@/types/tool/interfaces";
 import type { StreamingContext } from "@/types/tool/interfaces";
 import type { FunctionCall } from "@/types/provider/interfaces";
-import { decryptApiKey } from "@/utils/security/crypto";
+import { getCapabilityCredentialFailureCopy, resolveCapabilityCredentials } from "@/utils/provider/credentialResolver";
+import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
 import { stripBridgePrefix } from "@/utils/bridges";
 import { resolveMediaForModel } from "@/utils/text/context/mediaResolver";
 import { getCachedAllPersonas } from "@/utils/cache/tomoriStateCache";
@@ -142,14 +143,13 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
     };
   }
 
-  // Decrypt the API key.
-  const decryptedApiKey = await decryptApiKey(
-    // biome-ignore lint/style/noNonNullAssertion: api_key presence was validated by the command before invoking this helper
-    tomoriState.config.api_key!,
-    tomoriState.config.key_version || 1,
-  );
-  if (!decryptedApiKey) {
-    return { success: false, error: "Failed to decrypt API key." };
+  let credentials: Awaited<ReturnType<typeof resolveCapabilityCredentials>>;
+  try {
+    credentials = await resolveCapabilityCredentials(tomoriState.server_id, "text", { userId: internalUserId });
+  } catch (error) {
+    const failure = getCapabilityCredentialFailureCopy(error, locale);
+    if (!failure) throw error;
+    return { success: false, error: failure.description };
   }
 
   const rawMessages = await channel.messages.fetch({
@@ -303,6 +303,7 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
   const targetToolName = backend === "current_provider" ? "generate_image" : "generate_image_nai";
 
   const streamingContext: StreamingContext = {
+    textCredentialSource: credentials.supporterFunding ? "supporter" : credentials.source,
     disableYouTubeProcessing: true,
     disableProfilePictureProcessing: true,
     disableGifProcessing: true,
@@ -331,7 +332,7 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
 
   let providerConfig: Awaited<ReturnType<typeof provider.createConfig>>;
   try {
-    providerConfig = await provider.createConfig(tomoriState, decryptedApiKey);
+    providerConfig = await provider.createConfig(tomoriState, credentials.apiKey);
   } catch (error) {
     log.error("Hidden image agent: failed to create provider config", error as Error, {
       errorType: "HiddenImageAgentConfigError",
@@ -361,6 +362,7 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
     locale,
     provider: provider.getInfo().name,
     streamContext: streamingContext,
+    supporterFunding: credentials.supporterFunding,
     suppressProgressNotices: true, // Keep the hidden turn quiet
     // Persona identity for webhook-based image posting (set by /generate image Auto mode).
     // When absent, the image tool falls back to a direct bot message.
@@ -405,6 +407,13 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
       });
       return { success: false, error: `Streaming error: ${msg}` };
     }
+
+    recordSupporterUsage(credentials.supporterFunding, {
+      modelCodename: tomoriState.llm.llm_codename,
+      costUsd: streamResult.usage?.costUsd,
+      inputTokens: streamResult.usage?.inputTokens,
+      outputTokens: streamResult.usage?.outputTokens,
+    });
 
     if (streamResult.status === "function_call") {
       if (!streamResult.data) {

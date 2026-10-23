@@ -1182,6 +1182,7 @@ async function finishSetupWizardDraft(
     }
 
     committed = true;
+    invalidateTomoriStateCache(workspaceKey);
     if (supporterValidation) {
       const serverId = setupResult.server.server_id;
       if (!serverId) throw new Error("Supporter setup did not return a server ID");
@@ -1192,8 +1193,6 @@ async function finishSetupWizardDraft(
         createdByDiscId: actorDiscId,
       });
     }
-    // Only now, with the rows committed: every reader below this line must see the new workspace.
-    invalidateTomoriStateCache(workspaceKey);
 
     let receiptDelivered: boolean;
     try {

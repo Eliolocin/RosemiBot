@@ -4,7 +4,7 @@ import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context
 import type { LLMProvider, ProviderConfig, StreamResult } from "@/types/provider/interfaces";
 import type { ProviderError } from "@/types/stream/interfaces";
 import type { ToolContext } from "@/types/tool/interfaces";
-import { getCachedChannelLlm } from "@/utils/cache/channelLlmCache";
+import { resolveServerTextModel } from "@/utils/provider/textModelSelection";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { type FallbackNoticeAttempt, sendFallbackModelUsageNotice } from "@/utils/discord/fallbackModelNotice";
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
@@ -501,7 +501,14 @@ function resolveServerRouteExtension(
 ): ((startIndex: number) => Promise<GenerationAttempt[]>) | null {
   const isPersonal =
     context.textCredentialSource === "personal" || context.supporterFunding?.fundingScope === "personal";
-  if (!isPersonal || context.isUserImpersonation || context.isDMChannel) {
+  if (
+    !isPersonal ||
+    context.isUserImpersonation ||
+    (context.isDMChannel &&
+      (context.serverDiscId !== context.userDiscId ||
+        context.supporterFunding?.fundingScope === "personal" ||
+        context.personalTextProvider === "supporter"))
+  ) {
     return null;
   }
   if (context.currentPersona.config.user_byok_mode) {
@@ -523,7 +530,7 @@ function resolveServerRouteExtension(
 async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<GenerationAttempt[]> {
   const disableAllTools = !!context.streamingContext.disableAllTools;
   const primaryState = await resolveTomoriStateForRoute(context, "planned");
-  const funding = context.supporterFunding;
+  const funding = primaryState.llm.llm_provider === "openrouter" ? context.supporterFunding : null;
   const personalUserId =
     context.textCredentialSource === "personal" || funding?.fundingScope === "personal"
       ? (context.personalRoutingUserId ?? null)
@@ -531,7 +538,17 @@ async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<Gene
   const fallbackEntries = resolveFallbackEntries(primaryState);
 
   const pool: FallbackEntry[] = [
-    { kind: "llm", model: primaryState.llm, ...(funding ? { credentialProvider: "supporter" as const } : {}) },
+    {
+      kind: "llm",
+      model: primaryState.llm,
+      ...(funding ||
+      context.personalTextProvider === "supporter" ||
+      (personalUserId === null &&
+        primaryState.llm.llm_provider === "openrouter" &&
+        primaryState.config.subscription_capabilities.includes("text"))
+        ? { credentialProvider: "supporter" as const }
+        : {}),
+    },
     ...fallbackEntries,
   ];
 
@@ -586,19 +603,11 @@ async function buildServerRouteAttempts(context: ChatTurnContext, startIndex: nu
   }
 
   const serverState = await resolveTomoriStateForRoute(context, "server");
-  const serverFunding = isSupporterBillingEnabled(resolveEnvironment())
-    ? await resolveSupporterFunding({
-        scope: { kind: "server", serverId: serverState.server_id },
-        capability: "text",
-        requestedModelCodename:
-          serverState.llm.llm_provider === "openrouter" ? serverState.llm.llm_codename : undefined,
-      })
-    : null;
   const serverPool: FallbackEntry[] = [
     {
       kind: "llm",
       model: serverState.llm,
-      ...(serverFunding?.ok && serverState.llm.llm_provider === "openrouter"
+      ...(serverState.llm.llm_provider === "openrouter" && serverState.config.subscription_capabilities.includes("text")
         ? { credentialProvider: "supporter" as const }
         : {}),
     },
@@ -617,7 +626,7 @@ async function buildServerRouteAttempts(context: ChatTurnContext, startIndex: nu
         fallbackIndex,
         disableAllTools,
         null,
-        serverFunding?.ok ? serverFunding.context : null,
+        null,
       );
       if (attempt) {
         attempts.push(attempt);
@@ -884,38 +893,42 @@ function shouldSendFallbackNotice(context: ChatTurnContext, result: GenerationTu
 type TextRoute = "planned" | "server";
 
 async function resolveTomoriStateForRoute(context: ChatTurnContext, route: TextRoute): Promise<TomoriState> {
+  const incoming = context.turn.lockedTurn.admission.incoming;
   const funding = context.supporterFunding;
-  if (route === "planned" && context.textCredentialSource === "supporter") {
-    return await buildSupporterPrimaryTomoriState({
-      baseState:
-        funding?.fundingScope === "personal"
-          ? (await applyPersonalProviderSelectionsToTomoriState(context.currentPersona, context.personalRoutingUserId))
-              .tomoriState
-          : context.currentPersona,
-      funding,
-      loadModel: (provider, codename) => llmModelRepo.loadByProviderAndCodename(provider, codename),
-    });
+  const usePersonalRoute =
+    route === "planned" && (context.textCredentialSource === "personal" || funding?.fundingScope === "personal");
+  const base = usePersonalRoute
+    ? (
+        await applyPersonalProviderSelectionsToTomoriState(
+          context.currentPersona,
+          context.personalRoutingUserId,
+          context.personalTextProvider === "supporter",
+        )
+      ).tomoriState
+    : context.currentPersona;
+  const overriddenLlm = usePersonalRoute
+    ? incoming.llmOverrideCodename
+      ? ((await llmModelRepo.loadByProviderAndCodename(base.llm.llm_provider, incoming.llmOverrideCodename)) ?? {
+          ...base.llm,
+          llm_codename: incoming.llmOverrideCodename,
+        })
+      : base.llm
+    : await resolveServerTextModel(base, context.channel, context.isUserImpersonation, incoming.llmOverrideCodename);
+  if (
+    route === "planned" &&
+    context.textCredentialSource === "supporter" &&
+    overriddenLlm.llm_provider === "openrouter"
+  ) {
+    if (funding?.modelCodename === overriddenLlm.llm_codename) {
+      return buildSupporterPrimaryTomoriState({
+        baseState: base,
+        funding,
+        loadModel: (provider, codename) => llmModelRepo.loadByProviderAndCodename(provider, codename),
+      });
+    }
+    return { ...base, llm: overriddenLlm, config: { ...base.config, api_key: null } };
   }
 
-  const incoming = context.turn.lockedTurn.admission.incoming;
-  const usePersonalRoute = route === "planned" && context.textCredentialSource === "personal";
-  const base = usePersonalRoute
-    ? (await applyPersonalProviderSelectionsToTomoriState(context.currentPersona, context.personalRoutingUserId))
-        .tomoriState
-    : context.currentPersona;
-  const channelLlmOverride =
-    context.isUserImpersonation || usePersonalRoute
-      ? null
-      : await getCachedChannelLlm(
-          context.currentPersona.server_id,
-          context.channel.id,
-          context.channel.isThread() ? context.channel.parentId : null,
-        );
-  const effectiveLlm =
-    usePersonalRoute || context.isUserImpersonation ? base.llm : (base.persona_llm ?? channelLlmOverride ?? base.llm);
-  const overriddenLlm = incoming.llmOverrideCodename
-    ? { ...effectiveLlm, llm_codename: incoming.llmOverrideCodename }
-    : effectiveLlm;
   let state: TomoriState = { ...base, llm: overriddenLlm };
 
   if (overriddenLlm.llm_provider.toLowerCase() !== base.llm.llm_provider.toLowerCase()) {
@@ -1026,7 +1039,11 @@ async function createFallbackAttempt(
   }
 
   let state: TomoriState = { ...primaryState, llm: entry.model };
-  if (funding || entry.model.llm_provider.toLowerCase() !== primaryState.llm.llm_provider.toLowerCase()) {
+  if (
+    funding ||
+    primaryState.config.api_key === null ||
+    entry.model.llm_provider.toLowerCase() !== primaryState.llm.llm_provider.toLowerCase()
+  ) {
     const recredentialed = await applyCrossProviderConfig(state, entry.model.llm_provider, personalUserId);
     if (!recredentialed) {
       log.warn(

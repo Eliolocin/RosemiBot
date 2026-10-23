@@ -22,6 +22,7 @@ import { resolveVisionApiModelName } from "@/utils/provider/visionCaption";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { MEDIA_LIMITS } from "@/utils/security/rateLimiter";
 import { safeDownload } from "@/utils/security/safeDownload";
+import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
 import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
@@ -515,15 +516,19 @@ export class PeekProfilePictureTool extends BaseTool {
       max_tokens: 1024,
     };
 
-    const response = await fetchUserRemoteUrl(endpointUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        ...(endpointUrl === PROVIDER_CHAT_COMPLETIONS_URLS.openrouter && buildOpenRouterAttributionHeaders()),
+    const response = await fetchWithSupporterSpend(
+      endpointUrl,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          ...(endpointUrl === PROVIDER_CHAT_COMPLETIONS_URLS.openrouter && buildOpenRouterAttributionHeaders()),
+        },
+        body: JSON.stringify(requestBody),
       },
-      body: JSON.stringify(requestBody),
-    });
+      fetchUserRemoteUrl,
+    );
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "Unknown error");

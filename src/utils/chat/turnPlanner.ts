@@ -1,3 +1,4 @@
+import { resolveServerTextModel } from "@/utils/provider/textModelSelection";
 import type { Guild, Message } from "discord.js";
 import type { TomoriState, UserRow } from "@/types/db/schema";
 import { PrivacyLevel } from "@/types/db/schema";
@@ -16,17 +17,15 @@ import {
   resolveCapabilityCredentials,
   resolvePersonalCapabilityCredentials,
   type ResolvedCredentials,
+  isUnavailablePersonalSubscription,
 } from "@/utils/provider/credentialResolver";
 import {
   resolveSupporterFunding,
-  getSupporterFundingFailureDescriptionKey,
   type SupporterFundingContext,
   type SupporterFundingResult,
 } from "@/modules/supporter-billing/runtime";
-import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
 import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
-import { resolveEnvironment } from "@/types/config";
 import {
   checkTextQuotaForAdmission,
   enforceGlobalRateLimit,
@@ -209,23 +208,6 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     return { lockedTurn, turns: [] };
   }
 
-  const credentialPolicy = await resolveTextCredentialPolicy({
-    tomoriState,
-    isSelfMessage,
-    isPersonaJob: incoming.isPersonaJob,
-    isManuallyTriggered: incoming.isManuallyTriggered,
-    isUserImpersonation: incoming.isUserImpersonation,
-    userRow,
-    channel,
-    locale,
-    isDMChannel,
-    shouldSurfaceUserErrors,
-    llmOverrideCodename: incoming.llmOverrideCodename,
-  });
-  if (!credentialPolicy) {
-    return { lockedTurn, turns: [] };
-  }
-
   let personasToRespond = selectPersonasForTurn({
     lockedTurn,
     allPersonas,
@@ -249,27 +231,54 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     return { lockedTurn, turns: [] };
   }
 
+  const personaPolicies = new Map<TomoriState, NonNullable<Awaited<ReturnType<typeof resolveTextCredentialPolicy>>>>();
+  const personaQuotas = new Map<TomoriState, Awaited<ReturnType<typeof prepareTextQuota>>>();
+  for (const persona of personasToRespond) {
+    const policy = await resolveTextCredentialPolicy({
+      tomoriState: persona,
+      isSelfMessage,
+      isPersonaJob: incoming.isPersonaJob,
+      isManuallyTriggered: incoming.isManuallyTriggered,
+      isUserImpersonation: incoming.isUserImpersonation,
+      userRow,
+      channel,
+      locale,
+      isDMChannel,
+      shouldSurfaceUserErrors,
+      llmOverrideCodename: incoming.llmOverrideCodename,
+    });
+    if (!policy) continue;
+    const quota = await prepareTextQuota(
+      lockedTurn,
+      persona,
+      policy.supporterFunding?.fundingScope === "server" ? "server" : policy.source,
+      userRow,
+      shouldSurfaceUserErrors,
+    );
+    if (!quota.allowed) continue;
+    personaPolicies.set(persona, policy);
+    personaQuotas.set(persona, quota);
+  }
+  personasToRespond = personasToRespond.filter((persona) => personaPolicies.has(persona));
+  if (personasToRespond.length === 0) return { lockedTurn, turns: [] };
+  const textQuota = personaQuotas.get(personasToRespond[0]);
+  if (!textQuota) return { lockedTurn, turns: [] };
+  const guardSource: TextCredentialSource = personasToRespond.some((persona) => {
+    const policy = personaPolicies.get(persona);
+    return policy?.source === "server" || policy?.supporterFunding?.fundingScope === "server";
+  })
+    ? "server"
+    : "personal";
   if (
     !(await enforceTurnGuards(
       lockedTurn,
       tomoriState,
       userRow,
       personasToRespond,
-      credentialPolicy.source,
+      guardSource,
       shouldSurfaceUserErrors,
     ))
   ) {
-    return { lockedTurn, turns: [] };
-  }
-
-  const textQuota = await prepareTextQuota(
-    lockedTurn,
-    tomoriState,
-    credentialPolicy.source,
-    userRow,
-    shouldSurfaceUserErrors,
-  );
-  if (!textQuota.allowed) {
     return { lockedTurn, turns: [] };
   }
 
@@ -402,6 +411,9 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
   }
 
   const turns: ChatTurn[] = personasToRespond.map((persona, personaIndex) => {
+    const credentialPolicy = personaPolicies.get(persona);
+    const quota = personaQuotas.get(persona);
+    if (!credentialPolicy || !quota) throw new Error("Persona admission state missing");
     const isPersonaSceneTarget = Boolean(incoming.sceneTurn && incoming.sceneTurn.turnIndex > 0);
     const preference = userRow.user_id
       ? namingPreferences.get(userPersonaNamingPairKey(userRow.user_id, persona.persona_lineage_id))
@@ -451,9 +463,9 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
       personalRoutingUserId: credentialPolicy.personalRoutingUserId,
       personalTextProvider: credentialPolicy.personalTextProvider,
       supporterFunding: credentialPolicy.supporterFunding,
-      shouldApplyTextQuota: textQuota.shouldApply,
-      textQuotaTriggerKey: textQuota.triggerKey,
-      textQuotaState: textQuota.state,
+      shouldApplyTextQuota: quota.shouldApply,
+      textQuotaTriggerKey: quota.triggerKey,
+      textQuotaState: quota.state,
       shouldSurfaceUserErrors,
       forcedMentions: incoming.forcedMentions,
       isUserImpersonation: incoming.isUserImpersonation,
@@ -534,18 +546,18 @@ function getMatchLimit(tomoriState: TomoriState): number {
 export interface TextCredentialPolicyDependencies {
   resolvePersonalCapabilityCredentials: typeof resolvePersonalCapabilityCredentials;
   resolveCapabilityCredentials: typeof resolveCapabilityCredentials;
+  resolveServerTextModel: typeof resolveServerTextModel;
   resolveSupporterFunding: (
     params: Parameters<typeof resolveSupporterFunding>[0],
   ) => Promise<{ ok: true; context: SupporterFundingContext } | Exclude<SupporterFundingResult, { ok: true }>>;
-  isSupporterFundingEnabled: () => boolean;
   sendStandardEmbed: typeof sendStandardEmbed;
 }
 
 const defaultTextCredentialPolicyDependencies: TextCredentialPolicyDependencies = {
   resolvePersonalCapabilityCredentials,
   resolveCapabilityCredentials,
+  resolveServerTextModel,
   resolveSupporterFunding,
-  isSupporterFundingEnabled: () => isSupporterBillingEnabled(resolveEnvironment()),
   sendStandardEmbed,
 };
 
@@ -575,63 +587,52 @@ export async function resolveTextCredentialPolicy(params: {
       : (params.userRow.user_id ?? null);
 
   try {
-    const personalCredentials =
-      personalRoutingUserId !== null
-        ? await dependencies.resolvePersonalCapabilityCredentials(personalRoutingUserId, "text")
-        : null;
-    if (personalCredentials && !personalCredentials.supporterFunding) {
-      return buildCredentialPolicyFromCredentials(personalCredentials, personalRoutingUserId);
+    let personalCredentials: ResolvedCredentials | null;
+    try {
+      personalCredentials =
+        personalRoutingUserId !== null
+          ? await dependencies.resolvePersonalCapabilityCredentials(personalRoutingUserId, "text")
+          : null;
+    } catch (error) {
+      if (!isUnavailablePersonalSubscription(error)) throw error;
+      return { source: "personal", personalRoutingUserId, personalTextProvider: "supporter", supporterFunding: null };
     }
-
-    if ((personalCredentials?.supporterFunding || !params.isDMChannel) && dependencies.isSupporterFundingEnabled()) {
+    if (personalCredentials) {
+      if (!personalCredentials.supporterFunding || !params.llmOverrideCodename) {
+        return buildCredentialPolicyFromCredentials(personalCredentials, personalRoutingUserId);
+      }
       const funding = await dependencies.resolveSupporterFunding({
-        scope:
-          personalCredentials?.supporterFunding?.fundingScope === "personal"
-            ? { kind: "personal", userId: personalCredentials.supporterFunding.personalUserId }
-            : { kind: "server", serverId: params.tomoriState.server_id },
+        scope: { kind: "personal", userId: personalRoutingUserId as number },
         capability: "text",
-        requestedModelCodename:
-          params.llmOverrideCodename ??
-          personalCredentials?.supporterFunding?.modelCodename ??
-          (params.tomoriState.llm.llm_provider === "openrouter" && params.tomoriState.llm.llm_codename !== "other-model"
-            ? params.tomoriState.llm.llm_codename
-            : undefined),
+        requestedModelCodename: params.llmOverrideCodename,
       });
-
-      if (funding.ok) {
-        return {
-          source: "supporter",
-          personalRoutingUserId,
-          personalTextProvider: null,
-          supporterFunding: funding.context,
-        };
-      }
-
-      if (funding.reason !== "missing_sponsorship") {
-        if (params.shouldSurfaceUserErrors) {
-          await dependencies.sendStandardEmbed(params.channel as SendableChannel, params.locale, {
-            color: ColorCode.ERROR,
-            titleKey: "commands.subscribe.sponsorship.errors.title",
-            descriptionKey: getSupporterFundingFailureDescriptionKey(funding.reason),
-          });
-        } else {
-          log.warn(`Suppressing supporter funding failure for non-deliberate chat turn: ${funding.reason}`);
-        }
-        return null;
-      }
+      if (!funding.ok) throw new SupporterRequestDeniedError(funding.reason, undefined, "text", "personal");
+      return buildCredentialPolicyFromCredentials(
+        { ...personalCredentials, supporterFunding: funding.context },
+        personalRoutingUserId,
+      );
     }
-
+    const effectiveModel = await dependencies.resolveServerTextModel(
+      params.tomoriState,
+      params.channel,
+      params.isUserImpersonation,
+      params.llmOverrideCodename,
+    );
     const textCreds = await dependencies.resolveCapabilityCredentials(params.tomoriState.server_id, "text", {
       userId: personalRoutingUserId,
+      textModel: effectiveModel,
     });
-    return {
-      source: textCreds.source,
-      personalRoutingUserId,
-      personalTextProvider: textCreds.source === "personal" ? textCreds.provider : null,
-      supporterFunding: null,
-    };
+    return buildCredentialPolicyFromCredentials(textCreds, personalRoutingUserId);
   } catch (error) {
     if (error instanceof SupporterRequestDeniedError) {
+      if (
+        error.fundingScope === "server" &&
+        error.reason !== "billing_unavailable" &&
+        !params.tomoriState.config.user_byok_mode &&
+        (params.tomoriState.fallback_chain?.length || params.tomoriState.fallback_llms?.length)
+      ) {
+        return { source: "server", personalRoutingUserId, personalTextProvider: null, supporterFunding: null };
+      }
       if (params.shouldSurfaceUserErrors)
         await dependencies.sendStandardEmbed(params.channel as SendableChannel, params.locale, {
           color: ColorCode.ERROR,
@@ -732,10 +733,10 @@ function buildCredentialPolicyFromCredentials(
   supporterFunding: SupporterFundingContext | null;
 } {
   return {
-    source: textCreds.source,
+    source: textCreds.supporterFunding ? "supporter" : textCreds.source,
     personalRoutingUserId,
     personalTextProvider: textCreds.source === "personal" ? textCreds.provider : null,
-    supporterFunding: null,
+    supporterFunding: textCreds.supporterFunding ?? null,
   };
 }
 

@@ -9,6 +9,7 @@ import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { hasConfiguredPersonalModel } from "@/utils/provider/personalProviderHelpers";
 import { log } from "@/utils/misc/logger";
 import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
+import { resolveSupporterFunding } from "@/modules/supporter-billing/runtime/funding";
 import { resolveEnvironment } from "@/types/config";
 
 export interface PersonalProviderOverlayResult {
@@ -84,6 +85,7 @@ async function resolvePersonalFallbackChain(refs: FallbackModelRef[], userId: nu
 export async function applyPersonalProviderSelectionsToTomoriState(
   tomoriState: TomoriState,
   userId: number | null | undefined,
+  retainUnavailableText = false,
 ): Promise<PersonalProviderOverlayResult> {
   if (!userId) {
     return {
@@ -92,7 +94,22 @@ export async function applyPersonalProviderSelectionsToTomoriState(
     };
   }
 
-  const rows = await llmProviderRepo.loadUserSavedProviderConfigs(userId);
+  let rows = await llmProviderRepo.loadUserSavedProviderConfigs(userId);
+  if (
+    rows.some((row) => row.provider === SUPPORTER_PROVIDER_VALUE) &&
+    isSupporterBillingEnabled(resolveEnvironment())
+  ) {
+    const funding = await resolveSupporterFunding({ scope: { kind: "personal", userId }, capability: "text" });
+    if (!funding.ok && (funding.reason === "missing_subscription" || funding.reason === "inactive_entitlement")) {
+      rows = rows.flatMap((row) =>
+        row.provider !== SUPPORTER_PROVIDER_VALUE
+          ? [row]
+          : retainUnavailableText
+            ? [{ ...row, enabled_capabilities: row.enabled_capabilities.filter((capability) => capability === "text") }]
+            : [],
+      );
+    }
+  }
   if (rows.length === 0) {
     return {
       tomoriState,

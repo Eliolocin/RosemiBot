@@ -1570,6 +1570,42 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
           WHERE server_id = ${serverId} AND provider = ${normalizedProvider}
         `;
         if (deleted.count === 0) return false;
+        if (normalizedProvider === "supporter" || normalizedProvider === "openrouter") {
+          const subscription = normalizedProvider === "supporter";
+          await tx`UPDATE server_chat_configs chat SET response_reviewer_llm_id = NULL
+            FROM server_model_configs config WHERE chat.server_id = ${serverId} AND config.server_id = chat.server_id
+              AND ('reviewer' = ANY(config.subscription_capabilities)) = ${subscription}
+              AND EXISTS (SELECT 1 FROM llms model WHERE model.llm_id = chat.response_reviewer_llm_id AND model.llm_provider = 'openrouter')`;
+          await tx`UPDATE server_speech_configs speech SET
+              speech_design_model_id = CASE WHEN ('speech_design' = ANY(config.subscription_capabilities)) = ${subscription}
+                AND EXISTS (SELECT 1 FROM speech_models model WHERE model.speech_model_id = speech.speech_design_model_id AND model.provider = 'openrouter')
+                THEN NULL ELSE speech.speech_design_model_id END,
+              speech_clone_model_id = CASE WHEN ('speech_clone' = ANY(config.subscription_capabilities)) = ${subscription}
+                AND EXISTS (SELECT 1 FROM speech_models model WHERE model.speech_model_id = speech.speech_clone_model_id AND model.provider = 'openrouter')
+                THEN NULL ELSE speech.speech_clone_model_id END
+            FROM server_model_configs config WHERE speech.server_id = ${serverId} AND config.server_id = speech.server_id`;
+          await tx`UPDATE server_model_configs config SET
+              llm_id = CASE WHEN ('text' = ANY(subscription_capabilities)) = ${subscription}
+                AND EXISTS (SELECT 1 FROM llms model WHERE model.llm_id = config.llm_id AND model.llm_provider = 'openrouter')
+                THEN NULL ELSE llm_id END,
+              api_key = CASE WHEN ('text' = ANY(subscription_capabilities)) = ${subscription}
+                AND EXISTS (SELECT 1 FROM llms model WHERE model.llm_id = config.llm_id AND model.llm_provider = 'openrouter')
+                THEN NULL ELSE api_key END,
+              embedding_model_id = CASE WHEN ('embedding' = ANY(subscription_capabilities)) = ${subscription}
+                AND EXISTS (SELECT 1 FROM embedding_models model WHERE model.embedding_model_id = config.embedding_model_id AND model.provider = 'openrouter')
+                THEN NULL ELSE embedding_model_id END,
+              diffusion_model_id = CASE WHEN ('image' = ANY(subscription_capabilities)) = ${subscription}
+                AND EXISTS (SELECT 1 FROM image_diffusion_models model WHERE model.diffusion_model_id = config.diffusion_model_id AND model.provider = 'openrouter')
+                THEN NULL ELSE diffusion_model_id END,
+              video_model_id = CASE WHEN ('video' = ANY(subscription_capabilities)) = ${subscription}
+                AND EXISTS (SELECT 1 FROM video_generation_models model WHERE model.video_model_id = config.video_model_id AND model.provider = 'openrouter')
+                THEN NULL ELSE video_model_id END,
+              vision_llm_id = CASE WHEN ('vision' = ANY(subscription_capabilities)) = ${subscription}
+                AND EXISTS (SELECT 1 FROM llms model WHERE model.llm_id = config.vision_llm_id AND model.llm_provider = 'openrouter')
+                THEN NULL ELSE vision_llm_id END,
+              subscription_capabilities = CASE WHEN ${subscription} THEN '{}'::TEXT[] ELSE subscription_capabilities END
+            WHERE server_id = ${serverId}`;
+        }
 
         await tx`
           DELETE FROM api_key_rotation

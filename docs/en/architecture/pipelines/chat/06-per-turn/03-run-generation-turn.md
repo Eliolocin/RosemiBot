@@ -33,6 +33,11 @@ only through the deferred server route.
 
 Fallback identity includes the selected provider entry's credential source. Two entries can use the
 same catalog model with different credentials, including when they share a transport provider.
+Primary, speech and pinned reviewer selections also retain their selected saved provider source;
+sponsorship alone never replaces a BYOK key. Removing a provider clears only selections owned by
+that entry, preserving selections owned by the surviving entry. Subscription admission is repeated
+for each effective model and scope before its member key can be used. Direct vision requests, the
+cost probe, and hidden image planning use the same spend admission as provider adapters.
 Promoting a primary removes only fallbacks with the same model and credential source. Stored entries
 without an explicit source use the model's native provider credentials.
 
@@ -43,9 +48,12 @@ that server and no user. Credential lookup uses the route owner after this check
 
 ### Deferred server route fallback
 
-Personal BYOK turns outside impersonation resolve the deferred server route only after all personal
-attempts fail. Server cooldown and quota admission must pass before server attempts are appended.
-Running such an attempt switches credential attribution to the server. Tools retain their own routing.
+Personal BYOK and subscription turns outside impersonation resolve the deferred server route only
+after their personal attempts fail. The user's fallback setting and `user_byok_mode` can withhold it.
+Server cooldown and quota admission must pass before server attempts are appended. A personal BYOK
+turn in a DM can use only that same user's DM workspace route; a personal subscription cannot change
+funding scope through a DM fallback. Running a server attempt switches credential attribution to the
+server. Tools retain their own routing.
 
 ### Context preparation and prefill
 

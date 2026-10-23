@@ -373,12 +373,14 @@ interface PanelModelContext {
   activeSpeechCloneId: number | null;
   activeSpeechDesignModelId: number | null;
   activeSpeechCloneModelId: number | null;
+  subscriptionCapabilities?: TomoriState["config"]["subscription_capabilities"];
   scopeFallbacks: readonly FallbackModelRef[];
 }
 
 function serverModelContext(state: TomoriState): PanelModelContext {
   return {
     scope: { kind: "server", ownerId: state.server_id },
+    subscriptionCapabilities: state.config.subscription_capabilities,
     activeTextId: state.config.llm_id,
     activeImageId: state.config.diffusion_model_id ?? null,
     activeNaiImageId: state.config.nai_diffusion_model_id ?? null,
@@ -438,6 +440,19 @@ async function buildCuratedCapabilities(
       activeSpeechCloneModelId: savedConfig.enabled_capabilities.includes("speech_clone")
         ? context.activeSpeechCloneModelId
         : null,
+    };
+  }
+  if (context.scope.kind === "server" && provider === "openrouter") {
+    const owns = (capability: "text" | "image" | "embedding" | "video" | "speech_design" | "speech_clone") =>
+      context.subscriptionCapabilities?.includes(capability) === subscription;
+    context = {
+      ...context,
+      activeTextId: owns("text") ? context.activeTextId : null,
+      activeImageId: owns("image") ? context.activeImageId : null,
+      activeEmbeddingId: owns("embedding") ? context.activeEmbeddingId : null,
+      activeVideoId: owns("video") ? context.activeVideoId : null,
+      activeSpeechDesignModelId: owns("speech_design") ? context.activeSpeechDesignModelId : null,
+      activeSpeechCloneModelId: owns("speech_clone") ? context.activeSpeechCloneModelId : null,
     };
   }
   const [textRows, imageRows, embeddingRows, videoRows, decisionRows, speechRows] = await Promise.all([
@@ -703,7 +718,9 @@ function buildEndpointEntries(
 }
 
 function resolveInitialEntryId(entries: readonly ProviderPanelEntry[], state: TomoriState): string | null {
-  const activeProvider = state.llm.llm_provider.toLowerCase();
+  const activeProvider = state.config.subscription_capabilities.includes("text")
+    ? SUPPORTER_PROVIDER_VALUE
+    : state.llm.llm_provider.toLowerCase();
   const customProvider = parseCustomProvider(activeProvider);
   const activeEntry = customProvider
     ? entries.find((entry) => entry.kind === "endpoint" && entry.connectionIds.includes(customProvider.connectionId))
@@ -858,7 +875,7 @@ async function loadPersonalProviderPanelScope(
     ? await supporterEntitlementRepository.loadByIdentityId(identity.supporter_identity_id)
     : null;
   const active = entitlement && isSupporterEntitlementActive(entitlement);
-  const configs = savedResult.configs.filter((config) => config.provider !== SUPPORTER_PROVIDER_VALUE || active);
+  const configs = savedResult.configs;
   if (active && !configs.some((config) => config.provider === SUPPORTER_PROVIDER_VALUE)) {
     configs.push(
       userSavedProviderConfigSchema.parse({
@@ -1305,11 +1322,15 @@ async function activateSavedProviderModel(
       ? await configRepository.updateNovelaiImagegenConfig(input.state.server_id, {
           nai_diffusion_model_id: modelId,
         })
-      : await configRepository.updateModelConfig(input.state.server_id, {
-          ...(input.capability === "embedding" ? { embedding_model_id: modelId } : {}),
-          ...(input.capability === "image" ? { diffusion_model_id: modelId } : {}),
-          ...(input.capability === "video" ? { video_model_id: modelId } : {}),
-        });
+      : await configRepository.updateModelConfig(
+          input.state.server_id,
+          {
+            ...(input.capability === "embedding" ? { embedding_model_id: modelId } : {}),
+            ...(input.capability === "image" ? { diffusion_model_id: modelId } : {}),
+            ...(input.capability === "video" ? { video_model_id: modelId } : {}),
+          },
+          provider,
+        );
   if (updated) invalidateTomoriStateCache(input.serverDiscId);
   return updated;
 }
@@ -1983,7 +2004,9 @@ async function removeServerProviderEntry(input: RemoveProviderEntryInput): Promi
     }
     return { status: "success", entryId: input.entry.id, displayName: input.entry.displayName };
   }
-  const activeProvider = input.state.llm.llm_provider.toLowerCase();
+  const activeProvider = input.state.config.subscription_capabilities.includes("text")
+    ? SUPPORTER_PROVIDER_VALUE
+    : input.state.llm.llm_provider.toLowerCase();
   if (input.entry.kind === "brave") {
     if (!(await deleteOptApiKey(input.state.server_id, "brave-search"))) return { status: "write-failed" };
   } else if (input.entry.kind === "provider") {

@@ -1920,7 +1920,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         smc.created_at, smc.updated_at,
         -- 1. server_model_configs
         smc.llm_id, smc.embedding_model_id, smc.diffusion_model_id, smc.video_model_id, smc.decision_model_id,
-        smc.vision_llm_id, smc.api_key, smc.key_version, smc.llm_temperature,
+        smc.subscription_capabilities, smc.vision_llm_id, smc.api_key, smc.key_version, smc.llm_temperature,
         smc.thinking_level, smc.llm_disabled_params, smc.custom_endpoint_url,
         smc.custom_model_name, smc.custom_num_ctx, smc.fallback_llm_ids,
         smc.other_model_codename, smc.other_model_capabilities,
@@ -2032,7 +2032,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         smc.created_at, smc.updated_at,
         -- 1. server_model_configs
         smc.llm_id, smc.embedding_model_id, smc.diffusion_model_id, smc.video_model_id, smc.decision_model_id,
-        smc.vision_llm_id, smc.api_key, smc.key_version, smc.llm_temperature,
+        smc.subscription_capabilities, smc.vision_llm_id, smc.api_key, smc.key_version, smc.llm_temperature,
         smc.thinking_level, smc.llm_disabled_params, smc.custom_endpoint_url,
         smc.custom_model_name, smc.custom_num_ctx, smc.fallback_llm_ids,
         smc.other_model_codename, smc.other_model_capabilities,

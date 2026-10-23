@@ -2993,6 +2993,46 @@ describe("setupWizardFinish", () => {
     }
   });
 
+  it("invalidates committed setup before a sponsorship write fails", async () => {
+    const stubs = stubCommitDependencies();
+    const spies = [
+      spyOn(sponsorshipModule, "isSupporterSponsorshipChoiceEnabled").mockReturnValue(true),
+      spyOn(sponsorshipModule, "validateSupporterSponsorshipRequest").mockResolvedValue({
+        ok: true,
+        identity: { supporter_identity_id: 10 },
+        entitlement: { supporter_entitlement_id: 20 },
+      } as never),
+      spyOn(subscriptionUsageModule, "loadSubscriptionAllowance").mockResolvedValue({
+        allowance: 5,
+        used: 0,
+        remaining: 5,
+        start: new Date(0),
+        end: new Date(86400000),
+      }),
+      spyOn(sponsorshipModule, "persistSupporterSponsorship").mockImplementation(async () => {
+        expect(stubs.invalidateSpy).toHaveBeenCalledWith("guild-1");
+        throw new Error("synthetic sponsorship write failure");
+      }),
+    ];
+    try {
+      storeSetupDraft(COMMIT_NONCE, makeCompleteDraft({ providerAccess: { mode: "supporter" } }));
+      const interaction = makeMockInteraction({
+        customId: buildSetupFinishRouteId({ locale: "en-US", nonce: COMMIT_NONCE }),
+        guild: COMMIT_GUILD,
+      });
+      await dispatchGlobalInteraction({} as Client, interaction);
+      expect(stubs.setupSpy).toHaveBeenCalledTimes(1);
+      expect(stubs.invalidateSpy).toHaveBeenCalledTimes(1);
+      expect(readSetupDraft(COMMIT_NONCE, "actor-1", "guild-1", "guild").status).toBe("missing");
+      expect(JSON.stringify(interaction.editReplyCalls)).toContain(
+        localizedCopy("en-US", "commands.setup.wizard.commit_failed_title"),
+      );
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+      stubs.restore();
+    }
+  });
+
   it("commits once, renders the receipt in place, and records exactly one panel action", async () => {
     const stubs = stubCommitDependencies();
 

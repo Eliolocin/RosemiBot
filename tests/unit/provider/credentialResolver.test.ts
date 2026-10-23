@@ -66,6 +66,7 @@ scopedMock.module("@/utils/db/repositories", () => ({
   configRepository: overrideMembers(realRepositories.configRepository, {
     loadModelCapabilityIds: async () => ({
       user_byok_mode: false,
+      subscription_capabilities: [],
       llm_id: 1,
       embedding_model_id: 2,
       diffusion_model_id: 3,
@@ -133,7 +134,7 @@ describe("personal credential resolution for capability split", () => {
     }
   });
 
-  it("retains a server BYOK embedding key when the sponsor tier does not enable embedding billing", async () => {
+  it("retains server BYOK credentials without querying the sponsorship or member key", async () => {
     process.env.RUN_ENV = "production";
     process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
     serverSaved = savedProviderConfigSchema.parse({
@@ -160,9 +161,43 @@ describe("personal credential resolution for capability split", () => {
       expect(resolved).toMatchObject({ provider: "openrouter", apiKey: "server-fixture-key", source: "server" });
       expect(resolved.supporterFunding).toBeUndefined();
       funding.mockRejectedValue(new SupporterRequestDeniedError("model_unavailable", undefined, "embedding", "server"));
-      await expect(resolveCapabilityCredentials(1, "embedding")).rejects.toMatchObject({ reason: "model_unavailable" });
+      expect((await resolveCapabilityCredentials(1, "embedding")).apiKey).toBe("server-fixture-key");
+      expect(funding).not.toHaveBeenCalled();
     } finally {
       sponsor.mockRestore();
+      funding.mockRestore();
+    }
+  });
+
+  it("recovers inactive personal subscriptions through server credentials while preserving transient failures", async () => {
+    process.env.RUN_ENV = "production";
+    process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
+    rows = [
+      makeSavedProviderConfigRow({
+        provider: "supporter",
+        enabled_capabilities: ["embedding"],
+        assigned_capabilities: ["embedding"],
+        embedding_model_id: 2,
+      }),
+    ];
+    serverSaved = savedProviderConfigSchema.parse({
+      ...makeSavedProviderConfigRow({ provider: "openrouter", api_key: Buffer.from("server-fixture-key") }),
+      server_id: 1,
+      fallback_model_refs: [],
+    });
+    const funding = spyOn(managedProvider, "resolveSupporterCapabilityCredentials");
+    try {
+      for (const reason of ["missing_subscription", "inactive_entitlement"] as const) {
+        funding.mockRejectedValue(new SupporterRequestDeniedError(reason, undefined, "embedding", "personal"));
+        expect((await resolveCapabilityCredentials(1, "embedding", { userId: 1 })).apiKey).toBe("server-fixture-key");
+      }
+      funding.mockRejectedValue(
+        new SupporterRequestDeniedError("billing_unavailable", undefined, "embedding", "personal"),
+      );
+      await expect(resolveCapabilityCredentials(1, "embedding", { userId: 1 })).rejects.toMatchObject({
+        reason: "billing_unavailable",
+      });
+    } finally {
       funding.mockRestore();
     }
   });

@@ -130,7 +130,7 @@ deleting those messages restore that exact webhook independently of the primary 
 - **`persona_sprites`**: stores named sprite avatars per `(persona_id, sprite_key)`. Pointer personas resolve shared artwork from `preset_sprites` (`(preset_lineage_id, preset_language, sprite_key)`). Webhook messages record displayed sprite labels in `persona_sprite_messages` (`message_disc_id` PK) so prompt context rebuilding can restore decorated labels.
 - **Server configuration split**: server settings are partitioned into command-aligned tables:
   - `server_chat_configs`: message context fetch limits, model parameters, cascade limits, stop strings, logit biases, and context notes.
-  - `server_model_configs`: active model foreign keys (`llm_id`, `embedding_model_id`, `diffusion_model_id`, `video_model_id`, `vision_llm_id`).
+  - `server_model_configs`: active model foreign keys and `subscription_capabilities`, which identifies selections funded by the server's subscription entry independently of shared OpenRouter model IDs.
   - `server_member_permissions_configs`: member feature toggles, self-teaching, and memory permissions.
   - `server_channel_scope_configs`: channel roleplay rules, blocklists, and thought-log routing.
   - `server_trigger_behavior_configs`: cooldown modes, durations, and trigger styles.
@@ -152,6 +152,10 @@ selections in the same transaction. `persona_voice_configs.voice_source_priority
 independently of the target. Configuration exports include both mode selections; imports must satisfy
 the receiving workspace's ownership and credential checks. Downgrades refuse selections or bindings
 that the older schema cannot preserve.
+
+Model and credential-source selections update atomically. Speech and reviewer writes update their
+own table and the ownership marker in one transaction. Migration 117 backfills subscription ownership
+only with matching OpenRouter model evidence; ambiguous historical selections keep BYOK ownership.
 
 Personal speech uses separate `speech_design_model_id` and `speech_clone_model_id` pointers on
 `user_saved_provider_configs`. Its `assigned_capabilities` and `enabled_capabilities` arrays track

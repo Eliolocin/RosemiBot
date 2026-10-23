@@ -577,18 +577,22 @@ async function promoteTextModel(
   );
 
   const [updatedModel, updatedChat] = await Promise.all([
-    configRepository.updateModelConfig(tomoriState.server_id, {
-      llm_id: model.llm_id,
-      api_key: savedConfig?.api_key ?? null,
-      key_version: savedConfig?.key_version ?? 1,
-      thinking_level: savedConfig?.thinking_level ?? "auto",
-      fallback_llm_ids: fallbackLlmIds,
-      llm_temperature: savedConfig?.llm_temperature ?? tomoriState.config.llm_temperature ?? 1.0,
-      llm_disabled_params: savedConfig?.llm_disabled_params ?? [],
-      custom_model_name: null,
-      custom_endpoint_url: null,
-      custom_num_ctx: null,
-    }),
+    configRepository.updateModelConfig(
+      tomoriState.server_id,
+      {
+        llm_id: model.llm_id,
+        api_key: savedConfig?.api_key ?? null,
+        key_version: savedConfig?.key_version ?? 1,
+        thinking_level: savedConfig?.thinking_level ?? "auto",
+        fallback_llm_ids: fallbackLlmIds,
+        llm_temperature: savedConfig?.llm_temperature ?? tomoriState.config.llm_temperature ?? 1.0,
+        llm_disabled_params: savedConfig?.llm_disabled_params ?? [],
+        custom_model_name: null,
+        custom_endpoint_url: null,
+        custom_num_ctx: null,
+      },
+      provider,
+    ),
     configRepository.updateChatConfig(tomoriState.server_id, {
       llm_top_p: savedConfig?.llm_top_p ?? tomoriState.config.llm_top_p ?? 0.95,
       llm_top_k: savedConfig?.llm_top_k ?? tomoriState.config.llm_top_k ?? 0,
@@ -673,7 +677,11 @@ export const configModelOperations: ConfigModelOperations = {
       const model = eligibleModels.find((candidate) => candidate.llm_id === modelId);
       if (model?.llm_id === undefined) return { status: "not-found" };
       if (model.llm_codename === "other-model") return { status: "openrouter-moved" };
-      if (model.llm_id === currentModelIdForCapability(tomoriState, capability)) {
+      if (
+        model.llm_id === currentModelIdForCapability(tomoriState, capability) &&
+        tomoriState.config.subscription_capabilities.includes(capability) ===
+          (savedConfig.provider === SUPPORTER_PROVIDER_VALUE)
+      ) {
         return { status: "already-selected", modelName: model.llm_codename };
       }
 
@@ -690,7 +698,11 @@ export const configModelOperations: ConfigModelOperations = {
           : { status: "write-failed" };
       }
 
-      const updated = await configRepository.updateModelConfig(tomoriState.server_id, { vision_llm_id: model.llm_id });
+      const updated = await configRepository.updateModelConfig(
+        tomoriState.server_id,
+        { vision_llm_id: model.llm_id },
+        savedConfig.provider,
+      );
       if (!updated) return { status: "write-failed" };
       invalidateTomoriStateCache(serverDiscId);
       return { status: "success", modelName: model.llm_codename, reembedded: false };
@@ -700,7 +712,13 @@ export const configModelOperations: ConfigModelOperations = {
     if (choices.length === 0) return { status: "no-models" };
     const choice = choices.find((candidate) => candidate.id === modelId);
     if (!choice) return { status: "not-found" };
-    if (choice.id === currentModelIdForCapability(tomoriState, capability)) {
+    if (
+      choice.id === currentModelIdForCapability(tomoriState, capability) &&
+      (capability === "nai-image" ||
+        capability === "decision" ||
+        tomoriState.config.subscription_capabilities.includes(capability) ===
+          (savedConfig.provider === SUPPORTER_PROVIDER_VALUE))
+    ) {
       return { status: "already-selected", modelName: choice.name };
     }
 
@@ -715,9 +733,13 @@ export const configModelOperations: ConfigModelOperations = {
       const shouldReembed =
         !!currentEmbeddingModel?.model_family && currentEmbeddingModel.model_family !== chosenModel.model_family;
 
-      const updated = await configRepository.updateModelConfig(tomoriState.server_id, {
-        embedding_model_id: choice.id,
-      });
+      const updated = await configRepository.updateModelConfig(
+        tomoriState.server_id,
+        {
+          embedding_model_id: choice.id,
+        },
+        savedConfig.provider,
+      );
       if (!updated) return { status: "write-failed" };
       invalidateTomoriStateCache(serverDiscId);
 
@@ -759,6 +781,7 @@ export const configModelOperations: ConfigModelOperations = {
               : capability === "decision"
                 ? { decision_model_id: choice.id }
                 : { video_model_id: choice.id },
+            savedConfig.provider,
           );
     if (!updated) return { status: "write-failed" };
     invalidateTomoriStateCache(serverDiscId);

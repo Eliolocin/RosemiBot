@@ -46,13 +46,35 @@ determineMatchingPersonas()
 `determineMatchingPersonas()` in `src/utils/chat/triggerProcessor.ts` selects which personas should respond:
 
 - **Single persona match**: produces one `ChatTurn` populated with the persona's `TomoriState`, resolved
-  credential policy (`textCredentialSource: "server" | "personal"`), and text quota preflight state.
+  credential policy (`textCredentialSource: "server" | "personal" | "supporter"`), funding scope, and text quota preflight state.
 - **Multiple persona matches**: when multiple personas qualify on a real user message,
   `queueAdditionalPersonaTurns()` places the additional personas at the front of the channel's `messageQueue`.
   Only the first persona runs in the current turn. The remaining personas replay as priority jobs immediately
   after lock release, so each persona executes under its own lock and typing cycle.
 - **Zero matches or failed gates**: returns `turns: []`. The coordinator treats an empty list as a skip,
   immediately releasing the channel lock and triggering queue replay.
+
+### Model and credential admission
+
+Each matched persona resolves credentials separately. Personal Text takes precedence over server
+models. Server routes choose the persona override, then the channel override, then the workspace
+model; an explicit invocation model override applies last. Each subscription attempt resolves funding
+for that effective model and its owning scope. A persona without usable credentials is skipped while
+other admitted personas can continue.
+
+Subscription ownership comes from the selected saved provider entry. The server's
+`subscription_capabilities` records that choice separately from catalog model IDs, so choosing an
+OpenRouter BYOK entry keeps its own key even while the server has a sponsor. Personal provider rows
+record ownership through their assigned and enabled capabilities.
+
+Server-funded subscription routes take the same per-member text quota admission as server BYOK.
+Personal subscriptions and personal BYOK stay outside server quota. Admission shares one trigger
+state across persona jobs and retries; post-turn effects consume it once after a delivered reply.
+
+An inactive or unlinked personal subscription retains its configured personal text fallback pool.
+A server route is considered only after that pool fails, subject to the user's fallback setting and
+`user_byok_mode`. Other capabilities can use an available configured server route when the personal
+subscription is inactive or missing. Billing and storage failures remain visible failures.
 
 ### Channel lock state arming
 

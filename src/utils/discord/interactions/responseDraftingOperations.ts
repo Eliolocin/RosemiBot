@@ -180,7 +180,10 @@ export const responseDraftingOperations: ResponseDraftingOperations = {
       if (!groups.some((group) => group.provider === provider && group.models.some((model) => model.id === modelId)))
         return "stale";
     }
-    return writeChat(state, workspaceId, { response_reviewer_llm_id: modelId });
+    if (!(await configRepository.updateChatConfig(state.server_id, { response_reviewer_llm_id: modelId }, provider)))
+      return "write-failed";
+    invalidateTomoriStateCache(workspaceId);
+    return "success";
   },
   async setPrompt(state, workspaceId, prompt) {
     if (prompt !== null && !responseReviewerPromptSchema.safeParse(prompt).success) return "invalid";

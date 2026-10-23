@@ -767,7 +767,20 @@ export const personalFallbackSettingsSchema = userPersonalizationConfigsSchema.p
 });
 export type PersonalFallbackSettings = z.infer<typeof personalFallbackSettingsSchema>;
 
+export const subscriptionCapabilitySchema = z.enum([
+  "text",
+  "embedding",
+  "image",
+  "video",
+  "vision",
+  "speech_design",
+  "speech_clone",
+  "reviewer",
+]);
+export type SubscriptionCapability = z.infer<typeof subscriptionCapabilitySchema>;
+
 const serverModelConfigSchema = z.object({
+  subscription_capabilities: z.array(subscriptionCapabilitySchema).default([]),
   server_id: z.number().int(),
   llm_id: z.number().int().nullable().optional(),
   embedding_model_id: z.number().int().nullable().optional(),

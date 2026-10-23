@@ -7,7 +7,6 @@ import { buildCustomProviderName } from "@/utils/provider/customProviderUtils";
 import { decryptApiKey } from "@/utils/security/crypto";
 import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
 import { resolveEnvironment } from "@/types/config";
-import { supporterSponsorshipRepository } from "@/modules/supporter-billing/db";
 import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
 import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
 import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
@@ -142,19 +141,17 @@ export async function resolveSpeechTargets(
   serverId: number,
   userId?: number,
 ): Promise<{ design: SpeechTargetResult | null; clone: SpeechTargetResult | null }> {
-  const serverAllowed = userId === undefined || (await loadSpeechRoutingPolicy(serverId, userId)).serverAllowed;
+  const policy =
+    userId === undefined
+      ? { serverAllowed: true, fallbackEnabled: true }
+      : await loadSpeechRoutingPolicy(serverId, userId);
+  const serverAllowed = policy.serverAllowed;
   const billingEnabled = isSupporterBillingEnabled(resolveEnvironment());
   async function resolve(mode: VoiceSourceMode): Promise<SpeechTargetResult | null> {
     const hosted = await loadHostedSpeechSelection(serverId, mode, userId, billingEnabled);
     if (hosted) {
       if (hosted.owner.kind === "server" && !serverAllowed) return null;
-      if (
-        hosted.model.provider === "openrouter" &&
-        billingEnabled &&
-        (hosted.subscription ||
-          (hosted.owner.kind === "server" &&
-            (await supporterSponsorshipRepository.loadActiveSponsorshipForServer(serverId))))
-      ) {
+      if (hosted.model.provider === "openrouter" && billingEnabled && hosted.subscription) {
         try {
           const credentials = await resolveSupporterCapabilityCredentials({
             scope:
@@ -173,16 +170,16 @@ export async function resolveSpeechTargets(
           };
         } catch (error) {
           if (
-            !(
-              error instanceof SupporterRequestDeniedError &&
-              error.reason === "model_not_allowed" &&
-              hosted.owner.kind === "server" &&
-              !hosted.subscription
-            )
+            hosted.owner.kind === "personal" &&
+            error instanceof SupporterRequestDeniedError &&
+            (error.reason === "inactive_entitlement" || error.reason === "missing_subscription")
           ) {
-            log.warn("SpeechResolver: subscription credential unavailable", { serverId, mode, owner: hosted.owner });
-            return null;
+            if (!serverAllowed || !policy.fallbackEnabled) return null;
+            return (await resolveSpeechTargets(serverId))[mode];
           }
+          if (error instanceof SupporterRequestDeniedError) throw error;
+          log.warn("SpeechResolver: subscription credential unavailable", { serverId, mode, owner: hosted.owner });
+          return null;
         }
       }
       if (!hosted.apiKey) return null;

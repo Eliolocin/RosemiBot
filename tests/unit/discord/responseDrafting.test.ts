@@ -266,7 +266,7 @@ it("invalidates only after successful writes and leaves model choices intact on 
   expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_reviewer_prompt: null });
   expect(cache.has("draft-fixture")).toBe(false);
   expect(await responseDraftingOperations.setModel(state, "draft-fixture", "", null)).toBe("success");
-  expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_reviewer_llm_id: null });
+  expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_reviewer_llm_id: null }, "");
   expect(await responseDraftingOperations.setChecker(state, "draft-fixture", null)).toBe("success");
   expect(chat).toHaveBeenLastCalledWith(state.server_id, { response_rule_checker_ref: null });
   expect(await responseDraftingOperations.setReviewItems(state, "draft-fixture", ["tools"])).toBe("success");
