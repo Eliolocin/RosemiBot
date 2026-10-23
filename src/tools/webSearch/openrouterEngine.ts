@@ -1,3 +1,10 @@
+import { readOpenRouterLimitResponse } from "@/providers/openrouter/openrouterLimit";
+import {
+  reportProviderUsage,
+  findProviderRequestDeniedError,
+  notifyProviderToolFailure,
+} from "@/utils/provider/providerUsage";
+import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
 import { z } from "zod";
 import { addFetchCapabilityReminder } from "@/tools/restAPIs/brave/braveSearchService";
 import { getSearchNoticeKey, getSearchNoticeTitleVars } from "@/tools/webSearch/categoryMetadata";
@@ -97,12 +104,24 @@ export class OpenRouterEngine implements WebSearchEngine {
       });
 
       if (!response.ok) {
-        await response.body?.cancel().catch(() => undefined);
+        const limit = await readOpenRouterLimitResponse(response);
+        const denied = findProviderRequestDeniedError(limit, context.usageContext);
+        if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
         return this.fail("http_error", response.status);
       }
 
       const body = await readBoundedResponse(response, MAX_RESPONSE_BYTES, signal);
-      const parsed = responseSchema.safeParse(JSON.parse(body.toString("utf8")));
+      const payload: unknown = JSON.parse(body.toString("utf8"));
+      const metadata = z.object({ usage: z.unknown().optional(), id: z.string().optional() }).safeParse(payload);
+      const usage = metadata.success ? normalizeProviderUsage(metadata.data.usage) : null;
+      if (usage)
+        reportProviderUsage(context.usageContext, {
+          modelCodename: model,
+          ...usage,
+          costUsd: usage.costUsd,
+          providerRequestId: metadata.success ? metadata.data.id : undefined,
+        });
+      const parsed = responseSchema.safeParse(payload);
       if (!parsed.success) return this.fail("malformed");
 
       const results: string[] = [];
@@ -138,6 +157,8 @@ export class OpenRouterEngine implements WebSearchEngine {
         },
       };
     } catch (error) {
+      const denied = findProviderRequestDeniedError(error, context.usageContext);
+      if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
       return this.fail(signal.aborted ? "aborted" : "request_failed", undefined, error);
     }
   }

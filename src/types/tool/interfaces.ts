@@ -1,3 +1,4 @@
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 /**
  * Generic tool interface for provider-agnostic function calling
  * This abstracts tools away from specific LLM provider formats
@@ -83,6 +84,7 @@ export interface DeliveredStreamMessage {
  * Streaming context for enhanced functionality during streaming
  */
 export interface StreamingContext {
+  usageContext?: ProviderUsageContext;
   speechToolState?: { userId?: number; selection?: string };
   disableYouTubeProcessing: boolean; // Flag to temporarily disable YouTube function during enhanced context restart
   disableProfilePictureProcessing?: boolean; // Flag to temporarily disable profile picture processing during enhanced context restart
@@ -181,6 +183,7 @@ export interface StreamingContext {
  * Contains all necessary Discord and Tomori state information
  */
 export interface ToolContext {
+  usageContext?: ProviderUsageContext;
   channel: BaseGuildTextChannel | BaseGuildVoiceChannel | DMChannel | NewsChannel | TextChannel | AnyThreadChannel;
   client: Client;
   message?: Message;

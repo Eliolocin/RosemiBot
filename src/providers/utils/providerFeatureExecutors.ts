@@ -147,6 +147,7 @@ export interface ProviderPresetGenerationRequest {
   locale: string;
   toolContext?: ToolContext;
   maxToolRounds?: number;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 export interface ProviderCompactSummaryRequest extends ProviderCapabilityCompactSummaryRequest {
@@ -162,6 +163,7 @@ export interface ProviderExpressionInitializationRequest {
   userPrompt: string;
   images: Array<{ url: string; name: string }>;
   temperature?: number;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 export interface ProviderHistoryExtractionRequest {
@@ -173,6 +175,7 @@ export interface ProviderHistoryExtractionRequest {
   userPrompt: string;
   temperature?: number;
   maxOutputTokens?: number;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 export async function generatePresetForProvider(
@@ -193,6 +196,7 @@ export async function generatePresetForProvider(
     tomoriState: request.tomoriState,
     toolContext: request.toolContext,
     maxToolRounds: request.maxToolRounds,
+    onUsage: request.onUsage,
   };
 
   return await capability.generatePreset(capabilityRequest);
@@ -232,6 +236,7 @@ export async function callExpressionInitializationForProvider(
       images: request.images,
       temperature: request.temperature,
       schemaName: "expression_batch_result",
+      onUsage: request.onUsage,
     },
     buildExpressionResponseSchema(),
     ExpressionBatchResultSchema,
@@ -250,7 +255,7 @@ export type HistoryExtractionOutcome =
   /** `discarded` counts entries the model returned that could not be validated. */
   | { ok: true; entries: HistoryMemoryEntry[]; discarded: number }
   /** `unsupported`: provider exposes no structured-output capability at all. `failed`: the call itself errored. */
-  | { ok: false; reason: "unsupported" | "failed"; error: string };
+  | { ok: false; reason: "unsupported" | "failed"; error: string; cause?: Error };
 
 export async function extractHistoryWindowForProvider(
   request: ProviderHistoryExtractionRequest,
@@ -272,6 +277,7 @@ export async function extractHistoryWindowForProvider(
     temperature: request.temperature,
     maxOutputTokens: request.maxOutputTokens,
     schemaName: "history_extraction_result",
+    onUsage: request.onUsage,
   };
 
   const result = await capability.callStructuredJSON(structuredRequest, responseSchema, HistoryExtractionResultSchema);
@@ -287,5 +293,5 @@ export async function extractHistoryWindowForProvider(
   }
 
   log.warn(`History extraction failed (${request.providerName}): ${result.error}`);
-  return { ok: false, reason: "failed", error: result.error };
+  return { ok: false, reason: "failed", error: result.error, cause: result.cause };
 }

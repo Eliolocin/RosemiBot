@@ -70,6 +70,44 @@ Protocol references: [OpenRouter Decisions](https://openrouter.ai/docs/api/api-r
 [System One](https://docs.typesafe.ai/api), and
 [OpenAI Decisions](https://developers.openai.com/api/docs/guides/decisions).
 
+## Usage reporting and request denial
+
+`src/utils/provider/providerUsage.ts` owns optional usage reporting and request-denial translation.
+`ResolvedCredentials.usageContext` carries request ownership through auxiliary requests, tool calls,
+and stream contexts. `ProviderUsageContext` is a branded interface that deployment modules augment
+through TypeScript declaration merging. Keep the same context object through a request: denial
+matching uses object identity, so a nested request cannot claim another request's refusal.
+
+Callers report provider usage once per completed provider response, or pass
+`createProviderUsageRecorder(context, model)` as the provider's `onUsage` callback. Reports preserve
+reported cost, tokens, and provider request identity; they do not estimate missing charges. Job
+polling reports the final job identity once at the caller. A registered reporter owns persistence and
+deduplication. Reporting does not await storage, and reporter failures cannot fail inference.
+Without a reporter, reporting does nothing.
+
+`ProviderRequestDeniedError` carries its context and a locale-dependent renderer. The renderer returns
+a title locale key and localized description, and accepts a flag for fallback notices. A registered
+translator can turn a provider failure into this error using the failed request's context.
+`findProviderRequestDeniedError` searches both `cause` and `originalError`, checks ownership before
+translation, and never translates a denial belonging to another context. Omit the context argument only
+for credential resolution or an already-scoped error propagating to its presentation owner. An
+explicit undefined context matches only an unscoped denial.
+Check for denials before credential-specific and generic handling. `deferNotice` lets the stream
+state machine leave a notice to the retry owner rather than posting it before fallback completes.
+
+Commands and streams render `getProviderRequestFailureCopy`. Tools use
+`notifyProviderToolFailure`, which returns the description and posts the same notice to the channel.
+User impersonation returns the description without posting. Channel-send failures preserve the
+returned tool error. `StreamingContext` copies usage context through `buildStreamContext` so stream
+error handling sees the same owner as its caller.
+
+These entry points intentionally have no in-tree reporter, translator, or denial producer on main.
+The release branch registers deployment implementations and supplies contexts during credential
+resolution, including paths that main still serves through direct key decryption. This is an
+exception to the dead-code rule: the release branch is a real consumer of this shared contract.
+Registration belongs at startup; each registration returns a disposer that restores the previous
+handler, which also lets tests isolate their registrations.
+
 ## Read order
 
 1. [Overview](/architecture/pipelines/provider/): pipeline structure and entry points

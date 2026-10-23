@@ -1,3 +1,8 @@
+import {
+  createProviderUsageRecorder,
+  findProviderRequestDeniedError,
+  type ProviderRequestDeniedError,
+} from "@/utils/provider/providerUsage";
 /**
  * Provider-agnostic vision inspection: resolve a vision model, call it with an image, and
  * return its text.
@@ -33,6 +38,8 @@ import {
 import { createVertexClient, parseVertexCompositeKey } from "@/providers/vertex/vertexClient";
 import { createVertexexpressClient } from "@/providers/vertexexpress/vertexexpressClient";
 import type { LlmRow } from "@/types/db/schema";
+import { normalizeProviderUsage, type TokenUsage } from "@/utils/text/tokenEstimate";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 
 /** An image ready for a provider payload, as base64 plus the MIME type that decodes it. */
 export interface VisionImage {
@@ -85,6 +92,7 @@ export interface VisionCallResult {
   provider?: string;
   model?: string;
   failure?: { reason: VisionCallFailureReason; detail?: string };
+  requestDenied?: ProviderRequestDeniedError;
 }
 
 /**
@@ -161,6 +169,7 @@ export async function analyzeImageWithVisionModel(input: {
   } catch (error) {
     return {
       ok: false,
+      requestDenied: findProviderRequestDeniedError(error) ?? undefined,
       failure: {
         reason: "credentials_unavailable",
         detail: error instanceof Error ? error.message : String(error),
@@ -197,11 +206,13 @@ export async function analyzeImageWithVisionModel(input: {
     if (error instanceof UnsupportedVisionProviderError) {
       return { ok: false, provider, model, failure: { reason: "unsupported_provider", detail: error.message } };
     }
-    log.error(`Vision call failed for ${provider}/${model}:`, error as Error);
+    const requestDenied = findProviderRequestDeniedError(error, creds.usageContext) ?? undefined;
+    if (!requestDenied) log.error(`Vision call failed for ${provider}/${model}:`, error as Error);
     return {
       ok: false,
       provider,
       model,
+      requestDenied,
       failure: {
         reason: "request_failed",
         detail: error instanceof Error ? error.message : String(error),
@@ -244,7 +255,15 @@ async function dispatchVisionRequest(
     throw new UnsupportedVisionProviderError(provider);
   }
 
-  return await callOpenAiCompatibleVision(apiKey, model, endpointUrl, image, prompt, signal);
+  return await callOpenAiCompatibleVision(
+    apiKey,
+    model,
+    endpointUrl,
+    image,
+    prompt,
+    signal,
+    createProviderUsageRecorder(creds.usageContext, model),
+  );
 }
 
 /**
@@ -356,6 +375,7 @@ export async function callOpenAiCompatibleVision(
   image: VisionImage,
   prompt: string,
   signal: AbortSignal,
+  onUsage?: (usage: TokenUsage) => void,
 ): Promise<string> {
   const response = await fetchUserRemoteUrl(endpointUrl, {
     method: "POST",
@@ -382,10 +402,14 @@ export async function callOpenAiCompatibleVision(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unknown error");
-    throw new Error(`Vision API returned ${response.status}: ${errorText}`);
+    throw new Error(`Vision API returned ${response.status}: ${errorText}`, {
+      cause: readOpenRouterLimitError(response.status, response.headers, errorText) ?? undefined,
+    });
   }
 
-  const data = (await response.json()) as { choices?: Array<{ message?: { content?: unknown } }> };
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: unknown } }>; usage?: unknown };
+  const usage = normalizeProviderUsage(data.usage);
+  if (usage) onUsage?.(usage);
   const content = data.choices?.[0]?.message?.content;
 
   if (typeof content === "string" && content) {

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { findOpenRouterSpeechModel } from "@/providers/openrouter/openrouterSpeechModels";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import {
   checkSpeechStatus,
   HOSTED_SPEECH_LIMITS,
@@ -84,11 +85,19 @@ export async function synthesizeOpenRouterSpeech(request: OpenRouterSpeechReques
   const generationId = response.headers.get("X-Generation-Id");
   if (generationId && /^[a-zA-Z0-9_-]{1,200}$/.test(generationId)) operation.generationId = generationId;
   if (!response.ok) {
-    const body = await readBoundedResponse(response, HOSTED_SPEECH_LIMITS.metadataBytes, request.signal).then(
-      (buffer) => speechErrorBody(buffer.toString("utf8"), request.apiKey),
+    const rawBody = await readBoundedResponse(response, HOSTED_SPEECH_LIMITS.metadataBytes, request.signal).then(
+      (buffer) => buffer.toString("utf8"),
       () => undefined,
     );
-    checkSpeechStatus(response, body);
+    const body = rawBody === undefined ? undefined : speechErrorBody(rawBody, request.apiKey);
+    const limit = rawBody === undefined ? null : readOpenRouterLimitError(response.status, response.headers, rawBody);
+    try {
+      checkSpeechStatus(response, body);
+    } catch (error) {
+      if (limit && error instanceof HostedSpeechError)
+        throw new HostedSpeechError(error.kind, error.providerStatus, error.providerBody, { cause: limit });
+      throw error;
+    }
   }
   if (response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "audio/mpeg") {
     await response.body?.cancel();

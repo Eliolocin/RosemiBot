@@ -1,3 +1,9 @@
+import {
+  findProviderRequestDeniedError,
+  reportProviderUsage,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 import type { ResponseReviewItem } from "@/constants/responseReview";
 import { observeStopRequest } from "@/utils/discord/stream/stopRequests";
 import { createHash, randomUUID } from "node:crypto";
@@ -24,6 +30,8 @@ import { localizer } from "@/utils/text/localizer";
 import { charsToTokensText, type TokenUsage } from "@/utils/text/tokenEstimate";
 import { redactToolParametersForStorage } from "@/utils/tools/toolParameterRedaction";
 import { checkResponseRules, type RuleCheckState } from "@/utils/chat/responseRuleCheck";
+import { sendStandardEmbed } from "@/utils/discord/embedHelper";
+import { ColorCode } from "@/utils/misc/logger";
 
 export const MAX_RESPONSE_REVISIONS = 1;
 // Every revision is reviewed again, after the original candidate's review.
@@ -488,7 +496,9 @@ async function resolveReviewer(
   config: ProviderConfig,
   failureContext: ErrorContext,
 ): Promise<
-  { capability: SupportsStructuredOutput; state: TomoriState; apiKey: string } | { errorLogged: true } | null
+  | { capability: SupportsStructuredOutput; state: TomoriState; apiKey: string; usageContext?: ProviderUsageContext }
+  | { errorLogged: true }
+  | null
 > {
   const review = context.responseReview;
   if (!review) return null;
@@ -502,6 +512,7 @@ async function resolveReviewer(
       capability: author as LLMProvider & SupportsStructuredOutput,
       state: context.tomoriState,
       apiKey: config.apiKey,
+      usageContext: context.usageContext,
     };
   }
   const model = await llmModelRepo.loadById(review.reviewerId);
@@ -620,6 +631,7 @@ async function reviewCandidate(
         .finally(() => signal.removeEventListener("abort", abort))
         .catch(() => undefined);
     });
+  let requestScope: [context?: ProviderUsageContext] = [];
   try {
     const resolved = await runUnderWatchdog(context.channel.id, () =>
       wait(
@@ -636,6 +648,7 @@ async function reviewCandidate(
     if (timeout.aborted) return unavailable("timeout", true);
     if (!resolved) return unavailable("registration_or_capability", true);
     if ("errorLogged" in resolved) return unavailable("credentials");
+    requestScope = [resolved.usageContext];
     modelId = resolved.state.llm.llm_id;
     model = resolved.state.llm.llm_codename;
     provider = resolved.state.llm.llm_provider;
@@ -754,6 +767,12 @@ async function reviewCandidate(
               onUsage: (reported) => {
                 usage = reported;
                 recordResponseReviewUsage(state, { kind: "reviewer", model: model ?? "", usage: reported });
+                reportProviderUsage(resolved.usageContext, {
+                  modelCodename: model ?? "",
+                  costUsd: reported.costUsd,
+                  inputTokens: reported.inputTokens,
+                  outputTokens: reported.outputTokens,
+                });
               },
             },
             jsonSchema,
@@ -785,6 +804,10 @@ ${section("format_retry", formatRetryNote(result.malformed))}`,
       }
       if (!result || timeout.aborted) return unavailable("timeout", true);
     }
+    if (!result.success) {
+      const denied = findProviderRequestDeniedError(result.cause, resolved.usageContext);
+      if (denied) throw denied;
+    }
     if (!result.success)
       return unavailable(
         result.failure ?? "transport",
@@ -798,10 +821,20 @@ ${section("format_retry", formatRetryNote(result.malformed))}`,
     trace(validated.data.status, { usage });
     if (validated.data.status === "unavailable") state.unavailable = true;
     return validated.data;
-  } catch {
+  } catch (error) {
     if (cancelled()) {
       trace("cancelled");
       return { status: "cancelled" };
+    }
+    const denied = findProviderRequestDeniedError(error, ...requestScope);
+    if (denied) {
+      if (context.shouldSurfaceUserErrors && context.channel.isSendable() && !context.channel.partial) {
+        await sendStandardEmbed(context.channel, context.locale, {
+          ...getProviderRequestFailureCopy(denied, context.locale),
+          color: ColorCode.ERROR,
+        }).catch((sendError) => log.warn("Failed to send reviewer provider denial notice", sendError));
+      }
+      return unavailable("provider-denied");
     }
     return unavailable("operation", true);
   } finally {

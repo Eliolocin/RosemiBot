@@ -26,6 +26,7 @@ export interface EmbeddingRequest {
    * when a label hosts several embedding models. Optional; resolution falls back without it.
    */
   modelId?: number;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 export interface ProviderImageInput {
@@ -41,6 +42,7 @@ export type StructuredOutputResult<T> =
       error: string;
       failure?: "transport" | "malformed" | "refusal" | "cancelled";
       httpStatus?: number;
+      cause?: Error;
       /** Why a private reply was malformed, so the caller can ask once more with the exact format problem. */
       malformed?: { reason: "empty" | "unparsable" | "schema"; issues?: string[] };
     };
@@ -112,6 +114,7 @@ export interface PresetGenerationResult {
   preset?: PresetExportData;
   error?: string;
   errorType?: PresetGenerationErrorType;
+  cause?: Error;
 }
 
 export interface ProviderPresetGenerationRequest {
@@ -121,6 +124,7 @@ export interface ProviderPresetGenerationRequest {
   tomoriState: TomoriState;
   toolContext?: ToolContext;
   maxToolRounds?: number;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 export interface ProviderCompactSummaryRequest {
@@ -131,16 +135,19 @@ export interface ProviderCompactSummaryRequest {
   userPrompt: string;
   temperature?: number;
   images?: ProviderImageInput[];
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 export interface CompactConversationResult {
   summary?: string;
   error?: string;
+  cause?: Error;
 }
 
 export interface CompactRoleplayResult {
   summary?: CompactRoleplaySummary;
   error?: string;
+  cause?: Error;
 }
 
 interface ProviderLiveTokenCountRequest {
@@ -270,6 +277,8 @@ export interface ProviderNativeVideoGenerationResult {
   mimeType: string | null;
   filename?: string;
   durationSeconds?: number;
+  costUsd?: number;
+  providerRequestId?: string;
 }
 
 export interface SupportsNativeVideoGeneration {

@@ -1,3 +1,9 @@
+import {
+  findProviderRequestDeniedError,
+  createProviderUsageRecorder,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 /**
  * Preset Generate Command
  * AI-powered personality generation using supported structured output providers
@@ -143,7 +149,8 @@ function resolveComponentsV2AccentColor(color: string | number): number {
 function buildGenerateStatusComponents(options: {
   locale: string;
   titleKey: string;
-  descriptionKey: string;
+  descriptionKey?: string;
+  description?: string;
   color: string | number;
   descriptionVars?: Record<string, string | number | boolean>;
   details?: string;
@@ -158,7 +165,7 @@ function buildGenerateStatusComponents(options: {
     },
     {
       type: ComponentType.TextDisplay,
-      content: localizer(options.locale, options.descriptionKey, options.descriptionVars),
+      content: options.description ?? localizer(options.locale, options.descriptionKey ?? "", options.descriptionVars),
     },
   ];
 
@@ -208,7 +215,8 @@ async function editGenerateStatusReply(
   options: {
     locale: string;
     titleKey: string;
-    descriptionKey: string;
+    descriptionKey?: string;
+    description?: string;
     color: string | number;
     descriptionVars?: Record<string, string | number | boolean>;
     details?: string;
@@ -224,6 +232,7 @@ async function editGenerateStatusReply(
           locale: options.locale,
           titleKey: options.titleKey,
           descriptionKey: options.descriptionKey,
+          description: options.description,
           color: options.color,
           descriptionVars: options.descriptionVars,
           details: options.details,
@@ -586,6 +595,7 @@ export async function execute(
 
     // The primary model always performs generation, so these stay the primary model's own
     // resolved provider and key. A vision model only ever contributes a text description.
+    let usageContext: ProviderUsageContext | undefined;
     const generationTomoriState = tomoriState;
     const generationProviderName = providerName;
     const generationApiKey = decryptedApiKey;
@@ -847,6 +857,15 @@ export async function execute(
         userId: userData.user_id ?? null,
       });
 
+      if (captionResult.requestDenied) {
+        await editGenerateStatusReply(modalSubmitInteraction, {
+          locale,
+          ...getProviderRequestFailureCopy(captionResult.requestDenied, locale),
+          color: ColorCode.ERROR,
+          inputAttachment: getInputAttachment(),
+        });
+        return;
+      }
       if (!captionResult.ok) {
         const reason = captionResult.failure?.reason ?? "request_failed";
         log.warn(
@@ -913,6 +932,7 @@ export async function execute(
         tomoriState: generationTomoriState,
         locale,
         provider: generationProviderName,
+        usageContext,
         userId: interaction.user.id,
         guildId: interaction.guild?.id,
         suppressProgressNotices: true, // Search runs in background during generation; don't leak tool embeds into chat
@@ -930,7 +950,19 @@ export async function execute(
       params: genParams,
       locale,
       toolContext: presetToolContext,
+      onUsage: createProviderUsageRecorder(usageContext, generationTomoriState.llm.llm_codename),
     });
+
+    const deniedGeneration = findProviderRequestDeniedError(genResult.cause, usageContext);
+    if (deniedGeneration) {
+      await editGenerateStatusReply(modalSubmitInteraction, {
+        locale,
+        ...getProviderRequestFailureCopy(deniedGeneration, locale),
+        color: ColorCode.ERROR,
+        inputAttachment: getInputAttachment(),
+      });
+      return;
+    }
 
     if (genResult.error || !genResult.preset) {
       const invalidGeneratedData = genResult.errorType === "VALIDATION_ERROR";
@@ -1141,6 +1173,16 @@ export async function execute(
     // Quota already reserved at step 8 - no increment needed
     log.success(`Preset generated successfully for: ${characterName}`);
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error);
+    if (denied) {
+      const copy = getProviderRequestFailureCopy(denied, locale);
+      if (replyUsesComponentsV2) {
+        await editGenerateStatusReply(replyInteraction, { locale, ...copy, color: ColorCode.ERROR });
+      } else {
+        await replyInfoEmbed(replyInteraction, locale, { ...copy, color: ColorCode.ERROR });
+      }
+      return;
+    }
     log.error("Error in preset generate command:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
 

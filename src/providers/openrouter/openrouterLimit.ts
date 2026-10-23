@@ -1,4 +1,7 @@
 import { parseRetryAfterMs } from "@/utils/messageProxy/lookupRetry";
+import { readBoundedResponse } from "@/utils/security/boundedResponse";
+
+const OPENROUTER_LIMIT_ERROR_MAX_BYTES = 64 * 1024;
 
 const OPENROUTER_LIMIT_SOURCES = ["openrouter_key_limit", "openrouter_in_flight_budget", "openrouter_credits"] as const;
 
@@ -40,4 +43,17 @@ export function readOpenRouterLimitError(
         parseRetryAfterMs(headers.get("Retry-After")),
       )
     : null;
+}
+
+export async function readOpenRouterLimitResponse(response: Response): Promise<OpenRouterLimitError | null> {
+  if (response.status !== 402 && response.status !== 403) {
+    await response.body?.cancel().catch(() => undefined);
+    return null;
+  }
+  try {
+    const body = (await readBoundedResponse(response, OPENROUTER_LIMIT_ERROR_MAX_BYTES)).toString("utf8");
+    return readOpenRouterLimitError(response.status, response.headers, body);
+  } catch {
+    return null;
+  }
 }

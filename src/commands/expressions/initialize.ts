@@ -1,3 +1,9 @@
+import {
+  findProviderRequestDeniedError,
+  createProviderUsageRecorder,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 /**
  * /expressions initialize command
  *
@@ -309,6 +315,7 @@ export async function execute(
       return;
     }
 
+    let usageContext: ProviderUsageContext | undefined;
     const keyVersion = tomoriState.config.key_version || 1;
     const decryptedApiKey = await decryptApiKey(tomoriState.config.api_key, keyVersion);
 
@@ -449,9 +456,25 @@ export async function execute(
         userPrompt,
         images,
         temperature,
+        onUsage: createProviderUsageRecorder(usageContext, effectiveModelName),
       });
 
       log.info(`LLM structured output response (batch ${batchNumber}): ${JSON.stringify(result, null, 2)}`);
+
+      const denied = result.success ? null : findProviderRequestDeniedError(result.cause, usageContext);
+      if (denied) {
+        const copy = getProviderRequestFailureCopy(denied, locale);
+        await interaction.editReply({
+          embeds: [
+            {
+              title: localizer(locale, copy.titleKey),
+              description: copy.description,
+              color: hexToNumber(ColorCode.ERROR),
+            },
+          ],
+        });
+        return;
+      }
 
       // On a provider error, log and let the loop retry this chunk (capped by maxChunkRetries)
       if (!result.success) {
@@ -543,6 +566,14 @@ export async function execute(
       });
     }
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error);
+    if (denied) {
+      await replyInfoEmbed(interaction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+      });
+      return;
+    }
     const context: ErrorContext = {
       userId: userData.user_id,
       serverId: tomoriState?.server_id ?? null,

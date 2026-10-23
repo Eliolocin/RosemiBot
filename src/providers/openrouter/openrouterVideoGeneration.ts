@@ -11,6 +11,7 @@ import { PROVIDER_VIDEO_DOWNLOAD_MAX_MB } from "@/providers/utils/providerVideoD
 import { pollForCompletion } from "@/utils/async/pollForCompletion";
 import { getOrFetchOpenRouterVideoModelCapabilities } from "@/utils/cache/openrouterVideoModelCache";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import {
   buildOpenRouterVideoRequestBody,
   normalizeOpenRouterVideoOptions,
@@ -463,6 +464,7 @@ export async function generateOpenRouterNativeVideo(
     );
     throw new Error(
       `OpenRouter video generation failed: ${submitRaw.status}: ${videoApiErrorSummary(submitBodyText, request.apiKey)}`,
+      { cause: readOpenRouterLimitError(submitRaw.status, submitResponse.headers, submitBodyText) ?? undefined },
     );
   }
 
@@ -561,6 +563,7 @@ export async function generateOpenRouterNativeVideo(
   //    Use unsigned_urls if available, otherwise use the content endpoint.
   //    The video file may not be immediately available after the poll returns "completed"
   //    due to eventual consistency in OpenRouter's storage, so retry a few times on 404.
+  const usageReport = { costUsd: completedJob.usage?.cost ?? undefined, providerRequestId: jobId };
   const rawVideoUrl = completedJob.unsigned_urls?.[0] ?? `${OPENROUTER_VIDEO_URL}/${jobId}/content?index=0`;
   const videoUrl = new URL(rawVideoUrl, OPENROUTER_ORIGIN).href;
 
@@ -580,7 +583,7 @@ export async function generateOpenRouterNativeVideo(
 
   if (!download.videoData) {
     log.error(`Failed to download OpenRouter video (jobId: ${jobId})`, new Error(download.reason));
-    return { videoData: null, mimeType: null };
+    return { videoData: null, mimeType: null, ...usageReport };
   }
 
   const videoData = download.videoData;
@@ -591,6 +594,7 @@ export async function generateOpenRouterNativeVideo(
     videoData,
     mimeType: "video/mp4",
     durationSeconds: normalizedOptions.duration,
+    ...usageReport,
   };
 }
 
