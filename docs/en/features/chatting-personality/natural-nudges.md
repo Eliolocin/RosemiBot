@@ -67,7 +67,7 @@ nudges with a colored dot:
 - 🔴 **Off**.
 
 **Toggle Availability** turns idle nudges on or off. Below the list you can add up to 25 of your own
-for the whole server. Choosing one opens it for editing; **Remove Nudges** lists your own idle nudges,
+for the whole server. Choosing one opens it for editing; **Remove Custom Nudges** lists your own idle nudges,
 and unchecking one removes it. Each one has:
 
 - **Name**.
@@ -75,10 +75,12 @@ and unchecking one removes it. Each one has:
   `{partner}` where the other persona in a Play Scene goes, and `{target}` where the member it is
   about goes.
 - **Agenda** (optional): the kind of small goal the persona keeps after its opener.
-- **Needs**: what must be true before the idle nudge can run, such as a recent memory or an
+- **Prerequisites**: what must be true before the idle nudge can run, such as a recent memory or an
   available tool. Each category already brings its own: a member to ping, a hanging conversation, or
   a second persona.
-- **Recommended tools**: tools the persona is encouraged to use, offered only when available.
+- **Recommended tools**: tools the persona is encouraged to use when it has them. The idle nudge
+  still runs without them. A tool picked under Prerequisites is already included, so it is dropped
+  from this list when you save.
 
 ### Ping User
 <!-- anchor: ping-user -->

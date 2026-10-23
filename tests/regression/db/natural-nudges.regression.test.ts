@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
+import { nudgeStudioOperations } from "@/modules/natural-nudges/discord/studioOperations";
 import { NATURAL_NUDGE_FAILURE_STOP_THRESHOLD } from "@/modules/natural-nudges/runtime/tuning";
 import { loadPersonaAgendas } from "@/modules/natural-nudges/runtime/agendas";
 import { defaultServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
@@ -427,6 +428,24 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     };
     expect(typeof (await naturalNudgeRepository.insertCustomIdleNudge(refs.serverId, idleNudge, 1))).toBe("number");
     expect(await naturalNudgeRepository.insertCustomIdleNudge(refs.serverId, idleNudge, 1)).toBe("limit");
+  });
+
+  it("stores a tool picked as both a prerequisite and a recommendation only as a prerequisite", async () => {
+    expect(
+      await nudgeStudioOperations.addCustomIdleNudge(refs.serverId, "start_topic", {
+        title: "Fresh news",
+        brief: "Have {persona} share some news.",
+        agendaHint: "",
+        prerequisites: ["tool:web_search"],
+        recommendedTools: ["web_search", "fetch_url"],
+      }),
+    ).toBe("success");
+    const [saved] = (await naturalNudgeRepository.listCustomIdleNudges(refs.serverId)).filter(
+      (row) => row.title === "Fresh news",
+    );
+    expect(saved?.prerequisites).toEqual(["tool:web_search"]);
+    expect(saved?.recommended_tools).toEqual(["fetch_url"]);
+    await naturalNudgeRepository.deleteCustomIdleNudges(refs.serverId, [saved.custom_idle_nudge_id]);
   });
 
   it("exports settings and custom idle nudges without channels, imports them, and resets them", async () => {

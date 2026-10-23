@@ -16,6 +16,7 @@ import {
   findIdleNudgeBlocker,
   isKnownPrerequisite,
   isNudgeToolName,
+  prerequisiteTool,
   type IdleNudgeBlocker,
   type IdleNudgeDefinition,
 } from "@/modules/natural-nudges/runtime/idleNudges";
@@ -87,11 +88,15 @@ export async function loadNudgeStudioView(
   return { category, entries, customCount: customs.length };
 }
 
-/** Drops the prerequisite the category already enforces, so the stored row matches what the modal can show. */
+/**
+ * Drops the prerequisite the category already enforces and any recommended tool a prerequisite already
+ * requires, so the stored row matches what the modal can show and each tool appears in one field.
+ */
 function parseForm(category: NaturalNudgeCategory, form: IdleNudgeForm, enabled: boolean): CustomIdleNudgeInput | null {
   const implied = CATEGORY_IMPLIED_PREREQUISITES[category];
   const prerequisites = [...new Set(form.prerequisites)].filter((id) => id !== implied);
-  const recommendedTools = [...new Set(form.recommendedTools)];
+  const requiredTools = new Set<string>(prerequisites.flatMap((id) => prerequisiteTool(id) ?? []));
+  const recommendedTools = [...new Set(form.recommendedTools)].filter((tool) => !requiredTools.has(tool));
   if (!prerequisites.every(isKnownPrerequisite) || !recommendedTools.every(isNudgeToolName)) return null;
   const parsed = customIdleNudgeInputSchema.safeParse({
     category,

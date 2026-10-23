@@ -109,9 +109,8 @@ describe("Nudge Studio panel", () => {
       ],
       customCount: 1,
     };
-    const rows = collectTextDisplays(buildNudgeStudioPayload({ locale: "en-US", view }))
-      .flatMap((content) => content.split("\n"))
-      .filter((line) => /^> [🟢🟡🔴]/u.test(line));
+    const displays = collectTextDisplays(buildNudgeStudioPayload({ locale: "en-US", view }));
+    const rows = displays.flatMap((content) => content.split("\n")).filter((line) => /^> [🟢🟡🔴]/u.test(line));
     const blocker = localizedCopy("en-US", "commands.nudge-studio.blocker_tool", {
       tool: localizedCopy("en-US", "commands.nudge-studio.tool_web_search"),
     });
@@ -121,6 +120,27 @@ describe("Nudge Studio panel", () => {
     expect(rows[1]?.startsWith("> 🟡")).toBe(true);
     expect(rows[1]).toContain(blocker);
     expect(rows[2]?.startsWith("> 🔴")).toBe(true);
+
+    const intro = localizedCopy("en-US", "commands.nudge-studio.custom_intro", {
+      category: localizedCopy("en-US", "commands.nudge-studio.category_ping_user"),
+    });
+    const tipsDisplay = displays.find((content) => content.includes(intro));
+    expect(tipsDisplay).toBeDefined();
+    const tipLines = tipsDisplay?.split("\n").filter((line) => line.startsWith("> ")) ?? [];
+    expect(tipLines.length).toBeGreaterThan(0);
+    expect(tipLines.some((line) => line.startsWith("> - "))).toBe(true);
+    expect(tipLines.some((line) => line.startsWith(">   "))).toBe(true);
+
+    const container = JSON.parse(JSON.stringify(buildNudgeStudioPayload({ locale: "en-US", view }).components[0]));
+    const buttons = (container.components ?? []).flatMap(
+      (row: { components?: Array<{ type: number; label?: string }> }) =>
+        (row.components ?? []).filter((component) => component.type === 2),
+    );
+    expect(
+      buttons.some(
+        (button: { label?: string }) => button.label === localizedCopy("en-US", "commands.nudge-studio.remove_button"),
+      ),
+    ).toBe(true);
   });
 
   it("keeps the add option only below the server-wide custom limit", () => {

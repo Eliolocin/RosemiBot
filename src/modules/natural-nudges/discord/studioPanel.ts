@@ -217,7 +217,7 @@ export function buildNudgeStudioPayload(input: NudgeStudioRenderInput): {
       category,
     ),
     { type: ComponentType.Separator, divider: true, spacing: 1 },
-    text(`## ${t(TITLE_KEYS[category])}\n${t(DESCRIPTION_KEYS[category])}\n${t("commands.nudge-studio.legend")}`),
+    text(`## ${t(TITLE_KEYS[category])}\n${t(DESCRIPTION_KEYS[category])}`),
     text(
       `${withLinePrefix("> ", list.text)}${listFooter ? `\n-# ${t(listFooter, textPreviewFooterVars(list, locale))}` : ""}`,
     ),
@@ -235,7 +235,7 @@ export function buildNudgeStudioPayload(input: NudgeStudioRenderInput): {
     text(
       `### ${t(CUSTOM_TITLE_KEYS[category])}\n${t("commands.nudge-studio.custom_intro", {
         category: t(CATEGORY_KEYS[category]),
-      })}\n${withLinePrefix("> ", t(TIPS_KEYS[category]))}`,
+      })}\n${withLinePrefix("> - ", t(TIPS_KEYS[category]))}`,
     ),
   ];
 
