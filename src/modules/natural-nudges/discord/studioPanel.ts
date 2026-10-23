@@ -205,8 +205,12 @@ function scopeNames(
   return new Intl.ListFormat(locale, { type: "conjunction" }).format([...shown, ...more]);
 }
 
+function statusCircle(entry: StudioEntry): string {
+  return !entry.enabled ? "🔴" : entry.blocker ? "🟡" : "🟢";
+}
+
 function entryRow(locale: string, entry: StudioEntry, personaNames: ReadonlyMap<number, string>): string {
-  const circle = !entry.enabled ? "🔴" : entry.blocker ? "🟡" : "🟢";
+  const circle = statusCircle(entry);
   const title = entry.custom
     ? `*${escapeDiscordMarkdown(truncateDiscordText(studioEntryTitle(locale, entry), LIST_TITLE_MAX))}*`
     : escapeDiscordMarkdown(studioEntryTitle(locale, entry));
@@ -233,12 +237,6 @@ export interface NudgeStudioRenderInput {
   /** Page of the Toggle Availability menu, clamped to the pages the category has. */
   page?: number;
   receipt?: PanelReceipt;
-}
-
-function availabilityDescription(locale: string, entry: StudioEntry, personaNames: ReadonlyMap<number, string>) {
-  if (!entry.enabled) return localizer(locale, "commands.nudge-studio.toggle_off");
-  if (!entry.scope) return localizer(locale, "commands.nudge-studio.toggle_all_personas");
-  return scopeNames(locale, entry.scope, personaNames) ?? localizer(locale, "commands.nudge-studio.blocker_no_persona");
 }
 
 function buildAvailabilityControls(
@@ -269,10 +267,8 @@ function buildAvailabilityControls(
           ),
           options: selection.visibleItems.map((entry) => ({
             label: safeSelectOptionText(studioEntryTitle(locale, entry), OPTION_TEXT_MAX),
-            description: safeSelectOptionText(
-              availabilityDescription(locale, entry, view.personaNames),
-              OPTION_TEXT_MAX,
-            ),
+            description: safeSelectOptionText(entry.definition.brief, OPTION_TEXT_MAX),
+            emoji: { name: statusCircle(entry) },
             value: entry.definition.key,
           })),
         },

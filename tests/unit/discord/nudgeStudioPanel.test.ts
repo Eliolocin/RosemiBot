@@ -32,6 +32,7 @@ import {
   DISCORD_SELECT_OPTIONS_MAX,
   validateRawModalLimits,
 } from "@/utils/discord/ui/componentsV2Limits";
+import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { createCustomIdleNudge, createPersona } from "../../helpers/fixtures";
 import { expectForEveryLocale, localizedCopy } from "../../helpers/localeCases";
@@ -83,7 +84,11 @@ function manyPersonas(count = DISCORD_MODAL_COMPONENTS_MAX * DISCORD_CHECKBOX_GR
 
 function selectOptions(payload: ReturnType<typeof buildNudgeStudioPayload>, routeAction: string) {
   const rows = JSON.parse(JSON.stringify(payload.components[0])).components as Array<{
-    components?: Array<{ type: number; customId?: string; options?: Array<{ value: string; description?: string }> }>;
+    components?: Array<{
+      type: number;
+      customId?: string;
+      options?: Array<{ value: string; description?: string; emoji?: { name?: string } }>;
+    }>;
   }>;
   return rows
     .flatMap((row) => row.components ?? [])
@@ -176,14 +181,14 @@ describe("Nudge Studio panel", () => {
     expect(optionValues(CUSTOM_IDLE_NUDGE_LIMIT)).not.toContain("add");
   });
 
-  it("names a scope's live personas on its row and in the Toggle Availability menu, and marks off ones", () => {
+  it("names a scope's live personas on its row, and gives each Toggle Availability option its state and brief", () => {
     const view: NudgeStudioView = {
       category: "ping_user",
       entries: [
         { definition: BUILTIN_IDLE_NUDGES[0], enabled: true, scope: [1, 99] },
         { definition: BUILTIN_IDLE_NUDGES[1], enabled: true },
         { definition: BUILTIN_IDLE_NUDGES[2], enabled: false },
-        { definition: BUILTIN_IDLE_NUDGES[3], enabled: true, scope: [99] },
+        { definition: BUILTIN_IDLE_NUDGES[3], enabled: true, scope: [99], blocker: { kind: "no_persona" } },
       ],
       customCount: 0,
       personaNames: new Map([[1, "Mirri"]]),
@@ -193,15 +198,14 @@ describe("Nudge Studio panel", () => {
       .flatMap((content) => content.split("\n"))
       .filter((line) => /^> [🟢🟡🔴]/u.test(line));
     const note = localizedCopy("en-US", "commands.nudge-studio.note_scope", { personas: "Mirri" });
+    const options = selectOptions(payload, "toggle-open") ?? [];
 
     expect(rows[0]).toContain(note);
     expect(rows[1]).not.toContain(note);
-    expect(selectOptions(payload, "toggle-open")?.map((option) => option.description)).toEqual([
-      "Mirri",
-      localizedCopy("en-US", "commands.nudge-studio.toggle_all_personas"),
-      localizedCopy("en-US", "commands.nudge-studio.toggle_off"),
-      localizedCopy("en-US", "commands.nudge-studio.blocker_no_persona"),
-    ]);
+    expect(options.map((option) => option.emoji?.name)).toEqual(["🟢", "🟢", "🔴", "🟡"]);
+    expect(options.map((option) => option.description)).toEqual(
+      view.entries.map((entry) => safeSelectOptionText(entry.definition.brief, 100)),
+    );
   });
 
   it("pages the Toggle Availability menu so every idle nudge in a full category stays reachable", () => {

@@ -26,8 +26,6 @@ export default {
     blocker_two_personas: `needs 2 personas`,
     blocker_no_persona: `no persona can use it`,
     toggle_placeholder: `Toggle Availability...`,
-    toggle_all_personas: `All personas`,
-    toggle_off: `Off`,
     custom_title_ping_user: `Custom Pings`,
     custom_title_revive_topic: `Custom Revives`,
     custom_title_start_topic: `Custom New Topics`,
