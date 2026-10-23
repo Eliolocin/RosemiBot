@@ -1335,16 +1335,12 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter billing — gated DB schema", ()
       const sponsoredState = await personaRepository.loadState(FIXTURE_IDS.serverDiscId);
       if (!sponsoredState) throw new Error("Expected sponsored workspace");
       const sponsoredView = await loadConfigSwitchModelsView(sponsoredState, FIXTURE_IDS.serverDiscId, undefined);
-      for (const capability of ["text", "vision", "embedding", "image", "video", "tts-clone", "tts-design"] as const) {
+      for (const capability of ["text", "vision", "video", "tts-clone", "tts-design"] as const) {
         expect(sponsoredView.slots.find((slot) => slot.capability === capability)?.currentProvider).toBe("supporter");
       }
-      const displayedTier = config.tiers.test_tier.defaultModelByCapability;
-      delete displayedTier.embedding;
-      process.env.TOMORI_SUPPORTER_CONFIG_JSON = JSON.stringify(config);
-      const byokView = await loadConfigSwitchModelsView(sponsoredState, FIXTURE_IDS.serverDiscId, undefined);
-      expect(byokView.slots.find((slot) => slot.capability === "embedding")?.currentProvider).toBe("openrouter");
-      displayedTier.embedding = "test/personal-embedding";
-      process.env.TOMORI_SUPPORTER_CONFIG_JSON = JSON.stringify(config);
+      for (const capability of ["embedding", "image"] as const) {
+        expect(sponsoredView.slots.find((slot) => slot.capability === capability)?.currentProvider).toBe("openrouter");
+      }
       expect(await loadConfigModelProviders(refs.serverId, "tts-clone")).toContain("supporter");
       expect(await loadConfigModelChoices(refs.serverId, "tts-clone", "supporter")).toEqual(
         expect.arrayContaining([expect.objectContaining({ id: fish.speech_model_id })]),

@@ -604,6 +604,7 @@ const SERVER_CONFIG_EXPORT_COVERAGE_TARGETS: ServerConfigExportCoverageTarget[] 
       "other_model_capabilities",
       "other_model_capabilities_fetched_at",
       "hide_respond_embed",
+      "subscription_capabilities",
     ],
   },
   {
@@ -828,6 +829,8 @@ const CONFIG_COLUMN_EXCLUSION_REASONS: Record<string, string> = {
   "server_model_configs.other_model_capabilities_fetched_at":
     "Legacy model capability timestamps are runtime metadata.",
   "server_model_configs.hide_respond_embed": "The legacy response flag is not portable configuration.",
+  "server_model_configs.subscription_capabilities":
+    "Payer ownership depends on the receiving workspace credentials, so import resolves it there.",
   "server_model_configs.created_at": "Creation timestamps are runtime metadata.",
   "server_model_configs.updated_at": "Update timestamps are runtime metadata.",
   "server_chat_configs.server_id": "The database key identifies the source workspace.",

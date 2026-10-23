@@ -8,6 +8,7 @@
  * with real data and so cleanup can target them precisely.
  */
 import type { SQL } from "bun";
+import { clearUserCache } from "@/utils/cache/userCache";
 
 /** Stable Discord-scoped identifiers for all fixture rows. */
 export const FIXTURE_IDS = {
@@ -165,4 +166,6 @@ export async function cleanupFixtures(db: SQL): Promise<void> {
 
   // Users have no cascade from servers, so clean up separately
   await db`DELETE FROM users WHERE user_disc_id LIKE '_rt_%'`;
+  // The DB lane shares one process, so a cached row would hand the next suite a deleted user_id.
+  clearUserCache();
 }
