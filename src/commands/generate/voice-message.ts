@@ -456,6 +456,22 @@ export async function execute(
     uploadFilename: uploadAttachment?.name ?? null,
     typedDesignPrompt,
   };
+  const candidates = resolveVoiceSourceCandidates(candidateInput);
+  const targetDenial = uploadAttachment
+    ? targets.denials?.clone
+    : typedDesignPrompt?.trim()
+      ? targets.denials?.design
+      : candidates.length === 0
+        ? (targets.denials?.clone ?? targets.denials?.design)
+        : undefined;
+  if (targetDenial) {
+    await replyInfoEmbed(interaction, locale, {
+      ...getProviderRequestFailureCopy(targetDenial, locale),
+      color: ColorCode.ERROR,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
   if (
     (uploadAttachment && !resolveVoiceSourceCapabilities(speechTargetSource(targets.clone)).acceptsCloneShape) ||
     (typedDesignPrompt?.trim() &&
@@ -469,7 +485,6 @@ export async function execute(
     });
     return;
   }
-  const candidates = resolveVoiceSourceCandidates(candidateInput);
   if (candidates.length === 0) {
     log.warn(
       `[/generate voice-message] No voice source candidates available for persona ${persona.persona_id}`,
@@ -618,6 +633,14 @@ export async function execute(
   effectiveEndpoint = speechEndpoint?.endpoint ?? null;
   const originalTarget = selectedSource?.shape === "design" ? targets.design : targets.clone;
   const originalSource = candidates.find((candidate) => candidate.id === selectedSourceId);
+  const freshDenial = freshTargets.denials?.[originalSource?.shape === "design" ? "design" : "clone"];
+  if (!selectedSource && freshDenial) {
+    await replyInfoEmbed(modalInteraction, locale, {
+      ...getProviderRequestFailureCopy(freshDenial, locale),
+      color: ColorCode.ERROR,
+    });
+    return;
+  }
   if (
     originalSource?.sampleId !== selectedSource?.sampleId ||
     originalSource?.designPrompt !== selectedSource?.designPrompt ||

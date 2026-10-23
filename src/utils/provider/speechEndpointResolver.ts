@@ -141,7 +141,12 @@ export async function resolveActiveTranscriptionEndpoint(serverId: number): Prom
 export async function resolveSpeechTargets(
   serverId: number,
   userId?: number,
-): Promise<{ design: SpeechTargetResult | null; clone: SpeechTargetResult | null }> {
+): Promise<{
+  design: SpeechTargetResult | null;
+  clone: SpeechTargetResult | null;
+  denials?: Partial<Record<VoiceSourceMode, SupporterRequestDeniedError>>;
+}> {
+  const denials: Partial<Record<VoiceSourceMode, SupporterRequestDeniedError>> = {};
   const policy =
     userId === undefined
       ? { serverAllowed: true, fallbackEnabled: true }
@@ -176,7 +181,9 @@ export async function resolveSpeechTargets(
             (error.reason === "inactive_entitlement" || error.reason === "missing_subscription")
           ) {
             if (!serverAllowed || !policy.fallbackEnabled) return null;
-            return (await resolveSpeechTargets(serverId))[mode];
+            const fallback = await resolveSpeechTargets(serverId);
+            if (fallback.denials?.[mode]) denials[mode] = fallback.denials[mode];
+            return fallback[mode];
           }
           if (hosted.owner.kind === "personal" && error instanceof SupporterRequestDeniedError) throw error;
           log.warn("SpeechResolver: subscription credential unavailable", error, {
@@ -187,6 +194,7 @@ export async function resolveSpeechTargets(
               ...(error instanceof SupporterRequestDeniedError ? { reason: error.reason } : {}),
             },
           });
+          if (error instanceof SupporterRequestDeniedError) denials[mode] = error;
           return null;
         }
       }
@@ -204,5 +212,5 @@ export async function resolveSpeechTargets(
     return endpoint ? { ...endpoint, kind: "custom-endpoint", owner: { kind: "server", ownerId: serverId } } : null;
   }
   const [design, clone] = await Promise.all([resolve("design"), resolve("clone")]);
-  return { design, clone };
+  return { design, clone, ...(Object.keys(denials).length > 0 ? { denials } : {}) };
 }

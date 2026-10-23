@@ -214,7 +214,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
         }),
       ).toMatchObject({ status: "revoked" });
       expect(await markers()).toContain("speech_clone");
-      expect((await resolveSpeechTargets(refs.serverId)).clone).toBeNull();
+      const revoked = await resolveSpeechTargets(refs.serverId);
+      expect(revoked.clone).toBeNull();
+      expect(revoked.denials?.clone).toMatchObject({ reason: "missing_sponsorship", fundingScope: "server" });
 
       await new SupporterSponsorshipRepository(testSql).startActiveSponsorship({
         serverId: refs.serverId,

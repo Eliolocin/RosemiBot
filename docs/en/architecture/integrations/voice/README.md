@@ -120,6 +120,11 @@ remain connection-bound. Personal `speech_design` and `speech_clone` assignments
 slots independently when enabled. Disabling one mode preserves its saved model and owner, while
 resolution inherits the server target for that mode. Personal local endpoints are unsupported.
 
+Unavailable Subscription funding leaves its voice target unresolved and returns the denial for that
+mode alongside the targets. Availability checks and `/status` can still inspect the usable targets;
+the voice command presents the funding denial when it prevents the requested source from being used,
+including when sponsorship is revoked while its modal is open.
+
 The catalogue keeps one default per provider and voice mode: Flash TTS for Google and Vertex Design,
 Seed Audio 1.0 for OpenRouter Design, and paid Fish S2.1 Pro for OpenRouter Clone. Flash-Lite and free
 Fish require explicit selection. Adding a provider applies its default for each mode, using matching
