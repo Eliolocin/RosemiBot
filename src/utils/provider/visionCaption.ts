@@ -40,6 +40,7 @@ import { createVertexexpressClient } from "@/providers/vertexexpress/vertexexpre
 import type { LlmRow } from "@/types/db/schema";
 import { normalizeProviderUsage, type TokenUsage } from "@/utils/text/tokenEstimate";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 
 /** An image ready for a provider payload, as base64 plus the MIME type that decodes it. */
 export interface VisionImage {
@@ -377,28 +378,32 @@ export async function callOpenAiCompatibleVision(
   signal: AbortSignal,
   onUsage?: (usage: TokenUsage) => void,
 ): Promise<string> {
-  const response = await fetchUserRemoteUrl(endpointUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      ...(endpointUrl === PROVIDER_CHAT_COMPLETIONS_URLS.openrouter && buildOpenRouterAttributionHeaders()),
+  const response = await fetchWithProviderRequest(
+    endpointUrl,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        ...(endpointUrl === PROVIDER_CHAT_COMPLETIONS_URLS.openrouter && buildOpenRouterAttributionHeaders()),
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } },
+            ],
+          },
+        ],
+        max_tokens: resolveVisionCaptionMaxOutputTokens(),
+      }),
+      signal,
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } },
-          ],
-        },
-      ],
-      max_tokens: resolveVisionCaptionMaxOutputTokens(),
-    }),
-    signal,
-  });
+    fetchUserRemoteUrl,
+  );
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unknown error");

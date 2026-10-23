@@ -14,6 +14,7 @@ import { buildOpenRouterReasoningRequest } from "@/utils/provider/thinkingContro
 import { buildOpenrouterProviderRouting } from "@/providers/openrouter/providerRouting";
 import { readOpenRouterLimitError, readOpenRouterLimitResponse } from "@/providers/openrouter/openrouterLimit";
 import { getOpenRouterSupportedParameters } from "@/utils/cache/openrouterCapabilityCache";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 type GenericStructuredOutputRequest = ProviderStructuredJsonRequest;
 
 type OpenrouterContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -92,7 +93,7 @@ export async function callOpenrouterStructuredJSON<T>(
         : {}),
     };
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${request.apiKey}`,

@@ -13,6 +13,7 @@ import type { ToolContext, ToolResult } from "@/types/tool/interfaces";
 import { sendToolNotice } from "@/utils/discord/toolProgressNotice";
 import { log } from "@/utils/misc/logger";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import { decryptApiKey } from "@/utils/security/crypto";
 
@@ -84,7 +85,7 @@ export class OpenRouterEngine implements WebSearchEngine {
       signal.throwIfAborted();
 
       const model = context.tomoriState.llm.llm_codename;
-      const response = await fetch(SEARCH_ENDPOINT, {
+      const response = await fetchWithProviderRequest(SEARCH_ENDPOINT, {
         method: "POST",
         redirect: "error",
         headers: {

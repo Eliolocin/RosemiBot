@@ -10,6 +10,7 @@ import { buildRoleplaySchema } from "@/providers/utils/compactCommon";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 export type {
   CompactConversationResult,
   CompactRoleplayResult,
@@ -65,7 +66,7 @@ export async function generateConversationSummaryOpenrouter(
       plugins: [{ id: "response-healing" }],
     };
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${request.apiKey}`,
@@ -169,7 +170,7 @@ export async function generateRoleplaySummaryOpenrouter(
       plugins: [{ id: "response-healing" }],
     };
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${request.apiKey}`,

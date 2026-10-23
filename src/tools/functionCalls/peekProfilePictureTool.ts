@@ -30,6 +30,7 @@ import { MEDIA_LIMITS } from "@/utils/security/rateLimiter";
 import { safeDownload } from "@/utils/security/safeDownload";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 import { normalizeProviderUsage, type TokenUsage } from "@/utils/text/tokenEstimate";
 
 /**
@@ -528,15 +529,19 @@ export class PeekProfilePictureTool extends BaseTool {
       max_tokens: 1024,
     };
 
-    const response = await fetchUserRemoteUrl(endpointUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        ...(endpointUrl === PROVIDER_CHAT_COMPLETIONS_URLS.openrouter && buildOpenRouterAttributionHeaders()),
+    const response = await fetchWithProviderRequest(
+      endpointUrl,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          ...(endpointUrl === PROVIDER_CHAT_COMPLETIONS_URLS.openrouter && buildOpenRouterAttributionHeaders()),
+        },
+        body: JSON.stringify(requestBody),
       },
-      body: JSON.stringify(requestBody),
-    });
+      fetchUserRemoteUrl,
+    );
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "Unknown error");

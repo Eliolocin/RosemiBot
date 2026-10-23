@@ -6,6 +6,7 @@ import { safeDownload } from "@/utils/security/safeDownload";
 import { z } from "zod";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 
 const OPENROUTER_ORIGIN = "https://openrouter.ai";
 const OPENROUTER_CHAT_URL = `${OPENROUTER_ORIGIN}/api/v1/chat/completions`;
@@ -107,7 +108,7 @@ async function generateViaChatCompletions(
     contentParts.push({ type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } });
   }
 
-  const response = await fetch(OPENROUTER_CHAT_URL, {
+  const response = await fetchWithProviderRequest(OPENROUTER_CHAT_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -197,7 +198,7 @@ async function generateViaImagesEndpoint(
     }));
   }
 
-  const response = await fetch(OPENROUTER_IMAGES_URL, {
+  const response = await fetchWithProviderRequest(OPENROUTER_IMAGES_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { beginProviderRequest, type ProviderRequestHold } from "@/utils/provider/providerRequestHook";
 import { findOpenRouterSpeechModel } from "@/providers/openrouter/openrouterSpeechModels";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
@@ -13,6 +14,34 @@ import {
   validateSpeechAudio,
   type SpeechOperation,
 } from "@/utils/speech/hostedSpeech";
+
+export async function synthesizeOpenRouterSpeech(request: OpenRouterSpeechRequest): Promise<Buffer> {
+  request.signal.throwIfAborted();
+  const hold = await beginProviderRequest({
+    apiKey: request.apiKey,
+    path: "/audio/speech",
+    body: {
+      model: request.model,
+      input: buildSpeechBody(request).input,
+    },
+  });
+  let completed = false;
+  try {
+    if (request.signal.aborted) {
+      hold?.reportCost(0);
+      request.signal.throwIfAborted();
+    }
+    const result = await synthesizeSpeech(request, hold);
+    completed = true;
+    const costs = request.operations.flatMap((operation) =>
+      typeof operation.actualCost === "number" ? [operation.actualCost] : [],
+    );
+    if (costs.length > 0) hold?.reportCost(costs.reduce((sum, cost) => sum + cost, 0));
+    return result;
+  } finally {
+    hold?.release(completed);
+  }
+}
 
 /**
  * Seed interprets its single prompt instead of reading it aloud and ignores OpenRouter's
@@ -56,7 +85,7 @@ function buildSpeechBody(request: OpenRouterSpeechRequest): Record<string, unkno
   };
 }
 
-export async function synthesizeOpenRouterSpeech(request: OpenRouterSpeechRequest): Promise<Buffer> {
+async function synthesizeSpeech(request: OpenRouterSpeechRequest, hold?: ProviderRequestHold): Promise<Buffer> {
   const spec = findOpenRouterSpeechModel(request.model);
   if (!spec || spec.shape !== request.shape) throw new HostedSpeechError("invalid_request");
   if (
@@ -85,6 +114,7 @@ export async function synthesizeOpenRouterSpeech(request: OpenRouterSpeechReques
   const generationId = response.headers.get("X-Generation-Id");
   if (generationId && /^[a-zA-Z0-9_-]{1,200}$/.test(generationId)) operation.generationId = generationId;
   if (!response.ok) {
+    hold?.reportCost(0);
     const rawBody = await readBoundedResponse(response, HOSTED_SPEECH_LIMITS.metadataBytes, request.signal).then(
       (buffer) => buffer.toString("utf8"),
       () => undefined,

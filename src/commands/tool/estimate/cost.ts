@@ -65,6 +65,7 @@ import { resolveWebhookPersonaAuthor } from "@/utils/discord/webhookPersonaAutho
 import { llmSections } from "@/db/seed/catalog/models";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 
 // Char-per-token ratios and the primitive estimators live in @/utils/text/tokenEstimate
 // so this command and the post-turn stat recorder share one source of truth. The
@@ -1090,7 +1091,7 @@ export async function measureOpenRouterInputTokens(
   );
   const requestBody = buildOpenRouterProbeRequest(providerConfig, messages);
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,

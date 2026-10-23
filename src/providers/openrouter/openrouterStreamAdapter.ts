@@ -63,6 +63,11 @@ import { ThinkBlockContentStripper } from "@/providers/utils/thinkBlockContentSt
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import { parseAccumulatedToolArguments } from "@/providers/utils/toolCallArguments";
 import {
+  beginProviderRequest,
+  hasProviderRequestHook,
+  type ProviderRequestHold,
+} from "@/utils/provider/providerRequestHook";
+import {
   buildDegradationAttempts,
   buildImageStripAttempt,
   buildTargetedAttempt,
@@ -180,7 +185,8 @@ interface AccumulatedToolCall {
 // Defaults off because Bun's `verbose` prints every request header, including the
 // `Authorization: Bearer` line, and it prints below application code so nothing here can
 // redact it. Enabling this writes the OpenRouter API key in clear text to container logs
-// and to anything shipping them onward.
+// and to anything shipping them onward. It also stays off whenever a request hook is
+// registered, because the hook may account for the request body this output would expose.
 const OPENROUTER_VERBOSE_FETCH = (process.env.OPENROUTER_VERBOSE_FETCH ?? "false").trim().toLowerCase() === "true";
 
 /**
@@ -772,14 +778,28 @@ export class OpenrouterStreamAdapter extends BaseStreamAdapter {
           signal: currentController.signal,
         };
 
-        if (OPENROUTER_VERBOSE_FETCH) {
+        if (OPENROUTER_VERBOSE_FETCH && !hasProviderRequestHook()) {
           requestInit.verbose = true;
         }
 
+        let spendHold: ProviderRequestHold | undefined;
+        let attemptCompleted = false;
+        let attemptFailed = false;
         try {
+          currentController.signal.throwIfAborted();
+          spendHold = await beginProviderRequest({
+            apiKey: config.apiKey ?? "",
+            path: "/chat/completions",
+            body: attempt.body,
+          });
+          if (currentController.signal.aborted) {
+            spendHold?.reportCost(0);
+            currentController.signal.throwIfAborted();
+          }
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", requestInit);
 
           if (!response.ok) {
+            spendHold?.reportCost(0);
             const errorText = await response.text();
             const parsedError = this.parseHttpErrorFromResponse(
               response.status,
@@ -897,8 +917,14 @@ export class OpenrouterStreamAdapter extends BaseStreamAdapter {
 
                 const normalizedChunk = this.normalizeOpenrouterChunk(parsed);
                 if (!normalizedChunk) continue;
+                spendHold?.reportCost(normalizedChunk.usage?.cost);
 
                 const midStreamError = this.getMidStreamError(normalizedChunk);
+                if (
+                  midStreamError ||
+                  normalizedChunk.choices?.some((choice) => (choice.finishReason ?? choice.finish_reason) === "error")
+                )
+                  attemptFailed = true;
                 if (midStreamError && !committedToAttempt) {
                   const retryPlan = planDegradationRetry({
                     attempts,
@@ -1017,9 +1043,11 @@ export class OpenrouterStreamAdapter extends BaseStreamAdapter {
           }
 
           logRecovery();
+          attemptCompleted = !attemptFailed;
           completedAttempt = true;
           break;
         } finally {
+          spendHold?.release(attemptCompleted);
           context.abortSignal?.removeEventListener("abort", externalAbortListener);
         }
       }

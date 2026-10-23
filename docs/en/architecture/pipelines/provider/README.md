@@ -108,6 +108,29 @@ exception to the dead-code rule: the release branch is a real consumer of this s
 Registration belongs at startup; each registration returns a disposer that restores the previous
 handler, which also lets tests isolate their registrations.
 
+## Request holds
+
+`src/utils/provider/providerRequestHook.ts` owns the optional request hook. A registered hook returns
+an optional hold for one provider request: `reportCost` settles the request's reported cost, and
+`release(retainEstimate)` ends the hold, counting the initial estimate as spent when `retainEstimate`
+is set and no cost arrived. The stream adapter and the job-based adapters call `beginProviderRequest`
+before the HTTP call, report each cost the provider or the job reports, and release the hold on
+completion or failure. HTTP errors and pre-send aborts report zero; an in-flight failure releases
+the hold without retaining an unreported estimate. Already-reported costs survive release.
+With no hook registered,
+`beginProviderRequest` returns no hold and each adapter sends exactly the request it sent before.
+
+`fetchWithProviderRequest` wraps the one-shot POST JSON callers. With no hook registered it calls the
+underlying fetch directly, with no body buffering. With a hook, it begins a hold from the bearer key,
+the URL path, and the parsed body; reads the response through the bounded reader; reports the JSON
+response's `usage.cost`; and returns an equivalent response so callers still read the body. Callers
+that need a gated transport pass it as the third argument. Hooks must never log the API key, path, or
+body. A registered hook also disables the OpenRouter adapter's verbose fetch output, because that
+output can print the headers and body the hook accounts for.
+
+The hook has no in-tree implementation on main. The release branch registers its deployment
+implementation at startup, and the registration returns a disposer like the usage and denial ones.
+
 ## Read order
 
 1. [Overview](/architecture/pipelines/provider/): pipeline structure and entry points
