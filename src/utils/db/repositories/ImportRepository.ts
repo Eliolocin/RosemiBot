@@ -38,7 +38,7 @@ import { invalidateUserCache } from "@/utils/cache/userCache";
 import { configRepository } from "@/utils/db/repositories/ConfigRepository";
 import { shortTermMemoryRepository } from "@/utils/db/repositories/ShortTermMemoryRepository";
 import type { SqlParameterArray } from "@/types/db/sqlOperations";
-import type { ServerChatConfigRow, ServerNoticeEmbedsConfigRow } from "@/types/db/schema";
+import type { ServerChatConfigRow, ServerNoticeEmbedsConfigRow, SubscriptionCapability } from "@/types/db/schema";
 
 type ImportFileType =
   | "personal_memories"
@@ -278,6 +278,18 @@ const TEXT_ARRAY_CONFIG_COLUMNS = new Set([
 ]);
 
 const JSONB_CONFIG_COLUMNS = new Set(["response_rule_checker_ref", "llm_logit_biases", "deliberate_tool_triggers"]);
+
+type ImportedSelectionCapability = Extract<SubscriptionCapability, "reviewer" | "speech_design" | "speech_clone">;
+
+const IMPORTED_SELECTION_COLUMNS: ReadonlyArray<{
+  capability: ImportedSelectionCapability;
+  tableName: string;
+  column: string;
+}> = [
+  { capability: "reviewer", tableName: "server_chat_configs", column: "response_reviewer_llm_id" },
+  { capability: "speech_design", tableName: "server_speech_configs", column: "speech_design_model_id" },
+  { capability: "speech_clone", tableName: "server_speech_configs", column: "speech_clone_model_id" },
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -528,6 +540,119 @@ class ImportRepository {
     }
   }
 
+  private getImportedSelectionIds(
+    tablePatches: readonly ConfigTablePatch[],
+  ): Map<ImportedSelectionCapability, number | null> {
+    const imported = new Map<ImportedSelectionCapability, number | null>();
+    for (const definition of IMPORTED_SELECTION_COLUMNS) {
+      for (const tablePatch of tablePatches) {
+        if (tablePatch.tableName !== definition.tableName || !Object.hasOwn(tablePatch.patch, definition.column)) {
+          continue;
+        }
+        const value = tablePatch.patch[definition.column];
+        if (value !== undefined) imported.set(definition.capability, value as number | null);
+      }
+    }
+    return imported;
+  }
+
+  private async subscriptionFundedImportedSelections(
+    tx: SQL,
+    serverId: number,
+    capabilities: readonly ImportedSelectionCapability[],
+    imported: ReadonlyMap<ImportedSelectionCapability, number | null>,
+  ): Promise<Set<ImportedSelectionCapability>> {
+    const [saved] = await tx<Array<{ has_subscription: boolean | null; has_byok_openrouter: boolean | null }>>`
+      SELECT
+        bool_or(provider = 'supporter') AS has_subscription,
+        bool_or(provider = 'openrouter' AND api_key IS NOT NULL) AS has_byok_openrouter
+      FROM saved_provider_configs
+      WHERE server_id = ${serverId} AND provider IN ('supporter', 'openrouter')
+    `;
+    if (!saved?.has_subscription || saved.has_byok_openrouter) return new Set();
+
+    const reviewerIds = capabilities
+      .filter((capability) => capability === "reviewer")
+      .map((capability) => imported.get(capability))
+      .filter((id): id is number => typeof id === "number");
+    const speechIds = capabilities
+      .filter((capability) => capability !== "reviewer")
+      .map((capability) => imported.get(capability))
+      .filter((id): id is number => typeof id === "number");
+
+    const openRouterReviewers =
+      reviewerIds.length === 0
+        ? []
+        : await tx<Array<{ llm_id: number }>>`
+            SELECT llm_id FROM llms
+            WHERE llm_provider = 'openrouter' AND llm_id = ANY(${sql.array(reviewerIds, "int4")})
+          `;
+    const openRouterSpeech =
+      speechIds.length === 0
+        ? []
+        : await tx<Array<{ speech_model_id: number }>>`
+            SELECT speech_model_id FROM speech_models
+            WHERE provider = 'openrouter' AND speech_model_id = ANY(${sql.array(speechIds, "int4")})
+          `;
+    const openRouterReviewerIds = new Set(openRouterReviewers.map((row) => row.llm_id));
+    const openRouterSpeechIds = new Set(openRouterSpeech.map((row) => row.speech_model_id));
+
+    return new Set(
+      capabilities.filter((capability) => {
+        const id = imported.get(capability);
+        if (typeof id !== "number") return false;
+        return capability === "reviewer" ? openRouterReviewerIds.has(id) : openRouterSpeechIds.has(id);
+      }),
+    );
+  }
+
+  private async writeImportedSelectionPayers(
+    tx: SQL,
+    serverId: number,
+    tablePatches: readonly ConfigTablePatch[],
+  ): Promise<void> {
+    const imported = this.getImportedSelectionIds(tablePatches);
+    if (imported.size === 0) return;
+
+    const [current] = await tx<Array<{ subscription_capabilities: string[] }>>`
+      SELECT subscription_capabilities FROM server_model_configs WHERE server_id = ${serverId} FOR UPDATE
+    `;
+    if (!current) throw new Error("Missing model config for imported capability ownership");
+
+    const [chat] = imported.has("reviewer")
+      ? await tx<Array<{ response_reviewer_llm_id: number | null }>>`
+          SELECT response_reviewer_llm_id FROM server_chat_configs WHERE server_id = ${serverId} FOR UPDATE
+        `
+      : [];
+    const [speech] =
+      imported.has("speech_design") || imported.has("speech_clone")
+        ? await tx<Array<{ speech_design_model_id: number | null; speech_clone_model_id: number | null }>>`
+            SELECT speech_design_model_id, speech_clone_model_id FROM server_speech_configs
+            WHERE server_id = ${serverId} FOR UPDATE
+          `
+        : [];
+    const currentIds = new Map<ImportedSelectionCapability, number | null>([
+      ["reviewer", chat?.response_reviewer_llm_id ?? null],
+      ["speech_design", speech?.speech_design_model_id ?? null],
+      ["speech_clone", speech?.speech_clone_model_id ?? null],
+    ]);
+    const changed = [...imported.keys()].filter(
+      (capability) => imported.get(capability) !== currentIds.get(capability),
+    );
+    if (changed.length === 0) return;
+
+    const funded = await this.subscriptionFundedImportedSelections(tx, serverId, changed, imported);
+    const marker = new Set(current.subscription_capabilities);
+    for (const capability of changed) {
+      marker.delete(capability);
+      if (funded.has(capability)) marker.add(capability);
+    }
+    await tx`
+      UPDATE server_model_configs SET subscription_capabilities = ${sql.array([...marker], "text")}
+      WHERE server_id = ${serverId}
+    `;
+  }
+
   /**
    * Imports selected workspace config sections as one database operation.
    * Validation and target-row checks happen before the transaction so a failed patch cannot follow a committed patch.
@@ -562,6 +687,7 @@ class ImportRepository {
       }
       const tablePatches = prepared.tablePatches.map((tablePatch) => ({ ...tablePatch, id: serverId }));
       await sql.begin(async (tx: SQL) => {
+        await this.writeImportedSelectionPayers(tx, serverId, tablePatches);
         for (const tablePatch of tablePatches) await this.updateConfigRow(tx, tablePatch);
         if (prepared.stmCategories !== undefined) await this.updateStmCategories(tx, serverId, prepared.stmCategories);
       });

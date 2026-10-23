@@ -156,6 +156,9 @@ that the older schema cannot preserve.
 Model and credential-source selections update atomically. Speech and reviewer writes update their
 own table and the ownership marker in one transaction. Migration 117 backfills subscription ownership
 only with matching OpenRouter model evidence; ambiguous historical selections keep BYOK ownership.
+Configuration imports resolve the payer of each imported reviewer or speech selection from the
+receiving server's saved credentials, and keep the current marker when the imported selection
+matches the one already stored.
 
 Personal speech uses separate `speech_design_model_id` and `speech_clone_model_id` pointers on
 `user_saved_provider_configs`. Its `assigned_capabilities` and `enabled_capabilities` arrays track
