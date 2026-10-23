@@ -7,6 +7,7 @@ import type {
 } from "@/types/db/schema";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { hasConfiguredPersonalModel } from "@/utils/provider/personalProviderHelpers";
+import { findProviderOption } from "@/utils/provider/providerOptionRegistry";
 import { log } from "@/utils/misc/logger";
 
 export interface PersonalProviderOverlayResult {
@@ -88,7 +89,15 @@ export async function applyPersonalProviderSelectionsToTomoriState(
     };
   }
 
-  const rows = await llmProviderRepo.loadUserSavedProviderConfigs(userId);
+  const loaded = await llmProviderRepo.loadUserSavedProviderConfigs(userId);
+  const eligible = await Promise.all(
+    loaded.map(async (row) => {
+      const option = findProviderOption(row.provider);
+      if (!option) return row;
+      return (await option.availability({ kind: "personal", ownerId: userId })).eligible ? row : null;
+    }),
+  );
+  const rows = eligible.filter((row): row is UserSavedProviderConfigRow => row !== null);
   if (rows.length === 0) {
     return {
       tomoriState,

@@ -5,6 +5,7 @@ import type {
   ProviderInfo,
 } from "@/types/provider/interfaces";
 import { getCustomProviderDisplayName, isCustomProvider } from "@/utils/provider/customProviderUtils";
+import { providerOptionDisplayName } from "@/utils/provider/providerOptionRegistry";
 import * as path from "node:path";
 import { Glob } from "bun";
 
@@ -97,7 +98,9 @@ export function getStaticProviderInfo(providerName: string): ProviderInfo | null
   return providerInfoByCanonicalName.get(canonicalName) ?? null;
 }
 
-export function getProviderDisplayName(providerName: string): string {
+export function getProviderDisplayName(providerName: string, locale = "en-US"): string {
+  const optionName = providerOptionDisplayName(providerName, locale);
+  if (optionName) return optionName;
   if (isCustomProvider(providerName)) {
     return getCustomProviderDisplayName(providerName);
   }

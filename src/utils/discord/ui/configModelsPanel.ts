@@ -625,7 +625,7 @@ function buildParametersBody(input: ConfigModelsPageInput): ComponentInContainer
       ...buildProviderParameterBlock({
         providerOptions: view.textProviders.map((provider) => ({
           value: provider,
-          label: getProviderDisplayName(provider),
+          label: getProviderDisplayName(provider, locale),
           default: provider === view.selectedProvider,
         })),
         copy: {
@@ -645,7 +645,7 @@ function buildParametersBody(input: ConfigModelsPageInput): ComponentInContainer
           editGenerationLabel: localizer(locale, "commands.config.panel.edit_generation_button"),
         },
         values: {
-          providerDisplayName: getProviderDisplayName(view.selectedProvider),
+          providerDisplayName: getProviderDisplayName(view.selectedProvider, locale),
           temperature: formatValue(config?.llm_temperature),
           minP: formatValue(config?.llm_min_p),
           topP: formatValue(config?.llm_top_p),
@@ -804,7 +804,7 @@ function buildFallbacksBody(input: ConfigModelsPageInput): ComponentInContainerD
         placeholder: safeSelectOptionText(
           view.expandedProvider
             ? localizer(locale, "commands.config.panel.fallback_provider_page_placeholder", {
-                provider: getProviderDisplayName(view.expandedProvider),
+                provider: getProviderDisplayName(view.expandedProvider, locale),
               })
             : localizer(locale, "commands.config.panel.fallback_provider_placeholder"),
           150,

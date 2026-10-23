@@ -124,7 +124,7 @@ export function buildResponseDraftingBody(
     disabled,
   });
   const formatModel = (model: string, provider: string): string =>
-    formatModelSelectionLabel(model, getProviderDisplayName(provider), t("commands.config.panel.none_label"));
+    formatModelSelectionLabel(model, getProviderDisplayName(provider, locale), t("commands.config.panel.none_label"));
   const reviewerLabel = (): string => {
     const id = state.config.response_reviewer_llm_id;
     if (id === null) {

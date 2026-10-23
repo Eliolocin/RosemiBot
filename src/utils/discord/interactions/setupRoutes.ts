@@ -3,6 +3,7 @@ import {
   PermissionsBitField,
   type ChatInputCommandInteraction,
   type Client,
+  type ComponentInContainerData,
   type Guild,
 } from "discord.js";
 import {
@@ -23,6 +24,11 @@ import {
   updateSetupDraft,
   type SetupDraftReadResult,
 } from "@/utils/discord/interactions/setupDraftStore";
+import {
+  findProviderOption,
+  getProviderOptions,
+  providerOptionActionOption,
+} from "@/utils/provider/providerOptionRegistry";
 import {
   buildInteractionRouteId,
   parseInteractionRoute,
@@ -59,6 +65,7 @@ import {
   parseSetupTimezoneOffset,
   setupNoticeReceipt,
   toSetupSettingsCatalogs,
+  type SetupProviderOptionSummary,
   type SetupSettingsCatalogs,
 } from "@/utils/discord/ui/setupPanel";
 import { deliverGuardedPanel } from "@/utils/discord/interactions/panelController";
@@ -383,6 +390,7 @@ async function deliverSetupWizard(
     settingsCatalogs: SetupSettingsCatalogs | null | undefined;
   },
 ): Promise<void> {
+  const optionRender = await resolveSetupProviderOptionRender(interaction, draft, locale);
   const payload = buildSetupWizardPayload({
     draft,
     locale,
@@ -391,8 +399,41 @@ async function deliverSetupWizard(
     notice: options.notice,
     receipt: options.receipt,
     settingsCatalogs: options.settingsCatalogs,
+    providerOptions: optionRender.options,
+    optionComponents: optionRender.components,
+    optionReady: optionRender.ready,
   });
   await deliverGuardedPanel(interaction, payload, { locale, method: options.method, receipt: options.receipt });
+}
+
+interface SetupProviderOptionRender {
+  options: SetupProviderOptionSummary[];
+  components: readonly ComponentInContainerData[];
+  ready: boolean;
+}
+
+async function resolveSetupProviderOptionRender(
+  interaction: ChatInputCommandInteraction | GlobalRoutableInteraction,
+  draft: SetupDraftRecord,
+  locale: string,
+): Promise<SetupProviderOptionRender> {
+  const render: SetupProviderOptionRender = { options: [], components: [], ready: false };
+  const selected = draft.providerAccess?.mode === "option" ? findProviderOption(draft.providerAccess.value) : undefined;
+  for (const option of getProviderOptions()) {
+    const setup = option.setup;
+    if (!setup || (setup.available && !setup.available({ context: draft.context }))) continue;
+    render.options.push({
+      value: option.value,
+      labelKey: setup.optionLabelKey,
+      descriptionKey: setup.optionDescriptionKey,
+      summaryKey: setup.summaryKey,
+    });
+    if (option !== selected) continue;
+    const context = { locale, draft, interaction };
+    render.ready = setup.ready ? (await setup.ready(context)).ready : true;
+    render.components = (await setup.components?.(context)) ?? [];
+  }
+  return render;
 }
 
 /**
@@ -583,6 +624,21 @@ async function revalidateSetupCommit(draft: SetupDraftRecord, locale: string): P
   if (access.mode === "user-byok" && draft.context === "dm") {
     return { notice: localizer(locale, "commands.setup.wizard.provider_byok_guild_only"), scope: "provider" };
   }
+  if (access.mode === "option") {
+    const setup = findProviderOption(access.value)?.setup;
+    if (!setup || (setup.available && !setup.available({ context: draft.context }))) {
+      return { notice: localizer(locale, "commands.setup.wizard.provider_invalid"), scope: "provider" };
+    }
+    if (setup.ready) {
+      const readiness = await setup.ready({ locale, draft });
+      if (!readiness.ready) {
+        return {
+          notice: localizer(locale, readiness.reasonKey ?? "commands.setup.wizard.provider_invalid"),
+          scope: "provider",
+        };
+      }
+    }
+  }
   if (access.mode === "catalog") {
     if (!isCatalogProviderCurrent(access)) {
       return { notice: localizer(locale, "commands.setup.wizard.provider_invalid"), scope: "provider" };
@@ -621,6 +677,9 @@ function toSetupProviderAccess(access: SetupDraftProviderAccess): SetupProviderA
   }
   if (access.mode === "user-byok") {
     return { mode: "user-byok" };
+  }
+  if (access.mode === "option") {
+    return { mode: "option", value: access.value };
   }
   // A complete custom-endpoint draft always carries both halves: a connection-only draft never
   // passes the completeness gate that guards this path.
@@ -843,6 +902,8 @@ async function runSetupPostCommitEffects(input: {
       help: commandRegistry.getCommandMention("help"),
     }),
     footerKey,
+    optionReceiptDescriptionKey:
+      access.mode === "option" ? findProviderOption(access.value)?.setup?.receiptDescriptionKey : undefined,
   });
 
   try {
@@ -1073,6 +1134,20 @@ async function finishSetupWizardDraft(
     committed = true;
     // Only now, with the rows committed: every reader below this line must see the new workspace.
     invalidateTomoriStateCache(workspaceKey);
+    if (access.mode === "option") {
+      const option = findProviderOption(access.value);
+      if (option?.setup?.committed) {
+        const serverId = setupResult.server.server_id;
+        if (!serverId) throw new Error("Setup did not return a server ID for a registered provider option");
+        await option.setup.committed({
+          locale,
+          draft: claimedDraft,
+          interaction,
+          serverId,
+          workspaceKey,
+        });
+      }
+    }
 
     let receiptDelivered: boolean;
     try {
@@ -1467,6 +1542,30 @@ export const setupInteractionRoute: GlobalInteractionRoute = {
           return;
         }
         const selectedMode = interaction.values[0];
+        const selectedOption = providerOptionActionOption(selectedMode);
+        if (selectedOption) {
+          const setup = selectedOption.setup;
+          if (!setup || (setup.available && !setup.available({ context }))) {
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.reply({
+                content: localizer(locale, "commands.setup.wizard.provider_invalid"),
+                flags: MessageFlags.Ephemeral,
+              });
+            }
+            return;
+          }
+          await interaction.deferUpdate();
+          await applySetupDraftWrite(
+            interaction,
+            updateSetupDraft(nonce, actorDiscId, workspaceKey, context, {
+              providerAccess: { mode: "option", value: selectedOption.value },
+            }),
+            locale,
+            nonce,
+            "editReply",
+          );
+          return;
+        }
         if (selectedMode === "catalog") {
           const cleared = updateSetupDraft(nonce, actorDiscId, workspaceKey, context, { providerAccess: null });
           if (cleared.status !== "ok") {

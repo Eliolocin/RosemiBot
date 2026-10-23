@@ -6,6 +6,7 @@ import type {
 } from "@/types/db/schema";
 import { llmProviderRepo } from "@/utils/db/repositories";
 import { prunePrimaryFallbackRefs } from "@/utils/provider/fallbackModelIdentity";
+import { writeProviderSpeechSelection } from "@/utils/provider/providerOptionRegistry";
 import { setHostedSpeechSelection } from "@/utils/db/repositories/SpeechRepository";
 
 function sortProviderRows(rows: UserSavedProviderConfigRow[]): UserSavedProviderConfigRow[] {
@@ -195,7 +196,12 @@ export async function assignPersonalCapabilityToProvider(
     const next = updater(row);
     const mode = capability === "speech_design" ? "design" : "clone";
     const modelId = mode === "design" ? next.speech_design_model_id : next.speech_clone_model_id;
-    return modelId != null && setHostedSpeechSelection({ kind: "personal", ownerId: userId }, modelId, mode);
+    return (
+      modelId != null &&
+      writeProviderSpeechSelection({ scope: { kind: "personal", ownerId: userId }, provider, modelId, mode }, () =>
+        setHostedSpeechSelection({ kind: "personal", ownerId: userId }, modelId, mode),
+      )
+    );
   }
 
   let updated = false;

@@ -131,6 +131,64 @@ output can print the headers and body the hook accounts for.
 The hook has no in-tree implementation on main. The release branch registers its deployment
 implementation at startup, and the registration returns a disposer like the usage and denial ones.
 
+## Provider options
+
+`src/utils/provider/providerOptionRegistry.ts` owns the optional extra entries the provider panels,
+setup wizard, and model views can offer beside the built-in providers. Built-in providers keep their
+existing code paths: every surface asks the registry first and falls through unchanged when nothing
+is registered. Registration returns a disposer, and no option is registered in-tree on main.
+
+An option declares its stored provider value, the provider catalog its models come from, the
+capabilities it serves, and the copy keys every surface renders. Its `availability` decides whether
+the workspace or user can use it and supplies the locale key that explains a refusal. Its `selection`
+hooks own the payer state: `load` reports a stored selection the panel can show, `ensure` creates one,
+`owns` answers which capabilities that payer currently holds, `claim` and `release` move a capability
+between payers, `validateModel` refuses a model the payer cannot serve, and `remove` deletes the
+stored selection. `setSpeech` writes speech selection and registration under the option's payer;
+its input preserves scope, mode and replacement identity. Hosted speech registration resolves the
+catalog separately and sends option writes to this callback, so personal options can store selections
+without built-in credentials. Built-in speech writes keep using the speech repository.
+The registry never adds storage of its own.
+
+An option's panel `handleAction` owns interaction acknowledgement. It may show a modal immediately,
+or acknowledge before awaiting its lazy `loadSelection()` callback, which loads the scope and edit
+entry. Returning false repaints an acknowledged interaction or sends a refusal on an unacknowledged
+one. Setup acknowledges option selection before awaiting readiness and component rendering.
+
+Surfaces resolve an option through `findProviderOption` before treating a provider value as a
+built-in one. `getProviderDisplayName` resolves the option's `copy.labelKey`, and
+`loadConfigModelChoices` loads models from its `catalogProvider`. Model views attribute a slot to
+the option only while its `owns` answers for that capability, so the same model ID under the catalog
+provider and under the option stay distinct.
+`claimProviderModelSelection` records ownership after a successful selection write, and
+`clearProviderModelSelection` releases it when a slot is emptied. Built-in selections release the
+previous option's marker even when the new model comes from another catalog. The model-write
+wrapper runs `onWritten` after every successful model write, including failed or throwing ownership
+updates, so callers can invalidate cached state.
+
+Deployment behavior maps onto these fields:
+
+| Behavior | Field |
+|---|---|
+| Stored provider value | `value` |
+| Models sourced from an existing catalog | `catalogProvider` |
+| Capabilities offered and panel sections exposed | `capabilities` |
+| Scope eligibility and refusal copy key | `availability` |
+| Stored payer presence for the panel entry | `selection.load`, `selection.ensure` |
+| Capability ownership read, write, and clear | `selection.owns`, `selection.claim`, `selection.release` |
+| Model admission and refusal | `selection.validateModel` |
+| Payer-aware speech selection and registration | `selection.setSpeech` |
+| Removing the stored selection | `selection.remove` |
+| Panel entry, description, and removal copy | `copy.labelKey`, `copy.entryDescriptionKeys`, `copy.removeImpactKey` |
+| Panel select action and its copy | `copy.addActionLabelKey`, `copy.addActionDescriptionKeys`, `panel.handleAction` |
+| Panel entry buttons and extra components | `panel.entryActions`, `panel.entryComponents`, `panel.entryOwned` |
+| Model option description | `copy.modelDescriptionKey` |
+| Setup option, summary, receipt, onboarding, and commit | `setup.optionLabelKey`, `setup.optionDescriptionKey`, `setup.summaryKey`, `setup.receiptDescriptionKey`, `setup.available`, `setup.ready`, `setup.components`, `setup.committed` |
+
+One deployment-managed behavior stays outside the registry because main has no field for it: a
+fallback ref's payer tag. A deployment that needs it keeps that tag on its own branch, where
+`src/types/db/schema.ts` and the fallback identity helpers already differ.
+
 ## Read order
 
 1. [Overview](/architecture/pipelines/provider/): pipeline structure and entry points
