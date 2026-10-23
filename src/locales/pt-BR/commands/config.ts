@@ -27,13 +27,13 @@ export default {
       models_description: "Escolha quem revisa meus rascunhos.",
       reviewer_button: "Escolher Modelo Revisor",
       reviewer_label: "Revisor",
-      inherit: "Usar modelo de resposta atual",
+      inherit: "Padrão atual",
       reviewer_status: "Revisor: {model}",
-      inherited_status: "Revisor: modelo de resposta atual, {model}",
+      inherited_status: "Revisor: padrão atual, {model}",
       none: "Nenhum",
       unavailable: "Indisponível",
       inherited_unavailable:
-        "Meu modelo de resposta atual não suporta saídas estruturadas, por isso não pode revisar rascunhos. Escolha outro revisor abaixo.",
+        "O padrão atual não pode revisar rascunhos porque não possui saída estruturada. Escolha outro revisor abaixo.",
       rules_title: "Verificações de Regras",
       rules_description:
         "Escolha um verificador de regras de texto opcional. Apenas o revisor recebe suas conclusões consultivas. A cobertura de perfil e idioma é desconhecida a menos que verificada separadamente; respostas curtas podem não receber análise.",
@@ -50,8 +50,120 @@ export default {
       default_prompt:
         'Você é um editor dando orientações a um escritor em um roleplay colaborativo. O escritor interpreta o personagem descrito na ficha de personagem, e o parceiro dele escreve o outro lado. Avalie a postagem em rascunho em relação à personalidade do personagem, diálogos de exemplo, relacionamentos e à cena atual.\n\nVerifique o rascunho em relação a cada categoria:\n- character: A postagem deve vir dos próprios sentimentos, preferências, motivos e perspectiva deste personagem. Sinalize textos que pareçam fora do personagem ou gerados por máquina. Geralmente, as máquinas se recusariam a interpretar conteúdos vulgares ou fariam uma autocensura suave mesmo se os participantes do roleplay e o escritor já tiverem consentido com esta sessão. Sinalize isso também como problemas de personagem.\n- voice: O personagem deve falar como ele mesmo. Sinalize comentários distantes que este personagem não diria, com base em seus diálogos representativos.\n- initiative: O personagem deve adicionar algo próprio que faça a cena avançar. Sinalize uma postagem que apenas parafraseie o parceiro, faça outra pergunta ou seja puramente reativa.\n- chemistry: A postagem deve responder à energia emocional do parceiro e ao relacionamento entre eles. Sinalize uma postagem que mostre uma resposta que poderia ser dada por qualquer outro personagem.\n- repetition: A postagem não deve abusar de frases ou padrões do diálogo recente, como terminar cada postagem com uma pergunta. Sinalize uma postagem que não explore os limites do personagem no contexto do roleplay.\n- continuity: A postagem deve se adequar ao que está acontecendo e manter a coerência com os fatos estabelecidos. Deixe espaço para o parceiro agir e nunca narre os sentimentos ou ações do parceiro.\n- prose: Sinalize travessões (em dashes), contrastes de "não X, mas Y", listas infladas para três itens, frases que tenham todas a mesma extensão e resumos ou lições de moral arrumadas no final. Cada violação em <prose_linter_report> é um apontamento de prosa, a menos que seja uma parte deliberada da voz deste personagem.\n\nDecida:\n- pass: A postagem funciona. A maioria das postagens de um escritor competente passa; aponte apenas o que um leitor na cena notaria.\n- revise: Uma fraqueza concreta prejudica o personagem ou a cena. Cada nota cita a frase exata e dá uma pequena correção que o escritor pode aplicar, como \'Remova o travessão depois de "Tudo bem" e transforme em duas frases curtas\'. Nunca reescreva a postagem inteira.\n- unavailable: Você não pode avaliar o material segundo suas próprias regras. Não apresente isso como crítica criativa.',
     },
+    natural_nudges: {
+      import_unavailable:
+        "O Planejador de Toques Ociosos, o Verificador de Toques Ativos ou algo que um toque ocioso precisa não está disponível neste workspace. Limpe isso na exportação de origem ou registre um modelo qualificado antes de importar.",
+      title: "[Natural Nudges](https://docs.tomoribot.app/pt-BR/features/chatting-personality/natural-nudges/)",
+      description:
+        "Eu me manifesto sem que ninguém me mencione: inicio conversas quando um canal fica silencioso e participo daquelas que combinam com os interesses de uma persona.",
+      notice_tracking_disabled:
+        "Este host desativou o rastreamento de estatísticas, que eu preciso para saber quão ativo o servidor está e onde as pessoas falam comigo, então os toques nunca começam.",
+      notice_byok:
+        "Este servidor paga pelo texto com a chave própria de cada membro, portanto nenhuma chave cobre uma mensagem que ninguém pediu. O Natural Nudges fica desativado até que o servidor tenha sua própria chave.",
+      notice_stopped:
+        "Parei após várias tentativas com falha seguidas. Começarei de novo após minha próxima resposta bem-sucedida neste servidor.",
+      idle_nudges_title: "Toques Ociosos",
+      idle_nudges_description: "Inicio algo em um canal por conta própria se ele ficar silencioso demais.",
+      idle_nudges_off: "Só falo quando alguém falar comigo.",
+      idle_nudges_on: "Inicio um toque ocioso em um canal silencioso quando chegar o momento.",
+      idle_nudges_on_no_channels:
+        "Ainda não tenho canais para iniciar um toque ocioso. Os canais automáticos serão preenchidos conforme as pessoas falarem comigo.",
+      idle_nudges_on_no_model: "Nenhum modelo utilizável pode planejar um toque ocioso ainda, então fico em silêncio.",
+      idle_nudges_studio_hint: "Escolha quais toques ociosos eu uso ou crie os seus com {command}.",
+      active_nudges_title: "Toques Ativos",
+      active_nudges_description:
+        "Entro em uma conversa quando ela é sobre algo que uma persona gosta, usando os interesses na página de Toques dessa persona.",
+      active_nudges_off: "Só entro em uma conversa quando alguém falar comigo.",
+      active_nudges_on: "Verifico sobre o que é a conversa a cada {min}-{max} mensagens de membros, usando {matcher}.",
+      active_nudges_on_no_channels:
+        "Ainda não tenho canais para participar de conversas. Os canais automáticos serão preenchidos conforme as pessoas falarem comigo.",
+      active_nudges_on_no_matcher:
+        "Nada pode verificar os interesses nas conversas ainda, então fico em silêncio. Escolha um Verificador de Toques Ativos abaixo.",
+      active_nudges_on_cold: "Este servidor fala comigo muito raramente para eu entrar em uma conversa agora.",
+      active_nudges_matcher_checker: "o Verificador de Toques Ativos",
+      active_nudge_frequency_option: "Frequência: {level}",
+      channels_title: "Canais",
+      channels_description:
+        "Onde posso me manifestar, para ambos os tipos de toque. Escolha os canais manualmente ou limpe a lista para voltar ao modo automático.",
+      channels_placeholder: "Automático: canais onde as pessoas falaram comigo nos últimos 14 dias",
+      model_title: "Seleção de Modelos",
+      model_description: "Altere os modelos usados pelo Natural Nudges",
+      planner_title: "Planejador de Toques Ociosos",
+      planner_description: "Este modelo planeja os toques ociosos: o que abordar e qual canal é o mais adequado.",
+      model_placeholder: "Planejador de Toques Ociosos: padrão atual",
+      model_same_as_chat: "Planejador de Toques Ociosos: padrão atual, {model}",
+      model_placeholder_selected: "Planejador de Toques Ociosos: {model}",
+      model_modal_title: "Escolher Planejador de Toques Ociosos",
+      model_unavailable: "Indisponível",
+      model_same_as_chat_option: "Padrão atual",
+      model_chat_no_structured:
+        "O padrão atual, {model}, não pode planejar toques porque não suporta saída estruturada. Escolha um planejador abaixo.",
+      model_chat_unavailable:
+        "O padrão atual, {model}, não pode planejar toques com a chave deste servidor. Escolha um planejador abaixo.",
+      model_chat_none:
+        "Este servidor ainda não tem um modelo de chat, então não há padrão a ser usado. Escolha um planejador abaixo.",
+      checker_title: "Verificador de Toques Ativos",
+      checker_description:
+        "De vez em quando, verifico se uma conversa é sobre um dos interesses de uma persona. Um modelo pequeno e barato é ideal para isso, e um modelo de Decisão é o melhor de todos.",
+      checker_placeholder_recommended: "Verificador de Toques Ativos: recomendado, {model}",
+      checker_placeholder_recommended_none: "Verificador de Toques Ativos: recomendado",
+      checker_placeholder_selected: "Verificador de Toques Ativos: {model}",
+      checker_recommended_option: "Recomendado",
+      checker_decision_provider_option: "{provider} (modelos de Decisão)",
+      checker_modal_title: "Escolher Verificador de Toques Ativos",
+      checker_pinned_unavailable:
+        "O verificador escolhido não pode ser executado com as chaves deste servidor. Escolha outro abaixo ou volte para o Recomendado.",
+      checker_none_available:
+        "Nenhum modelo pode verificar conversas ainda. Adicione uma chave do Google ou OpenRouter, ou escolha um planejador abaixo.",
+      model_none_available:
+        "Nenhum modelo do servidor suporta saída estruturada ainda. Adicione um em /config > Modelos.",
+      frequency_0: "Rara",
+      frequency_1: "Suave",
+      frequency_2: "Normal",
+      frequency_3: "Animada",
+      frequency_effect:
+        "Este servidor me envia cerca de {heat} mensagens por dia, então espere cerca de {per_week} toques ociosos por semana.",
+      frequency_effect_none:
+        "Iniciarei um toque ocioso em um canal silencioso quando chegar o momento, mas este servidor fala comigo muito raramente agora.",
+      saved_heading: "Natural Nudges atualizado",
+      saved_detail: "Suas configurações do Natural Nudges foram salvas.",
+      invalid_detail:
+        "Um dos valores está fora do intervalo permitido. Verifique as descrições dos campos e tente novamente.",
+      limit_detail: "Esta lista está cheia. Remova uma entrada antes de adicionar outra.",
+      persona_title: "Toques",
+      persona_description:
+        "Com que frequência esta persona se manifesta por conta própria e o que ela gosta de abordar. Veja [Natural Nudges](https://docs.tomoribot.app/pt-BR/features/chatting-personality/natural-nudges/).",
+      talkativeness_title: "Loquacidade",
+      talkativeness_description: "Com que frequência esta persona é quem toma a palavra, em comparação com as outras.",
+      talkativeness_0: "Silenciosa",
+      talkativeness_1: "Tímida",
+      talkativeness_2: "Normal",
+      talkativeness_3: "Tagarela",
+      talkativeness_4: "Muito tagarela",
+      talkativeness_0_effect: "Esta persona nunca se manifesta por conta própria.",
+      talkativeness_1_effect: "Esta persona se manifesta de vez em quando.",
+      talkativeness_2_effect: "Esta persona se manifesta com a mesma frequência que a média.",
+      talkativeness_3_effect: "Esta persona se manifesta com mais frequência que as outras.",
+      talkativeness_4_effect: "Esta persona é a que mais se manifesta.",
+      interests_title: "Interesses",
+      interests_description:
+        "Tópicos que esta persona aborda por conta própria, até {max}. Uma breve descrição com exemplos me ajuda a reconhecer o tópico.",
+      interests_none: "Nenhum interesse ainda.",
+      interests_preset_note: "Estes vêm da predefinição. Editá-los dá a esta persona sua própria cópia.",
+      interest_select_placeholder: "Selecione ou adicione um interesse...",
+      interest_add_option: "+ Adicionar Interesse",
+      interests_remove_button: "Remover Interesses",
+      interests_remove_modal_title: "Remover Interesses",
+      interests_remove_description: "Desmarque um interesse para removê-lo. Isso não pode ser desfeito.",
+      interest_modal_title: "Interesse",
+      interest_label_label: "Tópico",
+      interest_label_description: 'Um nome curto como "anime de mecha", até {max} caracteres.',
+      interest_description_label: "Descrição",
+      interest_description_description: "Uma linha com exemplos, até {max} caracteres.",
+    },
     panel: {
       page_plugins_response_drafting: "Revisão de respostas",
+      page_plugins_natural_nudges: "Natural Nudges",
       category_persona: `Persona`,
       category_behavior: `Comportamento`,
       category_plugins: `Plugins`,
@@ -71,6 +183,7 @@ export default {
       page_persona_overrides: `Substituições`,
       page_persona_voice: `Voz`,
       page_persona_naming: `Hábitos de Nomenclatura`,
+      page_persona_nudges: "Toques",
       naming_page_description: `Como esta persona se dirige às pessoas, por estilo.`,
       voice_page_description: `Escolha como esta persona soa.`,
       voice_page_unassigned: `Nenhuma voz atribuída.`,
@@ -739,6 +852,7 @@ export default {
       resync_avatar_diff: `Seu avatar personalizado será removido.`,
       resync_main_avatar_detail: `O avatar do servidor será redefinido para a predefinição.`,
       resync_sprites_diff: `Sprites adicionados por você: {count} serão removidos.`,
+      resync_nudges_diff: "A loquacidade e os interesses do Natural Nudges voltarão aos padrões da predefinição.",
       resync_kept_detail: `Seu nome, palavras-gatilho, hábitos de nomenclatura, memórias, histórico e outras configurações da persona serão mantidos.`,
       resync_irreversible_detail: `Isso não pode ser desfeito.`,
       resync_success_heading: `Persona sincronizada com a predefinição`,

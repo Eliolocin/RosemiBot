@@ -210,11 +210,11 @@ TomoriBot 目前註冊的每一個斜線指令，都是從 Discord 註冊時使�
 
 ## `/nudge-studio`
 
-Choose which idle nudges I use in this server, and write your own.
+選擇我在此伺服器中使用的閒置搭話，或自行撰寫。
 
 | 指令 | 摘要 |
 |---|---|
-| `/nudge-studio` | Choose which idle nudges I use in this server, and write your own. |
+| `/nudge-studio` | 選擇我在此伺服器中使用的閒置搭話，或自行撰寫。 |
 
 ## `/nuke`
 

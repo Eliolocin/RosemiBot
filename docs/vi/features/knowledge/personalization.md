@@ -83,7 +83,7 @@ Máy chủ có thể yêu cầu các thành viên cung cấp khóa API của ri�
 Sử dụng `/personal config` để tùy chỉnh các tính năng bổ sung:
 
 - **Giao diện** (`Hồ sơ` > `Diện mạo`): lưu các thẻ giao diện kiểu booru được sử dụng bất cứ khi nào [tạo hình ảnh](/vi/features/capabilities/media-generation/image-generation/#tag-customization) tham chiếu đến bạn. Gửi một hộp trống để xóa chúng.
-- **Kiểm soát quyền riêng tư** (`Quyền riêng tư` > `Kiểm soát quyền riêng tư`): chọn mức độ hiển thị của bạn (`Không có`, `Một phần` hoặc `Đầy đủ`) hoặc chuyển đổi chia sẻ bộ nhớ ngắn hạn trên nhiều máy chủ.
+- **Kiểm soát quyền riêng tư** (`Quyền riêng tư` > `Kiểm soát quyền riêng tư`): chọn mức độ hiển thị của bạn (`Không có`, `Một phần` hoặc `Đầy đủ`), bật/tắt chia sẻ bộ nhớ ngắn hạn giữa các máy chủ, hoặc tắt [Persona tag bạn](/features/chatting-personality/natural-nudges/#ping-user) để persona không bao giờ tag bạn để bắt đầu cuộc trò chuyện.
 - **Chế độ phản hồi** (`Nâng cao` > `Chế độ phản hồi`): chuyển đổi tùy chỉnh cá nhân của bạn cho [Chế độ kích hoạt có chủ ý](/vi/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode).
 - **Mạo danh** (`Nâng cao` > `Mạo danh`): đặt lời nhắc có thể sử dụng lại được sử dụng khi ai đó gọi `/impersonate user` cho bạn.
 

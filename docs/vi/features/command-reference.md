@@ -210,11 +210,11 @@ Các lệnh và cài đặt giới hạn độ tuổi.
 
 ## `/nudge-studio`
 
-Choose which idle nudges I use in this server, and write your own.
+Chọn gợi ý nhàn rỗi mình sẽ dùng trong máy chủ này và tự viết gợi ý của bạn.
 
 | Lệnh | Tóm tắt |
 |---|---|
-| `/nudge-studio` | Choose which idle nudges I use in this server, and write your own. |
+| `/nudge-studio` | Chọn gợi ý nhàn rỗi mình sẽ dùng trong máy chủ này và tự viết gợi ý của bạn. |
 
 ## `/nuke`
 

@@ -210,11 +210,11 @@ Discordチャンネルを双方向リレーでMatrixルームにリンクしま�
 
 ## `/nudge-studio`
 
-Choose which idle nudges I use in this server, and write your own.
+このサーバーで使用するアイドルナッジを選択したり、独自に作成したりします。
 
 | コマンド | 概要 |
 |---|---|
-| `/nudge-studio` | Choose which idle nudges I use in this server, and write your own. |
+| `/nudge-studio` | このサーバーで使用するアイドルナッジを選択したり、独自に作成したりします。 |
 
 ## `/nuke`
 

@@ -87,7 +87,7 @@ Những hành động này sẽ xóa vĩnh viễn hoặc đặt lại dữ liệ
 
 ## Từ chối tham gia
 
-- `/personal config`: kiểm soát khả năng hiển thị của bạn, tối đa khả năng tàng hình hoàn toàn (chọn không tham gia bối cảnh bộ nhớ).
+- `/personal config`: kiểm soát mức hiển thị của bạn, đến mức ẩn hoàn toàn (không tham gia vào ngữ cảnh bộ nhớ), và tắt [Persona tag bạn](/features/chatting-personality/natural-nudges/#ping-user), những gợi ý nhàn rỗi mà persona tag bạn để bắt đầu cuộc trò chuyện.
 - `/config` > `Quyền hạn`: người quản lý máy chủ có thể tắt các tính năng tự học và bộ nhớ.
 
 Xem [Bộ nhớ](/vi/features/knowledge/memory/) để biết cách quản lý bộ nhớ hàng ngày.

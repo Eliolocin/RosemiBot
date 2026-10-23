@@ -87,7 +87,7 @@ aiGenerated: true
 
 ## 选择退出
 
-- `/personal config`：控制你的可见性，直至完全不可见（选择退出内存上下文）。
+- `/personal config`：控制你的可见性，直至完全不可见（选择退出记忆上下文），并关闭[来自人格的提及](/features/chatting-personality/natural-nudges/#ping-user)（即人格主动 @提及 你发起对话的空闲搭话）。
 - `/config` > `权限`：服务器管理员可以关闭自学习和内存功能。
 
 日常内存管理请参见[内存](/zh-CN/features/knowledge/memory/)。

@@ -210,11 +210,11 @@ Configurações e comandos com restrição de idade.
 
 ## `/nudge-studio`
 
-Choose which idle nudges I use in this server, and write your own.
+Escolha quais toques ociosos eu uso neste servidor e escreva os seus.
 
 | Comando | Resumo |
 |---|---|
-| `/nudge-studio` | Choose which idle nudges I use in this server, and write your own. |
+| `/nudge-studio` | Escolha quais toques ociosos eu uso neste servidor e escreva os seus. |
 
 ## `/nuke`
 

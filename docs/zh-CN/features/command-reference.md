@@ -210,11 +210,11 @@ TomoriBot 当前注册的全部斜杠指令，由与 Discord 注册所用的同�
 
 ## `/nudge-studio`
 
-Choose which idle nudges I use in this server, and write your own.
+选择我在此服务器中使用的空闲搭话，或自行撰写。
 
 | 指令 | 摘要 |
 |---|---|
-| `/nudge-studio` | Choose which idle nudges I use in this server, and write your own. |
+| `/nudge-studio` | 选择我在此服务器中使用的空闲搭话，或自行撰写。 |
 
 ## `/nuke`
 

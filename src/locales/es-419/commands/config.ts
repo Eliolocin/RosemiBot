@@ -27,13 +27,13 @@ export default {
       models_description: "Elige quién revisa mis borradores.",
       reviewer_button: "Elegir modelo revisor",
       reviewer_label: "Revisor",
-      inherit: "Usar el modelo de respuesta actual",
+      inherit: "Predeterminado actual",
       reviewer_status: "Revisor: {model}",
-      inherited_status: "Revisor: modelo de respuesta actual, {model}",
+      inherited_status: "Revisor: predeterminado actual, {model}",
       none: "Ninguno",
       unavailable: "No disponible",
       inherited_unavailable:
-        "Mi modelo de respuesta actual no admite salidas estructuradas, por lo que no puede revisar borradores. Elige otro revisor abajo.",
+        "El modelo predeterminado actual no puede revisar borradores porque no admite salidas estructuradas. Elige otro revisor abajo.",
       rules_title: "Comprobaciones de reglas",
       rules_description:
         "Elige un verificador de reglas de texto opcional. Solo el revisor recibe sus observaciones orientativas. La cobertura de perfiles e idiomas se desconoce a menos que se verifique por separado; las respuestas cortas pueden no recibir análisis.",
@@ -50,8 +50,124 @@ export default {
       default_prompt:
         'Eres un editor que da notas a un escritor en un juego de rol colaborativo. El escritor interpreta al personaje descrito en la ficha de personaje y su compañero escribe la otra parte. Evalúa la publicación en borrador según la personalidad del personaje, los diálogos de ejemplo, las relaciones y la escena actual.\n\nRevisa el borrador según cada categoría:\n- character: La publicación debe surgir de los propios sentimientos, preferencias, motivos y perspectiva de este personaje. Señala la redacción que no encaje con el personaje o que parezca hecha por una máquina. Por lo general, las máquinas se negarían a interpretar contenido vulgar o lo censurarían sutilmente incluso si los participantes del juego de rol y el escritor ya han dado su consentimiento para esta sesión. Señala esto también como problemas del personaje.\n- voice: El personaje debe hablar como él mismo. Señala los comentarios distantes que este personaje no diría, basándote en sus diálogos representativos.\n- initiative: El personaje debe aportar algo propio que haga avanzar la escena. Señala una publicación que solo parafrasee al compañero, haga otra pregunta o sea únicamente reactiva.\n- chemistry: La publicación debe responder a la energía emocional del compañero y a la relación entre ellos. Señala una publicación que muestre una respuesta que podría haber dado cualquier otro personaje.\n- repetition: La publicación no debe abusar de frases o patrones del diálogo reciente, como terminar cada publicación con una pregunta. Señala una publicación que no lleve al límite al personaje del juego de rol dado el contexto.\n- continuity: La publicación debe encajar con lo que está ocurriendo y mantener la coherencia con los hechos establecidos. Deja espacio para que el compañero actúe y nunca narres los sentimientos o acciones del compañero.\n- prose: Señala rayas (em dashes), contrastes de "no X, sino Y", listas infladas a tres elementos, oraciones que tengan todas la misma longitud y resúmenes o moralejas pulcras al final. Cada infracción en <prose_linter_report> es una observación de prosa a menos que sea una parte deliberada de la voz de este personaje.\n\nDecide:\n- pass: La publicación funciona. La mayoría de las publicaciones de un escritor competente pasan; señala solo lo que un lector en la escena notaría.\n- revise: Una debilidad concreta perjudica al personaje o a la escena. Cada nota cita la frase exacta y ofrece una pequeña corrección que el escritor puede aplicar, como \'Elimina la raya después de "Bien" y conviértelo en dos oraciones cortas\'. Nunca reescribas toda la publicación.\n- unavailable: No puedes evaluar el material según tus propias reglas. No presentes eso como una crítica creativa.',
     },
+    natural_nudges: {
+      import_unavailable:
+        "El planificador de intervenciones espontáneas, el verificador de intervenciones activas o algo necesario para una intervención espontánea no está disponible en este espacio de trabajo. Bórralo en la exportación de origen o registra un modelo apto antes de importar.",
+      title: "[Natural Nudges](https://docs.tomoribot.app/es-419/features/chatting-personality/natural-nudges/)",
+      description:
+        "Hablo sin que nadie me mencione: inicio conversaciones cuando un canal queda en silencio y me uno a aquellas que coinciden con los intereses de una persona.",
+      notice_tracking_disabled:
+        "Este anfitrión desactivó el seguimiento de estadísticas, que necesito para saber qué tan activo está el servidor y dónde habla la gente conmigo, por lo que las intervenciones nunca se iniciarán.",
+      notice_byok:
+        "Este servidor paga el texto con la clave propia de cada miembro, por lo que ninguna clave cubre un mensaje que nadie pidió. Natural Nudges permanecerá desactivado hasta que el servidor tenga su propia clave.",
+      notice_stopped:
+        "Me detuve tras varios intentos fallidos seguidos. Volveré a empezar tras mi próxima respuesta exitosa en este servidor.",
+      idle_nudges_title: "Intervenciones espontáneas",
+      idle_nudges_description: "Inicio algo en un canal por mi cuenta si se vuelve demasiado silencioso.",
+      idle_nudges_off: "Solo hablo cuando alguien me habla.",
+      idle_nudges_on: "Inicio una intervención espontánea en un canal tranquilo cuando corresponda.",
+      idle_nudges_on_no_channels:
+        "Aún no tengo canales donde iniciar una intervención espontánea. Los canales automáticos se irán añadiendo conforme la gente hable conmigo.",
+      idle_nudges_on_no_model:
+        "Ningún modelo utilizable puede planificar una intervención espontánea todavía, así que guardo silencio.",
+      idle_nudges_studio_hint: "Elige qué intervenciones espontáneas uso o escribe las tuyas con {command}.",
+      active_nudges_title: "Intervenciones activas",
+      active_nudges_description:
+        "Me uno a una conversación cuando trata sobre algo que le gusta a una persona, usando los intereses de la página de Intervenciones de esa persona.",
+      active_nudges_off: "Solo me uno a una conversación cuando alguien me habla.",
+      active_nudges_on:
+        "Compruebo de qué trata la conversación tras cada {min}-{max} mensajes de miembros, usando {matcher}.",
+      active_nudges_on_no_channels:
+        "Aún no tengo canales donde unirme a una conversación. Los canales automáticos se irán añadiendo conforme la gente hable conmigo.",
+      active_nudges_on_no_matcher:
+        "Aún no hay nada que pueda comprobar los intereses en las conversaciones, así que guardo silencio. Elige un verificador de intervenciones activas abajo.",
+      active_nudges_on_cold:
+        "En este servidor me hablan con muy poca frecuencia como para unirme a una conversación en este momento.",
+      active_nudges_matcher_checker: "el verificador de intervenciones activas",
+      active_nudge_frequency_option: "Frecuencia: {level}",
+      channels_title: "Canales",
+      channels_description:
+        "Dónde puedo hablar, para cualquiera de los dos tipos de intervención. Elige los canales manualmente o borra la lista para volver a la selección automática.",
+      channels_placeholder: "Automático: canales donde la gente habló conmigo en los últimos 14 días",
+      model_title: "Selección de modelo",
+      model_description: "Cambia los modelos usados por Natural Nudges",
+      planner_title: "Planificador de intervenciones espontáneas",
+      planner_description:
+        "Este modelo planifica las intervenciones espontáneas: qué tema sacar y qué canal es el adecuado.",
+      model_placeholder: "Planificador de intervenciones espontáneas: predeterminado actual",
+      model_same_as_chat: "Planificador de intervenciones espontáneas: predeterminado actual, {model}",
+      model_placeholder_selected: "Planificador de intervenciones espontáneas: {model}",
+      model_modal_title: "Elegir planificador de intervenciones espontáneas",
+      model_unavailable: "No disponible",
+      model_same_as_chat_option: "Predeterminado actual",
+      model_chat_no_structured:
+        "El modelo predeterminado actual, {model}, no puede planificar intervenciones porque no admite salidas estructuradas. Elige un planificador abajo.",
+      model_chat_unavailable:
+        "El modelo predeterminado actual, {model}, no puede planificar intervenciones con la clave de este servidor. Elige un planificador abajo.",
+      model_chat_none:
+        "Este servidor aún no tiene un modelo de chat, por lo que no hay un valor predeterminado. Elige un planificador abajo.",
+      checker_title: "Verificador de intervenciones activas",
+      checker_description:
+        "De vez en cuando, compruebo si una conversación trata sobre alguno de los intereses de una persona. Un modelo pequeño y económico es ideal para esto, y un modelo de decisión es el mejor de todos.",
+      checker_placeholder_recommended: "Verificador de intervenciones activas: recomendado, {model}",
+      checker_placeholder_recommended_none: "Verificador de intervenciones activas: recomendado",
+      checker_placeholder_selected: "Verificador de intervenciones activas: {model}",
+      checker_recommended_option: "Recomendado",
+      checker_decision_provider_option: "{provider} (modelos de decisión)",
+      checker_modal_title: "Elegir verificador de intervenciones activas",
+      checker_pinned_unavailable:
+        "El verificador elegido no puede ejecutarse con las claves de este servidor. Elige otro abajo o vuelve a Recomendado.",
+      checker_none_available:
+        "Ningún modelo puede comprobar conversaciones todavía. Añade una clave de Google u OpenRouter, o elige un planificador abajo.",
+      model_none_available:
+        "Ningún modelo del servidor admite salidas estructuradas todavía. Añade uno en /config > Modelos.",
+      frequency_0: "Rara",
+      frequency_1: "Suave",
+      frequency_2: "Normal",
+      frequency_3: "Animada",
+      frequency_effect:
+        "Este servidor me envía unos {heat} mensajes al día, así que espera unas {per_week} intervenciones espontáneas a la semana.",
+      frequency_effect_none:
+        "Iniciaré una intervención espontánea en un canal tranquilo cuando corresponda, pero este servidor me habla con muy poca frecuencia por ahora.",
+      saved_heading: "Natural Nudges actualizado",
+      saved_detail: "Tus ajustes de Natural Nudges se han guardado.",
+      invalid_detail:
+        "Uno de los valores está fuera del rango permitido. Revisa las descripciones de los campos e inténtalo de nuevo.",
+      limit_detail: "Esta lista está llena. Elimina una entrada antes de añadir otra.",
+      persona_title: "Intervenciones",
+      persona_description:
+        "Con qué frecuencia esta persona habla por su cuenta y qué temas le gusta sacar. Consulta [Natural Nudges](https://docs.tomoribot.app/es-419/features/chatting-personality/natural-nudges/).",
+      talkativeness_title: "Locuacidad",
+      talkativeness_description: "Con qué frecuencia esta persona es la que habla, en comparación con las demás.",
+      talkativeness_0: "En silencio",
+      talkativeness_1: "Tímida",
+      talkativeness_2: "Normal",
+      talkativeness_3: "Habladora",
+      talkativeness_4: "Muy habladora",
+      talkativeness_0_effect: "Esta persona nunca habla por su cuenta.",
+      talkativeness_1_effect: "Esta persona habla de vez en cuando.",
+      talkativeness_2_effect: "Esta persona habla con la misma frecuencia que la media.",
+      talkativeness_3_effect: "Esta persona habla con más frecuencia que las demás.",
+      talkativeness_4_effect: "Esta persona es la que más habla.",
+      interests_title: "Intereses",
+      interests_description:
+        "Temas que esta persona saca por su cuenta, hasta {max}. Una descripción breve con ejemplos me ayuda a reconocer el tema.",
+      interests_none: "Aún no hay intereses.",
+      interests_preset_note: "Estos proceden del preajuste. Si los editas, esta persona tendrá su propia copia.",
+      interest_select_placeholder: "Selecciona o añade un interés...",
+      interest_add_option: "+ Añadir interés",
+      interests_remove_button: "Eliminar intereses",
+      interests_remove_modal_title: "Eliminar intereses",
+      interests_remove_description: "Desmarca un interés para eliminarlo. Esta acción no se puede deshacer.",
+      interest_modal_title: "Interés",
+      interest_label_label: "Tema",
+      interest_label_description: 'Un nombre corto como "anime de mechas", de hasta {max} caracteres.',
+      interest_description_label: "Descripción",
+      interest_description_description: "Una línea con ejemplos, de hasta {max} caracteres.",
+    },
     panel: {
       page_plugins_response_drafting: "Revisión de respuestas",
+      page_plugins_natural_nudges: "Natural Nudges",
       category_persona: `Persona`,
       category_behavior: `Comportamiento`,
       category_plugins: `Plugins`,
@@ -71,6 +187,7 @@ export default {
       page_persona_overrides: `Excepciones`,
       page_persona_voice: `Voz`,
       page_persona_naming: `Hábitos de nombramiento`,
+      page_persona_nudges: "Intervenciones",
       naming_page_description: `Cómo esta persona se dirige a la gente, por estilo.`,
       voice_page_description: `Elige cómo suena esta persona.`,
       voice_page_unassigned: `No hay ninguna voz asignada.`,
@@ -747,6 +864,8 @@ export default {
       resync_avatar_diff: `Tu avatar personalizado será eliminado.`,
       resync_main_avatar_detail: `El avatar del servidor se restablecerá al del preajuste.`,
       resync_sprites_diff: `Sprites que añadiste: se eliminarán {count}.`,
+      resync_nudges_diff:
+        "La locuacidad y los intereses de Natural Nudges volverán a los valores predeterminados del preajuste.",
       resync_kept_detail: `Tu nombre, palabras de activación, hábitos de nombramiento, memorias, historial y otros ajustes de la persona se mantendrán.`,
       resync_irreversible_detail: `Esto no se puede deshacer.`,
       resync_success_heading: `Persona sincronizada con preajuste`,
