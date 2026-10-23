@@ -35,12 +35,15 @@ discounts, or free-tier quotas.
 
 ## Shareable Infographic Cards
 
-Run `/stats generate` to render a polished summary image card you can share directly in chat:
+Run one of the `/stats generate` commands to render a polished summary image card you can share
+directly in chat:
 
-- **Personal Wrapped**: summarizes your personal activity and favorite personas.
-- **Persona Affinity**: highlights a specific persona's stats and top conversational partners on
-  this server.
-- **Server Leaderboard**: displays server-wide activity and member standings.
+- **`/stats generate personal`** (Personal Wrapped): summarizes your personal activity and favorite
+  personas.
+- **`/stats generate persona`** (Persona Affinity): pick a persona from the list to highlight its
+  stats and top conversational partners on this server.
+- **`/stats generate server`** (Server Leaderboard): displays server-wide activity and member
+  standings.
 
 Users with their privacy level set to `Full` in `/personal config` cannot generate personal stats
 cards.

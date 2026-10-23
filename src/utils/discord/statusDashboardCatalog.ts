@@ -19,8 +19,8 @@ export type StatusCategory = "persona" | "behavior" | "models" | "access" | "per
 export type StatusDashboardRoute =
   | { action: "category"; locale: string; category: StatusCategory; personaId?: number }
   | { action: "page"; locale: string; category: StatusCategory; personaId?: number }
-  | { action: "persona-select"; locale: string; personaId: number }
-  | { action: "persona-page"; locale: string; personaId: number; start: number };
+  | { action: "persona-select"; locale: string; personaId: number; page?: number }
+  | { action: "persona-page"; locale: string; personaId: number; start: number; page?: number };
 
 type StatusDashboardAction = StatusDashboardRoute["action"];
 
@@ -76,11 +76,22 @@ const personaRangeField: RouteFieldCodec<"start", number> = {
   decode: (value) => parseNonNegativeInt(value),
 };
 
+/** Optional because selectors rendered before it existed are still open in clients and mean the first page. */
+const optionalPersonaPageIndexField: RouteFieldCodec<"page", number> = {
+  key: "page",
+  optional: true,
+  encode: (value) => String(value),
+  decode: (value) => parseNonNegativeInt(value),
+};
+
 const STATUS_ROUTE_CODECS: StatusDashboardRouteCodecs = {
   category: { wireToken: "category", fields: [categoryField, optionalPersonaIdField] },
   page: { wireToken: "page", fields: [categoryField, optionalPersonaIdField] },
-  "persona-select": { wireToken: "persona-select", fields: [personaIdField] },
-  "persona-page": { wireToken: "persona-page", fields: [personaIdField, personaRangeField] },
+  "persona-select": { wireToken: "persona-select", fields: [personaIdField, optionalPersonaPageIndexField] },
+  "persona-page": {
+    wireToken: "persona-page",
+    fields: [personaIdField, personaRangeField, optionalPersonaPageIndexField],
+  },
 };
 
 const CODECS_BY_WIRE_TOKEN = indexCodecsByWireToken<StatusDashboardAction, StatusDashboardRoute>(STATUS_ROUTE_CODECS);
@@ -109,12 +120,17 @@ export function buildStatusPageSelectorId(locale: string, category: StatusCatego
   return buildStatusDashboardRouteId({ action: "page", locale, category, personaId: personaId ?? undefined });
 }
 
-export function buildStatusPersonaSelectorId(locale: string, personaId: number): string {
-  return buildStatusDashboardRouteId({ action: "persona-select", locale, personaId });
+export function buildStatusPersonaSelectorId(locale: string, personaId: number, page?: number): string {
+  return buildStatusDashboardRouteId({ action: "persona-select", locale, personaId, page });
 }
 
-export function buildStatusPersonaRangeSegments(locale: string, personaId: number, start: number): string[] {
-  return buildStatusDashboardRouteSegments({ action: "persona-page", locale, personaId, start });
+export function buildStatusPersonaRangeSegments(
+  locale: string,
+  personaId: number,
+  start: number,
+  page?: number,
+): string[] {
+  return buildStatusDashboardRouteSegments({ action: "persona-page", locale, personaId, start, page });
 }
 
 export function parseStatusDashboardRoute(route: ParsedInteractionRoute): StatusDashboardRoute | null {

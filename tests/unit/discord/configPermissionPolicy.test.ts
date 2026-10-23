@@ -804,6 +804,12 @@ describe("isConfigRouteAuthorized", () => {
         GUILD_MEMBER,
       ),
     ).toBe(false);
+    expect(
+      isConfigRouteAuthorized(
+        { action: "persona-select", locale: "en-US", personaId: 5, page: "advanced" },
+        GUILD_MEMBER,
+      ),
+    ).toBe(false);
   });
 
   it("keeps Persona Voice routes manager-only in guilds while allowing the DM owner", () => {

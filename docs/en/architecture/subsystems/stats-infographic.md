@@ -3,17 +3,17 @@ title: "Stats Infographic"
 aiGenerated: true
 ---
 
-The `/stats generate` command renders one of three shareable PNG image cards using a satori and resvg rasterization pipeline. Metric data reuses the same `StatRepository` queries that power the text dashboard.
+The `/stats generate` subcommand group renders one of three shareable PNG image cards using a satori and resvg rasterization pipeline. Metric data reuses the same `StatRepository` queries that power the text dashboard.
 
 ## Card types and roles
 
-The command generates visual summaries for three scopes:
+Each card has its own subcommand:
 
-| Type | Command choice | Gatherer | Renderer |
+| Type | Subcommand | Gatherer | Renderer |
 |---|---|---|---|
-| Personal Wrapped | `personal` | `personalCardGatherer.ts` | `renderPersonalCard()` |
-| Persona Affinity | `persona` | `personaCardGatherer.ts` | `renderPersonaCard()` |
-| Server Leaderboard | `server` | `serverCardGatherer.ts` | `renderServerCard()` |
+| Personal Wrapped | `/stats generate personal` | `personalCardGatherer.ts` | `renderPersonalCard()` |
+| Persona Affinity | `/stats generate persona` | `personaCardGatherer.ts` | `renderPersonaCard()` |
+| Server Leaderboard | `/stats generate server` | `serverCardGatherer.ts` | `renderServerCard()` |
 
 Cards summarize personal usage, one user-persona pairing, or server rankings. Layout dimensions and ranking limits belong to `statsInfographic.tsx`; callers share its height calculators so the PNG canvas matches the rendered content.
 
@@ -50,20 +50,14 @@ The gatherers read daily `tokens_in` and `tokens_out` metrics from `stat_counter
 - **Pricing collapse:** An LLM codename can appear under multiple providers with different pricing. Because `stat_counters.metric_key` stores only the model codename rather than the provider, the query collapses pricing to one rate per codename using `MAX` across published providers before joining. This prevents duplicate join rows from inflating token counts.
 - **Approximation trade-off:** If providers share a codename at different rates, the displayed estimate uses the higher rate. It does not determine the provider's bill. Exact provider attribution would require preserving provider identity with usage metrics.
 
-## Privacy gates and persona picker delivery
+## Privacy gate and persona selection
 
-Card generation coordinates privacy checks and user interactions before rasterization:
-
-- **Privacy gate:** Personal cards reject users with `PrivacyLevel.FULL` immediately with an ephemeral warning embed before deferring the interaction. Persona and server cards display aggregate data rather than individual user history, so they omit the privacy gate.
-- **Persona picker workflow:** For `type=persona`, the command executes `runPersonaPickerWorkflow(...)` with the `separate-public` delivery policy:
-  1. The command acknowledges the interaction as an ephemeral private message.
-  2. The user selects a persona from the private dropdown.
-  3. Once selected, `beginSeparatePublicReply(...)` updates the private interaction to a confirmation notice (`{persona} has been selected`).
-  4. The workflow creates exactly one public response containing the rendered PNG attachment. Attempting a second public reply throws a workflow error.
+- **Privacy gate:** Personal cards reject users with `PrivacyLevel.FULL` with an ephemeral warning embed before deferring the interaction. Persona and server cards display aggregate data rather than individual user history, so they omit the privacy gate.
+- **Persona selection:** `/stats generate persona` takes a required `persona` autocomplete option, the same server-wide autocomplete `/stats persona` uses. Discord cannot make an option required only when another option holds a given value, so each card is a separate subcommand that declares only the options it reads. The command defers ephemerally, resolves the option value against the server's personas, and deletes that private reply before posting the PNG as a public follow-up, so validation failures stay private.
 
 ## Source pointers
 
-- `src/commands/stats/generate.ts`: Subcommand entry, privacy validation, and delivery workflow.
+- `src/commands/stats/generate/`: One subcommand per card, including the privacy gate and persona validation.
 - `src/utils/stats/cardRenderer.ts`: Font loading, satori SVG generation, and resvg PNG rasterization.
 - `src/utils/stats/statsInfographic.tsx`: Pure JSX component trees, layout geometry, and theme constants.
 - `src/utils/stats/personalCardGatherer.ts`, `personaCardGatherer.ts`, `serverCardGatherer.ts`: Scoped metric gatherers.

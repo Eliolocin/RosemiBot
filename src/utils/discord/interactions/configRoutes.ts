@@ -3742,7 +3742,7 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
       const selectedValue = submittedValue;
 
       let category: ConfigCategory = "category" in route ? route.category : "persona";
-      let page: ConfigPage = "page" in route ? route.page : "general";
+      let page: ConfigPage = ("page" in route ? route.page : undefined) ?? "general";
       if (route.action === "stm-edit-submit" || route.action === "conditioning-submit") {
         category = "persona";
         page = "memories";

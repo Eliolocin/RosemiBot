@@ -15,7 +15,6 @@ export default {
       no_personas_description: `這個伺服器還沒有人格可以顯示統計。`,
       not_found_title: `找不到人格`,
       not_found_description: `在這個伺服器找不到選取的人格。`,
-      chosen_title: `已選取 {name}`,
     },
     server: {
       description: `查看整個伺服器的使用統計。`,
@@ -146,18 +145,24 @@ export default {
 
     generate: {
       description: `生成可分享的統計圖片卡。`,
-      type_description: `要生成的卡片類型。`,
-      timeframe_description: `要彙整的時間範圍。`,
-      scope_description: `只計算這個伺服器，或跨所有伺服器。僅適用於 Personal。`,
-      personal_option: `個人回顧`,
-      persona_option: `人格契合度`,
-      server_option: `伺服器排行榜`,
-      privacy_title: `無法查看統計`,
-      privacy_description: `隱私等級設為「完整」的使用者無法使用個人統計卡。`,
-      picker_title: `選擇人格`,
-      picker_description: `選擇要為哪個人格生成統計卡。`,
-      no_personas_title: `沒有人格`,
-      no_personas_description: `這個伺服器還沒有人格可以生成統計卡。`,
+      personal: {
+        description: `生成你的個人回顧卡。`,
+        timeframe_description: `要彙整的時間範圍。`,
+        scope_description: `只計算這個伺服器的活動，或跨所有伺服器。`,
+        privacy_title: `無法查看統計`,
+        privacy_description: `隱私等級設為「完整」的使用者無法使用個人統計卡。`,
+      },
+      persona: {
+        description: `生成你與單一人格的人格契合度卡。`,
+        persona_description: `要為其生成卡片的人格。`,
+        timeframe_description: `要彙整的時間範圍。`,
+        no_personas_title: `沒有人格`,
+        no_personas_description: `這個伺服器還沒有人格可以生成統計卡。`,
+      },
+      server: {
+        description: `生成這個伺服器的伺服器排行榜卡。`,
+        timeframe_description: `要彙整的時間範圍。`,
+      },
     },
   },
 };

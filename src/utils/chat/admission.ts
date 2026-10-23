@@ -23,6 +23,7 @@ import { escapeRegExp, isUnspacedScriptText, wrapWithWordBoundary } from "@/util
 import { isActiveNaturalStopTurn, selfReplySuppressionUntil } from "@/utils/chat/channelQueue";
 import { cleanupTextQuotaTriggerStates } from "@/utils/chat/textQuotaState";
 import { evaluateAdmissionQueueAndTriggerGate } from "@/utils/chat/admissionQueue";
+import { applyWelcomeHandoff } from "@/utils/chat/welcomeHandoff";
 import {
   applyMessageProxyReference,
   cancelPendingMessageProxyExpectation,
@@ -364,6 +365,10 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
   });
   if (queueDisposition) {
     return queueDisposition;
+  }
+
+  if (!applyWelcomeHandoff(incoming, userDiscId)) {
+    return ignored("answered_by_welcome");
   }
 
   return {

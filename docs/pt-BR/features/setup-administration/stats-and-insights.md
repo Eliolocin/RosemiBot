@@ -27,11 +27,11 @@ As contagens de tokens refletem o uso relatado pelo provedor, quando disponível
 
 ## Cartões de Infográfico Compartilháveis
 
-Execute `/stats generate` para renderizar um cartão de imagem de resumo sofisticado que você pode compartilhar diretamente no chat:
+Execute um dos comandos `/stats generate` para renderizar um cartão de imagem de resumo sofisticado que você pode compartilhar diretamente no chat:
 
-- **Personal Wrapped**: resume sua atividade pessoal e personas favoritas.
-- **Afinidade de Persona**: destaca as estatísticas de uma persona específica e os principais parceiros de conversa neste servidor.
-- **Tabela de classificação do servidor**: exibe a atividade de todo o servidor e a classificação dos membros.
+- **`/stats generate personal`** (Retrospectiva Pessoal): resume sua atividade pessoal e suas personas favoritas.
+- **`/stats generate persona`** (Afinidade da Persona): escolha uma persona da lista para destacar suas estatísticas e os principais parceiros de conversa neste servidor.
+- **`/stats generate server`** (Tabela de Classificação do Servidor): exibe a atividade de todo o servidor e a classificação dos membros.
 
 Os usuários com nível de privacidade definido como `Completo` em `/personal config` não podem gerar cartões de estatísticas pessoais.
 

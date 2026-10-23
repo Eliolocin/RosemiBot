@@ -385,7 +385,7 @@ describe("executeStatusCommand", () => {
     expect(serialized).toContain('"customId":"status:v1:category:en-US:persona:1"');
     expect(serialized).toContain('"customId":"status:v1:category:en-US:behavior:1"');
     expect(serialized).toContain('"customId":"status:v1:page:en-US:persona:1"');
-    expect(serialized).toContain('"customId":"status:v1:persona-select:en-US:1"');
+    expect(serialized).toContain('"customId":"status:v1:persona-select:en-US:1:0"');
     expect(serialized).toMatch(/"customId":"status:v1:category:en-US:persona:1","label":"[^"]+","disabled":false/);
   });
 });

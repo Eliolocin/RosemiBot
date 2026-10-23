@@ -456,6 +456,7 @@ function buildPersonaSelectorRows(input: ConfigPanelRenderInput): ComponentInCon
             action: "persona-select",
             locale,
             personaId: selectedPersonaId ?? (personas[0]?.persona_id as number),
+            page: input.page,
           }),
           // The selected persona can sit on another page, where no option carries `default`, so the
           // placeholder is what keeps the current selection visible while paging.
@@ -485,6 +486,7 @@ function buildPersonaSelectorRows(input: ConfigPanelRenderInput): ComponentInCon
           locale,
           personaId: selectedPersonaId ?? (personas[0]?.persona_id as number),
           start: targetRangeIndex * CONFIG_PERSONA_SELECT_PAGE_SIZE,
+          page: input.page,
         }),
     },
     disabled: writesDisabled,
