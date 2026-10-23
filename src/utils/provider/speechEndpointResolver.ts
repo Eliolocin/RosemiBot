@@ -177,8 +177,15 @@ export async function resolveSpeechTargets(
             if (!serverAllowed || !policy.fallbackEnabled) return null;
             return (await resolveSpeechTargets(serverId))[mode];
           }
-          if (error instanceof SupporterRequestDeniedError) throw error;
-          log.warn("SpeechResolver: subscription credential unavailable", { serverId, mode, owner: hosted.owner });
+          if (hosted.owner.kind === "personal" && error instanceof SupporterRequestDeniedError) throw error;
+          log.warn("SpeechResolver: subscription credential unavailable", error, {
+            serverId,
+            metadata: {
+              mode,
+              owner: hosted.owner,
+              ...(error instanceof SupporterRequestDeniedError ? { reason: error.reason } : {}),
+            },
+          });
           return null;
         }
       }

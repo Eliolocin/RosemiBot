@@ -441,7 +441,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
         }),
       ).toMatchObject({ status: "success" });
       process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "false";
-      expect((await resolveSpeechTargets(refs.serverId, refs.userId)).clone?.apiKey).toBe("synthetic-openrouter");
+      expect((await resolveSpeechTargets(refs.serverId, refs.userId)).clone).toBeNull();
       process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
       expect(await llmProviderRepo.deleteSavedProviderConfig(refs.serverId, "openrouter")).toBe(true);
       expect((await resolveSpeechTargets(refs.serverId)).clone?.apiKey).toBe("synthetic-server-member");
@@ -472,7 +472,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
       expect(requests).toHaveLength(before);
       await testSql`UPDATE supporter_entitlements SET is_active = false WHERE supporter_identity_id = ${oldKey.supporter_identity_id}`;
       const inactive = await resolveSpeechTargets(refs.serverId, refs.userId);
-      expect(inactive.clone).toBeNull();
+      expect(inactive.clone?.apiKey).toBe("synthetic-server-member");
+      expect(inactive.clone?.owner).toEqual(serverScope());
       expect(inactive.design?.apiKey).toBe("synthetic-personal-google");
       const panels = await Promise.all([
         providerPanelOperations.loadServerProviderPanelScope(FIXTURE_IDS.serverDiscId, true),
@@ -499,6 +500,107 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
       await deleteStoredVoiceSample(storedPath);
       await testSql`UPDATE persona_voice_configs SET speech_voice_sample_id = NULL WHERE persona_id = ${refs.personaId}`;
       await testSql`DELETE FROM voice_samples WHERE sample_id = ${sample.sample_id}`;
+    }
+  });
+
+  it("resolves refused server Subscription speech to no target when funding is unavailable or revoked", async () => {
+    process.env.RUN_ENV = "production";
+    process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
+    process.env.TOMORI_SUPPORTER_OPENROUTER_MANAGEMENT_KEY = "synthetic-management-key";
+    process.env.TOMORI_SUPPORTER_CONFIG_JSON = JSON.stringify({
+      patreon: {
+        campaignId: "synthetic-speech-refusal-campaign",
+        oauthClientIdEnv: "CLIENT_ID",
+        oauthClientSecretEnv: "CLIENT_SECRET",
+        webhookSecretEnv: "WEBHOOK_SECRET",
+        creatorRefreshTokenEnv: "REFRESH_TOKEN",
+        manageUrl: "https://www.patreon.com/example",
+      },
+      jobs: { reconcileIntervalSeconds: 300, manualRefreshCooldownSeconds: 30 },
+      tiers: {
+        test: {
+          displayNameKey: "supporter.tiers.test",
+          patreonTierIds: ["test"],
+          monthlyBudgetMicros: 100000,
+          defaultModelByCapability: { text: "example/text", voice: { clone: "fish-audio/s2.1-pro" } },
+        },
+      },
+    });
+    await initializeSupporterBillingSchema(testSql);
+    const fish = (await llmModelRepo.loadAvailableSpeechModels("openrouter", serverScope())).find(
+      (model) => model.codename === "fish-audio/s2.1-pro",
+    );
+    if (!fish) throw new Error("Missing Fish speech model");
+    const identity = await new SupporterIdentityRepository(testSql).upsertIdentity({
+      discordUserId: "synthetic-speech-refusal-sponsor",
+      patreonUserId: "synthetic-speech-refusal-user",
+      patreonMemberId: "synthetic-speech-refusal-member",
+      patreonCampaignId: "synthetic-speech-refusal-campaign",
+    });
+    await new SupporterEntitlementRepository(testSql).upsertSnapshot({
+      supporterIdentityId: identity.supporter_identity_id,
+      tierKey: "test",
+      patreonTierId: "test",
+      patronStatus: "active_patron",
+      isActive: true,
+      source: "oauth",
+      lastVerifiedAt: new Date(),
+      periodStart: new Date(Date.now() - 60_000),
+      periodEnd: new Date(Date.now() + 3_600_000),
+    });
+    const memberKeys = new MemberKeyRepository(testSql);
+    const initial = await memberKeys.initialize(identity);
+    const createdKey = await memberKeys.storeCreated(
+      initial,
+      "synthetic-speech-refusal-hash",
+      "synthetic-speech-refusal-member",
+    );
+    await memberKeys.save({ ...createdKey, applied_limit: 0.1, disabled: false, pending_action: null });
+    const sponsorship = await new SupporterSponsorshipRepository(testSql).startActiveSponsorship({
+      serverId: refs.serverId,
+      serverDiscId: FIXTURE_IDS.serverDiscId,
+      sponsorIdentityId: identity.supporter_identity_id,
+      createdByDiscId: "synthetic-speech-refusal-sponsor",
+    });
+    await testSql`INSERT INTO saved_provider_configs (server_id, provider) VALUES (${refs.serverId}, 'supporter') ON CONFLICT DO NOTHING`;
+    const markers = async () =>
+      (await testSql`SELECT subscription_capabilities FROM server_model_configs WHERE server_id = ${refs.serverId}`)[0]
+        .subscription_capabilities as string[];
+    try {
+      expect(
+        await setHostedSpeechSelection(serverScope(), fish.speech_model_id, undefined, false, undefined, "supporter"),
+      ).toBe(true);
+      expect((await resolveSpeechTargets(refs.serverId)).clone?.apiKey).toBe("synthetic-speech-refusal-member");
+      expect(await markers()).toContain("speech_clone");
+
+      expect(
+        await new SupporterSponsorshipRepository(testSql).revokeActiveSponsorship({
+          sponsorshipId: sponsorship.sponsorship_id,
+        }),
+      ).toMatchObject({ status: "revoked" });
+      expect(await markers()).toContain("speech_clone");
+      expect((await resolveSpeechTargets(refs.serverId)).clone).toBeNull();
+
+      await new SupporterSponsorshipRepository(testSql).startActiveSponsorship({
+        serverId: refs.serverId,
+        serverDiscId: FIXTURE_IDS.serverDiscId,
+        sponsorIdentityId: identity.supporter_identity_id,
+        createdByDiscId: "synthetic-speech-refusal-sponsor",
+      });
+      expect((await resolveSpeechTargets(refs.serverId)).clone?.apiKey).toBe("synthetic-speech-refusal-member");
+
+      await testSql`UPDATE supporter_entitlements SET is_active = false WHERE supporter_identity_id = ${identity.supporter_identity_id}`;
+      expect((await resolveSpeechTargets(refs.serverId)).clone).toBeNull();
+      await testSql`UPDATE supporter_entitlements SET is_active = true WHERE supporter_identity_id = ${identity.supporter_identity_id}`;
+
+      const validConfig = process.env.TOMORI_SUPPORTER_CONFIG_JSON;
+      process.env.TOMORI_SUPPORTER_CONFIG_JSON = "{}";
+      expect((await resolveSpeechTargets(refs.serverId)).clone).toBeNull();
+      process.env.TOMORI_SUPPORTER_CONFIG_JSON = validConfig;
+    } finally {
+      await testSql`DELETE FROM supporter_identities WHERE patreon_campaign_id = 'synthetic-speech-refusal-campaign'`;
+      await testSql`DELETE FROM saved_provider_configs WHERE server_id = ${refs.serverId} AND provider = 'supporter'`;
+      await setHostedSpeechSelection(serverScope(), null, "clone");
     }
   });
 
@@ -594,7 +696,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
               const [pins] =
                 await testSql`SELECT response_reviewer_llm_id, decision_model_id, speech_clone_model_id FROM server_chat_configs JOIN server_model_configs USING (server_id) JOIN server_speech_configs USING (server_id) WHERE server_id = ${serverId}`;
               expect(pins).toEqual({
-                response_reviewer_llm_id: preserved ? text.llm_id : null,
+                response_reviewer_llm_id: preserved && provider !== "openrouter" ? text.llm_id : null,
                 decision_model_id: preserved ? decision.decision_model_id : null,
                 speech_clone_model_id: preserved ? speech.speech_model_id : null,
               });
