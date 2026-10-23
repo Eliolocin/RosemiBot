@@ -1060,6 +1060,7 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     },
   ],
   ["config:v2:nn-int-rem-open:en-US:55", { action: "nudge-interest-remove-open", locale: "en-US", personaId: 55 }],
+  ["config:v2:nn-int-gen:en-US:55", { action: "nudge-interest-generate", locale: "en-US", personaId: 55 }],
   [
     "config:v2:nn-int-rem:en-US:55:abcd1234:nonce1234567",
     { action: "nudge-interest-remove-submit", locale: "en-US", personaId: 55, fp: "abcd1234", nonce: "nonce1234567" },

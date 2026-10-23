@@ -193,7 +193,11 @@ function writeReceipt(locale: string, result: NudgeWriteResult): PanelReceipt {
         ? "commands.config.natural_nudges.invalid_detail"
         : result === "limit"
           ? "commands.config.natural_nudges.limit_detail"
-          : "commands.config.panel.write_failed_detail",
+          : result === "no-model"
+            ? "commands.config.natural_nudges.generate_no_model_detail"
+            : result === "generate-failed"
+              ? "commands.config.natural_nudges.generate_failed_detail"
+              : "commands.config.panel.write_failed_detail",
     ),
   };
 }
@@ -270,6 +274,14 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
           }),
         "server-config.workspace.persona-nudge-interest.add",
       );
+      await paintPersona(route.personaId, {}, writeReceipt(locale, result));
+      return true;
+    }
+    case "nudge-interest-generate": {
+      const persona = context.scope.personas.find((candidate) => candidate.persona_id === route.personaId);
+      const result = persona
+        ? await write(() => ops.generateInterests(persona), "server-config.workspace.persona-nudge-interest.generate")
+        : "stale";
       await paintPersona(route.personaId, {}, writeReceipt(locale, result));
       return true;
     }

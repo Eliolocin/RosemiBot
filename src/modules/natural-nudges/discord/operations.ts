@@ -27,9 +27,21 @@ import type { TomoriState } from "@/types/db/schema";
 import { resolveEffectiveChannelIds } from "@/modules/natural-nudges/runtime/channels";
 import { invalidateNaturalNudgeConfigCache } from "@/modules/natural-nudges/runtime/configCache";
 import { resolveMatcherBackend, type ResolvedChecker } from "@/modules/natural-nudges/runtime/matcher";
+import {
+  GENERATED_INTEREST_BATCH,
+  generatePersonaInterests,
+  mergeGeneratedInterests,
+} from "@/modules/natural-nudges/runtime/interests";
 import { resolvePlannerModel, type PlannerModelStatus } from "@/modules/natural-nudges/runtime/model";
 
-export type NudgeWriteResult = "success" | "stale" | "invalid" | "limit" | "write-failed";
+export type NudgeWriteResult =
+  | "success"
+  | "stale"
+  | "invalid"
+  | "limit"
+  | "write-failed"
+  | "no-model"
+  | "generate-failed";
 
 /** What the timer would use right now, which the page shows next to the saved settings. */
 interface NaturalNudgesStatus {
@@ -243,6 +255,33 @@ const naturalNudgeOperations = {
     return (await naturalNudgeRepository.savePersonaConfig(personaId, {
       ...current,
       interests: [...current.interests, parsed.data],
+    }))
+      ? "success"
+      : "write-failed";
+  },
+
+  /** Adds up to a batch of generated interests that are new to the persona, using the Idle Nudge Planner model. */
+  async generateInterests(persona: TomoriState): Promise<NudgeWriteResult> {
+    const personaId = persona.persona_id as number;
+    const current = await loadPersonaNudgeConfig(personaId);
+    if (!current) return "stale";
+    const room = Math.min(GENERATED_INTEREST_BATCH, NATURAL_NUDGE_INTEREST_LIMIT - current.interests.length);
+    if (room <= 0) return "limit";
+    const serverConfig = await naturalNudgeRepository.loadServerConfig(persona.server_id);
+    const model = await resolvePlannerModel(persona, serverConfig.llm_id);
+    if (model.kind !== "ready") return "no-model";
+    const outcome = await generatePersonaInterests(persona, model.llmId, current.interests, room);
+    if (outcome.status === "unavailable") return "no-model";
+    if (outcome.status === "failed") return "generate-failed";
+    // The call takes seconds, so merge onto a fresh read rather than overwrite an edit made meanwhile.
+    const latest = await loadPersonaNudgeConfig(personaId);
+    if (!latest) return "stale";
+    const added = mergeGeneratedInterests(latest.interests, outcome.interests).slice(0, room);
+    if (added.length === 0)
+      return latest.interests.length >= NATURAL_NUDGE_INTEREST_LIMIT ? "limit" : "generate-failed";
+    return (await naturalNudgeRepository.savePersonaConfig(personaId, {
+      ...latest,
+      interests: [...latest.interests, ...added],
     }))
       ? "success"
       : "write-failed";

@@ -906,6 +906,7 @@ describe("isConfigRouteAuthorized", () => {
       nonce: "nonce123",
     },
     { action: "nudge-interest-remove-open", locale: "en-US", personaId: 1 },
+    { action: "nudge-interest-generate", locale: "en-US", personaId: 1 },
     { action: "nudge-interest-remove-submit", locale: "en-US", personaId: 1, fp: "abcdefgh", nonce: "nonce123" },
     { action: "nudge-idle-nudges-set", locale: "en-US", enabled: true },
     { action: "nudge-channels-select", locale: "en-US" },

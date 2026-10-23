@@ -159,7 +159,7 @@ export function validatePresetGenerationFields(candidate: unknown): PresetFields
  * Interests are optional garnish on a generated preset, so a malformed entry is dropped rather than
  * failing the whole generation.
  */
-function acceptGeneratedInterests(candidate: unknown): NaturalNudgeInterest[] {
+export function acceptGeneratedInterests(candidate: unknown): NaturalNudgeInterest[] {
   if (!Array.isArray(candidate)) return [];
   return candidate
     .flatMap((entry) => {

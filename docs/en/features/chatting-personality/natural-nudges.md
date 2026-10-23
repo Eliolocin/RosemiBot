@@ -184,7 +184,8 @@ Each persona has its own **Nudges** page under `/config` > Persona:
   description and examples (for example **mecha anime**: Fiction about giant piloted robots, such as Gundam).
 
 Official presets come with their own interests and talkativeness. `/persona generate` suggests
-interests for new characters, and persona exports carry them.
+interests for new characters, and **Generate Interests** on the Nudges page adds up to 5 new ones at a
+time using the Idle Nudge Planner model, until the persona has 8. Persona exports carry them.
 
 ## What Gets Stored
 

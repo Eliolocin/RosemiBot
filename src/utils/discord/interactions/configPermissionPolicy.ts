@@ -502,6 +502,7 @@ export const NATURAL_NUDGE_PAGE_BY_ROUTE: Partial<
   "nudge-interest-add-submit": { category: "persona", page: "nudges" },
   "nudge-interest-edit-submit": { category: "persona", page: "nudges" },
   "nudge-interest-remove-open": { category: "persona", page: "nudges" },
+  "nudge-interest-generate": { category: "persona", page: "nudges" },
   "nudge-interest-remove-submit": { category: "persona", page: "nudges" },
   "nudge-idle-nudges-set": { category: "plugins", page: "natural-nudges" },
   "nudge-channels-select": { category: "plugins", page: "natural-nudges" },

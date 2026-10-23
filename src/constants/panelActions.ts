@@ -33,6 +33,7 @@ export const PANEL_ACTIONS = [
   "server-config.workspace.persona-nudge-interest.add",
   "server-config.workspace.persona-nudge-interest.edit",
   "server-config.workspace.persona-nudge-interest.remove",
+  "server-config.workspace.persona-nudge-interest.generate",
   "expressions.workspace.native.edit",
   "expressions.workspace.native.clear",
   "expressions.workspace.custom.add",

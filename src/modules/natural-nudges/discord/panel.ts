@@ -177,6 +177,11 @@ export function buildPersonaNudgesBody(input: PersonaNudgesRenderInput): Compone
     type: ComponentType.ActionRow,
     components: [
       button(
+        t("commands.config.natural_nudges.interests_generate_button"),
+        { action: "nudge-interest-generate", locale, personaId },
+        writesDisabled || !canAdd,
+      ),
+      button(
         t("commands.config.natural_nudges.interests_remove_button"),
         { action: "nudge-interest-remove-open", locale, personaId },
         writesDisabled || interests.length === 0,

@@ -433,6 +433,7 @@ export type ConfigPanelRoute =
       nonce: string;
     }
   | { action: "nudge-interest-remove-open"; locale: string; personaId: number }
+  | { action: "nudge-interest-generate"; locale: string; personaId: number }
   | { action: "nudge-interest-remove-submit"; locale: string; personaId: number; fp: string; nonce: string }
   | { action: "nudge-idle-nudges-set"; locale: string; enabled: boolean }
   | { action: "nudge-channels-select"; locale: string }
@@ -957,6 +958,7 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
     fields: [personaIdField, indexField, fpField, nonceField],
   },
   "nudge-interest-remove-open": { wireToken: "nn-int-rem-open", fields: [personaIdField] },
+  "nudge-interest-generate": { wireToken: "nn-int-gen", fields: [personaIdField] },
   "nudge-interest-remove-submit": { wireToken: "nn-int-rem", fields: [personaIdField, fpField, nonceField] },
   "nudge-idle-nudges-set": { wireToken: "nn-idle-set", fields: [enabledField] },
   "nudge-channels-select": { wireToken: "nn-channels", fields: [] },
