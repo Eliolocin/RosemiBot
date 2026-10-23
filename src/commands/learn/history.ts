@@ -858,7 +858,8 @@ async function runIncrementalExtraction(params: {
 
 interface HistoryImportNotice {
   titleKey: string;
-  descriptionKey: string;
+  descriptionKey?: string;
+  description?: string;
   descriptionVars?: Record<string, string>;
 }
 
@@ -886,6 +887,7 @@ type HistoryImportRuntimeResult =
 async function resolveHistoryImportRuntime(
   tomoriState: TomoriState,
   userId: number | null,
+  locale: string,
 ): Promise<HistoryImportRuntimeResult> {
   let textCreds: ResolvedCredentials;
   let embeddingCreds: ResolvedCredentials;
@@ -895,6 +897,19 @@ async function resolveHistoryImportRuntime(
       resolveCapabilityCredentials(tomoriState.server_id, "embedding", { userId }),
     ]);
   } catch (error) {
+    const denied = findSupporterRequestDeniedError(error);
+    if (denied) {
+      const copy = getSupporterRequestFailureCopy(denied, locale);
+      log.warn(`[Learn History] Subscription refused a text or embedding request: ${denied.reason}`, error, {
+        userId,
+        serverId: tomoriState.server_id,
+        personaId: tomoriState.persona_id,
+        metadata: {
+          command: "learn history",
+        },
+      });
+      return { ok: false, notice: { titleKey: copy.titleKey, description: copy.description } };
+    }
     if (error instanceof PersonalProviderRequiredError) {
       log.warn(`[Learn History] Personal provider required for capability "text" or "embedding"`, error, {
         userId,
@@ -1278,7 +1293,7 @@ export async function execute(
             color: ColorCode.INFO,
           });
 
-          const runtimeResult = await resolveHistoryImportRuntime(activeTomoriState, userData.user_id ?? null);
+          const runtimeResult = await resolveHistoryImportRuntime(activeTomoriState, userData.user_id ?? null, locale);
           if (!runtimeResult.ok) {
             await replaceHistoryImportStatus(work.message, locale, {
               ...runtimeResult.notice,
@@ -1441,7 +1456,7 @@ export async function execute(
 
       await modalSubmitInteraction.deferReply({ flags: MessageFlags.Ephemeral });
 
-      const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null);
+      const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null, locale);
       if (!runtimeResult.ok) {
         await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
           ...runtimeResult.notice,
@@ -1562,7 +1577,7 @@ export async function execute(
 
     await modalSubmitInteraction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null);
+    const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null, locale);
     if (!runtimeResult.ok) {
       await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
         ...runtimeResult.notice,

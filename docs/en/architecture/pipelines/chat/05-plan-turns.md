@@ -60,7 +60,8 @@ Each matched persona resolves credentials separately. Personal Text takes preced
 models. Server routes choose the persona override, then the channel override, then the workspace
 model; an explicit invocation model override applies last. Each subscription attempt resolves funding
 for that effective model and its owning scope. A persona without usable credentials is skipped while
-other admitted personas can continue.
+other admitted personas can continue, and a refused trigger shows at most one credential notice and
+at most one quota notice however many personas matched.
 
 Subscription ownership comes from the selected saved provider entry. The server's
 `subscription_capabilities` records that choice separately from catalog model IDs, so choosing an
@@ -73,8 +74,11 @@ state across persona jobs and retries; post-turn effects consume it once after a
 
 An inactive or unlinked personal subscription retains its configured personal text fallback pool.
 A server route is considered only after that pool fails, subject to the user's fallback setting and
-`user_byok_mode`. Other capabilities can use an available configured server route when the personal
-subscription is inactive or missing. Billing and storage failures remain visible failures.
+`user_byok_mode`. When no attempt remains, the turn reports the subscription refusal instead of
+skipping silently. Text commands honor the same fallback setting: a user who explicitly opted out
+stops at the refusal, while a user with no personal provider keeps the server route. Other
+capabilities can use an available configured server route when the personal subscription is inactive
+or missing. Billing and storage failures remain visible failures.
 
 ### Channel lock state arming
 

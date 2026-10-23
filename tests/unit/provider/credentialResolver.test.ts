@@ -10,12 +10,15 @@ import {
   type UserSavedProviderConfigRow,
 } from "@/types/db/schema";
 import * as realRepositories from "@/utils/db/repositories";
+import * as realSpeechRepository from "@/utils/db/repositories/SpeechRepository";
 import { createScopedModuleMocker, overrideMembers } from "../../helpers/mockSurface";
 import * as realCrypto from "@/utils/security/crypto";
 import { resolveCapabilityCredentials } from "@/utils/provider/credentialResolver";
+import { createLlmRow } from "../../helpers/fixtures";
 
 let rows: UserSavedProviderConfigRow[] = [];
 let serverSaved: SavedProviderConfigRow | null = null;
+let fallbackEnabled = true;
 
 function makeSavedProviderConfigRow(
   overrides: Partial<UserSavedProviderConfigRow> & { provider: string; user_id?: number },
@@ -53,8 +56,14 @@ function makeSavedProviderConfigRow(
 
 const scopedMock = createScopedModuleMocker(mock, {
   "@/utils/db/repositories": realRepositories,
+  "@/utils/db/repositories/SpeechRepository": realSpeechRepository,
   "@/utils/security/crypto": realCrypto,
 });
+
+scopedMock.module("@/utils/db/repositories/SpeechRepository", () => ({
+  ...realSpeechRepository,
+  loadSpeechRoutingPolicy: async () => ({ serverAllowed: true, fallbackEnabled }),
+}));
 
 scopedMock.module("@/utils/security/crypto", () => ({
   ...realCrypto,
@@ -100,6 +109,7 @@ describe("personal credential resolution for capability split", () => {
   beforeEach(() => {
     rows = [];
     serverSaved = null;
+    fallbackEnabled = true;
   });
 
   it("preserves personal BYOK priority for every shared capability while billing is enabled", async () => {
@@ -197,6 +207,60 @@ describe("personal credential resolution for capability split", () => {
       await expect(resolveCapabilityCredentials(1, "embedding", { userId: 1 })).rejects.toMatchObject({
         reason: "billing_unavailable",
       });
+    } finally {
+      funding.mockRestore();
+    }
+  });
+
+  it("keeps the server text route for an unavailable subscription unless the user opted out", async () => {
+    process.env.RUN_ENV = "production";
+    process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
+    rows = [
+      makeSavedProviderConfigRow({
+        provider: "supporter",
+        enabled_capabilities: ["text", "embedding"],
+        assigned_capabilities: ["text", "embedding"],
+        llm_id: 1,
+        embedding_model_id: 2,
+      }),
+    ];
+    serverSaved = savedProviderConfigSchema.parse({
+      ...makeSavedProviderConfigRow({ provider: "openrouter", api_key: Buffer.from("server-fixture-key") }),
+      server_id: 1,
+      fallback_model_refs: [],
+    });
+    const textModel = createLlmRow({ llm_id: 1, llm_provider: "openrouter", llm_codename: "synthetic/text" });
+    const funding = spyOn(managedProvider, "resolveSupporterCapabilityCredentials");
+    try {
+      funding.mockRejectedValue(new SupporterRequestDeniedError("inactive_entitlement", undefined, "text", "personal"));
+      expect((await resolveCapabilityCredentials(1, "text", { userId: 1, textModel })).apiKey).toBe(
+        "server-fixture-key",
+      );
+
+      fallbackEnabled = false;
+      await expect(resolveCapabilityCredentials(1, "text", { userId: 1, textModel })).rejects.toMatchObject({
+        reason: "inactive_entitlement",
+        capability: "text",
+        fundingScope: "personal",
+      });
+
+      rows = [
+        makeSavedProviderConfigRow({
+          provider: "supporter",
+          enabled_capabilities: ["embedding"],
+          assigned_capabilities: ["embedding"],
+          embedding_model_id: 2,
+        }),
+      ];
+      funding.mockRejectedValue(
+        new SupporterRequestDeniedError("inactive_entitlement", undefined, "embedding", "personal"),
+      );
+      expect((await resolveCapabilityCredentials(1, "embedding", { userId: 1 })).apiKey).toBe("server-fixture-key");
+
+      rows = [];
+      expect((await resolveCapabilityCredentials(1, "text", { userId: 1, textModel })).apiKey).toBe(
+        "server-fixture-key",
+      );
     } finally {
       funding.mockRestore();
     }

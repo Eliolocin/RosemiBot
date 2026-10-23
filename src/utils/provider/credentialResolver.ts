@@ -9,6 +9,7 @@ import type {
 } from "@/types/db/schema";
 import { personalProviderCapabilitySchema } from "@/types/db/schema";
 import { configRepository, llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
+import { loadSpeechRoutingPolicy } from "@/utils/db/repositories/SpeechRepository";
 import { log } from "@/utils/misc/logger";
 import { resolveCustomEndpointForProvider } from "@/utils/provider/customEndpointService";
 import { decryptApiKey } from "@/utils/security/crypto";
@@ -426,9 +427,18 @@ export async function resolveCapabilityCredentials(
   const capabilityConfig = await loadCapabilityConfig(serverId);
 
   if (userId !== null) {
-    const personalResolved = await resolvePersonalCredentials(userId, capability);
-    if (personalResolved) {
-      return personalResolved;
+    try {
+      const personalResolved = await resolvePersonalCredentials(userId, capability, true);
+      if (personalResolved) {
+        return personalResolved;
+      }
+    } catch (error) {
+      if (!isUnavailablePersonalSubscription(error)) throw error;
+      if (capability === "text") {
+        // The account-wide server-fallback setting, read through the same policy speech routing uses.
+        const { fallbackEnabled } = await loadSpeechRoutingPolicy(serverId, userId);
+        if (!fallbackEnabled) throw error;
+      }
     }
 
     if (capabilityConfig?.user_byok_mode) {

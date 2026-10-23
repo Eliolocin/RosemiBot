@@ -264,7 +264,11 @@ scopedMock.module("@/modules/supporter-billing/runtime", () => ({
           config: {} as never,
           tier: {} as never,
         }
-      : { ok: false as const, reason: "missing_sponsorship" as const };
+      : {
+          ok: false as const,
+          reason:
+            params.scope.kind === "personal" ? ("missing_subscription" as const) : ("missing_sponsorship" as const),
+        };
   },
 }));
 
@@ -1344,6 +1348,32 @@ describe("runGenerationTurn fallback behavior", () => {
     await runGenerationTurn(context, sink);
 
     expect(toolLoopCalls.map((call) => call.model)).toEqual(["personal-primary", "server-primary"]);
+  });
+
+  it("reports an unavailable personal subscription once when the server route is withheld", async () => {
+    setSupporterEnv();
+    const { runGenerationTurn } = await import("@/utils/chat/generationTurn");
+    for (const sink of [collectingSink(), collectingSink()]) {
+      const context = makePersonalContext(
+        makeLlm(1, "server-primary"),
+        makeLlm(2, "server-fallback"),
+        makeOpenRouterLlm(3, "openrouter/personal-primary"),
+      );
+      context.textCredentialSource = "personal";
+      context.personalTextProvider = "supporter";
+      context.supporterFunding = null;
+      context.turn.userRow.personal_server_fallback_enabled = false;
+      context.textQuotaTriggerKey = "trigger_lapsed_personal_subscription";
+      expect((await runGenerationTurn(context, sink)).status).toBe("skipped");
+    }
+
+    const expected = getSupporterRequestFailureCopy(
+      new SupporterRequestDeniedError("missing_subscription", undefined, "text", "personal"),
+      "en-US",
+    );
+    expect(toolLoopCalls).toHaveLength(0);
+    expect(subscriptionNotices).toHaveLength(1);
+    expect(subscriptionNotices[0]).toMatchObject({ titleKey: expected.titleKey, description: expected.description });
   });
 
   it("refuses the server model fallback when the server's text quota is exhausted", async () => {

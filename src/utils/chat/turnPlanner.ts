@@ -56,6 +56,11 @@ import {
 } from "@/utils/chat/triggerProcessor";
 import { getLastRespondedPersonaId, getSelfReplyChainState } from "@/utils/chat/selfReplyState";
 import type { TextQuotaTriggerState } from "@/utils/chat/textQuotaState";
+import {
+  claimCredentialRefusalNotice,
+  hasTextQuotaBeenRefused,
+  markTextQuotaRefused,
+} from "@/utils/chat/textQuotaState";
 import type { ChatTurn, ChatTurnPlan, LockedChatTurn, TextCredentialSource } from "@/utils/chat/types";
 import { userNamingRepository, userPersonaNamingPairKey } from "@/utils/db/repositories/UserNamingRepository";
 import { resolveEffectiveUserNaming } from "@/utils/text/userNaming";
@@ -233,6 +238,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
 
   const personaPolicies = new Map<TomoriState, NonNullable<Awaited<ReturnType<typeof resolveTextCredentialPolicy>>>>();
   const personaQuotas = new Map<TomoriState, Awaited<ReturnType<typeof prepareTextQuota>>>();
+  const refusalNoticeKey = incoming.textQuotaTriggerKey ?? lockedTurn.admission.message.id;
   for (const persona of personasToRespond) {
     const policy = await resolveTextCredentialPolicy({
       tomoriState: persona,
@@ -246,6 +252,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
       isDMChannel,
       shouldSurfaceUserErrors,
       llmOverrideCodename: incoming.llmOverrideCodename,
+      refusalNoticeKey,
     });
     if (!policy) continue;
     const quota = await prepareTextQuota(
@@ -573,6 +580,7 @@ export async function resolveTextCredentialPolicy(params: {
   isDMChannel: boolean;
   shouldSurfaceUserErrors: boolean;
   llmOverrideCodename?: string;
+  refusalNoticeKey?: string;
   dependencies?: Partial<TextCredentialPolicyDependencies>;
 }): Promise<{
   source: TextCredentialSource;
@@ -585,6 +593,10 @@ export async function resolveTextCredentialPolicy(params: {
     params.isSelfMessage && !params.isPersonaJob && !params.isManuallyTriggered && !params.isUserImpersonation
       ? null
       : (params.userRow.user_id ?? null);
+  const sendFailureNotice = async (options: Parameters<typeof sendStandardEmbed>[2]): Promise<void> => {
+    if (params.refusalNoticeKey && !claimCredentialRefusalNotice(params.refusalNoticeKey)) return;
+    await dependencies.sendStandardEmbed(params.channel as SendableChannel, params.locale, options);
+  };
 
   try {
     let personalCredentials: ResolvedCredentials | null;
@@ -634,7 +646,7 @@ export async function resolveTextCredentialPolicy(params: {
         return { source: "server", personalRoutingUserId, personalTextProvider: null, supporterFunding: null };
       }
       if (params.shouldSurfaceUserErrors)
-        await dependencies.sendStandardEmbed(params.channel as SendableChannel, params.locale, {
+        await sendFailureNotice({
           color: ColorCode.ERROR,
           ...getSupporterRequestFailureCopy(error, params.locale),
         });
@@ -645,7 +657,7 @@ export async function resolveTextCredentialPolicy(params: {
     // /config setup during a transient blip. That embed logged 41 times in one cascade.
     if (error instanceof DatabaseUnavailableError) {
       if (params.shouldSurfaceUserErrors) {
-        await sendStandardEmbed(params.channel as SendableChannel, params.locale, {
+        await sendFailureNotice({
           color: ColorCode.ERROR,
           titleKey: "general.errors.database_unavailable_title",
           descriptionKey: "general.errors.database_unavailable_description",
@@ -665,7 +677,7 @@ export async function resolveTextCredentialPolicy(params: {
             channelId: params.channel.id,
           },
         });
-        await dependencies.sendStandardEmbed(params.channel as SendableChannel, params.locale, {
+        await sendFailureNotice({
           color: ColorCode.ERROR,
           titleKey: "general.errors.personal_provider_required_title",
           descriptionKey: "general.errors.personal_provider_required_description",
@@ -700,7 +712,7 @@ export async function resolveTextCredentialPolicy(params: {
             },
           },
         );
-        await dependencies.sendStandardEmbed(params.channel as SendableChannel, params.locale, {
+        await sendFailureNotice({
           color: ColorCode.ERROR,
           titleKey: isPersonalError
             ? "general.errors.personal_provider_credentials_error_title"
@@ -937,8 +949,9 @@ async function prepareTextQuota(
     userDiscId: incoming.textQuotaUserDiscId ?? lockedTurn.admission.cooldownUserDiscId ?? userRow.user_disc_id,
     channel: lockedTurn.admission.channel as SendableChannel,
     locale: lockedTurn.admission.locale,
-    notifyUser: shouldSurfaceUserErrors,
+    notifyUser: shouldSurfaceUserErrors && !hasTextQuotaBeenRefused(triggerKey),
   });
+  if (!quota.allowed) markTextQuotaRefused(triggerKey);
 
   return {
     allowed: quota.allowed,

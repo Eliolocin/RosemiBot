@@ -47,7 +47,11 @@ import {
   enforceServerTriggerCooldownForAdmission,
   shouldApplyServerTextQuota,
 } from "@/utils/chat/admissionGuards";
-import { hasTextQuotaBeenRefused, markTextQuotaRefused } from "@/utils/chat/textQuotaState";
+import {
+  claimCredentialRefusalNotice,
+  hasTextQuotaBeenRefused,
+  markTextQuotaRefused,
+} from "@/utils/chat/textQuotaState";
 import {
   recordChatAttemptStarted,
   recordChatDiagnostic,
@@ -90,6 +94,8 @@ interface GenerationAttempt {
 /** The route a turn was planned on, plus the server route it may still reach. */
 interface GenerationPlan {
   attempts: GenerationAttempt[];
+  /** A subscription refusal raised while building the planned route's attempts. */
+  plannedRouteRefusal: SupporterRequestDeniedError | null;
   /**
    * Materializes the server route's attempts, or null when this turn owns no server fallback.
    *
@@ -163,6 +169,7 @@ async function runGenerationAttempts(
       serverRouteStartIndex = 0;
       attempts.push(...(await extend(0)).filter(canUseAttempt));
     }
+    const unservedRefusal = attempts.length === 0 ? plan.plannedRouteRefusal : null;
 
     for (let index = 0; index < attempts.length; index++) {
       const attempt = attempts[index];
@@ -393,7 +400,7 @@ async function runGenerationAttempts(
     };
     setStreamUserErrorSuppression(context, false);
     context.streamingContext.forceModelFallback = false;
-    await sendSupporterFailureNotice(context);
+    await sendSupporterFailureNotice(context, unservedRefusal ?? undefined);
     if (context.responseReview) skipped.usageEntries = context.responseReview.usage;
     await responseSink.finalize(skipped);
     return skipped;
@@ -454,27 +461,33 @@ async function waitForSupporterCapacity(context: ChatTurnContext, delayMs: numbe
   return !StreamOrchestrator.hasStopRequest(context.channel.id);
 }
 
-async function sendSupporterFailureNotice(context: ChatTurnContext): Promise<void> {
-  const failure = context.supporterProviderFailure;
+async function sendSupporterFailureNotice(
+  context: ChatTurnContext,
+  refusal?: SupporterRequestDeniedError,
+): Promise<void> {
   if (
-    !failure ||
     !context.shouldSurfaceUserErrors ||
     context.isUserImpersonation ||
     StreamOrchestrator.hasStopRequest(context.channel.id)
   )
     return;
+  const failure = context.supporterProviderFailure;
+  const error =
+    refusal ??
+    (failure
+      ? new SupporterRequestDeniedError(
+          failure.reason,
+          failure.details,
+          failure.funding.capability,
+          failure.funding.fundingScope,
+        )
+      : null);
+  if (!error) return;
+  if (refusal && !claimCredentialRefusalNotice(context.textQuotaTriggerKey)) return;
   await sendStandardEmbed(context.channel as SendableChannel, context.locale, {
-    ...getSupporterRequestFailureCopy(
-      new SupporterRequestDeniedError(
-        failure.reason,
-        failure.details,
-        failure.funding.capability,
-        failure.funding.fundingScope,
-      ),
-      context.locale,
-    ),
+    ...getSupporterRequestFailureCopy(error, context.locale),
     color: ColorCode.ERROR,
-  }).catch((error) => log.warn("Failed to send subscription usage notice", error));
+  }).catch((sendError) => log.warn("Failed to send subscription usage notice", sendError));
 }
 
 function setStreamUserErrorSuppression(context: ChatTurnContext, temporarySuppressed: boolean): void {
@@ -482,8 +495,10 @@ function setStreamUserErrorSuppression(context: ChatTurnContext, temporarySuppre
 }
 
 async function buildGenerationPlan(context: ChatTurnContext): Promise<GenerationPlan> {
+  const plannedRoute = await buildPlannedRouteAttempts(context);
   return {
-    attempts: await buildPlannedRouteAttempts(context),
+    attempts: plannedRoute.attempts,
+    plannedRouteRefusal: plannedRoute.refusal,
     extendWithServerRoute: resolveServerRouteExtension(context),
   };
 }
@@ -527,7 +542,10 @@ function resolveServerRouteExtension(
   return (startIndex) => buildServerRouteAttempts(context, startIndex);
 }
 
-async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<GenerationAttempt[]> {
+async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<{
+  attempts: GenerationAttempt[];
+  refusal: SupporterRequestDeniedError | null;
+}> {
   const disableAllTools = !!context.streamingContext.disableAllTools;
   const primaryState = await resolveTomoriStateForRoute(context, "planned");
   const funding = primaryState.llm.llm_provider === "openrouter" ? context.supporterFunding : null;
@@ -560,6 +578,7 @@ async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<Gene
   //    primary's own llm entry yields a state equivalent to primaryState (provider matches, no config
   //    swap), so index 0 stays semantically identical to the old dedicated "primary" attempt.
   const attempts: GenerationAttempt[] = [];
+  let refusal: SupporterRequestDeniedError | null = null;
   for (const [index, entry] of pool.entries()) {
     try {
       const attempt = await createFallbackAttempt(
@@ -581,11 +600,12 @@ async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<Gene
       }
       attempts.push(attempt);
     } catch (error) {
+      if (error instanceof SupporterRequestDeniedError) refusal ??= error;
       log.warn(`Skipping pool entry ${index}: failed to prepare provider config.`, error as Error);
     }
   }
 
-  return attempts;
+  return { attempts, refusal };
 }
 
 /**
@@ -962,7 +982,13 @@ async function createFallbackAttempt(
             capability: "text",
             requestedModelCodename: entry.model.llm_codename,
           });
-    if (!resolvedFunding.ok) throw new SupporterRequestDeniedError(resolvedFunding.reason);
+    if (!resolvedFunding.ok)
+      throw new SupporterRequestDeniedError(
+        resolvedFunding.reason,
+        undefined,
+        "text",
+        personalUserId === null ? "server" : "personal",
+      );
     const supporterState = buildSupporterFallbackTomoriState(primaryState, entry);
     if (!supporterState) {
       log.warn("Skipping custom endpoint fallback: Supporter routing requires OpenRouter.");
