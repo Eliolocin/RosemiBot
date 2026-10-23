@@ -58,7 +58,7 @@ export default {
       notice_byok: `This server pays for text with each member's own key, so no key covers a message nobody asked for. Natural Nudges stays off until the server has its own key.`,
       notice_stopped: `I stopped after several failed attempts in a row. I start again after my next successful reply in this server.`,
       idle_nudges_title: `Idle Nudges`,
-      idle_nudges_description: `I start something in a quiet channel: check in on someone, pick up a conversation that was left hanging, raise a new topic, or act out a short scene with another persona.`,
+      idle_nudges_description: `I start something in a channel myself if it becomes too quiet.`,
       idle_nudges_off: `I only speak when someone talks to me.`,
       idle_nudges_on: `I start an idle nudge in a quiet channel when one is due.`,
       idle_nudges_on_no_channels: `I have no channel to start an idle nudge in yet. Automatic channels fill in as people talk to me.`,
