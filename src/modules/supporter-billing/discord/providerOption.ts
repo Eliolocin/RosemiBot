@@ -1,6 +1,7 @@
 import {
   ButtonStyle,
   ComponentType,
+  userMention,
   type ButtonComponentData,
   type ComponentInContainerData,
   type ActionRowData,
@@ -274,12 +275,14 @@ function entryComponents(context: ProviderOptionEntryContext): ComponentInContai
   if (context.scope.kind === "personal") return [];
   const data = readOptionData(context.data);
   const name = data.sponsorDiscId
-    ? (data.sponsorLabel ?? data.sponsorDiscId)
+    ? data.sponsorLabel
+      ? escapeDiscordMarkdown(data.sponsorLabel)
+      : userMention(data.sponsorDiscId)
     : localizer(context.locale, "commands.providers.unknown_sponsor");
   return [
     {
       type: ComponentType.TextDisplay,
-      content: `> ${localizer(context.locale, "commands.providers.sponsorship_by", { name: escapeDiscordMarkdown(name) })}`,
+      content: `> ${localizer(context.locale, "commands.providers.sponsorship_by", { name })}`,
     },
   ];
 }

@@ -9,11 +9,41 @@ import { parseSubscriptionRoute } from "@/modules/supporter-billing/subscribe/ca
 import { buildProvidersPanelPayload } from "@/utils/discord/ui/providersPanel";
 import { initializeLocalizer, hasLocaleKey } from "@/utils/text/localizer";
 import { localizedCopy, expectForEveryLocale } from "../../helpers/localeCases";
+import { escapeDiscordMarkdown } from "@/utils/text/discordMarkdown";
 
 beforeAll(async () => initializeLocalizer());
 
 describe("providers panel subscription entries", () => {
   const SUBSCRIBER = "123456789012345678";
+  it("renders a sponsor mention when no saved display name exists and escapes saved names", () => {
+    expectForEveryLocale((locale) => {
+      for (const sponsorLabel of [undefined, "*Mirri*"]) {
+        const entry: ProviderPanelEntry = {
+          ...providerEntry("provider:supporter", "supporter"),
+          optionData: {
+            sponsorshipId: 40,
+            sponsorDiscId: SUBSCRIBER,
+            sponsorLabel,
+          } satisfies SupporterProviderOptionData,
+        };
+        const panel = buildProvidersPanelPayload({
+          locale,
+          entries: [entry],
+          initialEntryId: entry.id,
+          readStatus: "fresh",
+          page: { kind: "entry" },
+        });
+        const copyLocale = hasLocaleKey(locale, "commands.providers.sponsorship_by") ? locale : "en-US";
+        const expected = localizedCopy(copyLocale, "commands.providers.sponsorship_by", {
+          name: sponsorLabel ? escapeDiscordMarkdown(sponsorLabel) : `<@${SUBSCRIBER}>`,
+        });
+        const content = collectComponents(panel)
+          .flatMap((part) => (typeof part.content === "string" ? [part.content] : []))
+          .join("\n");
+        expect(content).toContain(expected);
+      }
+    });
+  });
   const OTHER_MEMBER = "223456789012345678";
 
   function collectComponents(value: unknown): Array<Record<string, unknown>> {
