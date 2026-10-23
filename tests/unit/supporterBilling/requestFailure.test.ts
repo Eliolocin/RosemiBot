@@ -29,7 +29,7 @@ describe("subscription request failures", () => {
           const copy = getSupporterRequestFailureCopy(
             new SupporterRequestDeniedError(
               "allowance_exhausted",
-              { minimumBalanceUsd: providerError?.minimumBalanceUsd },
+              { minimumBalanceUsd: providerError?.minimumBalanceUsd, modelCodename: "example/image-model" },
               "image",
               scope,
             ),
@@ -41,12 +41,14 @@ describe("subscription request failures", () => {
           const copyLocale = hasLocaleKey(locale, `commands.subscribe.request.${key}`) ? locale : "en-US";
           expect(copy.description).toBe(
             localizedCopy(copyLocale, `commands.subscribe.request.${key}`, {
-              minimum_balance: "1.00",
+              model: "`example/image-model`",
               config: scope === "personal" ? "`/personal config`" : "`/config`",
               fallback: localizedCopy(locale, "commands.subscribe.request.fallback_failed"),
             }),
           );
           expect(copy.description).not.toMatch(/\{\w+\}/);
+          expect(copy.description).not.toContain("$");
+          expect(copy.description).toContain("`example/image-model`");
         }
       }
     });

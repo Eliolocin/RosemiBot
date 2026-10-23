@@ -56,6 +56,7 @@ export interface SupporterFundingLoadedState {
 export interface SupporterFundingFailureDetails {
   periodEnd?: Date;
   minimumBalanceUsd?: number;
+  modelCodename?: string;
   retryAt?: Date;
   /** False when capacity returns only after the operator adds credit, so retrying cannot help. */
   retryable?: boolean;

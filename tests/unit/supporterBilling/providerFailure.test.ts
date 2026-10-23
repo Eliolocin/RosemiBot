@@ -140,7 +140,10 @@ describe("subscription provider failures", () => {
       ),
       funding(),
     );
-    expect(minimum).toMatchObject({ reason: "allowance_exhausted", details: { minimumBalanceUsd: 1 } });
+    expect(minimum).toMatchObject({
+      reason: "allowance_exhausted",
+      details: { minimumBalanceUsd: 1, modelCodename: "example/image-model" },
+    });
     expect(findSupporterRequestDeniedError(transportFailure(402, limitBody("openrouter_key_limit")))).toBeNull();
     expect(findSupporterRequestDeniedError(transportFailure(402, "{}"), funding())).toBeNull();
   });

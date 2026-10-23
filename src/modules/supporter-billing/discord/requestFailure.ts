@@ -10,6 +10,7 @@ import { localizer } from "@/utils/text/localizer";
 import type { ToolContext } from "@/types/tool/interfaces";
 import { sendStandardEmbed } from "@/utils/discord/embedHelper";
 import { ColorCode, log } from "@/utils/misc/logger";
+import { inlineCode } from "discord.js";
 
 const SCOPE_KEYS = {
   personal: "commands.subscribe.request.scope.personal",
@@ -79,7 +80,9 @@ export function getSupporterRequestFailureMessage(
       : localizer(locale, "commands.subscribe.request.retry_later"),
     fallback: localizer(locale, "commands.subscribe.request.fallback_failed"),
     subscription,
-    minimum_balance: minimumBalance?.toFixed(2) ?? "",
+    model: error.details?.modelCodename
+      ? inlineCode(error.details.modelCodename)
+      : localizer(locale, "commands.subscribe.request.model_unknown"),
     config:
       error.fundingScope === "personal"
         ? commandRegistry.getCommandMention("personal", "config", undefined, true)
