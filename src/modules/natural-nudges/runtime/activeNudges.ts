@@ -26,16 +26,19 @@ import {
   serverDayStart,
   underdogBoost,
 } from "@/modules/natural-nudges/runtime/meters";
-import { isGenerationFailure, type AttemptResult } from "@/modules/natural-nudges/runtime/runner";
+import { isGenerationFailure, systemContextItem, type AttemptResult } from "@/modules/natural-nudges/runtime/runner";
 import { recordActiveNudgeSample, type ActiveNudgeSample } from "@/modules/natural-nudges/runtime/telemetry";
 import {
   ACTIVE_NUDGE_DAILY_CAPS,
+  ACTIVE_NUDGE_DAILY_CHECK_CAPS,
   ACTIVE_NUDGE_DELAY_MAX_MS,
   ACTIVE_NUDGE_DELAY_MIN_MS,
   ACTIVE_NUDGE_DETOUR_CHANCE,
   ACTIVE_NUDGE_DETOUR_WARM_DAYS,
+  ACTIVE_NUDGE_EMPTY_REST_MAX_MS,
   ACTIVE_NUDGE_EMPTY_REST_MS,
   ACTIVE_NUDGE_OPTION_BUDGET,
+  ACTIVE_NUDGE_QUOTA_PAUSE_MS,
   ACTIVE_NUDGE_STALE_HUMAN_MESSAGES,
   ACTIVE_NUDGE_UNDERDOG_DAYS,
   ACTIVE_NUDGE_WINDOW_MESSAGES,
@@ -76,6 +79,8 @@ interface ChannelCounter {
  */
 class ActiveNudgeCounter {
   private readonly channels = new Map<string, ChannelCounter>();
+  /** Empty checks in a row per channel, which double the next rest; a fire clears it. */
+  private readonly emptyStreaks = new Map<string, number>();
 
   isTracking(channelId: string): boolean {
     return this.channels.has(channelId);
@@ -107,7 +112,46 @@ class ActiveNudgeCounter {
   }
 
   rest(channelId: string, now: number): void {
-    this.channels.set(channelId, { count: 0, target: 0, restUntil: now + ACTIVE_NUDGE_EMPTY_REST_MS });
+    const streak = (this.emptyStreaks.get(channelId) ?? 0) + 1;
+    this.emptyStreaks.set(channelId, streak);
+    const restMs = Math.min(ACTIVE_NUDGE_EMPTY_REST_MS * 2 ** (streak - 1), ACTIVE_NUDGE_EMPTY_REST_MAX_MS);
+    this.channels.set(channelId, { count: 0, target: 0, restUntil: now + restMs });
+  }
+
+  fired(channelId: string): void {
+    this.emptyStreaks.delete(channelId);
+  }
+}
+
+/**
+ * Checker calls per server per server-day, and quota pauses. Kept in memory like the counter, so a
+ * restart forgets the day's count; raise to a stored count if restarts ever become frequent enough to
+ * matter for a key's daily quota.
+ */
+export class ActiveNudgeCheckBudget {
+  private readonly days = new Map<number, { dayStart: number; used: number }>();
+  private readonly pausedUntil = new Map<number, number>();
+
+  /** Spends one checker call, or returns false when the server already spent its cap today. */
+  take(serverId: number, dayStart: Date, cap: number): boolean {
+    const start = dayStart.getTime();
+    const day = this.days.get(serverId);
+    const used = day?.dayStart === start ? day.used : 0;
+    if (used >= cap) return false;
+    this.days.set(serverId, { dayStart: start, used: used + 1 });
+    return true;
+  }
+
+  pause(serverId: number, now: number): void {
+    this.pausedUntil.set(serverId, now + ACTIVE_NUDGE_QUOTA_PAUSE_MS);
+  }
+
+  isPaused(serverId: number, now: number): boolean {
+    const until = this.pausedUntil.get(serverId);
+    if (until === undefined) return false;
+    if (until > now) return true;
+    this.pausedUntil.delete(serverId);
+    return false;
   }
 }
 
@@ -118,6 +162,7 @@ interface ChannelWatch {
 }
 
 const counter = new ActiveNudgeCounter();
+const checkBudget = new ActiveNudgeCheckBudget();
 const watches = new Map<string, ChannelWatch>();
 
 async function isPersonaMessage(client: Client, message: Message): Promise<boolean> {
@@ -159,6 +204,7 @@ export async function observeActiveNudgeMessage(client: Client, message: Message
 
   const gate = await readActiveNudgeGate(message.guildId);
   if (!gate?.config.active_nudges_enabled || !gate.channelIds.has(listedChannelId)) return;
+  if (checkBudget.isPaused(gate.serverId, Date.now())) return;
   const range = activeNudgeTripRange(gate.heat, gate.config.active_nudge_frequency);
   if (!range || !counter.recordHuman(listedChannelId, range, Date.now())) return;
   if (!claimNudgeServer(gate.serverId)) return;
@@ -173,7 +219,8 @@ export async function observeActiveNudgeMessage(client: Client, message: Message
   };
   void runWithErrorContext({ source: "natural_nudge", serverId: gate.serverId }, () => runActiveNudgeCheck(check))
     .then((result) => {
-      if (result !== "fired") counter.rest(listedChannelId, Date.now());
+      if (result === "fired") counter.fired(listedChannelId);
+      else counter.rest(listedChannelId, Date.now());
     })
     .catch(async (error) => {
       counter.rest(listedChannelId, Date.now());
@@ -252,6 +299,8 @@ function listedChannelOf(client: Client, channelId: string): string {
 interface CheckSettings {
   backend: MatcherBackend;
   recentFires: NaturalNudgeFireRow[];
+  dayStart: Date;
+  checkCap: number;
 }
 
 /** The fresh-read checks Phase A and the re-check share; a string names the abort reason. */
@@ -292,9 +341,14 @@ async function checkSettingsAndCaps(
     )
   )
     return "channel_cap";
-  const backend = await resolveMatcherBackend(personas[0], config.llm_id);
+  const { backend } = await resolveMatcherBackend(personas[0], config);
   if (!backend) return "no_matcher";
-  return { backend, recentFires: history.recent };
+  return {
+    backend,
+    recentFires: history.recent,
+    dayStart,
+    checkCap: ACTIVE_NUDGE_DAILY_CHECK_CAPS[config.active_nudge_frequency],
+  };
 }
 
 /** Personas that may speak here: talkativeness above 0 and allowed in the channel. */
@@ -375,6 +429,7 @@ async function drawDetour(
 export interface ActiveNudgeCheckOptions {
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
+  budget?: ActiveNudgeCheckBudget;
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -390,6 +445,7 @@ export async function runActiveNudgeCheck(
 ): Promise<AttemptResult> {
   const sleep = options.sleep ?? defaultSleep;
   const random = options.random ?? Math.random;
+  const budget = options.budget ?? checkBudget;
   const telemetry: Omit<ActiveNudgeSample, "outcome" | "phase" | "reason"> = {
     serverId: check.serverId,
     heat: check.heat,
@@ -416,6 +472,8 @@ export async function runActiveNudgeCheck(
     const window = await fetchRecentMessages(check.channel, ACTIVE_NUDGE_WINDOW_MESSAGES);
     const evidence = await buildMatcherEvidence(window, check.guildId);
     if (!evidence) return finish("aborted", "a", "no_evidence");
+    if (!budget.take(check.serverId, settings.dayStart, settings.checkCap))
+      return finish("aborted", "a", "check_cap_reached");
 
     const matched: MatcherResult = await matchActiveNudge({
       state: personas[0],
@@ -431,6 +489,7 @@ export async function runActiveNudgeCheck(
       matcherInputTokens: matched.usage?.inputTokens,
       matcherOutputTokens: matched.usage?.outputTokens,
     });
+    if (matched.rateLimited) budget.pause(check.serverId, Date.now());
     // Not counted toward the failure stop, so a broken matcher cannot also stop the server's idle nudges.
     if (matched.reason === "failed") return finish("failed", "a", "matcher_failed");
     if (!matched.choice) return finish("aborted", "a", `matcher_${matched.reason}`);
@@ -469,7 +528,7 @@ export async function runActiveNudgeCheck(
     );
     await sleep(delayMs);
 
-    const recheck = await recheckBeforeSend(check, speaker, watch, {
+    const recheck = await recheckBeforeSend(check, speaker, watch, budget, {
       options: matcherOptions,
       choice: matched.choice,
     });
@@ -479,7 +538,7 @@ export async function runActiveNudgeCheck(
       telemetry.rematchOutputTokens = recheck.rematch.usage?.outputTokens;
     }
     if (recheck.reason) return finish("aborted", "c", recheck.reason);
-    return await speak(check, speaker, detour !== null, finish);
+    return await speak(check, speaker, interest, detour !== null, finish);
   } finally {
     if (watches.get(check.channel.id) === watch) watches.delete(check.channel.id);
   }
@@ -506,6 +565,7 @@ async function recheckBeforeSend(
   check: ActiveNudgeCheck,
   speaker: NudgePersona,
   watch: ChannelWatch,
+  budget: ActiveNudgeCheckBudget,
   plan: RematchPlan,
 ): Promise<RecheckOutcome> {
   const personas = (await personaRepository.loadAllForServer(check.guildId)).filter(
@@ -525,12 +585,14 @@ async function recheckBeforeSend(
   if (!evidence) return { reason: "window_gone" };
   if (spokeInWindow(window, personas, check.client.user?.id).has(speaker.persona_id))
     return { reason: "persona_spoke" };
+  if (!budget.take(check.serverId, settings.dayStart, settings.checkCap)) return { reason: "check_cap_reached" };
   const rematched = await matchActiveNudge({
     state: personas[0],
     backend: settings.backend,
     options: plan.options,
     evidence,
   });
+  if (rematched.rateLimited) budget.pause(check.serverId, Date.now());
   // Like the first call, a failure here must not count toward the failure stop.
   if (rematched.reason === "failed") return { reason: "matcher_failed", rematch: rematched };
   if (rematched.choice !== plan.choice) return { reason: "window_gone", rematch: rematched };
@@ -544,6 +606,7 @@ async function recheckBeforeSend(
 async function speak(
   check: ActiveNudgeCheck,
   speaker: NudgePersona,
+  interest: string,
   detour: boolean,
   finish: (outcome: AttemptResult, phase: "a" | "c", reason: string) => AttemptResult,
 ): Promise<AttemptResult> {
@@ -584,6 +647,11 @@ async function speak(
     textQuotaTriggerKey: `active-nudge:${check.serverId}:${anchor.id}`,
     shouldSurfaceUserErrors: false,
     naturalNudge: { toolNames: [] },
+    injectedContextItems: [
+      systemContextItem([
+        `${speaker.persona_nickname} decided to join in on their own because the conversation turned to one of their interests: ${interest}.`,
+      ]),
+    ],
     borrowsTriggerMessage: true,
     onGenerationResult: settle,
   });

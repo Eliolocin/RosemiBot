@@ -1071,6 +1071,15 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     "config:v2:nn-model:en-US:openrouter:nonce1234567",
     { action: "nudge-model-submit", locale: "en-US", provider: "openrouter", nonce: "nonce1234567" },
   ],
+  ["config:v2:nn-checker:en-US", { action: "nudge-checker-provider", locale: "en-US" }],
+  [
+    "config:v2:nn-checker-model:en-US:google:nonce1234567",
+    { action: "nudge-checker-model-submit", locale: "en-US", provider: "google", nonce: "nonce1234567" },
+  ],
+  [
+    "config:v2:nn-checker-decision:en-US:custom~12:nonce1234567",
+    { action: "nudge-checker-decision-submit", locale: "en-US", provider: "custom:12", nonce: "nonce1234567" },
+  ],
   ["config:v2:nn-idle-frequency:en-US", { action: "nudge-idle-nudges-frequency-select", locale: "en-US" }],
   ["config:v2:nn-active-set:en-US:0", { action: "nudge-active-nudges-set", locale: "en-US", enabled: false }],
   ["config:v2:nn-active-frequency:en-US", { action: "nudge-active-nudges-frequency-select", locale: "en-US" }],

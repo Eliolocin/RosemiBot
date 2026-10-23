@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { DecisionModelRow } from "@/types/db/schema";
 
 export const NATURAL_NUDGE_CATEGORIES = ["ping_user", "revive_topic", "start_topic", "play_scene"] as const;
 export type NaturalNudgeCategory = (typeof NATURAL_NUDGE_CATEGORIES)[number];
@@ -69,13 +70,16 @@ export const serverNaturalNudgeConfigSchema = z.object({
   active_nudges_enabled: z.boolean(),
   channel_disc_ids: z.array(z.string()),
   llm_id: z.number().int().nullable(),
+  /** At most one checker column is set; both null means the recommended Active Nudge Checker. */
+  checker_llm_id: z.number().int().nullable(),
+  checker_decision_model_id: z.number().int().nullable(),
   idle_nudge_frequency: frequencyLevelSchema,
   active_nudge_frequency: frequencyLevelSchema,
   disabled_builtin_idle_nudges: z.array(z.string()),
 });
 export type ServerNaturalNudgeConfig = z.infer<typeof serverNaturalNudgeConfigSchema>;
 
-/** Column defaults from migrations 110 and 114, used when a server has never saved Natural Nudges settings. */
+/** Column defaults from migrations 110 and 114 and `schema.sql`, used when a server has never saved Natural Nudges settings. */
 export function defaultServerNaturalNudgeConfig(serverId: number): ServerNaturalNudgeConfig {
   return {
     server_id: serverId,
@@ -83,6 +87,8 @@ export function defaultServerNaturalNudgeConfig(serverId: number): ServerNatural
     active_nudges_enabled: true,
     channel_disc_ids: [],
     llm_id: null,
+    checker_llm_id: null,
+    checker_decision_model_id: null,
     idle_nudge_frequency: 1,
     active_nudge_frequency: 1,
     disabled_builtin_idle_nudges: [],
@@ -90,6 +96,11 @@ export function defaultServerNaturalNudgeConfig(serverId: number): ServerNatural
 }
 
 export type ServerNaturalNudgeConfigPatch = Partial<Omit<ServerNaturalNudgeConfig, "server_id">>;
+
+/** The Active Nudge Checker asks one `choice` question, so a predicate-only Decision model cannot serve it. */
+export function supportsCheckerChoice(model: Pick<DecisionModelRow, "supported_primitives">): boolean {
+  return (model.supported_primitives as readonly string[]).includes("choice");
+}
 
 export const CUSTOM_IDLE_NUDGE_LIMIT = 25;
 export const CUSTOM_IDLE_NUDGE_TITLE_MAX = 80;

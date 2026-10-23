@@ -25,7 +25,7 @@ import {
 import { commandRegistry } from "@/utils/discord/commandRegistry";
 import { buildConfigRouteId, CONFIG_MODEL_PAGE_SIZE } from "@/utils/discord/configPanelCatalog";
 import { encodeConfigProviderPageValue } from "@/utils/discord/interactions/configModelLoaders";
-import type { StructuredOutputModelGroup } from "@/utils/discord/interactions/configModelOperations";
+import type { ConfigModelChoice, StructuredOutputModelGroup } from "@/utils/discord/interactions/configModelOperations";
 import {
   buildCheckboxGroupComponent,
   buildConfigModalFieldId,
@@ -290,11 +290,29 @@ export function buildInterestModal(
   };
 }
 
-/** Provider entries for the planner select; a provider with more models than one modal holds is split. */
-function plannerProviderOptions(locale: string, groups: readonly StructuredOutputModelGroup[]) {
+/**
+ * Marks a checker select value as a Decision model provider. Text model values are a provider name or a
+ * `start|provider` page, and neither can begin with this prefix.
+ */
+export const NUDGE_DECISION_PROVIDER_PREFIX = "decision>";
+
+/**
+ * Provider entries for a model select; a provider with more models than one modal holds is split. A
+ * Decision model provider gets its own entry, so the checker select lists both kinds by provider.
+ */
+function modelProviderOptions(
+  locale: string,
+  groups: ReadonlyArray<{ provider: string; models: readonly ConfigModelChoice[] }>,
+  kind: "llm" | "decision",
+) {
+  const prefix = kind === "decision" ? NUDGE_DECISION_PROVIDER_PREFIX : "";
   return groups.flatMap((group) => {
-    const name = getProviderDisplayName(group.provider);
-    if (group.models.length <= CONFIG_MODEL_PAGE_SIZE) return [{ label: name, value: group.provider }];
+    const provider = getProviderDisplayName(group.provider);
+    const name =
+      kind === "decision"
+        ? localizer(locale, "commands.config.natural_nudges.checker_decision_provider_option", { provider })
+        : provider;
+    if (group.models.length <= CONFIG_MODEL_PAGE_SIZE) return [{ label: name, value: `${prefix}${group.provider}` }];
     const pages: Array<{ label: string; value: string }> = [];
     for (let start = 0; start < group.models.length; start += CONFIG_MODEL_PAGE_SIZE) {
       pages.push({
@@ -302,7 +320,7 @@ function plannerProviderOptions(locale: string, groups: readonly StructuredOutpu
           provider: name,
           page: start / CONFIG_MODEL_PAGE_SIZE + 1,
         }),
-        value: encodeConfigProviderPageValue(group.provider, start),
+        value: `${prefix}${encodeConfigProviderPageValue(group.provider, start)}`,
       });
     }
     return pages;
@@ -377,13 +395,10 @@ function activeNudgeEffect(locale: string, view: NaturalNudgesSettingsView, hasE
   const { config, status } = view;
   if (!config.active_nudges_enabled) return t("commands.config.natural_nudges.active_nudges_off");
   if (!hasEligibleChannel) return t("commands.config.natural_nudges.active_nudges_on_no_channels");
-  // Modal paths render without status, so the matcher is only judged when it was resolved.
-  if (status && !status.matcher) return t("commands.config.natural_nudges.active_nudges_on_no_matcher");
+  // Modal paths render without status, so the checker is only judged when it was resolved.
+  if (status && status.checker.model === null) return t("commands.config.natural_nudges.active_nudges_on_no_matcher");
   if (!view.activeNudgeRange) return t("commands.config.natural_nudges.active_nudges_on_cold");
-  const matcher =
-    status?.matcher?.kind === "decision"
-      ? t("commands.config.natural_nudges.active_nudges_matcher_decision", { model: status.matcher.model })
-      : t("commands.config.natural_nudges.active_nudges_matcher_llm");
+  const matcher = status?.checker.model ?? t("commands.config.natural_nudges.active_nudges_matcher_checker");
   return t("commands.config.natural_nudges.active_nudges_on", {
     min: view.activeNudgeRange.min,
     max: view.activeNudgeRange.max,
@@ -531,40 +546,125 @@ export function buildNaturalNudgesSettingsBody(
     ),
     ...buildActiveNudgeSection(locale, view, hasEligibleChannel, writesDisabled),
     text(
-      `### ${t("commands.config.natural_nudges.model_title")}\n${t("commands.config.natural_nudges.model_description")}`,
+      `## ${t("commands.config.natural_nudges.model_title")}\n${t("commands.config.natural_nudges.model_description")}\n**${t(
+        "commands.config.natural_nudges.planner_title",
+      )}**\n${t("commands.config.natural_nudges.planner_description")}`,
     ),
   ];
 
-  const providerOptions = plannerProviderOptions(locale, view.plannerModels);
-  const modelOptions = [
+  const providerOptions = modelProviderOptions(locale, view.plannerModels, "llm");
+  const plannerOptions = [
     ...(config.llm_id !== null
       ? [{ label: t("commands.config.natural_nudges.model_same_as_chat_option"), value: NUDGE_CLEAR_MODEL_VALUE }]
       : []),
     ...providerOptions,
-  ].slice(0, DISCORD_SELECT_OPTIONS_MAX);
-  if (modelOptions.length > 0) {
-    components.push({
-      type: ComponentType.ActionRow,
-      components: [
-        {
-          type: ComponentType.StringSelect,
-          customId: buildConfigRouteId({ action: "nudge-provider", locale }),
-          placeholder: safeSelectOptionText(plannerModelPlaceholder(locale, view), 150),
-          options: modelOptions.map((option) => ({
-            label: safeSelectOptionText(option.label, 100),
-            value: option.value,
-          })),
-          disabled: writesDisabled,
-        },
-      ],
-    });
-  }
-  const modelNotice =
+  ];
+  const plannerSelect = modelSelectRow(
+    buildConfigRouteId({ action: "nudge-provider", locale }),
+    plannerModelPlaceholder(locale, view),
+    plannerOptions,
+    writesDisabled,
+  );
+  if (plannerSelect) components.push(plannerSelect);
+  const plannerNotice =
     providerOptions.length === 0
       ? t("commands.config.natural_nudges.model_none_available")
       : plannerDefaultNotice(locale, view);
-  if (modelNotice) components.push(text(`-# ${modelNotice}`));
+  if (plannerNotice) components.push(text(`-# ${plannerNotice}`));
+
+  components.push(
+    text(
+      `**${t("commands.config.natural_nudges.checker_title")}**\n${t("commands.config.natural_nudges.checker_description")}`,
+    ),
+  );
+  const checkerSelect = modelSelectRow(
+    buildConfigRouteId({ action: "nudge-checker-provider", locale }),
+    checkerPlaceholder(locale, view),
+    [
+      ...(isCheckerPinned(view)
+        ? [{ label: t("commands.config.natural_nudges.checker_recommended_option"), value: NUDGE_CLEAR_MODEL_VALUE }]
+        : []),
+      ...modelProviderOptions(locale, view.checkerDecisionModels, "decision"),
+      ...providerOptions,
+    ],
+    writesDisabled,
+  );
+  if (checkerSelect) components.push(checkerSelect);
+  const checkerNotice = checkerUnavailableNotice(locale, view);
+  if (checkerNotice) components.push(text(`-# ${checkerNotice}`));
   return components;
+}
+
+function modelSelectRow(
+  customId: string,
+  placeholder: string,
+  options: ReadonlyArray<{ label: string; value: string }>,
+  disabled: boolean,
+): ComponentInContainerData | null {
+  if (options.length === 0) return null;
+  return {
+    type: ComponentType.ActionRow,
+    components: [
+      {
+        type: ComponentType.StringSelect,
+        customId,
+        placeholder: safeSelectOptionText(placeholder, 150),
+        options: options.slice(0, DISCORD_SELECT_OPTIONS_MAX).map((option) => ({
+          label: safeSelectOptionText(option.label, 100),
+          value: option.value,
+        })),
+        disabled,
+      },
+    ],
+  };
+}
+
+/** Names the checker the next check would use; modal paths render without status, so they name the saved choice. */
+function checkerPlaceholder(locale: string, view: NaturalNudgesSettingsView): string {
+  const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
+  const checker = view.status?.checker;
+  if (checker?.source === "recommended" || (!checker && !isCheckerPinned(view))) {
+    return checker?.model
+      ? t("commands.config.natural_nudges.checker_placeholder_recommended", { model: checker.model })
+      : t("commands.config.natural_nudges.checker_placeholder_recommended_none");
+  }
+  const pinned =
+    view.config.checker_decision_model_id !== null
+      ? findModel(view.checkerDecisionModels, view.config.checker_decision_model_id)
+      : findModel(view.plannerModels, view.config.checker_llm_id);
+  const none = localizer(locale, "commands.config.panel.none_label");
+  return t("commands.config.natural_nudges.checker_placeholder_selected", {
+    model:
+      pinned && checker?.model !== null
+        ? formatModelSelectionLabel(pinned.model.name, getProviderDisplayName(pinned.provider), none)
+        : t("commands.config.natural_nudges.model_unavailable"),
+  });
+}
+
+function checkerUnavailableNotice(locale: string, view: NaturalNudgesSettingsView): string | null {
+  const checker = view.status?.checker;
+  if (!checker || checker.model !== null) return null;
+  return localizer(
+    locale,
+    checker.source === "pinned"
+      ? "commands.config.natural_nudges.checker_pinned_unavailable"
+      : "commands.config.natural_nudges.checker_none_available",
+  );
+}
+
+function isCheckerPinned(view: NaturalNudgesSettingsView): boolean {
+  return view.config.checker_llm_id !== null || view.config.checker_decision_model_id !== null;
+}
+
+function findModel(
+  groups: ReadonlyArray<{ provider: string; models: readonly ConfigModelChoice[] }>,
+  id: number | null,
+): { provider: string; model: ConfigModelChoice } | null {
+  for (const group of groups) {
+    const model = group.models.find((candidate) => candidate.id === id);
+    if (model) return { provider: group.provider, model };
+  }
+  return null;
 }
 
 export function buildPlannerModelModal(
@@ -585,6 +685,35 @@ export function buildPlannerModelModal(
   payload.custom_id = buildConfigRouteId({ action: "nudge-model-submit", locale, provider: group.provider, nonce });
   payload.title = safeSelectOptionText(
     localizer(locale, "commands.config.natural_nudges.model_modal_title"),
+    MODAL_TEXT_MAX,
+  );
+  return payload;
+}
+
+export function buildCheckerModelModal(
+  locale: string,
+  nonce: string,
+  kind: "llm" | "decision",
+  group: { provider: string; models: readonly ConfigModelChoice[] },
+  start: number,
+  currentModelId: number | null,
+): RawModalPayload {
+  const payload = buildConfigModelSelectModal(
+    locale,
+    kind === "llm" ? "text" : "decision",
+    group.provider,
+    nonce,
+    group.models.slice(start, start + CONFIG_MODEL_PAGE_SIZE),
+    currentModelId,
+  );
+  payload.custom_id = buildConfigRouteId({
+    action: kind === "llm" ? "nudge-checker-model-submit" : "nudge-checker-decision-submit",
+    locale,
+    provider: group.provider,
+    nonce,
+  });
+  payload.title = safeSelectOptionText(
+    localizer(locale, "commands.config.natural_nudges.checker_modal_title"),
     MODAL_TEXT_MAX,
   );
   return payload;

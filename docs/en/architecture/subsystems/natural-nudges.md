@@ -239,21 +239,32 @@ messageCreate (activeNudge.ts, not awaited)
   channel or thread whose message tripped it, and the hourly cap covers a parent and its threads
   together (a fire row stores the thread; `listedChannelOf` maps it back through the channel cache). The trip range starts at 15-40 human messages at heat 15, scales by 15 over heat
   (held to ½-4), then by the frequency level, and nothing counts below heat 1. Any check that does
-  not fire rests the channel for 10 minutes before a new roll. A restart only resets the counts.
+  not fire rests the channel before a new roll: 10 minutes, doubling with each empty check in a row up
+  to 3 hours, and a fire resets it. A restart only resets the counts.
+- **Check budget.** `ActiveNudgeCheckBudget` caps checker calls per server per server-day (10, 20, 40,
+  or 60 by level, re-matches included), because the fire cap never stops checks that find nothing. A
+  text-model checker that answers HTTP 429 pauses the whole server for 3 hours, since the quota
+  belongs to its key; the Decision path reports no status, so it cannot trigger the pause. The
+  budget is in memory, so a restart forgets the day's count.
 - **Gate cache.** The counter reads settings, effective channels, and heat through a 5-minute
   [cache](/architecture/subsystems/caching/) instead of the database, because it runs on every guild
   message. Everything after the trip reads fresh.
-- **Matcher, one boundary, two backends** (`runtime/matcher.ts`). With a Decision model in the
-  server's `decision_model_id`, it asks one `choice` question; the selected model must list `choice`
-  in `supported_primitives`, and a selected model that cannot answer does not fall back. Without one,
-  it asks the Natural Nudges model (`resolvePlannerModel`) for a structured enum of the option IDs at
-  temperature 0, with one format retry. Both use the wording the false-fire evaluation measured, up
+- **Checker choice** (`resolveMatcherBackend`). The Active Nudge Checker is separate from the idle
+  nudge planner because it runs far more often on a much smaller task. An admin can pin a text model
+  (`checker_llm_id`) or a Decision model (`checker_decision_model_id`), at most one, and a pinned
+  checker that cannot answer does not fall back. Unpinned, the recommended checker is resolved from
+  the server's current keys on every check, so adding or removing a provider needs no write: the
+  Decision model selected in `/config > Models`, then the catalog's default OpenRouter Decision
+  model, then `gemma-4-31b-it` on a Google key, then the planner model.
+- **Matcher, one boundary, two backends** (`runtime/matcher.ts`). A Decision model gets one `choice`
+  question and must list `choice` in `supported_primitives`. A text model gets a structured enum of
+  the option IDs at temperature 0, with one format retry. Both use the wording the false-fire evaluation measured, up
   to 25 interests plus `none` (some Decision models reject more than 26 options; personas whose new
   labels would overflow sit the check out), and argmax. A refused, blocked, or unparseable answer
   reads as `none`, and so does a choice that is not its own most likely option. A transport failure
   is recorded but never counts toward the failure stop, so a broken matcher cannot stop idle nudges.
 - **Member text stays data.** The evidence is `Name: text` lines read through the same privacy filter
-  as planner transcripts. The Natural Nudges model sees it inside an escaped `<<< >>>` block; the
+  as planner transcripts. A text-model checker sees it inside an escaped `<<< >>>` block; the
   Decision API receives it as its separate evidence field.
 - **Winner rule.** Shared labels become one option with every owner, under the first owner's
   description. Owners who spoke in the window are dropped, since without probabilities there is no

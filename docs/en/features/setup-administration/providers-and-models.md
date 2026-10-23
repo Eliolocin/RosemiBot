@@ -116,9 +116,9 @@ You can also manage backup keys for automatic failover and load balancing in `/p
 Decision Models are a separate category in `/providers` and `/personal providers`. They answer typed
 questions (yes or no, or one choice out of several) with probabilities. Registration does not change
 the active chat model. Pick the server's Decision model in `/config` > Models > Switch Models.
-[Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) uses it to tell when
-a conversation matches a persona's interests; with no Decision model selected, it uses the Natural
-Nudges model instead.
+[Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) uses it as its Active
+Nudge Checker to tell when a conversation matches a persona's interests, unless a different checker
+is picked in `/config` > Plugins > Natural Nudges.
 
 OpenRouter is the supported native provider. Save its key, open its model dropdown, and choose
 `+ Add new Decision Model`. Enter an ID from its verified Decision catalog. The global catalog

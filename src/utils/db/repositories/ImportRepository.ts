@@ -1,9 +1,11 @@
 import { validateDraftingImportReferences } from "@/utils/discord/interactions/responseDraftingOperations";
 import { loadStructuredOutputModelGroups } from "@/utils/discord/interactions/configModelOperations";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
+import { supportsCheckerChoice } from "@/modules/natural-nudges/db/types";
 import { invalidateNaturalNudgeConfigCache } from "@/modules/natural-nudges/runtime/configCache";
 import { isKnownPrerequisite, isNudgeToolName } from "@/modules/natural-nudges/runtime/idleNudges";
 import { sql } from "@/utils/db/client";
+import { llmModelRepo } from "@/utils/db/repositories/LlmModelRepository";
 import type { SQL } from "bun";
 import { log } from "@/utils/misc/logger";
 import {
@@ -341,7 +343,10 @@ function getStmCategories(value: unknown): Array<{ position: number; label: stri
   });
 }
 
-/** The planner model must be offered to this workspace and every custom idle nudge must name known checks. */
+/**
+ * The planner and checker models must be offered to this workspace, at most one checker may be set, and
+ * every custom idle nudge must name known checks.
+ */
 async function validateNudgesImport(
   serverId: number,
   nudges: NonNullable<WorkspaceConfigExportData["nudges"]>,
@@ -354,9 +359,17 @@ async function validateNudgesImport(
     )
   )
     return false;
-  if (nudges.llm_id == null) return true;
-  const groups = await loadStructuredOutputModelGroups(serverId, "en-US");
-  return groups.some((group) => group.models.some((model) => model.id === nudges.llm_id));
+  if (nudges.checker_llm_id != null && nudges.checker_decision_model_id != null) return false;
+  const textModelIds = [nudges.llm_id, nudges.checker_llm_id].filter((id): id is number => id != null);
+  if (textModelIds.length > 0) {
+    const groups = await loadStructuredOutputModelGroups(serverId, "en-US");
+    const offered = new Set(groups.flatMap((group) => group.models.map((model) => model.id)));
+    if (!textModelIds.every((id) => offered.has(id))) return false;
+  }
+  if (nudges.checker_decision_model_id == null) return true;
+  return (await llmModelRepo.loadDecisionModelOptions({ kind: "server", ownerId: serverId })).some(
+    ({ model }) => model.decision_model_id === nudges.checker_decision_model_id && supportsCheckerChoice(model),
+  );
 }
 
 async function importNudgesSection(
@@ -364,7 +377,14 @@ async function importNudgesSection(
   serverId: number,
   nudges: NonNullable<WorkspaceConfigExportData["nudges"]>,
 ): Promise<void> {
-  const { custom_idle_nudges: customIdleNudges, ...settings } = nudges;
+  const { custom_idle_nudges: customIdleNudges, ...imported } = nudges;
+  // Clears the other checker column, because the one-checker CHECK rejects a row that keeps both set.
+  const settings =
+    imported.checker_llm_id != null
+      ? { ...imported, checker_decision_model_id: null }
+      : imported.checker_decision_model_id != null
+        ? { ...imported, checker_llm_id: null }
+        : imported;
   if (!(await naturalNudgeRepository.saveServerConfig(serverId, settings, tx))) {
     throw new Error("Natural Nudges settings import failed");
   }

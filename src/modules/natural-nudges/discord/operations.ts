@@ -3,6 +3,7 @@ import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories
 import {
   NATURAL_NUDGE_INTEREST_LIMIT,
   naturalNudgeInterestSchema,
+  supportsCheckerChoice,
   type IdleNudgeFrequencyLevel,
   type NaturalNudgeInterest,
   type NaturalNudgeRuntimeState,
@@ -17,13 +18,15 @@ import {
 } from "@/modules/natural-nudges/runtime/meters";
 import {
   loadStructuredOutputModelGroups,
+  type ConfigModelChoice,
   type StructuredOutputModelGroup,
 } from "@/utils/discord/interactions/configModelOperations";
-import { statRepository } from "@/utils/db/repositories";
+import { llmModelRepo, statRepository } from "@/utils/db/repositories";
+import { resolveDescription } from "@/utils/text/localizer";
 import type { TomoriState } from "@/types/db/schema";
 import { resolveEffectiveChannelIds } from "@/modules/natural-nudges/runtime/channels";
 import { invalidateNaturalNudgeConfigCache } from "@/modules/natural-nudges/runtime/configCache";
-import { resolveMatcherBackend } from "@/modules/natural-nudges/runtime/matcher";
+import { resolveMatcherBackend, type ResolvedChecker } from "@/modules/natural-nudges/runtime/matcher";
 import { resolvePlannerModel, type PlannerModelStatus } from "@/modules/natural-nudges/runtime/model";
 
 export type NudgeWriteResult = "success" | "stale" | "invalid" | "limit" | "write-failed";
@@ -33,14 +36,22 @@ interface NaturalNudgesStatus {
   effectiveChannelIds: string[];
   plannerModel: PlannerModelStatus;
   chatModel: { codename: string; provider: string } | null;
-  /** Which model would match Active Nudges right now, or null when none can. */
-  matcher: { kind: "decision"; model: string } | { kind: "llm" } | null;
+  /** The model that would check Active Nudges right now; `model` is null when none can. */
+  checker: { source: ResolvedChecker["source"]; model: string | null };
+}
+
+/** Decision models one provider offers the server that can answer the checker's `choice` question. */
+export interface CheckerDecisionModelGroup {
+  provider: string;
+  models: ConfigModelChoice[];
 }
 
 export interface NaturalNudgesSettingsView {
   config: ServerNaturalNudgeConfig;
   runtime: NaturalNudgeRuntimeState;
+  /** Structured-output text models, which serve both the planner and a text-model checker. */
   plannerModels: StructuredOutputModelGroup[];
+  checkerDecisionModels: CheckerDecisionModelGroup[];
   trackingEnabled: boolean;
   heat: number;
   perDay: number;
@@ -75,19 +86,35 @@ async function loadSettingsStatus(
   config: ServerNaturalNudgeConfig,
   now: Date,
 ): Promise<NaturalNudgesStatus> {
-  const [effectiveChannelIds, plannerModel, backend] = await Promise.all([
+  const [effectiveChannelIds, plannerModel, checker] = await Promise.all([
     resolveEffectiveChannelIds(state.server_id, config, now),
     resolvePlannerModel(state, config.llm_id),
-    resolveMatcherBackend(state, config.llm_id),
+    resolveMatcherBackend(state, config),
   ]);
   const chatModel =
     (state.llm.llm_id ?? 0) > 0 ? { codename: state.llm.llm_codename, provider: state.llm.llm_provider } : null;
-  const matcher = !backend
-    ? null
-    : backend.kind === "decision"
-      ? { kind: "decision" as const, model: backend.model }
-      : { kind: "llm" as const };
-  return { effectiveChannelIds, plannerModel, chatModel, matcher };
+  return {
+    effectiveChannelIds,
+    plannerModel,
+    chatModel,
+    checker: { source: checker.source, model: checker.backend?.model ?? null },
+  };
+}
+
+async function loadCheckerDecisionModels(serverId: number, locale: string): Promise<CheckerDecisionModelGroup[]> {
+  const options = await llmModelRepo.loadDecisionModelOptions({ kind: "server", ownerId: serverId });
+  const groups = new Map<string, ConfigModelChoice[]>();
+  for (const { model } of options) {
+    if (!supportsCheckerChoice(model)) continue;
+    const models = groups.get(model.provider) ?? [];
+    models.push({
+      id: model.decision_model_id,
+      name: model.codename,
+      description: resolveDescription(model.descriptions, locale),
+    });
+    groups.set(model.provider, models);
+  }
+  return [...groups].map(([provider, models]) => ({ provider, models }));
 }
 
 async function loadSettingsView(
@@ -96,10 +123,11 @@ async function loadSettingsView(
   chatState: TomoriState | null,
 ): Promise<NaturalNudgesSettingsView> {
   const now = new Date();
-  const [config, runtime, plannerModels, dailyCounts] = await Promise.all([
+  const [config, runtime, plannerModels, checkerDecisionModels, dailyCounts] = await Promise.all([
     naturalNudgeRepository.loadServerConfig(serverId),
     naturalNudgeRepository.loadRuntimeState(serverId),
     loadStructuredOutputModelGroups(serverId, locale),
+    loadCheckerDecisionModels(serverId, locale),
     statRepository.getServerDailyMessageCounts({ serverId, from: heatWindowStart(now) }),
   ]);
   const heat = computeHeat(dailyCounts, now);
@@ -107,6 +135,7 @@ async function loadSettingsView(
     config,
     runtime,
     plannerModels,
+    checkerDecisionModels,
     trackingEnabled: statRepository.isTrackingEnabled,
     heat,
     perDay: idleNudgesPerDay(heat, config.idle_nudge_frequency),
@@ -151,6 +180,30 @@ const naturalNudgeOperations = {
         return "stale";
     }
     return patchConfig(serverId, { llm_id: llmId });
+  },
+
+  /** Pins a text or Decision model as the Active Nudge Checker; null returns to the recommended checker. */
+  async setCheckerModel(
+    serverId: number,
+    choice: { kind: "llm" | "decision"; provider: string; id: number } | null,
+  ): Promise<NudgeWriteResult> {
+    if (choice === null) return patchConfig(serverId, { checker_llm_id: null, checker_decision_model_id: null });
+    const groups =
+      choice.kind === "llm"
+        ? await loadStructuredOutputModelGroups(serverId, "en-US")
+        : await loadCheckerDecisionModels(serverId, "en-US");
+    if (
+      !groups.some(
+        (group) => group.provider === choice.provider && group.models.some((model) => model.id === choice.id),
+      )
+    )
+      return "stale";
+    return patchConfig(
+      serverId,
+      choice.kind === "llm"
+        ? { checker_llm_id: choice.id, checker_decision_model_id: null }
+        : { checker_llm_id: null, checker_decision_model_id: choice.id },
+    );
   },
 
   setFrequency(serverId: number, level: IdleNudgeFrequencyLevel): Promise<NudgeWriteResult> {

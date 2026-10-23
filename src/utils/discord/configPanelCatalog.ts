@@ -438,6 +438,9 @@ export type ConfigPanelRoute =
   | { action: "nudge-channels-select"; locale: string }
   | { action: "nudge-provider"; locale: string }
   | { action: "nudge-model-submit"; locale: string; provider: string; nonce: string }
+  | { action: "nudge-checker-provider"; locale: string }
+  | { action: "nudge-checker-model-submit"; locale: string; provider: string; nonce: string }
+  | { action: "nudge-checker-decision-submit"; locale: string; provider: string; nonce: string }
   | { action: "nudge-idle-nudges-frequency-select"; locale: string }
   | { action: "nudge-active-nudges-set"; locale: string; enabled: boolean }
   | { action: "nudge-active-nudges-frequency-select"; locale: string }
@@ -959,6 +962,9 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "nudge-channels-select": { wireToken: "nn-channels", fields: [] },
   "nudge-provider": { wireToken: "nn-provider", fields: [] },
   "nudge-model-submit": { wireToken: "nn-model", fields: [providerField, nonceField] },
+  "nudge-checker-provider": { wireToken: "nn-checker", fields: [] },
+  "nudge-checker-model-submit": { wireToken: "nn-checker-model", fields: [providerField, nonceField] },
+  "nudge-checker-decision-submit": { wireToken: "nn-checker-decision", fields: [providerField, nonceField] },
   "nudge-idle-nudges-frequency-select": { wireToken: "nn-idle-frequency", fields: [] },
   "nudge-active-nudges-set": { wireToken: "nn-active-set", fields: [enabledField] },
   "nudge-active-nudges-frequency-select": { wireToken: "nn-active-frequency", fields: [] },

@@ -1,9 +1,10 @@
 import { z } from "zod";
 import type { TomoriState } from "@/types/db/schema";
-import type { DecisionModelReference, DecisionResult } from "@/types/provider/featureInterfaces";
+import type { DecisionModelOption, DecisionModelReference, DecisionResult } from "@/types/provider/featureInterfaces";
 import { callDecisionsForProvider } from "@/providers/utils/providerFeatureExecutors";
+import { supportsCheckerChoice, type ServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
 import { escapeDataText } from "@/modules/natural-nudges/runtime/channels";
-import { resolvePlannerModel, resolveStructuredCallTarget } from "@/modules/natural-nudges/runtime/model";
+import { resolveStructuredCallTarget } from "@/modules/natural-nudges/runtime/model";
 import { llmModelRepo } from "@/utils/db/repositories";
 import { formatStructuredRetryNote, resolveServerStructuredModel } from "@/utils/provider/serverStructuredOutput";
 import type { TokenUsage } from "@/utils/text/tokenEstimate";
@@ -25,7 +26,19 @@ export interface MatcherOption {
 
 export type MatcherBackend =
   | { kind: "decision"; reference: DecisionModelReference; model: string }
-  | { kind: "llm"; llmId: number };
+  | { kind: "llm"; llmId: number; model: string };
+
+/** `pinned` is the admin's Active Nudge Checker choice; `recommended` is resolved from the server's keys. */
+export interface ResolvedChecker {
+  backend: MatcherBackend | null;
+  source: "pinned" | "recommended";
+}
+
+/**
+ * Recommended checker text models by provider, tried after a Decision model. Gemma has no paid tier on
+ * Google's API, so the frequent checks stay off the quota that chat replies use.
+ */
+const RECOMMENDED_CHECKER_LLMS = [{ provider: "google", codename: "gemma-4-31b-it" }] as const;
 
 type MatcherReason = "matched" | "none" | "refused" | "malformed" | "unavailable" | "failed";
 
@@ -38,6 +51,8 @@ export interface MatcherResult {
   /** Decision path only: the best interest's probability minus `none`'s, negative when `none` won. */
   margin?: number;
   usage?: TokenUsage;
+  /** The provider answered HTTP 429; the Decision path reports only a generic HTTP failure, so it never sets this. */
+  rateLimited?: boolean;
 }
 
 /** Option IDs in the `i01` shape the matcher was evaluated with; labels stay in the option text. */
@@ -45,20 +60,50 @@ export function matcherOptionId(index: number): string {
   return `i${String(index + 1).padStart(2, "0")}`;
 }
 
-/**
- * The selected Decision model when the server has one, else the Natural Nudges model. A selected
- * Decision model that cannot answer does not fall back, because the admin chose it.
- */
-export async function resolveMatcherBackend(state: TomoriState, llmId: number | null): Promise<MatcherBackend | null> {
-  const decisionModelId = state.config.decision_model_id;
-  if (decisionModelId !== null) {
-    const options = await llmModelRepo.loadDecisionModelOptions({ kind: "server", ownerId: state.server_id });
-    const selected = options.find((option) => option.model.decision_model_id === decisionModelId);
-    if (!selected || !(selected.model.supported_primitives as readonly string[]).includes("choice")) return null;
-    return { kind: "decision", reference: selected.reference, model: selected.model.codename };
+function decisionBackend(option: DecisionModelOption | undefined): MatcherBackend | null {
+  if (!option || !supportsCheckerChoice(option.model)) return null;
+  return { kind: "decision", reference: option.reference, model: option.model.codename };
+}
+
+async function llmBackend(state: TomoriState, llmId: number): Promise<MatcherBackend | null> {
+  // llm_id 0 is the unconfigured-model sentinel (`getUnconfiguredLlm`), not a real row.
+  if (llmId <= 0) return null;
+  const resolved = await resolveServerStructuredModel(state, llmId, { serverId: state.server_id });
+  if (!resolved || "errorLogged" in resolved) return null;
+  return { kind: "llm", llmId, model: resolved.state.llm.llm_codename };
+}
+
+/** A pinned checker never falls back to the recommended one, because the admin chose it. */
+export async function resolveMatcherBackend(
+  state: TomoriState,
+  config: Pick<ServerNaturalNudgeConfig, "llm_id" | "checker_llm_id" | "checker_decision_model_id">,
+): Promise<ResolvedChecker> {
+  const scope = { kind: "server", ownerId: state.server_id } as const;
+  if (config.checker_decision_model_id !== null) {
+    const options = await llmModelRepo.loadDecisionModelOptions(scope);
+    const selected = options.find((option) => option.model.decision_model_id === config.checker_decision_model_id);
+    return { backend: decisionBackend(selected), source: "pinned" };
   }
-  const planner = await resolvePlannerModel(state, llmId);
-  return planner.kind === "ready" ? { kind: "llm", llmId: planner.llmId } : null;
+  if (config.checker_llm_id !== null)
+    return { backend: await llmBackend(state, config.checker_llm_id), source: "pinned" };
+
+  const options = await llmModelRepo.loadDecisionModelOptions(scope);
+  const serverDecisionModelId = state.config.decision_model_id;
+  // A Decision model the admin selected in Models predates the checker setting, so it does not fall back either.
+  if (serverDecisionModelId !== null) {
+    const selected = options.find((option) => option.model.decision_model_id === serverDecisionModelId);
+    return { backend: decisionBackend(selected), source: "recommended" };
+  }
+  const openRouterDefault = decisionBackend(
+    options.find((option) => option.model.provider === "openrouter" && option.model.is_default),
+  );
+  if (openRouterDefault) return { backend: openRouterDefault, source: "recommended" };
+  for (const recommended of RECOMMENDED_CHECKER_LLMS) {
+    const model = await llmModelRepo.loadByProviderAndCodename(recommended.provider, recommended.codename);
+    const backend = model?.llm_id ? await llmBackend(state, model.llm_id) : null;
+    if (backend) return { backend, source: "recommended" };
+  }
+  return { backend: await llmBackend(state, config.llm_id ?? state.llm.llm_id ?? 0), source: "recommended" };
 }
 
 function decisionOutcome(result: DecisionResult, model: string, optionIds: readonly string[]): MatcherResult {
@@ -165,7 +210,7 @@ async function matchWithLlm(
   if (result.failure === "refusal") return { ...base, choice: null, reason: "refused" };
   if (result.failure === "malformed") return { ...base, choice: null, reason: "malformed" };
   if (result.failure === "cancelled") return { ...base, choice: null, reason: "unavailable" };
-  return { ...base, choice: null, reason: "failed" };
+  return { ...base, choice: null, reason: "failed", ...(result.httpStatus === 429 ? { rateLimited: true } : {}) };
 }
 
 /**

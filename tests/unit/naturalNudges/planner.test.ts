@@ -2,7 +2,6 @@ import { describe, expect, it } from "bun:test";
 import {
   buildAcceptedResult,
   buildPlannerJsonSchema,
-  fitAttributes,
   sceneScriptIssues,
 } from "@/modules/natural-nudges/runtime/planner";
 
@@ -13,20 +12,6 @@ function maxMinItems(node: unknown): number {
   const own = "minItems" in node && typeof node.minItems === "number" ? node.minItems : 0;
   return Math.max(own, ...Object.values(node).map(maxMinItems));
 }
-
-describe("planner persona attributes", () => {
-  it("keeps a late attribute, short ones whole, and the total within budget", () => {
-    const long = "L".repeat(2000);
-    const fitted = fitAttributes([long, long, long, long, "Loves cooking."], 1000);
-    expect(fitted[4]).toBe("Loves cooking.");
-    expect(fitted.slice(0, 4).every((attribute) => attribute.length > 0)).toBe(true);
-    expect(fitted.join("").length).toBeLessThanOrEqual(1000);
-  });
-
-  it("passes attributes through untouched when they fit", () => {
-    expect(fitAttributes(["a", "bb"], 10)).toEqual(["a", "bb"]);
-  });
-});
 
 describe("Play Scene script rules", () => {
   it("accepts a script the lead opens, that alternates, and that gives every speaker a turn", () => {

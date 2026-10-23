@@ -12,11 +12,6 @@ import type { TokenUsage } from "@/utils/text/tokenEstimate";
 
 /** A planner that hangs past this would plan for a moment that has already passed. */
 const PLANNER_TIMEOUT_MS = 90_000;
-/**
- * Persona text per character: the planner only picks a topic while the chat turn voices it with the full
- * persona, and a scene sends up to three characters on every attempt.
- */
-const PERSONA_ATTRIBUTE_BUDGET_CHARS = 2400;
 const TARGET_MEMORY_MAX_CHARS = 300;
 
 interface PlannerChannel {
@@ -194,33 +189,13 @@ function buildTargetBlock(target: PingUserTarget): string {
   return lines.filter(Boolean).join("\n");
 }
 
-/**
- * Splits `budget` so short attributes stay whole and long ones share the rest equally, because an
- * attribute's position says nothing about whether it matters to what the persona would bring up.
- */
-export function fitAttributes(attributes: readonly string[], budget: number): string[] {
-  const limits: number[] = [];
-  let remaining = budget;
-  let unfitted = attributes.length;
-  const shortestFirst = [...attributes.keys()].sort((a, b) => attributes[a].length - attributes[b].length);
-  for (const index of shortestFirst) {
-    limits[index] = Math.min(attributes[index].length, Math.floor(remaining / unfitted));
-    remaining -= limits[index];
-    unfitted -= 1;
-  }
-  return attributes.map((attribute, index) => attribute.slice(0, limits[index]));
-}
-
 /** A scene numbers every character so the script can name them; a single speaker needs no number. */
 function buildCharacterBlocks(
   persona: TomoriState,
   interests: readonly NaturalNudgeInterest[],
   number: number | null,
 ): string[] {
-  const attributes = fitAttributes(
-    persona.attribute_list.map((attribute) => attribute.replaceAll("{bot}", persona.persona_nickname)),
-    PERSONA_ATTRIBUTE_BUDGET_CHARS,
-  );
+  const attributes = persona.attribute_list.map((attribute) => attribute.replaceAll("{bot}", persona.persona_nickname));
   const numbered = number === null ? "" : ` number="${number}"`;
   const lines = interests.map((interest) => `- ${interest.label}: ${interest.description}`);
   return [

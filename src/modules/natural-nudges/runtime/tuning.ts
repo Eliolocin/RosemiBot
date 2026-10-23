@@ -12,10 +12,10 @@ export const MIN_IDLE_NUDGE_HEAT = 1;
 
 /** Tickets per idle nudge category, fixed for every server because the mix is operator tuning. */
 export const IDLE_NUDGE_CATEGORY_WEIGHTS: Record<NaturalNudgeCategory, number> = {
-  ping_user: 35,
-  revive_topic: 25,
-  start_topic: 25,
-  play_scene: 15,
+  ping_user: 0,
+  revive_topic: 0,
+  start_topic: 0,
+  play_scene: 100,
 };
 
 /** Heat divided by this gives idle nudges per day, per frequency level. */
@@ -122,8 +122,16 @@ export const ACTIVE_NUDGE_HEAT_SCALE_MAX = 4;
 export const ACTIVE_NUDGE_LEVEL_MULTIPLIERS: Record<IdleNudgeFrequencyLevel, number> = { 0: 2, 1: 1, 2: 0.6, 3: 0.35 };
 /** Daily Active Nudge ceiling per frequency level, matching the idle nudge cap at Gentle. */
 export const ACTIVE_NUDGE_DAILY_CAPS: Record<IdleNudgeFrequencyLevel, number> = { 0: 1, 1: 3, 2: 6, 3: 10 };
-/** After a check that found nothing, the channel rests before counting again. */
+/**
+ * Checker calls per server per day by frequency level. The fire cap alone never stops checks that find
+ * nothing, and on a busy server those can use up a free key's daily requests that chat replies also need.
+ */
+export const ACTIVE_NUDGE_DAILY_CHECK_CAPS: Record<IdleNudgeFrequencyLevel, number> = { 0: 10, 1: 20, 2: 40, 3: 60 };
+/** After a check that found nothing, the channel rests before counting again; each empty check in a row doubles it. */
 export const ACTIVE_NUDGE_EMPTY_REST_MS = 10 * 60 * 1000;
+export const ACTIVE_NUDGE_EMPTY_REST_MAX_MS = 3 * HOUR_MS;
+/** A checker answering HTTP 429 pauses the whole server, because the quota belongs to its key, not to a channel. */
+export const ACTIVE_NUDGE_QUOTA_PAUSE_MS = 3 * HOUR_MS;
 /** The matcher's evidence window; longer windows let an earlier topic win after the talk moved on. */
 export const ACTIVE_NUDGE_WINDOW_MESSAGES = 5;
 /** One check offers at most this many interests plus `none`, because some Decision models reject more than 26 options. */

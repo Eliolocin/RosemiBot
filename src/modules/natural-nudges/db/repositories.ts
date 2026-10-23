@@ -54,6 +54,7 @@ class NaturalNudgeRepository {
   async loadServerConfig(serverId: number, client: SQL = sql): Promise<ServerNaturalNudgeConfig> {
     const rows = await client`
       SELECT server_id, idle_nudges_enabled, active_nudges_enabled, channel_disc_ids, llm_id,
+        checker_llm_id, checker_decision_model_id,
         idle_nudge_frequency, active_nudge_frequency, disabled_builtin_idle_nudges
       FROM server_natural_nudge_configs WHERE server_id = ${serverId}
     `;
@@ -80,10 +81,12 @@ class NaturalNudgeRepository {
     await client`
       INSERT INTO server_natural_nudge_configs (
         server_id, idle_nudges_enabled, active_nudges_enabled, channel_disc_ids, llm_id,
+        checker_llm_id, checker_decision_model_id,
         idle_nudge_frequency, active_nudge_frequency, disabled_builtin_idle_nudges
       ) VALUES (
         ${serverId}, ${next.idle_nudges_enabled}, ${next.active_nudges_enabled}, ${sql.array(next.channel_disc_ids, "TEXT")},
-        ${next.llm_id}, ${next.idle_nudge_frequency}, ${next.active_nudge_frequency},
+        ${next.llm_id}, ${next.checker_llm_id}, ${next.checker_decision_model_id},
+        ${next.idle_nudge_frequency}, ${next.active_nudge_frequency},
         ${sql.array(next.disabled_builtin_idle_nudges, "TEXT")}
       )
       ON CONFLICT (server_id) DO UPDATE SET
@@ -91,6 +94,8 @@ class NaturalNudgeRepository {
         active_nudges_enabled = EXCLUDED.active_nudges_enabled,
         channel_disc_ids = EXCLUDED.channel_disc_ids,
         llm_id = EXCLUDED.llm_id,
+        checker_llm_id = EXCLUDED.checker_llm_id,
+        checker_decision_model_id = EXCLUDED.checker_decision_model_id,
         idle_nudge_frequency = EXCLUDED.idle_nudge_frequency,
         active_nudge_frequency = EXCLUDED.active_nudge_frequency,
         disabled_builtin_idle_nudges = EXCLUDED.disabled_builtin_idle_nudges
@@ -109,6 +114,7 @@ class NaturalNudgeRepository {
           'server_id', c.server_id, 'idle_nudges_enabled', c.idle_nudges_enabled,
           'active_nudges_enabled', c.active_nudges_enabled,
           'channel_disc_ids', c.channel_disc_ids, 'llm_id', c.llm_id,
+          'checker_llm_id', c.checker_llm_id, 'checker_decision_model_id', c.checker_decision_model_id,
           'idle_nudge_frequency', c.idle_nudge_frequency, 'active_nudge_frequency', c.active_nudge_frequency,
           'disabled_builtin_idle_nudges', c.disabled_builtin_idle_nudges
         ) END AS config

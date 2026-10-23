@@ -21,6 +21,7 @@ export const PANEL_ACTIONS = [
   "server-config.workspace.natural-nudge-idle-nudges.set",
   "server-config.workspace.natural-nudge-channels.set",
   "server-config.workspace.natural-nudge-model.set",
+  "server-config.workspace.natural-nudge-checker.set",
   "server-config.workspace.natural-nudge-idle-nudges-frequency.set",
   "server-config.workspace.natural-nudge-active-nudges.set",
   "server-config.workspace.natural-nudge-active-nudges-frequency.set",

@@ -5,6 +5,7 @@ import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories
 import { defaultServerNaturalNudgeConfig, type NaturalNudgeFireRow } from "@/modules/natural-nudges/db/types";
 import * as channels from "@/modules/natural-nudges/runtime/channels";
 import {
+  ActiveNudgeCheckBudget,
   buildMatcherOptions,
   observeActiveNudgeMessage,
   runActiveNudgeCheck,
@@ -13,7 +14,12 @@ import {
 import * as configCache from "@/modules/natural-nudges/runtime/configCache";
 import * as inFlight from "@/modules/natural-nudges/runtime/inFlight";
 import * as matcher from "@/modules/natural-nudges/runtime/matcher";
-import { ACTIVE_NUDGE_OPTION_BUDGET, ACTIVE_NUDGE_STALE_HUMAN_MESSAGES } from "@/modules/natural-nudges/runtime/tuning";
+import {
+  ACTIVE_NUDGE_DAILY_CHECK_CAPS,
+  ACTIVE_NUDGE_OPTION_BUDGET,
+  ACTIVE_NUDGE_QUOTA_PAUSE_MS,
+  ACTIVE_NUDGE_STALE_HUMAN_MESSAGES,
+} from "@/modules/natural-nudges/runtime/tuning";
 import * as tomoriStateCache from "@/utils/cache/tomoriStateCache";
 import type { TomoriChatInput } from "@/utils/chat/types";
 import { statRepository } from "@/utils/db/repositories";
@@ -221,7 +227,10 @@ describe("Active Nudge check", () => {
       }),
       spyOn(whitelistRepository, "checkChannelWhitelist").mockResolvedValue(undefined as never),
       spyOn(whitelistRepository, "isPersonaAllowedByWhitelistStatus").mockReturnValue(true),
-      spyOn(matcher, "resolveMatcherBackend").mockResolvedValue({ kind: "llm", llmId: 1 }),
+      spyOn(matcher, "resolveMatcherBackend").mockResolvedValue({
+        backend: { kind: "llm", llmId: 1, model: "fixture" },
+        source: "recommended",
+      }),
       spyOn(metricSampleRepository, "recordSample").mockImplementation(async (_name, fields) => {
         samples.push(fields);
       }),
@@ -240,14 +249,18 @@ describe("Active Nudge check", () => {
     canSend = true;
   });
 
-  const options = (sleep: () => Promise<void> = async () => {}) => ({ sleep, random: () => 0.5 });
+  const options = (sleep: () => Promise<void> = async () => {}, budget = new ActiveNudgeCheckBudget()) => ({
+    sleep,
+    random: () => 0.5,
+    budget,
+  });
 
   const postHumans = async (count: number) => {
     window = Array.from({ length: count }, () => member(channel));
     for (let index = 0; index < count; index++) await observeActiveNudgeMessage(client, member(channel));
   };
 
-  it("speaks a plain turn as the interest's owner and records the fire", async () => {
+  it("speaks as the interest's owner, told which interest drew it in, and records the fire", async () => {
     const fire = recordFire();
     spies.push(fire);
     expect(await runActiveNudgeCheck(check, options())).toBe("fired");
@@ -257,7 +270,9 @@ describe("Active Nudge check", () => {
       naturalNudge: { toolNames: [] },
       borrowsTriggerMessage: true,
     });
-    expect(input.injectedContextItems).toBeUndefined();
+    const frame = JSON.stringify(input.injectedContextItems);
+    expect(frame).toContain(MECHA.label);
+    expect(frame).not.toContain(BAKING.label);
     expect(input.message.id).toBe(ANCHOR_ID);
     expect(fire.mock.calls[0][0]).toMatchObject({
       personaId: MAIN_ID,
@@ -552,5 +567,31 @@ describe("Active Nudge check", () => {
     expect(await runActiveNudgeCheck(check, options())).toBe("aborted");
     expect(samples.at(-1)).toMatchObject({ reason: "matcher_refused" });
     expect(chatInputs).toEqual([]);
+  });
+
+  it("stops calling the checker once the day's check cap is spent, re-matches included", async () => {
+    spies.push(recordFire());
+    const budget = new ActiveNudgeCheckBudget();
+    const cap = ACTIVE_NUDGE_DAILY_CHECK_CAPS[defaultServerNaturalNudgeConfig(SERVER_ID).active_nudge_frequency];
+    match.mockResolvedValue({ choice: null, reason: "none", kind: "llm", model: "fixture" });
+    for (let index = 0; index < cap - 1; index++) await runActiveNudgeCheck(check, options(undefined, budget));
+    expect(match).toHaveBeenCalledTimes(cap - 1);
+
+    match.mockResolvedValue(defaultMatch);
+    const duringDelay = () => postHumans(ACTIVE_NUDGE_STALE_HUMAN_MESSAGES);
+    expect(await runActiveNudgeCheck(check, options(duringDelay, budget))).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ phase: "c", reason: "check_cap_reached" });
+    expect(await runActiveNudgeCheck(check, options(undefined, budget))).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ phase: "a", reason: "check_cap_reached" });
+    expect(match).toHaveBeenCalledTimes(cap);
+    expect(chatInputs).toEqual([]);
+  });
+
+  it("pauses the server after a checker answers HTTP 429", async () => {
+    const budget = new ActiveNudgeCheckBudget();
+    match.mockResolvedValue({ choice: null, reason: "failed", kind: "llm", model: "fixture", rateLimited: true });
+    expect(await runActiveNudgeCheck(check, options(undefined, budget))).toBe("failed");
+    expect(budget.isPaused(SERVER_ID, Date.now())).toBe(true);
+    expect(budget.isPaused(SERVER_ID, Date.now() + ACTIVE_NUDGE_QUOTA_PAUSE_MS)).toBe(false);
   });
 });

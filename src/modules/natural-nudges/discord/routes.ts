@@ -22,11 +22,13 @@ import {
   type NudgeWriteResult,
 } from "@/modules/natural-nudges/discord/operations";
 import {
+  buildCheckerModelModal,
   buildInterestModal,
   buildInterestRemovalModal,
   buildPlannerModelModal,
   NUDGE_ADD_VALUE,
   NUDGE_CLEAR_MODEL_VALUE,
+  NUDGE_DECISION_PROVIDER_PREFIX,
   NUDGE_INTEREST_CHECKLIST_FIELD,
   NUDGE_INTEREST_DESCRIPTION_FIELD,
   NUDGE_INTEREST_LABEL_FIELD,
@@ -38,6 +40,7 @@ export const NUDGE_STRING_SELECT_ACTIONS: ReadonlySet<ConfigAction> = new Set<Co
   "nudge-talk-select",
   "nudge-interest-select",
   "nudge-provider",
+  "nudge-checker-provider",
   "nudge-idle-nudges-frequency-select",
   "nudge-active-nudges-frequency-select",
 ]);
@@ -49,6 +52,8 @@ export const NUDGE_MODAL_SUBMIT_ACTIONS: ReadonlySet<ConfigAction> = new Set<Con
   "nudge-interest-edit-submit",
   "nudge-interest-remove-submit",
   "nudge-model-submit",
+  "nudge-checker-model-submit",
+  "nudge-checker-decision-submit",
 ]);
 
 function selectedValues(interaction: GlobalRoutableInteraction): string[] {
@@ -73,7 +78,9 @@ export async function handleNudgeModalOpen(
   const opensModal =
     route.action === "nudge-interest-select" ||
     route.action === "nudge-interest-remove-open" ||
-    (route.action === "nudge-provider" && value !== undefined && value !== NUDGE_CLEAR_MODEL_VALUE);
+    ((route.action === "nudge-provider" || route.action === "nudge-checker-provider") &&
+      value !== undefined &&
+      value !== NUDGE_CLEAR_MODEL_VALUE);
   if (!opensModal) return false;
 
   const locale = route.locale;
@@ -123,22 +130,50 @@ export async function handleNudgeModalOpen(
     );
     return true;
   }
-  if (route.action === "nudge-provider") {
+  if (route.action === "nudge-provider" && value) {
     const settings = await nudges.loadSettings(serverId, locale, null);
-    const slice = value ? decodeConfigProviderPageValue(value) : null;
-    const group = settings.plannerModels.find((candidate) => candidate.provider === (slice?.provider ?? value));
-    const start = slice?.start ?? 0;
-    if (!group || start % CONFIG_MODEL_PAGE_SIZE !== 0 || start >= group.models.length) {
+    const page = findModelPage(settings.plannerModels, value);
+    if (!page) {
       await deny("commands.config.panel.stale_detail");
       return true;
     }
     await dependencies.showModal(
       interaction,
-      buildPlannerModelModal(locale, nonce, group, start, settings.config.llm_id),
+      buildPlannerModelModal(locale, nonce, page.group, page.start, settings.config.llm_id),
+    );
+    return true;
+  }
+  if (route.action === "nudge-checker-provider" && value) {
+    const settings = await nudges.loadSettings(serverId, locale, null);
+    const kind = value.startsWith(NUDGE_DECISION_PROVIDER_PREFIX) ? "decision" : "llm";
+    const page =
+      kind === "decision"
+        ? findModelPage(settings.checkerDecisionModels, value.slice(NUDGE_DECISION_PROVIDER_PREFIX.length))
+        : findModelPage(settings.plannerModels, value);
+    if (!page) {
+      await deny("commands.config.panel.stale_detail");
+      return true;
+    }
+    const current = kind === "decision" ? settings.config.checker_decision_model_id : settings.config.checker_llm_id;
+    await dependencies.showModal(
+      interaction,
+      buildCheckerModelModal(locale, nonce, kind, page.group, page.start, current),
     );
     return true;
   }
   return false;
+}
+
+/** The provider group and page a model select value names, or null when it no longer exists. */
+function findModelPage<Group extends { provider: string; models: readonly unknown[] }>(
+  groups: readonly Group[],
+  value: string,
+): { group: Group; start: number } | null {
+  const slice = decodeConfigProviderPageValue(value);
+  const group = groups.find((candidate) => candidate.provider === (slice?.provider ?? value));
+  const start = slice?.start ?? 0;
+  if (!group || start % CONFIG_MODEL_PAGE_SIZE !== 0 || start >= group.models.length) return null;
+  return { group, start };
 }
 
 function writeReceipt(locale: string, result: NudgeWriteResult): PanelReceipt {
@@ -308,6 +343,30 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
           : await write(
               () => ops.setPlannerModel(serverId, route.provider, id),
               "server-config.workspace.natural-nudge-model.set",
+            );
+      await paintPlugins(writeReceipt(locale, result));
+      return true;
+    }
+    case "nudge-checker-provider": {
+      const result =
+        values[0] === NUDGE_CLEAR_MODEL_VALUE
+          ? await write(() => ops.setCheckerModel(serverId, null), "server-config.workspace.natural-nudge-checker.set")
+          : "stale";
+      await paintPlugins(writeReceipt(locale, result));
+      return true;
+    }
+    case "nudge-checker-model-submit":
+    case "nudge-checker-decision-submit": {
+      const id = parseIndex(
+        dependencies.takeSelectValue(interaction.id, buildConfigModalFieldId(CONFIG_MODEL_SELECT_FIELD, route.nonce)),
+      );
+      const kind = route.action === "nudge-checker-model-submit" ? "llm" : "decision";
+      const result =
+        id === null || id <= 0
+          ? "stale"
+          : await write(
+              () => ops.setCheckerModel(serverId, { kind, provider: route.provider, id }),
+              "server-config.workspace.natural-nudge-checker.set",
             );
       await paintPlugins(writeReceipt(locale, result));
       return true;

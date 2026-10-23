@@ -142,11 +142,15 @@ To change how it works, open `/config` > Plugins > Natural Nudges (you need Mana
 - **Channels** is automatic: the channels where people talked to TomoriBot in the last 14 days,
   except roleplay channels. Pick channels to choose them yourself, or clear the list to go back to
   automatic. A channel where other bots post often never goes quiet, so it is left alone.
-- **Natural Nudges Model** is the AI model that plans idle nudges. By default it is the server's chat
-  model. It also decides when a conversation matches an interest, unless you pick a Decision model (a
-  small model made for quick pick-one questions) in `/config` > Models. Not every model can do this
-  job; if yours can't, the page says so and lets you pick another. Free Google models fall under
+- **Model Selection** picks the two AI models Natural Nudges uses. Free Google models fall under
   Google's terms for free use, which let Google use the conversations sent to them.
+  - **Idle Nudge Planner** plans idle nudges. By default it is the server's chat model. Not every
+    model can do this job; if yours can't, the page says so and lets you pick another.
+  - **Active Nudge Checker** looks at a conversation now and then to see whether it matches an
+    interest. It runs much more often than the planner, so a small, cheap model suits it best. By
+    default TomoriBot picks one for you: a Decision model (a small model made for quick pick-one
+    questions) if the server has an OpenRouter key, otherwise Gemma 4 31B if it has a Google key,
+    otherwise the Idle Nudge Planner. You can pick any of these yourself, including Decision models.
 
 The page shows how active the server is, how many idle nudges to expect each week, and how often she
 checks for active nudges.
@@ -158,6 +162,10 @@ checks for active nudges.
 - **Daily limits** follow the frequency level: Rare allows 1 idle nudge and 1 active nudge a day,
   Gentle 3 of each, Normal 5 idle nudges and 6 active nudges, and Lively 8 idle nudges and 10 active
   nudges.
+- **Check limits** keep active nudges from using up an AI key: TomoriBot checks conversations at
+  most 10 times a day on Rare, 20 on Gentle, 40 on Normal, and 60 on Lively. After a check finds
+  nothing, that channel waits longer before the next one, from 10 minutes up to 3 hours. If the AI
+  provider says the key has hit its limit, active nudges pause for 3 hours.
 
 ### When it stays off
 

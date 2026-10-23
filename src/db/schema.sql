@@ -3403,12 +3403,26 @@ CREATE TABLE IF NOT EXISTS server_natural_nudge_configs (
   active_nudges_enabled          BOOLEAN  NOT NULL DEFAULT true,
   channel_disc_ids          TEXT[]   NOT NULL DEFAULT '{}',
   llm_id                    INT      REFERENCES llms(llm_id) ON DELETE SET NULL,
+  checker_llm_id            INT      REFERENCES llms(llm_id) ON DELETE SET NULL,
+  checker_decision_model_id INT      REFERENCES decision_models(decision_model_id) ON DELETE SET NULL,
   idle_nudge_frequency         SMALLINT NOT NULL DEFAULT 1 CHECK (idle_nudge_frequency BETWEEN 0 AND 3),
   active_nudge_frequency        SMALLINT NOT NULL DEFAULT 1 CHECK (active_nudge_frequency BETWEEN 0 AND 3),
   disabled_builtin_idle_nudges TEXT[]   NOT NULL DEFAULT '{}',
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT server_natural_nudge_configs_one_checker
+    CHECK (num_nonnulls(checker_llm_id, checker_decision_model_id) <= 1)
 );
+
+SELECT add_column_if_not_exists('server_natural_nudge_configs', 'checker_llm_id', 'INT REFERENCES llms(llm_id) ON DELETE SET NULL');
+SELECT add_column_if_not_exists('server_natural_nudge_configs', 'checker_decision_model_id', 'INT REFERENCES decision_models(decision_model_id) ON DELETE SET NULL');
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'server_natural_nudge_configs_one_checker') THEN
+    ALTER TABLE server_natural_nudge_configs ADD CONSTRAINT server_natural_nudge_configs_one_checker
+      CHECK (num_nonnulls(checker_llm_id, checker_decision_model_id) <= 1);
+  END IF;
+END $$;
 
 DROP TRIGGER IF EXISTS update_server_natural_nudge_configs_timestamp ON server_natural_nudge_configs;
 CREATE TRIGGER update_server_natural_nudge_configs_timestamp

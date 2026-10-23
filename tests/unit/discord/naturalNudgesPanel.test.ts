@@ -1,7 +1,11 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { IDLE_NUDGE_FREQUENCY_LEVELS, defaultServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
 import type { NaturalNudgesSettingsView } from "@/modules/natural-nudges/discord/operations";
-import { buildNaturalNudgesSettingsBody } from "@/modules/natural-nudges/discord/panel";
+import {
+  buildNaturalNudgesSettingsBody,
+  NUDGE_CLEAR_MODEL_VALUE,
+  NUDGE_DECISION_PROVIDER_PREFIX,
+} from "@/modules/natural-nudges/discord/panel";
 import { buildConfigRouteId } from "@/utils/discord/configPanelCatalog";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { localizedCopy } from "../../helpers/localeCases";
@@ -19,6 +23,7 @@ const ROUTE_IDS = {
   idleFrequency: buildConfigRouteId({ action: "nudge-idle-nudges-frequency-select", locale: LOCALE }),
   activeFrequency: buildConfigRouteId({ action: "nudge-active-nudges-frequency-select", locale: LOCALE }),
   provider: buildConfigRouteId({ action: "nudge-provider", locale: LOCALE }),
+  checker: buildConfigRouteId({ action: "nudge-checker-provider", locale: LOCALE }),
 };
 
 const FREQUENCY_KEYS: Record<number, string> = {
@@ -77,6 +82,9 @@ function makeView(overrides: Partial<NaturalNudgesSettingsView> = {}): NaturalNu
     config: { ...defaultServerNaturalNudgeConfig(1), channel_disc_ids: [CHANNEL_ID] },
     runtime: { server_id: 1, idle_nudge_jitter: 1, consecutive_failures: 0, stopped_at: null },
     plannerModels: [{ provider: "openrouter", models: [{ id: 7, name: "planner-model", description: null }] }],
+    checkerDecisionModels: [
+      { provider: "openrouter", models: [{ id: 3, name: "typesafe/jev-1.13", description: null }] },
+    ],
     trackingEnabled: true,
     heat: 120,
     perDay: 2,
@@ -85,7 +93,7 @@ function makeView(overrides: Partial<NaturalNudgesSettingsView> = {}): NaturalNu
       effectiveChannelIds: [CHANNEL_ID],
       plannerModel: { kind: "ready", llmId: 7, source: "chat" },
       chatModel: { codename: "chat-model", provider: "openrouter" },
-      matcher: { kind: "decision", model: "decision-model" },
+      checker: { source: "recommended", model: "decision-model" },
     },
     ...overrides,
   };
@@ -96,7 +104,9 @@ const isModelFootnote = (component: Observed): boolean =>
   Boolean(component.content?.startsWith("-# ")) && !component.content?.includes("/nudge-studio");
 
 const modelSectionText = (): string =>
-  `### ${t("commands.config.natural_nudges.model_title")}\n${t("commands.config.natural_nudges.model_description")}`;
+  `## ${t("commands.config.natural_nudges.model_title")}\n${t("commands.config.natural_nudges.model_description")}\n**${t(
+    "commands.config.natural_nudges.planner_title",
+  )}**\n${t("commands.config.natural_nudges.planner_description")}`;
 
 beforeAll(async () => {
   await initializeLocalizer();
@@ -116,7 +126,7 @@ describe("Natural Nudges settings panel", () => {
       seen.findIndex((component) => component.customId === ROUTE_IDS.idleFrequency),
       headingAt("commands.config.natural_nudges.active_nudges_title"),
       seen.findIndex((component) => component.customId === ROUTE_IDS.activeFrequency),
-      headingAt("commands.config.natural_nudges.model_title"),
+      seen.findIndex((component) => component.content === modelSectionText()),
     ];
 
     expect(order.every((index) => index >= 0)).toBe(true);
@@ -161,6 +171,53 @@ describe("Natural Nudges settings panel", () => {
     expect(pinnedSelect?.options?.[0]?.label).toBe(t("commands.config.natural_nudges.model_same_as_chat_option"));
   });
 
+  it("lists Decision model providers in the checker select, apart from text model providers", () => {
+    const recommended = walk(buildNaturalNudgesSettingsBody(LOCALE, makeView(), false, false)).find(
+      (component) => component.customId === ROUTE_IDS.checker,
+    );
+    expect(recommended?.placeholder).toBe(
+      t("commands.config.natural_nudges.checker_placeholder_recommended", { model: "decision-model" }),
+    );
+    expect(recommended?.options?.map((option) => option.label)).toEqual([
+      t("commands.config.natural_nudges.checker_decision_provider_option", { provider: "OpenRouter" }),
+      "OpenRouter",
+    ]);
+    expect(recommended?.options?.map((option) => option.value)).toEqual([
+      `${NUDGE_DECISION_PROVIDER_PREFIX}openrouter`,
+      "openrouter",
+    ]);
+
+    const pinnedBody = buildNaturalNudgesSettingsBody(
+      LOCALE,
+      makeView({
+        config: { ...defaultServerNaturalNudgeConfig(1), checker_decision_model_id: 3, channel_disc_ids: [CHANNEL_ID] },
+        status: {
+          effectiveChannelIds: [CHANNEL_ID],
+          plannerModel: { kind: "ready", llmId: 7, source: "chat" },
+          chatModel: { codename: "chat-model", provider: "openrouter" },
+          checker: { source: "pinned", model: null },
+        },
+      }),
+      false,
+      false,
+    );
+    const pinned = walk(pinnedBody).find((component) => component.customId === ROUTE_IDS.checker);
+    expect(pinned?.options?.[0]).toMatchObject({
+      label: t("commands.config.natural_nudges.checker_recommended_option"),
+      value: NUDGE_CLEAR_MODEL_VALUE,
+    });
+    expect(pinned?.placeholder).toBe(
+      t("commands.config.natural_nudges.checker_placeholder_selected", {
+        model: t("commands.config.natural_nudges.model_unavailable"),
+      }),
+    );
+    expect(
+      walk(pinnedBody).some(
+        (component) => component.content === `-# ${t("commands.config.natural_nudges.checker_pinned_unavailable")}`,
+      ),
+    ).toBe(true);
+  });
+
   it("explains an unusable default or a server with no structured model in one footnote", () => {
     const unusableDefault = buildNaturalNudgesSettingsBody(
       LOCALE,
@@ -169,7 +226,7 @@ describe("Natural Nudges settings panel", () => {
           effectiveChannelIds: [CHANNEL_ID],
           plannerModel: { kind: "unusable", llmId: 9, source: "chat", reason: "no_structured_output" },
           chatModel: { codename: "chat-model", provider: "openrouter" },
-          matcher: { kind: "decision", model: "decision-model" },
+          checker: { source: "recommended", model: "decision-model" },
         },
       }),
       false,

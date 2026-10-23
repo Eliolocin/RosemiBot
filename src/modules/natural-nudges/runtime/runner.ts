@@ -2,7 +2,7 @@ import type { Client, GuildTextBasedChannel, Message } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
-import type { NaturalNudgeInterest } from "@/modules/natural-nudges/db/types";
+import type { NaturalNudgeCategory, NaturalNudgeInterest } from "@/modules/natural-nudges/db/types";
 import { availableIdleNudgeTools, type IdleNudgeDefinition } from "@/modules/natural-nudges/runtime/idleNudges";
 import {
   hasActivitySince,
@@ -121,7 +121,7 @@ async function recheckBeforeSend(attempt: IdleNudgeAttempt, target: NudgeChannel
   return null;
 }
 
-function systemContextItem(sentences: readonly string[]): StructuredContextItem {
+export function systemContextItem(sentences: readonly string[]): StructuredContextItem {
   return {
     role: "user",
     metadataTag: ContextItemTag.DIALOGUE_HISTORY,
@@ -129,10 +129,25 @@ function systemContextItem(sentences: readonly string[]): StructuredContextItem 
   };
 }
 
+/**
+ * Says what the persona sets out to do rather than "nobody asked", which personas echoed back; the turn
+ * borrows the channel's last message as its trigger, so the lead must still mark it as unprompted.
+ */
+const OPENER_LEADS: Record<NaturalNudgeCategory, (name: string) => string> = {
+  start_topic: (name) => `${name} decided to bring up a new topic in this channel on their own.`,
+  revive_topic: (name) => `${name} decided to pick an earlier conversation in this channel back up on their own.`,
+  ping_user: (name) => `${name} decided to reach out to one member on their own.`,
+  play_scene: (name) => `${name} decided to open a short scene on their own.`,
+};
+
 function targetSentence(target: PingUserTarget | null, isScene: boolean): string {
   if (!target) return "";
   if (isScene) return `The scene is about the member @{${target.userDiscId}}.`;
-  return `You are reaching out to one member; mention them as @{${target.userDiscId}}.`;
+  return `The message mentions them as @{${target.userDiscId}}.`;
+}
+
+function toolSentence(name: string, tools: readonly string[]): string {
+  return tools.length > 0 ? `If it fits, ${name} may use: ${tools.join(", ")}.` : "";
 }
 
 function buildOpenerContextItem(
@@ -140,29 +155,30 @@ function buildOpenerContextItem(
   plan: IdleNudgePlan,
   tools: readonly string[],
 ): StructuredContextItem {
+  const name = attempt.persona.persona_nickname;
   const partnerNames = attempt.partners.map((partner) => partner.persona.persona_nickname).join(" and ");
   return systemContextItem([
-    "You decided to speak up on your own; nobody asked you to.",
-    plan.scene ? `You are opening a short scene with ${partnerNames}, who will answer you next.` : "",
+    OPENER_LEADS[attempt.idleNudge.category](name),
+    plan.scene ? `${partnerNames} will answer next.` : "",
     targetSentence(attempt.target, plan.scene !== null),
     plan.openerDirection,
-    `Your private goal, which nobody else can see: ${plan.agenda}`,
-    "Write it as one natural, short message for this channel, in your own voice.",
-    tools.length > 0 ? `If it fits, you may use: ${tools.join(", ")}.` : "",
+    `${name}'s private goal, which nobody else can see: ${plan.agenda}`,
+    toolSentence(name, tools),
   ]);
 }
 
 function buildPartnerContextItem(
   attempt: IdleNudgeAttempt,
+  partner: TomoriState,
   agenda: string,
   tools: readonly string[],
 ): StructuredContextItem {
+  const name = partner.persona_nickname;
   return systemContextItem([
-    `${attempt.persona.persona_nickname} just started a short scene with you; nobody asked either of you to speak.`,
+    `${attempt.persona.persona_nickname} just opened a short scene with ${name}.`,
     targetSentence(attempt.target, true),
-    `Your private goal, which nobody else can see: ${agenda}`,
-    "Answer as one natural, short message, in your own voice.",
-    tools.length > 0 ? `If it fits, you may use: ${tools.join(", ")}.` : "",
+    `${name}'s private goal, which nobody else can see: ${agenda}`,
+    toolSentence(name, tools),
   ]);
 }
 
@@ -190,7 +206,7 @@ function buildNudgeScene(
     totalTurns: sequence.length,
     turnContextItems: script.map((speaker, index) =>
       speaker > 1 && script.indexOf(speaker) === index
-        ? [buildPartnerContextItem(attempt, partnerAgendas[speaker - 2], tools)]
+        ? [buildPartnerContextItem(attempt, speakers[speaker - 1], partnerAgendas[speaker - 2], tools)]
         : [],
     ),
   };

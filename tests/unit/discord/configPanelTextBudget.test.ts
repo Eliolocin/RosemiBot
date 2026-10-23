@@ -112,6 +112,10 @@ const MAX_NUDGE_SETTINGS: NaturalNudgesSettingsView = {
       description: null,
     })),
   })),
+  checkerDecisionModels: Array.from({ length: 30 }, (_, index) => ({
+    provider: `custom:decision-${index}`,
+    models: [{ id: 9000 + index, name: `decision-${index}`.padEnd(90, "d"), description: null }],
+  })),
   trackingEnabled: false,
   heat: 1234.5,
   perDay: 3,
@@ -120,7 +124,7 @@ const MAX_NUDGE_SETTINGS: NaturalNudgesSettingsView = {
     effectiveChannelIds: MAX_NUDGE_CHANNELS,
     plannerModel: { kind: "unusable", llmId: 7, source: "chat", reason: "unavailable" },
     chatModel: { codename: "chat-model".padEnd(90, "c"), provider: "custom:provider-chat" },
-    matcher: { kind: "decision", model: "decision-model".padEnd(200, "d") },
+    checker: { source: "recommended", model: "decision-model".padEnd(200, "d") },
   },
 };
 
