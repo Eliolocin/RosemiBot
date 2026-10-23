@@ -1049,10 +1049,6 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     { action: "nudge-interest-add-submit", locale: "en-US", personaId: 55, nonce: "nonce1234567" },
   ],
   [
-    "config:v2:nn-int-edit-open:en-US:55:2:abcd1234",
-    { action: "nudge-interest-edit-open", locale: "en-US", personaId: 55, index: 2, fp: "abcd1234" },
-  ],
-  [
     "config:v2:nn-int-edit:en-US:55:2:abcd1234:nonce1234567",
     {
       action: "nudge-interest-edit-submit",
@@ -1063,9 +1059,10 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
       nonce: "nonce1234567",
     },
   ],
+  ["config:v2:nn-int-rem-open:en-US:55", { action: "nudge-interest-remove-open", locale: "en-US", personaId: 55 }],
   [
-    "config:v2:nn-int-rem:en-US:55:2:abcd1234",
-    { action: "nudge-interest-remove", locale: "en-US", personaId: 55, index: 2, fp: "abcd1234" },
+    "config:v2:nn-int-rem:en-US:55:abcd1234:nonce1234567",
+    { action: "nudge-interest-remove-submit", locale: "en-US", personaId: 55, fp: "abcd1234", nonce: "nonce1234567" },
   ],
   ["config:v2:nn-idle-set:en-US:1", { action: "nudge-idle-nudges-set", locale: "en-US", enabled: true }],
   ["config:v2:nn-channels:en-US", { action: "nudge-channels-select", locale: "en-US" }],

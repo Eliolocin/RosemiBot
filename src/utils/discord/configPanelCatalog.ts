@@ -424,7 +424,6 @@ export type ConfigPanelRoute =
   | { action: "nudge-talk-select"; locale: string; personaId: number }
   | { action: "nudge-interest-select"; locale: string; personaId: number }
   | { action: "nudge-interest-add-submit"; locale: string; personaId: number; nonce: string }
-  | { action: "nudge-interest-edit-open"; locale: string; personaId: number; index: number; fp: string }
   | {
       action: "nudge-interest-edit-submit";
       locale: string;
@@ -433,7 +432,8 @@ export type ConfigPanelRoute =
       fp: string;
       nonce: string;
     }
-  | { action: "nudge-interest-remove"; locale: string; personaId: number; index: number; fp: string }
+  | { action: "nudge-interest-remove-open"; locale: string; personaId: number }
+  | { action: "nudge-interest-remove-submit"; locale: string; personaId: number; fp: string; nonce: string }
   | { action: "nudge-idle-nudges-set"; locale: string; enabled: boolean }
   | { action: "nudge-channels-select"; locale: string }
   | { action: "nudge-provider"; locale: string }
@@ -949,12 +949,12 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "nudge-talk-select": { wireToken: "nn-talk", fields: [personaIdField] },
   "nudge-interest-select": { wireToken: "nn-int-select", fields: [personaIdField] },
   "nudge-interest-add-submit": { wireToken: "nn-int-add", fields: [personaIdField, nonceField] },
-  "nudge-interest-edit-open": { wireToken: "nn-int-edit-open", fields: [personaIdField, indexField, fpField] },
   "nudge-interest-edit-submit": {
     wireToken: "nn-int-edit",
     fields: [personaIdField, indexField, fpField, nonceField],
   },
-  "nudge-interest-remove": { wireToken: "nn-int-rem", fields: [personaIdField, indexField, fpField] },
+  "nudge-interest-remove-open": { wireToken: "nn-int-rem-open", fields: [personaIdField] },
+  "nudge-interest-remove-submit": { wireToken: "nn-int-rem", fields: [personaIdField, fpField, nonceField] },
   "nudge-idle-nudges-set": { wireToken: "nn-idle-set", fields: [enabledField] },
   "nudge-channels-select": { wireToken: "nn-channels", fields: [] },
   "nudge-provider": { wireToken: "nn-provider", fields: [] },

@@ -23,9 +23,11 @@ import {
 } from "@/modules/natural-nudges/discord/operations";
 import {
   buildInterestModal,
+  buildInterestRemovalModal,
   buildPlannerModelModal,
   NUDGE_ADD_VALUE,
   NUDGE_CLEAR_MODEL_VALUE,
+  NUDGE_INTEREST_CHECKLIST_FIELD,
   NUDGE_INTEREST_DESCRIPTION_FIELD,
   NUDGE_INTEREST_LABEL_FIELD,
 } from "@/modules/natural-nudges/discord/panel";
@@ -45,6 +47,7 @@ export const NUDGE_CHANNEL_SELECT_ACTIONS: ReadonlySet<ConfigAction> = new Set<C
 export const NUDGE_MODAL_SUBMIT_ACTIONS: ReadonlySet<ConfigAction> = new Set<ConfigAction>([
   "nudge-interest-add-submit",
   "nudge-interest-edit-submit",
+  "nudge-interest-remove-submit",
   "nudge-model-submit",
 ]);
 
@@ -68,8 +71,8 @@ export async function handleNudgeModalOpen(
 ): Promise<boolean> {
   const value = interaction.isStringSelectMenu() ? interaction.values[0] : undefined;
   const opensModal =
-    (route.action === "nudge-interest-select" && value === NUDGE_ADD_VALUE) ||
-    route.action === "nudge-interest-edit-open" ||
+    route.action === "nudge-interest-select" ||
+    route.action === "nudge-interest-remove-open" ||
     (route.action === "nudge-provider" && value !== undefined && value !== NUDGE_CLEAR_MODEL_VALUE);
   if (!opensModal) return false;
 
@@ -90,19 +93,33 @@ export async function handleNudgeModalOpen(
   const nonce = dependencies.createNonce();
 
   if (route.action === "nudge-interest-select") {
-    await dependencies.showModal(interaction, buildInterestModal(locale, nonce, { personaId: route.personaId }));
+    if (value === NUDGE_ADD_VALUE) {
+      await dependencies.showModal(interaction, buildInterestModal(locale, nonce, { personaId: route.personaId }));
+      return true;
+    }
+    const index = parseIndex(value);
+    const config = await nudges.loadPersonaConfig(route.personaId);
+    const interest = index === null ? undefined : config?.interests[index];
+    if (index === null || !interest) {
+      await deny("commands.config.panel.stale_detail");
+      return true;
+    }
+    const fp = computeInterestFingerprint(route.personaId, index, interest);
+    await dependencies.showModal(
+      interaction,
+      buildInterestModal(locale, nonce, { personaId: route.personaId, index, fp }, interest),
+    );
     return true;
   }
-  if (route.action === "nudge-interest-edit-open") {
+  if (route.action === "nudge-interest-remove-open") {
     const config = await nudges.loadPersonaConfig(route.personaId);
-    const interest = config?.interests[route.index];
-    if (!interest || computeInterestFingerprint(route.personaId, route.index, interest) !== route.fp) {
+    if (!config || config.interests.length === 0) {
       await deny("commands.config.panel.stale_detail");
       return true;
     }
     await dependencies.showModal(
       interaction,
-      buildInterestModal(locale, nonce, { personaId: route.personaId, index: route.index, fp: route.fp }, interest),
+      buildInterestRemovalModal(locale, nonce, route.personaId, config.interests),
     );
     return true;
   }
@@ -209,11 +226,6 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
       await paintPersona(route.personaId, {}, writeReceipt(locale, result));
       return true;
     }
-    case "nudge-interest-select": {
-      const index = parseIndex(values[0]);
-      await paintPersona(route.personaId, index === null ? {} : { selectedInterestIndex: index });
-      return true;
-    }
     case "nudge-interest-add-submit": {
       const result = await write(
         () =>
@@ -235,18 +247,27 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
           }),
         "server-config.workspace.persona-nudge-interest.edit",
       );
-      await paintPersona(
-        route.personaId,
-        result === "success" ? { selectedInterestIndex: route.index } : {},
-        writeReceipt(locale, result),
-      );
+      await paintPersona(route.personaId, {}, writeReceipt(locale, result));
       return true;
     }
-    case "nudge-interest-remove": {
-      const result = await write(
-        () => ops.editInterest(route.personaId, route.index, route.fp, null),
-        "server-config.workspace.persona-nudge-interest.remove",
+    case "nudge-interest-remove-submit": {
+      const checked = dependencies.takeCheckboxValues(
+        interaction.id,
+        buildConfigModalFieldId(NUDGE_INTEREST_CHECKLIST_FIELD, route.nonce),
       );
+      // Unchecked means remove, so a submit that carried no checkbox payload must not read as "remove all".
+      const result =
+        checked === undefined
+          ? "stale"
+          : await write(
+              () =>
+                ops.removeInterests(
+                  route.personaId,
+                  route.fp,
+                  new Set(checked.flatMap((value) => parseIndex(value) ?? [])),
+                ),
+              "server-config.workspace.persona-nudge-interest.remove",
+            );
       await paintPersona(route.personaId, {}, writeReceipt(locale, result));
       return true;
     }

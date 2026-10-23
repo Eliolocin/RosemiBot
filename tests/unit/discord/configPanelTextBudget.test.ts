@@ -768,7 +768,6 @@ describe("config page text budgeting at stored maxima", () => {
           readStatus: "fresh",
           naturalNudges: {
             personaConfig: { persona_id: 55, talkativeness: 4, interests: MAX_NUDGE_INTERESTS, has_override: false },
-            selectedInterestIndex: 7,
           },
           receipt: receipt ? { tone: "success", heading: "Saved", detail: "Configuration was saved." } : undefined,
         }),
@@ -1301,7 +1300,8 @@ describe("Switch Models capability notice budgeting", () => {
                 const videoHasUsableModel = slotState.isUsable("video");
                 const imageHealthy = flags.imageGenerationEnabled && imageHasUsableModel;
                 const videoHealthy = flags.videoGenerationEnabled && videoHasUsableModel;
-                const expectedComponentCount = receipt ? 36 : 34;
+                const noticeShown = !imageHealthy || !videoHealthy;
+                const expectedComponentCount = (receipt ? 36 : 34) - (noticeShown ? 0 : 1);
                 expect(countRenderedComponents(payload)).toBe(expectedComponentCount);
 
                 const renderedText = getTextDisplays(payload).join("\n");
@@ -1343,9 +1343,9 @@ describe("Switch Models capability notice budgeting", () => {
                   );
                   expect(capabilityNotice).toBeUndefined();
                 }
-                expect(renderedText).toContain(
-                  `**${localizer(locale, "commands.config.panel.capability_notice_title")}**`,
-                );
+                expect(
+                  renderedText.includes(`**${localizer(locale, "commands.config.panel.capability_notice_title")}**`),
+                ).toBe(noticeShown);
               },
             );
           }

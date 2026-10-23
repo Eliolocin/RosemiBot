@@ -19,14 +19,18 @@ import {
   type PersonaNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
 import {
-  computeInterestFingerprint,
+  computeInterestListFingerprint,
   type NaturalNudgesSettingsView,
 } from "@/modules/natural-nudges/discord/operations";
 import { commandRegistry } from "@/utils/discord/commandRegistry";
 import { buildConfigRouteId, CONFIG_MODEL_PAGE_SIZE } from "@/utils/discord/configPanelCatalog";
 import { encodeConfigProviderPageValue } from "@/utils/discord/interactions/configModelLoaders";
 import type { StructuredOutputModelGroup } from "@/utils/discord/interactions/configModelOperations";
-import { buildConfigModalFieldId, type RawModalPayload } from "@/utils/discord/ui/configModals";
+import {
+  buildCheckboxGroupComponent,
+  buildConfigModalFieldId,
+  type RawModalPayload,
+} from "@/utils/discord/ui/configModals";
 import { buildConfigModelSelectModal } from "@/utils/discord/ui/configModelModals";
 import { DISCORD_SELECT_OPTIONS_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
@@ -39,6 +43,7 @@ export const NUDGE_ADD_VALUE = "add";
 export const NUDGE_CLEAR_MODEL_VALUE = "__none__";
 export const NUDGE_INTEREST_LABEL_FIELD = "nudge_interest_label";
 export const NUDGE_INTEREST_DESCRIPTION_FIELD = "nudge_interest_description";
+export const NUDGE_INTEREST_CHECKLIST_FIELD = "nudge_interest_checklist";
 
 const MODAL_TEXT_MAX = 45;
 const MODAL_DESCRIPTION_MAX = 100;
@@ -93,7 +98,6 @@ export interface PersonaNudgesRenderInput {
   locale: string;
   persona: TomoriState;
   config: PersonaNaturalNudgeConfig | undefined;
-  selectedInterestIndex?: number;
   /** Read-only for members and while the workspace read is stale. */
   writesDisabled: boolean;
 }
@@ -152,7 +156,6 @@ export function buildPersonaNudgesBody(input: PersonaNudgesRenderInput): Compone
       label: safeSelectOptionText(interest.label, 100),
       description: safeSelectOptionText(interest.description, 100),
       value: String(index),
-      default: index === input.selectedInterestIndex,
     })),
   ];
   if (options.length > 0) {
@@ -170,28 +173,59 @@ export function buildPersonaNudgesBody(input: PersonaNudgesRenderInput): Compone
     });
   }
 
-  const selected = input.selectedInterestIndex !== undefined ? interests[input.selectedInterestIndex] : undefined;
-  if (selected && input.selectedInterestIndex !== undefined) {
-    const index = input.selectedInterestIndex;
-    const fp = computeInterestFingerprint(personaId, index, selected);
-    components.push({
-      type: ComponentType.ActionRow,
-      components: [
-        button(
-          t("commands.config.natural_nudges.interest_edit_button"),
-          { action: "nudge-interest-edit-open", locale, personaId, index, fp },
-          writesDisabled,
-        ),
-        button(
-          t("commands.config.natural_nudges.interest_remove_button"),
-          { action: "nudge-interest-remove", locale, personaId, index, fp },
-          writesDisabled,
-          true,
-        ),
-      ],
-    });
-  }
+  components.push({
+    type: ComponentType.ActionRow,
+    components: [
+      button(
+        t("commands.config.natural_nudges.interests_remove_button"),
+        { action: "nudge-interest-remove-open", locale, personaId },
+        writesDisabled || interests.length === 0,
+        true,
+      ),
+    ],
+  });
   return components;
+}
+
+/** Every interest, all checked, so unchecking one removes it on submit. */
+export function buildInterestRemovalModal(
+  locale: string,
+  nonce: string,
+  personaId: number,
+  interests: readonly NaturalNudgeInterest[],
+): RawModalPayload {
+  const t = (key: string) => localizer(locale, key);
+  return {
+    custom_id: buildConfigRouteId({
+      action: "nudge-interest-remove-submit",
+      locale,
+      personaId,
+      fp: computeInterestListFingerprint(personaId, interests),
+      nonce,
+    }),
+    title: safeSelectOptionText(t("commands.config.natural_nudges.interests_remove_modal_title"), MODAL_TEXT_MAX),
+    components: [
+      {
+        type: 18,
+        label: safeSelectOptionText(t("commands.config.natural_nudges.interests_title"), MODAL_TEXT_MAX),
+        description: safeSelectOptionText(
+          t("commands.config.natural_nudges.interests_remove_description"),
+          MODAL_DESCRIPTION_MAX,
+        ),
+        // One Checkbox Group holds 10 options, which covers NATURAL_NUDGE_INTEREST_LIMIT.
+        component: buildCheckboxGroupComponent(
+          buildConfigModalFieldId(NUDGE_INTEREST_CHECKLIST_FIELD, nonce),
+          interests,
+          (interest, index) => ({
+            label: safeSelectOptionText(interest.label, 100),
+            description: safeSelectOptionText(interest.description, 100),
+            value: String(index),
+            default: true,
+          }),
+        ),
+      },
+    ],
+  };
 }
 
 export function buildInterestModal(

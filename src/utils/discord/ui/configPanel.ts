@@ -4399,7 +4399,6 @@ export function buildConfigPanelPayload(input: ConfigPanelRenderInput): ConfigPa
               locale,
               persona,
               config: input.naturalNudges?.personaConfig ?? undefined,
-              selectedInterestIndex: input.naturalNudges?.selectedInterestIndex,
               writesDisabled: writesDisabled || pageState !== "enabled",
             })
           : [{ type: ComponentType.TextDisplay, content: localizer(locale, "commands.config.panel.no_personas") }]),

@@ -50,10 +50,22 @@ export interface NaturalNudgesSettingsView {
   status: NaturalNudgesStatus | null;
 }
 
-/** Binds an interest edit or removal to the interest at that position when the control rendered. */
+/** Binds an interest edit to the interest at that position when the modal opened. */
 export function computeInterestFingerprint(personaId: number, index: number, interest: NaturalNudgeInterest): string {
   return createHash("sha256")
     .update(`nudge-interest:${personaId}:${index}:${interest.label}\u0000${interest.description}`)
+    .digest("base64url")
+    .slice(0, 8);
+}
+
+/**
+ * Binds an interest removal to the exact list its modal presented. Unchecked-means-remove derives the
+ * removal set from positions, so a concurrent add or edit must invalidate the submit rather than
+ * delete a different interest.
+ */
+export function computeInterestListFingerprint(personaId: number, interests: readonly NaturalNudgeInterest[]): string {
+  return createHash("sha256")
+    .update(`nudge-interests:${personaId}:${JSON.stringify(interests)}`)
     .digest("base64url")
     .slice(0, 8);
 }
@@ -187,18 +199,26 @@ const naturalNudgeOperations = {
     personaId: number,
     index: number,
     fp: string,
-    raw: NaturalNudgeInterest | null,
+    raw: NaturalNudgeInterest,
   ): Promise<NudgeWriteResult> {
     const current = await loadPersonaNudgeConfig(personaId);
     const existing = current?.interests[index];
     if (!current || !existing || computeInterestFingerprint(personaId, index, existing) !== fp) return "stale";
+    const parsed = naturalNudgeInterestSchema.safeParse(raw);
+    if (!parsed.success) return "invalid";
     const interests = [...current.interests];
-    if (raw === null) interests.splice(index, 1);
-    else {
-      const parsed = naturalNudgeInterestSchema.safeParse(raw);
-      if (!parsed.success) return "invalid";
-      interests[index] = parsed.data;
-    }
+    interests[index] = parsed.data;
+    return (await naturalNudgeRepository.savePersonaConfig(personaId, { ...current, interests }))
+      ? "success"
+      : "write-failed";
+  },
+
+  async removeInterests(personaId: number, fp: string, keptIndices: ReadonlySet<number>): Promise<NudgeWriteResult> {
+    const current = await loadPersonaNudgeConfig(personaId);
+    if (!current || computeInterestListFingerprint(personaId, current.interests) !== fp) return "stale";
+    const interests = current.interests.filter((_, index) => keptIndices.has(index));
+    // Saving an unchanged list would still give a preset pointer its own override row.
+    if (interests.length === current.interests.length) return "success";
     return (await naturalNudgeRepository.savePersonaConfig(personaId, { ...current, interests }))
       ? "success"
       : "write-failed";
@@ -211,7 +231,6 @@ type NaturalNudgeOperations = typeof naturalNudgeOperations;
 export interface NaturalNudgesPanelState {
   personaConfig?: PersonaNaturalNudgeConfig | null;
   settings?: NaturalNudgesSettingsView;
-  selectedInterestIndex?: number;
 }
 
 export interface NaturalNudgePanelDependencies {
