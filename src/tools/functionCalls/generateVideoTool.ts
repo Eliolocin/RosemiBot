@@ -1,3 +1,9 @@
+import {
+  findProviderRequestDeniedError,
+  notifyProviderToolFailure,
+  reportProviderUsage,
+  type ProviderUsageContext,
+} from "@/utils/provider/providerUsage";
 /**
  * Video Generation Tool
  * Allows TomoriBot to generate videos using the active provider's native video API.
@@ -405,6 +411,7 @@ export class GenerateVideoTool extends BaseTool {
 
     // Default to allowed; overwritten below for server-credential users
     let quotaCheck: VideoQuotaCheckResult = { allowed: true };
+    let usageContext: ProviderUsageContext | undefined;
 
     try {
       const { credentials: creds, quotaCheck: serverQuotaCheck } = await resolveCredentialsWithMediaQuota(
@@ -471,6 +478,7 @@ export class GenerateVideoTool extends BaseTool {
       log.info(`Using video model: ${modelCodename} for video generation`);
 
       const apiKey = creds.apiKey;
+      usageContext = creds.usageContext;
       const executionProvider = creds.provider;
 
       // Send progress notice, so video generation takes 1-3 minutes
@@ -590,6 +598,11 @@ export class GenerateVideoTool extends BaseTool {
           loop,
           abortSignal: context.abortSignal,
         });
+        reportProviderUsage(usageContext, {
+          modelCodename,
+          costUsd: result.costUsd,
+          providerRequestId: result.providerRequestId,
+        });
         videoData = result.videoData;
         videoFilename = result.filename ?? videoFilename;
       } else if (videoImplementation === "zai") {
@@ -686,6 +699,8 @@ export class GenerateVideoTool extends BaseTool {
       if (context.abortSignal?.aborted) {
         return { success: false, error: "Video generation was cancelled." };
       }
+      const denied = findProviderRequestDeniedError(error, usageContext);
+      if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (!(error instanceof ProviderVideoFilteredError)) log.error("Video generation failed:", error as Error);
 

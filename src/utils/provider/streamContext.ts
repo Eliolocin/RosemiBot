@@ -81,6 +81,7 @@ export function buildStreamContext(params: BuildStreamContextParams): StreamCont
     locale: params.userLocale ?? "en-US", // Use user's preferred locale, fallback to en-US
     suppressUserErrors: streamingContext?.suppressUserErrors,
     textCredentialSource: streamingContext?.textCredentialSource,
+    usageContext: streamingContext?.usageContext,
     suppressTextOutput: streamingContext?.suppressTextOutput,
     holdResponseText: streamingContext?.holdResponseText,
     pendingResponseLimit: streamingContext?.pendingResponseLimit,

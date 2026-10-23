@@ -60,6 +60,52 @@ export interface TomoriSecrets {
   [key: string]: string | undefined; // Allow dynamic CRYPTO_SECRET_V* keys
 }
 
+const OPTIONAL_SECRET_FIELDS = [
+  "DISCORD_WEBHOOK_URL",
+  "AVATAR_GCS_BUCKET",
+  "AVATAR_PUBLIC_BASE_URL",
+  "VOICE_SAMPLE_GCS_BUCKET",
+  "VOICE_SAMPLE_GCS_PREFIX",
+  "VOICE_SAMPLE_PUBLIC_BASE_URL",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "S3_ENDPOINT",
+  "AVATAR_S3_BUCKET",
+  "AVATAR_S3_REGION",
+  "AVATAR_S3_PREFIX",
+  "VOICE_SAMPLE_S3_BUCKET",
+  "VOICE_SAMPLE_S3_REGION",
+  "VOICE_SAMPLE_S3_PREFIX",
+  "CHARREF_S3_BUCKET",
+  "CHARREF_S3_REGION",
+  "CHARREF_S3_PREFIX",
+  "CHARREF_PUBLIC_BASE_URL",
+  "MATRIX_HOMESERVER_URL",
+  "MATRIX_ACCESS_TOKEN",
+  "MATRIX_BOT_USER_ID",
+  "MATRIX_SERVER_NAME",
+  "MATRIX_HS_TOKEN",
+  "MATRIX_APPSERVICE_PUBLIC_URL",
+  "TOPGG_TOKEN",
+  "CONTAINER_MEMORY_LIMIT_MB",
+] as const;
+
+const registeredSecretNames = new Set<string>();
+
+let secretsLoaded = false;
+
+export function registerSecretEnvKeys(names: readonly string[]): void {
+  if (secretsLoaded) {
+    throw new Error("Secret names must be registered before getAppSecrets() loads application secrets.");
+  }
+
+  for (const name of names) registeredSecretNames.add(name);
+}
+
+function optionalSecretFields(): string[] {
+  return [...OPTIONAL_SECRET_FIELDS, ...registeredSecretNames];
+}
+
 /**
  * Fetches application secrets from the appropriate backend based on environment.
  *
@@ -99,6 +145,8 @@ export interface TomoriSecrets {
  * process.env.POSTGRES_HOST = secrets.POSTGRES_HOST;
  */
 export async function getAppSecrets(): Promise<TomoriSecrets> {
+  secretsLoaded = true;
+
   const runEnv = process.env.RUN_ENV || "development";
   const isProduction = runEnv === "production";
   const isTestProduction = process.env.TEST_PRODUCTION === "true";
@@ -126,37 +174,7 @@ export async function getAppSecrets(): Promise<TomoriSecrets> {
     }
 
     // Optional fields: read from process.env matching the same keys as the JSON secret blob
-    const optionalEnvFields: (keyof TomoriSecrets)[] = [
-      "DISCORD_WEBHOOK_URL",
-      "AVATAR_GCS_BUCKET",
-      "AVATAR_PUBLIC_BASE_URL",
-      "VOICE_SAMPLE_GCS_BUCKET",
-      "VOICE_SAMPLE_GCS_PREFIX",
-      "VOICE_SAMPLE_PUBLIC_BASE_URL",
-      "AWS_ACCESS_KEY_ID",
-      "AWS_SECRET_ACCESS_KEY",
-      "S3_ENDPOINT",
-      "AVATAR_S3_BUCKET",
-      "AVATAR_S3_REGION",
-      "AVATAR_S3_PREFIX",
-      "VOICE_SAMPLE_S3_BUCKET",
-      "VOICE_SAMPLE_S3_REGION",
-      "VOICE_SAMPLE_S3_PREFIX",
-      "CHARREF_S3_BUCKET",
-      "CHARREF_S3_REGION",
-      "CHARREF_S3_PREFIX",
-      "CHARREF_PUBLIC_BASE_URL",
-      "MATRIX_HOMESERVER_URL",
-      "MATRIX_ACCESS_TOKEN",
-      "MATRIX_BOT_USER_ID",
-      "MATRIX_SERVER_NAME",
-      "MATRIX_HS_TOKEN",
-      "MATRIX_APPSERVICE_PUBLIC_URL",
-      "TOPGG_TOKEN",
-      "CONTAINER_MEMORY_LIMIT_MB",
-    ];
-
-    for (const field of optionalEnvFields) {
+    for (const field of optionalSecretFields()) {
       if (process.env[field]) {
         secrets[field] = process.env[field];
       }
@@ -200,37 +218,7 @@ export async function getAppSecrets(): Promise<TomoriSecrets> {
       }
 
       // Optional fields: same shape as AWS secret blob
-      const optionalFields: (keyof TomoriSecrets)[] = [
-        "DISCORD_WEBHOOK_URL",
-        "AVATAR_GCS_BUCKET",
-        "AVATAR_PUBLIC_BASE_URL",
-        "VOICE_SAMPLE_GCS_BUCKET",
-        "VOICE_SAMPLE_GCS_PREFIX",
-        "VOICE_SAMPLE_PUBLIC_BASE_URL",
-        "AWS_ACCESS_KEY_ID",
-        "AWS_SECRET_ACCESS_KEY",
-        "S3_ENDPOINT",
-        "AVATAR_S3_BUCKET",
-        "AVATAR_S3_REGION",
-        "AVATAR_S3_PREFIX",
-        "VOICE_SAMPLE_S3_BUCKET",
-        "VOICE_SAMPLE_S3_REGION",
-        "VOICE_SAMPLE_S3_PREFIX",
-        "CHARREF_S3_BUCKET",
-        "CHARREF_S3_REGION",
-        "CHARREF_S3_PREFIX",
-        "CHARREF_PUBLIC_BASE_URL",
-        "MATRIX_HOMESERVER_URL",
-        "MATRIX_ACCESS_TOKEN",
-        "MATRIX_BOT_USER_ID",
-        "MATRIX_SERVER_NAME",
-        "MATRIX_HS_TOKEN",
-        "MATRIX_APPSERVICE_PUBLIC_URL",
-        "TOPGG_TOKEN",
-        "CONTAINER_MEMORY_LIMIT_MB",
-      ];
-
-      for (const field of optionalFields) {
+      for (const field of optionalSecretFields()) {
         if (rawSecrets[field]) {
           secrets[field] = rawSecrets[field];
         }
@@ -295,37 +283,7 @@ export async function getAppSecrets(): Promise<TomoriSecrets> {
       }
     }
 
-    const optionalFields: (keyof TomoriSecrets)[] = [
-      "DISCORD_WEBHOOK_URL",
-      "AVATAR_GCS_BUCKET",
-      "AVATAR_PUBLIC_BASE_URL",
-      "VOICE_SAMPLE_GCS_BUCKET",
-      "VOICE_SAMPLE_GCS_PREFIX",
-      "VOICE_SAMPLE_PUBLIC_BASE_URL",
-      "AWS_ACCESS_KEY_ID",
-      "AWS_SECRET_ACCESS_KEY",
-      "S3_ENDPOINT",
-      "AVATAR_S3_BUCKET",
-      "AVATAR_S3_REGION",
-      "AVATAR_S3_PREFIX",
-      "VOICE_SAMPLE_S3_BUCKET",
-      "VOICE_SAMPLE_S3_REGION",
-      "VOICE_SAMPLE_S3_PREFIX",
-      "CHARREF_S3_BUCKET",
-      "CHARREF_S3_REGION",
-      "CHARREF_S3_PREFIX",
-      "CHARREF_PUBLIC_BASE_URL",
-      "MATRIX_HOMESERVER_URL",
-      "MATRIX_ACCESS_TOKEN",
-      "MATRIX_BOT_USER_ID",
-      "MATRIX_SERVER_NAME",
-      "MATRIX_HS_TOKEN",
-      "MATRIX_APPSERVICE_PUBLIC_URL",
-      "TOPGG_TOKEN",
-      "CONTAINER_MEMORY_LIMIT_MB",
-    ];
-
-    for (const field of optionalFields) {
+    for (const field of optionalSecretFields()) {
       if (rawSecrets[field]) {
         secrets[field] = rawSecrets[field];
       }

@@ -1,3 +1,4 @@
+import { findProviderRequestDeniedError } from "@/utils/provider/providerUsage";
 import type { Client, Message } from "discord.js";
 import type { StreamResult } from "@/types/provider/interfaces";
 import type {
@@ -227,7 +228,9 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         },
       });
 
-      if (!context.suppressUserErrors && !isUserImpersonationStreamContext(context)) {
+      const deferredDenialNotice =
+        findProviderRequestDeniedError(lastError, context.usageContext)?.deferNotice ?? false;
+      if (!context.suppressUserErrors && !deferredDenialNotice && !isUserImpersonationStreamContext(context)) {
         await this.errorUi.handleStreamError(lastError, context);
       } else {
         log.warn("Stream: Suppressing stream error embed due to retryable failure", lastError);
@@ -427,7 +430,9 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       }
     }
 
-    if (!context.suppressUserErrors && !isUserImpersonationStreamContext(context)) {
+    const deferredDenialNotice =
+      findProviderRequestDeniedError(chunk.error, context.usageContext)?.deferNotice ?? false;
+    if (!context.suppressUserErrors && !deferredDenialNotice && !isUserImpersonationStreamContext(context)) {
       await this.errorUi.handleProviderError(chunk.error, provider, context);
     } else {
       log.warn("Stream: Suppressing provider error embed due to retryable failure", chunk.error);

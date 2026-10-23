@@ -4,12 +4,15 @@
  */
 
 import { log } from "@/utils/misc/logger";
+import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import type { GeneratePresetParams, PresetGenerationResult } from "@/types/provider/featureInterfaces";
 import type { ToolContext } from "@/types/tool/interfaces";
 import { executeTool } from "@/tools/toolRegistry";
 import { getOpenRouterSupportedParameters } from "@/utils/cache/openrouterCapabilityCache";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { resolvePresetGenerationMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 import { getOpenrouterToolAdapter } from "./openrouterToolAdapter";
 import { buildOpenrouterProviderRouting } from "./providerRouting";
 import {
@@ -35,6 +38,7 @@ interface OpenrouterPresetGenerationOptions {
   tools?: Array<Record<string, unknown>>;
   toolContext?: ToolContext;
   maxToolRounds?: number;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 /**
@@ -147,7 +151,7 @@ export async function generatePresetFromPromptOpenrouter(
       }
     }
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -170,6 +174,7 @@ export async function generatePresetFromPromptOpenrouter(
       return {
         error: `OpenRouter request failed (HTTP ${response.status}).`,
         errorType: "CONNECTION",
+        cause: readOpenRouterLimitError(response.status, response.headers, errorBody) ?? undefined,
       };
     }
 
@@ -180,7 +185,10 @@ export async function generatePresetFromPromptOpenrouter(
           tool_calls?: PresetToolCall[];
         };
       }>;
+      usage?: unknown;
     };
+    const usage = normalizeProviderUsage(result.usage);
+    if (usage) options.onUsage?.(usage);
 
     const message = result.choices?.[0]?.message;
     if (!message) {

@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { OpenrouterStreamAdapter, type OpenrouterStreamConfig } from "@/providers/openrouter/openrouterStreamAdapter";
 import { HumanizerDegree } from "@/types/db/schema";
 import type { RawStreamChunk, StreamContext } from "@/types/stream/interfaces";
+import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
+import { sumTurnUsage } from "@/utils/text/tokenEstimate";
+import { createPersona } from "../../helpers/fixtures";
+import { stubGlobalFetch } from "../../helpers/fetchStub";
 
 const originalFetch = globalThis.fetch;
 
@@ -84,6 +88,180 @@ function makeOpenrouterChunk(data: Record<string, unknown>): RawStreamChunk {
 }
 
 describe("OpenrouterStreamAdapter.processChunk", () => {
+  it("retains HTTP limit metadata and retry timing in the provider error cause", async () => {
+    for (const status of [402, 403]) {
+      const fetchStub = stubGlobalFetch(() =>
+        Response.json(
+          {
+            error: { code: status, message: "Fixture key limit", metadata: { limit_source: "openrouter_key_limit" } },
+          },
+          { status, headers: { "Retry-After": "2" } },
+        ),
+      );
+      try {
+        const adapter = new OpenrouterStreamAdapter();
+        const chunks = await collectRawChunks(adapter);
+        const raw = chunks.at(-1);
+        if (!raw) throw new Error("Missing provider error chunk");
+        const error = adapter.processChunk(raw).error?.originalError;
+        expect(error).toBeInstanceOf(Error);
+        if (error instanceof Error)
+          expect(error.cause).toMatchObject({ limitSource: "openrouter_key_limit", status, retryAfterMs: 2_000 });
+      } finally {
+        fetchStub.mockRestore();
+      }
+    }
+  });
+
+  it("preserves usage with empty or missing choices in both wire formats", () => {
+    const adapter = new OpenrouterStreamAdapter();
+    for (const usage of [
+      { prompt_tokens: 321, completion_tokens: 18, total_tokens: 339 },
+      { promptTokens: 321, completionTokens: 18, totalTokens: 339 },
+    ]) {
+      for (const choices of [undefined, [], [{ index: 0, delta: { content: "Hi" } }]]) {
+        const result = adapter.processChunk(makeOpenrouterChunk({ usage, choices }));
+        expect(result.type).toBe("text");
+        expect(result.content).toBe(choices?.length ? "Hi" : "");
+        expect(result.metadata?.usage).toMatchObject({ promptTokens: 321, completionTokens: 18, totalTokens: 339 });
+      }
+    }
+    expect(adapter.processChunk(makeOpenrouterChunk({ choices: [] })).metadata).toBeUndefined();
+  });
+
+  it("carries trailing SSE usage into a held response and turn token totals", async () => {
+    const fetchStub = stubGlobalFetch(() =>
+      makeSseResponse([
+        { choices: [{ index: 0, delta: { content: "Hi" } }] },
+        { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+        { choices: [], usage: { prompt_tokens: 321, completion_tokens: 18, total_tokens: 339, cost: 0.0012 } },
+        "[DONE]",
+      ]),
+    );
+    try {
+      const context = makeStreamContext();
+      Object.assign(context.channel, { id: "openrouter_usage_fixture", isThread: () => false });
+      context.tomoriState = createPersona({
+        persona_nickname: "Mirri",
+        config: { thinking_level: "none", llm_stop_speaker_pattern_enabled: false },
+      });
+      context.holdResponseText = true;
+      const result = await new StreamOrchestrator().streamToDiscord(
+        new OpenrouterStreamAdapter(),
+        makeStreamConfig(),
+        context,
+      );
+      expect(result.status).toBe("completed");
+      expect(result.pendingResponse?.text).toBe("Hi");
+      expect(result.usage).toEqual({ inputTokens: 321, outputTokens: 18, costUsd: 0.0012 });
+      expect(sumTurnUsage([result])).toEqual({ inputTokens: 321, outputTokens: 18 });
+    } finally {
+      fetchStub.mockRestore();
+    }
+  });
+
+  it("retains tool-call usage when it follows the finish signal and preserves the completed arguments", async () => {
+    const usage = { prompt_tokens: 321, completion_tokens: 18, total_tokens: 339, cost: 0.0012 };
+    for (const placement of ["trailing", "bundled", "missing"] as const) {
+      const fetchStub = stubGlobalFetch(() =>
+        makeSseResponse([
+          {
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_fixture",
+                      type: "function",
+                      function: { name: "analyze_image", arguments: '{"message_' },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          {
+            choices: [
+              {
+                index: 0,
+                delta: { tool_calls: [{ index: 0, function: { arguments: 'id":"synthetic-message"}' } }] },
+                finish_reason: "tool_calls",
+              },
+            ],
+            ...(placement === "bundled" ? { usage } : {}),
+          },
+          ...(placement === "trailing" ? [{ choices: [], usage }] : []),
+          "[DONE]",
+        ]),
+      );
+      try {
+        const context = makeStreamContext();
+        Object.assign(context.channel, { id: `openrouter_tool_usage_${placement}`, isThread: () => false });
+        context.tomoriState = createPersona({
+          config: { thinking_level: "none", llm_stop_speaker_pattern_enabled: false },
+        });
+        context.holdResponseText = true;
+        const result = await new StreamOrchestrator().streamToDiscord(
+          new OpenrouterStreamAdapter(),
+          makeStreamConfig(),
+          context,
+        );
+        expect(result.status).toBe("function_call");
+        expect(result.data).toMatchObject({ name: "analyze_image", args: { message_id: "synthetic-message" } });
+        expect(result.usage).toEqual(
+          placement === "missing" ? undefined : { inputTokens: 321, outputTokens: 18, costUsd: 0.0012 },
+        );
+      } finally {
+        fetchStub.mockRestore();
+      }
+    }
+  });
+
+  it("releases a tool call without usage at the SSE end marker and cancels the remaining body", async () => {
+    const response = makeCancelObservableSseResponse([
+      {
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_fixture",
+                  type: "function",
+                  function: { name: "analyze_image", arguments: "{}" },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      },
+      "[DONE]",
+    ]);
+    const fetchStub = stubGlobalFetch(() => response.response);
+    try {
+      const context = makeStreamContext();
+      Object.assign(context.channel, { id: "openrouter_tool_usage_missing", isThread: () => false });
+      context.tomoriState = createPersona({
+        config: { thinking_level: "none", llm_stop_speaker_pattern_enabled: false },
+      });
+      const result = await new StreamOrchestrator().streamToDiscord(
+        new OpenrouterStreamAdapter(),
+        makeStreamConfig(),
+        context,
+      );
+      expect(result.status).toBe("function_call");
+      expect(result.data).toMatchObject({ name: "analyze_image", args: {} });
+      expect(result.usage).toBeUndefined();
+      expect(response.wasCancelled()).toBe(true);
+    } finally {
+      fetchStub.mockRestore();
+    }
+  });
+
   it("preserves visible text from delta.content exactly", () => {
     const adapter = new OpenrouterStreamAdapter();
     const result = adapter.processChunk(
@@ -519,7 +697,7 @@ function makeCancelObservableSseResponse(events: unknown[]): {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       for (const event of events) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${typeof event === "string" ? event : JSON.stringify(event)}\n\n`));
       }
     },
     cancel() {

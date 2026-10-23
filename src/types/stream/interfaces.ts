@@ -1,3 +1,4 @@
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 /**
  * Streaming interfaces for modular LLM provider architecture
  *
@@ -82,6 +83,7 @@ export interface StreamConfig extends ProviderConfig {
  * Contains all the Discord and application context needed for streaming
  */
 export interface StreamContext {
+  usageContext?: ProviderUsageContext;
   channel: BaseGuildTextChannel | BaseGuildVoiceChannel | DMChannel | NewsChannel | TextChannel | AnyThreadChannel;
   client: Client;
   initialInteraction?: CommandInteraction;

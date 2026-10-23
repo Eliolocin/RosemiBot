@@ -8,6 +8,9 @@ import type { SQL } from "bun";
 /** Absolute path to the migrations directory. */
 const MIGRATIONS_DIR = path.join(import.meta.dir, "migrations");
 
+/** Deployment-specific migrations start at 900 and are absent from schema.sql, so fresh installs must run them. */
+const DEPLOYMENT_MIGRATION_BAND_START = 900;
+
 /**
  * Migration file name pattern: NNN_description.sql
  * Capture group 1 is the zero-padded version number.
@@ -61,10 +64,10 @@ async function getAppliedMigrations(client: SQL): Promise<Set<string>> {
  *
  * @param applied - Set of already-applied migration names
  */
-async function getPendingMigrations(applied: Set<string>): Promise<PendingMigration[]> {
+async function getPendingMigrations(applied: Set<string>, migrationsDir: string): Promise<PendingMigration[]> {
   let files: string[];
   try {
-    files = await readdir(MIGRATIONS_DIR);
+    files = await readdir(migrationsDir);
   } catch {
     log.warn("Migrations directory not found — skipping migration runner");
     return [];
@@ -86,7 +89,7 @@ async function getPendingMigrations(applied: Set<string>): Promise<PendingMigrat
     const name = file.slice(0, -".sql".length); // strip .sql extension
 
     if (!applied.has(name)) {
-      pending.push({ version, name, filePath: path.join(MIGRATIONS_DIR, file) });
+      pending.push({ version, name, filePath: path.join(migrationsDir, file) });
     }
   }
 
@@ -102,19 +105,25 @@ async function getPendingMigrations(applied: Set<string>): Promise<PendingMigrat
 }
 
 /**
- * Records every known migration as applied without executing the migration body.
+ * Records every historical migration as applied without executing the migration body.
  *
  * This is used only after a fresh database has been initialized from the latest
  * static schema snapshot. In that case the historical expand/backfill/drop
  * migrations are already represented by schema.sql and replaying them would ask
  * for legacy source tables that correctly do not exist on a clean install.
  *
+ * Deployment-band migrations are excluded because schema.sql does not contain
+ * them, so the caller must subsequently run them.
  */
-export async function markAllMigrationsApplied(client: SQL = defaultSql): Promise<void> {
+export async function markAllMigrationsApplied(
+  client: SQL = defaultSql,
+  migrationsDir: string = MIGRATIONS_DIR,
+): Promise<void> {
   await ensureMigrationsTable(client);
 
-  const migrations = await getPendingMigrations(new Set());
-  for (const migration of migrations) {
+  const migrations = await getPendingMigrations(new Set(), migrationsDir);
+  const historicalMigrations = migrations.filter((migration) => migration.version < DEPLOYMENT_MIGRATION_BAND_START);
+  for (const migration of historicalMigrations) {
     await client`
       INSERT INTO schema_migrations (name)
       VALUES (${migration.name})
@@ -122,7 +131,9 @@ export async function markAllMigrationsApplied(client: SQL = defaultSql): Promis
     `;
   }
 
-  log.success(`Database migrations: ${migrations.length} historical migration marker(s) recorded for fresh schema`);
+  log.success(
+    `Database migrations: ${historicalMigrations.length} historical migration marker(s) recorded for fresh schema`,
+  );
 }
 
 /**
@@ -159,11 +170,11 @@ async function applyMigration(client: SQL, migration: PendingMigration): Promise
  * A migration failure is re-thrown so the caller (initializeDatabase) can
  * decide whether to abort startup.
  */
-export async function runMigrations(client: SQL = defaultSql): Promise<void> {
+export async function runMigrations(client: SQL = defaultSql, migrationsDir: string = MIGRATIONS_DIR): Promise<void> {
   await ensureMigrationsTable(client);
 
   const applied = await getAppliedMigrations(client);
-  const pending = await getPendingMigrations(applied);
+  const pending = await getPendingMigrations(applied, migrationsDir);
 
   if (pending.length === 0) {
     log.success("Database migrations: up to date");

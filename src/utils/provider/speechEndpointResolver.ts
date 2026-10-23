@@ -1,3 +1,4 @@
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 import type { VoiceSourceMode } from "@/utils/speech/voiceSourceCapabilities";
 import { createHash } from "node:crypto";
 import type { CustomEndpointRow } from "@/types/db/schema";
@@ -19,7 +20,12 @@ export interface SpeechEndpointResult {
 
 export type SpeechTargetResult =
   | (SpeechEndpointResult & { kind: "custom-endpoint"; owner: { kind: "server"; ownerId: number } })
-  | (Omit<HostedSpeechSelection, "apiKey" | "keyVersion"> & { kind: "hosted-model"; endpoint: null; apiKey: string });
+  | (Omit<HostedSpeechSelection, "apiKey" | "keyVersion"> & {
+      kind: "hosted-model";
+      endpoint: null;
+      apiKey: string;
+      usageContext?: ProviderUsageContext;
+    });
 
 export function speechTargetSource(target: SpeechTargetResult | null | undefined) {
   return target?.kind === "hosted-model" ? target.model : (target?.endpoint ?? null);

@@ -1,3 +1,6 @@
+import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
+import { findProviderRequestDeniedError } from "@/utils/provider/providerUsage";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import { callOpenRouterDecisions } from "@/providers/openrouter/openrouterDecisions";
 import type { ProviderDecisionRequest, DecisionResult, SupportsDecisions } from "@/types/provider/featureInterfaces";
 /**
@@ -307,12 +310,19 @@ export class OpenrouterProvider
         },
       );
 
+      const usage = typeof response === "string" ? null : normalizeProviderUsage(response.usage);
+      if (usage) request.onUsage?.(usage);
       return extractOpenRouterEmbeddings(response);
     } catch (error: unknown) {
       // OpenRouter sometimes returns 200 OK with an error body, which trips up the SDK's validation.
       // If this happens, the SDK throws a ResponseValidationError with the raw body in rawValue.
       // biome-ignore lint/suspicious/noExplicitAny: SDK-specific error structure (ResponseValidationError) contains rawValue
       const err = error as any;
+      const limit =
+        typeof err?.statusCode === "number" && typeof err.body === "string" && err.headers instanceof Headers
+          ? readOpenRouterLimitError(err.statusCode, err.headers, err.body)
+          : null;
+      if (limit) throw new Error(`OpenRouter embedding request failed: HTTP ${err.statusCode}`, { cause: limit });
 
       if (err.name === "ResponseValidationError" && err.rawValue?.error) {
         const orError = err.rawValue.error;
@@ -413,13 +423,20 @@ export class OpenrouterProvider
   async generatePreset(request: ProviderPresetGenerationRequest): Promise<PresetGenerationResult> {
     const tools = await this.getPresetGenerationTools(request);
 
-    return await generatePresetFromPromptOpenrouter(request.apiKey, request.params, request.locale, {
-      model: request.tomoriState.llm.llm_codename,
-      temperature: getActiveTemperature(request.tomoriState.config),
-      tools,
-      toolContext: request.toolContext as ToolContext | undefined,
-      maxToolRounds: request.maxToolRounds,
-    });
+    try {
+      return await generatePresetFromPromptOpenrouter(request.apiKey, request.params, request.locale, {
+        model: request.tomoriState.llm.llm_codename,
+        temperature: getActiveTemperature(request.tomoriState.config),
+        tools,
+        toolContext: request.toolContext as ToolContext | undefined,
+        maxToolRounds: request.maxToolRounds,
+        onUsage: request.onUsage,
+      });
+    } catch (error) {
+      const denied = findProviderRequestDeniedError(error, request.toolContext?.usageContext);
+      if (denied) return { error: denied.message, errorType: "MODEL_ERROR", cause: denied };
+      throw error;
+    }
   }
 
   async generateConversationSummary(request: ProviderCompactSummaryRequest): Promise<CompactConversationResult> {

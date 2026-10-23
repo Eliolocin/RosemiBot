@@ -25,6 +25,10 @@ aiGenerated: true
 
 The HTTP health server binds only in production mode. Container healthcheck configuration belongs
 to the deployment guides; gateway login errors are reported in process logs.
+Optional modules can call `registerHealthServerRoute()` during startup to register a method and path
+on the same server. The base installation has no extra routes. Built-in health probes take precedence,
+and registered handlers receive the parsed request URL. Invalid URLs return 400, and failed handlers
+return 500 or close the response if headers have already been sent.
 
 ## Startup sequence
 

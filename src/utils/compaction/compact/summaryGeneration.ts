@@ -1,6 +1,7 @@
 import { generateConversationSummaryForProvider } from "@/providers/utils/providerFeatureExecutors";
 import type { CompactSummaryMode } from "@/types/misc/compact";
 import { log } from "@/utils/misc/logger";
+import type { TokenUsage } from "@/utils/text/tokenEstimate";
 import type { ConversationContext } from "./types";
 
 function buildConversationPrompt(params: {
@@ -31,6 +32,7 @@ export async function generateCompactSummary(params: {
   supplementaryContext: string;
   systemPrompt: string;
   analyzeImages: boolean;
+  onUsage?: (usage: TokenUsage) => void;
 }) {
   const promptBuilder = params.summaryType === "conversation" ? buildConversationPrompt : buildRoleplayPrompt;
   const prompt = promptBuilder({
@@ -54,6 +56,7 @@ export async function generateCompactSummary(params: {
     systemPrompt: prompt.systemPrompt,
     userPrompt: prompt.userPrompt,
     images,
+    onUsage: params.onUsage,
   });
 }
 

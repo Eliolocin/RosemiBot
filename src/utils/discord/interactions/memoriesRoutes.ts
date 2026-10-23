@@ -1,3 +1,4 @@
+import { type ProviderRequestDeniedError, getProviderRequestFailureCopy } from "@/utils/provider/providerUsage";
 import {
   type APIAttachment,
   type ButtonInteraction,
@@ -798,7 +799,16 @@ export const DOCUMENT_RESULT_RECEIPT_KEYS: Record<string, MemoryReceiptKey> = {
   forbidden: "manager_only",
 };
 
-function documentResultReceipt(locale: string, status: string, variables?: Record<string, string | number>) {
+function documentResultReceipt(
+  locale: string,
+  result: { status: string; denied?: ProviderRequestDeniedError },
+  variables?: Record<string, string | number>,
+) {
+  const status = result.status;
+  if (result.denied) {
+    const copy = getProviderRequestFailureCopy(result.denied, locale);
+    return { tone: "error" as const, heading: localizer(locale, copy.titleKey), detail: copy.description };
+  }
   if (status === "not-found") return changedStateReceipt(locale);
   if (status === "unchanged") return noChangesReceipt(locale);
   return receipt(locale, DOCUMENT_RESULT_RECEIPT_KEYS[status] ?? "write_failed", variables);
@@ -1910,7 +1920,7 @@ export function createMemoriesInteractionRoute(
                 name: result.documentName,
                 chunks: result.chunkCount,
               })
-            : documentResultReceipt(route.locale, result.status, {
+            : documentResultReceipt(route.locale, result, {
                 maxSize: getMemoryLimits().maxDocumentSizeMB,
                 maxText: getMemoryLimits().maxDocumentTextLength,
                 maxChunks: getMemoryLimits().maxDocumentChunks,
@@ -1971,7 +1981,7 @@ export function createMemoriesInteractionRoute(
           rangeIndex === undefined ? { kind: "documents" } : { kind: "documents", rangeIndex },
           result.status === "success"
             ? receipt(route.locale, "document_removed", { name: result.documentName })
-            : documentResultReceipt(route.locale, result.status),
+            : documentResultReceipt(route.locale, result),
           dependencies,
         );
         return;
@@ -2034,7 +2044,7 @@ export function createMemoriesInteractionRoute(
           { kind: "documents", selectedDocumentId: route.documentId, chunkIdx: route.chunkIdx },
           result.status === "success"
             ? receipt(route.locale, "document_chunk_edited")
-            : documentResultReceipt(route.locale, result.status),
+            : documentResultReceipt(route.locale, result),
           dependencies,
         );
         return;
@@ -2093,7 +2103,7 @@ export function createMemoriesInteractionRoute(
                 route.locale,
                 result.removedDocument ? "document_removed_with_last_chunk" : "document_chunk_removed",
               )
-            : documentResultReceipt(route.locale, result.status),
+            : documentResultReceipt(route.locale, result),
           dependencies,
         );
         return;
@@ -2183,7 +2193,7 @@ export function createMemoriesInteractionRoute(
               })
             : result.status === "partial-failure"
               ? receipt(route.locale, "vectorize_partial_failure", { name: result.documentName })
-              : documentResultReceipt(route.locale, result.status),
+              : documentResultReceipt(route.locale, result),
           dependencies,
         );
         return;

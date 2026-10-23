@@ -1852,7 +1852,9 @@ describe("Persona Voice page text and component budgeting", () => {
     });
     assertValid(missing);
     expect(JSON.stringify(missing)).toMatch(
-      localizedProse("en-US", "commands.config.panel.voice_page_no_model_notice", { providers: "`/providers`" }),
+      localizedProse("en-US", "commands.config.panel.voice_page_no_model_notice", {
+        models: `\`/config\` > ${localizedCopy("en-US", "commands.config.panel.category_models")}`,
+      }),
     );
     expect(JSON.stringify(missing)).toContain("voice-design-open");
   });

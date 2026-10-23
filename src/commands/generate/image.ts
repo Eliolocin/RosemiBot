@@ -1,3 +1,8 @@
+import {
+  findProviderRequestDeniedError,
+  reportProviderUsage,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 /**
  * Image Generation Command
  * Allows users to generate AI images using the configured provider
@@ -196,6 +201,15 @@ export async function execute(
       userId: userData.user_id ?? null,
     });
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error);
+    if (denied) {
+      await replyInfoEmbed(interaction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     if (error instanceof PersonalProviderRequiredError) {
       log.warn(`[Generate Image] Personal provider required for image generation`, error, {
         userId: userData.user_id,
@@ -526,6 +540,7 @@ export async function execute(
         aspectRatio,
         ...(referenceImages.length > 0 ? { referenceImages } : {}),
       });
+      reportProviderUsage(imageCreds.usageContext, { modelCodename, costUsd: result.costUsd });
       generatedImageData = result.imageData;
     } else if (imageRoute.kind === "google") {
       const ai = new GoogleGenAI({ apiKey });
@@ -669,6 +684,16 @@ export async function execute(
 
     log.success(`Successfully generated and sent image (${generationTimeSeconds}s)`);
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error, imageCreds?.usageContext);
+    if (denied) {
+      await replyInfoEmbed(modalSubmitInteraction ?? interaction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+        flags: MessageFlags.Ephemeral,
+        ...recoveryOptions(),
+      });
+      return;
+    }
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     log.error("Image generation failed:", error as Error);

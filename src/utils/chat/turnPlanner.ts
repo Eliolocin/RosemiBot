@@ -45,6 +45,11 @@ import {
 } from "@/utils/chat/triggerProcessor";
 import { getLastRespondedPersonaId, getSelfReplyChainState } from "@/utils/chat/selfReplyState";
 import type { TextQuotaTriggerState } from "@/utils/chat/textQuotaState";
+import {
+  claimCredentialRefusalNotice,
+  hasTextQuotaBeenRefused,
+  markTextQuotaRefused,
+} from "@/utils/chat/textQuotaState";
 import type { ChatIncoming, ChatTurn, ChatTurnPlan, LockedChatTurn } from "@/utils/chat/types";
 import { userNamingRepository, userPersonaNamingPairKey } from "@/utils/db/repositories/UserNamingRepository";
 import { resolveEffectiveUserNaming } from "@/utils/text/userNaming";
@@ -201,23 +206,6 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     return { lockedTurn, turns: [] };
   }
 
-  const credentialPolicy = await resolveTextCredentialPolicy({
-    tomoriState,
-    isSelfMessage,
-    isPersonaJob: incoming.isPersonaJob,
-    isManuallyTriggered: incoming.isManuallyTriggered,
-    isUserImpersonation: incoming.isUserImpersonation,
-    borrowsTriggerMessage: incoming.borrowsTriggerMessage === true,
-    userRow,
-    channel,
-    locale,
-    isDMChannel,
-    shouldSurfaceUserErrors,
-  });
-  if (!credentialPolicy) {
-    return { lockedTurn, turns: [] };
-  }
-
   let personasToRespond = selectPersonasForTurn({
     lockedTurn,
     allPersonas,
@@ -241,27 +229,50 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     return { lockedTurn, turns: [] };
   }
 
+  const personaPolicies = new Map<TomoriState, NonNullable<Awaited<ReturnType<typeof resolveTextCredentialPolicy>>>>();
+  const personaQuotas = new Map<TomoriState, Awaited<ReturnType<typeof prepareTextQuota>>>();
+  const refusalNoticeKey = incoming.textQuotaTriggerKey ?? lockedTurn.admission.message.id;
+  for (const persona of personasToRespond) {
+    const policy = await resolveTextCredentialPolicy({
+      tomoriState: persona,
+      isSelfMessage,
+      isPersonaJob: incoming.isPersonaJob,
+      isManuallyTriggered: incoming.isManuallyTriggered,
+      isUserImpersonation: incoming.isUserImpersonation,
+      borrowsTriggerMessage: incoming.borrowsTriggerMessage === true,
+      userRow,
+      channel,
+      locale,
+      isDMChannel,
+      shouldSurfaceUserErrors,
+      refusalNoticeKey,
+    });
+    if (!policy) continue;
+    const quota = await prepareTextQuota(lockedTurn, persona, policy.source, userRow, shouldSurfaceUserErrors);
+    if (!quota.allowed) continue;
+    personaPolicies.set(persona, policy);
+    personaQuotas.set(persona, quota);
+  }
+  personasToRespond = personasToRespond.filter((persona) => personaPolicies.has(persona));
+  if (personasToRespond.length === 0) return { lockedTurn, turns: [] };
+  const textQuota = personaQuotas.get(personasToRespond[0]);
+  if (!textQuota) return { lockedTurn, turns: [] };
+  const guardSource: "server" | "personal" = personasToRespond.some((persona) => {
+    const policy = personaPolicies.get(persona);
+    return policy?.source === "server";
+  })
+    ? "server"
+    : "personal";
   if (
     !(await enforceTurnGuards(
       lockedTurn,
       tomoriState,
       userRow,
       personasToRespond,
-      credentialPolicy.source,
+      guardSource,
       shouldSurfaceUserErrors,
     ))
   ) {
-    return { lockedTurn, turns: [] };
-  }
-
-  const textQuota = await prepareTextQuota(
-    lockedTurn,
-    tomoriState,
-    credentialPolicy.source,
-    userRow,
-    shouldSurfaceUserErrors,
-  );
-  if (!textQuota.allowed) {
     return { lockedTurn, turns: [] };
   }
 
@@ -399,6 +410,9 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
   }
 
   const turns: ChatTurn[] = personasToRespond.map((persona, personaIndex) => {
+    const credentialPolicy = personaPolicies.get(persona);
+    const quota = personaQuotas.get(persona);
+    if (!credentialPolicy || !quota) throw new Error("Persona admission state missing");
     const isPersonaSceneTarget = Boolean(incoming.sceneTurn && incoming.sceneTurn.turnIndex > 0);
     const preference = namingRow.user_id
       ? namingPreferences.get(userPersonaNamingPairKey(namingRow.user_id, persona.persona_lineage_id))
@@ -447,9 +461,9 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
       textCredentialSource: credentialPolicy.source,
       personalRoutingUserId: credentialPolicy.personalRoutingUserId,
       personalTextProvider: credentialPolicy.personalTextProvider,
-      shouldApplyTextQuota: textQuota.shouldApply,
-      textQuotaTriggerKey: textQuota.triggerKey,
-      textQuotaState: textQuota.state,
+      shouldApplyTextQuota: quota.shouldApply,
+      textQuotaTriggerKey: quota.triggerKey,
+      textQuotaState: quota.state,
       shouldSurfaceUserErrors,
       forcedMentions: incoming.forcedMentions,
       isUserImpersonation: incoming.isUserImpersonation,
@@ -580,7 +594,7 @@ function getMatchLimit(tomoriState: TomoriState): number {
   return Math.min(Math.max(rawMatchLimit, MIN_MATCH_LIMIT), MAX_MATCH_LIMIT);
 }
 
-async function resolveTextCredentialPolicy(params: {
+export async function resolveTextCredentialPolicy(params: {
   tomoriState: TomoriState;
   isSelfMessage: boolean;
   isPersonaJob: boolean;
@@ -592,6 +606,7 @@ async function resolveTextCredentialPolicy(params: {
   locale: string;
   isDMChannel: boolean;
   shouldSurfaceUserErrors: boolean;
+  refusalNoticeKey?: string;
 }): Promise<{
   source: "server" | "personal";
   personalRoutingUserId: number | null;
@@ -603,6 +618,10 @@ async function resolveTextCredentialPolicy(params: {
     (params.isSelfMessage && !params.isPersonaJob && !params.isManuallyTriggered && !params.isUserImpersonation)
       ? null
       : (params.userRow.user_id ?? null);
+  const sendFailureNotice = async (options: Parameters<typeof sendStandardEmbed>[2]): Promise<void> => {
+    if (params.refusalNoticeKey && !claimCredentialRefusalNotice(params.refusalNoticeKey)) return;
+    await sendStandardEmbed(params.channel as SendableChannel, params.locale, options);
+  };
 
   try {
     const textCreds = await resolveCapabilityCredentials(params.tomoriState.server_id, "text", {
@@ -619,7 +638,7 @@ async function resolveTextCredentialPolicy(params: {
     // /config setup during a transient blip. That embed logged 41 times in one cascade.
     if (error instanceof DatabaseUnavailableError) {
       if (params.shouldSurfaceUserErrors) {
-        await sendStandardEmbed(params.channel as SendableChannel, params.locale, {
+        await sendFailureNotice({
           color: ColorCode.ERROR,
           titleKey: "general.errors.database_unavailable_title",
           descriptionKey: "general.errors.database_unavailable_description",
@@ -639,7 +658,7 @@ async function resolveTextCredentialPolicy(params: {
             channelId: params.channel.id,
           },
         });
-        await sendStandardEmbed(params.channel as SendableChannel, params.locale, {
+        await sendFailureNotice({
           color: ColorCode.ERROR,
           titleKey: "general.errors.personal_provider_required_title",
           descriptionKey: "general.errors.personal_provider_required_description",
@@ -674,7 +693,7 @@ async function resolveTextCredentialPolicy(params: {
             },
           },
         );
-        await sendStandardEmbed(params.channel as SendableChannel, params.locale, {
+        await sendFailureNotice({
           color: ColorCode.ERROR,
           titleKey: isPersonalError
             ? "general.errors.personal_provider_credentials_error_title"
@@ -906,8 +925,9 @@ async function prepareTextQuota(
     userDiscId: incoming.textQuotaUserDiscId ?? lockedTurn.admission.cooldownUserDiscId ?? userRow.user_disc_id,
     channel: lockedTurn.admission.channel as SendableChannel,
     locale: lockedTurn.admission.locale,
-    notifyUser: shouldSurfaceUserErrors,
+    notifyUser: shouldSurfaceUserErrors && !hasTextQuotaBeenRefused(triggerKey),
   });
+  if (!quota.allowed) markTextQuotaRefused(triggerKey);
 
   return {
     allowed: quota.allowed,

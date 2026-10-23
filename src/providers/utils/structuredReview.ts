@@ -13,6 +13,7 @@ export function privateStructuredFailure<T>(
   failure: "transport" | "malformed" | "refusal" = "transport",
   httpStatus?: number,
   malformed?: MalformedDetail,
+  cause?: Error,
 ): StructuredOutputResult<T> {
   return {
     success: false,
@@ -20,6 +21,7 @@ export function privateStructuredFailure<T>(
     failure: request.abortSignal?.aborted ? "cancelled" : failure,
     httpStatus,
     malformed,
+    cause,
   };
 }
 

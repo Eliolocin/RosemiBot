@@ -54,6 +54,13 @@ determineMatchingPersonas()
 - **Zero matches or failed gates**: returns `turns: []`. The coordinator treats an empty list as a skip,
   immediately releasing the channel lock and triggering queue replay.
 
+### Credential admission
+
+Each matched persona resolves credentials and checks text quota separately. A persona without usable
+credentials is skipped while other admitted personas can continue. A refused trigger shows at most
+one credential notice and one quota notice across persona jobs and retries. Personal text routes
+stay outside server quota, and any admitted server route requires the server trigger cooldown.
+
 ### Channel lock state arming
 
 When `turns.length > 0`, `planChatTurns()` updates the channel lock entry via `setActiveChannelTurnState()`.

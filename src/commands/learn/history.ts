@@ -1,3 +1,10 @@
+import {
+  createProviderUsageRecorder,
+  type ProviderUsageContext,
+  findProviderRequestDeniedError,
+  type ProviderRequestDeniedError,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 /**
  * /memory history import - Extract atomic facts from channel message history using an LLM
@@ -72,6 +79,7 @@ import {
 } from "@/utils/provider/credentialResolver";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import type { TokenUsage } from "@/utils/text/tokenEstimate";
 
 /** Maximum document name length */
 const MAX_DOCUMENT_NAME_LENGTH = 64;
@@ -295,6 +303,15 @@ async function showExtractionFailureTerminal(
     await showExtractionFailedEmbed(statusTarget, locale, footer, failure);
     return;
   }
+  if (failure.reason === "provider-denied") {
+    const copy = getProviderRequestFailureCopy(failure.denied, locale);
+    await replaceHistoryImportStatus(statusTarget, locale, {
+      titleKey: copy.titleKey,
+      description: `${copy.description}\n\n${footer}`,
+      color: ColorCode.ERROR,
+    });
+    return;
+  }
   await showNoFactsExtractedEmbed(statusTarget, locale, footer);
 }
 
@@ -458,6 +475,7 @@ async function extractWindow(
   apiKey: string,
   systemPrompt: string,
   endpointUrl?: string,
+  onUsage?: (usage: TokenUsage) => void,
 ): Promise<HistoryExtractionOutcome> {
   const userPrompt = buildExtractionUserPrompt(windowText, previousRestatements);
   return await extractHistoryWindowForProvider({
@@ -469,6 +487,7 @@ async function extractWindow(
     userPrompt,
     temperature: 0.3,
     maxOutputTokens: 8192,
+    onUsage,
   });
 }
 
@@ -644,7 +663,8 @@ async function createDocumentForImport(params: {
 type IncrementalExtractionResult =
   | { ok: true; totalFactCount: number; allChunkText: string }
   | { ok: false; reason: "no-facts" }
-  | { ok: false; reason: "extraction-failed"; error: string; failedWindows: number; totalWindows: number };
+  | { ok: false; reason: "extraction-failed"; error: string; failedWindows: number; totalWindows: number }
+  | { ok: false; reason: "provider-denied"; denied: ProviderRequestDeniedError };
 
 /**
  * Runs incremental LLM extraction over message windows, embedding and persisting each
@@ -669,6 +689,8 @@ async function runIncrementalExtraction(params: {
   embeddingProvider: string;
   embeddingCodename: string;
   embeddingApiKey: string;
+  embeddingUsageContext?: ProviderUsageContext;
+  textUsageContext?: ProviderUsageContext;
 }): Promise<IncrementalExtractionResult> {
   const {
     formattedResult,
@@ -685,6 +707,8 @@ async function runIncrementalExtraction(params: {
     embeddingProvider,
     embeddingCodename,
     embeddingApiKey,
+    embeddingUsageContext,
+    textUsageContext,
   } = params;
 
   const memoryLimits = getMemoryLimits();
@@ -727,7 +751,13 @@ async function runIncrementalExtraction(params: {
       apiKey,
       composedSystemPrompt,
       endpointUrl,
+      createProviderUsageRecorder(textUsageContext, model),
     );
+
+    const deniedExtraction = windowOutcome.ok
+      ? null
+      : findProviderRequestDeniedError(windowOutcome.cause, textUsageContext);
+    if (deniedExtraction) return { ok: false, reason: "provider-denied", denied: deniedExtraction };
 
     // A failed window is recorded and skipped rather than treated as "found nothing",
     //    so the run can still report the real cause if no window ever succeeds.
@@ -754,15 +784,23 @@ async function runIncrementalExtraction(params: {
 
       allChunks.push(...windowChunks);
 
-      const embeddings = await generateEmbeddingsBatched({
-        provider: embeddingProvider,
-        apiKey: embeddingApiKey,
-        model: embeddingCodename,
-        modelId: embeddingModelId,
-        inputs: windowChunks,
-        taskType: (await providerSupportsEmbeddingTaskType(embeddingProvider)) ? "RETRIEVAL_DOCUMENT" : undefined,
-        batchSize: 16,
-      });
+      let embeddings: number[][];
+      try {
+        embeddings = await generateEmbeddingsBatched({
+          provider: embeddingProvider,
+          apiKey: embeddingApiKey,
+          model: embeddingCodename,
+          modelId: embeddingModelId,
+          inputs: windowChunks,
+          taskType: (await providerSupportsEmbeddingTaskType(embeddingProvider)) ? "RETRIEVAL_DOCUMENT" : undefined,
+          batchSize: 16,
+          onUsage: createProviderUsageRecorder(embeddingUsageContext, embeddingCodename),
+        });
+      } catch (error) {
+        const deniedEmbedding = findProviderRequestDeniedError(error, embeddingUsageContext);
+        if (deniedEmbedding) return { ok: false, reason: "provider-denied", denied: deniedEmbedding };
+        throw error;
+      }
 
       for (const target of writeTargets) {
         const startIdx = chunkStartIndex.get(target.documentId) ?? 0;
@@ -820,7 +858,8 @@ async function runIncrementalExtraction(params: {
 
 interface HistoryImportNotice {
   titleKey: string;
-  descriptionKey: string;
+  descriptionKey?: string;
+  description?: string;
   descriptionVars?: Record<string, string>;
 }
 
@@ -834,6 +873,7 @@ interface HistoryImportRuntime {
     embeddingProvider: string;
     embeddingCodename: string;
     embeddingApiKey: string;
+    embeddingUsageContext?: ProviderUsageContext;
   };
   provider: string;
   model: string;
@@ -847,6 +887,7 @@ type HistoryImportRuntimeResult =
 async function resolveHistoryImportRuntime(
   tomoriState: TomoriState,
   userId: number | null,
+  locale: string,
 ): Promise<HistoryImportRuntimeResult> {
   let textCreds: ResolvedCredentials;
   let embeddingCreds: ResolvedCredentials;
@@ -856,6 +897,19 @@ async function resolveHistoryImportRuntime(
       resolveCapabilityCredentials(tomoriState.server_id, "embedding", { userId }),
     ]);
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error);
+    if (denied) {
+      const copy = getProviderRequestFailureCopy(denied, locale);
+      log.warn(`[Learn History] Provider denied a text or embedding request`, error, {
+        userId,
+        serverId: tomoriState.server_id,
+        personaId: tomoriState.persona_id,
+        metadata: {
+          command: "learn history",
+        },
+      });
+      return { ok: false, notice: { titleKey: copy.titleKey, description: copy.description } };
+    }
     if (error instanceof PersonalProviderRequiredError) {
       log.warn(`[Learn History] Personal provider required for capability "text" or "embedding"`, error, {
         userId,
@@ -949,6 +1003,7 @@ async function resolveHistoryImportRuntime(
         embeddingProvider: embeddingModel.provider as string,
         embeddingCodename: embeddingModel.codename,
         embeddingApiKey: embeddingCreds.apiKey,
+        embeddingUsageContext: embeddingCreds.usageContext,
       },
       provider: tomoriState.llm.llm_provider.toLowerCase(),
       model: getEffectiveLlmModelName(tomoriState.llm, tomoriState.config.custom_model_name),
@@ -1236,7 +1291,7 @@ export async function execute(
             color: ColorCode.INFO,
           });
 
-          const runtimeResult = await resolveHistoryImportRuntime(activeTomoriState, userData.user_id ?? null);
+          const runtimeResult = await resolveHistoryImportRuntime(activeTomoriState, userData.user_id ?? null, locale);
           if (!runtimeResult.ok) {
             await replaceHistoryImportStatus(work.message, locale, {
               ...runtimeResult.notice,
@@ -1345,6 +1400,7 @@ export async function execute(
             provider,
             model,
             apiKey: textCreds.apiKey,
+            textUsageContext: textCreds.usageContext,
             endpointUrl,
             composeSystemPrompt,
             replyInteraction: work.message,
@@ -1398,7 +1454,7 @@ export async function execute(
 
       await modalSubmitInteraction.deferReply({ flags: MessageFlags.Ephemeral });
 
-      const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null);
+      const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null, locale);
       if (!runtimeResult.ok) {
         await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
           ...runtimeResult.notice,
@@ -1473,6 +1529,7 @@ export async function execute(
         provider,
         model,
         apiKey: textCreds.apiKey,
+        textUsageContext: textCreds.usageContext,
         endpointUrl,
         composeSystemPrompt: async () => globalSystemPrompt,
         replyInteraction: modalSubmitInteraction,
@@ -1518,7 +1575,7 @@ export async function execute(
 
     await modalSubmitInteraction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null);
+    const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null, locale);
     if (!runtimeResult.ok) {
       await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
         ...runtimeResult.notice,
@@ -1599,6 +1656,7 @@ export async function execute(
         provider,
         model,
         apiKey: textCreds.apiKey,
+        textUsageContext: textCreds.usageContext,
         endpointUrl,
         composeSystemPrompt: async () => autoSystemPrompt,
         replyInteraction: modalSubmitInteraction,
@@ -1693,6 +1751,7 @@ export async function execute(
       provider,
       model,
       apiKey: textCreds.apiKey,
+      textUsageContext: textCreds.usageContext,
       endpointUrl,
       composeSystemPrompt: async () => autoSystemPrompt,
       replyInteraction: modalSubmitInteraction,

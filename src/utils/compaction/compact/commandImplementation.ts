@@ -1,3 +1,10 @@
+import type { ResolvedCredentials } from "@/utils/provider/credentialResolver";
+import {
+  createProviderUsageRecorder,
+  findProviderRequestDeniedError,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 import type { ButtonInteraction, ChatInputCommandInteraction, Client, Message, TextBasedChannel } from "discord.js";
 import {
   ActionRowBuilder,
@@ -117,6 +124,7 @@ export async function executeCompactCommand(
     return;
   }
 
+  let usageContext: ProviderUsageContext | undefined;
   const apiKey = await decryptApiKey(encryptedApiKey, tomoriState.config.key_version || 1);
   if (!apiKey) {
     log.warn(`[Compact] Failed to decrypt API key for provider "${providerName}"`, undefined, {
@@ -190,7 +198,17 @@ export async function executeCompactCommand(
       supplementaryContext,
       systemPrompt: modalSelection.systemPrompt,
       analyzeImages: modalSelection.analyzeImages,
+      onUsage: createProviderUsageRecorder(usageContext, effectiveModelName),
     });
+
+    const denied = findProviderRequestDeniedError(result.cause, usageContext);
+    if (denied) {
+      await replyInfoEmbed(modalSelection.submitInteraction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+      });
+      return;
+    }
 
     if (result.error || !result.summary) {
       await editFailure(modalSelection.submitInteraction, locale, result.error || "Unknown error");
@@ -260,6 +278,14 @@ export async function executeCompactCommand(
       setupAddToDocsCollector({ summaryMessage, buildEmbed: (text) => buildEmbed(text), locale, serverDiscId });
     });
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error, usageContext);
+    if (denied) {
+      await replyInfoEmbed(modalSelection.submitInteraction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+      });
+      return;
+    }
     log.error("Compact summary command failed", error);
     await editFailure(
       modalSelection.submitInteraction,
@@ -706,9 +732,19 @@ function setupAddToDocsCollector(params: {
       return;
     }
 
-    const embeddingCreds = await resolveCapabilityCredentials(tomoriState.server_id, "embedding", {
-      userId: null,
-    }).catch(() => null);
+    let embeddingCreds: ResolvedCredentials | null = null;
+    try {
+      embeddingCreds = await resolveCapabilityCredentials(tomoriState.server_id, "embedding", { userId: null });
+    } catch (error) {
+      const denied = findProviderRequestDeniedError(error);
+      if (denied) {
+        await replyInfoEmbed(submitInteraction, locale, {
+          ...getProviderRequestFailureCopy(denied, locale),
+          color: ColorCode.ERROR,
+        });
+        return;
+      }
+    }
     if (!embeddingCreds) {
       await replyInfoEmbed(submitInteraction, locale, {
         titleKey: "commands.compact.add_to_docs_no_embedding_title",
@@ -763,6 +799,7 @@ function setupAddToDocsCollector(params: {
         inputs: chunks,
         taskType: (await providerSupportsEmbeddingTaskType(embeddingModel.provider)) ? "RETRIEVAL_DOCUMENT" : undefined,
         batchSize: 16,
+        onUsage: createProviderUsageRecorder(embeddingCreds.usageContext, embeddingModel.codename),
       });
 
       await ragRepository.insertWithChunks({
@@ -795,6 +832,14 @@ function setupAddToDocsCollector(params: {
         color: ColorCode.SUCCESS,
       });
     } catch (error) {
+      const denied = findProviderRequestDeniedError(error, embeddingCreds.usageContext);
+      if (denied) {
+        await replyInfoEmbed(submitInteraction, locale, {
+          ...getProviderRequestFailureCopy(denied, locale),
+          color: ColorCode.ERROR,
+        });
+        return;
+      }
       log.error("Failed to save compact summary to document store", error);
       await replyInfoEmbed(submitInteraction, locale, {
         titleKey: "commands.compact.add_to_docs_error_title",

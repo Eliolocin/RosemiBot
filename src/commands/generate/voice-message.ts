@@ -93,6 +93,7 @@ import { CooldownType, type TomoriState, type UserRow } from "@/types/db/schema"
 import type { WhitelistCheckResult } from "@/types/misc/channelWhitelist";
 import type { PersonalSpotlightStatus } from "@/utils/db/repositories/UserRepository";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import { getProviderRequestFailureCopy } from "@/utils/provider/providerUsage";
 import { buildRestrictedErrorDetail } from "@/utils/discord/stream/errorUi";
 
 const BACKEND_LABEL_KEYS: Record<VoiceBackendKey, string> = {
@@ -763,6 +764,13 @@ export async function execute(
     ...(preset?.stability !== undefined ? { elevenLabsVoiceSettings: { stability: preset.stability } } : {}),
   });
 
+  if ((!synthesisResult.success || !synthesisResult.audioBuffer) && synthesisResult.requestDenied) {
+    await replyInfoEmbed(modalInteraction, locale, {
+      ...getProviderRequestFailureCopy(synthesisResult.requestDenied, locale),
+      color: ColorCode.ERROR,
+    });
+    return;
+  }
   if (!synthesisResult.success || !synthesisResult.audioBuffer) {
     await replyInfoEmbed(
       modalInteraction,

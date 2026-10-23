@@ -28,6 +28,7 @@ import {
   resolveSupportedLocale,
 } from "@/utils/text/localizer";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
+import { providerOptionModelDescription } from "@/utils/provider/providerOptionRegistry";
 import {
   getActivePersonalProviderForCapability,
   getStoredPersonalProviderForCapability,
@@ -531,7 +532,9 @@ export function buildModelSelectModal(
   const options = availableModels.slice(0, PERSONAL_MODEL_PAGE_SIZE).map((m) => ({
     value: String(m.id),
     label: safeSelectOptionText(m.name, 100),
-    description: m.description ? safeSelectOptionText(m.description, 100) : undefined,
+    description: m.description
+      ? safeSelectOptionText(m.description, 100)
+      : providerOptionModelDescription(locale, provider),
     default: m.id === currentModelId,
   }));
 
@@ -553,7 +556,7 @@ export function buildModelSelectModal(
         label: safeSelectOptionText(localizer(locale, "commands.personal.config.model_modal_select_label"), 45),
         description: safeSelectOptionText(
           localizer(locale, "commands.personal.config.model_modal_select_description", {
-            provider: getProviderDisplayName(provider),
+            provider: getProviderDisplayName(provider, locale),
           }),
           100,
         ),

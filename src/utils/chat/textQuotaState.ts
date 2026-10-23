@@ -27,6 +27,18 @@ export function hasTextQuotaBeenRefused(triggerKey: string): boolean {
   return refusedTextQuotaTriggers.has(triggerKey);
 }
 
+/**
+ * Trigger keys that have already shown one credential refusal, so later persona turns of the same
+ * reply stay silent.
+ */
+const reportedCredentialRefusals = new Map<string, number>();
+
+export function claimCredentialRefusalNotice(triggerKey: string): boolean {
+  if (reportedCredentialRefusals.has(triggerKey)) return false;
+  reportedCredentialRefusals.set(triggerKey, Date.now());
+  return true;
+}
+
 export function cleanupTextQuotaTriggerStates(): void {
   const now = Date.now();
   for (const [triggerKey, state] of textQuotaTriggerStates.entries()) {
@@ -37,6 +49,11 @@ export function cleanupTextQuotaTriggerStates(): void {
   for (const [triggerKey, refusedAt] of refusedTextQuotaTriggers.entries()) {
     if (now - refusedAt >= TEXT_QUOTA_TRIGGER_TTL_MS) {
       refusedTextQuotaTriggers.delete(triggerKey);
+    }
+  }
+  for (const [triggerKey, reportedAt] of reportedCredentialRefusals.entries()) {
+    if (now - reportedAt >= TEXT_QUOTA_TRIGGER_TTL_MS) {
+      reportedCredentialRefusals.delete(triggerKey);
     }
   }
 }

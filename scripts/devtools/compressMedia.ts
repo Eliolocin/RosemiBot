@@ -284,7 +284,7 @@ async function main(): Promise<void> {
 
   if (releaseTags.size > 0) {
     console.log(
-      `\n⚠ Converted release cards. Their PUBLISHED GitHub release bodies hotlink raw/main and must be updated:`,
+      `\n⚠ Converted release cards. Their PUBLISHED GitHub release bodies hotlink raw/release and must be updated:`,
     );
     for (const tag of [...releaseTags].sort()) {
       console.log(`  - ${tag}: update the image link (→ .webp) via \`gh release edit ${tag} ...\``);

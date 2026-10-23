@@ -1,3 +1,8 @@
+import {
+  findProviderRequestDeniedError,
+  type ProviderRequestDeniedError,
+  reportProviderUsage,
+} from "@/utils/provider/providerUsage";
 import type { CustomEndpointRow } from "@/types/db/schema";
 import type { ElevenLabsTtsErrorKind } from "@/utils/audio/elevenLabsTts";
 import { synthesizeSpeechViaElevenLabsAdapter } from "@/providers/custom/styles/elevenLabsAdapter";
@@ -90,6 +95,7 @@ export interface VoiceMessageSynthesisResult {
   targetLabel?: string;
   usedServerFallback?: boolean;
   cleanupPending?: boolean;
+  requestDenied?: ProviderRequestDeniedError;
 }
 
 interface VoiceSynthesisAttempt {
@@ -408,6 +414,14 @@ async function synthesizeHostedVoiceMessage(
     }
     request.abortSignal?.throwIfAborted();
     attempt.synthesisSuccess = true;
+    if (target.model.provider === "openrouter") {
+      const synthesis = attempt.operations.find((operation) => operation.operation === "synthesize");
+      reportProviderUsage(target.usageContext, {
+        modelCodename: target.model.codename,
+        costUsd: attempt.operations.find((operation) => operation.operation === "cost")?.actualCost,
+        providerRequestId: synthesis?.generationId,
+      });
+    }
     return {
       success: true,
       audioBuffer: audio,
@@ -418,6 +432,10 @@ async function synthesizeHostedVoiceMessage(
       cleanupPending,
     };
   } catch (error) {
+    const requestDenied = findProviderRequestDeniedError(error, target.usageContext);
+    if (requestDenied) {
+      return { success: false, backendKey, requestDenied, cleanupPending };
+    }
     const errorKind: HostedSpeechErrorKind = request.abortSignal?.aborted
       ? "cancelled"
       : signal.aborted
@@ -577,5 +595,10 @@ export async function synthesizeVoiceMessage(
   )
     return result;
   const fallback = await run({ ...request, target, source });
-  return { ...fallback, usedServerFallback: true, cleanupPending: result.cleanupPending || fallback.cleanupPending };
+  return {
+    ...fallback,
+    usedServerFallback: true,
+    requestDenied: fallback.requestDenied ?? result.requestDenied,
+    cleanupPending: result.cleanupPending || fallback.cleanupPending,
+  };
 }

@@ -521,7 +521,7 @@ describe("config persona selector", () => {
       (component) => component.type === STRING_SELECT && component.options?.some((option) => option.value === "56"),
     );
     expect(personaSelect?.customId).toBe(
-      buildConfigRouteId({ action: "persona-select", locale: "en-US", personaId: 56, page: "general" }),
+      buildConfigRouteId({ action: "persona-select", locale: "en-US", personaId: 56 }),
     );
     expect(personaSelect?.options?.map((option) => option.value)).toEqual(["55", "56"]);
   });

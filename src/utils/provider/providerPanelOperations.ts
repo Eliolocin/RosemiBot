@@ -25,6 +25,7 @@ import type {
   ProviderPanelCapabilitySection,
   ProviderPanelEntry,
   ProviderPanelModel,
+  ProviderPanelOptionAction,
   ProviderPanelScopeData,
 } from "@/types/discord/providerPanel";
 import { getCachedTomoriState, getRecordedDbError, invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
@@ -92,6 +93,20 @@ import {
   assignPersonalCapabilityToProvider,
   getActivePersonalProviderForCapability,
 } from "@/utils/provider/personalProviderHelpers";
+import {
+  findProviderOption,
+  claimProviderModelSelection,
+  findProviderOptionByActiveProvider,
+  getProviderOptions,
+  providerOptionActionValue,
+  providerOptionCapabilityForPanel,
+  providerOptionCapabilityForPersonal,
+  providerOptionFallbackRefServes,
+  providerOptionOffersPanelCapability,
+  type ProviderOptionCapability,
+  type ProviderOptionDefinition,
+  type ProviderOptionScope,
+} from "@/utils/provider/providerOptionRegistry";
 
 const CAPABILITIES: readonly ProviderPanelCapability[] = [
   "text",
@@ -351,6 +366,7 @@ type PanelSavedConfig = SavedProviderConfigRow | UserSavedProviderConfigRow;
 
 interface PanelModelContext {
   scope: { kind: "server" | "personal"; ownerId: number };
+  state: TomoriState | null;
   activeTextId: number | null;
   activeImageId: number | null;
   /** NovelAI image models live in their own slot, so NovelAI rows are marked against this instead. */
@@ -367,6 +383,7 @@ interface PanelModelContext {
 function serverModelContext(state: TomoriState): PanelModelContext {
   return {
     scope: { kind: "server", ownerId: state.server_id },
+    state,
     activeTextId: state.config.llm_id,
     activeImageId: state.config.diffusion_model_id ?? null,
     activeNaiImageId: state.config.nai_diffusion_model_id ?? null,
@@ -384,10 +401,12 @@ function personalModelContext(
   userId: number,
   configs: UserSavedProviderConfigRow[],
   fallbacks: readonly FallbackModelRef[],
+  state: TomoriState | null,
 ): PanelModelContext {
   const text = getActivePersonalProviderForCapability(configs, "text");
   return {
     scope: { kind: "personal", ownerId: userId },
+    state,
     activeTextId: text?.llm_id ?? null,
     activeImageId:
       getActivePersonalProviderForCapability(configs, "image")?.diffusion_model_id ??
@@ -406,21 +425,60 @@ function personalModelContext(
   };
 }
 
+function personalOptionCapabilities(savedConfig: PanelSavedConfig | null): ProviderOptionCapability[] {
+  if (!savedConfig || !("enabled_capabilities" in savedConfig)) return [];
+  return savedConfig.enabled_capabilities.flatMap((capability) => {
+    const canonical = providerOptionCapabilityForPersonal(capability);
+    return canonical ? [canonical] : [];
+  });
+}
+
+function optionContextScope(context: PanelModelContext): ProviderOptionScope {
+  return { kind: context.scope.kind, ownerId: context.scope.ownerId, state: context.state };
+}
+
+function optionOwnsCapability(
+  option: ProviderOptionDefinition,
+  savedConfig: PanelSavedConfig | null,
+  context: PanelModelContext,
+  capability: ProviderOptionCapability,
+): boolean {
+  if (context.scope.kind === "personal") {
+    return personalOptionCapabilities(savedConfig).includes(capability);
+  }
+  return option.selection.owns?.(optionContextScope(context), capability) ?? false;
+}
+
 async function buildCuratedCapabilities(
   provider: string,
-  savedConfig: PanelSavedConfig,
+  savedConfig: PanelSavedConfig | null,
   context: PanelModelContext,
 ): Promise<ProviderPanelCapabilitySection[]> {
+  const option = findProviderOption(provider);
+  const catalogProvider = option?.catalogProvider ?? provider;
+  const owns = (capability: ProviderOptionCapability) => {
+    if (context.scope.kind === "personal") return personalOptionCapabilities(savedConfig).includes(capability);
+    if (option) return optionOwnsCapability(option, savedConfig, context, capability);
+    return !findProviderOptionByActiveProvider(provider, optionContextScope(context), capability);
+  };
   const [textRows, imageRows, embeddingRows, videoRows, decisionRows, speechRows] = await Promise.all([
-    llmModelRepo.loadAvailableModelsForProvider(provider, false, context.scope),
-    llmModelRepo.loadAvailableDiffusionModels(provider, false, context.scope),
-    llmModelRepo.loadAvailableEmbeddingModels(provider, false, context.scope),
-    llmModelRepo.loadAvailableVideoGenerationModels(provider, false, context.scope),
-    llmModelRepo.loadAvailableDecisionModels(provider, false, context.scope),
-    llmModelRepo.loadAvailableSpeechModels(provider, context.scope),
+    llmModelRepo.loadAvailableModelsForProvider(catalogProvider, false, context.scope),
+    llmModelRepo.loadAvailableDiffusionModels(catalogProvider, false, context.scope),
+    llmModelRepo.loadAvailableEmbeddingModels(catalogProvider, false, context.scope),
+    llmModelRepo.loadAvailableVideoGenerationModels(catalogProvider, false, context.scope),
+    llmModelRepo.loadAvailableDecisionModels(catalogProvider, false, context.scope),
+    llmModelRepo.loadAvailableSpeechModels(catalogProvider, context.scope),
   ]);
-  const workspaceFallbacks = context.scopeFallbacks;
-  const providerFallbacks = "fallback_model_refs" in savedConfig ? (savedConfig.fallback_model_refs ?? []) : [];
+  const workspaceFallbacks = context.scopeFallbacks.filter((ref) => providerOptionFallbackRefServes(ref, provider));
+  const providerFallbacks = (
+    savedConfig && "fallback_model_refs" in savedConfig ? (savedConfig.fallback_model_refs ?? []) : []
+  ).filter((ref) => providerOptionFallbackRefServes(ref, provider));
+  const activeTextId = owns("text") ? context.activeTextId : null;
+  const activeImageId = owns("image") ? context.activeImageId : null;
+  const activeEmbeddingId = owns("embedding") ? context.activeEmbeddingId : null;
+  const activeVideoId = owns("video") ? context.activeVideoId : null;
+  const activeSpeechDesignModelId = owns("speech-design") ? context.activeSpeechDesignModelId : null;
+  const activeSpeechCloneModelId = owns("speech-clone") ? context.activeSpeechCloneModelId : null;
 
   const modelsByCapability: Record<
     "text" | "image" | "embedding" | "video" | "decision" | "speech",
@@ -430,14 +488,13 @@ async function buildCuratedCapabilities(
       id: row.speech_model_id,
       codeName: row.codename,
       isWorkspaceActive:
-        row.speech_model_id === context.activeSpeechDesignModelId ||
-        row.speech_model_id === context.activeSpeechCloneModelId,
+        row.speech_model_id === activeSpeechDesignModelId || row.speech_model_id === activeSpeechCloneModelId,
       isWorkspaceFallback: false,
       isProviderFallback: false,
       isCustomRegistration: row.is_scoped_registration,
       speechActiveModes: [
-        ...(row.speech_model_id === context.activeSpeechDesignModelId ? ["design" as const] : []),
-        ...(row.speech_model_id === context.activeSpeechCloneModelId ? ["clone" as const] : []),
+        ...(row.speech_model_id === activeSpeechDesignModelId ? ["design" as const] : []),
+        ...(row.speech_model_id === activeSpeechCloneModelId ? ["clone" as const] : []),
       ],
       speechSettings: {
         voiceMode: row.voice_mode === "design" ? "voice-design" : row.voice_mode,
@@ -458,7 +515,7 @@ async function buildCuratedCapabilities(
       const model = createModel(
         row.llm_id,
         row.llm_codename,
-        context.activeTextId,
+        activeTextId,
         workspaceFallbacks,
         providerFallbacks,
         "llm",
@@ -481,14 +538,14 @@ async function buildCuratedCapabilities(
       const model = createModel(
         row.diffusion_model_id,
         row.codename,
-        provider === "novelai" ? context.activeNaiImageId : context.activeImageId,
+        catalogProvider === "novelai" ? context.activeNaiImageId : activeImageId,
         [],
         [],
         "llm",
         row.is_scoped_registration,
         row.diffusion_model_id,
         undefined,
-        resolveCuratedImageSupports(provider, row) ?? undefined,
+        resolveCuratedImageSupports(catalogProvider, row) ?? undefined,
       );
       return model ? [model] : [];
     }),
@@ -496,7 +553,7 @@ async function buildCuratedCapabilities(
       const model = createModel(
         row.embedding_model_id,
         row.codename,
-        context.activeEmbeddingId,
+        activeEmbeddingId,
         [],
         [],
         "llm",
@@ -508,7 +565,7 @@ async function buildCuratedCapabilities(
       const model = createModel(
         row.video_model_id,
         row.codename,
-        context.activeVideoId,
+        activeVideoId,
         [],
         [],
         "llm",
@@ -522,7 +579,8 @@ async function buildCuratedCapabilities(
     if (
       (capability === "speech" && speechRows.length === 0) ||
       capability === "transcription" ||
-      (capability === "decision" && !getStaticProviderInfo(provider)?.featureSupport.decisions)
+      (capability === "decision" && !getStaticProviderInfo(catalogProvider)?.featureSupport.decisions) ||
+      (option && !providerOptionOffersPanelCapability(option, capability))
     ) {
       return { capability, availability: "unavailable", models: [] };
     }
@@ -668,8 +726,12 @@ function buildEndpointEntries(
   });
 }
 
-function resolveInitialEntryId(entries: readonly ProviderPanelEntry[], state: TomoriState): string | null {
-  const activeProvider = state.llm.llm_provider.toLowerCase();
+function resolveInitialEntryId(
+  entries: readonly ProviderPanelEntry[],
+  state: TomoriState,
+  optionTextOwner?: string,
+): string | null {
+  const activeProvider = optionTextOwner ?? state.llm.llm_provider.toLowerCase();
   const customProvider = parseCustomProvider(activeProvider);
   const activeEntry = customProvider
     ? entries.find((entry) => entry.kind === "endpoint" && entry.connectionIds.includes(customProvider.connectionId))
@@ -680,6 +742,49 @@ function resolveInitialEntryId(entries: readonly ProviderPanelEntry[], state: To
     (left, right) => (right.savedAt?.getTime() ?? 0) - (left.savedAt?.getTime() ?? 0),
   )[0];
   return newest?.id ?? null;
+}
+
+interface ProviderOptionPanelEntries {
+  entries: ProviderPanelEntry[];
+  optionActions: ProviderPanelOptionAction[];
+  textOwner?: string;
+}
+
+async function loadProviderOptionPanelEntries(
+  scope: ProviderOptionScope,
+  context: PanelModelContext,
+  configs: readonly PanelSavedConfig[],
+): Promise<ProviderOptionPanelEntries> {
+  const entries: ProviderPanelEntry[] = [];
+  const optionActions: ProviderPanelOptionAction[] = [];
+  let textOwner: string | undefined;
+  for (const option of getProviderOptions()) {
+    const availability = await option.availability(scope);
+    if (!availability.eligible) continue;
+    const selection = await option.selection.load(scope);
+    if (!selection) {
+      optionActions.push({
+        value: providerOptionActionValue(option),
+        labelKey: option.copy.addActionLabelKey,
+        descriptionKey: option.copy.addActionDescriptionKeys[scope.kind],
+      });
+      continue;
+    }
+    if (option.selection.owns?.(scope, "text")) textOwner = option.value;
+    const saved = configs.find((config) => config.provider.toLowerCase() === option.value) ?? null;
+    entries.push({
+      id: `provider:${option.value}`,
+      kind: "provider",
+      provider: option.value,
+      rotationKeyCount: 0,
+      displayName: option.value,
+      copyKey: option.copy.labelKey,
+      savedAt: selection.savedAt,
+      capabilities: await buildCuratedCapabilities(option.value, saved, context),
+      optionData: selection.data,
+    });
+  }
+  return { entries, optionActions, textOwner };
 }
 
 export async function loadServerProviderPanelScope(
@@ -707,9 +812,14 @@ export async function loadServerProviderPanelScope(
 
   const savedConfigMap = new Map(savedResult.configs.map((config) => [config.provider.toLowerCase(), config]));
   const modelContext = serverModelContext(state);
+  const optionEntries = await loadProviderOptionPanelEntries(
+    { kind: "server", ownerId: state.server_id, discordId, state },
+    modelContext,
+    savedResult.configs,
+  );
   const curatedEntries = await Promise.all(
     savedResult.configs
-      .filter((config) => !parseCustomProvider(config.provider))
+      .filter((config) => !parseCustomProvider(config.provider) && !findProviderOption(config.provider))
       .map(async (config): Promise<ProviderPanelEntry> => {
         const provider = config.provider.toLowerCase();
         const [capabilities, rotationKeyCount] = await Promise.all([
@@ -736,7 +846,7 @@ export async function loadServerProviderPanelScope(
   const braveEntry: ProviderPanelEntry[] = braveResult.configured
     ? [{ id: "brave", kind: "brave", displayName: "Brave Search", savedAt: null }]
     : [];
-  const entries = [...curatedEntries, ...endpointEntries, ...braveEntry].sort((left, right) =>
+  const entries = [...optionEntries.entries, ...curatedEntries, ...endpointEntries, ...braveEntry].sort((left, right) =>
     left.displayName.localeCompare(right.displayName),
   );
 
@@ -747,7 +857,8 @@ export async function loadServerProviderPanelScope(
     data: {
       readStatus: dependencies.getRecordedDbError(discordId) ? "stale" : "fresh",
       entries,
-      initialEntryId: resolveInitialEntryId(entries, state),
+      initialEntryId: resolveInitialEntryId(entries, state, optionEntries.textOwner),
+      optionActions: optionEntries.optionActions,
     },
   };
 }
@@ -791,11 +902,16 @@ async function loadPersonalProviderPanelScope(
     };
   }
 
-  const modelContext = personalModelContext(userId, savedResult.configs, fallbackSettings.fallback_model_refs);
+  const modelContext = personalModelContext(userId, savedResult.configs, fallbackSettings.fallback_model_refs, state);
   const savedConfigMap = new Map(savedResult.configs.map((config) => [config.provider.toLowerCase(), config]));
+  const optionEntries = await loadProviderOptionPanelEntries(
+    { kind: "personal", ownerId: userId, discordId: userDiscId, state },
+    modelContext,
+    savedResult.configs,
+  );
   const curatedEntries = await Promise.all(
     savedResult.configs
-      .filter((config) => !parseCustomProvider(config.provider))
+      .filter((config) => !parseCustomProvider(config.provider) && !findProviderOption(config.provider))
       .map(async (config): Promise<ProviderPanelEntry> => {
         const provider = config.provider.toLowerCase();
         return {
@@ -815,7 +931,7 @@ async function loadPersonalProviderPanelScope(
     savedConfigMap,
     modelContext,
   );
-  const entries = [...curatedEntries, ...endpointEntries].sort((left, right) =>
+  const entries = [...optionEntries.entries, ...curatedEntries, ...endpointEntries].sort((left, right) =>
     left.displayName.localeCompare(right.displayName),
   );
   return {
@@ -828,6 +944,7 @@ async function loadPersonalProviderPanelScope(
       readStatus: "fresh",
       entries,
       initialEntryId: resolvePersonalInitialEntryId(entries, savedResult.configs),
+      optionActions: optionEntries.optionActions,
     },
   };
 }
@@ -1185,56 +1302,95 @@ async function activateSavedProviderModel(
     ? await llmProviderRepo.upsertUserSavedProviderConfig(ownerId, next as UserSavedProviderConfigUpsert)
     : await llmProviderRepo.upsertSavedProviderConfig(input.state.server_id, next as SavedProviderConfigUpsert);
   if (!saved) return false;
-  if (personal) {
-    if (input.capability === "text") {
-      return (
-        (await activatePersonalProviderTextModel({ userId: ownerId, provider, llmId: modelId })).status === "activated"
+  const activate = async (): Promise<boolean> => {
+    if (personal) {
+      if (input.capability === "text") {
+        return (
+          (await activatePersonalProviderTextModel({ userId: ownerId, provider, llmId: modelId })).status ===
+          "activated"
+        );
+      }
+      return await assignPersonalCapabilityToProvider(
+        ownerId,
+        provider,
+        input.capability as PersonalProviderCapability,
+        (row) => ({
+          ...row,
+          embedding_model_id: input.capability === "embedding" ? modelId : row.embedding_model_id,
+          diffusion_model_id: input.capability === "image" && provider !== "novelai" ? modelId : row.diffusion_model_id,
+          nai_diffusion_model_id:
+            input.capability === "image" && provider === "novelai" ? modelId : row.nai_diffusion_model_id,
+          video_model_id: input.capability === "video" ? modelId : row.video_model_id,
+        }),
       );
     }
-    return await assignPersonalCapabilityToProvider(
-      ownerId,
+    if (input.capability === "text") {
+      return (
+        (
+          await activateServerTextModelFromSavedConfig({
+            serverDiscId: input.serverDiscId,
+            tomoriState: input.state,
+            savedConfig: next as SavedProviderConfigUpsert,
+            llmId: modelId,
+          })
+        ).status === "activated"
+      );
+    }
+    const updated =
+      input.capability === "image" && provider === "novelai"
+        ? await configRepository.updateNovelaiImagegenConfig(input.state.server_id, {
+            nai_diffusion_model_id: modelId,
+          })
+        : await configRepository.updateModelConfig(input.state.server_id, {
+            ...(input.capability === "embedding" ? { embedding_model_id: modelId } : {}),
+            ...(input.capability === "image" ? { diffusion_model_id: modelId } : {}),
+            ...(input.capability === "video" ? { video_model_id: modelId } : {}),
+          });
+    if (updated) invalidateTomoriStateCache(input.serverDiscId);
+    return updated;
+  };
+  if (!(await activate())) return false;
+  const claimCapability = providerOptionCapabilityForPanel(input.capability);
+  if (claimCapability) {
+    return claimProviderModelSelection({
+      scope: {
+        kind: input.scopeKind === "personal" ? "personal" : "server",
+        ownerId,
+        discordId: input.serverDiscId,
+        state: input.state ?? null,
+      },
       provider,
-      input.capability as PersonalProviderCapability,
-      (row) => ({
-        ...row,
-        embedding_model_id: input.capability === "embedding" ? modelId : row.embedding_model_id,
-        diffusion_model_id: input.capability === "image" && provider !== "novelai" ? modelId : row.diffusion_model_id,
-        nai_diffusion_model_id:
-          input.capability === "image" && provider === "novelai" ? modelId : row.nai_diffusion_model_id,
-        video_model_id: input.capability === "video" ? modelId : row.video_model_id,
-      }),
-    );
+      capability: claimCapability,
+    });
   }
-  if (input.capability === "text") {
-    return (
-      (
-        await activateServerTextModelFromSavedConfig({
-          serverDiscId: input.serverDiscId,
-          tomoriState: input.state,
-          savedConfig: next as SavedProviderConfigUpsert,
-          llmId: modelId,
-        })
-      ).status === "activated"
-    );
-  }
-  const updated =
-    input.capability === "image" && provider === "novelai"
-      ? await configRepository.updateNovelaiImagegenConfig(input.state.server_id, {
-          nai_diffusion_model_id: modelId,
-        })
-      : await configRepository.updateModelConfig(input.state.server_id, {
-          ...(input.capability === "embedding" ? { embedding_model_id: modelId } : {}),
-          ...(input.capability === "image" ? { diffusion_model_id: modelId } : {}),
-          ...(input.capability === "video" ? { video_model_id: modelId } : {}),
-        });
-  if (updated) invalidateTomoriStateCache(input.serverDiscId);
-  return updated;
+  return true;
 }
 
 async function registerSharedProviderModel(
   input: SaveProviderModelInput,
   provider: string,
 ): Promise<SaveProviderModelResult> {
+  const option = findProviderOption(provider);
+  if (option) {
+    if (!providerOptionOffersPanelCapability(option, input.capability)) return { status: "unsupported-capability" };
+    const scope: ProviderOptionScope = {
+      kind: input.scopeKind === "personal" ? "personal" : "server",
+      ownerId: input.scopeKind === "personal" ? input.ownerId : input.state.server_id,
+      discordId: input.serverDiscId,
+      state: input.state ?? null,
+    };
+    if (!(await option.selection.ensure(scope))) return { status: "write-failed" };
+    if (
+      option.selection.validateModel &&
+      !(await option.selection.validateModel({
+        scope,
+        capability: input.capability,
+        modelCodename: input.codeName.trim(),
+      }))
+    ) {
+      return { status: "invalid-model" };
+    }
+  }
   if (input.capability === "speech") {
     const personal = input.scopeKind === "personal";
     const ownerId = personal ? input.ownerId : input.state.server_id;
@@ -1249,8 +1405,9 @@ async function registerSharedProviderModel(
     return { status: "success", entryId: input.entryId, codeName: result.model.codename };
   }
   if (input.capability === "transcription") return { status: "unsupported-capability" };
-  if (input.capability === "decision" && provider !== "openrouter") return { status: "unsupported-capability" };
-  if (provider === "openrouter") {
+  if (input.capability === "decision" && provider !== "openrouter" && !option)
+    return { status: "unsupported-capability" };
+  if (provider === "openrouter" || option) {
     const personal = input.scopeKind === "personal";
     const ownerId = personal ? input.ownerId : input.state.server_id;
     const saved = personal
@@ -1259,7 +1416,7 @@ async function registerSharedProviderModel(
     if (!saved) return { status: "not-found" };
     if (input.capability === "decision" && input.editingModelId) {
       const owned = await llmModelRepo.loadAvailableDecisionModels(
-        provider,
+        option?.catalogProvider ?? provider,
         true,
         personal ? { kind: "personal", ownerId: ownerId } : { kind: "server", ownerId: input.state.server_id },
       );
@@ -1272,12 +1429,13 @@ async function registerSharedProviderModel(
       input.capability,
       input.codeName,
       input.imageSupportValues
-        ? (curatedImageSupportsFromSubmittedValues(input.imageSupportValues, provider) ?? undefined)
+        ? (curatedImageSupportsFromSubmittedValues(input.imageSupportValues, option?.catalogProvider ?? provider) ??
+            undefined)
         : undefined,
     );
     if (result.status === "invalid_model") return { status: "invalid-model" };
     if (result.status === "write_failed") return { status: "write-failed" };
-    if (result.status === "already_available") {
+    if (result.status === "already_available" && !option) {
       return { status: "already-available" };
     }
     const activated = await activateSavedProviderModel(input, provider, result.model.modelId);
@@ -1521,7 +1679,10 @@ export async function saveProviderModel(input: SaveProviderModelInput): Promise<
     const scope = personal
       ? { kind: "personal" as const, ownerId: ownerId }
       : { kind: "server" as const, ownerId: input.state.server_id };
-    let provider = input.entryId === "provider:openrouter" ? "openrouter" : null;
+    let provider =
+      input.entryId === "provider:openrouter"
+        ? "openrouter"
+        : (findProviderOption(input.entryId.slice("provider:".length))?.catalogProvider ?? null);
     if (input.entryId.startsWith("endpoint:")) {
       const representative = await llmProviderRepo.loadCustomEndpointConnectionById(Number(input.entryId.slice(9)));
       if (
@@ -1582,6 +1743,7 @@ async function validateProviderCredential(provider: string, apiKey: string): Pro
 
 async function editServerProvider(input: EditProviderInput): Promise<EditProviderResult> {
   const provider = input.provider.trim().toLowerCase();
+  if (findProviderOption(provider)) return { status: "not-found" };
   const apiKey = input.apiKey.trim();
   const rotationKey = input.rotationKey.trim();
   const entryId = `provider:${provider}`;
@@ -1842,6 +2004,18 @@ async function activateWorkspaceEndpoint(
 async function removeServerProviderEntry(input: RemoveProviderEntryInput): Promise<RemoveProviderEntryResult> {
   const personal = input.scopeKind === "personal";
   const ownerId = personal ? input.ownerId : input.state.server_id;
+  const option = input.entry.kind === "provider" ? findProviderOption(input.entry.provider) : undefined;
+  if (option) {
+    const status = await option.selection.remove({
+      kind: personal ? "personal" : "server",
+      ownerId,
+      discordId: input.serverDiscId,
+      state: input.state ?? null,
+    });
+    if (status === "active" || status === "not-found" || status === "write-failed") return { status };
+    if (!personal) invalidateTomoriStateCache(input.serverDiscId);
+    return { status: "success", entryId: input.entry.id, displayName: input.entry.displayName };
+  }
   if (personal) {
     const activeProvider = getActivePersonalProviderForCapability(
       await llmProviderRepo.loadUserSavedProviderConfigs(ownerId),
