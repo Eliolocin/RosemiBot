@@ -1,7 +1,6 @@
 import { parseRetryAfterMs } from "@/utils/messageProxy/lookupRetry";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 
-/** OpenRouter error envelopes are small JSON objects; anything larger is not a limit rejection. */
 const OPENROUTER_LIMIT_ERROR_MAX_BYTES = 64 * 1024;
 
 const OPENROUTER_LIMIT_SOURCES = ["openrouter_key_limit", "openrouter_in_flight_budget", "openrouter_credits"] as const;
@@ -46,7 +45,6 @@ export function readOpenRouterLimitError(
     : null;
 }
 
-/** Consumes the body of a failed response, for transports that otherwise discard it unread. */
 export async function readOpenRouterLimitResponse(response: Response): Promise<OpenRouterLimitError | null> {
   if (response.status !== 402 && response.status !== 403) {
     await response.body?.cancel().catch(() => undefined);

@@ -1815,11 +1815,17 @@ const setupProviderAccessUserByokSchema = z
     mode: z.literal("user-byok"),
   })
   .strict();
+const setupProviderAccessOptionSchema = z
+  .object({
+    mode: z.literal("option"),
+    value: z.string().min(1).max(40),
+  })
+  .strict();
 const setupProviderAccessSchema = z.discriminatedUnion("mode", [
   setupProviderAccessCatalogSchema,
   setupProviderAccessCustomEndpointSchema,
   setupProviderAccessUserByokSchema,
-  z.object({ mode: z.literal("supporter") }).strict(),
+  setupProviderAccessOptionSchema,
 ]);
 export type SetupProviderAccess = z.infer<typeof setupProviderAccessSchema>;
 

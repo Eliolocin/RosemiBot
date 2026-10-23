@@ -1,3 +1,4 @@
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 import type {
   LlmRow,
   SubscriptionCapability,
@@ -30,6 +31,7 @@ import { localizer } from "@/utils/text/localizer";
 export type Capability = "text" | "embedding" | "image-standard" | "image-nai" | "video" | "vision";
 
 export interface ResolvedCredentials {
+  usageContext?: ProviderUsageContext;
   provider: string;
   apiKey: string;
   keyVersion: number;

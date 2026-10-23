@@ -1574,7 +1574,7 @@ describe("config models capability writes", () => {
     });
 
     expect(result.status).toBe("success");
-    expect(update).toHaveBeenCalledWith(9, { vision_llm_id: 7 }, "google");
+    expect(update).toHaveBeenCalledWith(9, { vision_llm_id: 7 });
     providers.mockRestore();
     models.mockRestore();
     update.mockRestore();
@@ -1602,7 +1602,7 @@ describe("config models capability writes", () => {
       expect((await pick(5)).status).toBe("not-found");
       expect(update).not.toHaveBeenCalled();
       expect((await pick(4)).status).toBe("success");
-      expect(update).toHaveBeenLastCalledWith(9, { decision_model_id: 4 }, "openrouter");
+      expect(update).toHaveBeenLastCalledWith(9, { decision_model_id: 4 });
 
       const selected = makeState();
       selected.config.decision_model_id = 4;
@@ -1651,7 +1651,7 @@ describe("config models capability writes", () => {
       provider: "google",
       modelId: 5,
     });
-    expect(modelUpdate).toHaveBeenCalledWith(9, { diffusion_model_id: 5 }, "google");
+    expect(modelUpdate).toHaveBeenCalledWith(9, { diffusion_model_id: 5 });
 
     providers.mockRestore();
     diffusion.mockRestore();

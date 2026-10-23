@@ -12,8 +12,6 @@ import type {
 } from "@/types/db/schema";
 import { DEFAULT_THINKING_LEVEL } from "@/constants/thinkingLevels";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
-import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
-import { resolveEnvironment } from "@/types/config";
 import type { OpenRouterModelScope } from "@/utils/db/repositories/LlmModelRepository";
 import { supportsSpeechMode } from "@/utils/speech/voiceSourceCapabilities";
 import {
@@ -28,6 +26,7 @@ import {
   supportsVideoCapability,
   supportsVisionCapability,
 } from "@/utils/provider/providerInfoRegistry";
+import { findProviderOption, providerOptionOffersPersonalCapability } from "@/utils/provider/providerOptionRegistry";
 
 export type SavedProviderCapability =
   | "text"
@@ -339,16 +338,8 @@ function savedProviderSelectionServesCapability(
   capability: SavedProviderCapability,
   config: SavedProviderModelSelection,
 ): boolean {
-  if (provider === SUPPORTER_PROVIDER_VALUE)
-    return (
-      isSupporterBillingEnabled(resolveEnvironment()) &&
-      (capability === "text" ||
-        capability === "vision" ||
-        capability === "embedding" ||
-        capability === "image" ||
-        capability === "video" ||
-        capability === "speech_clone")
-    );
+  const option = findProviderOption(provider);
+  if (option) return providerOptionOffersPersonalCapability(option, capability);
   if (!isCustomProvider(provider)) {
     switch (capability) {
       case "text":
@@ -397,29 +388,35 @@ function savedProviderSelectionServesCapability(
 async function filterSavedProvidersByCapability<
   T extends SavedProviderModelSelection & Pick<SavedProviderConfigRow, "provider" | "api_key">,
 >(savedConfigs: readonly T[], capability: SavedProviderCapability, owner: OpenRouterModelScope): Promise<T[]> {
+  const available = await Promise.all(
+    savedConfigs.map(async (config) => {
+      const option = findProviderOption(config.provider);
+      return !option || (await option.availability({ kind: owner.kind, ownerId: owner.ownerId })).eligible;
+    }),
+  );
+  const availableConfigs = savedConfigs.filter((_config, index) => available[index]);
   if (capability === "speech_design" || capability === "speech_clone") {
     // Speech is a hosted-model capability only: custom speech endpoints are activated per server,
     // and a provider qualifies only while its key can reach a usable model for the mode.
     const mode = capability === "speech_design" ? "design" : "clone";
     const servesMode = await Promise.all(
-      savedConfigs.map(
+      availableConfigs.map(
         async (config) =>
           !isCustomProvider(config.provider) &&
-          (config.api_key !== null ||
-            (config.provider === SUPPORTER_PROVIDER_VALUE && isSupporterBillingEnabled(resolveEnvironment()))) &&
+          (findProviderOption(config.provider) !== undefined || config.api_key !== null) &&
           (
             await llmModelRepo.loadAvailableSpeechModels(
-              config.provider === SUPPORTER_PROVIDER_VALUE ? "openrouter" : config.provider,
+              findProviderOption(config.provider)?.catalogProvider ?? config.provider,
               owner,
             )
           ).some((model) => supportsSpeechMode(model, mode)),
       ),
     );
-    return savedConfigs.filter((_config, index) => servesMode[index]);
+    return availableConfigs.filter((_config, index) => servesMode[index]);
   }
 
   const registeredVisibility = await Promise.all(
-    savedConfigs.map(async (config) => {
+    availableConfigs.map(async (config) => {
       if (!isCustomProvider(config.provider)) {
         return true;
       }
@@ -428,7 +425,7 @@ async function filterSavedProvidersByCapability<
     }),
   );
 
-  return savedConfigs.filter(
+  return availableConfigs.filter(
     (config, index) =>
       registeredVisibility[index] && savedProviderSelectionServesCapability(config.provider, capability, config),
   );

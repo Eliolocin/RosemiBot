@@ -1,6 +1,8 @@
-import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
 import { HTTPClient } from "@openrouter/sdk/lib/http";
-import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
+import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
+import { findProviderRequestDeniedError } from "@/utils/provider/providerUsage";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import { callOpenRouterDecisions } from "@/providers/openrouter/openrouterDecisions";
 import type { ProviderDecisionRequest, DecisionResult, SupportsDecisions } from "@/types/provider/featureInterfaces";
 /**
@@ -36,8 +38,6 @@ import type { StreamingContext, ToolContext } from "../../types/tool/interfaces"
 import type { TomoriState } from "../../types/db/schema";
 import type { StructuredContextItem } from "../../types/misc/context";
 import { log } from "../../utils/misc/logger";
-import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
-import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import type {
   CompactConversationResult,
   CompactRoleplayResult,
@@ -303,7 +303,7 @@ export class OpenrouterProvider
     try {
       const openRouter = new OpenRouter({
         apiKey: request.apiKey,
-        httpClient: new HTTPClient({ fetcher: fetchWithSupporterSpend }),
+        httpClient: new HTTPClient({ fetcher: fetchWithProviderRequest }),
         debugLogger: { group: () => {}, groupEnd: () => {}, log: () => {} },
       });
       const response = await openRouter.embeddings.generate(
@@ -324,7 +324,6 @@ export class OpenrouterProvider
       // If this happens, the SDK throws a ResponseValidationError with the raw body in rawValue.
       // biome-ignore lint/suspicious/noExplicitAny: SDK-specific error structure (ResponseValidationError) contains rawValue
       const err = error as any;
-
       const limit =
         typeof err?.statusCode === "number" && typeof err.body === "string" && err.headers instanceof Headers
           ? readOpenRouterLimitError(err.statusCode, err.headers, err.body)
@@ -429,6 +428,7 @@ export class OpenrouterProvider
 
   async generatePreset(request: ProviderPresetGenerationRequest): Promise<PresetGenerationResult> {
     const tools = await this.getPresetGenerationTools(request);
+
     try {
       return await generatePresetFromPromptOpenrouter(request.apiKey, request.params, request.locale, {
         model: request.tomoriState.llm.llm_codename,
@@ -439,8 +439,8 @@ export class OpenrouterProvider
         onUsage: request.onUsage,
       });
     } catch (error) {
-      if (error instanceof SupporterRequestDeniedError)
-        return { error: error.message, errorType: "MODEL_ERROR", cause: error };
+      const denied = findProviderRequestDeniedError(error, request.toolContext?.usageContext);
+      if (denied) return { error: denied.message, errorType: "MODEL_ERROR", cause: denied };
       throw error;
     }
   }

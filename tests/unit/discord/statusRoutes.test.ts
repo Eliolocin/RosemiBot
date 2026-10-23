@@ -305,6 +305,36 @@ describe("persistent status interaction route", () => {
     expect(JSON.stringify(interaction.edits[0])).toContain("Mirri");
   });
 
+  it("keeps the current Persona page when switching or paging personas", async () => {
+    const personas = [persona(1, "Main"), persona(2, "Mirri")];
+    const page3Title = localizer("en-US", "commands.status.persona_page3_title", { persona_name: "Mirri" });
+    for (const options of [
+      { customId: buildStatusPersonaSelectorId("en-US", 1, 2), kind: "string-select", values: ["2"] },
+      {
+        customId: buildStatusDashboardRouteId({
+          action: "persona-page",
+          locale: "en-US",
+          personaId: 2,
+          start: 0,
+          page: 2,
+        }),
+        kind: "button",
+      },
+    ] as const) {
+      const interaction = makeStatusInteraction({
+        ...options,
+        values: "values" in options ? [...(options.values ?? [])] : undefined,
+      });
+      const registry = makeRegistry(interaction, [], async () => categories(""), personas);
+
+      await registry.dispatch({} as Client, interaction as unknown as GlobalRoutableInteraction);
+
+      const rendered = JSON.stringify(interaction.edits[0]);
+      expect(rendered).toContain(page3Title);
+      expect(rendered).toContain(`"customId":"${buildStatusPersonaSelectorId("en-US", 2, 2)}"`);
+    }
+  });
+
   it("falls back safely when a selected Persona was deleted", async () => {
     const interaction = makeStatusInteraction({
       customId: buildStatusDashboardRouteId({ action: "persona-page", locale: "en-US", personaId: 99, start: 25 }),

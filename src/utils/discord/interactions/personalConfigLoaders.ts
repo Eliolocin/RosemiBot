@@ -29,6 +29,7 @@ import {
   getStoredPersonalProviderForCapability,
 } from "@/utils/provider/personalProviderHelpers";
 import { loadUserSavedProvidersForCapability } from "@/utils/provider/savedProviderConfig";
+import { findProviderOption, providerOptionOffersPersonalCapability } from "@/utils/provider/providerOptionRegistry";
 import { localizer, resolveDescription } from "@/utils/text/localizer";
 import { messageProxyRepository } from "@/utils/db/repositories/MessageProxyRepository";
 import { formatManagedIdentityLabel } from "@/utils/discord/interactions/managedIdentityPanelRoutes";
@@ -145,18 +146,11 @@ export async function loadAvailableModelsForCapability(
   capability: PersonalConfigManagedCapability,
   locale = "en-US",
 ): Promise<Array<{ id: number; name: string; description?: string }>> {
-  if (provider === SUPPORTER_PROVIDER_VALUE) {
-    if (
-      !isSupporterBillingEnabled(resolveEnvironment()) ||
-      (capability !== "text" &&
-        capability !== "vision" &&
-        capability !== "embedding" &&
-        capability !== "image" &&
-        capability !== "video" &&
-        capability !== "speech_clone")
-    )
-      return [];
-    provider = "openrouter";
+  const option = findProviderOption(provider);
+  if (option) {
+    if (!providerOptionOffersPersonalCapability(option, capability)) return [];
+    if (!(await option.availability({ kind: "personal", ownerId: userId })).eligible) return [];
+    provider = option.catalogProvider;
   }
   try {
     if (capability === "speech_design" || capability === "speech_clone") {
@@ -279,10 +273,14 @@ export async function loadFallbackSelectionOptions(
   }
 
   const models =
-    (await llmModelRepo.loadAvailableModelsForProvider(provider, false, {
-      kind: "personal",
-      ownerId: userId,
-    })) ?? [];
+    (await llmModelRepo.loadAvailableModelsForProvider(
+      findProviderOption(provider)?.catalogProvider ?? provider,
+      false,
+      {
+        kind: "personal",
+        ownerId: userId,
+      },
+    )) ?? [];
   const choices = models
     .filter((model) => typeof model.llm_id === "number" && model.llm_codename !== "other-model")
     .map((model) => ({ refKey: `llm:${model.llm_id}`, label: model.llm_codename }));
@@ -316,7 +314,7 @@ export async function loadPersonalModelDisplayInfo(
       if (cap === "speech_design" || cap === "speech_clone") {
         const id = cap === "speech_design" ? row.speech_design_model_id : row.speech_clone_model_id;
         const models = await llmModelRepo.loadAvailableSpeechModels(
-          row.provider === SUPPORTER_PROVIDER_VALUE ? "openrouter" : row.provider,
+          findProviderOption(row.provider)?.catalogProvider ?? row.provider,
           {
             kind: "personal",
             ownerId: userId,

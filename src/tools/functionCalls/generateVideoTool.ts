@@ -1,3 +1,9 @@
+import {
+  findProviderRequestDeniedError,
+  notifyProviderToolFailure,
+  reportProviderUsage,
+  type ProviderUsageContext,
+} from "@/utils/provider/providerUsage";
 /**
  * Video Generation Tool
  * Allows TomoriBot to generate videos using the active provider's native video API.
@@ -26,10 +32,6 @@ import { formatCustomModelDisplay } from "@/utils/provider/customProviderUtils";
 import type { ProviderNativeVideoResolution } from "@/types/provider/featureInterfaces";
 import { getResolvedCapabilityModelId } from "@/utils/provider/credentialResolver";
 import { resolveCredentialsWithMediaQuota } from "@/utils/quota/mediaQuotaGate";
-import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import { notifySupporterToolFailure } from "@/modules/supporter-billing/discord/requestFailure";
-import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
-import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
 import { llmModelRepo } from "@/utils/db/repositories/LlmModelRepository";
 import { MessageIdMap } from "@/utils/text/messageIdMap";
 import {
@@ -410,7 +412,7 @@ export class GenerateVideoTool extends BaseTool {
 
     // Default to allowed; overwritten below for server-credential users
     let quotaCheck: VideoQuotaCheckResult = { allowed: true };
-    let supporterFunding: SupporterFundingContext | undefined;
+    let usageContext: ProviderUsageContext | undefined;
 
     try {
       const { credentials: creds, quotaCheck: serverQuotaCheck } = await resolveCredentialsWithMediaQuota(
@@ -478,7 +480,7 @@ export class GenerateVideoTool extends BaseTool {
       log.info(`Using video model: ${modelCodename} for video generation`);
 
       const apiKey = creds.apiKey;
-      supporterFunding = creds.supporterFunding;
+      usageContext = creds.usageContext;
       const executionProvider = creds.provider;
 
       // Send progress notice, so video generation takes 1-3 minutes
@@ -598,7 +600,7 @@ export class GenerateVideoTool extends BaseTool {
           loop,
           abortSignal: context.abortSignal,
         });
-        recordSupporterUsage(supporterFunding, {
+        reportProviderUsage(usageContext, {
           modelCodename,
           costUsd: result.costUsd,
           providerRequestId: result.providerRequestId,
@@ -699,8 +701,8 @@ export class GenerateVideoTool extends BaseTool {
       if (context.abortSignal?.aborted) {
         return { success: false, error: "Video generation was cancelled." };
       }
-      const denied = findSupporterRequestDeniedError(error, supporterFunding);
-      if (denied) return { success: false, error: await notifySupporterToolFailure(context, denied) };
+      const denied = findProviderRequestDeniedError(error, usageContext);
+      if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (!(error instanceof ProviderVideoFilteredError)) log.error("Video generation failed:", error as Error);
 

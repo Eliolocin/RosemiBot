@@ -1,3 +1,9 @@
+import {
+  findProviderRequestDeniedError,
+  createProviderUsageRecorder,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 /**
  * /expressions initialize command
  *
@@ -23,10 +29,6 @@ import { invalidateEmojiStickerCache } from "@/utils/cache/emojiStickerCache";
 import { lazySyncGuildEmojis } from "@/utils/cache/emojiLazySync";
 import { lazySyncGuildStickers } from "@/utils/cache/stickerLazySync";
 import { callExpressionInitializationForProvider } from "@/providers/utils/providerFeatureExecutors";
-import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
-import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
-import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
 import { providerSupportsFeature } from "@/utils/provider/providerInfoRegistry";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
 import { resolveStructuredOutputCapability } from "@/utils/provider/providerCapabilityResolver";
@@ -289,9 +291,10 @@ export async function execute(
     const expressionBatchSize = structuredOutputCapability?.getExpressionInitializationBatchSize?.() ?? null;
 
     let decryptedApiKey: string;
-    let supporterFunding: SupporterFundingContext | undefined;
+    let usageContext: ProviderUsageContext | undefined;
+
     try {
-      ({ apiKey: decryptedApiKey, supporterFunding } = await resolveCapabilityCredentials(
+      ({ apiKey: decryptedApiKey, usageContext } = await resolveCapabilityCredentials(
         tomoriState.server_id,
         effectiveLlm === llm ? "text" : "vision",
         { userId: userData.user_id },
@@ -440,14 +443,14 @@ export async function execute(
         userPrompt,
         images,
         temperature,
-        onUsage: createSupporterUsageRecorder(supporterFunding, effectiveModelName),
+        onUsage: createProviderUsageRecorder(usageContext, effectiveModelName),
       });
 
       log.info(`LLM structured output response (batch ${batchNumber}): ${JSON.stringify(result, null, 2)}`);
 
-      const denied = result.success ? null : findSupporterRequestDeniedError(result.cause, supporterFunding);
+      const denied = result.success ? null : findProviderRequestDeniedError(result.cause, usageContext);
       if (denied) {
-        const copy = getSupporterRequestFailureCopy(denied, locale);
+        const copy = getProviderRequestFailureCopy(denied, locale);
         await interaction.editReply({
           embeds: [
             {
@@ -550,6 +553,14 @@ export async function execute(
       });
     }
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error);
+    if (denied) {
+      await replyInfoEmbed(interaction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+      });
+      return;
+    }
     const context: ErrorContext = {
       userId: userData.user_id,
       serverId: tomoriState?.server_id ?? null,

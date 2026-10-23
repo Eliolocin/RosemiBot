@@ -1109,6 +1109,7 @@ describe("providers routes", () => {
       apiStyle: "comfyui",
       codeName: "anima-v1",
       text: undefined,
+      decision: undefined,
       image: {
         supports: { txt2img: true, img2img: false, inpaint: true, negative_prompt: false },
         allowInpaint: true,

@@ -1,3 +1,8 @@
+import {
+  findProviderRequestDeniedError,
+  reportProviderUsage,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 /**
  * Image Generation Command
  * Allows users to generate AI images using the configured provider
@@ -43,9 +48,6 @@ import { executeAutoImageCommand } from "@/utils/image/autoImageCommand";
 import { prepareGeneratedImage } from "@/utils/image/generatedImageMetadata";
 import { buildImageGenerationInputAttachment } from "@/utils/image/imageGenerationInput";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
-import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
-import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
 
 const MODAL_CUSTOM_ID = "generate_image_modal";
 const PROMPT_INPUT_ID = "prompt_input";
@@ -199,10 +201,10 @@ export async function execute(
       userId: userData.user_id ?? null,
     });
   } catch (error) {
-    const denied = findSupporterRequestDeniedError(error);
+    const denied = findProviderRequestDeniedError(error);
     if (denied) {
       await replyInfoEmbed(interaction, locale, {
-        ...getSupporterRequestFailureCopy(denied, locale),
+        ...getProviderRequestFailureCopy(denied, locale),
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
@@ -538,7 +540,7 @@ export async function execute(
         aspectRatio,
         ...(referenceImages.length > 0 ? { referenceImages } : {}),
       });
-      recordSupporterUsage(imageCreds.supporterFunding, { modelCodename, costUsd: result.costUsd });
+      reportProviderUsage(imageCreds.usageContext, { modelCodename, costUsd: result.costUsd });
       generatedImageData = result.imageData;
     } else if (imageRoute.kind === "google") {
       const ai = new GoogleGenAI({ apiKey });
@@ -682,10 +684,10 @@ export async function execute(
 
     log.success(`Successfully generated and sent image (${generationTimeSeconds}s)`);
   } catch (error) {
-    const denied = findSupporterRequestDeniedError(error, imageCreds?.supporterFunding);
+    const denied = findProviderRequestDeniedError(error, imageCreds?.usageContext);
     if (denied) {
       await replyInfoEmbed(modalSubmitInteraction ?? interaction, locale, {
-        ...getSupporterRequestFailureCopy(denied, locale),
+        ...getProviderRequestFailureCopy(denied, locale),
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
         ...recoveryOptions(),

@@ -31,14 +31,6 @@ function isUniqueViolation(error: unknown): boolean {
 
 const MODAL_CUSTOM_ID = "preset_default_modal";
 const PRESET_SELECT_ID = "preset_select";
-export const PRESET_LINEAGE_BY_AVATAR: Record<string, number> = {
-  "default.png": 4, // Default / Boyish
-  "bratty.png": 716,
-  "gloomy.png": 1770,
-  "shy.png": 3585,
-  "blind.png": 50, // Nerine (Discontinued Model)
-  "unhinged.png": 666, // Locke
-};
 
 type PersonaDefaultTargetType = "default" | "alter";
 
@@ -132,28 +124,7 @@ function normalizePresetLineageId(value: unknown): number | null {
 }
 
 export function resolvePresetLineageId(preset: TomoriPresetRow): number | null {
-  const explicitLineageId = normalizePresetLineageId(preset.preset_lineage_id);
-  if (explicitLineageId !== null) {
-    return explicitLineageId;
-  }
-
-  const avatarPath = (preset.preset_avatar_path ?? "").trim().toLowerCase();
-  if (avatarPath.length > 0) {
-    const fileName = avatarPath.split(/[\\/]/).pop() ?? "";
-    if (fileName in PRESET_LINEAGE_BY_AVATAR) {
-      return PRESET_LINEAGE_BY_AVATAR[fileName];
-    }
-  }
-
-  // Locale-safe fallback for environments where avatar paths were customized.
-  const normalizedName = preset.persona_preset_name.toLowerCase();
-  if (normalizedName.includes("bratty")) return 716;
-  if (normalizedName.includes("gloomy")) return 1770;
-  if (normalizedName.includes("shy")) return 3585;
-  if (normalizedName.includes("professional")) return 50;
-  if (normalizedName.includes("unhinged") || normalizedName.includes("locke")) return 666;
-  if (normalizedName.includes("default") || normalizedName.includes("boyish")) return 4;
-  return null;
+  return normalizePresetLineageId(preset.preset_lineage_id);
 }
 
 // Stays above addPresetTargetTypeOption: check-locales reads the first `.setName()` in a command file as the

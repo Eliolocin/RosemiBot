@@ -1,3 +1,8 @@
+import {
+  createProviderUsageRecorder,
+  findProviderRequestDeniedError,
+  type ProviderRequestDeniedError,
+} from "@/utils/provider/providerUsage";
 /**
  * Provider-agnostic vision inspection: resolve a vision model, call it with an image, and
  * return its text.
@@ -24,7 +29,6 @@ import { normalizeProviderName } from "@/utils/provider/providerInfoRegistry";
 import { toDeepseekApiModelName } from "@/providers/deepseek/deepseekShared";
 import { resolveVisionCaptionMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
-import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
 import {
   toZaiApiModelName,
@@ -34,13 +38,9 @@ import {
 import { createVertexClient, parseVertexCompositeKey } from "@/providers/vertex/vertexClient";
 import { createVertexexpressClient } from "@/providers/vertexexpress/vertexexpressClient";
 import type { LlmRow } from "@/types/db/schema";
-import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
 import { normalizeProviderUsage, type TokenUsage } from "@/utils/text/tokenEstimate";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
-import {
-  findSupporterRequestDeniedError,
-  type SupporterRequestDeniedError,
-} from "@/modules/supporter-billing/runtime/funding";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 
 /** An image ready for a provider payload, as base64 plus the MIME type that decodes it. */
 export interface VisionImage {
@@ -93,7 +93,7 @@ export interface VisionCallResult {
   provider?: string;
   model?: string;
   failure?: { reason: VisionCallFailureReason; detail?: string };
-  supporterFailure?: SupporterRequestDeniedError;
+  requestDenied?: ProviderRequestDeniedError;
 }
 
 /**
@@ -170,7 +170,7 @@ export async function analyzeImageWithVisionModel(input: {
   } catch (error) {
     return {
       ok: false,
-      supporterFailure: findSupporterRequestDeniedError(error) ?? undefined,
+      requestDenied: findProviderRequestDeniedError(error) ?? undefined,
       failure: {
         reason: "credentials_unavailable",
         detail: error instanceof Error ? error.message : String(error),
@@ -207,13 +207,13 @@ export async function analyzeImageWithVisionModel(input: {
     if (error instanceof UnsupportedVisionProviderError) {
       return { ok: false, provider, model, failure: { reason: "unsupported_provider", detail: error.message } };
     }
-    const supporterFailure = findSupporterRequestDeniedError(error, creds.supporterFunding) ?? undefined;
-    if (!supporterFailure) log.error(`Vision call failed for ${provider}/${model}:`, error as Error);
+    const requestDenied = findProviderRequestDeniedError(error, creds.usageContext) ?? undefined;
+    if (!requestDenied) log.error(`Vision call failed for ${provider}/${model}:`, error as Error);
     return {
       ok: false,
       provider,
       model,
-      supporterFailure,
+      requestDenied,
       failure: {
         reason: "request_failed",
         detail: error instanceof Error ? error.message : String(error),
@@ -263,7 +263,7 @@ async function dispatchVisionRequest(
     image,
     prompt,
     signal,
-    createSupporterUsageRecorder(creds.supporterFunding, model),
+    createProviderUsageRecorder(creds.usageContext, model),
   );
 }
 
@@ -378,7 +378,7 @@ export async function callOpenAiCompatibleVision(
   signal: AbortSignal,
   onUsage?: (usage: TokenUsage) => void,
 ): Promise<string> {
-  const response = await fetchWithSupporterSpend(
+  const response = await fetchWithProviderRequest(
     endpointUrl,
     {
       method: "POST",

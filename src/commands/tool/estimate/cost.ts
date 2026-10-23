@@ -1,4 +1,9 @@
-import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
+import {
+  findProviderRequestDeniedError,
+  createProviderUsageRecorder,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import { GoogleGenAI, type CountTokensParameters } from "@google/genai";
 import type { ChatInputCommandInteraction, Client, SlashCommandSubcommandBuilder } from "discord.js";
@@ -62,12 +67,9 @@ import {
 import { normalizeRenderModifierName } from "@/utils/discord/renderModifierParser";
 import { resolveWebhookPersonaAuthor } from "@/utils/discord/webhookPersonaAuthor";
 import { llmSections } from "@/db/seed/catalog/models";
-import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
-import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
-import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 
 // Char-per-token ratios and the primitive estimators live in @/utils/text/tokenEstimate
 // so this command and the post-turn stat recorder share one source of truth. The
@@ -1093,7 +1095,7 @@ export async function measureOpenRouterInputTokens(
   );
   const requestBody = buildOpenRouterProbeRequest(providerConfig, messages);
 
-  const response = await fetchWithSupporterSpend("https://openrouter.ai/api/v1/chat/completions", {
+  const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -1722,13 +1724,11 @@ export async function execute(
     }
 
     let decryptedApiKey = "";
-    let supporterFunding: SupporterFundingContext | undefined;
+    let usageContext: ProviderUsageContext | undefined;
     try {
-      ({ apiKey: decryptedApiKey, supporterFunding } = await resolveCapabilityCredentials(
-        tomoriState.server_id,
-        "text",
-        { userId: userData.user_id },
-      ));
+      ({ apiKey: decryptedApiKey, usageContext } = await resolveCapabilityCredentials(tomoriState.server_id, "text", {
+        userId: userData.user_id,
+      }));
     } catch (decryptError) {
       if (
         decryptError instanceof CredentialUnavailableError &&
@@ -1780,14 +1780,14 @@ export async function execute(
         tomoriState,
         decryptedApiKey,
         contextItems,
-        createSupporterUsageRecorder(supporterFunding, tomoriState.llm.llm_codename),
+        createProviderUsageRecorder(usageContext, tomoriState.llm.llm_codename),
       );
       await sendLiveEstimateEmbed(interaction, locale, measurement, sampleOutputTokens);
     } catch (countError) {
-      const denied = findSupporterRequestDeniedError(countError, supporterFunding);
+      const denied = findProviderRequestDeniedError(countError, usageContext);
       if (denied) {
         await replyInfoEmbed(interaction, locale, {
-          ...getSupporterRequestFailureCopy(denied, locale),
+          ...getProviderRequestFailureCopy(denied, locale),
           color: ColorCode.ERROR,
         });
         return;

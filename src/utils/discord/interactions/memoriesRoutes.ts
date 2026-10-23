@@ -1,3 +1,4 @@
+import { type ProviderRequestDeniedError, getProviderRequestFailureCopy } from "@/utils/provider/providerUsage";
 import {
   type APIAttachment,
   type ButtonInteraction,
@@ -82,8 +83,6 @@ import {
   type DocumentListRow,
 } from "@/utils/discord/interactions/memoriesDocumentOperations";
 import { parseInteractionRoute } from "@/utils/discord/interactions/routeRegistry";
-import type { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
 
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{17,20}$/;
 
@@ -802,12 +801,12 @@ export const DOCUMENT_RESULT_RECEIPT_KEYS: Record<string, MemoryReceiptKey> = {
 
 function documentResultReceipt(
   locale: string,
-  result: { status: string; denied?: SupporterRequestDeniedError },
+  result: { status: string; denied?: ProviderRequestDeniedError },
   variables?: Record<string, string | number>,
 ) {
   const status = result.status;
   if (result.denied) {
-    const copy = getSupporterRequestFailureCopy(result.denied, locale);
+    const copy = getProviderRequestFailureCopy(result.denied, locale);
     return { tone: "error" as const, heading: localizer(locale, copy.titleKey), detail: copy.description };
   }
   if (status === "not-found") return changedStateReceipt(locale);

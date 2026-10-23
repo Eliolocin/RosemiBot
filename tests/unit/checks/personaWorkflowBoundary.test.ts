@@ -87,26 +87,15 @@ describe("persona workflow boundary scanner, synthetic cases", () => {
     expect(kinds(replied)).toContain("self-acknowledging-on-selected");
   });
 
-  it("permits in-place work, public replies, and acknowledgement outside the selection callback", () => {
-    // The workflow's own acknowledgement lives in the message controller, a command may legitimately
-    // defer before it ever calls the workflow, and posting the separate public message is the
-    // workflow's documented phase rather than an acknowledgement. None of those may be flagged.
+  it("permits in-place work and acknowledgement outside the selection callback", () => {
+    // The workflow's own acknowledgement lives in the message controller, and a command may
+    // legitimately defer before it ever calls the workflow. Neither may be flagged.
     const inPlaceWork = `
       await runPersonaPickerWorkflow(interaction, locale, {
         personas,
         onSelected: async (selection) => {
           const work = await selection.beginInPlaceWork();
           await work.message.replace(payload);
-          return completePersonaWorkflow();
-        },
-      });
-    `;
-    const separatePublicReply = `
-      await runPersonaPickerWorkflow(interaction, locale, {
-        personas,
-        onSelected: async (selection) => {
-          const publicReply: PersonaWorkflowPublicReplyPhase = await selection.beginSeparatePublicReply(compact);
-          await publicReply.reply({ files: [attachment] });
           return completePersonaWorkflow();
         },
       });
@@ -120,7 +109,6 @@ describe("persona workflow boundary scanner, synthetic cases", () => {
     `;
 
     expect(kinds(inPlaceWork)).not.toContain("self-acknowledging-on-selected");
-    expect(kinds(separatePublicReply)).not.toContain("self-acknowledging-on-selected");
     expect(kinds(deferredBeforeTheCall)).not.toContain("self-acknowledging-on-selected");
   });
 

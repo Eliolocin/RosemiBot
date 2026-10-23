@@ -1,5 +1,3 @@
-import { buildSubscriptionRouteId } from "@/modules/supporter-billing/subscribe/catalog";
-import { SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
 import {
   ButtonStyle,
   ComponentType,
@@ -17,7 +15,9 @@ import type {
   ProviderPanelCapabilitySection,
   ProviderPanelEntry,
   ProviderPanelModel,
+  ProviderPanelOptionAction,
 } from "@/types/discord/providerPanel";
+import { findProviderOption, type ProviderOptionScope } from "@/utils/provider/providerOptionRegistry";
 import type { CustomEndpointApiStyle, CustomEndpointCapability } from "@/types/db/schema";
 import type { PanelReadStatus, PanelReceipt } from "@/types/discord/panel";
 import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
@@ -27,7 +27,6 @@ import {
   buildProvidersRouteId,
   buildProvidersRouteSegments,
   PROVIDERS_ROUTE_NAMESPACE,
-  PERSONAL_PROVIDERS_ROUTE_NAMESPACE,
   PROVIDERS_ROUTE_VERSION,
   type ProvidersRouteNamespace,
 } from "@/utils/discord/providersPanelCatalog";
@@ -255,7 +254,10 @@ const ENTRY_KIND_KEYS: Record<ProviderPanelEntry["kind"], { label: string; impac
 export const PROVIDERS_ENTRIES_PER_SELECTOR_PAGE = DISCORD_SELECT_OPTIONS_MAX - 2;
 export const PROVIDERS_ADD_PROVIDER_VALUE = "action:add-provider";
 export const PROVIDERS_ADD_ENDPOINT_VALUE = "action:add-endpoint";
-export const PROVIDERS_SUBSCRIBE_VALUE = "action:subscribe";
+
+export function providersEntriesPerPage(optionActionCount: number): number {
+  return Math.max(1, PROVIDERS_ENTRIES_PER_SELECTOR_PAGE - optionActionCount);
+}
 
 export type AddProviderModalField = "provider" | "api-key";
 
@@ -979,10 +981,10 @@ export interface ProvidersPanelRenderInput {
   enabledActions?: ReadonlySet<"add-provider" | "add-endpoint" | "model" | "edit" | "remove">;
   routeNamespace?: ProvidersRouteNamespace;
   footerCommand?: { root: string; subcommandGroup?: string; subcommand?: string };
-  subscriptionAvailable?: boolean;
+  optionActions?: ProviderPanelOptionAction[];
+  optionOwnerId?: number;
   viewerId?: string;
   canManageServer?: boolean;
-  sponsorLabels?: Record<string, string>;
 }
 
 function buildRetryRow(locale: string, routeNamespace: ProvidersRouteNamespace): ActionRowData<ButtonComponentData> {
@@ -1042,8 +1044,11 @@ const PROVIDER_NAME_PREVIEW_BUDGET = 600;
  */
 const ENTRY_FIT_ATTEMPTS = 3;
 
+function entryDisplayName(locale: string, entry: ProviderPanelEntry): string {
+  return entry.copyKey ? localizer(locale, entry.copyKey) : entry.displayName;
+}
+
 function renderProviderName(locale: string, value: string): string {
-  if (value === SUPPORTER_PROVIDER_VALUE) value = localizer(locale, "commands.providers.subscription_label");
   const preview = buildTextPreview(value, PROVIDER_NAME_PREVIEW_BUDGET);
   const rendered = escapeDiscordMarkdown(preview.text);
   const footerKey = textPreviewFooterKey(preview);
@@ -1158,41 +1163,20 @@ function buildEntryActions(
   enabledActions: ProvidersPanelRenderInput["enabledActions"],
   routeNamespace: ProvidersRouteNamespace,
   input: ProvidersPanelRenderInput,
-): ActionRowData<ButtonComponentData> {
-  const unavailable = readStatus !== "fresh";
-  if (entry.kind === "provider" && entry.provider === SUPPORTER_PROVIDER_VALUE) {
-    const personal = routeNamespace === PERSONAL_PROVIDERS_ROUTE_NAMESPACE;
-    const origin = personal ? "personal" : "server";
-    const route = {
-      locale,
-      owner: input.viewerId ?? "0",
-      origin,
-      selection: entry.sponsorshipId ?? 0,
-      page: 0,
-    } as const;
-    const buttons: ButtonComponentData[] = [];
-    if (personal || (input.viewerId && entry.sponsorDiscId === input.viewerId))
-      buttons.push({
-        type: ComponentType.Button,
-        style: ButtonStyle.Secondary,
-        customId: buildSubscriptionRouteId({ ...route, action: "overview" }),
-        label: localizer(locale, "commands.providers.manage_subscription"),
-        disabled: !input.viewerId,
-      });
-    if (!personal)
-      buttons.push({
-        type: ComponentType.Button,
-        style: ButtonStyle.Danger,
-        customId: buildSubscriptionRouteId({ ...route, action: "remove" }),
-        label: localizer(locale, "commands.providers.remove_sponsorship"),
-        disabled:
-          unavailable ||
-          !entry.sponsorshipId ||
-          !input.viewerId ||
-          !(input.canManageServer || entry.sponsorDiscId === input.viewerId),
-      });
-    return { type: ComponentType.ActionRow, components: buttons };
+): ActionRowData<ButtonComponentData> | null {
+  const option = entry.kind === "provider" ? findProviderOption(entry.provider) : undefined;
+  if (option) {
+    return (
+      option.panel?.entryActions?.({
+        locale,
+        scope: providerOptionScopeForPanel(routeNamespace, input),
+        entry,
+        data: entry.optionData,
+        canManageServer: input.canManageServer ?? false,
+      }) ?? null
+    );
   }
+  const unavailable = readStatus !== "fresh";
   const buttons: ButtonComponentData[] = [];
   buttons.push(
     {
@@ -1337,10 +1321,52 @@ function buildEntryModelSelector(
   return components;
 }
 
+function optionEntryDescriptionKey(
+  locale: string,
+  entry: ProviderPanelEntry,
+  routeNamespace: ProvidersRouteNamespace,
+  input: ProvidersPanelRenderInput,
+): string | null {
+  if (entry.kind !== "provider") return null;
+  const option = findProviderOption(entry.provider);
+  if (!option) return null;
+  const context = {
+    locale,
+    scope: providerOptionScopeForPanel(routeNamespace, input),
+    entry,
+    data: entry.optionData,
+    canManageServer: input.canManageServer ?? false,
+  };
+  const scopeKind = context.scope.kind;
+  const owned = option.panel?.entryOwned?.(context) ?? false;
+  if (owned && option.copy.entryDescriptionKeys.owned) return option.copy.entryDescriptionKeys.owned;
+  return option.copy.entryDescriptionKeys[scopeKind];
+}
+
+function entryDescriptionKey(
+  locale: string,
+  entry: ProviderPanelEntry,
+  routeNamespace: ProvidersRouteNamespace,
+  input: ProvidersPanelRenderInput,
+): string {
+  return optionEntryDescriptionKey(locale, entry, routeNamespace, input) ?? ENTRY_KIND_KEYS[entry.kind].label;
+}
+
 function selectedEntryId(input: ProvidersPanelRenderInput): string | null {
   if (input.page.kind === "entry") return input.page.entryId ?? input.initialEntryId;
   if (input.page.kind === "remove") return input.page.entryId;
   return null;
+}
+
+function providerOptionScopeForPanel(
+  routeNamespace: ProvidersRouteNamespace,
+  input: ProvidersPanelRenderInput,
+): ProviderOptionScope {
+  return {
+    kind: routeNamespace === PROVIDERS_ROUTE_NAMESPACE ? "server" : "personal",
+    ownerId: input.optionOwnerId ?? 0,
+    discordId: input.viewerId,
+  };
 }
 
 export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): ProvidersPanelPayload {
@@ -1365,7 +1391,6 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
 
   const selectedId = selectedEntryId(input);
   const selectedIndex = selectedId ? entries.findIndex((entry) => entry.id === selectedId) : -1;
-  const implicitRangeIndex = selectedIndex < 0 ? 0 : Math.floor(selectedIndex / PROVIDERS_ENTRIES_PER_SELECTOR_PAGE);
   const actionOptions: SelectMenuComponentOptionData[] = [
     {
       label: localizer(locale, "commands.providers.select_add_provider"),
@@ -1379,48 +1404,28 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
       description: localizer(locale, "commands.providers.select_add_endpoint_description"),
     },
   ];
-  if (
-    input.subscriptionAvailable &&
-    !entries.some((entry) => entry.kind === "provider" && entry.provider === SUPPORTER_PROVIDER_VALUE)
-  ) {
-    const personal = routeNamespace === PERSONAL_PROVIDERS_ROUTE_NAMESPACE;
+  for (const action of input.optionActions ?? []) {
     actionOptions.unshift({
-      label: localizer(locale, "commands.providers.subscribe"),
-      value: PROVIDERS_SUBSCRIBE_VALUE,
-      description: localizer(
-        locale,
-        personal
-          ? "commands.providers.subscribe_personal_description"
-          : "commands.providers.sponsor_server_description",
+      label: safeSelectOptionText(localizer(locale, action.labelKey), DISCORD_SELECT_OPTION_LABEL_MAX),
+      value: action.value,
+      description: safeSelectOptionText(
+        localizer(locale, action.descriptionKey),
+        DISCORD_SELECT_OPTION_DESCRIPTION_MAX,
       ),
     });
   }
-  const entryPageSize = DISCORD_SELECT_OPTIONS_MAX - actionOptions.length;
-  const effectiveImplicitRange = selectedIndex < 0 ? implicitRangeIndex : Math.floor(selectedIndex / entryPageSize);
-  const selection = resolveRangeSelection(entries, input.rangeIndex ?? effectiveImplicitRange, {
+  const entryPageSize = providersEntriesPerPage(actionOptions.length - 2);
+  const implicitRangeIndex = selectedIndex < 0 ? 0 : Math.floor(selectedIndex / entryPageSize);
+  const selection = resolveRangeSelection(entries, input.rangeIndex ?? implicitRangeIndex, {
     reservedOptions: actionOptions.length,
   });
   const options: SelectMenuComponentOptionData[] = [
     ...actionOptions,
     ...selection.visibleItems.map((entry) => ({
-      label: safeSelectOptionText(
-        entry.kind === "provider" && entry.provider === SUPPORTER_PROVIDER_VALUE
-          ? localizer(locale, "commands.providers.subscription_label")
-          : entry.displayName,
-        100,
-      ),
+      label: safeSelectOptionText(entryDisplayName(locale, entry), DISCORD_SELECT_OPTION_LABEL_MAX),
       value: entry.id,
       description: safeSelectOptionText(
-        localizer(
-          locale,
-          entry.kind === "provider" && entry.provider === SUPPORTER_PROVIDER_VALUE
-            ? routeNamespace === PERSONAL_PROVIDERS_ROUTE_NAMESPACE
-              ? "commands.providers.subscription_personal_description"
-              : entry.sponsorDiscId === input.viewerId
-                ? "commands.providers.subscription_owned_description"
-                : "commands.providers.subscription_server_description"
-            : ENTRY_KIND_KEYS[entry.kind].label,
-        ),
+        localizer(locale, entryDescriptionKey(locale, entry, routeNamespace, input)),
         DISCORD_SELECT_OPTION_DESCRIPTION_MAX,
       ),
       default: entry.id === selectedId,
@@ -1482,19 +1487,14 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
     const entry = entries.find((candidate) => candidate.id === removalPage.entryId);
     if (entry) {
       const removalFields = removalRouteFields(entry);
+      const option = entry.kind === "provider" ? findProviderOption(entry.provider) : undefined;
       components.push(
         {
           type: ComponentType.TextDisplay,
           content: `### ${localizer(locale, "commands.providers.remove_title")}
-${localizer(
-  locale,
-  entry.kind === "provider" && entry.provider === SUPPORTER_PROVIDER_VALUE
-    ? "commands.providers.remove_impact_subscription"
-    : ENTRY_KIND_KEYS[entry.kind].impact,
-  {
-    name: renderProviderName(locale, entry.displayName),
-  },
-)}`,
+${localizer(locale, option?.copy.removeImpactKey ?? ENTRY_KIND_KEYS[entry.kind].impact, {
+  name: renderProviderName(locale, entryDisplayName(locale, entry)),
+})}`,
         },
         {
           type: ComponentType.ActionRow,
@@ -1550,9 +1550,19 @@ ${localizer(
       );
       const guidance =
         modelSelector.length > 0 ? `\n\n${localizer(locale, "commands.providers.model_selector_guidance")}` : "";
+      const option = entry.kind === "provider" ? findProviderOption(entry.provider) : undefined;
+      const optionComponents = option?.panel?.entryComponents?.({
+        locale,
+        scope: providerOptionScopeForPanel(routeNamespace, input),
+        entry,
+        data: entry.optionData,
+        canManageServer: input.canManageServer ?? false,
+      });
       const fixedTextLength =
         measureFormattedPanelTextLength([...components, ...footerComponents]) +
+        (optionComponents ? measureFormattedPanelTextLength([...optionComponents]) : 0) +
         (input.receipt ? measureFormattedPanelTextLength(buildPanelReceiptContainer(input.receipt)) : 0);
+      const entryActions = buildEntryActions(locale, entry, readStatus, input.enabledActions, routeNamespace, input);
       components.push(
         {
           type: ComponentType.TextDisplay,
@@ -1565,17 +1575,8 @@ ${localizer(
           ),
         },
         ...modelSelector,
-        ...(entry.kind === "provider" &&
-        entry.provider === SUPPORTER_PROVIDER_VALUE &&
-        routeNamespace === PROVIDERS_ROUTE_NAMESPACE
-          ? [
-              {
-                type: ComponentType.TextDisplay as const,
-                content: `> ${localizer(locale, "commands.providers.sponsorship_by", { name: escapeDiscordMarkdown(entry.sponsorDiscId ? (input.sponsorLabels?.[entry.sponsorDiscId] ?? localizer(locale, "commands.providers.unknown_sponsor")) : localizer(locale, "commands.providers.unknown_sponsor")) })}`,
-              },
-            ]
-          : []),
-        buildEntryActions(locale, entry, readStatus, input.enabledActions, routeNamespace, input),
+        ...(optionComponents ?? []),
+        ...(entryActions ? [entryActions] : []),
       );
     } else {
       components.push({

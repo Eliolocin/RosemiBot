@@ -28,7 +28,7 @@ import {
   resolveSupportedLocale,
 } from "@/utils/text/localizer";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
-import { SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
+import { providerOptionModelDescription } from "@/utils/provider/providerOptionRegistry";
 import {
   getActivePersonalProviderForCapability,
   getStoredPersonalProviderForCapability,
@@ -534,9 +534,7 @@ export function buildModelSelectModal(
     label: safeSelectOptionText(m.name, 100),
     description: m.description
       ? safeSelectOptionText(m.description, 100)
-      : provider === SUPPORTER_PROVIDER_VALUE
-        ? safeSelectOptionText(localizer(locale, "commands.providers.subscription_model_description"), 100)
-        : undefined,
+      : providerOptionModelDescription(locale, provider),
     default: m.id === currentModelId,
   }));
 

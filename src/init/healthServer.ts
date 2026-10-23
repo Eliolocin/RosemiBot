@@ -25,6 +25,7 @@ function routeKey(method: string, path: string): string {
   return `${method.toUpperCase()} ${path}`;
 }
 
+/** Optional modules register routes here even when the base installation has no extra HTTP routes. */
 export function registerHealthServerRoute(route: HealthServerRoute): void {
   registeredRoutes.set(routeKey(route.method, route.path), {
     ...route,
@@ -81,18 +82,27 @@ export function startHealthServer(port: number): void {
       return;
     }
 
-    const requestUrl = new URL(req.url ?? "/", "http://localhost");
+    let requestUrl: URL;
+    try {
+      requestUrl = new URL(req.url ?? "/", "http://localhost");
+    } catch {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Bad Request");
+      return;
+    }
     const registeredRoute = registeredRoutes.get(routeKey(req.method ?? "GET", requestUrl.pathname));
     if (registeredRoute) {
-      void Promise.resolve(registeredRoute.handler(req, res, { requestUrl })).catch((error) => {
-        void log.error("Health server route handler failed", error);
-        if (!res.headersSent) {
-          res.writeHead(500, { "Content-Type": "text/plain" });
-          res.end("Internal Server Error");
-        } else {
-          res.destroy();
-        }
-      });
+      void Promise.resolve()
+        .then(() => registeredRoute.handler(req, res, { requestUrl }))
+        .catch((error) => {
+          void log.error("Health server route handler failed", error);
+          if (!res.headersSent) {
+            res.writeHead(500, { "Content-Type": "text/plain" });
+            res.end("Internal Server Error");
+          } else {
+            res.destroy();
+          }
+        });
       return;
     }
 

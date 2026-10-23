@@ -1,5 +1,4 @@
-import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
-import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { ProviderRequestDeniedError } from "@/utils/provider/providerUsage";
 import {
   parsePrivateStructuredOutput,
   privateStructuredFailure,
@@ -15,6 +14,7 @@ import { buildOpenRouterReasoningRequest } from "@/utils/provider/thinkingContro
 import { buildOpenrouterProviderRouting } from "@/providers/openrouter/providerRouting";
 import { readOpenRouterLimitError, readOpenRouterLimitResponse } from "@/providers/openrouter/openrouterLimit";
 import { getOpenRouterSupportedParameters } from "@/utils/cache/openrouterCapabilityCache";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 type GenericStructuredOutputRequest = ProviderStructuredJsonRequest;
 
 type OpenrouterContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -93,7 +93,7 @@ export async function callOpenrouterStructuredJSON<T>(
         : {}),
     };
 
-    const response = await fetchWithSupporterSpend("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${request.apiKey}`,
@@ -188,7 +188,7 @@ export async function callOpenrouterStructuredJSON<T>(
 
     return { success: true, data: validationResult.data };
   } catch (error) {
-    if (error instanceof SupporterRequestDeniedError) return { success: false, error: error.message, cause: error };
+    if (error instanceof ProviderRequestDeniedError) return { success: false, error: error.message, cause: error };
     if (request.privateOutput) return privateStructuredFailure(request);
     log.error("Error calling OpenRouter structured JSON", error as Error, {
       errorType: "OpenrouterStructuredJSONError",

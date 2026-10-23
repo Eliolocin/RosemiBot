@@ -1,3 +1,4 @@
+import { reportProviderUsage } from "@/utils/provider/providerUsage";
 /**
  * Hidden Image Agent Turn
  *
@@ -27,7 +28,6 @@ import type { ToolContext } from "@/types/tool/interfaces";
 import type { StreamingContext } from "@/types/tool/interfaces";
 import type { FunctionCall } from "@/types/provider/interfaces";
 import { getCapabilityCredentialFailureCopy, resolveCapabilityCredentials } from "@/utils/provider/credentialResolver";
-import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
 import { stripBridgePrefix } from "@/utils/bridges";
 import { resolveMediaForModel } from "@/utils/text/context/mediaResolver";
 import { getCachedAllPersonas } from "@/utils/cache/tomoriStateCache";
@@ -152,6 +152,7 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
     return { success: false, error: failure.description };
   }
 
+  const usageContext = credentials.usageContext;
   const rawMessages = await channel.messages.fetch({
     limit: BOT_GENERATE_IMAGE_HISTORY_LIMIT,
   });
@@ -303,6 +304,7 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
   const targetToolName = backend === "current_provider" ? "generate_image" : "generate_image_nai";
 
   const streamingContext: StreamingContext = {
+    usageContext,
     textCredentialSource: credentials.supporterFunding ? "supporter" : credentials.source,
     disableYouTubeProcessing: true,
     disableProfilePictureProcessing: true,
@@ -362,6 +364,7 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
     locale,
     provider: provider.getInfo().name,
     streamContext: streamingContext,
+    usageContext,
     supporterFunding: credentials.supporterFunding,
     suppressProgressNotices: true, // Keep the hidden turn quiet
     // Persona identity for webhook-based image posting (set by /generate image Auto mode).
@@ -408,7 +411,7 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
       return { success: false, error: `Streaming error: ${msg}` };
     }
 
-    recordSupporterUsage(credentials.supporterFunding, {
+    reportProviderUsage(usageContext, {
       modelCodename: tomoriState.llm.llm_codename,
       costUsd: streamResult.usage?.costUsd,
       inputTokens: streamResult.usage?.inputTokens,

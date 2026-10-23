@@ -82,6 +82,30 @@ describe("OpenRouter image generation routing", () => {
     expect(result).toEqual({ imageData: "QUJD", mimeType: "image/png" });
   });
 
+  it("preserves validated cost on both transports without rejecting images for malformed optional usage", async () => {
+    for (const modelCodename of ["test/image-model", "google/gemini-3.1-flash-image"]) {
+      for (const cost of [0, 0.25, -1, "invalid", null]) {
+        restore.push(
+          stubGlobalFetch(() =>
+            Response.json({
+              data: [{ b64_json: "QUJD", media_type: "image/png" }],
+              choices: [{ message: { images: [{ image_url: { url: "data:image/png;base64,QUJD" } }] } }],
+              usage: { cost },
+            }),
+          ),
+        );
+        const result = await generateOpenRouterImage({
+          apiKey: "fixture-key",
+          modelCodename,
+          prompt: "fixture",
+          aspectRatio: "1:1",
+        });
+        expect(result.imageData).toBe("QUJD");
+        expect(result.costUsd).toBe(typeof cost === "number" && cost >= 0 ? cost : undefined);
+      }
+    }
+  });
+
   it("cancels oversized success and error responses on both image transports", async () => {
     for (const modelCodename of ["test/image-model", "google/gemini-3.1-flash-image"]) {
       for (const status of [200, 401]) {

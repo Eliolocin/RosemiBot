@@ -39,7 +39,7 @@ const OFFICIAL_ATTRIBUTE_FLAGS_UPDATE = `WITH official_attribute_flags AS (
       ORDER BY attr.ord
     )::BOOLEAN[] AS public_flags
   FROM persona_presets pp
-  WHERE pp.preset_lineage_id IN (4, 716, 1770, 3585, 50, 666)
+  WHERE pp.preset_lineage_id IN (${[...OFFICIAL_LINEAGE_IDS].join(", ")})
 )
 UPDATE persona_presets pp
 SET

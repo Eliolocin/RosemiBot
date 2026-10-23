@@ -41,6 +41,8 @@ interface ProviderPanelEntryBase {
   id: string;
   displayName: string;
   savedAt: Date | null;
+  copyKey?: string;
+  optionData?: unknown;
 }
 
 interface CuratedProviderPanelEntry extends ProviderPanelEntryBase {
@@ -48,8 +50,6 @@ interface CuratedProviderPanelEntry extends ProviderPanelEntryBase {
   provider: string;
   rotationKeyCount: number;
   capabilities: ProviderPanelCapabilitySection[];
-  sponsorshipId?: number;
-  sponsorDiscId?: string;
 }
 
 export interface EndpointProviderPanelEntry extends ProviderPanelEntryBase {
@@ -72,9 +72,15 @@ interface BraveProviderPanelEntry extends ProviderPanelEntryBase {
 
 export type ProviderPanelEntry = CuratedProviderPanelEntry | EndpointProviderPanelEntry | BraveProviderPanelEntry;
 
+export interface ProviderPanelOptionAction {
+  value: string;
+  labelKey: string;
+  descriptionKey: string;
+}
+
 export interface ProviderPanelScopeData {
   readStatus: PanelReadStatus;
   entries: ProviderPanelEntry[];
   initialEntryId: string | null;
-  subscriptionAvailable?: boolean;
+  optionActions?: ProviderPanelOptionAction[];
 }

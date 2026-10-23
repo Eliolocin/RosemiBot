@@ -1,4 +1,3 @@
-import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
 /**
  * AI-Powered Preset Generation for TomoriBot
  * Uses OpenRouter structured output with optional tool-assisted web search.
@@ -13,6 +12,7 @@ import { executeTool } from "@/tools/toolRegistry";
 import { getOpenRouterSupportedParameters } from "@/utils/cache/openrouterCapabilityCache";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { resolvePresetGenerationMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 import { getOpenrouterToolAdapter } from "./openrouterToolAdapter";
 import { buildOpenrouterProviderRouting } from "./providerRouting";
 import {
@@ -151,7 +151,7 @@ export async function generatePresetFromPromptOpenrouter(
       }
     }
 
-    const response = await fetchWithSupporterSpend("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,

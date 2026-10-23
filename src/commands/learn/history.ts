@@ -1,3 +1,10 @@
+import {
+  createProviderUsageRecorder,
+  type ProviderUsageContext,
+  findProviderRequestDeniedError,
+  type ProviderRequestDeniedError,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 /**
  * /memory history import - Extract atomic facts from channel message history using an LLM
@@ -72,13 +79,6 @@ import {
 } from "@/utils/provider/credentialResolver";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
-import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
-import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
-import {
-  findSupporterRequestDeniedError,
-  type SupporterRequestDeniedError,
-} from "@/modules/supporter-billing/runtime/funding";
-import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
 import type { TokenUsage } from "@/utils/text/tokenEstimate";
 
 /** Maximum document name length */
@@ -303,8 +303,8 @@ async function showExtractionFailureTerminal(
     await showExtractionFailedEmbed(statusTarget, locale, footer, failure);
     return;
   }
-  if (failure.reason === "subscription") {
-    const copy = getSupporterRequestFailureCopy(failure.denied, locale);
+  if (failure.reason === "provider-denied") {
+    const copy = getProviderRequestFailureCopy(failure.denied, locale);
     await replaceHistoryImportStatus(statusTarget, locale, {
       titleKey: copy.titleKey,
       description: `${copy.description}\n\n${footer}`,
@@ -664,7 +664,7 @@ type IncrementalExtractionResult =
   | { ok: true; totalFactCount: number; allChunkText: string }
   | { ok: false; reason: "no-facts" }
   | { ok: false; reason: "extraction-failed"; error: string; failedWindows: number; totalWindows: number }
-  | { ok: false; reason: "subscription"; denied: SupporterRequestDeniedError };
+  | { ok: false; reason: "provider-denied"; denied: ProviderRequestDeniedError };
 
 /**
  * Runs incremental LLM extraction over message windows, embedding and persisting each
@@ -689,8 +689,8 @@ async function runIncrementalExtraction(params: {
   embeddingProvider: string;
   embeddingCodename: string;
   embeddingApiKey: string;
-  embeddingFunding?: SupporterFundingContext;
-  textFunding?: SupporterFundingContext;
+  embeddingUsageContext?: ProviderUsageContext;
+  textUsageContext?: ProviderUsageContext;
 }): Promise<IncrementalExtractionResult> {
   const {
     formattedResult,
@@ -707,8 +707,8 @@ async function runIncrementalExtraction(params: {
     embeddingProvider,
     embeddingCodename,
     embeddingApiKey,
-    embeddingFunding,
-    textFunding,
+    embeddingUsageContext,
+    textUsageContext,
   } = params;
 
   const memoryLimits = getMemoryLimits();
@@ -751,13 +751,13 @@ async function runIncrementalExtraction(params: {
       apiKey,
       composedSystemPrompt,
       endpointUrl,
-      createSupporterUsageRecorder(textFunding, model),
+      createProviderUsageRecorder(textUsageContext, model),
     );
 
     const deniedExtraction = windowOutcome.ok
       ? null
-      : findSupporterRequestDeniedError(windowOutcome.cause, textFunding);
-    if (deniedExtraction) return { ok: false, reason: "subscription", denied: deniedExtraction };
+      : findProviderRequestDeniedError(windowOutcome.cause, textUsageContext);
+    if (deniedExtraction) return { ok: false, reason: "provider-denied", denied: deniedExtraction };
 
     // A failed window is recorded and skipped rather than treated as "found nothing",
     //    so the run can still report the real cause if no window ever succeeds.
@@ -794,11 +794,11 @@ async function runIncrementalExtraction(params: {
           inputs: windowChunks,
           taskType: (await providerSupportsEmbeddingTaskType(embeddingProvider)) ? "RETRIEVAL_DOCUMENT" : undefined,
           batchSize: 16,
-          onUsage: createSupporterUsageRecorder(embeddingFunding, embeddingCodename),
+          onUsage: createProviderUsageRecorder(embeddingUsageContext, embeddingCodename),
         });
       } catch (error) {
-        const deniedEmbedding = findSupporterRequestDeniedError(error, embeddingFunding);
-        if (deniedEmbedding) return { ok: false, reason: "subscription", denied: deniedEmbedding };
+        const deniedEmbedding = findProviderRequestDeniedError(error, embeddingUsageContext);
+        if (deniedEmbedding) return { ok: false, reason: "provider-denied", denied: deniedEmbedding };
         throw error;
       }
 
@@ -873,7 +873,7 @@ interface HistoryImportRuntime {
     embeddingProvider: string;
     embeddingCodename: string;
     embeddingApiKey: string;
-    embeddingFunding?: SupporterFundingContext;
+    embeddingUsageContext?: ProviderUsageContext;
   };
   provider: string;
   model: string;
@@ -897,10 +897,10 @@ async function resolveHistoryImportRuntime(
       resolveCapabilityCredentials(tomoriState.server_id, "embedding", { userId }),
     ]);
   } catch (error) {
-    const denied = findSupporterRequestDeniedError(error);
+    const denied = findProviderRequestDeniedError(error);
     if (denied) {
-      const copy = getSupporterRequestFailureCopy(denied, locale);
-      log.warn(`[Learn History] Subscription refused a text or embedding request: ${denied.reason}`, error, {
+      const copy = getProviderRequestFailureCopy(denied, locale);
+      log.warn(`[Learn History] Provider denied a text or embedding request`, error, {
         userId,
         serverId: tomoriState.server_id,
         personaId: tomoriState.persona_id,
@@ -1003,7 +1003,7 @@ async function resolveHistoryImportRuntime(
         embeddingProvider: embeddingModel.provider as string,
         embeddingCodename: embeddingModel.codename,
         embeddingApiKey: embeddingCreds.apiKey,
-        embeddingFunding: embeddingCreds.supporterFunding,
+        embeddingUsageContext: embeddingCreds.usageContext,
       },
       provider: textCreds.supporterFunding?.provider ?? tomoriState.llm.llm_provider.toLowerCase(),
       model:
@@ -1402,7 +1402,7 @@ export async function execute(
             provider,
             model,
             apiKey: textCreds.apiKey,
-            textFunding: textCreds.supporterFunding,
+            textUsageContext: textCreds.usageContext,
             endpointUrl,
             composeSystemPrompt,
             replyInteraction: work.message,
@@ -1531,7 +1531,7 @@ export async function execute(
         provider,
         model,
         apiKey: textCreds.apiKey,
-        textFunding: textCreds.supporterFunding,
+        textUsageContext: textCreds.usageContext,
         endpointUrl,
         composeSystemPrompt: async () => globalSystemPrompt,
         replyInteraction: modalSubmitInteraction,
@@ -1658,7 +1658,7 @@ export async function execute(
         provider,
         model,
         apiKey: textCreds.apiKey,
-        textFunding: textCreds.supporterFunding,
+        textUsageContext: textCreds.usageContext,
         endpointUrl,
         composeSystemPrompt: async () => autoSystemPrompt,
         replyInteraction: modalSubmitInteraction,
@@ -1753,7 +1753,7 @@ export async function execute(
       provider,
       model,
       apiKey: textCreds.apiKey,
-      textFunding: textCreds.supporterFunding,
+      textUsageContext: textCreds.usageContext,
       endpointUrl,
       composeSystemPrompt: async () => autoSystemPrompt,
       replyInteraction: modalSubmitInteraction,

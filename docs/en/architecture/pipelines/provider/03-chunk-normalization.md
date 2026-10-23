@@ -26,7 +26,7 @@ Any chunk variant may attach `thoughts` (`ThoughtLogEntry[]`) for chain-of-thoug
 
 Token usage can arrive in a trailing chunk with empty `choices`. OpenRouter and OpenAI-compatible
 adapters preserve its metadata on an empty text chunk, so the orchestrator carries the counts into
-`StreamResult.usage` for ordinary statistics and quotas.
+`StreamResult.usage` for statistics and quotas. Reported `usage.cost` is preserved alongside the token counts.
 
 ## Reasoning extraction and spill guards
 

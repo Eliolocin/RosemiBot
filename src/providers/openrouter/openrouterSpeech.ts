@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { beginSupporterRequest, type SupporterSpendHold } from "@/modules/supporter-billing/runtime/spendGuard";
+import { beginProviderRequest, type ProviderRequestHold } from "@/utils/provider/providerRequestHook";
 import { findOpenRouterSpeechModel } from "@/providers/openrouter/openrouterSpeechModels";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
@@ -17,9 +17,13 @@ import {
 
 export async function synthesizeOpenRouterSpeech(request: OpenRouterSpeechRequest): Promise<Buffer> {
   request.signal.throwIfAborted();
-  const hold = await beginSupporterRequest(request.apiKey, "/audio/speech", {
-    model: request.model,
-    input: buildSpeechBody(request).input,
+  const hold = await beginProviderRequest({
+    apiKey: request.apiKey,
+    path: "/audio/speech",
+    body: {
+      model: request.model,
+      input: buildSpeechBody(request).input,
+    },
   });
   let completed = false;
   try {
@@ -81,7 +85,7 @@ function buildSpeechBody(request: OpenRouterSpeechRequest): Record<string, unkno
   };
 }
 
-async function synthesizeSpeech(request: OpenRouterSpeechRequest, hold?: SupporterSpendHold): Promise<Buffer> {
+async function synthesizeSpeech(request: OpenRouterSpeechRequest, hold?: ProviderRequestHold): Promise<Buffer> {
   const spec = findOpenRouterSpeechModel(request.model);
   if (!spec || spec.shape !== request.shape) throw new HostedSpeechError("invalid_request");
   if (
@@ -117,8 +121,13 @@ async function synthesizeSpeech(request: OpenRouterSpeechRequest, hold?: Support
     );
     const body = rawBody === undefined ? undefined : speechErrorBody(rawBody, request.apiKey);
     const limit = rawBody === undefined ? null : readOpenRouterLimitError(response.status, response.headers, rawBody);
-    if (limit) throw new HostedSpeechError("quota", response.status, body, { cause: limit });
-    checkSpeechStatus(response, body);
+    try {
+      checkSpeechStatus(response, body);
+    } catch (error) {
+      if (limit && error instanceof HostedSpeechError)
+        throw new HostedSpeechError(error.kind, error.providerStatus, error.providerBody, { cause: limit });
+      throw error;
+    }
   }
   if (response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "audio/mpeg") {
     await response.body?.cancel();

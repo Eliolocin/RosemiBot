@@ -1,3 +1,4 @@
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 import type { BaseGuildTextChannel, Client, Guild, GuildMember, Message, Webhook } from "discord.js";
 import type { ForcedMention } from "@/types/discord/mentions";
 import type { ServerEmojiRow, ServerStickerRow, TomoriState, UserRow } from "@/types/db/schema";
@@ -236,6 +237,7 @@ export interface ChatTurn {
 }
 
 export interface ChatTurnContext {
+  usageContext?: ProviderUsageContext;
   responseReview?: import("@/utils/chat/responseReview").ResponseReviewState;
   /** Successful tool calls by request identity, kept across key rotation and model fallback. */
   completedToolCalls?: Map<string, ToolHistoryEntry>;

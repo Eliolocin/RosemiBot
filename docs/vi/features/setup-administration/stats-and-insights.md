@@ -27,11 +27,11 @@ Số lượng mã thông báo phản ánh mức sử dụng do nhà cung cấp b
 
 ## Thẻ đồ họa thông tin có thể chia sẻ
 
-Chạy `/stats generate` để hiển thị thẻ hình ảnh tóm tắt tinh tế mà bạn có thể chia sẻ trực tiếp trong cuộc trò chuyện:
+Chạy một trong các lệnh `/stats generate` để hiển thị thẻ hình ảnh tóm tắt đẹp mắt mà bạn có thể chia sẻ trực tiếp trong cuộc trò chuyện:
 
-- **Personal Wrapped**: tóm tắt hoạt động cá nhân và các persona yêu thích của bạn.
-- **Mối quan hệ cá nhân**: làm nổi bật số liệu thống kê của một cá nhân cụ thể và các đối tác trò chuyện hàng đầu trên máy chủ này.
-- **Bảng xếp hạng máy chủ**: hiển thị hoạt động trên toàn máy chủ và xếp hạng thành viên.
+- **`/stats generate personal`** (Tổng kết cá nhân): tóm tắt hoạt động cá nhân và các persona yêu thích của bạn.
+- **`/stats generate persona`** (Độ thân thiết persona): chọn một persona từ danh sách để làm nổi bật số liệu thống kê và các đối tác trò chuyện hàng đầu trên máy chủ này.
+- **`/stats generate server`** (Bảng xếp hạng máy chủ): hiển thị hoạt động trên toàn máy chủ và xếp hạng thành viên.
 
 Người dùng có mức độ riêng tư được đặt thành `Đầy đủ` trong `/personal config` không thể tạo thẻ thống kê cá nhân.
 

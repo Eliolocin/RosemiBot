@@ -311,7 +311,7 @@ describe("setup provider selection persistence", () => {
         const stored = readSetupDraft(nonce, interaction.user.id, draft.workspaceKey, "guild");
         expect(stored.status).toBe("ok");
         if (stored.status !== "ok") throw new Error("Expected stored setup draft");
-        expect(stored.draft.providerAccess).toEqual(enabled ? { mode: "supporter" } : null);
+        expect(stored.draft.providerAccess).toEqual(enabled ? { mode: "option", value: "supporter" } : null);
         expect(
           interaction.calls.filter((call) => ["reply", "update", "deferUpdate"].includes(call.method)),
         ).toHaveLength(1);

@@ -1,3 +1,8 @@
+import {
+  findProviderRequestDeniedError,
+  reportProviderUsage,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 /**
  * Video Generation Command (/generate video)
  * Allows users to generate AI videos using Google Veo, OpenRouter, or Z.ai.
@@ -24,9 +29,6 @@ import type { UserRow } from "../../types/db/schema";
 import { checkVideoQuota, incrementVideoQuota } from "../../utils/quota/videoQuotaManager";
 import { resolveProviderFeatureImplementation } from "@/utils/provider/providerInfoRegistry";
 import { generateCustomVideoViaEndpoint } from "@/providers/custom/customEndpointDispatcher";
-import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
-import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
 import {
   CredentialUnavailableError,
   PersonalProviderRequiredError,
@@ -186,10 +188,10 @@ export async function execute(
       userId: userData.user_id ?? null,
     });
   } catch (error) {
-    const denied = findSupporterRequestDeniedError(error);
+    const denied = findProviderRequestDeniedError(error);
     if (denied) {
       await replyInfoEmbed(interaction, locale, {
-        ...getSupporterRequestFailureCopy(denied, locale),
+        ...getProviderRequestFailureCopy(denied, locale),
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
@@ -523,7 +525,7 @@ export async function execute(
         fps,
         referenceImages,
       });
-      recordSupporterUsage(videoCreds.supporterFunding, {
+      reportProviderUsage(videoCreds.usageContext, {
         modelCodename,
         costUsd: result.costUsd,
         providerRequestId: result.providerRequestId,
@@ -633,12 +635,12 @@ export async function execute(
     }
     log.success(`Video generated in ${elapsedSec}s via ${displayModelName}`);
   } catch (error) {
-    const denied = findSupporterRequestDeniedError(error, videoCreds?.supporterFunding);
+    const denied = findProviderRequestDeniedError(error, videoCreds?.usageContext);
     if (!denied && !(error instanceof ProviderVideoFilteredError))
       log.error("Video generation command failed:", error as Error);
     if (denied) {
       await replyInfoEmbed(modalSubmitInteraction ?? interaction, locale, {
-        ...getSupporterRequestFailureCopy(denied, locale),
+        ...getProviderRequestFailureCopy(denied, locale),
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });

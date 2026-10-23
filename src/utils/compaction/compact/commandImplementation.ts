@@ -1,3 +1,10 @@
+import type { ResolvedCredentials } from "@/utils/provider/credentialResolver";
+import {
+  createProviderUsageRecorder,
+  findProviderRequestDeniedError,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 import type { ButtonInteraction, ChatInputCommandInteraction, Client, Message, TextBasedChannel } from "discord.js";
 import {
   ActionRowBuilder,
@@ -50,13 +57,6 @@ import { generateCompactSummary } from "./summaryGeneration";
 import { buildSupplementaryContext } from "./supplementaryContext";
 import type { SendableChannel } from "./types";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
-import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
-import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
-import {
-  getSupporterRequestFailureCopy,
-  getSupporterRequestFailureMessage,
-} from "@/modules/supporter-billing/discord/requestFailure";
 
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{17,20}$/;
 
@@ -124,9 +124,9 @@ export async function executeCompactCommand(
   }
 
   let apiKey: string;
-  let supporterFunding: SupporterFundingContext | undefined;
+  let usageContext: ProviderUsageContext | undefined;
   try {
-    ({ apiKey, supporterFunding } = await resolveCapabilityCredentials(tomoriState.server_id, "text", {
+    ({ apiKey, usageContext } = await resolveCapabilityCredentials(tomoriState.server_id, "text", {
       userId: userData.user_id,
     }));
   } catch (error) {
@@ -198,19 +198,15 @@ export async function executeCompactCommand(
       supplementaryContext,
       systemPrompt: modalSelection.systemPrompt,
       analyzeImages: modalSelection.analyzeImages,
-      onUsage: createSupporterUsageRecorder(supporterFunding, effectiveModelName),
+      onUsage: createProviderUsageRecorder(usageContext, effectiveModelName),
     });
 
-    const denied = findSupporterRequestDeniedError(result.cause, supporterFunding);
+    const denied = findProviderRequestDeniedError(result.cause, usageContext);
     if (denied) {
-      const message = getSupporterRequestFailureMessage(denied, locale);
-      await editError(
-        modalSelection.submitInteraction,
-        locale,
-        message.titleKey,
-        message.descriptionKey,
-        message.descriptionVars,
-      );
+      await replyInfoEmbed(modalSelection.submitInteraction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+      });
       return;
     }
 
@@ -282,6 +278,14 @@ export async function executeCompactCommand(
       setupAddToDocsCollector({ summaryMessage, buildEmbed: (text) => buildEmbed(text), locale, serverDiscId });
     });
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error, usageContext);
+    if (denied) {
+      await replyInfoEmbed(modalSelection.submitInteraction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+      });
+      return;
+    }
     log.error("Compact summary command failed", error);
     await editFailure(
       modalSelection.submitInteraction,
@@ -709,9 +713,19 @@ function setupAddToDocsCollector(params: {
       return;
     }
 
-    const embeddingCreds = await resolveCapabilityCredentials(tomoriState.server_id, "embedding", {
-      userId: null,
-    }).catch(() => null);
+    let embeddingCreds: ResolvedCredentials | null = null;
+    try {
+      embeddingCreds = await resolveCapabilityCredentials(tomoriState.server_id, "embedding", { userId: null });
+    } catch (error) {
+      const denied = findProviderRequestDeniedError(error);
+      if (denied) {
+        await replyInfoEmbed(submitInteraction, locale, {
+          ...getProviderRequestFailureCopy(denied, locale),
+          color: ColorCode.ERROR,
+        });
+        return;
+      }
+    }
     if (!embeddingCreds) {
       await replyInfoEmbed(submitInteraction, locale, {
         titleKey: "commands.compact.add_to_docs_no_embedding_title",
@@ -766,7 +780,7 @@ function setupAddToDocsCollector(params: {
         inputs: chunks,
         taskType: (await providerSupportsEmbeddingTaskType(embeddingModel.provider)) ? "RETRIEVAL_DOCUMENT" : undefined,
         batchSize: 16,
-        onUsage: createSupporterUsageRecorder(embeddingCreds.supporterFunding, embeddingModel.codename),
+        onUsage: createProviderUsageRecorder(embeddingCreds.usageContext, embeddingModel.codename),
       });
 
       await ragRepository.insertWithChunks({
@@ -799,10 +813,10 @@ function setupAddToDocsCollector(params: {
         color: ColorCode.SUCCESS,
       });
     } catch (error) {
-      const denied = findSupporterRequestDeniedError(error, embeddingCreds.supporterFunding);
+      const denied = findProviderRequestDeniedError(error, embeddingCreds.usageContext);
       if (denied) {
         await replyInfoEmbed(submitInteraction, locale, {
-          ...getSupporterRequestFailureCopy(denied, locale),
+          ...getProviderRequestFailureCopy(denied, locale),
           color: ColorCode.ERROR,
         });
         return;

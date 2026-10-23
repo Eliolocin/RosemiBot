@@ -89,6 +89,31 @@ function makeOpenrouterChunk(data: Record<string, unknown>): RawStreamChunk {
 }
 
 describe("OpenrouterStreamAdapter.processChunk", () => {
+  it("retains HTTP limit metadata and retry timing in the provider error cause", async () => {
+    for (const status of [402, 403]) {
+      const fetchStub = stubGlobalFetch(() =>
+        Response.json(
+          {
+            error: { code: status, message: "Fixture key limit", metadata: { limit_source: "openrouter_key_limit" } },
+          },
+          { status, headers: { "Retry-After": "2" } },
+        ),
+      );
+      try {
+        const adapter = new OpenrouterStreamAdapter();
+        const chunks = await collectRawChunks(adapter);
+        const raw = chunks.at(-1);
+        if (!raw) throw new Error("Missing provider error chunk");
+        const error = adapter.processChunk(raw).error?.originalError;
+        expect(error).toBeInstanceOf(Error);
+        if (error instanceof Error)
+          expect(error.cause).toMatchObject({ limitSource: "openrouter_key_limit", status, retryAfterMs: 2_000 });
+      } finally {
+        fetchStub.mockRestore();
+      }
+    }
+  });
+
   it("preserves usage with empty or missing choices in both wire formats", () => {
     const adapter = new OpenrouterStreamAdapter();
     for (const usage of [

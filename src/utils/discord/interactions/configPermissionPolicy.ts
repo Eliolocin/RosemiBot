@@ -890,7 +890,10 @@ export function isConfigRouteAuthorized(route: ConfigPanelRoute, actor: ConfigAc
       );
     case "persona-select":
     case "persona-page":
-      return resolveConfigCategoryState("persona", actor) === "enabled";
+      return (
+        resolveConfigCategoryState("persona", actor) === "enabled" &&
+        (route.page === undefined || resolveConfigPageState("persona", route.page, actor) !== "omitted")
+      );
     default:
       return false;
   }

@@ -26,6 +26,7 @@ import {
 import { parseAndValidateImageTags } from "@/utils/image/tagHelpers";
 import { log } from "@/utils/misc/logger";
 import { isCustomProvider, parseCustomProvider } from "@/utils/provider/customProviderUtils";
+import { findProviderOption } from "@/utils/provider/providerOptionRegistry";
 import { getFallbackModelRefKey, getPrimaryFallbackRefKeys } from "@/utils/provider/fallbackModelIdentity";
 import {
   assignPersonalCapabilityToProvider,
@@ -351,7 +352,7 @@ export const personalConfigOperations: PersonalConfigOperations = {
     if (capability === "speech_design" || capability === "speech_clone") {
       const selected = availableModels.find((model) => model.id === modelId);
       if (
-        (provider.toLowerCase() === "openrouter" || provider === SUPPORTER_PROVIDER_VALUE) &&
+        (provider.toLowerCase() === "openrouter" || findProviderOption(provider)) &&
         (!selected ||
           !(await validateOpenRouterSpeechModel(selected.name, capability === "speech_design" ? "design" : "clone")))
       )

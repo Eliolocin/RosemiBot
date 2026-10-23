@@ -1,3 +1,4 @@
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 import type { VoiceSourceMode } from "@/utils/speech/voiceSourceCapabilities";
 import { createHash } from "node:crypto";
 import type { CustomEndpointRow } from "@/types/db/schema";
@@ -29,6 +30,7 @@ export type SpeechTargetResult =
       endpoint: null;
       apiKey: string;
       supporterFunding?: SupporterFundingContext;
+      usageContext?: ProviderUsageContext;
     });
 
 export function speechTargetSource(target: SpeechTargetResult | null | undefined) {

@@ -5,9 +5,7 @@ sidebar:
 aiGenerated: false
 ---
 
-<!-- STUB (side task). Locke is a PLANNED persona: she replaces the retired Temari
-     (bratty) model and is not yet in the seed catalog. Real art is in place; write
-     the profile once the persona ships. -->
+<!-- STUB (side task). Real art is in place; write the profile when it is ready. -->
 
 :::danger[这篇文章还是草稿]
 这一页还没写完，敬请期待！

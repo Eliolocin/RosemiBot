@@ -1,3 +1,9 @@
+import {
+  findProviderRequestDeniedError,
+  createProviderUsageRecorder,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 /**
  * Preset Generate Command
  * AI-powered personality generation using supported structured output providers
@@ -49,10 +55,6 @@ import type { PresetExport } from "../../types/preset/presetExport";
 import type { ModalComponent } from "../../types/discord/modal";
 import type { ToolContext } from "../../types/tool/interfaces";
 import { generatePresetForProvider } from "@/providers/utils/providerFeatureExecutors";
-import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
-import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
-import { getSupporterRequestFailureMessage } from "@/modules/supporter-billing/discord/requestFailure";
 import { analyzeImageWithVisionModel } from "@/utils/provider/visionCaption";
 import { resolvePresetGenerationMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
 import { resolveModelLimits } from "@/utils/provider/modelLimits";
@@ -149,7 +151,8 @@ function resolveComponentsV2AccentColor(color: string | number): number {
 function buildGenerateStatusComponents(options: {
   locale: string;
   titleKey: string;
-  descriptionKey: string;
+  descriptionKey?: string;
+  description?: string;
   color: string | number;
   descriptionVars?: Record<string, string | number | boolean>;
   details?: string;
@@ -164,7 +167,7 @@ function buildGenerateStatusComponents(options: {
     },
     {
       type: ComponentType.TextDisplay,
-      content: localizer(options.locale, options.descriptionKey, options.descriptionVars),
+      content: options.description ?? localizer(options.locale, options.descriptionKey ?? "", options.descriptionVars),
     },
   ];
 
@@ -214,7 +217,8 @@ async function editGenerateStatusReply(
   options: {
     locale: string;
     titleKey: string;
-    descriptionKey: string;
+    descriptionKey?: string;
+    description?: string;
     color: string | number;
     descriptionVars?: Record<string, string | number | boolean>;
     details?: string;
@@ -230,6 +234,7 @@ async function editGenerateStatusReply(
           locale: options.locale,
           titleKey: options.titleKey,
           descriptionKey: options.descriptionKey,
+          description: options.description,
           color: options.color,
           descriptionVars: options.descriptionVars,
           details: options.details,
@@ -539,13 +544,12 @@ export async function execute(
       });
 
     let decryptedApiKey: string;
-    let supporterFunding: SupporterFundingContext | undefined;
+    let usageContext: ProviderUsageContext | undefined;
+
     try {
-      ({ apiKey: decryptedApiKey, supporterFunding } = await resolveCapabilityCredentials(
-        tomoriState.server_id,
-        "text",
-        { userId: userData.user_id },
-      ));
+      ({ apiKey: decryptedApiKey, usageContext } = await resolveCapabilityCredentials(tomoriState.server_id, "text", {
+        userId: userData.user_id,
+      }));
     } catch (error) {
       const failure = getCapabilityCredentialFailureCopy(error, locale);
       if (!failure) throw error;
@@ -584,6 +588,8 @@ export async function execute(
     const characterDesc = characterInfo;
     const speechExamples = characterInfo; // AI will extract speech patterns from context
 
+    // The primary model always performs generation, so these stay the primary model's own
+    // resolved provider and key. A vision model only ever contributes a text description.
     const generationTomoriState = tomoriState;
     const generationProviderName = providerName;
     const generationApiKey = decryptedApiKey;
@@ -845,10 +851,10 @@ export async function execute(
         userId: userData.user_id ?? null,
       });
 
-      if (captionResult.supporterFailure) {
+      if (captionResult.requestDenied) {
         await editGenerateStatusReply(modalSubmitInteraction, {
           locale,
-          ...getSupporterRequestFailureMessage(captionResult.supporterFailure, locale),
+          ...getProviderRequestFailureCopy(captionResult.requestDenied, locale),
           color: ColorCode.ERROR,
           inputAttachment: getInputAttachment(),
         });
@@ -920,7 +926,7 @@ export async function execute(
         tomoriState: generationTomoriState,
         locale,
         provider: generationProviderName,
-        supporterFunding,
+        usageContext,
         userId: interaction.user.id,
         guildId: interaction.guild?.id,
         suppressProgressNotices: true, // Search runs in background during generation; don't leak tool embeds into chat
@@ -938,14 +944,14 @@ export async function execute(
       params: genParams,
       locale,
       toolContext: presetToolContext,
-      onUsage: createSupporterUsageRecorder(supporterFunding, generationTomoriState.llm.llm_codename),
+      onUsage: createProviderUsageRecorder(usageContext, generationTomoriState.llm.llm_codename),
     });
 
-    const deniedGeneration = findSupporterRequestDeniedError(genResult.cause, supporterFunding);
+    const deniedGeneration = findProviderRequestDeniedError(genResult.cause, usageContext);
     if (deniedGeneration) {
       await editGenerateStatusReply(modalSubmitInteraction, {
         locale,
-        ...getSupporterRequestFailureMessage(deniedGeneration, locale),
+        ...getProviderRequestFailureCopy(deniedGeneration, locale),
         color: ColorCode.ERROR,
         inputAttachment: getInputAttachment(),
       });
@@ -1161,6 +1167,16 @@ export async function execute(
     // Quota already reserved at step 8 - no increment needed
     log.success(`Preset generated successfully for: ${characterName}`);
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error);
+    if (denied) {
+      const copy = getProviderRequestFailureCopy(denied, locale);
+      if (replyUsesComponentsV2) {
+        await editGenerateStatusReply(replyInteraction, { locale, ...copy, color: ColorCode.ERROR });
+      } else {
+        await replyInfoEmbed(replyInteraction, locale, { ...copy, color: ColorCode.ERROR });
+      }
+      return;
+    }
     log.error("Error in preset generate command:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
 

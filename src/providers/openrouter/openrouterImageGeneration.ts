@@ -1,4 +1,3 @@
-import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
 import { isOpenRouterGeminiModelCodename } from "@/utils/provider/openrouterModelCapabilities";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { log, redactLogString } from "@/utils/misc/logger";
@@ -7,6 +6,7 @@ import { safeDownload } from "@/utils/security/safeDownload";
 import { z } from "zod";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 
 const OPENROUTER_ORIGIN = "https://openrouter.ai";
 const OPENROUTER_CHAT_URL = `${OPENROUTER_ORIGIN}/api/v1/chat/completions`;
@@ -34,7 +34,7 @@ export interface OpenRouterImageGenerationResult {
   costUsd?: number;
 }
 
-const usageCostSchema = z.object({ cost: z.number().finite().nonnegative().nullish() }).nullish();
+const usageCostSchema = z.object({ cost: z.number().finite().nonnegative().nullish() }).nullish().catch(undefined);
 
 export function usesChatCompletionsImageGeneration(modelCodename: string): boolean {
   return isOpenRouterGeminiModelCodename(modelCodename);
@@ -108,7 +108,7 @@ async function generateViaChatCompletions(
     contentParts.push({ type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } });
   }
 
-  const response = await fetchWithSupporterSpend(OPENROUTER_CHAT_URL, {
+  const response = await fetchWithProviderRequest(OPENROUTER_CHAT_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -201,7 +201,7 @@ async function generateViaImagesEndpoint(
     }));
   }
 
-  const response = await fetchWithSupporterSpend(OPENROUTER_IMAGES_URL, {
+  const response = await fetchWithProviderRequest(OPENROUTER_IMAGES_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,

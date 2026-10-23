@@ -2,7 +2,6 @@ import type {
   ProviderNativeVideoGenerationRequest,
   ProviderNativeVideoGenerationResult,
 } from "@/types/provider/featureInterfaces";
-import { beginSupporterRequest, type SupporterSpendHold } from "@/modules/supporter-billing/runtime/spendGuard";
 import type { Subprocess } from "bun";
 import { log, redactLogString } from "@/utils/misc/logger";
 import { z } from "zod";
@@ -13,6 +12,7 @@ import { pollForCompletion } from "@/utils/async/pollForCompletion";
 import { getOrFetchOpenRouterVideoModelCapabilities } from "@/utils/cache/openrouterVideoModelCache";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+import { beginProviderRequest, type ProviderRequestHold } from "@/utils/provider/providerRequestHook";
 import {
   buildOpenRouterVideoRequestBody,
   normalizeOpenRouterVideoOptions,
@@ -432,14 +432,14 @@ type OpenRouterVideoPollResponse = z.infer<typeof openRouterVideoJobSchema>;
 export async function generateOpenRouterNativeVideo(
   request: ProviderNativeVideoGenerationRequest,
 ): Promise<ProviderNativeVideoGenerationResult> {
-  request.abortSignal?.throwIfAborted();
   const capabilities = await getOrFetchOpenRouterVideoModelCapabilities(request.model);
   const options = normalizeOpenRouterVideoOptions(request, capabilities);
-  const hold = await beginSupporterRequest(
-    request.apiKey,
-    "/videos",
-    buildOpenRouterVideoRequestBody(request, options, capabilities),
-  );
+  request.abortSignal?.throwIfAborted();
+  const hold = await beginProviderRequest({
+    apiKey: request.apiKey,
+    path: "/videos",
+    body: buildOpenRouterVideoRequestBody(request, options, capabilities),
+  });
   let completed = false;
   try {
     if (request.abortSignal?.aborted) {
@@ -456,7 +456,7 @@ export async function generateOpenRouterNativeVideo(
 
 async function generateVideo(
   request: ProviderNativeVideoGenerationRequest,
-  hold?: SupporterSpendHold,
+  hold?: ProviderRequestHold,
 ): Promise<ProviderNativeVideoGenerationResult> {
   const modelCapabilities = await getOrFetchOpenRouterVideoModelCapabilities(request.model);
   const normalizedOptions = normalizeOpenRouterVideoOptions(request, modelCapabilities);
@@ -602,8 +602,8 @@ async function generateVideo(
   //    Use unsigned_urls if available, otherwise use the content endpoint.
   //    The video file may not be immediately available after the poll returns "completed"
   //    due to eventual consistency in OpenRouter's storage, so retry a few times on 404.
-  const billing = { costUsd: completedJob.usage?.cost ?? undefined, providerRequestId: jobId };
-  hold?.reportCost(billing.costUsd);
+  const usageReport = { costUsd: completedJob.usage?.cost ?? undefined, providerRequestId: jobId };
+  hold?.reportCost(usageReport.costUsd);
   const rawVideoUrl = completedJob.unsigned_urls?.[0] ?? `${OPENROUTER_VIDEO_URL}/${jobId}/content?index=0`;
   const videoUrl = new URL(rawVideoUrl, OPENROUTER_ORIGIN).href;
   log.info(`OpenRouter video generation: downloading video (jobId: ${jobId}, url: ${videoUrl.slice(0, 80)})`);
@@ -622,7 +622,7 @@ async function generateVideo(
 
   if (!download.videoData) {
     log.error(`Failed to download OpenRouter video (jobId: ${jobId})`, new Error(download.reason));
-    return { videoData: null, mimeType: null, ...billing };
+    return { videoData: null, mimeType: null, ...usageReport };
   }
 
   const videoData = download.videoData;
@@ -633,7 +633,7 @@ async function generateVideo(
     videoData,
     mimeType: "video/mp4",
     durationSeconds: normalizedOptions.duration,
-    ...billing,
+    ...usageReport,
   };
 }
 

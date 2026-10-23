@@ -1,3 +1,9 @@
+import {
+  findProviderRequestDeniedError,
+  createProviderUsageRecorder,
+  notifyProviderToolFailure,
+  type ProviderUsageContext,
+} from "@/utils/provider/providerUsage";
 /**
  * Peek Profile Picture Tool
  * Allows the AI to selectively process Discord user profile pictures on-demand
@@ -22,12 +28,9 @@ import { resolveVisionApiModelName } from "@/utils/provider/visionCaption";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { MEDIA_LIMITS } from "@/utils/security/rateLimiter";
 import { safeDownload } from "@/utils/security/safeDownload";
-import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
-import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
-import { notifySupporterToolFailure } from "@/modules/supporter-billing/discord/requestFailure";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 import { normalizeProviderUsage, type TokenUsage } from "@/utils/text/tokenEstimate";
 
 /**
@@ -170,6 +173,7 @@ export class PeekProfilePictureTool extends BaseTool {
       };
     }
 
+    const requestScope: [context?: ProviderUsageContext] = [];
     log.info(`Processing profile picture for identity: ${targetIdentity} - Reason: ${reason}`);
 
     try {
@@ -205,7 +209,14 @@ export class PeekProfilePictureTool extends BaseTool {
       // vision model is configured, call the vision model directly with the avatar image
       // and return a text description. The primary model then responds to that description.
       if (!context.tomoriState.llm.sees_images && context.tomoriState.vision_llm) {
-        return await this.redirectToVisionModel(preparedImages, targetTypeLabel, userDisplayText, reason, context);
+        return await this.redirectToVisionModel(
+          preparedImages,
+          targetTypeLabel,
+          userDisplayText,
+          reason,
+          context,
+          requestScope,
+        );
       }
 
       // Enhanced context restart path: inject the raw image into the context so the
@@ -279,8 +290,8 @@ export class PeekProfilePictureTool extends BaseTool {
         },
       };
     } catch (error) {
-      const denied = findSupporterRequestDeniedError(error);
-      if (denied) return { success: false, error: await notifySupporterToolFailure(context, denied) };
+      const denied = findProviderRequestDeniedError(error, ...requestScope);
+      if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
       log.error(`Profile picture processing failed for identity: ${targetIdentity}`, error as Error);
 
       let errorMessage = "Failed to process the user's profile picture.";
@@ -335,10 +346,12 @@ export class PeekProfilePictureTool extends BaseTool {
     userDisplayText: string,
     reason: string,
     context: ToolContext,
+    requestScope: [context?: ProviderUsageContext],
   ): Promise<ToolResult> {
     const creds = await resolveCapabilityCredentials(context.tomoriState.server_id, "vision", {
       userId: context.internalUserId ?? null,
     });
+    requestScope[0] = creds.usageContext;
     const visionLlmId = getResolvedCapabilityModelId(creds, "vision") ?? context.tomoriState.config.vision_llm_id;
     const visionLlm =
       visionLlmId === context.tomoriState.vision_llm?.llm_id
@@ -395,10 +408,10 @@ export class PeekProfilePictureTool extends BaseTool {
           endpointUrl,
           images,
           prompt,
-          createSupporterUsageRecorder(creds.supporterFunding, apiModelName),
+          createProviderUsageRecorder(creds.usageContext, apiModelName),
         );
       } catch (error) {
-        throw findSupporterRequestDeniedError(error, creds.supporterFunding) ?? error;
+        throw findProviderRequestDeniedError(error, creds.usageContext) ?? error;
       }
     }
 
@@ -516,7 +529,7 @@ export class PeekProfilePictureTool extends BaseTool {
       max_tokens: 1024,
     };
 
-    const response = await fetchWithSupporterSpend(
+    const response = await fetchWithProviderRequest(
       endpointUrl,
       {
         method: "POST",

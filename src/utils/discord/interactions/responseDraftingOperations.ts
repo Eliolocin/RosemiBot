@@ -20,7 +20,11 @@ import {
   type ConfigModelChoice,
 } from "@/utils/discord/interactions/configModelOperations";
 import { getStaticProviderInfo } from "@/utils/provider/providerInfoRegistry";
-import { SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
+import {
+  claimProviderModelSelection,
+  clearProviderModelSelection,
+  findProviderOption,
+} from "@/utils/provider/providerOptionRegistry";
 import { isCustomProvider } from "@/utils/provider/customProviderUtils";
 import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
 import { localizer } from "@/utils/text/localizer";
@@ -84,7 +88,7 @@ export async function loadDraftingModelGroups(serverId: number, locale: string):
   const providers = await loadConfigModelProviders(serverId, "text");
   const groups = await Promise.all(
     providers.map(async (provider) => {
-      const catalogProvider = provider === SUPPORTER_PROVIDER_VALUE ? "openrouter" : provider;
+      const catalogProvider = findProviderOption(provider)?.catalogProvider ?? provider;
       if (!isCustomProvider(provider) && !getStaticProviderInfo(catalogProvider)?.featureSupport.structuredOutput)
         return { provider, models: [] };
       const models = await loadConfigModelChoices(
@@ -180,10 +184,15 @@ export const responseDraftingOperations: ResponseDraftingOperations = {
       if (!groups.some((group) => group.provider === provider && group.models.some((model) => model.id === modelId)))
         return "stale";
     }
-    if (!(await configRepository.updateChatConfig(state.server_id, { response_reviewer_llm_id: modelId }, provider)))
-      return "write-failed";
-    invalidateTomoriStateCache(workspaceId);
-    return "success";
+    const written = await writeChat(state, workspaceId, { response_reviewer_llm_id: modelId });
+    if (written !== "success") return written;
+    const scope = { kind: "server" as const, ownerId: state.server_id, state };
+    if (modelId === null) {
+      const cleared = await clearProviderModelSelection({ scope, capability: "reviewer" });
+      return cleared ? "success" : "write-failed";
+    }
+    const claimed = await claimProviderModelSelection({ scope, provider, capability: "reviewer" });
+    return claimed ? "success" : "write-failed";
   },
   async setPrompt(state, workspaceId, prompt) {
     if (prompt !== null && !responseReviewerPromptSchema.safeParse(prompt).success) return "invalid";

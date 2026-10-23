@@ -1,3 +1,8 @@
+import {
+  findProviderRequestDeniedError,
+  type ProviderRequestDeniedError,
+  reportProviderUsage,
+} from "@/utils/provider/providerUsage";
 import type { CustomEndpointRow } from "@/types/db/schema";
 import type { ElevenLabsTtsErrorKind } from "@/utils/audio/elevenLabsTts";
 import { synthesizeSpeechViaElevenLabsAdapter } from "@/providers/custom/styles/elevenLabsAdapter";
@@ -43,11 +48,6 @@ import {
 import { ZodError } from "zod";
 import { ResponseSizeError } from "@/utils/security/boundedResponse";
 import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
-import {
-  findSupporterRequestDeniedError,
-  type SupporterRequestDeniedError,
-} from "@/modules/supporter-billing/runtime/funding";
-import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
 import { reportProviderFailure } from "@/utils/provider/providerErrorMetrics";
 
 /** Metric key recorded against the `audio_generated` stat. */
@@ -96,7 +96,7 @@ export interface VoiceMessageSynthesisResult {
   targetLabel?: string;
   usedServerFallback?: boolean;
   cleanupPending?: boolean;
-  supporterFailure?: SupporterRequestDeniedError;
+  requestDenied?: ProviderRequestDeniedError;
 }
 
 interface VoiceSynthesisAttempt {
@@ -432,7 +432,7 @@ async function synthesizeHostedVoiceMessage(
     attempt.synthesisSuccess = true;
     if (target.model.provider === "openrouter") {
       const synthesis = attempt.operations.find((operation) => operation.operation === "synthesize");
-      recordSupporterUsage(target.supporterFunding, {
+      reportProviderUsage(target.usageContext, {
         modelCodename: target.model.codename,
         costUsd: attempt.operations.find((operation) => operation.operation === "cost")?.actualCost,
         providerRequestId: synthesis?.generationId,
@@ -448,6 +448,10 @@ async function synthesizeHostedVoiceMessage(
       cleanupPending,
     };
   } catch (error) {
+    const requestDenied = findProviderRequestDeniedError(error, target.usageContext);
+    if (requestDenied) {
+      return { success: false, backendKey, requestDenied, cleanupPending };
+    }
     const errorKind: HostedSpeechErrorKind = request.abortSignal?.aborted
       ? "cancelled"
       : signal.aborted
@@ -491,7 +495,6 @@ async function synthesizeHostedVoiceMessage(
       backendKey,
       errorKind,
       details: `Hosted speech failed: ${errorKind}.`,
-      supporterFailure: findSupporterRequestDeniedError(error, target.supporterFunding) ?? undefined,
       providerDetail,
       cleanupPending:
         cleanupPending ||
@@ -611,7 +614,7 @@ export async function synthesizeVoiceMessage(
   return {
     ...fallback,
     usedServerFallback: true,
-    supporterFailure: fallback.supporterFailure ?? result.supporterFailure,
+    requestDenied: fallback.requestDenied ?? result.requestDenied,
     cleanupPending: result.cleanupPending || fallback.cleanupPending,
   };
 }

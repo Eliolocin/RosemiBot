@@ -1,5 +1,4 @@
-import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
-import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { ProviderRequestDeniedError } from "@/utils/provider/providerUsage";
 import { log } from "@/utils/misc/logger";
 import type {
   CompactConversationResult,
@@ -11,6 +10,7 @@ import { buildRoleplaySchema } from "@/providers/utils/compactCommon";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 export type {
   CompactConversationResult,
   CompactRoleplayResult,
@@ -66,7 +66,7 @@ export async function generateConversationSummaryOpenrouter(
       plugins: [{ id: "response-healing" }],
     };
 
-    const response = await fetchWithSupporterSpend("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${request.apiKey}`,
@@ -126,7 +126,7 @@ export async function generateConversationSummaryOpenrouter(
 
     return { summary: responseText.trim() };
   } catch (error) {
-    if (error instanceof SupporterRequestDeniedError) return { error: error.message, cause: error };
+    if (error instanceof ProviderRequestDeniedError) return { error: error.message, cause: error };
     log.error("OpenRouter compact summary failed", error as Error);
     return {
       error: error instanceof Error ? error.message : "Unknown OpenRouter error",
@@ -170,7 +170,7 @@ export async function generateRoleplaySummaryOpenrouter(
       plugins: [{ id: "response-healing" }],
     };
 
-    const response = await fetchWithSupporterSpend("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${request.apiKey}`,
@@ -243,7 +243,7 @@ export async function generateRoleplaySummaryOpenrouter(
 
     return { summary: parsed };
   } catch (error) {
-    if (error instanceof SupporterRequestDeniedError) return { error: error.message, cause: error };
+    if (error instanceof ProviderRequestDeniedError) return { error: error.message, cause: error };
     log.error("OpenRouter roleplay summary failed", error as Error);
     return {
       error: error instanceof Error ? error.message : "Unknown OpenRouter error",

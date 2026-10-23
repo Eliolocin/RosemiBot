@@ -1,9 +1,11 @@
+import { readOpenRouterLimitResponse } from "@/providers/openrouter/openrouterLimit";
+import {
+  reportProviderUsage,
+  findProviderRequestDeniedError,
+  notifyProviderToolFailure,
+} from "@/utils/provider/providerUsage";
 import { resolveSupporterMemberKey } from "@/modules/supporter-billing/runtime/managedProvider";
-import { fetchWithSupporterSpend } from "@/modules/supporter-billing/runtime/spendGuard";
-import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
 import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
-import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
 import { z } from "zod";
 import { addFetchCapabilityReminder } from "@/tools/restAPIs/brave/braveSearchService";
 import { getSearchNoticeKey, getSearchNoticeTitleVars } from "@/tools/webSearch/categoryMetadata";
@@ -12,6 +14,7 @@ import type { ToolContext, ToolResult } from "@/types/tool/interfaces";
 import { sendToolNotice } from "@/utils/discord/toolProgressNotice";
 import { log } from "@/utils/misc/logger";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import { decryptApiKey } from "@/utils/security/crypto";
 
@@ -89,7 +92,7 @@ export class OpenRouterEngine implements WebSearchEngine {
       signal.throwIfAborted();
 
       const model = context.tomoriState.llm.llm_codename;
-      const response = await fetchWithSupporterSpend(SEARCH_ENDPOINT, {
+      const response = await fetchWithProviderRequest(SEARCH_ENDPOINT, {
         method: "POST",
         redirect: "error",
         headers: {
@@ -109,7 +112,9 @@ export class OpenRouterEngine implements WebSearchEngine {
       });
 
       if (!response.ok) {
-        await response.body?.cancel().catch(() => undefined);
+        const limit = await readOpenRouterLimitResponse(response);
+        const denied = findProviderRequestDeniedError(limit, context.usageContext);
+        if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
         return this.fail("http_error", response.status);
       }
 
@@ -118,7 +123,7 @@ export class OpenRouterEngine implements WebSearchEngine {
       const metadata = z.object({ usage: z.unknown().optional(), id: z.string().optional() }).safeParse(payload);
       const usage = metadata.success ? normalizeProviderUsage(metadata.data.usage) : null;
       if (usage)
-        recordSupporterUsage(context.supporterFunding, {
+        reportProviderUsage(context.usageContext, {
           modelCodename: model,
           ...usage,
           costUsd: usage.costUsd,
@@ -160,8 +165,8 @@ export class OpenRouterEngine implements WebSearchEngine {
         },
       };
     } catch (error) {
-      const denied = findSupporterRequestDeniedError(error, context.supporterFunding);
-      if (denied) return { success: false, error: getSupporterRequestFailureCopy(denied, context.locale).description };
+      const denied = findProviderRequestDeniedError(error, context.usageContext);
+      if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
       return this.fail(signal.aborted ? "aborted" : "request_failed", undefined, error);
     }
   }

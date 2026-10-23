@@ -15,7 +15,6 @@
  */
 
 import type { FunctionCall, FunctionResponseImageMetadata, ThoughtLogEntry } from "../../types/provider/interfaces";
-import { beginSupporterRequest, type SupporterSpendHold } from "@/modules/supporter-billing/runtime/spendGuard";
 import type { StructuredContextItem } from "../../types/misc/context";
 import { log } from "../../utils/misc/logger";
 import {
@@ -63,6 +62,11 @@ import {
 import { ThinkBlockContentStripper } from "@/providers/utils/thinkBlockContentStripper";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import { parseAccumulatedToolArguments } from "@/providers/utils/toolCallArguments";
+import {
+  beginProviderRequest,
+  hasProviderRequestHook,
+  type ProviderRequestHold,
+} from "@/utils/provider/providerRequestHook";
 import {
   buildDegradationAttempts,
   buildImageStripAttempt,
@@ -181,7 +185,8 @@ interface AccumulatedToolCall {
 // Defaults off because Bun's `verbose` prints every request header, including the
 // `Authorization: Bearer` line, and it prints below application code so nothing here can
 // redact it. Enabling this writes the OpenRouter API key in clear text to container logs
-// and to anything shipping them onward.
+// and to anything shipping them onward. It also stays off whenever a request hook is
+// registered, because the hook may account for the request body this output would expose.
 const OPENROUTER_VERBOSE_FETCH = (process.env.OPENROUTER_VERBOSE_FETCH ?? "false").trim().toLowerCase() === "true";
 
 /**
@@ -773,16 +778,20 @@ export class OpenrouterStreamAdapter extends BaseStreamAdapter {
           signal: currentController.signal,
         };
 
-        if (OPENROUTER_VERBOSE_FETCH && !isSupporterBillingEnabled(resolveEnvironment())) {
+        if (OPENROUTER_VERBOSE_FETCH && !hasProviderRequestHook()) {
           requestInit.verbose = true;
         }
 
-        let spendHold: SupporterSpendHold | undefined;
+        let spendHold: ProviderRequestHold | undefined;
         let attemptCompleted = false;
         let attemptFailed = false;
         try {
           currentController.signal.throwIfAborted();
-          spendHold = await beginSupporterRequest(config.apiKey ?? "", "/chat/completions", attempt.body);
+          spendHold = await beginProviderRequest({
+            apiKey: config.apiKey ?? "",
+            path: "/chat/completions",
+            body: attempt.body,
+          });
           if (currentController.signal.aborted) {
             spendHold?.reportCost(0);
             currentController.signal.throwIfAborted();
@@ -2738,5 +2747,3 @@ export class OpenrouterStreamAdapter extends BaseStreamAdapter {
     log.info(`Full request structure:\n${JSON.stringify(sanitized, null, 2)}`);
   }
 }
-import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
-import { resolveEnvironment } from "@/types/config";

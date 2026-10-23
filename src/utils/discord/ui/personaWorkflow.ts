@@ -4,7 +4,6 @@ import type {
   ButtonInteraction,
   ChatInputCommandInteraction,
   InteractionEditReplyOptions,
-  InteractionReplyOptions,
   Message,
   ModalMessageModalSubmitInteraction,
   ModalSubmitInteraction,
@@ -46,13 +45,6 @@ export interface PersonaWorkflowComponentsV2Payload
   embeds?: never;
 }
 
-/** A public response payload used only by the explicit visibility-change phase. */
-type PersonaWorkflowPublicPayload = Omit<InteractionReplyOptions, "ephemeral" | "fetchReply" | "withResponse"> & {
-  ephemeral?: never;
-  fetchReply?: never;
-  withResponse?: never;
-};
-
 export type PersonaWorkflowUpdateErrorCode =
   | "already-acknowledged"
   | "anchor-message-unavailable"
@@ -60,8 +52,6 @@ export type PersonaWorkflowUpdateErrorCode =
   | "discord-update-failed"
   | "message-mismatch"
   | "non-message-backed-interaction"
-  | "public-reply-already-sent"
-  | "public-reply-must-not-be-ephemeral"
   | "unsupported-replacement";
 
 /** Typed failure raised by anchor-message and acknowledgment operations. */
@@ -90,12 +80,6 @@ export interface PersonaWorkflowMessageController {
 interface PersonaWorkflowInPlacePhase {
   readonly deliveryPolicy: "replace-picker";
   readonly message: PersonaWorkflowMessageController;
-}
-
-interface PersonaWorkflowPublicReplyPhase {
-  readonly deliveryPolicy: "separate-public";
-  readonly privateMessage: PersonaWorkflowMessageController;
-  reply(payload: PersonaWorkflowPublicPayload): Promise<Message>;
 }
 
 export type PersonaWorkflowModalResult =
@@ -137,9 +121,6 @@ interface PersonaWorkflowSelectionPhase<TPersona extends TomoriState> {
   readonly deliveryPolicy: "replace-picker";
   beginInPlaceWork(): Promise<PersonaWorkflowInPlacePhase>;
   openModal(options: PersonaWorkflowModalSource): Promise<PersonaWorkflowModalResult>;
-  beginSeparatePublicReply(
-    compactPrivatePicker: PersonaWorkflowComponentsV2Payload,
-  ): Promise<PersonaWorkflowPublicReplyPhase>;
   /** Binds a collector button to safe same-message operations. */
   useButton(button: ButtonInteraction): PersonaWorkflowNestedButtonPhase;
   /** Explicit escape hatch for Discord APIs not modeled by the workflow. */
@@ -660,17 +641,6 @@ function buildModalReadyPayload(locale: string, customId: string): PersonaWorkfl
   };
 }
 
-function publicPayloadIsEphemeral(flags: unknown): boolean {
-  if (typeof flags === "number") return (flags & MessageFlags.Ephemeral) !== 0;
-  if (typeof flags === "bigint") return (flags & BigInt(MessageFlags.Ephemeral)) !== 0n;
-  if (typeof flags === "string") return flags === "Ephemeral";
-  if (Array.isArray(flags)) return flags.some(publicPayloadIsEphemeral);
-  if (flags && typeof flags === "object" && "bitfield" in flags) {
-    return publicPayloadIsEphemeral((flags as { bitfield: unknown }).bitfield);
-  }
-  return false;
-}
-
 async function awaitWorkflowButton(
   controller: AnchorMessageController,
   userId: string,
@@ -1046,44 +1016,6 @@ function createSelectionPhase<TPersona extends TomoriState>(
         async delete() {
           await controller.acknowledgeInPlace(button);
           await controller.delete();
-        },
-      };
-    },
-    async beginSeparatePublicReply(compactPrivatePicker) {
-      await controller.replaceFrom(selectedButton, compactPrivatePicker);
-      let publicReplySent = false;
-      return {
-        deliveryPolicy: "separate-public",
-        privateMessage: controller,
-        async reply(payload) {
-          if (publicReplySent) {
-            throw new PersonaWorkflowUpdateError(
-              "public-reply-already-sent",
-              "The separate-public workflow phase already created its public response.",
-            );
-          }
-          if (publicPayloadIsEphemeral(payload.flags)) {
-            throw new PersonaWorkflowUpdateError(
-              "public-reply-must-not-be-ephemeral",
-              "The separate-public workflow phase cannot create an ephemeral response.",
-            );
-          }
-          publicReplySent = true;
-          try {
-            return await selectedButton.followUp(payload);
-          } catch (error) {
-            logWorkflowFailure("separate-public", controller.anchorMessageId, error, {
-              interactionId: selectedButton.id,
-            });
-            throw controller.classifyFailure(
-              "Failed to create the workflow's public response.",
-              error,
-              "separate-public",
-              {
-                interactionId: selectedButton.id,
-              },
-            );
-          }
         },
       };
     },

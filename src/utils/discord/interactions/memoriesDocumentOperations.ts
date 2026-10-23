@@ -1,3 +1,8 @@
+import {
+  createProviderUsageRecorder,
+  findProviderRequestDeniedError,
+  type ProviderRequestDeniedError,
+} from "@/utils/provider/providerUsage";
 import type { APIAttachment } from "discord.js";
 import type { ServerMemoryRow } from "@/types/db/schema";
 import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
@@ -15,11 +20,6 @@ import {
 } from "@/utils/provider/credentialResolver";
 import { memoryGuard, reserveDocumentQuota } from "@/utils/security/rateLimiter";
 import { safeDownload } from "@/utils/security/safeDownload";
-import { createSupporterUsageRecorder } from "@/modules/supporter-billing/runtime/usageStatistics";
-import {
-  findSupporterRequestDeniedError,
-  type SupporterRequestDeniedError,
-} from "@/modules/supporter-billing/runtime/funding";
 
 export interface DocumentListRow {
   document_id: number;
@@ -42,7 +42,7 @@ export type DocumentWriteResult =
   | { status: "empty-content" | "content-too-long" | "too-many-chunks" | "document-limit" | "chunk-limit" }
   | { status: "duplicate" | "quota-exceeded" | "credentials-missing" | "model-missing" | "not-found" }
   | { status: "write-failed" }
-  | { status: "subscription"; denied: SupporterRequestDeniedError }
+  | { status: "provider-denied"; denied: ProviderRequestDeniedError }
   | { status: "success"; documentId: number; documentName: string; chunkCount: number };
 
 export interface AddDocumentInput {
@@ -88,7 +88,7 @@ export type DocumentRemoveResult =
 export type ChunkEditResult =
   | { status: "forbidden" | "not-found" | "empty-content" | "content-too-long" }
   | { status: "credentials-missing" | "model-missing" | "write-failed" | "unchanged" }
-  | { status: "subscription"; denied: SupporterRequestDeniedError }
+  | { status: "provider-denied"; denied: ProviderRequestDeniedError }
   | { status: "success" };
 
 export type ChunkRemoveResult =
@@ -111,6 +111,8 @@ async function resolveEmbedding(serverId: number, userId: number, configuredMode
     if (!model?.embedding_model_id) return { status: "model-missing" as const };
     return { status: "success" as const, credentials, model, embeddingModelId: model.embedding_model_id };
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error);
+    if (denied) return { status: "provider-denied" as const, denied };
     if (error instanceof PersonalProviderRequiredError || error instanceof CredentialUnavailableError) {
       return { status: "credentials-missing" as const };
     }
@@ -121,7 +123,7 @@ async function resolveEmbedding(serverId: number, userId: number, configuredMode
 async function embedChunks(
   chunks: string[],
   resolved: Extract<Awaited<ReturnType<typeof resolveEmbedding>>, { status: "success" }>,
-): Promise<number[][] | { status: "subscription"; denied: SupporterRequestDeniedError }> {
+): Promise<number[][] | { status: "provider-denied"; denied: ProviderRequestDeniedError }> {
   return generateEmbeddingsBatched({
     provider: resolved.model.provider,
     apiKey: resolved.credentials.apiKey,
@@ -130,10 +132,10 @@ async function embedChunks(
     inputs: chunks,
     taskType: (await providerSupportsEmbeddingTaskType(resolved.model.provider)) ? "RETRIEVAL_DOCUMENT" : undefined,
     batchSize: 16,
-    onUsage: createSupporterUsageRecorder(resolved.credentials.supporterFunding, resolved.model.codename),
+    onUsage: createProviderUsageRecorder(resolved.credentials.usageContext, resolved.model.codename),
   }).catch((error: unknown) => {
-    const denied = findSupporterRequestDeniedError(error, resolved.credentials.supporterFunding);
-    if (denied) return { status: "subscription" as const, denied };
+    const denied = findProviderRequestDeniedError(error, resolved.credentials.usageContext);
+    if (denied) return { status: "provider-denied" as const, denied };
     throw error;
   });
 }
