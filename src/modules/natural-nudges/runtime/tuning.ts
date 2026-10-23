@@ -12,10 +12,10 @@ export const MIN_IDLE_NUDGE_HEAT = 1;
 
 /** Tickets per idle nudge category, fixed for every server because the mix is operator tuning. */
 export const IDLE_NUDGE_CATEGORY_WEIGHTS: Record<NaturalNudgeCategory, number> = {
-  ping_user: 0,
-  revive_topic: 0,
-  start_topic: 0,
-  play_scene: 100,
+  ping_user: 30,
+  revive_topic: 25,
+  start_topic: 30,
+  play_scene: 15,
 };
 
 /** Heat divided by this gives idle nudges per day, per frequency level. */

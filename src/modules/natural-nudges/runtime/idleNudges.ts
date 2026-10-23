@@ -110,7 +110,7 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
     brief: "Find something new related to {target}'s interests and have {persona} share it with them.",
     agendaHint: "Find out whether {target} had already heard about it",
     prerequisites: [RELATIONSHIP_USER_PREREQUISITE, "tool:web_search"],
-    recommendedTools: ["web_search", "fetch_url"],
+    recommendedTools: ["web_search", "fetch_url", "process_youtube_video"],
     builtIn: true,
   },
   {
@@ -155,6 +155,39 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
     builtIn: true,
   },
   {
+    key: "ping_user.recommend_me",
+    category: "ping_user",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.ping_user_recommend_me",
+    brief:
+      "Have {persona} ask {target} for a recommendation (a song, game, food, or watch) based on something {target} likes in their memories.",
+    agendaHint: "Judge {target}'s taste playfully, then save the recommendation as a memory if it sounds good",
+    prerequisites: [RELATIONSHIP_USER_PREREQUISITE, RECENT_MEMORY_PREREQUISITE],
+    recommendedTools: ["create_long_term_memory"],
+    builtIn: true,
+  },
+  {
+    key: "ping_user.role_reversal",
+    category: "ping_user",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.ping_user_role_reversal",
+    brief:
+      "{persona} tries something {target} is into (from their memories) and reports a minor, funny struggle with it.",
+    agendaHint: "Get {target} to coach or bail {persona} out",
+    prerequisites: [RELATIONSHIP_USER_PREREQUISITE, RECENT_MEMORY_PREREQUISITE],
+    recommendedTools: ["select_sticker_for_response"],
+    builtIn: true,
+  },
+  {
+    key: "ping_user.settle_a_bet",
+    category: "ping_user",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.ping_user_settle_a_bet",
+    brief:
+      "Have {persona} drag {target} in as the tiebreaker on a trivial hypothetical or pet peeve that fits {persona}'s interests.",
+    agendaHint: "Refuse to accept a neutral answer; make {target} pick a side",
+    prerequisites: [RELATIONSHIP_USER_PREREQUISITE],
+    recommendedTools: [],
+    builtIn: true,
+  },
+  {
     key: "revive_topic.pick_up_thread",
     category: "revive_topic",
     titleKey: "commands.nudge-studio.idle_nudge_titles.revive_topic_pick_up_thread",
@@ -182,6 +215,28 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
     agendaHint: "Settle who was right",
     prerequisites: [HANGING_CONVERSATION_PREREQUISITE, "tool:web_search"],
     recommendedTools: ["web_search", "fetch_url"],
+    builtIn: true,
+  },
+  {
+    key: "revive_topic.what_did_you_mean",
+    category: "revive_topic",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.revive_topic_what_did_you_mean",
+    brief:
+      "Pick a strange, funny, or ambiguous line from the hanging conversation and have {persona} belatedly fixate on it.",
+    agendaHint: "Get the author to explain themselves without letting them brush it off",
+    prerequisites: [HANGING_CONVERSATION_PREREQUISITE],
+    recommendedTools: ["interact_with_recent_message"],
+    builtIn: true,
+  },
+  {
+    key: "revive_topic.visual_receipts",
+    category: "revive_topic",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.revive_topic_visual_receipts",
+    brief:
+      "Turn a joke, scenario, or claim from the hanging conversation into a picture and have {persona} drop it back into the channel. Never depict the members themselves; draw the joke or scenario.",
+    agendaHint: "Get the people from the earlier chat to rate how accurate it is",
+    prerequisites: [HANGING_CONVERSATION_PREREQUISITE, "tool:image"],
+    recommendedTools: ["image", "interact_with_recent_message"],
     builtIn: true,
   },
   {
@@ -245,6 +300,17 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
     builtIn: true,
   },
   {
+    key: "start_topic.fit_check",
+    category: "start_topic",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.start_topic_fit_check",
+    brief:
+      "Have {persona} share a selfie (mirror selfie or handheld angle) showing an outfit or hairstyle different from its usual look, and ask the channel what they think.",
+    agendaHint: "Get people to rate the fit or give styling tips",
+    prerequisites: ["tool:image"],
+    recommendedTools: ["image"],
+    builtIn: true,
+  },
+  {
     key: "play_scene.banter",
     category: "play_scene",
     titleKey: "commands.nudge-studio.idle_nudge_titles.play_scene_banter",
@@ -279,10 +345,33 @@ export const BUILTIN_IDLE_NUDGES: readonly IdleNudgeDefinition[] = [
     key: "play_scene.show_off",
     category: "play_scene",
     titleKey: "commands.nudge-studio.idle_nudge_titles.play_scene_show_off",
-    brief: "Have {persona} show {partner} a picture it made and ask what it thinks.",
+    brief:
+      "Have {persona} show {partner} a picture it made and ask what it thinks; {partner} insists on one specific nitpick.",
     agendaHint: "Get {partner} and a human to react",
     prerequisites: [TWO_PERSONAS_PREREQUISITE, "tool:image"],
     recommendedTools: ["image"],
+    builtIn: true,
+  },
+  {
+    key: "play_scene.good_cop_bad_cop",
+    category: "play_scene",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.play_scene_good_cop_bad_cop",
+    brief:
+      "Have {persona} and {partner} team up to question {target} about a harmless habit or something {target} said in this server, one teasing and one defending them.",
+    agendaHint: "Get {target} to confess, while {partner} dramatically defends {target} no matter what",
+    prerequisites: [TWO_PERSONAS_PREREQUISITE, RELATIONSHIP_USER_PREREQUISITE, RECENT_MEMORY_PREREQUISITE],
+    recommendedTools: ["select_sticker_for_response"],
+    builtIn: true,
+  },
+  {
+    key: "play_scene.alibi",
+    category: "play_scene",
+    titleKey: "commands.nudge-studio.idle_nudge_titles.play_scene_alibi",
+    brief:
+      "Have {persona} try to rope {partner} into backing up an obviously questionable story or excuse in front of the channel.",
+    agendaHint: "Keep the story straight while {partner} pokes holes in it with innocent questions",
+    prerequisites: [TWO_PERSONAS_PREREQUISITE],
+    recommendedTools: [],
     builtIn: true,
   },
 ];
