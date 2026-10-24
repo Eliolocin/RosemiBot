@@ -59,7 +59,21 @@ beforeEach(() => {
     spyOn(naturalNudgeRepository, "loadRuntimeState").mockResolvedValue({ stopped_at: null } as never),
     historySpy,
     spyOn(naturalNudgeRepository, "loadPersonaConfigs").mockResolvedValue(
-      new Map([[PERSONA_ID, { persona_id: PERSONA_ID, talkativeness: 2, interests: [], has_override: true }]]),
+      new Map([
+        [
+          PERSONA_ID,
+          {
+            persona_id: PERSONA_ID,
+            talkativeness: 2,
+            interests: [],
+            has_override: true,
+            idle_nudges: [],
+            disabled_idle_nudge_ids: [],
+            idle_nudges_override: false,
+            idle_nudges_inherited: false,
+          },
+        ],
+      ]),
     ),
     spyOn(personaRepository, "loadAllForServer").mockResolvedValue([
       { persona_id: PERSONA_ID },

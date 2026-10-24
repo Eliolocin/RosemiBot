@@ -1,8 +1,9 @@
-import type { NaturalNudgeInterest } from "@/modules/natural-nudges/db/types";
+import type { NaturalNudgeInterest, PersonaAuthoredIdleNudge } from "@/modules/natural-nudges/db/types";
 
 export interface PresetNaturalNudgeDefaults {
   talkativeness: number;
   interests: NaturalNudgeInterest[];
+  idleNudges: PersonaAuthoredIdleNudge[];
 }
 
 /**
@@ -12,6 +13,7 @@ export interface PresetNaturalNudgeDefaults {
 export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNaturalNudgeDefaults>> = {
   4: {
     talkativeness: 2,
+    idleNudges: [],
     interests: [
       { label: "plushies", description: "Plush toys, cute character plushies such as Chiikawa, and hamsters." },
       { label: "cosplay", description: "Making or wearing costumes, wigs, fabric crafting, and cosplay conventions." },
@@ -24,6 +26,7 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
   },
   716: {
     talkativeness: 2,
+    idleNudges: [],
     interests: [
       {
         label: "competitive gaming",
@@ -34,6 +37,7 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
   },
   1770: {
     talkativeness: 2,
+    idleNudges: [],
     interests: [
       {
         label: "music",
@@ -45,6 +49,7 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
   },
   3585: {
     talkativeness: 1,
+    idleNudges: [],
     interests: [
       {
         label: "anime",
@@ -58,6 +63,7 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
   },
   50: {
     talkativeness: 1,
+    idleNudges: [],
     interests: [
       { label: "horror", description: "Horror stories, films, and gothic fiction, including Poe." },
       {
@@ -70,6 +76,7 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
   },
   1337: {
     talkativeness: 3,
+    idleNudges: [],
     interests: [
       { label: "esports", description: "Professional competitive gaming: teams, tournaments, and strategy." },
       {
@@ -81,6 +88,7 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
   },
   666: {
     talkativeness: 2,
+    idleNudges: [],
     interests: [
       { label: "cooking", description: "Cooking and recipes: preparing dishes and ingredients." },
       { label: "knife collecting", description: "Collecting knives: blades, makers, and handles." },

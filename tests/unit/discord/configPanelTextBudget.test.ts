@@ -771,7 +771,16 @@ describe("config page text budgeting at stored maxima", () => {
           selectedPersonaId: 55,
           readStatus: "fresh",
           naturalNudges: {
-            personaConfig: { persona_id: 55, talkativeness: 4, interests: MAX_NUDGE_INTERESTS, has_override: false },
+            personaConfig: {
+              persona_id: 55,
+              talkativeness: 4,
+              interests: MAX_NUDGE_INTERESTS,
+              has_override: false,
+              idle_nudges: [],
+              disabled_idle_nudge_ids: [],
+              idle_nudges_override: false,
+              idle_nudges_inherited: false,
+            },
           },
           receipt: receipt ? { tone: "success", heading: "Saved", detail: "Configuration was saved." } : undefined,
         }),

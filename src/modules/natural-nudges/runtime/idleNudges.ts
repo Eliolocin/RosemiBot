@@ -1,69 +1,33 @@
 import {
+  CATEGORY_IMPLIED_PREREQUISITES,
   customIdleNudgeKey,
+  HANGING_CONVERSATION_PREREQUISITE,
+  isKnownPrerequisite,
+  isNudgeToolName,
+  NUDGE_PREREQUISITE_IDS,
+  NUDGE_TOOL_NAMES,
+  PRESENCE_ACTIVITY_PREREQUISITE,
+  prerequisiteTool,
+  RECENT_MEMORY_PREREQUISITE,
+  RELATIONSHIP_USER_PREREQUISITE,
+  TWO_PERSONAS_PREREQUISITE,
   type CustomIdleNudgeRow,
   type IdleNudgePersonaScopes,
   type NaturalNudgeCategory,
+  type NudgeToolName,
 } from "@/modules/natural-nudges/db/types";
 
-/** Tools an idle nudge may require or recommend; `image` stands for either image generator. */
-export const NUDGE_TOOL_NAMES = [
-  "web_search",
-  "fetch_url",
-  "image",
-  "generate_voice_message",
-  "generate_video",
-  "select_sticker_for_response",
-  "create_task",
-  "update_task",
-  "create_thread",
-  "peek_profile_picture",
-  "interact_with_recent_message",
-  "create_long_term_memory",
-  "update_long_term_memory",
-  "update_short_term_memory",
-  "process_youtube_video",
-] as const;
-export type NudgeToolName = (typeof NUDGE_TOOL_NAMES)[number];
-
-const IMAGE_TOOL_NAMES = ["generate_image", "generate_image_nai"] as const;
-
-const HANGING_CONVERSATION_PREREQUISITE = "hanging_conversation";
-const RELATIONSHIP_USER_PREREQUISITE = "relationship_user";
-const RECENT_MEMORY_PREREQUISITE = "recent_memory";
-const PRESENCE_ACTIVITY_PREREQUISITE = "presence_activity";
-const TWO_PERSONAS_PREREQUISITE = "two_personas";
-const TOOL_PREREQUISITE_PREFIX = "tool:";
-
-export const NUDGE_PREREQUISITE_IDS: readonly string[] = [
-  HANGING_CONVERSATION_PREREQUISITE,
-  RELATIONSHIP_USER_PREREQUISITE,
-  RECENT_MEMORY_PREREQUISITE,
-  PRESENCE_ACTIVITY_PREREQUISITE,
-  TWO_PERSONAS_PREREQUISITE,
-  ...NUDGE_TOOL_NAMES.map((tool) => `${TOOL_PREREQUISITE_PREFIX}${tool}`),
-];
-
-/** The prerequisite each category already enforces in `isIdleNudgeEligible`, so authors never need to pick it. */
-export const CATEGORY_IMPLIED_PREREQUISITES: Record<NaturalNudgeCategory, string | null> = {
-  ping_user: RELATIONSHIP_USER_PREREQUISITE,
-  revive_topic: HANGING_CONVERSATION_PREREQUISITE,
-  start_topic: null,
-  play_scene: TWO_PERSONAS_PREREQUISITE,
+export {
+  CATEGORY_IMPLIED_PREREQUISITES,
+  isKnownPrerequisite,
+  isNudgeToolName,
+  NUDGE_PREREQUISITE_IDS,
+  NUDGE_TOOL_NAMES,
+  prerequisiteTool,
+  type NudgeToolName,
 };
 
-export function isKnownPrerequisite(id: string): boolean {
-  return NUDGE_PREREQUISITE_IDS.includes(id);
-}
-
-export function prerequisiteTool(id: string): NudgeToolName | null {
-  if (!id.startsWith(TOOL_PREREQUISITE_PREFIX)) return null;
-  const tool = id.slice(TOOL_PREREQUISITE_PREFIX.length);
-  return (NUDGE_TOOL_NAMES as readonly string[]).includes(tool) ? (tool as NudgeToolName) : null;
-}
-
-export function isNudgeToolName(name: string): name is NudgeToolName {
-  return (NUDGE_TOOL_NAMES as readonly string[]).includes(name);
-}
+const IMAGE_TOOL_NAMES = ["generate_image", "generate_image_nai"] as const;
 
 /** Built-in idle nudges share the custom shape, so one path runs both. */
 export interface IdleNudgeDefinition {

@@ -4915,6 +4915,7 @@ const RESYNC_PRESET: TomoriPresetRow = {
   is_nsfw: false,
   natural_nudge_interests: [],
   natural_nudge_talkativeness: 2,
+  natural_nudge_idle_nudges: [],
 };
 
 const RESYNC_PERSONA = makePersona({
@@ -5002,7 +5003,16 @@ describe("config persona preset resync", () => {
       personas: [makePersona({ is_pointer: true, preset_lineage_id: 4, preset_language: "en-US" })],
       preset: RESYNC_PRESET,
       sprites: [],
-      nudgeConfig: { persona_id: 55, talkativeness: 4, interests: [], has_override: true },
+      nudgeConfig: {
+        persona_id: 55,
+        talkativeness: 4,
+        interests: [],
+        has_override: true,
+        idle_nudges: [],
+        disabled_idle_nudge_ids: [],
+        idle_nudges_override: false,
+        idle_nudges_inherited: false,
+      },
       operations: {
         resyncToPreset: async () => {
           fullResyncs++;

@@ -20,6 +20,7 @@ function preset(name: string, lineageId: number | null, language: string, isNsfw
     is_nsfw: isNsfw,
     natural_nudge_interests: [],
     natural_nudge_talkativeness: 2,
+    natural_nudge_idle_nudges: [],
   };
 }
 

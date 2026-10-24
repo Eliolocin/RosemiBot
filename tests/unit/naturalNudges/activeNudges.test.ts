@@ -150,10 +150,31 @@ describe("matcher options", () => {
       description: "Filler.",
     }));
     const configs = new Map([
-      [MAIN_ID, { persona_id: MAIN_ID, talkativeness: 2, interests: [MECHA], has_override: true }],
+      [
+        MAIN_ID,
+        {
+          persona_id: MAIN_ID,
+          talkativeness: 2,
+          interests: [MECHA],
+          has_override: true,
+          idle_nudges: [],
+          disabled_idle_nudge_ids: [],
+          idle_nudges_override: false,
+          idle_nudges_inherited: false,
+        },
+      ],
       [
         ALTER_ID,
-        { persona_id: ALTER_ID, talkativeness: 2, interests: [{ ...MECHA, label: "Mecha Anime" }], has_override: true },
+        {
+          persona_id: ALTER_ID,
+          talkativeness: 2,
+          interests: [{ ...MECHA, label: "Mecha Anime" }],
+          has_override: true,
+          idle_nudges: [],
+          disabled_idle_nudge_ids: [],
+          idle_nudges_override: false,
+          idle_nudges_inherited: false,
+        },
       ],
     ]);
     const shared = buildMatcherOptions([main, alter], configs);
@@ -165,7 +186,16 @@ describe("matcher options", () => {
         .sort(),
     ).toEqual([MAIN_ID, ALTER_ID]);
 
-    configs.set(ALTER_ID, { persona_id: ALTER_ID, talkativeness: 2, interests: many, has_override: true });
+    configs.set(ALTER_ID, {
+      persona_id: ALTER_ID,
+      talkativeness: 2,
+      interests: many,
+      has_override: true,
+      idle_nudges: [],
+      disabled_idle_nudge_ids: [],
+      idle_nudges_override: false,
+      idle_nudges_inherited: false,
+    });
     const budgeted = buildMatcherOptions([main, alter], configs);
     expect(budgeted.options.length).toBeLessThanOrEqual(ACTIVE_NUDGE_OPTION_BUDGET);
   });
@@ -216,8 +246,32 @@ describe("Active Nudge check", () => {
       historySpy,
       spyOn(naturalNudgeRepository, "loadPersonaConfigs").mockResolvedValue(
         new Map([
-          [MAIN_ID, { persona_id: MAIN_ID, talkativeness: 2, interests: [MECHA], has_override: true }],
-          [ALTER_ID, { persona_id: ALTER_ID, talkativeness: 2, interests: [BAKING], has_override: true }],
+          [
+            MAIN_ID,
+            {
+              persona_id: MAIN_ID,
+              talkativeness: 2,
+              interests: [MECHA],
+              has_override: true,
+              idle_nudges: [],
+              disabled_idle_nudge_ids: [],
+              idle_nudges_override: false,
+              idle_nudges_inherited: false,
+            },
+          ],
+          [
+            ALTER_ID,
+            {
+              persona_id: ALTER_ID,
+              talkativeness: 2,
+              interests: [BAKING],
+              has_override: true,
+              idle_nudges: [],
+              disabled_idle_nudge_ids: [],
+              idle_nudges_override: false,
+              idle_nudges_inherited: false,
+            },
+          ],
         ]),
       ),
       spyOn(channels, "resolveEffectiveChannelIds").mockResolvedValue(["listed-parent"]),
@@ -290,8 +344,32 @@ describe("Active Nudge check", () => {
       recordFire(),
       spyOn(naturalNudgeRepository, "loadPersonaConfigs").mockResolvedValue(
         new Map([
-          [MAIN_ID, { persona_id: MAIN_ID, talkativeness: 2, interests: [], has_override: true }],
-          [ALTER_ID, { persona_id: ALTER_ID, talkativeness: 2, interests: [MECHA], has_override: true }],
+          [
+            MAIN_ID,
+            {
+              persona_id: MAIN_ID,
+              talkativeness: 2,
+              interests: [],
+              has_override: true,
+              idle_nudges: [],
+              disabled_idle_nudge_ids: [],
+              idle_nudges_override: false,
+              idle_nudges_inherited: false,
+            },
+          ],
+          [
+            ALTER_ID,
+            {
+              persona_id: ALTER_ID,
+              talkativeness: 2,
+              interests: [MECHA],
+              has_override: true,
+              idle_nudges: [],
+              disabled_idle_nudge_ids: [],
+              idle_nudges_override: false,
+              idle_nudges_inherited: false,
+            },
+          ],
         ]),
       ),
       spyOn(statRepository, "getServerPersonaMessageCounts").mockResolvedValue(

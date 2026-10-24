@@ -32,6 +32,7 @@ function officialPreset(isNsfw: boolean): TomoriPresetRow {
     is_nsfw: isNsfw,
     natural_nudge_interests: [],
     natural_nudge_talkativeness: 2,
+    natural_nudge_idle_nudges: [],
   };
 }
 
