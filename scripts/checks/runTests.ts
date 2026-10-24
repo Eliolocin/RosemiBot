@@ -323,7 +323,9 @@ async function runTestFiles(
   const requestedOutfile = process.env.BUN_TEST_JUNIT_OUTFILE;
   const lanes = await planLanes(files);
 
-  const results = await Promise.all(lanes.map((lane) => runLane(lane, extraEnv, requestedOutfile, omitDatabaseEnv)));
+  const results = await Promise.all(
+    lanes.map((lane) => runLane(lane, extraEnv, requestedOutfile, omitDatabaseEnv || lane.id !== "db")),
+  );
 
   // Replay buffered output in fixed lane order so concurrent runs stay readable.
   // TOMORI_TEST_QUIET is set by `vl` in quiet mode to mute passing lanes while keeping failing ones.
