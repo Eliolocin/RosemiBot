@@ -1,7 +1,10 @@
 import {
   CUSTOM_IDLE_NUDGE_KEY_PREFIX,
+  PERSONA_AUTHORED_IDLE_NUDGE_ID_PATTERN,
+  PERSONA_AUTHORED_IDLE_NUDGE_KEY_PREFIX,
   customIdleNudgeKey,
   NATURAL_NUDGE_CATEGORIES,
+  personaAuthoredIdleNudgeKey,
   type NaturalNudgeCategory,
 } from "@/modules/natural-nudges/db/types";
 import { BUILTIN_IDLE_NUDGES } from "@/modules/natural-nudges/runtime/idleNudges";
@@ -23,9 +26,26 @@ export const NUDGE_STUDIO_ROUTE_VERSION = "v1";
 
 export type NudgeStudioRoute =
   | { action: "view"; locale: string; category: NaturalNudgeCategory; page?: number }
-  | { action: "select"; locale: string; category: NaturalNudgeCategory }
-  | { action: "add-submit"; locale: string; category: NaturalNudgeCategory; nonce: string }
-  | { action: "edit-submit"; locale: string; category: NaturalNudgeCategory; id: number; nonce: string }
+  | { action: "select"; locale: string; category: NaturalNudgeCategory; page?: number }
+  | { action: "add-submit"; locale: string; category: NaturalNudgeCategory; nonce: string; page?: number }
+  | {
+      action: "edit-submit";
+      locale: string;
+      category: NaturalNudgeCategory;
+      id: number;
+      nonce: string;
+      page?: number;
+    }
+  | {
+      action: "persona-edit-submit";
+      locale: string;
+      category: NaturalNudgeCategory;
+      page: number;
+      ownerId: number;
+      idleNudgeId: string;
+      fp: string;
+      nonce: string;
+    }
   | { action: "toggle-open"; locale: string; category: NaturalNudgeCategory; page: number }
   | {
       action: "toggle-submit";
@@ -35,8 +55,17 @@ export type NudgeStudioRoute =
       page: number;
       nonce: string;
     }
-  | { action: "remove-open"; locale: string; category: NaturalNudgeCategory }
-  | { action: "remove-submit"; locale: string; category: NaturalNudgeCategory; nonce: string };
+  | {
+      action: "persona-toggle-submit";
+      locale: string;
+      category: NaturalNudgeCategory;
+      page: number;
+      ownerId: number;
+      idleNudgeId: string;
+      nonce: string;
+    }
+  | { action: "remove-open"; locale: string; category: NaturalNudgeCategory; page?: number }
+  | { action: "remove-submit"; locale: string; category: NaturalNudgeCategory; nonce: string; page?: number };
 
 type NudgeStudioAction = NudgeStudioRoute["action"];
 
@@ -55,17 +84,48 @@ const idField: RouteFieldCodec<"id", number> = {
   decode: (value) => parsePositiveId(value),
 };
 
-const CUSTOM_KEY_SEGMENT = /^custom\.(\d+)$/;
+const ownerIdField: RouteFieldCodec<"ownerId", number> = {
+  key: "ownerId",
+  encode: (value) => String(value),
+  decode: (value) => parsePositiveId(value),
+};
 
-/** Route segments cannot hold `:`, so `custom:<id>` travels as `custom.<id>`; no built-in category is named `custom`. */
+const idleNudgeIdField: RouteFieldCodec<"idleNudgeId", string> = {
+  key: "idleNudgeId",
+  encode: (value) => String(value),
+  decode: (value) => (value && PERSONA_AUTHORED_IDLE_NUDGE_ID_PATTERN.test(value) ? value : null),
+};
+
+const fpField: RouteFieldCodec<"fp", string> = {
+  key: "fp",
+  encode: (value) => String(value),
+  decode: (value) => (value && /^[A-Za-z0-9_-]{8}$/.test(value) ? value : null),
+};
+
+const CUSTOM_KEY_SEGMENT = /^custom\.(\d+)$/;
+const PERSONA_KEY_SEGMENT = /^persona\.(\d+)\.([A-Za-z0-9_-]{1,24})$/;
+
+/**
+ * Route segments cannot hold `:`, so a custom key travels as `custom.<id>` and a persona key as
+ * `persona.<owner>.<localId>`; no built-in category is named either prefix.
+ */
 const keyField: RouteFieldCodec<"key", string> = {
   key: "key",
-  encode: (value) => String(value).replace(CUSTOM_IDLE_NUDGE_KEY_PREFIX, "custom."),
+  encode: (value) =>
+    String(value)
+      .replace(CUSTOM_IDLE_NUDGE_KEY_PREFIX, "custom.")
+      .replace(PERSONA_AUTHORED_IDLE_NUDGE_KEY_PREFIX, "persona.")
+      .replace(":", "."),
   decode: (value) => {
     const custom = CUSTOM_KEY_SEGMENT.exec(value);
     if (custom) {
       const id = parsePositiveId(custom[1]);
       return id === null ? null : customIdleNudgeKey(id);
+    }
+    const persona = PERSONA_KEY_SEGMENT.exec(value);
+    if (persona) {
+      const ownerId = parsePositiveId(persona[1]);
+      return ownerId === null ? null : personaAuthoredIdleNudgeKey(ownerId, persona[2] as string);
     }
     return BUILTIN_IDLE_NUDGES.some((definition) => definition.key === value) ? value : null;
   },
@@ -85,13 +145,27 @@ const nonceField: RouteFieldCodec<"nonce", string> = {
 
 const CODECS: { [A in NudgeStudioAction]: RouteCodec<RouteForAction<A>> } = {
   view: { wireToken: "view", fields: [categoryField, { ...pageField, optional: true }] },
-  select: { wireToken: "select", fields: [categoryField] },
-  "add-submit": { wireToken: "add", fields: [categoryField, nonceField] },
-  "edit-submit": { wireToken: "edit", fields: [categoryField, idField, nonceField] },
+  select: { wireToken: "select", fields: [categoryField, { ...pageField, optional: true }] },
+  "add-submit": { wireToken: "add", fields: [categoryField, nonceField, { ...pageField, optional: true }] },
+  "edit-submit": {
+    wireToken: "edit",
+    fields: [categoryField, idField, nonceField, { ...pageField, optional: true }],
+  },
+  "persona-edit-submit": {
+    wireToken: "pe",
+    fields: [categoryField, pageField, ownerIdField, idleNudgeIdField, fpField, nonceField],
+  },
   "toggle-open": { wireToken: "toggle-open", fields: [categoryField, pageField] },
   "toggle-submit": { wireToken: "toggle", fields: [categoryField, keyField, pageField, nonceField] },
-  "remove-open": { wireToken: "remove-open", fields: [categoryField] },
-  "remove-submit": { wireToken: "remove", fields: [categoryField, nonceField] },
+  "persona-toggle-submit": {
+    wireToken: "pt",
+    fields: [categoryField, pageField, ownerIdField, idleNudgeIdField, nonceField],
+  },
+  "remove-open": { wireToken: "remove-open", fields: [categoryField, { ...pageField, optional: true }] },
+  "remove-submit": {
+    wireToken: "remove",
+    fields: [categoryField, nonceField, { ...pageField, optional: true }],
+  },
 };
 
 const CODECS_BY_WIRE_TOKEN = indexCodecsByWireToken<NudgeStudioAction, NudgeStudioRoute>(CODECS);

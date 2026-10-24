@@ -2,20 +2,33 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { Collection, type Client, type GuildTextBasedChannel, type Message } from "discord.js";
 import * as tomoriChatModule from "@/events/messageCreate/tomoriChat";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
-import type { NaturalNudgeFireRow } from "@/modules/natural-nudges/db/types";
-import { BUILTIN_IDLE_NUDGES, type IdleNudgeDefinition } from "@/modules/natural-nudges/runtime/idleNudges";
+import {
+  personaAuthoredIdleNudgeSchema,
+  type NaturalNudgeFireRow,
+  type PersonaAuthoredIdleNudge,
+  type PersonaNaturalNudgeConfig,
+} from "@/modules/natural-nudges/db/types";
+import {
+  BUILTIN_IDLE_NUDGES,
+  customIdleNudgeDefinition,
+  listPersonaIdleNudges,
+  type IdleNudgeDefinition,
+} from "@/modules/natural-nudges/runtime/idleNudges";
 import * as planner from "@/modules/natural-nudges/runtime/planner";
 import * as plannerModel from "@/modules/natural-nudges/runtime/model";
+import * as toolsModule from "@/modules/natural-nudges/runtime/tools";
+import * as targetsModule from "@/modules/natural-nudges/runtime/targets";
 import { runIdleNudgeAttempt, type IdleNudgeAttempt } from "@/modules/natural-nudges/runtime/runner";
 import { metricSampleRepository } from "@/utils/db/repositories/MetricSampleRepository";
 import { personaRepository } from "@/utils/db/repositories/PersonaRepository";
 import { whitelistRepository } from "@/utils/db/repositories/WhitelistRepository";
-import { createPersona } from "../../helpers/fixtures";
+import { createCustomIdleNudge, createPersona } from "../../helpers/fixtures";
 import type { TomoriChatInput } from "@/utils/chat/types";
 
 const SERVER_ID = 7;
 const PERSONA_ID = 5;
 const PARTNER_ID = 6;
+const OWNER_NUDGE_ID = "quiet-hour";
 const RECORDED_ID = "1300000000000000200";
 const OLDER_ID = "1300000000000000100";
 const NEWER_ID = "1300000000000000300";
@@ -26,6 +39,10 @@ let chatInputs: TomoriChatInput[] = [];
 let samples: Array<Record<string, unknown>> = [];
 let configSpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadServerConfig">>;
 let historySpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadFireHistory">>;
+let personaConfigSpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadPersonaConfigs">>;
+let customSpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "listCustomIdleNudges">>;
+let scopesSpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadPersonaScopes">>;
+let toolSpy: ReturnType<typeof spyOn<typeof toolsModule, "loadAvailableToolNames">>;
 
 let onChatCall: (() => void | Promise<void>) | null = null;
 
@@ -39,9 +56,35 @@ beforeEach(() => {
     channel_disc_ids: ["fixture-channel"],
     llm_id: 1,
     idle_nudge_frequency: 1,
+    disabled_builtin_idle_nudges: [],
   } as never);
   historySpy = spyOn(naturalNudgeRepository, "loadFireHistory");
   historySpy.mockResolvedValue({ latestIdleNudges: [], recent: [] });
+  personaConfigSpy = spyOn(naturalNudgeRepository, "loadPersonaConfigs");
+  personaConfigSpy.mockResolvedValue(
+    new Map([
+      [
+        PERSONA_ID,
+        {
+          persona_id: PERSONA_ID,
+          talkativeness: 2,
+          interests: [],
+          has_override: true,
+          idle_nudges: [],
+          disabled_idle_nudge_ids: [],
+          idle_nudges_override: false,
+          idle_nudges_inherited: false,
+        },
+      ],
+      [PARTNER_ID, ownerConfig({ persona_id: PARTNER_ID, idle_nudges: [] })],
+    ]),
+  );
+  customSpy = spyOn(naturalNudgeRepository, "listCustomIdleNudges");
+  customSpy.mockResolvedValue([]);
+  scopesSpy = spyOn(naturalNudgeRepository, "loadPersonaScopes");
+  scopesSpy.mockResolvedValue(new Map());
+  toolSpy = spyOn(toolsModule, "loadAvailableToolNames");
+  toolSpy.mockResolvedValue(new Set());
   spies.push(
     spyOn(planner, "planIdleNudge").mockResolvedValue({
       status: "planned",
@@ -58,9 +101,10 @@ beforeEach(() => {
     configSpy,
     spyOn(naturalNudgeRepository, "loadRuntimeState").mockResolvedValue({ stopped_at: null } as never),
     historySpy,
-    spyOn(naturalNudgeRepository, "loadPersonaConfigs").mockResolvedValue(
-      new Map([[PERSONA_ID, { persona_id: PERSONA_ID, talkativeness: 2, interests: [], has_override: true }]]),
-    ),
+    personaConfigSpy,
+    customSpy,
+    scopesSpy,
+    toolSpy,
     spyOn(personaRepository, "loadAllForServer").mockResolvedValue([
       { persona_id: PERSONA_ID },
       { persona_id: PARTNER_ID },
@@ -134,7 +178,14 @@ function attemptWithHistory(latest: () => Promise<Message[]>): {
   return { attempt, sent, deleted };
 }
 
-const messageWithId = (id: string) => ({ id }) as Message;
+const messageWithId = (id: string) =>
+  ({
+    id,
+    createdTimestamp: Date.now(),
+    author: { bot: false },
+    webhookId: null,
+    system: false,
+  }) as Message;
 
 function idleNudgeFire(fireId: number): NaturalNudgeFireRow {
   return {
@@ -150,6 +201,42 @@ function idleNudgeFire(fireId: number): NaturalNudgeFireRow {
     answered: true,
     fired_at: new Date(),
   };
+}
+
+function authoredNudge(overrides: Partial<PersonaAuthoredIdleNudge> = {}): PersonaAuthoredIdleNudge {
+  return personaAuthoredIdleNudgeSchema.parse({
+    id: OWNER_NUDGE_ID,
+    category: "start_topic",
+    title: "Quiet hour",
+    brief: "Ask what everyone is doing later.",
+    agenda_hint: null,
+    prerequisites: [],
+    recommended_tools: [],
+    ...overrides,
+  });
+}
+
+function ownerConfig(overrides: Partial<PersonaNaturalNudgeConfig> = {}): PersonaNaturalNudgeConfig {
+  return {
+    persona_id: PERSONA_ID,
+    talkativeness: 2,
+    interests: [],
+    idle_nudges: [authoredNudge()],
+    disabled_idle_nudge_ids: [],
+    has_override: true,
+    idle_nudges_override: true,
+    idle_nudges_inherited: false,
+    ...overrides,
+  };
+}
+
+function attemptWithOwnerNudge(config = ownerConfig()): { attempt: IdleNudgeAttempt; sent: string[] } {
+  const { attempt, sent } = attemptWithHistory(async () => [messageWithId(OLDER_ID)]);
+  const [entry] = listPersonaIdleNudges(PERSONA_ID, config);
+  if (!entry) throw new Error("owner nudge fixture missing");
+  attempt.idleNudge = entry.definition;
+  personaConfigSpy.mockResolvedValue(new Map([[PERSONA_ID, config]]));
+  return { attempt, sent };
 }
 
 describe("idle nudge anchor", () => {
@@ -239,6 +326,7 @@ describe("daily idle nudge cap", () => {
         channel_disc_ids: ["fixture-channel"],
         llm_id: 1,
         idle_nudge_frequency: level,
+        disabled_builtin_idle_nudges: [],
       } as never);
       const fired = Array.from({ length: cap }, (_, index) => idleNudgeFire(index + 1));
 
@@ -252,6 +340,234 @@ describe("daily idle nudge cap", () => {
       await runIdleNudgeAttempt(allowed);
       expect(samples.at(-1)).toMatchObject({ reason: "admission_run", phase: "c" });
     }
+  });
+});
+
+describe("persona-authored delivery recheck", () => {
+  const ownerKey = `persona:${PERSONA_ID}:${OWNER_NUDGE_ID}`;
+
+  it("sends an unchanged owner definition and records its persona-scoped key", async () => {
+    const recordFire = spyOn(naturalNudgeRepository, "recordIdleNudgeFire").mockResolvedValue(true);
+    spies.push(recordFire);
+    const { attempt, sent } = attemptWithOwnerNudge();
+    onChatCall = async () => {
+      await chatInputs.at(-1)?.onGenerationResult?.({
+        status: "completed",
+        streamResults: [],
+        personaResponses: [
+          { text: "A quiet hour.", personaName: attempt.persona.persona_nickname, personaId: PERSONA_ID },
+        ],
+        firstDeliveredMessageId: OLDER_ID,
+      });
+    };
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("fired");
+    expect(recordFire.mock.calls[0][0].idleNudgeKey).toBe(ownerKey);
+    expect(samples.at(-1)).toMatchObject({ outcome: "fired", idle_nudge_key: "persona" });
+    expect(sent).toEqual([]);
+  });
+
+  it("aborts when the owner removed the definition during planning", async () => {
+    const { attempt } = attemptWithOwnerNudge();
+    personaConfigSpy.mockResolvedValue(new Map([[PERSONA_ID, ownerConfig({ idle_nudges: [] })]]));
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ reason: "idle_nudge_unavailable", phase: "c" });
+    expect(chatInputs).toEqual([]);
+  });
+
+  it("aborts when the owner disabled the definition during planning", async () => {
+    const { attempt } = attemptWithOwnerNudge();
+    personaConfigSpy.mockResolvedValue(
+      new Map([[PERSONA_ID, ownerConfig({ disabled_idle_nudge_ids: [OWNER_NUDGE_ID] })]]),
+    );
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ reason: "idle_nudge_unavailable", phase: "c" });
+    expect(chatInputs).toEqual([]);
+  });
+
+  it("aborts when the authored content changed during planning", async () => {
+    const { attempt } = attemptWithOwnerNudge();
+    personaConfigSpy.mockResolvedValue(
+      new Map([[PERSONA_ID, ownerConfig({ idle_nudges: [authoredNudge({ brief: "A different brief." })] })]]),
+    );
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ reason: "idle_nudge_changed", phase: "c" });
+    expect(chatInputs).toEqual([]);
+  });
+
+  it("aborts when a required tool is no longer available", async () => {
+    const { attempt } = attemptWithOwnerNudge(
+      ownerConfig({ idle_nudges: [authoredNudge({ prerequisites: ["tool:web_search"] })] }),
+    );
+    attempt.availableTools = new Set(["web_search"]);
+    toolSpy.mockResolvedValue(new Set());
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ reason: "tools_unavailable", phase: "c" });
+    expect(chatInputs).toEqual([]);
+  });
+
+  it.each([
+    "removed",
+    "silent",
+    "excluded",
+  ] as const)("rechecks a non-scene second-persona prerequisite when its partner is %s", async (change) => {
+    const config = ownerConfig({ idle_nudges: [authoredNudge({ prerequisites: ["two_personas"] })] });
+    const { attempt, sent } = attemptWithOwnerNudge(config);
+    const recordFire = spyOn(naturalNudgeRepository, "recordIdleNudgeFire").mockResolvedValue(true);
+    spies.push(recordFire);
+    if (change === "removed") {
+      spies.push(spyOn(personaRepository, "loadAllForServer").mockResolvedValue([attempt.persona]));
+    } else {
+      personaConfigSpy.mockResolvedValue(
+        new Map([
+          [PERSONA_ID, config],
+          [PARTNER_ID, ownerConfig({ persona_id: PARTNER_ID, talkativeness: change === "silent" ? 0 : 2 })],
+        ]),
+      );
+      if (change === "excluded") {
+        spies.push(
+          spyOn(whitelistRepository, "isPersonaAllowedByWhitelistStatus").mockImplementation(
+            (_status, personaId) => personaId !== PARTNER_ID,
+          ),
+        );
+      }
+    }
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ reason: "prerequisites_unavailable", phase: "c" });
+    expect(chatInputs).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(recordFire).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "revive_topic",
+    "start_topic",
+  ] as const)("rechecks the hanging conversation for a %s owner nudge", async (category) => {
+    const { attempt, sent } = attemptWithOwnerNudge(
+      ownerConfig({
+        idle_nudges: [
+          authoredNudge({
+            category,
+            prerequisites: category === "start_topic" ? ["hanging_conversation"] : [],
+          }),
+        ],
+      }),
+    );
+    expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ reason: "prerequisites_unavailable", phase: "c" });
+    expect(chatInputs).toEqual([]);
+    expect(sent).toEqual([]);
+  });
+
+  it.each([
+    "recent_memory",
+    "presence_activity",
+  ] as const)("uses fresh target evidence for the %s prerequisite", async (prerequisite) => {
+    const { attempt, sent } = attemptWithOwnerNudge(
+      ownerConfig({
+        idle_nudges: [
+          authoredNudge({
+            prerequisites: [prerequisite],
+          }),
+        ],
+      }),
+    );
+    const target = {
+      userId: 9,
+      userDiscId: "1300000000000000009",
+      displayName: "Mirri",
+      channelIds: ["fixture-channel"],
+      recentMemories: ["An earlier memory."],
+      activity: "Playing a game",
+    };
+    attempt.target = target;
+    attempt.client = { guilds: { cache: new Collection([[attempt.serverDiscId, {}]]) } } as unknown as Client;
+    const refresh = spyOn(targetsModule, "refreshPingUserTarget").mockResolvedValue({
+      ...target,
+      recentMemories: prerequisite === "recent_memory" ? [] : target.recentMemories,
+      activity: prerequisite === "presence_activity" ? null : target.activity,
+    });
+    spies.push(refresh);
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
+    expect(refresh).toHaveBeenCalled();
+    expect(samples.at(-1)).toMatchObject({ reason: "prerequisites_unavailable", phase: "c" });
+    expect(chatInputs).toEqual([]);
+    expect(sent).toEqual([]);
+  });
+
+  it("still delivers when a required hanging conversation and partner remain eligible", async () => {
+    const config = ownerConfig({
+      idle_nudges: [
+        authoredNudge({
+          category: "revive_topic",
+          prerequisites: ["two_personas"],
+        }),
+      ],
+    });
+    const { attempt } = attemptWithOwnerNudge(config);
+    personaConfigSpy.mockResolvedValue(
+      new Map([
+        [PERSONA_ID, config],
+        [PARTNER_ID, ownerConfig({ persona_id: PARTNER_ID })],
+      ]),
+    );
+    const messages = [OLDER_ID, NEWER_ID].map(
+      (id) =>
+        ({
+          id,
+          createdTimestamp: Date.now(),
+          author: { bot: false },
+          webhookId: null,
+          system: false,
+        }) as Message<true>,
+    );
+    spies.push(
+      spyOn(attempt.plannerChannels[0].channel.messages, "fetch").mockResolvedValue(
+        new Collection(messages.map((message) => [message.id, message])),
+      ),
+    );
+
+    await runIdleNudgeAttempt(attempt);
+    expect(chatInputs).toHaveLength(1);
+  });
+
+  it("aborts when a built-in was disabled during planning", async () => {
+    const { attempt } = attemptWithHistory(async () => [messageWithId(OLDER_ID)]);
+    configSpy.mockResolvedValue({
+      idle_nudges_enabled: true,
+      channel_disc_ids: ["fixture-channel"],
+      llm_id: 1,
+      idle_nudge_frequency: 1,
+      disabled_builtin_idle_nudges: [attempt.idleNudge.key],
+    } as never);
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ reason: "idle_nudge_unavailable", phase: "c" });
+    expect(chatInputs).toEqual([]);
+  });
+
+  it("aborts when a server custom was edited or scoped away during planning", async () => {
+    const custom = createCustomIdleNudge({ custom_idle_nudge_id: 9, category: "start_topic" });
+    const { attempt } = attemptWithHistory(async () => [messageWithId(OLDER_ID)]);
+    attempt.idleNudge = customIdleNudgeDefinition(custom);
+    customSpy.mockResolvedValue([{ ...custom, brief: "A different brief." }]);
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ reason: "idle_nudge_changed", phase: "c" });
+    expect(chatInputs).toEqual([]);
+
+    customSpy.mockResolvedValue([custom]);
+    scopesSpy.mockResolvedValue(new Map([[attempt.idleNudge.key, [PARTNER_ID]]]));
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ reason: "idle_nudge_unavailable", phase: "c" });
+    expect(chatInputs).toEqual([]);
   });
 });
 

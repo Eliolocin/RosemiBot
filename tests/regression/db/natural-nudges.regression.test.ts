@@ -1,11 +1,16 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { computePersonaNudgeFingerprint, computePersonaNudgeListFingerprint } from "@/modules/natural-nudges/db/types";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { seedModelsFromCatalog } from "@/db/seed/catalog/modelSeed";
 import { llmModelRepo } from "@/utils/db/repositories";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import { nudgeStudioOperations } from "@/modules/natural-nudges/discord/studioOperations";
 import { NATURAL_NUDGE_FAILURE_STOP_THRESHOLD } from "@/modules/natural-nudges/runtime/tuning";
 import { loadPersonaAgendas } from "@/modules/natural-nudges/runtime/agendas";
-import { defaultServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
+import {
+  defaultServerNaturalNudgeConfig,
+  PERSONA_AUTHORED_IDLE_NUDGE_ID_PATTERN,
+  type PersonaAuthoredIdleNudge,
+} from "@/modules/natural-nudges/db/types";
 import { resolveEffectiveChannelIds } from "@/modules/natural-nudges/runtime/channels";
 import { idleNudgesPerDay, heatWindowStart } from "@/modules/natural-nudges/runtime/meters";
 import { workspaceConfigExportSchema } from "@/types/db/dataExport";
@@ -25,6 +30,17 @@ const PRESET_LINEAGE = 77001;
 const PRESET_NAME = "_rt_nudge_preset";
 const OTHER_SERVER = "_rt_nudge_other";
 const PRESET_INTERESTS = [{ label: "mecha anime", description: "Fiction about giant piloted robots." }];
+const PRESET_IDLE_NUDGES: PersonaAuthoredIdleNudge[] = [
+  {
+    id: "preset_mecha",
+    category: "start_topic",
+    title: "Mecha shelf",
+    brief: "Have {persona} mention a model kit on its shelf.",
+    agenda_hint: null,
+    prerequisites: [],
+    recommended_tools: [],
+  },
+];
 
 describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", () => {
   let refs: FixtureRefs;
@@ -39,9 +55,11 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     await testSql`
       INSERT INTO persona_presets (
         persona_preset_name, persona_preset_desc, preset_language, preset_lineage_id,
-        natural_nudge_interests, natural_nudge_talkativeness, preset_trigger_words
+        natural_nudge_interests, natural_nudge_talkativeness, preset_trigger_words,
+        natural_nudge_idle_nudges
       ) VALUES (
-        ${PRESET_NAME}, 'Preset prompt', 'en-US', ${PRESET_LINEAGE}, ${PRESET_INTERESTS}::jsonb, 3, ARRAY['nudgy']
+        ${PRESET_NAME}, 'Preset prompt', 'en-US', ${PRESET_LINEAGE}, ${PRESET_INTERESTS}::jsonb, 3,
+        ARRAY['nudgy'], ${PRESET_IDLE_NUDGES}::jsonb
       )
     `;
     const [alter] = await testSql`
@@ -67,7 +85,11 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
       persona_id: refs.personaId,
       talkativeness: 2,
       interests: [],
+      idle_nudges: [],
+      disabled_idle_nudge_ids: [],
       has_override: false,
+      idle_nudges_override: false,
+      idle_nudges_inherited: false,
     });
 
     await testSql`
@@ -77,7 +99,10 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     expect((await naturalNudgeRepository.loadPersonaConfigs([refs.personaId])).get(refs.personaId)).toMatchObject({
       talkativeness: 3,
       interests: PRESET_INTERESTS,
+      idle_nudges: PRESET_IDLE_NUDGES,
       has_override: false,
+      idle_nudges_override: false,
+      idle_nudges_inherited: true,
     });
 
     const own = [{ label: "gacha games", description: "Banners, pity, and rare drops." }];
@@ -85,21 +110,404 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
       true,
     );
     const [stored] = await testSql`
-      SELECT jsonb_typeof(interests) AS kind FROM persona_natural_nudge_configs WHERE persona_id = ${refs.personaId}
+      SELECT jsonb_typeof(interests) AS kind, authored_idle_nudges
+      FROM persona_natural_nudge_configs WHERE persona_id = ${refs.personaId}
     `;
     expect(stored.kind).toBe("array");
+    expect(stored.authored_idle_nudges).toBeNull();
     expect((await naturalNudgeRepository.loadPersonaConfigs([refs.personaId])).get(refs.personaId)).toMatchObject({
       talkativeness: 1,
       interests: own,
+      idle_nudges: PRESET_IDLE_NUDGES,
       has_override: true,
+      idle_nudges_override: false,
+      idle_nudges_inherited: true,
     });
 
     await testSql.begin((tx) => naturalNudgeRepository.clearPersonaConfig(tx, refs.personaId));
     expect(await personaRepository.materializeIfPointer(refs.personaId)).toBe(true);
     const [copied] = await testSql`
-      SELECT talkativeness, interests FROM persona_natural_nudge_configs WHERE persona_id = ${refs.personaId}
+      SELECT talkativeness, interests, authored_idle_nudges
+      FROM persona_natural_nudge_configs WHERE persona_id = ${refs.personaId}
     `;
-    expect(copied).toMatchObject({ talkativeness: 3, interests: PRESET_INTERESTS });
+    expect(copied).toMatchObject({
+      talkativeness: 3,
+      interests: PRESET_INTERESTS,
+      authored_idle_nudges: PRESET_IDLE_NUDGES,
+    });
+  });
+
+  describe("persona authored idle nudges", () => {
+    const PRESET_LINEAGE_ID = 77002;
+    const PRESET_LANGUAGE = "en-US";
+    const STARGAZING: PersonaAuthoredIdleNudge = {
+      id: "stargazing",
+      category: "start_topic",
+      title: "Stargazing",
+      brief: "Have {persona} mention a constellation it saw.",
+      agenda_hint: null,
+      prerequisites: [],
+      recommended_tools: [],
+    };
+    const TEA_BREAK: PersonaAuthoredIdleNudge = {
+      id: "tea_break",
+      category: "revive_topic",
+      title: "Tea break",
+      brief: "Have {persona} bring the tea conversation back up.",
+      agenda_hint: "Get someone to share a tea preference",
+      prerequisites: ["hanging_conversation"],
+      recommended_tools: ["interact_with_recent_message"],
+    };
+    const PRESET_LIST = [STARGAZING, TEA_BREAK];
+    const PRESET_INTERESTS_OWNED = [{ label: "stargazing", description: "Constellations and night skies." }];
+    let personaId: number;
+
+    const draft = (title: string) => ({
+      category: "start_topic" as const,
+      title,
+      brief: `Have {persona} ${title.toLowerCase()}.`,
+      agenda_hint: null,
+      prerequisites: [] as string[],
+      recommended_tools: [] as string[],
+    });
+
+    const loadConfig = async () =>
+      (await naturalNudgeRepository.loadPersonaConfigs([personaId])).get(personaId) ?? null;
+
+    beforeAll(async () => {
+      await testSql`DELETE FROM persona_presets WHERE preset_lineage_id = ${PRESET_LINEAGE_ID}`;
+      await testSql`
+        INSERT INTO persona_presets (
+          persona_preset_name, persona_preset_desc, preset_language, preset_lineage_id,
+          natural_nudge_interests, natural_nudge_talkativeness, natural_nudge_idle_nudges
+        ) VALUES (
+          '_rt_owned_nudges_preset', 'Owned nudge preset', ${PRESET_LANGUAGE}, ${PRESET_LINEAGE_ID},
+          ${PRESET_INTERESTS_OWNED}::jsonb, 3, ${PRESET_LIST}::jsonb
+        )
+      `;
+      const [persona] = await testSql`
+        INSERT INTO personas (
+          server_id, persona_nickname, is_alter, is_pointer, preset_lineage_id, preset_language
+        ) VALUES (
+          ${refs.serverId}, '_rt_owned_nudges_persona', true, true, ${PRESET_LINEAGE_ID}, ${PRESET_LANGUAGE}
+        )
+        RETURNING persona_id
+      `;
+      personaId = persona.persona_id;
+    });
+
+    afterAll(async () => {
+      await testSql`DELETE FROM personas WHERE persona_id = ${personaId}`;
+      await testSql`DELETE FROM persona_presets WHERE preset_lineage_id = ${PRESET_LINEAGE_ID}`;
+    });
+
+    beforeEach(async () => {
+      await testSql`DELETE FROM persona_natural_nudge_configs WHERE persona_id = ${personaId}`;
+      await testSql`
+        UPDATE personas SET is_pointer = true, preset_lineage_id = ${PRESET_LINEAGE_ID},
+          preset_language = ${PRESET_LANGUAGE}
+        WHERE persona_id = ${personaId}
+      `;
+      await testSql`
+        UPDATE persona_presets SET natural_nudge_idle_nudges = ${PRESET_LIST}::jsonb,
+          natural_nudge_interests = ${PRESET_INTERESTS_OWNED}::jsonb,
+          natural_nudge_talkativeness = 3
+        WHERE preset_lineage_id = ${PRESET_LINEAGE_ID}
+      `;
+    });
+
+    it("inherits the live preset list, and a toggle-created row keeps inheriting it", async () => {
+      expect(await loadConfig()).toMatchObject({
+        talkativeness: 3,
+        interests: PRESET_INTERESTS_OWNED,
+        idle_nudges: PRESET_LIST,
+        disabled_idle_nudge_ids: [],
+        has_override: false,
+        idle_nudges_override: false,
+        idle_nudges_inherited: true,
+      });
+
+      expect(await naturalNudgeRepository.setPersonaIdleNudgeAvailability(personaId, "stargazing", false)).toBe(
+        "success",
+      );
+      expect(await loadConfig()).toMatchObject({
+        idle_nudges: PRESET_LIST,
+        disabled_idle_nudge_ids: ["stargazing"],
+        has_override: true,
+        idle_nudges_override: false,
+        idle_nudges_inherited: true,
+      });
+      const [stored] = await testSql`
+        SELECT authored_idle_nudges FROM persona_natural_nudge_configs WHERE persona_id = ${personaId}
+      `;
+      expect(stored.authored_idle_nudges).toBeNull();
+
+      const own = [{ label: "baking", description: "Bread, pastry, and ovens." }];
+      expect(await naturalNudgeRepository.savePersonaConfig(personaId, { talkativeness: 1, interests: own })).toBe(
+        true,
+      );
+      expect(await loadConfig()).toMatchObject({
+        talkativeness: 1,
+        interests: own,
+        idle_nudges: PRESET_LIST,
+        disabled_idle_nudge_ids: ["stargazing"],
+        idle_nudges_override: false,
+        idle_nudges_inherited: true,
+      });
+
+      expect(await naturalNudgeRepository.setPersonaIdleNudgeAvailability(personaId, "stargazing", true)).toBe(
+        "success",
+      );
+      expect((await loadConfig())?.disabled_idle_nudge_ids).toEqual([]);
+    });
+
+    it("edits snapshot the effective list, and restore clears only that list", async () => {
+      const own = [{ label: "baking", description: "Bread, pastry, and ovens." }];
+      expect(await naturalNudgeRepository.savePersonaConfig(personaId, { talkativeness: 1, interests: own })).toBe(
+        true,
+      );
+      expect(await naturalNudgeRepository.setPersonaIdleNudgeAvailability(personaId, "stargazing", false)).toBe(
+        "success",
+      );
+      expect(await naturalNudgeRepository.addPersonaIdleNudge(personaId, draft("Lantern walk"))).toBe("success");
+
+      let config = await loadConfig();
+      expect(config?.idle_nudges).toHaveLength(PRESET_LIST.length + 1);
+      expect(config?.idle_nudges.map((nudge) => nudge.id)).toEqual(
+        expect.arrayContaining(PRESET_LIST.map((nudge) => nudge.id)),
+      );
+      const added = config?.idle_nudges.find((nudge) => !PRESET_LIST.some((preset) => preset.id === nudge.id));
+      expect(added).toBeDefined();
+      expect(added?.id).toMatch(PERSONA_AUTHORED_IDLE_NUDGE_ID_PATTERN);
+      expect(config).toMatchObject({ idle_nudges_override: true, idle_nudges_inherited: false });
+
+      expect(
+        await naturalNudgeRepository.updatePersonaIdleNudge(personaId, added?.id ?? "", draft("Lantern walk at dusk")),
+      ).toBe("success");
+      config = await loadConfig();
+      expect(config?.idle_nudges.find((nudge) => nudge.id === added?.id)?.title).toBe("Lantern walk at dusk");
+      expect(await naturalNudgeRepository.updatePersonaIdleNudge(personaId, "missing", draft("Nope"))).toBe("stale");
+
+      expect(await naturalNudgeRepository.setPersonaIdleNudgeAvailability(personaId, added?.id ?? "", false)).toBe(
+        "success",
+      );
+      await testSql`
+        UPDATE persona_presets SET natural_nudge_idle_nudges = ${[STARGAZING]}::jsonb
+        WHERE preset_lineage_id = ${PRESET_LINEAGE_ID}
+      `;
+      expect(
+        await naturalNudgeRepository.restorePersonaIdleNudgeList(
+          personaId,
+          computePersonaNudgeListFingerprint(personaId, config?.idle_nudges ?? []),
+        ),
+      ).toBe("success");
+      config = await loadConfig();
+      expect(config).toMatchObject({
+        talkativeness: 1,
+        interests: own,
+        idle_nudges: [STARGAZING],
+        disabled_idle_nudge_ids: ["stargazing"],
+        idle_nudges_override: false,
+        idle_nudges_inherited: true,
+      });
+      const [restored] = await testSql`
+        SELECT authored_idle_nudges FROM persona_natural_nudge_configs WHERE persona_id = ${personaId}
+      `;
+      expect(restored.authored_idle_nudges).toBeNull();
+      expect(
+        await naturalNudgeRepository.restorePersonaIdleNudgeList(
+          personaId,
+          computePersonaNudgeListFingerprint(personaId, [STARGAZING]),
+        ),
+      ).toBe("unchanged");
+    });
+
+    it("rejects stale removal and restore fingerprints without discarding newer content", async () => {
+      expect(await naturalNudgeRepository.replacePersonaIdleNudges(personaId, PRESET_LIST)).toBe("success");
+      const entryFp = computePersonaNudgeFingerprint(personaId, STARGAZING);
+      const listFp = computePersonaNudgeListFingerprint(personaId, PRESET_LIST);
+      const edited = { ...STARGAZING, ...draft("New constellation") };
+      expect(
+        await naturalNudgeRepository.updatePersonaIdleNudge(personaId, STARGAZING.id, draft("New constellation")),
+      ).toBe("success");
+      expect(await naturalNudgeRepository.setPersonaIdleNudgeAvailability(personaId, STARGAZING.id, false)).toBe(
+        "success",
+      );
+
+      expect(await naturalNudgeRepository.removePersonaIdleNudge(personaId, STARGAZING.id, entryFp)).toBe("stale");
+      expect(await naturalNudgeRepository.restorePersonaIdleNudgeList(personaId, listFp)).toBe("stale");
+      expect(await loadConfig()).toMatchObject({
+        idle_nudges: [edited, TEA_BREAK],
+        disabled_idle_nudge_ids: [STARGAZING.id],
+        idle_nudges_override: true,
+      });
+
+      expect(
+        await naturalNudgeRepository.removePersonaIdleNudge(
+          personaId,
+          STARGAZING.id,
+          computePersonaNudgeFingerprint(personaId, edited),
+        ),
+      ).toBe("success");
+      expect(await loadConfig()).toMatchObject({ idle_nudges: [TEA_BREAK], disabled_idle_nudge_ids: [] });
+      expect(
+        await naturalNudgeRepository.restorePersonaIdleNudgeList(
+          personaId,
+          computePersonaNudgeListFingerprint(personaId, [TEA_BREAK]),
+        ),
+      ).toBe("success");
+      expect(await loadConfig()).toMatchObject({ idle_nudges: PRESET_LIST, idle_nudges_inherited: true });
+      expect(await personaRepository.materializeIfPointer(personaId)).toBe(true);
+      expect(
+        await naturalNudgeRepository.restorePersonaIdleNudgeList(
+          personaId,
+          computePersonaNudgeListFingerprint(personaId, PRESET_LIST),
+        ),
+      ).toBe("stale");
+      expect(await loadConfig()).toMatchObject({ idle_nudges: PRESET_LIST, idle_nudges_override: true });
+    });
+
+    it("stores an explicit empty list and rejects malformed or over-limit definitions", async () => {
+      expect(await naturalNudgeRepository.replacePersonaIdleNudges(personaId, [])).toBe("success");
+      expect(await loadConfig()).toMatchObject({
+        idle_nudges: [],
+        idle_nudges_override: true,
+        idle_nudges_inherited: false,
+      });
+
+      expect(await naturalNudgeRepository.replacePersonaIdleNudges(personaId, [STARGAZING, STARGAZING])).toBe(
+        "invalid",
+      );
+      expect(await naturalNudgeRepository.replacePersonaIdleNudges(personaId, [{ ...STARGAZING, id: "bad/id" }])).toBe(
+        "invalid",
+      );
+      expect(
+        await naturalNudgeRepository.replacePersonaIdleNudges(personaId, [
+          { ...STARGAZING, prerequisites: ["not_a_prerequisite"] },
+        ]),
+      ).toBe("invalid");
+      expect(
+        await naturalNudgeRepository.replacePersonaIdleNudges(personaId, [
+          { ...STARGAZING, recommended_tools: ["not_a_tool"] },
+        ]),
+      ).toBe("invalid");
+
+      expect(await naturalNudgeRepository.addPersonaIdleNudge(personaId, draft("Slug entry"), "lantern-walk")).toBe(
+        "success",
+      );
+      expect(await naturalNudgeRepository.addPersonaIdleNudge(personaId, draft("Duplicate"), "lantern-walk")).toBe(
+        "invalid",
+      );
+      expect((await loadConfig())?.idle_nudges.map((nudge) => nudge.id)).toEqual(["lantern-walk"]);
+
+      const full = Array.from({ length: 20 }, (_, index) => ({ ...STARGAZING, id: `entry_${index}` }));
+      expect(await naturalNudgeRepository.replacePersonaIdleNudges(personaId, full)).toBe("success");
+      expect(await naturalNudgeRepository.addPersonaIdleNudge(personaId, draft("Overflow"))).toBe("limit");
+    });
+
+    it("refuses to overwrite unreadable stored content", async () => {
+      expect(await naturalNudgeRepository.replacePersonaIdleNudges(personaId, [STARGAZING])).toBe("success");
+      await testSql`
+        UPDATE persona_natural_nudge_configs
+        SET authored_idle_nudges = '[{"id":"bad/id","category":"start_topic"}]'::jsonb
+        WHERE persona_id = ${personaId}
+      `;
+      expect((await naturalNudgeRepository.loadPersonaConfigs([personaId])).has(personaId)).toBe(false);
+      expect(await naturalNudgeRepository.addPersonaIdleNudge(personaId, draft("Should not write"))).toBe(
+        "write-failed",
+      );
+      expect(await naturalNudgeRepository.setPersonaIdleNudgeAvailability(personaId, "stargazing", false)).toBe(
+        "write-failed",
+      );
+      const [stored] = await testSql`
+        SELECT authored_idle_nudges FROM persona_natural_nudge_configs WHERE persona_id = ${personaId}
+      `;
+      expect(stored.authored_idle_nudges).toEqual([{ id: "bad/id", category: "start_topic" }]);
+
+      await testSql`
+        UPDATE persona_natural_nudge_configs SET authored_idle_nudges = NULL, disabled_idle_nudge_ids = '[1]'::jsonb
+        WHERE persona_id = ${personaId}
+      `;
+      expect(
+        await naturalNudgeRepository.restorePersonaIdleNudgeList(
+          personaId,
+          computePersonaNudgeListFingerprint(personaId, PRESET_LIST),
+        ),
+      ).toBe("write-failed");
+    });
+
+    it("copies the inherited list when an existing customization row materializes", async () => {
+      const own = [{ label: "baking", description: "Bread, pastry, and ovens." }];
+      expect(await naturalNudgeRepository.savePersonaConfig(personaId, { talkativeness: 1, interests: own })).toBe(
+        true,
+      );
+      expect(await naturalNudgeRepository.setPersonaIdleNudgeAvailability(personaId, "stargazing", false)).toBe(
+        "success",
+      );
+      expect(await personaRepository.materializeIfPointer(personaId)).toBe(true);
+      expect(await loadConfig()).toMatchObject({
+        talkativeness: 1,
+        interests: own,
+        idle_nudges: PRESET_LIST,
+        disabled_idle_nudge_ids: ["stargazing"],
+        idle_nudges_override: true,
+        idle_nudges_inherited: false,
+      });
+    });
+
+    it("keeps a local list through materialization", async () => {
+      expect(await naturalNudgeRepository.addPersonaIdleNudge(personaId, draft("Local only"), "local_only")).toBe(
+        "success",
+      );
+      expect(await personaRepository.materializeIfPointer(personaId)).toBe(true);
+      expect((await loadConfig())?.idle_nudges.map((nudge) => nudge.id)).toEqual([
+        "stargazing",
+        "tea_break",
+        "local_only",
+      ]);
+    });
+
+    it("keeps authored content through a server reset and drops it on re-point and deletion", async () => {
+      expect(await naturalNudgeRepository.addPersonaIdleNudge(personaId, draft("Keep me"), "keep_me")).toBe("success");
+      await resetRepository.resetServerConfiguration(refs.serverId);
+      expect((await loadConfig())?.idle_nudges.map((nudge) => nudge.id)).toEqual([
+        "stargazing",
+        "tea_break",
+        "keep_me",
+      ]);
+
+      const [preset] = await testSql`
+        SELECT * FROM persona_presets WHERE preset_lineage_id = ${PRESET_LINEAGE_ID}
+      `;
+      expect(
+        await personaRepository.applyPresetPointerToPersona({
+          personaId,
+          nickname: "_rt_owned_nudges_persona",
+          preset,
+        }),
+      ).not.toBeNull();
+      expect(await loadConfig()).toMatchObject({
+        idle_nudges: PRESET_LIST,
+        disabled_idle_nudge_ids: [],
+        has_override: false,
+        idle_nudges_override: false,
+        idle_nudges_inherited: true,
+      });
+
+      const [throwaway] = await testSql`
+        INSERT INTO personas (server_id, persona_nickname, is_alter)
+        VALUES (${refs.serverId}, '_rt_owned_nudges_throwaway', true)
+        RETURNING persona_id
+      `;
+      expect(
+        await naturalNudgeRepository.savePersonaConfig(throwaway.persona_id, { talkativeness: 2, interests: [] }),
+      ).toBe(true);
+      expect(await personaRepository.removePersona(throwaway.persona_id)).toBe(true);
+      const [gone] = await testSql`
+        SELECT COUNT(*)::int AS count FROM persona_natural_nudge_configs WHERE persona_id = ${throwaway.persona_id}
+      `;
+      expect(gone.count).toBe(0);
+    });
   });
 
   describe("on by default", () => {

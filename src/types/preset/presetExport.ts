@@ -8,7 +8,9 @@ import { MAX_VOICE_DESIGN_PROMPT_LENGTH } from "@/constants/speech";
 import {
   naturalNudgeInterestsSchema,
   naturalNudgeTalkativenessSchema,
+  personaAuthoredIdleNudgesSchema,
   type NaturalNudgeInterest,
+  type PersonaAuthoredIdleNudge,
 } from "@/modules/natural-nudges/db/types";
 import {
   EMPTY_PERSONA_NAMING_CONFIG,
@@ -91,6 +93,8 @@ export interface PresetExportData {
   /** Natural Nudges topics; absent in exports that predate Natural Nudges. */
   natural_nudge_interests?: NaturalNudgeInterest[];
   natural_nudge_talkativeness?: number;
+  /** Persona-authored idle nudge definitions; absent in exports that predate them. */
+  natural_nudge_idle_nudges?: PersonaAuthoredIdleNudge[];
 }
 
 /**
@@ -183,6 +187,7 @@ export const presetExportDataSchema = z.object({
   is_nsfw: z.boolean().optional(),
   natural_nudge_interests: naturalNudgeInterestsSchema.optional(),
   natural_nudge_talkativeness: naturalNudgeTalkativenessSchema.optional(),
+  natural_nudge_idle_nudges: personaAuthoredIdleNudgesSchema.optional(),
 });
 
 /**

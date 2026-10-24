@@ -22,6 +22,11 @@ import { normalizeTriggerWord } from "@/utils/text/triggerWords";
 import type { RandomTriggerRow } from "@/types/db/schema";
 import type { AddressingStyle } from "@/types/personaNaming";
 import { NOTICE_VERBOSITY_LEVELS, type NoticeVerbosity } from "@/constants/toolNotices";
+import {
+  NATURAL_NUDGE_CATEGORIES,
+  PERSONA_AUTHORED_IDLE_NUDGE_ID_PATTERN,
+  type NaturalNudgeCategory,
+} from "@/modules/natural-nudges/db/types";
 
 export const CONFIG_ROUTE_NAMESPACE = "config";
 export const CONFIG_ROUTE_VERSION = "v2";
@@ -435,6 +440,35 @@ export type ConfigPanelRoute =
   | { action: "nudge-interest-remove-open"; locale: string; personaId: number }
   | { action: "nudge-interest-generate"; locale: string; personaId: number }
   | { action: "nudge-interest-remove-submit"; locale: string; personaId: number; fp: string; nonce: string }
+  | { action: "nudge-persona-select"; locale: string; personaId: number }
+  | {
+      action: "nudge-persona-add-submit";
+      locale: string;
+      personaId: number;
+      category: NaturalNudgeCategory;
+      nonce: string;
+    }
+  | {
+      action: "nudge-persona-edit-submit";
+      locale: string;
+      personaId: number;
+      id: string;
+      fp: string;
+      nonce: string;
+    }
+  | { action: "nudge-persona-availability-select"; locale: string; personaId: number }
+  | {
+      action: "nudge-persona-availability-submit";
+      locale: string;
+      personaId: number;
+      id: string;
+      nonce: string;
+    }
+  | { action: "nudge-persona-remove-open"; locale: string; personaId: number }
+  | { action: "nudge-persona-remove-submit"; locale: string; personaId: number; fp: string; nonce: string }
+  | { action: "nudge-persona-restore-view"; locale: string; personaId: number }
+  | { action: "nudge-persona-restore-confirm"; locale: string; personaId: number; nonce: string }
+  | { action: "nudge-persona-restore-cancel"; locale: string; personaId: number }
   | { action: "nudge-idle-nudges-set"; locale: string; enabled: boolean }
   | { action: "nudge-channels-select"; locale: string }
   | { action: "nudge-provider"; locale: string }
@@ -784,6 +818,19 @@ const personaCategoryField: RouteFieldCodec<"category", "persona"> = {
   decode: (v) => (v === "persona" ? v : null),
 };
 
+const naturalNudgeCategoryField: RouteFieldCodec<"category", NaturalNudgeCategory> = {
+  key: "category",
+  encode: (v) => String(v),
+  decode: (v) =>
+    (NATURAL_NUDGE_CATEGORIES as readonly string[]).includes(v ?? "") ? (v as NaturalNudgeCategory) : null,
+};
+
+const personaIdleNudgeIdField: RouteFieldCodec<"id", string> = {
+  key: "id",
+  encode: (v) => String(v),
+  decode: (v) => (v && PERSONA_AUTHORED_IDLE_NUDGE_ID_PATTERN.test(v) ? v : null),
+};
+
 const pageField: RouteFieldCodec<"page", ConfigPage> = {
   key: "page",
   encode: (v) => String(v),
@@ -960,6 +1007,28 @@ export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
   "nudge-interest-remove-open": { wireToken: "nn-int-rem-open", fields: [personaIdField] },
   "nudge-interest-generate": { wireToken: "nn-int-gen", fields: [personaIdField] },
   "nudge-interest-remove-submit": { wireToken: "nn-int-rem", fields: [personaIdField, fpField, nonceField] },
+  "nudge-persona-select": { wireToken: "nnp-sel", fields: [personaIdField] },
+  "nudge-persona-add-submit": {
+    wireToken: "nnp-add",
+    fields: [personaIdField, naturalNudgeCategoryField, nonceField],
+  },
+  "nudge-persona-edit-submit": {
+    wireToken: "nnpe",
+    fields: [personaIdField, personaIdleNudgeIdField, fpField, nonceField],
+  },
+  "nudge-persona-availability-select": { wireToken: "nnp-av-sel", fields: [personaIdField] },
+  "nudge-persona-availability-submit": {
+    wireToken: "nnp-av",
+    fields: [personaIdField, personaIdleNudgeIdField, nonceField],
+  },
+  "nudge-persona-remove-open": { wireToken: "nnp-rm-open", fields: [personaIdField] },
+  "nudge-persona-remove-submit": {
+    wireToken: "nnp-rm",
+    fields: [personaIdField, fpField, nonceField],
+  },
+  "nudge-persona-restore-view": { wireToken: "nnp-rv", fields: [personaIdField] },
+  "nudge-persona-restore-confirm": { wireToken: "nnp-r", fields: [personaIdField, nonceField] },
+  "nudge-persona-restore-cancel": { wireToken: "nnp-rc", fields: [personaIdField] },
   "nudge-idle-nudges-set": { wireToken: "nn-idle-set", fields: [enabledField] },
   "nudge-channels-select": { wireToken: "nn-channels", fields: [] },
   "nudge-provider": { wireToken: "nn-provider", fields: [] },

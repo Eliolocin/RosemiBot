@@ -19,7 +19,11 @@ import { getAllBaseTriggerWords } from "@/utils/text/localizer";
 import { selectUnclaimedTriggerWords } from "@/utils/text/triggerWords";
 import type { PresetExportData } from "@/types/preset/presetExport";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
-import { DEFAULT_NATURAL_NUDGE_TALKATIVENESS } from "@/modules/natural-nudges/db/types";
+import {
+  DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
+  personaAuthoredIdleNudgesSchema,
+  type PersonaAuthoredIdleNudge,
+} from "@/modules/natural-nudges/db/types";
 
 /**
  * Parameters for {@link importAlterPreset}.
@@ -98,6 +102,15 @@ function isUniqueViolation(error: unknown): boolean {
  */
 export async function importAlterPreset(params: ImportAlterPresetParams): Promise<ImportAlterPresetResult> {
   const { client, guild, serverDiscId, presetData, identityMode, avatarImageBuffer } = params;
+
+  let importedIdleNudges: PersonaAuthoredIdleNudge[] | undefined;
+  if (presetData.natural_nudge_idle_nudges !== undefined) {
+    const parsedIdleNudges = personaAuthoredIdleNudgesSchema.safeParse(presetData.natural_nudge_idle_nudges);
+    if (!parsedIdleNudges.success) {
+      return { ok: false, reason: "config_failed" };
+    }
+    importedIdleNudges = parsedIdleNudges.data;
+  }
 
   const allPersonas = await personaRepository.loadAllForServer(serverDiscId);
   const personaLimits = getMemoryLimits();
@@ -216,6 +229,12 @@ export async function importAlterPreset(params: ImportAlterPresetParams): Promis
         talkativeness: presetData.natural_nudge_talkativeness ?? DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
         interests: presetData.natural_nudge_interests ?? [],
       }))
+    ) {
+      return { ok: false, reason: "config_failed" };
+    }
+    if (
+      importedIdleNudges !== undefined &&
+      (await naturalNudgeRepository.replacePersonaIdleNudges(newTomoriId, importedIdleNudges)) !== "success"
     ) {
       return { ok: false, reason: "config_failed" };
     }

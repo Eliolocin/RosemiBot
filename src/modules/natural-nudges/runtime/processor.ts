@@ -12,8 +12,7 @@ import { NATURAL_NUDGE_CATEGORIES } from "@/modules/natural-nudges/db/types";
 import {
   idleNudgeNeedsTarget,
   isIdleNudgeEligible,
-  isInPersonaScope,
-  listRunnableIdleNudges,
+  listPersonaRunnableIdleNudges,
   type IdleNudgeDefinition,
   type PrerequisiteFacts,
 } from "@/modules/natural-nudges/runtime/idleNudges";
@@ -348,9 +347,13 @@ export class NaturalNudgeProcessor {
       naturalNudgeRepository.listCustomIdleNudges(server.server_id),
       naturalNudgeRepository.loadPersonaScopes(server.server_id),
     ]);
-    const runnable = listRunnableIdleNudges(server.config.disabled_builtin_idle_nudges, customs).filter((idleNudge) =>
-      isInPersonaScope(idleNudge.key, persona.persona_id, scopes),
-    );
+    const runnable = listPersonaRunnableIdleNudges({
+      personaId: persona.persona_id,
+      disabledBuiltIns: server.config.disabled_builtin_idle_nudges,
+      customIdleNudges: customs,
+      scopes,
+      personaConfig,
+    });
     const guild = this.client.guilds.cache.get(server.server_disc_id);
     if (!guild) return "guild_unavailable";
     // The draw reads memories and fetches members, so it waits until some runnable idle nudge could ping.

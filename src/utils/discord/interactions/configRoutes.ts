@@ -66,6 +66,7 @@ import {
   computeDialogueFingerprint,
   computeSpriteFingerprint,
   parseConfigPanelRoute,
+  CONFIG_CATEGORY_ORDER,
   type ConfigCategory,
   type ConfigPage,
   type ConfigPanelRoute,
@@ -240,7 +241,9 @@ import {
   takeRawModalCheckboxGroupValues,
   takeRawModalFileUpload,
   takeRawModalSelectValue,
+  takeRawModalStringSelectValues,
 } from "@/utils/discord/ui/modals";
+import { storeChecklistSnapshot, takeChecklistSnapshot } from "@/utils/discord/interactions/checklistSnapshotStore";
 import { combineModalPromptParts } from "@/utils/text/modalPromptParts";
 import { buildTextPreview, textPreviewFooterKey, textPreviewFooterVars } from "@/utils/text/textPreview";
 import {
@@ -724,7 +727,10 @@ const defaultDependencies: ConfigRouteDependencies = {
   takeFileUpload: takeRawModalFileUpload,
   takeCheckboxValues: takeRawModalCheckboxGroupValues,
   takeSelectValue: takeRawModalSelectValue,
+  takeSelectValues: takeRawModalStringSelectValues,
   takeChannelSelectValues: takeRawModalChannelSelectValues,
+  storeSnapshot: storeChecklistSnapshot,
+  takeSnapshot: takeChecklistSnapshot,
 };
 
 /**
@@ -3775,7 +3781,10 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
       // the submitted values, so reading the route here would make every select a no-op.
       const selectedValue = submittedValue;
 
-      let category: ConfigCategory = "category" in route ? route.category : "persona";
+      let category: ConfigCategory =
+        "category" in route && CONFIG_CATEGORY_ORDER.includes(route.category as ConfigCategory)
+          ? (route.category as ConfigCategory)
+          : "persona";
       let page: ConfigPage = ("page" in route ? route.page : undefined) ?? "general";
       if (route.action === "stm-edit-submit" || route.action === "conditioning-submit") {
         category = "persona";
@@ -3978,7 +3987,10 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
                 nudgesChanged:
                   nudgeConfig?.has_override === true &&
                   (nudgeConfig.talkativeness !== preset.natural_nudge_talkativeness ||
-                    !sameNaturalNudgeInterests(nudgeConfig.interests, preset.natural_nudge_interests)),
+                    !sameNaturalNudgeInterests(nudgeConfig.interests, preset.natural_nudge_interests) ||
+                    (nudgeConfig.idle_nudges_override &&
+                      JSON.stringify(nudgeConfig.idle_nudges) !== JSON.stringify(preset.natural_nudge_idle_nudges)) ||
+                    nudgeConfig.disabled_idle_nudge_ids.length > 0),
               },
             };
           } else {

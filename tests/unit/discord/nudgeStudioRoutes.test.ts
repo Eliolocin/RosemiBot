@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it, mock } from "bun:test";
+import { computePersonaNudgeFingerprint } from "@/modules/natural-nudges/db/types";
+import { beforeAll, describe, expect, it, mock, spyOn } from "bun:test";
 import type { Client } from "discord.js";
 import { CUSTOM_IDLE_NUDGE_LIMIT } from "@/modules/natural-nudges/db/types";
 import {
@@ -8,10 +9,15 @@ import {
   type NudgeStudioRoute,
 } from "@/modules/natural-nudges/discord/studioCatalog";
 import {
+  idleNudgeContentFromDefinition,
+  loadNudgeStudioView,
   nextAvailability,
+  nudgeStudioOperations,
   type NudgeStudioView,
   type StudioWriteResult,
 } from "@/modules/natural-nudges/discord/studioOperations";
+import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
+import { defaultServerNaturalNudgeConfig, type PersonaNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
 import {
   createNudgeStudioInteractionRoute,
   type NudgeStudioRouteDependencies,
@@ -19,7 +25,7 @@ import {
 import { BUILTIN_IDLE_NUDGES, customIdleNudgeDefinition } from "@/modules/natural-nudges/runtime/idleNudges";
 import { parseInteractionRoute, type GlobalRoutableInteraction } from "@/utils/discord/interactions/routeRegistry";
 import { initializeLocalizer } from "@/utils/text/localizer";
-import { createCustomIdleNudge, createPersona } from "../../helpers/fixtures";
+import { createCustomIdleNudge, createLlmRow, createPersona } from "../../helpers/fixtures";
 import { localizedCopy, localizedProse } from "../../helpers/localeCases";
 import { collectTextDisplays } from "../../helpers/panelLimits";
 import { createRouteInteraction } from "../../helpers/routeInteraction";
@@ -27,6 +33,8 @@ import { createRouteInteraction } from "../../helpers/routeInteraction";
 const NONCE = "nonce1234567";
 
 beforeAll(async () => initializeLocalizer());
+
+const PERSONA_KEY = "persona:2:n0";
 
 function view(customCount = 1): NudgeStudioView {
   const custom = createCustomIdleNudge({ custom_idle_nudge_id: 7, category: "ping_user" });
@@ -38,10 +46,30 @@ function view(customCount = 1): NudgeStudioView {
         enabled: true,
       })),
       { definition: customIdleNudgeDefinition(custom), enabled: true, custom, scope: [2] },
+      {
+        definition: {
+          key: PERSONA_KEY,
+          category: "ping_user",
+          title: "Juno check-in",
+          brief: "Have {persona} check on {target}.",
+          agendaHint: null,
+          prerequisites: [],
+          recommendedTools: [],
+          builtIn: false,
+          ownerPersonaId: 2,
+        },
+        enabled: true,
+      },
     ],
     customCount,
-    personaNames: new Map(),
+    personaNames: new Map([[2, "Juno"]]),
   };
+}
+
+function personaEntryFingerprint(): string {
+  const entry = view().entries.find((entry) => entry.definition.ownerPersonaId === 2);
+  if (!entry) throw new Error("Missing persona entry");
+  return computePersonaNudgeFingerprint(2, idleNudgeContentFromDefinition(entry.definition));
 }
 
 function harness(overrides: Partial<NudgeStudioRouteDependencies> = {}) {
@@ -50,10 +78,15 @@ function harness(overrides: Partial<NudgeStudioRouteDependencies> = {}) {
   const operations = {
     addCustomIdleNudge: mock(async () => result.current),
     updateCustomIdleNudge: mock(async () => result.current),
+    updatePersonaIdleNudge: mock(async () => result.current),
+    setPersonaIdleNudgeAvailability: mock(async () => result.current),
+    removePersonaIdleNudges: mock(async () => result.current),
     setIdleNudgeAvailability: mock(async () => result.current),
     removeCustomIdleNudges: mock(async () => result.current),
   };
-  const showModal = mock(async (..._args: Parameters<NudgeStudioRouteDependencies["showModal"]>) => {});
+  const showModal = mock(async (...args: Parameters<NudgeStudioRouteDependencies["showModal"]>) => {
+    await (args[0].showModal as (payload: unknown) => Promise<void>)(args[1]);
+  });
   const recordAction = mock(async () => {});
   const studioView = { current: view() };
   const checkboxValues = new Map<string, string[]>();
@@ -109,7 +142,7 @@ describe("Nudge Studio routes", () => {
     const h = harness();
     await h.dispatch({ ...base, action: "select" }, "string-select", { values: ["add"] });
     expect(h.showModal.mock.calls[0]?.[1].custom_id).toBe(
-      buildNudgeStudioRouteId({ ...base, action: "add-submit", nonce: NONCE }),
+      buildNudgeStudioRouteId({ ...base, action: "add-submit", nonce: NONCE, page: 0 }),
     );
 
     h.studioView.current = view(CUSTOM_IDLE_NUDGE_LIMIT);
@@ -123,9 +156,9 @@ describe("Nudge Studio routes", () => {
 
   it("opens a selected custom idle nudge as its edit modal, and repaints the panel when it vanished", async () => {
     const h = harness();
-    await h.dispatch({ ...base, action: "select" }, "string-select", { values: ["7"] });
+    await h.dispatch({ ...base, action: "select" }, "string-select", { values: ["custom:7"] });
     expect(h.showModal.mock.calls[0]?.[1].custom_id).toBe(
-      buildNudgeStudioRouteId({ ...base, action: "edit-submit", id: 7, nonce: NONCE }),
+      buildNudgeStudioRouteId({ ...base, action: "edit-submit", id: 7, nonce: NONCE, page: 0 }),
     );
 
     const stale = await h.dispatch({ ...base, action: "select" }, "string-select", { values: ["99"] });
@@ -168,6 +201,170 @@ describe("Nudge Studio routes", () => {
     );
   });
 
+  it("opens and submits a persona-owned edit with its owner and fingerprint, without pre-deferring", async () => {
+    const h = harness();
+    const entry = h.studioView.current.entries.find((candidate) => candidate.definition.ownerPersonaId === 2);
+    if (!entry) throw new Error("fixture missing persona entry");
+    const fp = computePersonaNudgeFingerprint(2, idleNudgeContentFromDefinition(entry.definition));
+    const interaction = await h.dispatch({ ...base, action: "select", page: 2 }, "string-select", {
+      values: [PERSONA_KEY],
+    });
+
+    expect(h.showModal.mock.calls[0]?.[1].custom_id).toBe(
+      buildNudgeStudioRouteId({
+        ...base,
+        action: "persona-edit-submit",
+        page: 2,
+        ownerId: 2,
+        idleNudgeId: "n0",
+        fp,
+        nonce: NONCE,
+      }),
+    );
+    expect(interaction.calls[0]?.method).toBe("showModal");
+    expect(interaction.deferred).toBe(false);
+
+    h.selectValues.set(nudgeStudioFieldId("needs", NONCE), ["recent_memory"]);
+    await h.dispatch(
+      { ...base, action: "persona-edit-submit", page: 2, ownerId: 2, idleNudgeId: "n0", fp, nonce: NONCE },
+      "modal",
+      {
+        fields: {
+          [nudgeStudioFieldId("title", NONCE)]: "Gentle nudge",
+          [nudgeStudioFieldId("brief", NONCE)]: "Have {persona} ask {target} about tea.",
+          [nudgeStudioFieldId("agenda", NONCE)]: "",
+        },
+      },
+    );
+    expect(h.operations.updatePersonaIdleNudge).toHaveBeenCalledWith("ping_user", [1, 2], 2, "n0", fp, {
+      title: "Gentle nudge",
+      brief: "Have {persona} ask {target} about tea.",
+      agendaHint: "",
+      prerequisites: ["recent_memory"],
+      recommendedTools: [],
+    });
+    expect(h.recordAction).toHaveBeenCalledWith({
+      action: "nudge-studio.workspace.idle-nudge.edit",
+      serverId: 1,
+      userDiscId: "user-1",
+    });
+  });
+
+  it("refuses a persona edit whose owner is no longer in scope", async () => {
+    const h = harness();
+    const stale = await h.dispatch({ ...base, action: "select" }, "string-select", {
+      values: ["persona:99:n0"],
+    });
+    expect(h.showModal).not.toHaveBeenCalled();
+    expect(collectTextDisplays(stale.edits.at(-1)).join(" ")).toMatch(
+      localizedProse("en-US", "commands.nudge-studio.stale_detail"),
+    );
+  });
+
+  it("opens a persona-owned availability checklist with only the owner", async () => {
+    const h = harness();
+    await h.dispatch({ ...base, action: "toggle-open", page: 0 }, "string-select", { values: [PERSONA_KEY] });
+    const modal = h.showModal.mock.calls[0]?.[1];
+    expect(modal.custom_id).toBe(
+      buildNudgeStudioRouteId({
+        ...base,
+        action: "persona-toggle-submit",
+        page: 0,
+        ownerId: 2,
+        idleNudgeId: "n0",
+        nonce: NONCE,
+      }),
+    );
+    expect(modal.components[0]?.component?.options).toHaveLength(1);
+
+    h.checkboxValues.set(nudgeStudioFieldId("checklist", NONCE, 0), []);
+    await h.dispatch(
+      { ...base, action: "persona-toggle-submit", page: 0, ownerId: 2, idleNudgeId: "n0", nonce: NONCE },
+      "modal",
+    );
+    expect(h.operations.setPersonaIdleNudgeAvailability).toHaveBeenCalledWith("ping_user", [1, 2], 2, "n0", false);
+  });
+
+  it("never sends a persona key through the all-personas availability write", async () => {
+    const h = harness();
+    h.checkboxValues.set(nudgeStudioFieldId("checklist", NONCE, 0), []);
+    await h.dispatch({ ...base, action: "toggle-submit", key: PERSONA_KEY, page: 0, nonce: NONCE }, "modal");
+    expect(h.operations.setIdleNudgeAvailability).not.toHaveBeenCalled();
+  });
+
+  it("removes only the unchecked persona entry and leaves the checked server entry", async () => {
+    const h = harness();
+    await h.dispatch({ ...base, action: "remove-open", page: 0 }, "button");
+    expect(h.snapshots.get(NONCE)).toEqual(["c:7", `p:2:n0:${personaEntryFingerprint()}`]);
+
+    h.checkboxValues.set(nudgeStudioFieldId("checklist", NONCE, 0), ["c:7"]);
+    await h.dispatch({ ...base, action: "remove-submit", nonce: NONCE, page: 0 }, "modal");
+    expect(h.operations.removePersonaIdleNudges).toHaveBeenCalledWith(
+      "ping_user",
+      [1, 2],
+      [
+        {
+          ownerPersonaId: 2,
+          idleNudgeId: "n0",
+          fp: personaEntryFingerprint(),
+        },
+      ],
+      new Set(),
+    );
+    expect(h.operations.removeCustomIdleNudges).toHaveBeenCalledWith(1, "ping_user", [], new Set([7]));
+  });
+
+  it("keeps server entries when an owner removal is stale", async () => {
+    const h = harness();
+    await h.dispatch({ ...base, action: "remove-open", page: 0 }, "button");
+    h.operations.removePersonaIdleNudges.mockResolvedValue("stale");
+    h.checkboxValues.set(nudgeStudioFieldId("checklist", NONCE), []);
+    const interaction = await h.dispatch({ ...base, action: "remove-submit", nonce: NONCE, page: 0 }, "modal");
+    expect(h.operations.removeCustomIdleNudges).not.toHaveBeenCalled();
+    expect(h.recordAction).not.toHaveBeenCalled();
+    expect(collectTextDisplays(interaction.edits.at(-1)).join(" ")).toMatch(
+      localizedProse("en-US", "commands.nudge-studio.stale_detail"),
+    );
+  });
+
+  it("keeps every generated persona route within Discord's custom ID limit", () => {
+    const routes: NudgeStudioRoute[] = [
+      {
+        action: "persona-edit-submit",
+        locale: "es-419",
+        category: "revive_topic",
+        page: 99,
+        ownerId: 2_147_483_647,
+        idleNudgeId: "a".repeat(24),
+        fp: "abcdefgh",
+        nonce: "a".repeat(12),
+      },
+      {
+        action: "persona-toggle-submit",
+        locale: "es-419",
+        category: "revive_topic",
+        page: 99,
+        ownerId: 2_147_483_647,
+        idleNudgeId: "a".repeat(24),
+        nonce: "a".repeat(12),
+      },
+      {
+        action: "toggle-submit",
+        locale: "es-419",
+        category: "revive_topic",
+        key: `custom:${2_147_483_647}`,
+        page: 99,
+        nonce: "a".repeat(32),
+      },
+    ];
+    for (const route of routes) {
+      const customId = buildNudgeStudioRouteId(route);
+      expect(customId.length).toBeLessThanOrEqual(100);
+      const parsed = parseInteractionRoute(customId);
+      expect(parsed && parseNudgeStudioRoute(parsed)).toEqual(route);
+    }
+  });
+
   it("round-trips built-in and custom keys and the page through the toggle route", () => {
     for (const key of ["custom:7", "ping_user.remind_you"]) {
       const route = { ...base, action: "toggle-submit", key, page: 1, nonce: NONCE } as const;
@@ -185,6 +382,18 @@ describe("Nudge Studio routes", () => {
 
     expect(h.operations.removeCustomIdleNudges).toHaveBeenCalledTimes(1);
     expect(h.operations.removeCustomIdleNudges).toHaveBeenCalledWith(1, "ping_user", [7], new Set());
+    expect(h.operations.removePersonaIdleNudges).toHaveBeenCalledWith(
+      "ping_user",
+      [1, 2],
+      [
+        {
+          ownerPersonaId: 2,
+          idleNudgeId: "n0",
+          fp: personaEntryFingerprint(),
+        },
+      ],
+      new Set(),
+    );
     expect(collectTextDisplays(repeated.edits.at(-1)).join(" ")).toMatch(
       localizedProse("en-US", "commands.nudge-studio.stale_detail"),
     );
@@ -246,6 +455,174 @@ describe("Nudge Studio routes", () => {
     expect(collectTextDisplays(interaction.edits.at(-1)).join(" ")).toMatch(
       localizedProse("en-US", "commands.nudge-studio.invalid_detail"),
     );
+  });
+});
+
+describe("Nudge Studio view loading", () => {
+  it("appends persona-owned entries with owner names and owner-sourced blockers", async () => {
+    const custom = createCustomIdleNudge({ custom_idle_nudge_id: 9, category: "ping_user" });
+    const personaConfig: PersonaNaturalNudgeConfig = {
+      persona_id: 2,
+      talkativeness: 1,
+      interests: [],
+      idle_nudges: [
+        {
+          id: "n0",
+          category: "ping_user",
+          title: "Juno check-in",
+          brief: "Have {persona} check on {target}.",
+          agenda_hint: null,
+          prerequisites: ["tool:web_search"],
+          recommended_tools: [],
+        },
+        {
+          id: "n1",
+          category: "ping_user",
+          title: "Juno second",
+          brief: "Have {persona} ask a question.",
+          agenda_hint: null,
+          prerequisites: [],
+          recommended_tools: [],
+        },
+      ],
+      disabled_idle_nudge_ids: ["n1"],
+      has_override: true,
+      idle_nudges_override: true,
+      idle_nudges_inherited: false,
+    };
+    const spies = [
+      spyOn(naturalNudgeRepository, "loadServerConfig").mockResolvedValue(defaultServerNaturalNudgeConfig(1)),
+      spyOn(naturalNudgeRepository, "listCustomIdleNudges").mockResolvedValue([custom]),
+      spyOn(naturalNudgeRepository, "loadPersonaScopes").mockResolvedValue(new Map()),
+      spyOn(naturalNudgeRepository, "loadPersonaConfigs").mockResolvedValue(new Map([[2, personaConfig]])),
+    ];
+    try {
+      const view = await loadNudgeStudioView(1, "ping_user", [
+        createPersona({
+          server_id: 1,
+          persona_id: 2,
+          persona_nickname: "Juno",
+          llm: createLlmRow({ has_tools: false }),
+        }),
+      ]);
+      const owned = view.entries.filter((entry) => entry.definition.ownerPersonaId === 2);
+      expect(owned.map((entry) => entry.definition.key)).toEqual(["persona:2:n0", "persona:2:n1"]);
+      expect(owned[0]?.enabled).toBe(true);
+      expect(owned[0]?.blocker).toEqual({ kind: "tool", tool: "web_search" });
+      expect(owned[1]?.enabled).toBe(false);
+      expect(owned[1]?.blocker).toBeUndefined();
+      expect(view.personaNames.get(2)).toBe("Juno");
+      expect(view.customCount).toBe(1);
+      expect(view.entries.some((entry) => entry.definition.key === "custom:9")).toBe(true);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+});
+
+describe("persona nudge Studio operations", () => {
+  const personaConfig: PersonaNaturalNudgeConfig = {
+    persona_id: 2,
+    talkativeness: 2,
+    interests: [],
+    idle_nudges: [
+      {
+        id: "n0",
+        category: "ping_user",
+        title: "Juno check-in",
+        brief: "Have {persona} check on {target}.",
+        agenda_hint: null,
+        prerequisites: [],
+        recommended_tools: [],
+      },
+    ],
+    disabled_idle_nudge_ids: [],
+    has_override: true,
+    idle_nudges_override: true,
+    idle_nudges_inherited: false,
+  };
+
+  it("checks live membership and the definition fingerprint before editing", async () => {
+    const load = spyOn(naturalNudgeRepository, "loadPersonaConfigs").mockResolvedValue(new Map([[2, personaConfig]]));
+    const update = spyOn(naturalNudgeRepository, "updatePersonaIdleNudge").mockResolvedValue("success");
+    try {
+      const fp = computePersonaNudgeFingerprint(2, {
+        category: "ping_user",
+        title: "Juno check-in",
+        brief: "Have {persona} check on {target}.",
+        agenda_hint: null,
+        prerequisites: [],
+        recommended_tools: [],
+      });
+      const form = {
+        title: "Juno check-in",
+        brief: "Have {persona} check on {target}.",
+        agendaHint: "",
+        prerequisites: [],
+        recommendedTools: [],
+      };
+      await expect(nudgeStudioOperations.updatePersonaIdleNudge("ping_user", [1], 2, "n0", fp, form)).resolves.toBe(
+        "stale",
+      );
+      expect(update).not.toHaveBeenCalled();
+
+      await expect(
+        nudgeStudioOperations.updatePersonaIdleNudge("ping_user", [1, 2], 2, "n0", "abcd1234", form),
+      ).resolves.toBe("stale");
+      expect(update).not.toHaveBeenCalled();
+
+      await expect(nudgeStudioOperations.updatePersonaIdleNudge("ping_user", [1, 2], 2, "n0", fp, form)).resolves.toBe(
+        "success",
+      );
+      expect(update).toHaveBeenCalledWith(2, "n0", expect.objectContaining({ title: "Juno check-in" }));
+    } finally {
+      load.mockRestore();
+      update.mockRestore();
+    }
+  });
+
+  it("writes availability only for a live owner and an existing entry", async () => {
+    const load = spyOn(naturalNudgeRepository, "loadPersonaConfigs").mockResolvedValue(new Map([[2, personaConfig]]));
+    const toggle = spyOn(naturalNudgeRepository, "setPersonaIdleNudgeAvailability").mockResolvedValue("success");
+    try {
+      await expect(
+        nudgeStudioOperations.setPersonaIdleNudgeAvailability("ping_user", [1], 2, "n0", false),
+      ).resolves.toBe("stale");
+      expect(toggle).not.toHaveBeenCalled();
+
+      await expect(
+        nudgeStudioOperations.setPersonaIdleNudgeAvailability("ping_user", [1, 2], 2, "n0", false),
+      ).resolves.toBe("success");
+      expect(toggle).toHaveBeenCalledWith(2, "n0", false);
+    } finally {
+      load.mockRestore();
+      toggle.mockRestore();
+    }
+  });
+
+  it("refuses to remove an owner entry edited after the Studio checklist opened", async () => {
+    const original = personaConfig.idle_nudges[0];
+    if (!original) throw new Error("Missing owner entry");
+    const fp = computePersonaNudgeFingerprint(2, original);
+    const latest = { ...personaConfig, idle_nudges: [{ ...original, brief: "Updated brief." }] };
+    const load = spyOn(naturalNudgeRepository, "loadPersonaConfigs").mockResolvedValue(new Map([[2, latest]]));
+    const remove = spyOn(naturalNudgeRepository, "removePersonaIdleNudge").mockResolvedValue("success");
+    try {
+      const presented = [{ ownerPersonaId: 2, idleNudgeId: original.id, fp }];
+      await expect(
+        nudgeStudioOperations.removePersonaIdleNudges("ping_user", [1, 2], presented, new Set()),
+      ).resolves.toBe("stale");
+      expect(remove).not.toHaveBeenCalled();
+
+      load.mockResolvedValue(new Map([[2, personaConfig]]));
+      await expect(
+        nudgeStudioOperations.removePersonaIdleNudges("ping_user", [1, 2], presented, new Set()),
+      ).resolves.toBe("success");
+      expect(remove).toHaveBeenCalledWith(2, original.id, fp);
+    } finally {
+      load.mockRestore();
+      remove.mockRestore();
+    }
   });
 });
 
