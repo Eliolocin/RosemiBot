@@ -65,6 +65,8 @@ const STATIC_TOOL_PROMPT_MACROS: Record<string, string> = {
   "{image_analysis_tool}": "analyze_image",
   "{image_generation_tool}": "generate_image",
   "{anime_image_generation_tool}": "generate_image_nai",
+  "{tag_search_tool}": "danbooru_search_tags",
+  "{booru_post_search_tool}": "danbooru_search_posts",
   "{voice_message_tool}": "generate_voice_message",
   "{block_user_tool}": "block_user",
   "{unblock_user_tool}": "unblock_user",
@@ -444,6 +446,7 @@ export function createToolPromptMacroResolverForState(
               user_blocking_enabled: tomoriState.config.user_blocking_enabled,
               user_info_updates_enabled: tomoriState.config.user_info_updates_enabled,
               thread_creation_enabled: tomoriState.config.thread_creation_enabled,
+              danbooru_enabled: tomoriState.config.danbooru_enabled,
             },
           }
         : undefined,

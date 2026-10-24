@@ -47,7 +47,7 @@ export type SupporterFundingContext = SupporterFundingBase &
     | { fundingScope: "personal"; sponsorshipId: null; serverId: null; personalUserId: number }
   );
 
-export interface SupporterFundingLoadedState {
+interface SupporterFundingLoadedState {
   sponsorship: SupporterServerSponsorshipRow | null;
   sponsorIdentity: SupporterIdentityRow;
   entitlement: SupporterEntitlementRow;

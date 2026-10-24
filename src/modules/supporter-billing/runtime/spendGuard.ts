@@ -151,7 +151,7 @@ export class SupporterSpendGuard {
 
 export const supporterSpendGuard = new SupporterSpendGuard();
 
-export async function beginSupporterRequest(apiKey: string, path: string, body: Record<string, unknown>) {
+async function beginSupporterRequest(apiKey: string, path: string, body: Record<string, unknown>) {
   return supporterSpendGuard.begin(apiKey, () => estimateSupporterRequestCost(path, body));
 }
 

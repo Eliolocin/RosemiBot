@@ -26,8 +26,8 @@ export interface OAuthStateNonceRepository {
   }): Promise<unknown | null>;
 }
 
-export type OAuthStateValidationFailureReason = "malformed" | "invalid_signature" | "expired";
-export type OAuthStateConsumptionFailureReason = OAuthStateValidationFailureReason | "replay";
+type OAuthStateValidationFailureReason = "malformed" | "invalid_signature" | "expired";
+type OAuthStateConsumptionFailureReason = OAuthStateValidationFailureReason | "replay";
 
 export type OAuthStateValidationResult =
   | {

@@ -118,7 +118,9 @@ e fragmentos ao vivo, uploads, navegação de documentos e remoção:
 
 - Envie arquivos de texto, PDF ou Markdown como conhecimento do servidor. O escopo define se ele é
   vinculado apenas a esta persona (o padrão) ou ao servidor inteiro para que todas as personas possam referenciá-lo.
-- `/learn history`: extrai o histórico do canal em conhecimento pesquisável.
+- `/learn history`: extrai o histórico do canal em conhecimento pesquisável. A opção `learner` escolhe quem
+  aprende: uma persona (deixe em branco para a persona principal), **Automático** (cada persona que falou
+  recebe sua própria cópia) ou **Global** (todas as personas compartilham).
 - Navegue pelos documentos armazenados fragmento por fragmento. Administradores do servidor podem editar fragmentos individuais, alterar
   a quais canais um documento é limitado ou excluir um único fragmento sem remover o documento inteiro.
 - Remova documentos armazenados ou fragmentos individuais diretamente do painel.
@@ -130,7 +132,7 @@ memórias:
 
 - Conversa extrai fatos isolados de chats normais. Ele resolve pronomes e usa timestamps absolutos quando datas ou horários são mencionados ou podem ser inferidos.
 - Roleplay procura cenas, lore, relacionamentos e eventos memoráveis sem tentar preservar cada pequeno detalhe.
-- In-Character extrai memórias do ponto de vista da persona selecionada, usando o prompt, atributos, memórias existentes e documentos relevantes dessa persona como contexto.
+- In-Character precisa de uma persona em `learner`. Extrai memórias do ponto de vista dessa persona, usando o prompt, atributos, memórias existentes e documentos relevantes dessa persona como contexto.
 
 O prompt é exibido antes da importação para que você possa ajustá-lo para o canal ou cena.
 
@@ -186,7 +188,8 @@ uma palavra-chave ou apenas em um canal. Ative com `/config` > Engine > Memory &
   automaticamente. Se uma tag antiga indicava um canal que não existe mais, o item permanece ativo em
   todos os canais e `/memories` informa isso; edite-o e escolha os canais para limitá-lo novamente.
 - Se você usa a base de conhecimento de documentos (RAG), documentos e históricos extraídos podem ser
-  limitados a canais da mesma forma. A opção `channels` em `/learn history` aceita nomes de canais ou menções.
+  limitados a canais da mesma forma. Com `/learn history`, escolha os canais na janela que abre
+  antes de a extração começar.
 
 Em `/help`, escolha `Memória`, depois `Marcação de Memória`, para o mesmo resumo no Discord.
 

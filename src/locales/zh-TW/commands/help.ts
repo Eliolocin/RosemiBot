@@ -79,6 +79,8 @@ export default {
         video_generation_description: `短片，可指定第一幀`,
         speech_generation: `語音生成`,
         speech_generation_description: `把文字變成語音訊息`,
+        art_search: `插圖搜尋`,
+        art_search_description: `從 Danbooru 發送現有的動漫插圖`,
         behavior_tuning: `行為調整`,
         behavior_tuning_description: `模型、擬人化、指令與工具`,
         server_wide_settings: `伺服器層級設定`,
@@ -455,6 +457,11 @@ export default {
         title: `語音生成`,
         description:
           "{generateVoice} 會用目前人格的聲音把文字變成 語音訊息。\n\n必須先註冊語音端點，託管或自架皆可：請看 設定底下的 **自訂端點（進階）**。\n> 每個人格都可以有不同聲音。聲音來自 {configPersonaVoice}。",
+      },
+      art_search: {
+        title: `插圖搜尋`,
+        description:
+          "{booruSearch} 會根據一個或兩個標籤隨機發送 4 張評價良好的 Danbooru 圖片。輸入時會顯示建議，暱稱或錯字也會轉換成真實標籤。\n> 存疑與限制級內容僅在年齡限制頻道中顯示。\n\n你也可以直接請我展示一些插圖；{configTools} 中的 **Danbooru 搜尋** 開關用於控制該功能。如需限制誰能執行此指令，請使用伺服器設定 > 整合。",
       },
     },
     tons_of_tweakability: {

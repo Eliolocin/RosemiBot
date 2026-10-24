@@ -22,7 +22,7 @@ import {
 
 type EnvRecord = Readonly<Record<string, string | undefined>>;
 
-export type PatreonWebhookHandlingStatus =
+type PatreonWebhookHandlingStatus =
   | "processed"
   | "duplicate"
   | "ignored"
@@ -36,7 +36,7 @@ export interface PatreonWebhookHandlingResponse {
   body: string;
 }
 
-export interface PatreonWebhookRepositories {
+interface PatreonWebhookRepositories {
   identityRepository: Pick<SupporterIdentityRepository, "loadByPatreonMemberId" | "loadByPatreonUserIdAndCampaignId">;
   webhookEventRepository: Pick<SupporterWebhookEventRepository, "markProcessed" | "recordReceiptForProcessing">;
 }

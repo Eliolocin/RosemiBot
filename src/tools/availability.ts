@@ -56,6 +56,7 @@ export async function refreshToolExecutionContext(context: ToolContext): Promise
           user_blocking_enabled: current.config.user_blocking_enabled,
           user_info_updates_enabled: current.config.user_info_updates_enabled,
           thread_creation_enabled: current.config.thread_creation_enabled,
+          danbooru_enabled: current.config.danbooru_enabled,
         },
       },
     };

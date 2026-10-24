@@ -879,7 +879,7 @@ export class SupporterUsageStatisticsRepository {
   }
 }
 
-export class SupporterCapabilityMarkerRepository {
+class SupporterCapabilityMarkerRepository {
   public constructor(private readonly client: SQL = defaultSql) {}
 
   /** @returns The server's Discord ID, or null when the server has no model configuration row. */

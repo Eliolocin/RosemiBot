@@ -97,6 +97,45 @@ describe("deliberate tool mode", () => {
     expect(failures).toEqual([]);
   });
 
+  it("admits the Danbooru post reader for a Danbooru post link only", () => {
+    const cases: Array<[string, boolean]> = [
+      ["what are the tags on https://danbooru.donmai.us/posts/11218685?q=ryza", true],
+      ["danbooru.donmai.us/posts/11218685", true],
+      ["https://safebooru.donmai.us/posts/11218685", false],
+      ["https://danbooru.donmai.us.evil.com/posts/1", false],
+      ["https://danbooru.donmai.us/wiki_pages/ryza", false],
+    ];
+
+    const failures = cases.flatMap(([prompt, expected]) =>
+      getDeliberateToolAllowedNames(prompt).includes("danbooru_get_post") === expected ? [] : [prompt],
+    );
+    expect(failures).toEqual([]);
+  });
+
+  it("admits the Danbooru tag lookup with image requests and the art search for existing art", () => {
+    const cases: Array<[string, { tags: boolean; posts: boolean }]> = [
+      ["draw a picture of my OC in Ryza's outfit", { tags: true, posts: false }],
+      ["can you generate an image of Juno", { tags: true, posts: false }],
+      ["show me art of Ryza", { tags: true, posts: true }],
+      ["send pics of hatsune miku", { tags: true, posts: true }],
+      ["search danbooru for reisalin stout", { tags: true, posts: true }],
+      ["show me the art you made earlier", { tags: false, posts: false }],
+      ["what's the weather like", { tags: false, posts: false }],
+    ];
+
+    const failures = cases.flatMap(([prompt, expected]) => {
+      const allowed = getDeliberateToolAllowedNames(prompt);
+      const actual = {
+        tags: allowed.includes("danbooru_search_tags"),
+        posts: allowed.includes("danbooru_search_posts"),
+      };
+      return actual.tags === expected.tags && actual.posts === expected.posts
+        ? []
+        : [`${prompt}: ${JSON.stringify(actual)}`];
+    });
+    expect(failures).toEqual([]);
+  });
+
   it("ignores obsolete stored sticker triggers", () => {
     expect(getDeliberateToolAllowedNames("hello", { sticker: ["^"] })).not.toContain("select_sticker_for_response");
   });

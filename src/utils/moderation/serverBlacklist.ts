@@ -19,6 +19,7 @@ const BLACKLIST_GATED_COMMAND_PREFIXES: readonly string[] = [
   "punish",
   "impersonate",
   "generate",
+  "booru",
   "compact",
   "learn",
   "conditioning",

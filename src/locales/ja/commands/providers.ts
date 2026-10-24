@@ -153,7 +153,7 @@ export default {
       video: `provider/video-model-v2`,
       speech: `provider/speech-model-v2`,
       transcription: `provider/transcription-model-v2`,
-      decision: `typesafe/jev-1.13`,
+      decision: `perplexity/pplx-decider-flash-v1.2`,
     },
     decision_input_limit_description: `このモデルに必要な入力トークン上限。文書に記載されている上限（512以上）を使用してください。`,
     decision_action_label: `登録アクション`,

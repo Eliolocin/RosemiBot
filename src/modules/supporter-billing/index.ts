@@ -20,8 +20,8 @@ import { initializePatreonRoutes, type PatreonRouteInitializer } from "@/modules
 
 type EnvRecord = Readonly<Record<string, string | undefined>>;
 
-export type SupporterBillingSchemaInitializer = (client: SQL) => Promise<SupporterBillingSchemaInitializationResult>;
-export type SupporterBillingReconcileJobStarter = (context: {
+type SupporterBillingSchemaInitializer = (client: SQL) => Promise<SupporterBillingSchemaInitializationResult>;
+type SupporterBillingReconcileJobStarter = (context: {
   config: SupporterBillingConfig;
   env?: EnvRecord;
 }) => PatreonReconcileJobHandle;

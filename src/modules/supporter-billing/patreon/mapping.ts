@@ -198,7 +198,7 @@ function findTierConfigMatch(
   )[0];
 }
 
-export function resolvePatreonUsagePeriodDates(
+function resolvePatreonUsagePeriodDates(
   membershipResource: PatreonResource,
   now: Date,
   fallbackHours: number,

@@ -33,6 +33,7 @@ const EXPECTED_CAPABILITY_PAGE_BY_VALUE = {
   managemessage: "available-tools",
   threadcreation: "available-tools",
   imagegen: "available-tools",
+  danbooru: "available-tools",
   videogen: "available-tools",
   voicemessage: "available-tools",
   userblocking: "available-tools",

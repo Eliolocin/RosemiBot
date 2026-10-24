@@ -20,6 +20,7 @@ import config from "./commands/config";
 import server from "./commands/server";
 import personal from "./commands/personal";
 import generate from "./commands/generate";
+import booru from "./commands/booru";
 import stats from "./commands/stats";
 import setup from "./commands/setup";
 import compact from "./commands/compact";
@@ -81,6 +82,7 @@ export default {
     ...server,
     ...personal,
     ...generate,
+    ...booru,
     ...stats,
     ...setup,
     ...compact,

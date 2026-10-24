@@ -23,7 +23,7 @@ import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/ty
 import type { ResolvedCredentials } from "@/utils/provider/credentialResolver";
 import type { MemberKeyMetadata } from "@/modules/supporter-billing/openrouter/management";
 
-export const FIXTURE_RENEWAL_AT = new Date("2026-11-01T00:00:00Z");
+const FIXTURE_RENEWAL_AT = new Date("2026-11-01T00:00:00Z");
 
 interface FundingOverrides {
   credentialSource?: "supporter";

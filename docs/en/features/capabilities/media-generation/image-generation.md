@@ -43,6 +43,17 @@ Every tag source can be edited in place with a pre-filled modal:
   apply when the backend supports negative prompts. Submitting an empty box resets to the
   built-in defaults.
 
+## Tag Lookup
+<!-- anchor: tag-lookup -->
+
+With **Danbooru Search** on (`/config` > Plugins > Available Tools), she can look up a
+character's exact tag and outfit before drawing, so "my OC in Ryza's outfit" gets Ryza's
+clothes on your OC. See [Danbooru Tag Lookup](/features/capabilities/tools-and-extensions/#danbooru-tag-lookup).
+
+She looks tags up more reliably with the `Default + Image Generation Expert` system prompt
+preset (`/config` > Behavior > General Behavior), which also tells her how to order anime tags
+and when to write prose instead. `/generate image` in Auto mode can look tags up too.
+
 ## Setup
 
 1. Configure an image model with `/config` > Models > Switch Models.

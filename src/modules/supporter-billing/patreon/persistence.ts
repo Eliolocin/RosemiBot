@@ -25,12 +25,12 @@ import {
   type MemberKeyProvider,
 } from "@/modules/supporter-billing/openrouter/management";
 
-export interface PatreonSupporterPersistenceRepositories {
+interface PatreonSupporterPersistenceRepositories {
   identityRepository: Pick<SupporterIdentityRepository, "upsertIdentity">;
   entitlementRepository: Pick<SupporterEntitlementRepository, "loadByIdentityId" | "upsertSnapshot">;
 }
 
-export interface PatreonMemberStatePersistenceRepositories {
+interface PatreonMemberStatePersistenceRepositories {
   identityRepository: Pick<SupporterIdentityRepository, "updatePatreonSnapshot">;
   entitlementRepository: Pick<SupporterEntitlementRepository, "loadByIdentityId" | "upsertSnapshot">;
 }

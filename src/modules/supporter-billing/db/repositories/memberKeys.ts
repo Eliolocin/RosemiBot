@@ -11,7 +11,7 @@ import { SupporterUsageStatisticsRepository } from "@/modules/supporter-billing/
 const MEMBER_KEY_LOCK_ID = 1_176_514_635;
 const DETACHED_ACCOUNTING_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 const dateSchema = z.coerce.date().nullable();
-export const memberKeySchema = z.object({
+const memberKeySchema = z.object({
   member_key_id: z.number().int().positive(),
   patreon_member_id: z.string().min(1),
   patreon_user_id: z.string().min(1).nullable(),

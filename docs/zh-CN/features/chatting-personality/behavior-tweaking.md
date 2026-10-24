@@ -75,7 +75,7 @@ aiGenerated: true
 系统提示位于人格上方并塑造整体行为：
 
 - `/config` > `行为` > `常规行为`：设置自定义系统指令（最多16,000个字符）。
-- `/config` > `行为` > `常规行为`：从预设系统提示中选择。
+- `/config` > `行为` > `常规行为`：从系统提示词预设集中选择。`Default + Image Generation Expert` 会在默认提示词基础上增加关于准确动漫标签与角色服装的指导（参见 [标签查询](/features/capabilities/media-generation/image-generation/#tag-lookup)）。
 - `/config` > `行为` > `常规行为`：重置为默认值。确认会显示之前的提示，因此如果意外清除，你可以恢复它。
 
 当 [SillyTavern预设](/zh-CN/features/integrations/sillytavern-support/) 处于活动状态时，内置回退系统提示将被替换，但仍会发送你在此处设置的自定义提示。

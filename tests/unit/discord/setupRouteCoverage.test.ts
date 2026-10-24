@@ -108,7 +108,7 @@ function createDraft(overrides: Partial<SetupDraftRecord> = {}): SetupDraftRecor
 
 const CATALOGS: SetupSettingsCatalogs = {
   personas: [{ id: 7, name: "Lighthouse", description: "A steady, watchful companion." }],
-  prompts: [{ name: "Tomori Default", description: "The standard reply style." }],
+  prompts: [{ name: "Tomori Default", displayName: "Tomori Default", description: "The standard reply style." }],
   promptTexts: new Map([["Tomori Default", "You are Tomori."]]),
 };
 

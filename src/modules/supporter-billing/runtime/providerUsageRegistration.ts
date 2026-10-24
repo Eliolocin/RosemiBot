@@ -9,11 +9,11 @@ import {
   type ProviderUsageReport,
 } from "@/utils/provider/providerUsage";
 
-export function recordSupporterProviderUsage(context: ProviderUsageContext, report: ProviderUsageReport): void {
+function recordSupporterProviderUsage(context: ProviderUsageContext, report: ProviderUsageReport): void {
   recordSupporterUsage(context.supporterFunding, report);
 }
 
-export function translateSupporterProviderDenial(
+function translateSupporterProviderDenial(
   error: unknown,
   context: ProviderUsageContext,
 ): ProviderRequestDeniedError | null {

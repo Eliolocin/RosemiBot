@@ -11,7 +11,15 @@ sidebar:
 
 Todos os comandos de barra (slash commands) atualmente registrados pela TomoriBot, gerados a partir dos mesmos construtores de comando e descrições em português usados para o registro no Discord (descrições ainda não traduzidas aparecem em inglês).
 
-Grupos de comandos de nível superior: **42**. Comandos de barra executáveis: **89**.
+Grupos de comandos de nível superior: **43**. Comandos de barra executáveis: **90**.
+
+## `/booru`
+
+Encontrar arte de anime existente
+
+| Comando | Resumo |
+|---|---|
+| `/booru search` | Enviar 4 imagens aleatórias bem avaliadas do Danbooru para uma ou duas tags |
 
 ## `/comment`
 

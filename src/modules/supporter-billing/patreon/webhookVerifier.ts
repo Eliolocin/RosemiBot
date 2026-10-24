@@ -14,7 +14,7 @@ export type PatreonWebhookVerificationResult =
 const PATREON_SIGNATURE_HEADER = "x-patreon-signature";
 const HEX_MD5_LENGTH = 32;
 
-export function getPatreonHeaderValue(headers: PatreonWebhookHeaders, headerName: string): string | null {
+function getPatreonHeaderValue(headers: PatreonWebhookHeaders, headerName: string): string | null {
   const headerNameLower = headerName.toLowerCase();
   const directValue = headers[headerName] ?? headers[headerNameLower];
   const value =

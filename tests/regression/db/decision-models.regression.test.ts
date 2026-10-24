@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import { decisionSections } from "@/db/seed/catalog/models";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { callDecisionsForProvider } from "@/providers/utils/providerFeatureExecutors";
 import { registerCustomEndpoint } from "@/utils/provider/customEndpointService";
@@ -111,8 +112,10 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Decision model persistence", () => {
     ).toBe(true);
     expect(await llmModelRepo.loadDecisionModelByProviderAndCodename("openrouter", "fixture-decision")).toBeNull();
     const seeds = personal.filter((model) => !model.is_scoped_registration);
-    expect(seeds.some((model) => model.codename === "typesafe/jev-1.13" && model.input_token_limit === 64000)).toBe(
-      true,
+    const catalogDefault = decisionSections.flatMap((section) => section.rows).find((row) => row.isDefault);
+    if (!catalogDefault) throw new Error("Missing default Decision model in the catalog");
+    expect(seeds.find((model) => model.codename === catalogDefault.codename)?.input_token_limit).toBe(
+      catalogDefault.inputTokenLimit,
     );
     expect(seeds.every((model) => model.provider === "openrouter")).toBe(true);
   });

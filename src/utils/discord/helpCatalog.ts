@@ -374,6 +374,19 @@ const featurePages: readonly HelpPageDefinition[] = [
           configPersonaVoice: configPage(locale, "commands.help.breadcrumbs.persona.voice"),
         }),
       },
+      {
+        id: "art-search",
+        labelKey: "commands.help.dashboard.subsections.art_search",
+        pickerDescriptionKey: "commands.help.dashboard.subsections.art_search_description",
+        titleKey: "commands.help.media_generation.art_search.title",
+        descriptionKey: "commands.help.media_generation.art_search.description",
+        docsPath: DOCS_PATHS.TOOLS_EXTENSIONS,
+        sections: [],
+        variables: (locale) => ({
+          booruSearch: mention("booru", "search"),
+          configTools: configPage(locale, "commands.help.breadcrumbs.plugins.available-tools"),
+        }),
+      },
     ],
   },
   {

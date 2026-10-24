@@ -1,0 +1,11 @@
+{
+  "success": false,
+  "error": "PostQuery::TagLimitError",
+  "message": "You cannot search for more than 2 tags at a time.",
+  "backtrace": [
+    "app/logical/post_query.rb:321:in 'PostQuery::ValidationMethods#validate_tag_limit!'",
+    "app/logical/post_sets/post.rb:109:in 'PostSets::Post#posts'",
+    "app/controllers/posts_controller.rb:21:in 'PostsController#index'",
+    "app/logical/rack_server_timing.rb:19:in 'RackServerTiming#call'"
+  ]
+}

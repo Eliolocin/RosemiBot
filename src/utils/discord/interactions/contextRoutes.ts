@@ -94,7 +94,6 @@ export const contextInteractionRoute: GlobalInteractionRoute = {
       guildId: guild.id,
       user: interaction.user,
       locale,
-      toolsRequested: format === "json",
       includeRerunHints: false,
       editReply: (options) => interaction.editReply(options),
     });

@@ -1,4 +1,4 @@
-import type { AutocompleteInteraction, Client } from "discord.js";
+import type { ApplicationCommandOptionChoiceData, AutocompleteInteraction, Client } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import { userRepository } from "@/utils/db/repositories";
 import { getCachedWhitelistStatus } from "@/utils/cache/channelWhitelistCache";
@@ -38,11 +38,14 @@ function rankPersonasByNickname<T extends { persona_nickname?: string | null }>(
 /**
  * Answers a persona autocomplete with every persona in the workspace that passes `include`, ranked
  * by nickname match, ignoring channel whitelists and spotlights.
+ *
+ * @param leadingChoices - Non-persona entries listed first while their name matches the typed text
  */
 export async function respondWithPersonaChoices(
   interaction: AutocompleteInteraction,
   serverDiscId: string | undefined,
   include: (persona: TomoriState) => boolean = () => true,
+  leadingChoices: readonly ApplicationCommandOptionChoiceData<string>[] = [],
 ): Promise<void> {
   let responded = false;
   try {
@@ -55,13 +58,17 @@ export async function respondWithPersonaChoices(
     const personas = (await getCachedAllPersonas(serverDiscId)).filter(include);
     const focusedValue = (interaction.options.getFocused() || "").toLowerCase();
     const filtered = rankPersonasByNickname(personas, focusedValue);
+    const leading = leadingChoices.filter((choice) => choice.name.toLowerCase().includes(focusedValue));
 
     responded = true;
     await interaction.respond(
-      filtered.slice(0, 25).map((p) => ({
-        name: safeSelectOptionText(p.persona_nickname ?? "Unknown Persona", 100),
-        value: String(p.persona_id),
-      })),
+      [
+        ...leading,
+        ...filtered.map((p) => ({
+          name: safeSelectOptionText(p.persona_nickname ?? "Unknown Persona", 100),
+          value: String(p.persona_id),
+        })),
+      ].slice(0, 25),
     );
   } catch {
     if (!responded) {

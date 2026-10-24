@@ -152,7 +152,7 @@ export default {
       video: `provider/video-model-v2`,
       speech: `provider/speech-model-v2`,
       transcription: `provider/transcription-model-v2`,
-      decision: `typesafe/jev-1.13`,
+      decision: `perplexity/pplx-decider-flash-v1.2`,
     },
     decision_input_limit_description: `此模型所需的输入词元上限。请使用文档中记载的上限，至少 512。`,
     decision_action_label: `注册操作`,

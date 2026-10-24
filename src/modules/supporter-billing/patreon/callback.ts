@@ -25,7 +25,7 @@ import { localizer } from "@/utils/text/localizer";
 
 type EnvRecord = Readonly<Record<string, string | undefined>>;
 
-export type PatreonOAuthCallbackStatus =
+type PatreonOAuthCallbackStatus =
   | "success"
   | "authorization_denied"
   | "missing_code"

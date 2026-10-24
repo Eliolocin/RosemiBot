@@ -29,6 +29,13 @@ Cada fonte de tag pode ser editada no local com um modal pré-preenchido:
 - **`/personal config`**: suas próprias tags de aparência, aplicadas sempre que uma geração de imagem fizer referência a você. Acompanha você em todos os servidores (consulte [Personalização](/pt-BR/features/knowledge/personalization/)).
 - **`/config` > `Modelos` > `Padrões de Geração de Imagem`**: use `Editar Positivas` e `Editar Negativas` para definir tags padrão adicionadas ou excluídas de cada geração. Tags negativas só se aplicam quando o back-end oferece suporte a prompts negativos. O envio de uma caixa vazia redefine os padrões integrados.
 
+## Busca de Tags
+<!-- anchor: tag-lookup -->
+
+Com a **Busca no Danbooru** ativada (`/config` > Plugins > Ferramentas Disponíveis), ela pode consultar a tag exata e o traje de um personagem antes de desenhar, para que "minha OC com o traje da Ryza" vista a roupa da Ryza na sua OC. Consulte [Busca de Tags no Danbooru](/features/capabilities/tools-and-extensions/#danbooru-tag-lookup).
+
+Ela busca tags de forma mais confiável com a predefinição de prompt do sistema `Default + Image Generation Expert` (`/config` > Comportamento > Comportamento Geral), que também a orienta sobre como ordenar as tags de anime e quando escrever em prosa. O `/generate image` no modo Auto também pode buscar tags.
+
 ## Configuração
 
 1. Configure um modelo de imagem com `/config` > `Modelos` > Switch Models.

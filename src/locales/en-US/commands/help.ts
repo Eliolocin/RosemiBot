@@ -79,6 +79,8 @@ export default {
         video_generation_description: `Short clips, with an optional first frame`,
         speech_generation: `Speech Generation`,
         speech_generation_description: `Turn text into a voice message`,
+        art_search: `Art Search`,
+        art_search_description: `Post existing anime art from Danbooru`,
         behavior_tuning: `Behavior Tuning`,
         behavior_tuning_description: `Model, humanizer, instructions, and tools`,
         server_wide_settings: `Server-wide Settings`,
@@ -458,6 +460,11 @@ Enter \`{project_id}::{location}\` using {configSetup} or {configApikeySet}
         title: `Speech Generation`,
         description:
           "{generateVoice} turns text into a voice message in the current persona's voice.\n\nA speech endpoint has to be registered first, hosted or self-hosted: see **Custom Endpoints (Advanced)** under Setup.\n> Each persona can sound different. The voice comes from {configPersonaVoice}.",
+      },
+      art_search: {
+        title: `Art Search`,
+        description:
+          "{booruSearch} posts 4 random well-rated Danbooru images for one or two tags. Suggestions appear as you type, and a nickname or typo turns into the real tag.\n> Questionable and explicit results only show in age-restricted channels.\n\nYou can also just ask me to show you some art; the **Danbooru Search** switch in {configTools} controls that. To limit who can run the command, use Server Settings > Integrations.",
       },
     },
     tons_of_tweakability: {

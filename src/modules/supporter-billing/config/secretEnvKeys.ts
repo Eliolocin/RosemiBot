@@ -19,5 +19,3 @@ export const SUPPORTER_SECRET_ENV_KEYS = [
   "TOMORI_SUPPORTER_REVOKE_SELECT_TIMEOUT_MS",
   "TOMORI_SUPPORTER_REVOKE_CONFIRM_TIMEOUT_MS",
 ] as const;
-
-export type SupporterSecretEnvKey = (typeof SUPPORTER_SECRET_ENV_KEYS)[number];

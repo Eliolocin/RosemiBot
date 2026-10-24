@@ -239,7 +239,7 @@ Los tiempos de reutilización de comandos ahora usan un único multiplicador, `C
 | `STAT_FLUSH_MAX_BUFFER` | `1000` |
 | `STM_FRESH_INJECTION_DEPTH` | `2` |
 | `STM_FRESH_WINDOW_MINUTES` | `60` |
-| `STM_MAX_CATEGORIES` | `5` |
+| `STM_MAX_CATEGORIES` | ninguno (no tenía efecto) |
 | `STREAM_ABANDONED_SETTLE_TIMEOUT_MS` | `5000` |
 | `ST_PRESET_CACHE_TTL_MINUTES` | `10` |
 | `SYSPROMPT_SHOW_MAX_PREVIEW` | `3800` |

@@ -1,0 +1,1617 @@
+{
+  "query": "reisalin_stout rating:g,s",
+  "post_count": 2844,
+  "tag": {
+    "id": 1524970,
+    "name": "reisalin_stout",
+    "post_count": 4637,
+    "category": 4,
+    "created_at": "2019-05-28T07:16:41.221-04:00",
+    "updated_at": "2019-09-02T09:33:48.478-04:00",
+    "is_deprecated": false,
+    "words": ["reisalin", "stout"]
+  },
+  "related_tags": [
+    {
+      "tag": {
+        "id": 499324,
+        "name": "red_shorts",
+        "post_count": 23347,
+        "category": 0,
+        "created_at": "2013-02-24T15:34:48.433-05:00",
+        "updated_at": "2019-09-01T04:39:49.692-04:00",
+        "is_deprecated": false,
+        "words": ["red", "shorts"]
+      },
+      "cosine_similarity": 0.2193028192651137,
+      "jaccard_similarity": 0.07322570070480248,
+      "overlap_coefficient": 0.6283403656821378,
+      "frequency": 0.6283403656821378
+    },
+    {
+      "tag": {
+        "id": 1242767,
+        "name": "star_necklace",
+        "post_count": 4816,
+        "category": 0,
+        "created_at": "2013-08-04T14:48:01.461-04:00",
+        "updated_at": "2019-09-01T11:29:21.234-04:00",
+        "is_deprecated": false,
+        "words": ["star", "necklace"]
+      },
+      "cosine_similarity": 0.2142718662245018,
+      "jaccard_similarity": 0.11547983107616135,
+      "overlap_coefficient": 0.2788326300984529,
+      "frequency": 0.2788326300984529
+    },
+    {
+      "tag": {
+        "id": 1526569,
+        "name": "reisalin_stout_(cosplay)",
+        "post_count": 97,
+        "category": 0,
+        "created_at": "2019-06-11T23:08:14.553-04:00",
+        "updated_at": "2019-09-02T12:15:50.884-04:00",
+        "is_deprecated": false,
+        "words": ["reisalin", "stout", "cosplay"]
+      },
+      "cosine_similarity": 0.16944913003711495,
+      "jaccard_similarity": 0.03120617110799439,
+      "overlap_coefficient": 0.9175257731958762,
+      "frequency": 0.03129395218002813
+    },
+    {
+      "tag": {
+        "id": 720344,
+        "name": "round-bottom_flask",
+        "post_count": 2710,
+        "category": 0,
+        "created_at": "2013-02-27T21:59:14.081-05:00",
+        "updated_at": "2019-09-01T11:29:33.119-04:00",
+        "is_deprecated": false,
+        "words": ["round", "bottom", "flask"]
+      },
+      "cosine_similarity": 0.11778725782303306,
+      "jaccard_similarity": 0.06255978572795103,
+      "overlap_coefficient": 0.12066420664206642,
+      "frequency": 0.1149789029535865
+    },
+    {
+      "tag": {
+        "id": 617246,
+        "name": "leather_belt",
+        "post_count": 3943,
+        "category": 0,
+        "created_at": "2013-02-25T02:56:39.698-05:00",
+        "updated_at": "2019-09-01T18:29:28.017-04:00",
+        "is_deprecated": false,
+        "words": ["leather", "belt"]
+      },
+      "cosine_similarity": 0.11705982821564662,
+      "jaccard_similarity": 0.06129788897576231,
+      "overlap_coefficient": 0.13783403656821377,
+      "frequency": 0.13783403656821377
+    },
+    {
+      "tag": {
+        "id": 593696,
+        "name": "leather_gloves",
+        "post_count": 3218,
+        "category": 0,
+        "created_at": "2013-02-27T09:09:44.023-05:00",
+        "updated_at": "2019-09-02T01:11:31.295-04:00",
+        "is_deprecated": false,
+        "words": ["leather", "gloves"]
+      },
+      "cosine_similarity": 0.1024716850727498,
+      "jaccard_similarity": 0.05389429763560501,
+      "overlap_coefficient": 0.1090014064697609,
+      "frequency": 0.1090014064697609
+    },
+    {
+      "tag": {
+        "id": 390347,
+        "name": "flask",
+        "post_count": 6202,
+        "category": 0,
+        "created_at": "2013-02-28T15:17:09.756-05:00",
+        "updated_at": "2019-09-01T11:56:39.628-04:00",
+        "is_deprecated": false,
+        "words": ["flask"]
+      },
+      "cosine_similarity": 0.10143291864681296,
+      "jaccard_similarity": 0.0494199535962877,
+      "overlap_coefficient": 0.14978902953586498,
+      "frequency": 0.14978902953586498
+    },
+    {
+      "tag": {
+        "id": 1258484,
+        "name": "key_necklace",
+        "post_count": 4171,
+        "category": 0,
+        "created_at": "2013-12-20T18:10:41.866-05:00",
+        "updated_at": "2019-09-01T23:35:41.077-04:00",
+        "is_deprecated": false,
+        "words": ["key", "necklace"]
+      },
+      "cosine_similarity": 0.07984501427595508,
+      "jaccard_similarity": 0.04080118694362018,
+      "overlap_coefficient": 0.09669479606188466,
+      "frequency": 0.09669479606188466
+    },
+    {
+      "tag": {
+        "id": 553870,
+        "name": "sleeveless_jacket",
+        "post_count": 15526,
+        "category": 0,
+        "created_at": "2013-02-27T01:49:52.173-05:00",
+        "updated_at": "2019-09-01T09:38:28.327-04:00",
+        "is_deprecated": false,
+        "words": ["sleeveless", "jacket"]
+      },
+      "cosine_similarity": 0.07449216764720497,
+      "jaccard_similarity": 0.027692307692307697,
+      "overlap_coefficient": 0.17405063291139242,
+      "frequency": 0.17405063291139242
+    },
+    {
+      "tag": {
+        "id": 538901,
+        "name": "white_hat",
+        "post_count": 179077,
+        "category": 0,
+        "created_at": "2013-02-28T16:00:57.383-05:00",
+        "updated_at": "2019-09-01T12:11:41.581-04:00",
+        "is_deprecated": false,
+        "words": ["white", "hat"]
+      },
+      "cosine_similarity": 0.07444312239033674,
+      "jaccard_similarity": 0.009320853745818099,
+      "overlap_coefficient": 0.5907172995780591,
+      "frequency": 0.5907172995780591
+    },
+    {
+      "tag": {
+        "id": 442279,
+        "name": "vial",
+        "post_count": 4217,
+        "category": 0,
+        "created_at": "2013-02-28T02:20:43.012-05:00",
+        "updated_at": "2019-09-01T15:58:26.888-04:00",
+        "is_deprecated": false,
+        "words": ["vial"]
+      },
+      "cosine_similarity": 0.07161188149106401,
+      "jaccard_similarity": 0.036400998091883165,
+      "overlap_coefficient": 0.08720112517580872,
+      "frequency": 0.08720112517580872
+    },
+    {
+      "tag": {
+        "id": 394174,
+        "name": "short_shorts",
+        "post_count": 197231,
+        "category": 0,
+        "created_at": "2013-02-28T15:16:20.547-05:00",
+        "updated_at": "2019-08-26T06:07:26.145-04:00",
+        "is_deprecated": false,
+        "words": ["short", "shorts"]
+      },
+      "cosine_similarity": 0.07127218248894618,
+      "jaccard_similarity": 0.008508622036726197,
+      "overlap_coefficient": 0.5935302390998594,
+      "frequency": 0.5935302390998594
+    },
+    {
+      "tag": {
+        "id": 1331283,
+        "name": "bridal_legwear",
+        "post_count": 1953,
+        "category": 0,
+        "created_at": "2015-09-06T02:02:52.578-04:00",
+        "updated_at": "2019-09-02T13:09:38.780-04:00",
+        "is_deprecated": false,
+        "words": ["bridal", "legwear"]
+      },
+      "cosine_similarity": 0.0704355922007059,
+      "jaccard_similarity": 0.03584538976462967,
+      "overlap_coefficient": 0.08499743983614952,
+      "frequency": 0.058368495077355836
+    },
+    {
+      "tag": {
+        "id": 486611,
+        "name": "brown_gloves",
+        "post_count": 67741,
+        "category": 0,
+        "created_at": "2013-02-27T17:01:02.435-05:00",
+        "updated_at": "2019-08-29T22:53:25.504-04:00",
+        "is_deprecated": false,
+        "words": ["brown", "gloves"]
+      },
+      "cosine_similarity": 0.06534565105456147,
+      "jaccard_similarity": 0.013017021154453343,
+      "overlap_coefficient": 0.3189170182841069,
+      "frequency": 0.3189170182841069
+    },
+    {
+      "tag": {
+        "id": 479374,
+        "name": "single_glove",
+        "post_count": 59980,
+        "category": 0,
+        "created_at": "2013-02-27T20:29:04.194-05:00",
+        "updated_at": "2019-08-30T17:43:19.255-04:00",
+        "is_deprecated": false,
+        "words": ["single", "glove"]
+      },
+      "cosine_similarity": 0.061788194928287576,
+      "jaccard_similarity": 0.013012561071964137,
+      "overlap_coefficient": 0.28375527426160335,
+      "frequency": 0.28375527426160335
+    },
+    {
+      "tag": {
+        "id": 653480,
+        "name": "yellow_jacket",
+        "post_count": 41603,
+        "category": 0,
+        "created_at": "2013-02-24T14:08:27.096-05:00",
+        "updated_at": "2019-09-01T08:08:59.437-04:00",
+        "is_deprecated": false,
+        "words": ["yellow", "jacket"]
+      },
+      "cosine_similarity": 0.055251917105551517,
+      "jaccard_similarity": 0.013707065638826803,
+      "overlap_coefficient": 0.21132208157524612,
+      "frequency": 0.21132208157524612
+    },
+    {
+      "tag": {
+        "id": 258190,
+        "name": "beret",
+        "post_count": 153825,
+        "category": 0,
+        "created_at": "2013-02-27T19:50:46.563-05:00",
+        "updated_at": "2019-08-31T05:59:38.976-04:00",
+        "is_deprecated": false,
+        "words": ["beret"]
+      },
+      "cosine_similarity": 0.05498187959690456,
+      "jaccard_similarity": 0.007394594872652216,
+      "overlap_coefficient": 0.40436005625879046,
+      "frequency": 0.40436005625879046
+    },
+    {
+      "tag": {
+        "id": 1349485,
+        "name": "clover_hair_ornament",
+        "post_count": 6505,
+        "category": 0,
+        "created_at": "2016-01-22T02:29:20.686-05:00",
+        "updated_at": "2019-09-02T07:00:50.357-04:00",
+        "is_deprecated": false,
+        "words": ["clover", "hair", "ornament"]
+      },
+      "cosine_similarity": 0.05347359587199155,
+      "jaccard_similarity": 0.02522206382278759,
+      "overlap_coefficient": 0.0808720112517581,
+      "frequency": 0.0808720112517581
+    },
+    {
+      "tag": {
+        "id": 2313883,
+        "name": "open-toe_boots",
+        "post_count": 4864,
+        "category": 0,
+        "created_at": "2025-02-17T15:05:58.239-05:00",
+        "updated_at": "2025-02-17T15:05:58.239-05:00",
+        "is_deprecated": false,
+        "words": ["open", "toe", "boots"]
+      },
+      "cosine_similarity": 0.05162257329196673,
+      "jaccard_similarity": 0.025545502927088872,
+      "overlap_coefficient": 0.06751054852320675,
+      "frequency": 0.06751054852320675
+    },
+    {
+      "tag": {
+        "id": 4068,
+        "name": "necklace",
+        "post_count": 387047,
+        "category": 0,
+        "created_at": "2013-02-27T19:01:55.314-05:00",
+        "updated_at": "2019-08-26T13:16:58.482-04:00",
+        "is_deprecated": false,
+        "words": ["necklace"]
+      },
+      "cosine_similarity": 0.047351041536779874,
+      "jaccard_similarity": 0.004045632468067573,
+      "overlap_coefficient": 0.5523909985935302,
+      "frequency": 0.5523909985935302
+    },
+    {
+      "tag": {
+        "id": 1315939,
+        "name": "brown_belt",
+        "post_count": 50111,
+        "category": 0,
+        "created_at": "2015-04-30T19:31:55.182-04:00",
+        "updated_at": "2019-09-02T03:35:42.807-04:00",
+        "is_deprecated": false,
+        "words": ["brown", "belt"]
+      },
+      "cosine_similarity": 0.04707658866426213,
+      "jaccard_similarity": 0.010726623785620216,
+      "overlap_coefficient": 0.19760900140646975,
+      "frequency": 0.19760900140646975
+    },
+    {
+      "tag": {
+        "id": 185924,
+        "name": "key",
+        "post_count": 22043,
+        "category": 0,
+        "created_at": "2013-02-28T17:40:51.774-05:00",
+        "updated_at": "2019-09-02T09:59:21.334-04:00",
+        "is_deprecated": false,
+        "words": ["key"]
+      },
+      "cosine_similarity": 0.04496243796405364,
+      "jaccard_similarity": 0.014512249806367453,
+      "overlap_coefficient": 0.12517580872011252,
+      "frequency": 0.12517580872011252
+    },
+    {
+      "tag": {
+        "id": 5857,
+        "name": "leather",
+        "post_count": 21683,
+        "category": 0,
+        "created_at": "2013-02-28T02:23:52.185-05:00",
+        "updated_at": "2019-08-31T12:11:56.163-04:00",
+        "is_deprecated": false,
+        "words": ["leather"]
+      },
+      "cosine_similarity": 0.04495212476273477,
+      "jaccard_similarity": 0.014602465458757343,
+      "overlap_coefficient": 0.12412095639943742,
+      "frequency": 0.12412095639943742
+    },
+    {
+      "tag": {
+        "id": 3985,
+        "name": "shorts",
+        "post_count": 675993,
+        "category": 0,
+        "created_at": "2013-02-28T13:29:26.676-05:00",
+        "updated_at": "2019-08-21T15:02:58.563-04:00",
+        "is_deprecated": false,
+        "words": ["shorts"]
+      },
+      "cosine_similarity": 0.04470130231568416,
+      "jaccard_similarity": 0.002895651647197349,
+      "overlap_coefficient": 0.6891701828410689,
+      "frequency": 0.6891701828410689
+    },
+    {
+      "tag": {
+        "id": 1408089,
+        "name": "star_choker",
+        "post_count": 4696,
+        "category": 0,
+        "created_at": "2017-02-25T13:06:56.599-05:00",
+        "updated_at": "2019-08-31T22:54:20.194-04:00",
+        "is_deprecated": false,
+        "words": ["star", "choker"]
+      },
+      "cosine_similarity": 0.0407715693441877,
+      "jaccard_similarity": 0.020159653632796645,
+      "overlap_coefficient": 0.05239099859353024,
+      "frequency": 0.05239099859353024
+    },
+    {
+      "tag": {
+        "id": 474819,
+        "name": "brown_thighhighs",
+        "post_count": 35042,
+        "category": 0,
+        "created_at": "2013-02-28T03:47:42.919-05:00",
+        "updated_at": "2019-09-01T06:16:50.690-04:00",
+        "is_deprecated": false,
+        "words": ["brown", "thighhighs"]
+      },
+      "cosine_similarity": 0.04006828485866952,
+      "jaccard_similarity": 0.010670650376140426,
+      "overlap_coefficient": 0.14064697609001406,
+      "frequency": 0.14064697609001406
+    },
+    {
+      "tag": {
+        "id": 16578,
+        "name": "brown_eyes",
+        "post_count": 1107957,
+        "category": 0,
+        "created_at": "2013-02-28T00:04:39.051-05:00",
+        "updated_at": "2019-12-26T19:20:41.519-05:00",
+        "is_deprecated": false,
+        "words": ["brown", "eyes"]
+      },
+      "cosine_similarity": 0.0395660148520142,
+      "jaccard_similarity": 0.002003463890743113,
+      "overlap_coefficient": 0.7809423347398031,
+      "frequency": 0.7809423347398031
+    },
+    {
+      "tag": {
+        "id": 2646,
+        "name": "hairclip",
+        "post_count": 523418,
+        "category": 0,
+        "created_at": "2013-02-28T17:08:02.125-05:00",
+        "updated_at": "2019-08-30T09:17:24.570-04:00",
+        "is_deprecated": false,
+        "words": ["hairclip"]
+      },
+      "cosine_similarity": 0.03654517028018915,
+      "jaccard_similarity": 0.0026864716148552355,
+      "overlap_coefficient": 0.4957805907172996,
+      "frequency": 0.4957805907172996
+    },
+    {
+      "tag": {
+        "id": 656624,
+        "name": "star_(symbol)",
+        "post_count": 367570,
+        "category": 0,
+        "created_at": "2013-02-27T18:45:51.288-05:00",
+        "updated_at": "2019-07-25T21:35:03.014-04:00",
+        "is_deprecated": false,
+        "words": ["star", "symbol"]
+      },
+      "cosine_similarity": 0.03637244506040332,
+      "jaccard_similarity": 0.003184937628304779,
+      "overlap_coefficient": 0.41350210970464135,
+      "frequency": 0.41350210970464135
+    },
+    {
+      "tag": {
+        "id": 1326581,
+        "name": "brown_vest",
+        "post_count": 16434,
+        "category": 0,
+        "created_at": "2015-07-26T22:59:48.570-04:00",
+        "updated_at": "2019-09-01T09:05:26.757-04:00",
+        "is_deprecated": false,
+        "words": ["brown", "vest"]
+      },
+      "cosine_similarity": 0.03525174380801665,
+      "jaccard_similarity": 0.012659557703419656,
+      "overlap_coefficient": 0.08473980309423347,
+      "frequency": 0.08473980309423347
+    },
+    {
+      "tag": {
+        "id": 3870,
+        "name": "thighs",
+        "post_count": 853808,
+        "category": 0,
+        "created_at": "2013-02-28T02:42:27.653-05:00",
+        "updated_at": "2019-08-24T05:33:11.008-04:00",
+        "is_deprecated": false,
+        "words": ["thighs"]
+      },
+      "cosine_similarity": 0.03421469432828265,
+      "jaccard_similarity": 0.0019720082436026696,
+      "overlap_coefficient": 0.5928270042194093,
+      "frequency": 0.5928270042194093
+    },
+    {
+      "tag": {
+        "id": 16867,
+        "name": "brown_hair",
+        "post_count": 2129677,
+        "category": 0,
+        "created_at": "2013-02-28T11:57:00.300-05:00",
+        "updated_at": "2019-08-13T13:26:00.346-04:00",
+        "is_deprecated": false,
+        "words": ["brown", "hair"]
+      },
+      "cosine_similarity": 0.03276562934582738,
+      "jaccard_similarity": 0.001197199398489463,
+      "overlap_coefficient": 0.8966244725738397,
+      "frequency": 0.8966244725738397
+    },
+    {
+      "tag": {
+        "id": 535186,
+        "name": "breast_pocket",
+        "post_count": 33016,
+        "category": 0,
+        "created_at": "2017-12-31T16:23:53.589-05:00",
+        "updated_at": "2019-08-31T18:13:40.096-04:00",
+        "is_deprecated": false,
+        "words": ["breast", "pocket"]
+      },
+      "cosine_similarity": 0.032301100095877215,
+      "jaccard_similarity": 0.008805243761780178,
+      "overlap_coefficient": 0.11005625879043601,
+      "frequency": 0.11005625879043601
+    },
+    {
+      "tag": {
+        "id": 1754298,
+        "name": "multiple_bracelets",
+        "post_count": 5992,
+        "category": 0,
+        "created_at": "2022-02-08T23:25:50.984-05:00",
+        "updated_at": "2022-02-08T23:25:50.984-05:00",
+        "is_deprecated": false,
+        "words": ["multiple", "bracelets"]
+      },
+      "cosine_similarity": 0.03124920779445739,
+      "jaccard_similarity": 0.014815665556448834,
+      "overlap_coefficient": 0.04535864978902954,
+      "frequency": 0.04535864978902954
+    },
+    {
+      "tag": {
+        "id": 1183480,
+        "name": "blue_belt",
+        "post_count": 11258,
+        "category": 0,
+        "created_at": "2013-03-26T08:58:38.970-04:00",
+        "updated_at": "2019-09-01T21:29:45.452-04:00",
+        "is_deprecated": false,
+        "words": ["blue", "belt"]
+      },
+      "cosine_similarity": 0.03110407207640942,
+      "jaccard_similarity": 0.01263823064770932,
+      "overlap_coefficient": 0.06188466947960619,
+      "frequency": 0.06188466947960619
+    },
+    {
+      "tag": {
+        "id": 2373,
+        "name": "hat",
+        "post_count": 1731322,
+        "category": 0,
+        "created_at": "2013-02-28T00:25:14.390-05:00",
+        "updated_at": "2019-08-13T18:26:27.637-04:00",
+        "is_deprecated": false,
+        "words": ["hat"]
+      },
+      "cosine_similarity": 0.030910485907569195,
+      "jaccard_similarity": 0.0012523116379531834,
+      "overlap_coefficient": 0.7626582278481012,
+      "frequency": 0.7626582278481012
+    },
+    {
+      "tag": {
+        "id": 1607670,
+        "name": "no_coat",
+        "post_count": 762,
+        "category": 0,
+        "created_at": "2020-11-13T02:27:15.550-05:00",
+        "updated_at": "2020-11-13T02:27:15.550-05:00",
+        "is_deprecated": false,
+        "words": ["no", "coat"]
+      },
+      "cosine_similarity": 0.02920963794345147,
+      "jaccard_similarity": 0.012068481616615213,
+      "overlap_coefficient": 0.05643044619422572,
+      "frequency": 0.015119549929676512
+    },
+    {
+      "tag": {
+        "id": 9864,
+        "name": "belt",
+        "post_count": 525371,
+        "category": 0,
+        "created_at": "2013-02-28T17:31:54.985-05:00",
+        "updated_at": "2019-09-01T14:33:48.715-04:00",
+        "is_deprecated": false,
+        "words": ["belt"]
+      },
+      "cosine_similarity": 0.0285867269698316,
+      "jaccard_similarity": 0.0020963366280283054,
+      "overlap_coefficient": 0.38853727144866385,
+      "frequency": 0.38853727144866385
+    },
+    {
+      "tag": {
+        "id": 572821,
+        "name": "star_earrings",
+        "post_count": 21203,
+        "category": 0,
+        "created_at": "2013-02-27T08:13:51.645-05:00",
+        "updated_at": "2019-09-01T07:25:05.567-04:00",
+        "is_deprecated": false,
+        "words": ["star", "earrings"]
+      },
+      "cosine_similarity": 0.028459601913848002,
+      "jaccard_similarity": 0.009275581297741963,
+      "overlap_coefficient": 0.07770745428973277,
+      "frequency": 0.07770745428973277
+    },
+    {
+      "tag": {
+        "id": 419309,
+        "name": "thick_thighs",
+        "post_count": 164862,
+        "category": 0,
+        "created_at": "2013-02-28T14:16:07.049-05:00",
+        "updated_at": "2019-08-31T18:01:46.904-04:00",
+        "is_deprecated": false,
+        "words": ["thick", "thighs"]
+      },
+      "cosine_similarity": 0.028171161730811727,
+      "jaccard_similarity": 0.003650596064537751,
+      "overlap_coefficient": 0.21448663853727146,
+      "frequency": 0.21448663853727146
+    },
+    {
+      "tag": {
+        "id": 16613,
+        "name": "jewelry",
+        "post_count": 1639060,
+        "category": 0,
+        "created_at": "2013-02-28T16:39:04.583-05:00",
+        "updated_at": "2019-12-26T19:19:27.214-05:00",
+        "is_deprecated": false,
+        "words": ["jewelry"]
+      },
+      "cosine_similarity": 0.027623548468817042,
+      "jaccard_similarity": 0.0011499873781873127,
+      "overlap_coefficient": 0.6631504922644164,
+      "frequency": 0.6631504922644164
+    },
+    {
+      "tag": {
+        "id": 724196,
+        "name": "thigh_pouch",
+        "post_count": 7105,
+        "category": 0,
+        "created_at": "2013-02-28T00:18:45.329-05:00",
+        "updated_at": "2019-09-01T09:23:45.063-04:00",
+        "is_deprecated": false,
+        "words": ["thigh", "pouch"]
+      },
+      "cosine_similarity": 0.027585118122963808,
+      "jaccard_similarity": 0.01262086513994911,
+      "overlap_coefficient": 0.04360056258790436,
+      "frequency": 0.04360056258790436
+    },
+    {
+      "tag": {
+        "id": 1835605,
+        "name": "halter_shirt",
+        "post_count": 4539,
+        "category": 0,
+        "created_at": "2022-08-25T07:06:06.507-04:00",
+        "updated_at": "2022-08-25T07:06:06.507-04:00",
+        "is_deprecated": false,
+        "words": ["halter", "shirt"]
+      },
+      "cosine_similarity": 0.0272760318121402,
+      "jaccard_similarity": 0.013452299245024023,
+      "overlap_coefficient": 0.034458509142053444,
+      "frequency": 0.034458509142053444
+    },
+    {
+      "tag": {
+        "id": 395198,
+        "name": "test_tube",
+        "post_count": 8932,
+        "category": 0,
+        "created_at": "2013-02-28T10:43:40.810-05:00",
+        "updated_at": "2019-09-01T21:57:04.274-04:00",
+        "is_deprecated": false,
+        "words": ["test", "tube"]
+      },
+      "cosine_similarity": 0.026785182838946067,
+      "jaccard_similarity": 0.011596941843484237,
+      "overlap_coefficient": 0.04746835443037975,
+      "frequency": 0.04746835443037975
+    },
+    {
+      "tag": {
+        "id": 1254029,
+        "name": "multiple_necklaces",
+        "post_count": 3225,
+        "category": 0,
+        "created_at": "2013-11-13T08:40:19.119-05:00",
+        "updated_at": "2019-08-31T18:04:01.958-04:00",
+        "is_deprecated": false,
+        "words": ["multiple", "necklaces"]
+      },
+      "cosine_similarity": 0.025755201213724096,
+      "jaccard_similarity": 0.013019529293940912,
+      "overlap_coefficient": 0.027426160337552744,
+      "frequency": 0.027426160337552744
+    },
+    {
+      "tag": {
+        "id": 380350,
+        "name": "hair_ornament",
+        "post_count": 2116780,
+        "category": 0,
+        "created_at": "2013-02-28T01:29:27.160-05:00",
+        "updated_at": "2019-12-26T19:20:11.191-05:00",
+        "is_deprecated": false,
+        "words": ["hair", "ornament"]
+      },
+      "cosine_similarity": 0.02475852153628566,
+      "jaccard_similarity": 0.0009071149259362621,
+      "overlap_coefficient": 0.6754571026722925,
+      "frequency": 0.6754571026722925
+    },
+    {
+      "tag": {
+        "id": 508016,
+        "name": "pocket",
+        "post_count": 62501,
+        "category": 0,
+        "created_at": "2013-02-28T13:00:26.202-05:00",
+        "updated_at": "2019-08-30T04:17:37.917-04:00",
+        "is_deprecated": false,
+        "words": ["pocket"]
+      },
+      "cosine_similarity": 0.02362665690694729,
+      "jaccard_similarity": 0.004843918191603875,
+      "overlap_coefficient": 0.11075949367088607,
+      "frequency": 0.11075949367088607
+    },
+    {
+      "tag": {
+        "id": 1882,
+        "name": "thighhighs",
+        "post_count": 1559017,
+        "category": 0,
+        "created_at": "2013-02-27T22:31:50.295-05:00",
+        "updated_at": "2019-12-26T19:19:39.467-05:00",
+        "is_deprecated": false,
+        "words": ["thighhighs"]
+      },
+      "cosine_similarity": 0.023518062286727235,
+      "jaccard_similarity": 0.0010036563598550276,
+      "overlap_coefficient": 0.5506329113924051,
+      "frequency": 0.5506329113924051
+    },
+    {
+      "tag": {
+        "id": 1398817,
+        "name": "thighhighs_under_boots",
+        "post_count": 9555,
+        "category": 0,
+        "created_at": "2016-12-24T00:03:56.307-05:00",
+        "updated_at": "2019-09-02T11:40:44.957-04:00",
+        "is_deprecated": false,
+        "words": ["thighhighs", "under", "boots"]
+      },
+      "cosine_similarity": 0.023019776584426558,
+      "jaccard_similarity": 0.009772782799902272,
+      "overlap_coefficient": 0.04219409282700422,
+      "frequency": 0.04219409282700422
+    },
+    {
+      "tag": {
+        "id": 613947,
+        "name": "toeless_legwear",
+        "post_count": 29124,
+        "category": 0,
+        "created_at": "2013-02-28T16:50:37.013-05:00",
+        "updated_at": "2019-08-31T16:59:00.590-04:00",
+        "is_deprecated": false,
+        "words": ["toeless", "legwear"]
+      },
+      "cosine_similarity": 0.0228545685857983,
+      "jaccard_similarity": 0.00654911838790932,
+      "overlap_coefficient": 0.07313642756680731,
+      "frequency": 0.07313642756680731
+    },
+    {
+      "tag": {
+        "id": 4607,
+        "name": "cleavage",
+        "post_count": 1451596,
+        "category": 0,
+        "created_at": "2013-02-27T23:17:47.976-05:00",
+        "updated_at": "2019-08-16T01:29:11.275-04:00",
+        "is_deprecated": false,
+        "words": ["cleavage"]
+      },
+      "cosine_similarity": 0.022722974356306613,
+      "jaccard_similarity": 0.0010048314498478988,
+      "overlap_coefficient": 0.5133614627285513,
+      "frequency": 0.5133614627285513
+    },
+    {
+      "tag": {
+        "id": 1344665,
+        "name": "yellow_vest",
+        "post_count": 6292,
+        "category": 0,
+        "created_at": "2015-12-19T20:34:36.132-05:00",
+        "updated_at": "2019-09-02T13:09:56.509-04:00",
+        "is_deprecated": false,
+        "words": ["yellow", "vest"]
+      },
+      "cosine_similarity": 0.022457657403165975,
+      "jaccard_similarity": 0.010507687202743058,
+      "overlap_coefficient": 0.03340365682137834,
+      "frequency": 0.03340365682137834
+    },
+    {
+      "tag": {
+        "id": 395448,
+        "name": "thigh_boots",
+        "post_count": 126255,
+        "category": 0,
+        "created_at": "2013-02-28T15:21:13.904-05:00",
+        "updated_at": "2019-08-31T01:28:45.272-04:00",
+        "is_deprecated": false,
+        "words": ["thigh", "boots"]
+      },
+      "cosine_similarity": 0.021847978108699245,
+      "jaccard_similarity": 0.0032171581769436996,
+      "overlap_coefficient": 0.14556962025316456,
+      "frequency": 0.14556962025316456
+    },
+    {
+      "tag": {
+        "id": 2146246,
+        "name": "floating_earrings",
+        "post_count": 13747,
+        "category": 0,
+        "created_at": "2024-06-02T07:05:28.415-04:00",
+        "updated_at": "2024-06-02T07:05:28.415-04:00",
+        "is_deprecated": false,
+        "words": ["floating", "earrings"]
+      },
+      "cosine_similarity": 0.021430684169034726,
+      "jaccard_similarity": 0.008142431791942639,
+      "overlap_coefficient": 0.047116736990154715,
+      "frequency": 0.047116736990154715
+    },
+    {
+      "tag": {
+        "id": 1328421,
+        "name": "crown_braid",
+        "post_count": 37730,
+        "category": 0,
+        "created_at": "2015-08-12T07:28:48.563-04:00",
+        "updated_at": "2019-09-02T01:20:59.287-04:00",
+        "is_deprecated": false,
+        "words": ["crown", "braid"]
+      },
+      "cosine_similarity": 0.021238042336128398,
+      "jaccard_similarity": 0.005451751994845616,
+      "overlap_coefficient": 0.07735583684950774,
+      "frequency": 0.07735583684950774
+    },
+    {
+      "tag": {
+        "id": 8601,
+        "name": "breasts",
+        "post_count": 5083549,
+        "category": 0,
+        "created_at": "2013-02-27T23:44:05.108-05:00",
+        "updated_at": "2019-08-27T16:54:38.246-04:00",
+        "is_deprecated": false,
+        "words": ["breasts"]
+      },
+      "cosine_similarity": 0.02064208081981837,
+      "jaccard_similarity": 0.00048820681557958036,
+      "overlap_coefficient": 0.8727144866385372,
+      "frequency": 0.8727144866385372
+    },
+    {
+      "tag": {
+        "id": 403247,
+        "name": "large_breasts",
+        "post_count": 2308804,
+        "category": 0,
+        "created_at": "2013-02-28T11:22:50.029-05:00",
+        "updated_at": "2019-12-26T19:20:09.199-05:00",
+        "is_deprecated": false,
+        "words": ["large", "breasts"]
+      },
+      "cosine_similarity": 0.020460968986884803,
+      "jaccard_similarity": 0.0007177520249005407,
+      "overlap_coefficient": 0.5829817158931083,
+      "frequency": 0.5829817158931083
+    },
+    {
+      "tag": {
+        "id": 4027,
+        "name": "staff",
+        "post_count": 84701,
+        "category": 0,
+        "created_at": "2013-02-28T00:24:02.879-05:00",
+        "updated_at": "2019-08-29T10:46:35.333-04:00",
+        "is_deprecated": false,
+        "words": ["staff"]
+      },
+      "cosine_similarity": 0.020037859361582103,
+      "jaccard_similarity": 0.003565123690304239,
+      "overlap_coefficient": 0.10935302390998594,
+      "frequency": 0.10935302390998594
+    },
+    {
+      "tag": {
+        "id": 1393858,
+        "name": "white_camisole",
+        "post_count": 19215,
+        "category": 0,
+        "created_at": "2016-11-19T07:30:10.100-05:00",
+        "updated_at": "2019-09-02T11:08:34.844-04:00",
+        "is_deprecated": false,
+        "words": ["white", "camisole"]
+      },
+      "cosine_similarity": 0.01975003480708119,
+      "jaccard_similarity": 0.00666271163236435,
+      "overlap_coefficient": 0.051336146272855133,
+      "frequency": 0.051336146272855133
+    },
+    {
+      "tag": {
+        "id": 375606,
+        "name": "open_coat",
+        "post_count": 82245,
+        "category": 0,
+        "created_at": "2013-02-28T10:50:05.758-05:00",
+        "updated_at": "2019-09-02T01:54:18.689-04:00",
+        "is_deprecated": false,
+        "words": ["open", "coat"]
+      },
+      "cosine_similarity": 0.01974637564067698,
+      "jaccard_similarity": 0.0035618667956172525,
+      "overlap_coefficient": 0.10618846694796062,
+      "frequency": 0.10618846694796062
+    },
+    {
+      "tag": {
+        "id": 5735,
+        "name": "gloves",
+        "post_count": 1978540,
+        "category": 0,
+        "created_at": "2013-02-28T12:30:29.196-05:00",
+        "updated_at": "2019-08-07T00:38:02.349-04:00",
+        "is_deprecated": false,
+        "words": ["gloves"]
+      },
+      "cosine_similarity": 0.019223304574026472,
+      "jaccard_similarity": 0.0007283041624451624,
+      "overlap_coefficient": 0.5070323488045007,
+      "frequency": 0.5070323488045007
+    },
+    {
+      "tag": {
+        "id": 15080,
+        "name": "short_hair",
+        "post_count": 3191539,
+        "category": 0,
+        "created_at": "2013-02-28T11:41:07.677-05:00",
+        "updated_at": "2019-12-26T19:20:30.580-05:00",
+        "is_deprecated": false,
+        "words": ["short", "hair"]
+      },
+      "cosine_similarity": 0.019061232129196318,
+      "jaccard_similarity": 0.0005688212651449446,
+      "overlap_coefficient": 0.6385372714486639,
+      "frequency": 0.6385372714486639
+    },
+    {
+      "tag": {
+        "id": 8617,
+        "name": "potion",
+        "post_count": 3490,
+        "category": 0,
+        "created_at": "2013-02-28T13:02:27.680-05:00",
+        "updated_at": "2019-09-01T16:01:54.820-04:00",
+        "is_deprecated": false,
+        "words": ["potion"]
+      },
+      "cosine_similarity": 0.018727271300944585,
+      "jaccard_similarity": 0.009402390438247012,
+      "overlap_coefficient": 0.020745428973277073,
+      "frequency": 0.020745428973277073
+    },
+    {
+      "tag": {
+        "id": 400314,
+        "name": "sleeveless",
+        "post_count": 650404,
+        "category": 0,
+        "created_at": "2013-02-27T21:08:57.244-05:00",
+        "updated_at": "2019-08-28T13:48:42.778-04:00",
+        "is_deprecated": false,
+        "words": ["sleeveless"]
+      },
+      "cosine_similarity": 0.018693888627274575,
+      "jaccard_similarity": 0.0012322896677722532,
+      "overlap_coefficient": 0.28270042194092826,
+      "frequency": 0.28270042194092826
+    },
+    {
+      "tag": {
+        "id": 444539,
+        "name": "skindentation",
+        "post_count": 165619,
+        "category": 0,
+        "created_at": "2013-02-28T01:57:06.840-05:00",
+        "updated_at": "2019-08-29T19:39:05.750-04:00",
+        "is_deprecated": false,
+        "words": ["skindentation"]
+      },
+      "cosine_similarity": 0.018661010109601493,
+      "jaccard_similarity": 0.002409882302538409,
+      "overlap_coefficient": 0.14240506329113925,
+      "frequency": 0.14240506329113925
+    },
+    {
+      "tag": {
+        "id": 1827102,
+        "name": "ass_peek",
+        "post_count": 2376,
+        "category": 0,
+        "created_at": "2022-08-14T20:09:02.805-04:00",
+        "updated_at": "2022-08-14T20:09:02.805-04:00",
+        "is_deprecated": false,
+        "words": ["ass", "peek"]
+      },
+      "cosine_similarity": 0.018465166294372275,
+      "jaccard_similarity": 0.00928074245939675,
+      "overlap_coefficient": 0.0202020202020202,
+      "frequency": 0.016877637130801686
+    },
+    {
+      "tag": {
+        "id": 509948,
+        "name": "brown_boots",
+        "post_count": 78870,
+        "category": 0,
+        "created_at": "2018-01-02T12:40:18.289-05:00",
+        "updated_at": "2019-09-01T13:31:34.621-04:00",
+        "is_deprecated": false,
+        "words": ["brown", "boots"]
+      },
+      "cosine_similarity": 0.018094582809901127,
+      "jaccard_similarity": 0.003327480569232469,
+      "overlap_coefficient": 0.09528832630098454,
+      "frequency": 0.09528832630098454
+    },
+    {
+      "tag": {
+        "id": 442316,
+        "name": "pouch",
+        "post_count": 53291,
+        "category": 0,
+        "created_at": "2013-02-28T07:10:37.422-05:00",
+        "updated_at": "2019-09-01T23:30:48.521-04:00",
+        "is_deprecated": false,
+        "words": ["pouch"]
+      },
+      "cosine_similarity": 0.017545349359321616,
+      "jaccard_similarity": 0.0038627300202078007,
+      "overlap_coefficient": 0.0759493670886076,
+      "frequency": 0.0759493670886076
+    },
+    {
+      "tag": {
+        "id": 375002,
+        "name": "white_thighhighs",
+        "post_count": 358200,
+        "category": 0,
+        "created_at": "2013-02-28T18:14:40.014-05:00",
+        "updated_at": "2019-09-01T09:58:49.948-04:00",
+        "is_deprecated": false,
+        "words": ["white", "thighhighs"]
+      },
+      "cosine_similarity": 0.017263307724948194,
+      "jaccard_similarity": 0.0015284624111979984,
+      "overlap_coefficient": 0.19374120956399438,
+      "frequency": 0.19374120956399438
+    },
+    {
+      "tag": {
+        "id": 1335533,
+        "name": "holding_staff",
+        "post_count": 52307,
+        "category": 0,
+        "created_at": "2015-10-11T11:17:21.457-04:00",
+        "updated_at": "2019-08-30T14:07:56.758-04:00",
+        "is_deprecated": false,
+        "words": ["holding", "staff"]
+      },
+      "cosine_similarity": 0.01664375582244629,
+      "jaccard_similarity": 0.003694401980053869,
+      "overlap_coefficient": 0.07137834036568214,
+      "frequency": 0.07137834036568214
+    },
+    {
+      "tag": {
+        "id": 415668,
+        "name": "single_thighhigh",
+        "post_count": 84778,
+        "category": 0,
+        "created_at": "2013-02-27T23:59:57.961-05:00",
+        "updated_at": "2019-08-28T11:17:27.543-04:00",
+        "is_deprecated": false,
+        "words": ["single", "thighhigh"]
+      },
+      "cosine_similarity": 0.01655109547269846,
+      "jaccard_similarity": 0.0029416814513821324,
+      "overlap_coefficient": 0.09036568213783404,
+      "frequency": 0.09036568213783404
+    },
+    {
+      "tag": {
+        "id": 1815,
+        "name": "smile",
+        "post_count": 4259007,
+        "category": 0,
+        "created_at": "2013-02-28T12:28:19.273-05:00",
+        "updated_at": "2019-08-26T23:01:53.395-04:00",
+        "is_deprecated": false,
+        "words": ["smile"]
+      },
+      "cosine_similarity": 0.016000751594225884,
+      "jaccard_similarity": 0.0004133715484884123,
+      "overlap_coefficient": 0.619198312236287,
+      "frequency": 0.619198312236287
+    },
+    {
+      "tag": {
+        "id": 4334,
+        "name": "braid",
+        "post_count": 947224,
+        "category": 0,
+        "created_at": "2013-02-28T15:26:28.173-05:00",
+        "updated_at": "2019-08-24T09:08:17.228-04:00",
+        "is_deprecated": false,
+        "words": ["braid"]
+      },
+      "cosine_similarity": 0.015875816445842784,
+      "jaccard_similarity": 0.0008680592134372195,
+      "overlap_coefficient": 0.28973277074542897,
+      "frequency": 0.28973277074542897
+    },
+    {
+      "tag": {
+        "id": 1603394,
+        "name": "star_pendant",
+        "post_count": 680,
+        "category": 0,
+        "created_at": "2020-10-24T19:48:59.299-04:00",
+        "updated_at": "2020-10-24T19:48:59.299-04:00",
+        "is_deprecated": false,
+        "words": ["star", "pendant"]
+      },
+      "cosine_similarity": 0.015819888872077387,
+      "jaccard_similarity": 0.006282124500285551,
+      "overlap_coefficient": 0.03235294117647059,
+      "frequency": 0.007735583684950774
+    },
+    {
+      "tag": {
+        "id": 474500,
+        "name": "black_ribbon",
+        "post_count": 197823,
+        "category": 0,
+        "created_at": "2013-02-27T20:32:44.779-05:00",
+        "updated_at": "2019-08-30T11:53:18.030-04:00",
+        "is_deprecated": false,
+        "words": ["black", "ribbon"]
+      },
+      "cosine_similarity": 0.015303946442324827,
+      "jaccard_similarity": 0.0018122453870117422,
+      "overlap_coefficient": 0.12763713080168776,
+      "frequency": 0.12763713080168776
+    },
+    {
+      "tag": {
+        "id": 470575,
+        "name": "1girl",
+        "post_count": 8577856,
+        "category": 0,
+        "created_at": "2013-02-27T22:39:31.882-05:00",
+        "updated_at": "2019-12-26T19:19:43.276-05:00",
+        "is_deprecated": false,
+        "words": ["1girl"]
+      },
+      "cosine_similarity": 0.015064952112532375,
+      "jaccard_similarity": 0.00027429526924009954,
+      "overlap_coefficient": 0.8273558368495078,
+      "frequency": 0.8273558368495078
+    },
+    {
+      "tag": {
+        "id": 1360272,
+        "name": "hooded_vest",
+        "post_count": 2000,
+        "category": 0,
+        "created_at": "2016-04-01T21:15:05.041-04:00",
+        "updated_at": "2019-09-01T18:10:19.610-04:00",
+        "is_deprecated": false,
+        "words": ["hooded", "vest"]
+      },
+      "cosine_similarity": 0.014675342658276637,
+      "jaccard_similarity": 0.00727802037845706,
+      "overlap_coefficient": 0.0175,
+      "frequency": 0.01230661040787623
+    },
+    {
+      "tag": {
+        "id": 469576,
+        "name": "looking_at_viewer",
+        "post_count": 5028207,
+        "category": 0,
+        "created_at": "2013-02-27T23:18:50.139-05:00",
+        "updated_at": "2019-08-06T15:48:27.022-04:00",
+        "is_deprecated": false,
+        "words": ["looking", "at", "viewer"]
+      },
+      "cosine_similarity": 0.01457558575414499,
+      "jaccard_similarity": 0.0003465685537652496,
+      "overlap_coefficient": 0.6128691983122363,
+      "frequency": 0.6128691983122363
+    },
+    {
+      "tag": {
+        "id": 2447,
+        "name": "camisole",
+        "post_count": 69598,
+        "category": 0,
+        "created_at": "2013-02-28T16:46:12.212-05:00",
+        "updated_at": "2019-08-29T05:43:43.050-04:00",
+        "is_deprecated": false,
+        "words": ["camisole"]
+      },
+      "cosine_similarity": 0.014571044521591485,
+      "jaccard_similarity": 0.0028378808643769815,
+      "overlap_coefficient": 0.0720815752461322,
+      "frequency": 0.0720815752461322
+    },
+    {
+      "tag": {
+        "id": 212816,
+        "name": "solo",
+        "post_count": 7194877,
+        "category": 0,
+        "created_at": "2013-02-28T11:42:53.574-05:00",
+        "updated_at": "2019-12-26T19:20:15.092-05:00",
+        "is_deprecated": false,
+        "words": ["solo"]
+      },
+      "cosine_similarity": 0.014540751484922251,
+      "jaccard_similarity": 0.000289063892987435,
+      "overlap_coefficient": 0.7313642756680732,
+      "frequency": 0.7313642756680732
+    },
+    {
+      "tag": {
+        "id": 13879,
+        "name": "outdoors",
+        "post_count": 825509,
+        "category": 0,
+        "created_at": "2013-02-28T11:43:56.427-05:00",
+        "updated_at": "2019-08-24T09:25:51.920-04:00",
+        "is_deprecated": false,
+        "words": ["outdoors"]
+      },
+      "cosine_similarity": 0.0144055458930522,
+      "jaccard_similarity": 0.0008433465634835771,
+      "overlap_coefficient": 0.24542897327707455,
+      "frequency": 0.24542897327707455
+    },
+    {
+      "tag": {
+        "id": 490655,
+        "name": "blue_sky",
+        "post_count": 306972,
+        "category": 0,
+        "created_at": "2013-02-27T19:38:09.890-05:00",
+        "updated_at": "2019-09-01T04:07:09.132-04:00",
+        "is_deprecated": false,
+        "words": ["blue", "sky"]
+      },
+      "cosine_similarity": 0.014383836974345662,
+      "jaccard_similarity": 0.00137366633159982,
+      "overlap_coefficient": 0.14943741209563993,
+      "frequency": 0.14943741209563993
+    },
+    {
+      "tag": {
+        "id": 384553,
+        "name": ":d",
+        "post_count": 868311,
+        "category": 0,
+        "created_at": "2013-02-28T02:53:58.671-05:00",
+        "updated_at": "2019-08-29T04:53:59.278-04:00",
+        "is_deprecated": false,
+        "words": [":d"]
+      },
+      "cosine_similarity": 0.01408625650896214,
+      "jaccard_similarity": 0.00080417712575607,
+      "overlap_coefficient": 0.24613220815752462,
+      "frequency": 0.24613220815752462
+    },
+    {
+      "tag": {
+        "id": 1582095,
+        "name": "bow_hairband",
+        "post_count": 25609,
+        "category": 0,
+        "created_at": "2020-07-17T14:22:40.851-04:00",
+        "updated_at": "2020-07-17T14:22:40.851-04:00",
+        "is_deprecated": false,
+        "words": ["bow", "hairband"]
+      },
+      "cosine_similarity": 0.0140611272962423,
+      "jaccard_similarity": 0.004235343945222885,
+      "overlap_coefficient": 0.04219409282700422,
+      "frequency": 0.04219409282700422
+    },
+    {
+      "tag": {
+        "id": 410619,
+        "name": "toe_ring",
+        "post_count": 2628,
+        "category": 0,
+        "created_at": "2013-02-28T13:02:55.589-05:00",
+        "updated_at": "2019-09-02T05:51:25.633-04:00",
+        "is_deprecated": false,
+        "words": ["toe", "ring"]
+      },
+      "cosine_similarity": 0.013899722187758324,
+      "jaccard_similarity": 0.006993006993006993,
+      "overlap_coefficient": 0.01445966514459665,
+      "frequency": 0.013361462728551337
+    },
+    {
+      "tag": {
+        "id": 1256698,
+        "name": "partially_fingerless_gloves",
+        "post_count": 41846,
+        "category": 0,
+        "created_at": "2013-12-03T16:42:58.719-05:00",
+        "updated_at": "2019-08-29T16:04:06.201-04:00",
+        "is_deprecated": false,
+        "words": ["partially", "fingerless", "gloves"]
+      },
+      "cosine_similarity": 0.01384156434328047,
+      "jaccard_similarity": 0.0033902871640584657,
+      "overlap_coefficient": 0.05309423347398031,
+      "frequency": 0.05309423347398031
+    },
+    {
+      "tag": {
+        "id": 11904,
+        "name": "bracelet",
+        "post_count": 276162,
+        "category": 0,
+        "created_at": "2013-02-27T22:14:00.872-05:00",
+        "updated_at": "2019-08-31T20:21:37.648-04:00",
+        "is_deprecated": false,
+        "words": ["bracelet"]
+      },
+      "cosine_similarity": 0.013809062948917768,
+      "jaccard_similarity": 0.0013889935718669581,
+      "overlap_coefficient": 0.1360759493670886,
+      "frequency": 0.1360759493670886
+    },
+    {
+      "tag": {
+        "id": 11906,
+        "name": "open_mouth",
+        "post_count": 3592134,
+        "category": 0,
+        "created_at": "2013-02-27T23:07:51.242-05:00",
+        "updated_at": "2019-08-25T07:37:19.990-04:00",
+        "is_deprecated": false,
+        "words": ["open", "mouth"]
+      },
+      "cosine_similarity": 0.01369288716922248,
+      "jaccard_similarity": 0.00038512976145886266,
+      "overlap_coefficient": 0.4866385372714487,
+      "frequency": 0.4866385372714487
+    },
+    {
+      "tag": {
+        "id": 406,
+        "name": "sky",
+        "post_count": 631402,
+        "category": 0,
+        "created_at": "2013-02-27T19:47:21.659-05:00",
+        "updated_at": "2019-08-19T15:09:38.243-04:00",
+        "is_deprecated": false,
+        "words": ["sky"]
+      },
+      "cosine_similarity": 0.013451077750907455,
+      "jaccard_similarity": 0.0008995133159532632,
+      "overlap_coefficient": 0.20042194092827004,
+      "frequency": 0.20042194092827004
+    },
+    {
+      "tag": {
+        "id": 1337464,
+        "name": "x_hair_ornament",
+        "post_count": 121747,
+        "category": 0,
+        "created_at": "2015-10-29T04:28:03.265-04:00",
+        "updated_at": "2019-08-28T06:41:07.452-04:00",
+        "is_deprecated": false,
+        "words": ["x", "hair", "ornament"]
+      },
+      "cosine_similarity": 0.013435260095025893,
+      "jaccard_similarity": 0.0020105998825809667,
+      "overlap_coefficient": 0.08790436005625879,
+      "frequency": 0.08790436005625879
+    },
+    {
+      "tag": {
+        "id": 9294,
+        "name": "navel",
+        "post_count": 1638087,
+        "category": 0,
+        "created_at": "2013-02-28T11:36:53.308-05:00",
+        "updated_at": "2019-08-13T14:41:20.576-04:00",
+        "is_deprecated": false,
+        "words": ["navel"]
+      },
+      "cosine_similarity": 0.013361695193844794,
+      "jaccard_similarity": 0.0005560911184565546,
+      "overlap_coefficient": 0.3206751054852321,
+      "frequency": 0.3206751054852321
+    },
+    {
+      "tag": {
+        "id": 507378,
+        "name": "yellow_bikini",
+        "post_count": 22427,
+        "category": 0,
+        "created_at": "2013-02-28T09:24:38.388-05:00",
+        "updated_at": "2019-09-01T08:59:40.657-04:00",
+        "is_deprecated": false,
+        "words": ["yellow", "bikini"]
+      },
+      "cosine_similarity": 0.01314737079533497,
+      "jaccard_similarity": 0.0041722959548597316,
+      "overlap_coefficient": 0.03691983122362869,
+      "frequency": 0.03691983122362869
+    },
+    {
+      "tag": {
+        "id": 5827,
+        "name": "boots",
+        "post_count": 717398,
+        "category": 0,
+        "created_at": "2013-02-28T13:16:40.223-05:00",
+        "updated_at": "2019-08-28T04:26:16.837-04:00",
+        "is_deprecated": false,
+        "words": ["boots"]
+      },
+      "cosine_similarity": 0.012995506907664189,
+      "jaccard_similarity": 0.0008156686189910444,
+      "overlap_coefficient": 0.20639943741209563,
+      "frequency": 0.20639943741209563
+    },
+    {
+      "tag": {
+        "id": 6176,
+        "name": "vest",
+        "post_count": 331852,
+        "category": 0,
+        "created_at": "2013-02-27T22:13:49.298-05:00",
+        "updated_at": "2019-08-23T05:08:51.322-04:00",
+        "is_deprecated": false,
+        "words": ["vest"]
+      },
+      "cosine_similarity": 0.012466994223426255,
+      "jaccard_similarity": 0.0011456329846580898,
+      "overlap_coefficient": 0.13466947960618847,
+      "frequency": 0.13466947960618847
+    },
+    {
+      "tag": {
+        "id": 1875867,
+        "name": "upper_teeth_only",
+        "post_count": 266832,
+        "category": 0,
+        "created_at": "2022-12-17T05:50:35.988-05:00",
+        "updated_at": "2022-12-17T05:50:35.988-05:00",
+        "is_deprecated": false,
+        "words": ["upper", "teeth", "only"]
+      },
+      "cosine_similarity": 0.01241487508949411,
+      "jaccard_similarity": 0.0012697988371315912,
+      "overlap_coefficient": 0.12025316455696203,
+      "frequency": 0.12025316455696203
+    },
+    {
+      "tag": {
+        "id": 376054,
+        "name": "bare_shoulders",
+        "post_count": 1426037,
+        "category": 0,
+        "created_at": "2013-02-28T15:18:22.479-05:00",
+        "updated_at": "2019-08-19T12:49:20.750-04:00",
+        "is_deprecated": false,
+        "words": ["bare", "shoulders"]
+      },
+      "cosine_similarity": 0.01240500370507579,
+      "jaccard_similarity": 0.0005531860364640629,
+      "overlap_coefficient": 0.2777777777777778,
+      "frequency": 0.2777777777777778
+    },
+    {
+      "tag": {
+        "id": 466499,
+        "name": "collarbone",
+        "post_count": 1128645,
+        "category": 0,
+        "created_at": "2013-02-28T03:30:54.449-05:00",
+        "updated_at": "2019-08-16T14:32:12.510-04:00",
+        "is_deprecated": false,
+        "words": ["collarbone"]
+      },
+      "cosine_similarity": 0.01230238463332808,
+      "jaccard_similarity": 0.0006163821463186864,
+      "overlap_coefficient": 0.2450773558368495,
+      "frequency": 0.2450773558368495
+    },
+    {
+      "tag": {
+        "id": 403649,
+        "name": "thigh_gap",
+        "post_count": 98902,
+        "category": 0,
+        "created_at": "2013-02-28T04:27:00.620-05:00",
+        "updated_at": "2019-09-02T06:26:04.983-04:00",
+        "is_deprecated": false,
+        "words": ["thigh", "gap"]
+      },
+      "cosine_similarity": 0.0122232453173045,
+      "jaccard_similarity": 0.002018888921716351,
+      "overlap_coefficient": 0.0720815752461322,
+      "frequency": 0.0720815752461322
+    },
+    {
+      "tag": {
+        "id": 407186,
+        "name": "sleeveless_shirt",
+        "post_count": 234952,
+        "category": 0,
+        "created_at": "2013-02-28T18:20:47.967-05:00",
+        "updated_at": "2019-08-30T00:48:49.420-04:00",
+        "is_deprecated": false,
+        "words": ["sleeveless", "shirt"]
+      },
+      "cosine_similarity": 0.01214717473875006,
+      "jaccard_similarity": 0.0013222054724147515,
+      "overlap_coefficient": 0.11040787623066103,
+      "frequency": 0.11040787623066103
+    },
+    {
+      "tag": {
+        "id": 580738,
+        "name": "black_hairband",
+        "post_count": 156510,
+        "category": 0,
+        "created_at": "2018-01-01T07:22:22.342-05:00",
+        "updated_at": "2019-08-28T16:39:30.829-04:00",
+        "is_deprecated": false,
+        "words": ["black", "hairband"]
+      },
+      "cosine_similarity": 0.012086605262665617,
+      "jaccard_similarity": 0.0016027756302679464,
+      "overlap_coefficient": 0.08966244725738397,
+      "frequency": 0.08966244725738397
+    }
+  ],
+  "wiki_page_tags": []
+}

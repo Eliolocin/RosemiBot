@@ -74,7 +74,7 @@ Com o uso de figurinhas ativado em `/config` > `Plugins`, ela envia no máximo u
 O prompt do sistema fica acima da persona e molda o `Comportamento Geral`:
 
 - `/config` > `Comportamento` > `Comportamento Geral`: defina uma instrução de sistema personalizada (até 16.000 caracteres).
-- `/config` > `Comportamento` > `Comportamento Geral`: escolha entre os prompts predefinidos do sistema.
+- `/config` > `Comportamento` > `Comportamento Geral`: escolha entre as predefinições de prompt do sistema. `Default + Image Generation Expert` adiciona orientações para tags de anime e trajes de personagens precisos ao prompt padrão (consulte [Busca de Tags](/features/capabilities/media-generation/image-generation/#tag-lookup)).
 - `/config` > `Comportamento` > `Comportamento Geral`: redefinir para o padrão. A confirmação mostra o prompt anterior para que você possa restaurá-lo se for apagado acidentalmente.
 
 Quando uma [predefinição SillyTavern](/pt-BR/features/integrations/sillytavern-support/) está ativa, o prompt do sistema substituto integrado é substituído, mas um prompt personalizado definido aqui ainda é enviado.

@@ -23,10 +23,9 @@ import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 
 import type {
   ChatInputCommandInteraction,
-  ButtonInteraction,
+  AutocompleteInteraction,
   ModalSubmitInteraction,
   Client,
-  Guild,
   Message,
   SlashCommandSubcommandBuilder,
   TextBasedChannel,
@@ -34,16 +33,14 @@ import type {
 import { ChannelType, MessageFlags, EmbedBuilder, TextInputStyle } from "discord.js";
 import { channelScopeAdmits, channelScopeCandidates } from "@/utils/discord/channelScope";
 import { isRagAvailable } from "@/utils/db/ragAvailability";
-import { localizer } from "@/utils/text/localizer";
+import { getSupportedLocales, localizer } from "@/utils/text/localizer";
 import { log, ColorCode } from "@/utils/misc/logger";
 import { replyInfoEmbed } from "@/utils/discord/ui/embeds";
 import { promptWithRawModal } from "@/utils/discord/ui/modals";
-import {
-  buildPersonaWorkflowNotice,
-  completePersonaWorkflow,
-  runPersonaPickerWorkflow,
-  type PersonaWorkflowMessageController,
-} from "@/utils/discord/ui/personaWorkflow";
+import { DISCORD_SELECT_VALUES_MAX } from "@/utils/discord/ui/componentsV2Limits";
+import type { ModalChannelSelectField, ModalOptions } from "@/types/discord/modal";
+import { respondWithPersonaChoices } from "@/utils/discord/autocomplete/personaAutocomplete";
+import { resolveSelectedPersona } from "@/utils/persona/personaOptionValue";
 import { getCachedTomoriState, invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
 import { llmModelRepo, personaRepository, serverMemoryRepository } from "@/utils/db/repositories";
 import { getMemoryLimits } from "@/utils/misc/memoryLimits";
@@ -106,8 +103,7 @@ interface WriteTarget {
   personaId: number | null;
 }
 
-type HistoryImportReplyInteraction = ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction;
-type HistoryImportStatusTarget = HistoryImportReplyInteraction | PersonaWorkflowMessageController;
+type HistoryImportStatusTarget = ChatInputCommandInteraction | ModalSubmitInteraction;
 
 interface HistoryImportStatusOptions {
   titleKey?: string;
@@ -122,20 +118,6 @@ async function replaceHistoryImportStatus(
   locale: string,
   options: HistoryImportStatusOptions,
 ): Promise<void> {
-  if ("anchorMessageId" in target) {
-    await target.replace(
-      buildPersonaWorkflowNotice({
-        locale,
-        titleKey: options.titleKey ?? "general.persona_workflow.loading_title",
-        descriptionKey: options.descriptionKey,
-        description: options.description,
-        descriptionVars: options.descriptionVars,
-        color: options.color,
-      }),
-    );
-    return;
-  }
-
   const embed = new EmbedBuilder().setColor(options.color);
   if (options.titleKey) embed.setTitle(localizedStatusTitle(locale, options.titleKey, options.color));
   const description =
@@ -221,34 +203,6 @@ async function retrieveInCharacterChunks(params: {
   });
 }
 
-/**
- * Resolves the `channels` option to channel IDs: a `<#id>` mention must name a channel in this
- * server, and a name matches every text or announcement channel that carries it.
- *
- * @returns The first entry that resolves to nothing when any does, so the command can reject it
- */
-export function resolveHistoryChannelScope(
-  guild: Pick<Guild, "channels"> | null,
-  input: string | null,
-): { status: "resolved"; channelIds: string[] } | { status: "unresolved"; entry: string } {
-  const scopeableChannels = [...(guild?.channels.cache.values() ?? [])].filter(
-    (channel) => channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement,
-  );
-  const channelIds = new Set<string>();
-  for (const rawEntry of (input ?? "").split(",")) {
-    const entry = rawEntry.trim();
-    if (!entry) continue;
-    const mentionedId = entry.match(/^<#(\d{17,20})>$/)?.[1];
-    const name = entry.replace(/^#+/, "").toLowerCase();
-    const matches = scopeableChannels.filter((channel) =>
-      mentionedId ? channel.id === mentionedId : channel.name.toLowerCase() === name,
-    );
-    if (matches.length === 0) return { status: "unresolved", entry };
-    for (const channel of matches) channelIds.add(channel.id);
-  }
-  return { status: "resolved", channelIds: [...channelIds] };
-}
-
 /** Shows the "no facts extracted from this batch" embed with the pagination footer. */
 async function showNoFactsExtractedEmbed(
   statusTarget: HistoryImportStatusTarget,
@@ -319,6 +273,48 @@ async function showExtractionFailureTerminal(
 /**
  * Configures the /memory history import subcommand options.
  */
+const LEARNER_SCOPE_LABEL_KEYS = {
+  automatic: "commands.learn.history.learner_choice_automatic",
+  global: "commands.learn.history.learner_choice_global",
+} as const satisfies Record<Exclude<HistoryScope, "persona">, string>;
+
+function learnerLabelName(label: string): string {
+  return label.split(/[(（]/)[0]?.trim() ?? label;
+}
+
+/**
+ * Discord submits typed text unchanged when nothing is picked, so a scope also matches its value or
+ * the name its label opens with in any locale, ignoring case.
+ */
+export function resolveLearnerScope(learnerInput: string | null): HistoryScope {
+  if (learnerInput === null) return "persona";
+  const typed = learnerInput.toLowerCase();
+  for (const scope of ["automatic", "global"] as const) {
+    const labelNames = getSupportedLocales().map((locale) =>
+      learnerLabelName(localizer(locale, LEARNER_SCOPE_LABEL_KEYS[scope])).toLowerCase(),
+    );
+    if (typed === scope || labelNames.includes(typed)) return scope;
+  }
+  return "persona";
+}
+
+/** @returns The picked persona, or the only persona whose nickname equals the typed text ignoring case */
+export function resolveLearnerPersona<T extends TomoriState>(personas: readonly T[], learnerInput: string): T | null {
+  const picked = resolveSelectedPersona(personas, learnerInput);
+  if (picked) return picked;
+  const typed = learnerInput.toLowerCase();
+  const named = personas.filter((persona) => persona.persona_nickname.trim().toLowerCase() === typed);
+  return named.length === 1 ? named[0] : null;
+}
+
+/** Suggests Automatic and Global ahead of the workspace's personas, so the learner list names every scope. */
+export async function autocomplete(_client: Client, interaction: AutocompleteInteraction): Promise<void> {
+  await respondWithPersonaChoices(interaction, interaction.guild?.id ?? interaction.user.id, undefined, [
+    { name: localizer(interaction.locale, LEARNER_SCOPE_LABEL_KEYS.automatic), value: "automatic" },
+    { name: localizer(interaction.locale, LEARNER_SCOPE_LABEL_KEYS.global), value: "global" },
+  ]);
+}
+
 export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =>
   subcommand
     .setName("history")
@@ -332,26 +328,6 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
     )
     .addStringOption((option) =>
       option
-        .setName("scope")
-        .setDescription(localizer("en-US", "commands.learn.history.scope_description"))
-        .addChoices(
-          {
-            name: localizer("en-US", "commands.learn.history.scope_choice_persona"),
-            value: "persona",
-          },
-          {
-            name: localizer("en-US", "commands.learn.history.scope_choice_automatic"),
-            value: "automatic",
-          },
-          {
-            name: localizer("en-US", "commands.learn.history.scope_choice_global"),
-            value: "global",
-          },
-        )
-        .setRequired(true),
-    )
-    .addStringOption((option) =>
-      option
         .setName("start_message_id")
         .setDescription(localizer("en-US", "commands.learn.history.start_message_id_description"))
         .setRequired(true)
@@ -360,18 +336,18 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
     )
     .addStringOption((option) =>
       option
+        .setName("learner")
+        .setDescription(localizer("en-US", "commands.learn.history.learner_description"))
+        .setRequired(false)
+        .setAutocomplete(true),
+    )
+    .addStringOption((option) =>
+      option
         .setName("end_message_id")
         .setDescription(localizer("en-US", "commands.learn.history.end_message_id_description"))
         .setRequired(false)
         .setMinLength(15)
         .setMaxLength(25),
-    )
-    .addStringOption((option) =>
-      option
-        .setName("channels")
-        .setDescription(localizer("en-US", "commands.learn.history.channels_description"))
-        .setRequired(false)
-        .setMaxLength(200),
     )
     .addStringOption((option) =>
       option
@@ -403,7 +379,49 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
     );
 
 const EXTRACTION_PROMPT_MODAL_ID = "memory_history_import_prompt_modal";
+const EXTRACTION_CHANNELS_FIELD_ID = "channels";
 const EXTRACTION_PROMPT_FIELD_ID = "system_prompt";
+const DISCORD_SNOWFLAKE_PATTERN = /^\d{17,20}$/;
+
+/**
+ * The extraction prompt modal shared by every scope, with the document's channel limit above the prompt.
+ *
+ * @param inServer - False in a DM, where the channel field is omitted because there are no channels to pick
+ */
+export function buildExtractionPromptModal(defaultPrompt: string, inServer: boolean): ModalOptions {
+  const channelField: ModalChannelSelectField = {
+    kind: "channelSelect",
+    customId: EXTRACTION_CHANNELS_FIELD_ID,
+    labelKey: "commands.learn.history.prompt_modal_channels_label",
+    descriptionKey: "commands.learn.history.prompt_modal_channels_description",
+    channelTypes: [ChannelType.GuildText, ChannelType.GuildAnnouncement],
+    minValues: 0,
+    maxValues: DISCORD_SELECT_VALUES_MAX,
+    required: false,
+  };
+  return {
+    modalCustomId: EXTRACTION_PROMPT_MODAL_ID,
+    modalTitleKey: "commands.learn.history.prompt_modal_title",
+    components: [
+      ...(inServer ? [channelField] : []),
+      {
+        customId: EXTRACTION_PROMPT_FIELD_ID,
+        style: TextInputStyle.Paragraph,
+        labelKey: "commands.learn.history.prompt_modal_label",
+        placeholder: "commands.learn.history.prompt_modal_placeholder",
+        required: false,
+        maxLength: 4000,
+        value: defaultPrompt,
+      },
+    ],
+  };
+}
+
+/** @returns The channels picked in the extraction prompt modal; empty means every channel. */
+export function readExtractionChannelIds(multiValues: Readonly<Record<string, string[]>> | undefined): string[] {
+  const picked = multiValues?.[EXTRACTION_CHANNELS_FIELD_ID] ?? [];
+  return [...new Set(picked.filter((id) => DISCORD_SNOWFLAKE_PATTERN.test(id)))];
+}
 
 /**
  * Shows a modal pre-filled with the chosen system prompt template, lets the user edit it,
@@ -413,11 +431,11 @@ const EXTRACTION_PROMPT_FIELD_ID = "system_prompt";
  * modal and are appended later by composeInCharacterSystemPrompt.
  */
 async function promptForExtractionSystem(
-  host: ChatInputCommandInteraction | ButtonInteraction,
+  host: ChatInputCommandInteraction,
   locale: string,
   mode: ExtractionPromptMode,
   personaForInCharacter?: TomoriState | null,
-): Promise<{ submitInteraction: ModalSubmitInteraction; systemPrompt: string } | null> {
+): Promise<{ submitInteraction: ModalSubmitInteraction; systemPrompt: string; channelDiscIds: string[] } | null> {
   let defaultPrompt: string;
   if (mode === "in_character") {
     defaultPrompt = substituteInCharacterFraming(
@@ -430,25 +448,19 @@ async function promptForExtractionSystem(
     defaultPrompt = EXTRACTION_CONVERSATION_SYSTEM_PROMPT;
   }
 
-  const modalResult = await promptWithRawModal(host, locale, {
-    modalCustomId: EXTRACTION_PROMPT_MODAL_ID,
-    modalTitleKey: "commands.learn.history.prompt_modal_title",
-    components: [
-      {
-        customId: EXTRACTION_PROMPT_FIELD_ID,
-        style: TextInputStyle.Paragraph,
-        labelKey: "commands.learn.history.prompt_modal_label",
-        placeholder: "commands.learn.history.prompt_modal_placeholder",
-        required: false,
-        maxLength: 4000,
-        value: defaultPrompt,
-      },
-    ],
-  });
+  const modalResult = await promptWithRawModal(
+    host,
+    locale,
+    buildExtractionPromptModal(defaultPrompt, host.guildId !== null),
+  );
 
   if (modalResult.outcome !== "submit" || !modalResult.interaction) return null;
   const systemPrompt = modalResult.values?.[EXTRACTION_PROMPT_FIELD_ID]?.trim() || defaultPrompt;
-  return { submitInteraction: modalResult.interaction, systemPrompt };
+  return {
+    submitInteraction: modalResult.interaction,
+    systemPrompt,
+    channelDiscIds: readExtractionChannelIds(modalResult.multiValues),
+  };
 }
 
 /**
@@ -1082,13 +1094,12 @@ export async function execute(
     return;
   }
   const sourceChannel = interaction.channel;
-  const scopeInput = interaction.options.getString("scope");
-  const scope: HistoryScope = scopeInput === "automatic" ? "automatic" : scopeInput === "global" ? "global" : "persona";
+  const learnerInput = interaction.options.getString("learner")?.trim() || null;
+  const scope = resolveLearnerScope(learnerInput);
 
   let tomoriState: TomoriState | null = null;
   let modalSubmitInteraction: ModalSubmitInteraction | undefined;
   let selectedPersonaId: number | undefined;
-  const workflowState: { message: PersonaWorkflowMessageController | null } = { message: null };
 
   try {
     if (!isRagAvailable()) {
@@ -1125,10 +1136,6 @@ export async function execute(
         flags: MessageFlags.Ephemeral,
       });
       return;
-    }
-
-    if (scope === "persona") {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     }
 
     const guildId = interaction.guild?.id ?? interaction.user.id;
@@ -1194,7 +1201,6 @@ export async function execute(
     const nameInput = interaction.options.getString("name", true).trim();
     const startMessageId = interaction.options.getString("start_message_id", true).trim();
     const endMessageId = interaction.options.getString("end_message_id")?.trim() || null;
-    const channelsInput = interaction.options.getString("channels");
     const promptModeInput = interaction.options.getString("prompt");
     const promptMode: ExtractionPromptMode =
       promptModeInput === "roleplay"
@@ -1216,238 +1222,166 @@ export async function execute(
       return;
     }
 
-    const channelScope = resolveHistoryChannelScope(interaction.guild, channelsInput);
-    if (channelScope.status === "unresolved") {
-      await replyInfoEmbed(interaction, locale, {
-        titleKey: "commands.learn.history.channels_unresolved_title",
-        descriptionKey: "commands.learn.history.channels_unresolved_description",
-        descriptionVars: { entry: channelScope.entry },
-        color: ColorCode.ERROR,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    const channelDiscIds = channelScope.channelIds;
-
     const allPersonas = await personaRepository.loadAllForServer(guildId);
 
     // SCOPE: PERSONA
     if (scope === "persona") {
-      if (allPersonas.length === 0) {
+      const selectedPersona = learnerInput === null ? tomoriState : resolveLearnerPersona(allPersonas, learnerInput);
+      const targetPersonaId = selectedPersona?.persona_id;
+      if (!selectedPersona || !targetPersonaId) {
         await replyInfoEmbed(interaction, locale, {
-          titleKey: "general.errors.tomori_not_setup_title",
-          descriptionKey: "general.errors.tomori_not_setup_description",
+          titleKey: "commands.learn.history.learner_unresolved_title",
+          descriptionKey: "commands.learn.history.learner_unresolved_description",
+          descriptionVars: { learner: learnerInput ?? "" },
           color: ColorCode.ERROR,
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
+      selectedPersonaId = targetPersonaId;
 
-      const activeTomoriState = tomoriState;
-      const workflowResult = await runPersonaPickerWorkflow(interaction, locale, {
-        personas: allPersonas,
-        color: ColorCode.INFO,
-        async onSelected(selection) {
-          workflowState.message = selection.message;
-          const selectedPersona = selection.persona;
-          const targetPersonaId = selectedPersona.persona_id;
-          selectedPersonaId = targetPersonaId;
-          if (!targetPersonaId) {
-            const work = await selection.beginInPlaceWork();
-            await work.message.replace(
-              buildPersonaWorkflowNotice({
-                locale,
-                titleKey: "general.errors.invalid_option_title",
-                descriptionKey: "general.errors.invalid_option_description",
-                color: ColorCode.ERROR,
-              }),
-            );
-            return completePersonaWorkflow();
-          }
+      const promptModalResult = await promptForExtractionSystem(interaction, locale, promptMode, selectedPersona);
+      if (!promptModalResult) return;
+      modalSubmitInteraction = promptModalResult.submitInteraction;
+      const personaSystemPrompt = promptModalResult.systemPrompt;
+      const channelDiscIds = promptModalResult.channelDiscIds;
 
-          const defaultPrompt =
-            promptMode === "in_character"
-              ? substituteInCharacterFraming(EXTRACTION_IN_CHARACTER_SYSTEM_PROMPT, selectedPersona.persona_nickname)
-              : promptMode === "roleplay"
-                ? EXTRACTION_ROLEPLAY_SYSTEM_PROMPT
-                : EXTRACTION_CONVERSATION_SYSTEM_PROMPT;
-          const promptModalResult = await selection.openModal({
-            modalCustomId: EXTRACTION_PROMPT_MODAL_ID,
-            modalTitleKey: "commands.learn.history.prompt_modal_title",
-            components: [
-              {
-                customId: EXTRACTION_PROMPT_FIELD_ID,
-                style: TextInputStyle.Paragraph,
-                labelKey: "commands.learn.history.prompt_modal_label",
-                placeholder: "commands.learn.history.prompt_modal_placeholder",
-                required: false,
-                maxLength: 4000,
-                value: defaultPrompt,
-              },
-            ],
-          });
-          if (promptModalResult.outcome !== "submitted") {
-            log.info(`History import prompt modal ${promptModalResult.outcome} for user ${interaction.user.id}`);
-            return completePersonaWorkflow();
-          }
+      await modalSubmitInteraction.deferReply({ flags: MessageFlags.Ephemeral });
 
-          const work = await promptModalResult.phase.beginInPlaceWork();
-          await replaceHistoryImportStatus(work.message, locale, {
-            titleKey: "general.persona_workflow.loading_title",
-            descriptionKey: "general.persona_workflow.loading_description",
-            color: ColorCode.INFO,
-          });
+      const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null, locale);
+      if (!runtimeResult.ok) {
+        await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
+          ...runtimeResult.notice,
+          color: ColorCode.ERROR,
+        });
+        return;
+      }
 
-          const runtimeResult = await resolveHistoryImportRuntime(activeTomoriState, userData.user_id ?? null, locale);
-          if (!runtimeResult.ok) {
-            await replaceHistoryImportStatus(work.message, locale, {
-              ...runtimeResult.notice,
-              color: ColorCode.ERROR,
-            });
-            return completePersonaWorkflow();
-          }
+      const rangeError = await validateHistoryMessageRange(sourceChannel, startMessageId, endMessageId);
+      if (rangeError) {
+        await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
+          ...rangeError,
+          color: ColorCode.ERROR,
+        });
+        return;
+      }
 
-          const rangeError = await validateHistoryMessageRange(sourceChannel, startMessageId, endMessageId);
-          if (rangeError) {
-            await replaceHistoryImportStatus(work.message, locale, {
-              ...rangeError,
-              color: ColorCode.ERROR,
-            });
-            return completePersonaWorkflow();
-          }
+      const { textCreds, embeddingCreds, embeddingModel, embeddingParams, provider, model, endpointUrl } =
+        runtimeResult.runtime;
+      const scopeLabel = localizer(locale, "commands.learn.history.scope_label_persona", {
+        persona_name: selectedPersona.persona_nickname,
+      });
+      const fetchResult = await fetchAndFormatMessages({
+        channel: sourceChannel,
+        startMessageId,
+        endMessageId,
+        limit: messageFetchLimit,
+        allPersonas,
+        replyInteraction: modalSubmitInteraction,
+        locale,
+      });
+      if (!fetchResult) return;
 
-          const { textCreds, embeddingCreds, embeddingModel, embeddingParams, provider, model, endpointUrl } =
-            runtimeResult.runtime;
-          const personaSystemPrompt =
-            promptModalResult.phase.values[EXTRACTION_PROMPT_FIELD_ID]?.trim() || defaultPrompt;
-          const scopeLabel = localizer(locale, "commands.learn.history.scope_label_persona", {
-            persona_name: selectedPersona.persona_nickname,
-          });
-          const fetchResult = await fetchAndFormatMessages({
-            channel: sourceChannel,
-            startMessageId,
-            endMessageId,
-            limit: messageFetchLimit,
-            allPersonas,
-            replyInteraction: work.message,
-            locale,
-          });
-          if (!fetchResult) return completePersonaWorkflow();
-
-          const inCharacterFilterIds =
-            channelDiscIds.length > 0
-              ? channelDiscIds
-              : channelScopeCandidates(sourceChannel.id, sourceChannel.isThread() ? sourceChannel.parentId : null);
-          const personaServerId = activeTomoriState.server_id;
-          const inCharacterExistingMemories =
-            promptMode === "in_character"
-              ? await loadInCharacterMemoryLines(
-                  personaServerId,
-                  selectedPersona.persona_lineage_id ?? null,
-                  inCharacterFilterIds,
-                )
-              : [];
-          const composeSystemPrompt =
-            promptMode === "in_character"
-              ? async (windowText: string): Promise<string> => {
-                  const retrievedChunks = await retrieveInCharacterChunks({
-                    serverId: personaServerId,
-                    personaId: targetPersonaId,
-                    query: windowText,
-                    embeddingModel,
-                    embeddingApiKey: embeddingCreds.apiKey,
-                    filterChannelIds: inCharacterFilterIds,
-                    maxResults: HISTORY_INCHARACTER_RAG_MAX_RESULTS,
-                  });
-                  return composeInCharacterSystemPrompt({
-                    framingTemplate: personaSystemPrompt,
-                    personaNickname: selectedPersona.persona_nickname,
-                    personaPrompt: selectedPersona.persona_prompt ?? null,
-                    attributes: selectedPersona.attribute_list ?? [],
-                    existingMemoryLines: inCharacterExistingMemories,
-                    retrievedChunks,
-                  });
-                }
-              : async (): Promise<string> => personaSystemPrompt;
-          const footer = buildFooter({
-            firstMessage: fetchResult.firstMessage,
-            lastMessage: fetchResult.lastMessage,
-            reachedEnd: fetchResult.reachedEnd,
-            guildId: interaction.guild?.id ?? null,
-            channelId: sourceChannel.id,
-            locale,
-          });
-
-          if (fetchResult.formattedResult.messageCount === 0) {
-            await replaceHistoryImportStatus(work.message, locale, {
-              titleKey: "commands.learn.history.no_extractable_content_title",
-              description: `${localizer(locale, "commands.learn.history.no_extractable_content_description")}\n\n${footer}`,
-              color: ColorCode.WARN,
-            });
-            return completePersonaWorkflow();
-          }
-          if (!(await reserveDocumentQuotaForImport(interaction.user.id, work.message, locale))) {
-            return completePersonaWorkflow();
-          }
-
-          const documentId = await createDocumentForImport({
-            documentName: nameInput,
-            serverId: activeTomoriState.server_id,
-            personaId: targetPersonaId,
-            uploaderUserId: userData.user_id ?? null,
-            channelDiscIds,
-            scopeLabel,
-            replyInteraction: work.message,
-            locale,
-          });
-          if (documentId === null) return completePersonaWorkflow();
-
-          const extractResult = await runIncrementalExtraction({
-            formattedResult: fetchResult.formattedResult,
-            provider,
-            model,
-            apiKey: textCreds.apiKey,
-            textUsageContext: textCreds.usageContext,
-            endpointUrl,
-            composeSystemPrompt,
-            replyInteraction: work.message,
-            locale,
-            writeTargets: [{ documentId, dbServerId: activeTomoriState.server_id, personaId: targetPersonaId }],
-            ...embeddingParams,
-          });
-          if (!extractResult.ok) {
-            await serverMemoryRepository.removeDocument(documentId, activeTomoriState.server_id, targetPersonaId);
-            await showExtractionFailureTerminal(work.message, locale, footer, extractResult);
-            return completePersonaWorkflow();
-          }
-
-          await finalizeDocumentContent(documentId, extractResult.allChunkText);
-          invalidateTomoriStateCache(guildId);
-          await replaceHistoryImportStatus(work.message, locale, {
-            titleKey: "commands.learn.history.success_title",
-            description: `${localizer(locale, "commands.learn.history.success_description", {
-              fact_count: extractResult.totalFactCount.toString(),
-              message_count: fetchResult.formattedResult.messageCount.toString(),
-              name: nameInput,
-              chunk_count: extractResult.totalFactCount.toString(),
-              scope: scopeLabel,
-            })}\n\n${footer}`,
-            color: ColorCode.SUCCESS,
-          });
-          return completePersonaWorkflow();
-        },
+      const inCharacterFilterIds =
+        channelDiscIds.length > 0
+          ? channelDiscIds
+          : channelScopeCandidates(sourceChannel.id, sourceChannel.isThread() ? sourceChannel.parentId : null);
+      const personaServerId = tomoriState.server_id;
+      const inCharacterExistingMemories =
+        promptMode === "in_character"
+          ? await loadInCharacterMemoryLines(
+              personaServerId,
+              selectedPersona.persona_lineage_id ?? null,
+              inCharacterFilterIds,
+            )
+          : [];
+      const composeSystemPrompt =
+        promptMode === "in_character"
+          ? async (windowText: string): Promise<string> => {
+              const retrievedChunks = await retrieveInCharacterChunks({
+                serverId: personaServerId,
+                personaId: targetPersonaId,
+                query: windowText,
+                embeddingModel,
+                embeddingApiKey: embeddingCreds.apiKey,
+                filterChannelIds: inCharacterFilterIds,
+                maxResults: HISTORY_INCHARACTER_RAG_MAX_RESULTS,
+              });
+              return composeInCharacterSystemPrompt({
+                framingTemplate: personaSystemPrompt,
+                personaNickname: selectedPersona.persona_nickname,
+                personaPrompt: selectedPersona.persona_prompt ?? null,
+                attributes: selectedPersona.attribute_list ?? [],
+                existingMemoryLines: inCharacterExistingMemories,
+                retrievedChunks,
+              });
+            }
+          : async (): Promise<string> => personaSystemPrompt;
+      const footer = buildFooter({
+        firstMessage: fetchResult.firstMessage,
+        lastMessage: fetchResult.lastMessage,
+        reachedEnd: fetchResult.reachedEnd,
+        guildId: interaction.guild?.id ?? null,
+        channelId: sourceChannel.id,
+        locale,
       });
 
-      if (workflowResult.outcome === "error" && workflowState.message) {
-        await workflowState.message.replace(
-          buildPersonaWorkflowNotice({
-            locale,
-            titleKey: "general.errors.unknown_error_title",
-            descriptionKey: "general.errors.unknown_error_description",
-            color: ColorCode.ERROR,
-          }),
-        );
+      if (fetchResult.formattedResult.messageCount === 0) {
+        await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
+          titleKey: "commands.learn.history.no_extractable_content_title",
+          description: `${localizer(locale, "commands.learn.history.no_extractable_content_description")}\n\n${footer}`,
+          color: ColorCode.WARN,
+        });
+        return;
       }
+      if (!(await reserveDocumentQuotaForImport(interaction.user.id, modalSubmitInteraction, locale))) {
+        return;
+      }
+
+      const documentId = await createDocumentForImport({
+        documentName: nameInput,
+        serverId: tomoriState.server_id,
+        personaId: targetPersonaId,
+        uploaderUserId: userData.user_id ?? null,
+        channelDiscIds,
+        scopeLabel,
+        replyInteraction: modalSubmitInteraction,
+        locale,
+      });
+      if (documentId === null) return;
+
+      const extractResult = await runIncrementalExtraction({
+        formattedResult: fetchResult.formattedResult,
+        provider,
+        model,
+        apiKey: textCreds.apiKey,
+        textUsageContext: textCreds.usageContext,
+        endpointUrl,
+        composeSystemPrompt,
+        replyInteraction: modalSubmitInteraction,
+        locale,
+        writeTargets: [{ documentId, dbServerId: tomoriState.server_id, personaId: targetPersonaId }],
+        ...embeddingParams,
+      });
+      if (!extractResult.ok) {
+        await serverMemoryRepository.removeDocument(documentId, tomoriState.server_id, targetPersonaId);
+        await showExtractionFailureTerminal(modalSubmitInteraction, locale, footer, extractResult);
+        return;
+      }
+
+      await finalizeDocumentContent(documentId, extractResult.allChunkText);
+      invalidateTomoriStateCache(guildId);
+      await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
+        titleKey: "commands.learn.history.success_title",
+        description: `${localizer(locale, "commands.learn.history.success_description", {
+          fact_count: extractResult.totalFactCount.toString(),
+          message_count: fetchResult.formattedResult.messageCount.toString(),
+          name: nameInput,
+          chunk_count: extractResult.totalFactCount.toString(),
+          scope: scopeLabel,
+        })}\n\n${footer}`,
+        color: ColorCode.SUCCESS,
+      });
       return;
     }
 
@@ -1458,6 +1392,7 @@ export async function execute(
       if (!promptModalResult) return;
       modalSubmitInteraction = promptModalResult.submitInteraction;
       const globalSystemPrompt = promptModalResult.systemPrompt;
+      const channelDiscIds = promptModalResult.channelDiscIds;
 
       await modalSubmitInteraction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -1579,6 +1514,7 @@ export async function execute(
     if (!autoPromptModalResult) return;
     modalSubmitInteraction = autoPromptModalResult.submitInteraction;
     const autoSystemPrompt = autoPromptModalResult.systemPrompt;
+    const channelDiscIds = autoPromptModalResult.channelDiscIds;
 
     await modalSubmitInteraction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -1817,18 +1753,6 @@ export async function execute(
       },
     };
     await log.error("Error in /memory history import command", error, context);
-
-    if (workflowState.message) {
-      await workflowState.message.replace(
-        buildPersonaWorkflowNotice({
-          locale,
-          titleKey: "general.errors.unknown_error_title",
-          descriptionKey: "general.errors.unknown_error_description",
-          color: ColorCode.ERROR,
-        }),
-      );
-      return;
-    }
 
     const errorReplyTarget =
       modalSubmitInteraction && (modalSubmitInteraction.deferred || modalSubmitInteraction.replied)

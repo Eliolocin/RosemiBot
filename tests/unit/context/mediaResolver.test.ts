@@ -40,6 +40,7 @@ function makeState(overrides: { seesImages?: boolean; seesVideos?: boolean; hasV
       videogen_enabled: false,
       voice_message_enabled: false,
       thread_creation_enabled: false,
+      danbooru_enabled: false,
     },
   });
 }

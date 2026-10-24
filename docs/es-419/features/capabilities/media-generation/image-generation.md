@@ -29,6 +29,13 @@ Cada fuente de etiqueta se puede editar en su lugar con un modal precargado:
 - **`/personal config`**: tus propias etiquetas de apariencia, que se aplican cada vez que una generación de imágenes hace referencia a ti. Te sigue en todos los servidores (consulte [Personalización](/es-419/features/knowledge/personalization/)).
 - **`/config` > `Modelos` > `Valores de imagen`**: use `Editar positivo` y `Editar negativo` para configurar etiquetas predeterminadas agregadas o alejadas de cada generación. Las etiquetas negativas solo se aplican cuando el backend admite mensajes negativos. Al enviar un cuadro vacío se restablecen los valores predeterminados integrados.
 
+## Búsqueda de etiquetas
+<!-- anchor: tag-lookup -->
+
+Con **Búsqueda en Danbooru** activada (`/config` > Plugins > Herramientas disponibles), ella puede buscar la etiqueta exacta y el atuendo de un personaje antes de dibujar, para que "mi OC con el atuendo de Ryza" vista a tu OC con la ropa de Ryza. Consulta [Búsqueda de etiquetas de Danbooru](/features/capabilities/tools-and-extensions/#danbooru-tag-lookup).
+
+Ella busca etiquetas con mayor precisión con el preajuste de instrucción del sistema `Default + Image Generation Expert` (`/config` > Comportamiento > Comportamiento general), que también le indica cómo ordenar las etiquetas de anime y cuándo redactar en prosa. `/generate image` en modo Auto también puede buscar etiquetas.
+
 ## Configuración
 
 1. Configura un modelo de imagen con `/config` > `Modelos` > `Cambiar modelos`.

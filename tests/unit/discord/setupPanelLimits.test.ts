@@ -33,7 +33,7 @@ const TEST_NONCE = "nonce-abc-12345";
 /** The catalog rows the complete-draft fixture stores, so its settings step resolves and reads as done. */
 const COMPLETE_DRAFT_CATALOGS = {
   personas: [{ id: 1, name: "Lighthouse", description: "A steady, watchful companion." }],
-  prompts: [{ name: "Tomori Default", description: "The standard reply style." }],
+  prompts: [{ name: "Tomori Default", displayName: "Tomori Default", description: "The standard reply style." }],
   // Only the commit path reads this, but the editor fixtures travel with the whole shape so a
   // catalog object built here can be handed to either without a cast.
   promptTexts: new Map([["Tomori Default", "You are Tomori."]]),
@@ -300,7 +300,7 @@ describe("setupPanel Components V2 layout and limits", () => {
     const maxPromptName = "r".repeat(100);
     const catalogs = {
       personas: [{ id: 7, name: maxPersonaName, description: "d".repeat(100) }],
-      prompts: [{ name: maxPromptName, description: "s".repeat(100) }],
+      prompts: [{ name: maxPromptName, displayName: maxPromptName, description: "s".repeat(100) }],
       promptTexts: new Map([[maxPromptName, "You are Tomori."]]),
     };
 

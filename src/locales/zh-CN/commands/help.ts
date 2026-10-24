@@ -79,6 +79,8 @@ export default {
         video_generation_description: `短视频，可选首帧`,
         speech_generation: `语音生成`,
         speech_generation_description: `把文字变成语音消息`,
+        art_search: `插画搜索`,
+        art_search_description: `从 Danbooru 发送现有的动漫插画`,
         behavior_tuning: `行为调校`,
         behavior_tuning_description: `模型、回复自然度、指令与工具`,
         server_wide_settings: `服务器级设置`,
@@ -357,6 +359,11 @@ export default {
         title: `语音生成`,
         description:
           "{generateVoice} 把文字变成当前人格声音的 语音消息。\n\n必须先注册语音端点，托管或自部署都可以： 见「设置」里的 **自定义端点（高级）**。\n> 每个人格的声音可以不同。声音来自 {configPersonaVoice}。",
+      },
+      art_search: {
+        title: `插画搜索`,
+        description:
+          "{booruSearch} 会根据一个或两个标签随机发送 4 张评价良好的 Danbooru 图像。输入时会显示建议，昵称或拼写错误也会转换成真实标签。\n> 存疑和明确成人内容仅在年龄限制频道中显示。\n\n你也可以直接让我展示一些插画；{configTools} 中的 **Danbooru 搜索** 开关用于控制该功能。如需限制谁能运行该指令，请使用服务器设置 > 整合。",
       },
     },
     tons_of_tweakability: {

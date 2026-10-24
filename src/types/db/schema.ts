@@ -777,7 +777,7 @@ export const personalFallbackSettingsSchema = userPersonalizationConfigsSchema.p
 });
 export type PersonalFallbackSettings = z.infer<typeof personalFallbackSettingsSchema>;
 
-export const subscriptionCapabilitySchema = z.enum([
+const subscriptionCapabilitySchema = z.enum([
   "text",
   "embedding",
   "image",
@@ -918,6 +918,7 @@ const serverCapabilitiesConfigSchema = z.object({
   manage_message_enabled: z.boolean().default(true),
   thread_creation_enabled: z.boolean().default(true),
   imagegen_enabled: z.boolean().default(true),
+  danbooru_enabled: z.boolean().default(true),
   videogen_enabled: z.boolean().default(false),
   voice_message_enabled: z.boolean().default(true),
   user_blocking_enabled: z.boolean().default(true),
@@ -1249,6 +1250,7 @@ const systemPromptPresetSchema = z.object({
   system_prompt_preset_name: z.string(),
   system_prompt_preset_desc: z.string(),
   descriptions: z.record(z.string(), z.string()).nullable().optional(),
+  display_names: z.record(z.string(), z.string()).nullable().optional(),
   preset_prompt_text: z.string(),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),

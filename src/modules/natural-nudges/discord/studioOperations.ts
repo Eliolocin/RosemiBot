@@ -89,7 +89,7 @@ function sameAvailability(a: IdleNudgeAvailability, b: IdleNudgeAvailability): b
   return a.scope.length === other.length && a.scope.every((personaId) => other.includes(personaId));
 }
 
-export function entryAvailability(entry: StudioEntry): IdleNudgeAvailability {
+function entryAvailability(entry: StudioEntry): IdleNudgeAvailability {
   return entry.enabled ? { enabled: true, scope: entry.scope ?? null } : { enabled: false };
 }
 

@@ -49,6 +49,9 @@ As ferramentas dependem do provedor ativo e da chamada de ferramenta de suporte 
 | Processar vídeo do YouTube | `{youtube_tool}` | modelo com suporte de vídeo | Analise um link específico do YouTube sob demanda. |
 | Analisar imagem | `{image_analysis_tool}` | configurado `vision_llm` | Delegue a compreensão da imagem a um modelo de visão separado. |
 | Gerar imagem/imagem de anime | `{image_generation_tool}` / `{anime_image_generation_tool}` | `imagegen_enabled` + provedor capaz | Gere ou edite imagens (consulte [Geração de mídia](/pt-BR/features/capabilities/media-generation/)). |
+| Busca de tags no Danbooru | `{tag_search_tool}` | `danbooru_enabled` | Converte nomes de personagens, apelidos e palpites em tags exatas do Danbooru (consulte [Busca de Tags no Danbooru](#danbooru-tag-lookup)). |
+| Busca de arte no Danbooru | `{booru_post_search_tool}` | `danbooru_enabled` | Envia até 4 imagens existentes do Danbooru para 1 ou 2 tags (consulte [Busca de Arte e Leitura de Postagens](#art-search-and-post-reading)). |
+| Leitura de postagens no Danbooru | - | `danbooru_enabled` | Lê as tags agrupadas de uma postagem do Danbooru a partir do seu ID ou link. |
 | Gerar mensagem de voz | `{voice_message_tool}` | Tecla ElevenLabs + voz pessoal + `voice_message_enabled` | Envie uma resposta de voz falada Discord. |
 
 :::note[For prompt authors]
@@ -72,6 +75,28 @@ Use `capability:<name>` para uma configuração TomoriBot habilitada ou `tool:<f
 Os nomes de recursos suportados são `tool_use`, `self_teaching`, `personal_memories`, `emoji_usage`, `sticker_usage`, `web_search`, `manage_message`, `thread_creation`, `image_generation`, `video_generation`, `voice_message`, `user_blocking`, `short_term_memory` e `time_awareness`.
 
 As condições da ferramenta refletem o suporte do provedor/modelo, a configuração do servidor, os back-ends configurados, as substituições do MCP e a lista de permissões atual do modo de ferramenta deliberada. Eles não ignoram nem prevêem verificações de permissão Discord realizadas quando uma ferramenta é executada. Nomes de recursos desconhecidos são avaliados como falsos e registrados; blocos malformados são omitidos. Mensagens brutas de chat, resultados de modelos e resultados de ferramentas nunca são tratados como modelos condicionais.
+
+## Busca de Tags no Danbooru
+<!-- anchor: danbooru-tag-lookup -->
+
+Modelos de imagem de anime como o NovelAI interpretam tags do Danbooru, portanto uma tag adivinhada (`half-up braid` em vez de `half up braid`) ou um traje desconhecido enfraquece a imagem. Com a **Busca no Danbooru** ativada (`/config` > Plugins > Ferramentas Disponíveis, ativada por padrão), ela pode buscar tags antes de desenhar:
+
+- Nomes, apelidos e erros de digitação são resolvidos para a tag real (`ryza` se torna `reisalin stout`), com a contagem de postagens que a utilizam. Uma correspondência corrigida ou parcial pode representar algo diferente, então ela verifica isso.
+- Para um personagem ou um de seus trajes, ela também obtém as tags que mais frequentemente aparecem com ele, os trajes nomeados do personagem, a tag de cosplay e um breve resumo de wiki. Essas tags são extraídas apenas de postagens livres e sensíveis, em todos os canais.
+
+Cada busca envia um card de **Busca de tags no Danbooru** listando o que foi encontrado, com as tags do personagem em um bloco que você pode colar em um prompt manual de `/generate image`. O card permanece visível em qualquer nível de detalhes de aviso, e respostas posteriores podem reutilizar essas tags sem buscar novamente. Oculte-o em `/config` > Comportamento > Comportamento de Avisos como qualquer outro aviso.
+
+### Busca de Arte e Leitura de Postagens
+<!-- anchor: art-search-and-post-reading -->
+
+A mesma opção permite que ela compartilhe arte existente e leia as tags de uma postagem:
+
+- Ao pedir para ela mostrar arte de algo, ela envia até 4 imagens aleatórias bem avaliadas do Danbooru em uma única mensagem, com link para cada postagem. Todas as imagens com classificação acima de livre recebem aviso de spoiler. O Danbooru permite apenas 2 tags por busca, portanto ela escolhe as mais específicas, geralmente o personagem ou a série.
+- Ao receber o ID de uma postagem do Danbooru ou um link `danbooru.donmai.us/posts/`, ela lê suas tags agrupadas em personagem, série, artista, meta e geral. Sob o Modo de Ferramenta Deliberada, um link de postagem na mensagem é suficiente para oferecer essa ferramenta a ela.
+
+Qualquer pessoa também pode executar `/booru search` para obter a mesma galeria sem precisar pedir a ela. O comando sugere tags conforme você digita e converte apelidos ou erros de digitação na tag real, e o rodapé exibe o que foi buscado. Essa opção controla apenas as ferramentas dela, não o comando; para limitar quem pode executar o `/booru search`, use **Configurações do Servidor > Integrações** no Discord.
+
+As classificações seguem o canal. Postagens livres e sensíveis funcionam em qualquer lugar; postagens questionáveis e explícitas apenas em canais com restrição de idade. Um tópico segue seu canal principal, e mensagens diretas contam como sem restrição de idade. Uma postagem com classificação acima de livre que tenha as tags `loli`, `shota` ou `toddlercon` nunca é enviada ou lida, em nenhum canal.
 
 ## Pesquisa na Web & Leitura de URLs
 <!-- anchor: web-search--url-reading -->

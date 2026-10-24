@@ -138,6 +138,11 @@ export const COMPONENTS_V2_PRODUCER_MANIFEST: readonly ProducerManifestEntry[] =
     },
   },
   {
+    modulePath: "src/utils/discord/danbooruGalleryMessage.ts",
+    reason: "One-shot Danbooru image gallery message",
+    coverage: { kind: "suite", suites: ["tests/unit/discord/componentsV2DeclaredProducerSmoke.test.ts"] },
+  },
+  {
     modulePath: "src/utils/discord/generatedImageMessage.ts",
     reason: "One-shot generated image action message",
     coverage: { kind: "suite", suites: ["tests/unit/discord/componentsV2DeclaredProducerSmoke.test.ts"] },

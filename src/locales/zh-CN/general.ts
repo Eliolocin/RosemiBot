@@ -187,6 +187,6 @@ export default {
     triggered_footer_recurring_retained: `生成一直失败，所以这里原样显示提醒内容。下一次仍按原来的周期执行。用 \`/scheduled-task edit\` 或 \`/scheduled-task remove\` 管理它。`,
     triggered_footer_recurring_removed: `生成一直失败，下一次也没能保留。这个重复提醒已经被删除；等问题解决后再重新创建。`,
     removed_after_failures_title: `已移除定时项目`,
-    removed_after_failures_description: `定时项目 \`{reminder_id}\` 已连续失败 {failed_occurrences} 次且无法发送至所在频道，因此已被移除。请在修复频道权限或 AI 提供方后重新创建。\n**原始内容：**`,
+    removed_after_failures_description: `定时项目 \`{reminder_id}\` 连续失败 {failed_occurrences} 次且无法在其频道中发送，因此已被移除。请在修复频道权限或 AI 提供方后重新创建。\n**原始内容：**`,
   },
 };

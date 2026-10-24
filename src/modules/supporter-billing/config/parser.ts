@@ -160,7 +160,7 @@ export function parseSupporterBillingConfigJson(
   return schemaResult.data;
 }
 
-export function getSupporterBillingReferencedEnvVars(config: SupporterBillingConfig): string[] {
+function getSupporterBillingReferencedEnvVars(config: SupporterBillingConfig): string[] {
   return Array.from(
     new Set([
       config.patreon.oauthClientIdEnv,

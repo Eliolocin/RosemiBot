@@ -79,6 +79,8 @@ export default {
         video_generation_description: `Clips cortos con un marco inicial opcional`,
         speech_generation: `Generación de voz`,
         speech_generation_description: `Convierte texto en un mensaje de voz`,
+        art_search: `Búsqueda de arte`,
+        art_search_description: `Publica arte anime existente de Danbooru`,
         behavior_tuning: `Ajuste de comportamiento`,
         behavior_tuning_description: `Modelo, humanizador, instrucciones y herramientas`,
         server_wide_settings: `Ajustes del servidor`,
@@ -459,6 +461,11 @@ Ingresa \`{project_id}::{location}\` con {configSetup} o {configApikeySet}
         title: `Generación de voz`,
         description:
           "{generateVoice} convierte texto en un mensaje de voz en la voz de la persona actual.\n\nUn endpoint de voz debe estar registrado primero, alojado o autoalojado: ve **Endpoints personalizados (Avanzado)**.\n> Cada persona puede sonar diferente. La voz viene de {configPersonaVoice}.",
+      },
+      art_search: {
+        title: `Búsqueda de arte`,
+        description:
+          "{booruSearch} publica 4 imágenes aleatorias bien valoradas de Danbooru para una o dos etiquetas. Las sugerencias aparecen mientras escribes, y los apodos o errores tipográficos se convierten en la etiqueta real.\n> Los resultados cuestionables y explícitos solo se muestran en canales para mayores de edad.\n\nTambién puedes pedirme que te muestre arte; el interruptor de **Búsqueda en Danbooru** en {configTools} controla eso. Para limitar quién puede usar el comando, usa Ajustes del servidor > Integraciones.",
       },
     },
     tons_of_tweakability: {

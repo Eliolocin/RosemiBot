@@ -41,8 +41,9 @@ Do not add a panel only to remove one slash path.
 These apply to all three panel archetypes.
 
 - **Navigation never writes.** Category buttons, page selects, and entity selects only change what is
-  shown. A select's default marks the current page. Writes happen through an explicit button or a modal
-  submission, and end with a receipt and refreshed state.
+  shown. A select's default marks the current page. Writes happen through an explicit button, a modal
+  submission, or one of the [selects that write](#selects-that-write), and end with a receipt and
+  refreshed state.
 - **Categories:** at most five top-row buttons, the active one `Primary`. More areas than that belong
   in a page select within a category.
 - **Rebuild state on every click.** Reload from the database and resolve stable IDs within the current
@@ -70,12 +71,23 @@ These apply to all three panel archetypes.
 - Switching page keeps the entity; switching entity keeps the page.
 - The main persona is the first selection and is labelled as the main persona.
 
-### Recorded exception
+### Selects that write
 
-The SillyTavern presets select activates the chosen preset directly, and `None` disables presets. Only
-one preset can be active and another selection reverses it, so a preview step would add a click to the
-select's only purpose. The select is disabled on a stale read, re-authorizes before writing, and still
-repaints with a receipt; deleting a preset keeps the normal button and confirmation.
+A select may save on pick, without a button or modal, when the pick is the whole change: no free text,
+no other field submitted with it, and another pick undoes it. Opening a modal that holds only that
+select would cost a click and hide the saved value. The select is disabled on a stale read,
+re-authorizes before writing, and repaints with a receipt. Two shapes qualify:
+
+- **Single choice:** one active value that another pick replaces. The SillyTavern presets select
+  activates the chosen preset and `None` disables presets; deleting a preset keeps the normal button
+  and confirmation.
+- **Whole list:** the select's defaults show the saved list and each pick saves the new list, as the
+  Natural Nudges channels select does. The list must fit one select (25 values). The save is
+  last-write-wins, so two admins editing at once keep the later pick.
+
+Keep the modal when the select is submitted with other fields. A list that can outgrow 25 entries keeps
+its add and remove buttons. Budget the row: an action row holding one select counts as 2 of a message's
+40 components.
 
 Other departures need a verified Discord limit, a different archetype, or a recorded product decision,
 added here.

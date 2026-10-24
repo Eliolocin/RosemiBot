@@ -572,6 +572,15 @@ export async function seedModelsFromCatalog(client: SQL): Promise<void> {
     UPDATE server_natural_nudge_configs SET llm_id = NULL
     WHERE llm_id IN (SELECT llm_id FROM llms WHERE is_deprecated)
   `;
+  // A pinned checker never falls back, so a pin on a deprecated model would silently stop active nudges.
+  await client`
+    UPDATE server_natural_nudge_configs SET checker_llm_id = NULL
+    WHERE checker_llm_id IN (SELECT llm_id FROM llms WHERE is_deprecated)
+  `;
+  await client`
+    UPDATE server_natural_nudge_configs SET checker_decision_model_id = NULL
+    WHERE checker_decision_model_id IN (SELECT decision_model_id FROM decision_models WHERE is_deprecated)
+  `;
   const clearedDecisions = await client<Array<{ server_disc_id: string }>>`
     WITH cleared AS (
       UPDATE server_model_configs SET decision_model_id = NULL

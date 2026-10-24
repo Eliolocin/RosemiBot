@@ -328,6 +328,7 @@ export class NvidiaProvider
           user_blocking_enabled: tomoriState.config.user_blocking_enabled,
           user_info_updates_enabled: tomoriState.config.user_info_updates_enabled,
           thread_creation_enabled: tomoriState.config.thread_creation_enabled,
+          danbooru_enabled: tomoriState.config.danbooru_enabled,
         },
       };
 
@@ -540,6 +541,7 @@ export class NvidiaProvider
         user_blocking_enabled: false,
         user_info_updates_enabled: false,
         thread_creation_enabled: false,
+        danbooru_enabled: false,
       },
     };
 

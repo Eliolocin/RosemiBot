@@ -133,9 +133,9 @@ is picked in `/config` > Plugins > Natural Nudges.
 
 OpenRouter is the supported native provider. Save its key, open its model dropdown, and choose
 `+ Add new Decision Model`. Enter an ID from its verified Decision catalog. The global catalog
-keeps a short list for different needs: Jev 1.13 (default), Decider V1.1 27B (low-cost bulk checks),
-Solar Decide Flash (Korean and long documents), GPT-6 Luna Decisions (largest inputs), and Mercury
-Decide Free (experimentation). These roles follow documented capabilities; accuracy and thresholds
+keeps a short list for different needs: Decider Flash V1.2 (default, fast and low-cost), Jev 1.14
+(higher accuracy), GPT-6 Luna Decisions (largest inputs), and Mercury Decide Free (experimentation).
+These roles follow documented capabilities; accuracy and thresholds
 need testing against your own questions. The weekly catalog check offers new entries for review.
 Additional registrations belong to their server or personal owner.
 Native discovery supplies the documented input limit and prices. Chat catalogs cannot establish

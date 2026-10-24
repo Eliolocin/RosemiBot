@@ -49,6 +49,9 @@ Các công cụ phụ thuộc vào nhà cung cấp đang hoạt động và vi�
 | Xử lý video YouTube | `{youtube_tool}` | model có hỗ trợ video | Phân tích một liên kết YouTube cụ thể theo yêu cầu. |
 | Phân tích hình ảnh | `{image_analysis_tool}` | được cấu hình `vision_llm` | Ủy thác sự hiểu biết về hình ảnh cho một model tầm nhìn riêng biệt. |
 | Tạo hình ảnh / hình ảnh anime | `{image_generation_tool}` / `{anime_image_generation_tool}` | `imagegen_enabled` + nhà cung cấp có năng lực | Tạo hoặc chỉnh sửa hình ảnh (xem [Tạo phương tiện](/vi/features/capabilities/media-generation/)). |
+| Tra cứu thẻ Danbooru | `{tag_search_tool}` | `danbooru_enabled` | Chuyển tên nhân vật, biệt danh và thẻ đoán thành thẻ Danbooru chính xác (xem [Tra cứu thẻ Danbooru](#danbooru-tag-lookup)). |
+| Tìm kiếm tranh ảnh Danbooru | `{booru_post_search_tool}` | `danbooru_enabled` | Gửi tối đa 4 ảnh Danbooru có sẵn cho 1 hoặc 2 thẻ (xem [Tìm kiếm tranh ảnh và đọc bài đăng](#art-search-and-post-reading)). |
+| Đọc bài đăng Danbooru | - | `danbooru_enabled` | Đọc các thẻ được nhóm của một bài đăng Danbooru từ ID hoặc liên kết. |
 | Tạo tin nhắn thoại | `{voice_message_tool}` | Phím ElevenLabs + giọng nói cá tính + `voice_message_enabled` | Gửi trả lời bằng giọng nói Discord. |
 
 :::note[For prompt authors]
@@ -72,6 +75,28 @@ Sử dụng `capability:<name>` cho cài đặt TomoriBot được bật hoặc 
 Các tên khả năng được hỗ trợ là `tool_use`, `self_teaching`, `personal_memories`, `emoji_usage`, `sticker_usage`, `web_search`, `manage_message`, `thread_creation`, `image_generation`, `video_generation`, `voice_message`, `user_blocking`, `short_term_memory`, và `time_awareness`.
 
 Các điều kiện của công cụ phản ánh sự hỗ trợ của nhà cung cấp/model, cấu hình máy chủ, phần phụ trợ đã định cấu hình, các thay thế MCP và danh sách cho phép Chế độ công cụ có chủ ý hiện tại. Chúng không bỏ qua hoặc dự đoán các bước kiểm tra quyền Discord được thực hiện khi một công cụ thực thi. Tên khả năng không xác định được đánh giá là sai và được ghi lại; khối không đúng định dạng được bỏ qua. Tin nhắn trò chuyện thô, đầu ra model và kết quả công cụ không bao giờ được coi là mẫu có điều kiện.
+
+## Tra cứu thẻ Danbooru
+<!-- anchor: danbooru-tag-lookup -->
+
+Các model hình ảnh anime như NovelAI hiểu thẻ Danbooru, do đó thẻ đoán sai (`half-up braid` thay vì `half up braid`) hoặc trang phục chưa biết sẽ làm giảm chất lượng hình ảnh. Khi bật **Tìm kiếm Danbooru** (`/config` > Plugin > Công cụ khả dụng, được bật theo mặc định), mình có thể tra cứu thẻ trước khi vẽ:
+
+- Tên, biệt danh và lỗi chính tả được phân giải thành thẻ thực tế (`ryza` trở thành `reisalin stout`), kèm theo số lượng bài đăng sử dụng thẻ đó. Kết quả sửa lỗi hoặc khớp một phần có thể là một thứ khác, vì vậy mình sẽ kiểm tra kỹ.
+- Đối với nhân vật hoặc một trong những trang phục của họ, mình cũng lấy được các thẻ thường xuất hiện cùng nhất, trang phục có tên và thẻ cosplay của nhân vật, cùng một đoạn tóm tắt wiki ngắn. Các thẻ này chỉ lấy từ các bài đăng chung và nhạy cảm, ở mọi kênh.
+
+Mỗi lần tra cứu sẽ gửi một thẻ thông báo **Tra cứu thẻ Danbooru** liệt kê những gì tìm thấy, kèm theo các thẻ của nhân vật trong một khối mà bạn có thể dán vào prompt `/generate image` thủ công. Thẻ này vẫn hiển thị ở mọi mức chi tiết thông báo và các phản hồi sau có thể dùng lại các thẻ đó mà không cần tìm kiếm lại. Ẩn thẻ này trong `/config` > Hành vi > Hành vi thông báo như bất kỳ thông báo nào khác.
+
+### Tìm kiếm tranh ảnh và đọc bài đăng
+<!-- anchor: art-search-and-post-reading -->
+
+Công tắc này cũng cho phép mình chia sẻ tranh ảnh có sẵn và đọc các thẻ của bài đăng:
+
+- Khi được yêu cầu hiển thị tranh ảnh về điều gì đó, mình sẽ gửi tối đa 4 ảnh Danbooru ngẫu nhiên được đánh giá cao trong một tin nhắn, kèm liên kết đến từng bài đăng. Mọi hình ảnh có mức đánh giá trên mức chung đều được ẩn sau cảnh báo spoiler. Danbooru chỉ cho phép 2 thẻ mỗi lần tìm kiếm, vì vậy mình sẽ chọn các thẻ cụ thể nhất, thường là nhân vật hoặc tác phẩm.
+- Khi nhận được ID bài đăng Danbooru hoặc liên kết `danbooru.donmai.us/posts/`, mình sẽ đọc các thẻ của bài đăng được nhóm thành nhân vật, tác phẩm, họa sĩ, siêu dữ liệu và chung. Trong Chế độ công cụ có chủ ý, chỉ cần có liên kết bài đăng trong tin nhắn là đủ để cung cấp công cụ này cho mình.
+
+Bất kỳ ai cũng có thể chạy `/booru search` để nhận cùng một bộ sưu tập mà không cần hỏi mình. Lệnh sẽ gợi ý thẻ khi bạn nhập và chuyển biệt danh hoặc lỗi chính tả thành thẻ thực tế, và phần chân trang hiển thị nội dung đã tìm kiếm. Công tắc này chỉ kiểm soát công cụ của mình, không kiểm soát lệnh; để giới hạn người có thể chạy `/booru search`, hãy dùng **Cài đặt máy chủ > Tích hợp** trong Discord.
+
+Đánh giá tuân theo kênh. Các bài đăng chung và nhạy cảm hoạt động ở mọi nơi; các bài đăng nghi vấn và 18+ chỉ hoạt động trong các kênh giới hạn độ tuổi. Luồng tuân theo kênh chính và tin nhắn trực tiếp được tính là không giới hạn độ tuổi. Bài đăng có mức đánh giá trên mức chung được gắn thẻ `loli`, `shota` hoặc `toddlercon` sẽ không bao giờ được gửi hoặc đọc, ở bất kỳ kênh nào.
 
 ## Tìm kiếm web & đọc URL
 <!-- anchor: web-search--url-reading -->

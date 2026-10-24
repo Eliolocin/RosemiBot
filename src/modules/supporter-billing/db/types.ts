@@ -9,15 +9,9 @@ const nullableNonEmptyStringSchema = z.preprocess(
   nonEmptyStringSchema.nullable(),
 );
 
-export const SUPPORTER_ENTITLEMENT_SOURCES = ["oauth", "webhook", "reconcile", "manual_admin"] as const;
-export const SUPPORTER_SPONSORSHIP_STATUSES = [
-  "active",
-  "revoked",
-  "inactive_entitlement",
-  "exhausted",
-  "replaced",
-] as const;
-export const SUPPORTER_WEBHOOK_EVENT_STATUSES = ["received", "processed", "failed", "ignored"] as const;
+const SUPPORTER_ENTITLEMENT_SOURCES = ["oauth", "webhook", "reconcile", "manual_admin"] as const;
+const SUPPORTER_SPONSORSHIP_STATUSES = ["active", "revoked", "inactive_entitlement", "exhausted", "replaced"] as const;
+const SUPPORTER_WEBHOOK_EVENT_STATUSES = ["received", "processed", "failed", "ignored"] as const;
 export const supporterIdentitySchema = z.object({
   supporter_identity_id: integerSchema.positive(),
   discord_user_id: nonEmptyStringSchema,
@@ -74,7 +68,6 @@ export const supporterServerSponsorshipSchema = z.object({
   updated_at: timestampSchema,
 });
 export type SupporterServerSponsorshipRow = z.infer<typeof supporterServerSponsorshipSchema>;
-export type SupporterSponsorshipStatus = z.infer<typeof supporterServerSponsorshipSchema.shape.status>;
 
 export const supporterWebhookEventSchema = z.object({
   webhook_event_id: integerSchema.positive(),

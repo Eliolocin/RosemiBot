@@ -1,0 +1,172 @@
+[
+  {
+    "type": "tag-word",
+    "label": "hatsune miku",
+    "value": "hatsune_miku",
+    "category": 4,
+    "post_count": 148216,
+    "tag": {
+      "id": 385430,
+      "name": "hatsune_miku",
+      "post_count": 148216,
+      "category": 4,
+      "created_at": "2013-02-28T11:21:23.414-05:00",
+      "updated_at": "2019-08-25T01:50:59.085-04:00",
+      "is_deprecated": false,
+      "words": ["hatsune", "miku"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "yuki miku",
+    "value": "yuki_miku",
+    "category": 4,
+    "post_count": 5230,
+    "tag": {
+      "id": 539110,
+      "name": "yuki_miku",
+      "post_count": 5230,
+      "category": 4,
+      "created_at": "2013-02-28T18:08:38.333-05:00",
+      "updated_at": "2019-09-01T11:04:13.591-04:00",
+      "is_deprecated": false,
+      "words": ["yuki", "miku"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "asahina mikuru",
+    "value": "asahina_mikuru",
+    "category": 4,
+    "post_count": 4393,
+    "tag": {
+      "id": 9750,
+      "name": "asahina_mikuru",
+      "post_count": 4393,
+      "category": 4,
+      "created_at": "2013-02-28T02:01:47.322-05:00",
+      "updated_at": "2019-08-31T12:10:56.327-04:00",
+      "is_deprecated": false,
+      "words": ["asahina", "mikuru"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "nakano miku",
+    "value": "nakano_miku",
+    "category": 4,
+    "post_count": 4186,
+    "tag": {
+      "id": 1443053,
+      "name": "nakano_miku",
+      "post_count": 4186,
+      "category": 4,
+      "created_at": "2017-10-17T12:58:47.772-04:00",
+      "updated_at": "2019-09-02T08:39:59.824-04:00",
+      "is_deprecated": false,
+      "words": ["nakano", "miku"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "sakura miku",
+    "value": "sakura_miku",
+    "category": 4,
+    "post_count": 3471,
+    "tag": {
+      "id": 543959,
+      "name": "sakura_miku",
+      "post_count": 3471,
+      "category": 4,
+      "created_at": "2013-02-28T05:32:27.115-05:00",
+      "updated_at": "2019-09-01T11:15:37.521-04:00",
+      "is_deprecated": false,
+      "words": ["sakura", "miku"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "maekawa miku",
+    "value": "maekawa_miku",
+    "category": 4,
+    "post_count": 3192,
+    "tag": {
+      "id": 664492,
+      "name": "maekawa_miku",
+      "post_count": 3192,
+      "category": 4,
+      "created_at": "2013-02-28T12:05:38.322-05:00",
+      "updated_at": "2019-09-01T10:46:05.912-04:00",
+      "is_deprecated": false,
+      "words": ["maekawa", "miku"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "magical mirai miku",
+    "value": "magical_mirai_miku",
+    "category": 4,
+    "post_count": 2869,
+    "tag": {
+      "id": 1814893,
+      "name": "magical_mirai_miku",
+      "post_count": 2869,
+      "category": 4,
+      "created_at": "2022-07-11T23:27:23.337-04:00",
+      "updated_at": "2022-07-11T23:27:23.366-04:00",
+      "is_deprecated": false,
+      "words": ["magical", "mirai", "miku"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "hatsune miku (cosplay)",
+    "value": "hatsune_miku_(cosplay)",
+    "category": 0,
+    "post_count": 2746,
+    "tag": {
+      "id": 388798,
+      "name": "hatsune_miku_(cosplay)",
+      "post_count": 2746,
+      "category": 0,
+      "created_at": "2013-02-27T23:42:12.901-05:00",
+      "updated_at": "2019-09-01T08:55:38.308-04:00",
+      "is_deprecated": false,
+      "words": ["hatsune", "miku", "cosplay"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "miku day",
+    "value": "miku_day",
+    "category": 0,
+    "post_count": 2722,
+    "tag": {
+      "id": 1848853,
+      "name": "miku_day",
+      "post_count": 2722,
+      "category": 0,
+      "created_at": "2022-09-30T07:52:20.835-04:00",
+      "updated_at": "2022-09-30T07:52:20.835-04:00",
+      "is_deprecated": false,
+      "words": ["miku", "day"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "brazilian miku",
+    "value": "brazilian_miku",
+    "category": 4,
+    "post_count": 2329,
+    "tag": {
+      "id": 2198638,
+      "name": "brazilian_miku",
+      "post_count": 2329,
+      "category": 4,
+      "created_at": "2024-08-22T12:32:54.117-04:00",
+      "updated_at": "2024-08-22T12:32:54.121-04:00",
+      "is_deprecated": false,
+      "words": ["brazilian", "miku"]
+    }
+  }
+]

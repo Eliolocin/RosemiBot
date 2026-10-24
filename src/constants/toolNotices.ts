@@ -18,6 +18,7 @@ export const TOOL_NOTICE_KEYS = [
   "memory_update",
   "task_update",
   "user_info_update",
+  "danbooru_tags",
 ] as const;
 
 /** The one footer line every hideable notice shares, pointing at the toggle that hides it. */
@@ -38,6 +39,8 @@ export const VERBOSITY_EXEMPT_NOTICE_KEYS: ReadonlySet<ToolNoticeKey> = new Set<
   "respond_embed",
   "impersonation_notice",
   "fallback_model_usage",
+  // Exempt because later turns reuse the tag list, and a lookup has no stored row to restore it from.
+  "danbooru_tags",
 ]);
 
 export function isToolNoticeKey(value: string): value is ToolNoticeKey {
@@ -145,5 +148,10 @@ export const TOOL_NOTICE_DEFINITIONS: ToolNoticeDefinition[] = [
     key: "user_info_update",
     labelKey: "commands.config.notice-embeds.visibility.notice_user_info_update_label",
     descriptionKey: "commands.config.notice-embeds.visibility.notice_user_info_update_description",
+  },
+  {
+    key: "danbooru_tags",
+    labelKey: "commands.config.notice-embeds.visibility.notice_danbooru_tags_label",
+    descriptionKey: "commands.config.notice-embeds.visibility.notice_danbooru_tags_description",
   },
 ];

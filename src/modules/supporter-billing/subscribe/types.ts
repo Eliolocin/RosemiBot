@@ -12,11 +12,11 @@ export interface SponsoredServerSummary {
   iconUrl?: string | null;
 }
 
-export interface SubscribeIdentityRepository {
+interface SubscribeIdentityRepository {
   loadByDiscordUserId(discordUserId: string): Promise<SupporterIdentityRow | null>;
 }
 
-export interface SubscribeEntitlementRepository {
+interface SubscribeEntitlementRepository {
   loadByIdentityId(supporterIdentityId: number): Promise<SupporterEntitlementRow | null>;
 }
 

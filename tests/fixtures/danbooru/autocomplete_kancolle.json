@@ -1,0 +1,173 @@
+[
+  {
+    "type": "tag-word",
+    "label": "kantai collection",
+    "value": "kantai_collection",
+    "category": 3,
+    "post_count": 547568,
+    "antecedent": "kancolle",
+    "tag": {
+      "id": 1231860,
+      "name": "kantai_collection",
+      "post_count": 547568,
+      "category": 3,
+      "created_at": "2013-05-13T14:27:37.960-04:00",
+      "updated_at": "2019-08-14T21:53:04.969-04:00",
+      "is_deprecated": false,
+      "words": ["kantai", "collection"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "admiral (kancolle)",
+    "value": "admiral_(kancolle)",
+    "category": 4,
+    "post_count": 39109,
+    "tag": {
+      "id": 1301082,
+      "name": "admiral_(kancolle)",
+      "post_count": 39109,
+      "category": 4,
+      "created_at": "2014-12-30T14:39:08.391-05:00",
+      "updated_at": "2021-02-07T17:42:38.634-05:00",
+      "is_deprecated": false,
+      "words": ["admiral", "kancolle"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "kaga (kancolle)",
+    "value": "kaga_(kancolle)",
+    "category": 4,
+    "post_count": 22236,
+    "tag": {
+      "id": 1631074,
+      "name": "kaga_(kancolle)",
+      "post_count": 22236,
+      "category": 4,
+      "created_at": "2021-02-08T03:03:31.613-05:00",
+      "updated_at": "2021-02-08T03:03:31.724-05:00",
+      "is_deprecated": false,
+      "words": ["kaga", "kancolle"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "shimakaze (kancolle)",
+    "value": "shimakaze_(kancolle)",
+    "category": 4,
+    "post_count": 20841,
+    "tag": {
+      "id": 1275729,
+      "name": "shimakaze_(kancolle)",
+      "post_count": 20841,
+      "category": 4,
+      "created_at": "2014-05-21T22:51:18.306-04:00",
+      "updated_at": "2021-02-08T10:21:27.986-05:00",
+      "is_deprecated": false,
+      "words": ["shimakaze", "kancolle"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "hibiki (kancolle)",
+    "value": "hibiki_(kancolle)",
+    "category": 4,
+    "post_count": 18106,
+    "tag": {
+      "id": 1275718,
+      "name": "hibiki_(kancolle)",
+      "post_count": 18106,
+      "category": 4,
+      "created_at": "2014-05-21T22:51:18.255-04:00",
+      "updated_at": "2021-02-08T00:14:55.237-05:00",
+      "is_deprecated": false,
+      "words": ["hibiki", "kancolle"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "shigure (kancolle)",
+    "value": "shigure_(kancolle)",
+    "category": 4,
+    "post_count": 17858,
+    "tag": {
+      "id": 1275728,
+      "name": "shigure_(kancolle)",
+      "post_count": 17858,
+      "category": 4,
+      "created_at": "2014-05-21T22:51:18.303-04:00",
+      "updated_at": "2021-02-08T09:55:03.068-05:00",
+      "is_deprecated": false,
+      "words": ["shigure", "kancolle"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "kongou (kancolle)",
+    "value": "kongou_(kancolle)",
+    "category": 4,
+    "post_count": 14084,
+    "tag": {
+      "id": 1350122,
+      "name": "kongou_(kancolle)",
+      "post_count": 14084,
+      "category": 4,
+      "created_at": "2016-01-25T15:14:27.677-05:00",
+      "updated_at": "2021-02-08T05:06:53.968-05:00",
+      "is_deprecated": false,
+      "words": ["kongou", "kancolle"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "inazuma (kancolle)",
+    "value": "inazuma_(kancolle)",
+    "category": 4,
+    "post_count": 13583,
+    "tag": {
+      "id": 1275720,
+      "name": "inazuma_(kancolle)",
+      "post_count": 13583,
+      "category": 4,
+      "created_at": "2014-05-21T22:51:18.263-04:00",
+      "updated_at": "2021-02-08T02:05:58.416-05:00",
+      "is_deprecated": false,
+      "words": ["inazuma", "kancolle"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "akagi (kancolle)",
+    "value": "akagi_(kancolle)",
+    "category": 4,
+    "post_count": 13023,
+    "tag": {
+      "id": 1630449,
+      "name": "akagi_(kancolle)",
+      "post_count": 13023,
+      "category": 4,
+      "created_at": "2021-02-07T18:35:07.509-05:00",
+      "updated_at": "2021-02-07T18:35:07.626-05:00",
+      "is_deprecated": false,
+      "words": ["akagi", "kancolle"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "fubuki (kancolle)",
+    "value": "fubuki_(kancolle)",
+    "category": 4,
+    "post_count": 12988,
+    "tag": {
+      "id": 1275715,
+      "name": "fubuki_(kancolle)",
+      "post_count": 12988,
+      "category": 4,
+      "created_at": "2014-05-21T22:51:18.246-04:00",
+      "updated_at": "2021-02-07T22:13:39.657-05:00",
+      "is_deprecated": false,
+      "words": ["fubuki", "kancolle"]
+    }
+  }
+]

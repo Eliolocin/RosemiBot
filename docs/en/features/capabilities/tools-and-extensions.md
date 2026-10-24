@@ -54,6 +54,9 @@ optional API key.
 | Process YouTube video | `{youtube_tool}` | model with video support | Analyze a specific YouTube link on demand. |
 | Analyze image | `{image_analysis_tool}` | configured `vision_llm` | Delegate image understanding to a separate vision model. |
 | Generate image / anime image | `{image_generation_tool}` / `{anime_image_generation_tool}` | `imagegen_enabled` + capable provider | Generate or edit images (see [Media Generation](/features/capabilities/media-generation/)). |
+| Danbooru tag lookup | `{tag_search_tool}` | `danbooru_enabled` | Turn character names, nicknames, and tag guesses into exact Danbooru tags (see [Danbooru Tag Lookup](#danbooru-tag-lookup)). |
+| Danbooru art search | `{booru_post_search_tool}` | `danbooru_enabled` | Post up to 4 existing Danbooru images for 1 or 2 tags (see [Art Search and Post Reading](#art-search-and-post-reading)). |
+| Danbooru post read | - | `danbooru_enabled` | Read the grouped tags of one Danbooru post from its ID or link. |
 | Generate voice message | `{voice_message_tool}` | ElevenLabs key + persona voice + `voice_message_enabled` | Send a spoken Discord voice reply. |
 
 :::note[For prompt authors]
@@ -96,6 +99,49 @@ MCP replacements, and the current Deliberate Tool Mode allowlist. They do not by
 predict Discord permission checks performed when a tool executes. Unknown capability names
 evaluate as false and are logged; malformed blocks are omitted. Raw chat messages, model
 output, and tool results are never treated as conditional templates.
+
+## Danbooru Tag Lookup
+<!-- anchor: danbooru-tag-lookup -->
+
+Anime image models such as NovelAI read Danbooru tags, so a guessed tag (`half-up braid` for
+`half up braid`) or an unknown character outfit weakens the image. With **Danbooru Search** on
+(`/config` > Plugins > Available Tools, on by default), she can look tags up before drawing:
+
+- Names, nicknames, and typos resolve to the real tag (`ryza` becomes `reisalin stout`), with how
+  many posts use it. A corrected or partial match can be a different thing, so she checks it.
+- For a character or one of their outfits, she also gets the tags that most often appear with
+  them, the character's named outfits and cosplay tag, and a short wiki summary. These tags come
+  only from general and sensitive posts, in every channel.
+
+Each lookup posts a **Danbooru Tag Lookup** card listing what was found, with the character's
+tags in a block you can paste into a manual `/generate image` prompt. The card stays visible at
+every notice verbosity, and later replies can reuse its tags without searching again. Hide it
+under `/config` > Behavior > Notices like any other notice.
+
+### Art Search and Post Reading
+<!-- anchor: art-search-and-post-reading -->
+
+The same toggle lets her share existing art and read a post's tags:
+
+- Asked to show art of something, she posts up to 4 random well-rated Danbooru images in one
+  message, with a link to each post. Every image rated above general is spoilered. Danbooru allows
+  only 2 tags per search, so she picks the most specific ones, usually the character or series.
+- Given a Danbooru post ID or `danbooru.donmai.us/posts/` link, she reads its tags grouped into
+  character, series, artist, meta, and general.
+
+Under Deliberate Tool Mode, a post link in the message offers her the post reader, and asking to
+see art "of" or "from" something (or naming Danbooru) offers her the art search and tag lookup.
+An image generation request also offers the tag lookup, so she can check a character's tags first.
+
+Anyone can also run `/booru search` to get the same gallery without asking her. It suggests tags as
+you type and turns a nickname or typo into the real tag, and the footer shows what it searched for.
+The toggle only controls her tools, not the command; to limit who can run `/booru search`, use
+Discord's **Server Settings > Integrations**.
+
+Ratings follow the channel. General and sensitive posts work everywhere; questionable and explicit
+posts only in age-restricted channels. A thread follows its parent channel, and DMs count as not
+age-restricted. A post rated above general that is tagged `loli`, `shota`, or `toddlercon` is never
+posted or read, in any channel.
 
 ## Web Search & URL Reading
 <!-- anchor: web-search--url-reading -->
@@ -198,7 +244,7 @@ without a user request.
 
 - She first checks the message for tool intent. Built-in triggers cover common requests
   (reminders, web search, memory updates, cross-channel messages, image/video/voice
-  generation, media analysis, thread creation, message actions). Questions about her current
+  generation, Danbooru art search, media analysis, thread creation, message actions). Questions about her current
   model, tools, settings, or why a capability is unavailable expose capability review and
   official documentation access together. Follow-up wording works too, like "do that again
   but angrier" after a voice-message request.

@@ -12,6 +12,7 @@ export function configToFeatureFlags(config: {
   user_blocking_enabled: boolean;
   user_info_updates_enabled: boolean;
   thread_creation_enabled: boolean;
+  danbooru_enabled: boolean;
 }): Record<string, boolean> {
   return {
     sticker_usage: config.sticker_usage_enabled,
@@ -24,5 +25,6 @@ export function configToFeatureFlags(config: {
     user_blocking: config.user_blocking_enabled,
     user_info_updates: config.user_info_updates_enabled,
     thread_creation: config.thread_creation_enabled,
+    danbooru: config.danbooru_enabled,
   };
 }
