@@ -12,6 +12,7 @@ import {
 import { resetRepository } from "@/utils/db/repositories/ResetRepository";
 import { cache } from "@/utils/cache/tomoriStateCacheStore";
 import { seedModelsFromCatalog } from "@/db/seed/catalog/modelSeed";
+import { initializeDatabase } from "@/utils/db/initializeDatabase";
 import {
   responseDraftingOperations,
   loadResponseDraftingView,
@@ -23,7 +24,7 @@ import { registerCustomEndpoint } from "@/utils/provider/customEndpointService";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { createPersona, createServerConfig } from "../../helpers/fixtures";
 import { FIXTURE_IDS, insertFixtures, cleanupFixtures, type FixtureRefs } from "./setup/fixtures";
-import { DB_TESTS_AVAILABLE, setupTestDb, testSql, executeTestSqlFile } from "./setup/testDb";
+import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
 import { workspaceConfigExportSchema } from "@/types/db/dataExport";
 
 describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
@@ -84,7 +85,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     ).toBe("success");
     const binding = { scope: "workspace" as const, registrationId: 99, toolName: "check_slop" as const };
     await configRepository.updateChatConfig(refs.serverId, { response_rule_checker_ref: binding });
-    await executeTestSqlFile("src/db/schema.sql");
+    await initializeDatabase({ client: testSql, includeRag: false });
     const expected = {
       response_drafting_enabled: true,
       response_reviewer_llm_id: reviewerId,
