@@ -14,10 +14,7 @@ function spawnReplies(replies: Array<{ status: number; body: unknown }>) {
     const output =
       process.platform === "win32"
         ? JSON.stringify({ status: reply.status, bodyBase64: Buffer.from(body).toString("base64"), location: "" })
-        : `HTTP/1.1 ${reply.status} Fixture
-Content-Type: application/json
-
-${body}`;
+        : `HTTP/1.1 ${reply.status} Fixture\r\nContent-Type: application/json\r\n\r\n${body}`;
     return originalSpawn(
       [
         process.execPath,
